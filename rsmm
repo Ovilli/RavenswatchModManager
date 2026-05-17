@@ -219,7 +219,18 @@ def cmd_rebuild_map(argv: list[str]) -> int:
 
 
 def cmd_install_loader(argv: list[str]) -> int:
-    return _run_shell(ROOT / "src/rsmm/cli/install_loader.sh", argv)
+    # On Windows, run the PowerShell installer. On Unix, run the shell script.
+    script_sh = ROOT / "src/rsmm/cli/install_loader.sh"
+    script_ps1 = ROOT / "src/rsmm/cli/install_loader.ps1"
+    if sys.platform == "win32":
+        # Call PowerShell with bypass to allow script execution.
+        if not script_ps1.exists():
+            print(f"install script not found: {script_ps1}", file=sys.stderr)
+            return 1
+        cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script_ps1), *argv]
+        return subprocess.call(cmd)
+    else:
+        return _run_shell(script_sh, argv)
 
 
 def cmd_log(argv: list[str]) -> int:
