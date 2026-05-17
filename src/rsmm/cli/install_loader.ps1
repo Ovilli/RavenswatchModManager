@@ -61,9 +61,12 @@ if (-not (Test-Path (Join-Path $GameDir 'winhttp_real.dll'))) {
 }
 
 # If existing winhttp.dll looks like Doorstop (contains 'doorstop.dll' text), remove it.
+# Works on Windows PowerShell 5.x AND PowerShell 7+ (avoids `-Encoding Byte` which
+# was removed in PS 7).
 function Is-Doorstop($path) {
   try {
-    $text = Get-Content -Raw -ErrorAction Stop $path -Encoding Byte
+    $bytes = [System.IO.File]::ReadAllBytes($path)
+    $text = [System.Text.Encoding]::ASCII.GetString($bytes)
     return ($text -match 'doorstop.dll')
   } catch { return $false }
 }

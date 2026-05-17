@@ -19,6 +19,7 @@ spawn) are deferred. See `docs/ROADMAP.md`.
 ./rsmm build               # asset map + loader DLL + merge + apply
 ./rsmm doctor              # check everything is healthy
 ./rsmm run                 # launch Ravenswatch
+./rsmm gui                 # browser-based mod manager (game-styled, no CLI)
 # while iterating:
 ./rsmm watch               # auto-reapply on every mods/ change
 # rollback:

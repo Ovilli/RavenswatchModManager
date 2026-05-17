@@ -11,7 +11,7 @@ import json
 import os
 import sys
 
-from .paths import ASSET_MAP_JSON, ASSET_MAP_CSV
+from .paths import ASSET_MAP_JSON, ASSET_MAP_CSV, DEFAULT_GAME_DIR
 
 # ── Complete substitution tables (case‑sensitive) ──────────────────
 LOWER = {
@@ -41,9 +41,7 @@ def decrypt_string(s: str) -> str:
 
 
 def main() -> int:
-    default = os.path.expanduser(
-        "~/.var/app/com.valvesoftware.Steam/.local/share/Steam/"
-        "steamapps/common/Ravenswatch/DarkTalesResources/UsedRscList.ot")
+    default = str(DEFAULT_GAME_DIR / "DarkTalesResources" / "UsedRscList.ot")
     path = os.environ.get(
         "USEDRSCLIST", sys.argv[1] if len(sys.argv) > 1 else default,
     )

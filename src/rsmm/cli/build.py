@@ -25,13 +25,21 @@ from rsmm.engine.paths import (
 from rsmm.cli.merge import build_merged_mod
 
 
+def _loader_build_script() -> Path:
+    """Return the loader build script for the current platform."""
+    base = REPO_ROOT / "src" / "loader"
+    return base / ("build.bat" if sys.platform == "win32" else "build.sh")
+
+
 def _build_loader() -> int:
-    build_sh = REPO_ROOT / "src" / "loader" / "build.sh"
-    if not build_sh.exists():
-        print(f"loader build script not found: {build_sh}", file=sys.stderr)
+    script = _loader_build_script()
+    if not script.exists():
+        print(f"loader build script not found: {script}", file=sys.stderr)
         return 1
-    print(f"==> building loader DLL ({build_sh})")
-    return subprocess.call([str(build_sh)])
+    print(f"==> building loader DLL ({script})")
+    if sys.platform == "win32":
+        return subprocess.call(["cmd.exe", "/c", str(script)])
+    return subprocess.call([str(script)])
 
 
 def _rebuild_map() -> int:
@@ -61,11 +69,11 @@ def main() -> int:
 
     if not args.skip_loader:
         dll = DIST_DIR / "winhttp.dll"
-        build_sh = REPO_ROOT / "src" / "loader" / "build.sh"
+        script = _loader_build_script()
         need_build = (not dll.exists()) or (
-            build_sh.exists() and
+            script.exists() and
             dll.exists() and
-            dll.stat().st_mtime < build_sh.stat().st_mtime
+            dll.stat().st_mtime < script.stat().st_mtime
         )
         if need_build:
             rc = _build_loader()

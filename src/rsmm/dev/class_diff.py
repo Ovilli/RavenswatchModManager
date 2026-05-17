@@ -25,13 +25,10 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+from rsmm.engine.paths import DEFAULT_GAME_DIR as DEFAULT_GAME
+
 MARK_BEGIN = bytes.fromhex("1111bbaa")
 MARK_END   = bytes.fromhex("2222bbaa")
-
-DEFAULT_GAME = Path.home() / (
-    ".var/app/com.valvesoftware.Steam/.local/share/Steam/"
-    "steamapps/common/Ravenswatch"
-)
 
 
 def parse_root_and_body(path: Path) -> tuple[str | None, bytes]:
