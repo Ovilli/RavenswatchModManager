@@ -1,0 +1,374 @@
+#!/usr/bin/env python3
+"""rsmm — single CLI for Ravenswatch mod authoring + install.
+
+Subcommands wrap the legacy `make_*` generators with friendlier names
+and routes them through one help screen.
+
+    rsmm apply [--dry-run]              install mods/ into the game
+    rsmm restore [--all]                roll back active overrides
+    rsmm list                           show installed mods + their files
+    rsmm new <id>                       scaffold mods/<id>/
+    rsmm pack <id> [--allow-vanilla]    bundle mods/<id>/ into a zip
+                                        (refuses files byte-identical to
+                                        original game assets — don't
+                                        redistribute Ravenswatch content)
+
+    rsmm doctor                         system health check (recommended often)
+    rsmm watch [--interval N]           re-apply on every mods/ change
+    rsmm build [--skip-loader]          asset map + loader + merge + apply
+    rsmm run [--set-launch-options]     launch Ravenswatch via Steam
+                                        (verifies WINEDLLOVERRIDES is set;
+                                        refuses if missing; --set writes
+                                        it into Steam's localconfig.vdf)
+    rsmm merge                          compose [[patch]] blocks into mods/_merged
+    rsmm compat                         analyze requires/conflicts/replaces graph
+    rsmm lint [<id>]                    validate manifests + asset paths
+    rsmm explain <id>                   show a mod's full patch plan
+    rsmm test [<id>] [--record]         diff build.py output vs checked-in fixture
+
+    rsmm stat   ...                     patch balance / modifier / camp diff
+    rsmm texture ...                    swap textures by donor reference
+    rsmm text   ...                     override translation strings
+    rsmm url    ...                     redirect main-menu URLs
+    rsmm menu-button                    clone the Discord button as 'Mods'
+    rsmm social-tab                     add the in-game Social book Mods tab
+    rsmm mods-list                      ship the Mods_List cooked entity
+    rsmm install-loader [game-dir]      copy winhttp.dll into the game install
+    rsmm log [-f] [-n N] [--grep S]     read the loader log without leaving the repo
+                                        (--clear truncates, --path prints location)
+    rsmm rebuild-asset-map              re-run find_iyg.py from UsedRscList.ot
+    rsmm decode <cooked-file>           dump oCTextSaver structure
+    rsmm process-clicks                 drain in-game click toggles
+
+Help for any subcommand: `rsmm <cmd> --help`.
+"""
+
+from __future__ import annotations
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+# Make `import rsmm.<...>` resolvable without an install step.
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT / "src"))
+
+
+def _dispatch_module(modname: str, argv: list[str]) -> int:
+    """Run the script as if invoked directly. Each legacy generator
+    exposes a top-level `main()` and `sys.exit(main())` block."""
+    import importlib
+    sys.argv = [modname.split(".")[-1], *argv]
+    mod = importlib.import_module(modname)
+    if hasattr(mod, "main"):
+        return int(mod.main() or 0)
+    print(f"module {modname} has no main()", file=sys.stderr)
+    return 2
+
+
+def _run_shell(script: Path, argv: list[str]) -> int:
+    return subprocess.call([str(script), *argv])
+
+
+def cmd_new(argv: list[str]) -> int:
+    from rsmm.engine.paths import MODS_DIR
+    if len(argv) != 1:
+        print("usage: rsmm new <id>", file=sys.stderr)
+        return 2
+    mod_id = argv[0]
+    target = MODS_DIR / mod_id
+    if target.exists():
+        print(f"mod already exists: {target}", file=sys.stderr)
+        return 1
+    (target / "assets").mkdir(parents=True)
+    (target / "manifest.toml").write_text(
+        "[mod]\n"
+        f'id          = "{mod_id}"\n'
+        f'name        = "{mod_id}"\n'
+        'version     = "0.1.0"\n'
+        'author      = "you"\n'
+        'description = ""\n'
+        "enabled     = true\n",
+        encoding="utf-8",
+    )
+    (target / "README.md").write_text(
+        f"# {mod_id}\n\nDescribe your mod here.\n", encoding="utf-8",
+    )
+    print(f"Created {target}")
+    print("Next: drop cooked files under assets/, then `rsmm apply`.")
+    return 0
+
+
+def _vanilla_offenders(mod_dir: Path) -> list[tuple[str, str]]:
+    """Return [(relpath, reason)] for mod files that are byte-identical to
+    the original game asset they sit at. Distributing those is
+    redistribution of copyrighted game content, not a mod — `pack`
+    refuses them so authors don't accidentally ship Ravenswatch's own
+    files inside a .zip.
+
+    Compares SHA1 of each `assets/<decoded>` and `_root/<path>` file
+    against either:
+      - the cooked original at `<install>/_Cooking/<encoded>` (prefers
+        the `.rsmm.bak` sibling if rsmm apply is currently active), or
+      - the extracted mirror at `data/uncooked/<decoded>` if present.
+    """
+    import hashlib
+    from rsmm.engine.asset_map import decoded_to_encoded
+    from rsmm.engine.paths import DEFAULT_GAME_DIR, COOKING_SUBDIR, DATA_DIR
+
+    def sha1(p: Path) -> str:
+        h = hashlib.sha1()
+        with open(p, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()
+
+    cooking = DEFAULT_GAME_DIR / COOKING_SUBDIR
+    uncooked = DATA_DIR / "uncooked"
+    enc_map = decoded_to_encoded() if cooking.exists() else {}
+    offenders: list[tuple[str, str]] = []
+
+    assets = mod_dir / "assets"
+    if assets.is_dir():
+        for f in assets.rglob("*"):
+            if not f.is_file():
+                continue
+            rel = f.relative_to(assets).as_posix()
+            mod_hash = sha1(f)
+            # Check against live cooked file
+            encoded = enc_map.get(rel)
+            if encoded:
+                orig = cooking / encoded.replace("\\", "/")
+                bak = orig.with_suffix(orig.suffix + ".rsmm.bak")
+                src = bak if bak.exists() else orig
+                if src.exists() and sha1(src) == mod_hash:
+                    offenders.append((f"assets/{rel}", "matches original cooked asset"))
+                    continue
+            # Check against extracted mirror (raw cooked bytes; PNG-decoded
+            # files won't match by hash, which is correct — those are
+            # already transformed and safe).
+            mirror = uncooked / rel
+            if mirror.exists() and mirror.is_file() and sha1(mirror) == mod_hash:
+                offenders.append((f"assets/{rel}", "matches data/uncooked/ mirror"))
+
+    root = mod_dir / "_root"
+    if root.is_dir():
+        game_root = DEFAULT_GAME_DIR
+        for f in root.rglob("*"):
+            if not f.is_file():
+                continue
+            rel = f.relative_to(root).as_posix()
+            orig = game_root / rel
+            if orig.exists() and orig.is_file() and sha1(orig) == sha1(f):
+                offenders.append((f"_root/{rel}", "matches game install file"))
+
+    return offenders
+
+
+def cmd_pack(argv: list[str]) -> int:
+    from rsmm.engine.paths import MODS_DIR, DIST_DIR
+    allow_vanilla = False
+    args = []
+    for a in argv:
+        if a == "--allow-vanilla":
+            allow_vanilla = True
+        else:
+            args.append(a)
+    if len(args) != 1:
+        print("usage: rsmm pack <id> [--allow-vanilla]", file=sys.stderr)
+        return 2
+    mod_id = args[0]
+    src = MODS_DIR / mod_id
+    if not src.is_dir():
+        print(f"no such mod: {src}", file=sys.stderr)
+        return 1
+    if not allow_vanilla:
+        offenders = _vanilla_offenders(src)
+        if offenders:
+            print(
+                f"refusing to pack {mod_id}: contains files byte-identical to original "
+                f"game assets — that's redistribution of copyrighted content, not a mod.",
+                file=sys.stderr,
+            )
+            for rel, why in offenders[:20]:
+                print(f"  {rel}  ({why})", file=sys.stderr)
+            if len(offenders) > 20:
+                print(f"  ... and {len(offenders) - 20} more", file=sys.stderr)
+            print(
+                "\nfix: replace each listed file with your own modified bytes, or "
+                "delete it from the mod. authors must ship only their changes, not "
+                "the originals. override with --allow-vanilla only for personal "
+                "backups never distributed publicly.",
+                file=sys.stderr,
+            )
+            return 1
+    DIST_DIR.mkdir(exist_ok=True)
+    out_base = DIST_DIR / mod_id
+    archive = shutil.make_archive(str(out_base), "zip", root_dir=MODS_DIR, base_dir=mod_id)
+    print(f"Wrote {archive}")
+    return 0
+
+
+def cmd_decode(argv: list[str]) -> int:
+    return _dispatch_module("rsmm.engine.ot_decoder", argv)
+
+
+def cmd_rebuild_map(argv: list[str]) -> int:
+    return _dispatch_module("rsmm.engine.find_iyg", argv)
+
+
+def cmd_install_loader(argv: list[str]) -> int:
+    return _run_shell(ROOT / "src/rsmm/cli/install_loader.sh", argv)
+
+
+def cmd_log(argv: list[str]) -> int:
+    """Print the loader log written by winhttp.dll inside the game install
+    directory. Saves the user from cd-ing into the Wine prefix.
+
+      rsmm log              # dump full log to stdout
+      rsmm log -n 100       # last 100 lines
+      rsmm log -f           # follow new lines as the game runs (tail -f)
+      rsmm log --clear      # truncate the log (useful before a fresh run)
+      rsmm log --grep PAT   # filter lines (case-insensitive)
+      rsmm log --path       # print the path and exit
+    """
+    import argparse
+    from rsmm.engine.paths import DEFAULT_GAME_DIR
+
+    ap = argparse.ArgumentParser(prog="rsmm log", add_help=False)
+    ap.add_argument("-n", "--lines", type=int, default=0,
+                    help="show only the last N lines")
+    ap.add_argument("-f", "--follow", action="store_true",
+                    help="stream new lines as the game writes them")
+    ap.add_argument("--clear", action="store_true",
+                    help="truncate the log file")
+    ap.add_argument("--grep", help="filter to lines matching this substring (case-insensitive)")
+    ap.add_argument("--path", action="store_true",
+                    help="print the log path and exit")
+    ap.add_argument("--game-dir", default=str(DEFAULT_GAME_DIR))
+    ap.add_argument("-h", "--help", action="store_true")
+    a = ap.parse_args(argv)
+    if a.help:
+        print(cmd_log.__doc__)
+        return 0
+
+    log_path = Path(a.game_dir) / "mods" / "_log.txt"
+    if a.path:
+        print(log_path)
+        return 0
+    if a.clear:
+        if log_path.exists():
+            log_path.write_text("")
+            print(f"cleared {log_path}")
+        else:
+            print(f"no log at {log_path}")
+        return 0
+    if not log_path.exists():
+        print(f"no log yet at {log_path} — launch the game once with the "
+              f"loader installed", file=sys.stderr)
+        return 1
+
+    needle = a.grep.lower() if a.grep else None
+    def emit(line: str) -> None:
+        s = line.rstrip("\n")
+        if needle is None or needle in s.lower():
+            print(s, flush=True)
+
+    if not a.follow:
+        with open(log_path, "r", errors="replace") as f:
+            lines = f.readlines()
+        if a.lines and a.lines > 0:
+            lines = lines[-a.lines:]
+        for ln in lines:
+            emit(ln)
+        return 0
+
+    # follow mode — like `tail -F`: tolerant of truncation/recreation.
+    import time
+    inode = log_path.stat().st_ino if log_path.exists() else -1
+    with open(log_path, "r", errors="replace") as f:
+        if a.lines and a.lines > 0:
+            tail = f.readlines()[-a.lines:]
+            for ln in tail:
+                emit(ln)
+        else:
+            f.seek(0, 2)
+        try:
+            while True:
+                line = f.readline()
+                if line:
+                    emit(line)
+                    continue
+                time.sleep(0.25)
+                # detect rotate / clear
+                try:
+                    st = log_path.stat()
+                    if st.st_ino != inode or st.st_size < f.tell():
+                        f.close()
+                        f = open(log_path, "r", errors="replace")
+                        inode = st.st_ino
+                except FileNotFoundError:
+                    pass
+        except KeyboardInterrupt:
+            return 0
+
+
+# Legacy generator dispatch.
+LEGACY = {
+    "apply":         ("rsmm.cli.apply_mods",                 []),
+    "list":          ("rsmm.cli.apply_mods",                 ["--list"]),
+    "restore":       ("rsmm.cli.apply_mods",                 ["--restore-all"]),
+    "stat":          ("rsmm.cli.make_stat_mod",              []),
+    "texture":       ("rsmm.cli.make_texture_mod",           []),
+    "text":          ("rsmm.cli.make_text_mod",              []),
+    "url":           ("rsmm.cli.make_url_mod",               []),
+    "menu-button":   ("rsmm.cli.make_real_menu_button_mod",  []),
+    "social-tab":    ("rsmm.cli.make_social_mods_page_mod",  []),
+    "mods-list":     ("rsmm.cli.make_mods_list_entity",      []),
+    "process-clicks":("rsmm.cli.process_clicks",             []),
+    # System
+    "doctor":        ("rsmm.cli.doctor",                     []),
+    "watch":         ("rsmm.cli.watch",                      []),
+    "build":         ("rsmm.cli.build",                      []),
+    "run":           ("rsmm.cli.run",                        []),
+    "merge":         ("rsmm.cli.merge",                      []),
+    "compat":        ("rsmm.cli.compat",                     []),
+    "lint":          ("rsmm.cli.lint",                       []),
+    "explain":       ("rsmm.cli.explain",                    []),
+    "test":          ("rsmm.cli.test",                       []),
+}
+
+
+def main(argv: list[str]) -> int:
+    if not argv or argv[0] in {"-h", "--help", "help"}:
+        print(__doc__)
+        return 0
+    sub = argv[0]
+    rest = argv[1:]
+
+    # Restore: legacy script uses --restore-all; expose `rsmm restore --all`
+    # or just `rsmm restore` (same effect).
+    if sub == "restore":
+        if rest and rest[0] == "--all":
+            rest = rest[1:]
+        return _dispatch_module("rsmm.cli.apply_mods", ["--restore-all", *rest])
+
+    if sub == "new":            return cmd_new(rest)
+    if sub == "pack":           return cmd_pack(rest)
+    if sub == "decode":         return cmd_decode(rest)
+    if sub == "rebuild-asset-map": return cmd_rebuild_map(rest)
+    if sub == "install-loader": return cmd_install_loader(rest)
+    if sub == "log":            return cmd_log(rest)
+
+    if sub in LEGACY:
+        mod, prefix = LEGACY[sub]
+        return _dispatch_module(mod, [*prefix, *rest])
+
+    print(f"unknown subcommand: {sub}", file=sys.stderr)
+    print(__doc__, file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -1,0 +1,1 @@
+"""rsmm CLI subcommand registry."""

@@ -1,0 +1,32 @@
+__pycache__/
+*.pyc
+*.pyo
+
+# Build output
+src/loader/build/
+src/loader/third_party/*/
+!src/loader/third_party/.gitkeep
+
+# Runtime state (written into mods/ at apply time)
+mods/_clicks.state
+mods/_clicks.log
+mods/_persona_map.json
+mods/_state.json
+mods/_log.txt
+
+# Packed mods
+dist/*.zip
+
+# Extracted uncooked game assets (3.2 GB, regenerable via scripts/extract_uncooked.py)
+data/uncooked/
+
+# Pattern DB for rsmm.resolve (20 MB, regenerable via scripts/gen_function_patterns.py)
+data/function_patterns.json
+
+# Big RE artifacts — Ghidra project itself is committed; outputs are local
+docs/_re/out/decompiled_all/
+docs/_re/out/xref_targets/
+docs/_re/out/symbols.json
+docs/_re/out/strings.json
+docs/_re/out/functions_index.tsv
+docs/_re/out/xref_targets_summary.json

@@ -1,0 +1,4899 @@
+{
+  "ResourceLoader": [], 
+  "load failed": [], 
+  "Loading resource": [], 
+  "PickerEntity": [], 
+  "ButtonClicked": [], 
+  "oCResource": [
+    {
+      "string_value": "oCResourceRef", 
+      "xrefs": [
+        {
+          "function_entry": "140176ef0", 
+          "function": "FUN_140176ef0", 
+          "from": "140177014", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140176ef0", 
+          "function": "FUN_140176ef0", 
+          "from": "14017701b", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ed8df8"
+    }, 
+    {
+      "string_value": "oCResourceUniqueId", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140183024", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14018302b", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ee0888"
+    }, 
+    {
+      "string_value": "oCResourceWeakRef", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140222994", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14022299b", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ee9660"
+    }, 
+    {
+      "string_value": "oCResourceDbInfo", 
+      "xrefs": [
+        {
+          "function_entry": "1403116c0", 
+          "function": "FUN_1403116c0", 
+          "from": "1403117e4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1403116c0", 
+          "function": "FUN_1403116c0", 
+          "from": "1403117eb", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f022b0"
+    }, 
+    {
+      "string_value": ".?AVoCResourceRef@@", 
+      "xrefs": [], 
+      "string_addr": "14132a9c8"
+    }, 
+    {
+      "string_value": ".?AVoCResourceWeakRef@@", 
+      "xrefs": [], 
+      "string_addr": "1413451d0"
+    }, 
+    {
+      "string_value": ".?AVoCResourceDbInfo@@", 
+      "xrefs": [], 
+      "string_addr": "14134ef40"
+    }, 
+    {
+      "string_value": ".?AVoCResourceApplication@@", 
+      "xrefs": [], 
+      "string_addr": "141356b78"
+    }, 
+    {
+      "string_value": ".?AV?$oCTMetaAttribute@VoCResourceRef@@@@", 
+      "xrefs": [], 
+      "string_addr": "1413576f0"
+    }, 
+    {
+      "string_value": ".?AV?$oCTMetaAttribute@VoCResourceUniqueId@@@@", 
+      "xrefs": [], 
+      "string_addr": "141358cf0"
+    }, 
+    {
+      "string_value": ".?AVoCResourceRequestInfoFeed@@", 
+      "xrefs": [], 
+      "string_addr": "141358f80"
+    }, 
+    {
+      "string_value": ".?AVoCResourceGpuObjectStorage@@", 
+      "xrefs": [], 
+      "string_addr": "14135f748"
+    }, 
+    {
+      "string_value": ".?AV?$oITMetaProperty@P8oCMaterialDefParamTexture@@EBAAEBVoCResourceRef@@XZP81@EAAXAEBV2@@Z@@", 
+      "xrefs": [], 
+      "string_addr": "141365ba0"
+    }, 
+    {
+      "string_value": ".?AV?$oCTMetaProperty@P8oCMaterialDefParamTexture@@EBAAEBVoCResourceRef@@XZP81@EAAXAEBV2@@Z@@", 
+      "xrefs": [], 
+      "string_addr": "141365c70"
+    }
+  ], 
+  "Failed to load": [], 
+  "Click": [
+    {
+      "string_value": "Click and drag to move or undock whole node.", 
+      "xrefs": [], 
+      "string_addr": "140f29108"
+    }
+  ], 
+  "entity.ot": [
+    {
+      "string_value": "Common_Settings\\Barks_Manager.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "14000f160", 
+          "function": "FUN_14000f160", 
+          "from": "14000f164", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14000f160", 
+          "function": "FUN_14000f160", 
+          "from": "14000f16b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14000f160", 
+          "function": "FUN_14000f160", 
+          "from": "14000f1ce", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "14004c900", 
+          "function": "FUN_14004c900", 
+          "from": "14004c904", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004c900", 
+          "function": "FUN_14004c900", 
+          "from": "14004c90b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004c900", 
+          "function": "FUN_14004c900", 
+          "from": "14004c96e", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "14006cb20", 
+          "function": "FUN_14006cb20", 
+          "from": "14006cb24", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14006cb20", 
+          "function": "FUN_14006cb20", 
+          "from": "14006cb2b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14006cb20", 
+          "function": "FUN_14006cb20", 
+          "from": "14006cb8e", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "14004aa50", 
+          "function": "FUN_14004aa50", 
+          "from": "14004aa54", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004aa50", 
+          "function": "FUN_14004aa50", 
+          "from": "14004aa5b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004aa50", 
+          "function": "FUN_14004aa50", 
+          "from": "14004aabe", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "140028b00", 
+          "function": "FUN_140028b00", 
+          "from": "140028b04", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140028b00", 
+          "function": "FUN_140028b00", 
+          "from": "140028b0b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140028b00", 
+          "function": "FUN_140028b00", 
+          "from": "140028b6e", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "140056ba0", 
+          "function": "FUN_140056ba0", 
+          "from": "140056ba4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140056ba0", 
+          "function": "FUN_140056ba0", 
+          "from": "140056bab", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140056ba0", 
+          "function": "FUN_140056ba0", 
+          "from": "140056c0e", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "140076220", 
+          "function": "FUN_140076220", 
+          "from": "140076224", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140076220", 
+          "function": "FUN_140076220", 
+          "from": "14007622b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140076220", 
+          "function": "FUN_140076220", 
+          "from": "14007628e", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "140035d50", 
+          "function": "FUN_140035d50", 
+          "from": "140035d54", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140035d50", 
+          "function": "FUN_140035d50", 
+          "from": "140035d5b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140035d50", 
+          "function": "FUN_140035d50", 
+          "from": "140035dbe", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "140023430", 
+          "function": "FUN_140023430", 
+          "from": "140023434", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140023430", 
+          "function": "FUN_140023430", 
+          "from": "14002343b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140023430", 
+          "function": "FUN_140023430", 
+          "from": "14002349e", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "140061a80", 
+          "function": "FUN_140061a80", 
+          "from": "140061a84", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140061a80", 
+          "function": "FUN_140061a80", 
+          "from": "140061a8b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140061a80", 
+          "function": "FUN_140061a80", 
+          "from": "140061aee", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "140001d50", 
+          "function": "FUN_140001d50", 
+          "from": "140001d54", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140001d50", 
+          "function": "FUN_140001d50", 
+          "from": "140001d5b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140001d50", 
+          "function": "FUN_140001d50", 
+          "from": "140001dbe", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "1400416a0", 
+          "function": "FUN_1400416a0", 
+          "from": "1400416a4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1400416a0", 
+          "function": "FUN_1400416a0", 
+          "from": "1400416ab", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1400416a0", 
+          "function": "FUN_1400416a0", 
+          "from": "14004170e", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ee13b8"
+    }, 
+    {
+      "string_value": "Common_Settings\\Music_Manager.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140016d84", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140016d8b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140016dee", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef19a8"
+    }, 
+    {
+      "string_value": "GameUis\\All_Book_Pages\\Main_Book_Menu.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140024380", 
+          "function": "FUN_140024380", 
+          "from": "140024384", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024380", 
+          "function": "FUN_140024380", 
+          "from": "14002438b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024380", 
+          "function": "FUN_140024380", 
+          "from": "1400243ee", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef35b0"
+    }, 
+    {
+      "string_value": "GameUis\\Common_Ui\\SplashScreen.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140024290", 
+          "function": "FUN_140024290", 
+          "from": "140024294", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024290", 
+          "function": "FUN_140024290", 
+          "from": "14002429b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024290", 
+          "function": "FUN_140024290", 
+          "from": "1400242fe", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef35e0"
+    }, 
+    {
+      "string_value": "GameUis\\Common_Ui\\Initial_Loading_Screen_Game_Ui.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "1400241a0", 
+          "function": "FUN_1400241a0", 
+          "from": "1400241a4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1400241a0", 
+          "function": "FUN_1400241a0", 
+          "from": "1400241ab", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1400241a0", 
+          "function": "FUN_1400241a0", 
+          "from": "14002420e", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef3610"
+    }, 
+    {
+      "string_value": "GameUis\\Modal\\Modal_News_Redirect.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140024740", 
+          "function": "FUN_140024740", 
+          "from": "140024744", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024740", 
+          "function": "FUN_140024740", 
+          "from": "14002474b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024740", 
+          "function": "FUN_140024740", 
+          "from": "1400247ae", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef3670"
+    }, 
+    {
+      "string_value": "GameUis\\Modal\\Modal_MyNacon.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140024650", 
+          "function": "FUN_140024650", 
+          "from": "140024654", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024650", 
+          "function": "FUN_140024650", 
+          "from": "14002465b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024650", 
+          "function": "FUN_140024650", 
+          "from": "1400246be", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef36a0"
+    }, 
+    {
+      "string_value": "GameUis\\Modal\\Modal_Keep_Solo_Run.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140024560", 
+          "function": "FUN_140024560", 
+          "from": "140024564", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024560", 
+          "function": "FUN_140024560", 
+          "from": "14002456b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024560", 
+          "function": "FUN_140024560", 
+          "from": "1400245ce", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef36c8"
+    }, 
+    {
+      "string_value": "GameUis\\Modal\\Modal_Load_Run.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140024470", 
+          "function": "FUN_140024470", 
+          "from": "140024474", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024470", 
+          "function": "FUN_140024470", 
+          "from": "14002447b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024470", 
+          "function": "FUN_140024470", 
+          "from": "1400244de", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef36f8"
+    }, 
+    {
+      "string_value": "GameUis\\Modal\\Modal_EULA.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140024830", 
+          "function": "FUN_140024830", 
+          "from": "140024834", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024830", 
+          "function": "FUN_140024830", 
+          "from": "14002483b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024830", 
+          "function": "FUN_140024830", 
+          "from": "14002489e", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef3758"
+    }, 
+    {
+      "string_value": "GameUis\\Common_Ui\\Out_Game_Escape_PC_Menu.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140024ca0", 
+          "function": "FUN_140024ca0", 
+          "from": "140024ca4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024ca0", 
+          "function": "FUN_140024ca0", 
+          "from": "140024cab", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024ca0", 
+          "function": "FUN_140024ca0", 
+          "from": "140024d0e", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef3a48"
+    }, 
+    {
+      "string_value": "GameUis\\Modal\\Modal_Multiplayer.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140024d90", 
+          "function": "FUN_140024d90", 
+          "from": "140024d94", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024d90", 
+          "function": "FUN_140024d90", 
+          "from": "140024d9b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024d90", 
+          "function": "FUN_140024d90", 
+          "from": "140024dfe", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef3ad8"
+    }, 
+    {
+      "string_value": "GameUis\\Common_Ui\\In_Game_Escape_PC_Menu.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1400300b4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1400300bb", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14003011e", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef6d50"
+    }, 
+    {
+      "string_value": "GameUis\\Modal\\Modal_Save_Or_Quit.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "1400301a0", 
+          "function": "FUN_1400301a0", 
+          "from": "1400301a4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1400301a0", 
+          "function": "FUN_1400301a0", 
+          "from": "1400301ab", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1400301a0", 
+          "function": "FUN_1400301a0", 
+          "from": "14003020e", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef6d88"
+    }, 
+    {
+      "string_value": "GameUis\\Common_Ui\\Reconnect_Notification.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140030290", 
+          "function": "FUN_140030290", 
+          "from": "140030294", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140030290", 
+          "function": "FUN_140030290", 
+          "from": "14003029b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140030290", 
+          "function": "FUN_140030290", 
+          "from": "1400302fe", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef6dd8"
+    }, 
+    {
+      "string_value": "Common_Settings\\Group_Scaling.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140030380", 
+          "function": "FUN_140030380", 
+          "from": "140030384", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140030380", 
+          "function": "FUN_140030380", 
+          "from": "14003038b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140030380", 
+          "function": "FUN_140030380", 
+          "from": "1400303ee", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef7308"
+    }, 
+    {
+      "string_value": "GameUis\\All_Book_Pages\\Social\\Friend_Sent_Notification.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "14004b2a0", 
+          "function": "FUN_14004b2a0", 
+          "from": "14004b2a4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b2a0", 
+          "function": "FUN_14004b2a0", 
+          "from": "14004b2ab", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b2a0", 
+          "function": "FUN_14004b2a0", 
+          "from": "14004b30e", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140f02ef0"
+    }, 
+    {
+      "string_value": "GameUis\\All_Book_Pages\\Social\\Invite_Party_Received_Notification.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "14004b1b0", 
+          "function": "FUN_14004b1b0", 
+          "from": "14004b1b4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b1b0", 
+          "function": "FUN_14004b1b0", 
+          "from": "14004b1bb", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b1b0", 
+          "function": "FUN_14004b1b0", 
+          "from": "14004b21e", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140f02f40"
+    }, 
+    {
+      "string_value": "GameUis\\All_Book_Pages\\Social\\Invite_Party_Sent_Notification.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "14004b0c0", 
+          "function": "FUN_14004b0c0", 
+          "from": "14004b0c4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b0c0", 
+          "function": "FUN_14004b0c0", 
+          "from": "14004b0cb", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b0c0", 
+          "function": "FUN_14004b0c0", 
+          "from": "14004b12e", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140f02f90"
+    }, 
+    {
+      "string_value": "GameUis\\All_Book_Pages\\Social\\Report_Notification.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "14004b840", 
+          "function": "FUN_14004b840", 
+          "from": "14004b844", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b840", 
+          "function": "FUN_14004b840", 
+          "from": "14004b84b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b840", 
+          "function": "FUN_14004b840", 
+          "from": "14004b8ae", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140f03000"
+    }, 
+    {
+      "string_value": "GameUis\\All_Book_Pages\\Social\\Friend_Removed_Notification.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "14004b750", 
+          "function": "FUN_14004b750", 
+          "from": "14004b754", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b750", 
+          "function": "FUN_14004b750", 
+          "from": "14004b75b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b750", 
+          "function": "FUN_14004b750", 
+          "from": "14004b7be", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140f03040"
+    }, 
+    {
+      "string_value": "GameUis\\All_Book_Pages\\Social\\Friend_Added_Notification.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "14004b660", 
+          "function": "FUN_14004b660", 
+          "from": "14004b664", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b660", 
+          "function": "FUN_14004b660", 
+          "from": "14004b66b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b660", 
+          "function": "FUN_14004b660", 
+          "from": "14004b6ce", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140f03090"
+    }, 
+    {
+      "string_value": "GameUis\\All_Book_Pages\\Social\\Unblock_Notification.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "14004b570", 
+          "function": "FUN_14004b570", 
+          "from": "14004b574", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b570", 
+          "function": "FUN_14004b570", 
+          "from": "14004b57b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b570", 
+          "function": "FUN_14004b570", 
+          "from": "14004b5de", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140f030d8"
+    }, 
+    {
+      "string_value": "GameUis\\All_Book_Pages\\Social\\Block_Notification.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "14004b480", 
+          "function": "FUN_14004b480", 
+          "from": "14004b484", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b480", 
+          "function": "FUN_14004b480", 
+          "from": "14004b48b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b480", 
+          "function": "FUN_14004b480", 
+          "from": "14004b4ee", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140f03118"
+    }, 
+    {
+      "string_value": "GameUis\\All_Book_Pages\\Social\\Friend_Received_Notification.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "14004b390", 
+          "function": "FUN_14004b390", 
+          "from": "14004b394", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b390", 
+          "function": "FUN_14004b390", 
+          "from": "14004b39b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b390", 
+          "function": "FUN_14004b390", 
+          "from": "14004b3fe", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140f031a0"
+    }, 
+    {
+      "string_value": "GameUis\\Common_Ui\\NewHero_Popup.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140069360", 
+          "function": "FUN_140069360", 
+          "from": "140069364", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140069360", 
+          "function": "FUN_140069360", 
+          "from": "14006936b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140069360", 
+          "function": "FUN_140069360", 
+          "from": "1400693ce", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140f0e3d8"
+    }, 
+    {
+      "string_value": "GameUis\\Modal\\Modal_Difficulty_Unlocked.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "1400698b0", 
+          "function": "FUN_1400698b0", 
+          "from": "1400698b4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1400698b0", 
+          "function": "FUN_1400698b0", 
+          "from": "1400698bb", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1400698b0", 
+          "function": "FUN_1400698b0", 
+          "from": "14006991e", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140f0e630"
+    }, 
+    {
+      "string_value": "*.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "1406cd990", 
+          "function": "FUN_1406cd990", 
+          "from": "1406cda12", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1406cd990", 
+          "function": "FUN_1406cd990", 
+          "from": "1406cda25", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4c4b8"
+    }
+  ], 
+  "ResourceManager": [], 
+  "BookPage": [
+    {
+      "string_value": "oIDtEntityCpntBookPageUiController", 
+      "xrefs": [
+        {
+          "function_entry": "1402beff0", 
+          "function": "FUN_1402beff0", 
+          "from": "1402bf0d4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1402beff0", 
+          "function": "FUN_1402beff0", 
+          "from": "1402bf0e1", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ef89e8"
+    }, 
+    {
+      "string_value": "oIDtEntityCpntBookPageUiControllerSettings", 
+      "xrefs": [
+        {
+          "function_entry": "1402bee30", 
+          "function": "FUN_1402bee30", 
+          "from": "1402bef2c", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1402bee30", 
+          "function": "FUN_1402bee30", 
+          "from": "1402bef33", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140efb340"
+    }, 
+    {
+      "string_value": "EntityCpntHeroesBookPageUiControllerSettings", 
+      "xrefs": [
+        {
+          "function_entry": "1403f12c0", 
+          "function": "FUN_1403f12c0", 
+          "from": "1403f131b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1403f12c0", 
+          "function": "FUN_1403f12c0", 
+          "from": "1403f1327", 
+          "ref_type": "PARAM"
+        }, 
+        {
+          "function_entry": "1403f12c0", 
+          "function": "FUN_1403f12c0", 
+          "from": "1403f135b", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f0e6f8"
+    }, 
+    {
+      "string_value": "oCDtEntityCpntPlayBookPageUiControllerSettings", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140406011", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140406018", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f0eb80"
+    }, 
+    {
+      "string_value": "oCDtEntityCpntSelectHeroBookPageUiControllerSettings", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140406391", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140406398", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f10210"
+    }, 
+    {
+      "string_value": "HeroMetaBookPageCollector", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140409337", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14040933e", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f10bc8"
+    }, 
+    {
+      "string_value": "EntityCpntHeroMetaBookPageUiController", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1404088b9", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1404088c0", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f10c18"
+    }, 
+    {
+      "string_value": "SocialBookPageRightPageEntity", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140405ab6", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140405abd", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f10c40"
+    }, 
+    {
+      "string_value": "EntityCpntRecapBookPageSettings", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140407e41", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140407e48", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f10c60"
+    }, 
+    {
+      "string_value": "EntityCpntRecapBookPage", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140407ff9", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140408000", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f10cb8"
+    }, 
+    {
+      "string_value": "EntityCpntCompendiumBookPageUiControllerSettings", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1404053a1", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1404053a8", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f10cd0"
+    }, 
+    {
+      "string_value": "HeroMetaBookPageCollectorSettings", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140409181", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140409188", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f10d08"
+    }, 
+    {
+      "string_value": "MerlinAbilitiesMetaBookPageUiControllerEntityCpntSettings", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140408e01", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140408e08", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f10d30"
+    }, 
+    {
+      "string_value": "EntityCpntHeroMetaBookPageUiControllerSettings", 
+      "xrefs": [
+        {
+          "function_entry": "1404085f0", 
+          "function": "FUN_1404085f0", 
+          "from": "140408701", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1404085f0", 
+          "function": "FUN_1404085f0", 
+          "from": "140408708", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f10da0"
+    }, 
+    {
+      "string_value": "EntityCpntCompendiumBookPageUiController", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140405559", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140405560", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f10e08"
+    }, 
+    {
+      "string_value": "SocialBookPageEntityCpnt", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140405e49", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140405e50", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f10e60"
+    }, 
+    {
+      "string_value": "SocialBookPageEntityCpntSettings", 
+      "xrefs": [
+        {
+          "function_entry": "140405b80", 
+          "function": "FUN_140405b80", 
+          "from": "140405c91", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140405b80", 
+          "function": "FUN_140405b80", 
+          "from": "140405c98", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f10f10"
+    }, 
+    {
+      "string_value": "EntityCpntPlayerResultStatBookPageSettings", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140407ac1", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140407ac8", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f10f90"
+    }, 
+    {
+      "string_value": "EntityCpntPlayerResultStatBookPage", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140407c79", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140407c80", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f11050"
+    }, 
+    {
+      "string_value": "MerlinAbilitiesMetaBookPageUiControllerEntityCpnt", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140408fb9", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140408fc0", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f110a0"
+    }, 
+    {
+      "string_value": "oCDtEntityCpntPlayBookPageUiController", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1404061c9", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1404061d0", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f118c0"
+    }, 
+    {
+      "string_value": "oCDtEntityCpntSelectHeroBookPageUiController", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140406549", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140406550", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f12a98"
+    }, 
+    {
+      "string_value": ".?AVoIDtEntityCpntBookPageUiController@@", 
+      "xrefs": [], 
+      "string_addr": "14134cee0"
+    }, 
+    {
+      "string_value": ".?AVHeroMetaBookPageCollectorSettings@dt@oe@@", 
+      "xrefs": [], 
+      "string_addr": "141354480"
+    }, 
+    {
+      "string_value": ".?AVHeroMetaBookPageCollector@dt@oe@@", 
+      "xrefs": [], 
+      "string_addr": "1413544c0"
+    }, 
+    {
+      "string_value": ".?AVEntityCpntRecapBookPageSettings@dt@oe@@", 
+      "xrefs": [], 
+      "string_addr": "141354618"
+    }, 
+    {
+      "string_value": ".?AVEntityCpntRecapBookPage@dt@oe@@", 
+      "xrefs": [], 
+      "string_addr": "1413546c8"
+    }, 
+    {
+      "string_value": ".?AVEntityCpntHeroMetaBookPageUiController@dt@oe@@", 
+      "xrefs": [], 
+      "string_addr": "141354700"
+    }, 
+    {
+      "string_value": ".?AVEntityCpntHeroMetaBookPageUiControllerSettings@dt@oe@@", 
+      "xrefs": [], 
+      "string_addr": "1413548e0"
+    }, 
+    {
+      "string_value": ".?AVEntityCpntCompendiumBookPageUiControllerSettings@dt@oe@@", 
+      "xrefs": [], 
+      "string_addr": "141354d00"
+    }, 
+    {
+      "string_value": ".?AVEntityCpntPlayerResultStatBookPage@dt@oe@@", 
+      "xrefs": [], 
+      "string_addr": "141354df8"
+    }, 
+    {
+      "string_value": ".?AVEntityCpntCompendiumBookPageUiController@dt@oe@@", 
+      "xrefs": [], 
+      "string_addr": "141354fa0"
+    }, 
+    {
+      "string_value": ".?AVoCDtEntityCpntPlayBookPageUiControllerSettings@@", 
+      "xrefs": [], 
+      "string_addr": "141355080"
+    }, 
+    {
+      "string_value": ".?AVoIDtEntityCpntBookPageUiControllerSettings@@", 
+      "xrefs": [], 
+      "string_addr": "1413550d0"
+    }, 
+    {
+      "string_value": ".?AVoCDtEntityCpntSelectHeroBookPageUiController@@", 
+      "xrefs": [], 
+      "string_addr": "1413551f0"
+    }, 
+    {
+      "string_value": ".?AVSocialBookPageRightPageEntity@dt@oe@@", 
+      "xrefs": [], 
+      "string_addr": "1413552d0"
+    }, 
+    {
+      "string_value": ".?AVMerlinAbilitiesMetaBookPageUiControllerEntityCpntSettings@dt@oe@@", 
+      "xrefs": [], 
+      "string_addr": "141355310"
+    }, 
+    {
+      "string_value": ".?AVoCDtEntityCpntSelectHeroBookPageUiControllerSettings@@", 
+      "xrefs": [], 
+      "string_addr": "141355440"
+    }, 
+    {
+      "string_value": ".?AVMerlinAbilitiesMetaBookPageUiControllerEntityCpnt@dt@oe@@", 
+      "xrefs": [], 
+      "string_addr": "141355490"
+    }, 
+    {
+      "string_value": ".?AVSocialBookPageEntityCpnt@dt@oe@@", 
+      "xrefs": [], 
+      "string_addr": "1413554e0"
+    }, 
+    {
+      "string_value": ".?AVoCDtEntityCpntPlayBookPageUiController@@", 
+      "xrefs": [], 
+      "string_addr": "141355688"
+    }, 
+    {
+      "string_value": ".?AVSocialBookPageEntityCpntSettings@dt@oe@@", 
+      "xrefs": [], 
+      "string_addr": "141355828"
+    }, 
+    {
+      "string_value": ".?AVSocialBookPageRightPage@dt@oe@@", 
+      "xrefs": [], 
+      "string_addr": "141355e48"
+    }, 
+    {
+      "string_value": ".?AVEntityCpntPlayerResultStatBookPageSettings@dt@oe@@", 
+      "xrefs": [], 
+      "string_addr": "141355f70"
+    }
+  ], 
+  "instantiate": [], 
+  "OnClick": [], 
+  ".entity.ot": [
+    {
+      "string_value": "Common_Settings\\Barks_Manager.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "14000f160", 
+          "function": "FUN_14000f160", 
+          "from": "14000f164", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14000f160", 
+          "function": "FUN_14000f160", 
+          "from": "14000f16b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14000f160", 
+          "function": "FUN_14000f160", 
+          "from": "14000f1ce", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "14004c900", 
+          "function": "FUN_14004c900", 
+          "from": "14004c904", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004c900", 
+          "function": "FUN_14004c900", 
+          "from": "14004c90b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004c900", 
+          "function": "FUN_14004c900", 
+          "from": "14004c96e", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "14006cb20", 
+          "function": "FUN_14006cb20", 
+          "from": "14006cb24", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14006cb20", 
+          "function": "FUN_14006cb20", 
+          "from": "14006cb2b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14006cb20", 
+          "function": "FUN_14006cb20", 
+          "from": "14006cb8e", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "14004aa50", 
+          "function": "FUN_14004aa50", 
+          "from": "14004aa54", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004aa50", 
+          "function": "FUN_14004aa50", 
+          "from": "14004aa5b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004aa50", 
+          "function": "FUN_14004aa50", 
+          "from": "14004aabe", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "140028b00", 
+          "function": "FUN_140028b00", 
+          "from": "140028b04", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140028b00", 
+          "function": "FUN_140028b00", 
+          "from": "140028b0b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140028b00", 
+          "function": "FUN_140028b00", 
+          "from": "140028b6e", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "140056ba0", 
+          "function": "FUN_140056ba0", 
+          "from": "140056ba4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140056ba0", 
+          "function": "FUN_140056ba0", 
+          "from": "140056bab", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140056ba0", 
+          "function": "FUN_140056ba0", 
+          "from": "140056c0e", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "140076220", 
+          "function": "FUN_140076220", 
+          "from": "140076224", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140076220", 
+          "function": "FUN_140076220", 
+          "from": "14007622b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140076220", 
+          "function": "FUN_140076220", 
+          "from": "14007628e", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "140035d50", 
+          "function": "FUN_140035d50", 
+          "from": "140035d54", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140035d50", 
+          "function": "FUN_140035d50", 
+          "from": "140035d5b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140035d50", 
+          "function": "FUN_140035d50", 
+          "from": "140035dbe", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "140023430", 
+          "function": "FUN_140023430", 
+          "from": "140023434", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140023430", 
+          "function": "FUN_140023430", 
+          "from": "14002343b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140023430", 
+          "function": "FUN_140023430", 
+          "from": "14002349e", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "140061a80", 
+          "function": "FUN_140061a80", 
+          "from": "140061a84", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140061a80", 
+          "function": "FUN_140061a80", 
+          "from": "140061a8b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140061a80", 
+          "function": "FUN_140061a80", 
+          "from": "140061aee", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "140001d50", 
+          "function": "FUN_140001d50", 
+          "from": "140001d54", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140001d50", 
+          "function": "FUN_140001d50", 
+          "from": "140001d5b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140001d50", 
+          "function": "FUN_140001d50", 
+          "from": "140001dbe", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "1400416a0", 
+          "function": "FUN_1400416a0", 
+          "from": "1400416a4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1400416a0", 
+          "function": "FUN_1400416a0", 
+          "from": "1400416ab", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1400416a0", 
+          "function": "FUN_1400416a0", 
+          "from": "14004170e", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ee13b8"
+    }, 
+    {
+      "string_value": "Common_Settings\\Music_Manager.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140016d84", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140016d8b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140016dee", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef19a8"
+    }, 
+    {
+      "string_value": "GameUis\\All_Book_Pages\\Main_Book_Menu.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140024380", 
+          "function": "FUN_140024380", 
+          "from": "140024384", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024380", 
+          "function": "FUN_140024380", 
+          "from": "14002438b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024380", 
+          "function": "FUN_140024380", 
+          "from": "1400243ee", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef35b0"
+    }, 
+    {
+      "string_value": "GameUis\\Common_Ui\\SplashScreen.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140024290", 
+          "function": "FUN_140024290", 
+          "from": "140024294", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024290", 
+          "function": "FUN_140024290", 
+          "from": "14002429b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024290", 
+          "function": "FUN_140024290", 
+          "from": "1400242fe", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef35e0"
+    }, 
+    {
+      "string_value": "GameUis\\Common_Ui\\Initial_Loading_Screen_Game_Ui.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "1400241a0", 
+          "function": "FUN_1400241a0", 
+          "from": "1400241a4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1400241a0", 
+          "function": "FUN_1400241a0", 
+          "from": "1400241ab", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1400241a0", 
+          "function": "FUN_1400241a0", 
+          "from": "14002420e", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef3610"
+    }, 
+    {
+      "string_value": "GameUis\\Modal\\Modal_News_Redirect.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140024740", 
+          "function": "FUN_140024740", 
+          "from": "140024744", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024740", 
+          "function": "FUN_140024740", 
+          "from": "14002474b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024740", 
+          "function": "FUN_140024740", 
+          "from": "1400247ae", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef3670"
+    }, 
+    {
+      "string_value": "GameUis\\Modal\\Modal_MyNacon.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140024650", 
+          "function": "FUN_140024650", 
+          "from": "140024654", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024650", 
+          "function": "FUN_140024650", 
+          "from": "14002465b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024650", 
+          "function": "FUN_140024650", 
+          "from": "1400246be", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef36a0"
+    }, 
+    {
+      "string_value": "GameUis\\Modal\\Modal_Keep_Solo_Run.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140024560", 
+          "function": "FUN_140024560", 
+          "from": "140024564", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024560", 
+          "function": "FUN_140024560", 
+          "from": "14002456b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024560", 
+          "function": "FUN_140024560", 
+          "from": "1400245ce", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef36c8"
+    }, 
+    {
+      "string_value": "GameUis\\Modal\\Modal_Load_Run.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140024470", 
+          "function": "FUN_140024470", 
+          "from": "140024474", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024470", 
+          "function": "FUN_140024470", 
+          "from": "14002447b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024470", 
+          "function": "FUN_140024470", 
+          "from": "1400244de", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef36f8"
+    }, 
+    {
+      "string_value": "GameUis\\Modal\\Modal_EULA.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140024830", 
+          "function": "FUN_140024830", 
+          "from": "140024834", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024830", 
+          "function": "FUN_140024830", 
+          "from": "14002483b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024830", 
+          "function": "FUN_140024830", 
+          "from": "14002489e", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef3758"
+    }, 
+    {
+      "string_value": "GameUis\\Common_Ui\\Out_Game_Escape_PC_Menu.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140024ca0", 
+          "function": "FUN_140024ca0", 
+          "from": "140024ca4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024ca0", 
+          "function": "FUN_140024ca0", 
+          "from": "140024cab", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024ca0", 
+          "function": "FUN_140024ca0", 
+          "from": "140024d0e", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef3a48"
+    }, 
+    {
+      "string_value": "GameUis\\Modal\\Modal_Multiplayer.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140024d90", 
+          "function": "FUN_140024d90", 
+          "from": "140024d94", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024d90", 
+          "function": "FUN_140024d90", 
+          "from": "140024d9b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140024d90", 
+          "function": "FUN_140024d90", 
+          "from": "140024dfe", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef3ad8"
+    }, 
+    {
+      "string_value": "GameUis\\Common_Ui\\In_Game_Escape_PC_Menu.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1400300b4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1400300bb", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14003011e", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef6d50"
+    }, 
+    {
+      "string_value": "GameUis\\Modal\\Modal_Save_Or_Quit.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "1400301a0", 
+          "function": "FUN_1400301a0", 
+          "from": "1400301a4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1400301a0", 
+          "function": "FUN_1400301a0", 
+          "from": "1400301ab", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1400301a0", 
+          "function": "FUN_1400301a0", 
+          "from": "14003020e", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef6d88"
+    }, 
+    {
+      "string_value": "GameUis\\Common_Ui\\Reconnect_Notification.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140030290", 
+          "function": "FUN_140030290", 
+          "from": "140030294", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140030290", 
+          "function": "FUN_140030290", 
+          "from": "14003029b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140030290", 
+          "function": "FUN_140030290", 
+          "from": "1400302fe", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef6dd8"
+    }, 
+    {
+      "string_value": "Common_Settings\\Group_Scaling.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140030380", 
+          "function": "FUN_140030380", 
+          "from": "140030384", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140030380", 
+          "function": "FUN_140030380", 
+          "from": "14003038b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140030380", 
+          "function": "FUN_140030380", 
+          "from": "1400303ee", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140ef7308"
+    }, 
+    {
+      "string_value": "GameUis\\All_Book_Pages\\Social\\Friend_Sent_Notification.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "14004b2a0", 
+          "function": "FUN_14004b2a0", 
+          "from": "14004b2a4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b2a0", 
+          "function": "FUN_14004b2a0", 
+          "from": "14004b2ab", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b2a0", 
+          "function": "FUN_14004b2a0", 
+          "from": "14004b30e", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140f02ef0"
+    }, 
+    {
+      "string_value": "GameUis\\All_Book_Pages\\Social\\Invite_Party_Received_Notification.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "14004b1b0", 
+          "function": "FUN_14004b1b0", 
+          "from": "14004b1b4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b1b0", 
+          "function": "FUN_14004b1b0", 
+          "from": "14004b1bb", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b1b0", 
+          "function": "FUN_14004b1b0", 
+          "from": "14004b21e", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140f02f40"
+    }, 
+    {
+      "string_value": "GameUis\\All_Book_Pages\\Social\\Invite_Party_Sent_Notification.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "14004b0c0", 
+          "function": "FUN_14004b0c0", 
+          "from": "14004b0c4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b0c0", 
+          "function": "FUN_14004b0c0", 
+          "from": "14004b0cb", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b0c0", 
+          "function": "FUN_14004b0c0", 
+          "from": "14004b12e", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140f02f90"
+    }, 
+    {
+      "string_value": "GameUis\\All_Book_Pages\\Social\\Report_Notification.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "14004b840", 
+          "function": "FUN_14004b840", 
+          "from": "14004b844", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b840", 
+          "function": "FUN_14004b840", 
+          "from": "14004b84b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b840", 
+          "function": "FUN_14004b840", 
+          "from": "14004b8ae", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140f03000"
+    }, 
+    {
+      "string_value": "GameUis\\All_Book_Pages\\Social\\Friend_Removed_Notification.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "14004b750", 
+          "function": "FUN_14004b750", 
+          "from": "14004b754", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b750", 
+          "function": "FUN_14004b750", 
+          "from": "14004b75b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b750", 
+          "function": "FUN_14004b750", 
+          "from": "14004b7be", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140f03040"
+    }, 
+    {
+      "string_value": "GameUis\\All_Book_Pages\\Social\\Friend_Added_Notification.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "14004b660", 
+          "function": "FUN_14004b660", 
+          "from": "14004b664", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b660", 
+          "function": "FUN_14004b660", 
+          "from": "14004b66b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b660", 
+          "function": "FUN_14004b660", 
+          "from": "14004b6ce", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140f03090"
+    }, 
+    {
+      "string_value": "GameUis\\All_Book_Pages\\Social\\Unblock_Notification.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "14004b570", 
+          "function": "FUN_14004b570", 
+          "from": "14004b574", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b570", 
+          "function": "FUN_14004b570", 
+          "from": "14004b57b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b570", 
+          "function": "FUN_14004b570", 
+          "from": "14004b5de", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140f030d8"
+    }, 
+    {
+      "string_value": "GameUis\\All_Book_Pages\\Social\\Block_Notification.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "14004b480", 
+          "function": "FUN_14004b480", 
+          "from": "14004b484", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b480", 
+          "function": "FUN_14004b480", 
+          "from": "14004b48b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b480", 
+          "function": "FUN_14004b480", 
+          "from": "14004b4ee", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140f03118"
+    }, 
+    {
+      "string_value": "GameUis\\All_Book_Pages\\Social\\Friend_Received_Notification.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "14004b390", 
+          "function": "FUN_14004b390", 
+          "from": "14004b394", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b390", 
+          "function": "FUN_14004b390", 
+          "from": "14004b39b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14004b390", 
+          "function": "FUN_14004b390", 
+          "from": "14004b3fe", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140f031a0"
+    }, 
+    {
+      "string_value": "GameUis\\Common_Ui\\NewHero_Popup.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "140069360", 
+          "function": "FUN_140069360", 
+          "from": "140069364", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140069360", 
+          "function": "FUN_140069360", 
+          "from": "14006936b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140069360", 
+          "function": "FUN_140069360", 
+          "from": "1400693ce", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140f0e3d8"
+    }, 
+    {
+      "string_value": "GameUis\\Modal\\Modal_Difficulty_Unlocked.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "1400698b0", 
+          "function": "FUN_1400698b0", 
+          "from": "1400698b4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1400698b0", 
+          "function": "FUN_1400698b0", 
+          "from": "1400698bb", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1400698b0", 
+          "function": "FUN_1400698b0", 
+          "from": "14006991e", 
+          "ref_type": "READ"
+        }
+      ], 
+      "string_addr": "140f0e630"
+    }, 
+    {
+      "string_value": "*.entity.ot", 
+      "xrefs": [
+        {
+          "function_entry": "1406cd990", 
+          "function": "FUN_1406cd990", 
+          "from": "1406cda12", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1406cd990", 
+          "function": "FUN_1406cd990", 
+          "from": "1406cda25", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4c4b8"
+    }
+  ], 
+  "Cannot load": [], 
+  "spawn": [
+    {
+      "string_value": "Crows to spawn on dash", 
+      "xrefs": [
+        {
+          "function_entry": "1401d2e90", 
+          "function": "FUN_1401d2e90", 
+          "from": "1401d4feb", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1401d2e90", 
+          "function": "FUN_1401d2e90", 
+          "from": "1401d4ff2", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ef0118"
+    }, 
+    {
+      "string_value": "{} ({} reward spawners)", 
+      "xrefs": [
+        {
+          "function_entry": "1401e6030", 
+          "function": "FUN_1401e6030", 
+          "from": "1401e6336", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ef1a58"
+    }, 
+    {
+      "string_value": "LevelGs::StateDespawnUiIn", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14028875a", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140288761", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ef6ff0"
+    }, 
+    {
+      "string_value": "LevelGs::StateDespawnUiOut", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140288e3d", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140288e44", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ef7048"
+    }, 
+    {
+      "string_value": "Despawn {} entities in global spawner", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14028bace", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ef73b8"
+    }, 
+    {
+      "string_value": "Despawning", 
+      "xrefs": [], 
+      "string_addr": "140efb8e0"
+    }, 
+    {
+      "string_value": "Dream shards entity selector to spawn", 
+      "xrefs": [
+        {
+          "function_entry": "1402e92a0", 
+          "function": "FUN_1402e92a0", 
+          "from": "1402e92bd", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1402e92a0", 
+          "function": "FUN_1402e92a0", 
+          "from": "1402e92c4", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140efbc78"
+    }, 
+    {
+      "string_value": "Enemy camp entity selector to spawn", 
+      "xrefs": [
+        {
+          "function_entry": "140322520", 
+          "function": "FUN_140322520", 
+          "from": "14032253d", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140322520", 
+          "function": "FUN_140322520", 
+          "from": "140322544", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f03360"
+    }, 
+    {
+      "string_value": "Enemy flaglist entity selector to spawn", 
+      "xrefs": [
+        {
+          "function_entry": "140326230", 
+          "function": "FUN_140326230", 
+          "from": "14032624d", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140326230", 
+          "function": "FUN_140326230", 
+          "from": "140326254", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f033c8"
+    }, 
+    {
+      "string_value": "Reward entity selector to spawn", 
+      "xrefs": [
+        {
+          "function_entry": "140326ed0", 
+          "function": "FUN_140326ed0", 
+          "from": "140326eed", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140326ed0", 
+          "function": "FUN_140326ed0", 
+          "from": "140326ef4", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f03518"
+    }, 
+    {
+      "string_value": "Editor\\Icon\\icon_entity_spawner_16.png", 
+      "xrefs": [
+        {
+          "function_entry": "1404d1bc0", 
+          "function": "FUN_1404d1bc0", 
+          "from": "1404d229d", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1404d1bc0", 
+          "function": "FUN_1404d1bc0", 
+          "from": "1404d22a4", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f21c50"
+    }, 
+    {
+      "string_value": "Apply parent speed (on spawn)", 
+      "xrefs": [
+        {
+          "function_entry": "14060a470", 
+          "function": "FUN_14060a470", 
+          "from": "14060a489", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14060a470", 
+          "function": "FUN_14060a470", 
+          "from": "14060a490", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f38230"
+    }, 
+    {
+      "string_value": "Mesh spawner renderer", 
+      "xrefs": [
+        {
+          "function_entry": "140615a60", 
+          "function": "FUN_140615a60", 
+          "from": "140615a79", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140615a60", 
+          "function": "FUN_140615a60", 
+          "from": "140615a80", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f38718"
+    }, 
+    {
+      "string_value": "Cannot spawn replica {} : its owner {} is not replicated", 
+      "xrefs": [
+        {
+          "function_entry": "1406fa320", 
+          "function": "FUN_1406fa320", 
+          "from": "1406fa345", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4f098"
+    }, 
+    {
+      "string_value": "Sc_Despawn", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1406ed8a9", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1406ed8b5", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4f458"
+    }, 
+    {
+      "string_value": "[Entity spawner] {}", 
+      "xrefs": [
+        {
+          "function_entry": "1406ef830", 
+          "function": "FUN_1406ef830", 
+          "from": "1406ef8e6", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4f4b0"
+    }, 
+    {
+      "string_value": "Peer spawned {} (owned by {}) but is not master. Please set mastership to Host or HostUnique in the network component settings.", 
+      "xrefs": [
+        {
+          "function_entry": "140705690", 
+          "function": "FUN_140705690", 
+          "from": "1407058d9", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f50fe0"
+    }, 
+    {
+      "string_value": "Host spawns the entity and replicates it to every other peer.", 
+      "xrefs": [], 
+      "string_addr": "140f51098"
+    }, 
+    {
+      "string_value": "Host spawns the entity and does not replicate it.", 
+      "xrefs": [], 
+      "string_addr": "140f510e8"
+    }, 
+    {
+      "string_value": "Each peer spawns his version of the entity and replicate it to every other peer", 
+      "xrefs": [], 
+      "string_addr": "140f51120"
+    }, 
+    {
+      "string_value": "Entity selector to spawn", 
+      "xrefs": [
+        {
+          "function_entry": "140714ad0", 
+          "function": "FUN_140714ad0", 
+          "from": "140714ae9", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140714ad0", 
+          "function": "FUN_140714ad0", 
+          "from": "140714af0", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f513b0"
+    }, 
+    {
+      "string_value": "Despawn", 
+      "xrefs": [
+        {
+          "function_entry": "140710fd0", 
+          "function": "FUN_140710fd0", 
+          "from": "140710fe9", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140710fd0", 
+          "function": "FUN_140710fd0", 
+          "from": "140710ff0", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f51570"
+    }, 
+    {
+      "string_value": "oCEntityCpntDespawnSettings", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14071b921", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14071b928", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f51ad0"
+    }, 
+    {
+      "string_value": "oCEntityCpntDespawn", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14071bad7", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14071bade", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f52fb8"
+    }, 
+    {
+      "string_value": "{} already pick this spawner value, the value will be set 2 times", 
+      "xrefs": [
+        {
+          "function_entry": "140745a90", 
+          "function": "FUN_140745a90", 
+          "from": "140746047", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f59ba0"
+    }, 
+    {
+      "string_value": "The matrix is not orthogonal on the Collision Volume [{}] on the entity [{}].\nA scale on the parent/spawner of the Collision Volume might break the orthogonality of its matrix, and collisions problems might occur (note : a uniform scale on the parent/spawner does not break orthogonality).", 
+      "xrefs": [
+        {
+          "function_entry": "1407d2870", 
+          "function": "FUN_1407d2870", 
+          "from": "1407d2e43", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f64590"
+    }, 
+    {
+      "string_value": "Cannot call OnPreEntityHit on {} because it's not spawned.", 
+      "xrefs": [
+        {
+          "function_entry": "1408054b0", 
+          "function": "FUN_1408054b0", 
+          "from": "1408055a9", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f6a990"
+    }, 
+    {
+      "string_value": "Cannot call OnPostEntityHit on {} because it's not spawned.", 
+      "xrefs": [
+        {
+          "function_entry": "140805660", 
+          "function": "FUN_140805660", 
+          "from": "14080582d", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f6a9d0"
+    }, 
+    {
+      "string_value": ".?AVoCEntityCpntDespawn@@", 
+      "xrefs": [], 
+      "string_addr": "141368f80"
+    }, 
+    {
+      "string_value": ".?AVoCEntityCpntDespawnSettings@@", 
+      "xrefs": [], 
+      "string_addr": "141369498"
+    }
+  ], 
+  "PageSlot": [], 
+  "Spawn": [
+    {
+      "string_value": "oCSpawnablePool", 
+      "xrefs": [
+        {
+          "function_entry": "14017f910", 
+          "function": "FUN_14017f910", 
+          "from": "14017fa0a", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14017f910", 
+          "function": "FUN_14017f910", 
+          "from": "14017fa11", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140eb01e0"
+    }, 
+    {
+      "string_value": "oCEntityGameUiSpawner", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14018ffe1", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14018ffe8", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ed8380"
+    }, 
+    {
+      "string_value": "oCSpawnableSettings", 
+      "xrefs": [
+        {
+          "function_entry": "14017faa0", 
+          "function": "FUN_14017faa0", 
+          "from": "14017fbaf", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14017faa0", 
+          "function": "FUN_14017faa0", 
+          "from": "14017fbb6", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ed8760"
+    }, 
+    {
+      "string_value": "oCEntitySpawner", 
+      "xrefs": [
+        {
+          "function_entry": "140180160", 
+          "function": "FUN_140180160", 
+          "from": "140180257", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140180160", 
+          "function": "FUN_140180160", 
+          "from": "14018025e", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140edadb8"
+    }, 
+    {
+      "string_value": "oCSpawnData", 
+      "xrefs": [
+        {
+          "function_entry": "14017fc70", 
+          "function": "FUN_14017fc70", 
+          "from": "14017fd7f", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14017fc70", 
+          "function": "FUN_14017fc70", 
+          "from": "14017fd86", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140edb090"
+    }, 
+    {
+      "string_value": "oCEntitySpawnData", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14018729f", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1401872a6", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140edc1f8"
+    }, 
+    {
+      "string_value": "oCSpawner", 
+      "xrefs": [
+        {
+          "function_entry": "14017ffd0", 
+          "function": "FUN_14017ffd0", 
+          "from": "1401800ca", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14017ffd0", 
+          "function": "FUN_14017ffd0", 
+          "from": "1401800d1", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140eddba0"
+    }, 
+    {
+      "string_value": "oCSpawnable", 
+      "xrefs": [
+        {
+          "function_entry": "14017fe40", 
+          "function": "FUN_14017fe40", 
+          "from": "14017ff3a", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14017fe40", 
+          "function": "FUN_14017fe40", 
+          "from": "14017ff41", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ee0f50"
+    }, 
+    {
+      "string_value": "oCDtEnemyCampEntitySelectorToSpawnTribeEntrySettings", 
+      "xrefs": [
+        {
+          "function_entry": "140235580", 
+          "function": "FUN_140235580", 
+          "from": "1402356a6", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140235580", 
+          "function": "FUN_140235580", 
+          "from": "1402356ad", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ee4368"
+    }, 
+    {
+      "string_value": "oCEntitySpawnerGo", 
+      "xrefs": [
+        {
+          "function_entry": "1402226a0", 
+          "function": "FUN_1402226a0", 
+          "from": "1402227b1", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1402226a0", 
+          "function": "FUN_1402226a0", 
+          "from": "1402227b8", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ee43f0"
+    }, 
+    {
+      "string_value": "oCEntitySelectorToSpawnEntrySettings", 
+      "xrefs": [
+        {
+          "function_entry": "140235010", 
+          "function": "FUN_140235010", 
+          "from": "140235136", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140235010", 
+          "function": "FUN_140235010", 
+          "from": "14023513d", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ee4408"
+    }, 
+    {
+      "string_value": "oCEntitySpawnerGoState", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1402225d4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1402225db", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ee4598"
+    }, 
+    {
+      "string_value": "oCDtEnemyCampEntitySelectorToSpawnEntityCpnt", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140235a39", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140235a40", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ee4bb8"
+    }, 
+    {
+      "string_value": "oIEntitySelectorToSpawnEntityCpnt", 
+      "xrefs": [
+        {
+          "function_entry": "140234e70", 
+          "function": "FUN_140234e70", 
+          "from": "140234f52", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140234e70", 
+          "function": "FUN_140234e70", 
+          "from": "140234f5f", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ee4e88"
+    }, 
+    {
+      "string_value": "oCSpawnerGoEntityCollector", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140224747", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14022474e", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ee55d8"
+    }, 
+    {
+      "string_value": "oCDtEnemyCampEntitySelectorToSpawnEntityCpntSettings", 
+      "xrefs": [
+        {
+          "function_entry": "140235770", 
+          "function": "FUN_140235770", 
+          "from": "140235881", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140235770", 
+          "function": "FUN_140235770", 
+          "from": "140235888", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ee5bc8"
+    }, 
+    {
+      "string_value": "oCDtRewardEntitySelectorToSpawnEntityCpntSettings", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140238221", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140238228", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ee5c80"
+    }, 
+    {
+      "string_value": "oCDtEntityCpntTileSpawner", 
+      "xrefs": [
+        {
+          "function_entry": "1402379b0", 
+          "function": "FUN_1402379b0", 
+          "from": "140237aa9", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1402379b0", 
+          "function": "FUN_1402379b0", 
+          "from": "140237ab0", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ee78d8"
+    }, 
+    {
+      "string_value": "oCSpawnerGoEntityCollectorSettings", 
+      "xrefs": [
+        {
+          "function_entry": "140224480", 
+          "function": "FUN_140224480", 
+          "from": "140224591", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140224480", 
+          "function": "FUN_140224480", 
+          "from": "140224598", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ee8a58"
+    }, 
+    {
+      "string_value": "oCEntitySelectorToSpawnEntityCpntSettings", 
+      "xrefs": [
+        {
+          "function_entry": "140235200", 
+          "function": "FUN_140235200", 
+          "from": "140235311", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140235200", 
+          "function": "FUN_140235200", 
+          "from": "140235318", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ee9318"
+    }, 
+    {
+      "string_value": "oIEntitySelectorToSpawnEntityCpntSettings", 
+      "xrefs": [
+        {
+          "function_entry": "140234cd0", 
+          "function": "FUN_140234cd0", 
+          "from": "140234db4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140234cd0", 
+          "function": "FUN_140234cd0", 
+          "from": "140234dc1", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140eebab0"
+    }, 
+    {
+      "string_value": "oCSpawnedEntityCollectorSettings", 
+      "xrefs": [
+        {
+          "function_entry": "140224100", 
+          "function": "FUN_140224100", 
+          "from": "140224211", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140224100", 
+          "function": "FUN_140224100", 
+          "from": "140224218", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140eebae0"
+    }, 
+    {
+      "string_value": "oCDtEntityCpntTileSpawnerSettings", 
+      "xrefs": [
+        {
+          "function_entry": "140237640", 
+          "function": "FUN_140237640", 
+          "from": "140237751", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140237640", 
+          "function": "FUN_140237640", 
+          "from": "140237758", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140eec390"
+    }, 
+    {
+      "string_value": "oCSpawnedEntityCollector", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1402243c7", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1402243ce", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140eece90"
+    }, 
+    {
+      "string_value": "oCEntitySelectorToSpawnEntityCpnt", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1402354c7", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1402354ce", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140eecf40"
+    }, 
+    {
+      "string_value": "oCDtRewardEntitySelectorToSpawnEntityCpnt", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1402383d9", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1402383e0", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140eed310"
+    }, 
+    {
+      "string_value": "InitialLoading - MagicalObject SpawnAllObjects", 
+      "xrefs": [
+        {
+          "function_entry": "14025b9e0", 
+          "function": "FUN_14025b9e0", 
+          "from": "14025c024", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14025b9e0", 
+          "function": "FUN_14025b9e0", 
+          "from": "14025c02b", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ef3818"
+    }, 
+    {
+      "string_value": "InitialLoading - Melody SpawnAllMelodies", 
+      "xrefs": [
+        {
+          "function_entry": "14025b9e0", 
+          "function": "FUN_14025b9e0", 
+          "from": "14025c0b6", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14025b9e0", 
+          "function": "FUN_14025b9e0", 
+          "from": "14025c0bd", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ef3930"
+    }, 
+    {
+      "string_value": "oCEntityModifierTargetSpawnedEntity", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140275767", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14027576e", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ef5f10"
+    }, 
+    {
+      "string_value": "oCEntityModifierTargetSpawnedEntitySettings", 
+      "xrefs": [
+        {
+          "function_entry": "1402754a0", 
+          "function": "FUN_1402754a0", 
+          "from": "1402755b1", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1402754a0", 
+          "function": "FUN_1402754a0", 
+          "from": "1402755b8", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ef6620"
+    }, 
+    {
+      "string_value": "LevelGs::StateSpawnUiIn", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1402883e8", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1402883ef", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ef6ee8"
+    }, 
+    {
+      "string_value": "LevelGs::StateSpawnUiTransition", 
+      "xrefs": [
+        {
+          "function_entry": "140289110", 
+          "function": "FUN_140289110", 
+          "from": "140289276", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140289110", 
+          "function": "FUN_140289110", 
+          "from": "14028927d", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ef6f98"
+    }, 
+    {
+      "string_value": "LevelGs::StateSpawnUiOut", 
+      "xrefs": [
+        {
+          "function_entry": "140288a20", 
+          "function": "FUN_140288a20", 
+          "from": "140288bfb", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140288a20", 
+          "function": "FUN_140288a20", 
+          "from": "140288c02", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ef7028"
+    }, 
+    {
+      "string_value": "Spawn", 
+      "xrefs": [
+        {
+          "function_entry": "140391400", 
+          "function": "FUN_140391400", 
+          "from": "140391653", 
+          "ref_type": "READ"
+        }, 
+        {
+          "function_entry": "140391400", 
+          "function": "FUN_140391400", 
+          "from": "140391661", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140391400", 
+          "function": "FUN_140391400", 
+          "from": "1403916e8", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140ef851c"
+    }, 
+    {
+      "string_value": "Dt Hero Spawner", 
+      "xrefs": [
+        {
+          "function_entry": "1402ccf90", 
+          "function": "FUN_1402ccf90", 
+          "from": "1402ccfad", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1402ccf90", 
+          "function": "FUN_1402ccf90", 
+          "from": "1402ccfb4", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140efb898"
+    }, 
+    {
+      "string_value": "oCDtEntityCpntHeroSpawnerSettings", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1402f7051", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1402f7058", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140efc288"
+    }, 
+    {
+      "string_value": "oCDtDreamShardsEntitySelectorToSpawnEntityCpntSettings", 
+      "xrefs": [
+        {
+          "function_entry": "1402fc370", 
+          "function": "FUN_1402fc370", 
+          "from": "1402fc481", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1402fc370", 
+          "function": "FUN_1402fc370", 
+          "from": "1402fc488", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140efd558"
+    }, 
+    {
+      "string_value": "oCEntityCpntEntitySpawnerSettings", 
+      "xrefs": [
+        {
+          "function_entry": "1402f7600", 
+          "function": "FUN_1402f7600", 
+          "from": "1402f7711", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1402f7600", 
+          "function": "FUN_1402f7600", 
+          "from": "1402f7718", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140efdc58"
+    }, 
+    {
+      "string_value": "oCDtDreamShardsEntitySelectorToSpawnEntityCpnt", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1402fc639", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1402fc640", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140efef00"
+    }, 
+    {
+      "string_value": "oIOnEntitySpawnEntityCpntSettings", 
+      "xrefs": [
+        {
+          "function_entry": "1402f72c0", 
+          "function": "FUN_1402f72c0", 
+          "from": "1402f73a4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1402f72c0", 
+          "function": "FUN_1402f72c0", 
+          "from": "1402f73b1", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140eff790"
+    }, 
+    {
+      "string_value": "oCDtEntityCpntHeroSpawner", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1402f7209", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1402f7210", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140eff838"
+    }, 
+    {
+      "string_value": "oCEntityCpntEntitySpawner", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1402f78c9", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1402f78d0", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140effd88"
+    }, 
+    {
+      "string_value": "oIOnEntitySpawnEntityCpnt", 
+      "xrefs": [
+        {
+          "function_entry": "1402f7460", 
+          "function": "FUN_1402f7460", 
+          "from": "1402f7542", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1402f7460", 
+          "function": "FUN_1402f7460", 
+          "from": "1402f754f", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f00380"
+    }, 
+    {
+      "string_value": "RandomHeroToSpawnEntityCpnt", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14030f477", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14030f47e", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f014f8"
+    }, 
+    {
+      "string_value": "RandomHeroToSpawnEntityCpntSettings", 
+      "xrefs": [
+        {
+          "function_entry": "14030f1b0", 
+          "function": "FUN_14030f1b0", 
+          "from": "14030f2c1", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14030f1b0", 
+          "function": "FUN_14030f1b0", 
+          "from": "14030f2c8", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f01598"
+    }, 
+    {
+      "string_value": "Dt Random Hero To Spawn", 
+      "xrefs": [
+        {
+          "function_entry": "140302800", 
+          "function": "FUN_140302800", 
+          "from": "14030281d", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140302800", 
+          "function": "FUN_140302800", 
+          "from": "140302824", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f02528"
+    }, 
+    {
+      "string_value": "oCDtEnemyFlagListEntitySelectorToSpawnEntityCpntSettings", 
+      "xrefs": [
+        {
+          "function_entry": "140339630", 
+          "function": "FUN_140339630", 
+          "from": "140339741", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140339630", 
+          "function": "FUN_140339630", 
+          "from": "140339748", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f02870"
+    }, 
+    {
+      "string_value": "Tile Spawner", 
+      "xrefs": [
+        {
+          "function_entry": "140328070", 
+          "function": "FUN_140328070", 
+          "from": "14032808d", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140328070", 
+          "function": "FUN_140328070", 
+          "from": "140328094", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f03620"
+    }, 
+    {
+      "string_value": "oCDtEnemyFlagListEntitySelectorToSpawnEntityCpnt", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1403398f9", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140339900", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f039a0"
+    }, 
+    {
+      "string_value": "oIOnEntitySpawnEntityCpntSettings", 
+      "xrefs": [
+        {
+          "function_entry": "14034bef0", 
+          "function": "FUN_14034bef0", 
+          "from": "14034bfb6", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14034bef0", 
+          "function": "FUN_14034bef0", 
+          "from": "14034bfc5", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140429790", 
+          "function": "FUN_140429790", 
+          "from": "140429836", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140429790", 
+          "function": "FUN_140429790", 
+          "from": "140429845", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140347fc0", 
+          "function": "FUN_140347fc0", 
+          "from": "140347fd2", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140347fc0", 
+          "function": "FUN_140347fc0", 
+          "from": "140347fe1", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140745070", 
+          "function": "FUN_140745070", 
+          "from": "1407450d3", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140745070", 
+          "function": "FUN_140745070", 
+          "from": "1407450e5", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140354f60", 
+          "function": "FUN_140354f60", 
+          "from": "140354f7e", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140354f60", 
+          "function": "FUN_140354f60", 
+          "from": "140354f85", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14042b7e0", 
+          "function": "FUN_14042b7e0", 
+          "from": "14042b886", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14042b7e0", 
+          "function": "FUN_14042b7e0", 
+          "from": "14042b895", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f05b10"
+    }, 
+    {
+      "string_value": "m_oGameModifierUiSpawner", 
+      "xrefs": [
+        {
+          "function_entry": "140354c00", 
+          "function": "FUN_140354c00", 
+          "from": "140354c70", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140354c00", 
+          "function": "FUN_140354c00", 
+          "from": "140354c77", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f05bf0"
+    }, 
+    {
+      "string_value": "oIEntitySelectorToSpawnEntityCpntSettings", 
+      "xrefs": [
+        {
+          "function_entry": "1403d5e60", 
+          "function": "FUN_1403d5e60", 
+          "from": "1403d5e8f", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1403d5e60", 
+          "function": "FUN_1403d5e60", 
+          "from": "1403d5e96", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1403d5e60", 
+          "function": "FUN_1403d5e60", 
+          "from": "1403d5ec7", 
+          "ref_type": "PARAM"
+        }, 
+        {
+          "function_entry": "1403d5e60", 
+          "function": "FUN_1403d5e60", 
+          "from": "1403d5f2e", 
+          "ref_type": "PARAM"
+        }, 
+        {
+          "function_entry": "140354f60", 
+          "function": "FUN_140354f60", 
+          "from": "140354f8f", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140354f60", 
+          "function": "FUN_140354f60", 
+          "from": "140354f96", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140354f60", 
+          "function": "FUN_140354f60", 
+          "from": "140354fc7", 
+          "ref_type": "PARAM"
+        }, 
+        {
+          "function_entry": "140354f60", 
+          "function": "FUN_140354f60", 
+          "from": "14035502a", 
+          "ref_type": "PARAM"
+        }
+      ], 
+      "string_addr": "140f05c40"
+    }, 
+    {
+      "string_value": "Current Spawning Index", 
+      "xrefs": [
+        {
+          "function_entry": "1403579f0", 
+          "function": "FUN_1403579f0", 
+          "from": "140357b0a", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1403579f0", 
+          "function": "FUN_1403579f0", 
+          "from": "140357b1e", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f05c90"
+    }, 
+    {
+      "string_value": "m_oUiSpawner", 
+      "xrefs": [
+        {
+          "function_entry": "1403579f0", 
+          "function": "FUN_1403579f0", 
+          "from": "140357a60", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1403579f0", 
+          "function": "FUN_1403579f0", 
+          "from": "140357a67", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f05e00"
+    }, 
+    {
+      "string_value": "m_oCurSpawnIndex", 
+      "xrefs": [
+        {
+          "function_entry": "1403579f0", 
+          "function": "FUN_1403579f0", 
+          "from": "140357ac4", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1403579f0", 
+          "function": "FUN_1403579f0", 
+          "from": "140357ad3", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f05e28"
+    }, 
+    {
+      "string_value": "Entity Spawner", 
+      "xrefs": [
+        {
+          "function_entry": "1404d1bc0", 
+          "function": "FUN_1404d1bc0", 
+          "from": "1404d22af", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1404d1bc0", 
+          "function": "FUN_1404d1bc0", 
+          "from": "1404d22b6", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140711280", 
+          "function": "FUN_140711280", 
+          "from": "140711299", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140711280", 
+          "function": "FUN_140711280", 
+          "from": "1407112a0", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1406ed7d2", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1406ed7d9", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f21c28"
+    }, 
+    {
+      "string_value": "Spawnable Settings", 
+      "xrefs": [
+        {
+          "function_entry": "1406783b0", 
+          "function": "FUN_1406783b0", 
+          "from": "1406783c9", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1406783b0", 
+          "function": "FUN_1406783b0", 
+          "from": "1406783d0", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f452b0"
+    }, 
+    {
+      "string_value": "Spawn Data", 
+      "xrefs": [
+        {
+          "function_entry": "140678590", 
+          "function": "FUN_140678590", 
+          "from": "1406785a9", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140678590", 
+          "function": "FUN_140678590", 
+          "from": "1406785b0", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f452c8"
+    }, 
+    {
+      "string_value": "Entity Spawn Data", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1406c9469", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1406c9470", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4c458"
+    }, 
+    {
+      "string_value": "GameUi Entity Spawner", 
+      "xrefs": [
+        {
+          "function_entry": "1406d3a80", 
+          "function": "FUN_1406d3a80", 
+          "from": "1406d3a99", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1406d3a80", 
+          "function": "FUN_1406d3a80", 
+          "from": "1406d3aa0", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4c688"
+    }, 
+    {
+      "string_value": "Spawned Entity collector", 
+      "xrefs": [
+        {
+          "function_entry": "1406d9dd0", 
+          "function": "FUN_1406d9dd0", 
+          "from": "1406d9de9", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1406d9dd0", 
+          "function": "FUN_1406d9dd0", 
+          "from": "1406d9df0", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4c738"
+    }, 
+    {
+      "string_value": "Spawner Go entity collector", 
+      "xrefs": [
+        {
+          "function_entry": "1406da0a0", 
+          "function": "FUN_1406da0a0", 
+          "from": "1406da0b9", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1406da0a0", 
+          "function": "FUN_1406da0a0", 
+          "from": "1406da0c0", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4c788"
+    }, 
+    {
+      "string_value": "oCEntityEventTargetSpawnedEntitySettings", 
+      "xrefs": [
+        {
+          "function_entry": "1406d9e90", 
+          "function": "FUN_1406d9e90", 
+          "from": "1406d9eeb", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1406d9e90", 
+          "function": "FUN_1406d9e90", 
+          "from": "1406d9ef7", 
+          "ref_type": "PARAM"
+        }, 
+        {
+          "function_entry": "1406d9e90", 
+          "function": "FUN_1406d9e90", 
+          "from": "1406d9f2b", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4c7a8"
+    }, 
+    {
+      "string_value": "Spawned Entity Modifier", 
+      "xrefs": [
+        {
+          "function_entry": "1406d7c00", 
+          "function": "FUN_1406d7c00", 
+          "from": "1406d7c19", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1406d7c00", 
+          "function": "FUN_1406d7c00", 
+          "from": "1406d7c20", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4c880"
+    }, 
+    {
+      "string_value": "SpawnerGo Entity Retriever", 
+      "xrefs": [
+        {
+          "function_entry": "1406d8100", 
+          "function": "FUN_1406d8100", 
+          "from": "1406d8119", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1406d8100", 
+          "function": "FUN_1406d8100", 
+          "from": "1406d8120", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4c8b8"
+    }, 
+    {
+      "string_value": "m_pSpawner", 
+      "xrefs": [
+        {
+          "function_entry": "1406d8100", 
+          "function": "FUN_1406d8100", 
+          "from": "1406d8140", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1406d8100", 
+          "function": "FUN_1406d8100", 
+          "from": "1406d8147", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4c910"
+    }, 
+    {
+      "string_value": "oCSpawnerGoEntityRetriever", 
+      "xrefs": [
+        {
+          "function_entry": "1406e1f80", 
+          "function": "FUN_1406e1f80", 
+          "from": "1406e208f", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1406e1f80", 
+          "function": "FUN_1406e1f80", 
+          "from": "1406e2096", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4ca30"
+    }, 
+    {
+      "string_value": "ISpawnerGoSectorizationMode", 
+      "xrefs": [
+        {
+          "function_entry": "1406e0a40", 
+          "function": "FUN_1406e0a40", 
+          "from": "1406e0b21", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1406e0a40", 
+          "function": "FUN_1406e0a40", 
+          "from": "1406e0b28", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4dd18"
+    }, 
+    {
+      "string_value": "oCEntityModalWithSpawnerCpnt", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1406e13f9", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1406e1400", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4e2a8"
+    }, 
+    {
+      "string_value": "Entity Spawner State", 
+      "xrefs": [
+        {
+          "function_entry": "1406ed520", 
+          "function": "FUN_1406ed520", 
+          "from": "1406ed539", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1406ed520", 
+          "function": "FUN_1406ed520", 
+          "from": "1406ed540", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4f108"
+    }, 
+    {
+      "string_value": "m_bSpawned", 
+      "xrefs": [
+        {
+          "function_entry": "1406ed520", 
+          "function": "FUN_1406ed520", 
+          "from": "1406ed560", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1406ed520", 
+          "function": "FUN_1406ed520", 
+          "from": "1406ed567", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4f428"
+    }, 
+    {
+      "string_value": "Sc_Spawn", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1406ed83c", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1406ed848", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4f438"
+    }, 
+    {
+      "string_value": "Sc_IsSpawned", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1406ed91e", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1406ed92a", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4f448"
+    }, 
+    {
+      "string_value": "EntitySpawner output entity settings", 
+      "xrefs": [
+        {
+          "function_entry": "1406f3320", 
+          "function": "FUN_1406f3320", 
+          "from": "1406f3339", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1406f3320", 
+          "function": "FUN_1406f3320", 
+          "from": "1406f3340", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4f488"
+    }, 
+    {
+      "string_value": "EntitySpawner Output", 
+      "xrefs": [
+        {
+          "function_entry": "1406f33d0", 
+          "function": "FUN_1406f33d0", 
+          "from": "1406f33e9", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1406f33d0", 
+          "function": "FUN_1406f33d0", 
+          "from": "1406f33f0", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4f4e8"
+    }, 
+    {
+      "string_value": "oCTerrainEntitySpawnerOutput", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1406fe406", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1406fe40d", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4fac8"
+    }, 
+    {
+      "string_value": "TerrainSpawnerGoTile", 
+      "xrefs": [
+        {
+          "function_entry": "1406fdbe0", 
+          "function": "FUN_1406fdbe0", 
+          "from": "1406fdcd7", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1406fdbe0", 
+          "function": "FUN_1406fdbe0", 
+          "from": "1406fdcde", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4ff20"
+    }, 
+    {
+      "string_value": "SpawnerGoSectorizationTiled", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1406fdb1b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "1406fdb22", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f4ffe0"
+    }, 
+    {
+      "string_value": "SpawnerGoSectorizationEmpty", 
+      "xrefs": [
+        {
+          "function_entry": "1406fdf60", 
+          "function": "FUN_1406fdf60", 
+          "from": "1406fe06b", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1406fdf60", 
+          "function": "FUN_1406fdf60", 
+          "from": "1406fe072", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f50070"
+    }, 
+    {
+      "string_value": "TerrainTiledSpawnerGoOutput", 
+      "xrefs": [
+        {
+          "function_entry": "1406fdd90", 
+          "function": "FUN_1406fdd90", 
+          "from": "1406fde9e", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1406fdd90", 
+          "function": "FUN_1406fdd90", 
+          "from": "1406fdea5", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f50158"
+    }, 
+    {
+      "string_value": "oCTerrainEntitySpawnerTile", 
+      "xrefs": [
+        {
+          "function_entry": "1406fe130", 
+          "function": "FUN_1406fe130", 
+          "from": "1406fe229", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "1406fe130", 
+          "function": "FUN_1406fe130", 
+          "from": "1406fe230", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f50658"
+    }, 
+    {
+      "string_value": "Local Spawn", 
+      "xrefs": [], 
+      "string_addr": "140f51390"
+    }, 
+    {
+      "string_value": "World Spawn", 
+      "xrefs": [], 
+      "string_addr": "140f513a0"
+    }, 
+    {
+      "string_value": "Entity Switch Selector To Spawn", 
+      "xrefs": [
+        {
+          "function_entry": "140715950", 
+          "function": "FUN_140715950", 
+          "from": "140715969", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "140715950", 
+          "function": "FUN_140715950", 
+          "from": "140715970", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f513f8"
+    }, 
+    {
+      "string_value": "EntitySwitchSelectorToSpawnEntityCpntSettings", 
+      "xrefs": [
+        {
+          "function_entry": "14071bd80", 
+          "function": "FUN_14071bd80", 
+          "from": "14071be91", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14071bd80", 
+          "function": "FUN_14071bd80", 
+          "from": "14071be98", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f528b0"
+    }, 
+    {
+      "string_value": "EntitySwitchSelectorToSpawnEntrySettings", 
+      "xrefs": [
+        {
+          "function_entry": "14071bb90", 
+          "function": "FUN_14071bb90", 
+          "from": "14071bcb6", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "14071bb90", 
+          "function": "FUN_14071bb90", 
+          "from": "14071bcbd", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f52990"
+    }, 
+    {
+      "string_value": "EntitySwitchSelectorToSpawnEntityCpnt", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14071c049", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14071c050", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f52a58"
+    }, 
+    {
+      "string_value": "oCEntityCpntSpawnerValueSettings", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14075ab01", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14075ab08", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f56ec0"
+    }, 
+    {
+      "string_value": "oCEntityCpntSpawnerValue", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14075acb7", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "14075acbe", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f58b28"
+    }, 
+    {
+      "string_value": "Spawner Value", 
+      "xrefs": [
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140744eed", 
+          "ref_type": "DATA"
+        }, 
+        {
+          "function_entry": "", 
+          "function": "<no_function>", 
+          "from": "140744ef4", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f59b88"
+    }, 
+    {
+      "string_value": "{} : No Spawn Activate Cpnts list is deprecated and will be removed soon but is not empty", 
+      "xrefs": [
+        {
+          "function_entry": "14074eba0", 
+          "function": "FUN_14074eba0", 
+          "from": "14074ecf8", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f59c50"
+    }, 
+    {
+      "string_value": "{} : On Spawn Activate Cpnts list is deprecated and will be removed soon but is not empty", 
+      "xrefs": [
+        {
+          "function_entry": "14074eba0", 
+          "function": "FUN_14074eba0", 
+          "from": "14074ebf0", 
+          "ref_type": "DATA"
+        }
+      ], 
+      "string_addr": "140f59cb0"
+    }, 
+    {
+      "string_value": ".?AVoCEntitySpawner@@", 
+      "xrefs": [], 
+      "string_addr": "14130f300"
+    }, 
+    {
+      "string_value": ".?AVoCSpawnableSettings@@", 
+      "xrefs": [], 
+      "string_addr": "141319580"
+    }, 
+    {
+      "string_value": ".?AVoCEntityGameUiSpawner@@", 
+      "xrefs": [], 
+      "string_addr": "14132f2d8"
+    }, 
+    {
+      "string_value": ".?AVoCSpawner@@", 
+      "xrefs": [], 
+      "string_addr": "141332740"
+    }, 
+    {
+      "string_value": ".?AV?$oCTNodeListNode@VoCSpawner@@$0A@@@", 
+      "xrefs": [], 
+      "string_addr": "141342e60"
+    }, 
+    {
+      "string_value": ".?AVoCEntitySelectorToSpawnEntrySettings@@", 
+      "xrefs": [], 
+      "string_addr": "141344c80"
+    }, 
+    {
+      "string_value": ".?AVoCDtEnemyCampEntitySelectorToSpawnEntityCpnt@@", 
+      "xrefs": [], 
+      "string_addr": "141345b10"
+    }, 
+    {
+      "string_value": ".?AVoCDtRewardEntitySelectorToSpawnEntityCpntSettings@@", 
+      "xrefs": [], 
+      "string_addr": "141346020"
+    }, 
+    {
+      "string_value": ".?AVoCDtEnemyCampEntitySelectorToSpawnTribeEntrySettings@@", 
+      "xrefs": [], 
+      "string_addr": "1413464a0"
+    }, 
+    {
+      "string_value": ".?AVoCDtEntityCpntTileSpawnerSettings@@", 
+      "xrefs": [], 
+      "string_addr": "141347930"
+    }, 
+    {
+      "string_value": ".?AVoCSpawnerGoEntityCollector@@", 
+      "xrefs": [], 
+      "string_addr": "141347ee0"
+    }, 
+    {
+      "string_value": ".?AVoCSpawnerGoEntityCollectorSettings@@", 
+      "xrefs": [], 
+      "string_addr": "141348a38"
+    }, 
+    {
+      "string_value": ".?AVoIEntitySelectorToSpawnEntityCpntSettings@@", 
+      "xrefs": [], 
+      "string_addr": "1413495d0"
+    }, 
+    {
+      "string_value": ".?AVoIEntitySelectorToSpawnEntityCpnt@@", 
+      "xrefs": [], 
+      "string_addr": "141349648"
+    }, 
+    {
+      "string_value": ".?AVoCSpawnedEntityCollector@@", 
+      "xrefs": [], 
+      "string_addr": "141349a78"
+    }, 
+    {
+      "string_value": ".?AV?$oCTGoPtr@VoCEntitySpawnerGo@@@@", 
+      "xrefs": [], 
+      "string_addr": "141349b30"
+    }, 
+    {
+      "string_value": ".?AVoCDtRewardEntitySelectorToSpawnEntityCpnt@@", 
+      "xrefs": [], 
+      "string_addr": "141349ea0"
+    }, 
+    {
+      "string_value": ".?AVoCEntitySelectorToSpawnEntityCpnt@@", 
+      "xrefs": [], 
+      "string_addr": "14134a7c0"
+    }, 
+    {
+      "string_value": ".?AVoCDtEntityCpntTileSpawner@@", 
+      "xrefs": [], 
+      "string_addr": "14134a850"
+    }, 
+    {
+      "string_value": ".?AVoCEntityModifierTargetSpawnedEntity@@", 
+      "xrefs": [], 
+      "string_addr": "14134b070"
+    }, 
+    {
+      "string_value": ".?AVoCEntitySpawnData@@", 
+      "xrefs": [], 
+      "string_addr": "14134b0e8"
+    }, 
+    {
+      "string_value": ".?AVoCSpawnData@@", 
+      "xrefs": [], 
+      "string_addr": "14134be88"
+    }, 
+    {
+      "string_value": ".?AVoCDtDreamShardsEntitySelectorToSpawnEntityCpntSettings@@", 
+      "xrefs": [], 
+      "string_addr": "14134d740"
+    }, 
+    {
+      "string_value": ".?AVoCEntityCpntEntitySpawner@@", 
+      "xrefs": [], 
+      "string_addr": "14134da38"
+    }, 
+    {
+      "string_value": ".?AVoIOnEntitySpawnEntityCpnt@@", 
+      "xrefs": [], 
+      "string_addr": "14134dfd8"
+    }, 
+    {
+      "string_value": ".?AVoCDtEntityCpntHeroSpawnerSettings@@", 
+      "xrefs": [], 
+      "string_addr": "14134e7d8"
+    }, 
+    {
+      "string_value": ".?AVoCDtDreamShardsEntitySelectorToSpawnEntityCpnt@@", 
+      "xrefs": [], 
+      "string_addr": "14134eb30"
+    }, 
+    {
+      "string_value": ".?AVoCDtEntityCpntHeroSpawner@@", 
+      "xrefs": [], 
+      "string_addr": "14134eb78"
+    }, 
+    {
+      "string_value": ".?AVRandomHeroToSpawnEntityCpntSettings@dt@oe@@", 
+      "xrefs": [], 
+      "string_addr": "14134ef00"
+    }, 
+    {
+      "string_value": ".?AVoIOnEntitySpawnEntityCpntSettings@@", 
+      "xrefs": [], 
+      "string_addr": "14134f268"
+    }, 
+    {
+      "string_value": ".?AVRandomHeroToSpawnEntityCpnt@dt@oe@@", 
+      "xrefs": [], 
+      "string_addr": "14134f488"
+    }, 
+    {
+      "string_value": ".?AVoCDtEnemyCampEntitySelectorToSpawnTribeEntry@@", 
+      "xrefs": [], 
+      "string_addr": "14134ffc0"
+    }, 
+    {
+      "string_value": ".?AVoCDtEnemyCampEntitySelectorToSpawnEntityCpntSettings@@", 
+      "xrefs": [], 
+      "string_addr": "141350140"
+    }, 
+    {
+      "string_value": ".?AVoCDtEnemyFlagListEntitySelectorToSpawnEntityCpntSettings@@", 
+      "xrefs": [], 
+      "string_addr": "141351e70"
+    }, 
+    {
+      "string_value": ".?AVoCDtEnemyFlagListEntitySelectorToSpawnEntityCpnt@@", 
+      "xrefs": [], 
+      "string_addr": "141352490"
+    }, 
+    {
+      "string_value": ".?AV?$oCTMetaAttribute@VoCEntityGameUiSpawner@@@@", 
+      "xrefs": [], 
+      "string_addr": "141353200"
+    }, 
+    {
+      "string_value": ".?AV?$oCTNodeListNode@VoCSpawnable@@$00@@", 
+      "xrefs": [], 
+      "string_addr": "1413654b8"
+    }, 
+    {
+      "string_value": ".?AVoCSpawnablePool@@", 
+      "xrefs": [], 
+      "string_addr": "1413655e8"
+    }, 
+    {
+      "string_value": ".?AV?$oCTNodeListNode@VoCSpawnable@@$0A@@@", 
+      "xrefs": [], 
+      "string_addr": "141365948"
+    }, 
+    {
+      "string_value": ".?AVoCSpawnable@@", 
+      "xrefs": [], 
+      "string_addr": "141365988"
+    }, 
+    {
+      "string_value": ".?AV?$oCTGoPtrImpl@VoCEntitySpawnerGo@@@@", 
+      "xrefs": [], 
+      "string_addr": "1413675a8"
+    }, 
+    {
+      "string_value": ".?AV?$oCTMetaAttribute@V?$oCTGoPtr@VoCEntitySpawnerGo@@@@@@", 
+      "xrefs": [], 
+      "string_addr": "141367710"
+    }, 
+    {
+      "string_value": ".?AVoCSpawnedEntityCollectorSettings@@", 
+      "xrefs": [], 
+      "string_addr": "141367800"
+    }, 
+    {
+      "string_value": ".?AVoCSpawnerGoEntityRetriever@@", 
+      "xrefs": [], 
+      "string_addr": "1413678e0"
+    }, 
+    {
+      "string_value": ".?AV?$oCTGoPtrMetaClass@VoCEntitySpawnerGo@@@@", 
+      "xrefs": [], 
+      "string_addr": "141367950"
+    }, 
+    {
+      "string_value": ".?AVoCEntityModalWithSpawnerCpnt@@", 
+      "xrefs": [], 
+      "string_addr": "141367dd8"
+    }, 
+    {
+      "string_value": ".?AVoCEntityModifierTargetSpawnedEntitySettings@@", 
+      "xrefs": [], 
+      "string_addr": "141368000"
+    }, 
+    {
+      "string_value": ".?AVoCTerrainEntitySpawnerOutput@@", 
+      "xrefs": [], 
+      "string_addr": "141368710"
+    }, 
+    {
+      "string_value": ".?AVTerrainTiledSpawnerGoOutput@oe@@", 
+      "xrefs": [], 
+      "string_addr": "141368748"
+    }, 
+    {
+      "string_value": ".?AVSpawnerGoSectorizationTiled@oe@@", 
+      "xrefs": [], 
+      "string_addr": "1413687e8"
+    }, 
+    {
+      "string_value": ".?AVISpawnerGoSectorizationMode@oe@@", 
+      "xrefs": [], 
+      "string_addr": "141368848"
+    }, 
+    {
+      "string_value": ".?AVoCEntitySpawnerGo@@", 
+      "xrefs": [], 
+      "string_addr": "141368900"
+    }, 
+    {
+      "string_value": ".?AVTerrainSpawnerGoTile@oe@@", 
+      "xrefs": [], 
+      "string_addr": "141368928"
+    }, 
+    {
+      "string_value": ".?AVoCEntitySpawnerGoState@@", 
+      "xrefs": [], 
+      "string_addr": "141368a20"
+    }, 
+    {
+      "string_value": ".?AV?$oCTNodeListNode@VoCEntitySpawnerGo@@$0A@@@", 
+      "xrefs": [], 
+      "string_addr": "141368ad0"
+    }, 
+    {
+      "string_value": ".?AVoCTerrainEntitySpawnerTile@@", 
+      "xrefs": [], 
+      "string_addr": "141368b48"
+    }, 
+    {
+      "string_value": ".?AVSpawnerGoSectorizationEmpty@oe@@", 
+      "xrefs": [], 
+      "string_addr": "141368b80"
+    }, 
+    {
+      "string_value": ".?AV?$oCTMetaMethod@VoCEntitySpawnerGo@@_NXXXX@@", 
+      "xrefs": [], 
+      "string_addr": "141368c60"
+    }, 
+    {
+      "string_value": ".?AV?$oCTMetaMethod@VoCEntitySpawnerGo@@XXXXX@@", 
+      "xrefs": [], 
+      "string_addr": "141368cb0"
+    }, 
+    {
+      "string_value": ".?AVEntitySettingsItem@oCTerrainEntitySpawnerOutput@@", 
+      "xrefs": [], 
+      "string_addr": "141368e40"
+    }, 
+    {
+      "string_value": ".?AVoCEntitySelectorToSpawnEntityCpntSettings@@", 
+      "xrefs": [], 
+      "string_addr": "141368f40"
+    }, 
+    {
+      "string_value": ".?AVoCEntitySelectorToSpawnEntry@@", 
+      "xrefs": [], 
+      "string_addr": "141369230"
+    }, 
+    {
+      "string_value": ".?AVEntitySwitchSelectorToSpawnEntityCpnt@oe@@", 
+      "xrefs": [], 
+      "string_addr": "141369418"
+    }, 
+    {
+      "string_value": ".?AVEntitySwitchSelectorToSpawnEntry@oe@@", 
+      "xrefs": [], 
+      "string_addr": "141369458"
+    }, 
+    {
+      "string_value": ".?AVEntitySwitchSelectorToSpawnEntityCpntSettings@oe@@", 
+      "xrefs": [], 
+      "string_addr": "1413694d0"
+    }, 
+    {
+      "string_value": ".?AVEntitySwitchSelectorToSpawnEntrySettings@oe@@", 
+      "xrefs": [], 
+      "string_addr": "141369670"
+    }, 
+    {
+      "string_value": ".?AVoCEntityCpntEntitySpawnerSettings@@", 
+      "xrefs": [], 
+      "string_addr": "141369768"
+    }, 
+    {
+      "string_value": ".?AVoCEntityCpntSpawnerValue@@", 
+      "xrefs": [], 
+      "string_addr": "14136a118"
+    }, 
+    {
+      "string_value": ".?AVoCEntityCpntSpawnerValueSettings@@", 
+      "xrefs": [], 
+      "string_addr": "14136a6d8"
+    }
+  ], 
+  "Resource load": [], 
+  "oCPicker": []
+}
