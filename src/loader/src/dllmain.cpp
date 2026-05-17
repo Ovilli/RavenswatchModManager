@@ -1,0 +1,106 @@
+// Ravenswatch Mod Manager — winhttp proxy entry point.
+
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <chrono>
+#include <filesystem>
+#include <thread>
+
+#include "MinHook.h"
+#include "loader.h"
+#include "hook_io.h"
+#include "hook_vk.h"
+#include "hook_engine.h"
+#include "script_lua.h"
+
+namespace fs = std::filesystem;
+
+static HMODULE g_self_module = nullptr;
+
+static fs::path module_dir() {
+    wchar_t buf[MAX_PATH];
+    GetModuleFileNameW(g_self_module, buf, MAX_PATH);
+    return fs::path(buf).parent_path();
+}
+
+static void loader_thread() {
+    try {
+        const fs::path game = module_dir();
+        auto& L = rsmm::Loader::get();
+        L.init(game);
+        L.load_asset_map(game / "asset_map.json");
+        L.scan_mods(game / "mods");
+        L.load_state();
+        for (const auto& m : L.mods()) {
+            if (!m.enabled) continue;
+            rsmm::script_run_mod_init(m.id, m.root);
+        }
+        L.apply_overrides();
+
+        if (MH_Initialize() != MH_OK) {
+            L.log("MH_Initialize failed; hooks disabled");
+            return;
+        }
+
+        char buf[8];
+        if (GetEnvironmentVariableA("RSMM_ENABLE_IO", buf, sizeof(buf)) && buf[0] == '1') {
+            L.log("RSMM_ENABLE_IO=1: installing IO hook (may crash game)");
+            rsmm::install_io_hooks();
+        } else {
+            L.log("IO hook disabled by default (set RSMM_ENABLE_IO=1 to enable)");
+        }
+
+        if (GetEnvironmentVariableA("RSMM_ENABLE_VK", buf, sizeof(buf)) && buf[0] == '1') {
+            L.log("RSMM_ENABLE_VK=1: installing VK hook (may crash game)");
+            rsmm::install_vulkan_hooks();
+        } else {
+            L.log("VK hook disabled by default (set RSMM_ENABLE_VK=1 to enable)");
+        }
+
+        rsmm::install_engine_hooks();
+        rsmm::install_steam_hooks();
+
+        rsmm::script_emit_event("ready");
+        L.log("loader thread complete");
+
+        // Background ticker: fires "tick" every 500 ms so mods can poll
+        // for game state that isn't ready at "ready" time (e.g. the
+        // GameOptions struct, which is constructed AFTER our loader
+        // thread finishes). Cheap — mods opt in via rsmm.on_event("tick").
+        //
+        // Same thread also drives hot-reload: every 2nd tick (~1 s) it
+        // polls each mod's init.lua mtime; on change it rebuilds the
+        // lua_State and replays "ready". Iteration loop is now seconds
+        // not minutes — no game restart.
+        std::thread([] {
+            int n = 0;
+            while (true) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                rsmm::script_emit_event("tick");
+                if ((++n & 1) == 0) {
+                    rsmm::script_reload_changed();
+                }
+            }
+        }).detach();
+    } catch (const std::exception& e) {
+        OutputDebugStringA(e.what());
+    }
+}
+
+BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID) {
+    if (reason == DLL_PROCESS_ATTACH) {
+        g_self_module = inst;
+        DisableThreadLibraryCalls(inst);
+        std::thread(loader_thread).detach();
+    } else if (reason == DLL_PROCESS_DETACH) {
+        rsmm::script_emit_event("exit");
+        rsmm::script_shutdown_all();
+        rsmm::remove_steam_hooks();
+        rsmm::remove_engine_hooks();
+        rsmm::remove_vulkan_hooks();
+        rsmm::remove_io_hooks();
+        MH_Uninitialize();
+        rsmm::Loader::get().shutdown();
+    }
+    return TRUE;
+}

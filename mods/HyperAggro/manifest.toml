@@ -1,0 +1,60 @@
+[mod]
+id                = "HyperAggro"
+name              = "Hyper Aggro"
+version           = "1.2.0"
+author            = "RSMM"
+description       = "Makes enemies detect, engage, and attack from much farther away, with broader nearby-enemy pressure and much higher combat strength."
+enabled           = true
+load_order        = 80
+multiplayer_scope = "deterministic-shared"
+sdk_version       = "1.0"
+
+[[patch]]
+kind = "stat"
+name = "Enemy_Detection_Min_Height_Default"
+value = 0
+
+[[patch]]
+kind = "stat"
+name = "Enemy_Detection_Max_Height_Default"
+value = 0
+
+[[patch]]
+kind = "stat"
+name = "Enemy_Fighting_Min_Height_Default"
+value = 0
+
+[[patch]]
+kind = "stat"
+name = "Enemy_Fighting_Max_Height_Default"
+value = 0
+
+[[patch]]
+kind = "stat"
+name = "Enemy_Attacks_Min_Height_Default"
+value = 0
+
+[[patch]]
+kind = "stat"
+name = "Enemy_Attacks_Max_Height_Default"
+value = 0
+
+[[patch]]
+kind = "stat"
+name = "EnemyAround_LongRange_Count"
+value = 0
+
+[[patch]]
+kind = "stat"
+name = "EnemyAround_ShortRange_Count"
+value = 0
+
+[[patch]]
+kind = "stat"
+name = "NGP_Enemy_Damage_Modifier"
+value = 0
+
+[[patch]]
+kind = "stat"
+name = "NGP_Enemy_Max_Health_Modifier"
+value = 0

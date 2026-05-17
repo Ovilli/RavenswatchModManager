@@ -1,0 +1,7 @@
+[mod]
+id          = "ExampleSeedPin"
+name        = "Example: Seed Pinner"
+version     = "0.1.0"
+author      = "rsmm-examples"
+description = "Pin the run RNG seed via rsmm.call() on the game's Forced-seed option. Useful for speedruns."
+enabled     = true
