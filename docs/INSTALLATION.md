@@ -90,73 +90,63 @@ pip install -e .
 
 ### Option B: Build from Source on Windows
 
-#### Using Visual Studio (Recommended)
-
 **Prerequisites:**
-- Visual Studio 2019+ with C++ workload (download from [visualstudio.microsoft.com](https://visualstudio.microsoft.com/))
+- Visual Studio 2019+ with C++ workload (download from [visualstudio.microsoft.com](https://visualstudio.microsoft.com/)) **OR** MinGW-w64
 - CMake (included with Visual Studio or install separately from [cmake.org](https://cmake.org/download/))
 - Python 3.10+ (see Option A, step 1)
+- Git (from [git-scm.com](https://git-scm.com/download/win))
 
-**Build steps:**
+**Quick build (using batch scripts):**
 
-1. Open **Developer Command Prompt for VS** (search in Windows Start menu)
+1. Open **Command Prompt** (or PowerShell) in the repo directory
 
 2. Set up Python environment:
    ```cmd
-   cd RavenswatchModManager
    python -m venv venv
    venv\Scripts\activate
    pip install -r requirements.txt
    pip install -e .
    ```
 
-3. Build the loader:
+3. Build the loader (auto-detects Visual Studio or MinGW):
+   ```cmd
+   cd src\loader
+   fetch_deps.bat
+   build.bat
+   ```
+
+The compiled `winhttp.dll` will be automatically placed in `dist/winhttp.dll`.
+
+**Manual build (using CMake directly):**
+
+If you prefer to use CMake manually:
+
+1. Open **Developer Command Prompt for VS** (search in Windows Start menu) or MinGW terminal
+
+2. Navigate to loader directory:
    ```cmd
    cd src\loader
    mkdir build
    cd build
+   ```
+
+3. Configure and build:
+   
+   **For Visual Studio:**
+   ```cmd
    cmake .. -G "Visual Studio 17 2022" -A x64
    cmake --build . --config Release
    ```
    
-   The compiled `winhttp.dll` will be in `build\Release\` (or `build\bin\Release\`).
-
-4. Copy to distribution folder:
+   **For MinGW:**
    ```cmd
-   copy Release\winhttp.dll ..\..\dist\
-   ```
-
-#### Using MinGW (Alternative)
-
-**Prerequisites:**
-- MinGW-w64 with GCC 11+ (download from [mingw-w64.org](https://www.mingw-w64.org/))
-- CMake (from [cmake.org](https://cmake.org/download/))
-
-**Build steps:**
-
-1. Open **MinGW Shell** or a terminal with MinGW in PATH
-
-2. Set up Python and navigate to repo:
-   ```bash
-   cd RavenswatchModManager
-   python -m venv venv
-   source venv/Scripts/activate  # (or venv\Scripts\activate on cmd)
-   pip install -r requirements.txt
-   pip install -e .
-   ```
-
-3. Build the loader:
-   ```bash
-   cd src/loader
-   mkdir build
-   cd build
    cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
    cmake --build .
    ```
 
 4. Copy to distribution folder:
-   ```bash
-   cp winhttp.dll ../../dist/
+   ```cmd
+   copy Release\winhttp.dll ..\..\dist\
    ```
 
 ---
@@ -189,8 +179,15 @@ rsmm apply
 
 ### 4. Install the loader (for Lua mods only)
 
+**Option 1: Using the CLI (recommended):**
 ```cmd
 rsmm install-loader
+```
+
+**Option 2: Using the batch script (manual):**
+```cmd
+cd src\rsmm\cli
+install_loader.bat
 ```
 
 This copies `winhttp.dll` into the Ravenswatch game installation directory.
