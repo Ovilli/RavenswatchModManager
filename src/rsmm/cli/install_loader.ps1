@@ -24,13 +24,6 @@ if (-not (Test-Path $dll)) {
   Write-Error "Build first: loader/build.sh (produce dist\winhttp.dll)"; exit 1
 }
 
-# If winhttp_real.dll missing, try to source a real one from common Proton/Wine locations
-if (-not (Test-Path (Join-Path $GameDir 'winhttp_real.dll'))) {
-  $candidates = @(
-    "$env:USERPROFILE\.var\app\com.valvesoftware.Steam\.local\share\Steam\steamapps\compatdata\2071280\pfx\drive_c\windows\system32\winhttp.dll",
-    "$env:USERPROFILE\.var\app\com.valvesoftware.Steam\.local\share\Steam\steamapps\common\Proton Hotfix\files\lib\wine\x86_64-windows\winhttp.dll",
-    "$env:USERPROFILE\.steam\steam\steamapps\common\Proton - Experimental\files\lib\wine\x86_64-windows\winhttp.dll"
-  )
 # If winhttp_real.dll missing, try to source a real one.
 if (-not (Test-Path (Join-Path $GameDir 'winhttp_real.dll'))) {
   # Prefer native Windows system DLLs when available (for native Windows installs).
