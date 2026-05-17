@@ -6,7 +6,7 @@ Steps to set up a development environment for hacking on RSMM.
 1. Clone the repo and create a virtual environment for Python work.
 
 ```bash
-git clone <repo>
+git clone https://github.com/Ovilli/RavenswatchModManager.git
 cd RavenswatchModManager
 python -m venv .venv
 source .venv/bin/activate

@@ -70,7 +70,7 @@ pip install -e .
 
 2. **Clone the repository and set up Python environment**
    ```cmd
-   git clone https://github.com/your-org/RavenswatchModManager.git
+   git clone https://github.com/Ovilli/RavenswatchModManager.git
    cd RavenswatchModManager
    python -m venv venv
    venv\Scripts\activate
