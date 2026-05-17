@@ -13,6 +13,7 @@ and routes them through one help screen.
                                         original game assets — don't
                                         redistribute Ravenswatch content)
 
+    rsmm gui                            open the browser-based mod manager UI
     rsmm doctor                         system health check (recommended often)
     rsmm watch [--interval N]           re-apply on every mods/ change
     rsmm build [--skip-loader]          asset map + loader + merge + apply
@@ -220,6 +221,18 @@ def cmd_rebuild_map(argv: list[str]) -> int:
 
 def cmd_install_loader(argv: list[str]) -> int:
     # On Windows, run the PowerShell installer. On Unix, run the shell script.
+    # Autodetect the game dir if the caller didn't pass one.
+    from rsmm.engine.paths import DEFAULT_GAME_DIR, COOKING_SUBDIR
+    if not argv:
+        if (DEFAULT_GAME_DIR / COOKING_SUBDIR).is_dir():
+            argv = [str(DEFAULT_GAME_DIR)]
+        else:
+            print(
+                "Could not autodetect Ravenswatch install. "
+                "Pass the path: rsmm install-loader <game-dir>",
+                file=sys.stderr,
+            )
+            return 1
     script_sh = ROOT / "src/rsmm/cli/install_loader.sh"
     script_ps1 = ROOT / "src/rsmm/cli/install_loader.ps1"
     if sys.platform == "win32":
@@ -339,6 +352,7 @@ LEGACY = {
     "mods-list":     ("rsmm.cli.make_mods_list_entity",      []),
     "process-clicks":("rsmm.cli.process_clicks",             []),
     # System
+    "gui":           ("rsmm.cli.gui",                        []),
     "doctor":        ("rsmm.cli.doctor",                     []),
     "watch":         ("rsmm.cli.watch",                      []),
     "build":         ("rsmm.cli.build",                      []),

@@ -36,13 +36,34 @@ RECOMMENDED_LAUNCH_OPTIONS = 'WINEDLLOVERRIDES="winhttp=n,b" %command%'
 
 
 def _steam_root() -> Path | None:
-    """Locate Steam install dir. Prefers Flatpak (this repo's primary
-    target), then native ~/.steam, then ~/.local/share/Steam."""
-    cands = [
-        Path.home() / ".var/app/com.valvesoftware.Steam/.local/share/Steam",
-        Path.home() / ".steam/steam",
-        Path.home() / ".local/share/Steam",
-    ]
+    """Locate Steam install dir across Linux (Flatpak/native), macOS,
+    Windows."""
+    home = Path.home()
+    cands: list[Path] = []
+    if sys.platform == "win32":
+        pf86 = os.environ.get("ProgramFiles(x86)")
+        pf = os.environ.get("ProgramFiles")
+        if pf86:
+            cands.append(Path(pf86) / "Steam")
+        if pf:
+            cands.append(Path(pf) / "Steam")
+        for d in "CDEFGHIJKLMNOPQRSTUVWXYZ":
+            root = Path(f"{d}:\\")
+            if not root.exists():
+                continue
+            cands += [
+                Path(f"{d}:\\Program Files (x86)\\Steam"),
+                Path(f"{d}:\\Program Files\\Steam"),
+                Path(f"{d}:\\Steam"),
+            ]
+    elif sys.platform == "darwin":
+        cands += [home / "Library/Application Support/Steam"]
+    else:
+        cands += [
+            home / ".var/app/com.valvesoftware.Steam/.local/share/Steam",
+            home / ".steam/steam",
+            home / ".local/share/Steam",
+        ]
     for c in cands:
         if (c / "steamapps").is_dir():
             return c
@@ -133,6 +154,15 @@ def _override_present(launch_options: str) -> bool:
 
 
 def _is_steam_running() -> bool:
+    if sys.platform == "win32":
+        try:
+            r = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq steam.exe", "/NH"],
+                capture_output=True, text=True,
+            )
+            return "steam.exe" in (r.stdout or "").lower()
+        except FileNotFoundError:
+            return False
     try:
         r = subprocess.run(["pgrep", "-x", "steam"], capture_output=True)
         if r.returncode == 0:
@@ -218,6 +248,12 @@ def main() -> int:
     args = ap.parse_args()
 
     url = f"steam://rungameid/{args.app_id}"
+
+    # Native Windows: the game loads winhttp.dll from its own directory
+    # by default, so no WINEDLLOVERRIDES is needed. Just launch.
+    if sys.platform == "win32":
+        return _open_steam_url(url)
+
     steam_root = _steam_root()
     if steam_root is None:
         print("Steam install not found — launching URL anyway.", file=sys.stderr)

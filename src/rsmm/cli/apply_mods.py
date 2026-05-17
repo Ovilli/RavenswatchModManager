@@ -55,6 +55,7 @@ from rsmm.engine.paths import (
     ASSET_MAP_CSV,
     DEFAULT_GAME_DIR as DEFAULT_GAME,
     COOKING_SUBDIR,
+    _game_dir_candidates,
 )
 # Optional toml parsing; fall back to a tiny manifest reader if tomllib/toml missing.
 try:
@@ -94,31 +95,10 @@ def find_game_dir() -> Optional[Path]:
     """Best-effort autodetect across Linux/macOS/Windows.
 
     The cooked asset tree is the canonical marker (DarkTalesResources/_Cooking).
-    Return the first install dir that contains it.
+    Return the first install dir that contains it. Candidate list lives
+    in `rsmm.engine.paths` so every CLI agrees.
     """
-    home = Path.home()
-    candidates: list[Path] = []
-    if sys.platform.startswith("linux"):
-        candidates += [
-            home / ".var/app/com.valvesoftware.Steam/.local/share/Steam"
-                   "/steamapps/common/Ravenswatch",
-            home / ".steam/steam/steamapps/common/Ravenswatch",
-            home / ".local/share/Steam/steamapps/common/Ravenswatch",
-            Path("/mnt") / "Steam/steamapps/common/Ravenswatch",
-        ]
-    elif sys.platform == "darwin":
-        candidates += [
-            home / "Library/Application Support/Steam/steamapps/common/Ravenswatch",
-        ]
-    elif sys.platform == "win32":
-        for drive in ("C:", "D:", "E:"):
-            candidates += [
-                Path(f"{drive}\\Program Files (x86)\\Steam\\steamapps\\common\\Ravenswatch"),
-                Path(f"{drive}\\Program Files\\Steam\\steamapps\\common\\Ravenswatch"),
-                Path(f"{drive}\\Steam\\steamapps\\common\\Ravenswatch"),
-                Path(f"{drive}\\SteamLibrary\\steamapps\\common\\Ravenswatch"),
-            ]
-    for c in candidates:
+    for c in _game_dir_candidates():
         if (c / COOKING_REL).is_dir():
             return c
     return None
