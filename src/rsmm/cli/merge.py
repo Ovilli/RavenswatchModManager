@@ -238,6 +238,9 @@ def build_merged_mod(game_dir: Path) -> tuple[Path | None, list]:
     cooking = game_dir / COOKING_SUBDIR
     patches = collect_patches()
     if not patches:
+        out_root = MODS_DIR / MERGED_MOD_ID
+        if out_root.exists():
+            shutil.rmtree(out_root)
         return None, []
 
     out_root = MODS_DIR / MERGED_MOD_ID

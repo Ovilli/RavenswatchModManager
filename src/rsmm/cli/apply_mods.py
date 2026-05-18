@@ -336,21 +336,96 @@ def restore_one(enc: str, cooking: Path, game_dir: Path,
     state.active.pop(enc, None)
 
 
+def _sync_mod_manifests(game_dir: Path, dry_run: bool) -> int:
+    """Copy manifest.toml from each mod to the game's mods/ directory.
+    Also sync/remove init.lua based on enabled flag.
+    
+    The game engine reads manifests to determine which mods are enabled.
+    For Lua code mods, we remove init.lua when disabled to prevent execution.
+    Returns the number of files synced.
+    """
+    game_mods = game_dir / "mods"
+    game_mods.mkdir(exist_ok=True)
+    synced = 0
+    
+    if not MODS_DIR.is_dir():
+        return synced
+    
+    for mod_dir in sorted(MODS_DIR.iterdir()):
+        if not mod_dir.is_dir() or mod_dir.name.startswith(("_", ".")):
+            continue
+        manifest = mod_dir / "manifest.toml"
+        if not manifest.is_file():
+            continue
+        
+        # Parse manifest to check enabled flag
+        try:
+            manifest_text = manifest.read_text(encoding="utf-8")
+            enabled = not re.search(r'^\s*enabled\s*=\s*false\s*$', manifest_text, re.MULTILINE)
+        except Exception:
+            enabled = True
+        
+        dst_dir = game_mods / mod_dir.name
+        dst_dir.mkdir(exist_ok=True)
+        
+        # Sync manifest
+        dst_manifest = dst_dir / "manifest.toml"
+        try:
+            src_mtime = manifest.stat().st_mtime
+            dst_mtime = dst_manifest.stat().st_mtime if dst_manifest.exists() else 0
+            if src_mtime > dst_mtime:
+                if not dry_run:
+                    dst_manifest.write_bytes(manifest.read_bytes())
+                synced += 1
+        except OSError:
+            pass
+        
+        # Sync or remove init.lua based on enabled flag
+        src_lua = mod_dir / "init.lua"
+        dst_lua = dst_dir / "init.lua"
+        
+        if enabled and src_lua.is_file():
+            # Mod is enabled: sync init.lua
+            try:
+                src_mtime = src_lua.stat().st_mtime
+                dst_mtime = dst_lua.stat().st_mtime if dst_lua.exists() else 0
+                if src_mtime > dst_mtime:
+                    if not dry_run:
+                        dst_lua.write_bytes(src_lua.read_bytes())
+                    synced += 1
+            except OSError:
+                pass
+        elif not enabled and dst_lua.exists():
+            # Mod is disabled: remove init.lua to prevent execution
+            if not dry_run:
+                dst_lua.unlink()
+            synced += 1
+    
+    return synced
+
+
 def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     dec2enc = load_asset_map(repo)
     mods = discover_mods(repo)
     state = State(cooking)
     additions, removals = plan_apply(mods, dec2enc, cooking, game_dir, state, args.dry_run)
+    
+    # Sync manifests so game knows which mods are enabled
+    manifest_syncs = _sync_mod_manifests(game_dir, args.dry_run)
 
-    if not additions and not removals:
+    if not additions and not removals and not manifest_syncs:
         print("Mods already in sync.")
         return 0
 
-    print(f"Plan: {len(additions)} apply, {len(removals)} restore")
-    for enc in removals:
-        restore_one(enc, cooking, game_dir, state, args.dry_run)
-    for enc, src, dest, mod_id in additions:
-        apply_one(enc, src, dest, mod_id, state, args.dry_run)
+    if additions or removals:
+        print(f"Plan: {len(additions)} apply, {len(removals)} restore")
+        for enc in removals:
+            restore_one(enc, cooking, game_dir, state, args.dry_run)
+        for enc, src, dest, mod_id in additions:
+            apply_one(enc, src, dest, mod_id, state, args.dry_run)
+
+    if manifest_syncs:
+        print(f"Synced {manifest_syncs} mod file(s) (manifests/lua) to game mods directory")
 
     if not args.dry_run:
         state.save()
