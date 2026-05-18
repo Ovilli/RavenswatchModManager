@@ -41,7 +41,6 @@ cd src/loader
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
 pip install -e .
 ```
 
@@ -74,7 +73,6 @@ pip install -e .
    cd RavenswatchModManager
    python -m venv venv
    venv\Scripts\activate
-   pip install -r requirements.txt
    pip install -e .
    ```
 
@@ -104,7 +102,6 @@ pip install -e .
    ```cmd
    python -m venv venv
    venv\Scripts\activate
-   pip install -r requirements.txt
    pip install -e .
    ```
 
