@@ -54,6 +54,7 @@ set(LOADER_SRC
     src/hook_vk.cpp
     src/hook_win32.cpp
     src/hook_engine.cpp
+    src/hook_lua.cpp
     src/script_lua.cpp
     src/fn_resolver.cpp
     src/fn_call.cpp)
