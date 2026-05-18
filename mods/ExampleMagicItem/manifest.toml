@@ -1,0 +1,52 @@
+[mod]
+id                = "ExampleMagicItem"
+name              = "Example: Magic Item Edits"
+version           = "1.0.0"
+author            = "rsmm"
+description       = "Rename a vanilla magic item and clone a new one."
+enabled           = false
+load_order        = 50
+multiplayer_scope = "cosmetic"
+sdk_version       = "1.0"
+
+[[patch]]
+kind = "text"
+bank = "Magical_Objects"
+lang = "EN"
+key = "Armor_Per_Object_Name"
+value = "Iron Hide"
+
+[[patch]]
+kind = "text"
+bank = "Magical_Objects"
+lang = "EN"
+key = "Armor_Per_Object_Description"
+value = "Gain armor per equipped object."
+
+[[patch]]
+kind = "text"
+bank = "Magical_Objects"
+lang = "EN"
+key = "Armor_Per_Rare_Object_SuperEffect"
+value = "Bonus armor per rare object."
+
+[[patch]]
+kind = "magic_item"
+id = "Armor_Per_Object"
+rarity = "Common"
+has_name = true
+has_description = true
+has_super_effect = true
+has_icon = false
+
+[[patch]]
+kind = "magic_item_clone"
+new_id = "Iron_Crabs_Yikes"
+from_id = "Armor_Per_Object"
+rarity = "Common"
+name = "Iron Crab Hide"
+description = "A second armor-per-object item, just for fun."
+super_effect = "Bonus armor per rare object."
+lang = "EN"
+icon_donor = ""
+icon_raw_src = ""

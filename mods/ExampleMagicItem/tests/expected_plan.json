@@ -1,0 +1,44 @@
+[
+  {
+    "bank": "Magical_Objects",
+    "key": "Armor_Per_Object_Name",
+    "kind": "text",
+    "lang": "EN",
+    "value": "Iron Hide"
+  },
+  {
+    "bank": "Magical_Objects",
+    "key": "Armor_Per_Object_Description",
+    "kind": "text",
+    "lang": "EN",
+    "value": "Gain armor per equipped object."
+  },
+  {
+    "bank": "Magical_Objects",
+    "key": "Armor_Per_Rare_Object_SuperEffect",
+    "kind": "text",
+    "lang": "EN",
+    "value": "Bonus armor per rare object."
+  },
+  {
+    "has_description": true,
+    "has_icon": false,
+    "has_name": true,
+    "has_super_effect": true,
+    "id": "Armor_Per_Object",
+    "kind": "magic_item",
+    "rarity": "Common"
+  },
+  {
+    "description": "A second armor-per-object item, just for fun.",
+    "from_id": "Armor_Per_Object",
+    "icon_donor": "",
+    "icon_raw_src": "",
+    "kind": "magic_item_clone",
+    "lang": "EN",
+    "name": "Iron Crab Hide",
+    "new_id": "Iron_Crabs_Yikes",
+    "rarity": "Common",
+    "super_effect": "Bonus armor per rare object."
+  }
+]
