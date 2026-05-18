@@ -105,7 +105,10 @@ the original, and drops the mod file in place. No DLL injection
 required for asset overrides.
 
 The loader DLL (`dist/winhttp.dll`, optional) ships as a `winhttp`
-proxy and adds Lua scripting per mod. Install it via
+proxy and adds Lua scripting per mod. **The prebuilt DLL is not
+committed**; download the latest from the project's GitHub Releases
+page or build it yourself from `src/loader/` (`./build.sh` on Linux
+via MinGW, `build.bat` on Windows). Install it into the game with
 `./rsmm install-loader`. Steam launch options:
 `WINEDLLOVERRIDES="winhttp=n,b" %command%`.
 
