@@ -612,7 +612,6 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if not self._check_csrf():
             return
-        query = urllib.parse.parse_qs(parsed.query)
 
         if path == "/api/toggle":
             body = self._read_json()

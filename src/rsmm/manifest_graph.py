@@ -440,7 +440,6 @@ def format_issues(issues: Iterable[GraphIssue], *, color: bool = True) -> str:
             head = f"{col}{_C_BOLD}[{tag.strip()}]{_C_RESET}"
         else:
             head = f"[{tag.strip()}]"
-        mods = " ".join(it.mods) if it.mods else "-"
         lines.append(f"  {head} {it.code:<17} {it.message}")
         if it.fix:
             lines.append(f"            fix: {it.fix}")
