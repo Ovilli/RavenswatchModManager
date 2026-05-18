@@ -154,6 +154,24 @@ Everything modders touch lives at the top: `rsmm`, `mods/`, `docs/`.
 Engine internals stay in `src/rsmm/engine/` and are imported, not
 called directly.
 
+## Legal / Scope
+
+RSMM is a **single-player** modding tool. It does not bypass any
+anti-cheat, does not patch or hide itself from server-side telemetry,
+and is not intended to confer an advantage in any online competitive
+context. The loader runs purely in-process and only modifies cooked
+assets and scripted behaviour on the local machine; multiplayer
+sessions remain at the mercy of the host's own integrity checks. **A
+legitimate Steam copy of Ravenswatch is required** — RSMM ships no
+game content and cannot run without an installed game.
+
+`data/asset_map.json` and `data/asset_map.csv` are **derived metadata**
+(encoded-path ↔ decoded-path index) reconstructed from the running
+game; they contain no Ravenswatch art, audio, code, or text. They are
+no more redistributable game content than a file listing of your `_Cooking/`
+directory would be. Mods authored with RSMM are the modder's own work
+and inherit the modder's chosen license.
+
 ## License
 
 RSMM is released under the MIT License — see [`LICENSE`](LICENSE).
