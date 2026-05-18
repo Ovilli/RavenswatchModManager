@@ -52,7 +52,7 @@ def check_asset_map(game_dir: Path) -> list[Result]:
     out: list[Result] = []
     if not ASSET_MAP_JSON.exists():
         return [Result("FAIL", "asset_map.json missing",
-                       f"Run: ./rsmm rebuild-asset-map")]
+                       "Run: ./rsmm rebuild-asset-map")]
     am_mtime = ASSET_MAP_JSON.stat().st_mtime
     out.append(Result("OK", f"asset_map.json ({ASSET_MAP_JSON.stat().st_size:,} bytes)"))
     used = game_dir / "DarkTalesResources" / "UsedRscList.ot"
@@ -251,7 +251,7 @@ def main() -> int:
         for mid, msg in rep.unmet_requires:
             crs.append(Result("FAIL", f"{mid}: unmet dep", msg))
         for a, b in rep.hard_conflicts:
-            crs.append(Result("FAIL", f"hard conflict",
+            crs.append(Result("FAIL", "hard conflict",
                               f"{a} <-> {b} (drop one)"))
         for c in rep.cycles:
             crs.append(Result("FAIL", "requires cycle", " -> ".join(c)))

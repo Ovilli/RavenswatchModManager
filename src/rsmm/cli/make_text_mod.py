@@ -79,8 +79,10 @@ def parse_text_file(path: Path) -> TextFile:
     if len(data) < HEADER_SIZE:
         raise ValueError(f"{path}: too short")
     count = struct.unpack_from("<I", data, 0x0c)[0]
-    count2 = struct.unpack_from("<I", data, 0x10)[0]
-    # count2 sometimes == count, sometimes a separate field — we trust count.
+    # data[0x10..0x14] is a sibling count that sometimes equals `count`,
+    # sometimes a separate field; we trust `count`. Read kept commented
+    # so a future RE pass knows where to look.
+    # count2 = struct.unpack_from("<I", data, 0x10)[0]
     pos = HEADER_SIZE
     entries: list[str] = []
     for _ in range(count):

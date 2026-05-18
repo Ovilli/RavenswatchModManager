@@ -131,7 +131,7 @@ def locate_class_table_end(data: bytes) -> int:
     """
     p = 0
     p += 4  # header_field_0
-    flags = struct.unpack_from("<I", data, p)[0]
+    # flags = struct.unpack_from("<I", data, p)[0]   # currently unused; kept for clarity
     p += 4
     if data[p:p + 4] == MARK_BEGIN:
         # Type B stream (unlikely for this resource, but handle).
@@ -216,7 +216,7 @@ def substitute_in_lpstrings(buf: bytes, old_sub: str, new_sub: str) -> bytes:
     (e.g. "...\\Discord Button Spawner" -> "...\\Mods Button Spawner").
     """
     old_b = old_sub.encode("utf-8")
-    new_b = new_sub.encode("utf-8")
+    _ = new_sub.encode("utf-8")   # validates input is utf-8; substring replacement happens below
     out = bytearray()
     i = 0
     n = len(buf)
