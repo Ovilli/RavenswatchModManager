@@ -7,7 +7,9 @@ src/loader/build/
 src/loader/third_party/*/
 !src/loader/third_party/.gitkeep
 
-# Runtime state (written into mods/ at apply time)
+# Runtime state (written into mods/ at apply time).
+# DO NOT add a bare `mods` line here — the example mods under mods/<id>/
+# are tracked content and must not be excluded from clones.
 mods/_clicks.state
 mods/_clicks.log
 mods/_persona_map.json
