@@ -16,8 +16,10 @@ mods/_persona_map.json
 mods/_state.json
 mods/_log.txt
 
-# Packed mods
+# Packed mods + prebuilt loader DLL.
+# winhttp.dll is a build artifact shipped via GitHub Releases, not committed.
 dist/*.zip
+dist/winhttp.dll
 
 # Extracted uncooked game assets (3.2 GB, regenerable via scripts/extract_uncooked.py)
 data/uncooked/
