@@ -43,6 +43,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
@@ -123,6 +124,13 @@ class State:
     @property
     def active(self) -> dict:
         return self.data.setdefault("active", {})
+
+    @property
+    def enabled_mods(self) -> list[str]:
+        return self.data.setdefault("enabled_mods", [])
+
+    def set_enabled_mods(self, ids: list[str]) -> None:
+        self.data["enabled_mods"] = sorted(set(ids))
 
 
 class Mod:
@@ -336,6 +344,85 @@ def restore_one(enc: str, cooking: Path, game_dir: Path,
     state.active.pop(enc, None)
 
 
+DEACTIVATION_SCRIPT_NAME = "on_disable.py"
+DEACTIVATION_TIMEOUT_SEC = 30
+
+
+def _run_deactivation_hooks(mods: list[Mod],
+                            state: State,
+                            game_dir: Path,
+                            cooking: Path,
+                            dry_run: bool) -> tuple[list[str], list[str]]:
+    """Fire on_disable.py for each mod that flipped enabled -> disabled.
+
+    The mod's on_disable.py receives three env vars:
+      RSMM_GAME_DIR  — Ravenswatch install directory
+      RSMM_COOKING   — <game>/DarkTalesResources/_Cooking
+      RSMM_MOD_DIR   — the mod's own root in mods/<id>/
+
+    Used for cleanup that the loader DLL can't do at apply time:
+      * resetting game-settings keys the mod wrote at runtime
+        (e.g. ExampleSeedPin clears [Debug] Forced seed from
+        _Save/GameSettings.ini),
+      * deleting profile flags / cache entries the mod created.
+
+    Returns (ran, missing) — mod ids whose hook fired vs flipped mods
+    with no on_disable.py present (silent; not an error).
+    """
+    prev_enabled = set(state.enabled_mods)
+    if not prev_enabled:
+        return [], []
+
+    cur_by_id = {m.id: m for m in mods}
+    cur_enabled = {m.id for m in mods if m.enabled}
+    flipped = sorted(prev_enabled - cur_enabled)
+
+    ran: list[str] = []
+    missing: list[str] = []
+    for mod_id in flipped:
+        m = cur_by_id.get(mod_id)
+        if m is None:
+            missing.append(mod_id)
+            continue
+        script = m.root / DEACTIVATION_SCRIPT_NAME
+        if not script.is_file():
+            missing.append(mod_id)
+            continue
+        print(f"  ~ on_disable {mod_id}")
+        if dry_run:
+            ran.append(mod_id)
+            continue
+        env = os.environ.copy()
+        env["RSMM_GAME_DIR"] = str(game_dir)
+        env["RSMM_COOKING"] = str(cooking)
+        env["RSMM_MOD_DIR"] = str(m.root)
+        try:
+            r = subprocess.run(
+                [sys.executable, str(script)],
+                env=env, cwd=str(m.root),
+                timeout=DEACTIVATION_TIMEOUT_SEC,
+                capture_output=True, text=True,
+            )
+            if r.returncode != 0:
+                print(f"    on_disable {mod_id} exited {r.returncode}",
+                      file=sys.stderr)
+                if r.stdout:
+                    print(r.stdout, file=sys.stderr)
+                if r.stderr:
+                    print(r.stderr, file=sys.stderr)
+            else:
+                if r.stdout.strip():
+                    for ln in r.stdout.splitlines():
+                        print(f"    {ln}")
+            ran.append(mod_id)
+        except subprocess.TimeoutExpired:
+            print(f"    on_disable {mod_id} TIMEOUT after "
+                  f"{DEACTIVATION_TIMEOUT_SEC}s", file=sys.stderr)
+        except Exception as e:
+            print(f"    on_disable {mod_id} failed: {e}", file=sys.stderr)
+    return ran, missing
+
+
 def _sync_mod_manifests(game_dir: Path, dry_run: bool) -> int:
     """Copy manifest.toml from each mod to the game's mods/ directory.
     Also sync/remove init.lua based on enabled flag.
@@ -408,12 +495,18 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     dec2enc = load_asset_map(repo)
     mods = discover_mods(repo)
     state = State(cooking)
+
+    # Run on_disable.py for any mod that flipped enabled -> disabled BEFORE
+    # we touch assets, so the hook can read its own files / restore state
+    # while the install tree is still in its previous shape.
+    deact_ran, _ = _run_deactivation_hooks(mods, state, game_dir, cooking, args.dry_run)
+
     additions, removals = plan_apply(mods, dec2enc, cooking, game_dir, state, args.dry_run)
-    
+
     # Sync manifests so game knows which mods are enabled
     manifest_syncs = _sync_mod_manifests(game_dir, args.dry_run)
 
-    if not additions and not removals and not manifest_syncs:
+    if not additions and not removals and not manifest_syncs and not deact_ran:
         print("Mods already in sync.")
         return 0
 
@@ -428,6 +521,7 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
         print(f"Synced {manifest_syncs} mod file(s) (manifests/lua) to game mods directory")
 
     if not args.dry_run:
+        state.set_enabled_mods([m.id for m in mods if m.enabled])
         state.save()
         print(f"State written: {state.path}")
     return 0
