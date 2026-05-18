@@ -20,9 +20,11 @@ Cross-platform (Win / Linux / macOS). Browser auto-opens via
 from __future__ import annotations
 
 import argparse
+import hmac
 import io
 import json
 import re
+import secrets
 import socket
 import subprocess
 import sys
@@ -34,6 +36,14 @@ import zipfile
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+# Per-process auth + CSRF tokens. Generated fresh at server start in
+# main(); printed once to stderr; embedded in the auto-opened browser
+# URL. All /api/* requests must present AUTH_TOKEN (cookie or `?t=`);
+# POSTs must additionally present CSRF_TOKEN in X-RSMM-CSRF header.
+AUTH_TOKEN: str = ""
+CSRF_TOKEN: str = ""
+BOUND_HOST: str = ""   # "127.0.0.1:<port>"
 
 from rsmm.engine.paths import (
     REPO_ROOT, MODS_DIR, DEFAULT_GAME_DIR, COOKING_SUBDIR, ASSET_MAP_JSON,
@@ -464,15 +474,65 @@ class _Handler(BaseHTTPRequestHandler):
         sys.stderr.write("[gui] %s - %s\n" % (self.address_string(), fmt % args))
 
     def _send(self, status: int, body: bytes, content_type: str,
-              extra_headers: dict | None = None) -> None:
+              extra_headers: dict | None = None,
+              cookies: list[str] | None = None) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         for k, v in (extra_headers or {}).items():
             self.send_header(k, v)
+        for c in (cookies or []):
+            self.send_header("Set-Cookie", c)
         self.end_headers()
         self.wfile.write(body)
+
+    # ─── auth ────────────────────────────────────────────────────────
+
+    def _check_host(self) -> bool:
+        # Reject anything not addressed to the bound localhost:port.
+        # Blocks DNS rebinding + accidental external exposure.
+        host = self.headers.get("Host", "")
+        if host != BOUND_HOST:
+            self._send(HTTPStatus.FORBIDDEN, b"host mismatch\n",
+                       "text/plain; charset=utf-8")
+            return False
+        return True
+
+    def _read_auth_token(self) -> str:
+        # Cookie first; fall back to ?t=<token> query param so the
+        # first hit (no cookie yet) can authenticate via URL.
+        cookie = self.headers.get("Cookie", "")
+        for part in cookie.split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == "rsmm_auth":
+                return v
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        return (q.get("t") or [""])[0]
+
+    def _check_auth(self) -> bool:
+        tok = self._read_auth_token()
+        if not tok or not hmac.compare_digest(tok, AUTH_TOKEN):
+            self._send(HTTPStatus.FORBIDDEN, b"auth required\n",
+                       "text/plain; charset=utf-8")
+            return False
+        return True
+
+    def _check_csrf(self) -> bool:
+        csrf = self.headers.get("X-RSMM-CSRF", "")
+        if not csrf or not hmac.compare_digest(csrf, CSRF_TOKEN):
+            self._send(HTTPStatus.FORBIDDEN, b"csrf token missing\n",
+                       "text/plain; charset=utf-8")
+            return False
+        return True
+
+    def _auth_cookies(self) -> list[str]:
+        # HttpOnly for auth (JS never needs to read it).
+        # CSRF cookie is readable from JS so jpost() can echo it.
+        return [
+            f"rsmm_auth={AUTH_TOKEN}; Path=/; SameSite=Strict; HttpOnly",
+            f"rsmm_csrf={CSRF_TOKEN}; Path=/; SameSite=Strict",
+        ]
 
     def _send_json(self, status: int, obj: object) -> None:
         self._send(status, json.dumps(obj).encode("utf-8"),
@@ -494,11 +554,22 @@ class _Handler(BaseHTTPRequestHandler):
     # ─── routing ─────────────────────────────────────────────────────
 
     def do_GET(self) -> None:
+        if not self._check_host():
+            return
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+        # /api/* always requires auth (cookie or ?t=<token>).
+        if path.startswith("/api/") and not self._check_auth():
+            return
         if path == "/":
+            # First hit comes with ?t=<token>; if it matches, set the
+            # cookies so subsequent /api/* hits don't need the query.
+            cookies: list[str] = []
+            tok = self._read_auth_token()
+            if tok and hmac.compare_digest(tok, AUTH_TOKEN):
+                cookies = self._auth_cookies()
             self._send(HTTPStatus.OK, INDEX_HTML.encode("utf-8"),
-                       "text/html; charset=utf-8")
+                       "text/html; charset=utf-8", cookies=cookies)
             return
         if path == "/style.css":
             self._send(HTTPStatus.OK, STYLE_CSS.encode("utf-8"),
@@ -532,8 +603,15 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(HTTPStatus.NOT_FOUND, b"not found\n", "text/plain")
 
     def do_POST(self) -> None:
+        if not self._check_host():
+            return
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+        # All POSTs are /api/* and require both auth + CSRF.
+        if not self._check_auth():
+            return
+        if not self._check_csrf():
+            return
         query = urllib.parse.parse_qs(parsed.query)
 
         if path == "/api/toggle":
@@ -1565,11 +1643,22 @@ function esc(s) {
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;',
   })[c]);
 }
+function _getCookie(name) {
+  const m = document.cookie.split('; ').find(c => c.startsWith(name + '='));
+  return m ? m.slice(name.length + 1) : '';
+}
+const CSRF = _getCookie('rsmm_csrf');
 async function jget(url)  { return (await fetch(url)).json(); }
 async function jpost(url, body, opts={}) {
+  // Always inject CSRF on top of any caller-supplied headers — the
+  // server requires X-RSMM-CSRF on every POST.
+  const headers = Object.assign(
+    {}, opts.headers || {'Content-Type': 'application/json'},
+    {'X-RSMM-CSRF': CSRF}
+  );
   const r = await fetch(url, {
     method: 'POST',
-    headers: opts.headers || {'Content-Type': 'application/json'},
+    headers,
     body: opts.raw ? body : JSON.stringify(body || {}),
   });
   return r.json();
@@ -2323,10 +2412,19 @@ def main() -> int:
                     help="don't auto-open the browser")
     args = ap.parse_args()
 
+    global AUTH_TOKEN, CSRF_TOKEN, BOUND_HOST
+    AUTH_TOKEN = secrets.token_urlsafe(32)
+    CSRF_TOKEN = secrets.token_urlsafe(16)
+
     port = _pick_port(args.port)
+    BOUND_HOST = f"127.0.0.1:{port}"
     httpd = ThreadingHTTPServer(("127.0.0.1", port), _Handler)
-    url = f"http://127.0.0.1:{port}/"
-    print(f"rsmm gui listening at {url}")
+    url = f"http://{BOUND_HOST}/?t={AUTH_TOKEN}"
+    print(f"rsmm gui listening at http://{BOUND_HOST}/")
+    # Token only printed to stderr — keeps it out of stdout pipes /
+    # captured logs by accident, and matches the pattern used by
+    # `jupyter notebook` and friends.
+    print(f"  one-shot auth URL: {url}", file=sys.stderr)
     print("Ctrl-C to quit.")
 
     if not args.no_browser:
