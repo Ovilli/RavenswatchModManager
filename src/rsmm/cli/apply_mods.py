@@ -57,33 +57,11 @@ from rsmm.engine.paths import (
     COOKING_SUBDIR,
     _game_dir_candidates,
 )
-# Optional toml parsing; fall back to a tiny manifest reader if tomllib/toml missing.
-try:
-    import tomllib   # Python 3.11+
-    def parse_toml(p: Path) -> dict:
-        return tomllib.loads(p.read_text(encoding="utf-8"))
-except ImportError:
-    try:
-        import tomli
-        def parse_toml(p: Path) -> dict:
-            return tomli.loads(p.read_text(encoding="utf-8"))
-    except ImportError:
-        def parse_toml(p: Path) -> dict:
-            # very small fallback: only [mod] section, key = "value"
-            out: dict = {"mod": {}}
-            section = None
-            for line in p.read_text(encoding="utf-8").splitlines():
-                s = line.strip()
-                if not s or s.startswith("#"):
-                    continue
-                if s.startswith("[") and s.endswith("]"):
-                    section = s[1:-1]
-                    out.setdefault(section, {})
-                    continue
-                if "=" in s and section:
-                    k, _, v = s.partition("=")
-                    out[section][k.strip()] = v.strip().strip('"').strip("'")
-            return out
+import tomllib   # Python 3.11+
+
+
+def parse_toml(p: Path) -> dict:
+    return tomllib.loads(p.read_text(encoding="utf-8"))
 
 
 COOKING_REL = Path("DarkTalesResources/_Cooking")
