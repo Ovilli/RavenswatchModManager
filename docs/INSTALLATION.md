@@ -15,7 +15,7 @@ For **modding without Lua scripting**, you only need the Python tool. For **Lua 
 
 ## Common Prerequisites
 
-- **Python 3.10+** (for `rsmm` tools)
+- **Python 3.11+** (for `rsmm` tools)
 - **Ravenswatch** installed on your system
 
 ---
@@ -59,7 +59,7 @@ pip install -e .
 
 **Best for modders who just want to start modding quickly.**
 
-1. **Install Python 3.10+**
+1. **Install Python 3.11+**
    - Download from [python.org](https://www.python.org/downloads/) (Windows installer)
    - During installation, **check "Add Python to PATH"**
    - Verify: Open `cmd` and run:
@@ -91,7 +91,7 @@ pip install -e .
 **Prerequisites:**
 - Visual Studio 2019+ with C++ workload (download from [visualstudio.microsoft.com](https://visualstudio.microsoft.com/)) **OR** MinGW-w64
 - CMake (included with Visual Studio or install separately from [cmake.org](https://cmake.org/download/))
-- Python 3.10+ (see Option A, step 1)
+- Python 3.11+ (see Option A, step 1)
 - Git (from [git-scm.com](https://git-scm.com/download/win))
 
 **Quick build (using batch scripts):**
@@ -254,7 +254,7 @@ venv\Scripts\Activate.ps1
 
 ### Python version mismatch
 
-Ensure you're using Python 3.10+:
+Ensure you're using Python 3.11+:
 ```cmd
 python --version
 ```
