@@ -19,6 +19,7 @@ extern "C" {
 #include "loader.h"
 #include "fn_resolver.h"
 #include "fn_call.h"
+#include "hook_lua.h"
 
 #include <windows.h>
 
@@ -41,6 +42,15 @@ struct ModScript {
 
 std::mutex g_mu;
 std::unordered_map<std::string, ModScript> g_scripts;
+
+} // namespace
+
+// Exported so hook_lua.cpp can serialize Lua VM access across
+// hook-callback threads. Same mutex protects g_scripts + every
+// per-mod lua_State.
+std::mutex& script_lua_mutex() { return g_mu; }
+
+namespace {
 
 ModScript* current_from_state(lua_State* L) {
     lua_getfield(L, LUA_REGISTRYINDEX, "__rsmm_mod_id");
@@ -297,6 +307,59 @@ int lua_write_u64(lua_State* L) { return write_value<std::uint64_t>(L); }
 int lua_write_f32(lua_State* L) { return write_value<float        >(L); }
 int lua_write_f64(lua_State* L) { return write_value<double       >(L); }
 
+// rsmm.hook(name_or_va, sig, callback) -> slot_handle
+//   name_or_va: string (resolved via fn_resolve) or integer (runtime VA).
+//   sig:        rsmm.call-style "rXXXX" (first char = ret type, rest = args).
+//   callback:   function(arg1, arg2, ..., next).
+//     - Receives unpacked args + a `next` closure that replays the
+//       original game function with arbitrary args.
+//     - Return nil -> auto-call original with received args and return
+//       its result (read-only hook pattern).
+//     - Return value -> overrides the original return; original is NOT
+//       called unless the callback already invoked `next` explicitly.
+int lua_hook(lua_State* L) {
+    std::uintptr_t va = 0;
+    if (lua_isinteger(L, 1)) {
+        va = static_cast<std::uintptr_t>(lua_tointeger(L, 1));
+    } else if (lua_isstring(L, 1)) {
+        va = fn_resolve(lua_tostring(L, 1));
+        if (va == 0) return luaL_error(L, "rsmm.hook: unknown function '%s'",
+                                       lua_tostring(L, 1));
+    } else {
+        return luaL_error(L, "rsmm.hook: arg 1 must be address or name");
+    }
+    const char* sig = luaL_checkstring(L, 2);
+    if (!sig[0]) return luaL_error(L, "rsmm.hook: empty sig");
+    luaL_checktype(L, 3, LUA_TFUNCTION);
+
+    // Ref the callback into the current state's registry.
+    lua_pushvalue(L, 3);
+    int cb_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+
+    auto* m = current_from_state(L);
+    std::string mod_id = m ? m->id : std::string{"(unknown)"};
+
+    int slot = hook_lua_install(va, sig, L, cb_ref, mod_id);
+    if (slot < 0) {
+        luaL_unref(L, LUA_REGISTRYINDEX, cb_ref);
+        return luaL_error(L, "rsmm.hook: install failed (see _log.txt)");
+    }
+    lua_pushinteger(L, slot);
+    return 1;
+}
+
+int lua_unhook(lua_State* L) {
+    int slot = (int)luaL_checkinteger(L, 1);
+    bool ok = hook_lua_uninstall(slot);
+    lua_pushboolean(L, ok ? 1 : 0);
+    return 1;
+}
+
+int lua_hook_count(lua_State* L) {
+    lua_pushinteger(L, static_cast<lua_Integer>(hook_lua_active_count()));
+    return 1;
+}
+
 int lua_read_cstr(lua_State* L) {
     auto va = static_cast<std::uintptr_t>(luaL_checkinteger(L, 1));
     auto max = static_cast<std::size_t>(luaL_optinteger(L, 2, 1024));
@@ -336,6 +399,10 @@ void register_api(lua_State* L) {
         { "write_u64",               lua_write_u64 },
         { "write_f32",               lua_write_f32 },
         { "write_f64",               lua_write_f64 },
+        // Generic hook bridge
+        { "hook",                    lua_hook },
+        { "unhook",                  lua_unhook },
+        { "hook_count",              lua_hook_count },
         { nullptr, nullptr }
     };
     luaL_newlib(L, lib);
@@ -417,6 +484,9 @@ void script_reload_changed() {
     }
     for (auto& [id, root] : to_reload) {
         Loader::get().log("[lua] " + id + " reload (init.lua changed)");
+        // Drop the mod's hooks first; the slots hold cb_refs that
+        // become dangling the moment we close the lua_State.
+        hook_lua_unregister_mod(id);
         // Tear down old state, build new one.
         {
             std::lock_guard<std::mutex> g(g_mu);
@@ -433,6 +503,9 @@ void script_reload_changed() {
 }
 
 void script_shutdown_all() {
+    // Drop all hooks before any lua_State goes away so the trampoline
+    // dispatcher can't be entered with a destroyed VM.
+    hook_lua_shutdown();
     std::lock_guard<std::mutex> g(g_mu);
     for (auto& [_, s] : g_scripts) {
         if (s.L) lua_close(s.L);
