@@ -153,3 +153,11 @@ src/
 Everything modders touch lives at the top: `rsmm`, `mods/`, `docs/`.
 Engine internals stay in `src/rsmm/engine/` and are imported, not
 called directly.
+
+## License
+
+RSMM is released under the MIT License — see [`LICENSE`](LICENSE).
+
+The loader DLL bundles third-party code (MinHook, Dear ImGui, Lua 5.4);
+their license texts are reproduced in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
