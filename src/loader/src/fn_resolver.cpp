@@ -143,16 +143,16 @@ bool fn_resolver_init() {
     std::string body((std::istreambuf_iterator<char>(in)),
                      std::istreambuf_iterator<char>());
     std::size_t pos = 0;
-    auto skip_ws = [&]{ while (pos < body.size() && std::isspace((unsigned char)body[pos])) pos++; };
     auto find_str = [&](const std::string& key, std::size_t obj_end) -> std::string {
         std::string needle = "\"" + key + "\"";
         auto p = body.find(needle, pos);
         if (p == std::string::npos || p > obj_end) return {};
         p = body.find(':', p) + 1;
-        skip_ws();
-        if (body[p] != '"') return {};
+        while (p < body.size() && std::isspace((unsigned char)body[p])) p++;
+        if (p >= body.size() || body[p] != '"') return {};
         p++;
         auto end = body.find('"', p);
+        if (end == std::string::npos || end > obj_end) return {};
         return body.substr(p, end - p);
     };
     auto find_int = [&](const std::string& key, std::size_t obj_end) -> long long {
@@ -160,6 +160,7 @@ bool fn_resolver_init() {
         auto p = body.find(needle, pos);
         if (p == std::string::npos || p > obj_end) return 0;
         p = body.find(':', p) + 1;
+        while (p < body.size() && std::isspace((unsigned char)body[p])) p++;
         return std::strtoll(body.c_str() + p, nullptr, 10);
     };
     while (pos < body.size()) {
