@@ -49,7 +49,7 @@ def generate(out_dir: Path) -> list[Path]:
         written.append(p)
     index = out_dir / "README.md"
     idx_lines = ["# SDK v3 API reference", "",
-                 f"API version: see `rsmm.sdk.api.API_VERSION`", "",
+                 "API version: see `rsmm.sdk.api.API_VERSION`", "",
                  "## Modules", ""]
     for p in sorted(written):
         idx_lines.append(f"- [{p.stem}]({p.name})")

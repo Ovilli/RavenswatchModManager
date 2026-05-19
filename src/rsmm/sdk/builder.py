@@ -105,7 +105,7 @@ class ModBuilder:
             f'version = "{self.version}"',
             f'author = "{self.author}"',
             f'enabled = {"true" if self.enabled else "false"}',
-            f'sdk_version = ">=3.0,<4"',
+            'sdk_version = ">=3.0,<4"',
         ]
         if self._requires:
             lines += ["", "[dependencies]"]
