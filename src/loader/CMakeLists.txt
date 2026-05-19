@@ -29,35 +29,21 @@ add_library(lua54 STATIC ${LUA_SRC})
 target_include_directories(lua54 PUBLIC ${TP}/lua)
 target_compile_definitions(lua54 PUBLIC LUA_USE_WINDOWS=1)
 
-# --- ImGui core + backends ----------------------------------------------
-set(IMGUI ${TP}/imgui)
-set(IMGUI_SRC
-    ${IMGUI}/imgui.cpp
-    ${IMGUI}/imgui_draw.cpp
-    ${IMGUI}/imgui_tables.cpp
-    ${IMGUI}/imgui_widgets.cpp
-    ${IMGUI}/imgui_demo.cpp
-    ${IMGUI}/backends/imgui_impl_vulkan.cpp
-    ${IMGUI}/backends/imgui_impl_win32.cpp)
-add_library(imgui STATIC ${IMGUI_SRC})
-target_include_directories(imgui PUBLIC ${IMGUI} ${IMGUI}/backends ${TP}/Vulkan-Headers/include)
-target_compile_definitions(imgui PUBLIC
-    VK_USE_PLATFORM_WIN32_KHR=1
-    VK_NO_PROTOTYPES=1
-    IMGUI_IMPL_VULKAN_NO_PROTOTYPES=1)
-
 # --- Loader DLL ----------------------------------------------------------
+# In-game UI (hook_vk + hook_win32 + ImGui) removed: surface was never
+# feature-complete. The loader is now just asset-overrides (hook_io),
+# Lua VM (script_lua), and the generic hook bridge (hook_lua) that
+# backs the public rsmm.hook API.
 set(LOADER_SRC
     src/dllmain.cpp
     src/loader.cpp
     src/hook_io.cpp
-    src/hook_vk.cpp
-    src/hook_win32.cpp
     src/hook_engine.cpp
     src/hook_lua.cpp
     src/script_lua.cpp
     src/fn_resolver.cpp
-    src/fn_call.cpp)
+    src/fn_call.cpp
+    src/tls_callback.cpp)
 
 add_library(winhttp SHARED
     ${LOADER_SRC}
@@ -66,22 +52,13 @@ add_library(winhttp SHARED
 target_include_directories(winhttp PRIVATE
     include
     ${TP}/nlohmann
-    ${TP}/tomlplusplus
-    ${TP}/Vulkan-Headers/include
-    ${IMGUI}
-    ${IMGUI}/backends)
-
-target_compile_definitions(winhttp PRIVATE
-    VK_USE_PLATFORM_WIN32_KHR=1
-    VK_NO_PROTOTYPES=1
-    IMGUI_IMPL_VULKAN_NO_PROTOTYPES=1)
+    ${TP}/tomlplusplus)
 
 target_link_libraries(winhttp PRIVATE
     minhook
-    imgui
     lua54
     -static -static-libgcc -static-libstdc++
-    -lkernel32 -luser32 -lgdi32 -lpsapi -lole32 -ldwmapi -limm32)
+    -lkernel32 -luser32 -lgdi32 -lpsapi -lole32)
 
 set_target_properties(winhttp PROPERTIES
     PREFIX ""

@@ -57,6 +57,12 @@ fi
 install -m 0644 "$DLL" "$GAME_DIR/winhttp.dll"
 install -m 0644 "$REPO_DIR/data/asset_map.json" "$GAME_DIR/asset_map.json"
 
+# Lua-side SDK: mods do `require "rsmm"` and get the documented R.* surface.
+mkdir -p "$GAME_DIR/rsmm/lib"
+if [[ -f "$REPO_DIR/src/loader/lib/rsmm.lua" ]]; then
+    install -m 0644 "$REPO_DIR/src/loader/lib/rsmm.lua" "$GAME_DIR/rsmm/lib/rsmm.lua"
+fi
+
 mkdir -p "$GAME_DIR/mods"
 # Sync mod manifests + init.lua so the loader's scan_mods sees every
 # repo-side mod AND can run each mod's Lua. Cooked-asset overrides go

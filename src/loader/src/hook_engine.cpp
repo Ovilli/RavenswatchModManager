@@ -131,11 +131,4 @@ void remove_engine_hooks() {
                       + std::to_string(g_lookup_calls.load()) + ")");
 }
 
-bool install_steam_hooks() {
-    return false;
-}
-
-void remove_steam_hooks() {
-}
-
 } // namespace rsmm

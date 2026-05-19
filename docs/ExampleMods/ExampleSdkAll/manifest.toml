@@ -1,0 +1,11 @@
+[mod]
+id          = "ExampleSdkAll"
+name        = "Example: SDK v3 smoke test"
+version     = "0.1.0"
+author      = "RSMM"
+description = "Exercises config, i18n, inter-mod API, events, schedule."
+enabled     = true
+sdk_version = ">=3.0,<4"
+
+[provides]
+api = "exampleall"

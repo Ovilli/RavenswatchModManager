@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""rsmm — single CLI for Ravenswatch mod authoring + install.
+"""rsmm — single CLI for Ravenswatch mod install + lifecycle.
 
-Subcommands wrap the legacy `make_*` generators with friendlier names
-and routes them through one help screen.
+Mods are written in Lua against the SDK. Drop a mod under `mods/<id>/`,
+start its `init.lua` with `local R = require "rsmm"`, and use the
+documented `R.*` API. See `docs/MODDING.md`.
+
+This CLI is install + lifecycle only. The per-feature `make_*` generators
+(stat, item, text, texture, url, menu-button, social-tab, mods-list) are
+gone: anything they used to produce is now an SDK call inside a mod.
 
     rsmm apply [--dry-run]              install mods/ into the game
     rsmm restore [--all]                roll back active overrides
@@ -13,7 +18,6 @@ and routes them through one help screen.
                                         original game assets — don't
                                         redistribute Ravenswatch content)
 
-    rsmm gui                            open the browser-based mod manager UI
     rsmm doctor                         system health check (recommended often)
     rsmm watch [--interval N]           re-apply on every mods/ change
     rsmm build [--skip-loader]          asset map + loader + merge + apply
@@ -24,22 +28,13 @@ and routes them through one help screen.
     rsmm merge                          compose [[patch]] blocks into mods/_merged
     rsmm compat                         analyze requires/conflicts/replaces graph
     rsmm lint [<id>]                    validate manifests + asset paths
-    rsmm explain <id>                   show a mod's full patch plan
     rsmm test [<id>] [--record]         diff build.py output vs checked-in fixture
 
-    rsmm stat   ...                     patch balance / modifier / camp diff
-    rsmm texture ...                    swap textures by donor reference
-    rsmm text   ...                     override translation strings
-    rsmm url    ...                     redirect main-menu URLs
-    rsmm menu-button                    clone the Discord button as 'Mods'
-    rsmm social-tab                     add the in-game Social book Mods tab
-    rsmm mods-list                      ship the Mods_List cooked entity
-    rsmm install-loader [game-dir]      copy winhttp.dll into the game install
+    rsmm install-loader [game-dir]      copy winhttp.dll + SDK lib into the game install
     rsmm log [-f] [-n N] [--grep S]     read the loader log without leaving the repo
                                         (--clear truncates, --path prints location)
     rsmm rebuild-asset-map              re-run find_iyg.py from UsedRscList.ot
     rsmm decode <cooked-file>           dump oCTextSaver structure
-    rsmm process-clicks                 drain in-game click toggles
 
 Help for any subcommand: `rsmm <cmd> --help`.
 """
@@ -72,32 +67,95 @@ def _run_shell(script: Path, argv: list[str]) -> int:
     return subprocess.call([str(script), *argv])
 
 
+_CONTENT_KINDS = ("item", "enemy", "boss", "map", "hero")
+
+
 def cmd_new(argv: list[str]) -> int:
     from rsmm.engine.paths import MODS_DIR
-    if len(argv) != 1:
-        print("usage: rsmm new <id>", file=sys.stderr)
+    kind: str | None = None
+    args: list[str] = []
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--kind":
+            i += 1
+            if i >= len(argv):
+                print("--kind takes a value", file=sys.stderr)
+                return 2
+            kind = argv[i]
+        elif a.startswith("--kind="):
+            kind = a.split("=", 1)[1]
+        else:
+            args.append(a)
+        i += 1
+    if len(args) != 1:
+        print(f"usage: rsmm new <id> [--kind {'|'.join(_CONTENT_KINDS)}]",
+              file=sys.stderr)
         return 2
-    mod_id = argv[0]
+    if kind is not None and kind not in _CONTENT_KINDS:
+        print(f"--kind must be one of: {', '.join(_CONTENT_KINDS)}",
+              file=sys.stderr)
+        return 2
+    mod_id = args[0]
     target = MODS_DIR / mod_id
     if target.exists():
         print(f"mod already exists: {target}", file=sys.stderr)
         return 1
     (target / "assets").mkdir(parents=True)
-    (target / "manifest.toml").write_text(
-        "[mod]\n"
-        f'id          = "{mod_id}"\n'
-        f'name        = "{mod_id}"\n'
-        'version     = "0.1.0"\n'
-        'author      = "you"\n'
-        'description = ""\n'
-        "enabled     = true\n",
+
+    manifest = [
+        "[mod]",
+        f'id          = "{mod_id}"',
+        f'name        = "{mod_id}"',
+        'version     = "0.1.0"',
+        'author      = "you"',
+        'description = ""',
+        "enabled     = true",
+        'sdk_version = ">=3.0,<4"',
+    ]
+    if kind:
+        manifest += [
+            "",
+            "[[content]]",
+            f'kind        = "{kind}"',
+            f'id          = "{mod_id}_{kind}_1"',
+            'base        = "<vanilla id to clone>"',
+            f'name        = "{mod_id} sample {kind}"',
+            'description = ""',
+        ]
+    (target / "manifest.toml").write_text("\n".join(manifest) + "\n",
+                                          encoding="utf-8")
+
+    (target / "init.lua").write_text(
+        '-- ' + mod_id + ' — see docs/MODDING.md for the SDK reference.\n'
+        '\n'
+        'local R = require "rsmm"\n'
+        'R.health.checkpoint("per_mod:' + mod_id + '")\n'
+        '\n'
+        'R.on("ready", function()\n'
+        '    R.log("[' + mod_id + '] loaded")\n'
+        'end)\n',
+        encoding="utf-8",
+    )
+    # Optional starter config + i18n so authors see the v3 shape.
+    (target / "config_schema.toml").write_text(
+        '# Optional: declare typed config fields here.\n'
+        '# [fields.example]\n'
+        '# type    = "bool"\n'
+        '# default = true\n',
+        encoding="utf-8",
+    )
+    (target / "lang").mkdir()
+    (target / "lang" / "EN.toml").write_text(
+        '[strings]\n'
+        f'name = "{mod_id}"\n',
         encoding="utf-8",
     )
     (target / "README.md").write_text(
         f"# {mod_id}\n\nDescribe your mod here.\n", encoding="utf-8",
     )
-    print(f"Created {target}")
-    print("Next: drop cooked files under assets/, then `rsmm apply`.")
+    print(f"Created {target}" + (f" (kind={kind})" if kind else ""))
+    print("Next: edit init.lua + manifest.toml, then `rsmm apply`.")
     return 0
 
 
@@ -338,21 +396,17 @@ def cmd_log(argv: list[str]) -> int:
             return 0
 
 
-# Legacy generator dispatch.
+# CLI dispatch. After the SDK pivot the per-feature `make_*` generators
+# are gone: mods are written in Lua against the SDK (require "rsmm"),
+# not built from CLI args. What's left here is the install + lifecycle
+# surface plus a few infrastructure helpers (merge, compat, lint) the
+# applier uses internally and ships as small standalone commands for
+# debugging.
 LEGACY = {
     "apply":         ("rsmm.cli.apply_mods",                 []),
     "list":          ("rsmm.cli.apply_mods",                 ["--list"]),
     "restore":       ("rsmm.cli.apply_mods",                 ["--restore-all"]),
-    "stat":          ("rsmm.cli.make_stat_mod",              []),
-    "texture":       ("rsmm.cli.make_texture_mod",           []),
-    "text":          ("rsmm.cli.make_text_mod",              []),
-    "url":           ("rsmm.cli.make_url_mod",               []),
-    "menu-button":   ("rsmm.cli.make_real_menu_button_mod",  []),
-    "social-tab":    ("rsmm.cli.make_social_mods_page_mod",  []),
-    "mods-list":     ("rsmm.cli.make_mods_list_entity",      []),
-    "process-clicks":("rsmm.cli.process_clicks",             []),
     # System
-    "gui":           ("rsmm.cli.gui",                        []),
     "doctor":        ("rsmm.cli.doctor",                     []),
     "watch":         ("rsmm.cli.watch",                      []),
     "build":         ("rsmm.cli.build",                      []),
@@ -360,7 +414,6 @@ LEGACY = {
     "merge":         ("rsmm.cli.merge",                      []),
     "compat":        ("rsmm.cli.compat",                     []),
     "lint":          ("rsmm.cli.lint",                       []),
-    "explain":       ("rsmm.cli.explain",                    []),
     "test":          ("rsmm.cli.test",                       []),
 }
 
@@ -385,6 +438,14 @@ def main(argv: list[str]) -> int:
     if sub == "rebuild-asset-map": return cmd_rebuild_map(rest)
     if sub == "install-loader": return cmd_install_loader(rest)
     if sub == "log":            return cmd_log(rest)
+
+    # SDK v3 subcommands.
+    if sub == "safe-mode":      return _dispatch_module("rsmm.cli.safe_mode", rest)
+    if sub in ("repo", "sign", "verify", "keygen"):
+        return _dispatch_module("rsmm.cli.repo_cmd", [sub, *rest])
+    if sub == "sdk-doctor":     return _dispatch_module("rsmm.cli.sdk_doctor", rest)
+    if sub == "docs-gen":       return _dispatch_module("rsmm.cli.docs_gen_cmd", rest)
+    if sub == "update":         return _dispatch_module("rsmm.cli.update_cmd", rest)
 
     if sub in LEGACY:
         mod, prefix = LEGACY[sub]

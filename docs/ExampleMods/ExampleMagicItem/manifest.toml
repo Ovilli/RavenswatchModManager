@@ -1,0 +1,16 @@
+[mod]
+id          = "ExampleMagicItem"
+name        = "Example: Magic Item"
+version     = "0.3.0"
+author      = "rsmm-examples"
+description = "Declarative custom magical object via [[content]] block. Clone-and-patch of a vanilla rare item; full game-side registration completes once the MagicalObject schema is mined."
+enabled     = false
+sdk_version = ">=3.0,<4"
+
+[[content]]
+kind        = "item"
+id          = "Iron_Crab_Hide"
+base        = "Common/Armor_Per_Object"
+name        = "Iron Crab Hide"
+description = "Bonus armor per rare object collected."
+rarity      = "Common"

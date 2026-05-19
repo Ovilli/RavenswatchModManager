@@ -1,8 +1,9 @@
 """Engine internals: cipher, decoder, asset map loader, repo paths.
 
-Modder code should import from `rsmm.sdk` (when added) or call the
-top-level `rsmm` CLI. This package is internal and stable only across
-RE-version bumps.
+Modder code should not import from this package directly. The supported
+mod-authoring surface is the Lua SDK (`require "rsmm"` from init.lua);
+this Python tree is host-only infrastructure used by the CLI to install
+mods and ship the loader.
 """
 
 from .paths import (
