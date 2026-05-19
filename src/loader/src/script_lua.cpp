@@ -371,21 +371,34 @@ int lua_read_cstr(lua_State* L) {
 }
 
 void register_api(lua_State* L) {
-    static const luaL_Reg lib[] = {
+    // Public, documented surface. This is what a mod author writes against.
+    // High-level behaviors (R.item.register / R.scaling / R.talent / ...)
+    // live in the Lua-side `rsmm` module installed alongside the loader
+    // and are loaded by `require "rsmm"`.
+    static const luaL_Reg public_lib[] = {
         { "log",                     lua_log },
         { "mod_dir",                 lua_mod_dir },
         { "register_asset_override", lua_register_asset_override },
         { "on_event",                lua_on_event },
         { "commit",                  lua_commit },
+        { "hook",                    lua_hook },
+        { "unhook",                  lua_unhook },
+        { "hook_count",              lua_hook_count },
+        { nullptr, nullptr }
+    };
+    // Power-user / SDK-internal surface. Not documented in the modding
+    // guide. The high-level `rsmm` Lua module uses these under the hood;
+    // mod authors should reach for the documented `R.*` API first and
+    // only drop down here when nothing covers their case.
+    static const luaL_Reg internal_lib[] = {
+        { "resolve",                 lua_resolve },
+        { "call",                    lua_call_native },
+        { "module_base",             lua_module_base },
         { "game_dir",                lua_game_dir },
         { "is_in_main_menu",         lua_is_in_main_menu },
         { "list_mods",               lua_list_mods },
         { "encoded_path",            lua_encoded_path },
         { "decoded_path",            lua_decoded_path },
-        // Game-function access
-        { "resolve",                 lua_resolve },
-        { "call",                    lua_call_native },
-        { "module_base",             lua_module_base },
         { "read_u8",                 lua_read_u8 },
         { "read_u16",                lua_read_u16 },
         { "read_u32",                lua_read_u32 },
@@ -399,13 +412,11 @@ void register_api(lua_State* L) {
         { "write_u64",               lua_write_u64 },
         { "write_f32",               lua_write_f32 },
         { "write_f64",               lua_write_f64 },
-        // Generic hook bridge
-        { "hook",                    lua_hook },
-        { "unhook",                  lua_unhook },
-        { "hook_count",              lua_hook_count },
         { nullptr, nullptr }
     };
-    luaL_newlib(L, lib);
+    luaL_newlib(L, public_lib);          // -1 = rsmm
+    luaL_newlib(L, internal_lib);        // -2 = rsmm, -1 = _internal
+    lua_setfield(L, -2, "_internal");
     lua_setglobal(L, "rsmm");
 }
 
@@ -423,6 +434,28 @@ bool script_run_mod_init(const std::string& mod_id,
     lua_pushstring(L, mod_id.c_str());
     lua_setfield(L, LUA_REGISTRYINDEX, "__rsmm_mod_id");
     register_api(L);
+
+    // Prepend `<game>/rsmm/lib/?.lua` to package.path so `require "rsmm"`
+    // (and friends) resolve to the SDK module that ships next to the
+    // loader. Without this Lua's default search path would only find
+    // mods/<id>/init.lua. The native `rsmm` global stays available as a
+    // fallback for low-level scripts that don't want the wrapper.
+    {
+        const auto sdk_lib_dir =
+            Loader::get().game_dir() / "rsmm" / "lib";
+        const std::string entry =
+            sdk_lib_dir.string() + "/?.lua;" +
+            sdk_lib_dir.string() + "/?/init.lua;";
+        lua_getglobal(L, "package");
+        if (lua_istable(L, -1)) {
+            lua_getfield(L, -1, "path");
+            const std::string cur = lua_isstring(L, -1) ? lua_tostring(L, -1) : "";
+            lua_pop(L, 1);
+            lua_pushstring(L, (entry + cur).c_str());
+            lua_setfield(L, -2, "path");
+        }
+        lua_pop(L, 1);
+    }
 
     ModScript& s = g_scripts[mod_id];
     s.L    = L;

@@ -1,7 +1,8 @@
 [mod]
 id          = "ExampleHookSmoke"
 name        = "Example: rsmm.hook smoke test"
-version     = "0.1.0"
+version     = "0.2.0"
 author      = "rsmm-examples"
-description = "Installs a no-op Lua hook on FUN_140487040 (the engine resource-by-path lookup) to validate the rsmm.hook bridge end-to-end. Logs the first 5 calls then stays silent. Pass-through; doesn't change game behavior."
+description = "Installs a no-op Lua hook on FUN_140487040 (engine resource-by-path lookup) to validate the rsmm.hook bridge. Logs the first 5 calls then stays silent. Pass-through; does not change game behavior."
 enabled     = false
+sdk_version = ">=3.0,<4"

@@ -1,0 +1,3 @@
+[strings]
+hello   = "Hallo, {name}!"
+loaded  = "ExampleSdkAll geladen"

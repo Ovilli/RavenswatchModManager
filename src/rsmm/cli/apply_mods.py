@@ -147,6 +147,7 @@ class Mod:
         self.author: str = m.get("author", "")
         self.enabled: bool = bool(m.get("enabled", True))
         self.assets_dir = root / "assets"
+        self.content_blocks: list[dict] = list(tbl.get("content", []) or [])
 
     def files(self) -> list[tuple[Path, str]]:
         out: list[tuple[Path, str]] = []
@@ -156,6 +157,12 @@ class Mod:
             if not f.is_file():
                 continue
             decoded = f.relative_to(self.assets_dir).as_posix()
+            # `_pending_*` dirs are SDK content-emission staging output
+            # consumed by the merge step. They are not raw cooked assets
+            # so the applier must not try to install them under
+            # `_Cooking/` directly.
+            if decoded.split("/", 1)[0].startswith("_pending_"):
+                continue
             out.append((f, decoded))
         return out
 
@@ -251,6 +258,77 @@ def discover_mods(repo: Path) -> list[Mod]:
         except Exception as e:
             print(f"  skip {entry.name}: {e}", file=sys.stderr)
     return mods
+
+
+def emit_content_blocks(mods: list[Mod]) -> int:
+    """Materialize every mod's [[content]] block declarations under its
+    own `assets/` tree. Idempotent — re-running just refreshes the
+    emitted marker JSON files.
+
+    Returns the number of declarations processed. Errors per-mod are
+    logged + skipped; the applier still proceeds with the remaining
+    mods so one bad content def doesn't break a batch.
+    """
+    try:
+        from rsmm.sdk.content import ContentRegistry, ContentError, SchemaNotMined
+    except Exception as e:
+        print(f"  [content] sdk import failed: {e}", file=sys.stderr)
+        return 0
+    total = 0
+    for m in mods:
+        if not m.enabled or not m.content_blocks:
+            continue
+        cr = ContentRegistry(mod_id=m.id)
+        for block in m.content_blocks:
+            kind = block.get("kind")
+            cid = block.get("id")
+            if not kind or not cid:
+                print(f"  [content] {m.id}: skip block missing kind/id: {block}",
+                      file=sys.stderr)
+                continue
+            try:
+                cr.register(kind, id=cid,
+                            **{k: v for k, v in block.items()
+                               if k not in ("kind", "id")})
+            except ContentError as e:
+                print(f"  [content] {m.id}: {e}", file=sys.stderr)
+        out_dir = m.assets_dir
+        try:
+            written = cr.emit(out_dir)
+            total += len(written)
+            if written:
+                print(f"  [content] {m.id}: emitted {len(written)} file(s)")
+        except SchemaNotMined as e:
+            print(f"  [content] {m.id}: schema not mined yet: {e}",
+                  file=sys.stderr)
+        except Exception as e:
+            print(f"  [content] {m.id}: emit failed: {e}", file=sys.stderr)
+    return total
+
+
+def apply_health_quarantine(mods: list[Mod], cooking: Path) -> list[Mod]:
+    """Disable mods the health system has quarantined (>= crash threshold).
+
+    Idempotent: the on-disk manifest stays untouched. We flip `enabled`
+    in-memory only so the applier skips them. `rsmm safe-mode --reset
+    <id>` re-enables a mod after the user fixes it.
+    """
+    try:
+        from rsmm.sdk.health import Health
+        quarantined = Health(cooking).disabled_mods()
+    except Exception as e:
+        print(f"  [health] skipped: {e}", file=sys.stderr)
+        return mods
+    if not quarantined:
+        return mods
+    out: list[Mod] = []
+    for m in mods:
+        if m.enabled and m.id in quarantined:
+            print(f"  [health] quarantined {m.id} (crash threshold hit); "
+                  f"`rsmm safe-mode --reset {m.id}` to re-enable")
+            m.enabled = False
+        out.append(m)
+    return out
 
 
 def plan_apply(mods: list[Mod],
@@ -494,7 +572,22 @@ def _sync_mod_manifests(game_dir: Path, dry_run: bool) -> int:
 def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     dec2enc = load_asset_map(repo)
     mods = discover_mods(repo)
+    mods = apply_health_quarantine(mods, cooking)
+    # Materialize [[content]] declarations before computing the asset
+    # plan so the emitted files are picked up like any other asset.
+    emit_content_blocks(mods)
     state = State(cooking)
+
+    # If a previous apply crashed mid-write, the stage dir may still be
+    # around. Clear/finish it before computing the new plan so we're
+    # diffing against a clean install tree.
+    try:
+        from rsmm.sdk.transaction import ApplyTransaction
+        tx_recover = ApplyTransaction(cooking).recover()
+        if tx_recover != "clean":
+            print(f"  [apply] recovered previous staging state: {tx_recover}")
+    except Exception as e:
+        print(f"  [apply] recover skipped: {e}", file=sys.stderr)
 
     # Run on_disable.py for any mod that flipped enabled -> disabled BEFORE
     # we touch assets, so the hook can read its own files / restore state

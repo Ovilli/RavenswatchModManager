@@ -1,0 +1,17 @@
+[fields.damage_mult]
+type    = "float"
+min     = 0.1
+max     = 10.0
+default = 1.0
+label   = "Damage multiplier"
+
+[fields.enable_logging]
+type    = "bool"
+default = true
+label   = "Verbose log"
+
+[fields.mode]
+type    = "enum"
+choices = ["soft", "hard"]
+default = "soft"
+label   = "Mode"

@@ -1,0 +1,8 @@
+[mod]
+id          = "ExampleSdkHello"
+name        = "Example: SDK hello"
+version     = "0.2.0"
+author      = "rsmm-examples"
+description = "Smallest possible mod using SDK v3. Logs once on ready + bumps a counter every tick."
+enabled     = false
+sdk_version = ">=3.0,<4"

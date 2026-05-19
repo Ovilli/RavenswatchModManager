@@ -1,4 +1,14 @@
 // Ravenswatch Mod Manager — winhttp proxy entry point.
+//
+// Loader scope after the SDK-pivot cut:
+//   * IAT-redirected asset overrides (hook_io)
+//   * Lua VM per mod (script_lua), with hot-reload
+//   * Generic Lua hook bridge (hook_lua) backing the public rsmm.hook
+//   * Pattern-resolved engine baseline verifier (hook_engine), off by default
+//
+// Removed: in-game ImGui overlay (hook_vk, hook_win32) and Steam vtable
+// integration. Reason: the overlay surfaces were never feature-complete
+// and we don't ship things that don't work.
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -9,7 +19,6 @@
 #include "MinHook.h"
 #include "loader.h"
 #include "hook_io.h"
-#include "hook_vk.h"
 #include "hook_engine.h"
 #include "script_lua.h"
 
@@ -50,15 +59,7 @@ static void loader_thread() {
             L.log("IO hook disabled by default (set RSMM_ENABLE_IO=1 to enable)");
         }
 
-        if (GetEnvironmentVariableA("RSMM_ENABLE_VK", buf, sizeof(buf)) && buf[0] == '1') {
-            L.log("RSMM_ENABLE_VK=1: installing VK hook (may crash game)");
-            rsmm::install_vulkan_hooks();
-        } else {
-            L.log("VK hook disabled by default (set RSMM_ENABLE_VK=1 to enable)");
-        }
-
         rsmm::install_engine_hooks();
-        rsmm::install_steam_hooks();
 
         rsmm::script_emit_event("ready");
         L.log("loader thread complete");
@@ -95,9 +96,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID) {
     } else if (reason == DLL_PROCESS_DETACH) {
         rsmm::script_emit_event("exit");
         rsmm::script_shutdown_all();
-        rsmm::remove_steam_hooks();
         rsmm::remove_engine_hooks();
-        rsmm::remove_vulkan_hooks();
         rsmm::remove_io_hooks();
         MH_Uninitialize();
         rsmm::Loader::get().shutdown();
