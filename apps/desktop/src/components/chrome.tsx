@@ -177,7 +177,8 @@ function renderInline(src: string, keyPrefix: string): ReactNode[] {
   let lastIdx = 0;
   let match: RegExpExecArray | null;
   let n = 0;
-  while ((match = pattern.exec(src)) !== null) {
+  match = pattern.exec(src);
+  while (match !== null) {
     if (match.index > lastIdx) nodes.push(src.slice(lastIdx, match.index));
     const tok = match[0];
     const key = `${keyPrefix}-${n++}`;
@@ -202,6 +203,7 @@ function renderInline(src: string, keyPrefix: string): ReactNode[] {
       }
     }
     lastIdx = match.index + tok.length;
+    match = pattern.exec(src);
   }
   if (lastIdx < src.length) nodes.push(src.slice(lastIdx));
   return nodes;
@@ -241,8 +243,8 @@ export function Markdown({ source, className }: { source: string; className?: st
           case 'ul':
             return (
               <ul key={k} className="font-serif-italic list-disc space-y-1 pl-6">
-                {(b.items ?? []).map((it, j) => (
-                  <li key={`${k}-${j}`}>{renderInline(it, `${k}-${j}`)}</li>
+                {(b.items ?? []).map((it) => (
+                  <li key={`${k}-${it}`}>{renderInline(it, `${k}-${it}`)}</li>
                 ))}
               </ul>
             );

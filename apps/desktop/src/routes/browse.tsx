@@ -100,7 +100,7 @@ function BrowsePage() {
         {list.map((m) => {
           const here = installed.includes(m.id);
           return (
-            <article
+            <div
               key={m.id}
               role="link"
               tabIndex={0}
@@ -165,7 +165,7 @@ function BrowsePage() {
                   label={`${m.downloads.toLocaleString()} dl`}
                 />
               </div>
-            </article>
+            </div>
           );
         })}
       </div>

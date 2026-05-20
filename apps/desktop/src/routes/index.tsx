@@ -167,7 +167,7 @@ function CardGrid({ items, profile, onOpen, onToggle, onUninstall }: RowProps) {
         const enabled = !profile.disabled.has(id);
         const outdated = mod.version !== mod.latestVersion;
         return (
-          <article
+          <div
             key={id}
             role="link"
             tabIndex={0}
@@ -220,7 +220,7 @@ function CardGrid({ items, profile, onOpen, onToggle, onUninstall }: RowProps) {
                 uninstall
               </Button>
             </div>
-          </article>
+          </div>
         );
       })}
     </div>
