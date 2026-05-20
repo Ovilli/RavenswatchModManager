@@ -4,6 +4,7 @@ import { AlertTriangle } from 'lucide-react';
 import { WindowMinimizeIcon } from '../components/icons/WindowMinimizeIcon';
 import { WindowMaximizeIcon } from '../components/icons/WindowMaximizeIcon';
 import { WindowCloseIcon } from '../components/icons/WindowCloseIcon';
+import type { CSSProperties } from 'react';
 import { useMemo, useState, useEffect } from 'react';
 import { AboutIcon } from '../components/icons/AboutIcon';
 import { BrowseIcon } from '../components/icons/BrowseIcon';
@@ -37,6 +38,11 @@ const NAV: Nav[] = [
   { to: '/about', icon: AboutIcon, label: 'About' },
 ];
 
+type AppRegionStyle = CSSProperties & { WebkitAppRegion?: 'drag' | 'no-drag' };
+
+const dragStyle: AppRegionStyle = { WebkitAppRegion: 'drag' };
+const noDragStyle: AppRegionStyle = { WebkitAppRegion: 'no-drag' };
+
 function NavLink({ to, icon: Icon, label }: Nav) {
   return (
     <Link
@@ -66,7 +72,7 @@ function StatusStrip() {
 
   return (
     <div className="surface-grain flex items-center justify-between gap-3 border-b border-border px-3 py-2 backdrop-blur-sm">
-      <div className="flex items-center gap-4" style={{ WebkitAppRegion: 'drag' as any }}>
+      <div className="flex items-center gap-4" style={dragStyle}>
         <span className="font-fraktur text-lg text-parchment">Ravenswatch Mod Manager</span>
         <span className="font-serif-italic text-ash">
           {profile.name} <span className="text-ash/60">·</span> {profiles.length} profiles
@@ -74,7 +80,7 @@ function StatusStrip() {
       </div>
 
       <div className="flex items-center gap-2">
-        <div className="flex items-center gap-2 pr-2" style={{ WebkitAppRegion: 'no-drag' as any }}>
+        <div className="flex items-center gap-2 pr-2" style={noDragStyle}>
           <Button
             type="button"
             size="sm"
@@ -94,7 +100,7 @@ function StatusStrip() {
           </Button>
         </div>
 
-        <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' as any }}>
+        <div className="flex items-center gap-2" style={noDragStyle}>
           <StatPill value={enabled} label="enabled" />
           <StatPill value={disabled} label="disabled" />
           {outdated > 0 ? (
@@ -128,8 +134,8 @@ function WindowControls() {
     let mounted = true;
     (async () => {
       try {
-        const { appWindow } = await import('@tauri-apps/api/window');
-        const isMax = await appWindow.isMaximized();
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const isMax = await getCurrentWindow().isMaximized();
         if (mounted) setMaximized(isMax);
       } catch (e) {
         // not running in Tauri - ignore
@@ -143,20 +149,13 @@ function WindowControls() {
 
   async function getAppWindow() {
     try {
-      const mod = await import('@tauri-apps/api/window');
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
       // debug
       // diagnostic logs removed
-      // modern exports: appWindow or getCurrent()/getCurrentWindow()/getCurrentWindow
-      if (mod.appWindow) return mod.appWindow;
-      if (typeof mod.getCurrent === 'function') return mod.getCurrent();
-      if (typeof mod.getCurrentWindow === 'function') return mod.getCurrentWindow();
-      if (typeof (mod as any).getCurrentWindow === 'function') return (mod as any).getCurrentWindow();
-      if (typeof (mod as any).getCurrentWindow === 'function') return (mod as any).getCurrentWindow();
-      // WebviewWindow fallback
-      if (mod.WebviewWindow && typeof mod.WebviewWindow.getByLabel === 'function') {
-        return mod.WebviewWindow.getByLabel('main');
-      }
-      return null;
+      const appWindow = getCurrentWindow();
+      if (appWindow) return appWindow;
+      return WebviewWindow.getCurrent();
     } catch (err) {
       // import failure logged elsewhere; swallow here
       return null;
@@ -213,18 +212,28 @@ function WindowControls() {
   };
 
   const RestoreIcon = ({ className }: { className?: string }) => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
       <rect x="6" y="6" width="12" height="12" rx="1.2" />
       <path d="M9 6V4h8v8h-2" />
     </svg>
   );
 
   return (
-    <div className="window-controls flex items-center gap-2 ml-3" style={{ WebkitAppRegion: 'no-drag' as any }}>
-      <button title="Minimize" onClick={doMinimize} aria-label="Minimize" className="wc-btn wc-minimize">
+    <div className="window-controls ml-3 flex items-center gap-2" style={noDragStyle}>
+      <button type="button" title="Minimize" onClick={doMinimize} aria-label="Minimize" className="wc-btn wc-minimize">
         <WindowMinimizeIcon className="h-4 w-4 text-parchment" />
       </button>
       <button
+        type="button"
         title={maximized ? 'Restore' : 'Maximize'}
         onClick={doToggleMax}
         aria-label={maximized ? 'Restore' : 'Maximize'}
@@ -232,7 +241,7 @@ function WindowControls() {
       >
         {maximized ? <RestoreIcon className="h-4 w-4 text-parchment" /> : <WindowMaximizeIcon className="h-4 w-4 text-parchment" />}
       </button>
-      <button title="Close" onClick={doClose} aria-label="Close" className="wc-btn wc-close">
+      <button type="button" title="Close" onClick={doClose} aria-label="Close" className="wc-btn wc-close">
         <WindowCloseIcon className="h-4 w-4 text-crimson" />
       </button>
     </div>

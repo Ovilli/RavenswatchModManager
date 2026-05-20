@@ -10,6 +10,12 @@ type Promo = {
   sponsor?: string;
 };
 
+type TauriBridge = {
+  shell?: {
+    open?: (url: string) => Promise<void> | void;
+  };
+};
+
 const FALLBACK: Promo[] = [
   {
     id: 'partner-1',
@@ -36,7 +42,8 @@ export default function PromotedBanner({ vertical }: { vertical?: boolean } = {}
         if (raw) {
           const parsed = JSON.parse(raw);
           if (Date.now() - parsed.ts < TTL && parsed.data && parsed.data.length) {
-            if (mounted) setPromo(parsed.data[0]);
+            const cachedPromo = parsed.data[0];
+            if (mounted && cachedPromo) setPromo(cachedPromo);
             return;
           }
         }
@@ -46,9 +53,10 @@ export default function PromotedBanner({ vertical }: { vertical?: boolean } = {}
           const resp = await fetch('/promos.json', { cache: 'no-store' });
           if (resp.ok) {
             const data: Promo[] = await resp.json();
-            if (data && data.length) {
+            if (data?.length) {
               localStorage.setItem(STORAGE_KEY, JSON.stringify({ ts: Date.now(), data }));
-              if (mounted) setPromo(data[0]);
+              const firstPromo = data[0];
+              if (mounted && firstPromo) setPromo(firstPromo);
               return;
             }
           }
@@ -58,9 +66,11 @@ export default function PromotedBanner({ vertical }: { vertical?: boolean } = {}
 
         // fallback to embedded promos
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ ts: Date.now(), data: FALLBACK }));
-        if (mounted) setPromo(FALLBACK[0]);
+        const fallbackPromo = FALLBACK[0];
+        if (mounted && fallbackPromo) setPromo(fallbackPromo);
       } catch (err) {
-        if (mounted) setPromo(FALLBACK[0]);
+        const fallbackPromo = FALLBACK[0];
+        if (mounted && fallbackPromo) setPromo(fallbackPromo);
       }
     }
 
@@ -76,9 +86,8 @@ export default function PromotedBanner({ vertical }: { vertical?: boolean } = {}
     try {
       // Avoid dynamic import that Vite may try to pre-bundle. Use the Tauri global bridge when available.
       // window.__TAURI__ is injected in the Tauri webview; check for shell.open
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const tauri: any = (window as any).__TAURI__;
-      if (tauri && tauri.shell && typeof tauri.shell.open === 'function') {
+      const tauri = (window as Window & { __TAURI__?: TauriBridge }).__TAURI__;
+      if (tauri?.shell?.open) {
         await tauri.shell.open(url);
         return;
       }
