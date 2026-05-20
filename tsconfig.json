@@ -1,13 +1,44 @@
 {
   "extends": "./packages/tsconfig/base.json",
-  "include": [],
+  "include": [
+    ".next/types/**/*.ts"
+  ],
   "references": [
-    { "path": "./packages/schemas" },
-    { "path": "./packages/db" },
-    { "path": "./packages/api-client" },
-    { "path": "./packages/ui" },
-    { "path": "./apps/api" },
-    { "path": "./apps/desktop" },
-    { "path": "./apps/www" }
+    {
+      "path": "./packages/schemas"
+    },
+    {
+      "path": "./packages/db"
+    },
+    {
+      "path": "./packages/api-client"
+    },
+    {
+      "path": "./packages/ui"
+    },
+    {
+      "path": "./apps/api"
+    },
+    {
+      "path": "./apps/desktop"
+    },
+    {
+      "path": "./apps/www"
+    }
+  ],
+  "compilerOptions": {
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "allowJs": true,
+    "noEmit": true,
+    "incremental": true,
+    "jsx": "preserve",
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
+  },
+  "exclude": [
+    "node_modules"
   ]
 }

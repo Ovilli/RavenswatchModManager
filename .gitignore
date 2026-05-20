@@ -11,6 +11,7 @@ npm-debug.log*
 pnpm-debug.log*
 
 # App build outputs
+.next/
 apps/*/dist/
 apps/*/.next/
 apps/*/.astro/

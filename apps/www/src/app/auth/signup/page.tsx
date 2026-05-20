@@ -1,7 +1,7 @@
 'use client';
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from '@rsmm/ui';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { signUp } from '../../../lib/auth-client';
 
 export default function SignUpPage() {
@@ -12,7 +12,7 @@ export default function SignUpPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function submit(e: React.FormEvent) {
+  async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setBusy(true);
@@ -35,7 +35,7 @@ export default function SignUpPage() {
               type="text"
               placeholder="display name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => setName((e.target as HTMLInputElement).value)}
               required
               minLength={2}
               maxLength={64}
@@ -44,14 +44,14 @@ export default function SignUpPage() {
               type="email"
               placeholder="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => setEmail((e.target as HTMLInputElement).value)}
               required
             />
             <Input
               type="password"
               placeholder="password (min 8 chars)"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => setPassword((e.target as HTMLInputElement).value)}
               required
               minLength={8}
             />
