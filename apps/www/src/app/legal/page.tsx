@@ -3,8 +3,8 @@ import Link from 'next/link';
 
 export default function LegalPage() {
   return (
-    <main className="container mx-auto px-6 py-16">
-      <Card className="mx-auto max-w-3xl border-border/60 bg-card/80 backdrop-blur">
+    <main className="container mx-auto px-6 py-16 animate-page-in">
+      <Card className="mx-auto max-w-3xl grimoire-card">
         <CardHeader>
           <CardTitle>Legal Notice</CardTitle>
           <CardDescription>Impressum — required disclosure under German law (§5 TMG).</CardDescription>
@@ -33,8 +33,8 @@ export default function LegalPage() {
           <section className="space-y-2">
             <h2 className="text-lg font-semibold text-foreground">Disclaimer</h2>
             <p>
-              This software is provided &quot;as is&quot;, without warranty of any kind, express or
-              implied. The mod manager modifies game files locally; users are responsible for
+              This software is provided &quot;as is&quot;, without warranty of any kind, express
+              or implied. The mod manager modifies game files locally; users are responsible for
               backing up their game data. The project maintainers assume no liability for damages
               or data loss arising from the use of this software.
             </p>

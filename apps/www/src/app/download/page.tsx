@@ -31,11 +31,11 @@ const steps = [
 
 export default function DownloadPage() {
   return (
-    <main className="relative overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.16),_transparent_40%),radial-gradient(circle_at_bottom_right,_rgba(148,163,184,0.16),_transparent_32%)]" />
+    <main className="relative overflow-hidden animate-page-in">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,hsl(var(--crimson)/0.1),transparent_40%),radial-gradient(circle_at_bottom_right,hsl(var(--oxblood)/0.08),transparent_32%)]" />
       <div className="relative container mx-auto px-6 py-16 lg:py-24">
         <section className="mx-auto max-w-4xl text-center">
-          <Badge variant="outline" className="mb-5 border-sky-400/30 bg-sky-500/10 text-sky-200">
+          <Badge variant="outline" className="mb-5 border-crimson/30 bg-crimson/10 text-parchment">
             Desktop client
           </Badge>
           <h1 className="text-5xl font-black tracking-tight sm:text-6xl">
@@ -66,7 +66,7 @@ export default function DownloadPage() {
 
         <section className="mt-16 grid gap-6 lg:grid-cols-3">
           {platforms.map((platform) => (
-            <Card key={platform.name} className="border-border/60 bg-card/80 backdrop-blur">
+            <Card key={platform.name} className="grimoire-card">
               <CardHeader>
                 <CardTitle>{platform.name}</CardTitle>
                 <CardDescription>{platform.details}</CardDescription>
@@ -87,7 +87,7 @@ export default function DownloadPage() {
         </section>
 
         <section className="mt-16 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <Card className="border-border/60 bg-card/80 backdrop-blur">
+          <Card className="grimoire-card">
             <CardHeader>
               <CardTitle>Quick install flow</CardTitle>
               <CardDescription>Fastest path from download to mod browsing.</CardDescription>
@@ -106,7 +106,7 @@ export default function DownloadPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-sky-400/20 bg-sky-500/10 backdrop-blur">
+          <Card className="grimoire-card border-crimson/20">
             <CardHeader>
               <CardTitle>Need the source instead?</CardTitle>
               <CardDescription>
