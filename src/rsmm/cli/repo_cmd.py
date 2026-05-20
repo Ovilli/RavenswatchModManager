@@ -38,9 +38,12 @@ def cmd_repo(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="rsmm repo")
     sub = ap.add_subparsers(dest="action", required=True)
     sub.add_parser("list", help="show configured repo URLs")
-    a = sub.add_parser("add"); a.add_argument("url")
-    r = sub.add_parser("remove"); r.add_argument("url")
-    v = sub.add_parser("validate"); v.add_argument("path", type=Path,
+    a = sub.add_parser("add")
+    a.add_argument("url")
+    r = sub.add_parser("remove")
+    r.add_argument("url")
+    v = sub.add_parser("validate")
+    v.add_argument("path", type=Path,
         help="path to a local repo.json to validate")
     args = ap.parse_args(argv)
 

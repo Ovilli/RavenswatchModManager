@@ -1,0 +1,39 @@
+[fields.enabled]
+label = "Enable Hyper Aggro"
+type = "bool"
+default = true
+
+[fields.detection_height_offset]
+label = "Detection / Fighting Height Offset"
+type = "int"
+min = -100
+max = 100
+default = 0
+
+[fields.long_range_count]
+label = "Nearby Enemies: Long Range Count"
+type = "int"
+min = 0
+max = 100
+default = 0
+
+[fields.short_range_count]
+label = "Nearby Enemies: Short Range Count"
+type = "int"
+min = 0
+max = 100
+default = 0
+
+[fields.damage_mult]
+label = "Enemy Damage Multiplier"
+type = "float"
+min = 0.0
+max = 10.0
+default = 1.0
+
+[fields.health_mult]
+label = "Enemy Max Health Multiplier"
+type = "float"
+min = 0.0
+max = 10.0
+default = 1.0

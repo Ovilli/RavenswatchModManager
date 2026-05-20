@@ -34,7 +34,7 @@ from rsmm.engine.paths import (
     COOKING_SUBDIR,
 )
 from rsmm.engine.asset_map import decoded_to_encoded, encoded_to_decoded
-from rsmm.engine.stat_schemas import SCHEMAS, index_entries, patch_field
+from rsmm.engine.stat_schemas import index_entries, patch_field
 
 MERGED_MOD_ID = "_merged"
 

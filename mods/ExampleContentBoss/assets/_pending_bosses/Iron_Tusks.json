@@ -1,0 +1,12 @@
+{
+  "kind": "boss",
+  "id": "Iron_Tusks",
+  "mod": "ExampleContentBoss",
+  "base": "Erimanthian_Boar",
+  "fields": {
+    "base": "Erimanthian_Boar",
+    "name": "Iron Tusks",
+    "description": "A mechanical boar boss powered by ancient runes."
+  },
+  "schema_version": 1
+}

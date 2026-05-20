@@ -20,7 +20,6 @@ regression instantly.
 
 from __future__ import annotations
 import argparse
-import importlib.util
 import json
 import runpy
 import sys

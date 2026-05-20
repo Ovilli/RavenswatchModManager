@@ -1,0 +1,11 @@
+{
+  "kind": "map",
+  "id": "Crystal_Forest",
+  "mod": "ExampleContentMap",
+  "base": "Forest_Default",
+  "fields": {
+    "base": "Forest_Default",
+    "name": "Crystal Forest"
+  },
+  "schema_version": 1
+}

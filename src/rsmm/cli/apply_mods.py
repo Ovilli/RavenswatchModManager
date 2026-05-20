@@ -50,12 +50,8 @@ from typing import Optional
 
 from rsmm.engine.paths import (
     REPO_ROOT as REPO_DIR,
-    DATA_DIR,
     MODS_DIR,
     ASSET_MAP_JSON,
-    ASSET_MAP_CSV,
-    DEFAULT_GAME_DIR as DEFAULT_GAME,
-    COOKING_SUBDIR,
     _game_dir_candidates,
 )
 import tomllib   # Python 3.11+
@@ -501,10 +497,10 @@ def _run_deactivation_hooks(mods: list[Mod],
     return ran, missing
 
 
-def _sync_mod_manifests(game_dir: Path, dry_run: bool) -> int:
+def _sync_mod_manifests(mods: list[Mod], game_dir: Path, dry_run: bool) -> int:
     """Copy manifest.toml from each mod to the game's mods/ directory.
     Also sync/remove init.lua based on enabled flag.
-    
+
     The game engine reads manifests to determine which mods are enabled.
     For Lua code mods, we remove init.lua when disabled to prevent execution.
     Returns the number of files synced.
@@ -512,27 +508,20 @@ def _sync_mod_manifests(game_dir: Path, dry_run: bool) -> int:
     game_mods = game_dir / "mods"
     game_mods.mkdir(exist_ok=True)
     synced = 0
-    
-    if not MODS_DIR.is_dir():
+
+    if not mods:
         return synced
-    
-    for mod_dir in sorted(MODS_DIR.iterdir()):
-        if not mod_dir.is_dir() or mod_dir.name.startswith(("_", ".")):
-            continue
+    for mod in mods:
+        mod_dir = mod.root
         manifest = mod_dir / "manifest.toml"
         if not manifest.is_file():
             continue
-        
-        # Parse manifest to check enabled flag
-        try:
-            manifest_text = manifest.read_text(encoding="utf-8")
-            enabled = not re.search(r'^\s*enabled\s*=\s*false\s*$', manifest_text, re.MULTILINE)
-        except Exception:
-            enabled = True
-        
+
+        enabled = mod.enabled
+
         dst_dir = game_mods / mod_dir.name
         dst_dir.mkdir(exist_ok=True)
-        
+
         # Sync manifest
         dst_manifest = dst_dir / "manifest.toml"
         try:
@@ -544,11 +533,11 @@ def _sync_mod_manifests(game_dir: Path, dry_run: bool) -> int:
                 synced += 1
         except OSError:
             pass
-        
+
         # Sync or remove init.lua based on enabled flag
         src_lua = mod_dir / "init.lua"
         dst_lua = dst_dir / "init.lua"
-        
+
         if enabled and src_lua.is_file():
             # Mod is enabled: sync init.lua
             try:
@@ -565,7 +554,7 @@ def _sync_mod_manifests(game_dir: Path, dry_run: bool) -> int:
             if not dry_run:
                 dst_lua.unlink()
             synced += 1
-    
+
     return synced
 
 
@@ -597,7 +586,7 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     additions, removals = plan_apply(mods, dec2enc, cooking, game_dir, state, args.dry_run)
 
     # Sync manifests so game knows which mods are enabled
-    manifest_syncs = _sync_mod_manifests(game_dir, args.dry_run)
+    manifest_syncs = _sync_mod_manifests(mods, game_dir, args.dry_run)
 
     if not additions and not removals and not manifest_syncs and not deact_ran:
         print("Mods already in sync.")

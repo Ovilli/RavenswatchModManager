@@ -1,0 +1,11 @@
+{
+  "kind": "hero",
+  "id": "Shadowblade",
+  "mod": "ExampleContentHero",
+  "base": "Romeo",
+  "fields": {
+    "base": "Romeo",
+    "name": "Shadowblade"
+  },
+  "schema_version": 1
+}

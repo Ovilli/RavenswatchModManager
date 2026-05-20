@@ -1,0 +1,14 @@
+[mod]
+id          = "ExampleDependencies"
+name        = "Example: Mod Dependencies"
+version     = "0.1.0"
+author      = "RSMM"
+description = "Demonstrates [dependencies], [provides], requires, conflicts, and replaces in manifest."
+enabled     = true
+sdk_version = ">=3.0,<4"
+
+[provides]
+api = "exampledeps"
+
+[dependencies]
+baselib = ">=1.0"

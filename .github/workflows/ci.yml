@@ -32,6 +32,38 @@ jobs:
       - name: pytest
         run: python -m pytest -q
 
+  ts:
+    name: typescript (biome + tsc)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Supply-chain audit (lockfile vs known-bad versions)
+        run: pnpm audit:supply-chain
+
+      - name: Rebuild lifecycle scripts (post-audit)
+        run: pnpm rebuild
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type check
+        run: pnpm check-types
+
   loader-linux-mingw:
     name: loader (mingw-w64 cross-compile)
     runs-on: ubuntu-latest

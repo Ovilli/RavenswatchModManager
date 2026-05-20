@@ -1,0 +1,36 @@
+{
+  "name": "rsmm-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ravenswatch Mod Manager — cross-platform GUI (browser + Tauri desktop) + Neon-backed registry.",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "dev": "turbo run dev --filter=desktop",
+    "desktop:dev": "turbo run dev --filter=desktop",
+    "api:dev": "turbo run dev --filter=api",
+    "www:dev": "turbo run dev --filter=www",
+    "docs:dev": "turbo run dev --filter=docs",
+    "build": "turbo run build",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write .",
+    "format": "biome format --write .",
+    "check-types": "turbo run check-types",
+    "audit:supply-chain": "node scripts/audit-supply-chain.mjs",
+    "db:push": "pnpm --filter @rsmm/db push",
+    "db:seed": "pnpm --filter @rsmm/db seed",
+    "db:migrate": "pnpm --filter @rsmm/db migrate",
+    "generate": "pnpm --filter @rsmm/db generate",
+    "db:studio": "pnpm --filter @rsmm/db studio",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "clean": "turbo run clean && rm -rf node_modules .turbo"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4",
+    "turbo": "2.3.3",
+    "typescript": "5.7.3"
+  }
+}

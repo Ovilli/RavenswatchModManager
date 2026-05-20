@@ -1,0 +1,15 @@
+[mod]
+id          = "ExampleContentBoss"
+name        = "Example: New Boss"
+version     = "0.1.0"
+author      = "RSMM"
+description = "Demonstrates [[content]] kind=\"boss\" by registering a mechanical boar boss."
+enabled     = true
+sdk_version = ">=3.0,<4"
+
+[[content]]
+kind        = "boss"
+id          = "Iron_Tusks"
+base        = "Erimanthian_Boar"
+name        = "Iron Tusks"
+description = "A mechanical boar boss powered by ancient runes."

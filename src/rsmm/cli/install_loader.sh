@@ -58,8 +58,11 @@ install -m 0644 "$DLL" "$GAME_DIR/winhttp.dll"
 install -m 0644 "$REPO_DIR/data/asset_map.json" "$GAME_DIR/asset_map.json"
 
 # Lua-side SDK: mods do `require "rsmm"` and get the documented R.* surface.
+SDK_SRC="$REPO_DIR/src/loader/lua"
 mkdir -p "$GAME_DIR/rsmm/lib"
-if [[ -f "$REPO_DIR/src/loader/lib/rsmm.lua" ]]; then
+if [[ -d "$SDK_SRC" ]]; then
+    cp -a "$SDK_SRC/." "$GAME_DIR/rsmm/lib/"
+elif [[ -f "$REPO_DIR/src/loader/lib/rsmm.lua" ]]; then
     install -m 0644 "$REPO_DIR/src/loader/lib/rsmm.lua" "$GAME_DIR/rsmm/lib/rsmm.lua"
 fi
 

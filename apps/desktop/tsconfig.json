@@ -1,0 +1,8 @@
+{
+  "extends": "@rsmm/tsconfig/react.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "types": ["vite/client"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

@@ -271,7 +271,9 @@ def emit(cf: CookedFile, full_path: str, show_raw: bool = False) -> str:
         out.append(f"*Class{i}={k.name}[{k.class_id}]({k.version_major}.{k.version_minor}){parent}")
     out.append(f"*Sections={len(cf.sections)}")
     for i, s in enumerate(cf.sections):
-        out.append(f"*Section{i}=range[{s.begin_off:#x}..{s.end_off:#x}] payload_len={len(s.payload)}")
+        out.append(
+            f"*Section{i}=range[{s.begin_off:#x}..{s.end_off:#x}] "
+            f"payload_len={len(s.payload)}")
         for note in maybe_decode_payload(s.payload):
             out.append(note)
         if show_raw:

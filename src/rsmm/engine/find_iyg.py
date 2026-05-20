@@ -30,9 +30,12 @@ SYMBOLS = {'!': '\\'}
 
 
 def decrypt_char(c: str) -> str:
-    if c in SYMBOLS: return SYMBOLS[c]
-    if c.isupper() and c in UPPER: return UPPER[c]
-    if c.islower() and c in LOWER: return LOWER[c]
+    if c in SYMBOLS:
+        return SYMBOLS[c]
+    if c.isupper() and c in UPPER:
+        return UPPER[c]
+    if c.islower() and c in LOWER:
+        return LOWER[c]
     return c
 
 

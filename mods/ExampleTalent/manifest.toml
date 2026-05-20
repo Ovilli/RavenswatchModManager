@@ -1,0 +1,8 @@
+[mod]
+id          = "ExampleTalent"
+name        = "Example: Talent Controls"
+version     = "0.1.0"
+author      = "RSMM"
+description = "Demonstrates R.talent by allowing duplicate talents and granting extra picks. Not yet wired to game engine."
+enabled     = true
+sdk_version = ">=3.0,<4"

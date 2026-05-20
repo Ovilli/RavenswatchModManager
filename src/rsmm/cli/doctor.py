@@ -21,8 +21,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from rsmm.engine.paths import (
-    REPO_ROOT,
-    DATA_DIR,
     MODS_DIR,
     DIST_DIR,
     ASSET_MAP_JSON,
@@ -213,24 +211,28 @@ def main() -> int:
     results: list[Result] = []
     print("game install:")
     rs = check_game_install(args.game_dir)
-    for r in rs: emit(r)
+    for r in rs:
+        emit(r)
     results.extend(rs)
     if any(r.kind == "FAIL" for r in rs):
         return 1
 
     print("\nasset map:")
     rs = check_asset_map(args.game_dir)
-    for r in rs: emit(r)
+    for r in rs:
+        emit(r)
     results.extend(rs)
 
     print("\nloader DLL:")
     rs = check_loader(args.game_dir)
-    for r in rs: emit(r)
+    for r in rs:
+        emit(r)
     results.extend(rs)
 
     print("\nmods:")
     rs = check_mods()
-    for r in rs: emit(r)
+    for r in rs:
+        emit(r)
     results.extend(rs)
 
     print("\npatch conflicts:")
@@ -238,7 +240,8 @@ def main() -> int:
     if not rs:
         emit(Result("OK", "no [[patch]] blocks in any mod"))
     else:
-        for r in rs: emit(r)
+        for r in rs:
+            emit(r)
         results.extend(rs)
 
     print("\ncompatibility graph:")
@@ -258,14 +261,16 @@ def main() -> int:
         if not crs:
             emit(Result("OK", f"{len(rep.summaries)} mod(s), graph clean"))
         else:
-            for r in crs: emit(r)
+            for r in crs:
+                emit(r)
             results.extend(crs)
     except Exception as e:
         emit(Result("WARN", "compat analysis failed", str(e)))
 
     print("\napplier state:")
     rs = check_state(args.game_dir)
-    for r in rs: emit(r)
+    for r in rs:
+        emit(r)
     results.extend(rs)
 
     fail = sum(1 for r in results if r.kind == "FAIL")

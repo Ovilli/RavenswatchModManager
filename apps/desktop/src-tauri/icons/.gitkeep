@@ -1,0 +1,4 @@
+# Placeholder icon.png is the seed icon for `pnpm tauri icon`.
+# Replace it with your own 1024x1024+ PNG, then from apps/desktop:
+#   pnpm tauri icon icons/icon.png
+# That regenerates every size + Windows .ico + macOS .icns + Android/iOS variants.

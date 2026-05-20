@@ -1,0 +1,8 @@
+[mod]
+id          = "ExampleRootOverride"
+name        = "Example: Root File Override"
+version     = "0.1.0"
+author      = "RSMM"
+description = "Demonstrates top-level file overrides by placing files under _root/<path>."
+enabled     = true
+sdk_version = ">=3.0,<4"

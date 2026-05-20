@@ -1,0 +1,14 @@
+[mod]
+id          = "ExampleContentMap"
+name        = "Example: New Biome"
+version     = "0.1.0"
+author      = "RSMM"
+description = "Demonstrates [[content]] kind=\"map\" by registering a Crystal Forest biome."
+enabled     = true
+sdk_version = ">=3.0,<4"
+
+[[content]]
+kind        = "map"
+id          = "Crystal_Forest"
+base        = "Forest_Default"
+name        = "Crystal Forest"

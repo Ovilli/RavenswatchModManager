@@ -1,0 +1,14 @@
+[mod]
+id          = "ExampleContentHero"
+name        = "Example: New Hero"
+version     = "0.1.0"
+author      = "RSMM"
+description = "Demonstrates [[content]] kind=\"hero\" by registering a custom hero."
+enabled     = true
+sdk_version = ">=3.0,<4"
+
+[[content]]
+kind        = "hero"
+id          = "Shadowblade"
+base        = "Romeo"
+name        = "Shadowblade"

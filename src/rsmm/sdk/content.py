@@ -14,8 +14,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from importlib import import_module
 from pathlib import Path
-from typing import Callable
-
 from .api import sdk_export
 
 KINDS = ("item", "enemy", "boss", "map", "hero")
@@ -67,10 +65,19 @@ class ContentRegistry:
         return written
 
 
+_KIND_MODULES = {
+    "item": "items",
+    "enemy": "enemies",
+    "boss": "bosses",
+    "map": "maps",
+    "hero": "heros",
+}
+
 def _load_kind(kind: str):
     """Lazy-import to keep startup cheap and let plugins override kinds."""
+    mod_name = _KIND_MODULES.get(kind, f"{kind}s")
     try:
-        return import_module(f"rsmm.sdk.kinds.{kind}s")  # items, enemies, ...
+        return import_module(f"rsmm.sdk.kinds.{mod_name}")
     except ModuleNotFoundError as e:
         raise ContentError(f"no builder for kind {kind!r}: {e}") from e
 

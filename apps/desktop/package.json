@@ -1,0 +1,49 @@
+{
+  "name": "desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "PATH=\"$PWD/../..:$PATH\" tauri dev",
+    "dev:linux": "PATH=\"$PWD/../..:$PATH\" WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 tauri dev",
+    "dev:linux-soft": "PATH=\"$PWD/../..:$PATH\" LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 tauri dev",
+    "dev:vite": "vite",
+    "build": "tauri build",
+    "build:vite": "vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "routes:generate": "tsr generate",
+    "check-types": "tsr generate && tsc --noEmit",
+    "clean": "rm -rf dist .turbo src-tauri/target"
+  },
+  "dependencies": {
+    "@rsmm/api-client": "workspace:*",
+    "@rsmm/schemas": "workspace:*",
+    "@rsmm/ui": "workspace:*",
+    "@tanstack/react-query": "5.62.11",
+    "@tanstack/react-router": "1.131.7",
+    "@tauri-apps/api": "2.1.1",
+    "@tauri-apps/plugin-shell": "2.2.0",
+    "better-auth": "1.1.10",
+    "lucide-react": "0.469.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "zod": "3.25.76",
+    "zustand": "5.0.2"
+  },
+  "devDependencies": {
+    "@rsmm/tsconfig": "workspace:*",
+    "@tanstack/router-cli": "1.131.7",
+    "@tanstack/router-devtools": "1.131.7",
+    "@tanstack/router-plugin": "1.131.7",
+    "@tauri-apps/cli": "2.1.0",
+    "@types/react": "19.0.2",
+    "@types/react-dom": "19.0.2",
+    "@vitejs/plugin-react": "4.3.4",
+    "autoprefixer": "10.4.20",
+    "postcss": "8.4.49",
+    "tailwindcss": "3.4.17",
+    "typescript": "5.7.3",
+    "vite": "6.0.7"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "kind": "enemy",
+  "id": "Mutated_Goblin",
+  "mod": "ExampleContentEnemy",
+  "base": "Goblin_Default",
+  "fields": {
+    "base": "Goblin_Default",
+    "name": "Mutated Goblin",
+    "description": "A tougher goblin variant with increased stats."
+  },
+  "schema_version": 1
+}

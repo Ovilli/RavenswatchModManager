@@ -1,8 +1,4 @@
--- Smallest possible mod using SDK v3.
--- Demonstrates: require "rsmm", R.health.checkpoint, R.on, R.log, R.kv.
-
 local R = require "rsmm"
-R.health.checkpoint("per_mod:ExampleSdkHello")
 
 R.on("ready", function()
     R.log("[Hello] loaded; SDK ready")

@@ -1,0 +1,8 @@
+[mod]
+id          = "ExampleItemRegistry"
+name        = "Example: Runtime Item Registration"
+version     = "0.1.0"
+author      = "RSMM"
+description = "Demonstrates R.item.register for runtime item creation. Not yet wired to game engine."
+enabled     = true
+sdk_version = ">=3.0,<4"

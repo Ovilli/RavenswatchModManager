@@ -440,7 +440,14 @@ def main(argv: list[str]) -> int:
     if sub == "log":            return cmd_log(rest)
 
     # SDK v3 subcommands.
-    if sub == "gui":            return _dispatch_module("rsmm.cli.gui", rest)
+    if sub == "gui":
+        print(
+            "rsmm gui has moved. Run the desktop app (`pnpm desktop:dev`) "
+            "or open https://rsmm.dev in a browser. See docs/SETUP.md.",
+            file=sys.stderr,
+        )
+        return 2
+    if sub == "json":           return _dispatch_module("rsmm.cli.json_bridge", rest)
     if sub == "safe-mode":      return _dispatch_module("rsmm.cli.safe_mode", rest)
     if sub in ("repo", "sign", "verify", "keygen"):
         return _dispatch_module("rsmm.cli.repo_cmd", [sub, *rest])

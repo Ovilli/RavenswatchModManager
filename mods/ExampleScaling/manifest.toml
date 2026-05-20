@@ -1,0 +1,8 @@
+[mod]
+id          = "ExampleScaling"
+name        = "Example: Scaling Overrides"
+version     = "0.1.0"
+author      = "RSMM"
+description = "Demonstrates R.scaling by overriding enemy damage scaling per act. Not yet wired to game engine."
+enabled     = true
+sdk_version = ">=3.0,<4"

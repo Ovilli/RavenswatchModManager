@@ -1,0 +1,13 @@
+[mod]
+id          = "ExampleTextureSwap"
+name        = "Example: Texture Swap"
+version     = "0.1.0"
+author      = "RSMM"
+description = "Demonstrates [[patch]] kind=\"texture\" by swapping one hero portrait for another."
+enabled     = true
+sdk_version = ">=3.0,<4"
+
+[[patch]]
+kind = "texture"
+target = "Ui/BookMenu/Heroes/UI_HeroPortrait_Romeo_Active.png.Texture.dxt"
+donor  = "Ui/BookMenu/Heroes/UI_HeroPortrait_SunWukong_Active.png.Texture.dxt"

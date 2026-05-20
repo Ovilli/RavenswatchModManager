@@ -1,0 +1,13 @@
+[mod]
+id          = "ExampleUrlPatch"
+name        = "Example: URL Field Patch"
+version     = "0.1.0"
+author      = "RSMM"
+description     = "Demonstrates [[patch]] kind=\"url\" by changing the Discord URL."
+enabled     = true
+sdk_version = ">=3.0,<4"
+
+[[patch]]
+kind = "url"
+field = "DiscordUrl"
+value = "https://example.com/my-mods-discord"

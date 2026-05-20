@@ -10,7 +10,6 @@ For headless / desktop use; not meant to run as a service.
 
 from __future__ import annotations
 import argparse
-import os
 import signal
 import subprocess
 import sys

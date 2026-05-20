@@ -1,0 +1,15 @@
+[mod]
+id          = "ExampleTextPatch"
+name        = "Example: Text Bank Patch"
+version     = "0.1.0"
+author      = "RSMM"
+description = "Demonstrates [[patch]] kind=\"text\" by changing the Discord menu label to 'Mods'."
+enabled     = true
+sdk_version = ">=3.0,<4"
+
+[[patch]]
+kind = "text"
+bank = "Common"
+lang = "EN"
+key  = "Menu_Discord"
+value = "Mods"

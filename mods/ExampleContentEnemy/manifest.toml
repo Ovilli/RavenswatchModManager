@@ -1,0 +1,15 @@
+[mod]
+id          = "ExampleContentEnemy"
+name        = "Example: New Enemy"
+version     = "0.1.0"
+author      = "RSMM"
+description = "Demonstrates [[content]] kind=\"enemy\" by registering a mutated goblin variant."
+enabled     = true
+sdk_version = ">=3.0,<4"
+
+[[content]]
+kind        = "enemy"
+id          = "Mutated_Goblin"
+base        = "Goblin_Default"
+name        = "Mutated Goblin"
+description = "A tougher goblin variant with increased stats."

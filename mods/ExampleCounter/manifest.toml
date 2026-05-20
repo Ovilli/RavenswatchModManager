@@ -1,0 +1,8 @@
+[mod]
+id          = "ExampleCounter"
+name        = "Example: Event Counter"
+version     = "0.1.0"
+author      = "RSMM"
+description = "Demonstrates R.counter.on by counting game events via the KV store."
+enabled     = true
+sdk_version = ">=3.0,<4"

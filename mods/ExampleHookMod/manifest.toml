@@ -1,0 +1,8 @@
+[mod]
+id          = "ExampleHookMod"
+name        = "Example: Native Function Hook"
+version     = "0.1.0"
+author      = "RSMM"
+description = "Demonstrates R.hook by intercepting a resource lookup function. Requires RSMM_ENABLE_ENGINE_HOOK=1."
+enabled     = true
+sdk_version = ">=3.0,<4"

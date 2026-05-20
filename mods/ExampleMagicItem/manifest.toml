@@ -4,7 +4,7 @@ name        = "Example: Magic Item"
 version     = "0.3.0"
 author      = "rsmm-examples"
 description = "Declarative custom magical object via [[content]] block. Clone-and-patch of a vanilla rare item; full game-side registration completes once the MagicalObject schema is mined."
-enabled     = false
+enabled     = true
 sdk_version = ">=3.0,<4"
 
 [[content]]

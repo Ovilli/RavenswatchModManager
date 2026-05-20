@@ -1,0 +1,13 @@
+{
+  "kind": "item",
+  "id": "Iron_Crab_Hide",
+  "mod": "ExampleMagicItem",
+  "base": "Common/Armor_Per_Object",
+  "fields": {
+    "base": "Common/Armor_Per_Object",
+    "name": "Iron Crab Hide",
+    "description": "Bonus armor per rare object collected.",
+    "rarity": "Common"
+  },
+  "schema_version": 1
+}
