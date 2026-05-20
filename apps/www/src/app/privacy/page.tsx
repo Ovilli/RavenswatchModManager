@@ -3,8 +3,8 @@ import Link from 'next/link';
 
 export default function PrivacyPage() {
   return (
-    <main className="container mx-auto px-6 py-16">
-      <Card className="mx-auto max-w-3xl border-border/60 bg-card/80 backdrop-blur">
+    <main className="container mx-auto px-6 py-16 animate-page-in">
+      <Card className="mx-auto max-w-3xl grimoire-card">
         <CardHeader>
           <CardTitle>Privacy Policy</CardTitle>
           <CardDescription>How your data is collected, stored, and processed.</CardDescription>
@@ -13,9 +13,9 @@ export default function PrivacyPage() {
           <section className="space-y-2">
             <h2 className="text-lg font-semibold text-foreground">1. Data Controller</h2>
             <p>
-              The Ravenswatch Mod Manager project is an open-source community project.
-              Contact details are available in the project repository. This privacy policy
-              applies to the registry website and the API backend.
+              The Ravenswatch Mod Manager project is an open-source community project. Contact
+              details are available in the project repository. This privacy policy applies to the
+              registry website and the API backend.
             </p>
           </section>
 
@@ -51,9 +51,9 @@ export default function PrivacyPage() {
           <section className="space-y-2">
             <h2 className="text-lg font-semibold text-foreground">5. Data Retention</h2>
             <p>
-              Account data is retained until you request deletion. Mod files remain
-              available until removed by the author or moderators. Telemetry data is
-              aggregated and anonymized after 12 months.
+              Account data is retained until you request deletion. Mod files remain available
+              until removed by the author or moderators. Telemetry data is aggregated and
+              anonymized after 12 months.
             </p>
           </section>
 
@@ -68,16 +68,16 @@ export default function PrivacyPage() {
               <li>Export your data in a machine-readable format</li>
             </ul>
             <p className="mt-2">
-              To exercise these rights, open an issue on the project repository or contact
-              the maintainers through the channels listed on GitHub.
+              To exercise these rights, open an issue on the project repository or contact the
+              maintainers through the channels listed on GitHub.
             </p>
           </section>
 
           <section className="space-y-2">
             <h2 className="text-lg font-semibold text-foreground">7. Changes to This Policy</h2>
             <p>
-              This privacy policy may be updated from time to time. Changes will be
-              announced via the project repository.
+              This privacy policy may be updated from time to time. Changes will be announced via
+              the project repository.
             </p>
           </section>
         </CardContent>

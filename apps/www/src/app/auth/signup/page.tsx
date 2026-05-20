@@ -23,8 +23,8 @@ export default function SignUpPage() {
   }
 
   return (
-    <main className="container mx-auto flex min-h-[80vh] items-center justify-center px-6">
-      <Card className="w-full max-w-md">
+    <main className="container mx-auto flex min-h-[80vh] items-center justify-center px-6 animate-page-in">
+      <Card className="w-full max-w-md grimoire-card">
         <CardHeader>
           <CardTitle>Create account</CardTitle>
           <CardDescription>Publish mods + sync your library.</CardDescription>
@@ -60,7 +60,10 @@ export default function SignUpPage() {
               {busy ? 'creating…' : 'sign up'}
             </Button>
             <p className="text-center text-sm text-muted-foreground">
-              Have an account? <a className="underline" href="/auth/signin">Sign in</a>
+              Have an account?{' '}
+              <a className="underline hover:text-foreground" href="/auth/signin">
+                Sign in
+              </a>
             </p>
           </form>
         </CardContent>

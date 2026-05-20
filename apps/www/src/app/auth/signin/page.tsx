@@ -22,8 +22,8 @@ export default function SignInPage() {
   }
 
   return (
-    <main className="container mx-auto flex min-h-[80vh] items-center justify-center px-6">
-      <Card className="w-full max-w-md">
+    <main className="container mx-auto flex min-h-[80vh] items-center justify-center px-6 animate-page-in">
+      <Card className="w-full max-w-md grimoire-card">
         <CardHeader>
           <CardTitle>Sign in</CardTitle>
           <CardDescription>Welcome back.</CardDescription>
@@ -50,7 +50,10 @@ export default function SignInPage() {
               {busy ? 'signing in…' : 'sign in'}
             </Button>
             <p className="text-center text-sm text-muted-foreground">
-              No account? <a className="underline" href="/auth/signup">Sign up</a>
+              No account?{' '}
+              <a className="underline hover:text-foreground" href="/auth/signup">
+                Sign up
+              </a>
             </p>
           </form>
         </CardContent>
