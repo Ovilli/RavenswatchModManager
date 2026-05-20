@@ -1,97 +1,114 @@
-# Development setup
+# Development Setup
 
-The mod manager is a TypeScript monorepo (pnpm + Turborepo) plus the
-existing Python CLI (`rsmm`). Local dev needs Node, pnpm, Docker, and —
-for desktop builds — Rust.
+This guide covers setting up a development environment for hacking on RSMM itself. If you just want to *use* the mod manager, see [Installation](INSTALLATION.md).
 
-## Prereqs
+> **Note about paths:** throughout this document, `./rsmm <name>` refers to the repo-root entry point. The equivalent Python module lives at `src/rsmm/cli/<name>.py` or `src/rsmm/engine/<name>.py`.
+
+---
+
+## Prerequisites
 
 | Tool | Version | Notes |
-|------|---------|-------|
-| Node | >=20.11 | `nvm install 22` recommended |
+|---|---|---|
+| Node | >= 20.11 | `nvm install 22` recommended |
 | pnpm | 9.x | `corepack enable && corepack prepare pnpm@9.12.0 --activate` |
-| Docker | any modern | for local Postgres via `docker-compose.yml` |
-| Rust | stable | only for `pnpm desktop:dev` and `pnpm build` of Tauri shell. Install via `rustup` |
-| Python | >=3.11 | the desktop app shells out to `rsmm` Python CLI |
+| Docker | any modern | For local Postgres via `docker compose` |
+| Rust | stable | Only for desktop (Tauri) builds. Install via `rustup` |
+| Python | >= 3.11 | The desktop app shells out to the Python CLI |
+| CMake | >= 3.20 | For building the native loader DLL |
+| Git | any | |
 
-Platform extras for Tauri 2 desktop builds: see
-<https://tauri.app/start/prerequisites/>.
+Platform extras for Tauri 2 desktop builds: see [tauri.app/start/prerequisites](https://tauri.app/start/prerequisites/).
+
+---
 
 ## First-time bootstrap
 
 ```sh
-# 1. Workspace deps
+# 1. Clone
+git clone https://github.com/Ovilli/RavenswatchModManager.git
+cd RavenswatchModManager
+
+# 2. Python virtual env (for the rsmm CLI)
+python3 -m venv .venv
+source .venv/bin/activate       # Linux
+# .venv\Scripts\activate        # Windows
+pip install -e .
+
+# 3. Workspace deps (TypeScript monorepo)
 corepack enable
 pnpm install
 
-# 2. Local Postgres
+# 4. Local Postgres
 cp .env.example .env
-# generate a real auth secret:
 sed -i "s/replace-me-32-bytes-hex/$(openssl rand -hex 32)/" .env
 pnpm db:up        # docker compose up -d postgres
-pnpm db:push      # create tables via Drizzle
-pnpm db:seed      # optional sample data
+pnpm db:push      # Create tables via Drizzle
+pnpm db:seed      # Optional sample data
 ```
 
 ## Daily commands
 
 | Command | Description |
-|---------|-------------|
-| `pnpm dev` | Desktop app (Tauri + Vite). Default dev target. |
-| `pnpm desktop:dev` | Same as `pnpm dev`. |
-| `pnpm api:dev` | Hono API on `:3001`. |
-| `pnpm www:dev` | Next.js marketing + registry on `:3000`. |
-| `pnpm docs:dev` | Astro Starlight on `:4321`. |
-| `pnpm lint` / `pnpm lint:fix` | Biome lint. |
-| `pnpm format` | Biome format. |
-| `pnpm check-types` | TypeScript across all packages. |
-| `pnpm db:push` | Push schema to DB without migration files. |
-| `pnpm generate` | Generate SQL migrations in `packages/db/drizzle/`. |
-| `pnpm db:migrate` | Apply migrations from `packages/db/drizzle/`. |
-| `pnpm db:seed` | Seed sample registry data. |
-| `pnpm db:studio` | Drizzle Studio at `https://local.drizzle.studio`. |
-| `pnpm build` | Build every package + app. |
+|---|---|
+| `pnpm dev` | Desktop app (Tauri + Vite) |
+| `pnpm api:dev` | Hono API on `:3001` |
+| `pnpm www:dev` | Next.js website + registry on `:3000` |
+| `pnpm docs:dev` | Astro Starlight docs on `:4321` |
+| `pnpm lint` / `pnpm lint:fix` | Biome lint |
+| `pnpm format` | Biome format |
+| `pnpm check-types` | TypeScript across all packages |
+| `pnpm db:push` | Push schema to local DB |
+| `pnpm db:migrate` | Apply migrations |
+| `pnpm build` | Build every package + app |
 
-## Linux + NVIDIA: GBM/DRM errors when launching desktop dev
-
-If `pnpm desktop:dev` prints `GBM-DRV error` / `DRM_IOCTL_MODE_CREATE_DUMB
-failed: Permission denied` and the window never appears, webkit2gtk is
-trying to use the DMA-BUF renderer against the NVIDIA driver. Use the
-Linux-friendly dev scripts instead:
+## Building the native loader
 
 ```sh
-pnpm --filter desktop dev:linux        # disables DMA-BUF + compositing
-pnpm --filter desktop dev:linux-soft   # last resort: software GL
+# Linux (cross-compile for Windows via MinGW)
+cd src/loader
+./build.sh
+
+# Windows (auto-detects Visual Studio or MinGW)
+cd src\loader
+fetch_deps.bat
+build.bat
 ```
 
-The variables (`WEBKIT_DISABLE_DMABUF_RENDERER=1`,
-`WEBKIT_DISABLE_COMPOSITING_MODE=1`, optionally `LIBGL_ALWAYS_SOFTWARE=1`)
-are local-only — no app code change needed.
+The compiled `winhttp.dll` appears in `dist/`.
 
-## Neon (production database)
+## Testing
 
-1. Create a Neon project. Copy the pooled connection string.
-2. Set in your deployment env:
-   - `DATABASE_URL=postgresql://...neon.tech/...?sslmode=require`
-   - `DB_DRIVER=neon`
-3. Run `pnpm db:migrate` once after deploys (CI or one-shot job).
+```sh
+# Python tests
+pytest -q                                    # From repo root
 
-Drizzle is configured to work with both `pg` (docker local) and
-`@neondatabase/serverless` (Neon HTTP/WS). The switch is the
-`DB_DRIVER` env var.
+# Regenerate dev artifacts (optional, not committed)
+pip install --user texture2ddecoder Pillow capstone
+python3 scripts/extract_uncooked.py           # Uncooked asset mirror
+python3 scripts/decode_gen_sidecars.py        # .gen sidecars
+bash docs/_re/run_dump_symbols.sh             # Ghidra symbol dump
+python3 scripts/gen_function_patterns.py      # Pattern DB
+python3 scripts/test_pattern_resolve.py --all # Validate patterns
+```
+
+## IDE setup
+
+Open the workspace in VS Code. Install the CMake Tools and Python extensions. Point the Python interpreter to `.venv`.
 
 ## Architecture
 
 ```
-apps/desktop  Tauri 2 shell. Vite + React. Spawns `rsmm` CLI as sidecar.
-apps/www      Next.js 15 marketing + registry browser.
-apps/api      Hono on Node. Better Auth + /mods + /telemetry endpoints.
-apps/docs     Astro Starlight.
-packages/db   Drizzle schema + migrations (Neon / pg dual driver).
-packages/ui   Shared React components + Tailwind preset.
+apps/desktop    Tauri 2 shell. Vite + React. Spawns `rsmm` CLI as sidecar.
+apps/www        Next.js 15 marketing site + registry browser.
+apps/api        Hono on Node. Better Auth + /mods + /telemetry endpoints.
+apps/docs       Astro Starlight documentation site.
+packages/db     Drizzle schema + migrations (Neon / pg dual driver).
+packages/ui     Shared React components + Tailwind preset.
 packages/api-client  Typed fetch client for apps/api.
-packages/schemas     Zod schemas reused by client + server.
-src/rsmm/     The original Python CLI + SDK. Untouched.
+packages/schemas     Zod schemas shared by client + server.
+src/rsmm/       Python CLI + SDK. Untouched by the TypeScript monorepo.
+src/loader/     Native DLL source (winhttp proxy + Lua VM).
 ```
 
 ## Python bridge
@@ -103,51 +120,56 @@ import { rsmm } from './lib/rsmm';
 const mods = await rsmm<LocalMod[]>(['list', '--json']);
 ```
 
-The `rsmm` executable must be on `PATH`. For users that means
-installing the Python package; for devs, the repo-root `./rsmm`
-wrapper works. Each subcommand consumed by the UI must accept
-`--json`. Subcommands without `--json` yet are tracked in
-`docs/ROADMAP.md`.
+The `rsmm` executable must be on `PATH`. For devs, the repo-root `./rsmm` wrapper works.
 
-## Object storage for mod uploads
+## Local vs production database
 
-`/mods/upload` returns a pre-signed PUT URL. Works with **AWS S3**,
-**Cloudflare R2**, and **MinIO**. Fill in `S3_*` in `.env`. If unset,
-the endpoint returns `503` and the registry stays read-only.
+Local: Docker Postgres via `docker compose up -d postgres`. Connection string in `.env`.
 
-R2 example:
+Production: [Neon](https://neon.tech) serverless Postgres. Set `DATABASE_URL` and `DB_DRIVER=neon` in your deployment environment. Run `pnpm db:migrate` once after deploy.
 
-```
-S3_BUCKET=rsmm-mods
-S3_REGION=auto
-S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
-S3_ACCESS_KEY_ID=...
-S3_SECRET_ACCESS_KEY=...
-S3_PUBLIC_BASE_URL=https://cdn.rsmm.dev
-```
-
-Client flow:
-
-1. `POST /mods/upload` with manifest + sha256 + sizeBytes → `{ uploadUrl, publicUrl, versionId }`
-2. `PUT uploadUrl` with the `.zip` body and headers
-   `Content-Type: application/zip` + `x-amz-checksum-sha256: <base64(sha256)>`
-3. Done. The DB row already points at `publicUrl`.
-
-## Releasing the desktop app
-
-`.github/workflows/release.yml` runs on `git push --tags v*` and cuts
-installers via `tauri-action` for Windows / macOS (universal) / Linux.
-Local release: `pnpm build` produces installers under
-`apps/desktop/src-tauri/target/release/bundle/`.
+Drizzle is configured for both drivers — the switch is the `DB_DRIVER` env var.
 
 ## Tauri icons
 
-The committed `apps/desktop/src-tauri/icons/icon.png` is a placeholder
-(solid colour). Replace it with a real 1024×1024 PNG, then from
-`apps/desktop/`:
+The committed `apps/desktop/src-tauri/icons/icon.png` is a placeholder. Replace with a real 1024×1024 PNG, then:
 
 ```sh
+cd apps/desktop
 pnpm tauri icon icons/icon.png
 ```
 
 This regenerates every required size + `.ico` + `.icns` + mobile variants.
+
+## Linux + NVIDIA
+
+If `pnpm desktop:dev` prints GBM/DRM errors and the window never appears:
+
+```sh
+pnpm --filter desktop dev:linux          # Disable DMA-BUF + compositing
+pnpm --filter desktop dev:linux-soft     # Last resort: software GL
+```
+
+---
+
+## Contributing
+
+### Reporting issues
+
+- Search existing issues first.
+- Provide reproduction steps, OS, game version, and relevant logs.
+
+### Code style
+
+- Follow existing formatting in `src/` and `apps/`.
+- Use `clang-format` for C++ and `black` for Python where applicable.
+
+### Pull requests
+
+- Fork the repo and create a focused topic branch.
+- Include a clear description, related issue, and testing steps.
+- Ensure CI passes before requesting review.
+
+### Communication
+
+- Be responsive to review comments and keep PRs small.

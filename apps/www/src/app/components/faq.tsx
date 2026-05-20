@@ -45,7 +45,7 @@ export function FAQ() {
       {faqs.map((faq, i) => {
         const isOpen = open === i;
         return (
-          <div key={i} className="grimoire-card overflow-hidden">
+          <div key={faq.q} className="grimoire-card overflow-hidden">
             <button
               type="button"
               onClick={() => setOpen(isOpen ? null : i)}

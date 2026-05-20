@@ -1,7 +1,9 @@
 # Architecture
 
-> Historical paths: `tools/<script>.py` -> `src/rsmm/cli/<script>.py` or
-> `src/rsmm/engine/<script>.py`; CLI surface is `./rsmm <name>`.
+> Where this document mentions `tools/<script>.py`, the current location is
+> `src/rsmm/cli/<script>.py` or `src/rsmm/engine/<script>.py`; the CLI
+> surface is `./rsmm <name>`. See also [SETUP.md](SETUP.md) for the repo
+> layout.
 
 ## Threat model / scope
 
