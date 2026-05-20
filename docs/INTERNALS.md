@@ -1,9 +1,10 @@
 # Ravenswatch — Internals / RE notes
 
-> **Path drift.** This file is a historical RE log. Where it references
-> `tools/<script>.py`, the current location is `src/rsmm/cli/<script>.py`
-> or `src/rsmm/engine/<script>.py`; the equivalent CLI surface is
-> `./rsmm <name>`. See `README.md` for the current layout.
+> **Historical log.** This file is a reverse-engineering record. Where
+> it references `tools/<script>.py`, the current location is
+> `src/rsmm/cli/<script>.py` or `src/rsmm/engine/<script>.py`; the
+> CLI surface is `./rsmm <name>`. See [SETUP.md](SETUP.md) for the
+> current repo layout.
 >
 > **Companion docs (newer).** This file covers the asset pipeline +
 > cipher + cooked-file format. For the binary RE that backs

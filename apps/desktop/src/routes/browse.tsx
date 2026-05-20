@@ -100,13 +100,13 @@ function BrowsePage() {
         {list.map((m) => {
           const here = installed.includes(m.id);
           return (
-            <div
+            <a
               key={m.id}
-              role="link"
-              tabIndex={0}
+              href={`/mod/${m.slug}`}
               onClick={(e) => {
                 const el = e.target as HTMLElement;
                 if (el.closest('button, a, input, textarea, select, [role="switch"]')) return;
+                e.preventDefault();
                 navigate({ to: '/mod/$slug', params: { slug: m.slug } });
               }}
               onKeyDown={(e) => {
@@ -165,7 +165,7 @@ function BrowsePage() {
                   label={`${m.downloads.toLocaleString()} dl`}
                 />
               </div>
-            </div>
+            </a>
           );
         })}
       </div>

@@ -1,8 +1,7 @@
 # Roadmap
 
-> Historical path note: where this file mentions `tools/<script>.py`,
-> the current location is `src/rsmm/cli/<script>.py`; the equivalent
-> CLI surface is `./rsmm <name>`.
+> Where this file mentions `tools/<script>.py`, the current location is
+> `src/rsmm/cli/<script>.py`. The CLI surface is `./rsmm <name>`.
 
 ## Recent landings (2026-05-17)
 

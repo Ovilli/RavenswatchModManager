@@ -167,13 +167,13 @@ function CardGrid({ items, profile, onOpen, onToggle, onUninstall }: RowProps) {
         const enabled = !profile.disabled.has(id);
         const outdated = mod.version !== mod.latestVersion;
         return (
-          <div
+          <a
             key={id}
-            role="link"
-            tabIndex={0}
+            href={`/mod/${mod.slug}`}
             onClick={(e) => {
               const el = e.target as HTMLElement;
               if (el.closest('button, a, input, textarea, select, [role="switch"]')) return;
+              e.preventDefault();
               onOpen?.(mod.slug);
             }}
             onKeyDown={(e) => {
@@ -220,12 +220,12 @@ function CardGrid({ items, profile, onOpen, onToggle, onUninstall }: RowProps) {
                 uninstall
               </Button>
             </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+            </a>
+          );
+        })}
+      </div>
+    );
+  }
 
 function ListView({ items, profile, onToggle, onReorder, onUninstall }: RowProps) {
   const [dragId, setDragId] = useState<string | null>(null);
