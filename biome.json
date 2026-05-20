@@ -1,0 +1,68 @@
+{
+  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignore": [
+      "**/dist/**",
+      "**/.next/**",
+      "**/.astro/**",
+      "**/.turbo/**",
+      "**/node_modules/**",
+      "**/src-tauri/target/**",
+      "**/src-tauri/gen/**",
+      "**/drizzle/**",
+      "**/routeTree.gen.ts",
+      "**/.venv*/**",
+      "**/__pycache__/**",
+      "src/rsmm/**",
+      "src/loader/**",
+      "src/*.egg-info/**",
+      "mods/**",
+      "docs/_re/**",
+      "data/**",
+      "scripts/**"
+    ]
+  },
+  "organizeImports": { "enabled": true },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100,
+    "lineEnding": "lf"
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "trailingCommas": "all",
+      "semicolons": "always",
+      "arrowParentheses": "always"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "style": {
+        "useImportType": "warn",
+        "useNodejsImportProtocol": "warn"
+      },
+      "suspicious": {
+        "noExplicitAny": "warn"
+      },
+      "correctness": {
+        "useExhaustiveDependencies": "warn"
+      },
+      "a11y": {
+        "useKeyWithClickEvents": "off",
+        "useFocusableInteractive": "off",
+        "useSemanticElements": "warn",
+        "noNoninteractiveElementToInteractiveRole": "warn"
+      }
+    }
+  }
+}

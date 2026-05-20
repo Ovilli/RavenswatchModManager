@@ -203,7 +203,7 @@ def analyze() -> CompatReport:
 
 
 def main() -> int:
-    import argparse, sys
+    import argparse
     ap = argparse.ArgumentParser(
         description="Analyze mod compatibility graph (requires / conflicts / replaces)",
     )
@@ -221,9 +221,12 @@ def main() -> int:
         active = (s.enabled and s.id not in rep.auto_disabled)
         mark = "ON " if active else "off"
         extras = []
-        if s.requires:  extras.append(f"requires={s.requires}")
-        if s.conflicts: extras.append(f"conflicts={s.conflicts}")
-        if s.replaces:  extras.append(f"replaces={s.replaces}")
+        if s.requires:
+            extras.append(f"requires={s.requires}")
+        if s.conflicts:
+            extras.append(f"conflicts={s.conflicts}")
+        if s.replaces:
+            extras.append(f"replaces={s.replaces}")
         if extras:
             print(f"  [{mark}] {s.id} {s.version}  {' '.join(extras)}")
         else:

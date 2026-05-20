@@ -10,8 +10,6 @@ from __future__ import annotations
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any
-
 from rsmm.engine.paths import MODS_DIR
 
 from .config import ConfigSchema

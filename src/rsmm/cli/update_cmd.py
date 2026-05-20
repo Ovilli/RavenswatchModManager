@@ -21,7 +21,6 @@ Run `rsmm update --check` to list available updates without downloading.
 from __future__ import annotations
 
 import argparse
-import io
 import json
 import shutil
 import sys
@@ -31,7 +30,7 @@ import zipfile
 from pathlib import Path
 
 from rsmm.engine.paths import MODS_DIR
-from rsmm.sdk.api import satisfies, _parse_v
+from rsmm.sdk.api import _parse_v
 from rsmm.sdk.repo import RepoIndex, RepoError, sha256_file, verify_file
 
 

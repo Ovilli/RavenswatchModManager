@@ -1,0 +1,10 @@
+{
+  "extends": "@rsmm/tsconfig/node.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "composite": true,
+    "noEmit": false
+  },
+  "include": ["src/**/*.ts"]
+}

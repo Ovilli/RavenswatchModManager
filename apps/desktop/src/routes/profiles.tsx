@@ -1,0 +1,191 @@
+import { createFileRoute } from '@tanstack/react-router';
+import { Check, Copy, Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
+import { useState } from 'react';
+import { Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
+import { useApp } from '../store';
+
+export const Route = createFileRoute('/profiles')({
+  component: ProfilesPage,
+});
+
+function ProfilesPage() {
+  const profiles = useApp((s) => s.profiles);
+  const activeId = useApp((s) => s.activeProfileId);
+  const setActive = useApp((s) => s.setActiveProfile);
+  const create = useApp((s) => s.createProfile);
+  const duplicate = useApp((s) => s.duplicateProfile);
+  const rename = useApp((s) => s.renameProfile);
+  const remove = useApp((s) => s.deleteProfile);
+  const exportP = useApp((s) => s.exportProfile);
+  const importP = useApp((s) => s.importProfile);
+  const [importing, setImporting] = useState(false);
+  const [code, setCode] = useState('');
+  const [importError, setImportError] = useState<string | null>(null);
+
+  function onImport() {
+    const id = importP(code);
+    if (!id) {
+      setImportError('Could not read that code. Check it and try again.');
+      return;
+    }
+    setCode('');
+    setImporting(false);
+    setImportError(null);
+  }
+
+  return (
+    <div className="space-y-6">
+      <SectionHeader
+        title="Profiles"
+        subtitle="Different loadouts for different runs. Share one as a code."
+        right={
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setImporting((v) => !v)}
+              className="flex items-center gap-2 border border-border px-3 py-2 hover:border-gilt/50"
+            >
+              <Upload className="h-4 w-4" /> Import
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const name = window.prompt('Profile name', 'New Run');
+                if (name) create(name);
+              }}
+              className="flex items-center gap-2 border border-crimson bg-crimson/80 px-3 py-2 text-parchment hover:bg-oxblood transition-colors duration-150"
+            >
+              <Plus className="h-4 w-4" /> New profile
+            </button>
+          </div>
+        }
+      />
+
+      {importing ? (
+        <Panel>
+          <h3 className="font-fraktur text-lg text-parchment mb-2">Import profile</h3>
+          <p className="font-serif-italic text-ash mb-3">
+            Paste an exported profile code below.
+          </p>
+          <textarea
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            rows={4}
+            className="font-mono w-full resize-none border border-border bg-pitch/60 p-3 text-parchment focus:border-gilt/60 focus:outline-none"
+            placeholder="base64-encoded profile…"
+          />
+          {importError ? (
+            <p className="text-sm text-crimson mt-2">{importError}</p>
+          ) : null}
+          <div className="mt-3 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setImporting(false)}
+              className="border border-border px-3 py-1.5 text-ash hover:text-parchment"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onImport}
+              className="border border-crimson bg-crimson/80 px-3 py-1.5 text-parchment hover:bg-oxblood"
+            >
+              Import
+            </button>
+          </div>
+        </Panel>
+      ) : null}
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {profiles.map((p) => {
+          const isActive = p.id === activeId;
+          const enabled = p.loadOrder.filter((id) => !p.disabled.has(id)).length;
+          return (
+            <article key={p.id} className="grimoire-card p-5">
+              <header className="flex items-start justify-between gap-2">
+                <div>
+                  <h3 className="font-fraktur text-2xl text-parchment leading-none">
+                    {p.name}
+                  </h3>
+                  <p className="font-mono mt-1 text-ash">
+                    {enabled} enabled · {p.loadOrder.length} total
+                  </p>
+                </div>
+                {isActive ? <MonoTag tone="crimson">active</MonoTag> : null}
+              </header>
+
+              <Fleuron className="my-4" />
+
+              <ul className="font-serif-italic max-h-32 space-y-0.5 overflow-y-auto text-sm text-smoke">
+                {p.loadOrder.length === 0 ? (
+                  <li className="text-ash">No mods.</li>
+                ) : (
+                  p.loadOrder.map((id) => (
+                    <li key={id} className={p.disabled.has(id) ? 'opacity-50' : ''}>
+                      {id}
+                    </li>
+                  ))
+                )}
+              </ul>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {!isActive ? (
+                  <button
+                    type="button"
+                    onClick={() => setActive(p.id)}
+                    className="flex items-center gap-1.5 border border-crimson bg-crimson/80 px-2.5 py-1.5 text-sm text-parchment hover:bg-oxblood"
+                  >
+                    <Check className="h-3.5 w-3.5" /> Activate
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => duplicate(p.id)}
+                  className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
+                >
+                  <Copy className="h-3.5 w-3.5" /> Duplicate
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const name = window.prompt('Rename profile', p.name);
+                    if (name) rename(p.id, name);
+                  }}
+                  className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
+                >
+                  <Pencil className="h-3.5 w-3.5" /> Rename
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const code = exportP(p.id);
+                    try {
+                      await navigator.clipboard.writeText(code);
+                      window.alert('Profile code copied to clipboard.');
+                    } catch {
+                      window.prompt('Profile code', code);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
+                >
+                  <Download className="h-3.5 w-3.5" /> Export
+                </button>
+                {profiles.length > 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm(`Delete profile "${p.name}"?`)) remove(p.id);
+                    }}
+                    className="ml-auto flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-crimson hover:text-crimson"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> Delete
+                  </button>
+                ) : null}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,21 @@
+{
+  "name": "docs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev --port 4321",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check-types": "astro check",
+    "clean": "rm -rf dist .astro .turbo"
+  },
+  "dependencies": {
+    "@astrojs/check": "0.9.4",
+    "@astrojs/starlight": "0.30.4",
+    "astro": "5.1.5"
+  },
+  "devDependencies": {
+    "typescript": "5.7.3"
+  }
+}

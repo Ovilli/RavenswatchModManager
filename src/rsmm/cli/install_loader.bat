@@ -52,6 +52,17 @@ if not exist "%GAME_DIR%\asset_map.json" (
     )
 )
 
+REM Lua-side SDK: mods do `require "rsmm"` and get the documented R.* surface.
+set "LUA_SRC=%REPO_DIR%\src\loader\lua"
+set "LUA_DST=%GAME_DIR%\rsmm\lib"
+if exist "%LUA_SRC%\rsmm.lua" (
+    if not exist "%LUA_DST%" mkdir "%LUA_DST%"
+    xcopy /E /I /Y "%LUA_SRC%\*" "%LUA_DST%\" >nul
+) else if exist "%REPO_DIR%\src\loader\lib\rsmm.lua" (
+    if not exist "%LUA_DST%" mkdir "%LUA_DST%"
+    copy /Y "%REPO_DIR%\src\loader\lib\rsmm.lua" "%LUA_DST%\rsmm.lua"
+)
+
 REM Create mods directory if not exists
 if not exist "%GAME_DIR%\mods" (
     mkdir "%GAME_DIR%\mods"

@@ -1,0 +1,32 @@
+---
+title: Ravenswatch Mod Manager
+description: Browser + desktop mod manager for Ravenswatch.
+template: splash
+hero:
+  tagline: One toolkit. Browser. Windows. macOS. Linux.
+  actions:
+    - text: Install
+      link: /getting-started/install/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/Ovilli/RavenswatchModManager
+      icon: external
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid>
+  <Card title="Cooked asset overrides" icon="seti:default">
+    Swap textures, audio banks, meshes — anything cooked under `mods/<id>/assets/`.
+  </Card>
+  <Card title="Lua scripting" icon="seti:lua">
+    Author behaviour in Lua. Call any of 53k game functions via `rsmm.call`.
+  </Card>
+  <Card title="Conflict-free merging" icon="approve-check">
+    Multiple mods can patch the same file without overwriting each other.
+  </Card>
+  <Card title="Cross-platform UI" icon="laptop">
+    Tauri desktop app + Next.js web app — same UI everywhere.
+  </Card>
+</CardGrid>

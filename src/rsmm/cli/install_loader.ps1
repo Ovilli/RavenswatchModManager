@@ -85,6 +85,20 @@ if ((Test-Path $winhttp_real) -and (Is-Doorstop $winhttp_real)) {
 Copy-Item -Path $dll -Destination $winhttp -Force
 Copy-Item -Path (Join-Path $repoDir 'data\asset_map.json') -Destination (Join-Path $GameDir 'asset_map.json') -Force
 
+# Lua-side SDK: mods do `require "rsmm"` and get the documented R.* surface.
+$luaSrc = Join-Path $repoDir 'src\loader\lua'
+$luaDst = Join-Path $GameDir 'rsmm\lib'
+if (Test-Path $luaSrc) {
+  New-Item -ItemType Directory -Path $luaDst -Force | Out-Null
+  Copy-Item -Path (Join-Path $luaSrc '*') -Destination $luaDst -Recurse -Force
+} else {
+  $legacy = Join-Path $repoDir 'src\loader\lib\rsmm.lua'
+  if (Test-Path $legacy) {
+    New-Item -ItemType Directory -Path $luaDst -Force | Out-Null
+    Copy-Item -Path $legacy -Destination (Join-Path $luaDst 'rsmm.lua') -Force
+  }
+}
+
 # Sync mod manifests + init.lua
 New-Item -ItemType Directory -Path (Join-Path $GameDir 'mods') -Force | Out-Null
 Get-ChildItem -Directory (Join-Path $repoDir 'mods') | ForEach-Object {

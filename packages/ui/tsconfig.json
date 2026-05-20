@@ -1,0 +1,7 @@
+{
+  "extends": "@rsmm/tsconfig/react.json",
+  "compilerOptions": {
+    "rootDir": "src"
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

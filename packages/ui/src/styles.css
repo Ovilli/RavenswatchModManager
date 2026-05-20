@@ -1,0 +1,589 @@
+/* Grimoire theme — dark fairytale palette.
+   Reference values from design brief: Pitch, Oxblood, Crimson, Char,
+   Ash, Smoke, Parchment. State colours stay inside this set. */
+
+@import url('https://fonts.googleapis.com/css2?family=UnifrakturCook:wght@700&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500;1,600&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Raw brand tokens */
+    --pitch: 0 49% 5%;          /* #170707 */
+    --oxblood: 357 57% 24%;     /* #621A20 */
+    --crimson: 356 62% 33%;     /* #882029 */
+    --char: 18 13% 28%;         /* #5B4338 */
+    --ash: 18 11% 45%;          /* #846B61 */
+    --smoke: 17 13% 51%;        /* #947C71 */
+    --parchment: 47 53% 83%;    /* #EBE1BC */
+    --gilt: 41 60% 60%;         /* warm gold for focus rings */
+
+    /* Semantic mapping (shadcn-style) — dark by default */
+    --background: var(--pitch);
+    --foreground: var(--parchment);
+    --card: 0 35% 7%;
+    --card-foreground: var(--parchment);
+    --popover: 0 35% 8%;
+    --popover-foreground: var(--parchment);
+    --primary: var(--crimson);
+    --primary-foreground: var(--parchment);
+    --secondary: var(--char);
+    --secondary-foreground: var(--parchment);
+    --muted: var(--char);
+    --muted-foreground: var(--smoke);
+    --accent: var(--oxblood);
+    --accent-foreground: var(--parchment);
+    --destructive: 356 70% 42%;
+    --destructive-foreground: var(--parchment);
+    --border: 18 15% 18%;
+    --input: 18 15% 18%;
+    --ring: var(--gilt);
+    --radius: 10px;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html, body, #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: 'EB Garamond', Georgia, serif;
+    font-size: 16px;
+    line-height: 1.55;
+    font-feature-settings: 'liga' 1, 'kern' 1;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    /* cleaner vignette with reduced texture noise + subtle painted backdrop */
+    background-image:
+      linear-gradient(hsl(0 46% 5% / 0.76), hsl(0 46% 5% / 0.76)),
+      radial-gradient(ellipse at top left, hsl(0 32% 13% / 0.45), transparent 58%),
+      radial-gradient(ellipse at bottom right, hsl(0 22% 10% / 0.5), transparent 64%),
+      url('./assets/uncooked/loading-screen-avalon.png');
+    background-position: center, top left, bottom right, center top;
+    background-size: auto, auto, auto, cover;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    background-blend-mode: normal, normal, normal, soft-light;
+  }
+
+  /* Headlines — blackletter Fraktur for the German-feel wordmark / section
+     titles. Used sparingly per brief. */
+  .font-fraktur {
+    font-family: 'UnifrakturCook', 'UnifrakturMaguntia', serif;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  /* Hero serif italic for occasional flourishes (mod titles, hero copy). */
+  .font-serif-italic {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-style: italic;
+    font-weight: 500;
+  }
+
+  /* Metadata / tags / numbers — uppercase, tracked. */
+  .font-mono {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 0.72rem;
+  }
+
+  ::selection {
+    background: hsl(var(--crimson) / 0.55);
+    color: hsl(var(--parchment));
+  }
+
+  /* Focus ring — gilt 2px per brief. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--parchment));
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+}
+
+@layer components {
+  /* Fleuron rule used between sections. */
+  .rule-fleuron {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    color: hsl(var(--ash));
+    font-family: 'EB Garamond', serif;
+  }
+  .rule-fleuron::before,
+  .rule-fleuron::after {
+    content: '';
+    flex: 1;
+    border-top: 1px solid hsl(var(--border));
+    border-bottom: 1px solid hsl(var(--border));
+    height: 3px;
+  }
+
+  /* Parchment-rectangle placeholder for missing cover art.
+     Faint diagonal hatching, monospace caption. */
+  .cover-placeholder {
+    background-color: hsl(var(--parchment) / 0.06);
+    background-image: repeating-linear-gradient(
+      135deg,
+      hsl(var(--parchment) / 0.05) 0,
+      hsl(var(--parchment) / 0.05) 1px,
+      transparent 1px,
+      transparent 9px
+    );
+    border: 1px solid hsl(var(--border));
+    color: hsl(var(--smoke));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: lowercase;
+  }
+
+  /* Card glow per brief: 1px warm border + soft inner glow, no drop. */
+  .grimoire-card {
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    background-color: hsl(var(--card) / 0.9);
+    backdrop-filter: blur(2px);
+    box-shadow:
+      inset 0 0 0 1px hsl(var(--parchment) / 0.03),
+      0 10px 28px -22px hsl(var(--pitch) / 0.9);
+    transition: border-color 200ms cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 200ms cubic-bezier(0.4, 0, 0.2, 1),
+                transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .grimoire-card:hover {
+    border-color: hsl(var(--gilt) / 0.45);
+    box-shadow:
+      inset 0 0 0 1px hsl(var(--parchment) / 0.05),
+      0 16px 36px -22px hsl(var(--pitch)),
+      0 0 0 1px hsl(var(--gilt) / 0.12);
+  }
+
+  /* Subtle parchment-grain surface for sidebars / strips. */
+  .surface-grain {
+    background-color: hsl(var(--card) / 0.8);
+    backdrop-filter: blur(4px);
+    background-image: repeating-linear-gradient(
+      45deg,
+      hsl(var(--parchment) / 0.015) 0,
+      hsl(var(--parchment) / 0.015) 1px,
+      transparent 1px,
+      transparent 10px
+    );
+  }
+
+  /* Brand crest — fraktur monogram + ornate frame. */
+  .brand-crest {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3rem;
+    height: 3rem;
+    color: hsl(var(--parchment));
+    border: 1px solid hsl(var(--gilt) / 0.45);
+    border-radius: calc(var(--radius) + 2px);
+    background:
+      radial-gradient(circle at 30% 25%, hsl(var(--crimson) / 0.26), transparent 65%),
+      hsl(var(--pitch));
+    box-shadow:
+      inset 0 0 0 1px hsl(var(--parchment) / 0.06),
+      0 8px 20px -16px hsl(var(--pitch));
+  }
+  .brand-crest::before,
+  .brand-crest::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border: 1px solid hsl(var(--gilt) / 0.12);
+    pointer-events: none;
+    border-radius: calc(var(--radius) + 3px);
+  }
+  .brand-crest::after {
+    inset: -4px;
+    border-color: hsl(var(--gilt) / 0.05);
+    border-radius: calc(var(--radius) + 5px);
+  }
+
+  /* Nav link — gilt left marker on active, animated. */
+  .nav-link-grim {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0.85rem;
+    color: hsl(var(--parchment) / 0.7);
+    border: 1px solid transparent;
+    border-radius: calc(var(--radius) - 2px);
+    transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+                color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+                border-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .nav-link-grim:hover {
+    color: hsl(var(--parchment));
+    background-color: hsl(var(--oxblood) / 0.12);
+    border-color: hsl(var(--border));
+  }
+  .nav-link-grim[data-active='true'] {
+    color: hsl(var(--parchment));
+    border-color: hsl(var(--crimson) / 0.5);
+    background: linear-gradient(90deg,
+      hsl(var(--crimson) / 0.22),
+      transparent 70%);
+  }
+  .nav-link-grim[data-active='true']::after {
+    content: '';
+    position: absolute;
+    right: 0.7rem;
+    top: 50%;
+    width: 4px;
+    height: 4px;
+    background: hsl(var(--parchment));
+    transform: translateY(-50%) rotate(45deg);
+    box-shadow: 0 0 8px hsl(var(--parchment) / 0.9);
+  }
+
+  /* Stronger nav label for clearer hierarchy */
+  .nav-link-grim > span {
+    color: hsl(var(--parchment));
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  /* Slightly larger brand crest for stronger presence */
+  .brand-crest {
+    width: 3.5rem;
+    height: 3.5rem;
+  }
+
+  /* Card lift for clearer affordance */
+  .grimoire-card:hover {
+    transform: translateY(-4px) scale(1.01);
+  }
+
+  /* Button polish: clearer primary emphasis and focus */
+  .btn-grim[data-variant='primary'] {
+    box-shadow:
+      inset 0 0 0 1px hsl(var(--parchment) / 0.08),
+      0 6px 20px -10px hsl(var(--crimson) / 0.25);
+  }
+  .btn-grim:focus-visible {
+    outline: 3px solid hsl(var(--gilt) / 0.9);
+    outline-offset: 2px;
+    box-shadow: 0 6px 18px -10px hsl(var(--gilt) / 0.25);
+  }
+
+  /* Inputs: cleaner focus and slightly larger click target */
+  .input-grim {
+    padding: 0.7rem 0.95rem 0.7rem 2.25rem;
+    font-size: 1.02rem;
+  }
+  .input-grim:focus {
+    border-color: hsl(var(--gilt) / 0.8);
+    box-shadow: 0 6px 22px -12px hsl(var(--gilt) / 0.18);
+  }
+
+  /* Surface grain: slightly stronger depth for app panels */
+  .surface-grain {
+    backdrop-filter: blur(6px);
+    background-image: repeating-linear-gradient(
+      45deg,
+      hsl(var(--parchment) / 0.02) 0,
+      hsl(var(--parchment) / 0.02) 1px,
+      transparent 1px,
+      transparent 9px
+    );
+  }
+
+  /* Icon visibility improvements for sidebar */
+  .nav-icon {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 0.6rem;
+    padding: 0.36rem;
+    background-color: hsl(var(--parchment) / 0.12);
+    border: 1px solid hsl(var(--border));
+    box-shadow: 0 10px 26px -16px hsl(var(--pitch) / 0.6), 0 2px 6px rgba(0,0,0,0.25);
+    object-fit: contain;
+    filter: saturate(1.45) contrast(1.18) brightness(1.14) drop-shadow(0 6px 18px rgba(0,0,0,0.32));
+    transition: transform 160ms ease, filter 160ms ease, box-shadow 160ms ease, background-color 160ms ease, border-color 160ms ease;
+  }
+  .nav-link-grim:hover .nav-icon {
+    transform: scale(1.08) translateY(-1px);
+    filter: saturate(1.6) contrast(1.22) brightness(1.16) drop-shadow(0 10px 26px rgba(0,0,0,0.36));
+    box-shadow: 0 14px 36px -18px hsl(var(--pitch) / 0.72), 0 6px 18px rgba(0,0,0,0.28);
+  }
+  .nav-link-grim[data-active='true'] .nav-icon {
+    background: linear-gradient(90deg, hsl(var(--crimson) / 0.22), hsl(var(--gilt) / 0.06));
+    filter: saturate(1.9) contrast(1.28) brightness(1.22) drop-shadow(0 10px 28px rgba(136,32,41,0.22));
+    box-shadow: 0 12px 36px -12px hsl(var(--crimson) / 0.22), 0 4px 12px rgba(0,0,0,0.28);
+    border-color: hsl(var(--gilt) / 0.45);
+    transform: scale(1.08) translateY(-1px);
+  }
+
+  /* Encourage clearer label contrast for inactive links */
+  .nav-link-grim { color: hsl(var(--parchment) / 0.88); }
+
+  /* Explicit icon color tokens so SVGs using currentColor match theme */
+  .nav-icon { color: hsl(var(--parchment)); }
+  .nav-link-grim:hover .nav-icon { color: hsl(var(--parchment)); }
+  .nav-link-grim[data-active='true'] .nav-icon { color: hsl(var(--parchment)); }
+
+  /* Window controls (frameless) */
+  .window-controls { display: flex; align-items: center; }
+  .wc-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 4px;
+    background: transparent;
+    border: 0;
+    padding: 0.12rem;
+    transition: background-color 120ms ease, transform 80ms ease, box-shadow 120ms ease;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .wc-btn:focus { outline: none; box-shadow: 0 0 0 3px hsl(var(--gilt) / 0.18); border-radius: 4px; }
+  .wc-btn:hover { background: hsl(var(--parchment) / 0.04); transform: translateY(-1px); }
+  .wc-minimize svg, .wc-maximize svg { color: hsl(var(--parchment)); }
+  .wc-close { border-radius: 4px; }
+  .wc-close:hover { background: hsl(var(--crimson) / 0.18); }
+  .wc-close svg { color: hsl(var(--crimson)); }
+  .window-controls { z-index: 40; }
+  /* status badge removed */
+
+  /* Compact metric pill for status strip. */
+  .stat-pill {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.35rem;
+    padding: 0.15rem 0.6rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 999px;
+    color: hsl(var(--ash));
+    background-color: hsl(var(--pitch) / 0.6);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .stat-pill > strong {
+    color: hsl(var(--parchment));
+    font-weight: 600;
+  }
+  .stat-pill[data-tone='gilt'] {
+    border-color: hsl(var(--gilt) / 0.55);
+    color: hsl(var(--gilt));
+  }
+  .stat-pill[data-tone='crimson'] {
+    border-color: hsl(var(--crimson) / 0.7);
+    color: hsl(var(--parchment));
+    background-color: hsl(var(--crimson) / 0.15);
+  }
+
+  /* Grimoire button primitives. Use via component or directly. */
+  .btn-grim {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.95rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: calc(var(--radius) - 2px);
+    color: hsl(var(--parchment));
+    background-color: hsl(var(--char) / 0.22);
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-style: normal;
+    font-weight: 600;
+    font-size: 0.95rem;
+    line-height: 1.1;
+    transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+                border-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1),
+                transform 80ms ease-out;
+  }
+  .btn-grim:hover {
+    border-color: hsl(var(--gilt) / 0.6);
+    background-color: hsl(var(--char) / 0.38);
+  }
+  .btn-grim:active { transform: translateY(1px); }
+  .btn-grim:disabled {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+  .btn-grim[data-variant='primary'] {
+    border-color: hsl(var(--crimson));
+    background-color: hsl(var(--crimson) / 0.86);
+    box-shadow:
+      inset 0 0 0 1px hsl(var(--parchment) / 0.06),
+      0 0 12px hsl(var(--crimson) / 0.35);
+  }
+  .btn-grim[data-variant='primary']:hover {
+    background-color: hsl(var(--oxblood));
+    box-shadow:
+      inset 0 0 0 1px hsl(var(--parchment) / 0.1),
+      0 0 18px hsl(var(--crimson) / 0.5);
+  }
+  .btn-grim[data-variant='gilt'] {
+    border-color: hsl(var(--gilt) / 0.7);
+    color: hsl(var(--gilt));
+    background-color: hsl(var(--gilt) / 0.09);
+  }
+  .btn-grim[data-variant='gilt']:hover {
+    background-color: hsl(var(--gilt) / 0.15);
+    color: hsl(var(--parchment));
+  }
+  .btn-grim[data-variant='danger'] {
+    border-color: hsl(var(--crimson) / 0.6);
+    color: hsl(var(--parchment));
+    background-color: hsl(var(--crimson) / 0.18);
+  }
+  .btn-grim[data-variant='danger']:hover {
+    background-color: hsl(var(--crimson) / 0.3);
+    border-color: hsl(var(--crimson));
+  }
+
+  /* Grimoire input */
+  .input-grim {
+    width: 100%;
+    padding: 0.55rem 0.85rem 0.55rem 2.25rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: calc(var(--radius) - 2px);
+    background-color: hsl(var(--pitch) / 0.64);
+    color: hsl(var(--parchment));
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-style: italic;
+    font-size: 1rem;
+    transition: border-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .input-grim::placeholder { color: hsl(var(--ash)); }
+  .input-grim:focus {
+    outline: none;
+    border-color: hsl(var(--gilt) / 0.7);
+    box-shadow: 0 0 0 1px hsl(var(--gilt) / 0.3);
+  }
+
+  /* Ember banner for conflicts — sits above lists. */
+  .ember-banner {
+    background: linear-gradient(90deg,
+      hsl(var(--crimson) / 0.22),
+      hsl(var(--oxblood) / 0.18));
+    border: 1px solid hsl(var(--crimson) / 0.6);
+    border-radius: calc(var(--radius) - 2px);
+    color: hsl(var(--parchment));
+    box-shadow: inset 0 0 24px hsl(var(--crimson) / 0.15);
+  }
+
+  /* Decorative section divider with centered fleuron. */
+  .fleuron-mark {
+    color: hsl(var(--gilt) / 0.7);
+    font-size: 0.85rem;
+    line-height: 1;
+    letter-spacing: 0.4em;
+  }
+}
+
+@keyframes candle-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+.animate-candle {
+  animation: candle-pulse 2.4s ease-in-out infinite;
+}
+
+/* Animation tuning variables */
+:root {
+  --anim-page-duration: 220ms;
+  --anim-page-ease: cubic-bezier(0.22, 0.9, 0.3, 1);
+  --anim-nav-duration: 360ms;
+  --anim-crest-duration: 5600ms;
+}
+
+/* Page entrance animation (subtle) */
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.animate-page-in {
+  animation: page-in var(--anim-page-duration) var(--anim-page-ease) both;
+}
+
+/* Floating crest / decorative motion (subtle) */
+@keyframes floaty {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+  100% { transform: translateY(0); }
+}
+.animate-float {
+  animation: floaty var(--anim-crest-duration) ease-in-out infinite;
+}
+
+/* Subtle nav item entrance with staggered delays */
+@keyframes nav-item-in {
+  from { opacity: 0; transform: translateX(-3px); }
+  to { opacity: 1; transform: none; }
+}
+.nav-link-grim { opacity: 0; transform: translateX(-3px); animation: nav-item-in var(--anim-nav-duration) var(--anim-page-ease) both; }
+.nav-link-grim:nth-child(1) { animation-delay: 36ms; }
+.nav-link-grim:nth-child(2) { animation-delay: 72ms; }
+.nav-link-grim:nth-child(3) { animation-delay: 108ms; }
+.nav-link-grim:nth-child(4) { animation-delay: 144ms; }
+.nav-link-grim:nth-child(5) { animation-delay: 180ms; }
+.nav-link-grim:nth-child(6) { animation-delay: 216ms; }
+
+/* Slight lift for nav icons on hover */
+.nav-link-grim:hover .nav-icon { transform: scale(1.04) translateY(-0.4px); }
+
+/* gentle heartbeat for primary buttons on hover (subtle) */
+@keyframes pulse-soft {
+  from { box-shadow: 0 6px 16px -12px rgba(136,32,41,0.12); }
+  to   { box-shadow: 0 10px 26px -12px rgba(136,32,41,0.16); }
+}
+.btn-grim[data-variant='primary']:hover { animation: pulse-soft 520ms ease-in-out 1 both; }
+
+/* Respect user preference for reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .animate-page-in,
+  .animate-float,
+  .nav-link-grim,
+  .nav-link-grim:hover .nav-icon,
+  .btn-grim[data-variant='primary']:hover {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+    box-shadow: none !important;
+  }
+}
+
+/* Scrollbars — slim, warm. */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: hsl(var(--char));
+  border: 2px solid hsl(var(--background));
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--ash));
+}
