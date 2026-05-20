@@ -1,6 +1,6 @@
-import '@rsmm/ui/styles.css';
 import type { Metadata } from 'next';
 import { Providers } from './providers';
+import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Ravenswatch Mod Manager',
