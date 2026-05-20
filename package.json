@@ -30,7 +30,10 @@
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
+    "autoprefixer": "10.4.20",
     "next": "15.1.11",
+    "postcss": "8.4.49",
+    "tailwindcss": "3.4.17",
     "turbo": "2.3.3",
     "react": "19.0.0",
     "react-dom": "19.0.0",
