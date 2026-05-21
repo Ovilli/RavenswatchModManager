@@ -1,0 +1,66 @@
+name: Discord release notification
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Discord webhook
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          RELEASE_NAME: ${{ github.event.release.name }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+          REPO: ${{ github.repository }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK" ]; then
+            echo "DISCORD_WEBHOOK_URL not set — skipping"
+            exit 0
+          fi
+
+          BANNER="https://raw.githubusercontent.com/$REPO/main/apps/desktop/src-tauri/icons/update-banner.png"
+
+          PAYLOAD=$(node -e "
+            const tag = process.env.RELEASE_TAG || '';
+            const body = (process.env.RELEASE_BODY || '').slice(0, 2000);
+            const isPre = process.env.PRERELEASE === 'true';
+            const emoji = isPre ? '\uD83E\uDD2A' : '\uD83D\uDE80';
+            const name = process.env.RELEASE_NAME || tag;
+            const url = process.env.RELEASE_URL;
+
+            console.log(JSON.stringify({
+              username: 'RSMM',
+              avatar_url: 'https://github.com/$REPO/raw/main/apps/desktop/src-tauri/icons/raven-avatar.png',
+              content: emoji + ' **' + name + '**' + (isPre ? ' (pre-release)' : ''),
+              embeds: [{
+                title: 'Ravenswatch Mod Manager',
+                url: url,
+                color: 8921129,
+                description: body || 'No release notes.',
+                image: { url: '$BANNER' },
+                fields: [
+                  {
+                    name: '\uD83D\uDCC2 Full Changelog',
+                    value: '[View on GitHub](' + url + ')',
+                    inline: true
+                  },
+                  {
+                    name: '\uD83D\uDCE6 Downloads',
+                    value: '[Windows](' + url + ') \u00B7 [macOS](' + url + ') \u00B7 [Linux](' + url + ')',
+                    inline: true
+                  }
+                ],
+                footer: { text: tag + ' \u00B7 Ravenswatch Mod Manager' },
+                timestamp: new Date().toISOString()
+              }]
+            }));
+          ")
+
+          curl -sf -X POST "$DISCORD_WEBHOOK" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"
