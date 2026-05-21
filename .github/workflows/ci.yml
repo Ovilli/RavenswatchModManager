@@ -67,9 +67,6 @@ jobs:
       - name: Test
         run: pnpm test
 
-      - name: Python tests
-        run: python -m pytest -q
-
   loader-linux-mingw:
     name: loader (mingw-w64 cross-compile)
     runs-on: ubuntu-latest

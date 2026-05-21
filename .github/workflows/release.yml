@@ -64,17 +64,24 @@ jobs:
           pip install -e .
           OUT=apps/desktop/src-tauri/binaries
           mkdir -p "$OUT"
+          # Keep PyInstaller paths inside the workspace so Windows runners
+          # (workspace on D:, system temp on C:) don't hit cross-drive relpath errors.
+          PYI_DIST="$PWD/.pyi-build/dist"
+          PYI_WORK="$PWD/.pyi-build/work"
+          PYI_SPEC="$PWD/.pyi-build"
+          mkdir -p "$PYI_DIST" "$PYI_WORK" "$PYI_SPEC"
           if [ "${{ matrix.platform }}" = "macos-latest" ]; then
             pyinstaller --onefile --name rsmm-mac --target-arch universal2 \
-              --distpath /tmp/pyi-dist --workpath /tmp/pyi --specpath /tmp \
+              --distpath "$PYI_DIST" --workpath "$PYI_WORK" --specpath "$PYI_SPEC" \
               ./rsmm
-            cp /tmp/pyi-dist/rsmm-mac "$OUT/rsmm-aarch64-apple-darwin"
-            cp /tmp/pyi-dist/rsmm-mac "$OUT/rsmm-x86_64-apple-darwin"
-            chmod +x "$OUT/rsmm-aarch64-apple-darwin" "$OUT/rsmm-x86_64-apple-darwin"
+            cp "$PYI_DIST/rsmm-mac" "$OUT/rsmm-aarch64-apple-darwin"
+            cp "$PYI_DIST/rsmm-mac" "$OUT/rsmm-x86_64-apple-darwin"
+            cp "$PYI_DIST/rsmm-mac" "$OUT/rsmm-universal-apple-darwin"
+            chmod +x "$OUT/rsmm-aarch64-apple-darwin" "$OUT/rsmm-x86_64-apple-darwin" "$OUT/rsmm-universal-apple-darwin"
           else
             TRIPLE=$(rustc -vV | sed -n 's/host: //p')
             pyinstaller --onefile --name "rsmm-$TRIPLE" \
-              --distpath "$OUT" --workpath /tmp/pyi --specpath /tmp \
+              --distpath "$OUT" --workpath "$PYI_WORK" --specpath "$PYI_SPEC" \
               ./rsmm
           fi
           ls -la "$OUT"
