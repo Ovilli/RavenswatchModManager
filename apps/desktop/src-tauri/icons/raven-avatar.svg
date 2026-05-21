@@ -1,14 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
   <defs>
     <radialGradient id="bg" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#2d1b4e"/>
-      <stop offset="100%" stop-color="#0f0520"/>
+      <stop offset="0%" stop-color="#621A20" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#170707"/>
     </radialGradient>
   </defs>
   <rect width="128" height="128" rx="64" fill="url(#bg)"/>
   <!-- Gear behind raven -->
-  <g transform="translate(64, 64)" opacity="0.15">
-    <g fill="#c084fc">
+  <g transform="translate(64, 64)" opacity="0.12">
+    <g fill="#D4A84B">
       <rect x="30" y="-4" width="10" height="8" rx="2" transform="rotate(0)"/>
       <rect x="30" y="-4" width="10" height="8" rx="2" transform="rotate(45)"/>
       <rect x="30" y="-4" width="10" height="8" rx="2" transform="rotate(90)"/>
@@ -18,30 +18,30 @@
       <rect x="30" y="-4" width="10" height="8" rx="2" transform="rotate(270)"/>
       <rect x="30" y="-4" width="10" height="8" rx="2" transform="rotate(315)"/>
     </g>
-    <circle cx="0" cy="0" r="30" fill="none" stroke="#c084fc" stroke-width="2.5"/>
-    <circle cx="0" cy="0" r="18" fill="none" stroke="#c084fc" stroke-width="2"/>
-    <circle cx="0" cy="0" r="5" fill="#c084fc"/>
+    <circle cx="0" cy="0" r="30" fill="none" stroke="#D4A84B" stroke-width="2.5"/>
+    <circle cx="0" cy="0" r="18" fill="none" stroke="#D4A84B" stroke-width="2"/>
+    <circle cx="0" cy="0" r="5" fill="#D4A84B"/>
   </g>
   <!-- Raven -->
   <g transform="translate(64, 60)">
     <!-- Tail -->
-    <path d="M-4,16 L-14,34 L-8,32 L-2,18" fill="#1a0a2e" stroke="#c084fc" stroke-width="1.2"/>
-    <path d="M0,16 L-6,38 L-2,36 L2,20" fill="#1a0a2e" stroke="#a855f7" stroke-width="1"/>
-    <path d="M4,16 L2,38 L6,36 L6,18" fill="#1a0a2e" stroke="#7c3aed" stroke-width="0.8"/>
+    <path d="M-4,16 L-14,34 L-8,32 L-2,18" fill="none" stroke="#EBE1BC" stroke-width="1.2" opacity="0.3"/>
+    <path d="M0,16 L-6,38 L-2,36 L2,20" fill="none" stroke="#EBE1BC" stroke-width="1" opacity="0.25"/>
+    <path d="M4,16 L2,38 L6,36 L6,18" fill="none" stroke="#EBE1BC" stroke-width="0.8" opacity="0.2"/>
     <!-- Body -->
-    <path d="M-10,8 C-16,12 -18,22 -12,28 C-8,32 0,34 4,34 C8,34 16,32 20,28 C26,22 24,12 18,8 C14,4 8,2 4,2 C0,2 -6,4 -10,8Z" fill="#1a0a2e" stroke="#c084fc" stroke-width="1.5"/>
+    <path d="M-10,8 C-16,12 -18,22 -12,28 C-8,32 0,34 4,34 C8,34 16,32 20,28 C26,22 24,12 18,8 C14,4 8,2 4,2 C0,2 -6,4 -10,8Z" fill="#170707" stroke="#EBE1BC" stroke-width="1.5"/>
     <!-- Wing left -->
-    <path d="M-6,10 C-14,8 -22,4 -26,6 C-30,8 -24,14 -18,16 C-14,17 -10,15 -6,12" fill="#1a0a2e" stroke="#a855f7" stroke-width="1"/>
+    <path d="M-6,10 C-14,8 -22,4 -26,6 C-30,8 -24,14 -18,16 C-14,17 -10,15 -6,12" fill="#170707" stroke="#D4A84B" stroke-width="1"/>
     <!-- Wing right -->
-    <path d="M14,10 C22,8 30,4 34,6 C38,8 32,14 26,16 C22,17 18,15 14,12" fill="#1a0a2e" stroke="#a855f7" stroke-width="1"/>
+    <path d="M14,10 C22,8 30,4 34,6 C38,8 32,14 26,16 C22,17 18,15 14,12" fill="#170707" stroke="#D4A84B" stroke-width="1"/>
     <!-- Head -->
-    <path d="M-4,-4 C-4,-10 2,-18 6,-18 C10,-18 12,-12 10,-6 C8,-2 0,-2 -4,-4Z" fill="#1a0a2e" stroke="#c084fc" stroke-width="1.5"/>
+    <path d="M-4,-4 C-4,-10 2,-18 6,-18 C10,-18 12,-12 10,-6 C8,-2 0,-2 -4,-4Z" fill="#170707" stroke="#EBE1BC" stroke-width="1.5"/>
     <!-- Eye -->
-    <circle cx="3" cy="-11" r="2.5" fill="#c084fc"/>
-    <circle cx="3" cy="-11" r="1" fill="#e9d5ff"/>
+    <circle cx="3" cy="-11" r="2.5" fill="#D4A84B"/>
+    <circle cx="3" cy="-11" r="1" fill="#EBE1BC"/>
     <!-- Beak -->
-    <path d="M8,-12 L20,-10 L8,-8" fill="none" stroke="#a855f7" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M8,-12 L20,-10 L8,-8" fill="none" stroke="#D4A84B" stroke-width="1.5" stroke-linejoin="round"/>
     <!-- Crown -->
-    <path d="M-2,-16 L0,-22 L2,-18 L4,-24 L6,-16" fill="none" stroke="#c084fc" stroke-width="1" opacity="0.5"/>
+    <path d="M-2,-16 L0,-22 L2,-18 L4,-24 L6,-16" fill="none" stroke="#EBE1BC" stroke-width="1" opacity="0.3"/>
   </g>
 </svg>
