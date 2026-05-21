@@ -59,6 +59,29 @@ def test_find_repo_root_raises(monkeypatch):
         paths_mod._find_repo_root()
 
 
+def test_find_repo_root_frozen_uses_meipass(monkeypatch, tmp_path):
+    from rsmm.engine import paths as paths_mod
+
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "asset_map.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(paths_mod.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(paths_mod.sys, "_MEIPASS", str(tmp_path), raising=False)
+    monkeypatch.setattr(paths_mod.sys, "executable", str(tmp_path / "rsmm.exe"), raising=False)
+
+    assert paths_mod._find_repo_root() == tmp_path.resolve()
+
+
+def test_find_repo_root_frozen_fallback_without_asset_map(monkeypatch, tmp_path):
+    from rsmm.engine import paths as paths_mod
+
+    monkeypatch.setattr(paths_mod.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(paths_mod.sys, "_MEIPASS", str(tmp_path), raising=False)
+    monkeypatch.setattr(paths_mod.sys, "executable", str(tmp_path / "rsmm.exe"), raising=False)
+
+    root = paths_mod._find_repo_root()
+    assert root.is_dir()
+
+
 def test_mods_dir_env_override(monkeypatch, tmp_path):
     from rsmm.engine.paths import mods_dir
     target = tmp_path / "custom-mods"

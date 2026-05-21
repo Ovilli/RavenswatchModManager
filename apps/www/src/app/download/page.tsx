@@ -1,25 +1,37 @@
 import { Badge, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, buttonVariants } from '@rsmm/ui';
 import Link from 'next/link';
 
-const releaseUrl = 'https://github.com/Ovilli/RavenswatchModManager/releases/latest';
+const CURRENT_VERSION = 'v0.1.0-beta.2';
+const releaseUrl = `https://github.com/Ovilli/RavenswatchModManager/releases/tag/${CURRENT_VERSION}`;
+const latestUrl = 'https://github.com/Ovilli/RavenswatchModManager/releases/latest';
 const releasesUrl = 'https://github.com/Ovilli/RavenswatchModManager/releases';
 const installGuideUrl = 'https://github.com/Ovilli/RavenswatchModManager/blob/main/docs/INSTALLATION.md';
 
-const platforms = [
+interface Platform {
+  name: string;
+  details: string;
+  assetHint: string;
+  note: string;
+}
+
+const platforms: Platform[] = [
   {
     name: 'Windows',
-    details: 'Best option for most players. Grab the latest desktop installer from the release page.',
-    note: 'Signed builds will appear here once code signing is added.',
+    details: 'Best option for most players. Ships as an MSI installer for 64-bit Windows 10 and 11.',
+    assetHint: 'Ravenswatch.Mod.Manager_*_x64_en-US.msi',
+    note: 'Auto-updater is enabled — once installed, the app checks for new releases on launch and applies them in one click.',
   },
   {
     name: 'macOS',
-    details: 'Universal release for Apple Silicon and Intel Macs.',
-    note: 'Gatekeeper prompts are expected on unsigned local builds.',
+    details: 'Universal DMG for Apple Silicon and Intel Macs. Requires macOS 12 or newer.',
+    assetHint: 'Ravenswatch.Mod.Manager_*_universal.dmg',
+    note: 'Gatekeeper may show a warning on first launch — open via right-click → Open. Auto-updates work the same as on Windows.',
   },
   {
     name: 'Linux',
-    details: 'Native desktop build for common desktop distributions.',
-    note: 'If your distro needs extra libraries, the install guide covers the setup.',
+    details: 'AppImage for portable use, or a Debian package for apt-based distros.',
+    assetHint: 'rsmm-desktop_*.AppImage  ·  rsmm-desktop_*_amd64.deb',
+    note: 'AppImage needs the executable bit set (chmod +x). On Debian/Ubuntu, install the .deb with apt. WebKitGTK 4.1 must be present.',
   },
 ];
 
@@ -36,19 +48,19 @@ export default function DownloadPage() {
       <div className="relative container mx-auto px-6 py-16 lg:py-24">
         <section className="mx-auto max-w-4xl text-center">
           <Badge variant="outline" className="mb-5 border-crimson/30 bg-crimson/10 text-parchment">
-            Desktop client
+            Desktop client · {CURRENT_VERSION}
           </Badge>
           <h1 className="text-5xl font-black tracking-tight sm:text-6xl">
             Download the Ravenswatch Mod Manager client
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">
             One desktop app for browsing the registry, applying mods, and managing rollback-safe
-            installs across Windows, macOS, and Linux.
+            installs across Windows, macOS, and Linux — with built-in auto-updates.
           </p>
 
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <a className={buttonVariants({ size: 'lg' })} href={releaseUrl} target="_blank" rel="noreferrer">
-              Get the latest release
+            <a className={buttonVariants({ size: 'lg' })} href={latestUrl} target="_blank" rel="noreferrer">
+              Get {CURRENT_VERSION}
             </a>
             <Link className={buttonVariants({ variant: 'outline', size: 'lg' })} href="/registry">
               Browse the registry
@@ -73,13 +85,13 @@ export default function DownloadPage() {
               </CardHeader>
               <CardContent className="space-y-4 text-sm text-muted-foreground">
                 <p>{platform.note}</p>
-                <div className="rounded-md border border-dashed border-border/70 bg-background/60 px-4 py-3 text-xs leading-5 text-muted-foreground">
-                  Download assets are published to the GitHub Releases page for each tagged build.
+                <div className="rounded-md border border-dashed border-border/70 bg-background/60 px-4 py-3 font-mono text-xs leading-5 text-muted-foreground">
+                  {platform.assetHint}
                 </div>
               </CardContent>
               <CardFooter>
-                <a className={buttonVariants({ variant: 'outline' })} href={releasesUrl} target="_blank" rel="noreferrer">
-                  Open releases
+                <a className={buttonVariants({ variant: 'outline' })} href={latestUrl} target="_blank" rel="noreferrer">
+                  Open release
                 </a>
               </CardFooter>
             </Card>
@@ -108,20 +120,22 @@ export default function DownloadPage() {
 
           <Card className="grimoire-card border-crimson/20">
             <CardHeader>
-              <CardTitle>Need the source instead?</CardTitle>
-              <CardDescription>
-                The repo includes the desktop client, API, docs, and release workflow.
-              </CardDescription>
+              <CardTitle>Auto-updates</CardTitle>
+              <CardDescription>Stay on the latest build without re-downloading by hand.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4 text-sm text-muted-foreground">
+            <CardContent className="space-y-3 text-sm text-muted-foreground">
               <p>
-                If you are packaging or auditing a build, the repository and install docs explain
-                the release pipeline end to end.
+                Once {CURRENT_VERSION} or newer is installed, RSMM polls for signed releases on
+                launch. When one is available, a banner appears with an <strong>Install &amp; restart</strong>
+                {' '}button — the app downloads, verifies the signature, swaps the binary, and relaunches.
+              </p>
+              <p>
+                You can also trigger a manual check from <strong>Settings → Updates</strong> inside the app.
               </p>
             </CardContent>
             <CardFooter className="flex flex-col items-stretch gap-3 sm:flex-row">
               <a className={buttonVariants({})} href={releaseUrl} target="_blank" rel="noreferrer">
-                Latest release
+                {CURRENT_VERSION} notes
               </a>
               <a className={buttonVariants({ variant: 'outline' })} href={releasesUrl} target="_blank" rel="noreferrer">
                 All releases
