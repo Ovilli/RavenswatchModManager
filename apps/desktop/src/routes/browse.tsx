@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { Check, Plus, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Button, Cover, MonoTag, SectionHeader, StatPill } from '../components/chrome';
@@ -23,6 +23,8 @@ const CATEGORIES: { id: ModCategory | 'all'; label: string }[] = [
   { id: 'utility', label: 'Utility' },
 ];
 
+const RECENCY_INDEX = new Map(MOCK_MODS.map((m, i) => [m.id, i]));
+
 function BrowsePage() {
   const navigate = useNavigate();
   const [q, setQ] = useState('');
@@ -44,7 +46,8 @@ function BrowsePage() {
     }).sort((a, b) => {
       if (sort === 'popular') return b.downloads - a.downloads;
       if (sort === 'rating') return b.rating - a.rating;
-      return a.id < b.id ? 1 : -1; // pseudo-recent
+      // recent = last entries first per registry order
+      return (RECENCY_INDEX.get(b.id) ?? 0) - (RECENCY_INDEX.get(a.id) ?? 0);
     });
   }, [q, cat, sort]);
 
@@ -57,11 +60,12 @@ function BrowsePage() {
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[260px]">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ash" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ash" aria-hidden />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search the index…"
+            aria-label="Search mods"
             className="input-grim"
           />
         </div>
@@ -100,13 +104,14 @@ function BrowsePage() {
         {list.map((m) => {
           const here = installed.includes(m.id);
           return (
-            <a
+            <article
               key={m.id}
-              href={`/mod/${m.slug}`}
+              tabIndex={0}
+              role="link"
+              aria-label={`${m.name} by ${m.author}`}
               onClick={(e) => {
                 const el = e.target as HTMLElement;
                 if (el.closest('button, a, input, textarea, select, [role="switch"]')) return;
-                e.preventDefault();
                 navigate({ to: '/mod/$slug', params: { slug: m.slug } });
               }}
               onKeyDown={(e) => {
@@ -115,14 +120,19 @@ function BrowsePage() {
                   navigate({ to: '/mod/$slug', params: { slug: m.slug } });
                 }
               }}
-              className="grimoire-card flex flex-col gap-3 p-5 transition-colors duration-150 hover:border-gilt/40"
+              className="grimoire-card flex flex-col gap-3 p-5 cursor-pointer transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60 focus:outline-none"
             >
               <Cover src={m.image} alt={`${m.name} cover`} caption={`${m.slug}.png`} />
               <header className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="font-serif-italic text-xl leading-tight text-parchment">
+                  <Link
+                    to="/mod/$slug"
+                    params={{ slug: m.slug }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="font-serif-italic text-xl leading-tight text-parchment hover:text-gilt"
+                  >
                     {m.name}
-                  </p>
+                  </Link>
                   <p className="font-mono mt-1 text-ash">
                     {m.author} · v{m.latestVersion}
                   </p>
@@ -165,7 +175,7 @@ function BrowsePage() {
                   label={`${m.downloads.toLocaleString()} dl`}
                 />
               </div>
-            </a>
+            </article>
           );
         })}
       </div>

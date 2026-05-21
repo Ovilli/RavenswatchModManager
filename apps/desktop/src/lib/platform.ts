@@ -33,3 +33,8 @@ export function getDownloadUrl(): string {
       return `${base}/RSMM-x86_64.AppImage`;
   }
 }
+
+/** "⌘K" on macOS, "Ctrl+K" elsewhere. */
+export function shortcutLabel(key: string): string {
+  return getPlatform() === 'macos' ? `⌘${key.toUpperCase()}` : `Ctrl+${key.toUpperCase()}`;
+}

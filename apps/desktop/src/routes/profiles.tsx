@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { Check, Copy, Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { useState } from 'react';
 import { Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
+import { useDialog, useToast } from '../components/toast';
 import { useApp } from '../store';
 
 export const Route = createFileRoute('/profiles')({
@@ -21,6 +22,8 @@ function ProfilesPage() {
   const [importing, setImporting] = useState(false);
   const [code, setCode] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
+  const dialog = useDialog();
+  const toast = useToast();
 
   function onImport() {
     const id = importP(code);
@@ -31,7 +34,57 @@ function ProfilesPage() {
     setCode('');
     setImporting(false);
     setImportError(null);
+    toast.push('Profile imported.', 'success');
   }
+
+  const onNewProfile = async () => {
+    const name = await dialog.prompt({
+      title: 'New profile',
+      label: 'Name',
+      initialValue: 'New Run',
+      submitLabel: 'Create',
+    });
+    if (name?.trim()) create(name.trim());
+  };
+
+  const onRename = async (id: string, currentName: string) => {
+    const name = await dialog.prompt({
+      title: 'Rename profile',
+      label: 'Name',
+      initialValue: currentName,
+      submitLabel: 'Save',
+    });
+    if (name?.trim()) rename(id, name.trim());
+  };
+
+  const onDelete = async (id: string, name: string) => {
+    const ok = await dialog.confirm({
+      title: 'Delete profile',
+      body: `Delete profile "${name}"? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (ok) {
+      remove(id);
+      toast.push(`Profile "${name}" deleted.`);
+    }
+  };
+
+  const onExport = async (id: string) => {
+    const text = exportP(id);
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.push('Profile code copied to clipboard.', 'success');
+    } catch {
+      await dialog.prompt({
+        title: 'Profile code',
+        label: 'Copy this code to share the profile',
+        initialValue: text,
+        submitLabel: 'Close',
+        multiline: true,
+      });
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -49,10 +102,7 @@ function ProfilesPage() {
             </button>
             <button
               type="button"
-              onClick={() => {
-                const name = window.prompt('Profile name', 'New Run');
-                if (name) create(name);
-              }}
+              onClick={onNewProfile}
               className="flex items-center gap-2 border border-crimson bg-crimson/80 px-3 py-2 text-parchment hover:bg-oxblood transition-colors duration-150"
             >
               <Plus className="h-4 w-4" /> New profile
@@ -75,7 +125,7 @@ function ProfilesPage() {
             placeholder="base64-encoded profile…"
           />
           {importError ? (
-            <p className="text-sm text-crimson mt-2">{importError}</p>
+            <p className="text-sm text-crimson mt-2" role="alert">{importError}</p>
           ) : null}
           <div className="mt-3 flex justify-end gap-2">
             <button
@@ -147,25 +197,14 @@ function ProfilesPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    const name = window.prompt('Rename profile', p.name);
-                    if (name) rename(p.id, name);
-                  }}
+                  onClick={() => onRename(p.id, p.name)}
                   className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
                 >
                   <Pencil className="h-3.5 w-3.5" /> Rename
                 </button>
                 <button
                   type="button"
-                  onClick={async () => {
-                    const code = exportP(p.id);
-                    try {
-                      await navigator.clipboard.writeText(code);
-                      window.alert('Profile code copied to clipboard.');
-                    } catch {
-                      window.prompt('Profile code', code);
-                    }
-                  }}
+                  onClick={() => onExport(p.id)}
                   className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
                 >
                   <Download className="h-3.5 w-3.5" /> Export
@@ -173,9 +212,7 @@ function ProfilesPage() {
                 {profiles.length > 1 ? (
                   <button
                     type="button"
-                    onClick={() => {
-                      if (window.confirm(`Delete profile "${p.name}"?`)) remove(p.id);
-                    }}
+                    onClick={() => onDelete(p.id, p.name)}
                     className="ml-auto flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-crimson hover:text-crimson"
                   >
                     <Trash2 className="h-3.5 w-3.5" /> Delete

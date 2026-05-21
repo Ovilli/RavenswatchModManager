@@ -1,11 +1,13 @@
 import { useNavigate } from '@tanstack/react-router';
 import { Search } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { MOCK_MODS } from '../data/mock-mods';
+import { shortcutLabel } from '../lib/platform';
 import { useApp } from '../store';
 
 interface Hit {
   id: string;
+  slug: string;
   name: string;
   author: string;
   origin: 'library' | 'remote';
@@ -16,8 +18,10 @@ export function CommandPalette() {
   const [q, setQ] = useState('');
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
   const installed = useApp((s) => s.installed);
   const navigate = useNavigate();
+  const listboxId = useId();
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -25,20 +29,28 @@ export function CommandPalette() {
       if (meta && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setOpen((o) => !o);
-      } else if (e.key === 'Escape' && open) {
-        setOpen(false);
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open]);
+  }, []);
 
   useEffect(() => {
     if (open) {
+      triggerRef.current = document.activeElement as HTMLElement | null;
       setQ('');
       setCursor(0);
-      setTimeout(() => inputRef.current?.focus(), 10);
+      // Defer to next frame so the input ref is wired up before focus.
+      const handle = window.requestAnimationFrame(() => {
+        inputRef.current?.focus();
+      });
+      const trigger = triggerRef.current;
+      return () => {
+        window.cancelAnimationFrame(handle);
+        trigger?.focus?.();
+      };
     }
+    return;
   }, [open]);
 
   const hits = useMemo<Hit[]>(() => {
@@ -47,7 +59,7 @@ export function CommandPalette() {
       const out: Hit[] = [];
       for (const id of installed.slice(0, 5)) {
         const m = MOCK_MODS.find((x) => x.id === id);
-        if (m) out.push({ id: m.id, name: m.name, author: m.author, origin: 'library' });
+        if (m) out.push({ id: m.id, slug: m.slug, name: m.name, author: m.author, origin: 'library' });
       }
       return out;
     }
@@ -60,6 +72,7 @@ export function CommandPalette() {
       .slice(0, 10)
       .map<Hit>((m) => ({
         id: m.id,
+        slug: m.slug,
         name: m.name,
         author: m.author,
         origin: installed.includes(m.id) ? 'library' : 'remote',
@@ -72,13 +85,22 @@ export function CommandPalette() {
     const hit = hits[idx];
     if (!hit) return;
     setOpen(false);
-    navigate({ to: '/mod/$slug', params: { slug: hit.id } });
+    navigate({ to: '/mod/$slug', params: { slug: hit.slug } });
   }
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Search mods"
       className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh] animate-fade-in"
       onClick={() => setOpen(false)}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          setOpen(false);
+        }
+      }}
     >
       <div className="absolute inset-0 bg-pitch/80" />
       <div
@@ -86,7 +108,7 @@ export function CommandPalette() {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 border-b border-border px-3 py-2">
-          <Search className="h-4 w-4 text-ash" />
+          <Search className="h-4 w-4 text-ash" aria-hidden />
           <input
             ref={inputRef}
             value={q}
@@ -101,6 +123,12 @@ export function CommandPalette() {
               } else if (e.key === 'ArrowUp') {
                 e.preventDefault();
                 setCursor((c) => Math.max(c - 1, 0));
+              } else if (e.key === 'Home') {
+                e.preventDefault();
+                setCursor(0);
+              } else if (e.key === 'End') {
+                e.preventDefault();
+                setCursor(Math.max(hits.length - 1, 0));
               } else if (e.key === 'Enter') {
                 e.preventDefault();
                 commit(cursor);
@@ -108,10 +136,20 @@ export function CommandPalette() {
             }}
             placeholder="Search mods — installed and remote"
             className="w-full bg-transparent text-parchment placeholder:text-ash focus:outline-none"
+            role="combobox"
+            aria-expanded={true}
+            aria-controls={listboxId}
+            aria-activedescendant={hits[cursor] ? `${listboxId}-opt-${cursor}` : undefined}
+            aria-autocomplete="list"
           />
           <span className="font-mono text-ash">ESC</span>
         </div>
-        <ul className="max-h-[50vh] overflow-y-auto py-2" >
+        <ul
+          id={listboxId}
+          role="listbox"
+          aria-label="Mod search results"
+          className="max-h-[50vh] overflow-y-auto py-2"
+        >
           {hits.length === 0 ? (
             <li className="font-serif-italic px-4 py-6 text-center text-ash">
               No mods match. Try a different word.
@@ -120,6 +158,8 @@ export function CommandPalette() {
             hits.map((h, i) => (
               <li
                 key={`${h.origin}-${h.id}`}
+                id={`${listboxId}-opt-${i}`}
+                role="option"
                 aria-selected={i === cursor}
                 className={`flex cursor-pointer items-center justify-between px-3 py-2 ${
                   i === cursor ? 'bg-oxblood/30' : ''
@@ -139,4 +179,8 @@ export function CommandPalette() {
       </div>
     </div>
   );
+}
+
+export function CommandShortcutLabel() {
+  return <>{shortcutLabel('K')}</>;
 }

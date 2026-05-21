@@ -41,8 +41,7 @@
     },
     "windows": {
       "wix": {
-        "language": "en-US",
-        "template": "x64"
+        "language": "en-US"
       }
     },
     "linux": {
@@ -57,6 +56,14 @@
   "plugins": {
     "shell": {
       "open": true
+    },
+    "updater": {
+      "active": true,
+      "dialog": false,
+      "endpoints": [
+        "https://github.com/Ovilli/RavenswatchModManager/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMyRkY5REY5NTNBMEU5NjYKUldSbTZhQlQrWjMvd3BpL3lzMENUcHJzUkFGdnpHK3pzWWRkSlVIemxxYWsvS3J2d3k0QW1lVEcK"
     }
   }
 }

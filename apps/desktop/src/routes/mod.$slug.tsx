@@ -2,7 +2,7 @@ import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, Check, Plus, Trash2 } from 'lucide-react';
 import { Button, Cover, CoverPlaceholder, Fleuron, Markdown, MonoTag, Panel, SectionHeader, StatPill } from '../components/chrome';
 import { MOCK_MODS } from '../data/mock-mods';
-import { activeProfile, useApp } from '../store';
+import { activeProfile, useApp, useMod } from '../store';
 
 export const Route = createFileRoute('/mod/$slug')({
   component: ModDetailPage,
@@ -11,7 +11,11 @@ export const Route = createFileRoute('/mod/$slug')({
 function ModDetailPage() {
   const { slug } = Route.useParams();
   const navigate = useNavigate();
-  const mod = MOCK_MODS.find((m) => m.slug === slug);
+  const liveBySlug = useApp((s) =>
+    Object.values(s.localMods).find((m) => m.slug === slug),
+  );
+  const matchedId = liveBySlug?.id ?? MOCK_MODS.find((m) => m.slug === slug)?.id ?? '';
+  const mod = useMod(matchedId);
   const installed = useApp((s) => s.installed);
   const profile = useApp(activeProfile);
   const installMod = useApp((s) => s.installMod);

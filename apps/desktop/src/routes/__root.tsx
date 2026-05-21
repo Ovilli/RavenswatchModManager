@@ -15,9 +15,12 @@ import { SettingsIcon } from '../components/icons/SettingsIcon';
 import { LaunchIcon } from '../components/icons/LaunchIcon';
 import { Button, Crest, StatPill } from '../components/chrome';
 import { runVanilla, runModded } from '../lib/rsmm';
+import { shortcutLabel } from '../lib/platform';
 import PromotedBanner from '../components/PromotedBanner';
 import { CommandPalette } from '../components/command-palette';
 import { ProfilePopover } from '../components/profile-popover';
+import { ToastProvider, DialogProvider } from '../components/toast';
+import { UpdaterBanner } from '../components/updater';
 import { activeProfile, detectConflicts, outdatedCount, useApp } from '../store';
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
@@ -49,12 +52,8 @@ function NavLink({ to, icon: Icon, label }: Nav) {
     <Link
       to={to}
       className="nav-link-grim group"
-      activeProps={{
-        'data-active': 'true',
-      }}
-      inactiveProps={{
-        'data-active': 'false',
-      }}
+      activeProps={{ 'data-active': 'true' }}
+      inactiveProps={{ 'data-active': 'false' }}
     >
       <Icon className="nav-icon" />
       <span className="font-serif-italic text-base">{label}</span>
@@ -122,7 +121,7 @@ function StatusStrip() {
         </div>
 
         {launchError ? (
-          <span className="text-xs text-destructive">{launchError}</span>
+          <span className="text-xs text-destructive" role="alert">{launchError}</span>
         ) : null}
         <div className="flex items-center gap-2" style={noDragStyle}>
           <StatPill value={enabled} label="enabled" />
@@ -131,19 +130,12 @@ function StatusStrip() {
             <StatPill value={outdated} label="updates" tone="gilt" />
           ) : null}
           {conflictCount > 0 ? (
-            <Link
-              to="/conflicts"
-              className="inline-flex items-center gap-1"
-            >
+            <Link to="/conflicts" className="inline-flex items-center gap-1">
               <AlertTriangle className="h-4 w-4 text-crimson" />
-              <StatPill
-                value={conflictCount}
-                label="conflicts"
-                tone="crimson"
-              />
+              <StatPill value={conflictCount} label="conflicts" tone="crimson" />
             </Link>
           ) : null}
-          <StatPill label="command" value="CMD+K" className="tracking-normal" />
+          <StatPill label="command" value={shortcutLabel('K')} className="tracking-normal" />
         </div>
         <WindowControls />
       </div>
@@ -151,63 +143,69 @@ function StatusStrip() {
   );
 }
 
+async function getAppWindow() {
+  try {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    return getCurrentWindow();
+  } catch {
+    return null;
+  }
+}
+
 function WindowControls() {
   const [maximized, setMaximized] = useState(false);
+  const [available, setAvailable] = useState(false);
 
   useEffect(() => {
-    let mounted = true;
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
     (async () => {
+      const aw = await getAppWindow();
+      if (!aw || cancelled) return;
+      setAvailable(true);
       try {
-        const { getCurrentWindow } = await import('@tauri-apps/api/window');
-        const isMax = await getCurrentWindow().isMaximized();
-        if (mounted) setMaximized(isMax);
-      } catch (e) {
-        // not running in Tauri - ignore
+        setMaximized(await aw.isMaximized());
+      } catch {
+        /* ignore */
       }
-      // diagnostic imports removed
+      try {
+        const off = await aw.onResized(async () => {
+          try {
+            const isMax = await aw.isMaximized();
+            if (!cancelled) setMaximized(isMax);
+          } catch {
+            /* ignore */
+          }
+        });
+        if (cancelled) off();
+        else unlisten = off;
+      } catch {
+        /* ignore */
+      }
     })();
     return () => {
-      mounted = false;
+      cancelled = true;
+      unlisten?.();
     };
   }, []);
 
-  async function getAppWindow() {
-    try {
-      const { getCurrentWindow } = await import('@tauri-apps/api/window');
-      const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-      // debug
-      // diagnostic logs removed
-      const appWindow = getCurrentWindow();
-      if (appWindow) return appWindow;
-      return WebviewWindow.getCurrent();
-    } catch (err) {
-      // import failure logged elsewhere; swallow here
-      return null;
-    }
-  }
-
-  const doMinimize = async () => {
+  const withWindow = async (action: (aw: NonNullable<Awaited<ReturnType<typeof getAppWindow>>>) => Promise<void>, label: string) => {
     const aw = await getAppWindow();
     if (!aw) {
-      console.warn('Tauri window API not available (minimize)');
-      alert('Window controls are only available in the desktop app.');
+      console.warn(`Tauri window API not available (${label})`);
       return;
     }
     try {
-      await aw.minimize();
+      await action(aw);
     } catch (e) {
-      console.warn('minimize failed', e);
+      console.warn(`${label} failed`, e);
     }
   };
 
-  const doToggleMax = async () => {
-    const aw = await getAppWindow();
-    if (!aw) {
-      console.warn('Tauri window API not available (maximize)');
-      alert('Window controls are only available in the desktop app.');
-      return;
-    }
-    try {
+  const doMinimize = () => withWindow((aw) => aw.minimize(), 'minimize');
+  const doClose = () => withWindow((aw) => aw.close(), 'close');
+  const doToggleMax = () =>
+    withWindow(async (aw) => {
       const isMax = await aw.isMaximized();
       if (isMax) {
         await aw.unmaximize();
@@ -216,24 +214,7 @@ function WindowControls() {
         await aw.maximize();
         setMaximized(true);
       }
-    } catch (e) {
-      console.warn('toggleMax failed', e);
-    }
-  };
-
-  const doClose = async () => {
-    const aw = await getAppWindow();
-    if (!aw) {
-      console.warn('Tauri window API not available (close)');
-      alert('Window controls are only available in the desktop app.');
-      return;
-    }
-    try {
-      await aw.close();
-    } catch (e) {
-      console.warn('close failed', e);
-    }
-  };
+    }, 'maximize');
 
   const RestoreIcon = ({ className }: { className?: string }) => (
     <svg
@@ -250,6 +231,8 @@ function WindowControls() {
       <path d="M9 6V4h8v8h-2" />
     </svg>
   );
+
+  if (!available) return null;
 
   return (
     <div className="window-controls ml-3 flex items-center gap-2" style={noDragStyle}>
@@ -274,46 +257,51 @@ function WindowControls() {
 
 function RootLayout() {
   return (
-    <div className="flex h-screen w-screen overflow-hidden">
-      <aside className="surface-grain flex w-72 flex-col border-r border-border">
-        <div className="px-5 pt-5 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="animate-float">
-              <Crest monogram="R" size="sm" />
+    <ToastProvider>
+      <DialogProvider>
+        <div className="flex h-screen w-screen overflow-hidden">
+          <aside className="surface-grain flex w-72 flex-col border-r border-border">
+            <div className="px-5 pt-5 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="animate-float">
+                  <Crest monogram="R" size="sm" />
+                </div>
+                <div>
+                  <h1 className="font-fraktur text-3xl leading-none text-parchment">RSMM</h1>
+                  <p className="font-serif-italic mt-1 text-sm text-ash">
+                    Ravenswatch Mod Manager
+                  </p>
+                </div>
+              </div>
             </div>
-            <div>
-              <h1 className="font-fraktur text-3xl leading-none text-parchment">RSMM</h1>
-              <p className="font-serif-italic mt-1 text-sm text-ash">
-                Ravenswatch Mod Manager
-              </p>
+
+            <div className="px-4 pb-3">
+              <ProfilePopover />
             </div>
+
+            <nav className="flex flex-1 flex-col gap-1 px-2 py-2">
+              {NAV.map((n) => (
+                <NavLink key={n.to} {...n} />
+              ))}
+            </nav>
+            <div className="px-4 pb-4">
+              <PromotedBanner vertical />
+            </div>
+          </aside>
+
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <StatusStrip />
+            <UpdaterBanner />
+            <main className="flex-1 overflow-y-auto px-6 py-6 md:px-8">
+              <div className="mx-auto w-full max-w-7xl animate-page-in">
+                <Outlet />
+              </div>
+            </main>
           </div>
+
+          <CommandPalette />
         </div>
-
-        <div className="px-4 pb-3">
-          <ProfilePopover />
-        </div>
-
-        <nav className="flex flex-1 flex-col gap-1 px-2 py-2">
-          {NAV.map((n) => (
-            <NavLink key={n.to} {...n} />
-          ))}
-        </nav>
-        <div className="px-4 pb-4">
-          <PromotedBanner vertical />
-        </div>
-      </aside>
-
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <StatusStrip />
-        <main className="flex-1 overflow-y-auto px-6 py-6 md:px-8">
-          <div className="mx-auto w-full max-w-7xl animate-page-in">
-            <Outlet />
-          </div>
-        </main>
-      </div>
-
-      <CommandPalette />
-    </div>
+      </DialogProvider>
+    </ToastProvider>
   );
 }
