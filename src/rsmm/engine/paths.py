@@ -17,14 +17,52 @@ from pathlib import Path
 
 
 def _find_repo_root() -> Path:
-    """Walk up from this file until we hit the directory that contains
-    `data/asset_map.json`. Robust against the source tree being moved
-    around inside `src/`.
+    """Find the directory that contains `data/asset_map.json`.
+
+    Resolution order:
+    1) Explicit `RSMM_REPO_ROOT` override.
+    2) Frozen-runtime locations (`_MEIPASS`, executable dir, cwd).
+    3) Source-tree walk-up from this file.
+
+    In frozen mode we avoid crashing at import time if `asset_map.json`
+    is missing by returning the best available runtime root; subcommands
+    that require the map perform their own existence checks and emit a
+    user-facing error.
     """
+    def _has_asset_map(root: Path) -> bool:
+        return (root / "data" / "asset_map.json").exists()
+
+    override = os.environ.get("RSMM_REPO_ROOT", "").strip()
+    if override:
+        try:
+            root = Path(override).expanduser().resolve()
+            if _has_asset_map(root):
+                return root
+        except OSError:
+            pass
+
+    frozen_candidates: list[Path] = []
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            frozen_candidates.append(Path(meipass).resolve())
+        frozen_candidates.append(Path(sys.executable).resolve().parent)
+        frozen_candidates.append(Path.cwd())
+
+    for cand in frozen_candidates:
+        if _has_asset_map(cand):
+            return cand
+
     here = Path(__file__).resolve()
     for cand in [here.parent, *here.parents]:
-        if (cand / "data" / "asset_map.json").exists():
+        if _has_asset_map(cand):
             return cand
+
+    if frozen_candidates:
+        # Last resort for frozen binaries: keep importable and let
+        # command-level checks report missing data files.
+        return frozen_candidates[0]
+
     raise RuntimeError(
         f"rsmm repo root not found: data/asset_map.json missing in any parent of {here}"
     )

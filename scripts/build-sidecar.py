@@ -68,6 +68,16 @@ def build_sidecar(target: str) -> None:
         check=True, capture_output=True,
     )
 
+    # Bundle runtime data needed by CLI commands in frozen mode.
+    add_data_args = [
+        "--add-data", f"{REPO_ROOT / 'pyproject.toml'}{os.pathsep}.",
+        "--add-data", f"{REPO_ROOT / 'data' / 'asset_map.json'}{os.pathsep}data",
+        "--add-data", f"{REPO_ROOT / 'data' / 'asset_map.csv'}{os.pathsep}data",
+        "--add-data", f"{REPO_ROOT / 'data' / 'function_patterns.json'}{os.pathsep}data",
+        "--add-data", f"{REPO_ROOT / 'data' / 'schemas'}{os.pathsep}data/schemas",
+        "--add-data", f"{REPO_ROOT / 'data' / 'templates'}{os.pathsep}data/templates",
+    ]
+
     # Build with PyInstaller
     # The entry point is rsmm.cli._dispatch:main
     subprocess.run(
@@ -80,7 +90,7 @@ def build_sidecar(target: str) -> None:
             "--distpath", str(OUT_DIR),
             "--specpath", str(OUT_DIR),
             "--workpath", str(OUT_DIR / "build"),
-            "--add-data", f"{REPO_ROOT / 'pyproject.toml'}{os.pathsep}.",
+            *add_data_args,
             str(REPO_ROOT / "src" / "rsmm" / "__init__.py"),
         ],
         check=True, cwd=REPO_ROOT,
