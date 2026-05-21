@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Fleuron, Panel, SectionHeader } from '../components/chrome';
+import { UpdaterSettings } from '../components/updater';
 import { useApp } from '../store';
 
 export const Route = createFileRoute('/settings')({
@@ -75,6 +76,15 @@ function SettingsPage() {
             Add
           </button>
         </div>
+      </Panel>
+
+      <Panel>
+        <h3 className="font-fraktur text-xl text-parchment">Updates</h3>
+        <Fleuron className="my-3" />
+        <p className="font-serif-italic text-ash mb-3">
+          RSMM checks for new releases automatically. You can also check manually.
+        </p>
+        <UpdaterSettings />
       </Panel>
 
       <Panel>

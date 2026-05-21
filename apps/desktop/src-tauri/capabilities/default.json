@@ -25,6 +25,8 @@
         { "name": "rsmm", "sidecar": true, "args": true },
         { "name": "run-rsmm", "cmd": "rsmm", "args": true }
       ]
-    }
+    },
+    "updater:default",
+    "process:default"
   ]
 }

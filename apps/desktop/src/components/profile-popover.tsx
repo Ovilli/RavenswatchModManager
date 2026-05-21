@@ -1,48 +1,84 @@
 import { useNavigate } from '@tanstack/react-router';
 import { Check, ChevronDown, Copy, Plus } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { useDialog } from './toast';
 import { useApp } from '../store';
 
 export function ProfilePopover() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const profiles = useApp((s) => s.profiles);
   const activeId = useApp((s) => s.activeProfileId);
   const setActive = useApp((s) => s.setActiveProfile);
   const create = useApp((s) => s.createProfile);
   const duplicate = useApp((s) => s.duplicateProfile);
   const navigate = useNavigate();
+  const dialog = useDialog();
   const active = profiles.find((p) => p.id === activeId) ?? profiles[0];
+  const menuId = useId();
 
   useEffect(() => {
+    if (!open) return;
     function onDoc(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    }
     document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, []);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const onNewProfile = async () => {
+    setOpen(false);
+    const name = await dialog.prompt({
+      title: 'New profile',
+      label: 'Name',
+      initialValue: 'New Run',
+      submitLabel: 'Create',
+    });
+    if (name?.trim()) create(name.trim());
+  };
 
   return (
     <div ref={ref} className="relative">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={menuId}
         className="flex w-full items-center justify-between border border-border bg-pitch/60 px-3 py-2 text-left hover:border-gilt/50 transition-colors duration-150"
       >
         <span>
           <span className="block font-mono text-ash">profile</span>
           <span className="font-serif-italic text-lg text-parchment">{active?.name}</span>
         </span>
-        <ChevronDown className="h-4 w-4 text-ash" />
+        <ChevronDown className="h-4 w-4 text-ash" aria-hidden />
       </button>
 
       {open ? (
-        <div className="absolute left-0 right-0 top-full z-40 mt-1 grimoire-card animate-fade-in">
+        <div
+          id={menuId}
+          role="menu"
+          className="absolute left-0 right-0 top-full z-40 mt-1 grimoire-card animate-fade-in"
+        >
           <ul className="max-h-72 overflow-y-auto py-1">
             {profiles.map((p) => (
               <li key={p.id}>
                 <button
                   type="button"
+                  role="menuitemradio"
+                  aria-checked={p.id === activeId}
                   onClick={() => {
                     setActive(p.id);
                     setOpen(false);
@@ -63,19 +99,15 @@ export function ProfilePopover() {
           <div className="border-t border-border p-2 flex gap-2">
             <button
               type="button"
-              onClick={() => {
-                const name = window.prompt('New profile name', 'New Run');
-                if (name) {
-                  create(name);
-                  setOpen(false);
-                }
-              }}
+              role="menuitem"
+              onClick={onNewProfile}
               className="flex flex-1 items-center justify-center gap-2 border border-border px-2 py-1.5 text-sm hover:border-gilt/50"
             >
               <Plus className="h-3.5 w-3.5" /> New
             </button>
             <button
               type="button"
+              role="menuitem"
               onClick={() => {
                 if (active) duplicate(active.id);
                 setOpen(false);
@@ -88,6 +120,7 @@ export function ProfilePopover() {
           <div className="border-t border-border p-2">
             <button
               type="button"
+              role="menuitem"
               onClick={() => {
                 setOpen(false);
                 navigate({ to: '/profiles' });

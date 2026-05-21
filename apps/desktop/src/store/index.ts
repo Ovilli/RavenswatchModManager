@@ -268,9 +268,29 @@ export const useApp = create<State>()(
       },
       storage: createJSONStorage(() => localStorage, {
         replacer: (_k, value) =>
-          value instanceof Set ? { __set: [...value] } : value,
+          value instanceof Set ? { __rsmm_set: [...value] } : value,
         reviver: (_k, value) => {
-          if (value && typeof value === 'object' && '__set' in value) {
+          if (
+            value &&
+            typeof value === 'object' &&
+            !Array.isArray(value) &&
+            Object.keys(value).length === 1 &&
+            '__rsmm_set' in value
+          ) {
+            const arr = (value as { __rsmm_set: unknown[] }).__rsmm_set;
+            if (Array.isArray(arr) && arr.every((x) => typeof x === 'string')) {
+              return new Set(arr as string[]);
+            }
+            return new Set<string>();
+          }
+          // Back-compat: read legacy `__set` payloads written by older builds.
+          if (
+            value &&
+            typeof value === 'object' &&
+            !Array.isArray(value) &&
+            Object.keys(value).length === 1 &&
+            '__set' in value
+          ) {
             const arr = (value as { __set: unknown[] }).__set;
             if (Array.isArray(arr) && arr.every((x) => typeof x === 'string')) {
               return new Set(arr as string[]);
@@ -287,6 +307,13 @@ export const useApp = create<State>()(
 /** Lookup runs over the live rsmm registry first, then the bundled mocks. */
 export function getMod(id: string): MockMod | undefined {
   const live = useApp.getState().localMods[id];
+  if (live) return live;
+  return MOCK_MODS.find((m) => m.id === id);
+}
+
+/** Subscribes to localMods so the consumer re-renders when the registry shifts. */
+export function useMod(id: string): MockMod | undefined {
+  const live = useApp((s) => s.localMods[id]);
   if (live) return live;
   return MOCK_MODS.find((m) => m.id === id);
 }
