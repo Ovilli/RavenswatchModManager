@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="300" viewBox="0 0 600 300">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="45%" r="60%">
+      <stop offset="0%" stop-color="#1f1135"/>
+      <stop offset="60%" stop-color="#0f0620"/>
+      <stop offset="100%" stop-color="#06020e"/>
+    </radialGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7c3aed" stop-opacity="0"/>
+      <stop offset="20%" stop-color="#a855f7" stop-opacity="0.3"/>
+      <stop offset="50%" stop-color="#c084fc" stop-opacity="0.6"/>
+      <stop offset="80%" stop-color="#a855f7" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#7c3aed" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="glowText" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f0e6ff"/>
+      <stop offset="50%" stop-color="#c084fc"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+    <filter id="neon">
+      <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#a855f7" flood-opacity="0.5"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="12" flood-color="#7c3aed" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- BG -->
+  <rect width="600" height="300" fill="url(#bg)"/>
+
+  <!-- Border -->
+  <rect x="1" y="1" width="598" height="298" fill="none" stroke="#7c3aed" stroke-width="0.8" stroke-opacity="0.25"/>
+  <rect x="4" y="4" width="592" height="292" fill="none" stroke="#a855f7" stroke-width="0.4" stroke-opacity="0.12"/>
+
+  <!-- Corner flourishes -->
+  <g opacity="0.15" stroke="#c084fc" stroke-width="1.5" fill="none">
+    <path d="M8,32 L32,8"/><path d="M8,44 L44,8"/>
+    <path d="M592,32 L568,8"/><path d="M592,44 L556,8"/>
+    <path d="M8,268 L32,292"/><path d="M8,256 L44,292"/>
+    <path d="M592,268 L568,292"/><path d="M592,256 L556,292"/>
+  </g>
+
+  <!-- Top line -->
+  <rect x="60" y="12" width="480" height="1" rx="0.5" fill="url(#accent)"/>
+
+  <!-- === GEAR left === -->
+  <g transform="translate(60, 80)" opacity="0.25">
+    <!-- Outer ring teeth -->
+    <g fill="#c084fc">
+      <rect x="18" y="-4" width="8" height="8" rx="1" transform="rotate(0)"/>
+      <rect x="18" y="-4" width="8" height="8" rx="1" transform="rotate(30)"/>
+      <rect x="18" y="-4" width="8" height="8" rx="1" transform="rotate(60)"/>
+      <rect x="18" y="-4" width="8" height="8" rx="1" transform="rotate(90)"/>
+      <rect x="18" y="-4" width="8" height="8" rx="1" transform="rotate(120)"/>
+      <rect x="18" y="-4" width="8" height="8" rx="1" transform="rotate(150)"/>
+      <rect x="18" y="-4" width="8" height="8" rx="1" transform="rotate(180)"/>
+      <rect x="18" y="-4" width="8" height="8" rx="1" transform="rotate(210)"/>
+      <rect x="18" y="-4" width="8" height="8" rx="1" transform="rotate(240)"/>
+      <rect x="18" y="-4" width="8" height="8" rx="1" transform="rotate(270)"/>
+      <rect x="18" y="-4" width="8" height="8" rx="1" transform="rotate(300)"/>
+      <rect x="18" y="-4" width="8" height="8" rx="1" transform="rotate(330)"/>
+    </g>
+    <!-- Inner ring -->
+    <circle cx="0" cy="0" r="18" fill="none" stroke="#c084fc" stroke-width="2"/>
+    <circle cx="0" cy="0" r="10" fill="none" stroke="#c084fc" stroke-width="1.5"/>
+    <circle cx="0" cy="0" r="3" fill="#c084fc"/>
+    <!-- Spokes -->
+    <line x1="-10" y1="0" x2="10" y2="0" stroke="#c084fc" stroke-width="1.5"/>
+    <line x1="0" y1="-10" x2="0" y2="10" stroke="#c084fc" stroke-width="1.5"/>
+  </g>
+
+  <!-- === GEAR right (smaller) === -->
+  <g transform="translate(540, 220)" opacity="0.2">
+    <g fill="#a855f7">
+      <rect x="12" y="-3" width="6" height="6" rx="1" transform="rotate(0)"/>
+      <rect x="12" y="-3" width="6" height="6" rx="1" transform="rotate(45)"/>
+      <rect x="12" y="-3" width="6" height="6" rx="1" transform="rotate(90)"/>
+      <rect x="12" y="-3" width="6" height="6" rx="1" transform="rotate(135)"/>
+      <rect x="12" y="-3" width="6" height="6" rx="1" transform="rotate(180)"/>
+      <rect x="12" y="-3" width="6" height="6" rx="1" transform="rotate(225)"/>
+      <rect x="12" y="-3" width="6" height="6" rx="1" transform="rotate(270)"/>
+      <rect x="12" y="-3" width="6" height="6" rx="1" transform="rotate(315)"/>
+    </g>
+    <circle cx="0" cy="0" r="12" fill="none" stroke="#a855f7" stroke-width="1.5"/>
+    <circle cx="0" cy="0" r="6" fill="none" stroke="#a855f7" stroke-width="1"/>
+    <circle cx="0" cy="0" r="2" fill="#a855f7"/>
+  </g>
+
+  <!-- === GEAR small top right === -->
+  <g transform="translate(545, 60)" opacity="0.15">
+    <g fill="#7c3aed">
+      <rect x="10" y="-2.5" width="5" height="5" rx="1" transform="rotate(0)"/>
+      <rect x="10" y="-2.5" width="5" height="5" rx="1" transform="rotate(60)"/>
+      <rect x="10" y="-2.5" width="5" height="5" rx="1" transform="rotate(120)"/>
+      <rect x="10" y="-2.5" width="5" height="5" rx="1" transform="rotate(180)"/>
+      <rect x="10" y="-2.5" width="5" height="5" rx="1" transform="rotate(240)"/>
+      <rect x="10" y="-2.5" width="5" height="5" rx="1" transform="rotate(300)"/>
+    </g>
+    <circle cx="0" cy="0" r="10" fill="none" stroke="#7c3aed" stroke-width="1.5"/>
+    <circle cx="0" cy="0" r="2.5" fill="#7c3aed"/>
+  </g>
+
+  <!-- === RAVEN === -->
+  <g transform="translate(300, 72)">
+    <!-- Tail -->
+    <path d="M-6,20 L-18,40 L-10,36 L-4,22" fill="#1a0a2e" stroke="#c084fc" stroke-width="1" opacity="0.6"/>
+    <path d="M-2,20 L-10,44 L-4,42 L0,24" fill="#1a0a2e" stroke="#a855f7" stroke-width="0.8" opacity="0.5"/>
+    <!-- Body -->
+    <path d="M-12,10 C-20,16 -22,28 -16,36 C-12,42 -4,44 0,44 C4,44 12,42 16,36 C22,28 20,16 12,10 C8,6 4,4 0,4 C-4,4 -8,6 -12,10Z" fill="#1a0a2e" stroke="#c084fc" stroke-width="1.2" opacity="0.7"/>
+    <!-- Wing left -->
+    <path d="M-8,12 C-18,10 -28,4 -32,8 C-36,12 -28,20 -20,22 C-14,23 -10,20 -8,16" fill="#1a0a2e" stroke="#a855f7" stroke-width="0.8" fill-opacity="0.5"/>
+    <!-- Wing right -->
+    <path d="M8,12 C18,10 28,4 32,8 C36,12 28,20 20,22 C14,23 10,20 8,16" fill="#1a0a2e" stroke="#a855f7" stroke-width="0.8" fill-opacity="0.5"/>
+    <!-- Head -->
+    <path d="M-6,-2 C-6,-8 0,-16 4,-16 C8,-16 10,-10 8,-4 C6,0 -2,0 -6,-2Z" fill="#1a0a2e" stroke="#c084fc" stroke-width="1.2" opacity="0.8"/>
+    <!-- Eye -->
+    <circle cx="1" cy="-9" r="1.5" fill="#c084fc"/>
+    <circle cx="1" cy="-9" r="0.6" fill="#e9d5ff"/>
+    <!-- Beak -->
+    <path d="M6,-10 L16,-8 L6,-6" fill="none" stroke="#a855f7" stroke-width="1" stroke-linejoin="round"/>
+    <!-- Crown/crest -->
+    <path d="M-4,-14 L-2,-20 L0,-16 L2,-22 L4,-14" fill="none" stroke="#c084fc" stroke-width="0.8" opacity="0.4"/>
+  </g>
+
+  <!-- Subtitle -->
+  <text x="300" y="125" text-anchor="middle" fill="#a855f7" font-family="Georgia, serif" font-size="12" letter-spacing="7" opacity="0.45">RAVENSWATCH MOD MANAGER</text>
+
+  <!-- UPDATE text -->
+  <text x="300" y="210" text-anchor="middle" fill="url(#glowText)" font-family="Georgia, serif" font-size="60" font-weight="bold" letter-spacing="12" filter="url(#neon)">UPDATE</text>
+
+  <!-- Badge -->
+  <g transform="translate(300, 240)">
+    <rect x="-52" y="-11" width="104" height="22" rx="11" fill="#7c3aed" fill-opacity="0.2" stroke="#a855f7" stroke-width="0.8" stroke-opacity="0.4"/>
+    <text x="0" y="5" text-anchor="middle" fill="#c084fc" font-family="Georgia, serif" font-size="11" letter-spacing="4" opacity="0.7">NEW RELEASE</text>
+  </g>
+
+  <!-- Bottom line -->
+  <rect x="80" y="278" width="440" height="1" rx="0.5" fill="url(#accent)"/>
+
+  <!-- Stars -->
+  <g fill="#e9d5ff" opacity="0.15">
+    <circle cx="35" cy="140" r="1"/><circle cx="565" cy="140" r="1"/>
+    <circle cx="30" cy="100" r="0.6"/><circle cx="570" cy="100" r="0.6"/>
+    <circle cx="40" cy="200" r="0.8"/><circle cx="560" cy="200" r="0.8"/>
+    <circle cx="85" cy="55" r="0.5"/><circle cx="515" cy="55" r="0.5"/>
+    <circle cx="95" cy="250" r="0.5"/><circle cx="505" cy="250" r="0.5"/>
+  </g>
+</svg>
