@@ -15,8 +15,8 @@
     "@rsmm/schemas": "workspace:*",
     "@rsmm/ui": "workspace:*",
     "@tanstack/react-query": "5.62.11",
-    "better-auth": "1.1.10",
-    "next": "15.1.11",
+    "better-auth": "1.4.17",
+    "next": "15.3.9",
     "react": "19.0.0",
     "react-dom": "19.0.0"
   },
