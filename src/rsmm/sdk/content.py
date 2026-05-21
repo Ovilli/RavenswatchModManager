@@ -14,6 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from importlib import import_module
 from pathlib import Path
+
 from .api import sdk_export
 
 KINDS = ("item", "enemy", "boss", "map", "hero")
@@ -84,7 +85,7 @@ def _load_kind(kind: str):
 
 # --- third-party kind extension ---------------------------------------
 
-_EXTRA_KINDS: dict[str, "ContentKindImpl"] = {}
+_EXTRA_KINDS: dict[str, ContentKindImpl] = {}
 
 
 class ContentKindImpl:

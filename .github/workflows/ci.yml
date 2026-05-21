@@ -33,7 +33,7 @@ jobs:
         run: python -m pytest -q
 
   ts:
-    name: typescript (biome + tsc)
+    name: typescript (biome + tsc + vitest)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -63,6 +63,12 @@ jobs:
 
       - name: Type check
         run: pnpm check-types
+
+      - name: Test
+        run: pnpm test
+
+      - name: Python tests
+        run: python -m pytest -q
 
   loader-linux-mingw:
     name: loader (mingw-w64 cross-compile)

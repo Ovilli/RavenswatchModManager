@@ -1,131 +1,125 @@
 # Installation
 
-> **Already have RSMM?** Jump to the [quick start](#quick-start) or [CLI reference](CLI_USAGE.md).
+RSMM runs on **Windows, macOS, and Linux**. Pick your platform below.
 
-RSMM has two parts:
+## Desktop app (recommended)
 
-1. **Python CLI** (`rsmm`) — applies mods, manages assets. Cross-platform. Required for everything.
-2. **Loader DLL** (`winhttp.dll`) — runs Lua scripts inside the game. Windows only. Optional.
+The desktop app provides a graphical interface — no terminal needed for everyday use.
 
-You only need the Python CLI for cooked-asset mods (textures, stats, text). Add the loader DLL if you want Lua scripting.
+### Windows
+
+1. Download [`RSMM-x64.msi`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) from the latest release
+2. Double-click the installer and follow the prompts
+3. Launch from the Start Menu
+
+### macOS
+
+1. Download [`RSMM-universal.dmg`](https://github.com/Ovilli/RavenswatchModManager/releases/latest)
+2. Open the `.dmg` and drag the app to Applications
+3. Right-click → Open on first launch (macOS Gatekeeper)
+
+### Linux
+
+| Distro | Package |
+|---|---|
+| Any (AppImage) | [`RSMM-x86_64.AppImage`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) — `chmod +x` and run |
+| Debian / Ubuntu | [`rsmm_amd64.deb`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) |
+| Arch Linux | `yay -S rsmm` |
+| Other | See CLI install below |
+
+### First run
+
+1. Launch RSMM — it auto-detects your Ravenswatch installation (Steam or other)
+2. Click **Doctor** to verify the setup
+3. Browse the Registry tab and install mods
+4. Click **Apply** to sync mods into the game
+5. Click **Play** to launch Ravenswatch
 
 ---
 
-## Quick start
+## CLI (advanced)
 
-```sh
-# 1. Install Python 3.11+ and clone
+Install from source if you want to author mods, use the command line, or run on a platform without pre-built packages.
+
+### Prerequisites
+
+- **Python 3.11 or newer**
+- **Git** (to clone the repository)
+- **Ravenswatch** installed
+
+### Linux
+
+```bash
+# Build dependencies
+sudo apt install build-essential cmake pkg-config
+
+# Clone and install
 git clone https://github.com/Ovilli/RavenswatchModManager.git
 cd RavenswatchModManager
-
-# 2. Set up Python environment
 python3 -m venv .venv
-source .venv/bin/activate      # Linux
-# venv\Scripts\activate        # Windows
-
+source .venv/bin/activate
 pip install -e .
 
-# 3. Verify
-./rsmm --version
+# Verify
 ./rsmm doctor
 
-# 4. Create and apply a test mod
+# Create and apply a test mod
 ./rsmm new TestMod
 ./rsmm apply
 ```
 
-If `./rsmm doctor` passes, you're ready. See [Mod Authoring](MODDING.md) for what to do next.
-
----
-
-## Prerequisites
-
-- **Python 3.11 or newer**
-- **Ravenswatch** installed (Steam or other)
-- **Git** (to clone the repository)
-
----
-
-## Linux
-
-### 1. Install build dependencies
+### macOS
 
 ```bash
-sudo apt install build-essential cmake pkg-config
-```
-
-### 2. Set up Python
-
-```bash
+git clone https://github.com/Ovilli/RavenswatchModManager.git
+cd RavenswatchModManager
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
-```
 
-### 3. Verify
-
-```bash
-./rsmm --version
+# Verify
 ./rsmm doctor
 ```
 
-### 4. (Optional) Build the loader DLL for Lua mods
-
-```bash
-cd src/loader
-./build.sh
-# Binary appears in dist/winhttp.dll (cross-compiled for Windows via MinGW)
-```
-
-### 5. (Optional) Install the loader into the game
-
-```bash
-./rsmm install-loader
-```
-
-For Steam + Proton, add this launch option:
-```
-WINEDLLOVERRIDES="winhttp=n,b" %command%
-```
-
----
-
-## Windows
-
-### Option A: Quick start (recommended)
+### Windows
 
 ```cmd
-:: 1. Install Python 3.11+ from python.org (check "Add to PATH")
-
-:: 2. Clone and set up
 git clone https://github.com/Ovilli/RavenswatchModManager.git
 cd RavenswatchModManager
 python -m venv venv
 venv\Scripts\activate
 pip install -e .
 
-:: 3. Verify
-rsmm --version
+:: Verify
 rsmm doctor
 ```
 
-### Option B: Build from source (for Lua mods)
+### pipx (any OS)
 
-Requires Visual Studio 2019+ with C++ workload or MinGW-w64.
+```sh
+pipx install git+https://github.com/Ovilli/RavenswatchModManager.git
+rsmm doctor
+```
 
-```cmd
-:: Same Python setup as Option A
-python -m venv venv
-venv\Scripts\activate
-pip install -e .
+---
 
-:: Build the loader
-cd src\loader
-fetch_deps.bat
-build.bat
+## Lua scripting (Windows only)
 
-:: Install into the game
+Lua mods that run inside the game process require the loader DLL (`winhttp.dll`).
+
+```sh
+# Build from source (MinGW or Visual Studio)
+cd src/loader
+./build.sh           # Linux / macOS cross-compile
+# or build.bat       # Windows
+
+# Install into the game
 rsmm install-loader
+```
+
+For Steam Proton on Linux:
+```
+WINEDLLOVERRIDES="winhttp=n,b" %command%
 ```
 
 ---
@@ -139,68 +133,30 @@ rsmm apply           # Apply all enabled mods
 rsmm run             # Launch the game
 ```
 
-See [CLI Reference](CLI_USAGE.md) for all available commands.
-
 ---
 
 ## Troubleshooting
 
-### `rsmm: command not found`
+### Desktop app won't open
+- **Windows**: Install [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)
+- **macOS**: Right-click → Open (Gatekeeper bypass)
+- **Linux**: `sudo apt install libwebkit2gtk-4.1-dev` (Debian/Ubuntu)
 
-Activate your virtual environment:
+### "Game not found"
+Run Ravenswatch through Steam once, then restart RSMM. Or manually set the game path.
 
-```cmd
-:: Windows
-venv\Scripts\activate
-
-:: Linux/macOS
-source .venv/bin/activate
-```
-
-### Loader DLL not loading in-game
-
-1. Verify the file exists next to `Ravenswatch.exe`:
-   ```cmd
-   dir "C:\path\to\Ravenswatch\winhttp.dll"
-   ```
-2. Check the loader log:
-   ```sh
-   ./rsmm log
-   ```
-3. Ensure Steam launch options include the DLL override (see above).
-
-### Python version mismatch
-
-Ensure Python 3.11+ is active:
-
+### "Permission denied" (Linux)
 ```sh
-python --version
+sudo chown -R $USER /path/to/Ravenswatch
 ```
 
-### CMake not found (Windows)
-
-1. Download from [cmake.org](https://cmake.org/download/)
-2. Add to PATH during installation, or manually:
-   ```cmd
-   setx PATH "%PATH%;C:\Program Files\CMake\bin"
-   ```
-
-### Mods not applying
-
-Run the health check:
-
-```sh
-./rsmm doctor
-```
-
-### Still stuck
-
-Open an issue at [github.com/Ovilli/RavenswatchModManager/issues](https://github.com/Ovilli/RavenswatchModManager/issues) with your OS, game version, and steps to reproduce.
+### Still stuck?
+Open an issue at [github.com/Ovilli/RavenswatchModManager/issues](https://github.com/Ovilli/RavenswatchModManager/issues) with your OS, game version, and steps.
 
 ---
 
 ## Next steps
 
-- [Mod Authoring Guide](MODDING.md) — create your first mod
-- [CLI Reference](CLI_USAGE.md) — every command explained
-- [Documentation Home](README.md) — all guides
+- [Desktop app guide](https://rsmm.dev/getting-started/desktop-app/) — full interface walkthrough
+- [Mod Authoring Guide](docs/MODDING.md) — create your first mod
+- [CLI Reference](docs/CLI_USAGE.md) — every command explained

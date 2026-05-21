@@ -17,12 +17,21 @@ const listQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 
+const slugParamSchema = z.object({
+  slug: z.string().min(1).max(128).regex(/^[a-z0-9_-]+$/),
+});
+
 modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
   const { q, tag, limit, offset } = c.req.valid('query');
   const db = getDb();
 
   const conditions = [
-    q ? or(ilike(schema.mods.name, `%${q}%`), ilike(schema.mods.slug, `%${q}%`)) : undefined,
+    q
+      ? or(
+          ilike(schema.mods.name, `%${q.replace(/[%_\\]/g, '\\$&')}%`),
+          ilike(schema.mods.slug, `%${q.replace(/[%_\\]/g, '\\$&')}%`),
+        )
+      : undefined,
     tag ? sql`${tag} = ANY(${schema.mods.tags})` : undefined,
   ].filter(Boolean);
 
@@ -75,8 +84,8 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
   });
 });
 
-modsRouter.get('/:slug', async (c) => {
-  const slug = c.req.param('slug');
+modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
+  const { slug } = c.req.valid('param');
   const db = getDb();
 
   const mod = await db.query.mods.findFirst({
@@ -120,25 +129,19 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
     );
   }
   const body = c.req.valid('json');
+
+  const MAX_MOD_SIZE_BYTES = 500_000_000;
+  if (body.sizeBytes > MAX_MOD_SIZE_BYTES) {
+    return c.json({ error: 'mod exceeds maximum size' }, 413);
+  }
+
   const db = getDb();
 
   const existing = await db.query.mods.findFirst({
     where: eq(schema.mods.slug, body.slug),
   });
-  if (existing?.ownerId && existing.ownerId !== user.id) {
+  if (existing && existing.ownerId !== null && existing.ownerId !== user.id) {
     return c.json({ error: 'slug owned by another user' }, 403);
-  }
-
-  const dupVersion = existing
-    ? await db.query.modVersions.findFirst({
-        where: and(
-          eq(schema.modVersions.modId, existing.id),
-          eq(schema.modVersions.version, body.version),
-        ),
-      })
-    : null;
-  if (dupVersion) {
-    return c.json({ error: 'version already exists' }, 409);
   }
 
   const signed = await presignModUpload({
@@ -148,57 +151,72 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
     sizeBytes: body.sizeBytes,
   });
 
-  const modRows = await db
-    .insert(schema.mods)
-    .values({
-      slug: body.slug,
-      name: body.manifest.name,
-      summary: body.manifest.summary,
-      description: body.manifest.description,
-      license: body.manifest.license,
-      repoUrl: body.manifest.repo_url,
-      homepageUrl: body.manifest.homepage_url,
-      tags: body.manifest.tags,
-      ownerId: user.id,
-    })
-    .onConflictDoUpdate({
-      target: schema.mods.slug,
-      set: {
-        name: body.manifest.name,
-        summary: body.manifest.summary,
-        description: body.manifest.description,
-        license: body.manifest.license,
-        repoUrl: body.manifest.repo_url,
-        homepageUrl: body.manifest.homepage_url,
-        tags: body.manifest.tags,
-        updatedAt: new Date(),
-      },
-    })
-    .returning();
-  const mod = modRows[0];
-  if (!mod) return c.json({ error: 'failed to upsert mod' }, 500);
+  try {
+    const result = await db.transaction(async (tx) => {
+      const modRows = await tx
+        .insert(schema.mods)
+        .values({
+          slug: body.slug,
+          name: body.manifest.name,
+          summary: body.manifest.summary,
+          description: body.manifest.description,
+          license: body.manifest.license,
+          repoUrl: body.manifest.repo_url,
+          homepageUrl: body.manifest.homepage_url,
+          tags: body.manifest.tags,
+          ownerId: user.id,
+        })
+        .onConflictDoUpdate({
+          target: schema.mods.slug,
+          set: {
+            name: body.manifest.name,
+            summary: body.manifest.summary,
+            description: body.manifest.description,
+            license: body.manifest.license,
+            repoUrl: body.manifest.repo_url,
+            homepageUrl: body.manifest.homepage_url,
+            tags: body.manifest.tags,
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
+      const mod = modRows[0];
+      if (!mod) throw new Error('failed to upsert mod');
 
-  const versionRows = await db
-    .insert(schema.modVersions)
-    .values({
-      modId: mod.id,
-      version: body.version,
-      sha256: body.sha256,
-      sizeBytes: body.sizeBytes,
-      manifestJson: body.manifest,
-      assetUrl: signed.publicUrl,
-    })
-    .returning();
-  const version = versionRows[0];
-  if (!version) return c.json({ error: 'failed to insert version' }, 500);
+      const versionRows = await tx
+        .insert(schema.modVersions)
+        .values({
+          modId: mod.id,
+          version: body.version,
+          sha256: body.sha256,
+          sizeBytes: body.sizeBytes,
+          manifestJson: body.manifest,
+          assetUrl: signed.publicUrl,
+        })
+        .returning();
+      const version = versionRows[0];
+      if (!version) throw new Error('failed to insert version');
 
-  // Client now PUTs the .zip to uploadUrl with
-  // `Content-Type: application/zip` and
-  // `x-amz-checksum-sha256: <base64-of-sha256>` matching the body.
-  return c.json({
-    uploadUrl: signed.uploadUrl,
-    publicUrl: signed.publicUrl,
-    versionId: version.id,
-    expiresIn: signed.expiresIn,
-  });
+      return { mod, version };
+    });
+
+    return c.json({
+      uploadUrl: signed.uploadUrl,
+      publicUrl: signed.publicUrl,
+      versionId: result.version.id,
+      expiresIn: signed.expiresIn,
+    });
+  } catch (err) {
+    // Unique constraint violation (PostgreSQL error code 23505)
+    if (
+      err &&
+      typeof err === 'object' &&
+      'code' in err &&
+      (err as { code: string }).code === '23505'
+    ) {
+      return c.json({ error: 'version already exists' }, 409);
+    }
+    console.error('Upload error:', err);
+    return c.json({ error: 'failed to create mod version' }, 500);
+  }
 });

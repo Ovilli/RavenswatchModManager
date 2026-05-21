@@ -14,12 +14,17 @@ Useful for answering:
     only-cooked?
 """
 from __future__ import annotations
+
+import os
 import re
 import sys
 from collections import Counter
 from pathlib import Path
 
-DEFAULT_LOG = "/home/ovilli/.var/app/com.valvesoftware.Steam/steam-2071280.log"
+DEFAULT_LOG = os.environ.get(
+    "RSMM_TRACE_LOG",
+    str(Path.home() / ".var/app/com.valvesoftware.Steam/steam-2071280.log"),
+)
 
 PATH_RE = re.compile(r'[A-Z]:\\\\[^"\s\)\]]*?DarkTalesResources[^"\s\)\]]*', re.IGNORECASE)
 # Wine prints both Windows-style (C:\...) and unix-style (/home/...) paths

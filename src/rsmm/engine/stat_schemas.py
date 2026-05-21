@@ -15,7 +15,6 @@ import struct
 from dataclasses import dataclass
 from pathlib import Path
 
-
 MARK_BEGIN = bytes.fromhex("1111bbaa")
 MARK_END = bytes.fromhex("2222bbaa")
 

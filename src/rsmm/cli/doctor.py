@@ -14,21 +14,28 @@ Exit code: 0 if every check passed, 1 if any FAIL, 2 if argv invalid.
 """
 
 from __future__ import annotations
+
 import argparse
+import hashlib
 import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from rsmm.engine.paths import (
-    MODS_DIR,
-    DIST_DIR,
-    ASSET_MAP_JSON,
-    DEFAULT_GAME_DIR as DEFAULT_GAME,
-    COOKING_SUBDIR,
-)
+from rsmm.cli.merge import _ranked, _toml_load, collect_patches
 from rsmm.engine.asset_map import decoded_to_encoded
-from rsmm.cli.merge import collect_patches, _ranked, _toml_load
+from rsmm.engine.paths import (
+    ASSET_MAP_JSON,
+    COOKING_SUBDIR,
+    DATA_DIR,
+    DIST_DIR,
+    MODS_DIR,
+    game_fingerprint,
+    load_stored_fingerprint,
+)
+from rsmm.engine.paths import (
+    DEFAULT_GAME_DIR as DEFAULT_GAME,
+)
 
 
 @dataclass
@@ -60,6 +67,18 @@ def check_asset_map(game_dir: Path) -> list[Result]:
     else:
         out.append(Result("OK", "asset_map.json is fresh"))
     return out
+
+
+def check_game_update(game_dir: Path) -> list[Result]:
+    """Warn if the game binary or resource list changed since last apply."""
+    current = game_fingerprint(game_dir)
+    stored = load_stored_fingerprint(game_dir)
+    if stored is None:
+        return [Result("OK", "no stored game version (first run)")]
+    if current != stored:
+        return [Result("WARN", "game version changed since last apply",
+                       "Run: rsmm apply  (will auto-recover)")]
+    return [Result("OK", "game version unchanged")]
 
 
 def check_game_install(game_dir: Path) -> list[Result]:
@@ -190,6 +209,40 @@ def check_patch_conflicts() -> list[Result]:
     return out
 
 
+def check_exe_hash(game_dir: Path) -> list[Result]:
+    """Hash the game executable and warn if function_patterns.json is stale."""
+    patterns = DATA_DIR / "function_patterns.json"
+    if not patterns.exists():
+        return [Result("WARN", "function_patterns.json missing",
+                       "Run: python scripts/gen_function_patterns.py")]
+
+    exe_candidates = [
+        game_dir / "Ravenswatch.exe",
+        game_dir / "Ravenswatch-Win64-Shipping.exe",
+        game_dir / "Ravenswatch" / "Binaries" / "Win64" / "Ravenswatch-Win64-Shipping.exe",
+        game_dir / "Ravenswatch.app" / "Contents" / "MacOS" / "Ravenswatch",
+    ]
+    exe = next((e for e in exe_candidates if e.exists()), None)
+    if not exe:
+        return [Result("WARN", "game executable not found (may be on different OS)",
+                       "Cannot verify pattern DB freshness without the game exe")]
+
+    patterns_mtime = patterns.stat().st_mtime
+    exe_mtime = exe.stat().st_mtime
+
+    exe_hash = hashlib.sha256(exe.read_bytes()).hexdigest()[:12]
+    exe_size = exe.stat().st_size
+    result = [Result("OK", f"game exe: {exe.name} ({exe_size:,} bytes, hash={exe_hash})")]
+
+    if exe_mtime > patterns_mtime + 1:
+        result.append(Result("WARN", "game exe newer than function_patterns.json",
+                             "Game may have updated. Run: python scripts/gen_function_patterns.py"))
+    else:
+        result.append(Result("OK", "function_patterns.json is fresh relative to game exe"))
+
+    return result
+
+
 def check_state(game_dir: Path) -> list[Result]:
     state = game_dir / COOKING_SUBDIR / ".rsmm_state.json"
     if not state.exists():
@@ -219,6 +272,12 @@ def main() -> int:
 
     print("\nasset map:")
     rs = check_asset_map(args.game_dir)
+    for r in rs:
+        emit(r)
+    results.extend(rs)
+
+    print("\ngame version:")
+    rs = check_game_update(args.game_dir)
     for r in rs:
         emit(r)
     results.extend(rs)
@@ -266,6 +325,12 @@ def main() -> int:
             results.extend(crs)
     except Exception as e:
         emit(Result("WARN", "compat analysis failed", str(e)))
+
+    print("\ngame executable:")
+    rs = check_exe_hash(args.game_dir)
+    for r in rs:
+        emit(r)
+    results.extend(rs)
 
     print("\napplier state:")
     rs = check_state(args.game_dir)

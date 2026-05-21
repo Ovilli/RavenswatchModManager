@@ -1,3 +1,15 @@
+/**
+ * @deprecated Replace with real API calls via `@rsmm/api-client`.
+ *
+ * Migration guide:
+ * 1. Add React Query hooks in `lib/api.ts` using `api.mods.list()` and `api.mods.get(slug)`
+ * 2. Replace `getMod()` in `store/index.ts` with a React Query cache lookup
+ * 3. Remove `MOCK_MODS` usage from `browse.tsx` and `mod.$slug.tsx` route files
+ * 4. Extend API schemas if fields like `category`, `tags`, `writes` are needed,
+ *    or combine API data with local manifest info from the Python CLI sidecar
+ *
+ * See packages/api-client/src/index.ts for the available API methods.
+ */
 export type ModCategory =
   | 'gameplay'
   | 'balance'

@@ -74,7 +74,7 @@ class ConfigSchema:
     fields: dict[str, Field] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, raw: dict) -> "ConfigSchema":
+    def from_dict(cls, raw: dict) -> ConfigSchema:
         s = cls()
         for name, body in (raw.get("fields") or {}).items():
             t = body.get("type")
@@ -95,7 +95,7 @@ class ConfigSchema:
         return s
 
     @classmethod
-    def load(cls, path: Path) -> "ConfigSchema":
+    def load(cls, path: Path) -> ConfigSchema:
         if not path.exists():
             return cls()
         return cls.from_dict(tomllib.loads(path.read_text(encoding="utf-8")))

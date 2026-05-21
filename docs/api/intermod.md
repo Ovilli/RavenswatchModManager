@@ -4,6 +4,6 @@
 
 Publish a table under `api_name` (defaults to `mod_id`).
 
-## `InterModRegistry.require(self, name: 'str', version_spec: 'str' = '') -> "'InterModProxy'"`
+## `InterModRegistry.require(self, name: 'str', version_spec: 'str' = '') -> 'InterModProxy'`
 
 (undocumented)

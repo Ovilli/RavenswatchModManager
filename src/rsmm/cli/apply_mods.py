@@ -12,9 +12,7 @@ Mod layout:
 
   mods/<ModId>/
     manifest.toml           # name, version, author, etc.
-    assets/<decoded-path>   # e.g. assets/Ui/BookMenu/Heroes/UI_HeroPortrait_Romeo_Active.png.Texture.dxt
-                            # The decoded path is what humans read; we look
-                            # it up in asset_map.json and translate to the
+    assets/<decoded-path>   # decoded path; looked up in asset_map.json
                             # encoded path under _Cooking/.
 
 State:
@@ -37,6 +35,7 @@ Usage:
 """
 
 from __future__ import annotations
+
 import argparse
 import hashlib
 import json
@@ -45,16 +44,20 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib  # Python 3.11+
 from pathlib import Path
-from typing import Optional
 
 from rsmm.engine.paths import (
-    REPO_ROOT as REPO_DIR,
-    MODS_DIR,
     ASSET_MAP_JSON,
+    MODS_DIR,
     _game_dir_candidates,
+    game_fingerprint,
+    load_stored_fingerprint,
+    save_fingerprint,
 )
-import tomllib   # Python 3.11+
+from rsmm.engine.paths import (
+    REPO_ROOT as REPO_DIR,
+)
 
 
 def parse_toml(p: Path) -> dict:
@@ -66,7 +69,7 @@ STATE_FILE_NAME = ".rsmm_state.json"
 BACKUP_SUFFIX = ".rsmm.bak"
 
 
-def find_game_dir() -> Optional[Path]:
+def find_game_dir() -> Path | None:
     """Best-effort autodetect across Linux/macOS/Windows.
 
     The cooked asset tree is the canonical marker (DarkTalesResources/_Cooking).
@@ -110,8 +113,8 @@ class State:
         if self.path.exists():
             try:
                 self.data = json.loads(self.path.read_text(encoding="utf-8"))
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"  [warn] corrupt state file: {e}", file=__import__('sys').stderr)
 
     def save(self) -> None:
         self.path.write_text(json.dumps(self.data, indent=2, sort_keys=True),
@@ -163,7 +166,7 @@ class Mod:
         return out
 
 
-def load_asset_map(repo: Path) -> dict[str, str]:
+def load_asset_map(_repo: Path | None = None) -> dict[str, str]:
     """decoded_path (forward-slash) -> encoded_path (with backslashes)."""
     p = ASSET_MAP_JSON
     raw = json.loads(p.read_text(encoding="utf-8"))
@@ -228,11 +231,6 @@ def encoded_to_dest(encoded: str, cooking: Path, game_dir: Path) -> Path:
     return cooking / Path(*encoded.split("\\"))
 
 
-def to_cooking_rel(encoded: str) -> Path:
-    """Legacy helper. Use encoded_to_dest(...) instead."""
-    return Path(*encoded.split("\\"))
-
-
 def discover_mods(repo: Path) -> list[Mod]:
     mods_dir = MODS_DIR
     if not mods_dir.is_dir():
@@ -266,7 +264,7 @@ def emit_content_blocks(mods: list[Mod]) -> int:
     mods so one bad content def doesn't break a batch.
     """
     try:
-        from rsmm.sdk.content import ContentRegistry, ContentError, SchemaNotMined
+        from rsmm.sdk.content import ContentError, ContentRegistry, SchemaNotMined
     except Exception as e:
         print(f"  [content] sdk import failed: {e}", file=sys.stderr)
         return 0
@@ -374,8 +372,19 @@ def plan_apply(mods: list[Mod],
     return additions, removals
 
 
+_DANGEROUS_ROOT_EXTS = frozenset({
+    ".exe", ".dll", ".sys", ".drv", ".scr", ".cpl",
+    ".vbs", ".vbe", ".ps1", ".bat", ".cmd", ".sh",
+})
+
+
 def apply_one(enc: str, src: Path, dest: Path, mod_id: str,
               state: State, dry_run: bool) -> None:
+    if enc.startswith(ROOT_PREFIX):
+        rel = dest.suffix.lower()
+        if rel in _DANGEROUS_ROOT_EXTS:
+            print(f"  [WARN] {mod_id} overwrites {dest.name} in game root "
+                  f"(potentially dangerous)", file=sys.stderr)
     cur = state.active.get(enc)
     bak = dest.with_suffix(dest.suffix + BACKUP_SUFFIX) if dest.exists() else None
     if dest.exists():
@@ -497,12 +506,37 @@ def _run_deactivation_hooks(mods: list[Mod],
     return ran, missing
 
 
+_RUNTIME_EXTENSIONS = {".lua", ".json", ".toml", ".txt"}
+_RUNTIME_BLOCKLIST  = {"manifest.toml", "config_schema.toml"}
+
+
+def _sync_one_file(src: Path, dst: Path, dry_run: bool) -> bool:
+    """Mtime-aware copy. Returns True if a write happened."""
+    try:
+        src_mtime = src.stat().st_mtime
+        dst_mtime = dst.stat().st_mtime if dst.exists() else 0
+        if src_mtime <= dst_mtime:
+            return False
+        if not dry_run:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_bytes(src.read_bytes())
+        return True
+    except OSError:
+        return False
+
+
 def _sync_mod_manifests(mods: list[Mod], game_dir: Path, dry_run: bool) -> int:
-    """Copy manifest.toml from each mod to the game's mods/ directory.
-    Also sync/remove init.lua based on enabled flag.
+    """Copy each mod's runtime sidecar files into the game's mods/ dir.
+
+    Always copied: manifest.toml + init.lua (when enabled).
+    Also copied: any top-level `.lua`, `.json`, `.toml`, `.txt` file that
+    is not the manifest or config schema — lets Lua mods ship pointer
+    tables, data caches, or auxiliary scripts and read them via
+    `R.mod_dir()` at runtime.
 
     The game engine reads manifests to determine which mods are enabled.
-    For Lua code mods, we remove init.lua when disabled to prevent execution.
+    For Lua code mods, init.lua is removed when disabled to prevent
+    execution. Auxiliary files are kept on disable (cheap, harmless).
     Returns the number of files synced.
     """
     game_mods = game_dir / "mods"
@@ -518,47 +552,102 @@ def _sync_mod_manifests(mods: list[Mod], game_dir: Path, dry_run: bool) -> int:
             continue
 
         enabled = mod.enabled
-
         dst_dir = game_mods / mod_dir.name
         dst_dir.mkdir(exist_ok=True)
 
-        # Sync manifest
-        dst_manifest = dst_dir / "manifest.toml"
-        try:
-            src_mtime = manifest.stat().st_mtime
-            dst_mtime = dst_manifest.stat().st_mtime if dst_manifest.exists() else 0
-            if src_mtime > dst_mtime:
-                if not dry_run:
-                    dst_manifest.write_bytes(manifest.read_bytes())
-                synced += 1
-        except OSError:
-            pass
+        # Sync manifest (always).
+        if _sync_one_file(manifest, dst_dir / "manifest.toml", dry_run):
+            synced += 1
 
-        # Sync or remove init.lua based on enabled flag
+        # Sync or remove init.lua based on enabled flag.
         src_lua = mod_dir / "init.lua"
         dst_lua = dst_dir / "init.lua"
-
         if enabled and src_lua.is_file():
-            # Mod is enabled: sync init.lua
-            try:
-                src_mtime = src_lua.stat().st_mtime
-                dst_mtime = dst_lua.stat().st_mtime if dst_lua.exists() else 0
-                if src_mtime > dst_mtime:
-                    if not dry_run:
-                        dst_lua.write_bytes(src_lua.read_bytes())
-                    synced += 1
-            except OSError:
-                pass
+            if _sync_one_file(src_lua, dst_lua, dry_run):
+                synced += 1
         elif not enabled and dst_lua.exists():
-            # Mod is disabled: remove init.lua to prevent execution
             if not dry_run:
                 dst_lua.unlink()
             synced += 1
 
+        # Sync top-level auxiliary files so mods can ship data alongside
+        # init.lua (pointer tables, embedded configs, secondary scripts).
+        # Only top-level — never recurse into assets/, _root/, lang/, etc.
+        for src in mod_dir.iterdir():
+            if not src.is_file():
+                continue
+            if src.suffix.lower() not in _RUNTIME_EXTENSIONS:
+                continue
+            if src.name in _RUNTIME_BLOCKLIST or src.name == "init.lua":
+                continue
+            if _sync_one_file(src, dst_dir / src.name, dry_run):
+                synced += 1
+
     return synced
 
 
+def _recover_game_update(cooking: Path, game_dir: Path) -> bool:
+    """Detect game update, clear stale state, and stage a fresh apply.
+
+    Returns True if an update was detected and recovery was performed.
+    """
+    current = game_fingerprint(game_dir)
+    stored = load_stored_fingerprint(game_dir)
+    if current == stored:
+        return False
+
+    print("Game update detected. Recovering...", flush=True)
+
+    # 1. Clear stale backups — they point to pre-update originals
+    cleared = 0
+    for bak in cooking.rglob("*.rsmm.bak"):
+        try:
+            bak.unlink()
+            cleared += 1
+        except OSError:
+            pass
+    if cleared:
+        print(f"  + cleared {cleared} stale backup(s)")
+
+    # 2. Clear applier state — force a full re-apply from scratch
+    state_path = cooking / ".rsmm_state.json"
+    if state_path.exists():
+        try:
+            state_path.unlink()
+            print("  + cleared applier state")
+        except OSError:
+            pass
+
+    # 3. Rebuild asset map if the resource list changed
+    try:
+        from rsmm.engine.find_iyg import main as rebuild_asset_map
+        rebuild_asset_map()
+        # Clear the LRU cache so the fresh map is picked up
+        from rsmm.engine.asset_map import encoded_to_decoded
+        encoded_to_decoded.cache_clear()
+        print("  + rebuilt asset map")
+    except Exception as e:
+        print(f"  [warn] asset map rebuild failed: {e}", file=sys.stderr)
+
+    # 4. Reset health crash counters — crashes were caused by the update
+    try:
+        from rsmm.sdk.health import Health
+        h = Health(cooking)
+        st = h.load()
+        for mid in list(st.mods.keys()):
+            h.re_enable(mid)
+        h.clear_canary()
+        print("  + reset health/crash counters")
+    except Exception as e:
+        print(f"  [warn] health reset failed: {e}", file=sys.stderr)
+
+    # 5. Persist the new fingerprint so we don't loop
+    save_fingerprint(game_dir, current)
+    return True
+
+
 def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
+    _recover_game_update(cooking, game_dir)
     dec2enc = load_asset_map(repo)
     mods = discover_mods(repo)
     mods = apply_health_quarantine(mods, cooking)
@@ -633,7 +722,7 @@ def cmd_list(args, repo: Path, cooking: Path) -> int:
         n = len(m.files())
         flag = "on " if m.enabled else "off"
         print(f"  [{flag}] {m.id}  ({m.name} {m.version})  by {m.author or 'unknown'}  files={n}")
-        for src, decoded in m.files():
+        for _src, decoded in m.files():
             enc = dec2enc.get(decoded) or resolve_special(decoded, dec2enc)
             here = "  active" if (enc and enc in state.active) else ""
             mark = "" if enc else "  [no asset_map match]"

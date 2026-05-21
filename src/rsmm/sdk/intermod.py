@@ -16,8 +16,9 @@ tests) use this module directly.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from .api import satisfies, sdk_export
 
@@ -49,7 +50,7 @@ class InterModRegistry:
         self._by_name[name] = _Entry(mod_id=mod_id, version=version, table=dict(table))
 
     @sdk_export("InterModRegistry.require")
-    def require(self, name: str, version_spec: str = "") -> "InterModProxy":
+    def require(self, name: str, version_spec: str = "") -> InterModProxy:
         entry = self._by_name.get(name)
         if entry is None:
             raise InterModError(f"API not found: {name!r}")

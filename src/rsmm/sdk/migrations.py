@@ -47,10 +47,16 @@ def chain(kind: str, from_v: int, to_v: int) -> list[int]:
             available[int(m.group(1))] = int(m.group(2))
     cur = from_v
     out = [cur]
+    seen: set[int] = {cur}
     while cur != to_v:
         nxt = available.get(cur)
         if nxt is None:
             return []
+        if nxt in seen:
+            raise RuntimeError(
+                f"cycle in {kind} migrations at v{cur} -> v{nxt}"
+            )
+        seen.add(nxt)
         out.append(nxt)
         cur = nxt
     return out
@@ -66,7 +72,7 @@ def migrate(kind: str, defn_fields: dict[str, Any],
             f"no migration chain for {kind} from v{from_v} to v{target}"
         )
     cur = dict(defn_fields)
-    for a, b in zip(steps, steps[1:]):
+    for a, b in zip(steps, steps[1:], strict=False):
         mod = importlib.import_module(
             f"rsmm.sdk.kinds.{kind}.migrations.{a}_to_{b}"
         )

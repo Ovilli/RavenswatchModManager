@@ -431,6 +431,25 @@ bool script_run_mod_init(const std::string& mod_id,
     lua_State* L = luaL_newstate();
     if (!L) return false;
     luaL_openlibs(L);
+
+    // Sandbox: remove dangerous functions so mod init.lua can't escape
+    // the asset-override sandbox via os.execute / io.open / debug / load.
+    lua_pushnil(L); lua_setglobal(L, "dofile");
+    lua_pushnil(L); lua_setglobal(L, "loadfile");
+    lua_pushnil(L); lua_setglobal(L, "load");
+    lua_pushnil(L); lua_setglobal(L, "collectgarbage");
+    lua_pushnil(L); lua_setglobal(L, "debug");
+    lua_pushnil(L); lua_setglobal(L, "io");
+    lua_getglobal(L, "os");
+    if (lua_istable(L, -1)) {
+      lua_pushnil(L); lua_setfield(L, -2, "execute");
+      lua_pushnil(L); lua_setfield(L, -2, "rename");
+      lua_pushnil(L); lua_setfield(L, -2, "remove");
+      lua_pushnil(L); lua_setfield(L, -2, "exit");
+      lua_pushnil(L); lua_setfield(L, -2, "tmpname");
+    }
+    lua_pop(L, 1);
+
     lua_pushstring(L, mod_id.c_str());
     lua_setfield(L, LUA_REGISTRYINDEX, "__rsmm_mod_id");
     register_api(L);

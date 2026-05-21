@@ -41,6 +41,7 @@ Usage:
 """
 
 from __future__ import annotations
+
 import argparse
 import struct
 import sys
@@ -287,7 +288,8 @@ def main():
     ap.add_argument("--raw", action="store_true", help="dump section payloads as hex")
     args = ap.parse_args()
 
-    data = open(args.path, "rb").read()
+    with open(args.path, "rb") as f:
+        data = f.read()
     c = Cursor(data)
     cf = parse_header(c)
     parse_class_table(c, cf)

@@ -15,14 +15,14 @@ Usage:
 """
 
 from __future__ import annotations
+
 import argparse
 import sys
 from pathlib import Path
 
-from rsmm.engine.paths import MODS_DIR
-from rsmm.engine.asset_map import decoded_to_encoded
 from rsmm.cli.merge import _toml_load
-
+from rsmm.engine.asset_map import decoded_to_encoded
+from rsmm.engine.paths import MODS_DIR
 
 LANG_SUFFIXES = tuple(f".Lang{c}" for c in [
     "EN", "JA", "KO", "RU", "ES", "DE", "PL", "FR", "IT",

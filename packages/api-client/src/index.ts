@@ -36,15 +36,21 @@ export function createApiClient(options: ApiClientOptions) {
   };
 
   async function request<T>(path: string, init: RequestInit, schema: z.ZodType<T>): Promise<T> {
-    const res = await f(`${options.baseUrl}${path}`, {
+    const baseUrl = options.baseUrl.replace(/\/+$/, '');
+    const res = await f(`${baseUrl}${path}`, {
       ...init,
       headers: { ...headers(), ...(init.headers ?? {}) },
       credentials: 'include',
     });
-    const text = await res.text();
-    const json = text ? JSON.parse(text) : null;
+    const json = await res.json().catch(() => null);
     if (!res.ok) throw new ApiError(`${res.status} ${path}`, res.status, json);
-    return schema.parse(json);
+    try {
+      return schema.parse(json);
+    } catch (err) {
+      throw new ApiError(`response validation failed for ${path}`, res.status, {
+        error: err instanceof Error ? err.message : 'invalid response',
+      });
+    }
   }
 
   const modListResponseSchema = z.object({
@@ -72,25 +78,25 @@ export function createApiClient(options: ApiClientOptions) {
         if (params.limit) qs.set('limit', String(params.limit));
         if (params.offset) qs.set('offset', String(params.offset));
         return request<{ items: ModListItem[]; total: number }>(
-          `/mods?${qs}`,
+          `/api/mods?${qs}`,
           { method: 'GET' },
           modListResponseSchema,
         );
       },
       get: (slug: string) =>
         request<{ mod: ModListItem; versions: ModVersion[] }>(
-          `/mods/${encodeURIComponent(slug)}`,
+          `/api/mods/${encodeURIComponent(slug)}`,
           { method: 'GET' },
           modDetailResponseSchema,
         ),
       upload: (body: ModUploadRequest) =>
-        request('/mods/upload', { method: 'POST', body: JSON.stringify(body) }, uploadResponseSchema),
+        request('/api/mods/upload', { method: 'POST', body: JSON.stringify(body) }, uploadResponseSchema),
     },
     telemetry: {
       run: (body: TelemetryRun) =>
-        request('/telemetry/run', { method: 'POST', body: JSON.stringify(body) }, okSchema),
+        request('/api/telemetry/run', { method: 'POST', body: JSON.stringify(body) }, okSchema),
       crash: (body: CrashReport) =>
-        request('/telemetry/crash', { method: 'POST', body: JSON.stringify(body) }, okSchema),
+        request('/api/telemetry/crash', { method: 'POST', body: JSON.stringify(body) }, okSchema),
     },
   };
 }

@@ -8,6 +8,8 @@ Subcommands:
     rsmm json restore-all           restore every active override
     rsmm json build                 build asset map + loader DLL + merge + apply
     rsmm json doctor                run health check, return structured results
+    rsmm json run                   launch the game via steam://rungameid
+    rsmm json run --vanilla         restore original files, then launch
 
 All commands emit a single JSON object/array on stdout (UTF-8, no trailing
 newline). Stderr is forwarded for diagnostics. Exit code is 0 on success.
@@ -99,6 +101,16 @@ def cmd_build(rest: list[str]) -> int:
     return _run_rsmm(["build", *rest])
 
 
+def cmd_run(rest: list[str]) -> int:
+    """Launch the game. --vanilla restores originals first."""
+    args = ["run", "--force"]
+    filtered = [a for a in rest if a != "--vanilla"]
+    if len(filtered) < len(rest):
+        cmd_restore_all()
+        args.append("--force")
+    return _run_rsmm([*args, *filtered])
+
+
 def cmd_doctor() -> int:
     """
     Run doctor as a subprocess so the UI can display the raw, coloured
@@ -152,6 +164,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("restore-all", help="restore every active override")
     sub.add_parser("build", help="build asset map + loader + merge + apply")
     sub.add_parser("doctor", help="system health check")
+    p_run = sub.add_parser("run", help="launch the game")
+    p_run.add_argument("--vanilla", action="store_true", help="restore originals before launching")
 
     args = ap.parse_args(argv)
     if args.cmd == "list":
@@ -171,6 +185,11 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_build([])
     if args.cmd == "doctor":
         return cmd_doctor()
+    if args.cmd == "run":
+        rest = []
+        if args.vanilla:
+            rest.append("--vanilla")
+        return cmd_run(rest)
     ap.error(f"unknown subcommand: {args.cmd}")
     return 2
 

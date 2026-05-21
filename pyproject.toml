@@ -31,6 +31,14 @@ dev = ["pytest>=7", "ruff>=0.4"]
 [project.urls]
 Homepage = "https://github.com/Ovilli/RavenswatchModManager"
 
+[project.scripts]
+rsmm = "rsmm.cli._dispatch:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --tb=short"
+filterwarnings = ["ignore::DeprecationWarning"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["rsmm*"]
@@ -41,8 +49,5 @@ target-version = "py311"
 extend-exclude = ["src/loader/third_party"]
 
 [tool.ruff.lint]
-# Start strict on real bugs only (pyflakes). Style rules (E/W/I/UP/B)
-# can be turned on later in a focused pass; doing it today would be
-# a 300-error rewrite of code the current PR isn't scoped to touch.
-select = ["F"]
+select = ["F", "E", "W", "I", "UP", "B"]
 ignore = ["F401"]   # unused imports: noisy on src/rsmm/__init__ re-exports

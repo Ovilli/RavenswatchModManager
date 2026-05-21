@@ -20,7 +20,7 @@
     "better-auth": "1.1.10",
     "dotenv": "16.4.7",
     "drizzle-orm": "0.36.4",
-    "hono": "4.6.16",
+    "hono": "4.12.21",
     "zod": "3.25.76"
   },
   "devDependencies": {

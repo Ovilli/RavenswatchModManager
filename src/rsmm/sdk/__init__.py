@@ -16,16 +16,16 @@ model is one import. See `docs/SDK_V3.md` for the full design.
 
 from __future__ import annotations
 
-from .api import API_VERSION, sdk_export, require_api
-from .health import Health
+from .api import API_VERSION, require_api, sdk_export
 from .config import ConfigSchema, ConfigStore
+from .content import ContentDef, ContentRegistry
+from .health import Health
 from .i18n import I18nBundle
-from .content import ContentRegistry, ContentDef
 from .intermod import InterModRegistry
 from .plugins import discover_plugins
 from .repo import RepoIndex, sign_file, verify_file
-from .versioning import GameBuildPin, check_compat
 from .transaction import ApplyTransaction
+from .versioning import GameBuildPin, check_compat
 
 __all__ = [
     "API_VERSION", "sdk_export", "require_api",
@@ -60,7 +60,7 @@ class Mod:
         self._b = ModBuilder(mod_id, version=version, author=author,
                              name=name or mod_id)
 
-    def __enter__(self) -> "Mod":
+    def __enter__(self) -> Mod:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -31,8 +32,7 @@ from pathlib import Path
 
 from rsmm.engine.paths import MODS_DIR
 from rsmm.sdk.api import _parse_v
-from rsmm.sdk.repo import RepoIndex, RepoError, sha256_file, verify_file
-
+from rsmm.sdk.repo import RepoError, RepoIndex, sha256_file, verify_file
 
 REPOS_FILE = Path.home() / ".rsmm" / "repos.json"
 KEYS_DIR = Path.home() / ".rsmm" / "keys"
@@ -98,6 +98,53 @@ def _verify_download(path: Path, expected_sha256: str,
         return True, f"verify skipped: {e}"
 
 
+_DANGEROUS_EXTENSIONS = frozenset({
+    ".exe", ".dll", ".sys", ".drv", ".scr", ".cpl",
+    ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh",
+    ".ps1", ".psm1", ".psd1", ".ps1xml",
+    ".sh", ".bash", ".zsh",
+    ".bat", ".cmd",
+    ".jar", ".py", ".pyc", ".pyd",
+    ".wasm", ".php", ".asp", ".aspx", ".jsp",
+})
+
+_DANGEROUS_ROOT_EXTENSIONS = frozenset({
+    ".exe", ".dll", ".sys", ".drv", ".scr", ".cpl",
+    ".vbs", ".vbe", ".ps1", ".bat", ".cmd", ".sh",
+})
+
+
+def _validate_zip_content(zf: zipfile.ZipFile, mod_id: str) -> None:
+    """Scan ZIP for dangerous file types. Raise RepoError if found."""
+    blocked: list[str] = []
+    root_danger: list[str] = []
+    root_prefix = "_root\\" if os.name == "nt" else "_root/"
+    for entry in zf.infolist():
+        name = entry.filename
+        # Strip mod_id/ prefix if present
+        parts = name.replace("\\", "/").split("/", 1)
+        inner = parts[1] if len(parts) > 1 else parts[0]
+        ext = Path(inner).suffix.lower()
+        if ext in _DANGEROUS_EXTENSIONS:
+            blocked.append(name)
+        if inner.startswith(root_prefix[1:]):
+            rel = inner[len(root_prefix):]
+            if Path(rel).suffix.lower() in _DANGEROUS_ROOT_EXTENSIONS:
+                root_danger.append(rel)
+    if blocked:
+        raise RepoError(
+            f"{mod_id} contains blocked file type(s):\n  "
+            + "\n  ".join(blocked[:20])
+        )
+    if root_danger:
+        print(
+            f"  [WARN] {mod_id} overwrites game root files:",
+            file=sys.stderr,
+        )
+        for f in root_danger:
+            print(f"         {f}", file=sys.stderr)
+
+
 def _install_zip(zip_path: Path, mod_id: str, dry_run: bool) -> None:
     """Replace `mods/<mod_id>/` with the zip contents atomically."""
     target = MODS_DIR / mod_id
@@ -105,6 +152,11 @@ def _install_zip(zip_path: Path, mod_id: str, dry_run: bool) -> None:
         staging = Path(td) / mod_id
         staging.mkdir()
         with zipfile.ZipFile(zip_path) as zf:
+            _validate_zip_content(zf, mod_id)
+            for entry in zf.infolist():
+                dest = (staging.parent / entry.filename).resolve()
+                if not str(dest).startswith(str(staging.parent.resolve())):
+                    raise RepoError(f"zip slip detected: {entry.filename}")
             zf.extractall(staging.parent)
         # The zip may extract as either `<mod_id>/...` or `./...`. Pick
         # the right inner path.

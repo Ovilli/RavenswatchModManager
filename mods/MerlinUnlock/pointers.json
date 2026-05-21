@@ -1,0 +1,12 @@
+{
+  "_comment_": "Slot 3 of each *UnlockConditionSettings vftable is IsUnlocked (verified by decompile). Values are Ghidra function names resolved at runtime via the pattern DB so they work regardless of ASLR. Only three are actually used by init.lua (AdditionalContent, NamedEvent, HeroProgression); the rest are mined for reference.",
+  "hook_sig": "ipp",
+  "hooks": {
+    "oCGameLockSettings_Evaluate": "FUN_14067eaf0",
+    "oIGameUnlockConditionSettings_IsUnlocked": "FUN_14067f6b0",
+    "HeroRankGameLockConditionSettings_IsUnlocked": "FUN_1402aa990",
+    "HeroProgressionUnlockConditionSettings_IsUnlocked": "FUN_1402ab6b0",
+    "AdditionalContentGameUnlockConditionSettings_IsUnlocked": "FUN_1402abce0",
+    "NamedEventGameLockConditionSettings_IsUnlocked": "FUN_14070c8f0"
+  }
+}

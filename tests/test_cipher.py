@@ -17,7 +17,6 @@ itself.
 import csv
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parent.parent
 ASSET_MAP_CSV = REPO / "data" / "asset_map.csv"
 

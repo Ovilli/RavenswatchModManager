@@ -9,6 +9,7 @@ For headless / desktop use; not meant to run as a service.
 """
 
 from __future__ import annotations
+
 import argparse
 import signal
 import subprocess
@@ -17,7 +18,12 @@ import time
 from pathlib import Path
 
 from rsmm.engine.paths import (
-    REPO_ROOT, MODS_DIR, DIST_DIR, DEFAULT_GAME_DIR as DEFAULT_GAME,
+    DEFAULT_GAME_DIR as DEFAULT_GAME,
+)
+from rsmm.engine.paths import (
+    DIST_DIR,
+    MODS_DIR,
+    REPO_ROOT,
 )
 
 
@@ -61,6 +67,8 @@ def _sync_lua_and_manifest(game_dir: Path, log) -> int:
     game_mods = game_dir / "mods"
     game_mods.mkdir(exist_ok=True)
     updated = 0
+    if not MODS_DIR.is_dir():
+        return 0
     for mod_dir in MODS_DIR.iterdir():
         if not mod_dir.is_dir() or mod_dir.name.startswith("_"):
             continue

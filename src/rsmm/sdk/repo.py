@@ -17,7 +17,6 @@ import base64
 import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 from .api import sdk_export
 
@@ -46,7 +45,7 @@ class RepoEntry:
     pubkey_id: str = ""        # which key in ~/.rsmm/keys/ to verify with
 
     @classmethod
-    def from_dict(cls, raw: dict) -> "RepoEntry":
+    def from_dict(cls, raw: dict) -> RepoEntry:
         return cls(
             id=str(raw["id"]),
             version=str(raw["version"]),
@@ -82,7 +81,7 @@ class RepoIndex:
     mods: list[RepoEntry] = field(default_factory=list)
 
     @classmethod
-    def load(cls, raw: dict) -> "RepoIndex":
+    def load(cls, raw: dict) -> RepoIndex:
         if raw.get("schema") != REPO_SCHEMA:
             raise RepoError(f"unknown repo schema: {raw.get('schema')!r}")
         return cls(
@@ -99,7 +98,7 @@ class RepoIndex:
             "mods": [m.to_dict() for m in self.mods],
         }
 
-    def find(self, mod_id: str, version_spec: str = "") -> Optional[RepoEntry]:
+    def find(self, mod_id: str, version_spec: str = "") -> RepoEntry | None:
         from .api import satisfies
         candidates = [m for m in self.mods if m.id == mod_id]
         if version_spec:
@@ -133,10 +132,11 @@ def sha256_file(path: Path) -> str:
 
 def _load_crypto():
     try:
-        from cryptography.hazmat.primitives.asymmetric.ed25519 import (
-            Ed25519PrivateKey, Ed25519PublicKey,
-        )
         from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+            Ed25519PrivateKey,
+            Ed25519PublicKey,
+        )
         return Ed25519PrivateKey, Ed25519PublicKey, serialization
     except Exception:  # noqa: BLE001
         return None

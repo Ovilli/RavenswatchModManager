@@ -105,7 +105,12 @@ const std::string* Loader::encoded_to_decoded(const std::string& enc) const {
 }
 
 const std::string* Loader::decoded_to_encoded(const std::string& dec) const {
-    auto it = dec_to_enc_.find(dec);
+    // Normalise forward slashes to backslashes (asset_map.json uses \).
+    std::string normalized = dec;
+    for (auto& c : normalized) {
+        if (c == '/') c = '\\';
+    }
+    auto it = dec_to_enc_.find(normalized);
     return it == dec_to_enc_.end() ? nullptr : &it->second;
 }
 
@@ -165,7 +170,11 @@ void Loader::apply_overrides() {
                 log("[" + m.id + "] no encoded match for " + f.decoded_path);
                 continue;
             }
-            override_by_encoded_[*enc] = f.src;
+            // lookup_override extracts the leaf (basename) from the game's
+            // file path, so we key by leaf too.
+            auto slash = enc->find_last_of("\\/");
+            std::string leaf = (slash == std::string::npos) ? *enc : enc->substr(slash + 1);
+            override_by_encoded_[leaf] = f.src;
         }
     }
     log("active overrides=" + std::to_string(override_by_encoded_.size()));

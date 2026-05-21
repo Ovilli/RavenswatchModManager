@@ -41,7 +41,7 @@ function ModDetailPage() {
       <Button
         type="button"
         size="sm"
-        onClick={() => history.back()}
+        onClick={() => navigate({ to: '/browse' })}
       >
         <ArrowLeft className="h-3.5 w-3.5" /> back
       </Button>

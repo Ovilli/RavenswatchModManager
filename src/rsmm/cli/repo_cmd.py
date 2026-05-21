@@ -12,9 +12,13 @@ import sys
 from pathlib import Path
 
 from rsmm.sdk.repo import (
-    RepoError, RepoIndex, sha256_file, sign_file, verify_file, keygen,
+    RepoError,
+    RepoIndex,
+    keygen,
+    sha256_file,
+    sign_file,
+    verify_file,
 )
-
 
 KEYS_DIR = Path.home() / ".rsmm" / "keys"
 REPOS_FILE = Path.home() / ".rsmm" / "repos.json"
@@ -67,7 +71,7 @@ def cmd_repo(argv: list[str]) -> int:
         try:
             data = json.loads(args.path.read_text(encoding="utf-8"))
             idx = RepoIndex.load(data)
-        except (RepoError, Exception) as e:
+        except (RepoError, OSError, json.JSONDecodeError) as e:
             print(f"invalid: {e}", file=sys.stderr)
             return 1
         print(f"ok: {idx.name} ({len(idx.mods)} mods)")

@@ -27,7 +27,7 @@ class GameBuildPin:
     first_seen: int
 
     @classmethod
-    def from_exe(cls, exe: Path) -> "GameBuildPin":
+    def from_exe(cls, exe: Path) -> GameBuildPin:
         h = hashlib.sha256()
         size = 0
         with exe.open("rb") as f:
@@ -37,7 +37,7 @@ class GameBuildPin:
         return cls(sha256=h.hexdigest(), size=size, first_seen=int(time.time()))
 
     @classmethod
-    def load(cls, cooking: Path) -> "GameBuildPin | None":
+    def load(cls, cooking: Path) -> GameBuildPin | None:
         p = cooking / PIN_FILE_NAME
         if not p.exists():
             return None

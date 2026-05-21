@@ -13,12 +13,22 @@ function required(name: string): string {
   return v;
 }
 
+function parsePort(raw: string | undefined, fallback: number): number {
+  if (!raw) return fallback;
+  const n = Number.parseInt(raw, 10);
+  if (Number.isNaN(n) || n < 1 || n > 65535) {
+    console.warn(`Invalid API_PORT "${raw}", falling back to ${fallback}`);
+    return fallback;
+  }
+  return n;
+}
+
 export const env = {
-  port: Number(process.env.API_PORT ?? 3001),
+  port: parsePort(process.env.API_PORT, 3001),
   databaseUrl: required('DATABASE_URL'),
   betterAuthSecret: required('BETTER_AUTH_SECRET'),
-  betterAuthUrl: process.env.BETTER_AUTH_URL ?? 'http://localhost:3001',
-  trustedOrigins: (process.env.TRUSTED_ORIGINS ?? 'http://localhost:3000,http://localhost:1420,tauri://localhost')
+  betterAuthUrl: process.env.BETTER_AUTH_URL || 'http://localhost:3001',
+  trustedOrigins: (process.env.TRUSTED_ORIGINS || 'http://localhost:3000,http://localhost:1420,tauri://localhost,https://tauri.localhost')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),

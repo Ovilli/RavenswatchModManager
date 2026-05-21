@@ -52,6 +52,7 @@ pnpm db:seed      # Optional sample data
 | Command | Description |
 |---|---|
 | `pnpm dev` | Desktop app (Tauri + Vite) |
+| `pnpm dev:with-cli` | Desktop app (uses system `rsmm` Python CLI from repo root) |
 | `pnpm api:dev` | Hono API on `:3001` |
 | `pnpm www:dev` | Next.js website + registry on `:3000` |
 | `pnpm docs:dev` | Astro Starlight docs on `:4321` |
@@ -61,6 +62,42 @@ pnpm db:seed      # Optional sample data
 | `pnpm db:push` | Push schema to local DB |
 | `pnpm db:migrate` | Apply migrations |
 | `pnpm build` | Build every package + app |
+
+### Platform-specific desktop dev
+
+| Command | Platform | Use case |
+|---|---|---|
+| `pnpm --filter desktop dev` | All | Standard development |
+| `pnpm --filter desktop dev:linux` | Linux | If WebKit DMA-BUF errors occur |
+| `pnpm --filter desktop dev:linux-soft` | Linux | Software GL fallback (last resort) |
+| `pnpm --filter desktop dev:mac-arm` | macOS (Apple Silicon) | Native ARM64 development |
+
+### Production builds
+
+| Command | Output |
+|---|---|
+| `pnpm --filter desktop build` | Native platform installer (MSI/DMG/AppImage) |
+| `pnpm --filter desktop build:universal` | macOS universal binary (Intel + Apple Silicon) |
+| `pnpm --filter desktop build:linux` | Linux x86_64 build |
+| `pnpm --filter desktop build:windows` | Windows x64 build |
+
+### Sidecar (Python CLI binary)
+
+For production builds, the Python CLI must be bundled as a standalone executable:
+
+```sh
+python3 scripts/build-sidecar.py              # Build for current platform
+python3 scripts/build-sidecar.py --target linux
+python3 scripts/build-sidecar.py --target macos
+python3 scripts/build-sidecar.py --target windows
+python3 scripts/build-sidecar.py --all         # Build for all platforms
+```
+
+Requires PyInstaller (`pip install pyinstaller`). The output binary is placed at
+`apps/desktop/src-tauri/binaries/rsmm-<target-triple>` where Tauri's sidecar resolver expects it.
+
+For development, you can use the system Python CLI instead (`rsmm` on PATH from `pip install -e .`).
+The desktop app falls back to the system command if the sidecar binary is not found.
 
 ## Building the native loader
 

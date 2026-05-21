@@ -21,7 +21,6 @@ from pathlib import Path
 
 from ..content import ContentDef, SchemaNotMined
 
-
 TEMPLATE_DIR_NAME = "templates/item"
 
 

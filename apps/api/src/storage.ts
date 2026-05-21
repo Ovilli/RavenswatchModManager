@@ -45,9 +45,16 @@ export async function presignModUpload(args: {
     ChecksumSHA256: bufToB64(hexToBuf(args.sha256)),
   });
   const uploadUrl = await getSignedUrl(s3(), cmd, { expiresIn: env.s3.signedUrlTtlSeconds });
-  const publicUrl = env.s3.publicBaseUrl
-    ? `${env.s3.publicBaseUrl.replace(/\/$/, '')}/${key}`
-    : `${env.s3.endpoint ?? `https://${env.s3.bucket}.s3.${env.s3.region}.amazonaws.com`}/${key}`;
+  let publicUrl: string;
+  if (env.s3.publicBaseUrl) {
+    publicUrl = `${env.s3.publicBaseUrl.replace(/\/$/, '')}/${key}`;
+  } else if (env.s3.endpoint) {
+    // S3-compatible (R2 / MinIO) — path-style with bucket
+    publicUrl = `${env.s3.endpoint.replace(/\/$/, '')}/${env.s3.bucket}/${key}`;
+  } else {
+    // Standard AWS S3 — virtual-hosted style
+    publicUrl = `https://${env.s3.bucket}.s3.${env.s3.region}.amazonaws.com/${key}`;
+  }
   return { uploadUrl, publicUrl, key, expiresIn: env.s3.signedUrlTtlSeconds };
 }
 

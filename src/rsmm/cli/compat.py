@@ -13,47 +13,24 @@ See `docs/STRATEGY.md` §8.
 """
 
 from __future__ import annotations
-import operator
-import re
+
+import sys
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from rsmm.cli.merge import _ranked, _toml_load
 from rsmm.engine.paths import MODS_DIR
-from rsmm.cli.merge import _toml_load
+from rsmm.manifest_graph import _OPS as _OP
+from rsmm.manifest_graph import _parse_dep, _parse_version
 
 
-_OP = {
-    ">=": operator.ge, "<=": operator.le,
-    ">":  operator.gt, "<":  operator.lt,
-    "==": operator.eq, "!=": operator.ne, "=": operator.eq,
-}
-
-
-def _parse_version(s: str) -> tuple[int, ...]:
-    """Lenient semver parse. Non-numeric suffix dropped."""
-    parts = re.findall(r"\d+", s)
-    return tuple(int(p) for p in parts) or (0,)
-
-
-def _parse_dep(spec: str) -> tuple[str, str, tuple[int, ...] | None]:
-    """'mod-id >= 1.2' -> ('mod-id', '>=', (1, 2)).
-       'mod-id'         -> ('mod-id', '*', None).
-    """
-    m = re.match(r"^\s*([\w.\-:+]+)\s*([><=!]{1,2})?\s*([\d.]+)?\s*$", spec)
-    if not m:
-        return spec.strip(), "*", None
-    name, op, ver = m.group(1), m.group(2), m.group(3)
-    if op and ver:
-        return name, op, _parse_version(ver)
-    return name, "*", None
-
-
-def _version_ok(actual: str, op: str, wanted: tuple[int, ...] | None) -> bool:
-    if op == "*" or wanted is None:
+def _version_ok(actual: str, op: str | None, wanted: tuple[int, ...] | None) -> bool:
+    if op is None or wanted is None:
         return True
     fn = _OP.get(op)
-    if not fn:
-        return False
+    if fn is None:
+        return True
     return fn(_parse_version(actual), wanted)
 
 

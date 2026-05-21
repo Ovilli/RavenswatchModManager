@@ -1,8 +1,10 @@
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, GripVertical, LayoutGrid, List, Plus } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button, EmptyState, Fleuron, MonoTag, SectionHeader, InkSwitch, StatPill } from '../components/chrome';
 import { MOCK_MODS, type ModCategory } from '../data/mock-mods';
+import { listLocalMods } from '../lib/rsmm';
 import { activeProfile, detectConflicts, getMod, useApp } from '../store';
 
 export const Route = createFileRoute('/')({
@@ -29,8 +31,21 @@ function LibraryPage() {
   const reorderMod = useApp((s) => s.reorderMod);
   const uninstall = useApp((s) => s.uninstallMod);
   const installed = useApp((s) => s.installed);
+  const syncLocalMods = useApp((s) => s.syncLocalMods);
+  const modsDir = useApp((s) => s.settings.modsDir);
   const [view, setView] = useState<ViewMode>('cards');
   const conflicts = useMemo(() => detectConflicts(profile), [profile]);
+
+  const { data: localMods, error: localModsError } = useQuery({
+    queryKey: ['rsmm', 'list', modsDir],
+    queryFn: listLocalMods,
+    retry: false,
+    staleTime: 5_000,
+  });
+
+  useEffect(() => {
+    if (localMods) syncLocalMods(localMods);
+  }, [localMods, syncLocalMods]);
 
   const grouped = useMemo(() => {
     const groups = new Map<ModCategory, { id: string; orderIdx: number }[]>();
@@ -100,6 +115,16 @@ function LibraryPage() {
         }
       />
 
+      {localModsError ? (
+        <div className="ember-banner flex items-center gap-3 px-4 py-3">
+          <AlertTriangle className="h-4 w-4 text-crimson" />
+          <span className="font-serif-italic text-base">
+            Couldn’t reach rsmm CLI. Showing cached library only.
+          </span>
+          <span className="font-mono ml-auto text-ash">{(localModsError as Error).message}</span>
+        </div>
+      ) : null}
+
       {conflicts.length > 0 ? (
         <Link
           to="/conflicts"
@@ -167,9 +192,8 @@ function CardGrid({ items, profile, onOpen, onToggle, onUninstall }: RowProps) {
         const enabled = !profile.disabled.has(id);
         const outdated = mod.version !== mod.latestVersion;
         return (
-          <a
+          <div
             key={id}
-            href={`/mod/${mod.slug}`}
             onClick={(e) => {
               const el = e.target as HTMLElement;
               if (el.closest('button, a, input, textarea, select, [role="switch"]')) return;
@@ -182,7 +206,7 @@ function CardGrid({ items, profile, onOpen, onToggle, onUninstall }: RowProps) {
                 onOpen?.(mod.slug);
               }
             }}
-            className="grimoire-card flex flex-col gap-3 p-5 transition-colors duration-150 hover:border-gilt/40"
+            className="grimoire-card flex flex-col gap-3 p-5 transition-colors duration-150 hover:border-gilt/40 cursor-pointer"
           >
             <header className="flex items-start justify-between gap-3">
               <div>
@@ -220,7 +244,7 @@ function CardGrid({ items, profile, onOpen, onToggle, onUninstall }: RowProps) {
                 uninstall
               </Button>
             </div>
-            </a>
+            </div>
           );
         })}
       </div>

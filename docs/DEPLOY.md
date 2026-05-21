@@ -40,6 +40,14 @@ The release workflow (`.github/workflows/release.yml`) already runs on
 `git push --tags v*` — no secrets needed for basic Tauri builds; the
 default `GITHUB_TOKEN` is enough for creating the draft release.
 
+6. (Optional) **Discord release notifications**:
+   - Create a webhook in your Discord server (Server Settings → Integrations → Webhooks).
+   - Copy the webhook URL and add it as a repository secret:
+     **Settings → Secrets and variables → Actions → New repository secret**
+     - Name: `DISCORD_WEBHOOK_URL`
+     - Value: `https://discord.com/api/webhooks/...`
+   - When you publish a release, a notification is sent to the webhook channel.
+
 ---
 
 ## Step 2: Neon (serverless Postgres)

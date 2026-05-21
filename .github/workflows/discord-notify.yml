@@ -23,7 +23,7 @@ jobs:
             exit 0
           fi
 
-          BANNER="https://raw.githubusercontent.com/$REPO/main/apps/desktop/src-tauri/icons/update-banner.png"
+          BANNER="https://raw.githubusercontent.com/$REPO/main/apps/desktop/src-tauri/icons/update-banner.png?v=${{ github.event.release.tag_name }}"
 
           PAYLOAD=$(node -e "
             const tag = process.env.RELEASE_TAG || '';

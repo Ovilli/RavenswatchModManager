@@ -1,18 +1,296 @@
-import { Command } from '@tauri-apps/plugin-shell';
+import { Command, type Child } from '@tauri-apps/plugin-shell';
+import { useApp } from '../store';
+
+interface ExecResult {
+  code: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+export class RsmmError extends Error {
+  constructor(message: string, public readonly args: string[]) {
+    super(message);
+    this.name = 'RsmmError';
+  }
+}
+
+export class RsmmCliMissingError extends RsmmError {
+  constructor(args: string[]) {
+    super(CLI_MISSING_MESSAGE, args);
+    this.name = 'RsmmCliMissingError';
+  }
+}
+
+export class RsmmExitError extends RsmmError {
+  constructor(
+    args: string[],
+    public readonly code: number | null,
+    public readonly stdout: string,
+    public readonly stderr: string,
+  ) {
+    super(
+      `rsmm ${args.join(' ')} failed (exit ${code ?? 'signal'}): ${
+        stderr.trim() || stdout.trim() || '<no output>'
+      }`,
+      args,
+    );
+    this.name = 'RsmmExitError';
+  }
+}
+
+export class RsmmParseError extends RsmmError {
+  constructor(args: string[], public readonly raw: string, cause: unknown) {
+    const preview = raw.length > 200 ? `${raw.slice(0, 200)}…` : raw;
+    super(`rsmm ${args.join(' ')} returned invalid JSON: ${preview}`, args);
+    this.name = 'RsmmParseError';
+    (this as Error).cause = cause;
+  }
+}
+
+export class RsmmTimeoutError extends RsmmError {
+  constructor(args: string[], public readonly timeoutMs: number) {
+    super(`rsmm ${args.join(' ')} timed out after ${timeoutMs}ms`, args);
+    this.name = 'RsmmTimeoutError';
+  }
+}
+
+export class RsmmAbortError extends RsmmError {
+  constructor(args: string[]) {
+    super(`rsmm ${args.join(' ')} aborted`, args);
+    // Match the DOMException shape React Query / fetch use to detect
+    // abort, so an aborted query is cancelled instead of erroring.
+    this.name = 'AbortError';
+  }
+}
+
+const CLI_MISSING_MESSAGE =
+  'RSMM CLI not found.\n\n' +
+  'The desktop app needs the rsmm command-line tool.\n\n' +
+  'If you installed from source:\n' +
+  '  cd RavenswatchModManager\n' +
+  '  python3 -m venv .venv && source .venv/bin/activate && pip install -e .\n\n' +
+  'If using a pre-built release, reinstall the app.';
+
+const DEFAULT_TIMEOUT_MS = 60_000;
+const LONG_TIMEOUT_MS = 10 * 60_000;
+
+export interface RsmmOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  onStdout?: (line: string) => void;
+  onStderr?: (line: string) => void;
+}
 
 /**
- * Invoke `rsmm json <args>` Python CLI via Tauri shell sidecar.
- * `json_bridge.py` always writes a single JSON value to stdout.
+ * Invoke the `rsmm` CLI via Tauri sidecar (production) or system PATH
+ * (development). Returns parsed JSON output. Throws a typed `RsmmError`
+ * subclass on failure.
  */
-export async function rsmm<T = unknown>(args: string[]): Promise<T> {
-  const cmd = Command.create('rsmm', ['json', ...args]);
-  const out = await cmd.execute();
-  if (out.code !== 0) {
-    throw new Error(`rsmm json ${args.join(' ')} exited ${out.code}: ${out.stderr || out.stdout}`);
+export async function rsmm<T = unknown>(
+  args: string[],
+  options: RsmmOptions = {},
+): Promise<T | null> {
+  const fullArgs = ['json', ...args];
+  const result = await execute(fullArgs, options);
+  if (result.code !== 0) {
+    throw new RsmmExitError(args, result.code, result.stdout, result.stderr);
   }
-  const stdout = out.stdout.trim();
-  if (!stdout) return null as T;
-  return JSON.parse(stdout) as T;
+  const stdout = result.stdout.trim();
+  if (!stdout) return null;
+  try {
+    return JSON.parse(stdout) as T;
+  } catch (cause) {
+    throw new RsmmParseError(args, stdout, cause);
+  }
+}
+
+function rsmmEnv(): Record<string, string> {
+  const modsDir = useApp.getState().settings.modsDir?.trim();
+  return modsDir ? { RSMM_MODS_DIR: modsDir } : {};
+}
+
+const SIDECAR_PROGS = ['rsmm'] as const;
+const CMD_PROGS = ['run-rsmm'] as const;
+type ProgName = typeof SIDECAR_PROGS[number] | typeof CMD_PROGS[number];
+
+function isSidecar(name: string): name is typeof SIDECAR_PROGS[number] {
+  return (SIDECAR_PROGS as readonly string[]).includes(name);
+}
+
+// Strip a trailing CR from a line so Windows `\r\n` output produces clean
+// lines in `onStdout` / `onStderr` callbacks.
+function stripCR(s: string): string {
+  return s.endsWith('\r') ? s.slice(0, -1) : s;
+}
+
+function createCommand(name: string, args: string[], opts: Record<string, unknown> | undefined) {
+  return isSidecar(name)
+    ? Command.sidecar(name, args, opts)
+    : Command.create(name, args, opts);
+}
+
+let resolvedProg: ProgName | null | undefined = undefined;
+
+async function execute(args: string[], options: RsmmOptions): Promise<ExecResult> {
+  const env = rsmmEnv();
+  const opts = Object.keys(env).length ? { env } : undefined;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+
+  if (options.signal?.aborted) {
+    throw new RsmmAbortError(args);
+  }
+
+  // First call: probe programs in order. Subsequent calls: use the
+  // resolved one. If both fail at probe time, resolvedProg stays
+  // null and every call surfaces RsmmCliMissingError.
+  if (resolvedProg === undefined) {
+    resolvedProg = null;
+    for (const name of [...SIDECAR_PROGS, ...CMD_PROGS]) {
+      try {
+        const probe = createCommand(name, args, opts);
+        return await runWithLifecycle(name, probe, args, options, timeoutMs);
+      } catch (err) {
+        if (err instanceof RsmmError) throw err;
+        // Try next program.
+      }
+    }
+    throw new RsmmCliMissingError(args);
+  }
+
+  if (resolvedProg === null) {
+    throw new RsmmCliMissingError(args);
+  }
+
+  const cmd = createCommand(resolvedProg, args, opts);
+  return runWithLifecycle(resolvedProg, cmd, args, options, timeoutMs);
+}
+
+async function runWithLifecycle(
+  name: string,
+  cmd: ReturnType<typeof Command.create>,
+  args: string[],
+  options: RsmmOptions,
+  timeoutMs: number,
+): Promise<ExecResult> {
+  // Streaming or explicit cancellation requires spawn() with event
+  // listeners. Otherwise stick with the simpler execute() path and
+  // wrap a wallclock timeout around it.
+  if (options.onStdout || options.onStderr || options.signal) {
+    return spawnWithLifecycle(name, cmd, args, options, timeoutMs);
+  }
+  const exec = cmd.execute();
+  const result =
+    timeoutMs > 0 ? await raceTimeout(exec, args, timeoutMs) : await exec;
+  resolvedProg = name as ProgName;
+  return result;
+}
+
+function raceTimeout<T>(p: Promise<T>, args: string[], timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const handle = setTimeout(
+      () => reject(new RsmmTimeoutError(args, timeoutMs)),
+      timeoutMs,
+    );
+    p.then(
+      (v) => {
+        clearTimeout(handle);
+        resolve(v);
+      },
+      (err) => {
+        clearTimeout(handle);
+        reject(err);
+      },
+    );
+  });
+}
+
+function spawnWithLifecycle(
+  name: string,
+  cmd: ReturnType<typeof Command.create>,
+  args: string[],
+  options: RsmmOptions,
+  timeoutMs: number,
+): Promise<ExecResult> {
+  return new Promise<ExecResult>((resolve, reject) => {
+    let stdout = '';
+    let stderr = '';
+    let stdoutBuf = '';
+    let stderrBuf = '';
+    let settled = false;
+    let child: Child | null = null;
+
+    const cleanup = (timeoutHandle: ReturnType<typeof setTimeout> | null) => {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      options.signal?.removeEventListener('abort', onAbort);
+    };
+
+    const finish = (action: () => void, timeoutHandle: ReturnType<typeof setTimeout> | null) => {
+      if (settled) return;
+      settled = true;
+      cleanup(timeoutHandle);
+      action();
+    };
+
+    const timeoutHandle =
+      timeoutMs > 0
+        ? setTimeout(() => {
+            child?.kill().catch(() => {});
+            finish(() => reject(new RsmmTimeoutError(args, timeoutMs)), null);
+          }, timeoutMs)
+        : null;
+
+    const onAbort = () => {
+      child?.kill().catch(() => {});
+      finish(() => reject(new RsmmAbortError(args)), timeoutHandle);
+    };
+
+    if (options.signal) {
+      if (options.signal.aborted) {
+        finish(() => reject(new RsmmAbortError(args)), timeoutHandle);
+        return;
+      }
+      options.signal.addEventListener('abort', onAbort, { once: true });
+    }
+
+    cmd.stdout.on('data', (chunk: string) => {
+      stdout += chunk;
+      if (options.onStdout) {
+        stdoutBuf += chunk;
+        const lines = stdoutBuf.split('\n');
+        stdoutBuf = lines.pop() ?? '';
+        for (const line of lines) options.onStdout(stripCR(line));
+      }
+    });
+    cmd.stderr.on('data', (chunk: string) => {
+      stderr += chunk;
+      if (options.onStderr) {
+        stderrBuf += chunk;
+        const lines = stderrBuf.split('\n');
+        stderrBuf = lines.pop() ?? '';
+        for (const line of lines) options.onStderr(stripCR(line));
+      }
+    });
+
+    cmd.on('close', ({ code }: { code: number | null }) => {
+      if (stdoutBuf && options.onStdout) options.onStdout(stripCR(stdoutBuf));
+      if (stderrBuf && options.onStderr) options.onStderr(stripCR(stderrBuf));
+      resolvedProg = name as ProgName;
+      finish(() => resolve({ code, stdout, stderr }), timeoutHandle);
+    });
+
+    cmd.on('error', (err: string) => {
+      finish(() => reject(new Error(err)), timeoutHandle);
+    });
+
+    cmd.spawn().then(
+      (c) => {
+        child = c;
+      },
+      (err) => {
+        finish(() => reject(err), timeoutHandle);
+      },
+    );
+  });
 }
 
 export interface LocalMod {
@@ -39,14 +317,50 @@ export interface DoctorResult extends RunResult {
   checks: { status: 'OK' | 'WARN' | 'FAIL'; ok: boolean; label: string }[];
 }
 
+export interface ApplyOptions extends RsmmOptions {
+  dryRun?: boolean;
+  force?: boolean;
+  noMerge?: boolean;
+}
+
+// Bare wrappers take no arguments so React Query's QueryFunctionContext
+// (passed as the first arg of `queryFn`) is not silently captured as
+// `RsmmOptions`. Pass options explicitly via `rsmm(args, options)` if
+// you need cancellation, timeout overrides, or streaming.
+
 export const listLocalMods = () => rsmm<LocalMod[]>(['list']);
-export const applyMods = (opts: { dryRun?: boolean; force?: boolean; noMerge?: boolean } = {}) => {
+
+export const applyMods = (opts: ApplyOptions = {}) => {
+  const { dryRun, force, noMerge, ...rsmmOpts } = opts;
   const args = ['apply'];
-  if (opts.dryRun) args.push('--dry-run');
-  if (opts.force) args.push('--force');
-  if (opts.noMerge) args.push('--no-merge');
-  return rsmm<RunResult>(args);
+  if (dryRun) args.push('--dry-run');
+  if (force) args.push('--force');
+  if (noMerge) args.push('--no-merge');
+  return rsmm<RunResult>(args, { timeoutMs: LONG_TIMEOUT_MS, ...rsmmOpts });
 };
-export const restoreAll = () => rsmm<RunResult>(['restore-all']);
-export const buildAll = () => rsmm<RunResult>(['build']);
+
+export const restoreAll = () =>
+  rsmm<RunResult>(['restore-all'], { timeoutMs: LONG_TIMEOUT_MS });
+
+export const buildAll = () =>
+  rsmm<RunResult>(['build'], { timeoutMs: LONG_TIMEOUT_MS });
+
 export const doctor = () => rsmm<DoctorResult>(['doctor']);
+
+export const runGame = () => rsmm<RunResult>(['run'], { timeoutMs: 0 });
+
+export const runVanilla = () =>
+  rsmm<RunResult>(['run', '--vanilla'], { timeoutMs: 0 });
+
+export async function runModded(): Promise<RunResult | null> {
+  const applyResult = await applyMods();
+  if (applyResult && applyResult.ok === false) {
+    throw new RsmmExitError(
+      ['apply'],
+      applyResult.code,
+      applyResult.stdout,
+      applyResult.stderr,
+    );
+  }
+  return runGame();
+}

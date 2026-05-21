@@ -3,21 +3,18 @@
 from __future__ import annotations
 
 import json
-import os
-import shutil
 from pathlib import Path
 
 import pytest
 
-from rsmm.sdk.api import API_VERSION, satisfies, sdk_export, registry
-from rsmm.sdk.config import ConfigSchema, ConfigStore, ConfigError
-from rsmm.sdk.content import ContentRegistry, ContentError, SchemaNotMined
-from rsmm.sdk.health import Health, DEFAULT_THRESHOLD
+from rsmm.sdk.api import registry, satisfies, sdk_export
+from rsmm.sdk.config import ConfigError, ConfigSchema, ConfigStore
+from rsmm.sdk.content import ContentError, ContentRegistry, SchemaNotMined
+from rsmm.sdk.health import DEFAULT_THRESHOLD, Health
 from rsmm.sdk.i18n import I18nBundle, merge_bundles
-from rsmm.sdk.intermod import InterModRegistry, InterModError
+from rsmm.sdk.intermod import InterModError, InterModRegistry
 from rsmm.sdk.transaction import ApplyTransaction
-from rsmm.sdk.versioning import check_compat, GameBuildPin
-
+from rsmm.sdk.versioning import check_compat
 
 # ---------------------------------------------------------------------------
 # api: semver
@@ -270,7 +267,7 @@ def test_versioning_pin_first_then_match(tmp_path: Path):
 
 
 def test_repo_index_roundtrip():
-    from rsmm.sdk.repo import RepoIndex, RepoEntry
+    from rsmm.sdk.repo import RepoEntry, RepoIndex
     idx = RepoIndex(name="t", updated_at="x",
                     mods=[RepoEntry(id="A", version="1.2.3",
                                     url="u", sha256="0" * 64, size=10)])
@@ -292,6 +289,7 @@ def test_repo_sha256(tmp_path: Path):
 def test_all_repo_mods_are_v3(tmp_path: Path):
     """Every example mod under mods/ must declare sdk_version >=3 + use v3 conventions."""
     import tomllib
+
     from rsmm.engine.paths import MODS_DIR
     if not MODS_DIR.is_dir():
         pytest.skip("no mods/ dir")
@@ -313,7 +311,6 @@ def test_all_repo_mods_are_v3(tmp_path: Path):
 
 def test_content_block_emission_via_applier(tmp_path: Path, monkeypatch):
     """`[[content]]` blocks in a manifest produce per-kind emit markers."""
-    import tomllib
     mods_dir = tmp_path / "mods"
     mod = mods_dir / "T"
     mod.mkdir(parents=True)

@@ -1,55 +1,88 @@
 # Ravenswatch Mod Manager (RSMM)
 
-A cross-platform mod manager for **Ravenswatch** (Steam, OEngine). Swap textures, tweak balance, edit translation strings, redirect URLs, and author Lua-scripted mods — all from one CLI.
+**A cross-platform mod manager for Ravenswatch.** Swap textures, edit stats, override translations, and author Lua-scripted mods — all from a desktop app or CLI. Works on **Windows, macOS, and Linux**.
 
-## Quick start
+[![Windows](https://img.shields.io/badge/Windows-x64-blue?logo=windows)](https://github.com/Ovilli/RavenswatchModManager/releases/latest)
+[![macOS](https://img.shields.io/badge/macOS-universal-black?logo=apple)](https://github.com/Ovilli/RavenswatchModManager/releases/latest)
+[![Linux](https://img.shields.io/badge/Linux-x64-orange?logo=linux)](https://github.com/Ovilli/RavenswatchModManager/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](docs/CONTRIBUTING.md)
+
+## Download
+
+No terminal required. Grab the desktop app for your OS:
+
+| Platform | Installer |
+|---|---|
+| **Windows** 10/11 | [`RSMM-x64.msi`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) |
+| **macOS** 12+ (Intel & Apple Silicon) | [`RSMM-universal.dmg`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) |
+| **Linux** (AppImage) | [`RSMM-x86_64.AppImage`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) |
+| **Linux** (Debian/Ubuntu) | [`rsmm_amd64.deb`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) |
+| **Arch Linux** | `yay -S rsmm` |
+
+## What you can do
+
+| Capability | Desktop app | CLI |
+|---|---|---|
+| Browse & install mods from the Registry | ✅ Click to install | `rsmm apply` |
+| Swap textures, audio, meshes | ✅ Built-in | `rsmm apply` |
+| Edit balance numbers | ✅ Coming soon | `rsmm stat` |
+| Override translations | ✅ Coming soon | `rsmm text` |
+| Manage multiple profiles | ✅ Dropdown menu | — |
+| Health check | ✅ Doctor button | `rsmm doctor` |
+| Launch the game | ✅ Play button | `rsmm run` |
+| Author mods in Lua | — | `rsmm new`, `rsmm pack` |
+| Live re-apply on file changes | — | `rsmm watch` |
+
+> **Lua scripting is Windows-only** (requires a native DLL loaded into the game process). Texture swaps, stat edits, and text overrides work on all platforms.
+
+## Quick start (desktop app)
+
+1. [Download](https://github.com/Ovilli/RavenswatchModManager/releases/latest) and install RSMM for your OS
+2. Launch the app — it auto-detects your Ravenswatch installation
+3. Browse the Registry tab and install mods
+4. Click **Apply** to copy mods into the game
+5. Click **Play** to launch Ravenswatch
+
+See [Installation Guide](docs/INSTALLATION.md) for full setup including the CLI.
+
+## Quick start (CLI)
 
 ```sh
 git clone https://github.com/Ovilli/RavenswatchModManager.git
 cd RavenswatchModManager
 python3 -m venv .venv && source .venv/bin/activate && pip install -e .
 ./rsmm doctor
+./rsmm new MyMod
+./rsmm apply
 ```
-
-See the [Installation Guide](docs/INSTALLATION.md) for full setup on Linux and Windows.
-
-## What you can do
-
-| Capability | How |
-|---|---|
-| Swap textures, audio, meshes | `./rsmm apply` — drop files under `mods/<id>/assets/` |
-| Edit balance numbers | `./rsmm stat` — 143 globals, 19 modifiers, 6 camp tiers |
-| Override translations | `./rsmm text` — 14 languages |
-| Redirect main-menu URLs | `./rsmm url` |
-| Add a "Mods" menu button | `./rsmm menu-button` |
-| Add a Mods in-game tab | `./rsmm social-tab` |
-| Author behaviour in Lua | Drop `init.lua` + loader DLL; call 53k game functions |
-| Merge conflicting mods | `[[patch]]` blocks in `manifest.toml` — field-level merge |
-| Live re-apply on edit | `./rsmm watch` |
-| Package for sharing | `./rsmm pack <id>` — verifies no game bytes leaked |
 
 ## Documentation
 
 | For you | Start here |
 |---|---|
-| End-user (install and mod) | [docs/INSTALLATION.md](docs/INSTALLATION.md) |
-| Mod author | [docs/MODDING.md](docs/MODDING.md) |
+| Installing the mod manager | [docs/INSTALLATION.md](docs/INSTALLATION.md) |
+| Using the desktop app | [RSMM Docs](https://rsmm.dev) |
+| Creating mods | [docs/MODDING.md](docs/MODDING.md) |
 | CLI reference | [docs/CLI_USAGE.md](docs/CLI_USAGE.md) |
-| Developer / contributor | [docs/SETUP.md](docs/SETUP.md) |
-| Everything else | [docs/README.md](docs/README.md) |
+| Contributing | [docs/SETUP.md](docs/SETUP.md) |
 
 ## Repo layout
 
 ```
-rsmm                   CLI entry point — every workflow starts here
-docs/                  User + developer documentation
-mods/                  Installed mods (one folder per id)
-data/                  Asset maps + pattern signatures (gitignored)
-dist/                  Built loader DLL + packed mod zips
-src/rsmm/              Python CLI + SDK
-src/loader/            Native DLL (winhttp proxy + Lua VM)
-apps/                  TypeScript monorepo (Tauri desktop, Next.js site, Hono API, Astro docs)
-packages/              Shared TS packages (db, ui, api-client, schemas)
+rsmm                  CLI entry point — every workflow starts here
+apps/                 TypeScript monorepo (Tauri desktop, Next.js site, Hono API, Astro docs)
+  desktop/            Tauri 2 desktop app (Windows, macOS, Linux)
+  www/                Next.js website + registry browser
+  api/                Hono API server
+  docs/               Astro Starlight documentation site
+packages/             Shared packages (db, ui, api-client, schemas, tsconfig)
+src/rsmm/             Python CLI + SDK
+src/loader/           Native DLL (winhttp proxy + Lua VM, Windows only)
+docs/                 User + developer documentation
+mods/                 Installed mods (one folder per id)
+data/                 Asset maps + pattern signatures (gitignored)
+dist/                 Built loader DLL + packed mod zips
 ```
 
 ## License
@@ -58,4 +91,4 @@ MIT — see [LICENSE](LICENSE). The loader DLL bundles third-party code (MinHook
 
 ## Legal
 
-RSMM is a **single-player** modding tool. It does not bypass anti-cheat, does not modify `Ravenswatch.exe`, and requires a legitimate Steam copy of the game. It ships no game content — `data/asset_map.json` is a reconstructed path index, not game assets. Mods authored with RSMM are the modder's own work.
+RSMM is a **single-player** modding tool. It does not bypass anti-cheat, does not modify `Ravenswatch.exe`, and requires a legitimate copy of the game. It ships no game content — `data/asset_map.json` is a reconstructed path index, not game assets. Mods authored with RSMM are the modder's own work.

@@ -24,10 +24,9 @@ from __future__ import annotations
 import operator
 import re
 import tomllib
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
-
 
 # ---------------------------------------------------------------------------
 # Data model
