@@ -15,10 +15,16 @@
     "core:window:allow-is-decorated",
     "core:webview:default",
     "core:event:default",
-    "shell:allow-open",
+    {
+      "identifier": "shell:allow-open",
+      "allow": [{ "url": "https://*" }]
+    },
     {
       "identifier": "shell:allow-execute",
-      "allow": [{ "name": "rsmm", "cmd": "rsmm", "args": true }]
+      "allow": [
+        { "name": "rsmm", "sidecar": true, "args": true },
+        { "name": "run-rsmm", "cmd": "rsmm", "args": true }
+      ]
     }
   ]
 }

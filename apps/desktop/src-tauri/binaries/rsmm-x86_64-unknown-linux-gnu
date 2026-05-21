@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Tauri sidecar wrapper — routes to the Python `rsmm` CLI.
+# In production this is a PyInstaller-bundled binary; in development it
+# calls the source tree directly.
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/../../../../" && pwd)"
+exec python3 "$REPO_DIR/rsmm" "$@"

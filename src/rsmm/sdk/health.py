@@ -26,7 +26,6 @@ import json
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 from .api import sdk_export
 
@@ -102,7 +101,7 @@ class Health:
 
     # ---- boot canary --------------------------------------------------
 
-    def read_canary(self) -> Optional[dict]:
+    def read_canary(self) -> dict | None:
         """Return the canary if one is on disk, else None.
 
         The loader is responsible for deleting it on a clean shutdown,
@@ -123,7 +122,7 @@ class Health:
         except FileNotFoundError:
             pass
 
-    def attribute_crash(self, canary: dict) -> Optional[str]:
+    def attribute_crash(self, canary: dict) -> str | None:
         """Given a stale canary, return the mod id we hold responsible."""
         step = str(canary.get("last_step", ""))
         if step.startswith("per_mod:"):

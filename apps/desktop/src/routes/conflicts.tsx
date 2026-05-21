@@ -88,8 +88,15 @@ function ConflictsPage() {
                           // make this one the keeper: enable it, disable the others
                           if (!enabled) toggle(id);
                           for (const other of c.modIds) {
-                            if (other !== id && !profile.disabled.has(other)) {
-                              toggle(other);
+                            if (other !== id) {
+                              // Read live state per mod to avoid stale closure bug
+                              const state = useApp.getState();
+                              const p = state.profiles.find(
+                                (x) => x.id === state.activeProfileId,
+                              );
+                              if (p && !p.disabled.has(other)) {
+                                state.toggleMod(other);
+                              }
                             }
                           }
                         }}

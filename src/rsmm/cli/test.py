@@ -19,6 +19,7 @@ regression instantly.
 """
 
 from __future__ import annotations
+
 import argparse
 import json
 import runpy
@@ -121,6 +122,9 @@ def main() -> int:
         if not targets[0].is_dir():
             log(f"no such mod: {targets[0]}")
             return 2
+    elif not MODS_DIR.is_dir():
+        log(f"mods dir does not exist: {MODS_DIR}")
+        return 1
     else:
         targets = sorted(p for p in MODS_DIR.iterdir()
                          if p.is_dir() and not p.name.startswith("_"))

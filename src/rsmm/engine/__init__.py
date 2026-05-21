@@ -7,14 +7,14 @@ mods and ship the loader.
 """
 
 from .paths import (
-    REPO_ROOT,
-    DATA_DIR,
-    MODS_DIR,
-    DIST_DIR,
-    ASSET_MAP_JSON,
     ASSET_MAP_CSV,
-    DEFAULT_GAME_DIR,
+    ASSET_MAP_JSON,
     COOKING_SUBDIR,
+    DATA_DIR,
+    DEFAULT_GAME_DIR,
+    DIST_DIR,
+    MODS_DIR,
+    REPO_ROOT,
 )
 
 __all__ = [

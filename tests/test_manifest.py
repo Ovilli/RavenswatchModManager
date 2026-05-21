@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 REPO = Path(__file__).resolve().parent.parent
 MODS_DIR = REPO / "mods"
 

@@ -1,6 +1,7 @@
 """Cached loader for asset_map.json."""
 
 from __future__ import annotations
+
 import json
 from functools import lru_cache
 

@@ -24,6 +24,9 @@
     "db:migrate": "pnpm --filter @rsmm/db migrate",
     "generate": "pnpm --filter @rsmm/db generate",
     "db:studio": "pnpm --filter @rsmm/db studio",
+    "test": "turbo run test",
+    "test:python": "python -m pytest",
+    "test:ts": "turbo run test --filter=@rsmm/schemas",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
     "clean": "turbo run clean && rm -rf node_modules .turbo"

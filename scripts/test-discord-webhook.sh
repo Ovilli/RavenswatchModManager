@@ -36,7 +36,8 @@ if (latest.message === 'Not Found') {
 const emoji = isPre ? '\uD83E\uDD2A' : '\uD83D\uDE80';
 const label = isPre ? ' (pre-release)' : '';
 const desc = body.slice(0, 2000);
-const banner = 'https://raw.githubusercontent.com/Ovilli/RavenswatchModManager/main/apps/desktop/src-tauri/icons/update-banner.png';
+const cacheBust = '?v=' + Date.now();
+const banner = 'https://raw.githubusercontent.com/Ovilli/RavenswatchModManager/main/apps/desktop/src-tauri/icons/update-banner.png' + cacheBust;
 
 console.log(JSON.stringify({
   username: 'RSMM',

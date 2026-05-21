@@ -57,7 +57,10 @@ data/uncooked/
 # Pattern DB for rsmm.resolve (20 MB, regenerable via scripts/gen_function_patterns.py)
 data/function_patterns.json
 
-# Big RE artifacts — Ghidra project itself is committed; outputs are local
+# Big RE artifacts — outputs are local
+ghidra_project/
+data/decompiled.jsonl
+data/vftables.jsonl
 docs/_re/out/decompiled_all/
 docs/_re/out/xref_targets/
 docs/_re/out/symbols.json

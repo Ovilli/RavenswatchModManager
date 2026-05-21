@@ -91,6 +91,7 @@ def _bisect_step(h: Health) -> int:
     threshold for the suspects, which the applier reads.
     """
     import tomllib
+
     from rsmm.engine.paths import MODS_DIR
     st = h.load()
     quarantined = {mid for mid, m in st.mods.items() if m.disabled_by_health}

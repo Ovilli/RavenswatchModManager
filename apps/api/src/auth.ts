@@ -19,7 +19,11 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     autoSignIn: true,
-    requireEmailVerification: false,
+    requireEmailVerification: true,
+  },
+  advanced: {
+    useSecureCookies: process.env.NODE_ENV === 'production',
+    disableCSRFCheck: false,
   },
 });
 

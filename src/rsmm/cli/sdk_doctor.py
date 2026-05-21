@@ -17,10 +17,10 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
-from rsmm.engine.paths import MODS_DIR, COOKING_SUBDIR
 from rsmm.cli.apply_mods import find_game_dir
+from rsmm.engine.paths import COOKING_SUBDIR, MODS_DIR
 from rsmm.sdk.api import API_VERSION, registry
-from rsmm.sdk.config import ConfigSchema, ConfigError
+from rsmm.sdk.config import ConfigError, ConfigSchema
 from rsmm.sdk.health import Health
 from rsmm.sdk.i18n import I18nBundle
 from rsmm.sdk.plugins import discover_plugins

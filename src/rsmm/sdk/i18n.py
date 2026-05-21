@@ -40,7 +40,7 @@ class I18nBundle:
     by_locale: dict[str, dict[str, str]] = field(default_factory=dict)
 
     @classmethod
-    def load(cls, mod_id: str, mod_dir: Path) -> "I18nBundle":
+    def load(cls, mod_id: str, mod_dir: Path) -> I18nBundle:
         bundle = cls(mod_id=mod_id)
         lang_dir = mod_dir / "lang"
         if not lang_dir.is_dir():
@@ -75,7 +75,7 @@ class I18nBundle:
 
     def all_keys(self) -> set[str]:
         keys: set[str] = set()
-        for loc, table in self.by_locale.items():
+        for _loc, table in self.by_locale.items():
             keys.update(table.keys())
         return keys
 

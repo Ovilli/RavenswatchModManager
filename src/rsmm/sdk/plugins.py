@@ -20,8 +20,9 @@ abort SDK startup.
 from __future__ import annotations
 
 import importlib.metadata as md
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any
 
 ENTRY_POINT_GROUP = "rsmm.plugins"
 
@@ -30,7 +31,7 @@ ENTRY_POINT_GROUP = "rsmm.plugins"
 class PluginInfo:
     name: str
     target: str            # "module:attr"
-    error: Optional[str] = None
+    error: str | None = None
 
 
 def discover_plugins(api: Any) -> tuple[list[PluginInfo], list[PluginInfo]]:

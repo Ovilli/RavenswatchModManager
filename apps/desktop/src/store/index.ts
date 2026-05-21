@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { MOCK_MODS, type MockMod } from '../data/mock-mods';
+import { MOCK_MODS, type MockMod, type ModCategory } from '../data/mock-mods';
+import type { LocalMod } from '../lib/rsmm';
 
 export interface Profile {
   id: string;
@@ -19,6 +20,8 @@ interface ProfileSerialized extends Omit<Profile, 'disabled'> {
 export interface AppSettings {
   gameDir: string;
   backupDir: string;
+  /** Folder where mods live on disk. Forwarded to rsmm via RSMM_MODS_DIR. Empty = rsmm default. */
+  modsDir: string;
   sources: string[];
   density: 'cozy' | 'compact';
 }
@@ -28,6 +31,8 @@ interface State {
   activeProfileId: string;
   installed: string[];          // mod IDs in the local library
   settings: AppSettings;
+  /** Non-persisted: live mods discovered by rsmm on disk, keyed by id. */
+  localMods: Record<string, MockMod>;
   installMod: (id: string) => void;
   uninstallMod: (id: string) => void;
   toggleMod: (id: string) => void;
@@ -40,6 +45,9 @@ interface State {
   exportProfile: (id: string) => string;
   importProfile: (payload: string) => string | null;
   updateSettings: (patch: Partial<AppSettings>) => void;
+  /** Sync the live rsmm list into the store: register their metadata
+   * and auto-install any new IDs into the active profile. */
+  syncLocalMods: (mods: LocalMod[]) => void;
 }
 
 function uid(): string {
@@ -82,9 +90,11 @@ export const useApp = create<State>()(
       settings: {
         gameDir: '~/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch',
         backupDir: '~/.local/share/rsmm/backups',
+        modsDir: '',
         sources: ['https://rsmm.dev/registry'],
         density: 'cozy',
       },
+      localMods: {},
 
       installMod: (id) =>
         set((s) => {
@@ -123,10 +133,10 @@ export const useApp = create<State>()(
         set((s) => ({
           profiles: s.profiles.map((p) => {
             if (p.id !== s.activeProfileId) return p;
-            const order = p.loadOrder.filter((m) => m !== id);
-            const idx = Math.max(0, Math.min(toIndex, order.length));
-            order.splice(idx, 0, id);
-            return { ...p, loadOrder: order };
+            const filtered = p.loadOrder.filter((m) => m !== id);
+            const idx = Math.max(0, Math.min(toIndex, filtered.length));
+            const loadOrder = [...filtered.slice(0, idx), id, ...filtered.slice(idx)];
+            return { ...p, loadOrder };
           }),
         })),
 
@@ -190,12 +200,17 @@ export const useApp = create<State>()(
           ...p,
           disabled: [...p.disabled],
         };
-        return btoa(JSON.stringify({ kind: 'rsmm-profile', v: 1, profile: payload }));
+        const utf8 = new TextEncoder().encode(JSON.stringify({ kind: 'rsmm-profile', v: 1, profile: payload }));
+        const bytes = Array.from(utf8).map((b) => String.fromCodePoint(b)).join('');
+        return btoa(bytes);
       },
 
       importProfile: (payload) => {
         try {
-          const parsed = JSON.parse(atob(payload.trim()));
+          const binary = atob(payload.trim());
+          const bytes = Uint8Array.from(binary, (c) => c.codePointAt(0) ?? 0);
+          const decoded = new TextDecoder().decode(bytes);
+          const parsed = JSON.parse(decoded);
           if (parsed.kind !== 'rsmm-profile' || !parsed.profile) return null;
           const incoming = parsed.profile as ProfileSerialized;
           const id = uid();
@@ -220,15 +235,47 @@ export const useApp = create<State>()(
 
       updateSettings: (patch) =>
         set((s) => ({ settings: { ...s.settings, ...patch } })),
+
+      syncLocalMods: (mods) =>
+        set((s) => {
+          const localMods: Record<string, MockMod> = {};
+          for (const m of mods) {
+            localMods[m.id] = toMockMod(m, s.localMods[m.id]);
+          }
+          const known = new Set([...s.installed, ...MOCK_MODS.map((m) => m.id)]);
+          const newIds = mods.map((m) => m.id).filter((id) => !known.has(id));
+          if (newIds.length === 0) return { localMods };
+          const installed = [...s.installed, ...newIds];
+          const profiles = s.profiles.map((p) =>
+            p.id === s.activeProfileId
+              ? {
+                  ...p,
+                  loadOrder: [
+                    ...p.loadOrder,
+                    ...newIds.filter((id) => !p.loadOrder.includes(id)),
+                  ],
+                }
+              : p,
+          );
+          return { localMods, installed, profiles };
+        }),
     }),
     {
       name: 'rsmm-grimoire',
+      partialize: (s) => {
+        const { localMods: _omit, ...rest } = s;
+        return rest;
+      },
       storage: createJSONStorage(() => localStorage, {
         replacer: (_k, value) =>
           value instanceof Set ? { __set: [...value] } : value,
         reviver: (_k, value) => {
           if (value && typeof value === 'object' && '__set' in value) {
-            return new Set((value as { __set: unknown[] }).__set as string[]);
+            const arr = (value as { __set: unknown[] }).__set;
+            if (Array.isArray(arr) && arr.every((x) => typeof x === 'string')) {
+              return new Set(arr as string[]);
+            }
+            return new Set<string>();
           }
           return value;
         },
@@ -237,9 +284,48 @@ export const useApp = create<State>()(
   ),
 );
 
-/** Selectors that read directly from the mock index. */
+/** Lookup runs over the live rsmm registry first, then the bundled mocks. */
 export function getMod(id: string): MockMod | undefined {
+  const live = useApp.getState().localMods[id];
+  if (live) return live;
   return MOCK_MODS.find((m) => m.id === id);
+}
+
+function inferCategory(tags: string[]): ModCategory {
+  const t = tags.map((x) => x.toLowerCase());
+  if (t.some((x) => ['cosmetic', 'skin', 'texture', 'reskin'].includes(x))) return 'cosmetic';
+  if (t.some((x) => ['balance', 'buff', 'nerf'].includes(x))) return 'balance';
+  if (t.some((x) => ['qol', 'ui', 'hud'].includes(x))) return 'qol';
+  if (t.some((x) => ['audio', 'sfx', 'music'].includes(x))) return 'audio';
+  if (t.some((x) => ['difficulty', 'hard', 'challenge'].includes(x))) return 'difficulty';
+  if (t.some((x) => ['speedrun'].includes(x))) return 'speedrun';
+  if (t.some((x) => ['utility', 'tool', 'dev'].includes(x))) return 'utility';
+  return 'gameplay';
+}
+
+function toMockMod(m: LocalMod, prev?: MockMod): MockMod {
+  const summary = m.summary ?? '';
+  return {
+    id: m.id,
+    slug: m.slug,
+    name: m.name,
+    author: m.author ?? 'unknown',
+    version: m.version,
+    latestVersion: prev?.latestVersion ?? m.version,
+    category: prev?.category ?? inferCategory(m.tags),
+    summary,
+    description: prev?.description ?? summary,
+    changelog: prev?.changelog ?? '',
+    rating: prev?.rating ?? 0,
+    downloads: prev?.downloads ?? 0,
+    sizeKb: prev?.sizeKb ?? 0,
+    tags: m.tags,
+    dependencies: prev?.dependencies ?? [],
+    writes: prev?.writes ?? [],
+    gameBuild: prev?.gameBuild ?? '',
+    image: prev?.image,
+    markdown: prev?.markdown ?? (summary ? `# ${m.name}\n\n${summary}` : `# ${m.name}`),
+  };
 }
 
 export function activeProfile(s: State): Profile {

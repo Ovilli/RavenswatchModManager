@@ -53,12 +53,21 @@ function AboutPage() {
               Contribute, report issues, or read developer notes in the repository.
             </p>
             <div className="flex gap-2">
-              <a href="https://github.com/" target="_blank" rel="noreferrer">
-                <Button type="button" size="sm">View repository</Button>
-              </a>
-              <a href="/docs/GETTING_STARTED.md" target="_blank" rel="noreferrer">
-                <Button type="button" size="sm" variant="primary">Read docs</Button>
-              </a>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => window.open('https://github.com/', '_blank')}
+              >
+                View repository
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="primary"
+                onClick={() => window.open('/docs/GETTING_STARTED.md', '_blank')}
+              >
+                Read docs
+              </Button>
             </div>
           </div>
         </div>
@@ -71,9 +80,13 @@ function AboutPage() {
         </div>
         <div className="flex items-center gap-3">
           <MonoTag>v{version}</MonoTag>
-          <a href="/LICENSE" target="_blank" rel="noreferrer">
-            <Button type="button" size="sm">View license</Button>
-          </a>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => window.open('/LICENSE', '_blank')}
+          >
+            View license
+          </Button>
         </div>
       </Panel>
     </div>

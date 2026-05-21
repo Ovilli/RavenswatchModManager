@@ -14,6 +14,7 @@ import { ProfilesIcon } from '../components/icons/ProfilesIcon';
 import { SettingsIcon } from '../components/icons/SettingsIcon';
 import { LaunchIcon } from '../components/icons/LaunchIcon';
 import { Button, Crest, StatPill } from '../components/chrome';
+import { runVanilla, runModded } from '../lib/rsmm';
 import PromotedBanner from '../components/PromotedBanner';
 import { CommandPalette } from '../components/command-palette';
 import { ProfilePopover } from '../components/profile-popover';
@@ -69,6 +70,24 @@ function StatusStrip() {
   const disabled = profile.loadOrder.length - enabled;
   const conflictCount = useMemo(() => detectConflicts(profile).length, [profile]);
   const outdated = useMemo(() => outdatedCount(installed), [installed]);
+  const [launching, setLaunching] = useState<'vanilla' | 'modded' | null>(null);
+  const [launchError, setLaunchError] = useState<string | null>(null);
+
+  const handleLaunch = async (mode: 'vanilla' | 'modded') => {
+    setLaunching(mode);
+    setLaunchError(null);
+    try {
+      const fn = mode === 'vanilla' ? runVanilla : runModded;
+      const result = await fn();
+      if (!result || !result.ok) {
+        setLaunchError(`${mode} launch failed (exit ${result?.code ?? 'unknown'})`);
+      }
+    } catch (e) {
+      setLaunchError(String(e));
+    } finally {
+      setLaunching(null);
+    }
+  };
 
   return (
     <div className="surface-grain flex items-center justify-between gap-3 border-b border-border px-3 py-2 backdrop-blur-sm">
@@ -84,22 +103,27 @@ function StatusStrip() {
           <Button
             type="button"
             size="sm"
-            onClick={() => alert('Launch Vanilla - restores backups, runs the unmodded game.')}
+            disabled={launching !== null}
+            onClick={() => handleLaunch('vanilla')}
           >
             <LaunchIcon className="h-5 w-5 text-parchment" />
-            <span>Launch Vanilla</span>
+            <span>{launching === 'vanilla' ? 'Restoring…' : 'Launch Vanilla'}</span>
           </Button>
           <Button
             type="button"
             size="sm"
             variant="primary"
-            onClick={() => alert('Launch Modded - applies active profile, runs the game.')}
+            disabled={launching !== null}
+            onClick={() => handleLaunch('modded')}
           >
             <LaunchIcon className="h-5 w-5 text-parchment" />
-            <span>Launch Modded</span>
+            <span>{launching === 'modded' ? 'Applying…' : 'Launch Modded'}</span>
           </Button>
         </div>
 
+        {launchError ? (
+          <span className="text-xs text-destructive">{launchError}</span>
+        ) : null}
         <div className="flex items-center gap-2" style={noDragStyle}>
           <StatPill value={enabled} label="enabled" />
           <StatPill value={disabled} label="disabled" />

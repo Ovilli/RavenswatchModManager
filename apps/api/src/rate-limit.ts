@@ -1,0 +1,50 @@
+/**
+ * Simple in-memory sliding-window rate limiter for Hono.
+ * No external dependencies. Resets on server restart.
+ */
+
+interface Bucket {
+  hits: number;
+  resetAt: number;
+}
+
+const store = new Map<string, Bucket>();
+
+const DEFAULT_WINDOW_MS = 60_000;
+const DEFAULT_MAX_HITS = 30;
+
+export function createRateLimiter(opts?: {
+  windowMs?: number;
+  maxHits?: number;
+  keyFrom?: (c: import('hono').Context) => string;
+}) {
+  const windowMs = opts?.windowMs ?? DEFAULT_WINDOW_MS;
+  const maxHits = opts?.maxHits ?? DEFAULT_MAX_HITS;
+  const keyFrom = opts?.keyFrom ?? ((c) => {
+    const ip = c.req.header('x-forwarded-for')?.split(',')[0]?.trim()
+      ?? c.req.header('x-real-ip')
+      ?? 'unknown';
+    return ip;
+  });
+
+  return async function rateLimit(c: import('hono').Context, next: () => Promise<void>) {
+    const key = keyFrom(c);
+    const now = Date.now();
+    let bucket = store.get(key);
+
+    if (!bucket || now > bucket.resetAt) {
+      bucket = { hits: 1, resetAt: now + windowMs };
+      store.set(key, bucket);
+      await next();
+      return;
+    }
+
+    bucket.hits++;
+    if (bucket.hits > maxHits) {
+      c.header('Retry-After', String(Math.ceil((bucket.resetAt - now) / 1000)));
+      return c.json({ error: 'too many requests' }, 429);
+    }
+
+    await next();
+  };
+}

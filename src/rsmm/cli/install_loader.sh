@@ -76,6 +76,13 @@ for mod_dir in "$REPO_DIR"/mods/*/; do
     mkdir -p "$GAME_DIR/mods/$name"
     install -m 0644 "$mod_dir/manifest.toml" "$GAME_DIR/mods/$name/manifest.toml"
     [[ -f "$mod_dir/init.lua" ]] && install -m 0644 "$mod_dir/init.lua" "$GAME_DIR/mods/$name/init.lua"
+    # Copy pointers.json for function-resolution hooks.
+    [[ -f "$mod_dir/pointers.json" ]] && install -m 0644 "$mod_dir/pointers.json" "$GAME_DIR/mods/$name/pointers.json"
+    # Copy asset overrides so the runtime IAT hook can find them.
+    if [[ -d "$mod_dir/assets" ]]; then
+        mkdir -p "$GAME_DIR/mods/$name/assets"
+        cp -a "$mod_dir/assets/." "$GAME_DIR/mods/$name/assets/"
+    fi
 done
 
 # Disable BepInEx config so Doorstop (if any lingers) does nothing harmful.

@@ -6,37 +6,14 @@ during RE. Output goes to `data/asset_map.json` + `data/asset_map.csv`.
 """
 
 from __future__ import annotations
+
 import csv
 import json
 import os
 import sys
 
-from .paths import ASSET_MAP_JSON, ASSET_MAP_CSV, DEFAULT_GAME_DIR
-
-# ── Complete substitution tables (case‑sensitive) ──────────────────
-LOWER = {
-    'a':'b', 'b':'c', 'c':'j', 'd':'i', 'e':'v', 'f':'q', 'g':'a',
-    'h':'f', 'i':'t', 'j':'p', 'k':'v', 'l':'l', 'm':'k', 'n':'h',
-    'o':'w', 'p':'x', 'q':'e', 'r':'o', 's':'y', 't':'d', 'u':'r',
-    'v':'s', 'w':'u', 'x':'m', 'y':'g', 'z':'n',
-}
-UPPER = {
-    'A':'H', 'B':'B', 'C':'Y', 'D':'V', 'E':'J', 'F':'S', 'G':'L',
-    'H':'M', 'I':'K', 'J':'U', 'K':'G', 'L':'R', 'M':'E', 'N':'D',
-    'O':'O', 'P':'Q', 'Q':'T', 'R':'W', 'S':'C', 'T':'P', 'U':'N',
-    'V':'F', 'W':'A', 'X':'I', 'Y':'Y', 'Z':'I',
-}
-SYMBOLS = {'!': '\\'}
-
-
-def decrypt_char(c: str) -> str:
-    if c in SYMBOLS:
-        return SYMBOLS[c]
-    if c.isupper() and c in UPPER:
-        return UPPER[c]
-    if c.islower() and c in LOWER:
-        return LOWER[c]
-    return c
+from .cipher import decode as decrypt_char
+from .paths import ASSET_MAP_CSV, ASSET_MAP_JSON, DEFAULT_GAME_DIR
 
 
 def decrypt_string(s: str) -> str:
@@ -49,7 +26,7 @@ def main() -> int:
         "USEDRSCLIST", sys.argv[1] if len(sys.argv) > 1 else default,
     )
     print(f"Reading {path}...")
-    with open(path, 'r', encoding='utf-8') as f:
+    with open(path, encoding='utf-8') as f:
         lines = [line.strip() for line in f if line.strip()]
     if lines and lines[0].isdigit():
         lines = lines[1:]

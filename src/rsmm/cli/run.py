@@ -18,6 +18,7 @@ The Steam URL path is the most reliable invocation.
 """
 
 from __future__ import annotations
+
 import argparse
 import os
 import re
@@ -143,7 +144,7 @@ def _read_launch_options(vdf_path: Path, app_id: str) -> str | None:
         lo = re.search(r'"LaunchOptions"\s*"((?:[^"\\]|\\.)*)"', body)
         if lo:
             # Unescape the VDF string: it's stored with \\ and \" escapes.
-            return lo.group(1).encode().decode("unicode_escape", errors="replace")
+            return lo.group(1).encode("latin-1").decode("unicode_escape", errors="replace")
         pos = k + 1
     return "" if found_any else None
 
@@ -176,6 +177,48 @@ def _is_steam_running() -> bool:
         return False
 
 
+def _find_app_block(text: str, app_id: str) -> tuple[int, int, int] | None:
+    """Scan for `app_id { ... }` using balanced-brace matching.
+    Returns (open_brace_idx, body_start, body_end) or None."""
+    needle = f'"{app_id}"'
+    pos = 0
+    while True:
+        idx = text.find(needle, pos)
+        if idx < 0:
+            return None
+        pos = idx + len(needle)
+        j = pos
+        while j < len(text) and text[j] in " \t\r\n":
+            j += 1
+        if j >= len(text) or text[j] != '{':
+            continue
+        depth = 0
+        k = j
+        body_start = j + 1
+        in_string = False
+        escape = False
+        while k < len(text):
+            ch = text[k]
+            if in_string:
+                if escape:
+                    escape = False
+                elif ch == '\\':
+                    escape = True
+                elif ch == '"':
+                    in_string = False
+            else:
+                if ch == '"':
+                    in_string = True
+                elif ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        return (j, body_start, k)
+            k += 1
+        return None
+
+
 def _write_launch_options(vdf_path: Path, app_id: str, new_value: str) -> bool:
     """Insert / replace LaunchOptions inside the app block. Backs up
     the original to <path>.rsmm.bak before writing. Returns True on
@@ -183,16 +226,13 @@ def _write_launch_options(vdf_path: Path, app_id: str, new_value: str) -> bool:
     file on exit and would clobber our edit.
     """
     text = vdf_path.read_text(errors="replace")
-    pat = re.compile(
-        r'("' + re.escape(app_id) + r'"\s*\{)(.*?)(\n\s*\})',
-        re.DOTALL,
-    )
-    m = pat.search(text)
-    if not m:
+    found = _find_app_block(text, app_id)
+    if not found:
         print(f"  no '{app_id}' app block found in {vdf_path}",
               file=sys.stderr)
         return False
-    body = m.group(2)
+    open_brace, body_start, body_end = found
+    body = text[body_start:body_end]
     if re.search(r'"LaunchOptions"\s*"[^"]*"', body):
         new_body = re.sub(
             r'"LaunchOptions"\s*"[^"]*"',
@@ -201,12 +241,10 @@ def _write_launch_options(vdf_path: Path, app_id: str, new_value: str) -> bool:
             count=1,
         )
     else:
-        # Insert after the opening brace with same indentation as
-        # adjacent keys.
         indent_match = re.search(r'\n(\s+)"', body)
         indent = indent_match.group(1) if indent_match else "\t\t\t\t\t\t"
         new_body = f'\n{indent}"LaunchOptions"\t\t"{new_value}"' + body
-    new_text = text[:m.start()] + m.group(1) + new_body + m.group(3) + text[m.end():]
+    new_text = (text[:open_brace] + '{' + new_body + '}' + text[body_end + 1:])
 
     bak = vdf_path.with_suffix(vdf_path.suffix + ".rsmm.bak")
     if not bak.exists():
@@ -216,7 +254,17 @@ def _write_launch_options(vdf_path: Path, app_id: str, new_value: str) -> bool:
 
 
 def _open_steam_url(url: str) -> int:
-    if shutil.which("steam") and sys.platform.startswith("linux"):
+    if sys.platform == "win32":
+        os.startfile(url)  # type: ignore[attr-defined]
+        return 0
+    if sys.platform == "darwin":
+        if shutil.which("open"):
+            return subprocess.call(["open", url])
+        print("Could not find 'open' command on macOS. "
+              f"Open this URL manually: {url}", file=sys.stderr)
+        return 1
+    # Linux
+    if shutil.which("steam"):
         print(f"==> steam {url}")
         return subprocess.call(["steam", url])
     if shutil.which("flatpak"):
@@ -225,11 +273,6 @@ def _open_steam_url(url: str) -> int:
     if shutil.which("xdg-open"):
         print(f"==> xdg-open {url}")
         return subprocess.call(["xdg-open", url])
-    if sys.platform == "darwin" and shutil.which("open"):
-        return subprocess.call(["open", url])
-    if sys.platform == "win32":
-        os.startfile(url)  # type: ignore[attr-defined]
-        return 0
     print(f"Could not find a Steam launcher. Open this URL manually: {url}",
           file=sys.stderr)
     return 1

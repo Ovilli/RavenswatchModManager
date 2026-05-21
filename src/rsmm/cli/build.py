@@ -13,16 +13,21 @@ Use `rsmm build && rsmm run` to launch the game immediately after.
 """
 
 from __future__ import annotations
+
 import argparse
 import subprocess
 import sys
 from pathlib import Path
 
+from rsmm.cli.merge import build_merged_mod
 from rsmm.engine.paths import (
-    REPO_ROOT, ASSET_MAP_JSON, DIST_DIR,
+    ASSET_MAP_JSON,
+    DIST_DIR,
+    REPO_ROOT,
+)
+from rsmm.engine.paths import (
     DEFAULT_GAME_DIR as DEFAULT_GAME,
 )
-from rsmm.cli.merge import build_merged_mod
 
 
 def _loader_build_script() -> Path:

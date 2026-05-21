@@ -10,11 +10,12 @@ from __future__ import annotations
 import shutil
 import tempfile
 from pathlib import Path
+
 from rsmm.engine.paths import MODS_DIR
 
 from .config import ConfigSchema
 from .content import ContentRegistry
-from .i18n import SUPPORTED_LOCALES, KEY_RE
+from .i18n import KEY_RE, SUPPORTED_LOCALES
 
 
 class ModBuilder:
@@ -31,17 +32,15 @@ class ModBuilder:
         self._content = ContentRegistry(mod_id=mod_id)
         self._requires: list[tuple[str, str]] = []
         self._api_name: str | None = None
-        # v1 surface delegates (kept lazy to avoid hard-importing every CLI):
-        self._stat_calls: list[tuple] = []
-        self._text_calls: list[tuple] = []
+        self._patch_blocks: list[dict] = []
 
-    # ---- v1 surface (delegated to legacy CLIs at commit-time) ---------
+    # ---- patch blocks (emitted as [[patch]] entries in manifest) ------
 
-    def stat(self, *args, **kwargs) -> None:
-        self._stat_calls.append((args, kwargs))
+    def stat(self, name: str, **fields) -> None:
+        self._patch_blocks.append({"kind": "stat", "name": name, **fields})
 
-    def text(self, *args, **kwargs) -> None:
-        self._text_calls.append((args, kwargs))
+    def text(self, target: str, value: str, **fields) -> None:
+        self._patch_blocks.append({"kind": "text", "target": target, "value": value, **fields})
 
     # ---- v3 surface ---------------------------------------------------
 
@@ -84,9 +83,6 @@ class ModBuilder:
             if self._content.defs:
                 (staging / "assets").mkdir(exist_ok=True)
                 self._content.emit(staging / "assets")
-            # legacy delegates run their own scripts inside the mod dir
-            # (kept as a TODO: integrate with merge.py rather than
-            # re-running the v1 CLIs from here).
             if dst.exists():
                 shutil.rmtree(dst)
             dst.parent.mkdir(parents=True, exist_ok=True)
@@ -111,6 +107,16 @@ class ModBuilder:
                 lines.append(f'{mid} = "{spec}"')
         if self._api_name:
             lines += ["", "[provides]", f'api = "{self._api_name}"']
+        if self._patch_blocks:
+            for block in self._patch_blocks:
+                lines += ["", "[[patch]]"]
+                for k, v in block.items():
+                    if isinstance(v, bool):
+                        lines.append(f'{k} = {"true" if v else "false"}')
+                    elif isinstance(v, (int, float)):
+                        lines.append(f'{k} = {v}')
+                    else:
+                        lines.append(f'{k} = "{v}"')
         (root / "manifest.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     def _write_config_schema(self, root: Path) -> None:

@@ -5,8 +5,14 @@ hardcode paths in CLI subcommands or SDK modules.
 """
 
 from __future__ import annotations
+
+import hashlib
+import json
 import os
+import re
 import sys
+import time
+from functools import cache
 from pathlib import Path
 
 
@@ -19,26 +25,78 @@ def _find_repo_root() -> Path:
     for cand in [here.parent, *here.parents]:
         if (cand / "data" / "asset_map.json").exists():
             return cand
-    # Fall back to four-levels-up (`src/rsmm/engine/paths.py` -> repo root)
-    return here.parents[3]
+    raise RuntimeError(
+        f"rsmm repo root not found: data/asset_map.json missing in any parent of {here}"
+    )
 
 
 COOKING_SUBDIR: str = "DarkTalesResources/_Cooking"
 
+_RAVENSWATCH_SUBPATH = Path("steamapps/common/Ravenswatch")
+_VDF_PATH_RE = re.compile(r'"path"\s*"([^"]+)"', re.IGNORECASE)
+
+
+def _parse_libraryfolders_vdf(vdf: Path) -> list[Path]:
+    """Extract `path` entries from a Steam libraryfolders.vdf file.
+
+    The VDF text format used by Steam has many shapes across versions
+    (flat list, nested {"0": {...}, "1": {...}}, etc.). We only need the
+    library root strings — a regex over the `"path"` keys handles every
+    variant we've seen without pulling in a VDF dependency.
+    """
+    try:
+        text = vdf.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    roots: list[Path] = []
+    for match in _VDF_PATH_RE.finditer(text):
+        raw = match.group(1).replace("\\\\", "\\")
+        roots.append(Path(raw))
+    return roots
+
+
+def _steam_roots() -> list[Path]:
+    """Locations where Steam's libraryfolders.vdf may live, per platform."""
+    home = Path.home()
+    if sys.platform == "win32":
+        return [
+            Path(r"C:\Program Files (x86)\Steam"),
+            Path(r"C:\Program Files\Steam"),
+        ]
+    if sys.platform == "darwin":
+        return [home / "Library/Application Support/Steam"]
+    return [
+        home / ".steam/steam",
+        home / ".local/share/Steam",
+        home / ".var/app/com.valvesoftware.Steam/.local/share/Steam",
+    ]
+
+
+def _steam_library_candidates() -> list[Path]:
+    """Resolve Ravenswatch install candidates from Steam's libraryfolders.vdf.
+
+    Discovers custom library locations that the hardcoded list misses
+    (e.g. `E:\\Games\\MySteamLib`).
+    """
+    cands: list[Path] = []
+    for steam in _steam_roots():
+        vdf = steam / "steamapps" / "libraryfolders.vdf"
+        if not vdf.is_file():
+            continue
+        for lib in _parse_libraryfolders_vdf(vdf):
+            cands.append(lib / _RAVENSWATCH_SUBPATH)
+    return cands
+
 
 def _game_dir_candidates() -> list[Path]:
-    """Per-platform Ravenswatch install candidates. Order = preference."""
+    """Per-platform Ravenswatch install candidates. Order = preference.
+
+    Steam-discovered roots come first; hardcoded fallbacks follow.
+    """
     home = Path.home()
-    cands: list[Path] = []
+    cands: list[Path] = list(_steam_library_candidates())
     if sys.platform == "win32":
-        # Standard Steam library roots on every drive letter that exists.
-        drives = []
-        for d in "CDEFGHIJKLMNOPQRSTUVWXYZ":
-            root = Path(f"{d}:\\")
-            if root.exists():
-                drives.append(d)
-        if not drives:
-            drives = ["C", "D", "E"]
+        drives = [d for d in "CDEFGHIJKLMNOPQRSTUVWXYZ" if Path(f"{d}:\\").exists()]
         for d in drives:
             cands += [
                 Path(f"{d}:\\Program Files (x86)\\Steam\\steamapps\\common\\Ravenswatch"),
@@ -47,7 +105,6 @@ def _game_dir_candidates() -> list[Path]:
                 Path(f"{d}:\\SteamLibrary\\steamapps\\common\\Ravenswatch"),
                 Path(f"{d}:\\Games\\Steam\\steamapps\\common\\Ravenswatch"),
             ]
-        # Honor LOCALAPPDATA / PROGRAMFILES env vars if set unusually.
         pf86 = os.environ.get("ProgramFiles(x86)")
         if pf86:
             cands.append(Path(pf86) / "Steam" / "steamapps" / "common" / "Ravenswatch")
@@ -57,8 +114,14 @@ def _game_dir_candidates() -> list[Path]:
     elif sys.platform == "darwin":
         cands += [
             home / "Library/Application Support/Steam/steamapps/common/Ravenswatch",
+            home / "Library/Application Support/Steam/steamapps/common/Ravenswatch/Ravenswatch.app",
         ]
-    else:  # linux + others
+        volumes = Path("/Volumes")
+        if volumes.is_dir():
+            for vol in volumes.iterdir():
+                if vol.is_dir():
+                    cands.append(vol / "SteamLibrary" / "steamapps" / "common" / "Ravenswatch")
+    else:
         cands += [
             home / ".var/app/com.valvesoftware.Steam/.local/share/Steam"
                    "/steamapps/common/Ravenswatch",
@@ -66,13 +129,23 @@ def _game_dir_candidates() -> list[Path]:
             home / ".local/share/Steam/steamapps/common/Ravenswatch",
             Path("/mnt") / "Steam/steamapps/common/Ravenswatch",
         ]
-    return cands
+    # De-dupe while preserving order.
+    seen: set[Path] = set()
+    unique: list[Path] = []
+    for c in cands:
+        if c not in seen:
+            seen.add(c)
+            unique.append(c)
+    return unique
 
 
-def _default_game_dir() -> Path:
+@cache
+def default_game_dir() -> Path:
     """First candidate whose `_Cooking` tree exists; otherwise the first
-    candidate. So autodetect works on Windows/macOS/Linux without the
-    user passing --game-dir."""
+    candidate. Autodetects on Windows/macOS/Linux without `--game-dir`.
+
+    Cached: the filesystem scan only runs on first access.
+    """
     cands = _game_dir_candidates()
     for c in cands:
         if (c / COOKING_SUBDIR).is_dir():
@@ -80,11 +153,95 @@ def _default_game_dir() -> Path:
     return cands[0]
 
 
+def mods_dir() -> Path:
+    """Resolve the mods directory. Honors the `RSMM_MODS_DIR` env override
+    at call time so the desktop UI can repoint rsmm after launch.
+    """
+    override = os.environ.get("RSMM_MODS_DIR", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    return REPO_ROOT / "mods"
+
+
 REPO_ROOT: Path     = _find_repo_root()
 DATA_DIR: Path      = REPO_ROOT / "data"
-MODS_DIR: Path      = REPO_ROOT / "mods"
 DIST_DIR: Path      = REPO_ROOT / "dist"
 ASSET_MAP_JSON: Path = DATA_DIR / "asset_map.json"
 ASSET_MAP_CSV: Path  = DATA_DIR / "asset_map.csv"
+GAME_VERSION_FINGERPRINT: str = ".rsmm_game_version.json"
 
-DEFAULT_GAME_DIR: Path = _default_game_dir()
+# `MODS_DIR` and `DEFAULT_GAME_DIR` are resolved lazily via PEP 562
+# `__getattr__` so `import rsmm.engine.paths` does not trigger the
+# Ravenswatch-install disk scan (slow on Windows with network drives).
+
+
+def __getattr__(name: str) -> Path:
+    if name == "MODS_DIR":
+        return mods_dir()
+    if name == "DEFAULT_GAME_DIR":
+        return default_game_dir()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+_FINGERPRINT_BINARIES: tuple[str, ...] = (
+    "Ravenswatch.exe",
+    "Ravenswatch/Binaries/Win64/Ravenswatch-Win64-Shipping.exe",
+    "Ravenswatch.app/Contents/MacOS/Ravenswatch",
+)
+
+_FINGERPRINT_HEAD_BYTES = 4096
+
+
+def _hash_head(h: hashlib._Hash, label: str, p: Path) -> None:
+    """Mix the first `_FINGERPRINT_HEAD_BYTES` of a file into `h`.
+
+    Content-based so the fingerprint is portable across machines (Steam
+    re-touches mtimes on validate/update).
+    """
+    try:
+        with p.open("rb") as f:
+            chunk = f.read(_FINGERPRINT_HEAD_BYTES)
+    except OSError:
+        return
+    h.update(f"{label}:{len(chunk)}:".encode())
+    h.update(chunk)
+
+
+def game_fingerprint(game_dir: Path) -> str:
+    """Compute a deterministic fingerprint of the game install version.
+
+    Hashes the first 4 KB of key game binaries + UsedRscList.ot so we can
+    detect game updates that invalidate mod overrides. Content-based, not
+    mtime-based, so the same install hashes the same on every machine.
+    """
+    h = hashlib.sha256()
+    for rel in _FINGERPRINT_BINARIES:
+        p = game_dir / rel
+        if p.exists():
+            _hash_head(h, rel, p)
+    used = game_dir / "DarkTalesResources" / "UsedRscList.ot"
+    if used.exists():
+        _hash_head(h, "UsedRscList.ot", used)
+    return h.hexdigest()
+
+
+def load_stored_fingerprint(game_dir: Path) -> str | None:
+    fp = game_dir / COOKING_SUBDIR / GAME_VERSION_FINGERPRINT
+    if not fp.exists():
+        return None
+    try:
+        raw = json.loads(fp.read_text(encoding="utf-8"))
+        return str(raw.get("fingerprint", ""))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+
+
+def save_fingerprint(game_dir: Path, fingerprint: str) -> None:
+    fp = game_dir / COOKING_SUBDIR / GAME_VERSION_FINGERPRINT
+    fp.parent.mkdir(parents=True, exist_ok=True)
+    tmp = fp.with_suffix(fp.suffix + ".tmp")
+    tmp.write_text(
+        json.dumps({"fingerprint": fingerprint, "ts": time.time()}, indent=2),
+        encoding="utf-8",
+    )
+    tmp.replace(fp)

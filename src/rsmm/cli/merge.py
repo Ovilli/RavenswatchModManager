@@ -22,18 +22,21 @@ at apply time.
 """
 
 from __future__ import annotations
+
 import re
 import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from rsmm.engine.paths import (
-    MODS_DIR,
-    DEFAULT_GAME_DIR as DEFAULT_GAME,
-    COOKING_SUBDIR,
-)
 from rsmm.engine.asset_map import decoded_to_encoded, encoded_to_decoded
+from rsmm.engine.paths import (
+    COOKING_SUBDIR,
+    MODS_DIR,
+)
+from rsmm.engine.paths import (
+    DEFAULT_GAME_DIR as DEFAULT_GAME,
+)
 from rsmm.engine.stat_schemas import index_entries, patch_field
 
 MERGED_MOD_ID = "_merged"
@@ -73,6 +76,8 @@ def _toml_fallback(p: Path) -> dict:
         if not m:
             continue
         k, raw = m.group(1), m.group(2).strip()
+        # Strip inline comments (everything after the first unquoted space + #)
+        raw = raw.split(" #")[0].split("\t#")[0].rstrip()
         if raw.startswith('"') and raw.endswith('"'):
             v: object = raw[1:-1]
         elif raw in {"true", "false"}:

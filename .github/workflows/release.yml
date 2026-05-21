@@ -52,6 +52,33 @@ jobs:
         with:
           workspaces: apps/desktop/src-tauri
 
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build rsmm sidecar (PyInstaller)
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip pyinstaller
+          pip install -e .
+          OUT=apps/desktop/src-tauri/binaries
+          mkdir -p "$OUT"
+          if [ "${{ matrix.platform }}" = "macos-latest" ]; then
+            pyinstaller --onefile --name rsmm-mac --target-arch universal2 \
+              --distpath /tmp/pyi-dist --workpath /tmp/pyi --specpath /tmp \
+              ./rsmm
+            cp /tmp/pyi-dist/rsmm-mac "$OUT/rsmm-aarch64-apple-darwin"
+            cp /tmp/pyi-dist/rsmm-mac "$OUT/rsmm-x86_64-apple-darwin"
+            chmod +x "$OUT/rsmm-aarch64-apple-darwin" "$OUT/rsmm-x86_64-apple-darwin"
+          else
+            TRIPLE=$(rustc -vV | sed -n 's/host: //p')
+            pyinstaller --onefile --name "rsmm-$TRIPLE" \
+              --distpath "$OUT" --workpath /tmp/pyi --specpath /tmp \
+              ./rsmm
+          fi
+          ls -la "$OUT"
+
       - name: Install JS deps
         run: pnpm install --frozen-lockfile --ignore-scripts
 
@@ -70,5 +97,5 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'RSMM ${{ github.ref_name }}'
           releaseDraft: true
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
           args: ${{ matrix.args }}

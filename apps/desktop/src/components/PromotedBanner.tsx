@@ -10,12 +10,6 @@ type Promo = {
   sponsor?: string;
 };
 
-type TauriBridge = {
-  shell?: {
-    open?: (url: string) => Promise<void> | void;
-  };
-};
-
 const FALLBACK: Promo[] = [
   {
     id: 'partner-1',
@@ -84,18 +78,12 @@ export default function PromotedBanner({ vertical }: { vertical?: boolean } = {}
 
   const openLink = async (url: string) => {
     try {
-      // Avoid dynamic import that Vite may try to pre-bundle. Use the Tauri global bridge when available.
-      // window.__TAURI__ is injected in the Tauri webview; check for shell.open
-      const tauri = (window as Window & { __TAURI__?: TauriBridge }).__TAURI__;
-      if (tauri?.shell?.open) {
-        await tauri.shell.open(url);
-        return;
-      }
-    } catch (e) {
-      // ignore
+      const { open } = await import('@tauri-apps/plugin-shell');
+      await open(url);
+      return;
+    } catch {
+      // Not in Tauri or shell plugin unavailable — fallback to browser open
     }
-
-    // fallback to browser open
     window.open(url, '_blank', 'noopener');
   };
 
