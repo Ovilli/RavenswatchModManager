@@ -11,7 +11,6 @@ from .paths import (
     ASSET_MAP_JSON,
     COOKING_SUBDIR,
     DATA_DIR,
-    DEFAULT_GAME_DIR,
     DIST_DIR,
     MODS_DIR,
     REPO_ROOT,
@@ -24,6 +23,13 @@ __all__ = [
     "DIST_DIR",
     "ASSET_MAP_JSON",
     "ASSET_MAP_CSV",
-    "DEFAULT_GAME_DIR",
     "COOKING_SUBDIR",
 ]
+
+
+def __getattr__(name: str):
+    if name == "DEFAULT_GAME_DIR":
+        from .paths import default_game_dir
+
+        return default_game_dir()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -70,9 +70,20 @@ jobs:
           PYI_WORK="$PWD/.pyi-build/work"
           PYI_SPEC="$PWD/.pyi-build"
           mkdir -p "$PYI_DIST" "$PYI_WORK" "$PYI_SPEC"
+          # Subcommands are loaded dynamically via importlib, so PyInstaller's
+          # static analyzer cannot find them. Use --collect-submodules to walk
+          # the rsmm.cli and rsmm.engine packages and pull in every module —
+          # this avoids the maintenance burden of an explicit hidden-import
+          # list that has to be kept in sync with every new subcommand.
+          HIDDEN_IMPORTS=(
+            --collect-submodules=rsmm.cli
+            --collect-submodules=rsmm.engine
+            --collect-submodules=rsmm.sdk
+          )
           if [ "${{ matrix.platform }}" = "macos-latest" ]; then
             pyinstaller --onefile --name rsmm-mac --target-arch universal2 \
               --distpath "$PYI_DIST" --workpath "$PYI_WORK" --specpath "$PYI_SPEC" \
+              "${HIDDEN_IMPORTS[@]}" \
               ./rsmm
             cp "$PYI_DIST/rsmm-mac" "$OUT/rsmm-aarch64-apple-darwin"
             cp "$PYI_DIST/rsmm-mac" "$OUT/rsmm-x86_64-apple-darwin"
@@ -82,6 +93,7 @@ jobs:
             TRIPLE=$(rustc -vV | sed -n 's/host: //p')
             pyinstaller --onefile --name "rsmm-$TRIPLE" \
               --distpath "$OUT" --workpath "$PYI_WORK" --specpath "$PYI_SPEC" \
+              "${HIDDEN_IMPORTS[@]}" \
               ./rsmm
           fi
           ls -la "$OUT"

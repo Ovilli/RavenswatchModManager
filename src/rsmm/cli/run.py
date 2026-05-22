@@ -259,20 +259,48 @@ def _open_steam_url(url: str) -> int:
         return 0
     if sys.platform == "darwin":
         if shutil.which("open"):
-            return subprocess.call(["open", url])
+            try:
+                subprocess.Popen(["open", url],
+                                 stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL)
+                return 0
+            except OSError as e:
+                print(f"Could not launch via open: {e}", file=sys.stderr)
+                return 1
         print("Could not find 'open' command on macOS. "
               f"Open this URL manually: {url}", file=sys.stderr)
         return 1
     # Linux
     if shutil.which("steam"):
         print(f"==> steam {url}")
-        return subprocess.call(["steam", url])
+        try:
+            subprocess.Popen(["steam", url],
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+            return 0
+        except OSError as e:
+            print(f"Could not launch via steam: {e}", file=sys.stderr)
+            return 1
     if shutil.which("flatpak"):
         print(f"==> flatpak run com.valvesoftware.Steam {url}")
-        return subprocess.call(["flatpak", "run", "com.valvesoftware.Steam", url])
+        try:
+            subprocess.Popen(["flatpak", "run", "com.valvesoftware.Steam", url],
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+            return 0
+        except OSError as e:
+            print(f"Could not launch via flatpak Steam: {e}", file=sys.stderr)
+            return 1
     if shutil.which("xdg-open"):
         print(f"==> xdg-open {url}")
-        return subprocess.call(["xdg-open", url])
+        try:
+            subprocess.Popen(["xdg-open", url],
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+            return 0
+        except OSError as e:
+            print(f"Could not launch via xdg-open: {e}", file=sys.stderr)
+            return 1
     print(f"Could not find a Steam launcher. Open this URL manually: {url}",
           file=sys.stderr)
     return 1
@@ -286,6 +314,8 @@ def main() -> int:
                     help="write WINEDLLOVERRIDES into Steam's localconfig.vdf "
                          "(requires Steam to be closed; original backed up "
                          "as localconfig.vdf.rsmm.bak)")
+    ap.add_argument("--clear-launch-options", action="store_true",
+                    help="clear Steam LaunchOptions for Ravenswatch before launching")
     ap.add_argument("--force", action="store_true",
                     help="launch even if launch options are missing the override")
     args = ap.parse_args()
@@ -313,6 +343,21 @@ def main() -> int:
     # touched config first.
     vdfs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     primary = vdfs[0]
+
+    if args.clear_launch_options:
+        if _is_steam_running():
+            print("Steam appears to be running; launch-options edits may be overwritten.",
+                  file=sys.stderr)
+        changed = 0
+        for vdf in vdfs:
+            try:
+                if _write_launch_options(vdf, args.app_id, ""):
+                    changed += 1
+            except Exception as e:
+                print(f"Failed to clear launch options in {vdf}: {e}", file=sys.stderr)
+        print(f"cleared launch options in {changed}/{len(vdfs)} Steam user config(s)")
+        return _open_steam_url(url)
+
     lo = _read_launch_options(primary, args.app_id)
 
     if lo is not None and _override_present(lo):
