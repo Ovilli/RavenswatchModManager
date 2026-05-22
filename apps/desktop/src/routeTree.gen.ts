@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root';
+import { Route as SigninRouteImport } from './routes/signin';
 import { Route as SettingsRouteImport } from './routes/settings';
 import { Route as ProfilesRouteImport } from './routes/profiles';
 import { Route as ConflictsRouteImport } from './routes/conflicts';
@@ -17,6 +18,11 @@ import { Route as AboutRouteImport } from './routes/about';
 import { Route as IndexRouteImport } from './routes/index';
 import { Route as ModSlugRouteImport } from './routes/mod.$slug';
 
+const SigninRoute = SigninRouteImport.update({
+  id: '/signin',
+  path: '/signin',
+  getParentRoute: () => rootRouteImport,
+} as any);
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -60,6 +66,7 @@ export interface FileRoutesByFullPath {
   '/conflicts': typeof ConflictsRoute;
   '/profiles': typeof ProfilesRoute;
   '/settings': typeof SettingsRoute;
+  '/signin': typeof SigninRoute;
   '/mod/$slug': typeof ModSlugRoute;
 }
 export interface FileRoutesByTo {
@@ -69,6 +76,7 @@ export interface FileRoutesByTo {
   '/conflicts': typeof ConflictsRoute;
   '/profiles': typeof ProfilesRoute;
   '/settings': typeof SettingsRoute;
+  '/signin': typeof SigninRoute;
   '/mod/$slug': typeof ModSlugRoute;
 }
 export interface FileRoutesById {
@@ -79,6 +87,7 @@ export interface FileRoutesById {
   '/conflicts': typeof ConflictsRoute;
   '/profiles': typeof ProfilesRoute;
   '/settings': typeof SettingsRoute;
+  '/signin': typeof SigninRoute;
   '/mod/$slug': typeof ModSlugRoute;
 }
 export interface FileRouteTypes {
@@ -90,6 +99,7 @@ export interface FileRouteTypes {
     | '/conflicts'
     | '/profiles'
     | '/settings'
+    | '/signin'
     | '/mod/$slug';
   fileRoutesByTo: FileRoutesByTo;
   to:
@@ -99,6 +109,7 @@ export interface FileRouteTypes {
     | '/conflicts'
     | '/profiles'
     | '/settings'
+    | '/signin'
     | '/mod/$slug';
   id:
     | '__root__'
@@ -108,6 +119,7 @@ export interface FileRouteTypes {
     | '/conflicts'
     | '/profiles'
     | '/settings'
+    | '/signin'
     | '/mod/$slug';
   fileRoutesById: FileRoutesById;
 }
@@ -118,11 +130,19 @@ export interface RootRouteChildren {
   ConflictsRoute: typeof ConflictsRoute;
   ProfilesRoute: typeof ProfilesRoute;
   SettingsRoute: typeof SettingsRoute;
+  SigninRoute: typeof SigninRoute;
   ModSlugRoute: typeof ModSlugRoute;
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/signin': {
+      id: '/signin';
+      path: '/signin';
+      fullPath: '/signin';
+      preLoaderRoute: typeof SigninRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     '/settings': {
       id: '/settings';
       path: '/settings';
@@ -182,6 +202,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConflictsRoute: ConflictsRoute,
   ProfilesRoute: ProfilesRoute,
   SettingsRoute: SettingsRoute,
+  SigninRoute: SigninRoute,
   ModSlugRoute: ModSlugRoute,
 };
 export const routeTree = rootRouteImport
