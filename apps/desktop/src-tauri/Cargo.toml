@@ -1,6 +1,6 @@
 [package]
 name = "rsmm-desktop"
-version = "0.1.0-4"
+version = "0.1.0-5"
 description = "Ravenswatch Mod Manager desktop shell"
 authors = ["Ovilli"]
 edition = "2021"
