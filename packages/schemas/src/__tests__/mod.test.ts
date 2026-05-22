@@ -13,8 +13,32 @@ describe('modListItemSchema', () => {
       latestVersion: '1.0.0',
       downloads: 100,
       updatedAt: new Date().toISOString(),
+      category: 'gameplay',
+      imageUrl: 'https://example.com/cover.png',
+      rating: 4.5,
+      tags: ['fun', 'wip'],
     });
     expect(result.name).toBe('Test Mod');
+    expect(result.tags).toEqual(['fun', 'wip']);
+  });
+
+  it('accepts nullable optional fields', () => {
+    const result = modListItemSchema.parse({
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      slug: 'test-mod',
+      name: 'Test Mod',
+      author: null,
+      summary: null,
+      license: null,
+      latestVersion: null,
+      downloads: 0,
+      updatedAt: new Date().toISOString(),
+      category: null,
+      imageUrl: null,
+      rating: null,
+      tags: [],
+    });
+    expect(result.category).toBeNull();
   });
 
   it('rejects missing required fields', () => {
@@ -28,6 +52,7 @@ describe('modListItemSchema', () => {
       name: 'Test',
       downloads: 0,
       updatedAt: new Date().toISOString(),
+      tags: [],
     })).toThrow();
   });
 });

@@ -43,6 +43,11 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
       summary: schema.mods.summary,
       license: schema.mods.license,
       updatedAt: schema.mods.updatedAt,
+      category: schema.mods.category,
+      authorName: schema.mods.authorName,
+      imageUrl: schema.mods.imageUrl,
+      rating: schema.mods.rating,
+      tags: schema.mods.tags,
       latestVersion: sql<string | null>`(
         select ${schema.modVersions.version}
         from ${schema.modVersions}
@@ -73,12 +78,16 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
       id: r.id,
       slug: r.slug,
       name: r.name,
-      author: null,
+      author: r.authorName,
       summary: r.summary,
       license: r.license,
       latestVersion: r.latestVersion,
       downloads: r.downloads,
       updatedAt: r.updatedAt.toISOString(),
+      category: r.category,
+      imageUrl: r.imageUrl,
+      rating: r.rating != null ? Number(r.rating) : null,
+      tags: r.tags ?? [],
     })),
     total,
   });
@@ -99,12 +108,16 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       id: mod.id,
       slug: mod.slug,
       name: mod.name,
-      author: null,
+      author: mod.authorName,
       summary: mod.summary,
       license: mod.license,
       latestVersion: mod.versions[0]?.version ?? null,
       downloads: 0,
       updatedAt: mod.updatedAt.toISOString(),
+      category: mod.category,
+      imageUrl: mod.imageUrl,
+      rating: mod.rating != null ? Number(mod.rating) : null,
+      tags: mod.tags ?? [],
     },
     versions: mod.versions.map((v) => ({
       id: v.id,
@@ -164,6 +177,7 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
           repoUrl: body.manifest.repo_url,
           homepageUrl: body.manifest.homepage_url,
           tags: body.manifest.tags,
+          authorName: body.manifest.author,
           ownerId: user.id,
         })
         .onConflictDoUpdate({
@@ -176,6 +190,7 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
             repoUrl: body.manifest.repo_url,
             homepageUrl: body.manifest.homepage_url,
             tags: body.manifest.tags,
+            authorName: body.manifest.author,
             updatedAt: new Date(),
           },
         })

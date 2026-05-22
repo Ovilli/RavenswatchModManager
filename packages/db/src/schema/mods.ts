@@ -5,6 +5,8 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
+  pgEnum,
   pgTable,
   primaryKey,
   text,
@@ -14,6 +16,17 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 import { users } from './auth';
+
+export const modCategoryEnum = pgEnum('mod_category', [
+  'gameplay',
+  'balance',
+  'cosmetic',
+  'qol',
+  'audio',
+  'difficulty',
+  'speedrun',
+  'utility',
+]);
 
 export const mods = pgTable(
   'mods',
@@ -27,6 +40,10 @@ export const mods = pgTable(
     repoUrl: text('repo_url'),
     homepageUrl: text('homepage_url'),
     tags: text('tags').array(),
+    category: modCategoryEnum('category'),
+    authorName: varchar('author_name', { length: 128 }),
+    imageUrl: text('image_url'),
+    rating: numeric('rating', { precision: 3, scale: 2 }),
     ownerId: text('owner_id').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -34,6 +51,7 @@ export const mods = pgTable(
   (table) => ({
     slugIdx: uniqueIndex('mods_slug_idx').on(table.slug),
     ownerIdx: index('mods_owner_idx').on(table.ownerId),
+    categoryIdx: index('mods_category_idx').on(table.category),
   }),
 );
 

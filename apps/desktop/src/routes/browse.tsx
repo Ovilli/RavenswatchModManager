@@ -1,8 +1,10 @@
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
-import { Check, Plus, Search } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { AlertTriangle, Check, Plus, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import type { ModCategory, ModListItem } from '@rsmm/schemas';
 import { Button, Cover, MonoTag, SectionHeader, StatPill } from '../components/chrome';
-import { MOCK_MODS, type ModCategory } from '../data/mock-mods';
+import { api } from '../lib/api';
 import { useApp } from '../store';
 
 export const Route = createFileRoute('/browse')({
@@ -23,8 +25,6 @@ const CATEGORIES: { id: ModCategory | 'all'; label: string }[] = [
   { id: 'utility', label: 'Utility' },
 ];
 
-const RECENCY_INDEX = new Map(MOCK_MODS.map((m, i) => [m.id, i]));
-
 function BrowsePage() {
   const navigate = useNavigate();
   const [q, setQ] = useState('');
@@ -33,29 +33,29 @@ function BrowsePage() {
   const installed = useApp((s) => s.installed);
   const installMod = useApp((s) => s.installMod);
 
+  const { data, error, isLoading } = useQuery({
+    queryKey: ['mods', 'list', q],
+    queryFn: () => api.mods.list({ q: q.trim() || undefined, limit: 100 }),
+    staleTime: 30_000,
+    retry: 1,
+  });
+
   const list = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return MOCK_MODS.filter((m) => {
-      if (cat !== 'all' && m.category !== cat) return false;
-      if (!needle) return true;
-      return (
-        m.name.toLowerCase().includes(needle) ||
-        m.author.toLowerCase().includes(needle) ||
-        m.tags.some((t) => t.toLowerCase().includes(needle))
-      );
-    }).sort((a, b) => {
+    const items: ModListItem[] = data?.items ?? [];
+    const filtered = items.filter((m) => (cat === 'all' ? true : m.category === cat));
+    const sorted = [...filtered].sort((a, b) => {
       if (sort === 'popular') return b.downloads - a.downloads;
-      if (sort === 'rating') return b.rating - a.rating;
-      // recent = last entries first per registry order
-      return (RECENCY_INDEX.get(b.id) ?? 0) - (RECENCY_INDEX.get(a.id) ?? 0);
+      if (sort === 'rating') return (b.rating ?? 0) - (a.rating ?? 0);
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
-  }, [q, cat, sort]);
+    return sorted;
+  }, [data, cat, sort]);
 
   return (
     <div className="space-y-6">
       <SectionHeader
         title="Browse"
-        subtitle="The remote index. Hand-picked mods from the community."
+        subtitle="The remote index. Mods from the community catalog."
       />
 
       <div className="flex flex-wrap items-center gap-3">
@@ -100,15 +100,29 @@ function BrowsePage() {
         ))}
       </div>
 
+      {error ? (
+        <div className="ember-banner flex items-center gap-3 px-4 py-3">
+          <AlertTriangle className="h-4 w-4 text-crimson" />
+          <span className="font-serif-italic text-base">
+            Couldn’t reach the mod index.
+          </span>
+          <span className="font-mono ml-auto text-ash">{(error as Error).message}</span>
+        </div>
+      ) : null}
+
+      {isLoading ? (
+        <p className="font-serif-italic py-10 text-center text-ash">Loading…</p>
+      ) : null}
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {list.map((m) => {
-          const here = installed.includes(m.id);
+          const here = installed.includes(m.slug);
           return (
             <article
               key={m.id}
               tabIndex={0}
               role="link"
-              aria-label={`${m.name} by ${m.author}`}
+              aria-label={`${m.name}${m.author ? ` by ${m.author}` : ''}`}
               onClick={(e) => {
                 const el = e.target as HTMLElement;
                 if (el.closest('button, a, input, textarea, select, [role="switch"]')) return;
@@ -122,7 +136,9 @@ function BrowsePage() {
               }}
               className="grimoire-card flex flex-col gap-3 p-5 cursor-pointer transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60 focus:outline-none"
             >
-              <Cover src={m.image} alt={`${m.name} cover`} caption={`${m.slug}.png`} />
+              {m.imageUrl ? (
+                <Cover src={m.imageUrl} alt={`${m.name} cover`} caption={`${m.slug}.png`} />
+              ) : null}
               <header className="flex items-start justify-between gap-3">
                 <div>
                   <Link
@@ -134,14 +150,15 @@ function BrowsePage() {
                     {m.name}
                   </Link>
                   <p className="font-mono mt-1 text-ash">
-                    {m.author} · v{m.latestVersion}
+                    {m.author ?? 'unknown'}
+                    {m.latestVersion ? ` · v${m.latestVersion}` : ''}
                   </p>
                 </div>
                 <Button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    installMod(m.id);
+                    installMod(m.slug);
                   }}
                   disabled={here}
                   variant={here ? 'default' : 'primary'}
@@ -158,12 +175,14 @@ function BrowsePage() {
                   )}
                 </Button>
               </header>
-              <p className="font-serif-italic text-sm leading-snug text-smoke">
-                {m.summary}
-              </p>
+              {m.summary ? (
+                <p className="font-serif-italic text-sm leading-snug text-smoke">
+                  {m.summary}
+                </p>
+              ) : null}
               <div className="mt-auto flex items-center justify-between gap-2">
                 <div className="flex flex-wrap gap-1">
-                  <MonoTag tone="default">{m.category}</MonoTag>
+                  {m.category ? <MonoTag tone="default">{m.category}</MonoTag> : null}
                   {m.tags.slice(0, 2).map((t) => (
                     <MonoTag key={t} tone="default">
                       {t}
@@ -171,7 +190,7 @@ function BrowsePage() {
                   ))}
                 </div>
                 <StatPill
-                  value={`★ ${m.rating.toFixed(1)}`}
+                  value={m.rating != null ? `★ ${m.rating.toFixed(1)}` : '—'}
                   label={`${m.downloads.toLocaleString()} dl`}
                 />
               </div>
@@ -179,7 +198,7 @@ function BrowsePage() {
           );
         })}
       </div>
-      {list.length === 0 ? (
+      {!isLoading && !error && list.length === 0 ? (
         <p className="font-serif-italic py-10 text-center text-ash">
           No mods match that search.
         </p>
