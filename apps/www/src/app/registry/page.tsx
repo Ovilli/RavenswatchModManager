@@ -2,6 +2,7 @@
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Spinner, buttonVariants } from '@rsmm/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Download, ExternalLink, Search } from 'lucide-react';
+import type { Route } from 'next';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import type { ModCategory } from '@rsmm/schemas';
@@ -112,12 +113,12 @@ export default function RegistryPage() {
                 onClick={(e) => {
                   const el = e.target as HTMLElement;
                   if (el.closest('a, button, input, textarea, select, [role="switch"]')) return;
-                  router.push(`/registry/${m.slug}`);
+                  router.push(`/registry/${m.slug}` as Route);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    router.push(`/registry/${m.slug}`);
+                    router.push(`/registry/${m.slug}` as Route);
                   }
                 }}
               >
