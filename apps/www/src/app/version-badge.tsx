@@ -2,7 +2,6 @@ async function getLatestVersion(): Promise<string> {
   try {
     const res = await fetch(
       'https://api.github.com/repos/Ovilli/RavenswatchModManager/releases/latest',
-      { next: { revalidate: 3600 } },
     );
     if (!res.ok) return 'v0.1.0-beta.2';
     const data = await res.json();
