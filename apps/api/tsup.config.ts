@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: { '[[route]]': 'api/[[route]].ts' },
+  entry: { '[[route]]': 'src/handler.ts' },
   outDir: 'api',
   format: ['esm'],
   target: 'node22',
