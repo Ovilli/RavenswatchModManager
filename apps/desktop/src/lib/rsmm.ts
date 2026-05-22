@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core';
 import { type Child, Command } from '@tauri-apps/plugin-shell';
 import { useApp } from '../store';
 
@@ -138,9 +139,31 @@ function createCommand(name: string, args: string[], opts: Record<string, unknow
 }
 
 let resolvedProg: ProgName | null | undefined = undefined;
+let runtimeEnvPromise: Promise<{ repoRoot: string; path: string }> | null = null;
+
+async function runtimeEnv(): Promise<{ repoRoot: string; path: string }> {
+  if (!runtimeEnvPromise) {
+    runtimeEnvPromise = invoke<{ repoRoot: string; path: string }>('rsmm_runtime_env');
+  }
+  return runtimeEnvPromise;
+}
+
+async function envForCommand(): Promise<Record<string, string>> {
+  const env = rsmmEnv();
+  try {
+    const runtime = await runtimeEnv();
+    const pathParts = [runtime.repoRoot, runtime.path].filter(Boolean);
+    if (pathParts.length) {
+      env.PATH = pathParts.join(':');
+    }
+  } catch {
+    // Best effort; fall back to the inherited PATH.
+  }
+  return env;
+}
 
 async function execute(args: string[], options: RsmmOptions): Promise<ExecResult> {
-  const env = rsmmEnv();
+  const env = await envForCommand();
   const opts = Object.keys(env).length ? { env } : undefined;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
@@ -149,10 +172,9 @@ async function execute(args: string[], options: RsmmOptions): Promise<ExecResult
   }
 
   // First call: probe programs in order. Subsequent calls: use the
-  // resolved one. If both fail at probe time, resolvedProg stays
-  // null and every call surfaces RsmmCliMissingError.
+  // resolved one. If discovery fails, keep retrying on later calls so
+  // a transient startup env issue doesn't permanently poison the app.
   if (resolvedProg === undefined) {
-    resolvedProg = null;
     for (const name of [...SIDECAR_PROGS, ...CMD_PROGS]) {
       try {
         const probe = createCommand(name, args, opts);
@@ -162,11 +184,13 @@ async function execute(args: string[], options: RsmmOptions): Promise<ExecResult
         // Try next program.
       }
     }
+    resolvedProg = undefined;
     throw new RsmmCliMissingError(args);
   }
 
   if (resolvedProg === null) {
-    throw new RsmmCliMissingError(args);
+    resolvedProg = undefined;
+    return execute(args, options);
   }
 
   const cmd = createCommand(resolvedProg, args, opts);
@@ -342,7 +366,7 @@ export const listLocalMods = () => rsmm<LocalMod[]>(['list']);
 
 export const doctor = () => rsmm<DoctorResult>(['doctor']);
 
-const applyMods = (opts: ApplyOptions = {}) => {
+export const applyMods = (opts: ApplyOptions = {}) => {
   const { dryRun, force, noMerge, ...rsmmOpts } = opts;
   const args = ['apply'];
   if (dryRun) args.push('--dry-run');
@@ -351,10 +375,15 @@ const applyMods = (opts: ApplyOptions = {}) => {
   return rsmm<RunResult>(args, { timeoutMs: LONG_TIMEOUT_MS, ...rsmmOpts });
 };
 
+export const build = () => rsmm<RunResult>(['build'], { timeoutMs: LONG_TIMEOUT_MS });
+
 const runGame = () => rsmm<RunResult>(['run'], { timeoutMs: DEFAULT_TIMEOUT_MS });
 
 export const runVanilla = () =>
   rsmm<RunResult>(['run', '--vanilla'], { timeoutMs: DEFAULT_TIMEOUT_MS });
+
+export const restoreAll = () =>
+  rsmm<RunResult>(['restore-all'], { timeoutMs: LONG_TIMEOUT_MS });
 
 export async function runModded(): Promise<RunResult | null> {
   const applyResult = await applyMods();

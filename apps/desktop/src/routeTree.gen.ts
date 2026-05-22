@@ -13,6 +13,7 @@ import { Route as SigninRouteImport } from './routes/signin';
 import { Route as SettingsRouteImport } from './routes/settings';
 import { Route as ProfilesRouteImport } from './routes/profiles';
 import { Route as ConflictsRouteImport } from './routes/conflicts';
+import { Route as CommandsRouteImport } from './routes/commands';
 import { Route as BrowseRouteImport } from './routes/browse';
 import { Route as AboutRouteImport } from './routes/about';
 import { Route as IndexRouteImport } from './routes/index';
@@ -36,6 +37,11 @@ const ProfilesRoute = ProfilesRouteImport.update({
 const ConflictsRoute = ConflictsRouteImport.update({
   id: '/conflicts',
   path: '/conflicts',
+  getParentRoute: () => rootRouteImport,
+} as any);
+const CommandsRoute = CommandsRouteImport.update({
+  id: '/commands',
+  path: '/commands',
   getParentRoute: () => rootRouteImport,
 } as any);
 const BrowseRoute = BrowseRouteImport.update({
@@ -63,6 +69,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute;
   '/about': typeof AboutRoute;
   '/browse': typeof BrowseRoute;
+  '/commands': typeof CommandsRoute;
   '/conflicts': typeof ConflictsRoute;
   '/profiles': typeof ProfilesRoute;
   '/settings': typeof SettingsRoute;
@@ -73,6 +80,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute;
   '/about': typeof AboutRoute;
   '/browse': typeof BrowseRoute;
+  '/commands': typeof CommandsRoute;
   '/conflicts': typeof ConflictsRoute;
   '/profiles': typeof ProfilesRoute;
   '/settings': typeof SettingsRoute;
@@ -84,6 +92,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute;
   '/about': typeof AboutRoute;
   '/browse': typeof BrowseRoute;
+  '/commands': typeof CommandsRoute;
   '/conflicts': typeof ConflictsRoute;
   '/profiles': typeof ProfilesRoute;
   '/settings': typeof SettingsRoute;
@@ -96,6 +105,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/browse'
+    | '/commands'
     | '/conflicts'
     | '/profiles'
     | '/settings'
@@ -106,6 +116,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/browse'
+    | '/commands'
     | '/conflicts'
     | '/profiles'
     | '/settings'
@@ -116,6 +127,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/browse'
+    | '/commands'
     | '/conflicts'
     | '/profiles'
     | '/settings'
@@ -127,6 +139,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute;
   AboutRoute: typeof AboutRoute;
   BrowseRoute: typeof BrowseRoute;
+  CommandsRoute: typeof CommandsRoute;
   ConflictsRoute: typeof ConflictsRoute;
   ProfilesRoute: typeof ProfilesRoute;
   SettingsRoute: typeof SettingsRoute;
@@ -164,6 +177,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConflictsRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    '/commands': {
+      id: '/commands';
+      path: '/commands';
+      fullPath: '/commands';
+      preLoaderRoute: typeof CommandsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     '/browse': {
       id: '/browse';
       path: '/browse';
@@ -199,6 +219,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   BrowseRoute: BrowseRoute,
+  CommandsRoute: CommandsRoute,
   ConflictsRoute: ConflictsRoute,
   ProfilesRoute: ProfilesRoute,
   SettingsRoute: SettingsRoute,

@@ -1,8 +1,7 @@
 import { Badge, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, buttonVariants } from '@rsmm/ui';
 import Link from 'next/link';
 
-const CURRENT_VERSION = 'v0.1.0-beta.2';
-const releaseUrl = `https://github.com/Ovilli/RavenswatchModManager/releases/tag/${CURRENT_VERSION}`;
+const releaseUrl = (tag: string) => `https://github.com/Ovilli/RavenswatchModManager/releases/tag/${tag}`;
 const latestUrl = 'https://github.com/Ovilli/RavenswatchModManager/releases/latest';
 const releasesUrl = 'https://github.com/Ovilli/RavenswatchModManager/releases';
 const installGuideUrl = 'https://github.com/Ovilli/RavenswatchModManager/blob/main/docs/INSTALLATION.md';
@@ -41,14 +40,30 @@ const steps = [
   'Browse the registry, install a mod, and launch the game with the manager applied.',
 ];
 
-export default function DownloadPage() {
+async function getLatestVersion(): Promise<string> {
+  try {
+    const res = await fetch(
+      'https://api.github.com/repos/Ovilli/RavenswatchModManager/releases/latest',
+      { next: { revalidate: 3600 } },
+    );
+    if (!res.ok) return 'v0.1.0-beta.2';
+    const data = await res.json();
+    return data.tag_name ?? 'v0.1.0-beta.2';
+  } catch {
+    return 'v0.1.0-beta.2';
+  }
+}
+
+export default async function DownloadPage() {
+  const currentVersion = await getLatestVersion();
+
   return (
     <main className="relative overflow-hidden animate-page-in">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,hsl(var(--crimson)/0.1),transparent_40%),radial-gradient(circle_at_bottom_right,hsl(var(--oxblood)/0.08),transparent_32%)]" />
       <div className="relative container mx-auto px-6 py-16 lg:py-24">
         <section className="mx-auto max-w-4xl text-center">
           <Badge variant="outline" className="mb-5 border-crimson/30 bg-crimson/10 text-parchment">
-            Desktop client · {CURRENT_VERSION}
+            Desktop client · {currentVersion}
           </Badge>
           <h1 className="text-5xl font-black tracking-tight sm:text-6xl">
             Download the Ravenswatch Mod Manager client
@@ -60,7 +75,7 @@ export default function DownloadPage() {
 
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <a className={buttonVariants({ size: 'lg' })} href={latestUrl} target="_blank" rel="noreferrer">
-              Get {CURRENT_VERSION}
+              Get {currentVersion}
             </a>
             <Link className={buttonVariants({ variant: 'outline', size: 'lg' })} href="/registry">
               Browse the registry
@@ -125,7 +140,7 @@ export default function DownloadPage() {
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-muted-foreground">
               <p>
-                Once {CURRENT_VERSION} or newer is installed, RSMM polls for signed releases on
+                Once {currentVersion} or newer is installed, RSMM polls for signed releases on
                 launch. When one is available, a banner appears with an <strong>Install &amp; restart</strong>
                 {' '}button — the app downloads, verifies the signature, swaps the binary, and relaunches.
               </p>
@@ -134,8 +149,8 @@ export default function DownloadPage() {
               </p>
             </CardContent>
             <CardFooter className="flex flex-col items-stretch gap-3 sm:flex-row">
-              <a className={buttonVariants({})} href={releaseUrl} target="_blank" rel="noreferrer">
-                {CURRENT_VERSION} notes
+              <a className={buttonVariants({})} href={releaseUrl(currentVersion)} target="_blank" rel="noreferrer">
+                {currentVersion} notes
               </a>
               <a className={buttonVariants({ variant: 'outline' })} href={releasesUrl} target="_blank" rel="noreferrer">
                 All releases

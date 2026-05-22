@@ -16,6 +16,7 @@
     "@rsmm/ui": "workspace:*",
     "@tanstack/react-query": "5.62.11",
     "better-auth": "1.4.17",
+    "lucide-react": "0.469.0",
     "next": "15.3.9",
     "react": "19.0.0",
     "react-dom": "19.0.0"
