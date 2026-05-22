@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm --filter api build && rm -rf apps/api/src apps/api/dist apps/api/tsconfig.json apps/api/tsconfig.tsbuildinfo apps/api/tsup.config.ts",
+  "buildCommand": "pnpm --filter api vercel-build",
   "functions": {
     "api/[[route]].js": {
       "runtime": "nodejs22.x"
