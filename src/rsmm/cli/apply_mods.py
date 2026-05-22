@@ -413,18 +413,57 @@ def apply_one(enc: str, src: Path, dest: Path, mod_id: str,
 
 
 def restore_one(enc: str, cooking: Path, game_dir: Path,
-                state: State, dry_run: bool) -> None:
+                state: State, dry_run: bool) -> bool:
+    """Restore one file from backup.
+
+    Returns True if the file was fully handled (restored / dropped / skipped),
+    False if the operation failed and the state entry should be kept for retry.
+    """
     dest = encoded_to_dest(enc, cooking, game_dir)
     bak = dest.parent / (dest.name + BACKUP_SUFFIX)
+    entry = state.active.get(enc) or {}
+    orig_sha = entry.get("orig_sha1", "")
+
     if bak.exists():
         print(f"  - restore {enc}")
         if not dry_run:
-            shutil.move(str(bak), str(dest))
-    else:
-        print(f"  - drop    {enc}  (no backup -> added file removed)")
-        if not dry_run and dest.exists():
+            # Two-phase: copy then remove — a crash mid-copy preserves the backup
+            try:
+                shutil.copy2(bak, dest)
+                bak.unlink()
+            except OSError as e:
+                print(f"  [ERROR] failed to restore {enc}: {e}",
+                      file=sys.stderr)
+                return False
+            if not dest.exists():
+                print(f"  [ERROR] {enc}: restore appeared to succeed but "
+                      f"destination is missing", file=sys.stderr)
+                return False
+        state.active.pop(enc, None)
+        return True
+
+    # No backup on disk
+    if orig_sha:
+        # An original game file was backed up but the backup is gone.
+        # NEVER delete dest — that would destroy the original game file.
+        if dest.exists():
+            print(f"  [WARN] {enc}: backup missing (orig_sha1 recorded); "
+                  f"keeping destination", file=sys.stderr)
+        else:
+            print(f"  - skip    {enc}  (no backup, no destination)")
+            state.active.pop(enc, None)
+        return True
+
+    # No backup, no orig_sha1 → mod added this file. Safe to remove.
+    print(f"  - drop    {enc}  (no backup -> added file removed)")
+    if not dry_run and dest.exists():
+        try:
             dest.unlink()
+        except OSError as e:
+            print(f"  [ERROR] failed to drop {enc}: {e}", file=sys.stderr)
+            return False
     state.active.pop(enc, None)
+    return True
 
 
 DEACTIVATION_SCRIPT_NAME = "on_disable.py"
@@ -586,6 +625,110 @@ def _sync_mod_manifests(mods: list[Mod], game_dir: Path, dry_run: bool) -> int:
     return synced
 
 
+def clear_runtime_mods(game_dir: Path, dry_run: bool = False) -> int:
+    """Remove the game-side `mods/` runtime sidecars so a vanilla launch
+    starts without any mod manifests or Lua entrypoints loaded.
+
+    Returns 1 when the directory was present and cleared, otherwise 0.
+    """
+    game_mods = game_dir / "mods"
+    if not game_mods.exists():
+        return 1
+    print(f"Clearing runtime mods dir: {game_mods}")
+    if dry_run:
+        return 1
+    try:
+        shutil.rmtree(game_mods)
+    except OSError as e:
+        print(f"  [warn] failed to clear {game_mods}: {e}", file=sys.stderr)
+        return 0
+    game_mods.mkdir(parents=True, exist_ok=True)
+    return 1
+
+
+def clear_loader_artifacts(game_dir: Path, dry_run: bool = False) -> int:
+    """Best-effort removal of RSMM loader runtime files for vanilla mode.
+
+    Returns 1 on success, 0 on hard filesystem failure.
+    """
+    loader_dll = game_dir / "winhttp.dll"
+    real_dll = game_dir / "winhttp_real.dll"
+    asset_map = game_dir / "asset_map.json"
+    rsmm_dir = game_dir / "rsmm"
+
+    try:
+        if real_dll.exists():
+            print(f"Restoring stock DLL: {real_dll} -> {loader_dll}")
+            if not dry_run:
+                if loader_dll.exists():
+                    loader_dll.unlink()
+                shutil.move(str(real_dll), str(loader_dll))
+        elif loader_dll.exists():
+            print(f"Removing loader DLL: {loader_dll}")
+            if not dry_run:
+                loader_dll.unlink()
+
+        if asset_map.exists():
+            print(f"Removing loader data: {asset_map}")
+            if not dry_run:
+                asset_map.unlink()
+
+        if rsmm_dir.exists():
+            print(f"Removing loader runtime dir: {rsmm_dir}")
+            if not dry_run:
+                shutil.rmtree(rsmm_dir)
+    except OSError as e:
+        print(f"  [warn] failed to clear loader artifacts: {e}", file=sys.stderr)
+        return 0
+    return 1
+
+
+def clear_steam_launch_options_for_vanilla(dry_run: bool = False) -> int:
+    """Clear Steam LaunchOptions for Ravenswatch across known userdata profiles.
+
+    Returns 1 when the operation completed (or was a no-op), 0 on hard failure.
+    """
+    try:
+        from rsmm.cli.run import (
+            RAVENSWATCH_APP_ID,
+            _is_steam_running,
+            _localconfig_paths,
+            _steam_root,
+            _write_launch_options,
+        )
+    except Exception as e:
+        print(f"  [warn] could not import Steam launch-option helpers: {e}", file=sys.stderr)
+        return 0
+
+    steam_root = _steam_root()
+    if steam_root is None:
+        print("Steam install not found; skipping launch-options cleanup.")
+        return 1
+
+    vdfs = _localconfig_paths(steam_root)
+    if not vdfs:
+        print("No Steam localconfig.vdf files found; skipping launch-options cleanup.")
+        return 1
+
+    if _is_steam_running():
+        print("  [warn] Steam appears to be running; launch-options edits may be overwritten.",
+              file=sys.stderr)
+
+    changed = 0
+    for vdf in vdfs:
+        try:
+            if dry_run:
+                changed += 1
+                continue
+            if _write_launch_options(vdf, RAVENSWATCH_APP_ID, ""):
+                changed += 1
+        except Exception as e:
+            print(f"  [warn] failed to clear launch options in {vdf}: {e}", file=sys.stderr)
+
+    print(f"Cleared Steam launch options in {changed}/{len(vdfs)} config(s).")
+    return 1
+
+
 def _recover_game_update(cooking: Path, game_dir: Path) -> bool:
     """Detect game update, clear stale state, and stage a fresh apply.
 
@@ -683,8 +826,13 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
 
     if additions or removals:
         print(f"Plan: {len(additions)} apply, {len(removals)} restore")
+        failed_removals = 0
         for enc in removals:
-            restore_one(enc, cooking, game_dir, state, args.dry_run)
+            if not restore_one(enc, cooking, game_dir, state, args.dry_run):
+                failed_removals += 1
+        if failed_removals:
+            print(f"  [WARN] {failed_removals} removal(s) failed; "
+                  f"state entries preserved for retry", file=sys.stderr)
         for enc, src, dest, mod_id in additions:
             apply_one(enc, src, dest, mod_id, state, args.dry_run)
 
@@ -700,14 +848,195 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
 
 def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     state = State(cooking)
-    if not state.active:
-        print("No active overrides.")
-        return 0
-    print(f"Restoring {len(state.active)} overrides...")
-    for enc in list(state.active):
-        restore_one(enc, cooking, game_dir, state, args.dry_run)
-    if not args.dry_run:
-        state.save()
+    restored_stale = 0
+    cleaned_residue = 0
+    purged_known = 0
+
+    # Detect game update BEFORE touching any files.
+    # If the game version changed, backups from the previous version MUST NOT
+    # be restored — they would corrupt the new install.
+    current_fp = game_fingerprint(game_dir)
+    stored_fp = load_stored_fingerprint(game_dir)
+    game_updated = current_fp != stored_fp
+
+    if game_updated:
+        print("Game version changed since last apply. "
+              "Old backups are incompatible and will NOT be restored.",
+              flush=True)
+        # Skip Phase 1 (stale backup recovery) and Phase 2 (state restore):
+        # every backup on disk is from the previous game version.
+        save_fingerprint(game_dir, current_fp)
+    else:
+        # Phase 1: Recover orphaned backups that have no state entry.
+        # Backed-up files tracked in state.active are handled by Phase 2.
+        for bak in cooking.rglob(f"*{BACKUP_SUFFIX}"):
+            rel = str(bak.relative_to(cooking))
+            enc_key = rel[: -len(BACKUP_SUFFIX)].replace("/", "\\")
+            if enc_key in state.active:
+                continue
+            dest = bak.with_name(bak.name[: -len(BACKUP_SUFFIX)])
+            print(f"  - restore {dest.relative_to(cooking)} (stale backup)")
+            if not args.dry_run:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    shutil.copy2(bak, dest)
+                    bak.unlink()
+                except OSError as e:
+                    print(f"  [ERROR] failed to restore stale backup {bak.name}: {e}",
+                          file=sys.stderr)
+                    continue
+                if not dest.exists():
+                    print(f"  [ERROR] stale backup restore appeared to "
+                          f"succeed but {dest} is missing", file=sys.stderr)
+                    continue
+            restored_stale += 1
+
+        # Phase 2: Restore every override recorded in state
+        if state.active:
+            print(f"Restoring {len(state.active)} overrides...")
+            failed: list[str] = []
+            for enc in list(state.active):
+                ok = restore_one(enc, cooking, game_dir, state, args.dry_run)
+                if not ok:
+                    failed.append(enc)
+            if failed and not args.dry_run:
+                print(f"  [WARN] {len(failed)} file(s) could not be restored; "
+                      f"their state entries are preserved for retry.",
+                      file=sys.stderr)
+                state.save()
+            elif not args.dry_run:
+                state.save()
+        else:
+            print("No active overrides in state.")
+
+    # Fallback sweep: if state/backups got out of sync, detect residue by
+    # hash-matching cooked files to current mod source files and drop them.
+    try:
+        dec2enc = load_asset_map(repo)
+        mods = discover_mods(repo)
+        for mod in mods:
+            for src, decoded in mod.files():
+                enc = dec2enc.get(decoded) or resolve_special(decoded, dec2enc)
+                if not enc:
+                    continue
+                dest = cooking / enc
+                if not dest.exists() or not src.exists():
+                    continue
+                bak = dest.parent / (dest.name + BACKUP_SUFFIX)
+                try:
+                    if sha1(dest) != sha1(src):
+                        continue
+                except OSError:
+                    continue
+
+                if bak.exists():
+                    print(f"  - restore {enc}  (residue via source hash + backup)")
+                    if not args.dry_run:
+                        try:
+                            shutil.copy2(bak, dest)
+                            bak.unlink()
+                        except OSError as e:
+                            print(f"  [ERROR] failed to restore {enc}: {e}",
+                                  file=sys.stderr)
+                            continue
+                else:
+                    print(f"  - drop    {enc}  (residue via source hash)")
+                    if not args.dry_run:
+                        try:
+                            dest.unlink()
+                        except OSError as e:
+                            print(f"  [ERROR] failed to drop {enc}: {e}",
+                                  file=sys.stderr)
+                            continue
+                cleaned_residue += 1
+
+        if getattr(args, "purge_known_overrides", False):
+            print("Aggressive purge enabled: removing known mod-mapped cooked files...")
+            seen: set[tuple[str, str]] = set()
+            for mod in mods:
+                for src, decoded in mod.files():
+                    enc = dec2enc.get(decoded) or resolve_special(decoded, dec2enc)
+                    key = (enc or "", str(src))
+                    if not enc or key in seen:
+                        continue
+                    seen.add(key)
+                    dest = cooking / enc
+                    if not dest.exists():
+                        continue
+                    bak = dest.parent / (dest.name + BACKUP_SUFFIX)
+                    if bak.exists():
+                        print(f"  - restore {enc}  (aggressive purge + backup)")
+                        if not args.dry_run:
+                            try:
+                                shutil.copy2(bak, dest)
+                                bak.unlink()
+                            except OSError as e:
+                                print(f"  [ERROR] aggressive purge restore failed "
+                                      f"for {enc}: {e}", file=sys.stderr)
+                                continue
+                        purged_known += 1
+                        continue
+
+                    # Only drop when we can prove the cooked file bytes are
+                    # exactly the mod source bytes.
+                    try:
+                        if src.exists() and sha1(dest) == sha1(src):
+                            print(f"  - drop    {enc}  (aggressive purge + source hash)")
+                            if not args.dry_run:
+                                dest.unlink()
+                            purged_known += 1
+                    except OSError:
+                        continue
+
+        # Final verification pass: flag any remaining cooked files that still
+        # byte-match known mod assets so restore cannot silently claim success.
+        residual_matches: set[str] = set()
+        for mod in mods:
+            for src, decoded in mod.files():
+                enc = dec2enc.get(decoded) or resolve_special(decoded, dec2enc)
+                if not enc:
+                    continue
+                dest = cooking / enc
+                if not dest.exists() or not src.exists():
+                    continue
+                try:
+                    if sha1(dest) == sha1(src):
+                        residual_matches.add(enc)
+                except OSError:
+                    continue
+
+        if residual_matches:
+            show = sorted(residual_matches)
+            print(f"  [warn] {len(show)} residual override(s) still match mod asset bytes:",
+                  file=sys.stderr)
+            for enc in show[:20]:
+                print(f"    - {enc}", file=sys.stderr)
+            if len(show) > 20:
+                print(f"    ... and {len(show) - 20} more", file=sys.stderr)
+            return 2
+    except Exception as e:
+        print(f"  [warn] residue sweep skipped: {e}", file=sys.stderr)
+
+    runtime_cleared = clear_runtime_mods(game_dir, args.dry_run)
+    if not runtime_cleared:
+        print("Failed to clear runtime mods directory.", file=sys.stderr)
+        return 1
+
+    if not clear_loader_artifacts(game_dir, args.dry_run):
+        print("Failed to clear loader artifacts.", file=sys.stderr)
+        return 1
+
+    # Best-effort: even if launch options fail to edit (e.g. Steam running),
+    # restore should still perform all filesystem cleanup above.
+    clear_steam_launch_options_for_vanilla(args.dry_run)
+
+    if restored_stale:
+        print(f"Recovered {restored_stale} stale backup(s).")
+    if cleaned_residue:
+        print(f"Cleaned {cleaned_residue} residual cooked override(s).")
+    if purged_known:
+        print(f"Purged {purged_known} known mod-mapped cooked file(s).")
+    print("Runtime mods directory cleared.")
     return 0
 
 
@@ -741,6 +1070,8 @@ def main() -> int:
                    help="restore every active override and clear state")
     g.add_argument("--list", action="store_true",
                    help="list discovered mods + their files")
+    ap.add_argument("--purge-known-overrides", action="store_true",
+                    help="aggressively remove cooked files mapped from known mod assets during restore")
     ap.add_argument("--no-merge", action="store_true",
                     help="skip auto-merging [[patch]] blocks into mods/_merged/")
     ap.add_argument("--force", action="store_true",

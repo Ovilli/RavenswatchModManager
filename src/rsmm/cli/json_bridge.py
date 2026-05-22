@@ -17,7 +17,9 @@ newline). Stderr is forwarded for diagnostics. Exit code is 0 on success.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -25,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from rsmm.engine.paths import MODS_DIR, REPO_ROOT
+from rsmm.cli.apply_mods import clear_runtime_mods, find_game_dir
 
 
 def _emit(value: Any) -> int:
@@ -68,8 +71,7 @@ def cmd_list() -> int:
     return _emit(items)
 
 
-def _run_rsmm(args: list[str]) -> int:
-    """Spawn `./rsmm <args>` and emit {ok, code, stdout, stderr}."""
+def _collect_rsmm(args: list[str]) -> dict[str, Any]:
     cmd = [str(REPO_ROOT / "rsmm"), *args]
     try:
         proc = subprocess.run(
@@ -80,13 +82,18 @@ def _run_rsmm(args: list[str]) -> int:
             check=False,
         )
     except FileNotFoundError as e:
-        return _emit({"ok": False, "code": 127, "stdout": "", "stderr": str(e)})
-    return _emit({
+        return {"ok": False, "code": 127, "stdout": "", "stderr": str(e)}
+    return {
         "ok": proc.returncode == 0,
         "code": proc.returncode,
         "stdout": proc.stdout,
         "stderr": proc.stderr,
-    })
+    }
+
+
+def _run_rsmm(args: list[str]) -> int:
+    """Spawn `./rsmm <args>` and emit {ok, code, stdout, stderr}."""
+    return _emit(_collect_rsmm(args))
 
 
 def cmd_apply(rest: list[str]) -> int:
@@ -101,13 +108,74 @@ def cmd_build(rest: list[str]) -> int:
     return _run_rsmm(["build", *rest])
 
 
+def _uninstall_loader_runtime(game_dir: Path) -> tuple[bool, str]:
+    """Best-effort cleanup of loader artifacts for a pure vanilla launch."""
+    notes: list[str] = []
+    loader_dll = game_dir / "winhttp.dll"
+    real_dll = game_dir / "winhttp_real.dll"
+    asset_map = game_dir / "asset_map.json"
+    rsmm_dir = game_dir / "rsmm"
+
+    try:
+        if real_dll.exists():
+            if loader_dll.exists():
+                loader_dll.unlink()
+            shutil.move(str(real_dll), str(loader_dll))
+            notes.append("restored stock winhttp.dll")
+        elif loader_dll.exists():
+            loader_dll.unlink()
+            notes.append("removed rsmm winhttp.dll")
+
+        if asset_map.exists():
+            asset_map.unlink()
+            notes.append("removed asset_map.json")
+
+        if rsmm_dir.exists():
+            shutil.rmtree(rsmm_dir)
+            notes.append("removed rsmm runtime dir")
+    except OSError as e:
+        return False, str(e)
+
+    if not notes:
+        notes.append("loader artifacts already absent")
+    return True, ", ".join(notes)
+
+
 def cmd_run(rest: list[str]) -> int:
     """Launch the game. --vanilla restores originals first."""
     args = ["run", "--force"]
     filtered = [a for a in rest if a != "--vanilla"]
     if len(filtered) < len(rest):
-        cmd_restore_all()
-        args.append("--force")
+        restore = _collect_rsmm(["apply", "--restore-all"])
+        if not restore["ok"]:
+                        return _emit(restore)
+        game_dir = find_game_dir()
+        if game_dir is None:
+            return _emit({
+                "ok": False,
+                "code": 1,
+                "stdout": "",
+                "stderr": "Could not autodetect Ravenswatch install to clear runtime mods.",
+            })
+        with contextlib.redirect_stdout(sys.stderr):
+            cleared = clear_runtime_mods(game_dir)
+        if not cleared:
+            return _emit({
+                "ok": False,
+                "code": 1,
+                "stdout": "",
+                "stderr": f"Failed to clear runtime mods dir: {game_dir / 'mods'}",
+            })
+        ok, detail = _uninstall_loader_runtime(game_dir)
+        if not ok:
+            return _emit({
+                "ok": False,
+                "code": 1,
+                "stdout": "",
+                "stderr": f"Failed to uninstall loader artifacts: {detail}",
+            })
+        print(f"Vanilla cleanup: {detail}", file=sys.stderr)
+        args.extend(["--force", "--clear-launch-options"])
     return _run_rsmm([*args, *filtered])
 
 
