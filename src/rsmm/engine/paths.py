@@ -227,6 +227,18 @@ ASSET_MAP_JSON: Path = DATA_DIR / "asset_map.json"
 ASSET_MAP_CSV: Path  = DATA_DIR / "asset_map.csv"
 GAME_VERSION_FINGERPRINT: str = ".rsmm_game_version.json"
 
+
+def self_cmd(args: list[str]) -> list[str]:
+    """Build a subprocess argv that re-invokes rsmm itself.
+
+    In a PyInstaller-frozen bundle there is no `rsmm` script next to the
+    executable — `sys.executable` IS the bundled rsmm. In a source tree,
+    re-invoke the python wrapper script via the current interpreter.
+    """
+    if getattr(sys, "frozen", False):
+        return [sys.executable, *args]
+    return [sys.executable, str(REPO_ROOT / "rsmm"), *args]
+
 # `MODS_DIR` and `DEFAULT_GAME_DIR` are resolved lazily via PEP 562
 # `__getattr__` so `import rsmm.engine.paths` does not trigger the
 # Ravenswatch-install disk scan (slow on Windows with network drives).

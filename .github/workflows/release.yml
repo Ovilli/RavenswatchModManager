@@ -57,6 +57,20 @@ jobs:
         with:
           python-version: '3.12'
 
+      # MSVC env is required for cmake to pick up cl.exe + linker on
+      # windows-latest. dtolnay/rust-toolchain installs Rust but does not
+      # arrange the VS dev shell.
+      - name: Setup MSVC dev shell (Windows)
+        if: matrix.platform == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build loader DLL (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: cmd
+        continue-on-error: true
+        run: |
+          call src\loader\build.bat
+
       - name: Build rsmm sidecar (PyInstaller)
         shell: bash
         run: |
@@ -80,10 +94,42 @@ jobs:
             --collect-submodules=rsmm.engine
             --collect-submodules=rsmm.sdk
           )
+          # PyInstaller's --add-data separator is ':' on Unix, ';' on Windows.
+          if [ "${{ matrix.platform }}" = "windows-latest" ]; then SEP=';'; else SEP=':'; fi
+          # Bundle every runtime file the CLI reads from the repo tree.
+          # The frozen binary resolves REPO_ROOT to _MEIPASS, so anything
+          # listed here is reachable at the same relative path it had in
+          # source. Skipping any of these makes apply/doctor/install-loader
+          # crash on a fresh user install (we hit this in public tests).
+          ADD_DATA=(
+            --add-data "pyproject.toml${SEP}."
+            --add-data "data/asset_map.json${SEP}data"
+            --add-data "data/asset_map.csv${SEP}data"
+            --add-data "src/rsmm/cli/install_loader.sh${SEP}src/rsmm/cli"
+            --add-data "src/rsmm/cli/install_loader.ps1${SEP}src/rsmm/cli"
+            --add-data "src/rsmm/cli/install_loader.bat${SEP}src/rsmm/cli"
+            --add-data "src/loader/lua${SEP}src/loader/lua"
+          )
+          # function_patterns.json is gitignored (regenerable, 20MB) — bundle
+          # if present, otherwise the loader DLL will regenerate on first use.
+          if [ -f "data/function_patterns.json" ]; then
+            ADD_DATA+=(--add-data "data/function_patterns.json${SEP}data")
+          fi
+          # schemas/ + templates/ are optional dev assets — bundle if present.
+          if [ -d "data/schemas" ]; then
+            ADD_DATA+=(--add-data "data/schemas${SEP}data/schemas")
+          fi
+          if [ -d "data/templates" ]; then
+            ADD_DATA+=(--add-data "data/templates${SEP}data/templates")
+          fi
+          # Ship the prebuilt Windows loader DLL when we just built it.
+          if [ -f "dist/winhttp.dll" ]; then
+            ADD_DATA+=(--add-data "dist/winhttp.dll${SEP}dist")
+          fi
           if [ "${{ matrix.platform }}" = "macos-latest" ]; then
             pyinstaller --onefile --name rsmm-mac --target-arch universal2 \
               --distpath "$PYI_DIST" --workpath "$PYI_WORK" --specpath "$PYI_SPEC" \
-              "${HIDDEN_IMPORTS[@]}" \
+              "${HIDDEN_IMPORTS[@]}" "${ADD_DATA[@]}" \
               ./rsmm
             cp "$PYI_DIST/rsmm-mac" "$OUT/rsmm-aarch64-apple-darwin"
             cp "$PYI_DIST/rsmm-mac" "$OUT/rsmm-x86_64-apple-darwin"
@@ -93,7 +139,7 @@ jobs:
             TRIPLE=$(rustc -vV | sed -n 's/host: //p')
             pyinstaller --onefile --name "rsmm-$TRIPLE" \
               --distpath "$OUT" --workpath "$PYI_WORK" --specpath "$PYI_SPEC" \
-              "${HIDDEN_IMPORTS[@]}" \
+              "${HIDDEN_IMPORTS[@]}" "${ADD_DATA[@]}" \
               ./rsmm
           fi
           ls -la "$OUT"

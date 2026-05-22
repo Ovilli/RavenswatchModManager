@@ -24,6 +24,7 @@ from rsmm.engine.paths import (
     ASSET_MAP_JSON,
     DIST_DIR,
     REPO_ROOT,
+    self_cmd,
 )
 from rsmm.engine.paths import (
     DEFAULT_GAME_DIR as DEFAULT_GAME,
@@ -49,13 +50,11 @@ def _build_loader() -> int:
 
 def _rebuild_map() -> int:
     print("==> rebuilding asset map")
-    return subprocess.call([sys.executable, str(REPO_ROOT / "rsmm"),
-                            "rebuild-asset-map"])
+    return subprocess.call(self_cmd(["rebuild-asset-map"]))
 
 
 def _apply(game_dir: Path) -> int:
-    return subprocess.call([sys.executable, str(REPO_ROOT / "rsmm"), "apply",
-                            "--game-dir", str(game_dir)])
+    return subprocess.call(self_cmd(["apply", "--game-dir", str(game_dir)]))
 
 
 def main() -> int:

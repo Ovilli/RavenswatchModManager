@@ -51,7 +51,15 @@ def _steam_root() -> Path | None:
             cands.append(Path(pf) / "Steam")
         for d in "CDEFGHIJKLMNOPQRSTUVWXYZ":
             root = Path(f"{d}:\\")
-            if not root.exists():
+            # Some drive letters refer to unreadable media (empty card
+            # readers, dismounted volumes). `Path.exists()` re-raises any
+            # OSError other than ENOENT — e.g. WinError 1005 "The volume
+            # does not contain a recognized file system" — so we must
+            # swallow them explicitly or the whole rsmm command aborts.
+            try:
+                if not root.exists():
+                    continue
+            except OSError:
                 continue
             cands += [
                 Path(f"{d}:\\Program Files (x86)\\Steam"),
@@ -67,8 +75,11 @@ def _steam_root() -> Path | None:
             home / ".local/share/Steam",
         ]
     for c in cands:
-        if (c / "steamapps").is_dir():
-            return c
+        try:
+            if (c / "steamapps").is_dir():
+                return c
+        except OSError:
+            continue
     return None
 
 

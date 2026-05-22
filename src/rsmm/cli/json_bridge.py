@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from rsmm.cli.apply_mods import clear_runtime_mods, find_game_dir
-from rsmm.engine.paths import MODS_DIR, REPO_ROOT
+from rsmm.engine.paths import MODS_DIR, REPO_ROOT, self_cmd
 
 
 def _emit(value: Any) -> int:
@@ -72,7 +72,7 @@ def cmd_list() -> int:
 
 
 def _collect_rsmm(args: list[str]) -> dict[str, Any]:
-    cmd = [str(REPO_ROOT / "rsmm"), *args]
+    cmd = self_cmd(args)
     try:
         proc = subprocess.run(
             cmd,
@@ -185,7 +185,7 @@ def cmd_doctor() -> int:
     output verbatim, but also parse a coarse OK/WARN/FAIL line tally
     from the printed summary for at-a-glance status.
     """
-    cmd = [str(REPO_ROOT / "rsmm"), "doctor"]
+    cmd = self_cmd(["doctor"])
     try:
         proc = subprocess.run(
             cmd, cwd=REPO_ROOT, capture_output=True, text=True, check=False,

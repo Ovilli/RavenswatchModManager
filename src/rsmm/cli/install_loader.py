@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from pathlib import Path
 
-from rsmm.engine.paths import COOKING_SUBDIR, DEFAULT_GAME_DIR
+from rsmm.engine.paths import COOKING_SUBDIR, DEFAULT_GAME_DIR, REPO_ROOT
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -23,7 +22,10 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
 
-    root = Path(__file__).resolve().parent.parent.parent.parent
+    # Use REPO_ROOT so this works under both a source checkout and a
+    # PyInstaller-frozen bundle (where REPO_ROOT resolves to _MEIPASS
+    # and the install_loader scripts must be bundled alongside it).
+    root = REPO_ROOT
     script_sh = root / "src/rsmm/cli/install_loader.sh"
     script_ps1 = root / "src/rsmm/cli/install_loader.ps1"
 
