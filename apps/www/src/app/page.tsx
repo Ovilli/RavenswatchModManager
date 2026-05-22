@@ -1,5 +1,6 @@
 import { Badge, buttonVariants } from '@rsmm/ui';
 import type { ModListItem } from '@rsmm/schemas';
+import type { Route } from 'next';
 import Link from 'next/link';
 import { FAQ } from './components/faq';
 import { OsDownload } from './os-download';
@@ -218,7 +219,7 @@ export default async function Home() {
             ? showcase.map((mod) => (
                 <Link
                   key={mod.id}
-                  href={`/registry/${mod.slug}`}
+                  href={`/registry/${mod.slug}` as Route}
                   className="grimoire-card overflow-hidden group cursor-pointer hover:border-gilt/40 transition-colors"
                 >
                   {mod.imageUrl ? (
