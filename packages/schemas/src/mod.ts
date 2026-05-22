@@ -27,6 +27,19 @@ export const modManifestSchema = z.object({
 
 export type ModManifest = z.infer<typeof modManifestSchema>;
 
+export const modCategorySchema = z.enum([
+  'gameplay',
+  'balance',
+  'cosmetic',
+  'qol',
+  'audio',
+  'difficulty',
+  'speedrun',
+  'utility',
+]);
+
+export type ModCategory = z.infer<typeof modCategorySchema>;
+
 export const modListItemSchema = z.object({
   id: z.string().uuid(),
   slug: modSlugSchema,
@@ -37,6 +50,10 @@ export const modListItemSchema = z.object({
   latestVersion: semverSchema.nullable(),
   downloads: z.number().int().nonnegative(),
   updatedAt: z.string().datetime(),
+  category: modCategorySchema.nullable(),
+  imageUrl: z.string().url().nullable(),
+  rating: z.number().min(0).max(5).nullable(),
+  tags: z.array(z.string()),
 });
 
 export type ModListItem = z.infer<typeof modListItemSchema>;
