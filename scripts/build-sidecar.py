@@ -97,14 +97,27 @@ def build_sidecar(target: str) -> None:
     hidden_import_args = [f"--hidden-import={m}" for m in HIDDEN_IMPORTS]
 
     # Bundle runtime data needed by CLI commands in frozen mode.
-    add_data_args = [
-        "--add-data", f"{REPO_ROOT / 'pyproject.toml'}{os.pathsep}.",
-        "--add-data", f"{REPO_ROOT / 'data' / 'asset_map.json'}{os.pathsep}data",
-        "--add-data", f"{REPO_ROOT / 'data' / 'asset_map.csv'}{os.pathsep}data",
-        "--add-data", f"{REPO_ROOT / 'data' / 'function_patterns.json'}{os.pathsep}data",
-        "--add-data", f"{REPO_ROOT / 'data' / 'schemas'}{os.pathsep}data/schemas",
-        "--add-data", f"{REPO_ROOT / 'data' / 'templates'}{os.pathsep}data/templates",
-    ]
+    # Anything listed here is available under the same relative path
+    # inside the PyInstaller bundle (resolved via _MEIPASS). Keep this
+    # list in sync with `.github/workflows/release.yml` — missing entries
+    # cause apply / doctor / install-loader to crash on fresh installs.
+    def _add(src: Path, dest: str) -> list[str]:
+        if not src.exists():
+            return []
+        return ["--add-data", f"{src}{os.pathsep}{dest}"]
+
+    add_data_args: list[str] = []
+    add_data_args += _add(REPO_ROOT / "pyproject.toml", ".")
+    add_data_args += _add(REPO_ROOT / "data" / "asset_map.json", "data")
+    add_data_args += _add(REPO_ROOT / "data" / "asset_map.csv", "data")
+    add_data_args += _add(REPO_ROOT / "data" / "function_patterns.json", "data")
+    add_data_args += _add(REPO_ROOT / "data" / "schemas", "data/schemas")
+    add_data_args += _add(REPO_ROOT / "data" / "templates", "data/templates")
+    add_data_args += _add(REPO_ROOT / "src" / "rsmm" / "cli" / "install_loader.sh", "src/rsmm/cli")
+    add_data_args += _add(REPO_ROOT / "src" / "rsmm" / "cli" / "install_loader.ps1", "src/rsmm/cli")
+    add_data_args += _add(REPO_ROOT / "src" / "rsmm" / "cli" / "install_loader.bat", "src/rsmm/cli")
+    add_data_args += _add(REPO_ROOT / "src" / "loader" / "lua", "src/loader/lua")
+    add_data_args += _add(REPO_ROOT / "dist" / "winhttp.dll", "dist")
 
     # Build with PyInstaller
     # The entry point is the ./rsmm script at the repo root.

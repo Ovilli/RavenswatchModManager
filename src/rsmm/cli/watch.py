@@ -24,6 +24,7 @@ from rsmm.engine.paths import (
     DIST_DIR,
     MODS_DIR,
     REPO_ROOT,
+    self_cmd,
 )
 
 
@@ -51,7 +52,7 @@ def _scan(roots: list[Path]) -> dict[str, float]:
 
 
 def _run_apply(game_dir: Path, dry_run: bool, log) -> int:
-    cmd = [sys.executable, str(REPO_ROOT / "rsmm"), "apply"]
+    cmd = self_cmd(["apply"])
     if dry_run:
         cmd.append("--dry-run")
     cmd += ["--game-dir", str(game_dir)]
