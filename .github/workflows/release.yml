@@ -99,7 +99,14 @@ jobs:
           # PyInstaller resolves relative --add-data SRC paths against the
           # --specpath dir, not the cwd. We use a separate spec dir so use
           # absolute paths here to keep the source unambiguous.
-          ROOT="$PWD"
+          # On git-bash (windows-latest) `$PWD` returns the MSYS-style
+          # `/d/a/...` which PyInstaller misreads as `\d\a\...`. Use
+          # `pwd -W` to get a real `D:/a/...` Windows path.
+          if [ "${{ matrix.platform }}" = "windows-latest" ]; then
+            ROOT="$(pwd -W)"
+          else
+            ROOT="$PWD"
+          fi
           # Bundle every runtime file the CLI reads from the repo tree.
           # The frozen binary resolves REPO_ROOT to _MEIPASS, so anything
           # listed here is reachable at the same relative path it had in
