@@ -1,5 +1,6 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { ApiError } from '@rsmm/api-client';
 import { useQuery } from '@tanstack/react-query';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import {
   Button,
@@ -13,7 +14,6 @@ import {
   StatPill,
 } from '../components/chrome';
 import { api } from '../lib/api';
-import { ApiError } from '@rsmm/api-client';
 import { activeProfile, useApp } from '../store';
 
 export const Route = createFileRoute('/mod/$slug')({
@@ -31,9 +31,7 @@ function ModDetailPage() {
     staleTime: 30_000,
   });
 
-  const liveBySlug = useApp((s) =>
-    Object.values(s.localMods).find((m) => m.slug === slug),
-  );
+  const liveBySlug = useApp((s) => Object.values(s.localMods).find((m) => m.slug === slug));
   const installed = useApp((s) => s.installed);
   const profile = useApp(activeProfile);
   const installMod = useApp((s) => s.installMod);
@@ -53,9 +51,7 @@ function ModDetailPage() {
           ← back
         </Button>
         <p className="font-serif-italic text-parchment">No mod matches “{slug}”.</p>
-        {error ? (
-          <p className="font-mono text-ash text-sm">{(error as Error).message}</p>
-        ) : null}
+        {error ? <p className="font-mono text-ash text-sm">{(error as Error).message}</p> : null}
       </div>
     );
   }
@@ -73,12 +69,9 @@ function ModDetailPage() {
   const localVersion = liveBySlug?.version ?? null;
   const installedHere = liveBySlug ? installed.includes(liveBySlug.id) : false;
   const enabled = installedHere && liveBySlug ? !profile.disabled.has(liveBySlug.id) : false;
-  const outdated =
-    localVersion && apiLatest && localVersion !== apiLatest ? true : false;
+  const outdated = Boolean(localVersion && apiLatest && localVersion !== apiLatest);
 
-  const markdown =
-    liveBySlug?.markdown ??
-    `# ${name}\n\n${summary || description || ''}`;
+  const markdown = liveBySlug?.markdown ?? `# ${name}\n\n${summary || description || ''}`;
   const sizeBytes = latestVersion?.sizeBytes ?? null;
 
   return (
@@ -101,7 +94,11 @@ function ModDetailPage() {
       <SectionHeader
         title={name}
         subtitle={`${author}${localVersion ? ` · v${localVersion}` : ''}${
-          outdated && apiLatest ? ` → ${apiLatest}` : apiLatest && !localVersion ? ` · v${apiLatest}` : ''
+          outdated && apiLatest
+            ? ` → ${apiLatest}`
+            : apiLatest && !localVersion
+              ? ` · v${apiLatest}`
+              : ''
         }`}
         right={
           installedHere && liveBySlug ? (
@@ -109,20 +106,12 @@ function ModDetailPage() {
               <MonoTag tone={enabled ? 'crimson' : 'default'}>
                 {enabled ? 'enabled' : 'disabled'}
               </MonoTag>
-              <Button
-                type="button"
-                variant="danger"
-                onClick={() => uninstall(liveBySlug.id)}
-              >
+              <Button type="button" variant="danger" onClick={() => uninstall(liveBySlug.id)}>
                 <Trash2 className="h-4 w-4" /> Uninstall
               </Button>
             </div>
           ) : (
-            <Button
-              type="button"
-              variant="primary"
-              onClick={() => installMod(slug)}
-            >
+            <Button type="button" variant="primary" onClick={() => installMod(slug)}>
               <Plus className="h-4 w-4" /> Install
             </Button>
           )
