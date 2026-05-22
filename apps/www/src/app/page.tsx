@@ -6,6 +6,8 @@ import { OsDownload } from './os-download';
 import { QuickSearch } from './quick-search';
 import { MockClient } from './mock-client';
 
+export const revalidate = 300;
+
 interface HomeData {
   mods: ModListItem[];
   totalMods: number;
@@ -19,10 +21,8 @@ async function getHomeData(): Promise<HomeData> {
 
   try {
     const [modRes, ghRes] = await Promise.allSettled([
-      fetch(`${apiBase}/api/mods?limit=48`, { next: { revalidate: 300 } }),
-      fetch('https://api.github.com/repos/Ovilli/RavenswatchModManager/releases/latest', {
-        next: { revalidate: 3600 },
-      }),
+      fetch(`${apiBase}/api/mods?limit=48`),
+      fetch('https://api.github.com/repos/Ovilli/RavenswatchModManager/releases/latest'),
     ]);
 
     let mods: ModListItem[] = [];
