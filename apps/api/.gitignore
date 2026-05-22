@@ -1,3 +1,5 @@
 dist/
 api/*.js
 api/*.js.map
+/index.js
+/index.js.map
