@@ -1,125 +1,58 @@
-import React, { useEffect, useState } from 'react';
-import { Button } from './chrome';
+import { useEffect, useState } from 'react';
 
-type Promo = {
-  id: string;
-  title: string;
-  description?: string;
-  image?: string;
-  url: string;
-  sponsor?: string;
-};
+const AD_ORIGIN =
+  import.meta.env.VITE_ADS_ORIGIN ?? 'https://ravenswatch.ovilli.de';
+const AD_BANNER_PATH = '/ads/banner';
 
-const FALLBACK: Promo[] = [
-  {
-    id: 'partner-1',
-    title: 'Support the Modding Community',
-    description: 'Check out curated tools and partner content hand-picked for Ravenswatch mod authors.',
-    image: undefined,
-    url: 'https://github.com/your-org',
-    sponsor: 'RSMM',
-  },
-];
-
-const STORAGE_KEY = 'rsmm.promos.v1';
-const TTL = 1000 * 60 * 60 * 24; // 24h
-
+/**
+ * Embeds an ad slot served by the docs site as an iframe. The docs site
+ * sits on a real domain so AdSense (or any other ad SDK) can run there
+ * within Google's terms. The Tauri client only loads the slot via iframe.
+ */
 export default function PromotedBanner({ vertical }: { vertical?: boolean } = {}) {
-  const [promo, setPromo] = useState<Promo | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    let mounted = true;
+    if (loaded) return;
+    const t = window.setTimeout(() => {
+      if (!loaded) setFailed(true);
+    }, 8000);
+    return () => window.clearTimeout(t);
+  }, [loaded]);
 
-    async function load() {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Date.now() - parsed.ts < TTL && parsed.data && parsed.data.length) {
-            const cachedPromo = parsed.data[0];
-            if (mounted && cachedPromo) setPromo(cachedPromo);
-            return;
-          }
-        }
+  const src = `${AD_ORIGIN}${AD_BANNER_PATH}`;
 
-        // try remote fetch from /promos.json (served by frontend/public)
-        try {
-          const resp = await fetch('/promos.json', { cache: 'no-store' });
-          if (resp.ok) {
-            const data: Promo[] = await resp.json();
-            if (data?.length) {
-              localStorage.setItem(STORAGE_KEY, JSON.stringify({ ts: Date.now(), data }));
-              const firstPromo = data[0];
-              if (mounted && firstPromo) setPromo(firstPromo);
-              return;
-            }
-          }
-        } catch (e) {
-          // ignore and fall back
-        }
-
-        // fallback to embedded promos
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ ts: Date.now(), data: FALLBACK }));
-        const fallbackPromo = FALLBACK[0];
-        if (mounted && fallbackPromo) setPromo(fallbackPromo);
-      } catch (err) {
-        const fallbackPromo = FALLBACK[0];
-        if (mounted && fallbackPromo) setPromo(fallbackPromo);
-      }
-    }
-
-    load();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  if (!promo) return null;
-
-  const openLink = async (url: string) => {
-    try {
-      const { open } = await import('@tauri-apps/plugin-shell');
-      await open(url);
-      return;
-    } catch {
-      // Not in Tauri or shell plugin unavailable — fallback to browser open
-    }
-    window.open(url, '_blank', 'noopener');
-  };
-
-  if (vertical) {
+  if (failed) {
     return (
-      <div className="grimoire-card flex flex-col items-center gap-2 px-3 py-3 w-full">
-        <div className="cover-placeholder w-14 h-14 flex items-center justify-center text-sm">{promo.sponsor ?? 'Ad'}</div>
-        <div className="text-center">
-          <div className="font-fraktur text-sm text-parchment">{promo.title}</div>
-          {promo.description ? <div className="text-sm text-smoke font-serif-italic">{promo.description}</div> : null}
-        </div>
-        <div>
-          <Button type="button" size="sm" onClick={() => openLink(promo.url)}>
-            Learn
-          </Button>
-        </div>
+      <div
+        className={
+          vertical
+            ? 'grimoire-card flex flex-col items-center gap-2 px-3 py-3 w-full'
+            : 'grimoire-card flex items-center gap-3 px-3 py-2 max-w-md'
+        }
+      >
+        <span className="font-mono text-xs uppercase tracking-[0.22em] text-ash">
+          ad slot offline
+        </span>
       </div>
     );
   }
 
+  const sizeClass = vertical ? 'h-32 w-full' : 'h-20 w-full max-w-md';
+
   return (
-    <div className="grimoire-card flex items-center gap-3 px-3 py-2 max-w-md">
-      <div className="flex-0 w-12 h-12 cover-placeholder flex items-center justify-center text-sm">{promo.sponsor ?? 'Ad'}</div>
-      <div className="flex-1">
-        <div className="flex items-baseline justify-between gap-3">
-          <div>
-            <div className="font-fraktur text-sm text-parchment">{promo.title}</div>
-            {promo.description ? <div className="text-sm text-smoke font-serif-italic">{promo.description}</div> : null}
-          </div>
-          <div className="ml-2">
-            <Button type="button" size="sm" onClick={() => openLink(promo.url)}>
-              Learn
-            </Button>
-          </div>
-        </div>
-      </div>
+    <div className={`grimoire-card overflow-hidden ${sizeClass}`}>
+      <iframe
+        title="Sponsored content"
+        src={src}
+        loading="lazy"
+        sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+        referrerPolicy="no-referrer-when-downgrade"
+        onLoad={() => setLoaded(true)}
+        onError={() => setFailed(true)}
+        className="h-full w-full border-0 bg-transparent"
+      />
     </div>
   );
 }
