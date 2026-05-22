@@ -17,11 +17,13 @@ import { Button, Crest, StatPill } from '../components/chrome';
 import { runVanilla, runModded } from '../lib/rsmm';
 import { shortcutLabel } from '../lib/platform';
 import PromotedBanner from '../components/PromotedBanner';
+import { AccountStrip } from '../components/account-strip';
 import { CommandPalette } from '../components/command-palette';
 import { ProfilePopover } from '../components/profile-popover';
 import { ToastProvider, DialogProvider } from '../components/toast';
 import { UpdaterBanner } from '../components/updater';
 import { activeProfile, detectConflicts, outdatedCount, useApp } from '../store';
+import { appendLauncherLog, clearLauncherLog } from '../lib/launcher-log';
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   component: RootLayout,
@@ -70,19 +72,42 @@ function StatusStrip() {
   const conflictCount = useMemo(() => detectConflicts(profile).length, [profile]);
   const outdated = useMemo(() => outdatedCount(installed), [installed]);
   const [launching, setLaunching] = useState<'vanilla' | 'modded' | null>(null);
+  const [running, setRunning] = useState<'vanilla' | 'modded' | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!running) return;
+    const timer = setTimeout(() => {
+      setRunning(null);
+    }, 30_000);
+    return () => clearTimeout(timer);
+  }, [running]);
+
   const handleLaunch = async (mode: 'vanilla' | 'modded') => {
+    if (running) return;
     setLaunching(mode);
     setLaunchError(null);
     try {
+      await clearLauncherLog();
+      await appendLauncherLog('info', `Launch requested: ${mode}`);
       const fn = mode === 'vanilla' ? runVanilla : runModded;
       const result = await fn();
       if (!result || !result.ok) {
-        setLaunchError(`${mode} launch failed (exit ${result?.code ?? 'unknown'})`);
+        const message = `${mode} launch failed (exit ${result?.code ?? 'unknown'})`;
+        setLaunchError(message);
+        await appendLauncherLog('error', message, {
+          code: result?.code ?? null,
+          stdout: result?.stdout ?? '',
+          stderr: result?.stderr ?? '',
+        });
+      } else {
+        setRunning(mode);
+        await appendLauncherLog('info', `Launch handoff complete: ${mode} (running state set)`);
       }
     } catch (e) {
-      setLaunchError(String(e));
+      const message = String(e);
+      setLaunchError(message);
+      await appendLauncherLog('error', message, { mode });
     } finally {
       setLaunching(null);
     }
@@ -102,21 +127,33 @@ function StatusStrip() {
           <Button
             type="button"
             size="sm"
-            disabled={launching !== null}
+            disabled={launching !== null || running !== null}
             onClick={() => handleLaunch('vanilla')}
           >
             <LaunchIcon className="h-5 w-5 text-parchment" />
-            <span>{launching === 'vanilla' ? 'Restoring…' : 'Launch Vanilla'}</span>
+            <span>
+              {launching === 'vanilla'
+                ? 'Restoring…'
+                : running === 'vanilla'
+                  ? 'Running…'
+                  : 'Launch Vanilla'}
+            </span>
           </Button>
           <Button
             type="button"
             size="sm"
             variant="primary"
-            disabled={launching !== null}
+            disabled={launching !== null || running !== null}
             onClick={() => handleLaunch('modded')}
           >
             <LaunchIcon className="h-5 w-5 text-parchment" />
-            <span>{launching === 'modded' ? 'Applying…' : 'Launch Modded'}</span>
+            <span>
+              {launching === 'modded'
+                ? 'Applying…'
+                : running === 'modded'
+                  ? 'Running…'
+                  : 'Launch Modded'}
+            </span>
           </Button>
         </div>
 
@@ -284,6 +321,7 @@ function RootLayout() {
                 <NavLink key={n.to} {...n} />
               ))}
             </nav>
+            <AccountStrip />
             <div className="px-4 pb-4">
               <PromotedBanner vertical />
             </div>
