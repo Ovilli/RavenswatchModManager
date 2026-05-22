@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsup",
+    "vercel-build": "tsup && rm -rf src dist tsconfig.json tsconfig.tsbuildinfo tsup.config.ts",
     "start": "node dist/index.js",
     "check-types": "tsc --noEmit",
     "clean": "rm -rf dist .turbo api/*.js api/*.js.map"
