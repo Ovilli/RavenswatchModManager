@@ -44,7 +44,7 @@ def test_parse_libraryfolders_vdf_flat(tmp_path):
         encoding="utf-8",
     )
     libs = paths_mod._parse_libraryfolders_vdf(vdf)
-    assert any(str(p).endswith(".steam/steam") for p in libs)
+    assert any(p.as_posix().endswith(".steam/steam") for p in libs)
     # Backslash-escaped Windows path round-trips into a single backslash.
     assert any("Games" in str(p) and "SteamLibrary" in str(p) for p in libs)
 
