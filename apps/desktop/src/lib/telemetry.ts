@@ -1,5 +1,6 @@
 import type { TelemetryRun } from '@rsmm/schemas';
 import { api } from './api';
+import { appendLauncherLog } from './launcher-log';
 
 const RSMM_VERSION = import.meta.env.VITE_RSMM_VERSION ?? '0.0.0-dev';
 
@@ -13,30 +14,17 @@ export function detectOs(): TelemetryRun['os'] {
   return 'unknown';
 }
 
-export async function reportRun(args: {
-  ok: boolean;
-  durationMs?: number;
-  payload?: Record<string, unknown>;
-}) {
-  try {
-    await api.telemetry.run({
-      rsmmVersion: RSMM_VERSION,
-      os: detectOs(),
-      ok: args.ok,
-      durationMs: args.durationMs,
-      payload: args.payload,
-    });
-  } catch {
-    // telemetry is best-effort; never throw from caller path
-  }
-}
-
 export async function reportCrash(args: {
   errorClass: string;
   message: string;
   stacktrace: string;
   context?: Record<string, unknown>;
 }) {
+  const crashPayload = {
+    errorClass: args.errorClass,
+    message: args.message,
+    context: args.context ?? null,
+  };
   try {
     await api.telemetry.crash({
       rsmmVersion: RSMM_VERSION,
@@ -49,6 +37,7 @@ export async function reportCrash(args: {
   } catch {
     // best-effort
   }
+  await appendLauncherLog('error', 'Frontend crash reported', crashPayload);
 }
 
 export function wireGlobalErrorHandlers() {

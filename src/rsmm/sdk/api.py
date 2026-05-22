@@ -10,8 +10,9 @@ Non-breaking additions = minor bump. Anything else = major bump.
 from __future__ import annotations
 
 import functools
-import operator
 import re
+
+from rsmm.manifest_graph import _parse_version, _version_ok
 
 API_VERSION: str = "1.0.0"
 
@@ -46,43 +47,24 @@ def registry() -> dict[str, callable]:
     return dict(_REGISTRY)
 
 
-# --- semver-spec parser (shared by plugins, repo, intermod) ----------------
+# Re-exported so callers that historically reached for `rsmm.sdk.api._parse_v`
+# keep working. New code should import directly from `rsmm.manifest_graph`.
+_parse_v = _parse_version
 
-_OPS = {
-    ">=": operator.ge, "<=": operator.le,
-    ">":  operator.gt, "<":  operator.lt,
-    "==": operator.eq, "=":  operator.eq, "!=": operator.ne,
-}
 _TOKEN = re.compile(r"\s*(>=|<=|==|!=|>|<|=)?\s*([\d.]+)\s*")
-
-
-def _parse_v(s: str) -> tuple[int, ...]:
-    parts = re.findall(r"\d+", s or "")
-    return tuple(int(p) for p in parts) or (0,)
-
-
-def _pad(a: tuple[int, ...], b: tuple[int, ...]) -> tuple[tuple, tuple]:
-    n = max(len(a), len(b))
-    return a + (0,) * (n - len(a)), b + (0,) * (n - len(b))
-
-
-def _match_one(have: tuple[int, ...], op: str, want: tuple[int, ...]) -> bool:
-    fn = _OPS.get(op or ">=")
-    h, w = _pad(have, want)
-    return fn(h, w) if fn else True
 
 
 def satisfies(have_version: str, spec: str) -> bool:
     """`satisfies("1.2.3", ">=1.0,<2") == True`. Comma-separated AND."""
     if not spec:
         return True
-    have = _parse_v(have_version)
+    have = _parse_version(have_version)
     for clause in spec.split(","):
         m = _TOKEN.fullmatch(clause)
         if not m:
             raise ValueError(f"bad version clause: {clause!r}")
-        op, ver = m.group(1) or ">=", m.group(2)
-        if not _match_one(have, op, _parse_v(ver)):
+        op = m.group(1) or ">="
+        if not _version_ok(have, op, _parse_version(m.group(2))):
             return False
     return True
 

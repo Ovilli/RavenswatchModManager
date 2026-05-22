@@ -60,14 +60,6 @@ class InterModRegistry:
             )
         return InterModProxy(entry)
 
-    def has(self, name: str) -> bool:
-        return name in self._by_name
-
-    def list(self) -> dict[str, tuple[str, str]]:
-        """`{api_name: (mod_id, version)}` snapshot."""
-        return {n: (e.mod_id, e.version) for n, e in self._by_name.items()}
-
-
 class InterModProxy:
     """Read-only proxy around an exposed table. Catches producer errors."""
 

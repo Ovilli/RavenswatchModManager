@@ -13,6 +13,8 @@ export interface ApiClientOptions {
   baseUrl: string;
   fetch?: typeof fetch;
   getToken?: () => string | null | undefined;
+  /** Wallclock timeout for each request. Defaults to 30s. */
+  timeoutMs?: number;
 }
 
 export class ApiError extends Error {
@@ -26,8 +28,18 @@ export class ApiError extends Error {
   }
 }
 
+export class ApiTimeoutError extends ApiError {
+  constructor(path: string, timeoutMs: number) {
+    super(`${path} timed out after ${timeoutMs}ms`, 0, { timeoutMs });
+    this.name = 'ApiTimeoutError';
+  }
+}
+
+const DEFAULT_TIMEOUT_MS = 30_000;
+
 export function createApiClient(options: ApiClientOptions) {
   const f = options.fetch ?? fetch;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const headers = (): Record<string, string> => {
     const h: Record<string, string> = { 'Content-Type': 'application/json' };
     const tok = options.getToken?.();
@@ -37,11 +49,35 @@ export function createApiClient(options: ApiClientOptions) {
 
   async function request<T>(path: string, init: RequestInit, schema: z.ZodType<T>): Promise<T> {
     const baseUrl = options.baseUrl.replace(/\/+$/, '');
-    const res = await f(`${baseUrl}${path}`, {
-      ...init,
-      headers: { ...headers(), ...(init.headers ?? {}) },
-      credentials: 'include',
-    });
+    const ctrl = new AbortController();
+    // Compose caller's signal (if any) with our timeout so explicit
+    // cancellation still works.
+    if (init.signal) {
+      if (init.signal.aborted) ctrl.abort(init.signal.reason);
+      else init.signal.addEventListener('abort', () => ctrl.abort(init.signal?.reason), { once: true });
+    }
+    const timer = setTimeout(() => ctrl.abort('timeout'), timeoutMs);
+    let res: Response;
+    try {
+      res = await f(`${baseUrl}${path}`, {
+        ...init,
+        signal: ctrl.signal,
+        headers: { ...headers(), ...(init.headers ?? {}) },
+        credentials: 'include',
+      });
+    } catch (err) {
+      if (
+        (err instanceof DOMException && err.name === 'AbortError') ||
+        (err instanceof Error && err.name === 'AbortError')
+      ) {
+        if (ctrl.signal.reason === 'timeout') {
+          throw new ApiTimeoutError(path, timeoutMs);
+        }
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
     const json = await res.json().catch(() => null);
     if (!res.ok) throw new ApiError(`${res.status} ${path}`, res.status, json);
     try {

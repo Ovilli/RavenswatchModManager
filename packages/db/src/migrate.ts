@@ -6,7 +6,10 @@ import { fileURLToPath } from 'node:url';
 import { getDb } from './client';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
-loadEnv({ path: resolve(here, '..', '..', '..', '.env') });
+const repoRoot = resolve(here, '..', '..', '..');
+loadEnv({ path: resolve(repoRoot, '.env.local') });
+loadEnv({ path: resolve(repoRoot, '.env') });
+loadEnv({ path: '.env.local' });
 loadEnv();
 
 async function main() {

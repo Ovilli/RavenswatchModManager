@@ -148,13 +148,6 @@ class ConfigStore:
         self._values[key] = self.schema.fields[key].coerce(value)
         self._persist()
 
-    def update(self, values: dict[str, Any]) -> None:
-        self._values.update(self.schema.validate(values))
-        self._persist()
-
-    def all(self) -> dict[str, Any]:
-        return dict(self._values)
-
     def _persist(self) -> None:
         # Hand-emit TOML to avoid a hard dep. We only emit primitive types
         # the schema permits, so this is straightforward.

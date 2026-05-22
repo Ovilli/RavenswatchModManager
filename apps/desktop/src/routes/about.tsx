@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { Fleuron, MonoTag, Panel, SectionHeader, Crest, Button } from '../components/chrome';
 import pkg from '../../package.json';
+import { Button, Crest, Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
 
 export const Route = createFileRoute('/about')({
   component: AboutPage,
@@ -23,15 +23,16 @@ function AboutPage() {
           </div>
           <div>
             <h2 className="font-fraktur text-2xl text-parchment">Ravenswatch Mod Manager</h2>
-            <p className="font-serif-italic text-ash">Version <span className="font-mono">{version}</span></p>
+            <p className="font-serif-italic text-ash">
+              Version <span className="font-mono">{version}</span>
+            </p>
           </div>
         </div>
 
         <p className="font-serif-italic leading-relaxed text-parchment/90">
-          RSMM is a community mod manager for Ravenswatch. It applies cooked-asset
-          overrides and Lua-scripted mods without requiring manual edits to the game's
-          install directory. Profiles let you keep a vanilla loadout for daily runs and a
-          curated mod set for other playstyles.
+          RSMM is a community mod manager for Ravenswatch. It applies cooked-asset overrides and
+          Lua-scripted mods without requiring manual edits to the game's install directory. Profiles
+          let you keep a vanilla loadout for daily runs and a curated mod set for other playstyles.
         </p>
 
         <Fleuron className="my-2" />
@@ -76,15 +77,13 @@ function AboutPage() {
       <Panel className="flex flex-col md:flex-row items-center justify-between gap-3">
         <div>
           <h4 className="font-fraktur text-base text-parchment">Credits</h4>
-          <p className="text-smoke font-serif-italic">Created by the RSMM community · Licensed under the project license</p>
+          <p className="text-smoke font-serif-italic">
+            Created by the RSMM community · Licensed under the project license
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <MonoTag>v{version}</MonoTag>
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => window.open('/LICENSE', '_blank')}
-          >
+          <Button type="button" size="sm" onClick={() => window.open('/LICENSE', '_blank')}>
             View license
           </Button>
         </div>

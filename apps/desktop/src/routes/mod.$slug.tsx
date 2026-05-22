@@ -14,6 +14,7 @@ import {
   StatPill,
 } from '../components/chrome';
 import { api } from '../lib/api';
+import { inTauri } from '../lib/platform';
 import { activeProfile, useApp } from '../store';
 
 export const Route = createFileRoute('/mod/$slug')({
@@ -29,6 +30,7 @@ function ModDetailPage() {
     queryFn: () => api.mods.get(slug),
     retry: (count, err) => (err instanceof ApiError && err.status === 404 ? false : count < 1),
     staleTime: 30_000,
+    enabled: inTauri(),
   });
 
   const liveBySlug = useApp((s) => Object.values(s.localMods).find((m) => m.slug === slug));
@@ -38,7 +40,21 @@ function ModDetailPage() {
   const uninstall = useApp((s) => s.uninstallMod);
 
   if (isLoading) {
-    return <p className="font-serif-italic py-10 text-center text-ash">Loading…</p>;
+    return (
+      <div className="space-y-6 animate-pulse" aria-busy="true">
+        <div className="h-8 w-24 bg-oxblood/15 rounded" />
+        <div className="aspect-[21/9] w-full bg-oxblood/20 rounded" />
+        <div className="h-10 w-2/3 bg-oxblood/25 rounded" />
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+          <div className="md:col-span-2 space-y-3">
+            <div className="h-4 w-full bg-oxblood/15 rounded" />
+            <div className="h-4 w-5/6 bg-oxblood/15 rounded" />
+            <div className="h-4 w-4/6 bg-oxblood/15 rounded" />
+          </div>
+          <div className="h-40 bg-oxblood/10 rounded" />
+        </div>
+      </div>
+    );
   }
 
   const apiMod = data?.mod;
@@ -51,7 +67,6 @@ function ModDetailPage() {
           ← back
         </Button>
         <p className="font-serif-italic text-parchment">No mod matches “{slug}”.</p>
-        {error ? <p className="font-mono text-ash text-sm">{(error as Error).message}</p> : null}
       </div>
     );
   }
@@ -111,7 +126,11 @@ function ModDetailPage() {
               </Button>
             </div>
           ) : (
-            <Button type="button" variant="primary" onClick={() => installMod(slug)}>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => installMod(apiMod?.id ?? liveBySlug?.id ?? slug)}
+            >
               <Plus className="h-4 w-4" /> Install
             </Button>
           )

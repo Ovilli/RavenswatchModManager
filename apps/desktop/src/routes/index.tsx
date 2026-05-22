@@ -1,8 +1,27 @@
-import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, GripVertical, LayoutGrid, List, Plus } from 'lucide-react';
+import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
+import {
+  AlertTriangle,
+  GripVertical,
+  LayoutGrid,
+  List,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  X,
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, EmptyState, Fleuron, MonoTag, SectionHeader, InkSwitch, StatPill } from '../components/chrome';
+import {
+  Button,
+  CopyButton,
+  EmptyState,
+  Fleuron,
+  InkSwitch,
+  MonoTag,
+  SectionHeader,
+  StatPill,
+} from '../components/chrome';
+import { SetupBanner } from '../components/setup-banner';
 import { MOCK_MODS, type ModCategory } from '../data/mock-mods';
 import { listLocalMods } from '../lib/rsmm';
 import { activeProfile, detectConflicts, getMod, useApp } from '../store';
@@ -12,6 +31,19 @@ export const Route = createFileRoute('/')({
 });
 
 type ViewMode = 'cards' | 'list';
+type LibraryStatusFilter = 'all' | 'enabled' | 'disabled' | 'outdated';
+
+const LIBRARY_CATEGORIES: { id: ModCategory | 'all'; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'gameplay', label: 'Gameplay' },
+  { id: 'balance', label: 'Balance' },
+  { id: 'cosmetic', label: 'Cosmetic' },
+  { id: 'qol', label: 'QoL' },
+  { id: 'audio', label: 'Audio' },
+  { id: 'difficulty', label: 'Difficulty' },
+  { id: 'speedrun', label: 'Speedrun' },
+  { id: 'utility', label: 'Utility' },
+];
 
 const CATEGORY_LABEL: Record<ModCategory, string> = {
   gameplay: 'Gameplay',
@@ -34,6 +66,13 @@ function LibraryPage() {
   const syncLocalMods = useApp((s) => s.syncLocalMods);
   const modsDir = useApp((s) => s.settings.modsDir);
   const [view, setView] = useState<ViewMode>('cards');
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState<ModCategory | 'all'>('all');
+  const [status, setStatus] = useState<LibraryStatusFilter>('all');
+  const enabledCount = useMemo(
+    () => installed.filter((id) => !profile.disabled.has(id)).length,
+    [installed, profile.disabled],
+  );
   const conflicts = useMemo(() => detectConflicts(profile), [profile]);
 
   const { data: localMods, error: localModsError } = useQuery({
@@ -47,29 +86,54 @@ function LibraryPage() {
     if (localMods) syncLocalMods(localMods);
   }, [localMods, syncLocalMods]);
 
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return installed
+      .map((id, orderIdx) => {
+        const mod = getMod(id);
+        if (!mod) return null;
+        const enabled = !profile.disabled.has(id);
+        const outdated = mod.version !== mod.latestVersion;
+        return { id, orderIdx, mod, enabled, outdated };
+      })
+      .filter((row): row is NonNullable<typeof row> => {
+        if (!row) return false;
+        if (category !== 'all' && row.mod.category !== category) return false;
+        if (status === 'enabled' && !row.enabled) return false;
+        if (status === 'disabled' && row.enabled) return false;
+        if (status === 'outdated' && !row.outdated) return false;
+        if (!needle) return true;
+        return (
+          row.mod.name.toLowerCase().includes(needle) ||
+          row.mod.author.toLowerCase().includes(needle) ||
+          row.mod.summary.toLowerCase().includes(needle) ||
+          row.mod.category.toLowerCase().includes(needle) ||
+          row.mod.tags.some((tag) => tag.toLowerCase().includes(needle))
+        );
+      });
+  }, [category, installed, profile.disabled, query, status]);
+
   const grouped = useMemo(() => {
     const groups = new Map<ModCategory, { id: string; orderIdx: number }[]>();
-    profile.loadOrder.forEach((id, orderIdx) => {
-      const mod = getMod(id);
-      if (!mod) return;
+    for (const { id, orderIdx, mod } of filtered) {
       const list = groups.get(mod.category) ?? [];
       list.push({ id, orderIdx });
       groups.set(mod.category, list);
-    });
+    }
     return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [profile.loadOrder]);
+  }, [filtered]);
 
-  if (profile.loadOrder.length === 0) {
+  const filterCount = [category !== 'all', status !== 'all', query.trim().length > 0].filter(
+    Boolean,
+  ).length;
+
+  if (installed.length === 0) {
     return (
       <EmptyState
         title="An empty grimoire"
-        body="No mods in this profile yet. Browse the index to add your first."
+        body="No mods installed yet. Browse the index to add your first."
         action={
-          <Link
-            to="/browse"
-            className="btn-grim"
-            data-variant="primary"
-          >
+          <Link to="/browse" className="btn-grim" data-variant="primary">
             Browse mods
           </Link>
         }
@@ -79,9 +143,10 @@ function LibraryPage() {
 
   return (
     <div className="space-y-6">
+      <SetupBanner />
       <SectionHeader
         title="Library"
-        subtitle={`${profile.loadOrder.length} mods bound to ${profile.name}.`}
+        subtitle={`${installed.length} mods in the local folder.`}
         right={
           <div className="flex items-center gap-2">
             <Button
@@ -104,37 +169,92 @@ function LibraryPage() {
             >
               <List className="h-4 w-4" />
             </Button>
-            <Link
-              to="/browse"
-              className="btn-grim ml-2"
-              data-variant="primary"
-            >
+            <Link to="/browse" className="btn-grim ml-2" data-variant="primary">
               <Plus className="h-4 w-4" /> Add mod
             </Link>
           </div>
         }
       />
 
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[260px] flex-1">
+          <Search
+            className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ash"
+            aria-hidden
+          />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search installed mods…"
+            aria-label="Search installed mods"
+            className="input-grim pl-9"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-2 font-mono text-xs uppercase tracking-[0.22em] text-ash">
+            <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden /> Filters
+          </span>
+          {(['all', 'enabled', 'disabled', 'outdated'] as const).map((item) => (
+            <Button
+              key={item}
+              type="button"
+              onClick={() => setStatus(item)}
+              aria-pressed={status === item}
+              variant={status === item ? 'gilt' : 'default'}
+              size="sm"
+            >
+              {item}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {LIBRARY_CATEGORIES.map((item) => (
+          <Button
+            key={item.id}
+            type="button"
+            onClick={() => setCategory(item.id)}
+            aria-pressed={category === item.id}
+            variant={category === item.id ? 'danger' : 'default'}
+            size="sm"
+          >
+            {item.label}
+          </Button>
+        ))}
+        {filterCount > 0 ? (
+          <Button
+            type="button"
+            onClick={() => {
+              setQuery('');
+              setCategory('all');
+              setStatus('all');
+            }}
+            variant="default"
+            size="sm"
+          >
+            <X className="h-4 w-4" /> Clear filters
+          </Button>
+        ) : null}
+      </div>
+
       {localModsError ? (
         <div className="ember-banner flex items-center gap-3 px-4 py-3">
-          <AlertTriangle className="h-4 w-4 text-crimson" />
+          <AlertTriangle className="h-4 w-4 text-crimson shrink-0" />
           <span className="font-serif-italic text-base">
             Couldn’t reach rsmm CLI. Showing cached library only.
           </span>
-          <span className="font-mono ml-auto text-ash">{(localModsError as Error).message}</span>
+          <CopyButton value={(localModsError as Error).message} />
         </div>
       ) : null}
 
       {conflicts.length > 0 ? (
-        <Link
-          to="/conflicts"
-          className="ember-banner flex items-center justify-between px-4 py-3"
-        >
+        <Link to="/conflicts" className="ember-banner flex items-center justify-between px-4 py-3">
           <span className="flex items-center gap-3">
             <AlertTriangle className="h-4 w-4 text-crimson" />
             <span className="font-serif-italic text-base">
-              {conflicts.length} {conflicts.length === 1 ? 'conflict' : 'conflicts'} between
-              enabled mods.
+              {conflicts.length} {conflicts.length === 1 ? 'conflict' : 'conflicts'} between enabled
+              mods.
             </span>
           </span>
           <span className="font-mono text-ash">Resolve →</span>
@@ -167,9 +287,30 @@ function LibraryPage() {
 
       <div className="font-mono pt-6 text-center text-ash">
         <div className="flex justify-center">
-          <StatPill value={installed.length} label={`installed in ${profile.name}`} />
+          <StatPill value={installed.length} label="in folder" />
+          <StatPill value={enabledCount} label="enabled in profile" className="ml-2" />
         </div>
       </div>
+
+      {filtered.length === 0 ? (
+        <EmptyState
+          title="No mods match those filters"
+          body="Try a broader search or clear one of the filters to show more installed mods."
+          action={
+            <Button
+              type="button"
+              onClick={() => {
+                setQuery('');
+                setCategory('all');
+                setStatus('all');
+              }}
+              variant="primary"
+            >
+              Reset filters
+            </Button>
+          }
+        />
+      ) : null}
     </div>
   );
 }
@@ -227,13 +368,11 @@ function CardGrid({ items, profile, onOpen, onToggle, onUninstall }: RowProps) {
                 label={`${enabled ? 'Disable' : 'Enable'} ${mod.name}`}
               />
             </header>
-            <p className="font-serif-italic text-sm leading-snug text-smoke">
-              {mod.summary}
-            </p>
+            <p className="font-serif-italic text-sm leading-snug text-smoke">{mod.summary}</p>
             <div className="flex flex-wrap items-center gap-2">
               {outdated ? <MonoTag tone="gilt">Update {mod.latestVersion}</MonoTag> : null}
               <MonoTag tone="default">{mod.category}</MonoTag>
-              <StatPill value={`#${orderIdx + 1}`} label="load" className="tracking-normal" />
+              <StatPill value={`#${orderIdx + 1}`} label="folder" className="tracking-normal" />
               <Button
                 type="button"
                 onClick={() => onUninstall(id)}
@@ -244,15 +383,16 @@ function CardGrid({ items, profile, onOpen, onToggle, onUninstall }: RowProps) {
                 uninstall
               </Button>
             </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function ListView({ items, profile, onToggle, onReorder, onUninstall }: RowProps) {
   const [dragId, setDragId] = useState<string | null>(null);
+  const reorderable = Boolean(onReorder);
 
   return (
     <ul className="grimoire-card divide-y divide-border">
@@ -264,26 +404,38 @@ function ListView({ items, profile, onToggle, onReorder, onUninstall }: RowProps
         return (
           <li
             key={id}
-            draggable
-            onDragStart={(e) => {
-              setDragId(id);
-              e.dataTransfer.effectAllowed = 'move';
-            }}
-            onDragEnd={() => setDragId(null)}
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.dataTransfer.dropEffect = 'move';
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              if (dragId && onReorder) onReorder(dragId, orderIdx);
-              setDragId(null);
-            }}
+            draggable={reorderable}
+            onDragStart={
+              reorderable
+                ? (e) => {
+                    setDragId(id);
+                    e.dataTransfer.effectAllowed = 'move';
+                  }
+                : undefined
+            }
+            onDragEnd={reorderable ? () => setDragId(null) : undefined}
+            onDragOver={
+              reorderable
+                ? (e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                  }
+                : undefined
+            }
+            onDrop={
+              reorderable
+                ? (e) => {
+                    e.preventDefault();
+                    if (dragId && onReorder) onReorder(dragId, orderIdx);
+                    setDragId(null);
+                  }
+                : undefined
+            }
             className={`flex items-center gap-4 px-4 py-3 transition-opacity duration-150 ${
               isDragging ? 'opacity-40' : ''
             } ${dragId && !isDragging ? 'opacity-60' : ''} hover:bg-oxblood/10`}
           >
-            <GripVertical className="h-4 w-4 cursor-grab text-ash" />
+            {reorderable ? <GripVertical className="h-4 w-4 cursor-grab text-ash" /> : null}
             <InkSwitch
               on={enabled}
               onClick={() => onToggle(id)}
@@ -308,12 +460,8 @@ function ListView({ items, profile, onToggle, onReorder, onUninstall }: RowProps
               </p>
             </div>
             <StatPill value={`#${orderIdx + 1}`} label="load" className="tracking-normal" />
-            <Button
-              type="button"
-              onClick={() => onUninstall(id)}
-              variant="danger"
-              size="sm"
-            >
+            <StatPill value={`#${orderIdx + 1}`} label="folder" className="tracking-normal" />
+            <Button type="button" onClick={() => onUninstall(id)} variant="danger" size="sm">
               uninstall
             </Button>
           </li>

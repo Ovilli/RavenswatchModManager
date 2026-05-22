@@ -45,6 +45,7 @@ mods/_clicks.log
 mods/_persona_map.json
 mods/_state.json
 mods/_log.txt
+mods/_merged/
 
 # Packed mods + prebuilt loader DLL.
 # winhttp.dll is a build artifact shipped via GitHub Releases, not committed.

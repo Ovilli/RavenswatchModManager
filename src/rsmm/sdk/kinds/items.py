@@ -21,8 +21,6 @@ from pathlib import Path
 
 from ..content import ContentDef, SchemaNotMined
 
-TEMPLATE_DIR_NAME = "templates/item"
-
 
 def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     """Materialize a single item def under `out_dir`.

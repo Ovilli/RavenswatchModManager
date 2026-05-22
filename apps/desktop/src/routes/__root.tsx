@@ -1,29 +1,29 @@
 import type { QueryClient } from '@tanstack/react-query';
-import { createRootRouteWithContext, Link, Outlet } from '@tanstack/react-router';
+import { Link, Outlet, createRootRouteWithContext } from '@tanstack/react-router';
 import { AlertTriangle } from 'lucide-react';
-import { WindowMinimizeIcon } from '../components/icons/WindowMinimizeIcon';
-import { WindowMaximizeIcon } from '../components/icons/WindowMaximizeIcon';
-import { WindowCloseIcon } from '../components/icons/WindowCloseIcon';
 import type { CSSProperties } from 'react';
-import { useMemo, useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import PromotedBanner from '../components/PromotedBanner';
+import { AccountStrip } from '../components/account-strip';
+import { Button, CopyButton, Crest, StatPill } from '../components/chrome';
+import { CommandPalette } from '../components/command-palette';
 import { AboutIcon } from '../components/icons/AboutIcon';
 import { BrowseIcon } from '../components/icons/BrowseIcon';
 import { ConflictsIcon } from '../components/icons/ConflictsIcon';
+import { LaunchIcon } from '../components/icons/LaunchIcon';
 import { LibraryIcon } from '../components/icons/LibraryIcon';
 import { ProfilesIcon } from '../components/icons/ProfilesIcon';
 import { SettingsIcon } from '../components/icons/SettingsIcon';
-import { LaunchIcon } from '../components/icons/LaunchIcon';
-import { Button, Crest, StatPill } from '../components/chrome';
-import { runVanilla, runModded } from '../lib/rsmm';
-import { shortcutLabel } from '../lib/platform';
-import PromotedBanner from '../components/PromotedBanner';
-import { AccountStrip } from '../components/account-strip';
-import { CommandPalette } from '../components/command-palette';
+import { WindowCloseIcon } from '../components/icons/WindowCloseIcon';
+import { WindowMaximizeIcon } from '../components/icons/WindowMaximizeIcon';
+import { WindowMinimizeIcon } from '../components/icons/WindowMinimizeIcon';
 import { ProfilePopover } from '../components/profile-popover';
-import { ToastProvider, DialogProvider } from '../components/toast';
+import { DialogProvider, ToastProvider } from '../components/toast';
 import { UpdaterBanner } from '../components/updater';
-import { activeProfile, detectConflicts, outdatedCount, useApp } from '../store';
 import { appendLauncherLog, clearLauncherLog } from '../lib/launcher-log';
+import { shortcutLabel } from '../lib/platform';
+import { runModded, runVanilla } from '../lib/rsmm';
+import { activeProfile, detectConflicts, outdatedCount, useApp } from '../store';
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   component: RootLayout,
@@ -158,14 +158,15 @@ function StatusStrip() {
         </div>
 
         {launchError ? (
-          <span className="text-xs text-destructive" role="alert">{launchError}</span>
+          <span className="flex items-center gap-2 text-xs text-destructive" role="alert">
+            <span className="truncate max-w-[300px]">{launchError}</span>
+            <CopyButton value={`Launch error: ${launchError}`} />
+          </span>
         ) : null}
         <div className="flex items-center gap-2" style={noDragStyle}>
           <StatPill value={enabled} label="enabled" />
           <StatPill value={disabled} label="disabled" />
-          {outdated > 0 ? (
-            <StatPill value={outdated} label="updates" tone="gilt" />
-          ) : null}
+          {outdated > 0 ? <StatPill value={outdated} label="updates" tone="gilt" /> : null}
           {conflictCount > 0 ? (
             <Link to="/conflicts" className="inline-flex items-center gap-1">
               <AlertTriangle className="h-4 w-4 text-crimson" />
@@ -197,27 +198,31 @@ function WindowControls() {
     let cancelled = false;
     let unlisten: (() => void) | null = null;
     (async () => {
-      const aw = await getAppWindow();
-      if (!aw || cancelled) return;
-      setAvailable(true);
       try {
-        setMaximized(await aw.isMaximized());
-      } catch {
-        /* ignore */
-      }
-      try {
-        const off = await aw.onResized(async () => {
-          try {
-            const isMax = await aw.isMaximized();
-            if (!cancelled) setMaximized(isMax);
-          } catch {
-            /* ignore */
-          }
-        });
-        if (cancelled) off();
-        else unlisten = off;
-      } catch {
-        /* ignore */
+        const aw = await getAppWindow();
+        if (!aw || cancelled) return;
+        setAvailable(true);
+        try {
+          setMaximized(await aw.isMaximized());
+        } catch {
+          /* ignore */
+        }
+        try {
+          const off = await aw.onResized(async () => {
+            try {
+              const isMax = await aw.isMaximized();
+              if (!cancelled) setMaximized(isMax);
+            } catch {
+              /* ignore */
+            }
+          });
+          if (cancelled) off();
+          else unlisten = off;
+        } catch {
+          /* ignore */
+        }
+      } catch (err) {
+        console.warn('window controls setup failed', err);
       }
     })();
     return () => {
@@ -226,7 +231,10 @@ function WindowControls() {
     };
   }, []);
 
-  const withWindow = async (action: (aw: NonNullable<Awaited<ReturnType<typeof getAppWindow>>>) => Promise<void>, label: string) => {
+  const withWindow = async (
+    action: (aw: NonNullable<Awaited<ReturnType<typeof getAppWindow>>>) => Promise<void>,
+    label: string,
+  ) => {
     const aw = await getAppWindow();
     if (!aw) {
       console.warn(`Tauri window API not available (${label})`);
@@ -273,7 +281,13 @@ function WindowControls() {
 
   return (
     <div className="window-controls ml-3 flex items-center gap-2" style={noDragStyle}>
-      <button type="button" title="Minimize" onClick={doMinimize} aria-label="Minimize" className="wc-btn wc-minimize">
+      <button
+        type="button"
+        title="Minimize"
+        onClick={doMinimize}
+        aria-label="Minimize"
+        className="wc-btn wc-minimize"
+      >
         <WindowMinimizeIcon className="h-4 w-4 text-parchment" />
       </button>
       <button
@@ -283,9 +297,19 @@ function WindowControls() {
         aria-label={maximized ? 'Restore' : 'Maximize'}
         className="wc-btn wc-maximize"
       >
-        {maximized ? <RestoreIcon className="h-4 w-4 text-parchment" /> : <WindowMaximizeIcon className="h-4 w-4 text-parchment" />}
+        {maximized ? (
+          <RestoreIcon className="h-4 w-4 text-parchment" />
+        ) : (
+          <WindowMaximizeIcon className="h-4 w-4 text-parchment" />
+        )}
       </button>
-      <button type="button" title="Close" onClick={doClose} aria-label="Close" className="wc-btn wc-close">
+      <button
+        type="button"
+        title="Close"
+        onClick={doClose}
+        aria-label="Close"
+        className="wc-btn wc-close"
+      >
         <WindowCloseIcon className="h-4 w-4 text-crimson" />
       </button>
     </div>
@@ -300,14 +324,12 @@ function RootLayout() {
           <aside className="surface-grain flex w-72 flex-col border-r border-border">
             <div className="px-5 pt-5 pb-4">
               <div className="flex items-center gap-3">
-                <div className="animate-float">
-                  <Crest monogram="R" size="sm" />
+                <div>
+                  <img src="/logo.png" alt="Ravenswatch Mod Manager" className="h-14 w-14 rounded-md object-cover" />
                 </div>
                 <div>
                   <h1 className="font-fraktur text-3xl leading-none text-parchment">RSMM</h1>
-                  <p className="font-serif-italic mt-1 text-sm text-ash">
-                    Ravenswatch Mod Manager
-                  </p>
+                  <p className="font-serif-italic mt-1 text-sm text-ash">Ravenswatch Mod Manager</p>
                 </div>
               </div>
             </div>

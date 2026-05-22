@@ -19,19 +19,9 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from rsmm.cli.merge import _ranked, _toml_load
+from rsmm.cli.merge import _toml_load
 from rsmm.engine.paths import MODS_DIR
-from rsmm.manifest_graph import _OPS as _OP
-from rsmm.manifest_graph import _parse_dep, _parse_version
-
-
-def _version_ok(actual: str, op: str | None, wanted: tuple[int, ...] | None) -> bool:
-    if op is None or wanted is None:
-        return True
-    fn = _OP.get(op)
-    if fn is None:
-        return True
-    return fn(_parse_version(actual), wanted)
+from rsmm.manifest_graph import _parse_dep, _parse_version, _version_ok
 
 
 @dataclass
@@ -40,7 +30,6 @@ class ModSummary:
     version: str
     enabled: bool
     load_order: int
-    multiplayer_scope: str
     requires: list[str]
     conflicts: list[str]
     replaces: list[str]
@@ -74,7 +63,6 @@ def _summarize(entry: Path) -> ModSummary | None:
         version=str(m.get("version", "0.0.0")),
         enabled=bool(m.get("enabled", True)),
         load_order=int(m.get("load_order", 100)),
-        multiplayer_scope=str(m.get("multiplayer_scope", "cosmetic")),
         requires=[str(x) for x in m.get("requires", []) or []],
         conflicts=[str(x) for x in m.get("conflicts", []) or []],
         replaces=[str(x) for x in m.get("replaces", []) or []],
@@ -138,7 +126,9 @@ def analyze() -> CompatReport:
             if not is_active(name):
                 rep.unmet_requires.append((s.id, f"dep disabled: {name}"))
                 continue
-            if not _version_ok(by_id[name].version, op, ver):
+            if op is not None and ver is not None and not _version_ok(
+                _parse_version(by_id[name].version), op, ver
+            ):
                 rep.unmet_requires.append((
                     s.id,
                     f"dep version mismatch: need {spec!r}, "

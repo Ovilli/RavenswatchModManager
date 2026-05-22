@@ -21,6 +21,16 @@ sudo dnf install webkit2gtk4.1
 sudo pacman -S webkit2gtk-4.1
 ```
 
+If the app opens to a gray screen on Debian/Ubuntu, try launching it with the
+software/compositing fallback enabled:
+
+```sh
+WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 rsmm
+```
+
+If that fixes it, the issue is usually a WebKitGTK or GPU compositing quirk on
+the local machine.
+
 ## "Game not found"
 
 The app couldn't auto-detect your Ravenswatch installation.

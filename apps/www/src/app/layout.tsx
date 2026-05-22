@@ -7,7 +7,7 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'Ravenswatch Mod Manager',
   description: 'Cross-platform mod manager for Ravenswatch — browser, Windows, macOS, Linux.',
-  icons: '/favicon.svg',
+  icons: '/logo.png',
 };
 
 const footerLinks = [
@@ -32,9 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {/* Brand */}
             <div className="space-y-3">
               <Link href="/" className="flex items-center gap-2.5">
-                <div className="brand-crest">
-                  <span className="font-fraktur text-lg">RM</span>
-                </div>
+                <img src="/logo.png" alt="Ravenswatch Mod Manager" className="h-8 w-8 rounded-md object-cover" />
                 <span className="text-sm font-semibold text-foreground">
                   Ravenswatch Mod Manager
                 </span>

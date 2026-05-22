@@ -1,4 +1,4 @@
-import { Button, buttonVariants } from '@rsmm/ui';
+import { buttonVariants } from '@rsmm/ui';
 import Link from 'next/link';
 import { FAQ } from './components/faq';
 

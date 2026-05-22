@@ -2,7 +2,6 @@ import { useNavigate } from '@tanstack/react-router';
 import { Search } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { MOCK_MODS } from '../data/mock-mods';
-import { shortcutLabel } from '../lib/platform';
 import { useApp } from '../store';
 
 interface Hit {
@@ -59,7 +58,8 @@ export function CommandPalette() {
       const out: Hit[] = [];
       for (const id of installed.slice(0, 5)) {
         const m = MOCK_MODS.find((x) => x.id === id);
-        if (m) out.push({ id: m.id, slug: m.slug, name: m.name, author: m.author, origin: 'library' });
+        if (m)
+          out.push({ id: m.id, slug: m.slug, name: m.name, author: m.author, origin: 'library' });
       }
       return out;
     }
@@ -181,6 +181,3 @@ export function CommandPalette() {
   );
 }
 
-export function CommandShortcutLabel() {
-  return <>{shortcutLabel('K')}</>;
-}

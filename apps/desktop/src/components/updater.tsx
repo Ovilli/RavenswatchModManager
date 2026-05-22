@@ -1,6 +1,7 @@
 import { Download, RefreshCw, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { checkForUpdate, relaunchApp, type AvailableUpdate } from '../lib/updater';
+import { appendLauncherLog } from '../lib/launcher-log';
+import { type AvailableUpdate, checkForUpdate, relaunchApp } from '../lib/updater';
 import { Button } from './chrome';
 import { useToast } from './toast';
 
@@ -51,7 +52,10 @@ async function runCheck(silent: boolean): Promise<void> {
     }
     setStatus({ state: 'available', update });
   } catch (e) {
-    setStatus({ state: 'error', error: String(e) });
+    const message =
+      'Could not check for updates right now. The release feed was unavailable or invalid.';
+    setStatus({ state: 'error', error: message });
+    void appendLauncherLog('warn', 'Update check failed', { error: String(e) });
   }
 }
 
@@ -100,9 +104,7 @@ export function UpdaterBanner() {
       >
         <span className="font-serif-italic text-parchment">
           Update available — v{status.update.version}
-          <span className="font-mono ml-2 text-ash">
-            (current v{status.update.currentVersion})
-          </span>
+          <span className="font-mono ml-2 text-ash">(current v{status.update.currentVersion})</span>
         </span>
         <div className="flex items-center gap-2">
           <Button

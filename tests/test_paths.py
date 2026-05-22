@@ -62,7 +62,12 @@ def test_find_repo_root():
     assert (root / "data" / "asset_map.json").exists()
 
 
-def test_find_repo_root_raises(monkeypatch):
+def test_find_repo_root_warns_and_falls_back(monkeypatch, capsys):
+    """When `data/asset_map.json` is missing from every parent, the
+    finder emits a stderr warning and returns a best-effort fallback so
+    `import rsmm.engine.paths` does not crash on partial installs. The
+    actual asset-map-required code paths report their own clear errors
+    later."""
     from rsmm.engine import paths as paths_mod
 
     real_exists = Path.exists
@@ -73,8 +78,10 @@ def test_find_repo_root_raises(monkeypatch):
         return real_exists(self)
 
     monkeypatch.setattr(Path, "exists", fake_exists)
-    with pytest.raises(RuntimeError, match="rsmm repo root not found"):
-        paths_mod._find_repo_root()
+    root = paths_mod._find_repo_root()
+    assert isinstance(root, Path)
+    captured = capsys.readouterr()
+    assert "rsmm repo root not found" in captured.err
 
 
 def test_find_repo_root_frozen_uses_meipass(monkeypatch, tmp_path):

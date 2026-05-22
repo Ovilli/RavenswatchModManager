@@ -123,3 +123,105 @@ jobs:
           releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           args: ${{ matrix.args }}
+
+  publish-updater-manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble latest.json from release artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          pub_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          # Pull every asset from the draft release for this tag.
+          workdir="$(mktemp -d)"
+          gh release download "$TAG" --dir "$workdir" --pattern '*' --clobber
+          ls -la "$workdir"
+
+          # The Tauri updater consumes one bundle per target platform. We
+          # prefer formats that the updater plugin actually knows how to
+          # install in place: AppImage on Linux, NSIS (-setup.exe) on
+          # Windows, and the signed .app.tar.gz on macOS.
+          find_artifact () {
+            local pattern="$1"
+            (cd "$workdir" && ls $pattern 2>/dev/null | head -n1) || true
+          }
+
+          linux_bundle="$(find_artifact '*.AppImage')"
+          linux_sig_file="$(find_artifact '*.AppImage.sig')"
+          win_bundle="$(find_artifact '*-setup.exe')"
+          win_sig_file="$(find_artifact '*-setup.exe.sig')"
+          if [ -z "$win_bundle" ]; then
+            win_bundle="$(find_artifact '*_x64_en-US.msi')"
+            win_sig_file="$(find_artifact '*_x64_en-US.msi.sig')"
+          fi
+          mac_bundle="$(find_artifact '*.app.tar.gz')"
+          mac_sig_file="$(find_artifact '*.app.tar.gz.sig')"
+
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          encode_url () { python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$1"; }
+
+          read_sig () {
+            local f="$1"
+            if [ -n "$f" ] && [ -f "$workdir/$f" ]; then cat "$workdir/$f"; fi
+          }
+
+          linux_sig="$(read_sig "$linux_sig_file")"
+          win_sig="$(read_sig "$win_sig_file")"
+          mac_sig="$(read_sig "$mac_sig_file")"
+
+          python3 - "$version" "$pub_date" "$base" \
+            "$linux_bundle" "$linux_sig" \
+            "$win_bundle" "$win_sig" \
+            "$mac_bundle" "$mac_sig" <<'PY' > latest.json
+          import json, sys, urllib.parse
+          (_, version, pub_date, base,
+           linux_b, linux_s,
+           win_b, win_s,
+           mac_b, mac_s) = sys.argv
+
+          def entry(bundle, sig):
+              if not bundle or not sig:
+                  return None
+              return {
+                  "signature": sig.strip(),
+                  "url": f"{base}/{urllib.parse.quote(bundle)}",
+              }
+
+          platforms = {}
+          # Tauri's updater key naming: "<os>-<arch>". We publish a single
+          # arch per platform today; revisit if/when we ship arm64 Windows
+          # or a Linux arm64 bundle.
+          if (e := entry(linux_b, linux_s)) is not None:
+              platforms["linux-x86_64"] = e
+          if (e := entry(win_b, win_s)) is not None:
+              platforms["windows-x86_64"] = e
+          if (e := entry(mac_b, mac_s)) is not None:
+              # Universal macOS binary serves both Intel and Apple Silicon.
+              platforms["darwin-x86_64"] = e
+              platforms["darwin-aarch64"] = e
+
+          out = {
+              "version": version,
+              "notes": f"RSMM {version} — see release notes on GitHub.",
+              "pub_date": pub_date,
+              "platforms": platforms,
+          }
+          print(json.dumps(out, indent=2))
+          PY
+
+          cat latest.json
+          if [ "$(python3 -c 'import json,sys;print(len(json.load(open(sys.argv[1]))["platforms"]))' latest.json)" = "0" ]; then
+            echo "::error::No signed bundles found in release; refusing to upload empty latest.json"
+            exit 1
+          fi
+
+          gh release upload "$TAG" latest.json --clobber

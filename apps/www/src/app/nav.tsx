@@ -21,9 +21,7 @@ export function Nav() {
     <header className="sticky top-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-xl">
       <div className="container mx-auto flex items-center justify-between px-6 py-3">
         <Link href="/" className="flex items-center gap-2.5 shrink-0">
-          <div className="brand-crest">
-            <span className="font-fraktur text-lg">RM</span>
-          </div>
+          <img src="/logo.png" alt="Ravenswatch Mod Manager" className="h-8 w-8 rounded-md object-cover" />
           <span className="hidden text-sm font-medium text-foreground/90 md:inline">
             Ravenswatch Mod Manager
           </span>

@@ -30,7 +30,6 @@ from pathlib import Path
 from rsmm.engine.paths import DATA_DIR
 
 SCHEMA_DIR = DATA_DIR / "schemas"
-TEMPLATE_DIR = DATA_DIR / "templates"
 
 
 @dataclass
@@ -39,7 +38,6 @@ class MiningResult:
     cohorts: int                 # how many size buckets sampled
     fields_labeled: int          # how many byte ranges we believe to know
     schema_path: Path
-    template_path: Path | None
 
 
 def mine(cls: str, *, kind: str | None = None) -> MiningResult:
@@ -65,17 +63,8 @@ def mine(cls: str, *, kind: str | None = None) -> MiningResult:
     out.write_text(json.dumps(body, indent=2), encoding="utf-8")
     return MiningResult(
         cls=cls, cohorts=0, fields_labeled=0,
-        schema_path=out, template_path=None,
+        schema_path=out,
     )
-
-
-def extract_template(cls: str, donor_cooked: Path, kind: str) -> Path:
-    """Cache a donor cooked file as a template for clone-and-patch."""
-    dst_dir = TEMPLATE_DIR / kind
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    dst = dst_dir / donor_cooked.name
-    dst.write_bytes(donor_cooked.read_bytes())
-    return dst
 
 
 def main(argv: Iterable[str] | None = None) -> int:

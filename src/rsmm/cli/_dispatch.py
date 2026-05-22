@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import sys
 
-from rsmm.engine.paths import MODS_DIR  # noqa: F401 — ensures ROOT on sys.path
+if sys.version_info < (3, 11):
+    sys.exit(
+        f"rsmm requires Python 3.11 or newer (have {sys.version.split()[0]}). "
+        "Upgrade Python and reinstall rsmm."
+    )
+
+from rsmm.engine.paths import MODS_DIR  # noqa: F401, E402 — ensures ROOT on sys.path
 
 # Replaced by the entrypoint script (./rsmm) at import time so `--help`
 # shows the rich top-level overview, not this dispatch module's docstring.
