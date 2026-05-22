@@ -1,4 +1,1 @@
-# AdSense ownership verification for ovilli.de and all subdomains.
-# Replace pub-0000000000000000 with the publisher ID issued by AdSense
-# once the site is approved. The exchange ID is constant for Google.
-google.com, pub-0000000000000000, DIRECT, f08c47fec0942fa0
+google.com, pub-9139637424510522, DIRECT, f08c47fec0942fa0
