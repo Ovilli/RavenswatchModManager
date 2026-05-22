@@ -1,5 +1,6 @@
 import type { ModListItem } from '@rsmm/schemas';
 import { Badge } from '@rsmm/ui';
+import type { Route } from 'next';
 import Link from 'next/link';
 
 export function HeroShowcase({ mods }: { mods: ModListItem[] }) {
@@ -16,7 +17,7 @@ export function HeroShowcase({ mods }: { mods: ModListItem[] }) {
       {mods.map((mod) => (
         <Link
           key={mod.id}
-          href={`/registry/${mod.slug}`}
+          href={`/registry/${mod.slug}` as Route}
           className="group relative overflow-hidden rounded-lg border border-border/40 bg-card/60 backdrop-blur-sm transition-all duration-200 hover:border-gilt/40 hover:bg-card/80 hover:shadow-lg hover:shadow-gilt/5"
         >
           {mod.imageUrl ? (
