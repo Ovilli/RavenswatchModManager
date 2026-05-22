@@ -75,6 +75,7 @@ export default function RegistryPage() {
           {(['popular', 'recent', 'rating'] as const).map((s) => (
             <button
               key={s}
+              type="button"
               onClick={() => setSort(s)}
               className={buttonVariants({ variant: sort === s ? 'default' : 'outline', size: 'sm' })}
             >
@@ -87,6 +88,7 @@ export default function RegistryPage() {
           {CATEGORIES.map((c) => (
             <button
               key={c.id}
+              type="button"
               onClick={() => setCat(c.id)}
               className={buttonVariants({ variant: cat === c.id ? 'default' : 'outline', size: 'sm' })}
             >

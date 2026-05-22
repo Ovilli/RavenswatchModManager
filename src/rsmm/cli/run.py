@@ -304,9 +304,17 @@ def _open_steam_url(url: str) -> int:
                     stderr=subprocess.DEVNULL,
                 )
             else:
-                subprocess.Popen(["flatpak", "run", "com.valvesoftware.Steam", "-applaunch", url.rsplit('/', 1)[-1]],
-                             stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL)
+                subprocess.Popen(
+                    [
+                        "flatpak",
+                        "run",
+                        "com.valvesoftware.Steam",
+                        "-applaunch",
+                        url.rsplit("/", 1)[-1],
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
             return 0
         except OSError as e:
             print(f"Could not launch via flatpak Steam: {e}", file=sys.stderr)

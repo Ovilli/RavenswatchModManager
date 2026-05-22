@@ -38,7 +38,8 @@ export function MockClient({ mods }: { mods: ModListItem[] }) {
                 <p className="font-mono text-[0.6rem] text-ash">profile</p>
                 <p className="font-serif-italic text-sm text-parchment">Default</p>
               </div>
-              <svg className="h-3.5 w-3.5 text-ash" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg className="h-3.5 w-3.5 text-ash" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" role="img" aria-label="Open">
+                <title>Open</title>
                 <polyline points="6 9 12 15 18 9" />
               </svg>
             </div>
@@ -90,14 +91,16 @@ export function MockClient({ mods }: { mods: ModListItem[] }) {
               {/* Launch buttons */}
               <div className="flex items-center gap-2 rounded-md border border-border bg-pitch/40 px-1.5 py-1">
                 <div className="flex items-center gap-1.5 rounded border border-border/50 px-2 py-1 hover:bg-oxblood/20 transition-colors cursor-default">
-                  <svg className="h-3.5 w-3.5 text-parchment" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
+                  <svg className="h-3.5 w-3.5 text-parchment" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" role="img" aria-label="Launch">
+                    <title>Launch</title>
                     <circle cx="12" cy="12" r="10" />
                     <path d="M10 8l6 4-6 4V8z" fill="currentColor" />
                   </svg>
                   <span className="font-serif-italic text-[0.6rem] text-parchment">Launch Vanilla</span>
                 </div>
                 <div className="flex items-center gap-1.5 rounded border border-crimson/50 bg-crimson/15 px-2 py-1 cursor-default">
-                  <svg className="h-3.5 w-3.5 text-parchment" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
+                  <svg className="h-3.5 w-3.5 text-parchment" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" role="img" aria-label="Launch">
+                    <title>Launch</title>
                     <circle cx="12" cy="12" r="10" />
                     <path d="M10 8l6 4-6 4V8z" fill="currentColor" />
                   </svg>
@@ -135,7 +138,8 @@ export function MockClient({ mods }: { mods: ModListItem[] }) {
                   {/* View toggle */}
                   <div className="flex items-center gap-1 rounded border border-border p-0.5">
                     <div className="rounded px-1.5 py-0.5 bg-parchment/10 border border-gilt/40">
-                      <svg className="h-3 w-3 text-gilt" viewBox="0 0 24 24" fill="currentColor">
+                      <svg className="h-3 w-3 text-gilt" viewBox="0 0 24 24" fill="currentColor" role="img" aria-label="Grid view">
+                        <title>Grid view</title>
                         <rect x="3" y="3" width="8" height="8" rx="1" />
                         <rect x="13" y="3" width="8" height="8" rx="1" />
                         <rect x="3" y="13" width="8" height="8" rx="1" />
@@ -143,7 +147,8 @@ export function MockClient({ mods }: { mods: ModListItem[] }) {
                       </svg>
                     </div>
                     <div className="rounded px-1.5 py-0.5">
-                      <svg className="h-3 w-3 text-ash" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <svg className="h-3 w-3 text-ash" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" role="img" aria-label="List view">
+                        <title>List view</title>
                         <line x1="3" y1="6" x2="21" y2="6" />
                         <line x1="3" y1="12" x2="21" y2="12" />
                         <line x1="3" y1="18" x2="21" y2="18" />
@@ -160,7 +165,8 @@ export function MockClient({ mods }: { mods: ModListItem[] }) {
               {/* Filter bar */}
               <div className="flex flex-wrap items-center gap-3 mb-6">
                 <div className="relative flex-1 min-w-[220px]">
-                  <svg className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ash" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ash" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" role="img" aria-label="Search">
+                    <title>Search</title>
                     <circle cx="11" cy="11" r="8" />
                     <line x1="21" y1="21" x2="16.65" y2="16.65" />
                   </svg>
@@ -215,7 +221,8 @@ export function MockClient({ mods }: { mods: ModListItem[] }) {
                         </p>
                       </div>
                       <div className="btn-grim px-3 py-1.5 text-sm cursor-default flex items-center gap-1.5" data-variant="primary">
-                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" role="img" aria-label="Install">
+                          <title>Install</title>
                           <line x1="12" y1="5" x2="12" y2="19" />
                           <line x1="5" y1="12" x2="19" y2="12" />
                         </svg>

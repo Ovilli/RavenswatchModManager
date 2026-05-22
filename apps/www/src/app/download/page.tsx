@@ -1,6 +1,8 @@
 import { Badge, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, buttonVariants } from '@rsmm/ui';
 import Link from 'next/link';
 
+export const revalidate = 3600;
+
 const releaseUrl = (tag: string) => `https://github.com/Ovilli/RavenswatchModManager/releases/tag/${tag}`;
 const latestUrl = 'https://github.com/Ovilli/RavenswatchModManager/releases/latest';
 const releasesUrl = 'https://github.com/Ovilli/RavenswatchModManager/releases';
@@ -44,7 +46,6 @@ async function getLatestVersion(): Promise<string> {
   try {
     const res = await fetch(
       'https://api.github.com/repos/Ovilli/RavenswatchModManager/releases/latest',
-      { next: { revalidate: 3600 } },
     );
     if (!res.ok) return 'v0.1.0-beta.2';
     const data = await res.json();
