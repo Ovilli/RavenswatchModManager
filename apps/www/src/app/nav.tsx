@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -9,7 +10,7 @@ const navLinks = [
   { href: '/download' as const, label: 'Download' },
 ];
 
-export function Nav() {
+export function Nav({ versionBadge }: { versionBadge?: ReactNode }) {
   const pathname = usePathname();
 
   const isActive = (href: string) => {
@@ -53,9 +54,7 @@ export function Nav() {
             View Source
           </a>
 
-          <span className="hidden rounded-md border border-border/60 px-2 py-0.5 font-mono text-[0.65rem] uppercase tracking-wider text-muted-foreground sm:inline">
-            v0.1.0-beta.2
-          </span>
+          {versionBadge}
 
           <Link
             href="/auth/signin"

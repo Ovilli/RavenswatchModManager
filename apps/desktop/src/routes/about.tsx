@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import pkg from '../../package.json';
-import { Button, Crest, Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
+import { Crest, Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
 
 export const Route = createFileRoute('/about')({
   component: AboutPage,
@@ -8,6 +8,8 @@ export const Route = createFileRoute('/about')({
 
 function AboutPage() {
   const version = pkg.version ?? '0.0.0';
+  const buttonClass =
+    'btn-grim inline-flex items-center justify-center px-3 py-1.5 text-sm';
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -18,9 +20,7 @@ function AboutPage() {
 
       <Panel className="flex flex-col gap-4">
         <div className="flex items-center gap-4">
-          <div className="brand-crest p-1">
-            <Crest monogram="R" size="sm" />
-          </div>
+          <Crest size="lg" iconSrc="/logo.png" iconAlt="Ravenswatch Mod Manager Tauri icon" />
           <div>
             <h2 className="font-fraktur text-2xl text-parchment">Ravenswatch Mod Manager</h2>
             <p className="font-serif-italic text-ash">
@@ -51,24 +51,34 @@ function AboutPage() {
           <div>
             <h3 className="font-fraktur text-lg text-parchment mb-2">Get involved</h3>
             <p className="font-serif-italic text-smoke leading-relaxed mb-3">
-              Contribute, report issues, or read developer notes in the repository.
+              Contribute, report issues, join the community Discord, or read developer notes in the repository.
             </p>
             <div className="flex gap-2">
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => window.open('https://github.com/', '_blank')}
+              <a
+                href="https://github.com/Ovilli/RavenswatchModManager"
+                target="_blank"
+                rel="noreferrer noopener"
+                className={buttonClass}
               >
                 View repository
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="primary"
-                onClick={() => window.open('/docs/GETTING_STARTED.md', '_blank')}
+              </a>
+              <a
+                href="https://discord.gg/TSVdCaqd"
+                target="_blank"
+                rel="noreferrer noopener"
+                className={buttonClass}
+              >
+                Discord
+              </a>
+              <a
+                href="https://github.com/Ovilli/RavenswatchModManager/blob/main/docs/GETTING_STARTED.md"
+                target="_blank"
+                rel="noreferrer noopener"
+                className={`${buttonClass} btn-grim-primary`}
+                data-variant="primary"
               >
                 Read docs
-              </Button>
+              </a>
             </div>
           </div>
         </div>
@@ -83,9 +93,14 @@ function AboutPage() {
         </div>
         <div className="flex items-center gap-3">
           <MonoTag>v{version}</MonoTag>
-          <Button type="button" size="sm" onClick={() => window.open('/LICENSE', '_blank')}>
+          <a
+            href="https://github.com/Ovilli/RavenswatchModManager/blob/main/LICENSE"
+            target="_blank"
+            rel="noreferrer noopener"
+            className={buttonClass}
+          >
             View license
-          </Button>
+          </a>
         </div>
       </Panel>
     </div>

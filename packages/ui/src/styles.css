@@ -534,18 +534,9 @@
   animation: floaty var(--anim-crest-duration) ease-in-out infinite;
 }
 
-/* Subtle nav item entrance with staggered delays */
-@keyframes nav-item-in {
-  from { opacity: 0; transform: translateX(-3px); }
-  to { opacity: 1; transform: none; }
-}
-.nav-link-grim { opacity: 0; transform: translateX(-3px); animation: nav-item-in var(--anim-nav-duration) var(--anim-page-ease) both; }
-.nav-link-grim:nth-child(1) { animation-delay: 36ms; }
-.nav-link-grim:nth-child(2) { animation-delay: 72ms; }
-.nav-link-grim:nth-child(3) { animation-delay: 108ms; }
-.nav-link-grim:nth-child(4) { animation-delay: 144ms; }
-.nav-link-grim:nth-child(5) { animation-delay: 180ms; }
-.nav-link-grim:nth-child(6) { animation-delay: 216ms; }
+/* Nav links are always visible. A staggered entrance animation was removed
+   because animation-fill-mode: both caused them to stay invisible on
+   WebView2 when the animation failed to play (common on Windows VMs). */
 
 /* Slight lift for nav icons on hover */
 .nav-link-grim:hover .nav-icon { transform: scale(1.04) translateY(-0.4px); }
@@ -568,6 +559,7 @@
     transition: none !important;
     transform: none !important;
     box-shadow: none !important;
+    opacity: 1 !important;
   }
 }
 

@@ -2,7 +2,8 @@ import type { QueryClient } from '@tanstack/react-query';
 import { Link, Outlet, createRootRouteWithContext } from '@tanstack/react-router';
 import { AlertTriangle } from 'lucide-react';
 import type { CSSProperties } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Command } from '@tauri-apps/plugin-shell';
 import PromotedBanner from '../components/PromotedBanner';
 import { AccountStrip } from '../components/account-strip';
 import { Button, CopyButton, Crest, StatPill } from '../components/chrome';
@@ -14,6 +15,7 @@ import { LaunchIcon } from '../components/icons/LaunchIcon';
 import { LibraryIcon } from '../components/icons/LibraryIcon';
 import { ProfilesIcon } from '../components/icons/ProfilesIcon';
 import { SettingsIcon } from '../components/icons/SettingsIcon';
+import { Terminal } from 'lucide-react';
 import { WindowCloseIcon } from '../components/icons/WindowCloseIcon';
 import { WindowMaximizeIcon } from '../components/icons/WindowMaximizeIcon';
 import { WindowMinimizeIcon } from '../components/icons/WindowMinimizeIcon';
@@ -21,8 +23,8 @@ import { ProfilePopover } from '../components/profile-popover';
 import { DialogProvider, ToastProvider } from '../components/toast';
 import { UpdaterBanner } from '../components/updater';
 import { appendLauncherLog, clearLauncherLog } from '../lib/launcher-log';
-import { shortcutLabel } from '../lib/platform';
-import { runModded, runVanilla } from '../lib/rsmm';
+import { getPlatform, shortcutLabel } from '../lib/platform';
+import { restoreAll, runModded, runVanilla } from '../lib/rsmm';
 import { activeProfile, detectConflicts, outdatedCount, useApp } from '../store';
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
@@ -30,7 +32,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 interface Nav {
-  to: '/' | '/browse' | '/profiles' | '/conflicts' | '/settings' | '/about';
+  to: '/' | '/browse' | '/profiles' | '/conflicts' | '/settings' | '/commands' | '/about';
   icon: React.ComponentType<{ className?: string }>;
   label: string;
 }
@@ -41,6 +43,7 @@ const NAV: Nav[] = [
   { to: '/profiles', icon: ProfilesIcon, label: 'Profiles' },
   { to: '/conflicts', icon: ConflictsIcon, label: 'Conflicts' },
   { to: '/settings', icon: SettingsIcon, label: 'Settings' },
+  { to: '/commands', icon: Terminal, label: 'Commands' },
   { to: '/about', icon: AboutIcon, label: 'About' },
 ];
 
@@ -48,6 +51,32 @@ type AppRegionStyle = CSSProperties & { WebkitAppRegion?: 'drag' | 'no-drag' };
 
 const dragStyle: AppRegionStyle = { WebkitAppRegion: 'drag' };
 const noDragStyle: AppRegionStyle = { WebkitAppRegion: 'no-drag' };
+const GAME_POLL_INTERVAL_MS = 5000;
+const GAME_START_TIMEOUT_MS = 5 * 60_000;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function createGameProbeCommand() {
+  switch (getPlatform()) {
+    case 'windows':
+      return Command.create('tasklist', ['/FI', 'IMAGENAME eq Ravenswatch.exe', '/NH']);
+    case 'macos':
+      return Command.create('pgrep', ['-f', 'Ravenswatch']);
+    default:
+      return Command.create('pgrep', ['-f', 'Ravenswatch.exe']);
+  }
+}
+
+async function isRavenswatchRunning(): Promise<boolean> {
+  try {
+    const result = await createGameProbeCommand().execute();
+    return result.code === 0;
+  } catch {
+    return false;
+  }
+}
 
 function NavLink({ to, icon: Icon, label }: Nav) {
   return (
@@ -67,6 +96,7 @@ function StatusStrip() {
   const profile = useApp(activeProfile);
   const installed = useApp((s) => s.installed);
   const profiles = useApp((s) => s.profiles);
+  const launchSeq = useRef(0);
   const enabled = profile.loadOrder.filter((id) => !profile.disabled.has(id)).length;
   const disabled = profile.loadOrder.length - enabled;
   const conflictCount = useMemo(() => detectConflicts(profile).length, [profile]);
@@ -75,16 +105,62 @@ function StatusStrip() {
   const [running, setRunning] = useState<'vanilla' | 'modded' | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!running) return;
-    const timer = setTimeout(() => {
-      setRunning(null);
-    }, 30_000);
-    return () => clearTimeout(timer);
-  }, [running]);
+  const trackGameLifecycle = (mode: 'vanilla' | 'modded', seq: number) => {
+    void (async () => {
+      const startedAt = Date.now();
+      let sawGameRunning = false;
+
+      while (Date.now() - startedAt < GAME_START_TIMEOUT_MS) {
+        if (launchSeq.current !== seq) return;
+        if (await isRavenswatchRunning()) {
+          sawGameRunning = true;
+          break;
+        }
+        await delay(GAME_POLL_INTERVAL_MS);
+      }
+
+      if (!sawGameRunning) {
+        if (mode === 'modded') {
+          await appendLauncherLog(
+            'warn',
+            'Could not observe Ravenswatch.exe after launch; automatic restore watcher ended',
+          );
+        }
+        if (launchSeq.current === seq) setRunning(null);
+        return;
+      }
+
+      await appendLauncherLog('info', `Ravenswatch started; waiting for ${mode} session to end`);
+      while (launchSeq.current === seq && (await isRavenswatchRunning())) {
+        await delay(GAME_POLL_INTERVAL_MS);
+      }
+
+      if (launchSeq.current !== seq) return;
+
+      if (mode === 'modded') {
+        try {
+          await appendLauncherLog('info', 'Ravenswatch closed; restoring original files');
+          const result = await restoreAll();
+          if (!result || !result.ok) {
+            throw new Error(result?.stderr?.trim() || result?.stdout?.trim() || 'restore failed');
+          }
+          await appendLauncherLog('info', 'Restore complete');
+        } catch (e) {
+          const message = `Automatic restore failed: ${String(e)}`;
+          setLaunchError(message);
+          await appendLauncherLog('error', message);
+        }
+      } else {
+        await appendLauncherLog('info', 'Ravenswatch closed');
+      }
+
+      if (launchSeq.current === seq) setRunning(null);
+    })();
+  };
 
   const handleLaunch = async (mode: 'vanilla' | 'modded') => {
-    if (running) return;
+    if (launching || running) return;
+    const seq = ++launchSeq.current;
     setLaunching(mode);
     setLaunchError(null);
     try {
@@ -100,9 +176,24 @@ function StatusStrip() {
           stdout: result?.stdout ?? '',
           stderr: result?.stderr ?? '',
         });
+        if (mode === 'modded') {
+          try {
+            await appendLauncherLog('info', 'Launch failed after applying mods; restoring original files');
+            const restore = await restoreAll();
+            if (!restore || !restore.ok) {
+              throw new Error(restore?.stderr?.trim() || restore?.stdout?.trim() || 'restore failed');
+            }
+            await appendLauncherLog('info', 'Rollback complete');
+          } catch (e) {
+            const rollbackMessage = `Rollback after failed launch failed: ${String(e)}`;
+            setLaunchError(rollbackMessage);
+            await appendLauncherLog('error', rollbackMessage);
+          }
+        }
       } else {
         setRunning(mode);
         await appendLauncherLog('info', `Launch handoff complete: ${mode} (running state set)`);
+        trackGameLifecycle(mode, seq);
       }
     } catch (e) {
       const message = String(e);

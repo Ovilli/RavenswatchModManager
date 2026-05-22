@@ -132,6 +132,37 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
   });
 });
 
+modsRouter.get('/:slug/:version/download', zValidator('param', slugParamSchema), async (c) => {
+  const slug = c.req.param('slug');
+  const version = c.req.param('version');
+  const db = getDb();
+
+  const mod = await db.query.mods.findFirst({
+    where: eq(schema.mods.slug, slug),
+    with: {
+      versions: {
+        where: eq(schema.modVersions.version, version),
+        limit: 1,
+      },
+    },
+  });
+
+  if (!mod || !mod.versions[0]) return c.json({ error: 'not found' }, 404);
+
+  const ver = mod.versions[0];
+
+  // In dev without S3, serve a placeholder file
+  if (!s3Configured() || ver.assetUrl.startsWith('https://example.invalid')) {
+    const name = `${slug}-${version}.zip`;
+    const content = `RSMM Mod Archive\n${slug} v${version}\nPlaceholder — replace with real mod files.\n`;
+    c.header('Content-Type', 'application/octet-stream');
+    c.header('Content-Disposition', `attachment; filename="${name}"`);
+    return c.body(content);
+  }
+
+  return c.redirect(ver.assetUrl);
+});
+
 modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'unauthorized' }, 401);

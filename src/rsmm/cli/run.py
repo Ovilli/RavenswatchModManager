@@ -14,7 +14,8 @@ Default behavior:
 Why not just exec Proton directly: the Flatpak Steam ships Proton
 inside its own runtime; running Proton from outside the sandbox skips
 the pressure-vessel setup and frequently fails on shared libraries.
-The Steam URL path is the most reliable invocation.
+We hand off to Steam itself so it can resolve the game launch inside
+its own environment.
 """
 
 from __future__ import annotations
@@ -276,9 +277,9 @@ def _open_steam_url(url: str) -> int:
         return 1
     # Linux
     if shutil.which("steam"):
-        print(f"==> steam {url}")
+        print(f"==> steam -applaunch {url.rsplit('/', 1)[-1]}")
         try:
-            subprocess.Popen(["steam", url],
+            subprocess.Popen(["steam", "-applaunch", url.rsplit('/', 1)[-1]],
                              stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL)
             return 0
@@ -286,26 +287,31 @@ def _open_steam_url(url: str) -> int:
             print(f"Could not launch via steam: {e}", file=sys.stderr)
             return 1
     if shutil.which("flatpak"):
-        print(f"==> flatpak run com.valvesoftware.Steam {url}")
+        print(f"==> flatpak run com.valvesoftware.Steam -applaunch {url.rsplit('/', 1)[-1]}")
         try:
-            subprocess.Popen(["flatpak", "run", "com.valvesoftware.Steam", url],
+            if shutil.which("flatpak-spawn"):
+                subprocess.Popen(
+                    [
+                        "flatpak-spawn",
+                        "--host",
+                        "flatpak",
+                        "run",
+                        "com.valvesoftware.Steam",
+                        "-applaunch",
+                        url.rsplit('/', 1)[-1],
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            else:
+                subprocess.Popen(["flatpak", "run", "com.valvesoftware.Steam", "-applaunch", url.rsplit('/', 1)[-1]],
                              stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL)
             return 0
         except OSError as e:
             print(f"Could not launch via flatpak Steam: {e}", file=sys.stderr)
             return 1
-    if shutil.which("xdg-open"):
-        print(f"==> xdg-open {url}")
-        try:
-            subprocess.Popen(["xdg-open", url],
-                             stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL)
-            return 0
-        except OSError as e:
-            print(f"Could not launch via xdg-open: {e}", file=sys.stderr)
-            return 1
-    print(f"Could not find a Steam launcher. Open this URL manually: {url}",
+    print(f"Could not find a working Steam launcher or URL handler. Open this URL manually: {url}",
           file=sys.stderr)
     return 1
 

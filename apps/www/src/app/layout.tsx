@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Nav } from './nav';
 import { Providers } from './providers';
+import { VersionBadge } from './version-badge';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -22,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className="dark">
       <body className="flex min-h-screen flex-col">
-        <Nav />
+        <Nav versionBadge={<VersionBadge />} />
         <div className="flex-1">
           <Providers>{children}</Providers>
         </div>

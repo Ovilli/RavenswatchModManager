@@ -1,6 +1,57 @@
-import { buttonVariants } from '@rsmm/ui';
+import { Badge, buttonVariants } from '@rsmm/ui';
+import type { ModListItem } from '@rsmm/schemas';
 import Link from 'next/link';
 import { FAQ } from './components/faq';
+import { OsDownload } from './os-download';
+import { QuickSearch } from './quick-search';
+import { MockClient } from './mock-client';
+
+interface HomeData {
+  mods: ModListItem[];
+  totalMods: number;
+  totalModDownloads: number;
+  appDownloads: number;
+}
+
+async function getHomeData(): Promise<HomeData> {
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+  const fallback: HomeData = { mods: [], totalMods: 0, totalModDownloads: 0, appDownloads: 0 };
+
+  try {
+    const [modRes, ghRes] = await Promise.allSettled([
+      fetch(`${apiBase}/api/mods?limit=48`, { next: { revalidate: 300 } }),
+      fetch('https://api.github.com/repos/Ovilli/RavenswatchModManager/releases/latest', {
+        next: { revalidate: 3600 },
+      }),
+    ]);
+
+    let mods: ModListItem[] = [];
+    let totalMods = 0;
+    let totalModDownloads = 0;
+    let appDownloads = 0;
+
+    if (modRes.status === 'fulfilled' && modRes.value.ok) {
+      const body = await modRes.value.json();
+      mods = body.items ?? [];
+      totalMods = body.total ?? 0;
+      totalModDownloads = mods.reduce((s: number, m: ModListItem) => s + (m.downloads ?? 0), 0);
+    }
+
+    if (ghRes.status === 'fulfilled' && ghRes.value.ok) {
+      const data = await ghRes.value.json();
+      if (data.assets) {
+        appDownloads = data.assets.reduce(
+          (s: number, a: { download_count?: number }) => s + (a.download_count ?? 0),
+          0,
+        );
+      }
+    }
+
+    return { mods, totalMods, totalModDownloads, appDownloads };
+  } catch {
+    return fallback;
+  }
+}
 
 const features = [
   {
@@ -59,15 +110,16 @@ const features = [
   },
 ];
 
-const placeholderMods = Array.from({ length: 4 }, (_, i) => ({
-  name: `Mod #${i + 1}`,
-  author: '???',
-  downloads: '?',
-  likes: '?',
-  category: '???',
-}));
+function fmt(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
 
-export default function Home() {
+export default async function Home() {
+  const { mods, totalMods, totalModDownloads, appDownloads } = await getHomeData();
+  const showcase = [...mods].sort((a, b) => b.downloads - a.downloads).slice(0, 4);
+
   return (
     <main className="relative overflow-hidden">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_-20%,hsl(var(--crimson)/0.12),transparent_50%),radial-gradient(circle_at_80%_80%,hsl(var(--oxblood)/0.08),transparent_50%)]" />
@@ -84,9 +136,7 @@ export default function Home() {
           </p>
 
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Link href="/download" className={buttonVariants({ size: 'lg' })}>
-              Download for Linux
-            </Link>
+            <OsDownload />
             <Link
               href="/download"
               className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -97,8 +147,13 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="mt-12 overflow-hidden rounded-xl border border-border/50 bg-card/50 backdrop-blur-sm">
-          <div className="cover-placeholder aspect-video w-full" />
+        <MockClient mods={showcase} />
+      </section>
+
+      {/* ───── Search ───── */}
+      <section className="container mx-auto px-6 pb-8">
+        <div className="mx-auto max-w-2xl">
+          <QuickSearch />
         </div>
       </section>
 
@@ -135,13 +190,15 @@ export default function Home() {
         </div>
         <div className="grid gap-6 sm:grid-cols-3">
           {[
-            { label: 'Available Mods', value: '?' },
-            { label: 'Mod Downloads', value: '?' },
-            { label: 'App Downloads', value: '?' },
+            { label: 'Available Mods', value: totalMods || '?' },
+            { label: 'Mod Downloads', value: totalModDownloads || '?' },
+            { label: 'App Downloads', value: appDownloads || '?' },
           ].map((stat) => (
             <div key={stat.label} className="grimoire-card p-6 text-center">
-              <div className="text-4xl font-bold tracking-tight text-foreground">{stat.value}</div>
-              <div className="mt-1 text-sm text-muted-foreground">{stat.label}</div>
+              <div className="text-5xl font-black tracking-tight text-foreground">
+                {typeof stat.value === 'number' ? fmt(stat.value) : stat.value}
+              </div>
+              <div className="mt-2 text-sm text-muted-foreground">{stat.label}</div>
             </div>
           ))}
         </div>
@@ -157,46 +214,68 @@ export default function Home() {
           </p>
         </div>
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {placeholderMods.map((mod) => (
-            <div key={mod.name} className="grimoire-card overflow-hidden">
-              <div className="cover-placeholder aspect-[4/3] w-full" />
-              <div className="space-y-2 p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <h3 className="text-sm font-semibold leading-tight text-foreground">
-                      {mod.name}
-                    </h3>
-                    <p className="text-xs text-muted-foreground">by {mod.author}</p>
+          {showcase.length > 0
+            ? showcase.map((mod) => (
+                <Link
+                  key={mod.id}
+                  href={`/registry/${mod.slug}`}
+                  className="grimoire-card overflow-hidden group cursor-pointer hover:border-gilt/40 transition-colors"
+                >
+                  {mod.imageUrl ? (
+                    <div className="aspect-[4/3] w-full overflow-hidden bg-muted">
+                      <img
+                        src={mod.imageUrl}
+                        alt={`${mod.name} preview`}
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        loading="lazy"
+                      />
+                    </div>
+                  ) : (
+                    <div className="aspect-[4/3] w-full bg-muted" />
+                  )}
+                  <div className="space-y-2 p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-semibold leading-tight text-foreground truncate">
+                          {mod.name}
+                        </h3>
+                        <p className="text-xs text-muted-foreground">by {mod.author ?? 'unknown'}</p>
+                      </div>
+                      {mod.category ? (
+                        <Badge variant="outline" className="shrink-0 text-[0.6rem]">{mod.category}</Badge>
+                      ) : null}
+                    </div>
+                    {mod.summary ? (
+                      <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                        {mod.summary}
+                      </p>
+                    ) : null}
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <span>{mod.downloads.toLocaleString()} downloads</span>
+                      {mod.rating != null ? <span>★ {mod.rating.toFixed(1)}</span> : null}
+                      {mod.latestVersion ? <span className="ml-auto font-mono text-[0.6rem]">v{mod.latestVersion}</span> : null}
+                    </div>
                   </div>
-                  <span className="shrink-0 rounded-md border border-border/50 px-1.5 py-0.5 font-mono text-[0.6rem] uppercase tracking-wider text-muted-foreground">
-                    {mod.category}
-                  </span>
+                </Link>
+              ))
+            : Array.from({ length: 4 }, (_, i) => (
+                <div key={i} className="grimoire-card overflow-hidden">
+                  <div className="aspect-[4/3] w-full bg-muted" />
+                  <div className="space-y-2 p-4">
+                    <div className="h-4 w-3/4 bg-muted rounded" />
+                    <div className="h-3 w-1/2 bg-muted rounded" />
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                  <span>{mod.downloads} downloads</span>
-                  <span>{mod.likes} likes</span>
-                </div>
-              </div>
-            </div>
-          ))}
+              ))}
         </div>
 
         <div className="mt-8 text-center">
           <Link href="/registry" className={buttonVariants({ size: 'lg' })}>
-            Install Mod
+            Browse All Mods
           </Link>
           <p className="mt-3 text-sm text-muted-foreground">
             Click once to install · Works automatically · Ready in seconds
           </p>
-          <div className="mt-6">
-            <Link
-              href="/registry"
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-            >
-              Browse All Mods{' '}
-              <span aria-hidden="true" className="text-gilt">→</span>
-            </Link>
-          </div>
         </div>
       </section>
 

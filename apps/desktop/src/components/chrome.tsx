@@ -1,4 +1,5 @@
 import { cn } from '@rsmm/ui';
+import { Copy } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
 
@@ -13,16 +14,24 @@ export function Fleuron({
 export function Crest({
   monogram = 'R',
   size = 'md',
+  iconSrc,
+  iconAlt = 'Tauri icon',
   className,
 }: {
   monogram?: string;
   size?: 'sm' | 'md' | 'lg';
+  iconSrc?: string;
+  iconAlt?: string;
   className?: string;
 }) {
   const sizeClass = size === 'sm' ? 'h-10 w-10' : size === 'lg' ? 'h-14 w-14' : 'h-12 w-12';
   return (
     <span className={cn('brand-crest', sizeClass, className)} aria-hidden>
-      <span className="font-fraktur text-2xl leading-none">{monogram}</span>
+      {iconSrc ? (
+        <img src={iconSrc} alt={iconAlt} className="h-full w-full rounded-[inherit] object-contain p-1" />
+      ) : (
+        <span className="font-fraktur text-2xl leading-none">{monogram}</span>
+      )}
     </span>
   );
 }
@@ -84,9 +93,14 @@ export function CopyButton({ value }: { value: string }) {
         onClick={copy}
         title="Copy error details"
         aria-label="Copy error details to clipboard"
-        className="font-mono ml-auto text-ash hover:text-parchment text-xs tracking-wider uppercase"
+        className={cn(
+          'ml-auto inline-flex min-w-24 items-center justify-center gap-1.5 border border-border bg-pitch/70 px-3 py-1.5',
+          'font-mono text-xs tracking-wider uppercase text-ash transition-colors duration-150',
+          'hover:border-gilt/50 hover:text-parchment focus:outline-none focus:ring-2 focus:ring-gilt/40',
+        )}
       >
-        {copied ? 'copied' : 'copy'}
+        <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+        <span>{copied ? 'copied' : 'copy'}</span>
       </button>
     </>
   );

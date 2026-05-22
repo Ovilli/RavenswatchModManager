@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { Trash2 } from 'lucide-react';
+import { ChevronDown, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Fleuron, Panel, SectionHeader } from '../components/chrome';
 import { useToast } from '../components/toast';
@@ -205,16 +205,19 @@ function SettingsPage() {
             placeholder="Search launcher log..."
             className="font-mono min-w-56 flex-1 border border-border bg-pitch/60 px-3 py-2 text-sm text-parchment placeholder:text-ash focus:border-gilt/60 focus:outline-none"
           />
-          <select
-            value={logLevel}
-            onChange={(e) => setLogLevel(e.target.value as 'all' | 'info' | 'warn' | 'error')}
-            className="font-mono border border-border bg-pitch/60 px-3 py-2 text-sm text-parchment focus:border-gilt/60 focus:outline-none"
-          >
-            <option value="all">All levels</option>
-            <option value="info">Info</option>
-            <option value="warn">Warnings</option>
-            <option value="error">Errors</option>
-          </select>
+          <div className="relative inline-flex">
+            <select
+              value={logLevel}
+              onChange={(e) => setLogLevel(e.target.value as 'all' | 'info' | 'warn' | 'error')}
+              className="font-mono appearance-none border border-border bg-pitch/60 py-2 pl-3 pr-9 text-sm text-parchment focus:border-gilt/60 focus:outline-none"
+            >
+              <option value="all">All levels</option>
+              <option value="info">Info</option>
+              <option value="warn">Warnings</option>
+              <option value="error">Errors</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ash" aria-hidden="true" />
+          </div>
         </div>
         <pre className="font-mono max-h-72 overflow-auto whitespace-pre-wrap border border-border bg-pitch/60 p-3 text-sm text-parchment/90">
           {filteredLauncherLog.trim()
