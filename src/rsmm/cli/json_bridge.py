@@ -26,8 +26,8 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from rsmm.engine.paths import MODS_DIR, REPO_ROOT
 from rsmm.cli.apply_mods import clear_runtime_mods, find_game_dir
+from rsmm.engine.paths import MODS_DIR, REPO_ROOT
 
 
 def _emit(value: Any) -> int:

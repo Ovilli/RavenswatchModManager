@@ -92,14 +92,20 @@ static void loader_thread_cxx() {
 }
 
 static void loader_thread() {
+#ifdef _MSC_VER
     // SEH wrapper catches access violations / invalid handles / stack
     // overflows the C++ try/catch above cannot. We log and bail rather
     // than letting Windows tear the process down with a vague dialog.
+    // MinGW/GCC don't support __try/__except, so the cross-compile path
+    // falls back to the C++ exception layer only.
     __try {
         loader_thread_cxx();
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         OutputDebugStringA("rsmm loader: SEH exception in loader thread; aborting init.");
     }
+#else
+    loader_thread_cxx();
+#endif
 }
 
 BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID) {

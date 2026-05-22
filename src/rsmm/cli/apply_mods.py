@@ -1071,7 +1071,8 @@ def main() -> int:
     g.add_argument("--list", action="store_true",
                    help="list discovered mods + their files")
     ap.add_argument("--purge-known-overrides", action="store_true",
-                    help="aggressively remove cooked files mapped from known mod assets during restore")
+                    help="aggressively remove cooked files mapped from "
+                         "known mod assets during restore")
     ap.add_argument("--no-merge", action="store_true",
                     help="skip auto-merging [[patch]] blocks into mods/_merged/")
     ap.add_argument("--force", action="store_true",

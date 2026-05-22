@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import sys
 
-if sys.version_info < (3, 11):
-    sys.exit(
+# Guard for callers that invoke this dispatch module via an older
+# interpreter (e.g. a stale `python` symlink picked up by a sidecar
+# wrapper) — the surrounding package targets 3.11+ and the imports
+# below would crash with a less actionable message.
+if sys.version_info < (3, 11):  # noqa: UP036
+    sys.exit(  # pragma: no cover
         f"rsmm requires Python 3.11 or newer (have {sys.version.split()[0]}). "
         "Upgrade Python and reinstall rsmm."
     )
