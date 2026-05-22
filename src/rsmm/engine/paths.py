@@ -131,11 +131,20 @@ def _game_dir_candidates() -> list[Path]:
 
     Steam-discovered roots come first; hardcoded fallbacks follow.
     """
+    def _safe_exists(path: Path) -> bool:
+        try:
+            return path.exists()
+        except OSError:
+            return False
+
     home = Path.home()
     cands: list[Path] = list(_steam_library_candidates())
     if sys.platform == "win32":
-        drives = [d for d in "CDEFGHIJKLMNOPQRSTUVWXYZ" if Path(f"{d}:\\").exists()]
+        drives = [d for d in "CDEFGHIJKLMNOPQRSTUVWXYZ" if _safe_exists(Path(f"{d}:\\"))]
         for d in drives:
+            drive_root = Path(f"{d}:\\")
+            if not _safe_exists(drive_root):
+                continue
             cands += [
                 Path(f"{d}:\\Program Files (x86)\\Steam\\steamapps\\common\\Ravenswatch"),
                 Path(f"{d}:\\Program Files\\Steam\\steamapps\\common\\Ravenswatch"),
@@ -186,8 +195,11 @@ def default_game_dir() -> Path:
     """
     cands = _game_dir_candidates()
     for c in cands:
-        if (c / COOKING_SUBDIR).is_dir():
-            return c
+        try:
+            if (c / COOKING_SUBDIR).is_dir():
+                return c
+        except OSError:
+            continue
     return cands[0]
 
 
