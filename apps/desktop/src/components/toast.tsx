@@ -99,10 +99,8 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<DialogState>(null);
 
   const api: DialogApi = {
-    prompt: (opts) =>
-      new Promise((resolve) => setState({ kind: 'prompt', opts, resolve })),
-    confirm: (opts) =>
-      new Promise((resolve) => setState({ kind: 'confirm', opts, resolve })),
+    prompt: (opts) => new Promise((resolve) => setState({ kind: 'prompt', opts, resolve })),
+    confirm: (opts) => new Promise((resolve) => setState({ kind: 'confirm', opts, resolve })),
   };
 
   return (

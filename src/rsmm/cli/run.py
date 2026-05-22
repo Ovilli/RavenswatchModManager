@@ -249,7 +249,11 @@ def _write_launch_options(vdf_path: Path, app_id: str, new_value: str) -> bool:
     bak = vdf_path.with_suffix(vdf_path.suffix + ".rsmm.bak")
     if not bak.exists():
         bak.write_text(text)
-    vdf_path.write_text(new_text)
+    # Atomic write: a Steam crash mid-write was previously enough to
+    # leave localconfig.vdf truncated, which Steam then refused to load.
+    tmp = vdf_path.with_suffix(vdf_path.suffix + ".rsmm.tmp")
+    tmp.write_text(new_text)
+    tmp.replace(vdf_path)
     return True
 
 

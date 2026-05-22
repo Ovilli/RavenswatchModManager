@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
+import { inTauri } from '../lib/platform';
 
-const AD_ORIGIN =
-  import.meta.env.VITE_ADS_ORIGIN ?? 'https://ravenswatch.ovilli.de';
+const AD_ORIGIN = import.meta.env.VITE_ADS_ORIGIN ?? 'https://ravenswatch.ovilli.de';
 const AD_BANNER_PATH = '/ads/banner';
 
 /**
  * Embeds an ad slot served by the docs site as an iframe. The docs site
  * sits on a real domain so AdSense (or any other ad SDK) can run there
  * within Google's terms. The Tauri client only loads the slot via iframe.
+ *
+ * Only renders inside a production Tauri shell to avoid CORS / protocol
+ * mismatch errors when previewing in a regular browser.
  */
 export default function PromotedBanner({ vertical }: { vertical?: boolean } = {}) {
   const [loaded, setLoaded] = useState(false);
@@ -20,6 +23,10 @@ export default function PromotedBanner({ vertical }: { vertical?: boolean } = {}
     }, 8000);
     return () => window.clearTimeout(t);
   }, [loaded]);
+
+  if (!inTauri() || import.meta.env.DEV) {
+    return null;
+  }
 
   const src = `${AD_ORIGIN}${AD_BANNER_PATH}`;
 

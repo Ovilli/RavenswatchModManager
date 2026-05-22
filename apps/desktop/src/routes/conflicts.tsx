@@ -42,17 +42,15 @@ function ConflictsPage() {
           <li key={c.path}>
             <Panel>
               <div className="flex items-baseline justify-between gap-2">
-                <h3 className="font-fraktur text-lg text-parchment">
-                  Shared file
-                </h3>
+                <h3 className="font-fraktur text-lg text-parchment">Shared file</h3>
                 <MonoTag tone="crimson">conflict</MonoTag>
               </div>
               <p className="font-mono mt-1 text-ash break-all">{c.path}</p>
               <Fleuron className="my-4" />
 
               <p className="font-serif-italic text-smoke mb-3">
-                Choose which mod owns this file. The other will be disabled in this
-                profile. You can re-enable it later.
+                Choose which mod owns this file. The other will be disabled in this profile. You can
+                re-enable it later.
               </p>
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -79,9 +77,7 @@ function ConflictsPage() {
                       <p className="font-mono mt-1 text-ash">
                         {mod.author} · v{mod.version}
                       </p>
-                      <p className="font-serif-italic mt-2 text-sm text-smoke">
-                        {mod.summary}
-                      </p>
+                      <p className="font-serif-italic mt-2 text-sm text-smoke">{mod.summary}</p>
                       <button
                         type="button"
                         onClick={() => {
@@ -91,9 +87,7 @@ function ConflictsPage() {
                             if (other !== id) {
                               // Read live state per mod to avoid stale closure bug
                               const state = useApp.getState();
-                              const p = state.profiles.find(
-                                (x) => x.id === state.activeProfileId,
-                              );
+                              const p = state.profiles.find((x) => x.id === state.activeProfileId);
                               if (p && !p.disabled.has(other)) {
                                 state.toggleMod(other);
                               }

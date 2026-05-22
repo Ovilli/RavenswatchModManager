@@ -1,5 +1,15 @@
 export type Platform = 'windows' | 'macos' | 'linux';
 
+/** True when the page is running inside the Tauri WebView, false in a
+ * browser or under SSR/build. Multiple call sites duplicated this check;
+ * keep it here so the global probe stays in one place. */
+export function inTauri(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)
+  );
+}
+
 const cached: { platform: Platform | null } = { platform: null };
 
 export function getPlatform(): Platform {
@@ -14,24 +24,6 @@ export function getPlatform(): Platform {
     cached.platform = 'linux';
   }
   return cached.platform;
-}
-
-/** Lua scripting support is only available on Windows (requires native DLL) */
-export function supportsLuaScripting(): boolean {
-  return getPlatform() === 'windows';
-}
-
-/** Returns the download URL for the latest RSMM release for this platform */
-export function getDownloadUrl(): string {
-  const base = 'https://github.com/Ovilli/RavenswatchModManager/releases/latest';
-  switch (getPlatform()) {
-    case 'windows':
-      return `${base}/RSMM-x64.msi`;
-    case 'macos':
-      return `${base}/RSMM-universal.dmg`;
-    case 'linux':
-      return `${base}/RSMM-x86_64.AppImage`;
-  }
 }
 
 /** "⌘K" on macOS, "Ctrl+K" elsewhere. */

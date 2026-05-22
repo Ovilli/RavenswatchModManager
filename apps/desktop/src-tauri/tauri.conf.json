@@ -46,7 +46,14 @@
     },
     "linux": {
       "deb": {
-        "depends": ["libwebkit2gtk-4.1-0"]
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0",
+          "libjavascriptcoregtk-4.1-0",
+          "libsoup-3.0-0",
+          "glib-networking",
+          "gsettings-desktop-schemas"
+        ]
       },
       "appimage": {
         "bundleMediaFramework": true

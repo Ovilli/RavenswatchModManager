@@ -68,6 +68,34 @@ def build_sidecar(target: str) -> None:
         check=True, capture_output=True,
     )
 
+    # Modules loaded dynamically via importlib (rsmm/cli/_dispatch.py).
+    # PyInstaller cannot detect these statically, so declare them explicitly.
+    HIDDEN_IMPORTS = [
+        "rsmm.cli.json_bridge",
+        "rsmm.cli.safe_mode",
+        "rsmm.cli.sdk_doctor",
+        "rsmm.cli.docs_gen_cmd",
+        "rsmm.cli.update_cmd",
+        "rsmm.cli.cmd_new",
+        "rsmm.cli.cmd_pack",
+        "rsmm.cli.cmd_log",
+        "rsmm.cli.install_loader",
+        "rsmm.cli.apply_mods",
+        "rsmm.cli.doctor",
+        "rsmm.cli.watch",
+        "rsmm.cli.build",
+        "rsmm.cli.run",
+        "rsmm.cli.merge",
+        "rsmm.cli.compat",
+        "rsmm.cli.lint",
+        "rsmm.cli.test",
+        "rsmm.cli.repo_cmd",
+        "rsmm.engine.ot_decoder",
+        "rsmm.engine.find_iyg",
+        "rsmm.engine.paths",
+    ]
+    hidden_import_args = [f"--hidden-import={m}" for m in HIDDEN_IMPORTS]
+
     # Bundle runtime data needed by CLI commands in frozen mode.
     add_data_args = [
         "--add-data", f"{REPO_ROOT / 'pyproject.toml'}{os.pathsep}.",
@@ -79,7 +107,7 @@ def build_sidecar(target: str) -> None:
     ]
 
     # Build with PyInstaller
-    # The entry point is rsmm.cli._dispatch:main
+    # The entry point is the ./rsmm script at the repo root.
     subprocess.run(
         [
             sys.executable,
@@ -90,8 +118,9 @@ def build_sidecar(target: str) -> None:
             "--distpath", str(OUT_DIR),
             "--specpath", str(OUT_DIR),
             "--workpath", str(OUT_DIR / "build"),
+            *hidden_import_args,
             *add_data_args,
-            str(REPO_ROOT / "src" / "rsmm" / "__init__.py"),
+            str(REPO_ROOT / "rsmm"),
         ],
         check=True, cwd=REPO_ROOT,
     )

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { LogIn, UserPlus } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
-import { Button, Panel, SectionHeader } from '../components/chrome';
+import { type FormEvent, useState } from 'react';
+import { Button, CopyButton, Panel, SectionHeader } from '../components/chrome';
 import { signIn, signUp } from '../lib/auth-client';
 
 export const Route = createFileRoute('/signin')({
@@ -54,7 +54,11 @@ function SignInPage() {
       }
       navigate({ to: '/' });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unexpected error.');
+      if (err instanceof TypeError && err.message === 'Failed to fetch') {
+        setError('Could not reach the server. Check your connection or try again later.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Unexpected error.');
+      }
     } finally {
       setBusy(false);
     }
@@ -76,9 +80,7 @@ function SignInPage() {
       <Panel>
         <form className="space-y-4" onSubmit={onSubmit}>
           <label className="block space-y-1">
-            <span className="font-mono text-xs uppercase tracking-[0.22em] text-ash">
-              Email
-            </span>
+            <span className="font-mono text-xs uppercase tracking-[0.22em] text-ash">Email</span>
             <input
               type="email"
               autoComplete="email"
@@ -91,9 +93,7 @@ function SignInPage() {
           </label>
 
           <label className="block space-y-1">
-            <span className="font-mono text-xs uppercase tracking-[0.22em] text-ash">
-              Password
-            </span>
+            <span className="font-mono text-xs uppercase tracking-[0.22em] text-ash">Password</span>
             <input
               type="password"
               autoComplete={isSignup ? 'new-password' : 'current-password'}
@@ -105,24 +105,20 @@ function SignInPage() {
               disabled={busy}
             />
             {isSignup ? (
-              <span className="font-mono text-xs text-ash">
-                Minimum 8 characters.
-              </span>
+              <span className="font-mono text-xs text-ash">Minimum 8 characters.</span>
             ) : null}
           </label>
 
           {error ? (
-            <p className="text-sm text-crimson" role="alert">
-              {error}
-            </p>
+            <div className="flex items-start gap-2">
+              <p className="text-sm text-crimson flex-1" role="alert">
+                {error}
+              </p>
+              <CopyButton value={error} />
+            </div>
           ) : null}
 
-          <Button
-            type="submit"
-            variant="primary"
-            disabled={busy}
-            className="w-full justify-center"
-          >
+          <Button type="submit" variant="primary" disabled={busy} className="w-full justify-center">
             {isSignup ? (
               <>
                 <UserPlus className="h-4 w-4" />

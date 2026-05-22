@@ -83,23 +83,3 @@ def _load_kind(kind: str):
         raise ContentError(f"no builder for kind {kind!r}: {e}") from e
 
 
-# --- third-party kind extension ---------------------------------------
-
-_EXTRA_KINDS: dict[str, ContentKindImpl] = {}
-
-
-class ContentKindImpl:
-    """Minimal interface a plugin must implement to add a new kind."""
-
-    name: str = ""
-
-    def emit(self, mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
-        raise NotImplementedError
-
-
-@sdk_export("content.register_kind")
-def register_kind(name: str, impl: ContentKindImpl) -> None:
-    """Plugin entry-point hook: add a new content kind at runtime."""
-    if name in KINDS or name in _EXTRA_KINDS:
-        raise ContentError(f"kind {name!r} already registered")
-    _EXTRA_KINDS[name] = impl

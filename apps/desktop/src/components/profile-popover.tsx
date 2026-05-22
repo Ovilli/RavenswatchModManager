@@ -1,8 +1,8 @@
 import { useNavigate } from '@tanstack/react-router';
 import { Check, ChevronDown, Copy, Plus } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
-import { useDialog } from './toast';
 import { useApp } from '../store';
+import { useDialog, useToast } from './toast';
 
 export function ProfilePopover() {
   const [open, setOpen] = useState(false);
@@ -15,6 +15,7 @@ export function ProfilePopover() {
   const duplicate = useApp((s) => s.duplicateProfile);
   const navigate = useNavigate();
   const dialog = useDialog();
+  const toast = useToast();
   const active = profiles.find((p) => p.id === activeId) ?? profiles[0];
   const menuId = useId();
 
@@ -45,7 +46,22 @@ export function ProfilePopover() {
       initialValue: 'New Run',
       submitLabel: 'Create',
     });
-    if (name?.trim()) create(name.trim());
+    const trimmed = name?.trim();
+    if (!trimmed) return;
+    if (trimmed.length > 64) {
+      toast.push('Profile names must be 64 characters or fewer.', 'error');
+      return;
+    }
+    // Reject ASCII control characters but allow anything else (Unicode,
+    // emoji, spaces, common punctuation) — profile names are display-only.
+    for (const ch of trimmed) {
+      const code = ch.codePointAt(0);
+      if (code !== undefined && code < 0x20) {
+        toast.push('Profile names may not contain control characters.', 'error');
+        return;
+      }
+    }
+    create(trimmed);
   };
 
   return (
@@ -87,9 +103,7 @@ export function ProfilePopover() {
                 >
                   <span>
                     <span className="text-parchment">{p.name}</span>
-                    <span className="font-mono ml-2 text-ash">
-                      {p.loadOrder.length} mods
-                    </span>
+                    <span className="font-mono ml-2 text-ash">{p.loadOrder.length} mods</span>
                   </span>
                   {p.id === activeId ? <Check className="h-4 w-4 text-crimson" /> : null}
                 </button>

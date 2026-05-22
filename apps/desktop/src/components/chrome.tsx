@@ -1,4 +1,5 @@
 import { cn } from '@rsmm/ui';
+import { useCallback, useRef, useState } from 'react';
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
 
 export function Fleuron({
@@ -18,8 +19,7 @@ export function Crest({
   size?: 'sm' | 'md' | 'lg';
   className?: string;
 }) {
-  const sizeClass =
-    size === 'sm' ? 'h-10 w-10' : size === 'lg' ? 'h-14 w-14' : 'h-12 w-12';
+  const sizeClass = size === 'sm' ? 'h-10 w-10' : size === 'lg' ? 'h-14 w-14' : 'h-12 w-12';
   return (
     <span className={cn('brand-crest', sizeClass, className)} aria-hidden>
       <span className="font-fraktur text-2xl leading-none">{monogram}</span>
@@ -45,6 +45,50 @@ export function Button({
     >
       {children}
     </button>
+  );
+}
+
+export function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  const copy = useCallback(() => {
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(value).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      });
+    } else {
+      const ta = ref.current;
+      if (ta) {
+        ta.select();
+        document.execCommand('copy');
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    }
+  }, [value]);
+
+  return (
+    <>
+      <textarea
+        ref={ref}
+        value={value}
+        readOnly
+        aria-hidden="true"
+        className="sr-only"
+        tabIndex={-1}
+      />
+      <button
+        type="button"
+        onClick={copy}
+        title="Copy error details"
+        aria-label="Copy error details to clipboard"
+        className="font-mono ml-auto text-ash hover:text-parchment text-xs tracking-wider uppercase"
+      >
+        {copied ? 'copied' : 'copy'}
+      </button>
+    </>
   );
 }
 
@@ -74,9 +118,7 @@ export function CoverPlaceholder({
   caption?: string;
   className?: string;
 }) {
-  return (
-    <div className={cn('cover-placeholder aspect-[16/9] w-full', className)}>{caption}</div>
-  );
+  return <div className={cn('cover-placeholder aspect-[16/9] w-full', className)}>{caption}</div>;
 }
 
 /**
@@ -102,12 +144,7 @@ export function Cover({
         className,
       )}
     >
-      <img
-        src={src}
-        alt={alt}
-        loading="lazy"
-        className="h-full w-full object-cover"
-      />
+      <img src={src} alt={alt} loading="lazy" className="h-full w-full object-cover" />
     </div>
   );
 }
@@ -124,7 +161,10 @@ function parseMarkdownBlocks(src: string): MdBlock[] {
   let i = 0;
   while (i < lines.length) {
     const line = lines[i] ?? '';
-    if (line.trim() === '') { i++; continue; }
+    if (line.trim() === '') {
+      i++;
+      continue;
+    }
     if (line.startsWith('```')) {
       const buf: string[] = [];
       i++;
@@ -136,9 +176,21 @@ function parseMarkdownBlocks(src: string): MdBlock[] {
       out.push({ kind: 'code', text: buf.join('\n') });
       continue;
     }
-    if (line.startsWith('### ')) { out.push({ kind: 'h3', text: line.slice(4) }); i++; continue; }
-    if (line.startsWith('## ')) { out.push({ kind: 'h2', text: line.slice(3) }); i++; continue; }
-    if (line.startsWith('# ')) { out.push({ kind: 'h1', text: line.slice(2) }); i++; continue; }
+    if (line.startsWith('### ')) {
+      out.push({ kind: 'h3', text: line.slice(4) });
+      i++;
+      continue;
+    }
+    if (line.startsWith('## ')) {
+      out.push({ kind: 'h2', text: line.slice(3) });
+      i++;
+      continue;
+    }
+    if (line.startsWith('# ')) {
+      out.push({ kind: 'h1', text: line.slice(2) });
+      i++;
+      continue;
+    }
     if (line.startsWith('> ')) {
       const buf: string[] = [line.slice(2)];
       i++;
@@ -189,14 +241,24 @@ function renderInline(src: string, keyPrefix: string): ReactNode[] {
         </code>,
       );
     } else if (tok.startsWith('**')) {
-      nodes.push(<strong key={key} className="text-parchment">{tok.slice(2, -2)}</strong>);
+      nodes.push(
+        <strong key={key} className="text-parchment">
+          {tok.slice(2, -2)}
+        </strong>,
+      );
     } else if (tok.startsWith('*')) {
       nodes.push(<em key={key}>{tok.slice(1, -1)}</em>);
     } else {
       const m = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(tok);
       if (m) {
         nodes.push(
-          <a key={key} href={m[2]} target="_blank" rel="noreferrer noopener" className="text-gilt hover:underline">
+          <a
+            key={key}
+            href={m[2]}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="text-gilt hover:underline"
+          >
             {m[1]}
           </a>,
         );
@@ -315,9 +377,7 @@ export function SectionHeader({
     <header className="flex items-end justify-between gap-6 pb-4">
       <div>
         <h2 className="font-fraktur text-3xl text-parchment leading-none">{title}</h2>
-        {subtitle ? (
-          <p className="font-serif-italic mt-2 text-ash text-base">{subtitle}</p>
-        ) : null}
+        {subtitle ? <p className="font-serif-italic mt-2 text-ash text-base">{subtitle}</p> : null}
       </div>
       {right ? <div className="shrink-0">{right}</div> : null}
     </header>
@@ -342,11 +402,7 @@ export function EmptyState({
   );
 }
 
-export function Panel({
-  className,
-  children,
-  ...props
-}: HTMLAttributes<HTMLDivElement>) {
+export function Panel({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div className={cn('grimoire-card p-6', className)} {...props}>
       {children}
@@ -372,9 +428,7 @@ export function InkSwitch({
       onClick={onClick}
       className={cn(
         'relative inline-flex h-5 w-9 items-center border transition-colors duration-150 ease-grimoire',
-        on
-          ? 'border-crimson bg-crimson/40'
-          : 'border-border bg-char',
+        on ? 'border-crimson bg-crimson/40' : 'border-border bg-char',
       )}
     >
       <span

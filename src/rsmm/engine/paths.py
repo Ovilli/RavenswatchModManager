@@ -63,9 +63,16 @@ def _find_repo_root() -> Path:
         # command-level checks report missing data files.
         return frozen_candidates[0]
 
-    raise RuntimeError(
-        f"rsmm repo root not found: data/asset_map.json missing in any parent of {here}"
+    # Source tree without `data/asset_map.json` (e.g. fresh clone before
+    # first build, or a partial install). Don't crash at import; let
+    # whatever subcommand actually needs the asset map report a clear
+    # error when it opens the file.
+    print(
+        f"warning: rsmm repo root not found: data/asset_map.json missing "
+        f"in any parent of {here}; falling back to {here.parents[2]}",
+        file=sys.stderr,
     )
+    return here.parents[2]
 
 
 COOKING_SUBDIR: str = "DarkTalesResources/_Cooking"

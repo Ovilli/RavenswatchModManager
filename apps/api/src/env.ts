@@ -3,9 +3,14 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
-// repo-root .env (apps/api/src -> repo root = ../../../)
-loadEnv({ path: resolve(here, '..', '..', '..', '.env') });
-loadEnv(); // also pick up local .env if present
+const repoRoot = resolve(here, '..', '..', '..');
+// `.env.local` holds secrets and wins over `.env` (which is the
+// committed template). dotenv preserves the first value it sees per key,
+// so load `.local` first, then the template as fallback.
+loadEnv({ path: resolve(repoRoot, '.env.local') });
+loadEnv({ path: resolve(repoRoot, '.env') });
+loadEnv({ path: '.env.local' });
+loadEnv();
 
 function required(name: string): string {
   const v = process.env[name];

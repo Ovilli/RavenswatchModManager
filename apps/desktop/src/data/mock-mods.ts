@@ -20,8 +20,6 @@ export type ModCategory =
   | 'speedrun'
   | 'utility';
 
-export type ModStatus = 'installed' | 'available';
-
 export interface MockMod {
   id: string;
   slug: string;

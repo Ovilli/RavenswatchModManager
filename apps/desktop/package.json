@@ -35,13 +35,11 @@
     "lucide-react": "0.469.0",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "zod": "3.25.76",
     "zustand": "5.0.2"
   },
   "devDependencies": {
     "@rsmm/tsconfig": "workspace:*",
     "@tanstack/router-cli": "1.131.7",
-    "@tanstack/router-devtools": "1.131.7",
     "@tanstack/router-plugin": "1.131.7",
     "@tauri-apps/cli": "2.1.0",
     "@types/react": "19.0.2",

@@ -114,9 +114,7 @@ function ProfilesPage() {
       {importing ? (
         <Panel>
           <h3 className="font-fraktur text-lg text-parchment mb-2">Import profile</h3>
-          <p className="font-serif-italic text-ash mb-3">
-            Paste an exported profile code below.
-          </p>
+          <p className="font-serif-italic text-ash mb-3">Paste an exported profile code below.</p>
           <textarea
             value={code}
             onChange={(e) => setCode(e.target.value)}
@@ -125,7 +123,9 @@ function ProfilesPage() {
             placeholder="base64-encoded profile…"
           />
           {importError ? (
-            <p className="text-sm text-crimson mt-2" role="alert">{importError}</p>
+            <p className="text-sm text-crimson mt-2" role="alert">
+              {importError}
+            </p>
           ) : null}
           <div className="mt-3 flex justify-end gap-2">
             <button
@@ -154,9 +154,7 @@ function ProfilesPage() {
             <article key={p.id} className="grimoire-card p-5">
               <header className="flex items-start justify-between gap-2">
                 <div>
-                  <h3 className="font-fraktur text-2xl text-parchment leading-none">
-                    {p.name}
-                  </h3>
+                  <h3 className="font-fraktur text-2xl text-parchment leading-none">{p.name}</h3>
                   <p className="font-mono mt-1 text-ash">
                     {enabled} enabled · {p.loadOrder.length} total
                   </p>

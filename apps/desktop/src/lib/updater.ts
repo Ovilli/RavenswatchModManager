@@ -16,15 +16,7 @@ export interface AvailableUpdate {
   apply: (onProgress?: (downloaded: number, total: number | null) => void) => Promise<void>;
 }
 
-let inTauriCache: boolean | null = null;
-
-function inTauri(): boolean {
-  if (inTauriCache !== null) return inTauriCache;
-  inTauriCache =
-    typeof window !== 'undefined' &&
-    ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
-  return inTauriCache;
-}
+import { inTauri } from './platform';
 
 export async function checkForUpdate(): Promise<AvailableUpdate | null> {
   if (!inTauri()) return null;

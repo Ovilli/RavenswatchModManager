@@ -141,9 +141,6 @@ importers:
       react-dom:
         specifier: 19.0.0
         version: 19.0.0(react@19.0.0)
-      zod:
-        specifier: 3.25.76
-        version: 3.25.76
       zustand:
         specifier: 5.0.2
         version: 5.0.2(@types/react@19.0.2)(react@19.0.0)(use-sync-external-store@1.6.0(react@19.0.0))
@@ -154,9 +151,6 @@ importers:
       '@tanstack/router-cli':
         specifier: 1.131.7
         version: 1.131.7
-      '@tanstack/router-devtools':
-        specifier: 1.131.7
-        version: 1.131.7(@tanstack/react-router@1.131.7(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(@tanstack/router-core@1.171.2)(csstype@3.2.3)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)(solid-js@1.9.13)(tiny-invariant@1.3.3)
       '@tanstack/router-plugin':
         specifier: 1.131.7
         version: 1.131.7(@tanstack/react-router@1.131.7(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(vite@6.0.7(@types/node@24.12.4)(jiti@2.7.0)(tsx@4.19.2)(yaml@2.9.0))
@@ -2296,10 +2290,6 @@ packages:
     resolution: {integrity: sha512-cs1WKawpXIe+vSTeiZUuSBy8JFjEuDgdMKZFRLKwQysKo8y2q6Q1HvS74Yw+m5IhOW1nTZooa6rlgdfXcgFAaw==}
     engines: {node: '>=12'}
 
-  '@tanstack/history@1.162.0':
-    resolution: {integrity: sha512-79pf/RkhteYZTRgcR4F9kbk84P2N8rugQJswxfIqovlbRiT3yI7eBE+5QorIrZaOKktsgzRlXh1l/du/xpl4iA==}
-    engines: {node: '>=20.19'}
-
   '@tanstack/query-core@5.62.9':
     resolution: {integrity: sha512-lwePd8hNYhyQ4nM/iRQ+Wz2cDtspGeZZHFZmCzHJ7mfKXt+9S301fULiY2IR2byJYY6Z03T427E5PoVfMexHjw==}
 
@@ -2307,14 +2297,6 @@ packages:
     resolution: {integrity: sha512-Xb1nw0cYMdtFmwkvH9+y5yYFhXvLRCnXoqlzSw7UkqtCVFq3cG8q+rHZ2Yz1XrC+/ysUaTqbLKJqk95mCgC1oQ==}
     peerDependencies:
       react: ^18 || ^19
-
-  '@tanstack/react-router-devtools@1.131.7':
-    resolution: {integrity: sha512-RLxjwsD8A9iavGtMA1RhQ+j/gfAdQcEf9pygGk9RZuWV7XJ4RXZeeKQHDKyJ/Rry5NkYbO+eJzeToq/szuQbuw==}
-    engines: {node: '>=12'}
-    peerDependencies:
-      '@tanstack/react-router': ^1.131.7
-      react: '>=18.0.0 || >=19.0.0'
-      react-dom: '>=18.0.0 || >=19.0.0'
 
   '@tanstack/react-router@1.131.7':
     resolution: {integrity: sha512-V6ASdkXrNJKyTXjLnLgzc2jdh9ymx5bWczO5b3OXAvhzpcwzN5yX+jPdE6vFrnTPJqrrRkjxCEWwVJVAtIZJWg==}
@@ -2337,34 +2319,6 @@ packages:
   '@tanstack/router-core@1.131.7':
     resolution: {integrity: sha512-NpFfAG1muv4abrCij6sEtRrVzlU+xYpY30NAgquHNhMMMNIiN7djzsaGV+vCJdR4u5mi13+f0c3f+f9MdekY5A==}
     engines: {node: '>=12'}
-
-  '@tanstack/router-core@1.171.2':
-    resolution: {integrity: sha512-sUd+BhGYkBF64LVhmOHnYsc1AutPNch/huohEXiXL4IUgmk17Gy+RkUazvjQhptVdYW5QT+qtATrUr2cQZNHFA==}
-    engines: {node: '>=20.19'}
-
-  '@tanstack/router-devtools-core@1.131.7':
-    resolution: {integrity: sha512-1GHWILJr69Ej/c8UUMhT7Srx392FbsDqRrPhCWWtrjmYOv6Fdx3HdKDJt/YdJGBc8z6x+V7EE41j+LZggD+70Q==}
-    engines: {node: '>=12'}
-    peerDependencies:
-      '@tanstack/router-core': ^1.131.7
-      csstype: ^3.0.10
-      solid-js: '>=1.9.5'
-      tiny-invariant: ^1.3.3
-    peerDependenciesMeta:
-      csstype:
-        optional: true
-
-  '@tanstack/router-devtools@1.131.7':
-    resolution: {integrity: sha512-XR9WzQ4YaHWN05H6CjiQyN+TqJsJlIIkynWzw+wflo6uaI1cbXCs2tWpS2GynhG4QhPTbVl2BuCdT3yx/E5s0A==}
-    engines: {node: '>=12'}
-    peerDependencies:
-      '@tanstack/react-router': ^1.131.7
-      csstype: ^3.0.10
-      react: '>=18.0.0 || >=19.0.0'
-      react-dom: '>=18.0.0 || >=19.0.0'
-    peerDependenciesMeta:
-      csstype:
-        optional: true
 
   '@tanstack/router-generator@1.131.7':
     resolution: {integrity: sha512-djwY5O1LdJo300EOZiYog5RsjB1DYzFtgX6a3uOkAmii7LHX9k9mhFXx2KrI4dLHLQsnlKexV9QvU6cSTFmsag==}
@@ -2965,9 +2919,6 @@ packages:
   cookie-es@1.2.3:
     resolution: {integrity: sha512-lXVyvUvrNXblMqzIRrxHb57UUVmqsSWlxqt3XIjCkUP0wDAf6uicO6KMbEgYrMNtEvWgWHwe42CKxPu9MYAnWw==}
 
-  cookie-es@3.1.1:
-    resolution: {integrity: sha512-UaXxwISYJPTr9hwQxMFYZ7kNhSXboMXP+Z3TRX6f1/NyaGPfuNUZOWP1pUEb75B2HjfklIYLVRfWiFZJyC6Npg==}
-
   cookie@0.7.2:
     resolution: {integrity: sha512-yki5XnKuf750l50uGTllt6kKILY4nQ1eNIQatoXEByZ5dWgnKqbnqmTrBE5B4N7lrMJKQ2ytWMiTO2o0v6Ew/w==}
     engines: {node: '>= 0.6'}
@@ -3352,11 +3303,6 @@ packages:
   glob-parent@6.0.2:
     resolution: {integrity: sha512-XxwI8EOhVQgWp6iDL+3b0r86f4d6AX6zSU55HfB4ydCEuXLXc5FcYeOu+nnGftS4TEju/11rt4KJPTMgbfmv4A==}
     engines: {node: '>=10.13.0'}
-
-  goober@2.1.19:
-    resolution: {integrity: sha512-U7veizMqxyKlM58+Z5j2ngJBH/r9siDmxpvNxSw0PylF6WQvrASJEZrxh1hidRBJc2jqoBVSyOban5u8m+6Rxg==}
-    peerDependencies:
-      csstype: ^3.0.10
 
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
@@ -5696,7 +5642,7 @@ snapshots:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.28.5
 
-  '@better-auth/core@1.4.17(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@3.25.76))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)':
+  '@better-auth/core@1.4.17(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)':
     dependencies:
       '@better-auth/utils': 0.3.0
       '@better-fetch/fetch': 1.1.21
@@ -5707,9 +5653,9 @@ snapshots:
       nanostores: 1.3.0
       zod: 4.4.3
 
-  '@better-auth/telemetry@1.4.17(@better-auth/core@1.4.17(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@3.25.76))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))':
+  '@better-auth/telemetry@1.4.17(@better-auth/core@1.4.17(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))':
     dependencies:
-      '@better-auth/core': 1.4.17(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@3.25.76))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)
+      '@better-auth/core': 1.4.17(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)
       '@better-auth/utils': 0.3.0
       '@better-fetch/fetch': 1.1.21
 
@@ -6758,26 +6704,12 @@ snapshots:
 
   '@tanstack/history@1.131.2': {}
 
-  '@tanstack/history@1.162.0': {}
-
   '@tanstack/query-core@5.62.9': {}
 
   '@tanstack/react-query@5.62.11(react@19.0.0)':
     dependencies:
       '@tanstack/query-core': 5.62.9
       react: 19.0.0
-
-  '@tanstack/react-router-devtools@1.131.7(@tanstack/react-router@1.131.7(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(@tanstack/router-core@1.171.2)(csstype@3.2.3)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)(solid-js@1.9.13)(tiny-invariant@1.3.3)':
-    dependencies:
-      '@tanstack/react-router': 1.131.7(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
-      '@tanstack/router-devtools-core': 1.131.7(@tanstack/router-core@1.171.2)(csstype@3.2.3)(solid-js@1.9.13)(tiny-invariant@1.3.3)
-      react: 19.0.0
-      react-dom: 19.0.0(react@19.0.0)
-    transitivePeerDependencies:
-      - '@tanstack/router-core'
-      - csstype
-      - solid-js
-      - tiny-invariant
 
   '@tanstack/react-router@1.131.7(react-dom@19.0.0(react@19.0.0))(react@19.0.0)':
     dependencies:
@@ -6814,38 +6746,6 @@ snapshots:
       seroval-plugins: 1.5.4(seroval@1.5.4)
       tiny-invariant: 1.3.3
       tiny-warning: 1.0.3
-
-  '@tanstack/router-core@1.171.2':
-    dependencies:
-      '@tanstack/history': 1.162.0
-      cookie-es: 3.1.1
-      seroval: 1.5.4
-      seroval-plugins: 1.5.4(seroval@1.5.4)
-
-  '@tanstack/router-devtools-core@1.131.7(@tanstack/router-core@1.171.2)(csstype@3.2.3)(solid-js@1.9.13)(tiny-invariant@1.3.3)':
-    dependencies:
-      '@tanstack/router-core': 1.171.2
-      clsx: 2.1.1
-      goober: 2.1.19(csstype@3.2.3)
-      solid-js: 1.9.13
-      tiny-invariant: 1.3.3
-    optionalDependencies:
-      csstype: 3.2.3
-
-  '@tanstack/router-devtools@1.131.7(@tanstack/react-router@1.131.7(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(@tanstack/router-core@1.171.2)(csstype@3.2.3)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)(solid-js@1.9.13)(tiny-invariant@1.3.3)':
-    dependencies:
-      '@tanstack/react-router': 1.131.7(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
-      '@tanstack/react-router-devtools': 1.131.7(@tanstack/react-router@1.131.7(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(@tanstack/router-core@1.171.2)(csstype@3.2.3)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)(solid-js@1.9.13)(tiny-invariant@1.3.3)
-      clsx: 2.1.1
-      goober: 2.1.19(csstype@3.2.3)
-      react: 19.0.0
-      react-dom: 19.0.0(react@19.0.0)
-    optionalDependencies:
-      csstype: 3.2.3
-    transitivePeerDependencies:
-      - '@tanstack/router-core'
-      - solid-js
-      - tiny-invariant
 
   '@tanstack/router-generator@1.131.7':
     dependencies:
@@ -7363,8 +7263,8 @@ snapshots:
 
   better-auth@1.4.17(drizzle-orm@0.45.2(@neondatabase/serverless@0.10.4)(@types/pg@8.11.10)(kysely@0.28.17)(pg@8.13.1))(next@15.3.9(@babel/core@7.29.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(pg@8.13.1)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)(solid-js@1.9.13)(vitest@3.0.9(@types/debug@4.1.13)(@types/node@24.12.4)(jiti@2.7.0)(tsx@4.19.2)(yaml@2.9.0)):
     dependencies:
-      '@better-auth/core': 1.4.17(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@3.25.76))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)
-      '@better-auth/telemetry': 1.4.17(@better-auth/core@1.4.17(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@3.25.76))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))
+      '@better-auth/core': 1.4.17(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)
+      '@better-auth/telemetry': 1.4.17(@better-auth/core@1.4.17(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))
       '@better-auth/utils': 0.3.0
       '@better-fetch/fetch': 1.1.21
       '@noble/ciphers': 2.2.0
@@ -7386,8 +7286,8 @@ snapshots:
 
   better-auth@1.4.17(drizzle-orm@0.45.2(@neondatabase/serverless@0.10.4)(@types/pg@8.11.10)(kysely@0.28.17)(pg@8.13.1))(next@15.3.9(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(pg@8.13.1)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)(solid-js@1.9.13)(vitest@3.0.9(@types/debug@4.1.13)(@types/node@22.10.5)(jiti@2.7.0)(tsx@4.19.2)(yaml@2.9.0)):
     dependencies:
-      '@better-auth/core': 1.4.17(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@3.25.76))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)
-      '@better-auth/telemetry': 1.4.17(@better-auth/core@1.4.17(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@3.25.76))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))
+      '@better-auth/core': 1.4.17(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)
+      '@better-auth/telemetry': 1.4.17(@better-auth/core@1.4.17(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))
       '@better-auth/utils': 0.3.0
       '@better-fetch/fetch': 1.1.21
       '@noble/ciphers': 2.2.0
@@ -7557,8 +7457,6 @@ snapshots:
   convert-source-map@2.0.0: {}
 
   cookie-es@1.2.3: {}
-
-  cookie-es@3.1.1: {}
 
   cookie@0.7.2: {}
 
@@ -7969,10 +7867,6 @@ snapshots:
   glob-parent@6.0.2:
     dependencies:
       is-glob: 4.0.3
-
-  goober@2.1.19(csstype@3.2.3):
-    dependencies:
-      csstype: 3.2.3
 
   graceful-fs@4.2.11: {}
 
@@ -9497,6 +9391,7 @@ snapshots:
       csstype: 3.2.3
       seroval: 1.5.4
       seroval-plugins: 1.5.4(seroval@1.5.4)
+    optional: true
 
   source-map-js@1.2.1: {}
 

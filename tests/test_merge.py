@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from rsmm.cli.merge import _ranked, _toml_fallback, _toml_load, build_merged_mod, collect_patches
 
 

@@ -5,7 +5,10 @@ import { getDb } from './client';
 import { mods, modVersions } from './schema/mods';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
-loadEnv({ path: resolve(here, '..', '..', '..', '.env') });
+const repoRoot = resolve(here, '..', '..', '..');
+loadEnv({ path: resolve(repoRoot, '.env.local') });
+loadEnv({ path: resolve(repoRoot, '.env') });
+loadEnv({ path: '.env.local' });
 loadEnv();
 
 type Category =

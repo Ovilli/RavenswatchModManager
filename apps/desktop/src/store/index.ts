@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import { MOCK_MODS, type MockMod, type ModCategory } from '../data/mock-mods';
+import { getPlatform } from '../lib/platform';
 import type { LocalMod } from '../lib/rsmm';
 
 export interface Profile {
@@ -29,7 +30,7 @@ export interface AppSettings {
 interface State {
   profiles: Profile[];
   activeProfileId: string;
-  installed: string[];          // mod IDs in the local library
+  installed: string[]; // mod IDs present in the local mod folder
   settings: AppSettings;
   /** Non-persisted: live mods discovered by rsmm on disk, keyed by id. */
   localMods: Record<string, MockMod>;
@@ -45,8 +46,8 @@ interface State {
   exportProfile: (id: string) => string;
   importProfile: (payload: string) => string | null;
   updateSettings: (patch: Partial<AppSettings>) => void;
-  /** Sync the live rsmm list into the store: register their metadata
-   * and auto-install any new IDs into the active profile. */
+  /** Sync the live rsmm list into the store and keep profiles in sync
+   * with what is actually present on disk. */
   syncLocalMods: (mods: LocalMod[]) => void;
 }
 
@@ -54,10 +55,21 @@ function uid(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
+function defaultGameDir(): string {
+  switch (getPlatform()) {
+    case 'windows':
+      return 'C:\\Program Files (x86)\\Steam\\steamapps\\common\\Ravenswatch';
+    case 'macos':
+      return '~/Library/Application Support/Steam/steamapps/common/Ravenswatch/Ravenswatch.app';
+    default:
+      return '~/.steam/steam/steamapps/common/Ravenswatch';
+  }
+}
+
 const DEFAULT_PROFILE: Profile = {
   id: 'default',
   name: 'Default',
-  loadOrder: ['twin-fang', 'lantern-hud', 'parchment-codex', 'gilt-runes'],
+  loadOrder: [],
   disabled: new Set(),
   createdAt: new Date().toISOString(),
 };
@@ -70,26 +82,42 @@ const CHAOS_PROFILE: Profile = {
   createdAt: new Date().toISOString(),
 };
 
+function normalizeProfiles(profiles: Profile[] | undefined): Profile[] {
+  const list = (profiles ?? []).map((p) => ({
+    ...p,
+    disabled: p.disabled instanceof Set ? new Set(p.disabled) : new Set<string>(),
+  }));
+
+  const byId = new Map(list.map((p) => [p.id, p]));
+  const existingDefault = byId.get('default');
+  const defaultProfile: Profile = existingDefault
+    ? {
+        ...existingDefault,
+        name: existingDefault.name || 'Default',
+        loadOrder: [],
+        disabled: new Set<string>(),
+      }
+    : {
+        ...DEFAULT_PROFILE,
+        disabled: new Set<string>(),
+      };
+
+  const rest = list.filter((p) => p.id !== 'default');
+  return [defaultProfile, ...rest];
+}
+
 export const useApp = create<State>()(
   persist(
     (set, get) => ({
       profiles: [DEFAULT_PROFILE, CHAOS_PROFILE],
       activeProfileId: 'default',
-      installed: [
-        'twin-fang',
-        'lantern-hud',
-        'parchment-codex',
-        'gilt-runes',
-        'hyper-aggro',
-        'long-night',
-        'iron-economy',
-        'wolfheart-buff',
-        'wolf-iron-fang',
-        'pinned-seed',
-      ],
+      installed: [],
       settings: {
-        gameDir: '~/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch',
-        backupDir: '~/.local/share/rsmm/backups',
+        gameDir: defaultGameDir(),
+        backupDir:
+          getPlatform() === 'windows'
+            ? '%LOCALAPPDATA%\\rsmm\\backups'
+            : '~/.local/share/rsmm/backups',
         modsDir: '',
         sources: ['https://rsmm.dev/registry'],
         density: 'cozy',
@@ -99,13 +127,7 @@ export const useApp = create<State>()(
       installMod: (id) =>
         set((s) => {
           if (s.installed.includes(id)) return s;
-          const installed = [...s.installed, id];
-          const profiles = s.profiles.map((p) =>
-            p.id === s.activeProfileId && !p.loadOrder.includes(id)
-              ? { ...p, loadOrder: [...p.loadOrder, id] }
-              : p,
-          );
-          return { installed, profiles };
+          return { installed: [...s.installed, id] };
         }),
 
       uninstallMod: (id) =>
@@ -200,8 +222,12 @@ export const useApp = create<State>()(
           ...p,
           disabled: [...p.disabled],
         };
-        const utf8 = new TextEncoder().encode(JSON.stringify({ kind: 'rsmm-profile', v: 1, profile: payload }));
-        const bytes = Array.from(utf8).map((b) => String.fromCodePoint(b)).join('');
+        const utf8 = new TextEncoder().encode(
+          JSON.stringify({ kind: 'rsmm-profile', v: 1, profile: payload }),
+        );
+        const bytes = Array.from(utf8)
+          .map((b) => String.fromCodePoint(b))
+          .join('');
         return btoa(bytes);
       },
 
@@ -233,8 +259,7 @@ export const useApp = create<State>()(
         }
       },
 
-      updateSettings: (patch) =>
-        set((s) => ({ settings: { ...s.settings, ...patch } })),
+      updateSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
 
       syncLocalMods: (mods) =>
         set((s) => {
@@ -242,33 +267,47 @@ export const useApp = create<State>()(
           for (const m of mods) {
             localMods[m.id] = toMockMod(m, s.localMods[m.id]);
           }
-          const known = new Set([...s.installed, ...MOCK_MODS.map((m) => m.id)]);
-          const newIds = mods.map((m) => m.id).filter((id) => !known.has(id));
-          if (newIds.length === 0) return { localMods };
-          const installed = [...s.installed, ...newIds];
+          const installed = mods.map((m) => m.id);
+          const installedSet = new Set(installed);
           const profiles = s.profiles.map((p) =>
-            p.id === s.activeProfileId
+            p.id === 'default'
               ? {
                   ...p,
-                  loadOrder: [
-                    ...p.loadOrder,
-                    ...newIds.filter((id) => !p.loadOrder.includes(id)),
-                  ],
+                  loadOrder: [],
+                  disabled: new Set<string>(),
                 }
-              : p,
+              : {
+                  ...p,
+                  loadOrder: p.loadOrder.filter((id) => installedSet.has(id)),
+                  disabled: new Set([...p.disabled].filter((id) => installedSet.has(id))),
+                },
           );
           return { localMods, installed, profiles };
         }),
     }),
     {
       name: 'rsmm-grimoire',
+      merge: (persisted, current) => {
+        const merged = {
+          ...(current as State),
+          ...(persisted as Partial<State>),
+        };
+        const profiles = normalizeProfiles(merged.profiles);
+        const activeProfileId = profiles.some((p) => p.id === merged.activeProfileId)
+          ? merged.activeProfileId
+          : 'default';
+        return {
+          ...merged,
+          profiles,
+          activeProfileId,
+        };
+      },
       partialize: (s) => {
         const { localMods: _omit, ...rest } = s;
         return rest;
       },
       storage: createJSONStorage(() => localStorage, {
-        replacer: (_k, value) =>
-          value instanceof Set ? { __rsmm_set: [...value] } : value,
+        replacer: (_k, value) => (value instanceof Set ? { __rsmm_set: [...value] } : value),
         reviver: (_k, value) => {
           if (
             value &&
@@ -307,13 +346,6 @@ export const useApp = create<State>()(
 /** Lookup runs over the live rsmm registry first, then the bundled mocks. */
 export function getMod(id: string): MockMod | undefined {
   const live = useApp.getState().localMods[id];
-  if (live) return live;
-  return MOCK_MODS.find((m) => m.id === id);
-}
-
-/** Subscribes to localMods so the consumer re-renders when the registry shifts. */
-export function useMod(id: string): MockMod | undefined {
-  const live = useApp((s) => s.localMods[id]);
   if (live) return live;
   return MOCK_MODS.find((m) => m.id === id);
 }

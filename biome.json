@@ -24,7 +24,9 @@
       "mods/**",
       "docs/_re/**",
       "data/**",
-      "scripts/**"
+      "scripts/**",
+      "apps/api/index.js",
+      "apps/api/index.js.map"
     ]
   },
   "organizeImports": { "enabled": true },

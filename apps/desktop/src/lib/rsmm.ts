@@ -1,4 +1,4 @@
-import { Command, type Child } from '@tauri-apps/plugin-shell';
+import { type Child, Command } from '@tauri-apps/plugin-shell';
 import { useApp } from '../store';
 
 interface ExecResult {
@@ -7,21 +7,24 @@ interface ExecResult {
   stderr: string;
 }
 
-export class RsmmError extends Error {
-  constructor(message: string, public readonly args: string[]) {
+class RsmmError extends Error {
+  constructor(
+    message: string,
+    public readonly args: string[],
+  ) {
     super(message);
     this.name = 'RsmmError';
   }
 }
 
-export class RsmmCliMissingError extends RsmmError {
+class RsmmCliMissingError extends RsmmError {
   constructor(args: string[]) {
     super(CLI_MISSING_MESSAGE, args);
     this.name = 'RsmmCliMissingError';
   }
 }
 
-export class RsmmExitError extends RsmmError {
+class RsmmExitError extends RsmmError {
   constructor(
     args: string[],
     public readonly code: number | null,
@@ -38,8 +41,12 @@ export class RsmmExitError extends RsmmError {
   }
 }
 
-export class RsmmParseError extends RsmmError {
-  constructor(args: string[], public readonly raw: string, cause: unknown) {
+class RsmmParseError extends RsmmError {
+  constructor(
+    args: string[],
+    public readonly raw: string,
+    cause: unknown,
+  ) {
     const preview = raw.length > 200 ? `${raw.slice(0, 200)}…` : raw;
     super(`rsmm ${args.join(' ')} returned invalid JSON: ${preview}`, args);
     this.name = 'RsmmParseError';
@@ -47,14 +54,17 @@ export class RsmmParseError extends RsmmError {
   }
 }
 
-export class RsmmTimeoutError extends RsmmError {
-  constructor(args: string[], public readonly timeoutMs: number) {
+class RsmmTimeoutError extends RsmmError {
+  constructor(
+    args: string[],
+    public readonly timeoutMs: number,
+  ) {
     super(`rsmm ${args.join(' ')} timed out after ${timeoutMs}ms`, args);
     this.name = 'RsmmTimeoutError';
   }
 }
 
-export class RsmmAbortError extends RsmmError {
+class RsmmAbortError extends RsmmError {
   constructor(args: string[]) {
     super(`rsmm ${args.join(' ')} aborted`, args);
     // Match the DOMException shape React Query / fetch use to detect
@@ -74,7 +84,7 @@ const CLI_MISSING_MESSAGE =
 const DEFAULT_TIMEOUT_MS = 60_000;
 const LONG_TIMEOUT_MS = 10 * 60_000;
 
-export interface RsmmOptions {
+interface RsmmOptions {
   signal?: AbortSignal;
   timeoutMs?: number;
   onStdout?: (line: string) => void;
@@ -86,7 +96,7 @@ export interface RsmmOptions {
  * (development). Returns parsed JSON output. Throws a typed `RsmmError`
  * subclass on failure.
  */
-export async function rsmm<T = unknown>(
+async function rsmm<T = unknown>(
   args: string[],
   options: RsmmOptions = {},
 ): Promise<T | null> {
@@ -111,9 +121,9 @@ function rsmmEnv(): Record<string, string> {
 
 const SIDECAR_PROGS = ['rsmm'] as const;
 const CMD_PROGS = ['run-rsmm'] as const;
-type ProgName = typeof SIDECAR_PROGS[number] | typeof CMD_PROGS[number];
+type ProgName = (typeof SIDECAR_PROGS)[number] | (typeof CMD_PROGS)[number];
 
-function isSidecar(name: string): name is typeof SIDECAR_PROGS[number] {
+function isSidecar(name: string): name is (typeof SIDECAR_PROGS)[number] {
   return (SIDECAR_PROGS as readonly string[]).includes(name);
 }
 
@@ -124,9 +134,7 @@ function stripCR(s: string): string {
 }
 
 function createCommand(name: string, args: string[], opts: Record<string, unknown> | undefined) {
-  return isSidecar(name)
-    ? Command.sidecar(name, args, opts)
-    : Command.create(name, args, opts);
+  return isSidecar(name) ? Command.sidecar(name, args, opts) : Command.create(name, args, opts);
 }
 
 let resolvedProg: ProgName | null | undefined = undefined;
@@ -179,18 +187,14 @@ async function runWithLifecycle(
     return spawnWithLifecycle(name, cmd, args, options, timeoutMs);
   }
   const exec = cmd.execute();
-  const result =
-    timeoutMs > 0 ? await raceTimeout(exec, args, timeoutMs) : await exec;
+  const result = timeoutMs > 0 ? await raceTimeout(exec, args, timeoutMs) : await exec;
   resolvedProg = name as ProgName;
   return result;
 }
 
 function raceTimeout<T>(p: Promise<T>, args: string[], timeoutMs: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const handle = setTimeout(
-      () => reject(new RsmmTimeoutError(args, timeoutMs)),
-      timeoutMs,
-    );
+    const handle = setTimeout(() => reject(new RsmmTimeoutError(args, timeoutMs)), timeoutMs);
     p.then(
       (v) => {
         clearTimeout(handle);
@@ -306,18 +310,24 @@ export interface LocalMod {
   path: string;
 }
 
-export interface RunResult {
+interface RunResult {
   ok: boolean;
   code: number;
   stdout: string;
   stderr: string;
 }
 
-export interface DoctorResult extends RunResult {
-  checks: { status: 'OK' | 'WARN' | 'FAIL'; ok: boolean; label: string }[];
+export interface DoctorCheck {
+  status: 'OK' | 'WARN' | 'FAIL';
+  ok: boolean;
+  label: string;
 }
 
-export interface ApplyOptions extends RsmmOptions {
+export interface DoctorResult extends RunResult {
+  checks: DoctorCheck[];
+}
+
+interface ApplyOptions extends RsmmOptions {
   dryRun?: boolean;
   force?: boolean;
   noMerge?: boolean;
@@ -330,7 +340,9 @@ export interface ApplyOptions extends RsmmOptions {
 
 export const listLocalMods = () => rsmm<LocalMod[]>(['list']);
 
-export const applyMods = (opts: ApplyOptions = {}) => {
+export const doctor = () => rsmm<DoctorResult>(['doctor']);
+
+const applyMods = (opts: ApplyOptions = {}) => {
   const { dryRun, force, noMerge, ...rsmmOpts } = opts;
   const args = ['apply'];
   if (dryRun) args.push('--dry-run');
@@ -339,28 +351,15 @@ export const applyMods = (opts: ApplyOptions = {}) => {
   return rsmm<RunResult>(args, { timeoutMs: LONG_TIMEOUT_MS, ...rsmmOpts });
 };
 
-export const restoreAll = () =>
-  rsmm<RunResult>(['restore-all'], { timeoutMs: LONG_TIMEOUT_MS });
-
-export const buildAll = () =>
-  rsmm<RunResult>(['build'], { timeoutMs: LONG_TIMEOUT_MS });
-
-export const doctor = () => rsmm<DoctorResult>(['doctor']);
-
-export const runGame = () => rsmm<RunResult>(['run'], { timeoutMs: 0 });
+const runGame = () => rsmm<RunResult>(['run'], { timeoutMs: DEFAULT_TIMEOUT_MS });
 
 export const runVanilla = () =>
-  rsmm<RunResult>(['run', '--vanilla'], { timeoutMs: 0 });
+  rsmm<RunResult>(['run', '--vanilla'], { timeoutMs: DEFAULT_TIMEOUT_MS });
 
 export async function runModded(): Promise<RunResult | null> {
   const applyResult = await applyMods();
   if (applyResult && applyResult.ok === false) {
-    throw new RsmmExitError(
-      ['apply'],
-      applyResult.code,
-      applyResult.stdout,
-      applyResult.stderr,
-    );
+    throw new RsmmExitError(['apply'], applyResult.code, applyResult.stdout, applyResult.stderr);
   }
   return runGame();
 }

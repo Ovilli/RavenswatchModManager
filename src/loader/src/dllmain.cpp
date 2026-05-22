@@ -32,7 +32,10 @@ static fs::path module_dir() {
     return fs::path(buf).parent_path();
 }
 
-static void loader_thread() {
+// C++ exception path. Kept in its own function so the outer SEH wrapper
+// below stays free of objects with destructors (MSVC won't compile
+// __try/__except in a function that constructs unwindable C++ objects).
+static void loader_thread_cxx() {
     try {
         const fs::path game = module_dir();
         auto& L = rsmm::Loader::get();
@@ -85,6 +88,17 @@ static void loader_thread() {
         }).detach();
     } catch (const std::exception& e) {
         OutputDebugStringA(e.what());
+    }
+}
+
+static void loader_thread() {
+    // SEH wrapper catches access violations / invalid handles / stack
+    // overflows the C++ try/catch above cannot. We log and bail rather
+    // than letting Windows tear the process down with a vague dialog.
+    __try {
+        loader_thread_cxx();
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        OutputDebugStringA("rsmm loader: SEH exception in loader thread; aborting init.");
     }
 }
 

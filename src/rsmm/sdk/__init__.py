@@ -59,13 +59,47 @@ class Mod:
         from .builder import ModBuilder
         self._b = ModBuilder(mod_id, version=version, author=author,
                              name=name or mod_id)
+        # When set by `rsmm test`, __exit__ skips the on-disk commit so
+        # the diff harness can introspect declarations without clobbering
+        # the real mod tree.
+        self.dry_run: bool = False
 
     def __enter__(self) -> Mod:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
-        if exc_type is None:
+        if exc_type is None and not self.dry_run:
             self._b.commit()
+
+    def plan(self) -> list[dict]:
+        """Return a stable JSON-serializable snapshot of declared build
+        operations. Used by `rsmm test` to diff against checked-in fixtures.
+
+        The list mixes entry kinds — `meta`, `config_schema`, `i18n`,
+        `content`, `patch` — in a deterministic order so fixture diffs
+        are reproducible.
+        """
+        out: list[dict] = [{
+            "kind": "meta",
+            "id": self._b.id,
+            "name": self._b.name,
+            "version": self._b.version,
+            "author": self._b.author,
+            "requires": sorted(self._b._requires),
+            "api": self._b._api_name,
+        }]
+        if self._b._config_schema is not None:
+            out.append({"kind": "config_schema", "schema": self._b._config_schema})
+        for loc in sorted(self._b._i18n):
+            out.append({"kind": "i18n", "locale": loc,
+                        "strings": dict(sorted(self._b._i18n[loc].items()))})
+        for d in self._b._content.defs:
+            out.append({"kind": "content", "type": d.kind, "id": d.id,
+                        "schema_version": d.schema_version,
+                        "fields": d.fields})
+        for block in self._b._patch_blocks:
+            out.append({"kind": "patch", **block})
+        return out
 
     # --- legacy v1 surface (delegated) ---------------------------------
 
