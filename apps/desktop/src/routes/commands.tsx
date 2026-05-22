@@ -163,7 +163,7 @@ function CommandsPage() {
                   <p className="font-serif-italic text-base text-parchment">{command.label}</p>
                   <p className="mt-1 text-sm text-ash">{command.description}</p>
                 </div>
-                <MonoTag tone={command.tone}>{command.id}</MonoTag>
+                <MonoTag tone={command.tone === 'primary' || command.tone === 'danger' ? 'crimson' : command.tone}>{command.id}</MonoTag>
               </div>
               <div className="mt-4 flex items-center gap-2">
                 <Button

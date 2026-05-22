@@ -8,7 +8,11 @@ def test_linux_prefers_direct_steam_launch(monkeypatch):
 
     monkeypatch.setattr(run_mod.sys, "platform", "linux", raising=False)
     monkeypatch.setattr(run_mod, "_steam_root", lambda: None)
-    monkeypatch.setattr(run_mod.shutil, "which", lambda name: "/usr/bin/steam" if name == "steam" else None)
+    monkeypatch.setattr(
+        run_mod.shutil,
+        "which",
+        lambda name: "/usr/bin/steam" if name == "steam" else None,
+    )
 
     def fake_popen(args, stdout=None, stderr=None):
         calls.append(list(args))

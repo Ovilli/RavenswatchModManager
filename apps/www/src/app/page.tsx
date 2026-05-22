@@ -258,8 +258,8 @@ export default async function Home() {
                   </div>
                 </Link>
               ))
-            : Array.from({ length: 4 }, (_, i) => (
-                <div key={i} className="grimoire-card overflow-hidden">
+            : ['s1', 's2', 's3', 's4'].map((key) => (
+                <div key={key} className="grimoire-card overflow-hidden">
                   <div className="aspect-[4/3] w-full bg-muted" />
                   <div className="space-y-2 p-4">
                     <div className="h-4 w-3/4 bg-muted rounded" />
