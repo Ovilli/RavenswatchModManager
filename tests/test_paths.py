@@ -38,6 +38,24 @@ def test_game_dir_candidates():
     assert len(cands) == len(set(cands))
 
 
+def test_game_dir_candidates_windows_bad_drive(monkeypatch):
+    from rsmm.engine import paths as paths_mod
+
+    monkeypatch.setattr(paths_mod.sys, "platform", "win32", raising=False)
+
+    real_exists = Path.exists
+
+    def fake_exists(self: Path) -> bool:
+        if self == Path("D:\\"):
+            raise OSError("bad drive")
+        return real_exists(self)
+
+    monkeypatch.setattr(Path, "exists", fake_exists)
+
+    cands = paths_mod._game_dir_candidates()
+    assert all(isinstance(c, Path) for c in cands)
+
+
 def test_find_repo_root():
     from rsmm.engine.paths import _find_repo_root
     root = _find_repo_root()
