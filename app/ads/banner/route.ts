@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 
 export const runtime = 'edge';
-export const dynamic = 'force-static';
 
 const PUBLISHER_ID =
   process.env.NEXT_PUBLIC_ADSENSE_PUBLISHER_ID ?? 'ca-pub-9139637424510522';
