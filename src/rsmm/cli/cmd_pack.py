@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import shutil
 import sys
 from pathlib import Path
 
 from rsmm.engine.asset_map import decoded_to_encoded
 from rsmm.engine.paths import COOKING_SUBDIR, DATA_DIR, DEFAULT_GAME_DIR, DIST_DIR, MODS_DIR
+
+_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 
 _USAGE = (
     "usage: rsmm pack <id> [--allow-vanilla]\n"
@@ -86,6 +89,9 @@ def main(argv: list[str] | None = None) -> int:
         print(_USAGE, file=sys.stderr)
         return 2
     mod_id = args[0]
+    if not _ID_RE.match(mod_id):
+        print(f"invalid mod id: {mod_id!r}", file=sys.stderr)
+        return 1
     src = MODS_DIR / mod_id
     if not src.is_dir():
         print(f"no such mod: {src}", file=sys.stderr)

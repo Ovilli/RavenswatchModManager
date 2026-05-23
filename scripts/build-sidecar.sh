@@ -51,15 +51,23 @@ echo "Building sidecar for $PLATFORM ($TARGET)..."
 
 cd "$REPO_ROOT"
 
-# Create a PyInstaller spec that bundles the rsmm CLI
+# Install PyInstaller if needed
+pip install pyinstaller 2>/dev/null
+
+# Generate the spec file with an absolute entry-point path. The spec file
+# lives in /tmp/, but relative paths in Analysis() resolve against the
+# spec file's directory — not the working directory — so `./rsmm` would
+# look for /tmp/rsmm. We write the spec with a placeholder and substitute
+# the absolute path afterward to avoid bash expanding $a in `a.pure`.
+ENTRY_POINT="$(python3 -c "import os; print(os.path.abspath('$REPO_ROOT/rsmm'))")"
 cat > /tmp/rsmm-sidecar.spec << 'PYSPEC'
 # -*- mode: python ; coding: utf-8 -*-
 a = Analysis(
-    ['src/rsmm/__main__.py'],
+    ['__ENTRY_POINT__'],
     pathex=[],
     binaries=[],
     datas=[],
-    hiddenimports=['rsmm.cli', 'rsmm.engine', 'toml', 'PIL'],
+    hiddenimports=['rsmm.cli', 'rsmm.engine', 'rsmm.sdk'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -88,9 +96,13 @@ exe = EXE(
     entitlements_file=None,
 )
 PYSPEC
-
-# Install PyInstaller if needed
-pip install pyinstaller 2>/dev/null
+python3 -c "
+import sys
+path = '/tmp/rsmm-sidecar.spec'
+content = open(path).read()
+content = content.replace('__ENTRY_POINT__', sys.argv[1])
+open(path, 'w').write(content)
+" "$ENTRY_POINT"
 
 # Build
 pyinstaller /tmp/rsmm-sidecar.spec --clean --distpath "$OUT_DIR"

@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from ..content import ContentDef, SchemaNotMined
 
+_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
+
 
 def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
+    if not _ID_RE.match(defn.id):
+        raise ValueError(f"invalid map id: {defn.id!r}")
     base = defn.fields.get("base")
     if not base:
         raise SchemaNotMined(

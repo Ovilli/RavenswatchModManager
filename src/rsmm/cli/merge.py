@@ -51,6 +51,44 @@ class _Patch:
     data: dict
 
 
+def _strip_inline_comment(s: str) -> str:
+    in_quotes = False
+    escape = False
+    for i, c in enumerate(s):
+        if escape:
+            escape = False
+            continue
+        if c == '\\':
+            escape = True
+            continue
+        if c == '"':
+            in_quotes = not in_quotes
+        if not in_quotes and c == '#':
+            return s[:i].rstrip()
+    return s
+
+
+def _parse_toml_value(raw: str) -> object:
+    if len(raw) >= 2 and raw.startswith('"') and raw.endswith('"'):
+        s = raw[1:-1]
+        s = s.replace('\\"', '"').replace('\\\\', '\\')
+        return s
+    low = raw.lower()
+    if low in {"true", "false"}:
+        return low == "true"
+    if low in {"on", "off"}:
+        return low == "on"
+    if low in {"yes", "no"}:
+        return low == "yes"
+    try:
+        cleaned = raw.replace("_", "")
+        if cleaned.lstrip("-+").isdigit():
+            return int(raw)
+        return float(raw)
+    except ValueError:
+        return raw
+
+
 def _toml_fallback(p: Path) -> dict:
     """Minimal subset parser for [mod] + [[patch]] manifests, used when
     neither tomllib (3.11+) nor tomli is importable."""
@@ -61,13 +99,13 @@ def _toml_fallback(p: Path) -> dict:
         s = line.strip()
         if not s or s.startswith("#"):
             continue
-        m = re.match(r"\[\[\s*([A-Za-z_]+)\s*\]\]", s)
+        m = re.match(r"\[\[\s*([A-Za-z_][A-Za-z0-9_]*)\s*\]\]", s)
         if m:
             cur_array_entry = {}
             out.setdefault(m.group(1), []).append(cur_array_entry)
             cur_table = None
             continue
-        m = re.match(r"\[\s*([A-Za-z_]+)\s*\]", s)
+        m = re.match(r"\[\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\]", s)
         if m:
             cur_table = m.group(1)
             out.setdefault(cur_table, {})
@@ -77,17 +115,10 @@ def _toml_fallback(p: Path) -> dict:
         if not m:
             continue
         k, raw = m.group(1), m.group(2).strip()
-        # Strip inline comments (everything after the first unquoted space + #)
-        raw = raw.split(" #")[0].split("\t#")[0].rstrip()
-        if raw.startswith('"') and raw.endswith('"'):
-            v: object = raw[1:-1]
-        elif raw in {"true", "false"}:
-            v = raw == "true"
-        else:
-            try:
-                v = int(raw) if raw.lstrip("-+").isdigit() else float(raw)
-            except ValueError:
-                v = raw
+        raw = _strip_inline_comment(raw)
+        if not raw:
+            continue
+        v = _parse_toml_value(raw)
         target = cur_array_entry if cur_array_entry is not None else out.get(cur_table or "mod", {})
         target[k] = v
     return out

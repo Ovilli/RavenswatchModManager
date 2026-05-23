@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 MIGR_RE = re.compile(r"^(\d+)_to_(\d+)\.py$")
+_KIND_RE = re.compile(r"^[a-z]+$")
 
 CURRENT_SCHEMA: dict[str, int] = {
     "item":  1,
@@ -33,6 +34,8 @@ CURRENT_SCHEMA: dict[str, int] = {
 
 def chain(kind: str, from_v: int, to_v: int) -> list[int]:
     """Return [from_v, ..., to_v] if a valid migration chain exists, else []."""
+    if not _KIND_RE.match(kind):
+        raise ValueError(f"invalid kind: {kind!r}")
     if from_v > to_v:
         return []
     if from_v == to_v:
