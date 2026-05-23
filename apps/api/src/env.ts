@@ -33,7 +33,9 @@ export const env = {
   databaseUrl: required('DATABASE_URL'),
   betterAuthSecret: required('BETTER_AUTH_SECRET'),
   betterAuthUrl: process.env.BETTER_AUTH_URL || 'http://localhost:3001',
-  trustedOrigins: (process.env.TRUSTED_ORIGINS || 'http://localhost:3000,http://localhost:1420,tauri://localhost,https://tauri.localhost')
+  // `http://tauri.localhost` is the default origin for the Tauri WebView2
+  // shell on Windows — without it, every desktop fetch fails CORS preflight.
+  trustedOrigins: (process.env.TRUSTED_ORIGINS || 'http://localhost:3000,http://localhost:1420,tauri://localhost,https://tauri.localhost,http://tauri.localhost')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),

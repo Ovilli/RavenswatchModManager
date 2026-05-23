@@ -4,7 +4,8 @@ setlocal enabledelayedexpansion
 
 set "HERE=%~dp0"
 set "BUILD=%HERE%build"
-set "DIST=%HERE%..\..\..\dist"
+REM Walk up from src\loader\ to repo root, then dist\. (build.sh mirrors this.)
+set "DIST=%HERE%..\..\dist"
 
 REM Check if dependencies are fetched
 if not exist "%HERE%third_party\minhook\src\hook.c" (

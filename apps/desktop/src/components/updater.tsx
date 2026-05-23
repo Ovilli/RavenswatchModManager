@@ -52,10 +52,12 @@ async function runCheck(silent: boolean): Promise<void> {
     }
     setStatus({ state: 'available', update });
   } catch (e) {
-    const message =
-      'Could not check for updates right now. The release feed was unavailable or invalid.';
+    // Surface the underlying error so users can tell a transient network blip
+    // from a real updater misconfiguration (wrong pubkey, malformed feed, …).
+    const detail = e instanceof Error ? e.message : String(e);
+    const message = `Could not check for updates right now: ${detail}`;
     setStatus({ state: 'error', error: message });
-    void appendLauncherLog('warn', 'Update check failed', { error: String(e) });
+    void appendLauncherLog('warn', 'Update check failed', { error: detail });
   }
 }
 
