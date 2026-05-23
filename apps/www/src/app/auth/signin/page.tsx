@@ -2,9 +2,10 @@
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from '@rsmm/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Github, Mail } from 'lucide-react';
+import type { Route } from 'next';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { Suspense, useState, type FormEvent } from 'react';
 import { getApiUrl } from '../../../lib/api-url';
 import { signIn } from '../../../lib/auth-client';
 
@@ -20,6 +21,20 @@ async function fetchAuthConfig(): Promise<AuthConfig> {
 }
 
 export default function SignInPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="container mx-auto px-6 py-16 text-sm text-muted-foreground">
+          Loading…
+        </main>
+      }
+    >
+      <SignInInner />
+    </Suspense>
+  );
+}
+
+function SignInInner() {
   const router = useRouter();
   const search = useSearchParams();
   const [email, setEmail] = useState('');
@@ -37,7 +52,7 @@ export default function SignInPage() {
     const res = await signIn.email({ email, password, callbackURL });
     setBusy(false);
     if (res.error) setError(res.error.message ?? 'sign-in failed');
-    else router.push(callbackURL);
+    else router.push(callbackURL as Route);
   }
 
   async function social(provider: 'google' | 'github') {
