@@ -177,12 +177,20 @@ jobs:
           projectPath: apps/desktop
           tagName: ${{ github.ref_name }}
           releaseName: 'RSMM ${{ github.ref_name }}'
-          releaseDraft: true
+          # Auto-publish on tag push. Was `true` previously, which left
+          # every release stuck as a draft until manually flipped.
+          releaseDraft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
           args: ${{ matrix.args }}
 
   publish-updater-manifest:
     needs: build
+    # Only run when the signing private key is configured. The build
+    # step skips Tauri's `.sig` generation when no key is set, so
+    # trying to assemble `latest.json` afterwards always fails. Skipping
+    # the job entirely keeps the release shipping signature-less for
+    # users who haven't set up the updater feed yet.
+    if: vars.HAS_UPDATER_SIGNING == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
