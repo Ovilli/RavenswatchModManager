@@ -1,10 +1,13 @@
 import {
   type CrashReport,
+  type ModImagePresign,
   type ModListItem,
   modListItemSchema,
+  type ModPatch,
   type ModUploadRequest,
   type ModVersion,
   modVersionSchema,
+  type ModVersionCreate,
   type TelemetryRun,
 } from '@rsmm/schemas';
 import { z } from 'zod';
@@ -104,6 +107,31 @@ export function createApiClient(options: ApiClientOptions) {
     versionId: z.string().uuid(),
     expiresIn: z.number().int().positive(),
   });
+  const imagePresignResponseSchema = z.object({
+    uploadUrl: z.string().url(),
+    publicUrl: z.string().url(),
+    expiresIn: z.number().int().positive(),
+  });
+  const myModItemSchema = z.object({
+    id: z.string().uuid(),
+    slug: z.string(),
+    name: z.string(),
+    summary: z.string().nullable(),
+    description: z.string().nullable(),
+    license: z.string().nullable(),
+    repoUrl: z.string().nullable(),
+    homepageUrl: z.string().nullable(),
+    tags: z.array(z.string()),
+    category: z.string().nullable(),
+    authorName: z.string().nullable(),
+    imageUrl: z.string().nullable(),
+    updatedAt: z.string(),
+    createdAt: z.string(),
+    latestVersion: z.string().nullable(),
+    downloads: z.number().int().nonnegative(),
+  });
+  const myModsResponseSchema = z.object({ items: z.array(myModItemSchema) });
+  const patchResponseSchema = z.object({ mod: z.unknown() });
 
   return {
     mods: {
@@ -127,6 +155,33 @@ export function createApiClient(options: ApiClientOptions) {
         ),
       upload: (body: ModUploadRequest) =>
         request('/api/mods/upload', { method: 'POST', body: JSON.stringify(body) }, uploadResponseSchema),
+      patch: (slug: string, body: ModPatch) =>
+        request(
+          `/api/mods/${encodeURIComponent(slug)}/edit`,
+          { method: 'PATCH', body: JSON.stringify(body) },
+          patchResponseSchema,
+        ),
+      presignImage: (slug: string, body: ModImagePresign) =>
+        request(
+          `/api/mods/${encodeURIComponent(slug)}/image`,
+          { method: 'POST', body: JSON.stringify(body) },
+          imagePresignResponseSchema,
+        ),
+      createVersion: (slug: string, body: ModVersionCreate) =>
+        request(
+          `/api/mods/${encodeURIComponent(slug)}/versions`,
+          { method: 'POST', body: JSON.stringify(body) },
+          uploadResponseSchema,
+        ),
+      remove: (slug: string) =>
+        request(
+          `/api/mods/${encodeURIComponent(slug)}/delete`,
+          { method: 'DELETE' },
+          okSchema,
+        ),
+    },
+    me: {
+      mods: () => request('/api/me/mods', { method: 'GET' }, myModsResponseSchema),
     },
     telemetry: {
       run: (body: TelemetryRun) =>
