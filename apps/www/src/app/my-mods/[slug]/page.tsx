@@ -286,7 +286,6 @@ export default function ManageModPage() {
         <h2 className="text-lg font-semibold">Cover image</h2>
         {mod.imageUrl ? (
           <div className="aspect-[16/9] w-full overflow-hidden rounded-md bg-muted">
-            {/* biome-ignore lint/performance/noImgElement: remote CDN URL */}
             <img
               src={mod.imageUrl}
               alt={`${mod.name} cover`}
