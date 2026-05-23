@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Ravenswatch Mod Manager",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "identifier": "dev.rsmm.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -28,6 +28,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": ["app", "appimage", "deb", "dmg", "nsis"],
     "icon": ["icons/icon.png", "icons/icon.ico", "icons/icon.icns"],
     "category": "Utility",
@@ -63,7 +64,6 @@
     "updater": {
       "active": true,
       "dialog": false,
-      "createUpdaterArtifacts": true,
       "endpoints": [
         "https://github.com/Ovilli/RavenswatchModManager/releases/latest/download/latest.json"
       ],
