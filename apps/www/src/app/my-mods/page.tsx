@@ -91,7 +91,6 @@ export default function MyModsPage() {
               <div className="grimoire-card overflow-hidden">
                 {m.imageUrl ? (
                   <div className="aspect-[16/9] w-full overflow-hidden bg-muted">
-                    {/* biome-ignore lint/performance/noImgElement: external CDN URL, not a local /public asset */}
                     <img
                       src={m.imageUrl}
                       alt={`${m.name} cover`}
