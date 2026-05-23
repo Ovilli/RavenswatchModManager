@@ -88,6 +88,9 @@ export default function ManageModPage() {
   const [repoUrl, setRepoUrl] = useState('');
   const [homepageUrl, setHomepageUrl] = useState('');
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [screenshots, setScreenshots] = useState<string[]>([]);
+  const [videos, setVideos] = useState<string[]>([]);
+  const [videoInput, setVideoInput] = useState('');
 
   // Hydrate the form whenever the underlying detail row changes — this
   // also covers the post-mutation refetch so the inputs reflect what
@@ -112,6 +115,8 @@ export default function ManageModPage() {
     // let the user fill them on first save.
     setRepoUrl('');
     setHomepageUrl('');
+    setScreenshots(mod.screenshots ?? []);
+    setVideos(mod.videos ?? []);
   }, [detail.data]);
 
   const saveMeta = useMutation({
@@ -130,6 +135,8 @@ export default function ManageModPage() {
         license: license.trim() || null,
         repoUrl: repoUrl.trim() || null,
         homepageUrl: homepageUrl.trim() || null,
+        screenshots,
+        videos,
       });
     },
     onSuccess: () => {
@@ -161,6 +168,55 @@ export default function ManageModPage() {
       qc.invalidateQueries({ queryKey: ['me', 'mods'] });
     },
   });
+
+  const uploadScreenshot = useMutation({
+    mutationFn: async (file: File) => {
+      const presigned = await api.mods.presignImage(slug, {
+        contentType: file.type as 'image/png' | 'image/jpeg' | 'image/webp',
+        sizeBytes: file.size,
+      });
+      const put = await fetch(presigned.uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type },
+      });
+      if (!put.ok) throw new Error(`upload failed (${put.status})`);
+      const next = [...screenshots, presigned.publicUrl].slice(0, 12);
+      setScreenshots(next);
+      await api.mods.patch(slug, { screenshots: next });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['my-mod', slug] });
+    },
+  });
+
+  function removeScreenshot(idx: number) {
+    const next = screenshots.filter((_, i) => i !== idx);
+    setScreenshots(next);
+    api.mods.patch(slug, { screenshots: next }).catch((err) => {
+      console.error('screenshot remove failed', err);
+    });
+  }
+
+  function addVideo() {
+    const trimmed = videoInput.trim();
+    if (!trimmed) return;
+    if (videos.length >= 8) return;
+    const next = [...videos, trimmed];
+    setVideos(next);
+    setVideoInput('');
+    api.mods.patch(slug, { videos: next }).catch((err) => {
+      console.error('video add failed', err);
+    });
+  }
+
+  function removeVideo(idx: number) {
+    const next = videos.filter((_, i) => i !== idx);
+    setVideos(next);
+    api.mods.patch(slug, { videos: next }).catch((err) => {
+      console.error('video remove failed', err);
+    });
+  }
 
   // New version section
   const [newVersion, setNewVersion] = useState('');
@@ -399,6 +455,102 @@ export default function ManageModPage() {
           <Button onClick={() => saveMeta.mutate()} disabled={saveMeta.isPending}>
             {saveMeta.isPending ? <Spinner /> : <Save className="h-4 w-4" />} Save metadata
           </Button>
+        </div>
+      </section>
+
+      {/* ─── Gallery ─── */}
+      <section className="grimoire-card space-y-4 p-5">
+        <div>
+          <h2 className="text-lg font-semibold">Gallery</h2>
+          <p className="text-xs text-muted-foreground">
+            Up to 12 screenshots and 8 YouTube/Vimeo links.
+          </p>
+        </div>
+
+        {/* Screenshots */}
+        <div className="space-y-2">
+          <Label>Screenshots</Label>
+          {screenshots.length > 0 ? (
+            <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {screenshots.map((url, idx) => (
+                <li key={url} className="relative aspect-video overflow-hidden rounded-md bg-muted">
+                  <img src={url} alt={`Screenshot ${idx + 1}`} className="h-full w-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => removeScreenshot(idx)}
+                    className="absolute right-1 top-1 rounded bg-destructive/90 px-2 py-0.5 text-xs text-destructive-foreground hover:bg-destructive"
+                  >
+                    remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-muted-foreground">No screenshots yet.</p>
+          )}
+          {screenshots.length < 12 ? (
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) uploadScreenshot.mutate(f);
+                e.target.value = '';
+              }}
+              disabled={uploadScreenshot.isPending}
+              className="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-secondary/80"
+            />
+          ) : null}
+          {uploadScreenshot.isPending ? (
+            <p className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Spinner /> Uploading…
+            </p>
+          ) : null}
+          {uploadScreenshot.isError ? (
+            <p className="text-xs text-destructive">{describeApiError(uploadScreenshot.error)}</p>
+          ) : null}
+        </div>
+
+        {/* Videos */}
+        <div className="space-y-2">
+          <Label>Videos (YouTube or Vimeo URLs)</Label>
+          {videos.length > 0 ? (
+            <ul className="space-y-2">
+              {videos.map((url, idx) => (
+                <li key={url} className="flex items-center gap-2 rounded-md border border-border/40 px-3 py-2">
+                  <span className="flex-1 truncate font-mono text-xs">{url}</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => removeVideo(idx)}
+                  >
+                    remove
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-muted-foreground">No videos yet.</p>
+          )}
+          {videos.length < 8 ? (
+            <div className="flex gap-2">
+              <Input
+                value={videoInput}
+                onChange={(e) => setVideoInput((e.target as HTMLInputElement).value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addVideo();
+                  }
+                }}
+                placeholder="https://www.youtube.com/watch?v=…"
+              />
+              <Button type="button" onClick={addVideo} disabled={!videoInput.trim()}>
+                Add
+              </Button>
+            </div>
+          ) : null}
         </div>
       </section>
 
