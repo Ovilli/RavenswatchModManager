@@ -7,6 +7,7 @@ import { Button, CopyButton, Cover, MonoTag, SectionHeader, StatPill } from '../
 import { api } from '../lib/api';
 import { installModFromIndex, listLocalMods } from '../lib/rsmm';
 import { activeProfile, useApp } from '../store';
+import type { Profile } from '../store';
 
 export const Route = createFileRoute('/browse')({
   component: BrowsePage,
@@ -19,27 +20,33 @@ function BrowsePage() {
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<Sort>('popular');
   const installed = useApp((s) => s.installed);
+  const profiles = useApp((s) => s.profiles);
   const installMod = useApp((s) => s.installMod);
+  const createProfile = useApp((s) => s.createProfile);
   const syncLocalMods = useApp((s) => s.syncLocalMods);
   const profile = useApp(activeProfile);
   const queryClient = useQueryClient();
   // Per-slug install state so each card spins independently.
   const [installing, setInstalling] = useState<Record<string, boolean>>({});
   const [installError, setInstallError] = useState<string | null>(null);
+  // Profile-picker modal state: when set, user picked Install on a
+  // card and needs to choose which profile to drop it into.
+  const [pickerSlug, setPickerSlug] = useState<string | null>(null);
 
-  async function handleInstall(slug: string) {
+  async function handleInstall(slug: string, targetProfileId: string) {
     setInstallError(null);
     setInstalling((m) => ({ ...m, [slug]: true }));
     try {
-      const result = await installModFromIndex(slug);
-      if (!result || !result.ok) {
-        throw new Error(result?.error ?? 'install failed');
+      // Already-on-disk path skips the network round-trip.
+      if (!installed.includes(slug)) {
+        const result = await installModFromIndex(slug);
+        if (!result || !result.ok) {
+          throw new Error(result?.error ?? 'install failed');
+        }
+        const local = await listLocalMods();
+        if (local) syncLocalMods(local);
       }
-      // Re-scan disk so `installed[]` / `localMods` pick the new
-      // folder up, then add the slug to the active profile.
-      const local = await listLocalMods();
-      if (local) syncLocalMods(local);
-      installMod(slug);
+      installMod(slug, targetProfileId);
       // Bust the list cache so download counts refresh.
       await queryClient.invalidateQueries({ queryKey: ['mods', 'list'] });
     } catch (err) {
@@ -47,6 +54,28 @@ function BrowsePage() {
     } finally {
       setInstalling((m) => ({ ...m, [slug]: false }));
     }
+  }
+
+  function openPicker(slug: string) {
+    setInstallError(null);
+    setPickerSlug(slug);
+  }
+
+  function pickProfile(profileId: string) {
+    const slug = pickerSlug;
+    setPickerSlug(null);
+    if (!slug) return;
+    void handleInstall(slug, profileId);
+  }
+
+  function pickNewProfile(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const slug = pickerSlug;
+    setPickerSlug(null);
+    if (!slug) return;
+    const newId = createProfile(trimmed);
+    void handleInstall(slug, newId);
   }
 
   // Always talk to the real index. Dev runs against prod via the
@@ -115,9 +144,7 @@ function BrowsePage() {
       {error ? (
         <div className="ember-banner flex items-center gap-3 px-4 py-3">
           <WifiOff className="h-4 w-4 text-crimson shrink-0" />
-          <span className="font-serif-italic text-base">
-            Couldn't reach the mod index.
-          </span>
+          <span className="font-serif-italic text-base">Couldn't reach the mod index.</span>
           <CopyButton value={(error as Error).message} />
         </div>
       ) : null}
@@ -184,13 +211,7 @@ function BrowsePage() {
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (onDisk) {
-                      // Already downloaded — adding to the profile is
-                      // a state-only flip, no CLI work needed.
-                      installMod(m.slug);
-                    } else {
-                      void handleInstall(m.slug);
-                    }
+                    openPicker(m.slug);
                   }}
                   disabled={inProfile || installing[m.slug]}
                   variant={inProfile ? 'default' : 'primary'}
@@ -248,6 +269,123 @@ function BrowsePage() {
           {q.trim() ? 'No mods match that search.' : 'No mods published to the index yet.'}
         </p>
       ) : null}
+      {pickerSlug ? (
+        <ProfilePicker
+          slug={pickerSlug}
+          profiles={profiles}
+          onPick={pickProfile}
+          onCreate={pickNewProfile}
+          onCancel={() => setPickerSlug(null)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ProfilePicker({
+  slug,
+  profiles,
+  onPick,
+  onCreate,
+  onCancel,
+}: {
+  slug: string;
+  profiles: Profile[];
+  onPick: (profileId: string) => void;
+  onCreate: (name: string) => void;
+  onCancel: () => void;
+}) {
+  // Default profile is the vanilla load — by design it never receives
+  // mods, so it's filtered out of the picker. Users can still create
+  // a fresh profile or pick an existing custom one.
+  const selectable = profiles.filter((p) => p.id !== 'default');
+  const [creating, setCreating] = useState(selectable.length === 0);
+  const [name, setName] = useState('');
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Choose profile"
+      className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          onCancel();
+        }
+      }}
+    >
+      <div className="absolute inset-0 bg-pitch/80" onClick={onCancel} />
+      <div className="grimoire-card relative w-[min(480px,92vw)] p-5">
+        <h3 className="font-fraktur text-xl text-parchment">Install to profile</h3>
+        <p className="font-serif-italic text-ash mt-2">
+          Pick which profile receives <span className="font-mono">{slug}</span>.
+        </p>
+        {!creating && selectable.length > 0 ? (
+          <ul className="mt-4 space-y-2">
+            {selectable.map((p) => (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  onClick={() => onPick(p.id)}
+                  className="grimoire-card w-full px-4 py-3 text-left hover:border-gilt/40 transition-colors"
+                >
+                  <div className="font-serif-italic text-parchment">{p.name}</div>
+                  <div className="font-mono text-xs text-ash">
+                    {p.loadOrder.length} mod{p.loadOrder.length === 1 ? '' : 's'}
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {creating ? (
+          <div className="mt-4 space-y-2">
+            <label htmlFor="new-profile-name" className="font-mono block text-ash">
+              New profile name
+            </label>
+            <input
+              id="new-profile-name"
+              ref={(el) => el?.focus()}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (name.trim()) onCreate(name);
+                }
+              }}
+              placeholder="My Mods"
+              className="input-grim w-full"
+            />
+          </div>
+        ) : null}
+        <div className="mt-5 flex items-center justify-between gap-2">
+          {selectable.length > 0 ? (
+            <Button type="button" size="sm" onClick={() => setCreating((c) => !c)}>
+              {creating ? 'pick existing' : 'create new'}
+            </Button>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            <Button type="button" size="sm" onClick={onCancel}>
+              cancel
+            </Button>
+            {creating ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="primary"
+                onClick={() => onCreate(name)}
+                disabled={!name.trim()}
+              >
+                create + install
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
