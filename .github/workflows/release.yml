@@ -202,24 +202,26 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          # Search the entire workspace — earlier runs scoped this to
-          # `apps/desktop/src-tauri/target/{release,universal-apple-darwin/release}/bundle`
-          # but `find` returned nothing on every platform, suggesting
-          # tauri-action either drops bundle assets into a different
-          # path or scrubs them post-upload. Search-everywhere is robust
-          # and the matrix already cd's into the project root.
+          # Bash on macOS is 3.2 so no `mapfile`. Use a portable
+          # `while read` loop. Search the whole workspace because
+          # earlier path-scoped finds came back empty even when tauri's
+          # own "Found artifacts" listing showed the sigs sitting at
+          # `apps/desktop/src-tauri/target/.../bundle/.../*.sig`.
           echo "Searching for .sig files under $(pwd)…"
-          mapfile -d '' SIGS < <(find . -type f -name '*.sig' -print0)
-          echo "Found ${#SIGS[@]} .sig files:"
-          for f in "${SIGS[@]}"; do echo "  $f"; done
-          if [ ${#SIGS[@]} -eq 0 ]; then
+          count=0
+          while IFS= read -r -d '' sig; do
+            count=$((count + 1))
+            echo "  found: $sig"
+            echo "  uploading…"
+            gh release upload "$TAG" "$sig" --clobber
+          done < <(find . -type f -name '*.sig' -print0)
+          echo "Total .sig files uploaded: $count"
+          if [ "$count" -eq 0 ]; then
             echo "::warning::No .sig files found anywhere in the workspace."
+            # Soft-exit so the build job stays green and we keep the
+            # bundle artifacts on the release.
             exit 0
           fi
-          for f in "${SIGS[@]}"; do
-            echo "Uploading $f"
-            gh release upload "$TAG" "$f" --clobber
-          done
 
   publish-updater-manifest:
     needs: build
