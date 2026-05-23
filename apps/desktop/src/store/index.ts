@@ -34,7 +34,7 @@ interface State {
   settings: AppSettings;
   /** Non-persisted: live mods discovered by rsmm on disk, keyed by id. */
   localMods: Record<string, MockMod>;
-  installMod: (id: string) => void;
+  installMod: (id: string, targetProfileId?: string) => void;
   uninstallMod: (id: string) => void;
   toggleMod: (id: string) => void;
   reorderMod: (id: string, toIndex: number) => void;
@@ -124,21 +124,38 @@ export const useApp = create<State>()(
       },
       localMods: {},
 
-      installMod: (id) =>
+      installMod: (id, targetProfileId) =>
         set((s) => {
-          // "Install" = make the mod available on disk + add it to the
-          // *active* profile. Other profiles are independent — if a
-          // user installs Mod X from the Library while on Profile A,
-          // Profile B intentionally won't gain Mod X. They can do the
-          // same Browse → Install action from B if they want it there.
+          // "Install" = make the mod available on disk + add it to a
+          // target profile. Caller may pass an explicit profile id (the
+          // Browse-page picker uses this); otherwise the active profile
+          // is used. Default profile is the vanilla load by design and
+          // never accepts mods — installs targeting default are routed
+          // to a freshly-created "My Mods" profile so the user actually
+          // sees the mod in their Library.
           const installed = s.installed.includes(id) ? s.installed : [...s.installed, id];
+          const requested = targetProfileId ?? s.activeProfileId;
+          if (requested === 'default') {
+            const newId = uid();
+            const newProfile: Profile = {
+              id: newId,
+              name: 'My Mods',
+              loadOrder: [id],
+              disabled: new Set(),
+              createdAt: new Date().toISOString(),
+            };
+            return {
+              installed,
+              profiles: [...s.profiles, newProfile],
+              activeProfileId: newId,
+            };
+          }
           const profiles = s.profiles.map((p) => {
-            if (p.id !== s.activeProfileId) return p;
-            if (p.id === 'default') return p; // default = vanilla, never auto-adds
+            if (p.id !== requested) return p;
             if (p.loadOrder.includes(id)) return p;
             return { ...p, loadOrder: [...p.loadOrder, id] };
           });
-          return { installed, profiles };
+          return { installed, profiles, activeProfileId: requested };
         }),
 
       uninstallMod: (id) =>

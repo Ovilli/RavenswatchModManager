@@ -78,8 +78,14 @@ def cmd_list() -> int:
             continue
         # Manifests use [mod] table for metadata; older ones inline at root.
         manifest = raw.get("mod") if isinstance(raw.get("mod"), dict) else raw
+        # `id` and `slug` are both the folder name. The folder name is
+        # the canonical identifier post-install — manifest.id is only
+        # the upload-time author-supplied id, which may differ from the
+        # slug the registry assigned. Keeping these in lockstep prevents
+        # the desktop store's installed[]/loadOrder from drifting when
+        # syncLocalMods re-runs.
         items.append({
-            "id": manifest.get("id", entry.name),
+            "id": entry.name,
             "slug": entry.name,
             "name": manifest.get("name", entry.name),
             "version": str(manifest.get("version", "0.0.0")),

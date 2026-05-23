@@ -1,9 +1,8 @@
 @echo off
-REM Build the Windows mod-manager DLL. Prefers MinGW (handles .def
-REM forwarder exports correctly); falls back to MSVC (the .def file
-REM uses forwarder entries that MSVC's linker can't resolve, so the
-REM DLL won't export those functions — the sidecar bundler handles
-RETurn this gracefully by skipping if dist/winhttp.dll is missing).
+REM Build the Windows mod-manager DLL. Prefers MinGW for .def forwarder
+REM exports. Falls back to MSVC; MSVC cannot resolve forwarder symbols
+REM so the DLL will not export them. The sidecar bundler skips when
+REM dist\winhttp.dll is missing.
 setlocal enabledelayedexpansion
 
 set "HERE=%~dp0"
@@ -50,7 +49,7 @@ cmake --build . --config Release
 if errorlevel 1 (
     echo Build failed
     echo NOTE: MSVC cannot resolve .def forwarder symbols. Install MinGW
-    echo       (choco install mingw) or expect the DLL to be missing from dist/.
+    echo       ^(choco install mingw^) or expect the DLL to be missing from dist\.
     exit /b 1
 )
 
