@@ -103,6 +103,19 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
   });
   if (!mod) return c.json({ error: 'not found' }, 404);
 
+  // Aggregate downloads across all days for this mod. Mirrors the
+  // expression used by the list endpoint so the same number shows up
+  // everywhere; previously this route hard-coded `downloads: 0` and
+  // the mod-detail page was permanently stuck at zero even after
+  // hundreds of installs.
+  const downloadAgg = await db
+    .select({
+      total: sql<number>`coalesce(sum(${schema.modDownloads.count})::int, 0)`,
+    })
+    .from(schema.modDownloads)
+    .where(eq(schema.modDownloads.modId, mod.id));
+  const downloads = downloadAgg[0]?.total ?? 0;
+
   return c.json({
     mod: {
       id: mod.id,
@@ -112,7 +125,7 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       summary: mod.summary,
       license: mod.license,
       latestVersion: mod.versions[0]?.version ?? null,
-      downloads: 0,
+      downloads,
       updatedAt: mod.updatedAt.toISOString(),
       category: mod.category,
       imageUrl: mod.imageUrl,
@@ -150,6 +163,27 @@ modsRouter.get('/:slug/:version/download', zValidator('param', slugParamSchema),
   if (!mod || !mod.versions[0]) return c.json({ error: 'not found' }, 404);
 
   const ver = mod.versions[0];
+
+  // Record the download. `mod_downloads` is bucketed by day with a
+  // composite PK (mod_id, day), so the conflict path bumps today's
+  // counter instead of inserting a duplicate row. We fire-and-forget
+  // before the redirect so a tracker hiccup never blocks the actual
+  // file download.
+  void db
+    .insert(schema.modDownloads)
+    .values({
+      modId: mod.id,
+      versionId: ver.id,
+      // `day` defaults to CURRENT_DATE in the schema.
+      count: 1,
+    })
+    .onConflictDoUpdate({
+      target: [schema.modDownloads.modId, schema.modDownloads.day],
+      set: { count: sql`${schema.modDownloads.count} + 1` },
+    })
+    .catch((err: unknown) => {
+      console.error('download-count upsert failed:', err);
+    });
 
   // In dev without S3, serve a placeholder file
   if (!s3Configured() || ver.assetUrl.startsWith('https://example.invalid')) {
