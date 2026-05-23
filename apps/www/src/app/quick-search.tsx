@@ -10,7 +10,6 @@ export function QuickSearch() {
 
   return (
     <form
-      role="search"
       onSubmit={(e) => {
         e.preventDefault();
         const trimmed = q.trim();

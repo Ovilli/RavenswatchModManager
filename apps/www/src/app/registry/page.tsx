@@ -109,6 +109,7 @@ export default function RegistryPage() {
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {items.map((m) => (
+              // biome-ignore lint/a11y/useSemanticElements: card-as-link composite with nested interactive children; wrapping with <a> would invalidate the descendant <a>/<button> tags Next.js Link inserts.
               <div key={m.id} className="grimoire-card cursor-pointer overflow-hidden" tabIndex={0} role="link"
                 onClick={(e) => {
                   const el = e.target as HTMLElement;
