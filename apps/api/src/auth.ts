@@ -63,6 +63,17 @@ export const auth = betterAuth({
     expiresIn: 60 * 60 * 24,        // 24 hours
     updateAge: 60 * 60,             // re-issue at most once per hour
   },
+  user: {
+    // Self-serve account deletion. better-auth tears down the user row
+    // (plus cascaded sessions / accounts) when the client calls
+    // authClient.deleteUser(). Mods owned by the deleted user keep
+    // existing rows because mod.ownerId is `set null` on user delete
+    // (see packages/db schema) — they just become unowned and stop
+    // accepting edits.
+    deleteUser: {
+      enabled: true,
+    },
+  },
   advanced: {
     useSecureCookies: process.env.NODE_ENV === 'production',
     disableCSRFCheck: false,

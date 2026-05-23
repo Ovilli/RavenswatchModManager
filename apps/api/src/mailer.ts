@@ -32,10 +32,7 @@ export async function sendMail(msg: MailMessage): Promise<void> {
     // even when an operator hasn't wired SMTP yet. The verification URL
     // is on stdout — copy-paste it into the browser to verify.
     console.log(
-      '[mailer] SMTP not configured — would send:\n' +
-        `  to:      ${msg.to}\n` +
-        `  subject: ${msg.subject}\n` +
-        `  body:    ${msg.text}`,
+      `[mailer] SMTP not configured — would send:\n  to:      ${msg.to}\n  subject: ${msg.subject}\n  body:    ${msg.text}`,
     );
     return;
   }
@@ -55,10 +52,7 @@ export function verifyEmailTemplate(args: { name: string; url: string }): {
 } {
   const safeName = args.name || 'modder';
   const subject = 'Verify your Ravenswatch Mod Manager account';
-  const text =
-    `Hi ${safeName},\n\n` +
-    `Confirm your email to finish creating your account:\n${args.url}\n\n` +
-    `If you didn't request this, you can ignore this message.`;
+  const text = `Hi ${safeName},\n\nConfirm your email to finish creating your account:\n${args.url}\n\nIf you didn't request this, you can ignore this message.`;
   const html = `
 <!doctype html>
 <html lang="en">
@@ -85,10 +79,7 @@ export function resetPasswordTemplate(args: { name: string; url: string }): {
 } {
   const safeName = args.name || 'modder';
   const subject = 'Reset your Ravenswatch Mod Manager password';
-  const text =
-    `Hi ${safeName},\n\n` +
-    `Reset your password using this link:\n${args.url}\n\n` +
-    `The link expires in one hour. If you didn't request this, you can ignore this message.`;
+  const text = `Hi ${safeName},\n\nReset your password using this link:\n${args.url}\n\nThe link expires in one hour. If you didn't request this, you can ignore this message.`;
   const html = `
 <!doctype html>
 <html lang="en">

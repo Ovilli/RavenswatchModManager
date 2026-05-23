@@ -9,6 +9,7 @@ const navLinks = [
   { href: '/registry' as const, label: 'Browse Registry' },
   { href: '/publish' as const, label: 'Publish' },
   { href: '/my-mods' as const, label: 'My Mods' },
+  { href: '/account' as const, label: 'Account' },
   { href: '/download' as const, label: 'Download' },
 ];
 

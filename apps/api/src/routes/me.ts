@@ -1,6 +1,10 @@
+import { zValidator } from '@hono/zod-validator';
 import { getDb, schema } from '@rsmm/db';
+import { modImagePresignSchema } from '@rsmm/schemas';
 import { desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { s3Configured } from '../env';
+import { presignAvatar } from '../storage';
 import type { AppEnv } from '../types';
 
 export const meRouter = new Hono<AppEnv>();
@@ -10,6 +14,23 @@ export const meRouter = new Hono<AppEnv>();
 meRouter.use('*', async (c, next) => {
   if (!c.get('user')) return c.json({ error: 'unauthorized' }, 401);
   await next();
+});
+
+meRouter.post('/avatar', zValidator('json', modImagePresignSchema), async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'unauthorized' }, 401);
+  if (!s3Configured()) return c.json({ error: 'object storage not configured' }, 503);
+  const body = c.req.valid('json');
+  const signed = await presignAvatar({
+    userId: user.id,
+    contentType: body.contentType,
+    sizeBytes: body.sizeBytes,
+  });
+  return c.json({
+    uploadUrl: signed.uploadUrl,
+    publicUrl: signed.publicUrl,
+    expiresIn: signed.expiresIn,
+  });
 });
 
 meRouter.get('/mods', async (c) => {
