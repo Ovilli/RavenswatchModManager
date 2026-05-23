@@ -201,19 +201,30 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           # Bash on macOS is 3.2 so no `mapfile`. Use a portable
-          # `while read` loop. Search the whole workspace because
-          # earlier path-scoped finds came back empty even when tauri's
-          # own "Found artifacts" listing showed the sigs sitting at
-          # `apps/desktop/src-tauri/target/.../bundle/.../*.sig`.
-          echo "Searching for .sig files under $(pwd)…"
+          # `while read` loop. Earlier runs of this step found zero
+          # `.sig` files despite tauri's own logs printing absolute
+          # paths to sigs just seconds earlier. Adding diagnostics:
+          # pwd, presence of target/, presence of bundle/, and raw
+          # find output before piping into the upload loop.
+          echo "=== pwd ==="
+          pwd
+          echo "=== target dir ==="
+          ls -la apps/desktop/src-tauri/target/ 2>&1 | head -20 || echo NO_TARGET_DIR
+          echo "=== bundle dirs ==="
+          ls -la apps/desktop/src-tauri/target/release/bundle/ 2>&1 | head -20 || echo NO_RELEASE_BUNDLE_DIR
+          ls -la apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/ 2>&1 | head -20 || echo NO_MAC_BUNDLE_DIR
+          echo "=== find target/ ==="
+          find apps/desktop/src-tauri/target -name '*.sig' 2>&1 | head -50 || echo FIND_FAILED
+          echo "=== find . ==="
+          find . -type f -name '*.sig' 2>&1 | head -50 || echo FIND_FAILED
+          echo "=== upload loop ==="
           count=0
           while IFS= read -r -d '' sig; do
             count=$((count + 1))
             echo "  found: $sig"
-            echo "  uploading…"
-            gh release upload "$TAG" "$sig" --clobber
+            gh release upload "$TAG" "$sig" --clobber || echo "    upload failed for $sig"
           done < <(find . -type f -name '*.sig' -print0)
           echo "Total .sig files uploaded: $count"
           if [ "$count" -eq 0 ]; then
