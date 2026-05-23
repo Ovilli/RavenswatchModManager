@@ -51,9 +51,9 @@ UPPER_ENCODE = {
 # path is collapsed past directory-depth-2 into a single filename
 # (see asset_map.json — third+ level directories become "X!Y" inside the
 # filename). For top-level 1- and 2-deep paths, `\` passes through
-# unchanged. We don't auto-substitute here; the caller is expected to
-# encode at the per-component level if collapsing is needed.
-SYMBOL_ENCODE: dict[str, str] = {}
+# unchanged. There is intentionally no SYMBOL_ENCODE table; the caller
+# is expected to encode at the per-component level if collapsing is
+# needed, so `encode()` below has no symbol branch.
 
 
 def decode(s: str) -> str:
@@ -73,9 +73,7 @@ def decode(s: str) -> str:
 def encode(s: str) -> str:
     out = []
     for c in s:
-        if c in SYMBOL_ENCODE:
-            out.append(SYMBOL_ENCODE[c])
-        elif c.isupper() and c in UPPER_ENCODE:
+        if c.isupper() and c in UPPER_ENCODE:
             out.append(UPPER_ENCODE[c])
         elif c.islower() and c in LOWER_ENCODE:
             out.append(LOWER_ENCODE[c])

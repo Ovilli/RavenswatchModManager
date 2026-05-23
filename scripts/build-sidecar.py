@@ -68,33 +68,17 @@ def build_sidecar(target: str) -> None:
         check=True, capture_output=True,
     )
 
-    # Modules loaded dynamically via importlib (rsmm/cli/_dispatch.py).
-    # PyInstaller cannot detect these statically, so declare them explicitly.
-    HIDDEN_IMPORTS = [
-        "rsmm.cli.json_bridge",
-        "rsmm.cli.safe_mode",
-        "rsmm.cli.sdk_doctor",
-        "rsmm.cli.docs_gen_cmd",
-        "rsmm.cli.update_cmd",
-        "rsmm.cli.cmd_new",
-        "rsmm.cli.cmd_pack",
-        "rsmm.cli.cmd_log",
-        "rsmm.cli.install_loader",
-        "rsmm.cli.apply_mods",
-        "rsmm.cli.doctor",
-        "rsmm.cli.watch",
-        "rsmm.cli.build",
-        "rsmm.cli.run",
-        "rsmm.cli.merge",
-        "rsmm.cli.compat",
-        "rsmm.cli.lint",
-        "rsmm.cli.test",
-        "rsmm.cli.repo_cmd",
-        "rsmm.engine.ot_decoder",
-        "rsmm.engine.find_iyg",
-        "rsmm.engine.paths",
+    # Modules loaded dynamically via importlib (rsmm/cli/_dispatch.py) plus
+    # the entire rsmm.sdk surface that mod authors import at runtime.
+    # PyInstaller cannot detect these statically; --collect-submodules walks
+    # each package and pulls every module in, which mirrors what CI does in
+    # `.github/workflows/release.yml`. The old explicit hidden-import list
+    # silently lost coverage every time a new subcommand or SDK module landed.
+    collect_args = [
+        "--collect-submodules=rsmm.cli",
+        "--collect-submodules=rsmm.engine",
+        "--collect-submodules=rsmm.sdk",
     ]
-    hidden_import_args = [f"--hidden-import={m}" for m in HIDDEN_IMPORTS]
 
     # Bundle runtime data needed by CLI commands in frozen mode.
     # Anything listed here is available under the same relative path
@@ -131,7 +115,7 @@ def build_sidecar(target: str) -> None:
             "--distpath", str(OUT_DIR),
             "--specpath", str(OUT_DIR),
             "--workpath", str(OUT_DIR / "build"),
-            *hidden_import_args,
+            *collect_args,
             *add_data_args,
             str(REPO_ROOT / "rsmm"),
         ],

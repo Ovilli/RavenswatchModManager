@@ -98,7 +98,11 @@ def current_version() -> str:
 
 
 def bump_semver(current: str, kind: str) -> str:
-    base = current.split("-", 1)[0]  # drop any pre-release suffix on bump
+    # `patch` / `minor` / `major` always re-base on a clean MAJOR.MINOR.PATCH,
+    # which means any pre-release suffix (e.g. `0.1.11-alpha.1`) is dropped
+    # rather than incremented. If you want to roll a pre-release, pass an
+    # explicit version string instead of a bump kind.
+    base = current.split("-", 1)[0]
     parts = base.split(".")
     if len(parts) != 3 or not all(p.isdigit() for p in parts):
         sys.exit(f"current version {current!r} is not a clean MAJOR.MINOR.PATCH")
@@ -169,9 +173,16 @@ def main() -> int:
     )
     ap.add_argument(
         "--no-commit", action="store_true",
-        help="skip the commit step (only meaningful without --tag)",
+        help="write the files and stop. Forbids --tag (you can't tag without "
+             "a commit).",
     )
     args = ap.parse_args()
+
+    # Reject the contradictory combination up front. Without this the script
+    # falls past both early-return guards below and silently commits + tags
+    # despite `--no-commit`, which is the opposite of what the flag promises.
+    if args.no_commit and args.tag:
+        sys.exit("--no-commit and --tag are mutually exclusive: a tag needs a commit")
 
     current = current_version()
     new = resolve_new_version(args.version, current)
@@ -200,11 +211,8 @@ def main() -> int:
         print("no files changed")
         return 0
 
-    if args.no_commit and not args.tag:
-        print(f"done. files written; commit + tag yourself when ready.")
-        return 0
-
-    if not args.tag and args.no_commit:
+    if args.no_commit:
+        print("done. files written; commit + tag yourself when ready.")
         return 0
 
     # Commit only the four files we touched — don't sweep in unrelated
