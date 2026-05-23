@@ -225,10 +225,20 @@ def encoded_to_dest(encoded: str, cooking: Path, game_dir: Path) -> Path:
       `<encoded\\path>`      -> <cooking>/<path>            (cooked asset)
       `_root\\<rel\\path>`    -> <game_dir>/<rel>            (top-level file)
     """
+    # Defense in depth: the asset map ships with rsmm and should never contain
+    # ".." segments, but a corrupted or maliciously crafted map could otherwise
+    # let mod overrides escape the game directory. Reject any traversal up
+    # front rather than at the copy site.
     if encoded.startswith(ROOT_PREFIX):
         rel = encoded[len(ROOT_PREFIX):]
-        return game_dir / Path(*rel.split("\\"))
-    return cooking / Path(*encoded.split("\\"))
+        parts = rel.split("\\")
+        if any(p in ("..", "") for p in parts):
+            raise ValueError(f"refusing path with traversal segments: {encoded!r}")
+        return game_dir / Path(*parts)
+    parts = encoded.split("\\")
+    if any(p == ".." for p in parts):
+        raise ValueError(f"refusing path with traversal segments: {encoded!r}")
+    return cooking / Path(*parts)
 
 
 def discover_mods(repo: Path) -> list[Mod]:

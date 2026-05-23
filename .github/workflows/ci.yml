@@ -13,14 +13,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # macOS is in the matrix because the codebase has darwin-specific
+        # branches (src/rsmm/engine/paths.py, src/rsmm/cli/run.py) and
+        # tests/test_platform_paths.py exercises them — without a macOS
+        # runner those branches only run in production on a user's machine.
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
+      # Match the Python version used by .github/workflows/release.yml
+      # (3.12), so any test that passes here also passes in the frozen
+      # PyInstaller bundle CI ships to users.
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: pip
 
       - name: Install dev deps

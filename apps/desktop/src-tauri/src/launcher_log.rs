@@ -67,20 +67,28 @@ pub fn clear_launcher_log(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Replace CR/LF with a visible escape so a single log entry can never split
+/// into multiple lines. Without this, any caller (frontend or otherwise) that
+/// includes a newline in `message` or `level` can forge fake log records that
+/// look indistinguishable from real ones once the file is read back.
+fn sanitize(raw: &str) -> String {
+    raw.replace('\r', "\\r").replace('\n', "\\n")
+}
+
 #[tauri::command]
 pub fn append_launcher_log(app: AppHandle, entry: LauncherLogEntry) -> Result<(), String> {
     let path = log_path(&app)?;
     let context = entry
         .context
-        .map(|value| format!(" | context={value}"))
+        .map(|value| format!(" | context={}", sanitize(&value.to_string())))
         .unwrap_or_default();
     write_line(
         &path,
         &format!(
             "{} [{}] {}{}",
             now_secs(),
-            entry.level.to_uppercase(),
-            entry.message,
+            sanitize(&entry.level.to_uppercase()),
+            sanitize(&entry.message),
             context
         ),
     )
