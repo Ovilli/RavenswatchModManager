@@ -106,7 +106,7 @@ function SignInPage() {
         title={isSignup ? 'Create an account' : 'Sign in'}
         subtitle={
           isSignup
-            ? 'Join the rsmm index to upload mods and track your library.'
+            ? 'Join the rsmm index to track your library and sync your profiles.'
             : 'Welcome back, modder.'
         }
       />
