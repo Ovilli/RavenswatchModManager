@@ -164,6 +164,32 @@ jobs:
       - name: Rebuild lifecycle scripts (post-audit)
         run: pnpm rebuild
 
+      - name: Start .sig watcher
+        # tauri-action signs bundles, prints absolute paths to the
+        # `.sig` files, then deletes them before our next step runs.
+        # We can't intercept that from a separate step, so a background
+        # `while sleep` loop watches the bundle tree and copies any
+        # `.sig` it sees into `$RUNNER_TEMP/sigs/` (preserving subpath so we
+        # can match bundle to signature later).
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p $RUNNER_TEMP/sigs
+          (
+            while :; do
+              find apps/desktop/src-tauri/target -type f -name '*.sig' 2>/dev/null |
+                while IFS= read -r f; do
+                  base="$(basename "$f")"
+                  if [ ! -f "$RUNNER_TEMP/sigs/$base" ]; then
+                    cp "$f" "$RUNNER_TEMP/sigs/$base" 2>/dev/null || true
+                  fi
+                done
+              sleep 2
+            done
+          ) &
+          echo "$!" > $RUNNER_TEMP/sig-watcher.pid
+          echo "Watcher started, PID=$(cat $RUNNER_TEMP/sig-watcher.pid)"
+
       - name: Build desktop
         uses: tauri-apps/tauri-action@v0
         env:
@@ -189,6 +215,27 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
           args: ${{ matrix.args }}
 
+      - name: Stop .sig watcher + final sweep
+        # Kill the background watcher then do one last scan in case a
+        # `.sig` was generated between the last tick and tauri-action
+        # exiting. tauri-action's cleanup runs inside its own step so
+        # a final find after it returns is a no-op, but harmless.
+        shell: bash
+        run: |
+          set -uo pipefail
+          if [ -f $RUNNER_TEMP/sig-watcher.pid ]; then
+            kill "$(cat $RUNNER_TEMP/sig-watcher.pid)" 2>/dev/null || true
+          fi
+          find apps/desktop/src-tauri/target -type f -name '*.sig' 2>/dev/null |
+            while IFS= read -r f; do
+              base="$(basename "$f")"
+              if [ ! -f "$RUNNER_TEMP/sigs/$base" ]; then
+                cp "$f" "$RUNNER_TEMP/sigs/$base" 2>/dev/null || true
+              fi
+            done
+          echo "=== $RUNNER_TEMP/sigs ==="
+          ls -la $RUNNER_TEMP/sigs/ || true
+
       - name: Upload .sig artifacts to draft release
         # Tauri 2 writes minisign `.sig` files into target/release/bundle/
         # but `tauri-action` v0 doesn't upload them as release assets.
@@ -202,35 +249,19 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -uo pipefail
-          # Bash on macOS is 3.2 so no `mapfile`. Use a portable
-          # `while read` loop. Earlier runs of this step found zero
-          # `.sig` files despite tauri's own logs printing absolute
-          # paths to sigs just seconds earlier. Adding diagnostics:
-          # pwd, presence of target/, presence of bundle/, and raw
-          # find output before piping into the upload loop.
-          echo "=== pwd ==="
-          pwd
-          echo "=== target dir ==="
-          ls -la apps/desktop/src-tauri/target/ 2>&1 | head -20 || echo NO_TARGET_DIR
-          echo "=== bundle dirs ==="
-          ls -la apps/desktop/src-tauri/target/release/bundle/ 2>&1 | head -20 || echo NO_RELEASE_BUNDLE_DIR
-          ls -la apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/ 2>&1 | head -20 || echo NO_MAC_BUNDLE_DIR
-          echo "=== find target/ ==="
-          find apps/desktop/src-tauri/target -name '*.sig' 2>&1 | head -50 || echo FIND_FAILED
-          echo "=== find . ==="
-          find . -type f -name '*.sig' 2>&1 | head -50 || echo FIND_FAILED
-          echo "=== upload loop ==="
+          # Sigs were captured into $RUNNER_TEMP/sigs/ by the watcher above.
+          # Upload each one to the draft release that tauri-action
+          # created. `--clobber` so a re-run replaces stale uploads.
           count=0
-          while IFS= read -r -d '' sig; do
+          for sig in $RUNNER_TEMP/sigs/*.sig; do
+            [ -f "$sig" ] || continue
             count=$((count + 1))
-            echo "  found: $sig"
+            echo "  uploading $sig"
             gh release upload "$TAG" "$sig" --clobber || echo "    upload failed for $sig"
-          done < <(find . -type f -name '*.sig' -print0)
+          done
           echo "Total .sig files uploaded: $count"
           if [ "$count" -eq 0 ]; then
-            echo "::warning::No .sig files found anywhere in the workspace."
-            # Soft-exit so the build job stays green and we keep the
-            # bundle artifacts on the release.
+            echo "::warning::No .sig files in $RUNNER_TEMP/sigs/ — watcher may have missed them."
             exit 0
           fi
 
