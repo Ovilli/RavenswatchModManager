@@ -33,6 +33,10 @@ export const env = {
   databaseUrl: required('DATABASE_URL'),
   betterAuthSecret: required('BETTER_AUTH_SECRET'),
   betterAuthUrl: process.env.BETTER_AUTH_URL || 'http://localhost:3001',
+  // Public URL of the marketing site. Used as the verification-email
+  // landing target. Defaults to localhost so dev works without extra
+  // config; prod overrides via WEB_URL.
+  webUrl: process.env.WEB_URL || 'http://localhost:3000',
   // `http://tauri.localhost` is the default origin for the Tauri WebView2
   // shell on Windows — without it, every desktop fetch fails CORS preflight.
   trustedOrigins: (process.env.TRUSTED_ORIGINS || 'http://localhost:3000,http://localhost:1420,tauri://localhost,https://tauri.localhost,http://tauri.localhost')
@@ -48,8 +52,37 @@ export const env = {
     publicBaseUrl: process.env.S3_PUBLIC_BASE_URL ?? '', // e.g. https://cdn.rsmm.dev
     signedUrlTtlSeconds: Number(process.env.S3_SIGNED_TTL ?? 900),
   },
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID ?? '',
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
+  },
+  github: {
+    clientId: process.env.GITHUB_CLIENT_ID ?? '',
+    clientSecret: process.env.GITHUB_CLIENT_SECRET ?? '',
+  },
+  smtp: {
+    host: process.env.SMTP_HOST ?? '',
+    port: Number(process.env.SMTP_PORT ?? 587),
+    user: process.env.SMTP_USER ?? '',
+    pass: process.env.SMTP_PASS ?? '',
+    // STARTTLS on 587 by default; set SMTP_SECURE=true for SMTPS on 465.
+    secure: process.env.SMTP_SECURE === 'true',
+    from: process.env.EMAIL_FROM || 'no-reply@ravenswatch.ovilli.de',
+  },
 };
 
 export function s3Configured(): boolean {
   return Boolean(env.s3.bucket && env.s3.accessKeyId && env.s3.secretAccessKey);
+}
+
+export function smtpConfigured(): boolean {
+  return Boolean(env.smtp.host && env.smtp.user && env.smtp.pass);
+}
+
+export function googleConfigured(): boolean {
+  return Boolean(env.google.clientId && env.google.clientSecret);
+}
+
+export function githubConfigured(): boolean {
+  return Boolean(env.github.clientId && env.github.clientSecret);
 }
