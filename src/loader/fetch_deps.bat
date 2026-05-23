@@ -47,13 +47,13 @@ if not exist "%TP%\nlohmann" mkdir "%TP%\nlohmann"
 if not exist "%TP%\tomlplusplus" mkdir "%TP%\tomlplusplus"
 
 echo Downloading nlohmann/json...
-powershell -Command "(New-Object System.Net.ServicePointManager).SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://github.com/nlohmann/json/releases/latest/download/json.hpp' -OutFile '%TP%\nlohmann\json.hpp'"
+powershell -Command "[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://github.com/nlohmann/json/releases/latest/download/json.hpp' -OutFile '%TP%\nlohmann\json.hpp'"
 if errorlevel 1 (
     echo Warning: Failed to download json.hpp, but continuing...
 )
 
 echo Downloading tomlplusplus...
-powershell -Command "(New-Object System.Net.ServicePointManager).SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/marzer/tomlplusplus/master/toml.hpp' -OutFile '%TP%\tomlplusplus\toml.hpp'"
+powershell -Command "[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/marzer/tomlplusplus/master/toml.hpp' -OutFile '%TP%\tomlplusplus\toml.hpp'"
 if errorlevel 1 (
     echo Warning: Failed to download toml.hpp, but continuing...
 )

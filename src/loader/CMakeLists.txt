@@ -49,24 +49,9 @@ set(LOADER_SRC
     src/fn_call.cpp
     src/tls_callback.cpp)
 
-if(MSVC)
-  # MSVC's linker requires every symbol in a .def file to be resolvable from
-  # linked import libraries, even for forwarder exports (entry=other_dll.fn).
-  # The real winhttp.dll exports ~14 internal symbols (WinHttpPal*, etc.)
-  # that aren't in the SDK's winhttp.lib, causing LNK2001. Workaround: use
-  # /EXPORT: flags instead of a .def file — MSVC handles forwarder syntax
-  # there without validating the symbol exists.
-  add_library(winhttp SHARED ${LOADER_SRC})
-  file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/exports/winhttp.def DEF_LINES)
-  foreach(LINE ${DEF_LINES})
-    string(STRIP "${LINE}" LINE)
-    if(LINE MATCHES "^[a-zA-Z]")
-      target_link_options(winhttp PRIVATE "/EXPORT:${LINE}")
-    endif()
-  endforeach()
-else()
-  add_library(winhttp SHARED ${LOADER_SRC} exports/winhttp.def)
-endif()
+add_library(winhttp SHARED
+    ${LOADER_SRC}
+    exports/winhttp.def)
 
 target_include_directories(winhttp PRIVATE
     include

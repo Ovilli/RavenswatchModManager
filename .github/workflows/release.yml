@@ -57,18 +57,25 @@ jobs:
         with:
           python-version: '3.12'
 
-      # MSVC env is required for cmake to pick up cl.exe + linker on
-      # windows-latest. dtolnay/rust-toolchain installs Rust but does not
-      # arrange the VS dev shell.
-      - name: Setup MSVC dev shell (Windows)
+      # --- Windows loader DLL -------------------------------------------------
+      # Build with MinGW because the .def file uses forwarder export entries
+      # (e.g. "WinHttpCloseHandle=winhttp_real.WinHttpCloseHandle") that MSVC's
+      # linker cannot resolve. MinGW's dlltool creates forwarded exports without
+      # needing the symbol table from winhttp.lib.
+      - name: Install MinGW (Windows)
         if: matrix.platform == 'windows-latest'
-        uses: ilammy/msvc-dev-cmd@v1
+        run: choco install mingw --no-progress -y
 
       - name: Build loader DLL (Windows)
         if: matrix.platform == 'windows-latest'
         shell: cmd
         run: |
           call src\loader\build.bat
+
+      # MSVC env is required for the Rust/Tauri linker on windows-latest.
+      - name: Setup MSVC dev shell (Windows)
+        if: matrix.platform == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Build rsmm sidecar (PyInstaller)
         shell: bash
