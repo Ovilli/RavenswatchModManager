@@ -95,7 +95,16 @@ def _parse_libraryfolders_vdf(vdf: Path) -> list[Path]:
         return []
     roots: list[Path] = []
     for match in _VDF_PATH_RE.finditer(text):
-        raw = match.group(1).replace("\\\\", "\\")
+        raw = match.group(1)
+        # VDF escapes \\ \" \n \t — mirror run.py's unescape so any
+        # library root with a literal newline / quote / tab in its
+        # name resolves the same on both code paths.
+        try:
+            raw = raw.encode("latin-1").decode("unicode_escape", errors="replace")
+        except (UnicodeDecodeError, UnicodeEncodeError):
+            # Pure-ASCII fallback. Better to skip the unescape than
+            # to lose a library root because a single byte tripped us.
+            raw = raw.replace("\\\\", "\\")
         roots.append(Path(raw))
     return roots
 

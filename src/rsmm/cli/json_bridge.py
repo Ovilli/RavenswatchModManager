@@ -38,6 +38,7 @@ import subprocess
 import sys
 import tomllib
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -53,10 +54,15 @@ def _emit(value: Any) -> int:
 
 
 def _read_manifest(path: Path) -> dict[str, Any] | None:
+    # Catch only the failures we can actually get here (missing file,
+    # permission, malformed TOML). A bare `except Exception` here
+    # swallowed every programmer error too, so a typo in this module
+    # would silently return None and look like "manifest missing".
     try:
         with path.open("rb") as f:
             return tomllib.load(f)
-    except Exception:
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        print(f"warning: could not read manifest {path}: {exc}", file=sys.stderr)
         return None
 
 
@@ -328,6 +334,37 @@ def cmd_pack_mod(mod_id: str) -> int:
     })
 
 
+_UPLOAD_HOST_ALLOWLIST: tuple[str, ...] = (
+    "s3-ravenswatch.ovilli.de",
+    "ravenswatch-mods.s3.amazonaws.com",
+)
+
+
+def _upload_url_allowed(url: str) -> bool:
+    """Restrict outbound PUTs to known mod-storage hostnames.
+
+    Without this, any caller of cmd_upload_bytes (including a malicious
+    on_disable.py hook running via the same Python process) could exfil
+    arbitrary files to attacker-controlled URLs, or probe cloud-metadata
+    endpoints (169.254.169.254, fd00:ec2::254, …) for SSRF.
+
+    The override env var RSMM_UPLOAD_HOST_ALLOW lets dev/staging point
+    the uploader at a different S3-compatible host without editing
+    source. It is a *strict* allowlist of hostnames, comma-separated.
+    """
+    try:
+        host = urllib.parse.urlparse(url).hostname
+    except ValueError:
+        return False
+    if not host:
+        return False
+    extra = os.environ.get("RSMM_UPLOAD_HOST_ALLOW", "")
+    allowed = list(_UPLOAD_HOST_ALLOWLIST) + [
+        s.strip().lower() for s in extra.split(",") if s.strip()
+    ]
+    return host.lower() in allowed
+
+
 def cmd_upload_bytes(path: str, url: str) -> int:
     """HTTP PUT the file at ``path`` to ``url``.
 
@@ -344,6 +381,8 @@ def cmd_upload_bytes(path: str, url: str) -> int:
         return _emit({"ok": False, "error": f"not a file: {path}"})
     if not (url.startswith("https://") or url.startswith("http://")):
         return _emit({"ok": False, "error": f"refusing to PUT to non-http(s) URL: {url}"})
+    if not _upload_url_allowed(url):
+        return _emit({"ok": False, "error": f"refusing to PUT to non-allowlisted host: {url}"})
     data = p.read_bytes()
     req = urllib.request.Request(url, data=data, method="PUT")
     req.add_header("Content-Type", "application/zip")
@@ -490,14 +529,26 @@ def cmd_install_mod(slug: str) -> int:
                     if strip and name.startswith(stripped_prefix)
                     else name
                 )
-                # Defense in depth — zip slip protection.
+                # Defense in depth — zip slip protection. `normpath` does
+                # not collapse symlinks and does not catch Windows UNC
+                # paths such as `\\server\share\foo`. Resolve the final
+                # destination and confirm it sits under `target` before
+                # any open() call.
                 rel_norm = os.path.normpath(rel)
                 if rel_norm.startswith("..") or os.path.isabs(rel_norm):
                     return _emit({
                         "ok": False,
                         "error": f"refusing zip entry with traversal/abs path: {name!r}",
                     })
-                dest = target / rel_norm
+                dest = (target / rel_norm).resolve()
+                target_resolved = target.resolve()
+                try:
+                    dest.relative_to(target_resolved)
+                except ValueError:
+                    return _emit({
+                        "ok": False,
+                        "error": f"refusing zip entry that escapes target: {name!r}",
+                    })
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(member) as src, dest.open("wb") as dst:
                     shutil.copyfileobj(src, dst)

@@ -3,11 +3,15 @@ REM Install the mod manager into the Ravenswatch game directory.
 REM Backs up the original winhttp.dll (if any) and installs our proxy DLL.
 setlocal enabledelayedexpansion
 
-REM Get game directory from argument or use default Steam path
-if "%1"=="" (
+REM Get game directory from argument or use default Steam path.
+REM `%~1` strips surrounding quotes from the argv value; without the `~`
+REM a path containing quote characters could break out of the `set` line
+REM and execute arbitrary commands, because cmd splats `%1` into the
+REM line verbatim before parsing.
+if "%~1"=="" (
     set "GAME_DIR=%USERPROFILE%\.var\app\com.valvesoftware.Steam\.local\share\Steam\steamapps\common\Ravenswatch"
 ) else (
-    set "GAME_DIR=%1"
+    set "GAME_DIR=%~1"
 )
 
 REM Get repo directory

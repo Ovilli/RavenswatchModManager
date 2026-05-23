@@ -49,5 +49,38 @@ target-version = "py311"
 extend-exclude = ["src/loader/third_party"]
 
 [tool.ruff.lint]
-select = ["F", "E", "W", "I", "UP", "B"]
+select = ["F", "E", "W", "I", "UP", "B", "BLE"]
 ignore = ["F401"]   # unused imports: noisy on src/rsmm/__init__ re-exports
+
+# Bare `except Exception:` swallows programmer errors and makes the CLI
+# silently misbehave. New code is expected to catch specific exceptions.
+# The files below contain pre-existing offenders that need a per-call
+# audit before they can be narrowed without changing behaviour — they
+# stay exempt here so CI passes today while still flagging brand-new
+# violations elsewhere in the tree. Drop a path once its `except` calls
+# are reviewed.
+[tool.ruff.lint.per-file-ignores]
+"src/rsmm/cli/apply_mods.py"   = ["BLE001"]
+"src/rsmm/cli/cmd_log.py"      = ["BLE001"]
+"src/rsmm/cli/json_bridge.py"  = ["BLE001"]
+"tests/test_sdk.py"            = ["BLE001"]
+"src/rsmm/cli/compat.py"       = ["BLE001"]
+"src/rsmm/cli/doctor.py"       = ["BLE001"]
+"src/rsmm/cli/lint.py"         = ["BLE001"]
+"src/rsmm/cli/repo_cmd.py"     = ["BLE001"]
+"src/rsmm/cli/run.py"          = ["BLE001"]
+"src/rsmm/cli/safe_mode.py"    = ["BLE001"]
+"src/rsmm/cli/sdk_doctor.py"   = ["BLE001"]
+"src/rsmm/cli/test.py"         = ["BLE001"]
+"src/rsmm/cli/update_cmd.py"   = ["BLE001"]
+"src/rsmm/dev/class_diff.py"   = ["BLE001"]
+"src/rsmm/dev/class_survey.py" = ["BLE001"]
+"src/rsmm/manifest_graph.py"   = ["BLE001"]
+"src/rsmm/sdk/config.py"       = ["BLE001"]
+"src/rsmm/sdk/docs_gen.py"     = ["BLE001"]
+"src/rsmm/sdk/health.py"       = ["BLE001"]
+"src/rsmm/sdk/intermod.py"     = ["BLE001"]
+"src/rsmm/sdk/plugins.py"      = ["BLE001"]
+"src/rsmm/sdk/repo.py"         = ["BLE001"]
+"src/rsmm/sdk/transaction.py"  = ["BLE001"]
+"src/rsmm/sdk/versioning.py"   = ["BLE001"]

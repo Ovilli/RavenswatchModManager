@@ -5,10 +5,18 @@ import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { s3Configured } from '../env';
+import { createRateLimiter } from '../rate-limit';
 import { presignModUpload } from '../storage';
 import type { AppEnv } from '../types';
 
 export const modsRouter = new Hono<AppEnv>();
+
+// Per-IP rate limiter for the download redirect endpoint. Without it,
+// a script can spin the download counter (and the underlying S3 bill)
+// arbitrarily fast. 120/min is well above any legitimate launcher
+// install loop and small enough to make brute-forcing slug/version
+// combos expensive.
+const downloadLimiter = createRateLimiter({ windowMs: 60_000, maxHits: 120 });
 
 const listQuerySchema = z.object({
   q: z.string().optional(),
@@ -145,6 +153,7 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
   });
 });
 
+modsRouter.use('/:slug/:version/download', downloadLimiter);
 modsRouter.get('/:slug/:version/download', zValidator('param', slugParamSchema), async (c) => {
   const slug = c.req.param('slug');
   const version = c.req.param('version');
@@ -215,13 +224,6 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
 
   const db = getDb();
 
-  const existing = await db.query.mods.findFirst({
-    where: eq(schema.mods.slug, body.slug),
-  });
-  if (existing && existing.ownerId !== null && existing.ownerId !== user.id) {
-    return c.json({ error: 'slug owned by another user' }, 403);
-  }
-
   const signed = await presignModUpload({
     slug: body.slug,
     version: body.version,
@@ -229,8 +231,29 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
     sizeBytes: body.sizeBytes,
   });
 
+  // Declared outside the try so the catch block can read it after the
+  // transaction throws to abort itself on ownership conflict.
+  let ownerConflict = false;
   try {
     const result = await db.transaction(async (tx) => {
+      // Re-do the ownership check inside the transaction with a row
+      // lock so two concurrent uploads can't both pass a stale check
+      // and then both upsert. The old code did the SELECT outside the
+      // transaction, leaving a window where two callers could each
+      // see the row as "free" and race to claim it.
+      const lockedExisting = await tx
+        .select()
+        .from(schema.mods)
+        .where(eq(schema.mods.slug, body.slug))
+        .for('update');
+      const existing = lockedExisting[0];
+      if (existing && existing.ownerId !== null && existing.ownerId !== user.id) {
+        ownerConflict = true;
+        // Throwing aborts the transaction; the catch below converts
+        // this signal into a clean 403 instead of a 500.
+        throw new Error('owner conflict');
+      }
+
       const modRows = await tx
         .insert(schema.mods)
         .values({
@@ -302,6 +325,12 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
       expiresIn: signed.expiresIn,
     });
   } catch (err) {
+    // The transaction throws "owner conflict" when the slug already
+    // belongs to a different user. Surface that as a 403 instead of
+    // a 500 — `ownerConflict` is set inside the transaction body.
+    if (ownerConflict) {
+      return c.json({ error: 'slug owned by another user' }, 403);
+    }
     // Unique constraint violation (PostgreSQL error code 23505).
     // Drizzle wraps the underlying pg error in `DrizzleQueryError`, so
     // the PG `code` lives on `err.cause.code`. Older code only checked
