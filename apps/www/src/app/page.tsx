@@ -2,6 +2,7 @@ import { Badge, buttonVariants } from '@rsmm/ui';
 import type { ModListItem } from '@rsmm/schemas';
 import type { Route } from 'next';
 import Link from 'next/link';
+import { getApiUrl } from '../lib/api-url';
 import { FAQ } from './components/faq';
 import { OsDownload } from './os-download';
 import { QuickSearch } from './quick-search';
@@ -17,7 +18,7 @@ interface HomeData {
 }
 
 async function getHomeData(): Promise<HomeData> {
-  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+  const apiBase = getApiUrl().replace(/\/+$/, '');
   const fallback: HomeData = { mods: [], totalMods: 0, totalModDownloads: 0, appDownloads: 0 };
 
   try {
