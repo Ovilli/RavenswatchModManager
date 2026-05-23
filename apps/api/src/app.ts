@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { auth } from './auth';
-import { env } from './env';
+import { env, githubConfigured, googleConfigured } from './env';
 import { createRateLimiter } from './rate-limit';
 import { meRouter } from './routes/me';
 import { modsRouter } from './routes/mods';
@@ -58,6 +58,18 @@ app.use('/api/mods/upload', createRateLimiter({
 
 app.get('/api', (c) => c.json({ name: 'rsmm-api', ok: true }));
 app.get('/api/health', (c) => c.json({ ok: true, ts: Date.now() }));
+
+// Tells the sign-in UI which providers to render. Avoids the frontend
+// hard-coding a list and showing buttons that 500 when an admin hasn't
+// set the OAuth env vars yet.
+app.get('/api/auth-config', (c) =>
+  c.json({
+    providers: {
+      google: googleConfigured(),
+      github: githubConfigured(),
+    },
+  }),
+);
 
 app.route('/api/mods', modsRouter);
 app.route('/api/me', meRouter);
