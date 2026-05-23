@@ -229,6 +229,12 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
       const mod = modRows[0];
       if (!mod) throw new Error('failed to upsert mod');
 
+      // Idempotent: re-presigning the same (mod_id, version) tuple
+      // refreshes the row instead of dying on the unique-key. Without
+      // this, a failed object-store PUT (e.g. browser hit Cloudflare's
+      // Bot Fight Mode) would orphan the row and every subsequent
+      // upload would 23505 forever. Retries now just rewrite the
+      // asset_url / sha256 / size in-place.
       const versionRows = await tx
         .insert(schema.modVersions)
         .values({
@@ -238,6 +244,15 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
           sizeBytes: body.sizeBytes,
           manifestJson: body.manifest,
           assetUrl: signed.publicUrl,
+        })
+        .onConflictDoUpdate({
+          target: [schema.modVersions.modId, schema.modVersions.version],
+          set: {
+            sha256: body.sha256,
+            sizeBytes: body.sizeBytes,
+            manifestJson: body.manifest,
+            assetUrl: signed.publicUrl,
+          },
         })
         .returning();
       const version = versionRows[0];
@@ -253,16 +268,25 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
       expiresIn: signed.expiresIn,
     });
   } catch (err) {
-    // Unique constraint violation (PostgreSQL error code 23505)
-    if (
-      err &&
-      typeof err === 'object' &&
-      'code' in err &&
-      (err as { code: string }).code === '23505'
-    ) {
+    // Unique constraint violation (PostgreSQL error code 23505).
+    // Drizzle wraps the underlying pg error in `DrizzleQueryError`, so
+    // the PG `code` lives on `err.cause.code`. Older code only checked
+    // `err.code` and let dupes leak through as a generic 500.
+    if (isPgErrorCode(err, '23505')) {
       return c.json({ error: 'version already exists' }, 409);
     }
     console.error('Upload error:', err);
     return c.json({ error: 'failed to create mod version' }, 500);
   }
 });
+
+function isPgErrorCode(err: unknown, code: string): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const top = err as { code?: unknown; cause?: unknown };
+  if (top.code === code) return true;
+  const cause = top.cause;
+  if (cause && typeof cause === 'object' && (cause as { code?: unknown }).code === code) {
+    return true;
+  }
+  return false;
+}
