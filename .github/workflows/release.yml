@@ -189,6 +189,35 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
           args: ${{ matrix.args }}
 
+      - name: Upload .sig artifacts to draft release
+        # Tauri 2 writes minisign `.sig` files into target/release/bundle/
+        # but `tauri-action` v0 doesn't upload them as release assets.
+        # The updater manifest step downstream reads `*.sig` *files* from
+        # the release, so we shovel them in via gh CLI here. Each platform
+        # contributes its own sigs to the same draft.
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Resolve the bundle root regardless of the matrix's `--target`
+          # flag (mac is universal-apple-darwin, the rest land in
+          # `target/release/bundle/...`).
+          for root in \
+            apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle \
+            apps/desktop/src-tauri/target/release/bundle
+          do
+            if [ -d "$root" ]; then
+              echo "Scanning $root for .sig files…"
+              # `find -print0 | xargs -0` so spaces in product names
+              # ("Ravenswatch Mod Manager …") don't break the upload.
+              find "$root" -type f -name '*.sig' -print0 |
+                xargs -0 -I{} gh release upload "$TAG" "{}" --clobber
+            fi
+          done
+
   publish-updater-manifest:
     needs: build
     # Only run when the signing private key is configured. The build
