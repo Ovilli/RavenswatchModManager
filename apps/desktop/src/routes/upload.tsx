@@ -362,7 +362,7 @@ function PackSummary({ pack }: { pack: PackResult }) {
       <Row label="slug" value={pack.slug} />
       <Row label="version" value={pack.version} />
       <Row label="size" value={pack.sizeBytes != null ? fmtBytes(pack.sizeBytes) : undefined} />
-      <Row label="sha256" value={pack.sha256?.slice(0, 16) + '…'} />
+      <Row label="sha256" value={`${pack.sha256?.slice(0, 16) ?? ''}…`} />
       <Row label="name" value={pack.manifest?.name} />
       <Row
         label="tags"
