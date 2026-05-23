@@ -164,84 +164,25 @@ jobs:
       - name: Rebuild lifecycle scripts (post-audit)
         run: pnpm rebuild
 
-      - name: Start .sig watcher
-        # tauri-action signs bundles, prints absolute paths to the
-        # `.sig` files, then deletes them before our next step runs.
-        # We can't intercept that from a separate step, so a background
-        # `while sleep` loop watches the bundle tree and copies any
-        # `.sig` it sees into `$RUNNER_TEMP/sigs/` (preserving subpath so we
-        # can match bundle to signature later).
+      - name: Build desktop (Tauri)
+        # `tauri-action@v0` produced bundles + `.sig` files locally but
+        # actively deleted the sig files before subsequent steps could
+        # see them, leaving the updater manifest job with nothing to
+        # assemble. Running `pnpm tauri build` directly keeps every
+        # artifact on disk for the upload step below.
         shell: bash
-        run: |
-          set -uo pipefail
-          mkdir -p $RUNNER_TEMP/sigs
-          (
-            while :; do
-              find apps/desktop/src-tauri/target -type f -name '*.sig' 2>/dev/null |
-                while IFS= read -r f; do
-                  base="$(basename "$f")"
-                  if [ ! -f "$RUNNER_TEMP/sigs/$base" ]; then
-                    cp "$f" "$RUNNER_TEMP/sigs/$base" 2>/dev/null || true
-                  fi
-                done
-              sleep 2
-            done
-          ) &
-          echo "$!" > $RUNNER_TEMP/sig-watcher.pid
-          echo "Watcher started, PID=$(cat $RUNNER_TEMP/sig-watcher.pid)"
-
-      - name: Build desktop
-        uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Tauri updater signing. Required for the updater plugin to verify
-          # signed manifests. Generate once with `pnpm tauri signer generate`
-          # and store the private key + password as repo secrets.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          projectPath: apps/desktop
-          tagName: ${{ github.ref_name }}
-          releaseName: 'RSMM ${{ github.ref_name }}'
-          # Keep the release as a draft during the build matrix so
-          # tauri-action uploads the .sig files for the updater. With
-          # `releaseDraft: false` each platform publishes independently
-          # and the sig artifacts get skipped ("Signature not found
-          # for the updater JSON. Skipping upload..."), leaving the
-          # latest.json assembly step with nothing to work with. The
-          # `publish-updater-manifest` job flips the draft to published
-          # at the end.
-          releaseDraft: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          args: ${{ matrix.args }}
-
-      - name: Stop .sig watcher + final sweep
-        # Kill the background watcher then do one last scan in case a
-        # `.sig` was generated between the last tick and tauri-action
-        # exiting. tauri-action's cleanup runs inside its own step so
-        # a final find after it returns is a no-op, but harmless.
-        shell: bash
+        working-directory: apps/desktop
         run: |
-          set -uo pipefail
-          if [ -f $RUNNER_TEMP/sig-watcher.pid ]; then
-            kill "$(cat $RUNNER_TEMP/sig-watcher.pid)" 2>/dev/null || true
-          fi
-          find apps/desktop/src-tauri/target -type f -name '*.sig' 2>/dev/null |
-            while IFS= read -r f; do
-              base="$(basename "$f")"
-              if [ ! -f "$RUNNER_TEMP/sigs/$base" ]; then
-                cp "$f" "$RUNNER_TEMP/sigs/$base" 2>/dev/null || true
-              fi
-            done
-          echo "=== $RUNNER_TEMP/sigs ==="
-          ls -la $RUNNER_TEMP/sigs/ || true
+          set -euo pipefail
+          # `${{ matrix.args }}` is empty on linux/windows and
+          # `--target universal-apple-darwin` on macOS. Quote-safe because
+          # GH Actions expands it before the shell sees it.
+          pnpm tauri build ${{ matrix.args }}
 
-      - name: Upload .sig artifacts to draft release
-        # Tauri 2 writes minisign `.sig` files into target/release/bundle/
-        # but `tauri-action` v0 doesn't upload them as release assets.
-        # The updater manifest step downstream reads `*.sig` *files* from
-        # the release, so we shovel them in via gh CLI here. Each platform
-        # contributes its own sigs to the same draft.
+      - name: Ensure draft release exists
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -249,20 +190,55 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -uo pipefail
-          # Sigs were captured into $RUNNER_TEMP/sigs/ by the watcher above.
-          # Upload each one to the draft release that tauri-action
-          # created. `--clobber` so a re-run replaces stale uploads.
+          # First matrix leg to reach this step creates the draft; the
+          # others find it and reuse via the upload step's `--clobber`.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, reusing."
+          else
+            extra=""
+            if [[ "$TAG" == *-* ]]; then extra="--prerelease"; fi
+            gh release create "$TAG" \
+              --draft \
+              --title "RSMM $TAG" \
+              --notes "RSMM $TAG — see commit log for changes." \
+              $extra
+          fi
+
+      - name: Upload bundles + sigs to draft release
+        # Walks the tauri output tree once, grabs every installer +
+        # signature, uploads each via `gh release upload --clobber`.
+        # No reliance on tauri-action's filtered upload list — `.sig`
+        # files come along too, which is the whole point.
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -uo pipefail
+          # Bundle artifacts live under any of:
+          #   target/release/bundle/{appimage,deb,nsis,msi,...}
+          #   target/<triple>/release/bundle/...     (mac universal)
           count=0
-          for sig in $RUNNER_TEMP/sigs/*.sig; do
-            [ -f "$sig" ] || continue
+          while IFS= read -r -d '' f; do
             count=$((count + 1))
-            echo "  uploading $sig"
-            gh release upload "$TAG" "$sig" --clobber || echo "    upload failed for $sig"
-          done
-          echo "Total .sig files uploaded: $count"
+            echo "  uploading $f"
+            gh release upload "$TAG" "$f" --clobber || echo "    upload failed for $f"
+          done < <(
+            find apps/desktop/src-tauri/target -path '*/bundle/*' -type f \
+              \( -name '*.AppImage' \
+                 -o -name '*.deb' \
+                 -o -name '*.dmg' \
+                 -o -name '*-setup.exe' \
+                 -o -name '*.msi' \
+                 -o -name '*.app.tar.gz' \
+                 -o -name '*.sig' \) \
+              -print0
+          )
+          echo "Total artifacts uploaded: $count"
           if [ "$count" -eq 0 ]; then
-            echo "::warning::No .sig files in $RUNNER_TEMP/sigs/ — watcher may have missed them."
-            exit 0
+            echo "::error::No bundle artifacts found — tauri build output is empty?"
+            exit 1
           fi
 
   publish-updater-manifest:
