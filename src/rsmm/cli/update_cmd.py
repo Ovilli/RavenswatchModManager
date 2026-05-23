@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import sys
 import tempfile
@@ -43,7 +42,7 @@ def _load_repos() -> list[str]:
         return []
     try:
         return list(json.loads(REPOS_FILE.read_text(encoding="utf-8")).get("urls", []))
-    except Exception:
+    except (OSError, ValueError):
         return []
 
 
@@ -68,7 +67,7 @@ def _installed_mods() -> dict[str, str]:
             tbl = tomllib.loads(mf.read_text(encoding="utf-8"))
             meta = tbl.get("mod", {})
             out[str(meta.get("id", entry.name))] = str(meta.get("version", "0.0.0"))
-        except Exception:
+        except (OSError, ValueError):
             pass
     return out
 
@@ -118,7 +117,6 @@ def _validate_zip_content(zf: zipfile.ZipFile, mod_id: str) -> None:
     """Scan ZIP for dangerous file types. Raise RepoError if found."""
     blocked: list[str] = []
     root_danger: list[str] = []
-    root_prefix = "_root\\" if os.name == "nt" else "_root/"
     for entry in zf.infolist():
         name = entry.filename
         # Strip mod_id/ prefix if present
@@ -127,8 +125,8 @@ def _validate_zip_content(zf: zipfile.ZipFile, mod_id: str) -> None:
         ext = Path(inner).suffix.lower()
         if ext in _DANGEROUS_EXTENSIONS:
             blocked.append(name)
-        if inner.startswith(root_prefix[1:]):
-            rel = inner[len(root_prefix):]
+        if inner.startswith("_root/"):
+            rel = inner[len("_root/"):]
             if Path(rel).suffix.lower() in _DANGEROUS_ROOT_EXTENSIONS:
                 root_danger.append(rel)
     if blocked:
@@ -202,7 +200,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             raw = json.loads(_fetch(url).decode("utf-8"))
             indices.append((url, RepoIndex.load(raw)))
-        except Exception as e:
+        except (urllib.error.URLError, OSError, ValueError) as e:
             print(f"  [warn] {url}: {e}", file=sys.stderr)
 
     plan: list[tuple[str, str, object, str]] = []  # mod_id, have, entry, url
@@ -232,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\nfetching {entry.url}")
         try:
             data = _fetch(entry.url)
-        except Exception as e:
+        except (urllib.error.URLError, OSError) as e:
             print(f"  download failed: {e}", file=sys.stderr)
             code = 1
             continue

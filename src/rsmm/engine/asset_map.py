@@ -18,5 +18,19 @@ def encoded_to_decoded() -> dict[str, str]:
 def decoded_to_encoded() -> dict[str, str]:
     """Decoded path (forward-slash, posix-style) -> encoded cooked path
     (with backslashes, as stored in UsedRscList.ot).
+
+    Warns if two different encoded paths decode to the same key — only the
+    last one survives.
     """
-    return {v.replace("\\", "/"): k for k, v in encoded_to_decoded().items()}
+    enc_dec = encoded_to_decoded()
+    out: dict[str, str] = {}
+    for enc, dec in enc_dec.items():
+        key = dec.replace("\\", "/")
+        if key in out:
+            import logging
+            logging.warning(
+                f"duplicate decoded path {key!r} "
+                f"(old={out[key]!r}, new={enc!r})"
+            )
+        out[key] = enc
+    return out

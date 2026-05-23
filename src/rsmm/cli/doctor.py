@@ -22,6 +22,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from rsmm.cli.apply_mods import _LANG_SUFFIXES, is_skippable_asset
 from rsmm.cli.merge import _ranked, _toml_load, collect_patches
 from rsmm.engine.asset_map import decoded_to_encoded
 from rsmm.engine.paths import (
@@ -151,18 +152,10 @@ def check_mods() -> list[Result]:
                 # _root/ files bypass asset_map (top-level).
                 if dec.startswith("_root/") or "/_root/" in dec:
                     continue
-                # SDK staging output (`_pending_items/`, `_pending_bosses/`,
-                # `_pending_text_overrides/`, etc.) is intermediate JSON
-                # the apply pipeline consumes — never a cooked asset. The
-                # applier already filters these via `Mod.files()`; mirror
-                # the filter here so doctor doesn't spam WARNs on every
-                # mod that uses [[content]] blocks.
-                if dec.split("/", 1)[0].startswith("_pending_"):
+                if is_skippable_asset(dec):
                     continue
                 # Translation Lang* files are special-cased in apply_mods.
-                if dec.endswith(tuple(f".Lang{c}" for c in
-                                     ["EN","JA","KO","RU","ES","DE","PL","FR",
-                                      "IT","PT-BR","ZH-S","ZH-T","RO"])):
+                if dec.endswith(_LANG_SUFFIXES):
                     continue
                 if dec not in dec2enc:
                     # Only surface for mods the user has actually enabled

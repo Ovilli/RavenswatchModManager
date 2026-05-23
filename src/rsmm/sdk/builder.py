@@ -7,6 +7,7 @@ mod build avoids half-built mod trees on the disk.
 
 from __future__ import annotations
 
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -17,11 +18,15 @@ from .config import ConfigSchema
 from .content import ContentRegistry
 from .i18n import KEY_RE, SUPPORTED_LOCALES
 
+_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
+
 
 class ModBuilder:
     """In-memory mod authoring buffer; flushed in one atomic pass."""
 
     def __init__(self, mod_id: str, *, version: str, author: str, name: str):
+        if not _ID_RE.match(mod_id):
+            raise ValueError(f"invalid mod_id: {mod_id!r}")
         self.id = mod_id
         self.version = version
         self.author = author

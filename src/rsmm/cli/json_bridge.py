@@ -406,7 +406,7 @@ def cmd_upload_bytes(path: str, url: str) -> int:
         return _emit({"ok": False, "status": e.code, "error": body or e.reason})
     except urllib.error.URLError as e:
         return _emit({"ok": False, "error": f"network error: {e.reason}"})
-    except Exception as e:
+    except OSError as e:
         return _emit({"ok": False, "error": str(e)})
 
 
@@ -429,25 +429,25 @@ def _http_get_json(url: str, *, timeout: int = 30) -> dict[str, Any]:
         return json.loads(resp.read().decode("utf-8"))
 
 
+_DANGEROUS_EXTENSIONS = frozenset({
+    ".exe", ".dll", ".sys", ".drv", ".scr", ".cpl",
+    ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh",
+    ".ps1", ".psm1", ".psd1", ".ps1xml",
+    ".sh", ".bash", ".zsh",
+    ".bat", ".cmd",
+    ".jar", ".py", ".pyc", ".pyd",
+    ".wasm", ".php", ".asp", ".aspx", ".jsp",
+})
+
+_DANGEROUS_ROOT_EXTENSIONS = frozenset({
+    ".exe", ".dll", ".sys", ".drv", ".scr", ".cpl",
+    ".vbs", ".vbe", ".ps1", ".bat", ".cmd", ".sh",
+})
+
+
 def cmd_install_mod(slug: str) -> int:
     """Fetch the latest version of <slug> from the public index and
     extract its zip into ``mods/<slug>/``.
-
-    Two-step:
-
-    1. ``GET /api/mods/<slug>``  → detail payload with the version list.
-       We pick the most recently created version.
-    2. ``GET /api/mods/<slug>/<version>/download`` → 30x redirect to
-       the object-storage URL (also bumps the public download count
-       server-side). Stream the response into a temp file, sha256-
-       verify against the version row's ``sha256``, then extract
-       members into ``mods/<slug>/`` after stripping the zip's
-       top-level directory.
-
-    The extraction strips a single top-level directory if the zip is
-    folder-shaped (which ``rsmm pack`` produces) — keeps the on-disk
-    layout consistent with how ``rsmm list`` expects mods to be
-    arranged.
     """
     import shutil
     import tempfile
@@ -460,7 +460,7 @@ def cmd_install_mod(slug: str) -> int:
         if e.code == 404:
             return _emit({"ok": False, "error": f"mod {slug!r} not found in the index"})
         return _emit({"ok": False, "error": f"index lookup failed: HTTP {e.code} {e.reason}"})
-    except Exception as e:
+    except (urllib.error.URLError, OSError, ValueError) as e:
         return _emit({"ok": False, "error": f"index lookup failed: {e}"})
 
     versions = detail.get("versions") or []
@@ -511,6 +511,32 @@ def cmd_install_mod(slug: str) -> int:
         target.mkdir(parents=True, exist_ok=True)
 
         with zipfile.ZipFile(tmp_path) as zf:
+            blocked: list[str] = []
+            root_danger: list[str] = []
+            for entry in zf.infolist():
+                name = entry.filename
+                parts = name.replace("\\", "/").split("/", 1)
+                inner = parts[1] if len(parts) > 1 else parts[0]
+                ext = Path(inner).suffix.lower()
+                if ext in _DANGEROUS_EXTENSIONS:
+                    blocked.append(name)
+                if inner.startswith("_root/"):
+                    rel = inner[len("_root/"):]
+                    if Path(rel).suffix.lower() in _DANGEROUS_ROOT_EXTENSIONS:
+                        root_danger.append(rel)
+            if blocked:
+                return _emit({
+                    "ok": False,
+                    "error": f"{slug} contains blocked file type(s):\n  "
+                    + "\n  ".join(blocked[:20]),
+                })
+            if root_danger:
+                print(
+                    f"  [WARN] {slug} overwrites game root files:",
+                    file=sys.stderr,
+                )
+                for f in root_danger:
+                    print(f"         {f}", file=sys.stderr)
             # If every member shares the same top-level dir, strip it so
             # files land directly under `mods/<slug>/`. Matches the
             # shape `rsmm pack` produces (`<mod_id>/manifest.toml`, ...).

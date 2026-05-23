@@ -96,6 +96,11 @@ class Cursor:
 
     def lstr(self) -> str:
         n = self.u32()
+        if self.pos + n > len(self.data):
+            raise ValueError(
+                f"string length {n} exceeds remaining data "
+                f"at offset {self.pos - 4:#x}"
+            )
         s = self.data[self.pos:self.pos + n].decode("ascii", errors="replace")
         self.pos += n
         return s

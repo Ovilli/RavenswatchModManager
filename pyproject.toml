@@ -60,7 +60,6 @@ ignore = ["F401"]   # unused imports: noisy on src/rsmm/__init__ re-exports
 # violations elsewhere in the tree. Drop a path once its `except` calls
 # are reviewed.
 [tool.ruff.lint.per-file-ignores]
-"src/rsmm/cli/apply_mods.py"   = ["BLE001"]
 "src/rsmm/cli/cmd_log.py"      = ["BLE001"]
 "src/rsmm/cli/json_bridge.py"  = ["BLE001"]
 "tests/test_sdk.py"            = ["BLE001"]
@@ -72,7 +71,7 @@ ignore = ["F401"]   # unused imports: noisy on src/rsmm/__init__ re-exports
 "src/rsmm/cli/safe_mode.py"    = ["BLE001"]
 "src/rsmm/cli/sdk_doctor.py"   = ["BLE001"]
 "src/rsmm/cli/test.py"         = ["BLE001"]
-"src/rsmm/cli/update_cmd.py"   = ["BLE001"]
+
 "src/rsmm/dev/class_diff.py"   = ["BLE001"]
 "src/rsmm/dev/class_survey.py" = ["BLE001"]
 "src/rsmm/manifest_graph.py"   = ["BLE001"]

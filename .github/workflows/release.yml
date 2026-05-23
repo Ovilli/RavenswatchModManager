@@ -67,7 +67,6 @@ jobs:
       - name: Build loader DLL (Windows)
         if: matrix.platform == 'windows-latest'
         shell: cmd
-        continue-on-error: true
         run: |
           call src\loader\build.bat
 

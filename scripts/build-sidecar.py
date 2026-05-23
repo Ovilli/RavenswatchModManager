@@ -87,6 +87,7 @@ def build_sidecar(target: str) -> None:
     # cause apply / doctor / install-loader to crash on fresh installs.
     def _add(src: Path, dest: str) -> list[str]:
         if not src.exists():
+            print(f"  [WARN] missing file: {src} — not bundled", file=sys.stderr)
             return []
         return ["--add-data", f"{src}{os.pathsep}{dest}"]
 

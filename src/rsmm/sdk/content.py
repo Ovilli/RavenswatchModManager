@@ -61,7 +61,12 @@ class ContentRegistry:
         written: list[Path] = []
         for d in self.defs:
             mod = _load_kind(d.kind)
-            paths = mod.emit(self.mod_id, d, out_dir)
+            try:
+                paths = mod.emit(self.mod_id, d, out_dir)
+            except AttributeError as e:
+                raise ContentError(
+                    f"kind {d.kind!r} module has no emit(): {e}"
+                ) from e
             written.extend(paths)
         return written
 

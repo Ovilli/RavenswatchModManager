@@ -119,12 +119,14 @@ class State:
         if self.path.exists():
             try:
                 self.data = json.loads(self.path.read_text(encoding="utf-8"))
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 print(f"  [warn] corrupt state file: {e}", file=__import__('sys').stderr)
 
     def save(self) -> None:
-        self.path.write_text(json.dumps(self.data, indent=2, sort_keys=True),
-                             encoding="utf-8")
+        tmp = self.path.with_suffix(self.path.suffix + ".tmp")
+        tmp.write_text(json.dumps(self.data, indent=2, sort_keys=True),
+                       encoding="utf-8")
+        tmp.replace(self.path)
 
     @property
     def active(self) -> dict:
@@ -150,7 +152,11 @@ class Mod:
         self.name: str = m.get("name", self.id)
         self.version: str = m.get("version", "0.0.0")
         self.author: str = m.get("author", "")
-        self.enabled: bool = bool(m.get("enabled", True))
+        raw_enabled = m.get("enabled", True)
+        self.enabled: bool = (
+            raw_enabled if isinstance(raw_enabled, bool)
+            else str(raw_enabled).lower() in ("1", "true", "yes", "on")
+        )
         self.assets_dir = root / "assets"
         self.content_blocks: list[dict] = list(tbl.get("content", []) or [])
 
@@ -162,11 +168,7 @@ class Mod:
             if not f.is_file():
                 continue
             decoded = f.relative_to(self.assets_dir).as_posix()
-            # `_pending_*` dirs are SDK content-emission staging output
-            # consumed by the merge step. They are not raw cooked assets
-            # so the applier must not try to install them under
-            # `_Cooking/` directly.
-            if decoded.split("/", 1)[0].startswith("_pending_"):
+            if is_skippable_asset(decoded):
                 continue
             out.append((f, decoded))
         return out
@@ -188,10 +190,30 @@ def load_asset_map(_repo: Path | None = None) -> dict[str, str]:
 # locale codes Ravenswatch ships can be added here.
 LANG_DECODED_TO_ENCODED = {
     "EN": "MU", "JA": "EW", "KO": "IO", "RU": "LJ", "ES": "MF",
-    "DE": "NM", "PL": "TG", "FR": "VL", "IT": "XQ",
+    "DE": "NM", "PL": "TG", "FR": "VL", "IT": "XQ", "RO": "LO",
     "PT-BR": "TQ-BL", "ZH-S": "YA-F", "ZH-T": "YA-Q",
     "RAW": "LWR",   # in-game pseudo-locale (`*marked text` for QA)
 }
+
+# Language suffixes doctor and other tools recognise as special-cased
+# paths that bypass the normal asset-map lookup.
+_LANG_SUFFIXES = tuple(
+    f".Lang{c}" for c in sorted(LANG_DECODED_TO_ENCODED)
+)
+
+
+def is_skippable_asset(decoded: str) -> bool:
+    """Return True for asset paths that are not raw cooked files and
+    should be skipped by the applier / doctor / etc.
+
+    ``_pending_*`` directories are SDK content-emission staging output
+    consumed by the merge step — they are not raw cooked assets so the
+    applier must not try to install them under ``_Cooking/`` directly.
+    """
+    top = decoded.split("/", 1)[0]
+    if top.startswith("_pending_"):
+        return True
+    return False
 
 
 def resolve_special(decoded: str, dec2enc: dict[str, str]) -> str | None:
@@ -265,7 +287,7 @@ def discover_mods(repo: Path) -> list[Mod]:
             continue
         try:
             mods.append(Mod(entry))
-        except Exception as e:
+        except (OSError, ValueError) as e:
             print(f"  skip {entry.name}: {e}", file=sys.stderr)
     return mods
 
@@ -281,7 +303,7 @@ def emit_content_blocks(mods: list[Mod]) -> int:
     """
     try:
         from rsmm.sdk.content import ContentError, ContentRegistry, SchemaNotMined
-    except Exception as e:
+    except ImportError as e:
         print(f"  [content] sdk import failed: {e}", file=sys.stderr)
         return 0
     total = 0
@@ -311,7 +333,7 @@ def emit_content_blocks(mods: list[Mod]) -> int:
         except SchemaNotMined as e:
             print(f"  [content] {m.id}: schema not mined yet: {e}",
                   file=sys.stderr)
-        except Exception as e:
+        except (OSError, ValueError) as e:
             print(f"  [content] {m.id}: emit failed: {e}", file=sys.stderr)
     return total
 
@@ -326,7 +348,7 @@ def apply_health_quarantine(mods: list[Mod], cooking: Path) -> list[Mod]:
     try:
         from rsmm.sdk.health import Health
         quarantined = Health(cooking).disabled_mods()
-    except Exception as e:
+    except ImportError as e:
         print(f"  [health] skipped: {e}", file=sys.stderr)
         return mods
     if not quarantined:
@@ -612,7 +634,7 @@ def _run_deactivation_hooks(mods: list[Mod],
         except subprocess.TimeoutExpired:
             print(f"    on_disable {mod_id} TIMEOUT after "
                   f"{DEACTIVATION_TIMEOUT_SEC}s", file=sys.stderr)
-        except Exception as e:
+        except (OSError, ValueError) as e:
             print(f"    on_disable {mod_id} failed: {e}", file=sys.stderr)
     return ran, missing
 
@@ -701,7 +723,7 @@ def clear_runtime_mods(game_dir: Path, dry_run: bool = False) -> int:
     """Remove the game-side `mods/` runtime sidecars so a vanilla launch
     starts without any mod manifests or Lua entrypoints loaded.
 
-    Returns 1 when the directory was present and cleared, otherwise 0.
+    Returns 1 on success (or nothing to clear), 0 on filesystem error.
     """
     game_mods = game_dir / "mods"
     if not game_mods.exists():
@@ -768,7 +790,7 @@ def clear_steam_launch_options_for_vanilla(dry_run: bool = False) -> int:
             _steam_root,
             _write_launch_options,
         )
-    except Exception as e:
+    except ImportError as e:
         print(f"  [warn] could not import Steam launch-option helpers: {e}", file=sys.stderr)
         return 0
 
@@ -794,7 +816,7 @@ def clear_steam_launch_options_for_vanilla(dry_run: bool = False) -> int:
                 continue
             if _write_launch_options(vdf, RAVENSWATCH_APP_ID, ""):
                 changed += 1
-        except Exception as e:
+        except OSError as e:
             print(f"  [warn] failed to clear launch options in {vdf}: {e}", file=sys.stderr)
 
     print(f"Cleared Steam launch options in {changed}/{len(vdfs)} config(s).")
@@ -841,7 +863,7 @@ def _recover_game_update(cooking: Path, game_dir: Path) -> bool:
         from rsmm.engine.asset_map import encoded_to_decoded
         encoded_to_decoded.cache_clear()
         print("  + rebuilt asset map")
-    except Exception as e:
+    except (OSError, ImportError) as e:
         print(f"  [warn] asset map rebuild failed: {e}", file=sys.stderr)
 
     # 4. Reset health crash counters — crashes were caused by the update
@@ -853,7 +875,7 @@ def _recover_game_update(cooking: Path, game_dir: Path) -> bool:
             h.re_enable(mid)
         h.clear_canary()
         print("  + reset health/crash counters")
-    except Exception as e:
+    except (OSError, ImportError) as e:
         print(f"  [warn] health reset failed: {e}", file=sys.stderr)
 
     # 5. Persist the new fingerprint so we don't loop
@@ -879,7 +901,7 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
         tx_recover = ApplyTransaction(cooking).recover()
         if tx_recover != "clean":
             print(f"  [apply] recovered previous staging state: {tx_recover}")
-    except Exception as e:
+    except (OSError, ImportError) as e:
         print(f"  [apply] recover skipped: {e}", file=sys.stderr)
 
     # Run on_disable.py for any mod that flipped enabled -> disabled BEFORE
@@ -918,8 +940,11 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
 
     if not args.dry_run:
         state.set_enabled_mods([m.id for m in mods if m.enabled])
-        state.save()
-        print(f"State written: {state.path}")
+        try:
+            state.save()
+            print(f"State written: {state.path}")
+        except OSError as e:
+            print(f"  [warn] failed to write state: {e}", file=sys.stderr)
     return 0
 
 
@@ -980,9 +1005,15 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                 print(f"  [WARN] {len(failed)} file(s) could not be restored; "
                       f"their state entries are preserved for retry.",
                       file=sys.stderr)
-                state.save()
+                try:
+                    state.save()
+                except OSError as e:
+                    print(f"  [warn] failed to save state: {e}", file=sys.stderr)
             elif not args.dry_run:
-                state.save()
+                try:
+                    state.save()
+                except OSError as e:
+                    print(f"  [warn] failed to save state: {e}", file=sys.stderr)
         else:
             print("No active overrides in state.")
 
@@ -996,7 +1027,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                 enc = dec2enc.get(decoded) or resolve_special(decoded, dec2enc)
                 if not enc:
                     continue
-                dest = cooking / enc
+                dest = encoded_to_dest(enc, cooking, game_dir)
                 if not dest.exists() or not src.exists():
                     continue
                 bak = dest.parent / (dest.name + BACKUP_SUFFIX)
@@ -1037,7 +1068,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                     if not enc or key in seen:
                         continue
                     seen.add(key)
-                    dest = cooking / enc
+                    dest = encoded_to_dest(enc, cooking, game_dir)
                     if not dest.exists():
                         continue
                     bak = dest.parent / (dest.name + BACKUP_SUFFIX)
@@ -1073,7 +1104,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                 enc = dec2enc.get(decoded) or resolve_special(decoded, dec2enc)
                 if not enc:
                     continue
-                dest = cooking / enc
+                dest = encoded_to_dest(enc, cooking, game_dir)
                 if not dest.exists() or not src.exists():
                     continue
                 try:
@@ -1091,7 +1122,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
             if len(show) > 20:
                 print(f"    ... and {len(show) - 20} more", file=sys.stderr)
             return 2
-    except Exception as e:
+    except OSError as e:
         print(f"  [warn] residue sweep skipped: {e}", file=sys.stderr)
 
     runtime_cleared = clear_runtime_mods(game_dir, args.dry_run)
@@ -1194,7 +1225,7 @@ def main() -> int:
             return 1
         for mid, why in rep.auto_disabled.items():
             print(f"  [compat] auto-disabling {mid}: {why}")
-    except Exception as e:
+    except ImportError as e:
         print(f"  [compat] skipped: {e}", file=sys.stderr)
 
     # Auto-merge [[patch]] blocks across mods before applying so two
@@ -1209,7 +1240,7 @@ def main() -> int:
                       f"({len(conflicts)} conflict(s))")
                 for kind, key, m in conflicts:
                     print(f"    [conflict] [{kind}] {key}  {m}")
-        except Exception as e:
+        except ImportError as e:
             print(f"  [merge] skipped: {e}", file=sys.stderr)
 
     return cmd_apply(args, repo, cooking, game_dir)

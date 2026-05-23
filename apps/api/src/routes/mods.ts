@@ -29,6 +29,11 @@ const slugParamSchema = z.object({
   slug: z.string().min(1).max(128).regex(/^[a-z0-9_-]+$/),
 });
 
+const downloadParamSchema = z.object({
+  slug: z.string().min(1).max(128).regex(/^[a-z0-9_-]+$/),
+  version: z.string().regex(/^\d+\.\d+\.\d+(?:[-+][\w.]+)?$/),
+});
+
 modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
   const { q, tag, limit, offset } = c.req.valid('query');
   const db = getDb();
@@ -154,7 +159,7 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
 });
 
 modsRouter.use('/:slug/:version/download', downloadLimiter);
-modsRouter.get('/:slug/:version/download', zValidator('param', slugParamSchema), async (c) => {
+modsRouter.get('/:slug/:version/download', zValidator('param', downloadParamSchema), async (c) => {
   const slug = c.req.param('slug');
   const version = c.req.param('version');
   const db = getDb();
@@ -279,6 +284,7 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
             homepageUrl: body.manifest.homepage_url,
             tags: body.manifest.tags,
             authorName: body.manifest.author,
+            ownerId: user.id,
             updatedAt: new Date(),
           },
         })

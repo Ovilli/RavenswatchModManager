@@ -8,7 +8,13 @@ export const telemetryRunSchema = z.object({
   gameBuild: z.string().max(64).optional(),
   ok: z.boolean(),
   durationMs: z.number().int().nonnegative().optional(),
-  payload: z.record(z.string(), z.unknown()).optional(),
+  payload: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .refine(
+      (v) => v === undefined || Object.keys(v).length <= 50,
+      'payload must have at most 50 keys',
+    ),
 });
 
 export type TelemetryRun = z.infer<typeof telemetryRunSchema>;
@@ -19,7 +25,13 @@ export const crashReportSchema = z.object({
   errorClass: z.string().max(128),
   message: z.string().max(2048),
   stacktrace: z.string().max(32_000),
-  context: z.record(z.string(), z.unknown()).optional(),
+  context: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .refine(
+      (v) => v === undefined || Object.keys(v).length <= 50,
+      'context must have at most 50 keys',
+    ),
 });
 
 export type CrashReport = z.infer<typeof crashReportSchema>;

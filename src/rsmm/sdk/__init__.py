@@ -16,6 +16,8 @@ model is one import. See `docs/SDK_V3.md` for the full design.
 
 from __future__ import annotations
 
+import re
+
 from .api import API_VERSION, require_api, sdk_export
 from .config import ConfigSchema, ConfigStore
 from .content import ContentDef, ContentRegistry
@@ -26,6 +28,8 @@ from .plugins import discover_plugins
 from .repo import RepoIndex, sign_file, verify_file
 from .transaction import ApplyTransaction
 from .versioning import GameBuildPin, check_compat
+
+_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 
 __all__ = [
     "API_VERSION", "sdk_export", "require_api",
@@ -56,6 +60,8 @@ class Mod:
 
     def __init__(self, mod_id: str, *, version: str = "0.0.1",
                  author: str = "", name: str | None = None):
+        if not _ID_RE.match(mod_id):
+            raise ValueError(f"invalid mod_id: {mod_id!r}")
         from .builder import ModBuilder
         self._b = ModBuilder(mod_id, version=version, author=author,
                              name=name or mod_id)

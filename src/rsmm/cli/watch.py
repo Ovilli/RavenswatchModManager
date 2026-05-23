@@ -27,6 +27,9 @@ from rsmm.engine.paths import (
     self_cmd,
 )
 
+_SIGINT = getattr(signal, "SIGINT", None)
+_SIGTERM = getattr(signal, "SIGTERM", None)
+
 
 def _scan(roots: list[Path]) -> dict[str, float]:
     out: dict[str, float] = {}
@@ -120,7 +123,10 @@ def main() -> int:
         nonlocal stopped
         stopped = True
         log("interrupted")
-    signal.signal(signal.SIGINT, _stop)
+    if _SIGINT is not None:
+        signal.signal(_SIGINT, _stop)
+    if _SIGTERM is not None:
+        signal.signal(_SIGTERM, _stop)
 
     while not stopped:
         time.sleep(args.interval)
