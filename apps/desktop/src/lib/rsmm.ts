@@ -393,51 +393,9 @@ export async function runModded(): Promise<RunResult | null> {
   return runGame();
 }
 
-// --------------------------------------------------------------------------- #
-// publish-to-index helpers
-// --------------------------------------------------------------------------- #
-
-export interface PackResult {
-  ok: boolean;
-  path?: string;
-  sha256?: string;
-  sizeBytes?: number;
-  slug?: string;
-  version?: string;
-  manifest?: {
-    id: string;
-    name: string;
-    version: string;
-    author?: string;
-    summary?: string;
-    description?: string;
-    license?: string;
-    repo_url?: string;
-    homepage_url?: string;
-    tags?: string[];
-    enabled?: boolean;
-    dependencies?: Record<string, string>;
-  };
-  // present on failure
-  error?: string;
-  code?: number;
-  stdout?: string;
-  stderr?: string;
-}
-
-export interface UploadResult {
-  ok: boolean;
-  status?: number;
-  error?: string;
-}
-
-/** Pack `mods/<modId>/` to dist/, return metadata ready for `api.mods.upload`. */
-export const packMod = (modId: string) =>
-  rsmm<PackResult>(['pack-mod', modId], { timeoutMs: LONG_TIMEOUT_MS });
-
-/** HTTP PUT the file at `path` to a presigned `uploadUrl`. */
-export const uploadBytes = (path: string, uploadUrl: string) =>
-  rsmm<UploadResult>(['upload-bytes', path, uploadUrl], { timeoutMs: LONG_TIMEOUT_MS });
+// publish-to-index lives on the website now (see apps/www /publish and
+// /my-mods). The desktop client only consumes the registry — install,
+// browse, and run. Pack/upload helpers used to live here.
 
 export interface InstallResult {
   ok: boolean;

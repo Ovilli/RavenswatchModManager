@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { Link, Outlet, createRootRouteWithContext } from '@tanstack/react-router';
-import { AlertTriangle, UploadCloud } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Command } from '@tauri-apps/plugin-shell';
@@ -32,7 +32,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 interface Nav {
-  to: '/' | '/browse' | '/upload' | '/profiles' | '/conflicts' | '/settings' | '/commands' | '/about';
+  to: '/' | '/browse' | '/profiles' | '/conflicts' | '/settings' | '/commands' | '/about';
   icon: React.ComponentType<{ className?: string }>;
   label: string;
 }
@@ -40,7 +40,6 @@ interface Nav {
 const NAV: Nav[] = [
   { to: '/', icon: LibraryIcon, label: 'Library' },
   { to: '/browse', icon: BrowseIcon, label: 'Browse' },
-  { to: '/upload', icon: UploadCloud, label: 'Upload' },
   { to: '/profiles', icon: ProfilesIcon, label: 'Profiles' },
   { to: '/conflicts', icon: ConflictsIcon, label: 'Conflicts' },
   { to: '/settings', icon: SettingsIcon, label: 'Settings' },
