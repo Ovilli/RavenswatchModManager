@@ -88,6 +88,33 @@ export async function presignModImage(args: {
   return { uploadUrl, publicUrl, key, expiresIn: env.s3.signedUrlTtlSeconds };
 }
 
+export async function presignAvatar(args: {
+  userId: string;
+  contentType: 'image/png' | 'image/jpeg' | 'image/webp';
+  sizeBytes: number;
+}): Promise<SignedUpload> {
+  const ext =
+    args.contentType === 'image/png' ? 'png' : args.contentType === 'image/webp' ? 'webp' : 'jpg';
+  const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const key = `avatars/${args.userId}/${id}.${ext}`;
+  const cmd = new PutObjectCommand({
+    Bucket: env.s3.bucket,
+    Key: key,
+    ContentType: args.contentType,
+    ContentLength: args.sizeBytes,
+  });
+  const uploadUrl = await getSignedUrl(s3(), cmd, { expiresIn: env.s3.signedUrlTtlSeconds });
+  let publicUrl: string;
+  if (env.s3.publicBaseUrl) {
+    publicUrl = `${env.s3.publicBaseUrl.replace(/\/$/, '')}/${key}`;
+  } else if (env.s3.endpoint) {
+    publicUrl = `${env.s3.endpoint.replace(/\/$/, '')}/${env.s3.bucket}/${key}`;
+  } else {
+    publicUrl = `https://${env.s3.bucket}.s3.${env.s3.region}.amazonaws.com/${key}`;
+  }
+  return { uploadUrl, publicUrl, key, expiresIn: env.s3.signedUrlTtlSeconds };
+}
+
 function hexToBuf(hex: string): Uint8Array {
   const out = new Uint8Array(hex.length / 2);
   for (let i = 0; i < out.length; i++) {

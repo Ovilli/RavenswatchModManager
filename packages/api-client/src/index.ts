@@ -182,6 +182,8 @@ export function createApiClient(options: ApiClientOptions) {
     },
     me: {
       mods: () => request('/api/me/mods', { method: 'GET' }, myModsResponseSchema),
+      presignAvatar: (body: ModImagePresign) =>
+        request('/api/me/avatar', { method: 'POST', body: JSON.stringify(body) }, imagePresignResponseSchema),
     },
     telemetry: {
       run: (body: TelemetryRun) =>
