@@ -49,9 +49,24 @@ set(LOADER_SRC
     src/fn_call.cpp
     src/tls_callback.cpp)
 
-add_library(winhttp SHARED
-    ${LOADER_SRC}
-    exports/winhttp.def)
+if(MSVC)
+  # MSVC's linker requires every symbol in a .def file to be resolvable from
+  # linked import libraries, even for forwarder exports (entry=other_dll.fn).
+  # The real winhttp.dll exports ~14 internal symbols (WinHttpPal*, etc.)
+  # that aren't in the SDK's winhttp.lib, causing LNK2001. Workaround: use
+  # /EXPORT: flags instead of a .def file — MSVC handles forwarder syntax
+  # there without validating the symbol exists.
+  add_library(winhttp SHARED ${LOADER_SRC})
+  file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/exports/winhttp.def DEF_LINES)
+  foreach(LINE ${DEF_LINES})
+    string(STRIP "${LINE}" LINE)
+    if(LINE MATCHES "^[a-zA-Z]")
+      target_link_options(winhttp PRIVATE "/EXPORT:${LINE}")
+    endif()
+  endforeach()
+else()
+  add_library(winhttp SHARED ${LOADER_SRC} exports/winhttp.def)
+endif()
 
 target_include_directories(winhttp PRIVATE
     include
@@ -59,17 +74,16 @@ target_include_directories(winhttp PRIVATE
     ${TP}/tomlplusplus)
 
 if(MSVC)
-  find_library(WINHTTP_SYSTEM_LIB winhttp)
   target_link_libraries(winhttp PRIVATE
       minhook
       lua54
-      "${WINHTTP_SYSTEM_LIB}" kernel32 user32 gdi32 psapi ole32)
+      kernel32 user32 gdi32 psapi ole32)
 else()
   target_link_libraries(winhttp PRIVATE
       minhook
       lua54
       -static -static-libgcc -static-libstdc++
-      -lwinhttp -lkernel32 -luser32 -lgdi32 -lpsapi -lole32)
+      -lkernel32 -luser32 -lgdi32 -lpsapi -lole32)
 endif()
 
 if(MSVC)
