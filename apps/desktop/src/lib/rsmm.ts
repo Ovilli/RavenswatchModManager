@@ -392,3 +392,67 @@ export async function runModded(): Promise<RunResult | null> {
   }
   return runGame();
 }
+
+// --------------------------------------------------------------------------- #
+// publish-to-index helpers
+// --------------------------------------------------------------------------- #
+
+export interface PackResult {
+  ok: boolean;
+  path?: string;
+  sha256?: string;
+  sizeBytes?: number;
+  slug?: string;
+  version?: string;
+  manifest?: {
+    id: string;
+    name: string;
+    version: string;
+    author?: string;
+    summary?: string;
+    description?: string;
+    license?: string;
+    repo_url?: string;
+    homepage_url?: string;
+    tags?: string[];
+    enabled?: boolean;
+    dependencies?: Record<string, string>;
+  };
+  // present on failure
+  error?: string;
+  code?: number;
+  stdout?: string;
+  stderr?: string;
+}
+
+export interface UploadResult {
+  ok: boolean;
+  status?: number;
+  error?: string;
+}
+
+/** Pack `mods/<modId>/` to dist/, return metadata ready for `api.mods.upload`. */
+export const packMod = (modId: string) =>
+  rsmm<PackResult>(['pack-mod', modId], { timeoutMs: LONG_TIMEOUT_MS });
+
+/** HTTP PUT the file at `path` to a presigned `uploadUrl`. */
+export const uploadBytes = (path: string, uploadUrl: string) =>
+  rsmm<UploadResult>(['upload-bytes', path, uploadUrl], { timeoutMs: LONG_TIMEOUT_MS });
+
+export interface InstallResult {
+  ok: boolean;
+  slug?: string;
+  version?: string;
+  sha256?: string;
+  sizeBytes?: number;
+  installedTo?: string;
+  error?: string;
+}
+
+/**
+ * Download a mod from the public index by slug + extract into the
+ * local `mods/<slug>/` folder. Server-side this hit also bumps the
+ * mod's download counter (see `apps/api/src/routes/mods.ts`).
+ */
+export const installModFromIndex = (slug: string) =>
+  rsmm<InstallResult>(['install-mod', slug], { timeoutMs: LONG_TIMEOUT_MS });
