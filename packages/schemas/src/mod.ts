@@ -80,3 +80,41 @@ export const modUploadRequestSchema = z.object({
 });
 
 export type ModUploadRequest = z.infer<typeof modUploadRequestSchema>;
+
+/** Owner-only patch: edit mutable metadata. All fields optional. */
+export const modPatchSchema = z.object({
+  name: z.string().min(1).max(128).optional(),
+  summary: z.string().max(512).nullable().optional(),
+  description: z.string().max(32_000).nullable().optional(),
+  license: z.string().max(64).nullable().optional(),
+  repoUrl: z.string().url().nullable().optional(),
+  homepageUrl: z.string().url().nullable().optional(),
+  category: modCategorySchema.nullable().optional(),
+  tags: z.array(z.string().max(32)).max(16).optional(),
+  imageUrl: z.string().url().nullable().optional(),
+});
+
+export type ModPatch = z.infer<typeof modPatchSchema>;
+
+/** Owner-only: presign a new version upload. Changelog is per-version. */
+export const modVersionCreateSchema = z.object({
+  version: semverSchema,
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  sizeBytes: z.number().int().positive(),
+  manifest: modManifestSchema,
+  changelog: z.string().max(16_000).optional(),
+});
+
+export type ModVersionCreate = z.infer<typeof modVersionCreateSchema>;
+
+/** Owner-only: presign a cover-image upload. */
+export const modImagePresignSchema = z.object({
+  contentType: z.enum(['image/png', 'image/jpeg', 'image/webp']),
+  sizeBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(8_000_000, 'image must be ≤ 8 MB'),
+});
+
+export type ModImagePresign = z.infer<typeof modImagePresignSchema>;

@@ -67,6 +67,7 @@ export const modVersions = pgTable(
     sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
     manifestJson: jsonb('manifest_json').notNull(),
     assetUrl: text('asset_url').notNull(),
+    changelog: text('changelog'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

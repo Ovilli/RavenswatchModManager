@@ -1,12 +1,17 @@
 import { zValidator } from '@hono/zod-validator';
 import { getDb, schema } from '@rsmm/db';
-import { modUploadRequestSchema } from '@rsmm/schemas';
+import {
+  modImagePresignSchema,
+  modPatchSchema,
+  modUploadRequestSchema,
+  modVersionCreateSchema,
+} from '@rsmm/schemas';
 import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { s3Configured } from '../env';
 import { createRateLimiter } from '../rate-limit';
-import { presignModUpload } from '../storage';
+import { presignModImage, presignModUpload } from '../storage';
 import type { AppEnv } from '../types';
 
 export const modsRouter = new Hono<AppEnv>();
@@ -347,6 +352,177 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
     console.error('Upload error:', err);
     return c.json({ error: 'failed to create mod version' }, 500);
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// Owner-scoped mod management routes. All require an authenticated
+// session and verify that `mod.ownerId === user.id` before mutating.
+// ─────────────────────────────────────────────────────────────────────
+
+const ownerLimiter = createRateLimiter({
+  windowMs: 60_000,
+  maxHits: 60,
+  keyFrom: (c) => {
+    const user = c.get('user');
+    return user?.id ?? c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? 'anon';
+  },
+});
+
+modsRouter.use('/:slug/edit', ownerLimiter);
+modsRouter.patch(
+  '/:slug/edit',
+  zValidator('param', slugParamSchema),
+  zValidator('json', modPatchSchema),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    const { slug } = c.req.valid('param');
+    const patch = c.req.valid('json');
+    const db = getDb();
+
+    const existing = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
+    if (!existing) return c.json({ error: 'not found' }, 404);
+    if (existing.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+
+    // Build an update object that only sets keys the caller sent. The
+    // `?? undefined` dance is needed because zod returns `null` for
+    // fields the caller explicitly cleared and we want those nulls to
+    // persist to the DB.
+    const updates: Partial<typeof schema.mods.$inferInsert> = { updatedAt: new Date() };
+    if (patch.name !== undefined) updates.name = patch.name;
+    if (patch.summary !== undefined) updates.summary = patch.summary;
+    if (patch.description !== undefined) updates.description = patch.description;
+    if (patch.license !== undefined) updates.license = patch.license;
+    if (patch.repoUrl !== undefined) updates.repoUrl = patch.repoUrl;
+    if (patch.homepageUrl !== undefined) updates.homepageUrl = patch.homepageUrl;
+    if (patch.category !== undefined) updates.category = patch.category;
+    if (patch.tags !== undefined) updates.tags = patch.tags;
+    if (patch.imageUrl !== undefined) updates.imageUrl = patch.imageUrl;
+
+    const rows = await db
+      .update(schema.mods)
+      .set(updates)
+      .where(eq(schema.mods.id, existing.id))
+      .returning();
+    return c.json({ mod: rows[0] });
+  },
+);
+
+modsRouter.use('/:slug/image', ownerLimiter);
+modsRouter.post(
+  '/:slug/image',
+  zValidator('param', slugParamSchema),
+  zValidator('json', modImagePresignSchema),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    if (!s3Configured()) return c.json({ error: 'object storage not configured' }, 503);
+    const { slug } = c.req.valid('param');
+    const body = c.req.valid('json');
+    const db = getDb();
+
+    const existing = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
+    if (!existing) return c.json({ error: 'not found' }, 404);
+    if (existing.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+
+    const signed = await presignModImage({
+      slug,
+      contentType: body.contentType,
+      sizeBytes: body.sizeBytes,
+    });
+    return c.json({
+      uploadUrl: signed.uploadUrl,
+      publicUrl: signed.publicUrl,
+      expiresIn: signed.expiresIn,
+    });
+  },
+);
+
+modsRouter.use('/:slug/versions', ownerLimiter);
+modsRouter.post(
+  '/:slug/versions',
+  zValidator('param', slugParamSchema),
+  zValidator('json', modVersionCreateSchema),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    if (!s3Configured()) return c.json({ error: 'object storage not configured' }, 503);
+    const { slug } = c.req.valid('param');
+    const body = c.req.valid('json');
+
+    const MAX_MOD_SIZE_BYTES = 500_000_000;
+    if (body.sizeBytes > MAX_MOD_SIZE_BYTES) {
+      return c.json({ error: 'mod exceeds maximum size' }, 413);
+    }
+
+    const db = getDb();
+    const existing = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
+    if (!existing) return c.json({ error: 'not found' }, 404);
+    if (existing.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+
+    const signed = await presignModUpload({
+      slug,
+      version: body.version,
+      sha256: body.sha256,
+      sizeBytes: body.sizeBytes,
+    });
+
+    try {
+      const rows = await db
+        .insert(schema.modVersions)
+        .values({
+          modId: existing.id,
+          version: body.version,
+          sha256: body.sha256,
+          sizeBytes: body.sizeBytes,
+          manifestJson: body.manifest,
+          assetUrl: signed.publicUrl,
+          changelog: body.changelog ?? null,
+        })
+        .onConflictDoUpdate({
+          target: [schema.modVersions.modId, schema.modVersions.version],
+          set: {
+            sha256: body.sha256,
+            sizeBytes: body.sizeBytes,
+            manifestJson: body.manifest,
+            assetUrl: signed.publicUrl,
+            changelog: body.changelog ?? null,
+          },
+        })
+        .returning();
+
+      await db
+        .update(schema.mods)
+        .set({ updatedAt: new Date() })
+        .where(eq(schema.mods.id, existing.id));
+
+      return c.json({
+        uploadUrl: signed.uploadUrl,
+        publicUrl: signed.publicUrl,
+        versionId: rows[0]?.id,
+        expiresIn: signed.expiresIn,
+      });
+    } catch (err) {
+      console.error('Version create error:', err);
+      return c.json({ error: 'failed to create version' }, 500);
+    }
+  },
+);
+
+modsRouter.use('/:slug/delete', ownerLimiter);
+modsRouter.delete('/:slug/delete', zValidator('param', slugParamSchema), async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'unauthorized' }, 401);
+  const { slug } = c.req.valid('param');
+  const db = getDb();
+
+  const existing = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
+  if (!existing) return c.json({ error: 'not found' }, 404);
+  if (existing.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+
+  // Cascade removes mod_versions, mod_authors, mod_downloads via FK.
+  await db.delete(schema.mods).where(eq(schema.mods.id, existing.id));
+  return c.json({ ok: true });
 });
 
 function isPgErrorCode(err: unknown, code: string): boolean {
