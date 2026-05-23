@@ -59,10 +59,11 @@ target_include_directories(winhttp PRIVATE
     ${TP}/tomlplusplus)
 
 if(MSVC)
+  find_library(WINHTTP_SYSTEM_LIB winhttp)
   target_link_libraries(winhttp PRIVATE
       minhook
       lua54
-      winhttp kernel32 user32 gdi32 psapi ole32)
+      "${WINHTTP_SYSTEM_LIB}" kernel32 user32 gdi32 psapi ole32)
 else()
   target_link_libraries(winhttp PRIVATE
       minhook
