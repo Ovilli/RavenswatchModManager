@@ -202,20 +202,23 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          # Resolve the bundle root regardless of the matrix's `--target`
-          # flag (mac is universal-apple-darwin, the rest land in
-          # `target/release/bundle/...`).
-          for root in \
-            apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle \
-            apps/desktop/src-tauri/target/release/bundle
-          do
-            if [ -d "$root" ]; then
-              echo "Scanning $root for .sig files…"
-              # `find -print0 | xargs -0` so spaces in product names
-              # ("Ravenswatch Mod Manager …") don't break the upload.
-              find "$root" -type f -name '*.sig' -print0 |
-                xargs -0 -I{} gh release upload "$TAG" "{}" --clobber
-            fi
+          # Search the entire workspace — earlier runs scoped this to
+          # `apps/desktop/src-tauri/target/{release,universal-apple-darwin/release}/bundle`
+          # but `find` returned nothing on every platform, suggesting
+          # tauri-action either drops bundle assets into a different
+          # path or scrubs them post-upload. Search-everywhere is robust
+          # and the matrix already cd's into the project root.
+          echo "Searching for .sig files under $(pwd)…"
+          mapfile -d '' SIGS < <(find . -type f -name '*.sig' -print0)
+          echo "Found ${#SIGS[@]} .sig files:"
+          for f in "${SIGS[@]}"; do echo "  $f"; done
+          if [ ${#SIGS[@]} -eq 0 ]; then
+            echo "::warning::No .sig files found anywhere in the workspace."
+            exit 0
+          fi
+          for f in "${SIGS[@]}"; do
+            echo "Uploading $f"
+            gh release upload "$TAG" "$f" --clobber
           done
 
   publish-updater-manifest:
