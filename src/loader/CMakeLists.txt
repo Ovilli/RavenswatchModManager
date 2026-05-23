@@ -5,7 +5,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-add_compile_options(-Wall -Wno-unused-function -Wno-unused-variable -Wno-cast-function-type)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+  add_compile_options(-Wall -Wno-unused-function -Wno-unused-variable -Wno-cast-function-type)
+elseif(MSVC)
+  add_compile_options(/W3)
+endif()
 
 set(TP ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
 
@@ -54,16 +58,30 @@ target_include_directories(winhttp PRIVATE
     ${TP}/nlohmann
     ${TP}/tomlplusplus)
 
-target_link_libraries(winhttp PRIVATE
-    minhook
-    lua54
-    -static -static-libgcc -static-libstdc++
-    -lkernel32 -luser32 -lgdi32 -lpsapi -lole32)
+if(MSVC)
+  target_link_libraries(winhttp PRIVATE
+      minhook
+      lua54
+      kernel32 user32 gdi32 psapi ole32)
+else()
+  target_link_libraries(winhttp PRIVATE
+      minhook
+      lua54
+      -static -static-libgcc -static-libstdc++
+      -lkernel32 -luser32 -lgdi32 -lpsapi -lole32)
+endif()
 
-set_target_properties(winhttp PROPERTIES
-    PREFIX ""
-    OUTPUT_NAME "winhttp"
-    SUFFIX ".dll"
-    LINK_FLAGS "-Wl,--enable-stdcall-fixup")
+if(MSVC)
+  set_target_properties(winhttp PROPERTIES
+      PREFIX ""
+      OUTPUT_NAME "winhttp"
+      SUFFIX ".dll")
+else()
+  set_target_properties(winhttp PROPERTIES
+      PREFIX ""
+      OUTPUT_NAME "winhttp"
+      SUFFIX ".dll"
+      LINK_FLAGS "-Wl,--enable-stdcall-fixup")
+endif()
 
 install(TARGETS winhttp RUNTIME DESTINATION dist)
