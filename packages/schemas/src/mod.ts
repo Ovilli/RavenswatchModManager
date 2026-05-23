@@ -54,6 +54,8 @@ export const modListItemSchema = z.object({
   imageUrl: z.string().url().nullable(),
   rating: z.number().min(0).max(5).nullable(),
   tags: z.array(z.string()),
+  screenshots: z.array(z.string()).optional(),
+  videos: z.array(z.string()).optional(),
 });
 
 export type ModListItem = z.infer<typeof modListItemSchema>;
@@ -92,6 +94,8 @@ export const modPatchSchema = z.object({
   category: modCategorySchema.nullable().optional(),
   tags: z.array(z.string().max(32)).max(16).optional(),
   imageUrl: z.string().url().nullable().optional(),
+  screenshots: z.array(z.string().url()).max(12).optional(),
+  videos: z.array(z.string().url()).max(8).optional(),
 });
 
 export type ModPatch = z.infer<typeof modPatchSchema>;

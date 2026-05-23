@@ -43,6 +43,8 @@ export const mods = pgTable(
     category: modCategoryEnum('category'),
     authorName: varchar('author_name', { length: 128 }),
     imageUrl: text('image_url'),
+    screenshots: text('screenshots').array(),
+    videos: text('videos').array(),
     rating: numeric('rating', { precision: 3, scale: 2 }),
     ownerId: text('owner_id').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

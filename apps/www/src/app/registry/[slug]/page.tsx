@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { use, useMemo } from 'react';
 import { api } from '../../../lib/api';
 import { getApiUrl } from '../../../lib/api-url';
+import { toEmbedUrl } from '../../../lib/video-embed';
 
 function getClientOS(): 'windows' | 'macos' | 'linux' {
   if (typeof window === 'undefined') return 'linux';
@@ -131,6 +132,57 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
                 {mod.summary ?? 'No description available.'}
               </div>
             </div>
+
+            {(mod.screenshots?.length ?? 0) > 0 || (mod.videos?.length ?? 0) > 0 ? (
+              <div className="grimoire-card space-y-4 p-6">
+                <h2 className="text-xl font-bold tracking-tight">Gallery</h2>
+                {(mod.videos?.length ?? 0) > 0 ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {mod.videos?.map((url) => {
+                      const embed = toEmbedUrl(url);
+                      return (
+                        <div key={url} className="aspect-video overflow-hidden rounded-md bg-muted">
+                          {embed ? (
+                            <iframe
+                              src={embed}
+                              title={`${mod.name} video`}
+                              loading="lazy"
+                              allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                              allowFullScreen
+                              className="h-full w-full"
+                            />
+                          ) : (
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex h-full w-full items-center justify-center text-sm underline"
+                            >
+                              {url}
+                            </a>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+                {(mod.screenshots?.length ?? 0) > 0 ? (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {mod.screenshots?.map((url, idx) => (
+                      <a
+                        key={url}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="aspect-video overflow-hidden rounded-md bg-muted hover:opacity-90"
+                      >
+                        <img src={url} alt={`${mod.name} screenshot ${idx + 1}`} loading="lazy" className="h-full w-full object-cover" />
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             {versions.length > 0 ? (
               <div className="grimoire-card p-6">

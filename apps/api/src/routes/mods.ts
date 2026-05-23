@@ -64,6 +64,8 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
       category: schema.mods.category,
       authorName: schema.mods.authorName,
       imageUrl: schema.mods.imageUrl,
+      screenshots: schema.mods.screenshots,
+      videos: schema.mods.videos,
       rating: schema.mods.rating,
       tags: schema.mods.tags,
       latestVersion: sql<string | null>`(
@@ -104,6 +106,8 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
       updatedAt: r.updatedAt.toISOString(),
       category: r.category,
       imageUrl: r.imageUrl,
+      screenshots: r.screenshots ?? [],
+      videos: r.videos ?? [],
       rating: r.rating != null ? Number(r.rating) : null,
       tags: r.tags ?? [],
     })),
@@ -147,6 +151,8 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       updatedAt: mod.updatedAt.toISOString(),
       category: mod.category,
       imageUrl: mod.imageUrl,
+      screenshots: mod.screenshots ?? [],
+      videos: mod.videos ?? [],
       rating: mod.rating != null ? Number(mod.rating) : null,
       tags: mod.tags ?? [],
     },
@@ -398,6 +404,8 @@ modsRouter.patch(
     if (patch.category !== undefined) updates.category = patch.category;
     if (patch.tags !== undefined) updates.tags = patch.tags;
     if (patch.imageUrl !== undefined) updates.imageUrl = patch.imageUrl;
+    if (patch.screenshots !== undefined) updates.screenshots = patch.screenshots;
+    if (patch.videos !== undefined) updates.videos = patch.videos;
 
     const rows = await db
       .update(schema.mods)
