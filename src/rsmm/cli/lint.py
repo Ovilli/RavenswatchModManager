@@ -35,6 +35,12 @@ def _is_special_decoded(p: str) -> bool:
         return True
     if p.endswith(LANG_SUFFIXES):
         return True
+    # SDK staging output (`_pending_items/`, `_pending_bosses/`,
+    # `_pending_text_overrides/`, etc.) — intermediate JSON consumed by
+    # the apply pipeline, never a cooked asset. Matches the filter in
+    # `rsmm.cli.apply_mods.Mod.files()` so lint stays consistent.
+    if p.split("/", 1)[0].startswith("_pending_"):
+        return True
     return False
 
 

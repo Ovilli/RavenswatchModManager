@@ -1,13 +1,162 @@
 {
-  "kind": "item",
+  "cloned_from": "Common/Armor_Per_Object",
   "id": "Iron_Crab_Hide",
-  "mod": "ExampleMagicItem",
-  "base": "Common/Armor_Per_Object",
-  "fields": {
-    "base": "Common/Armor_Per_Object",
-    "name": "Iron Crab Hide",
-    "description": "Bonus armor per rare object collected.",
-    "rarity": "Common"
+  "kind": "item",
+  "magical_object": {
+    "patches": [
+      {
+        "kind": "u32",
+        "name": "signal_rarity",
+        "offset": 504,
+        "source": "todo_confirm",
+        "value": 0
+      },
+      {
+        "kind": "u32",
+        "name": "signal_count",
+        "offset": 536,
+        "source": "todo_confirm",
+        "value": 100
+      },
+      {
+        "kind": "u32",
+        "name": "signal_level",
+        "offset": 568,
+        "source": "todo_confirm",
+        "value": 1
+      }
+    ],
+    "runtime_size": 688,
+    "tags": [
+      "armor",
+      "common",
+      "crab"
+    ]
   },
-  "schema_version": 1
+  "mod": "ExampleMagicItem",
+  "notes": [
+    "3 field(s) are placeholders with source='todo_confirm'; verify via a save-game diff before trusting their semantics."
+  ],
+  "raw_fields": {
+    "base": "Common/Armor_Per_Object",
+    "description": "Bonus armor per rare object collected.",
+    "drop_weight": 100,
+    "level": 1,
+    "name": "Iron Crab Hide",
+    "rarity": "Common",
+    "tags": [
+      "armor",
+      "common",
+      "crab"
+    ]
+  },
+  "reward_def": {
+    "library_global": 5389757952,
+    "meta_global": 5389974480,
+    "patches": [
+      {
+        "kind": "cstr",
+        "name": "name",
+        "offset": 64,
+        "source": "schema",
+        "value": "rwd_ExampleMagicItem_Iron_Crab_Hide"
+      },
+      {
+        "kind": "u32",
+        "name": "name_hash",
+        "offset": 72,
+        "source": "schema",
+        "value": 3607866276
+      },
+      {
+        "kind": "cstr",
+        "name": "display_name_key",
+        "offset": 624,
+        "source": "schema",
+        "value": "RSMM_ExampleMagicItem_Iron_Crab_Hide_name"
+      },
+      {
+        "kind": "u16",
+        "name": "flags",
+        "offset": 644,
+        "source": "schema",
+        "value": 257
+      },
+      {
+        "kind": "ptr",
+        "name": "entries_ptr",
+        "offset": 648,
+        "source": "schema",
+        "value": 0
+      },
+      {
+        "kind": "u32",
+        "name": "entries_length",
+        "offset": 656,
+        "source": "schema",
+        "value": 0
+      },
+      {
+        "kind": "u32",
+        "name": "entries_capacity",
+        "offset": 660,
+        "source": "schema",
+        "value": 0
+      }
+    ],
+    "resource_extension": "*.rewarddef.ot",
+    "resource_name": "rwd_ExampleMagicItem_Iron_Crab_Hide",
+    "size": 664,
+    "uid": 393156174
+  },
+  "schema_version": 2,
+  "selector": {
+    "patches": [
+      {
+        "kind": "cstr",
+        "name": "target_name",
+        "offset": 248,
+        "source": "schema",
+        "value": "rwd_ExampleMagicItem_Iron_Crab_Hide"
+      },
+      {
+        "kind": "u32",
+        "name": "target_name_hash",
+        "offset": 256,
+        "source": "schema",
+        "value": 3607866276
+      },
+      {
+        "kind": "u32",
+        "name": "target_resolved",
+        "offset": 260,
+        "source": "schema",
+        "value": 1
+      },
+      {
+        "kind": "u32",
+        "name": "parent_name_hash",
+        "offset": 272,
+        "source": "schema",
+        "value": 2147483648
+      },
+      {
+        "kind": "u8",
+        "name": "enabled",
+        "offset": 288,
+        "source": "schema",
+        "value": 1
+      }
+    ],
+    "tags": [
+      "armor",
+      "common",
+      "crab"
+    ],
+    "target_resource_name": "rwd_ExampleMagicItem_Iron_Crab_Hide"
+  },
+  "text_keys": {
+    "desc": "RSMM_ExampleMagicItem_Iron_Crab_Hide_desc",
+    "name": "RSMM_ExampleMagicItem_Iron_Crab_Hide_name"
+  }
 }

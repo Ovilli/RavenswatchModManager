@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { Link, Outlet, createRootRouteWithContext } from '@tanstack/react-router';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, UploadCloud } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Command } from '@tauri-apps/plugin-shell';
@@ -25,14 +25,14 @@ import { UpdaterBanner } from '../components/updater';
 import { appendLauncherLog, clearLauncherLog } from '../lib/launcher-log';
 import { getPlatform, shortcutLabel } from '../lib/platform';
 import { restoreAll, runModded, runVanilla } from '../lib/rsmm';
-import { activeProfile, detectConflicts, outdatedCount, useApp } from '../store';
+import { activeProfile, detectConflicts, isEnabledIn, outdatedCount, useApp } from '../store';
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   component: RootLayout,
 });
 
 interface Nav {
-  to: '/' | '/browse' | '/profiles' | '/conflicts' | '/settings' | '/commands' | '/about';
+  to: '/' | '/browse' | '/upload' | '/profiles' | '/conflicts' | '/settings' | '/commands' | '/about';
   icon: React.ComponentType<{ className?: string }>;
   label: string;
 }
@@ -40,6 +40,7 @@ interface Nav {
 const NAV: Nav[] = [
   { to: '/', icon: LibraryIcon, label: 'Library' },
   { to: '/browse', icon: BrowseIcon, label: 'Browse' },
+  { to: '/upload', icon: UploadCloud, label: 'Upload' },
   { to: '/profiles', icon: ProfilesIcon, label: 'Profiles' },
   { to: '/conflicts', icon: ConflictsIcon, label: 'Conflicts' },
   { to: '/settings', icon: SettingsIcon, label: 'Settings' },
@@ -97,7 +98,7 @@ function StatusStrip() {
   const installed = useApp((s) => s.installed);
   const profiles = useApp((s) => s.profiles);
   const launchSeq = useRef(0);
-  const enabled = profile.loadOrder.filter((id) => !profile.disabled.has(id)).length;
+  const enabled = profile.loadOrder.filter((id) => isEnabledIn(profile, id)).length;
   const disabled = profile.loadOrder.length - enabled;
   const conflictCount = useMemo(() => detectConflicts(profile).length, [profile]);
   const outdated = useMemo(() => outdatedCount(installed), [installed]);

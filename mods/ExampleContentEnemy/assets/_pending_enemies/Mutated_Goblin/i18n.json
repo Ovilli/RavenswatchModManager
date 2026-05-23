@@ -1,0 +1,11 @@
+{
+  "enemy_id": "Mutated_Goblin",
+  "fallback_locale": "EN",
+  "kind": "enemy_i18n",
+  "manifest_schema_version": 1,
+  "mod": "ExampleContentEnemy",
+  "schema_version": 1,
+  "strings": {
+    "RSMM_ExampleContentEnemy_Mutated_Goblin_name": "Mutated Goblin"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "ability_count": 4,
+  "cloned_from": "Romeo",
+  "empty_string_sentinel": "0x140eb46d0",
+  "id": "Shadowblade",
+  "melody_count": 4,
+  "named_slot_owners": {
+    "ability": "0x141446e18",
+    "animation": "0x141447250",
+    "ui_spawner": "0x141446f38",
+    "voice": "0x1414470f0"
+  },
+  "notes": [
+    "oCDtHeroDefinition has no UID — it is constructed inline by the SkillProfileDataSettings deserializer (FUN_1403122f0).",
+    "Until oCTLibrary<oCDtHeroDefinition> singleton is located, runtime injection is not possible; apply pipeline must emit cooked asset bytes through LoadUsedRscList_or_Archive.",
+    "Hero pool patch (Map+0x720..0x728 random / +0x738..0x748 played) is still TODO — see heroes.md step 5."
+  ],
+  "schema": "rsmm.skillprofile.v1",
+  "settings_size": "0xd0",
+  "settings_uid": "0x186adbdf",
+  "unresolved_name_hash": "0x80000000"
+}

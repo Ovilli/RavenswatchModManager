@@ -1,0 +1,4923 @@
+[
+ {
+  "fn": "FUN_14064da40",
+  "class": "oCAchievedBool",
+  "uid": "0x8e01513",
+  "size": "0x88",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14064dc10",
+  "class": "oCAchievedFloat",
+  "uid": "0x8e01511",
+  "size": "0x90",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14064dde0",
+  "class": "oCAchievedUInt",
+  "uid": "0x8e01512",
+  "size": "0x88",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1408513b0",
+  "class": "oCAlternateAnimatic",
+  "uid": "0x681af8b",
+  "size": "0x130",
+  "factory": "FUN_14084fa60"
+ },
+ {
+  "fn": "FUN_14062f630",
+  "class": "oCAnimAddNode",
+  "uid": "0x14ff814e",
+  "size": "0xc0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14062e980",
+  "class": "oCAnimAutoLerpNode",
+  "uid": "0x30f9959",
+  "size": "0xc0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405b63e0",
+  "class": "oCAnimEvalNode",
+  "uid": "0x8000000e",
+  "size": "0x38",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405b65b0",
+  "class": "oCAnimGraphic3dObject",
+  "uid": "0x80000015",
+  "size": "0x200",
+  "factory": "FUN_14059d3a0"
+ },
+ {
+  "fn": "FUN_14062f460",
+  "class": "oCAnimLeftRightBlendNode",
+  "uid": "0x1a486b4c",
+  "size": "0x160",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14062e7b0",
+  "class": "oCAnimLerpNode",
+  "uid": "0x2f5a7fc",
+  "size": "0xb0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14062ed20",
+  "class": "oCAnimMultiBlendNode",
+  "uid": "0xfa89e0d",
+  "size": "0x58",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14062f800",
+  "class": "oCAnimPhysicNode",
+  "uid": "0x1535b50f",
+  "size": "0x30",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14062eb50",
+  "class": "oCAnimPlayNode",
+  "uid": "0xfa89368",
+  "size": "0x40",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14062eef0",
+  "class": "oCAnimQuadDirBlendNode",
+  "uid": "0xfadf24b",
+  "size": "0x168",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14062f0c0",
+  "class": "oCAnimQuadDirTwoSpeedBlendNode",
+  "uid": "0xfb0902d",
+  "size": "0x398",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14062f290",
+  "class": "oCAnimTwoSpeedBlendNode",
+  "uid": "0x15625bd4",
+  "size": "0x148",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1407af730",
+  "class": "oCAnimatic",
+  "uid": "0x681af8a",
+  "size": "0x120",
+  "factory": "FUN_14084ee90"
+ },
+ {
+  "fn": "FUN_1408515a0",
+  "class": "oCAnimaticsGroup",
+  "uid": "0x681af8c",
+  "size": "0x70",
+  "factory": "FUN_140850130"
+ },
+ {
+  "fn": "FUN_140851980",
+  "class": "oCAnimaticsSet",
+  "uid": "0x681af8d",
+  "size": "0x80",
+  "factory": "FUN_14084f660"
+ },
+ {
+  "fn": "FUN_140229420",
+  "class": "oCApplicationSettings",
+  "uid": "0x1da113",
+  "size": "0x28",
+  "factory": "FUN_1404e3490"
+ },
+ {
+  "fn": "FUN_140644b40",
+  "class": "oCArcMeshWithBorderSettings",
+  "uid": "0xc61c708",
+  "size": "0x30",
+  "factory": "FUN_1406395c0"
+ },
+ {
+  "fn": "FUN_140189860",
+  "class": "oCArchive",
+  "uid": "0x80000009",
+  "size": "0xe8",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1401896c0",
+  "class": "oCArchiveEntry",
+  "uid": "0x17c4b290",
+  "size": "0x38",
+  "factory": "FUN_140488bf0"
+ },
+ {
+  "fn": "FUN_140220c60",
+  "class": "oCBasicDamage",
+  "uid": "0xfe53dc1",
+  "size": "0x88",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140220e10",
+  "class": "oCBasicDamageFeedback",
+  "uid": "0xff9143e",
+  "size": "0x18",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140895580",
+  "class": "oCBasicDetourMultiTileNavMeshGo",
+  "uid": "0xda14e29",
+  "size": "0x2e0",
+  "factory": "FUN_1408909d0"
+ },
+ {
+  "fn": "FUN_14022ffe0",
+  "class": "oCBasicOctree",
+  "uid": "0x13e05744",
+  "size": "0xa0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140220ab0",
+  "class": "oCBasicProcessedDamage",
+  "uid": "0x1906b660",
+  "size": "0x88",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14021e9a0",
+  "class": "oCBasicQuadTree2",
+  "uid": "0x139cd531",
+  "size": "0x90",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140592d10",
+  "class": "oCBeamGraphic3dObject",
+  "uid": "0x124fbe08",
+  "size": "0x90",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140456000",
+  "class": "oCBeamPoint",
+  "uid": "0x124272f8",
+  "size": "0x38",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140278720",
+  "class": "oCBezierSpline",
+  "uid": "0xfa8805b",
+  "size": "0x78",
+  "factory": "FUN_1404a45d0"
+ },
+ {
+  "fn": "FUN_1405f7810",
+  "class": "oCBlitSqPow2ImageProcessor",
+  "uid": "0xd148d7a",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_1401882d0",
+  "class": "oCBloomRenderBlocSettings",
+  "uid": "0x113bb573",
+  "size": "0x20",
+  "factory": "FUN_1405ea030"
+ },
+ {
+  "fn": "FUN_1405b5ed0",
+  "class": "oCBone",
+  "uid": "0x80000006",
+  "size": "0x130",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1407b0c70",
+  "class": "oCBonePhysicConstraintSettings",
+  "uid": "0x1536e9f3",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140473bd0",
+  "class": "oCBoolGoDelegateGameTest",
+  "uid": "0x80000018",
+  "size": "0xa0",
+  "factory": "FUN_14046bff0"
+ },
+ {
+  "fn": "FUN_1401887f0",
+  "class": "oCBoolPerformanceProfileValue",
+  "uid": "0x138e5455",
+  "size": "0x20",
+  "factory": "FUN_1404e3d20"
+ },
+ {
+  "fn": "FUN_14017a9f0",
+  "class": "oCBoolShaderParam",
+  "uid": "0x10a85015",
+  "size": "0x30",
+  "factory": "FUN_1405ccff0"
+ },
+ {
+  "fn": "FUN_1401851a0",
+  "class": "oCBox3",
+  "uid": "0x28498f2",
+  "size": "0x18",
+  "factory": "FUN_1404a5bc0"
+ },
+ {
+  "fn": "FUN_1402c2160",
+  "class": "oCBox3dShape",
+  "uid": "0x8000000c",
+  "size": "0x90",
+  "factory": "FUN_1404c8070"
+ },
+ {
+  "fn": "FUN_1408388d0",
+  "class": "oCBulletDynamicConvex",
+  "uid": "0x2d1d0bd",
+  "size": "0x510",
+  "factory": "FUN_140832450"
+ },
+ {
+  "fn": "FUN_140838ac0",
+  "class": "oCBulletDynamicCylinder",
+  "uid": "0x1132b2d9",
+  "size": "0x4c0",
+  "factory": "FUN_140832690"
+ },
+ {
+  "fn": "FUN_140837dc0",
+  "class": "oCBulletDynamicSphere",
+  "uid": "0x148c28e",
+  "size": "0x4b0",
+  "factory": "FUN_140832560"
+ },
+ {
+  "fn": "FUN_1407e1500",
+  "class": "oCBulletGhostCapsule",
+  "uid": "0x10e281b4",
+  "size": "0x280",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1407e16d0",
+  "class": "oCBulletGhostCylinder",
+  "uid": "0xd1825e9",
+  "size": "0x280",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1407e18a0",
+  "class": "oCBulletGhostShapeList",
+  "uid": "0x108f3b43",
+  "size": "0x130",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1407e1a70",
+  "class": "oCBulletGhostSphere",
+  "uid": "0xd17ff66",
+  "size": "0x270",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140837840",
+  "class": "oCBulletPhysicCharacter",
+  "uid": "0x148c28f",
+  "size": "0x3f0",
+  "factory": "FUN_14082a260"
+ },
+ {
+  "fn": "FUN_140838370",
+  "class": "oCBulletPhysicTerrain",
+  "uid": "0xeb8c79b",
+  "size": "0x300",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140837a30",
+  "class": "oCBulletSoftRope",
+  "uid": "0x148c293",
+  "size": "0x110",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140837fb0",
+  "class": "oCBulletStaticBox",
+  "uid": "0x148c291",
+  "size": "0x250",
+  "factory": "FUN_140832b50"
+ },
+ {
+  "fn": "FUN_140838cb0",
+  "class": "oCBulletStaticCapsule",
+  "uid": "0x148c22e",
+  "size": "0x250",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140838e80",
+  "class": "oCBulletStaticConvex",
+  "uid": "0x148c292",
+  "size": "0x2a0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140839050",
+  "class": "oCBulletStaticCylinder",
+  "uid": "0x148c22d",
+  "size": "0x250",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140839220",
+  "class": "oCBulletStaticShapeList",
+  "uid": "0x148c295",
+  "size": "0x270",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140837670",
+  "class": "oCBulletStaticSharedShapeList",
+  "uid": "0x148c296",
+  "size": "0x140",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1408381a0",
+  "class": "oCBulletStaticSphere",
+  "uid": "0x148c290",
+  "size": "0x240",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1408393f0",
+  "class": "oCBulletStaticTriangleMesh",
+  "uid": "0x148c294",
+  "size": "0x330",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14022b3b0",
+  "class": "oCBulletWorld",
+  "uid": "0x142f629",
+  "size": "0x57e0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14088ee60",
+  "class": "oCCamAnimPointsCineBloc",
+  "uid": "0x7fae6bb",
+  "size": "0x3f8",
+  "factory": "FUN_140886660"
+ },
+ {
+  "fn": "FUN_140225f00",
+  "class": "oCCameraModifier",
+  "uid": "0x69bfe38",
+  "size": "0x30",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14088f410",
+  "class": "oCCameraShake",
+  "uid": "0x10943ada",
+  "size": "0x188",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14088f220",
+  "class": "oCCameraShakeAxis",
+  "uid": "0x109492e1",
+  "size": "0x28",
+  "factory": "FUN_14088b040"
+ },
+ {
+  "fn": "FUN_140784180",
+  "class": "oCCascadeInfo",
+  "uid": "0x14a87edf",
+  "size": "0x10",
+  "factory": "FUN_1407751c0"
+ },
+ {
+  "fn": "FUN_14088f7f0",
+  "class": "oCCineBlocCamFov",
+  "uid": "0x118078b8",
+  "size": null,
+  "factory": "FUN_14088c5e0"
+ },
+ {
+  "fn": "FUN_14088f600",
+  "class": "oCCineBlocCamShake",
+  "uid": "0x1090b03f",
+  "size": "0x1e0",
+  "factory": "FUN_14088bf30"
+ },
+ {
+  "fn": "FUN_14088f9e0",
+  "class": "oCCineBlocDummyAnim",
+  "uid": "0x19d506e",
+  "size": "0x198",
+  "factory": "FUN_14088d3b0"
+ },
+ {
+  "fn": "FUN_1406e2340",
+  "class": "oCCineEntityRetrieverSelector",
+  "uid": "0x12c09d0b",
+  "size": "0x30",
+  "factory": "FUN_1406d84c0"
+ },
+ {
+  "fn": "FUN_1406c1b70",
+  "class": "oCCollisionMesh",
+  "uid": "0x30986b",
+  "size": "0x88",
+  "factory": "FUN_1406c04a0"
+ },
+ {
+  "fn": "FUN_14018a3f0",
+  "class": "oCColorInterval",
+  "uid": "0x10de29ff",
+  "size": "0x20",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1404540a0",
+  "class": "oCColorSchemeSettings",
+  "uid": "0x13c230ea",
+  "size": "0x28",
+  "factory": "FUN_140447400"
+ },
+ {
+  "fn": "FUN_140224800",
+  "class": "oCComputeEntityCollectorSettings",
+  "uid": "0x181e9d3a",
+  "size": "0x150",
+  "factory": "FUN_1406da2c0"
+ },
+ {
+  "fn": "FUN_140185350",
+  "class": "oCCone",
+  "uid": "0x80000006",
+  "size": "0x28",
+  "factory": "FUN_1404a6bf0"
+ },
+ {
+  "fn": "FUN_140194c50",
+  "class": "oCConsolesRootGs",
+  "uid": "0xf4d95e2",
+  "size": "0x358",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140494310",
+  "class": "oCCopyFileMasteringActionItem",
+  "uid": "0x1351a13a",
+  "size": "0x28",
+  "factory": "FUN_140486260"
+ },
+ {
+  "fn": "FUN_140494500",
+  "class": "oCCopyFilesMasteringAction",
+  "uid": "0x13250b0b",
+  "size": null,
+  "factory": "FUN_140485fa0"
+ },
+ {
+  "fn": "FUN_140493bd0",
+  "class": "oCCurrentSku",
+  "uid": "0x13110585",
+  "size": "0x40",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140183680",
+  "class": "oCCustomFlagFilter",
+  "uid": "0x15a9d9bf",
+  "size": "0x38",
+  "factory": "FUN_140651730"
+ },
+ {
+  "fn": "FUN_140183490",
+  "class": "oCCustomFlagList",
+  "uid": "0x15a9d9be",
+  "size": "0x18",
+  "factory": "FUN_140651730"
+ },
+ {
+  "fn": "FUN_1402c2350",
+  "class": "oCCylinder3dShape",
+  "uid": "0x80000011",
+  "size": "0x90",
+  "factory": "FUN_1404c8470"
+ },
+ {
+  "fn": "FUN_1404a3790",
+  "class": "oCCylindrical",
+  "uid": "0x1cbae3",
+  "size": "0xc",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140178040",
+  "class": "oCDebugDrawFlagsMgr",
+  "uid": "0xfc2bd90",
+  "size": "0x48",
+  "factory": "FUN_1404d1a60"
+ },
+ {
+  "fn": "FUN_14064e710",
+  "class": "oCDecalCameraModifier",
+  "uid": "0x6e8498e",
+  "size": "0x40",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14058ee50",
+  "class": "oCDefaultDeferredPBRDirLightTypeMaterial",
+  "uid": "0x130bdc2d",
+  "size": "0xe8",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1404946f0",
+  "class": "oCDeleteFilesMasteringAction",
+  "uid": "0x132d0251",
+  "size": null,
+  "factory": "FUN_140486630"
+ },
+ {
+  "fn": "FUN_140189f10",
+  "class": "oCDependantRenderLayer",
+  "uid": "0x507f533",
+  "size": "0x80",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14058e1f0",
+  "class": "oCDepthFogSettings",
+  "uid": "0x130ab66a",
+  "size": "0x30",
+  "factory": "FUN_14057e6d0"
+ },
+ {
+  "fn": "FUN_140223d80",
+  "class": "oCDetectedEntityCollectorSettings",
+  "uid": "0x12d2096f",
+  "size": "0xd0",
+  "factory": "FUN_1406d9a50"
+ },
+ {
+  "fn": "FUN_1402c1700",
+  "class": "oCDetourBoxAreaMark",
+  "uid": "0x175ddc0e",
+  "size": "0x58",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c18d0",
+  "class": "oCDetourCylinderAreaMark",
+  "uid": "0x175ddc0f",
+  "size": "0x50",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140194000",
+  "class": "oCDetourFlagSet",
+  "uid": "0x8000000f",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_14084e020",
+  "class": "oCDetourFlagsApplicationSettingsSection",
+  "uid": "0x1557c26e",
+  "size": "0x100",
+  "factory": "FUN_140844650"
+ },
+ {
+  "fn": "FUN_1402c1df0",
+  "class": "oCDetourMeshTile",
+  "uid": "0xdbc43c6",
+  "size": "0xa8",
+  "factory": "FUN_1408457e0"
+ },
+ {
+  "fn": "FUN_140194570",
+  "class": "oCDetourNavMeshByTiles",
+  "uid": "0xdbc43c5",
+  "size": "0x1e8",
+  "factory": "FUN_140847370"
+ },
+ {
+  "fn": "FUN_1402c66e0",
+  "class": "oCDtAbilityAlternateIcon",
+  "uid": "0x16076662",
+  "size": "0x20",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c64f0",
+  "class": "oCDtAbilityAlternateIconSettings",
+  "uid": "0x16076617",
+  "size": "0xf8",
+  "factory": "FUN_1402ae380"
+ },
+ {
+  "fn": "FUN_14022a7a0",
+  "class": "oCDtAnalyticsSceneContext",
+  "uid": "0x17d47d6c",
+  "size": "0x3b8",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140403bb0",
+  "class": "oCDtAttackComboStepSettings",
+  "uid": "0xe6c3770",
+  "size": "0x188",
+  "factory": "FUN_1403c3250"
+ },
+ {
+  "fn": "FUN_140404310",
+  "class": "oCDtChargeAttackStep",
+  "uid": "0x15dd01ca",
+  "size": "0x50",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402252a0",
+  "class": "oCDtDamage",
+  "uid": "0x157e3b13",
+  "size": "0x118",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140225830",
+  "class": "oCDtDamageDebuff",
+  "uid": "0x16b1a6f7",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140225640",
+  "class": "oCDtDamageDebuffSettings",
+  "uid": "0x16b1a6fc",
+  "size": "0x2a0",
+  "factory": "FUN_1403c5be0"
+ },
+ {
+  "fn": "FUN_140225470",
+  "class": "oCDtDamageFeedback",
+  "uid": "0x157e3b53",
+  "size": "0x38",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14018d350",
+  "class": "oCDtDefinition",
+  "uid": "0x1768ce8e",
+  "size": "0x288",
+  "factory": "FUN_140307670"
+ },
+ {
+  "fn": "FUN_1402fc370",
+  "class": "oCDtDreamShardsEntitySelectorToSpawnEntityCpntSettings",
+  "uid": "0x17132200",
+  "size": "0x178",
+  "factory": "FUN_1402e92a0"
+ },
+ {
+  "fn": "FUN_140235770",
+  "class": "oCDtEnemyCampEntitySelectorToSpawnEntityCpntSettings",
+  "uid": "0x16b7d175",
+  "size": "0x438",
+  "factory": "FUN_140322520"
+ },
+ {
+  "fn": "FUN_140235580",
+  "class": "oCDtEnemyCampEntitySelectorToSpawnTribeEntrySettings",
+  "uid": "0x16b81d80",
+  "size": "0xf8",
+  "factory": "FUN_140322030"
+ },
+ {
+  "fn": "FUN_140231f90",
+  "class": "oCDtEnemyCampTierDefinition",
+  "uid": "0x176e18f8",
+  "size": "0x2a0",
+  "factory": "FUN_140309de0"
+ },
+ {
+  "fn": "FUN_140229990",
+  "class": "oCDtEnemyDefinition",
+  "uid": "0x176debb7",
+  "size": "0x350",
+  "factory": "FUN_14030a190"
+ },
+ {
+  "fn": "FUN_140339630",
+  "class": "oCDtEnemyFlagListEntitySelectorToSpawnEntityCpntSettings",
+  "uid": "0x17019bf9",
+  "size": "0x110",
+  "factory": "FUN_140326230"
+ },
+ {
+  "fn": "FUN_1402fd4f0",
+  "class": "oCDtEntityCpnt3DBookTabControllerSettings",
+  "uid": "0x18ababaa",
+  "size": "0x1b8",
+  "factory": "FUN_1402efc70"
+ },
+ {
+  "fn": "FUN_1402c6880",
+  "class": "oCDtEntityCpntAbilityControllerPersistentData",
+  "uid": "0x197bf24d",
+  "size": "0x58",
+  "factory": "FUN_1402ae560"
+ },
+ {
+  "fn": "FUN_140403da0",
+  "class": "oCDtEntityCpntAttackComboSettings",
+  "uid": "0xc8d99e2",
+  "size": "0x288",
+  "factory": "FUN_1403c3ce0"
+ },
+ {
+  "fn": "FUN_1404044b0",
+  "class": "oCDtEntityCpntChargeAttackSettings",
+  "uid": "0x15dd00c4",
+  "size": "0x188",
+  "factory": "FUN_1403ca1e0"
+ },
+ {
+  "fn": "FUN_1402be740",
+  "class": "oCDtEntityCpntCinematicUiControllerSettings",
+  "uid": "0x1679d2ee",
+  "size": "0x100",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402259d0",
+  "class": "oCDtEntityCpntDamageSettings",
+  "uid": "0x157e368e",
+  "size": "0x1428",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402326d0",
+  "class": "oCDtEntityCpntGroupLevel",
+  "uid": "0x15888c02",
+  "size": "0x170",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140233ff0",
+  "class": "oCDtEntityCpntHeroController",
+  "uid": "0x155aac59",
+  "size": "0x1e10",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1403be8f0",
+  "class": "oCDtEntityCpntHeroControllerListenerNetworkData",
+  "uid": "0x1adbf394",
+  "size": "0xd0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140233e00",
+  "class": "oCDtEntityCpntHeroControllerPersistentData",
+  "uid": "0x1918e61a",
+  "size": "0x118",
+  "factory": "FUN_140380450"
+ },
+ {
+  "fn": "FUN_1403106f0",
+  "class": "oCDtEntityCpntHeroDefUiControllerSettings",
+  "uid": "0x1610624c",
+  "size": "0x2b0",
+  "factory": "FUN_14034bce0"
+ },
+ {
+  "fn": "FUN_140232dd0",
+  "class": "oCDtEntityCpntHittable",
+  "uid": "0x15596096",
+  "size": "0x2b0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140232c00",
+  "class": "oCDtEntityCpntHittableSettings",
+  "uid": "0x15596094",
+  "size": "0x398",
+  "factory": "FUN_140378a00"
+ },
+ {
+  "fn": "FUN_1402f8780",
+  "class": "oCDtEntityCpntIngredientGainSettings",
+  "uid": "0x17282cdf",
+  "size": "0x180",
+  "factory": "FUN_1402e9fd0"
+ },
+ {
+  "fn": "FUN_1402f9770",
+  "class": "oCDtEntityCpntInteractionNetworkData",
+  "uid": "0x181ffce3",
+  "size": "0xd0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1403605e0",
+  "class": "oCDtEntityCpntLoadingScreenUiControllerSettings",
+  "uid": "0x187b098d",
+  "size": "0x288",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140277790",
+  "class": "oCDtEntityCpntMagicalObjectsDropSettings",
+  "uid": "0x168afca6",
+  "size": "0xa50",
+  "factory": "FUN_1402d2290"
+ },
+ {
+  "fn": "FUN_14035fe80",
+  "class": "oCDtEntityCpntMinimapMarkerUiControllerSettings",
+  "uid": "0x15bc4695",
+  "size": "0x2d8",
+  "factory": "FUN_14033ec70"
+ },
+ {
+  "fn": "FUN_140235e90",
+  "class": "oCDtEntityCpntMinimapSettings",
+  "uid": "0x15b85ff9",
+  "size": "0x118",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140236210",
+  "class": "oCDtEntityCpntMinimapUiControllerSettings",
+  "uid": "0x18e07848",
+  "size": "0x170",
+  "factory": "FUN_1403403f0"
+ },
+ {
+  "fn": "FUN_1402f64c0",
+  "class": "oCDtEntityCpntMissionSettings",
+  "uid": "0x1647af37",
+  "size": "0x3a0",
+  "factory": "FUN_1402cbff0"
+ },
+ {
+  "fn": "FUN_140276d20",
+  "class": "oCDtEntityCpntPowerUpSettings",
+  "uid": "0x159a1273",
+  "size": "0x218",
+  "factory": "FUN_1402e1680"
+ },
+ {
+  "fn": "FUN_1402f9e70",
+  "class": "oCDtEntityCpntResourceGainSettings",
+  "uid": "0x15ee1b2f",
+  "size": "0x428",
+  "factory": "FUN_1402e28c0"
+ },
+ {
+  "fn": "FUN_1402f7e90",
+  "class": "oCDtEntityCpntSelectionMenuUiControllerSettings",
+  "uid": "0x15f78381",
+  "size": "0x2d8",
+  "factory": "FUN_140344440"
+ },
+ {
+  "fn": "FUN_1402379b0",
+  "class": "oCDtEntityCpntTileSpawner",
+  "uid": "0x16075cca",
+  "size": "0x130",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140237640",
+  "class": "oCDtEntityCpntTileSpawnerSettings",
+  "uid": "0x16075cc8",
+  "size": "0x1e8",
+  "factory": "FUN_140328070"
+ },
+ {
+  "fn": "FUN_140275820",
+  "class": "oCDtEntityModifierPowerUpSettings",
+  "uid": "0x15a051fb",
+  "size": "0xd0",
+  "factory": "FUN_14024fbf0"
+ },
+ {
+  "fn": "FUN_140275ba0",
+  "class": "oCDtHeroEntityCollectorSettings",
+  "uid": "0x1650dd23",
+  "size": "0x198",
+  "factory": "FUN_140252890"
+ },
+ {
+  "fn": "FUN_1402f6320",
+  "class": "oCDtMissionStep",
+  "uid": "0x1647af68",
+  "size": "0x50",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402f93d0",
+  "class": "oCDtNamedEventExpGainNotif",
+  "uid": "0x19d2c453",
+  "size": "0x58",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402fa3c0",
+  "class": "oCDtNamedEventGainDreamShards",
+  "uid": "0x194f3aeb",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402fa590",
+  "class": "oCDtNamedEventGainReroll",
+  "uid": "0x1a93a013",
+  "size": "0x58",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402f95a0",
+  "class": "oCDtNamedEventLevelUp",
+  "uid": "0x194f3acc",
+  "size": "0x58",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140191150",
+  "class": "oCDtNewGamePlusAppSettingsSection",
+  "uid": "0x18702e7f",
+  "size": "0x28",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140190f60",
+  "class": "oCDtNewGamePlusModifier",
+  "uid": "0x18705119",
+  "size": "0x238",
+  "factory": "FUN_1401fb020"
+ },
+ {
+  "fn": "FUN_1402c0280",
+  "class": "oCDtPbrOmniLightTypeMaterial",
+  "uid": "0x1099e025",
+  "size": "0xa8",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140193900",
+  "class": "oCDtPlayerProfileData",
+  "uid": "0x18fd68c1",
+  "size": "0x20",
+  "factory": "FUN_1401da540"
+ },
+ {
+  "fn": "FUN_140275f20",
+  "class": "oCDtPowerUpEntityCollectorSettings",
+  "uid": "0x16ad79d8",
+  "size": "0xd0",
+  "factory": "FUN_140252f80"
+ },
+ {
+  "fn": "FUN_1402250d0",
+  "class": "oCDtProcessedDamage",
+  "uid": "0x1906c8fc",
+  "size": "0xd8",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140237f40",
+  "class": "oCDtRewardDefinition",
+  "uid": "0x176f164e",
+  "size": "0x298",
+  "factory": "FUN_14031a040"
+ },
+ {
+  "fn": "FUN_140195130",
+  "class": "oCDtRootGs",
+  "uid": "0xf5a8305",
+  "size": "0x21d0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140234550",
+  "class": "oCDtStatus",
+  "uid": "0x16eddfd0",
+  "size": "0x28",
+  "factory": "FUN_140250300"
+ },
+ {
+  "fn": "FUN_140234740",
+  "class": "oCDtStatusSettingsGo",
+  "uid": "0x16edcfbb",
+  "size": "0xd8",
+  "factory": "FUN_140250450"
+ },
+ {
+  "fn": "FUN_140195eb0",
+  "class": "oCDtStormancerSceneContext",
+  "uid": "0x15ecb8a7",
+  "size": "0x330",
+  "factory": "FUN_14031f1b0"
+ },
+ {
+  "fn": "FUN_14018bf80",
+  "class": "oCDtSurfaceParticleEmitterSettings",
+  "uid": "0x193b63b8",
+  "size": "0xe0",
+  "factory": "FUN_140293eb0"
+ },
+ {
+  "fn": "FUN_140234b00",
+  "class": "oCDtTileDefinition",
+  "uid": "0x1781ca4d",
+  "size": "0x358",
+  "factory": "FUN_14031a210"
+ },
+ {
+  "fn": "FUN_140236cb0",
+  "class": "oCDtTileFlagConstraint",
+  "uid": "0x183134af",
+  "size": "0x28",
+  "factory": "FUN_1403275b0"
+ },
+ {
+  "fn": "FUN_140236ea0",
+  "class": "oCDtTileKind",
+  "uid": "0x1608d797",
+  "size": "0x68",
+  "factory": "FUN_140327740"
+ },
+ {
+  "fn": "FUN_140237090",
+  "class": "oCDtTileSlotScenarioKindCompatibility",
+  "uid": "0x171712d1",
+  "size": "0x20",
+  "factory": "FUN_140327910"
+ },
+ {
+  "fn": "FUN_140237280",
+  "class": "oCDtTileSlotSettings",
+  "uid": "0x16075cfc",
+  "size": "0x40",
+  "factory": "FUN_140327970"
+ },
+ {
+  "fn": "FUN_140682c90",
+  "class": "oCDummyGo",
+  "uid": "0x640083c",
+  "size": "0xf8",
+  "factory": "FUN_14067a5c0"
+ },
+ {
+  "fn": "FUN_14064cf80",
+  "class": "oCEditorMemoCamera",
+  "uid": "0x1ed95a8",
+  "size": "0x18",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14064cd90",
+  "class": "oCEditorMemoCameraSlot",
+  "uid": "0x1ed95a9",
+  "size": "0x30",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14064d170",
+  "class": "oCEditorMemoTreeViewStatus",
+  "uid": "0x3656cd9",
+  "size": "0x40",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140223150",
+  "class": "oCEmptyEntityCollector",
+  "uid": "0x164821bf",
+  "size": "0x28",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140194aa0",
+  "class": "oCEngagementGs",
+  "uid": "0x1527df8",
+  "size": "0x390",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14018f1d0",
+  "class": "oCEntity3dLocatorSettings",
+  "uid": "0x1189c06b",
+  "size": "0x8b0",
+  "factory": "FUN_1406d1db0"
+ },
+ {
+  "fn": "FUN_14018edf0",
+  "class": "oCEntity3dNodeCpntLocatorSettings",
+  "uid": "0xfa7401d",
+  "size": "0xb0",
+  "factory": "FUN_1406cf540"
+ },
+ {
+  "fn": "FUN_14018efe0",
+  "class": "oCEntity3dTransformPicker",
+  "uid": "0x13445f5c",
+  "size": "0x5a8",
+  "factory": "FUN_1406cfd10"
+ },
+ {
+  "fn": "FUN_14071a270",
+  "class": "oCEntityCallMethodCineBloc",
+  "uid": "0x1b13210d",
+  "size": "0x98",
+  "factory": "FUN_140702a60"
+ },
+ {
+  "fn": "FUN_140222c50",
+  "class": "oCEntityCollectorSelector",
+  "uid": "0x16495bab",
+  "size": "0x20",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140222a60",
+  "class": "oCEntityCollectorSelectorSettings",
+  "uid": "0x16495099",
+  "size": "0x20",
+  "factory": "FUN_1406d8a30"
+ },
+ {
+  "fn": "FUN_1402fe160",
+  "class": "oCEntityCpnt3dGraphicObjectSettings",
+  "uid": "0xfa74019",
+  "size": "0x13c0",
+  "factory": "FUN_14076a8a0"
+ },
+ {
+  "fn": "FUN_1402fda40",
+  "class": "oCEntityCpnt3dNode",
+  "uid": "0x13490aaf",
+  "size": "0x230",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140782880",
+  "class": "oCEntityCpnt3dNodeSelectorEntrySettings",
+  "uid": "0x1af7b9a1",
+  "size": null,
+  "factory": "FUN_14076e2e0"
+ },
+ {
+  "fn": "FUN_140782a70",
+  "class": "oCEntityCpnt3dNodeSelectorSettings",
+  "uid": "0x1af7b6d7",
+  "size": "0x108",
+  "factory": "FUN_14076e3b0"
+ },
+ {
+  "fn": "FUN_1402fd870",
+  "class": "oCEntityCpnt3dNodeSettings",
+  "uid": "0x1349036c",
+  "size": "0x1090",
+  "factory": "FUN_14076cc40"
+ },
+ {
+  "fn": "FUN_1407aec90",
+  "class": "oCEntityCpntAnimClipNetworkData",
+  "uid": "0x18a8e0f5",
+  "size": "0xe0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1407af3b0",
+  "class": "oCEntityCpntAnimaticSettings",
+  "uid": "0xfa99c15",
+  "size": "0x500",
+  "factory": "FUN_14078b490"
+ },
+ {
+  "fn": "FUN_140221190",
+  "class": "oCEntityCpntBasicDamage",
+  "uid": "0xfe53dbd",
+  "size": "0x228",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140220fc0",
+  "class": "oCEntityCpntBasicDamageSettings",
+  "uid": "0xfe53dbe",
+  "size": "0xb90",
+  "factory": "FUN_1407fede0"
+ },
+ {
+  "fn": "FUN_140781500",
+  "class": "oCEntityCpntBasicRandom",
+  "uid": "0xfd406cf",
+  "size": "0xb0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140781140",
+  "class": "oCEntityCpntBasicRandomSettings",
+  "uid": "0xfd406cc",
+  "size": "0x1f8",
+  "factory": "FUN_140767680"
+ },
+ {
+  "fn": "FUN_1407e2a40",
+  "class": "oCEntityCpntCollisionRaycastSettings",
+  "uid": "0x129e6951",
+  "size": "0x12c0",
+  "factory": "FUN_1407d7d10"
+ },
+ {
+  "fn": "FUN_1407e1c40",
+  "class": "oCEntityCpntCollisionVolumeDetectorSettings",
+  "uid": "0x1031c350",
+  "size": "0x178",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14071b2e0",
+  "class": "oCEntityCpntCounterNetworkData",
+  "uid": "0x1d7daf0e",
+  "size": "0xd0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1408110a0",
+  "class": "oCEntityCpntDetourOffmeshLinkSettings",
+  "uid": "0x11d0ebff",
+  "size": "0x280",
+  "factory": "FUN_1407e6bf0"
+ },
+ {
+  "fn": "FUN_140784370",
+  "class": "oCEntityCpntDirectionalLightSettings",
+  "uid": "0x10ba8767",
+  "size": "0x1340",
+  "factory": "FUN_140775310"
+ },
+ {
+  "fn": "FUN_1402f7600",
+  "class": "oCEntityCpntEntitySpawnerSettings",
+  "uid": "0xff3b3ab",
+  "size": "0x1a90",
+  "factory": "FUN_140711280"
+ },
+ {
+  "fn": "FUN_14022d1b0",
+  "class": "oCEntityCpntFModDialogSettings",
+  "uid": "0x1625c4e5",
+  "size": "0x2e8",
+  "factory": "FUN_140857770"
+ },
+ {
+  "fn": "FUN_140866850",
+  "class": "oCEntityCpntFModEventSettings",
+  "uid": "0x1143ea38",
+  "size": "0xae0",
+  "factory": "FUN_140853c70"
+ },
+ {
+  "fn": "FUN_140783170",
+  "class": "oCEntityCpntFxSetup",
+  "uid": "0xcccfc8c",
+  "size": "0x1240",
+  "factory": "FUN_140770970"
+ },
+ {
+  "fn": "FUN_14018fb50",
+  "class": "oCEntityCpntGameUiSettings",
+  "uid": "0xf9c72d5",
+  "size": "0xc80",
+  "factory": "FUN_1407b97f0"
+ },
+ {
+  "fn": "FUN_140227440",
+  "class": "oCEntityCpntGpn",
+  "uid": "0xf9b1b99",
+  "size": "0x158",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1407b23c0",
+  "class": "oCEntityCpntGpnDetectorSettings",
+  "uid": "0x10306be1",
+  "size": "0xab0",
+  "factory": "FUN_14079c150"
+ },
+ {
+  "fn": "FUN_1406dfdd0",
+  "class": "oCEntityCpntGpnProjectileAttackSettings",
+  "uid": "0x12241ff6",
+  "size": "0x5a0",
+  "factory": "FUN_14081e330"
+ },
+ {
+  "fn": "FUN_1407b3ae0",
+  "class": "oCEntityCpntGpnProximitySettings",
+  "uid": "0x1459aaa8",
+  "size": "0x230",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140227270",
+  "class": "oCEntityCpntGpnSettings",
+  "uid": "0xf9b1b9d",
+  "size": "0xa60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140310010",
+  "class": "oCEntityCpntHitPointNetworkData",
+  "uid": "0x181fe876",
+  "size": "0xd8",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14030fc50",
+  "class": "oCEntityCpntHitPointSettings",
+  "uid": "0xfdffbf3",
+  "size": "0x390",
+  "factory": "FUN_1408015f0"
+ },
+ {
+  "fn": "FUN_140232a50",
+  "class": "oCEntityCpntHittable",
+  "uid": "0xfdffbef",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_1403bd940",
+  "class": "oCEntityCpntHittableListener",
+  "uid": "0x1acad540",
+  "size": "0x288",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1403bd5c0",
+  "class": "oCEntityCpntHittableListenerNetworkData",
+  "uid": "0x1acbe50b",
+  "size": "0xe8",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1403bd770",
+  "class": "oCEntityCpntHittableListenerSettings",
+  "uid": "0x1acad52f",
+  "size": "0x3b8",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140232880",
+  "class": "oCEntityCpntHittableSettings",
+  "uid": "0xfdffbed",
+  "size": "0x2d8",
+  "factory": "FUN_1408043a0"
+ },
+ {
+  "fn": "FUN_140758d70",
+  "class": "oCEntityCpntIntTestSettings",
+  "uid": "0x10c669f1",
+  "size": "0x110",
+  "factory": "FUN_140761f50"
+ },
+ {
+  "fn": "FUN_140754bf0",
+  "class": "oCEntityCpntKeyControllerSettings",
+  "uid": "0xff13986",
+  "size": "0x1c0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1407dfe30",
+  "class": "oCEntityCpntLabelModifierSettings",
+  "uid": "0x15ff8dd8",
+  "size": "0x148",
+  "factory": "FUN_1407c4990"
+ },
+ {
+  "fn": "FUN_1404093f0",
+  "class": "oCEntityCpntModalUiControllerSettings",
+  "uid": "0x17e5b0e1",
+  "size": null,
+  "factory": "FUN_1407c55a0"
+ },
+ {
+  "fn": "FUN_140228240",
+  "class": "oCEntityCpntModifierHolderNetworkData",
+  "uid": "0x181fe872",
+  "size": "0x110",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1407e3840",
+  "class": "oCEntityCpntNavMeshRebuilderSettings",
+  "uid": "0xfb87cd0",
+  "size": "0x770",
+  "factory": "FUN_1407db1b0"
+ },
+ {
+  "fn": "FUN_140755f60",
+  "class": "oCEntityCpntPathfindingProfileSettings",
+  "uid": "0x10171cde",
+  "size": "0x198",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017cff0",
+  "class": "oCEntityCpntPersistentData",
+  "uid": "0xd51c9b9",
+  "size": "0x50",
+  "factory": "FUN_1406f67f0"
+ },
+ {
+  "fn": "FUN_1407b0e60",
+  "class": "oCEntityCpntPhysicSkeletonAnimSettings",
+  "uid": "0x152d90d6",
+  "size": "0x3a8",
+  "factory": "FUN_1407929f0"
+ },
+ {
+  "fn": "FUN_14017cc10",
+  "class": "oCEntityCpntPicker",
+  "uid": "0xd97f3e1",
+  "size": "0x40",
+  "factory": "FUN_1406f6c10"
+ },
+ {
+  "fn": "FUN_1407821b0",
+  "class": "oCEntityCpntRangedRandom",
+  "uid": "0x11355e9a",
+  "size": "0x108",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14077efb0",
+  "class": "oCEntityCpntReflectionProbe",
+  "uid": "0x1171d342",
+  "size": "0x70",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14077f160",
+  "class": "oCEntityCpntSelectorEntrySettings",
+  "uid": "0x103c41cb",
+  "size": "0xd0",
+  "factory": "FUN_1407158b0"
+ },
+ {
+  "fn": "FUN_14077f350",
+  "class": "oCEntityCpntSelectorSettings",
+  "uid": "0x103c41d0",
+  "size": "0x110",
+  "factory": "FUN_14075eb30"
+ },
+ {
+  "fn": "FUN_140758800",
+  "class": "oCEntityCpntSimpleBoolTestSettings",
+  "uid": "0x10f38895",
+  "size": "0x90",
+  "factory": "FUN_140761290"
+ },
+ {
+  "fn": "FUN_1407559f0",
+  "class": "oCEntityCpntSpreadPosSettings",
+  "uid": "0x121bdca1",
+  "size": "0x1840",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140230dd0",
+  "class": "oCEntityCpntStringFormatValueSettings",
+  "uid": "0x137fc593",
+  "size": "0x188",
+  "factory": "FUN_140747c50"
+ },
+ {
+  "fn": "FUN_14077fc40",
+  "class": "oCEntityCpntSwitchSelectorSettings",
+  "uid": "0x10da67d5",
+  "size": "0x188",
+  "factory": "FUN_140760690"
+ },
+ {
+  "fn": "FUN_14071af40",
+  "class": "oCEntityCpntTimer",
+  "uid": "0xf8112e3",
+  "size": "0x1d8",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140759f70",
+  "class": "oCEntityCpntValueMixerSettings",
+  "uid": "0x103c0504",
+  "size": "0x110",
+  "factory": "FUN_140741010"
+ },
+ {
+  "fn": "FUN_14075c0d0",
+  "class": "oCEntityCpntValueOperationsSettings",
+  "uid": "0x17aa8664",
+  "size": "0x128",
+  "factory": "FUN_14074dd70"
+ },
+ {
+  "fn": "FUN_1407580d0",
+  "class": "oCEntityCpntValueSelectorEntrySettings",
+  "uid": "0x106fc103",
+  "size": "0x108",
+  "factory": "FUN_14073e010"
+ },
+ {
+  "fn": "FUN_140757d30",
+  "class": "oCEntityCpntValueSelectorNetworkData",
+  "uid": "0x181ff60f",
+  "size": "0xf0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1407582c0",
+  "class": "oCEntityCpntValueSelectorSettings",
+  "uid": "0x106fbf6b",
+  "size": "0x198",
+  "factory": "FUN_14073e0b0"
+ },
+ {
+  "fn": "FUN_140759a00",
+  "class": "oCEntityCpntValueSwitchSelectorSettings",
+  "uid": "0x12e70f47",
+  "size": null,
+  "factory": "FUN_14073ff00"
+ },
+ {
+  "fn": "FUN_140781c40",
+  "class": "oCEntityCpntWeightedRandom",
+  "uid": "0x108dea04",
+  "size": "0xc0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14021e130",
+  "class": "oCEntityCpntWindowUi",
+  "uid": "0xfe92fa7",
+  "size": "0x148",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14021df60",
+  "class": "oCEntityCpntWindowUiSettings",
+  "uid": "0xfe92fa9",
+  "size": "0x730",
+  "factory": "FUN_1407c1c30"
+ },
+ {
+  "fn": "FUN_1406e06c0",
+  "class": "oCEntityCpntZoneAttackSettings",
+  "uid": "0xfe008cf",
+  "size": "0x250",
+  "factory": "FUN_14081b770"
+ },
+ {
+  "fn": "FUN_14017e570",
+  "class": "oCEntityFloatModifier",
+  "uid": "0x105f8ae9",
+  "size": "0x10",
+  "factory": "FUN_1406d4c50"
+ },
+ {
+  "fn": "FUN_140822aa0",
+  "class": "oCEntityGpnCollectorTester",
+  "uid": "0x1c560cfd",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1408228b0",
+  "class": "oCEntityGpnCollectorTesterSettings",
+  "uid": "0x1c560cfa",
+  "size": "0x128",
+  "factory": "FUN_14081b450"
+ },
+ {
+  "fn": "FUN_140821520",
+  "class": "oCEntityGpnFlagMaskTester",
+  "uid": "0x185627e2",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140821330",
+  "class": "oCEntityGpnFlagMaskTesterSettings",
+  "uid": "0x18560c0b",
+  "size": "0x158",
+  "factory": "FUN_14081b080"
+ },
+ {
+  "fn": "FUN_1408218c0",
+  "class": "oCEntityGpnFlagTester",
+  "uid": "0x18478f97",
+  "size": "0x40",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1408216d0",
+  "class": "oCEntityGpnFlagTesterSettings",
+  "uid": "0x1846317a",
+  "size": "0x120",
+  "factory": "FUN_14081b210"
+ },
+ {
+  "fn": "FUN_1407b1750",
+  "class": "oCEntityGpnHeightTester",
+  "uid": "0x185626ad",
+  "size": "0x70",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1407b1900",
+  "class": "oCEntityGpnLosTesterSettings",
+  "uid": "0x124b6217",
+  "size": "0x9c0",
+  "factory": "FUN_140819b70"
+ },
+ {
+  "fn": "FUN_1407b1e70",
+  "class": "oCEntityGpnNetworkTester",
+  "uid": "0x18688262",
+  "size": "0x40",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140821c60",
+  "class": "oCEntityGpnPathFindTester",
+  "uid": "0x1b1de197",
+  "size": "0x98",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140821a70",
+  "class": "oCEntityGpnPathFindTesterSettings",
+  "uid": "0x1b1de170",
+  "size": "0x148",
+  "factory": "FUN_140818d20"
+ },
+ {
+  "fn": "FUN_140822190",
+  "class": "oCEntityGpnPhysicLosTesterSettings",
+  "uid": "0x141e1016",
+  "size": "0x9e0",
+  "factory": "FUN_14081a260"
+ },
+ {
+  "fn": "FUN_1407b2210",
+  "class": "oCEntityGpnSelfGpnTester",
+  "uid": "0x18688125",
+  "size": "0x40",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1407b2020",
+  "class": "oCEntityGpnSelfGpnTesterSettings",
+  "uid": "0x18688183",
+  "size": "0x110",
+  "factory": "FUN_14081a9e0"
+ },
+ {
+  "fn": "FUN_1402faab0",
+  "class": "oCEntityGpnTesterCombinerSettings",
+  "uid": "0x184731b8",
+  "size": "0x120",
+  "factory": "FUN_140818200"
+ },
+ {
+  "fn": "FUN_140822700",
+  "class": "oCEntityGpnTesterPreset",
+  "uid": "0x18688ca0",
+  "size": "0x48",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140822510",
+  "class": "oCEntityGpnTesterPresetSettings",
+  "uid": "0x18688ca2",
+  "size": "0x148",
+  "factory": "FUN_14081a750"
+ },
+ {
+  "fn": "FUN_1402fae30",
+  "class": "oCEntityGpnTraverserCommonSettings",
+  "uid": "0x10999493",
+  "size": "0x410",
+  "factory": "FUN_1407a2400"
+ },
+ {
+  "fn": "FUN_140279f40",
+  "class": "oCEntityModal",
+  "uid": "0x17f86ae9",
+  "size": "0xf8",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017eae0",
+  "class": "oCEntityModifierFloatAddComputer",
+  "uid": "0x11872ed0",
+  "size": "0x10",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017f050",
+  "class": "oCEntityModifierFloatMaxComputer",
+  "uid": "0x11a28e75",
+  "size": "0x10",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017ee80",
+  "class": "oCEntityModifierFloatMinComputer",
+  "uid": "0x11a28e16",
+  "size": "0x10",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017ecb0",
+  "class": "oCEntityModifierFloatMulComputer",
+  "uid": "0x118727f7",
+  "size": "0x10",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017f3f0",
+  "class": "oCEntityModifierSliceCountComputer",
+  "uid": "0x11872fe1",
+  "size": "0x10",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140275120",
+  "class": "oCEntityModifierTargetDetectedEntitySettings",
+  "uid": "0x15a051ec",
+  "size": "0xd0",
+  "factory": "FUN_1406d7960"
+ },
+ {
+  "fn": "FUN_140274a20",
+  "class": "oCEntityModifierTargetEntitySettings",
+  "uid": "0x15a051df",
+  "size": "0x90",
+  "factory": "FUN_1406d3f00"
+ },
+ {
+  "fn": "FUN_140274da0",
+  "class": "oCEntityModifierTargetOwnerSettings",
+  "uid": "0x15a051e6",
+  "size": "0x90",
+  "factory": "FUN_1406d7860"
+ },
+ {
+  "fn": "FUN_1402754a0",
+  "class": "oCEntityModifierTargetSpawnedEntitySettings",
+  "uid": "0x15a051f1",
+  "size": "0xd0",
+  "factory": "FUN_1406d7c00"
+ },
+ {
+  "fn": "FUN_14017f220",
+  "class": "oCEntityModifierVec3AddComputer",
+  "uid": "0x118729f1",
+  "size": "0x18",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1406fe890",
+  "class": "oCEntityNamedEventSenderCineBloc",
+  "uid": "0x12c22cdb",
+  "size": "0xb8",
+  "factory": "FUN_1406f9290"
+ },
+ {
+  "fn": "FUN_140180310",
+  "class": "oCEntityPersistentDataContainer",
+  "uid": "0x190f9ebd",
+  "size": "0x20",
+  "factory": "FUN_1406db470"
+ },
+ {
+  "fn": "FUN_1406e2150",
+  "class": "oCEntityRetrieverSelector",
+  "uid": "0x12bfb881",
+  "size": "0x20",
+  "factory": "FUN_1406d8360"
+ },
+ {
+  "fn": "FUN_140235200",
+  "class": "oCEntitySelectorToSpawnEntityCpntSettings",
+  "uid": "0x16b67fcb",
+  "size": "0x150",
+  "factory": "FUN_140714ad0"
+ },
+ {
+  "fn": "FUN_140235010",
+  "class": "oCEntitySelectorToSpawnEntrySettings",
+  "uid": "0x16b67fca",
+  "size": "0x188",
+  "factory": "FUN_1407146d0"
+ },
+ {
+  "fn": "FUN_140186fc0",
+  "class": "oCEntitySettings",
+  "uid": "0xc3b9daa",
+  "size": "0x1d8",
+  "factory": "FUN_1406c7050"
+ },
+ {
+  "fn": "FUN_1406e0be0",
+  "class": "oCEntitySettingsRootRef",
+  "uid": "0x17c0eed6",
+  "size": "0x70",
+  "factory": "FUN_1406ceac0"
+ },
+ {
+  "fn": "FUN_140180160",
+  "class": "oCEntitySpawner",
+  "uid": "0x17bcd54b",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402226a0",
+  "class": "oCEntitySpawnerGo",
+  "uid": "0xd3a4778",
+  "size": "0x210",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017f5c0",
+  "class": "oCEntityTempModifier",
+  "uid": "0x105f8b01",
+  "size": "0x10",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017d1e0",
+  "class": "oCEntityValueModifier",
+  "uid": "0x15a2faf1",
+  "size": "0x50",
+  "factory": "FUN_1406d3f00"
+ },
+ {
+  "fn": "FUN_14017d560",
+  "class": "oCEntityValueModifierAddComputer",
+  "uid": "0x15a32c3c",
+  "size": "0x28",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017de70",
+  "class": "oCEntityValueModifierMaxComputer",
+  "uid": "0x15a32cb8",
+  "size": "0x28",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017e040",
+  "class": "oCEntityValueModifierMinComputer",
+  "uid": "0x15a345f0",
+  "size": "0x28",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017d900",
+  "class": "oCEntityValueModifierMultComputer",
+  "uid": "0x15a32c7c",
+  "size": "0x28",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017dca0",
+  "class": "oCEntityValueModifierOldestComputer",
+  "uid": "0x1b84c9b1",
+  "size": "0x28",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017dad0",
+  "class": "oCEntityValueModifierReduceComputer",
+  "uid": "0x16830aaf",
+  "size": "0x28",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017d730",
+  "class": "oCEntityValueModifierSubComputer",
+  "uid": "0x15a32c68",
+  "size": "0x28",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017e210",
+  "class": "oCEntityValueModifiersHolder",
+  "uid": "0x15a46d17",
+  "size": "0x30",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017e760",
+  "class": "oCEntityVec3Modifier",
+  "uid": "0x107b8b3f",
+  "size": "0x18",
+  "factory": "FUN_1406d4cc0"
+ },
+ {
+  "fn": "FUN_14071a080",
+  "class": "oCEntityWindowPictureCineBloc",
+  "uid": "0x16bfd7ba",
+  "size": "0xf0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140226b70",
+  "class": "oCExtentUnion",
+  "uid": "0x8000000d",
+  "size": "0x2c",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140851790",
+  "class": "oCExternalAnimaticsGroup",
+  "uid": "0xd27ca53",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140866f50",
+  "class": "oCFModActorSettings",
+  "uid": "0x1625d9b1",
+  "size": "0xc0",
+  "factory": "FUN_140860630"
+ },
+ {
+  "fn": "FUN_1408741a0",
+  "class": "oCFModCodeDrivenEventParameter",
+  "uid": "0x8000001e",
+  "size": "0x20",
+  "factory": "FUN_14086dbe0"
+ },
+ {
+  "fn": "FUN_14022c1b0",
+  "class": "oCFModEvent",
+  "uid": "0x8000000b",
+  "size": "0x80",
+  "factory": "FUN_14086dd50"
+ },
+ {
+  "fn": "FUN_140868160",
+  "class": "oCFModEventCategorySetup",
+  "uid": "0x80000018",
+  "size": "0x10",
+  "factory": "FUN_14086b150"
+ },
+ {
+  "fn": "FUN_140867a00",
+  "class": "oCFModEventGroupsListGroup",
+  "uid": "0x8000001a",
+  "size": "0x18",
+  "factory": "FUN_14086ede0"
+ },
+ {
+  "fn": "FUN_140867da0",
+  "class": "oCFModEventGroupsPreloadGo",
+  "uid": "0x8000001a",
+  "size": "0x128",
+  "factory": "FUN_14085fe20"
+ },
+ {
+  "fn": "FUN_140873fb0",
+  "class": "oCFModEventReverbPreset",
+  "uid": "0x80000017",
+  "size": "0x18",
+  "factory": "FUN_14086b530"
+ },
+ {
+  "fn": "FUN_14021da50",
+  "class": "oCFModModule",
+  "uid": "0x8000000c",
+  "size": "0x240",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140867140",
+  "class": "oCFModNarrationSettingsGo",
+  "uid": "0x1625a7a7",
+  "size": "0x440",
+  "factory": "FUN_1408607e0"
+ },
+ {
+  "fn": "FUN_1405f79e0",
+  "class": "oCFillTransparentAlphaImageProcessor",
+  "uid": "0x100ddb22",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_1406c2a90",
+  "class": "oCFlag",
+  "uid": "0x15518d72",
+  "size": "0x28",
+  "factory": "FUN_1406bfe50"
+ },
+ {
+  "fn": "FUN_140184a00",
+  "class": "oCFlagDef",
+  "uid": "0x143c5e1e",
+  "size": "0x30",
+  "factory": "FUN_140650fc0"
+ },
+ {
+  "fn": "FUN_140452ff0",
+  "class": "oCFlagSetPerformanceProfileValue",
+  "uid": "0x14f3d89b",
+  "size": "0x808",
+  "factory": "FUN_140651460"
+ },
+ {
+  "fn": "FUN_1404531e0",
+  "class": "oCFlagsApplicationSettingsSection",
+  "uid": "0x14667c45",
+  "size": "0x1430",
+  "factory": "FUN_140440b50"
+ },
+ {
+  "fn": "FUN_140644d30",
+  "class": "oCFlatCircleMeshSettings",
+  "uid": "0xc61c70b",
+  "size": "0x38",
+  "factory": "FUN_1406399e0"
+ },
+ {
+  "fn": "FUN_14017a610",
+  "class": "oCFloatArrayShaderParam",
+  "uid": "0x27ef805",
+  "size": "0x40",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14018ae40",
+  "class": "oCFloatInterval",
+  "uid": "0x4de8660",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_1406bc0d0",
+  "class": "oCFloatNoiseMethodCineBloc",
+  "uid": "0x726b24a",
+  "size": "0xd8",
+  "factory": "FUN_1406b9160"
+ },
+ {
+  "fn": "FUN_1401889e0",
+  "class": "oCFloatPerformanceProfileValue",
+  "uid": "0x138e5454",
+  "size": "0x48",
+  "factory": "FUN_1404e3d50"
+ },
+ {
+  "fn": "FUN_14064ec80",
+  "class": "oCFovCameraModifier",
+  "uid": "0x118059e5",
+  "size": "0x38",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1404f9be0",
+  "class": "oCFuncValuesUiAccess",
+  "uid": "0x80000014",
+  "size": "0x10",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140457650",
+  "class": "oCGameCallSignal",
+  "uid": "0x80000010",
+  "size": "0x18",
+  "factory": "FUN_14044c5e0"
+ },
+ {
+  "fn": "FUN_1402f85b0",
+  "class": "oCGameEventGainIngredient",
+  "uid": "0x1bd53a47",
+  "size": "0x58",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1401918d0",
+  "class": "oCGameEventListener",
+  "uid": "0x129e5ba2",
+  "size": "0x68",
+  "factory": "FUN_14067cba0"
+ },
+ {
+  "fn": "FUN_14030fa80",
+  "class": "oCGameEventMaxHitPointModification",
+  "uid": "0x194f3a65",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1401827c0",
+  "class": "oCGameLevel",
+  "uid": "0x8000000b",
+  "size": "0x90",
+  "factory": "FUN_1404620a0"
+ },
+ {
+  "fn": "FUN_1404732c0",
+  "class": "oCGameLevelDatabase",
+  "uid": "0x64a9acd",
+  "size": "0x20",
+  "factory": "FUN_1404619b0"
+ },
+ {
+  "fn": "FUN_140178590",
+  "class": "oCGameNamedEvent",
+  "uid": "0x194f392e",
+  "size": "0x38",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14071a460",
+  "class": "oCGameNamedEventAttachmentChange",
+  "uid": "0x194f3a93",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140227970",
+  "class": "oCGameNamedEventNetwork",
+  "uid": "0x194f39a0",
+  "size": "0x50",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140227b40",
+  "class": "oCGameNamedEventNetworkDamage",
+  "uid": "0x194f3a71",
+  "size": "0x110",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140227d10",
+  "class": "oCGameNamedEventNetworkDamageResponse",
+  "uid": "0x194f3a73",
+  "size": "0x110",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140221a50",
+  "class": "oCGameObject",
+  "uid": "0x8000000c",
+  "size": null,
+  "factory": "FUN_14045e2e0"
+ },
+ {
+  "fn": "FUN_140456f40",
+  "class": "oCGameProbe",
+  "uid": "0x8000000b",
+  "size": "0x20",
+  "factory": "FUN_14044c0c0"
+ },
+ {
+  "fn": "FUN_140186570",
+  "class": "oCGameScene",
+  "uid": "0x1563f91",
+  "size": "0x6b0",
+  "factory": "FUN_1404634c0"
+ },
+ {
+  "fn": "FUN_140182d30",
+  "class": "oCGameStream",
+  "uid": "0x14c31bf",
+  "size": "0xa0",
+  "factory": "FUN_1404663a0"
+ },
+ {
+  "fn": "FUN_140183c50",
+  "class": "oCGameUiApplicationSettingsSection",
+  "uid": "0x161c059f",
+  "size": "0x40",
+  "factory": "FUN_14046b850"
+ },
+ {
+  "fn": "FUN_140183a60",
+  "class": "oCGameUiLayerDesc",
+  "uid": "0x161ceffe",
+  "size": "0x50",
+  "factory": "FUN_14046b620"
+ },
+ {
+  "fn": "FUN_1401832a0",
+  "class": "oCGameUiLayerPicker",
+  "uid": "0x280058cc",
+  "size": "0x18",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402bfa20",
+  "class": "oCGenPbrDirLightTypeMaterial",
+  "uid": "0x1095fc7d",
+  "size": "0xa0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14018ea30",
+  "class": "oCGlobalEntityValueSceneContext",
+  "uid": "0x136edb18",
+  "size": "0x120",
+  "factory": "FUN_1406e88c0"
+ },
+ {
+  "fn": "FUN_140227ee0",
+  "class": "oCGlobalEntityValueSettings",
+  "uid": "0x17929af2",
+  "size": "0xc0",
+  "factory": "FUN_1406c6550"
+ },
+ {
+  "fn": "FUN_140221880",
+  "class": "oCGoComponent",
+  "uid": "0x3aad34",
+  "size": "0x40",
+  "factory": "FUN_140460ba0"
+ },
+ {
+  "fn": "FUN_1401825f0",
+  "class": "oCGoGraph",
+  "uid": "0x80000009",
+  "size": "0xa0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140226980",
+  "class": "oCGpnApplicationSettingsSection",
+  "uid": "0x178aa913",
+  "size": "0x20",
+  "factory": "FUN_1406c5240"
+ },
+ {
+  "fn": "FUN_14022fa50",
+  "class": "oCGpnFilter",
+  "uid": "0x10949c0a",
+  "size": "0x50",
+  "factory": "FUN_1406e8110"
+ },
+ {
+  "fn": "FUN_14022f4a0",
+  "class": "oCGpnIdPicker",
+  "uid": "0xfe0f56e",
+  "size": "0x18",
+  "factory": "FUN_1406e77d0"
+ },
+ {
+  "fn": "FUN_14022f690",
+  "class": "oCGpnSceneContext",
+  "uid": "0xfb6d509",
+  "size": "0xd0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140473680",
+  "class": "oCGraphic3dObject",
+  "uid": "0x80000011",
+  "size": "0x110",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1406452b0",
+  "class": "oCGraphicInstance3dObject",
+  "uid": "0x12cb83e2",
+  "size": "0x1b0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14066d010",
+  "class": "oCInputApplicationSettingsSection",
+  "uid": "0x1da093",
+  "size": "0x18",
+  "factory": "FUN_140669010"
+ },
+ {
+  "fn": "FUN_140178230",
+  "class": "oCInt2",
+  "uid": "0x1cbad4",
+  "size": null,
+  "factory": "FUN_14049f6e0"
+ },
+ {
+  "fn": "FUN_14017abe0",
+  "class": "oCIntArrayShaderParam",
+  "uid": "0x27efa6f",
+  "size": "0x40",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140188bd0",
+  "class": "oCIntPerformanceProfileValue",
+  "uid": "0x138e5456",
+  "size": "0x48",
+  "factory": "FUN_1404e3d80"
+ },
+ {
+  "fn": "FUN_14017a800",
+  "class": "oCIntShaderParam",
+  "uid": "0x80000010",
+  "size": "0x30",
+  "factory": "FUN_1405ccf30"
+ },
+ {
+  "fn": "FUN_140224b80",
+  "class": "oCLastHitDamageEntityCollectorSettings",
+  "uid": "0x1ab71ba2",
+  "size": "0xd0",
+  "factory": "FUN_1406da870"
+ },
+ {
+  "fn": "FUN_140187880",
+  "class": "oCLightHarvester",
+  "uid": "0x141e4a2a",
+  "size": "0x17080",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1404c21b0",
+  "class": "oCLine3d",
+  "uid": "0x2442c7",
+  "size": "0x20",
+  "factory": "FUN_1404a7be0"
+ },
+ {
+  "fn": "FUN_14064d500",
+  "class": "oCLiveStatFloat",
+  "uid": "0x8f59298",
+  "size": "0x38",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14064d6d0",
+  "class": "oCLiveStatUInt",
+  "uid": "0x8f59294",
+  "size": "0x38",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140493f70",
+  "class": "oCLocalMasteringOption",
+  "uid": "0x15331aaa",
+  "size": "0x70",
+  "factory": "FUN_140481010"
+ },
+ {
+  "fn": "FUN_140178ce0",
+  "class": "oCLocalText",
+  "uid": "0x14ff225",
+  "size": "0xb0",
+  "factory": "FUN_140671450"
+ },
+ {
+  "fn": "FUN_1405f6d30",
+  "class": "oCLogImageProcessor",
+  "uid": "0xcfa26af",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_140645110",
+  "class": "oCManualMesh",
+  "uid": "0xc61c713",
+  "size": "0x48",
+  "factory": "FUN_140639f00"
+ },
+ {
+  "fn": "FUN_140452890",
+  "class": "oCMasteringConfig",
+  "uid": "0x132cc5fa",
+  "size": "0x118",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1404526a0",
+  "class": "oCMasteringOptions",
+  "uid": "0x130c1ce3",
+  "size": "0x58",
+  "factory": "FUN_140483260"
+ },
+ {
+  "fn": "FUN_14069f4d0",
+  "class": "oCMaterialDef",
+  "uid": "0x40e5276",
+  "size": "0xe8",
+  "factory": "FUN_140694f80"
+ },
+ {
+  "fn": "FUN_14069dfd0",
+  "class": "oCMaterialDefParam",
+  "uid": "0x4180bda",
+  "size": "0x28",
+  "factory": "FUN_1406940d0"
+ },
+ {
+  "fn": "FUN_14069e380",
+  "class": "oCMaterialDefParamBool",
+  "uid": "0x11032629",
+  "size": "0x30",
+  "factory": "FUN_140694360"
+ },
+ {
+  "fn": "FUN_14069ef20",
+  "class": "oCMaterialDefParamColor",
+  "uid": "0x518c620",
+  "size": "0x38",
+  "factory": "FUN_140694b10"
+ },
+ {
+  "fn": "FUN_14069e190",
+  "class": "oCMaterialDefParamFloat",
+  "uid": "0x418a240",
+  "size": "0x30",
+  "factory": "FUN_1406942e0"
+ },
+ {
+  "fn": "FUN_14069e760",
+  "class": "oCMaterialDefParamFloat2",
+  "uid": "0x418a536",
+  "size": "0x30",
+  "factory": "FUN_140694460"
+ },
+ {
+  "fn": "FUN_14069e950",
+  "class": "oCMaterialDefParamFloat3",
+  "uid": "0x41880e3",
+  "size": "0x38",
+  "factory": "FUN_1406945f0"
+ },
+ {
+  "fn": "FUN_14069e570",
+  "class": "oCMaterialDefParamInt",
+  "uid": "0x1103278e",
+  "size": "0x30",
+  "factory": "FUN_1406943e0"
+ },
+ {
+  "fn": "FUN_14069f110",
+  "class": "oCMaterialDefParamList",
+  "uid": "0xc8dbcab",
+  "size": "0x28",
+  "factory": "FUN_140694ca0"
+ },
+ {
+  "fn": "FUN_14069eb40",
+  "class": "oCMaterialDefParamMatrix4",
+  "uid": "0xc8ed5d5",
+  "size": "0x70",
+  "factory": "FUN_1406947a0"
+ },
+ {
+  "fn": "FUN_14069ed30",
+  "class": "oCMaterialDefParamTexture",
+  "uid": "0x4838d03",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140187a40",
+  "class": "oCMaterialOverride",
+  "uid": "0x2648b2f",
+  "size": "0x98",
+  "factory": "FUN_140635990"
+ },
+ {
+  "fn": "FUN_14017bb60",
+  "class": "oCMatrix4ArrayShaderParam",
+  "uid": "0x27efafb",
+  "size": "0x40",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017b970",
+  "class": "oCMatrix4ShaderParam",
+  "uid": "0x263b91b",
+  "size": "0x70",
+  "factory": "FUN_1405cd280"
+ },
+ {
+  "fn": "FUN_1405f6f00",
+  "class": "oCMaxSizeImageProcessor",
+  "uid": "0xd146a4c",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c2540",
+  "class": "oCMesh3dShape",
+  "uid": "0x8000000d",
+  "size": "0xd0",
+  "factory": "FUN_1404c7320"
+ },
+ {
+  "fn": "FUN_140229230",
+  "class": "oCModifierApplicationSettingsSection",
+  "uid": "0x178bf505",
+  "size": "0x70",
+  "factory": "FUN_1406c5790"
+ },
+ {
+  "fn": "FUN_140474330",
+  "class": "oCMonoStateSaveEntryItem",
+  "uid": "0x6b4678f",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140472a40",
+  "class": "oCMonoStateStoreGoEntry",
+  "uid": "0x6b438ea",
+  "size": "0x70",
+  "factory": "FUN_140477560"
+ },
+ {
+  "fn": "FUN_140479280",
+  "class": "oCMultiStateSaveEntry",
+  "uid": "0x6add675",
+  "size": "0x78",
+  "factory": "FUN_1404762d0"
+ },
+ {
+  "fn": "FUN_1404734b0",
+  "class": "oCMultiStateStoreGo",
+  "uid": "0x6ad6c2b",
+  "size": "0x118",
+  "factory": "FUN_140477150"
+ },
+ {
+  "fn": "FUN_1402c7320",
+  "class": "oCNamedEventGainHealth",
+  "uid": "0x194f3a9e",
+  "size": "0x58",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14022fe10",
+  "class": "oCNamedEventNetworkWithCpntId",
+  "uid": "0x1981609c",
+  "size": "0x58",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14022fc40",
+  "class": "oCNamedEventNetworkWithData",
+  "uid": "0x194f3aaa",
+  "size": "0x70",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14064e370",
+  "class": "oCNearFarCameraModifier",
+  "uid": "0xa5013b5",
+  "size": "0x38",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14064dfb0",
+  "class": "oCNoiseCameraModifier",
+  "uid": "0x69bfe4e",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1401859d0",
+  "class": "oCOBox3",
+  "uid": "0x820ae2f",
+  "size": "0x60",
+  "factory": "FUN_1404a99c0"
+ },
+ {
+  "fn": "FUN_1404c34b0",
+  "class": "oCOExtentUnion",
+  "uid": "0x8000000e",
+  "size": "0x70",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140184fd0",
+  "class": "oCObjectFlagSet",
+  "uid": "0x14f4e4e4",
+  "size": "0x10",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140184de0",
+  "class": "oCObjectFlagsMgr",
+  "uid": "0x143c533a",
+  "size": "0xc18",
+  "factory": "FUN_1406546c0"
+ },
+ {
+  "fn": "FUN_1405f72a0",
+  "class": "oCOpacifyImageProcessor",
+  "uid": "0xd148d78",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_140223680",
+  "class": "oCOwnerEntityCollectorSettings",
+  "uid": "0x13262c93",
+  "size": "0x118",
+  "factory": "FUN_1406d9260"
+ },
+ {
+  "fn": "FUN_14064e8e0",
+  "class": "oCPanToLookAtCameraModifier",
+  "uid": "0x6e22f0f",
+  "size": "0x40",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14018a940",
+  "class": "oCPartHolder3dObject",
+  "uid": "0x780088",
+  "size": "0x88",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140187be0",
+  "class": "oCParticleTank",
+  "uid": "0x8000000e",
+  "size": "0xe8",
+  "factory": "FUN_140596720"
+ },
+ {
+  "fn": "FUN_140682aa0",
+  "class": "oCPerformanceProfileSelector",
+  "uid": "0x101872d7",
+  "size": "0x10",
+  "factory": "FUN_140677f70"
+ },
+ {
+  "fn": "FUN_1406c28a0",
+  "class": "oCPhysicFlagsApplicationSettingsSection",
+  "uid": "0x15516f7c",
+  "size": "0xa28",
+  "factory": "FUN_1406bfff0"
+ },
+ {
+  "fn": "FUN_1406b74a0",
+  "class": "oCPhysicTerrainGenerator",
+  "uid": "0x1610a461",
+  "size": "0x170",
+  "factory": "FUN_1406b0dd0"
+ },
+ {
+  "fn": "FUN_1406b72f0",
+  "class": "oCPhysicTerrainTile",
+  "uid": "0x1610a45e",
+  "size": "0x48",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c2920",
+  "class": "oCPhysicUserFlagSet",
+  "uid": "0x14f64b10",
+  "size": "0x10",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1406bca10",
+  "class": "oCPictureCineBlocFadeOut",
+  "uid": "0x6a2ca1f",
+  "size": "0xc0",
+  "factory": "FUN_1406bacc0"
+ },
+ {
+  "fn": "FUN_1406bcc00",
+  "class": "oCPictureCineBlocFadeOutIn",
+  "uid": "0x12113d13",
+  "size": null,
+  "factory": "FUN_1406baf20"
+ },
+ {
+  "fn": "FUN_1405d2360",
+  "class": "oCPixelShaderFxGraph",
+  "uid": "0x80000014",
+  "size": "0xb8",
+  "factory": "FUN_1405c2960"
+ },
+ {
+  "fn": "FUN_1402222f0",
+  "class": "oCPosRotGo",
+  "uid": "0x53bfee",
+  "size": "0xf8",
+  "factory": "FUN_140696bf0"
+ },
+ {
+  "fn": "FUN_14064e1a0",
+  "class": "oCPositionCameraModifier",
+  "uid": "0x6e6646f",
+  "size": "0x58",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d2190",
+  "class": "oCPostFxGraph",
+  "uid": "0x8000000d",
+  "size": "0xa0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c0e90",
+  "class": "oCPostFxRenderLayer",
+  "uid": "0x4827aa7",
+  "size": "0x480",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1406c2c80",
+  "class": "oCPreset",
+  "uid": "0x15518d73",
+  "size": "0x30",
+  "factory": "FUN_1406bff30"
+ },
+ {
+  "fn": "FUN_1404a35a0",
+  "class": "oCRVOSettings",
+  "uid": "0xcb3db5c",
+  "size": "0x30",
+  "factory": "FUN_14049ee50"
+ },
+ {
+  "fn": "FUN_140188fb0",
+  "class": "oCRenderApplicationSettingsSection",
+  "uid": "0x1da09e",
+  "size": "0x208",
+  "factory": "FUN_1405b7460"
+ },
+ {
+  "fn": "FUN_1401884a0",
+  "class": "oCRenderPipeline",
+  "uid": "0x13fbfa12",
+  "size": "0x198",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1403116c0",
+  "class": "oCResourceDbInfo",
+  "uid": "0x1123463f",
+  "size": "0x48",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140176ef0",
+  "class": "oCResourceRef",
+  "uid": "0x66e85b",
+  "size": "0x30",
+  "factory": "FUN_14047d9b0"
+ },
+ {
+  "fn": "FUN_14022ae80",
+  "class": "oCSLNetP2PSessionSceneContext",
+  "uid": "0x1549b781",
+  "size": "0x260",
+  "factory": "FUN_140896040"
+ },
+ {
+  "fn": "FUN_1408a58f0",
+  "class": "oCSLNetReplicationManagerSceneContext",
+  "uid": "0x154da4d3",
+  "size": "0x250",
+  "factory": "FUN_14089bfb0"
+ },
+ {
+  "fn": "FUN_14069ff80",
+  "class": "oCScheduledVfxParam",
+  "uid": "0x123fab2e",
+  "size": "0x80",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1406a0110",
+  "class": "oCScheduledVfxSettings",
+  "uid": "0x52992b",
+  "size": "0x180",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140223300",
+  "class": "oCSelfEntityCollectorSettings",
+  "uid": "0x12d209be",
+  "size": "0x90",
+  "factory": "FUN_1406d9070"
+ },
+ {
+  "fn": "FUN_1404574b0",
+  "class": "oCSerializableCallSignal0",
+  "uid": "0x80000019",
+  "size": "0x18",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1401797a0",
+  "class": "oCShader2",
+  "uid": "0x26382ac",
+  "size": "0xa0",
+  "factory": "FUN_1405cbf40"
+ },
+ {
+  "fn": "FUN_1401795b0",
+  "class": "oCShader2Reflection",
+  "uid": "0x16ede927",
+  "size": "0x20",
+  "factory": "FUN_1405cbe10"
+ },
+ {
+  "fn": "FUN_1405d63b0",
+  "class": "oCShaderGraphNodeAddColor",
+  "uid": "0x80000019",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d5c70",
+  "class": "oCShaderGraphNodeAddFloat",
+  "uid": "0x80000019",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d5aa0",
+  "class": "oCShaderGraphNodeAddFloat2",
+  "uid": "0x8000001a",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d3f70",
+  "class": "oCShaderGraphNodeBlackWhite",
+  "uid": "0x8000001b",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d3890",
+  "class": "oCShaderGraphNodeColorOp",
+  "uid": "0x80000018",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d3a30",
+  "class": "oCShaderGraphNodeColorOp2",
+  "uid": "0x80000019",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d4880",
+  "class": "oCShaderGraphNodeColor_RGBA",
+  "uid": "0x8000001b",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d3da0",
+  "class": "oCShaderGraphNodeContrast",
+  "uid": "0x80000019",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d3380",
+  "class": "oCShaderGraphNodeFloat2Op",
+  "uid": "0x80000019",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d36f0",
+  "class": "oCShaderGraphNodeFloat2Op2",
+  "uid": "0x8000001a",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d46b0",
+  "class": "oCShaderGraphNodeFloat2_XY",
+  "uid": "0x8000001a",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d44e0",
+  "class": "oCShaderGraphNodeFloat3_XYZ",
+  "uid": "0x8000001b",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d2e40",
+  "class": "oCShaderGraphNodeFloatClamp",
+  "uid": "0x8000001b",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d2c70",
+  "class": "oCShaderGraphNodeFloatConstant",
+  "uid": "0x8000001e",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d2ad0",
+  "class": "oCShaderGraphNodeFloatOp",
+  "uid": "0x80000018",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d31e0",
+  "class": "oCShaderGraphNodeFloatOp2",
+  "uid": "0x80000019",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d3010",
+  "class": "oCShaderGraphNodeFloatZBuff",
+  "uid": "0x8000001b",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d5360",
+  "class": "oCShaderGraphNodeIfFloatLower",
+  "uid": "0x5137c82",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d3bd0",
+  "class": "oCShaderGraphNodeInverse",
+  "uid": "0x80000018",
+  "size": "0xa8",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d61e0",
+  "class": "oCShaderGraphNodeMixColor",
+  "uid": "0x80000019",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d6010",
+  "class": "oCShaderGraphNodeMultiplyColor",
+  "uid": "0x8000001e",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d5190",
+  "class": "oCShaderGraphNodeMultiplyFloat",
+  "uid": "0x8000001e",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d5530",
+  "class": "oCShaderGraphNodeMultiplyFloat2",
+  "uid": "0x8000001f",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d4a50",
+  "class": "oCShaderGraphNodeRGBA_Color",
+  "uid": "0x8000001b",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d5700",
+  "class": "oCShaderGraphNodeRotateFloat2",
+  "uid": "0x8000001d",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d4fc0",
+  "class": "oCShaderGraphNodeSinFloat",
+  "uid": "0x80000019",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d3520",
+  "class": "oCShaderGraphNodeSphericalUv",
+  "uid": "0x51d1571",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d5e40",
+  "class": "oCShaderGraphNodeSubFloat",
+  "uid": "0x80000019",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d4140",
+  "class": "oCShaderGraphNodeTexPixel",
+  "uid": "0x80000019",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d4c20",
+  "class": "oCShaderGraphNodeXYZ_Float3",
+  "uid": "0x8000001b",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d4df0",
+  "class": "oCShaderGraphNodeXY_Float2",
+  "uid": "0x8000001a",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d4310",
+  "class": "oCShaderGraphNodeZTexPixel",
+  "uid": "0x8000001a",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d58d0",
+  "class": "oCShaderGraphNodeZoomFloat2",
+  "uid": "0x8000001b",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140181eb0",
+  "class": "oCShaderGraphPlugCubeMapTexture",
+  "uid": "0xcb8fcd3",
+  "size": "0x40",
+  "factory": "FUN_1405ca940"
+ },
+ {
+  "fn": "FUN_140181cc0",
+  "class": "oCShaderGraphPlugShadowTexture",
+  "uid": "0x13a797a5",
+  "size": "0x40",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140181ad0",
+  "class": "oCShaderGraphPlugTexture",
+  "uid": "0x80000018",
+  "size": "0x40",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017c130",
+  "class": "oCShaderParamBlocDef",
+  "uid": "0xdcdd9f5",
+  "size": "0x58",
+  "factory": "FUN_1405ce1f0"
+ },
+ {
+  "fn": "FUN_140179b40",
+  "class": "oCShaderParamSet",
+  "uid": "0x2630f82",
+  "size": "0x28",
+  "factory": "FUN_1405cd9d0"
+ },
+ {
+  "fn": "FUN_1405f7bb0",
+  "class": "oCShadowRenderSettings",
+  "uid": "0x10be6c58",
+  "size": "0x18",
+  "factory": "FUN_1405f2e00"
+ },
+ {
+  "fn": "FUN_1405f70d0",
+  "class": "oCSizeFactorImageProcessor",
+  "uid": "0x1413bd59",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_1404c3fe0",
+  "class": "oCSkinning16VertexLayer",
+  "uid": "0x1354daf6",
+  "size": "0x28",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1404c3df0",
+  "class": "oCSkinning8VertexLayer",
+  "uid": "0xd3f7f9f",
+  "size": "0x30",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140452a50",
+  "class": "oCSkuFiltering",
+  "uid": "0x132e01cb",
+  "size": "0x40",
+  "factory": "FUN_140483d00"
+ },
+ {
+  "fn": "FUN_1404524b0",
+  "class": "oCSkuGroup",
+  "uid": "0x130c1029",
+  "size": "0x20",
+  "factory": "FUN_140481850"
+ },
+ {
+  "fn": "FUN_14047ca10",
+  "class": "oCSound",
+  "uid": "0x80000007",
+  "size": "0x78",
+  "factory": "FUN_14047c300"
+ },
+ {
+  "fn": "FUN_14017fc70",
+  "class": "oCSpawnData",
+  "uid": "0xc3a5fad",
+  "size": "0x10",
+  "factory": "FUN_140678590"
+ },
+ {
+  "fn": "FUN_14017fe40",
+  "class": "oCSpawnable",
+  "uid": "0xc3a5faa",
+  "size": "0x68",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017f910",
+  "class": "oCSpawnablePool",
+  "uid": "0x17bbd6cf",
+  "size": "0x48",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017faa0",
+  "class": "oCSpawnableSettings",
+  "uid": "0xc3a5fb0",
+  "size": "0x60",
+  "factory": "FUN_1406783b0"
+ },
+ {
+  "fn": "FUN_140224100",
+  "class": "oCSpawnedEntityCollectorSettings",
+  "uid": "0x1326629a",
+  "size": "0xd0",
+  "factory": "FUN_1406d9dd0"
+ },
+ {
+  "fn": "FUN_14017ffd0",
+  "class": "oCSpawner",
+  "uid": "0xc3baa69",
+  "size": "0x58",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140224480",
+  "class": "oCSpawnerGoEntityCollectorSettings",
+  "uid": "0x16494786",
+  "size": "0xe0",
+  "factory": "FUN_1406da0a0"
+ },
+ {
+  "fn": "FUN_1406e1f80",
+  "class": "oCSpawnerGoEntityRetriever",
+  "uid": "0x12bf9d1f",
+  "size": "0x70",
+  "factory": "FUN_1406d8100"
+ },
+ {
+  "fn": "FUN_1402c2730",
+  "class": "oCSphere3dShape",
+  "uid": "0x8000000f",
+  "size": "0x90",
+  "factory": "FUN_1404c8980"
+ },
+ {
+  "fn": "FUN_1404533d0",
+  "class": "oCSpherical",
+  "uid": "0x1cbadd",
+  "size": "0xc",
+  "factory": "FUN_14049fa50"
+ },
+ {
+  "fn": "FUN_1405f7470",
+  "class": "oCSplitAlphaChannelYImageProcessor",
+  "uid": "0xde1e15f",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_1401891a0",
+  "class": "oCSsaoRenderBlocSettings",
+  "uid": "0xf4d9174",
+  "size": "0x48",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140479640",
+  "class": "oCStateApplyTarget",
+  "uid": "0x6ad75a5",
+  "size": "0x68",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140457810",
+  "class": "oCStateSave",
+  "uid": "0x6adca68",
+  "size": "0x40",
+  "factory": "FUN_1404764e0"
+ },
+ {
+  "fn": "FUN_140885d80",
+  "class": "oCStaticWallGo",
+  "uid": "0x1176175c",
+  "size": "0x148",
+  "factory": "FUN_1408811e0"
+ },
+ {
+  "fn": "FUN_140683780",
+  "class": "oCStatisticsCollection",
+  "uid": "0x13195135",
+  "size": "0x30",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140683590",
+  "class": "oCStatisticsSample",
+  "uid": "0x1503d56c",
+  "size": "0xc0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1404a33b0",
+  "class": "oCSteeringAngleSettings",
+  "uid": "0xc3baab4",
+  "size": "0x20",
+  "factory": "FUN_14049de90"
+ },
+ {
+  "fn": "FUN_1404a31c0",
+  "class": "oCSteeringDef",
+  "uid": "0xc3a8fa9",
+  "size": "0x18",
+  "factory": "FUN_14049db40"
+ },
+ {
+  "fn": "FUN_140195cf0",
+  "class": "oCStormancerSceneContext",
+  "uid": "0x15e28d03",
+  "size": "0x2c8",
+  "factory": "FUN_1408f1540"
+ },
+ {
+  "fn": "FUN_1405f7640",
+  "class": "oCStretchSqPow2ImageProcessor",
+  "uid": "0xd148d79",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_140230c30",
+  "class": "oCStringFormatEntryListener",
+  "uid": "0x137fe0f6",
+  "size": "0x20",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140230a40",
+  "class": "oCStringFormatEntryPicker",
+  "uid": "0x137fdee7",
+  "size": "0x90",
+  "factory": "FUN_140747840"
+ },
+ {
+  "fn": "FUN_1406828b0",
+  "class": "oCTerrainApplicationSettingsSection",
+  "uid": "0x1646c808",
+  "size": "0x28",
+  "factory": "FUN_140677e20"
+ },
+ {
+  "fn": "FUN_1404a27b0",
+  "class": "oCTerrainBrush",
+  "uid": "0x15ea70bd",
+  "size": "0x60",
+  "factory": "FUN_14049ae80"
+ },
+ {
+  "fn": "FUN_1406fe130",
+  "class": "oCTerrainEntitySpawnerTile",
+  "uid": "0x164ac34a",
+  "size": "0xd0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14022e1c0",
+  "class": "oCTerrainGo",
+  "uid": "0x15e3926e",
+  "size": "0x200",
+  "factory": "FUN_140690d40"
+ },
+ {
+  "fn": "FUN_1406b6d60",
+  "class": "oCTerrainMeshTextureShaderParam",
+  "uid": "0x1600da21",
+  "size": "0x1e8",
+  "factory": "FUN_1406ac650"
+ },
+ {
+  "fn": "FUN_1406b6f50",
+  "class": "oCTerrainMeshTile",
+  "uid": "0x15fcb79a",
+  "size": "0x220",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14022e6f0",
+  "class": "oCTerrainSceneContext",
+  "uid": "0x15ea850d",
+  "size": "0x148",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1406826c0",
+  "class": "oCTerrainSubLayerDesc",
+  "uid": "0x1647a936",
+  "size": "0x28",
+  "factory": "FUN_140677cd0"
+ },
+ {
+  "fn": "FUN_14069d890",
+  "class": "oCTerrainValueOutput",
+  "uid": "0x17003e13",
+  "size": "0x88",
+  "factory": "FUN_1406b20e0"
+ },
+ {
+  "fn": "FUN_14075ad70",
+  "class": "oCTerrainValueReaderEntityCpntSettings",
+  "uid": "0x16c79fa1",
+  "size": "0x110",
+  "factory": "FUN_1407468c0"
+ },
+ {
+  "fn": "FUN_14017a250",
+  "class": "oCTexture",
+  "uid": "0x80000009",
+  "size": "0xf0",
+  "factory": "FUN_140635dd0"
+ },
+ {
+  "fn": "FUN_14017bf40",
+  "class": "oCTextureArrayShaderParam",
+  "uid": "0x27efb2b",
+  "size": "0x40",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017bd50",
+  "class": "oCTextureShaderParam",
+  "uid": "0x26349d7",
+  "size": "0x30",
+  "factory": "FUN_1405cd380"
+ },
+ {
+  "fn": "FUN_1404553f0",
+  "class": "oCTrailGraphic3dObject",
+  "uid": "0x80000016",
+  "size": "0x138",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140455070",
+  "class": "oCTrailTank",
+  "uid": "0x8000000b",
+  "size": "0x98",
+  "factory": "FUN_140583860"
+ },
+ {
+  "fn": "FUN_14064e540",
+  "class": "oCTransformCameraModifier",
+  "uid": "0x10943afd",
+  "size": "0x50",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1404c1e40",
+  "class": "oCTruncatedCone",
+  "uid": "0x10dfbb1d",
+  "size": "0x30",
+  "factory": "FUN_1404a6f60"
+ },
+ {
+  "fn": "FUN_140237d50",
+  "class": "oCType",
+  "uid": "0x176f4fdc",
+  "size": "0x20",
+  "factory": "FUN_140319e00"
+ },
+ {
+  "fn": "FUN_140363b00",
+  "class": "oCUIButton",
+  "uid": "0x8000000a",
+  "size": "0x360",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140566f60",
+  "class": "oCUICircularGaugeDesc",
+  "uid": "0xcea0090",
+  "size": "0x140",
+  "factory": "FUN_1405615a0"
+ },
+ {
+  "fn": "FUN_1402c13c0",
+  "class": "oCUICommandBar",
+  "uid": "0x1a6b009",
+  "size": "0x48",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c0940",
+  "class": "oCUIDesktop",
+  "uid": "0x221a128",
+  "size": "0x3c8",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14056b3f0",
+  "class": "oCUIDockTabWindow",
+  "uid": "0x5adbb69",
+  "size": "0x360",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140406bd0",
+  "class": "oCUIEdit",
+  "uid": "0x80000008",
+  "size": "0x380",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1404067f0",
+  "class": "oCUIEditDesc",
+  "uid": "0x15fc934f",
+  "size": "0x138",
+  "factory": "FUN_14068f0a0"
+ },
+ {
+  "fn": "FUN_14027beb0",
+  "class": "oCUIGameButton",
+  "uid": "0xf447cac",
+  "size": "0x680",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14027bcc0",
+  "class": "oCUIGameButtonStateAnim",
+  "uid": "0xf447ca7",
+  "size": "0x20",
+  "factory": "FUN_140686ea0"
+ },
+ {
+  "fn": "FUN_140361780",
+  "class": "oCUIGameButtonStyle",
+  "uid": "0xf447cc0",
+  "size": "0x328",
+  "factory": "FUN_14068aa30"
+ },
+ {
+  "fn": "FUN_14043f160",
+  "class": "oCUIGameInputDisplay",
+  "uid": "0xeb48f44",
+  "size": "0x358",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140472850",
+  "class": "oCUIGameInputDisplayDesc",
+  "uid": "0xc69bf03",
+  "size": "0xe8",
+  "factory": "FUN_14045b410"
+ },
+ {
+  "fn": "FUN_140557f70",
+  "class": "oCUIGauge",
+  "uid": "0xc69bea5",
+  "size": "0x368",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140566d70",
+  "class": "oCUIGaugeDesc",
+  "uid": "0xc69bf08",
+  "size": "0x180",
+  "factory": "FUN_140560940"
+ },
+ {
+  "fn": "FUN_140183fe0",
+  "class": "oCUILayoutWindow",
+  "uid": "0x80000010",
+  "size": "0x310",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1401844f0",
+  "class": "oCUIPicture",
+  "uid": "0x8000000b",
+  "size": "0x360",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140556ca0",
+  "class": "oCUIPictureButton",
+  "uid": "0x80000011",
+  "size": "0x3b0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140409960",
+  "class": "oCUIScrollPanelDesc",
+  "uid": "0xc087c4",
+  "size": "0x240",
+  "factory": "FUN_1405622a0"
+ },
+ {
+  "fn": "FUN_1405355a0",
+  "class": "oCUISizeableWindow",
+  "uid": "0x5ad9459",
+  "size": "0x338",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140566b80",
+  "class": "oCUISplitPictureDesc",
+  "uid": "0xb662c43",
+  "size": "0x160",
+  "factory": "FUN_14055f3a0"
+ },
+ {
+  "fn": "FUN_140566990",
+  "class": "oCUISplitPictureStyle",
+  "uid": "0xb662c3a",
+  "size": "0xc0",
+  "factory": "FUN_14056e160"
+ },
+ {
+  "fn": "FUN_140183e40",
+  "class": "oCUIWindow",
+  "uid": "0x8000000a",
+  "size": "0x310",
+  "factory": "FUN_140536a90"
+ },
+ {
+  "fn": "FUN_1407838d0",
+  "class": "oCUIntLightWithDropDownPerformanceValue",
+  "uid": "0x10b99021",
+  "size": "0xe0",
+  "factory": "FUN_140773b30"
+ },
+ {
+  "fn": "FUN_140188dc0",
+  "class": "oCUIntPerformanceProfileValue",
+  "uid": "0x13144256",
+  "size": "0x48",
+  "factory": "FUN_1404e3db0"
+ },
+ {
+  "fn": "FUN_1404c2000",
+  "class": "oCUIntRect",
+  "uid": "0x8000000a",
+  "size": "0x10",
+  "factory": "FUN_1404a7420"
+ },
+ {
+  "fn": "FUN_140453eb0",
+  "class": "oCUiDockLayout",
+  "uid": "0x5adb963",
+  "size": "0x28",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140453b10",
+  "class": "oCUiDockLayoutDock",
+  "uid": "0x5adb962",
+  "size": "0x40",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14056fdf0",
+  "class": "oCUiInputPadTestWindow",
+  "uid": "0x80000016",
+  "size": "0x390",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017afc0",
+  "class": "oCVec2ArrayShaderParam",
+  "uid": "0x27efa91",
+  "size": "0x40",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017add0",
+  "class": "oCVec2ShaderParam",
+  "uid": "0x26465d7",
+  "size": "0x30",
+  "factory": "FUN_1405cd0b0"
+ },
+ {
+  "fn": "FUN_1404c3820",
+  "class": "oCVec2VertexLayer",
+  "uid": "0xd3e65b8",
+  "size": "0x30",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017b3a0",
+  "class": "oCVec3ArrayShaderParam",
+  "uid": "0x27efaa8",
+  "size": "0x40",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14018b180",
+  "class": "oCVec3Interval",
+  "uid": "0x10e76116",
+  "size": "0x18",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017b1b0",
+  "class": "oCVec3ShaderParam",
+  "uid": "0x80000011",
+  "size": "0x38",
+  "factory": "FUN_1405cd170"
+ },
+ {
+  "fn": "FUN_1404c3a10",
+  "class": "oCVec3VertexLayer",
+  "uid": "0xd43924b",
+  "size": "0x30",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140179ed0",
+  "class": "oCVec4",
+  "uid": "0x27efc2a",
+  "size": "0x10",
+  "factory": "FUN_1404a06d0"
+ },
+ {
+  "fn": "FUN_14017b780",
+  "class": "oCVec4ArrayShaderParam",
+  "uid": "0x27efade",
+  "size": "0x40",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017b590",
+  "class": "oCVec4ShaderParam",
+  "uid": "0x263bbd3",
+  "size": "0x38",
+  "factory": "FUN_1405cd230"
+ },
+ {
+  "fn": "FUN_1404c3c00",
+  "class": "oCVec4VertexLayer",
+  "uid": "0xd3e651b",
+  "size": "0x28",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405d2550",
+  "class": "oCVertexShaderFxGraph",
+  "uid": "0x523152e",
+  "size": "0xa0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140226790",
+  "class": "oCVfxControlCineBloc",
+  "uid": "0x79d2bb4",
+  "size": "0x60",
+  "factory": "FUN_14067b6a0"
+ },
+ {
+  "fn": "FUN_1406833a0",
+  "class": "oCVfxEventCineBloc",
+  "uid": "0x79d088c",
+  "size": "0x40",
+  "factory": "FUN_14067b8f0"
+ },
+ {
+  "fn": "FUN_14027a480",
+  "class": "oCVideo",
+  "uid": "0x192d152",
+  "size": "0x98",
+  "factory": "FUN_140a26cc0"
+ },
+ {
+  "fn": "FUN_140a26230",
+  "class": "oCVideoTestGo",
+  "uid": "0x7786d8e",
+  "size": "0x160",
+  "factory": "FUN_140a24ab0"
+ },
+ {
+  "fn": "FUN_14018a0b0",
+  "class": "oCViewRenderLayer",
+  "uid": "0x4827aae",
+  "size": "0x270",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14069fa60",
+  "class": "oCVisualEffectCameraShakeSetting",
+  "uid": "0x1079e1b8",
+  "size": "0x78",
+  "factory": "FUN_1406969f0"
+ },
+ {
+  "fn": "FUN_140591d40",
+  "class": "oCVisualEffectSettings",
+  "uid": "0x81d3e4d",
+  "size": "0x18",
+  "factory": "FUN_140585e20"
+ },
+ {
+  "fn": "FUN_140644f20",
+  "class": "oCWidthColorMeshSettings",
+  "uid": "0xc61c710",
+  "size": "0x20",
+  "factory": "FUN_140639da0"
+ },
+ {
+  "fn": "FUN_14018f3c0",
+  "class": "oCWindowIdentifierPicker",
+  "uid": "0x1716b59e",
+  "size": "0x20",
+  "factory": "FUN_1406db7e0"
+ },
+ {
+  "fn": "FUN_14064eab0",
+  "class": "oCZoomCameraModifier",
+  "uid": "0x115fa237",
+  "size": "0x38",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1401772b0",
+  "class": "oIAccess",
+  "uid": "0x1c5253",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_14064d8a0",
+  "class": "oIAchievedValue",
+  "uid": "0x8e01510",
+  "size": "0x80",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405b6250",
+  "class": "oIAnimNode",
+  "uid": "0x2f54a43",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_140183870",
+  "class": "oIApplicationSettingsSection",
+  "uid": "0x1da112",
+  "size": "0x10",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14021d8c0",
+  "class": "oIAudioModule",
+  "uid": "0x8000000d",
+  "size": "0xb0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14027a2c0",
+  "class": "oIAutoPopGs",
+  "uid": "0x844a271",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14018aff0",
+  "class": "oIAxisValueCompute",
+  "uid": "0x10e78db2",
+  "size": "0x10",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1404a3ad0",
+  "class": "oIBinarySerializationAccess",
+  "uid": "0x1c5258",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_140683fa0",
+  "class": "oICineBloc",
+  "uid": "0x1391cfc",
+  "size": "0x38",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1404f0330",
+  "class": "oICollection",
+  "uid": "0x66aadc",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_140177440",
+  "class": "oICollectionAccess",
+  "uid": "0x80000012",
+  "size": "0xa0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14058ecb0",
+  "class": "oIDefaultDeferredPBRLightTypeMaterial",
+  "uid": "0x130bdc2c",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1404c2a30",
+  "class": "oIDeleteAccess",
+  "uid": "0x2f4faf",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c1570",
+  "class": "oIDetourAreaMark",
+  "uid": "0x175ddbe7",
+  "size": "0x48",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1404c2550",
+  "class": "oIDraw3dAccess",
+  "uid": "0x2054ed",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_1403bf6e0",
+  "class": "oIDtEntityCpntAttack",
+  "uid": "0x10fcaa2e",
+  "size": "0xd0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1403bf520",
+  "class": "oIDtEntityCpntAttackSettings",
+  "uid": "0x10fcaa2c",
+  "size": "0x178",
+  "factory": "FUN_1403aeb20"
+ },
+ {
+  "fn": "FUN_1402beff0",
+  "class": "oIDtEntityCpntBookPageUiController",
+  "uid": "0x1768aac7",
+  "size": "0x180",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402bee30",
+  "class": "oIDtEntityCpntBookPageUiControllerSettings",
+  "uid": "0x1768a9fd",
+  "size": "0x138",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c00e0",
+  "class": "oIDtPbrLightTypeMaterial",
+  "uid": "0x10b97c87",
+  "size": "0x78",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1404c2890",
+  "class": "oIDuplicateAccess",
+  "uid": "0x2f48b4",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402265d0",
+  "class": "oIDurationCineBloc",
+  "uid": "0x1391cfd",
+  "size": "0x40",
+  "factory": "FUN_1406b8bf0"
+ },
+ {
+  "fn": "FUN_1406c1d40",
+  "class": "oIDynamicBody",
+  "uid": "0x142f67e",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1406c1ee0",
+  "class": "oIDynamicBox",
+  "uid": "0x142f67f",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1406c23c0",
+  "class": "oIDynamicCapsule",
+  "uid": "0x1522916",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1406c2560",
+  "class": "oIDynamicConvex",
+  "uid": "0x1652ae1",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1406c2220",
+  "class": "oIDynamicCylinder",
+  "uid": "0x1132b351",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1406c2080",
+  "class": "oIDynamicSphere",
+  "uid": "0x142f680",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140222fc0",
+  "class": "oIEntityCollector",
+  "uid": "0x12d201bb",
+  "size": "0x28",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140222e00",
+  "class": "oIEntityCollectorSettings",
+  "uid": "0x12cccf23",
+  "size": "0x90",
+  "factory": "FUN_1406d8e90"
+ },
+ {
+  "fn": "FUN_140186ad0",
+  "class": "oIEntityCpnt",
+  "uid": "0xc60832c",
+  "size": "0x68",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140186e20",
+  "class": "oIEntityCpnt3dNode",
+  "uid": "0x1af67a35",
+  "size": "0x68",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140186c60",
+  "class": "oIEntityCpnt3dNodeSettings",
+  "uid": "0x1af67a33",
+  "size": "0xf8",
+  "factory": "FUN_14076a4a0"
+ },
+ {
+  "fn": "FUN_140718b20",
+  "class": "oIEntityCpntAnimNode",
+  "uid": "0xfa98f67",
+  "size": "0xc0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140718960",
+  "class": "oIEntityCpntAnimNodeSettings",
+  "uid": "0xfa98f69",
+  "size": "0x1c8",
+  "factory": "FUN_14078a040"
+ },
+ {
+  "fn": "FUN_140719070",
+  "class": "oIEntityCpntAnimaticNode",
+  "uid": "0xfc1ad43",
+  "size": "0x1a0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140718eb0",
+  "class": "oIEntityCpntAnimaticNodeSettings",
+  "uid": "0xfc1ad3f",
+  "size": "0x2a0",
+  "factory": "FUN_14078a9c0"
+ },
+ {
+  "fn": "FUN_140783c80",
+  "class": "oIEntityCpntLight",
+  "uid": "0x10b99019",
+  "size": "0x260",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140783ac0",
+  "class": "oIEntityCpntLightSettings",
+  "uid": "0x10b99018",
+  "size": "0x1320",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402280b0",
+  "class": "oIEntityCpntNetworkData",
+  "uid": "0x181fe7b9",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_140186910",
+  "class": "oIEntityCpntSettings",
+  "uid": "0xc608329",
+  "size": "0xf8",
+  "factory": "FUN_1406f4840"
+ },
+ {
+  "fn": "FUN_140758640",
+  "class": "oIEntityCpntTestSettings",
+  "uid": "0x10c5058c",
+  "size": null,
+  "factory": "FUN_140761250"
+ },
+ {
+  "fn": "FUN_1402fa920",
+  "class": "oIEntityGpnTester",
+  "uid": "0x1843aaaf",
+  "size": "0x40",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402fa760",
+  "class": "oIEntityGpnTesterSettings",
+  "uid": "0x124b5e16",
+  "size": "0x108",
+  "factory": "FUN_140817950"
+ },
+ {
+  "fn": "FUN_1402fb020",
+  "class": "oIEntityGpnTraverserSettings",
+  "uid": "0x10999499",
+  "size": "0x950",
+  "factory": "FUN_1407a2c70"
+ },
+ {
+  "fn": "FUN_14017e3b0",
+  "class": "oIEntityModifier",
+  "uid": "0x105f8ae7",
+  "size": null,
+  "factory": "FUN_1406d4c10"
+ },
+ {
+  "fn": "FUN_14017e950",
+  "class": "oIEntityModifierComputer",
+  "uid": "0x11871f2f",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_140274890",
+  "class": "oIEntityModifierTarget",
+  "uid": "0x15a051d6",
+  "size": "0x28",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402746d0",
+  "class": "oIEntityModifierTargetSettings",
+  "uid": "0x15a051d4",
+  "size": "0x90",
+  "factory": "FUN_1406d7610"
+ },
+ {
+  "fn": "FUN_1406e1dc0",
+  "class": "oIEntityRetriever",
+  "uid": "0x12bf9be0",
+  "size": "0x20",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140234e70",
+  "class": "oIEntitySelectorToSpawnEntityCpnt",
+  "uid": "0x16ac2314",
+  "size": "0x68",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140234cd0",
+  "class": "oIEntitySelectorToSpawnEntityCpntSettings",
+  "uid": "0x16ac2313",
+  "size": "0xf8",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14017d3d0",
+  "class": "oIEntityValueModifierComputer",
+  "uid": "0x15a32b0c",
+  "size": "0x28",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140719cd0",
+  "class": "oIEntityWindowCineBloc",
+  "uid": "0x16baabc2",
+  "size": "0x98",
+  "factory": "FUN_140701670"
+ },
+ {
+  "fn": "FUN_1404fbb40",
+  "class": "oIEnumSuperType",
+  "uid": "0x8000000f",
+  "size": null,
+  "factory": "FUN_1404fb750"
+ },
+ {
+  "fn": "FUN_1405d2720",
+  "class": "oIFile2dGraphNode",
+  "uid": "0x526f56d",
+  "size": "0xa8",
+  "factory": "FUN_1405c8380"
+ },
+ {
+  "fn": "FUN_140184870",
+  "class": "oIFlagSet",
+  "uid": "0x110c833f",
+  "size": "0x10",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140184bf0",
+  "class": "oIFlagsMgr",
+  "uid": "0x143c422d",
+  "size": "0xc18",
+  "factory": "FUN_140651080"
+ },
+ {
+  "fn": "FUN_1406bbf10",
+  "class": "oIFloatRampCineBloc",
+  "uid": "0x726ad78",
+  "size": "0x88",
+  "factory": "FUN_1406b8cf0"
+ },
+ {
+  "fn": "FUN_1401952e0",
+  "class": "oIGame",
+  "uid": "0x80000006",
+  "size": "0x2f8",
+  "factory": "FUN_140440f00"
+ },
+ {
+  "fn": "FUN_140221500",
+  "class": "oIGameAtom",
+  "uid": "0x8000000a",
+  "size": "0x10",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402216c0",
+  "class": "oIGameObject",
+  "uid": "0x8000000c",
+  "size": "0x30",
+  "factory": "FUN_140654430"
+ },
+ {
+  "fn": "FUN_140193540",
+  "class": "oIGameProfile",
+  "uid": "0x17c4cd9c",
+  "size": "0x178",
+  "factory": "FUN_1406854c0"
+ },
+ {
+  "fn": "FUN_140192170",
+  "class": "oIGameProfileData",
+  "uid": "0x1326ac57",
+  "size": "0x30",
+  "factory": "FUN_140685bb0"
+ },
+ {
+  "fn": "FUN_140191fe0",
+  "class": "oIGameProfileDataOwner",
+  "uid": "0x17ccb44e",
+  "size": "0x28",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140180690",
+  "class": "oIGameScene",
+  "uid": "0x146fd51",
+  "size": "0x220",
+  "factory": "FUN_140653790"
+ },
+ {
+  "fn": "FUN_140180820",
+  "class": "oIGameSceneContext",
+  "uid": "0x3641989",
+  "size": "0x28",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140194910",
+  "class": "oIGameState",
+  "uid": "0x8000000b",
+  "size": "0x38",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140457130",
+  "class": "oIGameTest",
+  "uid": "0x8000000a",
+  "size": "0x20",
+  "factory": "FUN_14044c330"
+ },
+ {
+  "fn": "FUN_1402c4bc0",
+  "class": "oIGameUnlockConditionData",
+  "uid": "0x12aff2df",
+  "size": "0x28",
+  "factory": "FUN_14067f830"
+ },
+ {
+  "fn": "FUN_1402c4a00",
+  "class": "oIGameUnlockConditionSettings",
+  "uid": "0x128acb9c",
+  "size": "0x78",
+  "factory": "FUN_14067f670"
+ },
+ {
+  "fn": "FUN_1402c3e60",
+  "class": "oIGhostBox",
+  "uid": "0xfb7245f",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c4340",
+  "class": "oIGhostCapsule",
+  "uid": "0x10e281a3",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c41a0",
+  "class": "oIGhostCylinder",
+  "uid": "0xfb724b9",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c44e0",
+  "class": "oIGhostShapeList",
+  "uid": "0x108f3ae5",
+  "size": "0x68",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c4000",
+  "class": "oIGhostSphere",
+  "uid": "0xfb724a4",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140193e70",
+  "class": "oIGoPtr",
+  "uid": "0x22e97d6",
+  "size": "0x50",
+  "factory": "FUN_14044d6d0"
+ },
+ {
+  "fn": "FUN_140221340",
+  "class": "oIGoState",
+  "uid": "0x6ad6a40",
+  "size": null,
+  "factory": "FUN_140654630"
+ },
+ {
+  "fn": "FUN_1405f6ba0",
+  "class": "oIImageProcessor",
+  "uid": "0xcfa24d3",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402341a0",
+  "class": "oIImmaterialGo",
+  "uid": "0x53bfef",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402bf890",
+  "class": "oILightTypeMaterial",
+  "uid": "0x10877466",
+  "size": "0x58",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14064d360",
+  "class": "oILiveStatValue",
+  "uid": "0x8f5929d",
+  "size": "0x30",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140452c40",
+  "class": "oIMasteringAction",
+  "uid": "0x1324e528",
+  "size": "0x170",
+  "factory": "FUN_140485c10"
+ },
+ {
+  "fn": "FUN_1402fc1f0",
+  "class": "oIMemberNotificationAccess",
+  "uid": "0xd02d3d6",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_140279db0",
+  "class": "oIModal",
+  "uid": "0x17f81e20",
+  "size": "0x88",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14022e8c0",
+  "class": "oIModalSceneContext",
+  "uid": "0x17f82c26",
+  "size": "0x110",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140222130",
+  "class": "oIMove3dAccess",
+  "uid": "0x1c5256",
+  "size": null,
+  "factory": "FUN_14049a950"
+ },
+ {
+  "fn": "FUN_14022a5e0",
+  "class": "oINetworkP2PSessionSceneContext",
+  "uid": "0x1561364b",
+  "size": "0x78",
+  "factory": "FUN_14083cbe0"
+ },
+ {
+  "fn": "FUN_140230340",
+  "class": "oINetworkReplicationManagerSceneContext",
+  "uid": "0x15614510",
+  "size": "0x198",
+  "factory": "FUN_14083d920"
+ },
+ {
+  "fn": "FUN_1402f7460",
+  "class": "oIOnEntitySpawnEntityCpnt",
+  "uid": "0x174a0e6b",
+  "size": "0x68",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402f72c0",
+  "class": "oIOnEntitySpawnEntityCpntSettings",
+  "uid": "0x174a0e68",
+  "size": "0xf8",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14021e810",
+  "class": "oIPartitioning",
+  "uid": "0x139cd503",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_140786270",
+  "class": "oIPerformanceProfileValue",
+  "uid": "0x1da09f",
+  "size": "0xe0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1406c2700",
+  "class": "oIPhysicCharacter",
+  "uid": "0x142f681",
+  "size": "0x50",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c2af0",
+  "class": "oIPhysicObject",
+  "uid": "0x142f67c",
+  "size": "0x50",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14022b580",
+  "class": "oIPhysicSceneContext",
+  "uid": "0x15060fd",
+  "size": "0x78",
+  "factory": "FUN_1406bf7c0"
+ },
+ {
+  "fn": "FUN_1402c3cc0",
+  "class": "oIPhysicTerrain",
+  "uid": "0xeb8c542",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14022b220",
+  "class": "oIPhysicWorld",
+  "uid": "0x142f628",
+  "size": "0x10",
+  "factory": "FUN_1406bd640"
+ },
+ {
+  "fn": "FUN_1406bc660",
+  "class": "oIPictureDurationCineBloc",
+  "uid": "0x1391cfe",
+  "size": "0xc0",
+  "factory": "FUN_1406bb150"
+ },
+ {
+  "fn": "FUN_1404c26f0",
+  "class": "oIPopupMenuAccess",
+  "uid": "0x15f91ee",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_140187f80",
+  "class": "oIRenderLayer",
+  "uid": "0x48278cb",
+  "size": "0x70",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140189a30",
+  "class": "oIRenderModule",
+  "uid": "0x19e94e1",
+  "size": "0x1e0",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140188110",
+  "class": "oIRenderPipelineSettings",
+  "uid": "0xf4da6c7",
+  "size": "0x10",
+  "factory": "FUN_14057e010"
+ },
+ {
+  "fn": "FUN_140178b20",
+  "class": "oIResource",
+  "uid": "0x8000000a",
+  "size": "0x68",
+  "factory": "FUN_14048e0b0"
+ },
+ {
+  "fn": "FUN_140493a40",
+  "class": "oIResourceExporter",
+  "uid": "0x1e66808",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_1404938b0",
+  "class": "oIResourceImporter",
+  "uid": "0x1e66807",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c2e20",
+  "class": "oIRigidObject",
+  "uid": "0x142f67d",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140221db0",
+  "class": "oIRotate3dAccess",
+  "uid": "0x1c5254",
+  "size": null,
+  "factory": "FUN_14049a8f0"
+ },
+ {
+  "fn": "FUN_14018aaf0",
+  "class": "oIRsRuntime",
+  "uid": "0x4bec1f0",
+  "size": "0x10",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14018ac80",
+  "class": "oIRsSettings",
+  "uid": "0x4bebf2c",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_14058f6c0",
+  "class": "oIRsSettingsGroup",
+  "uid": "0x4bec305",
+  "size": "0x18",
+  "factory": "FUN_14064bdd0"
+ },
+ {
+  "fn": "FUN_14056b740",
+  "class": "oISaveRestoreAccess",
+  "uid": "0xfbb6831",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_140221f70",
+  "class": "oIScale3dAccess",
+  "uid": "0x1c5255",
+  "size": null,
+  "factory": "FUN_14049a920"
+ },
+ {
+  "fn": "FUN_140177100",
+  "class": "oISerializable",
+  "uid": "0x1da16c",
+  "size": null,
+  "factory": "FUN_1404e4e10"
+ },
+ {
+  "fn": "FUN_1404572f0",
+  "class": "oISerializableCall0",
+  "uid": "0x80000013",
+  "size": "0x10",
+  "factory": "FUN_1404e6400"
+ },
+ {
+  "fn": "FUN_140179d10",
+  "class": "oIShaderParam",
+  "uid": "0x1da1dd",
+  "size": "0x28",
+  "factory": "FUN_1405cd700"
+ },
+ {
+  "fn": "FUN_1405b60c0",
+  "class": "oISkeletonProcessor",
+  "uid": "0xcc63649",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c2c80",
+  "class": "oISoftRope",
+  "uid": "0x142f685",
+  "size": "0x50",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c34a0",
+  "class": "oIStaticBox",
+  "uid": "0x142f683",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c3300",
+  "class": "oIStaticCapsule",
+  "uid": "0x142f68c",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c3640",
+  "class": "oIStaticConvex",
+  "uid": "0x142f684",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c3160",
+  "class": "oIStaticCylinder",
+  "uid": "0x142f68b",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c3980",
+  "class": "oIStaticShapeList",
+  "uid": "0x142f686",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c3b20",
+  "class": "oIStaticSharedShapeList",
+  "uid": "0x142f687",
+  "size": "0x68",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c2fc0",
+  "class": "oIStaticSphere",
+  "uid": "0x142f682",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c37e0",
+  "class": "oIStaticTriangleMesh",
+  "uid": "0x142f688",
+  "size": "0x60",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1404f9db0",
+  "class": "oIStringFormatAccess",
+  "uid": "0x80000014",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_1404a29a0",
+  "class": "oITerrainAccess",
+  "uid": "0x15ee1433",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_1404a2e80",
+  "class": "oITerrainFlattenAccess",
+  "uid": "0x15ebbb5b",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_14022de40",
+  "class": "oITerrainInputLayer",
+  "uid": "0x15e3e227",
+  "size": "0xd8",
+  "factory": "FUN_1406a5cd0"
+ },
+ {
+  "fn": "FUN_14022e000",
+  "class": "oITerrainOutput",
+  "uid": "0x16b6c7f5",
+  "size": "0x28",
+  "factory": "FUN_1406aa0f0"
+ },
+ {
+  "fn": "FUN_1404a3020",
+  "class": "oITerrainPaintAccess",
+  "uid": "0x15ff66f5",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_1404a2b40",
+  "class": "oITerrainSculptAccess",
+  "uid": "0x15ebbb5a",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_1404a2ce0",
+  "class": "oITerrainSmoothAccess",
+  "uid": "0x15fe2d6b",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_14069da80",
+  "class": "oITerrainTile",
+  "uid": "0x15fcb799",
+  "size": "0x30",
+  "factory": "FUN_1406aa3d0"
+ },
+ {
+  "fn": "FUN_14069dc40",
+  "class": "oITerrainTiledOutput",
+  "uid": "0x15e3e1f9",
+  "size": "0xd8",
+  "factory": "FUN_1406aa4c0"
+ },
+ {
+  "fn": "FUN_140566220",
+  "class": "oITrackEditionAccess",
+  "uid": "0x6bc0a2e",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_140455240",
+  "class": "oITrailGraphic3dObject",
+  "uid": "0x4e65d04",
+  "size": "0x120",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140221c10",
+  "class": "oITransform3dAccess",
+  "uid": "0x1d2af75",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_14027bb00",
+  "class": "oIUIGameButtonAction",
+  "uid": "0x12c33fe5",
+  "size": "0x10",
+  "factory": "FUN_140686e30"
+ },
+ {
+  "fn": "FUN_14069ca10",
+  "class": "oIUIStyleGo",
+  "uid": "0xf441754",
+  "size": "0xf8",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c1230",
+  "class": "oIUiCommand",
+  "uid": "0x14d108d",
+  "size": "0x118",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140178740",
+  "class": "oIUniqueObjectPicker",
+  "uid": "0x280058cb",
+  "size": "0x18",
+  "factory": "FUN_14052bb50"
+ },
+ {
+  "fn": "FUN_14018a260",
+  "class": "oIValueCompute",
+  "uid": "0x10e0d294",
+  "size": "0x10",
+  "factory": "FUN_140570540"
+ },
+ {
+  "fn": "FUN_1404f9a40",
+  "class": "oIValuesUiAccess",
+  "uid": "0x80000010",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_1404c3660",
+  "class": "oIVertexLayer",
+  "uid": "0xd3e6496",
+  "size": "0x18",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1405919d0",
+  "class": "oIVisualEffect",
+  "uid": "0x81d3e85",
+  "size": "0x10",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140591b80",
+  "class": "oIVisualEffectSetting",
+  "uid": "0x81d3e2a",
+  "size": "0x18",
+  "factory": null
+ },
+ {
+  "fn": "FUN_140220900",
+  "class": "oSAttackIdentifier",
+  "uid": "0x1c8c7036",
+  "size": null,
+  "factory": null
+ },
+ {
+  "fn": "FUN_140224f00",
+  "class": "oSDtAttackIdentifier",
+  "uid": "0x1c8c7058",
+  "size": "0x10",
+  "factory": null
+ },
+ {
+  "fn": "FUN_1402c1aa0",
+  "class": "oSTriangle",
+  "uid": "0x66e2ed",
+  "size": "0xc",
+  "factory": null
+ },
+ {
+  "fn": "FUN_14075bf10",
+  "class": "oSValueDef",
+  "uid": "0x17afa86a",
+  "size": "0x90",
+  "factory": null
+ }
+]

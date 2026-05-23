@@ -1,0 +1,13 @@
+{
+  "fallback_locale": "EN",
+  "hero_id": "Shadowblade",
+  "mod": "ExampleContentHero",
+  "schema": "rsmm.hero_i18n.v1",
+  "strings": {
+    "RSMM_ExampleContentHero_Shadowblade_ability1_desc": "Dash through enemies, dealing damage and leaving a trail of darkness.",
+    "RSMM_ExampleContentHero_Shadowblade_ability2_desc": "A heavy strike that pulls in nearby foes.",
+    "RSMM_ExampleContentHero_Shadowblade_ability3_desc": "Become invisible for a short duration.",
+    "RSMM_ExampleContentHero_Shadowblade_ability4_desc": "Ultimate cleave dealing massive shadow damage in a wide arc.",
+    "RSMM_ExampleContentHero_Shadowblade_name": "Shadowblade"
+  }
+}

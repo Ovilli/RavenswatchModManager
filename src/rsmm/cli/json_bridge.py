@@ -485,7 +485,11 @@ def cmd_install_mod(slug: str) -> int:
                 name = member.filename
                 if name.endswith("/"):
                     continue
-                rel = name[len(stripped_prefix):] if strip and name.startswith(stripped_prefix) else name
+                rel = (
+                    name[len(stripped_prefix):]
+                    if strip and name.startswith(stripped_prefix)
+                    else name
+                )
                 # Defense in depth — zip slip protection.
                 rel_norm = os.path.normpath(rel)
                 if rel_norm.startswith("..") or os.path.isabs(rel_norm):

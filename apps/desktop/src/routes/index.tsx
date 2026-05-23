@@ -22,9 +22,9 @@ import {
   StatPill,
 } from '../components/chrome';
 import { SetupBanner } from '../components/setup-banner';
-import { MOCK_MODS, type ModCategory } from '../data/mock-mods';
+import type { ModCategory } from '../data/mock-mods';
 import { listLocalMods } from '../lib/rsmm';
-import { activeProfile, detectConflicts, getMod, useApp } from '../store';
+import { activeProfile, detectConflicts, getMod, isEnabledIn, useApp } from '../store';
 
 export const Route = createFileRoute('/')({
   component: LibraryPage,
@@ -69,9 +69,13 @@ function LibraryPage() {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<ModCategory | 'all'>('all');
   const [status, setStatus] = useState<LibraryStatusFilter>('all');
+  // Library is *profile-scoped*: a mod is in the user's library iff
+  // it's been explicitly added to the active profile's load order.
+  // Mods present on disk but not in this profile live in /browse with
+  // an "Installed elsewhere" badge — they don't show up here.
   const enabledCount = useMemo(
-    () => installed.filter((id) => !profile.disabled.has(id)).length,
-    [installed, profile.disabled],
+    () => profile.loadOrder.filter((id) => isEnabledIn(profile, id)).length,
+    [profile],
   );
   const conflicts = useMemo(() => detectConflicts(profile), [profile]);
 
@@ -88,11 +92,11 @@ function LibraryPage() {
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return installed
+    return profile.loadOrder
       .map((id, orderIdx) => {
         const mod = getMod(id);
         if (!mod) return null;
-        const enabled = !profile.disabled.has(id);
+        const enabled = isEnabledIn(profile, id);
         const outdated = mod.version !== mod.latestVersion;
         return { id, orderIdx, mod, enabled, outdated };
       })
@@ -111,7 +115,7 @@ function LibraryPage() {
           row.mod.tags.some((tag) => tag.toLowerCase().includes(needle))
         );
       });
-  }, [category, installed, profile.disabled, query, status]);
+  }, [category, profile, query, status]);
 
   const grouped = useMemo(() => {
     const groups = new Map<ModCategory, { id: string; orderIdx: number }[]>();
@@ -138,6 +142,31 @@ function LibraryPage() {
           </Link>
         }
       />
+    );
+  }
+
+  // Mods exist on disk but the active profile hasn't opted any of them
+  // in yet (e.g. a freshly created profile). The Library is profile-
+  // scoped, so we deliberately don't surface the disk-only mods here —
+  // /browse is where the user picks which ones to add.
+  if (profile.loadOrder.length === 0) {
+    return (
+      <div className="space-y-6">
+        <SetupBanner />
+        <EmptyState
+          title={`“${profile.name}” has no mods yet`}
+          body={
+            installed.length === 1
+              ? '1 mod is present on disk. Browse to add it to this profile.'
+              : `${installed.length} mods are present on disk. Browse to add them to this profile.`
+          }
+          action={
+            <Link to="/browse" className="btn-grim" data-variant="primary">
+              Browse mods
+            </Link>
+          }
+        />
+      </div>
     );
   }
 
@@ -330,7 +359,7 @@ function CardGrid({ items, profile, onOpen, onToggle, onUninstall }: RowProps) {
       {items.map(({ id, orderIdx }) => {
         const mod = getMod(id);
         if (!mod) return null;
-        const enabled = !profile.disabled.has(id);
+        const enabled = isEnabledIn(profile, id);
         const outdated = mod.version !== mod.latestVersion;
         return (
           <div
@@ -399,7 +428,7 @@ function ListView({ items, profile, onToggle, onReorder, onUninstall }: RowProps
       {items.map(({ id, orderIdx }) => {
         const mod = getMod(id);
         if (!mod) return null;
-        const enabled = !profile.disabled.has(id);
+        const enabled = isEnabledIn(profile, id);
         const isDragging = dragId === id;
         return (
           <li

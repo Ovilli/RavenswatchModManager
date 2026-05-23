@@ -1,14 +1,40 @@
 [mod]
 id          = "ExampleContentHero"
 name        = "Example: New Hero"
-version     = "0.1.0"
+version     = "0.2.0"
 author      = "RSMM"
-description = "Demonstrates [[content]] kind=\"hero\" by registering a custom hero."
+description = "Demonstrates [[content]] kind=\"hero\" by registering a custom hero clone. See docs/_re/kinds/heroes.md for the named-slot table."
 enabled     = true
 sdk_version = ">=3.0,<4"
 
+# `oCDtHeroDefinition` has no UID — it is constructed inline by the
+# `SkillProfileDataSettings` deserializer (UID 0x186adbdf, factory
+# FUN_1403122f0). Until the `oCTLibrary<oCDtHeroDefinition>` singleton
+# is located, runtime injection is blocked — this manifest stages the
+# cooked-asset clone path instead.
 [[content]]
-kind        = "hero"
-id          = "Shadowblade"
-base        = "Romeo"
-name        = "Shadowblade"
+kind         = "hero"
+id           = "Shadowblade"
+base         = "Romeo"
+name         = "Shadowblade"
+display_name = "Shadowblade"
+
+[[content.abilities]]
+id          = "ShadowDash"
+name        = "Shadow Dash"
+description = "Dash through enemies, dealing damage and leaving a trail of darkness."
+
+[[content.abilities]]
+id          = "VoidStrike"
+name        = "Void Strike"
+description = "A heavy strike that pulls in nearby foes."
+
+[[content.abilities]]
+id          = "Vanish"
+name        = "Vanish"
+description = "Become invisible for a short duration."
+
+[[content.abilities]]
+id          = "NightsEdge"
+name        = "Night's Edge"
+description = "Ultimate cleave dealing massive shadow damage in a wide arc."

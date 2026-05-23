@@ -1,0 +1,9 @@
+{
+  "id": "Iron_Crab_Hide",
+  "locale": "EN",
+  "mod": "ExampleMagicItem",
+  "note": "Seeded by rsmm.sdk.kinds.items.emit; mod's lang/<locale>.toml entries override this.",
+  "strings": {
+    "RSMM_ExampleMagicItem_Iron_Crab_Hide_name": "Iron Crab Hide"
+  }
+}

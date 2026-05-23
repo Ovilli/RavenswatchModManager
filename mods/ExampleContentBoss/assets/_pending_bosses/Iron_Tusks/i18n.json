@@ -1,0 +1,9 @@
+{
+  "boss_id": "Iron_Tusks",
+  "fallback_locale": "EN",
+  "mod": "ExampleContentBoss",
+  "schema": "rsmm.boss_i18n.v1",
+  "strings": {
+    "RSMM_ExampleContentBoss_Iron_Tusks_name": "Iron Tusks"
+  }
+}

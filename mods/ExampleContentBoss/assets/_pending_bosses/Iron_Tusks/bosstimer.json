@@ -1,0 +1,71 @@
+{
+  "cloned_from": "Erimanthian_Boar",
+  "id": "Iron_Tusks",
+  "picker_offsets": {
+    "arena_anchor": "0xf8",
+    "fight_flags": "0x290",
+    "intro": "0x138",
+    "music_cue": "0x250",
+    "phases_array": "0x178",
+    "reward": "0x310"
+  },
+  "reward_version_tag": "0x17e9a0ae",
+  "runtime_class": "oCDtBossTimerUiControllerEntityCpnt",
+  "runtime_ctor": "0x140368970",
+  "runtime_dtor": "0x140368ab0",
+  "runtime_vftable": "0x14147ff74",
+  "schema": "rsmm.bosstimer.v1",
+  "settings_class": "oCDtBossTimerUiControllerEntityCpntSettings",
+  "settings_ctor": "0x140368860",
+  "settings_deserialize": "0x140368e90",
+  "settings_resolve": "0x140368fc0",
+  "synthesized": {
+    "0x138": {
+      "meta_class": "oCEntity",
+      "target": "RSMM_ExampleContentBoss_Iron_Tusks_intro",
+      "type": "picker"
+    },
+    "0x178": {
+      "entries": [
+        {
+          "add_tags": [
+            "phase2"
+          ],
+          "barks": [
+            "RSMM_ExampleContentBoss_Iron_Tusks_phase2_bark"
+          ],
+          "hp_pct": 0.66
+        },
+        {
+          "add_tags": [
+            "phase3",
+            "enraged"
+          ],
+          "barks": [
+            "RSMM_ExampleContentBoss_Iron_Tusks_phase3_bark"
+          ],
+          "hp_pct": 0.33
+        }
+      ],
+      "note": "TODO: confirm encoding once oCDtBossTimerUiControllerEntityCpntSettings schema callback is mined",
+      "type": "array"
+    },
+    "0x250": {
+      "meta_class": "MelodyDefinition",
+      "target": "event:/Music/Boss/Iron_Tusks",
+      "type": "picker"
+    },
+    "0x310": {
+      "meta_class": "oCDtRewardDefinition",
+      "note": "+0x310 picker is gated by version tag 0x17e9a0ae in FUN_140368e90; cooked bytes MUST emit this tag for the picker to deserialize.",
+      "target": "Iron_Tusks_Reward",
+      "type": "picker",
+      "version_tag": "0x17e9a0ae"
+    },
+    "0xf8": {
+      "meta_class": "oCEntity",
+      "target": "Forest_Boss_Arena",
+      "type": "picker"
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "abilities": [
+    {
+      "description": "Dash through enemies, dealing damage and leaving a trail of darkness.",
+      "description_key": "RSMM_ExampleContentHero_Shadowblade_ability1_desc",
+      "id": "ShadowDash",
+      "name": "Shadow Dash"
+    },
+    {
+      "description": "A heavy strike that pulls in nearby foes.",
+      "description_key": "RSMM_ExampleContentHero_Shadowblade_ability2_desc",
+      "id": "VoidStrike",
+      "name": "Void Strike"
+    },
+    {
+      "description": "Become invisible for a short duration.",
+      "description_key": "RSMM_ExampleContentHero_Shadowblade_ability3_desc",
+      "id": "Vanish",
+      "name": "Vanish"
+    },
+    {
+      "description": "Ultimate cleave dealing massive shadow damage in a wide arc.",
+      "description_key": "RSMM_ExampleContentHero_Shadowblade_ability4_desc",
+      "id": "NightsEdge",
+      "name": "Night's Edge"
+    }
+  ],
+  "base": "Romeo",
+  "display_name": "Shadowblade",
+  "display_name_key": "RSMM_ExampleContentHero_Shadowblade_name",
+  "id": "Shadowblade",
+  "kind": "hero",
+  "mod": "ExampleContentHero",
+  "name": "Shadowblade",
+  "pieces": {
+    "i18n": "i18n.json",
+    "skillprofile": "skillprofile.json"
+  },
+  "schema": "rsmm.hero.v1",
+  "schema_version": 1
+}

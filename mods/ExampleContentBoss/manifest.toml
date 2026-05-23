@@ -1,15 +1,36 @@
 [mod]
 id          = "ExampleContentBoss"
 name        = "Example: New Boss"
-version     = "0.1.0"
+version     = "0.2.0"
 author      = "RSMM"
-description = "Demonstrates [[content]] kind=\"boss\" by registering a mechanical boar boss."
+description = "Demonstrates [[content]] kind=\"boss\" by registering a mechanical boar boss. See docs/_re/kinds/bosses.md for the BossTimer settings layout."
 enabled     = true
 sdk_version = ">=3.0,<4"
 
+# A boss is a tagged `oCDtEnemyDefinition` plus a
+# `oCDtBossTimerUiControllerEntityCpnt` component. The four pickers on
+# the controller's settings record live at +0xf8 (arena anchor),
+# +0x138 (intro), +0x250 (music cue), and +0x310 (guaranteed reward,
+# gated by version tag 0x17e9a0ae).
 [[content]]
-kind        = "boss"
-id          = "Iron_Tusks"
-base        = "Erimanthian_Boar"
-name        = "Iron Tusks"
-description = "A mechanical boar boss powered by ancient runes."
+kind         = "boss"
+id           = "Iron_Tusks"
+base         = "Erimanthian_Boar"
+name         = "Iron Tusks"
+display_name = "Iron Tusks"
+description  = "A mechanical boar boss powered by ancient runes."
+arena        = "Forest_Boss_Arena"
+music_cue    = "event:/Music/Boss/Iron_Tusks"
+intro_text   = "RSMM_ExampleContentBoss_Iron_Tusks_intro"
+hp           = 12000
+reward       = "Iron_Tusks_Reward"
+
+[[content.phases]]
+hp_pct   = 0.66
+barks    = ["RSMM_ExampleContentBoss_Iron_Tusks_phase2_bark"]
+add_tags = ["phase2"]
+
+[[content.phases]]
+hp_pct   = 0.33
+barks    = ["RSMM_ExampleContentBoss_Iron_Tusks_phase3_bark"]
+add_tags = ["phase3", "enraged"]
