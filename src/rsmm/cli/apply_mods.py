@@ -82,8 +82,8 @@ def find_game_dir() -> Path | None:
     return None
 
 
-def sha1(p: Path) -> str:
-    h = hashlib.sha1()
+def sha256(p: Path) -> str:
+    h = hashlib.sha256()
     with p.open("rb") as f:
         for chunk in iter(lambda: f.read(1 << 16), b""):
             h.update(chunk)
@@ -99,11 +99,17 @@ class State:
         "active": {
           "<encoded-relative-path>": {
             "mod": "<mod-id>",
-            "src_sha1": "<sha1 of mod file>",
-            "orig_sha1": "<sha1 of pre-override game file>"
+            "src_sha256":  "<sha256 of mod file>",
+            "orig_sha256": "<sha256 of pre-override game file>"
           }
         }
       }
+
+    Migration note: pre-0.1.12 state files use `src_sha1` / `orig_sha1`.
+    Those keys are ignored on read (treated as unknown / re-apply); the
+    next apply rewrites the entry with the sha256 fields above. SHA-1
+    is cryptographically broken — an attacker who can write a mod file
+    could craft a colliding asset that bypasses the integrity check.
     """
 
     def __init__(self, cooking: Path):
@@ -369,8 +375,11 @@ def plan_apply(mods: list[Mod],
     for enc, (src, mod_id) in wanted.items():
         dest = encoded_to_dest(enc, cooking, game_dir)
         cur = active.get(enc)
-        src_sha = sha1(src)
-        if cur and cur.get("src_sha1") == src_sha and dest.exists():
+        src_sha = sha256(src)
+        # Legacy `src_sha1` entries never match — they're treated as
+        # "needs re-apply" which is a no-op shutil.copy2 plus a state
+        # rewrite into the sha256 field. See the State docstring.
+        if cur and cur.get("src_sha256") == src_sha and dest.exists():
             # already applied + unchanged
             continue
         additions.append((enc, src, dest, mod_id))
@@ -400,12 +409,12 @@ def apply_one(enc: str, src: Path, dest: Path, mod_id: str,
     if dest.exists():
         bak = dest.parent / (dest.name + BACKUP_SUFFIX)
         if not bak.exists():
-            orig_sha = sha1(dest)
+            orig_sha = sha256(dest)
             print(f"  + backup {dest.name}")
             if not dry_run:
                 shutil.copy2(dest, bak)
         else:
-            orig_sha = (cur or {}).get("orig_sha1") or sha1(bak)
+            orig_sha = (cur or {}).get("orig_sha256") or sha256(bak)
     else:
         # Engine expected this file but it isn't there; mod adds a new asset.
         orig_sha = ""
@@ -417,8 +426,8 @@ def apply_one(enc: str, src: Path, dest: Path, mod_id: str,
         shutil.copy2(src, dest)
     state.active[enc] = {
         "mod": mod_id,
-        "src_sha1": sha1(src),
-        "orig_sha1": orig_sha,
+        "src_sha256": sha256(src),
+        "orig_sha256": orig_sha,
     }
 
 
@@ -432,7 +441,10 @@ def restore_one(enc: str, cooking: Path, game_dir: Path,
     dest = encoded_to_dest(enc, cooking, game_dir)
     bak = dest.parent / (dest.name + BACKUP_SUFFIX)
     entry = state.active.get(enc) or {}
-    orig_sha = entry.get("orig_sha1", "")
+    # Accept the legacy `orig_sha1` field too; pre-0.1.12 state files
+    # may still be on disk with that key. We don't compare against it
+    # — it's just a "the backup was tracked once" signal.
+    orig_sha = entry.get("orig_sha256") or entry.get("orig_sha1", "")
 
     if bak.exists():
         print(f"  - restore {enc}")
@@ -484,7 +496,8 @@ def _run_deactivation_hooks(mods: list[Mod],
                             state: State,
                             game_dir: Path,
                             cooking: Path,
-                            dry_run: bool) -> tuple[list[str], list[str]]:
+                            dry_run: bool,
+                            assume_yes: bool = False) -> tuple[list[str], list[str]]:
     """Fire on_disable.py for each mod that flipped enabled -> disabled.
 
     The mod's on_disable.py receives three env vars:
@@ -498,6 +511,13 @@ def _run_deactivation_hooks(mods: list[Mod],
         _Save/GameSettings.ini),
       * deleting profile flags / cache entries the mod created.
 
+    Security: on_disable.py runs as the current user with no sandbox.
+    A malicious mod can do anything the user can do — read files,
+    network out, execute binaries. We surface every hook by id BEFORE
+    running and require explicit consent (`--yes` or an interactive
+    "yes" reply). Set ``RSMM_NONINTERACTIVE=1`` to force `--yes` as
+    the only acceptable trigger (CI, scripts).
+
     Returns (ran, missing) — mod ids whose hook fired vs flipped mods
     with no on_disable.py present (silent; not an error).
     """
@@ -509,8 +529,50 @@ def _run_deactivation_hooks(mods: list[Mod],
     cur_enabled = {m.id for m in mods if m.enabled}
     flipped = sorted(prev_enabled - cur_enabled)
 
+    # Compute the list of hooks that WOULD run so the user (or the
+    # caller) can audit it before any code executes.
+    pending: list[str] = []
+    for mod_id in flipped:
+        m = cur_by_id.get(mod_id)
+        if m is not None and (m.root / DEACTIVATION_SCRIPT_NAME).is_file():
+            pending.append(mod_id)
+
     ran: list[str] = []
     missing: list[str] = []
+
+    if pending and not dry_run:
+        print(
+            "WARNING: the following deactivated mods include an "
+            "on_disable.py hook that will run as your user with no sandbox:",
+            file=sys.stderr,
+        )
+        for mod_id in pending:
+            script = cur_by_id[mod_id].root / DEACTIVATION_SCRIPT_NAME
+            print(f"  - {mod_id}  ({script})", file=sys.stderr)
+        noninteractive = os.environ.get("RSMM_NONINTERACTIVE", "").strip() not in ("", "0")
+        if assume_yes:
+            print("--yes given; running hooks.", file=sys.stderr)
+        elif noninteractive:
+            print(
+                "RSMM_NONINTERACTIVE is set and --yes was not passed; "
+                "skipping all on_disable.py hooks.", file=sys.stderr,
+            )
+            return [], list(flipped)
+        elif not sys.stdin.isatty():
+            print(
+                "stdin is not a TTY and --yes was not passed; "
+                "skipping all on_disable.py hooks.", file=sys.stderr,
+            )
+            return [], list(flipped)
+        else:
+            try:
+                reply = input("Run these hooks? [y/N] ").strip().lower()
+            except EOFError:
+                reply = ""
+            if reply not in ("y", "yes"):
+                print("Skipping on_disable.py hooks.", file=sys.stderr)
+                return [], list(flipped)
+
     for mod_id in flipped:
         m = cur_by_id.get(mod_id)
         if m is None:
@@ -823,7 +885,12 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     # Run on_disable.py for any mod that flipped enabled -> disabled BEFORE
     # we touch assets, so the hook can read its own files / restore state
     # while the install tree is still in its previous shape.
-    deact_ran, _ = _run_deactivation_hooks(mods, state, game_dir, cooking, args.dry_run)
+    # `getattr` so legacy callers (and old tests) that pass a bare
+    # SimpleNamespace without the new `yes` field don't crash.
+    deact_ran, _ = _run_deactivation_hooks(
+        mods, state, game_dir, cooking, args.dry_run,
+        assume_yes=getattr(args, "yes", False),
+    )
 
     additions, removals = plan_apply(mods, dec2enc, cooking, game_dir, state, args.dry_run)
 
@@ -934,7 +1001,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                     continue
                 bak = dest.parent / (dest.name + BACKUP_SUFFIX)
                 try:
-                    if sha1(dest) != sha1(src):
+                    if sha256(dest) != sha256(src):
                         continue
                 except OSError:
                     continue
@@ -990,7 +1057,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                     # Only drop when we can prove the cooked file bytes are
                     # exactly the mod source bytes.
                     try:
-                        if src.exists() and sha1(dest) == sha1(src):
+                        if src.exists() and sha256(dest) == sha256(src):
                             print(f"  - drop    {enc}  (aggressive purge + source hash)")
                             if not args.dry_run:
                                 dest.unlink()
@@ -1010,7 +1077,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                 if not dest.exists() or not src.exists():
                     continue
                 try:
-                    if sha1(dest) == sha1(src):
+                    if sha256(dest) == sha256(src):
                         residual_matches.add(enc)
                 except OSError:
                     continue
@@ -1087,6 +1154,10 @@ def main() -> int:
                     help="skip auto-merging [[patch]] blocks into mods/_merged/")
     ap.add_argument("--force", action="store_true",
                     help="apply even if the compatibility graph has errors")
+    ap.add_argument("--yes", action="store_true",
+                    help="auto-confirm execution of on_disable.py hooks "
+                         "(otherwise prompts interactively; set "
+                         "RSMM_NONINTERACTIVE=1 to require --yes)")
     args = ap.parse_args()
 
     repo = REPO_DIR

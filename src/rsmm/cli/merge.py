@@ -26,6 +26,7 @@ from __future__ import annotations
 import re
 import shutil
 import sys
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -93,15 +94,25 @@ def _toml_fallback(p: Path) -> dict:
 
 
 def _toml_load(p: Path) -> dict:
+    # Three-way fallback: prefer stdlib tomllib, then the third-party
+    # tomli backend, finally the in-house _toml_fallback (which only
+    # understands the subset of TOML that mod manifests actually use).
+    # We catch ImportError (backend not installed) and TOMLDecodeError
+    # (backend reports malformed input) so the fallback gets a chance —
+    # bare `except Exception` here silently swallowed programmer errors.
+    import tomllib
     try:
-        import tomllib
         return tomllib.loads(p.read_text(encoding="utf-8"))
-    except Exception:
-        try:
-            import tomli
-            return tomli.loads(p.read_text(encoding="utf-8"))
-        except Exception:
-            return _toml_fallback(p)
+    except (ImportError, tomllib.TOMLDecodeError):
+        pass
+    try:
+        import tomli
+    except ImportError:
+        return _toml_fallback(p)
+    try:
+        return tomli.loads(p.read_text(encoding="utf-8"))
+    except tomli.TOMLDecodeError:
+        return _toml_fallback(p)
 
 
 def collect_patches() -> list[_Patch]:
@@ -114,9 +125,13 @@ def collect_patches() -> list[_Patch]:
         mf = entry / "manifest.toml"
         if not mf.exists():
             continue
+        # _toml_load itself falls back through every parser before
+        # raising; a TOMLDecodeError that reaches here means even the
+        # in-house fallback parser couldn't make sense of the manifest.
+        # OSError covers permission / disappearance races.
         try:
             t = _toml_load(mf)
-        except Exception as e:
+        except (tomllib.TOMLDecodeError, OSError) as e:
             print(f"  [merge] skip {entry.name}: {e}", file=sys.stderr)
             continue
         mod_meta = t.get("mod", {})

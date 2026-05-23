@@ -24,8 +24,8 @@ def _vanilla_offenders(mod_dir: Path) -> list[tuple[str, str]]:
     """Return [(relpath, reason)] for mod files that are byte-identical to
     the original game asset they sit at.
     """
-    def sha1(p: Path) -> str:
-        h = hashlib.sha1()
+    def sha256(p: Path) -> str:
+        h = hashlib.sha256()
         with open(p, "rb") as f:
             for chunk in iter(lambda: f.read(1 << 20), b""):
                 h.update(chunk)
@@ -42,17 +42,17 @@ def _vanilla_offenders(mod_dir: Path) -> list[tuple[str, str]]:
             if not f.is_file():
                 continue
             rel = f.relative_to(assets).as_posix()
-            mod_hash = sha1(f)
+            mod_hash = sha256(f)
             encoded = enc_map.get(rel)
             if encoded:
                 orig = cooking / encoded.replace("\\", "/")
                 bak = orig.with_suffix(orig.suffix + ".rsmm.bak")
                 src = bak if bak.exists() else orig
-                if src.exists() and sha1(src) == mod_hash:
+                if src.exists() and sha256(src) == mod_hash:
                     offenders.append((f"assets/{rel}", "matches original cooked asset"))
                     continue
             mirror = uncooked / rel
-            if mirror.exists() and mirror.is_file() and sha1(mirror) == mod_hash:
+            if mirror.exists() and mirror.is_file() and sha256(mirror) == mod_hash:
                 offenders.append((f"assets/{rel}", "matches data/uncooked/ mirror"))
 
     root = mod_dir / "_root"
@@ -63,7 +63,7 @@ def _vanilla_offenders(mod_dir: Path) -> list[tuple[str, str]]:
                 continue
             rel = f.relative_to(root).as_posix()
             orig = game_root / rel
-            if orig.exists() and orig.is_file() and sha1(orig) == sha1(f):
+            if orig.exists() and orig.is_file() and sha256(orig) == sha256(f):
                 offenders.append((f"_root/{rel}", "matches game install file"))
 
     return offenders
