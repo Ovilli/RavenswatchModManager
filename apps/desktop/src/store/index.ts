@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { MOCK_MODS, type MockMod, type ModCategory } from '../data/mock-mods';
+import type { MockMod, ModCategory } from '../data/mock-mods';
 import { getPlatform } from '../lib/platform';
 import type { LocalMod } from '../lib/rsmm';
 
@@ -126,28 +126,64 @@ export const useApp = create<State>()(
 
       installMod: (id) =>
         set((s) => {
-          if (s.installed.includes(id)) return s;
-          return { installed: [...s.installed, id] };
+          // "Install" = make the mod available on disk + add it to the
+          // *active* profile. Other profiles are independent — if a
+          // user installs Mod X from the Library while on Profile A,
+          // Profile B intentionally won't gain Mod X. They can do the
+          // same Browse → Install action from B if they want it there.
+          const installed = s.installed.includes(id) ? s.installed : [...s.installed, id];
+          const profiles = s.profiles.map((p) => {
+            if (p.id !== s.activeProfileId) return p;
+            if (p.id === 'default') return p; // default = vanilla, never auto-adds
+            if (p.loadOrder.includes(id)) return p;
+            return { ...p, loadOrder: [...p.loadOrder, id] };
+          });
+          return { installed, profiles };
         }),
 
       uninstallMod: (id) =>
-        set((s) => ({
-          installed: s.installed.filter((m) => m !== id),
-          profiles: s.profiles.map((p) => ({
-            ...p,
-            loadOrder: p.loadOrder.filter((m) => m !== id),
-            disabled: new Set([...p.disabled].filter((m) => m !== id)),
-          })),
-        })),
+        set((s) => {
+          // Per-profile removal. Uninstalling Mod X from Profile A must
+          // *not* nuke it from Profile B's library; that surprised users
+          // who expected each profile to be its own bucket. The mod
+          // stays on disk (in `installed`) so the user can re-add it to
+          // any profile without re-downloading.
+          //
+          // The default profile is the "vanilla" load — by design it
+          // carries no mods, so the active profile guard already covers
+          // the no-op case.
+          const profiles = s.profiles.map((p) => {
+            if (p.id !== s.activeProfileId) return p;
+            return {
+              ...p,
+              loadOrder: p.loadOrder.filter((m) => m !== id),
+              disabled: new Set([...p.disabled].filter((m) => m !== id)),
+            };
+          });
+          return { profiles };
+        }),
 
       toggleMod: (id) =>
         set((s) => ({
           profiles: s.profiles.map((p) => {
             if (p.id !== s.activeProfileId) return p;
-            const next = new Set(p.disabled);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return { ...p, disabled: next };
+            // A mod is *enabled in this profile* iff it's in `loadOrder`
+            // and NOT in `disabled`. Toggle flips that bit while making
+            // sure the profile actually contains the mod — without this
+            // the default profile (empty loadOrder, empty disabled) had
+            // mods showing as enabled-but-not-in-load-order, so the
+            // header counter (gates on loadOrder) and the library rows
+            // (gated only on `disabled`) disagreed.
+            const inLoadOrder = p.loadOrder.includes(id);
+            const isEnabled = inLoadOrder && !p.disabled.has(id);
+            const disabled = new Set(p.disabled);
+            if (isEnabled) {
+              disabled.add(id);
+              return { ...p, disabled };
+            }
+            disabled.delete(id);
+            const loadOrder = inLoadOrder ? p.loadOrder : [...p.loadOrder, id];
+            return { ...p, loadOrder, disabled };
           }),
         })),
 
@@ -170,6 +206,11 @@ export const useApp = create<State>()(
             {
               id,
               name,
+              // New profile starts EMPTY by design — each profile is
+              // its own bucket, and the user explicitly opts mods in
+              // via Browse → Install (or Library → Add). Auto-seeding
+              // from the global `installed` list surprised users who
+              // expected a "fresh slate" profile.
               loadOrder: [],
               disabled: new Set(),
               createdAt: new Date().toISOString(),
@@ -271,13 +312,13 @@ export const useApp = create<State>()(
           const installedSet = new Set(installed);
           const profiles = s.profiles.map((p) =>
             p.id === 'default'
-              ? {
-                  ...p,
-                  loadOrder: [],
-                  disabled: new Set<string>(),
-                }
+              ? { ...p, loadOrder: [], disabled: new Set<string>() }
               : {
                   ...p,
+                  // Only PRUNE — when a mod disappears from disk, drop
+                  // it from the profile. Never auto-append newly-found
+                  // disk mods; profiles are explicit buckets and the
+                  // user adds mods via Browse → Install.
                   loadOrder: p.loadOrder.filter((id) => installedSet.has(id)),
                   disabled: new Set([...p.disabled].filter((id) => installedSet.has(id))),
                 },
@@ -343,11 +384,16 @@ export const useApp = create<State>()(
   ),
 );
 
-/** Lookup runs over the live rsmm registry first, then the bundled mocks. */
+/**
+ * Lookup runs over the live rsmm registry only.
+ *
+ * The library/conflicts/command-palette views iterate over the
+ * profile's load order, which is itself a subset of `installed`, so a
+ * `getMod()` miss here means the mod is in a profile but not present
+ * on disk — that's the `syncLocalMods` prune path's job to fix.
+ */
 export function getMod(id: string): MockMod | undefined {
-  const live = useApp.getState().localMods[id];
-  if (live) return live;
-  return MOCK_MODS.find((m) => m.id === id);
+  return useApp.getState().localMods[id];
 }
 
 function inferCategory(tags: string[]): ModCategory {
@@ -396,6 +442,18 @@ export function activeProfile(s: State): Profile {
 export interface Conflict {
   path: string;
   modIds: string[];
+}
+
+/**
+ * Single source of truth for "is this mod enabled in this profile?".
+ *
+ * Membership-in-profile lives in `loadOrder`; `disabled` is the
+ * per-profile *exception* set. Every UI surface that needs an enabled
+ * flag (library rows, mod detail, conflict picker, counters) must use
+ * this helper so the answer can't diverge across components.
+ */
+export function isEnabledIn(profile: Profile, modId: string): boolean {
+  return profile.loadOrder.includes(modId) && !profile.disabled.has(modId);
 }
 
 /** File-path conflicts among enabled mods in a profile. */

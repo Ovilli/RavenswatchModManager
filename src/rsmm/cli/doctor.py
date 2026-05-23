@@ -151,14 +151,27 @@ def check_mods() -> list[Result]:
                 # _root/ files bypass asset_map (top-level).
                 if dec.startswith("_root/") or "/_root/" in dec:
                     continue
+                # SDK staging output (`_pending_items/`, `_pending_bosses/`,
+                # `_pending_text_overrides/`, etc.) is intermediate JSON
+                # the apply pipeline consumes — never a cooked asset. The
+                # applier already filters these via `Mod.files()`; mirror
+                # the filter here so doctor doesn't spam WARNs on every
+                # mod that uses [[content]] blocks.
+                if dec.split("/", 1)[0].startswith("_pending_"):
+                    continue
                 # Translation Lang* files are special-cased in apply_mods.
                 if dec.endswith(tuple(f".Lang{c}" for c in
                                      ["EN","JA","KO","RU","ES","DE","PL","FR",
                                       "IT","PT-BR","ZH-S","ZH-T","RO"])):
                     continue
                 if dec not in dec2enc:
-                    out.append(Result("WARN", f"{entry.name}: asset path not in asset_map",
-                                      dec))
+                    # Only surface for mods the user has actually enabled
+                    # in the manifest — disabled mods can't break a run, so
+                    # noisy warnings about them are user-hostile.
+                    if is_on:
+                        out.append(Result("WARN",
+                                          f"{entry.name}: asset path not in asset_map",
+                                          dec))
                 if is_on:
                     file_owners.setdefault(dec, []).append(entry.name)
     out.append(Result("OK", f"mods discovered: {found} ({enabled} enabled)"))

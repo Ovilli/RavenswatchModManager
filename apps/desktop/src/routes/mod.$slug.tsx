@@ -15,7 +15,7 @@ import {
 } from '../components/chrome';
 import { api } from '../lib/api';
 import { inTauri } from '../lib/platform';
-import { activeProfile, useApp } from '../store';
+import { activeProfile, isEnabledIn, useApp } from '../store';
 
 export const Route = createFileRoute('/mod/$slug')({
   component: ModDetailPage,
@@ -83,7 +83,7 @@ function ModDetailPage() {
   const apiLatest = apiMod?.latestVersion ?? null;
   const localVersion = liveBySlug?.version ?? null;
   const installedHere = liveBySlug ? installed.includes(liveBySlug.id) : false;
-  const enabled = installedHere && liveBySlug ? !profile.disabled.has(liveBySlug.id) : false;
+  const enabled = installedHere && liveBySlug ? isEnabledIn(profile, liveBySlug.id) : false;
   const outdated = Boolean(localVersion && apiLatest && localVersion !== apiLatest);
 
   const markdown = liveBySlug?.markdown ?? `# ${name}\n\n${summary || description || ''}`;

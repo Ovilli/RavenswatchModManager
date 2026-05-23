@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root';
+import { Route as UploadRouteImport } from './routes/upload';
 import { Route as SigninRouteImport } from './routes/signin';
 import { Route as SettingsRouteImport } from './routes/settings';
 import { Route as ProfilesRouteImport } from './routes/profiles';
@@ -19,6 +20,11 @@ import { Route as AboutRouteImport } from './routes/about';
 import { Route as IndexRouteImport } from './routes/index';
 import { Route as ModSlugRouteImport } from './routes/mod.$slug';
 
+const UploadRoute = UploadRouteImport.update({
+  id: '/upload',
+  path: '/upload',
+  getParentRoute: () => rootRouteImport,
+} as any);
 const SigninRoute = SigninRouteImport.update({
   id: '/signin',
   path: '/signin',
@@ -74,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/profiles': typeof ProfilesRoute;
   '/settings': typeof SettingsRoute;
   '/signin': typeof SigninRoute;
+  '/upload': typeof UploadRoute;
   '/mod/$slug': typeof ModSlugRoute;
 }
 export interface FileRoutesByTo {
@@ -85,6 +92,7 @@ export interface FileRoutesByTo {
   '/profiles': typeof ProfilesRoute;
   '/settings': typeof SettingsRoute;
   '/signin': typeof SigninRoute;
+  '/upload': typeof UploadRoute;
   '/mod/$slug': typeof ModSlugRoute;
 }
 export interface FileRoutesById {
@@ -97,6 +105,7 @@ export interface FileRoutesById {
   '/profiles': typeof ProfilesRoute;
   '/settings': typeof SettingsRoute;
   '/signin': typeof SigninRoute;
+  '/upload': typeof UploadRoute;
   '/mod/$slug': typeof ModSlugRoute;
 }
 export interface FileRouteTypes {
@@ -110,6 +119,7 @@ export interface FileRouteTypes {
     | '/profiles'
     | '/settings'
     | '/signin'
+    | '/upload'
     | '/mod/$slug';
   fileRoutesByTo: FileRoutesByTo;
   to:
@@ -121,6 +131,7 @@ export interface FileRouteTypes {
     | '/profiles'
     | '/settings'
     | '/signin'
+    | '/upload'
     | '/mod/$slug';
   id:
     | '__root__'
@@ -132,6 +143,7 @@ export interface FileRouteTypes {
     | '/profiles'
     | '/settings'
     | '/signin'
+    | '/upload'
     | '/mod/$slug';
   fileRoutesById: FileRoutesById;
 }
@@ -144,11 +156,19 @@ export interface RootRouteChildren {
   ProfilesRoute: typeof ProfilesRoute;
   SettingsRoute: typeof SettingsRoute;
   SigninRoute: typeof SigninRoute;
+  UploadRoute: typeof UploadRoute;
   ModSlugRoute: typeof ModSlugRoute;
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/upload': {
+      id: '/upload';
+      path: '/upload';
+      fullPath: '/upload';
+      preLoaderRoute: typeof UploadRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     '/signin': {
       id: '/signin';
       path: '/signin';
@@ -224,6 +244,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProfilesRoute: ProfilesRoute,
   SettingsRoute: SettingsRoute,
   SigninRoute: SigninRoute,
+  UploadRoute: UploadRoute,
   ModSlugRoute: ModSlugRoute,
 };
 export const routeTree = rootRouteImport

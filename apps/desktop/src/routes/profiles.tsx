@@ -3,7 +3,7 @@ import { Check, Copy, Download, Pencil, Plus, Trash2, Upload } from 'lucide-reac
 import { useState } from 'react';
 import { Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
 import { useDialog, useToast } from '../components/toast';
-import { useApp } from '../store';
+import { isEnabledIn, useApp } from '../store';
 
 export const Route = createFileRoute('/profiles')({
   component: ProfilesPage,
@@ -149,7 +149,7 @@ function ProfilesPage() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {profiles.map((p) => {
           const isActive = p.id === activeId;
-          const enabled = p.loadOrder.filter((id) => !p.disabled.has(id)).length;
+          const enabled = p.loadOrder.filter((id) => isEnabledIn(p, id)).length;
           return (
             <article key={p.id} className="grimoire-card p-5">
               <header className="flex items-start justify-between gap-2">

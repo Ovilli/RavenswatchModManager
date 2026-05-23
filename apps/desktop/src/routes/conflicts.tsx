@@ -2,7 +2,7 @@ import { Link, createFileRoute } from '@tanstack/react-router';
 import { ShieldCheck } from 'lucide-react';
 import { useMemo } from 'react';
 import { Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
-import { activeProfile, detectConflicts, getMod, useApp } from '../store';
+import { activeProfile, detectConflicts, getMod, isEnabledIn, useApp } from '../store';
 
 export const Route = createFileRoute('/conflicts')({
   component: ConflictsPage,
@@ -57,7 +57,7 @@ function ConflictsPage() {
                 {c.modIds.map((id) => {
                   const mod = getMod(id);
                   if (!mod) return null;
-                  const enabled = !profile.disabled.has(id);
+                  const enabled = isEnabledIn(profile, id);
                   return (
                     <div
                       key={id}
@@ -88,7 +88,7 @@ function ConflictsPage() {
                               // Read live state per mod to avoid stale closure bug
                               const state = useApp.getState();
                               const p = state.profiles.find((x) => x.id === state.activeProfileId);
-                              if (p && !p.disabled.has(other)) {
+                              if (p && isEnabledIn(p, other)) {
                                 state.toggleMod(other);
                               }
                             }

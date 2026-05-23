@@ -1,7 +1,8 @@
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { Search } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { MOCK_MODS } from '../data/mock-mods';
+import { api } from '../lib/api';
 import { useApp } from '../store';
 
 interface Hit {
@@ -19,8 +20,20 @@ export function CommandPalette() {
   const inputRef = useRef<HTMLInputElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const installed = useApp((s) => s.installed);
+  const localMods = useApp((s) => s.localMods);
   const navigate = useNavigate();
   const listboxId = useId();
+
+  // Remote index search runs only while the palette is open + the user
+  // has typed at least 2 chars. React Query caches per `q` so repeated
+  // typing doesn't hammer the API.
+  const trimmedQ = q.trim();
+  const { data: remoteData } = useQuery({
+    queryKey: ['mods', 'palette', trimmedQ],
+    queryFn: () => api.mods.list({ q: trimmedQ, limit: 10 }),
+    enabled: open && trimmedQ.length >= 2,
+    staleTime: 30_000,
+  });
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -53,31 +66,51 @@ export function CommandPalette() {
   }, [open]);
 
   const hits = useMemo<Hit[]>(() => {
-    const needle = q.trim().toLowerCase();
+    const needle = trimmedQ.toLowerCase();
+    // Empty input: show the first few locally-installed mods as a
+    // jumping-off point for the user.
     if (!needle) {
       const out: Hit[] = [];
       for (const id of installed.slice(0, 5)) {
-        const m = MOCK_MODS.find((x) => x.id === id);
+        const m = localMods[id];
         if (m)
           out.push({ id: m.id, slug: m.slug, name: m.name, author: m.author, origin: 'library' });
       }
       return out;
     }
-    return MOCK_MODS.filter(
-      (m) =>
-        m.name.toLowerCase().includes(needle) ||
-        m.slug.toLowerCase().includes(needle) ||
-        m.tags.some((t) => t.toLowerCase().includes(needle)),
-    )
-      .slice(0, 10)
+    // Local matches first (no network round-trip, exact for what the
+    // user already has on disk).
+    const local: Hit[] = installed
+      .map((id) => localMods[id])
+      .filter(
+        (m): m is NonNullable<typeof m> =>
+          !!m &&
+          (m.name.toLowerCase().includes(needle) ||
+            m.slug.toLowerCase().includes(needle) ||
+            m.tags.some((t) => t.toLowerCase().includes(needle))),
+      )
+      .slice(0, 5)
       .map<Hit>((m) => ({
         id: m.id,
         slug: m.slug,
         name: m.name,
         author: m.author,
+        origin: 'library',
+      }));
+    // Remote: dedupe against ids already shown locally; cap total at 10.
+    const seen = new Set(local.map((h) => h.id));
+    const remote: Hit[] = (remoteData?.items ?? [])
+      .filter((m) => !seen.has(m.id))
+      .slice(0, Math.max(0, 10 - local.length))
+      .map<Hit>((m) => ({
+        id: m.id,
+        slug: m.slug,
+        name: m.name,
+        author: m.author ?? 'unknown',
         origin: installed.includes(m.id) ? 'library' : 'remote',
       }));
-  }, [q, installed]);
+    return [...local, ...remote];
+  }, [trimmedQ, installed, localMods, remoteData]);
 
   if (!open) return null;
 

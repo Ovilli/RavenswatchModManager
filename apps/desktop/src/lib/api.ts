@@ -1,5 +1,6 @@
 import { createApiClient } from '@rsmm/api-client';
+import { getApiUrl } from './api-url';
 
 export const api = createApiClient({
-  baseUrl: import.meta.env.VITE_API_URL ?? 'http://localhost:3001',
+  baseUrl: getApiUrl(),
 });

@@ -39,7 +39,7 @@ function SignInPage() {
           name: trimmedEmail.split('@')[0] ?? trimmedEmail,
         });
         if (result.error) {
-          setError(result.error.message ?? 'Could not create account.');
+          handleAuthError(result.error, 'signup');
           return;
         }
       } else {
@@ -48,7 +48,7 @@ function SignInPage() {
           password,
         });
         if (result.error) {
-          setError(result.error.message ?? 'Could not sign in.');
+          handleAuthError(result.error, 'signin');
           return;
         }
       }
@@ -62,6 +62,40 @@ function SignInPage() {
     } finally {
       setBusy(false);
     }
+  };
+
+  // Map better-auth's typed error codes to operator-friendly copy.
+  // We treat the code as the canonical signal — `error.message` from
+  // the server can be terse ("Invalid email or password") or verbose
+  // ("[body.name] Invalid input: …") and is not localised.
+  const handleAuthError = (
+    err: { code?: string; status?: number; message?: string },
+    flow: Mode,
+  ) => {
+    const code = err.code ?? '';
+    if (code === 'USER_ALREADY_EXISTS' || code === 'EMAIL_ALREADY_EXISTS') {
+      setError('That email is already registered. Try signing in instead.');
+      // Nudge the user toward the right tab so the next click works.
+      if (flow === 'signup') setMode('signin');
+      return;
+    }
+    if (code === 'INVALID_EMAIL_OR_PASSWORD' || err.status === 401) {
+      setError('Email or password did not match an existing account.');
+      return;
+    }
+    if (code === 'PASSWORD_TOO_SHORT' || code === 'PASSWORD_TOO_LONG') {
+      setError(err.message ?? 'Password does not meet the requirements.');
+      return;
+    }
+    if (err.status === 429) {
+      setError('Too many attempts. Wait a minute and try again.');
+      return;
+    }
+    if (err.status === 422 || code === 'VALIDATION_ERROR') {
+      setError(err.message ?? 'The server rejected the form — check your inputs.');
+      return;
+    }
+    setError(err.message ?? (flow === 'signup' ? 'Could not create account.' : 'Could not sign in.'));
   };
 
   const isSignup = mode === 'signup';
