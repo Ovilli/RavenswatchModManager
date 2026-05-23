@@ -4,6 +4,7 @@ import { logger } from 'hono/logger';
 import { auth } from './auth';
 import { env } from './env';
 import { createRateLimiter } from './rate-limit';
+import { meRouter } from './routes/me';
 import { modsRouter } from './routes/mods';
 import { telemetryRouter } from './routes/telemetry';
 import type { AppEnv } from './types';
@@ -59,4 +60,5 @@ app.get('/api', (c) => c.json({ name: 'rsmm-api', ok: true }));
 app.get('/api/health', (c) => c.json({ ok: true, ts: Date.now() }));
 
 app.route('/api/mods', modsRouter);
+app.route('/api/me', meRouter);
 app.route('/api/telemetry', telemetryRouter);
