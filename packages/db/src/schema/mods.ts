@@ -43,7 +43,9 @@ export const mods = pgTable(
     category: modCategoryEnum('category'),
     authorName: varchar('author_name', { length: 128 }),
     imageUrl: text('image_url'),
-    screenshots: text('screenshots').array(),
+    // Array of { url, caption? } objects. Used to be text[]; the JSONB
+    // form lets us attach captions per screenshot without a join table.
+    screenshots: jsonb('screenshots').$type<{ url: string; caption?: string }[]>(),
     videos: text('videos').array(),
     rating: numeric('rating', { precision: 3, scale: 2 }),
     ownerId: text('owner_id').references(() => users.id, { onDelete: 'set null' }),

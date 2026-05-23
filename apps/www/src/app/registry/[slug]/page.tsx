@@ -3,9 +3,9 @@ import { Badge, Spinner, buttonVariants } from '@rsmm/ui';
 import type { ModVersion } from '@rsmm/schemas';
 import { ApiError } from '@rsmm/api-client';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Download, ExternalLink } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Download, ExternalLink, X } from 'lucide-react';
 import Link from 'next/link';
-import { use, useMemo } from 'react';
+import { use, useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../../lib/api';
 import { getApiUrl } from '../../../lib/api-url';
 import { toEmbedUrl } from '../../../lib/video-embed';
@@ -167,19 +167,7 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
                   </div>
                 ) : null}
                 {(mod.screenshots?.length ?? 0) > 0 ? (
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {mod.screenshots?.map((url, idx) => (
-                      <a
-                        key={url}
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="aspect-video overflow-hidden rounded-md bg-muted hover:opacity-90"
-                      >
-                        <img src={url} alt={`${mod.name} screenshot ${idx + 1}`} loading="lazy" className="h-full w-full object-cover" />
-                      </a>
-                    ))}
-                  </div>
+                  <PublicGallery shots={mod.screenshots ?? []} modName={mod.name} />
                 ) : null}
               </div>
             ) : null}
@@ -268,5 +256,119 @@ function Row({ k, v }: { k: string; v: string }) {
       <dt className="text-muted-foreground">{k}</dt>
       <dd className="font-medium">{v}</dd>
     </div>
+  );
+}
+
+interface PublicShot {
+  url: string;
+  caption?: string;
+}
+
+function PublicGallery({ shots, modName }: { shots: PublicShot[]; modName: string }) {
+  const [idx, setIdx] = useState<number | null>(null);
+  const close = useCallback(() => setIdx(null), []);
+  const prev = useCallback(() => {
+    setIdx((i) => (i == null ? i : (i - 1 + shots.length) % shots.length));
+  }, [shots.length]);
+  const next = useCallback(() => {
+    setIdx((i) => (i == null ? i : (i + 1) % shots.length));
+  }, [shots.length]);
+  useEffect(() => {
+    if (idx == null) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') close();
+      else if (e.key === 'ArrowLeft') prev();
+      else if (e.key === 'ArrowRight') next();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [idx, close, prev, next]);
+
+  return (
+    <>
+      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {shots.map((shot, i) => (
+          <li key={shot.url}>
+            <button
+              type="button"
+              onClick={() => setIdx(i)}
+              className="group block w-full text-left"
+            >
+              <div className="aspect-video overflow-hidden rounded-md bg-muted">
+                <img
+                  src={shot.url}
+                  alt={shot.caption || `${modName} screenshot ${i + 1}`}
+                  loading="lazy"
+                  className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
+                />
+              </div>
+              {shot.caption ? (
+                <p className="mt-1 truncate text-xs text-muted-foreground">{shot.caption}</p>
+              ) : null}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {idx != null && shots[idx] ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={shots[idx].caption || `${modName} screenshot ${idx + 1}`}
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-pitch/95 p-4 animate-fade-in"
+        >
+          <button type="button" onClick={close} className="absolute inset-0" aria-label="Close" />
+          <button
+            type="button"
+            onClick={close}
+            className="absolute right-4 top-4 z-10 rounded-md bg-background/80 p-2 text-foreground hover:bg-background"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          {shots.length > 1 ? (
+            <>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  prev();
+                }}
+                className="absolute left-4 top-1/2 z-10 -translate-y-1/2 rounded-md bg-background/80 p-3 text-foreground hover:bg-background"
+                aria-label="Previous"
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  next();
+                }}
+                className="absolute right-4 top-1/2 z-10 -translate-y-1/2 rounded-md bg-background/80 p-3 text-foreground hover:bg-background"
+                aria-label="Next"
+              >
+                <ChevronRight className="h-6 w-6" />
+              </button>
+            </>
+          ) : null}
+          <figure
+            onClick={(e) => e.stopPropagation()}
+            className="relative z-[1] flex max-h-full max-w-5xl flex-col items-center gap-3"
+          >
+            <img
+              src={shots[idx].url}
+              alt={shots[idx].caption || `${modName} screenshot ${idx + 1}`}
+              className="max-h-[78vh] max-w-full rounded-md object-contain"
+            />
+            <figcaption className="max-w-3xl text-center text-sm text-muted-foreground">
+              {shots[idx].caption || `Screenshot ${idx + 1} of ${shots.length}`}
+            </figcaption>
+            <p className="font-mono text-xs text-muted-foreground/70">
+              {idx + 1} / {shots.length}
+            </p>
+          </figure>
+        </div>
+      ) : null}
+    </>
   );
 }

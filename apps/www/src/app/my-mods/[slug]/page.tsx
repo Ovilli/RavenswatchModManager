@@ -4,15 +4,37 @@ import { ApiError } from '@rsmm/api-client';
 import type { ModCategory } from '@rsmm/schemas';
 import { Badge, Button, Input, Spinner } from '@rsmm/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ImageIcon, Loader2, Save, Trash2, Upload } from 'lucide-react';
+import {
+  AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  ImageIcon,
+  Loader2,
+  Pencil,
+  Save,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
+import { toEmbedUrl } from '../../../lib/video-embed';
 
 const MDEditor = dynamic(() => import('@uiw/react-md-editor'), { ssr: false });
+const MDPreview = dynamic(
+  () => import('@uiw/react-md-editor').then((m) => m.default.Markdown),
+  { ssr: false },
+);
+
+interface Screenshot {
+  url: string;
+  caption?: string;
+}
 
 const CATEGORIES: ModCategory[] = [
   'gameplay',
@@ -88,9 +110,11 @@ export default function ManageModPage() {
   const [repoUrl, setRepoUrl] = useState('');
   const [homepageUrl, setHomepageUrl] = useState('');
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [screenshots, setScreenshots] = useState<string[]>([]);
+  const [screenshots, setScreenshots] = useState<Screenshot[]>([]);
   const [videos, setVideos] = useState<string[]>([]);
   const [videoInput, setVideoInput] = useState('');
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  const [previewMode, setPreviewMode] = useState(false);
 
   // Hydrate the form whenever the underlying detail row changes — this
   // also covers the post-mutation refetch so the inputs reflect what
@@ -181,7 +205,7 @@ export default function ManageModPage() {
         headers: { 'Content-Type': file.type },
       });
       if (!put.ok) throw new Error(`upload failed (${put.status})`);
-      const next = [...screenshots, presigned.publicUrl].slice(0, 12);
+      const next: Screenshot[] = [...screenshots, { url: presigned.publicUrl }].slice(0, 12);
       setScreenshots(next);
       await api.mods.patch(slug, { screenshots: next });
     },
@@ -195,6 +219,25 @@ export default function ManageModPage() {
     setScreenshots(next);
     api.mods.patch(slug, { screenshots: next }).catch((err) => {
       console.error('screenshot remove failed', err);
+    });
+  }
+
+  // Debounced caption save — typing on every keystroke would hammer
+  // the API and race the user. Save on blur instead, plus a fallback
+  // commit if the user re-orders or removes anything.
+  function setCaption(idx: number, caption: string) {
+    setScreenshots((prev) => {
+      const next = prev.map((s, i) => (i === idx ? { ...s, caption } : s));
+      return next;
+    });
+  }
+  function commitCaption(idx: number) {
+    const next = screenshots.map((s, i) =>
+      i === idx ? { url: s.url, caption: s.caption?.trim() || undefined } : s,
+    );
+    setScreenshots(next);
+    api.mods.patch(slug, { screenshots: next }).catch((err) => {
+      console.error('caption save failed', err);
     });
   }
 
@@ -217,6 +260,32 @@ export default function ManageModPage() {
       console.error('video remove failed', err);
     });
   }
+
+  // Lightbox keyboard nav — Esc closes, ←/→ paginate. Wired via
+  // useEffect so we don't leak listeners between mods.
+  const closeLightbox = useCallback(() => setLightboxIdx(null), []);
+  const prevImage = useCallback(() => {
+    setLightboxIdx((i) => {
+      if (i == null || screenshots.length === 0) return i;
+      return (i - 1 + screenshots.length) % screenshots.length;
+    });
+  }, [screenshots.length]);
+  const nextImage = useCallback(() => {
+    setLightboxIdx((i) => {
+      if (i == null || screenshots.length === 0) return i;
+      return (i + 1) % screenshots.length;
+    });
+  }, [screenshots.length]);
+  useEffect(() => {
+    if (lightboxIdx == null) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') closeLightbox();
+      else if (e.key === 'ArrowLeft') prevImage();
+      else if (e.key === 'ArrowRight') nextImage();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [lightboxIdx, closeLightbox, prevImage, nextImage]);
 
   // New version section
   const [newVersion, setNewVersion] = useState('');
@@ -318,23 +387,71 @@ export default function ManageModPage() {
   const mod = detail.data.mod;
   const versions = detail.data.versions;
 
+  if (previewMode) {
+    return (
+      <main className="container mx-auto max-w-3xl space-y-8 px-6 py-12">
+        <PreviewHeader
+          modName={mod.name}
+          slug={mod.slug}
+          onExit={() => setPreviewMode(false)}
+        />
+        <PreviewBody
+          mod={{
+            name: name || mod.name,
+            summary: summary || mod.summary || '',
+            author: mod.author,
+            latestVersion: mod.latestVersion,
+            updatedAt: mod.updatedAt,
+            category,
+            tags: tags
+              .split(',')
+              .map((t) => t.trim())
+              .filter(Boolean),
+            license: license || mod.license,
+            imageUrl: mod.imageUrl,
+            downloads: mod.downloads,
+          }}
+          description={description}
+          screenshots={screenshots}
+          videos={videos}
+          onLightbox={(i) => setLightboxIdx(i)}
+        />
+        {lightboxIdx != null && screenshots[lightboxIdx] ? (
+          <Lightbox
+            shot={screenshots[lightboxIdx]}
+            index={lightboxIdx}
+            total={screenshots.length}
+            onClose={closeLightbox}
+            onPrev={prevImage}
+            onNext={nextImage}
+          />
+        ) : null}
+      </main>
+    );
+  }
+
   return (
     <main className="container mx-auto max-w-3xl space-y-8 px-6 py-12">
-      <header>
-        <p className="font-mono text-xs text-muted-foreground">{mod.slug}</p>
-        <h1 className="text-3xl font-bold tracking-tight">{mod.name}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          v{mod.latestVersion ?? '—'} · {mod.downloads.toLocaleString()} downloads ·
-          {mod.category ? ` ${mod.category} · ` : ' '}updated {new Date(mod.updatedAt).toLocaleDateString()}
-        </p>
-        <div className="mt-3 flex gap-2 text-sm">
-          <Link
-            href={`/registry/${mod.slug}` as never}
-            className="underline-offset-2 hover:underline"
-          >
-            View public page →
-          </Link>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-xs text-muted-foreground">{mod.slug}</p>
+          <h1 className="text-3xl font-bold tracking-tight">{mod.name}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            v{mod.latestVersion ?? '—'} · {mod.downloads.toLocaleString()} downloads ·
+            {mod.category ? ` ${mod.category} · ` : ' '}updated {new Date(mod.updatedAt).toLocaleDateString()}
+          </p>
+          <div className="mt-3 flex gap-2 text-sm">
+            <Link
+              href={`/registry/${mod.slug}` as never}
+              className="underline-offset-2 hover:underline"
+            >
+              View public page →
+            </Link>
+          </div>
         </div>
+        <Button type="button" variant="outline" onClick={() => setPreviewMode(true)}>
+          <Eye className="h-4 w-4" /> Preview
+        </Button>
       </header>
 
       {/* ─── Cover ─── */}
@@ -401,7 +518,7 @@ export default function ManageModPage() {
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label>Description (Markdown)</Label>
-            <div data-color-mode="dark">
+            <div data-color-mode="dark" className="md-editor-themed">
               <MDEditor value={description} onChange={setDescription} height={320} />
             </div>
           </div>
@@ -471,17 +588,43 @@ export default function ManageModPage() {
         <div className="space-y-2">
           <Label>Screenshots</Label>
           {screenshots.length > 0 ? (
-            <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {screenshots.map((url, idx) => (
-                <li key={url} className="relative aspect-video overflow-hidden rounded-md bg-muted">
-                  <img src={url} alt={`Screenshot ${idx + 1}`} className="h-full w-full object-cover" />
+            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {screenshots.map((shot, idx) => (
+                <li
+                  key={shot.url}
+                  className="space-y-2 rounded-md border border-border/40 p-2"
+                >
                   <button
                     type="button"
-                    onClick={() => removeScreenshot(idx)}
-                    className="absolute right-1 top-1 rounded bg-destructive/90 px-2 py-0.5 text-xs text-destructive-foreground hover:bg-destructive"
+                    onClick={() => setLightboxIdx(idx)}
+                    className="group relative block aspect-video w-full overflow-hidden rounded bg-muted"
                   >
-                    remove
+                    <img
+                      src={shot.url}
+                      alt={shot.caption || `Screenshot ${idx + 1}`}
+                      className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
+                    />
+                    <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
+                      click to preview
+                    </span>
                   </button>
+                  <Input
+                    value={shot.caption ?? ''}
+                    onChange={(e) =>
+                      setCaption(idx, (e.target as HTMLInputElement).value)
+                    }
+                    onBlur={() => commitCaption(idx)}
+                    placeholder="Caption (optional, max 200 chars)"
+                    maxLength={200}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => removeScreenshot(idx)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> Remove
+                  </Button>
                 </li>
               ))}
             </ul>
@@ -630,7 +773,7 @@ export default function ManageModPage() {
             </div>
             <div className="space-y-2 sm:col-span-2">
               <Label>Changelog (Markdown)</Label>
-              <div data-color-mode="dark">
+              <div data-color-mode="dark" className="md-editor-themed">
                 <MDEditor value={changelog} onChange={setChangelog} height={200} />
               </div>
             </div>
@@ -684,6 +827,281 @@ export default function ManageModPage() {
           <p className="text-xs text-destructive">{describeApiError(remove.error)}</p>
         ) : null}
       </section>
+
+      {lightboxIdx != null && screenshots[lightboxIdx] ? (
+        <Lightbox
+          shot={screenshots[lightboxIdx]}
+          index={lightboxIdx}
+          total={screenshots.length}
+          onClose={closeLightbox}
+          onPrev={prevImage}
+          onNext={nextImage}
+        />
+      ) : null}
     </main>
+  );
+}
+
+function Lightbox({
+  shot,
+  index,
+  total,
+  onClose,
+  onPrev,
+  onNext,
+}: {
+  shot: Screenshot;
+  index: number;
+  total: number;
+  onClose: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={shot.caption || `Screenshot ${index + 1}`}
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-pitch/95 p-4 animate-fade-in"
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute inset-0"
+        aria-label="Close preview"
+      />
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute right-4 top-4 z-10 rounded-md bg-background/80 p-2 text-foreground hover:bg-background"
+        aria-label="Close"
+      >
+        <X className="h-5 w-5" />
+      </button>
+      {total > 1 ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onPrev();
+          }}
+          className="absolute left-4 top-1/2 z-10 -translate-y-1/2 rounded-md bg-background/80 p-3 text-foreground hover:bg-background"
+          aria-label="Previous"
+        >
+          <ChevronLeft className="h-6 w-6" />
+        </button>
+      ) : null}
+      {total > 1 ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onNext();
+          }}
+          className="absolute right-4 top-1/2 z-10 -translate-y-1/2 rounded-md bg-background/80 p-3 text-foreground hover:bg-background"
+          aria-label="Next"
+        >
+          <ChevronRight className="h-6 w-6" />
+        </button>
+      ) : null}
+      <figure
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onClose();
+        }}
+        className="relative z-[1] flex max-h-full max-w-5xl flex-col items-center gap-3"
+      >
+        <img
+          src={shot.url}
+          alt={shot.caption || `Screenshot ${index + 1}`}
+          className="max-h-[78vh] max-w-full rounded-md object-contain"
+        />
+        <figcaption className="max-w-3xl text-center text-sm text-muted-foreground">
+          {shot.caption || `Screenshot ${index + 1} of ${total}`}
+        </figcaption>
+        <p className="font-mono text-xs text-muted-foreground/70">
+          {index + 1} / {total}
+        </p>
+      </figure>
+    </div>
+  );
+}
+
+function PreviewHeader({
+  modName,
+  slug,
+  onExit,
+}: {
+  modName: string;
+  slug: string;
+  onExit: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-gilt/40 bg-gilt/5 px-4 py-2 text-sm">
+      <div>
+        <span className="font-semibold text-foreground">Preview</span>
+        <span className="ml-2 font-mono text-muted-foreground">{slug}</span>
+        <span className="ml-2 text-muted-foreground">— {modName}</span>
+      </div>
+      <Button type="button" size="sm" variant="outline" onClick={onExit}>
+        <Pencil className="h-4 w-4" /> Back to edit
+      </Button>
+    </div>
+  );
+}
+
+function PreviewBody({
+  mod,
+  description,
+  screenshots,
+  videos,
+  onLightbox,
+}: {
+  mod: {
+    name: string;
+    summary: string;
+    author: string | null;
+    latestVersion: string | null;
+    updatedAt: string;
+    category: string | null;
+    tags: string[];
+    license: string | null;
+    imageUrl: string | null;
+    downloads: number;
+  };
+  description: string | undefined;
+  screenshots: Screenshot[];
+  videos: string[];
+  onLightbox: (idx: number) => void;
+}) {
+  return (
+    <div className="space-y-6">
+      {mod.imageUrl ? (
+        <div className="aspect-[21/9] w-full overflow-hidden rounded-xl border border-border/50 bg-muted">
+          <img src={mod.imageUrl} alt={`${mod.name} cover`} className="h-full w-full object-cover" />
+        </div>
+      ) : null}
+      <header>
+        <h1 className="text-4xl font-bold tracking-tight">{mod.name}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {mod.author ?? 'unknown'}
+          {mod.latestVersion ? ` · v${mod.latestVersion}` : ''}
+          {` · updated ${new Date(mod.updatedAt).toLocaleDateString()}`}
+        </p>
+      </header>
+      {mod.summary ? (
+        <p className="max-w-3xl text-lg text-muted-foreground">{mod.summary}</p>
+      ) : null}
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <div className="space-y-4 md:col-span-2">
+          {description?.trim() ? (
+            <div className="grimoire-card space-y-3 p-6">
+              <h2 className="text-xl font-bold tracking-tight">About</h2>
+              <div data-color-mode="dark" className="prose prose-sm prose-invert max-w-none">
+                <MDPreview source={description} style={{ background: 'transparent' }} />
+              </div>
+            </div>
+          ) : null}
+          {(screenshots.length > 0 || videos.length > 0) ? (
+            <div className="grimoire-card space-y-4 p-6">
+              <h2 className="text-xl font-bold tracking-tight">Gallery</h2>
+              {videos.length > 0 ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {videos.map((url) => {
+                    const embed = toEmbedUrl(url);
+                    return (
+                      <div key={url} className="aspect-video overflow-hidden rounded-md bg-muted">
+                        {embed ? (
+                          <iframe
+                            src={embed}
+                            title="Video preview"
+                            loading="lazy"
+                            allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            allowFullScreen
+                            className="h-full w-full"
+                          />
+                        ) : (
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex h-full w-full items-center justify-center text-sm underline"
+                          >
+                            {url}
+                          </a>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+              {screenshots.length > 0 ? (
+                <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {screenshots.map((shot, idx) => (
+                    <li key={shot.url}>
+                      <button
+                        type="button"
+                        onClick={() => onLightbox(idx)}
+                        className="group block w-full text-left"
+                      >
+                        <div className="aspect-video overflow-hidden rounded-md bg-muted">
+                          <img
+                            src={shot.url}
+                            alt={shot.caption || `Screenshot ${idx + 1}`}
+                            loading="lazy"
+                            className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
+                          />
+                        </div>
+                        {shot.caption ? (
+                          <p className="mt-1 truncate text-xs text-muted-foreground">
+                            {shot.caption}
+                          </p>
+                        ) : null}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+        <aside className="space-y-4">
+          <div className="grimoire-card p-6">
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              Details
+            </h3>
+            <dl className="space-y-2 text-sm">
+              {mod.category ? <Row k="Category" v={mod.category} /> : null}
+              <Row k="Downloads" v={mod.downloads.toLocaleString()} />
+              {mod.latestVersion ? <Row k="Latest" v={`v${mod.latestVersion}`} /> : null}
+              {mod.license ? <Row k="License" v={mod.license} /> : null}
+            </dl>
+          </div>
+          {mod.tags.length > 0 ? (
+            <div className="grimoire-card p-6">
+              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Tags
+              </h3>
+              <div className="flex flex-wrap gap-1.5">
+                {mod.tags.map((t) => (
+                  <Badge key={t} variant="secondary">
+                    {t}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function Row({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <dt className="text-muted-foreground">{k}</dt>
+      <dd className="font-medium">{v}</dd>
+    </div>
   );
 }
