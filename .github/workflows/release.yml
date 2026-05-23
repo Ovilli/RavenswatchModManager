@@ -177,9 +177,15 @@ jobs:
           projectPath: apps/desktop
           tagName: ${{ github.ref_name }}
           releaseName: 'RSMM ${{ github.ref_name }}'
-          # Auto-publish on tag push. Was `true` previously, which left
-          # every release stuck as a draft until manually flipped.
-          releaseDraft: false
+          # Keep the release as a draft during the build matrix so
+          # tauri-action uploads the .sig files for the updater. With
+          # `releaseDraft: false` each platform publishes independently
+          # and the sig artifacts get skipped ("Signature not found
+          # for the updater JSON. Skipping upload..."), leaving the
+          # latest.json assembly step with nothing to work with. The
+          # `publish-updater-manifest` job flips the draft to published
+          # at the end.
+          releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           args: ${{ matrix.args }}
 
@@ -290,3 +296,24 @@ jobs:
           fi
 
           gh release upload "$TAG" latest.json --clobber
+
+  finalize-release:
+    # Flips the draft created by tauri-action into a published release
+    # once the build matrix (and the updater manifest job, if it ran)
+    # is done. Runs unconditionally — `if: always()` covers the case
+    # where publish-updater-manifest skipped because signing isn't set
+    # up yet. Without this step every release stays as a draft.
+    needs: [build, publish-updater-manifest]
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release edit "$TAG" --draft=false
