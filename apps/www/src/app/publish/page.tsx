@@ -406,7 +406,7 @@ export default function PublishPage() {
           </div>
           <div className="space-y-2">
             <Label>Long description (Markdown)</Label>
-            <div data-color-mode="dark">
+            <div data-color-mode="dark" className="md-editor-themed">
               <MDEditor value={description} onChange={setDescription} height={320} />
             </div>
           </div>

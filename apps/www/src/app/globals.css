@@ -544,3 +544,45 @@
 *::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--ash));
 }
+
+/* @uiw/react-md-editor — restyle to match site theme. The library
+ * ships its own dark palette via data-color-mode="dark"; we override
+ * background/border tokens so the editor card blends with the
+ * grimoire-card surfaces around it instead of standing out as a
+ * separate widget. */
+.md-editor-themed .w-md-editor {
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.5rem;
+  box-shadow: none;
+  --md-editor-bg-color: hsl(var(--background));
+}
+.md-editor-themed .w-md-editor-toolbar {
+  background: hsl(var(--card));
+  border-bottom: 1px solid hsl(var(--border));
+}
+.md-editor-themed .w-md-editor-toolbar li > button {
+  color: hsl(var(--muted-foreground));
+}
+.md-editor-themed .w-md-editor-toolbar li > button:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent));
+}
+.md-editor-themed .w-md-editor-text,
+.md-editor-themed .w-md-editor-text-pre,
+.md-editor-themed .w-md-editor-text-input,
+.md-editor-themed .w-md-editor-preview {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+.md-editor-themed .w-md-editor-preview {
+  padding: 1rem 1.25rem;
+}
+.md-editor-themed .w-md-editor-preview h1,
+.md-editor-themed .w-md-editor-preview h2,
+.md-editor-themed .w-md-editor-preview h3 {
+  color: hsl(var(--foreground));
+}
+.md-editor-themed .w-md-editor-preview a {
+  color: hsl(var(--primary));
+}
