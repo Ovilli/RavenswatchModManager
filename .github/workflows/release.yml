@@ -164,12 +164,12 @@ jobs:
       - name: Rebuild lifecycle scripts (post-audit)
         run: pnpm rebuild
 
-      - name: Build desktop (Tauri)
+      - name: Build desktop (Tauri, Linux/macOS)
         # `tauri-action@v0` produced bundles + `.sig` files locally but
         # actively deleted the sig files before subsequent steps could
-        # see them, leaving the updater manifest job with nothing to
-        # assemble. Running `pnpm tauri build` directly keeps every
+        # see them. Running `pnpm tauri build` directly keeps every
         # artifact on disk for the upload step below.
+        if: matrix.platform != 'windows-latest'
         shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -177,10 +177,22 @@ jobs:
         working-directory: apps/desktop
         run: |
           set -euo pipefail
-          # `${{ matrix.args }}` is empty on linux/windows and
-          # `--target universal-apple-darwin` on macOS. Quote-safe because
-          # GH Actions expands it before the shell sees it.
           pnpm tauri build ${{ matrix.args }}
+
+      - name: Build desktop (Tauri, Windows)
+        # PowerShell is required on windows-latest because `shell: bash`
+        # puts Git Bash's `/usr/bin/link` ahead of MSVC's `link.exe`,
+        # and rustc's MSVC backend invokes the wrong tool — failing
+        # every build script with "extra operand …rcgu.o". MSVC env
+        # vars from `ilammy/msvc-dev-cmd@v1` survive into pwsh
+        # untouched, so the build links cleanly here.
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        working-directory: apps/desktop
+        run: pnpm tauri build ${{ matrix.args }}
 
       - name: Ensure draft release exists
         shell: bash
