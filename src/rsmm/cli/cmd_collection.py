@@ -4,18 +4,11 @@ from __future__ import annotations
 
 import json
 import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import NoReturn
 
 from rsmm.cli.json_bridge import cmd_install_mod
-
-RSMM_INDEX_URL = (
-    Path(__file__).resolve().parent.parent.parent.parent
-    / "apps"
-    / "desktop"
-    / ".env"
-)
 
 
 def _api_base() -> str:
@@ -39,7 +32,7 @@ def cmd_install(slug: str) -> int:
     except urllib.error.HTTPError as e:
         print(f"Failed to fetch collection: HTTP {e.code}", file=sys.stderr)
         return 1
-    except Exception as e:
+    except (urllib.error.URLError, OSError, ValueError) as e:
         print(f"Failed to fetch collection: {e}", file=sys.stderr)
         return 1
 
@@ -63,7 +56,7 @@ def cmd_install(slug: str) -> int:
             else:
                 failed.append(mslug)
                 print(f"  └─ install failed (exit {rc})", file=sys.stderr)
-        except Exception as e:
+        except (urllib.error.URLError, OSError, ValueError) as e:
             failed.append(mslug)
             print(f"  └─ install error: {e}", file=sys.stderr)
 
