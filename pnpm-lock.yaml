@@ -14,6 +14,9 @@ importers:
       '@biomejs/biome':
         specifier: 1.9.4
         version: 1.9.4
+      next:
+        specifier: 15.3.9
+        version: 15.3.9(@babel/core@7.29.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       turbo:
         specifier: 2.3.3
         version: 2.3.3
