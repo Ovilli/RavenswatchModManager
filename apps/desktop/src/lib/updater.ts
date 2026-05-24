@@ -25,7 +25,7 @@ export async function checkForUpdate(): Promise<AvailableUpdate | null> {
   try {
     update = await check();
   } catch {
-    throw new Error('Update server unreachable');
+    return null;
   }
   if (!update) return null;
 
