@@ -3,6 +3,12 @@ mod rsmm_env;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Before anything else, attempt to prepend the monorepo root to PATH
+    // so the `rsmm` CLI is discoverable during development. In production
+    // the sidecar binary handles this — if the repo root isn't found this
+    // is a no-op.
+    rsmm_env::prepend_repo_root_to_path();
+
     let mut builder = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             launcher_log::append_launcher_log,
