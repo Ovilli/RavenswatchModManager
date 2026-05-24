@@ -1,4 +1,8 @@
 import {
+  type CollectionCreate,
+  type CollectionPatch,
+  collectionDetailSchema,
+  collectionSchema,
   type CrashReport,
   type ModImagePresign,
   type ModListItem,
@@ -8,6 +12,8 @@ import {
   type ModVersion,
   modVersionSchema,
   type ModVersionCreate,
+  type ReviewUpsert,
+  reviewsResponseSchema,
   type TelemetryRun,
 } from '@rsmm/schemas';
 import { z } from 'zod';
@@ -132,15 +138,39 @@ export function createApiClient(options: ApiClientOptions) {
   });
   const myModsResponseSchema = z.object({ items: z.array(myModItemSchema) });
   const patchResponseSchema = z.object({ mod: z.unknown() });
+  const userProfileResponseSchema = z.object({
+    user: z.object({
+      id: z.string(),
+      name: z.string(),
+      handle: z.string().nullable(),
+      image: z.string().nullable(),
+      joinedAt: z.string(),
+    }),
+    mods: z.array(modListItemSchema),
+    totalDownloads: z.number().int().nonnegative(),
+  });
 
   return {
     mods: {
-      list: (params: { q?: string; tag?: string; limit?: number; offset?: number } = {}) => {
+      list: (
+        params: {
+          q?: string;
+          tag?: string;
+          limit?: number;
+          offset?: number;
+          featured?: boolean;
+          owner?: string;
+          sort?: 'recent' | 'popular' | 'featured';
+        } = {},
+      ) => {
         const qs = new URLSearchParams();
         if (params.q) qs.set('q', params.q);
         if (params.tag) qs.set('tag', params.tag);
         if (params.limit) qs.set('limit', String(params.limit));
         if (params.offset) qs.set('offset', String(params.offset));
+        if (params.featured) qs.set('featured', 'true');
+        if (params.owner) qs.set('owner', params.owner);
+        if (params.sort) qs.set('sort', params.sort);
         return request<{ items: ModListItem[]; total: number }>(
           `/api/mods?${qs}`,
           { method: 'GET' },
@@ -179,11 +209,87 @@ export function createApiClient(options: ApiClientOptions) {
           { method: 'DELETE' },
           okSchema,
         ),
+      reviews: (slug: string) =>
+        request(
+          `/api/mods/${encodeURIComponent(slug)}/reviews`,
+          { method: 'GET' },
+          reviewsResponseSchema,
+        ),
+      upsertReview: (slug: string, body: ReviewUpsert) =>
+        request(
+          `/api/mods/${encodeURIComponent(slug)}/reviews`,
+          { method: 'PUT', body: JSON.stringify(body) },
+          okSchema,
+        ),
+      deleteReview: (slug: string) =>
+        request(
+          `/api/mods/${encodeURIComponent(slug)}/reviews`,
+          { method: 'DELETE' },
+          okSchema,
+        ),
     },
     me: {
       mods: () => request('/api/me/mods', { method: 'GET' }, myModsResponseSchema),
       presignAvatar: (body: ModImagePresign) =>
         request('/api/me/avatar', { method: 'POST', body: JSON.stringify(body) }, imagePresignResponseSchema),
+    },
+    users: {
+      profile: (idOrHandle: string) =>
+        request(
+          `/api/users/${encodeURIComponent(idOrHandle)}`,
+          { method: 'GET' },
+          userProfileResponseSchema,
+        ),
+    },
+    collections: {
+      list: () =>
+        request(
+          '/api/collections',
+          { method: 'GET' },
+          z.object({ items: z.array(collectionSchema) }),
+        ),
+      mine: () =>
+        request(
+          '/api/collections/mine',
+          { method: 'GET' },
+          z.object({ items: z.array(collectionSchema) }),
+        ),
+      get: (slug: string) =>
+        request(
+          `/api/collections/${encodeURIComponent(slug)}`,
+          { method: 'GET' },
+          collectionDetailSchema,
+        ),
+      create: (body: CollectionCreate) =>
+        request(
+          '/api/collections',
+          { method: 'POST', body: JSON.stringify(body) },
+          z.object({ collection: z.unknown() }),
+        ),
+      patch: (slug: string, body: CollectionPatch) =>
+        request(
+          `/api/collections/${encodeURIComponent(slug)}`,
+          { method: 'PATCH', body: JSON.stringify(body) },
+          okSchema,
+        ),
+      remove: (slug: string) =>
+        request(
+          `/api/collections/${encodeURIComponent(slug)}`,
+          { method: 'DELETE' },
+          okSchema,
+        ),
+      addMod: (slug: string, modSlug: string) =>
+        request(
+          `/api/collections/${encodeURIComponent(slug)}/mods`,
+          { method: 'POST', body: JSON.stringify({ modSlug }) },
+          okSchema,
+        ),
+      removeMod: (slug: string, modSlug: string) =>
+        request(
+          `/api/collections/${encodeURIComponent(slug)}/mods/${encodeURIComponent(modSlug)}`,
+          { method: 'DELETE' },
+          okSchema,
+        ),
     },
     telemetry: {
       run: (body: TelemetryRun) =>

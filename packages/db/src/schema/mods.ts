@@ -1,6 +1,7 @@
 import { relations, sql } from 'drizzle-orm';
 import {
   bigint,
+  boolean,
   date,
   index,
   integer,
@@ -49,6 +50,8 @@ export const mods = pgTable(
     videos: text('videos').array(),
     rating: numeric('rating', { precision: 3, scale: 2 }),
     ownerId: text('owner_id').references(() => users.id, { onDelete: 'set null' }),
+    featured: boolean('featured').notNull().default(false),
+    featuredAt: timestamp('featured_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -56,6 +59,7 @@ export const mods = pgTable(
     slugIdx: uniqueIndex('mods_slug_idx').on(table.slug),
     ownerIdx: index('mods_owner_idx').on(table.ownerId),
     categoryIdx: index('mods_category_idx').on(table.category),
+    featuredIdx: index('mods_featured_idx').on(table.featured),
   }),
 );
 
@@ -113,10 +117,90 @@ export const modDownloads = pgTable(
   }),
 );
 
+export const modReviews = pgTable(
+  'mod_reviews',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    modId: uuid('mod_id')
+      .notNull()
+      .references(() => mods.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    rating: integer('rating').notNull(),
+    title: varchar('title', { length: 120 }),
+    body: text('body'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    modUserIdx: uniqueIndex('mod_reviews_mod_user_idx').on(table.modId, table.userId),
+    modIdx: index('mod_reviews_mod_idx').on(table.modId),
+  }),
+);
+
+export const collections = pgTable(
+  'collections',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    slug: varchar('slug', { length: 64 }).notNull(),
+    ownerId: text('owner_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    summary: text('summary'),
+    isPublic: boolean('is_public').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    slugIdx: uniqueIndex('collections_slug_idx').on(table.slug),
+    ownerIdx: index('collections_owner_idx').on(table.ownerId),
+  }),
+);
+
+export const collectionMods = pgTable(
+  'collection_mods',
+  {
+    collectionId: uuid('collection_id')
+      .notNull()
+      .references(() => collections.id, { onDelete: 'cascade' }),
+    modId: uuid('mod_id')
+      .notNull()
+      .references(() => mods.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull().default(0),
+    addedAt: timestamp('added_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.collectionId, table.modId] }),
+    collIdx: index('collection_mods_coll_idx').on(table.collectionId),
+  }),
+);
+
 export const modsRelations = relations(mods, ({ many, one }) => ({
   versions: many(modVersions),
   authors: many(modAuthors),
   owner: one(users, { fields: [mods.ownerId], references: [users.id] }),
+  reviews: many(modReviews),
+  inCollections: many(collectionMods),
+}));
+
+export const modReviewsRelations = relations(modReviews, ({ one }) => ({
+  mod: one(mods, { fields: [modReviews.modId], references: [mods.id] }),
+  user: one(users, { fields: [modReviews.userId], references: [users.id] }),
+}));
+
+export const collectionsRelations = relations(collections, ({ many, one }) => ({
+  owner: one(users, { fields: [collections.ownerId], references: [users.id] }),
+  mods: many(collectionMods),
+}));
+
+export const collectionModsRelations = relations(collectionMods, ({ one }) => ({
+  collection: one(collections, {
+    fields: [collectionMods.collectionId],
+    references: [collections.id],
+  }),
+  mod: one(mods, { fields: [collectionMods.modId], references: [mods.id] }),
 }));
 
 export const modVersionsRelations = relations(modVersions, ({ one }) => ({

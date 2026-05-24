@@ -1,8 +1,37 @@
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { inTauri } from '../lib/platform';
 import { type DoctorCheck, type DoctorResult, doctor } from '../lib/rsmm';
 import { Button, CopyButton } from './chrome';
+
+const DISMISS_KEY = 'rsmm:setup-banner-dismissed';
+const ERROR_DISMISS_KEY = 'rsmm:setup-banner-error-dismissed';
+
+function signatureFor(checks: DoctorCheck[]): string {
+  return checks
+    .filter((c) => c.status === 'FAIL')
+    .map((c) => `${c.status}:${c.label}`)
+    .sort()
+    .join('|');
+}
+
+function readDismissed(key: string): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeDismissed(key: string, value: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    /* storage unavailable — banner returns next launch, acceptable */
+  }
+}
 
 /**
  * Surfaces a banner on the Library page summarizing first-run health
@@ -16,7 +45,15 @@ export function SetupBanner() {
   const [result, setResult] = useState<DoctorResult | null>(null);
   const [running, setRunning] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [dismissed, setDismissed] = useState(false);
+  // Session dismissal — overrides the persisted check until next launch.
+  const [sessionDismissed, setSessionDismissed] = useState(false);
+  // Persisted across launches. Re-shown only when the failure set changes.
+  const [persistedSignature, setPersistedSignature] = useState<string | null>(() =>
+    readDismissed(DISMISS_KEY),
+  );
+  const [persistedError, setPersistedError] = useState<string | null>(() =>
+    readDismissed(ERROR_DISMISS_KEY),
+  );
 
   useEffect(() => {
     if (!inTauri()) {
@@ -41,10 +78,21 @@ export function SetupBanner() {
     };
   }, []);
 
-  if (dismissed) return null;
+  const signature = useMemo(
+    () => (result ? signatureFor(result.checks) : ''),
+    [result],
+  );
+
+  if (sessionDismissed) return null;
   if (running) return null;
 
   if (error) {
+    if (persistedError === error) return null;
+    const dismissError = () => {
+      writeDismissed(ERROR_DISMISS_KEY, error);
+      setPersistedError(error);
+      setSessionDismissed(true);
+    };
     return (
       <div className="ember-banner flex items-start gap-3 px-4 py-3" role="status">
         <AlertTriangle className="h-4 w-4 text-crimson shrink-0 mt-1" aria-hidden />
@@ -55,7 +103,7 @@ export function SetupBanner() {
           <p className="font-mono text-sm text-ash break-all">{error}</p>
         </div>
         <CopyButton value={error} />
-        <Button type="button" size="sm" onClick={() => setDismissed(true)}>
+        <Button type="button" size="sm" onClick={dismissError}>
           Dismiss
         </Button>
       </div>
@@ -63,8 +111,18 @@ export function SetupBanner() {
   }
 
   if (!result) return null;
-  const failing: DoctorCheck[] = result.checks.filter((c) => !c.ok);
+  // Only hard FAILs gate mods. WARNs (loader missing on Linux, exe
+  // newer than pattern db) are informational — they don't block apply
+  // and shouldn't dunk a banner on every launch.
+  const failing: DoctorCheck[] = result.checks.filter((c) => c.status === 'FAIL');
   if (failing.length === 0) return null;
+  if (persistedSignature === signature) return null;
+
+  const dismiss = () => {
+    writeDismissed(DISMISS_KEY, signature);
+    setPersistedSignature(signature);
+    setSessionDismissed(true);
+  };
 
   return (
     <div className="grimoire-card flex flex-col gap-3 p-4" role="status">
@@ -73,7 +131,7 @@ export function SetupBanner() {
           <AlertTriangle className="h-5 w-5 text-crimson" aria-hidden />
           First-run setup
         </h3>
-        <Button type="button" size="sm" onClick={() => setDismissed(true)}>
+        <Button type="button" size="sm" onClick={dismiss}>
           Dismiss
         </Button>
       </header>

@@ -1,7 +1,8 @@
 import { ApiError } from '@rsmm/api-client';
 import { useQuery } from '@tanstack/react-query';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
+import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
+import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Globe, Plus, Trash2, X } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Button,
   Cover,
@@ -14,7 +15,9 @@ import {
   StatPill,
 } from '../components/chrome';
 import { api } from '../lib/api';
+import { getApiUrl } from '../lib/api-url';
 import { inTauri } from '../lib/platform';
+import { toEmbedUrl } from '../lib/video-embed';
 import { activeProfile, isEnabledIn, useApp } from '../store';
 
 export const Route = createFileRoute('/mod/$slug')({
@@ -74,7 +77,7 @@ function ModDetailPage() {
   const name = apiMod?.name ?? liveBySlug?.name ?? slug;
   const author = apiMod?.author ?? liveBySlug?.author ?? 'unknown';
   const summary = apiMod?.summary ?? liveBySlug?.summary ?? '';
-  const description = apiMod?.summary ?? liveBySlug?.description ?? '';
+  const description = apiMod?.description ?? liveBySlug?.description ?? '';
   const category = apiMod?.category ?? liveBySlug?.category ?? null;
   const tags = apiMod?.tags ?? liveBySlug?.tags ?? [];
   const rating = apiMod?.rating ?? null;
@@ -85,9 +88,18 @@ function ModDetailPage() {
   const installedHere = liveBySlug ? installed.includes(liveBySlug.id) : false;
   const enabled = installedHere && liveBySlug ? isEnabledIn(profile, liveBySlug.id) : false;
   const outdated = Boolean(localVersion && apiLatest && localVersion !== apiLatest);
+  const license = apiMod?.license ?? null;
+  const repoUrl = apiMod?.repoUrl ?? null;
+  const homepageUrl = apiMod?.homepageUrl ?? null;
+  const screenshots = apiMod?.screenshots ?? [];
+  const videos = apiMod?.videos ?? [];
+  const dependencies = apiMod?.dependencies ?? {};
 
-  const markdown = liveBySlug?.markdown ?? `# ${name}\n\n${summary || description || ''}`;
+  const markdown =
+    liveBySlug?.markdown ??
+    (description ? `# ${name}\n\n${description}` : `# ${name}\n\n${summary || ''}`);
   const sizeBytes = latestVersion?.sizeBytes ?? null;
+  const apiBase = getApiUrl().replace(/\/+$/, '');
 
   return (
     <div className="space-y-6">
@@ -145,6 +157,51 @@ function ModDetailPage() {
             <Markdown source={markdown} className="mt-4" />
           </Panel>
 
+          {videos.length > 0 || screenshots.length > 0 ? (
+            <Panel>
+              <h3 className="font-fraktur text-xl text-parchment mb-3">Gallery</h3>
+              <Fleuron />
+              <div className="mt-4 space-y-4">
+                {videos.length > 0 ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {videos.map((url) => {
+                      const embed = toEmbedUrl(url);
+                      return (
+                        <div
+                          key={url}
+                          className="aspect-video overflow-hidden rounded border border-oxblood/30 bg-pitch"
+                        >
+                          {embed ? (
+                            <iframe
+                              src={embed}
+                              title={`${name} video`}
+                              loading="lazy"
+                              allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                              allowFullScreen
+                              className="h-full w-full"
+                            />
+                          ) : (
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex h-full w-full items-center justify-center break-all px-3 text-sm text-parchment underline"
+                            >
+                              {url}
+                            </a>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+                {screenshots.length > 0 ? (
+                  <ScreenshotGallery shots={screenshots} modName={name} />
+                ) : null}
+              </div>
+            </Panel>
+          ) : null}
+
           {liveBySlug?.changelog ? (
             <Panel>
               <h3 className="font-fraktur text-xl text-parchment mb-3">Changelog</h3>
@@ -152,6 +209,36 @@ function ModDetailPage() {
               <pre className="font-mono mt-4 whitespace-pre-wrap text-ash">
                 {liveBySlug.changelog}
               </pre>
+            </Panel>
+          ) : null}
+
+          {data?.versions && data.versions.length > 0 ? (
+            <Panel>
+              <h3 className="font-fraktur text-xl text-parchment mb-3">Versions</h3>
+              <Fleuron />
+              <ul className="mt-4 divide-y divide-oxblood/20">
+                {data.versions.map((v) => (
+                  <li key={v.id} className="flex items-center justify-between gap-4 py-2">
+                    <div className="flex items-baseline gap-3">
+                      <span className="font-mono text-sm text-parchment">v{v.version}</span>
+                      <span className="font-mono text-xs text-ash">
+                        {new Date(v.createdAt).toLocaleDateString()}
+                      </span>
+                      {v.sizeBytes ? (
+                        <span className="font-mono text-xs text-ash">
+                          {(v.sizeBytes / 1024 / 1024).toFixed(2)} MB
+                        </span>
+                      ) : null}
+                    </div>
+                    <a
+                      href={`${apiBase}/api/mods/${slug}/${v.version}/download`}
+                      className="font-mono text-xs text-gilt hover:underline"
+                    >
+                      download
+                    </a>
+                  </li>
+                ))}
+              </ul>
             </Panel>
           ) : null}
         </div>
@@ -167,8 +254,42 @@ function ModDetailPage() {
                 <Row k="Size" v={`${(sizeBytes / 1024 / 1024).toFixed(2)} MB`} />
               ) : null}
               {apiLatest ? <Row k="Latest" v={`v${apiLatest}`} /> : null}
+              {license ? <Row k="License" v={license} /> : null}
             </dl>
           </Panel>
+
+          {repoUrl || homepageUrl ? (
+            <Panel>
+              <h4 className="font-mono text-ash mb-3">Links</h4>
+              <ul className="space-y-2 text-sm">
+                {homepageUrl ? (
+                  <li>
+                    <a
+                      href={homepageUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-parchment underline-offset-2 hover:underline"
+                    >
+                      <Globe className="h-3.5 w-3.5" /> Homepage
+                      <ExternalLink className="h-3 w-3 opacity-60" />
+                    </a>
+                  </li>
+                ) : null}
+                {repoUrl ? (
+                  <li>
+                    <a
+                      href={repoUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-parchment underline-offset-2 hover:underline"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" /> Repository
+                    </a>
+                  </li>
+                ) : null}
+              </ul>
+            </Panel>
+          ) : null}
 
           {tags.length > 0 ? (
             <Panel>
@@ -178,6 +299,38 @@ function ModDetailPage() {
                   <MonoTag key={t}>{t}</MonoTag>
                 ))}
               </div>
+            </Panel>
+          ) : null}
+
+          {Object.keys(dependencies).length > 0 ? (
+            <Panel>
+              <h4 className="font-mono text-ash mb-3">Requires</h4>
+              <ul className="space-y-1.5 text-sm">
+                {Object.entries(dependencies).map(([depSlug, range]) => {
+                  const depInstalled = Object.values(useApp.getState().localMods).some(
+                    (m) => m.slug === depSlug,
+                  );
+                  return (
+                    <li key={depSlug} className="flex items-baseline justify-between gap-2">
+                      <Link
+                        to="/mod/$slug"
+                        params={{ slug: depSlug }}
+                        className="text-parchment hover:text-gilt hover:underline"
+                      >
+                        {depSlug}
+                      </Link>
+                      <span className="flex items-center gap-1.5">
+                        <code className="font-mono text-xs text-ash">{range}</code>
+                        {depInstalled ? (
+                          <MonoTag tone="gilt">ok</MonoTag>
+                        ) : (
+                          <MonoTag tone="crimson">missing</MonoTag>
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
             </Panel>
           ) : null}
         </aside>
@@ -194,5 +347,124 @@ function Row({ k, v }: { k: string; v: string }) {
         <StatPill value={v} className="tracking-normal" />
       </dd>
     </div>
+  );
+}
+
+interface Screenshot {
+  url: string;
+  caption?: string;
+}
+
+function ScreenshotGallery({ shots, modName }: { shots: Screenshot[]; modName: string }) {
+  const [idx, setIdx] = useState<number | null>(null);
+  const close = useCallback(() => setIdx(null), []);
+  const prev = useCallback(() => {
+    setIdx((i) => (i == null ? i : (i - 1 + shots.length) % shots.length));
+  }, [shots.length]);
+  const next = useCallback(() => {
+    setIdx((i) => (i == null ? i : (i + 1) % shots.length));
+  }, [shots.length]);
+  useEffect(() => {
+    if (idx == null) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') close();
+      else if (e.key === 'ArrowLeft') prev();
+      else if (e.key === 'ArrowRight') next();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [idx, close, prev, next]);
+
+  const active = idx != null ? shots[idx] : null;
+
+  return (
+    <>
+      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {shots.map((shot, i) => (
+          <li key={shot.url}>
+            <button
+              type="button"
+              onClick={() => setIdx(i)}
+              className="group block w-full text-left"
+            >
+              <div className="aspect-video overflow-hidden rounded border border-oxblood/30 bg-pitch">
+                <img
+                  src={shot.url}
+                  alt={shot.caption || `${modName} screenshot ${i + 1}`}
+                  loading="lazy"
+                  className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
+                />
+              </div>
+              {shot.caption ? (
+                <p className="mt-1 truncate text-xs text-ash">{shot.caption}</p>
+              ) : null}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {active ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={active.caption || `${modName} screenshot ${(idx ?? 0) + 1}`}
+          className="fixed inset-0 z-[90] bg-pitch/95"
+        >
+          <div className="absolute inset-0 overflow-y-auto">
+            <button
+              type="button"
+              onClick={close}
+              className="absolute inset-0 h-full w-full cursor-default"
+              aria-label="Close preview"
+            />
+            <div className="pointer-events-none relative flex min-h-full items-center justify-center px-4 py-16 sm:px-20">
+              <figure
+                onClick={(e) => e.stopPropagation()}
+                className="pointer-events-auto flex w-full max-w-6xl flex-col items-center gap-4"
+              >
+                <img
+                  src={active.url}
+                  alt={active.caption || `${modName} screenshot ${(idx ?? 0) + 1}`}
+                  className="max-w-full rounded-md object-contain shadow-2xl"
+                />
+                <figcaption className="max-w-3xl text-center text-sm text-ash">
+                  {active.caption || `Screenshot ${(idx ?? 0) + 1} of ${shots.length}`}
+                </figcaption>
+                <p className="font-mono text-xs text-ash/70">
+                  {(idx ?? 0) + 1} / {shots.length}
+                </p>
+              </figure>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={close}
+            className="fixed right-4 top-4 z-20 rounded-md bg-oxblood/60 p-2 text-parchment hover:bg-oxblood"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          {shots.length > 1 ? (
+            <>
+              <button
+                type="button"
+                onClick={prev}
+                className="fixed left-2 sm:left-4 top-1/2 z-20 -translate-y-1/2 rounded-md bg-oxblood/60 p-3 text-parchment hover:bg-oxblood"
+                aria-label="Previous"
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </button>
+              <button
+                type="button"
+                onClick={next}
+                className="fixed right-2 sm:right-4 top-1/2 z-20 -translate-y-1/2 rounded-md bg-oxblood/60 p-3 text-parchment hover:bg-oxblood"
+                aria-label="Next"
+              >
+                <ChevronRight className="h-6 w-6" />
+              </button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+    </>
   );
 }

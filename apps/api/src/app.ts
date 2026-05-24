@@ -4,9 +4,11 @@ import { logger } from 'hono/logger';
 import { auth } from './auth';
 import { env, githubConfigured, googleConfigured } from './env';
 import { createRateLimiter } from './rate-limit';
+import { collectionsRouter } from './routes/collections';
 import { meRouter } from './routes/me';
 import { modsRouter } from './routes/mods';
 import { telemetryRouter } from './routes/telemetry';
+import { usersRouter } from './routes/users';
 import type { AppEnv } from './types';
 
 export const app = new Hono<AppEnv>();
@@ -73,4 +75,6 @@ app.get('/api/auth-config', (c) =>
 
 app.route('/api/mods', modsRouter);
 app.route('/api/me', meRouter);
+app.route('/api/users', usersRouter);
+app.route('/api/collections', collectionsRouter);
 app.route('/api/telemetry', telemetryRouter);

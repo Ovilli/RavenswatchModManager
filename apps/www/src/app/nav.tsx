@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import type { Route } from 'next';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { LogOut, User as UserIcon, Upload, Library, Settings } from 'lucide-react';
@@ -9,7 +10,8 @@ import { signOut, useSession } from '../lib/auth-client';
 
 const navLinks = [
   { href: '/' as const, label: 'Home' },
-  { href: '/registry' as const, label: 'Browse Registry' },
+  { href: '/registry' as const, label: 'Registry' },
+  { href: '/c' as const, label: 'Collections' },
   { href: '/download' as const, label: 'Download' },
 ];
 
@@ -159,7 +161,7 @@ export function Nav({ versionBadge }: { versionBadge?: ReactNode }) {
           {navLinks.map((link) => (
             <Link
               key={link.href}
-              href={link.href}
+              href={link.href as Route}
               className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
                 isActive(link.href)
                   ? 'bg-crimson/10 text-parchment'

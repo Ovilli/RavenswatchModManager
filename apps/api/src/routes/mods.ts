@@ -5,6 +5,7 @@ import {
   modPatchSchema,
   modUploadRequestSchema,
   modVersionCreateSchema,
+  reviewUpsertSchema,
 } from '@rsmm/schemas';
 import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -26,6 +27,12 @@ const downloadLimiter = createRateLimiter({ windowMs: 60_000, maxHits: 120 });
 const listQuerySchema = z.object({
   q: z.string().optional(),
   tag: z.string().optional(),
+  featured: z
+    .union([z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0')])
+    .optional()
+    .transform((v) => (v === 'true' || v === '1' ? true : v === undefined ? undefined : false)),
+  owner: z.string().optional(),
+  sort: z.enum(['recent', 'popular', 'featured']).default('recent'),
   limit: z.coerce.number().int().min(1).max(100).default(24),
   offset: z.coerce.number().int().min(0).default(0),
 });
@@ -40,7 +47,7 @@ const downloadParamSchema = z.object({
 });
 
 modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
-  const { q, tag, limit, offset } = c.req.valid('query');
+  const { q, tag, featured, owner, sort, limit, offset } = c.req.valid('query');
   const db = getDb();
 
   const conditions = [
@@ -51,7 +58,20 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
         )
       : undefined,
     tag ? sql`${tag} = ANY(${schema.mods.tags})` : undefined,
+    featured === true ? eq(schema.mods.featured, true) : undefined,
+    owner ? eq(schema.mods.ownerId, owner) : undefined,
   ].filter(Boolean);
+
+  const orderBy =
+    sort === 'popular'
+      ? sql`coalesce((
+          select sum(${schema.modDownloads.count})
+          from ${schema.modDownloads}
+          where ${schema.modDownloads.modId} = ${schema.mods.id}
+        ), 0) desc`
+      : sort === 'featured'
+        ? sql`${schema.mods.featured} desc, ${schema.mods.featuredAt} desc nulls last, ${schema.mods.updatedAt} desc`
+        : desc(schema.mods.updatedAt);
 
   const rows = await db
     .select({
@@ -68,6 +88,8 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
       videos: schema.mods.videos,
       rating: schema.mods.rating,
       tags: schema.mods.tags,
+      featured: schema.mods.featured,
+      ownerId: schema.mods.ownerId,
       latestVersion: sql<string | null>`(
         select ${schema.modVersions.version}
         from ${schema.modVersions}
@@ -83,7 +105,7 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
     })
     .from(schema.mods)
     .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(desc(schema.mods.updatedAt))
+    .orderBy(orderBy)
     .limit(limit)
     .offset(offset);
 
@@ -110,6 +132,8 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
       videos: r.videos ?? [],
       rating: r.rating != null ? Number(r.rating) : null,
       tags: r.tags ?? [],
+      featured: r.featured,
+      ownerId: r.ownerId,
     })),
     total,
   });
@@ -145,7 +169,10 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       name: mod.name,
       author: mod.authorName,
       summary: mod.summary,
+      description: mod.description,
       license: mod.license,
+      repoUrl: mod.repoUrl,
+      homepageUrl: mod.homepageUrl,
       latestVersion: mod.versions[0]?.version ?? null,
       downloads,
       updatedAt: mod.updatedAt.toISOString(),
@@ -155,6 +182,11 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       videos: mod.videos ?? [],
       rating: mod.rating != null ? Number(mod.rating) : null,
       tags: mod.tags ?? [],
+      featured: mod.featured,
+      ownerId: mod.ownerId,
+      dependencies:
+        (mod.versions[0]?.manifestJson as { dependencies?: Record<string, string> } | undefined)
+          ?.dependencies ?? undefined,
     },
     versions: mod.versions.map((v) => ({
       id: v.id,
@@ -530,6 +562,138 @@ modsRouter.delete('/:slug/delete', zValidator('param', slugParamSchema), async (
 
   // Cascade removes mod_versions, mod_authors, mod_downloads via FK.
   await db.delete(schema.mods).where(eq(schema.mods.id, existing.id));
+  return c.json({ ok: true });
+});
+
+// ─────────── Reviews ───────────
+
+const reviewLimiter = createRateLimiter({
+  windowMs: 60_000,
+  maxHits: 10,
+  keyFrom: (c) => {
+    const user = c.get('user');
+    return user?.id ?? c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? 'anon';
+  },
+});
+
+async function recomputeRating(modId: string): Promise<void> {
+  const db = getDb();
+  const agg = await db
+    .select({
+      avg: sql<number | null>`avg(${schema.modReviews.rating})::numeric(3,2)`,
+    })
+    .from(schema.modReviews)
+    .where(eq(schema.modReviews.modId, modId));
+  const avg = agg[0]?.avg;
+  await db
+    .update(schema.mods)
+    .set({ rating: avg == null ? null : String(avg) })
+    .where(eq(schema.mods.id, modId));
+}
+
+modsRouter.get('/:slug/reviews', zValidator('param', slugParamSchema), async (c) => {
+  const { slug } = c.req.valid('param');
+  const db = getDb();
+  const mod = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
+  if (!mod) return c.json({ error: 'not found' }, 404);
+
+  const rows = await db
+    .select({
+      id: schema.modReviews.id,
+      modId: schema.modReviews.modId,
+      userId: schema.modReviews.userId,
+      rating: schema.modReviews.rating,
+      title: schema.modReviews.title,
+      body: schema.modReviews.body,
+      createdAt: schema.modReviews.createdAt,
+      updatedAt: schema.modReviews.updatedAt,
+      userName: schema.users.name,
+      userImage: schema.users.image,
+    })
+    .from(schema.modReviews)
+    .innerJoin(schema.users, eq(schema.users.id, schema.modReviews.userId))
+    .where(eq(schema.modReviews.modId, mod.id))
+    .orderBy(desc(schema.modReviews.updatedAt));
+
+  const items = rows.map((r) => ({
+    id: r.id,
+    modId: r.modId,
+    userId: r.userId,
+    userName: r.userName,
+    userImage: r.userImage,
+    rating: r.rating,
+    title: r.title,
+    body: r.body,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+  }));
+
+  const average = items.length
+    ? items.reduce((s, r) => s + r.rating, 0) / items.length
+    : null;
+
+  return c.json({ items, total: items.length, averageRating: average });
+});
+
+modsRouter.use('/:slug/reviews', reviewLimiter);
+modsRouter.put(
+  '/:slug/reviews',
+  zValidator('param', slugParamSchema),
+  zValidator('json', reviewUpsertSchema),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    const { slug } = c.req.valid('param');
+    const body = c.req.valid('json');
+    const db = getDb();
+
+    const mod = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
+    if (!mod) return c.json({ error: 'not found' }, 404);
+    if (mod.ownerId === user.id) {
+      return c.json({ error: 'authors cannot review their own mod' }, 400);
+    }
+
+    const now = new Date();
+    await db
+      .insert(schema.modReviews)
+      .values({
+        modId: mod.id,
+        userId: user.id,
+        rating: body.rating,
+        title: body.title ?? null,
+        body: body.body ?? null,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [schema.modReviews.modId, schema.modReviews.userId],
+        set: {
+          rating: body.rating,
+          title: body.title ?? null,
+          body: body.body ?? null,
+          updatedAt: now,
+        },
+      });
+
+    await recomputeRating(mod.id);
+    return c.json({ ok: true });
+  },
+);
+
+modsRouter.delete('/:slug/reviews', zValidator('param', slugParamSchema), async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'unauthorized' }, 401);
+  const { slug } = c.req.valid('param');
+  const db = getDb();
+
+  const mod = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
+  if (!mod) return c.json({ error: 'not found' }, 404);
+
+  await db
+    .delete(schema.modReviews)
+    .where(
+      and(eq(schema.modReviews.modId, mod.id), eq(schema.modReviews.userId, user.id)),
+    );
+  await recomputeRating(mod.id);
   return c.json({ ok: true });
 });
 
