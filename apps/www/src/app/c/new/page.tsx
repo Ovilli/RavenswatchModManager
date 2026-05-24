@@ -256,7 +256,7 @@ export default function NewCollectionPage() {
           <span className="block text-sm font-medium">
             Description <span className="text-muted-foreground">(Markdown)</span>
           </span>
-          <div data-color-mode="light">
+          <div data-color-mode="dark" className="md-editor-themed">
             <MDEditor
               value={description}
               onChange={(v) => setDescription(v ?? '')}
