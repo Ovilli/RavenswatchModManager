@@ -379,6 +379,8 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
       - name: Publish the draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -387,3 +389,13 @@ jobs:
         run: |
           set -euo pipefail
           gh release edit "$TAG" --draft=false
+
+      # GITHUB_TOKEN publish does not trigger `release: published`, so
+      # discord-notify.yml never runs for tag-driven releases — notify here.
+      - name: Notify Discord
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: bash scripts/discord-release-notify.sh

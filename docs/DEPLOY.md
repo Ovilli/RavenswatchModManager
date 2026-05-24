@@ -46,7 +46,10 @@ default `GITHUB_TOKEN` is enough for creating the draft release.
      **Settings → Secrets and variables → Actions → New repository secret**
      - Name: `DISCORD_WEBHOOK_URL`
      - Value: `https://discord.com/api/webhooks/...`
-   - When you publish a release, a notification is sent to the webhook channel.
+   - Tag-driven releases notify Discord from the `finalize-release` job in
+     `release.yml` (GitHub does not fire `release: published` for publishes
+     done via `GITHUB_TOKEN`). Manual/UI publishes still trigger
+     `discord-notify.yml`.
 
 ---
 
