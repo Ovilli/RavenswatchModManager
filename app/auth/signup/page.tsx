@@ -1,1 +1,0 @@
-export { default } from '../../../apps/www/src/app/auth/signup/page';
