@@ -22,6 +22,7 @@ import {
   StatPill,
 } from '../components/chrome';
 import { SetupBanner } from '../components/setup-banner';
+import { UpdatesPanel } from '../components/updates-panel';
 import type { ModCategory } from '../data/mock-mods';
 import { listLocalMods } from '../lib/rsmm';
 import { activeProfile, detectConflicts, getMod, isEnabledIn, useApp } from '../store';
@@ -173,6 +174,7 @@ function LibraryPage() {
   return (
     <div className="space-y-6">
       <SetupBanner />
+      <UpdatesPanel />
       <SectionHeader
         title="Library"
         subtitle={`${installed.length} mods in the local folder.`}

@@ -79,6 +79,8 @@ async function isRavenswatchRunning(): Promise<boolean> {
 }
 
 function NavLink({ to, icon: Icon, label }: Nav) {
+  const installed = useApp((s) => s.installed);
+  const outdated = useMemo(() => (to === '/' ? outdatedCount(installed) : 0), [to, installed]);
   return (
     <Link
       to={to}
@@ -88,6 +90,14 @@ function NavLink({ to, icon: Icon, label }: Nav) {
     >
       <Icon className="nav-icon" />
       <span className="font-serif-italic text-base">{label}</span>
+      {outdated > 0 ? (
+        <span
+          className="ml-auto inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-gilt/20 px-1.5 font-mono text-[11px] font-semibold text-gilt"
+          title={`${outdated} mod${outdated === 1 ? '' : 's'} with available updates`}
+        >
+          {outdated}
+        </span>
+      ) : null}
     </Link>
   );
 }

@@ -49,6 +49,8 @@ interface State {
   /** Sync the live rsmm list into the store and keep profiles in sync
    * with what is actually present on disk. */
   syncLocalMods: (mods: LocalMod[]) => void;
+  /** Patch latestVersion + image/summary onto local mods after polling the API. */
+  patchRemoteInfo: (info: Record<string, { latestVersion?: string | null; image?: string | null; summary?: string | null }>) => void;
 }
 
 function uid(): string {
@@ -342,6 +344,22 @@ export const useApp = create<State>()(
           );
           return { localMods, installed, profiles };
         }),
+
+      patchRemoteInfo: (info) =>
+        set((s) => {
+          const next: Record<string, MockMod> = { ...s.localMods };
+          for (const [slug, payload] of Object.entries(info)) {
+            const found = Object.values(next).find((m) => m.slug === slug);
+            if (!found) continue;
+            next[found.id] = {
+              ...found,
+              latestVersion: payload.latestVersion ?? found.latestVersion,
+              image: payload.image ?? found.image,
+              summary: payload.summary ?? found.summary,
+            };
+          }
+          return { localMods: next };
+        }),
     }),
     {
       name: 'rsmm-grimoire',
@@ -498,4 +516,13 @@ export function outdatedCount(installed: string[]): number {
     const m = getMod(id);
     return m && m.version !== m.latestVersion;
   }).length;
+}
+
+export function outdatedMods(installed: string[]): MockMod[] {
+  const out: MockMod[] = [];
+  for (const id of installed) {
+    const m = getMod(id);
+    if (m && m.latestVersion && m.version !== m.latestVersion) out.push(m);
+  }
+  return out;
 }

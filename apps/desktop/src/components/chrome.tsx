@@ -2,6 +2,8 @@ import { cn } from '@rsmm/ui';
 import { Copy } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 export function Fleuron({
   className,
@@ -163,193 +165,113 @@ export function Cover({
   );
 }
 
-interface MdBlock {
-  kind: 'h1' | 'h2' | 'h3' | 'p' | 'ul' | 'quote' | 'code';
-  text?: string;
-  items?: string[];
-}
-
-function parseMarkdownBlocks(src: string): MdBlock[] {
-  const out: MdBlock[] = [];
-  const lines = src.replace(/\r\n/g, '\n').split('\n');
-  let i = 0;
-  while (i < lines.length) {
-    const line = lines[i] ?? '';
-    if (line.trim() === '') {
-      i++;
-      continue;
-    }
-    if (line.startsWith('```')) {
-      const buf: string[] = [];
-      i++;
-      while (i < lines.length && !(lines[i] ?? '').startsWith('```')) {
-        buf.push(lines[i] ?? '');
-        i++;
-      }
-      i++;
-      out.push({ kind: 'code', text: buf.join('\n') });
-      continue;
-    }
-    if (line.startsWith('### ')) {
-      out.push({ kind: 'h3', text: line.slice(4) });
-      i++;
-      continue;
-    }
-    if (line.startsWith('## ')) {
-      out.push({ kind: 'h2', text: line.slice(3) });
-      i++;
-      continue;
-    }
-    if (line.startsWith('# ')) {
-      out.push({ kind: 'h1', text: line.slice(2) });
-      i++;
-      continue;
-    }
-    if (line.startsWith('> ')) {
-      const buf: string[] = [line.slice(2)];
-      i++;
-      while (i < lines.length && (lines[i] ?? '').startsWith('> ')) {
-        buf.push((lines[i] ?? '').slice(2));
-        i++;
-      }
-      out.push({ kind: 'quote', text: buf.join(' ') });
-      continue;
-    }
-    if (/^(-|\d+\.)\s/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^(-|\d+\.)\s/.test(lines[i] ?? '')) {
-        items.push((lines[i] ?? '').replace(/^(-|\d+\.)\s/, ''));
-        i++;
-      }
-      out.push({ kind: 'ul', items });
-      continue;
-    }
-    const buf: string[] = [line];
-    i++;
-    while (i < lines.length) {
-      const nxt = lines[i] ?? '';
-      if (nxt.trim() === '' || /^(#{1,3}\s|>\s|-\s|\d+\.\s|```)/.test(nxt)) break;
-      buf.push(nxt);
-      i++;
-    }
-    out.push({ kind: 'p', text: buf.join(' ') });
-  }
-  return out;
-}
-
-function renderInline(src: string, keyPrefix: string): ReactNode[] {
-  const nodes: ReactNode[] = [];
-  const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
-  let lastIdx = 0;
-  let match: RegExpExecArray | null;
-  let n = 0;
-  match = pattern.exec(src);
-  while (match !== null) {
-    if (match.index > lastIdx) nodes.push(src.slice(lastIdx, match.index));
-    const tok = match[0];
-    const key = `${keyPrefix}-${n++}`;
-    if (tok.startsWith('`')) {
-      nodes.push(
-        <code key={key} className="font-mono border border-border bg-char/40 px-1 text-parchment">
-          {tok.slice(1, -1)}
-        </code>,
-      );
-    } else if (tok.startsWith('**')) {
-      nodes.push(
-        <strong key={key} className="text-parchment">
-          {tok.slice(2, -2)}
-        </strong>,
-      );
-    } else if (tok.startsWith('*')) {
-      nodes.push(<em key={key}>{tok.slice(1, -1)}</em>);
-    } else {
-      const m = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(tok);
-      if (m) {
-        nodes.push(
-          <a
-            key={key}
-            href={m[2]}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="text-gilt hover:underline"
-          >
-            {m[1]}
-          </a>,
-        );
-      }
-    }
-    lastIdx = match.index + tok.length;
-    match = pattern.exec(src);
-  }
-  if (lastIdx < src.length) nodes.push(src.slice(lastIdx));
-  return nodes;
-}
-
 /**
- * Minimal Markdown renderer for mod store-page copy. Handles
- * headings, paragraphs, lists, blockquotes, fenced code, plus
- * inline bold/italic/code/links. Intentionally tiny — not a CommonMark
- * implementation; we only render trusted mod-authored copy.
+ * Markdown renderer for mod store-page copy. Uses react-markdown +
+ * remark-gfm so authored content matches what the website preview
+ * shows (tables, task lists, headings 1–6, images, autolinks).
+ * Element classes keep the grimoire palette intact.
  */
 export function Markdown({ source, className }: { source: string; className?: string }) {
-  const blocks = parseMarkdownBlocks(source);
   return (
     <div className={cn('space-y-4 text-parchment/90', className)}>
-      {blocks.map((b, idx) => {
-        const k = `md-${idx}`;
-        switch (b.kind) {
-          case 'h1':
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          h1: ({ node, ...props }) => (
+            <h1 className="font-fraktur text-3xl text-parchment" {...props} />
+          ),
+          h2: ({ node, ...props }) => (
+            <h2 className="font-fraktur text-2xl text-parchment" {...props} />
+          ),
+          h3: ({ node, ...props }) => (
+            <h3 className="font-fraktur text-xl text-parchment" {...props} />
+          ),
+          h4: ({ node, ...props }) => (
+            <h4 className="font-fraktur text-lg text-parchment" {...props} />
+          ),
+          h5: ({ node, ...props }) => (
+            <h5 className="font-fraktur text-base text-parchment" {...props} />
+          ),
+          h6: ({ node, ...props }) => (
+            <h6 className="font-fraktur text-sm uppercase tracking-wider text-parchment" {...props} />
+          ),
+          p: ({ node, ...props }) => (
+            <p className="font-serif-italic leading-relaxed" {...props} />
+          ),
+          a: ({ node, ...props }) => (
+            <a
+              target="_blank"
+              rel="noreferrer noopener"
+              className="text-gilt hover:underline"
+              {...props}
+            />
+          ),
+          ul: ({ node, ...props }) => (
+            <ul className="font-serif-italic list-disc space-y-1 pl-6" {...props} />
+          ),
+          ol: ({ node, ...props }) => (
+            <ol className="font-serif-italic list-decimal space-y-1 pl-6" {...props} />
+          ),
+          li: ({ node, ...props }) => <li {...props} />,
+          blockquote: ({ node, ...props }) => (
+            <blockquote
+              className="font-serif-italic border-l-2 border-gilt/60 pl-4 text-ash"
+              {...props}
+            />
+          ),
+          code: ({ node, className, children, ...props }) => {
+            const isInline = !/language-/.test(className ?? '');
+            if (isInline) {
+              return (
+                <code
+                  className="font-mono border border-border bg-char/40 px-1 text-parchment"
+                  {...props}
+                >
+                  {children}
+                </code>
+              );
+            }
             return (
-              <h1 key={k} className="font-fraktur text-3xl text-parchment">
-                {renderInline(b.text ?? '', k)}
-              </h1>
+              <code className={cn('font-mono', className)} {...props}>
+                {children}
+              </code>
             );
-          case 'h2':
-            return (
-              <h2 key={k} className="font-fraktur text-2xl text-parchment">
-                {renderInline(b.text ?? '', k)}
-              </h2>
-            );
-          case 'h3':
-            return (
-              <h3 key={k} className="font-fraktur text-xl text-parchment">
-                {renderInline(b.text ?? '', k)}
-              </h3>
-            );
-          case 'ul':
-            return (
-              <ul key={k} className="font-serif-italic list-disc space-y-1 pl-6">
-                {(b.items ?? []).map((it) => (
-                  <li key={`${k}-${it}`}>{renderInline(it, `${k}-${it}`)}</li>
-                ))}
-              </ul>
-            );
-          case 'quote':
-            return (
-              <blockquote
-                key={k}
-                className="font-serif-italic border-l-2 border-gilt/60 pl-4 text-ash"
-              >
-                {renderInline(b.text ?? '', k)}
-              </blockquote>
-            );
-          case 'code':
-            return (
-              <pre
-                key={k}
-                className="font-mono overflow-x-auto border border-border bg-pitch/60 p-3 text-ash"
-              >
-                {b.text}
-              </pre>
-            );
-          default:
-            return (
-              <p key={k} className="font-serif-italic leading-relaxed">
-                {renderInline(b.text ?? '', k)}
-              </p>
-            );
-        }
-      })}
+          },
+          pre: ({ node, ...props }) => (
+            <pre
+              className="font-mono overflow-x-auto border border-border bg-pitch/60 p-3 text-ash"
+              {...props}
+            />
+          ),
+          strong: ({ node, ...props }) => <strong className="text-parchment" {...props} />,
+          em: ({ node, ...props }) => <em {...props} />,
+          hr: ({ node, ...props }) => <hr className="border-oxblood/40" {...props} />,
+          table: ({ node, ...props }) => (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm" {...props} />
+            </div>
+          ),
+          th: ({ node, ...props }) => (
+            <th
+              className="border border-oxblood/40 bg-char/30 px-2 py-1 text-left text-parchment"
+              {...props}
+            />
+          ),
+          td: ({ node, ...props }) => (
+            <td className="border border-oxblood/40 px-2 py-1 align-top" {...props} />
+          ),
+          img: ({ node, alt, src, ...props }) => (
+            <img
+              {...props}
+              src={src}
+              alt={typeof alt === 'string' && alt.length > 0 ? alt : 'mod image'}
+              className="max-w-full rounded border border-oxblood/30"
+            />
+          ),
+        }}
+      >
+        {source}
+      </ReactMarkdown>
     </div>
   );
 }

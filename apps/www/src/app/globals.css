@@ -573,16 +573,66 @@
 .md-editor-themed .w-md-editor-text-input,
 .md-editor-themed .w-md-editor-preview {
   background: hsl(var(--background));
-  color: hsl(var(--foreground));
+  color: hsl(var(--foreground)) !important;
+}
+.md-editor-themed .w-md-editor-text-pre > code,
+.md-editor-themed .w-md-editor-text-input {
+  color: hsl(var(--foreground)) !important;
+  -webkit-text-fill-color: hsl(var(--foreground));
+  caret-color: hsl(var(--foreground));
+}
+/* Prism token palette — defaults render too dark on our charcoal bg. */
+.md-editor-themed .w-md-editor-text-pre .token.title,
+.md-editor-themed .w-md-editor-text-pre .token.bold,
+.md-editor-themed .w-md-editor-text-pre .token.important {
+  color: hsl(var(--foreground)) !important;
+  font-weight: 600;
+}
+.md-editor-themed .w-md-editor-text-pre .token.italic {
+  color: hsl(var(--foreground)) !important;
+  font-style: italic;
+}
+.md-editor-themed .w-md-editor-text-pre .token.url,
+.md-editor-themed .w-md-editor-text-pre .token.url-reference,
+.md-editor-themed .w-md-editor-text-pre .token.link {
+  color: hsl(var(--primary)) !important;
+}
+.md-editor-themed .w-md-editor-text-pre .token.code,
+.md-editor-themed .w-md-editor-text-pre .token.code-snippet {
+  color: hsl(var(--parchment, var(--foreground))) !important;
+}
+.md-editor-themed .w-md-editor-text-pre .token.list.punctuation,
+.md-editor-themed .w-md-editor-text-pre .token.blockquote.punctuation,
+.md-editor-themed .w-md-editor-text-pre .token.hr,
+.md-editor-themed .w-md-editor-text-pre .token.punctuation {
+  color: hsl(var(--muted-foreground)) !important;
 }
 .md-editor-themed .w-md-editor-preview {
   padding: 1rem 1.25rem;
+  color: hsl(var(--foreground));
 }
 .md-editor-themed .w-md-editor-preview h1,
 .md-editor-themed .w-md-editor-preview h2,
-.md-editor-themed .w-md-editor-preview h3 {
+.md-editor-themed .w-md-editor-preview h3,
+.md-editor-themed .w-md-editor-preview h4,
+.md-editor-themed .w-md-editor-preview h5,
+.md-editor-themed .w-md-editor-preview h6,
+.md-editor-themed .w-md-editor-preview p,
+.md-editor-themed .w-md-editor-preview li,
+.md-editor-themed .w-md-editor-preview td,
+.md-editor-themed .w-md-editor-preview th,
+.md-editor-themed .w-md-editor-preview strong,
+.md-editor-themed .w-md-editor-preview em {
   color: hsl(var(--foreground));
 }
 .md-editor-themed .w-md-editor-preview a {
   color: hsl(var(--primary));
+}
+.md-editor-themed .w-md-editor-preview blockquote {
+  border-left-color: hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+}
+.md-editor-themed .w-md-editor-preview code {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
 }

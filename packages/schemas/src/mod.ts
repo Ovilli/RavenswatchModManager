@@ -46,7 +46,10 @@ export const modListItemSchema = z.object({
   name: z.string(),
   author: z.string().nullable(),
   summary: z.string().nullable(),
+  description: z.string().nullable().optional(),
   license: z.string().nullable(),
+  repoUrl: z.string().url().nullable().optional(),
+  homepageUrl: z.string().url().nullable().optional(),
   latestVersion: semverSchema.nullable(),
   downloads: z.number().int().nonnegative(),
   updatedAt: z.string().datetime(),
@@ -58,6 +61,9 @@ export const modListItemSchema = z.object({
     .array(z.object({ url: z.string().url(), caption: z.string().max(200).optional() }))
     .optional(),
   videos: z.array(z.string()).optional(),
+  featured: z.boolean().optional(),
+  ownerId: z.string().nullable().optional(),
+  dependencies: z.record(z.string(), z.string()).optional(),
 });
 
 export type ModListItem = z.infer<typeof modListItemSchema>;

@@ -862,18 +862,38 @@ function Lightbox({
       role="dialog"
       aria-modal="true"
       aria-label={shot.caption || `Screenshot ${index + 1}`}
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-pitch/95 p-4 animate-fade-in"
+      className="fixed inset-0 z-[90] bg-pitch/95 animate-fade-in"
     >
+      <div className="absolute inset-0 overflow-y-auto">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute inset-0 h-full w-full cursor-default"
+          aria-label="Close preview"
+        />
+        <div className="pointer-events-none relative flex min-h-full items-center justify-center px-4 py-16 sm:px-20">
+          <figure
+            onClick={(e) => e.stopPropagation()}
+            className="pointer-events-auto flex w-full max-w-6xl flex-col items-center gap-4"
+          >
+            <img
+              src={shot.url}
+              alt={shot.caption || `Screenshot ${index + 1}`}
+              className="max-w-full rounded-md object-contain shadow-2xl"
+            />
+            <figcaption className="max-w-3xl text-center text-sm text-muted-foreground">
+              {shot.caption || `Screenshot ${index + 1} of ${total}`}
+            </figcaption>
+            <p className="font-mono text-xs text-muted-foreground/70">
+              {index + 1} / {total}
+            </p>
+          </figure>
+        </div>
+      </div>
       <button
         type="button"
         onClick={onClose}
-        className="absolute inset-0"
-        aria-label="Close preview"
-      />
-      <button
-        type="button"
-        onClick={onClose}
-        className="absolute right-4 top-4 z-10 rounded-md bg-background/80 p-2 text-foreground hover:bg-background"
+        className="fixed right-4 top-4 z-20 rounded-md bg-background/80 p-2 text-foreground hover:bg-background"
         aria-label="Close"
       >
         <X className="h-5 w-5" />
@@ -881,11 +901,8 @@ function Lightbox({
       {total > 1 ? (
         <button
           type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onPrev();
-          }}
-          className="absolute left-4 top-1/2 z-10 -translate-y-1/2 rounded-md bg-background/80 p-3 text-foreground hover:bg-background"
+          onClick={onPrev}
+          className="fixed left-2 sm:left-4 top-1/2 z-20 -translate-y-1/2 rounded-md bg-background/80 p-3 text-foreground hover:bg-background"
           aria-label="Previous"
         >
           <ChevronLeft className="h-6 w-6" />
@@ -894,35 +911,13 @@ function Lightbox({
       {total > 1 ? (
         <button
           type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onNext();
-          }}
-          className="absolute right-4 top-1/2 z-10 -translate-y-1/2 rounded-md bg-background/80 p-3 text-foreground hover:bg-background"
+          onClick={onNext}
+          className="fixed right-2 sm:right-4 top-1/2 z-20 -translate-y-1/2 rounded-md bg-background/80 p-3 text-foreground hover:bg-background"
           aria-label="Next"
         >
           <ChevronRight className="h-6 w-6" />
         </button>
       ) : null}
-      <figure
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') onClose();
-        }}
-        className="relative z-[1] flex max-h-full max-w-5xl flex-col items-center gap-3"
-      >
-        <img
-          src={shot.url}
-          alt={shot.caption || `Screenshot ${index + 1}`}
-          className="max-h-[78vh] max-w-full rounded-md object-contain"
-        />
-        <figcaption className="max-w-3xl text-center text-sm text-muted-foreground">
-          {shot.caption || `Screenshot ${index + 1} of ${total}`}
-        </figcaption>
-        <p className="font-mono text-xs text-muted-foreground/70">
-          {index + 1} / {total}
-        </p>
-      </figure>
     </div>
   );
 }

@@ -1,10 +1,10 @@
 'use client';
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Spinner, buttonVariants } from '@rsmm/ui';
 import { useQuery } from '@tanstack/react-query';
-import { Download, ExternalLink, Search } from 'lucide-react';
+import { Download, ExternalLink, Search, Star } from 'lucide-react';
 import type { Route } from 'next';
-import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import type { ModCategory } from '@rsmm/schemas';
 import { api } from '../../lib/api';
 import { getApiUrl } from '../../lib/api-url';
@@ -24,14 +24,43 @@ const CATEGORIES: { id: ModCategory | 'all'; label: string }[] = [
 ];
 
 export default function RegistryPage() {
+  return (
+    <Suspense fallback={<RegistryFallback />}>
+      <RegistryInner />
+    </Suspense>
+  );
+}
+
+function RegistryFallback() {
+  return (
+    <main className="relative overflow-hidden animate-page-in">
+      <div className="container mx-auto flex items-center justify-center px-6 py-24">
+        <Spinner />
+      </div>
+    </main>
+  );
+}
+
+function RegistryInner() {
   const router = useRouter();
+  const search = useSearchParams();
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<ModCategory | 'all'>('all');
   const [sort, setSort] = useState<Sort>('popular');
+  const [featuredOnly, setFeaturedOnly] = useState(false);
+
+  useEffect(() => {
+    if (search.get('featured') === '1') setFeaturedOnly(true);
+  }, [search]);
 
   const list = useQuery({
-    queryKey: ['registry', q],
-    queryFn: () => api.mods.list({ q: q || undefined, limit: 48 }),
+    queryKey: ['registry', q, featuredOnly],
+    queryFn: () =>
+      api.mods.list({
+        q: q || undefined,
+        limit: 48,
+        featured: featuredOnly || undefined,
+      }),
   });
 
   const items = useMemo(() => {
@@ -83,6 +112,18 @@ export default function RegistryPage() {
               {s}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => setFeaturedOnly((v) => !v)}
+            className={buttonVariants({
+              variant: featuredOnly ? 'default' : 'outline',
+              size: 'sm',
+            })}
+            title="Show only featured mods"
+          >
+            <Star className="mr-1 h-3.5 w-3.5" />
+            Featured
+          </button>
         </div>
 
         <div className="flex flex-wrap gap-1.5">
@@ -123,18 +164,25 @@ export default function RegistryPage() {
                   }
                 }}
               >
-                {m.imageUrl ? (
-                  <div className="aspect-[16/9] w-full overflow-hidden bg-muted">
-                    <img
-                      src={m.imageUrl}
-                      alt={`${m.name} preview`}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  </div>
-                ) : (
-                  <div className="aspect-[16/9] w-full bg-muted" />
-                )}
+                <div className="relative">
+                  {m.imageUrl ? (
+                    <div className="aspect-[16/9] w-full overflow-hidden bg-muted">
+                      <img
+                        src={m.imageUrl}
+                        alt={`${m.name} preview`}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    </div>
+                  ) : (
+                    <div className="aspect-[16/9] w-full bg-muted" />
+                  )}
+                  {m.featured ? (
+                    <Badge className="absolute left-2 top-2 bg-gilt/15 text-[0.65rem] text-gilt border-gilt/40 backdrop-blur-sm">
+                      <Star className="mr-1 h-3 w-3" /> Featured
+                    </Badge>
+                  ) : null}
+                </div>
                 <CardHeader>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">

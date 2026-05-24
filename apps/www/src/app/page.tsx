@@ -12,6 +12,7 @@ export const revalidate = 300;
 
 interface HomeData {
   mods: ModListItem[];
+  featured: ModListItem[];
   totalMods: number;
   totalModDownloads: number;
   appDownloads: number;
@@ -19,15 +20,23 @@ interface HomeData {
 
 async function getHomeData(): Promise<HomeData> {
   const apiBase = getApiUrl().replace(/\/+$/, '');
-  const fallback: HomeData = { mods: [], totalMods: 0, totalModDownloads: 0, appDownloads: 0 };
+  const fallback: HomeData = {
+    mods: [],
+    featured: [],
+    totalMods: 0,
+    totalModDownloads: 0,
+    appDownloads: 0,
+  };
 
   try {
-    const [modRes, ghRes] = await Promise.allSettled([
+    const [modRes, featRes, ghRes] = await Promise.allSettled([
       fetch(`${apiBase}/api/mods?limit=48`),
+      fetch(`${apiBase}/api/mods?featured=true&sort=featured&limit=8`),
       fetch('https://api.github.com/repos/Ovilli/RavenswatchModManager/releases/latest'),
     ]);
 
     let mods: ModListItem[] = [];
+    let featured: ModListItem[] = [];
     let totalMods = 0;
     let totalModDownloads = 0;
     let appDownloads = 0;
@@ -37,6 +46,11 @@ async function getHomeData(): Promise<HomeData> {
       mods = body.items ?? [];
       totalMods = body.total ?? 0;
       totalModDownloads = mods.reduce((s: number, m: ModListItem) => s + (m.downloads ?? 0), 0);
+    }
+
+    if (featRes.status === 'fulfilled' && featRes.value.ok) {
+      const body = await featRes.value.json();
+      featured = body.items ?? [];
     }
 
     if (ghRes.status === 'fulfilled' && ghRes.value.ok) {
@@ -49,7 +63,7 @@ async function getHomeData(): Promise<HomeData> {
       }
     }
 
-    return { mods, totalMods, totalModDownloads, appDownloads };
+    return { mods, featured, totalMods, totalModDownloads, appDownloads };
   } catch {
     return fallback;
   }
@@ -119,7 +133,7 @@ function fmt(n: number): string {
 }
 
 export default async function Home() {
-  const { mods, totalMods, totalModDownloads, appDownloads } = await getHomeData();
+  const { mods, featured, totalMods, totalModDownloads, appDownloads } = await getHomeData();
   const showcase = [...mods].sort((a, b) => b.downloads - a.downloads).slice(0, 4);
 
   return (
@@ -205,6 +219,72 @@ export default async function Home() {
           ))}
         </div>
       </section>
+
+      {/* ───── Featured ───── */}
+      {featured.length > 0 ? (
+        <section className="container mx-auto px-6 py-12 lg:py-16">
+          <div className="mb-8 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="text-3xl font-bold tracking-tight">
+                <span className="bg-gradient-to-r from-gilt to-parchment bg-clip-text text-transparent">
+                  ★ Featured
+                </span>
+              </h2>
+              <p className="mt-1 text-muted-foreground">Curated picks from the community.</p>
+            </div>
+            <Link
+              href={'/registry?featured=1' as Route}
+              className="text-sm font-medium text-muted-foreground hover:text-foreground"
+            >
+              See all <span aria-hidden="true">→</span>
+            </Link>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {featured.slice(0, 4).map((mod) => (
+              <Link
+                key={mod.id}
+                href={`/registry/${mod.slug}` as Route}
+                className="grimoire-card overflow-hidden group cursor-pointer ring-1 ring-gilt/30 transition-colors hover:border-gilt/60"
+              >
+                {mod.imageUrl ? (
+                  <div className="aspect-[4/3] w-full overflow-hidden bg-muted">
+                    <img
+                      src={mod.imageUrl}
+                      alt={`${mod.name} preview`}
+                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      loading="lazy"
+                    />
+                  </div>
+                ) : (
+                  <div className="aspect-[4/3] w-full bg-muted" />
+                )}
+                <div className="space-y-2 p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <h3 className="text-sm font-semibold leading-tight text-foreground truncate">
+                        {mod.name}
+                      </h3>
+                      <p className="text-xs text-muted-foreground">by {mod.author ?? 'unknown'}</p>
+                    </div>
+                    <Badge className="shrink-0 bg-gilt/15 text-[0.6rem] text-gilt border-gilt/30">
+                      ★ Featured
+                    </Badge>
+                  </div>
+                  {mod.summary ? (
+                    <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                      {mod.summary}
+                    </p>
+                  ) : null}
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span>{mod.downloads.toLocaleString()} downloads</span>
+                    {mod.rating != null ? <span>★ {mod.rating.toFixed(1)}</span> : null}
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {/* ───── Showcase ───── */}
       <section className="container mx-auto px-6 py-16 lg:py-24">
