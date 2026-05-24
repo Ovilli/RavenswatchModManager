@@ -204,7 +204,7 @@ export default function NewCollectionPage() {
           <span className="block text-sm font-medium">Screenshots (gallery)</span>
           <div className="grid grid-cols-3 gap-3">
             {screenshots.map((s, i) => (
-              <div key={i} className="relative">
+              <div key={s.preview} className="relative">
                 <img
                   src={s.preview}
                   alt={`Screenshot ${i + 1}`}

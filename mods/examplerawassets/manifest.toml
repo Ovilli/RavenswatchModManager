@@ -1,0 +1,8 @@
+[mod]
+id          = "ExampleRawAssets"
+name        = "Example: Raw Asset Override"
+version     = "0.1.0"
+author      = "RSMM"
+description = "Demonstrates raw cooked file overrides by placing files under assets/<decoded-path>."
+enabled     = true
+sdk_version = ">=3.0,<4"

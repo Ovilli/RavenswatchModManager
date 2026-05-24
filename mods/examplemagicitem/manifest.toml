@@ -1,0 +1,24 @@
+[mod]
+id          = "ExampleMagicItem"
+name        = "Example: Magic Item"
+version     = "0.4.0"
+author      = "rsmm-examples"
+description = "Declarative custom magical object via [[content]] block. Clone-and-patch of a vanilla common item; runtime injection completes once the MagicalObject schema is fully mined."
+enabled     = true
+sdk_version = ">=3.0,<4"
+
+# `oCDtRewardDefinition` clone — registered via the by-name lookup
+# slot 3 of `oCTLibrary<oCDtRewardDefinition>` (singleton 0x141412e00).
+# `rarity` accepts the community vocab (Common/Rare/Epic/Legendary/Cursed)
+# and maps to the runtime int signal on `oCDtEntityCpntMagicalObject`
+# (label mapping still TODO_CONFIRM — see docs/_re/kinds/items.md).
+[[content]]
+kind        = "item"
+id          = "Iron_Crab_Hide"
+base        = "Common/Armor_Per_Object"
+name        = "Iron Crab Hide"
+description = "Bonus armor per rare object collected."
+rarity      = "Common"
+drop_weight = 100
+level       = 1
+tags        = ["armor", "common", "crab"]

@@ -319,7 +319,7 @@ export default function CollectionDetailPage({
       {/* Edit mode: icon upload */}
       {editing ? (
         <div className="space-y-1.5">
-          <label className="block text-sm font-medium">Icon / Cover image</label>
+          <span className="block text-sm font-medium">Icon / Cover image</span>
           <div className="flex items-center gap-3">
             {editIconPreview || c.imageUrl ? (
               <img
@@ -374,9 +374,9 @@ export default function CollectionDetailPage({
       {/* Description */}
       {editing ? (
         <div className="space-y-1.5">
-          <label className="block text-sm font-medium">
+          <span className="block text-sm font-medium">
             Description <span className="text-muted-foreground">(Markdown)</span>
-          </label>
+          </span>
           <div data-color-mode="light">
             <MDEditor
               value={editDescription}
@@ -395,7 +395,7 @@ export default function CollectionDetailPage({
       {/* Edit mode: screenshots */}
       {editing ? (
         <div className="space-y-1.5">
-          <label className="block text-sm font-medium">Screenshots (gallery)</label>
+          <span className="block text-sm font-medium">Screenshots (gallery)</span>
           <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
             {editScreenshots.map((shot, i) => (
               <div key={shot.url} className="relative">
@@ -501,11 +501,12 @@ export default function CollectionDetailPage({
 
       {/* Lightbox */}
       {lightboxIdx != null && c.screenshots ? (() => {
-        const active = c.screenshots[lightboxIdx];
+        const shots = c.screenshots;
+        const active = shots[lightboxIdx];
         if (!active) return null;
         const close = () => setLightboxIdx(null);
-        const prev = () => setLightboxIdx((lightboxIdx - 1 + c.screenshots!.length) % c.screenshots!.length);
-        const next = () => setLightboxIdx((lightboxIdx + 1) % c.screenshots!.length);
+        const prev = () => setLightboxIdx((lightboxIdx - 1 + shots.length) % shots.length);
+        const next = () => setLightboxIdx((lightboxIdx + 1) % shots.length);
         return (
           <div
             className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
@@ -525,7 +526,7 @@ export default function CollectionDetailPage({
               className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg"
               onClick={(e) => e.stopPropagation()}
             />
-            {c.screenshots!.length > 1 ? (
+            {shots.length > 1 ? (
               <>
                 <button
                   type="button"
@@ -742,8 +743,8 @@ export default function CollectionDetailPage({
                   <span className="text-sm font-medium">{r.userName ?? 'Anonymous'}</span>
                   <span className="ml-auto flex items-center gap-0.5">
                     {Array.from({ length: 5 }).map((_, i) => (
-                      <Star
-                        key={i}
+                      // biome-ignore lint/suspicious/noArrayIndexKey: static 5 stars, no reordering
+                      <Star key={i}
                         className={`h-3 w-3 ${i < r.rating ? 'fill-yellow-500 text-yellow-500' : 'text-muted-foreground'}`}
                       />
                     ))}
