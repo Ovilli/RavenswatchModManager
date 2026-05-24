@@ -198,19 +198,24 @@ function BrowsePage() {
         <div className="ember-banner flex flex-col gap-2 px-4 py-3">
           <div className="flex items-center gap-3">
             <WifiOff className="h-4 w-4 text-crimson shrink-0" />
-            <span className="font-serif-italic text-base">Couldn't reach the server.</span>
+            <span className="font-serif-italic text-base">API unreachable.</span>
             <CopyButton value={(error as Error).message} />
             <button
               type="button"
               onClick={() => window.open(getApiBaseUrl(), '_blank')}
               className="font-mono text-xs text-ash underline-offset-2 hover:text-parchment hover:underline flex items-center gap-1"
             >
-              <ExternalLink className="h-3 w-3" /> test API URL
+              <ExternalLink className="h-3 w-3" /> open in browser
             </button>
           </div>
           <div className="font-mono text-xs text-ash bg-pitch/30 px-2 py-1 rounded">
-            api: {getApiBaseUrl()}
+            {getApiBaseUrl()}
           </div>
+          <p className="font-mono text-xs text-ash mt-1">
+            All network requests from this app are failing. This is usually Windows
+            Firewall or antivirus blocking the app — try adding an exception for
+            "Ravenswatch Mod Manager".
+          </p>
         </div>
       ) : null}
 
