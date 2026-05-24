@@ -218,7 +218,7 @@ function StatusStrip() {
     <div className="surface-grain flex items-center justify-between gap-3 border-b border-border px-3 py-2 backdrop-blur-sm">
       <div className="flex items-center gap-4" style={dragStyle}>
         <span className="font-fraktur text-lg text-parchment">Ravenswatch Mod Manager</span>
-        <span className="font-serif-italic text-ash">
+        <span className="font-serif-italic text-ash min-w-0 max-w-[min(28rem,40vw)] truncate" title={profile.name}>
           {profile.name} <span className="text-ash/60">·</span> {profiles.length} profiles
         </span>
       </div>

@@ -1,6 +1,7 @@
 import { useNavigate } from '@tanstack/react-router';
 import { Check, ChevronDown, Copy, Plus } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
+import { validateProfileName } from '../lib/profile-name';
 import { useApp } from '../store';
 import { useDialog, useToast } from './toast';
 
@@ -48,18 +49,10 @@ export function ProfilePopover() {
     });
     const trimmed = name?.trim();
     if (!trimmed) return;
-    if (trimmed.length > 64) {
-      toast.push('Profile names must be 64 characters or fewer.', 'error');
+    const err = validateProfileName(trimmed);
+    if (err) {
+      toast.push(err, 'error');
       return;
-    }
-    // Reject ASCII control characters but allow anything else (Unicode,
-    // emoji, spaces, common punctuation) — profile names are display-only.
-    for (const ch of trimmed) {
-      const code = ch.codePointAt(0);
-      if (code !== undefined && code < 0x20) {
-        toast.push('Profile names may not contain control characters.', 'error');
-        return;
-      }
     }
     create(trimmed);
   };
@@ -75,9 +68,11 @@ export function ProfilePopover() {
         aria-controls={menuId}
         className="flex w-full items-center justify-between border border-border bg-pitch/60 px-3 py-2 text-left hover:border-gilt/50 transition-colors duration-150"
       >
-        <span>
+        <span className="min-w-0 flex-1">
           <span className="block font-mono text-ash">profile</span>
-          <span className="font-serif-italic text-lg text-parchment">{active?.name}</span>
+          <span className="block truncate font-serif-italic text-lg text-parchment" title={active?.name}>
+            {active?.name}
+          </span>
         </span>
         <ChevronDown className="h-4 w-4 text-ash" aria-hidden />
       </button>
@@ -101,8 +96,10 @@ export function ProfilePopover() {
                   }}
                   className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-oxblood/25"
                 >
-                  <span>
-                    <span className="text-parchment">{p.name}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-parchment" title={p.name}>
+                      {p.name}
+                    </span>
                     <span className="font-mono ml-2 text-ash">{p.loadOrder.length} mods</span>
                   </span>
                   {p.id === activeId ? <Check className="h-4 w-4 text-crimson" /> : null}

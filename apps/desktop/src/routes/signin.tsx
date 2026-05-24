@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { LogIn, UserPlus } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { Button, CopyButton, Panel, SectionHeader } from '../components/chrome';
-import { signIn, signUp } from '../lib/auth-client';
+import { authClient, signIn, signUp } from '../lib/auth-client';
 
 export const Route = createFileRoute('/signin')({
   component: SignInPage,
@@ -32,25 +32,31 @@ function SignInPage() {
     }
     setBusy(true);
     try {
-      if (mode === 'signup') {
-        const result = await signUp.email({
-          email: trimmedEmail,
-          password,
-          name: trimmedEmail.split('@')[0] ?? trimmedEmail,
-        });
-        if (result.error) {
-          handleAuthError(result.error, 'signup');
+      const authResult =
+        mode === 'signup'
+          ? await signUp.email({
+              email: trimmedEmail,
+              password,
+              name: trimmedEmail.split('@')[0] ?? trimmedEmail,
+            })
+          : await signIn.email({
+              email: trimmedEmail,
+              password,
+            });
+      if (authResult.error) {
+        handleAuthError(authResult.error, mode);
+        return;
+      }
+      // Refresh session cache (cookie + local storage) before leaving the page.
+      const session = await authClient.getSession({ query: { disableCookieCache: true } });
+      if (!session.data?.user) {
+        if (mode === 'signup') {
+          setError('Account created. Check your email to verify, then sign in.');
+          setMode('signin');
           return;
         }
-      } else {
-        const result = await signIn.email({
-          email: trimmedEmail,
-          password,
-        });
-        if (result.error) {
-          handleAuthError(result.error, 'signin');
-          return;
-        }
+        setError('Signed in, but the session could not be loaded. Try again.');
+        return;
       }
       navigate({ to: '/' });
     } catch (err) {
