@@ -120,7 +120,7 @@ function rsmmEnv(): Record<string, string> {
   return modsDir ? { RSMM_MODS_DIR: modsDir } : {};
 }
 
-const SIDECAR_PROGS = ['rsmm'] as const;
+const SIDECAR_PROGS = ['binaries/rsmm'] as const;
 const CMD_PROGS = ['run-rsmm'] as const;
 type ProgName = (typeof SIDECAR_PROGS)[number] | (typeof CMD_PROGS)[number];
 
@@ -183,6 +183,20 @@ async function execute(args: string[], options: RsmmOptions): Promise<ExecResult
         if (err instanceof RsmmError) throw err;
         // Try next program.
       }
+    }
+    // Last resort: try the Rust-side probe which finds rsmm by the full
+    // repo-root path (works even when the shell plugin can't resolve it).
+    try {
+      const probeResult = await invoke<{ code: number | null; stdout: string; stderr: string }>(
+        'probe_rsmm',
+        { args },
+      );
+      if (probeResult.code === 0) {
+        resolvedProg = 'binaries/rsmm' as ProgName;
+        return execute(args, options);
+      }
+    } catch {
+      // probe_rsmm unavailable (production bundle) or failed.
     }
     resolvedProg = undefined;
     throw new RsmmCliMissingError(args);
