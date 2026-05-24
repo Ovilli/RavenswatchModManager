@@ -522,7 +522,7 @@ export function outdatedMods(installed: string[]): MockMod[] {
   const out: MockMod[] = [];
   for (const id of installed) {
     const m = getMod(id);
-    if (m && m.latestVersion && m.version !== m.latestVersion) out.push(m);
+    if (m?.latestVersion && m.version !== m.latestVersion) out.push(m);
   }
   return out;
 }
