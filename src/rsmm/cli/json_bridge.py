@@ -21,6 +21,10 @@ Subcommands:
                                     the API's `/api/mods/<slug>/<ver>/
                                     download` route, which also bumps
                                     the public download counter.
+    rsmm json install-mod-version
+        <slug> <version>            download a specific version of a mod
+    rsmm json config get <id>       read a mod's config schema + values
+    rsmm json config set <id> <js>  replace a mod's config values
 
 All commands emit a single JSON object/array on stdout (UTF-8, no trailing
 newline). Stderr is forwarded for diagnostics. Exit code is 0 on success.
@@ -45,6 +49,7 @@ from typing import Any
 
 from rsmm.cli.apply_mods import clear_runtime_mods, find_game_dir
 from rsmm.engine.paths import DIST_DIR, MODS_DIR, REPO_ROOT, self_cmd
+from rsmm.sdk.config import ConfigError, ConfigStore
 
 
 def _emit(value: Any) -> int:
@@ -78,6 +83,13 @@ def cmd_list() -> int:
             continue
         # Manifests use [mod] table for metadata; older ones inline at root.
         manifest = raw.get("mod") if isinstance(raw.get("mod"), dict) else raw
+        deps = raw.get("dependencies") if isinstance(raw.get("dependencies"), dict) else {}
+        writes: list[str] = []
+        assets_dir = entry / "assets"
+        if assets_dir.is_dir():
+            for f in assets_dir.rglob("*"):
+                if f.is_file():
+                    writes.append(f.relative_to(assets_dir).as_posix())
         # `id` and `slug` are both the folder name. The folder name is
         # the canonical identifier post-install — manifest.id is only
         # the upload-time author-supplied id, which may differ from the
@@ -95,8 +107,59 @@ def cmd_list() -> int:
             "tags": manifest.get("tags") or [],
             "enabled": bool(manifest.get("enabled", True)),
             "path": str(entry),
+            "dependencies": {str(k): str(v) for k, v in deps.items()},
+            "writes": writes,
         })
     return _emit(items)
+
+
+def _config_for_mod(mod_id: str) -> ConfigStore | None:
+    mod_dir = MODS_DIR / mod_id
+    if not mod_dir.is_dir():
+        return None
+    return ConfigStore(mod_dir)
+
+
+def cmd_config_get(mod_id: str) -> int:
+    try:
+        store = _config_for_mod(mod_id)
+    except ConfigError as exc:
+        return _emit({"ok": False, "error": str(exc)})
+    if store is None:
+        return _emit({"ok": False, "error": f"no such mod folder: {MODS_DIR / mod_id}"})
+    return _emit({
+        "ok": True,
+        "modId": mod_id,
+        "path": str(store.mod_dir),
+        "schema": store.schema_as_dict(),
+        "values": store.as_dict(),
+    })
+
+
+def cmd_config_set(mod_id: str, values_json: str) -> int:
+    try:
+        store = _config_for_mod(mod_id)
+    except ConfigError as exc:
+        return _emit({"ok": False, "error": str(exc)})
+    if store is None:
+        return _emit({"ok": False, "error": f"no such mod folder: {MODS_DIR / mod_id}"})
+    try:
+        payload = json.loads(values_json)
+    except json.JSONDecodeError as exc:
+        return _emit({"ok": False, "error": f"invalid config JSON: {exc}"})
+    if not isinstance(payload, dict):
+        return _emit({"ok": False, "error": "config payload must be a JSON object"})
+    try:
+        store.replace(payload)
+    except ConfigError as exc:
+        return _emit({"ok": False, "error": str(exc)})
+    return _emit({
+        "ok": True,
+        "modId": mod_id,
+        "path": str(store.mod_dir),
+        "schema": store.schema_as_dict(),
+        "values": store.as_dict(),
+    })
 
 
 def _collect_rsmm(args: list[str]) -> dict[str, Any]:
@@ -451,39 +514,71 @@ _DANGEROUS_ROOT_EXTENSIONS = frozenset({
 })
 
 
-def cmd_install_mod(slug: str) -> int:
-    """Fetch the latest version of <slug> from the public index and
-    extract its zip into ``mods/<slug>/``.
-    """
+def _extract_downloaded_zip(tmp_path: Path, target: Path, slug: str) -> None | dict[str, Any]:
     import shutil
-    import tempfile
     import zipfile
 
+    if target.exists():
+        shutil.rmtree(target)
+    target.mkdir(parents=True, exist_ok=True)
+
+    with zipfile.ZipFile(tmp_path) as zf:
+        blocked: list[str] = []
+        root_danger: list[str] = []
+        for entry in zf.infolist():
+            name = entry.filename
+            parts = name.replace("\\", "/").split("/", 1)
+            inner = parts[1] if len(parts) > 1 else parts[0]
+            ext = Path(inner).suffix.lower()
+            if ext in _DANGEROUS_EXTENSIONS:
+                blocked.append(name)
+            if inner.startswith("_root/"):
+                rel = inner[len("_root/"):]
+                if Path(rel).suffix.lower() in _DANGEROUS_ROOT_EXTENSIONS:
+                    root_danger.append(rel)
+        if blocked:
+            return {
+                "ok": False,
+                "error": f"{slug} contains blocked file type(s):\n  " + "\n  ".join(blocked[:20]),
+            }
+        if root_danger:
+            print(f"  [WARN] {slug} overwrites game root files:", file=sys.stderr)
+            for f in root_danger:
+                print(f"         {f}", file=sys.stderr)
+        names = [n for n in zf.namelist() if not n.endswith("/")]
+        top_dirs = {n.split("/", 1)[0] for n in names if "/" in n}
+        strip = len(top_dirs) == 1 and all("/" in n for n in names)
+        stripped_prefix = next(iter(top_dirs)) + "/" if strip else ""
+        for member in zf.infolist():
+            name = member.filename
+            if name.endswith("/"):
+                continue
+            rel = name[len(stripped_prefix):] if strip and name.startswith(stripped_prefix) else name
+            rel_norm = os.path.normpath(rel)
+            if rel_norm.startswith("..") or os.path.isabs(rel_norm):
+                return {
+                    "ok": False,
+                    "error": f"refusing zip entry with traversal/abs path: {name!r}",
+                }
+            dest = (target / rel_norm).resolve()
+            target_resolved = target.resolve()
+            try:
+                dest.relative_to(target_resolved)
+            except ValueError:
+                return {
+                    "ok": False,
+                    "error": f"refusing zip entry that escapes target: {name!r}",
+                }
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(member) as src, dest.open("wb") as dst:
+                shutil.copyfileobj(src, dst)
+    return None
+
+
+def _download_mod_version(slug: str, version: str, expected_sha: str) -> dict[str, Any]:
+    import tempfile
+
     base = _index_base()
-    try:
-        detail = _http_get_json(f"{base}/api/mods/{slug}")
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            return _emit({"ok": False, "error": f"mod {slug!r} not found in the index"})
-        return _emit({"ok": False, "error": f"index lookup failed: HTTP {e.code} {e.reason}"})
-    except (urllib.error.URLError, OSError, ValueError) as e:
-        return _emit({"ok": False, "error": f"index lookup failed: {e}"})
-
-    versions = detail.get("versions") or []
-    if not versions:
-        return _emit({"ok": False, "error": f"{slug} has no published versions"})
-
-    # Detail endpoint returns versions in insertion order. Sort by
-    # createdAt descending so the *newest* wins regardless of API order.
-    versions.sort(key=lambda v: str(v.get("createdAt") or ""), reverse=True)
-    latest = versions[0]
-    version = str(latest.get("version") or "")
-    expected_sha = str(latest.get("sha256") or "").lower()
-    if not version or len(expected_sha) != 64:
-        return _emit({"ok": False, "error": "version row missing version/sha256"})
-
-    # Stream the download. Following 30x to the storage URL also bumps
-    # the API's download-count tracker (see /:slug/:version/download).
     dl_url = f"{base}/api/mods/{slug}/{version}/download"
     h = hashlib.sha256()
     tmp = tempfile.NamedTemporaryFile(prefix=f"rsmm-{slug}-", suffix=".zip", delete=False)
@@ -506,94 +601,99 @@ def cmd_install_mod(slug: str) -> int:
                     fh.write(chunk)
         got_sha = h.hexdigest()
         if got_sha != expected_sha:
-            return _emit({
-                "ok": False,
-                "error": f"sha256 mismatch: expected {expected_sha}, got {got_sha}",
-            })
-
-        target = MODS_DIR / slug
-        if target.exists():
-            shutil.rmtree(target)
-        target.mkdir(parents=True, exist_ok=True)
-
-        with zipfile.ZipFile(tmp_path) as zf:
-            blocked: list[str] = []
-            root_danger: list[str] = []
-            for entry in zf.infolist():
-                name = entry.filename
-                parts = name.replace("\\", "/").split("/", 1)
-                inner = parts[1] if len(parts) > 1 else parts[0]
-                ext = Path(inner).suffix.lower()
-                if ext in _DANGEROUS_EXTENSIONS:
-                    blocked.append(name)
-                if inner.startswith("_root/"):
-                    rel = inner[len("_root/"):]
-                    if Path(rel).suffix.lower() in _DANGEROUS_ROOT_EXTENSIONS:
-                        root_danger.append(rel)
-            if blocked:
-                return _emit({
-                    "ok": False,
-                    "error": f"{slug} contains blocked file type(s):\n  "
-                    + "\n  ".join(blocked[:20]),
-                })
-            if root_danger:
-                print(
-                    f"  [WARN] {slug} overwrites game root files:",
-                    file=sys.stderr,
-                )
-                for f in root_danger:
-                    print(f"         {f}", file=sys.stderr)
-            # If every member shares the same top-level dir, strip it so
-            # files land directly under `mods/<slug>/`. Matches the
-            # shape `rsmm pack` produces (`<mod_id>/manifest.toml`, ...).
-            names = [n for n in zf.namelist() if not n.endswith("/")]
-            top_dirs = {n.split("/", 1)[0] for n in names if "/" in n}
-            strip = (
-                len(top_dirs) == 1 and all("/" in n for n in names)
-            )
-            stripped_prefix = next(iter(top_dirs)) + "/" if strip else ""
-            for member in zf.infolist():
-                name = member.filename
-                if name.endswith("/"):
-                    continue
-                rel = (
-                    name[len(stripped_prefix):]
-                    if strip and name.startswith(stripped_prefix)
-                    else name
-                )
-                # Defense in depth — zip slip protection. `normpath` does
-                # not collapse symlinks and does not catch Windows UNC
-                # paths such as `\\server\share\foo`. Resolve the final
-                # destination and confirm it sits under `target` before
-                # any open() call.
-                rel_norm = os.path.normpath(rel)
-                if rel_norm.startswith("..") or os.path.isabs(rel_norm):
-                    return _emit({
-                        "ok": False,
-                        "error": f"refusing zip entry with traversal/abs path: {name!r}",
-                    })
-                dest = (target / rel_norm).resolve()
-                target_resolved = target.resolve()
-                try:
-                    dest.relative_to(target_resolved)
-                except ValueError:
-                    return _emit({
-                        "ok": False,
-                        "error": f"refusing zip entry that escapes target: {name!r}",
-                    })
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                with zf.open(member) as src, dest.open("wb") as dst:
-                    shutil.copyfileobj(src, dst)
+            return {"ok": False, "error": f"sha256 mismatch: expected {expected_sha}, got {got_sha}"}
+        return {"ok": True, "sizeBytes": size, "tmp_path": tmp_path}
+    except urllib.error.HTTPError as e:
+        return {"ok": False, "error": f"download failed: HTTP {e.code} {e.reason}"}
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        return {"ok": False, "error": f"download failed: {e}"}
     finally:
         with contextlib.suppress(Exception):
-            tmp_path.unlink(missing_ok=True)
+            tmp.close()
+
+
+def cmd_install_mod(slug: str) -> int:
+    """Fetch the latest version of <slug> from the public index and
+    extract its zip into ``mods/<slug>/``.
+    """
+    try:
+        detail = _http_get_json(f"{_index_base()}/api/mods/{slug}")
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return _emit({"ok": False, "error": f"mod {slug!r} not found in the index"})
+        return _emit({"ok": False, "error": f"index lookup failed: HTTP {e.code} {e.reason}"})
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        return _emit({"ok": False, "error": f"index lookup failed: {e}"})
+
+    versions = detail.get("versions") or []
+    if not versions:
+        return _emit({"ok": False, "error": f"{slug} has no published versions"})
+
+    versions.sort(key=lambda v: str(v.get("createdAt") or ""), reverse=True)
+    latest = versions[0]
+    version = str(latest.get("version") or "")
+    expected_sha = str(latest.get("sha256") or "").lower()
+    if not version or len(expected_sha) != 64:
+        return _emit({"ok": False, "error": "version row missing version/sha256"})
+
+    download = _download_mod_version(slug, version, expected_sha)
+    if not download["ok"]:
+        return _emit(download)
+    target = MODS_DIR / slug
+    try:
+        extracted = _extract_downloaded_zip(download["tmp_path"], target, slug)
+        if extracted is not None:
+            return _emit(extracted)
+    finally:
+        with contextlib.suppress(Exception):
+            download["tmp_path"].unlink(missing_ok=True)
 
     return _emit({
         "ok": True,
         "slug": slug,
         "version": version,
         "sha256": expected_sha,
-        "sizeBytes": size,
+        "sizeBytes": download["sizeBytes"],
+        "installedTo": str(target),
+    })
+
+
+def cmd_install_mod_version(slug: str, version: str) -> int:
+    try:
+        detail = _http_get_json(f"{_index_base()}/api/mods/{slug}")
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return _emit({"ok": False, "error": f"mod {slug!r} not found in the index"})
+        return _emit({"ok": False, "error": f"index lookup failed: HTTP {e.code} {e.reason}"})
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        return _emit({"ok": False, "error": f"index lookup failed: {e}"})
+
+    versions = detail.get("versions") or []
+    match = next((v for v in versions if str(v.get("version") or "") == version), None)
+    if not match:
+        return _emit({"ok": False, "error": f"{slug} has no published version {version!r}"})
+    expected_sha = str(match.get("sha256") or "").lower()
+    if len(expected_sha) != 64:
+        return _emit({"ok": False, "error": "version row missing sha256"})
+
+    download = _download_mod_version(slug, version, expected_sha)
+    if not download["ok"]:
+        return _emit(download)
+    target = MODS_DIR / slug
+    try:
+        extracted = _extract_downloaded_zip(download["tmp_path"], target, slug)
+        if extracted is not None:
+            return _emit(extracted)
+    finally:
+        with contextlib.suppress(Exception):
+            download["tmp_path"].unlink(missing_ok=True)
+
+    return _emit({
+        "ok": True,
+        "slug": slug,
+        "version": version,
+        "sha256": expected_sha,
+        "sizeBytes": download["sizeBytes"],
         "installedTo": str(target),
     })
 
@@ -660,6 +760,16 @@ def main(argv: list[str] | None = None) -> int:
     p_up.add_argument("url", help="presigned PUT URL")
     p_inst = sub.add_parser("install-mod", help="download a mod from the index + extract")
     p_inst.add_argument("slug", help="mod slug to install (latest published version)")
+    p_inst_v = sub.add_parser("install-mod-version", help="download a specific mod version")
+    p_inst_v.add_argument("slug", help="mod slug to install")
+    p_inst_v.add_argument("version", help="version to install")
+    p_cfg = sub.add_parser("config", help="read or update a mod's config")
+    cfg_sub = p_cfg.add_subparsers(dest="config_cmd", required=True)
+    p_cfg_get = cfg_sub.add_parser("get", help="read config schema + current values")
+    p_cfg_get.add_argument("mod_id", help="folder name under mods/")
+    p_cfg_set = cfg_sub.add_parser("set", help="replace config values")
+    p_cfg_set.add_argument("mod_id", help="folder name under mods/")
+    p_cfg_set.add_argument("values_json", help="JSON object with config values")
 
     args = ap.parse_args(argv)
     if args.cmd == "list":
@@ -690,6 +800,15 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_upload_bytes(args.path, args.url)
     if args.cmd == "install-mod":
         return cmd_install_mod(args.slug)
+    if args.cmd == "install-mod-version":
+        return cmd_install_mod_version(args.slug, args.version)
+    if args.cmd == "config":
+        if args.config_cmd == "get":
+            return cmd_config_get(args.mod_id)
+        if args.config_cmd == "set":
+            return cmd_config_set(args.mod_id, args.values_json)
+        ap.error(f"unknown config subcommand: {args.config_cmd}")
+        return 2
     ap.error(f"unknown subcommand: {args.cmd}")
     return 2
 

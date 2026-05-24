@@ -1,0 +1,35 @@
+{
+  "arena": "Forest_Boss_Arena",
+  "flag_tag": null,
+  "id": "ForgottenKing",
+  "level_load_stages": {
+    "filter_stage": 3,
+    "spawn_event_key_global": "PTR_DAT_1412c09e0",
+    "spawn_stage": 12
+  },
+  "named_events": {
+    "activated": {
+      "key_global": "0x1412bfcb8",
+      "string": "BOSS_ACTIVATED",
+      "string_address": "0x140ef1860"
+    },
+    "defeated": {
+      "string": "BOSS_DEFEATED",
+      "string_address": "0x140ef1788"
+    },
+    "fight_start": {
+      "key_global": "0x1412c0430",
+      "string": "BOSS_FIGHTING_START",
+      "string_address": "0x140ef1758"
+    },
+    "fight_stop": {
+      "string": "BOSS_FIGHTING_STOP",
+      "string_address": "0x140ef1798"
+    }
+  },
+  "notes": [
+    "Bosses are not spawned by a direct factory call; the engine walks oCTLibrary<oCDtEnemyDefinition> at level load and the arena's camp filter selects them by flag bitfield. Modders therefore do not need to fire any named event themselves."
+  ],
+  "schema": "rsmm.spawn.v1",
+  "trigger_mechanism": "level_load_camp_filter"
+}

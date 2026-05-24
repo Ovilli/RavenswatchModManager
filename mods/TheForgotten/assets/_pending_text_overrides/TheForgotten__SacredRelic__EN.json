@@ -1,0 +1,9 @@
+{
+  "id": "SacredRelic",
+  "locale": "EN",
+  "mod": "TheForgotten",
+  "note": "Seeded by rsmm.sdk.kinds.items.emit; mod's lang/<locale>.toml entries override this.",
+  "strings": {
+    "RSMM_TheForgotten_SacredRelic_name": "Sacred Relic"
+  }
+}

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Deactivation hook for ExampleSeedPin.
+Deactivation hook for SeedPin.
 
 When the mod ran it called rsmm.write_u32 on the in-memory GameOptions
 "Forced seed" slot. The game then persisted that value to
@@ -8,7 +8,7 @@ When the mod ran it called rsmm.write_u32 on the in-memory GameOptions
 itself only runs while enabled, so it has no way to unpin the seed when
 the user disables it — the ini line outlives the mod.
 
-This hook fires from `./rsmm apply` whenever ExampleSeedPin flips
+This hook fires from `./rsmm apply` whenever SeedPin flips
 enabled -> disabled in any manifest scan. It strips the `Forced seed=`
 line from `[Debug]` so the next launch starts with the game's default
 seed source again.
@@ -16,7 +16,7 @@ seed source again.
 Env contract (set by rsmm.cli.apply_mods._run_deactivation_hooks):
 
     RSMM_GAME_DIR  — Ravenswatch install directory
-    RSMM_MOD_DIR   — this mod's root (mods/ExampleSeedPin/)
+    RSMM_MOD_DIR   — this mod's root (mods/SeedPin/)
 
 Idempotent: missing line / missing file / missing section -> no-op.
 """

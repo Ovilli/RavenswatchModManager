@@ -1,0 +1,15 @@
+{
+  "append_entry": {
+    "enemy_id": "CursedKnight",
+    "is_elite": false,
+    "weight": 1.0
+  },
+  "enemy_id": "CursedKnight",
+  "kind": "enemy_tribe_patch",
+  "library_global": 5389750784,
+  "manifest_schema_version": 1,
+  "mod": "TheForgotten",
+  "resource_ext": "*.enemytribedef.ot",
+  "schema_version": 1,
+  "tribe_name": "Undead_Tribe"
+}

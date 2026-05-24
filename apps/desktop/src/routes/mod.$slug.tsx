@@ -1,5 +1,5 @@
 import { ApiError } from '@rsmm/api-client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Globe, Plus, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -17,6 +17,7 @@ import {
 import { api } from '../lib/api';
 import { getApiUrl } from '../lib/api-url';
 import { inTauri } from '../lib/platform';
+import { installModVersion, listLocalMods } from '../lib/rsmm';
 import { toEmbedUrl } from '../lib/video-embed';
 import { activeProfile, isEnabledIn, useApp } from '../store';
 
@@ -27,6 +28,7 @@ export const Route = createFileRoute('/mod/$slug')({
 function ModDetailPage() {
   const { slug } = Route.useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const { data, error, isLoading } = useQuery({
     queryKey: ['mods', 'detail', slug],
@@ -41,6 +43,9 @@ function ModDetailPage() {
   const profile = useApp(activeProfile);
   const installMod = useApp((s) => s.installMod);
   const uninstall = useApp((s) => s.uninstallMod);
+  const syncLocalMods = useApp((s) => s.syncLocalMods);
+  const [versionBusy, setVersionBusy] = useState<string | null>(null);
+  const [versionError, setVersionError] = useState<string | null>(null);
 
   if (isLoading) {
     return (
@@ -100,6 +105,24 @@ function ModDetailPage() {
     (description ? `# ${name}\n\n${description}` : `# ${name}\n\n${summary || ''}`);
   const sizeBytes = latestVersion?.sizeBytes ?? null;
   const apiBase = getApiUrl().replace(/\/+$/, '');
+
+  const installVersion = useCallback(
+    async (version: string) => {
+      setVersionBusy(version);
+      setVersionError(null);
+      try {
+        await installModVersion(slug, version);
+        const mods = await listLocalMods();
+        if (mods) syncLocalMods(mods);
+        await queryClient.invalidateQueries({ queryKey: ['mods', 'detail', slug] });
+      } catch (err) {
+        setVersionError(err instanceof Error ? err.message : 'Failed to install this version.');
+      } finally {
+        setVersionBusy(null);
+      }
+    },
+    [queryClient, slug, syncLocalMods],
+  );
 
   return (
     <div className="space-y-6">
@@ -216,6 +239,9 @@ function ModDetailPage() {
             <Panel>
               <h3 className="font-fraktur text-xl text-parchment mb-3">Versions</h3>
               <Fleuron />
+              {versionError ? (
+                <div className="ember-banner mb-3 px-4 py-2 text-sm text-ash">{versionError}</div>
+              ) : null}
               <ul className="mt-4 divide-y divide-oxblood/20">
                 {data.versions.map((v) => (
                   <li key={v.id} className="flex items-center justify-between gap-4 py-2">
@@ -230,12 +256,26 @@ function ModDetailPage() {
                         </span>
                       ) : null}
                     </div>
-                    <a
-                      href={`${apiBase}/api/mods/${slug}/${v.version}/download`}
-                      className="font-mono text-xs text-gilt hover:underline"
-                    >
-                      download
-                    </a>
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={`${apiBase}/api/mods/${slug}/${v.version}/download`}
+                        className="font-mono text-xs text-gilt hover:underline"
+                      >
+                        download
+                      </a>
+                      {localVersion === v.version ? (
+                        <MonoTag tone="gilt">current</MonoTag>
+                      ) : (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => installVersion(v.version)}
+                          disabled={versionBusy === v.version}
+                        >
+                          {installedHere ? 'downgrade' : 'install'}
+                        </Button>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>

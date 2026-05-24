@@ -1,0 +1,162 @@
+{
+  "cloned_from": "Common/Armor_Per_Object",
+  "id": "SacredRelic",
+  "kind": "item",
+  "magical_object": {
+    "patches": [
+      {
+        "kind": "u32",
+        "name": "signal_rarity",
+        "offset": 504,
+        "source": "todo_confirm",
+        "value": 1
+      },
+      {
+        "kind": "u32",
+        "name": "signal_count",
+        "offset": 536,
+        "source": "todo_confirm",
+        "value": 80
+      },
+      {
+        "kind": "u32",
+        "name": "signal_level",
+        "offset": 568,
+        "source": "todo_confirm",
+        "value": 2
+      }
+    ],
+    "runtime_size": 688,
+    "tags": [
+      "support",
+      "healing",
+      "holy"
+    ]
+  },
+  "mod": "TheForgotten",
+  "notes": [
+    "3 field(s) are placeholders with source='todo_confirm'; verify via a save-game diff before trusting their semantics."
+  ],
+  "raw_fields": {
+    "base": "Common/Armor_Per_Object",
+    "description": "All nearby allies gain gradual health regeneration.",
+    "drop_weight": 80,
+    "level": 2,
+    "name": "Sacred Relic",
+    "rarity": "Rare",
+    "tags": [
+      "support",
+      "healing",
+      "holy"
+    ]
+  },
+  "reward_def": {
+    "library_global": 5389757952,
+    "meta_global": 5389974480,
+    "patches": [
+      {
+        "kind": "cstr",
+        "name": "name",
+        "offset": 64,
+        "source": "schema",
+        "value": "rwd_TheForgotten_SacredRelic"
+      },
+      {
+        "kind": "u32",
+        "name": "name_hash",
+        "offset": 72,
+        "source": "schema",
+        "value": 1119564072
+      },
+      {
+        "kind": "cstr",
+        "name": "display_name_key",
+        "offset": 624,
+        "source": "schema",
+        "value": "RSMM_TheForgotten_SacredRelic_name"
+      },
+      {
+        "kind": "u16",
+        "name": "flags",
+        "offset": 644,
+        "source": "schema",
+        "value": 257
+      },
+      {
+        "kind": "ptr",
+        "name": "entries_ptr",
+        "offset": 648,
+        "source": "schema",
+        "value": 0
+      },
+      {
+        "kind": "u32",
+        "name": "entries_length",
+        "offset": 656,
+        "source": "schema",
+        "value": 0
+      },
+      {
+        "kind": "u32",
+        "name": "entries_capacity",
+        "offset": 660,
+        "source": "schema",
+        "value": 0
+      }
+    ],
+    "resource_extension": "*.rewarddef.ot",
+    "resource_name": "rwd_TheForgotten_SacredRelic",
+    "size": 664,
+    "uid": 393156174
+  },
+  "schema_version": 2,
+  "selector": {
+    "patches": [
+      {
+        "kind": "cstr",
+        "name": "target_name",
+        "offset": 248,
+        "source": "schema",
+        "value": "rwd_TheForgotten_SacredRelic"
+      },
+      {
+        "kind": "u32",
+        "name": "target_name_hash",
+        "offset": 256,
+        "source": "schema",
+        "value": 1119564072
+      },
+      {
+        "kind": "u32",
+        "name": "target_resolved",
+        "offset": 260,
+        "source": "schema",
+        "value": 1
+      },
+      {
+        "kind": "u32",
+        "name": "parent_name_hash",
+        "offset": 272,
+        "source": "schema",
+        "value": 2147483648
+      },
+      {
+        "kind": "u8",
+        "name": "enabled",
+        "offset": 288,
+        "source": "schema",
+        "value": 1
+      }
+    ],
+    "tags": [
+      "support",
+      "healing",
+      "holy"
+    ],
+    "target_resource_name": "rwd_TheForgotten_SacredRelic"
+  },
+  "text_keys": {
+    "desc": "RSMM_TheForgotten_SacredRelic_desc",
+    "name": "RSMM_TheForgotten_SacredRelic_name"
+  }
+}

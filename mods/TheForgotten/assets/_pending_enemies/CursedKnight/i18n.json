@@ -1,0 +1,11 @@
+{
+  "enemy_id": "CursedKnight",
+  "fallback_locale": "EN",
+  "kind": "enemy_i18n",
+  "manifest_schema_version": 1,
+  "mod": "TheForgotten",
+  "schema_version": 1,
+  "strings": {
+    "RSMM_TheForgotten_CursedKnight_name": "Cursed Knight"
+  }
+}

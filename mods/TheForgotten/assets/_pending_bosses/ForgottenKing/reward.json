@@ -1,0 +1,8 @@
+{
+  "id": "ForgottenKing",
+  "inherited_from_base": false,
+  "library_singleton": "0x141412e00",
+  "reward_id": "ForgottenKing_Reward",
+  "schema": "rsmm.reward_ref.v1",
+  "selector_class": "oCDtRewardEntitySelectorToSpawnEntityCpntSettings"
+}

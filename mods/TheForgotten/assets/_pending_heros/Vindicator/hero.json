@@ -1,0 +1,41 @@
+{
+  "abilities": [
+    {
+      "description": "A righteous melee strike that deals bonus damage to cursed enemies.",
+      "description_key": "RSMM_TheForgotten_Vindicator_ability1_desc",
+      "id": "HolyStrike",
+      "name": "Holy Strike"
+    },
+    {
+      "description": "Raise a protective barrier that blocks incoming damage.",
+      "description_key": "RSMM_TheForgotten_Vindicator_ability2_desc",
+      "id": "DivineShield",
+      "name": "Divine Shield"
+    },
+    {
+      "description": "Heal yourself and nearby allies over time.",
+      "description_key": "RSMM_TheForgotten_Vindicator_ability3_desc",
+      "id": "SacredLight",
+      "name": "Sacred Light"
+    },
+    {
+      "description": "Ultimate: Call down a devastating beam of holy light.",
+      "description_key": "RSMM_TheForgotten_Vindicator_ability4_desc",
+      "id": "Judgment",
+      "name": "Judgment"
+    }
+  ],
+  "base": "Romeo",
+  "display_name": "The Vindicator",
+  "display_name_key": "RSMM_TheForgotten_Vindicator_name",
+  "id": "Vindicator",
+  "kind": "hero",
+  "mod": "TheForgotten",
+  "name": "Vindicator",
+  "pieces": {
+    "i18n": "i18n.json",
+    "skillprofile": "skillprofile.json"
+  },
+  "schema": "rsmm.hero.v1",
+  "schema_version": 1
+}

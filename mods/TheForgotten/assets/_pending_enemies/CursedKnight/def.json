@@ -1,0 +1,72 @@
+{
+  "base": "Goblin_Default",
+  "display_name_key": "RSMM_TheForgotten_CursedKnight_name",
+  "fields": {
+    "default_weight": 1.0,
+    "display_name_ptr": "Cursed Knight",
+    "entity_asset_hash": null,
+    "entity_asset_ptr": null,
+    "excluded_byte": 0,
+    "flag_list_tags": [
+      "undead",
+      "knight",
+      "elite"
+    ],
+    "has_tribe_byte": 1,
+    "min_tier_float": 0.1,
+    "name_hash": 3695036254,
+    "name_ptr": "CursedKnight",
+    "secondary_weight": -1.0,
+    "stat_overrides": {
+      "damage": 22,
+      "hp": 350
+    },
+    "tier_range": [
+      2,
+      5
+    ],
+    "tier_weight_table_a": [
+      {
+        "tier": 2,
+        "weight": 1.0
+      }
+    ],
+    "tier_weight_table_b": [],
+    "tribe_name": "Undead_Tribe"
+  },
+  "id": "CursedKnight",
+  "kind": "enemy",
+  "library_global": 5389752512,
+  "manifest_schema_version": 1,
+  "mod": "TheForgotten",
+  "name": "Cursed Knight",
+  "offsets": {
+    "default_weight": 800,
+    "display_name_ptr": 624,
+    "entity_asset_hash": 672,
+    "entity_asset_ptr": 664,
+    "excluded_byte": 688,
+    "flag_list_capacity": 728,
+    "flag_list_count": 720,
+    "flag_list_data_ptr": 712,
+    "flags_word": 644,
+    "has_tribe_byte": 784,
+    "max_occurrence_count": 704,
+    "max_occurrence_ptr": 696,
+    "min_tier_float": 732,
+    "name_hash": 656,
+    "name_ptr": 648,
+    "secondary_weight": 824,
+    "tier_range": 736,
+    "tier_weight_table_a_count": 816,
+    "tier_weight_table_a_ptr": 808,
+    "tier_weight_table_b_count": 840,
+    "tier_weight_table_b_ptr": 832,
+    "tribe_ptr": 792,
+    "vftable": 0
+  },
+  "record_size": 848,
+  "resource_ext": "*.enemydef.ot",
+  "schema_version": 1,
+  "uid": 393079735
+}

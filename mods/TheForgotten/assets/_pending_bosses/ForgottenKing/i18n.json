@@ -1,0 +1,9 @@
+{
+  "boss_id": "ForgottenKing",
+  "fallback_locale": "EN",
+  "mod": "TheForgotten",
+  "schema": "rsmm.boss_i18n.v1",
+  "strings": {
+    "RSMM_TheForgotten_ForgottenKing_name": "The Forgotten King"
+  }
+}

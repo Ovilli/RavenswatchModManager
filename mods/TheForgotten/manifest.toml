@@ -1,0 +1,126 @@
+[mod]
+id                = "TheForgotten"
+name              = "The Forgotten"
+version           = "1.0.0"
+author            = "RSMM"
+description       = "A content pack adding the Vindicator hero, Cursed Knight enemies, the Forgotten King boss, and legendary items."
+enabled           = true
+load_order        = 50
+multiplayer_scope = "deterministic-shared"
+sdk_version       = ">=3.0,<4"
+
+# ── Hero: The Vindicator ───────────────────────────────────────────
+# A paladin-type hero cloned from Romeo, focused on defensive play
+# and holy retribution.
+
+[[content]]
+kind         = "hero"
+id           = "Vindicator"
+base         = "Romeo"
+name         = "Vindicator"
+display_name = "The Vindicator"
+description  = "A holy warrior who channels divine power to protect allies and smite foes."
+
+[[content.abilities]]
+id          = "HolyStrike"
+name        = "Holy Strike"
+description = "A righteous melee strike that deals bonus damage to cursed enemies."
+
+[[content.abilities]]
+id          = "DivineShield"
+name        = "Divine Shield"
+description = "Raise a protective barrier that blocks incoming damage."
+
+[[content.abilities]]
+id          = "SacredLight"
+name        = "Sacred Light"
+description = "Heal yourself and nearby allies over time."
+
+[[content.abilities]]
+id          = "Judgment"
+name        = "Judgment"
+description = "Ultimate: Call down a devastating beam of holy light."
+
+# ── Enemy: Cursed Knight ───────────────────────────────────────────
+# A dark knight that appears as a mid-tier enemy in later chapters.
+
+[[content]]
+kind         = "enemy"
+id           = "CursedKnight"
+base         = "Goblin_Default"
+name         = "Cursed Knight"
+display_name = "Cursed Knight"
+description  = "A fallen knight bound by dark magic, relentless in its pursuit."
+tribe        = "Undead_Tribe"
+tier         = 2
+tags         = ["undead", "knight", "elite"]
+hp           = 350
+damage       = 22
+
+# ── Boss: The Forgotten King ────────────────────────────────────────
+# An undead king who once ruled these lands, now twisted by corruption.
+
+[[content]]
+kind         = "boss"
+id           = "ForgottenKing"
+base         = "Erimanthian_Boar"
+name         = "The Forgotten King"
+display_name = "The Forgotten King"
+description  = "A once-noble ruler consumed by the very corruption he sought to contain."
+arena        = "Forest_Boss_Arena"
+music_cue    = "event:/Music/Boss/ForgottenKing"
+intro_text   = "RSMM_TheForgotten_ForgottenKing_intro"
+hp           = 15000
+reward       = "ForgottenKing_Reward"
+
+[[content.phases]]
+hp_pct   = 0.66
+barks    = ["RSMM_TheForgotten_ForgottenKing_phase2_bark"]
+add_tags = ["phase2", "cursed"]
+
+[[content.phases]]
+hp_pct   = 0.33
+barks    = ["RSMM_TheForgotten_ForgottenKing_phase3_bark"]
+add_tags = ["phase3", "enraged", "corrupted"]
+
+# ── Item: Vindicator's Oath ────────────────────────────────────────
+# A legendary item that synergizes with the Vindicator's abilities.
+
+[[content]]
+kind        = "item"
+id          = "VindicatorsOath"
+base        = "Common/Armor_Per_Object"
+name        = "Vindicator's Oath"
+description = "Grants bonus armor and healing when defeating cursed enemies."
+rarity      = "Legendary"
+drop_weight = 50
+level       = 3
+tags        = ["armor", "holy", "legendary", "vindicator"]
+
+# ── Item: Cursed Crown ─────────────────────────────────────────────
+# A risky item that offers power at a cost.
+
+[[content]]
+kind        = "item"
+id          = "CursedCrown"
+base        = "Common/Armor_Per_Object"
+name        = "Cursed Crown"
+description  = "Increases damage by 50% but reduces max health by 20%."
+rarity      = "Epic"
+drop_weight = 70
+level       = 2
+tags        = ["damage", "cursed", "risky"]
+
+# ── Item: Sacred Relic ─────────────────────────────────────────────
+# A support item for team play.
+
+[[content]]
+kind        = "item"
+id          = "SacredRelic"
+base        = "Common/Armor_Per_Object"
+name        = "Sacred Relic"
+description  = "All nearby allies gain gradual health regeneration."
+rarity      = "Rare"
+drop_weight = 80
+level       = 2
+tags        = ["support", "healing", "holy"]

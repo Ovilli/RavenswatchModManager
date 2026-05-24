@@ -1,0 +1,14 @@
+{
+  "cloned_from": "Erimanthian_Boar",
+  "display_name": "The Forgotten King",
+  "flag_bit_inherited_from_base": true,
+  "id": "ForgottenKing",
+  "library_singleton": "0x1414118c0",
+  "name": "The Forgotten King",
+  "record_size": "0x350",
+  "schema": "rsmm.enemy_clone.v1",
+  "synthesized": {
+    "max_hp": 15000
+  },
+  "uid": "0x176debb7"
+}

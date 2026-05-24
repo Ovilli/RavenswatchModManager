@@ -1,7 +1,7 @@
 import { Link, createFileRoute } from '@tanstack/react-router';
 import { ShieldCheck } from 'lucide-react';
 import { useMemo } from 'react';
-import { Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
+import { Button, Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
 import { activeProfile, detectConflicts, getMod, isEnabledIn, useApp } from '../store';
 
 export const Route = createFileRoute('/conflicts')({
@@ -12,6 +12,15 @@ function ConflictsPage() {
   const profile = useApp(activeProfile);
   const toggle = useApp((s) => s.toggleMod);
   const conflicts = useMemo(() => detectConflicts(profile), [profile]);
+  const conflictCountByMod = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const conflict of conflicts) {
+      for (const modId of conflict.modIds) {
+        counts.set(modId, (counts.get(modId) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [conflicts]);
 
   if (conflicts.length === 0) {
     return (
@@ -43,14 +52,17 @@ function ConflictsPage() {
             <Panel>
               <div className="flex items-baseline justify-between gap-2">
                 <h3 className="font-fraktur text-lg text-parchment">Shared file</h3>
-                <MonoTag tone="crimson">conflict</MonoTag>
+                <div className="flex items-center gap-2">
+                  <MonoTag tone="crimson">conflict</MonoTag>
+                  <MonoTag tone="gilt">{c.modIds.length} mods</MonoTag>
+                </div>
               </div>
               <p className="font-mono mt-1 text-ash break-all">{c.path}</p>
               <Fleuron className="my-4" />
 
               <p className="font-serif-italic text-smoke mb-3">
-                Choose which mod owns this file. The other will be disabled in this profile. You can
-                re-enable it later.
+                Why this conflicts: each listed mod writes this same file. Keep one enabled and
+                disable the others.
               </p>
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -78,30 +90,40 @@ function ConflictsPage() {
                         {mod.author} · v{mod.version}
                       </p>
                       <p className="font-serif-italic mt-2 text-sm text-smoke">{mod.summary}</p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          // make this one the keeper: enable it, disable the others
-                          if (!enabled) toggle(id);
-                          for (const other of c.modIds) {
-                            if (other !== id) {
-                              // Read live state per mod to avoid stale closure bug
-                              const state = useApp.getState();
-                              const p = state.profiles.find((x) => x.id === state.activeProfileId);
-                              if (p && isEnabledIn(p, other)) {
-                                state.toggleMod(other);
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <MonoTag tone={enabled ? 'crimson' : 'default'}>
+                          {enabled ? 'enabled' : 'disabled'}
+                        </MonoTag>
+                        <MonoTag tone="gilt">
+                          {conflictCountByMod.get(id) ?? 0} file{(conflictCountByMod.get(id) ?? 0) === 1 ? '' : 's'}
+                        </MonoTag>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={enabled ? 'danger' : 'primary'}
+                          onClick={() => {
+                            if (!enabled) toggle(id);
+                            for (const other of c.modIds) {
+                              if (other !== id) {
+                                const state = useApp.getState();
+                                const p = state.profiles.find((x) => x.id === state.activeProfileId);
+                                if (p && isEnabledIn(p, other)) {
+                                  state.toggleMod(other);
+                                }
                               }
                             }
-                          }
-                        }}
-                        className={`mt-3 w-full border px-3 py-2 transition-colors duration-150 ${
-                          enabled
-                            ? 'border-gilt/60 text-parchment'
-                            : 'border-border text-ash hover:border-gilt/50 hover:text-parchment'
-                        }`}
-                      >
-                        Keep this one
-                      </button>
+                          }}
+                        >
+                          {enabled ? 'Keep this one' : 'Enable this one'}
+                        </Button>
+                        {enabled ? (
+                          <Button type="button" size="sm" onClick={() => toggle(id)}>
+                            Disable this mod
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
                   );
                 })}

@@ -45,6 +45,8 @@ interface State {
   setActiveProfile: (id: string) => void;
   exportProfile: (id: string) => string;
   importProfile: (payload: string) => string | null;
+  exportBackup: () => string;
+  importBackup: (payload: string) => string | null;
   updateSettings: (patch: Partial<AppSettings>) => void;
   /** Sync the live rsmm list into the store and keep profiles in sync
    * with what is actually present on disk. */
@@ -291,6 +293,25 @@ export const useApp = create<State>()(
         return btoa(bytes);
       },
 
+      exportBackup: () => {
+        const state = get();
+        const payload = {
+          kind: 'rsmm-backup',
+          v: 1,
+          settings: state.settings,
+          activeProfileId: state.activeProfileId,
+          profiles: state.profiles.map((p) => ({
+            ...p,
+            disabled: [...p.disabled],
+          })),
+        };
+        const utf8 = new TextEncoder().encode(JSON.stringify(payload));
+        const bytes = Array.from(utf8)
+          .map((b) => String.fromCodePoint(b))
+          .join('');
+        return btoa(bytes);
+      },
+
       importProfile: (payload) => {
         try {
           const binary = atob(payload.trim());
@@ -314,6 +335,34 @@ export const useApp = create<State>()(
             activeProfileId: id,
           }));
           return id;
+        } catch {
+          return null;
+        }
+      },
+
+      importBackup: (payload) => {
+        try {
+          const binary = atob(payload.trim());
+          const bytes = Uint8Array.from(binary, (c) => c.codePointAt(0) ?? 0);
+          const decoded = new TextDecoder().decode(bytes);
+          const parsed = JSON.parse(decoded);
+          if (parsed.kind !== 'rsmm-backup' || !Array.isArray(parsed.profiles)) return null;
+          const profiles = normalizeProfiles(
+            parsed.profiles.map((p: ProfileSerialized) => ({
+              ...p,
+              disabled: new Set(p.disabled ?? []),
+            })),
+          );
+          set({
+            profiles,
+            activeProfileId:
+              profiles.some((p) => p.id === parsed.activeProfileId) ? parsed.activeProfileId : 'default',
+            settings: {
+              ...get().settings,
+              ...(parsed.settings ?? {}),
+            },
+          });
+          return 'ok';
         } catch {
           return null;
         }
@@ -460,8 +509,8 @@ function toMockMod(m: LocalMod, prev?: MockMod): MockMod {
     downloads: prev?.downloads ?? 0,
     sizeKb: prev?.sizeKb ?? 0,
     tags: m.tags,
-    dependencies: prev?.dependencies ?? [],
-    writes: prev?.writes ?? [],
+    dependencies: Object.keys(m.dependencies).length > 0 ? Object.keys(m.dependencies) : prev?.dependencies ?? [],
+    writes: m.writes.length > 0 ? m.writes : prev?.writes ?? [],
     gameBuild: prev?.gameBuild ?? '',
     image: prev?.image,
     markdown: prev?.markdown ?? (summary ? `# ${m.name}\n\n${summary}` : `# ${m.name}`),

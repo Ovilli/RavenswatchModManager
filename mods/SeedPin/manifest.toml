@@ -1,0 +1,8 @@
+[mod]
+id          = "SeedPin"
+name        = "Seed Pinner"
+version     = "0.2.0"
+author      = "pam"
+description = "Pin the run RNG seed via raw memory write on the game's Forced-seed option. ."
+enabled     = true
+sdk_version = ">=3.0,<4"

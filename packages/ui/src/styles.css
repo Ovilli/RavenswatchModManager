@@ -295,6 +295,10 @@
     box-shadow: 0 6px 22px -12px hsl(var(--gilt) / 0.18);
   }
 
+  .select-grim {
+    color-scheme: dark;
+  }
+
   /* Surface grain: slightly stronger depth for app panels */
   .surface-grain {
     backdrop-filter: blur(6px);
@@ -458,6 +462,28 @@
     border-color: hsl(var(--crimson));
   }
 
+  [data-ui-animations='enhanced'] .grimoire-card,
+  [data-ui-animations='enhanced'] .ember-banner,
+  [data-ui-animations='enhanced'] .surface-grain,
+  [data-ui-animations='enhanced'] .btn-grim,
+  [data-ui-animations='enhanced'] .stat-pill {
+    transition-duration: 220ms;
+  }
+  [data-ui-animations='enhanced'] .nav-link-grim {
+    transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+                background-color 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+                border-color 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+                color 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  [data-ui-animations='enhanced'] .nav-link-grim[data-active='true'] {
+    transform: translateX(4px);
+    background: transparent;
+    border-color: transparent;
+  }
+  [data-ui-animations='enhanced'] .nav-link-grim:hover {
+    transform: translateX(2px);
+  }
+
   /* Grimoire input */
   .input-grim {
     width: 100%;
@@ -474,6 +500,31 @@
   }
   .input-grim::placeholder { color: hsl(var(--ash)); }
   .input-grim:focus {
+    outline: none;
+    border-color: hsl(var(--gilt) / 0.7);
+    box-shadow: 0 0 0 1px hsl(var(--gilt) / 0.3);
+  }
+
+  .select-grim {
+    appearance: none;
+    padding: 0.55rem 2.15rem 0.55rem 0.85rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: calc(var(--radius) - 2px);
+    background-color: hsl(var(--pitch) / 0.64);
+    color: hsl(var(--parchment));
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-style: normal;
+    font-weight: 600;
+    font-size: 1rem;
+    transition: border-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1),
+                background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .select-grim:hover {
+    border-color: hsl(var(--gilt) / 0.6);
+    background-color: hsl(var(--char) / 0.34);
+  }
+  .select-grim:focus {
     outline: none;
     border-color: hsl(var(--gilt) / 0.7);
     box-shadow: 0 0 0 1px hsl(var(--gilt) / 0.3);

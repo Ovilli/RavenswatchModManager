@@ -1,0 +1,13 @@
+{
+  "fallback_locale": "EN",
+  "hero_id": "Vindicator",
+  "mod": "TheForgotten",
+  "schema": "rsmm.hero_i18n.v1",
+  "strings": {
+    "RSMM_TheForgotten_Vindicator_ability1_desc": "A righteous melee strike that deals bonus damage to cursed enemies.",
+    "RSMM_TheForgotten_Vindicator_ability2_desc": "Raise a protective barrier that blocks incoming damage.",
+    "RSMM_TheForgotten_Vindicator_ability3_desc": "Heal yourself and nearby allies over time.",
+    "RSMM_TheForgotten_Vindicator_ability4_desc": "Ultimate: Call down a devastating beam of holy light.",
+    "RSMM_TheForgotten_Vindicator_name": "The Vindicator"
+  }
+}

@@ -98,6 +98,20 @@ def test_config_store_roundtrip(tmp_path: Path):
         store.set("unknown", 1)
 
 
+def test_config_store_replace(tmp_path: Path):
+    (tmp_path / "config_schema.toml").write_text(
+        '[fields.title]\ntype = "string"\ndefault = "hello"\n'
+        '[fields.count]\ntype = "int"\ndefault = 1\n',
+        encoding="utf-8",
+    )
+    store = ConfigStore(tmp_path)
+    store.replace({"title": "bye", "count": "3"})
+    assert store.get("title") == "bye"
+    assert store.get("count") == 3
+    with pytest.raises(ConfigError):
+        store.replace({"missing": 1})
+
+
 # ---------------------------------------------------------------------------
 # i18n
 # ---------------------------------------------------------------------------
