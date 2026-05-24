@@ -553,7 +553,10 @@ def _extract_downloaded_zip(tmp_path: Path, target: Path, slug: str) -> None | d
             name = member.filename
             if name.endswith("/"):
                 continue
-            rel = name[len(stripped_prefix):] if strip and name.startswith(stripped_prefix) else name
+            if strip and name.startswith(stripped_prefix):
+                rel = name[len(stripped_prefix) :]
+            else:
+                rel = name
             rel_norm = os.path.normpath(rel)
             if rel_norm.startswith("..") or os.path.isabs(rel_norm):
                 return {
@@ -601,7 +604,10 @@ def _download_mod_version(slug: str, version: str, expected_sha: str) -> dict[st
                     fh.write(chunk)
         got_sha = h.hexdigest()
         if got_sha != expected_sha:
-            return {"ok": False, "error": f"sha256 mismatch: expected {expected_sha}, got {got_sha}"}
+            return {
+                "ok": False,
+                "error": f"sha256 mismatch: expected {expected_sha}, got {got_sha}",
+            }
         return {"ok": True, "sizeBytes": size, "tmp_path": tmp_path}
     except urllib.error.HTTPError as e:
         return {"ok": False, "error": f"download failed: HTTP {e.code} {e.reason}"}
