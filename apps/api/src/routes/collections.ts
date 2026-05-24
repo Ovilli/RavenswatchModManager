@@ -3,13 +3,17 @@ import { getDb, schema } from '@rsmm/db';
 import {
   collectionAddModSchema,
   collectionCreateSchema,
+  collectionImagePresignSchema,
   collectionPatchSchema,
+  collectionReviewUpsertSchema,
   collectionSlugSchema,
 } from '@rsmm/schemas';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { s3Configured } from '../env';
 import { createRateLimiter } from '../rate-limit';
+import { presignCollectionImage } from '../storage';
 import type { AppEnv } from '../types';
 
 export const collectionsRouter = new Hono<AppEnv>();
@@ -35,6 +39,8 @@ collectionsRouter.get('/', async (c) => {
       ownerId: schema.collections.ownerId,
       name: schema.collections.name,
       summary: schema.collections.summary,
+      description: schema.collections.description,
+      imageUrl: schema.collections.imageUrl,
       isPublic: schema.collections.isPublic,
       createdAt: schema.collections.createdAt,
       updatedAt: schema.collections.updatedAt,
@@ -60,6 +66,8 @@ collectionsRouter.get('/', async (c) => {
       ownerImage: r.ownerImage,
       name: r.name,
       summary: r.summary,
+      description: r.description,
+      imageUrl: r.imageUrl,
       isPublic: r.isPublic,
       modCount: r.modCount,
       createdAt: r.createdAt.toISOString(),
@@ -79,6 +87,8 @@ collectionsRouter.get('/mine', async (c) => {
       ownerId: schema.collections.ownerId,
       name: schema.collections.name,
       summary: schema.collections.summary,
+      description: schema.collections.description,
+      imageUrl: schema.collections.imageUrl,
       isPublic: schema.collections.isPublic,
       createdAt: schema.collections.createdAt,
       updatedAt: schema.collections.updatedAt,
@@ -100,6 +110,8 @@ collectionsRouter.get('/mine', async (c) => {
       ownerImage: user.image ?? null,
       name: r.name,
       summary: r.summary,
+      description: r.description,
+      imageUrl: r.imageUrl,
       isPublic: r.isPublic,
       modCount: r.modCount,
       createdAt: r.createdAt.toISOString(),
@@ -123,6 +135,9 @@ collectionsRouter.post('/', zValidator('json', collectionCreateSchema), async (c
         ownerId: user.id,
         name: body.name,
         summary: body.summary ?? null,
+        description: body.description ?? null,
+        imageUrl: body.imageUrl ?? null,
+        screenshots: body.screenshots ?? null,
         isPublic: body.isPublic ?? true,
       })
       .returning();
@@ -147,6 +162,9 @@ collectionsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) 
       ownerId: schema.collections.ownerId,
       name: schema.collections.name,
       summary: schema.collections.summary,
+      description: schema.collections.description,
+      imageUrl: schema.collections.imageUrl,
+      screenshots: schema.collections.screenshots,
       isPublic: schema.collections.isPublic,
       createdAt: schema.collections.createdAt,
       updatedAt: schema.collections.updatedAt,
@@ -206,6 +224,9 @@ collectionsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) 
     ownerImage: head.ownerImage,
     name: head.name,
     summary: head.summary,
+    description: head.description,
+    imageUrl: head.imageUrl,
+    screenshots: head.screenshots ?? [],
     isPublic: head.isPublic,
     modCount: mods.length,
     createdAt: head.createdAt.toISOString(),
@@ -250,6 +271,9 @@ collectionsRouter.patch(
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (body.name !== undefined) updates.name = body.name;
     if (body.summary !== undefined) updates.summary = body.summary;
+    if (body.description !== undefined) updates.description = body.description;
+    if (body.imageUrl !== undefined) updates.imageUrl = body.imageUrl;
+    if (body.screenshots !== undefined) updates.screenshots = body.screenshots;
     if (body.isPublic !== undefined) updates.isPublic = body.isPublic;
 
     await db.update(schema.collections).set(updates).where(eq(schema.collections.id, existing.id));
@@ -342,3 +366,169 @@ collectionsRouter.delete(
     return c.json({ ok: true });
   },
 );
+
+collectionsRouter.post(
+  '/:slug/image',
+  zValidator('param', slugParamSchema),
+  zValidator('json', collectionImagePresignSchema),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    if (!s3Configured()) return c.json({ error: 'object storage not configured' }, 503);
+    const { slug } = c.req.valid('param');
+    const body = c.req.valid('json');
+    const db = getDb();
+
+    const existing = await db.query.collections.findFirst({
+      where: eq(schema.collections.slug, slug),
+    });
+    if (!existing) return c.json({ error: 'not found' }, 404);
+    if (existing.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+
+    const signed = await presignCollectionImage({
+      slug,
+      contentType: body.contentType,
+      sizeBytes: body.sizeBytes,
+    });
+    return c.json({
+      uploadUrl: signed.uploadUrl,
+      publicUrl: signed.publicUrl,
+      expiresIn: signed.expiresIn,
+    });
+  },
+);
+
+// ─────────── Collection Reviews ───────────
+
+const reviewLimiter = createRateLimiter({
+  windowMs: 60_000,
+  maxHits: 10,
+  keyFrom: (c) => {
+    const user = c.get('user');
+    return user?.id ?? c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? 'anon';
+  },
+});
+
+async function recomputeCollectionRating(collectionId: string): Promise<void> {
+  const db = getDb();
+  const agg = await db
+    .select({
+      avg: sql<number | null>`avg(${schema.collectionReviews.rating})::numeric(3,2)`,
+    })
+    .from(schema.collectionReviews)
+    .where(eq(schema.collectionReviews.collectionId, collectionId));
+  // Collections don't have a rating column; average is computed on read
+}
+
+collectionsRouter.get('/:slug/reviews', zValidator('param', slugParamSchema), async (c) => {
+  const { slug } = c.req.valid('param');
+  const db = getDb();
+  const collection = await db.query.collections.findFirst({
+    where: eq(schema.collections.slug, slug),
+  });
+  if (!collection) return c.json({ error: 'not found' }, 404);
+
+  const rows = await db
+    .select({
+      id: schema.collectionReviews.id,
+      collectionId: schema.collectionReviews.collectionId,
+      userId: schema.collectionReviews.userId,
+      rating: schema.collectionReviews.rating,
+      title: schema.collectionReviews.title,
+      body: schema.collectionReviews.body,
+      createdAt: schema.collectionReviews.createdAt,
+      updatedAt: schema.collectionReviews.updatedAt,
+      userName: schema.users.name,
+      userImage: schema.users.image,
+    })
+    .from(schema.collectionReviews)
+    .innerJoin(schema.users, eq(schema.users.id, schema.collectionReviews.userId))
+    .where(eq(schema.collectionReviews.collectionId, collection.id))
+    .orderBy(desc(schema.collectionReviews.updatedAt));
+
+  const items = rows.map((r) => ({
+    id: r.id,
+    collectionId: r.collectionId,
+    userId: r.userId,
+    userName: r.userName,
+    userImage: r.userImage,
+    rating: r.rating,
+    title: r.title,
+    body: r.body,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+  }));
+
+  const average = items.length
+    ? items.reduce((s, r) => s + r.rating, 0) / items.length
+    : null;
+
+  return c.json({ items, total: items.length, averageRating: average });
+});
+
+collectionsRouter.use('/:slug/reviews', reviewLimiter);
+collectionsRouter.put(
+  '/:slug/reviews',
+  zValidator('param', slugParamSchema),
+  zValidator('json', collectionReviewUpsertSchema),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    const { slug } = c.req.valid('param');
+    const body = c.req.valid('json');
+    const db = getDb();
+
+    const collection = await db.query.collections.findFirst({
+      where: eq(schema.collections.slug, slug),
+    });
+    if (!collection) return c.json({ error: 'not found' }, 404);
+    if (collection.ownerId === user.id) {
+      return c.json({ error: 'owners cannot review their own collection' }, 400);
+    }
+
+    const now = new Date();
+    await db
+      .insert(schema.collectionReviews)
+      .values({
+        collectionId: collection.id,
+        userId: user.id,
+        rating: body.rating,
+        title: body.title ?? null,
+        body: body.body ?? null,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [schema.collectionReviews.collectionId, schema.collectionReviews.userId],
+        set: {
+          rating: body.rating,
+          title: body.title ?? null,
+          body: body.body ?? null,
+          updatedAt: now,
+        },
+      });
+
+    return c.json({ ok: true });
+  },
+);
+
+collectionsRouter.delete('/:slug/reviews', zValidator('param', slugParamSchema), async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'unauthorized' }, 401);
+  const { slug } = c.req.valid('param');
+  const db = getDb();
+
+  const collection = await db.query.collections.findFirst({
+    where: eq(schema.collections.slug, slug),
+  });
+  if (!collection) return c.json({ error: 'not found' }, 404);
+
+  await db
+    .delete(schema.collectionReviews)
+    .where(
+      and(
+        eq(schema.collectionReviews.collectionId, collection.id),
+        eq(schema.collectionReviews.userId, user.id),
+      ),
+    );
+  return c.json({ ok: true });
+});

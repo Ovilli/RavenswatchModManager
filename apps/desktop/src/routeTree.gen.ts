@@ -18,6 +18,7 @@ import { Route as BrowseRouteImport } from './routes/browse';
 import { Route as AboutRouteImport } from './routes/about';
 import { Route as IndexRouteImport } from './routes/index';
 import { Route as ModSlugRouteImport } from './routes/mod.$slug';
+import { Route as CollectionSlugRouteImport } from './routes/collection.$slug';
 
 const SigninRoute = SigninRouteImport.update({
   id: '/signin',
@@ -64,6 +65,11 @@ const ModSlugRoute = ModSlugRouteImport.update({
   path: '/mod/$slug',
   getParentRoute: () => rootRouteImport,
 } as any);
+const CollectionSlugRoute = CollectionSlugRouteImport.update({
+  id: '/collection/$slug',
+  path: '/collection/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any);
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute;
@@ -74,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/profiles': typeof ProfilesRoute;
   '/settings': typeof SettingsRoute;
   '/signin': typeof SigninRoute;
+  '/collection/$slug': typeof CollectionSlugRoute;
   '/mod/$slug': typeof ModSlugRoute;
 }
 export interface FileRoutesByTo {
@@ -85,6 +92,7 @@ export interface FileRoutesByTo {
   '/profiles': typeof ProfilesRoute;
   '/settings': typeof SettingsRoute;
   '/signin': typeof SigninRoute;
+  '/collection/$slug': typeof CollectionSlugRoute;
   '/mod/$slug': typeof ModSlugRoute;
 }
 export interface FileRoutesById {
@@ -97,6 +105,7 @@ export interface FileRoutesById {
   '/profiles': typeof ProfilesRoute;
   '/settings': typeof SettingsRoute;
   '/signin': typeof SigninRoute;
+  '/collection/$slug': typeof CollectionSlugRoute;
   '/mod/$slug': typeof ModSlugRoute;
 }
 export interface FileRouteTypes {
@@ -110,6 +119,7 @@ export interface FileRouteTypes {
     | '/profiles'
     | '/settings'
     | '/signin'
+    | '/collection/$slug'
     | '/mod/$slug';
   fileRoutesByTo: FileRoutesByTo;
   to:
@@ -121,6 +131,7 @@ export interface FileRouteTypes {
     | '/profiles'
     | '/settings'
     | '/signin'
+    | '/collection/$slug'
     | '/mod/$slug';
   id:
     | '__root__'
@@ -132,6 +143,7 @@ export interface FileRouteTypes {
     | '/profiles'
     | '/settings'
     | '/signin'
+    | '/collection/$slug'
     | '/mod/$slug';
   fileRoutesById: FileRoutesById;
 }
@@ -144,6 +156,7 @@ export interface RootRouteChildren {
   ProfilesRoute: typeof ProfilesRoute;
   SettingsRoute: typeof SettingsRoute;
   SigninRoute: typeof SigninRoute;
+  CollectionSlugRoute: typeof CollectionSlugRoute;
   ModSlugRoute: typeof ModSlugRoute;
 }
 
@@ -212,6 +225,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ModSlugRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    '/collection/$slug': {
+      id: '/collection/$slug';
+      path: '/collection/$slug';
+      fullPath: '/collection/$slug';
+      preLoaderRoute: typeof CollectionSlugRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
   }
 }
 
@@ -224,6 +244,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProfilesRoute: ProfilesRoute,
   SettingsRoute: SettingsRoute,
   SigninRoute: SigninRoute,
+  CollectionSlugRoute: CollectionSlugRoute,
   ModSlugRoute: ModSlugRoute,
 };
 export const routeTree = rootRouteImport
