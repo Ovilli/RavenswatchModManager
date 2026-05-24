@@ -504,8 +504,8 @@ function BrowseSkeleton() {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" aria-busy="true">
       {Array.from({ length: 6 }).map((_, i) => (
-        <div
-          key={i}
+        // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton elements, no reordering
+        <div key={i}
           className="grimoire-card flex flex-col gap-3 p-5 animate-pulse"
         >
           <div className="aspect-video w-full bg-oxblood/20 rounded" />
