@@ -1,8 +1,6 @@
 {
   "extends": "./packages/tsconfig/base.json",
-  "include": [
-    ".next/types/**/*.ts"
-  ],
+  "include": [],
   "references": [
     {
       "path": "./packages/schemas"
@@ -31,12 +29,7 @@
     "allowJs": true,
     "noEmit": true,
     "incremental": true,
-    "jsx": "preserve",
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ]
+    "jsx": "preserve"
   },
   "exclude": [
     "node_modules"
