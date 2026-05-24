@@ -80,11 +80,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     SDK = {
-        "json":      "rsmm.cli.json_bridge",
-        "safe-mode": "rsmm.cli.safe_mode",
+        "json":       "rsmm.cli.json_bridge",
+        "safe-mode":  "rsmm.cli.safe_mode",
         "sdk-doctor": "rsmm.cli.sdk_doctor",
         "docs-gen":   "rsmm.cli.docs_gen_cmd",
         "update":     "rsmm.cli.update_cmd",
+        "collection": "rsmm.cli.cmd_collection",
     }
     if sub in SDK:
         return _dispatch_module(SDK[sub], rest)

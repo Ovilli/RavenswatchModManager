@@ -1,71 +1,78 @@
 'use client';
-import { Badge, Button, Spinner, buttonVariants } from '@rsmm/ui';
-import { useQuery } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
-import type { Route } from 'next';
-import Link from 'next/link';
-import { api } from '../../lib/api';
-import { useSession } from '../../lib/auth-client';
 
-export default function CollectionsPage() {
-  const { data: session } = useSession();
-  const list = useQuery({
-    queryKey: ['collections', 'public'],
+import { useQuery } from '@tanstack/react-query';
+import Link from 'next/link';
+import type { Route } from 'next';
+import { Spinner } from '@rsmm/ui';
+import { api } from '../../lib/api';
+
+export default function CollectionsIndexPage() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['collections', 'list'],
     queryFn: () => api.collections.list(),
   });
 
   return (
-    <main className="relative overflow-hidden animate-page-in">
-      <div className="container mx-auto space-y-6 px-6 py-12">
-        <header className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="text-4xl font-bold tracking-tight">Collections</h1>
-            <p className="text-sm text-muted-foreground">
-              Curated bundles of mods made by the community.
-            </p>
-          </div>
-          {session?.user ? (
-            <Link href={'/c/new' as Route} className={buttonVariants({ size: 'sm' })}>
-              <Plus className="mr-1 h-4 w-4" /> New collection
-            </Link>
-          ) : null}
-        </header>
-
-        {list.isLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <Spinner />
-          </div>
-        ) : list.isError ? (
-          <p className="text-sm text-destructive">Cannot reach API.</p>
-        ) : (list.data?.items ?? []).length === 0 ? (
-          <p className="text-sm text-muted-foreground">No public collections yet.</p>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {list.data?.items.map((c) => (
-              <Link
-                key={c.id}
-                href={`/c/${c.slug}` as Route}
-                className="grimoire-card p-5 transition-colors hover:border-gilt/40"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <h2 className="text-lg font-semibold leading-tight">{c.name}</h2>
-                  <Badge variant="outline" className="shrink-0 text-[0.6rem]">
-                    {c.modCount} mod{c.modCount === 1 ? '' : 's'}
-                  </Badge>
-                </div>
-                {c.summary ? (
-                  <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{c.summary}</p>
-                ) : null}
-                <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>by {c.ownerName ?? 'unknown'}</span>
-                  <span>·</span>
-                  <span>updated {new Date(c.updatedAt).toLocaleDateString()}</span>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
+    <main className="container mx-auto space-y-6 px-6 py-12">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Collections</h1>
+          <p className="mt-1 text-muted-foreground">
+            Mod bundles curated by the community.
+          </p>
+        </div>
       </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-24">
+          <Spinner />
+        </div>
+      ) : !data || data.items.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border p-12 text-center">
+          <h2 className="text-lg font-semibold">No collections yet</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Be the first to create a curated bundle of mods.
+          </p>
+          <Link
+            href={'/c/new' as Route}
+            className="mt-4 inline-flex h-10 items-center justify-center rounded-md bg-primary px-6 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            Create a collection
+          </Link>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {data.items.map((c) => (
+            <Link
+              key={c.id}
+              href={`/c/${c.slug}` as Route}
+              className="group block overflow-hidden rounded-lg border border-border bg-card transition-colors hover:border-primary/50"
+            >
+              {c.imageUrl ? (
+                <div className="aspect-[21/9] w-full overflow-hidden bg-muted">
+                  <img
+                    src={c.imageUrl}
+                    alt={`${c.name} cover`}
+                    className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
+                    loading="lazy"
+                  />
+                </div>
+              ) : (
+                <div className="aspect-[21/9] w-full bg-muted" />
+              )}
+              <div className="p-4">
+                <h2 className="text-base font-semibold leading-tight">{c.name}</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {c.ownerName ?? 'unknown'} · {c.modCount} mod{c.modCount === 1 ? '' : 's'}
+                </p>
+                {c.summary ? (
+                  <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{c.summary}</p>
+                ) : null}
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
     </main>
   );
 }

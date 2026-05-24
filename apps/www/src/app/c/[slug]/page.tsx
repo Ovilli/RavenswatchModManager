@@ -1,5 +1,5 @@
 'use client';
-import { ApiError } from '@rsmm/api-client';
+import { ApiError, isRateLimited } from '@rsmm/api-client';
 import { Badge, Button, Input, Spinner, buttonVariants } from '@rsmm/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -32,9 +32,13 @@ const MDPreview = dynamic(
 );
 
 function describeApiError(err: unknown): string {
+  if (isRateLimited(err)) {
+    return `Rate limited — try again in ${err.retryAfter}s.`;
+  }
   if (err instanceof ApiError) {
     const body = err.body as { error?: string } | null;
     if (body?.error) return body.error;
+    if (err.status === 429) return 'Too many requests. Please wait.';
     return `HTTP ${err.status}`;
   }
   return err instanceof Error ? err.message : String(err);

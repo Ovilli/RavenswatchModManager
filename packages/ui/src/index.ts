@@ -4,3 +4,4 @@ export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 export { Badge } from './components/badge';
 export { Input } from './components/input';
 export { Spinner } from './components/spinner';
+export { ProgressBar } from './components/progress';
