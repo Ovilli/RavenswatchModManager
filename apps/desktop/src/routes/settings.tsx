@@ -109,6 +109,13 @@ function SettingsPage() {
           onChange={(v) => update({ backupDir: v })}
           validate={(v) => validateDirPath(v, 'Backup folder path')}
         />
+        <Field
+          label="Mods folder"
+          value={settings.modsDir}
+          placeholder="Leave empty to use the default rsmm mods folder"
+          onChange={(v) => update({ modsDir: v })}
+          validate={(v) => validateDirPath(v, 'Mods folder path')}
+        />
       </Panel>
 
       <Panel>
@@ -273,11 +280,13 @@ function validateDirPath(raw: string, label: string): string | null {
 function Field({
   label,
   value,
+  placeholder,
   onChange,
   validate,
 }: {
   label: string;
   value: string;
+  placeholder?: string;
   onChange: (v: string) => void;
   validate?: (v: string) => string | null;
 }) {
@@ -288,6 +297,7 @@ function Field({
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
         className="font-mono w-full border border-border bg-pitch/60 px-3 py-2 text-parchment focus:border-gilt/60 focus:outline-none"
         aria-invalid={error ? true : undefined}
       />

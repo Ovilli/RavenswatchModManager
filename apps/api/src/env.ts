@@ -12,6 +12,8 @@ loadEnv({ path: resolve(repoRoot, '.env') });
 loadEnv({ path: '.env.local' });
 loadEnv();
 
+export const isProduction = process.env.NODE_ENV === 'production';
+
 function required(name: string): string {
   const v = process.env[name];
   if (!v) throw new Error(`${name} env var is required`);
@@ -91,4 +93,10 @@ export function googleConfigured(): boolean {
 
 export function githubConfigured(): boolean {
   return Boolean(env.github.clientId && env.github.clientSecret);
+}
+
+if (isProduction && !smtpConfigured()) {
+  throw new Error(
+    'SMTP must be configured in production. Set SMTP_HOST, SMTP_USER, SMTP_PASS, and EMAIL_FROM before starting the API.',
+  );
 }
