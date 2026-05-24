@@ -1,10 +1,10 @@
 import type { Collection, ModListItem } from '@rsmm/schemas';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
-import { Check, Loader2, Plus, Search, WifiOff } from 'lucide-react';
+import { Check, ExternalLink, Loader2, Plus, Search, WifiOff } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Button, CopyButton, Cover, MonoTag, SectionHeader, StatPill } from '../components/chrome';
-import { api } from '../lib/api';
+import { api, getApiBaseUrl } from '../lib/api';
 import { installModFromIndex, listLocalMods } from '../lib/rsmm';
 import { activeProfile, useApp } from '../store';
 import type { Profile } from '../store';
@@ -195,10 +195,22 @@ function BrowsePage() {
       </div>
 
       {error ? (
-        <div className="ember-banner flex items-center gap-3 px-4 py-3">
-          <WifiOff className="h-4 w-4 text-crimson shrink-0" />
-          <span className="font-serif-italic text-base">Couldn't reach the server.</span>
-          <CopyButton value={(error as Error).message} />
+        <div className="ember-banner flex flex-col gap-2 px-4 py-3">
+          <div className="flex items-center gap-3">
+            <WifiOff className="h-4 w-4 text-crimson shrink-0" />
+            <span className="font-serif-italic text-base">Couldn't reach the server.</span>
+            <CopyButton value={(error as Error).message} />
+            <button
+              type="button"
+              onClick={() => window.open(getApiBaseUrl(), '_blank')}
+              className="font-mono text-xs text-ash underline-offset-2 hover:text-parchment hover:underline flex items-center gap-1"
+            >
+              <ExternalLink className="h-3 w-3" /> test API URL
+            </button>
+          </div>
+          <div className="font-mono text-xs text-ash bg-pitch/30 px-2 py-1 rounded">
+            api: {getApiBaseUrl()}
+          </div>
         </div>
       ) : null}
 
