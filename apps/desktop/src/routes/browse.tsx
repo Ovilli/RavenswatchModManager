@@ -209,13 +209,8 @@ function BrowsePage() {
             </button>
           </div>
           <div className="font-mono text-xs text-ash bg-pitch/30 px-2 py-1 rounded">
-            {getApiBaseUrl()}
+            {getApiBaseUrl()} <span className="text-oxblood/60">|</span> origin: {window.location.origin}
           </div>
-          <p className="font-mono text-xs text-ash mt-1">
-            All network requests from this app are failing. This is usually Windows
-            Firewall or antivirus blocking the app — try adding an exception for
-            "Ravenswatch Mod Manager".
-          </p>
         </div>
       ) : null}
 
