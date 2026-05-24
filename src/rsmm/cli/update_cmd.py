@@ -103,7 +103,8 @@ _DANGEROUS_EXTENSIONS = frozenset({
     ".ps1", ".psm1", ".psd1", ".ps1xml",
     ".sh", ".bash", ".zsh",
     ".bat", ".cmd",
-    ".jar", ".py", ".pyc", ".pyd",
+    ".jar",
+    ".pyc", ".pyd",
     ".wasm", ".php", ".asp", ".aspx", ".jsp",
 })
 

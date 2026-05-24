@@ -504,7 +504,9 @@ _DANGEROUS_EXTENSIONS = frozenset({
     ".ps1", ".psm1", ".psd1", ".ps1xml",
     ".sh", ".bash", ".zsh",
     ".bat", ".cmd",
-    ".jar", ".py", ".pyc", ".pyd",
+    ".jar",
+    # .py is allowed — standard mods ship on_disable.py / build hooks.
+    ".pyc", ".pyd",
     ".wasm", ".php", ".asp", ".aspx", ".jsp",
 })
 

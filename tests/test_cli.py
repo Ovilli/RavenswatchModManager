@@ -121,3 +121,19 @@ def test_json_bridge_config_roundtrip(tmp_path, monkeypatch, capsys):
 
     rc = main(["json", "config", "get", "ConfigMod"])
     assert rc == 0
+
+
+def test_json_bridge_zip_allows_python_hooks(tmp_path):
+    import zipfile
+
+    from rsmm.cli import json_bridge
+
+    zpath = tmp_path / "mod.zip"
+    target = tmp_path / "mods" / "PyMod"
+    with zipfile.ZipFile(zpath, "w") as zf:
+        zf.writestr("PyMod/manifest.toml", 'id = "PyMod"\n')
+        zf.writestr("PyMod/on_disable.py", "print('ok')\n")
+
+    err = json_bridge._extract_downloaded_zip(zpath, target, "PyMod")
+    assert err is None
+    assert (target / "on_disable.py").is_file()

@@ -116,6 +116,33 @@ function resolveModId(
   );
 }
 
+function modWasOnDisk(id: string, previous: Record<string, MockMod>): boolean {
+  if (previous[id]) return true;
+  return Object.values(previous).some((m) => m.id === id || m.slug === id);
+}
+
+/** Keep profile mod ids across stale rsmm list polls; drop only confirmed removals. */
+function reconcileProfileModIds(
+  entries: Iterable<string>,
+  localMods: Record<string, MockMod>,
+  previousLocalMods: Record<string, MockMod>,
+  installedSet: Set<string>,
+): string[] {
+  const out: string[] = [];
+  for (const entry of entries) {
+    const canon = canonicalModId(entry, localMods, installedSet);
+    if (canon) {
+      if (!out.includes(canon)) out.push(canon);
+      continue;
+    }
+    if (modWasOnDisk(entry, previousLocalMods)) {
+      continue;
+    }
+    if (!out.includes(entry)) out.push(entry);
+  }
+  return out;
+}
+
 function normalizeProfiles(profiles: Profile[] | undefined): Profile[] {
   const list = (profiles ?? []).map((p) => ({
     ...p,
@@ -427,24 +454,24 @@ export const useApp = create<State>()(
           for (const m of mods) {
             localMods[m.id] = toMockMod(m, s.localMods[m.id]);
           }
-          const installed = mods.map((m) => m.id);
-          const installedSet = new Set(installed);
+          const installedSet = new Set(mods.map((m) => m.id));
           const profiles = s.profiles.map((p) => {
             if (p.id === 'default') {
               return { ...p, loadOrder: [], disabled: new Set<string>() };
             }
-            const loadOrder: string[] = [];
-            for (const entry of p.loadOrder) {
-              const canon = canonicalModId(entry, localMods, installedSet);
-              if (canon && !loadOrder.includes(canon)) loadOrder.push(canon);
-            }
+            const loadOrder = reconcileProfileModIds(
+              p.loadOrder,
+              localMods,
+              s.localMods,
+              installedSet,
+            );
+            for (const id of loadOrder) installedSet.add(id);
             const disabled = new Set(
-              [...p.disabled]
-                .map((entry) => canonicalModId(entry, localMods, installedSet))
-                .filter((entry): entry is string => entry != null),
+              reconcileProfileModIds(p.disabled, localMods, s.localMods, installedSet),
             );
             return { ...p, loadOrder, disabled };
           });
+          const installed = [...installedSet];
           return { localMods, installed, profiles };
         }),
 
