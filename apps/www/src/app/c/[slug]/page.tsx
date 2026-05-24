@@ -377,7 +377,7 @@ export default function CollectionDetailPage({
           <span className="block text-sm font-medium">
             Description <span className="text-muted-foreground">(Markdown)</span>
           </span>
-          <div data-color-mode="light">
+          <div data-color-mode="dark" className="md-editor-themed">
             <MDEditor
               value={editDescription}
               onChange={(v) => setEditDescription(v ?? '')}
@@ -387,8 +387,11 @@ export default function CollectionDetailPage({
           </div>
         </div>
       ) : c.description ? (
-        <div className="max-w-3xl" data-color-mode="light">
-          <MDPreview source={c.description} />
+        <div className="grimoire-card space-y-3 p-6">
+          <h2 className="text-xl font-bold tracking-tight">About</h2>
+          <div data-color-mode="dark" className="prose prose-sm prose-invert max-w-none">
+            <MDPreview source={c.description} style={{ background: 'transparent' }} />
+          </div>
         </div>
       ) : null}
 

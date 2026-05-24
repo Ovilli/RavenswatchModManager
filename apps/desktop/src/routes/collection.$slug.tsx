@@ -138,11 +138,7 @@ function CollectionDetailPage() {
   const { name, summary, description, imageUrl, ownerName, modCount, updatedAt, screenshots, mods } =
     data;
 
-  const markdownBody = description
-    ? `# ${name}\n\n${description}`
-    : summary
-      ? `# ${name}\n\n${summary}`
-      : `# ${name}`;
+  const markdownBody = description || summary || undefined;
 
   return (
     <div className="space-y-6">
@@ -196,11 +192,13 @@ function CollectionDetailPage() {
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         <div className="space-y-4 md:col-span-2">
-          <Panel>
-            <h3 className="font-fraktur text-xl text-parchment mb-3">About</h3>
-            <Fleuron />
-            <Markdown source={markdownBody} className="mt-4" />
-          </Panel>
+          {markdownBody ? (
+            <Panel>
+              <h3 className="font-fraktur text-xl text-parchment mb-3">About</h3>
+              <Fleuron />
+              <Markdown source={markdownBody} className="mt-4" />
+            </Panel>
+          ) : null}
 
           {screenshots && screenshots.length > 0 ? (
             <Panel>
