@@ -37,12 +37,18 @@ export const env = {
   // landing target. Defaults to localhost so dev works without extra
   // config; prod overrides via WEB_URL.
   webUrl: process.env.WEB_URL || 'http://localhost:3000',
-  // `http://tauri.localhost` is the default origin for the Tauri WebView2
-  // shell on Windows — without it, every desktop fetch fails CORS preflight.
-  trustedOrigins: (process.env.TRUSTED_ORIGINS || 'http://localhost:3000,http://localhost:1420,tauri://localhost,https://tauri.localhost,http://tauri.localhost')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean),
+  // Tauri WebView origins vary by platform and must always be accepted
+  // regardless of the TRUSTED_ORIGINS env override:
+  //   macOS/Linux WebKitGTK:  tauri://localhost
+  //   Windows WebView2:       http://tauri.localhost
+  trustedOrigins: (() => {
+    const fromEnv = (process.env.TRUSTED_ORIGINS || 'http://localhost:3000,http://localhost:1420,tauri://localhost,https://tauri.localhost,http://tauri.localhost')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const tauriOrigins = ['tauri://localhost', 'https://tauri.localhost', 'http://tauri.localhost'];
+    return [...new Set([...fromEnv, ...tauriOrigins])];
+  })(),
   s3: {
     bucket: process.env.S3_BUCKET ?? '',
     region: process.env.S3_REGION ?? 'auto',
