@@ -15,6 +15,7 @@ pub fn run() {
             launcher_log::clear_launcher_log,
             launcher_log::read_launcher_log,
             rsmm_env::rsmm_runtime_env,
+            rsmm_env::probe_rsmm,
         ]);
 
     // Plugins are best-effort. If one fails to initialize (e.g. an

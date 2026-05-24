@@ -4,5 +4,15 @@
 # calls the source tree directly.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_DIR="$(cd "$SCRIPT_DIR/../../../../" && pwd)"
-exec python3 "$REPO_DIR/rsmm" "$@"
+# Walk up until we find the repo root (sentinel: an `rsmm` file + the
+# `src/rsmm/` package directory). The sidecar wrapper itself also lives
+# in an `rsmm` file, so checking for `src/rsmm/` avoids false matches.
+DIR="$SCRIPT_DIR"
+while [ "$DIR" != "/" ]; do
+    if [ -f "$DIR/rsmm" ] && [ -d "$DIR/src/rsmm" ]; then
+        exec python3 "$DIR/rsmm" "$@"
+    fi
+    DIR="$(dirname "$DIR")"
+done
+echo "fatal: cannot find rsmm sentinel (repo root) from $SCRIPT_DIR" >&2
+exit 1

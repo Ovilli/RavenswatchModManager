@@ -22,7 +22,7 @@
     {
       "identifier": "shell:allow-execute",
       "allow": [
-        { "name": "rsmm", "sidecar": true, "args": true },
+        { "name": "binaries/rsmm", "sidecar": true, "args": true },
         { "name": "run-rsmm", "cmd": "rsmm", "args": true },
         { "name": "pgrep", "cmd": "pgrep", "args": true },
         { "name": "tasklist", "cmd": "tasklist", "args": true }
