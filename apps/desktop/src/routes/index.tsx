@@ -99,7 +99,7 @@ function LibraryPage() {
     return counts;
   }, [conflicts]);
 
-  const { data: localMods, error: localModsError } = useQuery({
+  const { data: localMods, error: localModsError, isLoading: localModsLoading } = useQuery({
     queryKey: ['rsmm', 'list', modsDir],
     queryFn: listLocalMods,
     retry: false,
@@ -198,6 +198,15 @@ function LibraryPage() {
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [hasDirtyConfigs]);
+
+  useEffect(() => {
+    setSelected((current) => {
+      if (current.size === 0) return current;
+      const visibleIds = new Set(filtered.map((row) => row.id));
+      const next = new Set([...current].filter((id) => visibleIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [filtered]);
 
   const changeView = (next: ViewMode) => {
     if (view === 'config' && next !== 'config' && hasDirtyConfigs) {
@@ -479,6 +488,24 @@ function LibraryPage() {
         </div>
       ) : null}
 
+      {localModsLoading && Object.keys(localModsState).length === 0 ? (
+        <Panel>
+          <div className="space-y-3 animate-pulse" aria-busy="true">
+            <div className="h-6 w-56 rounded bg-oxblood/20" />
+            <div className="h-4 w-96 max-w-full rounded bg-oxblood/15" />
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div
+                  // biome-ignore lint/suspicious/noArrayIndexKey: fixed loading placeholders
+                  key={i}
+                  className="h-36 rounded border border-border bg-pitch/40"
+                />
+              ))}
+            </div>
+          </div>
+        </Panel>
+      ) : null}
+
       {conflicts.length > 0 ? (
         <Link to="/conflicts" className="ember-banner flex items-center justify-between px-4 py-3">
           <span className="flex items-center gap-3">
@@ -532,6 +559,8 @@ function LibraryPage() {
                     key={id}
                     modId={id}
                     modName={mod.name}
+                    enabled={isEnabledIn(profile, id)}
+                    onToggleEnabled={() => handleToggle(id)}
                     onDirtyChange={markConfigDirty}
                   />
                 );
@@ -557,7 +586,7 @@ function LibraryPage() {
         </div>
       </div>
 
-      {filtered.length === 0 ? (
+      {!localModsLoading && filtered.length === 0 ? (
         <EmptyState
           title="No mods match those filters"
           body="Try a broader search or clear one of the filters to show more installed mods."

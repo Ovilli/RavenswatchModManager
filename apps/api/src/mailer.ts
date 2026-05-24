@@ -1,5 +1,5 @@
 import nodemailer, { type Transporter } from 'nodemailer';
-import { env, smtpConfigured } from './env';
+import { env, isProduction, smtpConfigured } from './env';
 
 let cached: Transporter | null = null;
 
@@ -28,6 +28,9 @@ export interface MailMessage {
 
 export async function sendMail(msg: MailMessage): Promise<void> {
   if (!smtpConfigured()) {
+    if (isProduction) {
+      throw new Error('SMTP is not configured; refusing to continue without email delivery.');
+    }
     // In dev we log instead of failing so the signup flow keeps working
     // even when an operator hasn't wired SMTP yet. The verification URL
     // is on stdout — copy-paste it into the browser to verify.

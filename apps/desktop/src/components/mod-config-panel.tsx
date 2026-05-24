@@ -1,7 +1,7 @@
 import { Input } from '@rsmm/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Fleuron, Panel } from './chrome';
+import { Button, Fleuron, InkSwitch, Panel } from './chrome';
 import { inTauri } from '../lib/platform';
 import { getModConfig, setModConfig, type ModConfigField } from '../lib/rsmm';
 
@@ -10,10 +10,14 @@ type ConfigValue = boolean | number | string;
 export function ModConfigPanel({
   modId,
   modName,
+  enabled,
+  onToggleEnabled,
   onDirtyChange,
 }: {
   modId: string;
   modName: string;
+  enabled?: boolean;
+  onToggleEnabled?: () => void;
   onDirtyChange?: (modId: string, dirty: boolean) => void;
 }) {
   const queryClient = useQueryClient();
@@ -51,9 +55,13 @@ export function ModConfigPanel({
     },
     onSuccess: (result) => {
       queryClient.setQueryData(['mods', 'config', modId], result);
-      if (result.values) {
+      if (result.schema?.fields && result.values) {
+        setDraft(buildDraft(result.schema.fields, result.values));
+      } else if (result.values) {
         setDraft(result.values);
       }
+      setTouched({});
+      queryClient.invalidateQueries({ queryKey: ['mods', 'config', modId] }).catch(() => {});
     },
   });
 
@@ -135,6 +143,13 @@ export function ModConfigPanel({
           <Fleuron />
         </div>
         <div className="flex items-center gap-2">
+          {enabled != null && onToggleEnabled ? (
+            <InkSwitch
+              on={enabled}
+              onClick={onToggleEnabled}
+              label={`${enabled ? 'Disable' : 'Enable'} ${modName}`}
+            />
+          ) : null}
           <Button
             type="button"
             size="sm"

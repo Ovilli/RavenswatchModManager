@@ -1,7 +1,7 @@
 import { getDb, schema } from '@rsmm/db';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { env, githubConfigured, googleConfigured, smtpConfigured } from './env';
+import { env, githubConfigured, googleConfigured, isProduction, smtpConfigured } from './env';
 import { resetPasswordTemplate, sendMail, verifyEmailTemplate } from './mailer';
 
 const socialProviders: {
@@ -21,8 +21,6 @@ if (githubConfigured()) {
   };
 }
 
-const isProduction = process.env.NODE_ENV === 'production';
-
 export const auth = betterAuth({
   baseURL: env.betterAuthUrl,
   secret: env.betterAuthSecret,
@@ -39,11 +37,10 @@ export const auth = betterAuth({
   socialProviders,
   emailAndPassword: {
     enabled: true,
-    autoSignIn: true,
-    // Verification requires SMTP. When SMTP is unconfigured we log the
-    // link to stdout and skip the gate — local dev keeps working
-    // without provisioning a mail server.
-    requireEmailVerification: smtpConfigured(),
+    autoSignIn: !isProduction && !smtpConfigured(),
+    // Production must not silently allow unverified accounts when mail is
+    // misconfigured. Dev without SMTP can still auto-sign-in locally.
+    requireEmailVerification: isProduction || smtpConfigured(),
     sendResetPassword: async ({ user, url }) => {
       const t = resetPasswordTemplate({ name: user.name, url });
       await sendMail({ to: user.email, subject: t.subject, text: t.text, html: t.html });

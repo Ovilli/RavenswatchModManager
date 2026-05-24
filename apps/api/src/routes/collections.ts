@@ -11,6 +11,7 @@ import {
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { isPgErrorCode } from '../db-errors';
 import { s3Configured } from '../env';
 import { createRateLimiter } from '../rate-limit';
 import { presignCollectionImage } from '../storage';
@@ -27,8 +28,17 @@ const slugAndModParamSchema = z.object({
 const writeLimiter = createRateLimiter({
   windowMs: 60_000,
   maxHits: 30,
-  keyFrom: (c) => c.get('user')?.id ?? c.req.header('x-forwarded-for') ?? 'anon',
+  keyFrom: (c) => {
+    const user = c.get('user');
+    return user?.id ?? c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? 'anon';
+  },
 });
+
+type CollectionVisibility = Pick<typeof schema.collections.$inferSelect, 'isPublic' | 'ownerId'>;
+
+function canViewCollection(collection: CollectionVisibility, userId?: string | null): boolean {
+  return collection.isPublic || collection.ownerId === userId;
+}
 
 collectionsRouter.get('/', async (c) => {
   const db = getDb();
@@ -143,7 +153,7 @@ collectionsRouter.post('/', zValidator('json', collectionCreateSchema), async (c
       .returning();
     return c.json({ collection: row }, 201);
   } catch (err) {
-    if ((err as { code?: string })?.code === '23505') {
+    if (isPgErrorCode(err, '23505')) {
       return c.json({ error: 'slug already in use' }, 409);
     }
     throw err;
@@ -409,24 +419,15 @@ const reviewLimiter = createRateLimiter({
   },
 });
 
-async function recomputeCollectionRating(collectionId: string): Promise<void> {
-  const db = getDb();
-  const agg = await db
-    .select({
-      avg: sql<number | null>`avg(${schema.collectionReviews.rating})::numeric(3,2)`,
-    })
-    .from(schema.collectionReviews)
-    .where(eq(schema.collectionReviews.collectionId, collectionId));
-  // Collections don't have a rating column; average is computed on read
-}
-
 collectionsRouter.get('/:slug/reviews', zValidator('param', slugParamSchema), async (c) => {
   const { slug } = c.req.valid('param');
+  const user = c.get('user');
   const db = getDb();
   const collection = await db.query.collections.findFirst({
     where: eq(schema.collections.slug, slug),
   });
   if (!collection) return c.json({ error: 'not found' }, 404);
+  if (!canViewCollection(collection, user?.id)) return c.json({ error: 'not found' }, 404);
 
   const rows = await db
     .select({
@@ -482,6 +483,7 @@ collectionsRouter.put(
       where: eq(schema.collections.slug, slug),
     });
     if (!collection) return c.json({ error: 'not found' }, 404);
+    if (!canViewCollection(collection, user.id)) return c.json({ error: 'not found' }, 404);
     if (collection.ownerId === user.id) {
       return c.json({ error: 'owners cannot review their own collection' }, 400);
     }
@@ -521,6 +523,7 @@ collectionsRouter.delete('/:slug/reviews', zValidator('param', slugParamSchema),
     where: eq(schema.collections.slug, slug),
   });
   if (!collection) return c.json({ error: 'not found' }, 404);
+  if (!canViewCollection(collection, user.id)) return c.json({ error: 'not found' }, 404);
 
   await db
     .delete(schema.collectionReviews)

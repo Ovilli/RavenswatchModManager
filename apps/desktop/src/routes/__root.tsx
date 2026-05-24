@@ -1,5 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query';
-import { Link, Outlet, createRootRouteWithContext } from '@tanstack/react-router';
+import { Link, Outlet, createRootRouteWithContext, useLocation } from '@tanstack/react-router';
 import { AlertTriangle } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -418,6 +418,13 @@ function WindowControls() {
 }
 
 function RootLayout() {
+  const location = useLocation();
+  const mainRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0, left: 0 });
+  }, [location.pathname]);
+
   return (
     <ToastProvider>
       <DialogProvider>
@@ -450,10 +457,10 @@ function RootLayout() {
             </div>
           </aside>
 
-          <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <StatusStrip />
             <UpdaterBanner />
-            <main className="flex-1 overflow-y-auto px-6 py-6 md:px-8">
+            <main ref={mainRef} className="min-h-0 flex-1 overflow-y-auto px-6 py-6 md:px-8">
               <div className="mx-auto w-full max-w-7xl animate-page-in">
                 <Outlet />
               </div>

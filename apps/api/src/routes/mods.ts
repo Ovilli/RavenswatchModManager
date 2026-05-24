@@ -10,6 +10,7 @@ import {
 import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { isPgErrorCode } from '../db-errors';
 import { s3Configured } from '../env';
 import { createRateLimiter } from '../rate-limit';
 import { presignModImage, presignModUpload } from '../storage';
@@ -696,14 +697,3 @@ modsRouter.delete('/:slug/reviews', zValidator('param', slugParamSchema), async 
   await recomputeRating(mod.id);
   return c.json({ ok: true });
 });
-
-function isPgErrorCode(err: unknown, code: string): boolean {
-  if (!err || typeof err !== 'object') return false;
-  const top = err as { code?: unknown; cause?: unknown };
-  if (top.code === code) return true;
-  const cause = top.cause;
-  if (cause && typeof cause === 'object' && (cause as { code?: unknown }).code === code) {
-    return true;
-  }
-  return false;
-}

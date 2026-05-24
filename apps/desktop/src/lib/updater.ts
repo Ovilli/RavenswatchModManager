@@ -21,12 +21,7 @@ import { inTauri } from './platform';
 export async function checkForUpdate(): Promise<AvailableUpdate | null> {
   if (!inTauri()) return null;
   const { check } = await import('@tauri-apps/plugin-updater');
-  let update: Awaited<ReturnType<typeof check>> | null = null;
-  try {
-    update = await check();
-  } catch {
-    return null;
-  }
+  const update = await check();
   if (!update) return null;
 
   return {

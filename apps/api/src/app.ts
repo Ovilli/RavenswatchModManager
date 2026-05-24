@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { auth } from './auth';
-import { env, githubConfigured, googleConfigured } from './env';
+import { env, githubConfigured, googleConfigured, isProduction } from './env';
 import { createRateLimiter } from './rate-limit';
 import { collectionsRouter } from './routes/collections';
 import { meRouter } from './routes/me';
@@ -41,8 +41,10 @@ app.notFound((c) => c.json({ error: 'not found' }, 404));
 
 app.use('*', async (c, next) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers }).catch(() => null);
-  c.set('user', session?.user ?? null);
-  c.set('session', session?.session ?? null);
+  const user = session?.user ?? null;
+  const isVerified = user?.emailVerified === true;
+  c.set('user', isProduction && user && !isVerified ? null : user);
+  c.set('session', isProduction && user && !isVerified ? null : (session?.session ?? null));
   await next();
 });
 
