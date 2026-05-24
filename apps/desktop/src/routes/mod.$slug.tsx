@@ -47,6 +47,28 @@ function ModDetailPage() {
   const [versionBusy, setVersionBusy] = useState<string | null>(null);
   const [versionError, setVersionError] = useState<string | null>(null);
 
+  const installVersion = useCallback(
+    async (version: string, addToProfile = false) => {
+      setVersionBusy(version);
+      setVersionError(null);
+      try {
+        await installModVersion(slug, version);
+        const mods = await listLocalMods();
+        if (mods) syncLocalMods(mods);
+        if (addToProfile) {
+          const folderId = mods?.find((m) => m.slug === slug)?.id ?? slug;
+          installMod(folderId);
+        }
+        await queryClient.invalidateQueries({ queryKey: ['mods', 'detail', slug] });
+      } catch (err) {
+        setVersionError(err instanceof Error ? err.message : 'Failed to install this version.');
+      } finally {
+        setVersionBusy(null);
+      }
+    },
+    [installMod, queryClient, slug, syncLocalMods],
+  );
+
   if (isLoading) {
     return (
       <div className="space-y-6 animate-pulse" aria-busy="true">
@@ -105,24 +127,7 @@ function ModDetailPage() {
     (description ? `# ${name}\n\n${description}` : `# ${name}\n\n${summary || ''}`);
   const sizeBytes = latestVersion?.sizeBytes ?? null;
   const apiBase = getApiUrl().replace(/\/+$/, '');
-
-  const installVersion = useCallback(
-    async (version: string) => {
-      setVersionBusy(version);
-      setVersionError(null);
-      try {
-        await installModVersion(slug, version);
-        const mods = await listLocalMods();
-        if (mods) syncLocalMods(mods);
-        await queryClient.invalidateQueries({ queryKey: ['mods', 'detail', slug] });
-      } catch (err) {
-        setVersionError(err instanceof Error ? err.message : 'Failed to install this version.');
-      } finally {
-        setVersionBusy(null);
-      }
-    },
-    [queryClient, slug, syncLocalMods],
-  );
+  const modFolderId = liveBySlug?.id ?? slug;
 
   return (
     <div className="space-y-6">
@@ -164,9 +169,17 @@ function ModDetailPage() {
             <Button
               type="button"
               variant="primary"
-              onClick={() => installMod(apiMod?.id ?? liveBySlug?.id ?? slug)}
+              disabled={versionBusy !== null}
+              onClick={() => {
+                const ver = apiLatest ?? latestVersion?.version;
+                if (!liveBySlug && ver && inTauri()) {
+                  void installVersion(ver, true);
+                  return;
+                }
+                installMod(modFolderId);
+              }}
             >
-              <Plus className="h-4 w-4" /> Install
+              <Plus className="h-4 w-4" /> {versionBusy ? 'Installing…' : 'Install'}
             </Button>
           )
         }

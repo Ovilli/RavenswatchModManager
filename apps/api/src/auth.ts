@@ -21,6 +21,8 @@ if (githubConfigured()) {
   };
 }
 
+const isProduction = process.env.NODE_ENV === 'production';
+
 export const auth = betterAuth({
   baseURL: env.betterAuthUrl,
   secret: env.betterAuthSecret,
@@ -75,8 +77,20 @@ export const auth = betterAuth({
     },
   },
   advanced: {
-    useSecureCookies: process.env.NODE_ENV === 'production',
+    useSecureCookies: isProduction,
     disableCSRFCheck: false,
+    // Production Tauri builds (all OSes) call the HTTPS API from a different
+    // site (tauri://localhost, https://tauri.localhost, etc.) and need
+    // SameSite=None. Dev uses the Vite proxy (same-origin) — Lax is fine there.
+    // Applying None+Secure in dev breaks local `http://localhost:3001` sign-in.
+    ...(isProduction
+      ? {
+          defaultCookieAttributes: {
+            sameSite: 'none' as const,
+            secure: true,
+          },
+        }
+      : {}),
   },
 });
 

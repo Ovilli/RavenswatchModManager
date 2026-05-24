@@ -86,10 +86,40 @@ const CHAOS_PROFILE: Profile = {
   createdAt: new Date().toISOString(),
 };
 
+function normalizeDisabled(disabled: Profile['disabled'] | string[] | undefined): Set<string> {
+  if (disabled instanceof Set) return new Set(disabled);
+  if (Array.isArray(disabled)) return new Set(disabled.filter((x) => typeof x === 'string'));
+  return new Set<string>();
+}
+
+/** Map legacy API UUIDs / slug aliases to the on-disk mod folder id. */
+function canonicalModId(
+  id: string,
+  localMods: Record<string, MockMod>,
+  installedSet: Set<string>,
+): string | null {
+  if (installedSet.has(id)) return id;
+  const bySlug = Object.values(localMods).find((m) => m.slug === id);
+  if (bySlug && installedSet.has(bySlug.id)) return bySlug.id;
+  return null;
+}
+
+function resolveModId(
+  id: string,
+  localMods: Record<string, MockMod>,
+  installed: string[],
+): string {
+  const installedSet = new Set(installed);
+  return (
+    canonicalModId(id, localMods, installedSet) ??
+    (localMods[id] ? id : Object.values(localMods).find((m) => m.slug === id)?.id ?? id)
+  );
+}
+
 function normalizeProfiles(profiles: Profile[] | undefined): Profile[] {
   const list = (profiles ?? []).map((p) => ({
     ...p,
-    disabled: p.disabled instanceof Set ? new Set(p.disabled) : new Set<string>(),
+    disabled: normalizeDisabled(p.disabled as Profile['disabled'] | string[] | undefined),
   }));
 
   const byId = new Map(list.map((p) => [p.id, p]));
@@ -137,14 +167,20 @@ export const useApp = create<State>()(
           // never accepts mods — installs targeting default are routed
           // to a freshly-created "My Mods" profile so the user actually
           // sees the mod in their Library.
-          const installed = s.installed.includes(id) ? s.installed : [...s.installed, id];
+          //
+          // Always store folder slugs in loadOrder — never API UUIDs
+          // (mod detail used to pass apiMod.id, which syncLocalMods pruned).
+          const modId = resolveModId(id, s.localMods, s.installed);
+          const installed = s.installed.includes(modId)
+            ? s.installed
+            : [...s.installed, modId];
           const requested = targetProfileId ?? s.activeProfileId;
           if (requested === 'default') {
             const newId = uid();
             const newProfile: Profile = {
               id: newId,
               name: 'My Mods',
-              loadOrder: [id],
+              loadOrder: [modId],
               disabled: new Set(),
               createdAt: new Date().toISOString(),
             };
@@ -156,8 +192,8 @@ export const useApp = create<State>()(
           }
           const profiles = s.profiles.map((p) => {
             if (p.id !== requested) return p;
-            if (p.loadOrder.includes(id)) return p;
-            return { ...p, loadOrder: [...p.loadOrder, id] };
+            if (p.loadOrder.includes(modId)) return p;
+            return { ...p, loadOrder: [...p.loadOrder, modId] };
           });
           return { installed, profiles, activeProfileId: requested };
         }),
@@ -173,51 +209,66 @@ export const useApp = create<State>()(
           // The default profile is the "vanilla" load — by design it
           // carries no mods, so the active profile guard already covers
           // the no-op case.
+          const modId = resolveModId(id, s.localMods, s.installed);
           const profiles = s.profiles.map((p) => {
             if (p.id !== s.activeProfileId) return p;
             return {
               ...p,
-              loadOrder: p.loadOrder.filter((m) => m !== id),
-              disabled: new Set([...p.disabled].filter((m) => m !== id)),
+              loadOrder: p.loadOrder.filter(
+                (m) => resolveModId(m, s.localMods, s.installed) !== modId,
+              ),
+              disabled: new Set(
+                [...p.disabled].filter(
+                  (m) => resolveModId(m, s.localMods, s.installed) !== modId,
+                ),
+              ),
             };
           });
           return { profiles };
         }),
 
       toggleMod: (id) =>
-        set((s) => ({
-          profiles: s.profiles.map((p) => {
-            if (p.id !== s.activeProfileId) return p;
-            // A mod is *enabled in this profile* iff it's in `loadOrder`
-            // and NOT in `disabled`. Toggle flips that bit while making
-            // sure the profile actually contains the mod — without this
-            // the default profile (empty loadOrder, empty disabled) had
-            // mods showing as enabled-but-not-in-load-order, so the
-            // header counter (gates on loadOrder) and the library rows
-            // (gated only on `disabled`) disagreed.
-            const inLoadOrder = p.loadOrder.includes(id);
-            const isEnabled = inLoadOrder && !p.disabled.has(id);
-            const disabled = new Set(p.disabled);
-            if (isEnabled) {
-              disabled.add(id);
-              return { ...p, disabled };
-            }
-            disabled.delete(id);
-            const loadOrder = inLoadOrder ? p.loadOrder : [...p.loadOrder, id];
-            return { ...p, loadOrder, disabled };
-          }),
-        })),
+        set((s) => {
+          const modId = resolveModId(id, s.localMods, s.installed);
+          return {
+            profiles: s.profiles.map((p) => {
+              if (p.id !== s.activeProfileId) return p;
+              // A mod is *enabled in this profile* iff it's in `loadOrder`
+              // and NOT in `disabled`. Toggle flips that bit while making
+              // sure the profile actually contains the mod — without this
+              // the default profile (empty loadOrder, empty disabled) had
+              // mods showing as enabled-but-not-in-load-order, so the
+              // header counter (gates on loadOrder) and the library rows
+              // (gated only on `disabled`) disagreed.
+              const inLoadOrder = p.loadOrder.includes(modId);
+              const isEnabled = inLoadOrder && !p.disabled.has(modId);
+              const disabled = new Set(p.disabled);
+              if (isEnabled) {
+                disabled.add(modId);
+                return { ...p, disabled };
+              }
+              disabled.delete(modId);
+              const loadOrder = inLoadOrder ? p.loadOrder : [...p.loadOrder, modId];
+              return { ...p, loadOrder, disabled };
+            }),
+          };
+        }),
 
       reorderMod: (id, toIndex) =>
-        set((s) => ({
-          profiles: s.profiles.map((p) => {
-            if (p.id !== s.activeProfileId) return p;
-            const filtered = p.loadOrder.filter((m) => m !== id);
-            const idx = Math.max(0, Math.min(toIndex, filtered.length));
-            const loadOrder = [...filtered.slice(0, idx), id, ...filtered.slice(idx)];
-            return { ...p, loadOrder };
-          }),
-        })),
+        set((s) => {
+          const modId = resolveModId(id, s.localMods, s.installed);
+          return {
+            profiles: s.profiles.map((p) => {
+              if (p.id !== s.activeProfileId) return p;
+              const filtered = p.loadOrder.filter(
+                (m) => resolveModId(m, s.localMods, s.installed) !== modId,
+              );
+              const idx = Math.max(0, Math.min(toIndex, filtered.length));
+              const loadOrder = [...filtered.slice(0, idx), modId, ...filtered.slice(idx)];
+              return { ...p, loadOrder };
+            }),
+          };
+        }),
 
       createProfile: (name) => {
         const id = uid();
@@ -378,19 +429,22 @@ export const useApp = create<State>()(
           }
           const installed = mods.map((m) => m.id);
           const installedSet = new Set(installed);
-          const profiles = s.profiles.map((p) =>
-            p.id === 'default'
-              ? { ...p, loadOrder: [], disabled: new Set<string>() }
-              : {
-                  ...p,
-                  // Only PRUNE — when a mod disappears from disk, drop
-                  // it from the profile. Never auto-append newly-found
-                  // disk mods; profiles are explicit buckets and the
-                  // user adds mods via Browse → Install.
-                  loadOrder: p.loadOrder.filter((id) => installedSet.has(id)),
-                  disabled: new Set([...p.disabled].filter((id) => installedSet.has(id))),
-                },
-          );
+          const profiles = s.profiles.map((p) => {
+            if (p.id === 'default') {
+              return { ...p, loadOrder: [], disabled: new Set<string>() };
+            }
+            const loadOrder: string[] = [];
+            for (const entry of p.loadOrder) {
+              const canon = canonicalModId(entry, localMods, installedSet);
+              if (canon && !loadOrder.includes(canon)) loadOrder.push(canon);
+            }
+            const disabled = new Set(
+              [...p.disabled]
+                .map((entry) => canonicalModId(entry, localMods, installedSet))
+                .filter((entry): entry is string => entry != null),
+            );
+            return { ...p, loadOrder, disabled };
+          });
           return { localMods, installed, profiles };
         }),
 

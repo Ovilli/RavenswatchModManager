@@ -4,7 +4,9 @@ import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { Check, ExternalLink, Loader2, Plus, Search, WifiOff } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Button, CopyButton, Cover, MonoTag, SectionHeader, StatPill } from '../components/chrome';
+import { useToast } from '../components/toast';
 import { api, getApiBaseUrl } from '../lib/api';
+import { validateProfileName } from '../lib/profile-name';
 import { installModFromIndex, listLocalMods } from '../lib/rsmm';
 import { activeProfile, useApp } from '../store';
 import type { Profile } from '../store';
@@ -28,6 +30,7 @@ function BrowsePage() {
   const syncLocalMods = useApp((s) => s.syncLocalMods);
   const profile = useApp(activeProfile);
   const queryClient = useQueryClient();
+  const toast = useToast();
   // Per-slug install state so each card spins independently.
   const [installing, setInstalling] = useState<Record<string, boolean>>({});
   const [installError, setInstallError] = useState<string | null>(null);
@@ -49,6 +52,12 @@ function BrowsePage() {
         if (local) syncLocalMods(local);
       }
       installMod(slug, targetProfileId);
+      // Default profile installs create a new "My Mods" profile — read the
+      // active profile after installMod, not the requested id.
+      const { profiles, activeProfileId } = useApp.getState();
+      const profileName =
+        profiles.find((p) => p.id === activeProfileId)?.name ?? 'profile';
+      toast.push(`Added ${slug} to “${profileName}”.`, 'success');
       // Bust the list cache so download counts refresh.
       await queryClient.invalidateQueries({ queryKey: ['mods', 'list'] });
     } catch (err) {
@@ -73,6 +82,11 @@ function BrowsePage() {
   function pickNewProfile(name: string) {
     const trimmed = name.trim();
     if (!trimmed) return;
+    const err = validateProfileName(trimmed);
+    if (err) {
+      toast.push(err, 'error');
+      return;
+    }
     const slug = pickerSlug;
     setPickerSlug(null);
     if (!slug) return;
@@ -452,7 +466,9 @@ function ProfilePicker({
                   onClick={() => onPick(p.id)}
                   className="grimoire-card w-full px-4 py-3 text-left hover:border-gilt/40 transition-colors"
                 >
-                  <div className="font-serif-italic text-parchment">{p.name}</div>
+                  <div className="truncate font-serif-italic text-parchment" title={p.name}>
+                    {p.name}
+                  </div>
                   <div className="font-mono text-xs text-ash">
                     {p.loadOrder.length} mod{p.loadOrder.length === 1 ? '' : 's'}
                   </div>

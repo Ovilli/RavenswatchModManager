@@ -3,7 +3,8 @@ import { Check, Copy, Download, Pencil, Plus, Trash2, Upload } from 'lucide-reac
 import { useState } from 'react';
 import { Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
 import { useDialog, useToast } from '../components/toast';
-import { isEnabledIn, useApp } from '../store';
+import { validateProfileName } from '../lib/profile-name';
+import { getMod, isEnabledIn, useApp } from '../store';
 
 export const Route = createFileRoute('/profiles')({
   component: ProfilesPage,
@@ -62,7 +63,14 @@ function ProfilesPage() {
       initialValue: 'New Run',
       submitLabel: 'Create',
     });
-    if (name?.trim()) create(name.trim());
+    const trimmed = name?.trim();
+    if (!trimmed) return;
+    const err = validateProfileName(trimmed);
+    if (err) {
+      toast.push(err, 'error');
+      return;
+    }
+    create(trimmed);
   };
 
   const onRename = async (id: string, currentName: string) => {
@@ -72,7 +80,14 @@ function ProfilesPage() {
       initialValue: currentName,
       submitLabel: 'Save',
     });
-    if (name?.trim()) rename(id, name.trim());
+    const trimmed = name?.trim();
+    if (!trimmed) return;
+    const err = validateProfileName(trimmed);
+    if (err) {
+      toast.push(err, 'error');
+      return;
+    }
+    rename(id, trimmed);
   };
 
   const onDelete = async (id: string, name: string) => {
@@ -247,10 +262,15 @@ function ProfilesPage() {
           const isActive = p.id === activeId;
           const enabled = p.loadOrder.filter((id) => isEnabledIn(p, id)).length;
           return (
-            <article key={p.id} className="grimoire-card p-5">
-              <header className="flex items-start justify-between gap-2">
-                <div>
-                  <h3 className="font-fraktur text-2xl text-parchment leading-none">{p.name}</h3>
+            <article key={p.id} className="grimoire-card min-w-0 p-5">
+              <header className="flex items-start justify-between gap-2 min-w-0">
+                <div className="min-w-0 flex-1">
+                  <h3
+                    className="font-fraktur text-2xl text-parchment leading-none truncate"
+                    title={p.name}
+                  >
+                    {p.name}
+                  </h3>
                   <p className="font-mono mt-1 text-ash">
                     {enabled} enabled · {p.loadOrder.length} total
                   </p>
@@ -264,15 +284,18 @@ function ProfilesPage() {
                 {p.loadOrder.length === 0 ? (
                   <li className="text-ash">No mods.</li>
                 ) : (
-                  p.loadOrder.map((id) => (
-                    <li key={id} className={p.disabled.has(id) ? 'opacity-50' : ''}>
-                      {id}
-                    </li>
-                  ))
+                  p.loadOrder.map((id) => {
+                    const mod = getMod(id);
+                    return (
+                      <li key={id} className={p.disabled.has(id) ? 'opacity-50' : ''}>
+                        {mod?.name ?? id}
+                      </li>
+                    );
+                  })
                 )}
               </ul>
 
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="mt-4 flex flex-wrap items-center gap-2">
                 {!isActive ? (
                   <button
                     type="button"
