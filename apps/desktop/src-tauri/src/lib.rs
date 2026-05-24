@@ -1,4 +1,5 @@
 mod launcher_log;
+mod rsmm_env;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -7,6 +8,7 @@ pub fn run() {
             launcher_log::append_launcher_log,
             launcher_log::clear_launcher_log,
             launcher_log::read_launcher_log,
+            rsmm_env::rsmm_runtime_env,
         ]);
 
     // Plugins are best-effort. If one fails to initialize (e.g. an
