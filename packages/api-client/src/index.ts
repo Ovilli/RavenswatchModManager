@@ -1,7 +1,10 @@
 import {
   type CollectionCreate,
+  type CollectionImagePresign,
   type CollectionPatch,
   collectionDetailSchema,
+  type CollectionReviewUpsert,
+  collectionReviewsResponseSchema,
   collectionSchema,
   type CrashReport,
   type ModImagePresign,
@@ -290,6 +293,32 @@ export function createApiClient(options: ApiClientOptions) {
           { method: 'DELETE' },
           okSchema,
         ),
+      presignImage: (slug: string, body: CollectionImagePresign) =>
+        request(
+          `/api/collections/${encodeURIComponent(slug)}/image`,
+          { method: 'POST', body: JSON.stringify(body) },
+          imagePresignResponseSchema,
+        ),
+      reviews: {
+        list: (slug: string) =>
+          request(
+            `/api/collections/${encodeURIComponent(slug)}/reviews`,
+            { method: 'GET' },
+            collectionReviewsResponseSchema,
+          ),
+        upsert: (slug: string, body: CollectionReviewUpsert) =>
+          request(
+            `/api/collections/${encodeURIComponent(slug)}/reviews`,
+            { method: 'PUT', body: JSON.stringify(body) },
+            okSchema,
+          ),
+        remove: (slug: string) =>
+          request(
+            `/api/collections/${encodeURIComponent(slug)}/reviews`,
+            { method: 'DELETE' },
+            okSchema,
+          ),
+      },
     },
     telemetry: {
       run: (body: TelemetryRun) =>

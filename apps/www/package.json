@@ -16,6 +16,7 @@
     "@rsmm/ui": "workspace:*",
     "@tanstack/react-query": "5.62.11",
     "@uiw/react-md-editor": "^4.1.1",
+    "@vercel/speed-insights": "^2.0.0",
     "better-auth": "1.4.17",
     "lucide-react": "0.469.0",
     "next": "15.3.9",

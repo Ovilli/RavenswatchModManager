@@ -9,7 +9,8 @@
  * re-apply 0001-0003. This script runs only the 0004 statements idempotently
  * via raw SQL.
  */
-import { neon } from '@neondatabase/serverless';
+import { Pool, neonConfig } from '@neondatabase/serverless';
+import ws from 'ws';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -67,14 +68,21 @@ END $$;`;
   return s;
 });
 
-const sql = neon(url);
+neonConfig.webSocketConstructor = ws;
+const pool = new Pool({ connectionString: url });
 
 async function run() {
-  for (const s of idempotent) {
-    console.log('▶', s.split('\n')[0]?.slice(0, 80));
-    await sql.query(s);
+  const client = await pool.connect();
+  try {
+    for (const s of idempotent) {
+      console.log('▶', s.split('\n')[0]?.slice(0, 80));
+      await client.query(s);
+    }
+    console.log(`✓ applied ${idempotent.length} statements`);
+  } finally {
+    client.release();
+    await pool.end();
   }
-  console.log(`✓ applied ${idempotent.length} statements`);
 }
 
 run().catch((err) => {

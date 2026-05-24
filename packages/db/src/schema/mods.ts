@@ -149,6 +149,9 @@ export const collections = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     summary: text('summary'),
+    description: text('description'),
+    imageUrl: text('image_url'),
+    screenshots: jsonb('screenshots').$type<{ url: string; caption?: string }[]>(),
     isPublic: boolean('is_public').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -177,6 +180,28 @@ export const collectionMods = pgTable(
   }),
 );
 
+export const collectionReviews = pgTable(
+  'collection_reviews',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    collectionId: uuid('collection_id')
+      .notNull()
+      .references(() => collections.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    rating: integer('rating').notNull(),
+    title: varchar('title', { length: 120 }),
+    body: text('body'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    collectionUserIdx: uniqueIndex('collection_reviews_collection_user_idx').on(table.collectionId, table.userId),
+    collectionIdx: index('collection_reviews_collection_idx').on(table.collectionId),
+  }),
+);
+
 export const modsRelations = relations(mods, ({ many, one }) => ({
   versions: many(modVersions),
   authors: many(modAuthors),
@@ -193,6 +218,15 @@ export const modReviewsRelations = relations(modReviews, ({ one }) => ({
 export const collectionsRelations = relations(collections, ({ many, one }) => ({
   owner: one(users, { fields: [collections.ownerId], references: [users.id] }),
   mods: many(collectionMods),
+  reviews: many(collectionReviews),
+}));
+
+export const collectionReviewsRelations = relations(collectionReviews, ({ one }) => ({
+  collection: one(collections, {
+    fields: [collectionReviews.collectionId],
+    references: [collections.id],
+  }),
+  user: one(users, { fields: [collectionReviews.userId], references: [users.id] }),
 }));
 
 export const collectionModsRelations = relations(collectionMods, ({ one }) => ({
