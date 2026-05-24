@@ -47,6 +47,19 @@ export class ApiTimeoutError extends ApiError {
   }
 }
 
+export class RateLimitError extends ApiError {
+  readonly retryAfter: number;
+  constructor(path: string, retryAfter: number, body: unknown) {
+    super(`rate limited on ${path}`, 429, body);
+    this.name = 'RateLimitError';
+    this.retryAfter = retryAfter;
+  }
+}
+
+export function isRateLimited(err: unknown): err is RateLimitError {
+  return err instanceof RateLimitError;
+}
+
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 export function createApiClient(options: ApiClientOptions) {
@@ -91,7 +104,13 @@ export function createApiClient(options: ApiClientOptions) {
       clearTimeout(timer);
     }
     const json = await res.json().catch(() => null);
-    if (!res.ok) throw new ApiError(`${res.status} ${path}`, res.status, json);
+    if (!res.ok) {
+      if (res.status === 429) {
+        const retryAfter = Number.parseInt(res.headers.get('Retry-After') ?? '', 10) || 60;
+        throw new RateLimitError(path, retryAfter, json);
+      }
+      throw new ApiError(`${res.status} ${path}`, res.status, json);
+    }
     try {
       return schema.parse(json);
     } catch (err) {

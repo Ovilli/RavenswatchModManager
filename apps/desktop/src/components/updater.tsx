@@ -1,5 +1,6 @@
 import { Download, RefreshCw, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { ProgressBar } from '@rsmm/ui';
 import { appendLauncherLog } from '../lib/launcher-log';
 import { type AvailableUpdate, checkForUpdate, relaunchApp } from '../lib/updater';
 import { Button } from './chrome';
@@ -134,17 +135,19 @@ export function UpdaterBanner() {
 
   if (status.state === 'downloading') {
     const p = status.progress;
-    const pct = p?.total ? Math.round((p.downloaded / p.total) * 100) : null;
     return (
       <div className="ember-banner flex items-center gap-3 border-b border-border px-4 py-2">
-        <RefreshCw className="h-4 w-4 text-gilt animate-spin" />
-        <span className="font-serif-italic text-parchment">
+        <RefreshCw className="h-4 w-4 text-gilt shrink-0 animate-spin" />
+        <span className="font-serif-italic text-parchment shrink-0">
           Downloading v{status.update?.version}…
-          <span className="font-mono ml-2 text-ash">
-            {p ? `${bytes(p.downloaded)}${p.total ? ` / ${bytes(p.total)}` : ''}` : ''}
-            {pct != null ? ` · ${pct}%` : ''}
-          </span>
         </span>
+        <div className="flex-1 max-w-80">
+          <ProgressBar
+            value={p?.downloaded ?? 0}
+            max={p?.total ?? 0}
+            indeterminate={!p?.total}
+          />
+        </div>
       </div>
     );
   }

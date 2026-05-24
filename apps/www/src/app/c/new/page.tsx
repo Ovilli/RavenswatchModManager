@@ -1,6 +1,6 @@
 'use client';
-import { ApiError } from '@rsmm/api-client';
-import { Button, Input, Spinner, buttonVariants } from '@rsmm/ui';
+import { ApiError, isRateLimited } from '@rsmm/api-client';
+import { Button, Input, ProgressBar, Spinner, buttonVariants } from '@rsmm/ui';
 import { useMutation } from '@tanstack/react-query';
 import { ArrowLeft, ImageIcon, Loader2, Upload, X } from 'lucide-react';
 import type { Route } from 'next';
@@ -14,9 +14,13 @@ import { useSession } from '../../../lib/auth-client';
 const MDEditor = dynamic(() => import('@uiw/react-md-editor'), { ssr: false });
 
 function describeApiError(err: unknown): string {
+  if (isRateLimited(err)) {
+    return `Rate limited — try again in ${err.retryAfter}s.`;
+  }
   if (err instanceof ApiError) {
     const body = err.body as { error?: string } | null;
     if (body?.error) return body.error;
+    if (err.status === 429) return 'Too many requests. Please wait.';
     return `HTTP ${err.status}`;
   }
   return err instanceof Error ? err.message : String(err);
@@ -47,6 +51,7 @@ export default function NewCollectionPage() {
   const [iconFile, setIconFile] = useState<File | null>(null);
   const [iconPreview, setIconPreview] = useState<string | null>(null);
   const [iconUploading, setIconUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ value: number; max: number } | null>(null);
   const [screenshots, setScreenshots] = useState<{ file: File; preview: string; caption: string }[]>([]);
 
   const create = useMutation({
@@ -72,12 +77,15 @@ export default function NewCollectionPage() {
       }
 
       if (screenshots.length > 0) {
+        setUploadProgress({ value: 0, max: screenshots.length });
         const shots: { url: string; caption?: string }[] = [];
-        for (const s of screenshots) {
+        for (const [idx, s] of screenshots.entries()) {
           const url = await uploadImage(s.file, slug);
           shots.push({ url, caption: s.caption || undefined });
+          setUploadProgress({ value: idx + 1, max: screenshots.length });
         }
         await api.collections.patch(slug, { screenshots: shots });
+        setUploadProgress(null);
       }
 
       router.push(`/c/${slug}` as Route);
@@ -279,11 +287,19 @@ export default function NewCollectionPage() {
           <p className="text-sm text-destructive">{describeApiError(create.error)}</p>
         ) : null}
 
+        {uploadProgress ? (
+          <ProgressBar
+            value={uploadProgress.value}
+            max={uploadProgress.max}
+            label={`Uploading screenshots ${uploadProgress.value}/${uploadProgress.max}…`}
+          />
+        ) : null}
+
         <Button type="submit" disabled={create.isPending || iconUploading || !slug || !name}>
           {create.isPending || iconUploading ? (
             <>
               <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />{' '}
-              {iconUploading ? 'Uploading images…' : 'Creating…'}
+              {uploadProgress ? `Uploading ${uploadProgress.value}/${uploadProgress.max}…` : iconUploading ? 'Uploading icon…' : 'Creating…'}
             </>
           ) : (
             'Create collection'

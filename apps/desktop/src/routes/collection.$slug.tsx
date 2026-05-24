@@ -1,4 +1,4 @@
-import { ApiError } from '@rsmm/api-client';
+import { ApiError, isRateLimited } from '@rsmm/api-client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import {
@@ -9,9 +9,11 @@ import {
   Download,
   Loader2,
   Plus,
+  UserPlus,
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import { ProgressBar } from '@rsmm/ui';
 import {
   Button,
   Cover,
@@ -23,6 +25,8 @@ import {
   SectionHeader,
   StatPill,
 } from '../components/chrome';
+import { useToast } from '../components/toast';
+import { useDialog } from '../components/toast';
 import { api } from '../lib/api';
 import { installModFromIndex, listLocalMods } from '../lib/rsmm';
 import { activeProfile, useApp } from '../store';
@@ -35,12 +39,16 @@ function CollectionDetailPage() {
   const { slug } = Route.useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const toast = useToast();
+  const dialog = useDialog();
   const installed = useApp((s) => s.installed);
   const profile = useApp(activeProfile);
   const installMod = useApp((s) => s.installMod);
+  const createProfile = useApp((s) => s.createProfile);
   const syncLocalMods = useApp((s) => s.syncLocalMods);
   const [installing, setInstalling] = useState<Record<string, boolean>>({});
   const [installAllRunning, setInstallAllRunning] = useState(false);
+  const [installProgress, setInstallProgress] = useState({ value: 0, max: 0 });
   const [installError, setInstallError] = useState<string | null>(null);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
 
@@ -65,41 +73,91 @@ function CollectionDetailPage() {
       }
       installMod(modSlug, profile.id === 'default' ? undefined : profile.id);
       await queryClient.invalidateQueries({ queryKey: ['mods', 'list'] });
+      toast.push(`Added ${modSlug} to profile`, 'success');
     } catch (err) {
-      setInstallError(err instanceof Error ? err.message : String(err));
+      if (isRateLimited(err)) {
+        toast.push(`Rate limited — try again in ${err.retryAfter ?? 60}s`, 'error');
+      } else {
+        setInstallError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
       setInstalling((m) => ({ ...m, [modSlug]: false }));
     }
+  }
+
+  async function downloadAndAddMod(modSlug: string, targetProfileId: string | undefined) {
+    const currentInstalled = useApp.getState().installed;
+    if (!currentInstalled.includes(modSlug)) {
+      const result = await installModFromIndex(modSlug);
+      if (!result || !result.ok) {
+        throw new Error(result?.error ?? `failed to install ${modSlug}`);
+      }
+    }
+    installMod(modSlug, targetProfileId);
   }
 
   async function installAll() {
     if (!data?.mods) return;
     setInstallAllRunning(true);
     setInstallError(null);
+    setInstallProgress({ value: 0, max: data.mods.length });
     const targetProfileId = profile.id === 'default' ? undefined : profile.id;
-    for (const m of data.mods) {
+    for (const [idx, m] of data.mods.entries()) {
       setInstalling((prev) => ({ ...prev, [m.slug]: true }));
       try {
-        const currentInstalled = useApp.getState().installed;
-        if (!currentInstalled.includes(m.slug)) {
-          const result = await installModFromIndex(m.slug);
-          if (!result || !result.ok) {
-            throw new Error(result?.error ?? `failed to install ${m.slug}`);
-          }
-        }
-        installMod(m.slug, targetProfileId);
+        await downloadAndAddMod(m.slug, targetProfileId);
       } catch (err) {
         setInstallError(err instanceof Error ? err.message : String(err));
         setInstalling((prev) => ({ ...prev, [m.slug]: false }));
         setInstallAllRunning(false);
+        setInstallProgress({ value: 0, max: 0 });
         return;
       }
       setInstalling((prev) => ({ ...prev, [m.slug]: false }));
+      setInstallProgress({ value: idx + 1, max: data.mods.length });
     }
     const local = await listLocalMods();
     if (local) syncLocalMods(local);
     await queryClient.invalidateQueries({ queryKey: ['mods', 'list'] });
     setInstallAllRunning(false);
+    setInstallProgress({ value: 0, max: 0 });
+    toast.push(`Installed ${data.mods.length} mods to current profile`, 'success');
+  }
+
+  async function installAsProfile() {
+    if (!data?.mods || data.mods.length === 0) {
+      toast.push('This collection has no mods to install.', 'error');
+      return;
+    }
+    const name = await dialog.prompt({
+      title: 'New profile from collection',
+      initialValue: `Collection: ${data.name}`,
+      placeholder: 'Profile name',
+    });
+    if (!name) return;
+    setInstallAllRunning(true);
+    setInstallError(null);
+    setInstallProgress({ value: 0, max: data.mods.length });
+    const newProfileId = createProfile(name);
+    try {
+      for (const [idx, m] of data.mods.entries()) {
+        setInstalling((prev) => ({ ...prev, [m.slug]: true }));
+        await downloadAndAddMod(m.slug, newProfileId);
+        setInstalling((prev) => ({ ...prev, [m.slug]: false }));
+        setInstallProgress({ value: idx + 1, max: data.mods.length });
+      }
+    } catch (err) {
+      setInstallError(err instanceof Error ? err.message : String(err));
+      setInstallAllRunning(false);
+      setInstallProgress({ value: 0, max: 0 });
+      return;
+    }
+    const local = await listLocalMods();
+    if (local) syncLocalMods(local);
+    await queryClient.invalidateQueries({ queryKey: ['mods', 'list'] });
+    setInstallAllRunning(false);
+    setInstallProgress({ value: 0, max: 0 });
+    toast.push(`Created profile "${name}" with ${data.mods.length} mods`, 'success');
   }
 
   const allInstalled = data?.mods?.every((m) => profile.loadOrder.includes(m.slug)) ?? false;
@@ -164,31 +222,49 @@ function CollectionDetailPage() {
           <div className="flex items-center gap-2">
             {allInstalled ? (
               <MonoTag tone="gilt">all installed</MonoTag>
-            ) : mods.length > 1 ? (
-              <Button
-                type="button"
-                variant="primary"
-                onClick={installAll}
-                disabled={installAllRunning}
-              >
-                {installAllRunning ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> installing…
-                  </>
-                ) : someInstalled ? (
-                  <>
-                    <Plus className="h-4 w-4" /> install rest
-                  </>
-                ) : (
-                  <>
-                    <Download className="h-4 w-4" /> install all
-                  </>
-                )}
-              </Button>
+            ) : mods.length > 0 ? (
+              <>
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={installAll}
+                  disabled={installAllRunning}
+                >
+                  {installAllRunning ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" /> installing…
+                    </>
+                  ) : someInstalled ? (
+                    <>
+                      <Plus className="h-4 w-4" /> install rest
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4" /> install all
+                    </>
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="default"
+                  onClick={installAsProfile}
+                  disabled={installAllRunning}
+                >
+                  <UserPlus className="h-4 w-4" /> new profile
+                </Button>
+              </>
             ) : null}
           </div>
         }
       />
+
+      {installAllRunning && installProgress.max > 0 ? (
+        <ProgressBar
+          value={installProgress.value}
+          max={installProgress.max}
+          label={`Installing ${installProgress.value}/${installProgress.max}…`}
+        />
+      ) : null}
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         <div className="space-y-4 md:col-span-2">
@@ -278,6 +354,14 @@ function CollectionDetailPage() {
                   );
                 })}
               </ul>
+            </Panel>
+          ) : mods.length === 0 ? (
+            <Panel>
+              <h3 className="font-fraktur text-xl text-parchment mb-3">Mods</h3>
+              <Fleuron />
+              <p className="mt-4 font-serif-italic text-ash">
+                This collection has no mods yet.
+              </p>
             </Panel>
           ) : null}
         </div>
