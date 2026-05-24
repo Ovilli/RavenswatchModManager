@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 
 
@@ -84,3 +85,39 @@ def test_dispatch_new_duplicate(tmp_path, monkeypatch):
     (tmp_path / "mods" / "Existing").mkdir(parents=True)
     rc = main(["new", "Existing"])
     assert rc == 1
+
+
+def test_json_bridge_config_roundtrip(tmp_path, monkeypatch, capsys):
+    from rsmm.cli import json_bridge
+    from rsmm.cli._dispatch import main
+
+    monkeypatch.setattr(json_bridge, "MODS_DIR", tmp_path)
+    mod = tmp_path / "ConfigMod"
+    mod.mkdir()
+    (mod / "config_schema.toml").write_text(
+        '[fields.enabled]\n'
+        'type = "bool"\n'
+        'default = true\n'
+        '[fields.count]\n'
+        'type = "int"\n'
+        'default = 1\n',
+        encoding="utf-8",
+    )
+
+    rc = json_bridge.cmd_config_get("ConfigMod")
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["schema"]["fields"]["enabled"]["type"] == "bool"
+    assert payload["values"]["count"] == 1
+
+    rc = json_bridge.cmd_config_set("ConfigMod", '{"enabled": false, "count": 7}')
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["values"]["enabled"] is False
+    assert payload["values"]["count"] == 7
+    assert "count = 7" in (mod / "config.toml").read_text(encoding="utf-8")
+
+    rc = main(["json", "config", "get", "ConfigMod"])
+    assert rc == 0

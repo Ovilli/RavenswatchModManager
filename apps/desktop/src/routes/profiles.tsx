@@ -19,9 +19,14 @@ function ProfilesPage() {
   const remove = useApp((s) => s.deleteProfile);
   const exportP = useApp((s) => s.exportProfile);
   const importP = useApp((s) => s.importProfile);
+  const exportBackup = useApp((s) => s.exportBackup);
+  const importBackup = useApp((s) => s.importBackup);
   const [importing, setImporting] = useState(false);
+  const [importingBackup, setImportingBackup] = useState(false);
   const [code, setCode] = useState('');
+  const [backupCode, setBackupCode] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
+  const [backupError, setBackupError] = useState<string | null>(null);
   const dialog = useDialog();
   const toast = useToast();
 
@@ -31,10 +36,23 @@ function ProfilesPage() {
       setImportError('Could not read that code. Check it and try again.');
       return;
     }
+
     setCode('');
     setImporting(false);
     setImportError(null);
     toast.push('Profile imported.', 'success');
+  }
+
+  function onImportBackup() {
+    const result = importBackup(backupCode);
+    if (!result) {
+      setBackupError('Could not read that backup code. Check it and try again.');
+      return;
+    }
+    setBackupCode('');
+    setImportingBackup(false);
+    setBackupError(null);
+    toast.push('Backup imported.', 'success');
   }
 
   const onNewProfile = async () => {
@@ -86,6 +104,22 @@ function ProfilesPage() {
     }
   };
 
+  const onExportBackup = async () => {
+    const text = exportBackup();
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.push('Backup code copied to clipboard.', 'success');
+    } catch {
+      await dialog.prompt({
+        title: 'Backup code',
+        label: 'Copy this code to restore the full app state',
+        initialValue: text,
+        submitLabel: 'Close',
+        multiline: true,
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <SectionHeader
@@ -99,6 +133,13 @@ function ProfilesPage() {
               className="flex items-center gap-2 border border-border px-3 py-2 hover:border-gilt/50"
             >
               <Upload className="h-4 w-4" /> Import
+            </button>
+            <button
+              type="button"
+              onClick={() => setImportingBackup((v) => !v)}
+              className="flex items-center gap-2 border border-border px-3 py-2 hover:border-gilt/50"
+            >
+              <Upload className="h-4 w-4" /> Backup
             </button>
             <button
               type="button"
@@ -145,6 +186,61 @@ function ProfilesPage() {
           </div>
         </Panel>
       ) : null}
+
+      {importingBackup ? (
+        <Panel>
+          <h3 className="font-fraktur text-lg text-parchment mb-2">Import backup</h3>
+          <p className="font-serif-italic text-ash mb-3">
+            Paste a full-state backup code to restore profiles and settings.
+          </p>
+          <textarea
+            value={backupCode}
+            onChange={(e) => setBackupCode(e.target.value)}
+            rows={4}
+            className="font-mono w-full resize-none border border-border bg-pitch/60 p-3 text-parchment focus:border-gilt/60 focus:outline-none"
+            placeholder="base64-encoded backup…"
+          />
+          {backupError ? (
+            <p className="text-sm text-crimson mt-2" role="alert">
+              {backupError}
+            </p>
+          ) : null}
+          <div className="mt-3 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setImportingBackup(false)}
+              className="border border-border px-3 py-1.5 text-ash hover:text-parchment"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onImportBackup}
+              className="border border-crimson bg-crimson/80 px-3 py-1.5 text-parchment hover:bg-oxblood"
+            >
+              Import backup
+            </button>
+          </div>
+        </Panel>
+      ) : null}
+
+      <Panel>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="font-fraktur text-lg text-parchment mb-2">Backup</h3>
+            <p className="font-serif-italic text-ash">
+              Save or restore all profiles, the active profile, and settings.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onExportBackup}
+            className="flex items-center gap-1.5 border border-border px-3 py-2 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
+          >
+            <Download className="h-3.5 w-3.5" /> Export backup
+          </button>
+        </div>
+      </Panel>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {profiles.map((p) => {

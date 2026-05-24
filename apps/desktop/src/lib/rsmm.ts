@@ -346,6 +346,30 @@ export interface LocalMod {
   tags: string[];
   enabled: boolean;
   path: string;
+  dependencies: Record<string, string>;
+  writes: string[];
+}
+
+export interface ModConfigField {
+  type: 'bool' | 'int' | 'float' | 'string' | 'enum';
+  default: boolean | number | string | null;
+  min: number | null;
+  max: number | null;
+  choices: string[];
+  label: string;
+}
+
+export interface ModConfigSchema {
+  fields: Record<string, ModConfigField>;
+}
+
+export interface ModConfigResponse {
+  ok: boolean;
+  error?: string;
+  modId?: string;
+  path?: string;
+  schema?: ModConfigSchema;
+  values?: Record<string, boolean | number | string>;
 }
 
 interface RunResult {
@@ -377,6 +401,27 @@ interface ApplyOptions extends RsmmOptions {
 // you need cancellation, timeout overrides, or streaming.
 
 export const listLocalMods = () => rsmm<LocalMod[]>(['list']);
+
+export async function getModConfig(modId: string): Promise<ModConfigResponse> {
+  const result = await rsmm<ModConfigResponse>(['config', 'get', modId]);
+  if (!result) {
+    throw new Error(`empty config response for ${modId}`);
+  }
+  return result;
+}
+
+export async function setModConfig(
+  modId: string,
+  values: Record<string, boolean | number | string>,
+): Promise<ModConfigResponse> {
+  const result = await rsmm<ModConfigResponse>(['config', 'set', modId, JSON.stringify(values)], {
+    timeoutMs: LONG_TIMEOUT_MS,
+  });
+  if (!result) {
+    throw new Error(`empty config response for ${modId}`);
+  }
+  return result;
+}
 
 export const doctor = () => rsmm<DoctorResult>(['doctor']);
 
@@ -428,3 +473,6 @@ export interface InstallResult {
  */
 export const installModFromIndex = (slug: string) =>
   rsmm<InstallResult>(['install-mod', slug], { timeoutMs: LONG_TIMEOUT_MS });
+
+export const installModVersion = (slug: string, version: string) =>
+  rsmm<InstallResult>(['install-mod-version', slug, version], { timeoutMs: LONG_TIMEOUT_MS });

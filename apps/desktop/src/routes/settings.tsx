@@ -209,7 +209,7 @@ function SettingsPage() {
             <select
               value={logLevel}
               onChange={(e) => setLogLevel(e.target.value as 'all' | 'info' | 'warn' | 'error')}
-              className="font-mono appearance-none border border-border bg-pitch/60 py-2 pl-3 pr-9 text-sm text-parchment focus:border-gilt/60 focus:outline-none"
+              className="select-grim font-mono appearance-none border border-border bg-pitch/60 py-2 pl-3 pr-9 text-sm text-parchment focus:border-gilt/60 focus:outline-none"
             >
               <option value="all">All levels</option>
               <option value="info">Info</option>

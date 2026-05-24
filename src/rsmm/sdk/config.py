@@ -36,6 +36,16 @@ class Field:
     choices: list[str] = field(default_factory=list)
     label: str = ""
 
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "type": self.type,
+            "default": self.default,
+            "min": self.min,
+            "max": self.max,
+            "choices": list(self.choices),
+            "label": self.label,
+        }
+
     def coerce(self, value: Any) -> Any:
         if self.type == "bool":
             if isinstance(value, bool):
@@ -137,6 +147,14 @@ class ConfigStore:
                 raise ConfigError(f"{self.values_path}: {e}") from e
         self._values = merged
 
+    def as_dict(self) -> dict[str, Any]:
+        return dict(self._values)
+
+    def schema_as_dict(self) -> dict[str, Any]:
+        return {
+            "fields": {name: field.as_dict() for name, field in self.schema.fields.items()}
+        }
+
     @sdk_export("ConfigStore.get")
     def get(self, key: str, fallback: Any = None) -> Any:
         return self._values.get(key, fallback)
@@ -146,6 +164,16 @@ class ConfigStore:
         if key not in self.schema.fields:
             raise ConfigError(f"unknown config key {key!r}")
         self._values[key] = self.schema.fields[key].coerce(value)
+        self._persist()
+
+    def replace(self, values: dict[str, Any]) -> None:
+        unknown = [key for key in values if key not in self.schema.fields]
+        if unknown:
+            raise ConfigError(f"unknown config key {unknown[0]!r}")
+        merged = dict(self.schema.defaults())
+        for key, value in values.items():
+            merged[key] = self.schema.fields[key].coerce(value)
+        self._values = merged
         self._persist()
 
     def _persist(self) -> None:
