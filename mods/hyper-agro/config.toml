@@ -1,7 +1,7 @@
 [config]
 damage_mult = 10.0
-detection_height_offset = 100
-enabled = true
+detection_height_offset = 10
+enabled = false
 health_mult = 10.0
-long_range_count = 100
-short_range_count = 100
+long_range_count = 10
+short_range_count = 10

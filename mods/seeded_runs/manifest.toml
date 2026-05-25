@@ -1,0 +1,8 @@
+[mod]
+id          = "ExampleSeedPin"
+name        = "Example: Seed Pinner"
+version     = "0.2.0"
+author      = "rsmm-examples"
+description = "Pin the run RNG seed via raw memory write on the game's Forced-seed option. Demonstrates the SDK escape-hatch (R._internal) and per-mod config (R.config.get)."
+enabled     = true
+sdk_version = ">=3.0,<4"

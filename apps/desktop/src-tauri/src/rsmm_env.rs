@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use tauri::Manager;
 
 #[derive(Serialize)]
 pub struct RsmmRuntimeEnv {
@@ -26,6 +27,26 @@ pub fn find_repo_root() -> Option<PathBuf> {
     } else {
         None
     }
+}
+
+fn target_triple() -> &'static str {
+    match option_env!("TARGET") {
+        Some(t) => t,
+        None => "x86_64-unknown-linux-gnu",
+    }
+}
+
+/// Return the full path to the rsmm sidecar binary in a production bundle.
+/// Tries multiple possible locations since the path depends on the Tauri 2
+/// bundler version and target format.
+fn sidecar_path(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let resource_dir = app.path().resource_dir().ok()?;
+    let triple = target_triple();
+    let candidates = [
+        resource_dir.join("binaries").join(format!("rsmm-{triple}")),
+        resource_dir.join(format!("rsmm-{triple}")),
+    ];
+    candidates.iter().find(|p| p.exists()).cloned()
 }
 
 /// Return the full path to `rsmm` (the Python CLI wrapper) or `None` when
@@ -76,14 +97,22 @@ pub fn rsmm_runtime_env() -> RsmmRuntimeEnv {
     RsmmRuntimeEnv { repo_root, path }
 }
 
-/// Run `rsmm` directly from the resolved repo-root path, bypassing the
-/// shell plugin's PATH / sidecar resolution entirely. Returns stdout,
-/// stderr and exit code. Used by the TypeScript probe in dev mode.
-///
-/// This is a no-op in production — the sidecar handles everything.
+/// Run `rsmm` directly, bypassing the shell plugin's PATH / sidecar
+/// resolution entirely. In dev mode finds the Python wrapper at the repo
+/// root; in production runs the bundled sidecar via `std::process::Command`.
+/// Used by the TypeScript probe as a fallback when the shell plugin fails.
 #[tauri::command]
-pub fn probe_rsmm(args: Vec<String>) -> Result<RsmmExecResult, String> {
-    let rsmm = rsmm_path().ok_or_else(|| "rsmm not found (production bundle)".to_string())?;
+pub fn probe_rsmm(app: tauri::AppHandle, args: Vec<String>) -> Result<RsmmExecResult, String> {
+    let rsmm = rsmm_path()
+        .or_else(|| sidecar_path(&app))
+        .ok_or_else(|| "rsmm not found".to_string())?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&rsmm, std::fs::Permissions::from_mode(0o755));
+    }
+
     let output = std::process::Command::new(&rsmm)
         .args(&args)
         .output()

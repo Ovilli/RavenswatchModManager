@@ -125,7 +125,7 @@ export function UpdaterBanner() {
               <Download className="h-8 w-8 text-crimson" />
             </div>
             <h2 className="font-fraktur text-3xl text-crimson">
-              UPDATE YOUR LAUNCHER!
+              Action Needed: Update Your Launcher!
             </h2>
             <p className="mt-2 font-serif-italic text-parchment">
               Version {v.version} is ready to install
