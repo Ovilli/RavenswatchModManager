@@ -120,7 +120,7 @@ export function githubConfigured(): boolean {
 }
 
 if (isProduction && !smtpConfigured()) {
-  throw new Error(
-    'SMTP must be configured in production. Set SMTP_HOST, SMTP_USER, SMTP_PASS, and EMAIL_FROM before starting the API.',
+  console.warn(
+    'SMTP not configured — email verification and password reset will fail. Set SMTP_HOST, SMTP_USER, SMTP_PASS, and EMAIL_FROM to enable them.',
   );
 }
