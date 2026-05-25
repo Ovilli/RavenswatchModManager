@@ -73,9 +73,18 @@ def _read_manifest(path: Path) -> dict[str, Any] | None:
 
 def cmd_list() -> int:
     items: list[dict[str, Any]] = []
-    if not MODS_DIR.is_dir():
+    try:
+        if not MODS_DIR.is_dir():
+            return _emit([])
+    except (OSError, PermissionError) as e:
+        print(f"warning: could not access mods directory {MODS_DIR}: {e}", file=sys.stderr)
         return _emit([])
-    for entry in sorted(MODS_DIR.iterdir()):
+    try:
+        entries = sorted(MODS_DIR.iterdir())
+    except (OSError, PermissionError) as e:
+        print(f"warning: could not read mods directory {MODS_DIR}: {e}", file=sys.stderr)
+        return _emit([])
+    for entry in entries:
         if not entry.is_dir() or entry.name.startswith("_"):
             continue
         raw = _read_manifest(entry / "manifest.toml")
@@ -582,6 +591,13 @@ def _extract_downloaded_zip(tmp_path: Path, target: Path, slug: str) -> None | d
             dest.parent.mkdir(parents=True, exist_ok=True)
             with zf.open(member) as src, dest.open("wb") as dst:
                 shutil.copyfileobj(src, dst)
+    # Validate that manifest.toml exists after extraction
+    if not (target / "manifest.toml").exists():
+        shutil.rmtree(target, ignore_errors=True)
+        return {
+            "ok": False,
+            "error": f"{slug} zip does not contain manifest.toml (required for mod detection)",
+        }
     return None
 
 
