@@ -139,6 +139,7 @@ function createCommand(name: string, args: string[], opts: Record<string, unknow
 }
 
 let resolvedProg: ProgName | null | undefined = undefined;
+let useRustProbe = false;
 let runtimeEnvPromise: Promise<{ repoRoot: string; path: string }> | null = null;
 
 async function runtimeEnv(): Promise<{ repoRoot: string; path: string }> {
@@ -184,19 +185,20 @@ async function execute(args: string[], options: RsmmOptions): Promise<ExecResult
         // Try next program.
       }
     }
-    // Last resort: try the Rust-side probe which finds rsmm by the full
-    // repo-root path (works even when the shell plugin can't resolve it).
+    // Fall back to the Rust-side probe which works in both dev and
+    // production. If it succeeds, use it for all subsequent calls
+    // (bypassing the shell plugin entirely).
     try {
       const probeResult = await invoke<{ code: number | null; stdout: string; stderr: string }>(
         'probe_rsmm',
         { args },
       );
       if (probeResult.code === 0) {
-        resolvedProg = 'binaries/rsmm' as ProgName;
-        return execute(args, options);
+        useRustProbe = true;
+        return { code: probeResult.code, stdout: probeResult.stdout, stderr: probeResult.stderr };
       }
     } catch {
-      // probe_rsmm unavailable (production bundle) or failed.
+      // probe_rsmm unavailable or failed.
     }
     resolvedProg = undefined;
     throw new RsmmCliMissingError(args);
@@ -205,6 +207,20 @@ async function execute(args: string[], options: RsmmOptions): Promise<ExecResult
   if (resolvedProg === null) {
     resolvedProg = undefined;
     return execute(args, options);
+  }
+
+  // Once the Rust probe succeeded, use it for every call.
+  if (useRustProbe) {
+    const result = await invoke<{ code: number | null; stdout: string; stderr: string }>(
+      'probe_rsmm',
+      { args },
+    ).catch(() => null);
+    if (!result || result.code !== 0) {
+      useRustProbe = false;
+      resolvedProg = undefined;
+      throw new RsmmCliMissingError(args);
+    }
+    return result;
   }
 
   const cmd = createCommand(resolvedProg, args, opts);
