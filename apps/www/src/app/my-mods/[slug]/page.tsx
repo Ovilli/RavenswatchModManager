@@ -858,9 +858,8 @@ function Lightbox({
   onNext: () => void;
 }) {
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
+    <dialog
+      open
       aria-label={shot.caption || `Screenshot ${index + 1}`}
       className="fixed inset-0 z-[90] bg-pitch/95 animate-fade-in"
     >
@@ -918,7 +917,7 @@ function Lightbox({
           <ChevronRight className="h-6 w-6" />
         </button>
       ) : null}
-    </div>
+    </dialog>
   );
 }
 

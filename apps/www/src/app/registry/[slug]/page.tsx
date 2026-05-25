@@ -344,9 +344,8 @@ function PublicGallery({ shots, modName }: { shots: PublicShot[]; modName: strin
         ))}
       </ul>
       {idx != null && shots[idx] ? (
-        <div
-          role="dialog"
-          aria-modal="true"
+        <dialog
+          open
           aria-label={shots[idx].caption || `${modName} screenshot ${idx + 1}`}
           className="fixed inset-0 z-[90] bg-pitch/95 animate-fade-in"
         >
@@ -404,7 +403,7 @@ function PublicGallery({ shots, modName }: { shots: PublicShot[]; modName: strin
               </button>
             </>
           ) : null}
-        </div>
+        </dialog>
       ) : null}
     </>
   );

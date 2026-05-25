@@ -456,9 +456,8 @@ function ScreenshotGallery({ shots, modName }: { shots: Screenshot[]; modName: s
         ))}
       </ul>
       {active ? (
-        <div
-          role="dialog"
-          aria-modal="true"
+        <dialog
+          open
           aria-label={active.caption || `${modName} screenshot ${(idx ?? 0) + 1}`}
           className="fixed inset-0 z-[90] bg-pitch/95"
         >
@@ -516,7 +515,7 @@ function ScreenshotGallery({ shots, modName }: { shots: Screenshot[]; modName: s
               </button>
             </>
           ) : null}
-        </div>
+        </dialog>
       ) : null}
     </>
   );

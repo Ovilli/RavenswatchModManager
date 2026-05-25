@@ -442,9 +442,8 @@ function ScreenshotLightbox({
   if (!active) return null;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
+    <dialog
+      open
       aria-label={active.caption || `Screenshot ${idx + 1}`}
       className="fixed inset-0 z-[90] bg-pitch/95"
     >
@@ -502,6 +501,6 @@ function ScreenshotLightbox({
           </button>
         </>
       ) : null}
-    </div>
+    </dialog>
   );
 }

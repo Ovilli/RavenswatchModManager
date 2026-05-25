@@ -515,11 +515,10 @@ export default function CollectionDetailPage({
         const prev = () => setLightboxIdx((lightboxIdx - 1 + shots.length) % shots.length);
         const next = () => setLightboxIdx((lightboxIdx + 1) % shots.length);
         return (
-          <div
+          <dialog
+            open
             className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
             onClick={close}
-            role="dialog"
-            aria-modal="true"
             aria-label="Screenshot preview"
             onKeyDown={(e) => {
               if (e.key === 'Escape') close();
@@ -558,7 +557,7 @@ export default function CollectionDetailPage({
             >
               <X className="h-5 w-5" />
             </button>
-          </div>
+          </dialog>
         );
       })() : null}
 
