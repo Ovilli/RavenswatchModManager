@@ -1,15 +1,16 @@
-import { Download, RefreshCw, X } from 'lucide-react';
+import { AlertTriangle, Download, RefreshCw, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { ProgressBar } from '@rsmm/ui';
 import { appendLauncherLog } from '../lib/launcher-log';
-import { type AvailableUpdate, checkForUpdate, relaunchApp } from '../lib/updater';
+import { type AvailableUpdate, type UpdateCheckError, checkForUpdate, relaunchApp } from '../lib/updater';
 import { Button } from './chrome';
 import { useToast } from './toast';
 
 interface UpdateStatus {
-  state: 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error' | 'dismissed';
+  state: 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error' | 'check-error' | 'dismissed';
   update?: AvailableUpdate;
   error?: string;
+  checkError?: UpdateCheckError;
   progress?: { downloaded: number; total: number | null };
 }
 
@@ -40,11 +41,24 @@ async function runCheck(): Promise<void> {
   if (sharedStatus.state === 'checking' || sharedStatus.state === 'downloading') return;
   setStatus({ state: 'checking' });
   try {
-    const update = await checkForUpdate();
-    if (!update) {
+    const result = await checkForUpdate();
+    
+    // Check returned an error object
+    if (result && 'error' in result && result.error) {
+      const checkError = result as UpdateCheckError;
+      setStatus({ state: 'check-error', checkError });
+      void appendLauncherLog('error', 'Update check failed', { reason: checkError.reason });
+      return;
+    }
+    
+    if (!result) {
       setStatus({ state: 'idle' });
       return;
     }
+    
+    // result is now guaranteed to be AvailableUpdate
+    const update = result as AvailableUpdate;
+    
     // Auto-download immediately — no manual step needed.
     setStatus({ state: 'available', update });
     await applyUpdate();
@@ -52,7 +66,7 @@ async function runCheck(): Promise<void> {
     const detail = e instanceof Error ? e.message : String(e);
     const message = `Could not check for updates right now: ${detail}`;
     setStatus({ state: 'error', error: message });
-    void appendLauncherLog('warn', 'Update check failed', { error: detail });
+    void appendLauncherLog('error', 'Update check threw exception', { error: detail });
   }
 }
 
@@ -179,6 +193,32 @@ export function UpdaterBanner() {
             runCheck().catch(() => {});
           }}
           className="font-mono text-xs text-ash hover:text-parchment"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  // Check error: shows diagnostic info about why the check failed
+  if (status.state === 'check-error' && status.checkError) {
+    return (
+      <div className="flex items-start gap-3 border-b border-crimson/60 bg-crimson/15 px-4 py-3">
+        <AlertTriangle className="h-4 w-4 text-crimson shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <p className="font-serif-italic text-sm text-crimson mb-1">
+            Update check failed
+          </p>
+          <p className="font-mono text-xs text-ash break-words">
+            {status.checkError.reason}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            runCheck().catch(() => {});
+          }}
+          className="font-mono text-xs text-ash hover:text-parchment shrink-0 ml-2"
         >
           Retry
         </button>

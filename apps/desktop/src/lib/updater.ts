@@ -18,14 +18,25 @@ export interface AvailableUpdate {
 
 import { inTauri } from './platform';
 
-export async function checkForUpdate(): Promise<AvailableUpdate | null> {
+export interface UpdateCheckError {
+  error: true;
+  reason: string;
+}
+
+export async function checkForUpdate(): Promise<AvailableUpdate | UpdateCheckError | null> {
   if (!inTauri()) return null;
   const { check } = await import('@tauri-apps/plugin-updater');
   let update: Awaited<ReturnType<typeof check>> | null = null;
   try {
     update = await check();
-  } catch {
-    return null;
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    console.error('[Updater] Check failed:', reason);
+    // Return error to let UI display it instead of silently failing
+    return {
+      error: true,
+      reason: `Update check failed: ${reason}`,
+    };
   }
   if (!update) return null;
 
