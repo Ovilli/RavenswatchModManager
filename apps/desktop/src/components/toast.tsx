@@ -161,9 +161,8 @@ function DialogModal({
   const multiline = state.kind === 'prompt' && state.opts.multiline;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
+    <dialog
+      open
       aria-label={opts.title}
       className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in"
       onKeyDown={(e) => {
@@ -235,6 +234,6 @@ function DialogModal({
           </button>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 }

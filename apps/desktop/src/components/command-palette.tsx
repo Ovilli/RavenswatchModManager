@@ -122,9 +122,8 @@ export function CommandPalette() {
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
+    <dialog
+      open
       aria-label="Search mods"
       className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh] animate-fade-in"
       onClick={() => setOpen(false)}
@@ -177,19 +176,19 @@ export function CommandPalette() {
           />
           <span className="font-mono text-ash">ESC</span>
         </div>
-        <ul
+        <div
           id={listboxId}
           role="listbox"
           aria-label="Mod search results"
           className="max-h-[50vh] overflow-y-auto py-2"
         >
           {hits.length === 0 ? (
-            <li className="font-serif-italic px-4 py-6 text-center text-ash">
+            <div className="font-serif-italic px-4 py-6 text-center text-ash">
               No mods match. Try a different word.
-            </li>
+            </div>
           ) : (
             hits.map((h, i) => (
-              <li
+              <div
                 key={`${h.origin}-${h.id}`}
                 id={`${listboxId}-opt-${i}`}
                 role="option"
@@ -205,12 +204,12 @@ export function CommandPalette() {
                   <span className="font-serif-italic text-ash">by {h.author}</span>
                 </span>
                 <span className="font-mono text-ash">{h.origin}</span>
-              </li>
+              </div>
             ))
           )}
-        </ul>
+        </div>
       </div>
-    </div>
+    </dialog>
   );
 }
 

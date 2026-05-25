@@ -246,7 +246,7 @@ function BrowsePage() {
         <>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {collections.map((c) => (
-              <article
+              <div
                 key={c.id}
                 tabIndex={0}
                 role="link"
@@ -290,7 +290,7 @@ function BrowsePage() {
                     updated {new Date(c.updatedAt).toLocaleDateString()}
                   </span>
                 </div>
-              </article>
+              </div>
             ))}
           </div>
           {!isLoading && !error && collections.length === 0 ? (
@@ -308,7 +308,7 @@ function BrowsePage() {
               const onDisk = installed.includes(m.slug);
               const inProfile = profile.loadOrder.includes(m.slug);
               return (
-                <article
+                <div
                   key={m.id}
                   tabIndex={0}
                   role="link"
@@ -397,7 +397,7 @@ function BrowsePage() {
                       label={`${m.downloads.toLocaleString()} dl`}
                     />
                   </div>
-                </article>
+                </div>
               );
             })}
           </div>
@@ -439,9 +439,8 @@ function ProfilePicker({
   const [name, setName] = useState('');
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
+    <dialog
+      open
       aria-label="Choose profile"
       className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in"
       onKeyDown={(e) => {
@@ -524,7 +523,7 @@ function ProfilePicker({
           </div>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 }
 
