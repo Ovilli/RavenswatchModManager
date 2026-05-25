@@ -48,12 +48,22 @@ export async function sendMail(msg: MailMessage): Promise<void> {
   });
 }
 
+function htmlEscape(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export function verifyEmailTemplate(args: { name: string; url: string }): {
   subject: string;
   text: string;
   html: string;
 } {
-  const safeName = args.name || 'modder';
+  const safeName = htmlEscape(args.name || 'modder');
+  const safeUrl = htmlEscape(args.url);
   const subject = 'Verify your Ravenswatch Mod Manager account';
   const text = `Hi ${safeName},\n\nConfirm your email to finish creating your account:\n${args.url}\n\nIf you didn't request this, you can ignore this message.`;
   const html = `
@@ -64,11 +74,11 @@ export function verifyEmailTemplate(args: { name: string; url: string }): {
     <p>Hi ${safeName},</p>
     <p>Confirm your email to finish creating your Ravenswatch Mod Manager account.</p>
     <p>
-      <a href="${args.url}" style="display: inline-block; padding: 10px 18px; background: #7d1a1a; color: #fff; text-decoration: none; border-radius: 6px;">
+      <a href="${safeUrl}" style="display: inline-block; padding: 10px 18px; background: #7d1a1a; color: #fff; text-decoration: none; border-radius: 6px;">
         Confirm email
       </a>
     </p>
-    <p style="font-size: 13px; color: #555;">Or paste this URL into your browser: <br /><code>${args.url}</code></p>
+    <p style="font-size: 13px; color: #555;">Or paste this URL into your browser: <br /><code>${safeUrl}</code></p>
     <p style="font-size: 12px; color: #888;">If you didn't request this, you can ignore this email.</p>
   </body>
 </html>`.trim();
@@ -80,7 +90,8 @@ export function resetPasswordTemplate(args: { name: string; url: string }): {
   text: string;
   html: string;
 } {
-  const safeName = args.name || 'modder';
+  const safeName = htmlEscape(args.name || 'modder');
+  const safeUrl = htmlEscape(args.url);
   const subject = 'Reset your Ravenswatch Mod Manager password';
   const text = `Hi ${safeName},\n\nReset your password using this link:\n${args.url}\n\nThe link expires in one hour. If you didn't request this, you can ignore this message.`;
   const html = `
@@ -91,11 +102,11 @@ export function resetPasswordTemplate(args: { name: string; url: string }): {
     <p>Hi ${safeName},</p>
     <p>Click the button below to set a new password. The link expires in one hour.</p>
     <p>
-      <a href="${args.url}" style="display: inline-block; padding: 10px 18px; background: #7d1a1a; color: #fff; text-decoration: none; border-radius: 6px;">
+      <a href="${safeUrl}" style="display: inline-block; padding: 10px 18px; background: #7d1a1a; color: #fff; text-decoration: none; border-radius: 6px;">
         Reset password
       </a>
     </p>
-    <p style="font-size: 13px; color: #555;">Or paste this URL: <br /><code>${args.url}</code></p>
+    <p style="font-size: 13px; color: #555;">Or paste this URL: <br /><code>${safeUrl}</code></p>
     <p style="font-size: 12px; color: #888;">If you didn't request this, ignore this email.</p>
   </body>
 </html>`.trim();

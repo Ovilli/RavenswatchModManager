@@ -22,10 +22,19 @@
     {
       "identifier": "shell:allow-execute",
       "allow": [
-        { "name": "binaries/rsmm", "sidecar": true, "args": true },
-        { "name": "run-rsmm", "cmd": "rsmm", "args": true },
-        { "name": "pgrep", "cmd": "pgrep", "args": true },
-        { "name": "tasklist", "cmd": "tasklist", "args": true }
+        { "name": "binaries/rsmm", "sidecar": true, "args": [
+          { "validator": "\\S+" }
+        ] },
+        { "name": "run-rsmm", "cmd": "rsmm", "args": [
+          { "validator": "\\S+" }
+        ] },
+        { "name": "pgrep", "cmd": "pgrep", "args": [
+          { "validator": "-[a-z]" },
+          { "validator": "\\S+" }
+        ] },
+        { "name": "tasklist", "cmd": "tasklist", "args": [
+          { "validator": "/[A-Za-z]+" }
+        ] }
       ]
     },
     "updater:default",
