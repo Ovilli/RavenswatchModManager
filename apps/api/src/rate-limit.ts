@@ -10,6 +10,15 @@ interface Bucket {
 
 const store = new Map<string, Bucket>();
 
+// Prune expired entries every 5 minutes so a burst of unique IPs
+// doesn't permanently leak memory.
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, bucket] of store) {
+    if (now > bucket.resetAt) store.delete(key);
+  }
+}, 300_000).unref();
+
 const DEFAULT_WINDOW_MS = 60_000;
 const DEFAULT_MAX_HITS = 30;
 

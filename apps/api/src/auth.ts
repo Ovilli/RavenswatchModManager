@@ -43,7 +43,11 @@ export const auth = betterAuth({
     requireEmailVerification: isProduction || smtpConfigured(),
     sendResetPassword: async ({ user, url }) => {
       const t = resetPasswordTemplate({ name: user.name, url });
-      await sendMail({ to: user.email, subject: t.subject, text: t.text, html: t.html });
+      try {
+        await sendMail({ to: user.email, subject: t.subject, text: t.text, html: t.html });
+      } catch (err) {
+        console.error('Failed to send password-reset email:', err);
+      }
     },
   },
   emailVerification: {
@@ -51,7 +55,11 @@ export const auth = betterAuth({
     autoSignInAfterVerification: true,
     sendVerificationEmail: async ({ user, url }) => {
       const t = verifyEmailTemplate({ name: user.name, url });
-      await sendMail({ to: user.email, subject: t.subject, text: t.text, html: t.html });
+      try {
+        await sendMail({ to: user.email, subject: t.subject, text: t.text, html: t.html });
+      } catch (err) {
+        console.error('Failed to send verification email:', err);
+      }
     },
   },
   // Shorten the session window from the 7-day default. A stolen cookie

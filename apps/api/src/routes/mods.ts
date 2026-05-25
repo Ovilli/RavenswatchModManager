@@ -204,8 +204,7 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
 
 modsRouter.use('/:slug/:version/download', downloadLimiter);
 modsRouter.get('/:slug/:version/download', zValidator('param', downloadParamSchema), async (c) => {
-  const slug = c.req.param('slug');
-  const version = c.req.param('version');
+  const { slug, version } = c.req.valid('param');
   const db = getDb();
 
   const mod = await db.query.mods.findFirst({

@@ -15,7 +15,15 @@ async function main() {
     process.exit(1);
   }
   console.log(`rsmm-api listening on http://localhost:${port}`);
-  serve({ fetch: app.fetch, port });
+  try {
+    serve({ fetch: app.fetch, port });
+  } catch (err) {
+    console.error(`Failed to start server on port ${port}:`, err);
+    process.exit(1);
+  }
 }
 
-void main();
+main().catch((err) => {
+  console.error('Fatal startup error:', err);
+  process.exit(1);
+});

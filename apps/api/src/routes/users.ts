@@ -27,7 +27,6 @@ usersRouter.get('/:idOrHandle', async (c) => {
       name: true,
       handle: true,
       image: true,
-      createdAt: true,
     },
   });
   if (!u) return c.json({ error: 'not found' }, 404);
@@ -70,7 +69,6 @@ usersRouter.get('/:idOrHandle', async (c) => {
       name: u.name,
       handle: u.handle,
       image: u.image,
-      joinedAt: u.createdAt.toISOString(),
     },
     mods: rows.map((r) => ({
       id: r.id,
