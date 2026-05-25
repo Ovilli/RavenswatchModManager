@@ -24,7 +24,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' https://api.ravenswatch.ovilli.de https://rsmm.dev; img-src 'self' data: https://api.ravenswatch.ovilli.de; font-src 'self' https://fonts.gstatic.com; frame-src https://ravenswatch.ovilli.de https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; object-src 'none'; form-action 'none'"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' https://api.ravenswatch.ovilli.de https://rsmm.dev; img-src 'self' data: https://api.ravenswatch.ovilli.de https://s3-ravenswatch.ovilli.de https://cdn.rsmm.dev; font-src 'self' https://fonts.gstatic.com; frame-src https://ravenswatch.ovilli.de https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; object-src 'none'; form-action 'none'"
     }
   },
   "bundle": {
