@@ -56,7 +56,7 @@ app.use('/api/mods/upload', createRateLimiter({
   maxHits: 5,
   keyFrom: (c) => {
     const user = c.get('user');
-    return user?.id ?? c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? 'anon';
+    return user?.id ?? c.req.header('x-real-ip') ?? c.req.header('x-forwarded-for')?.split(',').pop()?.trim() ?? 'anon';
   },
 }));
 

@@ -3,9 +3,9 @@ import { NextResponse } from 'next/server';
 export const runtime = 'edge';
 
 const PUBLISHER_ID =
-  process.env.NEXT_PUBLIC_ADSENSE_PUBLISHER_ID ?? 'ca-pub-9139637424510522';
+  process.env.ADSENSE_PUBLISHER_ID ?? 'ca-pub-9139637424510522';
 const AD_SLOT =
-  process.env.NEXT_PUBLIC_ADSENSE_BANNER_SLOT ?? '1934448674';
+  process.env.ADSENSE_BANNER_SLOT ?? '1934448674';
 
 const ENABLED =
   PUBLISHER_ID.startsWith('ca-pub-') && PUBLISHER_ID !== 'ca-pub-0000000000000000';

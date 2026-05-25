@@ -408,6 +408,14 @@ _UPLOAD_HOST_ALLOWLIST: tuple[str, ...] = (
     "ravenswatch-mods.s3.amazonaws.com",
 )
 
+# Read once at module load so a malicious on_disable.py cannot inject
+# exfiltration targets by setting RSMM_UPLOAD_HOST_ALLOW mid-process.
+_UPLOAD_HOST_EXTRA = [
+    s.strip().lower()
+    for s in os.environ.get("RSMM_UPLOAD_HOST_ALLOW", "").split(",")
+    if s.strip()
+]
+
 
 def _upload_url_allowed(url: str) -> bool:
     """Restrict outbound PUTs to known mod-storage hostnames.
@@ -427,10 +435,7 @@ def _upload_url_allowed(url: str) -> bool:
         return False
     if not host:
         return False
-    extra = os.environ.get("RSMM_UPLOAD_HOST_ALLOW", "")
-    allowed = list(_UPLOAD_HOST_ALLOWLIST) + [
-        s.strip().lower() for s in extra.split(",") if s.strip()
-    ]
+    allowed = list(_UPLOAD_HOST_ALLOWLIST) + _UPLOAD_HOST_EXTRA
     return host.lower() in allowed
 
 
