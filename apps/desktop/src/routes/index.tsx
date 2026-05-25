@@ -70,16 +70,6 @@ function LibraryPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dirtyConfigs, setDirtyConfigs] = useState<Set<string>>(new Set());
   const localModsState = useApp((s) => s.localMods);
-  const localModsFingerprint = useMemo(
-    () =>
-      Object.values(localModsState)
-        .map(
-          (mod) =>
-            `${mod.id}:${mod.version}:${mod.latestVersion}:${mod.summary}:${mod.dependencies.join(',')}:${mod.writes.join(',')}`,
-        )
-        .join('|'),
-    [localModsState],
-  );
   // Library is *profile-scoped*: a mod is in the user's library iff
   // it's been explicitly added to the active profile's load order.
   // Mods present on disk but not in this profile live in /browse with
@@ -114,7 +104,7 @@ function LibraryPage() {
     const needle = query.trim().toLowerCase();
     const rows = profile.loadOrder
       .map((id, orderIdx) => {
-        const mod = getMod(id);
+        const mod = localModsState[id];
         if (!mod) return null;
         const enabled = isEnabledIn(profile, id);
         const outdated = mod.version !== mod.latestVersion;
@@ -146,7 +136,7 @@ function LibraryPage() {
       if (sort === 'version') return compareVersions(b.mod.version, a.mod.version);
       return a.orderIdx - b.orderIdx;
     });
-  }, [category, localModsFingerprint, profile, query, sort, status]);
+  }, [category, localModsState, profile, query, sort, status]);
 
   const grouped = useMemo(() => {
     const groups = new Map<ModCategory, { id: string; orderIdx: number }[]>();

@@ -450,6 +450,9 @@ export const useApp = create<State>()(
 
       syncLocalMods: (mods) =>
         set((s) => {
+          if (mods.length === 0 && Object.keys(s.localMods).length > 0) {
+            return {};
+          }
           const localMods: Record<string, MockMod> = {};
           for (const m of mods) {
             localMods[m.id] = toMockMod(m, s.localMods[m.id]);
