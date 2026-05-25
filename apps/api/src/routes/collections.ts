@@ -130,8 +130,7 @@ collectionsRouter.get('/mine', async (c) => {
   });
 });
 
-collectionsRouter.use('/', writeLimiter);
-collectionsRouter.post('/', zValidator('json', collectionCreateSchema), async (c) => {
+collectionsRouter.post('/', writeLimiter, zValidator('json', collectionCreateSchema), async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'unauthorized' }, 401);
   const body = c.req.valid('json');
@@ -263,6 +262,7 @@ collectionsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) 
 
 collectionsRouter.patch(
   '/:slug',
+  writeLimiter,
   zValidator('param', slugParamSchema),
   zValidator('json', collectionPatchSchema),
   async (c) => {
@@ -291,7 +291,7 @@ collectionsRouter.patch(
   },
 );
 
-collectionsRouter.delete('/:slug', zValidator('param', slugParamSchema), async (c) => {
+collectionsRouter.delete('/:slug', writeLimiter, zValidator('param', slugParamSchema), async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'unauthorized' }, 401);
   const { slug } = c.req.valid('param');
@@ -307,6 +307,7 @@ collectionsRouter.delete('/:slug', zValidator('param', slugParamSchema), async (
 
 collectionsRouter.post(
   '/:slug/mods',
+  writeLimiter,
   zValidator('param', slugParamSchema),
   zValidator('json', collectionAddModSchema),
   async (c) => {
@@ -345,6 +346,7 @@ collectionsRouter.post(
 
 collectionsRouter.delete(
   '/:slug/mods/:modSlug',
+  writeLimiter,
   zValidator('param', slugAndModParamSchema),
   async (c) => {
     const user = c.get('user');
@@ -379,6 +381,7 @@ collectionsRouter.delete(
 
 collectionsRouter.post(
   '/:slug/image',
+  writeLimiter,
   zValidator('param', slugParamSchema),
   zValidator('json', collectionImagePresignSchema),
   async (c) => {

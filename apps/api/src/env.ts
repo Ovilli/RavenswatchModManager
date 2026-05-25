@@ -5,11 +5,14 @@ import { fileURLToPath } from 'node:url';
 const here = fileURLToPath(new URL('.', import.meta.url));
 const repoRoot = resolve(here, '..', '..', '..');
 // `.env.local` holds secrets and wins over `.env` (which is the
-// committed template). dotenv preserves the first value it sees per key,
-// so load `.local` first, then the template as fallback.
-loadEnv({ path: resolve(repoRoot, '.env.local') });
+// committed template). dotenv never overrides existing keys, so the
+// LAST load wins — load repo-root files first, then CWD files.
 loadEnv({ path: resolve(repoRoot, '.env') });
+loadEnv({ path: resolve(repoRoot, '.env.local') });
+loadEnv({ path: '.env' });
 loadEnv({ path: '.env.local' });
+// Also pick up the default CWD `.env` search (handles Docker / PM2
+// setups where the CWD is the API dir).
 loadEnv();
 
 export const isProduction = process.env.NODE_ENV === 'production';
@@ -61,7 +64,16 @@ export const env = {
     accessKeyId: process.env.S3_ACCESS_KEY_ID ?? '',
     secretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? '',
     publicBaseUrl: process.env.S3_PUBLIC_BASE_URL ?? '', // e.g. https://cdn.rsmm.dev
-    signedUrlTtlSeconds: Number(process.env.S3_SIGNED_TTL ?? 900),
+    signedUrlTtlSeconds: (() => {
+      const raw = process.env.S3_SIGNED_TTL;
+      if (!raw) return 900;
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < 1) {
+        console.warn(`Invalid S3_SIGNED_TTL "${raw}", falling back to 900`);
+        return 900;
+      }
+      return n;
+    })(),
   },
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID ?? '',
@@ -73,7 +85,16 @@ export const env = {
   },
   smtp: {
     host: process.env.SMTP_HOST ?? '',
-    port: Number(process.env.SMTP_PORT ?? 587),
+    port: (() => {
+      const raw = process.env.SMTP_PORT;
+      if (!raw) return 587;
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < 1 || n > 65535) {
+        console.warn(`Invalid SMTP_PORT "${raw}", falling back to 587`);
+        return 587;
+      }
+      return n;
+    })(),
     user: process.env.SMTP_USER ?? '',
     pass: process.env.SMTP_PASS ?? '',
     // STARTTLS on 587 by default; set SMTP_SECURE=true for SMTPS on 465.
