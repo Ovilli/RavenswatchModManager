@@ -14,7 +14,7 @@ export const telemetryRouter = new Hono<AppEnv>();
 const telemetryKey = (c: import('hono').Context): string => {
   const user = c.get('user');
   if (user?.id) return `u:${user.id}`;
-  return `ip:${c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'}`;
+  return `ip:${c.req.header('x-real-ip') ?? c.req.header('x-forwarded-for')?.split(',').pop()?.trim() ?? 'unknown'}`;
 };
 
 telemetryRouter.use(

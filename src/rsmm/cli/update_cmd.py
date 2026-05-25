@@ -47,6 +47,9 @@ def _load_repos() -> list[str]:
 
 
 def _fetch(url: str, timeout: float = 30.0) -> bytes:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("https",):
+        raise RepoError(f"refusing to fetch non-HTTPS URL: {url}")
     with urllib.request.urlopen(url, timeout=timeout) as r:
         return r.read()
 
@@ -156,7 +159,16 @@ def _install_zip(zip_path: Path, mod_id: str, dry_run: bool) -> None:
                 dest = (staging.parent / entry.filename).resolve()
                 if not str(dest).startswith(str(staging.parent.resolve())):
                     raise RepoError(f"zip slip detected: {entry.filename}")
-            zf.extractall(staging.parent)
+                # Extract each entry individually with zf.open() so symlink
+                # entries are read as regular files (their target string
+                # becomes the file content) rather than being created as
+                # filesystem symlinks that could escape the staging dir.
+                if entry.is_dir():
+                    dest.mkdir(parents=True, exist_ok=True)
+                else:
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    with zf.open(entry) as src, open(dest, "wb") as dst:
+                        shutil.copyfileobj(src, dst)
         # The zip may extract as either `<mod_id>/...` or `./...`. Pick
         # the right inner path.
         if not staging.exists():

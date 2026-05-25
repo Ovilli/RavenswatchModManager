@@ -30,8 +30,11 @@ export function createRateLimiter(opts?: {
   const windowMs = opts?.windowMs ?? DEFAULT_WINDOW_MS;
   const maxHits = opts?.maxHits ?? DEFAULT_MAX_HITS;
   const keyFrom = opts?.keyFrom ?? ((c) => {
-    const ip = c.req.header('x-forwarded-for')?.split(',')[0]?.trim()
-      ?? c.req.header('x-real-ip')
+    // Prefer x-real-ip (set by nginx/reverse-proxy, cannot be spoofed
+    // by the client) over x-forwarded-for (which the client can forge
+    // when the proxy doesn't strip the incoming header).
+    const ip = c.req.header('x-real-ip')
+      ?? c.req.header('x-forwarded-for')?.split(',').pop()?.trim()
       ?? 'unknown';
     return ip;
   });
