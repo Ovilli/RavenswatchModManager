@@ -23,17 +23,27 @@
       "identifier": "shell:allow-execute",
       "allow": [
         { "name": "binaries/rsmm", "sidecar": true, "args": [
-          { "validator": "\\S+" }
+          { "validator": "^json$" },
+          { "validator": "^(list|doctor|apply|build|run|restore-all|install-mod|install-mod-version|config)$" },
+          { "validator": ".*" },
+          { "validator": ".*" },
+          { "validator": ".*" }
         ] },
         { "name": "run-rsmm", "cmd": "rsmm", "args": [
-          { "validator": "\\S+" }
+          { "validator": "^json$" },
+          { "validator": "^(list|doctor|apply|build|run|restore-all|install-mod|install-mod-version|config)$" },
+          { "validator": ".*" },
+          { "validator": ".*" },
+          { "validator": ".*" }
         ] },
         { "name": "pgrep", "cmd": "pgrep", "args": [
-          { "validator": "-[a-z]" },
-          { "validator": "\\S+" }
+          { "validator": "^-f$" },
+          { "validator": "^Ravenswatch(\\.exe)?$" }
         ] },
         { "name": "tasklist", "cmd": "tasklist", "args": [
-          { "validator": "/[A-Za-z]+" }
+          { "validator": "^/FI$" },
+          { "validator": "^IMAGENAME eq Ravenswatch\\.exe$" },
+          { "validator": "^/NH$" }
         ] }
       ]
     },
