@@ -1,15 +1,15 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
-import { auth } from './auth';
-import { env, githubConfigured, googleConfigured, isProduction } from './env';
-import { createRateLimiter } from './rate-limit';
-import { collectionsRouter } from './routes/collections';
-import { meRouter } from './routes/me';
-import { modsRouter } from './routes/mods';
-import { telemetryRouter } from './routes/telemetry';
-import { usersRouter } from './routes/users';
-import type { AppEnv } from './types';
+import { auth } from './auth.js';
+import { env, githubConfigured, googleConfigured, isProduction } from './env.js';
+import { createRateLimiter } from './rate-limit.js';
+import { collectionsRouter } from './routes/collections.js';
+import { meRouter } from './routes/me.js';
+import { modsRouter } from './routes/mods.js';
+import { telemetryRouter } from './routes/telemetry.js';
+import { usersRouter } from './routes/users.js';
+import type { AppEnv } from './types.js';
 
 export const app = new Hono<AppEnv>();
 

@@ -1,7 +1,7 @@
 import { serve } from '@hono/node-server';
 import { pingDb } from '@rsmm/db';
-import { app } from './app';
-import { env } from './env';
+import { app } from './app.js';
+import { env } from './env.js';
 
 const port = env.port;
 
