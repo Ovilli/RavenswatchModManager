@@ -68,7 +68,7 @@ export type CollectionAddMod = z.infer<typeof collectionAddModSchema>;
 
 export const collectionImagePresignSchema = z.object({
   contentType: z.enum(['image/png', 'image/jpeg', 'image/webp']),
-  sizeBytes: z.number().int().positive(),
+  sizeBytes: z.number().int().positive().max(8_000_000),
 });
 
 export type CollectionImagePresign = z.infer<typeof collectionImagePresignSchema>;

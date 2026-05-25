@@ -44,7 +44,10 @@ export const env = {
   //   macOS/Linux WebKitGTK:  tauri://localhost
   //   Windows WebView2:       http://tauri.localhost
   trustedOrigins: (() => {
-    const fromEnv = (process.env.TRUSTED_ORIGINS || 'http://localhost:3000,http://localhost:1420,tauri://localhost,https://tauri.localhost,http://tauri.localhost')
+    const devDefault = isProduction
+      ? 'tauri://localhost,https://tauri.localhost,http://tauri.localhost'
+      : 'http://localhost:3000,http://localhost:1420,tauri://localhost,https://tauri.localhost,http://tauri.localhost';
+    const fromEnv = (process.env.TRUSTED_ORIGINS || devDefault)
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
