@@ -12,7 +12,7 @@ const nextConfig = {
         headers: [
           {
             key: 'Content-Security-Policy',
-            value: "default-src 'self'; script-src 'self' https://pagead2.googlesyndication.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' https://api.ravenswatch.ovilli.de; img-src 'self' data: https://api.ravenswatch.ovilli.de https://cdn.rsmm.dev https://*.googleusercontent.com; font-src 'self' https://fonts.gstatic.com; frame-src 'none'; object-src 'none'; form-action 'none'",
+            value: "default-src 'self'; script-src 'self' 'unsafe-inline' https://pagead2.googlesyndication.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' https://api.ravenswatch.ovilli.de; img-src 'self' data: https://api.ravenswatch.ovilli.de https://cdn.rsmm.dev https://*.googleusercontent.com; font-src 'self' https://fonts.gstatic.com; frame-src 'none'; object-src 'none'; form-action 'none'",
           },
           {
             key: 'X-Content-Type-Options',
