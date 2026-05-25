@@ -1,4 +1,4 @@
-import type { Session } from './auth';
+import type { Session } from './auth.js';
 
 export type AppEnv = {
   Variables: {

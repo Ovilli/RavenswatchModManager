@@ -1,5 +1,5 @@
 import nodemailer, { type Transporter } from 'nodemailer';
-import { env, isProduction, smtpConfigured } from './env';
+import { env, isProduction, smtpConfigured } from './env.js';
 
 let cached: Transporter | null = null;
 

@@ -1,8 +1,8 @@
 import { getDb, schema } from '@rsmm/db';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { env, githubConfigured, googleConfigured, isProduction, smtpConfigured } from './env';
-import { resetPasswordTemplate, sendMail, verifyEmailTemplate } from './mailer';
+import { env, githubConfigured, googleConfigured, isProduction, smtpConfigured } from './env.js';
+import { resetPasswordTemplate, sendMail, verifyEmailTemplate } from './mailer.js';
 
 const socialProviders: {
   google?: { clientId: string; clientSecret: string };

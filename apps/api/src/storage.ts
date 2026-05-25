@@ -1,6 +1,6 @@
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { env, s3Configured } from './env';
+import { env, s3Configured } from './env.js';
 
 let cached: S3Client | null = null;
 
