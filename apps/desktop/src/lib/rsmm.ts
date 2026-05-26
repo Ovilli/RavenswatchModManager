@@ -494,6 +494,14 @@ export interface InstallResult {
   error?: string;
 }
 
+export interface UninstallResult {
+  ok: boolean;
+  modId?: string;
+  removed?: boolean;
+  removedPath?: string;
+  error?: string;
+}
+
 /**
  * Download a mod from the public index by slug + extract into the
  * local `mods/<slug>/` folder. Server-side this hit also bumps the
@@ -504,3 +512,6 @@ export const installModFromIndex = (slug: string) =>
 
 export const installModVersion = (slug: string, version: string) =>
   rsmm<InstallResult>(['install-mod-version', slug, version], { timeoutMs: LONG_TIMEOUT_MS });
+
+export const uninstallLocalMod = (modId: string) =>
+  rsmm<UninstallResult>(['uninstall-mod', modId], { timeoutMs: LONG_TIMEOUT_MS });

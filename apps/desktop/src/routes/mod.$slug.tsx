@@ -18,9 +18,10 @@ import {
 import { api } from '../lib/api';
 import { getApiUrl } from '../lib/api-url';
 import { inTauri } from '../lib/platform';
-import { installModVersion, listLocalMods } from '../lib/rsmm';
+import { installModVersion, listLocalMods, uninstallLocalMod } from '../lib/rsmm';
 import { toEmbedUrl } from '../lib/video-embed';
 import { activeProfile, isEnabledIn, useApp } from '../store';
+import { useToast } from '../components/toast';
 
 export const Route = createFileRoute('/mod/$slug')({
   component: ModDetailPage,
@@ -30,6 +31,7 @@ function ModDetailPage() {
   const { slug } = Route.useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const { data, error, isLoading } = useQuery({
     queryKey: ['mods', 'detail', slug],
@@ -43,11 +45,15 @@ function ModDetailPage() {
   const installed = useApp((s) => s.installed);
   const profile = useApp(activeProfile);
   const installMod = useApp((s) => s.installMod);
-  const uninstall = useApp((s) => s.uninstallMod);
   const syncLocalMods = useApp((s) => s.syncLocalMods);
   const showNsfw = useApp((s) => s.settings.showNsfw);
   const [versionBusy, setVersionBusy] = useState<string | null>(null);
   const [versionError, setVersionError] = useState<string | null>(null);
+
+  const refreshLocalMods = useCallback(async () => {
+    const mods = await listLocalMods();
+    if (mods) syncLocalMods(mods);
+  }, [syncLocalMods]);
 
   const installVersion = useCallback(
     async (version: string, addToProfile = false) => {
@@ -69,6 +75,29 @@ function ModDetailPage() {
       }
     },
     [installMod, queryClient, slug, syncLocalMods],
+  );
+
+  const uninstall = useCallback(
+    async (modId: string) => {
+      setVersionBusy(modId);
+      setVersionError(null);
+      try {
+        const result = await uninstallLocalMod(modId);
+        if (!result || !result.ok) {
+          throw new Error(result?.error || `Failed to uninstall ${modId}`);
+        }
+        await refreshLocalMods();
+        await queryClient.invalidateQueries({ queryKey: ['mods', 'detail', slug] });
+        toast.push('Mod uninstalled.', 'success');
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to uninstall mod.';
+        setVersionError(message);
+        toast.push(message, 'error');
+      } finally {
+        setVersionBusy(null);
+      }
+    },
+    [queryClient, refreshLocalMods, slug, toast],
   );
 
   if (isLoading) {
@@ -165,7 +194,7 @@ function ModDetailPage() {
               <MonoTag tone={enabled ? 'crimson' : 'default'}>
                 {enabled ? 'enabled' : 'disabled'}
               </MonoTag>
-              <Button type="button" variant="danger" onClick={() => uninstall(liveBySlug.id)}>
+              <Button type="button" variant="danger" onClick={() => void uninstall(liveBySlug.id)}>
                 <Trash2 className="h-4 w-4" /> Uninstall
               </Button>
             </div>
