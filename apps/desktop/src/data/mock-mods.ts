@@ -50,4 +50,6 @@ export interface MockMod {
   image?: string;
   /** Long-form store-page copy in Markdown. Rendered on the mod detail page. */
   markdown: string;
+  /** Content rating — true if the mod contains NSFW material. */
+  nsfw?: boolean;
 }

@@ -1,5 +1,5 @@
 import { cn } from '@rsmm/ui';
-import { Copy } from 'lucide-react';
+import { Copy, EyeOff } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
@@ -146,21 +146,40 @@ export function Cover({
   alt,
   caption,
   className,
+  nsfw,
 }: {
   src?: string | null;
   alt: string;
   caption?: string;
   className?: string;
+  nsfw?: boolean;
 }) {
   if (!src) return <CoverPlaceholder caption={caption} className={className} />;
   return (
     <div
       className={cn(
         'relative aspect-[16/9] w-full overflow-hidden border border-border bg-pitch',
+        nsfw && 'group',
         className,
       )}
     >
-      <img src={src} alt={alt} loading="lazy" className="h-full w-full object-cover" />
+      <img
+        src={src}
+        alt={alt}
+        loading="lazy"
+        className={cn(
+          'h-full w-full object-cover',
+          nsfw && 'blur-xl saturate-0 transition-all duration-300 group-hover:blur-none group-hover:saturate-100',
+        )}
+      />
+      {nsfw ? (
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 transition-opacity duration-300 group-hover:opacity-0">
+          <EyeOff className="h-8 w-8 text-crimson/80" />
+          <span className="font-mono text-xs uppercase tracking-widest text-crimson/80">
+            NSFW
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }

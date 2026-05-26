@@ -62,6 +62,7 @@ export const modListItemSchema = z.object({
     .optional(),
   videos: z.array(z.string()).optional(),
   featured: z.boolean().optional(),
+  nsfw: z.boolean().optional(),
   ownerId: z.string().nullable().optional(),
   dependencies: z.record(z.string(), z.string()).optional(),
 });

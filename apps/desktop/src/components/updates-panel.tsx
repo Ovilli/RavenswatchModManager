@@ -34,12 +34,13 @@ export function UpdatesPanel() {
   // UI (mod cards, detail pages) stays consistent without a second poll.
   useEffect(() => {
     if (!remote.data) return;
-    const map: Record<string, { latestVersion: string | null; image: string | null; summary: string | null }> = {};
+    const map: Record<string, { latestVersion: string | null; image: string | null; summary: string | null; nsfw: boolean | null }> = {};
     for (const m of remote.data.items) {
       map[m.slug] = {
         latestVersion: m.latestVersion,
         image: m.imageUrl ?? null,
         summary: m.summary ?? null,
+        nsfw: m.nsfw ?? null,
       };
     }
     patchRemoteInfo(map);

@@ -25,6 +25,8 @@ export interface AppSettings {
   modsDir: string;
   sources: string[];
   density: 'cozy' | 'compact';
+  /** When false, NSFW mod images are blurred. */
+  showNsfw: boolean;
 }
 
 interface State {
@@ -52,7 +54,7 @@ interface State {
    * with what is actually present on disk. */
   syncLocalMods: (mods: LocalMod[]) => void;
   /** Patch latestVersion + image/summary onto local mods after polling the API. */
-  patchRemoteInfo: (info: Record<string, { latestVersion?: string | null; image?: string | null; summary?: string | null }>) => void;
+  patchRemoteInfo: (info: Record<string, { latestVersion?: string | null; image?: string | null; summary?: string | null; nsfw?: boolean | null }>) => void;
 }
 
 function uid(): string {
@@ -191,6 +193,7 @@ export const useApp = create<State>()(
             ? '%LOCALAPPDATA%\\rsmm\\backups'
             : '~/.local/share/rsmm/backups',
         modsDir: defaultModsDir(),
+        showNsfw: false,
         sources: ['https://rsmm.dev/registry'],
         density: 'cozy',
       },
@@ -497,6 +500,7 @@ export const useApp = create<State>()(
               latestVersion: payload.latestVersion ?? found.latestVersion,
               image: payload.image ?? found.image,
               summary: payload.summary ?? found.summary,
+              nsfw: payload.nsfw ?? found.nsfw,
             };
           }
           return { localMods: next };
@@ -606,6 +610,7 @@ function toMockMod(m: LocalMod, prev?: MockMod): MockMod {
     gameBuild: prev?.gameBuild ?? '',
     image: prev?.image,
     markdown: prev?.markdown ?? (summary ? `# ${m.name}\n\n${summary}` : `# ${m.name}`),
+    nsfw: prev?.nsfw ?? false,
   };
 }
 
