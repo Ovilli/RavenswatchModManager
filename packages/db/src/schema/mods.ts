@@ -52,6 +52,7 @@ export const mods = pgTable(
     ownerId: text('owner_id').references(() => users.id, { onDelete: 'set null' }),
     featured: boolean('featured').notNull().default(false),
     featuredAt: timestamp('featured_at', { withTimezone: true }),
+    nsfw: boolean('nsfw').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

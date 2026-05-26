@@ -1,7 +1,7 @@
 'use client';
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Spinner, buttonVariants } from '@rsmm/ui';
 import { useQuery } from '@tanstack/react-query';
-import { Download, ExternalLink, Search, Star } from 'lucide-react';
+import { Download, ExternalLink, EyeOff, Search, Star } from 'lucide-react';
 import type { Route } from 'next';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState } from 'react';
@@ -48,6 +48,7 @@ function RegistryInner() {
   const [cat, setCat] = useState<ModCategory | 'all'>('all');
   const [sort, setSort] = useState<Sort>('popular');
   const [featuredOnly, setFeaturedOnly] = useState(false);
+  const [showNsfw, setShowNsfw] = useState(false);
 
   useEffect(() => {
     if (search.get('featured') === '1') setFeaturedOnly(true);
@@ -67,6 +68,7 @@ function RegistryInner() {
     const data = list.data?.items ?? [];
     const filtered = data
       .filter((m) => (cat === 'all' ? true : m.category === cat))
+      .filter((m) => (showNsfw || !m.nsfw))
       .filter((m) => {
         const needle = q.trim().toLowerCase();
         if (!needle) return true;
@@ -124,6 +126,18 @@ function RegistryInner() {
             <Star className="mr-1 h-3.5 w-3.5" />
             Featured
           </button>
+          <button
+            type="button"
+            onClick={() => setShowNsfw((v) => !v)}
+            className={buttonVariants({
+              variant: showNsfw ? 'default' : 'outline',
+              size: 'sm',
+            })}
+            title="Show NSFW/mature mods"
+          >
+            <EyeOff className="mr-1 h-3.5 w-3.5" />
+            NSFW
+          </button>
         </div>
 
         <div className="flex flex-wrap gap-1.5">
@@ -180,6 +194,11 @@ function RegistryInner() {
                   {m.featured ? (
                     <Badge className="absolute left-2 top-2 bg-gilt/15 text-[0.65rem] text-gilt border-gilt/40 backdrop-blur-sm">
                       <Star className="mr-1 h-3 w-3" /> Featured
+                    </Badge>
+                  ) : null}
+                  {m.nsfw ? (
+                    <Badge className="absolute right-2 top-2 bg-crimson/15 text-[0.65rem] text-crimson border-crimson/40 backdrop-blur-sm">
+                      <EyeOff className="mr-1 h-3 w-3" /> NSFW
                     </Badge>
                   ) : null}
                 </div>

@@ -90,6 +90,7 @@ export default function PublishPage() {
   const [license, setLicense] = useState('');
   const [repoUrl, setRepoUrl] = useState('');
   const [homepageUrl, setHomepageUrl] = useState('');
+  const [nsfw, setNsfw] = useState(false);
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
 
   // Default the author display name to the signed-in user once the
@@ -186,12 +187,13 @@ export default function PublishPage() {
         imageUrl = imgPresigned.publicUrl;
       }
 
-      // The /upload route writes manifest-shaped metadata only; category
-      // and imageUrl live on the mod row and require a follow-up PATCH.
-      if (imageUrl || category) {
+      // The /upload route writes manifest-shaped metadata only; category,
+      // nsfw, and imageUrl live on the mod row and require a follow-up PATCH.
+      if (imageUrl || category || nsfw) {
         setPhase({ kind: 'patching' });
         await api.mods.patch(slug, {
           category,
+          nsfw,
           ...(imageUrl ? { imageUrl } : {}),
         });
       }
@@ -464,6 +466,26 @@ export default function PublishPage() {
               />
             </div>
           </div>
+        </section>
+
+        {/* ─── Content rating ─── */}
+        <section className="grimoire-card space-y-4 p-5">
+          <h2 className="text-lg font-semibold">Content rating</h2>
+          <label className="flex cursor-pointer items-center gap-3 text-sm">
+            <input
+              type="checkbox"
+              checked={nsfw}
+              onChange={(e) => setNsfw(e.target.checked)}
+              className="h-4 w-4 rounded border-border accent-crimson"
+            />
+            <span>
+              This mod contains <strong>NSFW / mature content</strong>
+            </span>
+          </label>
+          <p className="text-xs text-muted-foreground">
+            If checked, the mod will be hidden behind a blur by default. Users can opt in via
+            settings.
+          </p>
         </section>
 
         <div className="flex items-center justify-between gap-3">

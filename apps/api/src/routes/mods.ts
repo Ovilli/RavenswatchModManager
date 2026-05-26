@@ -90,6 +90,7 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
       rating: schema.mods.rating,
       tags: schema.mods.tags,
       featured: schema.mods.featured,
+      nsfw: schema.mods.nsfw,
       ownerId: schema.mods.ownerId,
       latestVersion: sql<string | null>`(
         select ${schema.modVersions.version}
@@ -134,6 +135,7 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
       rating: r.rating != null ? Number(r.rating) : null,
       tags: r.tags ?? [],
       featured: r.featured,
+      nsfw: r.nsfw,
       ownerId: r.ownerId,
     })),
     total,
@@ -184,6 +186,7 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       rating: mod.rating != null ? Number(mod.rating) : null,
       tags: mod.tags ?? [],
       featured: mod.featured,
+      nsfw: mod.nsfw,
       ownerId: mod.ownerId,
       dependencies:
         (mod.versions[0]?.manifestJson as { dependencies?: Record<string, string> } | undefined)
@@ -406,38 +409,40 @@ const ownerLimiter = createRateLimiter({
   },
 });
 
-modsRouter.use('/:slug/edit', ownerLimiter);
-modsRouter.patch(
-  '/:slug/edit',
-  zValidator('param', slugParamSchema),
-  zValidator('json', modPatchSchema),
-  async (c) => {
-    const user = c.get('user');
-    if (!user) return c.json({ error: 'unauthorized' }, 401);
-    const { slug } = c.req.valid('param');
-    const patch = c.req.valid('json');
-    const db = getDb();
+  modsRouter.use('/:slug/edit', ownerLimiter);
+  modsRouter.patch(
+    '/:slug/edit',
+    zValidator('param', slugParamSchema),
+    zValidator('json', modPatchSchema),
+    async (c) => {
+      const user = c.get('user');
+      if (!user) return c.json({ error: 'unauthorized' }, 401);
+      const { slug } = c.req.valid('param');
+      const patch = c.req.valid('json');
+      const db = getDb();
 
-    const existing = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
-    if (!existing) return c.json({ error: 'not found' }, 404);
-    if (existing.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+      const existing = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
+      if (!existing) return c.json({ error: 'not found' }, 404);
+      if (existing.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
 
-    // Build an update object that only sets keys the caller sent. The
-    // `?? undefined` dance is needed because zod returns `null` for
-    // fields the caller explicitly cleared and we want those nulls to
-    // persist to the DB.
-    const updates: Partial<typeof schema.mods.$inferInsert> = { updatedAt: new Date() };
-    if (patch.name !== undefined) updates.name = patch.name;
-    if (patch.summary !== undefined) updates.summary = patch.summary;
-    if (patch.description !== undefined) updates.description = patch.description;
-    if (patch.license !== undefined) updates.license = patch.license;
-    if (patch.repoUrl !== undefined) updates.repoUrl = patch.repoUrl;
-    if (patch.homepageUrl !== undefined) updates.homepageUrl = patch.homepageUrl;
-    if (patch.category !== undefined) updates.category = patch.category;
-    if (patch.tags !== undefined) updates.tags = patch.tags;
-    if (patch.imageUrl !== undefined) updates.imageUrl = patch.imageUrl;
-    if (patch.screenshots !== undefined) updates.screenshots = patch.screenshots;
-    if (patch.videos !== undefined) updates.videos = patch.videos;
+      // Build an update object that only sets keys the caller sent. The
+      // `?? undefined` dance is needed because zod returns `null` for
+      // fields the caller explicitly cleared and we want those nulls to
+      // persist to the DB.
+      const updates: Partial<typeof schema.mods.$inferInsert> = { updatedAt: new Date() };
+      if (patch.name !== undefined) updates.name = patch.name;
+      if (patch.summary !== undefined) updates.summary = patch.summary;
+      if (patch.description !== undefined) updates.description = patch.description;
+      if (patch.license !== undefined) updates.license = patch.license;
+      if (patch.repoUrl !== undefined) updates.repoUrl = patch.repoUrl;
+      if (patch.homepageUrl !== undefined) updates.homepageUrl = patch.homepageUrl;
+      if (patch.category !== undefined) updates.category = patch.category;
+      if (patch.tags !== undefined) updates.tags = patch.tags;
+      if (patch.imageUrl !== undefined) updates.imageUrl = patch.imageUrl;
+      if (patch.screenshots !== undefined) updates.screenshots = patch.screenshots;
+      if (patch.videos !== undefined) updates.videos = patch.videos;
+      if (patch.nsfw !== undefined) updates.nsfw = patch.nsfw;
+    if (patch.nsfw !== undefined) updates.nsfw = patch.nsfw;
 
     const rows = await db
       .update(schema.mods)
