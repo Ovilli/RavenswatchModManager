@@ -263,7 +263,7 @@ function SettingsPage() {
  * feedback; the real existence check happens when the sidecar tries to
  * read from it. */
 function validateDirPath(raw: string, label: string): string | null {
-  const v = raw.trim();
+  const v = (raw ?? '').trim();
   if (!v) return null;
   for (const ch of v) {
     const code = ch.codePointAt(0);
@@ -279,13 +279,13 @@ function validateDirPath(raw: string, label: string): string | null {
 
 function Field({
   label,
-  value,
+  value = '',
   placeholder,
   onChange,
   validate,
 }: {
   label: string;
-  value: string;
+  value?: string;
   placeholder?: string;
   onChange: (v: string) => void;
   validate?: (v: string) => string | null;
