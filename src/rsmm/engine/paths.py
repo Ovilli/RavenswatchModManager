@@ -225,8 +225,11 @@ def mods_dir() -> Path:
     """
     override = os.environ.get("RSMM_MODS_DIR", "").strip()
     if override:
-        return Path(override).expanduser().resolve()
-    return REPO_ROOT / "mods"
+        path = Path(os.path.expandvars(override)).expanduser().resolve()
+    else:
+        path = REPO_ROOT / "mods"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 REPO_ROOT: Path     = _find_repo_root()

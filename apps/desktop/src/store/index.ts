@@ -70,6 +70,17 @@ function defaultGameDir(): string {
   }
 }
 
+function defaultModsDir(): string {
+  switch (getPlatform()) {
+    case 'windows':
+      return '%APPDATA%\\rsmm\\mods';
+    case 'macos':
+      return '~/Library/Application Support/rsmm/mods';
+    default:
+      return '~/.local/share/rsmm/mods';
+  }
+}
+
 const DEFAULT_PROFILE: Profile = {
   id: 'default',
   name: 'Default',
@@ -179,7 +190,7 @@ export const useApp = create<State>()(
           getPlatform() === 'windows'
             ? '%LOCALAPPDATA%\\rsmm\\backups'
             : '~/.local/share/rsmm/backups',
-        modsDir: '',
+        modsDir: defaultModsDir(),
         sources: ['https://rsmm.dev/registry'],
         density: 'cozy',
       },
