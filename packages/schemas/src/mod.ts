@@ -108,6 +108,7 @@ export const modPatchSchema = z.object({
     .max(12)
     .optional(),
   videos: z.array(z.string().url()).max(8).optional(),
+  nsfw: z.boolean().optional(),
 });
 
 export type ModPatch = z.infer<typeof modPatchSchema>;

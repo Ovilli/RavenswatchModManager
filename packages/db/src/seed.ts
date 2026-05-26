@@ -32,6 +32,7 @@ interface SeedMod {
   tags: string[];
   version: string;
   license?: string;
+  nsfw?: boolean;
 }
 
 const SEED_MODS: SeedMod[] = [
@@ -43,6 +44,8 @@ const SEED_MODS: SeedMod[] = [
   { slug: 'pinned-seed', name: 'Pinned Seed', author: 'rsmm-examples', summary: 'Force a deterministic RNG seed for the entire run.', description: 'Speedrun helper. Sets the run seed from a hex string. All drops, room layouts, and encounters become deterministic.', category: 'speedrun', rating: 4.7, tags: ['speedrun', 'rng'], version: '0.3.0' },
   { slug: 'lantern-hud', name: 'Lantern HUD', author: 'mira_of_thorns', summary: 'Rewrites the HUD in warm gilt tones. Larger health bar.', description: 'Repaints the top-left HUD: health bar gilt, mana bar amber, combo counter set in italics. Larger numeric readouts.', category: 'qol', rating: 4.5, tags: ['hud', 'visual'], version: '1.1.0' },
   { slug: 'wolfheart-buff', name: 'Wolfheart Buff', author: 'pack_runner', summary: 'Buffs the Wolf hero kit. +12% damage at low HP.', description: 'Balance pass for the Wolf hero. Adds a low-HP damage tier. Designed for solo Chaos runs.', category: 'balance', rating: 3.9, tags: ['balance', 'wolf'], version: '0.7.2' },
+  { slug: 'succubus-temptation', name: 'Succubus Temptation', author: 'nightfall', summary: 'Succubus enemy variant with suggestive defeat animations.', description: 'Adds a new Succubus enemy type with custom animations. Contains mature thematic content. NSFW.', category: 'gameplay', rating: 3.5, tags: ['enemy', 'nsfw', 'animation'], version: '1.0.0' },
+  { slug: 'bathhouse-scenes', name: 'Bathhouse Scenes', author: 'nightfall', summary: 'Replaces campfire scenes with bathhouse variants.', description: 'Campfire conversation scenes replaced with bathhouse-themed variants. Mature content.', category: 'cosmetic', rating: 2.8, tags: ['visual', 'nsfw', 'camp'], version: '0.5.0' },
   { slug: 'wolf-iron-fang', name: 'Iron Fang Wolf', author: 'siege_smith', summary: 'Reworks Wolf to a tank. +HP, -speed.', description: 'Alternative Wolf rework. Heavy armour mod — adds 25% HP, removes dash invul frames.', category: 'balance', rating: 3.2, tags: ['balance', 'wolf', 'tank'], version: '0.2.0' },
   { slug: 'merchant-shuffle', name: 'Merchant Shuffle', author: 'coinpurse', summary: 'Reshuffles merchant inventory mid-run on each visit.', description: 'Merchant inventory rerolls between visits. Higher variance, encourages risk runs.', category: 'gameplay', rating: 4.3, tags: ['economy'], version: '1.0.4' },
   { slug: 'long-night', name: 'Long Night', author: 'reed_hush', summary: 'Doubles night-phase length. Bosses spawn earlier.', description: 'Stretches every nightfall. Useful for theatrical runs and for testing late-game balance.', category: 'difficulty', rating: 3.8, tags: ['pacing', 'hard'], version: '0.6.0' },
@@ -77,6 +80,7 @@ async function main() {
         authorName: m.author,
         imageUrl: `https://picsum.photos/seed/${m.slug}/960/540`,
         rating: m.rating.toString(),
+        nsfw: m.nsfw ?? false,
       })
       .onConflictDoUpdate({
         target: mods.slug,
@@ -89,6 +93,7 @@ async function main() {
           authorName: m.author,
           imageUrl: `https://picsum.photos/seed/${m.slug}/960/540`,
           rating: m.rating.toString(),
+          nsfw: m.nsfw ?? false,
           updatedAt: new Date(),
         },
       })

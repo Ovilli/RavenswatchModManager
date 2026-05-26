@@ -3,7 +3,7 @@ import { Badge, Button, Input, Spinner, buttonVariants } from '@rsmm/ui';
 import type { ModVersion } from '@rsmm/schemas';
 import { ApiError } from '@rsmm/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ChevronLeft, ChevronRight, Download, ExternalLink, Star, Trash2, X } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Download, ExternalLink, EyeOff, Star, Trash2, X } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { use, useCallback, useEffect, useMemo, useState } from 'react';
@@ -81,12 +81,18 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
         </Link>
 
         {mod.imageUrl ? (
-          <div className="aspect-[21/9] w-full overflow-hidden rounded-xl border border-border/50 bg-muted">
+          <div className={`group relative aspect-[21/9] w-full overflow-hidden rounded-xl border border-border/50 bg-muted ${mod.nsfw ? 'relative' : ''}`}>
             <img
               src={mod.imageUrl}
               alt={`${mod.name} cover`}
-              className="h-full w-full object-cover"
+              className={`h-full w-full object-cover ${mod.nsfw ? 'blur-xl saturate-0 transition-all duration-300 group-hover:blur-none group-hover:saturate-100' : ''}`}
             />
+            {mod.nsfw ? (
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2">
+                <EyeOff className="h-8 w-8 text-crimson/80" />
+                <span className="font-mono text-xs uppercase tracking-widest text-crimson/80">NSFW</span>
+              </div>
+            ) : null}
           </div>
         ) : (
           <div className="aspect-[21/9] w-full rounded-xl border border-border/50 bg-muted" />
@@ -178,7 +184,7 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
                   </div>
                 ) : null}
                 {(mod.screenshots?.length ?? 0) > 0 ? (
-                  <PublicGallery shots={mod.screenshots ?? []} modName={mod.name} />
+                  <PublicGallery shots={mod.screenshots ?? []} modName={mod.name} nsfw={mod.nsfw ?? false} />
                 ) : null}
               </div>
             ) : null}
@@ -298,7 +304,7 @@ interface PublicShot {
   caption?: string;
 }
 
-function PublicGallery({ shots, modName }: { shots: PublicShot[]; modName: string }) {
+function PublicGallery({ shots, modName, nsfw }: { shots: PublicShot[]; modName: string; nsfw?: boolean }) {
   const [idx, setIdx] = useState<number | null>(null);
   const close = useCallback(() => setIdx(null), []);
   const prev = useCallback(() => {
@@ -328,13 +334,19 @@ function PublicGallery({ shots, modName }: { shots: PublicShot[]; modName: strin
               onClick={() => setIdx(i)}
               className="group block w-full text-left"
             >
-              <div className="aspect-video overflow-hidden rounded-md bg-muted">
+              <div className={`aspect-video overflow-hidden rounded-md bg-muted ${nsfw ? 'group relative' : ''}`}>
                 <img
                   src={shot.url}
                   alt={shot.caption || `${modName} screenshot ${i + 1}`}
                   loading="lazy"
-                  className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
+                  className={`h-full w-full object-cover transition-opacity ${nsfw ? 'blur-xl saturate-0 transition-all duration-300 group-hover:blur-none group-hover:saturate-100' : 'group-hover:opacity-90'}`}
                 />
+                {nsfw ? (
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1">
+                    <EyeOff className="h-5 w-5 text-crimson/80" />
+                    <span className="font-mono text-[10px] uppercase tracking-widest text-crimson/80">NSFW</span>
+                  </div>
+                ) : null}
               </div>
               {shot.caption ? (
                 <p className="mt-1 truncate text-xs text-muted-foreground">{shot.caption}</p>

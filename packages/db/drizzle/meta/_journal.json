@@ -43,6 +43,13 @@
       "when": 1779615670832,
       "tag": "0005_blue_havok",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1740787200000,
+      "tag": "0006_add_nsfw_to_mods",
+      "breakpoints": true
     }
   ]
 }

@@ -110,6 +110,7 @@ export default function ManageModPage() {
   const [repoUrl, setRepoUrl] = useState('');
   const [homepageUrl, setHomepageUrl] = useState('');
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [nsfw, setNsfw] = useState(false);
   const [screenshots, setScreenshots] = useState<Screenshot[]>([]);
   const [videos, setVideos] = useState<string[]>([]);
   const [videoInput, setVideoInput] = useState('');
@@ -135,6 +136,7 @@ export default function ManageModPage() {
     setCategory((mod.category as ModCategory) ?? 'gameplay');
     setTags(mod.tags.join(', '));
     setLicense(mod.license ?? '');
+    setNsfw(mod.nsfw ?? false);
     // repoUrl / homepageUrl are not on ModListItem; leave blank and
     // let the user fill them on first save.
     setRepoUrl('');
@@ -161,6 +163,7 @@ export default function ManageModPage() {
         homepageUrl: homepageUrl.trim() || null,
         screenshots,
         videos,
+        nsfw,
       });
     },
     onSuccess: () => {
@@ -544,6 +547,22 @@ export default function ManageModPage() {
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="tags">Tags (comma-separated)</Label>
             <Input id="tags" value={tags} onChange={(e) => setTags(e.target.value)} />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <label className="flex cursor-pointer items-center gap-3 text-sm">
+              <input
+                type="checkbox"
+                checked={nsfw}
+                onChange={(e) => setNsfw(e.target.checked)}
+                className="h-4 w-4 rounded border-border accent-crimson"
+              />
+              <span className="text-sm font-medium leading-none">
+                <strong>NSFW / mature content</strong>
+              </span>
+            </label>
+            <p className="text-xs text-muted-foreground">
+              If checked, the mod will be hidden behind a blur by default.
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="repo">Repository URL</Label>
