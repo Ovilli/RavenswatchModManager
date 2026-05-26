@@ -1,7 +1,7 @@
 import type { Collection, ModListItem } from '@rsmm/schemas';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
-import { Check, ExternalLink, Loader2, Plus, Search, WifiOff } from 'lucide-react';
+import { Check, ExternalLink, EyeOff, Loader2, Plus, Search, WifiOff } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Button, CopyButton, Cover, MonoTag, SectionHeader, StatPill } from '../components/chrome';
 import { useToast } from '../components/toast';
@@ -29,6 +29,8 @@ function BrowsePage() {
   const createProfile = useApp((s) => s.createProfile);
   const syncLocalMods = useApp((s) => s.syncLocalMods);
   const profile = useApp(activeProfile);
+  const showNsfw = useApp((s) => s.settings.showNsfw);
+  const update = useApp((s) => s.updateSettings);
   const queryClient = useQueryClient();
   const toast = useToast();
   // Per-slug install state so each card spins independently.
@@ -124,12 +126,14 @@ function BrowsePage() {
             (m.author ?? '').toLowerCase().includes(needle),
         )
       : items;
-    return [...filtered].sort((a, b) => {
-      if (sort === 'popular') return b.downloads - a.downloads;
-      if (sort === 'rating') return (b.rating ?? 0) - (a.rating ?? 0);
-      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-    });
-  }, [modData, sort, q, tab]);
+    return [...filtered]
+      .filter((m) => showNsfw || !m.nsfw)
+      .sort((a, b) => {
+        if (sort === 'popular') return b.downloads - a.downloads;
+        if (sort === 'rating') return (b.rating ?? 0) - (a.rating ?? 0);
+        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      });
+  }, [modData, sort, q, tab, showNsfw]);
 
   const collections = useMemo(() => {
     if (tab === 'mods') return [];
@@ -191,20 +195,33 @@ function BrowsePage() {
           />
         </div>
         {tab === 'mods' ? (
-          <div className="flex items-center gap-2">
-            {(['popular', 'recent', 'rating'] as const).map((s) => (
-              <Button
-                key={s}
-                type="button"
-                onClick={() => setSort(s)}
-                aria-pressed={sort === s}
-                variant={sort === s ? 'gilt' : 'default'}
-                size="sm"
-              >
-                {s}
-              </Button>
-            ))}
-          </div>
+          <>
+            <div className="flex items-center gap-2">
+              {(['popular', 'recent', 'rating'] as const).map((s) => (
+                <Button
+                  key={s}
+                  type="button"
+                  onClick={() => setSort(s)}
+                  aria-pressed={sort === s}
+                  variant={sort === s ? 'gilt' : 'default'}
+                  size="sm"
+                >
+                  {s}
+                </Button>
+              ))}
+            </div>
+            <label className="flex cursor-pointer items-center gap-2 text-parchment">
+              <input
+                type="checkbox"
+                checked={showNsfw}
+                onChange={(e) => update({ showNsfw: e.target.checked })}
+                className="h-4 w-4 accent-crimson"
+              />
+              <span className="font-mono text-xs tracking-wider flex items-center gap-1">
+                <EyeOff className="h-3 w-3" /> NSFW
+              </span>
+            </label>
+          </>
         ) : null}
       </div>
 
@@ -327,7 +344,7 @@ function BrowsePage() {
                   className="grimoire-card flex flex-col gap-3 p-5 cursor-pointer transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60 focus:outline-none"
                 >
                   {m.imageUrl ? (
-                    <Cover src={m.imageUrl} alt={`${m.name} cover`} caption={`${m.slug}.png`} />
+                    <Cover src={m.imageUrl} alt={`${m.name} cover`} caption={`${m.slug}.png`} nsfw={m.nsfw} />
                   ) : null}
                   <header className="flex items-start justify-between gap-3">
                     <div>

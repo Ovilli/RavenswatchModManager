@@ -1,3 +1,4 @@
+import { cn } from '@rsmm/ui';
 import { ApiError } from '@rsmm/api-client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
@@ -44,6 +45,7 @@ function ModDetailPage() {
   const installMod = useApp((s) => s.installMod);
   const uninstall = useApp((s) => s.uninstallMod);
   const syncLocalMods = useApp((s) => s.syncLocalMods);
+  const showNsfw = useApp((s) => s.settings.showNsfw);
   const [versionBusy, setVersionBusy] = useState<string | null>(null);
   const [versionError, setVersionError] = useState<string | null>(null);
 
@@ -110,6 +112,7 @@ function ModDetailPage() {
   const rating = apiMod?.rating ?? null;
   const downloads = apiMod?.downloads ?? 0;
   const imageUrl = apiMod?.imageUrl ?? liveBySlug?.image ?? null;
+  const nsfw = apiMod?.nsfw ?? liveBySlug?.nsfw ?? false;
   const apiLatest = apiMod?.latestVersion ?? null;
   const localVersion = liveBySlug?.version ?? null;
   const installedHere = liveBySlug ? installed.includes(liveBySlug.id) : false;
@@ -141,6 +144,7 @@ function ModDetailPage() {
           alt={`${name} cover art`}
           caption={`${slug}-hero.png`}
           className="aspect-[21/9]"
+          nsfw={!showNsfw && nsfw}
         />
       ) : (
         <CoverPlaceholder caption={`${slug}-hero.png`} className="aspect-[21/9]" />
@@ -232,7 +236,7 @@ function ModDetailPage() {
                   </div>
                 ) : null}
                 {screenshots.length > 0 ? (
-                  <ScreenshotGallery shots={screenshots} modName={name} />
+                  <ScreenshotGallery shots={screenshots} modName={name} nsfw={!showNsfw && nsfw} />
                 ) : null}
               </div>
             </Panel>
@@ -408,7 +412,7 @@ interface Screenshot {
   caption?: string;
 }
 
-function ScreenshotGallery({ shots, modName }: { shots: Screenshot[]; modName: string }) {
+function ScreenshotGallery({ shots, modName, nsfw }: { shots: Screenshot[]; modName: string; nsfw?: boolean }) {
   const [idx, setIdx] = useState<number | null>(null);
   const close = useCallback(() => setIdx(null), []);
   const prev = useCallback(() => {
@@ -440,12 +444,15 @@ function ScreenshotGallery({ shots, modName }: { shots: Screenshot[]; modName: s
               onClick={() => setIdx(i)}
               className="group block w-full text-left"
             >
-              <div className="aspect-video overflow-hidden rounded border border-oxblood/30 bg-pitch">
+              <div className={cn('aspect-video overflow-hidden rounded border border-oxblood/30 bg-pitch', nsfw && 'group')}>
                 <img
                   src={shot.url}
                   alt={shot.caption || `${modName} screenshot ${i + 1}`}
                   loading="lazy"
-                  className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
+                  className={cn(
+                    'h-full w-full object-cover transition-opacity group-hover:opacity-90',
+                    nsfw && 'blur-xl saturate-0 transition-all duration-300 group-hover:blur-none group-hover:saturate-100',
+                  )}
                 />
               </div>
               {shot.caption ? (

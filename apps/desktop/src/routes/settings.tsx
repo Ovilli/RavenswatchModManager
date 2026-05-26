@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { ChevronDown, Trash2 } from 'lucide-react';
+import { ChevronDown, EyeOff, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Fleuron, Panel, SectionHeader } from '../components/chrome';
 import { useToast } from '../components/toast';
@@ -253,6 +253,19 @@ function SettingsPage() {
             </label>
           ))}
         </fieldset>
+        <Fleuron className="my-3" />
+        <label className="flex cursor-pointer items-center gap-3 text-parchment">
+          <input
+            type="checkbox"
+            checked={settings.showNsfw}
+            onChange={(e) => update({ showNsfw: e.target.checked })}
+            className="h-4 w-4 accent-crimson"
+          />
+          <span className="font-mono text-sm flex items-center gap-2">
+            <EyeOff className="h-4 w-4 text-crimson" />
+            Show NSFW content
+          </span>
+        </label>
       </Panel>
     </div>
   );
