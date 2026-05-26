@@ -173,9 +173,9 @@ export function Cover({
         )}
       />
       {nsfw ? (
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 transition-opacity duration-300 group-hover:opacity-0">
-          <EyeOff className="h-8 w-8 text-crimson/80" />
-          <span className="font-mono text-xs uppercase tracking-widest text-crimson/80">
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 transition-opacity duration-300 group-hover:opacity-0">
+          <EyeOff className="h-8 w-8 text-crimson/70" />
+          <span className="rounded border border-crimson/30 bg-crimson/10 px-2 py-0.5 font-mono text-xs uppercase tracking-widest text-crimson/90">
             NSFW
           </span>
         </div>

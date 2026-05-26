@@ -1,12 +1,15 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { Link, Outlet, createRootRouteWithContext, useLocation } from '@tanstack/react-router';
-import { AlertTriangle } from 'lucide-react';
-import type { CSSProperties } from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { exit as processExit } from '@tauri-apps/plugin-process';
 import { Command } from '@tauri-apps/plugin-shell';
+import { AlertTriangle } from 'lucide-react';
+import { Terminal } from 'lucide-react';
+import type { CSSProperties, Dispatch, SetStateAction } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import PromotedBanner from '../components/PromotedBanner';
 import { AccountStrip } from '../components/account-strip';
-import { Button, CopyButton, Crest, StatPill } from '../components/chrome';
+import { Button, CopyButton, StatPill } from '../components/chrome';
 import { CommandPalette } from '../components/command-palette';
 import { AboutIcon } from '../components/icons/AboutIcon';
 import { BrowseIcon } from '../components/icons/BrowseIcon';
@@ -15,7 +18,6 @@ import { LaunchIcon } from '../components/icons/LaunchIcon';
 import { LibraryIcon } from '../components/icons/LibraryIcon';
 import { ProfilesIcon } from '../components/icons/ProfilesIcon';
 import { SettingsIcon } from '../components/icons/SettingsIcon';
-import { Terminal } from 'lucide-react';
 import { WindowCloseIcon } from '../components/icons/WindowCloseIcon';
 import { WindowMaximizeIcon } from '../components/icons/WindowMaximizeIcon';
 import { WindowMinimizeIcon } from '../components/icons/WindowMinimizeIcon';
@@ -53,6 +55,25 @@ const dragStyle: AppRegionStyle = { WebkitAppRegion: 'drag' };
 const noDragStyle: AppRegionStyle = { WebkitAppRegion: 'no-drag' };
 const GAME_POLL_INTERVAL_MS = 5000;
 const GAME_START_TIMEOUT_MS = 5 * 60_000;
+
+type LaunchMode = 'vanilla' | 'modded';
+
+interface LaunchState {
+  launching: LaunchMode | null;
+  running: LaunchMode | null;
+  launchError: string | null;
+  setLaunching: Dispatch<SetStateAction<LaunchMode | null>>;
+  setRunning: Dispatch<SetStateAction<LaunchMode | null>>;
+  setLaunchError: Dispatch<SetStateAction<string | null>>;
+}
+
+const LaunchStateContext = createContext<LaunchState | null>(null);
+
+function useLaunchState() {
+  const ctx = useContext(LaunchStateContext);
+  if (!ctx) throw new Error('useLaunchState must be used inside <LaunchStateContext.Provider>');
+  return ctx;
+}
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -106,6 +127,8 @@ function NavLink({ to, icon: Icon, label }: Nav) {
 }
 
 function StatusStrip() {
+  const { launching, running, launchError, setLaunching, setRunning, setLaunchError } =
+    useLaunchState();
   const profile = useApp(activeProfile);
   const installed = useApp((s) => s.installed);
   const profiles = useApp((s) => s.profiles);
@@ -114,9 +137,6 @@ function StatusStrip() {
   const disabled = profile.loadOrder.length - enabled;
   const conflictCount = useMemo(() => detectConflicts(profile).length, [profile]);
   const outdated = useMemo(() => outdatedCount(installed), [installed]);
-  const [launching, setLaunching] = useState<'vanilla' | 'modded' | null>(null);
-  const [running, setRunning] = useState<'vanilla' | 'modded' | null>(null);
-  const [launchError, setLaunchError] = useState<string | null>(null);
 
   const trackGameLifecycle = (mode: 'vanilla' | 'modded', seq: number) => {
     void (async () => {
@@ -191,10 +211,15 @@ function StatusStrip() {
         });
         if (mode === 'modded') {
           try {
-            await appendLauncherLog('info', 'Launch failed after applying mods; restoring original files');
+            await appendLauncherLog(
+              'info',
+              'Launch failed after applying mods; restoring original files',
+            );
             const restore = await restoreAll();
             if (!restore || !restore.ok) {
-              throw new Error(restore?.stderr?.trim() || restore?.stdout?.trim() || 'restore failed');
+              throw new Error(
+                restore?.stderr?.trim() || restore?.stdout?.trim() || 'restore failed',
+              );
             }
             await appendLauncherLog('info', 'Rollback complete');
           } catch (e) {
@@ -221,9 +246,6 @@ function StatusStrip() {
     <div className="surface-grain flex items-center justify-between gap-3 border-b border-border px-3 py-2 backdrop-blur-sm">
       <div className="flex items-center gap-4" style={dragStyle}>
         <span className="font-fraktur text-lg text-parchment">Ravenswatch Mod Manager</span>
-        <span className="font-serif-italic text-ash min-w-0 max-w-[min(28rem,40vw)] truncate" title={profile.name}>
-          {profile.name} <span className="text-ash/60">·</span> {profiles.length} profiles
-        </span>
       </div>
 
       <div className="flex items-center gap-2">
@@ -295,8 +317,12 @@ async function getAppWindow() {
 }
 
 function WindowControls() {
+  const { running } = useLaunchState();
   const [maximized, setMaximized] = useState(false);
   const [available, setAvailable] = useState(false);
+  const [quitPromptOpen, setQuitPromptOpen] = useState(false);
+  const [quitError, setQuitError] = useState<string | null>(null);
+  const [quitBusy, setQuitBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -335,6 +361,65 @@ function WindowControls() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    let unlistenClose: (() => void) | null = null;
+
+    (async () => {
+      try {
+        const aw = await getAppWindow();
+        if (!aw || cancelled) return;
+        const off = await aw.onCloseRequested(async (event) => {
+          if (running !== 'modded') return;
+          event.preventDefault();
+          setQuitError(null);
+          setQuitPromptOpen(true);
+        });
+        if (cancelled) off();
+        else unlistenClose = off;
+      } catch (err) {
+        console.warn('window close handler setup failed', err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      unlistenClose?.();
+    };
+  }, [running]);
+
+  const closeAnyway = async () => {
+    if (quitBusy) return;
+    setQuitBusy(true);
+    setQuitError(null);
+    try {
+      await processExit(0);
+      setQuitPromptOpen(false);
+    } catch (e) {
+      setQuitError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setQuitBusy(false);
+    }
+  };
+
+  const restoreAndQuit = async () => {
+    if (quitBusy) return;
+    setQuitBusy(true);
+    setQuitError(null);
+    try {
+      const result = await restoreAll();
+      if (!result || !result.ok) {
+        throw new Error(result?.stderr?.trim() || result?.stdout?.trim() || 'restore failed');
+      }
+      await processExit(0);
+      setQuitPromptOpen(false);
+    } catch (e) {
+      setQuitError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setQuitBusy(false);
+    }
+  };
+
   const withWindow = async (
     action: (aw: NonNullable<Awaited<ReturnType<typeof getAppWindow>>>) => Promise<void>,
     label: string,
@@ -346,13 +431,24 @@ function WindowControls() {
     }
     try {
       await action(aw);
+      return true;
     } catch (e) {
       console.warn(`${label} failed`, e);
+      return false;
     }
   };
 
   const doMinimize = () => withWindow((aw) => aw.minimize(), 'minimize');
-  const doClose = () => withWindow((aw) => aw.close(), 'close');
+  const doClose = () => {
+    void (async () => {
+      if (running === 'modded') {
+        setQuitError(null);
+        setQuitPromptOpen(true);
+        return;
+      }
+      await processExit(0);
+    })();
+  };
   const doToggleMax = () =>
     withWindow(async (aw) => {
       const isMax = await aw.isMaximized();
@@ -416,6 +512,52 @@ function WindowControls() {
       >
         <WindowCloseIcon className="h-4 w-4 text-crimson" />
       </button>
+
+      {quitPromptOpen
+        ? createPortal(
+            <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in">
+              <div
+                className="absolute inset-0 bg-pitch/80"
+                onClick={() => !quitBusy && setQuitPromptOpen(false)}
+              />
+              <div className="grimoire-card relative w-[min(520px,92vw)] p-5">
+                <h3 className="font-fraktur text-xl text-parchment">Quit with active overrides?</h3>
+                <p className="font-serif-italic mt-2 text-ash">
+                  Ravenswatch is still running with modded files applied. Quitting now leaves those
+                  overrides in place until you restore them.
+                </p>
+                <div className="mt-4 flex flex-nowrap justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setQuitPromptOpen(false)}
+                    disabled={quitBusy}
+                    className="whitespace-nowrap border border-border px-3 py-1.5 text-ash hover:text-parchment disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void restoreAndQuit()}
+                    disabled={quitBusy}
+                    className="whitespace-nowrap border border-gilt/60 bg-gilt/20 px-3 py-1.5 text-parchment hover:bg-gilt/30 disabled:opacity-60"
+                  >
+                    Restore & quit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void closeAnyway()}
+                    disabled={quitBusy}
+                    className="whitespace-nowrap border border-crimson bg-crimson/80 px-3 py-1.5 text-parchment hover:bg-oxblood disabled:opacity-60"
+                  >
+                    Quit anyway
+                  </button>
+                </div>
+                {quitError ? <p className="mt-3 text-sm text-crimson">{quitError}</p> : null}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
@@ -423,7 +565,22 @@ function WindowControls() {
 function RootLayout() {
   const location = useLocation();
   const mainRef = useRef<HTMLElement | null>(null);
+  const [launching, setLaunching] = useState<LaunchMode | null>(null);
+  const [running, setRunning] = useState<LaunchMode | null>(null);
+  const [launchError, setLaunchError] = useState<string | null>(null);
+  const launchState = useMemo(
+    () => ({
+      launching,
+      running,
+      launchError,
+      setLaunching,
+      setRunning,
+      setLaunchError,
+    }),
+    [launchError, launching, running],
+  );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-scroll on navigation
   useEffect(() => {
     mainRef.current?.scrollTo({ top: 0, left: 0 });
   }, [location.pathname]);
@@ -431,47 +588,55 @@ function RootLayout() {
   return (
     <ToastProvider>
       <DialogProvider>
-        <div className="flex h-screen w-screen overflow-hidden">
-          <aside className="surface-grain flex w-72 flex-col border-r border-border">
-            <div className="px-5 pt-5 pb-4">
-              <div className="flex items-center gap-3">
-                <div>
-                  <img src="/logo.png" alt="Ravenswatch Mod Manager" className="h-14 w-14 rounded-md object-cover" />
-                </div>
-                <div>
-                  <h1 className="font-fraktur text-3xl leading-none text-parchment">RSMM</h1>
-                  <p className="font-serif-italic mt-1 text-sm text-ash">Ravenswatch Mod Manager</p>
+        <LaunchStateContext.Provider value={launchState}>
+          <div className="flex h-screen w-screen overflow-hidden">
+            <aside className="surface-grain flex w-72 flex-col border-r border-border">
+              <div className="px-5 pt-5 pb-4">
+                <div className="flex items-center gap-3">
+                  <div>
+                    <img
+                      src="/logo.png"
+                      alt="Ravenswatch Mod Manager"
+                      className="h-14 w-14 rounded-md object-cover"
+                    />
+                  </div>
+                  <div>
+                    <h1 className="font-fraktur text-3xl leading-none text-parchment">RSMM</h1>
+                    <p className="font-serif-italic mt-1 text-sm text-ash">
+                      Ravenswatch Mod Manager
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="px-4 pb-3">
-              <ProfilePopover />
-            </div>
-
-            <nav className="flex flex-1 flex-col gap-1 px-2 py-2">
-              {NAV.map((n) => (
-                <NavLink key={n.to} {...n} />
-              ))}
-            </nav>
-            <AccountStrip />
-            <div className="px-4 pb-4">
-              <PromotedBanner vertical />
-            </div>
-          </aside>
-
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <StatusStrip />
-            <UpdaterBanner />
-            <main ref={mainRef} className="min-h-0 flex-1 overflow-y-auto px-6 py-6 md:px-8">
-              <div className="mx-auto w-full max-w-7xl animate-page-in">
-                <Outlet />
+              <div className="px-4 pb-3">
+                <ProfilePopover />
               </div>
-            </main>
+
+              <nav className="flex flex-1 flex-col gap-1 px-2 py-2">
+                {NAV.map((n) => (
+                  <NavLink key={n.to} {...n} />
+                ))}
+              </nav>
+              <AccountStrip />
+              <div className="px-4 pb-4">
+                <PromotedBanner vertical />
+              </div>
+            </aside>
+
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <StatusStrip />
+              <UpdaterBanner />
+              <main ref={mainRef} className="min-h-0 flex-1 overflow-y-auto px-6 py-6 md:px-8">
+                <div className="mx-auto w-full max-w-7xl animate-page-in">
+                  <Outlet />
+                </div>
+              </main>
+            </div>
+
+            <CommandPalette />
           </div>
-
-          <CommandPalette />
-        </div>
+        </LaunchStateContext.Provider>
       </DialogProvider>
     </ToastProvider>
   );

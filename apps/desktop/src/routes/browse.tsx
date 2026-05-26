@@ -1,9 +1,10 @@
 import type { Collection, ModListItem } from '@rsmm/schemas';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
-import { Check, ExternalLink, EyeOff, Loader2, Plus, Search, WifiOff } from 'lucide-react';
+import { ExternalLink, EyeOff, Loader2, Plus, Search, WifiOff } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Button, CopyButton, Cover, MonoTag, SectionHeader, StatPill } from '../components/chrome';
+import { CheckIcon } from '../components/icons/CheckIcon';
 import { useToast } from '../components/toast';
 import { api, getApiBaseUrl } from '../lib/api';
 import { validateProfileName } from '../lib/profile-name';
@@ -57,8 +58,7 @@ function BrowsePage() {
       // Default profile installs create a new "My Mods" profile — read the
       // active profile after installMod, not the requested id.
       const { profiles, activeProfileId } = useApp.getState();
-      const profileName =
-        profiles.find((p) => p.id === activeProfileId)?.name ?? 'profile';
+      const profileName = profiles.find((p) => p.id === activeProfileId)?.name ?? 'profile';
       toast.push(`Added ${slug} to “${profileName}”.`, 'success');
       // Bust the list cache so download counts refresh.
       await queryClient.invalidateQueries({ queryKey: ['mods', 'list'] });
@@ -97,7 +97,11 @@ function BrowsePage() {
   }
 
   // Mods query
-  const { data: modData, error: modError, isLoading: modLoading } = useQuery({
+  const {
+    data: modData,
+    error: modError,
+    isLoading: modLoading,
+  } = useQuery({
     queryKey: ['mods', 'list', q],
     queryFn: () => api.mods.list({ q: q.trim() || undefined, limit: 100 }),
     staleTime: 30_000,
@@ -106,7 +110,11 @@ function BrowsePage() {
   });
 
   // Collections query
-  const { data: colData, error: colError, isLoading: colLoading } = useQuery({
+  const {
+    data: colData,
+    error: colError,
+    isLoading: colLoading,
+  } = useQuery({
     queryKey: ['collections', 'public'],
     queryFn: () => api.collections.list(),
     staleTime: 30_000,
@@ -217,7 +225,7 @@ function BrowsePage() {
                 onChange={(e) => update({ showNsfw: e.target.checked })}
                 className="h-4 w-4 accent-crimson"
               />
-              <span className="font-mono text-xs tracking-wider flex items-center gap-1">
+              <span className="inline-flex items-center gap-1 rounded border border-crimson/30 bg-crimson/10 px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-widest text-crimson/80">
                 <EyeOff className="h-3 w-3" /> NSFW
               </span>
             </label>
@@ -240,7 +248,8 @@ function BrowsePage() {
             </button>
           </div>
           <div className="font-mono text-xs text-ash bg-pitch/30 px-2 py-1 rounded">
-            {getApiBaseUrl()} <span className="text-oxblood/60">|</span> origin: {window.location.origin}
+            {getApiBaseUrl()} <span className="text-oxblood/60">|</span> origin:{' '}
+            {window.location.origin}
           </div>
         </div>
       ) : null}
@@ -312,9 +321,7 @@ function BrowsePage() {
           </div>
           {!isLoading && !error && collections.length === 0 ? (
             <p className="font-serif-italic py-10 text-center text-ash">
-              {q.trim()
-                ? 'No collections match that search.'
-                : 'No public collections yet.'}
+              {q.trim() ? 'No collections match that search.' : 'No public collections yet.'}
             </p>
           ) : null}
         </>
@@ -344,7 +351,12 @@ function BrowsePage() {
                   className="grimoire-card flex flex-col gap-3 p-5 cursor-pointer transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60 focus:outline-none"
                 >
                   {m.imageUrl ? (
-                    <Cover src={m.imageUrl} alt={`${m.name} cover`} caption={`${m.slug}.png`} nsfw={m.nsfw} />
+                    <Cover
+                      src={m.imageUrl}
+                      alt={`${m.name} cover`}
+                      caption={`${m.slug}.png`}
+                      nsfw={m.nsfw}
+                    />
                   ) : null}
                   <header className="flex items-start justify-between gap-3">
                     <div>
@@ -384,7 +396,7 @@ function BrowsePage() {
                         </>
                       ) : inProfile ? (
                         <>
-                          <Check className="h-3.5 w-3.5" /> in profile
+                          <CheckIcon className="h-4 w-4" /> in profile
                         </>
                       ) : onDisk ? (
                         <>
@@ -549,9 +561,7 @@ function BrowseSkeleton() {
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" aria-busy="true">
       {Array.from({ length: 6 }).map((_, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton elements, no reordering
-        <div key={i}
-          className="grimoire-card flex flex-col gap-3 p-5 animate-pulse"
-        >
+        <div key={i} className="grimoire-card flex flex-col gap-3 p-5 animate-pulse">
           <div className="aspect-video w-full bg-oxblood/20 rounded" />
           <div className="h-6 w-3/4 bg-oxblood/20 rounded" />
           <div className="h-4 w-1/2 bg-oxblood/15 rounded" />

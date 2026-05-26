@@ -1,9 +1,9 @@
 import { ApiError, isRateLimited } from '@rsmm/api-client';
+import { ProgressBar } from '@rsmm/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import {
   ArrowLeft,
-  Check,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -13,7 +13,6 @@ import {
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { ProgressBar } from '@rsmm/ui';
 import {
   Button,
   Cover,
@@ -25,6 +24,7 @@ import {
   SectionHeader,
   StatPill,
 } from '../components/chrome';
+import { CheckIcon } from '../components/icons/CheckIcon';
 import { useToast } from '../components/toast';
 import { useDialog } from '../components/toast';
 import { api } from '../lib/api';
@@ -185,16 +185,23 @@ function CollectionDetailPage() {
           ← back
         </Button>
         <p className="font-serif-italic text-parchment">
-          {error
-            ? 'Could not load this collection.'
-            : `No collection matches "${slug}".`}
+          {error ? 'Could not load this collection.' : `No collection matches "${slug}".`}
         </p>
       </div>
     );
   }
 
-  const { name, summary, description, imageUrl, ownerName, modCount, updatedAt, screenshots, mods } =
-    data;
+  const {
+    name,
+    summary,
+    description,
+    imageUrl,
+    ownerName,
+    modCount,
+    updatedAt,
+    screenshots,
+    mods,
+  } = data;
 
   const markdownBody = description || summary || undefined;
 
@@ -313,10 +320,7 @@ function CollectionDetailPage() {
                 {mods.map((m) => {
                   const inProfile = profile.loadOrder.includes(m.slug);
                   return (
-                    <li
-                      key={m.id}
-                      className="flex items-center justify-between gap-4 py-3"
-                    >
+                    <li key={m.id} className="flex items-center justify-between gap-4 py-3">
                       <div className="min-w-0 flex-1">
                         <button
                           type="button"
@@ -345,7 +349,7 @@ function CollectionDetailPage() {
                         {installing[m.slug] ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         ) : inProfile ? (
-                          <Check className="h-3.5 w-3.5" />
+                          <CheckIcon className="h-4 w-4" />
                         ) : (
                           <Plus className="h-3.5 w-3.5" />
                         )}
@@ -359,9 +363,7 @@ function CollectionDetailPage() {
             <Panel>
               <h3 className="font-fraktur text-xl text-parchment mb-3">Mods</h3>
               <Fleuron />
-              <p className="mt-4 font-serif-italic text-ash">
-                This collection has no mods yet.
-              </p>
+              <p className="mt-4 font-serif-italic text-ash">This collection has no mods yet.</p>
             </Panel>
           ) : null}
         </div>
@@ -380,9 +382,7 @@ function CollectionDetailPage() {
 
       {installError ? (
         <div className="ember-banner flex items-center gap-3 px-4 py-3">
-          <span className="font-serif-italic text-base text-crimson flex-1">
-            {installError}
-          </span>
+          <span className="font-serif-italic text-base text-crimson flex-1">{installError}</span>
           <Button type="button" size="sm" onClick={() => setInstallError(null)}>
             dismiss
           </Button>
@@ -394,9 +394,7 @@ function CollectionDetailPage() {
           shots={screenshots}
           idx={lightboxIdx}
           onClose={() => setLightboxIdx(null)}
-          onPrev={() =>
-            setLightboxIdx((lightboxIdx - 1 + screenshots.length) % screenshots.length)
-          }
+          onPrev={() => setLightboxIdx((lightboxIdx - 1 + screenshots.length) % screenshots.length)}
           onNext={() => setLightboxIdx((lightboxIdx + 1) % screenshots.length)}
         />
       ) : null}
