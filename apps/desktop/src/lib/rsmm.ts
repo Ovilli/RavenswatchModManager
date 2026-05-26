@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { type Child, Command } from '@tauri-apps/plugin-shell';
 import { useApp } from '../store';
+import { getPlatform } from './platform';
 
 interface ExecResult {
   code: number | null;
@@ -115,9 +116,20 @@ async function rsmm<T = unknown>(
   }
 }
 
+function defaultModsDir(): string {
+  switch (getPlatform()) {
+    case 'windows':
+      return '%APPDATA%\\rsmm\\mods';
+    case 'macos':
+      return '~/Library/Application Support/rsmm/mods';
+    default:
+      return '~/.local/share/rsmm/mods';
+  }
+}
+
 function rsmmEnv(): Record<string, string> {
-  const modsDir = useApp.getState().settings.modsDir?.trim();
-  return modsDir ? { RSMM_MODS_DIR: modsDir } : {};
+  const modsDir = useApp.getState().settings.modsDir?.trim() || defaultModsDir();
+  return { RSMM_MODS_DIR: modsDir };
 }
 
 const SIDECAR_PROGS = ['binaries/rsmm'] as const;
