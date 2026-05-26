@@ -25,6 +25,7 @@ Subcommands:
         <slug> <version>            download a specific version of a mod
     rsmm json config get <id>       read a mod's config schema + values
     rsmm json config set <id> <js>  replace a mod's config values
+    rsmm json uninstall-mod <id>    remove a mod from mods/<id>/
 
 All commands emit a single JSON object/array on stdout (UTF-8, no trailing
 newline). Stderr is forwarded for diagnostics. Exit code is 0 on success.
@@ -168,6 +169,34 @@ def cmd_config_set(mod_id: str, values_json: str) -> int:
         "path": str(store.mod_dir),
         "schema": store.schema_as_dict(),
         "values": store.as_dict(),
+    })
+
+
+def cmd_uninstall_mod(mod_id: str) -> int:
+    mod_path = (MODS_DIR / mod_id).resolve()
+    mods_root = MODS_DIR.resolve()
+    try:
+        mod_path.relative_to(mods_root)
+    except ValueError:
+        return _emit({"ok": False, "error": f"invalid mod id: {mod_id!r}"})
+
+    try:
+        if mod_path.is_dir():
+            shutil.rmtree(mod_path)
+            removed = True
+        elif mod_path.exists():
+            mod_path.unlink()
+            removed = True
+        else:
+            removed = False
+    except OSError as exc:
+        return _emit({"ok": False, "error": f"failed to remove {mod_path}: {exc}"})
+
+    return _emit({
+        "ok": True,
+        "modId": mod_id,
+        "removed": removed,
+        "removedPath": str(mod_path),
     })
 
 
@@ -799,6 +828,8 @@ def main(argv: list[str] | None = None) -> int:
     p_cfg_set = cfg_sub.add_parser("set", help="replace config values")
     p_cfg_set.add_argument("mod_id", help="folder name under mods/")
     p_cfg_set.add_argument("values_json", help="JSON object with config values")
+    p_uninstall = sub.add_parser("uninstall-mod", help="remove a mod from mods/<id>/")
+    p_uninstall.add_argument("mod_id", help="folder name under mods/")
 
     args = ap.parse_args(argv)
     if args.cmd == "list":
@@ -838,6 +869,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_config_set(args.mod_id, args.values_json)
         ap.error(f"unknown config subcommand: {args.config_cmd}")
         return 2
+    if args.cmd == "uninstall-mod":
+        return cmd_uninstall_mod(args.mod_id)
     ap.error(f"unknown subcommand: {args.cmd}")
     return 2
 

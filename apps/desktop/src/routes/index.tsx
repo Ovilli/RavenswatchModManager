@@ -18,8 +18,9 @@ import { SetupBanner } from '../components/setup-banner';
 import { useDialog } from '../components/toast';
 import { UpdatesPanel } from '../components/updates-panel';
 import type { ModCategory } from '../data/mock-mods';
-import { listLocalMods } from '../lib/rsmm';
+import { listLocalMods, uninstallLocalMod } from '../lib/rsmm';
 import { activeProfile, detectConflicts, getMod, isEnabledIn, useApp } from '../store';
+import { useToast } from '../components/toast';
 
 export const Route = createFileRoute('/')({
   component: LibraryPage,
@@ -55,10 +56,10 @@ const CATEGORY_LABEL: Record<ModCategory, string> = {
 function LibraryPage() {
   const navigate = useNavigate();
   const dialog = useDialog();
+  const toast = useToast();
   const profile = useApp(activeProfile);
   const toggleMod = useApp((s) => s.toggleMod);
   const reorderMod = useApp((s) => s.reorderMod);
-  const uninstall = useApp((s) => s.uninstallMod);
   const installed = useApp((s) => s.installed);
   const syncLocalMods = useApp((s) => s.syncLocalMods);
   const modsDir = useApp((s) => s.settings.modsDir);
@@ -267,10 +268,41 @@ function LibraryPage() {
   const bulkDisable = useCallback(() => {
     void requestDisableMods([...selected]);
   }, [requestDisableMods, selected]);
+  const refreshLocalMods = useCallback(async () => {
+    const local = await listLocalMods();
+    if (local) syncLocalMods(local);
+  }, [syncLocalMods]);
+
+  const removeLocalMod = useCallback(async (id: string) => {
+    const result = await uninstallLocalMod(id);
+    if (!result || !result.ok) {
+      throw new Error(result?.error || `Failed to uninstall ${id}`);
+    }
+  }, []);
+
+  const uninstall = useCallback(
+    async (id: string) => {
+      await removeLocalMod(id);
+      await refreshLocalMods();
+      toast.push('Mod uninstalled.', 'success');
+    },
+    [refreshLocalMods, removeLocalMod, toast],
+  );
+
   const bulkUninstall = useCallback(() => {
-    for (const id of selected) uninstall(id);
-    clearSelection();
-  }, [clearSelection, selected, uninstall]);
+    void (async () => {
+      try {
+        for (const id of selected) {
+          await removeLocalMod(id);
+        }
+        await refreshLocalMods();
+        clearSelection();
+        toast.push('Selected mods uninstalled.', 'success');
+      } catch (err) {
+        toast.push(err instanceof Error ? err.message : String(err), 'error');
+      }
+    })();
+  }, [clearSelection, refreshLocalMods, removeLocalMod, selected, toast]);
 
   const handleToggle = useCallback(
     (id: string) => {

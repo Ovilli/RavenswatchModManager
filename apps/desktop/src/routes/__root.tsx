@@ -72,6 +72,9 @@ function createGameProbeCommand() {
 async function isRavenswatchRunning(): Promise<boolean> {
   try {
     const result = await createGameProbeCommand().execute();
+    if (getPlatform() === 'windows') {
+      return /\bRavenswatch\.exe\b/i.test(result.stdout);
+    }
     return result.code === 0;
   } catch {
     return false;
