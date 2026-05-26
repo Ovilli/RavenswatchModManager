@@ -472,6 +472,18 @@ export const runVanilla = () =>
 export const restoreAll = () =>
   rsmm<RunResult>(['restore-all'], { timeoutMs: LONG_TIMEOUT_MS });
 
+export interface ActiveOverridesStatus {
+  ok: boolean;
+  gameDir?: string | null;
+  cookingDir?: string | null;
+  hasActiveOverrides: boolean;
+  activeOverrideCount: number;
+  error?: string;
+}
+
+export const getActiveOverridesStatus = () =>
+  rsmm<ActiveOverridesStatus>(['active-overrides'], { timeoutMs: LONG_TIMEOUT_MS });
+
 export async function runModded(): Promise<RunResult | null> {
   const applyResult = await applyMods();
   if (applyResult && applyResult.ok === false) {

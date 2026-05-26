@@ -1,8 +1,9 @@
 import { useNavigate } from '@tanstack/react-router';
-import { Check, ChevronDown, Copy, Plus } from 'lucide-react';
+import { ChevronDown, Copy, Plus } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { validateProfileName } from '../lib/profile-name';
 import { useApp } from '../store';
+import { CheckIcon } from './icons/CheckIcon';
 import { useDialog, useToast } from './toast';
 
 export function ProfilePopover() {
@@ -70,7 +71,10 @@ export function ProfilePopover() {
       >
         <span className="min-w-0 flex-1">
           <span className="block font-mono text-ash">profile</span>
-          <span className="block truncate font-serif-italic text-lg text-parchment" title={active?.name}>
+          <span
+            className="block truncate font-serif-italic text-lg text-parchment"
+            title={active?.name}
+          >
             {active?.name}
           </span>
         </span>
@@ -102,7 +106,7 @@ export function ProfilePopover() {
                     </span>
                     <span className="font-mono ml-2 text-ash">{p.loadOrder.length} mods</span>
                   </span>
-                  {p.id === activeId ? <Check className="h-4 w-4 text-crimson" /> : null}
+                  {p.id === activeId ? <CheckIcon className="h-5 w-5 text-crimson" /> : null}
                 </button>
               </li>
             ))}

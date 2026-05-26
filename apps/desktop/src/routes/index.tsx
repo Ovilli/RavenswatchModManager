@@ -1,6 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
-import { AlertTriangle, ArrowUpDown, GripVertical, LayoutGrid, List, Plus, Search, SlidersHorizontal, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowUpDown,
+  GripVertical,
+  LayoutGrid,
+  List,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  X,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
@@ -16,11 +26,11 @@ import {
 import { ModConfigPanel } from '../components/mod-config-panel';
 import { SetupBanner } from '../components/setup-banner';
 import { useDialog } from '../components/toast';
+import { useToast } from '../components/toast';
 import { UpdatesPanel } from '../components/updates-panel';
 import type { ModCategory } from '../data/mock-mods';
 import { listLocalMods, uninstallLocalMod } from '../lib/rsmm';
 import { activeProfile, detectConflicts, getMod, isEnabledIn, useApp } from '../store';
-import { useToast } from '../components/toast';
 
 export const Route = createFileRoute('/')({
   component: LibraryPage,
@@ -29,18 +39,6 @@ export const Route = createFileRoute('/')({
 type ViewMode = 'cards' | 'list' | 'config';
 type LibraryStatusFilter = 'all' | 'enabled' | 'disabled' | 'outdated' | 'missingDeps';
 type LibrarySort = 'load-order' | 'name' | 'author' | 'version';
-
-const LIBRARY_CATEGORIES: { id: ModCategory | 'all'; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'gameplay', label: 'Gameplay' },
-  { id: 'balance', label: 'Balance' },
-  { id: 'cosmetic', label: 'Cosmetic' },
-  { id: 'qol', label: 'QoL' },
-  { id: 'audio', label: 'Audio' },
-  { id: 'difficulty', label: 'Difficulty' },
-  { id: 'speedrun', label: 'Speedrun' },
-  { id: 'utility', label: 'Utility' },
-];
 
 const CATEGORY_LABEL: Record<ModCategory, string> = {
   gameplay: 'Gameplay',
@@ -75,6 +73,12 @@ function LibraryPage() {
   // it's been explicitly added to the active profile's load order.
   // Mods present on disk but not in this profile live in /browse with
   // an "Installed elsewhere" badge — they don't show up here.
+
+  const availableCategories = useMemo(() => {
+    const cats = new Set(Object.values(localModsState).map((m) => m.category));
+    return ['all' as const, ...cats];
+  }, [localModsState]);
+
   const enabledCount = useMemo(
     () => profile.loadOrder.filter((id) => isEnabledIn(profile, id)).length,
     [profile],
@@ -90,7 +94,11 @@ function LibraryPage() {
     return counts;
   }, [conflicts]);
 
-  const { data: localMods, error: localModsError, isLoading: localModsLoading } = useQuery({
+  const {
+    data: localMods,
+    error: localModsError,
+    isLoading: localModsLoading,
+  } = useQuery({
     queryKey: ['rsmm', 'list', modsDir],
     queryFn: listLocalMods,
     retry: false,
@@ -433,10 +441,10 @@ function LibraryPage() {
             className="select-grim font-mono border border-border bg-pitch/60 px-3 py-2 text-xs text-parchment focus:border-gilt/60 focus:outline-none"
             aria-label="Sort mods"
           >
-           <option value="load-order">Load order</option>
-           <option value="name">Name</option>
-           <option value="author">Author</option>
-           <option value="version">Version</option>
+            <option value="load-order">Load order</option>
+            <option value="name">Name</option>
+            <option value="author">Author</option>
+            <option value="version">Version</option>
           </select>
           <ArrowUpDown className="h-4 w-4 text-ash" aria-hidden />
         </div>
@@ -445,57 +453,59 @@ function LibraryPage() {
       {hasSelection ? (
         <Panel className="flex flex-wrap items-center justify-between gap-3">
           <div>
-           <h3 className="font-fraktur text-lg text-parchment">{selected.size} selected</h3>
-           <p className="font-serif-italic text-sm text-ash">
-             Bulk actions apply to the active profile.
-             {selectedMissingDeps > 0 ? ` ${selectedMissingDeps} missing dependencies across the selection.` : ''}
-           </p>
+            <h3 className="font-fraktur text-lg text-parchment">{selected.size} selected</h3>
+            <p className="font-serif-italic text-sm text-ash">
+              Bulk actions apply to the active profile.
+              {selectedMissingDeps > 0
+                ? ` ${selectedMissingDeps} missing dependencies across the selection.`
+                : ''}
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-           <Button type="button" size="sm" variant="primary" onClick={bulkEnable}>
-             Enable selected
-           </Button>
-           <Button type="button" size="sm" onClick={bulkDisable}>
-             Disable selected
-           </Button>
-           <Button type="button" size="sm" variant="danger" onClick={bulkUninstall}>
-             Uninstall selected
-           </Button>
-           <Button type="button" size="sm" onClick={selectAllVisible}>
-             Select filtered
-           </Button>
-           <Button type="button" size="sm" onClick={clearSelection}>
-             Clear
-           </Button>
+            <Button type="button" size="sm" variant="primary" onClick={bulkEnable}>
+              Enable selected
+            </Button>
+            <Button type="button" size="sm" onClick={bulkDisable}>
+              Disable selected
+            </Button>
+            <Button type="button" size="sm" variant="danger" onClick={bulkUninstall}>
+              Uninstall selected
+            </Button>
+            <Button type="button" size="sm" onClick={selectAllVisible}>
+              Select filtered
+            </Button>
+            <Button type="button" size="sm" onClick={clearSelection}>
+              Clear
+            </Button>
           </div>
         </Panel>
       ) : null}
 
       <div className="flex flex-wrap gap-1.5">
-        {LIBRARY_CATEGORIES.map((item) => (
+        {availableCategories.map((cat) => (
           <Button
-           key={item.id}
-           type="button"
-           onClick={() => setCategory(item.id)}
-           aria-pressed={category === item.id}
-           variant={category === item.id ? 'danger' : 'default'}
-           size="sm"
+            key={cat}
+            type="button"
+            onClick={() => setCategory(cat)}
+            aria-pressed={category === cat}
+            variant={category === cat ? 'danger' : 'default'}
+            size="sm"
           >
-           {item.label}
+            {cat === 'all' ? 'All' : CATEGORY_LABEL[cat]}
           </Button>
         ))}
         {filterCount > 0 ? (
           <Button
-           type="button"
-           onClick={() => {
-             setQuery('');
-             setCategory('all');
-             setStatus('all');
-           }}
-           variant="default"
-           size="sm"
+            type="button"
+            onClick={() => {
+              setQuery('');
+              setCategory('all');
+              setStatus('all');
+            }}
+            variant="default"
+            size="sm"
           >
-           <X className="h-4 w-4" /> Clear filters
+            <X className="h-4 w-4" /> Clear filters
           </Button>
         ) : null}
       </div>
@@ -595,7 +605,8 @@ function LibraryPage() {
       {view === 'config' && hasDirtyConfigs ? (
         <div className="ember-banner flex items-center justify-between gap-3 px-4 py-3">
           <span className="font-serif-italic text-base">
-            {dirtyConfigs.size} config panel{dirtyConfigs.size === 1 ? '' : 's'} have unsaved changes.
+            {dirtyConfigs.size} config panel{dirtyConfigs.size === 1 ? '' : 's'} have unsaved
+            changes.
           </span>
           <span className="font-mono text-ash">Save or reset before leaving.</span>
         </div>
@@ -709,7 +720,9 @@ function CardGrid({
             <div className="flex flex-wrap items-center gap-2">
               {outdated ? <MonoTag tone="gilt">Update {mod.latestVersion}</MonoTag> : null}
               {depCount > 0 ? <MonoTag tone="crimson">{depCount} missing deps</MonoTag> : null}
-              {conflictCount > 0 ? <MonoTag tone="crimson">{conflictCount} conflicts</MonoTag> : null}
+              {conflictCount > 0 ? (
+                <MonoTag tone="crimson">{conflictCount} conflicts</MonoTag>
+              ) : null}
               <MonoTag tone="default">{mod.category}</MonoTag>
               <StatPill value={`#${orderIdx + 1}`} label="folder" className="tracking-normal" />
               <InkSwitch
@@ -822,12 +835,18 @@ function ListView({
                 ) : null}
               </p>
               <div className="mt-1 flex flex-wrap gap-1.5">
-                {(missingDeps.get(id) ?? 0) > 0 ? <MonoTag tone="crimson">missing deps</MonoTag> : null}
+                {(missingDeps.get(id) ?? 0) > 0 ? (
+                  <MonoTag tone="crimson">missing deps</MonoTag>
+                ) : null}
                 {(conflictCounts.get(id) ?? 0) > 0 ? (
                   <MonoTag tone="crimson">conflict</MonoTag>
                 ) : null}
               </div>
-              <DependencyStrip mod={mod} profile={profile} onEnableDependency={onEnableDependency} />
+              <DependencyStrip
+                mod={mod}
+                profile={profile}
+                onEnableDependency={onEnableDependency}
+              />
             </div>
             <StatPill value={`#${orderIdx + 1}`} label="load" className="tracking-normal" />
             <StatPill value={`#${orderIdx + 1}`} label="folder" className="tracking-normal" />
@@ -888,7 +907,10 @@ function DependencyStrip({
   );
 }
 
-function getMissingDependencyCount(mod: NonNullable<ReturnType<typeof getMod>>, profile: ReturnType<typeof activeProfile>): number {
+function getMissingDependencyCount(
+  mod: NonNullable<ReturnType<typeof getMod>>,
+  profile: ReturnType<typeof activeProfile>,
+): number {
   return mod.dependencies.filter((depId) => !profile.loadOrder.includes(depId)).length;
 }
 

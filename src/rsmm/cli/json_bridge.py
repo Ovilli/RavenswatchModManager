@@ -233,6 +233,53 @@ def cmd_restore_all() -> int:
     return _run_rsmm(["apply", "--restore-all"])
 
 
+def cmd_active_overrides() -> int:
+    game_dir = find_game_dir()
+    if game_dir is None:
+        return _emit({
+            "ok": True,
+            "gameDir": None,
+            "cookingDir": None,
+            "hasActiveOverrides": False,
+            "activeOverrideCount": 0,
+        })
+
+    cooking_dir = game_dir / "DarkTalesResources" / "_Cooking"
+    state_path = cooking_dir / ".rsmm_state.json"
+    if not state_path.exists():
+        return _emit({
+            "ok": True,
+            "gameDir": str(game_dir),
+            "cookingDir": str(cooking_dir),
+            "hasActiveOverrides": False,
+            "activeOverrideCount": 0,
+        })
+
+    try:
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return _emit({
+            "ok": False,
+            "gameDir": str(game_dir),
+            "cookingDir": str(cooking_dir),
+            "error": f"failed to read applier state: {exc}",
+            "hasActiveOverrides": False,
+            "activeOverrideCount": 0,
+        })
+
+    active = data.get("active", {}) if isinstance(data, dict) else {}
+    if not isinstance(active, dict):
+        active = {}
+
+    return _emit({
+        "ok": True,
+        "gameDir": str(game_dir),
+        "cookingDir": str(cooking_dir),
+        "hasActiveOverrides": bool(active),
+        "activeOverrideCount": len(active),
+    })
+
+
 def cmd_build(rest: list[str]) -> int:
     return _run_rsmm(["build", *rest])
 
@@ -271,13 +318,15 @@ def _uninstall_loader_runtime(game_dir: Path) -> tuple[bool, str]:
 
 
 def cmd_run(rest: list[str]) -> int:
-    """Launch the game. --vanilla restores originals first."""
-    args = ["run", "--force"]
+    """Launch the game. Always restores first; --vanilla skips apply and
+    cleans up loader artifacts."""
     filtered = [a for a in rest if a != "--vanilla"]
-    if len(filtered) < len(rest):
+    is_vanilla = len(filtered) < len(rest)
+
+    if is_vanilla:
         restore = _collect_rsmm(["apply", "--restore-all"])
         if not restore["ok"]:
-                        return _emit(restore)
+            return _emit(restore)
         game_dir = find_game_dir()
         if game_dir is None:
             return _emit({
@@ -304,8 +353,8 @@ def cmd_run(rest: list[str]) -> int:
                 "stderr": f"Failed to uninstall loader artifacts: {detail}",
             })
         print(f"Vanilla cleanup: {detail}", file=sys.stderr)
-        args.extend(["--force", "--clear-launch-options"])
-    return _run_rsmm([*args, *filtered])
+        return _run_rsmm(["run", "--force", "--vanilla", "--clear-launch-options", *filtered])
+    return _run_rsmm(["run", "--force", *filtered])
 
 
 # --------------------------------------------------------------------------- #
@@ -806,6 +855,7 @@ def main(argv: list[str] | None = None) -> int:
     p_apply.add_argument("--dry-run", action="store_true")
     p_apply.add_argument("--force", action="store_true")
     p_apply.add_argument("--no-merge", action="store_true")
+    sub.add_parser("active-overrides", help="check whether any active overrides exist")
     sub.add_parser("restore-all", help="restore every active override")
     sub.add_parser("build", help="build asset map + loader + merge + apply")
     sub.add_parser("doctor", help="system health check")
@@ -843,6 +893,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.no_merge:
             rest.append("--no-merge")
         return cmd_apply(rest)
+    if args.cmd == "active-overrides":
+        return cmd_active_overrides()
     if args.cmd == "restore-all":
         return cmd_restore_all()
     if args.cmd == "build":

@@ -28,6 +28,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from rsmm.engine.paths import REPO_ROOT, self_cmd
+
 RAVENSWATCH_APP_ID = "2071280"
 REQUIRED_OVERRIDE = "winhttp=n,b"            # what we want to see
 ACCEPTED_OVERRIDES = (
@@ -269,6 +271,18 @@ def _write_launch_options(vdf_path: Path, app_id: str, new_value: str) -> bool:
     return True
 
 
+def _rsmm_subcommand(args: list[str], /) -> bool:
+    """Run `./rsmm <args...>` and return True on success. Output is
+    passed through to the terminal."""
+    cmd = self_cmd(args)
+    try:
+        proc = subprocess.run(cmd, cwd=REPO_ROOT, check=False)
+        return proc.returncode == 0
+    except FileNotFoundError as e:
+        print(f"Could not run rsmm: {e}", file=sys.stderr)
+        return False
+
+
 def _open_steam_url(url: str) -> int:
     if sys.platform == "win32":
         os.startfile(url)  # type: ignore[attr-defined]
@@ -337,6 +351,8 @@ def _open_steam_url(url: str) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Launch Ravenswatch via Steam")
+    ap.add_argument("--vanilla", action="store_true",
+                    help="restore original files and launch without mods")
     ap.add_argument("--app-id", default=RAVENSWATCH_APP_ID,
                     help="Steam app id (default: Ravenswatch)")
     ap.add_argument("--set-launch-options", action="store_true",
@@ -348,6 +364,12 @@ def main() -> int:
     ap.add_argument("--force", action="store_true",
                     help="launch even if launch options are missing the override")
     args = ap.parse_args()
+
+    # Safety: always restore original game files before any launch to
+    # ensure a clean state. Then apply mods unless launching vanilla.
+    _rsmm_subcommand(["restore"])
+    if not args.vanilla:
+        _rsmm_subcommand(["apply"])
 
     url = f"steam://rungameid/{args.app_id}"
 

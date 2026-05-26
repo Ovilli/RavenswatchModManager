@@ -1,7 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { Check, Copy, Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
+import { Copy, Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { useState } from 'react';
 import { Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
+import { CheckIcon } from '../components/icons/CheckIcon';
 import { useDialog, useToast } from '../components/toast';
 import { validateProfileName } from '../lib/profile-name';
 import { getMod, isEnabledIn, useApp } from '../store';
@@ -271,7 +272,7 @@ function ProfilesPage() {
                   >
                     {p.name}
                   </h3>
-                  <p className="font-mono mt-1 text-ash">
+                  <p className="font-mono mt-1 text-xs text-ash">
                     {enabled} enabled · {p.loadOrder.length} total
                   </p>
                 </div>
@@ -302,7 +303,7 @@ function ProfilesPage() {
                     onClick={() => setActive(p.id)}
                     className="flex items-center gap-1.5 border border-crimson bg-crimson/80 px-2.5 py-1.5 text-sm text-parchment hover:bg-oxblood"
                   >
-                    <Check className="h-3.5 w-3.5" /> Activate
+                    <CheckIcon className="h-4 w-4" /> Activate
                   </button>
                 ) : null}
                 <button
