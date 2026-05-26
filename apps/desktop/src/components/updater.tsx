@@ -1,4 +1,4 @@
-import { AlertTriangle, Download, RefreshCw, X } from 'lucide-react';
+import { AlertTriangle, Download, RefreshCw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { ProgressBar } from '@rsmm/ui';
 import { appendLauncherLog } from '../lib/launcher-log';
@@ -40,25 +40,39 @@ let autoCheckScheduled = false;
 async function runCheck(): Promise<void> {
   if (sharedStatus.state === 'checking' || sharedStatus.state === 'downloading') return;
   setStatus({ state: 'checking' });
+
   try {
     const result = await checkForUpdate();
-    
+
+    // Log result to launcher log so it's visible in-app without devtools
+    void appendLauncherLog('info', '[Updater] check() result', {
+      result: result === null ? 'null (no update / not in Tauri)' : JSON.stringify(result),
+      inTauri:
+        typeof window !== 'undefined' &&
+        ('__TAURI_INTERNALS__' in window || '__TAURI__' in window),
+    });
+
     // Check returned an error object
     if (result && 'error' in result && result.error) {
       const checkError = result as UpdateCheckError;
       setStatus({ state: 'check-error', checkError });
-      void appendLauncherLog('error', 'Update check failed', { reason: checkError.reason });
+      void appendLauncherLog('error', '[Updater] Update check failed', { reason: checkError.reason });
       return;
     }
-    
+
     if (!result) {
       setStatus({ state: 'idle' });
       return;
     }
-    
+
     // result is now guaranteed to be AvailableUpdate
     const update = result as AvailableUpdate;
-    
+
+    void appendLauncherLog('info', '[Updater] Update found, starting download', {
+      from: update.currentVersion,
+      to: update.version,
+    });
+
     // Auto-download immediately — no manual step needed.
     setStatus({ state: 'available', update });
     await applyUpdate();
@@ -66,7 +80,7 @@ async function runCheck(): Promise<void> {
     const detail = e instanceof Error ? e.message : String(e);
     const message = `Could not check for updates right now: ${detail}`;
     setStatus({ state: 'error', error: message });
-    void appendLauncherLog('error', 'Update check threw exception', { error: detail });
+    void appendLauncherLog('error', '[Updater] Update check threw exception', { error: detail });
   }
 }
 
@@ -83,8 +97,13 @@ async function applyUpdate(): Promise<void> {
       });
     });
     setStatus({ state: 'ready', update });
+    void appendLauncherLog('info', '[Updater] Download complete, ready to relaunch', {
+      version: update.version,
+    });
   } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
     setStatus({ state: 'error', error: String(e), update });
+    void appendLauncherLog('error', '[Updater] Download/install failed', { error: detail });
   }
 }
 
@@ -97,7 +116,7 @@ export function UpdaterBanner() {
     autoCheckScheduled = true;
     startedRef.current = true;
     const handle = window.setTimeout(() => {
-      runCheck().catch(() => { /* silent */ });
+      runCheck().catch(() => { /* silent — errors already logged via appendLauncherLog */ });
     }, 1500);
     return () => window.clearTimeout(handle);
   }, []);
@@ -189,9 +208,7 @@ export function UpdaterBanner() {
         </span>
         <button
           type="button"
-          onClick={() => {
-            runCheck().catch(() => {});
-          }}
+          onClick={() => { runCheck().catch(() => {}); }}
           className="font-mono text-xs text-ash hover:text-parchment"
         >
           Retry
@@ -200,7 +217,7 @@ export function UpdaterBanner() {
     );
   }
 
-  // Check error: shows diagnostic info about why the check failed
+  // Check error: shows diagnostic info about why the check failed.
   if (status.state === 'check-error' && status.checkError) {
     return (
       <div className="flex items-start gap-3 border-b border-crimson/60 bg-crimson/15 px-4 py-3">
@@ -215,9 +232,7 @@ export function UpdaterBanner() {
         </div>
         <button
           type="button"
-          onClick={() => {
-            runCheck().catch(() => {});
-          }}
+          onClick={() => { runCheck().catch(() => {}); }}
           className="font-mono text-xs text-ash hover:text-parchment shrink-0 ml-2"
         >
           Retry
@@ -240,9 +255,7 @@ export function UpdaterBanner() {
             type="button"
             size="sm"
             variant="primary"
-            onClick={() => {
-              applyUpdate().catch(() => {});
-            }}
+            onClick={() => { applyUpdate().catch(() => {}); }}
           >
             <Download className="h-3.5 w-3.5" /> Install
           </Button>
