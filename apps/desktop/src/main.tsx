@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider, createRouter } from '@tanstack/react-router';
 import { Component, type ErrorInfo, type ReactNode, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { RouteErrorComponent } from './components/route-error';
 import { wireGlobalErrorHandlers } from './lib/telemetry';
 import { routeTree } from './routeTree.gen';
 
@@ -49,7 +50,14 @@ const queryClient = new QueryClient({
   },
 });
 
-const router = createRouter({ routeTree, context: { queryClient } });
+const router = createRouter({
+  routeTree,
+  context: { queryClient },
+  // Per-route error isolation: a crash in one route renders inside that
+  // route's outlet (shell/nav survive) rather than tripping the root
+  // boundary and white-screening the whole app.
+  defaultErrorComponent: RouteErrorComponent,
+});
 
 declare module '@tanstack/react-router' {
   interface Register {

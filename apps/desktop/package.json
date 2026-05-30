@@ -19,6 +19,7 @@
     "tauri": "tauri",
     "routes:generate": "tsr generate",
     "check-types": "tsr generate && tsc --noEmit",
+    "test": "vitest run",
     "clean": "rm -rf dist .turbo src-tauri/target"
   },
   "dependencies": {
@@ -51,6 +52,7 @@
     "postcss": "8.4.49",
     "tailwindcss": "3.4.17",
     "typescript": "5.7.3",
-    "vite": "6.0.7"
+    "vite": "6.0.7",
+    "vitest": "3.0.9"
   }
 }
