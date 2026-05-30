@@ -10,7 +10,16 @@ node_modules/
 npm-debug.log*
 pnpm-debug.log*
 
+# Tool caches
+.ruff_cache/
+.pytest_cache/
+.rsmm/
+
 # App build outputs
+build/
+tsconfig.tsbuildinfo
+rsmm.spec
+next-env.d.ts
 .next/
 apps/*/dist/
 apps/*/.next/
