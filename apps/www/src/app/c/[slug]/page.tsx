@@ -26,10 +26,9 @@ import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
 
 const MDEditor = dynamic(() => import('@uiw/react-md-editor'), { ssr: false });
-const MDPreview = dynamic(
-  () => import('@uiw/react-md-editor').then((m) => m.default.Markdown),
-  { ssr: false },
-);
+const MDPreview = dynamic(() => import('@uiw/react-md-editor').then((m) => m.default.Markdown), {
+  ssr: false,
+});
 
 function describeApiError(err: unknown): string {
   if (isRateLimited(err)) {
@@ -78,7 +77,9 @@ export default function CollectionDetailPage({
   const [editIconFile, setEditIconFile] = useState<File | null>(null);
   const [editIconPreview, setEditIconPreview] = useState<string | null>(null);
   const [editScreenshots, setEditScreenshots] = useState<{ url: string; caption?: string }[]>([]);
-  const [newScreenshots, setNewScreenshots] = useState<{ file: File; preview: string; caption: string }[]>([]);
+  const [newScreenshots, setNewScreenshots] = useState<
+    { file: File; preview: string; caption: string }[]
+  >([]);
   const [saving, setSaving] = useState(false);
 
   // Review state
@@ -247,11 +248,7 @@ export default function CollectionDetailPage({
 
       {c.imageUrl && !editing ? (
         <div className="aspect-[21/9] w-full overflow-hidden rounded-lg bg-muted">
-          <img
-            src={c.imageUrl}
-            alt={`${c.name} cover`}
-            className="h-full w-full object-cover"
-          />
+          <img src={c.imageUrl} alt={`${c.name} cover`} className="h-full w-full object-cover" />
         </div>
       ) : null}
 
@@ -277,7 +274,10 @@ export default function CollectionDetailPage({
             </Link>{' '}
             · updated {new Date(c.updatedAt).toLocaleDateString()}
             {reviews.data?.averageRating != null ? (
-              <> · {reviews.data.averageRating.toFixed(1)} ★ ({reviews.data.total})</>
+              <>
+                {' '}
+                · {reviews.data.averageRating.toFixed(1)} ★ ({reviews.data.total})
+              </>
             ) : null}
           </p>
         </div>
@@ -304,7 +304,9 @@ export default function CollectionDetailPage({
               )}
             </Badge>
           )}
-          <Badge variant="outline">{c.modCount} mod{c.modCount === 1 ? '' : 's'}</Badge>
+          <Badge variant="outline">
+            {c.modCount} mod{c.modCount === 1 ? '' : 's'}
+          </Badge>
           {isOwner && !editing ? (
             <Button
               type="button"
@@ -351,7 +353,10 @@ export default function CollectionDetailPage({
             {editIconPreview || c.imageUrl ? (
               <button
                 type="button"
-                onClick={() => { setEditIconFile(null); setEditIconPreview(null); }}
+                onClick={() => {
+                  setEditIconFile(null);
+                  setEditIconPreview(null);
+                }}
                 className="text-sm text-destructive hover:underline"
               >
                 Remove
@@ -507,64 +512,78 @@ export default function CollectionDetailPage({
       ) : null}
 
       {/* Lightbox */}
-      {lightboxIdx != null && c.screenshots ? (() => {
-        const shots = c.screenshots;
-        const active = shots[lightboxIdx];
-        if (!active) return null;
-        const close = () => setLightboxIdx(null);
-        const prev = () => setLightboxIdx((lightboxIdx - 1 + shots.length) % shots.length);
-        const next = () => setLightboxIdx((lightboxIdx + 1) % shots.length);
-        return (
-          <dialog
-            open
-            className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
-            onClick={close}
-            aria-label="Screenshot preview"
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') close();
-              else if (e.key === 'ArrowLeft') prev();
-              else if (e.key === 'ArrowRight') next();
-            }}
-          >
-            <img
-              src={active.url}
-              alt={active.caption || `Screenshot ${lightboxIdx + 1}`}
-              className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg"
-              onClick={(e) => e.stopPropagation()}
-            />
-            {shots.length > 1 ? (
-              <>
+      {lightboxIdx != null && c.screenshots
+        ? (() => {
+            const shots = c.screenshots;
+            const active = shots[lightboxIdx];
+            if (!active) return null;
+            const close = () => setLightboxIdx(null);
+            const prev = () => setLightboxIdx((lightboxIdx - 1 + shots.length) % shots.length);
+            const next = () => setLightboxIdx((lightboxIdx + 1) % shots.length);
+            return (
+              <dialog
+                open
+                className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
+                onClick={close}
+                aria-label="Screenshot preview"
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') close();
+                  else if (e.key === 'ArrowLeft') prev();
+                  else if (e.key === 'ArrowRight') next();
+                }}
+              >
+                <img
+                  src={active.url}
+                  alt={active.caption || `Screenshot ${lightboxIdx + 1}`}
+                  className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg"
+                  onClick={(e) => e.stopPropagation()}
+                />
+                {shots.length > 1 ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        prev();
+                      }}
+                      className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-background/80 p-2 hover:bg-background"
+                    >
+                      <ChevronLeft className="h-6 w-6" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        next();
+                      }}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-background/80 p-2 hover:bg-background"
+                    >
+                      <ChevronRight className="h-6 w-6" />
+                    </button>
+                  </>
+                ) : null}
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); prev(); }}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-background/80 p-2 hover:bg-background"
+                  onClick={close}
+                  className="absolute right-4 top-4 rounded-full bg-background/80 p-2 hover:bg-background"
                 >
-                  <ChevronLeft className="h-6 w-6" />
+                  <X className="h-5 w-5" />
                 </button>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); next(); }}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-background/80 p-2 hover:bg-background"
-                >
-                  <ChevronRight className="h-6 w-6" />
-                </button>
-              </>
-            ) : null}
-            <button
-              type="button"
-              onClick={close}
-              className="absolute right-4 top-4 rounded-full bg-background/80 p-2 hover:bg-background"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </dialog>
-        );
-      })() : null}
+              </dialog>
+            );
+          })()
+        : null}
 
       {/* Edit action buttons */}
       {editing ? (
         <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={cancelEditing} disabled={saving}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={cancelEditing}
+            disabled={saving}
+          >
             Cancel
           </Button>
           <Button
@@ -573,7 +592,11 @@ export default function CollectionDetailPage({
             onClick={saveEditing}
             disabled={saving || !editName.trim()}
           >
-            {saving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />}
+            {saving ? (
+              <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="mr-1 h-4 w-4" />
+            )}
             Save
           </Button>
         </div>
@@ -662,7 +685,9 @@ export default function CollectionDetailPage({
 
         {session?.user ? (
           isOwner ? (
-            <p className="text-sm text-muted-foreground">Owners cannot review their own collection.</p>
+            <p className="text-sm text-muted-foreground">
+              Owners cannot review their own collection.
+            </p>
           ) : (
             <form
               onSubmit={(e) => {
@@ -749,19 +774,16 @@ export default function CollectionDetailPage({
                   <span className="text-sm font-medium">{r.userName ?? 'Anonymous'}</span>
                   <span className="ml-auto flex items-center gap-0.5">
                     {Array.from({ length: 5 }).map((_, i) => (
-                      // biome-ignore lint/suspicious/noArrayIndexKey: static 5 stars, no reordering
-                      <Star key={i}
+                      <Star
+                        // biome-ignore lint/suspicious/noArrayIndexKey: static 5 stars, no reordering
+                        key={i}
                         className={`h-3 w-3 ${i < r.rating ? 'fill-yellow-500 text-yellow-500' : 'text-muted-foreground'}`}
                       />
                     ))}
                   </span>
                 </div>
-                {r.title ? (
-                  <p className="mt-2 text-sm font-semibold">{r.title}</p>
-                ) : null}
-                {r.body ? (
-                  <p className="mt-1 text-sm text-muted-foreground">{r.body}</p>
-                ) : null}
+                {r.title ? <p className="mt-2 text-sm font-semibold">{r.title}</p> : null}
+                {r.body ? <p className="mt-1 text-sm text-muted-foreground">{r.body}</p> : null}
                 <p className="mt-1 text-xs text-muted-foreground">
                   {new Date(r.updatedAt).toLocaleDateString()}
                 </p>
