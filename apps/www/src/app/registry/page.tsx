@@ -1,11 +1,21 @@
 'use client';
-import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Spinner, buttonVariants } from '@rsmm/ui';
+import type { ModCategory } from '@rsmm/schemas';
+import {
+  Badge,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Input,
+  Spinner,
+  buttonVariants,
+} from '@rsmm/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Download, ExternalLink, EyeOff, Search, Star } from 'lucide-react';
 import type { Route } from 'next';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState } from 'react';
-import type { ModCategory } from '@rsmm/schemas';
 import { api } from '../../lib/api';
 import { getApiUrl } from '../../lib/api-url';
 
@@ -68,7 +78,7 @@ function RegistryInner() {
     const data = list.data?.items ?? [];
     const filtered = data
       .filter((m) => (cat === 'all' ? true : m.category === cat))
-      .filter((m) => (showNsfw || !m.nsfw))
+      .filter((m) => showNsfw || !m.nsfw)
       .filter((m) => {
         const needle = q.trim().toLowerCase();
         if (!needle) return true;
@@ -83,7 +93,7 @@ function RegistryInner() {
       if (sort === 'rating') return (b.rating ?? 0) - (a.rating ?? 0);
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
-  }, [list.data, cat, sort, q]);
+  }, [list.data, cat, sort, q, showNsfw]);
 
   return (
     <main className="relative overflow-hidden animate-page-in">
@@ -109,7 +119,10 @@ function RegistryInner() {
               key={s}
               type="button"
               onClick={() => setSort(s)}
-              className={buttonVariants({ variant: sort === s ? 'default' : 'outline', size: 'sm' })}
+              className={buttonVariants({
+                variant: sort === s ? 'default' : 'outline',
+                size: 'sm',
+              })}
             >
               {s}
             </button>
@@ -146,7 +159,10 @@ function RegistryInner() {
               key={c.id}
               type="button"
               onClick={() => setCat(c.id)}
-              className={buttonVariants({ variant: cat === c.id ? 'default' : 'outline', size: 'sm' })}
+              className={buttonVariants({
+                variant: cat === c.id ? 'default' : 'outline',
+                size: 'sm',
+              })}
             >
               {c.label}
             </button>
@@ -164,8 +180,12 @@ function RegistryInner() {
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {items.map((m) => (
-              // biome-ignore lint/a11y/useSemanticElements: card-as-link composite with nested interactive children; wrapping with <a> would invalidate the descendant <a>/<button> tags Next.js Link inserts.
-              <div key={m.id} className="grimoire-card cursor-pointer overflow-hidden" tabIndex={0} role="link"
+              <div
+                key={m.id}
+                className="grimoire-card cursor-pointer overflow-hidden"
+                tabIndex={0}
+                // biome-ignore lint/a11y/useSemanticElements: card-as-link composite with nested interactive children; wrapping with <a> would invalidate the descendant <a>/<button> tags Next.js Link inserts.
+                role="link"
                 onClick={(e) => {
                   const el = e.target as HTMLElement;
                   if (el.closest('a, button, input, textarea, select, [role="switch"]')) return;
@@ -214,7 +234,11 @@ function RegistryInner() {
                       </a>
                       <CardDescription className="mt-0.5">
                         {m.author ?? 'unknown'}
-                        {m.latestVersion ? <Badge variant="outline" className="ml-2 text-[0.6rem]">v{m.latestVersion}</Badge> : null}
+                        {m.latestVersion ? (
+                          <Badge variant="outline" className="ml-2 text-[0.6rem]">
+                            v{m.latestVersion}
+                          </Badge>
+                        ) : null}
                       </CardDescription>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">

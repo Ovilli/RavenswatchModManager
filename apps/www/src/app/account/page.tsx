@@ -1,9 +1,18 @@
 'use client';
 
 import { ApiError } from '@rsmm/api-client';
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Spinner } from '@rsmm/ui';
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Input,
+  Spinner,
+} from '@rsmm/ui';
 import { useMutation } from '@tanstack/react-query';
-import { AlertTriangle, ImageIcon, Loader2, Save, Trash2 } from 'lucide-react';
+import { AlertTriangle, ImageIcon, KeyRound, Loader2, Mail, Save, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -31,6 +40,13 @@ export default function AccountPage() {
   const [name, setName] = useState('');
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
+
+  const [newEmail, setNewEmail] = useState('');
+  const [emailMsg, setEmailMsg] = useState<string | null>(null);
+
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [pwMsg, setPwMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (session?.user) setName(session.user.name ?? '');
@@ -63,6 +79,49 @@ export default function AccountPage() {
     onSuccess: () => {
       setAvatarFile(null);
       setSavedMsg('Profile picture updated.');
+    },
+  });
+
+  const changeEmail = useMutation({
+    mutationFn: async () => {
+      setEmailMsg(null);
+      const res = await authClient.changeEmail({
+        newEmail: newEmail.trim(),
+        // Absolute URL: the confirmation link is clicked from the email and
+        // hits the API origin directly, so a relative path would resolve
+        // against the API domain (404) instead of the website.
+        callbackURL: `${window.location.origin}/account`,
+      });
+      if (res.error) throw new Error(res.error.message ?? 'email change failed');
+    },
+    onSuccess: () => {
+      // better-auth only emails an approval link when the CURRENT address
+      // is verified; for an unverified account the change applies
+      // immediately and no email is sent. Tailor the message so we don't
+      // tell unverified users to check an inbox that gets nothing.
+      setEmailMsg(
+        session?.user.emailVerified
+          ? 'Check your current inbox for a link to confirm the change. Your email updates once you click it.'
+          : 'Email updated.',
+      );
+      setNewEmail('');
+    },
+  });
+
+  const changePassword = useMutation({
+    mutationFn: async () => {
+      setPwMsg(null);
+      const res = await authClient.changePassword({
+        currentPassword,
+        newPassword,
+        revokeOtherSessions: true,
+      });
+      if (res.error) throw new Error(res.error.message ?? 'password change failed');
+    },
+    onSuccess: () => {
+      setPwMsg('Password updated. Other sessions were signed out.');
+      setCurrentPassword('');
+      setNewPassword('');
     },
   });
 
@@ -108,9 +167,7 @@ export default function AccountPage() {
     <main className="container mx-auto max-w-2xl space-y-8 px-6 py-12">
       <header>
         <h1 className="text-3xl font-bold tracking-tight">Account</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Manage your profile and account.
-        </p>
+        <p className="mt-1 text-sm text-muted-foreground">Manage your profile and account.</p>
       </header>
 
       <Card className="grimoire-card">
@@ -122,11 +179,7 @@ export default function AccountPage() {
           <div className="flex items-center gap-4">
             <div className="h-20 w-20 overflow-hidden rounded-full bg-muted">
               {user.image ? (
-                <img
-                  src={user.image}
-                  alt="Current avatar"
-                  className="h-full w-full object-cover"
-                />
+                <img src={user.image} alt="Current avatar" className="h-full w-full object-cover" />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-2xl text-muted-foreground">
                   {(user.name?.[0] ?? user.email[0] ?? '?').toUpperCase()}
@@ -189,6 +242,75 @@ export default function AccountPage() {
         </CardContent>
       </Card>
 
+      <Card className="grimoire-card">
+        <CardHeader>
+          <CardTitle>Email</CardTitle>
+          <CardDescription>
+            Current: {user.email}
+            {user.emailVerified ? null : ' (unverified)'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <label htmlFor="new-email" className="text-sm font-medium">
+            New email
+          </label>
+          <div className="flex gap-2">
+            <Input
+              id="new-email"
+              type="email"
+              placeholder="new@email.com"
+              value={newEmail}
+              onChange={(e) => setNewEmail((e.target as HTMLInputElement).value)}
+            />
+            <Button
+              onClick={() => changeEmail.mutate()}
+              disabled={!newEmail.trim() || changeEmail.isPending}
+            >
+              {changeEmail.isPending ? <Spinner /> : <Mail className="h-4 w-4" />} Change
+            </Button>
+          </div>
+          {changeEmail.isError ? (
+            <p className="text-xs text-destructive">{describeError(changeEmail.error)}</p>
+          ) : null}
+          {emailMsg ? <p className="text-xs text-muted-foreground">{emailMsg}</p> : null}
+        </CardContent>
+      </Card>
+
+      <Card className="grimoire-card">
+        <CardHeader>
+          <CardTitle>Password</CardTitle>
+          <CardDescription>Set a new password. This signs out your other sessions.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Input
+            type="password"
+            placeholder="current password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword((e.target as HTMLInputElement).value)}
+            autoComplete="current-password"
+          />
+          <Input
+            type="password"
+            placeholder="new password (min 8 chars)"
+            value={newPassword}
+            onChange={(e) => setNewPassword((e.target as HTMLInputElement).value)}
+            minLength={8}
+            autoComplete="new-password"
+          />
+          <Button
+            onClick={() => changePassword.mutate()}
+            disabled={!currentPassword || newPassword.length < 8 || changePassword.isPending}
+          >
+            {changePassword.isPending ? <Spinner /> : <KeyRound className="h-4 w-4" />} Update
+            password
+          </Button>
+          {changePassword.isError ? (
+            <p className="text-xs text-destructive">{describeError(changePassword.error)}</p>
+          ) : null}
+          {pwMsg ? <p className="text-xs text-muted-foreground">{pwMsg}</p> : null}
+        </CardContent>
+      </Card>
+
       <Card className="grimoire-card border-destructive/30">
         <CardHeader>
           <div className="flex items-start gap-2">
@@ -196,9 +318,9 @@ export default function AccountPage() {
             <div>
               <CardTitle>Delete account</CardTitle>
               <CardDescription>
-                Removes your user row, all sessions, and disconnects any linked OAuth accounts.
-                Mods you own become unowned — they stay published but can no longer be edited.
-                This cannot be undone.
+                Removes your user row, all sessions, and disconnects any linked OAuth accounts. Mods
+                you own become unowned — they stay published but can no longer be edited. This
+                cannot be undone.
               </CardDescription>
             </div>
           </div>
@@ -217,7 +339,8 @@ export default function AccountPage() {
               }
             }}
           >
-            {removeAccount.isPending ? <Spinner /> : <Trash2 className="h-4 w-4" />} Delete my account
+            {removeAccount.isPending ? <Spinner /> : <Trash2 className="h-4 w-4" />} Delete my
+            account
           </Button>
           {removeAccount.isError ? (
             <p className="text-xs text-destructive">{describeError(removeAccount.error)}</p>

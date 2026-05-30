@@ -2,7 +2,12 @@ import { getDb, schema } from '@rsmm/db';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { env, githubConfigured, googleConfigured, isProduction, smtpConfigured } from './env.js';
-import { resetPasswordTemplate, sendMail, verifyEmailTemplate } from './mailer.js';
+import {
+  changeEmailTemplate,
+  resetPasswordTemplate,
+  sendMail,
+  verifyEmailTemplate,
+} from './mailer.js';
 
 const socialProviders: {
   google?: { clientId: string; clientSecret: string };
@@ -79,6 +84,22 @@ export const auth = betterAuth({
     // accepting edits.
     deleteUser: {
       enabled: true,
+    },
+    // Self-serve email change. When the current email is verified,
+    // better-auth sends an approval link to the CURRENT address (not the
+    // new one) so a hijacked session can't silently move the account to
+    // an attacker's inbox. The email only flips after that link is
+    // clicked. In dev without SMTP the link is logged to stdout.
+    changeEmail: {
+      enabled: true,
+      sendChangeEmailVerification: async ({ user, newEmail, url }) => {
+        const t = changeEmailTemplate({ name: user.name, newEmail, url });
+        try {
+          await sendMail({ to: user.email, subject: t.subject, text: t.text, html: t.html });
+        } catch (err) {
+          console.error('Failed to send change-email verification:', err);
+        }
+      },
     },
   },
   advanced: {

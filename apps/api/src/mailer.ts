@@ -85,6 +85,35 @@ export function verifyEmailTemplate(args: { name: string; url: string }): {
   return { subject, text, html };
 }
 
+export function changeEmailTemplate(args: { name: string; newEmail: string; url: string }): {
+  subject: string;
+  text: string;
+  html: string;
+} {
+  const safeName = htmlEscape(args.name || 'modder');
+  const safeUrl = htmlEscape(args.url);
+  const safeNew = htmlEscape(args.newEmail);
+  const subject = 'Confirm your new Ravenswatch Mod Manager email';
+  const text = `Hi ${safeName},\n\nWe received a request to change the email on your account to ${args.newEmail}.\nApprove the change using this link:\n${args.url}\n\nIf you didn't request this, ignore this message and your email stays unchanged.`;
+  const html = `
+<!doctype html>
+<html lang="en">
+  <body style="font-family: -apple-system, system-ui, sans-serif; max-width: 540px; margin: 0 auto; padding: 24px; color: #1f1f1f;">
+    <h2 style="margin: 0 0 12px;">Confirm your new email</h2>
+    <p>Hi ${safeName},</p>
+    <p>We received a request to change the email on your account to <strong>${safeNew}</strong>. Click below to approve it.</p>
+    <p>
+      <a href="${safeUrl}" style="display: inline-block; padding: 10px 18px; background: #7d1a1a; color: #fff; text-decoration: none; border-radius: 6px;">
+        Confirm email change
+      </a>
+    </p>
+    <p style="font-size: 13px; color: #555;">Or paste this URL: <br /><code>${safeUrl}</code></p>
+    <p style="font-size: 12px; color: #888;">If you didn't request this, ignore this email and your address stays unchanged.</p>
+  </body>
+</html>`.trim();
+  return { subject, text, html };
+}
+
 export function resetPasswordTemplate(args: { name: string; url: string }): {
   subject: string;
   text: string;
