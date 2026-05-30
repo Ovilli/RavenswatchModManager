@@ -1,12 +1,23 @@
-import { Badge, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, buttonVariants } from '@rsmm/ui';
+import {
+  Badge,
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+  buttonVariants,
+} from '@rsmm/ui';
 import Link from 'next/link';
 
 export const revalidate = 3600;
 
-const releaseUrl = (tag: string) => `https://github.com/Ovilli/RavenswatchModManager/releases/tag/${tag}`;
+const releaseUrl = (tag: string) =>
+  `https://github.com/Ovilli/RavenswatchModManager/releases/tag/${tag}`;
 const latestUrl = 'https://github.com/Ovilli/RavenswatchModManager/releases/latest';
 const releasesUrl = 'https://github.com/Ovilli/RavenswatchModManager/releases';
-const installGuideUrl = 'https://github.com/Ovilli/RavenswatchModManager/blob/main/docs/INSTALLATION.md';
+const installGuideUrl =
+  'https://github.com/Ovilli/RavenswatchModManager/blob/main/docs/INSTALLATION.md';
 
 interface Platform {
   name: string;
@@ -18,7 +29,8 @@ interface Platform {
 const platforms: Platform[] = [
   {
     name: 'Windows',
-    details: 'Best option for most players. Ships as an MSI installer for 64-bit Windows 10 and 11.',
+    details:
+      'Best option for most players. Ships as an MSI installer for 64-bit Windows 10 and 11.',
     assetHint: 'Ravenswatch.Mod.Manager_*_x64_en-US.msi',
     note: 'Auto-updater is enabled — once installed, the app checks for new releases on launch and applies them in one click.',
   },
@@ -75,7 +87,12 @@ export default async function DownloadPage() {
           </p>
 
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <a className={buttonVariants({ size: 'lg' })} href={latestUrl} target="_blank" rel="noreferrer">
+            <a
+              className={buttonVariants({ size: 'lg' })}
+              href={latestUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
               Get {currentVersion}
             </a>
             <Link className={buttonVariants({ variant: 'outline', size: 'lg' })} href="/registry">
@@ -106,7 +123,12 @@ export default async function DownloadPage() {
                 </div>
               </CardContent>
               <CardFooter>
-                <a className={buttonVariants({ variant: 'outline' })} href={latestUrl} target="_blank" rel="noreferrer">
+                <a
+                  className={buttonVariants({ variant: 'outline' })}
+                  href={latestUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   Open release
                 </a>
               </CardFooter>
@@ -137,23 +159,37 @@ export default async function DownloadPage() {
           <Card className="grimoire-card border-crimson/20">
             <CardHeader>
               <CardTitle>Auto-updates</CardTitle>
-              <CardDescription>Stay on the latest build without re-downloading by hand.</CardDescription>
+              <CardDescription>
+                Stay on the latest build without re-downloading by hand.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-muted-foreground">
               <p>
                 Once {currentVersion} or newer is installed, RSMM polls for signed releases on
-                launch. When one is available, a banner appears with an <strong>Install &amp; restart</strong>
-                {' '}button — the app downloads, verifies the signature, swaps the binary, and relaunches.
+                launch. When one is available, a banner appears with an{' '}
+                <strong>Install &amp; restart</strong> button — the app downloads, verifies the
+                signature, swaps the binary, and relaunches.
               </p>
               <p>
-                You can also trigger a manual check from <strong>Settings → Updates</strong> inside the app.
+                You can also trigger a manual check from <strong>Settings → Updates</strong> inside
+                the app.
               </p>
             </CardContent>
             <CardFooter className="flex flex-col items-stretch gap-3 sm:flex-row">
-              <a className={buttonVariants({})} href={releaseUrl(currentVersion)} target="_blank" rel="noreferrer">
+              <a
+                className={buttonVariants({})}
+                href={releaseUrl(currentVersion)}
+                target="_blank"
+                rel="noreferrer"
+              >
                 {currentVersion} notes
               </a>
-              <a className={buttonVariants({ variant: 'outline' })} href={releasesUrl} target="_blank" rel="noreferrer">
+              <a
+                className={buttonVariants({ variant: 'outline' })}
+                href={releasesUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
                 All releases
               </a>
             </CardFooter>

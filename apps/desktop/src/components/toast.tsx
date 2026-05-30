@@ -44,7 +44,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toasts.map((t) => (
           <div
             key={t.id}
-            role="status"
             className={`grimoire-card pointer-events-auto min-w-[240px] max-w-[420px] px-4 py-3 text-sm animate-fade-in ${
               t.tone === 'success'
                 ? 'border-gilt/60 text-parchment'

@@ -30,7 +30,11 @@ export function Crest({
   return (
     <span className={cn('brand-crest', sizeClass, className)} aria-hidden>
       {iconSrc ? (
-        <img src={iconSrc} alt={iconAlt} className="h-full w-full rounded-[inherit] object-contain p-1" />
+        <img
+          src={iconSrc}
+          alt={iconAlt}
+          className="h-full w-full rounded-[inherit] object-contain p-1"
+        />
       ) : (
         <span className="font-fraktur text-2xl leading-none">{monogram}</span>
       )}
@@ -169,7 +173,8 @@ export function Cover({
         loading="lazy"
         className={cn(
           'h-full w-full object-cover',
-          nsfw && 'blur-xl saturate-0 transition-all duration-300 group-hover:blur-none group-hover:saturate-100',
+          nsfw &&
+            'blur-xl saturate-0 transition-all duration-300 group-hover:blur-none group-hover:saturate-100',
         )}
       />
       {nsfw ? (
@@ -212,11 +217,12 @@ export function Markdown({ source, className }: { source: string; className?: st
             <h5 className="font-fraktur text-base text-parchment" {...props} />
           ),
           h6: ({ node, ...props }) => (
-            <h6 className="font-fraktur text-sm uppercase tracking-wider text-parchment" {...props} />
+            <h6
+              className="font-fraktur text-sm uppercase tracking-wider text-parchment"
+              {...props}
+            />
           ),
-          p: ({ node, ...props }) => (
-            <p className="font-serif-italic leading-relaxed" {...props} />
-          ),
+          p: ({ node, ...props }) => <p className="font-serif-italic leading-relaxed" {...props} />,
           a: ({ node, ...props }) => (
             <a
               target="_blank"

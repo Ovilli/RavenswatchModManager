@@ -19,7 +19,8 @@
       "identifier": "shell:allow-open",
       "allow": [
         { "url": "https://github.com/Ovilli/RavenswatchModManager/**" },
-        { "url": "https://api.ravenswatch.ovilli.de/**" }
+        { "url": "https://api.ravenswatch.ovilli.de/**" },
+        { "url": "file:///**" }
       ]
     },
     {
@@ -27,6 +28,7 @@
       "allow": [
         { "name": "binaries/rsmm", "sidecar": true, "args": true },
         { "name": "run-rsmm", "cmd": "rsmm", "args": true },
+        { "name": "mkdir", "cmd": "mkdir", "args": true },
         { "name": "pgrep", "cmd": "pgrep", "args": [
           { "validator": "^-f$" },
           { "validator": "^Ravenswatch(\\.exe)?$" }

@@ -33,8 +33,8 @@ export default function PrivacyPage() {
           <section className="space-y-2">
             <h2 className="text-lg font-semibold text-foreground">3. How We Store Data</h2>
             <p>
-              Account data is stored in a PostgreSQL database hosted on Neon. Mod files are
-              uploaded to S3-compatible object storage. All connections are encrypted via TLS.
+              Account data is stored in a PostgreSQL database hosted on Neon. Mod files are uploaded
+              to S3-compatible object storage. All connections are encrypted via TLS.
             </p>
           </section>
 
@@ -51,9 +51,9 @@ export default function PrivacyPage() {
           <section className="space-y-2">
             <h2 className="text-lg font-semibold text-foreground">5. Data Retention</h2>
             <p>
-              Account data is retained until you request deletion. Mod files remain available
-              until removed by the author or moderators. Telemetry data is aggregated and
-              anonymized after 12 months.
+              Account data is retained until you request deletion. Mod files remain available until
+              removed by the author or moderators. Telemetry data is aggregated and anonymized after
+              12 months.
             </p>
           </section>
 
@@ -84,9 +84,13 @@ export default function PrivacyPage() {
       </Card>
 
       <p className="mt-8 text-center text-xs text-muted-foreground">
-        <Link href="/" className="underline hover:text-foreground">Home</Link>
+        <Link href="/" className="underline hover:text-foreground">
+          Home
+        </Link>
         {' · '}
-        <Link href="/legal" className="underline hover:text-foreground">Legal Notice</Link>
+        <Link href="/legal" className="underline hover:text-foreground">
+          Legal Notice
+        </Link>
       </p>
     </main>
   );

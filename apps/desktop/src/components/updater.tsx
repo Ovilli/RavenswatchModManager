@@ -1,13 +1,26 @@
+import { ProgressBar } from '@rsmm/ui';
 import { AlertTriangle, Download, RefreshCw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { ProgressBar } from '@rsmm/ui';
 import { appendLauncherLog } from '../lib/launcher-log';
-import { type AvailableUpdate, type UpdateCheckError, checkForUpdate, relaunchApp } from '../lib/updater';
+import {
+  type AvailableUpdate,
+  type UpdateCheckError,
+  checkForUpdate,
+  relaunchApp,
+} from '../lib/updater';
 import { Button } from './chrome';
 import { useToast } from './toast';
 
 interface UpdateStatus {
-  state: 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error' | 'check-error' | 'dismissed';
+  state:
+    | 'idle'
+    | 'checking'
+    | 'available'
+    | 'downloading'
+    | 'ready'
+    | 'error'
+    | 'check-error'
+    | 'dismissed';
   update?: AvailableUpdate;
   error?: string;
   checkError?: UpdateCheckError;
@@ -48,15 +61,16 @@ async function runCheck(): Promise<void> {
     void appendLauncherLog('info', '[Updater] check() result', {
       result: result === null ? 'null (no update / not in Tauri)' : JSON.stringify(result),
       inTauri:
-        typeof window !== 'undefined' &&
-        ('__TAURI_INTERNALS__' in window || '__TAURI__' in window),
+        typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window),
     });
 
     // Check returned an error object
     if (result && 'error' in result && result.error) {
       const checkError = result as UpdateCheckError;
       setStatus({ state: 'check-error', checkError });
-      void appendLauncherLog('error', '[Updater] Update check failed', { reason: checkError.reason });
+      void appendLauncherLog('error', '[Updater] Update check failed', {
+        reason: checkError.reason,
+      });
       return;
     }
 
@@ -116,7 +130,9 @@ export function UpdaterBanner() {
     autoCheckScheduled = true;
     startedRef.current = true;
     const handle = window.setTimeout(() => {
-      runCheck().catch(() => { /* silent — errors already logged via appendLauncherLog */ });
+      runCheck().catch(() => {
+        /* silent — errors already logged via appendLauncherLog */
+      });
     }, 1500);
     return () => window.clearTimeout(handle);
   }, []);
@@ -125,22 +141,15 @@ export function UpdaterBanner() {
   if (status.state === 'downloading') {
     const p = status.progress;
     return (
-      <div
-        role="status"
-        className="flex items-center gap-3 border-b border-oxblood/60 bg-oxblood/20 px-4 py-2"
-      >
+      <output className="flex w-full items-center gap-3 border-b border-oxblood/60 bg-oxblood/20 px-4 py-2">
         <RefreshCw className="h-4 w-4 text-gilt shrink-0 animate-spin" />
         <span className="font-serif-italic text-parchment shrink-0">
           Downloading v{status.update?.version}…
         </span>
         <div className="flex-1 max-w-80">
-          <ProgressBar
-            value={p?.downloaded ?? 0}
-            max={p?.total ?? 0}
-            indeterminate={!p?.total}
-          />
+          <ProgressBar value={p?.downloaded ?? 0} max={p?.total ?? 0} indeterminate={!p?.total} />
         </div>
-      </div>
+      </output>
     );
   }
 
@@ -181,7 +190,19 @@ export function UpdaterBanner() {
               type="button"
               variant="primary"
               onClick={() => {
-                relaunchApp().catch(() => {});
+                relaunchApp().catch((e) => {
+                  const detail = e instanceof Error ? e.message : String(e);
+                  // The new version is already installed on disk by this point;
+                  // a failed relaunch just means the running process didn't swap.
+                  // Surface it so the user restarts manually instead of assuming
+                  // the click did nothing.
+                  setStatus({
+                    state: 'error',
+                    update: v,
+                    error: `Couldn't restart automatically. Close and reopen the app to finish updating to v${v.version}. (${detail})`,
+                  });
+                  void appendLauncherLog('error', '[Updater] relaunch failed', { error: detail });
+                });
               }}
             >
               <Download className="h-4 w-4" /> Restart &amp; update
@@ -204,11 +225,13 @@ export function UpdaterBanner() {
     return (
       <div className="flex items-center gap-3 border-b border-crimson/40 bg-crimson/10 px-4 py-2">
         <span className="font-serif-italic text-sm text-crimson flex-1">
-          Update check failed.
+          {status.error ?? 'Update check failed.'}
         </span>
         <button
           type="button"
-          onClick={() => { runCheck().catch(() => {}); }}
+          onClick={() => {
+            runCheck().catch(() => {});
+          }}
           className="font-mono text-xs text-ash hover:text-parchment"
         >
           Retry
@@ -223,16 +246,14 @@ export function UpdaterBanner() {
       <div className="flex items-start gap-3 border-b border-crimson/60 bg-crimson/15 px-4 py-3">
         <AlertTriangle className="h-4 w-4 text-crimson shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
-          <p className="font-serif-italic text-sm text-crimson mb-1">
-            Update check failed
-          </p>
-          <p className="font-mono text-xs text-ash break-words">
-            {status.checkError.reason}
-          </p>
+          <p className="font-serif-italic text-sm text-crimson mb-1">Update check failed</p>
+          <p className="font-mono text-xs text-ash break-words">{status.checkError.reason}</p>
         </div>
         <button
           type="button"
-          onClick={() => { runCheck().catch(() => {}); }}
+          onClick={() => {
+            runCheck().catch(() => {});
+          }}
           className="font-mono text-xs text-ash hover:text-parchment shrink-0 ml-2"
         >
           Retry
@@ -247,15 +268,15 @@ export function UpdaterBanner() {
     const v = status.update;
     return (
       <div className="ember-banner flex items-center justify-between gap-3 border-b border-border px-4 py-2">
-        <span className="font-serif-italic text-parchment">
-          Update available — v{v.version}
-        </span>
+        <span className="font-serif-italic text-parchment">Update available — v{v.version}</span>
         <div className="flex items-center gap-2">
           <Button
             type="button"
             size="sm"
             variant="primary"
-            onClick={() => { applyUpdate().catch(() => {}); }}
+            onClick={() => {
+              applyUpdate().catch(() => {});
+            }}
           >
             <Download className="h-3.5 w-3.5" /> Install
           </Button>

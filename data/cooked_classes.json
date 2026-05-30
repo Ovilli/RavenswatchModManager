@@ -1,0 +1,757 @@
+{
+  "_meta": {
+    "total_files_scanned": 21378,
+    "parse_failures": 71,
+    "cooking_root": "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/DarkTalesResources/_Cooking"
+  },
+  "classes": {
+    "oCTexture": {
+      "count": 5047,
+      "uids_seen": [
+        "0x000016f6"
+      ],
+      "parents_seen": [
+        "oIResource"
+      ],
+      "versions_seen": [
+        [
+          1,
+          14
+        ]
+      ],
+      "containers": {
+        ".yqz": 5,
+        ".tpi": 4451,
+        ".zux": 591
+      },
+      "size_min": 46,
+      "size_max": 18528787,
+      "samples": [
+        "3N/Fbqzqus/BgagCgyg!Id_Srrmdzy_Qrrlv.iyg.Qqpiwuq.tpi",
+        "3N/Fbqzqus/BgagCgyg!Q_Arwvq_Gdaugus_HLW.iyg.Qqpiwuq.tpi",
+        "3N/Fbqzqus/BgagCgyg!Q_Arwvq_Gdaugus_WGB.iyg.Qqpiwuq.tpi",
+        "3N/Fbqzqus/BgagCgyg!Q_Dqyqigidrz_Bwaarz_WGB.iyg.Qqpiwuq.tpi",
+        "3N/Fbqzqus/BgagCgyg!Q_Klgvv_WGB.iyg.Qqpiwuq.tpi"
+      ]
+    },
+    "oCEntitySettingsResource": {
+      "count": 4699,
+      "uids_seen": [
+        "0x16f5f7a3"
+      ],
+      "parents_seen": [
+        "oIResource"
+      ],
+      "versions_seen": [
+        [
+          1,
+          0
+        ]
+      ],
+      "containers": {
+        ".yqz": 4699
+      },
+      "size_min": 49,
+      "size_max": 5190,
+      "samples": [
+        "MzidisFqiidzyv/Wkglrz/FbqzqusOacqbiv_Wkglrz!Quqq_Pwqvi_Gqgkqv_Tgibn_W.qzidis.ri.MzidisFqiidzyvLqvrwubq.yqz",
+        "MzidisFqiidzyv/Bgag_Cgyg_Arwvq/FbqzqusOacqbiv_Bgag_Cgyg_Arwvq!Arwvq_Bdy_Sgujqi.qzidis.ri.MzidisFqiidzyvLqvrwubq.yqz",
+        "MzidisFqiidzyv/Bgag_Cgyg_Arwvq/FbqzqusOacqbiv_Bgag_Cgyg_Arwvq!Arwvq_Bdy_Tdllgu.qzidis.ri.MzidisFqiidzyvLqvrwubq.yqz",
+        "MzidisFqiidzyv/Bgag_Cgyg_Arwvq/FbqzqusOacqbiv_Bgag_Cgyg_Arwvq!Arwvq_Bqgmqu.qzidis.ri.MzidisFqiidzyvLqvrwubq.yqz",
+        "MzidisFqiidzyv/Bgag_Cgyg_Arwvq/FbqzqusOacqbiv_Bgag_Cgyg_Arwvq!Arwvq_Brrm_B.qzidis.ri.MzidisFqiidzyvLqvrwubq.yqz"
+      ]
+    },
+    "oCGeometry": {
+      "count": 3001,
+      "uids_seen": [
+        "0x000016b8"
+      ],
+      "parents_seen": [
+        "oIResource"
+      ],
+      "versions_seen": [
+        [
+          1,
+          2
+        ]
+      ],
+      "containers": {
+        ".yqz": 3001
+      },
+      "size_min": 200,
+      "size_max": 4305425,
+      "samples": [
+        "VZ/Hqvnqv/Qudgzywlgu_Grbgiruv.hap.Kqrxqius.yqz",
+        "VZ/Hqvnqv/LMN_RrlhSwli_Msqv_Grbgiruv.hap.Kqrxqius.yqz",
+        "VZ/Hqvnqv/Gqhi_Ldyni_Grbgiruv_01.hap.Kqrxqius.yqz",
+        "3N/Sngugbiquv/Mzqxdqv!JztqgtAryv!Rqgjrzv!Rqgjrz_Kuga_vmdzzqt.hap.Kqrxqius.yqz",
+        "VZ/Wzdx/Hquldz_Aqgldzy_Fqqt_KMO.hap.Kqrxqius.yqz"
+      ]
+    },
+    "oCMaterial": {
+      "count": 2873,
+      "uids_seen": [
+        "0x000016be"
+      ],
+      "parents_seen": [
+        "oIResource"
+      ],
+      "versions_seen": [
+        [
+          1,
+          28
+        ]
+      ],
+      "containers": {
+        ".yqz": 2873
+      },
+      "size_min": 159,
+      "size_max": 364,
+      "samples": [
+        "Hgiqudglv/2tJdHgi.xgi.ri.Hgiqudgl.yqz",
+        "TrviVp/DdtqrNqbrtq.xgi.ri.Hgiqudgl.yqz",
+        "Hgiqudglv/NqawyNugo.xgi.ri.Hgiqudgl.yqz",
+        "Jd/Hgiqudglv/2tJdKgwyq.xgi.ri.Hgiqudgl.yqz",
+        "Jd/Hgiqudglv/2tHdzdxgj.xgi.ri.Hgiqudgl.yqz"
+      ]
+    },
+    "oCScheduledVfxSettings": {
+      "count": 2368,
+      "uids_seen": [
+        "0x0052992b"
+      ],
+      "parents_seen": [
+        "oIResource"
+      ],
+      "versions_seen": [
+        [
+          1,
+          2
+        ]
+      ],
+      "containers": {
+        ".yqz": 2368
+      },
+      "size_min": 22,
+      "size_max": 74,
+      "samples": [
+        "VZ/Fqiidzyv/Aqurqv!Aqur_Lqt_VZ!ROGV_Jlidxgiq_2_Fndqlt_Yrzq_02.khp.ri.FbnqtwlqtDhpFqiidzyv.yqz",
+        "VZ/Fqiidzyv/Aqurqv!Aqur_Bqrowlh_VZ!Blgtqvirux_Forut_Fjqbdgl_Qugdl.khp.ri.FbnqtwlqtDhpFqiidzyv.yqz",
+        "VZ/Fqiidzyv/Aqurqv!Aqur_Bqrowlh_VZ!Bqrowlh_Fmdll_Troqu_WOM_Fjgumv.khp.ri.FbnqtwlqtDhpFqiidzyv.yqz",
+        "VZ/Fqiidzyv/Aqurqv!Aqur_Bqrowlh_VZ!Bqrowlh_Fmdll_Xxxrlgidrz_Gdxav.khp.ri.FbnqtwlqtDhpFqiidzyv.yqz",
+        "VZ/Fqiidzyv/Aqurqv!Aqur_Bqrowlh_VZ!Bqrowlh_Fmdz_Iqqjqu_Aqgt_Qugdl_00.khp.ri.FbnqtwlqtDhpFqiidzyv.yqz"
+      ]
+    },
+    "oCAnimation": {
+      "count": 2240,
+      "uids_seen": [
+        "0x0000159d"
+      ],
+      "parents_seen": [
+        "oIResource"
+      ],
+      "versions_seen": [
+        [
+          1,
+          5
+        ]
+      ],
+      "containers": {
+        ".yqz": 2240
+      },
+      "size_min": 198,
+      "size_max": 35618,
+      "samples": [
+        "3N/Sngugbiquv/Aqurqv!Hqlwvdzq!Wzdxgidrzv!Hqlwvdzq_Xtlq_Grrj.hap.Wzdxgidrz.yqz",
+        "3N/Sngugbiquv/Aqurqv!Rwmrzy!Uguugidkq!Rwmrzy_Brrm_FqlqbidrzGrrj.hap.Wzdxgidrz.yqz",
+        "3N/Sngugbiquv/Aqurqv!Rwmrzy!Uguugidkq!Rwmrzy_Brrm_NqhqgiGrrj.hap.Wzdxgidrz.yqz",
+        "3N/Sngugbiquv/Aqurqv!Rwmrzy!Uguugidkq!Rwmrzy_Brrm_XzLqgts.hap.Wzdxgidrz.yqz",
+        "3N/Sngugbiquv/Aqurqv!Rwmrzy!Wzdxgidrzv!Rwmrzy_Nqgintrru_Grrj.hap.Wzdxgidrz.yqz"
+      ]
+    },
+    "oCGameStream": {
+      "count": 390,
+      "uids_seen": [
+        "0x014c31bf"
+      ],
+      "parents_seen": [
+        "oIResource"
+      ],
+      "versions_seen": [
+        [
+          1,
+          1
+        ]
+      ],
+      "containers": {
+        ".yqz": 390
+      },
+      "size_min": 24,
+      "size_max": 21778,
+      "samples": [
+        "Oi/Wkglrz/Qdlqv!6p6_Susvigl_01.lqkql.ri.KgxqFiuqgx.yqz",
+        "Oi/JdNqvb/KgxqJdFislq.lqkql.ri.KgxqFiuqgx.yqz",
+        "Oi/Wkglrz/Hgj_Wkglrz_Qquugdz.lqkql.ri.KgxqFiuqgx.yqz",
+        "Oi/Wkglrz/Srxjrvdidrz!Srxjr_Nqviuwbidalq_Udynixguq_Bwla_W.lqkql.ri.KgxqFiuqgx.yqz",
+        "Oi/Wkglrz/Qdlqv!3p3_Susvigl_01.lqkql.ri.KgxqFiuqgx.yqz"
+      ]
+    },
+    "oCDtTileDefinition": {
+      "count": 237,
+      "uids_seen": [
+        "0x1781ca4d"
+      ],
+      "parents_seen": [
+        "oCDtDefinition"
+      ],
+      "versions_seen": [
+        [
+          1,
+          8
+        ]
+      ],
+      "containers": {
+        ".yqz": 237
+      },
+      "size_min": 82,
+      "size_max": 189,
+      "samples": [
+        "Nqhdzdidrzv/Qdlqv/Firux_Xvlgzt!Jztquyurwzt_Fdzagt_Lrb_Pwqvi_Sgkq.idlqtqh.ri.NiQdlqNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Qdlqv/Wkglrz!20p20_Figduv_Mziugzbq_F.idlqtqh.ri.NiQdlqNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Qdlqv/Wkglrz!20p20_Figduv_Mziugzbq_FM.idlqtqh.ri.NiQdlqNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Qdlqv/Wkglrz!20p20_Figduv_Mziugzbq_FR.idlqtqh.ri.NiQdlqNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Qdlqv/Firux_Xvlgzt!3p3_Blrbmqu_01.idlqtqh.ri.NiQdlqNqhdzdidrz.yqz"
+      ]
+    },
+    "oCGlobalEntityValueSettings": {
+      "count": 204,
+      "uids_seen": [
+        "0x17929af2"
+      ],
+      "parents_seen": [
+        "oIResource"
+      ],
+      "versions_seen": [
+        [
+          1,
+          1
+        ]
+      ],
+      "containers": {
+        ".yqz": 204
+      },
+      "size_min": 20,
+      "size_max": 31,
+      "samples": [
+        "KlraglDglwqv/Bgag_Cgyg_Hgj/Bgag_Cgyg_Mjdlry_Aqur_Xv_Xzvdtq_Arwvq_Brrl_Dglwq.ylraglkglwq.ri.KlraglMzidisDglwqFqiidzyv.yqz",
+        "KlraglDglwqv/Bgag_Cgyg_Hgj/Bgag_Cgyg_Sgwlturz_Sgz_Bq_Adi_Bs_Fmwll_Brrl.ylraglkglwq.ri.KlraglMzidisDglwqFqiidzyv.yqz",
+        "KlraglDglwqv/Bgag_Cgyg_Hgj/Xv Mzt Sdzqxgidb Tlgsdzy.ylraglkglwq.ri.KlraglMzidisDglwqFqiidzyv.yqz",
+        "KlraglDglwqv/Bgag_Cgyg_Hgj/Xv_dz_Mjdlry.ylraglkglwq.ri.KlraglMzidisDglwqFqiidzyv.yqz",
+        "KlraglDglwqv/Firux_Xvlgzt/Fdzagt_Ssblrj_Pwqvi!Ssblrj_Pwqvi_Fdzagt_Xv_Nqgt.ylraglkglwq.ri.KlraglMzidisDglwqFqiidzyv.yqz"
+      ]
+    },
+    "oCDtEnemyDefinition": {
+      "count": 81,
+      "uids_seen": [
+        "0x176debb7"
+      ],
+      "parents_seen": [
+        "oCDtDefinition"
+      ],
+      "versions_seen": [
+        [
+          1,
+          6
+        ]
+      ],
+      "containers": {
+        ".yqz": 81
+      },
+      "size_min": 28,
+      "size_max": 172,
+      "samples": [
+        "Nqhdzdidrzv/Mzqxdqv/Figztgut_Jztqgt_Ary_Lqgjqu.qzqxstqh.ri.NiMzqxsNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Mzqxdqv/Figztgut_Jztqgt_Ary_Vdvnquxgz.qzqxstqh.ri.NiMzqxsNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Mzqxdqv/Fjdtqu_Udynixguq_Mldiq.qzqxstqh.ri.NiMzqxsNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Mzqxdqv/Fldzy_Knrwl.qzqxstqh.ri.NiMzqxsNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Mzqxdqv/Kzrll_Sndqhigdz.qzqxstqh.ri.NiMzqxsNqhdzdidrz.yqz"
+      ]
+    },
+    "AchievementDefinition": {
+      "count": 45,
+      "uids_seen": [
+        "0x1b3c3f32"
+      ],
+      "parents_seen": [
+        "oCDtDefinition"
+      ],
+      "versions_seen": [
+        [
+          1,
+          3
+        ]
+      ],
+      "containers": {
+        ".yqz": 45
+      },
+      "size_min": 32,
+      "size_max": 36,
+      "samples": [
+        "Nqhdzdidrzv/Wbndqkqxqziv/SrllqbiArwuylgvvHOvXzWFdzylqDdbirusLwz.Wbndqkqxqzitqh.ri.ndqkqxqziNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Wbndqkqxqziv/AgkqGqyqztgusQglqzivXzWFdzylqLwz.Wbndqkqxqzitqh.ri.ndqkqxqziNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Wbndqkqxqziv/BwsVqginquvVurxWliguOhAqurqvXzWFdzylqLwz.Wbndqkqxqzitqh.ri.ndqkqxqziNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Wbndqkqxqziv/FqlqbiJlidxgiqWadldis.Wbndqkqxqzitqh.ri.ndqkqxqziNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Wbndqkqxqziv/FqlqbiVdzglQglqzi.Wbndqkqxqzitqh.ri.ndqkqxqziNqhdzdidrz.yqz"
+      ]
+    },
+    "oCDtEnemyTribeDefinition": {
+      "count": 25,
+      "uids_seen": [
+        "0x176dc2eb"
+      ],
+      "parents_seen": [
+        "oCDtDefinition"
+      ],
+      "versions_seen": [
+        [
+          1,
+          1
+        ]
+      ],
+      "containers": {
+        ".yqz": 25
+      },
+      "size_min": 21,
+      "size_max": 70,
+      "samples": [
+        "Nqhdzdidrzv/MzqxsQudaqv/Edzzv.qzqxsiudaqtqh.ri.NiMzqxsQudaqNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/MzqxsQudaqv/Oyuqv.qzqxsiudaqtqh.ri.NiMzqxsQudaqNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/MzqxsQudaqv/Sugav.qzqxsiudaqtqh.ri.NiMzqxsQudaqNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/MzqxsQudaqv/Kzrllv.qzqxsiudaqtqh.ri.NiMzqxsQudaqNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/MzqxsQudaqv/Rrlkqv.qzqxsiudaqtqh.ri.NiMzqxsQudaqNqhdzdidrz.yqz"
+      ]
+    },
+    "GameModifierDefinition": {
+      "count": 22,
+      "uids_seen": [
+        "0x1a5d714f"
+      ],
+      "parents_seen": [
+        "oCDtDefinition"
+      ],
+      "versions_seen": [
+        [
+          1,
+          2
+        ]
+      ],
+      "containers": {
+        ".yqz": 22
+      },
+      "size_min": 23,
+      "size_max": 38,
+      "samples": [
+        "Nqhdzdidrzv/KgxqHrtdhdquv/NgsOzls.ygxqxrtdhdqutqh.ri.xqHrtdhdquNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/KgxqHrtdhdquv/UdyniOzls.ygxqxrtdhdqutqh.ri.xqHrtdhdquNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/KgxqHrtdhdquv/UrHdzdxgj.ygxqxrtdhdqutqh.ri.xqHrtdhdquNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/KgxqHrtdhdquv/OzqSngjiqu.ygxqxrtdhdqutqh.ri.xqHrtdhdquNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/KgxqHrtdhdquv/UrVqginquv.ygxqxrtdhdqutqh.ri.xqHrtdhdquNqhdzdidrz.yqz"
+      ]
+    },
+    "oCDtHeroDefinition": {
+      "count": 12,
+      "uids_seen": [
+        "0x1768d0c9"
+      ],
+      "parents_seen": [
+        "oCDtDefinition"
+      ],
+      "versions_seen": [
+        [
+          1,
+          27
+        ]
+      ],
+      "containers": {
+        ".yqz": 12
+      },
+      "size_min": 107,
+      "size_max": 164,
+      "samples": [
+        "Nqhdzdidrzv/Aqurqv/Lrxqr.nqurtqh.ri.NiAqurNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Aqurqv/Ewldqi.nqurtqh.ri.NiAqurNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Aqurqv/Bqrowlh.nqurtqh.ri.NiAqurNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Aqurqv/Wlgttdz.nqurtqh.ri.NiAqurNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Aqurqv/Hqlwvdzq.nqurtqh.ri.NiAqurNqhdzdidrz.yqz"
+      ]
+    },
+    "MelodyDefinition": {
+      "count": 12,
+      "uids_seen": [
+        "0x1daf87fe"
+      ],
+      "parents_seen": [
+        "oCDtDefinition"
+      ],
+      "versions_seen": [
+        [
+          1,
+          5
+        ]
+      ],
+      "containers": {
+        ".yqz": 12
+      },
+      "size_min": 16,
+      "size_max": 54,
+      "samples": [
+        "Nqhdzdidrzv/Hqlrtdqv/Lqhdll_Fgztxgz_Nuqgxv.xqlrtstqh.ri.lrtsNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Hqlrtdqv/Lqtwbq_HO_Tqu_Srllqbidrz.xqlrtstqh.ri.lrtsNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Hqlrtdqv/Lqxrkq_Iqs_Lqfwduqxqzi.xqlrtstqh.ri.lrtsNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Hqlrtdqv/Nqgl_Ngxgyq_Wurwzt.xqlrtstqh.ri.lrtsNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Hqlrtdqv/Xzbuqgvq_Hrkq_Fjqqt_Wi_Ngs.xqlrtstqh.ri.lrtsNqhdzdidrz.yqz"
+      ]
+    },
+    "oCCollisionMesh": {
+      "count": 11,
+      "uids_seen": [
+        "0x0030986b"
+      ],
+      "parents_seen": [
+        "oIResource"
+      ],
+      "versions_seen": [
+        [
+          1,
+          3
+        ]
+      ],
+      "containers": {
+        ".yqz": 11
+      },
+      "size_min": 1032,
+      "size_max": 31954,
+      "samples": [
+        "3N/GN_Bgvdb/Firux_Xvlgzt!Flrjq_4x_18t_brl.hap.SrlldvdrzHqvn.yqz",
+        "3N/GN_Bgvdb/Srxxrz!Qudgzylq_1p1.hap.SrlldvdrzHqvn.yqz",
+        "3N/Fbqzqus/FiruxXvlgzt!Lrbm_Budtyq_Vlgi_Qwuz_45t_G_brl.hap.SrlldvdrzHqvn.yqz",
+        "3N/Fbqzqus/FiruxXvlgzt!Lrbm_Budtyq_Vlgi_Qwuz_45t_L_brl.hap.SrlldvdrzHqvn.yqz",
+        "3N/Fbqzqus/Srxxrz!Wligu_Oh_Aqurqv_KurwztSrl.hap.SrlldvdrzHqvn.yqz"
+      ]
+    },
+    "oCDtRewardDefinition": {
+      "count": 9,
+      "uids_seen": [
+        "0x176f164e"
+      ],
+      "parents_seen": [
+        "oCDtDefinition"
+      ],
+      "versions_seen": [
+        [
+          1,
+          2
+        ]
+      ],
+      "containers": {
+        ".yqz": 9
+      },
+      "size_min": 26,
+      "size_max": 30,
+      "samples": [
+        "Nqhdzdidrzv/Lqogutv/Sgxj_Lqogutv_Firux_Xvlgzt.uqoguttqh.ri.NiLqogutNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Lqogutv/Sgxj_Lqogutv_Firux_Xvlgzt_Jjtgiq5.uqoguttqh.ri.NiLqogutNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Lqogutv/Sgxj_Lqogutv_Ngum_Adllv.uqoguttqh.ri.NiLqogutNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Lqogutv/Sgxj_Lqogutv_Ngum_Adllv_Jjtgiq5.uqoguttqh.ri.NiLqogutNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Lqogutv/Sgxj_Lqogutv_Wkglrz.uqoguttqh.ri.NiLqogutNqhdzdidrz.yqz"
+      ]
+    },
+    "oCDtEnemyCampDifficultyDefinition": {
+      "count": 6,
+      "uids_seen": [
+        "0x176e191c"
+      ],
+      "parents_seen": [
+        "oCDtDefinition"
+      ],
+      "versions_seen": [
+        [
+          1,
+          1
+        ]
+      ],
+      "containers": {
+        ".yqz": 6
+      },
+      "size_min": 18,
+      "size_max": 18,
+      "samples": [
+        "Nqhdzdidrzv/MzqxsSgxjNdhhdbwlidqv/Agut.qzqxsbgxjtdhhdbwlistqh.ri.NiMzqxsSgxjNdhhdbwlisNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/MzqxsSgxjNdhhdbwlidqv/Dqus_Agut.qzqxsbgxjtdhhdbwlistqh.ri.NiMzqxsSgxjNdhhdbwlisNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/MzqxsSgxjNdhhdbwlidqv/Dqus_Mgvs.qzqxsbgxjtdhhdbwlistqh.ri.NiMzqxsSgxjNdhhdbwlisNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/MzqxsSgxjNdhhdbwlidqv/Hqtdwx.qzqxsbgxjtdhhdbwlistqh.ri.NiMzqxsSgxjNdhhdbwlisNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/MzqxsSgxjNdhhdbwlidqv/Mgvs.qzqxsbgxjtdhhdbwlistqh.ri.NiMzqxsSgxjNdhhdbwlisNqhdzdidrz.yqz"
+      ]
+    },
+    "oCDtIngredientDefinition": {
+      "count": 6,
+      "uids_seen": [
+        "0x176efc45"
+      ],
+      "parents_seen": [
+        "oCDtDefinition"
+      ],
+      "versions_seen": [
+        [
+          1,
+          3
+        ]
+      ],
+      "containers": {
+        ".yqz": 6
+      },
+      "size_min": 43,
+      "size_max": 75,
+      "samples": [
+        "Nqhdzdidrzv/Xzyuqtdqziv/Iqs.dzyuqtdqzitqh.ri.NiXzyuqtdqziNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Xzyuqtdqziv/Bqgz.dzyuqtdqzitqh.ri.NiXzyuqtdqziNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Xzyuqtdqziv/Uriq.dzyuqtdqzitqh.ri.NiXzyuqtdqziNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Xzyuqtdqziv/Rrrt.dzyuqtdqzitqh.ri.NiXzyuqtdqziNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Xzyuqtdqziv/Firzq.dzyuqtdqzitqh.ri.NiXzyuqtdqziNqhdzdidrz.yqz"
+      ]
+    },
+    "ChallengeDefinition": {
+      "count": 5,
+      "uids_seen": [
+        "0x1a5d81e4"
+      ],
+      "parents_seen": [
+        "oCDtDefinition"
+      ],
+      "versions_seen": [
+        [
+          1,
+          1
+        ]
+      ],
+      "containers": {
+        ".yqz": 5
+      },
+      "size_min": 331,
+      "size_max": 430,
+      "samples": [
+        "Nqhdzdidrzv/Sngllqzyqv/HrrzldyniFrzgig.bngllqzyqtqh.ri.gllqzyqNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Sngllqzyqv/NrtyqXi.bngllqzyqtqh.ri.gllqzyqNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Sngllqzyqv/LwvnArwu.bngllqzyqtqh.ri.gllqzyqNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Sngllqzyqv/TroquOhQnqFwz.bngllqzyqtqh.ri.gllqzyqNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Sngllqzyqv/QquugXzbryzdig.bngllqzyqtqh.ri.gllqzyqNqhdzdidrz.yqz"
+      ]
+    },
+    "oCDtEnemyCampTierDefinition": {
+      "count": 4,
+      "uids_seen": [
+        "0x176e18f8"
+      ],
+      "parents_seen": [
+        "oCDtDefinition"
+      ],
+      "versions_seen": [
+        [
+          1,
+          0
+        ]
+      ],
+      "containers": {
+        ".yqz": 4
+      },
+      "size_min": 22,
+      "size_max": 26,
+      "samples": [
+        "Nqhdzdidrzv/MzqxsSgxjQdquv/Qdqu_0.qzqxsbgxjidqutqh.ri.NiMzqxsSgxjQdquNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/MzqxsSgxjQdquv/Qdqu_1.qzqxsbgxjidqutqh.ri.NiMzqxsSgxjQdquNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/MzqxsSgxjQdquv/Qdqu_2.qzqxsbgxjidqutqh.ri.NiMzqxsSgxjQdquNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/MzqxsSgxjQdquv/Qdqu_3.qzqxsbgxjidqutqh.ri.NiMzqxsSgxjQdquNqhdzdidrz.yqz"
+      ]
+    },
+    "oCDtMapDefinition": {
+      "count": 4,
+      "uids_seen": [
+        "0x176f1649"
+      ],
+      "parents_seen": [
+        "oCDtDefinition"
+      ],
+      "versions_seen": [
+        [
+          1,
+          3
+        ]
+      ],
+      "containers": {
+        ".yqz": 4
+      },
+      "size_min": 141,
+      "size_max": 7086,
+      "samples": [
+        "Nqhdzdidrzv/Hgjv/Bgag_Cgyg_Hgj_Jjtgiq3.xgjtqh.ri.NiHgjNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Hgjv/Firux_Xvlgzt_GdkqOjv_Jjtgiq5.xgjtqh.ri.NiHgjNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Hgjv/Ngum_Adllv_GdkqOjv_Jjtgiq5.xgjtqh.ri.NiHgjNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/Hgjv/Wkglrz_GdkqOjv_Jjtgiq5.xgjtqh.ri.NiHgjNqhdzdidrz.yqz"
+      ]
+    },
+    "oCDtDreamShardDefinition": {
+      "count": 4,
+      "uids_seen": [
+        "0x176df749"
+      ],
+      "parents_seen": [
+        "oCDtDefinition"
+      ],
+      "versions_seen": [
+        [
+          1,
+          0
+        ]
+      ],
+      "containers": {
+        ".yqz": 4
+      },
+      "size_min": 79,
+      "size_max": 80,
+      "samples": [
+        "Nqhdzdidrzv/NuqgxFngutv/Figbm_1.tuqgxvnguttqh.ri.NiNuqgxFngutNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/NuqgxFngutv/Figbm_5.tuqgxvnguttqh.ri.NiNuqgxFngutNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/NuqgxFngutv/Figbm_20.tuqgxvnguttqh.ri.NiNuqgxFngutNqhdzdidrz.yqz",
+        "Nqhdzdidrzv/NuqgxFngutv/Figbm_50.tuqgxvnguttqh.ri.NiNuqgxFngutNqhdzdidrz.yqz"
+      ]
+    },
+    "GameModeDefaultDefinition": {
+      "count": 1,
+      "uids_seen": [
+        "0x1945ba26"
+      ],
+      "parents_seen": [
+        "GameModeDefinition"
+      ],
+      "versions_seen": [
+        [
+          1,
+          1
+        ]
+      ],
+      "containers": {
+        ".yqz": 1
+      },
+      "size_min": 30,
+      "size_max": 30,
+      "samples": [
+        "Nqhdzdidrzv/KgxqHrtqv/Wll_Sngjiquv.ygxqxrtqtqhgwlitqh.ri.xqHrtqNqhgwliNqhdzdidrz.yqz"
+      ]
+    },
+    "VersionDefinition": {
+      "count": 1,
+      "uids_seen": [
+        "0x1cfc8a71"
+      ],
+      "parents_seen": [
+        "oCDtDefinition"
+      ],
+      "versions_seen": [
+        [
+          1,
+          6
+        ]
+      ],
+      "containers": {
+        ".yqz": 1
+      },
+      "size_min": 14687,
+      "size_max": 14687,
+      "samples": [
+        "Nqhdzdidrzv/Dquvdrzv/GdkqOjv5.kquvdrztqh.ri.uvdrzNqhdzdidrz.yqz"
+      ]
+    }
+  },
+  "_failures_sample": [
+    [
+      "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/DarkTalesResources/_Cooking/Ddtqr/LR_Xziur_Xxgyq.xj4.Ddtqr.yqz",
+      "bad cooked-string length"
+    ],
+    [
+      "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/DarkTalesResources/_Cooking/Ddtqr/LR_Xziur_Xxgyq.ryk.Ddtqr.yqz",
+      "missing BEGIN after Cooked header"
+    ],
+    [
+      "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/DarkTalesResources/_Cooking/Wwtdr/NgumQglqv.agzmvqi.VHrtMkqziTurcqbi.yqz",
+      "bad cooked-string length"
+    ],
+    [
+      "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/DarkTalesResources/_Cooking/Qqpi/Aqur_Wlgttdz_Fmdzv~KWH.plv.GrbglQqpi.yqz",
+      "missing BEGIN after Cooked header"
+    ],
+    [
+      "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/DarkTalesResources/_Cooking/Qqpi/Aqur_Lrxqr_Hqxrduv~KWH.plv.GrbglQqpi.yqz",
+      "missing BEGIN after Cooked header"
+    ],
+    [
+      "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/DarkTalesResources/_Cooking/Qqpi/Aqur_Bqrowlh_Fmdzv~KWH.plv.GrbglQqpi.yqz",
+      "missing BEGIN after Cooked header"
+    ],
+    [
+      "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/DarkTalesResources/_Cooking/Qqpi/Aqur_Kqjjqiir_Bgumv~KWH.plv.GrbglQqpi.yqz",
+      "missing BEGIN after Cooked header"
+    ],
+    [
+      "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/DarkTalesResources/_Cooking/Qqpi/Aqur_Tdjqu_Bgumv~KWH.plv.GrbglQqpi.yqz",
+      "missing BEGIN after Cooked header"
+    ],
+    [
+      "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/DarkTalesResources/_Cooking/Qqpi/Hgj_Ngum_Adllv_Srxxrz~KWH.plv.GrbglQqpi.yqz",
+      "missing BEGIN after Cooked header"
+    ],
+    [
+      "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/DarkTalesResources/_Cooking/Qqpi/Aqur_LMN_Hqxrduv~KWH.plv.GrbglQqpi.yqz",
+      "missing BEGIN after Cooked header"
+    ],
+    [
+      "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/DarkTalesResources/_Cooking/Qqpi/Aqur_Hquldz_Fmdzv~KWH.plv.GrbglQqpi.yqz",
+      "missing BEGIN after Cooked header"
+    ],
+    [
+      "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/DarkTalesResources/_Cooking/Qqpi/Aqur_Fzro_Pwqqz_Hqxrduv~KWH.plv.GrbglQqpi.yqz",
+      "missing BEGIN after Cooked header"
+    ],
+    [
+      "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/DarkTalesResources/_Cooking/Qqpi/Aqur_Kqjjqiir_Fmdzv~KWH.plv.GrbglQqpi.yqz",
+      "missing BEGIN after Cooked header"
+    ],
+    [
+      "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/DarkTalesResources/_Cooking/Qqpi/Aqur_Lrxqr_Bgumv~KWH.plv.GrbglQqpi.yqz",
+      "missing BEGIN after Cooked header"
+    ],
+    [
+      "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/DarkTalesResources/_Cooking/Qqpi/Aqur_Wlgttdz_Srxxrz~KWH.plv.GrbglQqpi.yqz",
+      "missing BEGIN after Cooked header"
+    ],
+    [
+      "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/DarkTalesResources/_Cooking/Qqpi/Aqur_Lrxqr_Fmdzv~KWH.plv.GrbglQqpi.yqz",
+      "missing BEGIN after Cooked header"
+    ],
+    [
+      "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/DarkTalesResources/_Cooking/Qqpi/Aqur_Sguxdllg_Fmdzv~KWH.plv.GrbglQqpi.yqz",
+      "missing BEGIN after Cooked header"
+    ],
+    [
+      "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/DarkTalesResources/_Cooking/Qqpi/Aqur_Hqlwvdzq_Hqxrduv~KWH.plv.GrbglQqpi.yqz",
+      "missing BEGIN after Cooked header"
+    ],
+    [
+      "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/DarkTalesResources/_Cooking/Qqpi/Aqur_Hqlwvdzq_Fmdzv~KWH.plv.GrbglQqpi.yqz",
+      "missing BEGIN after Cooked header"
+    ],
+    [
+      "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/DarkTalesResources/_Cooking/Qqpi/Aqur_Bqrowlh_Srxxrz~KWH.plv.GrbglQqpi.yqz",
+      "missing BEGIN after Cooked header"
+    ]
+  ]
+}

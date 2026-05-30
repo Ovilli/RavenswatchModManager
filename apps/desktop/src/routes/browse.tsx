@@ -8,7 +8,7 @@ import { CheckIcon } from '../components/icons/CheckIcon';
 import { useToast } from '../components/toast';
 import { api, getApiBaseUrl } from '../lib/api';
 import { validateProfileName } from '../lib/profile-name';
-import { installModFromIndex, listLocalMods } from '../lib/rsmm';
+import { installModFromIndex, listLocalModsForProfile } from '../lib/rsmm';
 import { activeProfile, useApp } from '../store';
 import type { Profile } from '../store';
 
@@ -47,11 +47,11 @@ function BrowsePage() {
     try {
       // Already-on-disk path skips the network round-trip.
       if (!installed.includes(slug)) {
-        const result = await installModFromIndex(slug);
+        const result = await installModFromIndex(slug, targetProfileId);
         if (!result || !result.ok) {
           throw new Error(result?.error ?? 'install failed');
         }
-        const local = await listLocalMods();
+        const local = await listLocalModsForProfile(targetProfileId);
         if (local) syncLocalMods(local);
       }
       installMod(slug, targetProfileId);
@@ -275,6 +275,7 @@ function BrowsePage() {
               <div
                 key={c.id}
                 tabIndex={0}
+                // biome-ignore lint/a11y/useSemanticElements: card link with nested interactive controls; <a> may not legally wrap them, so a guarded role="link" is used
                 role="link"
                 aria-label={c.name}
                 onClick={(e) => {
@@ -335,6 +336,7 @@ function BrowsePage() {
                 <div
                   key={m.id}
                   tabIndex={0}
+                  // biome-ignore lint/a11y/useSemanticElements: card link with nested interactive controls; <a> may not legally wrap them, so a guarded role="link" is used
                   role="link"
                   aria-label={`${m.name}${m.author ? ` by ${m.author}` : ''}`}
                   onClick={(e) => {

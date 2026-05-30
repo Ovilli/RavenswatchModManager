@@ -20,4 +20,3 @@ export function ProfilesIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-

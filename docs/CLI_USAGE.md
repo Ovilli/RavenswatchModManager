@@ -120,6 +120,36 @@ Structural dump of a cooked file (class table, sections, embedded strings).
 ./rsmm decode path/to/cooked.gen --raw   # Include hex payloads
 ```
 
+### `rsmm uncook <file>`
+
+Extract a cooked asset to an editable source-format file. Per-class schemas
+are reversed-engineered incrementally (see `docs/RE_NOTES.md`); when the
+schema isn't ready yet, `--raw` extracts section bytes directly so byte-level
+mods are unblocked.
+
+```sh
+./rsmm uncook path/to/cooked.yqz                # uncook to source format (schema-dependent)
+./rsmm uncook path/to/cooked.yqz --info         # print container header + class table
+./rsmm uncook path/to/cooked.yqz --raw          # dump all section payloads to <name>.raw
+./rsmm uncook path/to/cooked.yqz --raw --section 3 -o sec3.bin
+```
+
+### `rsmm cook --from <reference> <source>`
+
+Pack a source asset into a cooked Ravenswatch file. Until per-class encoders
+land, `--from <reference.yqz>` is required: the reference supplies the
+container header + class table + version. `--raw` substitutes the input
+bytes verbatim as section payload, giving a byte-level edit path today.
+
+```sh
+# Round-trip section 3 byte-identically:
+./rsmm uncook --raw --section 3 ref.yqz -o sec3.bin
+./rsmm cook   --raw --from ref.yqz --section 3 sec3.bin -o out.yqz
+
+# Once schemas land, cook from source format:
+./rsmm cook --from ref.yqz model.gltf -o out.yqz
+```
+
 ### `rsmm texture`
 
 Swap a texture by donor reference.

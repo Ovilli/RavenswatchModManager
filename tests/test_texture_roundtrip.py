@@ -120,3 +120,34 @@ def test_real_dds_roundtrip(texture_samples: list[Path]) -> None:
         cooked_out = h.encode_container(dds_bytes)
         new_cf = parse(cooked_out)
         assert any(c.name == "oCTexture" for c in new_cf.classes), p.name
+
+
+def test_png_source_cooks_to_real_octexture_container():
+    """A PNG mod texture must cook into a real oCTexture container, not be
+    passed through raw (the old bug shipped the PNG bytes verbatim)."""
+    from rsmm.engine import cooked, cooked_schemas, image
+    h = cooked_schemas.get("oCTexture")
+    w, ht = 4, 4
+    rgba = bytes([12, 34, 56, 255]) * (w * ht)
+    png = image.encode_png(w, ht, rgba)
+
+    cooked_bytes = h.encode_container(png)
+    assert cooked_bytes[:8] != b"\x89PNG\r\n\x1a\n"  # not raw passthrough
+    cf = cooked.parse(cooked_bytes)
+    assert cf.classes[0].name == "oCTexture"
+    schema = h.parse_payload(cf.sections[1].payload)
+    assert (schema.width, schema.height) == (w, ht)
+    assert schema.format_engine_enum == 0  # RGBA8
+
+
+def test_unsupported_texture_source_raises_not_reversed():
+    from rsmm.engine import cooked_schemas
+    from rsmm.engine.cooked_schemas import NotReversedError
+    h = cooked_schemas.get("oCTexture")
+    try:
+        h.encode_container(b"JFIF-ish jpeg bytes that aren't dds/png/cooked")
+    except NotReversedError:
+        return
+    # passthrough of an already-cooked container is fine; only truly
+    # unknown small blobs should raise. Use an obvious non-cooked junk.
+    raise AssertionError("expected NotReversedError on unknown source")

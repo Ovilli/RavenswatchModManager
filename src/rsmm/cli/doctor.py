@@ -135,11 +135,15 @@ def check_mods() -> list[Result]:
         found += 1
         try:
             t = _toml_load(mf)
-        except Exception as e:
+        except OSError as e:
             out.append(Result("FAIL", f"{entry.name}: bad manifest", str(e)))
             continue
         mod_meta = t.get("mod", {})
-        is_on = mod_meta.get("enabled", True)
+        raw_enabled = mod_meta.get("enabled", True)
+        is_on = (
+            raw_enabled if isinstance(raw_enabled, bool)
+            else str(raw_enabled).lower() in ("1", "true", "yes", "on")
+        )
         if is_on:
             enabled += 1
         # Raw asset paths
@@ -189,7 +193,7 @@ def check_patch_conflicts() -> list[Result]:
             for fn in p.data:
                 if fn == "name":
                     continue
-                key = ("stat", str(p.data["name"]).lower(), fn)
+                key = ("stat", str(p.data.get("name", "")).lower(), fn)
                 by_key.setdefault(key, {})[p.mod_id] = p.data[fn]
         elif p.kind == "texture":
             key = ("texture", str(p.data.get("target", "")).replace("\\", "/"))
@@ -236,7 +240,11 @@ def check_exe_hash(game_dir: Path) -> list[Result]:
     patterns_mtime = patterns.stat().st_mtime
     exe_mtime = exe.stat().st_mtime
 
-    exe_hash = hashlib.sha256(exe.read_bytes()).hexdigest()[:12]
+    h = hashlib.sha256()
+    with exe.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 16), b""):
+            h.update(chunk)
+    exe_hash = h.hexdigest()[:12]
     exe_size = exe.stat().st_size
     result = [Result("OK", f"game exe: {exe.name} ({exe_size:,} bytes, hash={exe_hash})")]
 
@@ -255,7 +263,7 @@ def check_state(game_dir: Path) -> list[Result]:
         return [Result("OK", "no applier state on disk (nothing applied yet)")]
     try:
         data = json.loads(state.read_text(encoding="utf-8"))
-    except Exception as e:
+    except (OSError, json.JSONDecodeError) as e:
         return [Result("FAIL", "state file is corrupt", str(e))]
     active = data.get("active", {}) or {}
     return [Result("OK", f"applier state: {len(active)} active override(s)")]

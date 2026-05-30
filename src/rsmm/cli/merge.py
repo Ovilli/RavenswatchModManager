@@ -166,7 +166,12 @@ def collect_patches() -> list[_Patch]:
             print(f"  [merge] skip {entry.name}: {e}", file=sys.stderr)
             continue
         mod_meta = t.get("mod", {})
-        if not mod_meta.get("enabled", True):
+        raw_enabled = mod_meta.get("enabled", True)
+        is_on = (
+            raw_enabled if isinstance(raw_enabled, bool)
+            else str(raw_enabled).lower() in ("1", "true", "yes", "on")
+        )
+        if not is_on:
             continue
         mid = mod_meta.get("id") or entry.name
         order = int(mod_meta.get("load_order", 100))
@@ -197,13 +202,13 @@ def _stat_patches(patches: list[_Patch], cooking: Path, out_assets: Path,
 
     per_target: dict[str, list[_Patch]] = {}
     for p in _ranked(stats):
-        per_target.setdefault(str(p.data["name"]).lower(), []).append(p)
+        per_target.setdefault(str(p.data.get("name", "")).lower(), []).append(p)
 
     written = 0
     for short, group in per_target.items():
         candidates = by_short.get(short, [])
         if not candidates:
-            print(f"  [merge] stat: unknown name {group[0].data['name']!r}",
+            print(f"  [merge] stat: unknown name {group[0].data.get('name', '<missing>')!r}",
                   file=sys.stderr)
             continue
         wanted_fields: set[str] = set()
@@ -253,7 +258,7 @@ def _texture_patches(patches: list[_Patch], cooking: Path, out_assets: Path,
     dec2enc = decoded_to_encoded()
     per_target: dict[str, list[_Patch]] = {}
     for p in _ranked(texs):
-        per_target.setdefault(str(p.data["target"]).replace("\\", "/"), []).append(p)
+        per_target.setdefault(str(p.data.get("target", "")).replace("\\", "/"), []).append(p)
 
     written = 0
     for target, group in per_target.items():
@@ -261,17 +266,22 @@ def _texture_patches(patches: list[_Patch], cooking: Path, out_assets: Path,
             print(f"  [merge] texture: unknown target {target!r}",
                   file=sys.stderr)
             continue
-        donors = {p.mod_id: str(p.data["donor"]).replace("\\", "/") for p in group}
+        donors = {p.mod_id: str(p.data.get("donor", "")).replace("\\", "/") for p in group}
         if len(set(donors.values())) > 1:
             conflicts.append(("texture", target, donors))
         winner = group[-1]
-        donor = str(winner.data["donor"]).replace("\\", "/")
+        donor = str(winner.data.get("donor", "")).replace("\\", "/")
         donor_enc = dec2enc.get(donor)
         if not donor_enc:
             print(f"  [merge] texture: donor not in asset_map: {donor!r}",
                   file=sys.stderr)
             continue
-        src = cooking / Path(*donor_enc.split("\\"))
+        donor_parts = donor_enc.split("\\")
+        if any(p == ".." for p in donor_parts):
+            print(f"  [merge] texture: refusing path with traversal segments: {donor_enc!r}",
+                  file=sys.stderr)
+            continue
+        src = cooking / Path(*donor_parts)
         if not src.exists():
             print(f"  [merge] texture: donor missing on disk: {src}",
                   file=sys.stderr)

@@ -13,4 +13,3 @@ export function LaunchIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-

@@ -28,7 +28,7 @@ import { CheckIcon } from '../components/icons/CheckIcon';
 import { useToast } from '../components/toast';
 import { useDialog } from '../components/toast';
 import { api } from '../lib/api';
-import { installModFromIndex, listLocalMods } from '../lib/rsmm';
+import { installModFromIndex, listLocalMods, listLocalModsForProfile } from '../lib/rsmm';
 import { activeProfile, useApp } from '../store';
 
 export const Route = createFileRoute('/collection/$slug')({
@@ -63,15 +63,16 @@ function CollectionDetailPage() {
     setInstallError(null);
     setInstalling((m) => ({ ...m, [modSlug]: true }));
     try {
+      const targetId = profile.id === 'default' ? undefined : profile.id;
       if (!installed.includes(modSlug)) {
-        const result = await installModFromIndex(modSlug);
+        const result = await installModFromIndex(modSlug, targetId);
         if (!result || !result.ok) {
           throw new Error(result?.error ?? 'install failed');
         }
-        const local = await listLocalMods();
+        const local = targetId ? await listLocalModsForProfile(targetId) : await listLocalMods();
         if (local) syncLocalMods(local);
       }
-      installMod(modSlug, profile.id === 'default' ? undefined : profile.id);
+      installMod(modSlug, targetId);
       await queryClient.invalidateQueries({ queryKey: ['mods', 'list'] });
       toast.push(`Added ${modSlug} to profile`, 'success');
     } catch (err) {
@@ -88,7 +89,7 @@ function CollectionDetailPage() {
   async function downloadAndAddMod(modSlug: string, targetProfileId: string | undefined) {
     const currentInstalled = useApp.getState().installed;
     if (!currentInstalled.includes(modSlug)) {
-      const result = await installModFromIndex(modSlug);
+      const result = await installModFromIndex(modSlug, targetProfileId);
       if (!result || !result.ok) {
         throw new Error(result?.error ?? `failed to install ${modSlug}`);
       }
@@ -116,7 +117,9 @@ function CollectionDetailPage() {
       setInstalling((prev) => ({ ...prev, [m.slug]: false }));
       setInstallProgress({ value: idx + 1, max: data.mods.length });
     }
-    const local = await listLocalMods();
+    const local = targetProfileId
+      ? await listLocalModsForProfile(targetProfileId)
+      : await listLocalMods();
     if (local) syncLocalMods(local);
     await queryClient.invalidateQueries({ queryKey: ['mods', 'list'] });
     setInstallAllRunning(false);
@@ -152,7 +155,7 @@ function CollectionDetailPage() {
       setInstallProgress({ value: 0, max: 0 });
       return;
     }
-    const local = await listLocalMods();
+    const local = await listLocalModsForProfile(newProfileId);
     if (local) syncLocalMods(local);
     await queryClient.invalidateQueries({ queryKey: ['mods', 'list'] });
     setInstallAllRunning(false);

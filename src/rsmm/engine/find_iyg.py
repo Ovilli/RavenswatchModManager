@@ -13,7 +13,10 @@ import os
 import sys
 
 from .cipher import decode as decrypt_char
-from .paths import ASSET_MAP_CSV, ASSET_MAP_JSON, DEFAULT_GAME_DIR
+from .paths import ASSET_MAP_CSV, ASSET_MAP_JSON
+
+# DEFAULT_GAME_DIR is resolved lazily inside main() to avoid triggering
+# the disk scan at import time (which crashes if no Steam install exists).
 
 
 def decrypt_string(s: str) -> str:
@@ -21,6 +24,7 @@ def decrypt_string(s: str) -> str:
 
 
 def main() -> int:
+    from .paths import DEFAULT_GAME_DIR
     default = str(DEFAULT_GAME_DIR / "DarkTalesResources" / "UsedRscList.ot")
     path = os.environ.get(
         "USEDRSCLIST", sys.argv[1] if len(sys.argv) > 1 else default,

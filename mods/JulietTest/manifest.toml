@@ -1,0 +1,7 @@
+[mod]
+id = "JulietTest"
+name = "Juliet Test Model"
+version = "0.1.0"
+author = "test"
+enabled = true
+sdk_version = ">=3.0,<4"

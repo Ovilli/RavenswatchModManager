@@ -104,3 +104,36 @@ def test_glb_indexed_mesh_min_max() -> None:
     a = j["accessors"][pos]
     assert a["min"] == [-1.0, -1.0, -1.0]
     assert a["max"] == [1.0, 1.0, -1.0]
+
+
+def test_glb_embedded_base_color_texture() -> None:
+    """add_texture_png embeds a PNG buffer view + image/sampler/texture and
+    add_material wires it as baseColorTexture."""
+    from rsmm.engine import image
+
+    b = gltf.GlbBuilder()
+    pos = b.add_positions([(0, 0, 0), (1, 0, 0), (0, 1, 0)])
+    uv = b.add_vec2([(0, 0), (1, 0), (0, 1)])
+    png = image.encode_png(2, 2, bytes([255, 0, 0, 255]) * 4)
+    tex = b.add_texture_png(png)
+    mat = b.add_material("skin", base_color_texture=tex, double_sided=True)
+    mesh = b.add_mesh(gltf.Mesh(
+        name="tri",
+        primitives=[gltf.Primitive(
+            attributes={"POSITION": pos, "TEXCOORD_0": uv}, material=mat)],
+    ))
+    b.add_node(gltf.Node(name="root", mesh=mesh), is_root=True)
+    blob = b.build_glb()
+
+    json_len = struct.unpack_from("<I", blob, 12)[0]
+    j = json.loads(blob[20:20 + json_len].rstrip(b" ").decode("utf-8"))
+    assert len(j["images"]) == 1 and j["images"][0]["mimeType"] == "image/png"
+    assert len(j["samplers"]) == 1 and len(j["textures"]) == 1
+    assert j["textures"][0]["source"] == 0
+    assert j["materials"][mat]["pbrMetallicRoughness"]["baseColorTexture"]["index"] == tex
+    assert j["materials"][mat]["doubleSided"] is True
+    # embedded PNG bytes survive intact in the BIN chunk.
+    bv = j["bufferViews"][j["images"][0]["bufferView"]]
+    bin_off = 20 + json_len + 8
+    start = bin_off + bv["byteOffset"]
+    assert blob[start:start + bv["byteLength"]] == png

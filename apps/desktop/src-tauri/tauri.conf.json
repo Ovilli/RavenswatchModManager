@@ -60,7 +60,7 @@
   },
   "plugins": {
     "shell": {
-      "open": true
+      "open": "^((mailto:\\w+)|(tel:\\w+)|(https?://\\w+)|(file:///\\w+)).+"
     },
     "updater": {
       "active": true,

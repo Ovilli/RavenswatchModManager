@@ -9,4 +9,3 @@ export function SettingsIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-

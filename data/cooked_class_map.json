@@ -1,0 +1,799 @@
+{
+  "_meta": {
+    "exe": "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/Ravenswatch.exe",
+    "image_base": "0x140000000",
+    "resolved": 25,
+    "missed": []
+  },
+  "classes": {
+    "oCTexture": {
+      "uid": "0x000016f6",
+      "versions_seen": [
+        [
+          1,
+          14
+        ]
+      ],
+      "td_va": "0x141356b50",
+      "mangled": ".?AVoCTexture@@",
+      "vtables": [
+        {
+          "col_va": "0x140fd64d8",
+          "this_offset": 0,
+          "vtable_va": "0x140efa2f8",
+          "vt_slots": [
+            "0x1400c2b80",
+            "0x1400c2b90",
+            "0x1400c2cb0",
+            "0x14064e3c0",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x14064e3c0"
+        }
+      ]
+    },
+    "oCEntitySettingsResource": {
+      "uid": "0x16f5f7a3",
+      "versions_seen": [
+        [
+          1,
+          0
+        ]
+      ],
+      "td_va": "0x141390040",
+      "mangled": ".?AVoCEntitySettingsResource@@",
+      "vtables": [
+        {
+          "col_va": "0x141032600",
+          "this_offset": 0,
+          "vtable_va": "0x140f70790",
+          "vt_slots": [
+            "0x1406dd280",
+            "0x1406dd290",
+            "0x1406e59d0",
+            "0x1406e5af0",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c2240",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x1406e5af0"
+        }
+      ]
+    },
+    "oCGeometry": {
+      "uid": "0x000016b8",
+      "versions_seen": [
+        [
+          1,
+          2
+        ]
+      ],
+      "td_va": "0x14138c830",
+      "mangled": ".?AVoCGeometry@@",
+      "vtables": [
+        {
+          "col_va": "0x1410274b0",
+          "this_offset": 0,
+          "vtable_va": "0x140f5fdb0",
+          "vt_slots": [
+            "0x14064aa30",
+            "0x14064aa40",
+            "0x14064aa50",
+            "0x14064b0c0",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x14064b0c0"
+        }
+      ]
+    },
+    "oCMaterial": {
+      "uid": "0x000016be",
+      "versions_seen": [
+        [
+          1,
+          28
+        ]
+      ],
+      "td_va": "0x14138c8d8",
+      "mangled": ".?AVoCMaterial@@",
+      "vtables": [
+        {
+          "col_va": "0x141026ea0",
+          "this_offset": 0,
+          "vtable_va": "0x140f5f658",
+          "vt_slots": [
+            "0x14064ab60",
+            "0x14064ab70",
+            "0x14064b9b0",
+            "0x14064c200",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x14064c200"
+        }
+      ]
+    },
+    "oCScheduledVfxSettings": {
+      "uid": "0x0052992b",
+      "versions_seen": [
+        [
+          1,
+          2
+        ]
+      ],
+      "td_va": "0x14138f268",
+      "mangled": ".?AVoCScheduledVfxSettings@@",
+      "vtables": [
+        {
+          "col_va": "0x14102e300",
+          "this_offset": 0,
+          "vtable_va": "0x140f6bdf8",
+          "vt_slots": [
+            "0x1406b9470",
+            "0x1406b9480",
+            "0x1406bac20",
+            "0x1406bafc0",
+            "0x1406bb0a0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x1406bafc0"
+        }
+      ]
+    },
+    "oCAnimation": {
+      "uid": "0x0000159d",
+      "versions_seen": [
+        [
+          1,
+          5
+        ]
+      ],
+      "td_va": "0x141387a68",
+      "mangled": ".?AVoCAnimation@@",
+      "vtables": [
+        {
+          "col_va": "0x14101d578",
+          "this_offset": 0,
+          "vtable_va": "0x140f533e8",
+          "vt_slots": [
+            "0x1405b2ff0",
+            "0x1405b3000",
+            "0x1405b30c0",
+            "0x1405b35a0",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x1405b35a0"
+        }
+      ]
+    },
+    "oCGameStream": {
+      "uid": "0x014c31bf",
+      "versions_seen": [
+        [
+          1,
+          1
+        ]
+      ],
+      "td_va": "0x14137f998",
+      "mangled": ".?AVoCGameStream@@",
+      "vtables": [
+        {
+          "col_va": "0x14100ad48",
+          "this_offset": 0,
+          "vtable_va": "0x140f3bed8",
+          "vt_slots": [
+            "0x14046de60",
+            "0x14046de70",
+            "0x140479630",
+            "0x14047a110",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x14047a110"
+        }
+      ]
+    },
+    "oCDtTileDefinition": {
+      "uid": "0x1781ca4d",
+      "versions_seen": [
+        [
+          1,
+          8
+        ]
+      ],
+      "td_va": "0x14133e870",
+      "mangled": ".?AVoCDtTileDefinition@@",
+      "vtables": [
+        {
+          "col_va": "0x140fe4c18",
+          "this_offset": 0,
+          "vtable_va": "0x140ed0ec8",
+          "vt_slots": [
+            "0x1400c56c0",
+            "0x1400c56d0",
+            "0x1400c58c0",
+            "0x140323d90",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x140323d90"
+        }
+      ]
+    },
+    "oCGlobalEntityValueSettings": {
+      "uid": "0x17929af2",
+      "versions_seen": [
+        [
+          1,
+          1
+        ]
+      ],
+      "td_va": "0x14136f5f0",
+      "mangled": ".?AVoCGlobalEntityValueSettings@@",
+      "vtables": [
+        {
+          "col_va": "0x140fecd40",
+          "this_offset": 0,
+          "vtable_va": "0x140f0be20",
+          "vt_slots": [
+            "0x1401d02b0",
+            "0x1401d02c0",
+            "0x1401d03b0",
+            "0x1406de4e0",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x1406de4e0"
+        }
+      ]
+    },
+    "oCDtEnemyDefinition": {
+      "uid": "0x176debb7",
+      "versions_seen": [
+        [
+          1,
+          6
+        ]
+      ],
+      "td_va": "0x141372348",
+      "mangled": ".?AVoCDtEnemyDefinition@@",
+      "vtables": [
+        {
+          "col_va": "0x140feab80",
+          "this_offset": 0,
+          "vtable_va": "0x140f0af80",
+          "vt_slots": [
+            "0x1401dea70",
+            "0x1401dea80",
+            "0x1401dec40",
+            "0x140319b30",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x140319b30"
+        }
+      ]
+    },
+    "AchievementDefinition": {
+      "uid": "0x1b3c3f32",
+      "versions_seen": [
+        [
+          1,
+          3
+        ]
+      ],
+      "td_va": "0x1413777b8",
+      "mangled": ".?AVAchievementDefinition@dt@oe@@",
+      "vtables": [
+        {
+          "col_va": "0x140ffb740",
+          "this_offset": 0,
+          "vtable_va": "0x140f23ca0",
+          "vt_slots": [
+            "0x14030f7e0",
+            "0x14030f7f0",
+            "0x1403114a0",
+            "0x1403115a0",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x1403115a0"
+        },
+        {
+          "col_va": "0x140ffba28",
+          "this_offset": 648,
+          "vtable_va": "0x140f22890",
+          "vt_slots": [
+            "0x140318b38",
+            "0x140318b08",
+            "0x140318b2c",
+            "0x1401c90e0",
+            "0x1401eefc0",
+            "0x140ffbba0",
+            "0x140306400",
+            "0x140306410"
+          ],
+          "serialize_va": "0x1401c90e0"
+        }
+      ]
+    },
+    "oCDtEnemyTribeDefinition": {
+      "uid": "0x176dc2eb",
+      "versions_seen": [
+        [
+          1,
+          1
+        ]
+      ],
+      "td_va": "0x141338508",
+      "mangled": ".?AVoCDtEnemyTribeDefinition@@",
+      "vtables": [
+        {
+          "col_va": "0x140fd4c18",
+          "this_offset": 0,
+          "vtable_va": "0x140efea30",
+          "vt_slots": [
+            "0x1400c5410",
+            "0x1400c5420",
+            "0x1400c5550",
+            "0x14031b080",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x14031b080"
+        }
+      ]
+    },
+    "GameModifierDefinition": {
+      "uid": "0x1a5d714f",
+      "versions_seen": [
+        [
+          1,
+          2
+        ]
+      ],
+      "td_va": "0x141359a60",
+      "mangled": ".?AVGameModifierDefinition@dt@oe@@",
+      "vtables": [
+        {
+          "col_va": "0x140fdaf60",
+          "this_offset": 0,
+          "vtable_va": "0x140ef97f8",
+          "vt_slots": [
+            "0x1400c8090",
+            "0x1400c80a0",
+            "0x1400c8300",
+            "0x140325810",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x140325810"
+        }
+      ]
+    },
+    "oCDtHeroDefinition": {
+      "uid": "0x1768d0c9",
+      "versions_seen": [
+        [
+          1,
+          27
+        ]
+      ],
+      "td_va": "0x14137a4b8",
+      "mangled": ".?AVoCDtHeroDefinition@@",
+      "vtables": [
+        {
+          "col_va": "0x140ffc3f8",
+          "this_offset": 648,
+          "vtable_va": "0x140f24fb8",
+          "vt_slots": [
+            "0x14033f74c",
+            "0x14033f764",
+            "0x14033f740",
+            "0x1400c9b70",
+            "0x1401eefc0",
+            "0x73726556656d6167",
+            "0x65696c632e6e6f69",
+            "0x6f6973726556746e"
+          ],
+          "serialize_va": "0x1400c9b70"
+        },
+        {
+          "col_va": "0x140ffcda8",
+          "this_offset": 0,
+          "vtable_va": "0x140f25db0",
+          "vt_slots": [
+            "0x14031b330",
+            "0x14031b340",
+            "0x14031db90",
+            "0x14031e630",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x14031e630"
+        }
+      ]
+    },
+    "MelodyDefinition": {
+      "uid": "0x1daf87fe",
+      "versions_seen": [
+        [
+          1,
+          5
+        ]
+      ],
+      "td_va": "0x141377e98",
+      "mangled": ".?AVMelodyDefinition@dt@oe@@",
+      "vtables": [
+        {
+          "col_va": "0x140ffd118",
+          "this_offset": 648,
+          "vtable_va": "0x140f25888",
+          "vt_slots": [
+            "0x14033f758",
+            "0x14033f734",
+            "0x14033f770",
+            "0x1400c8750",
+            "0x1401eefc0",
+            "0x14032c4b0",
+            "0x0",
+            "0x14031b350"
+          ],
+          "serialize_va": "0x1400c8750"
+        },
+        {
+          "col_va": "0x140ffd950",
+          "this_offset": 0,
+          "vtable_va": "0x140f24808",
+          "vt_slots": [
+            "0x14031b380",
+            "0x14031b390",
+            "0x14031b3a0",
+            "0x1403263e0",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x1403263e0"
+        }
+      ]
+    },
+    "oCCollisionMesh": {
+      "uid": "0x0030986b",
+      "versions_seen": [
+        [
+          1,
+          3
+        ]
+      ],
+      "td_va": "0x14138f900",
+      "mangled": ".?AVoCCollisionMesh@@",
+      "vtables": [
+        {
+          "col_va": "0x14102fc38",
+          "this_offset": 0,
+          "vtable_va": "0x140f6e0f0",
+          "vt_slots": [
+            "0x1406d8260",
+            "0x1406d8270",
+            "0x1406d82c0",
+            "0x1406d8720",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x1406d8720"
+        }
+      ]
+    },
+    "oCDtRewardDefinition": {
+      "uid": "0x176f164e",
+      "versions_seen": [
+        [
+          1,
+          2
+        ]
+      ],
+      "td_va": "0x1413704e0",
+      "mangled": ".?AVoCDtRewardDefinition@@",
+      "vtables": [
+        {
+          "col_va": "0x140ff0b90",
+          "this_offset": 0,
+          "vtable_va": "0x140f0a758",
+          "vt_slots": [
+            "0x1401c9430",
+            "0x1401c9440",
+            "0x1401c9500",
+            "0x140323bc0",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x140323bc0"
+        }
+      ]
+    },
+    "oCDtEnemyCampDifficultyDefinition": {
+      "uid": "0x176e191c",
+      "versions_seen": [
+        [
+          1,
+          1
+        ]
+      ],
+      "td_va": "0x14136fee0",
+      "mangled": ".?AVoCDtEnemyCampDifficultyDefinition@@",
+      "vtables": [
+        {
+          "col_va": "0x140fe9110",
+          "this_offset": 0,
+          "vtable_va": "0x140f07958",
+          "vt_slots": [
+            "0x1401e4b00",
+            "0x1401e4b10",
+            "0x1401e4bd0",
+            "0x140311e90",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x140311e90"
+        }
+      ]
+    },
+    "oCDtIngredientDefinition": {
+      "uid": "0x176efc45",
+      "versions_seen": [
+        [
+          1,
+          3
+        ]
+      ],
+      "td_va": "0x141376490",
+      "mangled": ".?AVoCDtIngredientDefinition@@",
+      "vtables": [
+        {
+          "col_va": "0x140ffa250",
+          "this_offset": 0,
+          "vtable_va": "0x140f21468",
+          "vt_slots": [
+            "0x1402ef6f0",
+            "0x1402ef700",
+            "0x1402ef830",
+            "0x140322780",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x140322780"
+        }
+      ]
+    },
+    "ChallengeDefinition": {
+      "uid": "0x1a5d81e4",
+      "versions_seen": [
+        [
+          1,
+          1
+        ]
+      ],
+      "td_va": "0x141372de8",
+      "mangled": ".?AVChallengeDefinition@dt@oe@@",
+      "vtables": [
+        {
+          "col_va": "0x140fea538",
+          "this_offset": 0,
+          "vtable_va": "0x140f05e20",
+          "vt_slots": [
+            "0x1401eee20",
+            "0x1401eee30",
+            "0x1401eefd0",
+            "0x140324560",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x140324560"
+        },
+        {
+          "col_va": "0x140feb348",
+          "this_offset": 648,
+          "vtable_va": "0x140f04b60",
+          "vt_slots": [
+            "0x1402531e4",
+            "0x1402531d8",
+            "0x1402531c0",
+            "0x1401eedb0",
+            "0x1401eefc0",
+            "0x140fe9960",
+            "0x1401e6ee0",
+            "0x1401e6ef0"
+          ],
+          "serialize_va": "0x1401eedb0"
+        }
+      ]
+    },
+    "oCDtEnemyCampTierDefinition": {
+      "uid": "0x176e18f8",
+      "versions_seen": [
+        [
+          1,
+          0
+        ]
+      ],
+      "td_va": "0x14136c380",
+      "mangled": ".?AVoCDtEnemyCampTierDefinition@@",
+      "vtables": [
+        {
+          "col_va": "0x140fee798",
+          "this_offset": 0,
+          "vtable_va": "0x140f0a378",
+          "vt_slots": [
+            "0x1401e4d10",
+            "0x1401e4d20",
+            "0x1401e4df0",
+            "0x140318c90",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x140318c90"
+        }
+      ]
+    },
+    "oCDtMapDefinition": {
+      "uid": "0x176f1649",
+      "versions_seen": [
+        [
+          1,
+          3
+        ]
+      ],
+      "td_va": "0x1413384e0",
+      "mangled": ".?AVoCDtMapDefinition@@",
+      "vtables": [
+        {
+          "col_va": "0x140fd3100",
+          "this_offset": 0,
+          "vtable_va": "0x140ed2168",
+          "vt_slots": [
+            "0x1400c77b0",
+            "0x1400c77c0",
+            "0x1400c7990",
+            "0x140322ab0",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x140322ab0"
+        }
+      ]
+    },
+    "oCDtDreamShardDefinition": {
+      "uid": "0x176df749",
+      "versions_seen": [
+        [
+          1,
+          0
+        ]
+      ],
+      "td_va": "0x1413762b8",
+      "mangled": ".?AVoCDtDreamShardDefinition@@",
+      "vtables": [
+        {
+          "col_va": "0x140ff7b28",
+          "this_offset": 0,
+          "vtable_va": "0x140f1ef00",
+          "vt_slots": [
+            "0x1402ee920",
+            "0x1402ee930",
+            "0x1402eea50",
+            "0x140311d30",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x140311d30"
+        }
+      ]
+    },
+    "GameModeDefaultDefinition": {
+      "uid": "0x1945ba26",
+      "versions_seen": [
+        [
+          1,
+          1
+        ]
+      ],
+      "td_va": "0x14135d050",
+      "mangled": ".?AVGameModeDefaultDefinition@dt@oe@@",
+      "vtables": [
+        {
+          "col_va": "0x140fdd4a8",
+          "this_offset": 0,
+          "vtable_va": "0x140eff358",
+          "vt_slots": [
+            "0x1400c7ef0",
+            "0x1400c7f00",
+            "0x1400c7f20",
+            "0x140324de0",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x140324de0"
+        }
+      ]
+    },
+    "VersionDefinition": {
+      "uid": "0x1cfc8a71",
+      "versions_seen": [
+        [
+          1,
+          6
+        ]
+      ],
+      "td_va": "0x141372728",
+      "mangled": ".?AVVersionDefinition@dt@oe@@",
+      "vtables": [
+        {
+          "col_va": "0x140febd18",
+          "this_offset": 0,
+          "vtable_va": "0x140f0ad40",
+          "vt_slots": [
+            "0x1401c96b0",
+            "0x1401c96c0",
+            "0x1401c9850",
+            "0x140326fc0",
+            "0x1404a24e0",
+            "0x1400c0d40",
+            "0x1400c5540",
+            "0x1404a2320"
+          ],
+          "serialize_va": "0x140326fc0"
+        }
+      ]
+    }
+  }
+}

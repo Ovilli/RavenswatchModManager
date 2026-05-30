@@ -79,3 +79,6 @@ docs/_re/out/functions_index.tsv
 docs/_re/out/xref_targets_summary.json
 docs/_re/project/
 docs/_re/project/
+
+# Local Claude Code config (per-machine permissions, scratch).
+.claude/

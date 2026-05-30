@@ -8,8 +8,7 @@ export const Route = createFileRoute('/about')({
 
 function AboutPage() {
   const version = pkg.version ?? '0.0.0';
-  const buttonClass =
-    'btn-grim inline-flex items-center justify-center px-3 py-1.5 text-sm';
+  const buttonClass = 'btn-grim inline-flex items-center justify-center px-3 py-1.5 text-sm';
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -51,7 +50,8 @@ function AboutPage() {
           <div>
             <h3 className="font-fraktur text-lg text-parchment mb-2">Get involved</h3>
             <p className="font-serif-italic text-smoke leading-relaxed mb-3">
-              Contribute, report issues, join the community Discord, or read developer notes in the repository.
+              Contribute, report issues, join the community Discord, or read developer notes in the
+              repository.
             </p>
             <div className="flex gap-2">
               <a

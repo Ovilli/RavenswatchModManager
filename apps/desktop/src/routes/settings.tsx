@@ -223,7 +223,10 @@ function SettingsPage() {
               <option value="warn">Warnings</option>
               <option value="error">Errors</option>
             </select>
-            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ash" aria-hidden="true" />
+            <ChevronDown
+              className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ash"
+              aria-hidden="true"
+            />
           </div>
         </div>
         <pre className="font-mono max-h-72 overflow-auto whitespace-pre-wrap border border-border bg-pitch/60 p-3 text-sm text-parchment/90">

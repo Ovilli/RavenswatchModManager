@@ -14,10 +14,7 @@ function Label({
   children: React.ReactNode;
 }) {
   return (
-    <label
-      htmlFor={htmlFor}
-      className={`text-sm font-medium leading-none ${className}`.trim()}
-    >
+    <label htmlFor={htmlFor} className={`text-sm font-medium leading-none ${className}`.trim()}>
       {children}
     </label>
   );
@@ -212,8 +209,7 @@ export default function PublishPage() {
         else if (err.status === 403) message = 'That slug is owned by another account.';
         else if (err.status === 409) message = 'A version with that number already exists.';
         else if (err.status === 413) message = 'Mod exceeds the 500 MB upload limit.';
-        else if (err.status === 503)
-          message = 'Object storage is not configured on the server.';
+        else if (err.status === 503) message = 'Object storage is not configured on the server.';
         else message = detail ?? `Server returned HTTP ${err.status}.`;
       } else if (err instanceof Error) {
         message = err.message;
@@ -256,8 +252,8 @@ export default function PublishPage() {
       <header className="mb-8">
         <h1 className="text-4xl font-bold tracking-tight">Publish a mod</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Upload a packed mod archive (.zip), describe it, and push it to the registry. You can
-          edit metadata and ship new versions later from <em>My Mods</em>.
+          Upload a packed mod archive (.zip), describe it, and push it to the registry. You can edit
+          metadata and ship new versions later from <em>My Mods</em>.
         </p>
       </header>
 

@@ -1,10 +1,10 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { Library, LogOut, Settings, Upload, User as UserIcon } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LogOut, User as UserIcon, Upload, Library, Settings } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { signOut, useSession } from '../lib/auth-client';
 
@@ -151,7 +151,11 @@ export function Nav({ versionBadge }: { versionBadge?: ReactNode }) {
     <header className="sticky top-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-xl">
       <div className="container mx-auto flex items-center justify-between px-6 py-3">
         <Link href="/" className="flex items-center gap-2.5 shrink-0">
-          <img src="/logo.png" alt="Ravenswatch Mod Manager" className="h-8 w-8 rounded-md object-cover" />
+          <img
+            src="/logo.png"
+            alt="Ravenswatch Mod Manager"
+            className="h-8 w-8 rounded-md object-cover"
+          />
           <span className="hidden text-sm font-medium text-foreground/90 md:inline">
             Ravenswatch Mod Manager
           </span>

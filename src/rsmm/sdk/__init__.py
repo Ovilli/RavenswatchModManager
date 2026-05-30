@@ -105,6 +105,9 @@ class Mod:
                         "fields": d.fields})
         for block in self._b._patch_blocks:
             out.append({"kind": "patch", **block})
+        for decoded in sorted(self._b._assets):
+            out.append({"kind": "asset", "decoded": decoded,
+                        "ext": self._b._assets[decoded].suffix.lower()})
         return out
 
     # --- legacy v1 surface (delegated) ---------------------------------
@@ -125,6 +128,15 @@ class Mod:
 
     def content(self, kind: str, **fields) -> None:
         self._b.content(kind, **fields)
+
+    def asset(self, decoded_path: str, source) -> None:
+        self._b.asset(decoded_path, source)
+
+    def model(self, decoded_path: str, source, rotate_deg=None) -> None:
+        self._b.model(decoded_path, source, rotate_deg=rotate_deg)
+
+    def texture(self, decoded_path: str, source) -> None:
+        self._b.texture(decoded_path, source)
 
     def requires(self, mod_id: str, version_spec: str = "") -> None:
         self._b.requires(mod_id, version_spec)

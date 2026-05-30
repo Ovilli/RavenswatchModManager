@@ -5,8 +5,7 @@ export type Platform = 'windows' | 'macos' | 'linux';
  * keep it here so the global probe stays in one place. */
 export function inTauri(): boolean {
   return (
-    typeof window !== 'undefined' &&
-    ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)
+    typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)
   );
 }
 

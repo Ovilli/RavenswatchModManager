@@ -1,9 +1,9 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import Link from 'next/link';
-import type { Route } from 'next';
 import { Spinner } from '@rsmm/ui';
+import { useQuery } from '@tanstack/react-query';
+import type { Route } from 'next';
+import Link from 'next/link';
 import { api } from '../../lib/api';
 
 export default function CollectionsIndexPage() {
@@ -17,9 +17,7 @@ export default function CollectionsIndexPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Collections</h1>
-          <p className="mt-1 text-muted-foreground">
-            Mod bundles curated by the community.
-          </p>
+          <p className="mt-1 text-muted-foreground">Mod bundles curated by the community.</p>
         </div>
       </div>
 

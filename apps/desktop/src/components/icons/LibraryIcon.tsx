@@ -18,4 +18,3 @@ export function LibraryIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-

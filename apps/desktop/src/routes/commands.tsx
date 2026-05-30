@@ -1,8 +1,24 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { CheckCircle2, Play, RotateCcw, ServerCrash, ShieldCheck, Terminal, Wrench } from 'lucide-react';
+import {
+  CheckCircle2,
+  Play,
+  RotateCcw,
+  ServerCrash,
+  ShieldCheck,
+  Terminal,
+  Wrench,
+} from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Button, Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
-import { applyMods, build, doctor, listLocalMods, restoreAll, runModded, runVanilla } from '../lib/rsmm';
+import {
+  applyMods,
+  build,
+  doctor,
+  listLocalMods,
+  restoreAll,
+  runModded,
+  runVanilla,
+} from '../lib/rsmm';
 
 type CommandStatus = 'idle' | 'running' | 'success' | 'error';
 
@@ -163,7 +179,15 @@ function CommandsPage() {
                   <p className="font-serif-italic text-base text-parchment">{command.label}</p>
                   <p className="mt-1 text-sm text-ash">{command.description}</p>
                 </div>
-                <MonoTag tone={command.tone === 'primary' || command.tone === 'danger' ? 'crimson' : command.tone}>{command.id}</MonoTag>
+                <MonoTag
+                  tone={
+                    command.tone === 'primary' || command.tone === 'danger'
+                      ? 'crimson'
+                      : command.tone
+                  }
+                >
+                  {command.id}
+                </MonoTag>
               </div>
               <div className="mt-4 flex items-center gap-2">
                 <Button

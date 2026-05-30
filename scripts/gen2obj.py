@@ -5,8 +5,11 @@ Based on the oCTextSaver dump structure:
   header (16 bytes) -> class list -> sections (each a blob of data).
 """
 
-import struct, sys, os
+import os
+import struct
+import sys
 from pathlib import Path
+
 
 class GENReader:
     def __init__(self, path):
