@@ -21,4 +21,3 @@ export function BrowseIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-

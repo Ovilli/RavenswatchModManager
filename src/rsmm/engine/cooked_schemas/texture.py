@@ -110,7 +110,7 @@ from dataclasses import dataclass, field
 
 from .. import dds
 from . import register
-from .base import SchemaHandler
+from .base import NotReversedError, SchemaHandler
 
 MARK_BEGIN = 0xAABB1111
 MARK_END = 0xAABB2222
@@ -495,6 +495,55 @@ def _build_cooked_container(payload: bytes, has_mips: bool) -> bytes:
     return cooked.emit(cf)
 
 
+_PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+def png_to_dds(png_bytes: bytes) -> bytes:
+    """Decode a PNG and re-encode it as an uncompressed RGBA8 DDS.
+
+    Authoring textures as PNG is the natural workflow, but the engine
+    consumes cooked oCTexture (built from DDS). We go PNG -> RGBA8 ->
+    single-mip uncompressed DDS; the engine reads the format enum from the
+    cooked file, so an uncompressed replacement renders fine (just larger
+    than the shipped block-compressed original). Block compression is a
+    later optimisation, not a correctness requirement.
+    """
+    from .. import dds, image
+
+    w, h, rgba = image.decode_png(png_bytes)
+    return dds.write(rgba, w, h, dds.by_name("RGBA8"), mip_count=1)
+
+
+# Cooked-container begin marker (0xAABB1111, little-endian) — present in
+# the header of an already-cooked file. Used to tell a pre-cooked oCTexture
+# binary apart from an unsupported source format, so the latter raises
+# instead of being copied through raw (the bug that shipped .png/.tga bytes
+# verbatim into the game install).
+_COOKED_MARKER = b"\x11\x11\xbb\xaa"
+
+
+def _looks_like_cooked(source: bytes) -> bool:
+    return _COOKED_MARKER in source[:64]
+
+
+def _source_to_schema(source: bytes) -> TextureSchema:
+    """Resolve a DDS or PNG source file to a TextureSchema.
+
+    Raises NotReversedError on anything else, so apply-mods / cook_cache
+    skip an unsupported texture source cleanly instead of silently
+    emitting garbage bytes into the game install.
+    """
+    if source[:4] == b"DDS ":
+        return dds_to_schema(source)
+    if source[:8] == _PNG_MAGIC:
+        return dds_to_schema(png_to_dds(source))
+    raise NotReversedError(
+        "oCTexture",
+        "texture source must be a .dds or .png file; got an unrecognised "
+        "format (re-export your texture as PNG or DDS)",
+    )
+
+
 class TextureHandler(SchemaHandler):
     """Schema handler. `decode` returns the original section payload by
     default (round-trip safe). `encode` accepts either a DDS source file
@@ -518,28 +567,27 @@ class TextureHandler(SchemaHandler):
         return _encode_payload(schema)
 
     def encode(self, source: bytes) -> bytes:
-        """Convert a DDS source file to an oCTexture body payload.
+        """Convert a DDS or PNG source file to an oCTexture body payload.
 
         Detects the input format by header magic. The cook_cache wraps
         the returned payload in a cooked container via
         `encode_container`.
         """
-        if source[:4] == b"DDS ":
-            return _encode_payload(dds_to_schema(source))
-        # Passthrough: source is already an oCTexture body payload.
-        return self.decode(source)
+        return _encode_payload(_source_to_schema(source))
 
     def encode_container(self, source: bytes) -> bytes:
-        """Convert a DDS source file to a full cooked-file byte string,
+        """Convert a DDS/PNG source file to a full cooked-file byte string,
         ready to drop into `<install>/DarkTalesResources/_Cooking/...`.
+
+        An already-cooked oCTexture container is passed through unchanged.
         """
-        if source[:4] == b"DDS ":
-            schema = dds_to_schema(source)
-            return _build_cooked_container(
-                _encode_payload(schema), has_mips=bool(schema.mips),
-            )
-        # Source is already a full cooked file — pass through unchanged.
-        return source
+        if source[:4] != b"DDS " and source[:8] != _PNG_MAGIC \
+                and _looks_like_cooked(source):
+            return source
+        schema = _source_to_schema(source)
+        return _build_cooked_container(
+            _encode_payload(schema), has_mips=bool(schema.mips),
+        )
 
     # Structured accessors — not exposed via the base SchemaHandler API
     # but available to callers that import this module directly.

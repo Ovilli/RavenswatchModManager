@@ -15,6 +15,7 @@ import { Route as ProfilesRouteImport } from './routes/profiles';
 import { Route as ConflictsRouteImport } from './routes/conflicts';
 import { Route as CommandsRouteImport } from './routes/commands';
 import { Route as BrowseRouteImport } from './routes/browse';
+import { Route as AuthorRouteImport } from './routes/author';
 import { Route as AboutRouteImport } from './routes/about';
 import { Route as IndexRouteImport } from './routes/index';
 import { Route as ModSlugRouteImport } from './routes/mod.$slug';
@@ -50,6 +51,11 @@ const BrowseRoute = BrowseRouteImport.update({
   path: '/browse',
   getParentRoute: () => rootRouteImport,
 } as any);
+const AuthorRoute = AuthorRouteImport.update({
+  id: '/author',
+  path: '/author',
+  getParentRoute: () => rootRouteImport,
+} as any);
 const AboutRoute = AboutRouteImport.update({
   id: '/about',
   path: '/about',
@@ -74,6 +80,7 @@ const CollectionSlugRoute = CollectionSlugRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute;
   '/about': typeof AboutRoute;
+  '/author': typeof AuthorRoute;
   '/browse': typeof BrowseRoute;
   '/commands': typeof CommandsRoute;
   '/conflicts': typeof ConflictsRoute;
@@ -86,6 +93,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute;
   '/about': typeof AboutRoute;
+  '/author': typeof AuthorRoute;
   '/browse': typeof BrowseRoute;
   '/commands': typeof CommandsRoute;
   '/conflicts': typeof ConflictsRoute;
@@ -99,6 +107,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   '/': typeof IndexRoute;
   '/about': typeof AboutRoute;
+  '/author': typeof AuthorRoute;
   '/browse': typeof BrowseRoute;
   '/commands': typeof CommandsRoute;
   '/conflicts': typeof ConflictsRoute;
@@ -113,6 +122,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/about'
+    | '/author'
     | '/browse'
     | '/commands'
     | '/conflicts'
@@ -125,6 +135,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/about'
+    | '/author'
     | '/browse'
     | '/commands'
     | '/conflicts'
@@ -137,6 +148,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/about'
+    | '/author'
     | '/browse'
     | '/commands'
     | '/conflicts'
@@ -150,6 +162,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute;
   AboutRoute: typeof AboutRoute;
+  AuthorRoute: typeof AuthorRoute;
   BrowseRoute: typeof BrowseRoute;
   CommandsRoute: typeof CommandsRoute;
   ConflictsRoute: typeof ConflictsRoute;
@@ -204,6 +217,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BrowseRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    '/author': {
+      id: '/author';
+      path: '/author';
+      fullPath: '/author';
+      preLoaderRoute: typeof AuthorRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     '/about': {
       id: '/about';
       path: '/about';
@@ -238,6 +258,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
+  AuthorRoute: AuthorRoute,
   BrowseRoute: BrowseRoute,
   CommandsRoute: CommandsRoute,
   ConflictsRoute: ConflictsRoute,

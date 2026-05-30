@@ -101,7 +101,9 @@ function SignInPage() {
       setError(err.message ?? 'The server rejected the form — check your inputs.');
       return;
     }
-    setError(err.message ?? (flow === 'signup' ? 'Could not create account.' : 'Could not sign in.'));
+    setError(
+      err.message ?? (flow === 'signup' ? 'Could not create account.' : 'Could not sign in.'),
+    );
   };
 
   const isSignup = mode === 'signup';

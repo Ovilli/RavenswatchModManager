@@ -52,7 +52,9 @@ export default function NewCollectionPage() {
   const [iconPreview, setIconPreview] = useState<string | null>(null);
   const [iconUploading, setIconUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ value: number; max: number } | null>(null);
-  const [screenshots, setScreenshots] = useState<{ file: File; preview: string; caption: string }[]>([]);
+  const [screenshots, setScreenshots] = useState<
+    { file: File; preview: string; caption: string }[]
+  >([]);
 
   const create = useMutation({
     mutationFn: async () => {
@@ -183,7 +185,10 @@ export default function NewCollectionPage() {
               />
               <button
                 type="button"
-                onClick={() => { setIconFile(null); setIconPreview(null); }}
+                onClick={() => {
+                  setIconFile(null);
+                  setIconPreview(null);
+                }}
                 className="absolute -right-2 -top-2 rounded-full bg-background border p-1"
               >
                 <X className="h-3 w-3" />
@@ -299,7 +304,11 @@ export default function NewCollectionPage() {
           {create.isPending || iconUploading ? (
             <>
               <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />{' '}
-              {uploadProgress ? `Uploading ${uploadProgress.value}/${uploadProgress.max}…` : iconUploading ? 'Uploading icon…' : 'Creating…'}
+              {uploadProgress
+                ? `Uploading ${uploadProgress.value}/${uploadProgress.max}…`
+                : iconUploading
+                  ? 'Uploading icon…'
+                  : 'Creating…'}
             </>
           ) : (
             'Create collection'

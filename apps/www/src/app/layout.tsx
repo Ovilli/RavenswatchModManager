@@ -1,6 +1,6 @@
+import { SpeedInsights } from '@vercel/speed-insights/next';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { SpeedInsights } from '@vercel/speed-insights/next';
 import { Nav } from './nav';
 import { Providers } from './providers';
 import { VersionBadge } from './version-badge';
@@ -34,7 +34,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {/* Brand */}
             <div className="space-y-3">
               <Link href="/" className="flex items-center gap-2.5">
-                <img src="/logo.png" alt="Ravenswatch Mod Manager" className="h-8 w-8 rounded-md object-cover" />
+                <img
+                  src="/logo.png"
+                  alt="Ravenswatch Mod Manager"
+                  className="h-8 w-8 rounded-md object-cover"
+                />
                 <span className="text-sm font-semibold text-foreground">
                   Ravenswatch Mod Manager
                 </span>
@@ -82,8 +86,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </h4>
               <ul className="space-y-2">
                 {[
-                  { href: 'https://github.com/Ovilli/RavenswatchModManager#readme', label: 'Documentation' },
-                  { href: 'https://github.com/Ovilli/RavenswatchModManager/issues', label: 'Report Bug' },
+                  {
+                    href: 'https://github.com/Ovilli/RavenswatchModManager#readme',
+                    label: 'Documentation',
+                  },
+                  {
+                    href: 'https://github.com/Ovilli/RavenswatchModManager/issues',
+                    label: 'Report Bug',
+                  },
                 ].map((link) => (
                   <li key={link.label}>
                     <a
@@ -105,20 +115,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 Social
               </h4>
               <ul className="space-y-2">
-                {[
-                  { href: 'https://github.com/Ovilli/RavenswatchModManager', label: 'GitHub' },
-                ].map((link) => (
-                  <li key={link.label}>
-                    <a
-                      href={link.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                    >
-                      {link.label}
-                    </a>
-                  </li>
-                ))}
+                {[{ href: 'https://github.com/Ovilli/RavenswatchModManager', label: 'GitHub' }].map(
+                  (link) => (
+                    <li key={link.label}>
+                      <a
+                        href={link.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        {link.label}
+                      </a>
+                    </li>
+                  ),
+                )}
               </ul>
             </div>
           </div>
@@ -131,15 +141,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 Passtech Games or NACON.
               </p>
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <Link href="/privacy" className="underline-offset-2 hover:text-foreground hover:underline">
+                <Link
+                  href="/privacy"
+                  className="underline-offset-2 hover:text-foreground hover:underline"
+                >
                   Privacy Policy
                 </Link>
                 <span aria-hidden="true">·</span>
-                <Link href="/legal" className="underline-offset-2 hover:text-foreground hover:underline">
+                <Link
+                  href="/legal"
+                  className="underline-offset-2 hover:text-foreground hover:underline"
+                >
                   Terms of Service
                 </Link>
                 <span aria-hidden="true">·</span>
-                <Link href="/legal" className="underline-offset-2 hover:text-foreground hover:underline">
+                <Link
+                  href="/legal"
+                  className="underline-offset-2 hover:text-foreground hover:underline"
+                >
                   Transparency
                 </Link>
               </div>

@@ -16,4 +16,3 @@ export function AboutIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-

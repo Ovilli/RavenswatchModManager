@@ -1,9 +1,19 @@
 'use client';
-import { Badge, Button, Input, Spinner, buttonVariants } from '@rsmm/ui';
-import type { ModVersion } from '@rsmm/schemas';
 import { ApiError } from '@rsmm/api-client';
+import type { ModVersion } from '@rsmm/schemas';
+import { Badge, Button, Input, Spinner, buttonVariants } from '@rsmm/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ChevronLeft, ChevronRight, Download, ExternalLink, EyeOff, Star, Trash2, X } from 'lucide-react';
+import {
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  ExternalLink,
+  EyeOff,
+  Star,
+  Trash2,
+  X,
+} from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { use, useCallback, useEffect, useMemo, useState } from 'react';
@@ -57,9 +67,7 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
             <ArrowLeft className="mr-1.5 h-4 w-4" /> Back to Registry
           </Link>
           <p className="text-muted-foreground">
-            {notFound
-              ? `No mod matches “${slug}”.`
-              : `Cannot reach API (${String(detail.error)})`}
+            {notFound ? `No mod matches “${slug}”.` : `Cannot reach API (${String(detail.error)})`}
           </p>
         </div>
       </main>
@@ -69,7 +77,9 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
   const { mod, versions } = detail.data;
   const latestVersion = versions[0];
   const apiBase = getApiUrl().replace(/\/+$/, '');
-  const downloadUrl = latestVersion ? `${apiBase}/api/mods/${mod.slug}/${latestVersion.version}/download` : null;
+  const downloadUrl = latestVersion
+    ? `${apiBase}/api/mods/${mod.slug}/${latestVersion.version}/download`
+    : null;
   const sizeBytes = latestVersion?.sizeBytes ?? null;
 
   return (
@@ -81,7 +91,9 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
         </Link>
 
         {mod.imageUrl ? (
-          <div className={`group relative aspect-[21/9] w-full overflow-hidden rounded-xl border border-border/50 bg-muted ${mod.nsfw ? 'relative' : ''}`}>
+          <div
+            className={`group relative aspect-[21/9] w-full overflow-hidden rounded-xl border border-border/50 bg-muted ${mod.nsfw ? 'relative' : ''}`}
+          >
             <img
               src={mod.imageUrl}
               alt={`${mod.name} cover`}
@@ -90,7 +102,9 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
             {mod.nsfw ? (
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2">
                 <EyeOff className="h-8 w-8 text-crimson/80" />
-                <span className="font-mono text-xs uppercase tracking-widest text-crimson/80">NSFW</span>
+                <span className="font-mono text-xs uppercase tracking-widest text-crimson/80">
+                  NSFW
+                </span>
               </div>
             ) : null}
           </div>
@@ -118,10 +132,7 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
           </div>
           <div className="flex items-center gap-2">
             {downloadUrl ? (
-              <a
-                href={downloadUrl}
-                className={buttonVariants({ variant: 'default', size: 'sm' })}
-              >
+              <a href={downloadUrl} className={buttonVariants({ variant: 'default', size: 'sm' })}>
                 <Download className="mr-1.5 h-4 w-4" />
                 Download for {OS_LABELS[os]}
               </a>
@@ -184,7 +195,11 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
                   </div>
                 ) : null}
                 {(mod.screenshots?.length ?? 0) > 0 ? (
-                  <PublicGallery shots={mod.screenshots ?? []} modName={mod.name} nsfw={mod.nsfw ?? false} />
+                  <PublicGallery
+                    shots={mod.screenshots ?? []}
+                    modName={mod.name}
+                    nsfw={mod.nsfw ?? false}
+                  />
                 ) : null}
               </div>
             ) : null}
@@ -205,12 +220,16 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
 
           <aside className="space-y-4">
             <div className="grimoire-card p-6">
-              <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Details</h3>
+              <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
+                Details
+              </h3>
               <dl className="space-y-2 text-sm">
                 {mod.category ? <Row k="Category" v={mod.category} /> : null}
                 {mod.rating != null ? <Row k="Rating" v={`${mod.rating.toFixed(1)} ★`} /> : null}
                 <Row k="Downloads" v={mod.downloads.toLocaleString()} />
-                {sizeBytes != null ? <Row k="Size" v={`${(sizeBytes / 1024 / 1024).toFixed(2)} MB`} /> : null}
+                {sizeBytes != null ? (
+                  <Row k="Size" v={`${(sizeBytes / 1024 / 1024).toFixed(2)} MB`} />
+                ) : null}
                 {mod.latestVersion ? <Row k="Latest" v={`v${mod.latestVersion}`} /> : null}
                 {mod.license ? <Row k="License" v={mod.license} /> : null}
               </dl>
@@ -218,10 +237,14 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
 
             {mod.tags.length > 0 ? (
               <div className="grimoire-card p-6">
-                <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Tags</h3>
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
+                  Tags
+                </h3>
                 <div className="flex flex-wrap gap-1.5">
                   {mod.tags.map((t) => (
-                    <Badge key={t} variant="secondary">{t}</Badge>
+                    <Badge key={t} variant="secondary">
+                      {t}
+                    </Badge>
                   ))}
                 </div>
               </div>
@@ -271,10 +294,7 @@ function VersionRow({ version, slug }: { version: ModVersion; slug: string }) {
         ) : null}
       </div>
       <div className="flex items-center gap-2">
-        <a
-          href={downloadUrl}
-          className={buttonVariants({ variant: 'outline', size: 'sm' })}
-        >
+        <a href={downloadUrl} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
           <Download className="mr-1 h-3.5 w-3.5" />
           Download
         </a>
@@ -304,7 +324,11 @@ interface PublicShot {
   caption?: string;
 }
 
-function PublicGallery({ shots, modName, nsfw }: { shots: PublicShot[]; modName: string; nsfw?: boolean }) {
+function PublicGallery({
+  shots,
+  modName,
+  nsfw,
+}: { shots: PublicShot[]; modName: string; nsfw?: boolean }) {
   const [idx, setIdx] = useState<number | null>(null);
   const close = useCallback(() => setIdx(null), []);
   const prev = useCallback(() => {
@@ -334,7 +358,9 @@ function PublicGallery({ shots, modName, nsfw }: { shots: PublicShot[]; modName:
               onClick={() => setIdx(i)}
               className="group block w-full text-left"
             >
-              <div className={`aspect-video overflow-hidden rounded-md bg-muted ${nsfw ? 'group relative' : ''}`}>
+              <div
+                className={`aspect-video overflow-hidden rounded-md bg-muted ${nsfw ? 'group relative' : ''}`}
+              >
                 <img
                   src={shot.url}
                   alt={shot.caption || `${modName} screenshot ${i + 1}`}
@@ -344,7 +370,9 @@ function PublicGallery({ shots, modName, nsfw }: { shots: PublicShot[]; modName:
                 {nsfw ? (
                   <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1">
                     <EyeOff className="h-5 w-5 text-crimson/80" />
-                    <span className="font-mono text-[10px] uppercase tracking-widest text-crimson/80">NSFW</span>
+                    <span className="font-mono text-[10px] uppercase tracking-widest text-crimson/80">
+                      NSFW
+                    </span>
                   </div>
                 ) : null}
               </div>
@@ -442,10 +470,7 @@ function StarRating({
             aria-label={`Rate ${n} star${n === 1 ? '' : 's'}`}
             className="text-muted-foreground transition hover:text-gilt"
           >
-            <Star
-              className={`${cls} ${n <= value ? 'fill-gilt text-gilt' : ''}`}
-              aria-hidden
-            />
+            <Star className={`${cls} ${n <= value ? 'fill-gilt text-gilt' : ''}`} aria-hidden />
           </button>
         ) : (
           <Star
@@ -558,9 +583,7 @@ function ReviewsSection({ slug, ownerId }: { slug: string; ownerId: string | nul
           />
           {errorMsg ? <p className="text-xs text-destructive">{errorMsg}</p> : null}
           <div className="flex items-center justify-between gap-2">
-            <p className="font-mono text-[10px] text-muted-foreground">
-              {body.length}/4000
-            </p>
+            <p className="font-mono text-[10px] text-muted-foreground">{body.length}/4000</p>
             <div className="flex items-center gap-2">
               {myReview ? (
                 <Button
@@ -586,7 +609,10 @@ function ReviewsSection({ slug, ownerId }: { slug: string; ownerId: string | nul
         </div>
       ) : !session?.user ? (
         <p className="mb-6 text-sm text-muted-foreground">
-          <Link href="/auth/signin" className="text-foreground underline underline-offset-2 hover:text-gilt">
+          <Link
+            href="/auth/signin"
+            className="text-foreground underline underline-offset-2 hover:text-gilt"
+          >
             Sign in
           </Link>{' '}
           to leave a review.

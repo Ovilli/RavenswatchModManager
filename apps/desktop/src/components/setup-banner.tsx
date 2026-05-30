@@ -78,10 +78,7 @@ export function SetupBanner() {
     };
   }, []);
 
-  const signature = useMemo(
-    () => (result ? signatureFor(result.checks) : ''),
-    [result],
-  );
+  const signature = useMemo(() => (result ? signatureFor(result.checks) : ''), [result]);
 
   if (sessionDismissed) return null;
   if (running) return null;
@@ -94,7 +91,7 @@ export function SetupBanner() {
       setSessionDismissed(true);
     };
     return (
-      <div className="ember-banner flex items-start gap-3 px-4 py-3" role="status">
+      <output className="ember-banner flex w-full items-start gap-3 px-4 py-3">
         <AlertTriangle className="h-4 w-4 text-crimson shrink-0 mt-1" aria-hidden />
         <div className="flex-1 space-y-1">
           <p className="font-serif-italic text-base">
@@ -106,7 +103,7 @@ export function SetupBanner() {
         <Button type="button" size="sm" onClick={dismissError}>
           Dismiss
         </Button>
-      </div>
+      </output>
     );
   }
 
@@ -125,7 +122,7 @@ export function SetupBanner() {
   };
 
   return (
-    <div className="grimoire-card flex flex-col gap-3 p-4" role="status">
+    <section aria-label="First-run setup" className="grimoire-card flex flex-col gap-3 p-4">
       <header className="flex items-center justify-between gap-3">
         <h3 className="font-fraktur text-xl text-parchment flex items-center gap-2">
           <AlertTriangle className="h-5 w-5 text-crimson" aria-hidden />
@@ -163,6 +160,6 @@ export function SetupBanner() {
         Open <span className="font-mono">Settings</span> to fix paths, or rerun{' '}
         <span className="font-mono">rsmm doctor</span> from a terminal for diagnostic detail.
       </p>
-    </div>
+    </section>
   );
 }

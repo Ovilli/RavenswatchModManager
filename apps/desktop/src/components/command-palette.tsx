@@ -178,6 +178,7 @@ export function CommandPalette() {
         </div>
         <div
           id={listboxId}
+          // biome-ignore lint/a11y/useSemanticElements: custom combobox results list — no native element implements the listbox interaction
           role="listbox"
           aria-label="Mod search results"
           className="max-h-[50vh] overflow-y-auto py-2"
@@ -191,6 +192,7 @@ export function CommandPalette() {
               <div
                 key={`${h.origin}-${h.id}`}
                 id={`${listboxId}-opt-${i}`}
+                // biome-ignore lint/a11y/useSemanticElements: listbox option in a custom combobox; <option> only works inside <select>
                 role="option"
                 aria-selected={i === cursor}
                 className={`flex cursor-pointer items-center justify-between px-3 py-2 ${
@@ -212,4 +214,3 @@ export function CommandPalette() {
     </dialog>
   );
 }
-

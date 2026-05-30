@@ -26,10 +26,9 @@ import { useSession } from '../../../lib/auth-client';
 import { toEmbedUrl } from '../../../lib/video-embed';
 
 const MDEditor = dynamic(() => import('@uiw/react-md-editor'), { ssr: false });
-const MDPreview = dynamic(
-  () => import('@uiw/react-md-editor').then((m) => m.default.Markdown),
-  { ssr: false },
-);
+const MDPreview = dynamic(() => import('@uiw/react-md-editor').then((m) => m.default.Markdown), {
+  ssr: false,
+});
 
 interface Screenshot {
   url: string;
@@ -393,11 +392,7 @@ export default function ManageModPage() {
   if (previewMode) {
     return (
       <main className="container mx-auto max-w-3xl space-y-8 px-6 py-12">
-        <PreviewHeader
-          modName={mod.name}
-          slug={mod.slug}
-          onExit={() => setPreviewMode(false)}
-        />
+        <PreviewHeader modName={mod.name} slug={mod.slug} onExit={() => setPreviewMode(false)} />
         <PreviewBody
           mod={{
             name: name || mod.name,
@@ -441,7 +436,8 @@ export default function ManageModPage() {
           <h1 className="text-3xl font-bold tracking-tight">{mod.name}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             v{mod.latestVersion ?? '—'} · {mod.downloads.toLocaleString()} downloads ·
-            {mod.category ? ` ${mod.category} · ` : ' '}updated {new Date(mod.updatedAt).toLocaleDateString()}
+            {mod.category ? ` ${mod.category} · ` : ' '}updated{' '}
+            {new Date(mod.updatedAt).toLocaleDateString()}
           </p>
           <div className="mt-3 flex gap-2 text-sm">
             <Link
@@ -584,7 +580,9 @@ export default function ManageModPage() {
           </div>
         </div>
         <div className="flex items-center justify-end gap-3">
-          {saveMessage ? <span className="text-xs text-muted-foreground">{saveMessage}</span> : null}
+          {saveMessage ? (
+            <span className="text-xs text-muted-foreground">{saveMessage}</span>
+          ) : null}
           {saveMeta.isError ? (
             <span className="text-xs text-destructive">{describeApiError(saveMeta.error)}</span>
           ) : null}
@@ -609,10 +607,7 @@ export default function ManageModPage() {
           {screenshots.length > 0 ? (
             <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {screenshots.map((shot, idx) => (
-                <li
-                  key={shot.url}
-                  className="space-y-2 rounded-md border border-border/40 p-2"
-                >
+                <li key={shot.url} className="space-y-2 rounded-md border border-border/40 p-2">
                   <button
                     type="button"
                     onClick={() => setLightboxIdx(idx)}
@@ -629,9 +624,7 @@ export default function ManageModPage() {
                   </button>
                   <Input
                     value={shot.caption ?? ''}
-                    onChange={(e) =>
-                      setCaption(idx, (e.target as HTMLInputElement).value)
-                    }
+                    onChange={(e) => setCaption(idx, (e.target as HTMLInputElement).value)}
                     onBlur={() => commitCaption(idx)}
                     placeholder="Caption (optional, max 200 chars)"
                     maxLength={200}
@@ -679,7 +672,10 @@ export default function ManageModPage() {
           {videos.length > 0 ? (
             <ul className="space-y-2">
               {videos.map((url, idx) => (
-                <li key={url} className="flex items-center gap-2 rounded-md border border-border/40 px-3 py-2">
+                <li
+                  key={url}
+                  className="flex items-center gap-2 rounded-md border border-border/40 px-3 py-2"
+                >
                   <span className="flex-1 truncate font-mono text-xs">{url}</span>
                   <Button
                     type="button"
@@ -725,10 +721,7 @@ export default function ManageModPage() {
           <ul className="space-y-3">
             {versions
               .slice()
-              .sort(
-                (a, b) =>
-                  new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-              )
+              .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
               .map((v) => {
                 // changelog isn't on the published ModVersion schema yet
                 // because the public detail endpoint hasn't been
@@ -743,8 +736,7 @@ export default function ManageModPage() {
                       <div>
                         <p className="font-semibold">v{v.version}</p>
                         <p className="text-xs text-muted-foreground">
-                          {fmtBytes(v.sizeBytes)} ·{' '}
-                          {new Date(v.createdAt).toLocaleDateString()}
+                          {fmtBytes(v.sizeBytes)} · {new Date(v.createdAt).toLocaleDateString()}
                         </p>
                       </div>
                       <Badge variant="outline">{v.sha256.slice(0, 12)}</Badge>
@@ -805,11 +797,10 @@ export default function ManageModPage() {
             ) : null}
             <Button
               onClick={() => newVersionMut.mutate()}
-              disabled={
-                !newZip || !SEMVER_RE.test(newVersion) || newVersionMut.isPending
-              }
+              disabled={!newZip || !SEMVER_RE.test(newVersion) || newVersionMut.isPending}
             >
-              {newVersionMut.isPending ? <Spinner /> : <Upload className="h-4 w-4" />} Publish version
+              {newVersionMut.isPending ? <Spinner /> : <Upload className="h-4 w-4" />} Publish
+              version
             </Button>
           </div>
         </div>
@@ -822,8 +813,8 @@ export default function ManageModPage() {
           <div>
             <h2 className="text-lg font-semibold">Danger zone</h2>
             <p className="text-sm text-muted-foreground">
-              Deleting removes the mod row and every published version. The slug becomes
-              available for someone else to claim. This cannot be undone.
+              Deleting removes the mod row and every published version. The slug becomes available
+              for someone else to claim. This cannot be undone.
             </p>
           </div>
         </div>
@@ -831,9 +822,7 @@ export default function ManageModPage() {
           variant="destructive"
           onClick={() => {
             if (
-              window.confirm(
-                `Delete "${mod.name}" and all its versions? This cannot be undone.`,
-              )
+              window.confirm(`Delete "${mod.name}" and all its versions? This cannot be undone.`)
             ) {
               remove.mutate();
             }
@@ -991,7 +980,11 @@ function PreviewBody({
     <div className="space-y-6">
       {mod.imageUrl ? (
         <div className="aspect-[21/9] w-full overflow-hidden rounded-xl border border-border/50 bg-muted">
-          <img src={mod.imageUrl} alt={`${mod.name} cover`} className="h-full w-full object-cover" />
+          <img
+            src={mod.imageUrl}
+            alt={`${mod.name} cover`}
+            className="h-full w-full object-cover"
+          />
         </div>
       ) : null}
       <header>
@@ -1015,7 +1008,7 @@ function PreviewBody({
               </div>
             </div>
           ) : null}
-          {(screenshots.length > 0 || videos.length > 0) ? (
+          {screenshots.length > 0 || videos.length > 0 ? (
             <div className="grimoire-card space-y-4 p-6">
               <h2 className="text-xl font-bold tracking-tight">Gallery</h2>
               {videos.length > 0 ? (

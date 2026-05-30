@@ -1,8 +1,17 @@
-import { cn } from '@rsmm/ui';
 import { ApiError } from '@rsmm/api-client';
+import { cn } from '@rsmm/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
-import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Globe, Plus, Trash2, X } from 'lucide-react';
+import {
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  Globe,
+  Plus,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Button,
@@ -15,13 +24,13 @@ import {
   SectionHeader,
   StatPill,
 } from '../components/chrome';
+import { useToast } from '../components/toast';
 import { api } from '../lib/api';
 import { getApiUrl } from '../lib/api-url';
 import { inTauri } from '../lib/platform';
 import { installModVersion, listLocalMods, uninstallLocalMod } from '../lib/rsmm';
 import { toEmbedUrl } from '../lib/video-embed';
 import { activeProfile, isEnabledIn, useApp } from '../store';
-import { useToast } from '../components/toast';
 
 export const Route = createFileRoute('/mod/$slug')({
   component: ModDetailPage,
@@ -50,10 +59,14 @@ function ModDetailPage() {
   const [versionBusy, setVersionBusy] = useState<string | null>(null);
   const [versionError, setVersionError] = useState<string | null>(null);
 
+  const activeProfileId = useApp((s) => s.activeProfileId);
   const refreshLocalMods = useCallback(async () => {
     const mods = await listLocalMods();
-    if (mods) syncLocalMods(mods);
-  }, [syncLocalMods]);
+    if (mods) {
+      syncLocalMods(mods);
+      queryClient.setQueryData(['rsmm', 'list', activeProfileId], mods);
+    }
+  }, [syncLocalMods, queryClient, activeProfileId]);
 
   const installVersion = useCallback(
     async (version: string, addToProfile = false) => {
@@ -77,6 +90,7 @@ function ModDetailPage() {
     [installMod, queryClient, slug, syncLocalMods],
   );
 
+  const uninstallModStore = useApp((s) => s.uninstallMod);
   const uninstall = useCallback(
     async (modId: string) => {
       setVersionBusy(modId);
@@ -86,6 +100,7 @@ function ModDetailPage() {
         if (!result || !result.ok) {
           throw new Error(result?.error || `Failed to uninstall ${modId}`);
         }
+        uninstallModStore(modId);
         await refreshLocalMods();
         await queryClient.invalidateQueries({ queryKey: ['mods', 'detail', slug] });
         toast.push('Mod uninstalled.', 'success');
@@ -97,7 +112,7 @@ function ModDetailPage() {
         setVersionBusy(null);
       }
     },
-    [queryClient, refreshLocalMods, slug, toast],
+    [queryClient, refreshLocalMods, slug, toast, uninstallModStore],
   );
 
   if (isLoading) {
@@ -441,7 +456,11 @@ interface Screenshot {
   caption?: string;
 }
 
-function ScreenshotGallery({ shots, modName, nsfw }: { shots: Screenshot[]; modName: string; nsfw?: boolean }) {
+function ScreenshotGallery({
+  shots,
+  modName,
+  nsfw,
+}: { shots: Screenshot[]; modName: string; nsfw?: boolean }) {
   const [idx, setIdx] = useState<number | null>(null);
   const close = useCallback(() => setIdx(null), []);
   const prev = useCallback(() => {
@@ -473,14 +492,20 @@ function ScreenshotGallery({ shots, modName, nsfw }: { shots: Screenshot[]; modN
               onClick={() => setIdx(i)}
               className="group block w-full text-left"
             >
-              <div className={cn('aspect-video overflow-hidden rounded border border-oxblood/30 bg-pitch', nsfw && 'group')}>
+              <div
+                className={cn(
+                  'aspect-video overflow-hidden rounded border border-oxblood/30 bg-pitch',
+                  nsfw && 'group',
+                )}
+              >
                 <img
                   src={shot.url}
                   alt={shot.caption || `${modName} screenshot ${i + 1}`}
                   loading="lazy"
                   className={cn(
                     'h-full w-full object-cover transition-opacity group-hover:opacity-90',
-                    nsfw && 'blur-xl saturate-0 transition-all duration-300 group-hover:blur-none group-hover:saturate-100',
+                    nsfw &&
+                      'blur-xl saturate-0 transition-all duration-300 group-hover:blur-none group-hover:saturate-100',
                   )}
                 />
               </div>

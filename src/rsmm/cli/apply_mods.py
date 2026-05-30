@@ -47,6 +47,7 @@ import sys
 import tomllib  # Python 3.11+
 from pathlib import Path
 
+from rsmm.engine import cook_cache, cooked_schemas
 from rsmm.engine.paths import (
     ASSET_MAP_JSON,
     MODS_DIR,
@@ -181,6 +182,9 @@ def load_asset_map(_repo: Path | None = None) -> dict[str, str]:
     out: dict[str, str] = {}
     for enc, dec in raw.items():
         dec_norm = dec.replace("\\", "/")
+        if dec_norm in out:
+            print(f"  [warn] duplicate decoded path {dec_norm!r} "
+                  f"(old={out[dec_norm]!r}, new={enc!r})", file=sys.stderr)
         out[dec_norm] = enc
     return out
 
@@ -212,6 +216,10 @@ def is_skippable_asset(decoded: str) -> bool:
     """
     top = decoded.split("/", 1)[0]
     if top.startswith("_pending_"):
+        return True
+    # Cook sidecars (orientation transforms) travel next to a custom mesh but
+    # are consumed by the cooker, not installed into the game.
+    if decoded.endswith(".rsmmcook"):
         return True
     return False
 
@@ -397,6 +405,21 @@ def plan_apply(mods: list[Mod],
     for enc, (src, mod_id) in wanted.items():
         dest = encoded_to_dest(enc, cooking, game_dir)
         cur = active.get(enc)
+        # Auto-cook source-format inputs (.gltf/.dds/etc) into cached cooked
+        # files. Pre-cooked inputs are returned unchanged. NotReversedError
+        # surfaces as a skip + warning so the rest of the apply still runs.
+        if cook_cache.is_source(src):
+            # Custom meshes cook by swapping into the game's *original*
+            # cooked file. Prefer the backup (pristine) over a dest that a
+            # prior apply may already have overwritten.
+            bak = dest.parent / (dest.name + BACKUP_SUFFIX)
+            template = bak if bak.exists() else (dest if dest.exists() else None)
+            try:
+                src = cook_cache.maybe_cook(src, template=template)
+            except cooked_schemas.NotReversedError as e:
+                print(f"  [warn] {mod_id}: skipping {src.name} ({e})",
+                      file=sys.stderr)
+                continue
         src_sha = sha256(src)
         # Legacy `src_sha1` entries never match — they're treated as
         # "needs re-apply" which is a no-op shutil.copy2 plus a state
@@ -841,8 +864,8 @@ def _recover_game_update(cooking: Path, game_dir: Path) -> bool:
         try:
             bak.unlink()
             cleared += 1
-        except OSError:
-            pass
+        except OSError as e:
+            print(f"  [warn] failed to delete stale backup {bak}: {e}", file=sys.stderr)
     if cleared:
         print(f"  + cleared {cleared} stale backup(s)")
 

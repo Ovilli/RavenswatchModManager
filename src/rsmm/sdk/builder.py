@@ -38,6 +38,10 @@ class ModBuilder:
         self._requires: list[tuple[str, str]] = []
         self._api_name: str | None = None
         self._patch_blocks: list[dict] = []
+        # decoded game-asset path -> source file to stage under assets/.
+        self._assets: dict[str, Path] = {}
+        # decoded path -> cook transform (orientation) sidecar payload.
+        self._asset_transforms: dict[str, dict] = {}
 
     # ---- patch blocks (emitted as [[patch]] entries in manifest) ------
 
@@ -66,6 +70,65 @@ class ModBuilder:
     def content(self, kind: str, *, id: str, **fields) -> None:
         self._content.register(kind, id=id, **fields)
 
+    # ---- asset overrides (custom models / textures) -------------------
+
+    # Source extensions the apply-time cooker knows how to turn into a
+    # cooked asset (see engine.cook_cache.SOURCE_EXT_CLASS). Pre-cooked
+    # binaries (.tpi/.dxt/...) are also allowed through untouched.
+    _MODEL_EXTS = (".glb", ".gltf")
+    _TEXTURE_EXTS = (".png", ".dds", ".tga")
+
+    def asset(self, decoded_path: str, source: str | Path) -> None:
+        """Stage a source asset to override the game file at `decoded_path`.
+
+        `decoded_path` is the plaintext asset path as it appears in
+        `data/asset_map.json` (forward slashes), e.g.
+        ``3D/Characters/Heroes/Melusine/Textures/T_Melusine_ALB.png``.
+        The file is copied verbatim into ``mods/<id>/assets/<decoded_path>``;
+        `rsmm apply` auto-cooks source formats (.glb/.png/.dds/...) into the
+        cooked container and installs them. Pre-cooked inputs pass through.
+        """
+        src = Path(source)
+        if not src.is_file():
+            raise FileNotFoundError(f"asset source not found: {src}")
+        slashed = decoded_path.replace("\\", "/")
+        if slashed.startswith("/") or (len(decoded_path) > 1 and decoded_path[1] == ":"):
+            raise ValueError(f"decoded_path must be relative, got {decoded_path!r}")
+        norm = slashed.strip("/")
+        if not norm or ".." in norm.split("/"):
+            raise ValueError(f"invalid decoded_path: {decoded_path!r}")
+        if norm in self._assets:
+            raise ValueError(f"duplicate asset override for {norm!r}")
+        self._assets[norm] = src
+
+    def model(self, decoded_path: str, source: str | Path,
+              rotate_deg: tuple[float, float, float] | None = None) -> None:
+        """Override a mesh asset. Source must be a `.glb`/`.gltf`.
+
+        A custom mesh is cooked at apply-time by retargeting it onto the
+        game asset's skeleton (`engine.geometry_cook`). It is auto-scaled and
+        recentered into the original's space; orientation defaults to an
+        auto-upright guess (tallest axis -> up). If the mesh comes out turned
+        or upside down, pass `rotate_deg=(x, y, z)` — a rigid rotation in
+        degrees applied before the fit (e.g. `(90, 0, 0)` to flip upright,
+        `(0, 180, 0)` to face the other way).
+        """
+        if Path(source).suffix.lower() not in self._MODEL_EXTS:
+            raise ValueError(
+                f"model() expects {self._MODEL_EXTS}, got {Path(source).suffix!r}")
+        self.asset(decoded_path, source)
+        if rotate_deg is not None:
+            norm = decoded_path.replace("\\", "/").strip("/")
+            self._asset_transforms[norm] = {
+                "rotate_deg": [float(a) for a in rotate_deg]}
+
+    def texture(self, decoded_path: str, source: str | Path) -> None:
+        """Override a texture asset. Source must be a `.png`/`.dds`/`.tga`."""
+        if Path(source).suffix.lower() not in self._TEXTURE_EXTS:
+            raise ValueError(
+                f"texture() expects {self._TEXTURE_EXTS}, got {Path(source).suffix!r}")
+        self.asset(decoded_path, source)
+
     def requires(self, mod_id: str, version_spec: str = "") -> None:
         self._requires.append((mod_id, version_spec))
 
@@ -88,6 +151,8 @@ class ModBuilder:
             if self._content.defs:
                 (staging / "assets").mkdir(exist_ok=True)
                 self._content.emit(staging / "assets")
+            if self._assets:
+                self._write_assets(staging)
             if dst.exists():
                 shutil.rmtree(dst)
             dst.parent.mkdir(parents=True, exist_ok=True)
@@ -141,6 +206,21 @@ class ModBuilder:
                     out.append(f'{k} = "{v}"')
             out.append("")
         (root / "config_schema.toml").write_text("\n".join(out), encoding="utf-8")
+
+    def _write_assets(self, root: Path) -> None:
+        import json
+
+        assets = root / "assets"
+        assets.mkdir(exist_ok=True)
+        for decoded, src in self._assets.items():
+            dest = assets / decoded
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+            tf = self._asset_transforms.get(decoded)
+            if tf is not None:
+                # Cook sidecar consumed by engine.cook_cache (orientation).
+                dest.with_name(dest.name + ".rsmmcook").write_text(
+                    json.dumps(tf), encoding="utf-8")
 
     def _write_i18n(self, root: Path) -> None:
         lang_dir = root / "lang"

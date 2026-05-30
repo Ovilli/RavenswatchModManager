@@ -14,4 +14,3 @@ export function ConflictsIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-

@@ -2,13 +2,10 @@ import { NextResponse } from 'next/server';
 
 export const runtime = 'edge';
 
-const PUBLISHER_ID =
-  process.env.ADSENSE_PUBLISHER_ID ?? 'ca-pub-9139637424510522';
-const AD_SLOT =
-  process.env.ADSENSE_BANNER_SLOT ?? '1934448674';
+const PUBLISHER_ID = process.env.ADSENSE_PUBLISHER_ID ?? 'ca-pub-9139637424510522';
+const AD_SLOT = process.env.ADSENSE_BANNER_SLOT ?? '1934448674';
 
-const ENABLED =
-  PUBLISHER_ID.startsWith('ca-pub-') && PUBLISHER_ID !== 'ca-pub-0000000000000000';
+const ENABLED = PUBLISHER_ID.startsWith('ca-pub-') && PUBLISHER_ID !== 'ca-pub-0000000000000000';
 
 const adsenseHead = ENABLED
   ? `<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${PUBLISHER_ID}" crossorigin="anonymous"></script>`

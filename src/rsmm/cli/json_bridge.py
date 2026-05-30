@@ -49,6 +49,7 @@ from pathlib import Path
 from typing import Any
 
 from rsmm.cli.apply_mods import clear_runtime_mods, find_game_dir
+from rsmm.cli.merge import _ranked, collect_patches
 from rsmm.engine.paths import DIST_DIR, MODS_DIR, REPO_ROOT, self_cmd
 from rsmm.sdk.config import ConfigError, ConfigStore
 
@@ -805,6 +806,105 @@ def cmd_install_mod_version(slug: str, version: str) -> int:
     })
 
 
+def cmd_conflicts() -> int:
+    """
+    Detect all conflicts among enabled mods:
+
+      - file-path: two+ mods write the same asset file
+      - patch-field: two+ mods patch the same stat/texture/url/text field
+      - manifest: mods declare hard conflicts via `conflicts = [...]`
+    """
+    conflicts: list[dict[str, object]] = []
+
+    tracked_paths: dict[str, list[str]] = {}
+    try:
+        if MODS_DIR.is_dir():
+            for entry in sorted(MODS_DIR.iterdir()):
+                if not entry.is_dir() or entry.name.startswith(("_", ".")):
+                    continue
+                raw = _read_manifest(entry / "manifest.toml")
+                if raw is None:
+                    continue
+                manifest = raw.get("mod") if isinstance(raw.get("mod"), dict) else raw
+                if not bool(manifest.get("enabled", True)):
+                    continue
+                mod_id = entry.name
+                assets_dir = entry / "assets"
+                if assets_dir.is_dir():
+                    for f in assets_dir.rglob("*"):
+                        if f.is_file():
+                            rel = f.relative_to(assets_dir).as_posix()
+                            tracked_paths.setdefault(rel, []).append(mod_id)
+    except (OSError, PermissionError):
+        pass
+    for path, mod_ids in tracked_paths.items():
+        if len(mod_ids) > 1:
+            conflicts.append({
+                "type": "file",
+                "path": path,
+                "modIds": mod_ids,
+            })
+
+    patches = collect_patches()
+    by_key: dict[tuple, dict[str, object]] = {}
+    for p in _ranked(patches):
+        if p.kind == "stat":
+            for fn in p.data:
+                if fn == "name":
+                    continue
+                key = ("stat", str(p.data.get("name", "")).lower(), fn)
+                by_key.setdefault(key, {})[p.mod_id] = p.data[fn]
+        elif p.kind == "texture":
+            key = ("texture", str(p.data.get("target", "")).replace("\\", "/"))
+            by_key.setdefault(key, {})[p.mod_id] = p.data.get("donor")
+        elif p.kind in {"url", "text"}:
+            key = (p.kind,) + tuple(
+                str(p.data.get(k, "")) for k in
+                (["field"] if p.kind == "url" else ["bank", "lang", "key"]))
+            by_key.setdefault(key, {})[p.mod_id] = p.data.get("value")
+    for key, owners in by_key.items():
+        if len({repr(v) for v in owners.values()}) > 1:
+            kind = key[0]
+            if kind == "stat":
+                field = ".".join(str(k) for k in key[1:])
+                conflicts.append({
+                    "type": "patch",
+                    "patchKind": "stat",
+                    "field": field,
+                    "modIds": list(owners.keys()),
+                    "values": {m: repr(v) for m, v in owners.items()},
+                })
+            elif kind == "texture":
+                conflicts.append({
+                    "type": "patch",
+                    "patchKind": "texture",
+                    "target": key[1],
+                    "modIds": list(owners.keys()),
+                    "values": {m: repr(v) for m, v in owners.items()},
+                })
+            else:
+                conflicts.append({
+                    "type": "patch",
+                    "patchKind": kind,
+                    "modIds": list(owners.keys()),
+                    "values": {m: repr(v) for m, v in owners.items()},
+                })
+
+    try:
+        if MODS_DIR.is_dir():
+            from rsmm.cli.compat import analyze
+            rep = analyze()
+            for a, b in rep.hard_conflicts:
+                conflicts.append({
+                    "type": "manifest",
+                    "modIds": [a, b],
+                })
+    except Exception:
+        pass
+
+    return _emit(conflicts)
+
+
 def cmd_doctor() -> int:
     """
     Run doctor as a subprocess so the UI can display the raw, coloured
@@ -858,6 +958,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("active-overrides", help="check whether any active overrides exist")
     sub.add_parser("restore-all", help="restore every active override")
     sub.add_parser("build", help="build asset map + loader + merge + apply")
+    sub.add_parser("conflicts", help="detect all conflicts among enabled mods")
     sub.add_parser("doctor", help="system health check")
     p_run = sub.add_parser("run", help="launch the game")
     p_run.add_argument("--vanilla", action="store_true", help="restore originals before launching")
@@ -899,6 +1000,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_restore_all()
     if args.cmd == "build":
         return cmd_build([])
+    if args.cmd == "conflicts":
+        return cmd_conflicts()
     if args.cmd == "doctor":
         return cmd_doctor()
     if args.cmd == "run":

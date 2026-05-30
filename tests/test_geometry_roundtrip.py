@@ -94,5 +94,9 @@ def test_geometry_encode_rejects_unmarked_glb() -> None:
     glb += struct.pack("<II", len(j), 0x4E4F534A)
     glb += j
 
-    with pytest.raises(ValueError, match="raw_payload_b64"):
+    # A custom mesh (no embedded cooked bytes) must surface as
+    # NotReversedError so apply-mods / cook_cache skip it cleanly rather
+    # than crash on an uncaught error.
+    from rsmm.engine.cooked_schemas import NotReversedError
+    with pytest.raises(NotReversedError, match="oCGeometry"):
         h.encode(bytes(glb))

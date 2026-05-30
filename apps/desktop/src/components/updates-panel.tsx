@@ -34,7 +34,15 @@ export function UpdatesPanel() {
   // UI (mod cards, detail pages) stays consistent without a second poll.
   useEffect(() => {
     if (!remote.data) return;
-    const map: Record<string, { latestVersion: string | null; image: string | null; summary: string | null; nsfw: boolean | null }> = {};
+    const map: Record<
+      string,
+      {
+        latestVersion: string | null;
+        image: string | null;
+        summary: string | null;
+        nsfw: boolean | null;
+      }
+    > = {};
     for (const m of remote.data.items) {
       map[m.slug] = {
         latestVersion: m.latestVersion,
@@ -98,7 +106,13 @@ export function UpdatesPanel() {
           >
             <RefreshCw className="h-3.5 w-3.5" /> Recheck
           </Button>
-          <Button type="button" size="sm" variant="primary" onClick={() => void updateAll()} disabled={allUpdating}>
+          <Button
+            type="button"
+            size="sm"
+            variant="primary"
+            onClick={() => void updateAll()}
+            disabled={allUpdating}
+          >
             {allUpdating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
             Update all
           </Button>

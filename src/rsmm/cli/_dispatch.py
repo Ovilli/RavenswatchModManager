@@ -14,7 +14,7 @@ if sys.version_info < (3, 11):  # noqa: UP036
         "Upgrade Python and reinstall rsmm."
     )
 
-from rsmm.engine.paths import MODS_DIR  # noqa: F401, E402 — ensures ROOT on sys.path
+import rsmm.engine.paths  # noqa: E402 — ensures package is importable
 
 # Replaced by the entrypoint script (./rsmm) at import time so `--help`
 # shows the rich top-level overview, not this dispatch module's docstring.
@@ -34,7 +34,7 @@ def _dispatch_module(modname: str, argv: list[str]) -> int:
 LEGACY = {
     "apply":         ("rsmm.cli.apply_mods",                 []),
     "list":          ("rsmm.cli.apply_mods",                 ["--list"]),
-    "restore":       ("rsmm.cli.apply_mods",                 ["--restore-all"]),
+    # "restore" is handled explicitly above (avoids LEGACY dead-code).
     "doctor":        ("rsmm.cli.doctor",                     []),
     "watch":         ("rsmm.cli.watch",                      []),
     "build":         ("rsmm.cli.build",                      []),
@@ -56,8 +56,8 @@ def main(argv: list[str] | None = None) -> int:
     rest = argv[1:]
 
     if sub == "restore":
-        if rest and rest[0] == "--all":
-            rest = rest[1:]
+        # Strip --all from any position so ordering doesn't matter.
+        rest = [a for a in rest if a != "--all"]
         return _dispatch_module("rsmm.cli.apply_mods", ["--restore-all", *rest])
 
     BUILTIN = {
@@ -67,6 +67,9 @@ def main(argv: list[str] | None = None) -> int:
         "decode":            "rsmm.engine.ot_decoder",
         "rebuild-asset-map": "rsmm.engine.find_iyg",
         "install-loader":    "rsmm.cli.install_loader",
+        "cook":              "rsmm.cli.cook",
+        "uncook":            "rsmm.cli.uncook",
+        "unify":             "rsmm.cli.unify",
     }
     if sub in BUILTIN:
         return _dispatch_module(BUILTIN[sub], rest)

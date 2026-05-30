@@ -73,3 +73,58 @@ def test_builder_patch_blocks(tmp_path, monkeypatch):
     assert 'kind = "text"' in mf
     assert "Health" in mf
     assert "Hello" in mf
+
+
+def test_builder_texture_asset(tmp_path, monkeypatch):
+    from rsmm.sdk.builder import ModBuilder
+    monkeypatch.setattr("rsmm.sdk.builder.MODS_DIR", tmp_path)
+    src = tmp_path / "skin.png"
+    src.write_bytes(b"\x89PNG\r\n\x1a\nstub")
+    b = ModBuilder("TexMod", version="0.1.0", author="t", name="Tex")
+    b.texture("3D/Characters/Heroes/Melusine/Textures/T_Melusine_ALB.png", src)
+    b.commit()
+    staged = (tmp_path / "TexMod" / "assets"
+              / "3D/Characters/Heroes/Melusine/Textures/T_Melusine_ALB.png")
+    assert staged.is_file()
+    assert staged.read_bytes() == src.read_bytes()
+
+
+def test_builder_model_rejects_non_mesh_ext(tmp_path):
+    from rsmm.sdk.builder import ModBuilder
+    src = tmp_path / "x.png"
+    src.write_bytes(b"x")
+    b = ModBuilder("M", version="0.1.0", author="t", name="M")
+    try:
+        b.model("a/b.glb", src)
+    except ValueError:
+        return
+    raise AssertionError("model() should reject .png")
+
+
+def test_builder_asset_rejects_traversal_and_dupes(tmp_path):
+    from rsmm.sdk.builder import ModBuilder
+    src = tmp_path / "f.dds"
+    src.write_bytes(b"DDS")
+    b = ModBuilder("M", version="0.1.0", author="t", name="M")
+    for bad in ("../evil.dds", "/abs/evil.dds", "a/../../evil.dds"):
+        try:
+            b.texture(bad, src)
+        except ValueError:
+            continue
+        raise AssertionError(f"expected rejection of {bad!r}")
+    b.texture("ok/path.dds", src)
+    try:
+        b.texture("ok/path.dds", src)
+    except ValueError:
+        return
+    raise AssertionError("expected duplicate rejection")
+
+
+def test_builder_missing_asset_source_raises(tmp_path):
+    from rsmm.sdk.builder import ModBuilder
+    b = ModBuilder("M", version="0.1.0", author="t", name="M")
+    try:
+        b.asset("a/b.png", tmp_path / "nope.png")
+    except FileNotFoundError:
+        return
+    raise AssertionError("expected FileNotFoundError")

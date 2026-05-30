@@ -1,9 +1,9 @@
 import { Input } from '@rsmm/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Fleuron, InkSwitch, Panel } from './chrome';
 import { inTauri } from '../lib/platform';
-import { getModConfig, setModConfig, type ModConfigField } from '../lib/rsmm';
+import { type ModConfigField, getModConfig, setModConfig } from '../lib/rsmm';
+import { Button, Fleuron, InkSwitch, Panel } from './chrome';
 
 type ConfigValue = boolean | number | string;
 
@@ -61,7 +61,9 @@ export function ModConfigPanel({
         setDraft(result.values);
       }
       setTouched({});
-      queryClient.invalidateQueries({ queryKey: ['mods', 'config', modId] }).catch(() => {});
+      queryClient
+        .invalidateQueries({ queryKey: ['mods', 'config', modId] })
+        .catch((e) => console.error('[mod-config] failed to refresh config after save', e));
     },
   });
 
@@ -361,7 +363,9 @@ function validateConfigDraft(
     normalized,
     errors,
     hasErrors: errorCount > 0,
-    summary: errorCount ? `${errorCount} field${errorCount === 1 ? '' : 's'} need attention before saving.` : '',
+    summary: errorCount
+      ? `${errorCount} field${errorCount === 1 ? '' : 's'} need attention before saving.`
+      : '',
   };
 }
 
@@ -382,7 +386,12 @@ function validateField(
       return { value };
     }
     if (field.choices.length > 0 && !field.choices.includes(value)) {
-      return { error: field.choices.length === 1 ? `Choose ${field.choices[0]}.` : `Choose one of: ${field.choices.join(', ')}.` };
+      return {
+        error:
+          field.choices.length === 1
+            ? `Choose ${field.choices[0]}.`
+            : `Choose one of: ${field.choices.join(', ')}.`,
+      };
     }
     return { value };
   }

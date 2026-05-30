@@ -3,7 +3,7 @@ import { Link, Outlet, createRootRouteWithContext, useLocation } from '@tanstack
 import { exit as processExit } from '@tauri-apps/plugin-process';
 import { Command } from '@tauri-apps/plugin-shell';
 import { AlertTriangle } from 'lucide-react';
-import { Terminal } from 'lucide-react';
+import { FlaskConical, Terminal } from 'lucide-react';
 import type { CSSProperties, Dispatch, SetStateAction } from 'react';
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -34,7 +34,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 interface Nav {
-  to: '/' | '/browse' | '/profiles' | '/conflicts' | '/settings' | '/commands' | '/about';
+  to:
+    | '/'
+    | '/browse'
+    | '/profiles'
+    | '/conflicts'
+    | '/author'
+    | '/settings'
+    | '/commands'
+    | '/about';
   icon: React.ComponentType<{ className?: string }>;
   label: string;
 }
@@ -44,6 +52,12 @@ const NAV: Nav[] = [
   { to: '/browse', icon: BrowseIcon, label: 'Browse' },
   { to: '/profiles', icon: ProfilesIcon, label: 'Profiles' },
   { to: '/conflicts', icon: ConflictsIcon, label: 'Conflicts' },
+  // /author is dev-only — cooked-asset inspector, not part of the
+  // public client. Visible only in dev builds; route still resolves via
+  // direct URL in case a dev pins it for local testing.
+  ...(import.meta.env.DEV
+    ? ([{ to: '/author' as const, icon: FlaskConical, label: 'Author' }] satisfies Nav[])
+    : []),
   { to: '/settings', icon: SettingsIcon, label: 'Settings' },
   { to: '/commands', icon: Terminal, label: 'Commands' },
   { to: '/about', icon: AboutIcon, label: 'About' },
@@ -131,9 +145,12 @@ function StatusStrip() {
     useLaunchState();
   const profile = useApp(activeProfile);
   const installed = useApp((s) => s.installed);
+  const localMods = useApp((s) => s.localMods);
   const profiles = useApp((s) => s.profiles);
   const launchSeq = useRef(0);
-  const enabled = profile.loadOrder.filter((id) => isEnabledIn(profile, id)).length;
+  const enabled = profile.loadOrder.filter(
+    (id) => localMods[id] && isEnabledIn(profile, id),
+  ).length;
   const disabled = profile.loadOrder.length - enabled;
   const conflictCount = useMemo(() => detectConflicts(profile).length, [profile]);
   const outdated = useMemo(() => outdatedCount(installed), [installed]);

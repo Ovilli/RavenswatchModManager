@@ -91,6 +91,7 @@ interface RsmmOptions {
   timeoutMs?: number;
   onStdout?: (line: string) => void;
   onStderr?: (line: string) => void;
+  profileId?: string;
 }
 
 /**
@@ -98,10 +99,7 @@ interface RsmmOptions {
  * (development). Returns parsed JSON output. Throws a typed `RsmmError`
  * subclass on failure.
  */
-async function rsmm<T = unknown>(
-  args: string[],
-  options: RsmmOptions = {},
-): Promise<T | null> {
+async function rsmm<T = unknown>(args: string[], options: RsmmOptions = {}): Promise<T | null> {
   const fullArgs = ['json', ...args];
   const result = await execute(fullArgs, options);
   if (result.code !== 0) {
@@ -127,9 +125,11 @@ function defaultModsDir(): string {
   }
 }
 
-function rsmmEnv(): Record<string, string> {
-  const modsDir = useApp.getState().settings.modsDir?.trim() || defaultModsDir();
-  return { RSMM_MODS_DIR: modsDir };
+function rsmmEnv(profileId?: string): Record<string, string> {
+  const state = useApp.getState();
+  const rootDir = state.settings.modsDir?.trim() || defaultModsDir();
+  const id = profileId ?? state.activeProfileId;
+  return { RSMM_MODS_DIR: `${rootDir}/profiles/${id}` };
 }
 
 const SIDECAR_PROGS = ['binaries/rsmm'] as const;
@@ -161,8 +161,8 @@ async function runtimeEnv(): Promise<{ repoRoot: string; path: string }> {
   return runtimeEnvPromise;
 }
 
-async function envForCommand(): Promise<Record<string, string>> {
-  const env = rsmmEnv();
+async function envForCommand(profileId?: string): Promise<Record<string, string>> {
+  const env = rsmmEnv(profileId);
   try {
     const runtime = await runtimeEnv();
     const pathParts = [runtime.repoRoot, runtime.path].filter(Boolean);
@@ -176,7 +176,7 @@ async function envForCommand(): Promise<Record<string, string>> {
 }
 
 async function execute(args: string[], options: RsmmOptions): Promise<ExecResult> {
-  const env = await envForCommand();
+  const env = await envForCommand(options.profileId);
   const opts = Object.keys(env).length ? { env } : undefined;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
@@ -430,6 +430,48 @@ interface ApplyOptions extends RsmmOptions {
 
 export const listLocalMods = () => rsmm<LocalMod[]>(['list']);
 
+// Author / cooked-asset inspection. These bypass the `json` CLI bridge
+// because `uncook` and `cook` are text/binary commands with their own
+// --json flag for structured output (not the legacy json bridge).
+export interface CookedClassEntry {
+  name: string;
+  uid: string;
+  version: [number, number];
+  parent: string;
+}
+export interface CookedSectionEntry {
+  index: number;
+  size: number;
+}
+export interface CookedInfo {
+  path: string;
+  size: number;
+  variant: 'A' | 'B';
+  flags: number;
+  extra: number;
+  type_tag: number;
+  root_class: string;
+  schema_status: 'stub' | 'raw';
+  source_ext: string;
+  classes: CookedClassEntry[];
+  sections: CookedSectionEntry[];
+}
+export async function uncookInfo(path: string): Promise<CookedInfo> {
+  const args = ['uncook', '--info', '--json', path];
+  const result = await execute(args, {});
+  if (result.code !== 0) {
+    throw new RsmmExitError(args, result.code, result.stdout, result.stderr);
+  }
+  try {
+    return JSON.parse(result.stdout.trim()) as CookedInfo;
+  } catch (cause) {
+    throw new RsmmParseError(args, result.stdout, cause);
+  }
+}
+
+export const listLocalModsForProfile = (profileId: string) =>
+  rsmm<LocalMod[]>(['list'], { profileId });
+
 export async function getModConfig(modId: string): Promise<ModConfigResponse> {
   const result = await rsmm<ModConfigResponse>(['config', 'get', modId]);
   if (!result) {
@@ -451,6 +493,18 @@ export async function setModConfig(
   return result;
 }
 
+export interface ConflictEntry {
+  type: 'file' | 'patch' | 'manifest';
+  modIds: string[];
+  path?: string;
+  patchKind?: string;
+  field?: string;
+  target?: string;
+  values?: Record<string, string>;
+}
+
+export const getConflicts = () => rsmm<ConflictEntry[]>(['conflicts']);
+
 export const doctor = () => rsmm<DoctorResult>(['doctor']);
 
 export const applyMods = (opts: ApplyOptions = {}) => {
@@ -469,8 +523,7 @@ const runGame = () => rsmm<RunResult>(['run'], { timeoutMs: DEFAULT_TIMEOUT_MS }
 export const runVanilla = () =>
   rsmm<RunResult>(['run', '--vanilla'], { timeoutMs: DEFAULT_TIMEOUT_MS });
 
-export const restoreAll = () =>
-  rsmm<RunResult>(['restore-all'], { timeoutMs: LONG_TIMEOUT_MS });
+export const restoreAll = () => rsmm<RunResult>(['restore-all'], { timeoutMs: LONG_TIMEOUT_MS });
 
 export interface ActiveOverridesStatus {
   ok: boolean;
@@ -519,11 +572,14 @@ export interface UninstallResult {
  * local `mods/<slug>/` folder. Server-side this hit also bumps the
  * mod's download counter (see `apps/api/src/routes/mods.ts`).
  */
-export const installModFromIndex = (slug: string) =>
-  rsmm<InstallResult>(['install-mod', slug], { timeoutMs: LONG_TIMEOUT_MS });
+export const installModFromIndex = (slug: string, profileId?: string) =>
+  rsmm<InstallResult>(['install-mod', slug], { timeoutMs: LONG_TIMEOUT_MS, profileId });
 
-export const installModVersion = (slug: string, version: string) =>
-  rsmm<InstallResult>(['install-mod-version', slug, version], { timeoutMs: LONG_TIMEOUT_MS });
+export const installModVersion = (slug: string, version: string, profileId?: string) =>
+  rsmm<InstallResult>(['install-mod-version', slug, version], {
+    timeoutMs: LONG_TIMEOUT_MS,
+    profileId,
+  });
 
 export const uninstallLocalMod = (modId: string) =>
   rsmm<UninstallResult>(['uninstall-mod', modId], { timeoutMs: LONG_TIMEOUT_MS });

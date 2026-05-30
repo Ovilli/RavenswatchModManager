@@ -70,7 +70,7 @@ import struct
 from dataclasses import dataclass, field
 
 from . import register
-from .base import SchemaHandler
+from .base import NotReversedError, SchemaHandler
 
 UID = 0x16b8
 CURRENT_VERSION = (1, 2)
@@ -186,7 +186,7 @@ def _parse_main_body(payload: bytes) -> tuple[list[Bone], int, bool, tuple, int]
     pos = 0
     if len(payload) < 9 + _TAIL_BYTES:
         raise ValueError(f"oCGeometry body too small ({len(payload)} B)")
-    res_prelude = struct.unpack_from("<I", payload, pos)[0]
+    # res_prelude (oIResource header u32) — read to advance, value unused.
     pos += 4
     bone_count = struct.unpack_from("<I", payload, pos)[0]
     pos += 4
@@ -376,8 +376,15 @@ def parse_payload(raw_payload: bytes, section_lengths: list[int]) -> Geometry:
     return g
 
 
-def _build_glb_preview(g: Geometry) -> bytes:
-    """Emit a viewer-loadable .glb with bone nodes + side-channel layers."""
+def _build_glb_preview(g: Geometry, base_color_png: bytes | None = None) -> bytes:
+    """Emit a viewer-loadable .glb with bone nodes + side-channel layers.
+
+    `base_color_png` (optional): PNG bytes for the base-color texture. When
+    given, it's embedded and wired as `baseColorTexture` on the default
+    material, reusing the decoded `TEXCOORD_0` UVs. Resolution from the
+    material/texture asset refs happens in the caller (needs install access);
+    without it the mesh falls back to a flat grey material.
+    """
     bin_buf = bytearray()
     buffer_views: list[dict] = []
     accessors: list[dict] = []
@@ -438,13 +445,25 @@ def _build_glb_preview(g: Geometry) -> bytes:
     # Real triangle geometry decoded from each oCMeshBuffer. This is the
     # actual viewable/editable mesh — POSITION + NORMAL + TEXCOORD_0 + indices.
     materials: list[dict] = []
+    images: list[dict] = []
+    samplers: list[dict] = []
+    textures: list[dict] = []
     if g.submeshes:
+        pbr: dict = {
+            "baseColorFactor": [1.0, 1.0, 1.0, 1.0] if base_color_png
+                               else [0.8, 0.8, 0.8, 1.0],
+            "metallicFactor": 0.0, "roughnessFactor": 1.0,
+        }
+        if base_color_png:
+            view = push_view(base_color_png, None)
+            images.append({"bufferView": view, "mimeType": "image/png"})
+            samplers.append({"wrapS": 10497, "wrapT": 10497,
+                             "magFilter": 9729, "minFilter": 9729})
+            textures.append({"source": 0, "sampler": 0})
+            pbr["baseColorTexture"] = {"index": 0}
         materials.append({
             "name": "rsmm_default",
-            "pbrMetallicRoughness": {
-                "baseColorFactor": [0.8, 0.8, 0.8, 1.0],
-                "metallicFactor": 0.0, "roughnessFactor": 1.0,
-            },
+            "pbrMetallicRoughness": pbr,
             "doubleSided": True,
         })
     for si, sm in enumerate(g.submeshes):
@@ -534,8 +553,8 @@ def _build_glb_preview(g: Geometry) -> bytes:
                 "has_skeleton": g.has_skeleton,
                 "aabb": list(g.aabb),
                 "layers": [
-                    {"name": l.name, "vertex_count": l.vertex_count}
-                    for l in g.layers
+                    {"name": layer.name, "vertex_count": layer.vertex_count}
+                    for layer in g.layers
                 ],
                 "submeshes": [
                     {"vertex_count": len(sm.positions),
@@ -558,6 +577,12 @@ def _build_glb_preview(g: Geometry) -> bytes:
     }
     if materials:
         gltf["materials"] = materials
+    if images:
+        gltf["images"] = images
+    if samplers:
+        gltf["samplers"] = samplers
+    if textures:
+        gltf["textures"] = textures
 
     bin_pad = (-len(bin_buf)) % 4
     bin_payload = bytes(bin_buf) + b"\0" * bin_pad
@@ -610,11 +635,15 @@ def _extract_raw_payload_from_glb(glb_bytes: bytes) -> bytes:
     rsmm = extras.get("rsmm") or {}
     blob_b64 = rsmm.get("raw_payload_b64")
     if not blob_b64:
-        raise ValueError(
-            "glb has no rsmm.raw_payload_b64 — cooked mesh re-encode from "
-            "arbitrary glTF is blocked on the cooker quantization paths "
-            "(FUN_1404c3440 / FUN_1404c3dc0) not yet being reversed. "
-            "Re-extract via `rsmm uncook` to embed the original cooked bytes."
+        # A genuine custom mesh (no rsmm extras): cooking it needs the
+        # oCGeometry encoder, which isn't reversed yet. Signal with
+        # NotReversedError so apply-mods / cook_cache skip it cleanly
+        # instead of crashing on an uncaught ValueError.
+        raise NotReversedError(
+            "oCGeometry",
+            "cooked mesh re-encode from arbitrary glTF is blocked on the "
+            "cooker quantization paths (FUN_1404c3440 / FUN_1404c3dc0); "
+            "re-extract via `rsmm uncook` to embed the original cooked bytes",
         )
     return base64.b64decode(blob_b64)
 
@@ -680,12 +709,11 @@ def _extract_cooked_from_glb(glb_bytes: bytes) -> bytes:
     rsmm = (doc.get("extras") or {}).get("rsmm") or {}
     blob = rsmm.get("cooked_b64")
     if not blob:
-        raise ValueError(
-            "glb has no rsmm.cooked_b64 — cooked mesh re-encode from "
-            "arbitrary glTF is blocked on the cooker quantization paths "
-            "(FUN_1404c3440 / FUN_1404c3dc0) not yet being reversed. "
-            "Re-extract via `rsmm uncook` to embed the original cooked "
-            "bytes."
+        raise NotReversedError(
+            "oCGeometry",
+            "cooked mesh re-encode from arbitrary glTF is blocked on the "
+            "cooker quantization paths (FUN_1404c3440 / FUN_1404c3dc0); "
+            "re-extract via `rsmm uncook` to embed the original cooked bytes",
         )
     return base64.b64decode(blob)
 

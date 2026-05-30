@@ -1,6 +1,6 @@
 'use client';
-import { Badge, Spinner, buttonVariants } from '@rsmm/ui';
 import { ApiError } from '@rsmm/api-client';
+import { Badge, Spinner, buttonVariants } from '@rsmm/ui';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Star } from 'lucide-react';
 import type { Route } from 'next';
@@ -45,9 +45,7 @@ export default function AuthorPage({ params }: { params: Promise<{ id: string }>
             <ArrowLeft className="mr-1.5 h-4 w-4" /> Back to Registry
           </Link>
           <p className="text-muted-foreground">
-            {notFound
-              ? `No author matches “${id}”.`
-              : `Cannot reach API (${String(detail.error)})`}
+            {notFound ? `No author matches “${id}”.` : `Cannot reach API (${String(detail.error)})`}
           </p>
         </div>
       </main>
@@ -82,7 +80,9 @@ export default function AuthorPage({ params }: { params: Promise<{ id: string }>
               {user.handle ? `@${user.handle} · ` : ''}joined {joined}
             </p>
             <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-              <Badge variant="outline">{mods.length} mod{mods.length === 1 ? '' : 's'}</Badge>
+              <Badge variant="outline">
+                {mods.length} mod{mods.length === 1 ? '' : 's'}
+              </Badge>
               <Badge variant="outline">{totalDownloads.toLocaleString()} total downloads</Badge>
             </div>
           </div>

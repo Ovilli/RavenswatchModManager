@@ -1,10 +1,14 @@
+import { useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
-import { Copy, Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
-import { useState } from 'react';
+import { homeDir } from '@tauri-apps/api/path';
+import { Command, open } from '@tauri-apps/plugin-shell';
+import { Copy, Download, FolderOpen, Pencil, Plus, Trash2, Upload } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
 import { CheckIcon } from '../components/icons/CheckIcon';
 import { useDialog, useToast } from '../components/toast';
 import { validateProfileName } from '../lib/profile-name';
+import { listLocalMods } from '../lib/rsmm';
 import { getMod, isEnabledIn, useApp } from '../store';
 
 export const Route = createFileRoute('/profiles')({
@@ -29,8 +33,31 @@ function ProfilesPage() {
   const [backupCode, setBackupCode] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
   const [backupError, setBackupError] = useState<string | null>(null);
+  const activeProfileId = useApp((s) => s.activeProfileId);
+  const syncLocalMods = useApp((s) => s.syncLocalMods);
+
+  const localModsQuery = useQuery({
+    queryKey: ['rsmm', 'list', activeProfileId],
+    queryFn: listLocalMods,
+    staleTime: 5_000,
+  });
+
+  useEffect(() => {
+    if (localModsQuery.data) syncLocalMods(localModsQuery.data);
+  }, [localModsQuery.data, syncLocalMods]);
+
   const dialog = useDialog();
   const toast = useToast();
+
+  const onOpenFolder = async (profileId: string) => {
+    let modsDir = useApp.getState().settings.modsDir?.trim() || '~/.local/share/rsmm/mods';
+    if (modsDir.startsWith('~')) {
+      modsDir = (await homeDir()) + modsDir.slice(1);
+    }
+    const profileDir = `${modsDir}/profiles/${profileId}`;
+    await Command.create('mkdir', ['-p', profileDir]).execute();
+    open(`file://${profileDir}`);
+  };
 
   function onImport() {
     const id = importP(code);
@@ -47,8 +74,8 @@ function ProfilesPage() {
 
   function onImportBackup() {
     const result = importBackup(backupCode);
-    if (!result) {
-      setBackupError('Could not read that backup code. Check it and try again.');
+    if (!result.ok) {
+      setBackupError(result.reason);
       return;
     }
     setBackupCode('');
@@ -296,42 +323,51 @@ function ProfilesPage() {
                 )}
               </ul>
 
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                {!isActive ? (
+              <div className="mt-4 flex items-start justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {!isActive ? (
+                    <button
+                      type="button"
+                      onClick={() => setActive(p.id)}
+                      className="flex items-center gap-1.5 border border-crimson bg-crimson/80 px-2.5 py-1.5 text-sm text-parchment hover:bg-oxblood"
+                    >
+                      <CheckIcon className="h-4 w-4" /> Activate
+                    </button>
+                  ) : null}
                   <button
                     type="button"
-                    onClick={() => setActive(p.id)}
-                    className="flex items-center gap-1.5 border border-crimson bg-crimson/80 px-2.5 py-1.5 text-sm text-parchment hover:bg-oxblood"
+                    onClick={() => duplicate(p.id)}
+                    className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
                   >
-                    <CheckIcon className="h-4 w-4" /> Activate
+                    <Copy className="h-3.5 w-3.5" /> Duplicate
                   </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => duplicate(p.id)}
-                  className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
-                >
-                  <Copy className="h-3.5 w-3.5" /> Duplicate
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onRename(p.id, p.name)}
-                  className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
-                >
-                  <Pencil className="h-3.5 w-3.5" /> Rename
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onExport(p.id)}
-                  className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
-                >
-                  <Download className="h-3.5 w-3.5" /> Export
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => onRename(p.id, p.name)}
+                    className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
+                  >
+                    <Pencil className="h-3.5 w-3.5" /> Rename
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onExport(p.id)}
+                    className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
+                  >
+                    <Download className="h-3.5 w-3.5" /> Export
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onOpenFolder(p.id)}
+                    className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
+                  >
+                    <FolderOpen className="h-3.5 w-3.5" /> Open folder
+                  </button>
+                </div>
                 {profiles.length > 1 ? (
                   <button
                     type="button"
                     onClick={() => onDelete(p.id, p.name)}
-                    className="ml-auto flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-crimson hover:text-crimson"
+                    className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-crimson hover:text-crimson"
                   >
                     <Trash2 className="h-3.5 w-3.5" /> Delete
                   </button>

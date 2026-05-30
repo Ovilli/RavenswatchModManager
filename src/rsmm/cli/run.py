@@ -28,7 +28,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from rsmm.engine.paths import REPO_ROOT, self_cmd
+from rsmm.cli.apply_mods import find_game_dir
+from rsmm.engine.paths import DIST_DIR, REPO_ROOT, self_cmd
 
 RAVENSWATCH_APP_ID = "2071280"
 REQUIRED_OVERRIDE = "winhttp=n,b"            # what we want to see
@@ -233,6 +234,11 @@ def _find_app_block(text: str, app_id: str) -> tuple[int, int, int] | None:
         return None
 
 
+def _vdf_escape(value: str) -> str:
+    """Escape a value for inclusion in a VDF string (\\ → \\\\, " → \\")."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def _write_launch_options(vdf_path: Path, app_id: str, new_value: str) -> bool:
     """Insert / replace LaunchOptions inside the app block. Backs up
     the original to <path>.rsmm.bak before writing. Returns True on
@@ -247,17 +253,18 @@ def _write_launch_options(vdf_path: Path, app_id: str, new_value: str) -> bool:
         return False
     open_brace, body_start, body_end = found
     body = text[body_start:body_end]
+    escaped = _vdf_escape(new_value)
     if re.search(r'"LaunchOptions"\s*"[^"]*"', body):
         new_body = re.sub(
             r'"LaunchOptions"\s*"[^"]*"',
-            f'"LaunchOptions"\t\t"{new_value}"',
+            f'"LaunchOptions"\t\t"{escaped}"',
             body,
             count=1,
         )
     else:
         indent_match = re.search(r'\n(\s+)"', body)
         indent = indent_match.group(1) if indent_match else "\t\t\t\t\t\t"
-        new_body = f'\n{indent}"LaunchOptions"\t\t"{new_value}"' + body
+        new_body = f'\n{indent}"LaunchOptions"\t\t"{escaped}"' + body
     new_text = (text[:open_brace] + '{' + new_body + '}' + text[body_end + 1:])
 
     bak = vdf_path.with_suffix(vdf_path.suffix + ".rsmm.bak")
@@ -365,11 +372,34 @@ def main() -> int:
                     help="launch even if launch options are missing the override")
     args = ap.parse_args()
 
-    # Safety: always restore original game files before any launch to
-    # ensure a clean state. Then apply mods unless launching vanilla.
-    _rsmm_subcommand(["restore"])
-    if not args.vanilla:
-        _rsmm_subcommand(["apply"])
+    if args.vanilla:
+        if not _rsmm_subcommand(["restore"]):
+            print("Failed to restore original files; aborting launch.", file=sys.stderr)
+            return 1
+    else:
+        game_dir = find_game_dir()
+        if game_dir is not None:
+            built_dll = DIST_DIR / "winhttp.dll"
+            installed_dll = game_dir / "winhttp.dll"
+            real_dll = game_dir / "winhttp_real.dll"
+            loader_ok = (
+                built_dll.exists()
+                and installed_dll.exists()
+                and installed_dll.stat().st_size == built_dll.stat().st_size
+                and real_dll.exists()
+            )
+            if not loader_ok:
+                print("Loader DLL not properly installed. Installing...", flush=True)
+                from rsmm.cli.install_loader import main as install_loader
+                rc = install_loader([str(game_dir)])
+                if rc != 0:
+                    print("Failed to install loader DLL; aborting launch.", file=sys.stderr)
+                    return 1
+                print("Loader installed.", flush=True)
+
+        if not _rsmm_subcommand(["apply"]):
+            print("Failed to apply mods; aborting launch.", file=sys.stderr)
+            return 1
 
     url = f"steam://rungameid/{args.app_id}"
 
@@ -442,7 +472,22 @@ def main() -> int:
         return 1
 
     if args.force:
-        print("--force given; launching anyway. Loader DLL may not load.")
+        # Best-effort: try to write the launch option so the loader
+        # actually works on Linux/Wine. If Steam is running or the
+        # write fails, warn but proceed.
+        if lo is None or not _override_present(lo):
+            merged = (lo or "") + " " + RECOMMENDED_LAUNCH_OPTIONS \
+                     if (lo or "") and "%command%" not in (lo or "") \
+                     else RECOMMENDED_LAUNCH_OPTIONS
+            try:
+                if _write_launch_options(primary, args.app_id, merged):
+                    print(f"wrote launch options into {primary}")
+                else:
+                    print("could not write launch options; loader may not load.",
+                          file=sys.stderr)
+            except Exception as e:
+                print(f"failed to write launch options: {e}; loader may not load.",
+                      file=sys.stderr)
         return _open_steam_url(url)
 
     print("Re-run with --set-launch-options to have rsmm write it for you "

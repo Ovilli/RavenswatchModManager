@@ -36,7 +36,11 @@ export function HeroShowcase({ mods }: { mods: ModListItem[] }) {
             <p className="truncate text-xs font-medium text-foreground">{mod.name}</p>
             <div className="mt-1 flex items-center gap-2 text-[0.6rem] text-muted-foreground">
               <span className="truncate">{mod.author ?? 'unknown'}</span>
-              {mod.category ? <Badge variant="outline" className="text-[0.5rem] px-1 py-0">{mod.category}</Badge> : null}
+              {mod.category ? (
+                <Badge variant="outline" className="text-[0.5rem] px-1 py-0">
+                  {mod.category}
+                </Badge>
+              ) : null}
             </div>
           </div>
         </Link>

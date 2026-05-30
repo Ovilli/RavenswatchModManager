@@ -216,6 +216,8 @@ def default_game_dir() -> Path:
                 return c
         except OSError:
             continue
+    if not cands:
+        cands = [Path()]
     return cands[0]
 
 
