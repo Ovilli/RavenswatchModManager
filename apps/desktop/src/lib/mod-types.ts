@@ -10,10 +10,9 @@
  *    `useApp(s => s.localMods)`;
  * 2. the remote index via `api.mods.list()` (React Query).
  *
- * No bundled stand-in data here anymore. `MockMod` keeps its name for
- * back-compat with the store's `localMods: Record<string, MockMod>`
- * shape; the fields it carries are filled in by `toMockMod()` in
- * `store/index.ts` from real `LocalMod` records.
+ * No bundled stand-in data here anymore. The `Mod` shape is filled in by
+ * `toMod()` in `store/index.ts` from real `LocalMod` records (CLI) and
+ * patched with remote-index fields.
  */
 
 export type ModCategory =
@@ -26,18 +25,18 @@ export type ModCategory =
   | 'speedrun'
   | 'utility';
 
-export interface MockMod {
+export interface Mod {
   id: string;
   slug: string;
   name: string;
   author: string;
   version: string;
-  latestVersion: string;       // > version means outdated
+  latestVersion: string; // > version means outdated
   category: ModCategory;
   summary: string;
   description: string;
   changelog: string;
-  rating: number;              // 0-5
+  rating: number; // 0-5
   downloads: number;
   sizeKb: number;
   tags: string[];

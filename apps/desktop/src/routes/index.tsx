@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import {
   AlertTriangle,
@@ -28,7 +28,7 @@ import { SetupBanner } from '../components/setup-banner';
 import { useDialog } from '../components/toast';
 import { useToast } from '../components/toast';
 import { UpdatesPanel } from '../components/updates-panel';
-import type { ModCategory } from '../data/mock-mods';
+import type { ModCategory } from '../lib/mod-types';
 import { listLocalMods, uninstallLocalMod } from '../lib/rsmm';
 import { activeProfile, detectConflicts, getMod, isEnabledIn, useApp } from '../store';
 
@@ -60,7 +60,7 @@ function LibraryPage() {
   const reorderMod = useApp((s) => s.reorderMod);
   const installed = useApp((s) => s.installed);
   const syncLocalMods = useApp((s) => s.syncLocalMods);
-  const modsDir = useApp((s) => s.settings.modsDir);
+  const activeProfileId = useApp((s) => s.activeProfileId);
   const [view, setView] = useState<ViewMode>('cards');
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<ModCategory | 'all'>('all');
@@ -80,8 +80,8 @@ function LibraryPage() {
   }, [localModsState]);
 
   const enabledCount = useMemo(
-    () => profile.loadOrder.filter((id) => isEnabledIn(profile, id)).length,
-    [profile],
+    () => profile.loadOrder.filter((id) => localModsState[id] && isEnabledIn(profile, id)).length,
+    [profile, localModsState],
   );
   const conflicts = useMemo(() => detectConflicts(profile), [profile]);
   const conflictCountByMod = useMemo(() => {
@@ -99,7 +99,7 @@ function LibraryPage() {
     error: localModsError,
     isLoading: localModsLoading,
   } = useQuery({
-    queryKey: ['rsmm', 'list', modsDir],
+    queryKey: ['rsmm', 'list', activeProfileId],
     queryFn: listLocalMods,
     retry: false,
     staleTime: 5_000,
@@ -276,10 +276,14 @@ function LibraryPage() {
   const bulkDisable = useCallback(() => {
     void requestDisableMods([...selected]);
   }, [requestDisableMods, selected]);
+  const queryClient = useQueryClient();
   const refreshLocalMods = useCallback(async () => {
     const local = await listLocalMods();
-    if (local) syncLocalMods(local);
-  }, [syncLocalMods]);
+    if (local) {
+      syncLocalMods(local);
+      queryClient.setQueryData(['rsmm', 'list', activeProfileId], local);
+    }
+  }, [syncLocalMods, queryClient, activeProfileId]);
 
   const removeLocalMod = useCallback(async (id: string) => {
     const result = await uninstallLocalMod(id);
@@ -288,13 +292,15 @@ function LibraryPage() {
     }
   }, []);
 
+  const uninstallModStore = useApp((s) => s.uninstallMod);
   const uninstall = useCallback(
     async (id: string) => {
       await removeLocalMod(id);
+      uninstallModStore(id);
       await refreshLocalMods();
       toast.push('Mod uninstalled.', 'success');
     },
-    [refreshLocalMods, removeLocalMod, toast],
+    [refreshLocalMods, removeLocalMod, toast, uninstallModStore],
   );
 
   const bulkUninstall = useCallback(() => {
@@ -302,6 +308,7 @@ function LibraryPage() {
       try {
         for (const id of selected) {
           await removeLocalMod(id);
+          uninstallModStore(id);
         }
         await refreshLocalMods();
         clearSelection();
@@ -310,7 +317,7 @@ function LibraryPage() {
         toast.push(err instanceof Error ? err.message : String(err), 'error');
       }
     })();
-  }, [clearSelection, refreshLocalMods, removeLocalMod, selected, toast]);
+  }, [clearSelection, refreshLocalMods, removeLocalMod, selected, toast, uninstallModStore]);
 
   const handleToggle = useCallback(
     (id: string) => {

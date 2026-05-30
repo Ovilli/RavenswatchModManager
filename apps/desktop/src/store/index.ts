@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import type { MockMod, ModCategory } from '../data/mock-mods';
+import type { Mod, ModCategory } from '../lib/mod-types';
 import { getPlatform } from '../lib/platform';
 import type { LocalMod } from '../lib/rsmm';
 
@@ -16,6 +16,41 @@ export interface Profile {
 
 interface ProfileSerialized extends Omit<Profile, 'disabled'> {
   disabled: string[];
+}
+
+export type ImportResult = { ok: true } | { ok: false; reason: string };
+
+type ShareDecode = { ok: true; data: Record<string, unknown> } | { ok: false; reason: string };
+
+/**
+ * Decode an exported share/backup code (base64 of JSON) and verify its
+ * `kind`. Returns a *specific* reason on failure so the UI can tell the
+ * user what's wrong (bad base64 vs corrupt JSON vs wrong code type)
+ * instead of swallowing the error behind a generic "could not read".
+ */
+function decodeShareCode(payload: string, expectedKind: string): ShareDecode {
+  let json: string;
+  try {
+    const binary = atob(payload.trim());
+    const bytes = Uint8Array.from(binary, (c) => c.codePointAt(0) ?? 0);
+    json = new TextDecoder().decode(bytes);
+  } catch {
+    return { ok: false, reason: 'That is not a valid code (bad base64).' };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return { ok: false, reason: 'The code is corrupt (invalid JSON).' };
+  }
+  if (
+    !parsed ||
+    typeof parsed !== 'object' ||
+    (parsed as { kind?: unknown }).kind !== expectedKind
+  ) {
+    return { ok: false, reason: `That is not an ${expectedKind} code.` };
+  }
+  return { ok: true, data: parsed as Record<string, unknown> };
 }
 
 export interface AppSettings {
@@ -35,7 +70,7 @@ interface State {
   installed: string[]; // mod IDs present in the local mod folder
   settings: AppSettings;
   /** Non-persisted: live mods discovered by rsmm on disk, keyed by id. */
-  localMods: Record<string, MockMod>;
+  localMods: Record<string, Mod>;
   installMod: (id: string, targetProfileId?: string) => void;
   uninstallMod: (id: string) => void;
   toggleMod: (id: string) => void;
@@ -48,13 +83,23 @@ interface State {
   exportProfile: (id: string) => string;
   importProfile: (payload: string) => string | null;
   exportBackup: () => string;
-  importBackup: (payload: string) => string | null;
+  importBackup: (payload: string) => ImportResult;
   updateSettings: (patch: Partial<AppSettings>) => void;
   /** Sync the live rsmm list into the store and keep profiles in sync
    * with what is actually present on disk. */
   syncLocalMods: (mods: LocalMod[]) => void;
   /** Patch latestVersion + image/summary onto local mods after polling the API. */
-  patchRemoteInfo: (info: Record<string, { latestVersion?: string | null; image?: string | null; summary?: string | null; nsfw?: boolean | null }>) => void;
+  patchRemoteInfo: (
+    info: Record<
+      string,
+      {
+        latestVersion?: string | null;
+        image?: string | null;
+        summary?: string | null;
+        nsfw?: boolean | null;
+      }
+    >,
+  ) => void;
 }
 
 function uid(): string {
@@ -108,7 +153,7 @@ function normalizeDisabled(disabled: Profile['disabled'] | string[] | undefined)
 /** Map legacy API UUIDs / slug aliases to the on-disk mod folder id. */
 function canonicalModId(
   id: string,
-  localMods: Record<string, MockMod>,
+  localMods: Record<string, Mod>,
   installedSet: Set<string>,
 ): string | null {
   if (installedSet.has(id)) return id;
@@ -117,19 +162,15 @@ function canonicalModId(
   return null;
 }
 
-function resolveModId(
-  id: string,
-  localMods: Record<string, MockMod>,
-  installed: string[],
-): string {
+function resolveModId(id: string, localMods: Record<string, Mod>, installed: string[]): string {
   const installedSet = new Set(installed);
   return (
     canonicalModId(id, localMods, installedSet) ??
-    (localMods[id] ? id : Object.values(localMods).find((m) => m.slug === id)?.id ?? id)
+    (localMods[id] ? id : (Object.values(localMods).find((m) => m.slug === id)?.id ?? id))
   );
 }
 
-function modWasOnDisk(id: string, previous: Record<string, MockMod>): boolean {
+function modWasOnDisk(id: string, previous: Record<string, Mod>): boolean {
   if (previous[id]) return true;
   return Object.values(previous).some((m) => m.id === id || m.slug === id);
 }
@@ -137,18 +178,24 @@ function modWasOnDisk(id: string, previous: Record<string, MockMod>): boolean {
 /** Keep profile mod ids across stale rsmm list polls; drop only confirmed removals. */
 function reconcileProfileModIds(
   entries: Iterable<string>,
-  localMods: Record<string, MockMod>,
-  previousLocalMods: Record<string, MockMod>,
+  localMods: Record<string, Mod>,
+  previousLocalMods: Record<string, Mod>,
   installedSet: Set<string>,
 ): string[] {
   const out: string[] = [];
+  const hasAnyMods = Object.keys(localMods).length > 0;
   for (const entry of entries) {
     const canon = canonicalModId(entry, localMods, installedSet);
     if (canon) {
       if (!out.includes(canon)) out.push(canon);
       continue;
     }
-    if (modWasOnDisk(entry, previousLocalMods)) {
+    // Only prune mods when the CLI successfully enumerated at least
+    // one mod — an empty list likely means a transient CLI error
+    // (CLI not ready, temporary FS issue), not that every mod was
+    // intentionally removed. Pruning on partial data permanently
+    // loses mods from the profile.
+    if (hasAnyMods && modWasOnDisk(entry, previousLocalMods)) {
       continue;
     }
     if (!out.includes(entry)) out.push(entry);
@@ -212,9 +259,7 @@ export const useApp = create<State>()(
           // Always store folder slugs in loadOrder — never API UUIDs
           // (mod detail used to pass apiMod.id, which syncLocalMods pruned).
           const modId = resolveModId(id, s.localMods, s.installed);
-          const installed = s.installed.includes(modId)
-            ? s.installed
-            : [...s.installed, modId];
+          const installed = s.installed.includes(modId) ? s.installed : [...s.installed, modId];
           const requested = targetProfileId ?? s.activeProfileId;
           if (requested === 'default') {
             const newId = uid();
@@ -233,7 +278,14 @@ export const useApp = create<State>()(
           }
           const profiles = s.profiles.map((p) => {
             if (p.id !== requested) return p;
-            if (p.loadOrder.includes(modId)) return p;
+            if (p.loadOrder.includes(modId)) {
+              if (p.disabled.has(modId)) {
+                const disabled = new Set(p.disabled);
+                disabled.delete(modId);
+                return { ...p, disabled };
+              }
+              return p;
+            }
             return { ...p, loadOrder: [...p.loadOrder, modId] };
           });
           return { installed, profiles, activeProfileId: requested };
@@ -259,9 +311,7 @@ export const useApp = create<State>()(
                 (m) => resolveModId(m, s.localMods, s.installed) !== modId,
               ),
               disabled: new Set(
-                [...p.disabled].filter(
-                  (m) => resolveModId(m, s.localMods, s.installed) !== modId,
-                ),
+                [...p.disabled].filter((m) => resolveModId(m, s.localMods, s.installed) !== modId),
               ),
             };
           });
@@ -405,12 +455,17 @@ export const useApp = create<State>()(
       },
 
       importProfile: (payload) => {
+        const decoded = decodeShareCode(payload, 'rsmm-profile');
+        if (!decoded.ok) {
+          console.error('[importProfile]', decoded.reason);
+          return null;
+        }
+        const parsed = decoded.data;
+        if (!parsed.profile) {
+          console.error('[importProfile] code has no profile payload');
+          return null;
+        }
         try {
-          const binary = atob(payload.trim());
-          const bytes = Uint8Array.from(binary, (c) => c.codePointAt(0) ?? 0);
-          const decoded = new TextDecoder().decode(bytes);
-          const parsed = JSON.parse(decoded);
-          if (parsed.kind !== 'rsmm-profile' || !parsed.profile) return null;
           const incoming = parsed.profile as ProfileSerialized;
           const id = uid();
           set((s) => ({
@@ -433,12 +488,17 @@ export const useApp = create<State>()(
       },
 
       importBackup: (payload) => {
+        const decoded = decodeShareCode(payload, 'rsmm-backup');
+        if (!decoded.ok) return decoded;
+        const parsed = decoded.data as {
+          profiles?: unknown;
+          activeProfileId?: string;
+          settings?: Partial<AppSettings>;
+        };
+        if (!Array.isArray(parsed.profiles)) {
+          return { ok: false, reason: 'Backup contains no profiles.' };
+        }
         try {
-          const binary = atob(payload.trim());
-          const bytes = Uint8Array.from(binary, (c) => c.codePointAt(0) ?? 0);
-          const decoded = new TextDecoder().decode(bytes);
-          const parsed = JSON.parse(decoded);
-          if (parsed.kind !== 'rsmm-backup' || !Array.isArray(parsed.profiles)) return null;
           const profiles = normalizeProfiles(
             parsed.profiles.map((p: ProfileSerialized) => ({
               ...p,
@@ -447,16 +507,17 @@ export const useApp = create<State>()(
           );
           set({
             profiles,
-            activeProfileId:
-              profiles.some((p) => p.id === parsed.activeProfileId) ? parsed.activeProfileId : 'default',
-            settings: {
-              ...get().settings,
-              ...(parsed.settings ?? {}),
-            },
+            activeProfileId: profiles.some((p) => p.id === parsed.activeProfileId)
+              ? (parsed.activeProfileId as string)
+              : 'default',
+            settings: { ...get().settings, ...(parsed.settings ?? {}) },
           });
-          return 'ok';
-        } catch {
-          return null;
+          return { ok: true };
+        } catch (e) {
+          return {
+            ok: false,
+            reason: `Backup is malformed: ${e instanceof Error ? e.message : String(e)}`,
+          };
         }
       },
 
@@ -464,9 +525,9 @@ export const useApp = create<State>()(
 
       syncLocalMods: (mods) =>
         set((s) => {
-          const localMods: Record<string, MockMod> = {};
+          const localMods: Record<string, Mod> = {};
           for (const m of mods) {
-            localMods[m.id] = toMockMod(m, s.localMods[m.id]);
+            localMods[m.id] = toMod(m, s.localMods[m.id]);
           }
           const installedSet = new Set(mods.map((m) => m.id));
           const profiles = s.profiles.map((p) => {
@@ -479,7 +540,9 @@ export const useApp = create<State>()(
               s.localMods,
               installedSet,
             );
-            for (const id of loadOrder) installedSet.add(id);
+            // Don't augment installedSet with loadOrder entries — it should
+            // reflect only what's actually on disk, not what profiles expect.
+            // Profile mods are kept by reconcileProfileModIds regardless.
             const disabled = new Set(
               reconcileProfileModIds(p.disabled, localMods, s.localMods, installedSet),
             );
@@ -491,7 +554,7 @@ export const useApp = create<State>()(
 
       patchRemoteInfo: (info) =>
         set((s) => {
-          const next: Record<string, MockMod> = { ...s.localMods };
+          const next: Record<string, Mod> = { ...s.localMods };
           for (const [slug, payload] of Object.entries(info)) {
             const found = Object.values(next).find((m) => m.slug === slug);
             if (!found) continue;
@@ -572,7 +635,7 @@ export const useApp = create<State>()(
  * `getMod()` miss here means the mod is in a profile but not present
  * on disk — that's the `syncLocalMods` prune path's job to fix.
  */
-export function getMod(id: string): MockMod | undefined {
+export function getMod(id: string): Mod | undefined {
   return useApp.getState().localMods[id];
 }
 
@@ -588,7 +651,7 @@ function inferCategory(tags: string[]): ModCategory {
   return 'gameplay';
 }
 
-function toMockMod(m: LocalMod, prev?: MockMod): MockMod {
+function toMod(m: LocalMod, prev?: Mod): Mod {
   const summary = m.summary ?? '';
   return {
     id: m.id,
@@ -605,8 +668,11 @@ function toMockMod(m: LocalMod, prev?: MockMod): MockMod {
     downloads: prev?.downloads ?? 0,
     sizeKb: prev?.sizeKb ?? 0,
     tags: m.tags,
-    dependencies: Object.keys(m.dependencies).length > 0 ? Object.keys(m.dependencies) : prev?.dependencies ?? [],
-    writes: m.writes.length > 0 ? m.writes : prev?.writes ?? [],
+    dependencies:
+      Object.keys(m.dependencies).length > 0
+        ? Object.keys(m.dependencies)
+        : (prev?.dependencies ?? []),
+    writes: m.writes.length > 0 ? m.writes : (prev?.writes ?? []),
     gameBuild: prev?.gameBuild ?? '',
     image: prev?.image,
     markdown: prev?.markdown ?? (summary ? `# ${m.name}\n\n${summary}` : `# ${m.name}`),
@@ -664,8 +730,8 @@ export function outdatedCount(installed: string[]): number {
   }).length;
 }
 
-export function outdatedMods(installed: string[]): MockMod[] {
-  const out: MockMod[] = [];
+export function outdatedMods(installed: string[]): Mod[] {
+  const out: Mod[] = [];
   for (const id of installed) {
     const m = getMod(id);
     if (m?.latestVersion && m.version !== m.latestVersion) out.push(m);
