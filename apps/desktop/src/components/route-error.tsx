@@ -28,8 +28,10 @@ export function RouteErrorComponent({ error, reset }: ErrorComponentProps) {
         <button
           type="button"
           onClick={() => {
-            // Re-run loaders first, then clear the error boundary state.
-            router.invalidate();
+            // Re-run loaders, then clear the error boundary state. `void`:
+            // invalidate() is fire-and-forget here; a rejected refetch
+            // re-enters this boundary rather than needing a caught promise.
+            void router.invalidate();
             reset();
           }}
           className="border border-crimson px-4 py-2 text-parchment hover:bg-crimson/20"
