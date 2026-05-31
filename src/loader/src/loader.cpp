@@ -139,6 +139,15 @@ void Loader::scan_mods(const fs::path& mods_dir) {
             continue;
         }
 
+        // Stash tags.json verbatim (parsed lazily by the rsmm.tags() binding).
+        const fs::path tags_path = entry.path() / "tags.json";
+        if (fs::exists(tags_path)) {
+            std::ifstream tf(tags_path);
+            std::stringstream ss;
+            ss << tf.rdbuf();
+            m.tags_json = ss.str();
+        }
+
         // Discover override files under <mod>/assets/<decoded_path>.
         const fs::path assets = entry.path() / "assets";
         if (fs::exists(assets)) {
