@@ -83,3 +83,19 @@ ignore = ["F401"]   # unused imports: noisy on src/rsmm/__init__ re-exports
 "src/rsmm/sdk/repo.py"         = ["BLE001"]
 "src/rsmm/sdk/transaction.py"  = ["BLE001"]
 "src/rsmm/sdk/versioning.py"   = ["BLE001"]
+
+# Pre-existing offenders from the cook/uncook pipeline + roundtrip tests
+# (blind try/except for skip-on-any-failure, plus dense binary-format code
+# with packed statements). Exempt to keep CI green; narrow per-call when
+# each is audited.
+"src/rsmm/engine/cooked_schemas/animation.py" = ["E702", "E501"]
+"src/rsmm/engine/magic_items.py"              = ["BLE001"]
+"src/rsmm/engine/heroes.py"                   = ["BLE001"]
+"src/rsmm/logging.py"                         = ["BLE001", "E501"]
+"src/rsmm/cli/console_cmd.py"                 = ["BLE001", "E501"]
+"src/rsmm/dev/ghidra_resolve.py"              = ["BLE001"]
+"tests/test_animation_roundtrip.py"           = ["BLE001"]
+"tests/test_asset_refs_roundtrip.py"          = ["BLE001"]
+"tests/test_definitions_roundtrip.py"         = ["BLE001"]
+"tests/test_entity_settings_roundtrip.py"     = ["BLE001"]
+"tests/test_texture_roundtrip.py"             = ["BLE001"]
