@@ -564,6 +564,17 @@ def test_testkit_conflicts(tmp_path: Path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+def _has_uncooked() -> bool:
+    from rsmm.cli import cmd_schema
+    return cmd_schema._UNCOOKED.is_dir()
+
+
+# Uncooked game assets are gitignored (not on CI runners) — skip when absent.
+_needs_uncooked = pytest.mark.skipif(
+    not _has_uncooked(), reason="data/uncooked not present (run `rsmm uncook`)")
+
+
+@_needs_uncooked
 def test_schema_lists_known_bases():
     from rsmm.cli import cmd_schema
     heroes = cmd_schema.ids_for("hero")
@@ -575,6 +586,7 @@ def test_schema_lists_known_bases():
     assert cmd_schema.ids_for("item")              # non-empty
 
 
+@_needs_uncooked
 def test_schema_cli_summary_and_grep(capsys):
     from rsmm.cli import cmd_schema
     assert cmd_schema.main([]) == 0
@@ -583,6 +595,13 @@ def test_schema_cli_summary_and_grep(capsys):
     assert cmd_schema.main(["item", "--grep", "Orb"]) == 0
     out = capsys.readouterr().out
     assert all("orb" in line.lower() for line in out.splitlines() if line)
+
+
+def test_schema_missing_uncooked_returns_error(tmp_path, monkeypatch):
+    """With no uncooked data, the command exits non-zero with guidance."""
+    from rsmm.cli import cmd_schema
+    monkeypatch.setattr(cmd_schema, "_UNCOOKED", tmp_path / "nope")
+    assert cmd_schema.main([]) == 1
 
 
 # ---------------------------------------------------------------------------
