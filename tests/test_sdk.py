@@ -422,3 +422,232 @@ def test_repo_sign_verify_roundtrip(tmp_path: Path):
     # Tamper detection.
     f.write_bytes(b"tampered")
     assert not verify_file(f, sig, pub)
+
+
+# ---------------------------------------------------------------------------
+# typed registry handles + tags + summary/validate (v3.1 modder DX)
+# ---------------------------------------------------------------------------
+
+
+def _builder(tmp_path: Path, monkeypatch, mod_id="DX"):
+    from rsmm.sdk import builder as B
+    monkeypatch.setattr(B, "MODS_DIR", tmp_path / "mods")
+    return B.ModBuilder(mod_id, version="1.0.0", author="x", name=mod_id)
+
+
+def test_content_ref_handle_and_namespacing(tmp_path: Path, monkeypatch):
+    from rsmm.sdk.content import ContentRef
+    m = _builder(tmp_path, monkeypatch)
+    ref = m.item("FrostBlade", base="VanillaSword", name="Frost Blade")
+    assert isinstance(ref, ContentRef)
+    assert str(ref) == "DX:FrostBlade"
+    assert ref.resource == "FrostBlade"
+
+
+def test_content_ref_deref_in_fields(tmp_path: Path, monkeypatch):
+    m = _builder(tmp_path, monkeypatch)
+    blade = m.item("FrostBlade", base="VanillaSword")
+    m.boss("IceLord", base="BabaYaga", drops=[blade])
+    bdef = next(d for d in m._content.defs if d.id == "IceLord")
+    assert bdef.fields["drops"] == ["FrostBlade"]  # ref -> raw id
+
+
+def test_duplicate_content_id_rejected(tmp_path: Path, monkeypatch):
+    from rsmm.sdk.content import ContentError
+    m = _builder(tmp_path, monkeypatch)
+    m.item("X", base="A")
+    with pytest.raises(ContentError):
+        m.item("X", base="B")
+
+
+def test_tags_merge_dedupe_and_deref(tmp_path: Path, monkeypatch):
+    m = _builder(tmp_path, monkeypatch)
+    dagger = m.item("RubyDagger", base="Knife")
+    m.tag("daggers", [dagger, "VanillaKnife"])
+    m.tag("daggers", dagger)  # idempotent
+    assert m._tags["daggers"] == ["RubyDagger", "VanillaKnife"]
+
+
+def test_bad_tag_id_rejected(tmp_path: Path, monkeypatch):
+    m = _builder(tmp_path, monkeypatch)
+    with pytest.raises(ValueError):
+        m.tag("Bad Id", ["x"])
+
+
+def test_tags_written_on_commit(tmp_path: Path, monkeypatch):
+    m = _builder(tmp_path, monkeypatch)
+    blade = m.item("FrostBlade", base="Sword")
+    m.tag("weapons/all", [blade])
+    dst = m.commit()
+    data = json.loads((dst / "tags.json").read_text())
+    assert data == {"weapons/all": ["FrostBlade"]}
+
+
+def test_summary_and_validate(tmp_path: Path, monkeypatch):
+    m = _builder(tmp_path, monkeypatch)
+    m.item("A", base="X")
+    m.tag("grp", ["A", "VanillaThing"])
+    s = m.summary()
+    assert s["content"] == {"item": ["A"]}
+    assert s["tags"] == {"grp": ["A", "VanillaThing"]}
+    # external member -> one warning, local member -> none
+    warns = m.validate()
+    assert any("VanillaThing" in w for w in warns)
+    assert not any("'A'" in w for w in warns)
+
+
+def test_validate_flags_empty_mod(tmp_path: Path, monkeypatch):
+    m = _builder(tmp_path, monkeypatch)
+    assert any("empty" in w for w in m.validate())
+
+
+# ---------------------------------------------------------------------------
+# testkit — offline mod assertions
+# ---------------------------------------------------------------------------
+
+
+def test_testkit_expect_chain(tmp_path: Path, monkeypatch):
+    from rsmm.sdk import builder as B
+    from rsmm.sdk.testkit import expect
+    monkeypatch.setattr(B, "MODS_DIR", tmp_path / "mods")
+    m = B.ModBuilder("Pack", version="1.0.0", author="me", name="Pack")
+    blade = m.item("FrostBlade", base="VanillaSword", name="Frost Blade")
+    m.tag("daggers", [blade])
+    m.i18n("EN", {"hello": "Hi"})
+    (expect(m)
+        .has_item("FrostBlade")
+        .has_tag("daggers", "FrostBlade")
+        .field_equals("item", "FrostBlade", "name", "Frost Blade")
+        .i18n_complete())
+
+
+def test_testkit_failures(tmp_path: Path, monkeypatch):
+    from rsmm.sdk import builder as B
+    from rsmm.sdk.testkit import expect
+    monkeypatch.setattr(B, "MODS_DIR", tmp_path / "mods")
+    m = B.ModBuilder("Pack", version="1.0.0", author="me", name="Pack")
+    m.item("A", base="X")
+    with pytest.raises(AssertionError):
+        expect(m).has_item("Nope")
+    with pytest.raises(AssertionError):
+        expect(m).has_tag("nope")
+    # incomplete i18n: key only in EN, missing in FR
+    m.i18n("EN", {"k1": "a", "k2": "b"})
+    m.i18n("FR", {"k1": "a"})
+    with pytest.raises(AssertionError):
+        expect(m).i18n_complete()
+
+
+def test_testkit_conflicts(tmp_path: Path, monkeypatch):
+    from rsmm.sdk import builder as B
+    from rsmm.sdk.testkit import assert_no_conflicts, conflicts
+    monkeypatch.setattr(B, "MODS_DIR", tmp_path / "mods")
+    a = B.ModBuilder("A", version="1.0.0", author="x", name="A")
+    b = B.ModBuilder("B", version="1.0.0", author="x", name="B")
+    a.item("Dup", base="X")
+    b.item("Dup", base="Y")              # same (kind,id) -> conflict
+    a.skinpack("P", 0x1)
+    b.skinpack("Q", 0x1)                 # same key -> conflict
+    msgs = conflicts(a, b)
+    assert any("Dup" in x for x in msgs)
+    assert any("skinpack key" in x for x in msgs)
+    with pytest.raises(AssertionError):
+        assert_no_conflicts(a, b)
+    # disjoint mods are clean
+    c = B.ModBuilder("C", version="1.0.0", author="x", name="C")
+    c.item("Solo", base="Z")
+    assert conflicts(c) == []
+
+
+# ---------------------------------------------------------------------------
+# rsmm schema — cloneable base id listing
+# ---------------------------------------------------------------------------
+
+
+def test_schema_lists_known_bases():
+    from rsmm.cli import cmd_schema
+    heroes = cmd_schema.ids_for("hero")
+    assert "Aladdin" in heroes and "Melusine" in heroes
+    bosses = cmd_schema.ids_for("boss")
+    enemies = cmd_schema.ids_for("enemy")
+    assert all("Boss" in b for b in bosses)        # boss = enemies w/ 'Boss'
+    assert all("Boss" not in e for e in enemies)   # enemy = the rest
+    assert cmd_schema.ids_for("item")              # non-empty
+
+
+def test_schema_cli_summary_and_grep(capsys):
+    from rsmm.cli import cmd_schema
+    assert cmd_schema.main([]) == 0
+    out = capsys.readouterr().out
+    assert "hero" in out and "item" in out
+    assert cmd_schema.main(["item", "--grep", "Orb"]) == 0
+    out = capsys.readouterr().out
+    assert all("orb" in line.lower() for line in out.splitlines() if line)
+
+
+# ---------------------------------------------------------------------------
+# rsmm install — offline fetch+verify+unpack
+# ---------------------------------------------------------------------------
+
+
+def _make_packed_mod(tmp_path: Path, mod_id="DemoMod"):
+    """Build a mod dir, zip it like `rsmm pack`, return (zip_path, sha256)."""
+    import hashlib
+    import shutil
+    src_root = tmp_path / "src_mods"
+    (src_root / mod_id).mkdir(parents=True)
+    (src_root / mod_id / "manifest.toml").write_text(
+        f'[mod]\nid = "{mod_id}"\nname = "Demo"\nversion = "1.2.0"\n'
+        'enabled = true\nsdk_version = ">=3.0,<4"\n', encoding="utf-8")
+    (src_root / mod_id / "init.lua").write_text("-- demo\n", encoding="utf-8")
+    out_base = tmp_path / mod_id
+    archive = shutil.make_archive(str(out_base), "zip", root_dir=src_root, base_dir=mod_id)
+    data = Path(archive).read_bytes()
+    return Path(archive), hashlib.sha256(data).hexdigest()
+
+
+def test_install_from_repo_json(tmp_path: Path, monkeypatch):
+    import json
+
+    from rsmm.cli import cmd_install
+    zip_path, digest = _make_packed_mod(tmp_path)
+    mods_dir = tmp_path / "mods"
+    monkeypatch.setattr(cmd_install, "MODS_DIR", mods_dir)
+    repo = {
+        "schema": "rsmm.repo.v1", "name": "test", "updated_at": "",
+        "mods": [{"id": "DemoMod", "version": "1.2.0",
+                  "url": zip_path.as_uri(), "sha256": digest,
+                  "size": zip_path.stat().st_size}],
+    }
+    repo_path = tmp_path / "repo.json"
+    repo_path.write_text(json.dumps(repo), encoding="utf-8")
+    rc = cmd_install.main(["DemoMod", "--from", str(repo_path)])
+    assert rc == 0
+    assert (mods_dir / "DemoMod" / "manifest.toml").exists()
+    # already installed without --force -> error
+    assert cmd_install.main(["DemoMod", "--from", str(repo_path)]) == 1
+    # --force overwrites
+    assert cmd_install.main(["DemoMod", "--from", str(repo_path), "--force"]) == 0
+
+
+def test_install_checksum_mismatch(tmp_path: Path, monkeypatch):
+    import json
+
+    from rsmm.cli import cmd_install
+    zip_path, _ = _make_packed_mod(tmp_path)
+    monkeypatch.setattr(cmd_install, "MODS_DIR", tmp_path / "mods")
+    repo = {"schema": "rsmm.repo.v1", "name": "t", "mods": [
+        {"id": "DemoMod", "version": "1.2.0", "url": zip_path.as_uri(),
+         "sha256": "deadbeef" * 8}]}
+    rp = tmp_path / "repo.json"
+    rp.write_text(json.dumps(repo), encoding="utf-8")
+    assert cmd_install.main(["DemoMod", "--from", str(rp)]) == 1  # rejected
+    assert not (tmp_path / "mods" / "DemoMod").exists()
+
+
+def test_install_direct_zip(tmp_path: Path, monkeypatch):
+    from rsmm.cli import cmd_install
+    zip_path, _ = _make_packed_mod(tmp_path, mod_id="ZipMod")
+    monkeypatch.setattr(cmd_install, "MODS_DIR", tmp_path / "mods")
+    assert cmd_install.main([zip_path.as_uri()]) == 0
+    assert (tmp_path / "mods" / "ZipMod" / "init.lua").exists()

@@ -7,6 +7,7 @@ mod build avoids half-built mod trees on the disk.
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import tempfile
@@ -14,8 +15,9 @@ from pathlib import Path
 
 from rsmm.engine.paths import MODS_DIR
 
+from .api import sdk_export
 from .config import ConfigSchema
-from .content import ContentRegistry
+from .content import ContentRef, ContentRegistry, _deref
 from .i18n import KEY_RE, SUPPORTED_LOCALES
 
 _ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
@@ -42,6 +44,10 @@ class ModBuilder:
         self._assets: dict[str, Path] = {}
         # decoded path -> cook transform (orientation) sidecar payload.
         self._asset_transforms: dict[str, dict] = {}
+        # custom skin-pack roster entries (loader detour reads these).
+        self._skinpacks: list[dict] = []
+        # tag id -> ordered, de-duped list of member resource ids.
+        self._tags: dict[str, list[str]] = {}
 
     # ---- patch blocks (emitted as [[patch]] entries in manifest) ------
 
@@ -67,8 +73,54 @@ class ModBuilder:
                 raise ValueError(f"bad i18n key: {k!r}")
         self._i18n.setdefault(locale, {}).update({str(k): str(v) for k, v in strings.items()})
 
-    def content(self, kind: str, *, id: str, **fields) -> None:
-        self._content.register(kind, id=id, **fields)
+    def content(self, kind: str, *, id: str, **fields):
+        """Low-level registration. Prefer the typed builders (:meth:`item`,
+        :meth:`enemy`, …) which make required fields explicit and return a
+        :class:`~rsmm.sdk.content.ContentRef` handle."""
+        return self._content.register(kind, id=id, **fields)
+
+    # ---- typed registry builders (Forge RegistryObject analog) --------
+    #
+    # Each returns a ContentRef you can pass into other defs (drop tables,
+    # ability rosters, recipes); refs are deref'd to raw ids at register
+    # time. `base` is the vanilla content to clone — required by every
+    # schema-mined kind — so it is a positional-or-keyword on each builder.
+
+    @sdk_export("Mod.item")
+    def item(self, id: str, *, base: str, name: str | None = None, **fields):
+        """Register a custom item cloned from vanilla ``base``."""
+        if name is not None:
+            fields["name"] = name
+        return self._content.register("item", id=id, base=base, **fields)
+
+    @sdk_export("Mod.enemy")
+    def enemy(self, id: str, *, base: str, name: str | None = None, **fields):
+        """Register a custom enemy cloned from vanilla ``base``."""
+        if name is not None:
+            fields["name"] = name
+        return self._content.register("enemy", id=id, base=base, **fields)
+
+    @sdk_export("Mod.boss")
+    def boss(self, id: str, *, base: str, name: str | None = None, **fields):
+        """Register a custom boss cloned from vanilla ``base``."""
+        if name is not None:
+            fields["name"] = name
+        return self._content.register("boss", id=id, base=base, **fields)
+
+    @sdk_export("Mod.map")
+    def map(self, id: str, *, base: str, **fields):
+        """Register a custom map/level cloned from vanilla ``base``."""
+        return self._content.register("map", id=id, base=base, **fields)
+
+    @sdk_export("Mod.hero")
+    def hero(self, id: str, *, base: str, name: str | None = None,
+             abilities: list | None = None, **fields):
+        """Register a custom hero cloned from vanilla ``base``."""
+        if name is not None:
+            fields["name"] = name
+        if abilities is not None:
+            fields["abilities"] = abilities
+        return self._content.register("hero", id=id, base=base, **fields)
 
     # ---- asset overrides (custom models / textures) -------------------
 
@@ -78,6 +130,7 @@ class ModBuilder:
     _MODEL_EXTS = (".glb", ".gltf")
     _TEXTURE_EXTS = (".png", ".dds", ".tga")
 
+    @sdk_export("Mod.asset")
     def asset(self, decoded_path: str, source: str | Path) -> None:
         """Stage a source asset to override the game file at `decoded_path`.
 
@@ -101,6 +154,7 @@ class ModBuilder:
             raise ValueError(f"duplicate asset override for {norm!r}")
         self._assets[norm] = src
 
+    @sdk_export("Mod.model")
     def model(self, decoded_path: str, source: str | Path,
               rotate_deg: tuple[float, float, float] | None = None) -> None:
         """Override a mesh asset. Source must be a `.glb`/`.gltf`.
@@ -122,12 +176,86 @@ class ModBuilder:
             self._asset_transforms[norm] = {
                 "rotate_deg": [float(a) for a in rotate_deg]}
 
+    @sdk_export("Mod.texture")
     def texture(self, decoded_path: str, source: str | Path) -> None:
         """Override a texture asset. Source must be a `.png`/`.dds`/`.tga`."""
         if Path(source).suffix.lower() not in self._TEXTURE_EXTS:
             raise ValueError(
                 f"texture() expects {self._TEXTURE_EXTS}, got {Path(source).suffix!r}")
         self.asset(decoded_path, source)
+
+    @sdk_export("Mod.skinpack")
+    def skinpack(self, name: str, key: int, *, ac_id: str = "", al_id: str = "",
+                 base_id: str = "") -> None:
+        """Register a custom selectable skin-pack slot.
+
+        The skin roster is hardcoded in the engine (a fixed 9 `oCAdditionalContent`
+        "SkinPack" entries); see `docs/_re/kinds/skins.md`. A new slot can only be
+        added at runtime, so this is realized by the native loader DLL
+        (`src/loader/src/hook_skins.cpp`), which post-detours the roster builder and
+        appends a standalone entry per def. Defs are staged to
+        ``mods/<id>/skinpacks.json``; the loader aggregates them across enabled mods.
+
+        Args:
+            name:    display name shown in the skin grid.
+            key:     pack key (int) the engine matches against a hero's pack-id
+                     field (entry ``+0x3c``). Must be unique across packs.
+            ac_id:   AC content id (entry ``+0x50``), e.g. ``RW000PSAC000000A``.
+            al_id:   AL content id (entry ``+0x60``), e.g. ``RW000PSAL000000A``.
+            base_id: base content id (entry ``+0x70``).
+
+        Note: registering the slot is verified; whether a brand-new slot surfaces
+        per-hero and resolves to a custom model/material is not yet confirmed
+        in-game (see the "OPEN / UNVERIFIED" section of `docs/_re/kinds/skins.md`).
+        Stage the per-skin cooked assets the resolver expects with
+        :meth:`asset`/:meth:`texture`/:meth:`model` alongside this call.
+        """
+        if not name:
+            raise ValueError("skinpack() needs a non-empty name")
+        if not isinstance(key, int) or isinstance(key, bool):
+            raise ValueError(f"skinpack() key must be an int, got {type(key).__name__}")
+        if any(p["key"] == key for p in self._skinpacks):
+            raise ValueError(f"duplicate skinpack key {key!r}")
+        self._skinpacks.append({
+            "name": name,
+            "key": key,
+            "ac_id": ac_id,
+            "al_id": al_id,
+            "base_id": base_id,
+        })
+
+    _TAG_RE = re.compile(r"^[a-z0-9][a-z0-9_/]*$")
+
+    @sdk_export("Mod.tag")
+    def tag(self, tag_id: str, members) -> None:
+        """Group content into a named, cross-mod-extensible tag (Minecraft
+        ``#namespace:path`` tags analog).
+
+        ``members`` is a ContentRef / id string, or an iterable of them.
+        Calling ``tag()`` again with the same id **appends** (de-duped,
+        order-preserved), so several mods — or several call sites — can grow
+        one tag. Members are deref'd to raw ids, so you can pass the handles
+        returned by :meth:`item`/:meth:`enemy`/… directly::
+
+            dagger = m.item("RubyDagger", base="Knife")
+            m.tag("daggers", [dagger, "VanillaKnife"])
+
+        Tags are written to ``mods/<id>/tags.json``; downstream tooling/mods
+        aggregate them (same model as ``skinpacks.json``).
+        """
+        if not self._TAG_RE.match(tag_id or ""):
+            raise ValueError(
+                f"tag id {tag_id!r} must match {self._TAG_RE.pattern} "
+                "(lowercase, digits, '_' or '/')")
+        if isinstance(members, (str, ContentRef)):
+            members = [members]
+        bucket = self._tags.setdefault(tag_id, [])
+        for mem in members:
+            rid = _deref(mem)
+            if not isinstance(rid, str) or not rid:
+                raise ValueError(f"tag {tag_id!r}: bad member {mem!r}")
+            if rid not in bucket:
+                bucket.append(rid)
 
     def requires(self, mod_id: str, version_spec: str = "") -> None:
         self._requires.append((mod_id, version_spec))
@@ -137,8 +265,50 @@ class ModBuilder:
 
     # ---- materialize --------------------------------------------------
 
+    @sdk_export("Mod.summary")
+    def summary(self) -> dict:
+        """Snapshot of everything staged so far — print before :meth:`commit`
+        to see exactly what the mod will write (no disk writes)."""
+        by_kind: dict[str, list[str]] = {}
+        for d in self._content.defs:
+            by_kind.setdefault(d.kind, []).append(d.id)
+        return {
+            "id": self.id,
+            "name": self.name,
+            "version": self.version,
+            "content": by_kind,
+            "assets": sorted(self._assets),
+            "i18n_locales": sorted(self._i18n),
+            "skinpacks": [p["name"] for p in self._skinpacks],
+            "tags": {t: list(m) for t, m in self._tags.items()},
+            "requires": [m for m, _ in self._requires],
+            "provides_api": self._api_name,
+        }
+
+    @sdk_export("Mod.validate")
+    def validate(self) -> list[str]:
+        """Return human-readable warnings about the current state (does not
+        raise). Empty list = clean. Called automatically by :meth:`commit`;
+        run it yourself for a fast pre-flight."""
+        warns: list[str] = []
+        local_ids = {d.id for d in self._content.defs}
+        for tag_id, members in self._tags.items():
+            for rid in members:
+                # A member that looks like a local id but isn't registered is
+                # almost always a typo; external/vanilla ids are fine.
+                if rid.isidentifier() and rid not in local_ids and ":" not in rid:
+                    warns.append(
+                        f"tag '{tag_id}': member '{rid}' is not a registered "
+                        "content id in this mod (ok if it's a vanilla id)")
+        if not any((self._content.defs, self._assets, self._skinpacks,
+                    self._tags, self._patch_blocks, self._i18n)):
+            warns.append("mod is empty — no content, assets, patches, or i18n")
+        return warns
+
     def commit(self) -> Path:
         """Atomically write `mods/<id>/` from the accumulated state."""
+        for w in self.validate():
+            print(f"  [warn] {self.id}: {w}")
         dst = MODS_DIR / self.id
         with tempfile.TemporaryDirectory(prefix=f".rsmm_build_{self.id}_") as td:
             staging = Path(td) / self.id
@@ -153,6 +323,10 @@ class ModBuilder:
                 self._content.emit(staging / "assets")
             if self._assets:
                 self._write_assets(staging)
+            if self._skinpacks:
+                self._write_skinpacks(staging)
+            if self._tags:
+                self._write_tags(staging)
             if dst.exists():
                 shutil.rmtree(dst)
             dst.parent.mkdir(parents=True, exist_ok=True)
@@ -160,6 +334,14 @@ class ModBuilder:
         return dst
 
     # ---- helpers ------------------------------------------------------
+
+    def _write_skinpacks(self, root: Path) -> None:
+        (root / "skinpacks.json").write_text(
+            json.dumps(self._skinpacks, indent=2) + "\n", encoding="utf-8")
+
+    def _write_tags(self, root: Path) -> None:
+        (root / "tags.json").write_text(
+            json.dumps(self._tags, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     def _write_manifest(self, root: Path) -> None:
         lines = [
