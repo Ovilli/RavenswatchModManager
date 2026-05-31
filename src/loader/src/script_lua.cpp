@@ -21,6 +21,8 @@ extern "C" {
 #include "fn_call.h"
 #include "hook_lua.h"
 
+#include "json.hpp"   // single-header nlohmann::json (vendored)
+
 #include <windows.h>
 
 #include <cstring>
@@ -32,6 +34,46 @@ extern "C" {
 namespace rsmm {
 
 namespace {
+
+// Recursively materialize a parsed JSON value as a Lua value on the stack.
+// Objects -> string-keyed tables, arrays -> 1-based tables, null -> nil.
+void json_to_lua(lua_State* L, const nlohmann::json& j) {
+    switch (j.type()) {
+        case nlohmann::json::value_t::object: {
+            lua_createtable(L, 0, (int)j.size());
+            for (auto it = j.begin(); it != j.end(); ++it) {
+                json_to_lua(L, it.value());
+                lua_setfield(L, -2, it.key().c_str());
+            }
+            break;
+        }
+        case nlohmann::json::value_t::array: {
+            lua_createtable(L, (int)j.size(), 0);
+            int i = 1;
+            for (const auto& el : j) {
+                json_to_lua(L, el);
+                lua_rawseti(L, -2, i++);
+            }
+            break;
+        }
+        case nlohmann::json::value_t::string:
+            lua_pushstring(L, j.get_ref<const std::string&>().c_str());
+            break;
+        case nlohmann::json::value_t::boolean:
+            lua_pushboolean(L, j.get<bool>() ? 1 : 0);
+            break;
+        case nlohmann::json::value_t::number_integer:
+        case nlohmann::json::value_t::number_unsigned:
+            lua_pushinteger(L, (lua_Integer)j.get<long long>());
+            break;
+        case nlohmann::json::value_t::number_float:
+            lua_pushnumber(L, j.get<double>());
+            break;
+        default:
+            lua_pushnil(L);
+            break;
+    }
+}
 
 struct ModScript {
     lua_State* L = nullptr;
@@ -74,6 +116,32 @@ int lua_log(lua_State* L) {
 int lua_mod_dir(lua_State* L) {
     auto* m = current_from_state(L);
     lua_pushstring(L, m ? m->root.string().c_str() : "");
+    return 1;
+}
+
+// rsmm.tags([mod_id]) -> table
+//   Parsed tags.json for the given mod (default: the calling mod). Returns
+//   { tag_id = { "member", ... }, ... }, or an empty table if none.
+int lua_mod_tags(lua_State* L) {
+    const char* want = lua_tostring(L, 1);  // optional
+    const ModScript* m = want ? nullptr : current_from_state(L);
+    std::string raw;
+    if (want) {
+        auto it = g_scripts.find(want);
+        if (it != g_scripts.end()) {
+            for (const auto& mod : Loader::get().mods())
+                if (mod.id == want) { raw = mod.tags_json; break; }
+        }
+    } else if (m) {
+        for (const auto& mod : Loader::get().mods())
+            if (mod.id == m->id) { raw = mod.tags_json; break; }
+    }
+    if (raw.empty()) { lua_newtable(L); return 1; }
+    try {
+        json_to_lua(L, nlohmann::json::parse(raw));
+    } catch (const std::exception&) {
+        lua_newtable(L);
+    }
     return 1;
 }
 
@@ -378,6 +446,7 @@ void register_api(lua_State* L) {
     static const luaL_Reg public_lib[] = {
         { "log",                     lua_log },
         { "mod_dir",                 lua_mod_dir },
+        { "tags",                    lua_mod_tags },
         { "register_asset_override", lua_register_asset_override },
         { "on_event",                lua_on_event },
         { "commit",                  lua_commit },
@@ -494,7 +563,12 @@ bool script_run_mod_init(const std::string& mod_id,
     return true;
 }
 
-void script_emit_event(const std::string& name) {
+namespace {
+
+// Shared dispatch: call every handler of `name` with one argument — the
+// payload table (built per-state by `push_payload`).
+template <class PushPayload>
+void emit_locked(const std::string& name, PushPayload push_payload) {
     std::lock_guard<std::mutex> g(g_mu);
     for (auto& [id, s] : g_scripts) {
         if (!s.L) continue;
@@ -505,8 +579,9 @@ void script_emit_event(const std::string& name) {
         if (!lua_istable(L, -1)) { lua_pop(L, 2); continue; }
         const int n = (int)lua_rawlen(L, -1);
         for (int i = 1; i <= n; ++i) {
-            lua_rawgeti(L, -1, i);
-            if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
+            lua_rawgeti(L, -1, i);     // handler fn
+            push_payload(L);           // arg: payload table
+            if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
                 Loader::get().log(std::string("[lua] ") + id + " event " + name + ": "
                                   + lua_tostring(L, -1));
                 lua_pop(L, 1);
@@ -514,6 +589,26 @@ void script_emit_event(const std::string& name) {
         }
         lua_pop(L, 2);
     }
+}
+
+} // namespace
+
+void script_emit_event(const std::string& name) {
+    emit_locked(name, [](lua_State* L) { lua_newtable(L); });
+}
+
+void script_emit_event_json(const std::string& name, const std::string& payload_json) {
+    nlohmann::json parsed;
+    bool ok = false;
+    try {
+        parsed = nlohmann::json::parse(payload_json);
+        ok = parsed.is_object() || parsed.is_array();
+    } catch (const std::exception&) {
+        ok = false;
+    }
+    emit_locked(name, [&](lua_State* L) {
+        if (ok) json_to_lua(L, parsed); else lua_newtable(L);
+    });
 }
 
 void script_reload_changed() {

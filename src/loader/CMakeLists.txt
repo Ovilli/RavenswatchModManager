@@ -43,6 +43,8 @@ set(LOADER_SRC
     src/loader.cpp
     src/hook_io.cpp
     src/hook_engine.cpp
+    src/hook_skins.cpp
+    src/hook_events.cpp
     src/hook_lua.cpp
     src/script_lua.cpp
     src/fn_resolver.cpp

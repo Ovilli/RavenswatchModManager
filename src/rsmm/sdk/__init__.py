@@ -8,7 +8,13 @@ Mod authors do:
         m.text(...)               # legacy v1 surface (delegated to cli.text)
         m.config({"damage": {"type": "float", "default": 1.0}})
         m.i18n("EN", {"hello": "Hi"})
-        m.content("item", id="FrostBlade", ...)
+        # Typed registry builders return a ContentRef handle (Forge
+        # RegistryObject analog) you can reference in other defs:
+        blade = m.item("FrostBlade", base="VanillaSword", name="Frost Blade")
+        m.boss("IceLord", base="BabaYaga", drops=[blade])  # ref deref'd to id
+        m.tag("daggers", [blade])  # cross-mod-extensible group
+        print(m.summary())         # preview everything staged, no disk write
+        # m.content("item", id=...) is the low-level form if you need it.
 
 Everything below is a thin facade over the submodules so the mental
 model is one import. See `docs/SDK_V3.md` for the full design.
@@ -20,12 +26,13 @@ import re
 
 from .api import API_VERSION, require_api, sdk_export
 from .config import ConfigSchema, ConfigStore
-from .content import ContentDef, ContentRegistry
+from .content import ContentDef, ContentRef, ContentRegistry
 from .health import Health
 from .i18n import I18nBundle
 from .intermod import InterModRegistry
 from .plugins import discover_plugins
 from .repo import RepoIndex, sign_file, verify_file
+from .testkit import ModExpect, assert_no_conflicts, conflicts, expect
 from .transaction import ApplyTransaction
 from .versioning import GameBuildPin, check_compat
 
@@ -34,9 +41,10 @@ _ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 __all__ = [
     "API_VERSION", "sdk_export", "require_api",
     "Health", "ConfigSchema", "ConfigStore", "I18nBundle",
-    "ContentRegistry", "ContentDef", "InterModRegistry",
+    "ContentRegistry", "ContentDef", "ContentRef", "InterModRegistry",
     "discover_plugins",
     "RepoIndex", "sign_file", "verify_file",
+    "expect", "conflicts", "assert_no_conflicts", "ModExpect",
     "GameBuildPin", "check_compat",
     "ApplyTransaction",
     "Mod",
@@ -126,8 +134,24 @@ class Mod:
     def i18n(self, locale: str, strings: dict) -> None:
         self._b.i18n(locale, strings)
 
-    def content(self, kind: str, **fields) -> None:
-        self._b.content(kind, **fields)
+    def content(self, kind: str, **fields):
+        return self._b.content(kind, **fields)
+
+    def item(self, id: str, *, base: str, name: str | None = None, **fields):
+        return self._b.item(id, base=base, name=name, **fields)
+
+    def enemy(self, id: str, *, base: str, name: str | None = None, **fields):
+        return self._b.enemy(id, base=base, name=name, **fields)
+
+    def boss(self, id: str, *, base: str, name: str | None = None, **fields):
+        return self._b.boss(id, base=base, name=name, **fields)
+
+    def map(self, id: str, *, base: str, **fields):
+        return self._b.map(id, base=base, **fields)
+
+    def hero(self, id: str, *, base: str, name: str | None = None,
+             abilities: list | None = None, **fields):
+        return self._b.hero(id, base=base, name=name, abilities=abilities, **fields)
 
     def asset(self, decoded_path: str, source) -> None:
         self._b.asset(decoded_path, source)
@@ -137,6 +161,19 @@ class Mod:
 
     def texture(self, decoded_path: str, source) -> None:
         self._b.texture(decoded_path, source)
+
+    def skinpack(self, name: str, key: int, *, ac_id: str = "", al_id: str = "",
+                 base_id: str = "") -> None:
+        self._b.skinpack(name, key, ac_id=ac_id, al_id=al_id, base_id=base_id)
+
+    def tag(self, tag_id: str, members) -> None:
+        self._b.tag(tag_id, members)
+
+    def summary(self) -> dict:
+        return self._b.summary()
+
+    def validate(self) -> list:
+        return self._b.validate()
 
     def requires(self, mod_id: str, version_spec: str = "") -> None:
         self._b.requires(mod_id, version_spec)

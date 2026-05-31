@@ -22,6 +22,10 @@ struct Mod {
     std::vector<ModFile> files;
     bool enabled = false;
     int load_order = 0;
+    // Raw contents of <mod>/tags.json (empty if absent). Parsed lazily into a
+    // Lua table by the `rsmm.tags()` binding so authors can read cross-mod
+    // tag groups at runtime. See src/rsmm/sdk builder.tag().
+    std::string tags_json;
 };
 
 class Loader {

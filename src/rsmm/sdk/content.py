@@ -36,6 +36,48 @@ class ContentDef:
     schema_version: int = 1
 
 
+@dataclass(frozen=True)
+class ContentRef:
+    """Typed handle to registered content — the rsmm analog of Forge's
+    ``RegistryObject<T>`` / Fabric's registry holder.
+
+    Returned by every typed registration (``m.item(...)`` etc.) and by
+    :meth:`ContentRegistry.register`. Pass a ref anywhere another content
+    id is expected (a drop table, a recipe input, a hero ability) — the
+    registry derefs it to the raw game id at register time, so refs survive
+    even if the id-naming scheme changes later.
+
+    Stringifies to the namespaced id ``<mod>:<id>`` (à la Minecraft's
+    ``ResourceLocation``); :attr:`resource` is the raw game resource name.
+    """
+
+    kind: str
+    id: str
+    mod_id: str
+
+    def __str__(self) -> str:
+        return f"{self.mod_id}:{self.id}"
+
+    @property
+    def resource(self) -> str:
+        """Raw game resource name (what the cooked asset is keyed on)."""
+        return self.id
+
+
+def _deref(value):
+    """Resolve ContentRefs (and refs nested in lists/dicts/tuples) to raw
+    ids so a ref can be passed wherever a field expects another content id."""
+    if isinstance(value, ContentRef):
+        return value.resource
+    if isinstance(value, list):
+        return [_deref(v) for v in value]
+    if isinstance(value, tuple):
+        return tuple(_deref(v) for v in value)
+    if isinstance(value, dict):
+        return {k: _deref(v) for k, v in value.items()}
+    return value
+
+
 @dataclass
 class ContentRegistry:
     """Mod-scoped registry. One per mod-build pass."""
@@ -45,16 +87,19 @@ class ContentRegistry:
 
     @sdk_export("ContentRegistry.register")
     def register(self, kind: str, *, id: str, schema_version: int = 1,
-                 **fields) -> ContentDef:
+                 **fields) -> ContentRef:
         if kind not in KINDS:
             raise ContentError(
                 f"unknown content kind {kind!r}; supported: {', '.join(KINDS)}"
             )
         if not id or not isinstance(id, str):
             raise ContentError(f"{kind}: id must be a non-empty string")
-        d = ContentDef(kind=kind, id=id, fields=fields, schema_version=schema_version)
+        if any(d.kind == kind and d.id == id for d in self.defs):
+            raise ContentError(f"{kind}: duplicate id {id!r}")
+        d = ContentDef(kind=kind, id=id, fields=_deref(fields),
+                       schema_version=schema_version)
         self.defs.append(d)
-        return d
+        return ContentRef(kind=kind, id=id, mod_id=self.mod_id)
 
     def emit(self, out_dir: Path) -> list[Path]:
         """Materialize every registered def into `out_dir`. Returns written paths."""

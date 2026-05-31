@@ -20,6 +20,8 @@
 #include "loader.h"
 #include "hook_io.h"
 #include "hook_engine.h"
+#include "hook_skins.h"
+#include "hook_events.h"
 #include "script_lua.h"
 
 namespace fs = std::filesystem;
@@ -47,6 +49,10 @@ static void loader_thread_cxx() {
             if (!m.enabled) continue;
             rsmm::script_run_mod_init(m.id, m.root);
         }
+        // Lifecycle: "setup" fires after every mod's init.lua has run (so
+        // cross-mod APIs are registered) but BEFORE overrides are applied,
+        // giving handlers a chance to register late asset overrides.
+        rsmm::script_emit_event("setup");
         L.apply_overrides();
 
         if (MH_Initialize() != MH_OK) {
@@ -63,6 +69,8 @@ static void loader_thread_cxx() {
         }
 
         rsmm::install_engine_hooks();
+        rsmm::install_skin_hooks();
+        rsmm::install_event_hooks();
 
         rsmm::script_emit_event("ready");
         L.log("loader thread complete");

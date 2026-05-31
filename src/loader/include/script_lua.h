@@ -17,11 +17,20 @@ namespace rsmm {
 //   rsmm.list_mods()                   -- {id, name, version, author, enabled}[]
 //   rsmm.encoded_path(decoded)         -- decoded -> encoded or nil
 //   rsmm.decoded_path(encoded)         -- encoded -> decoded or nil
-//   rsmm.on_event(name, fn)            -- "ready" | "exit" (more TBD)
+//   rsmm.on_event(name, fn)            -- "setup"|"ready"|"tick"|"exit"|...
+//   rsmm.tags([mod_id])                -- parsed tags.json table
+//
+// Event handlers receive one argument: a payload table (empty for events
+// with no payload). Lifecycle order: "setup" -> "ready" -> "tick"*.
 
 bool script_run_mod_init(const std::string& mod_id,
                          const std::filesystem::path& mod_root);
+// Emit an event to every mod. The no-payload form passes an empty table;
+// the `_json` form parses `payload_json` (a JSON object string) and passes
+// it as the handler's argument table. Keeping the payload as a string keeps
+// this header free of the JSON dependency.
 void script_emit_event(const std::string& name);
+void script_emit_event_json(const std::string& name, const std::string& payload_json);
 void script_reload_changed();   // re-run init.lua for any mod whose file changed
 void script_shutdown_all();
 
