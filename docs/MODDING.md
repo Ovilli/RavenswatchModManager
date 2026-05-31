@@ -2,6 +2,8 @@
 
 This guide covers everything from scaffolding a mod to shipping a finished `.zip`. For CLI command details, see the [CLI Reference](CLI_USAGE.md).
 
+> **Prefer the Python SDK?** For a step-by-step `rsmm.sdk` tutorial (typed content + handles, tags, skins, offline testkit, `rsmm install`), see [SDK_AUTHORING.md](SDK_AUTHORING.md).
+
 ---
 
 ## Quick start

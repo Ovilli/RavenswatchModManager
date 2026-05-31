@@ -1,8 +1,13 @@
--- R.events — minimal event bus. Built-in topics published by the loader:
---   "ready"      — first frame, every mod loaded
---   "tick"       — every frame (use sparingly)
---   "level_load" — payload { name = "...", id = ... }
---   "damage"     — payload { src = ..., dst = ..., amount = ... }  (post-hook)
+-- R.events — minimal event bus. Built-in topics published by the loader.
+-- Every handler receives ONE argument: a payload table (empty `{}` for
+-- events that carry no data). Lifecycle order: setup -> ready -> tick*.
+--   "setup"      — all mods' init.lua ran; fires before overrides apply
+--   "ready"      — first frame, every mod loaded + overrides applied
+--   "tick"       — periodic (~500ms; use sparingly)
+--   "exit"       — DLL unload
+--   "level_load" — payload { name = "...", id = ... }       (needs detour)
+--   "hero_pick"  — payload { hero = ..., skin = ... }        (needs detour)
+--   "damage"     — payload { src = ..., dst = ..., amount = ... } (post-hook)
 
 local M = {}
 local _subs = {}
