@@ -23,8 +23,15 @@ every reference at once — valid precisely because we require equal length.
 
 from __future__ import annotations
 
+import hashlib
 import struct
+from collections import defaultdict
 from dataclasses import dataclass, field
+from pathlib import Path
+
+#: Container framing markers — 16-byte GUID candidates that contain these are
+#: section brackets, not node identities, and must never be treated as GUIDs.
+_MARKERS = (b"\x11\x11\xbb\xaa", b"\x22\x22\xbb\xaa")
 
 
 def _require_same_len(old: bytes, new: bytes, what: str) -> None:
@@ -91,6 +98,90 @@ def find_lstrings(data: bytes, *, contains: str | None = None,
     return out
 
 
+def _candidate_node_guids(data: bytes) -> list[bytes]:
+    """Heuristically collect 16-byte node-identity GUIDs from cooked bytes.
+
+    A cooked node is laid out as ``<16-byte GUID><u32 namelen><name>``; we
+    anchor on each length-prefixed printable string and take the 16 bytes
+    immediately before its length prefix. Candidates that are all-zero (empty
+    refs) or contain a framing marker (i.e. we grabbed a bracket, not a GUID)
+    are dropped. Order-preserving with duplicates so callers can dedupe.
+    """
+    out: list[bytes] = []
+    n = len(data)
+    i = 0
+    while i + 4 <= n:
+        ln = struct.unpack_from("<I", data, i)[0]
+        if 3 <= ln <= 200 and i + 4 + ln <= n:
+            chunk = data[i + 4: i + 4 + ln]
+            if all(0x20 <= b < 0x7f for b in chunk):
+                if i >= 16:
+                    g = data[i - 16: i]
+                    if g != b"\x00" * 16 and not any(m in g for m in _MARKERS):
+                        out.append(g)
+                i += 4 + ln
+                continue
+        i += 1
+    return out
+
+
+def own_node_guids(cooked: bytes, corpus: list[bytes]) -> list[bytes]:
+    """Return the GUIDs that uniquely identify *this* item's own nodes.
+
+    ``corpus`` is the raw bytes of every sibling magical-object entity (the
+    vanilla item set). A GUID that appears in only this item is its own node
+    identity and must be re-minted when cloning; a GUID shared across items is
+    a class-table entry or a template/inherited node reference and is left
+    untouched so external links keep resolving.
+    """
+    seen: dict[bytes, int] = defaultdict(int)
+    for raw in corpus:
+        for g in set(_candidate_node_guids(raw)):
+            seen[g] += 1
+    mine = _candidate_node_guids(cooked)
+    # corpus is expected to include `cooked` itself; "own" == appears in
+    # exactly one item. If the caller forgot to include it, count==0 also
+    # means own.
+    own: list[bytes] = []
+    for g in dict.fromkeys(mine):  # de-dupe, keep order
+        if seen.get(g, 0) <= 1:
+            own.append(g)
+    return own
+
+
+def _mint_guid(old: bytes, salt: bytes) -> bytes:
+    """Deterministically derive a fresh 16-byte GUID from an old one + salt.
+
+    Deterministic so re-cooking the same item is reproducible (stable bytes,
+    stable backups). The salt is the new item id, so two different clones of
+    the same base get different identities.
+    """
+    return hashlib.sha256(salt + old).digest()[:16]
+
+
+def remint_guids(cooked: bytes, corpus: list[bytes], salt: str) -> bytes:
+    """Give every own node of ``cooked`` a fresh identity GUID.
+
+    Each own GUID is replaced everywhere it occurs (definition AND any internal
+    references), so cross-links inside the item stay consistent. 16->16 bytes,
+    so framing is untouched. ``salt`` is the new item id. Shared/external GUIDs
+    are preserved. Returns the re-minted bytes.
+    """
+    own = own_node_guids(cooked, corpus)
+    salt_b = salt.encode("utf-8")
+    out = cooked
+    for g in own:
+        out = out.replace(g, _mint_guid(g, salt_b))
+    return out
+
+
+def load_corpus(corpus_dir: Path) -> list[bytes]:
+    """Read every cooked magical-object entity under ``corpus_dir`` (recursively)
+    as raw bytes, for use as the sibling corpus in :func:`own_node_guids`."""
+    return [p.read_bytes()
+            for p in sorted(corpus_dir.rglob("*.EntitySettingsResource.gen"))]
+
+
 @dataclass
 class ItemEdit:
     """Declarative length-preserving edit set for one cloned item."""
@@ -98,9 +189,18 @@ class ItemEdit:
     new_id: str
     #: (old_lstr, new_lstr) pairs — icon path, debug name, etc.
     lstr_swaps: list[tuple[str, str]] = field(default_factory=list)
+    #: Raw bytes of the sibling item corpus. When set, the clone's own node
+    #: GUIDs are re-minted so the engine sees a distinct object (otherwise it
+    #: dedupes against the base by GUID and the item never enters the pool).
+    corpus: list[bytes] = field(default_factory=list)
 
     def apply(self, cooked: bytes) -> bytes:
-        out = rename_id(cooked, self.base_id, self.new_id)
+        out = cooked
+        if self.corpus:
+            # Re-mint BEFORE the string rename so corpus GUID matching (which is
+            # name-independent) is unaffected by the id swap.
+            out = remint_guids(out, self.corpus, salt=self.new_id)
+        out = rename_id(out, self.base_id, self.new_id)
         for old, new in self.lstr_swaps:
             # The id rename may already have rewritten the id token inside
             # these strings; rename both sides so the swap still matches.

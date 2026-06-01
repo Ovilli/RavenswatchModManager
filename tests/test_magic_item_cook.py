@@ -76,6 +76,55 @@ def test_find_lstrings():
     assert len(icons) == 1 and icons[0][1].endswith(".png")
 
 
+def _guid(seed: int) -> bytes:
+    return bytes([seed]) * 16
+
+
+def _node(guid: bytes, name: str) -> bytes:
+    return guid + _lstr(name)
+
+
+def test_own_node_guids_splits_unique_from_shared():
+    shared = _guid(0xAA)   # class-table-like, in every item
+    own_a = _guid(0xB1)    # unique to item A
+    own_b = _guid(0xB2)
+    item_a = (_node(shared, "oCEntitySettingsResource")
+              + _node(own_a, "Node A1") + _node(own_b, "Node A2"))
+    item_b = _node(shared, "oCEntitySettingsResource") + _node(_guid(0xC1), "Node B1")
+    own = C.own_node_guids(item_a, [item_a, item_b])
+    assert shared not in own
+    assert own_a in own and own_b in own
+
+
+def test_remint_changes_only_own_guids_and_preserves_length():
+    shared = _guid(0xAA)
+    own = _guid(0xB1)
+    item = _node(shared, "oCEntitySettingsResource") + _node(own, "My Node")
+    other = _node(shared, "oCEntitySettingsResource") + _node(_guid(0xC1), "Other")
+    out = C.remint_guids(item, [item, other], salt="New_Item")
+    assert len(out) == len(item)
+    assert shared in out          # external/class guid preserved
+    assert own not in out         # own guid re-minted away
+    # deterministic
+    assert out == C.remint_guids(item, [item, other], salt="New_Item")
+    # salt-dependent (different clone => different identity)
+    assert out != C.remint_guids(item, [item, other], salt="Other_Item")
+
+
+def test_remint_keeps_internal_references_consistent():
+    # Own guid appears twice: as a node definition and as an internal reference.
+    shared = _guid(0xAA)
+    own = _guid(0xB7)
+    item = (_node(shared, "oCEntitySettingsResource")
+            + _node(own, "Def Node") + b"\x99\x99" + own + b"\x88\x88")
+    other = _node(shared, "x")
+    out = C.remint_guids(item, [item, other], salt="Z")
+    minted = C._mint_guid(own, b"Z")
+    # both the definition and the reference were rewritten to the same new guid
+    assert out.count(minted) == 2
+    assert own not in out
+
+
 def test_item_edit_swaps_track_id_rename():
     # An lstr swap whose strings embed the base id must still match after the
     # id rename rewrote that token in the blob.
