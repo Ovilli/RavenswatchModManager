@@ -9,7 +9,7 @@ sdk_version = ">=3.0,<4"
 
 [[content]]
 kind          = "item"
-id            = "RSMM_Spiky_Test_Armor"
+id            = "RSMM_Final_Item_Name"
 base          = "Armor_Per_Object"
 name          = "Spiky Test Armor"
 description   = "RSMM test: +99 armor per magical object."

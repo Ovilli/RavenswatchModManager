@@ -439,9 +439,31 @@ def emit_content_blocks(mods: list[Mod]) -> int:
             except ContentError as e:
                 print(f"  [content] {m.id}: {e}", file=sys.stderr)
         out_dir = m.assets_dir
+        # Track what content-emit produced so a later emit (e.g. after the
+        # author renames/removes a content def) can delete the files it wrote
+        # last time, instead of leaving ghost assets behind. The marker lives
+        # in the mod root, outside assets/, so it isn't itself installed.
+        marker = m.root / ".rsmm_emitted.json"
+        try:
+            prev = json.loads(marker.read_text(encoding="utf-8")) if marker.exists() else []
+        except (OSError, ValueError):
+            prev = []
         try:
             written = cr.emit(out_dir)
             total += len(written)
+            new_rel = sorted(
+                str(p.relative_to(out_dir).as_posix()) for p in written
+                if out_dir in p.parents
+            )
+            for rel in set(prev) - set(new_rel):
+                stale = out_dir / Path(rel)
+                if stale.is_file():
+                    stale.unlink()
+                    print(f"  [content] {m.id}: removed stale {rel}")
+            try:
+                marker.write_text(json.dumps(new_rel, indent=2), encoding="utf-8")
+            except OSError:
+                pass
             if written:
                 print(f"  [content] {m.id}: emitted {len(written)} file(s)")
         except SchemaNotMined as e:
