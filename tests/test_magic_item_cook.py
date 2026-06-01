@@ -273,3 +273,24 @@ def test_item_edit_swaps_track_id_rename():
     assert b"Armor_Per_Object" not in out
     assert b"Test_Clone_Item0" in out
     assert len(out) == len(_blob())
+
+
+def test_sdk_custom_png_icon_cooks_texture(tmp_path):
+    """A PNG shipped in the mod is cooked into a new oCTexture and the entity
+    icon repointed at it."""
+    pytest.importorskip("rsmm.sdk.content")
+    from rsmm.engine.image import encode_png
+    from rsmm.sdk.content import ContentRegistry
+    root = tmp_path / "mod"
+    root.mkdir()
+    (root / "myicon.png").write_bytes(encode_png(4, 4, bytes([0, 0, 200, 255]) * 16))
+    cr = ContentRegistry(mod_id="IconMod")
+    cr.register("item", id="Custom_Icon_Item", base="Armor_Per_Object",
+                icon="myicon.png")
+    written = cr.emit(root / "assets")
+    if not any("Custom_Icon_Item.entity" in p.name for p in written):
+        pytest.skip("data/uncooked base not available")
+    tex = [p for p in written if "Texture.dxt" in p.name]
+    assert tex, "custom PNG should cook into a Texture.dxt"
+    ent = next(p for p in written if "Custom_Icon_Item.entity" in p.name)
+    assert C.find_icon(ent.read_bytes()) == "Objects\\UI_Object_Custom_Icon_Item.png"

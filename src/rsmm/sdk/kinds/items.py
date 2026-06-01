@@ -74,6 +74,26 @@ def _install_bank_gen() -> Path | None:
         return None
 
 
+def _maybe_custom_texture(mod_root: Path, icon, item_id: str):
+    """If ``icon`` points at a PNG file shipped in the mod, cook it into a new
+    oCTexture and return ``(icon_string, {decoded_path: cooked_bytes})``; else
+    None (the icon is a vanilla stem/path repoint).
+
+    The cooked texture is registered at
+    ``Ui/Objects/UI_Object_<id>.png.Texture.dxt`` and the entity's icon set to
+    ``Objects\\UI_Object_<id>.png`` so the engine resolves it.
+    """
+    if not icon:
+        return None
+    p = mod_root / str(icon)
+    if not (p.is_file() and p.suffix.lower() == ".png"):
+        return None
+    from ...engine.cooked_schemas.texture import TextureHandler
+    cooked_tex = TextureHandler().encode_container(p.read_bytes())
+    tex_decoded = f"Ui/Objects/UI_Object_{item_id}.png.Texture.dxt"
+    return f"Objects\\UI_Object_{item_id}.png", {tex_decoded: cooked_tex}
+
+
 def _coerce_icon(raw) -> str | None:
     """Normalise the ``icon`` field into the cooked icon-path string.
 
@@ -140,7 +160,13 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     description = defn.fields.get("description")
     description = str(description) if description is not None else None
     value_patches = _coerce_value_patches(defn.fields.get("value_patches"))
-    icon = _coerce_icon(defn.fields.get("icon"))
+    # Custom PNG icon shipped in the mod is cooked into a new texture;
+    # otherwise the icon field repoints to a vanilla icon.
+    custom_tex = _maybe_custom_texture(out_dir.parent, defn.fields.get("icon"), defn.id)
+    if custom_tex is not None:
+        icon, extra_files = custom_tex
+    else:
+        icon, extra_files = _coerce_icon(defn.fields.get("icon")), {}
 
     bank_gen = _install_bank_gen() if name is not None else None
     if name is not None and bank_gen is None:
@@ -162,6 +188,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         icon=icon,
         bank_base_gen=bank_gen,
     )
+    files.update(extra_files)  # cooked custom texture, if any
 
     written: list[Path] = []
     for decoded, blob in files.items():
