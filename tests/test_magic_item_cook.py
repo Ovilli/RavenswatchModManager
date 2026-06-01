@@ -76,6 +76,26 @@ def test_find_lstrings():
     assert len(icons) == 1 and icons[0][1].endswith(".png")
 
 
+def test_set_value_after_label():
+    blob = (_lstr("Armor per Object Value")
+            + b"\x01\x02\x03\x04" + struct.pack("<f", 2.0) + b"\x22\x22\xbb\xaa")
+    out = C.set_value_after_label(blob, "Armor per Object Value", 2.0, 50.0)
+    assert len(out) == len(blob)
+    assert struct.pack("<f", 2.0) not in out
+    assert struct.pack("<f", 50.0) in out
+
+
+def test_set_value_wrong_old_value_raises():
+    blob = _lstr("Val") + struct.pack("<f", 2.0)
+    with pytest.raises(ValueError, match="expected value"):
+        C.set_value_after_label(blob, "Val", 9.0, 1.0)
+
+
+def test_set_value_missing_label_raises():
+    with pytest.raises(ValueError, match="not found"):
+        C.set_value_after_label(_lstr("X"), "Nope", 1.0, 2.0)
+
+
 def _guid(seed: int) -> bytes:
     return bytes([seed]) * 16
 
