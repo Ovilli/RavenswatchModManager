@@ -1,16 +1,17 @@
 [mod]
 id          = "ItemCloneTest"
 name        = "New Item Drop Test"
-version     = "0.3.0"
+version     = "0.4.0"
 author      = "rsmm"
-description = "SDK demo: a brand-new magical object cloned from Armor_Per_Object via [[content]]."
+description = "SDK demo: new magical object with a variable-length id + custom (vanilla) icon."
 enabled     = true
 sdk_version = ">=3.0,<4"
 
 [[content]]
 kind          = "item"
-id            = "Test_Clone_Item0"
+id            = "RSMM_Spiky_Test_Armor"
 base          = "Armor_Per_Object"
-name          = "9999 Test Armor"
-description   = "RSMM test item: +9999 armor per magical object."
-value_patches = [["Armor per Object Value", 2.0, 9999.0]]
+name          = "Spiky Test Armor"
+description   = "RSMM test: +99 armor per magical object."
+icon          = "BalorEye"
+value_patches = [["Armor per Object Value", 2.0, 99.0]]
