@@ -47,7 +47,7 @@ import sys
 import tomllib  # Python 3.11+
 from pathlib import Path
 
-from rsmm.engine import cook_cache, cooked_schemas
+from rsmm.engine import cipher, cook_cache, cooked_schemas
 from rsmm.engine.paths import (
     ASSET_MAP_JSON,
     MODS_DIR,
@@ -253,6 +253,48 @@ def resolve_special(decoded: str, dec2enc: dict[str, str]) -> str | None:
 
 ROOT_PREFIX = "_root\\"
 
+# UsedRscList.ot is the engine's master manifest: a newline list of
+# cipher-encoded cooked paths. The engine only loads a resource if its
+# encoded path appears here, so a brand-new asset (custom item / enemy /
+# texture not present in the vanilla tree) must be *registered* by
+# appending its encoded line, or it is silently never loaded.
+# `asset_map.json` is itself derived from this file (see find_iyg.py).
+USEDRSCLIST_REL = Path("DarkTalesResources/UsedRscList.ot")
+
+
+def synthesize_encoded(decoded: str, dec2enc: dict[str, str]) -> str | None:
+    """Derive the `_Cooking` encoded path for a *new* decoded asset that
+    isn't in `asset_map` yet.
+
+    The engine's path obfuscation collapses directory separators past a
+    namespace-dependent depth into `!` inside the filename (see
+    `cipher.py` and `asset_map.json`). That collapse rule has
+    per-namespace exceptions, so rather than re-deriving it we clone the
+    encoded *prefix* of an existing sibling (any asset already living in
+    the same decoded parent directory) and re-encode only the final
+    filename component. Returns None when no sibling exists to anchor the
+    prefix (a genuinely new top-level directory), in which case the
+    caller should fall back to warn-and-skip.
+    """
+    decoded = decoded.replace("\\", "/")
+    if "/" not in decoded:
+        # Top-level resource (e.g. `samples`): no collapse, encode whole.
+        return cipher.encode(decoded)
+    parent, _, fname = decoded.rpartition("/")
+    for dec, enc in dec2enc.items():
+        dec = dec.replace("\\", "/")
+        if "/" not in dec:
+            continue
+        if dec.rsplit("/", 1)[0] != parent:
+            continue
+        # The sibling's final component begins after its last separator,
+        # which may be a real `\` directory join or a collapsed `!`.
+        cut = max(enc.rfind("\\"), enc.rfind("!"))
+        if cut == -1:
+            continue
+        return enc[: cut + 1] + cipher.encode(fname)
+    return None
+
 
 def encoded_to_dest(encoded: str, cooking: Path, game_dir: Path) -> Path:
     """Translate an internal encoded key into an on-disk path.
@@ -376,22 +418,34 @@ def plan_apply(mods: list[Mod],
                cooking: Path,
                game_dir: Path,
                state: State,
-               dry_run: bool) -> tuple[list[tuple[str, Path, Path, str]], list[str]]:
-    """Compute (additions, removals) given current state and on-disk mods.
+               dry_run: bool) -> tuple[list[tuple[str, Path, Path, str]], list[str], set[str]]:
+    """Compute (additions, removals, registrations) given current state and
+    on-disk mods.
 
-    additions: list of (encoded_rel, src_file, dest_in_cooking, mod_id)
-    removals : list of encoded_rel to restore from .bak (no longer overridden)
+    additions    : list of (encoded_rel, src_file, dest_in_cooking, mod_id)
+    removals     : list of encoded_rel to restore from .bak (no longer overridden)
+    registrations: set of encoded paths that aren't in the vanilla asset_map
+                   and must be added to UsedRscList.ot so the engine loads them
     """
     wanted: dict[str, tuple[Path, str]] = {}  # encoded -> (src, mod_id)
+    registrations: set[str] = set()
     for m in mods:
         if not m.enabled:
             continue
         for src, decoded in m.files():
             enc = dec2enc.get(decoded) or resolve_special(decoded, dec2enc)
             if not enc:
-                print(f"  [warn] {m.id}: no asset_map entry for '{decoded}'",
-                      file=sys.stderr)
-                continue
+                # Not a known vanilla asset — treat as a brand-new resource.
+                # Synthesize its encoded path and flag it for UsedRscList
+                # registration so the engine will actually load it.
+                enc = synthesize_encoded(decoded, dec2enc)
+                if not enc:
+                    print(f"  [warn] {m.id}: no asset_map entry for '{decoded}' "
+                          f"and no sibling to anchor a new path; skipping",
+                          file=sys.stderr)
+                    continue
+                registrations.add(enc)
+                print(f"  [new] {m.id}: registering new asset '{decoded}'")
             if enc in wanted:
                 print(f"  [warn] conflict on '{decoded}' "
                       f"(mods: {wanted[enc][1]} vs {m.id}); "
@@ -433,7 +487,7 @@ def plan_apply(mods: list[Mod],
         if enc not in wanted:
             removals.append(enc)
 
-    return additions, removals
+    return additions, removals, registrations
 
 
 _DANGEROUS_ROOT_EXTS = frozenset({
@@ -906,6 +960,87 @@ def _recover_game_update(cooking: Path, game_dir: Path) -> bool:
     return True
 
 
+def _read_usedrsclist(path: Path) -> tuple[str | None, list[str]]:
+    """Parse UsedRscList.ot into (header, lines).
+
+    The first line is a lone-digit format marker (observed value ``1``)
+    that the engine expects to stay in place; everything after it is one
+    obfuscated resource path per line. Returns the header verbatim (or
+    None if absent) and the list of path lines with surrounding
+    whitespace stripped and blanks dropped.
+    """
+    raw = [ln.strip() for ln in path.read_text(encoding="utf-8").splitlines()]
+    raw = [ln for ln in raw if ln]
+    header: str | None = None
+    if raw and raw[0].isdigit():
+        header, raw = raw[0], raw[1:]
+    return header, raw
+
+
+def sync_usedrsclist(game_dir: Path, registrations: set[str],
+                     dry_run: bool) -> int:
+    """Ensure UsedRscList.ot registers exactly `registrations` on top of
+    the pristine vanilla manifest.
+
+    The original file is backed up once as ``UsedRscList.ot.rsmm.bak`` and
+    every rewrite is computed from that pristine copy, so disabling a
+    custom mod cleanly drops its registration lines. When `registrations`
+    is empty the backup is restored and removed (see
+    :func:`restore_usedrsclist`). Returns the number of lines added.
+    """
+    path = game_dir / USEDRSCLIST_REL
+    if not path.exists():
+        if registrations:
+            print(f"  [warn] cannot register {len(registrations)} new asset(s): "
+                  f"{path} not found", file=sys.stderr)
+        return 0
+    if not registrations:
+        return restore_usedrsclist(game_dir, dry_run)
+
+    bak = path.with_name(path.name + BACKUP_SUFFIX)
+    if not bak.exists() and not dry_run:
+        shutil.copy2(path, bak)
+    pristine = bak if bak.exists() else path
+    header, base_lines = _read_usedrsclist(pristine)
+    have = set(base_lines)
+    new = [e for e in sorted(registrations) if e not in have]
+    desired = ([header] if header is not None else []) + base_lines + new
+
+    # Idempotent: if the manifest already reads exactly as desired, do
+    # nothing (don't rewrite ~64k lines every apply / report false work).
+    cur_header, cur_lines = _read_usedrsclist(path)
+    current = ([cur_header] if cur_header is not None else []) + cur_lines
+    if current == desired:
+        return 0
+
+    print(f"  [usedrsc] registering {len(new)} new asset(s) in UsedRscList.ot")
+    if not dry_run:
+        body = "\n".join(desired) + "\n"
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(body, encoding="utf-8")
+        tmp.replace(path)
+    return len(new) or 1
+
+
+def restore_usedrsclist(game_dir: Path, dry_run: bool) -> int:
+    """Roll UsedRscList.ot back to its pristine backup, dropping every
+    custom registration. No-op if no backup exists. Returns 1 if a
+    restore happened, else 0."""
+    path = game_dir / USEDRSCLIST_REL
+    bak = path.with_name(path.name + BACKUP_SUFFIX)
+    if not bak.exists():
+        return 0
+    print("  [usedrsc] restoring pristine UsedRscList.ot")
+    if not dry_run:
+        try:
+            shutil.copy2(bak, path)
+            bak.unlink()
+        except OSError as e:
+            print(f"  [ERROR] failed to restore UsedRscList.ot: {e}",
+                  file=sys.stderr)
+    return 1
+
+
 def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     _recover_game_update(cooking, game_dir)
     dec2enc = load_asset_map(repo)
@@ -937,12 +1072,19 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
         assume_yes=getattr(args, "yes", False),
     )
 
-    additions, removals = plan_apply(mods, dec2enc, cooking, game_dir, state, args.dry_run)
+    additions, removals, registrations = plan_apply(
+        mods, dec2enc, cooking, game_dir, state, args.dry_run)
+
+    # Register/unregister brand-new assets in the engine's master manifest
+    # so they're actually loaded (or cleanly dropped). Self-correcting:
+    # always rebuilt from the pristine backup + current registrations.
+    usedrsc_changes = sync_usedrsclist(game_dir, registrations, args.dry_run)
 
     # Sync manifests so game knows which mods are enabled
     manifest_syncs = _sync_mod_manifests(mods, game_dir, args.dry_run)
 
-    if not additions and not removals and not manifest_syncs and not deact_ran:
+    if (not additions and not removals and not manifest_syncs
+            and not deact_ran and not usedrsc_changes):
         print("Mods already in sync.")
         return 0
 
@@ -1147,6 +1289,21 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
             return 2
     except OSError as e:
         print(f"  [warn] residue sweep skipped: {e}", file=sys.stderr)
+
+    # Drop custom UsedRscList.ot registrations. On a game update the backup
+    # is from the old version, so discard it rather than restore — the new
+    # install already ships its own (correct) manifest.
+    upath = game_dir / USEDRSCLIST_REL
+    ubak = upath.with_name(upath.name + BACKUP_SUFFIX)
+    if game_updated:
+        if ubak.exists() and not args.dry_run:
+            try:
+                ubak.unlink()
+            except OSError as e:
+                print(f"  [warn] failed to drop stale UsedRscList backup: {e}",
+                      file=sys.stderr)
+    else:
+        restore_usedrsclist(game_dir, args.dry_run)
 
     runtime_cleared = clear_runtime_mods(game_dir, args.dry_run)
     if not runtime_cleared:

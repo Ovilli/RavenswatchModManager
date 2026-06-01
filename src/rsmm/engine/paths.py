@@ -303,8 +303,15 @@ def game_fingerprint(game_dir: Path) -> str:
         if p.exists():
             _hash_head(h, rel, p)
     used = game_dir / "DarkTalesResources" / "UsedRscList.ot"
-    if used.exists():
-        _hash_head(h, "UsedRscList.ot", used)
+    # When the applier has registered custom assets it appends lines to
+    # UsedRscList.ot and keeps the pristine original as a `.rsmm.bak`
+    # sibling. Hash that pristine copy when present so our own managed
+    # edits are never mistaken for a game update (which would wipe state
+    # and backups on the next apply).
+    used_pristine = used.with_name(used.name + ".rsmm.bak")
+    src = used_pristine if used_pristine.exists() else used
+    if src.exists():
+        _hash_head(h, "UsedRscList.ot", src)
     return h.hexdigest()
 
 
