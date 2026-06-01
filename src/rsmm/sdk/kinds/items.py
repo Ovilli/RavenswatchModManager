@@ -118,13 +118,6 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         # still works. Real cooked output requires a real base id.
         return _emit_legacy_manifest(mod_id, defn, out_dir)
 
-    if len(defn.id.encode()) != len(base.encode()):
-        raise ContentError(
-            f"item {defn.id}: id must match base {base!r} in byte length "
-            f"({len(defn.id)} vs {len(base)}) — the cooker is length-preserving. "
-            f"Pick a same-length id until the variable-length cooker lands."
-        )
-
     base_cooked, base_rarity = found
     rarity = str(defn.fields.get("rarity") or base_rarity)
     name = defn.fields.get("name") or defn.fields.get("display_name")

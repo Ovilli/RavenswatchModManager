@@ -39,9 +39,19 @@ def test_rename_id_same_length():
     assert b"Test_Clone_Item0_Name" in out
 
 
-def test_rename_id_length_mismatch_raises():
-    with pytest.raises(ValueError, match="byte length"):
-        C.rename_id(_blob(), "Armor_Per_Object", "Short")
+def test_rename_id_variable_length_via_container():
+    from rsmm.engine import cooked
+    # Build a minimal valid cooked container (type B) with one section whose
+    # payload holds an id-bearing length-prefixed string.
+    sec = cooked.Section(payload=_lstr("[Value] Armor_Per_Object\\X"))
+    cf = cooked.CookedFile(variant="B", hdr_a=1, flags=0, sections=[sec])
+    data = cooked.emit(cf)
+    out = C.rename_id(data, "Armor_Per_Object", "A_Much_Longer_Item_Id")
+    assert b"Armor_Per_Object" not in out
+    assert b"A_Much_Longer_Item_Id" in out
+    # still a valid, re-parseable cooked file with a fixed-up string prefix
+    re = cooked.parse(out)
+    assert _lstr("[Value] A_Much_Longer_Item_Id\\X") in re.sections[0].payload
 
 
 def test_rename_id_missing_raises():

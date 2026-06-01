@@ -44,17 +44,54 @@ def _require_same_len(old: bytes, new: bytes, what: str) -> None:
         )
 
 
+def _rewrite_id_in_lstrings(payload: bytes, ob: bytes, nb: bytes) -> bytes:
+    """Replace ``ob``->``nb`` inside every length-prefixed string of a section
+    payload, fixing each string's u32 length prefix. Non-string bytes (GUIDs,
+    floats, markers) pass through verbatim, so when ``len(ob)==len(nb)`` the
+    output is byte-identical and when it differs only id-bearing string slots
+    grow/shrink.
+    """
+    out = bytearray()
+    n = len(payload)
+    i = 0
+    while i + 4 <= n:
+        ln = struct.unpack_from("<I", payload, i)[0]
+        if 3 <= ln <= 4096 and i + 4 + ln <= n:
+            chunk = payload[i + 4: i + 4 + ln]
+            if all(0x20 <= b < 0x7f for b in chunk):
+                if ob in chunk:
+                    chunk = chunk.replace(ob, nb)
+                    out += struct.pack("<I", len(chunk)) + chunk
+                else:
+                    out += payload[i: i + 4 + ln]
+                i += 4 + ln
+                continue
+        out += payload[i: i + 1]
+        i += 1
+    out += payload[i:]
+    return bytes(out)
+
+
 def rename_id(data: bytes, base_id: str, new_id: str) -> bytes:
     """Rename the item id everywhere it appears in the cooked bytes.
 
-    ``new_id`` must equal ``base_id`` in byte length. Renames internal scoped
-    node names and text-bank keys in one pass (they all embed the id token).
+    Renames internal scoped node names and text-bank keys in one pass (they all
+    embed the id token). When the new id is the same byte length this is a plain
+    length-preserving replace; when it differs, the cooked container is parsed
+    and each section's length-prefixed strings are rewritten with corrected
+    prefixes, then re-emitted (sections are marker-delimited, so the framing
+    stays valid regardless of size change).
     """
     ob, nb = base_id.encode("utf-8"), new_id.encode("utf-8")
-    _require_same_len(ob, nb, "item id")
     if ob not in data:
         raise ValueError(f"item id {base_id!r} not found in cooked bytes")
-    return data.replace(ob, nb)
+    if len(ob) == len(nb):
+        return data.replace(ob, nb)
+    from . import cooked
+    cf = cooked.parse(data)
+    for sec in cf.sections:
+        sec.payload = _rewrite_id_in_lstrings(sec.payload, ob, nb)
+    return cooked.emit(cf)
 
 
 def replace_lstr(data: bytes, old: str, new: str, *, what: str = "string") -> bytes:
@@ -241,9 +278,8 @@ def build_magic_item(
       bank, the bank + every language sibling with ``<new_id>_Name`` /
       ``_Description`` appended.
 
-    ``new_id`` must equal ``base_id`` in byte length (the rename is
-    length-preserving); pick a same-length id until a variable-length cooker
-    exists.
+    ``new_id`` may be any length — :func:`rename_id` re-emits the container
+    when it differs from ``base_id``.
     """
     ent = ItemEdit(base_id=base_id, new_id=new_id, corpus=corpus).apply(base_cooked)
     for label, old, new in (value_patches or []):
