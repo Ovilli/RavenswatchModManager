@@ -111,6 +111,13 @@ def lang_path_for(base: Path, lang_decoded: str) -> Path:
     return base.with_name(base.name + f".Ggzy{enc}")
 
 
+def _pristine(path: Path) -> Path:
+    """Return the vanilla copy of a bank file: its ``.rsmm.bak`` sibling when a
+    prior apply backed it up, otherwise the file itself."""
+    bak = path.with_name(path.name + ".rsmm.bak")
+    return bak if bak.exists() else path
+
+
 def append_bank_keys(base_gen: Path, new_pairs: dict[str, str]) -> dict[str, bytes]:
     """Append new key/value text entries to a `~GAM.xls.LocalText` bank.
 
@@ -126,8 +133,12 @@ def append_bank_keys(base_gen: Path, new_pairs: dict[str, str]) -> dict[str, byt
     apply-layer decoded path: the base bank by its plain name and each sibling
     by the ``...gen.Lang<XX>`` form that ``resolve_special`` understands. Raises
     if a sibling's length doesn't match the base (corrupt/misaligned bank).
+
+    Each file is read from its pristine ``.rsmm.bak`` when one exists, so
+    re-running apply (without a restore first) rebuilds from the vanilla bank
+    instead of stacking duplicate keys on an already-patched file.
     """
-    keys = parse_text_file(base_gen)
+    keys = parse_text_file(_pristine(base_gen))
     base_count = len(keys.entries)
     new_keys = list(new_pairs.keys())
     new_vals = list(new_pairs.values())
@@ -136,9 +147,10 @@ def append_bank_keys(base_gen: Path, new_pairs: dict[str, str]) -> dict[str, byt
     out: dict[str, bytes] = {"__base__": write_text_file(keys)}
     for lang in ALL_LANGS:
         sib = lang_path_for(base_gen, lang)
-        if not sib.exists():
+        psib = _pristine(sib)
+        if not psib.exists():
             continue
-        vf = parse_text_file(sib)
+        vf = parse_text_file(psib)
         if len(vf.entries) != base_count:
             raise ValueError(
                 f"{sib.name}: {len(vf.entries)} values != {base_count} keys; "
