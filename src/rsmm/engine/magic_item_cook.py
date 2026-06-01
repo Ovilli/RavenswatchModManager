@@ -212,6 +212,60 @@ def load_corpus(corpus_dir: Path) -> list[bytes]:
             for p in sorted(corpus_dir.rglob("*.EntitySettingsResource.gen"))]
 
 
+#: Decoded path of the magical-objects text bank (base = keys file).
+MAGIC_TEXT_BANK = "Text/Magical_Objects~GAM.xls.LocalText.gen"
+
+
+def build_magic_item(
+    *,
+    new_id: str,
+    base_id: str,
+    base_cooked: bytes,
+    corpus: list[bytes],
+    rarity: str = "Common",
+    name: str | None = None,
+    description: str | None = None,
+    value_patches: list[tuple[str, float, float]] | None = None,
+    bank_base_gen: Path | None = None,
+) -> dict[str, bytes]:
+    """Produce every file a new, distinct, named magical object needs.
+
+    Returns ``{decoded_path: cooked_bytes}`` ready to drop into a mod's
+    ``assets/`` tree (the apply layer registers + installs them). Pieces:
+
+    * the cloned entity at
+      ``EntitySettings/Objects/Magical_Objects/<rarity>/<new_id>...gen`` with
+      re-minted GUIDs (distinct identity), the id renamed, and any
+      ``value_patches`` applied (each ``(label, old, new)`` f32 edit);
+    * when ``name`` is given and ``bank_base_gen`` points at the live text
+      bank, the bank + every language sibling with ``<new_id>_Name`` /
+      ``_Description`` appended.
+
+    ``new_id`` must equal ``base_id`` in byte length (the rename is
+    length-preserving); pick a same-length id until a variable-length cooker
+    exists.
+    """
+    ent = ItemEdit(base_id=base_id, new_id=new_id, corpus=corpus).apply(base_cooked)
+    for label, old, new in (value_patches or []):
+        ent = set_value_after_label(ent, label, old, new)
+
+    files: dict[str, bytes] = {
+        f"EntitySettings/Objects/Magical_Objects/{rarity}/"
+        f"{new_id}.entity.ot.EntitySettingsResource.gen": ent
+    }
+
+    if name is not None and bank_base_gen is not None:
+        from . import text_patches as T
+        pairs = {f"{new_id}_Name": name}
+        if description is not None:
+            pairs[f"{new_id}_Description"] = description
+        banks = T.append_bank_keys(bank_base_gen, pairs)
+        files[MAGIC_TEXT_BANK] = banks.pop("__base__")
+        for lang_tok, blob in banks.items():
+            files[MAGIC_TEXT_BANK + lang_tok] = blob
+    return files
+
+
 @dataclass
 class ItemEdit:
     """Declarative length-preserving edit set for one cloned item."""

@@ -109,3 +109,41 @@ def lang_path_for(base: Path, lang_decoded: str) -> Path:
         raise ValueError(f"unknown language code {lang_decoded!r}. Known: "
                          f"{', '.join(sorted(DECODED_TO_ENCODED_LANG))}")
     return base.with_name(base.name + f".Ggzy{enc}")
+
+
+def append_bank_keys(base_gen: Path, new_pairs: dict[str, str]) -> dict[str, bytes]:
+    """Append new key/value text entries to a `~GAM.xls.LocalText` bank.
+
+    A text bank is split across files that must stay index-aligned: the base
+    `.LocalText.gen` holds the ordered KEYS, each `.Ggzy<XX>` sibling holds the
+    ordered VALUES for one language. To add a new entry (e.g. a custom item's
+    `<id>_Name`) the key is appended to the base and the display string to
+    every existing language sibling at the same index.
+
+    ``new_pairs`` maps key -> English display string (used as the value for all
+    languages — a reasonable fallback until per-locale text is provided).
+    Returns ``{decoded-or-relative path token: new bytes}`` keyed by the
+    apply-layer decoded path: the base bank by its plain name and each sibling
+    by the ``...gen.Lang<XX>`` form that ``resolve_special`` understands. Raises
+    if a sibling's length doesn't match the base (corrupt/misaligned bank).
+    """
+    keys = parse_text_file(base_gen)
+    base_count = len(keys.entries)
+    new_keys = list(new_pairs.keys())
+    new_vals = list(new_pairs.values())
+    keys.entries.extend(new_keys)
+
+    out: dict[str, bytes] = {"__base__": write_text_file(keys)}
+    for lang in ALL_LANGS:
+        sib = lang_path_for(base_gen, lang)
+        if not sib.exists():
+            continue
+        vf = parse_text_file(sib)
+        if len(vf.entries) != base_count:
+            raise ValueError(
+                f"{sib.name}: {len(vf.entries)} values != {base_count} keys; "
+                f"bank is misaligned, refusing to append"
+            )
+        vf.entries.extend(new_vals)
+        out[f".Lang{lang}"] = write_text_file(vf)
+    return out
