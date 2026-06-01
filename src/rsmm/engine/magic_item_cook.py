@@ -72,6 +72,36 @@ def replace_lstr(data: bytes, old: str, new: str, *, what: str = "string") -> by
     return data.replace(pat, rep)
 
 
+def set_value_after_label(data: bytes, label: str, old_value: float,
+                          new_value: float, *, within: int = 64) -> bytes:
+    """Patch a node's f32 value, anchored on its label + current value.
+
+    A magical-object effect magnitude is stored as a little-endian f32 a few
+    bytes after the value node's label string (e.g. ``Armor per Object Value``
+    holds ``2.0``). We find ``<u32 len><label>`` then, within the next
+    ``within`` bytes, the exact 4-byte encoding of ``old_value`` and overwrite
+    it with ``new_value``. Anchoring on both the label and the expected old
+    value makes the match unambiguous; the edit is 4->4 bytes so framing is
+    untouched. Raises if the label or the expected value isn't found.
+    """
+    lb = label.encode("utf-8")
+    pat = struct.pack("<I", len(lb)) + lb
+    at = data.find(pat)
+    if at < 0:
+        raise ValueError(f"value label {label!r} not found")
+    region_start = at + len(pat)
+    region = data[region_start: region_start + within]
+    old_bytes = struct.pack("<f", old_value)
+    k = region.find(old_bytes)
+    if k < 0:
+        raise ValueError(
+            f"{label!r}: expected value {old_value!r} not found within "
+            f"{within} bytes after the label (wrong base value?)"
+        )
+    abs_off = region_start + k
+    return data[:abs_off] + struct.pack("<f", new_value) + data[abs_off + 4:]
+
+
 def find_lstrings(data: bytes, *, contains: str | None = None,
                   min_len: int = 3, max_len: int = 256) -> list[tuple[int, str]]:
     """Heuristically list length-prefixed printable strings in cooked bytes.
