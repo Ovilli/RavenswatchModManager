@@ -74,6 +74,21 @@ def _install_bank_gen() -> Path | None:
         return None
 
 
+def _coerce_icon(raw) -> str | None:
+    """Normalise the ``icon`` field into the cooked icon-path string.
+
+    A bare vanilla icon stem (``"BalorEye"``) expands to
+    ``Objects\\UI_Object_<stem>.png`` — the form magical objects reference. A
+    value already containing a separator or ``.png`` is used verbatim.
+    """
+    if raw is None:
+        return None
+    s = str(raw)
+    if "\\" in s or "/" in s or s.lower().endswith(".png"):
+        return s.replace("/", "\\")
+    return f"Objects\\UI_Object_{s}.png"
+
+
 def _coerce_value_patches(raw) -> list[tuple[str, float, float]]:
     """Normalise the optional ``value_patches`` field into (label, old, new)."""
     out: list[tuple[str, float, float]] = []
@@ -125,6 +140,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     description = defn.fields.get("description")
     description = str(description) if description is not None else None
     value_patches = _coerce_value_patches(defn.fields.get("value_patches"))
+    icon = _coerce_icon(defn.fields.get("icon"))
 
     bank_gen = _install_bank_gen() if name is not None else None
     if name is not None and bank_gen is None:
@@ -143,6 +159,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         name=name,
         description=description,
         value_patches=value_patches,
+        icon=icon,
         bank_base_gen=bank_gen,
     )
 
