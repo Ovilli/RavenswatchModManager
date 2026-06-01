@@ -62,6 +62,7 @@ def main(argv: list[str] | None = None) -> int:
 
     BUILTIN = {
         "new":               "rsmm.cli.cmd_new",
+        "items":             "rsmm.cli.cmd_items",
         "schema":            "rsmm.cli.cmd_schema",
         "install":           "rsmm.cli.cmd_install",
         "pack":              "rsmm.cli.cmd_pack",

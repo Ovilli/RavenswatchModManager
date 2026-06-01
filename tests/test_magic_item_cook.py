@@ -106,6 +106,17 @@ def test_set_value_missing_label_raises():
         C.set_value_after_label(_lstr("X"), "Nope", 1.0, 2.0)
 
 
+def test_list_value_fields_filters_noise():
+    blob = (
+        _lstr("Crit Chance Value") + struct.pack("<f", 0.1) + b"\x22\x22\xbb\xaa"
+        + _lstr("[Value] Foo\\Crit Chance Value") + struct.pack("<f", 0.1)  # ref: skip
+        + _lstr("Entity Get Common Object Value") + struct.pack("<f", 5.0)  # getter: skip
+        + _lstr("Huge Value") + struct.pack("<f", 99999.0)  # implausible: skip
+    )
+    fields = dict(C.list_value_fields(blob))
+    assert fields == {"Crit Chance Value": 0.1}
+
+
 def test_find_and_set_icon_same_length():
     blob = _lstr("Objects\\UI_Object_GreenArmor.png")
     assert C.find_icon(blob) == "Objects\\UI_Object_GreenArmor.png"

@@ -205,6 +205,42 @@ def find_lstrings(data: bytes, *, contains: str | None = None,
     return out
 
 
+def list_value_fields(cooked: bytes, *, within: int = 64) -> list[tuple[str, float]]:
+    """Discover an item's editable f32 value fields as ``(label, default)``.
+
+    Magical-object effect magnitudes live in nodes whose display name ends in
+    ``Value`` (e.g. ``Armor per Object Value`` = 2.0); the f32 sits a few bytes
+    after the label. For each such label we report the first clean float in the
+    next ``within`` bytes — skipping byte windows that overlap a container
+    marker (``..bbaa``/``1111``/``2222``) so we don't surface marker noise as a
+    value. These are exactly the labels usable in ``value_patches``; the modder
+    confirms the default via :func:`set_value_after_label` (which errors on a
+    mismatch). Best-effort + de-duplicated by label.
+    """
+    seen: set[str] = set()
+    out: list[tuple[str, float]] = []
+    n = len(cooked)
+    for off, s in find_lstrings(cooked):
+        # Authored value nodes have a plain name ending in "Value"; skip
+        # scoped references (`[Value] X\...`) and runtime getters ("...Get...").
+        if (not s.endswith("Value") or s in seen
+                or s.startswith("[") or "Get" in s):
+            continue
+        start = off + 4 + len(s.encode("utf-8"))
+        for k in range(max(0, min(within, n - start - 4))):
+            b4 = cooked[start + k: start + k + 4]
+            if b"\xbb\xaa" in b4 or b"\x11\x11" in b4 or b"\x22\x22" in b4:
+                continue
+            v = struct.unpack("<f", b4)[0]
+            # effect magnitudes are small, human-authored numbers; large values
+            # are almost always a misread int/pointer.
+            if v == v and v != 0.0 and 1e-3 <= abs(v) < 1e4:
+                out.append((s, round(v, 4)))
+                seen.add(s)
+                break
+    return out
+
+
 def _candidate_node_guids(data: bytes) -> list[bytes]:
     """Heuristically collect 16-byte node-identity GUIDs from cooked bytes.
 
