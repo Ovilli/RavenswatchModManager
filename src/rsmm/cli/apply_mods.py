@@ -296,6 +296,70 @@ def synthesize_encoded(decoded: str, dec2enc: dict[str, str]) -> str | None:
     return None
 
 
+def _asset_id_and_suffix(filename: str) -> tuple[str, str]:
+    """Split a cooked filename into (id, suffix) at the first dot.
+
+    e.g. ``Armor_Per_Object.entity.ot.EntitySettingsResource.gen`` ->
+    ``("Armor_Per_Object", ".entity.ot.EntitySettingsResource.gen")``.
+    Resource ids never contain a dot; everything from the first dot on is
+    the kind/cook suffix that two siblings of the same kind share.
+    """
+    dot = filename.find(".")
+    if dot == -1:
+        return filename, ""
+    return filename[:dot], filename[dot:]
+
+
+def build_usedrsc_record(decoded: str, pristine_lines: list[str],
+                         dec2enc: dict[str, str]) -> list[str] | None:
+    """Build the 3-line UsedRscList.ot record for a new cooked asset.
+
+    The engine parses UsedRscList.ot in fixed groups of THREE lines per
+    resource (see FUN_140488f50): line 1 is the type root (e.g.
+    ``EntitySettings``), line 2 the logical resource name, line 3 the
+    cooked file path. Appending fewer than three lines desynchronises the
+    reader and it runs off the end into an ``int3`` (hard crash).
+
+    Rather than re-encode all three (each line collapses ``\\``/``!``
+    differently per namespace), clone a same-kind sibling's actual record
+    from the pristine manifest and swap the encoded id token. ``decoded``
+    is the new asset's decoded cooked path (forward slashes). Returns the
+    three encoded lines, or None if no structural sibling exists.
+    """
+    decoded = decoded.replace("\\", "/")
+    if "/" not in decoded:
+        return None
+    parent, new_fname = decoded.rsplit("/", 1)
+    new_id, new_suffix = _asset_id_and_suffix(new_fname)
+    if not new_id:
+        return None
+
+    for dec, enc in dec2enc.items():
+        sib = dec.replace("\\", "/")
+        if sib == decoded or "/" not in sib:
+            continue
+        sib_parent, sib_fname = sib.rsplit("/", 1)
+        if sib_parent != parent:
+            continue
+        old_id, old_suffix = _asset_id_and_suffix(sib_fname)
+        # Same parent dir AND same kind/cook suffix => structurally
+        # identical 3-line record we can clone.
+        if old_suffix != new_suffix or not old_id:
+            continue
+        try:
+            idx = pristine_lines.index(enc)
+        except ValueError:
+            continue
+        if idx < 2:
+            continue
+        triple = pristine_lines[idx - 2: idx + 1]
+        enc_old = cipher.encode(old_id)
+        enc_new = cipher.encode(new_id)
+        # Line 1 (type root) carries no id; lines 2/3 carry the encoded id.
+        return [line.replace(enc_old, enc_new) for line in triple]
+    return None
+
+
 def encoded_to_dest(encoded: str, cooking: Path, game_dir: Path) -> Path:
     """Translate an internal encoded key into an on-disk path.
 
@@ -418,17 +482,19 @@ def plan_apply(mods: list[Mod],
                cooking: Path,
                game_dir: Path,
                state: State,
-               dry_run: bool) -> tuple[list[tuple[str, Path, Path, str]], list[str], set[str]]:
+               dry_run: bool,
+               ) -> tuple[list[tuple[str, Path, Path, str]], list[str], dict[str, str]]:
     """Compute (additions, removals, registrations) given current state and
     on-disk mods.
 
     additions    : list of (encoded_rel, src_file, dest_in_cooking, mod_id)
     removals     : list of encoded_rel to restore from .bak (no longer overridden)
-    registrations: set of encoded paths that aren't in the vanilla asset_map
-                   and must be added to UsedRscList.ot so the engine loads them
+    registrations: {encoded_cooked_path: decoded_path} for assets not in the
+                   vanilla asset_map; each needs a 3-line UsedRscList.ot record
+                   (built later from the live manifest) so the engine loads it
     """
     wanted: dict[str, tuple[Path, str]] = {}  # encoded -> (src, mod_id)
-    registrations: set[str] = set()
+    registrations: dict[str, str] = {}        # encoded -> decoded
     for m in mods:
         if not m.enabled:
             continue
@@ -444,7 +510,7 @@ def plan_apply(mods: list[Mod],
                           f"and no sibling to anchor a new path; skipping",
                           file=sys.stderr)
                     continue
-                registrations.add(enc)
+                registrations[enc] = decoded
                 print(f"  [new] {m.id}: registering new asset '{decoded}'")
             if enc in wanted:
                 print(f"  [warn] conflict on '{decoded}' "
@@ -977,16 +1043,22 @@ def _read_usedrsclist(path: Path) -> tuple[str | None, list[str]]:
     return header, raw
 
 
-def sync_usedrsclist(game_dir: Path, registrations: set[str],
-                     dry_run: bool) -> int:
+def sync_usedrsclist(game_dir: Path, registrations: dict[str, str],
+                     dec2enc: dict[str, str], dry_run: bool) -> int:
     """Ensure UsedRscList.ot registers exactly `registrations` on top of
     the pristine vanilla manifest.
 
+    `registrations` maps encoded-cooked-path -> decoded-path. The engine
+    reads UsedRscList.ot in fixed groups of THREE lines per resource, so
+    each new asset is appended as a full cloned 3-line record (see
+    :func:`build_usedrsc_record`) — appending a single line desyncs the
+    reader and crashes the game.
+
     The original file is backed up once as ``UsedRscList.ot.rsmm.bak`` and
     every rewrite is computed from that pristine copy, so disabling a
-    custom mod cleanly drops its registration lines. When `registrations`
-    is empty the backup is restored and removed (see
-    :func:`restore_usedrsclist`). Returns the number of lines added.
+    custom mod cleanly drops its records. When `registrations` is empty
+    the backup is restored and removed (see :func:`restore_usedrsclist`).
+    Returns the number of resources newly registered.
     """
     path = game_dir / USEDRSCLIST_REL
     if not path.exists():
@@ -1003,8 +1075,22 @@ def sync_usedrsclist(game_dir: Path, registrations: set[str],
     pristine = bak if bak.exists() else path
     header, base_lines = _read_usedrsclist(pristine)
     have = set(base_lines)
-    new = [e for e in sorted(registrations) if e not in have]
-    desired = ([header] if header is not None else []) + base_lines + new
+
+    new_lines: list[str] = []
+    added = 0
+    for enc in sorted(registrations):
+        if enc in have:
+            continue  # already a vanilla/registered resource
+        record = build_usedrsc_record(registrations[enc], base_lines, dec2enc)
+        if record is None:
+            print(f"  [warn] cannot build UsedRscList record for "
+                  f"'{registrations[enc]}' (no same-kind sibling); skipping",
+                  file=sys.stderr)
+            continue
+        new_lines.extend(record)
+        added += 1
+
+    desired = ([header] if header is not None else []) + base_lines + new_lines
 
     # Idempotent: if the manifest already reads exactly as desired, do
     # nothing (don't rewrite ~64k lines every apply / report false work).
@@ -1013,13 +1099,14 @@ def sync_usedrsclist(game_dir: Path, registrations: set[str],
     if current == desired:
         return 0
 
-    print(f"  [usedrsc] registering {len(new)} new asset(s) in UsedRscList.ot")
+    print(f"  [usedrsc] registering {added} new asset(s) "
+          f"({len(new_lines)} lines) in UsedRscList.ot")
     if not dry_run:
         body = "\n".join(desired) + "\n"
         tmp = path.with_suffix(path.suffix + ".tmp")
         tmp.write_text(body, encoding="utf-8")
         tmp.replace(path)
-    return len(new) or 1
+    return added or 1
 
 
 def restore_usedrsclist(game_dir: Path, dry_run: bool) -> int:
@@ -1078,7 +1165,7 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     # Register/unregister brand-new assets in the engine's master manifest
     # so they're actually loaded (or cleanly dropped). Self-correcting:
     # always rebuilt from the pristine backup + current registrations.
-    usedrsc_changes = sync_usedrsclist(game_dir, registrations, args.dry_run)
+    usedrsc_changes = sync_usedrsclist(game_dir, registrations, dec2enc, args.dry_run)
 
     # Sync manifests so game knows which mods are enabled
     manifest_syncs = _sync_mod_manifests(mods, game_dir, args.dry_run)
