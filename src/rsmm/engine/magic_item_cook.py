@@ -109,6 +109,46 @@ def replace_lstr(data: bytes, old: str, new: str, *, what: str = "string") -> by
     return data.replace(pat, rep)
 
 
+def replace_lstr_any(data: bytes, old: str, new: str) -> bytes:
+    """Replace a length-prefixed string with one of any length.
+
+    Same as :func:`replace_lstr` but lifts the equal-length restriction: when
+    the length differs the cooked container is parsed, the string rewritten in
+    whichever section holds it (u32 prefix fixed), and re-emitted (sections are
+    marker-delimited so framing stays valid). Raises if ``old`` isn't present.
+    """
+    ob, nb = old.encode("utf-8"), new.encode("utf-8")
+    pat = struct.pack("<I", len(ob)) + ob
+    if pat not in data:
+        raise ValueError(f"{old!r} not found as a length-prefixed string")
+    rep = struct.pack("<I", len(nb)) + nb
+    if len(ob) == len(nb):
+        return data.replace(pat, rep)
+    from . import cooked
+    cf = cooked.parse(data)
+    for sec in cf.sections:
+        if pat in sec.payload:
+            sec.payload = sec.payload.replace(pat, rep)
+    return cooked.emit(cf)
+
+
+def find_icon(data: bytes) -> str | None:
+    """Return the item's icon reference string (the single ``...png`` slot), or
+    None. Used to discover what :func:`set_icon` should replace."""
+    pngs = [s for _, s in find_lstrings(data) if s.lower().endswith(".png")]
+    return pngs[0] if pngs else None
+
+
+def set_icon(data: bytes, new_icon: str) -> bytes:
+    """Repoint the item's icon to ``new_icon`` (e.g.
+    ``Objects\\UI_Object_BalorEye.png``). Any length; raises if the base has no
+    discoverable icon string."""
+    cur = find_icon(data)
+    if cur is None:
+        raise ValueError("no icon (.png) string found in cooked bytes")
+    return replace_lstr_any(data, cur, new_icon)
+
+
 def set_value_after_label(data: bytes, label: str, old_value: float,
                           new_value: float, *, within: int = 64) -> bytes:
     """Patch a node's f32 value, anchored on its label + current value.
@@ -263,6 +303,7 @@ def build_magic_item(
     name: str | None = None,
     description: str | None = None,
     value_patches: list[tuple[str, float, float]] | None = None,
+    icon: str | None = None,
     bank_base_gen: Path | None = None,
 ) -> dict[str, bytes]:
     """Produce every file a new, distinct, named magical object needs.
@@ -284,6 +325,8 @@ def build_magic_item(
     ent = ItemEdit(base_id=base_id, new_id=new_id, corpus=corpus).apply(base_cooked)
     for label, old, new in (value_patches or []):
         ent = set_value_after_label(ent, label, old, new)
+    if icon is not None:
+        ent = set_icon(ent, icon)
 
     files: dict[str, bytes] = {
         f"EntitySettings/Objects/Magical_Objects/{rarity}/"

@@ -106,6 +106,31 @@ def test_set_value_missing_label_raises():
         C.set_value_after_label(_lstr("X"), "Nope", 1.0, 2.0)
 
 
+def test_find_and_set_icon_same_length():
+    blob = _lstr("Objects\\UI_Object_GreenArmor.png")
+    assert C.find_icon(blob) == "Objects\\UI_Object_GreenArmor.png"
+    out = C.set_icon(blob, "Objects\\UI_Object_GreenArmer.png")  # same length
+    assert C.find_icon(out) == "Objects\\UI_Object_GreenArmer.png"
+    assert len(out) == len(blob)
+
+
+def test_replace_lstr_any_variable_length():
+    from rsmm.engine import cooked
+    sec = cooked.Section(payload=_lstr("Objects\\UI_Object_GreenArmor.png"))
+    cf = cooked.CookedFile(variant="B", hdr_a=1, flags=0, sections=[sec])
+    data = cooked.emit(cf)
+    out = C.replace_lstr_any(data, "Objects\\UI_Object_GreenArmor.png",
+                             "Objects\\UI_Object_X.png")  # shorter
+    assert b"GreenArmor" not in out
+    re = cooked.parse(out)
+    assert _lstr("Objects\\UI_Object_X.png") in re.sections[0].payload
+
+
+def test_set_icon_no_icon_raises():
+    with pytest.raises(ValueError, match="no icon"):
+        C.set_icon(_lstr("not an image"), "Objects\\UI_Object_X.png")
+
+
 def _guid(seed: int) -> bytes:
     return bytes([seed]) * 16
 
