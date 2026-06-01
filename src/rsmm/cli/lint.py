@@ -137,8 +137,62 @@ def lint_one(entry: Path) -> tuple[int, int]:
             print(f"  [WARN] {entry.name}: unknown patch kind {kind!r}")
             warns += 1
 
+    # [[content]] blocks — item kind
+    ce, cw = _lint_content(entry.name, t.get("content", []) or [])
+    errs += ce
+    warns += cw
+
     n_patch = len(t.get("patch", []) or [])
-    print(f"  [OK]   {entry.name}  (raw={raw_files} patches={n_patch} scope={scope})")
+    n_content = len(t.get("content", []) or [])
+    print(f"  [OK]   {entry.name}  (raw={raw_files} patches={n_patch} "
+          f"content={n_content} scope={scope})")
+    return errs, warns
+
+
+def _lint_content(modname: str, blocks: list[dict]) -> tuple[int, int]:
+    """Validate `[[content]] kind="item"` blocks against the cooked corpus:
+    base resolves, value_patch labels + defaults match, icon exists."""
+    errs = warns = 0
+    try:
+        from rsmm.cli import cmd_items
+        from rsmm.engine import magic_item_cook as cook
+    except ImportError:
+        return 0, 0
+    for c in blocks:
+        if c.get("kind") != "item":
+            continue
+        cid = c.get("id")
+        base = c.get("base")
+        if not cid:
+            print(f"  [FAIL] {modname}: item content missing 'id'")
+            errs += 1
+            continue
+        if not base:
+            print(f"  [FAIL] {modname}: item {cid}: missing 'base'")
+            errs += 1
+            continue
+        found = cmd_items._find_item(str(base))
+        if found is None:
+            print(f"  [WARN] {modname}: item {cid}: base {base!r} not a known "
+                  f"vanilla item (falls back to legacy manifest)")
+            warns += 1
+            continue
+        data = found[2].read_bytes()
+        for vp in c.get("value_patches", []) or []:
+            label, old = (vp[0], vp[1]) if isinstance(vp, list) else (
+                vp.get("label"), vp.get("old"))
+            try:
+                cook.set_value_after_label(data, str(label), float(old), float(old))
+            except (ValueError, TypeError) as e:
+                print(f"  [FAIL] {modname}: item {cid}: value_patch {label!r}: {e}")
+                errs += 1
+        icon = c.get("icon")
+        if icon and "\\" not in str(icon) and "/" not in str(icon) \
+                and not str(icon).lower().endswith(".png"):
+            if str(icon) not in cmd_items._icon_stems(None):
+                print(f"  [WARN] {modname}: item {cid}: icon {icon!r} not a known "
+                      f"vanilla stem (try `rsmm items icons`)")
+                warns += 1
     return errs, warns
 
 
