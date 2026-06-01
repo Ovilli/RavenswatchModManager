@@ -145,6 +145,77 @@ def test_remint_keeps_internal_references_consistent():
     assert own not in out
 
 
+def _write_bank(path, entries):
+    from rsmm.engine.text_patches import TextFile, write_text_file
+    tf = TextFile(path=path, header=b"\x14\x00\x00\x00" + b"\x00" * 0x10,
+                  entries=list(entries), footer=b"")
+    path.write_bytes(write_text_file(tf))
+
+
+def test_append_bank_keys_aligns_base_and_siblings(tmp_path):
+    from rsmm.engine.text_patches import (
+        append_bank_keys,
+        lang_path_for,
+        parse_text_file,
+    )
+    base = tmp_path / "Bank~GAM.xls.LocalText.gen"
+    _write_bank(base, ["Old_Name", "Old_Desc"])
+    _write_bank(lang_path_for(base, "EN"), ["Old EN Name", "Old EN Desc"])
+    _write_bank(lang_path_for(base, "DE"), ["Alt", "Beschr"])
+
+    out = append_bank_keys(base, {"New_Name": "Hello", "New_Desc": "World"})
+    # base gets the keys
+    base.write_bytes(out["__base__"])
+    keys = parse_text_file(base)
+    assert keys.entries[-2:] == ["New_Name", "New_Desc"]
+    # each sibling got the same display values at matching indices
+    en = lang_path_for(base, "EN")
+    en.write_bytes(out[".LangEN"])
+    vals = parse_text_file(en)
+    assert len(vals.entries) == len(keys.entries)
+    assert vals.entries[-2:] == ["Hello", "World"]
+    assert ".LangDE" in out
+
+
+def test_append_bank_keys_rejects_misaligned(tmp_path):
+    from rsmm.engine.text_patches import append_bank_keys, lang_path_for
+    base = tmp_path / "Bank~GAM.xls.LocalText.gen"
+    _write_bank(base, ["A", "B"])
+    _write_bank(lang_path_for(base, "EN"), ["only one"])  # 1 != 2
+    with pytest.raises(ValueError, match="misaligned"):
+        append_bank_keys(base, {"C": "c"})
+
+
+def test_build_magic_item_entity_and_text(tmp_path):
+    # cooked entity blob: each lstr is a proper node (preceded by its own GUID)
+    # so remint's GUID heuristic never grabs the id string or the value float.
+    shared = _guid(0xAA)
+    ent = (_node(shared, "oCEntitySettingsResource")
+           + _node(_guid(0xB4), "[Value] Base_Item_Idxx\\X")
+           + _node(_guid(0xB5), "Armor per Object Value")
+           + struct.pack("<f", 2.0) + b"\x22\x22\xbb\xaa")
+    other = _node(shared, "oCEntitySettingsResource") + _node(_guid(0xC9), "y")
+    base = tmp_path / "Bank~GAM.xls.LocalText.gen"
+    _write_bank(base, ["X"])
+    from rsmm.engine.text_patches import lang_path_for
+    _write_bank(lang_path_for(base, "EN"), ["x"])
+
+    files = C.build_magic_item(
+        new_id="New_Item_Idxxx", base_id="Base_Item_Idxx",  # same length (14)
+        base_cooked=ent, corpus=[ent, other], rarity="Epic",
+        name="My Item", description="Desc",
+        value_patches=[("Armor per Object Value", 2.0, 50.0)],
+        bank_base_gen=base,
+    )
+    ent_key = ("EntitySettings/Objects/Magical_Objects/Epic/"
+               "New_Item_Idxxx.entity.ot.EntitySettingsResource.gen")
+    assert ent_key in files
+    assert b"Base_Item_Idxx" not in files[ent_key]
+    assert struct.pack("<f", 50.0) in files[ent_key]
+    assert C.MAGIC_TEXT_BANK in files
+    assert any(k.endswith(".LangEN") for k in files)
+
+
 def test_item_edit_swaps_track_id_rename():
     # An lstr swap whose strings embed the base id must still match after the
     # id rename rewrote that token in the blob.
