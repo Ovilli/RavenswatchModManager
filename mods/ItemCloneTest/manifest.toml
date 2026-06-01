@@ -1,0 +1,16 @@
+[mod]
+id          = "ItemCloneTest"
+name        = "New Item Drop Test"
+version     = "0.3.0"
+author      = "rsmm"
+description = "SDK demo: a brand-new magical object cloned from Armor_Per_Object via [[content]]."
+enabled     = true
+sdk_version = ">=3.0,<4"
+
+[[content]]
+kind          = "item"
+id            = "Test_Clone_Item0"
+base          = "Armor_Per_Object"
+name          = "9999 Test Armor"
+description   = "RSMM test item: +9999 armor per magical object."
+value_patches = [["Armor per Object Value", 2.0, 9999.0]]

@@ -1,37 +1,22 @@
-"""Item (magical-object) content builder.
+"""Item (magical-object) content builder — SDK entry point.
 
-Public ``emit()`` entry point for the ``item`` content kind. Produces a
-manifest derived from the magical-object / reward chain reverse-engineered
-in ``docs/_re/kinds/items.md``.
+``emit()`` turns one ``[[content]] kind="item"`` declaration (or
+``registry.register("item", ...)``) into the real cooked files a new,
+distinct, droppable magical object needs, written straight into the mod's
+``assets/`` tree so the applier installs + registers them:
 
-Pipeline:
+* the cloned entity at
+  ``EntitySettings/Objects/Magical_Objects/<rarity>/<id>...gen`` — the
+  ``base`` item's cooked bytes with re-minted node GUIDs (distinct
+  identity), the id renamed, and any ``value_patches`` applied;
+* when a ``name`` is given and the install's text bank is reachable, the
+  ``Magical_Objects~GAM.xls`` bank + language siblings with the item's
+  ``<id>_Name`` / ``_Description`` appended.
 
-1. Take the mod author's ``ContentDef`` (``name``, ``rarity``,
-   ``drop_weight``, ``tags``, ``base`` for cloning, etc.).
-2. Synthesize per-record patch tables for the three pieces of the
-   magical-object chain (``oCDtRewardDefinition``,
-   ``oCDtRewardEntitySelectorToSpawnEntityCpntSettings``,
-   ``oCDtEntityCpntMagicalObject``). See
-   :mod:`rsmm.sdk.kinds.item.builder` for per-record assembly and
-   :mod:`rsmm.sdk.kinds.item.schema` for the byte offsets.
-3. Write a text-bank override for the EN display name (the i18n
-   merger later layers locale-specific overrides on top).
-4. Persist the manifest under ``<out>/_pending_items/<id>.json``.
-
-Genuine-schema vs synthesized vs cloned-and-patched
----------------------------------------------------
-
-* **Genuine schema** — offsets reverse-engineered out of the binary
-  and trusted. Tagged ``source="schema"`` in the manifest.
-* **TODO-confirm** — offsets we *think* we know (e.g. which int signal
-  on the runtime component carries "rarity") but haven't byte-diffed
-  against a known-good save. Tagged ``source="todo_confirm"``.
-* **Cloned-and-patched** — every byte we haven't mined falls through
-  to a copy of the ``base`` item's cooked bytes; only the fields above
-  are overwritten.
-
-The apply layer audits the breakdown so authors see, per item, which
-fields are real vs inherited.
+The whole pipeline is length-preserving, so ``id`` must currently match
+``base`` in byte length (variable-length ids need the container re-emit
+cooker — tracked separately). The mechanism is validated in-game: a
+reminted clone with a custom value drops and functions as its own item.
 """
 
 from __future__ import annotations
@@ -39,110 +24,168 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from ..content import ContentDef, SchemaNotMined
+from ...engine import magic_item_cook as cook
+from ...engine.paths import DATA_DIR
+from ..content import ContentDef, ContentError, SchemaNotMined
 from . import _common as C
 from .item import schema as item_schema
-from .item.builder import ItemManifest, build_manifest
+from .item.builder import build_manifest
 
 _log = logging.getLogger(__name__)
 
-#: Directory (under ``out_dir``) collecting every pending item manifest.
-PENDING_ITEMS_SUBDIR = "_pending_items"
+#: Where the vanilla magical-object entities + text bank live in-repo.
+_MO_DIR = DATA_DIR / "uncooked" / "EntitySettings" / "Objects" / "Magical_Objects"
+_RARITIES = ("Common", "Rare", "Epic", "Legendary", "Cursed", "Powerups")
 
-#: Directory (under ``out_dir``) where per-locale text-bank overrides land.
-#: Prefixed ``_pending_`` so the applier's asset walk (see
-#: :class:`rsmm.cli.apply_mods.Mod.files`) skips it — these are SDK
-#: staging output, not cooked assets.
+PENDING_ITEMS_SUBDIR = "_pending_items"
 TEXT_BANK_OVERRIDES_SUBDIR = "_pending_text_overrides"
 
 
+def _find_base(base_id: str) -> tuple[bytes, str] | None:
+    """Return (cooked_bytes, rarity) for a vanilla item id, or None if no such
+    cooked entity exists under the in-repo magical-object tree."""
+    leaf = f"{base_id}.entity.ot.EntitySettingsResource.gen"
+    for rarity in _RARITIES:
+        p = _MO_DIR / rarity / leaf
+        if p.is_file():
+            return p.read_bytes(), rarity
+    return None
+
+
+def _install_bank_gen() -> Path | None:
+    """Best-effort path to the live ``Magical_Objects~GAM.xls.LocalText.gen``
+    in the game install, so name/description can be appended to the real bank
+    (with its language siblings). None when no install is reachable."""
+    try:
+        from rsmm.cli.apply_mods import (
+            COOKING_REL,
+            find_game_dir,
+            load_asset_map,
+        )
+        game = find_game_dir()
+        if game is None:
+            return None
+        enc = load_asset_map().get(cook.MAGIC_TEXT_BANK)
+        if not enc:
+            return None
+        p = game / COOKING_REL / Path(*enc.split("\\"))
+        return p if p.exists() else None
+    except (ImportError, OSError, ValueError):
+        return None
+
+
+def _coerce_value_patches(raw) -> list[tuple[str, float, float]]:
+    """Normalise the optional ``value_patches`` field into (label, old, new)."""
+    out: list[tuple[str, float, float]] = []
+    for vp in (raw or []):
+        if isinstance(vp, dict):
+            label, old, new = vp.get("label"), vp.get("old"), vp.get("new")
+        else:
+            label, old, new = vp
+        if not label or old is None or new is None:
+            raise ContentError(
+                f"value_patches entry needs label/old/new, got {vp!r}"
+            )
+        out.append((str(label), float(old), float(new)))
+    return out
+
+
 def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
-    """Materialize a single item def under ``out_dir``.
+    """Materialize one item def into the mod's ``assets/`` tree.
 
-    Required fields:
-        ``base``  — id of a vanilla item to clone for unmined bytes.
-                    Without it the manifest can't be applied because
-                    most of the 0x298-byte ``oCDtRewardDefinition``
-                    record isn't synthesized yet.
-
-    Optional fields:
-        ``name``         human-readable display name; defaults to
-                         ``defn.id``. Becomes the EN seed for
-                         ``RSMM_<mod>_<id>_name``.
-        ``rarity`` / ``drop_weight`` / ``level`` (int) — initial values
-                         for the three int signals on
-                         ``oCDtEntityCpntMagicalObject``
-                         (``+0x1f8/+0x218/+0x238``). Label mapping is
-                         provisional; see ``items.md``.
-        ``tags`` (list[str]) — feed into the selector's
-                         ``oCCustomFlagList`` (``+0x130..+0x148``).
-        ``icon`` (str) — relative path to a PNG.Texture override.
-
-    Returns the list of files written under ``out_dir``.
+    Fields:
+        ``base`` (str, required)   vanilla item id to clone.
+        ``name`` / ``display_name`` display name (-> ``<id>_Name``).
+        ``description`` (str)       flavour/effect text (-> ``<id>_Description``).
+        ``rarity`` (str)            override target rarity subdir; defaults to
+                                    the base item's own rarity.
+        ``value_patches``           list of ``(label, old, new)`` (or dicts) —
+                                    f32 effect edits, e.g.
+                                    ``["Armor per Object Value", 2.0, 50.0]``.
     """
     C.validate_id("item", defn.id)
     base = defn.fields.get("base")
     if not base or not isinstance(base, str):
         raise SchemaNotMined(
-            f"item {defn.id}: needs a 'base' (vanilla item id) to clone "
-            f"for the unmined bytes of the 0x298-byte oCDtRewardDefinition "
-            f"record. See docs/_re/kinds/items.md."
+            f"item {defn.id}: needs a 'base' vanilla item id to clone. "
+            f"See docs/_re/kinds/items.md."
         )
 
-    display_name = str(
-        defn.fields.get("name")
-        or defn.fields.get("display_name")
-        or defn.id
-    )
-    fields = {**defn.fields, "name": display_name}
+    found = _find_base(base)
+    if found is None:
+        # Base isn't a known vanilla magical object (or data/uncooked is
+        # absent): fall back to the legacy manifest so registration/tagging
+        # still works. Real cooked output requires a real base id.
+        return _emit_legacy_manifest(mod_id, defn, out_dir)
 
-    manifest = build_manifest(
-        mod_id=mod_id,
-        item_id=defn.id,
-        fields=fields,
-        schema_version=max(
-            int(defn.schema_version or 1),
-            item_schema.ITEM_MANIFEST_SCHEMA_VERSION,
-        ),
+    if len(defn.id.encode()) != len(base.encode()):
+        raise ContentError(
+            f"item {defn.id}: id must match base {base!r} in byte length "
+            f"({len(defn.id)} vs {len(base)}) — the cooker is length-preserving. "
+            f"Pick a same-length id until the variable-length cooker lands."
+        )
+
+    base_cooked, base_rarity = found
+    rarity = str(defn.fields.get("rarity") or base_rarity)
+    name = defn.fields.get("name") or defn.fields.get("display_name")
+    name = str(name) if name is not None else None
+    description = defn.fields.get("description")
+    description = str(description) if description is not None else None
+    value_patches = _coerce_value_patches(defn.fields.get("value_patches"))
+
+    bank_gen = _install_bank_gen() if name is not None else None
+    if name is not None and bank_gen is None:
+        _log.warning(
+            "item %s/%s: no install text bank reachable; entity will be "
+            "nameless in-game. Run apply against a Ravenswatch install.",
+            mod_id, defn.id,
+        )
+
+    files = cook.build_magic_item(
+        new_id=defn.id,
+        base_id=base,
+        base_cooked=base_cooked,
+        corpus=cook.load_corpus(_MO_DIR),
+        rarity=rarity,
+        name=name,
+        description=description,
+        value_patches=value_patches,
+        bank_base_gen=bank_gen,
     )
 
     written: list[Path] = []
-    written.append(C.write_json(
-        out_dir / PENDING_ITEMS_SUBDIR / f"{defn.id}.json",
-        manifest.to_json(),
-    ))
-    written.append(_write_text_override(
-        out_dir, mod_id, defn.id, display_name, manifest.text_keys["name"],
-    ))
-
-    for note in manifest.notes:
-        _log.info("item %s/%s: %s", mod_id, defn.id, note)
-
+    for decoded, blob in files.items():
+        dest = out_dir / Path(*decoded.split("/"))
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(blob)
+        written.append(dest)
+    _log.info("item %s/%s: emitted %d cooked file(s) (rarity=%s)",
+              mod_id, defn.id, len(written), rarity)
     return written
 
 
-# --------------------------------------------------------------------------- #
-# Internals — keep small + side-effect-only.
-# --------------------------------------------------------------------------- #
+def _emit_legacy_manifest(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
+    """Legacy path: write a `_pending_items/<id>.json` manifest + EN text seed.
 
-def _write_text_override(out_dir: Path, mod_id: str, item_id: str,
-                         display_name: str, key: str) -> Path:
-    """Drop a minimal EN-locale text-bank override for the display name.
-
-    The i18n merger (``rsmm.sdk.i18n.merge_bundles``) later folds these
-    into the per-locale text bank. We emit only the EN seed here; if
-    the mod ships a richer ``lang/<locale>.toml``, the merger wins.
+    Used when the ``base`` isn't a resolvable vanilla magical object, so
+    registration/tagging/summary still work without producing cooked bytes.
     """
-    return C.write_json(
-        out_dir / TEXT_BANK_OVERRIDES_SUBDIR / f"{mod_id}__{item_id}__EN.json",
-        {
-            "locale": "EN",
-            "mod": mod_id,
-            "id": item_id,
-            "strings": {key: display_name},
-            "note": (
-                "Seeded by rsmm.sdk.kinds.items.emit; mod's "
-                "lang/<locale>.toml entries override this."
-            ),
-        },
+    display_name = str(
+        defn.fields.get("name") or defn.fields.get("display_name") or defn.id
     )
+    manifest = build_manifest(
+        mod_id=mod_id, item_id=defn.id,
+        fields={**defn.fields, "name": display_name},
+        schema_version=max(int(defn.schema_version or 1),
+                           item_schema.ITEM_MANIFEST_SCHEMA_VERSION),
+    )
+    written = [C.write_json(
+        out_dir / PENDING_ITEMS_SUBDIR / f"{defn.id}.json", manifest.to_json(),
+    )]
+    written.append(C.write_json(
+        out_dir / TEXT_BANK_OVERRIDES_SUBDIR / f"{mod_id}__{defn.id}__EN.json",
+        {"locale": "EN", "mod": mod_id, "id": defn.id,
+         "strings": {manifest.text_keys["name"]: display_name},
+         "note": "Seeded by rsmm.sdk.kinds.items; lang/<locale>.toml overrides."},
+    ))
+    return written
