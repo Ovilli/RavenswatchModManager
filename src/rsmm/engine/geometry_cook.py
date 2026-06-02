@@ -26,6 +26,13 @@ import math
 import struct
 
 from .cooked_schemas import geometry as _geo
+from .cooked_schemas.base import NotReversedError
+
+#: swap_geometry refuses meshes above this vertex count — confirmed in-game
+#: that a 243k-vert mesh crashes a 1.2k-vert weapon slot at load. 65535 is the
+#: 16-bit-index boundary and a defensible ceiling; overridable per-cook via the
+#: RSMM_GEO_VERTEX_CAP env var if a higher count is verified to load.
+_VERTEX_HARD_CAP = 65535
 
 # Bump whenever the cook output for the same inputs changes, so the apply-
 # time cache (keyed by source + template) invalidates stale cooked files.
@@ -37,7 +44,9 @@ from .cooked_schemas import geometry as _geo
 #   6 -> k-nearest inverse-distance weight blend (smooth, no torn fragments)
 #   7 -> normal-aware blend bias (fixes face/hat front-back bleed)
 #   8 -> bake glTF node TRS into positions (props placed by node transform)
-ENCODER_VERSION = 8
+#   9 -> fit rigid/non-skinned templates too (weapons were dumped raw, ~100x);
+#        + explicit `scale` transform multiplier
+ENCODER_VERSION = 9
 
 _VERTEX_STRIDE = 48
 _TRIMESH_VER = struct.pack("<I", 7)
@@ -385,17 +394,20 @@ def _auto_upright_euler(custom: list) -> tuple[float, float, float]:
 
 
 def _fit_transform(custom: list, template: list,
-                   euler_deg: tuple[float, float, float]):
+                   euler_deg: tuple[float, float, float],
+                   scale_mult: float = 1.0):
     """Rigid rotate by `euler_deg`, then uniform-scale to the template's
     height and recenter (feet + horizontal centre). A rigid rotation + one
-    uniform scale can never shear/distort the mesh. Returns
+    uniform scale can never shear/distort the mesh. `scale_mult` multiplies
+    the auto-fit scale so a modeller can shrink/grow a mesh the heuristic
+    fit (which matches only the tallest axis) sized wrong. Returns
     (apply_pos, apply_nrm)."""
     m = _rot_matrix(euler_deg)
     rotated = [_apply_m(m, p) for p in custom]
     rmn, _rmx, re = _extents(rotated)
     tmn, tmx, te = _extents(template)
     up = te.index(max(te))
-    scale = te[up] / re[up] if re[up] else 1.0
+    scale = (te[up] / re[up] if re[up] else 1.0) * scale_mult
     tc = [(tmn[i] + tmx[i]) / 2 for i in range(3)]
 
     def apply_pos(p):
@@ -487,11 +499,13 @@ def swap_geometry(template_cooked: bytes, glb_bytes: bytes,
     """Return a cooked oCGeometry: `template_cooked` with its mesh replaced
     by the geometry in `glb_bytes`, retargeted onto the original skeleton.
 
-    `transform` controls how the custom mesh is oriented into the template's
-    space (see `_fit_transform`):
+    `transform` controls how the custom mesh is oriented + sized into the
+    template's space (see `_fit_transform`):
       - None            -> auto-upright guess (tallest axis -> up)
       - {"rotate_deg": [x, y, z]}  -> explicit rigid rotation (degrees)
-    Scale and recentering are always automatic and uniform (never distort).
+      - {"scale": s}    -> multiply the auto-fit scale by `s` (e.g. 0.5 to
+                           halve a mesh the tallest-axis heuristic oversized)
+    Recentering is always automatic; scale stays uniform (never distorts).
     """
     from . import cooked
 
@@ -509,21 +523,56 @@ def swap_geometry(template_cooked: bytes, glb_bytes: bytes,
     old_subs = _geo._parse_meshbuffers(cf.sections[target].payload)
     old_counts = [len(s.positions) for s in old_subs]
 
+    # Vertex-budget guard. CONFIRMED in-game: a 243k-vert mesh swapped onto a
+    # 1.2k-vert weapon slot crashes on launch; the vanilla gun (1.2k) is fine.
+    # Cooked indices are 32-bit, so the cap is a renderer/GPU buffer limit, not
+    # an index limit. The observed crash sits between 1.2k and 243k; 65535 (the
+    # 16-bit boundary most engine paths still assume somewhere) is the
+    # defensible ceiling, and ~60k verts already looks near-identical to a 250k
+    # film source. Refuse above it so apply_mods skips the asset rather than
+    # installing a crasher. Decimate the source toward — not far below — this
+    # cap; you can go FAR higher than the vanilla count. Override (at your own
+    # risk, having tested a higher count in-game) via RSMM_GEO_VERTEX_CAP.
+    cap = int(__import__("os").environ.get("RSMM_GEO_VERTEX_CAP", _VERTEX_HARD_CAP))
+    custom_vtx = len(merged.positions)
+    tpl_vtx = sum(old_counts) or 1
+    if custom_vtx > cap:
+        raise NotReversedError(
+            "oCGeometry",
+            f"custom mesh has {custom_vtx:,} vertices; the safe ceiling for a "
+            f"swapped slot is {cap:,} (vanilla here is {tpl_vtx:,}, but you can "
+            f"go far higher than that — ~{cap:,} looks near-identical to a 250k "
+            f"source). Decimate in Blender toward ~{cap:,} verts. A heavier mesh "
+            f"crashes the game at load. Raise RSMM_GEO_VERTEX_CAP only if you "
+            f"have tested a higher count in-game on this slot.",
+        )
+
     # Gather the template's skinned vertices (position + per-vertex side-layer
     # records) so the custom mesh can borrow real bone weights by proximity.
     src = _gather_source(cf, target, old_subs)
 
-    if src is not None and src["positions"]:
+    # Fit target: the template's skinned vertices when present, else the
+    # template's own mesh-buffer positions. Either way the custom mesh MUST
+    # be fit into the template's space — a rigid (non-skinned) template like
+    # a weapon still needs it, or the raw GLB (commonly authored in metres,
+    # ~100x the cooked cm scale) renders enormous.
+    fit_target = (src["positions"] if src is not None and src["positions"]
+                  else [p for s in old_subs for p in s.positions])
+
+    if fit_target:
         if transform and "rotate_deg" in transform:
             euler = tuple(float(a) for a in transform["rotate_deg"])
         else:
             euler = _auto_upright_euler(merged.positions)
+        scale_mult = float(transform["scale"]) if transform and "scale" in transform else 1.0
         apply_pos, apply_nrm = _fit_transform(
-            merged.positions, src["positions"], euler)
+            merged.positions, fit_target, euler, scale_mult)
         merged = _geo.SubMesh(
             positions=[apply_pos(p) for p in merged.positions],
             normals=[apply_nrm(n) for n in merged.normals],
             uvs=merged.uvs, indices=merged.indices)
+
+    if src is not None and src["positions"]:
         nn = _build_transfer(merged.positions, src)
         blended_skin = _blend_skin_records(merged.normals, nn, src)
     else:

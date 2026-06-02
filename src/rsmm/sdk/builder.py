@@ -156,7 +156,8 @@ class ModBuilder:
 
     @sdk_export("Mod.model")
     def model(self, decoded_path: str, source: str | Path,
-              rotate_deg: tuple[float, float, float] | None = None) -> None:
+              rotate_deg: tuple[float, float, float] | None = None,
+              scale: float | None = None) -> None:
         """Override a mesh asset. Source must be a `.glb`/`.gltf`.
 
         A custom mesh is cooked at apply-time by retargeting it onto the
@@ -166,15 +167,24 @@ class ModBuilder:
         or upside down, pass `rotate_deg=(x, y, z)` — a rigid rotation in
         degrees applied before the fit (e.g. `(90, 0, 0)` to flip upright,
         `(0, 180, 0)` to face the other way).
+
+        The auto-fit matches only the tallest axis, so a mesh with a
+        different aspect ratio than the original can come out too big or
+        small. Pass `scale=` to multiply the auto-fit (e.g. `scale=0.5` to
+        halve it).
         """
         if Path(source).suffix.lower() not in self._MODEL_EXTS:
             raise ValueError(
                 f"model() expects {self._MODEL_EXTS}, got {Path(source).suffix!r}")
         self.asset(decoded_path, source)
+        tf: dict = {}
         if rotate_deg is not None:
+            tf["rotate_deg"] = [float(a) for a in rotate_deg]
+        if scale is not None:
+            tf["scale"] = float(scale)
+        if tf:
             norm = decoded_path.replace("\\", "/").strip("/")
-            self._asset_transforms[norm] = {
-                "rotate_deg": [float(a) for a in rotate_deg]}
+            self._asset_transforms[norm] = tf
 
     @sdk_export("Mod.texture")
     def texture(self, decoded_path: str, source: str | Path) -> None:

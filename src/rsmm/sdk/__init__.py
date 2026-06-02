@@ -156,8 +156,8 @@ class Mod:
     def asset(self, decoded_path: str, source) -> None:
         self._b.asset(decoded_path, source)
 
-    def model(self, decoded_path: str, source, rotate_deg=None) -> None:
-        self._b.model(decoded_path, source, rotate_deg=rotate_deg)
+    def model(self, decoded_path: str, source, rotate_deg=None, scale=None) -> None:
+        self._b.model(decoded_path, source, rotate_deg=rotate_deg, scale=scale)
 
     def texture(self, decoded_path: str, source) -> None:
         self._b.texture(decoded_path, source)
