@@ -1,37 +1,52 @@
 """Enemy content builder.
 
-Spawns custom non-boss enemies into vanilla camps by emitting three
-intermediate JSON records under ``_pending_enemies/<id>/``:
+Spawns custom non-boss enemies into vanilla camps by *cloning* a vanilla
+``oCDtEnemyDefinition`` (UID ``0x176debb7``, library ``0x1414118c0``,
+cooked ext ``*.enemydef.ot``) and re-emitting it under a new id. :func:`emit`
+writes one cooked record directly into the mod's ``assets/`` tree at
+``Definitions/Enemies/<id>.enemydef.ot.DtEnemyDefinition.gen``; the generic
+``apply_mods.py`` new-asset path then registers it in ``UsedRscList.ot`` so
+the engine loads it (mirrors the item pipeline — see
+:mod:`rsmm.sdk.kinds.items`).
 
-* ``def.json`` — the cooked ``oCDtEnemyDefinition`` payload
-  (UID ``0x176debb7``, size ``0x350``, library ``0x1414118c0``).
-* ``tribe_patch.json`` — a hook into the named ``oCDtEnemyTribeDefinition``
-  (library ``0x141411200``) so the camp/tier selector picks the new
-  enemy up via the existing tag-filter pipeline.
-* ``i18n.json`` — a text-bank override for the visible name, namespaced
-  as ``RSMM_<modid>_<id>_name`` to match :mod:`rsmm.sdk.i18n`.
+Spawn linkage is by data, not by roster patch. A camp's flag-list entity
+selector (``oCDtEnemyFlagListEntitySelectorToSpawnEntityCpntSettings``) picks
+enemies whose ``flags`` + ``tribe_ref`` match — so a clone that keeps the
+base's flags + tribe is automatically considered wherever the base spawns.
+Vanilla ``oCDtEnemyTribeDefinition`` records carry NO enemy roster (all ship
+empty), so there is deliberately no tribe-def patch here — the older
+``tribe_patch.json`` model was wrong. See ``docs/_re/kinds/enemies.md`` and
+the ``enemy-spawn-model`` RE note.
 
-The apply step (``apply_mods.py`` + loader DLL) is responsible for
-turning these JSON intermediates into actual cooked-asset bytes and
-calling ``oIResourceManager::FindOrLoad`` (library vftable slot 3) to
-inject them at startup. The on-disk binary encoder is intentionally
-**not** in this module — it lives next to the rest of the cooked-byte
-infrastructure (see :mod:`rsmm.sdk.kinds.item.schema` for the items
-equivalent) and consumes the JSON we emit here.
-
-Field-offset provenance: see ``docs/_re/kinds/enemies.md`` —
-the comments below mirror that doc; anything marked ``TODO: confirm``
-is a clone-from-base fallback.
+Not yet patchable: HP / damage / on-screen name live on the visual
+``oCEntitySettings`` referenced by ``entity_ref`` (``+0x298``), not on the
+enemy def — a clone shares its base's stats and name until entity cloning
+lands. The byte-level codec is :data:`rsmm.engine.cooked_schemas.definitions`
+``oCDtEnemyDefinition`` (round-trips byte-stable).
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
+from ...engine import cooked
+from ...engine.cooked_schemas import definitions as _defs
+from ...engine.paths import DATA_DIR
 from ..content import ContentDef, ContentError, SchemaNotMined
 from . import _common as C
+
+_log = logging.getLogger(__name__)
+
+#: Where the vanilla enemy definitions live in-repo (one cooked `.gen` per
+#: enemy id). The clone source for a custom enemy.
+_ENEMY_DIR = DATA_DIR / "uncooked" / "Definitions" / "Enemies"
+_ENEMY_GEN_SUFFIX = ".enemydef.ot.DtEnemyDefinition.gen"
+#: Decoded asset path (forward-slash) the apply pipeline registers in
+#: UsedRscList. The stem is the enemy's library identity.
+_ENEMY_ASSET_SUBDIR = "Definitions/Enemies"
 
 # --------------------------------------------------------------------------- #
 # Class registry constants — confirmed via FUN_140229990 and the live Ghidra
@@ -113,197 +128,128 @@ ENEMY_DEF: Final = EnemyDefOffsets()
 # Public emit() — see docstring at top of file for the JSON layout.
 # --------------------------------------------------------------------------- #
 
-# Spec for the kwargs we accept on a ContentDef.fields dict.
-_REQUIRED = ("base", "tribe")
+# Fields accepted on a ContentDef.fields dict.
 _KNOWN_FIELDS = (
-    "name", "display_name", "base", "hp", "damage",
-    "tribe", "tags", "tier", "is_elite",
+    "base", "name", "display_name", "tribe", "flags", "add_flags",
+    "weight", "entity",
 )
 
+
+def _enemy_class() -> str:
+    return "oCDtEnemyDefinition"
+
+
+def _load_base_cooked(base_id: str) -> bytes | None:
+    """Return the cooked bytes of a vanilla enemy def, or None if no such
+    enemy ships under the in-repo enemy-definition tree."""
+    p = _ENEMY_DIR / f"{base_id}{_ENEMY_GEN_SUFFIX}"
+    return p.read_bytes() if p.is_file() else None
+
+
 def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
-    """Materialize a single enemy def under ``out_dir``.
+    """Materialize a single custom enemy as a cooked ``oCDtEnemyDefinition``.
+
+    Clone-and-patch: the cooked bytes of a vanilla ``base`` enemy are
+    decoded, the spawn-relevant body fields are overridden, and the
+    record is re-emitted under a NEW filename. The stem of that filename
+    is the enemy's library identity; ``apply_mods.py`` registers it in
+    ``UsedRscList`` so the engine loads it. Because the camp spawn
+    selector picks enemies by ``flags`` + ``tribe`` (not by id — see
+    docs/_re/kinds/enemies.md and the enemy-spawn-model note), a clone
+    that keeps the base's flags + tribe is considered by every camp the
+    base spawns in.
 
     Required fields:
-        ``base``  — id of a vanilla enemy to clone for any field whose
-                    offset is not yet confirmed (HP/damage live on the
-                    `+0x298` visual-entity resource — see enemies.md).
-        ``tribe`` — name of an `oCDtEnemyTribeDefinition` to hook into.
-                    Required because without a tribe-entry patch the
-                    camp selector never considers the new enemy.
+        ``base``   id of a vanilla enemy to clone (e.g. ``Gnoll_Shielded``).
 
-    Optional fields:
-        ``name``            short identifier (defaults to ``defn.id``)
-        ``display_name``    human-readable; emitted as text-bank override
-        ``hp``, ``damage``  forwarded to the entity-asset patcher
-        ``tags``            list of ``oCCustomFlagList`` tag strings
-        ``tier``            int 1..N, clamped to ``tier_range`` (defaults
-                            to (1, 5) matching ctor)
-        ``is_elite``        bool — adds the "elite" tag to ``tags`` so
-                            the camp selector's filter B picks it up
-                            (TODO: confirm the exact vanilla tag string)
+    Optional fields (each defaults to the base's value):
+        ``tribe``  tribe name → repoints ``tribe_ref`` at
+                   ``EnemyTribes\\<tribe>.enemytribedef.ot``.
+        ``flags``  replace the ``oCCustomFlagList`` tag list outright.
+        ``add_flags`` extend the base's tag list (ignored if ``flags`` set).
+        ``weight`` spawn weight (float) the selector uses to bias picks.
+        ``entity`` raw ``entity_ref`` path override (advanced; default
+                   reuses the base's visual entity, so the clone looks
+                   like its base). HP/damage/name live on that entity —
+                   not yet patchable, so a clone shares the base's stats
+                   and on-screen name until entity cloning lands.
 
-    Returns the list of paths actually written under
-    ``out_dir/_pending_enemies/<id>/``.
+    Returns ``[<out_dir>/Definitions/Enemies/<id>.enemydef.ot.DtEnemyDefinition.gen]``.
     """
     base = defn.fields.get("base")
-    tribe = defn.fields.get("tribe")
     if not base or not isinstance(base, str):
-        raise SchemaNotMined(
-            f"enemy {defn.id}: needs a 'base' (vanilla enemy id) to clone "
-            f"for fields whose offsets aren't fully confirmed yet — see "
-            f"docs/_re/kinds/enemies.md → 'Still unknown'."
-        )
-    if not tribe or not isinstance(tribe, str):
         raise ContentError(
-            f"enemy {defn.id}: 'tribe' (name of an oCDtEnemyTribeDefinition) "
-            f"is required so the camp selector can spawn it. See "
-            f"docs/_re/kinds/enemies.md → 'Insertion recipe'."
+            f"enemy {defn.id}: needs a 'base' (vanilla enemy id) to clone, "
+            f"e.g. base=\"Gnoll_Shielded\". See docs/_re/kinds/enemies.md."
         )
     try:
         C.validate_id("enemy", defn.id)
     except ValueError as e:
         raise ContentError(str(e)) from e
 
-    unknown = sorted(set(defn.fields) - set(_KNOWN_FIELDS))
-    if unknown:
-        # Soft warning recorded in the JSON manifest; doesn't fail emit so
-        # mods can carry fields the apply step might know about.
-        pass
-
-    short_name: str = str(defn.fields.get("name") or defn.id)
-    display_name: str = str(
-        defn.fields.get("display_name") or defn.fields.get("name") or defn.id
-    )
-    hp = defn.fields.get("hp")
-    damage = defn.fields.get("damage")
-    tags = list(defn.fields.get("tags") or [])
-    tier = int(defn.fields.get("tier") or 1)
-    is_elite = bool(defn.fields.get("is_elite") or False)
-
-    if not all(isinstance(t, str) and C.ID_PATTERN.match(t) for t in tags):
-        raise ContentError(
-            f"enemy {defn.id}: every entry in `tags` must match "
-            f"{C.ID_PATTERN.pattern} (game-side tag strings are strict)."
+    base_cooked = _load_base_cooked(base)
+    if base_cooked is None:
+        raise SchemaNotMined(
+            f"enemy {defn.id}: base {base!r} not found under "
+            f"{_ENEMY_DIR} — pass a vanilla enemy id whose cooked def is "
+            f"bundled (run `rsmm enemies` to list bases)."
         )
-    if is_elite and "elite" not in tags:
-        # TODO: confirm — string-pool scan needed to enumerate the
-        # canonical vanilla tag for elites. Using "elite" as a
-        # conventional placeholder so mods don't have to guess.
-        tags.append("elite")
 
-    base_dir = out_dir / "_pending_enemies" / defn.id
+    spec = _defs._SPECS[_enemy_class()]
+    try:
+        cf = cooked.parse(base_cooked)
+        body = spec.decode_body(cf.sections[-1].payload)
+    except (ValueError, IndexError) as e:
+        raise ContentError(
+            f"enemy {defn.id}: failed to decode base {base!r}: {e}"
+        ) from e
 
-    written: list[Path] = []
+    # --- patch body ------------------------------------------------------- #
+    tribe = defn.fields.get("tribe")
+    if tribe is not None:
+        if not isinstance(tribe, str) or not C.ID_PATTERN.match(tribe):
+            raise ContentError(
+                f"enemy {defn.id}: 'tribe' must match {C.ID_PATTERN.pattern}."
+            )
+        ns = body["tribe_ref"][0] or "Definitions"
+        body["tribe_ref"] = [ns, f"EnemyTribes\\{tribe}.enemytribedef.ot"]
+        body["base_flags"] = [1, 1]  # has-tribe gate on
 
-    # --- def.json --------------------------------------------------------- #
-    def_payload: dict[str, Any] = {
-        "kind": "enemy",
-        "id": defn.id,
-        "mod": mod_id,
-        "schema_version": defn.schema_version,
-        "manifest_schema_version": ENEMY_MANIFEST_SCHEMA_VERSION,
-        "uid": ENEMY_DEF_UID,
-        "record_size": ENEMY_DEF_SIZE,
-        "resource_ext": ENEMY_DEF_RESOURCE_EXT,
-        "library_global": ENEMY_DEF_LIBRARY,
-        "base": base,
-        "name": short_name,
-        "display_name_key": f"RSMM_{mod_id}_{defn.id}_name",
-        # Field plan — the apply-step encoder writes these to the named
-        # offsets (see EnemyDefOffsets above) on a fresh ENEMY_DEF_SIZE
-        # buffer. Anything left None is filled from the cooked-asset
-        # bytes of the `base` enemy (clone-and-patch fallback).
-        "fields": {
-            "display_name_ptr": short_name,
-            "name_ptr": defn.id,
-            "name_hash": C.name_hash(defn.id),
-            "entity_asset_ptr": None,       # cloned from base
-            "entity_asset_hash": None,
-            "excluded_byte": 0,
-            "flag_list_tags": tags,
-            "min_tier_float": 0.1,
-            "tier_range": [max(1, tier), max(tier, 5)],
-            "has_tribe_byte": 1,
-            "tribe_name": tribe,            # resolved by apply step
-            "default_weight": 1.0,
-            "tier_weight_table_a": [
-                {"tier": max(1, tier), "weight": 1.0},
-            ],
-            "secondary_weight": -1.0,
-            "tier_weight_table_b": [],
-            # Stat overrides — these live on the entity_asset, not the
-            # enemy def itself. The apply step patches them on the
-            # base-cloned entity (TODO: confirm offsets).
-            "stat_overrides": {
-                "hp": hp,
-                "damage": damage,
-            },
-        },
-        "offsets": _offsets_dict(),
-    }
-    written.append(C.write_json(base_dir / "def.json", def_payload))
+    if defn.fields.get("flags") is not None:
+        flags = list(defn.fields["flags"])
+    else:
+        flags = list(body.get("flags") or [])
+        flags += list(defn.fields.get("add_flags") or [])
+    if not all(isinstance(t, str) and C.ID_PATTERN.match(t) for t in flags):
+        raise ContentError(
+            f"enemy {defn.id}: every flag must match {C.ID_PATTERN.pattern} "
+            f"(game-side tag strings are strict)."
+        )
+    # de-dupe preserving order
+    body["flags"] = list(dict.fromkeys(flags))
 
-    # --- tribe_patch.json ------------------------------------------------- #
-    tribe_patch: dict[str, Any] = {
-        "kind": "enemy_tribe_patch",
-        "mod": mod_id,
-        "enemy_id": defn.id,
-        "schema_version": defn.schema_version,
-        "manifest_schema_version": ENEMY_MANIFEST_SCHEMA_VERSION,
-        "library_global": ENEMY_TRIBE_DEF_LIBRARY,
-        "resource_ext": ENEMY_TRIBE_DEF_RESOURCE_EXT,
-        "tribe_name": tribe,
-        # The apply step appends a `TribeEntryRef` pointing at our new
-        # `oCDtEnemyDefinition` to the tribe's entry vector
-        # (`+0x2b8/+0x2c0` of `oCDtEnemyTribeDefinition`). Without this
-        # patch the Stage-3 filter still sees our enemy but no camp
-        # selector ever picks it up.
-        "append_entry": {
-            "enemy_id": defn.id,
-            "weight": 1.0,
-            "is_elite": is_elite,
-        },
-    }
-    written.append(C.write_json(base_dir / "tribe_patch.json", tribe_patch))
+    weight = defn.fields.get("weight")
+    if weight is not None:
+        body["spawn_weight"] = float(weight)
 
-    # --- i18n.json -------------------------------------------------------- #
-    # Apply-time merge into the per-locale text bank under
-    # `RSMM_<modid>_<id>_name`. The visual-entity asset's `name_key`
-    # field must point to this key for the override to take effect —
-    # that fixup happens in the entity-asset patch driven by `base`.
-    i18n_payload: dict[str, Any] = {
-        "kind": "enemy_i18n",
-        "mod": mod_id,
-        "enemy_id": defn.id,
-        "schema_version": defn.schema_version,
-        "manifest_schema_version": ENEMY_MANIFEST_SCHEMA_VERSION,
-        "strings": {
-            f"RSMM_{mod_id}_{defn.id}_name": display_name,
-        },
-        # Locale is unspecified here — `apply_mods.py` reads the mod's
-        # `lang/<locale>.toml` files for full localisation; this entry
-        # is the **fallback** used if the mod ships no lang/ dir.
-        "fallback_locale": "EN",
-    }
-    written.append(C.write_json(base_dir / "i18n.json", i18n_payload))
+    entity = defn.fields.get("entity")
+    if entity is not None:
+        if not isinstance(entity, str):
+            raise ContentError(f"enemy {defn.id}: 'entity' must be a string path.")
+        ns = body["entity_ref"][0] or "EntitySettings"
+        body["entity_ref"] = [ns, entity]
 
-    return written
+    # --- re-emit cooked record under the new id --------------------------- #
+    cf.sections[-1] = cooked.Section(payload=spec.encode_body(body))
+    new_cooked = cooked.emit(cf)
 
-
-# --------------------------------------------------------------------------- #
-# Helpers.
-# --------------------------------------------------------------------------- #
-
-
-def _offsets_dict() -> dict[str, int]:
-    """Snapshot of the EnemyDefOffsets table for the JSON manifest.
-
-    Embedding the offsets in the manifest lets the apply step
-    cross-check that it's working with the schema it was built for
-    (a game patch that moves any field bumps
-    ``ENEMY_MANIFEST_SCHEMA_VERSION`` and forces a migration).
-    """
-    return {
-        name: getattr(ENEMY_DEF, name)
-        for name in ENEMY_DEF.__dataclass_fields__
-    }
+    decoded_rel = f"{_ENEMY_ASSET_SUBDIR}/{defn.id}{_ENEMY_GEN_SUFFIX}"
+    dest = out_dir / Path(*decoded_rel.split("/"))
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(new_cooked)
+    _log.info(
+        "enemy %s/%s: emitted cooked def (base=%s, tribe=%s, flags=%s, weight=%s)",
+        mod_id, defn.id, base, body["tribe_ref"][1], body["flags"],
+        body["spawn_weight"],
+    )
+    return [dest]
