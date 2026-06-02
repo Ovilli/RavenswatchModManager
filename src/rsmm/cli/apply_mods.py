@@ -42,6 +42,7 @@ import json
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import tomllib  # Python 3.11+
@@ -1048,6 +1049,193 @@ def _recover_game_update(cooking: Path, game_dir: Path) -> bool:
     return True
 
 
+# --- magical-object catalog (LiveOps version manifest) -------------------
+#
+# A new magical-object entity is only LOADED + SPAWNED into the in-game pool
+# (so it drops and shows in the compendium) if it is referenced by the active
+# LiveOps version manifest. UsedRscList.ot only makes the file loadable-by-path;
+# the manifest is what triggers the load. Two install files must list it:
+#   * LiveOps5.versiondef.ot.rsionDefinition.gen — a vector<TResourcePtr> of
+#     magical-object refs (u32 count, then count x <lstr type><lstr path>).
+#   * LiveOps5.versiondef.UsedRscCache.ot — plain text, one line per resource
+#     ``<category>|<path>|<class>`` so the manifest's ref resolves at load.
+# Verified in-game 2026-06-02 (pool count 104 -> 105, item visible).
+VERSIONDEF_GEN_LEAF = "LiveOps5.versiondef.ot.rsionDefinition.gen"
+VERSIONDEF_CACHE_LEAF = "LiveOps5.versiondef.UsedRscCache.ot"
+
+
+def _locate_cooked_by_leaf(game_dir: Path, decoded_leaf: str) -> Path | None:
+    """Find the real loose ``_Cooking`` file whose decoded *filename* equals
+    ``decoded_leaf``. Matches on the decoded leaf rather than re-encoding the
+    path, because the cipher is state-dependent and ``cipher.encode`` can emit
+    a name that differs from the one the game actually ships (which the engine
+    then ignores). Skips backups."""
+    cooking = game_dir / COOKING_REL
+    if not cooking.is_dir():
+        return None
+    for p in cooking.rglob("*"):
+        if not p.is_file() or p.name.endswith(BACKUP_SUFFIX):
+            continue
+        try:
+            if cipher.decode(p.name) == decoded_leaf:
+                return p
+        except (ValueError, KeyError):
+            continue
+    return None
+
+
+def _mo_versiondef_path(decoded: str) -> str | None:
+    """Map a magical-object entity's decoded cooked path to its versiondef
+    reference form, or None if it isn't a magical-object entity.
+
+    ``EntitySettings/Objects/Magical_Objects/<R>/<id>.entity.ot.EntitySettingsResource.gen``
+    -> ``Objects\\Magical_Objects\\<R>\\<id>.entity.ot``
+    """
+    d = decoded.replace("/", "\\")
+    if "Magical_Objects\\" not in d or ".entity.ot.EntitySettingsResource.gen" not in d:
+        return None
+    d = d.split("EntitySettings\\", 1)[-1]                 # drop leading EntitySettings\
+    return d[: d.index(".entity.ot") + len(".entity.ot")]  # keep ...entity.ot
+
+
+def _find_mo_vector(b: bytes) -> tuple[int, int, int] | None:
+    """Locate the magical-object ``vector<TResourcePtr>`` in a versiondef .gen.
+
+    Returns ``(count_off, vec_end, count)``: ``count_off`` is the u32 count
+    field, entries (``<lstr type><lstr path>`` pairs) run to ``vec_end``. The
+    vector is identified by structure (a sizable run whose every entry path
+    contains ``Magical_Objects``), so it survives offset shifts across builds.
+    """
+    N = len(b)
+
+    def rd(o: int):
+        if o + 4 > N:
+            return None
+        ln = struct.unpack_from("<I", b, o)[0]
+        if ln <= 0 or ln > 300 or o + 4 + ln > N:
+            return None
+        s = b[o + 4 : o + 4 + ln]
+        if not all(32 <= c < 127 or c == 92 for c in s):
+            return None
+        return s, o + 4 + ln
+
+    for co in range(0, N - 4):
+        cnt = struct.unpack_from("<I", b, co)[0]
+        if not (20 <= cnt <= 2000):
+            continue
+        o = co + 4
+        ok = all_mo = True
+        for _ in range(cnt):
+            a = rd(o)
+            if not a:
+                ok = False
+                break
+            _t, o = a
+            a = rd(o)
+            if not a:
+                ok = False
+                break
+            p, o = a
+            if b"Magical_Objects" not in p:
+                all_mo = False
+                break
+        if ok and all_mo:
+            return co, o, cnt
+    return None
+
+
+def _patch_versiondef_gen(pristine: bytes, paths: list[str]) -> bytes | None:
+    """Return ``pristine`` with each ``paths`` entry appended to the MO vector
+    (count bumped), skipping any already present. None if the vector or any
+    entry can't be located/encoded."""
+    loc = _find_mo_vector(pristine)
+    if loc is None:
+        return None
+    co, vec_end, cnt = loc
+    existing = pristine[co + 4 : vec_end]
+    add = b""
+    added = 0
+    for path in paths:
+        pb = path.encode("latin1")
+        if struct.pack("<I", len(pb)) + pb in existing:
+            continue  # already referenced
+        add += struct.pack("<I", len(b"EntitySettings")) + b"EntitySettings"
+        add += struct.pack("<I", len(pb)) + pb
+        added += 1
+    if added == 0:
+        return pristine
+    out = bytearray(pristine[:vec_end] + add + pristine[vec_end:])
+    struct.pack_into("<I", out, co, cnt + added)
+    return bytes(out)
+
+
+def sync_versiondef(game_dir: Path, registrations: dict[str, str],
+                    dry_run: bool) -> int:
+    """Ensure every new magical-object entity in ``registrations`` is listed in
+    the active LiveOps version manifest (.gen vector) AND its resource cache,
+    so the engine loads + spawns it. Both files are backed up once and rebuilt
+    from the pristine backup each apply (idempotent; clean drop on removal).
+    Returns the number of files changed."""
+    mo_paths = sorted(
+        {p for d in registrations.values() if (p := _mo_versiondef_path(d))}
+    )
+    gen = _locate_cooked_by_leaf(game_dir, VERSIONDEF_GEN_LEAF)
+    cache = _locate_cooked_by_leaf(game_dir, VERSIONDEF_CACHE_LEAF)
+
+    changed = 0
+    # --- .gen vector ---
+    if gen is not None:
+        bak = gen.with_name(gen.name + BACKUP_SUFFIX)
+        if not mo_paths:
+            if bak.exists() and not dry_run:
+                shutil.copy2(bak, gen)
+                bak.unlink()
+                changed += 1
+                print("  [versiondef] restored pristine manifest")
+        else:
+            if not bak.exists() and not dry_run:
+                shutil.copy2(gen, bak)
+            pristine = (bak if bak.exists() else gen).read_bytes()
+            patched = _patch_versiondef_gen(pristine, mo_paths)
+            if patched is None:
+                print("  [warn] could not locate magical-object vector in "
+                      f"{gen.name}; new item won't spawn", file=sys.stderr)
+            elif patched != gen.read_bytes():
+                print(f"  [versiondef] registering {len(mo_paths)} item(s) in "
+                      "LiveOps manifest")
+                if not dry_run:
+                    gen.write_bytes(patched)
+                changed += 1
+    elif mo_paths:
+        print("  [warn] LiveOps versiondef .gen not found; new magical object "
+              "won't enter the pool", file=sys.stderr)
+
+    # --- UsedRscCache text ---
+    if cache is not None:
+        bak = cache.with_name(cache.name + BACKUP_SUFFIX)
+        lines = [f"EntitySettings|{p}|oCEntitySettingsResource" for p in mo_paths]
+        if not mo_paths:
+            if bak.exists() and not dry_run:
+                shutil.copy2(bak, cache)
+                bak.unlink()
+                changed += 1
+        else:
+            if not bak.exists() and not dry_run:
+                shutil.copy2(cache, bak)
+            pristine = (bak if bak.exists() else cache).read_bytes()
+            add = b"".join(
+                b"\n" + ln.encode("latin1") for ln in lines
+                if ln.encode("latin1") not in pristine
+            )
+            if add:
+                body = pristine + add + (b"" if pristine.endswith(b"\n") else b"\n")
+                if body != cache.read_bytes():
+                    if not dry_run:
+                        cache.write_bytes(body)
+                    changed += 1
+    return changed
+
+
 def _read_usedrsclist(path: Path) -> tuple[str | None, list[str]]:
     """Parse UsedRscList.ot into (header, lines).
 
@@ -1189,11 +1377,16 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     # always rebuilt from the pristine backup + current registrations.
     usedrsc_changes = sync_usedrsclist(game_dir, registrations, dec2enc, args.dry_run)
 
+    # Register new magical objects in the LiveOps version manifest + resource
+    # cache so the engine actually loads + spawns them (UsedRscList alone only
+    # makes them loadable-by-path). See sync_versiondef.
+    versiondef_changes = sync_versiondef(game_dir, registrations, args.dry_run)
+
     # Sync manifests so game knows which mods are enabled
     manifest_syncs = _sync_mod_manifests(mods, game_dir, args.dry_run)
 
     if (not additions and not removals and not manifest_syncs
-            and not deact_ran and not usedrsc_changes):
+            and not deact_ran and not usedrsc_changes and not versiondef_changes):
         print("Mods already in sync.")
         return 0
 

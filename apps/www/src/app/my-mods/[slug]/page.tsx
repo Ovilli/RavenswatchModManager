@@ -333,6 +333,7 @@ export default function ManageModPage() {
         const text = await put.text().catch(() => '');
         throw new Error(`object storage rejected the upload (${put.status}). ${text}`);
       }
+      await api.mods.scanVersion(presigned.versionId);
     },
     onSuccess: () => {
       setNewZip(null);

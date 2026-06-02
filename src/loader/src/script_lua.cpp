@@ -20,6 +20,7 @@ extern "C" {
 #include "fn_resolver.h"
 #include "fn_call.h"
 #include "hook_lua.h"
+#include "hook_items.h"
 
 #include "json.hpp"   // single-header nlohmann::json (vendored)
 
@@ -428,6 +429,23 @@ int lua_hook_count(lua_State* L) {
     return 1;
 }
 
+// rsmm._internal.register_item(id, name, description, base, entity_path, rarity)
+//   Called by R.item.register() in rsmm.lua. Stores the registration into
+//   the C++ hook_items registry so the hook can inject the entity resource
+//   into the magical-object pool at spawn time.
+//   Returns true on success, false on duplicate id.
+int lua_register_item(lua_State* L) {
+    const char* id          = luaL_checkstring(L, 1);
+    const char* name        = luaL_optstring(L, 2, "");
+    const char* description = luaL_optstring(L, 3, "");
+    const char* base        = luaL_optstring(L, 4, "");
+    const char* entity_path = luaL_optstring(L, 5, "");
+    int          rarity     = (int)luaL_optinteger(L, 6, 0);
+    bool ok = register_native_item(id, name, description, base, entity_path, rarity);
+    lua_pushboolean(L, ok ? 1 : 0);
+    return 1;
+}
+
 int lua_read_cstr(lua_State* L) {
     auto va = static_cast<std::uintptr_t>(luaL_checkinteger(L, 1));
     auto max = static_cast<std::size_t>(luaL_optinteger(L, 2, 1024));
@@ -475,6 +493,7 @@ void register_api(lua_State* L) {
         { "read_f32",                lua_read_f32 },
         { "read_f64",                lua_read_f64 },
         { "read_cstr",               lua_read_cstr },
+        { "register_item",           lua_register_item },
         { "write_u8",                lua_write_u8 },
         { "write_u16",               lua_write_u16 },
         { "write_u32",               lua_write_u32 },

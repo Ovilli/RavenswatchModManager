@@ -38,6 +38,7 @@ export const env = {
   databaseUrl: required('DATABASE_URL'),
   betterAuthSecret: required('BETTER_AUTH_SECRET'),
   betterAuthUrl: process.env.BETTER_AUTH_URL || 'http://localhost:3001',
+  virusTotalApiKey: process.env.VIRUS_TOTAL_API_KEY ?? process.env.VIRUSTOTAL_API_KEY ?? '',
   // Public URL of the marketing site. Used as the verification-email
   // landing target. Defaults to localhost so dev works without extra
   // config; prod overrides via WEB_URL.
@@ -119,8 +120,18 @@ export function githubConfigured(): boolean {
   return Boolean(env.github.clientId && env.github.clientSecret);
 }
 
+export function virusTotalConfigured(): boolean {
+  return Boolean(env.virusTotalApiKey);
+}
+
 if (isProduction && !smtpConfigured()) {
   console.warn(
     'SMTP not configured — email verification and password reset will fail. Set SMTP_HOST, SMTP_USER, SMTP_PASS, and EMAIL_FROM to enable them.',
+  );
+}
+
+if (isProduction && !virusTotalConfigured()) {
+  console.warn(
+    'VirusTotal not configured — uploaded mods will not be scanned. Set VIRUS_TOTAL_API_KEY to enable upload scanning.',
   );
 }

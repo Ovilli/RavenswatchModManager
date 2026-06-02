@@ -1,0 +1,415 @@
+// Custom magical-object pool injection — see hook_items.h.
+//
+// Post-detours FUN_140258760 (SpawnAllObjects) after the engine spawns
+// its items from the master linked list, then injects Lua-registered
+// custom items into the pool's runtime array at DAT_1414365d0 + 0x10 so
+// they appear in hero-item selection.
+//
+// Entity resource pointers are resolved at spawn time via the game's own
+// resource-by-path lookup (FUN_140487040), which is pattern-resolved
+// and thus survives minor game patches.
+
+#include "hook_items.h"
+#include "fn_resolver.h"
+#include "loader.h"
+
+#include "MinHook.h"
+
+#include <windows.h>
+
+#include <chrono>
+#include <cstdint>
+#include <cstdio>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <vector>
+
+namespace rsmm {
+namespace {
+
+// --- layout constants (preferred-base 0x140000000) -----------------------
+constexpr std::uintptr_t kPreferredBase = 0x140000000ull;
+
+// Pool global pointer address (DAT_1414365d0).
+constexpr std::uintptr_t kPoolPtrGlobalVA = 0x1414365d0ull;
+
+// Pool offsets (relative to the pointer at DAT_1414365d0).
+// +0x00 void* master_linked_list  — linked list of nodes the engine spawns
+// +0x10 void** runtime_array      — array of EntityResource* (hero selection)
+// +0x18 uint32_t runtime_count
+// +0x1c uint32_t runtime_cap
+constexpr std::size_t kOffRuntimeArray = 0x10;
+constexpr std::size_t kOffRuntimeCount = 0x18;
+constexpr std::size_t kOffRuntimeCap   = 0x1c;
+
+// Ghidra merged SpawnAllObjects + pool collector into the single large
+// function FUN_1402586f0 (1283 bytes).  SpawnAllObjects is an internal
+// entry point at +0x70 within that function (and the pool collector at
+// +0x150).  We resolve FUN_1402586f0 via its byte pattern (it IS in
+// function_patterns.json) and add the internal offset to reach the
+// exact detour target.
+constexpr std::uintptr_t kSpawnAllObjectsVA = 0x140258760ull;
+constexpr std::uintptr_t kContainingFuncVA  = 0x1402586f0ull;
+constexpr std::size_t    kSpawnEntryOffset  = 0x70;  // SpawnAllObjects within FUN_1402586f0
+
+// --- game function type aliases -----------------------------------------
+
+// FUN_140487040 — resource-by-path lookup.
+// RCX: const char* decoded path.
+// Returns: EntityResource* (or 0 if not loaded).
+using ResourceLookup_t = void* (*)(const char*, void*, void*, void*);
+
+// FUN_140154c20 — vector growth helper.
+// RCX: vector struct address {ptr, count, cap}
+// RDX: unused
+// R8:  new capacity
+// Grows the vector's backing allocation to at least new_cap elements.
+using VecGrow_t = void (*)(void*, std::uint64_t, std::uint32_t);
+
+// FUN_140258760 — SpawnAllObjects (relocated at runtime).
+using SpawnAllObjects_t = void (*)(void* pool, void* spawn_ctx);
+
+// --- resolved function pointers -----------------------------------------
+
+SpawnAllObjects_t g_real_spawn_all = nullptr;
+ResourceLookup_t  g_resource_lookup = nullptr;
+VecGrow_t         g_vec_grow = nullptr;
+
+// --- registered custom items (populated via Lua FFI) ---------------------
+
+struct ItemReg {
+    std::string id;
+    std::string name;
+    std::string description;
+    std::string base_id;       // vanilla item id to clone
+    std::string entity_path;   // decoded path for FUN_140487040 lookup
+    int         rarity = 0;    // 0=Common, 1=Rare, etc.
+};
+
+std::vector<ItemReg> g_items;
+std::mutex g_items_mu;
+
+// --- helpers -------------------------------------------------------------
+
+std::uintptr_t image_base() {
+    HMODULE h = GetModuleHandleA("Ravenswatch.exe");
+    if (!h) h = GetModuleHandleA(nullptr);
+    return reinterpret_cast<std::uintptr_t>(h);
+}
+
+std::uintptr_t reloc(std::uintptr_t static_va) {
+    return static_va - kPreferredBase + image_base();
+}
+
+std::string hex_of(std::uintptr_t v) {
+    char b[32];
+    snprintf(b, sizeof(b), "0x%llx", static_cast<unsigned long long>(v));
+    return b;
+}
+
+std::string hex_ptr(const void* p) {
+    return hex_of(reinterpret_cast<std::uintptr_t>(p));
+}
+// --- item registration (called from script_lua.cpp) ---------------------
+
+bool register_item_locked(const ItemReg& item) {
+    std::lock_guard<std::mutex> g(g_items_mu);
+    for (const auto& existing : g_items) {
+        if (existing.id == item.id) return false;
+    }
+    g_items.push_back(item);
+    return true;
+}
+
+// Tries to find an entity resource by decoded path using the game's
+// resource lookup. Returns the EntityResource* or nullptr.
+void* find_entity_resource(const std::string& decoded_path) {
+    if (!g_resource_lookup) {
+        Loader::get().log("[item-hook] resource lookup unavailable");
+        return nullptr;
+    }
+
+    // Try forward-slash path first (SDK convention).
+    void* rsc = g_resource_lookup(decoded_path.c_str(), nullptr, nullptr, nullptr);
+
+    // Try backslash variant (game convention on Windows).
+    if (!rsc) {
+        std::string bs = decoded_path;
+        for (auto& ch : bs) { if (ch == '/') ch = '\\'; }
+        rsc = g_resource_lookup(bs.c_str(), nullptr, nullptr, nullptr);
+    }
+
+    return rsc;
+}
+
+void inject_custom_items(void* pool) {
+    if (!pool) {
+        Loader::get().log("[item-hook] inject: null pool");
+        return;
+    }
+    std::lock_guard<std::mutex> g(g_items_mu);
+    if (g_items.empty()) {
+        Loader::get().log("[item-hook] inject: no items to inject");
+        return;
+    }
+
+    if (!g_resource_lookup || !g_vec_grow) {
+        Loader::get().log("[item-hook] inject: resource_lookup or vec_grow unavailable");
+        return;
+    }
+
+    const auto u8 = static_cast<std::uint8_t*>(pool);
+    auto* array_ptr = reinterpret_cast<void***>(u8 + kOffRuntimeArray);
+    auto* count_ptr = reinterpret_cast<std::uint32_t*>(u8 + kOffRuntimeCount);
+    auto* cap_ptr   = reinterpret_cast<std::uint32_t*>(u8 + kOffRuntimeCap);
+
+    Loader::get().log("[item-hook] inject: pool count=" + std::to_string(*count_ptr)
+                      + " cap=" + std::to_string(*cap_ptr)
+                      + " items=" + std::to_string(g_items.size()));
+
+    for (const auto& item : g_items) {
+        void* rsc = find_entity_resource(item.entity_path);
+        if (!rsc) {
+            Loader::get().log("[item-hook] resource not loaded: "
+                              + item.id + " @ " + item.entity_path);
+            continue;
+        }
+
+        // Dedup against current runtime array contents.
+        bool already = false;
+        for (std::uint32_t i = 0; i < *count_ptr; i++) {
+            if ((*array_ptr)[i] == rsc) {
+                already = true;
+                break;
+            }
+        }
+        if (already) {
+            Loader::get().log("[item-hook] already in pool: " + item.id);
+            continue;
+        }
+
+        const std::uint32_t need = *count_ptr + 1;
+        Loader::get().log("[item-hook] growing pool from " + std::to_string(*cap_ptr)
+                          + " to at least " + std::to_string(need));
+        if (*cap_ptr < need) {
+            std::uint32_t ncap = (*cap_ptr > 8) ? *cap_ptr : 8;
+            while (ncap < need) ncap *= 2;
+            g_vec_grow(u8 + kOffRuntimeArray, 0, ncap);
+            // vec_grow may have reallocated; refresh pointers.
+            array_ptr = reinterpret_cast<void***>(u8 + kOffRuntimeArray);
+            cap_ptr   = reinterpret_cast<std::uint32_t*>(u8 + kOffRuntimeCap);
+        }
+
+        (*array_ptr)[*count_ptr] = rsc;
+        *count_ptr = need;
+
+        Loader::get().log("[item-hook] injected: " + item.id
+                          + " rsc=" + hex_ptr(rsc)
+                          + " pool_count=" + std::to_string(*count_ptr));
+    }
+}
+
+// --- read-only pool diagnostic -------------------------------------------
+
+// Dumps the SOURCE/master list the engine spawns from (pool+0x0, count at
+// pool+0x8) plus the spawned runtime array (pool+0x10, count +0x18). Each
+// source entry: +0x00 is the entry id/uid qword the spawner dedups on,
+// +0x48 is the EntitySettingsResource* it spawns from. This tells us whether
+// our custom magical-object DEFINITION actually loaded into the source list
+// (if so, the boot SpawnAllObjects already spawns it for free and no loader
+// injection is needed — the bug would be elsewhere). Read-only: never writes,
+// never calls game code, so it can't crash the spawn pipeline.
+void dump_pool(void* pool) {
+    const auto u8 = static_cast<std::uint8_t*>(pool);
+    void**  src_arr   = *reinterpret_cast<void***>(u8 + 0x0);
+    auto    src_count = *reinterpret_cast<std::uint32_t*>(u8 + 0x8);
+    auto    run_count = *reinterpret_cast<std::uint32_t*>(u8 + kOffRuntimeCount);
+    Loader::get().log("[pool-dump] source_count=" + std::to_string(src_count)
+                      + " runtime_count=" + std::to_string(run_count)
+                      + " src_arr=" + hex_ptr(src_arr));
+    if (!src_arr) return;
+    for (std::uint32_t i = 0; i < src_count && i < 512; ++i) {
+        auto* entry = static_cast<std::uint8_t*>(src_arr[i]);
+        if (!entry) continue;
+        const auto id  = *reinterpret_cast<std::uint64_t*>(entry + 0x0);
+        const auto rsc = *reinterpret_cast<void**>(entry + 0x48);
+        Loader::get().log("[pool-dump]   [" + std::to_string(i) + "] entry="
+                          + hex_ptr(entry) + " id=" + hex_of(id)
+                          + " rsc=" + hex_ptr(rsc));
+    }
+}
+
+// --- deferred inject (covers the missed boot-time spawn) ------------------
+
+// SpawnAllObjects(DAT_1414365d0, ...) runs ONCE during InitialLoading
+// (confirmed: FUN_140260280 "InitialLoading - MagicalObject SpawnAllObjects").
+// Our loader runs in a background thread that usually arms the detour just
+// after that single call, so the detour never fires. This poller reads the
+// pool global directly and injects once the engine has populated it
+// (count>0 ⇒ the boot spawn finished AND the resource system is up — so the
+// resource lookup won't crash, unlike an inject-at-install on an empty pool).
+//
+// Reads are gated: the pool global is a zero-init static, so it's null until
+// the manager exists; we never dereference the pool until it reports a
+// non-zero element count. (MinGW has no __try/__except, hence the gating.)
+void deferred_inject_poll() {
+    for (int i = 0; i < 600; ++i) {  // ~150 s @ 250 ms, then give up
+        void* pool = *reinterpret_cast<void**>(reloc(kPoolPtrGlobalVA));
+        if (pool) {
+            const auto count = *reinterpret_cast<std::uint32_t*>(
+                static_cast<std::uint8_t*>(pool) + kOffRuntimeCount);
+            if (count > 0) {
+                Loader::get().log("[item-hook] deferred inject: pool populated (count="
+                                  + std::to_string(count) + ")");
+                // Read-only source-list dump (opt-in) to learn whether our
+                // custom definition loaded into the spawn source list.
+                {
+                    char dbuf[8];
+                    if (GetEnvironmentVariableA("RSMM_DUMP_POOL", dbuf, sizeof(dbuf))
+                            && dbuf[0] == '1') {
+                        dump_pool(pool);
+                    }
+                }
+                // Inject only when the resource-by-path lookup is trustworthy.
+                // FUN_140487040 currently mis-resolves on some builds and the
+                // call crashes the game, so gate it behind an opt-in env var
+                // until the lookup is verified for this binary.
+                char buf[8];
+                if (GetEnvironmentVariableA("RSMM_ENABLE_ITEM_INJECT", buf, sizeof(buf))
+                        && buf[0] == '1') {
+                    inject_custom_items(pool);
+                } else {
+                    Loader::get().log("[item-hook] inject gated off "
+                                      "(set RSMM_ENABLE_ITEM_INJECT=1 to attempt)");
+                }
+                return;
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    Loader::get().log("[item-hook] deferred inject: timed out waiting for pool");
+}
+
+// --- detour ---------------------------------------------------------------
+
+void WINAPI hook_spawn_all_objects(void* pool, void* spawn_ctx) {
+    Loader::get().log(std::string("[item-hook] SpawnAllObjects fired pool=")
+                      + hex_ptr(pool) + " spawn_ctx=" + hex_ptr(spawn_ctx));
+    g_real_spawn_all(pool, spawn_ctx);
+    Loader::get().log("[item-hook] SpawnAllObjects returned OK");
+    // V1 hook below — see hook_items.h for design.
+    // Troubleshooting: if the game crashes here, check FUN_140487040 and
+    // FUN_140154c20 for ABI mismatches (calling-convention / param count).
+    // The first run log should show the resolved addresses.
+    inject_custom_items(pool);
+}
+
+// --- resolution helpers ---------------------------------------------------
+
+bool resolve(const char* name, void** out) {
+    const auto va = fn_resolve(name);
+    if (va == 0 || va == static_cast<std::uintptr_t>(-1)) {
+        Loader::get().log(std::string("[item-hook] resolve ") + name + " failed");
+        return false;
+    }
+    if (!fn_verify(name, va)) {
+        Loader::get().log(std::string("[item-hook] verify ") + name
+                          + " @ " + hex_of(va) + " mismatch (game patched?)");
+        return false;
+    }
+    *out = reinterpret_cast<void*>(va);
+    Loader::get().log(std::string("[item-hook] ") + name + " -> " + hex_of(va));
+    return true;
+}
+
+} // anonymous namespace
+
+// --- public API ----------------------------------------------------------
+
+bool register_native_item(const char* id_str,
+                          const char* name_str,
+                          const char* desc_str,
+                          const char* base_str,
+                          const char* entity_str,
+                          int rarity) {
+    ItemReg item;
+    if (id_str)       item.id          = id_str;
+    if (name_str)     item.name        = name_str;
+    if (desc_str)     item.description = desc_str;
+    if (base_str)     item.base_id     = base_str;
+    if (entity_str)   item.entity_path = entity_str;
+    item.rarity  = rarity;
+    return register_item_locked(item);
+}
+
+bool install_item_hooks() {
+    if (g_items.empty()) {
+        Loader::get().log("[item-hook] no items registered; disabled");
+        return false;
+    }
+
+    if (!fn_resolver_init()) {
+        Loader::get().log("[item-hook] fn_resolver_init failed");
+        return false;
+    }
+
+    // Resolve helper functions via patterns (both in function_patterns.json).
+    if (!resolve("FUN_140487040", reinterpret_cast<void**>(&g_resource_lookup))) {
+        Loader::get().log("[item-hook] resource lookup unavailable; "
+                          "items will be registered but not injected until "
+                          "function_patterns.json is regenerated");
+        // Non-fatal — the hook still installs (injection will log a skip).
+    }
+    if (!resolve("FUN_140154c20", reinterpret_cast<void**>(&g_vec_grow))) {
+        Loader::get().log("[item-hook] vec_grow unavailable; "
+                          "same fallback as above");
+    }
+
+    // Locate SpawnAllObjects by resolving its containing function
+    // FUN_1402586f0 (which IS in function_patterns.json) and adding the
+    // internal offset +0x70.  Fall back to runtime relocation if pattern
+    // resolution is unavailable.
+    std::uintptr_t spawn_va = fn_resolve("FUN_1402586f0");
+    if (spawn_va == 0 || spawn_va == static_cast<std::uintptr_t>(-1)) {
+        Loader::get().log("[item-hook] FUN_1402586f0 pattern not found; "
+                          "falling back to runtime relocation");
+        spawn_va = reloc(kSpawnAllObjectsVA);
+    } else {
+        spawn_va += kSpawnEntryOffset;
+        if (!fn_verify("FUN_1402586f0", spawn_va - kSpawnEntryOffset)) {
+            Loader::get().log("[item-hook] FUN_1402586f0 verify failed; "
+                              "pattern mismatch (game patched?)");
+            return false;
+        }
+    }
+    Loader::get().log(std::string("[item-hook] SpawnAllObjects @ ")
+                      + hex_of(spawn_va));
+
+    const auto target = reinterpret_cast<LPVOID>(spawn_va);
+    const auto rc = MH_CreateHook(target,
+                                  reinterpret_cast<LPVOID>(&hook_spawn_all_objects),
+                                  reinterpret_cast<LPVOID*>(&g_real_spawn_all));
+    if (rc != MH_OK) {
+        Loader::get().log("[item-hook] MH_CreateHook failed rc="
+                          + std::to_string(static_cast<int>(rc)));
+        return false;
+    }
+    if (MH_EnableHook(target) != MH_OK) {
+        Loader::get().log("[item-hook] MH_EnableHook failed");
+        return false;
+    }
+
+    Loader::get().log("[item-hook] installed on FUN_140258760 (SpawnAllObjects); "
+                      + std::to_string(g_items.size()) + " item(s) queued");
+
+    // The detour above only fires if SpawnAllObjects runs AFTER we arm it.
+    // It runs once during InitialLoading and usually races ahead of us, so
+    // also start a deferred poller that injects into the already-built pool
+    // once it's populated. inject_custom_items dedups, so if the detour did
+    // fire, the poller's inject is a harmless no-op.
+    std::thread(deferred_inject_poll).detach();
+    return true;
+}
+
+} // namespace rsmm

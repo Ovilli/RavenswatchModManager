@@ -325,6 +325,32 @@ def load_corpus(corpus_dir: Path) -> list[bytes]:
             for p in sorted(corpus_dir.rglob("*.EntitySettingsResource.gen"))]
 
 
+def load_link_anchors(mo_dir: Path) -> list[bytes]:
+    """Cooked bytes of the parent prefab/registry entities a magical object
+    links to **by GUID** but which live *outside* ``mo_dir``.
+
+    These MUST be part of the GUID-ownership corpus. :func:`own_node_guids`
+    treats a GUID seen in <=1 corpus file as the item's own node and re-mints
+    it; a cross-file link to one of these parents is present in exactly one
+    *item* file, so without the parent in the corpus it is misclassified as
+    own and re-minted — severing the item's link to its parent model. The
+    clone then still loads (and may even drop), but the engine's
+    ``MagicalObjectEntityCollector`` never registers it, so it is absent from
+    the magical-objects pool and the compendium entirely.
+
+    ``mo_dir`` is ``.../EntitySettings/Objects/Magical_Objects``. The anchors
+    are its siblings one and two levels up; missing files are skipped.
+    """
+    objects = mo_dir.parent          # .../EntitySettings/Objects
+    entitysettings = objects.parent  # .../EntitySettings
+    candidates = (
+        objects / "Magical_Objects_Model.entity.ot.EntitySettingsResource.gen",
+        entitysettings / "Objects_Common"
+        / "Magical_Object_Model.entity.ot.EntitySettingsResource.gen",
+    )
+    return [p.read_bytes() for p in candidates if p.is_file()]
+
+
 #: Decoded path of the magical-objects text bank (base = keys file).
 MAGIC_TEXT_BANK = "Text/Magical_Objects~GAM.xls.LocalText.gen"
 
@@ -388,9 +414,12 @@ class ItemEdit:
     new_id: str
     #: (old_lstr, new_lstr) pairs — icon path, debug name, etc.
     lstr_swaps: list[tuple[str, str]] = field(default_factory=list)
-    #: Raw bytes of the sibling item corpus. When set, the clone's own node
-    #: GUIDs are re-minted so the engine sees a distinct object (otherwise it
-    #: dedupes against the base by GUID and the item never enters the pool).
+    #: Raw bytes of the sibling item corpus. When non-empty, the clone's own
+    #: node GUIDs are re-minted. NOTE: leave this EMPTY for magical objects —
+    #: reminting produces GUIDs the engine cannot resolve at instantiation, so
+    #: the entity fails to spawn and never enters the pool (verified in-game).
+    #: Distinct identity comes from the id/path rename alone; the engine does
+    #: not dedupe the clone out. See memory item-clone-pipeline-verified.
     corpus: list[bytes] = field(default_factory=list)
 
     def apply(self, cooked: bytes) -> bytes:

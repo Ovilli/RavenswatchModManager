@@ -73,6 +73,13 @@ The signed-PUT upload flow (`/mods/upload`) only issues URLs to
 authenticated users and requires `x-amz-checksum-sha256` matching the
 declared body hash — the storage backend rejects mismatched uploads.
 
+After a mod zip lands in object storage, the API submits the public
+download URL to VirusTotal using `VIRUS_TOTAL_API_KEY`. The upload is
+only considered finished once that scan submission succeeds.
+
+VirusTotal is an additional signal, not a sandbox. Keep the usual code
+review and moderation workflow in place for uploaded mods.
+
 ## Reporting a vulnerability
 
 Email `security@rsmm.dev` (or, until that is provisioned, open a

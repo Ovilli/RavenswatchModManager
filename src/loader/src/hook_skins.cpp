@@ -40,17 +40,28 @@ constexpr std::size_t kEntrySize = 0xA0;
 constexpr std::size_t kOffNext   = 0x08;  // list: next
 constexpr std::size_t kOffBack   = 0x10;  // list: written into prev head's slot
 constexpr std::size_t kOffOwner  = 0x18;  // list: owner (manager)
-constexpr std::size_t kOffKey    = 0x3c;  // int matched by hero+0x78 selection
+constexpr std::size_t kOffKey    = 0x3c;  // int — Steam DLC appid (Steam filter) or match key
 constexpr std::size_t kOffIdx    = 0x48;  // int (engine uses i+1)
 constexpr std::size_t kOffAcId   = 0x50;  // std::string-slot (AC asset id)
 constexpr std::size_t kOffAlId   = 0x60;  // std::string-slot (AL asset id)
 constexpr std::size_t kOffBaseId = 0x70;  // std::string-slot (base asset id)
+constexpr std::size_t kOffDlcPath= 0x80;  // char* — dlc entitlement path (local filter)
+constexpr std::size_t kOffDlcHash= 0x88;  // uint32 — path-hash companion (local filter)
 constexpr std::size_t kOffName   = 0x90;  // std::string-slot (display name)
 
 // Manager list fields.
 constexpr std::size_t kMgrCount = 0x08;
 constexpr std::size_t kMgrHead  = 0x10;
 constexpr std::size_t kMgrTail  = 0x18;
+
+// Skin-grid populate (FUN_1401f0f10) writes the visible roster into a
+// vector on its screen ctx. Vector layout {ptr; i32 count; u32 cap}
+// (see grow helper FUN_140154c20). Per list node the engine calls the
+// manager vtable[1] filter and only pushes the node when it returns 3.
+constexpr std::size_t kGridVec   = 0x2f8;  // ctx + 0x2f8 -> {ptr, count, cap}
+constexpr std::size_t kGridCount = 0x300;
+constexpr std::size_t kGridCap   = 0x304;
+constexpr std::size_t kVtblFilter = 0x08;  // manager vtable slot returning 3
 
 // The 16-byte string descriptor the game string-assign helper consumes.
 // { ptr; lenflags } where high bit of lenflags = "literal / non-owned".
@@ -65,10 +76,25 @@ constexpr std::uint32_t kLiteralBit = 0x80000000u;
 using RosterBuilder_t = void (*)(void* ctx);
 using EntryCtor_t     = void (*)(void* base, std::uint32_t count);  // FUN_140214bb0
 using StringAssign_t  = void (*)(void* dst_slot, const StringDesc* src);  // FUN_1405288b0
+using GridPopulate_t  = void (*)(void* ctx, void* arg);  // FUN_1401f0f10
+// FUN_140154c20(vec, <unused RDX>, new_cap): the engine passes the new
+// capacity in the 3rd integer slot (R8); RDX is left untouched at the call
+// sites. Mirror that ABI exactly or new_cap lands in the wrong register.
+using VecGrow_t       = void (*)(void* vec, std::uint64_t, std::uint32_t new_cap);
+using Filter_t        = int  (*)(void* mgr, void* node);  // manager vtable[1]
 
 RosterBuilder_t g_real_builder = nullptr;
 EntryCtor_t     g_entry_ctor   = nullptr;
 StringAssign_t  g_string_assign = nullptr;
+GridPopulate_t  g_real_populate = nullptr;
+VecGrow_t       g_vec_grow      = nullptr;
+
+// Diagnostic: when RSMM_SKIN_FORCE_SHOW=1, after the engine populates the
+// skin grid we force-push our appended nodes regardless of the vtable[1]
+// filter result (and log that result), to prove the button path in-game
+// while the filter predicate is being reverse-engineered (docs A2).
+bool g_force_show = false;
+std::vector<void*> g_our_nodes;  // nodes we appended, in registration order
 
 struct SkinPackDef {
     std::string name;
@@ -76,6 +102,7 @@ struct SkinPackDef {
     std::string al_id;
     std::string base_id;
     std::int32_t key = 0;
+    std::string dlc_path;  // entitlement file path (local filter, off +0x80)
 };
 std::vector<SkinPackDef> g_packs;
 std::once_flag g_appended;
@@ -132,6 +159,16 @@ void link_entry(void* mgr, void* e, std::int32_t idx, const SkinPackDef& def) {
     assign_string(e, kOffBaseId, def.base_id);
     assign_string(e, kOffName,   def.name);
 
+    // Local filter (oCLocalAdditionalContentManager::vftable[1]) checks
+    // node+0x80 for a dlc entitlement path. If provided, set it so the
+    // file-existence check passes (see docs/_re/kinds/skins.md A2).
+    if (!def.dlc_path.empty()) {
+        *pp(e, kOffDlcPath) = const_cast<char*>(dup_cstr(def.dlc_path));
+        // Hash at +0x88 is used by the filter for a dead computation;
+        // set to path length for consistency.
+        *i32(kOffDlcHash) = static_cast<std::int32_t>(def.dlc_path.size());
+    }
+
     // List insert (push-front), matching the builder byte-for-byte.
     *pp(e, kOffOwner) = mgr;
     std::int32_t* mgr_count = reinterpret_cast<std::int32_t*>(
@@ -161,6 +198,7 @@ void append_custom_packs() {
         void* e = _aligned_malloc(kEntrySize, 16);
         std::memset(e, 0, kEntrySize);
         link_entry(mgr, e, idx++, def);
+        g_our_nodes.push_back(e);
         Loader::get().log("[skin-hook] registered pack '" + def.name
                           + "' key=" + hex_of(static_cast<std::uint32_t>(def.key))
                           + " node=" + hex_of(reinterpret_cast<std::uintptr_t>(e)));
@@ -172,6 +210,55 @@ void hook_roster_builder(void* ctx) {
     // The builder is expected to run once at bootstrap; guard regardless so
     // a re-run can't double-register our packs.
     std::call_once(g_appended, append_custom_packs);
+}
+
+// Push `node` into the screen ctx's skin-grid vector (ctx+0x2f8), growing
+// via the engine's own helper, replicating the engine's grow arithmetic.
+// Dedups so a menu re-open doesn't insert the same node twice.
+void grid_push(void* ctx, void* node) {
+    auto u8 = static_cast<std::uint8_t*>(ctx);
+    auto* count = reinterpret_cast<std::uint32_t*>(u8 + kGridCount);
+    auto* cap   = reinterpret_cast<std::uint32_t*>(u8 + kGridCap);
+    auto** bufp = reinterpret_cast<void***>(u8 + kGridVec);
+    void** buf = *bufp;
+    for (std::uint32_t i = 0; buf && i < *count; i++) {
+        if (buf[i] == node) return;  // already shown
+    }
+    std::uint32_t need = *count + 1;
+    if (*cap < need) {
+        std::uint32_t ncap = (*cap > 8) ? *cap : 8;
+        while (ncap < need) ncap *= 2;
+        g_vec_grow(u8 + kGridVec, 0, ncap);  // reallocs *bufp, updates cap
+        buf = *bufp;
+    }
+    buf[*count] = node;
+    *count = need;
+}
+
+void hook_grid_populate(void* ctx, void* arg) {
+    g_real_populate(ctx, arg);  // engine builds the filtered roster first
+    void* mgr_global = reinterpret_cast<void*>(reloc(kMgrPtrGlobalVA));
+    void* mgr = mgr_global ? *reinterpret_cast<void**>(mgr_global) : nullptr;
+    for (void* node : g_our_nodes) {
+        int filt = -1;
+        if (mgr) {
+            void* vtbl = *reinterpret_cast<void**>(mgr);
+            auto fn = *reinterpret_cast<Filter_t*>(
+                static_cast<std::uint8_t*>(vtbl) + kVtblFilter);
+            filt = fn(mgr, node);  // capture the gate's verdict for A2 RE
+        }
+        Loader::get().log("[skin-hook] force-show node="
+                          + hex_of(reinterpret_cast<std::uintptr_t>(node))
+                          + " filter=" + std::to_string(filt)
+                          + (filt == 3 ? " (already shown)" : " (forcing)"));
+        if (filt != 3) grid_push(ctx, node);
+    }
+}
+
+bool env_truthy(const char* name) {
+    char buf[8] = {};
+    DWORD n = GetEnvironmentVariableA(name, buf, sizeof(buf));
+    return n > 0 && n < sizeof(buf) && (buf[0] == '1' || buf[0] == 't' || buf[0] == 'T');
 }
 
 // --- pack-def loading ----------------------------------------------------
@@ -208,9 +295,10 @@ void load_one(const std::filesystem::path& path, const std::string& origin) {
         SkinPackDef d;
         d.name    = it.value("name", std::string{});
         d.key     = parse_key(it["key"]);
-        d.ac_id   = it.value("ac_id", std::string{});
-        d.al_id   = it.value("al_id", std::string{});
-        d.base_id = it.value("base_id", std::string{});
+        d.ac_id    = it.value("ac_id", std::string{});
+        d.al_id    = it.value("al_id", std::string{});
+        d.base_id  = it.value("base_id", std::string{});
+        d.dlc_path = it.value("dlc_path", std::string{});
         bool dup = false;
         for (const auto& e : g_packs) {
             if (e.key == d.key) { dup = true; break; }
@@ -292,6 +380,30 @@ bool install_skin_hooks() {
     }
     Loader::get().log("[skin-hook] installed on FUN_1401dcae0 (roster builder); "
                       + std::to_string(g_packs.size()) + " pack(s) queued");
+
+    // Optional diagnostic: force our nodes to render as grid buttons,
+    // bypassing the manager vtable[1] filter (which currently rejects
+    // brand-new keys). Off by default; see docs/_re/kinds/skins.md (A1/A2).
+    g_force_show = env_truthy("RSMM_SKIN_FORCE_SHOW");
+    if (g_force_show) {
+        void* populate_va = nullptr;
+        if (resolve("FUN_1401f0f10", &populate_va)
+            && resolve("FUN_140154c20", reinterpret_cast<void**>(&g_vec_grow))) {
+            if (MH_CreateHook(populate_va,
+                              reinterpret_cast<LPVOID>(&hook_grid_populate),
+                              reinterpret_cast<LPVOID*>(&g_real_populate)) == MH_OK
+                && MH_EnableHook(populate_va) == MH_OK) {
+                Loader::get().log("[skin-hook] force-show enabled "
+                                  "(RSMM_SKIN_FORCE_SHOW=1) on FUN_1401f0f10");
+            } else {
+                Loader::get().log("[skin-hook] force-show hook install failed");
+                g_force_show = false;
+            }
+        } else {
+            Loader::get().log("[skin-hook] force-show resolve failed; disabled");
+            g_force_show = false;
+        }
+    }
     return true;
 }
 

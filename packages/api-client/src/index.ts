@@ -135,6 +135,11 @@ export function createApiClient(options: ApiClientOptions) {
     versionId: z.string().uuid(),
     expiresIn: z.number().int().positive(),
   });
+  const virusTotalScanResponseSchema = z.object({
+    ok: z.literal(true),
+    analysisId: z.string(),
+    permalink: z.string().url(),
+  });
   const imagePresignResponseSchema = z.object({
     uploadUrl: z.string().url(),
     publicUrl: z.string().url(),
@@ -207,6 +212,12 @@ export function createApiClient(options: ApiClientOptions) {
         ),
       upload: (body: ModUploadRequest) =>
         request('/api/mods/upload', { method: 'POST', body: JSON.stringify(body) }, uploadResponseSchema),
+      scanVersion: (versionId: string) =>
+        request(
+          `/api/mods/versions/${encodeURIComponent(versionId)}/scan`,
+          { method: 'POST' },
+          virusTotalScanResponseSchema,
+        ),
       patch: (slug: string, body: ModPatch) =>
         request(
           `/api/mods/${encodeURIComponent(slug)}/edit`,

@@ -110,8 +110,27 @@ function R.item.register(spec)
         return false
     end
     _registered_items[spec.id] = spec
-    R.log("[rsmm.item] registered:", spec.id, "(TODO: not yet wired to game)")
-    return false   -- intentionally false until wiring lands
+
+    local entity_path = spec.entity_path
+        or ("EntitySettings/Objects/Magical_Objects/"
+            .. (spec.rarity or "Common") .. "/"
+            .. spec.id .. ".entity.ot.EntitySettingsResource")
+
+    local ok = I.register_item(
+        spec.id,
+        spec.name or "",
+        spec.description or "",
+        spec.base or "",
+        entity_path,
+        spec.rarity or 0
+    )
+    if ok then
+        R.log("[rsmm.item] registered and wired:", spec.id)
+        return true
+    else
+        R.log("[rsmm.item] native rejected duplicate:", spec.id)
+        return false
+    end
 end
 
 function R.item.list()

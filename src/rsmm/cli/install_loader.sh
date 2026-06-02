@@ -34,35 +34,71 @@ if [[ -f "$GAME_DIR/winhttp_real.dll" ]] && is_doorstop "$GAME_DIR/winhttp_real.
     rm -f "$GAME_DIR/winhttp_real.dll"
 fi
 
-# Source winhttp_real.dll from wine if missing. Try the Ravenswatch prefix
-# first, then any Proton install.
-if [[ ! -f "$GAME_DIR/winhttp_real.dll" ]]; then
+# Source winhttp_real.dll from wine. Our proxy STATICALLY forwards every
+# export to winhttp_real.<fn>, so the source MUST be a real-export PE. The
+# prefix's drive_c/windows/system32/winhttp.dll is often a Wine *builtin
+# stub* with ZERO PE exports — forwarding to it makes Wine fail to load our
+# proxy (it silently falls back to the builtin winhttp, so the loader never
+# runs and no mods/_log.txt is written). Prefer Proton's PE-format builtin
+# under lib/wine/x86_64-windows, and VALIDATE that the chosen file actually
+# exports WinHttpOpen before accepting it.
+winhttp_exports_open() {
+    # True if $1 is a real winhttp PE (not a 0-export Wine builtin stub).
+    # objdump isn't reliably present / consistent across the CLI's subprocess
+    # env, so use a portable byte heuristic: a real winhttp PE carries its ~45
+    # "WinHttp*" export-name strings (hundreds of "WinHttp" byte hits); a stub
+    # has effectively none. Require a healthy count.
+    local f="$1" n
+    [[ -f "$f" ]] || return 1
+    n=$(grep -oa "WinHttp" "$f" 2>/dev/null | wc -l)
+    [[ "$n" -ge 20 ]]
+}
+
+# Re-source if missing OR if the existing copy is a 0-export stub.
+if [[ ! -f "$GAME_DIR/winhttp_real.dll" ]] || ! winhttp_exports_open "$GAME_DIR/winhttp_real.dll"; then
     SRC=""
-    for c in \
-        "$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/compatdata/2071280/pfx/drive_c/windows/system32/winhttp.dll" \
-        "$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Proton Hotfix/files/lib/wine/x86_64-windows/winhttp.dll" \
-        "$HOME/.steam/steam/steamapps/common/Proton - Experimental/files/lib/wine/x86_64-windows/winhttp.dll"; do
-        if [[ -e "$c" ]]; then SRC="$c"; break; fi
+    # Real PE builtins (lib/wine/x86_64-windows) first; prefix system32 last.
+    candidates=()
+    while IFS= read -r c; do candidates+=("$c"); done < <(
+        ls -1 \
+          "$HOME"/.var/app/com.valvesoftware.Steam/.local/share/Steam/compatibilitytools.d/*/files/lib/wine/x86_64-windows/winhttp.dll \
+          "$HOME"/.local/share/Steam/compatibilitytools.d/*/files/lib/wine/x86_64-windows/winhttp.dll \
+          "$HOME"/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Proton*/files/lib/wine/x86_64-windows/winhttp.dll \
+          "$HOME"/.steam/steam/steamapps/common/Proton*/files/lib/wine/x86_64-windows/winhttp.dll \
+          2>/dev/null
+    )
+    candidates+=("$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/compatdata/2071280/pfx/drive_c/windows/system32/winhttp.dll")
+    for c in "${candidates[@]}"; do
+        if [[ -e "$c" ]] && winhttp_exports_open "$c"; then SRC="$c"; break; fi
     done
     if [[ -n "$SRC" ]]; then
         # cp -L resolves the symlink so we drop a real DLL, not a dead link.
         cp -L "$SRC" "$GAME_DIR/winhttp_real.dll"
         echo "Sourced winhttp_real.dll from: $SRC"
     else
-        echo "ERROR: could not find a real winhttp.dll to use as winhttp_real.dll" >&2
+        echo "ERROR: no real-export winhttp.dll found to use as winhttp_real.dll" >&2
+        echo "       (every candidate was a stub; install a Proton with a PE winhttp)" >&2
         exit 1
     fi
 fi
 
 install -m 0644 "$DLL" "$GAME_DIR/winhttp.dll"
 install -m 0644 "$REPO_DIR/data/asset_map.json" "$GAME_DIR/asset_map.json"
+install -d "$GAME_DIR/rsmm/data"
+install -m 0644 "$REPO_DIR/data/function_patterns.json" "$GAME_DIR/rsmm/data/function_patterns.json"
 
 # Lua-side SDK: mods do `require "rsmm"` and get the documented R.* surface.
+# The require entrypoint is src/loader/lib/rsmm.lua (the full SDK with
+# R.item/R.on/R.kv that matches the C++ bindings rsmm._internal.*). Copy the
+# modular src/loader/lua/ tree first (submodules), then ALWAYS overwrite the
+# entrypoint with lib/rsmm.lua — the lua/ dir ships a stripped rsmm.lua that
+# lacks R.item, so mods calling R.item.register would fail ("index nil 'item'").
 SDK_SRC="$REPO_DIR/src/loader/lua"
 mkdir -p "$GAME_DIR/rsmm/lib"
 if [[ -d "$SDK_SRC" ]]; then
     cp -a "$SDK_SRC/." "$GAME_DIR/rsmm/lib/"
-elif [[ -f "$REPO_DIR/src/loader/lib/rsmm.lua" ]]; then
+fi
+if [[ -f "$REPO_DIR/src/loader/lib/rsmm.lua" ]]; then
     install -m 0644 "$REPO_DIR/src/loader/lib/rsmm.lua" "$GAME_DIR/rsmm/lib/rsmm.lua"
 fi
 

@@ -30,7 +30,8 @@ function SignInInner() {
   const [busy, setBusy] = useState(false);
 
   const config = useQuery({ queryKey: authConfigQueryKey, queryFn: fetchAuthConfig });
-  const callbackURL = search.get('next') ?? '/';
+  const next = search.get('next') ?? '/';
+  const callbackURL = next.startsWith('http') ? next : `${window.location.origin}${next}`;
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();

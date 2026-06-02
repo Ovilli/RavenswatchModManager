@@ -11,9 +11,10 @@ import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { isPgErrorCode } from '../db-errors';
-import { s3Configured } from '../env';
+import { s3Configured, virusTotalConfigured } from '../env';
 import { createRateLimiter } from '../rate-limit';
 import { presignModImage, presignModUpload } from '../storage';
+import { submitVirusTotalUrl } from '../virus-total';
 import type { AppEnv } from '../types';
 
 export const modsRouter = new Hono<AppEnv>();
@@ -45,6 +46,10 @@ const slugParamSchema = z.object({
 const downloadParamSchema = z.object({
   slug: z.string().min(1).max(128).regex(/^[a-z0-9_-]+$/),
   version: z.string().regex(/^\d+\.\d+\.\d+(?:[-+][\w.]+)?$/),
+});
+
+const versionScanParamSchema = z.object({
+  versionId: z.string().uuid(),
 });
 
 modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
@@ -407,6 +412,39 @@ const ownerLimiter = createRateLimiter({
     const user = c.get('user');
     return user?.id ?? c.req.header('x-real-ip') ?? c.req.header('x-forwarded-for')?.split(',').pop()?.trim() ?? 'anon';
   },
+});
+
+modsRouter.use('/versions/:versionId/scan', ownerLimiter);
+modsRouter.post('/versions/:versionId/scan', zValidator('param', versionScanParamSchema), async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'unauthorized' }, 401);
+  if (!virusTotalConfigured()) {
+    return c.json({ error: 'virus total is not configured on this server' }, 503);
+  }
+
+  const { versionId } = c.req.valid('param');
+  const db = getDb();
+
+  const rows = await db
+    .select({
+      assetUrl: schema.modVersions.assetUrl,
+      ownerId: schema.mods.ownerId,
+    })
+    .from(schema.modVersions)
+    .innerJoin(schema.mods, eq(schema.modVersions.modId, schema.mods.id))
+    .where(eq(schema.modVersions.id, versionId))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return c.json({ error: 'not found' }, 404);
+  if (row.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+
+  try {
+    const analysis = await submitVirusTotalUrl(row.assetUrl);
+    return c.json({ ok: true, analysisId: analysis.analysisId, permalink: analysis.permalink });
+  } catch (err) {
+    console.error('VirusTotal scan error:', err);
+    return c.json({ error: 'failed to submit VirusTotal scan' }, 502);
+  }
 });
 
   modsRouter.use('/:slug/edit', ownerLimiter);

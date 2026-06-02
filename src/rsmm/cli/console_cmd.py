@@ -246,8 +246,10 @@ def cmd_status(game_dir: Path) -> int:
 
 
 def _collect_clones() -> list[dict]:
-    """Scan every mod manifest for magic_item_clone patches. Returns
-    [{mod_id, new_id, from_id, rarity}, ...]."""
+    """Scan every mod manifest for items to register in the magic-object menu.
+    Returns [{mod_id, new_id, from_id, rarity, icon}, ...].
+    Handles both legacy [[patch]] kind=\"magic_item_clone\" and modern
+    [[content]] kind=\"item\" entries."""
     try:
         from rsmm.cli.merge import _toml_load
     except Exception:
@@ -270,6 +272,7 @@ def _collect_clones() -> list[dict]:
         if not t.get("mod", {}).get("enabled", True):
             continue
         mid = t.get("mod", {}).get("id") or entry.name
+        # Legacy [[patch]] kind="magic_item_clone"
         for p in t.get("patch", []) or []:
             if p.get("kind") != "magic_item_clone":
                 continue
@@ -278,6 +281,20 @@ def _collect_clones() -> list[dict]:
                 "new_id": str(p.get("new_id", "")),
                 "from_id": str(p.get("from_id", "")),
                 "rarity": str(p.get("rarity", "")),
+            })
+        # Modern [[content]] kind="item"
+        for c in t.get("content", []) or []:
+            if c.get("kind") != "item":
+                continue
+            item_id = str(c.get("id", ""))
+            if not item_id:
+                continue
+            rarity = str(c.get("rarity", "")) or None
+            out.append({
+                "mod_id": mid,
+                "new_id": item_id,
+                "from_id": str(c.get("base", "")),
+                "rarity": rarity,
             })
     return out
 

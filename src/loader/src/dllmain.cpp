@@ -21,6 +21,7 @@
 #include "hook_io.h"
 #include "hook_engine.h"
 #include "hook_skins.h"
+#include "hook_items.h"
 #include "hook_events.h"
 #include "script_lua.h"
 
@@ -70,6 +71,7 @@ static void loader_thread_cxx() {
 
         rsmm::install_engine_hooks();
         rsmm::install_skin_hooks();
+        rsmm::install_item_hooks();
         rsmm::install_event_hooks();
 
         rsmm::script_emit_event("ready");

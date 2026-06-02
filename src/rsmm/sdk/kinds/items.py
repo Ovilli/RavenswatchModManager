@@ -180,7 +180,14 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         new_id=defn.id,
         base_id=base,
         base_cooked=base_cooked,
-        corpus=cook.load_corpus(_MO_DIR),
+        # NO GUID remint (corpus=[]): reminting mints fresh GUIDs the engine
+        # cannot resolve at instantiation, so the entity silently fails to
+        # spawn and never enters the magical-object pool. Verified in-game
+        # (remint-only clone -> pool stays 104; rename-only -> 105 + visible).
+        # The base's registered node GUIDs are kept; distinct identity comes
+        # from the id/path rename, which is enough (the engine does not dedupe
+        # the clone out). See memory item-clone-pipeline-verified.
+        corpus=[],
         rarity=rarity,
         name=name,
         description=description,

@@ -50,6 +50,7 @@ type Phase =
   | { kind: 'hashing' }
   | { kind: 'presigning' }
   | { kind: 'uploading-zip' }
+  | { kind: 'scanning' }
   | { kind: 'uploading-image' }
   | { kind: 'patching' }
   | { kind: 'done'; slug: string }
@@ -107,6 +108,7 @@ export default function PublishPage() {
     phase.kind !== 'hashing' &&
     phase.kind !== 'presigning' &&
     phase.kind !== 'uploading-zip' &&
+    phase.kind !== 'scanning' &&
     phase.kind !== 'uploading-image' &&
     phase.kind !== 'patching';
 
@@ -165,6 +167,9 @@ export default function PublishPage() {
         throw new Error(`object storage rejected the upload (${putRes.status}). ${text}`);
       }
 
+      setPhase({ kind: 'scanning' });
+      await api.mods.scanVersion(presigned.versionId);
+
       let imageUrl: string | null = null;
       if (image) {
         setPhase({ kind: 'uploading-image' });
@@ -210,6 +215,7 @@ export default function PublishPage() {
         else if (err.status === 409) message = 'A version with that number already exists.';
         else if (err.status === 413) message = 'Mod exceeds the 500 MB upload limit.';
         else if (err.status === 503) message = 'Object storage is not configured on the server.';
+        else if (err.status === 502) message = 'VirusTotal scan submission failed on the server.';
         else message = detail ?? `Server returned HTTP ${err.status}.`;
       } else if (err instanceof Error) {
         message = err.message;
@@ -503,6 +509,10 @@ export default function PublishPage() {
             ) : phase.kind === 'uploading-zip' ? (
               <>
                 <Spinner /> Uploading zip
+              </>
+            ) : phase.kind === 'scanning' ? (
+              <>
+                <Spinner /> Scanning zip
               </>
             ) : phase.kind === 'uploading-image' ? (
               <>
