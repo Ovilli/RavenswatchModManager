@@ -410,8 +410,17 @@ def dds_to_schema(dds_bytes: bytes) -> TextureSchema:
     mips: list[bytes] = []
     offset = 0
     w, h = img.width, img.height
+    # Block-compressed (BC*) mip chains stop at the 4x4 minimum block. Most DDS
+    # exporters (texconv, etc.) emit the full chain down to 1x1; the smaller
+    # levels are not valid oCTextureMip sub-objects and CRASH the engine at
+    # texture load. Drop any level below 4x4 for block formats so a normal DDS
+    # cooks to the same mip count the shipped textures use.
+    is_block = getattr(img.fmt, "block_size_bytes", 0) > 0
     for level in range(img.mip_count):
-        size = dds.linear_size(max(1, w >> level), max(1, h >> level), img.fmt)
+        lw, lh = max(1, w >> level), max(1, h >> level)
+        if is_block and level > 0 and (lw < 4 or lh < 4):
+            break
+        size = dds.linear_size(lw, lh, img.fmt)
         chunk = img.pixels[offset:offset + size]
         if len(chunk) != size:
             raise ValueError(
