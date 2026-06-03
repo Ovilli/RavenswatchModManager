@@ -64,6 +64,7 @@ def main(argv: list[str] | None = None) -> int:
         "new":               "rsmm.cli.cmd_new",
         "items":             "rsmm.cli.cmd_items",
         "enemies":           "rsmm.cli.cmd_enemies",
+        "talents":           "rsmm.cli.cmd_talents",
         "schema":            "rsmm.cli.cmd_schema",
         "install":           "rsmm.cli.cmd_install",
         "pack":              "rsmm.cli.cmd_pack",
