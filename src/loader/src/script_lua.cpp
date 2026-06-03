@@ -26,6 +26,7 @@ extern "C" {
 
 #include <windows.h>
 
+#include <cstdint>
 #include <cstring>
 #include <mutex>
 #include <type_traits>
@@ -456,6 +457,87 @@ int lua_read_cstr(lua_State* L) {
     return 1;
 }
 
+// Page-state guard so a bad pointer (the norm while chasing struct offsets)
+// returns nil/false instead of access-violating the game. Confirms the whole
+// [addr, addr+size) range is committed + readable (and writable for poke).
+static bool mem_accessible(std::uintptr_t addr, std::size_t size, bool need_write) {
+    if (addr == 0) return false;
+    const DWORD readable = PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
+                           PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE |
+                           PAGE_EXECUTE_WRITECOPY;
+    const DWORD writable = PAGE_READWRITE | PAGE_WRITECOPY |
+                           PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY;
+    for (std::uintptr_t a = addr; a < addr + size; ) {
+        MEMORY_BASIC_INFORMATION mbi{};
+        if (VirtualQuery(reinterpret_cast<void*>(a), &mbi, sizeof(mbi)) == 0) return false;
+        if (mbi.State != MEM_COMMIT) return false;
+        if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return false;
+        if (!(mbi.Protect & readable)) return false;
+        if (need_write && !(mbi.Protect & writable) &&
+            !(mbi.Protect & (PAGE_READONLY | PAGE_EXECUTE_READ))) {
+            // read-only page is fine for poke (we VirtualProtect it RW); only
+            // truly inaccessible protections fail above.
+        }
+        auto region_end = reinterpret_cast<std::uintptr_t>(mbi.BaseAddress) + mbi.RegionSize;
+        a = region_end;
+    }
+    return true;
+}
+
+// rsmm.peek(addr [, size=8]) -> integer | nil   (size in {1,2,4,8})
+// Guarded raw read; nil on an unreadable address. Use to walk struct offsets
+// and pointer chains (e.g. the netcode role field) — see docs/_re/MULTIPLAYER.md.
+int lua_peek(lua_State* L) {
+    auto addr = static_cast<std::uintptr_t>(luaL_checkinteger(L, 1));
+    auto size = static_cast<int>(luaL_optinteger(L, 2, 8));
+    if (size != 1 && size != 2 && size != 4 && size != 8)
+        return luaL_error(L, "rsmm.peek: size must be 1, 2, 4 or 8");
+    if (!mem_accessible(addr, static_cast<std::size_t>(size), false)) {
+        lua_pushnil(L);
+        return 1;
+    }
+    std::uint64_t v = 0;
+    switch (size) {
+        case 1: v = *reinterpret_cast<std::uint8_t*>(addr); break;
+        case 2: v = *reinterpret_cast<std::uint16_t*>(addr); break;
+        case 4: v = *reinterpret_cast<std::uint32_t*>(addr); break;
+        case 8: v = *reinterpret_cast<std::uint64_t*>(addr); break;
+    }
+    lua_pushinteger(L, static_cast<lua_Integer>(v));
+    return 1;
+}
+
+// rsmm.poke(addr, value [, size=8]) -> bool   (size in {1,2,4,8})
+// Guarded raw write (VirtualProtects the page RW around the store). Returns
+// false on an inaccessible address. DANGEROUS — only behind an explicit,
+// opt-in experiment mod.
+int lua_poke(lua_State* L) {
+    auto addr = static_cast<std::uintptr_t>(luaL_checkinteger(L, 1));
+    auto val = static_cast<std::uint64_t>(luaL_checkinteger(L, 2));
+    auto size = static_cast<int>(luaL_optinteger(L, 3, 8));
+    if (size != 1 && size != 2 && size != 4 && size != 8)
+        return luaL_error(L, "rsmm.poke: size must be 1, 2, 4 or 8");
+    if (!mem_accessible(addr, static_cast<std::size_t>(size), true)) {
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+    DWORD oldp = 0;
+    if (!VirtualProtect(reinterpret_cast<void*>(addr), size, PAGE_EXECUTE_READWRITE, &oldp)) {
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+    switch (size) {
+        case 1: *reinterpret_cast<std::uint8_t*>(addr) = static_cast<std::uint8_t>(val); break;
+        case 2: *reinterpret_cast<std::uint16_t*>(addr) = static_cast<std::uint16_t>(val); break;
+        case 4: *reinterpret_cast<std::uint32_t*>(addr) = static_cast<std::uint32_t>(val); break;
+        case 8: *reinterpret_cast<std::uint64_t*>(addr) = val; break;
+    }
+    DWORD tmp = 0;
+    VirtualProtect(reinterpret_cast<void*>(addr), size, oldp, &tmp);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
 void register_api(lua_State* L) {
     // Public, documented surface. This is what a mod author writes against.
     // High-level behaviors (R.item.register / R.scaling / R.talent / ...)
@@ -493,6 +575,8 @@ void register_api(lua_State* L) {
         { "read_f32",                lua_read_f32 },
         { "read_f64",                lua_read_f64 },
         { "read_cstr",               lua_read_cstr },
+        { "peek",                    lua_peek },
+        { "poke",                    lua_poke },
         { "register_item",           lua_register_item },
         { "write_u8",                lua_write_u8 },
         { "write_u16",               lua_write_u16 },

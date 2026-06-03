@@ -225,6 +225,13 @@ entity the host owns:
 Needs a loader call-gate to invoke those functions (the `rsmm.fn_call` surface
 already exists) + 2 live clients. This isolates the whole risk in one test.
 
+**Scaffolding shipped:** `rsmm.peek(addr[,size])` / `rsmm.poke(addr,val[,size])`
+(page-state-guarded raw memory access, `src/loader/src/script_lua.cpp`) + the
+`mods/NetcodeMigrationExperiment/` mod, which hooks `FUN_140720c10`, reads
+`role = *(netmgr+0xf8)`, and logs it host-vs-client (Phase 1, read-only), with a
+gated Phase 2 that flips the role. Inert until its flags are set. Run procedure
+in that mod's `README.md`. This is the runnable form of the MVP above.
+
 ### Remaining unknowns (lower priority, after the MVP)
 
 - **HostUnique** entities (host-only existence): re-master vs respawn on the new
