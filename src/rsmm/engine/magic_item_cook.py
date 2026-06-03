@@ -364,7 +364,7 @@ def build_magic_item(
     rarity: str = "Common",
     name: str | None = None,
     description: str | None = None,
-    value_patches: list[tuple[str, float, float]] | None = None,
+    value_patches: list[tuple] | None = None,
     icon: str | None = None,
     bank_base_gen: Path | None = None,
 ) -> dict[str, bytes]:
@@ -376,7 +376,11 @@ def build_magic_item(
     * the cloned entity at
       ``EntitySettings/Objects/Magical_Objects/<rarity>/<new_id>...gen`` with
       re-minted GUIDs (distinct identity), the id renamed, and any
-      ``value_patches`` applied (each ``(label, old, new)`` f32 edit);
+      ``value_patches`` applied. Each entry is ``(label, old, new)`` or
+      ``(label, old, new, clear_override)``; a *shadowed* value (one whose
+      inline float is overridden by a selector/reference) raises unless
+      ``clear_override`` is truthy, in which case the override is disabled first
+      so the inline edit takes effect (this unbinds the selector/curve);
     * when ``name`` is given and ``bank_base_gen`` points at the live text
       bank, the bank + every language sibling with ``<new_id>_Name`` /
       ``_Description`` appended.
@@ -385,7 +389,23 @@ def build_magic_item(
     when it differs from ``base_id``.
     """
     ent = ItemEdit(base_id=base_id, new_id=new_id, corpus=corpus).apply(base_cooked)
-    for label, old, new in (value_patches or []):
+    from .talent_values import clear_value_override, is_label_overridden
+    for vp in (value_patches or []):
+        label, old, new = vp[0], vp[1], vp[2]
+        clear = len(vp) > 3 and bool(vp[3])
+        if is_label_overridden(ent, label):
+            if not clear:
+                raise ValueError(
+                    f"{label!r} is shadowed: its value is sourced from a "
+                    f"selector/reference, so editing the inline value has NO "
+                    f"in-game effect. Add clear_override=true to this "
+                    f"value_patches entry to disable the override first (this "
+                    f"unbinds its selector/curve, e.g. card-count scaling "
+                    f"becomes a flat value).")
+            # Disable the override so the inline value becomes authoritative.
+            # clear only flips the 0e flag; the old value bytes are unchanged,
+            # so the set below still anchors on `old`.
+            ent = clear_value_override(ent, label)
         ent = set_value_after_label(ent, label, old, new)
     if icon is not None:
         ent = set_icon(ent, icon)

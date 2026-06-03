@@ -115,6 +115,65 @@ def _cmd_tribes(args) -> int:
     return 0
 
 
+#: Per-biome spawn pools — the `oCGameStream` EntityPooling assets list the
+#: entities eligible to spawn in each biome. An enemy can only appear in a
+#: biome whose pool contains its `entity_ref`.
+_OT_DIR = DATA_DIR / "uncooked" / "Ot"
+_POOL_GLOB = "*EntityPooling_Settings.level.ot.GameStream.gen"
+
+
+def _pool_files():
+    """Yield (biome, path) for every EntityPooling GameStream asset."""
+    if not _OT_DIR.is_dir():
+        return
+    for p in sorted(_OT_DIR.rglob(_POOL_GLOB)):
+        biome = p.name.split("_EntityPooling", 1)[0]
+        if biome.startswith("Map_"):
+            biome = biome[len("Map_"):]
+        yield biome, p
+
+
+def _pool_entities(path) -> list[str]:
+    """Enemy entity refs in a pooling asset (filters to Enemies\\... paths)."""
+    from rsmm.engine.cooked_schemas.asset_refs import _decode
+    doc = _decode(path.read_bytes(), "oCGameStream")
+    return [r for r in doc["asset_refs"] if r.lower().startswith("enemies\\")]
+
+
+def _cmd_pools(args) -> int:
+    rows = list(_pool_files())
+    if not rows:
+        print("(no EntityPooling assets found under data/uncooked/Ot)",
+              file=sys.stderr)
+        return 1
+    for biome, p in rows:
+        n = len(_pool_entities(p))
+        print(f"  {biome:<22} {n:>3} enemy entit(ies)   (rsmm enemies pool {biome})")
+    return 0
+
+
+def _cmd_pool(args) -> int:
+    target = args.biome.lower()
+    match = [(b, p) for b, p in _pool_files() if b.lower() == target]
+    if not match:
+        print(f"no biome pool {args.biome!r} (try: rsmm enemies pools)",
+              file=sys.stderr)
+        return 1
+    biome, p = match[0]
+    ents = _pool_entities(p)
+    print(f"# {biome} spawn pool ({len(ents)} enemy entities)")
+    print(f"  (asset: {p.relative_to(DATA_DIR)})")
+    for e in ents:
+        print(f"   {e}")
+    print("\nAn enemy spawns in this biome only if its entity_ref is listed "
+          "above.\nNOTE: adding a NEW entity to a pool is not yet a safe data "
+          "edit (the\nGameStream header carries ref counts with unconfirmed "
+          "semantics), and a\ntribe clone that reuses a pooled entity still "
+          "did not spawn in testing —\nso the spawn gate is not pooling alone. "
+          "Needs in-game investigation.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="rsmm enemies",
                                  description="Discover vanilla enemies.")
@@ -130,6 +189,10 @@ def main(argv: list[str] | None = None) -> int:
     pt = sub.add_parser("tribes", help="list tribe names usable as tribe=...")
     pt.add_argument("--grep", help="substring filter on tribe name")
 
+    sub.add_parser("pools", help="list biomes + their spawn-pool sizes")
+    pp = sub.add_parser("pool", help="show one biome's spawnable enemy entities")
+    pp.add_argument("biome")
+
     args = ap.parse_args(argv if argv is not None else sys.argv[1:])
     if args.cmd == "show":
         return _cmd_show(args)
@@ -137,6 +200,10 @@ def main(argv: list[str] | None = None) -> int:
         if not hasattr(args, "grep"):
             args.grep = None
         return _cmd_tribes(args)
+    if args.cmd == "pools":
+        return _cmd_pools(args)
+    if args.cmd == "pool":
+        return _cmd_pool(args)
     if args.cmd in (None, "list"):
         if not hasattr(args, "tribe"):
             args.tribe = args.grep = None

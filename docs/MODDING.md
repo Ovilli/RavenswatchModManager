@@ -144,6 +144,44 @@ Donor-swap only. PNG → cooked texture cooker needs the `oCTexture` container R
 ./rsmm apply
 ```
 
+### Magical-object & talent values (`value_patches`)
+
+Edit the numbers inside a magical object or a hero talent ("Skill"). Discover
+the editable labels + defaults first, then declare the edits in `manifest.toml`:
+
+```sh
+./rsmm items show Damage_Power      # item value fields (+ [shadowed] markers)
+./rsmm talents Juliet               # hero talent values (+ [shadowed/no-op])
+```
+
+```toml
+# Item: clone a vanilla magical object with patched values
+[[content]]
+kind = "item"
+id   = "MyStrongerPower"
+base = "Damage_Power"
+value_patches = [
+    ["Power Crit Chance Value", 0.4, 0.1],
+    # A shadowed value (see below) needs clear_override to take effect:
+    { label = "Damage Value", old = 0.2, new = 0.5, clear_override = true },
+]
+
+# Talent: patch a hero's cooked entity in place (plain override, no clone)
+[[content]]
+kind = "talent"
+hero = "Juliet"
+id   = "JulietBuff"
+value_patches = [["Primary Ability Rose Explosion Damage Value", 8.0, 24.0]]
+```
+
+**Shadowed values.** Some value nodes don't use their inline number — the game
+reads the value from a selector/curve (e.g. card-count scaling), so editing the
+inline float is a silent no-op. `rsmm items show` / `rsmm talents` tag these
+`[shadowed]`, and `apply` **errors** if you patch one without
+`clear_override = true`. Clearing the override makes the inline number
+authoritative but unbinds the selector — e.g. per-card-stack scaling becomes a
+flat value. That trade-off is intentional; pick the flat number you want.
+
 ### Translation strings
 
 ```sh

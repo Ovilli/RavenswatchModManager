@@ -17,7 +17,7 @@ from pathlib import Path
 
 from .api import sdk_export
 
-KINDS = ("item", "enemy", "boss", "map", "hero")
+KINDS = ("item", "enemy", "boss", "map", "hero", "talent")
 
 
 class ContentError(ValueError):
@@ -122,6 +122,7 @@ _KIND_MODULES = {
     "boss": "bosses",
     "map": "maps",
     "hero": "heros",
+    "talent": "talents",
 }
 
 def _load_kind(kind: str):

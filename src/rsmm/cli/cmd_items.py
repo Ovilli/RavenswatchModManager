@@ -84,15 +84,46 @@ def _cmd_show(args) -> int:
     print(f"  id        : {iid}")
     print(f"  rarity    : {rarity}")
     print(f"  icon      : {cook.find_icon(data)}")
+    # Labels whose inline value is shadowed by a selector/reference — patching
+    # them via value_patches is a silent no-op. Cross-referenced from the
+    # before-END scanner so the primary listing carries the warning too.
+    from rsmm.engine.talent_values import list_talent_values
+    shadowed = {tv.label for tv in list_talent_values(data) if tv.is_overridden}
     fields = cook.list_value_fields(data)
     if fields:
         print("  value_patches targets (label -> default):")
         for label, val in fields:
-            print(f"      {val:>12g}  {label!r}")
-        lbl, dflt = fields[0]
+            mark = "  [shadowed: editing has NO effect]" if label in shadowed else ""
+            print(f"      {val:>12g}  {label!r}{mark}")
+        live = [(lab, d) for lab, d in fields if lab not in shadowed]
+        lbl, dflt = (live or fields)[0]
         print(f'\n  e.g.  value_patches = [["{lbl}", {dflt:g}, <new>]]')
     else:
-        print("  (no editable value fields discovered)")
+        msg = "  (no value_patches fields via the standard scanner"
+        print(msg + (")" if args.raw else "; try --raw)"))
+    if args.raw:
+        # Broader before-END scan (also picks up int32 counts + stat nodes the
+        # after-label value_patches scanner misses). Useful for items that show
+        # nothing above.
+        from rsmm.engine.talent_values import list_talent_values
+        seen = {lbl for lbl, _ in fields}
+        extra = [tv for tv in list_talent_values(data) if tv.label not in seen]
+        print("\n  --raw (before-END scan; int nodes tagged):")
+        if not extra:
+            print("      (nothing additional)")
+        any_shadowed = False
+        for tv in extra:
+            shown = int(tv.value) if tv.is_int else f"{tv.value:g}"
+            tag = " [int]" if tv.is_int else ""
+            if tv.is_overridden:
+                tag += " [shadowed]"
+                any_shadowed = True
+            print(f"      {shown:>12}  {tv.label!r}{tag}")
+        if any_shadowed:
+            print("\n  [shadowed] = value sourced from a selector/reference; "
+                  "editing the inline\n  number has NO in-game effect. Use "
+                  "talent_values.clear_value_override()\n  to make it "
+                  "authoritative (drops its selector/curve binding).")
     return 0
 
 
@@ -119,6 +150,9 @@ def main(argv: list[str] | None = None) -> int:
 
     ps = sub.add_parser("show", help="show one item's icon + value fields")
     ps.add_argument("id")
+    ps.add_argument("--raw", action="store_true",
+                    help="also dump a broad before-END value scan (catches "
+                         "int counts + items the standard scanner misses)")
 
     pi = sub.add_parser("icons", help="list usable icon stems")
     pi.add_argument("--grep", help="substring filter on stem")

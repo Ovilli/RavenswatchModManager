@@ -109,19 +109,29 @@ def _coerce_icon(raw) -> str | None:
     return f"Objects\\UI_Object_{s}.png"
 
 
-def _coerce_value_patches(raw) -> list[tuple[str, float, float]]:
-    """Normalise the optional ``value_patches`` field into (label, old, new)."""
-    out: list[tuple[str, float, float]] = []
+def _coerce_value_patches(raw) -> list[tuple[str, float, float, bool]]:
+    """Normalise ``value_patches`` into ``(label, old, new, clear_override)``.
+
+    Entry forms: a ``[label, old, new]`` list/tuple (optionally a 4th truthy
+    element to clear the override), or a dict with ``label``/``old``/``new`` and
+    optional ``clear_override`` (alias ``clear``). ``clear_override`` disables a
+    *shadowed* node's selector binding so the inline edit actually applies — see
+    :func:`rsmm.engine.magic_item_cook.build_magic_item`.
+    """
+    out: list[tuple[str, float, float, bool]] = []
     for vp in (raw or []):
+        clear = False
         if isinstance(vp, dict):
             label, old, new = vp.get("label"), vp.get("old"), vp.get("new")
+            clear = bool(vp.get("clear_override", vp.get("clear", False)))
         else:
-            label, old, new = vp
+            label, old, new = vp[0], vp[1], vp[2]
+            clear = len(vp) > 3 and bool(vp[3])
         if not label or old is None or new is None:
             raise ContentError(
                 f"value_patches entry needs label/old/new, got {vp!r}"
             )
-        out.append((str(label), float(old), float(new)))
+        out.append((str(label), float(old), float(new), clear))
     return out
 
 
@@ -176,25 +186,29 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             mod_id, defn.id,
         )
 
-    files = cook.build_magic_item(
-        new_id=defn.id,
-        base_id=base,
-        base_cooked=base_cooked,
-        # NO GUID remint (corpus=[]): reminting mints fresh GUIDs the engine
-        # cannot resolve at instantiation, so the entity silently fails to
-        # spawn and never enters the magical-object pool. Verified in-game
-        # (remint-only clone -> pool stays 104; rename-only -> 105 + visible).
-        # The base's registered node GUIDs are kept; distinct identity comes
-        # from the id/path rename, which is enough (the engine does not dedupe
-        # the clone out). See memory item-clone-pipeline-verified.
-        corpus=[],
-        rarity=rarity,
-        name=name,
-        description=description,
-        value_patches=value_patches,
-        icon=icon,
-        bank_base_gen=bank_gen,
-    )
+    try:
+        files = cook.build_magic_item(
+            new_id=defn.id,
+            base_id=base,
+            base_cooked=base_cooked,
+            # NO GUID remint (corpus=[]): reminting mints fresh GUIDs the engine
+            # cannot resolve at instantiation, so the entity silently fails to
+            # spawn and never enters the magical-object pool. Verified in-game
+            # (remint-only clone -> pool stays 104; rename-only -> 105 + visible).
+            # The base's registered node GUIDs are kept; distinct identity comes
+            # from the id/path rename, which is enough (the engine does not dedupe
+            # the clone out). See memory item-clone-pipeline-verified.
+            corpus=[],
+            rarity=rarity,
+            name=name,
+            description=description,
+            value_patches=value_patches,
+            icon=icon,
+            bank_base_gen=bank_gen,
+        )
+    except ValueError as e:
+        # e.g. a shadowed value_patches target — surface with item context.
+        raise ContentError(f"item {mod_id}/{defn.id}: {e}") from e
     files.update(extra_files)  # cooked custom texture, if any
 
     written: list[Path] = []

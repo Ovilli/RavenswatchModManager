@@ -74,15 +74,23 @@ def _cmd_hero(args) -> int:
         print(f"\n# {decoded}")
         print(f"  (decoded asset: EntitySettings\\Heroes\\{d.name}\\{p.name})")
         for v in rows:
-            tag = "  [spawner/runtime, no-op]" if v.is_spawner else ""
-            print(f"   {v.value:>12}  {v.label}{tag}")
+            if v.is_spawner:
+                tag = "  [spawner/runtime, no-op]"
+            elif v.is_int:
+                tag = "  [int]"
+            else:
+                tag = ""
+            if v.is_overridden:
+                tag += "  [shadowed/no-op]"
+            shown = int(v.value) if v.is_int else v.value
+            print(f"   {shown:>12}  {v.label}{tag}")
     if not any_rows:
         print(f"(no talent values matched for {args.hero})")
         return 0
     print(
         "\nedit: ship a copy of the entity .gen above as a mod asset override,\n"
         "patched via talent_values.set_talent_value(cooked, label, new, expect=old)\n"
-        "(f32->f32, length-preserving; no re-cook)."
+        "(int32 or f32 per node kind, length-preserving; no re-cook)."
     )
     return 0
 
