@@ -181,19 +181,61 @@ wall. Sketch:
    and force the replication tick to re-evaluate authority.
 5. Resume — mesh is already connected, no reconnect needed.
 
-### Make-or-break unknowns (next RE, before any build)
+### Unknowns #1 and #2 — RESOLVED (encouraging)
 
-- **Runtime mastership**: does the replication tick re-read `m_eMastership`
-  each frame, or only at spawn? If spawn-only, every host entity needs
-  replication re-armed (or respawn). RE the replication authority check.
-- **Packet-origin validation**: do peers accept replication from a *new* master,
-  or are RakNet game messages stamped/validated against the original host GUID?
-  If validated, peers reject the new master until that check is satisfied.
-- **HostUnique** entities (host-only existence): re-master vs respawn.
+Per-entity replication setup = `FUN_140720c10` (logs the "not master" warning).
+Authority is decided **once at replication-registration**, not per-frame:
+
+```
+role    = *(netmgr+0xf8)            // 1 = client/non-master
+amOwner = entity->vtbl[0xd8]()      // local ownership check
+if (!amOwner && role != 1) { ...replica path (mastership_query==0 -> "not master") }
+else if (role != 2)        { FUN_140723a20(param_1);  // MASTER path: replicate-out }
+```
+
+- **#1 (runtime vs spawn mastership): spawn/registration-time.** A replica does
+  not become master just by flipping `m_eMastership` mid-run. Migration must
+  **re-register each entity's replication context** on the new host — flip the
+  role field `netmgr+0xf8` to the master value and re-run the setup
+  (`FUN_140720c10` / `FUN_140723a20`) per entity. Heavy but mechanical; the
+  functions exist and are callable.
+- **#2 (packet-origin validation): not a hard wall.** The transport is SLikeNet
+  **ReplicaManager3** (`oCSLNetReplicationManagerSceneContext`), which is
+  topology-agnostic: it deserializes a replica by id from whatever connection
+  sends it; authority is the per-replica *master flag*, not a host-GUID lock. So
+  once a peer legitimately becomes master (role flip + re-register), other peers'
+  ReplicaManager3 will accept its updates. The gate is the game role field (#1).
+
+Net: the core build problem is **re-registering replication as the new master**
+(role flip + per-entity re-setup) under a host election, not a transport wall.
+
+### Minimum-viable experiment (cheapest proof, before the full build)
+
+Two clients. Force a role flip on the *client* and see if it can master an
+entity the host owns:
+
+1. Resolve `netmgr` (the object whose `+0xf8` is the role) and confirm host
+   value vs client value (1) by reading it on each side mid-match.
+2. On the client, after spawn, set `netmgr+0xf8` to the master value and
+   re-invoke `FUN_140720c10`/`FUN_140723a20` for ONE simple replicated entity.
+3. Observe on the host whether that entity now accepts the client's serialized
+   state (ReplicaManager3 deserialize). Pass → migration is buildable; the rest
+   is host election + doing this for all entities + teardown suppression.
+
+Needs a loader call-gate to invoke those functions (the `rsmm.fn_call` surface
+already exists) + 2 live clients. This isolates the whole risk in one test.
+
+### Remaining unknowns (lower priority, after the MVP)
+
+- **HostUnique** entities (host-only existence): re-master vs respawn on the new
+  host.
 - **Backend enforcement**: does eos/stormancer tear the session down when the
   *registered* host's signaling drops (`Session_Host_Abandon` pushed from the
-  backend), regardless of client-side state? If yes, step 1 must also absorb/
-  suppress that backend event.
+  backend), regardless of client-side state? If yes, the teardown-suppression
+  step must also absorb that backend event.
+- **Role field source**: confirm what normally writes `netmgr+0xf8` (tie it to
+  the session-host state in `FUN_14085b9d0`) so the flip is set the same way the
+  game would.
 
 Verdict: feasible to attempt, but needs the four unknowns resolved in Ghidra and
 a **3+ live-client test harness** (cannot be validated from this repo). It is a
