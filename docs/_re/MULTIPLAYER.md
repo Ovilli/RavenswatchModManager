@@ -128,26 +128,76 @@ instead of being kicked at 60 s. That is genuine rejoin-after-drop.
 **What it does NOT fix (still open):**
 
 - **Host leaving** → `Session_Host_Abandon` /
-  `Session_Disconnected_From_Host_Go_To_Lobby`. **Not fixable client-side**, and
-  this is the wall, not a tunable. The game is **host-authoritative P2P**:
-  - Clients receive the P2P session *from the host* (`StateWaitingP2PSessionFromHost`,
-    `Can't find host info`, `Waiting P2P Session From Host`, `Is Session Host`).
-  - Entity spawning/replication is **host-mastered**: `Peer spawned {} (owned by
-    {}) but is not master. Please set mastership to Host or HostUnique` and
-    `Host spawns the entity and replicates it to every other peer`.
-
-  There is no host-migration path. A promoted client would have to re-own every
-  host-mastered entity and re-seed the P2P session as the new authority — the
-  Stormancer scene + replication model does not allow a client to reassign that
-  mid-run. So the common "whole match closes" (host quit) cannot be patched
-  away from the client; it would need a game/server change (host migration or a
-  dedicated-session mode).
+  `Session_Disconnected_From_Host_Go_To_Lobby`. No *built-in* migration, and the
+  window doesn't apply. The game is host-mastered: clients receive the session
+  *from the host* (`StateWaitingP2PSessionFromHost`, `Can't find host info`,
+  `Is Session Host`) and entity authority is host-owned (`Peer spawned … not
+  master … Host or HostUnique`, `Host … replicates it to every other peer`).
+  This is the common "whole match closes" complaint. **Whether it can be fixed
+  client-side is re-assessed below** — short answer: hard but plausible, because
+  the transport is a P2P *mesh* (connectivity survives) and authority is
+  client-enforced, not server-validated.
 - **Full quit → relaunch → rejoin.** A clean quit tears down the client's
   session token, so a relaunched process has nothing to reconnect to. Extending
   the window can't help; this needs a re-join-by-invite/late-join path that the
   game may not expose.
 - The party layer (`PartyService`, member list at `party+0x158`,
   `FUN_1408ddae0` removes a member) is separate from the GameSession peer array.
+
+## Host migration: hard but PLAUSIBLE (topology re-assessment)
+
+Chasing the `HostAddress`/`HostPort` thread changed the earlier "impossible"
+verdict. Findings:
+
+- Transport is **RakNet** (full stack: `RakPeer`, `NatTypeDetectionClient`,
+  `RakNet Startup: Port opened`). `HostAddress`/`HostPort` (default 60000) and
+  `ReplicationInterval`/`TimeOut` are real `oe::UIntGameOption`s registered in
+  `FUN_140414e80`.
+- `-p2papi=` (parsed in `FUN_1401d16c0`) selects the signaling provider:
+  `"stormancer"` or `"eos"` (string at `0x140f10528`), setting `DAT_1414371b8`.
+  Both are matchmaking/NAT signaling over the *same* RakNet transport — there is
+  **no** LAN/direct-IP provider that bypasses the backend.
+- **Topology is a full P2P MESH, not a host-star relay**:
+  `StateEstablishingP2PConnections`, `All P2P connections established`,
+  `Sending ID_ALL_P2P_CONNECTIONS_ESTABLISHED to [peers]`, per-peer
+  `Connecting to peer - GUID`. Every peer connects to every other peer.
+
+Consequence: when the host leaves, **the remaining peers stay connected to each
+other** — connectivity survives; only *authority* is lost. The backend is
+matchmaking/signaling, not an authoritative server, and gameplay authority is
+enforced **client-side** via `m_eMastership` (`oSCpntNetworkMastership::EType`,
+Host/HostUnique) plus the session-host state machine (`FUN_14085b9d0`,
+`Is Session Host`). `network.session.host` is telemetry, not the gate.
+
+So host migration is a **hard, multi-week loader project**, not an architectural
+wall. Sketch:
+
+1. Hook host-abandon → suppress `..._Go_To_Lobby`, pause (reuse ReconnectPause).
+2. Elect new host locally on every peer (deterministic, e.g. lowest peer GUID) —
+   no negotiation; the mesh already agrees on the peer set.
+3. On the elected peer: drive the session-host state (`FUN_14085b9d0` state →
+   host) and begin mastering.
+4. Flip `m_eMastership` of Host/HostUnique entities to the new host on all peers
+   and force the replication tick to re-evaluate authority.
+5. Resume — mesh is already connected, no reconnect needed.
+
+### Make-or-break unknowns (next RE, before any build)
+
+- **Runtime mastership**: does the replication tick re-read `m_eMastership`
+  each frame, or only at spawn? If spawn-only, every host entity needs
+  replication re-armed (or respawn). RE the replication authority check.
+- **Packet-origin validation**: do peers accept replication from a *new* master,
+  or are RakNet game messages stamped/validated against the original host GUID?
+  If validated, peers reject the new master until that check is satisfied.
+- **HostUnique** entities (host-only existence): re-master vs respawn.
+- **Backend enforcement**: does eos/stormancer tear the session down when the
+  *registered* host's signaling drops (`Session_Host_Abandon` pushed from the
+  backend), regardless of client-side state? If yes, step 1 must also absorb/
+  suppress that backend event.
+
+Verdict: feasible to attempt, but needs the four unknowns resolved in Ghidra and
+a **3+ live-client test harness** (cannot be validated from this repo). It is a
+real project, not a quick patch.
 
 ## Next steps
 
