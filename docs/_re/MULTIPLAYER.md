@@ -107,6 +107,37 @@ to lobby. The reconnect state machine above only saves **non-host** peers.
 | `DAT_141439140` | `0x141439140` | player count |
 | peer `+0xCC` | — | connection-state enum (3 = connected) |
 
+## Shipped: reconnect-window extension (loader)
+
+`src/loader/src/hook_netcode.cpp` (`install_netcode_patches`, wired in
+`dllmain.cpp`) rebases `0x1412e5ed3` onto the live module and overwrites the
+max-reconnection window. **Verify-then-patch**: it checks all four defaults
+(`15/60/4/5`) are present first, so a game update that relocates `.data` is
+detected and skipped rather than corrupting a random byte.
+
+Arm it (opt-in, like the other engine hooks):
+
+- env `RSMM_RECONNECT_SECONDS=1..255` (the new window), or
+- touch `mods/.rsmm_extend_reconnect` (uses default 250 s).
+
+**What this fixes:** a **non-host** peer that drops (crash / network blip) now
+has up to ~4 min — match paused — for its client to auto-reconnect
+(Stormancer/EOS already retry: `"Next reconnection attempt in {} seconds"`),
+instead of being kicked at 60 s. That is genuine rejoin-after-drop.
+
+**What it does NOT fix (still open):**
+
+- **Host leaving** → `Session_Disconnected_From_Host_Go_To_Lobby`. No host
+  migration; the window doesn't apply. The whole-match-close players report is
+  most often this. Needs the host-leave caller traced + a migration verdict
+  (likely backend-enforced, may be infeasible client-side).
+- **Full quit → relaunch → rejoin.** A clean quit tears down the client's
+  session token, so a relaunched process has nothing to reconnect to. Extending
+  the window can't help; this needs a re-join-by-invite/late-join path that the
+  game may not expose.
+- The party layer (`PartyService`, member list at `party+0x158`,
+  `FUN_1408ddae0` removes a member) is separate from the GameSession peer array.
+
 ## Next steps
 
 - Read the default byte values at `0x1412e5ed2..5` (current window length).

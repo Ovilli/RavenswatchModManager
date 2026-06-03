@@ -46,6 +46,7 @@ set(LOADER_SRC
     src/hook_skins.cpp
     src/hook_items.cpp
     src/hook_events.cpp
+    src/hook_netcode.cpp
     src/hook_lua.cpp
     src/script_lua.cpp
     src/fn_resolver.cpp

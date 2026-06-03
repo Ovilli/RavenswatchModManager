@@ -23,6 +23,7 @@
 #include "hook_skins.h"
 #include "hook_items.h"
 #include "hook_events.h"
+#include "hook_netcode.h"
 #include "script_lua.h"
 
 namespace fs = std::filesystem;
@@ -73,6 +74,7 @@ static void loader_thread_cxx() {
         rsmm::install_skin_hooks();
         rsmm::install_item_hooks();
         rsmm::install_event_hooks();
+        rsmm::install_netcode_patches();
 
         rsmm::script_emit_event("ready");
         L.log("loader thread complete");
