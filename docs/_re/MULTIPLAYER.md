@@ -127,10 +127,21 @@ instead of being kicked at 60 s. That is genuine rejoin-after-drop.
 
 **What it does NOT fix (still open):**
 
-- **Host leaving** → `Session_Disconnected_From_Host_Go_To_Lobby`. No host
-  migration; the window doesn't apply. The whole-match-close players report is
-  most often this. Needs the host-leave caller traced + a migration verdict
-  (likely backend-enforced, may be infeasible client-side).
+- **Host leaving** → `Session_Host_Abandon` /
+  `Session_Disconnected_From_Host_Go_To_Lobby`. **Not fixable client-side**, and
+  this is the wall, not a tunable. The game is **host-authoritative P2P**:
+  - Clients receive the P2P session *from the host* (`StateWaitingP2PSessionFromHost`,
+    `Can't find host info`, `Waiting P2P Session From Host`, `Is Session Host`).
+  - Entity spawning/replication is **host-mastered**: `Peer spawned {} (owned by
+    {}) but is not master. Please set mastership to Host or HostUnique` and
+    `Host spawns the entity and replicates it to every other peer`.
+
+  There is no host-migration path. A promoted client would have to re-own every
+  host-mastered entity and re-seed the P2P session as the new authority — the
+  Stormancer scene + replication model does not allow a client to reassign that
+  mid-run. So the common "whole match closes" (host quit) cannot be patched
+  away from the client; it would need a game/server change (host migration or a
+  dedicated-session mode).
 - **Full quit → relaunch → rejoin.** A clean quit tears down the client's
   session token, so a relaunched process has nothing to reconnect to. Extending
   the window can't help; this needs a re-join-by-invite/late-join path that the
