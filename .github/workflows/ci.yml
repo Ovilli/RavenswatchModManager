@@ -39,6 +39,12 @@ jobs:
       - name: pytest
         run: python -m pytest -q -n auto
 
+      - name: docs-gen up to date
+        if: runner.os == 'Linux'  # docs are platform-independent; check once
+        env:
+          PYTHONPATH: src
+        run: python -m rsmm.cli.docs_gen_cmd --check
+
   ts:
     name: typescript (biome + tsc + vitest)
     runs-on: ubuntu-latest
