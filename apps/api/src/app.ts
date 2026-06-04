@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { auth } from './auth.js';
 import { env, githubConfigured, googleConfigured, isProduction } from './env.js';
+import { log, requestId } from './logger.js';
 import { createRateLimiter } from './rate-limit.js';
 import { collectionsRouter } from './routes/collections.js';
 import { meRouter } from './routes/me.js';
@@ -13,6 +14,7 @@ import type { AppEnv } from './types.js';
 
 export const app = new Hono<AppEnv>();
 
+app.use('*', requestId);
 app.use('*', logger());
 app.use(
   '*',
@@ -33,7 +35,7 @@ app.use('*', async (c, next) => {
 });
 
 app.onError((err, c) => {
-  console.error('Unhandled error:', err);
+  (c.get('log') ?? log).error('unhandled error', { err: String(err), stack: err.stack });
   return c.json({ error: 'internal server error' }, 500);
 });
 
