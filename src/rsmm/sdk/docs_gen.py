@@ -17,12 +17,16 @@ from .api import registry
 
 def _import_sdk_modules() -> None:
     """Side-effect import every `rsmm.sdk.*` so decorators fire."""
+    import logging
+
     import rsmm.sdk as pkg
     for _, name, _ in pkgutil.walk_packages(pkg.__path__, prefix="rsmm.sdk."):
         try:
             importlib.import_module(name)
-        except Exception:
-            pass
+        except Exception as e:  # noqa: BLE001 — one bad module shouldn't abort the build
+            logging.getLogger(__name__).warning(
+                "docs-gen: skipped %s (import failed: %s)", name, e
+            )
 
 
 def generate_cli(out_dir: Path) -> Path:

@@ -265,7 +265,8 @@ def _collect_clones() -> list[dict]:
             continue
         try:
             t = _toml_load(mf)
-        except Exception:
+        except Exception as e:
+            logger.debug("skipping %s: manifest unreadable (%s)", mf, e)
             continue
         if not t.get("mod", {}).get("enabled", True):
             continue

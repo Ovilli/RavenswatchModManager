@@ -15,7 +15,10 @@ from pathlib import Path
 
 from rsmm.cli.apply_mods import find_game_dir
 from rsmm.engine.paths import COOKING_SUBDIR
+from rsmm.logging import get_logger
 from rsmm.sdk.health import Health
+
+logger = get_logger(__name__)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -112,7 +115,8 @@ def _bisect_step(h: Health) -> int:
                 if mid in quarantined:
                     continue
                 candidates.append(mid)
-            except Exception:
+            except Exception as e:
+                logger.debug("skipping %s during bisect: %s", mf, e)
                 continue
     if not candidates:
         print("nothing to bisect — no enabled, non-quarantined mods left")
