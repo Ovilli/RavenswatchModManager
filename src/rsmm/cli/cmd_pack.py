@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import hashlib
 import re
 import shutil
 import sys
 from pathlib import Path
 
 from rsmm.engine.asset_map import decoded_to_encoded
+from rsmm.engine.hashing import sha256_file as sha256
 from rsmm.engine.paths import COOKING_SUBDIR, DATA_DIR, DEFAULT_GAME_DIR, DIST_DIR, MODS_DIR
 
 _ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
@@ -27,13 +27,6 @@ def _vanilla_offenders(mod_dir: Path) -> list[tuple[str, str]]:
     """Return [(relpath, reason)] for mod files that are byte-identical to
     the original game asset they sit at.
     """
-    def sha256(p: Path) -> str:
-        h = hashlib.sha256()
-        with open(p, "rb") as f:
-            for chunk in iter(lambda: f.read(1 << 20), b""):
-                h.update(chunk)
-        return h.hexdigest()
-
     cooking = DEFAULT_GAME_DIR / COOKING_SUBDIR
     uncooked = DATA_DIR / "uncooked"
     enc_map = decoded_to_encoded() if cooking.exists() else {}

@@ -39,6 +39,7 @@ def _gather() -> list[Path]:
 _FILES = _gather()
 
 
+@pytest.mark.slow  # up to 450 real cooked files; local-only (needs game install)
 @pytest.mark.skipif(not _FILES, reason="Ravenswatch _Cooking dir not present")
 @pytest.mark.parametrize("path", _FILES, ids=lambda p: p.name)
 def test_roundtrip_byte_stable(path: Path) -> None:

@@ -2,6 +2,7 @@ import { getDb, schema } from '@rsmm/db';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { env, githubConfigured, googleConfigured, isProduction, smtpConfigured } from './env.js';
+import { log } from './logger.js';
 import {
   changeEmailTemplate,
   resetPasswordTemplate,
@@ -51,7 +52,7 @@ export const auth = betterAuth({
       try {
         await sendMail({ to: user.email, subject: t.subject, text: t.text, html: t.html });
       } catch (err) {
-        console.error('Failed to send password-reset email:', err);
+        log.error('failed to send password-reset email', { err: String(err) });
       }
     },
   },
@@ -63,7 +64,7 @@ export const auth = betterAuth({
       try {
         await sendMail({ to: user.email, subject: t.subject, text: t.text, html: t.html });
       } catch (err) {
-        console.error('Failed to send verification email:', err);
+        log.error('failed to send verification email', { err: String(err) });
       }
     },
   },
@@ -97,7 +98,7 @@ export const auth = betterAuth({
         try {
           await sendMail({ to: user.email, subject: t.subject, text: t.text, html: t.html });
         } catch (err) {
-          console.error('Failed to send change-email verification:', err);
+          log.error('failed to send change-email verification', { err: String(err) });
         }
       },
     },

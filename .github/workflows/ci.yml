@@ -31,13 +31,19 @@ jobs:
           cache: pip
 
       - name: Install dev deps
-        run: python -m pip install --upgrade pip pytest ruff
+        run: python -m pip install --upgrade pip pytest pytest-xdist ruff
 
       - name: ruff
         run: ruff check src/ tests/
 
       - name: pytest
-        run: python -m pytest -q
+        run: python -m pytest -q -n auto
+
+      - name: docs-gen up to date
+        if: runner.os == 'Linux'  # docs are platform-independent; check once
+        env:
+          PYTHONPATH: src
+        run: python -m rsmm.cli.docs_gen_cmd --check
 
   ts:
     name: typescript (biome + tsc + vitest)

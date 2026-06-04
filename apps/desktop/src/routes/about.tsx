@@ -71,7 +71,7 @@ function AboutPage() {
                 Discord
               </a>
               <a
-                href="https://github.com/Ovilli/RavenswatchModManager/blob/main/docs/GETTING_STARTED.md"
+                href="https://github.com/Ovilli/RavenswatchModManager/blob/main/docs/INSTALLATION.md"
                 target="_blank"
                 rel="noreferrer noopener"
                 className={`${buttonClass} btn-grim-primary`}

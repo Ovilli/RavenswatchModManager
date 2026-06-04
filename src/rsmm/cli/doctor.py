@@ -16,7 +16,6 @@ Exit code: 0 if every check passed, 1 if any FAIL, 2 if argv invalid.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import sys
 from dataclasses import dataclass
@@ -25,6 +24,7 @@ from pathlib import Path
 from rsmm.cli.apply_mods import _LANG_SUFFIXES, is_skippable_asset
 from rsmm.cli.merge import _ranked, _toml_load, collect_patches
 from rsmm.engine.asset_map import decoded_to_encoded
+from rsmm.engine.hashing import sha256_file
 from rsmm.engine.paths import (
     ASSET_MAP_JSON,
     COOKING_SUBDIR,
@@ -240,11 +240,7 @@ def check_exe_hash(game_dir: Path) -> list[Result]:
     patterns_mtime = patterns.stat().st_mtime
     exe_mtime = exe.stat().st_mtime
 
-    h = hashlib.sha256()
-    with exe.open("rb") as f:
-        for chunk in iter(lambda: f.read(1 << 16), b""):
-            h.update(chunk)
-    exe_hash = h.hexdigest()[:12]
+    exe_hash = sha256_file(exe)[:12]
     exe_size = exe.stat().st_size
     result = [Result("OK", f"game exe: {exe.name} ({exe_size:,} bytes, hash={exe_hash})")]
 

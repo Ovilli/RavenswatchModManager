@@ -46,6 +46,7 @@ def test_assetrefs_handlers_registered() -> None:
         assert isinstance(h, AssetRefsHandler)
 
 
+@pytest.mark.slow  # rglob over full corpus per class; local-only (needs game)
 @pytest.mark.parametrize("cls", sorted(_TOKENS))
 def test_assetrefs_roundtrip(cls: str) -> None:
     root = _find_cooking_root()

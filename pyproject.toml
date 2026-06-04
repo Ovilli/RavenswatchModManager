@@ -26,7 +26,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "ruff>=0.4"]
+dev = ["pytest>=7", "pytest-xdist>=3", "ruff>=0.4"]
 
 [project.urls]
 Homepage = "https://github.com/Ovilli/RavenswatchModManager"
@@ -38,6 +38,9 @@ rsmm = "rsmm.cli._dispatch:main"
 testpaths = ["tests"]
 addopts = "-q --tb=short"
 filterwarnings = ["ignore::DeprecationWarning"]
+markers = [
+    "slow: heavy binary roundtrip/codec tests; deselect with -m 'not slow'",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
