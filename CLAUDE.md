@@ -71,6 +71,7 @@ The desktop app does **not** reimplement the CLI — it bundles the Python CLI a
 | Full architecture + threat model | `docs/ARCHITECTURE.md` |
 | Asset cipher + cooked-format internals | `docs/INTERNALS.md` |
 | Dev environment setup | `docs/SETUP.md` |
-| CLI reference | `docs/CLI_USAGE.md` |
-| Authoring mods | `docs/MOD_AUTHORING.md`, `docs/MODDING.md` |
+| CLI reference (prose) | `docs/CLI_USAGE.md` |
+| CLI command inventory (generated) | `docs/api/cli.md` — run `rsmm docs-gen` to refresh; CI `--check`s it |
+| Authoring mods | `docs/MODDING.md` |
 | Tauri updater specifics | `apps/desktop/UPDATER.md` |

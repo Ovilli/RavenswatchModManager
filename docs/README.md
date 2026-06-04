@@ -2,6 +2,11 @@
 
 RSMM runs on **Windows, macOS, and Linux**. Pick your path.
 
+> **Source of truth:** these `docs/*.md` files are the canonical, in-depth
+> docs. [rsmm.dev](https://rsmm.dev) is a lighter, polished mirror of the
+> user-facing pages (sourced from `apps/docs/`). `docs/api/` is **generated**
+> by `rsmm docs-gen` — never hand-edit it (CI fails if it drifts).
+
 ---
 
 ## 🎮 I just want to mod the game
@@ -36,5 +41,5 @@ RSMM runs on **Windows, macOS, and Linux**. Pick your path.
 |---|---|
 | [Roadmap](ROADMAP.md) | What's built, what's next |
 | [SDK v3 Spec](SDK_V3.md) | Design for the next-gen modding SDK |
-| [API Docs](api/README.md) | REST API for the registry |
+| [SDK + CLI API reference](api/README.md) | **Generated** — every `@sdk_export` + every `rsmm` subcommand ([cli.md](api/cli.md)) |
 | [Engine Internals](INTERNALS.md) | Reverse-engineering notes (advanced) |

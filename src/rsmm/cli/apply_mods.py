@@ -49,6 +49,7 @@ import tomllib  # Python 3.11+
 from pathlib import Path
 
 from rsmm.engine import cipher, cook_cache, cooked_schemas
+from rsmm.engine.hashing import sha256_file as sha256
 from rsmm.engine.paths import (
     ASSET_MAP_JSON,
     MODS_DIR,
@@ -82,14 +83,6 @@ def find_game_dir() -> Path | None:
         if (c / COOKING_REL).is_dir():
             return c
     return None
-
-
-def sha256(p: Path) -> str:
-    h = hashlib.sha256()
-    with p.open("rb") as f:
-        for chunk in iter(lambda: f.read(1 << 16), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 class State:

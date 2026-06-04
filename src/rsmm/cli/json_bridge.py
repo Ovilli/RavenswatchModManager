@@ -51,7 +51,10 @@ from typing import Any
 from rsmm.cli.apply_mods import clear_runtime_mods, find_game_dir
 from rsmm.cli.merge import _ranked, collect_patches
 from rsmm.engine.paths import DIST_DIR, MODS_DIR, REPO_ROOT, self_cmd
+from rsmm.logging import get_logger
 from rsmm.sdk.config import ConfigError, ConfigStore
+
+logger = get_logger(__name__)
 
 
 def _emit(value: Any) -> int:
@@ -899,8 +902,10 @@ def cmd_conflicts() -> int:
                     "type": "manifest",
                     "modIds": [a, b],
                 })
-    except Exception:
-        pass
+    except Exception as e:
+        # Best-effort: a malformed manifest shouldn't blank the whole
+        # conflict panel, but the UI must not silently under-report either.
+        logger.warning("conflict analysis incomplete: %s", e)
 
     return _emit(conflicts)
 

@@ -118,11 +118,8 @@ class RepoIndex:
 
 @sdk_export("repo.sha256_file")
 def sha256_file(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(1 << 16), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    from rsmm.engine.hashing import sha256_file as _impl
+    return _impl(path)
 
 
 # ---------------------------------------------------------------------------

@@ -247,7 +247,7 @@ modsRouter.get('/:slug/:version/download', zValidator('param', downloadParamSche
       set: { count: sql`${schema.modDownloads.count} + 1` },
     })
     .catch((err: unknown) => {
-      console.error('download-count upsert failed:', err);
+      c.get('log').error('download-count upsert failed', { err: String(err) });
     });
 
   // In dev without S3, serve a placeholder file
@@ -395,7 +395,7 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
     if (isPgErrorCode(err, '23505')) {
       return c.json({ error: 'version already exists' }, 409);
     }
-    console.error('Upload error:', err);
+    c.get('log').error('upload error', { err: String(err) });
     return c.json({ error: 'failed to create mod version' }, 500);
   }
 });
@@ -586,7 +586,7 @@ modsRouter.post(
         expiresIn: signed.expiresIn,
       });
     } catch (err) {
-      console.error('Version create error:', err);
+      c.get('log').error('version create error', { err: String(err) });
       return c.json({ error: 'failed to create version' }, 500);
     }
   },

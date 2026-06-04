@@ -22,6 +22,10 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from rsmm.logging import get_logger
+
+logger = get_logger(__name__)
+
 STAGE_DIR_NAME = ".rsmm_stage"
 COMMIT_MARKER_NAME = ".rsmm_stage.COMMIT"
 BACKUP_SUFFIX = ".rsmm.bak"
@@ -138,8 +142,10 @@ class ApplyTransaction:
             if w.backup and w.backup.exists():
                 try:
                     os.replace(w.backup, w.dest)
-                except Exception:
-                    pass
+                except Exception as e:
+                    # A failed rollback can leave the install half-reverted —
+                    # surface it loudly; the caller/`rsmm doctor` can reconcile.
+                    logger.error("rollback failed to restore %s: %s", w.dest, e)
 
     def _safe_rel(self, encoded: str) -> Path:
         """Translate the applier's encoded key into a relative staging path.

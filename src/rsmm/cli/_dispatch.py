@@ -45,6 +45,54 @@ LEGACY = {
     "test":          ("rsmm.cli.test",                       []),
 }
 
+BUILTIN = {
+    "new":               "rsmm.cli.cmd_new",
+    "items":             "rsmm.cli.cmd_items",
+    "enemies":           "rsmm.cli.cmd_enemies",
+    "talents":           "rsmm.cli.cmd_talents",
+    "schema":            "rsmm.cli.cmd_schema",
+    "install":           "rsmm.cli.cmd_install",
+    "pack":              "rsmm.cli.cmd_pack",
+    "log":               "rsmm.cli.cmd_log",
+    "decode":            "rsmm.engine.ot_decoder",
+    "rebuild-asset-map": "rsmm.engine.find_iyg",
+    "install-loader":    "rsmm.cli.install_loader",
+    "cook":              "rsmm.cli.cook",
+    "uncook":            "rsmm.cli.uncook",
+    "unify":             "rsmm.cli.unify",
+}
+
+SDK = {
+    "json":       "rsmm.cli.json_bridge",
+    "safe-mode":  "rsmm.cli.safe_mode",
+    "sdk-doctor": "rsmm.cli.sdk_doctor",
+    "docs-gen":   "rsmm.cli.docs_gen_cmd",
+    "update":     "rsmm.cli.update_cmd",
+    "collection": "rsmm.cli.cmd_collection",
+}
+
+# repo_cmd multiplexes these four under one module (passes the verb through).
+REPO_ALIASES = ("repo", "sign", "verify", "keygen")
+
+
+def iter_commands():
+    """Yield (command, target_module) for every dispatchable subcommand.
+
+    Single source of truth for `rsmm docs-gen` so the generated CLI
+    inventory can never silently drift from what `main()` actually routes.
+    `restore` (folded into apply_mods) and `gui` (a redirect stub) are the
+    only routes not modelled as a plain command->module pair.
+    """
+    yield "restore", "rsmm.cli.apply_mods"
+    for name, (mod, _prefix) in LEGACY.items():
+        yield name, mod
+    for name, mod in BUILTIN.items():
+        yield name, mod
+    for name, mod in SDK.items():
+        yield name, mod
+    for name in REPO_ALIASES:
+        yield name, "rsmm.cli.repo_cmd"
+
 
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
@@ -60,22 +108,6 @@ def main(argv: list[str] | None = None) -> int:
         rest = [a for a in rest if a != "--all"]
         return _dispatch_module("rsmm.cli.apply_mods", ["--restore-all", *rest])
 
-    BUILTIN = {
-        "new":               "rsmm.cli.cmd_new",
-        "items":             "rsmm.cli.cmd_items",
-        "enemies":           "rsmm.cli.cmd_enemies",
-        "talents":           "rsmm.cli.cmd_talents",
-        "schema":            "rsmm.cli.cmd_schema",
-        "install":           "rsmm.cli.cmd_install",
-        "pack":              "rsmm.cli.cmd_pack",
-        "log":               "rsmm.cli.cmd_log",
-        "decode":            "rsmm.engine.ot_decoder",
-        "rebuild-asset-map": "rsmm.engine.find_iyg",
-        "install-loader":    "rsmm.cli.install_loader",
-        "cook":              "rsmm.cli.cook",
-        "uncook":            "rsmm.cli.uncook",
-        "unify":             "rsmm.cli.unify",
-    }
     if sub in BUILTIN:
         return _dispatch_module(BUILTIN[sub], rest)
 
@@ -87,17 +119,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    SDK = {
-        "json":       "rsmm.cli.json_bridge",
-        "safe-mode":  "rsmm.cli.safe_mode",
-        "sdk-doctor": "rsmm.cli.sdk_doctor",
-        "docs-gen":   "rsmm.cli.docs_gen_cmd",
-        "update":     "rsmm.cli.update_cmd",
-        "collection": "rsmm.cli.cmd_collection",
-    }
     if sub in SDK:
         return _dispatch_module(SDK[sub], rest)
-    if sub in ("repo", "sign", "verify", "keygen"):
+    if sub in REPO_ALIASES:
         return _dispatch_module("rsmm.cli.repo_cmd", [sub, *rest])
 
     if sub in LEGACY:

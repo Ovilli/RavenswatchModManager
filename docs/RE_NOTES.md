@@ -639,7 +639,7 @@ The exact stride and byte layout of the per-element vertex / triangle data
 inside FUN_1404cb570's uncompressed-mode blob is the remaining unsolved
 piece for closing the encoder. The decoder can still extract positions
 (starting from the post-index region) and indices empirically — see
-`docs/MOD_AUTHORING.md` once the helper is shipped.
+`docs/MODDING.md` once the helper is shipped.
 
 The triangle-list indices `0,1,2,2,1,3,4,5,6,5,4,7,8,9,a,9,8,b,c,d,e,d,c,f`
 form a sensible quad-strip pattern for the 6 faces of a cube
