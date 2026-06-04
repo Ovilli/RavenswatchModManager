@@ -14,10 +14,15 @@ from rsmm.engine.cooked_schemas import geometry as G
 _JULIET = Path("data/uncooked/3D/Characters/Heroes/Juliet/Juliet_GEO.fbx.glb")
 _CUSTOM = Path("TestModels/CubeHeadJuliet.glb")
 
-_needs_fixtures = pytest.mark.skipif(
-    not (_JULIET.exists() and _CUSTOM.exists()),
-    reason="needs the Juliet template + TestModels/LowPolyJuliet.glb",
-)
+def _needs_fixtures(fn):
+    """Gate on the Juliet template + custom mesh AND mark slow: each call cooks
+    a real hero mesh (O(n*m) weight transfer), only present with the uncooked
+    mirror. `-m 'not slow'` skips these for fast local iteration."""
+    fn = pytest.mark.slow(fn)
+    return pytest.mark.skipif(
+        not (_JULIET.exists() and _CUSTOM.exists()),
+        reason="needs the Juliet template + TestModels/LowPolyJuliet.glb",
+    )(fn)
 
 
 def _template() -> bytes:

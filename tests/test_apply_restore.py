@@ -60,6 +60,11 @@ def test_apply_then_restore_roundtrips(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr(apply_mods, "MODS_DIR", mods_dir)
     monkeypatch.setattr(apply_mods, "ASSET_MAP_JSON", asset_map)
+    # cmd_apply's game-update recovery calls find_iyg.main(), which rebuilds the
+    # REAL data/asset_map.{json,csv}. Stub it so the test stays hermetic (the
+    # fresh tmp game_dir always reads as "updated", triggering recovery).
+    import rsmm.engine.find_iyg as find_iyg
+    monkeypatch.setattr(find_iyg, "main", lambda *a, **k: 0)
 
     args = SimpleNamespace(dry_run=False)
 
