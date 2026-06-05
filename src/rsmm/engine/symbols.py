@@ -31,7 +31,7 @@ from .paths import REPO_ROOT
 SYMBOLS_PATH = REPO_ROOT / "data" / "symbols.json"
 PATTERNS_PATH = REPO_ROOT / "data" / "function_patterns.json"
 
-VALID_KINDS = {"function", "data"}
+VALID_KINDS = {"function", "data", "event"}
 VALID_STATUS = {"ok", "va", "unverified"}
 
 
@@ -50,6 +50,8 @@ class Symbol:
     anchor: dict[str, str] | None = None
     va: str | None = None
     status: str = "unverified"
+    cabi: dict[str, Any] | None = None
+    lua_event: str | None = None
     refs: tuple[str, ...] = field(default_factory=tuple)
 
     @property
@@ -60,6 +62,19 @@ class Symbol:
         if self.anchor and self.anchor.get("raw"):
             return self.anchor["raw"]
         return None
+
+    @property
+    def anchor_offset(self) -> int:
+        """Byte offset past the resolved pattern (0 unless this is an anchor)."""
+        if self.anchor:
+            return _parse_hex(self.anchor["offset"])
+        return 0
+
+    @property
+    def callable(self) -> bool:
+        """True if a typed C++ accessor can be generated: has a C ABI and a
+        byte pattern to resolve against (raw or anchor)."""
+        return bool(self.cabi) and self.pattern_name is not None
 
     def preferred_addr(self, preferred_base: int) -> int:
         """Address at the canonical preferred base (``0x140000000``).
@@ -93,6 +108,17 @@ class SymbolMap:
     def by_category(self, category: str) -> list[Symbol]:
         return [s for s in self.symbols if s.category == category]
 
+    def by_kind(self, kind: str) -> list[Symbol]:
+        return [s for s in self.symbols if s.kind == kind]
+
+    @property
+    def events(self) -> list[Symbol]:
+        return self.by_kind("event")
+
+    @property
+    def callable_symbols(self) -> list[Symbol]:
+        return [s for s in self.symbols if s.callable]
+
     @property
     def categories(self) -> list[str]:
         return sorted({s.category for s in self.symbols})
@@ -109,6 +135,8 @@ def _coerce(entry: dict[str, Any]) -> Symbol:
         anchor=entry.get("anchor"),
         va=entry.get("va"),
         status=entry.get("status", "unverified"),
+        cabi=entry.get("cabi"),
+        lua_event=entry.get("lua_event"),
         refs=tuple(entry.get("refs", ())),
     )
 
@@ -155,6 +183,16 @@ def validate(smap: SymbolMap | None = None) -> list[str]:
             problems.append(f"{s.name}: need exactly one of raw/anchor/va")
         if s.anchor and not (s.anchor.get("raw") and s.anchor.get("offset")):
             problems.append(f"{s.name}: anchor needs raw+offset")
+        if s.cabi is not None:
+            if not isinstance(s.cabi.get("ret"), str) or not isinstance(
+                s.cabi.get("params"), list
+            ):
+                problems.append(f"{s.name}: cabi needs str 'ret' and list 'params'")
+        if s.kind == "event":
+            if not s.lua_event:
+                problems.append(f"{s.name}: event needs 'lua_event'")
+            if s.pattern_name is None:
+                problems.append(f"{s.name}: event needs a byte pattern (raw/anchor)")
         if s.status == "ok":
             pn = s.pattern_name
             if not pn:

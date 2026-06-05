@@ -101,6 +101,10 @@ fi
 if [[ -f "$REPO_DIR/src/loader/lib/rsmm.lua" ]]; then
     install -m 0644 "$REPO_DIR/src/loader/lib/rsmm.lua" "$GAME_DIR/rsmm/lib/rsmm.lua"
 fi
+# Generated engine-symbol table (R.engine.* resolves names via this).
+if [[ -f "$REPO_DIR/src/loader/lib/engine_gen.lua" ]]; then
+    install -m 0644 "$REPO_DIR/src/loader/lib/engine_gen.lua" "$GAME_DIR/rsmm/lib/engine_gen.lua"
+fi
 
 mkdir -p "$GAME_DIR/mods"
 # Sync mod manifests + init.lua so the loader's scan_mods sees every

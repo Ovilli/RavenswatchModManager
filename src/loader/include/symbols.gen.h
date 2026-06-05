@@ -24,6 +24,12 @@ constexpr const char* Entity_FindComponentByType_Pattern = "FUN_1406ca380";
 constexpr std::uintptr_t Entity_FindMagicalObjectComponent = 0x1406e2250ull;
 constexpr std::uintptr_t g_MagicalObjectComponentMeta = 0x141470768ull;
 
+// --- event ---
+constexpr std::uintptr_t Event_LevelUp = 0x1401f6410ull;
+constexpr const char* Event_LevelUp_Pattern = "FUN_1401f6410";
+constexpr std::uintptr_t Event_RunEnd = 0x1401f51e0ull;
+constexpr const char* Event_RunEnd_Pattern = "FUN_1401f51e0";
+
 // --- items ---
 constexpr std::uintptr_t InitialLoading_SpawnMagicalObjects = 0x140260280ull;
 constexpr std::uintptr_t MagicalObjectPool_Grow = 0x1401550d0ull;

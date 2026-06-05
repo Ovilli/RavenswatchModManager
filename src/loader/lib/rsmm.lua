@@ -41,13 +41,64 @@ end
 --   "tick"  — fires every 500ms; cheap polling slot
 --   "exit"  — DLL is being unloaded
 --
--- Future events emitted by the SDK as RE catches up:
---   "run_start", "run_end", "level_up", "boss_kill", ...
+-- Gameplay events (from data/symbols.json kind="event"; run
+-- `rsmm symbols events` for the live list). Enable with
+-- RSMM_ENABLE_GAME_EVENTS=1:
+--   "level_up", "run_end"  (more land as emitters are RE'd)
 
 function R.on(event, cb)
     assert(type(event) == "string", "R.on: event must be string")
     assert(type(cb) == "function",  "R.on: cb must be function")
     native.on_event(event, cb)
+end
+
+-- named engine functions ------------------------------------------------
+--
+-- The symbol map (data/symbols.json) gives engine functions stable
+-- semantic names. R.engine lets a mod resolve + call them by name
+-- instead of raw FUN_xxxxxxxx addresses:
+--
+--     local rsc = R.engine.call("Resource_LookupByPath", path, 0, 0, 0)
+--
+-- Names + patterns come from the generated engine_gen.lua table; the
+-- address is resolved at runtime by byte pattern (survives game updates).
+
+R.engine = {}
+
+local _engine_map
+local function engine_map()
+    if _engine_map == nil then
+        local ok, t = pcall(require, "engine_gen")
+        _engine_map = (ok and type(t) == "table") and t or {}
+        if not ok then R.log("[rsmm.engine] engine_gen table missing; names unavailable") end
+    end
+    return _engine_map
+end
+
+-- Resolve a semantic name to its runtime virtual address (or nil).
+function R.engine.resolve(name)
+    assert(type(name) == "string", "R.engine.resolve: name must be string")
+    local e = engine_map()[name]
+    if not e then R.log("[rsmm.engine] unknown symbol:", name); return nil end
+    local base = I.resolve(e.pattern)
+    if not base then return nil end
+    return base + (e.offset or 0)
+end
+
+-- Call a named engine function. Extra args are forwarded to the native
+-- caller. Returns whatever the native call returns (or nil if unresolved).
+function R.engine.call(name, ...)
+    local va = R.engine.resolve(name)
+    if not va then return nil end
+    return I.call(va, ...)
+end
+
+-- List the semantic names available to R.engine.call.
+function R.engine.names()
+    local out = {}
+    for k in pairs(engine_map()) do out[#out + 1] = k end
+    table.sort(out)
+    return out
 end
 
 -- hooks (low-level escape valve; users should prefer R.* abstractions) -

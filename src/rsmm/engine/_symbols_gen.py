@@ -10,6 +10,8 @@ ADDR: dict[str, int] = {
     "Entity_FindComponentByType": 0x1406ca380,
     "Entity_FindMagicalObjectComponent": 0x1406e2250,
     "Entry_Ctor": 0x140214bb0,
+    "Event_LevelUp": 0x1401f6410,
+    "Event_RunEnd": 0x1401f51e0,
     "Format_String": 0x140204f30,
     "InitialLoading_SpawnMagicalObjects": 0x140260280,
     "Library_AchievementDefinition_vftable": 0x1414113b0,
@@ -50,6 +52,8 @@ ADDR: dict[str, int] = {
 PATTERN: dict[str, str] = {
     "Entity_FindComponentByType": "FUN_1406ca380",
     "Entry_Ctor": "FUN_140214bb0",
+    "Event_LevelUp": "FUN_1401f6410",
+    "Event_RunEnd": "FUN_1401f51e0",
     "Format_String": "FUN_140204f30",
     "MagicalObject_SpawnAllObjects": "FUN_1402586f0",
     "MagicalObject_SpawnContainingFunc": "FUN_1402586f0",
@@ -59,4 +63,10 @@ PATTERN: dict[str, str] = {
     "SkinRoster_Build": "FUN_1401dcae0",
     "String_Assign": "FUN_1405288b0",
     "Vector_Grow": "FUN_140154c20",
+}
+
+# event name -> Lua event published to mods (R.on(<lua>, cb))
+EVENTS: dict[str, str] = {
+    "Event_LevelUp": "level_up",
+    "Event_RunEnd": "run_end",
 }

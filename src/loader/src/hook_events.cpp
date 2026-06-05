@@ -34,10 +34,11 @@ struct EventHook {
 };
 
 // Verified by string-xref against the shipped exe (docs/_re/kinds/events.md):
-// the function bodies reference the "level_up_reach" / "run_end" name strings.
+// the function bodies reference the event name strings. The catalog is
+// sourced from data/symbols.json (kind="event") — edit it there and run
+// `rsmm symbols gen`, never hand-edit the generated table below.
 EventHook g_hooks[] = {
-    { "FUN_1401f6410", "level_up", nullptr, 0 },
-    { "FUN_1401f51e0", "run_end",  nullptr, 0 },
+#include "event_table.gen.h"
 };
 
 // One detour per slot — MinHook needs a distinct target function pointer, so

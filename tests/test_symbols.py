@@ -57,11 +57,43 @@ def test_names_are_unique_and_c_safe():
 
 
 def test_generated_files_in_sync():
-    """`rsmm symbols gen` output must match the committed files."""
+    """Every `rsmm symbols gen` output must match its committed file."""
     smap = S.load_symbol_map()
-    assert cmd_symbols.LOADER_HEADER.read_text() == cmd_symbols._gen_header(smap), (
-        "src/loader/src/symbols.gen.h is stale; run `rsmm symbols gen`"
-    )
-    assert cmd_symbols.PYTHON_CONSTS.read_text() == cmd_symbols._gen_python(smap), (
-        "src/rsmm/engine/_symbols_gen.py is stale; run `rsmm symbols gen`"
-    )
+    cases = [
+        (cmd_symbols.LOADER_HEADER, cmd_symbols._gen_header),
+        (cmd_symbols.LOADER_API_HEADER, cmd_symbols._gen_api_header),
+        (cmd_symbols.LOADER_EVENT_TABLE, cmd_symbols._gen_event_table),
+        (cmd_symbols.LUA_ENGINE, cmd_symbols._gen_lua),
+        (cmd_symbols.PYTHON_CONSTS, cmd_symbols._gen_python),
+        (cmd_symbols.DOCS_PAGE, cmd_symbols._gen_docs),
+    ]
+    for path, gen in cases:
+        assert path.read_text() == gen(smap), f"{path.name} is stale; run `rsmm symbols gen`"
+
+
+def test_callable_symbols_have_pattern_and_cabi():
+    smap = S.load_symbol_map()
+    callables = smap.callable_symbols
+    assert callables, "expected at least one callable symbol"
+    for s in callables:
+        assert s.cabi and s.pattern_name, f"{s.name}: callable needs cabi + pattern"
+        assert isinstance(s.cabi["params"], list)
+
+
+def test_events_have_lua_event_and_pattern():
+    smap = S.load_symbol_map()
+    events = smap.events
+    assert events, "expected at least one event"
+    luas = {e.lua_event for e in events}
+    assert "level_up" in luas and "run_end" in luas
+    for e in events:
+        assert e.lua_event and e.pattern_name
+
+
+def test_anchor_callable_carries_offset():
+    """The inlined SpawnAllObjects accessor must add its +0x70 offset."""
+    smap = S.load_symbol_map()
+    s = smap.by_name("MagicalObject_SpawnAllObjects")
+    assert s.callable and s.anchor_offset == 0x70
+    api = cmd_symbols._gen_api_header(smap)
+    assert "+ 0x70" in api

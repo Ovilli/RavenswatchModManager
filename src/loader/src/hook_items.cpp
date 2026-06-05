@@ -12,7 +12,8 @@
 #include "hook_items.h"
 #include "fn_resolver.h"
 #include "loader.h"
-#include "symbols.gen.h"  // GENERATED — `rsmm symbols gen` from data/symbols.json
+#include "symbols.gen.h"      // GENERATED — addresses (Sym::)
+#include "symbols_api.gen.h"  // GENERATED — typed accessors (engine::)
 
 #include "MinHook.h"
 
@@ -59,21 +60,12 @@ static_assert(kContainingFuncVA + kSpawnEntryOffset == kSpawnAllObjectsVA,
               "symbol map anchor offset drifted from the +0x70 entry point");
 
 // --- game function type aliases -----------------------------------------
+// Sourced from the generated typed accessors (engine::), themselves derived
+// from data/symbols.json cabi entries — single source of truth for the ABI.
 
-// FUN_140487040 — resource-by-path lookup.
-// RCX: const char* decoded path.
-// Returns: EntityResource* (or 0 if not loaded).
-using ResourceLookup_t = void* (*)(const char*, void*, void*, void*);
-
-// FUN_140154c20 — vector growth helper.
-// RCX: vector struct address {ptr, count, cap}
-// RDX: unused
-// R8:  new capacity
-// Grows the vector's backing allocation to at least new_cap elements.
-using VecGrow_t = void (*)(void*, std::uint64_t, std::uint32_t);
-
-// FUN_140258760 — SpawnAllObjects (relocated at runtime).
-using SpawnAllObjects_t = void (*)(void* pool, void* spawn_ctx);
+using ResourceLookup_t  = engine::Resource_LookupByPath_fn;          // FUN_140487040
+using VecGrow_t         = engine::Vector_Grow_fn;                    // FUN_140154c20
+using SpawnAllObjects_t = engine::MagicalObject_SpawnAllObjects_fn;  // FUN_140258760
 
 // --- resolved function pointers -----------------------------------------
 

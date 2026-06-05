@@ -91,12 +91,18 @@ $luaDst = Join-Path $GameDir 'rsmm\lib'
 if (Test-Path $luaSrc) {
   New-Item -ItemType Directory -Path $luaDst -Force | Out-Null
   Copy-Item -Path (Join-Path $luaSrc '*') -Destination $luaDst -Recurse -Force
-} else {
-  $legacy = Join-Path $repoDir 'src\loader\lib\rsmm.lua'
-  if (Test-Path $legacy) {
-    New-Item -ItemType Directory -Path $luaDst -Force | Out-Null
-    Copy-Item -Path $legacy -Destination (Join-Path $luaDst 'rsmm.lua') -Force
-  }
+}
+# Always overwrite the entrypoint with the full lib/rsmm.lua (the lua/ tree
+# ships a stripped one lacking R.item), and ship the generated engine table
+# that R.engine.* resolves names through. Mirrors install_loader.sh.
+New-Item -ItemType Directory -Path $luaDst -Force | Out-Null
+$fullRsmm = Join-Path $repoDir 'src\loader\lib\rsmm.lua'
+if (Test-Path $fullRsmm) {
+  Copy-Item -Path $fullRsmm -Destination (Join-Path $luaDst 'rsmm.lua') -Force
+}
+$engineGen = Join-Path $repoDir 'src\loader\lib\engine_gen.lua'
+if (Test-Path $engineGen) {
+  Copy-Item -Path $engineGen -Destination (Join-Path $luaDst 'engine_gen.lua') -Force
 }
 
 # Sync mod manifests + init.lua
