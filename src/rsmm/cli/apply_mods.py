@@ -1060,9 +1060,11 @@ VERSIONDEF_CACHE_LEAF = "LiveOps5.versiondef.UsedRscCache.ot"
 def _locate_cooked_by_leaf(game_dir: Path, decoded_leaf: str) -> Path | None:
     """Find the real loose ``_Cooking`` file whose decoded *filename* equals
     ``decoded_leaf``. Matches on the decoded leaf rather than re-encoding the
-    path, because the cipher is state-dependent and ``cipher.encode`` can emit
-    a name that differs from the one the game actually ships (which the engine
-    then ignores). Skips backups."""
+    path: ``cipher.encode`` is ~98% accurate but four letters are genuinely
+    ambiguous (``v``/``I``/``Y`` and the ``\\``-collapse), so for an *existing*
+    file we decode-and-compare to be exact. (For a *new* asset with no shipped
+    file, ``synthesize_encoded`` must rely on ``cipher.encode``.) Skips
+    backups."""
     cooking = game_dir / COOKING_REL
     if not cooking.is_dir():
         return None

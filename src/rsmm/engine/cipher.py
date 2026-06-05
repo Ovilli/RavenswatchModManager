@@ -30,13 +30,17 @@ UPPER_DECODE = {
 }
 SYMBOL_DECODE = {'!': '\\'}
 
-# Inverse (decoded -> encoded). Where two encoded letters share a decoded
-# value, the lower-alphabet inverse is the one the engine emits.
-# Manually picked from collisions: decoded 'v' <- encoded 'e' (not 'k'),
-# decoded 'Y' <- encoded 'C' (not 'Y'), decoded 'I' <- encoded 'X'
-# (not 'Z') — all verified against real cooked paths.
+# Inverse (decoded -> encoded). Four decoded characters are ambiguous —
+# the engine emits one of two encoded letters depending on context. The
+# split was measured across all 43k pairs in asset_map.json:
+#   decoded 'v' -> 'k' (98.6%) or 'e' (1.4%, scattered)  -> pick 'k'
+#   decoded 'I' -> 'X' (57%)  or 'Z' (43%, the 'FI' digraph) -> see encode()
+#   decoded 'Y' -> 'C' (84%)  or 'Y' (16%, unresolvable)  -> pick 'C'
+#   decoded '\' -> '\' or '!' (directory-collapse; handled by the caller)
+# Tables below carry the most-common inverse; encode() adds the one
+# context rule that is clean enough to be worth it ('FI'->'VZ').
 LOWER_ENCODE = {
-    'b': 'a', 'c': 'b', 'j': 'c', 'i': 'd', 'v': 'e', 'q': 'f', 'a': 'g',
+    'b': 'a', 'c': 'b', 'j': 'c', 'i': 'd', 'v': 'k', 'q': 'f', 'a': 'g',
     'f': 'h', 't': 'i', 'p': 'j', 'k': 'm', 'l': 'l', 'h': 'n', 'w': 'o',
     'x': 'p', 'e': 'q', 'o': 'r', 'y': 's', 'd': 't', 'r': 'u', 's': 'v',
     'u': 'w', 'm': 'x', 'g': 'y', 'n': 'z',
@@ -72,8 +76,13 @@ def decode(s: str) -> str:
 
 def encode(s: str) -> str:
     out = []
-    for c in s:
-        if c.isupper() and c in UPPER_ENCODE:
+    for i, c in enumerate(s):
+        if c == 'I':
+            # decoded 'I' is the one ambiguous letter with a clean context
+            # rule: the engine emits 'Z' in the 'FI' digraph and 'X'
+            # everywhere else (99.8% of all 'I' occurrences in asset_map).
+            out.append('Z' if i and s[i - 1] == 'F' else 'X')
+        elif c.isupper() and c in UPPER_ENCODE:
             out.append(UPPER_ENCODE[c])
         elif c.islower() and c in LOWER_ENCODE:
             out.append(LOWER_ENCODE[c])
@@ -90,6 +99,10 @@ def _selftest() -> None:
         ("Social", "Frbdgl"),
         ("Book_Social_Tab_Mesh_Controller.entity.ot.EntitySettingsResource.gen",
          "Brrm_Frbdgl_Qga_Hqvn_Srziurllqu.qzidis.ri.MzidisFqiidzyvLqvrwubq.yqz"),
+        # decoded 'v' -> 'k' (was wrongly 'e'); real pair from asset_map.
+        ("Map_Avalon_Common~GAM.xls", "Hgj_Wkglrz_Srxxrz~KWH.plv"),
+        # 'FI' digraph -> 'VZ' (decoded 'I' after 'F' encodes to 'Z').
+        ("FI", "VZ"),
     ]
     for dec, enc in cases:
         assert encode(dec) == enc, f"encode({dec!r}) -> {encode(dec)!r}, expected {enc!r}"
