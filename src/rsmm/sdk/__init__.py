@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import re
 
+from . import engine
 from .api import API_VERSION, require_api, sdk_export
 from .config import ConfigSchema, ConfigStore
 from .content import ContentDef, ContentRef, ContentRegistry
@@ -47,6 +48,7 @@ __all__ = [
     "expect", "conflicts", "assert_no_conflicts", "ModExpect",
     "GameBuildPin", "check_compat",
     "ApplyTransaction",
+    "engine",
     "Mod",
 ]
 
