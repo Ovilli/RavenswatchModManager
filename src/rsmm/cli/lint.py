@@ -17,6 +17,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -147,6 +148,11 @@ def lint_one(entry: Path) -> tuple[int, int]:
     errs += se
     warns += sw
 
+    # init.lua: R.on(event) + R.engine.call/resolve(name) vs the symbol map
+    le, lw = _lint_lua_api(entry.name, entry)
+    errs += le
+    warns += lw
+
     n_patch = len(t.get("patch", []) or [])
     n_content = len(t.get("content", []) or [])
     print(f"  [OK]   {entry.name}  (raw={raw_files} patches={n_patch} "
@@ -237,6 +243,57 @@ def _lint_stray_scripts(modname: str, entry: Path) -> tuple[int, int]:
               f"as [[content]]/[[patch]] (sanctioned hooks: {sorted(allowed)})")
         errs += 1
     return errs, 0
+
+
+#: Events the loader always emits (dllmain lifecycle), independent of the
+#: RE'd gameplay-event catalog in data/symbols.json.
+_BUILTIN_EVENTS = {"setup", "ready", "tick", "exit"}
+
+_RE_ON = re.compile(r"""R\.on\(\s*['"]([^'"]+)['"]""")
+_RE_ENGINE = re.compile(r"""R\.engine\.(?:call|resolve)\(\s*['"]([^'"]+)['"]""")
+
+
+def _engine_vocab() -> tuple[set[str], set[str]]:
+    """(valid event names, valid R.engine.* symbol names) from the symbol map,
+    plus built-in events. Empty symbol sets if the map can't be loaded."""
+    events = set(_BUILTIN_EVENTS)
+    callables: set[str] = set()
+    try:
+        from rsmm.engine.symbols import load_symbol_map
+        smap = load_symbol_map()
+        events |= {e.lua_event for e in smap.events if e.lua_event}
+        callables = {s.name for s in smap.callable_symbols}
+    except Exception:
+        pass
+    return events, callables
+
+
+def _lint_lua_api(modname: str, entry: Path) -> tuple[int, int]:
+    """Warn on R.on()/R.engine.* calls that reference unknown names — a typo
+    here fails silently at runtime (the handler just never fires), exactly the
+    footgun the symbol map exists to prevent."""
+    events, callables = _engine_vocab()
+    warns = 0
+    for f in sorted(entry.rglob("*.lua")):
+        if not f.is_file():
+            continue
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        rel = f.relative_to(entry).as_posix()
+        for ev in _RE_ON.findall(text):
+            if ev not in events:
+                print(f"  [WARN] {modname}: {rel}: R.on({ev!r}) — unknown event "
+                      f"(known: {', '.join(sorted(events))}); handler will never fire")
+                warns += 1
+        if callables:
+            for nm in _RE_ENGINE.findall(text):
+                if nm not in callables:
+                    print(f"  [WARN] {modname}: {rel}: R.engine call to {nm!r} — not a "
+                          f"callable symbol (see `rsmm symbols list`)")
+                    warns += 1
+    return 0, warns
 
 
 def main() -> int:
