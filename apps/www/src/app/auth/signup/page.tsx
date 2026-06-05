@@ -45,7 +45,7 @@ export default function SignUpPage() {
   async function social(provider: 'google' | 'github') {
     setError(null);
     setBusy(true);
-    const res = await signIn.social({ provider, callbackURL: window.location.origin + '/' });
+    const res = await signIn.social({ provider, callbackURL: `${window.location.origin}/` });
     if (res.error) {
       setBusy(false);
       setError(res.error.message ?? `${provider} sign-up failed`);

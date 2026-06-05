@@ -23,6 +23,12 @@ export const modManifestSchema = z.object({
   tags: z.array(z.string().max(32)).max(16).optional(),
   enabled: z.boolean().optional(),
   dependencies: z.record(z.string(), semverSchema).optional(),
+  // Compatibility metadata. Lets the desktop app warn "this mod needs a
+  // newer game build / loader" before applying. All optional + free-form
+  // range strings (e.g. ">=3.0,<4") so older manifests stay valid.
+  sdk_version: z.string().max(32).optional(),
+  game_build: z.string().max(64).optional(),
+  min_loader: z.string().max(32).optional(),
 });
 
 export type ModManifest = z.infer<typeof modManifestSchema>;
@@ -65,6 +71,10 @@ export const modListItemSchema = z.object({
   nsfw: z.boolean().optional(),
   ownerId: z.string().nullable().optional(),
   dependencies: z.record(z.string(), z.string()).optional(),
+  // Compatibility hints surfaced from the published manifest (see
+  // modManifestSchema). The desktop app uses these to warn on mismatch.
+  sdkVersion: z.string().nullable().optional(),
+  gameBuild: z.string().nullable().optional(),
 });
 
 export type ModListItem = z.infer<typeof modListItemSchema>;

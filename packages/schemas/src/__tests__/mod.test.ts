@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { modListItemSchema, modVersionSchema } from '../mod';
+import { modListItemSchema, modManifestSchema, modVersionSchema } from '../mod';
 
 describe('modListItemSchema', () => {
   it('validates a correct mod list item', () => {
@@ -54,6 +54,52 @@ describe('modListItemSchema', () => {
       updatedAt: new Date().toISOString(),
       tags: [],
     })).toThrow();
+  });
+});
+
+describe('modManifestSchema compat fields', () => {
+  const base = { id: 'my-mod', name: 'My Mod', version: '1.0.0' };
+
+  it('accepts optional compat metadata', () => {
+    const m = modManifestSchema.parse({
+      ...base,
+      sdk_version: '>=3.0,<4',
+      game_build: '1.2.0',
+      min_loader: '0.1.11',
+    });
+    expect(m.sdk_version).toBe('>=3.0,<4');
+    expect(m.game_build).toBe('1.2.0');
+    expect(m.min_loader).toBe('0.1.11');
+  });
+
+  it('stays valid without compat fields (older manifests)', () => {
+    const m = modManifestSchema.parse(base);
+    expect(m.sdk_version).toBeUndefined();
+    expect(m.game_build).toBeUndefined();
+  });
+});
+
+describe('modListItemSchema compat fields', () => {
+  it('surfaces nullable compat hints', () => {
+    const r = modListItemSchema.parse({
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      slug: 'my-mod',
+      name: 'M',
+      author: null,
+      summary: null,
+      license: null,
+      latestVersion: null,
+      downloads: 0,
+      updatedAt: new Date().toISOString(),
+      category: null,
+      imageUrl: null,
+      rating: null,
+      tags: [],
+      sdkVersion: '>=3.0,<4',
+      gameBuild: null,
+    });
+    expect(r.sdkVersion).toBe('>=3.0,<4');
+    expect(r.gameBuild).toBeNull();
   });
 });
 
