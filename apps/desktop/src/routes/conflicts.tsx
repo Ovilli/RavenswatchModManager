@@ -41,6 +41,20 @@ function ConflictsPage() {
   });
   const conflicts = data ?? [];
 
+  // Resolve a conflict group atomically against the current render snapshot.
+  // Each id is toggled at most once, so the snapshot stays accurate.
+  const keepOnly = (keepId: string, group: string[]) => {
+    if (!isEnabledIn(profile, keepId)) toggle(keepId);
+    for (const other of group) {
+      if (other !== keepId && isEnabledIn(profile, other)) toggle(other);
+    }
+  };
+  const disableAll = (group: string[]) => {
+    for (const id of group) {
+      if (isEnabledIn(profile, id)) toggle(id);
+    }
+  };
+
   if (conflicts.length === 0) {
     return (
       <div className="space-y-6">
@@ -81,6 +95,16 @@ function ConflictsPage() {
                   <div className="flex items-center gap-2">
                     <MonoTag tone="crimson">conflict</MonoTag>
                     <MonoTag tone="gilt">{c.modIds.length} mods</MonoTag>
+                    {c.modIds.some((id) => isEnabledIn(profile, id)) ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="danger"
+                        onClick={() => disableAll(c.modIds)}
+                      >
+                        Disable all
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
                 {c.type === 'file' && c.path ? (
@@ -130,20 +154,7 @@ function ConflictsPage() {
                             type="button"
                             size="sm"
                             variant={enabled ? 'danger' : 'primary'}
-                            onClick={() => {
-                              if (!enabled) toggle(id);
-                              for (const other of c.modIds) {
-                                if (other !== id) {
-                                  const state = useApp.getState();
-                                  const p = state.profiles.find(
-                                    (x) => x.id === state.activeProfileId,
-                                  );
-                                  if (p && isEnabledIn(p, other)) {
-                                    state.toggleMod(other);
-                                  }
-                                }
-                              }
-                            }}
+                            onClick={() => keepOnly(id, c.modIds)}
                           >
                             {enabled ? 'Keep this one' : 'Enable this one'}
                           </Button>

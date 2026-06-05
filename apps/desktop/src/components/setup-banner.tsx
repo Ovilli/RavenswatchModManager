@@ -1,5 +1,6 @@
-import { AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { Link } from '@tanstack/react-router';
+import { AlertTriangle, CheckCircle2, Loader2, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { inTauri } from '../lib/platform';
 import { type DoctorCheck, type DoctorResult, doctor } from '../lib/rsmm';
 import { Button, CopyButton } from './chrome';
@@ -55,28 +56,35 @@ export function SetupBanner() {
     readDismissed(ERROR_DISMISS_KEY),
   );
 
-  useEffect(() => {
+  // Re-runnable so the "Re-check" button can re-verify after the user
+  // fixes a path in Settings, without restarting the app. When the user
+  // re-checks, clear the persisted dismissal so a now-different (or now-
+  // empty) failure set surfaces honestly.
+  const runChecks = useCallback(async (clearDismissal = false) => {
     if (!inTauri()) {
       setRunning(false);
       return;
     }
-    let cancelled = false;
-    (async () => {
-      try {
-        const r = await doctor();
-        if (cancelled) return;
-        setResult(r);
-      } catch (e) {
-        if (cancelled) return;
-        setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        if (!cancelled) setRunning(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    setRunning(true);
+    setError(null);
+    if (clearDismissal) {
+      setSessionDismissed(false);
+      setPersistedSignature(null);
+      setPersistedError(null);
+    }
+    try {
+      const r = await doctor();
+      setResult(r);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRunning(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void runChecks();
+  }, [runChecks]);
 
   const signature = useMemo(() => (result ? signatureFor(result.checks) : ''), [result]);
 
@@ -100,6 +108,14 @@ export function SetupBanner() {
           <p className="font-mono text-sm text-ash break-all">{error}</p>
         </div>
         <CopyButton value={error} />
+        <Button type="button" size="sm" onClick={() => void runChecks(true)} disabled={running}>
+          {running ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+          ) : (
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+          )}
+          Re-check
+        </Button>
         <Button type="button" size="sm" onClick={dismissError}>
           Dismiss
         </Button>
@@ -156,9 +172,24 @@ export function SetupBanner() {
           </li>
         ))}
       </ul>
+      <div className="flex flex-wrap items-center gap-2">
+        <Link to="/settings">
+          <Button type="button" size="sm" variant="primary">
+            Open Settings
+          </Button>
+        </Link>
+        <Button type="button" size="sm" onClick={() => void runChecks(true)} disabled={running}>
+          {running ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+          ) : (
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+          )}
+          Re-check
+        </Button>
+      </div>
       <p className="font-serif-italic text-sm text-ash">
-        Open <span className="font-mono">Settings</span> to fix paths, or rerun{' '}
-        <span className="font-mono">rsmm doctor</span> from a terminal for diagnostic detail.
+        Fix paths in Settings, then re-check — or run <span className="font-mono">rsmm doctor</span>{' '}
+        from a terminal for diagnostic detail.
       </p>
     </section>
   );

@@ -16,7 +16,6 @@ import { Button, Fleuron, Panel } from './chrome';
  */
 export function UpdatesPanel() {
   const installed = useApp((s) => s.installed);
-  const localMods = useApp((s) => s.localMods);
   const patchRemoteInfo = useApp((s) => s.patchRemoteInfo);
   const syncLocalMods = useApp((s) => s.syncLocalMods);
   const queryClient = useQueryClient();
@@ -86,7 +85,10 @@ export function UpdatesPanel() {
   if (remote.isLoading && outdated.length === 0) return null;
   if (outdated.length === 0) return null;
 
-  const allUpdating = outdated.every((m) => updating[m.slug]);
+  // Updates run sequentially, so "any in progress" is the right signal for
+  // the bulk button — otherwise it only disables in the brief window where
+  // every single item happens to be in-flight at once (never, in practice).
+  const anyUpdating = outdated.some((m) => updating[m.slug]);
 
   return (
     <Panel className="border-gilt/40">
@@ -111,9 +113,9 @@ export function UpdatesPanel() {
             size="sm"
             variant="primary"
             onClick={() => void updateAll()}
-            disabled={allUpdating}
+            disabled={anyUpdating}
           >
-            {allUpdating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            {anyUpdating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
             Update all
           </Button>
         </div>
@@ -150,7 +152,6 @@ export function UpdatesPanel() {
         })}
       </ul>
       {error ? <p className="mt-3 font-mono text-xs text-crimson">{error}</p> : null}
-      {localMods ? null : null}
     </Panel>
   );
 }
