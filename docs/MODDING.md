@@ -4,6 +4,8 @@ This guide covers everything from scaffolding a mod to shipping a finished `.zip
 
 > **Prefer the Python SDK?** For a step-by-step `rsmm.sdk` tutorial (typed content + handles, tags, skins, offline testkit, `rsmm install`), see [SDK_AUTHORING.md](SDK_AUTHORING.md).
 
+> **A mod is data, not code.** Your deliverable is a declarative `manifest.toml` (`[[content]]` / `[[patch]]`) plus assets — never a hand-written python script dropped in the mod folder. If you reverse-engineer a new byte layout with a throwaway script, that's fine for *discovery*, but fold the capability into `rsmm.sdk` and express the mod declaratively before shipping. `rsmm lint` (and CI) rejects any `*.py` in a mod other than the sanctioned `on_disable.py` lifecycle hook.
+
 ---
 
 ## Quick start

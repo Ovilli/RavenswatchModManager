@@ -59,6 +59,7 @@ The desktop app does **not** reimplement the CLI — it bundles the Python CLI a
 
 ## Conventions
 
+- **Mods ship data, not code. A discovery script is never the deliverable.** When building a mod, the artifact is a declarative `manifest.toml` (`[[content]]` / `[[patch]]`) plus assets the SDK emits — *not* a bespoke python script. One-off scripts to reverse a byte layout are fine as throwaway *discovery*, but the capability must then graduate into `rsmm.sdk` (a kind builder in `src/rsmm/sdk/kinds/`, an engine cooker in `src/rsmm/engine/`, or the apply pipeline) and the mod re-expressed declaratively; delete the script. `rsmm lint` enforces this — any `*.py` in a mod that isn't a sanctioned lifecycle hook (`on_disable.py`) fails CI. The full custom-magic-item pipeline already lives in the SDK end-to-end (`kinds/item` → `engine/magic_item_cook` → `apply_mods.sync_versiondef`/`sync_usedrsclist`), so a new item = manifest + `rsmm apply`, no script.
 - Commit messages follow `chore(release): bump to 0.1.x + <short reason>` for releases; otherwise free-form imperative. Don't add `Co-Authored-By` lines (see memory).
 - Python uses ruff with `line-length=100`, `target-version=py311`. `F401` (unused imports) is intentionally ignored to keep `__init__.py` re-exports clean.
 - Biome formats/lints TS. Many paths are excluded (`biome.json` `files.ignore`) including `src/rsmm/**`, `scripts/**`, and generated files — touching those won't lint.

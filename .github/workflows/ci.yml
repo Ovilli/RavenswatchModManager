@@ -45,6 +45,14 @@ jobs:
           PYTHONPATH: src
         run: python -m rsmm.cli.docs_gen_cmd --check
 
+      # Mods must be data, not code: fails on stray discovery scripts and
+      # malformed manifests. Platform-independent, so check once on Linux.
+      - name: rsmm lint (mods ship data, not scripts)
+        if: runner.os == 'Linux'
+        env:
+          PYTHONPATH: src
+        run: python -m rsmm.cli.lint
+
   ts:
     name: typescript (biome + tsc + vitest)
     runs-on: ubuntu-latest

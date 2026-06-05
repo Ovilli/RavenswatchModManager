@@ -142,6 +142,11 @@ def lint_one(entry: Path) -> tuple[int, int]:
     errs += ce
     warns += cw
 
+    # stray discovery scripts — a mod ships data, not code
+    se, sw = _lint_stray_scripts(entry.name, entry)
+    errs += se
+    warns += sw
+
     n_patch = len(t.get("patch", []) or [])
     n_content = len(t.get("content", []) or [])
     print(f"  [OK]   {entry.name}  (raw={raw_files} patches={n_patch} "
@@ -194,6 +199,44 @@ def _lint_content(modname: str, blocks: list[dict]) -> tuple[int, int]:
                       f"vanilla stem (try `rsmm items icons`)")
                 warns += 1
     return errs, warns
+
+
+#: Python files a mod is allowed to ship. Today only the deactivation
+#: lifecycle hook (``apply_mods.DEACTIVATION_SCRIPT_NAME``). Everything
+#: else is a leaked *discovery* script — the one-off used to reverse a
+#: byte layout — which must graduate into the SDK, not ride along in the
+#: mod. Keep this set in sync with the hooks `apply_mods` actually fires.
+def _sanctioned_scripts() -> set[str]:
+    try:
+        from rsmm.cli.apply_mods import DEACTIVATION_SCRIPT_NAME
+        return {DEACTIVATION_SCRIPT_NAME}
+    except ImportError:
+        return {"on_disable.py"}
+
+
+def _lint_stray_scripts(modname: str, entry: Path) -> tuple[int, int]:
+    """Fail any ``*.py`` in a mod that isn't a sanctioned lifecycle hook.
+
+    A mod is *data*: a manifest plus cooked/raw assets the SDK emits. A
+    bespoke python script inside a mod means a capability was hacked in
+    by hand instead of going through the SDK — exactly the debt this
+    guardrail exists to stop. The fix is never to keep the script: move
+    its logic into ``rsmm.sdk`` (a kind builder / engine cooker) and
+    express the mod as ``[[content]]`` / ``[[patch]]`` declarations.
+    """
+    allowed = _sanctioned_scripts()
+    errs = 0
+    for f in sorted(entry.rglob("*.py")):
+        if not f.is_file():
+            continue
+        rel = f.relative_to(entry).as_posix()
+        if f.name in allowed:
+            continue
+        print(f"  [FAIL] {modname}: stray script {rel!r} — mods ship data, "
+              f"not code; move its logic into rsmm.sdk and express the mod "
+              f"as [[content]]/[[patch]] (sanctioned hooks: {sorted(allowed)})")
+        errs += 1
+    return errs, 0
 
 
 def main() -> int:
