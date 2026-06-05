@@ -45,6 +45,15 @@ end
 -- `rsmm symbols events` for the live list). Enable with
 -- RSMM_ENABLE_GAME_EVENTS=1:
 --   "level_up", "run_end"  (more land as emitters are RE'd)
+--
+-- The callback receives a payload table. Gameplay events currently carry
+-- a safe envelope:
+--   ev.event  (string)  the event name
+--   ev.seq    (number)  per-event fire counter (ordering signal)
+--   ev.ctx    (string)  emitter arg0 as "0x..." (handle; not dereferenced)
+--   ev.arg    (string)  emitter arg1 as "0x..."
+-- Typed fields (hero id, level, ...) are added per event as payload
+-- schemas land. Lifecycle events (ready/tick/exit) pass an empty table.
 
 function R.on(event, cb)
     assert(type(event) == "string", "R.on: event must be string")

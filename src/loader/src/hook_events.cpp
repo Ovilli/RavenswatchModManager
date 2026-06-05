@@ -17,6 +17,7 @@
 #include <windows.h>
 
 #include <cstdint>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -31,6 +32,7 @@ struct EventHook {
     const char*  lua_event;   // event published to mods
     Emitter_t    real = nullptr;
     std::uintptr_t va = 0;
+    unsigned     seq = 0;     // per-event fire counter (published in payload)
 };
 
 // Verified by string-xref against the shipped exe (docs/_re/kinds/events.md):
@@ -47,8 +49,20 @@ template <int N>
 std::uintptr_t WINAPI detour(void* ctx, void* arg) {
     EventHook& h = g_hooks[N];
     const auto rv = h.real(ctx, arg);
-    // Empty payload: safe regardless of the emitter's true signature.
-    script_emit_event_json(h.lua_event, "{}");
+    // Safe envelope only: fire sequence + the two register args as raw
+    // pointer VALUES (never dereferenced — the per-emitter struct layout
+    // isn't RE'd yet, and a blind read would crash). This gives mods an
+    // ordering signal + handles they can pair with their own RE. Typed
+    // fields (hero id, level, ...) land here once an event gains a payload
+    // schema in data/symbols.json. lua_event is a controlled identifier,
+    // so it needs no JSON escaping.
+    char buf[160];
+    std::snprintf(buf, sizeof(buf),
+                  "{\"event\":\"%s\",\"seq\":%u,\"ctx\":\"0x%llx\",\"arg\":\"0x%llx\"}",
+                  h.lua_event, ++h.seq,
+                  static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(ctx)),
+                  static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(arg)));
+    script_emit_event_json(h.lua_event, buf);
     return rv;
 }
 
