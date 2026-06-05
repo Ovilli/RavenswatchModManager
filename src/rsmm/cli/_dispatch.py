@@ -60,6 +60,7 @@ BUILTIN = {
     "cook":              "rsmm.cli.cook",
     "uncook":            "rsmm.cli.uncook",
     "unify":             "rsmm.cli.unify",
+    "symbols":           "rsmm.cli.cmd_symbols",
 }
 
 SDK = {

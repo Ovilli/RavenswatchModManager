@@ -12,6 +12,7 @@
 #include "hook_items.h"
 #include "fn_resolver.h"
 #include "loader.h"
+#include "symbols.gen.h"  // GENERATED — `rsmm symbols gen` from data/symbols.json
 
 #include "MinHook.h"
 
@@ -29,10 +30,12 @@ namespace rsmm {
 namespace {
 
 // --- layout constants (preferred-base 0x140000000) -----------------------
-constexpr std::uintptr_t kPreferredBase = 0x140000000ull;
+// Addresses come from the canonical symbol map (data/symbols.json) via the
+// generated Sym:: namespace; edit names there, not magic numbers here.
+constexpr std::uintptr_t kPreferredBase = Sym::kPreferredBase;
 
-// Pool global pointer address (DAT_1414365d0).
-constexpr std::uintptr_t kPoolPtrGlobalVA = 0x1414365d0ull;
+// Pool global pointer address (Sym::g_MagicalObjectPool / DAT_1414365d0).
+constexpr std::uintptr_t kPoolPtrGlobalVA = Sym::g_MagicalObjectPool;
 
 // Pool offsets (relative to the pointer at DAT_1414365d0).
 // +0x00 void* master_linked_list  — linked list of nodes the engine spawns
@@ -49,9 +52,11 @@ constexpr std::size_t kOffRuntimeCap   = 0x1c;
 // +0x150).  We resolve FUN_1402586f0 via its byte pattern (it IS in
 // function_patterns.json) and add the internal offset to reach the
 // exact detour target.
-constexpr std::uintptr_t kSpawnAllObjectsVA = 0x140258760ull;
-constexpr std::uintptr_t kContainingFuncVA  = 0x1402586f0ull;
+constexpr std::uintptr_t kSpawnAllObjectsVA = Sym::MagicalObject_SpawnAllObjects;
+constexpr std::uintptr_t kContainingFuncVA  = Sym::MagicalObject_SpawnContainingFunc;
 constexpr std::size_t    kSpawnEntryOffset  = 0x70;  // SpawnAllObjects within FUN_1402586f0
+static_assert(kContainingFuncVA + kSpawnEntryOffset == kSpawnAllObjectsVA,
+              "symbol map anchor offset drifted from the +0x70 entry point");
 
 // --- game function type aliases -----------------------------------------
 

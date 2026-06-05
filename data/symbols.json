@@ -1,0 +1,369 @@
+{
+  "schema": 1,
+  "preferred_base": "0x140000000",
+  "_doc": "Canonical symbol map: semantic name -> Ravenswatch engine function/global. This is the source of truth (like Minecraft mappings). Ghidra names, the loader C++ header, and the Python SDK constants are all GENERATED from this file via `rsmm symbols gen`. Resolution: `raw` joins to data/function_patterns.json by name for version-resilient (byte-pattern) lookup; `anchor` is an inlined routine reached as parent_pattern + offset; `va` is a base-relative absolute (data globals, which have no code pattern). `status`: ok = pattern/anchor resolvable in the current corpus; va = base-relative only; unverified = documented in an older corpus, not yet re-confirmed against the shipped pattern DB.",
+  "symbols": [
+    {
+      "name": "MagicalObject_SpawnAllObjects",
+      "kind": "function",
+      "category": "items",
+      "anchor": { "raw": "FUN_1402586f0", "offset": "0x70" },
+      "status": "ok",
+      "signature": "void(void* pool, void* scene)",
+      "note": "Spawns every magical-object resource into the runtime pool. Inlined inside FUN_1402586f0; runs once at boot during InitialLoading. Loader post-detours this to inject custom items.",
+      "refs": ["src/loader/src/hook_items.cpp"]
+    },
+    {
+      "name": "MagicalObject_SpawnContainingFunc",
+      "kind": "function",
+      "category": "items",
+      "raw": "FUN_1402586f0",
+      "status": "ok",
+      "note": "Outer function (1283 bytes) that contains the inlined SpawnAllObjects entry at +0x70. This is the pattern-resolvable anchor.",
+      "refs": ["src/loader/src/hook_items.cpp"]
+    },
+    {
+      "name": "InitialLoading_SpawnMagicalObjects",
+      "kind": "function",
+      "category": "items",
+      "va": "0x140260280",
+      "status": "unverified",
+      "note": "Boot 'InitialLoading - MagicalObject SpawnAllObjects' caller that invokes SpawnAllObjects(g_MagicalObjectPool, ...). Address from an older corpus; re-confirm against current pattern DB.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "MagicalObjectPool_SourceLookup",
+      "kind": "function",
+      "category": "items",
+      "va": "0x1402590c0",
+      "status": "unverified",
+      "signature": "void*(void* pool, void* out, void* id)",
+      "note": "Source-list lookup into the magical-object pool. Address from item-clone corpus; re-confirm.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Resource_LookupByPath",
+      "kind": "function",
+      "category": "resource",
+      "raw": "FUN_140487040",
+      "status": "ok",
+      "note": "Canonical resource-by-path hashmap lookup. Returns a handle the engine treats as the loaded entity. Only resolves paths registered in UsedRscList/cache.",
+      "refs": ["src/loader/src/hook_items.cpp", "docs/_re"]
+    },
+    {
+      "name": "Definitions_LoadGroup",
+      "kind": "function",
+      "category": "resource",
+      "va": "0x14030fa00",
+      "status": "unverified",
+      "note": "Loads the 'Definitions' group / VersionDefinition manifest (triggers loading the curated content list). Address from older corpus.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Vector_Grow",
+      "kind": "function",
+      "category": "engine",
+      "raw": "FUN_140154c20",
+      "status": "ok",
+      "signature": "void(void* vec, void* /*dead RDX*/, uint32_t new_cap /*R8*/)",
+      "note": "Engine vector growth helper. new_cap is the 3rd arg (R8); RDX is dead. Used when force-pushing nodes into engine collections.",
+      "refs": ["src/loader/src/hook_items.cpp", "src/loader/src/hook_skins.cpp"]
+    },
+    {
+      "name": "MagicalObjectPool_Grow",
+      "kind": "function",
+      "category": "items",
+      "va": "0x1401550d0",
+      "status": "unverified",
+      "signature": "void(void* pool_plus_0x10, uint32_t count, uint32_t by)",
+      "note": "Grows the runtime array at pool+0x10 before storing a spawned component. Address from item-clone corpus.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Entity_AllocInstance",
+      "kind": "function",
+      "category": "entity",
+      "va": "0x14068fe90",
+      "status": "unverified",
+      "signature": "void*(void* resource_plus_0x18)",
+      "note": "Allocates an entity instance from a resource (res+0x18). Address from item-clone corpus.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Entity_FindMagicalObjectComponent",
+      "kind": "function",
+      "category": "entity",
+      "va": "0x1406e2250",
+      "status": "unverified",
+      "signature": "void*(void* instance, void* mo_component_meta)",
+      "note": "Finds the magical-object component in a spawned entity instance (uses g_MagicalObjectComponentMeta). Address from item-clone corpus.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Entity_FindComponentByType",
+      "kind": "function",
+      "category": "entity",
+      "raw": "FUN_1406ca380",
+      "status": "ok",
+      "signature": "oIEntityCpnt*(oCEntitySpawnerGo* go, oCMetaClass* meta)",
+      "note": "Generic find-sub-component-by-type on a spawner game object.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "SkinRoster_Build",
+      "kind": "function",
+      "category": "skins",
+      "raw": "FUN_1401dcae0",
+      "status": "ok",
+      "note": "Skin-pack roster builder. Selectable-skin count (9) is baked into its loop; a new selectable skin needs a detour here, not pure data.",
+      "refs": ["src/loader/src/hook_skins.cpp", "docs/_re"]
+    },
+    {
+      "name": "SkinGrid_Populate",
+      "kind": "function",
+      "category": "skins",
+      "raw": "FUN_1401f0f10",
+      "status": "ok",
+      "signature": "void(void* ctx, void* arg)",
+      "note": "Writes the visible skin roster into the grid; filter compares each node to 3. Loader post-detours this to force-push a custom node.",
+      "refs": ["src/loader/src/hook_skins.cpp", "docs/_re"]
+    },
+    {
+      "name": "Reward_InitAllRewards",
+      "kind": "function",
+      "category": "rewards",
+      "raw": "FUN_1401e6030",
+      "status": "ok",
+      "note": "_InitAllRewards (7351 bytes): reward-type registrar. The actual reward roller is a sibling. oCDtRewardDefinition is the entity class.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Netcode_PeerStateTick",
+      "kind": "function",
+      "category": "netcode",
+      "va": "0x1402afaa0",
+      "status": "unverified",
+      "note": "Per-peer connection-state tick (peer conn-state enum at peer+0xCC; 3=connected). Reconnect-window lever hooks here. Address from netcode corpus.",
+      "refs": ["src/loader/src/hook_netcode.cpp"]
+    },
+    {
+      "name": "Netcode_DropPeer",
+      "kind": "function",
+      "category": "netcode",
+      "va": "0x1402b4450",
+      "status": "unverified",
+      "note": "Drops a peer after the reconnect window (default 60s) elapses. Address from netcode corpus.",
+      "refs": ["src/loader/src/hook_netcode.cpp"]
+    },
+    {
+      "name": "Netcode_Channel_LookupById",
+      "kind": "function",
+      "category": "netcode",
+      "va": "0x140241150",
+      "status": "unverified",
+      "note": "Channel-lookup-by-id; paired with subscribe for named gameplay events (GIVE_MAGICAL_OBJECT). Address from events corpus.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Netcode_Channel_Subscribe",
+      "kind": "function",
+      "category": "netcode",
+      "va": "0x1401c8660",
+      "status": "unverified",
+      "note": "Subscribe to a gameplay-event channel. Address from events corpus.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "String_Assign",
+      "kind": "function",
+      "category": "engine",
+      "raw": "FUN_1405288b0",
+      "status": "ok",
+      "signature": "void(void* dst_slot, const StringDesc* src)",
+      "note": "Engine string-assign into a slot from a (ptr,len) StringDesc.",
+      "refs": ["src/loader/src/hook_skins.cpp"]
+    },
+    {
+      "name": "Entry_Ctor",
+      "kind": "function",
+      "category": "engine",
+      "raw": "FUN_140214bb0",
+      "status": "ok",
+      "signature": "void(void* base, uint32_t count)",
+      "note": "Constructs an entry/array element used by the spawn path.",
+      "refs": ["src/loader/src/hook_items.cpp"]
+    },
+    {
+      "name": "Format_String",
+      "kind": "function",
+      "category": "engine",
+      "raw": "FUN_140204f30",
+      "status": "ok",
+      "note": "printf-style format/string builder (e.g. 'Is Hero liked by {}', 'Chance to give {} MO'). Useful xref anchor for locating gameplay logic by its format literal.",
+      "refs": ["docs/_re"]
+    },
+
+    {
+      "name": "g_MagicalObjectPool",
+      "kind": "data",
+      "category": "items",
+      "va": "0x1414365d0",
+      "status": "va",
+      "note": "Magical-object pool global pointer. Layout at *ptr: +0x0 source array, +0x8 source count, +0x10 runtime array, +0x18 runtime count.",
+      "refs": ["src/loader/src/hook_items.cpp"]
+    },
+    {
+      "name": "g_RosterManager",
+      "kind": "data",
+      "category": "skins",
+      "va": "0x141436590",
+      "status": "va",
+      "note": "Manager pointer global (relocated by the live image base) walked by the skin-grid populate path.",
+      "refs": ["src/loader/src/hook_skins.cpp"]
+    },
+    {
+      "name": "g_MagicalObjectComponentMeta",
+      "kind": "data",
+      "category": "entity",
+      "va": "0x141470768",
+      "status": "va",
+      "note": "oCMetaClass* for the magical-object component; passed to Entity_FindMagicalObjectComponent.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Library_EnemyDefinition_vftable",
+      "kind": "data",
+      "category": "library",
+      "va": "0x1414118c0",
+      "status": "va",
+      "note": "vftable of oCTLibrary<oCDtEnemyDefinition> singleton.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Library_EnemyTribeDefinition_vftable",
+      "kind": "data",
+      "category": "library",
+      "va": "0x141411200",
+      "status": "va",
+      "note": "vftable of oCTLibrary<oCDtEnemyTribeDefinition> singleton.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Library_EnemyCampTierDefinition_vftable",
+      "kind": "data",
+      "category": "library",
+      "va": "0x141411560",
+      "status": "va",
+      "note": "vftable of oCTLibrary<oCDtEnemyCampTierDefinition> singleton.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Library_EnemyCampDifficultyDefinition_vftable",
+      "kind": "data",
+      "category": "library",
+      "va": "0x141411710",
+      "status": "va",
+      "note": "vftable of oCTLibrary<oCDtEnemyCampDifficultyDefinition> singleton.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Library_DreamShardDefinition_vftable",
+      "kind": "data",
+      "category": "library",
+      "va": "0x141411050",
+      "status": "va",
+      "note": "vftable of oCTLibrary<oCDtDreamShardDefinition> singleton.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Library_AchievementDefinition_vftable",
+      "kind": "data",
+      "category": "library",
+      "va": "0x1414113b0",
+      "status": "va",
+      "note": "vftable of oCTLibrary<oe::dt::AchievementDefinition> singleton.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Library_GameModifierDefinition_vftable",
+      "kind": "data",
+      "category": "library",
+      "va": "0x141411b50",
+      "status": "va",
+      "note": "vftable of oCTLibrary<oe::dt::GameModifierDefinition> singleton.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Library_TileDefinition_vftable",
+      "kind": "data",
+      "category": "library",
+      "va": "0x141412080",
+      "status": "va",
+      "note": "vftable of oCTLibrary<oCDtTileDefinition> singleton.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Library_VersionDefinition_vftable",
+      "kind": "data",
+      "category": "library",
+      "va": "0x141412300",
+      "status": "va",
+      "note": "vftable of oCTLibrary<oe::dt::VersionDefinition> singleton (LiveOps version manifest).",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Library_MapDefinition_vftable",
+      "kind": "data",
+      "category": "library",
+      "va": "0x141412520",
+      "status": "va",
+      "note": "vftable of oCTLibrary<oCDtMapDefinition> singleton.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Library_MelodyDefinition_vftable",
+      "kind": "data",
+      "category": "library",
+      "va": "0x1414129c0",
+      "status": "va",
+      "note": "vftable of oCTLibrary<MelodyDefinition> singleton.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Library_IngredientDefinition_vftable",
+      "kind": "data",
+      "category": "library",
+      "va": "0x141412c50",
+      "status": "va",
+      "note": "vftable of oCTLibrary<oCDtIngredientDefinition> singleton.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Library_RewardDefinition_vftable",
+      "kind": "data",
+      "category": "library",
+      "va": "0x141412e00",
+      "status": "va",
+      "note": "vftable of oCTLibrary<oCDtRewardDefinition> singleton.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Library_ChallengeDefinition_vftable",
+      "kind": "data",
+      "category": "library",
+      "va": "0x141413010",
+      "status": "va",
+      "note": "vftable of oCTLibrary<oe::dt::ChallengeDefinition> singleton.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Library_EntitySettingsResource_vftable",
+      "kind": "data",
+      "category": "library",
+      "va": "0x141441b60",
+      "status": "va",
+      "note": "vftable of oCTLibrary<oCEntitySettingsResource> singleton.",
+      "refs": ["docs/_re"]
+    }
+  ]
+}

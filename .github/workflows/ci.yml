@@ -53,6 +53,16 @@ jobs:
           PYTHONPATH: src
         run: python -m rsmm.cli.lint
 
+      # Symbol map (data/symbols.json) must validate and its generated
+      # loader header + python constants must be in lockstep with it.
+      - name: rsmm symbols (map valid + generated files fresh)
+        if: runner.os == 'Linux'
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m rsmm.cli.cmd_symbols check
+          python -m rsmm.cli.cmd_symbols gen --check
+
   ts:
     name: typescript (biome + tsc + vitest)
     runs-on: ubuntu-latest
