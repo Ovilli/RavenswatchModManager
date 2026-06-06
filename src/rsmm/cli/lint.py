@@ -138,8 +138,9 @@ def lint_one(entry: Path) -> tuple[int, int]:
             print(f"  [WARN] {entry.name}: unknown patch kind {kind!r}")
             warns += 1
 
-    # [[content]] blocks — item kind
-    ce, cw = _lint_content(entry.name, t.get("content", []) or [])
+    # [[content]] blocks — item kind + per-kind confidence gate
+    ce, cw = _lint_content(entry.name, t.get("content", []) or [],
+                           experimental=bool(m.get("experimental", False)))
     errs += ce
     warns += cw
 
@@ -160,15 +161,43 @@ def lint_one(entry: Path) -> tuple[int, int]:
     return errs, warns
 
 
-def _lint_content(modname: str, blocks: list[dict]) -> tuple[int, int]:
+def _lint_content(modname: str, blocks: list[dict],
+                  *, experimental: bool = False) -> tuple[int, int]:
     """Validate `[[content]] kind="item"` blocks against the cooked corpus:
-    base resolves, value_patch labels + defaults match, icon exists."""
+    base resolves, value_patch labels + defaults match, icon exists.
+
+    Also enforces the per-kind confidence gate: a mod registering any
+    non-``confirmed`` kind (see ``sdk.content.KIND_CONFIDENCE``) must set
+    ``[mod] experimental = true`` so nobody ships speculative content
+    believing it works."""
     errs = warns = 0
+    try:
+        from rsmm.sdk.content import kind_confidence
+    except ImportError:
+        def kind_confidence(_k: str) -> str:  # pragma: no cover
+            return "confirmed"
+    # Confidence gate runs for every kind, even ones with no deep validator.
+    for c in blocks:
+        kind = c.get("kind")
+        if not kind:
+            continue
+        conf = kind_confidence(str(kind))
+        if conf == "confirmed":
+            continue
+        if not experimental:
+            print(f"  [FAIL] {modname}: content kind {kind!r} is {conf!r} "
+                  f"(emitted bytes not verified in-game). Set "
+                  f"[mod] experimental = true to ship it knowingly.")
+            errs += 1
+        else:
+            print(f"  [WARN] {modname}: content kind {kind!r} is {conf!r} — "
+                  f"shipping under experimental opt-in (may not work in-game).")
+            warns += 1
     try:
         from rsmm.cli import cmd_items
         from rsmm.engine import magic_item_cook as cook
     except ImportError:
-        return 0, 0
+        return errs, warns
     for c in blocks:
         if c.get("kind") != "item":
             continue

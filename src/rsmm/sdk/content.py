@@ -19,6 +19,39 @@ from .api import sdk_export
 
 KINDS = ("item", "enemy", "boss", "map", "hero", "talent")
 
+#: Per-kind honesty rating — how much we trust the bytes this kind emits.
+#:
+#: * ``confirmed`` — verified in-game end-to-end; safe to ship.
+#: * ``experimental`` — codecs round-trip and emit succeeds, but the
+#:   in-game *apply/runtime* path is unproven (e.g. spawn selector or
+#:   roster detour unconfirmed). May load but not appear/function.
+#: * ``guess`` — byte layout is an educated guess from declaration order;
+#:   the game may reject or crash. Do not ship without RE confirmation.
+#:
+#: A mod that registers any non-``confirmed`` kind must opt in via
+#: ``sdk.Mod(..., experimental=True)`` (and the manifest records it), so
+#: nobody ships speculative content believing it works. ``rsmm lint``
+#: enforces this. Keep this table honest — it is the single source of
+#: truth consumed by the SDK, the linter, and ``docs/MODDING.md``.
+KIND_CONFIDENCE: dict[str, str] = {
+    "item": "confirmed",      # verified in compendium + drops (2026-06-02)
+    "talent": "confirmed",    # plain in-place magnitude override, tested
+    "enemy": "experimental",  # codecs round-trip; spawn-apply step unproven
+    "hero": "experimental",   # clones, but roster detour + library unproven
+    "map": "experimental",    # emit only; no in-game load proof
+    "boss": "guess",          # picker/HP/arena offsets are speculative
+}
+
+CONFIDENCE_LEVELS = ("confirmed", "experimental", "guess")
+
+
+def kind_confidence(kind: str) -> str:
+    """Return the honesty rating for ``kind`` (see :data:`KIND_CONFIDENCE`).
+
+    Unknown kinds are treated as ``guess`` — the safe default for anything
+    not explicitly vetted."""
+    return KIND_CONFIDENCE.get(kind, "guess")
+
 
 class ContentError(ValueError):
     pass
@@ -84,6 +117,8 @@ class ContentRegistry:
 
     mod_id: str
     defs: list[ContentDef] = field(default_factory=list)
+    #: Author opted into unverified kinds via ``sdk.Mod(experimental=True)``.
+    experimental: bool = False
 
     @sdk_export("ContentRegistry.register")
     def register(self, kind: str, *, id: str, schema_version: int = 1,
@@ -91,6 +126,14 @@ class ContentRegistry:
         if kind not in KINDS:
             raise ContentError(
                 f"unknown content kind {kind!r}; supported: {', '.join(KINDS)}"
+            )
+        conf = kind_confidence(kind)
+        if conf != "confirmed" and not self.experimental:
+            raise ContentError(
+                f"kind {kind!r} is {conf!r}: its emitted bytes are not verified "
+                "in-game and may not appear or may crash. To use it anyway, "
+                "opt in with sdk.Mod(..., experimental=True). See "
+                "docs/MODDING.md 'Content kinds & confidence'."
             )
         if not id or not isinstance(id, str):
             raise ContentError(f"{kind}: id must be a non-empty string")

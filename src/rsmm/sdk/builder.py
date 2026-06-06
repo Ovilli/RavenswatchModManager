@@ -26,7 +26,8 @@ _ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 class ModBuilder:
     """In-memory mod authoring buffer; flushed in one atomic pass."""
 
-    def __init__(self, mod_id: str, *, version: str, author: str, name: str):
+    def __init__(self, mod_id: str, *, version: str, author: str, name: str,
+                 experimental: bool = False):
         if not _ID_RE.match(mod_id):
             raise ValueError(f"invalid mod_id: {mod_id!r}")
         self.id = mod_id
@@ -34,9 +35,11 @@ class ModBuilder:
         self.author = author
         self.name = name
         self.enabled = True
+        #: Author opted into unverified (experimental/guess) content kinds.
+        self.experimental = experimental
         self._config_schema: dict | None = None
         self._i18n: dict[str, dict[str, str]] = {}
-        self._content = ContentRegistry(mod_id=mod_id)
+        self._content = ContentRegistry(mod_id=mod_id, experimental=experimental)
         self._requires: list[tuple[str, str]] = []
         self._api_name: str | None = None
         self._patch_blocks: list[dict] = []
@@ -289,6 +292,8 @@ class ModBuilder:
     def summary(self) -> dict:
         """Snapshot of everything staged so far — print before :meth:`commit`
         to see exactly what the mod will write (no disk writes)."""
+        from .content import kind_confidence
+
         by_kind: dict[str, list[str]] = {}
         for d in self._content.defs:
             by_kind.setdefault(d.kind, []).append(d.id)
@@ -296,7 +301,9 @@ class ModBuilder:
             "id": self.id,
             "name": self.name,
             "version": self.version,
+            "experimental": self.experimental,
             "content": by_kind,
+            "content_confidence": {k: kind_confidence(k) for k in by_kind},
             "assets": sorted(self._assets),
             "i18n_locales": sorted(self._i18n),
             "skinpacks": [p["name"] for p in self._skinpacks],
@@ -375,6 +382,8 @@ class ModBuilder:
             f'enabled = {"true" if self.enabled else "false"}',
             'sdk_version = ">=3.0,<4"',
         ]
+        if self.experimental:
+            lines.append("experimental = true")
         if self._requires:
             lines += ["", "[dependencies]"]
             for mid, spec in self._requires:

@@ -429,10 +429,11 @@ def test_repo_sign_verify_roundtrip(tmp_path: Path):
 # ---------------------------------------------------------------------------
 
 
-def _builder(tmp_path: Path, monkeypatch, mod_id="DX"):
+def _builder(tmp_path: Path, monkeypatch, mod_id="DX", *, experimental=False):
     from rsmm.sdk import builder as B
     monkeypatch.setattr(B, "MODS_DIR", tmp_path / "mods")
-    return B.ModBuilder(mod_id, version="1.0.0", author="x", name=mod_id)
+    return B.ModBuilder(mod_id, version="1.0.0", author="x", name=mod_id,
+                        experimental=experimental)
 
 
 def test_content_ref_handle_and_namespacing(tmp_path: Path, monkeypatch):
@@ -445,11 +446,35 @@ def test_content_ref_handle_and_namespacing(tmp_path: Path, monkeypatch):
 
 
 def test_content_ref_deref_in_fields(tmp_path: Path, monkeypatch):
-    m = _builder(tmp_path, monkeypatch)
+    # boss is a 'guess' kind, so opt into experimental to register it.
+    m = _builder(tmp_path, monkeypatch, experimental=True)
     blade = m.item("FrostBlade", base="VanillaSword")
     m.boss("IceLord", base="BabaYaga", drops=[blade])
     bdef = next(d for d in m._content.defs if d.id == "IceLord")
     assert bdef.fields["drops"] == ["FrostBlade"]  # ref -> raw id
+
+
+def test_unverified_kind_blocked_without_optin(tmp_path: Path, monkeypatch):
+    """Non-confirmed kinds (enemy/boss/hero/map) raise unless the mod opts
+    into experimental — so nobody ships speculative content unknowingly."""
+    from rsmm.sdk.content import ContentError, kind_confidence
+    m = _builder(tmp_path, monkeypatch)
+    assert kind_confidence("item") == "confirmed"
+    assert kind_confidence("boss") == "guess"
+    with pytest.raises(ContentError, match="experimental"):
+        m.enemy("Goblin", base="Gnoll")
+    with pytest.raises(ContentError, match="experimental"):
+        m.boss("IceLord", base="BabaYaga")
+    # confirmed kinds never need the opt-in.
+    m.item("Sword", base="Knife")
+
+
+def test_unverified_kind_allowed_with_optin(tmp_path: Path, monkeypatch):
+    m = _builder(tmp_path, monkeypatch, experimental=True)
+    ref = m.enemy("Goblin", base="Gnoll")
+    assert ref.id == "Goblin"
+    assert m.summary()["experimental"] is True
+    assert m.summary()["content_confidence"]["enemy"] == "experimental"
 
 
 def test_duplicate_content_id_rejected(tmp_path: Path, monkeypatch):

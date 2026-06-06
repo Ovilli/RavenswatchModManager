@@ -27,7 +27,13 @@ import re
 from . import engine
 from .api import API_VERSION, require_api, sdk_export
 from .config import ConfigSchema, ConfigStore
-from .content import ContentDef, ContentRef, ContentRegistry
+from .content import (
+    KIND_CONFIDENCE,
+    ContentDef,
+    ContentRef,
+    ContentRegistry,
+    kind_confidence,
+)
 from .health import Health
 from .i18n import I18nBundle
 from .intermod import InterModRegistry
@@ -43,6 +49,7 @@ __all__ = [
     "API_VERSION", "sdk_export", "require_api",
     "Health", "ConfigSchema", "ConfigStore", "I18nBundle",
     "ContentRegistry", "ContentDef", "ContentRef", "InterModRegistry",
+    "KIND_CONFIDENCE", "kind_confidence",
     "discover_plugins",
     "RepoIndex", "sign_file", "verify_file",
     "expect", "conflicts", "assert_no_conflicts", "ModExpect",
@@ -69,12 +76,13 @@ class Mod:
     """
 
     def __init__(self, mod_id: str, *, version: str = "0.0.1",
-                 author: str = "", name: str | None = None):
+                 author: str = "", name: str | None = None,
+                 experimental: bool = False):
         if not _ID_RE.match(mod_id):
             raise ValueError(f"invalid mod_id: {mod_id!r}")
         from .builder import ModBuilder
         self._b = ModBuilder(mod_id, version=version, author=author,
-                             name=name or mod_id)
+                             name=name or mod_id, experimental=experimental)
         # When set by `rsmm test`, __exit__ skips the on-disk commit so
         # the diff harness can introspect declarations without clobbering
         # the real mod tree.
@@ -103,6 +111,7 @@ class Mod:
             "author": self._b.author,
             "requires": sorted(self._b._requires),
             "api": self._b._api_name,
+            "experimental": self._b.experimental,
         }]
         if self._b._config_schema is not None:
             out.append({"kind": "config_schema", "schema": self._b._config_schema})
