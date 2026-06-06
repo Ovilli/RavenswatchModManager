@@ -1,0 +1,14 @@
+/* Accent color: red instead of Starlight's default blue.
+   Only the accent ramp is overridden; base dark/white theme is untouched. */
+
+:root {
+  --sl-color-accent-low: #420c0c;
+  --sl-color-accent: #e0182d;
+  --sl-color-accent-high: #f5b2b2;
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #ffd6d6;
+  --sl-color-accent: #c8102e;
+  --sl-color-accent-high: #5c0a13;
+}

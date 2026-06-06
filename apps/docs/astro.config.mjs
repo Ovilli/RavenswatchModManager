@@ -17,6 +17,7 @@ export default defineConfig({
         replacesTitle: false,
       },
       favicon: '/favicon.png',
+      customCss: ['./src/styles/theme.css'],
       lastUpdated: true,
       editLink: {
         baseUrl: 'https://github.com/Ovilli/RavenswatchModManager/edit/main/apps/docs/',
