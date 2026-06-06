@@ -311,15 +311,37 @@ When two mods override the same encoded path, the applier keeps the **later mod 
 
 ---
 
-## What you can't do yet
+## Content kinds & confidence
 
-- **PNG → cooked texture** — The `oCTexture` container is custom, not plain DDS.
-- **Edit hero/enemy/item gameplay stats** (HP, damage, move speed) — Per-entity schemas need more RE work.
-- **New heroes/enemies/items** — Needs the text-`.ot` → binary-`.gen` re-encoder.
-- **New 3D meshes** — No partial cooker for `oCGeometry`.
-- **Engine event hooks** (OnDamage, OnSpawn) — MinHook targets were pruned due to anti-tamper.
+Every content kind carries an honesty rating — **how much we trust the bytes
+it emits**. The ratings are the single source of truth in
+`src/rsmm/sdk/content.py::KIND_CONFIDENCE`; `rsmm lint` and the SDK enforce
+them. Don't trust prose over that table — but here it is in plain terms:
 
-Note: you *can* call any of 53k game functions from Lua today via `rsmm.call` — calling alone covers seed pinning, stat reads, save inspection, and forced option overrides. You just can't intercept them yet.
+| Capability | Rating | Reality |
+|---|---|---|
+| **Replace a cooked file** (raw / texture / model / stat / text / url patch) | ✅ confirmed | Install-time file replacement. Bread and butter. |
+| **PNG → cooked texture** | ✅ confirmed | `engine/cooked_schemas/texture.py` cooks PNG/DDS/TGA into the `oCTexture` container at apply-time. |
+| **Custom 3D mesh** (`.glb`/`.gltf`) | ⚠️ experimental | `engine/geometry_cook.py` round-trips and retargets a mesh onto the original's skeleton (≤65535 verts), but in-game render is only partially proven. See `DesertEagleJuliet`. |
+| **Custom magic item** (`kind="item"`) | ✅ confirmed | New magical object shows in compendium + drops (verified 2026-06-02). Clone a vanilla `base`, patch values. See `ItemCloneTest`. |
+| **Edit talent / item values** (`kind="talent"`, `value_patches`) | ✅ confirmed | In-place magnitude override. See `JulietTalentBuff`. |
+| **Reskin an existing hero** (texture/model override) | ✅ confirmed | See `JulietReskin`. |
+| **Custom enemy** (`kind="enemy"`) | ⚠️ experimental | Codec round-trips and the def registers, but the in-game spawn-apply step is unproven (flag-list selector resolution unconfirmed). |
+| **Custom hero / map** (`kind="hero"`, `kind="map"`) | ⚠️ experimental | Clones and emits, but the roster detour / library singleton (hero) and in-game load (map) are unproven. |
+| **Custom boss** (`kind="boss"`) | ❓ guess | Picker/HP/arena byte offsets are speculative. May be rejected or crash. |
+| **New selectable skin slot** | ⚠️ experimental | Needs the loader skin detour; the DLC-entitlement filter rejects new keys by default (`RSMM_SKIN_FORCE_SHOW=1` to test). Replacing an existing slot is ✅ confirmed. |
+| **Engine event hooks** (`R.on("OnDamage", …)`) | ⚠️ experimental | The event bus + payload envelope ship in the loader, and emitter addresses are mapped — but the runtime path is **not yet verified end-to-end on CI** (loader is Windows-only). Treat as unproven until the loader smoke test (below) is green. |
+| **Call any of 53k game functions from Lua** (`R.engine.call`) | ✅ confirmed | Covers seed pinning, stat reads, save inspection, forced option overrides. Interception (hooks) is the experimental part above. |
+
+**Opting into unverified kinds.** Registering any non-`confirmed` kind requires
+`sdk.Mod(..., experimental=True)` (and the manifest records `experimental = true`);
+otherwise the SDK raises and `rsmm lint` fails. This is deliberate — a ⚠️/❓
+kind is a known guess, not a finished feature.
+
+```python
+with sdk.Mod("MyEnemyMod", experimental=True) as m:   # required for enemy/boss/hero/map
+    m.enemy("Dreadgnoll", base="Gnoll_Shielded", tribe="Gnolls")
+```
 
 See [docs/INTERNALS.md](INTERNALS.md) for the engine notes that ground all of the above, and [docs/ROADMAP.md](ROADMAP.md) for open work.
 

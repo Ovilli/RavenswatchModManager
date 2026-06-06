@@ -60,17 +60,16 @@
     font-feature-settings: 'liga' 1, 'kern' 1;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    /* cleaner vignette with reduced texture noise + subtle painted backdrop */
+    /* Dark painterly vignette — pure CSS gradients (no game art). */
     background-image:
-      linear-gradient(hsl(0 46% 5% / 0.76), hsl(0 46% 5% / 0.76)),
-      radial-gradient(ellipse at top left, hsl(0 32% 13% / 0.45), transparent 58%),
-      radial-gradient(ellipse at bottom right, hsl(0 22% 10% / 0.5), transparent 64%),
-      url('./assets/uncooked/loading-screen-avalon.png');
-    background-position: center, top left, bottom right, center top;
-    background-size: auto, auto, auto, cover;
+      linear-gradient(hsl(0 46% 5% / 0.94), hsl(0 46% 4% / 0.97)),
+      radial-gradient(ellipse at top left, hsl(0 32% 13% / 0.55), transparent 58%),
+      radial-gradient(ellipse at bottom right, hsl(0 22% 10% / 0.6), transparent 64%);
+    background-position: center, top left, bottom right;
+    background-size: auto, auto, auto;
     background-repeat: no-repeat;
     background-attachment: fixed;
-    background-blend-mode: normal, normal, normal, soft-light;
+    background-blend-mode: normal, normal, normal;
   }
 
   /* Headlines — blackletter Fraktur for the German-feel wordmark / section

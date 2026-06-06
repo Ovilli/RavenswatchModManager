@@ -1,12 +1,10 @@
 # Ravenswatch Mod Manager (RSMM)
 
-**A cross-platform mod manager for Ravenswatch.** Swap textures, edit stats, override translations, and author Lua-scripted mods — all from a desktop app or CLI. Works on **Windows, macOS, and Linux**.
+**A mod manager for Ravenswatch.** Swap textures, edit stats and talent values, override translations, and author Lua-scripted mods from a desktop app or CLI. Ravenswatch ships on **Windows** (and runs on **Linux** via Proton / Steam Deck); RSMM supports both. There is no native macOS release of the game.
 
 [![Windows](https://img.shields.io/badge/Windows-x64-blue?logo=windows)](https://github.com/Ovilli/RavenswatchModManager/releases/latest)
-[![macOS](https://img.shields.io/badge/macOS-universal-black?logo=apple)](https://github.com/Ovilli/RavenswatchModManager/releases/latest)
 [![Linux](https://img.shields.io/badge/Linux-x64-orange?logo=linux)](https://github.com/Ovilli/RavenswatchModManager/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](docs/CONTRIBUTING.md)
 
 ## Download
 
@@ -15,26 +13,30 @@ No terminal required. Grab the desktop app for your OS:
 | Platform | Installer |
 |---|---|
 | **Windows** 10/11 | [`RSMM-x64.msi`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) |
-| **macOS** 12+ (Intel & Apple Silicon) | [`RSMM-universal.dmg`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) |
 | **Linux** (AppImage) | [`RSMM-x86_64.AppImage`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) |
 | **Linux** (Debian/Ubuntu) | [`rsmm_amd64.deb`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) |
-| **Arch Linux** | `yay -S rsmm` |
 
 ## What you can do
 
+✅ works today · ⬜ planned (not built yet)
+
 | Capability | Desktop app | CLI |
 |---|---|---|
-| Browse & install mods from the Registry | ✅ Click to install | `rsmm apply` |
-| Swap textures, audio, meshes | ✅ Built-in | `rsmm apply` |
-| Edit balance numbers | ✅ Coming soon | `rsmm stat` |
-| Override translations | ✅ Coming soon | `rsmm text` |
+| Install mods (local folder or registry) | ✅ Click to install | `rsmm apply` |
+| Swap textures | ✅ Built-in | `rsmm apply` |
+| Edit balance numbers | ⬜ Planned | ✅ SDK `m.stat()` / `[[patch]] kind="stat"` |
+| Edit talent / item values | ⬜ Planned | ✅ `rsmm talents`, `value_patches` |
+| Override translations | ⬜ Planned | ✅ SDK `m.text()` / `[[patch]] kind="text"` |
+| Add a custom magic item | ⬜ Planned | ✅ `kind="item"` |
 | Manage multiple profiles | ✅ Dropdown menu | — |
-| Health check | ✅ Doctor button | `rsmm doctor` |
-| Launch the game | ✅ Play button | `rsmm run` |
-| Author mods in Lua | — | `rsmm new`, `rsmm pack` |
-| Live re-apply on file changes | — | `rsmm watch` |
+| Health check | ✅ Doctor button | ✅ `rsmm doctor` |
+| Launch the game | ✅ Play button | ✅ `rsmm run` |
+| Author mods in Lua | — | ✅ `rsmm new`, `rsmm pack` |
+| Live re-apply on file changes | — | ✅ `rsmm watch` |
 
-> **Lua scripting is Windows-only** (requires a native DLL loaded into the game process). Texture swaps, stat edits, and text overrides work on all platforms.
+> **Lua scripting is Windows-only** (a native DLL is loaded into the game process). Texture/stat/talent/item edits are install-time file replacement and work wherever the game runs.
+
+> **The registry is new and holds very few mods yet** — RSMM mostly installs mods you point it at locally. Content kinds beyond the ones above (custom enemies, heroes, bosses, skins) are **experimental or unproven in-game**; see the confidence table in [docs/MODDING.md](docs/MODDING.md#content-kinds--confidence) for exactly what to trust.
 
 ## Quick start (desktop app)
 
@@ -72,7 +74,7 @@ python3 -m venv .venv && source .venv/bin/activate && pip install -e .
 ```
 rsmm                  CLI entry point — every workflow starts here
 apps/                 TypeScript monorepo (Tauri desktop, Next.js site, Hono API, Astro docs)
-  desktop/            Tauri 2 desktop app (Windows, macOS, Linux)
+  desktop/            Tauri 2 desktop app (Windows, Linux)
   www/                Next.js website + registry browser
   api/                Hono API server
   docs/               Astro Starlight documentation site
@@ -81,7 +83,7 @@ src/rsmm/             Python CLI + SDK
 src/loader/           Native DLL (winhttp proxy + Lua VM, Windows only)
 docs/                 User + developer documentation
 mods/                 Installed mods (one folder per id)
-data/                 Asset maps + pattern signatures (gitignored)
+data/                 Symbol map (tracked) + asset maps / pattern sigs (gitignored)
 dist/                 Built loader DLL + packed mod zips
 ```
 
