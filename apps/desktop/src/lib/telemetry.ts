@@ -9,7 +9,6 @@ export function detectOs(): TelemetryRun['os'] {
   const p = navigator.platform.toLowerCase();
   const ua = navigator.userAgent.toLowerCase();
   if (p.includes('win') || ua.includes('windows')) return 'windows';
-  if (p.includes('mac') || ua.includes('mac os')) return 'macos';
   if (p.includes('linux') || ua.includes('linux')) return 'linux';
   return 'unknown';
 }

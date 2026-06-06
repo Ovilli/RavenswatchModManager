@@ -118,8 +118,6 @@ function defaultModsDir(): string {
   switch (getPlatform()) {
     case 'windows':
       return '%APPDATA%\\rsmm\\mods';
-    case 'macos':
-      return '~/Library/Application Support/rsmm/mods';
     default:
       return '~/.local/share/rsmm/mods';
   }

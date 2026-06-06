@@ -5,7 +5,7 @@
 #   ./scripts/build_launcher.sh
 #
 # Outputs (depending on host platform):
-#   dist/RavenswatchModManager           Linux / macOS
+#   dist/RavenswatchModManager           Linux
 #   dist/RavenswatchModManager.exe       Windows (run from a Windows shell)
 #
 # Optional second step: wrap the Linux binary into an AppImage for

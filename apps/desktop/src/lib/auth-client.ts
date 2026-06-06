@@ -6,7 +6,7 @@ export const authClient = createAuthClient({
   fetchOptions: {
     credentials: 'include',
   },
-  // Cache session in storage after get-session. Helps Tauri on macOS/Linux
+  // Cache session in storage after get-session. Helps Tauri on Linux
   // where WebKit may not persist third-party API cookies under tauri://.
   session: {
     cookieCache: {

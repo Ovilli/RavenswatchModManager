@@ -3,7 +3,7 @@
 
 Reads the cooked .gen binary and replaces the NamedEventGameLockConditionSettings
 payloads with empty data, so the hero always appears unlocked.  This approach
-works on ALL platforms (Windows, Linux/Proton, macOS) because it's a pure
+works on all supported platforms (Windows, Linux/Proton) because it's a pure
 file-replacement mod — no runtime hook (DLL injection) needed.
 
 Usage:

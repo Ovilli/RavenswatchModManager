@@ -30,17 +30,12 @@
   "bundle": {
     "active": true,
     "createUpdaterArtifacts": true,
-    "targets": ["app", "appimage", "deb", "dmg", "nsis"],
+    "targets": ["appimage", "deb", "nsis"],
     "icon": ["icons/icon.png", "icons/icon.ico", "icons/icon.icns"],
     "category": "Utility",
-    "shortDescription": "Cross-platform mod manager for Ravenswatch.",
-    "longDescription": "A cross-platform mod manager for Ravenswatch. Browse, install, and manage mods through a graphical interface. Swap textures, edit stats, override translations, and author Lua-scripted mods.",
+    "shortDescription": "Mod manager for Ravenswatch (Windows + Linux).",
+    "longDescription": "A mod manager for Ravenswatch on Windows and Linux. Browse, install, and manage mods through a graphical interface. Swap textures, edit stats, override translations, and author Lua-scripted mods.",
     "externalBin": ["binaries/rsmm"],
-    "macOS": {
-      "entitlements": "entitlements/macos.entitlements",
-      "minimumSystemVersion": "12.0",
-      "exceptionDomain": "localhost"
-    },
     "windows": {},
     "linux": {
       "deb": {

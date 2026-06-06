@@ -35,12 +35,6 @@ const platforms: Platform[] = [
     note: 'Auto-updater is enabled — once installed, the app checks for new releases on launch and applies them in one click.',
   },
   {
-    name: 'macOS',
-    details: 'Universal DMG for Apple Silicon and Intel Macs. Requires macOS 12 or newer.',
-    assetHint: 'Ravenswatch.Mod.Manager_*_universal.dmg',
-    note: 'Gatekeeper may show a warning on first launch — open via right-click → Open. Auto-updates work the same as on Windows.',
-  },
-  {
     name: 'Linux',
     details: 'AppImage for portable use, or a Debian package for apt-based distros.',
     assetHint: 'rsmm-desktop_*.AppImage  ·  rsmm-desktop_*_amd64.deb',
@@ -83,7 +77,7 @@ export default async function DownloadPage() {
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">
             One desktop app for browsing the registry, applying mods, and managing rollback-safe
-            installs across Windows, macOS, and Linux — with built-in auto-updates.
+            installs across Windows and Linux — with built-in auto-updates.
           </p>
 
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -109,7 +103,7 @@ export default async function DownloadPage() {
           </div>
         </section>
 
-        <section className="mt-16 grid gap-6 lg:grid-cols-3">
+        <section className="mt-16 grid gap-6 lg:grid-cols-2">
           {platforms.map((platform) => (
             <Card key={platform.name} className="grimoire-card">
               <CardHeader>

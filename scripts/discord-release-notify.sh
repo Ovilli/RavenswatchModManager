@@ -69,7 +69,7 @@ PAYLOAD=$(node -e "
         },
         {
           name: '\uD83D\uDCE6 Downloads',
-          value: '[Windows](' + url + ') \u00B7 [macOS](' + url + ') \u00B7 [Linux](' + url + ')',
+          value: '[Windows](' + url + ') \u00B7 [Linux](' + url + ')',
           inline: true
         }
       ],

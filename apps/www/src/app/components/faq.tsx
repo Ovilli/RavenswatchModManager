@@ -21,7 +21,7 @@ const faqs = [
   },
   {
     q: 'Which platforms are supported?',
-    a: 'Windows, macOS, and Linux. Prebuilt binaries are published on the GitHub releases page.',
+    a: 'Windows and Linux. Prebuilt binaries are published on the GitHub releases page.',
   },
   {
     q: 'I found a bug — how do I report it?',

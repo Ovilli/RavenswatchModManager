@@ -87,6 +87,44 @@ def test_dispatch_new_duplicate(tmp_path, monkeypatch):
     assert rc == 1
 
 
+def test_cmd_new_confirmed_kind_enabled(tmp_path, monkeypatch):
+    """A confirmed kind (item) scaffolds enabled, no experimental flag."""
+    from rsmm.cli.cmd_new import main
+    monkeypatch.setattr("rsmm.cli.cmd_new.MODS_DIR", tmp_path / "mods")
+    assert main(["MyItem", "--kind", "item"]) == 0
+    text = (tmp_path / "mods" / "MyItem" / "manifest.toml").read_text("utf-8")
+    assert "enabled     = true" in text
+    assert "experimental = true" not in text
+    assert 'base          = "Armor_Per_Object"' in text  # actionable base hint
+
+
+def test_cmd_new_experimental_kind_opts_in(tmp_path, monkeypatch):
+    """Non-confirmed kinds scaffold experimental = true + disabled, so the
+    output lints clean instead of failing the confidence gate (regression:
+    `rsmm new x --kind enemy` previously emitted a manifest its own linter
+    rejected)."""
+    from rsmm.cli.cmd_new import main
+    monkeypatch.setattr("rsmm.cli.cmd_new.MODS_DIR", tmp_path / "mods")
+    for kind in ("enemy", "boss", "hero", "map"):
+        assert main([f"Mod_{kind}", "--kind", kind]) == 0
+        text = (tmp_path / "mods" / f"Mod_{kind}" / "manifest.toml").read_text("utf-8")
+        assert "experimental = true" in text
+        assert "enabled     = false" in text
+
+
+def test_cmd_new_scaffold_lints_clean(tmp_path, monkeypatch):
+    """Every `rsmm new --kind X` scaffold passes `rsmm lint` (rc 0)."""
+    from rsmm.cli import cmd_new, lint
+    mods = tmp_path / "mods"
+    monkeypatch.setattr("rsmm.cli.cmd_new.MODS_DIR", mods)
+    monkeypatch.setattr("rsmm.cli.lint.MODS_DIR", mods)
+    for kind in ("item", "talent", "enemy", "boss", "hero", "map"):
+        mid = f"L_{kind}"
+        assert cmd_new.main([mid, "--kind", kind]) == 0
+        monkeypatch.setattr(sys, "argv", ["lint", mid])
+        assert lint.main() == 0, f"scaffold for kind {kind!r} failed lint"
+
+
 def test_json_bridge_config_roundtrip(tmp_path, monkeypatch, capsys):
     from rsmm.cli import json_bridge
     from rsmm.cli._dispatch import main

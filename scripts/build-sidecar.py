@@ -7,8 +7,9 @@ resolver expects it.
 Usage:
     python3 scripts/build-sidecar.py                  # auto-detect platform
     python3 scripts/build-sidecar.py --target linux
-    python3 scripts/build-sidecar.py --target macos
     python3 scripts/build-sidecar.py --target windows
+
+RSMM targets Windows + Linux only (macOS support dropped).
 """
 
 import argparse
@@ -24,15 +25,11 @@ OUT_DIR = REPO_ROOT / "apps" / "desktop" / "src-tauri" / "binaries"
 
 TARGET_TRIPLES = {
     "linux": "x86_64-unknown-linux-gnu",
-    "macos": "x86_64-apple-darwin",
-    "macos-arm": "aarch64-apple-darwin",
     "windows": "x86_64-pc-windows-msvc",
 }
 
 EXTENSIONS = {
     "linux": "",
-    "macos": "",
-    "macos-arm": "",
     "windows": ".exe",
 }
 
@@ -41,15 +38,10 @@ def detect_platform() -> str:
     system = platform.system().lower()
     if system == "linux":
         return "linux"
-    elif system == "darwin":
-        # Check if running on Apple Silicon
-        if platform.machine() == "arm64":
-            return "macos-arm"
-        return "macos"
     elif system in ("windows", "msys", "cygwin"):
         return "windows"
     else:
-        print(f"Unsupported platform: {system}")
+        print(f"Unsupported platform: {system} (RSMM targets Windows + Linux only)")
         sys.exit(1)
 
 

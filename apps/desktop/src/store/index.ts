@@ -110,8 +110,6 @@ function defaultGameDir(): string {
   switch (getPlatform()) {
     case 'windows':
       return 'C:\\Program Files (x86)\\Steam\\steamapps\\common\\Ravenswatch';
-    case 'macos':
-      return '~/Library/Application Support/Steam/steamapps/common/Ravenswatch/Ravenswatch.app';
     default:
       return '~/.steam/steam/steamapps/common/Ravenswatch';
   }
@@ -121,8 +119,6 @@ function defaultModsDir(): string {
   switch (getPlatform()) {
     case 'windows':
       return '%APPDATA%\\rsmm\\mods';
-    case 'macos':
-      return '~/Library/Application Support/rsmm/mods';
     default:
       return '~/.local/share/rsmm/mods';
   }

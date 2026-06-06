@@ -73,7 +73,7 @@ BACKUP_SUFFIX = ".rsmm.bak"
 
 
 def find_game_dir() -> Path | None:
-    """Best-effort autodetect across Linux/macOS/Windows.
+    """Best-effort autodetect across Windows/Linux.
 
     The cooked asset tree is the canonical marker (DarkTalesResources/_Cooking).
     Return the first install dir that contains it. Candidate list lives

@@ -26,7 +26,7 @@ manifest that the client polls for new versions.
 
 4. **Tag a release.** Push a tag matching `v*` and the workflow will:
 
-   - build MSI (Windows), DMG (macOS), AppImage + .deb (Linux),
+   - build MSI (Windows), AppImage + .deb (Linux),
    - sign each bundle with the private key,
    - publish a draft release with `latest.json` next to the artifacts.
 
@@ -46,7 +46,6 @@ manifest that the client polls for new versions.
 ## Cross-platform notes
 
 - **Windows** — installer is MSI. Updater applies a new MSI in-place.
-- **macOS** — universal `.app` inside a DMG. Updater swaps the bundle.
 - **Linux** — AppImage. Updater rewrites the AppImage on disk; the OS handles
   the rest on next launch.
 

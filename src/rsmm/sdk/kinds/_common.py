@@ -14,8 +14,8 @@ focused on their own schema:
 * ``validate_id`` / ``slug_id`` — ASCII identifier guards (the game's
   resource-path parser rejects anything outside ``[A-Za-z0-9_]``).
 * ``write_json`` — deterministic JSON writer (sorted keys, LF
-  newlines, UTF-8) so manifests are byte-identical on Linux, macOS,
-  and Windows. This matters for repro builds and content-hash gates.
+  newlines, UTF-8) so manifests are byte-identical on Windows and
+  Linux. This matters for repro builds and content-hash gates.
 """
 
 from __future__ import annotations

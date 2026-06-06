@@ -230,7 +230,6 @@ def check_exe_hash(game_dir: Path) -> list[Result]:
         game_dir / "Ravenswatch.exe",
         game_dir / "Ravenswatch-Win64-Shipping.exe",
         game_dir / "Ravenswatch" / "Binaries" / "Win64" / "Ravenswatch-Win64-Shipping.exe",
-        game_dir / "Ravenswatch.app" / "Contents" / "MacOS" / "Ravenswatch",
     ]
     exe = next((e for e in exe_candidates if e.exists()), None)
     if not exe:

@@ -9,7 +9,7 @@ import './globals.css';
 export const metadata: Metadata = {
   metadataBase: new URL('https://ravenswatch.ovilli.de'),
   title: 'Ravenswatch Mod Manager',
-  description: 'Cross-platform mod manager for Ravenswatch — browser, Windows, macOS, Linux.',
+  description: 'Mod manager for Ravenswatch — browser, Windows, Linux.',
   icons: '/logo.png',
 };
 

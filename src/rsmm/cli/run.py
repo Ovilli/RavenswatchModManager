@@ -41,8 +41,7 @@ RECOMMENDED_LAUNCH_OPTIONS = 'WINEDLLOVERRIDES="winhttp=n,b" %command%'
 
 
 def _steam_root() -> Path | None:
-    """Locate Steam install dir across Linux (Flatpak/native), macOS,
-    Windows."""
+    """Locate Steam install dir across Linux (Flatpak/native) and Windows."""
     home = Path.home()
     cands: list[Path] = []
     if sys.platform == "win32":
@@ -69,8 +68,6 @@ def _steam_root() -> Path | None:
                 Path(f"{d}:\\Program Files\\Steam"),
                 Path(f"{d}:\\Steam"),
             ]
-    elif sys.platform == "darwin":
-        cands += [home / "Library/Application Support/Steam"]
     else:
         cands += [
             home / ".var/app/com.valvesoftware.Steam/.local/share/Steam",
@@ -294,19 +291,6 @@ def _open_steam_url(url: str) -> int:
     if sys.platform == "win32":
         os.startfile(url)  # type: ignore[attr-defined]
         return 0
-    if sys.platform == "darwin":
-        if shutil.which("open"):
-            try:
-                subprocess.Popen(["open", url],
-                                 stdout=subprocess.DEVNULL,
-                                 stderr=subprocess.DEVNULL)
-                return 0
-            except OSError as e:
-                print(f"Could not launch via open: {e}", file=sys.stderr)
-                return 1
-        print("Could not find 'open' command on macOS. "
-              f"Open this URL manually: {url}", file=sys.stderr)
-        return 1
     # Linux
     if shutil.which("steam"):
         print(f"==> steam -applaunch {url.rsplit('/', 1)[-1]}")

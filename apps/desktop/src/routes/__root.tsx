@@ -97,8 +97,6 @@ function createGameProbeCommand() {
   switch (getPlatform()) {
     case 'windows':
       return Command.create('tasklist', ['/FI', 'IMAGENAME eq Ravenswatch.exe', '/NH']);
-    case 'macos':
-      return Command.create('pgrep', ['-f', 'Ravenswatch']);
     default:
       return Command.create('pgrep', ['-f', 'Ravenswatch.exe']);
   }

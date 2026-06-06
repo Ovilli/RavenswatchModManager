@@ -8,8 +8,8 @@ set -euo pipefail
 #   ./scripts/build-sidecar.sh              # detect current platform
 #   ./scripts/build-sidecar.sh windows       # cross-compile for Windows
 #   ./scripts/build-sidecar.sh linux
-#   ./scripts/build-sidecar.sh macos
 #
+# RSMM targets Windows + Linux only (macOS support dropped).
 # Output: apps/desktop/src-tauri/binaries/rsmm-<target-triple>[.exe]
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -21,9 +21,8 @@ PLATFORM="${1:-auto}"
 if [ "$PLATFORM" = "auto" ]; then
   case "$(uname -s)" in
     Linux)   PLATFORM="linux" ;;
-    Darwin)  PLATFORM="macos" ;;
     MINGW*|MSYS*|CYGWIN*) PLATFORM="windows" ;;
-    *) echo "Unknown platform: $(uname -s)"; exit 1 ;;
+    *) echo "Unknown platform: $(uname -s) (RSMM targets Windows + Linux only)"; exit 1 ;;
   esac
 fi
 
@@ -32,17 +31,13 @@ case "$PLATFORM" in
     TARGET="x86_64-unknown-linux-gnu"
     EXT=""
     ;;
-  macos)
-    TARGET="x86_64-apple-darwin"
-    EXT=""
-    ;;
   windows)
     TARGET="x86_64-pc-windows-msvc"
     EXT=".exe"
     ;;
   *)
     echo "Unknown target: $PLATFORM"
-    echo "Usage: $0 {linux|macos|windows}"
+    echo "Usage: $0 {linux|windows}"
     exit 1
     ;;
 esac

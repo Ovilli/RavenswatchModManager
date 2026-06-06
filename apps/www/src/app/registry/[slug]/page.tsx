@@ -22,19 +22,22 @@ import { getApiUrl } from '../../../lib/api-url';
 import { useSession } from '../../../lib/auth-client';
 import { toEmbedUrl } from '../../../lib/video-embed';
 
-function getClientOS(): 'windows' | 'macos' | 'linux' {
+// RSMM desktop ships for Windows + Linux only. Non-target platforms (macOS)
+// resolve to 'other' so we label the button neutrally instead of promising a
+// Mac build. The downloaded mod zip itself is platform-agnostic.
+function getClientOS(): 'windows' | 'linux' | 'other' {
   if (typeof window === 'undefined') return 'linux';
   const p = navigator.platform.toLowerCase();
   const ua = navigator.userAgent.toLowerCase();
   if (p.includes('win') || ua.includes('windows')) return 'windows';
-  if (p.includes('mac') || ua.includes('mac os')) return 'macos';
-  return 'linux';
+  if (p.includes('linux') || p.includes('x11')) return 'linux';
+  return 'other';
 }
 
 const OS_LABELS: Record<string, string> = {
   windows: 'Windows',
-  macos: 'macOS',
   linux: 'Linux',
+  other: '',
 };
 
 export default function ModDetailPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -134,7 +137,7 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
             {downloadUrl ? (
               <a href={downloadUrl} className={buttonVariants({ variant: 'default', size: 'sm' })}>
                 <Download className="mr-1.5 h-4 w-4" />
-                Download for {OS_LABELS[os]}
+                {OS_LABELS[os] ? `Download for ${OS_LABELS[os]}` : 'Download'}
               </a>
             ) : null}
             <a

@@ -7,7 +7,45 @@ import sys
 
 from rsmm.engine.paths import MODS_DIR
 
-_CONTENT_KINDS = ("item", "enemy", "boss", "map", "hero")
+try:
+    from rsmm.sdk.content import kind_confidence
+except ImportError:  # pragma: no cover - SDK always present in practice
+    def kind_confidence(_k: str) -> str:
+        return "guess"
+
+_CONTENT_KINDS = ("item", "talent", "enemy", "boss", "map", "hero")
+
+#: Per-kind seed for the `[[content]]` block — extra manifest lines beyond
+#: the common id/base/name/description. Keeps scaffolds concrete so a fresh
+#: `rsmm new <id> --kind X` lints clean and points at real next steps.
+_KIND_FIELDS: dict[str, list[str]] = {
+    "item": [
+        'icon          = "GreenArmor"          # vanilla icon id, or assets/<file>.png',
+        'value_patches = [["Armor per Object Value", 2.0, 99.0]]  # [label, old, new]',
+    ],
+    "enemy": [
+        '# tribe       = "Gnolls"              # optional: repoint tribe_ref',
+        '# add_flags   = ["Elite"]             # optional: extend base tag list',
+    ],
+    "hero": [
+        '# Reskinning an existing hero works today; a brand-new roster slot',
+        '# is blocked on the hero-library singleton + roster detour.',
+    ],
+    "map": [],
+    "boss": [
+        '# WARNING: boss byte layout is a guess — expect rejection/crash',
+        '# until the picker/HP/arena offsets are RE-confirmed.',
+    ],
+}
+
+#: Suggested vanilla base ids per kind, so the placeholder is actionable.
+_KIND_BASE_HINT: dict[str, str] = {
+    "item": "Armor_Per_Object",
+    "enemy": "Gnoll_Shielded",
+    "hero": "Sun_Priest",
+    "map": "<vanilla map id>",
+    "boss": "BabaYaga",
+}
 _ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
 _USAGE = (
     f"usage: rsmm new <id> [--kind {'|'.join(_CONTENT_KINDS)}]\n"
@@ -59,6 +97,12 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     (target / "assets").mkdir(parents=True)
 
+    # Non-confirmed kinds must opt into [mod] experimental = true (the lint
+    # confidence gate rejects them otherwise) and ship disabled by default so
+    # a scaffolded experimental/guess mod doesn't auto-apply unverified bytes.
+    conf = kind_confidence(kind) if kind else "confirmed"
+    experimental = conf != "confirmed"
+
     manifest = [
         "[mod]",
         f'id          = "{mod_id}"',
@@ -66,19 +110,36 @@ def main(argv: list[str] | None = None) -> int:
         'version     = "0.1.0"',
         'author      = "you"',
         'description = ""',
-        "enabled     = true",
+        f"enabled     = {'false' if experimental else 'true'}",
         'sdk_version = ">=3.0,<4"',
     ]
-    if kind:
+    if experimental:
+        manifest.append(
+            f"experimental = true            # kind {kind!r} is {conf!r}, "
+            "not verified in-game")
+    if kind == "talent":
+        # Talent edits a vanilla hero entity in place — no base clone, no
+        # name/description; it keys off `hero` + `value_patches`.
         manifest += [
             "",
+            f"# kind {kind!r} confidence: {conf}",
             "[[content]]",
-            f'kind        = "{kind}"',
-            f'id          = "{mod_id}_{kind}_1"',
-            'base        = "<vanilla id to clone>"',
-            f'name        = "{mod_id} sample {kind}"',
-            'description = ""',
+            'kind          = "talent"',
+            'hero          = "Juliet"             # EntitySettings/Heroes/Hero_<hero>',
+            'value_patches = [["<talent label>", 0.0, 0.0]]  # [label, old, new]',
         ]
+    elif kind:
+        manifest += [
+            "",
+            f"# kind {kind!r} confidence: {conf}",
+            "[[content]]",
+            f'kind          = "{kind}"',
+            f'id            = "{mod_id}_{kind}_1"',
+            f'base          = "{_KIND_BASE_HINT.get(kind, "<vanilla id to clone>")}"',
+            f'name          = "{mod_id} sample {kind}"',
+            'description   = ""',
+        ]
+        manifest += _KIND_FIELDS.get(kind, [])
     (target / "manifest.toml").write_text("\n".join(manifest) + "\n",
                                           encoding="utf-8")
 
@@ -109,7 +170,11 @@ def main(argv: list[str] | None = None) -> int:
     (target / "README.md").write_text(
         f"# {mod_id}\n\nDescribe your mod here.\n", encoding="utf-8",
     )
-    print(f"Created {target}" + (f" (kind={kind})" if kind else ""))
+    print(f"Created {target}" + (f" (kind={kind}, confidence={conf})" if kind else ""))
+    if experimental:
+        print(f"  ! kind {kind!r} is {conf!r}: emitted bytes are NOT verified "
+              "in-game. Scaffolded with experimental = true and enabled = "
+              "false. Flip enabled once you've confirmed it loads.")
     print("Next: edit init.lua + manifest.toml, then `rsmm apply`.")
     return 0
 

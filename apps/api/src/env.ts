@@ -45,8 +45,8 @@ export const env = {
   webUrl: process.env.WEB_URL || 'http://localhost:3000',
   // Tauri WebView origins vary by platform and must always be accepted
   // regardless of the TRUSTED_ORIGINS env override:
-  //   macOS/Linux WebKitGTK:  tauri://localhost
-  //   Windows WebView2:       http://tauri.localhost
+  //   Linux WebKitGTK:   tauri://localhost
+  //   Windows WebView2:  http://tauri.localhost
   trustedOrigins: (() => {
     const devDefault = isProduction
       ? 'tauri://localhost,https://tauri.localhost,http://tauri.localhost'

@@ -1,4 +1,5 @@
-export type Platform = 'windows' | 'macos' | 'linux';
+// RSMM desktop ships for Windows + Linux only (macOS support dropped).
+export type Platform = 'windows' | 'linux';
 
 /** True when the page is running inside the Tauri WebView, false in a
  * browser or under SSR/build. Multiple call sites duplicated this check;
@@ -17,15 +18,13 @@ export function getPlatform(): Platform {
   const ua = navigator.userAgent.toLowerCase();
   if (p.includes('win') || ua.includes('windows')) {
     cached.platform = 'windows';
-  } else if (p.includes('mac') || ua.includes('mac os')) {
-    cached.platform = 'macos';
   } else {
     cached.platform = 'linux';
   }
   return cached.platform;
 }
 
-/** "⌘K" on macOS, "Ctrl+K" elsewhere. */
+/** "Ctrl+K" shortcut label (Windows + Linux). */
 export function shortcutLabel(key: string): string {
-  return getPlatform() === 'macos' ? `⌘${key.toUpperCase()}` : `Ctrl+${key.toUpperCase()}`;
+  return `Ctrl+${key.toUpperCase()}`;
 }

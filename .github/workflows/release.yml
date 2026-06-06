@@ -14,8 +14,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
-            args: '--target universal-apple-darwin'
           - platform: ubuntu-22.04
             args: ''
           - platform: windows-latest
@@ -39,7 +37,7 @@ jobs:
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ''
 
       - name: Linux build deps
         if: matrix.platform == 'ubuntu-22.04'
@@ -152,22 +150,11 @@ jobs:
           if [ -f "${ROOT}/dist/winhttp.dll" ]; then
             ADD_DATA+=(--add-data "${ROOT}/dist/winhttp.dll${SEP}dist")
           fi
-          if [ "${{ matrix.platform }}" = "macos-latest" ]; then
-            pyinstaller --onefile --name rsmm-mac --target-arch universal2 \
-              --distpath "$PYI_DIST" --workpath "$PYI_WORK" --specpath "$PYI_SPEC" \
-              "${HIDDEN_IMPORTS[@]}" "${ADD_DATA[@]}" \
-              ./rsmm
-            cp "$PYI_DIST/rsmm-mac" "$OUT/rsmm-aarch64-apple-darwin"
-            cp "$PYI_DIST/rsmm-mac" "$OUT/rsmm-x86_64-apple-darwin"
-            cp "$PYI_DIST/rsmm-mac" "$OUT/rsmm-universal-apple-darwin"
-            chmod +x "$OUT/rsmm-aarch64-apple-darwin" "$OUT/rsmm-x86_64-apple-darwin" "$OUT/rsmm-universal-apple-darwin"
-          else
-            TRIPLE=$(rustc -vV | sed -n 's/host: //p')
-            pyinstaller --onefile --name "rsmm-$TRIPLE" \
-              --distpath "$OUT" --workpath "$PYI_WORK" --specpath "$PYI_SPEC" \
-              "${HIDDEN_IMPORTS[@]}" "${ADD_DATA[@]}" \
-              ./rsmm
-          fi
+          TRIPLE=$(rustc -vV | sed -n 's/host: //p')
+          pyinstaller --onefile --name "rsmm-$TRIPLE" \
+            --distpath "$OUT" --workpath "$PYI_WORK" --specpath "$PYI_SPEC" \
+            "${HIDDEN_IMPORTS[@]}" "${ADD_DATA[@]}" \
+            ./rsmm
           ls -la "$OUT"
 
       - name: Install JS deps
@@ -179,7 +166,7 @@ jobs:
       - name: Rebuild lifecycle scripts (post-audit)
         run: pnpm rebuild
 
-      - name: Build desktop (Tauri, Linux/macOS)
+      - name: Build desktop (Tauri, Linux)
         # `tauri-action@v0` produced bundles + `.sig` files locally but
         # actively deleted the sig files before subsequent steps could
         # see them. Running `pnpm tauri build` directly keeps every
@@ -243,9 +230,8 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -uo pipefail
-          # Bundle artifacts live under any of:
+          # Bundle artifacts live under:
           #   target/release/bundle/{appimage,deb,nsis,msi,...}
-          #   target/<triple>/release/bundle/...     (mac universal)
           count=0
           while IFS= read -r -d '' f; do
             count=$((count + 1))
@@ -255,10 +241,8 @@ jobs:
             find apps/desktop/src-tauri/target -path '*/bundle/*' -type f \
               \( -name '*.AppImage' \
                  -o -name '*.deb' \
-                 -o -name '*.dmg' \
                  -o -name '*-setup.exe' \
                  -o -name '*.msi' \
-                 -o -name '*.app.tar.gz' \
                  -o -name '*.sig' \) \
               -print0
           )
@@ -299,7 +283,7 @@ jobs:
           # The Tauri updater consumes one bundle per target platform. We
           # prefer formats that the updater plugin actually knows how to
           # install in place: AppImage on Linux, NSIS (-setup.exe) on
-          # Windows, and the signed .app.tar.gz on macOS.
+          # Windows.
           find_artifact () {
             local pattern="$1"
             (cd "$workdir" && ls $pattern 2>/dev/null | head -n1) || true
@@ -313,9 +297,6 @@ jobs:
             win_bundle="$(find_artifact '*_x64_en-US.msi')"
             win_sig_file="$(find_artifact '*_x64_en-US.msi.sig')"
           fi
-          mac_bundle="$(find_artifact '*.app.tar.gz')"
-          mac_sig_file="$(find_artifact '*.app.tar.gz.sig')"
-
           base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
           encode_url () { python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$1"; }
 
@@ -326,17 +307,14 @@ jobs:
 
           linux_sig="$(read_sig "$linux_sig_file")"
           win_sig="$(read_sig "$win_sig_file")"
-          mac_sig="$(read_sig "$mac_sig_file")"
 
           python3 - "$version" "$pub_date" "$base" \
             "$linux_bundle" "$linux_sig" \
-            "$win_bundle" "$win_sig" \
-            "$mac_bundle" "$mac_sig" <<'PY' > latest.json
+            "$win_bundle" "$win_sig" <<'PY' > latest.json
           import json, sys, urllib.parse
           (_, version, pub_date, base,
            linux_b, linux_s,
-           win_b, win_s,
-           mac_b, mac_s) = sys.argv
+           win_b, win_s) = sys.argv
 
           def entry(bundle, sig):
               if not bundle or not sig:
@@ -354,10 +332,6 @@ jobs:
               platforms["linux-x86_64"] = e
           if (e := entry(win_b, win_s)) is not None:
               platforms["windows-x86_64"] = e
-          if (e := entry(mac_b, mac_s)) is not None:
-              # Universal macOS binary serves both Intel and Apple Silicon.
-              platforms["darwin-x86_64"] = e
-              platforms["darwin-aarch64"] = e
 
           out = {
               "version": version,

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const osSchema = z.enum(['linux', 'windows', 'macos', 'unknown']);
+export const osSchema = z.enum(['linux', 'windows', 'unknown']);
 
 function recordSizeLimit(maxBytes: number) {
   return (v: Record<string, unknown> | undefined): boolean => {

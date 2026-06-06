@@ -117,8 +117,6 @@ def _steam_roots() -> list[Path]:
             Path(r"C:\Program Files (x86)\Steam"),
             Path(r"C:\Program Files\Steam"),
         ]
-    if sys.platform == "darwin":
-        return [home / "Library/Application Support/Steam"]
     return [
         home / ".steam/steam",
         home / ".local/share/Steam",
@@ -174,16 +172,6 @@ def _game_dir_candidates() -> list[Path]:
         pf = os.environ.get("ProgramFiles")
         if pf:
             cands.append(Path(pf) / "Steam" / "steamapps" / "common" / "Ravenswatch")
-    elif sys.platform == "darwin":
-        cands += [
-            home / "Library/Application Support/Steam/steamapps/common/Ravenswatch",
-            home / "Library/Application Support/Steam/steamapps/common/Ravenswatch/Ravenswatch.app",
-        ]
-        volumes = Path("/Volumes")
-        if volumes.is_dir():
-            for vol in volumes.iterdir():
-                if vol.is_dir():
-                    cands.append(vol / "SteamLibrary" / "steamapps" / "common" / "Ravenswatch")
     else:
         cands += [
             home / ".var/app/com.valvesoftware.Steam/.local/share/Steam"
@@ -205,7 +193,7 @@ def _game_dir_candidates() -> list[Path]:
 @cache
 def default_game_dir() -> Path:
     """First candidate whose `_Cooking` tree exists; otherwise the first
-    candidate. Autodetects on Windows/macOS/Linux without `--game-dir`.
+    candidate. Autodetects on Windows/Linux without `--game-dir`.
 
     Cached: the filesystem scan only runs on first access.
     """
@@ -269,7 +257,6 @@ def __getattr__(name: str) -> Path:
 _FINGERPRINT_BINARIES: tuple[str, ...] = (
     "Ravenswatch.exe",
     "Ravenswatch/Binaries/Win64/Ravenswatch-Win64-Shipping.exe",
-    "Ravenswatch.app/Contents/MacOS/Ravenswatch",
 )
 
 _FINGERPRINT_HEAD_BYTES = 4096

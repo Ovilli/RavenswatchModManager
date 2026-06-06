@@ -131,7 +131,7 @@ const features = [
   },
   {
     title: 'Cross-platform',
-    body: 'Works on Windows, macOS, and Linux. Small download, quick start, low overhead.',
+    body: 'Works on Windows and Linux. Small download, quick start, low overhead.',
     icon: (
       <svg
         xmlns="http://www.w3.org/2000/svg"
