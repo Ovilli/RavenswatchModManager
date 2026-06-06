@@ -31,6 +31,10 @@ LOADER_EVENT_PAYLOAD = REPO_ROOT / "src" / "loader" / "src" / "event_payload.gen
 LUA_ENGINE = REPO_ROOT / "src" / "loader" / "lib" / "engine_gen.lua"
 PYTHON_CONSTS = REPO_ROOT / "src" / "rsmm" / "engine" / "_symbols_gen.py"
 DOCS_PAGE = REPO_ROOT / "docs" / "SYMBOLS.md"
+# Starlight docs-site mirror of DOCS_PAGE (same content + frontmatter).
+SITE_DOCS_PAGE = (
+    REPO_ROOT / "apps" / "docs" / "src" / "content" / "docs" / "reference" / "symbols.md"
+)
 
 _STATUS_GLYPH = {"ok": "OK ", "va": "VA ", "unverified": "?? "}
 
@@ -346,6 +350,27 @@ def _gen_docs(smap: SymbolMap) -> str:
     return "\n".join(lines)
 
 
+def _gen_docs_site(smap: SymbolMap) -> str:
+    """Same content as `_gen_docs`, wrapped for the Starlight docs site.
+
+    Drops the leading `# Engine symbol reference` H1 (Starlight renders the
+    frontmatter title) and prepends frontmatter.
+    """
+    body = _gen_docs(smap)
+    lines = body.splitlines()
+    if lines and lines[0].startswith("# "):
+        lines = lines[1:]
+        if lines and lines[0].strip() == "":
+            lines = lines[1:]
+    fm = (
+        "---\n"
+        "title: Engine symbol reference\n"
+        "description: The canonical engine symbol map and how to use it.\n"
+        "---\n\n"
+    )
+    return fm + "\n".join(lines)
+
+
 def _cmd_gen(smap: SymbolMap, check: bool) -> int:
     targets = [
         (LOADER_HEADER, _gen_header(smap)),
@@ -355,6 +380,7 @@ def _cmd_gen(smap: SymbolMap, check: bool) -> int:
         (LUA_ENGINE, _gen_lua(smap)),
         (PYTHON_CONSTS, _gen_python(smap)),
         (DOCS_PAGE, _gen_docs(smap)),
+        (SITE_DOCS_PAGE, _gen_docs_site(smap)),
     ]
     if check:
         stale = [p for p, content in targets if not p.is_file() or p.read_text() != content]
