@@ -230,6 +230,30 @@ our packs, and return `3` for our keys while forwarding all others to the
 original. The `node+0x80` path is irrelevant for the Steam build — the
 local filter's file-existence path is never evaluated.
 
+### A2 — IMPLEMENTED (filter hook, default-on)
+
+`hook_skins.cpp` now MinHook-detours the grid filter so our packs pass the
+gate as proper buttons — **no** `RSMM_SKIN_FORCE_SHOW`. The single detour
+`hook_filter(mgr, node)` returns `3` when the node's key (`+0x3c`) is one of
+our registered packs and forwards every other node to the original
+(`g_real_filter`), so vanilla DLC/skin slots keep their real Steam-ownership
+/ file-existence checks. `FUN_1401f0f10` then pushes our nodes through the
+normal path. `RSMM_SKIN_FORCE_SHOW` is retained only as a fallback diagnostic.
+
+**Filter address is read from the live vtable, not pattern-resolved.**
+`install_filter_hook(mgr)` (called from `append_custom_packs`, once the
+manager exists) reads `*(*(void**)mgr + 8)` — the actual `vtable[1]` slot the
+engine calls — and hooks that. This is correct for whichever manager class
+the build constructs (Steam `FUN_140a2c600` or local `FUN_140647440`) and
+needs no per-function signature.
+
+> ⚠️ The `function_patterns.json` entries for `FUN_140a2c600` and
+> `FUN_140647440` are **stale**: each resolves to a single *wrong* address
+> (`0x140a4b040` / `0x14065efe0`; the recorded VA isn't among the matches) —
+> `scripts/test_pattern_resolve.py` does not print `OK` for either. Do **not**
+> `fn_resolve` these two until the patterns are regenerated; the vtable read
+> sidesteps them entirely.
+
 ## A3 — asset naming is solved (from `data/asset_map.json`)
 
 The `(hero,pack) -> model/material` *resolver* function is still un-decompiled,

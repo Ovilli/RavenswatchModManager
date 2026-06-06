@@ -11,6 +11,7 @@
 #include "fn_resolver.h"
 #include "script_lua.h"
 #include "loader.h"
+#include "event_payload.gen.h"  // GENERATED — rsmm::event_payload()
 
 #include "MinHook.h"
 
@@ -49,19 +50,13 @@ template <int N>
 std::uintptr_t WINAPI detour(void* ctx, void* arg) {
     EventHook& h = g_hooks[N];
     const auto rv = h.real(ctx, arg);
-    // Safe envelope only: fire sequence + the two register args as raw
-    // pointer VALUES (never dereferenced — the per-emitter struct layout
-    // isn't RE'd yet, and a blind read would crash). This gives mods an
-    // ordering signal + handles they can pair with their own RE. Typed
-    // fields (hero id, level, ...) land here once an event gains a payload
-    // schema in data/symbols.json. lua_event is a controlled identifier,
-    // so it needs no JSON escaping.
-    char buf[160];
-    std::snprintf(buf, sizeof(buf),
-                  "{\"event\":\"%s\",\"seq\":%u,\"ctx\":\"0x%llx\",\"arg\":\"0x%llx\"}",
-                  h.lua_event, ++h.seq,
-                  static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(ctx)),
-                  static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(arg)));
+    // Build the payload AFTER the original runs (so fields it writes — e.g.
+    // ctx+0xCC for level_up — are populated). Events with a verified schema
+    // in data/symbols.json emit typed fields; the rest get the safe
+    // envelope (seq + raw arg handles). Decode exprs read persistent
+    // objects only; see event_payload.gen.h.
+    char buf[256];
+    event_payload(h.lua_event, buf, sizeof(buf), ++h.seq, ctx, arg);
     script_emit_event_json(h.lua_event, buf);
     return rv;
 }

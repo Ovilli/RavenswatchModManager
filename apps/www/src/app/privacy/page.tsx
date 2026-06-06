@@ -49,7 +49,60 @@ export default function PrivacyPage() {
           </section>
 
           <section className="space-y-2">
-            <h2 className="text-lg font-semibold text-foreground">5. Data Retention</h2>
+            <h2 className="text-lg font-semibold text-foreground">
+              5. Advertising &amp; Cookies (Google AdSense)
+            </h2>
+            <p>
+              Some pages of this site display advertising served by Google AdSense. Third-party
+              vendors, including Google, use cookies to serve ads based on your prior visits to this
+              and other websites.
+            </p>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>
+                Google&apos;s use of advertising cookies enables it and its partners to serve ads to
+                you based on your visit to this site and/or other sites on the internet.
+              </li>
+              <li>
+                You may opt out of personalised advertising by visiting{' '}
+                <a
+                  href="https://www.google.com/settings/ads"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-foreground"
+                >
+                  Google Ads Settings
+                </a>
+                .
+              </li>
+              <li>
+                You can also opt out of third-party vendor cookies for personalised advertising at{' '}
+                <a
+                  href="https://www.aboutads.info/choices/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-foreground"
+                >
+                  aboutads.info/choices
+                </a>
+                .
+              </li>
+              <li>
+                For more detail, see{' '}
+                <a
+                  href="https://policies.google.com/technologies/partner-sites"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-foreground"
+                >
+                  How Google uses information from sites that use its services
+                </a>
+                .
+              </li>
+            </ul>
+          </section>
+
+          <section className="space-y-2">
+            <h2 className="text-lg font-semibold text-foreground">6. Data Retention</h2>
             <p>
               Account data is retained until you request deletion. Mod files remain available until
               removed by the author or moderators. Telemetry data is aggregated and anonymized after
@@ -58,7 +111,7 @@ export default function PrivacyPage() {
           </section>
 
           <section className="space-y-2">
-            <h2 className="text-lg font-semibold text-foreground">6. Your Rights (GDPR)</h2>
+            <h2 className="text-lg font-semibold text-foreground">7. Your Rights (GDPR)</h2>
             <p>You have the right to:</p>
             <ul className="list-disc space-y-1 pl-5">
               <li>Access your personal data</li>
@@ -74,7 +127,7 @@ export default function PrivacyPage() {
           </section>
 
           <section className="space-y-2">
-            <h2 className="text-lg font-semibold text-foreground">7. Changes to This Policy</h2>
+            <h2 className="text-lg font-semibold text-foreground">8. Changes to This Policy</h2>
             <p>
               This privacy policy may be updated from time to time. Changes will be announced via
               the project repository.

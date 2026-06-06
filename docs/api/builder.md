@@ -31,7 +31,7 @@ Register a custom item cloned from vanilla ``base``.
 
 Register a custom map/level cloned from vanilla ``base``.
 
-## `Mod.model(self, decoded_path: 'str', source: 'str | Path', rotate_deg: 'tuple[float, float, float] | None' = None) -> 'None'`
+## `Mod.model(self, decoded_path: 'str', source: 'str | Path', rotate_deg: 'tuple[float, float, float] | None' = None, scale: 'float | None' = None) -> 'None'`
 
 Override a mesh asset. Source must be a `.glb`/`.gltf`.
 
@@ -42,6 +42,11 @@ auto-upright guess (tallest axis -> up). If the mesh comes out turned
 or upside down, pass `rotate_deg=(x, y, z)` — a rigid rotation in
 degrees applied before the fit (e.g. `(90, 0, 0)` to flip upright,
 `(0, 180, 0)` to face the other way).
+
+The auto-fit matches only the tallest axis, so a mesh with a
+different aspect ratio than the original can come out too big or
+small. Pass `scale=` to multiply the auto-fit (e.g. `scale=0.5` to
+halve it).
 
 ## `Mod.skinpack(self, name: 'str', key: 'int', *, ac_id: 'str' = '', al_id: 'str' = '', base_id: 'str' = '') -> 'None'`
 
@@ -62,11 +67,21 @@ Args:
     al_id:   AL content id (entry ``+0x60``), e.g. ``RW000PSAL000000A``.
     base_id: base content id (entry ``+0x70``).
 
-Note: registering the slot is verified; whether a brand-new slot surfaces
-per-hero and resolves to a custom model/material is not yet confirmed
-in-game (see the "OPEN / UNVERIFIED" section of `docs/_re/kinds/skins.md`).
-Stage the per-skin cooked assets the resolver expects with
-:meth:`asset`/:meth:`texture`/:meth:`model` alongside this call.
+Note: registering the slot is verified, but the engine's skin-grid
+populate (``FUN_1401f0f10``) only renders a node as a button when the
+manager filter (vtable[1]) returns ``3``. Two derived filter variants
+exist: the Steam build checks ``ISteamApps::BIsDLCEnabled`` via the
+node key (``+0x3c``); the local build checks a DLC entitlement file
+path at ``node+0x80``. A brand-new key is rejected by both gates, so
+the slot is on the roster list but invisible by default. To prove the
+button path in-game, build the loader and run with
+``RSMM_SKIN_FORCE_SHOW=1`` — it force-pushes the node into the grid
+and logs the filter verdict (see ``docs/_re/kinds/skins.md`` A1/A2).
+The ``dlc_path`` field can be set in ``skinpacks.json`` for the local
+filter variant. Asset resolution for a new slot is likewise unconfirmed;
+stage the per-skin cooked assets with
+:meth:`asset`/:meth:`texture`/:meth:`model`, and until the resolver
+is mapped, prefer reusing an existing slot's AC/AL id.
 
 ## `Mod.summary(self) -> 'dict'`
 

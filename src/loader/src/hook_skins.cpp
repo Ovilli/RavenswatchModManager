@@ -88,6 +88,16 @@ EntryCtor_t     g_entry_ctor   = nullptr;
 StringAssign_t  g_string_assign = nullptr;
 GridPopulate_t  g_real_populate = nullptr;
 VecGrow_t       g_vec_grow      = nullptr;
+// Manager vtable[1] grid filter (see docs/_re/kinds/skins.md A2). We detour
+// the actual function body so calls through the vtable are intercepted; our
+// pack keys return 3 (show as a button), everything else forwards to the
+// original (vanilla Steam-DLC / local-file gate, unchanged). The address is
+// read from the *live* manager vtable[1] at runtime — NOT pattern-resolved —
+// so it's correct on both the Steam and DRM-free builds regardless of which
+// manager class the game constructed.
+Filter_t        g_real_filter = nullptr;
+std::once_flag  g_filter_hooked;
+void install_filter_hook(void* mgr);  // defined below; called from append_custom_packs
 
 // Diagnostic: when RSMM_SKIN_FORCE_SHOW=1, after the engine populates the
 // skin grid we force-push our appended nodes regardless of the vtable[1]
@@ -191,6 +201,9 @@ void append_custom_packs() {
         Loader::get().log("[skin-hook] manager pointer null; skipping append");
         return;
     }
+    // Now that the manager exists, detour its real vtable[1] filter so our
+    // packs pass the grid gate as proper buttons (no RSMM_SKIN_FORCE_SHOW).
+    install_filter_hook(mgr);
     std::int32_t idx = 10;  // engine used 1..9; ours continue after
     for (const auto& def : g_packs) {
         // Leaked, permanently-stable 0xA0 node (never in the fixed array,
@@ -253,6 +266,49 @@ void hook_grid_populate(void* ctx, void* arg) {
                           + (filt == 3 ? " (already shown)" : " (forcing)"));
         if (filt != 3) grid_push(ctx, node);
     }
+}
+
+// True if `node`'s pack key (+0x3c) belongs to one of our registered packs.
+bool is_our_node_key(void* node) {
+    const std::int32_t key = *reinterpret_cast<std::int32_t*>(
+        static_cast<std::uint8_t*>(node) + kOffKey);
+    for (const auto& d : g_packs) {
+        if (d.key == key) return true;
+    }
+    return false;
+}
+
+// Grid-filter detour. The vanilla body gates a node on Steam-DLC ownership
+// (Steam build) or a file-existence check at node+0x80 (DRM-free build); we
+// short-circuit our own keys to 3 (= show) and forward every real DLC/skin
+// slot to the original so its gate is unchanged. Short-circuiting also keeps
+// our null node+0x80 away from the local filter's deref.
+int hook_filter(void* mgr, void* node) {
+    if (is_our_node_key(node)) return 3;
+    return g_real_filter(mgr, node);
+}
+
+// Detour the live manager's vtable[1] filter. Called once we hold a valid
+// manager pointer (its vtable is set by then). Reads the actual function the
+// engine will call, so it's correct for whichever manager class is active.
+void install_filter_hook(void* mgr) {
+    std::call_once(g_filter_hooked, [mgr]() {
+        void* vtbl = *reinterpret_cast<void**>(mgr);
+        void* filter_addr = *reinterpret_cast<void**>(
+            static_cast<std::uint8_t*>(vtbl) + kVtblFilter);  // vtable[1]
+        if (MH_CreateHook(filter_addr,
+                          reinterpret_cast<LPVOID>(&hook_filter),
+                          reinterpret_cast<LPVOID*>(&g_real_filter)) == MH_OK
+            && MH_EnableHook(filter_addr) == MH_OK) {
+            Loader::get().log("[skin-hook] grid filter hooked @ "
+                              + hex_of(reinterpret_cast<std::uintptr_t>(filter_addr))
+                              + "; custom packs will show as buttons");
+        } else {
+            Loader::get().log("[skin-hook] WARNING: filter MinHook failed; custom "
+                              "packs stay on the roster but render no button "
+                              "(set RSMM_SKIN_FORCE_SHOW=1 to force them)");
+        }
+    });
 }
 
 bool env_truthy(const char* name) {
@@ -380,6 +436,8 @@ bool install_skin_hooks() {
     }
     Loader::get().log("[skin-hook] installed on FUN_1401dcae0 (roster builder); "
                       + std::to_string(g_packs.size()) + " pack(s) queued");
+    // The grid-filter detour is installed lazily from append_custom_packs once
+    // the live manager (and its real vtable[1]) exists — see install_filter_hook.
 
     // Optional diagnostic: force our nodes to render as grid buttons,
     // bypassing the manager vtable[1] filter (which currently rejects

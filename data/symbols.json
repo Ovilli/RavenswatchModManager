@@ -382,7 +382,11 @@
       "status": "ok",
       "lua_event": "level_up",
       "cabi": { "ret": "void*", "params": ["void*", "void*"] },
-      "note": "Emitter whose body references the 'level_up_reach' string (xref 0x1401f64a4). Loader post-detours it to publish the 'level_up' Lua event via R.on('level_up', cb).",
+      "payload": [
+        { "name": "level", "ctype": "int", "expr": "*(int*)((char*)ctx + 0xcc)",
+          "note": "new hero level; emitter stores (int)*arg at ctx+0xCC (verified in Ghidra 2026-06-05)" }
+      ],
+      "note": "Emitter whose body references the 'level_up_reach' string (xref 0x1401f64a4). void(ctx, float* level): stores (int)*level at ctx+0xCC. Loader post-detours it to publish 'level_up' with {level} via R.on('level_up', cb).",
       "refs": ["src/loader/src/hook_events.cpp", "docs/_re/kinds/events.md"]
     },
     {

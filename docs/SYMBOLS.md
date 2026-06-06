@@ -33,7 +33,7 @@ Total: **41** symbols across 9 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `Event_LevelUp` → `level_up` | `0x1401f6410` | ✅ ok | ✔ | Emitter whose body references the 'level_up_reach' string (xref 0x1401f64a4). Loader po… |
+| `Event_LevelUp` → `level_up` | `0x1401f6410` | ✅ ok | ✔ | Emitter whose body references the 'level_up_reach' string (xref 0x1401f64a4). void(ctx,… |
 | `Event_RunEnd` → `run_end` | `0x1401f51e0` | ✅ ok | ✔ | Emitter whose body references the 'run_end' string (xref 0x1401f5347). Loader post-deto… |
 
 ## items

@@ -52,6 +52,7 @@ class Symbol:
     status: str = "unverified"
     cabi: dict[str, Any] | None = None
     lua_event: str | None = None
+    payload: tuple[dict[str, Any], ...] = field(default_factory=tuple)
     refs: tuple[str, ...] = field(default_factory=tuple)
 
     @property
@@ -137,6 +138,7 @@ def _coerce(entry: dict[str, Any]) -> Symbol:
         status=entry.get("status", "unverified"),
         cabi=entry.get("cabi"),
         lua_event=entry.get("lua_event"),
+        payload=tuple(entry.get("payload", ())),
         refs=tuple(entry.get("refs", ())),
     )
 
@@ -193,6 +195,11 @@ def validate(smap: SymbolMap | None = None) -> list[str]:
                 problems.append(f"{s.name}: event needs 'lua_event'")
             if s.pattern_name is None:
                 problems.append(f"{s.name}: event needs a byte pattern (raw/anchor)")
+        if s.payload and s.kind != "event":
+            problems.append(f"{s.name}: payload only valid on events")
+        for p in s.payload:
+            if not all(isinstance(p.get(k), str) for k in ("name", "ctype", "expr")):
+                problems.append(f"{s.name}: payload field needs str name/ctype/expr")
         if s.status == "ok":
             pn = s.pattern_name
             if not pn:
