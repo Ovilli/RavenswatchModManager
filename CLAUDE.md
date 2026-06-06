@@ -51,7 +51,7 @@ The desktop app does **not** reimplement the CLI — it bundles the Python CLI a
 
 **Version sources.** Four files must move in lockstep on every release: `apps/desktop/src-tauri/tauri.conf.json`, `apps/desktop/src-tauri/Cargo.toml`, `apps/desktop/src-tauri/Cargo.lock` (the `rsmm-desktop` entry), `apps/desktop/package.json`. Root `package.json` and `pyproject.toml` stay at `0.1.0` — they are not user-facing release versions. Use `scripts/bump-version.py` to keep them aligned.
 
-**Release flow.** Push a `v*` tag → `.github/workflows/release.yml` builds matrix (`macos-latest` universal, `ubuntu-22.04`, `windows-latest`), each leg uploads bundles + `.sig` files to a draft GH release, then `publish-updater-manifest` assembles `latest.json`, then `finalize-release` flips the draft to published. Windows leg uses `shell: pwsh` (not bash) because Git Bash's `/usr/bin/link` shadows MSVC's `link.exe` and breaks Rust builds.
+**Release flow.** Push a `v*` tag → `.github/workflows/release.yml` builds matrix (`ubuntu-22.04`, `windows-latest` — macOS support dropped; Windows + Linux only), each leg uploads bundles + `.sig` files to a draft GH release, then `publish-updater-manifest` assembles `latest.json`, then `finalize-release` flips the draft to published. Windows leg uses `shell: pwsh` (not bash) because Git Bash's `/usr/bin/link` shadows MSVC's `link.exe` and breaks Rust builds.
 
 **Loader DLL bundling gotcha.** The Windows CI step builds `winhttp.dll` via `src\loader\build.bat` with `continue-on-error: true`, then PyInstaller bundles `dist/winhttp.dll` if it exists. If `build.bat` writes to the wrong path (it did — fixed in 0.1.11), the build "succeeds" but the DLL is missing from every released sidecar and `rsmm doctor` reports "loader DLL not built" on every user install. Always verify `dist/winhttp.dll` exists after the Windows leg.
 
@@ -69,12 +69,14 @@ The desktop app does **not** reimplement the CLI — it bundles the Python CLI a
 
 ## Useful docs
 
+Prose docs now live as a Starlight site in `apps/docs/` (deployed to `docs.ravenswatch.ovilli.de`; `pnpm docs:dev` to preview). The old `docs/*.md` files are one-line stubs pointing at the site — edit the Markdown under `apps/docs/src/content/docs/` instead. The exception is the generated SDK/CLI reference (see below). `pnpm --filter docs build` runs `starlight-links-validator` (broken internal link → build fails, gated in CI) and `astro-mermaid` (```mermaid fences render as diagrams).
+
 | Topic | File |
 |-------|------|
-| Full architecture + threat model | `docs/ARCHITECTURE.md` |
-| Asset cipher + cooked-format internals | `docs/INTERNALS.md` |
-| Dev environment setup | `docs/SETUP.md` |
-| CLI reference (prose) | `docs/CLI_USAGE.md` |
-| CLI command inventory (generated) | `docs/api/cli.md` — run `rsmm docs-gen` to refresh; CI `--check`s it |
-| Authoring mods | `docs/MODDING.md` |
+| Full architecture + threat model | `apps/docs/src/content/docs/architecture/overview.md` |
+| Asset cipher + cooked-format internals | `apps/docs/src/content/docs/architecture/internals.md` |
+| Dev environment setup | `apps/docs/src/content/docs/contributing/setup.md` |
+| CLI reference (prose) | `apps/docs/src/content/docs/reference/cli.md` |
+| SDK/CLI reference (generated) | `rsmm docs-gen` writes plain Markdown to `docs/api/` **and** Starlight pages to `apps/docs/src/content/docs/reference/sdk-api/`; CI `--check`s both. Source of truth = `@sdk_export` registrations. |
+| Authoring mods | `apps/docs/src/content/docs/guides/modding.md` |
 | Tauri updater specifics | `apps/desktop/UPDATER.md` |

@@ -66,22 +66,21 @@ You can create multiple profiles — separate sets of enabled mods for different
 
 ## Cross-platform notes
 
-RSMM works identically on **Windows, macOS, and Linux**. The interface, features, and workflow are the same on all platforms.
+RSMM works identically on **Windows and Linux**. The interface, features, and workflow are the same on both platforms. (macOS is not supported.)
 
 ### Platform-specific differences
 
-| Feature | Windows | macOS | Linux |
-|---|---|---|---|
-| Desktop app | ✅ MSI installer | ✅ DMG (Intel + Apple Silicon) | ✅ AppImage / DEB |
-| CLI | ✅ via Python | ✅ via Python | ✅ via Python |
-| Lua scripting | ✅ Native DLL | ❌ Not supported | ❌ Not supported (Proton: partial) |
-| Texture/stat/text mods | ✅ | ✅ | ✅ |
-| Steam auto-detect | ✅ Comprehensive | ✅ Standard library | ✅ Flatpak + native + /mnt |
-| Apple Silicon | N/A | ✅ Native (Tauri universal) | N/A |
+| Feature | Windows | Linux |
+|---|---|---|
+| Desktop app | ✅ MSI installer | ✅ AppImage / DEB |
+| CLI | ✅ via Python | ✅ via Python |
+| Lua scripting | ✅ Native DLL | ❌ Not supported (Proton: partial) |
+| Texture/stat/text mods | ✅ | ✅ |
+| Steam auto-detect | ✅ Comprehensive | ✅ Flatpak + native + /mnt |
 
 ### Lua scripting
 
-Lua-based mods that run code inside the game process are **Windows-only**. The desktop app will show these as "not supported on this platform" if you're on macOS or Linux. Texture swaps, stat edits, and text overrides work on all platforms.
+Lua-based mods that run code inside the game process are **Windows-only**. The desktop app will show these as "not supported on this platform" if you're on Linux. Texture swaps, stat edits, and text overrides work on both platforms.
 
 For Steam Proton on Linux, Lua mods can work with additional setup (Wine DLL overrides), but this is experimental.
 
@@ -90,7 +89,6 @@ For Steam Proton on Linux, Lua mods can work with additional setup (Wine DLL ove
 The app searches for Ravenswatch in these locations:
 
 - **Windows**: `Program Files (x86)`, `Program Files`, `Steam`, `SteamLibrary`, `Games/Steam` on all drives (C: through Z:)
-- **macOS**: `~/Library/Application Support/Steam/steamapps/common/Ravenswatch` and external volume Steam libraries
 - **Linux**: Flatpak Steam, native Steam (`~/.steam`, `~/.local/share/Steam`), and `/mnt` for externally mounted libraries
 
 If your game isn't found automatically, set the path manually in Settings.

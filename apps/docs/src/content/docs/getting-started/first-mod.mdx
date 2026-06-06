@@ -1,0 +1,70 @@
+---
+title: Your first mod
+description: Install a mod from the Registry — then build your own.
+---
+
+import { Steps, Aside, Tabs, TabItem, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+## Install a mod (desktop app)
+
+<Steps>
+1. **Open** Ravenswatch Mod Manager.
+2. **Go to the Registry tab** — browse mods uploaded by the community.
+3. **Click a mod** to view its details, screenshots, and description.
+4. **Click Install** — the mod downloads into your local collection.
+5. **Click Apply** — RSMM copies the mod's files into your Ravenswatch install.
+6. **Launch the game** and enjoy.
+</Steps>
+
+<Aside type="tip">
+To uninstall: open the **Installed** tab, find the mod, click **Uninstall**, then **Apply** to revert.
+</Aside>
+
+## Create your own mod (CLI)
+
+Mods ship **data, not code** — a declarative `manifest.toml` plus assets the SDK emits. No bespoke scripts.
+
+<Steps>
+1. **Scaffold** a new mod:
+   ```sh
+   ./rsmm new MyMod
+   ```
+   This creates `mods/MyMod/manifest.toml`.
+
+2. **Describe** your mod — edit `manifest.toml` and drop overrides under `mods/MyMod/assets/`:
+   ```toml
+   [mod]
+   id = "MyMod"
+   name = "My First Mod"
+   version = "0.1.0"
+
+   [[content]]
+   kind = "texture"
+   target = "path/to/original.png"
+   source = "assets/my-texture.png"
+   ```
+
+3. **Apply** your changes to the game:
+   ```sh
+   ./rsmm apply
+   ```
+
+4. **Package** for sharing:
+   ```sh
+   ./rsmm pack MyMod        # produces dist/MyMod.zip
+   ```
+</Steps>
+
+Upload `dist/MyMod.zip` via the Registry tab to share it with the community.
+
+<Aside type="caution">
+Don't author mods as Python scripts — `rsmm lint` (and CI) reject stray `*.py` in a mod that isn't a sanctioned lifecycle hook. If you need new capability, it graduates into the SDK. See [Authoring mods](/guides/modding/).
+</Aside>
+
+## Next steps
+
+<CardGrid>
+  <LinkCard title="Authoring mods" href="/guides/modding/" description="The full mod-authoring guide." />
+  <LinkCard title="SDK (v3)" href="/guides/sdk/" description="The Python SDK that emits mod assets." />
+  <LinkCard title="CLI reference" href="/reference/cli/" description="All available commands." />
+</CardGrid>

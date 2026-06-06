@@ -3,18 +3,22 @@ title: Ravenswatch Mod Manager
 description: Browser + desktop mod manager for Ravenswatch.
 template: splash
 hero:
-  tagline: One toolkit. Browser. Windows. macOS. Linux.
+  tagline: One toolkit. Browser. Windows. Linux.
   actions:
     - text: Install
       link: /getting-started/install/
       icon: right-arrow
       variant: primary
+    - text: Author a mod
+      link: /guides/modding/
+      icon: pencil
+      variant: minimal
     - text: View on GitHub
       link: https://github.com/Ovilli/RavenswatchModManager
       icon: external
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 <CardGrid>
   <Card title="Cooked asset overrides" icon="seti:default">
@@ -29,4 +33,15 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
   <Card title="Cross-platform UI" icon="laptop">
     Tauri desktop app + Next.js web app — same UI everywhere.
   </Card>
+</CardGrid>
+
+## Start here
+
+<CardGrid>
+  <LinkCard title="Your first mod" href="/getting-started/first-mod/" description="Install one from the Registry, then scaffold your own." />
+  <LinkCard title="Authoring mods" href="/guides/modding/" description="The full guide: manifest, content kinds, packaging." />
+  <LinkCard title="Example mods" href="/guides/examples/" description="Real, copy-pasteable mods from a one-liner to a custom item." />
+  <LinkCard title="Custom enemies" href="/guides/custom-enemies/" description="Clone, restat, and spawn your own enemies and bosses." />
+  <LinkCard title="CLI reference" href="/reference/cli/" description="Every rsmm subcommand." />
+  <LinkCard title="Roadmap" href="/project/roadmap/" description="What's shipped, in progress, and blocked." />
 </CardGrid>
