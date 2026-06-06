@@ -112,6 +112,13 @@ jobs:
       - name: Build loader DLL
         run: bash src/loader/build.sh
 
+      # Smoke-test the artifact: the loader can only be *run* inside the
+      # game, but CI can prove the DLL is a well-formed winhttp proxy with
+      # its forwarder exports intact — the exact regression that silently
+      # shipped an exportless/missing DLL in 0.1.11.
+      - name: Validate winhttp.dll (PE + export contract)
+        run: python3 scripts/validate_loader_dll.py dist/winhttp.dll
+
       - name: Upload winhttp.dll
         uses: actions/upload-artifact@v4
         with:

@@ -72,6 +72,15 @@ jobs:
         run: |
           call src\loader\build.bat
 
+      # Fail the release leg if the DLL is missing/malformed/exportless —
+      # the silent regression that shipped in 0.1.11 (DLL written to the
+      # wrong path, build "succeeded", every sidecar missing it). This
+      # gates the artifact that actually reaches users.
+      - name: Validate loader DLL (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: python scripts/validate_loader_dll.py dist/winhttp.dll
+
       # MSVC env is required for the Rust/Tauri linker on windows-latest.
       - name: Setup MSVC dev shell (Windows)
         if: matrix.platform == 'windows-latest'
