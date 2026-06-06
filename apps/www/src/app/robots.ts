@@ -5,9 +5,8 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: '*',
       allow: '/',
-      // App/account screens carry no publisher content — keep them out of the index
-      // so ads are never associated with thin/navigational pages.
-      disallow: ['/auth/', '/account', '/my-mods', '/publish', '/ads/'],
+      // App/account screens carry no public content — keep them out of the index.
+      disallow: ['/auth/', '/account', '/my-mods', '/publish'],
     },
     sitemap: 'https://ravenswatch.ovilli.de/sitemap.xml',
   };

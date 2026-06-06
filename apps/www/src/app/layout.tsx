@@ -1,24 +1,16 @@
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import Script from 'next/script';
 import { Nav } from './nav';
 import { Providers } from './providers';
 import { VersionBadge } from './version-badge';
 import './globals.css';
-
-const ADSENSE_PUBLISHER_ID = process.env.NEXT_PUBLIC_ADSENSE_PUBLISHER_ID ?? 'ca-pub-9139637424510522';
-const ADSENSE_ENABLED =
-  ADSENSE_PUBLISHER_ID.startsWith('ca-pub-') &&
-  ADSENSE_PUBLISHER_ID !== 'ca-pub-0000000000000000';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://ravenswatch.ovilli.de'),
   title: 'Ravenswatch Mod Manager',
   description: 'Cross-platform mod manager for Ravenswatch — browser, Windows, macOS, Linux.',
   icons: '/logo.png',
-  // Google AdSense site-verification meta tag (rendered into <head>).
-  ...(ADSENSE_ENABLED ? { other: { 'google-adsense-account': ADSENSE_PUBLISHER_ID } } : {}),
 };
 
 const footerLinks = [
@@ -33,15 +25,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className="dark">
       <body className="flex min-h-screen flex-col">
-        {ADSENSE_ENABLED && (
-          <Script
-            id="adsbygoogle-init"
-            async
-            strategy="afterInteractive"
-            crossOrigin="anonymous"
-            src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_PUBLISHER_ID}`}
-          />
-        )}
         <Nav versionBadge={<VersionBadge />} />
         <div className="flex-1">
           <Providers>{children}</Providers>
