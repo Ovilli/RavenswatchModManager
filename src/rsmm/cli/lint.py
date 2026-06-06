@@ -331,8 +331,13 @@ def main() -> int:
     args = ap.parse_args()
 
     if not MODS_DIR.is_dir():
-        print("mods/ not found", file=sys.stderr)
-        return 1
+        # mods/ is user-local and untracked (see .gitignore) — absent on a
+        # fresh CI checkout. Nothing to lint is not a failure.
+        if args.mod_id:
+            print(f"no such mod: {args.mod_id}", file=sys.stderr)
+            return 1
+        print("mods/ not found — nothing to lint")
+        return 0
 
     candidates: list[Path] = []
     if args.mod_id:

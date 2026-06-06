@@ -40,4 +40,8 @@ def test_manifest_parses_and_has_required_fields(manifest_path: Path):
 
 
 def test_at_least_one_manifest_present():
-    assert MANIFESTS, f"no mods found under {MODS_DIR}"
+    # mods/ is no longer tracked (game-derived assets must not be committed;
+    # see .gitignore). In a fresh CI checkout there are no mod folders, so
+    # this is informational only — skip rather than fail when none exist.
+    if not MANIFESTS:
+        pytest.skip("mods/ is untracked; no local mod folders to validate")

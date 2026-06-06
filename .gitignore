@@ -46,15 +46,12 @@ src/loader/build/
 src/loader/third_party/*/
 !src/loader/third_party/.gitkeep
 
-# Runtime state (written into mods/ at apply time).
-# DO NOT add a bare `mods` line here — the example mods under mods/<id>/
-# are tracked content and must not be excluded from clones.
-mods/_clicks.state
-mods/_clicks.log
-mods/_persona_map.json
-mods/_state.json
-mods/_log.txt
-mods/_merged/
+# mods/ is NOT tracked. Mod folders contain game-derived cooked assets
+# (textures, meshes, entity/localization data) that are derivative works
+# of the copyrighted game — they must not live in a public repo. Mods are
+# user-local content; author them with the SDK, apply from your own install.
+# (This replaces the old "tracked example mods" policy for legal reasons.)
+mods/
 
 # Packed mods + prebuilt loader DLL.
 # winhttp.dll is a build artifact shipped via GitHub Releases, not committed.
