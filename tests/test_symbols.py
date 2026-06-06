@@ -68,7 +68,12 @@ def test_generated_files_in_sync():
         (cmd_symbols.DOCS_PAGE, cmd_symbols._gen_docs),
     ]
     for path, gen in cases:
-        assert path.read_text() == gen(smap), f"{path.name} is stale; run `rsmm symbols gen`"
+        # Read as UTF-8 explicitly: the files are written UTF-8 (em-dash in the
+        # header), but read_text() defaults to the locale encoding — cp1252 on
+        # Windows CI — which mangles non-ASCII and fails this compare there.
+        assert path.read_text(encoding="utf-8") == gen(smap), (
+            f"{path.name} is stale; run `rsmm symbols gen`"
+        )
 
 
 def test_callable_symbols_have_pattern_and_cabi():
