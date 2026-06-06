@@ -64,7 +64,10 @@ FMT_BC3 = 5    # DXT5
 FMT_BC5 = 35   # ATI2 / 3Dc — used for .Texture.nrm normal maps
 FMT_RGBA = 0   # uncompressed 4 bpp (BGRA order)
 
-DEFAULT_GAME = Path.home() / ".var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch"
+DEFAULT_GAME = (
+    Path.home()
+    / ".var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch"
+)
 TEXTURE_SUFFIXES = (".png.Texture.dxt", ".tga.Texture.dxt", ".png.Texture.nrm", ".tga.Texture.nrm")
 
 

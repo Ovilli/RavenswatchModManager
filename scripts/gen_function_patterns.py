@@ -124,7 +124,7 @@ def make_pattern(prologue: bytes, base_va: int, target_len: int) -> tuple[str | 
         if i in masked_global:
             out.append("??")
         else:
-            out.append("%02x" % prologue[i])
+            out.append(f"{prologue[i]:02x}")
     return " ".join(out), consumed
 
 

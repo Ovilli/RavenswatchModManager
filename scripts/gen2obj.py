@@ -43,14 +43,14 @@ class GENReader:
 
     def parse_classes(self):
         n = self.read('<I')[0]
-        for i in range(n):
+        for _ in range(n):
             # format: name[hash?](version)<[parent] ...
             line = self.read_str(128)  # rough; we'll just skip
             self.classes.append(line)
 
     def parse_sections(self):
         n = self.read('<I')[0]
-        for i in range(n):
+        for _ in range(n):
             # Section header: range_start, range_end, payload_len
             start, end = self.read('<II')
             plen = self.read('<I')[0]
@@ -93,7 +93,7 @@ class GENReader:
             # We'll look for the string inside the payload.
             try:
                 s = sec['data'][4:].split(b'\x00')[0].decode('ascii')
-            except:
+            except Exception:
                 continue
             if s == needle:
                 return sec
@@ -137,15 +137,9 @@ def main():
         # fallback: any oCVec3VertexLayer that doesn't have "tangent"/"binormal"/"skinning"
         # For now we skip.
         sys.exit(1)
-    norm_sec = gen.find_section_by_string("normal")
-    tangent_sec = gen.find_section_by_string("tangent")
-    binormal_sec = gen.find_section_by_string("binormal")
-    uv_sec = gen.find_section_by_string("texcoord0")  # maybe named differently
     skin_sec = gen.find_section_by_string("skinning")
 
     positions = gen.extract_vertex_array(pos_sec, 'f', 3, skip=4+len("position")+1)
-    tangents = gen.extract_vertex_array(tangent_sec, 'f', 3, skip=4+len("tangent")+1) if tangent_sec else []
-    binormals = gen.extract_vertex_array(binormal_sec, 'f', 3, skip=4+len("binormal")+1) if binormal_sec else []
 
     # 2. Skinning data: typical format is 4 bytes bone index, 4 bytes weight (per vertex up to 8)
     skin_weights = []
@@ -167,7 +161,7 @@ def main():
             vtx_weights = []
             vtx_indices = []
             off = v * stride
-            for j in range(8):
+            for _ in range(8):
                 idx = struct.unpack_from('<i', raw, off)[0]
                 wgt = struct.unpack_from('<f', raw, off+4)[0]
                 if wgt > 0:
@@ -195,9 +189,10 @@ def main():
     if skin_weights:
         skin_path = os.path.splitext(sys.argv[1])[0] + "_skinning.txt"
         with open(skin_path, 'w') as f:
-            for i, (indices, weights) in enumerate(zip(bone_indices, skin_weights)):
+            for i, (indices, weights) in enumerate(
+                    zip(bone_indices, skin_weights, strict=False)):
                 f.write(f"v{i}: ")
-                for idx, wgt in zip(indices, weights):
+                for idx, wgt in zip(indices, weights, strict=False):
                     bone_name = bone_names[idx] if idx < len(bone_names) else f"bone{idx}"
                     f.write(f"{bone_name}({wgt:.4f}) ")
                 f.write("\n")

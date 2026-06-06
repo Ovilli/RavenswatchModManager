@@ -152,7 +152,9 @@ def main():
                 else:
                     fail += 1
                     if fail < 5:
-                        print(f"MISMATCH {e['name']} want={e['addr']} got={hex(got) if got else None} idx={idx}/{len(hits)}")
+                        got_hex = hex(got) if got else None
+                        print(f"MISMATCH {e['name']} want={e['addr']} "
+                              f"got={got_hex} idx={idx}/{len(hits)}")
             scanned += 1
             if scanned % 2000 == 0:
                 print(f"  scanned {scanned}/{len(by_pat)} ok={ok} fail={fail}", file=sys.stderr)

@@ -102,3 +102,11 @@ ignore = ["F401"]   # unused imports: noisy on src/rsmm/__init__ re-exports
 "tests/test_definitions_roundtrip.py"         = ["BLE001"]
 "tests/test_entity_settings_roundtrip.py"     = ["BLE001"]
 "tests/test_texture_roundtrip.py"             = ["BLE001"]
+
+# One-off RE / discovery helpers in scripts/. Blind try/except is the
+# intended skip-on-any-failure idiom while spelunking unknown binary
+# layouts. These are now CI-linted (see ci.yml) so they can't rot, but
+# the catch-all guards stay exempt like the cook/uncook pipeline above.
+"scripts/extract_uncooked.py"                 = ["BLE001"]
+"scripts/decode_gen_sidecars.py"              = ["BLE001"]
+"scripts/gen2obj.py"                          = ["BLE001"]
