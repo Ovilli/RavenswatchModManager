@@ -7,8 +7,6 @@ description: Common issues and how to fix them.
 
 **Windows**: Make sure you have [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) installed (it ships with Windows 11 and most Windows 10 installations).
 
-**macOS**: Right-click the app → Open, then click Open in the dialog. This is needed for unsigned apps on macOS.
-
 **Linux**: Make sure your system has WebKit2GTK:
 ```sh
 # Debian/Ubuntu
@@ -36,7 +34,7 @@ the local machine.
 The app couldn't auto-detect your Ravenswatch installation.
 
 - **Steam (Windows)**: Try launching Ravenswatch through Steam once, then restart RSMM
-- **Steam (macOS/Linux)**: Make sure the game is installed in your Steam library
+- **Steam (Linux)**: Make sure the game is installed in your Steam library
 - **Custom install**: Browse to the folder containing `Ravenswatch.exe` manually
 
 ## "Permission denied" on Linux
@@ -77,6 +75,19 @@ If a mod causes issues in-game:
 1. Verify `winhttp.dll` exists next to `Ravenswatch.exe`
 2. Check the loader log from the app's Debug menu
 3. Ensure your Steam launch options include the DLL override
+
+## CLI diagnostics
+
+If you use the command line, these help pin down problems:
+
+```sh
+./rsmm doctor        # full health check — run this first
+./rsmm log           # tail the loader log (Lua mods)
+```
+
+For merge conflicts or asset collisions, inspect `mods/_merged/asset_map.json`
+and `asset_map.csv` for duplicate entries, then resolve by renaming or adjusting
+the offending manifests.
 
 ## Still stuck?
 

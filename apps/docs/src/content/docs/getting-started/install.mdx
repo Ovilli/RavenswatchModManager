@@ -1,0 +1,120 @@
+---
+title: Installation
+description: Install the Ravenswatch Mod Manager on Windows or Linux.
+---
+
+import { Tabs, TabItem, Steps, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+RSMM runs on **Windows and Linux**. Most people only need the desktop app — no terminal required.
+
+## Desktop app (recommended)
+
+The desktop app gives you a graphical interface to browse, install, and manage mods.
+
+<Tabs syncKey="os">
+  <TabItem label="Windows" icon="seti:windows">
+    <Steps>
+    1. Download [`RSMM-x64.msi`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) from the latest release.
+    2. Double-click the `.msi` and follow the installer.
+    3. Launch **Ravenswatch Mod Manager** from the Start Menu.
+    </Steps>
+
+    <Aside type="tip">
+    If the app won't open, install [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) — it ships with Windows 11 and most Windows 10 builds.
+    </Aside>
+  </TabItem>
+  <TabItem label="Linux" icon="linux">
+    | Distro | Package |
+    |---|---|
+    | Any (AppImage) | [`RSMM-x86_64.AppImage`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) — `chmod +x` then run |
+    | Debian / Ubuntu | [`rsmm_amd64.deb`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) |
+    | Arch Linux | [AUR](https://aur.archlinux.org/packages/rsmm): `yay -S rsmm` |
+    | Other | Use the [CLI](#cli-advanced) or `pipx` below |
+
+    <Aside type="caution">
+    Gray screen on launch (Debian/Ubuntu)? Run with the compositing fallback:
+    ```sh
+    WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 rsmm
+    ```
+    </Aside>
+  </TabItem>
+</Tabs>
+
+### First run
+
+<Steps>
+1. **Set your game path** — RSMM auto-detects Steam installs. If it can't, browse to the folder containing `Ravenswatch.exe`.
+2. **Run the Doctor** — click the Doctor button to verify the setup.
+3. **Browse mods** — open the Registry tab to discover community mods.
+4. **Apply** — click Apply to install your selected mods into the game.
+5. **Play** — launch Ravenswatch from the app.
+</Steps>
+
+## CLI (advanced)
+
+Install from source if you want to author mods, script installs, or run on a platform without a pre-built package.
+
+**Prerequisites:** Python 3.11+, Git, and Ravenswatch installed.
+
+<Tabs syncKey="os">
+  <TabItem label="Windows" icon="seti:windows">
+    ```cmd
+    git clone https://github.com/Ovilli/RavenswatchModManager.git
+    cd RavenswatchModManager
+    python -m venv venv
+    venv\Scripts\activate
+    pip install -e .
+    rsmm doctor
+    ```
+  </TabItem>
+  <TabItem label="Linux" icon="linux">
+    ```sh
+    sudo apt install build-essential cmake pkg-config   # build deps
+    git clone https://github.com/Ovilli/RavenswatchModManager.git
+    cd RavenswatchModManager
+    python3 -m venv .venv
+    source .venv/bin/activate
+    pip install -e .
+    ./rsmm doctor
+    ```
+  </TabItem>
+  <TabItem label="pipx (any OS)" icon="rocket">
+    ```sh
+    pipx install git+https://github.com/Ovilli/RavenswatchModManager.git
+    rsmm doctor
+    ```
+  </TabItem>
+</Tabs>
+
+### Verify your setup
+
+```sh
+rsmm doctor          # health check — should pass with no errors
+rsmm new TestMod     # scaffold a test mod
+rsmm apply           # apply all enabled mods
+rsmm run             # launch the game
+```
+
+## Lua scripting (Windows only; experimental on Steam Proton)
+
+Lua mods run inside the game process and need the loader DLL (`winhttp.dll`) next to `Ravenswatch.exe`. Texture and asset overrides work **without** it.
+
+```sh
+cd src/loader
+./build.sh           # Linux cross-compile (MinGW)
+# or build.bat       # Windows
+rsmm install-loader  # install into the game
+```
+
+<Aside type="note">
+Steam Proton on Linux: add this launch option — `WINEDLLOVERRIDES="winhttp=n,b" %command%`
+</Aside>
+
+## Next steps
+
+<CardGrid>
+  <LinkCard title="Your first mod" href="/getting-started/first-mod/" description="Install and create a mod in minutes." />
+  <LinkCard title="CLI reference" href="/reference/cli/" description="Every command explained." />
+  <LinkCard title="Authoring mods" href="/guides/modding/" description="Build and share your own mods." />
+  <LinkCard title="Troubleshooting" href="/getting-started/troubleshooting/" description="Fixes for common issues." />
+</CardGrid>

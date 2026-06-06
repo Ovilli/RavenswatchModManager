@@ -1,9 +1,13 @@
 ---
 title: Development setup
-description: Set up a local development environment for RSMM.
+description: Set up a local development environment for working on RSMM itself.
 ---
 
-This guide covers setting up a development environment for working on RSMM itself.
+This guide covers setting up a development environment for hacking on RSMM itself. If you just want to *use* the mod manager, see [Installation](/getting-started/install/).
+
+> **Note about paths:** throughout this document, `./rsmm <name>` refers to the repo-root entry point. The equivalent Python module lives at `src/rsmm/cli/<name>.py` or `src/rsmm/engine/<name>.py`.
+
+---
 
 ## Prerequisites
 
@@ -12,12 +16,14 @@ This guide covers setting up a development environment for working on RSMM itsel
 | Node | >= 20.11 | `nvm install 22` recommended |
 | pnpm | 9.x | `corepack enable && corepack prepare pnpm@9.12.0 --activate` |
 | Docker | any modern | For local Postgres via `docker compose` |
-| Rust | stable | Only for desktop (Tauri) builds |
+| Rust | stable | Only for desktop (Tauri) builds. Install via `rustup` |
 | Python | >= 3.11 | The desktop app shells out to the Python CLI |
 | CMake | >= 3.20 | For building the native loader DLL |
 | Git | any | |
 
 Platform extras for Tauri 2 desktop builds: see [tauri.app/start/prerequisites](https://tauri.app/start/prerequisites/).
+
+---
 
 ## First-time bootstrap
 
@@ -28,7 +34,7 @@ cd RavenswatchModManager
 
 # 2. Python virtual env (for the rsmm CLI)
 python3 -m venv .venv
-source .venv/bin/activate       # Linux / macOS
+source .venv/bin/activate       # Linux
 # .venv\Scripts\activate        # Windows
 pip install -e .
 
@@ -36,8 +42,9 @@ pip install -e .
 corepack enable
 pnpm install
 
-# 4. Local Postgres (optional, for API development)
+# 4. Local Postgres
 cp .env.example .env
+sed -i "s/replace-me-32-bytes-hex/$(openssl rand -hex 32)/" .env
 pnpm db:up        # docker compose up -d postgres
 pnpm db:push      # Create tables via Drizzle
 pnpm db:seed      # Optional sample data
@@ -48,40 +55,49 @@ pnpm db:seed      # Optional sample data
 | Command | Description |
 |---|---|
 | `pnpm dev` | Desktop app (Tauri + Vite) |
-| `pnpm dev:with-cli` | Desktop app using the system `rsmm` Python CLI |
+| `pnpm dev:with-cli` | Desktop app (uses system `rsmm` Python CLI from repo root) |
 | `pnpm api:dev` | Hono API on `:3001` |
 | `pnpm www:dev` | Next.js website + registry on `:3000` |
 | `pnpm docs:dev` | Astro Starlight docs on `:4321` |
 | `pnpm lint` / `pnpm lint:fix` | Biome lint |
+| `pnpm format` | Biome format |
 | `pnpm check-types` | TypeScript across all packages |
+| `pnpm db:push` | Push schema to local DB |
+| `pnpm db:migrate` | Apply migrations |
 | `pnpm build` | Build every package + app |
 
 ### Platform-specific desktop dev
 
-- **Linux with DMA-BUF issues**: `pnpm --filter desktop dev:linux`
-- **Linux software fallback**: `pnpm --filter desktop dev:linux-soft`
-- **Apple Silicon**: `pnpm --filter desktop dev:mac-arm`
+| Command | Platform | Use case |
+|---|---|---|
+| `pnpm --filter desktop dev` | All | Standard development |
+| `pnpm --filter desktop dev:linux` | Linux | If WebKit DMA-BUF errors occur |
+| `pnpm --filter desktop dev:linux-soft` | Linux | Software GL fallback (last resort) |
 
 ### Production builds
 
-```sh
-pnpm --filter desktop build                # Native installer for current platform
-pnpm --filter desktop build:universal      # macOS universal binary (Intel + Apple Silicon)
-pnpm --filter desktop build:linux          # Linux x86_64
-pnpm --filter desktop build:windows        # Windows x64
-```
+| Command | Output |
+|---|---|
+| `pnpm --filter desktop build` | Native platform installer (MSI/AppImage) |
+| `pnpm --filter desktop build:linux` | Linux x86_64 build |
+| `pnpm --filter desktop build:windows` | Windows x64 build |
 
 ### Sidecar (Python CLI binary)
 
-For production builds, the Python CLI must be bundled as a standalone binary:
+For production builds, the Python CLI must be bundled as a standalone executable:
 
 ```sh
-pip install pyinstaller
-python3 scripts/build-sidecar.py           # Build for current platform
-python3 scripts/build-sidecar.py --all     # Build for all platforms
+python3 scripts/build-sidecar.py              # Build for current platform
+python3 scripts/build-sidecar.py --target linux
+python3 scripts/build-sidecar.py --target windows
+python3 scripts/build-sidecar.py --all         # Build for all platforms
 ```
 
-The sidecar binary is placed at `apps/desktop/src-tauri/binaries/rsmm-<target-triple>`.
+Requires PyInstaller (`pip install pyinstaller`). The output binary is placed at
+`apps/desktop/src-tauri/binaries/rsmm-<target-triple>` where Tauri's sidecar resolver expects it.
+
+For development, you can use the system Python CLI instead (`rsmm` on PATH from `pip install -e .`).
+The desktop app falls back to the system command if the sidecar binary is not found.
 
 ## Building the native loader
 
@@ -96,17 +112,31 @@ fetch_deps.bat
 build.bat
 ```
 
+The compiled `winhttp.dll` appears in `dist/`.
+
 ## Testing
 
 ```sh
 # Python tests
-pytest -q
+pytest -q                                    # From repo root
+
+# Regenerate dev artifacts (optional, not committed)
+pip install --user texture2ddecoder Pillow capstone
+python3 scripts/extract_uncooked.py           # Uncooked asset mirror
+python3 scripts/decode_gen_sidecars.py        # .gen sidecars
+bash docs/_re/run_dump_symbols.sh             # Ghidra symbol dump
+python3 scripts/gen_function_patterns.py      # Pattern DB
+python3 scripts/test_pattern_resolve.py --all # Validate patterns
 ```
+
+## IDE setup
+
+Open the workspace in VS Code. Install the CMake Tools and Python extensions. Point the Python interpreter to `.venv`.
 
 ## Architecture
 
 ```
-apps/desktop    Tauri 2 shell. Vite + React. Calls `rsmm` CLI as sidecar.
+apps/desktop    Tauri 2 shell. Vite + React. Spawns `rsmm` CLI as sidecar.
 apps/www        Next.js 15 marketing site + registry browser.
 apps/api        Hono on Node. Better Auth + /mods + /telemetry endpoints.
 apps/docs       Astro Starlight documentation site.
@@ -114,6 +144,69 @@ packages/db     Drizzle schema + migrations (Neon / pg dual driver).
 packages/ui     Shared React components + Tailwind preset.
 packages/api-client  Typed fetch client for apps/api.
 packages/schemas     Zod schemas shared by client + server.
-src/rsmm/       Python CLI + SDK.
-src/loader/     Native DLL source (winhttp proxy + Lua VM, Windows only).
+src/rsmm/       Python CLI + SDK. Untouched by the TypeScript monorepo.
+src/loader/     Native DLL source (winhttp proxy + Lua VM).
 ```
+
+## Python bridge
+
+The desktop app calls the Python CLI via the Tauri shell plugin:
+
+```ts
+import { rsmm } from './lib/rsmm';
+const mods = await rsmm<LocalMod[]>(['list', '--json']);
+```
+
+The `rsmm` executable must be on `PATH`. For devs, the repo-root `./rsmm` wrapper works.
+
+## Local vs production database
+
+Local: Docker Postgres via `docker compose up -d postgres`. Connection string in `.env`.
+
+Production: [Neon](https://neon.tech) serverless Postgres. Set `DATABASE_URL` and `DB_DRIVER=neon` in your deployment environment. Run `pnpm db:migrate` once after deploy.
+
+Drizzle is configured for both drivers — the switch is the `DB_DRIVER` env var.
+
+## Tauri icons
+
+The committed `apps/desktop/src-tauri/icons/icon.png` is a placeholder. Replace with a real 1024×1024 PNG, then:
+
+```sh
+cd apps/desktop
+pnpm tauri icon icons/icon.png
+```
+
+This regenerates every required size + `.ico` + `.icns` + mobile variants.
+
+## Linux + NVIDIA
+
+If `pnpm desktop:dev` prints GBM/DRM errors and the window never appears:
+
+```sh
+pnpm --filter desktop dev:linux          # Disable DMA-BUF + compositing
+pnpm --filter desktop dev:linux-soft     # Last resort: software GL
+```
+
+---
+
+## Contributing
+
+### Reporting issues
+
+- Search existing issues first.
+- Provide reproduction steps, OS, game version, and relevant logs.
+
+### Code style
+
+- Follow existing formatting in `src/` and `apps/`.
+- Use `clang-format` for C++ and `black` for Python where applicable.
+
+### Pull requests
+
+- Fork the repo and create a focused topic branch.
+- Include a clear description, related issue, and testing steps.
+- Ensure CI passes before requesting review.
+
+### Communication
+
+- Be responsive to review comments and keep PRs small.

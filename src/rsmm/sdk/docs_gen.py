@@ -1,8 +1,13 @@
-"""Auto-generate docs/api/ from `@sdk_export` registrations.
+"""Auto-generate the SDK/CLI reference from `@sdk_export` registrations.
 
 Walks `rsmm.sdk.api.registry()`, pulls each function's signature +
 docstring, and emits one Markdown file per submodule. Run via
 `rsmm docs-gen`.
+
+Two destinations, one source of truth:
+- `out_dir` (default `docs/api/`) — plain Markdown, CI `--check`s it.
+- `site_out` (default `apps/docs/src/content/docs/reference/sdk-api/`) —
+  the same pages with Starlight frontmatter so they render on the docs site.
 """
 
 from __future__ import annotations
@@ -29,13 +34,32 @@ def _import_sdk_modules() -> None:
             )
 
 
-def generate_cli(out_dir: Path) -> Path:
-    """Write `cli.md` — the authoritative `rsmm <cmd>` inventory.
+def _yaml_title(s: str) -> str:
+    """Quote a frontmatter title if it contains YAML-significant chars."""
+    if any(c in s for c in ':#"\''):
+        return '"' + s.replace('"', '\\"') + '"'
+    return s
 
-    Sourced from `rsmm.cli._dispatch.iter_commands()` (the same table
-    `main()` routes on), so a new subcommand that isn't regenerated here
-    is caught by `rsmm docs-gen --check` in CI.
-    """
+
+def _write(out_dir: Path | None, site_out: Path | None,
+           rel: str, text: str, title: str) -> list[Path]:
+    """Write one page to whichever destinations are set. Returns paths written."""
+    written: list[Path] = []
+    if out_dir is not None:
+        p = out_dir / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8")
+        written.append(p)
+    if site_out is not None:
+        p = site_out / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(f"---\ntitle: {_yaml_title(title)}\n---\n\n" + text, encoding="utf-8")
+        written.append(p)
+    return written
+
+
+def _cli_page() -> tuple[str, str, str]:
+    """Return (relpath, body, title) for the CLI inventory page."""
     from rsmm.cli._dispatch import iter_commands
 
     rows: list[tuple[str, str, str]] = []
@@ -60,23 +84,26 @@ def generate_cli(out_dir: Path) -> Path:
     ]
     for cmd, modname, summary in rows:
         lines.append(f"| `rsmm {cmd}` | `{modname}` | {summary} |")
-    out_dir.mkdir(parents=True, exist_ok=True)
-    p = out_dir / "cli.md"
-    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return p
+    return "cli.md", "\n".join(lines) + "\n", "CLI command inventory"
 
 
-def generate(out_dir: Path) -> list[Path]:
-    """Write one `<module>.md` per SDK submodule + `cli.md`. Returns paths."""
+def generate(out_dir: Path | None, site_out: Path | None = None) -> list[Path]:
+    """Write one `<module>.md` per SDK submodule + `cli.md` + `README.md`.
+
+    Writes to `out_dir` (plain) and/or `site_out` (with Starlight
+    frontmatter). Returns every path written.
+    """
     _import_sdk_modules()
-    out_dir.mkdir(parents=True, exist_ok=True)
     by_module: dict[str, list[tuple[str, callable]]] = {}
     for name, fn in registry().items():
         mod = getattr(fn, "__module__", "rsmm.sdk")
         by_module.setdefault(mod, []).append((name, fn))
+
     written: list[Path] = []
+    module_slugs: list[str] = []
     for mod_name, items in sorted(by_module.items()):
         slug = mod_name.replace("rsmm.sdk.", "").replace(".", "_") or "root"
+        module_slugs.append(slug)
         lines = [f"# {mod_name}", ""]
         for name, fn in sorted(items):
             try:
@@ -85,18 +112,22 @@ def generate(out_dir: Path) -> list[Path]:
                 sig = "(...)"
             doc = inspect.getdoc(fn) or "(undocumented)"
             lines += [f"## `{name}{sig}`", "", doc, ""]
-        p = out_dir / f"{slug}.md"
-        p.write_text("\n".join(lines), encoding="utf-8")
-        written.append(p)
-    cli = generate_cli(out_dir)
-    index = out_dir / "README.md"
+        written += _write(out_dir, site_out, f"{slug}.md", "\n".join(lines), mod_name)
+
+    # cli.md
+    cli_rel, cli_body, cli_title = _cli_page()
+    written += _write(out_dir, site_out, cli_rel, cli_body, cli_title)
+
+    # README.md index
     idx_lines = ["# SDK v3 API reference", "",
                  "API version: see `rsmm.sdk.api.API_VERSION`", "",
                  "## CLI", "",
-                 f"- [{cli.stem}]({cli.name}) — every `rsmm` subcommand", "",
+                 "- [cli](cli.md) — every `rsmm` subcommand", "",
                  "## SDK modules", ""]
-    for p in sorted(written):
-        idx_lines.append(f"- [{p.stem}]({p.name})")
-    index.write_text("\n".join(idx_lines) + "\n", encoding="utf-8")
-    written += [cli, index]
+    for slug in module_slugs:
+        idx_lines.append(f"- [{slug}]({slug}.md)")
+    # README is a repo-side index only; the docs site uses its sidebar instead,
+    # so the relative `.md` links here never reach the link validator.
+    written += _write(out_dir, None, "README.md", "\n".join(idx_lines) + "\n",
+                      "SDK API reference")
     return written

@@ -16,6 +16,9 @@
     "astro": "5.1.5"
   },
   "devDependencies": {
+    "astro-mermaid": "^2.0.2",
+    "mermaid": "^11.15.0",
+    "starlight-links-validator": "^0.14.0",
     "typescript": "5.7.3"
   }
 }

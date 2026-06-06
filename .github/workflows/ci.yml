@@ -13,11 +13,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macOS is in the matrix because the codebase has darwin-specific
-        # branches (src/rsmm/engine/paths.py, src/rsmm/cli/run.py) and
-        # tests/test_platform_paths.py exercises them — without a macOS
-        # runner those branches only run in production on a user's machine.
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # RSMM targets Windows + Linux only (macOS support dropped).
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -97,6 +94,11 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      # Builds the Starlight docs site; starlight-links-validator fails the
+      # build on any broken internal link, so doc rot is caught in CI.
+      - name: Build docs (validate internal links)
+        run: pnpm --filter docs build
 
   loader-linux-mingw:
     name: loader (mingw-w64 cross-compile)

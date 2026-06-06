@@ -1,0 +1,116 @@
+---
+title: Example mods
+description: Real, working mods you can copy — from a one-liner to a custom item.
+---
+
+import { Tabs, TabItem, Steps, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+Every example below is a complete mod. Copy the files into `mods/<id>/`, set
+`enabled = true`, and run `./rsmm apply`. Source lives in
+[`docs/ExampleMods/`](https://github.com/Ovilli/RavenswatchModManager/tree/main/docs/ExampleMods).
+
+<Aside type="note">
+Examples ship `enabled = false` so they don't apply by accident. Flip it to
+`true` (or enable them in the desktop app) before `apply`.
+</Aside>
+
+## Pick a starting point
+
+<CardGrid>
+  <LinkCard title="Hello (Lua)" href="#hello--smallest-lua-mod" description="The minimal SDK mod: log on ready, count ticks." />
+  <LinkCard title="Magic item (data)" href="#magic-item--declarative-content" description="A custom magical object via a [[content]] block — no code." />
+</CardGrid>
+
+## Hello — smallest Lua mod
+
+The minimum to prove the loader + SDK work: log once when the game is ready and
+count ticks. No assets, just `manifest.toml` + `init.lua`.
+
+<Tabs>
+  <TabItem label="manifest.toml">
+    ```toml title="mods/ExampleSdkHello/manifest.toml"
+    [mod]
+    id          = "ExampleSdkHello"
+    name        = "Example: SDK hello"
+    version     = "0.2.0"
+    author      = "rsmm-examples"
+    description = "Smallest possible mod using SDK v3. Logs once on ready + bumps a counter every tick."
+    enabled     = false
+    sdk_version = ">=3.0,<4"
+    ```
+  </TabItem>
+  <TabItem label="init.lua">
+    ```lua title="mods/ExampleSdkHello/init.lua"
+    -- Smallest possible mod using SDK v3.
+    -- Demonstrates: require "rsmm", R.health.checkpoint, R.on, R.log, R.kv.
+
+    local R = require "rsmm"
+    R.health.checkpoint("per_mod:ExampleSdkHello")
+
+    R.on("ready", function()
+        R.log("[Hello] loaded; SDK ready")
+    end)
+
+    R.on("tick", function()
+        local n = R.kv.inc("tick_count")
+        if n == 1 or n % 20 == 0 then
+            R.log("[Hello] tick #" .. n)
+        end
+    end)
+    ```
+  </TabItem>
+</Tabs>
+
+<Aside type="caution">
+Lua mods need the loader DLL (`winhttp.dll`). Texture/asset mods do **not** —
+see [Installation → Lua scripting](/getting-started/install/#lua-scripting-windows-only-experimental-on-steam-proton).
+</Aside>
+
+## Magic item — declarative content
+
+A custom magical object, cloned-and-patched from a vanilla rare item. **No
+code** — the `[[content]]` block tells the SDK to cook a new item end-to-end.
+
+```toml title="mods/ExampleMagicItem/manifest.toml"
+[mod]
+id          = "ExampleMagicItem"
+name        = "Example: Magic Item"
+version     = "0.3.0"
+author      = "rsmm-examples"
+description = "Declarative custom magical object via [[content]] block."
+enabled     = false
+sdk_version = ">=3.0,<4"
+
+[[content]]
+kind        = "item"
+id          = "Iron_Crab_Hide"
+base        = "Common/Armor_Per_Object"
+name        = "Iron Crab Hide"
+description = "Bonus armor per rare object collected."
+rarity      = "Common"
+```
+
+The `kind = "item"` builder resolves the `base` donor, cooks the new item, and
+`rsmm apply` syncs the game-side registration (versiondef + UsedRscCache). You
+write the manifest; the SDK does the rest. See
+[Authoring mods](/guides/modding/) for every `[[content]]` kind.
+
+## Apply any example
+
+<Steps>
+1. Copy the example folder into your `mods/` directory.
+2. Set `enabled = true` in its `manifest.toml`.
+3. Apply and launch:
+   ```sh
+   ./rsmm apply
+   ./rsmm run
+   ```
+</Steps>
+
+## More examples in the repo
+
+- `ExampleSeedPin` — pin the run RNG seed via the `R._internal` escape-hatch + per-mod config (`R.config.get`).
+- `ExampleSdkAll` — exercises the full SDK surface.
+- `HyperAggro` — a gameplay tweak mod.
+
+Browse them all in [`docs/ExampleMods/`](https://github.com/Ovilli/RavenswatchModManager/tree/main/docs/ExampleMods).
