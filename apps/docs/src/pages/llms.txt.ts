@@ -1,12 +1,11 @@
+import { getCollection } from 'astro:content';
 // /llms.txt — index for AI assistants (https://llmstxt.org/).
 // Title + summary + a flat link list of every docs page. The full text
 // lives at /llms-full.txt. Hand-rolled (no plugin) so it works on the
 // pinned Starlight 0.30.
 import type { APIRoute } from 'astro';
-import { getCollection } from 'astro:content';
 
-const pageUrl = (base: string, id: string) =>
-  id === 'index' ? `${base}/` : `${base}/${id}/`;
+const pageUrl = (base: string, id: string) => (id === 'index' ? `${base}/` : `${base}/${id}/`);
 
 export const GET: APIRoute = async ({ site }) => {
   const base = (site?.toString() ?? 'https://docs.ravenswatch.ovilli.de').replace(/\/$/, '');
@@ -31,7 +30,7 @@ export const GET: APIRoute = async ({ site }) => {
     lines.push(`- [${entry.data.title}](${pageUrl(base, entry.id)})${desc}`);
   }
 
-  return new Response(lines.join('\n') + '\n', {
+  return new Response(`${lines.join('\n')}\n`, {
     headers: { 'Content-Type': 'text/plain; charset=utf-8' },
   });
 };
