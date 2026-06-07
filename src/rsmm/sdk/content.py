@@ -123,6 +123,15 @@ class ContentRegistry:
     @sdk_export("ContentRegistry.register")
     def register(self, kind: str, *, id: str, schema_version: int = 1,
                  **fields) -> ContentRef:
+        """Register a content definition of ``kind`` and return its :class:`ContentRef`.
+
+        The low-level primitive behind :meth:`Mod.item` / :meth:`Mod.enemy`
+        / etc. ``kind`` must be a known builder (``item``, ``enemy``,
+        ``boss``, ``hero``, ``map``, …); non-``confirmed`` kinds require the
+        mod to opt in with ``experimental=True``. ``id`` must be unique
+        within the mod for that kind. Extra ``**fields`` are passed to the
+        kind builder.
+        """
         if kind not in KINDS:
             raise ContentError(
                 f"unknown content kind {kind!r}; supported: {', '.join(KINDS)}"

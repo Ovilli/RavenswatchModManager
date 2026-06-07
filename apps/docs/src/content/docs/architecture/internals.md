@@ -95,6 +95,17 @@ Breakdown:
 
 This likely reflects a substitution or hash-based naming system.
 
+How a mod's plaintext path resolves to the obfuscated file on disk:
+
+```mermaid
+flowchart LR
+    P["Decoded path<br/>Ui/.../Portrait.png"] -->|"Caesar cipher<br/>cipher.py / find_iyg.py"| E["Encoded name<br/>UTS_Fgztxgz~KWH.yqz"]
+    M["UsedRscList.ot"] --> AM["asset_map.json<br/>decoded ↔ encoded"]
+    P --> AM
+    AM --> E
+    E --> D["_Cooking/&lt;encoded&gt;<br/>(file replaced in place)"]
+```
+
 ## Variant System
 
 Examples:
@@ -133,18 +144,13 @@ Likely meaning:
 
 ## Asset Pipeline
 
-```text
-Raw Assets
-   ↓
-_Cooking (preprocessing stage)
-   ↓
-.tpdl bundles
-   ↓
-.tpi final assets
-   ↓
-UsedRscList.ot index
-   ↓
-Runtime loader resolves assets
+```mermaid
+flowchart TD
+    A["Raw assets"] --> B["_Cooking<br/>(preprocessing)"]
+    B --> C[".tpdl bundles"]
+    C --> D[".tpi final assets"]
+    D --> E["UsedRscList.ot index"]
+    E --> F["Runtime loader<br/>resolves assets"]
 ```
 
 ## Resource Index

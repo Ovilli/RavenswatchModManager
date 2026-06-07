@@ -1,10 +1,27 @@
 ---
 title: rsmm.sdk.builder
+description: "Mod-builder used by `from rsmm import sdk; with sdk.Mod(...) as m:`."
 ---
 
 # rsmm.sdk.builder
 
-## `Mod.asset(self, decoded_path: 'str', source: 'str | Path') -> 'None'`
+Mod-builder used by `from rsmm import sdk; with sdk.Mod(...) as m:`.
+
+Collects config/i18n/content/dependency declarations in memory, then
+materializes the whole mod on `__exit__`. One transactional write per
+mod build avoids half-built mod trees on the disk.
+
+:::note
+Auto-generated from `@sdk_export` registrations by `rsmm docs-gen`. Edit the docstrings in the source module, not this page.
+:::
+
+## `Mod`
+
+### `Mod.asset`
+
+```python
+Mod.asset(self, decoded_path: 'str', source: 'str | Path') -> 'None'
+```
 
 Stage a source asset to override the game file at `decoded_path`.
 
@@ -15,27 +32,51 @@ The file is copied verbatim into ``mods/<id>/assets/<decoded_path>``;
 `rsmm apply` auto-cooks source formats (.glb/.png/.dds/...) into the
 cooked container and installs them. Pre-cooked inputs pass through.
 
-## `Mod.boss(self, id: 'str', *, base: 'str', name: 'str | None' = None, **fields)`
+### `Mod.boss`
+
+```python
+Mod.boss(self, id: 'str', *, base: 'str', name: 'str | None' = None, **fields)
+```
 
 Register a custom boss cloned from vanilla ``base``.
 
-## `Mod.enemy(self, id: 'str', *, base: 'str', name: 'str | None' = None, **fields)`
+### `Mod.enemy`
+
+```python
+Mod.enemy(self, id: 'str', *, base: 'str', name: 'str | None' = None, **fields)
+```
 
 Register a custom enemy cloned from vanilla ``base``.
 
-## `Mod.hero(self, id: 'str', *, base: 'str', name: 'str | None' = None, abilities: 'list | None' = None, **fields)`
+### `Mod.hero`
+
+```python
+Mod.hero(self, id: 'str', *, base: 'str', name: 'str | None' = None, abilities: 'list | None' = None, **fields)
+```
 
 Register a custom hero cloned from vanilla ``base``.
 
-## `Mod.item(self, id: 'str', *, base: 'str', name: 'str | None' = None, **fields)`
+### `Mod.item`
+
+```python
+Mod.item(self, id: 'str', *, base: 'str', name: 'str | None' = None, **fields)
+```
 
 Register a custom item cloned from vanilla ``base``.
 
-## `Mod.map(self, id: 'str', *, base: 'str', **fields)`
+### `Mod.map`
+
+```python
+Mod.map(self, id: 'str', *, base: 'str', **fields)
+```
 
 Register a custom map/level cloned from vanilla ``base``.
 
-## `Mod.model(self, decoded_path: 'str', source: 'str | Path', rotate_deg: 'tuple[float, float, float] | None' = None, scale: 'float | None' = None) -> 'None'`
+### `Mod.model`
+
+```python
+Mod.model(self, decoded_path: 'str', source: 'str | Path', rotate_deg: 'tuple[float, float, float] | None' = None, scale: 'float | None' = None) -> 'None'
+```
 
 Override a mesh asset. Source must be a `.glb`/`.gltf`.
 
@@ -52,7 +93,11 @@ different aspect ratio than the original can come out too big or
 small. Pass `scale=` to multiply the auto-fit (e.g. `scale=0.5` to
 halve it).
 
-## `Mod.skinpack(self, name: 'str', key: 'int', *, ac_id: 'str' = '', al_id: 'str' = '', base_id: 'str' = '') -> 'None'`
+### `Mod.skinpack`
+
+```python
+Mod.skinpack(self, name: 'str', key: 'int', *, ac_id: 'str' = '', al_id: 'str' = '', base_id: 'str' = '') -> 'None'
+```
 
 Register a custom selectable skin-pack slot.
 
@@ -87,12 +132,20 @@ stage the per-skin cooked assets with
 :meth:`asset`/:meth:`texture`/:meth:`model`, and until the resolver
 is mapped, prefer reusing an existing slot's AC/AL id.
 
-## `Mod.summary(self) -> 'dict'`
+### `Mod.summary`
+
+```python
+Mod.summary(self) -> 'dict'
+```
 
 Snapshot of everything staged so far — print before :meth:`commit`
 to see exactly what the mod will write (no disk writes).
 
-## `Mod.tag(self, tag_id: 'str', members) -> 'None'`
+### `Mod.tag`
+
+```python
+Mod.tag(self, tag_id: 'str', members) -> 'None'
+```
 
 Group content into a named, cross-mod-extensible tag (Minecraft
 ``#namespace:path`` tags analog).
@@ -109,11 +162,19 @@ returned by :meth:`item`/:meth:`enemy`/… directly::
 Tags are written to ``mods/<id>/tags.json``; downstream tooling/mods
 aggregate them (same model as ``skinpacks.json``).
 
-## `Mod.texture(self, decoded_path: 'str', source: 'str | Path') -> 'None'`
+### `Mod.texture`
+
+```python
+Mod.texture(self, decoded_path: 'str', source: 'str | Path') -> 'None'
+```
 
 Override a texture asset. Source must be a `.png`/`.dds`/`.tga`.
 
-## `Mod.validate(self) -> 'list[str]'`
+### `Mod.validate`
+
+```python
+Mod.validate(self) -> 'list[str]'
+```
 
 Return human-readable warnings about the current state (does not
 raise). Empty list = clean. Called automatically by :meth:`commit`;

@@ -157,10 +157,15 @@ class ConfigStore:
 
     @sdk_export("ConfigStore.get")
     def get(self, key: str, fallback: Any = None) -> Any:
+        """Read a config value by key, returning ``fallback`` if unset."""
         return self._values.get(key, fallback)
 
     @sdk_export("ConfigStore.set")
     def set(self, key: str, value: Any) -> None:
+        """Set a config value, coercing to the schema field's type and persisting.
+
+        Raises ``ConfigError`` if ``key`` is not declared in the schema.
+        """
         if key not in self.schema.fields:
             raise ConfigError(f"unknown config key {key!r}")
         self._values[key] = self.schema.fields[key].coerce(value)

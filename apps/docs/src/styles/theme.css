@@ -12,3 +12,20 @@
   --sl-color-accent: #c8102e;
   --sl-color-accent-high: #5c0a13;
 }
+
+/* Subtle red glow behind the splash hero image. */
+.hero > img,
+.hero .hero-html {
+  filter: drop-shadow(0 0 2rem rgba(224, 24, 45, 0.25));
+}
+
+/* Lift cards on hover so the feature grid feels interactive. */
+.card {
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+.card:hover {
+  border-color: var(--sl-color-accent);
+  transform: translateY(-2px);
+}

@@ -75,6 +75,20 @@ src/loader/lua/
 `rsmm.lua` is rebuilt by `rsmm build` from the Python side so the Lua API
 declarations stay in lockstep with the Python registrations.
 
+How an authored mod becomes installed bytes (declarative all the way down —
+no per-mod scripts):
+
+```mermaid
+flowchart TD
+    M["sdk.Mod(...)<br/>item / enemy / texture / model / tag"] --> R["content.register<br/>+ staged assets"]
+    R --> K["kinds/*<br/>clone vanilla base"]
+    K --> C["engine cook<br/>(magic_item_cook, geometry_cook, …)"]
+    C --> T["transaction<br/>stage → atomic swap"]
+    T --> A["rsmm apply<br/>back up + install cooked files"]
+    A --> G["Game reads<br/>_Cooking/&lt;encoded&gt;"]
+    L["Lua mods"] -.->|"R.on / R.call (loader DLL)"| G
+```
+
 ## Manifest v2
 
 ```toml

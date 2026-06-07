@@ -368,7 +368,23 @@ def _gen_docs_site(smap: SymbolMap) -> str:
         "description: The canonical engine symbol map and how to use it.\n"
         "---\n\n"
     )
-    return fm + "\n".join(lines)
+    # Site-only: a generation-pipeline diagram (the plain SYMBOLS.md stays
+    # diagram-free so its `--check` diff is pure data).
+    diagram = (
+        "One human-authored source (`data/symbols.json`) generates every "
+        "downstream artifact:\n\n"
+        "```mermaid\n"
+        "flowchart LR\n"
+        '    S["data/symbols.json<br/>(canonical, hand-authored)"]\n'
+        '    S -->|"rsmm symbols gen"| H["loader C++<br/>symbols.gen.h + API"]\n'
+        "    S -->|gen| E[\"event bus<br/>event_table.gen.h\"]\n"
+        "    S -->|gen| L[\"Lua resolver<br/>engine_gen.lua\"]\n"
+        '    S -->|gen| P["Python consts<br/>_symbols_gen.py"]\n'
+        '    S -->|gen| D["this page<br/>+ docs/SYMBOLS.md"]\n'
+        '    S -->|"ghidra-export"| G["Ghidra DB names"]\n'
+        "```\n\n"
+    )
+    return fm + diagram + "\n".join(lines)
 
 
 def _cmd_gen(smap: SymbolMap, check: bool) -> int:

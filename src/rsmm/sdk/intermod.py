@@ -51,6 +51,12 @@ class InterModRegistry:
 
     @sdk_export("InterModRegistry.require")
     def require(self, name: str, version_spec: str = "") -> InterModProxy:
+        """Resolve another mod's published API by name (Forge-style inter-mod call).
+
+        Returns a proxy exposing the provider's exported callables. Raises
+        ``InterModError`` if no mod published ``name``, or if its version
+        does not satisfy ``version_spec`` (e.g. ``">=1.2"``).
+        """
         entry = self._by_name.get(name)
         if entry is None:
             raise InterModError(f"API not found: {name!r}")

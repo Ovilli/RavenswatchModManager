@@ -118,6 +118,11 @@ class RepoIndex:
 
 @sdk_export("repo.sha256_file")
 def sha256_file(path: Path) -> str:
+    """Hex SHA256 of a file, streamed (no full-file buffering).
+
+    The integrity primitive behind `repo.json` manifests and
+    :func:`sign_file` / :func:`verify_file`.
+    """
     from rsmm.engine.hashing import sha256_file as _impl
     return _impl(path)
 
@@ -162,6 +167,12 @@ def sign_file(path: Path, private_key_path: Path) -> str:
 
 @sdk_export("repo.verify_file")
 def verify_file(path: Path, sig_b64: str, public_key_path: Path) -> bool:
+    """Verify a base64 Ed25519 signature over `path`'s SHA256 digest.
+
+    Returns ``True`` if ``sig_b64`` (from :func:`sign_file`) matches under
+    ``public_key_path``, ``False`` otherwise. Raises ``RepoError`` if the
+    optional ``cryptography`` package is missing.
+    """
     crypto = _load_crypto()
     if crypto is None:
         raise RepoError(

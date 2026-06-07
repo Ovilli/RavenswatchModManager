@@ -148,6 +148,11 @@ class Health:
 
     @sdk_export("Health.disabled_mods")
     def disabled_mods(self) -> set[str]:
+        """Ids of mods auto-disabled by the boot-canary crash bisector.
+
+        These were quarantined after a crashy launch; the user re-enables
+        each with :meth:`re_enable` once fixed.
+        """
         st = self.load()
         return {mid for mid, h in st.mods.items() if h.disabled_by_health}
 
