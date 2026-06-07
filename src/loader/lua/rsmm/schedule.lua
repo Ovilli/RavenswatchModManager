@@ -17,8 +17,8 @@ function M.after(seconds, fn)
     table.insert(_timers, { fire_at = _now() + seconds, fn = fn })
 end
 
--- Hook called by the events module on every frame. Public so the loader
--- can drive it without us needing to subscribe at module load time.
+-- Frame pump. rsmm.lua subscribes this to the "tick" event so timers fire
+-- without the module needing to subscribe at load time.
 function M._tick()
     if #_next_frame > 0 then
         local cur = _next_frame

@@ -95,6 +95,27 @@ def test_events_have_lua_event_and_pattern():
         assert e.lua_event and e.pattern_name
 
 
+def test_cabi_sig_codes():
+    """_cabi_sig maps C types to the native caller's 1-char codes."""
+    sig = cmd_symbols._cabi_sig
+    assert sig({"ret": "void", "params": ["void*", "void*"]}) == "vpp"
+    assert sig({"ret": "void*", "params": ["const char*", "void*", "void*", "void*"]}) == "psppp"
+    assert sig({"ret": "void", "params": ["void*", "uint64_t", "uint32_t"]}) == "vplu"
+    assert sig({"ret": "void*", "params": []}) == "p"
+    assert sig({"ret": "float", "params": ["double"]}) == "fd"
+
+
+def test_engine_gen_lua_sigs_valid():
+    """Every callable in engine_gen.lua carries a sig of valid codes whose
+    length matches its cabi arity (ret code + one per param)."""
+    smap = S.load_symbol_map()
+    valid = set("viuplfds")
+    for s in smap.callable_symbols:
+        sig = cmd_symbols._cabi_sig(s.cabi)
+        assert sig and all(c in valid for c in sig), f"{s.name}: bad sig {sig!r}"
+        assert len(sig) == 1 + len(s.cabi["params"]), f"{s.name}: sig arity mismatch"
+
+
 def test_anchor_callable_carries_offset():
     """The inlined SpawnAllObjects accessor must add its +0x70 offset."""
     smap = S.load_symbol_map()

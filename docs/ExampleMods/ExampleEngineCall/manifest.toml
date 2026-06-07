@@ -1,0 +1,8 @@
+[mod]
+id          = "ExampleEngineCall"
+name        = "Example: call engine functions"
+version     = "0.1.0"
+author      = "rsmm-examples"
+description = "Calls named engine functions by semantic name via R.engine.fn / R.engine.call. The building block for custom logic that drives the game's own code."
+enabled     = false
+sdk_version = ">=3.0,<4"

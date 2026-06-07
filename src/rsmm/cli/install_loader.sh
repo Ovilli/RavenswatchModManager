@@ -89,10 +89,12 @@ install -m 0644 "$REPO_DIR/data/function_patterns.json" "$GAME_DIR/rsmm/data/fun
 
 # Lua-side SDK: mods do `require "rsmm"` and get the documented R.* surface.
 # The require entrypoint is src/loader/lib/rsmm.lua (the full SDK with
-# R.item/R.on/R.kv that matches the C++ bindings rsmm._internal.*). Copy the
-# modular src/loader/lua/ tree first (submodules), then ALWAYS overwrite the
-# entrypoint with lib/rsmm.lua — the lua/ dir ships a stripped rsmm.lua that
-# lacks R.item, so mods calling R.item.register would fail ("index nil 'item'").
+# R.item/R.on/R.kv/R.engine that matches the C++ bindings rsmm._internal.*).
+# Copy the modular src/loader/lua/ tree first (rsmm/*.lua submodules that
+# lib/rsmm.lua require-merges: health/config/i18n/api/schedule), then install
+# the entrypoint + generated engine_gen.lua from lib/. Both src/loader/lua AND
+# src/loader/lib are bundled into the frozen sidecar (scripts/build-sidecar.py);
+# if lib/ is missing, R.engine/engine_gen and the full SDK won't ship.
 SDK_SRC="$REPO_DIR/src/loader/lua"
 mkdir -p "$GAME_DIR/rsmm/lib"
 if [[ -d "$SDK_SRC" ]]; then

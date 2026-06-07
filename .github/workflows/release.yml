@@ -133,6 +133,7 @@ jobs:
             --add-data "${ROOT}/src/rsmm/cli/install_loader.ps1${SEP}src/rsmm/cli"
             --add-data "${ROOT}/src/rsmm/cli/install_loader.bat${SEP}src/rsmm/cli"
             --add-data "${ROOT}/src/loader/lua${SEP}src/loader/lua"
+            --add-data "${ROOT}/src/loader/lib${SEP}src/loader/lib"
           )
           # function_patterns.json is gitignored (regenerable, 20MB) — bundle
           # if present, otherwise the loader DLL will regenerate on first use.

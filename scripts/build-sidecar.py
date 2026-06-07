@@ -94,6 +94,11 @@ def build_sidecar(target: str) -> None:
     add_data_args += _add(REPO_ROOT / "src" / "rsmm" / "cli" / "install_loader.ps1", "src/rsmm/cli")
     add_data_args += _add(REPO_ROOT / "src" / "rsmm" / "cli" / "install_loader.bat", "src/rsmm/cli")
     add_data_args += _add(REPO_ROOT / "src" / "loader" / "lua", "src/loader/lua")
+    # The canonical SDK entrypoint (full rsmm.lua) + generated engine_gen.lua
+    # live in lib/. install_loader.{sh,ps1} overwrite the stripped lua/ stub
+    # with these; if lib/ isn't bundled the frozen install silently ships the
+    # stub (no R.engine, broken R.kv) — so this MUST stay in sync with lua/.
+    add_data_args += _add(REPO_ROOT / "src" / "loader" / "lib", "src/loader/lib")
     add_data_args += _add(REPO_ROOT / "dist" / "winhttp.dll", "dist")
 
     # Build with PyInstaller

@@ -1,0 +1,8 @@
+[mod]
+id          = "ExampleEvents"
+name        = "Example: gameplay events"
+version     = "0.1.0"
+author      = "rsmm-examples"
+description = "Subscribes to the analytics-firehose events (enemy_killed, unlock_hero, ...) and logs them. The pattern for 'when X happens in-game, do Y' mod logic."
+enabled     = false
+sdk_version = ">=3.0,<4"

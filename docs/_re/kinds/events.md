@@ -53,4 +53,37 @@ handlers fire at the expected cadence (once per level-up, not per frame).
 | `damage`    | not yet string-anchored         | search decomp for the damage-apply function |
 
 Add a row to `g_hooks[]` in `hook_events.cpp` + a pattern entry, and bump the
-`arm<N>` calls in `install_event_hooks()`.
+`arm<N>` calls in `install_event_hooks()` (the `arm<N>` loop is hand-unrolled —
+each new table slot needs its own `arm<N>(g_hooks[N])` line because MinHook
+needs a distinct `detour<N>` trampoline per entry).
+
+## Analytics firehose — every named event from one hook
+
+The per-emitter table above is no longer the only path. All the lowercase
+snake_case analytics events funnel through **one central sink**,
+`Analytics_SubmitNamedEvent` (`FUN_1401fa470`): each of its ~37 callers builds
+a key-value payload then submits it as JSON (`projectId "passtech-ravenswatch"`)
+to Passtech's analytics backend over an authenticated HTTP POST. The event
+name is `arg3`, a `StringDesc { const char* ptr @+0x0; uint32 len|0x80000000 @+0x8 }`.
+
+`install_analytics_firehose()` (in `hook_events.cpp`) detours that single sink,
+reads the name, and `script_emit_event_json("<name>", …)` — so **one hook
+exposes every named event** to `R.on("<name>", cb)`, and any name the game adds
+in a patch shows up automatically (no new table row). It skips `"run_end"` to
+avoid double-firing the typed `Event_RunEnd` table hook.
+
+Confirmed names (cluster `0x140f13a00`–`0x140f13f00`):
+`game_start` `run_start` `matchmaking_start` `matchmaking_end` `run_end`
+`chapter_end` `level_up_reach` `level_up_book` `enemy_killed` `unlock_skill`
+`unlock_object` `unlock_hero` `unlock_level_nightmare` `event_start` `event_end`.
+(The UPPER_CASE strings nearby — `GAME_START`, `BOSS_FIGHTING_START`, … — are a
+separate game-state-machine enum, **not** analytics events.)
+
+**Observation-grade, not a gameplay bus.** These fire *after* the action and
+carry analytics KV, not a live entity handle — perfect for "when X happens, do
+Y" triggers, useless for mutating the actor. For entity-context gameplay events
+(damage, give-item) the real bus is the `oCGameNamedEvent` family
+(`NETWORK_DAMAGE`, `NETWORK_DAMAGE_RESPONSE`, `GIVE_MAGICAL_OBJECT`) reached via
+`Netcode_Channel_LookupById` + `Netcode_Channel_Subscribe` — the next surface
+to map (those two symbols are present but `unverified`; re-confirm their
+addresses, then subscribe + decode the per-event payload struct).
