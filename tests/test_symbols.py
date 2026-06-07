@@ -95,6 +95,26 @@ def test_events_have_lua_event_and_pattern():
         assert e.lua_event and e.pattern_name
 
 
+def test_event_catalog_loaded_and_listed():
+    """The firehose catalog loads and `rsmm symbols events` lists it."""
+    smap = S.load_symbol_map()
+    cat = smap.event_catalog
+    assert cat, "expected a non-empty event_catalog"
+    names = {e["name"] for e in cat}
+    assert "enemy_killed" in names and "unlock_hero" in names
+    for e in cat:
+        assert e.get("name") and e.get("category"), f"catalog entry missing fields: {e}"
+
+    import contextlib
+    import io
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        cmd_symbols._cmd_events(smap)
+    out = buf.getvalue()
+    assert "enemy_killed" in out and "level_up" in out and "Lifecycle" in out
+
+
 def test_cabi_sig_codes():
     """_cabi_sig maps C types to the native caller's 1-char codes."""
     sig = cmd_symbols._cabi_sig

@@ -330,47 +330,51 @@ function R.item.list()
     return out
 end
 
--- scaling ---------------------------------------------------------------
+-- NOT-YET-IMPLEMENTED stubs ---------------------------------------------
 --
--- R.scaling.set("enemy_damage", function(act) return ({1, 1.5, 2})[act] end)
---
--- TODO: not yet wired. Will hook the value-modifier-computer once
--- located. Until then this just records the override for later
--- application.
+-- R.scaling and R.talent have a fixed API shape but NO game-side effect yet
+-- (gated on RE of the value-modifier-computer and the skill-grant path). They
+-- record the request and warn once so a mod author isn't misled into thinking
+-- an override took. `R.scaling.pending()` / `R.talent.pending()` expose what
+-- was requested, for when the wiring lands.
 
+local _warned = {}
+local function _warn_unimpl(api)
+    if _warned[api] then return end
+    _warned[api] = true
+    R.log("[rsmm." .. api .. "] NOT IMPLEMENTED yet — calls are recorded but "
+        .. "have no in-game effect. Track: docs/_re/HOOKPOINTS.md")
+end
+
+-- scaling: R.scaling.set("enemy_damage", function(act) return ({1,1.5,2})[act] end)
 R.scaling = {}
-
 local _scaling = {}
 
 function R.scaling.set(field, fn)
-    assert(type(field) == "string",  "R.scaling.set: field must be string")
-    assert(type(fn)    == "function","R.scaling.set: fn must be function")
+    assert(type(field) == "string",   "R.scaling.set: field must be string")
+    assert(type(fn)    == "function", "R.scaling.set: fn must be function")
     _scaling[field] = fn
-    R.log("[rsmm.scaling] set:", field, "(TODO: not yet wired to game)")
+    _warn_unimpl("scaling")
 end
 
 function R.scaling.get(field) return _scaling[field] end
+function R.scaling.pending() return _scaling end
 
--- talent controls -------------------------------------------------------
---
--- R.talent.allow_stack(true)   -- let the same talent be picked twice
--- R.talent.extra_at_level(11)  -- grant another talent pick at lvl 11
---
--- TODO: gated on Skill-emitter + skill-grant function RE.
-
+-- talent: R.talent.allow_stack(true) / R.talent.extra_at_level(11)
 R.talent = {}
-
 local _talent_cfg = { allow_stack = false, extra_at = {} }
 
 function R.talent.allow_stack(b)
     _talent_cfg.allow_stack = b and true or false
-    R.log("[rsmm.talent] allow_stack =", tostring(b), "(TODO)")
+    _warn_unimpl("talent")
 end
 
 function R.talent.extra_at_level(lvl)
     table.insert(_talent_cfg.extra_at, lvl)
-    R.log("[rsmm.talent] extra pick at lvl", lvl, "(TODO)")
+    _warn_unimpl("talent")
 end
+
+function R.talent.pending() return _talent_cfg end
 
 -- counters --------------------------------------------------------------
 --

@@ -76,18 +76,35 @@ def _cmd_resolve(smap: SymbolMap, name: str) -> int:
 
 
 def _cmd_events(smap: SymbolMap) -> int:
-    events = smap.events
-    if not events:
-        print("no events in the map.")
-        return 0
-    print("Gameplay events — subscribe in a mod with R.on('<lua>', cb):\n")
-    for s in sorted(events, key=lambda x: x.lua_event or ""):
-        addr = s.preferred_addr(smap.preferred_base)
-        glyph = _STATUS_GLYPH.get(s.status, "?? ")
-        print(f"  [{glyph}] {s.lua_event:<14} {s.name}  (0x{addr:x})")
-        if s.note:
-            print(f"               {s.note}")
-    print(f"\n{len(events)} event(s).")
+    print("Subscribe in a mod with R.on('<name>', cb). Gameplay events need "
+          "RSMM_ENABLE_GAME_EVENTS=1.\n")
+
+    print("Lifecycle (always available):")
+    for name, desc in (
+        ("setup", "all mods' init.lua ran; before overrides apply"),
+        ("ready", "first frame; every mod loaded + overrides applied"),
+        ("tick", "periodic (~500ms); poll sparingly"),
+        ("exit", "DLL unloading; flush state here"),
+    ):
+        print(f"  {name:<22} {desc}")
+
+    if smap.events:
+        print("\nTyped gameplay events (decoded payload):")
+        for s in sorted(smap.events, key=lambda x: x.lua_event or ""):
+            addr = s.preferred_addr(smap.preferred_base)
+            glyph = _STATUS_GLYPH.get(s.status, "?? ")
+            fields = ", ".join(p["name"] for p in s.payload) if s.payload else "envelope"
+            print(f"  [{glyph}] {s.lua_event:<18} {{{fields}}}  ({s.name} 0x{addr:x})")
+
+    cat = smap.event_catalog
+    if cat:
+        print("\nAnalytics firehose (observation-grade, payload = name + seq):")
+        for e in sorted(cat, key=lambda x: (x.get("category", ""), x["name"])):
+            print(f"  {e['name']:<22} [{e.get('category', '?')}] {e.get('note', '')}")
+        print("  (+ any other name the game emits — the firehose forwards all)")
+
+    total = len(smap.events) + len(cat)
+    print(f"\n{total} mapped event(s) + 4 lifecycle.")
     return 0
 
 
