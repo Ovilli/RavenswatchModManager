@@ -48,6 +48,17 @@ export default defineConfig({
           ],
         },
         {
+          label: 'Concepts',
+          items: [
+            { label: 'Coming from Minecraft', slug: 'concepts/from-minecraft' },
+            { label: 'The mod lifecycle', slug: 'concepts/mod-lifecycle' },
+            { label: 'Content kinds (registries)', slug: 'concepts/content-kinds' },
+            { label: 'Tags', slug: 'concepts/tags' },
+            { label: 'The symbol map (mappings)', slug: 'concepts/mappings' },
+            { label: 'Mods ship data, not code', slug: 'concepts/data-not-code' },
+          ],
+        },
+        {
           label: 'Guides',
           items: [
             { label: 'Authoring mods', slug: 'guides/modding' },
@@ -69,6 +80,7 @@ export default defineConfig({
           label: 'Reference',
           items: [
             { label: 'CLI commands', slug: 'reference/cli' },
+            { label: 'Conventions & best practices', slug: 'reference/conventions' },
             { label: 'Engine symbols', slug: 'reference/symbols' },
             { label: 'Glossary', slug: 'reference/glossary' },
             { label: 'Security', slug: 'reference/security' },
