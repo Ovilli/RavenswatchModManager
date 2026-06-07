@@ -127,3 +127,21 @@ jobs:
           name: winhttp-dll
           path: dist/winhttp.dll
           if-no-files-found: error
+
+  docs-links:
+    name: docs external links (lychee)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check external links
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: >-
+            --no-progress --scheme https --scheme http
+            --exclude '^https?://(localhost|127\.0\.0\.1|example\.com)'
+            --accept 200,206,429 --max-retries 2 --max-concurrency 4
+            'apps/docs/src/content/docs/**/*.md'
+            'apps/docs/src/content/docs/**/*.mdx'
+          fail: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

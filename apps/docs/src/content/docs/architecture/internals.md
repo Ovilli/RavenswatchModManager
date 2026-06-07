@@ -3,21 +3,22 @@ title: Engine internals
 description: Asset cipher and cooked-format internals that ground the tooling.
 ---
 
-> **Historical log.** This file is a reverse-engineering record. Where
-> it references `tools/<script>.py`, the current location is
-> `src/rsmm/cli/<script>.py` or `src/rsmm/engine/<script>.py`; the
-> CLI surface is `./rsmm <name>`. See [SETUP.md](/contributing/setup/) for the
-> current repo layout.
->
-> **Companion docs (newer).** This file covers the asset pipeline +
-> cipher + cooked-file format. For the binary RE that backs
-> `rsmm.call`, see:
->
-> - `docs/_re/PIPELINE.md` — Ghidra setup, scripts, regen workflow.
-> - `docs/_re/CALLING_GAME_FUNCTIONS.md` — runtime Lua API.
-> - `docs/_re/SEED_MAPGEN.md` — worked example.
-> - `docs/UNCOOKED_ASSETS.md` — `data/uncooked/` extract + texture
->   container details.
+:::note[Historical log]
+This file is a reverse-engineering record. Where it references
+`tools/<script>.py`, the current location is `src/rsmm/cli/<script>.py` or
+`src/rsmm/engine/<script>.py`; the CLI surface is `./rsmm <name>`. See the
+[development setup](/contributing/setup/) for the current repo layout.
+:::
+
+:::tip[Companion docs (newer)]
+This file covers the asset pipeline + cipher + cooked-file format. For the
+binary RE that backs `rsmm.call`, see:
+
+- [RE pipeline](/reverse-engineering/pipeline/) — Ghidra setup, scripts, regen workflow.
+- [Calling game functions](/reverse-engineering/calling-game-functions/) — runtime Lua API.
+- [Seed + mapgen](/reverse-engineering/seed-mapgen/) — worked example.
+- [Uncooked assets](/guides/uncooked-assets/) — `data/uncooked/` extract + texture container details.
+:::
 
 ## Overview
 
@@ -790,6 +791,9 @@ recover the rest of the framework.
 
 ### Title menu entity layout (`Title_Menu_Ui.entity.ot.EntitySettingsResource.gen`)
 
+<details>
+<summary>Full byte-level breakdown of the title-menu cooked file (section map + clone walkthrough)</summary>
+
 Decoded enough of the title-menu cooked file to *add* a real new button
 to the menu without writing a full re-encoder.
 
@@ -897,6 +901,8 @@ Known open question after applying the patch:
   new button appears below Exit. Either way the fix is to identify the
   position field in `oCEntityCpntEntitySpawnerSettings` and offset it
   in the clone — left to a follow-up.
+
+</details>
 
 ## In-game Mod page (Social tab 7th page)
 

@@ -554,7 +554,13 @@ buffer" — that was wrong. Schema is fully TBD. Serialize VA = `0x1405b4c40`,
 vtable VA = `0x140f53fc0`. Class UID still TBD (not seen in any cooked
 class table yet — likely only present in skinned-mesh `.yqz` files).
 
-## Sample dump: `3N/NqbglSwaq_1p1.hap.Kqrxqius.yqz` (2550 B, v1.2 oCGeometry)
+## Sample dump (worked example)
+
+A full byte-level walkthrough of one cooked `oCGeometry` file. Collapsed by
+default — expand for the raw class table, section map, and annotated buffer.
+
+<details>
+<summary>Sample dump: <code>3N/NqbglSwaq_1p1.hap.Kqrxqius.yqz</code> (2550 B, v1.2 oCGeometry)</summary>
 
 Class table (from cooked container):
 
@@ -647,6 +653,8 @@ piece for closing the encoder. The decoder can still extract positions
 The triangle-list indices `0,1,2,2,1,3,4,5,6,5,4,7,8,9,a,9,8,b,c,d,e,d,c,f`
 form a sensible quad-strip pattern for the 6 faces of a cube
 (each face = 2 triangles sharing an edge → 8 triangles × 3 indices = 24).
+
+</details>
 
 ## Outstanding sub-class schemas (Stage 5b / 5c / 5d / 5e)
 

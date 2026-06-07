@@ -1,10 +1,12 @@
 import starlight from '@astrojs/starlight';
-import { defineConfig } from 'astro/config';
+import { defineConfig, passthroughImageService } from 'astro/config';
 import mermaid from 'astro-mermaid';
 import starlightLinksValidator from 'starlight-links-validator';
 
 export default defineConfig({
   site: 'https://docs.ravenswatch.ovilli.de',
+  // Serve images as-is (no Sharp dependency in CI / Vercel build).
+  image: { service: passthroughImageService() },
   integrations: [
     // astro-mermaid must run before starlight so it can transform ```mermaid blocks
     mermaid({ theme: 'dark', autoTheme: true }),
@@ -19,6 +21,13 @@ export default defineConfig({
       favicon: '/favicon.png',
       customCss: ['./src/styles/theme.css'],
       lastUpdated: true,
+      // Site-wide social-preview image (link unfurls on Discord/Twitter/etc).
+      head: [
+        { tag: 'meta', attrs: { property: 'og:image', content: 'https://docs.ravenswatch.ovilli.de/og.png' } },
+        { tag: 'meta', attrs: { property: 'og:type', content: 'website' } },
+        { tag: 'meta', attrs: { name: 'twitter:card', content: 'summary_large_image' } },
+        { tag: 'meta', attrs: { name: 'twitter:image', content: 'https://docs.ravenswatch.ovilli.de/og.png' } },
+      ],
       editLink: {
         baseUrl: 'https://github.com/Ovilli/RavenswatchModManager/edit/main/apps/docs/',
       },
@@ -59,6 +68,7 @@ export default defineConfig({
           items: [
             { label: 'CLI commands', slug: 'reference/cli' },
             { label: 'Engine symbols', slug: 'reference/symbols' },
+            { label: 'Glossary', slug: 'reference/glossary' },
             { label: 'Security', slug: 'reference/security' },
             {
               label: 'SDK API (generated)',
