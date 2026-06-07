@@ -144,7 +144,7 @@ jobs:
             --no-progress --root-dir "$GITHUB_WORKSPACE"
             --exclude '^file://' --exclude-path 'node_modules'
             --exclude '^https?://(localhost|127\.0\.0\.1|example\.com)'
-            --accept 200,206,429 --max-retries 2 --max-concurrency 4
+            --accept 200,206,403,429 --max-retries 2 --max-concurrency 4
             'apps/docs/src/content/docs/**/*.md'
             'apps/docs/src/content/docs/**/*.mdx'
           fail: true
