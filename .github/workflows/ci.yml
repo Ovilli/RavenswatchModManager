@@ -136,8 +136,11 @@ jobs:
       - name: Check external links
         uses: lycheeverse/lychee-action@v2
         with:
+          # Only check external links. Internal/root-relative/relative/anchor
+          # links are already validated by starlight-links-validator at build.
           args: >-
             --no-progress --scheme https --scheme http
+            --exclude '^/' --exclude '^\.' --exclude '^#'
             --exclude '^https?://(localhost|127\.0\.0\.1|example\.com)'
             --accept 200,206,429 --max-retries 2 --max-concurrency 4
             'apps/docs/src/content/docs/**/*.md'
