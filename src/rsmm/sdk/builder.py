@@ -45,6 +45,10 @@ class ModBuilder:
         self._config_schema: dict | None = None
         self._i18n: dict[str, dict[str, str]] = {}
         self._content = ContentRegistry(mod_id=mod_id, experimental=experimental)
+        # Store-facing metadata (mirrors packages/schemas modManifestSchema:
+        # summary/description/license/repo_url/homepage_url/tags/game_build/
+        # min_loader). Field-name -> value, emitted under [mod].
+        self._meta: dict[str, object] = {}
         # Dependency declarations (fabric.mod.json analogs). Each is a list of
         # (mod_id, version_spec) pairs except `replaces` (bare ids).
         self._requires: list[tuple[str, str]] = []
@@ -291,6 +295,51 @@ class ModBuilder:
             if rid not in bucket:
                 bucket.append(rid)
 
+    def metadata(self, *, summary: str | None = None,
+                 description: str | None = None, license: str | None = None,
+                 repo_url: str | None = None, homepage_url: str | None = None,
+                 tags: list[str] | None = None, game_build: str | None = None,
+                 min_loader: str | None = None) -> None:
+        """Store-facing metadata, validated against the canonical
+        ``modManifestSchema`` constraints so authoring errors surface before
+        publish (the Fabric `description`/`license`/`contact` analog).
+
+        - ``summary``      short tagline (≤512)
+        - ``description``  long text (≤8192)
+        - ``license``      SPDX id or name (≤64)
+        - ``repo_url`` / ``homepage_url``  URLs
+        - ``tags``         discovery tags (≤16, each ≤32) — NOT content tags
+        - ``game_build`` / ``min_loader``  compatibility hints
+        """
+        def _len(field: str, val: str | None, limit: int) -> None:
+            if val is not None:
+                if not isinstance(val, str):
+                    raise ValueError(f"metadata {field} must be a string")
+                if len(val) > limit:
+                    raise ValueError(f"metadata {field} exceeds {limit} chars")
+                self._meta[field] = val
+
+        def _url(field: str, val: str | None) -> None:
+            if val is not None:
+                if not isinstance(val, str) or "://" not in val:
+                    raise ValueError(f"metadata {field} must be a URL")
+                self._meta[field] = val
+
+        _len("summary", summary, 512)
+        _len("description", description, 8192)
+        _len("license", license, 64)
+        _len("game_build", game_build, 64)
+        _len("min_loader", min_loader, 32)
+        _url("repo_url", repo_url)
+        _url("homepage_url", homepage_url)
+        if tags is not None:
+            tags = [str(t) for t in tags]
+            if len(tags) > 16:
+                raise ValueError("metadata tags: at most 16")
+            if any(len(t) > 32 for t in tags):
+                raise ValueError("metadata tags: each ≤ 32 chars")
+            self._meta["tags"] = tags
+
     def requires(self, mod_id: str, version_spec: str = "") -> None:
         """Hard dependency (fabric `depends`): apply refuses if it's missing,
         disabled, or out of `version_spec`. Ranges: ``>=1.2 <2.0``, ``^1.2``,
@@ -346,6 +395,7 @@ class ModBuilder:
             "conflicts": [m for m, _ in self._conflicts],
             "replaces": list(self._replaces),
             "load_order": self.load_order,
+            "metadata": dict(self._meta),
             "provides_api": self._api_name,
         }
 
@@ -426,6 +476,14 @@ class ModBuilder:
         ]
         if self.experimental:
             lines.append("experimental = true")
+        # Store-facing metadata (scalars + the tags array), under [mod].
+        for key in ("summary", "description", "license", "repo_url",
+                    "homepage_url", "game_build", "min_loader"):
+            if key in self._meta:
+                lines.append(f"{key} = {self._toml_str(str(self._meta[key]))}")
+        if self._meta.get("tags"):
+            arr = ", ".join(self._toml_str(t) for t in self._meta["tags"])
+            lines.append(f"tags = [{arr}]")
         if self.load_order != 100:
             lines.append(f"load_order = {self.load_order}")
         if self.priority:

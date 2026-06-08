@@ -188,6 +188,9 @@ class Mod:
     def validate(self) -> list:
         return self._b.validate()
 
+    def metadata(self, **kwargs) -> None:
+        self._b.metadata(**kwargs)
+
     def requires(self, mod_id: str, version_spec: str = "") -> None:
         self._b.requires(mod_id, version_spec)
 
