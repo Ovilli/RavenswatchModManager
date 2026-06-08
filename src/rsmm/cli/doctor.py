@@ -264,6 +264,31 @@ def check_state(game_dir: Path) -> list[Result]:
     return [Result("OK", f"applier state: {len(active)} active override(s)")]
 
 
+#: GraphIssue severity -> doctor Result kind. info never fails the run.
+_GRAPH_KIND = {"error": "FAIL", "warn": "WARN", "info": "OK"}
+
+
+def check_compat_graph() -> list[Result]:
+    """Dependency-graph health from `manifest_graph.validate_graph` — the full
+    Fabric-style model: hard `requires` (+ semver ranges), soft `recommends`
+    (warn) / `suggests` (info), hard `conflicts`, `replaces`, cycles, dup-id.
+    Richer than the apply gate (`compat.analyze`), which this complements."""
+    from rsmm.engine.paths import MODS_DIR
+    from rsmm.manifest_graph import load_manifests, validate_graph
+
+    records = load_manifests(MODS_DIR)
+    if not records:
+        return [Result("OK", "no mods to graph")]
+    issues = validate_graph(records)
+    if not issues:
+        return [Result("OK", f"{len(records)} mod(s), dependency graph clean")]
+    out: list[Result] = []
+    for it in issues:
+        out.append(Result(_GRAPH_KIND.get(it.severity, "WARN"),
+                          f"{it.code}: {it.message}", it.fix or ""))
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="System health check")
     ap.add_argument("--game-dir", type=Path, default=DEFAULT_GAME)
@@ -314,26 +339,13 @@ def main() -> int:
 
     print("\ncompatibility graph:")
     try:
-        from rsmm.cli.compat import analyze
-        rep = analyze()
-        crs: list[Result] = []
-        for mid, why in rep.auto_disabled.items():
-            crs.append(Result("WARN", f"auto-disabled {mid}", why))
-        for mid, msg in rep.unmet_requires:
-            crs.append(Result("FAIL", f"{mid}: unmet dep", msg))
-        for a, b in rep.hard_conflicts:
-            crs.append(Result("FAIL", "hard conflict",
-                              f"{a} <-> {b} (drop one)"))
-        for c in rep.cycles:
-            crs.append(Result("FAIL", "requires cycle", " -> ".join(c)))
-        if not crs:
-            emit(Result("OK", f"{len(rep.summaries)} mod(s), graph clean"))
-        else:
-            for r in crs:
-                emit(r)
-            results.extend(crs)
+        crs = check_compat_graph()
     except Exception as e:
-        emit(Result("WARN", "compat analysis failed", str(e)))
+        crs = [Result("WARN", "compat analysis failed", str(e))]
+    for r in crs:
+        emit(r)
+    # Only non-OK rows count toward the run's pass/fail tally.
+    results.extend(r for r in crs if r.kind != "OK")
 
     print("\ngame executable:")
     rs = check_exe_hash(args.game_dir)
