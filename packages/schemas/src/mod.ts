@@ -22,7 +22,10 @@ export const modManifestSchema = z.object({
   homepage_url: z.string().url().optional(),
   tags: z.array(z.string().max(32)).max(16).optional(),
   enabled: z.boolean().optional(),
-  dependencies: z.record(z.string(), semverSchema).optional(),
+  // Map of mod-id -> version *range* (not a single pin): npm/Fabric-style
+  // strings like ">=1.2 <2.0", "^1.2", "1.2.x", "*". Mirrors the manifest's
+  // `requires` array and how the API surfaces deps (Record<string,string>).
+  dependencies: z.record(z.string(), z.string().min(1).max(64)).optional(),
   // Compatibility metadata. Lets the desktop app warn "this mod needs a
   // newer game build / loader" before applying. All optional + free-form
   // range strings (e.g. ">=3.0,<4") so older manifests stay valid.
