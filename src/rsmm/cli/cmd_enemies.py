@@ -165,12 +165,15 @@ def _cmd_pool(args) -> int:
     print(f"  (asset: {p.relative_to(DATA_DIR)})")
     for e in ents:
         print(f"   {e}")
-    print("\nAn enemy spawns in this biome only if its entity_ref is listed "
-          "above.\nNOTE: adding a NEW entity to a pool is not yet a safe data "
-          "edit (the\nGameStream header carries ref counts with unconfirmed "
-          "semantics), and a\ntribe clone that reuses a pooled entity still "
-          "did not spawn in testing —\nso the spawn gate is not pooling alone. "
-          "Needs in-game investigation.")
+    print("\nAn enemy's entity_ref must be listed above to spawn in this biome "
+          "(necessary,\nnot sufficient). The other gate is the tribe roster: "
+          "the camp selector builds\nits candidate list from the tribe's "
+          "RUNTIME roster vector\n(oCDtEnemyTribeDefinition+0x2b8, builder "
+          "FUN_14032de90 -> filter FUN_1403194c0),\npopulated at load from each "
+          "enemy's tribe_ref. A clone spawns when BOTH (a) its\nentity is "
+          "pooled here AND (b) its tribe_ref resolves to a real tribe. Adding "
+          "a\nNEW entity to a pool is not yet a safe data edit (GameStream "
+          "ref-count semantics\nunconfirmed). See docs/_re/kinds/enemies.md.")
     return 0
 
 

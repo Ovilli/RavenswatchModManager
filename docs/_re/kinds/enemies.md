@@ -221,3 +221,47 @@ via the loader DLL).
 - Tag string vocabulary — vanilla tag names ("tribe.goblin",
   "size.small", "elite", ...) need to be enumerated by string-pool
   scan. # TODO.
+
+## Update 2026-06-08 — candidate list = tribe runtime roster (CONFIRMED)
+
+Decompiled the camp tier selector **`FUN_14032de90`** (the caller of the
+Stage-3 filter, now at **`FUN_1403194c0`** — both rebased from the older
+`FUN_1403237e0`/`FUN_1403196b0` addresses). It builds the candidate enemy
+vector directly from the tribe's roster:
+
+```c
+// pppuVar9 = tribe entry; pppuVar9[2] = oCDtEnemyTribeDefinition*
+FUN_1401c2fd0(&cand, tribe[+0x2b8], tribe_count[+0x2c0]); // candidate vec FROM tribe roster
+FUN_1403194c0(&cand, &search_filter);                     // Stage-3 trims by tier/tag/weight
+```
+
+So **the spawn candidate list IS `oCDtEnemyTribeDefinition+0x2b8`** (step 3
+above named the right vector). Two consequences:
+
+1. The Stage-3 filter only *trims* what the roster already holds — flags/tier
+   never add an enemy, they only remove. Selection is tribe-roster-driven, not
+   "flag-list selector by tag" (that earlier `enemy-spawn-model` model was
+   wrong).
+2. The roster at `+0x2b8` is **runtime-populated**, not read from the cooked
+   tribe file. The cooked tribe's own entry vector deserializes to a *different*
+   field, `+0x2a0` (see `cooked_schemas/definitions.py` `_tribe_decode`), and
+   ships `count==0` in all 25 vanilla tribes. If `+0x2b8` were the cooked
+   vector it would be empty for every tribe and *no enemy would ever spawn* —
+   absurd. ∴ a post-load pass buckets each loaded enemy def into its
+   `tribe_ref` target's `+0x2b8` roster. **Patching the cooked tribe is
+   useless** (wrong vector) — confirming "no tribe-def patch", for a new reason.
+
+**Why Dreadgnoll never spawned:** it loaded + registered in `UsedRscList` but
+was never inserted into the Gnolls `+0x2b8` roster → never a candidate. It also
+carried two confounds (rewrote `tribe_ref`, weight `9999`) the SDK now guards
+against (`enemies.py`: unknown-tribe reject, `SPAWN_WEIGHT_MAX`, cross-tribe
+warn).
+
+**OPEN — decides the apply step (in-game test queued):** does `+0x2b8` get
+populated automatically from a loaded enemy's `tribe_ref` (→ a faithful clone
+self-registers; apply is already correct) or only for enemies present at some
+earlier init (→ needs a native loader insert into `tribe+0x2b8`, mirroring
+`hook_skins.cpp`)? `mods/GnollSelfRegTest` isolates this: it clones
+`Gnoll_Shielded` changing only `spawn_weight` (tribe_ref/entity/flags
+byte-identical), so a Storm-Island gnoll-pack skew toward shielded gnolls = it
+self-registered.

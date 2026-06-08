@@ -9,14 +9,18 @@ writes one cooked record directly into the mod's ``assets/`` tree at
 the engine loads it (mirrors the item pipeline — see
 :mod:`rsmm.sdk.kinds.items`).
 
-Spawn linkage is by data, not by roster patch. A camp's flag-list entity
-selector (``oCDtEnemyFlagListEntitySelectorToSpawnEntityCpntSettings``) picks
-enemies whose ``flags`` + ``tribe_ref`` match — so a clone that keeps the
-base's flags + tribe is automatically considered wherever the base spawns.
-Vanilla ``oCDtEnemyTribeDefinition`` records carry NO enemy roster (all ship
-empty), so there is deliberately no tribe-def patch here — the older
-``tribe_patch.json`` model was wrong. See ``docs/_re/kinds/enemies.md`` and
-the ``enemy-spawn-model`` RE note.
+Spawn linkage is by data, not by roster patch. The camp tier selector builds
+its candidate enemy list from the **tribe's runtime roster vector** at
+``oCDtEnemyTribeDefinition+0x2b8`` (builder ``FUN_14032de90`` → Stage-3 filter
+``FUN_1403194c0``); the filter only trims that list by tier/tag/weight. That
+roster is **runtime-populated** — the cooked tribe file's own entry vector
+lives at ``+0x2a0`` and ships empty in all 25 vanilla tribes, so patching the
+cooked tribe is useless (wrong vector). A loaded enemy whose ``tribe_ref``
+resolves is bucketed into its tribe's ``+0x2b8`` roster, so a clone that keeps
+the base's tribe (and a pooled entity) is considered wherever the base spawns.
+See ``docs/_re/kinds/enemies.md`` and the ``enemy-spawn-model`` RE note
+(corrected 2026-06-08 — the older ``flag-list selector`` / ``tribe_patch``
+models were both wrong).
 
 Not yet patchable: HP / damage / on-screen name live on the visual
 ``oCEntitySettings`` referenced by ``entity_ref`` (``+0x298``), not on the
@@ -47,6 +51,34 @@ _ENEMY_GEN_SUFFIX = ".enemydef.ot.DtEnemyDefinition.gen"
 #: Decoded asset path (forward-slash) the apply pipeline registers in
 #: UsedRscList. The stem is the enemy's library identity.
 _ENEMY_ASSET_SUBDIR = "Definitions/Enemies"
+
+#: Where the vanilla tribe definitions live in-repo — the set a custom enemy's
+#: ``tribe`` must name, or the runtime roster won't resolve it (it would load
+#: but never spawn). See :func:`_known_tribes`.
+_TRIBE_DIR = DATA_DIR / "uncooked" / "Definitions" / "EnemyTribes"
+
+#: ``spawn_weight`` guardrails. The weighted camp-roster selection overflowed
+#: and crashed the game at weight ``9999`` (enemy-spawn-model note). Vanilla
+#: weights are single- to low-double-digit (e.g. ``3.0``). Refuse anything
+#: extreme; warn on merely-high values that would dominate a camp.
+SPAWN_WEIGHT_MAX: Final[float] = 1000.0
+SPAWN_WEIGHT_WARN: Final[float] = 100.0
+
+
+def _known_tribes() -> set[str]:
+    """The vanilla tribe names a custom enemy may join (stems under
+    ``data/uncooked/Definitions/EnemyTribes``). Empty if the corpus is absent
+    (frozen builds that don't bundle it) — callers skip the check then."""
+    if not _TRIBE_DIR.is_dir():
+        return set()
+    return {p.name.split(".", 1)[0] for p in _TRIBE_DIR.glob("*.enemytribedef.*")}
+
+
+def _tribe_of_ref(ref_path: str) -> str | None:
+    """Tribe name from a ``tribe_ref`` path, e.g.
+    ``EnemyTribes\\Gnolls.enemytribedef.ot`` -> ``Gnolls``. None if blank."""
+    tail = (ref_path or "").replace("/", "\\").split("\\")[-1]
+    return tail.split(".", 1)[0] or None
 
 # --------------------------------------------------------------------------- #
 # Class registry constants — confirmed via FUN_140229990 and the live Ghidra
@@ -211,6 +243,30 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             raise ContentError(
                 f"enemy {defn.id}: 'tribe' must match {C.ID_PATTERN.pattern}."
             )
+        # The runtime tribe roster (oCDtEnemyTribeDefinition+0x2b8) is what the
+        # camp selector reads; an enemy is bucketed into it only if its
+        # tribe_ref resolves to a real tribe. A typo'd tribe loads but never
+        # spawns — fail loudly instead.
+        known = _known_tribes()
+        if known and tribe not in known:
+            raise ContentError(
+                f"enemy {defn.id}: tribe {tribe!r} is not a vanilla tribe, so "
+                f"the runtime roster won't resolve it and the enemy will never "
+                f"spawn. Known tribes: {', '.join(sorted(known))}."
+            )
+        # Cross-tribe clones keep the base's *entity*, which is pooled for the
+        # base's biome — not the new tribe's. Likely never appears. Warn.
+        base_tribe = _tribe_of_ref(body["tribe_ref"][1] or "")
+        if base_tribe and base_tribe != tribe:
+            _log.warning(
+                "enemy %s/%s: tribe rewrite %s->%s is cross-tribe; the clone "
+                "still uses the base's entity %r, which is pooled for %s's "
+                "biome, not %s's, so it may never spawn there. Clone a base "
+                "that already belongs to %s, or pass 'entity' pointing at one "
+                "pooled in the target biome.",
+                mod_id, defn.id, base_tribe, tribe, body["entity_ref"][1],
+                base_tribe, tribe, tribe,
+            )
         ns = body["tribe_ref"][0] or "Definitions"
         body["tribe_ref"] = [ns, f"EnemyTribes\\{tribe}.enemytribedef.ot"]
         body["base_flags"] = [1, 1]  # has-tribe gate on
@@ -230,7 +286,21 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
 
     weight = defn.fields.get("weight")
     if weight is not None:
-        body["spawn_weight"] = float(weight)
+        w = float(weight)
+        if w > SPAWN_WEIGHT_MAX:
+            raise ContentError(
+                f"enemy {defn.id}: spawn weight {w:g} exceeds the safe ceiling "
+                f"{SPAWN_WEIGHT_MAX:g}. Extreme weights overflow the weighted "
+                f"camp-roster selection and crashed the game at 9999 — use "
+                f"single- to low-double-digit weights (vanilla is ~3)."
+            )
+        if w > SPAWN_WEIGHT_WARN:
+            _log.warning(
+                "enemy %s/%s: spawn weight %g is very high (vanilla ~3); it "
+                "will dominate the camp roster and may destabilise spawning.",
+                mod_id, defn.id, w,
+            )
+        body["spawn_weight"] = w
 
     entity = defn.fields.get("entity")
     if entity is not None:
