@@ -357,6 +357,24 @@ def main() -> int:
         e, w = lint_one(c)
         total_e += e
         total_w += w
+
+    # Cross-mod dependency graph (Fabric-style load validation). Only when
+    # linting the whole tree — a single mod can't be graphed in isolation.
+    if not args.mod_id:
+        from rsmm.manifest_graph import load_manifests, validate_graph
+        issues = validate_graph(load_manifests(MODS_DIR))
+        graph_e = sum(1 for i in issues if i.severity == "error")
+        graph_w = sum(1 for i in issues if i.severity == "warn")
+        if graph_e or graph_w:
+            print("\ndependency graph:")
+            for it in issues:
+                if it.severity == "error":
+                    print(f"  [ERROR] {it.code}: {it.message}")
+                elif it.severity == "warn":
+                    print(f"  [WARN]  {it.code}: {it.message}")
+        total_e += graph_e
+        total_w += graph_w
+
     print(f"\n{len(candidates)} mod(s) linted: {total_e} error(s), {total_w} warning(s)")
     return 1 if total_e else 0
 
