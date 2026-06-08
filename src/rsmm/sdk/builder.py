@@ -27,7 +27,8 @@ class ModBuilder:
     """In-memory mod authoring buffer; flushed in one atomic pass."""
 
     def __init__(self, mod_id: str, *, version: str, author: str, name: str,
-                 experimental: bool = False):
+                 experimental: bool = False, load_order: int = 100,
+                 priority: int = 0):
         if not _ID_RE.match(mod_id):
             raise ValueError(f"invalid mod_id: {mod_id!r}")
         self.id = mod_id
@@ -35,12 +36,22 @@ class ModBuilder:
         self.author = author
         self.name = name
         self.enabled = True
+        #: Lower loads earlier (default 100); `priority` breaks ties (higher
+        #: first). Mirrors the manifest fields the dependency graph orders by.
+        self.load_order = load_order
+        self.priority = priority
         #: Author opted into unverified (experimental/guess) content kinds.
         self.experimental = experimental
         self._config_schema: dict | None = None
         self._i18n: dict[str, dict[str, str]] = {}
         self._content = ContentRegistry(mod_id=mod_id, experimental=experimental)
+        # Dependency declarations (fabric.mod.json analogs). Each is a list of
+        # (mod_id, version_spec) pairs except `replaces` (bare ids).
         self._requires: list[tuple[str, str]] = []
+        self._recommends: list[tuple[str, str]] = []
+        self._suggests: list[tuple[str, str]] = []
+        self._conflicts: list[tuple[str, str]] = []
+        self._replaces: list[str] = []
         self._api_name: str | None = None
         self._patch_blocks: list[dict] = []
         # decoded game-asset path -> source file to stage under assets/.
@@ -281,7 +292,28 @@ class ModBuilder:
                 bucket.append(rid)
 
     def requires(self, mod_id: str, version_spec: str = "") -> None:
+        """Hard dependency (fabric `depends`): apply refuses if it's missing,
+        disabled, or out of `version_spec`. Ranges: ``>=1.2 <2.0``, ``^1.2``,
+        ``~1.2``, ``1.2.x``, ``*``."""
         self._requires.append((mod_id, version_spec))
+
+    def recommends(self, mod_id: str, version_spec: str = "") -> None:
+        """Soft dependency (fabric `recommends`): warns if absent/out of range,
+        never blocks the apply."""
+        self._recommends.append((mod_id, version_spec))
+
+    def suggests(self, mod_id: str, version_spec: str = "") -> None:
+        """Advisory companion mod (fabric `suggests`): info only."""
+        self._suggests.append((mod_id, version_spec))
+
+    def conflicts(self, mod_id: str, version_spec: str = "") -> None:
+        """Hard conflict (fabric `breaks`): apply refuses if `mod_id` is also
+        enabled."""
+        self._conflicts.append((mod_id, version_spec))
+
+    def replaces(self, mod_id: str) -> None:
+        """Supersede an older mod: the loader auto-disables `mod_id`."""
+        self._replaces.append(mod_id)
 
     def provides_api(self, name: str) -> None:
         self._api_name = name
@@ -309,6 +341,11 @@ class ModBuilder:
             "skinpacks": [p["name"] for p in self._skinpacks],
             "tags": {t: list(m) for t, m in self._tags.items()},
             "requires": [m for m, _ in self._requires],
+            "recommends": [m for m, _ in self._recommends],
+            "suggests": [m for m, _ in self._suggests],
+            "conflicts": [m for m, _ in self._conflicts],
+            "replaces": list(self._replaces),
+            "load_order": self.load_order,
             "provides_api": self._api_name,
         }
 
@@ -372,6 +409,11 @@ class ModBuilder:
         (root / "tags.json").write_text(
             json.dumps(self._tags, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
+    @staticmethod
+    def _toml_str(s: str) -> str:
+        """Quote a string as a TOML basic string (escape backslash + quote)."""
+        return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
     def _write_manifest(self, root: Path) -> None:
         lines = [
             "[mod]",
@@ -384,10 +426,25 @@ class ModBuilder:
         ]
         if self.experimental:
             lines.append("experimental = true")
-        if self._requires:
-            lines += ["", "[dependencies]"]
-            for mid, spec in self._requires:
-                lines.append(f'{mid} = "{spec}"')
+        if self.load_order != 100:
+            lines.append(f"load_order = {self.load_order}")
+        if self.priority:
+            lines.append(f"priority = {self.priority}")
+        # Dependency arrays live under [mod] — that's where both the manifest
+        # graph and the apply-time compat gate read them. (An earlier
+        # [dependencies] table was silently ignored by both.)
+        for key, pairs in (
+            ("requires", self._requires),
+            ("recommends", self._recommends),
+            ("suggests", self._suggests),
+            ("conflicts", self._conflicts),
+        ):
+            specs = [f"{mid} {spec}".strip() for mid, spec in pairs]
+            if specs:
+                lines.append(f"{key} = [{', '.join(self._toml_str(s) for s in specs)}]")
+        if self._replaces:
+            lines.append(
+                f"replaces = [{', '.join(self._toml_str(m) for m in self._replaces)}]")
         if self._api_name:
             lines += ["", "[provides]", f'api = "{self._api_name}"']
         if self._patch_blocks:

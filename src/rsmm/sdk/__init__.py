@@ -77,12 +77,14 @@ class Mod:
 
     def __init__(self, mod_id: str, *, version: str = "0.0.1",
                  author: str = "", name: str | None = None,
-                 experimental: bool = False):
+                 experimental: bool = False, load_order: int = 100,
+                 priority: int = 0):
         if not _ID_RE.match(mod_id):
             raise ValueError(f"invalid mod_id: {mod_id!r}")
         from .builder import ModBuilder
         self._b = ModBuilder(mod_id, version=version, author=author,
-                             name=name or mod_id, experimental=experimental)
+                             name=name or mod_id, experimental=experimental,
+                             load_order=load_order, priority=priority)
         # When set by `rsmm test`, __exit__ skips the on-disk commit so
         # the diff harness can introspect declarations without clobbering
         # the real mod tree.
@@ -188,6 +190,18 @@ class Mod:
 
     def requires(self, mod_id: str, version_spec: str = "") -> None:
         self._b.requires(mod_id, version_spec)
+
+    def recommends(self, mod_id: str, version_spec: str = "") -> None:
+        self._b.recommends(mod_id, version_spec)
+
+    def suggests(self, mod_id: str, version_spec: str = "") -> None:
+        self._b.suggests(mod_id, version_spec)
+
+    def conflicts(self, mod_id: str, version_spec: str = "") -> None:
+        self._b.conflicts(mod_id, version_spec)
+
+    def replaces(self, mod_id: str) -> None:
+        self._b.replaces(mod_id)
 
     def provides_api(self, name: str) -> None:
         self._b.provides_api(name)
