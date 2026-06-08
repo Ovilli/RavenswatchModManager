@@ -14,7 +14,17 @@ Public API:
 
 Issue codes:
     missing-dep, version-mismatch, hard-conflict, cycle,
-    replace-shadow, dup-id, parse-error
+    replace-shadow, dup-id, parse-error,
+    missing-recommend, recommend-version, suggest
+
+Dependency keys (fabric.mod.json analogs):
+    requires   (depends)   hard — error if absent/disabled/out of range
+    recommends (recommends) soft — warn, never blocks apply
+    suggests   (suggests)   info — purely advisory
+    conflicts  (breaks)    hard — error if the named mod is also enabled
+    replaces               auto-disables the named older mod
+Version ranges follow npm/Fabric semver: `>=1.2 <2.0`, `1.2.x`, `^1.2`,
+`~1.2`, `*` — see `version_satisfies`.
 
 Severities: error | warn | info
 """
@@ -44,6 +54,8 @@ class ManifestRecord:
     load_order: int = 100
     priority: int = 0
     requires: list[str] = field(default_factory=list)
+    recommends: list[str] = field(default_factory=list)
+    suggests: list[str] = field(default_factory=list)
     conflicts: list[str] = field(default_factory=list)
     replaces: list[str] = field(default_factory=list)
     parse_error: str | None = None
@@ -111,6 +123,126 @@ def _version_ok(have: tuple[int, ...], op: str, want: tuple[int, ...]) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Semver ranges (Fabric / npm style)
+#
+# `requires`/`recommends`/`conflicts` specs are "<mod-id> <range>" where the
+# range is one of:
+#   *  /  any            match any version
+#   >=1.2  <2.0          space- or comma-separated comparators, ALL must hold
+#   1.2.x  /  1.x        wildcard -> the implied [>=, <) window
+#   1.2  /  1            partial bare version -> same window as the wildcard
+#   1.2.3               full bare version -> exact match
+#   ^1.2.3              caret  -> >=1.2.3 <2.0.0 (npm semantics, 0.x special)
+#   ~1.2.3              tilde  -> >=1.2.3 <1.3.0
+# `_parse_dep` (single-op only) is kept for back-compat; new call sites use
+# `split_dep` + `version_satisfies`, which understand the full grammar.
+# ---------------------------------------------------------------------------
+
+#: A range token's leading operator (so `split_dep` can tell a glued
+#: "<name><op><ver>" apart from a bare "<name>").
+_RANGE_LEAD = "<>=!~^"
+
+
+def split_dep(spec: str) -> tuple[str, str | None]:
+    """Split a dep spec into (mod-id, range-string|None).
+
+    Accepts both space-separated ("mod >=1.2 <2.0") and glued single-op
+    ("mod>=1.2") forms. A bare "mod" yields (mod, None) = any version.
+    """
+    s = (spec or "").strip()
+    if not s:
+        return "", None
+    parts = s.split(None, 1)
+    if len(parts) == 1:
+        m = re.match(rf"^([\w.\-:+]+?)\s*([{_RANGE_LEAD}].*)$", s)
+        if m:
+            return m.group(1), m.group(2).strip()
+        return s, None
+    return parts[0], parts[1].strip()
+
+
+def _expand_token(tok: str) -> list[tuple[str, tuple[int, ...]]]:
+    """One range token -> list of (op, version) comparators ANDed together.
+    An empty list means "no constraint" (match anything)."""
+    t = tok.strip()
+    if not t or t in ("*", "x", "X", "any"):
+        return []
+    m = re.match(r"^(>=|<=|==|!=|>|<|=)\s*(.+)$", t)
+    if m:
+        op = "==" if m.group(1) == "=" else m.group(1)
+        return [(op, _parse_version(m.group(2)))]
+    if t[0] == "^":
+        return _caret(t[1:])
+    if t[0] == "~":
+        return _tilde(t[1:])
+    # wildcard (1.2.x) or partial bare (1.2) -> implied window; full bare exact.
+    if re.search(r"\.(x|X|\*)$", t) or t.count(".") < 2:
+        return _window(t)
+    return [("==", _parse_version(t))]
+
+
+def _nums(v: str) -> list[int]:
+    return [int(x) for x in re.findall(r"\d+", v)]
+
+
+def _window(t: str) -> list[tuple[str, tuple[int, ...]]]:
+    """`1.2.x` / `1.x` / `1.2` / `1` -> [>=lo, <hi). Bare `x`/`*` -> any."""
+    p = _nums(t)
+    if not p:
+        return []
+    if len(p) >= 3:                       # fully fixed -> exact
+        return [("==", tuple(p))]
+    if len(p) == 2:                       # 1.2.x / 1.2  -> >=1.2.0 <1.3.0
+        return [(">=", (p[0], p[1], 0)), ("<", (p[0], p[1] + 1, 0))]
+    return [(">=", (p[0], 0, 0)), ("<", (p[0] + 1, 0, 0))]   # 1.x / 1
+
+
+def _caret(v: str) -> list[tuple[str, tuple[int, ...]]]:
+    p = _nums(v)
+    if not p:
+        return []
+    major = p[0]
+    minor = p[1] if len(p) > 1 else 0
+    patch = p[2] if len(p) > 2 else 0
+    lo = (major, minor, patch)
+    if major > 0:
+        hi = (major + 1, 0, 0)
+    elif minor > 0:
+        hi = (0, minor + 1, 0)
+    elif patch > 0:
+        hi = (0, 0, patch + 1)
+    else:                                  # all-zero: bound by precision given
+        hi = (0, 0, 1) if len(p) >= 3 else ((0, 1, 0) if len(p) == 2 else (1, 0, 0))
+    return [(">=", lo), ("<", hi)]
+
+
+def _tilde(v: str) -> list[tuple[str, tuple[int, ...]]]:
+    p = _nums(v)
+    if not p:
+        return []
+    major = p[0]
+    minor = p[1] if len(p) > 1 else 0
+    patch = p[2] if len(p) > 2 else 0
+    lo = (major, minor, patch)
+    hi = (major, minor + 1, 0) if len(p) >= 2 else (major + 1, 0, 0)
+    return [(">=", lo), ("<", hi)]
+
+
+def version_satisfies(have: str, range_spec: str | None) -> bool:
+    """True if version string `have` falls inside `range_spec` (None/`*` = any)."""
+    if not range_spec or range_spec.strip() in ("*", "any"):
+        return True
+    comps: list[tuple[str, tuple[int, ...]]] = []
+    for tok in re.split(r"[\s,]+", range_spec.strip()):
+        if tok:
+            comps.extend(_expand_token(tok))
+    if not comps:
+        return True
+    hv = _parse_version(have)
+    return all(_version_ok(hv, op, want) for op, want in comps)
+
+
+# ---------------------------------------------------------------------------
 # Manifest loading
 # ---------------------------------------------------------------------------
 
@@ -157,6 +289,8 @@ def _load_one(path: Path, fallback_id: str) -> ManifestRecord:
         load_order=int(meta.get("load_order", 100)),
         priority=int(meta.get("priority", 0)),
         requires=list(meta.get("requires", []) or []),
+        recommends=list(meta.get("recommends", []) or []),
+        suggests=list(meta.get("suggests", []) or []),
         conflicts=list(meta.get("conflicts", []) or []),
         replaces=list(meta.get("replaces", []) or []),
     )
@@ -213,7 +347,7 @@ def validate_graph(records: dict[str, ManifestRecord]) -> list[GraphIssue]:
     # replace-shadow (info): replaces-target is enabled.
     for rec in _enabled_sorted(primary):
         for spec in rec.replaces:
-            target, _, _ = _parse_dep(spec)
+            target, _ = split_dep(spec)
             if target in enabled_ids and target != rec.id:
                 issues.append(GraphIssue(
                     severity="info",
@@ -223,10 +357,12 @@ def validate_graph(records: dict[str, ManifestRecord]) -> list[GraphIssue]:
                     fix=f"Set `enabled = false` on {target} to silence this notice.",
                 ))
 
-    # missing-dep + version-mismatch.
+    # missing-dep + version-mismatch (hard `requires`) and the soft tiers
+    # `recommends` (warn) / `suggests` (info), mirroring fabric.mod.json.
     for rec in _enabled_sorted(primary):
+        # Hard dependencies: error on missing/disabled/out-of-range.
         for spec in rec.requires:
-            name, op, want = _parse_dep(spec)
+            name, rng = split_dep(spec)
             target = primary.get(name)
             if target is None or not target.enabled:
                 issues.append(GraphIssue(
@@ -236,30 +372,64 @@ def validate_graph(records: dict[str, ManifestRecord]) -> list[GraphIssue]:
                     message=f"{rec.id} requires {spec!r}, but {name} is "
                             f"{'absent' if target is None else 'disabled'}.",
                     fix=f"Install/enable {name}"
-                        + (f" (need version {op} {'.'.join(str(p) for p in want)})"
-                           if op and want else "")
+                        + (f" (need version {rng})" if rng else "")
                         + ", or remove the requires entry.",
                 ))
                 continue
-            if op and want is not None:
-                have = _parse_version(target.version)
-                if not _version_ok(have, op, want):
-                    issues.append(GraphIssue(
-                        severity="error",
-                        code="version-mismatch",
-                        mods=(rec.id, name),
-                        message=f"{rec.id} requires {name} {op} "
-                                f"{'.'.join(str(p) for p in want)}, "
-                                f"but installed {name} is {target.version}.",
-                        fix=f"Upgrade {name} to a matching version "
-                            "or relax the requires constraint.",
-                    ))
+            if rng and not version_satisfies(target.version, rng):
+                issues.append(GraphIssue(
+                    severity="error",
+                    code="version-mismatch",
+                    mods=(rec.id, name),
+                    message=f"{rec.id} requires {name} {rng}, "
+                            f"but installed {name} is {target.version}.",
+                    fix=f"Upgrade {name} to a matching version "
+                        "or relax the requires constraint.",
+                ))
+
+        # Soft recommendations: warn if absent/disabled or out of range, but
+        # never block the apply.
+        for spec in rec.recommends:
+            name, rng = split_dep(spec)
+            target = primary.get(name)
+            if target is None or not target.enabled:
+                issues.append(GraphIssue(
+                    severity="warn",
+                    code="missing-recommend",
+                    mods=(rec.id, name),
+                    message=f"{rec.id} recommends {spec!r}, but {name} is "
+                            f"{'absent' if target is None else 'disabled'}.",
+                    fix=f"Install/enable {name} for the intended experience, "
+                        "or ignore this notice.",
+                ))
+            elif rng and not version_satisfies(target.version, rng):
+                issues.append(GraphIssue(
+                    severity="warn",
+                    code="recommend-version",
+                    mods=(rec.id, name),
+                    message=f"{rec.id} recommends {name} {rng}, "
+                            f"but installed {name} is {target.version}.",
+                    fix=f"Upgrade {name} to a matching version, or ignore.",
+                ))
+
+        # Suggestions: purely informational.
+        for spec in rec.suggests:
+            name, _ = split_dep(spec)
+            target = primary.get(name)
+            if target is None or not target.enabled:
+                issues.append(GraphIssue(
+                    severity="info",
+                    code="suggest",
+                    mods=(rec.id, name),
+                    message=f"{rec.id} suggests {name} (optional companion mod).",
+                    fix=f"Try {name} if you want the extra integration.",
+                ))
 
     # hard-conflict: any enabled pair where either lists the other.
     seen_pairs: set[tuple[str, str]] = set()
     for rec in _enabled_sorted(primary):
         for spec in rec.conflicts:
-            target_name, _, _ = _parse_dep(spec)
+            target_name, _ = split_dep(spec)
             target = primary.get(target_name)
             if target is None or not target.enabled or target.id == rec.id:
                 continue
@@ -310,7 +480,7 @@ def _find_cycles(
         rec = primary[mid]
         edges: list[str] = []
         for spec in rec.requires:
-            name, _, _ = _parse_dep(spec)
+            name, _ = split_dep(spec)
             if name in enabled_ids and name != mid:
                 edges.append(name)
         adj[mid] = sorted(set(edges))
@@ -379,7 +549,7 @@ def topo_order(records: dict[str, ManifestRecord]) -> list[str]:
     for n in nodes:
         rec = primary[n]
         for spec in rec.requires:
-            name, _, _ = _parse_dep(spec)
+            name, _ = split_dep(spec)
             if name in nodes:
                 # requires edge: name must come before n.
                 succs[name].append(n)

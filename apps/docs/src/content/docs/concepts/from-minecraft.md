@@ -31,6 +31,7 @@ the optional loader DLL. See [Mods ship data, not code](/concepts/data-not-code/
 | Mod loader (Fabric Loader / Forge) | RSMM + `winhttp.dll` loader | Asset mods need only RSMM; Lua needs the loader. |
 | Game-version compat (`1.20.1`) | `target_game_build` + pattern resolver | Byte-pattern resolution survives game updates. |
 | Inter-mod APIs (`@ApiStatus`, IMC) | `R.api.expose` / `R.api.require` | Version-gated published APIs. |
+| Dependencies (`depends`/`recommends`/`suggests`/`breaks`) | `requires` / `recommends` / `suggests` / `conflicts` | Semver ranges + load-order, cycle & conflict checks before apply. |
 
 ## How the analogies hold up
 
@@ -65,6 +66,31 @@ Where you would write a Mixin, RSMM detours the function natively in the
 loader DLL or subscribes to a generated event from Lua
 (`R.on("<event>", cb)`). Both are opt-in and only load when the loader is
 present.
+
+### Dependencies → manifest deps + load order
+
+`fabric.mod.json`'s `depends` / `recommends` / `suggests` / `breaks` map
+one-to-one onto manifest fields, with the same hard/soft severities and the
+same npm-style semver ranges (`>=1.2 <2.0`, `1.2.x`, `^1.2`, `~1.2`, `*`):
+
+```toml
+[mod]
+id = "RubyExpansion"
+version = "1.3.0"
+requires   = ["RubyCore >=1.2 <2.0"]   # depends:    hard — apply refuses if unmet
+recommends = ["BetterLoot ^1.0"]        # recommends: warn only
+suggests   = ["SoundPack"]              # suggests:   info only
+conflicts  = ["OldRubyMod"]             # breaks:     hard — refuse if both enabled
+replaces   = ["RubyMod"]                # auto-disables the older mod
+load_order = 90                          # lower loads earlier (default 100)
+```
+
+Before the applier touches the game, RSMM builds the dependency graph: it
+errors on a missing/out-of-range `requires`, a hard `conflicts`, a `requires`
+cycle, or a duplicate id; warns on a missing `recommends`; and computes a
+deterministic load order (`load_order`, then `priority`). Run `rsmm doctor` to
+see the report. This is the loader's "won't launch with unsatisfied
+dependencies" check, done ahead of time.
 
 ## Where to go next
 
