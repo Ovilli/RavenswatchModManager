@@ -1,9 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { getDb, schema } from '@rsmm/db';
 import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { app } from '../src/app.js';
-import { env, smtpConfigured, testmailConfigured } from '../src/env.js';
+import { afterAll, describe, expect, it } from 'vitest';
 
 // End-to-end coverage of the signup → verification-email → verify flow.
 //
@@ -17,8 +15,15 @@ import { env, smtpConfigured, testmailConfigured } from '../src/env.js';
 //   SMTP_HOST/SMTP_USER/SMTP_PASS  — the API must be able to SEND
 //   TESTMAIL_APIKEY/TESTMAIL_NAMESPACE — the inbox that RECEIVES
 //   DATABASE_URL pointing at a reachable Postgres (pnpm db:up)
-
-const ready = smtpConfigured() && testmailConfigured();
+//
+// Readiness is read straight from process.env — NOT from src/env.ts — because
+// importing env.ts evaluates `required('DATABASE_URL')` at module load and
+// throws in CI before the skip can take effect. `src/app.js` (which chains to
+// env.ts) is therefore dynamically imported inside the test, after the guard.
+const E = process.env;
+const ready = Boolean(
+  E.SMTP_HOST && E.SMTP_USER && E.SMTP_PASS && E.TESTMAIL_APIKEY && E.TESTMAIL_NAMESPACE,
+);
 const suite = ready ? describe : describe.skip;
 
 const TESTMAIL_JSON = 'https://api.testmail.app/api/json';
@@ -47,8 +52,8 @@ async function waitForEmail(args: {
 }): Promise<TestmailEmail> {
   const deadline = Date.now() + (args.deadlineMs ?? 4 * 60 * 1000);
   const url = new URL(TESTMAIL_JSON);
-  url.searchParams.set('apikey', env.testmail.apikey);
-  url.searchParams.set('namespace', env.testmail.namespace);
+  url.searchParams.set('apikey', E.TESTMAIL_APIKEY ?? '');
+  url.searchParams.set('namespace', E.TESTMAIL_NAMESPACE ?? '');
   url.searchParams.set('tag', args.tag);
   url.searchParams.set('timestamp_from', String(args.since));
   url.searchParams.set('limit', '1');
@@ -87,7 +92,7 @@ suite('email verification e2e', () => {
   // Unique tag per run so parallel/CI runs never collide; doubles as a
   // randomized local-part. nanosecond-ish suffix keeps it collision-free.
   const tag = `verify-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-  const email = `${env.testmail.namespace}.${tag}@inbox.testmail.app`;
+  const email = `${E.TESTMAIL_NAMESPACE}.${tag}@inbox.testmail.app`;
   // Generated per run — no static credential in source. The `A1!` prefix
   // guarantees upper/digit/symbol so any password policy is satisfied; the
   // user is torn down in afterAll regardless.
@@ -105,6 +110,10 @@ suite('email verification e2e', () => {
   });
 
   it('signs up, receives the email, and verifies via the link', async () => {
+    // Imported here (not at module top) so the heavy env.ts chain only
+    // evaluates when the suite actually runs — keeps CI's skip path clean.
+    const { app } = await import('../src/app.js');
+
     // 1. Sign up through the real auth handler.
     const signup = await app.fetch(
       new Request('http://local.test/api/auth/sign-up/email', {
