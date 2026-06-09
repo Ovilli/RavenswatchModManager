@@ -19,7 +19,7 @@ top-to-bottom.
 | Cloudflare R2 | Object storage for uploaded mod `.zip` files | yes (10 GB/mo egress free) |
 | Vercel | Hosting for `apps/www` (Next.js) **and** `apps/docs` (Astro/Starlight) — two projects, same repo | yes |
 | Fly.io OR Railway | Hosting for `apps/api` (Hono/Node) | free trial only — paid after |
-| Domain (rsmm.dev or similar) | Friendly URL + email | ~$10/yr |
+| Domain (rsmm.me or similar) | Friendly URL + email | ~$10/yr |
 
 If money is the issue, you can host the API on Fly's free tier (1 shared
 CPU, 256 MB RAM — fine for a registry) or Railway's $5/mo plan. Skip the
@@ -203,7 +203,7 @@ session handling, hence not Vercel for this one).
      DB_DRIVER=neon \
      BETTER_AUTH_SECRET='<from step 4>' \
      BETTER_AUTH_URL='https://rsmm-api.fly.dev' \
-     TRUSTED_ORIGINS='https://www.rsmm.dev,https://rsmm.vercel.app,tauri://localhost' \
+     TRUSTED_ORIGINS='https://www.rsmm.me,https://rsmm.vercel.app,tauri://localhost' \
      S3_BUCKET=rsmm-mods \
      S3_REGION=auto \
      S3_ENDPOINT='https://<account-id>.r2.cloudflarestorage.com' \
@@ -270,24 +270,24 @@ You'll get a URL like `rsmm-docs.vercel.app`.
 
 ## Step 8: Custom domain (optional but recommended)
 
-Buy `rsmm.dev` (or whatever) from **Cloudflare Registrar** (cheapest,
+Buy `rsmm.me` (or whatever) from **Cloudflare Registrar** (cheapest,
 no upsells) or Namecheap.
 
 After registering at Cloudflare:
 
 | Subdomain | Points to | How |
 |-----------|-----------|-----|
-| `rsmm.dev` (apex) | Vercel (www) | Vercel project → Settings → Domains → add `rsmm.dev` → Cloudflare DNS: `A @ 76.76.21.21` |
-| `www.rsmm.dev` | Vercel (www) | Vercel adds this automatically with the apex |
-| `api.rsmm.dev` | Fly | Fly: `fly certs create api.rsmm.dev` → follow CNAME instructions in Cloudflare DNS |
-| `docs.ravenswatch.ovilli.de` | Vercel (docs) | Vercel docs project → Settings → Domains → add `docs.ravenswatch.ovilli.de` → add the CNAME it shows in your DNS |
-| `cdn.rsmm.dev` | R2 public bucket | R2 bucket → Settings → Custom Domains → `cdn.rsmm.dev` |
+| `rsmm.me` (apex) | Vercel (www) | Vercel project → Settings → Domains → add `rsmm.me` → Cloudflare DNS: `A @ 76.76.21.21` |
+| `www.rsmm.me` | Vercel (www) | Vercel adds this automatically with the apex |
+| `api.rsmm.me` | Fly | Fly: `fly certs create api.rsmm.me` → follow CNAME instructions in Cloudflare DNS |
+| `docs.rsmm.me` | Vercel (docs) | Vercel docs project → Settings → Domains → add `docs.rsmm.me` → add the CNAME it shows in your DNS |
+| `cdn.rsmm.me` | R2 public bucket | R2 bucket → Settings → Custom Domains → `cdn.rsmm.me` |
 
 After domain is live, update:
-- Fly secret `BETTER_AUTH_URL` → `https://api.rsmm.dev`
-- Fly secret `TRUSTED_ORIGINS` → `https://rsmm.dev,https://www.rsmm.dev,tauri://localhost`
-- Fly secret `S3_PUBLIC_BASE_URL` → `https://cdn.rsmm.dev`
-- Vercel env `NEXT_PUBLIC_API_URL` → `https://api.rsmm.dev` + redeploy
+- Fly secret `BETTER_AUTH_URL` → `https://api.rsmm.me`
+- Fly secret `TRUSTED_ORIGINS` → `https://rsmm.me,https://www.rsmm.me,tauri://localhost`
+- Fly secret `S3_PUBLIC_BASE_URL` → `https://cdn.rsmm.me`
+- Vercel env `NEXT_PUBLIC_API_URL` → `https://api.rsmm.me` + redeploy
 
 ---
 
@@ -315,27 +315,27 @@ For code signing (Windows SmartScreen), you'll need a paid cert
 
 When everything is live, this is what each host runs:
 
-**Fly (api.rsmm.dev)**
+**Fly (api.rsmm.me)**
 ```
 DATABASE_URL=postgresql://...neon.tech/rsmm?sslmode=require
 DB_DRIVER=neon
 BETTER_AUTH_SECRET=<random 64 hex>
-BETTER_AUTH_URL=https://api.rsmm.dev
-TRUSTED_ORIGINS=https://rsmm.dev,https://www.rsmm.dev,tauri://localhost
+BETTER_AUTH_URL=https://api.rsmm.me
+TRUSTED_ORIGINS=https://rsmm.me,https://www.rsmm.me,tauri://localhost
 S3_BUCKET=rsmm-mods
 S3_REGION=auto
 S3_ENDPOINT=https://<account>.r2.cloudflarestorage.com
 S3_ACCESS_KEY_ID=...
 S3_SECRET_ACCESS_KEY=...
-S3_PUBLIC_BASE_URL=https://cdn.rsmm.dev
+S3_PUBLIC_BASE_URL=https://cdn.rsmm.me
 ```
 
-**Vercel (rsmm.dev)**
+**Vercel (rsmm.me)**
 ```
-NEXT_PUBLIC_API_URL=https://api.rsmm.dev
+NEXT_PUBLIC_API_URL=https://api.rsmm.me
 ```
 
-**Vercel (docs — docs.ravenswatch.ovilli.de)**
+**Vercel (docs — docs.rsmm.me)**
 
 No environment variables required — the docs site is fully static. Vercel
 auto-selects a recent Node version; pin it under Settings → General → Node.js
@@ -350,7 +350,7 @@ prod, add to `.github/workflows/release.yml`:
   uses: tauri-apps/tauri-action@v0
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    VITE_API_URL: https://api.rsmm.dev
+    VITE_API_URL: https://api.rsmm.me
 ```
 
 ---
@@ -365,7 +365,7 @@ After every step:
 - [ ] Step 5: `curl https://rsmm-api.fly.dev/mods` → `{"items":[],"total":0}`
 - [ ] Step 6: `curl https://rsmm.vercel.app/` returns HTML
 - [ ] Step 6: open `https://rsmm.vercel.app/auth/signup`, create account, check Neon `user` table has row
-- [ ] Step 7: open `docs.ravenswatch.ovilli.de` → Starlight site loads
+- [ ] Step 7: open `docs.rsmm.me` → Starlight site loads
 
 If any step fails, the rest will fail too. Don't skip ahead.
 

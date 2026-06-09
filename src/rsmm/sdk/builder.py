@@ -27,7 +27,8 @@ class ModBuilder:
     """In-memory mod authoring buffer; flushed in one atomic pass."""
 
     def __init__(self, mod_id: str, *, version: str, author: str, name: str,
-                 experimental: bool = False):
+                 experimental: bool = False, load_order: int = 100,
+                 priority: int = 0):
         if not _ID_RE.match(mod_id):
             raise ValueError(f"invalid mod_id: {mod_id!r}")
         self.id = mod_id
@@ -35,12 +36,26 @@ class ModBuilder:
         self.author = author
         self.name = name
         self.enabled = True
+        #: Lower loads earlier (default 100); `priority` breaks ties (higher
+        #: first). Mirrors the manifest fields the dependency graph orders by.
+        self.load_order = load_order
+        self.priority = priority
         #: Author opted into unverified (experimental/guess) content kinds.
         self.experimental = experimental
         self._config_schema: dict | None = None
         self._i18n: dict[str, dict[str, str]] = {}
         self._content = ContentRegistry(mod_id=mod_id, experimental=experimental)
+        # Store-facing metadata (mirrors packages/schemas modManifestSchema:
+        # summary/description/license/repo_url/homepage_url/tags/game_build/
+        # min_loader). Field-name -> value, emitted under [mod].
+        self._meta: dict[str, object] = {}
+        # Dependency declarations (fabric.mod.json analogs). Each is a list of
+        # (mod_id, version_spec) pairs except `replaces` (bare ids).
         self._requires: list[tuple[str, str]] = []
+        self._recommends: list[tuple[str, str]] = []
+        self._suggests: list[tuple[str, str]] = []
+        self._conflicts: list[tuple[str, str]] = []
+        self._replaces: list[str] = []
         self._api_name: str | None = None
         self._patch_blocks: list[dict] = []
         # decoded game-asset path -> source file to stage under assets/.
@@ -280,8 +295,74 @@ class ModBuilder:
             if rid not in bucket:
                 bucket.append(rid)
 
+    def metadata(self, *, summary: str | None = None,
+                 description: str | None = None, license: str | None = None,
+                 repo_url: str | None = None, homepage_url: str | None = None,
+                 tags: list[str] | None = None, game_build: str | None = None,
+                 min_loader: str | None = None) -> None:
+        """Store-facing metadata, validated against the canonical
+        ``modManifestSchema`` constraints so authoring errors surface before
+        publish (the Fabric `description`/`license`/`contact` analog).
+
+        - ``summary``      short tagline (≤512)
+        - ``description``  long text (≤8192)
+        - ``license``      SPDX id or name (≤64)
+        - ``repo_url`` / ``homepage_url``  URLs
+        - ``tags``         discovery tags (≤16, each ≤32) — NOT content tags
+        - ``game_build`` / ``min_loader``  compatibility hints
+        """
+        def _len(field: str, val: str | None, limit: int) -> None:
+            if val is not None:
+                if not isinstance(val, str):
+                    raise ValueError(f"metadata {field} must be a string")
+                if len(val) > limit:
+                    raise ValueError(f"metadata {field} exceeds {limit} chars")
+                self._meta[field] = val
+
+        def _url(field: str, val: str | None) -> None:
+            if val is not None:
+                if not isinstance(val, str) or "://" not in val:
+                    raise ValueError(f"metadata {field} must be a URL")
+                self._meta[field] = val
+
+        _len("summary", summary, 512)
+        _len("description", description, 8192)
+        _len("license", license, 64)
+        _len("game_build", game_build, 64)
+        _len("min_loader", min_loader, 32)
+        _url("repo_url", repo_url)
+        _url("homepage_url", homepage_url)
+        if tags is not None:
+            tags = [str(t) for t in tags]
+            if len(tags) > 16:
+                raise ValueError("metadata tags: at most 16")
+            if any(len(t) > 32 for t in tags):
+                raise ValueError("metadata tags: each ≤ 32 chars")
+            self._meta["tags"] = tags
+
     def requires(self, mod_id: str, version_spec: str = "") -> None:
+        """Hard dependency (fabric `depends`): apply refuses if it's missing,
+        disabled, or out of `version_spec`. Ranges: ``>=1.2 <2.0``, ``^1.2``,
+        ``~1.2``, ``1.2.x``, ``*``."""
         self._requires.append((mod_id, version_spec))
+
+    def recommends(self, mod_id: str, version_spec: str = "") -> None:
+        """Soft dependency (fabric `recommends`): warns if absent/out of range,
+        never blocks the apply."""
+        self._recommends.append((mod_id, version_spec))
+
+    def suggests(self, mod_id: str, version_spec: str = "") -> None:
+        """Advisory companion mod (fabric `suggests`): info only."""
+        self._suggests.append((mod_id, version_spec))
+
+    def conflicts(self, mod_id: str, version_spec: str = "") -> None:
+        """Hard conflict (fabric `breaks`): apply refuses if `mod_id` is also
+        enabled."""
+        self._conflicts.append((mod_id, version_spec))
+
+    def replaces(self, mod_id: str) -> None:
+        """Supersede an older mod: the loader auto-disables `mod_id`."""
+        self._replaces.append(mod_id)
 
     def provides_api(self, name: str) -> None:
         self._api_name = name
@@ -309,6 +390,12 @@ class ModBuilder:
             "skinpacks": [p["name"] for p in self._skinpacks],
             "tags": {t: list(m) for t, m in self._tags.items()},
             "requires": [m for m, _ in self._requires],
+            "recommends": [m for m, _ in self._recommends],
+            "suggests": [m for m, _ in self._suggests],
+            "conflicts": [m for m, _ in self._conflicts],
+            "replaces": list(self._replaces),
+            "load_order": self.load_order,
+            "metadata": dict(self._meta),
             "provides_api": self._api_name,
         }
 
@@ -372,6 +459,11 @@ class ModBuilder:
         (root / "tags.json").write_text(
             json.dumps(self._tags, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
+    @staticmethod
+    def _toml_str(s: str) -> str:
+        """Quote a string as a TOML basic string (escape backslash + quote)."""
+        return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
     def _write_manifest(self, root: Path) -> None:
         lines = [
             "[mod]",
@@ -384,10 +476,33 @@ class ModBuilder:
         ]
         if self.experimental:
             lines.append("experimental = true")
-        if self._requires:
-            lines += ["", "[dependencies]"]
-            for mid, spec in self._requires:
-                lines.append(f'{mid} = "{spec}"')
+        # Store-facing metadata (scalars + the tags array), under [mod].
+        for key in ("summary", "description", "license", "repo_url",
+                    "homepage_url", "game_build", "min_loader"):
+            if key in self._meta:
+                lines.append(f"{key} = {self._toml_str(str(self._meta[key]))}")
+        if self._meta.get("tags"):
+            arr = ", ".join(self._toml_str(t) for t in self._meta["tags"])
+            lines.append(f"tags = [{arr}]")
+        if self.load_order != 100:
+            lines.append(f"load_order = {self.load_order}")
+        if self.priority:
+            lines.append(f"priority = {self.priority}")
+        # Dependency arrays live under [mod] — that's where both the manifest
+        # graph and the apply-time compat gate read them. (An earlier
+        # [dependencies] table was silently ignored by both.)
+        for key, pairs in (
+            ("requires", self._requires),
+            ("recommends", self._recommends),
+            ("suggests", self._suggests),
+            ("conflicts", self._conflicts),
+        ):
+            specs = [f"{mid} {spec}".strip() for mid, spec in pairs]
+            if specs:
+                lines.append(f"{key} = [{', '.join(self._toml_str(s) for s in specs)}]")
+        if self._replaces:
+            lines.append(
+                f"replaces = [{', '.join(self._toml_str(m) for m in self._replaces)}]")
         if self._api_name:
             lines += ["", "[provides]", f'api = "{self._api_name}"']
         if self._patch_blocks:

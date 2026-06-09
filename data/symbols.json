@@ -36,11 +36,12 @@
       "name": "MagicalObjectPool_SourceLookup",
       "kind": "function",
       "category": "items",
-      "va": "0x1402590c0",
-      "status": "unverified",
+      "raw": "FUN_1402590c0",
+      "status": "ok",
       "signature": "void*(void* pool, void* out, void* id)",
-      "note": "Source-list lookup into the magical-object pool. Address from item-clone corpus; re-confirm.",
-      "refs": ["docs/_re"]
+      "cabi": { "ret": "void*", "params": ["void*", "void*", "void*"] },
+      "note": "Source-list lookup into the magical-object pool. Scans pool source array (*pool, count at pool[1]) for the entry whose GUID matches *id/id[1]; writes the found source into *out and returns out. Re-confirmed in Ghidra 2026-06-07 (decompile @0x1402590c0 matches: 3 args, calls Entity_FindMagicalObjectComponent).",
+      "refs": ["docs/_re", "src/loader/src/hook_items.cpp"]
     },
     {
       "name": "Resource_LookupByPath",
@@ -77,31 +78,34 @@
       "name": "MagicalObjectPool_Grow",
       "kind": "function",
       "category": "items",
-      "va": "0x1401550d0",
-      "status": "unverified",
+      "raw": "FUN_1401550d0",
+      "status": "ok",
       "signature": "void(void* pool_plus_0x10, uint32_t count, uint32_t by)",
-      "note": "Grows the runtime array at pool+0x10 before storing a spawned component. Address from item-clone corpus.",
-      "refs": ["docs/_re"]
+      "cabi": { "ret": "void", "params": ["void*", "uint32_t", "uint32_t"] },
+      "note": "Grows the runtime array at pool+0x10 before storing a spawned component. Re-confirmed resolvable in Ghidra 2026-06-07 (@0x1401550d0). Sibling of the generic Vector_Grow.",
+      "refs": ["docs/_re", "src/loader/src/hook_items.cpp"]
     },
     {
       "name": "Entity_AllocInstance",
       "kind": "function",
       "category": "entity",
-      "va": "0x14068fe90",
-      "status": "unverified",
-      "signature": "void*(void* resource_plus_0x18)",
-      "note": "Allocates an entity instance from a resource (res+0x18). Address from item-clone corpus.",
-      "refs": ["docs/_re"]
+      "raw": "FUN_14068fe90",
+      "status": "ok",
+      "signature": "void*(void* allocator)",
+      "cabi": { "ret": "void*", "params": ["void*"] },
+      "note": "Free-list instance allocator: pops a node from the allocator's free list (or constructs one via vtable+0x50 when empty), links it into the live list, returns the instance ptr. Single arg = the allocator/pool struct (e.g. resource+0x18). Re-confirmed in Ghidra 2026-06-07 (decompile @0x14068fe90: 1 arg, returns node).",
+      "refs": ["docs/_re", "src/loader/src/hook_items.cpp"]
     },
     {
       "name": "Entity_FindMagicalObjectComponent",
       "kind": "function",
       "category": "entity",
-      "va": "0x1406e2250",
-      "status": "unverified",
+      "raw": "FUN_1406e2250",
+      "status": "ok",
       "signature": "void*(void* instance, void* mo_component_meta)",
-      "note": "Finds the magical-object component in a spawned entity instance (uses g_MagicalObjectComponentMeta). Address from item-clone corpus.",
-      "refs": ["docs/_re"]
+      "cabi": { "ret": "void*", "params": ["void*", "void*"] },
+      "note": "Finds the magical-object component in a spawned entity instance; pass g_MagicalObjectComponentMeta as arg2. Re-confirmed in Ghidra 2026-06-07 (called by MagicalObjectPool_SourceLookup with DAT_141470038 as the meta arg). Sibling of the generic Entity_FindComponentByType.",
+      "refs": ["docs/_re", "src/loader/src/hook_items.cpp"]
     },
     {
       "name": "Entity_FindComponentByType",
@@ -209,6 +213,17 @@
       "status": "ok",
       "note": "printf-style format/string builder (e.g. 'Is Hero liked by {}', 'Chance to give {} MO'). Useful xref anchor for locating gameplay logic by its format literal.",
       "refs": ["docs/_re"]
+    },
+    {
+      "name": "Analytics_SubmitNamedEvent",
+      "kind": "function",
+      "category": "event",
+      "raw": "FUN_1401fa470",
+      "status": "ok",
+      "signature": "void(void* analytics_mgr, void* payload_kv, StringDesc* event_name, char has_run_ctx)",
+      "cabi": { "ret": "void", "params": ["void*", "void*", "void*", "uint32_t"] },
+      "note": "CENTRAL TELEMETRY SINK. ~37 gameplay callers funnel named analytics events through here (run_end, enemy_killed, matchmaking_start, level_up_reach, level_up_book, ...), each building a key-value payload then submitting as JSON (projectId 'passtech-ravenswatch') to Passtech's analytics backend over an authenticated HTTP POST. param_3 is a StringDesc { const char* ptr @+0x0; uint32 len|0x80000000 @+0x8 } holding the event name. The loader 'firehose' detour (hook_events.cpp::install_analytics_firehose) reads that name and re-publishes it to the Lua bus by its raw name, so ONE hook exposes every named event to mods (R.on('enemy_killed', cb)) and survives the game adding new event names. OBSERVATION-GRADE: these fire AFTER the gameplay action and carry analytics KV, not live entity handles — good for 'when X happens do Y' triggers, not for mutating the actor. For entity-context gameplay events (damage, give-item) see the oCGameNamedEvent bus (NETWORK_DAMAGE / GIVE_MAGICAL_OBJECT via Netcode_Channel_Subscribe) — the next surface to map. Skips 'run_end' to avoid double-firing the typed Event_RunEnd table hook.",
+      "refs": ["src/loader/src/hook_events.cpp", "docs/_re/kinds/events.md"]
     },
 
     {
@@ -400,5 +415,22 @@
       "note": "Emitter whose body references the 'run_end' string (xref 0x1401f5347). Loader post-detours it to publish the 'run_end' Lua event via R.on('run_end', cb).",
       "refs": ["src/loader/src/hook_events.cpp", "docs/_re/kinds/events.md"]
     }
+  ],
+  "_event_catalog_doc": "Observation events the loader republishes by raw name from the central telemetry sink (Analytics_SubmitNamedEvent). No address — the firehose detour reads the name at runtime, so any name the game adds also fires even if absent here. These are confirmed names harvested by string-xref (cluster 0x140f13a00-0x140f13f00); subscribe via R.on('<name>', cb) with RSMM_ENABLE_GAME_EVENTS=1. Shown by `rsmm symbols events`.",
+  "event_catalog": [
+    { "name": "game_start",             "category": "run",         "note": "a game/session begins" },
+    { "name": "run_start",              "category": "run",         "note": "a run begins" },
+    { "name": "chapter_end",            "category": "run",         "note": "a chapter ends" },
+    { "name": "matchmaking_start",      "category": "multiplayer", "note": "matchmaking begins; payload {search_difficulty, current_party_size}" },
+    { "name": "matchmaking_end",        "category": "multiplayer", "note": "matchmaking ends" },
+    { "name": "enemy_killed",           "category": "combat",      "note": "an enemy was killed" },
+    { "name": "level_up_reach",         "category": "progression", "note": "hero reached a new level (telemetry name; the typed 'level_up' event carries {level})" },
+    { "name": "level_up_book",          "category": "progression", "note": "level-up book / talent pick" },
+    { "name": "unlock_skill",           "category": "meta",        "note": "a skill was unlocked" },
+    { "name": "unlock_object",          "category": "meta",        "note": "an object was unlocked" },
+    { "name": "unlock_hero",            "category": "meta",        "note": "a hero was unlocked" },
+    { "name": "unlock_level_nightmare", "category": "meta",        "note": "a nightmare difficulty was unlocked" },
+    { "name": "event_start",            "category": "run",         "note": "an in-run event begins" },
+    { "name": "event_end",              "category": "run",         "note": "an in-run event ends" }
   ]
 }

@@ -5,6 +5,7 @@ PREFERRED_BASE = 0x140000000
 
 # name -> preferred-base address
 ADDR: dict[str, int] = {
+    "Analytics_SubmitNamedEvent": 0x1401fa470,
     "Definitions_LoadGroup": 0x14030fa00,
     "Entity_AllocInstance": 0x14068fe90,
     "Entity_FindComponentByType": 0x1406ca380,
@@ -50,11 +51,16 @@ ADDR: dict[str, int] = {
 
 # name -> function-pattern key (version-resilient), when available
 PATTERN: dict[str, str] = {
+    "Analytics_SubmitNamedEvent": "FUN_1401fa470",
+    "Entity_AllocInstance": "FUN_14068fe90",
     "Entity_FindComponentByType": "FUN_1406ca380",
+    "Entity_FindMagicalObjectComponent": "FUN_1406e2250",
     "Entry_Ctor": "FUN_140214bb0",
     "Event_LevelUp": "FUN_1401f6410",
     "Event_RunEnd": "FUN_1401f51e0",
     "Format_String": "FUN_140204f30",
+    "MagicalObjectPool_Grow": "FUN_1401550d0",
+    "MagicalObjectPool_SourceLookup": "FUN_1402590c0",
     "MagicalObject_SpawnAllObjects": "FUN_1402586f0",
     "MagicalObject_SpawnContainingFunc": "FUN_1402586f0",
     "Resource_LookupByPath": "FUN_140487040",

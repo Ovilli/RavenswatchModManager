@@ -19,7 +19,7 @@
  * sign-in flows that depend on shared cookies. Mirrors
  * `apps/www/src/lib/api-url.ts`.
  */
-const PROD_API_URL = 'https://api.ravenswatch.ovilli.de';
+const PROD_API_URL = 'https://api.rsmm.me';
 
 export function getApiUrl(): string {
   const envUrl = import.meta.env.VITE_API_URL;

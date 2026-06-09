@@ -77,6 +77,15 @@ describe('modManifestSchema compat fields', () => {
     expect(m.sdk_version).toBeUndefined();
     expect(m.game_build).toBeUndefined();
   });
+
+  it('accepts dependency version ranges (not just exact pins)', () => {
+    const m = modManifestSchema.parse({
+      ...base,
+      dependencies: { core: '>=1.2 <2.0', loot: '^1.0', ui: '1.2.x', any: '*' },
+    });
+    expect(m.dependencies?.core).toBe('>=1.2 <2.0');
+    expect(m.dependencies?.any).toBe('*');
+  });
 });
 
 describe('modListItemSchema compat fields', () => {

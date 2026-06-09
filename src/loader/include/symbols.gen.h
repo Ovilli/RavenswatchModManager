@@ -19,12 +19,16 @@ constexpr const char* Vector_Grow_Pattern = "FUN_140154c20";
 
 // --- entity ---
 constexpr std::uintptr_t Entity_AllocInstance = 0x14068fe90ull;
+constexpr const char* Entity_AllocInstance_Pattern = "FUN_14068fe90";
 constexpr std::uintptr_t Entity_FindComponentByType = 0x1406ca380ull;
 constexpr const char* Entity_FindComponentByType_Pattern = "FUN_1406ca380";
 constexpr std::uintptr_t Entity_FindMagicalObjectComponent = 0x1406e2250ull;
+constexpr const char* Entity_FindMagicalObjectComponent_Pattern = "FUN_1406e2250";
 constexpr std::uintptr_t g_MagicalObjectComponentMeta = 0x141470768ull;
 
 // --- event ---
+constexpr std::uintptr_t Analytics_SubmitNamedEvent = 0x1401fa470ull;
+constexpr const char* Analytics_SubmitNamedEvent_Pattern = "FUN_1401fa470";
 constexpr std::uintptr_t Event_LevelUp = 0x1401f6410ull;
 constexpr const char* Event_LevelUp_Pattern = "FUN_1401f6410";
 constexpr std::uintptr_t Event_RunEnd = 0x1401f51e0ull;
@@ -33,7 +37,9 @@ constexpr const char* Event_RunEnd_Pattern = "FUN_1401f51e0";
 // --- items ---
 constexpr std::uintptr_t InitialLoading_SpawnMagicalObjects = 0x140260280ull;
 constexpr std::uintptr_t MagicalObjectPool_Grow = 0x1401550d0ull;
+constexpr const char* MagicalObjectPool_Grow_Pattern = "FUN_1401550d0";
 constexpr std::uintptr_t MagicalObjectPool_SourceLookup = 0x1402590c0ull;
+constexpr const char* MagicalObjectPool_SourceLookup_Pattern = "FUN_1402590c0";
 constexpr std::uintptr_t MagicalObject_SpawnAllObjects = 0x140258760ull;
 constexpr const char* MagicalObject_SpawnAllObjects_Pattern = "FUN_1402586f0";
 constexpr std::uintptr_t MagicalObject_SpawnContainingFunc = 0x1402586f0ull;

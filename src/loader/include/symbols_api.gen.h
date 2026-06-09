@@ -9,11 +9,32 @@
 
 namespace engine {
 
+// Analytics_SubmitNamedEvent  (FUN_1401fa470)
+//   void(void* analytics_mgr, void* payload_kv, StringDesc* event_name, char has_run_ctx)
+using Analytics_SubmitNamedEvent_fn = void(*)(void*, void*, void*, uint32_t);
+inline Analytics_SubmitNamedEvent_fn Analytics_SubmitNamedEvent() {
+    return reinterpret_cast<Analytics_SubmitNamedEvent_fn>(rsmm::fn_resolve(Sym::Analytics_SubmitNamedEvent_Pattern));
+}
+
+// Entity_AllocInstance  (FUN_14068fe90)
+//   void*(void* allocator)
+using Entity_AllocInstance_fn = void*(*)(void*);
+inline Entity_AllocInstance_fn Entity_AllocInstance() {
+    return reinterpret_cast<Entity_AllocInstance_fn>(rsmm::fn_resolve(Sym::Entity_AllocInstance_Pattern));
+}
+
 // Entity_FindComponentByType  (FUN_1406ca380)
 //   oIEntityCpnt*(oCEntitySpawnerGo* go, oCMetaClass* meta)
 using Entity_FindComponentByType_fn = void*(*)(void*, void*);
 inline Entity_FindComponentByType_fn Entity_FindComponentByType() {
     return reinterpret_cast<Entity_FindComponentByType_fn>(rsmm::fn_resolve(Sym::Entity_FindComponentByType_Pattern));
+}
+
+// Entity_FindMagicalObjectComponent  (FUN_1406e2250)
+//   void*(void* instance, void* mo_component_meta)
+using Entity_FindMagicalObjectComponent_fn = void*(*)(void*, void*);
+inline Entity_FindMagicalObjectComponent_fn Entity_FindMagicalObjectComponent() {
+    return reinterpret_cast<Entity_FindMagicalObjectComponent_fn>(rsmm::fn_resolve(Sym::Entity_FindMagicalObjectComponent_Pattern));
 }
 
 // Entry_Ctor  (FUN_140214bb0)
@@ -33,6 +54,20 @@ inline Event_LevelUp_fn Event_LevelUp() {
 using Event_RunEnd_fn = void*(*)(void*, void*);
 inline Event_RunEnd_fn Event_RunEnd() {
     return reinterpret_cast<Event_RunEnd_fn>(rsmm::fn_resolve(Sym::Event_RunEnd_Pattern));
+}
+
+// MagicalObjectPool_Grow  (FUN_1401550d0)
+//   void(void* pool_plus_0x10, uint32_t count, uint32_t by)
+using MagicalObjectPool_Grow_fn = void(*)(void*, uint32_t, uint32_t);
+inline MagicalObjectPool_Grow_fn MagicalObjectPool_Grow() {
+    return reinterpret_cast<MagicalObjectPool_Grow_fn>(rsmm::fn_resolve(Sym::MagicalObjectPool_Grow_Pattern));
+}
+
+// MagicalObjectPool_SourceLookup  (FUN_1402590c0)
+//   void*(void* pool, void* out, void* id)
+using MagicalObjectPool_SourceLookup_fn = void*(*)(void*, void*, void*);
+inline MagicalObjectPool_SourceLookup_fn MagicalObjectPool_SourceLookup() {
+    return reinterpret_cast<MagicalObjectPool_SourceLookup_fn>(rsmm::fn_resolve(Sym::MagicalObjectPool_SourceLookup_Pattern));
 }
 
 // MagicalObject_SpawnAllObjects  (FUN_1402586f0)

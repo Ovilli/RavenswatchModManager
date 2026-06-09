@@ -76,6 +76,26 @@ def _read_manifest(path: Path) -> dict[str, Any] | None:
         return None
 
 
+def _deps_map(manifest: dict[str, Any]) -> dict[str, str]:
+    """The store's ``{mod_id: range}`` dependency map, derived from the
+    manifest's ``requires`` array (the format the dependency graph + builder
+    use). The desktop/store schema expects a dict; the manifest carries an
+    array — without this the published dependencies were always empty. A
+    legacy ``dependencies`` table, if present, is merged underneath."""
+    from rsmm.manifest_graph import split_dep
+
+    out: dict[str, str] = {}
+    for spec in manifest.get("requires", []) or []:
+        name, rng = split_dep(str(spec))
+        if name:
+            out[name] = rng or "*"
+    legacy = manifest.get("dependencies")
+    if isinstance(legacy, dict):
+        for k, v in legacy.items():
+            out.setdefault(str(k), str(v))
+    return out
+
+
 def cmd_list() -> int:
     items: list[dict[str, Any]] = []
     try:
@@ -97,7 +117,7 @@ def cmd_list() -> int:
             continue
         # Manifests use [mod] table for metadata; older ones inline at root.
         manifest = raw.get("mod") if isinstance(raw.get("mod"), dict) else raw
-        deps = raw.get("dependencies") if isinstance(raw.get("dependencies"), dict) else {}
+        deps = _deps_map(manifest)
         writes: list[str] = []
         assets_dir = entry / "assets"
         if assets_dir.is_dir():
@@ -479,9 +499,9 @@ def cmd_pack_mod(mod_id: str) -> int:
         out_manifest["tags"] = [str(t) for t in tags if isinstance(t, str)]
     if isinstance(manifest.get("enabled"), bool):
         out_manifest["enabled"] = bool(manifest["enabled"])
-    deps = manifest.get("dependencies")
-    if isinstance(deps, dict) and deps:
-        out_manifest["dependencies"] = {str(k): str(v) for k, v in deps.items()}
+    deps = _deps_map(manifest)
+    if deps:
+        out_manifest["dependencies"] = deps
 
     return _emit({
         "ok": True,
@@ -495,7 +515,7 @@ def cmd_pack_mod(mod_id: str) -> int:
 
 
 _UPLOAD_HOST_ALLOWLIST: tuple[str, ...] = (
-    "s3-ravenswatch.ovilli.de",
+    "s3-rsmm.me",
     "ravenswatch-mods.s3.amazonaws.com",
 )
 
@@ -575,7 +595,7 @@ def cmd_upload_bytes(path: str, url: str) -> int:
         return _emit({"ok": False, "error": str(e)})
 
 
-_DEFAULT_INDEX_BASE = "https://api.ravenswatch.ovilli.de"
+_DEFAULT_INDEX_BASE = "https://api.rsmm.me"
 
 
 def _index_base() -> str:

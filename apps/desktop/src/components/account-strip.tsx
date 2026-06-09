@@ -15,7 +15,7 @@ function initialsFor(name: string | null | undefined, email: string | null | und
   return ((first[0] ?? '') + (second?.[0] ?? '')).toUpperCase();
 }
 
-const WEB_ACCOUNT_URL = 'https://ravenswatch.ovilli.de/account';
+const WEB_ACCOUNT_URL = 'https://rsmm.me/account';
 
 export function AccountStrip() {
   if (!inTauri()) {

@@ -12,9 +12,16 @@ namespace rsmm {
 // offsets is not. Richer payloads land once each emitter's signature is
 // confirmed in-game.
 //
+// In addition to that per-emitter table, install_event_hooks() arms an
+// "analytics firehose": one detour on the central telemetry sink
+// (Analytics_SubmitNamedEvent / FUN_1401fa470) reads the event-name arg and
+// re-publishes EVERY named analytics event to the Lua bus by its raw name
+// (game_start, enemy_killed, unlock_hero, ...). One hook, ~37 events, survives
+// the game adding new names. Observation-grade — details in hook_events.cpp.
+//
 // OPT-IN: off unless RSMM_ENABLE_GAME_EVENTS=1, because the hook points are
 // string-verified but not yet runtime-validated against a live game. Wired
-// events: "level_up", "run_end".
+// typed events: "level_up", "run_end".
 bool install_event_hooks();
 void remove_event_hooks();
 

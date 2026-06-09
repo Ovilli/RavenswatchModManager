@@ -41,19 +41,31 @@ end
 --   "tick"  — fires every 500ms; cheap polling slot
 --   "exit"  — DLL is being unloaded
 --
--- Gameplay events (from data/symbols.json kind="event"; run
+-- Typed gameplay events (from data/symbols.json kind="event"; run
 -- `rsmm symbols events` for the live list). Enable with
 -- RSMM_ENABLE_GAME_EVENTS=1:
---   "level_up", "run_end"  (more land as emitters are RE'd)
+--   "level_up" -> { level },  "run_end"
 --
--- The callback receives a payload table. Gameplay events currently carry
--- a safe envelope:
+-- Analytics firehose (same RSMM_ENABLE_GAME_EVENTS=1 gate). The game
+-- funnels ~37 named analytics events through one telemetry sink
+-- (Analytics_SubmitNamedEvent); the loader detours it once and
+-- re-publishes EVERY event to this bus by its raw name — no per-event
+-- wiring, and new names the game adds appear automatically. Confirmed:
+--   "game_start" "run_start" "matchmaking_start" "matchmaking_end"
+--   "chapter_end" "level_up_reach" "level_up_book" "enemy_killed"
+--   "unlock_skill" "unlock_object" "unlock_hero" "unlock_level_nightmare"
+--   "event_start" "event_end"
+-- OBSERVATION-grade: they fire after the action and carry the analytics
+-- payload, not a live entity handle. Great for "when X happens, do Y"
+-- triggers; to mutate the actor you need the oCGameNamedEvent gameplay
+-- bus (next surface to map).
+--
+-- The callback receives a payload table:
 --   ev.event  (string)  the event name
 --   ev.seq    (number)  per-event fire counter (ordering signal)
---   ev.ctx    (string)  emitter arg0 as "0x..." (handle; not dereferenced)
---   ev.arg    (string)  emitter arg1 as "0x..."
--- Typed fields (hero id, level, ...) are added per event as payload
--- schemas land. Lifecycle events (ready/tick/exit) pass an empty table.
+--   ev.source (string)  "analytics" for firehose events
+--   ev.ctx/ev.arg       raw arg handles "0x..." (typed-event envelope only)
+-- Lifecycle events (ready/tick/exit) pass an empty table.
 
 function R.on(event, cb)
     assert(type(event) == "string", "R.on: event must be string")
@@ -64,13 +76,22 @@ end
 -- named engine functions ------------------------------------------------
 --
 -- The symbol map (data/symbols.json) gives engine functions stable
--- semantic names. R.engine lets a mod resolve + call them by name
--- instead of raw FUN_xxxxxxxx addresses:
+-- semantic names + a `cabi` (return + arg types). R.engine lets a mod call
+-- them by name with the right marshalling — no raw FUN_xxxxxxxx addresses,
+-- no manual signature strings. Two equivalent forms:
 --
 --     local rsc = R.engine.call("Resource_LookupByPath", path, 0, 0, 0)
+--     local rsc = R.engine.fn.Resource_LookupByPath(path, 0, 0, 0)
 --
--- Names + patterns come from the generated engine_gen.lua table; the
--- address is resolved at runtime by byte pattern (survives game updates).
+-- `R.engine.fn.<Name>` exposes every callable symbol as a method (built
+-- lazily from the map, so new symbols appear automatically). Browse the
+-- set with `R.engine.names()` or `rsmm symbols list`. The address is
+-- resolved at runtime by byte pattern (survives game updates), and the
+-- native call signature comes from the symbol's cabi (see engine_gen.lua).
+--
+-- For an address the map doesn't know yet, drop to the escape hatch:
+--     R.engine.call_raw(va, "psppp", path, 0, 0, 0)  -- explicit sig
+-- (sig codes: v=void i=int32 u=uint32 p/l=ptr/int64 f=float d=double s=string)
 
 R.engine = {}
 
@@ -94,12 +115,36 @@ function R.engine.resolve(name)
     return base + (e.offset or 0)
 end
 
--- Call a named engine function. Extra args are forwarded to the native
--- caller. Returns whatever the native call returns (or nil if unresolved).
+-- Call a named engine function. The native call signature is taken from the
+-- symbol's `cabi` (generated into engine_gen.lua), so a mod just passes the
+-- actual arguments — no manual signature string:
+--
+--     local res = R.engine.call("Resource_LookupByPath", path, 0, 0, 0)
+--
+-- Arg/return marshalling per the symbol's sig codes (v/i/u/p/l/f/d/s):
+-- integers for i/u/p/l, numbers for f/d, Lua strings for s. Returns the
+-- typed result (nil for void or if the symbol can't be resolved).
 function R.engine.call(name, ...)
+    local e = engine_map()[name]
+    if not e then R.log("[rsmm.engine] unknown symbol:", name); return nil end
     local va = R.engine.resolve(name)
     if not va then return nil end
-    return I.call(va, ...)
+    if not e.sig then
+        R.log("[rsmm.engine] no cabi/sig for", name, "-- use R.engine.call_raw(va, sig, ...)")
+        return nil
+    end
+    return I.call(va, e.sig, ...)
+end
+
+-- Escape hatch: call any resolved address with an explicit signature string.
+function R.engine.call_raw(va, sig, ...)
+    return I.call(va, sig, ...)
+end
+
+-- The native call signature string for a named symbol (or nil).
+function R.engine.sig(name)
+    local e = engine_map()[name]
+    return e and e.sig or nil
 end
 
 -- List the semantic names available to R.engine.call.
@@ -110,6 +155,18 @@ function R.engine.names()
     return out
 end
 
+-- Named accessors: every callable symbol is exposed as
+-- R.engine.fn.<Name>(...) so mods can call engine functions like methods
+-- instead of stringly-typed names. Built lazily from the generated map, so
+-- new symbols appear automatically with no edits here.
+R.engine.fn = setmetatable({}, {
+    __index = function(_, name)
+        local fn = function(...) return R.engine.call(name, ...) end
+        rawset(R.engine.fn, name, fn)  -- memoize
+        return fn
+    end,
+})
+
 -- hooks (low-level escape valve; users should prefer R.* abstractions) -
 
 R.hook   = native.hook
@@ -117,29 +174,103 @@ R.unhook = native.unhook
 
 -- key-value store -------------------------------------------------------
 --
--- Per-mod state. Currently in-memory; persists across hot-reload via
--- the registry, lost on game exit. Persistence to disk is on the
--- roadmap (mods/<id>/state.json).
+-- Per-mod persistent state. Scalar values (string/number/boolean) are saved
+-- to <mod_dir>/.rsmm_state and reloaded next launch, so counters and flags
+-- survive game restarts. Loaded lazily on first access; flushed automatically
+-- on the "exit" event, and on demand via R.kv.save(). Non-scalar values
+-- (tables/functions) are kept in memory but skipped when saving.
 
-local _kv = {}
 R.kv = {}
 
+local _kv
+local _kv_dirty = false
+
+-- line format, one entry per line: "<s|n|b>\t<key>\t<value>"; key and string
+-- values are escaped so embedded TAB/newline/backslash round-trip safely.
+local function _esc(s)
+    return (s:gsub("[\\\n\t]", { ["\\"] = "\\\\", ["\n"] = "\\n", ["\t"] = "\\t" }))
+end
+
+local function _unesc(s)
+    return (s:gsub("\\(.)", { ["\\"] = "\\", n = "\n", t = "\t" }))
+end
+
+local function _serialize(tbl)
+    local out = {}
+    for k, v in pairs(tbl) do
+        local t = type(v)
+        if t == "string" then
+            out[#out + 1] = "s\t" .. _esc(k) .. "\t" .. _esc(v)
+        elseif t == "number" then
+            out[#out + 1] = "n\t" .. _esc(k) .. "\t" .. tostring(v)
+        elseif t == "boolean" then
+            out[#out + 1] = "b\t" .. _esc(k) .. "\t" .. (v and "1" or "0")
+        end  -- tables/functions: in-memory only, not persisted
+    end
+    return table.concat(out, "\n")
+end
+
+local function _deserialize(str)
+    local tbl = {}
+    for line in (str .. "\n"):gmatch("(.-)\n") do
+        local t, k, v = line:match("^(%a)\t(.-)\t(.*)$")
+        if t then
+            k = _unesc(k)
+            if t == "s" then
+                tbl[k] = _unesc(v)
+            elseif t == "n" then
+                tbl[k] = tonumber(v)
+            elseif t == "b" then
+                tbl[k] = (v == "1")
+            end
+        end
+    end
+    return tbl
+end
+
+local _exit_hooked = false
+local function _kv_load()
+    if _kv ~= nil then return end
+    local ok, raw = pcall(function() return I.state_read() end)
+    _kv = (ok and type(raw) == "string") and _deserialize(raw) or {}
+    if not _exit_hooked then
+        _exit_hooked = true
+        native.on_event("exit", function() R.kv.save() end)
+    end
+end
+
+-- Flush the store to disk now. Returns true on success (or if nothing
+-- changed since the last save). Pass force=true to write regardless.
+function R.kv.save(force)
+    if _kv == nil then return true end
+    if not _kv_dirty and not force then return true end
+    local ok, wrote = pcall(function() return I.state_write(_serialize(_kv)) end)
+    if ok and wrote then _kv_dirty = false end
+    return ok and wrote or false
+end
+
 function R.kv.get(k, default)
+    _kv_load()
     local v = _kv[k]
     if v == nil then return default end
     return v
 end
 
 function R.kv.set(k, v)
+    _kv_load()
     _kv[k] = v
+    _kv_dirty = true
 end
 
 function R.kv.inc(k, by)
+    _kv_load()
     _kv[k] = (_kv[k] or 0) + (by or 1)
+    _kv_dirty = true
     return _kv[k]
 end
 
 function R.kv.all()
+    _kv_load()
     local out = {}
     for k, v in pairs(_kv) do out[k] = v end
     return out
@@ -199,52 +330,56 @@ function R.item.list()
     return out
 end
 
--- scaling ---------------------------------------------------------------
+-- NOT-YET-IMPLEMENTED stubs ---------------------------------------------
 --
--- R.scaling.set("enemy_damage", function(act) return ({1, 1.5, 2})[act] end)
---
--- TODO: not yet wired. Will hook the value-modifier-computer once
--- located. Until then this just records the override for later
--- application.
+-- R.scaling and R.talent have a fixed API shape but NO game-side effect yet
+-- (gated on RE of the value-modifier-computer and the skill-grant path). They
+-- record the request and warn once so a mod author isn't misled into thinking
+-- an override took. `R.scaling.pending()` / `R.talent.pending()` expose what
+-- was requested, for when the wiring lands.
 
+local _warned = {}
+local function _warn_unimpl(api)
+    if _warned[api] then return end
+    _warned[api] = true
+    R.log("[rsmm." .. api .. "] NOT IMPLEMENTED yet — calls are recorded but "
+        .. "have no in-game effect. Track: docs/_re/HOOKPOINTS.md")
+end
+
+-- scaling: R.scaling.set("enemy_damage", function(act) return ({1,1.5,2})[act] end)
 R.scaling = {}
-
 local _scaling = {}
 
 function R.scaling.set(field, fn)
-    assert(type(field) == "string",  "R.scaling.set: field must be string")
-    assert(type(fn)    == "function","R.scaling.set: fn must be function")
+    assert(type(field) == "string",   "R.scaling.set: field must be string")
+    assert(type(fn)    == "function", "R.scaling.set: fn must be function")
     _scaling[field] = fn
-    R.log("[rsmm.scaling] set:", field, "(TODO: not yet wired to game)")
+    _warn_unimpl("scaling")
 end
 
 function R.scaling.get(field) return _scaling[field] end
+function R.scaling.pending() return _scaling end
 
--- talent controls -------------------------------------------------------
---
--- R.talent.allow_stack(true)   -- let the same talent be picked twice
--- R.talent.extra_at_level(11)  -- grant another talent pick at lvl 11
---
--- TODO: gated on Skill-emitter + skill-grant function RE.
-
+-- talent: R.talent.allow_stack(true) / R.talent.extra_at_level(11)
 R.talent = {}
-
 local _talent_cfg = { allow_stack = false, extra_at = {} }
 
 function R.talent.allow_stack(b)
     _talent_cfg.allow_stack = b and true or false
-    R.log("[rsmm.talent] allow_stack =", tostring(b), "(TODO)")
+    _warn_unimpl("talent")
 end
 
 function R.talent.extra_at_level(lvl)
     table.insert(_talent_cfg.extra_at, lvl)
-    R.log("[rsmm.talent] extra pick at lvl", lvl, "(TODO)")
+    _warn_unimpl("talent")
 end
+
+function R.talent.pending() return _talent_cfg end
 
 -- counters --------------------------------------------------------------
 --
 -- The simplest demo of the SDK: bump a counter every time an event
--- fires. Backed by R.kv for now.
+-- fires. Backed by R.kv, so counts persist across game restarts.
 --
 -- R.counter.on("run_end")  -- registers a "<event>_count" KV bump
 
@@ -256,6 +391,36 @@ function R.counter.on(event)
         R.kv.inc(key)
         R.log("[rsmm.counter]", key, "=", R.kv.get(key))
     end)
+end
+
+-- modular submodules ----------------------------------------------------
+--
+-- The remaining namespaces live in their own files under rsmm/ (installed
+-- alongside this entrypoint) and are merged onto R here, so a mod gets them
+-- via the single `require "rsmm"`:
+--   R.health   — crash history + per-mod boot canary checkpoints
+--   R.config   — typed per-mod config (get/set/on_change/all)
+--   R.i18n     — translation lookup with {var} interpolation
+--   R.api      — inter-mod API registry (expose/require with semver)
+--   R.schedule — next_frame / after(seconds) timers (driven on "tick")
+-- Each degrades gracefully if its backing native binding is absent.
+
+local function _submodule(name)
+    local ok, m = pcall(require, "rsmm." .. name)
+    if ok and type(m) == "table" then return m end
+    R.log("[rsmm] submodule rsmm." .. name .. " unavailable: " .. tostring(m))
+    return nil
+end
+
+R.health   = _submodule("health")
+R.config   = _submodule("config")
+R.i18n     = _submodule("i18n")
+R.api      = _submodule("api")
+R.schedule = _submodule("schedule")
+
+-- Drive the schedule module's frame pump off the one true event bus.
+if R.schedule and R.schedule._tick then
+    R.on("tick", function() R.schedule._tick() end)
 end
 
 -- escape hatch ----------------------------------------------------------

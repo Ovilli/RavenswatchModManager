@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **41** symbols across 9 categories.
+Total: **42** symbols across 9 categories.
 
 ## engine
 
@@ -24,15 +24,16 @@ Total: **41** symbols across 9 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `Entity_AllocInstance` | `0x14068fe90` | ❓ unverified |  | void*(void* resource_plus_0x18) |
+| `Entity_AllocInstance` | `0x14068fe90` | ✅ ok | ✔ | void*(void* allocator) |
 | `Entity_FindComponentByType` | `0x1406ca380` | ✅ ok | ✔ | oIEntityCpnt*(oCEntitySpawnerGo* go, oCMetaClass* meta) |
-| `Entity_FindMagicalObjectComponent` | `0x1406e2250` | ❓ unverified |  | void*(void* instance, void* mo_component_meta) |
+| `Entity_FindMagicalObjectComponent` | `0x1406e2250` | ✅ ok | ✔ | void*(void* instance, void* mo_component_meta) |
 | `g_MagicalObjectComponentMeta` | `0x141470768` | 📍 va |  | oCMetaClass* for the magical-object component; passed to Entity_FindMagicalObjectCompon… |
 
 ## event
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
+| `Analytics_SubmitNamedEvent` | `0x1401fa470` | ✅ ok | ✔ | void(void* analytics_mgr, void* payload_kv, StringDesc* event_name, char has_run_ctx) |
 | `Event_LevelUp` → `level_up` | `0x1401f6410` | ✅ ok | ✔ | Emitter whose body references the 'level_up_reach' string (xref 0x1401f64a4). void(ctx,… |
 | `Event_RunEnd` → `run_end` | `0x1401f51e0` | ✅ ok | ✔ | Emitter whose body references the 'run_end' string (xref 0x1401f5347). Loader post-deto… |
 
@@ -41,8 +42,8 @@ Total: **41** symbols across 9 categories.
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `InitialLoading_SpawnMagicalObjects` | `0x140260280` | ❓ unverified |  | Boot 'InitialLoading - MagicalObject SpawnAllObjects' caller that invokes SpawnAllObjec… |
-| `MagicalObjectPool_Grow` | `0x1401550d0` | ❓ unverified |  | void(void* pool_plus_0x10, uint32_t count, uint32_t by) |
-| `MagicalObjectPool_SourceLookup` | `0x1402590c0` | ❓ unverified |  | void*(void* pool, void* out, void* id) |
+| `MagicalObjectPool_Grow` | `0x1401550d0` | ✅ ok | ✔ | void(void* pool_plus_0x10, uint32_t count, uint32_t by) |
+| `MagicalObjectPool_SourceLookup` | `0x1402590c0` | ✅ ok | ✔ | void*(void* pool, void* out, void* id) |
 | `MagicalObject_SpawnAllObjects` | `0x140258760` | ✅ ok | ✔ | void(void* pool, void* scene) |
 | `MagicalObject_SpawnContainingFunc` | `0x1402586f0` | ✅ ok |  | Outer function (1283 bytes) that contains the inlined SpawnAllObjects entry at +0x70. T… |
 | `g_MagicalObjectPool` | `0x1414365d0` | 📍 va |  | Magical-object pool global pointer. Layout at *ptr: +0x0 source array, +0x8 source coun… |

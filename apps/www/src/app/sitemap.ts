@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next';
 
-const BASE = 'https://ravenswatch.ovilli.de';
+const BASE = 'https://rsmm.me';
 
 // Content-bearing public routes only — app/auth/account screens are excluded
 // (they hold no publisher content and must not be tied to ad serving).

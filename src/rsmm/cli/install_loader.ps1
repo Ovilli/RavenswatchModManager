@@ -92,9 +92,10 @@ if (Test-Path $luaSrc) {
   New-Item -ItemType Directory -Path $luaDst -Force | Out-Null
   Copy-Item -Path (Join-Path $luaSrc '*') -Destination $luaDst -Recurse -Force
 }
-# Always overwrite the entrypoint with the full lib/rsmm.lua (the lua/ tree
-# ships a stripped one lacking R.item), and ship the generated engine table
-# that R.engine.* resolves names through. Mirrors install_loader.sh.
+# lua/ ships the rsmm/*.lua submodules (health/config/i18n/api/schedule) that
+# lib/rsmm.lua require-merges. Install the entrypoint + generated engine table
+# (R.engine.* resolves names through it) from lib/. Mirrors install_loader.sh;
+# both lua/ and lib/ are bundled into the frozen sidecar.
 New-Item -ItemType Directory -Path $luaDst -Force | Out-Null
 $fullRsmm = Join-Path $repoDir 'src\loader\lib\rsmm.lua'
 if (Test-Path $fullRsmm) {

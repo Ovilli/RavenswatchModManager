@@ -28,6 +28,9 @@ extern "C" {
 
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <mutex>
 #include <type_traits>
 #include <unordered_map>
@@ -118,6 +121,43 @@ int lua_log(lua_State* L) {
 int lua_mod_dir(lua_State* L) {
     auto* m = current_from_state(L);
     lua_pushstring(L, m ? m->root.string().c_str() : "");
+    return 1;
+}
+
+// rsmm._internal.state_read() -> string | nil
+//   Reads <mod_dir>/.rsmm_state (opaque bytes) for the calling mod. Backs
+//   the persistent R.kv store. Returns nil when no state file exists.
+int lua_state_read(lua_State* L) {
+    auto* m = current_from_state(L);
+    if (!m) { lua_pushnil(L); return 1; }
+    std::ifstream f(m->root / ".rsmm_state", std::ios::binary);
+    if (!f) { lua_pushnil(L); return 1; }
+    std::string data((std::istreambuf_iterator<char>(f)),
+                     std::istreambuf_iterator<char>());
+    lua_pushlstring(L, data.data(), data.size());
+    return 1;
+}
+
+// rsmm._internal.state_write(str) -> bool
+//   Persists `str` to <mod_dir>/.rsmm_state via a temp-file + rename so a
+//   crash mid-write can't truncate the existing state.
+int lua_state_write(lua_State* L) {
+    size_t n = 0;
+    const char* s = luaL_checklstring(L, 1, &n);
+    auto* m = current_from_state(L);
+    if (!m) { lua_pushboolean(L, 0); return 1; }
+    const auto tmp = m->root / ".rsmm_state.tmp";
+    const auto dst = m->root / ".rsmm_state";
+    {
+        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
+        if (!f) { lua_pushboolean(L, 0); return 1; }
+        f.write(s, static_cast<std::streamsize>(n));
+        if (!f.good()) { lua_pushboolean(L, 0); return 1; }
+    }
+    std::error_code ec;
+    std::filesystem::rename(tmp, dst, ec);
+    if (ec) { std::filesystem::remove(tmp, ec); lua_pushboolean(L, 0); return 1; }
+    lua_pushboolean(L, 1);
     return 1;
 }
 
@@ -584,6 +624,8 @@ void register_api(lua_State* L) {
         { "write_u64",               lua_write_u64 },
         { "write_f32",               lua_write_f32 },
         { "write_f64",               lua_write_f64 },
+        { "state_read",              lua_state_read },
+        { "state_write",             lua_state_write },
         { nullptr, nullptr }
     };
     luaL_newlib(L, public_lib);          // -1 = rsmm

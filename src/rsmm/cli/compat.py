@@ -21,7 +21,7 @@ from pathlib import Path
 
 from rsmm.cli.merge import _toml_load
 from rsmm.engine.paths import MODS_DIR
-from rsmm.manifest_graph import _parse_dep, _parse_version, _version_ok
+from rsmm.manifest_graph import split_dep, version_satisfies
 
 
 @dataclass
@@ -89,7 +89,7 @@ def analyze() -> CompatReport:
         if not s.enabled:
             continue
         for spec in s.replaces:
-            name, _, _ = _parse_dep(spec)
+            name, _ = split_dep(spec)
             if name in by_id and by_id[name].enabled and name != s.id:
                 rep.auto_disabled[name] = f"replaced by {s.id}"
 
@@ -108,7 +108,7 @@ def analyze() -> CompatReport:
         if not is_active(s.id):
             continue
         for spec in s.conflicts:
-            name, _, _ = _parse_dep(spec)
+            name, _ = split_dep(spec)
             if is_active(name):
                 pair = tuple(sorted((s.id, name)))
                 if pair not in {tuple(sorted(p)) for p in rep.hard_conflicts}:
@@ -119,16 +119,14 @@ def analyze() -> CompatReport:
         if not is_active(s.id):
             continue
         for spec in s.requires:
-            name, op, ver = _parse_dep(spec)
+            name, rng = split_dep(spec)
             if name not in by_id:
                 rep.unmet_requires.append((s.id, f"missing dep {spec!r}"))
                 continue
             if not is_active(name):
                 rep.unmet_requires.append((s.id, f"dep disabled: {name}"))
                 continue
-            if op is not None and ver is not None and not _version_ok(
-                _parse_version(by_id[name].version), op, ver
-            ):
+            if rng and not version_satisfies(by_id[name].version, rng):
                 rep.unmet_requires.append((
                     s.id,
                     f"dep version mismatch: need {spec!r}, "
@@ -141,7 +139,7 @@ def analyze() -> CompatReport:
             continue
         graph[s.id] = []
         for spec in s.requires:
-            name, _, _ = _parse_dep(spec)
+            name, _ = split_dep(spec)
             if is_active(name):
                 graph[s.id].append(name)
 

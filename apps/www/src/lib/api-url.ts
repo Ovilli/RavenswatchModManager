@@ -13,7 +13,7 @@
  * a mismatch (e.g. auth on prod, list on localhost) silently breaks
  * sign-in flows that depend on shared cookies.
  */
-const PROD_API_URL = 'https://api.ravenswatch.ovilli.de';
+const PROD_API_URL = 'https://api.rsmm.me';
 const DEV_API_URL = 'http://localhost:3001';
 
 function isLocalhostUrl(url: string): boolean {
@@ -25,7 +25,7 @@ export function getApiUrl(): string {
   // Browser context: ignore a localhost env override when the page
   // itself isn't loaded from localhost. The Vercel deploy historically
   // shipped with NEXT_PUBLIC_API_URL=http://localhost:3001 baked into
-  // the bundle, which made ravenswatch.ovilli.de try to fetch from the
+  // the bundle, which made rsmm.me try to fetch from the
   // user's own machine. Treat that combination as a misconfiguration
   // and route to PROD_API_URL.
   if (typeof window !== 'undefined') {

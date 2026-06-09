@@ -99,6 +99,11 @@ class Symbol:
 class SymbolMap:
     preferred_base: int
     symbols: tuple[Symbol, ...]
+    # Firehose/observation events the loader republishes by raw name from the
+    # central telemetry sink (Analytics_SubmitNamedEvent). Catalog entries are
+    # {name, category, note}; they have no address (the loader reads the name
+    # at runtime), so they live here rather than in `symbols`.
+    event_catalog: tuple[dict[str, Any], ...] = ()
 
     def by_name(self, name: str) -> Symbol | None:
         for s in self.symbols:
@@ -150,6 +155,7 @@ def load_symbol_map(path: Path | None = None) -> SymbolMap:
     return SymbolMap(
         preferred_base=_parse_hex(data.get("preferred_base", "0x140000000")),
         symbols=tuple(_coerce(e) for e in data["symbols"]),
+        event_catalog=tuple(data.get("event_catalog", ())),
     )
 
 
