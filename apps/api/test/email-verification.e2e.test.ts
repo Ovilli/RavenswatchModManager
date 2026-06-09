@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { getDb, schema } from '@rsmm/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -87,7 +88,10 @@ suite('email verification e2e', () => {
   // randomized local-part. nanosecond-ish suffix keeps it collision-free.
   const tag = `verify-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   const email = `${env.testmail.namespace}.${tag}@inbox.testmail.app`;
-  const password = 'Sup3rSecret!pw';
+  // Generated per run — no static credential in source. The `A1!` prefix
+  // guarantees upper/digit/symbol so any password policy is satisfied; the
+  // user is torn down in afterAll regardless.
+  const password = `A1!${randomUUID()}`;
   const startTs = Date.now();
 
   afterAll(async () => {
