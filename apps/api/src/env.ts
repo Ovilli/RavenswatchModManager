@@ -100,7 +100,14 @@ export const env = {
     pass: process.env.SMTP_PASS ?? '',
     // STARTTLS on 587 by default; set SMTP_SECURE=true for SMTPS on 465.
     secure: process.env.SMTP_SECURE === 'true',
-    from: process.env.EMAIL_FROM || 'no-reply@rsmm.me',
+    from: process.env.EMAIL_FROM || 'no-reply.ravenswatch@ovilli.de',
+  },
+  // testmail.app inbox used by the email-verification e2e test. testmail
+  // only RECEIVES mail (at <namespace>.<tag>@inbox.testmail.app); the API
+  // still sends through SMTP above. Unset in prod — the test self-skips.
+  testmail: {
+    apikey: process.env.TESTMAIL_APIKEY ?? '',
+    namespace: process.env.TESTMAIL_NAMESPACE ?? '',
   },
 };
 
@@ -122,6 +129,10 @@ export function githubConfigured(): boolean {
 
 export function virusTotalConfigured(): boolean {
   return Boolean(env.virusTotalApiKey);
+}
+
+export function testmailConfigured(): boolean {
+  return Boolean(env.testmail.apikey && env.testmail.namespace);
 }
 
 if (isProduction && !smtpConfigured()) {
