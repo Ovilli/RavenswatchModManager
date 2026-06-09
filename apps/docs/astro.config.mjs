@@ -4,7 +4,7 @@ import mermaid from 'astro-mermaid';
 import starlightLinksValidator from 'starlight-links-validator';
 
 export default defineConfig({
-  site: 'https://docs.ravenswatch.ovilli.de',
+  site: 'https://docs.rsmm.me',
   // Serve images as-is (no Sharp dependency in CI / Vercel build).
   image: { service: passthroughImageService() },
   integrations: [
@@ -23,10 +23,10 @@ export default defineConfig({
       lastUpdated: true,
       // Site-wide social-preview image (link unfurls on Discord/Twitter/etc).
       head: [
-        { tag: 'meta', attrs: { property: 'og:image', content: 'https://docs.ravenswatch.ovilli.de/og.png' } },
+        { tag: 'meta', attrs: { property: 'og:image', content: 'https://docs.rsmm.me/og.png' } },
         { tag: 'meta', attrs: { property: 'og:type', content: 'website' } },
         { tag: 'meta', attrs: { name: 'twitter:card', content: 'summary_large_image' } },
-        { tag: 'meta', attrs: { name: 'twitter:image', content: 'https://docs.ravenswatch.ovilli.de/og.png' } },
+        { tag: 'meta', attrs: { name: 'twitter:image', content: 'https://docs.rsmm.me/og.png' } },
         // AI-assistant ingestion (https://llmstxt.org/).
         { tag: 'link', attrs: { rel: 'alternate', type: 'text/plain', title: 'llms.txt', href: '/llms.txt' } },
       ],

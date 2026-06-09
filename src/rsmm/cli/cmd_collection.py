@@ -13,7 +13,7 @@ from rsmm.cli.json_bridge import cmd_install_mod
 
 def _api_base() -> str:
     import os
-    return os.environ.get("RSMM_INDEX_URL", "https://api.ravenswatch.ovilli.de")
+    return os.environ.get("RSMM_INDEX_URL", "https://api.rsmm.me")
 
 
 def _http_get_json(url: str) -> dict:

@@ -64,7 +64,7 @@ python3 -m venv .venv && source .venv/bin/activate && pip install -e .
 | For you | Start here |
 |---|---|
 | Installing the mod manager | [docs/INSTALLATION.md](docs/INSTALLATION.md) |
-| Using the desktop app | [RSMM Docs](https://rsmm.dev) |
+| Using the desktop app | [RSMM Docs](https://docs.rsmm.me) |
 | Creating mods | [docs/MODDING.md](docs/MODDING.md) |
 | CLI reference | [docs/CLI_USAGE.md](docs/CLI_USAGE.md) |
 | Contributing | [docs/SETUP.md](docs/SETUP.md) |

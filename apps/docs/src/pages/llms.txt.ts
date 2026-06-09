@@ -8,7 +8,7 @@ import type { APIRoute } from 'astro';
 const pageUrl = (base: string, id: string) => (id === 'index' ? `${base}/` : `${base}/${id}/`);
 
 export const GET: APIRoute = async ({ site }) => {
-  const base = (site?.toString() ?? 'https://docs.ravenswatch.ovilli.de').replace(/\/$/, '');
+  const base = (site?.toString() ?? 'https://docs.rsmm.me').replace(/\/$/, '');
   const docs = (await getCollection('docs'))
     .filter((e) => e.id !== '404')
     .sort((a, b) => a.id.localeCompare(b.id));

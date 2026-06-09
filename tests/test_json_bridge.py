@@ -37,7 +37,7 @@ def test_slugify(raw, want):
 # --- _upload_url_allowed (SSRF allowlist) ----------------------------------
 
 @pytest.mark.parametrize("url", [
-    "https://s3-ravenswatch.ovilli.de/bucket/key",
+    "https://s3-rsmm.me/bucket/key",
     "https://ravenswatch-mods.s3.amazonaws.com/x",
 ])
 def test_upload_url_allowed_known_hosts(url):
@@ -47,7 +47,7 @@ def test_upload_url_allowed_known_hosts(url):
 @pytest.mark.parametrize("url", [
     "https://evil.example.com/x",
     "http://169.254.169.254/latest/meta-data/",  # cloud metadata SSRF
-    "https://s3-ravenswatch.ovilli.de.evil.com/x",  # suffix trick
+    "https://s3-rsmm.me.evil.com/x",  # suffix trick
     "not a url",
     "",
 ])

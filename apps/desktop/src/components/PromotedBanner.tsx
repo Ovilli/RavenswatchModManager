@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { inTauri } from '../lib/platform';
 
-const AD_ORIGIN = import.meta.env.VITE_ADS_ORIGIN ?? 'https://ravenswatch.ovilli.de';
+const AD_ORIGIN = import.meta.env.VITE_ADS_ORIGIN ?? 'https://rsmm.me';
 const AD_BANNER_PATH = '/ads/banner';
 
 /**

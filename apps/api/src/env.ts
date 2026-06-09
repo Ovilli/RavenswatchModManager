@@ -64,7 +64,7 @@ export const env = {
     endpoint: process.env.S3_ENDPOINT, // R2: https://<account>.r2.cloudflarestorage.com
     accessKeyId: process.env.S3_ACCESS_KEY_ID ?? '',
     secretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? '',
-    publicBaseUrl: process.env.S3_PUBLIC_BASE_URL ?? '', // e.g. https://cdn.rsmm.dev
+    publicBaseUrl: process.env.S3_PUBLIC_BASE_URL ?? '', // e.g. https://cdn.rsmm.me
     signedUrlTtlSeconds: (() => {
       const raw = process.env.S3_SIGNED_TTL;
       if (!raw) return 900;
@@ -100,7 +100,7 @@ export const env = {
     pass: process.env.SMTP_PASS ?? '',
     // STARTTLS on 587 by default; set SMTP_SECURE=true for SMTPS on 465.
     secure: process.env.SMTP_SECURE === 'true',
-    from: process.env.EMAIL_FROM || 'no-reply@ravenswatch.ovilli.de',
+    from: process.env.EMAIL_FROM || 'no-reply@rsmm.me',
   },
 };
 

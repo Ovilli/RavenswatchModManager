@@ -8,6 +8,6 @@ export default function robots(): MetadataRoute.Robots {
       // App/account screens carry no public content — keep them out of the index.
       disallow: ['/auth/', '/account', '/my-mods', '/publish'],
     },
-    sitemap: 'https://ravenswatch.ovilli.de/sitemap.xml',
+    sitemap: 'https://rsmm.me/sitemap.xml',
   };
 }

@@ -515,7 +515,7 @@ def cmd_pack_mod(mod_id: str) -> int:
 
 
 _UPLOAD_HOST_ALLOWLIST: tuple[str, ...] = (
-    "s3-ravenswatch.ovilli.de",
+    "s3-rsmm.me",
     "ravenswatch-mods.s3.amazonaws.com",
 )
 
@@ -595,7 +595,7 @@ def cmd_upload_bytes(path: str, url: str) -> int:
         return _emit({"ok": False, "error": str(e)})
 
 
-_DEFAULT_INDEX_BASE = "https://api.ravenswatch.ovilli.de"
+_DEFAULT_INDEX_BASE = "https://api.rsmm.me"
 
 
 def _index_base() -> str:

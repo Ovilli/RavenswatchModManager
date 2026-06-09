@@ -7,7 +7,7 @@ import { VersionBadge } from './version-badge';
 import './globals.css';
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://ravenswatch.ovilli.de'),
+  metadataBase: new URL('https://rsmm.me'),
   title: 'Ravenswatch Mod Manager',
   description: 'Mod manager for Ravenswatch — browser, Windows, Linux.',
   icons: '/logo.png',

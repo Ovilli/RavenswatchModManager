@@ -9,7 +9,7 @@ const host = process.env.TAURI_DEV_HOST;
 // production deploy so contributors don't need a local `apps/api`
 // instance running. Override with `VITE_DEV_API_PROXY` to point at a
 // local backend (e.g. `http://localhost:3001`).
-const DEV_API_PROXY = process.env.VITE_DEV_API_PROXY || 'https://api.ravenswatch.ovilli.de';
+const DEV_API_PROXY = process.env.VITE_DEV_API_PROXY || 'https://api.rsmm.me';
 
 export default defineConfig({
   plugins: [TanStackRouterVite(), react()],

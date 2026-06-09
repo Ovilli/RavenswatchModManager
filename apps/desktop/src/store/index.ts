@@ -237,7 +237,7 @@ export const useApp = create<State>()(
             : '~/.local/share/rsmm/backups',
         modsDir: defaultModsDir(),
         showNsfw: false,
-        sources: ['https://rsmm.dev/registry'],
+        sources: ['https://rsmm.me/registry'],
         density: 'cozy',
       },
       localMods: {},

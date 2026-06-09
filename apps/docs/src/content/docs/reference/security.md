@@ -85,6 +85,6 @@ review and moderation workflow in place for uploaded mods.
 
 ## Reporting a vulnerability
 
-Email `security@rsmm.dev` (or, until that is provisioned, open a
+Email `security@rsmm.me` (or, until that is provisioned, open a
 private security advisory on the GitHub repo). Do not file public
 issues for security reports.
