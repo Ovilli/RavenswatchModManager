@@ -13,6 +13,7 @@ from rsmm.cli.doctor import (
     check_mods,
     check_patch_conflicts,
     check_state,
+    check_usedrsclist,
 )
 
 
@@ -63,6 +64,93 @@ def test_check_state_has_active(tmp_path):
     state.write_text(json.dumps({"active": {"a\\b.bin": "TestMod"}}), encoding="utf-8")
     results = check_state(tmp_path)
     assert any("1 active override" in r.label for r in results)
+
+
+def _state_entry(game_dir, enc, content: bytes | None, src_sha: str,
+                 orig_sha: str = "") -> None:
+    """Write a state file with one active entry; optionally materialize the
+    installed file with `content`."""
+    cooking = game_dir / "DarkTalesResources" / "_Cooking"
+    cooking.mkdir(parents=True, exist_ok=True)
+    if content is not None:
+        dest = cooking.joinpath(*enc.split("\\"))
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(content)
+    (cooking / ".rsmm_state.json").write_text(json.dumps({
+        "version": 1,
+        "active": {enc: {"mod": "TestMod",
+                         "src_sha256": src_sha,
+                         "orig_sha256": orig_sha}},
+    }), encoding="utf-8")
+
+
+def test_check_state_flags_missing_override(tmp_path):
+    _state_entry(tmp_path, "a\\b.bin", None, "0" * 64)
+    results = check_state(tmp_path)
+    assert any(r.kind == "WARN" and "missing on disk" in r.label for r in results)
+
+
+def test_check_state_flags_hash_drift(tmp_path):
+    # Installed bytes don't match the recorded mod hash -> drift WARN.
+    _state_entry(tmp_path, "a\\b.bin", b"VANILLA CONTENT", "f" * 64)
+    results = check_state(tmp_path)
+    assert any(r.kind == "WARN" and "no longer match" in r.label for r in results)
+
+
+def test_check_state_clean_when_hash_matches(tmp_path):
+    import hashlib
+    content = b"MOD CONTENT"
+    _state_entry(tmp_path, "a\\b.bin", content,
+                 hashlib.sha256(content).hexdigest())
+    results = check_state(tmp_path)
+    assert all(r.kind == "OK" for r in results)
+
+
+def test_check_state_flags_lost_backup(tmp_path):
+    # orig_sha256 recorded (an original was backed up) but no .rsmm.bak.
+    import hashlib
+    content = b"MOD CONTENT"
+    _state_entry(tmp_path, "a\\b.bin", content,
+                 hashlib.sha256(content).hexdigest(), orig_sha="a" * 64)
+    results = check_state(tmp_path)
+    assert any(r.kind == "WARN" and ".rsmm.bak" in r.label for r in results)
+
+
+def _write_usedrsc(game_dir, lines: list[str], suffix: str = "") -> None:
+    p = game_dir / "DarkTalesResources" / ("UsedRscList.ot" + suffix)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("\n".join(["1", *lines]) + "\n", encoding="utf-8")
+
+
+def test_check_usedrsclist_missing(tmp_path):
+    results = check_usedrsclist(tmp_path)
+    assert any(r.kind == "WARN" and "not found" in r.label for r in results)
+
+
+def test_check_usedrsclist_aligned_ok(tmp_path):
+    _write_usedrsc(tmp_path, ["t", "n", "p"] * 4)
+    results = check_usedrsclist(tmp_path)
+    assert all(r.kind == "OK" for r in results)
+
+
+def test_check_usedrsclist_desync_fails(tmp_path):
+    _write_usedrsc(tmp_path, ["t", "n", "p", "orphan"])
+    results = check_usedrsclist(tmp_path)
+    assert any(r.kind == "FAIL" and "desync" in r.label for r in results)
+
+
+def test_check_usedrsclist_reports_custom_records(tmp_path):
+    _write_usedrsc(tmp_path, ["t", "n", "p"] * 3)
+    _write_usedrsc(tmp_path, ["t", "n", "p"] * 2, suffix=".rsmm.bak")
+    results = check_usedrsclist(tmp_path)
+    assert any("1 custom resource record" in r.label for r in results)
+
+
+def test_check_usedrsclist_shorter_than_backup_warns(tmp_path):
+    _write_usedrsc(tmp_path, ["t", "n", "p"])
+    _write_usedrsc(tmp_path, ["t", "n", "p"] * 2, suffix=".rsmm.bak")
+    results = check_usedrsclist(tmp_path)
+    assert any(r.kind == "WARN" and "SHORTER" in r.label for r in results)
 
 
 def test_check_exe_hash_no_patterns(tmp_path, monkeypatch):

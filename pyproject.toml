@@ -49,7 +49,14 @@ include = ["rsmm*"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-extend-exclude = ["src/loader/third_party"]
+extend-exclude = [
+    "src/loader/third_party",
+    # Ghidra Jython 2.7 post-scripts: run inside Ghidra with injected
+    # globals (currentProgram, monitor, ...) — not py311 code.
+    "docs/_re/scripts",
+    # Vendored upstream GhidraMCP bridge (LaurieWired) — keep diffable.
+    "tools/ghidra_mcp",
+]
 
 [tool.ruff.lint]
 select = ["F", "E", "W", "I", "UP", "B", "BLE"]

@@ -64,8 +64,18 @@ def main() -> int:
         )
         return 2
 
+    if not args.reference.exists():
+        print(f"reference not found: {args.reference}", file=sys.stderr)
+        return 1
     ref_data = args.reference.read_bytes()
-    cf = cooked.parse(ref_data)
+    try:
+        cf = cooked.parse(ref_data)
+    except ValueError as e:
+        print(f"{args.reference}: not a cooked Ravenswatch file ({e}).\n"
+              "  --from must point at an original cooked asset from "
+              "<install>/DarkTalesResources/_Cooking/ (or data/uncooked/).",
+              file=sys.stderr)
+        return 1
     root_class = args.class_name or (cf.classes[0].name if cf.classes else "")
     if not root_class:
         print("could not determine class — pass --class explicitly", file=sys.stderr)

@@ -54,7 +54,14 @@ def main() -> int:
         return 1
 
     data = args.input.read_bytes()
-    cf = cooked.parse(data)
+    try:
+        cf = cooked.parse(data)
+    except ValueError as e:
+        print(f"{args.input}: not a cooked Ravenswatch file ({e}).\n"
+              "  Expected a cooked asset from "
+              "<install>/DarkTalesResources/_Cooking/ "
+              "(.yqz / .tpi / .zux / .gen).", file=sys.stderr)
+        return 1
     root_class = cf.classes[0].name if cf.classes else "<unknown>"
 
     if args.info:

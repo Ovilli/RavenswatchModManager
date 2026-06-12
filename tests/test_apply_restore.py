@@ -87,3 +87,66 @@ def test_apply_then_restore_roundtrips(tmp_path, monkeypatch, capsys):
     assert not bak.exists(), "backup should be moved back, not left behind"
     state = json.loads(state_path.read_text())
     assert state.get("active") == {}, state
+
+
+def test_apply_recopies_when_installed_copy_drifts(tmp_path, monkeypatch, capsys):
+    """Stale-install regression: state says the override is applied (and the
+    mod source is unchanged), but the installed bytes drifted — e.g. Steam
+    'verify integrity' put the vanilla file back. apply must hash the
+    *installed* copy, notice the mismatch, and re-copy the mod asset instead
+    of trusting the state entry."""
+    from rsmm.cli import apply_mods
+
+    repo, mods_dir, asset_map, game_dir = _make_fake_repo(tmp_path)
+    cooking = game_dir / "DarkTalesResources" / "_Cooking"
+    vanilla = cooking / "a" / "b.bin"
+
+    monkeypatch.setattr(apply_mods, "MODS_DIR", mods_dir)
+    monkeypatch.setattr(apply_mods, "ASSET_MAP_JSON", asset_map)
+    import rsmm.engine.find_iyg as find_iyg
+    monkeypatch.setattr(find_iyg, "main", lambda *a, **k: 0)
+
+    args = SimpleNamespace(dry_run=False)
+
+    rc = apply_mods.cmd_apply(args, repo, cooking, game_dir)
+    capsys.readouterr()
+    assert rc == 0
+    assert vanilla.read_bytes() == b"MOD CONTENT"
+
+    # Simulate Steam verify: vanilla bytes return, state still says applied.
+    vanilla.write_bytes(b"VANILLA CONTENT")
+
+    rc = apply_mods.cmd_apply(args, repo, cooking, game_dir)
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert vanilla.read_bytes() == b"MOD CONTENT", \
+        "apply trusted the state entry instead of re-hashing the installed copy"
+    assert "Mods already in sync." not in out
+
+
+def test_apply_skips_unchanged_override(tmp_path, monkeypatch, capsys):
+    """Counterpart to the drift test: when the installed copy still matches
+    the mod source, a second apply is a no-op (no churn, no backup rewrite)."""
+    from rsmm.cli import apply_mods
+
+    repo, mods_dir, asset_map, game_dir = _make_fake_repo(tmp_path)
+    cooking = game_dir / "DarkTalesResources" / "_Cooking"
+    vanilla = cooking / "a" / "b.bin"
+    bak = vanilla.parent / (vanilla.name + ".rsmm.bak")
+
+    monkeypatch.setattr(apply_mods, "MODS_DIR", mods_dir)
+    monkeypatch.setattr(apply_mods, "ASSET_MAP_JSON", asset_map)
+    import rsmm.engine.find_iyg as find_iyg
+    monkeypatch.setattr(find_iyg, "main", lambda *a, **k: 0)
+
+    args = SimpleNamespace(dry_run=False)
+
+    assert apply_mods.cmd_apply(args, repo, cooking, game_dir) == 0
+    capsys.readouterr()
+
+    rc = apply_mods.cmd_apply(args, repo, cooking, game_dir)
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "Mods already in sync." in out
+    assert vanilla.read_bytes() == b"MOD CONTENT"
+    assert bak.read_bytes() == b"VANILLA CONTENT"

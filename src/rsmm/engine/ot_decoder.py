@@ -293,14 +293,25 @@ def main():
     ap.add_argument("--raw", action="store_true", help="dump section payloads as hex")
     args = ap.parse_args()
 
-    with open(args.path, "rb") as f:
-        data = f.read()
+    try:
+        with open(args.path, "rb") as f:
+            data = f.read()
+    except OSError as e:
+        print(f"cannot read {args.path}: {e}", file=sys.stderr)
+        return 1
     c = Cursor(data)
-    cf = parse_header(c)
-    parse_class_table(c, cf)
-    parse_sections(c, cf)
+    try:
+        cf = parse_header(c)
+        parse_class_table(c, cf)
+        parse_sections(c, cf)
+    except ValueError as e:
+        print(f"{args.path}: not a cooked Ravenswatch file ({e}).\n"
+              "  `rsmm decode` expects a cooked asset from "
+              "<install>/DarkTalesResources/_Cooking/.", file=sys.stderr)
+        return 1
     cf.body_offset = c.pos
     sys.stdout.write(emit(cf, args.path, show_raw=args.raw))
+    return 0
 
 
 if __name__ == "__main__":

@@ -121,7 +121,11 @@ def check_mods() -> list[Result]:
     out: list[Result] = []
     if not MODS_DIR.is_dir():
         return [Result("WARN", "mods/ missing")]
-    dec2enc = decoded_to_encoded()
+    try:
+        dec2enc = decoded_to_encoded()
+    except (OSError, ValueError) as e:
+        return [Result("FAIL", "cannot load asset_map.json",
+                       f"{e}\nRun: ./rsmm rebuild-asset-map")]
     found = 0
     enabled = 0
     file_owners: dict[str, list[str]] = {}
@@ -259,9 +263,113 @@ def check_state(game_dir: Path) -> list[Result]:
     try:
         data = json.loads(state.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as e:
-        return [Result("FAIL", "state file is corrupt", str(e))]
+        return [Result("FAIL", "state file is corrupt",
+                       f"{e}\nRun: ./rsmm restore --all  (recovers via backups + "
+                       "residue sweep), then: ./rsmm apply")]
     active = data.get("active", {}) or {}
-    return [Result("OK", f"applier state: {len(active)} active override(s)")]
+    out = [Result("OK", f"applier state: {len(active)} active override(s)")]
+
+    # State-vs-disk desync: state says a file is overridden, but the
+    # installed copy is gone (game update / manual delete) or its bytes no
+    # longer match the recorded mod hash (Steam "verify integrity" restored
+    # vanilla content). Either way `rsmm apply` self-heals.
+    from rsmm.cli.apply_mods import BACKUP_SUFFIX, ROOT_PREFIX, encoded_to_dest
+    cooking = game_dir / COOKING_SUBDIR
+    missing: list[str] = []
+    drifted: list[str] = []
+    lost_backups: list[str] = []
+    for enc, entry in active.items():
+        if not isinstance(entry, dict):
+            continue
+        try:
+            dest = encoded_to_dest(enc, cooking, game_dir)
+        except ValueError:
+            continue
+        if not dest.exists():
+            missing.append(enc)
+            continue
+        want = entry.get("src_sha256")
+        if want and sha256_file(dest) != want:
+            drifted.append(enc)
+        if entry.get("orig_sha256") and not enc.startswith(ROOT_PREFIX):
+            bak = dest.parent / (dest.name + BACKUP_SUFFIX)
+            if not bak.exists():
+                lost_backups.append(enc)
+
+    def _listing(items: list[str], cap: int = 5) -> str:
+        shown = "\n".join(f"- {e}" for e in items[:cap])
+        if len(items) > cap:
+            shown += f"\n... and {len(items) - cap} more"
+        return shown
+
+    if missing:
+        out.append(Result("WARN",
+                          f"{len(missing)} override(s) in state but missing on disk",
+                          _listing(missing) + "\nRun: ./rsmm apply  (re-installs them)"))
+    if drifted:
+        out.append(Result("WARN",
+                          f"{len(drifted)} installed override(s) no longer match "
+                          "their mod source hash",
+                          _listing(drifted) +
+                          "\nLikely a Steam file verify or game update. "
+                          "Run: ./rsmm apply  (re-copies stale files)"))
+    if lost_backups:
+        out.append(Result("WARN",
+                          f"{len(lost_backups)} override(s) lost their .rsmm.bak backup",
+                          _listing(lost_backups) +
+                          "\nRestore for these falls back to the residue sweep; "
+                          "verify game files in Steam to be safe."))
+    if not (missing or drifted or lost_backups) and active:
+        out.append(Result("OK", "state matches installed files (hash-verified)"))
+    return out
+
+
+def check_usedrsclist(game_dir: Path) -> list[Result]:
+    """Sanity-check the engine's master resource manifest.
+
+    The engine parses UsedRscList.ot in fixed 3-line records; a record-count
+    desync (e.g. a partial write or hand-edit) hard-crashes the game at boot.
+    Also reports how many custom record lines rsmm has registered on top of
+    the pristine backup, and flags drift that rsmm did not produce."""
+    from rsmm.cli.apply_mods import BACKUP_SUFFIX, USEDRSCLIST_REL, _read_usedrsclist
+    path = game_dir / USEDRSCLIST_REL
+    if not path.exists():
+        return [Result("WARN", f"UsedRscList.ot not found: {path}",
+                       "Game install may be incomplete; verify files in Steam.")]
+    try:
+        _header, lines = _read_usedrsclist(path)
+    except (OSError, ValueError) as e:
+        return [Result("FAIL", "UsedRscList.ot unreadable", str(e))]
+    out: list[Result] = []
+    if len(lines) % 3 != 0:
+        out.append(Result("FAIL",
+                          f"UsedRscList.ot record desync ({len(lines)} lines, "
+                          "not a multiple of 3) — the game WILL crash at boot",
+                          "Run: ./rsmm restore --all  (restores the pristine "
+                          "manifest), or verify game files in Steam."))
+    bak = path.with_name(path.name + BACKUP_SUFFIX)
+    if bak.exists():
+        try:
+            _bh, base = _read_usedrsclist(bak)
+        except (OSError, ValueError) as e:
+            return out + [Result("WARN", "UsedRscList.ot backup unreadable", str(e))]
+        extra = len(lines) - len(base)
+        if extra < 0:
+            out.append(Result("WARN",
+                              "UsedRscList.ot is SHORTER than its rsmm backup",
+                              "The live manifest lost lines rsmm didn't remove "
+                              "(game update mid-state?). Run: ./rsmm apply"))
+        elif extra:
+            out.append(Result("OK",
+                              f"UsedRscList.ot: {extra // 3} custom resource "
+                              "record(s) registered by rsmm"))
+        else:
+            out.append(Result("OK", "UsedRscList.ot matches pristine backup "
+                                    "(no custom registrations active)"))
+    elif not out:
+        out.append(Result("OK", f"UsedRscList.ot OK ({len(lines) // 3:,} records, "
+                                "no rsmm modifications)"))
+    return out
 
 
 #: GraphIssue severity -> doctor Result kind. info never fails the run.
@@ -355,6 +463,12 @@ def main() -> int:
 
     print("\napplier state:")
     rs = check_state(args.game_dir)
+    for r in rs:
+        emit(r)
+    results.extend(rs)
+
+    print("\nresource manifest (UsedRscList.ot):")
+    rs = check_usedrsclist(args.game_dir)
     for r in rs:
         emit(r)
     results.extend(rs)

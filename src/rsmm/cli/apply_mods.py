@@ -395,8 +395,13 @@ def discover_mods(repo: Path) -> list[Mod]:
             continue
         try:
             mods.append(Mod(entry))
+        except tomllib.TOMLDecodeError as e:
+            print(f"  [warn] skipping mod '{entry.name}': manifest.toml is not "
+                  f"valid TOML ({e}).\n"
+                  f"         Fix {entry / 'manifest.toml'} "
+                  f"(check it with: rsmm lint {entry.name})", file=sys.stderr)
         except (OSError, ValueError) as e:
-            print(f"  skip {entry.name}: {e}", file=sys.stderr)
+            print(f"  [warn] skipping mod '{entry.name}': {e}", file=sys.stderr)
     return mods
 
 
@@ -560,8 +565,16 @@ def plan_apply(mods: list[Mod],
         # Legacy `src_sha1` entries never match — they're treated as
         # "needs re-apply" which is a no-op shutil.copy2 plus a state
         # rewrite into the sha256 field. See the State docstring.
-        if cur and cur.get("src_sha256") == src_sha and dest.exists():
-            # already applied + unchanged
+        #
+        # Stale-install guard: don't trust the state file alone. The
+        # installed copy can drift from what state says is applied (Steam
+        # "verify integrity" restores vanilla bytes, a game update rewrites
+        # the file, a crashed apply left old content behind) — so the skip
+        # requires the *installed* bytes to actually hash-match the mod
+        # source, not just the state entry.
+        if (cur and cur.get("src_sha256") == src_sha and dest.exists()
+                and sha256(dest) == src_sha):
+            # already applied + unchanged on disk
             continue
         additions.append((enc, src, dest, mod_id))
 
@@ -1014,14 +1027,21 @@ def _recover_game_update(cooking: Path, game_dir: Path) -> bool:
         except OSError:
             pass
 
-    # 3. Rebuild asset map if the resource list changed
+    # 3. Rebuild asset map if the resource list changed. Pass the
+    # UsedRscList path explicitly — find_iyg.main() otherwise falls back
+    # to sys.argv[1], which here is a leftover CLI flag like
+    # `--game-dir`, not a file.
     try:
         from rsmm.engine.find_iyg import main as rebuild_asset_map
-        rebuild_asset_map()
-        # Clear the LRU cache so the fresh map is picked up
-        from rsmm.engine.asset_map import encoded_to_decoded
-        encoded_to_decoded.cache_clear()
-        print("  + rebuilt asset map")
+        rc = rebuild_asset_map(str(game_dir / "DarkTalesResources" / "UsedRscList.ot"))
+        if rc:
+            print("  [warn] asset map rebuild failed (see above); "
+                  "keeping the previous map", file=sys.stderr)
+        else:
+            # Clear the LRU cache so the fresh map is picked up
+            from rsmm.engine.asset_map import encoded_to_decoded
+            encoded_to_decoded.cache_clear()
+            print("  + rebuilt asset map")
     except (OSError, ImportError) as e:
         print(f"  [warn] asset map rebuild failed: {e}", file=sys.stderr)
 
@@ -1584,7 +1604,9 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
             if len(show) > 20:
                 print(f"    ... and {len(show) - 20} more", file=sys.stderr)
             return 2
-    except OSError as e:
+    except (OSError, ValueError) as e:
+        # ValueError covers a corrupt asset_map.json — restore must still
+        # finish its filesystem cleanup even when the map can't be loaded.
         print(f"  [warn] residue sweep skipped: {e}", file=sys.stderr)
 
     # Drop custom UsedRscList.ot registrations. On a game update the backup
@@ -1644,6 +1666,26 @@ def cmd_list(args, repo: Path, cooking: Path) -> int:
     return 0
 
 
+def _ensure_asset_map() -> bool:
+    """Pre-flight: the asset map must exist and parse before apply/list can
+    resolve any mod path. Print an actionable message instead of letting a
+    FileNotFoundError / JSONDecodeError traceback reach the user."""
+    p = ASSET_MAP_JSON
+    try:
+        json.loads(p.read_text(encoding="utf-8"))
+        return True
+    except FileNotFoundError:
+        print(f"asset map not found: {p}\n"
+              "  Run: ./rsmm rebuild-asset-map   (requires the game install)\n"
+              "  If you installed a packaged rsmm build, reinstall it — the "
+              "asset map ships with it.", file=sys.stderr)
+    except (OSError, ValueError) as e:
+        print(f"asset map is unreadable: {p}\n  ({e})\n"
+              "  Run: ./rsmm rebuild-asset-map to regenerate it.",
+              file=sys.stderr)
+    return False
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--game-dir", type=Path, default=None,
@@ -1679,10 +1721,14 @@ def main() -> int:
         print(f"_Cooking not found at {cooking}", file=sys.stderr)
         return 1
 
+    if args.restore_all:
+        # restore tolerates a missing/corrupt asset map (its residue sweep
+        # already guards itself) — never block a rollback on it.
+        return cmd_restore_all(args, repo, cooking, game_dir)
+    if not _ensure_asset_map():
+        return 1
     if args.list:
         return cmd_list(args, repo, cooking)
-    if args.restore_all:
-        return cmd_restore_all(args, repo, cooking, game_dir)
 
     # Compatibility graph: refuse to apply on hard conflict / cycle /
     # unmet require unless the user passes --force.

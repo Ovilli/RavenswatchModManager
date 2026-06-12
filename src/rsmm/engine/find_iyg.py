@@ -23,15 +23,32 @@ def decrypt_string(s: str) -> str:
     return ''.join(decrypt_char(ch) for ch in s)
 
 
-def main() -> int:
-    from .paths import DEFAULT_GAME_DIR
-    default = str(DEFAULT_GAME_DIR / "DarkTalesResources" / "UsedRscList.ot")
-    path = os.environ.get(
-        "USEDRSCLIST", sys.argv[1] if len(sys.argv) > 1 else default,
-    )
+def main(path: str | None = None) -> int:
+    """Rebuild data/asset_map.{json,csv} from UsedRscList.ot.
+
+    Source path resolution, most to least explicit: the ``path`` argument
+    (programmatic callers, e.g. apply's game-update recovery), the
+    ``USEDRSCLIST`` env var, ``sys.argv[1]`` (CLI:
+    ``rsmm rebuild-asset-map [path]``), then the autodetected install.
+    """
+    if path is None:
+        path = os.environ.get("USEDRSCLIST") or (
+            sys.argv[1] if len(sys.argv) > 1 else None
+        )
+    if path is None:
+        from .paths import DEFAULT_GAME_DIR
+        path = str(DEFAULT_GAME_DIR / "DarkTalesResources" / "UsedRscList.ot")
     print(f"Reading {path}...")
-    with open(path, encoding='utf-8') as f:
-        lines = [line.strip() for line in f if line.strip()]
+    try:
+        with open(path, encoding='utf-8') as f:
+            lines = [line.strip() for line in f if line.strip()]
+    except OSError as e:
+        print(f"Cannot read UsedRscList.ot: {e}\n"
+              "  Expected the game's resource manifest at "
+              "<install>/DarkTalesResources/UsedRscList.ot.\n"
+              "  Pass the path explicitly: rsmm rebuild-asset-map <path>",
+              file=sys.stderr)
+        return 1
     if lines and lines[0].isdigit():
         lines = lines[1:]
     mapping = {obf: decrypt_string(obf) for obf in lines}
