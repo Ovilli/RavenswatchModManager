@@ -178,6 +178,135 @@ R.engine.fn = setmetatable({}, {
     end,
 })
 
+-- give-item ----------------------------------------------------------------
+--
+-- Grant magical objects at runtime by dispatching GIVE_MAGICAL_OBJECT on the
+-- gameplay bus. Requires the bus to be armed (RSMM_ENABLE_GAMEPLAY_EVENTS=1),
+-- because the hero dispatcher is captured from live hero-anchored events.
+--
+-- The engine grants the item straight to the hero's inventory (no world orb)
+-- and fires a SPAWN_MO cascade. Item identity is the GUID at def+0x88/+0x90 of
+-- a g_MagicalObjectPool source entry — see docs/_re/kinds/events-bus.md.
+--
+--     R.give.random()            -- grant a random loaded item
+--     R.give.by_index(0)         -- grant pool source slot 0
+--     R.give.by_guid(lo, hi)     -- grant an explicit identity GUID
+--     for i, lo, hi in R.give.each() do ... end   -- enumerate the pool
+
+R.give = {}
+
+-- g_MagicalObjectPool: pointer global; *ptr = { source array @+0,
+-- u32 source count @+8, runtime array @+0x10, u32 runtime count @+0x18 }.
+local GIVE_POOL_VA = 0x1414365d0
+local GIVE_IMG_BASE = 0x140000000
+
+-- Hero dispatcher, captured from any hero-anchored gameplay event. These all
+-- fire at the local hero's own dispatcher (unlike GAIN_HEALTH, which fires at
+-- the heal source). Verified in-game 2026-06-12.
+local _give_hero = nil
+local _GIVE_ANCHORS = {
+    ["gameplay:GAIN_DREAM_SHARDS"] = true,
+    ["gameplay:ABILITY_EXIT"] = true,
+    ["gameplay:ENERGY_COUNTER_DEC"] = true,
+    ["gameplay:ENERGY_COUNTER_INC"] = true,
+    ["gameplay:COMBO_LINK"] = true,
+    ["gameplay:INTERACTION_VALIDATE"] = true,
+}
+
+R.on("*", function(ev, name)
+    if _GIVE_ANCHORS[name] and type(ev.dispatcher) == "string" then
+        local d = tonumber(ev.dispatcher)
+        if d and d ~= 0 then _give_hero = d end
+    end
+end)
+
+-- True once a hero dispatcher has been seen (i.e. give will work). Until the
+-- hero acts at least once in a run, grants are deferred.
+function R.give.ready() return _give_hero ~= nil end
+
+-- The hero dispatcher pointer (or nil). Advanced; most mods want the helpers.
+function R.give.hero() return _give_hero end
+
+local function _give_pool_vec()
+    local base = I.module_base()
+    if not base or base == 0 then return nil end
+    local vec = I.read_u64(base + (GIVE_POOL_VA - GIVE_IMG_BASE))
+    if not vec or vec == 0 then return nil end
+    return vec
+end
+
+-- Number of loaded magical-object definitions (pool source count), or 0.
+function R.give.count()
+    local vec = _give_pool_vec()
+    if not vec then return 0 end
+    local data = I.read_u64(vec)
+    local n = I.read_u32(vec + 8)
+    if not data or data == 0 or not n then return 0 end
+    return n
+end
+
+-- The identity GUID (lo, hi) of pool source slot `i` (0-based), plus the def
+-- pointer; nil if out of range or the pool can't be read.
+function R.give.guid_at(i)
+    local vec = _give_pool_vec()
+    if not vec then return nil end
+    local data = I.read_u64(vec)
+    local n = I.read_u32(vec + 8)
+    if not data or data == 0 or not n or i < 0 or i >= n then return nil end
+    local def = I.read_u64(data + i * 8)
+    if not def or def == 0 then return nil end
+    return I.read_u64(def + 0x88), I.read_u64(def + 0x90), def
+end
+
+-- Iterator over (index, guid_lo, guid_hi) for every loaded item.
+function R.give.each()
+    local n = R.give.count()
+    local i = -1
+    return function()
+        i = i + 1
+        if i >= n then return nil end
+        local lo, hi = R.give.guid_at(i)
+        return i, lo, hi
+    end
+end
+
+-- Grant the item with identity GUID (lo, hi). Returns true on dispatch.
+-- Fails (false) if the bus hasn't armed a hero dispatcher yet.
+function R.give.by_guid(lo, hi)
+    if not _give_hero then
+        R.log("[rsmm.give] no hero dispatcher yet — the hero must act once first")
+        return false
+    end
+    local ev = R.engine.call("NamedEvent_GiveMagicalObject_Ctor", I.scratch(0x60))
+    if not ev or ev == 0 then
+        R.log("[rsmm.give] GiveMagicalObject ctor failed (symbol unresolved?)")
+        return false
+    end
+    I.poke(ev + 0x50, lo or 0, 8)
+    I.poke(ev + 0x58, hi or 0, 8)
+    R.engine.call("NamedEvent_Dispatch", _give_hero, ev)
+    return true
+end
+
+-- Grant pool source slot `i` (0-based). Returns true on dispatch.
+function R.give.by_index(i)
+    local lo, hi = R.give.guid_at(i)
+    if not lo then
+        R.log("[rsmm.give] no item at pool index", i)
+        return false
+    end
+    return R.give.by_guid(lo, hi)
+end
+
+-- Grant a random loaded item. Returns the granted index, or nil.
+function R.give.random()
+    local n = R.give.count()
+    if n == 0 then return nil end
+    local i = math.random(0, n - 1)
+    if R.give.by_index(i) then return i end
+    return nil
+end
+
 -- hooks (low-level escape valve; users should prefer R.* abstractions) -
 
 R.hook   = native.hook

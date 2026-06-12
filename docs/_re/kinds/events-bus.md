@@ -325,7 +325,24 @@ hook echoes `gameplay:GIVE_MAGICAL_OBJECT` with the matching GUID, and the
 engine fires `gameplay:SPAWN_MO` at the same hero dispatcher ~5 events later
 (the grant cascade). Pool held 99 source defs in the test run. Locating the
 hero dispatcher: capture it from any hero-anchored event (see above).
-`mods/GiveItemEmitTest` is the working reference.
+
+This recipe is now wrapped in the SDK as **`R.give`** (`src/loader/lib/rsmm.lua`)
+so mods don't reimplement the pool walk or hero-capture:
+
+```lua
+R.give.random()        -- grant a random loaded item
+R.give.by_index(0)     -- grant pool source slot 0
+R.give.by_guid(lo, hi) -- grant an explicit identity GUID
+R.give.count()         -- number of loaded items
+R.give.ready()         -- true once the hero has acted (dispatcher captured)
+for i, lo, hi in R.give.each() do ... end
+```
+
+The module auto-captures the hero dispatcher from hero-anchored events, so
+`R.give.*` just works once the hero acts once in a run (and the bus is armed
+with `RSMM_ENABLE_GAMEPLAY_EVENTS=1`). `mods/GiveItemEmitTest` is the
+reference consumer. Open follow-up: `R.give.by_name(name)` needs the def's
+name/string offset verified live before it can ship.
 
 ## Open questions
 

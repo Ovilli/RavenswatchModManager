@@ -312,6 +312,12 @@ def _lint_lua_api(modname: str, entry: Path) -> tuple[int, int]:
             continue
         rel = f.relative_to(entry).as_posix()
         for ev in _RE_ON.findall(text):
+            # "*" is the wildcard channel (every event); "gameplay:<NAME>" is
+            # the open-ended oCGameNamedEvent bus — the loader republishes
+            # whatever the engine fires, so the name set isn't enumerable and
+            # these must not warn.
+            if ev == "*" or ev.startswith("gameplay:"):
+                continue
             if ev not in events:
                 print(f"  [WARN] {modname}: {rel}: R.on({ev!r}) — unknown event "
                       f"(known: {', '.join(sorted(events))}); handler will never fire")
