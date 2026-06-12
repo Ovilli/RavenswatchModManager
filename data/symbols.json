@@ -340,8 +340,8 @@
       "category": "items",
       "va": "0x1414365d0",
       "status": "va",
-      "note": "Magical-object pool global pointer. Layout at *ptr: +0x0 source array, +0x8 source count, +0x10 runtime array, +0x18 runtime count.",
-      "refs": ["src/loader/src/hook_items.cpp"]
+      "note": "Magical-object pool global pointer. Layout at *ptr: +0x0 source array (MagicalObjectDefinition*[]), +0x8 source count, +0x10 runtime array, +0x18 runtime count. Each source def carries its identity GUID at def+0x88/+0x90 — the value MagicalObjectPool_SourceLookup matches. GIVE-ITEM RECIPE (proven in-game 2026-06-12): read a source def's +0x88/+0x90 GUID, build a GIVE_MAGICAL_OBJECT event (NamedEvent_GiveMagicalObject_Ctor), write that GUID to ev+0x50/+0x58, NamedEvent_Dispatch(hero+0x4d8, ev) — the give handler (FUN_1403a7ba0) resolves the def via SourceLookup and grants the item straight to inventory (no world orb), then fires SPAWN_MO at the hero.",
+      "refs": ["src/loader/src/hook_items.cpp", "docs/_re/kinds/events-bus.md"]
     },
     {
       "name": "g_RosterManager",

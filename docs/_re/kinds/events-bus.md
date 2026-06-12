@@ -288,6 +288,45 @@ Trigger gotchas for test mods: SHOW_TAB / HIDE_TAB / BOOK_MENU_OPEN are UI
 lifecycle events (fire on creation/teardown only, not per keypress) — use
 gameplay actions (ABILITY_EXIT counting) as deliberate triggers instead.
 
+### Give-item recipe (real item grant) — PROVEN in-game 2026-06-12
+
+Stage 2 traced the GIVE_MAGICAL_OBJECT handler and granted an actual item
+from Lua:
+
+- The subscribed handler `FUN_1403a7ba0` (found via the hero channel functor
+  thunk at `0x1403bc5b0` → vftable slot `0x140f2c8a8`) reads the GUID at
+  `ev+0x50/+0x58` and calls `MagicalObjectPool_SourceLookup`
+  (`FUN_1402590c0`) against `g_MagicalObjectPool`. SourceLookup linearly
+  matches `def+0x88 == guid_lo && def+0x90 == guid_hi` over the pool's source
+  array. On a hit it calls the give routine `FUN_140397190` with the resolved
+  definition; a zero/unknown GUID is a clean no-op (this is why stage 1's
+  zeroed GUID was safe).
+- So **any currently-loaded item's identity GUID is just `def+0x88/+0x90` of
+  a `g_MagicalObjectPool` source-array entry**. No file parsing, no cooked
+  GUID extraction — read it live from the pool.
+
+Recipe (proven):
+
+```lua
+-- g_MagicalObjectPool: pointer global; *ptr = {src[] @+0, u32 srcN @+8, ...}
+local pool = I.module_base() + (0x1414365d0 - 0x140000000)
+local vec  = I.read_u64(pool)
+local def  = I.read_u64(I.read_u64(vec))        -- source array slot 0
+local lo, hi = I.read_u64(def + 0x88), I.read_u64(def + 0x90)
+
+local ev = R.engine.call("NamedEvent_GiveMagicalObject_Ctor", I.scratch(0x60))
+I.poke(ev + 0x50, lo, 8)
+I.poke(ev + 0x58, hi, 8)
+R.engine.call("NamedEvent_Dispatch", hero_dispatcher, ev)
+```
+
+Result: the item is granted **directly to inventory** (no world orb), the
+hook echoes `gameplay:GIVE_MAGICAL_OBJECT` with the matching GUID, and the
+engine fires `gameplay:SPAWN_MO` at the same hero dispatcher ~5 events later
+(the grant cascade). Pool held 99 source defs in the test run. Locating the
+hero dispatcher: capture it from any hero-anchored event (see above).
+`mods/GiveItemEmitTest` is the working reference.
+
 ## Open questions
 
 - The dispatcher base offset (`entity + 0x4d8`) is hard-coded in the loader's
