@@ -46,7 +46,7 @@ extern "C" {
 
 namespace rsmm {
 
-extern std::mutex& script_lua_mutex();   // exported from script_lua.cpp
+extern std::recursive_mutex& script_lua_mutex();   // exported from script_lua.cpp
 
 
 namespace {
@@ -168,7 +168,7 @@ std::uint64_t dispatch(int slot, std::uint64_t* a) {
     }
     if (!snap.installed) return 0;
 
-    std::lock_guard<std::mutex> g(script_lua_mutex());
+    std::lock_guard<std::recursive_mutex> g(script_lua_mutex());
     lua_State* L = snap.L;
     if (!L) {
         if (snap.trampoline) return snap.trampoline(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);

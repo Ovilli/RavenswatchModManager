@@ -169,19 +169,23 @@
       "name": "Netcode_Channel_LookupById",
       "kind": "function",
       "category": "netcode",
-      "va": "0x140241150",
-      "status": "unverified",
-      "note": "Channel-lookup-by-id; paired with subscribe for named gameplay events (GIVE_MAGICAL_OBJECT). Address from events corpus.",
-      "refs": ["docs/_re"]
+      "raw": "FUN_140241150",
+      "status": "ok",
+      "signature": "iter*(void* channel_map, iter* out, uint32_t* event_id)",
+      "cabi": { "ret": "void*", "params": ["void*", "void*", "void*"] },
+      "note": "Event-channel map FIND-OR-CREATE keyed by interned event id (SwissTable-style SIMD probe; hash = id * 0xde5fb9d2630458e9 folded). On miss mallocs a 0x20 channel node { u32 event_id @+0x00; sub** array @+0x08; u32 count @+0x10; u32 cap @+0x14; sub* in_dispatch_cursor @+0x18 } and inserts it. Writes an iterator {ctrl_slot, value_slot, inserted_flag} into out and returns out. Generic template fn (~200 callers); the named-event channel maps live at <dispatcher>+0x28, e.g. entity+0x500 (= entity+0x4d8 dispatcher) and world+0x368. Verified in Ghidra 2026-06-11; promoted from events corpus.",
+      "refs": ["docs/_re/kinds/events-bus.md"]
     },
     {
-      "name": "Netcode_Channel_Subscribe",
+      "name": "Netcode_Channel_Unsubscribe",
       "kind": "function",
       "category": "netcode",
-      "va": "0x1401c8660",
-      "status": "unverified",
-      "note": "Subscribe to a gameplay-event channel. Address from events corpus.",
-      "refs": ["docs/_re"]
+      "raw": "FUN_1401c8660",
+      "status": "ok",
+      "signature": "void(void* node_plus_8, void** sub_slot)",
+      "cabi": { "ret": "void", "params": ["void*", "void*"] },
+      "note": "REMOVE a subscription from a channel node (the events corpus mislabeled this 'Subscribe' — verified 2026-06-11 it is the unsubscribe). arg1 = channel_node+0x08 (the {array,count|cap,cursor} triple), arg2 = address of the holder's subscription-handle slot. Reads the sub's index at sub+0x18, swap-removes it from the array, fixes the swapped sub's index, releases the sub (FUN_14051eb00) and nulls the slot. If the sub being removed IS the one currently mid-dispatch (node+0x18 cursor) it just sets the cursor to -1 and lets NamedEvent_Dispatch finish the removal. The real subscribe is inlined per call-site (alloc sub FUN_140219dc0 + store functor FUN_14051b580 + append), so there is no single subscribe symbol.",
+      "refs": ["docs/_re/kinds/events-bus.md"]
     },
     {
       "name": "String_Assign",
@@ -222,8 +226,112 @@
       "status": "ok",
       "signature": "void(void* analytics_mgr, void* payload_kv, StringDesc* event_name, char has_run_ctx)",
       "cabi": { "ret": "void", "params": ["void*", "void*", "void*", "uint32_t"] },
-      "note": "CENTRAL TELEMETRY SINK. ~37 gameplay callers funnel named analytics events through here (run_end, enemy_killed, matchmaking_start, level_up_reach, level_up_book, ...), each building a key-value payload then submitting as JSON (projectId 'passtech-ravenswatch') to Passtech's analytics backend over an authenticated HTTP POST. param_3 is a StringDesc { const char* ptr @+0x0; uint32 len|0x80000000 @+0x8 } holding the event name. The loader 'firehose' detour (hook_events.cpp::install_analytics_firehose) reads that name and re-publishes it to the Lua bus by its raw name, so ONE hook exposes every named event to mods (R.on('enemy_killed', cb)) and survives the game adding new event names. OBSERVATION-GRADE: these fire AFTER the gameplay action and carry analytics KV, not live entity handles — good for 'when X happens do Y' triggers, not for mutating the actor. For entity-context gameplay events (damage, give-item) see the oCGameNamedEvent bus (NETWORK_DAMAGE / GIVE_MAGICAL_OBJECT via Netcode_Channel_Subscribe) — the next surface to map. Skips 'run_end' to avoid double-firing the typed Event_RunEnd table hook.",
+      "note": "CENTRAL TELEMETRY SINK. ~37 gameplay callers funnel named analytics events through here (run_end, enemy_killed, matchmaking_start, level_up_reach, level_up_book, ...), each building a key-value payload then submitting as JSON (projectId 'passtech-ravenswatch') to Passtech's analytics backend over an authenticated HTTP POST. param_3 is a StringDesc { const char* ptr @+0x0; uint32 len|0x80000000 @+0x8 } holding the event name. The loader 'firehose' detour (hook_events.cpp::install_analytics_firehose) reads that name and re-publishes it to the Lua bus by its raw name, so ONE hook exposes every named event to mods (R.on('enemy_killed', cb)) and survives the game adding new event names. OBSERVATION-GRADE: these fire AFTER the gameplay action and carry analytics KV, not live entity handles — good for 'when X happens do Y' triggers, not for mutating the actor. For entity-context gameplay events (damage, give-item) see the oCGameNamedEvent bus — mapped: NamedEvent_Dispatch is the single hook point (R.on('gameplay:<NAME>'), docs/_re/kinds/events-bus.md). Skips 'run_end' to avoid double-firing the typed Event_RunEnd table hook.",
       "refs": ["src/loader/src/hook_events.cpp", "docs/_re/kinds/events.md"]
+    },
+    {
+      "name": "NamedEvent_Dispatch",
+      "kind": "function",
+      "category": "event",
+      "raw": "FUN_14066a700",
+      "status": "ok",
+      "signature": "void(void* dispatcher, oCGameNamedEvent* ev)",
+      "cabi": { "ret": "void", "params": ["void*", "void*"] },
+      "note": "THE oCGameNamedEvent bus dispatch — one detour here exposes every entity-context gameplay event (NETWORK_DAMAGE, GIVE_MAGICAL_OBJECT, GAIN_REROLL, ...) with a live payload. dispatcher = the NamedEventDispatcher sub-object (entity+0x4d8 for entity events; world+0x340 for world events; channel map at dispatcher+0x28, dispatch queue at +0x00..0x18, re-entrancy guard at +0x60). Clones the event (vcall ev+0x18), enqueues the clone, then (unless re-entrant) drains the queue: find-only channel lookup (NamedEvent_ChannelMap_Find) by *(u32*)(ev+0x30), iterates the node's sub array setting the node+0x18 cursor, invokes (*(sub+0x10))(ev, sub) per subscriber, handles mid-dispatch self-unsubscribe (cursor == -1), erases empty channels, deletes the clone (NamedEvent_Delete). Event header (all classes): vft @+0x00, u32 2 @+0x08, name String {char* @+0x20, u32 cap|0x80000000 @+0x28, u32 len @+0x2c}, u32 interned id @+0x30 — so the hook reads the PLAINTEXT name straight off the event. Loader detour: hook_events.cpp::install_gameplay_bus (RSMM_ENABLE_GAMEPLAY_EVENTS=1), published as R.on('gameplay:<NAME>'). Also the local-emit primitive: construct an event and call this directly (the give-MO path in FUN_140397190 does exactly that).",
+      "refs": ["src/loader/src/hook_events.cpp", "src/loader/src/script_lua.cpp", "docs/_re/kinds/events-bus.md"]
+    },
+    {
+      "name": "NamedEvent_ChannelMap_Find",
+      "kind": "function",
+      "category": "event",
+      "raw": "FUN_14066cc50",
+      "status": "ok",
+      "signature": "iter*(void* channel_map, iter* out, uint32_t* event_id)",
+      "cabi": { "ret": "void*", "params": ["void*", "void*", "void*"] },
+      "note": "Find-only sibling of Netcode_Channel_LookupById (no insert on miss; miss = iterator at map end). Used by NamedEvent_Dispatch to locate the channel node for an event id.",
+      "refs": ["docs/_re/kinds/events-bus.md"]
+    },
+    {
+      "name": "NamedEvent_HeroSubscribeAll",
+      "kind": "function",
+      "category": "event",
+      "raw": "FUN_140391d30",
+      "status": "ok",
+      "note": "Hero post-spawn named-event subscription setup: 26+ inlined subscribes registering hero handler slots hero+0x2fa..0x321 (qword indices) on the entity channel map (entity+0x500) and the world map (world+0x368). Catalog of every (id global, name, slot) pair in docs/_re/kinds/events-bus.md — includes GIVE_MAGICAL_OBJECT -> hero+0x306. The events corpus called this 'the give-handler'; it is the subscription setup (the give handler proper is the functor it registers for slot 0x306).",
+      "refs": ["docs/_re/kinds/events-bus.md"]
+    },
+    {
+      "name": "NamedEvent_HeroUnsubscribeAll",
+      "kind": "function",
+      "category": "event",
+      "raw": "FUN_140394a40",
+      "status": "ok",
+      "note": "Hero teardown twin of NamedEvent_HeroSubscribeAll: walks the same (id global, slot) pairs and calls Netcode_Channel_Unsubscribe on each. Easiest place to read the full hero event catalog (one lookup+unsubscribe pair per event).",
+      "refs": ["docs/_re/kinds/events-bus.md"]
+    },
+    {
+      "name": "NamedEvent_GiveMagicalObject_Ctor",
+      "kind": "function",
+      "category": "event",
+      "raw": "FUN_14030f430",
+      "status": "ok",
+      "signature": "oe::dt::NamedEventGiveMagicalObject*(void* buf)",
+      "cabi": { "ret": "void*", "params": ["void*"] },
+      "note": "In-place ctor of NamedEventGiveMagicalObject (object size 0x60): sets vft chain (oCGameNamedEvent -> ...Network -> NamedEventGiveMagicalObject), u32 2 @+0x08, name 'GIVE_MAGICAL_OBJECT' @+0x20 (non-owned literal, flag 0x80000000 @+0x28), interned id @+0x30, peer -1 @+0x38, 0 @+0x40, -1 @+0x48, payload zeroed: MO definition GUID @+0x50/+0x58 (16 bytes, from MagicalObjectDefinition+0x88). Fill the GUID then call NamedEvent_Dispatch(entity+0x4d8, ev) to give an item locally. NOTE: pattern is non-unique (match_index 11/13 — small ctor template); resolver picks by rank, fragile across game updates, fn_verify guards misresolution.",
+      "refs": ["src/loader/src/script_lua.cpp", "docs/_re/kinds/events-bus.md"]
+    },
+    {
+      "name": "NamedEvent_Delete",
+      "kind": "function",
+      "category": "event",
+      "raw": "FUN_140126da0",
+      "status": "ok",
+      "signature": "void(oCGameNamedEvent* ev)",
+      "cabi": { "ret": "void", "params": ["void*"] },
+      "note": "Virtual delete for bus objects: vcall ev+0x10 = scalar dtor with free flag 1 (frees on the GAME heap). Dispatch uses it on the queued clone. Only call on game-heap objects — never on loader-owned/static event buffers (their dtor-free would cross heaps).",
+      "refs": ["docs/_re/kinds/events-bus.md"]
+    },
+    {
+      "name": "NamedEvent_Id_FromCrc",
+      "kind": "function",
+      "category": "event",
+      "raw": "FUN_14051e0e0",
+      "status": "ok",
+      "signature": "uint32_t(uint32_t ns, uint32_t name_crc)",
+      "cabi": { "ret": "uint32_t", "params": ["uint32_t", "uint32_t"] },
+      "note": "Interned event-id derivation: id = crc32 over the 8 bytes of (ns, name_crc) interleaved byte-wise (standard reflected crc32 table). Event names are interned at static-init as id = NamedEvent_Id_FromCrc(0, crc32(name)) — so the loader can derive the id for ANY event name at runtime (used by the Lua gameplay-emit primitive).",
+      "refs": ["src/loader/src/script_lua.cpp", "docs/_re/kinds/events-bus.md"]
+    },
+    {
+      "name": "NamedEvent_NetSend",
+      "kind": "function",
+      "category": "event",
+      "raw": "FUN_1407205a0",
+      "status": "ok",
+      "signature": "void(void* net_event_cpnt, oCGameNamedEvent* ev)",
+      "cabi": { "ret": "void", "params": ["void*", "void*"] },
+      "note": "Network leg of the bus: on the owning peer stamps ev+0x38 with the local session id and forwards to NamedEvent_NetSendToPeer; replicated events (oCGameNamedEventNetwork subclasses) reach remote entities this way. net_event_cpnt = entity component class-id 0x154fce5c (looked up via FUN_1403124b0(entity), component map at entity+0x5e8).",
+      "refs": ["docs/_re/kinds/events-bus.md"]
+    },
+    {
+      "name": "NamedEvent_NetSendToPeer",
+      "kind": "function",
+      "category": "event",
+      "raw": "FUN_140720630",
+      "status": "ok",
+      "signature": "void(void* net_event_cpnt, oCGameNamedEvent* ev, uint64_t* peer_session)",
+      "cabi": { "ret": "void", "params": ["void*", "void*", "void*"] },
+      "note": "Wraps the event in an oCNamedEventNetworkMessage {vft 0x140f96b28, msg class id 0x157f6854, ev*} and unicasts it via the session vcall +0xc0 (skips if target session == local). Receive side deserializes via the message's Serialize (FUN_14085dec0; allocates the event from the class registry DAT_14146b2d8 by serialized class index, restores ev+0x30) and dispatches into the target entity's NamedEvent_Dispatch.",
+      "refs": ["docs/_re/kinds/events-bus.md"]
+    },
+    {
+      "name": "NamedEvent_EmitNetworkDamageFromHit",
+      "kind": "function",
+      "category": "event",
+      "raw": "FUN_140726610",
+      "status": "ok",
+      "note": "Reference emitter for NETWORK_DAMAGE: stack-builds the full oCGameNamedEventNetworkDamage (size 0x110) — header as usual, f32 value @+0x40, source net-id @+0x48 (FUN_140726330), embedded oCEntityHitData @+0x50 (vft @+0x50, target entity* @+0x60 refcounted, hit floats/vectors +0x68..0xbc, u64s @+0xc0/0xc8/0xd0, u16 @+0xd8, ptr @+0xe0, instigator entity* @+0xf0 refcounted, flag byte @+0x100) — then sends via NamedEvent_NetSend. Best anchor for decoding the damage payload.",
+      "refs": ["docs/_re/kinds/events-bus.md"]
     },
 
     {
@@ -414,6 +522,155 @@
       "cabi": { "ret": "void*", "params": ["void*", "void*"] },
       "note": "Emitter whose body references the 'run_end' string (xref 0x1401f5347). Loader post-detours it to publish the 'run_end' Lua event via R.on('run_end', cb).",
       "refs": ["src/loader/src/hook_events.cpp", "docs/_re/kinds/events.md"]
+    },
+    {
+      "name": "EnemyDef_PostLoad",
+      "kind": "function",
+      "category": "enemies",
+      "raw": "FUN_140319f00",
+      "status": "ok",
+      "signature": "bool(void* enemyDef)",
+      "note": "oCDtEnemyDefinition vftable+0x90 post-deserialize callback. Resolves the tribe typed-ref block at +0x2e8 (resolved ptr -> +0x318) via ResourceRef_Resolve, then SELF-REGISTERS into the tribe's runtime roster vector (tribe+0x2b8 data / +0x2c0 count, push_back via FUN_1401550d0) and folds min/max spawn-tier aggregates into tribe+0x2c8/+0x2cc/+0x2d0. Finally registers the instance in the class registry (Registry_RegisterInstance). THE tribe-roster writer: any loaded enemy def with a resolvable tribe_ref becomes a spawn candidate automatically.",
+      "refs": ["docs/_re/kinds/enemies.md"]
+    },
+    {
+      "name": "EnemyTribeDef_PostLoad",
+      "kind": "function",
+      "category": "enemies",
+      "raw": "FUN_14031b1e0",
+      "status": "ok",
+      "signature": "bool(void* tribeDef)",
+      "note": "oCDtEnemyTribeDefinition vftable+0x90 post-deserialize callback. Resolves each 0x38-stride typed-ref entry of the COOKED entry vector at +0x2a0/+0x2a8 (empty in all 25 vanilla tribes), then registers in the class registry. Does NOT write the runtime roster (+0x2b8) - enemies self-register there via EnemyDef_PostLoad.",
+      "refs": ["docs/_re/kinds/enemies.md"]
+    },
+    {
+      "name": "InitialLoading_LoadAllDefinitions",
+      "kind": "function",
+      "category": "resource",
+      "raw": "FUN_14030fa00",
+      "status": "ok",
+      "signature": "void(void* nameFilter)",
+      "note": "Boot stage 'InitialLoading - Load all definitions'. Loads Versions/LiveOps5.versiondef.ot first, then directory-scans the 'Definitions' folder of the resource FS (index = UsedRscList.ot) and loads EVERY definition file found except 7 excluded classes (tribe class among them; tribes load lazily when an enemy tribe_ref resolves). This is why a custom .enemydef.ot registered in UsedRscList loads at boot with no further reference needed.",
+      "refs": ["docs/_re/kinds/enemies.md"]
+    },
+    {
+      "name": "ResourceRef_Resolve",
+      "kind": "function",
+      "category": "resource",
+      "raw": "FUN_140491690",
+      "status": "ok",
+      "signature": "void(void* refBlock, void* classDesc, void** outResolved, void* policy)",
+      "note": "Generic typed resource-ref resolver. Ref block layout (0x38 bytes): {char* name, u32 hash, char* parentPath, u32 hash2, void* classDescriptor @+0x20, u8 resolved @+0x28, void* resolvedPtr @+0x30}. Resolving loads the target resource on demand.",
+      "refs": ["docs/_re/kinds/enemies.md"]
+    },
+    {
+      "name": "Registry_RegisterInstance",
+      "kind": "function",
+      "category": "resource",
+      "raw": "FUN_1403110d0",
+      "status": "ok",
+      "signature": "void(void* definition)",
+      "note": "Pushes a definition instance into the global instance list (DAT_141439de0) and its per-class registry list (via class descriptor vfunc[0] + Registry_EnumInstances). Guarded by a per-instance registration counter at +0x280.",
+      "refs": ["docs/_re/kinds/enemies.md"]
+    },
+    {
+      "name": "Registry_EnumInstances",
+      "kind": "function",
+      "category": "resource",
+      "raw": "FUN_140240e50",
+      "status": "ok",
+      "signature": "void*(void* unused, void* out3, void** classDescPtr)",
+      "cabi": { "ret": "void*", "params": ["void*", "void*", "void*"] },
+      "note": "Registry hash-map find-or-insert keyed on *classDescPtr (callers copy the class-descriptor global into a local and pass its address). Fills out3 = {ctrl_ptr, entry_ptr, inserted_flag(u8)} and returns out3; entry = {key @+0, instance_data(void**) @+8, count(u32) @+0x10} = all live instances of the definition class. Read-side callers (e.g. camp tier selector FUN_140330db0) guard descriptor != sentinel DAT_14146fe00, falling back to the global all-instances list DAT_141439de0/+8. Used by level-load stage 3, spawn pickers, and the loader registry dump (hook_registry.cpp).",
+      "refs": ["docs/_re/kinds/enemies.md", "src/loader/src/hook_registry.cpp"]
+    },
+    {
+      "name": "EnemyDefinition_ctor",
+      "kind": "function",
+      "category": "enemies",
+      "raw": "FUN_1401dea90",
+      "status": "ok",
+      "signature": "void*(void* self)",
+      "note": "oCDtEnemyDefinition ctor (size 0x350, UID 0x176debb7, vftable 0x140f0af80). Typed ref blocks: entity ref @+0x288 (resolved @+0x2b8), tribe ref @+0x2e8 (resolved @+0x318, class desc default @+0x308). Flag list @+0x2c0. minTier f32 @+0x2dc, tier range {u32,u32} @+0x2e0 init {0,5}, weightA @+0x320 + table @+0x328/+0x330, weightB @+0x338 + table @+0x340/+0x348.",
+      "refs": ["docs/_re/kinds/enemies.md"]
+    },
+    {
+      "name": "EnemyTribeDefinition_ctor",
+      "kind": "function",
+      "category": "enemies",
+      "raw": "FUN_1400c5430",
+      "status": "ok",
+      "signature": "void*(void* self)",
+      "note": "oCDtEnemyTribeDefinition ctor (size 0x2d8, UID 0x176dc2eb, vftable 0x140efea30). Tribe flag list @+0x288; cooked entry vector @+0x2a0/+0x2a8; runtime roster {data,count} @+0x2b8/+0x2c0 (written only by EnemyDef_PostLoad); tier aggregates @+0x2c8 (min, init FLT_MAX) /+0x2cc (max, init -FLT_MAX) /+0x2d0 (maxTierHi u32).",
+      "refs": ["docs/_re/kinds/enemies.md"]
+    },
+    {
+      "name": "EnemyCamp_TierSelector",
+      "kind": "function",
+      "category": "enemies",
+      "raw": "FUN_14032de90",
+      "status": "ok",
+      "signature": "void(void* selector)",
+      "note": "Camp generation: picks tribes (EnemyCamp_TribeEntryBuilder), then per tribe entry copies the tribe runtime roster (+0x2b8/+0x2c0) as the candidate vector, trims it with EnemyCamp_Stage3Filter, weighted-picks until camp power weight reached. Logs 'Min/Max power weight', 'Generation complete !'.",
+      "refs": ["docs/_re/kinds/enemies.md"]
+    },
+    {
+      "name": "EnemyCamp_TribeEntryBuilder",
+      "kind": "function",
+      "category": "enemies",
+      "raw": "FUN_14032f520",
+      "status": "ok",
+      "signature": "void(void* selector, void* specialEntry, void* outEntries, float mult)",
+      "note": "Builds the camp's tribe entry list: tribe pool = map def list (mapdef+0x720 -> +0x2c0 stride 0x38) or, if absent, ALL tribes from the class registry; filters via EnemyTribeDefInternal::SearchFilter, weighted-picks tribes, precomputes per-enemy spawn counts from the tribe roster.",
+      "refs": ["docs/_re/kinds/enemies.md"]
+    },
+    {
+      "name": "EnemyCamp_Stage3Filter",
+      "kind": "function",
+      "category": "enemies",
+      "raw": "FUN_1403194c0",
+      "status": "ok",
+      "signature": "void(void* candidatesVec, void* searchFilter)",
+      "note": "Trims an enemy-def candidate vector by tier range (+0x2e0), min tier (+0x2dc), flag include/exclude (+0x2c0 list), tribe whitelist (+0x318) and tier-weight tables. Only removes - never adds. (Rebase of old FUN_14030b000 notes.)",
+      "refs": ["docs/_re/kinds/enemies.md"]
+    },
+    {
+      "name": "Enemy_RuntimeSpawnPicker",
+      "kind": "function",
+      "category": "enemies",
+      "raw": "FUN_140330db0",
+      "status": "ok",
+      "signature": "void(void* spawnerCpnt)",
+      "note": "Spawn-time weighted picker: enumerates ALL enemy defs from the class registry (NOT the tribe roster), filters by tier/flags/allowed-tribe-ptr, weighted-random picks, lazily resolves the entity ref (+0x288 block) and appends spawn data.",
+      "refs": ["docs/_re/kinds/enemies.md"]
+    },
+    {
+      "name": "LevelLoad_Orchestrator",
+      "kind": "function",
+      "category": "engine",
+      "raw": "FUN_14028dcf0",
+      "status": "ok",
+      "signature": "i64(void* levelGs)",
+      "note": "Runs the 'Level load - *' stage chain (hero entities, barks, 'Enemies settings loading' = blocking-load of registry enemy defs filtered by map-def tribe list, map/tile defs, enemy camp generation via named event, navmesh, sectorization).",
+      "refs": ["docs/_re/kinds/enemies.md"]
+    },
+    {
+      "name": "Registry_EnemyDefinition_desc",
+      "kind": "data",
+      "category": "library",
+      "va": "0x141470208",
+      "status": "va",
+      "note": "Class registry descriptor for oCDtEnemyDefinition (set by registrar FUN_14022d940; UID 0x176debb7, instance size 0x350). Enumerate instances via Registry_EnumInstances.",
+      "refs": ["docs/_re/kinds/enemies.md"]
+    },
+    {
+      "name": "Registry_EnemyTribeDefinition_desc",
+      "kind": "data",
+      "category": "library",
+      "va": "0x14146f938",
+      "status": "va",
+      "note": "Class registry descriptor for oCDtEnemyTribeDefinition (registrar FUN_140189410; UID 0x176dc2eb, size 0x2d8). Default descriptor for enemy tribe_ref resolution (enemy+0x308).",
+      "refs": ["docs/_re/kinds/enemies.md"]
     }
   ],
   "_event_catalog_doc": "Observation events the loader republishes by raw name from the central telemetry sink (Analytics_SubmitNamedEvent). No address — the firehose detour reads the name at runtime, so any name the game adds also fires even if absent here. These are confirmed names harvested by string-xref (cluster 0x140f13a00-0x140f13f00); subscribe via R.on('<name>', cb) with RSMM_ENABLE_GAME_EVENTS=1. Shown by `rsmm symbols events`.",

@@ -78,6 +78,76 @@ inline MagicalObject_SpawnAllObjects_fn MagicalObject_SpawnAllObjects() {
     return a ? reinterpret_cast<MagicalObject_SpawnAllObjects_fn>(a + 0x70) : nullptr;
 }
 
+// NamedEvent_ChannelMap_Find  (FUN_14066cc50)
+//   iter*(void* channel_map, iter* out, uint32_t* event_id)
+using NamedEvent_ChannelMap_Find_fn = void*(*)(void*, void*, void*);
+inline NamedEvent_ChannelMap_Find_fn NamedEvent_ChannelMap_Find() {
+    return reinterpret_cast<NamedEvent_ChannelMap_Find_fn>(rsmm::fn_resolve(Sym::NamedEvent_ChannelMap_Find_Pattern));
+}
+
+// NamedEvent_Delete  (FUN_140126da0)
+//   void(oCGameNamedEvent* ev)
+using NamedEvent_Delete_fn = void(*)(void*);
+inline NamedEvent_Delete_fn NamedEvent_Delete() {
+    return reinterpret_cast<NamedEvent_Delete_fn>(rsmm::fn_resolve(Sym::NamedEvent_Delete_Pattern));
+}
+
+// NamedEvent_Dispatch  (FUN_14066a700)
+//   void(void* dispatcher, oCGameNamedEvent* ev)
+using NamedEvent_Dispatch_fn = void(*)(void*, void*);
+inline NamedEvent_Dispatch_fn NamedEvent_Dispatch() {
+    return reinterpret_cast<NamedEvent_Dispatch_fn>(rsmm::fn_resolve(Sym::NamedEvent_Dispatch_Pattern));
+}
+
+// NamedEvent_GiveMagicalObject_Ctor  (FUN_14030f430)
+//   oe::dt::NamedEventGiveMagicalObject*(void* buf)
+using NamedEvent_GiveMagicalObject_Ctor_fn = void*(*)(void*);
+inline NamedEvent_GiveMagicalObject_Ctor_fn NamedEvent_GiveMagicalObject_Ctor() {
+    return reinterpret_cast<NamedEvent_GiveMagicalObject_Ctor_fn>(rsmm::fn_resolve(Sym::NamedEvent_GiveMagicalObject_Ctor_Pattern));
+}
+
+// NamedEvent_Id_FromCrc  (FUN_14051e0e0)
+//   uint32_t(uint32_t ns, uint32_t name_crc)
+using NamedEvent_Id_FromCrc_fn = uint32_t(*)(uint32_t, uint32_t);
+inline NamedEvent_Id_FromCrc_fn NamedEvent_Id_FromCrc() {
+    return reinterpret_cast<NamedEvent_Id_FromCrc_fn>(rsmm::fn_resolve(Sym::NamedEvent_Id_FromCrc_Pattern));
+}
+
+// NamedEvent_NetSend  (FUN_1407205a0)
+//   void(void* net_event_cpnt, oCGameNamedEvent* ev)
+using NamedEvent_NetSend_fn = void(*)(void*, void*);
+inline NamedEvent_NetSend_fn NamedEvent_NetSend() {
+    return reinterpret_cast<NamedEvent_NetSend_fn>(rsmm::fn_resolve(Sym::NamedEvent_NetSend_Pattern));
+}
+
+// NamedEvent_NetSendToPeer  (FUN_140720630)
+//   void(void* net_event_cpnt, oCGameNamedEvent* ev, uint64_t* peer_session)
+using NamedEvent_NetSendToPeer_fn = void(*)(void*, void*, void*);
+inline NamedEvent_NetSendToPeer_fn NamedEvent_NetSendToPeer() {
+    return reinterpret_cast<NamedEvent_NetSendToPeer_fn>(rsmm::fn_resolve(Sym::NamedEvent_NetSendToPeer_Pattern));
+}
+
+// Netcode_Channel_LookupById  (FUN_140241150)
+//   iter*(void* channel_map, iter* out, uint32_t* event_id)
+using Netcode_Channel_LookupById_fn = void*(*)(void*, void*, void*);
+inline Netcode_Channel_LookupById_fn Netcode_Channel_LookupById() {
+    return reinterpret_cast<Netcode_Channel_LookupById_fn>(rsmm::fn_resolve(Sym::Netcode_Channel_LookupById_Pattern));
+}
+
+// Netcode_Channel_Unsubscribe  (FUN_1401c8660)
+//   void(void* node_plus_8, void** sub_slot)
+using Netcode_Channel_Unsubscribe_fn = void(*)(void*, void*);
+inline Netcode_Channel_Unsubscribe_fn Netcode_Channel_Unsubscribe() {
+    return reinterpret_cast<Netcode_Channel_Unsubscribe_fn>(rsmm::fn_resolve(Sym::Netcode_Channel_Unsubscribe_Pattern));
+}
+
+// Registry_EnumInstances  (FUN_140240e50)
+//   void*(void* unused, void* out3, void** classDescPtr)
+using Registry_EnumInstances_fn = void*(*)(void*, void*, void*);
+inline Registry_EnumInstances_fn Registry_EnumInstances() {
+    return reinterpret_cast<Registry_EnumInstances_fn>(rsmm::fn_resolve(Sym::Registry_EnumInstances_Pattern));
+}
+
 // Resource_LookupByPath  (FUN_140487040)
 //   void*(const char* decoded_path, void*, void*, void*)
 using Resource_LookupByPath_fn = void*(*)(const char*, void*, void*, void*);

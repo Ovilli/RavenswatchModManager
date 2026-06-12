@@ -57,15 +57,26 @@ end
 --   "event_start" "event_end"
 -- OBSERVATION-grade: they fire after the action and carry the analytics
 -- payload, not a live entity handle. Great for "when X happens, do Y"
--- triggers; to mutate the actor you need the oCGameNamedEvent gameplay
--- bus (next surface to map).
+-- triggers; to mutate the actor use the oCGameNamedEvent gameplay bus
+-- below.
+--
+-- Gameplay bus events (RSMM_ENABLE_GAMEPLAY_EVENTS=1) arrive as
+-- "gameplay:<NAME>" — entity-context events the game itself dispatches
+-- (NETWORK_DAMAGE, GIVE_MAGICAL_OBJECT, GAIN_REROLL, REMOVE_*_OBJECT,
+-- CINE_START/STOP, ...; full map in docs/_re/kinds/events-bus.md). Their
+-- payload carries live handles (dispatcher/entity as "0x..." strings) plus
+-- decoded fields for verified layouts (NETWORK_DAMAGE: value, source_id,
+-- target_entity, instigator_entity; GIVE_MAGICAL_OBJECT: mo_guid_lo/hi).
 --
 -- The callback receives a payload table:
 --   ev.event  (string)  the event name
 --   ev.seq    (number)  per-event fire counter (ordering signal)
---   ev.source (string)  "analytics" for firehose events
+--   ev.source (string)  "analytics" firehose / "gameplay" bus
 --   ev.ctx/ev.arg       raw arg handles "0x..." (typed-event envelope only)
 -- Lifecycle events (ready/tick/exit) pass an empty table.
+--
+-- Wildcard: R.on("*", function(ev, name) ... end) receives EVERY event;
+-- the event name arrives as a second argument.
 
 function R.on(event, cb)
     assert(type(event) == "string", "R.on: event must be string")

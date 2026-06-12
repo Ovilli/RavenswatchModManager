@@ -87,15 +87,17 @@ struct ModScript {
     std::filesystem::file_time_type init_mtime{};
 };
 
-std::mutex g_mu;
+std::recursive_mutex g_mu;
 std::unordered_map<std::string, ModScript> g_scripts;
 
 } // namespace
 
 // Exported so hook_lua.cpp can serialize Lua VM access across
 // hook-callback threads. Same mutex protects g_scripts + every
-// per-mod lua_State.
-std::mutex& script_lua_mutex() { return g_mu; }
+// per-mod lua_State. Recursive: a Lua handler may call back into the
+// engine (R.engine.call of a hooked function, e.g. NamedEvent_Dispatch)
+// whose detour re-enters script_emit_event_json on the same thread.
+std::recursive_mutex& script_lua_mutex() { return g_mu; }
 
 namespace {
 
@@ -578,6 +580,22 @@ int lua_poke(lua_State* L) {
     return 1;
 }
 
+// rsmm._internal.scratch([size=0x100]) -> addr
+// Loader-owned scratch region for building native structs from Lua (e.g. an
+// oCGameNamedEvent before NamedEvent_Dispatch). One static buffer, zeroed on
+// every call — callers must finish using it before the next scratch() call.
+// Serialized by the script mutex like every other Lua entry point.
+int lua_scratch(lua_State* L) {
+    constexpr std::size_t kScratchCap = 0x1000;
+    alignas(16) static std::uint8_t buf[kScratchCap];
+    auto size = static_cast<std::size_t>(luaL_optinteger(L, 1, 0x100));
+    if (size == 0 || size > kScratchCap)
+        return luaL_error(L, "rsmm.scratch: size must be 1..%d", (int)kScratchCap);
+    std::memset(buf, 0, size);
+    lua_pushinteger(L, static_cast<lua_Integer>(reinterpret_cast<std::uintptr_t>(buf)));
+    return 1;
+}
+
 void register_api(lua_State* L) {
     // Public, documented surface. This is what a mod author writes against.
     // High-level behaviors (R.item.register / R.scaling / R.talent / ...)
@@ -617,6 +635,7 @@ void register_api(lua_State* L) {
         { "read_cstr",               lua_read_cstr },
         { "peek",                    lua_peek },
         { "poke",                    lua_poke },
+        { "scratch",                 lua_scratch },
         { "register_item",           lua_register_item },
         { "write_u8",                lua_write_u8 },
         { "write_u16",               lua_write_u16 },
@@ -641,7 +660,7 @@ bool script_run_mod_init(const std::string& mod_id,
     const auto init_path = mod_root / "init.lua";
     if (!std::filesystem::exists(init_path)) return false;
 
-    std::lock_guard<std::mutex> g(g_mu);
+    std::lock_guard<std::recursive_mutex> g(g_mu);
     lua_State* L = luaL_newstate();
     if (!L) return false;
     luaL_openlibs(L);
@@ -711,28 +730,36 @@ bool script_run_mod_init(const std::string& mod_id,
 namespace {
 
 // Shared dispatch: call every handler of `name` with one argument — the
-// payload table (built per-state by `push_payload`).
+// payload table (built per-state by `push_payload`). Handlers registered
+// under "*" receive every event as (payload, name); exact-name handlers
+// keep the one-argument form.
 template <class PushPayload>
 void emit_locked(const std::string& name, PushPayload push_payload) {
-    std::lock_guard<std::mutex> g(g_mu);
+    std::lock_guard<std::recursive_mutex> g(g_mu);
     for (auto& [id, s] : g_scripts) {
         if (!s.L) continue;
         lua_State* L = s.L;
         lua_getfield(L, LUA_REGISTRYINDEX, "__rsmm_events");
         if (!lua_istable(L, -1)) { lua_pop(L, 1); continue; }
-        lua_getfield(L, -1, name.c_str());
-        if (!lua_istable(L, -1)) { lua_pop(L, 2); continue; }
-        const int n = (int)lua_rawlen(L, -1);
-        for (int i = 1; i <= n; ++i) {
-            lua_rawgeti(L, -1, i);     // handler fn
-            push_payload(L);           // arg: payload table
-            if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
-                Loader::get().log(std::string("[lua] ") + id + " event " + name + ": "
-                                  + lua_tostring(L, -1));
-                lua_pop(L, 1);
+        for (const char* key : {name.c_str(), "*"}) {
+            const bool wildcard = (key[0] == '*' && key[1] == '\0');
+            if (wildcard && name == "*") break;  // don't double-fire literal "*"
+            lua_getfield(L, -1, key);
+            if (!lua_istable(L, -1)) { lua_pop(L, 1); continue; }
+            const int n = (int)lua_rawlen(L, -1);
+            for (int i = 1; i <= n; ++i) {
+                lua_rawgeti(L, -1, i);     // handler fn
+                push_payload(L);           // arg 1: payload table
+                if (wildcard) lua_pushlstring(L, name.data(), name.size());  // arg 2
+                if (lua_pcall(L, wildcard ? 2 : 1, 0, 0) != LUA_OK) {
+                    Loader::get().log(std::string("[lua] ") + id + " event " + name + ": "
+                                      + lua_tostring(L, -1));
+                    lua_pop(L, 1);
+                }
             }
+            lua_pop(L, 1);
         }
-        lua_pop(L, 2);
+        lua_pop(L, 1);
     }
 }
 
@@ -763,7 +790,7 @@ void script_reload_changed() {
     // lua_close drops them automatically — no stale callbacks remain.
     std::vector<std::pair<std::string, std::filesystem::path>> to_reload;
     {
-        std::lock_guard<std::mutex> g(g_mu);
+        std::lock_guard<std::recursive_mutex> g(g_mu);
         for (auto& [id, s] : g_scripts) {
             const auto init_path = s.root / "init.lua";
             std::error_code ec;
@@ -781,7 +808,7 @@ void script_reload_changed() {
         hook_lua_unregister_mod(id);
         // Tear down old state, build new one.
         {
-            std::lock_guard<std::mutex> g(g_mu);
+            std::lock_guard<std::recursive_mutex> g(g_mu);
             auto it = g_scripts.find(id);
             if (it != g_scripts.end() && it->second.L) {
                 lua_close(it->second.L);
@@ -798,7 +825,7 @@ void script_shutdown_all() {
     // Drop all hooks before any lua_State goes away so the trampoline
     // dispatcher can't be entered with a destroyed VM.
     hook_lua_shutdown();
-    std::lock_guard<std::mutex> g(g_mu);
+    std::lock_guard<std::recursive_mutex> g(g_mu);
     for (auto& [_, s] : g_scripts) {
         if (s.L) lua_close(s.L);
     }

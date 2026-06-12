@@ -7,11 +7,31 @@
 namespace Sym {
 constexpr std::uintptr_t kPreferredBase = 0x140000000ull;
 
+// --- enemies ---
+constexpr std::uintptr_t EnemyCamp_Stage3Filter = 0x1403194c0ull;
+constexpr const char* EnemyCamp_Stage3Filter_Pattern = "FUN_1403194c0";
+constexpr std::uintptr_t EnemyCamp_TierSelector = 0x14032de90ull;
+constexpr const char* EnemyCamp_TierSelector_Pattern = "FUN_14032de90";
+constexpr std::uintptr_t EnemyCamp_TribeEntryBuilder = 0x14032f520ull;
+constexpr const char* EnemyCamp_TribeEntryBuilder_Pattern = "FUN_14032f520";
+constexpr std::uintptr_t EnemyDef_PostLoad = 0x140319f00ull;
+constexpr const char* EnemyDef_PostLoad_Pattern = "FUN_140319f00";
+constexpr std::uintptr_t EnemyDefinition_ctor = 0x1401dea90ull;
+constexpr const char* EnemyDefinition_ctor_Pattern = "FUN_1401dea90";
+constexpr std::uintptr_t EnemyTribeDef_PostLoad = 0x14031b1e0ull;
+constexpr const char* EnemyTribeDef_PostLoad_Pattern = "FUN_14031b1e0";
+constexpr std::uintptr_t EnemyTribeDefinition_ctor = 0x1400c5430ull;
+constexpr const char* EnemyTribeDefinition_ctor_Pattern = "FUN_1400c5430";
+constexpr std::uintptr_t Enemy_RuntimeSpawnPicker = 0x140330db0ull;
+constexpr const char* Enemy_RuntimeSpawnPicker_Pattern = "FUN_140330db0";
+
 // --- engine ---
 constexpr std::uintptr_t Entry_Ctor = 0x140214bb0ull;
 constexpr const char* Entry_Ctor_Pattern = "FUN_140214bb0";
 constexpr std::uintptr_t Format_String = 0x140204f30ull;
 constexpr const char* Format_String_Pattern = "FUN_140204f30";
+constexpr std::uintptr_t LevelLoad_Orchestrator = 0x14028dcf0ull;
+constexpr const char* LevelLoad_Orchestrator_Pattern = "FUN_14028dcf0";
 constexpr std::uintptr_t String_Assign = 0x1405288b0ull;
 constexpr const char* String_Assign_Pattern = "FUN_1405288b0";
 constexpr std::uintptr_t Vector_Grow = 0x140154c20ull;
@@ -33,6 +53,26 @@ constexpr std::uintptr_t Event_LevelUp = 0x1401f6410ull;
 constexpr const char* Event_LevelUp_Pattern = "FUN_1401f6410";
 constexpr std::uintptr_t Event_RunEnd = 0x1401f51e0ull;
 constexpr const char* Event_RunEnd_Pattern = "FUN_1401f51e0";
+constexpr std::uintptr_t NamedEvent_ChannelMap_Find = 0x14066cc50ull;
+constexpr const char* NamedEvent_ChannelMap_Find_Pattern = "FUN_14066cc50";
+constexpr std::uintptr_t NamedEvent_Delete = 0x140126da0ull;
+constexpr const char* NamedEvent_Delete_Pattern = "FUN_140126da0";
+constexpr std::uintptr_t NamedEvent_Dispatch = 0x14066a700ull;
+constexpr const char* NamedEvent_Dispatch_Pattern = "FUN_14066a700";
+constexpr std::uintptr_t NamedEvent_EmitNetworkDamageFromHit = 0x140726610ull;
+constexpr const char* NamedEvent_EmitNetworkDamageFromHit_Pattern = "FUN_140726610";
+constexpr std::uintptr_t NamedEvent_GiveMagicalObject_Ctor = 0x14030f430ull;
+constexpr const char* NamedEvent_GiveMagicalObject_Ctor_Pattern = "FUN_14030f430";
+constexpr std::uintptr_t NamedEvent_HeroSubscribeAll = 0x140391d30ull;
+constexpr const char* NamedEvent_HeroSubscribeAll_Pattern = "FUN_140391d30";
+constexpr std::uintptr_t NamedEvent_HeroUnsubscribeAll = 0x140394a40ull;
+constexpr const char* NamedEvent_HeroUnsubscribeAll_Pattern = "FUN_140394a40";
+constexpr std::uintptr_t NamedEvent_Id_FromCrc = 0x14051e0e0ull;
+constexpr const char* NamedEvent_Id_FromCrc_Pattern = "FUN_14051e0e0";
+constexpr std::uintptr_t NamedEvent_NetSend = 0x1407205a0ull;
+constexpr const char* NamedEvent_NetSend_Pattern = "FUN_1407205a0";
+constexpr std::uintptr_t NamedEvent_NetSendToPeer = 0x140720630ull;
+constexpr const char* NamedEvent_NetSendToPeer_Pattern = "FUN_140720630";
 
 // --- items ---
 constexpr std::uintptr_t InitialLoading_SpawnMagicalObjects = 0x140260280ull;
@@ -62,15 +102,27 @@ constexpr std::uintptr_t Library_MelodyDefinition_vftable = 0x1414129c0ull;
 constexpr std::uintptr_t Library_RewardDefinition_vftable = 0x141412e00ull;
 constexpr std::uintptr_t Library_TileDefinition_vftable = 0x141412080ull;
 constexpr std::uintptr_t Library_VersionDefinition_vftable = 0x141412300ull;
+constexpr std::uintptr_t Registry_EnemyDefinition_desc = 0x141470208ull;
+constexpr std::uintptr_t Registry_EnemyTribeDefinition_desc = 0x14146f938ull;
 
 // --- netcode ---
 constexpr std::uintptr_t Netcode_Channel_LookupById = 0x140241150ull;
-constexpr std::uintptr_t Netcode_Channel_Subscribe = 0x1401c8660ull;
+constexpr const char* Netcode_Channel_LookupById_Pattern = "FUN_140241150";
+constexpr std::uintptr_t Netcode_Channel_Unsubscribe = 0x1401c8660ull;
+constexpr const char* Netcode_Channel_Unsubscribe_Pattern = "FUN_1401c8660";
 constexpr std::uintptr_t Netcode_DropPeer = 0x1402b4450ull;
 constexpr std::uintptr_t Netcode_PeerStateTick = 0x1402afaa0ull;
 
 // --- resource ---
 constexpr std::uintptr_t Definitions_LoadGroup = 0x14030fa00ull;
+constexpr std::uintptr_t InitialLoading_LoadAllDefinitions = 0x14030fa00ull;
+constexpr const char* InitialLoading_LoadAllDefinitions_Pattern = "FUN_14030fa00";
+constexpr std::uintptr_t Registry_EnumInstances = 0x140240e50ull;
+constexpr const char* Registry_EnumInstances_Pattern = "FUN_140240e50";
+constexpr std::uintptr_t Registry_RegisterInstance = 0x1403110d0ull;
+constexpr const char* Registry_RegisterInstance_Pattern = "FUN_1403110d0";
+constexpr std::uintptr_t ResourceRef_Resolve = 0x140491690ull;
+constexpr const char* ResourceRef_Resolve_Pattern = "FUN_140491690";
 constexpr std::uintptr_t Resource_LookupByPath = 0x140487040ull;
 constexpr const char* Resource_LookupByPath_Pattern = "FUN_140487040";
 

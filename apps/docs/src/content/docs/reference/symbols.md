@@ -25,7 +25,20 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **42** symbols across 9 categories.
+Total: **67** symbols across 10 categories.
+
+## enemies
+
+| name | address | status | callable | signature / note |
+|------|---------|--------|----------|------------------|
+| `EnemyCamp_Stage3Filter` | `0x1403194c0` | ✅ ok |  | void(void* candidatesVec, void* searchFilter) |
+| `EnemyCamp_TierSelector` | `0x14032de90` | ✅ ok |  | void(void* selector) |
+| `EnemyCamp_TribeEntryBuilder` | `0x14032f520` | ✅ ok |  | void(void* selector, void* specialEntry, void* outEntries, float mult) |
+| `EnemyDef_PostLoad` | `0x140319f00` | ✅ ok |  | bool(void* enemyDef) |
+| `EnemyDefinition_ctor` | `0x1401dea90` | ✅ ok |  | void*(void* self) |
+| `EnemyTribeDef_PostLoad` | `0x14031b1e0` | ✅ ok |  | bool(void* tribeDef) |
+| `EnemyTribeDefinition_ctor` | `0x1400c5430` | ✅ ok |  | void*(void* self) |
+| `Enemy_RuntimeSpawnPicker` | `0x140330db0` | ✅ ok |  | void(void* spawnerCpnt) |
 
 ## engine
 
@@ -33,6 +46,7 @@ Total: **42** symbols across 9 categories.
 |------|---------|--------|----------|------------------|
 | `Entry_Ctor` | `0x140214bb0` | ✅ ok | ✔ | void(void* base, uint32_t count) |
 | `Format_String` | `0x140204f30` | ✅ ok |  | printf-style format/string builder (e.g. 'Is Hero liked by {}', 'Chance to give {} MO')… |
+| `LevelLoad_Orchestrator` | `0x14028dcf0` | ✅ ok |  | i64(void* levelGs) |
 | `String_Assign` | `0x1405288b0` | ✅ ok | ✔ | void(void* dst_slot, const StringDesc* src) |
 | `Vector_Grow` | `0x140154c20` | ✅ ok | ✔ | void(void* vec, void* /*dead RDX*/, uint32_t new_cap /*R8*/) |
 
@@ -52,6 +66,16 @@ Total: **42** symbols across 9 categories.
 | `Analytics_SubmitNamedEvent` | `0x1401fa470` | ✅ ok | ✔ | void(void* analytics_mgr, void* payload_kv, StringDesc* event_name, char has_run_ctx) |
 | `Event_LevelUp` → `level_up` | `0x1401f6410` | ✅ ok | ✔ | Emitter whose body references the 'level_up_reach' string (xref 0x1401f64a4). void(ctx,… |
 | `Event_RunEnd` → `run_end` | `0x1401f51e0` | ✅ ok | ✔ | Emitter whose body references the 'run_end' string (xref 0x1401f5347). Loader post-deto… |
+| `NamedEvent_ChannelMap_Find` | `0x14066cc50` | ✅ ok | ✔ | iter*(void* channel_map, iter* out, uint32_t* event_id) |
+| `NamedEvent_Delete` | `0x140126da0` | ✅ ok | ✔ | void(oCGameNamedEvent* ev) |
+| `NamedEvent_Dispatch` | `0x14066a700` | ✅ ok | ✔ | void(void* dispatcher, oCGameNamedEvent* ev) |
+| `NamedEvent_EmitNetworkDamageFromHit` | `0x140726610` | ✅ ok |  | Reference emitter for NETWORK_DAMAGE: stack-builds the full oCGameNamedEventNetworkDama… |
+| `NamedEvent_GiveMagicalObject_Ctor` | `0x14030f430` | ✅ ok | ✔ | oe::dt::NamedEventGiveMagicalObject*(void* buf) |
+| `NamedEvent_HeroSubscribeAll` | `0x140391d30` | ✅ ok |  | Hero post-spawn named-event subscription setup: 26+ inlined subscribes registering hero… |
+| `NamedEvent_HeroUnsubscribeAll` | `0x140394a40` | ✅ ok |  | Hero teardown twin of NamedEvent_HeroSubscribeAll: walks the same (id global, slot) pai… |
+| `NamedEvent_Id_FromCrc` | `0x14051e0e0` | ✅ ok | ✔ | uint32_t(uint32_t ns, uint32_t name_crc) |
+| `NamedEvent_NetSend` | `0x1407205a0` | ✅ ok | ✔ | void(void* net_event_cpnt, oCGameNamedEvent* ev) |
+| `NamedEvent_NetSendToPeer` | `0x140720630` | ✅ ok | ✔ | void(void* net_event_cpnt, oCGameNamedEvent* ev, uint64_t* peer_session) |
 
 ## items
 
@@ -83,13 +107,15 @@ Total: **42** symbols across 9 categories.
 | `Library_RewardDefinition_vftable` | `0x141412e00` | 📍 va |  | vftable of oCTLibrary<oCDtRewardDefinition> singleton. |
 | `Library_TileDefinition_vftable` | `0x141412080` | 📍 va |  | vftable of oCTLibrary<oCDtTileDefinition> singleton. |
 | `Library_VersionDefinition_vftable` | `0x141412300` | 📍 va |  | vftable of oCTLibrary<oe::dt::VersionDefinition> singleton (LiveOps version manifest). |
+| `Registry_EnemyDefinition_desc` | `0x141470208` | 📍 va |  | Class registry descriptor for oCDtEnemyDefinition (set by registrar FUN_14022d940; UID … |
+| `Registry_EnemyTribeDefinition_desc` | `0x14146f938` | 📍 va |  | Class registry descriptor for oCDtEnemyTribeDefinition (registrar FUN_140189410; UID 0x… |
 
 ## netcode
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `Netcode_Channel_LookupById` | `0x140241150` | ❓ unverified |  | Channel-lookup-by-id; paired with subscribe for named gameplay events (GIVE_MAGICAL_OBJ… |
-| `Netcode_Channel_Subscribe` | `0x1401c8660` | ❓ unverified |  | Subscribe to a gameplay-event channel. Address from events corpus. |
+| `Netcode_Channel_LookupById` | `0x140241150` | ✅ ok | ✔ | iter*(void* channel_map, iter* out, uint32_t* event_id) |
+| `Netcode_Channel_Unsubscribe` | `0x1401c8660` | ✅ ok | ✔ | void(void* node_plus_8, void** sub_slot) |
 | `Netcode_DropPeer` | `0x1402b4450` | ❓ unverified |  | Drops a peer after the reconnect window (default 60s) elapses. Address from netcode cor… |
 | `Netcode_PeerStateTick` | `0x1402afaa0` | ❓ unverified |  | Per-peer connection-state tick (peer conn-state enum at peer+0xCC; 3=connected). Reconn… |
 
@@ -98,6 +124,10 @@ Total: **42** symbols across 9 categories.
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `Definitions_LoadGroup` | `0x14030fa00` | ❓ unverified |  | Loads the 'Definitions' group / VersionDefinition manifest (triggers loading the curate… |
+| `InitialLoading_LoadAllDefinitions` | `0x14030fa00` | ✅ ok |  | void(void* nameFilter) |
+| `Registry_EnumInstances` | `0x140240e50` | ✅ ok | ✔ | void*(void* unused, void* out3, void** classDescPtr) |
+| `Registry_RegisterInstance` | `0x1403110d0` | ✅ ok |  | void(void* definition) |
+| `ResourceRef_Resolve` | `0x140491690` | ✅ ok |  | void(void* refBlock, void* classDesc, void** outResolved, void* policy) |
 | `Resource_LookupByPath` | `0x140487040` | ✅ ok | ✔ | void*(const char* decoded_path, void*, void*, void*) |
 
 ## rewards

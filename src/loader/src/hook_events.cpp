@@ -11,6 +11,7 @@
 #include "fn_resolver.h"
 #include "script_lua.h"
 #include "loader.h"
+#include "symbols.gen.h"        // GENERATED — Sym::NamedEvent_Dispatch_Pattern
 #include "event_payload.gen.h"  // GENERATED — rsmm::event_payload()
 
 #include "MinHook.h"
@@ -137,6 +138,125 @@ bool install_analytics_firehose() {
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// oCGameNamedEvent gameplay bus: one detour on NamedEvent_Dispatch
+// (FUN_14066a700) exposes EVERY entity-context gameplay event — the bus the
+// game itself uses for NETWORK_DAMAGE, GIVE_MAGICAL_OBJECT, GAIN_REROLL,
+// REMOVE_*_OBJECT, CINE_START/STOP, ... (full map: docs/_re/kinds/events-bus.md).
+//
+// Unlike the analytics firehose these carry LIVE payloads: the dispatcher is
+// the receiving entity's NamedEventDispatcher sub-object (entity + 0x4d8 for
+// entity-scoped events; the world dispatcher sits at world + 0x340, so the
+// derived `entity` field is only meaningful for entity-scoped events) and the
+// event object itself carries its plaintext name at +0x20 and the interned id
+// at +0x30, so the hook needs no per-event table and survives the game adding
+// names. Payload fields are decoded for the events whose layout is verified
+// (NETWORK_DAMAGE / NETWORK_DAMAGE_RESPONSE / GIVE_MAGICAL_OBJECT); raw
+// pointers are published as hex strings (Lua doubles can't hold 64-bit ints).
+
+// void NamedEvent_Dispatch(void* dispatcher, oCGameNamedEvent* ev)
+using Dispatch_t = void (*)(void*, void*);
+Dispatch_t     g_dispatch_real = nullptr;
+std::uintptr_t g_dispatch_va   = 0;
+unsigned       g_gameplay_seq  = 0;
+
+// Copy the event's name (char* at ev+0x20) into `out`, accepting only the
+// [A-Z0-9_] alphabet the bus uses. Returns false on a null/garbled name so a
+// moved layout degrades to "skip this event", never to a wild read.
+bool gameplay_event_name(const unsigned char* ev, char* out, size_t cap) {
+    const char* name = *reinterpret_cast<const char* const*>(ev + 0x20);
+    if (!name) return false;
+    size_t i = 0;
+    for (; i < cap - 1 && name[i]; ++i) {
+        const char c = name[i];
+        const bool ok = (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+        if (!ok) return false;
+        out[i] = c;
+    }
+    out[i] = '\0';
+    return i > 0 && name[i] == '\0';
+}
+
+void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
+    // Forward first: subscribers run, the game applies the effect, and the
+    // event object (caller-owned; dispatch consumes a clone) is still alive.
+    g_dispatch_real(dispatcher, event);
+
+    if (!event) return;
+    const auto* ev = static_cast<const unsigned char*>(event);
+    char name[64];
+    if (!gameplay_event_name(ev, name, sizeof(name))) return;
+
+    const auto id   = *reinterpret_cast<const std::uint32_t*>(ev + 0x30);
+    const auto disp = reinterpret_cast<std::uintptr_t>(dispatcher);
+
+    char buf[512];
+    int n = std::snprintf(buf, sizeof(buf),
+                          "{\"event\":\"gameplay:%s\",\"name\":\"%s\",\"seq\":%u,"
+                          "\"id\":%u,\"source\":\"gameplay\","
+                          "\"dispatcher\":\"0x%llx\",\"entity\":\"0x%llx\"",
+                          name, name, ++g_gameplay_seq, id,
+                          static_cast<unsigned long long>(disp),
+                          static_cast<unsigned long long>(disp - 0x4d8));
+    if (n < 0 || n >= static_cast<int>(sizeof(buf))) return;
+
+    // Verified payload layouts only; everything else gets the envelope.
+    if (std::strcmp(name, "GIVE_MAGICAL_OBJECT") == 0) {
+        // oe::dt::NamedEventGiveMagicalObject (0x60): MO definition GUID.
+        const auto lo = *reinterpret_cast<const std::uint64_t*>(ev + 0x50);
+        const auto hi = *reinterpret_cast<const std::uint64_t*>(ev + 0x58);
+        n += std::snprintf(buf + n, sizeof(buf) - n,
+                           ",\"mo_guid_lo\":\"0x%llx\",\"mo_guid_hi\":\"0x%llx\"",
+                           static_cast<unsigned long long>(lo),
+                           static_cast<unsigned long long>(hi));
+    } else if (std::strcmp(name, "NETWORK_DAMAGE") == 0
+               || std::strcmp(name, "NETWORK_DAMAGE_RESPONSE") == 0) {
+        // oCGameNamedEventNetworkDamage (0x110): f32 value @+0x40, source
+        // net-id @+0x48, embedded oCEntityHitData @+0x50 with target entity*
+        // @+0x60 and instigator entity* @+0xf0 (see events-bus.md).
+        const auto value  = *reinterpret_cast<const float*>(ev + 0x40);
+        const auto srcid  = *reinterpret_cast<const std::uint64_t*>(ev + 0x48);
+        const auto target = *reinterpret_cast<const std::uint64_t*>(ev + 0x60);
+        const auto instig = *reinterpret_cast<const std::uint64_t*>(ev + 0xf0);
+        n += std::snprintf(buf + n, sizeof(buf) - n,
+                           ",\"value\":%g,\"source_id\":\"0x%llx\","
+                           "\"target_entity\":\"0x%llx\",\"instigator_entity\":\"0x%llx\"",
+                           static_cast<double>(value),
+                           static_cast<unsigned long long>(srcid),
+                           static_cast<unsigned long long>(target),
+                           static_cast<unsigned long long>(instig));
+    }
+    if (n < 0 || n >= static_cast<int>(sizeof(buf) - 2)) return;
+    buf[n] = '}'; buf[n + 1] = '\0';
+
+    const std::string lua_event = std::string("gameplay:") + name;
+    script_emit_event_json(lua_event, buf);
+}
+
+bool install_gameplay_bus() {
+    g_dispatch_va = fn_resolve(Sym::NamedEvent_Dispatch_Pattern);
+    if (g_dispatch_va == 0 || g_dispatch_va == static_cast<std::uintptr_t>(-1)) {
+        Loader::get().log("[gameplay-events] resolve NamedEvent_Dispatch failed");
+        return false;
+    }
+    if (!fn_verify(Sym::NamedEvent_Dispatch_Pattern, g_dispatch_va)) {
+        Loader::get().log("[gameplay-events] NamedEvent_Dispatch verify mismatch "
+                          "(game patched?); gameplay bus disabled");
+        return false;
+    }
+    if (MH_CreateHook(reinterpret_cast<LPVOID>(g_dispatch_va),
+                      reinterpret_cast<LPVOID>(&gameplay_dispatch_detour),
+                      reinterpret_cast<LPVOID*>(&g_dispatch_real)) != MH_OK
+        || MH_EnableHook(reinterpret_cast<LPVOID>(g_dispatch_va)) != MH_OK) {
+        Loader::get().log("[gameplay-events] NamedEvent_Dispatch hook failed");
+        g_dispatch_va = 0;
+        return false;
+    }
+    Loader::get().log("[gameplay-events] oCGameNamedEvent bus armed "
+                      "(every gameplay event -> R.on('gameplay:<NAME>'))");
+    return true;
+}
+
 bool env_truthy(const char* name) {
     char buf[8] = {};
     DWORD n = GetEnvironmentVariableA(name, buf, sizeof(buf));
@@ -173,9 +293,12 @@ bool arm(EventHook& h) {
 } // namespace
 
 bool install_event_hooks() {
-    if (!env_truthy("RSMM_ENABLE_GAME_EVENTS")) {
-        Loader::get().log("[game-events] disabled (set RSMM_ENABLE_GAME_EVENTS=1 to "
-                          "bridge level_up/run_end to rsmm.on_event)");
+    const bool analytics = env_truthy("RSMM_ENABLE_GAME_EVENTS");
+    const bool gameplay  = env_truthy("RSMM_ENABLE_GAMEPLAY_EVENTS");
+    if (!analytics && !gameplay) {
+        Loader::get().log("[game-events] disabled (RSMM_ENABLE_GAME_EVENTS=1 bridges "
+                          "analytics events, RSMM_ENABLE_GAMEPLAY_EVENTS=1 bridges the "
+                          "oCGameNamedEvent bus to rsmm.on_event)");
         return false;
     }
     if (!fn_resolver_init()) {
@@ -183,11 +306,16 @@ bool install_event_hooks() {
         return false;
     }
     bool any = false;
-    any |= arm<0>(g_hooks[0]);
-    any |= arm<1>(g_hooks[1]);
-    // One detour on the central telemetry sink republishes every named
-    // analytics event to the Lua bus (see install_analytics_firehose).
-    any |= install_analytics_firehose();
+    if (analytics) {
+        any |= arm<0>(g_hooks[0]);
+        any |= arm<1>(g_hooks[1]);
+        // One detour on the central telemetry sink republishes every named
+        // analytics event to the Lua bus (see install_analytics_firehose).
+        any |= install_analytics_firehose();
+    }
+    // One detour on the named-event dispatch republishes every entity-context
+    // gameplay event (see install_gameplay_bus).
+    if (gameplay) any |= install_gameplay_bus();
     return any;
 }
 
@@ -196,6 +324,7 @@ void remove_event_hooks() {
         if (h.va) MH_DisableHook(reinterpret_cast<LPVOID>(h.va));
     }
     if (g_submit_va) MH_DisableHook(reinterpret_cast<LPVOID>(g_submit_va));
+    if (g_dispatch_va) MH_DisableHook(reinterpret_cast<LPVOID>(g_dispatch_va));
 }
 
 } // namespace rsmm

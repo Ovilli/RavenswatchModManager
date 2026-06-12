@@ -265,3 +265,86 @@ earlier init (→ needs a native loader insert into `tribe+0x2b8`, mirroring
 `Gnoll_Shielded` changing only `spawn_weight` (tribe_ref/entity/flags
 byte-identical), so a Storm-Island gnoll-pack skew toward shielded gnolls = it
 self-registered.
+
+## Update 2026-06-10 — roster writer found; full load chain closed (static, live Ghidra)
+
+All symbols below are now in `data/symbols.json` (category `enemies`/`resource`)
+with byte patterns in the local `function_patterns.json`; resolve names via
+`rsmm symbols resolve <Name>`.
+
+**The tribe-roster writer is `FUN_140319f00` = `EnemyDef_PostLoad`**, the
+`oCDtEnemyDefinition` vftable slot at `+0x90` (post-deserialize callback, slot
+shared design with the tribe's own post-load). It:
+
+1. Resolves the tribe typed-ref block at `+0x2e8` via the generic resolver
+   `FUN_140491690` (`ResourceRef_Resolve`) when the resolved-flag byte at
+   `+0x310` is 0 — writing the live tribe pointer to `+0x318`. Resolution
+   **loads the tribe def on demand** (tribes are excluded from the boot
+   definitions scan; see below).
+2. If the tribe is loaded+valid (`tribe+0x38 == 1 && !(tribe+0x30 & 2)`):
+   **push_back(self) onto `tribe+0x2b8/+0x2c0`** (vector append
+   `FUN_1401550d0`) — *this is the only roster write in the binary* — and
+   folds tier aggregates: min `+0x2dc` → `tribe+0x2c8`, max → `tribe+0x2cc`,
+   max tier-range-hi (`+0x2e4`) → `tribe+0x2d0`.
+3. Registers the instance in the per-class registry via `FUN_1403110d0`
+   (`Registry_RegisterInstance`); registries are enumerated with
+   `FUN_140240e50` (`Registry_EnumInstances`) by every selector.
+
+So **hypothesis (a) is confirmed statically: a loaded enemy def self-registers
+into its tribe's runtime roster.** No tribe patch, no loader hook needed for
+the roster itself.
+
+**What loads enemy defs in the first place — `FUN_14030fa00` =
+`InitialLoading_LoadAllDefinitions`** (boot stage *"InitialLoading - Load all
+definitions"*, called from `FUN_140260280`):
+
+1. Loads `Versions/LiveOps5.versiondef.ot` explicitly, first.
+2. **Directory-scans the `Definitions` folder of the resource filesystem**
+   (`FUN_14049c030(DAT_14146f2a8, "Definitions", 1)` — the resource FS whose
+   index is `UsedRscList.ot`) and creates a load job for **every** definition
+   file found, *except* files of 7 excluded classes. The tribe class
+   (`DAT_14146f938`) is one of the exclusions — tribes load lazily when the
+   first enemy's `tribe_ref` resolves. The enemy class (`DAT_141470208`) is
+   **not** excluded.
+
+**Consequence for the apply step: registration in `UsedRscList.ot` (which
+`apply_mods.sync_usedrsclist` already does, 3-line record) is the entire
+contract.** Boot scan → deserialize → `EnemyDef_PostLoad` → tribe roster →
+camp tier selector candidate. The historical Dreadgnoll no-spawn is now
+attributed to its two confounds (rewritten `tribe_ref` and `spawn_weight`
+9999), not a missing registration layer. `mods/GnollSelfRegTest` (clean clone,
+sane weight) remains the empirical confirmation to run in-game; expected
+result: shielded-gnoll skew on Storm Island.
+
+**Corrected `oCDtEnemyDefinition` field layout (from ctor `FUN_1401dea90`,
+supersedes the table above where they conflict):** `+0x288` and `+0x2e8` are
+0x38-byte *typed resource-ref blocks* `{char* name, u32 hash, char* parentPath,
+u32 hash2, void* classDescriptor @+0x20, u8 resolved @+0x28, void* resolvedPtr
+@+0x30}`:
+
+- `+0x288` block = **entity ref** (descriptor default `DAT_14146f740`,
+  override at `+0x2a8`, resolved entity resource at `+0x2b8`). The old table's
+  "+0x2b8 MaxOccurence ptr" reading was wrong — `+0x2b8` is the resolved
+  entity pointer; `+0x2b0` is its resolved-flag, not "isElite".
+- `+0x2c0` = the `oCCustomFlagList` (vftable, data `+0x2c8`, count `+0x2d0`) —
+  the ctor/filter offset conflict in the note above is resolved in the ctor's
+  favor.
+- `+0x2dc` f32 minTier (0.1f), `+0x2e0/+0x2e4` tier range `{0,5}`.
+- `+0x2e8` block = **tribe ref** (descriptor default = tribe class descriptor
+  `DAT_14146f938` stored at `+0x308`, resolved-flag `+0x310`, resolved
+  `oCDtEnemyTribeDefinition*` at `+0x318`).
+- `+0x320/+0x328/+0x330` weightA + tier-weight table, `+0x338/+0x340/+0x348`
+  weightB + table (unchanged).
+
+**Tribe layout (from ctor `FUN_1400c5430`, size `0x2d8`, UID `0x176dc2eb`,
+vftable `0x140efea30`):** flag list `+0x288`; **cooked** entry vector
+`+0x2a0/+0x2a8` (resolved by tribe post-load `FUN_14031b1e0` =
+`EnemyTribeDef_PostLoad`; empty in all 25 vanilla tribes); **runtime roster
+`+0x2b8/+0x2c0`** (zero-init, written only by `EnemyDef_PostLoad`); tier
+aggregates `+0x2c8` (min, FLT_MAX init), `+0x2cc` (max, -FLT_MAX), `+0x2d0`
+(u32 max tier-hi).
+
+Also mapped: `FUN_140330db0` (`Enemy_RuntimeSpawnPicker`) — the *in-level*
+spawner path enumerates the **class registry**, not the tribe roster, filtered
+by allowed-tribe pointer list; so registry registration (step 3 of post-load)
+matters for both paths.
