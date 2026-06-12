@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { signOut, useSession } from '../lib/auth-client';
 import { inTauri } from '../lib/platform';
 import { CopyButton } from './chrome';
+import { useToast } from './toast';
 
 function initialsFor(name: string | null | undefined, email: string | null | undefined): string {
   const src = name?.trim() || email?.trim() || '?';
@@ -72,6 +73,7 @@ interface SessionUser {
 function ProfileMenu({ user }: { user: SessionUser }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     if (!open) return;
@@ -95,7 +97,17 @@ function ProfileMenu({ user }: { user: SessionUser }) {
 
   async function handleSignOut() {
     setOpen(false);
-    await signOut();
+    // Surface failures — a silent sign-out failure leaves the user
+    // looking signed in with a dead session.
+    try {
+      const result = await signOut();
+      if (result?.error) {
+        throw new Error(result.error.message ?? `sign-out rejected (HTTP ${result.error.status})`);
+      }
+    } catch (err) {
+      console.error('[account] sign-out failed', err);
+      toast.push(`Sign out failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+    }
   }
 
   return (

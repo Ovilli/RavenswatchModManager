@@ -301,10 +301,17 @@ function LibraryPage() {
   const uninstallModStore = useApp((s) => s.uninstallMod);
   const uninstall = useCallback(
     async (id: string) => {
-      await removeLocalMod(id);
-      uninstallModStore(id);
-      await refreshLocalMods();
-      toast.push('Mod uninstalled.', 'success');
+      // Card/list buttons call this fire-and-forget — catch here or a
+      // sidecar failure becomes an unhandled rejection the user never sees.
+      try {
+        await removeLocalMod(id);
+        uninstallModStore(id);
+        await refreshLocalMods();
+        toast.push('Mod uninstalled.', 'success');
+      } catch (err) {
+        console.error('[library] uninstall failed', err);
+        toast.push(err instanceof Error ? err.message : String(err), 'error');
+      }
     },
     [refreshLocalMods, removeLocalMod, toast, uninstallModStore],
   );

@@ -31,17 +31,22 @@ manifest that the client polls for new versions.
    - publish a draft release with `latest.json` next to the artifacts.
 
 5. **Publish** the draft release. The client now picks up the update on next
-   launch (auto-check is silent; failures don't surface to the user).
+   launch. Check failures are not silent: a banner with the failure reason
+   and a Retry button is shown, and the error is written to the launcher log
+   (Settings → Launcher Log).
 
 ## How clients consume updates
 
-- `UpdaterBanner` in `routes/__root.tsx` runs a silent check ~1.5 s after
-  startup and shows a banner above the main content if a newer version is
-  available.
-- `UpdaterSettings` in `routes/settings.tsx` lets the user check manually and
-  see release notes.
-- Selecting **Install & restart** downloads, verifies the signature, swaps
-  the binary, and relaunches via `tauri-plugin-process`.
+- `UpdaterBanner` (`components/updater.tsx`, mounted in `routes/__root.tsx`)
+  runs a check ~1.5 s after startup. A newer version auto-downloads and then
+  prompts the user to restart; download progress is shown in a compact bar.
+- If the check or the download fails, an error banner with the reason and a
+  Retry button is rendered, and the failure is appended to the launcher log.
+- `UpdaterSettings` in `routes/settings.tsx` lets the user check manually,
+  see release notes, and shows the same check/download errors inline.
+- Selecting **Restart & update** verifies the signature, swaps the binary,
+  and relaunches via `tauri-plugin-process`. A failed relaunch tells the
+  user to restart manually (the new version is already installed by then).
 
 ## Cross-platform notes
 
@@ -49,5 +54,7 @@ manifest that the client polls for new versions.
 - **Linux** — AppImage. Updater rewrites the AppImage on disk; the OS handles
   the rest on next launch.
 
-If `latest.json` is missing or the signature does not match the embedded
-public key, the updater returns no update and the banner stays hidden.
+If the feed reports no newer version, the banner stays hidden. If
+`latest.json` is missing/unreachable or the signature does not match the
+embedded public key, the check errors and the failure banner explains why
+(the same reason is logged to the launcher log for bug reports).

@@ -1,4 +1,4 @@
-import { createApiClient } from '@rsmm/api-client';
+import { ApiError, ApiTimeoutError, createApiClient } from '@rsmm/api-client';
 import { getApiUrl } from './api-url';
 
 const API_BASE = getApiUrl();
@@ -19,4 +19,38 @@ export const api = createApiClient({
 
 export function getApiBaseUrl(): string {
   return API_BASE;
+}
+
+/**
+ * Turn a failed store/API fetch into a message a user (or bug report)
+ * can act on. A bare `TypeError` from `fetch` carries no HTTP status —
+ * inside a Tauri WebView that almost always means the request was
+ * blocked before it left the app (the API origin is missing from CSP
+ * `connect-src` in `tauri.conf.json`) or rejected by the server's CORS
+ * policy (this WebView origin is missing from the API's
+ * `trustedOrigins`). Spell both out instead of showing "Failed to
+ * fetch".
+ */
+export function describeApiError(err: unknown): string {
+  if (err instanceof ApiTimeoutError) {
+    return `The API at ${API_BASE} did not respond in time. It may be down or your connection is slow.`;
+  }
+  if (err instanceof ApiError) {
+    return `The API at ${API_BASE} responded with HTTP ${err.status}. (${err.message})`;
+  }
+  if (err instanceof TypeError) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '<unknown>';
+    return [
+      `Request to ${API_BASE} was blocked before reaching the server (${err.message}).`,
+      'If you are offline, reconnect and retry. Otherwise this is usually config:',
+      `the app origin ${origin} must be in the API's CORS trustedOrigins (apps/api/src/env.ts),`,
+      `and ${API_BASE} must be in the CSP connect-src (apps/desktop/src-tauri/tauri.conf.json).`,
+    ].join(' ');
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** Console diagnostic for store-fetch failures: one readable line plus the raw error object. */
+export function logApiError(scope: string, err: unknown): void {
+  console.error(`[${scope}] API request failed: ${describeApiError(err)}`, err);
 }

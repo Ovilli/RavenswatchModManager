@@ -15,6 +15,7 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 import {
   Button,
+  CopyButton,
   Cover,
   CoverPlaceholder,
   Fleuron,
@@ -25,7 +26,7 @@ import {
   StatPill,
 } from '../components/chrome';
 import { useToast } from '../components/toast';
-import { api } from '../lib/api';
+import { api, describeApiError, logApiError } from '../lib/api';
 import { getApiUrl } from '../lib/api-url';
 import { inTauri } from '../lib/platform';
 import { installModVersion, listLocalMods, uninstallLocalMod } from '../lib/rsmm';
@@ -58,6 +59,13 @@ function ModDetailPage() {
   const showNsfw = useApp((s) => s.settings.showNsfw);
   const [versionBusy, setVersionBusy] = useState<string | null>(null);
   const [versionError, setVersionError] = useState<string | null>(null);
+
+  // A failed index fetch is not a 404 — without this the page falls
+  // through to "No mod matches", hiding network/CSP problems entirely.
+  const fetchFailed = Boolean(error) && !(error instanceof ApiError && error.status === 404);
+  useEffect(() => {
+    if (fetchFailed) logApiError('mod-detail', error);
+  }, [fetchFailed, error]);
 
   const activeProfileId = useApp((s) => s.activeProfileId);
   const refreshLocalMods = useCallback(async () => {
@@ -142,7 +150,19 @@ function ModDetailPage() {
         <Button type="button" size="sm" onClick={() => navigate({ to: '/browse' })}>
           ← back
         </Button>
-        <p className="font-serif-italic text-parchment">No mod matches “{slug}”.</p>
+        {fetchFailed ? (
+          <div className="ember-banner flex flex-col gap-2 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <span className="font-serif-italic text-base">
+                Couldn’t load “{slug}” from the index.
+              </span>
+              <CopyButton value={describeApiError(error)} />
+            </div>
+            <p className="font-serif-italic text-sm text-ash">{describeApiError(error)}</p>
+          </div>
+        ) : (
+          <p className="font-serif-italic text-parchment">No mod matches “{slug}”.</p>
+        )}
       </div>
     );
   }
@@ -181,6 +201,15 @@ function ModDetailPage() {
       <Button type="button" size="sm" onClick={() => navigate({ to: '/browse' })}>
         <ArrowLeft className="h-3.5 w-3.5" /> back
       </Button>
+
+      {fetchFailed ? (
+        <div className="ember-banner flex items-center gap-3 px-4 py-2">
+          <span className="font-serif-italic text-sm flex-1">
+            Index unreachable — showing locally installed data only.
+          </span>
+          <CopyButton value={describeApiError(error)} />
+        </div>
+      ) : null}
 
       {imageUrl ? (
         <Cover

@@ -2,11 +2,11 @@ import type { Collection, ModListItem } from '@rsmm/schemas';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { ExternalLink, EyeOff, Loader2, Plus, Search, WifiOff } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button, CopyButton, Cover, MonoTag, SectionHeader, StatPill } from '../components/chrome';
 import { CheckIcon } from '../components/icons/CheckIcon';
 import { useToast } from '../components/toast';
-import { api, getApiBaseUrl } from '../lib/api';
+import { api, describeApiError, getApiBaseUrl, logApiError } from '../lib/api';
 import { validateProfileName } from '../lib/profile-name';
 import { installModFromIndex, listLocalModsForProfile } from '../lib/rsmm';
 import { activeProfile, useApp } from '../store';
@@ -159,6 +159,10 @@ function BrowsePage() {
   const isLoading = tab === 'mods' ? modLoading : colLoading;
   const error = tab === 'mods' ? modError : colError;
 
+  useEffect(() => {
+    if (error) logApiError('browse', error);
+  }, [error]);
+
   return (
     <div className="space-y-6">
       <SectionHeader
@@ -238,7 +242,7 @@ function BrowsePage() {
           <div className="flex items-center gap-3">
             <WifiOff className="h-4 w-4 text-crimson shrink-0" />
             <span className="font-serif-italic text-base">API unreachable.</span>
-            <CopyButton value={(error as Error).message} />
+            <CopyButton value={describeApiError(error)} />
             <button
               type="button"
               onClick={() => window.open(getApiBaseUrl(), '_blank')}
@@ -247,6 +251,7 @@ function BrowsePage() {
               <ExternalLink className="h-3 w-3" /> open in browser
             </button>
           </div>
+          <p className="font-serif-italic text-sm text-ash">{describeApiError(error)}</p>
           <div className="font-mono text-xs text-ash bg-pitch/30 px-2 py-1 rounded">
             {getApiBaseUrl()} <span className="text-oxblood/60">|</span> origin:{' '}
             {window.location.origin}

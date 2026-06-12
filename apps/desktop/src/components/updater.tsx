@@ -116,7 +116,7 @@ async function applyUpdate(): Promise<void> {
     });
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
-    setStatus({ state: 'error', error: String(e), update });
+    setStatus({ state: 'error', error: `Update download/install failed: ${detail}`, update });
     void appendLauncherLog('error', '[Updater] Download/install failed', { error: detail });
   }
 }
@@ -342,6 +342,11 @@ export function UpdaterSettings() {
       {status.state === 'error' ? (
         <p className="text-sm text-crimson" role="alert">
           {status.error}
+        </p>
+      ) : null}
+      {status.state === 'check-error' && status.checkError ? (
+        <p className="text-sm text-crimson" role="alert">
+          {status.checkError.reason}
         </p>
       ) : null}
     </div>

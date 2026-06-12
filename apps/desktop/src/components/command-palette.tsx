@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { Search } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { api } from '../lib/api';
+import { api, logApiError } from '../lib/api';
 import { useApp } from '../store';
 
 interface Hit {
@@ -28,12 +28,17 @@ export function CommandPalette() {
   // has typed at least 2 chars. React Query caches per `q` so repeated
   // typing doesn't hammer the API.
   const trimmedQ = q.trim();
-  const { data: remoteData } = useQuery({
+  const { data: remoteData, error: remoteError } = useQuery({
     queryKey: ['mods', 'palette', trimmedQ],
     queryFn: () => api.mods.list({ q: trimmedQ, limit: 10 }),
     enabled: open && trimmedQ.length >= 2,
     staleTime: 30_000,
   });
+
+  // Don't let "the index is unreachable" masquerade as "no results".
+  useEffect(() => {
+    if (remoteError) logApiError('command-palette', remoteError);
+  }, [remoteError]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -185,7 +190,9 @@ export function CommandPalette() {
         >
           {hits.length === 0 ? (
             <div className="font-serif-italic px-4 py-6 text-center text-ash">
-              No mods match. Try a different word.
+              {remoteError && trimmedQ.length >= 2
+                ? 'No installed mods match — and the remote index is unreachable, so online results are unavailable.'
+                : 'No mods match. Try a different word.'}
             </div>
           ) : (
             hits.map((h, i) => (
@@ -210,6 +217,11 @@ export function CommandPalette() {
             ))
           )}
         </div>
+        {remoteError && trimmedQ.length >= 2 && hits.length > 0 ? (
+          <p className="border-t border-border px-4 py-2 font-mono text-xs text-crimson">
+            Remote index unreachable — showing installed mods only.
+          </p>
+        ) : null}
       </div>
     </dialog>
   );

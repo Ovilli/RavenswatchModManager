@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { ArrowUpCircle, Loader2, RefreshCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { api } from '../lib/api';
+import { api, describeApiError, logApiError } from '../lib/api';
 import { inTauri } from '../lib/platform';
 import { installModFromIndex, listLocalMods } from '../lib/rsmm';
 import { outdatedMods, useApp } from '../store';
@@ -28,6 +28,13 @@ export function UpdatesPanel() {
     enabled: inTauri() && installed.length > 0,
     staleTime: 5 * 60_000,
   });
+
+  // The poll failing means "updates available" can silently read 0 —
+  // at least say so in the console (Browse shows the visible banner
+  // when the API is down) and in the panel when it is rendered.
+  useEffect(() => {
+    if (remote.error) logApiError('updates-panel', remote.error);
+  }, [remote.error]);
 
   // Push remote latestVersion + image into the store so the rest of the
   // UI (mod cards, detail pages) stays consistent without a second poll.
@@ -152,6 +159,11 @@ export function UpdatesPanel() {
         })}
       </ul>
       {error ? <p className="mt-3 font-mono text-xs text-crimson">{error}</p> : null}
+      {remote.isError ? (
+        <p className="mt-3 font-mono text-xs text-crimson">
+          Registry recheck failed: {describeApiError(remote.error)}
+        </p>
+      ) : null}
     </Panel>
   );
 }

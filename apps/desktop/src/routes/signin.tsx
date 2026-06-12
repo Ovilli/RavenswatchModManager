@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { LogIn, UserPlus } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { Button, CopyButton, Panel, SectionHeader } from '../components/chrome';
+import { describeApiError } from '../lib/api';
 import { authClient, signIn, signUp } from '../lib/auth-client';
 
 export const Route = createFileRoute('/signin')({
@@ -60,8 +61,12 @@ function SignInPage() {
       }
       navigate({ to: '/' });
     } catch (err) {
-      if (err instanceof TypeError && err.message === 'Failed to fetch') {
-        setError('Could not reach the server. Check your connection or try again later.');
+      // A TypeError from fetch ("Failed to fetch" / "Load failed") means
+      // the request never reached the server — offline, or blocked by
+      // CSP connect-src / API CORS. describeApiError spells that out.
+      if (err instanceof TypeError) {
+        console.error('[signin] auth request blocked', err);
+        setError(describeApiError(err));
       } else {
         setError(err instanceof Error ? err.message : 'Unexpected error.');
       }

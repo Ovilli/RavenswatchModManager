@@ -15,6 +15,7 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 import {
   Button,
+  CopyButton,
   Cover,
   CoverPlaceholder,
   Fleuron,
@@ -27,7 +28,7 @@ import {
 import { CheckIcon } from '../components/icons/CheckIcon';
 import { useToast } from '../components/toast';
 import { useDialog } from '../components/toast';
-import { api } from '../lib/api';
+import { api, describeApiError, logApiError } from '../lib/api';
 import { installModFromIndex, listLocalMods, listLocalModsForProfile } from '../lib/rsmm';
 import { activeProfile, useApp } from '../store';
 
@@ -58,6 +59,14 @@ function CollectionDetailPage() {
     retry: (count, err) => (err instanceof ApiError && err.status === 404 ? false : count < 1),
     staleTime: 30_000,
   });
+
+  // A failed fetch is not a 404 — distinguish "collection does not
+  // exist" from "the index could not be reached" so network/CSP
+  // problems are not reported as a missing collection.
+  const fetchFailed = Boolean(error) && !(error instanceof ApiError && error.status === 404);
+  useEffect(() => {
+    if (fetchFailed) logApiError('collection-detail', error);
+  }, [fetchFailed, error]);
 
   async function installOne(modSlug: string) {
     setInstallError(null);
@@ -187,9 +196,17 @@ function CollectionDetailPage() {
         <Button type="button" size="sm" onClick={() => navigate({ to: '/browse' })}>
           ← back
         </Button>
-        <p className="font-serif-italic text-parchment">
-          {error ? 'Could not load this collection.' : `No collection matches "${slug}".`}
-        </p>
+        {fetchFailed ? (
+          <div className="ember-banner flex flex-col gap-2 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <span className="font-serif-italic text-base">Could not load this collection.</span>
+              <CopyButton value={describeApiError(error)} />
+            </div>
+            <p className="font-serif-italic text-sm text-ash">{describeApiError(error)}</p>
+          </div>
+        ) : (
+          <p className="font-serif-italic text-parchment">{`No collection matches "${slug}".`}</p>
+        )}
       </div>
     );
   }
