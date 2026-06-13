@@ -47,6 +47,20 @@ static void loader_thread_cxx() {
         L.load_asset_map(game / "asset_map.json");
         L.scan_mods(game / "mods");
         L.load_state();
+
+        // MinHook must be live BEFORE mod init runs: a mod's init.lua can
+        // install a hook via rsmm.hook (e.g. rsmm.lua arms the hero-capture
+        // hooks at module load), and MH_CreateHook returns
+        // MH_ERROR_NOT_INITIALIZED if the library isn't up yet. Tolerate
+        // ALREADY_INITIALIZED in case the TLS path (RSMM_TLS_HOOK) beat us.
+        {
+            MH_STATUS s = MH_Initialize();
+            if (s != MH_OK && s != MH_ERROR_ALREADY_INITIALIZED) {
+                L.log("MH_Initialize failed; hooks disabled");
+                return;
+            }
+        }
+
         for (const auto& m : L.mods()) {
             if (!m.enabled) continue;
             rsmm::script_run_mod_init(m.id, m.root);
@@ -56,11 +70,6 @@ static void loader_thread_cxx() {
         // giving handlers a chance to register late asset overrides.
         rsmm::script_emit_event("setup");
         L.apply_overrides();
-
-        if (MH_Initialize() != MH_OK) {
-            L.log("MH_Initialize failed; hooks disabled");
-            return;
-        }
 
         char buf[8];
         if (GetEnvironmentVariableA("RSMM_ENABLE_IO", buf, sizeof(buf)) && buf[0] == '1') {

@@ -387,9 +387,14 @@ int lua_call_native(lua_State* L) {
     }
 }
 
+// Defined below; declared here so the read/write primitives can guard against
+// access-violating the game on a bad pointer (the norm while chasing offsets).
+static bool mem_accessible(std::uintptr_t addr, std::size_t size, bool need_write);
+
 template <typename T>
 int read_value(lua_State* L) {
     auto va = static_cast<std::uintptr_t>(luaL_checkinteger(L, 1));
+    if (!mem_accessible(va, sizeof(T), false)) { lua_pushnil(L); return 1; }
     T v{};
     std::memcpy(&v, reinterpret_cast<const void*>(va), sizeof(T));
     if constexpr (std::is_floating_point_v<T>) lua_pushnumber(L, v);
@@ -399,11 +404,13 @@ int read_value(lua_State* L) {
 template <typename T>
 int write_value(lua_State* L) {
     auto va = static_cast<std::uintptr_t>(luaL_checkinteger(L, 1));
+    if (!mem_accessible(va, sizeof(T), true)) { lua_pushboolean(L, 0); return 1; }
     T v;
     if constexpr (std::is_floating_point_v<T>) v = static_cast<T>(luaL_checknumber(L, 2));
     else v = static_cast<T>(luaL_checkinteger(L, 2));
     std::memcpy(reinterpret_cast<void*>(va), &v, sizeof(T));
-    return 0;
+    lua_pushboolean(L, 1);
+    return 1;
 }
 
 int lua_read_u8 (lua_State* L) { return read_value<std::uint8_t >(L); }
@@ -492,9 +499,12 @@ int lua_register_item(lua_State* L) {
 int lua_read_cstr(lua_State* L) {
     auto va = static_cast<std::uintptr_t>(luaL_checkinteger(L, 1));
     auto max = static_cast<std::size_t>(luaL_optinteger(L, 2, 1024));
+    if (!mem_accessible(va, 1, false)) { lua_pushnil(L); return 1; }
     auto p = reinterpret_cast<const char*>(va);
     std::size_t n = 0;
-    while (n < max && p[n]) n++;
+    // stop at the first byte that would leave the readable range (cross-page
+    // safety) so a non-terminated string near a page boundary can't fault.
+    while (n < max && mem_accessible(va + n, 1, false) && p[n]) n++;
     lua_pushlstring(L, p, n);
     return 1;
 }

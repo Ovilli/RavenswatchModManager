@@ -37,6 +37,13 @@ inline Entity_FindMagicalObjectComponent_fn Entity_FindMagicalObjectComponent() 
     return reinterpret_cast<Entity_FindMagicalObjectComponent_fn>(rsmm::fn_resolve(Sym::Entity_FindMagicalObjectComponent_Pattern));
 }
 
+// Entity_ModifyHealth  (FUN_140399a10)
+//   void(oCEntity* hero, float delta, oCCustomFlagList* sourceTags)
+using Entity_ModifyHealth_fn = void(*)(void*, float, void*);
+inline Entity_ModifyHealth_fn Entity_ModifyHealth() {
+    return reinterpret_cast<Entity_ModifyHealth_fn>(rsmm::fn_resolve(Sym::Entity_ModifyHealth_Pattern));
+}
+
 // Entry_Ctor  (FUN_140214bb0)
 //   void(void* base, uint32_t count)
 using Entry_Ctor_fn = void(*)(void*, uint32_t);
@@ -139,6 +146,13 @@ inline Netcode_Channel_LookupById_fn Netcode_Channel_LookupById() {
 using Netcode_Channel_Unsubscribe_fn = void(*)(void*, void*);
 inline Netcode_Channel_Unsubscribe_fn Netcode_Channel_Unsubscribe() {
     return reinterpret_cast<Netcode_Channel_Unsubscribe_fn>(rsmm::fn_resolve(Sym::Netcode_Channel_Unsubscribe_Pattern));
+}
+
+// Netcode_EntityReplSetup  (FUN_140720c10)
+//   void(void* replContext)
+using Netcode_EntityReplSetup_fn = void(*)(void*);
+inline Netcode_EntityReplSetup_fn Netcode_EntityReplSetup() {
+    return reinterpret_cast<Netcode_EntityReplSetup_fn>(rsmm::fn_resolve(Sym::Netcode_EntityReplSetup_Pattern));
 }
 
 // Registry_EnumInstances  (FUN_140240e50)

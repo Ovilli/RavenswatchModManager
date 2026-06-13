@@ -281,6 +281,21 @@ _BUILTIN_EVENTS = {"setup", "ready", "tick", "exit"}
 _RE_ON = re.compile(r"""R\.on\(\s*['"]([^'"]+)['"]""")
 _RE_ENGINE = re.compile(r"""R\.engine\.(?:call|resolve)\(\s*['"]([^'"]+)['"]""")
 
+# A mod must never reach into raw memory or the engine by address. Those
+# concerns live in the SDK (rsmm.lua + the symbol map); a mod consumes only the
+# high-level R.* API. This catches (a) literal game virtual addresses
+# (0x14xxxxxxx — the Ravenswatch.exe VA range) and (b) the low-level escape-hatch
+# primitives, so a new capability is forced through the SDK rather than baked
+# into a mod where it silently rots across game updates.
+_RE_RAW_VA = re.compile(r"\b0x14[0-9a-fA-F]{7}\b")
+_RE_LOWLEVEL = re.compile(
+    r"""(?:\b_internal\b"""
+    r"""|\.peek\(|\.poke\("""
+    r"""|\.module_base\(|\.scratch\("""
+    r"""|\.read_(?:u\d+|f\d+|cstr|f32|f64)\(|\.write_(?:u\d+|f\d+|f32|f64)\("""
+    r"""|\.call_raw\(|\.engine\.resolve\()"""
+)
+
 
 def _engine_vocab() -> tuple[set[str], set[str]]:
     """(valid event names, valid R.engine.* symbol names) from the symbol map,
@@ -300,8 +315,10 @@ def _engine_vocab() -> tuple[set[str], set[str]]:
 def _lint_lua_api(modname: str, entry: Path) -> tuple[int, int]:
     """Warn on R.on()/R.engine.* calls that reference unknown names — a typo
     here fails silently at runtime (the handler just never fires), exactly the
-    footgun the symbol map exists to prevent."""
+    footgun the symbol map exists to prevent. Also *error* on raw memory
+    addresses / low-level primitives: those belong in the SDK, not a mod."""
     events, callables = _engine_vocab()
+    errs = 0
     warns = 0
     for f in sorted(entry.rglob("*.lua")):
         if not f.is_file():
@@ -311,6 +328,19 @@ def _lint_lua_api(modname: str, entry: Path) -> tuple[int, int]:
         except OSError:
             continue
         rel = f.relative_to(entry).as_posix()
+        for ln, line in enumerate(text.splitlines(), 1):
+            code = line.split("--", 1)[0]  # ignore comments
+            if _RE_RAW_VA.search(code):
+                print(f"  [ERR]  {modname}: {rel}:{ln}: raw game address — mods must "
+                      f"not hardcode engine addresses; add a symbol to data/symbols.json "
+                      f"and reach it through the SDK (R.*)")
+                errs += 1
+            if _RE_LOWLEVEL.search(code):
+                print(f"  [ERR]  {modname}: {rel}:{ln}: low-level primitive "
+                      f"(_internal/peek/poke/read_*/write_*/module_base/scratch/call_raw/"
+                      f"resolve) — wrap the capability in the SDK and expose a high-level "
+                      f"R.* API; mods consume only that")
+                errs += 1
         for ev in _RE_ON.findall(text):
             # "*" is the wildcard channel (every event); "gameplay:<NAME>" is
             # the open-ended oCGameNamedEvent bus — the loader republishes
@@ -328,7 +358,7 @@ def _lint_lua_api(modname: str, entry: Path) -> tuple[int, int]:
                     print(f"  [WARN] {modname}: {rel}: R.engine call to {nm!r} — not a "
                           f"callable symbol (see `rsmm symbols list`)")
                     warns += 1
-    return 0, warns
+    return errs, warns
 
 
 def main() -> int:

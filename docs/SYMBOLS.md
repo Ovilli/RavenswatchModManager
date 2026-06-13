@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **67** symbols across 10 categories.
+Total: **73** symbols across 11 categories.
 
 ## enemies
 
@@ -41,7 +41,10 @@ Total: **67** symbols across 10 categories.
 | `Entity_AllocInstance` | `0x14068fe90` | ✅ ok | ✔ | void*(void* allocator) |
 | `Entity_FindComponentByType` | `0x1406ca380` | ✅ ok | ✔ | oIEntityCpnt*(oCEntitySpawnerGo* go, oCMetaClass* meta) |
 | `Entity_FindMagicalObjectComponent` | `0x1406e2250` | ✅ ok | ✔ | void*(void* instance, void* mo_component_meta) |
+| `Entity_GainHealthHandler` | `0x1403993f0` | 📍 va |  | void(oCEntity* hero, void* a2, void* valueCtx) |
+| `Entity_ModifyHealth` | `0x140399a10` | 📍 va | ✔ | void(oCEntity* hero, float delta, oCCustomFlagList* sourceTags) |
 | `g_MagicalObjectComponentMeta` | `0x141470768` | 📍 va |  | oCMetaClass* for the magical-object component; passed to Entity_FindMagicalObjectCompon… |
+| `oCCustomFlagList_vftable` | `0x140efc320` | 📍 va |  | vftable of oCCustomFlagList. An empty list is the 0x18-byte struct { vftable @+0x0, lis… |
 
 ## event
 
@@ -65,6 +68,7 @@ Total: **67** symbols across 10 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
+| `Entity_GiveHandler` | `0x1403a7ba0` | 📍 va |  | void(oCEntity* hero, oCGameNamedEvent* giveEvent) |
 | `InitialLoading_SpawnMagicalObjects` | `0x140260280` | ❓ unverified |  | Boot 'InitialLoading - MagicalObject SpawnAllObjects' caller that invokes SpawnAllObjec… |
 | `MagicalObjectPool_Grow` | `0x1401550d0` | ✅ ok | ✔ | void(void* pool_plus_0x10, uint32_t count, uint32_t by) |
 | `MagicalObjectPool_SourceLookup` | `0x1402590c0` | ✅ ok | ✔ | void*(void* pool, void* out, void* id) |
@@ -101,7 +105,14 @@ Total: **67** symbols across 10 categories.
 | `Netcode_Channel_LookupById` | `0x140241150` | ✅ ok | ✔ | iter*(void* channel_map, iter* out, uint32_t* event_id) |
 | `Netcode_Channel_Unsubscribe` | `0x1401c8660` | ✅ ok | ✔ | void(void* node_plus_8, void** sub_slot) |
 | `Netcode_DropPeer` | `0x1402b4450` | ❓ unverified |  | Drops a peer after the reconnect window (default 60s) elapses. Address from netcode cor… |
+| `Netcode_EntityReplSetup` | `0x140720c10` | 📍 va | ✔ | void(void* replContext) |
 | `Netcode_PeerStateTick` | `0x1402afaa0` | ❓ unverified |  | Per-peer connection-state tick (peer conn-state enum at peer+0xCC; 3=connected). Reconn… |
+
+## options
+
+| name | address | status | callable | signature / note |
+|------|---------|--------|----------|------------------|
+| `g_GameOptions` | `0x141436510` | 📍 va |  | Game-options registry singleton pointer (set by the options ctor FUN_1401c99f0; *ptr = … |
 
 ## resource
 

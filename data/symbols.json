@@ -344,6 +344,70 @@
       "refs": ["src/loader/src/hook_items.cpp", "docs/_re/kinds/events-bus.md"]
     },
     {
+      "name": "g_GameOptions",
+      "kind": "data",
+      "category": "options",
+      "va": "0x141436510",
+      "status": "va",
+      "note": "Game-options registry singleton pointer (set by the options ctor FUN_1401c99f0; *ptr = the options object). Holds every persisted GameOption inline: volumes, screen shake, plus debug/cheat toggles (Forced seed, Show enemy debug info, Show hourglass debug info, Force epilogue, Force end credits, Sectorize enemy camps, Show damage and healing numbers, ...). Each option is a 0x30-byte struct: +0x0 vftable, +0x8 u32 hashed id, +0x10 name char*, +0x18 flags, +0x28 CURRENT VALUE (bool=u8, uint/int/float=u32), +0x2c default. Consumers hold a resolved option pointer and read the inline +0x28 field (the hashed id is a baked immediate only in the ctor, never at read sites), so writing +0x28 at runtime is authoritative. Exposed via R.options.get/set in rsmm.lua. PROVEN in-game 2026-06-13: write-read-back round-trips stick (Forced seed 0->1337) and 'Show enemy debug info' = true renders per-enemy + hero HP bars — i.e. that debug feature is NOT double-gated by g_bEnableDebug. Some other pure-debug toggles might still be gated by g_bEnableDebug (a runtime-built CRC cvar — value not statically resolvable); test per-option in-game.",
+      "refs": ["src/loader/lib/rsmm.lua"]
+    },
+    {
+      "name": "Entity_ModifyHealth",
+      "kind": "function",
+      "category": "entity",
+      "raw": "FUN_140399a10",
+      "va": "0x140399a10",
+      "status": "va",
+      "signature": "void(oCEntity* hero, float delta, oCCustomFlagList* sourceTags)",
+      "cabi": { "ret": "void", "params": ["void*", "float", "void*"] },
+      "note": "Core HP-modification routine on the hero CHARACTER object (delta>0 heals, delta<0 damages) — the engine's own heal/damage primitive, with clamping, the UI mirror write, analytics submit, and the gained/lost named-event cascade. IMPORTANT: hero is NOT the bus dispatcher and NOT dispatcher-0x4d8 (that was a wrong guess that crashed; the dispatcher and the hero character are separate heap objects). The hero is baked into each event subscription as the handler's param_1 — capture it by hooking a hero-bound handler (Entity_GainHealthHandler / Entity_GiveHandler, both param_1=hero, pointer-only sigs). HERO HEALTH LAYOUT: current HP f32 @hero+0x15c8, max HP f32 @hero+0x15cc, missing-health ratio @+0x15d0, UI/display mirror pointer @hero+0x1d80 (the routine writes new HP to both +0x15c8 and *(*(hero+0x1d80))). sourceTags = an oCCustomFlagList ctx (vftable @va 0x140efc320, then {list=0, count=0}); an EMPTY flag list {vftable,0,0} is accepted. Verified by decompiling the inbound GAIN_HEALTH handler FUN_1403993f0, which calls this twice: damage = ModifyHealth(hero, -amt, tags{'Damage'}), heal = ModifyHealth(hero, +amt, tags). Exposed via R.entity / R.combat in rsmm.lua. Float arg requires the (ptr,float,ptr) prototype added to fn_call.cpp.",
+      "refs": ["src/loader/lib/rsmm.lua", "src/loader/src/fn_call.cpp"]
+    },
+    {
+      "name": "Entity_GainHealthHandler",
+      "kind": "function",
+      "category": "entity",
+      "raw": "FUN_1403993f0",
+      "va": "0x1403993f0",
+      "status": "va",
+      "signature": "void(oCEntity* hero, void* a2, void* valueCtx)",
+      "note": "Inbound GAIN_HEALTH / HEALTH_MODIFICATION handler bound to the hero. param_1 = the hero character (HP@+0x15c8); reads it directly and calls Entity_ModifyHealth(hero, ...). Pointer-only args (safe to hook). Hooked read-only by R.entity (rsmm.lua) to CAPTURE the live hero pointer the first time the hero heals/regens.",
+      "refs": ["src/loader/lib/rsmm.lua"]
+    },
+    {
+      "name": "Entity_GiveHandler",
+      "kind": "function",
+      "category": "items",
+      "raw": "FUN_1403a7ba0",
+      "va": "0x1403a7ba0",
+      "status": "va",
+      "signature": "void(oCEntity* hero, oCGameNamedEvent* giveEvent)",
+      "note": "Inbound GIVE_MAGICAL_OBJECT handler. param_1 = hero, param_2 = the give event; resolves the MO def via MagicalObjectPool_SourceLookup (FUN_1402590c0 on g_MagicalObjectPool) then grants via FUN_140397190(hero, def, ...). Pointer-only args (safe to hook). Also hooked read-only by R.entity to capture the hero pointer on item pickup/grant.",
+      "refs": ["src/loader/lib/rsmm.lua"]
+    },
+    {
+      "name": "oCCustomFlagList_vftable",
+      "kind": "data",
+      "category": "entity",
+      "va": "0x140efc320",
+      "status": "va",
+      "note": "vftable of oCCustomFlagList. An empty list is the 0x18-byte struct { vftable @+0x0, list ptr @+0x8 = 0, u64 count @+0x10 = 0 } — used as the sourceTags ctx arg to Entity_ModifyHealth. Build it in scratch and rebase the vftable by the live module base.",
+      "refs": ["src/loader/lib/rsmm.lua"]
+    },
+    {
+      "name": "Netcode_EntityReplSetup",
+      "kind": "function",
+      "category": "netcode",
+      "raw": "FUN_140720c10",
+      "va": "0x140720c10",
+      "status": "va",
+      "signature": "void(void* replContext)",
+      "cabi": { "ret": "void", "params": ["void*"] },
+      "note": "Per-entity replication setup; reads the authority role = *(netmgr+0xf8) where netmgr = *(replContext+0x10), with 1 = client/non-master. The host-migration research lever: hook to observe role on host vs client, optionally overwrite it. Exposed via R.net.on_repl_setup (offsets SDK-internal). See docs/_re/MULTIPLAYER.md and [[multiplayer-netcode]].",
+      "refs": ["src/loader/lib/rsmm.lua", "docs/_re/MULTIPLAYER.md"]
+    },
+    {
       "name": "g_RosterManager",
       "kind": "data",
       "category": "skins",

@@ -44,7 +44,12 @@ constexpr std::uintptr_t Entity_FindComponentByType = 0x1406ca380ull;
 constexpr const char* Entity_FindComponentByType_Pattern = "FUN_1406ca380";
 constexpr std::uintptr_t Entity_FindMagicalObjectComponent = 0x1406e2250ull;
 constexpr const char* Entity_FindMagicalObjectComponent_Pattern = "FUN_1406e2250";
+constexpr std::uintptr_t Entity_GainHealthHandler = 0x1403993f0ull;
+constexpr const char* Entity_GainHealthHandler_Pattern = "FUN_1403993f0";
+constexpr std::uintptr_t Entity_ModifyHealth = 0x140399a10ull;
+constexpr const char* Entity_ModifyHealth_Pattern = "FUN_140399a10";
 constexpr std::uintptr_t g_MagicalObjectComponentMeta = 0x141470768ull;
+constexpr std::uintptr_t oCCustomFlagList_vftable = 0x140efc320ull;
 
 // --- event ---
 constexpr std::uintptr_t Analytics_SubmitNamedEvent = 0x1401fa470ull;
@@ -75,6 +80,8 @@ constexpr std::uintptr_t NamedEvent_NetSendToPeer = 0x140720630ull;
 constexpr const char* NamedEvent_NetSendToPeer_Pattern = "FUN_140720630";
 
 // --- items ---
+constexpr std::uintptr_t Entity_GiveHandler = 0x1403a7ba0ull;
+constexpr const char* Entity_GiveHandler_Pattern = "FUN_1403a7ba0";
 constexpr std::uintptr_t InitialLoading_SpawnMagicalObjects = 0x140260280ull;
 constexpr std::uintptr_t MagicalObjectPool_Grow = 0x1401550d0ull;
 constexpr const char* MagicalObjectPool_Grow_Pattern = "FUN_1401550d0";
@@ -111,7 +118,12 @@ constexpr const char* Netcode_Channel_LookupById_Pattern = "FUN_140241150";
 constexpr std::uintptr_t Netcode_Channel_Unsubscribe = 0x1401c8660ull;
 constexpr const char* Netcode_Channel_Unsubscribe_Pattern = "FUN_1401c8660";
 constexpr std::uintptr_t Netcode_DropPeer = 0x1402b4450ull;
+constexpr std::uintptr_t Netcode_EntityReplSetup = 0x140720c10ull;
+constexpr const char* Netcode_EntityReplSetup_Pattern = "FUN_140720c10";
 constexpr std::uintptr_t Netcode_PeerStateTick = 0x1402afaa0ull;
+
+// --- options ---
+constexpr std::uintptr_t g_GameOptions = 0x141436510ull;
 
 // --- resource ---
 constexpr std::uintptr_t Definitions_LoadGroup = 0x14030fa00ull;

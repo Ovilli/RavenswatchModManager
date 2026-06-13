@@ -307,10 +307,324 @@ function R.give.random()
     return nil
 end
 
+-- Number of magical objects currently in the runtime (owned/active) pool array.
+function R.give.owned_count()
+    local vec = _give_pool_vec()
+    if not vec then return 0 end
+    local data = I.read_u64(vec + 0x10)
+    local n = I.read_u32(vec + 0x18)
+    if not data or data == 0 or not n then return 0 end
+    return n
+end
+
+-- Iterator over the hero's currently-owned magical objects (runtime pool
+-- array @vec+0x10/+0x18), yielding (index, guid_lo, guid_hi, def_ptr). The
+-- runtime entries mirror the source-array def layout (GUID @def+0x88/+0x90).
+-- EXPERIMENTAL: confirm the owned-set semantics in-game.
+function R.give.owned()
+    local vec = _give_pool_vec()
+    local data = vec and I.read_u64(vec + 0x10) or 0
+    local n = (vec and I.read_u32(vec + 0x18)) or 0
+    local i = -1
+    return function()
+        i = i + 1
+        if not data or data == 0 or i >= n then return nil end
+        local def = I.read_u64(data + i * 8)
+        if not def or def == 0 then return nil end
+        return i, I.read_u64(def + 0x88), I.read_u64(def + 0x90), def
+    end
+end
+
+-- True if the hero currently owns the magical object with identity GUID (lo,hi).
+function R.give.owns(lo, hi)
+    for _, glo, ghi in R.give.owned() do
+        if glo == lo and ghi == hi then return true end
+    end
+    return false
+end
+
+-- entity / combat -------------------------------------------------------
+--
+-- Read and modify the local hero's health. The hero CHARACTER object (the one
+-- carrying HP) is NOT the bus dispatcher and can't be derived from it — the
+-- engine bakes the hero into each event subscription as the handler's first
+-- arg. So we capture it by hooking two hero-bound handlers read-only (the
+-- GAIN_HEALTH handler and the give-item handler) and grabbing param_1 the
+-- first time either fires (i.e. the hero heals/regens or picks something up).
+-- Health is then applied through the engine's own modify-health routine
+-- (Entity_ModifyHealth), so clamping, the UI bar, on-heal/on-damage triggers
+-- and analytics all fire exactly as if the game did it.
+--
+--   R.entity.hp()        -- current HP (float) or nil (hero not captured yet)
+--   R.entity.max_hp()    -- max HP or nil
+--   R.entity.hp_frac()   -- hp/max in 0..1 or nil
+--   R.entity.ready()     -- true once the hero is captured
+--   R.combat.heal(20)    -- heal 20
+--   R.combat.damage(15)  -- self-damage 15
+--   R.combat.set_hp(50)  -- set HP to an absolute value
+
+R.entity = {}
+R.combat = {}
+
+local ENTITY_HP_OFF      = 0x15c8        -- f32 current HP on the hero character
+local ENTITY_MAXHP_OFF   = 0x15cc        -- f32 max HP
+local MODIFY_HEALTH_VA   = 0x140399a10   -- Entity_ModifyHealth(hero, delta, tags)
+local GAINHEALTH_HDLR_VA = 0x1403993f0   -- GAIN_HEALTH handler; param_1 = hero
+local GIVE_HDLR_VA       = 0x1403a7ba0   -- give-item handler; param_1 = hero
+local FLAGLIST_VFT_VA    = 0x140efc320   -- oCCustomFlagList::vftable
+local ENTITY_IMG_BASE    = 0x140000000
+
+local _hero_char = nil          -- captured hero character object (HP@+0x15c8)
+local _hero_capture_armed = false
+
+-- A captured pointer is "hero-like" if its max-HP field reads as a sane float.
+local function _hero_plausible(e)
+    if not e or e == 0 then return false end
+    local mx = I.read_f32(e + ENTITY_MAXHP_OFF)
+    local cur = I.read_f32(e + ENTITY_HP_OFF)
+    return type(mx) == "number" and mx > 0 and mx < 1e6
+        and type(cur) == "number" and cur >= 0 and cur <= mx + 1.0
+end
+
+-- Install the read-only capture hooks once. Both handlers take pointer args
+-- only (no float), so hooking them is safe; the callback returns nil to replay
+-- the original unchanged. Called lazily so R.hook is defined by first use.
+local function _arm_hero_capture()
+    if _hero_capture_armed then return end
+    local base = I.module_base()
+    if not base or base == 0 or not R.hook then return end
+    _hero_capture_armed = true
+    -- The GAIN_HEALTH handler fires for ANY entity that heals (incl. enemies),
+    -- so its capture is only tentative (taken if nothing better seen yet). The
+    -- give-item handler is hero-only (only the local player picks up MOs), so it
+    -- is authoritative and overwrites any tentative capture.
+    local function capture(p1, authoritative)
+        if not _hero_plausible(p1) then return end
+        if _hero_char == p1 then return end
+        if _hero_char ~= nil and not authoritative then return end
+        _hero_char = p1
+        R.log(string.format("[rsmm.entity] hero captured @0x%x (hp %.0f/%.0f)%s",
+            p1, I.read_f32(p1 + ENTITY_HP_OFF), I.read_f32(p1 + ENTITY_MAXHP_OFF),
+            authoritative and " [authoritative]" or " [tentative]"))
+    end
+    -- Best-effort: a failed capture hook must NEVER abort the mod that
+    -- required rsmm. R.hook raises on install failure (e.g. the handler RVA
+    -- drifted across a game patch -> MH_ERROR_NOT_EXECUTABLE), so guard each
+    -- with pcall — capture just stays unavailable; everything else still runs.
+    local ok1 = pcall(R.hook, base + (GAINHEALTH_HDLR_VA - ENTITY_IMG_BASE), "vppp",
+        function(p1) capture(p1, false); return nil end)
+    local ok2 = pcall(R.hook, base + (GIVE_HDLR_VA - ENTITY_IMG_BASE), "vpp",
+        function(p1) capture(p1, true); return nil end)
+    if not (ok1 and ok2) then
+        R.log("[rsmm.entity] hero-capture hooks unavailable (handler addr drift); "
+            .. "R.combat/R.entity disabled this run, other mods unaffected")
+    end
+end
+
+-- The captured local hero character pointer, or nil if not seen yet.
+function R.entity.hero()
+    _arm_hero_capture()
+    return _hero_char
+end
+
+-- True once the hero has been captured (hp/max/heal/damage will work).
+function R.entity.ready() return R.entity.hero() ~= nil end
+
+function R.entity.hp()
+    local e = R.entity.hero(); if not e then return nil end
+    return I.read_f32(e + ENTITY_HP_OFF)
+end
+
+function R.entity.max_hp()
+    local e = R.entity.hero(); if not e then return nil end
+    return I.read_f32(e + ENTITY_MAXHP_OFF)
+end
+
+function R.entity.hp_frac()
+    local cur, mx = R.entity.hp(), R.entity.max_hp()
+    if not cur or not mx or mx <= 0 then return nil end
+    return cur / mx
+end
+
+-- Apply a raw health delta (delta>0 heals, delta<0 damages). Returns true on
+-- dispatch, false if the hero isn't captured yet, the module base is
+-- unavailable, or health reads implausible (guards against a bad pointer).
+local function _modify_health(delta)
+    local e = R.entity.hero()
+    if not e then
+        R.log("[rsmm.combat] no hero yet — wait until the hero heals/regens or "
+            .. "picks something up once (R.entity.ready())")
+        return false
+    end
+    if not _hero_plausible(e) then
+        R.log("[rsmm.combat] hero health reads implausible — refusing modify")
+        return false
+    end
+    local base = I.module_base()
+    if not base or base == 0 then return false end
+    -- empty oCCustomFlagList ctx { vftable, list=0, count=0 } in scratch
+    local ctx = I.scratch(0x20)
+    I.poke(ctx + 0x00, base + (FLAGLIST_VFT_VA - ENTITY_IMG_BASE), 8)
+    I.poke(ctx + 0x08, 0, 8)
+    I.poke(ctx + 0x10, 0, 8)
+    local fn = base + (MODIFY_HEALTH_VA - ENTITY_IMG_BASE)
+    R.engine.call_raw(fn, "vpfp", e, delta + 0.0, ctx)
+    return true
+end
+
+function R.combat.heal(amount)   return _modify_health(math.abs(amount or 0)) end
+function R.combat.damage(amount) return _modify_health(-math.abs(amount or 0)) end
+
+-- Set HP to an absolute value by applying the difference from current.
+function R.combat.set_hp(value)
+    local cur = R.entity.hp()
+    if not cur then return false end
+    return _modify_health((value or 0) - cur)
+end
+
+-- netcode (advanced / experimental) -------------------------------------
+--
+-- Replication-authority observation, for host-migration research. The
+-- per-entity replication setup (Netcode_EntityReplSetup) decides master vs
+-- client; the role lives behind the net manager. Offsets are SDK-internal — a
+-- mod only sees (netmgr, role) and may return a number to overwrite role
+-- (DANGEROUS: a live netcode write, can crash). See docs/_re/MULTIPLAYER.md.
+--
+--   R.net.on_repl_setup(function(netmgr, role, ctx)
+--       R.log("role", role)        -- 1 = client/non-master
+--       -- return 0 to force the master path (Phase 2; can crash)
+--   end)
+
+R.net = {}
+
+local NET_REPL_SETUP_VA     = 0x140720c10  -- Netcode_EntityReplSetup
+local NET_CTX_TO_NETMGR_OFF = 0x10         -- netmgr = *(ctx + 0x10)
+local NET_ROLE_OFF          = 0xf8         -- role   = *(netmgr + 0xf8); 1=client
+local NET_IMG_BASE          = 0x140000000
+
+-- Hook the per-entity replication setup. cb(netmgr, role, ctx) fires for each
+-- entity; return a number from cb to OVERWRITE role (dangerous), or nil to
+-- leave it. Returns the hook handle, or nil if the module base is unavailable.
+function R.net.on_repl_setup(cb)
+    assert(type(cb) == "function", "R.net.on_repl_setup: cb must be function")
+    local base = I.module_base()
+    if not base or base == 0 then return nil end
+    local va = base + (NET_REPL_SETUP_VA - NET_IMG_BASE)
+    return R.hook(va, "vp", function(ctx)
+        if not ctx or ctx == 0 then return nil end
+        local netmgr = I.read_u64(ctx + NET_CTX_TO_NETMGR_OFF)
+        if not netmgr or netmgr == 0 then return nil end
+        local role = I.read_u32(netmgr + NET_ROLE_OFF)
+        local newrole = cb(netmgr, role, ctx)
+        if type(newrole) == "number" then
+            I.write_u32(netmgr + NET_ROLE_OFF, newrole)
+        end
+        return nil
+    end)
+end
+
+-- game options ----------------------------------------------------------
+--
+-- The engine keeps every persisted setting in one inline registry object
+-- (g_GameOptions). Each option stores its current value at +0x28 of its
+-- 0x30-byte slot; consumers read that field directly, so writing it from Lua
+-- takes effect without any save/reload. This exposes the debug/cheat toggles
+-- the retail build ships but never surfaces in the UI, plus normal settings.
+--
+--   R.options.set("Forced seed", 12345)      -- reproducible run gen
+--   R.options.set("Show enemy debug info", true)
+--   R.options.get("Force epilogue")          -- -> false
+--   for name in R.options.list() do ... end
+--
+-- NOTE: a few pure-debug toggles may be additionally gated by g_bEnableDebug
+-- (a runtime cvar we can't resolve), so writing them can be a no-op in retail.
+-- The non-debug options (Forced seed, screen shake, damage numbers, ...) are
+-- unconditional. Test per option.
+
+R.options = {}
+
+local OPT_GAMEOPTIONS_VA = 0x141436510
+local OPT_IMG_BASE = 0x140000000
+local OPT_VALUE_OFF = 0x28
+
+-- name -> { off = byte offset of the option's slot from the object base,
+--           type = "bool" | "uint" | "int" | "float" }
+-- Offsets transcribed from the options ctor (FUN_1401c99f0); value at off+0x28.
+local _OPT = {
+    ["Forced seed"]                                 = { off = 0x0000, type = "uint"  },
+    ["Dash at cursor"]                              = { off = 0x0e80, type = "bool"  },
+    ["Screen shake"]                                = { off = 0x1090, type = "bool"  },
+    ["Pause during choices"]                        = { off = 0x10f8, type = "bool"  },
+    ["Show damage and healing numbers"]             = { off = 0x11b0, type = "bool"  },
+    ["Select random skin when using random heroes"] = { off = 0x11e0, type = "bool"  },
+    ["Show enemy debug info"]                       = { off = 0x1210, type = "bool"  },
+    ["Sectorize enemy camps"]                       = { off = 0x1240, type = "bool"  },
+    ["Display fake unlock in recap"]                = { off = 0x1270, type = "bool"  },
+    ["Show social options debug"]                   = { off = 0x12a0, type = "bool"  },
+    ["Show hourglass debug info"]                   = { off = 0x12d0, type = "bool"  },
+    ["Force epilogue"]                              = { off = 0x1300, type = "bool"  },
+    ["Force end credits"]                           = { off = 0x1330, type = "bool"  },
+}
+
+local function _opt_value_addr(name)
+    local o = _OPT[name]
+    if not o then return nil, nil end
+    local base = I.module_base()
+    if not base or base == 0 then return nil, nil end
+    local obj = I.read_u64(base + (OPT_GAMEOPTIONS_VA - OPT_IMG_BASE))
+    if not obj or obj == 0 then return nil, nil end
+    return obj + o.off + OPT_VALUE_OFF, o.type
+end
+
+-- Read an option's current value. Returns bool/number, or nil if the name is
+-- unknown or the registry isn't initialised yet.
+function R.options.get(name)
+    local addr, ty = _opt_value_addr(name)
+    if not addr then return nil end
+    if ty == "bool"  then return I.read_u8(addr) ~= 0 end
+    if ty == "float" then return I.read_f32(addr) end
+    return I.read_u32(addr)
+end
+
+-- Write an option's current value. Bools accept true/false; numeric options
+-- accept a number. Returns true on success, false if unknown/unavailable.
+function R.options.set(name, value)
+    local addr, ty = _opt_value_addr(name)
+    if not addr then
+        R.log("[rsmm.options] unknown option or registry not ready:", name)
+        return false
+    end
+    if ty == "bool" then
+        I.write_u8(addr, value and 1 or 0)
+    elseif ty == "float" then
+        I.write_f32(addr, value + 0.0)
+    else
+        I.write_u32(addr, math.floor(value or 0))
+    end
+    return true
+end
+
+-- Iterator over every known option name.
+function R.options.list()
+    local names = {}
+    for k in pairs(_OPT) do names[#names + 1] = k end
+    table.sort(names)
+    local i = 0
+    return function()
+        i = i + 1
+        return names[i]
+    end
+end
+
 -- hooks (low-level escape valve; users should prefer R.* abstractions) -
 
 R.hook   = native.hook
 R.unhook = native.unhook
+
+-- Hero-capture is armed lazily on first R.entity / R.combat use (see
+-- R.entity.hero) — NOT eagerly here. Arming touches R.hook, which can fail on
+-- handler-address drift; doing it at module load would abort require"rsmm" for
+-- EVERY mod, not just ones using combat. Lazy + pcall-guarded keeps it contained.
 
 -- key-value store -------------------------------------------------------
 --
@@ -418,16 +732,15 @@ end
 
 -- item registry ---------------------------------------------------------
 --
--- R.item.register{ id=, name=, description=, rarity=, base=, effect= }
---
--- TODO: not yet wired to the game. The contract:
+-- R.item.register{ id=, name=, description=, rarity=, base= }
 --   * `base` clones the bytes of an existing MO entity (e.g.
 --     "Common/Armor_Per_Object") as a starting template.
 --   * `name` and `description` populate the corresponding text-bank
 --     keys via Text/Magical_Objects~GAM.xls.LocalText.gen overrides.
---   * `effect` runs every tick the hero owns the MO. Implementation
---     gated on the MO-stat-getter / hero-update hook (see
---     docs/_re/HOOKPOINTS.md).
+--
+-- Custom LOGIC for an item is attached separately with R.item.behavior (below),
+-- so a mod's item does whatever the mod's Lua says — not just a cloned game
+-- effect. The two compose: register the carrier, then bind behavior to its GUID.
 
 R.item = {}
 
@@ -468,6 +781,55 @@ function R.item.list()
     local out = {}
     for _, s in pairs(_registered_items) do out[#out+1] = s end
     return out
+end
+
+-- Bind custom logic to ownership of a magical object — the core of a
+-- mod-defined item that runs the mod's OWN behaviour, not a cloned game effect.
+-- The item is identified by its definition identity GUID (lo, hi); pair this
+-- with a carrier created by R.item.register / the item SDK kind.
+--
+--   R.item.behavior{
+--       guid = { lo, hi },          -- or guid_lo=, guid_hi=
+--       every = 1.0,                -- on_tick cadence in seconds (default 1)
+--       on_acquire = function(c) R.log("got it") end,
+--       on_tick    = function(c) R.combat.heal(4) end,   -- while owned
+--       on_lose    = function(c) end,
+--   }
+--
+-- The callbacks receive ctx = { lo, hi } and may use R.combat / R.entity /
+-- R.give freely — that is where the mod's logic lives. Ownership is polled from
+-- R.give.owned() on the tick pump (R.schedule), so it needs the hero to have
+-- acted once (R.give.ready()). EXPERIMENTAL: owned-set semantics confirmed in
+-- game per the runtime pool array.
+function R.item.behavior(spec)
+    assert(type(spec) == "table", "R.item.behavior: spec must be table")
+    local lo, hi = spec.guid_lo, spec.guid_hi
+    if type(spec.guid) == "table" then lo, hi = spec.guid[1], spec.guid[2] end
+    assert(type(lo) == "number" and type(hi) == "number",
+        "R.item.behavior: needs guid {lo,hi} (or guid_lo/guid_hi)")
+    local every = spec.every or 1.0
+    local owned = false
+    local function ctx() return { lo = lo, hi = hi } end
+
+    local function poll()
+        local now = R.give.owns(lo, hi)
+        if now and not owned then
+            owned = true
+            if spec.on_acquire then spec.on_acquire(ctx()) end
+        elseif (not now) and owned then
+            owned = false
+            if spec.on_lose then spec.on_lose(ctx()) end
+        end
+        if now and spec.on_tick then spec.on_tick(ctx()) end
+        if R.schedule and R.schedule.after then R.schedule.after(every, poll) end
+    end
+
+    if R.schedule and R.schedule.after then
+        R.schedule.after(every, poll)
+        return true
+    end
+    R.log("[rsmm.item] behavior needs the tick pump (R.schedule) — unavailable")
+    return false
 end
 
 -- NOT-YET-IMPLEMENTED stubs ---------------------------------------------
@@ -561,6 +923,17 @@ R.schedule = _submodule("schedule")
 -- Drive the schedule module's frame pump off the one true event bus.
 if R.schedule and R.schedule._tick then
     R.on("tick", function() R.schedule._tick() end)
+end
+
+-- Drive the MAIN-thread schedule pump off the gameplay bus. Those handlers run
+-- inside the NamedEvent_Dispatch detour = the game's main thread, unlike "tick"
+-- (loader background thread). Gating on ev.source == "gameplay" is essential:
+-- the wildcard also fires for "tick"/"ready" on the background thread, and
+-- running engine-mutating callbacks there is exactly the race we're avoiding.
+if R.schedule and R.schedule._main_tick then
+    R.on("*", function(ev)
+        if ev and ev.source == "gameplay" then R.schedule._main_tick() end
+    end)
 end
 
 -- escape hatch ----------------------------------------------------------

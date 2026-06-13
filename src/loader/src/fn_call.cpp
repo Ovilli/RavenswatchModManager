@@ -34,6 +34,12 @@ using GP_FF = double (*)(double, double);
 using GP_IF = double (*)(std::uint64_t, double);
 using GP_FI = double (*)(double, std::uint64_t);
 
+// 3-arg mixed shapes. Float (not double) param so the value lands in the
+// xmm slot as a 32-bit scalar — matches game routines like Entity_ModifyHealth
+// (oCEntity*, float delta, oCCustomFlagList*). Returns void; the uint64 wrapper
+// return is ignored by callers of such procedures.
+using GP_IFI = std::uint64_t (*)(std::uint64_t, float, std::uint64_t);
+
 } // namespace
 
 std::uint64_t fn_call_raw(std::uintptr_t target_va,
@@ -77,6 +83,14 @@ std::uint64_t fn_call_raw(std::uintptr_t target_va,
         if (a0 && a1)  return from_d(reinterpret_cast<GP_FF>(t)(as_d(args[0]), as_d(args[1])));
         if (!a0 && a1) return from_d(reinterpret_cast<GP_IF>(t)(args[0], as_d(args[1])));
         if (a0 && !a1) return from_d(reinterpret_cast<GP_FI>(t)(as_d(args[0]), args[1]));
+    }
+    if (n == 3) {
+        bool a0 = argtypes[0] == 'f' || argtypes[0] == 'd';
+        bool a1 = argtypes[1] == 'f' || argtypes[1] == 'd';
+        bool a2 = argtypes[2] == 'f' || argtypes[2] == 'd';
+        // (int, float, int) — the Entity_ModifyHealth shape.
+        if (!a0 && a1 && !a2)
+            return reinterpret_cast<GP_IFI>(t)(args[0], static_cast<float>(as_d(args[1])), args[2]);
     }
     // Beyond this, surface a clear nil-return rather than crash. The
     // Lua binding rewrites this to a proper error.
