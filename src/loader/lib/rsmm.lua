@@ -382,8 +382,11 @@ local function _hero_plausible(e)
     if not e or e == 0 then return false end
     local mx = I.read_f32(e + ENTITY_MAXHP_OFF)
     local cur = I.read_f32(e + ENTITY_HP_OFF)
+    -- cur may legitimately EXCEED mx (overheal / shields / HP-boost items), so
+    -- only bound it as finite+non-negative, not cur <= mx. mx must be a sane
+    -- positive bar size — that's the real garbage-pointer discriminator.
     return type(mx) == "number" and mx > 0 and mx < 1e6
-        and type(cur) == "number" and cur >= 0 and cur <= mx + 1.0
+        and type(cur) == "number" and cur >= 0 and cur < 1e6
 end
 
 -- Install the read-only capture hooks once. Both handlers take pointer args
