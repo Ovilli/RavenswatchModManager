@@ -292,8 +292,8 @@ bool arm(EventHook& h) {
 
 // --- hero capture (once, native) --------------------------------------------
 //
-// The hero CHARACTER object (HP @ +0x15c8, max @ +0x15cc) is param_1 of two
-// hero-bound handlers. Capturing it lets R.entity / R.combat read & modify the
+// The hero CHARACTER object (HP @ +0x15c8, max @ +0x15cc) is param_1 of three
+// hero-bound routines. Capturing it lets R.entity / R.combat read & modify the
 // local hero's health. Previously rsmm.lua armed these hooks per mod Lua state,
 // which broke two ways: (1) a second mod hooking the same address got
 // MH_ERROR_ALREADY_CREATED, (2) a Lua hot-reload re-armed over its own live
@@ -301,15 +301,31 @@ bool arm(EventHook& h) {
 // once here — at loader-thread time, never on reload — fixes both. The captured
 // pointer is published to shared slot 0 (slot 1 = "authoritative seen"), which
 // every Lua state reads via R.entity.hero().
+//
+// THREE capture sources, fastest-first:
+//   1. HeroSubscribeAll (FUN_140391d30) — the hero's spawn/post-load init.
+//      Verified in Ghidra: single-arg void(hero), writes the hero's own HP
+//      fields ([hero+0x15c8]/[hero+0x15cc]) from the HUD mirror (hero+0x1d80)
+//      then subscribes the hero to every named event. Runs ONCE at spawn,
+//      BEFORE the hero ever acts — so it captures with ZERO latency and is
+//      hero-only (enemies have no HUD mirror), i.e. authoritative. This is the
+//      fix for the old "hero only captured after first heal/pickup" wart.
+//   2. GiveHandler (FUN_1403a7ba0) — hero-only item grant; authoritative,
+//      re-confirms across a hero switch when slot 1 was invalidated.
+//   3. GainHealthHandler (FUN_1403993f0) — fires for ANY healing entity, so
+//      tentative only (kept as a fallback for an older corpus where source 1
+//      might not resolve).
 constexpr int kHeroSlot = 0;     // hero character pointer
-constexpr int kHeroAuthSlot = 1; // 1 once the hero-only give handler has fired
+constexpr int kHeroAuthSlot = 1; // 1 once a hero-only routine has captured
 constexpr std::uintptr_t kHeroMaxHpOff = 0x15cc;
 
+using SubscribeAll_t    = void (*)(void*);
 using GiveHandler_t     = void (*)(void*, void*);
 using GainHealthHandler_t = void (*)(void*, void*, void*);
+SubscribeAll_t      g_subscribe_real = nullptr;
 GiveHandler_t       g_give_real = nullptr;
 GainHealthHandler_t g_gain_real = nullptr;
-std::uintptr_t g_give_va = 0, g_gain_va = 0;
+std::uintptr_t g_subscribe_va = 0, g_give_va = 0, g_gain_va = 0;
 
 bool hero_plausible(void* p1) {
     if (!p1) return false;
@@ -322,6 +338,16 @@ bool hero_plausible(void* p1) {
     if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return false;
     float mx = *reinterpret_cast<float*>(q);
     return mx > 0.0f && mx < 1.0e6f;
+}
+
+void detour_subscribe_all(void* p1) {
+    // Hero spawn/post-load init: param_1 is the hero HP-carrier, hero-only and
+    // earliest possible. Authoritative capture with no wait for a hero action.
+    if (hero_plausible(p1)) {
+        shared_set(kHeroSlot, reinterpret_cast<std::uint64_t>(p1));
+        shared_set(kHeroAuthSlot, 1);
+    }
+    g_subscribe_real(p1);
 }
 
 void detour_give(void* p1, void* p2) {
@@ -377,6 +403,23 @@ bool install_hero_capture() {
         return false;
     }
     bool any = false;
+    bool instant = false;
+    // Source 1 (best-effort, instant): the hero spawn/post-load init. Captures
+    // the hero the moment it spawns, before it ever acts. If it can't resolve
+    // (older corpus), the give/gain hooks below still provide capture-on-action.
+    g_subscribe_va = fn_resolve(Sym::NamedEvent_HeroSubscribeAll_Pattern);
+    if (g_subscribe_va != 0 && g_subscribe_va != static_cast<std::uintptr_t>(-1)
+        && fn_verify(Sym::NamedEvent_HeroSubscribeAll_Pattern, g_subscribe_va)
+        && MH_CreateHook(reinterpret_cast<LPVOID>(g_subscribe_va),
+                         reinterpret_cast<LPVOID>(&detour_subscribe_all),
+                         reinterpret_cast<LPVOID*>(&g_subscribe_real)) == MH_OK
+        && MH_EnableHook(reinterpret_cast<LPVOID>(g_subscribe_va)) == MH_OK) {
+        any = true;
+        instant = true;
+    } else {
+        Loader::get().log("[hero-capture] subscribe-all (instant) hook unavailable; "
+                          "falling back to capture-on-action");
+    }
     if (MH_CreateHook(reinterpret_cast<LPVOID>(g_give_va),
                       reinterpret_cast<LPVOID>(&detour_give),
                       reinterpret_cast<LPVOID*>(&g_give_real)) == MH_OK
@@ -398,8 +441,11 @@ bool install_hero_capture() {
         // must NOT re-arm the per-state Lua capture hooks (which would collide
         // with these as MH_ERROR_ALREADY_CREATED).
         shared_set(2, 1);
-        Loader::get().log("[hero-capture] armed (hero published to shared slot 0 on "
-                          "first heal/pickup; R.entity/R.combat available to all mods)");
+        Loader::get().log(instant
+            ? "[hero-capture] armed (instant: hero published to shared slot 0 at "
+              "spawn; R.entity/R.combat available to all mods)"
+            : "[hero-capture] armed (hero published to shared slot 0 on first "
+              "heal/pickup; R.entity/R.combat available to all mods)");
     }
     return any;
 }

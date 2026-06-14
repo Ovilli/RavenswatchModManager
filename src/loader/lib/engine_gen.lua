@@ -21,6 +21,7 @@ return {
   ["NamedEvent_Delete"] = { pattern = "FUN_140126da0", offset = 0x0, sig = "vp" },
   ["NamedEvent_Dispatch"] = { pattern = "FUN_14066a700", offset = 0x0, sig = "vpp" },
   ["NamedEvent_GiveMagicalObject_Ctor"] = { pattern = "FUN_14030f430", offset = 0x0, sig = "pp" },
+  ["NamedEvent_HeroSubscribeAll"] = { pattern = "FUN_140391d30", offset = 0x0, sig = "vp" },
   ["NamedEvent_Id_FromCrc"] = { pattern = "FUN_14051e0e0", offset = 0x0, sig = "uuu" },
   ["NamedEvent_NetSend"] = { pattern = "FUN_1407205a0", offset = 0x0, sig = "vpp" },
   ["NamedEvent_NetSendToPeer"] = { pattern = "FUN_140720630", offset = 0x0, sig = "vppp" },

@@ -58,7 +58,7 @@ Total: **73** symbols across 11 categories.
 | `NamedEvent_Dispatch` | `0x14066a700` | ✅ ok | ✔ | void(void* dispatcher, oCGameNamedEvent* ev) |
 | `NamedEvent_EmitNetworkDamageFromHit` | `0x140726610` | ✅ ok |  | Reference emitter for NETWORK_DAMAGE: stack-builds the full oCGameNamedEventNetworkDama… |
 | `NamedEvent_GiveMagicalObject_Ctor` | `0x14030f430` | ✅ ok | ✔ | oe::dt::NamedEventGiveMagicalObject*(void* buf) |
-| `NamedEvent_HeroSubscribeAll` | `0x140391d30` | ✅ ok |  | Hero post-spawn named-event subscription setup: 26+ inlined subscribes registering hero… |
+| `NamedEvent_HeroSubscribeAll` | `0x140391d30` | ✅ ok | ✔ | void(oCEntity* hero) |
 | `NamedEvent_HeroUnsubscribeAll` | `0x140394a40` | ✅ ok |  | Hero teardown twin of NamedEvent_HeroSubscribeAll: walks the same (id global, slot) pai… |
 | `NamedEvent_Id_FromCrc` | `0x14051e0e0` | ✅ ok | ✔ | uint32_t(uint32_t ns, uint32_t name_crc) |
 | `NamedEvent_NetSend` | `0x1407205a0` | ✅ ok | ✔ | void(void* net_event_cpnt, oCGameNamedEvent* ev) |

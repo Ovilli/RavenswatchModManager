@@ -465,9 +465,11 @@ local function _arm_hero_capture()
 end
 
 -- The captured local hero character pointer, or nil if not seen yet. The
--- loader's native capture publishes it to the shared slot the first time the
--- hero heals/regens or picks something up — read fresh every call so a
--- hero-switch (which clears the slot) is picked up automatically.
+-- loader's native capture publishes it to the shared slot at hero spawn (it
+-- hooks the hero's spawn/post-load init, NamedEvent_HeroSubscribeAll, whose
+-- param_1 is the HP-carrier) — so it's available almost immediately, no longer
+-- gated on the hero's first heal/pickup. Read fresh every call so a hero-switch
+-- (which clears the slot) is picked up automatically.
 function R.entity.hero()
     if I.shared_get then
         local ok, h = pcall(I.shared_get, SHARED_HERO_SLOT)

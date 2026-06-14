@@ -257,8 +257,10 @@
       "category": "event",
       "raw": "FUN_140391d30",
       "status": "ok",
-      "note": "Hero post-spawn named-event subscription setup: 26+ inlined subscribes registering hero handler slots hero+0x2fa..0x321 (qword indices) on the entity channel map (entity+0x500) and the world map (world+0x368). Catalog of every (id global, name, slot) pair in docs/_re/kinds/events-bus.md — includes GIVE_MAGICAL_OBJECT -> hero+0x306. The events corpus called this 'the give-handler'; it is the subscription setup (the give handler proper is the functor it registers for slot 0x306).",
-      "refs": ["docs/_re/kinds/events-bus.md"]
+      "signature": "void(oCEntity* hero)",
+      "cabi": { "ret": "void", "params": ["void*"] },
+      "note": "Hero post-spawn/post-load init + named-event subscription setup. Single-arg void(hero) (verified by disasm: only RCX is read; RDX/R8/XMM are overwritten before use, so safe to re-call as (void*)). PROLOGUE re-syncs the hero's own HP from the HUD mirror: reads f32 at *(hero+0x1d80) and writes it to BOTH hero+0x15cc (max) and hero+0x15c8 (cur) — so param_1 is the hero HP-CARRIER, the same object Entity_ModifyHealth mutates. Then runs 26+ inlined subscribes registering hero handler slots hero+0x2fa..0x321 (qword indices) on the entity channel map (entity+0x500) and the world map (world+0x368); catalog of every (id global, name, slot) pair in docs/_re/kinds/events-bus.md — includes GIVE_MAGICAL_OBJECT -> hero+0x306. Runs ONCE at hero spawn, before the hero acts, and is hero-only (enemies have no HUD mirror) — so the loader hooks it read-only as the INSTANT, authoritative hero-capture source (install_hero_capture, hook_events.cpp), eliminating the old capture-on-first-heal/pickup latency. The events corpus called this 'the give-handler'; it is the subscription setup (the give handler proper is the functor it registers for slot 0x306).",
+      "refs": ["docs/_re/kinds/events-bus.md", "src/loader/src/hook_events.cpp"]
     },
     {
       "name": "NamedEvent_HeroUnsubscribeAll",

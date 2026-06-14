@@ -113,6 +113,13 @@ inline NamedEvent_GiveMagicalObject_Ctor_fn NamedEvent_GiveMagicalObject_Ctor() 
     return reinterpret_cast<NamedEvent_GiveMagicalObject_Ctor_fn>(rsmm::fn_resolve(Sym::NamedEvent_GiveMagicalObject_Ctor_Pattern));
 }
 
+// NamedEvent_HeroSubscribeAll  (FUN_140391d30)
+//   void(oCEntity* hero)
+using NamedEvent_HeroSubscribeAll_fn = void(*)(void*);
+inline NamedEvent_HeroSubscribeAll_fn NamedEvent_HeroSubscribeAll() {
+    return reinterpret_cast<NamedEvent_HeroSubscribeAll_fn>(rsmm::fn_resolve(Sym::NamedEvent_HeroSubscribeAll_Pattern));
+}
+
 // NamedEvent_Id_FromCrc  (FUN_14051e0e0)
 //   uint32_t(uint32_t ns, uint32_t name_crc)
 using NamedEvent_Id_FromCrc_fn = uint32_t(*)(uint32_t, uint32_t);
