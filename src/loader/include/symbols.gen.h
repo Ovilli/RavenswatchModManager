@@ -40,6 +40,8 @@ constexpr const char* Vector_Grow_Pattern = "FUN_140154c20";
 // --- entity ---
 constexpr std::uintptr_t Entity_AllocInstance = 0x14068fe90ull;
 constexpr const char* Entity_AllocInstance_Pattern = "FUN_14068fe90";
+constexpr std::uintptr_t Entity_DispatchHit = 0x1406e2d20ull;
+constexpr const char* Entity_DispatchHit_Pattern = "FUN_1406e2d20";
 constexpr std::uintptr_t Entity_FindComponentByType = 0x1406ca380ull;
 constexpr const char* Entity_FindComponentByType_Pattern = "FUN_1406ca380";
 constexpr std::uintptr_t Entity_FindMagicalObjectComponent = 0x1406e2250ull;

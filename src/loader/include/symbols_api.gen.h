@@ -23,6 +23,13 @@ inline Entity_AllocInstance_fn Entity_AllocInstance() {
     return reinterpret_cast<Entity_AllocInstance_fn>(rsmm::fn_resolve(Sym::Entity_AllocInstance_Pattern));
 }
 
+// Entity_DispatchHit  (FUN_1406e2d20)
+//   void(oCEntity* target, oCEntityHitData* hit)
+using Entity_DispatchHit_fn = void(*)(void*, void*);
+inline Entity_DispatchHit_fn Entity_DispatchHit() {
+    return reinterpret_cast<Entity_DispatchHit_fn>(rsmm::fn_resolve(Sym::Entity_DispatchHit_Pattern));
+}
+
 // Entity_FindComponentByType  (FUN_1406ca380)
 //   oIEntityCpnt*(oCEntitySpawnerGo* go, oCMetaClass* meta)
 using Entity_FindComponentByType_fn = void*(*)(void*, void*);

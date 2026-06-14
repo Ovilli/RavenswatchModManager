@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **73** symbols across 11 categories.
+Total: **74** symbols across 11 categories.
 
 ## enemies
 
@@ -39,6 +39,7 @@ Total: **73** symbols across 11 categories.
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `Entity_AllocInstance` | `0x14068fe90` | ✅ ok | ✔ | void*(void* allocator) |
+| `Entity_DispatchHit` | `0x1406e2d20` | ✅ ok | ✔ | void(oCEntity* target, oCEntityHitData* hit) |
 | `Entity_FindComponentByType` | `0x1406ca380` | ✅ ok | ✔ | oIEntityCpnt*(oCEntitySpawnerGo* go, oCMetaClass* meta) |
 | `Entity_FindMagicalObjectComponent` | `0x1406e2250` | ✅ ok | ✔ | void*(void* instance, void* mo_component_meta) |
 | `Entity_GainHealthHandler` | `0x1403993f0` | ✅ ok |  | void(oCEntity* hero, void* a2, void* valueCtx) |

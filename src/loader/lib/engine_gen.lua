@@ -8,6 +8,7 @@
 return {
   ["Analytics_SubmitNamedEvent"] = { pattern = "FUN_1401fa470", offset = 0x0, sig = "vpppu" },
   ["Entity_AllocInstance"] = { pattern = "FUN_14068fe90", offset = 0x0, sig = "pp" },
+  ["Entity_DispatchHit"] = { pattern = "FUN_1406e2d20", offset = 0x0, sig = "vpp" },
   ["Entity_FindComponentByType"] = { pattern = "FUN_1406ca380", offset = 0x0, sig = "ppp" },
   ["Entity_FindMagicalObjectComponent"] = { pattern = "FUN_1406e2250", offset = 0x0, sig = "ppp" },
   ["Entity_ModifyHealth"] = { pattern = "FUN_140399a10", offset = 0x0, sig = "vpfp" },
