@@ -68,12 +68,20 @@ float value = *p;
 in `Entity_ModifyHealth`.
 
 These keys are **structured / sequential ids, not hashes of the value name**.
-The decisive evidence: `0x12e831f3` and `0x12e831f4` are adjacent (differ by 1),
-and `0x173900d4` / `0x173900d6` differ by 2 — independent CRC32 hashes of
-different names could never land on consecutive integers. They share namespace
-prefixes (`0x1739xxxx`, `0x1888xxxx`), consistent with ids assigned sequentially
-within a namespace (GUID-derived; cf. the 16-byte GUID handle system in
-`talent-logic-rewire`).
+Two independent proofs:
+
+1. Adjacency: `0x12e831f3` / `0x12e831f4` differ by 1 and `0x173900d4` /
+   `0x173900d6` differ by 2 — independent CRC32 hashes of different names could
+   never land on consecutive integers. They share namespace prefixes
+   (`0x1739xxxx`, `0x1888xxxx`).
+2. **Computed base+index** (decisive): `Hero_GrantMagicalObject` reads
+   `EntityValue_Lookup(store, &out, rarityIdx + 0x1a19e789)` and
+   `rarityIdx + 0x1c678b88`, where `rarityIdx` is 0..5. The key is literally a
+   base id plus an integer index — so the same value family across rarities
+   occupies consecutive keys. That is the opposite of a hash.
+
+Consistent with ids assigned sequentially within a namespace (GUID-derived; cf.
+the 16-byte GUID handle system in `talent-logic-rewire`).
 
 So a mod **cannot** compute a value key by hashing a name. The key must come
 from the value's definition (a GUID/id), or be discovered empirically (observe

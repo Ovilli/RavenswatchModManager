@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **84** symbols across 11 categories.
+Total: **86** symbols across 11 categories.
 
 ## enemies
 
@@ -79,9 +79,11 @@ Total: **84** symbols across 11 categories.
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `Entity_GiveHandler` | `0x1403a7ba0` | ✅ ok |  | void(oCEntity* hero, oCGameNamedEvent* giveEvent) |
+| `Hero_GrantMagicalObject` | `0x140397190` | ✅ ok | ✔ | void(oCDtEntityCpntHeroController* hero, void* def, uint16_t count, char dupFlag, void*… |
 | `InitialLoading_SpawnMagicalObjects` | `0x140260280` | ❓ unverified |  | Boot 'InitialLoading - MagicalObject SpawnAllObjects' caller that invokes SpawnAllObjec… |
 | `MagicalObjectPool_Grow` | `0x1401550d0` | ✅ ok | ✔ | void(void* pool_plus_0x10, uint32_t count, uint32_t by) |
 | `MagicalObjectPool_SourceLookup` | `0x1402590c0` | ✅ ok | ✔ | void*(void* pool, void* out, void* id) |
+| `MagicalObject_RegisterInstance` | `0x1403aae40` | ✅ ok | ✔ | void(oCDtEntityCpntHeroController* hero, void* instance, char addToActive) |
 | `MagicalObject_SpawnAllObjects` | `0x140258760` | ✅ ok | ✔ | void(void* pool, void* scene) |
 | `MagicalObject_SpawnContainingFunc` | `0x1402586f0` | ✅ ok |  | Outer function (1283 bytes) that contains the inlined SpawnAllObjects entry at +0x70. T… |
 | `g_MagicalObjectPool` | `0x1414365d0` | 📍 va |  | Magical-object pool global pointer. Layout at *ptr: +0x0 source array (MagicalObjectDef… |

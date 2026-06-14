@@ -105,6 +105,13 @@ inline HeroController_Ctor_fn HeroController_Ctor() {
     return reinterpret_cast<HeroController_Ctor_fn>(rsmm::fn_resolve(Sym::HeroController_Ctor_Pattern));
 }
 
+// Hero_GrantMagicalObject  (FUN_140397190)
+//   void(oCDtEntityCpntHeroController* hero, void* def, uint16_t count, char dupFlag, void* sourceTags)
+using Hero_GrantMagicalObject_fn = void(*)(void*, void*, uint32_t, uint32_t, void*);
+inline Hero_GrantMagicalObject_fn Hero_GrantMagicalObject() {
+    return reinterpret_cast<Hero_GrantMagicalObject_fn>(rsmm::fn_resolve(Sym::Hero_GrantMagicalObject_Pattern));
+}
+
 // MagicalObjectPool_Grow  (FUN_1401550d0)
 //   void(void* pool_plus_0x10, uint32_t count, uint32_t by)
 using MagicalObjectPool_Grow_fn = void(*)(void*, uint32_t, uint32_t);
@@ -117,6 +124,13 @@ inline MagicalObjectPool_Grow_fn MagicalObjectPool_Grow() {
 using MagicalObjectPool_SourceLookup_fn = void*(*)(void*, void*, void*);
 inline MagicalObjectPool_SourceLookup_fn MagicalObjectPool_SourceLookup() {
     return reinterpret_cast<MagicalObjectPool_SourceLookup_fn>(rsmm::fn_resolve(Sym::MagicalObjectPool_SourceLookup_Pattern));
+}
+
+// MagicalObject_RegisterInstance  (FUN_1403aae40)
+//   void(oCDtEntityCpntHeroController* hero, void* instance, char addToActive)
+using MagicalObject_RegisterInstance_fn = void(*)(void*, void*, uint32_t);
+inline MagicalObject_RegisterInstance_fn MagicalObject_RegisterInstance() {
+    return reinterpret_cast<MagicalObject_RegisterInstance_fn>(rsmm::fn_resolve(Sym::MagicalObject_RegisterInstance_Pattern));
 }
 
 // MagicalObject_SpawnAllObjects  (FUN_1402586f0)

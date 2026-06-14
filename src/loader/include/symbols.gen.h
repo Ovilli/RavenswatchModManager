@@ -100,11 +100,15 @@ constexpr const char* NamedEvent_NetSendToPeer_Pattern = "FUN_140720630";
 // --- items ---
 constexpr std::uintptr_t Entity_GiveHandler = 0x1403a7ba0ull;
 constexpr const char* Entity_GiveHandler_Pattern = "FUN_1403a7ba0";
+constexpr std::uintptr_t Hero_GrantMagicalObject = 0x140397190ull;
+constexpr const char* Hero_GrantMagicalObject_Pattern = "FUN_140397190";
 constexpr std::uintptr_t InitialLoading_SpawnMagicalObjects = 0x140260280ull;
 constexpr std::uintptr_t MagicalObjectPool_Grow = 0x1401550d0ull;
 constexpr const char* MagicalObjectPool_Grow_Pattern = "FUN_1401550d0";
 constexpr std::uintptr_t MagicalObjectPool_SourceLookup = 0x1402590c0ull;
 constexpr const char* MagicalObjectPool_SourceLookup_Pattern = "FUN_1402590c0";
+constexpr std::uintptr_t MagicalObject_RegisterInstance = 0x1403aae40ull;
+constexpr const char* MagicalObject_RegisterInstance_Pattern = "FUN_1403aae40";
 constexpr std::uintptr_t MagicalObject_SpawnAllObjects = 0x140258760ull;
 constexpr const char* MagicalObject_SpawnAllObjects_Pattern = "FUN_1402586f0";
 constexpr std::uintptr_t MagicalObject_SpawnContainingFunc = 0x1402586f0ull;
