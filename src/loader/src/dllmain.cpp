@@ -83,6 +83,12 @@ static void loader_thread_cxx() {
         rsmm::install_skin_hooks();
         rsmm::install_item_hooks();
         rsmm::install_event_hooks();
+        // Hero-capture must install in the SAME phase as the other engine hooks
+        // (after the gameplay bus). Installing it earlier — before mod init —
+        // made MH_CreateHook fail on a fresh launch (and the game crashed on
+        // load). Mods touching R.entity during init just fall back to the
+        // legacy per-state path until this arms; harmless.
+        rsmm::install_hero_capture();
         rsmm::install_netcode_patches();
 
         rsmm::script_emit_event("ready");

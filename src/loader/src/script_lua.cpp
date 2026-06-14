@@ -26,6 +26,7 @@ extern "C" {
 
 #include <windows.h>
 
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -606,6 +607,30 @@ int lua_scratch(lua_State* L) {
     return 1;
 }
 
+// rsmm._internal.shared_get(slot) -> int ; rsmm._internal.shared_set(slot, val)
+// Tiny process-global key/value store (slots 0..15), shared across EVERY mod's
+// Lua state. MinHook installs are process-global: only one Lua state wins the
+// hook on a given engine address (a second mod hooking the same addr gets
+// MH_ERROR_ALREADY_CREATED). So a handle captured by one mod's capture hook
+// (e.g. the hero entity) must be published somewhere all states can read it.
+// This is that somewhere. Atomic so the (main-thread) capture write is visible
+// to any state's read without a lock.
+// Storage lives here (file-local); the rsmm:: accessors are defined just past
+// the anonymous namespace so they have external linkage for native callers.
+std::atomic<std::uint64_t> g_shared[16];
+int lua_shared_get(lua_State* L) {
+    auto slot = static_cast<int>(luaL_checkinteger(L, 1));
+    if (slot < 0 || slot >= 16) return luaL_error(L, "rsmm.shared_get: slot must be 0..15");
+    lua_pushinteger(L, static_cast<lua_Integer>(shared_get(slot)));
+    return 1;
+}
+int lua_shared_set(lua_State* L) {
+    auto slot = static_cast<int>(luaL_checkinteger(L, 1));
+    if (slot < 0 || slot >= 16) return luaL_error(L, "rsmm.shared_set: slot must be 0..15");
+    shared_set(slot, static_cast<std::uint64_t>(luaL_checkinteger(L, 2)));
+    return 0;
+}
+
 void register_api(lua_State* L) {
     // Public, documented surface. This is what a mod author writes against.
     // High-level behaviors (R.item.register / R.scaling / R.talent / ...)
@@ -646,6 +671,8 @@ void register_api(lua_State* L) {
         { "peek",                    lua_peek },
         { "poke",                    lua_poke },
         { "scratch",                 lua_scratch },
+        { "shared_get",              lua_shared_get },
+        { "shared_set",              lua_shared_set },
         { "register_item",           lua_register_item },
         { "write_u8",                lua_write_u8 },
         { "write_u16",               lua_write_u16 },
@@ -664,6 +691,17 @@ void register_api(lua_State* L) {
 }
 
 } // namespace
+
+// External-linkage accessors for the process-global shared slots (declared in
+// script_lua.h). g_shared lives in the anonymous namespace above; these reach
+// it within the same translation unit, giving native code (e.g. hero-capture)
+// and the Lua bridge one store.
+void shared_set(int slot, std::uint64_t value) {
+    if (slot >= 0 && slot < 16) g_shared[slot].store(value);
+}
+std::uint64_t shared_get(int slot) {
+    return (slot >= 0 && slot < 16) ? g_shared[slot].load() : 0;
+}
 
 bool script_run_mod_init(const std::string& mod_id,
                          const std::filesystem::path& mod_root) {

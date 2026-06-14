@@ -25,4 +25,10 @@ namespace rsmm {
 bool install_event_hooks();
 void remove_event_hooks();
 
+// Installs the hero-capture hooks ONCE (give + gain-health handlers), publishing
+// the local hero character pointer to shared slot 0. Independent of the Lua
+// event bridge and of any mod's lua_State, so it survives hot-reload and never
+// collides. R.entity / R.combat in rsmm.lua read the captured hero from there.
+bool install_hero_capture();
+
 } // namespace rsmm

@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <filesystem>
 #include <string>
 
@@ -33,5 +34,12 @@ void script_emit_event(const std::string& name);
 void script_emit_event_json(const std::string& name, const std::string& payload_json);
 void script_reload_changed();   // re-run init.lua for any mod whose file changed
 void script_shutdown_all();
+
+// Process-global key/value slots (0..15) shared across every mod's lua_State
+// and the native loader. Backs rsmm._internal.shared_get/shared_set; also used
+// by native infrastructure that must publish a handle to all Lua states (e.g.
+// the once-installed hero-capture writes the hero pointer here). Atomic.
+void     shared_set(int slot, std::uint64_t value);
+std::uint64_t shared_get(int slot);
 
 } // namespace rsmm

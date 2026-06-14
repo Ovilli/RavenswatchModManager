@@ -213,10 +213,24 @@ local _GIVE_ANCHORS = {
     ["gameplay:INTERACTION_VALIDATE"] = true,
 }
 
+-- Forward-declared; assigned once the entity section (which owns _hero_char and
+-- the shared slot) is defined below. Called when the live hero dispatcher
+-- changes (hero switch / new run) to drop the now-stale HP-carrier capture.
+local _invalidate_hero_capture
+
 R.on("*", function(ev, name)
     if _GIVE_ANCHORS[name] and type(ev.dispatcher) == "string" then
         local d = tonumber(ev.dispatcher)
-        if d and d ~= 0 then _give_hero = d end
+        if d and d ~= 0 then
+            -- A different dispatcher than last seen means the local hero changed
+            -- (switched character, or a fresh run reallocated the entity). The
+            -- captured HP-carrier and the shared slot point at the OLD hero's
+            -- (possibly freed) memory, so invalidate them and re-capture clean.
+            if _give_hero ~= nil and d ~= _give_hero and _invalidate_hero_capture then
+                _invalidate_hero_capture()
+            end
+            _give_hero = d
+        end
     end
 end)
 
@@ -376,6 +390,22 @@ local ENTITY_IMG_BASE    = 0x140000000
 
 local _hero_char = nil          -- captured hero character object (HP@+0x15c8)
 local _hero_capture_armed = false
+-- Process-global shared slots (see hook_events.cpp install_hero_capture):
+--   0 = hero character pointer (published by native capture)
+--   1 = native "authoritative seen" flag (give handler fired)
+--   2 = native capture active sentinel (loader owns the capture hooks)
+local SHARED_HERO_SLOT = 0
+local HERO_AUTH_SLOT = 1
+local NATIVE_CAPTURE_SLOT = 2
+
+-- True when the loader's native hero-capture is installed. When it is, the Lua
+-- side must not arm its own per-state capture hooks (they'd collide with the
+-- native ones, MH_ERROR_ALREADY_CREATED) — it just reads the shared slot.
+local function _native_capture_active()
+    if not I.shared_get then return false end
+    local ok, v = pcall(I.shared_get, NATIVE_CAPTURE_SLOT)
+    return ok and v == 1
+end
 
 -- A captured pointer is "hero-like" if its max-HP field reads as a sane float.
 local function _hero_plausible(e)
@@ -388,6 +418,13 @@ local function _hero_plausible(e)
     return type(mx) == "number" and mx > 0 and mx < 1e6
         and type(cur) == "number" and cur >= 0 and cur < 1e6
 end
+
+-- NOTE: ev.entity (= dispatcher - 0x4d8 from the gameplay bus) is NOT the hero
+-- HP-carrier. Empirically _hero_plausible(ev.entity) fails: the dispatch entity
+-- (dispatcher owner) and the HP-carrier are separate sub-objects — the hero is
+-- bound into each subscription as functor context, not reachable from the event
+-- by a fixed offset. So capture stays hook-based (param_1 of the hero handlers),
+-- which needs one hero action (heal/lifesteal/pickup) but reads the right object.
 
 -- Install the read-only capture hooks once. Both handlers take pointer args
 -- only (no float), so hooking them is safe; the callback returns nil to replay
@@ -406,6 +443,9 @@ local function _arm_hero_capture()
         if _hero_char == p1 then return end
         if _hero_char ~= nil and not authoritative then return end
         _hero_char = p1
+        -- Publish to the process-global slot so other mods' Lua states (which
+        -- lose the MinHook install with ALREADY_CREATED) still see this hero.
+        if I.shared_set then pcall(I.shared_set, SHARED_HERO_SLOT, p1) end
         R.log(string.format("[rsmm.entity] hero captured @0x%x (hp %.0f/%.0f)%s",
             p1, I.read_f32(p1 + ENTITY_HP_OFF), I.read_f32(p1 + ENTITY_MAXHP_OFF),
             authoritative and " [authoritative]" or " [tentative]"))
@@ -424,10 +464,25 @@ local function _arm_hero_capture()
     end
 end
 
--- The captured local hero character pointer, or nil if not seen yet.
+-- The captured local hero character pointer, or nil if not seen yet. The
+-- loader's native capture publishes it to the shared slot the first time the
+-- hero heals/regens or picks something up — read fresh every call so a
+-- hero-switch (which clears the slot) is picked up automatically.
 function R.entity.hero()
-    _arm_hero_capture()
-    return _hero_char
+    if I.shared_get then
+        local ok, h = pcall(I.shared_get, SHARED_HERO_SLOT)
+        if ok and type(h) == "number" and h ~= 0 and _hero_plausible(h) then
+            return h
+        end
+    end
+    -- Legacy fallback: an older loader without native capture. Arm the per-state
+    -- Lua hooks (safe only when native capture is NOT present — otherwise it
+    -- would collide with the native hooks on the same addresses).
+    if not _native_capture_active() then
+        if not _hero_char then _arm_hero_capture() end
+        return _hero_char
+    end
+    return nil
 end
 
 -- True once the hero has been captured (hp/max/heal/damage will work).
@@ -483,6 +538,157 @@ function R.combat.set_hp(value)
     local cur = R.entity.hp()
     if not cur then return false end
     return _modify_health((value or 0) - cur)
+end
+
+-- Wire the forward-declared invalidator now that _hero_char + the shared slot
+-- exist. On hero switch / new run the captured HP-carrier is stale; drop it and
+-- clear the process-global slot so the next heal/pickup re-captures cleanly.
+_invalidate_hero_capture = function()
+    _hero_char = nil
+    if I.shared_set then
+        pcall(I.shared_set, SHARED_HERO_SLOT, 0)  -- drop stale hero pointer
+        pcall(I.shared_set, HERO_AUTH_SLOT, 0)    -- let native re-capture new hero
+    end
+end
+
+-- hero (identity / per-hero scope) --------------------------------------
+--
+-- Every hero has its own ability/event vocabulary (Piper's rats, Juliet's
+-- mechanics, Scarlet's crows, ...). REACTING to those events already works —
+-- they arrive on the gameplay bus by name, e.g.:
+--
+--     R.on("gameplay:ENCHANTED_BLADES_HEAVY_IMPACT", function(ev) ... end)
+--
+-- and only ever fire when the hero that owns the ability acts, so subscribing
+-- is implicitly per-hero. R.hero adds the missing piece: a stable handle to the
+-- CURRENT hero plus identity, so a mod can scope its logic ("only for Juliet")
+-- and so we can build a per-hero event catalog.
+--
+--   R.hero.handle()   -- live hero dispatcher pointer (instant; nil pre-act)
+--   R.hero.ready()    -- true once the hero has acted once this run
+--   R.hero.name()     -- "Piper"/"Scarlet"/... from event signature, or nil
+--   R.hero.is("Piper")-- true if the current hero matches (case-insensitive)
+--   R.hero.catalog()  -- dump this hero's distinctive events (seeds signatures)
+--   R.hero.on(name, cb) -- R.on("gameplay:"..name) gated to fire only when a
+--                          hero is active this run (convenience for ability hooks)
+R.hero = {}
+
+-- IDENTITY MODEL: event-signature. Ghidra confirmed the hero entity has no
+-- type/def field — it's a generic oe::Entity component aggregate (carrier
+-- vtable 0x140f2b930, ctor FUN_14038e320: dozens of component arrays, no
+-- herodef). So "which hero" is inferred from the EXCLUSIVE ability events the
+-- hero fires on the gameplay bus (Piper -> rat/flute events, Scarlet -> crows,
+-- ...). Robust (no fragile offsets) and engine-aligned. The name<->event map
+-- is seeded from observed play (R.hero.catalog dumps a hero's distinctive
+-- events; fold them into _HERO_SIGNATURES below).
+
+-- Live hero dispatcher (instant — captured from the first hero-anchored event,
+-- shared with R.give). This is the right "current hero" handle for emitting
+-- events at the hero; it does NOT require the heal/pickup capture R.combat does.
+function R.hero.handle() return _give_hero end
+function R.hero.ready()  return _give_hero ~= nil end
+
+-- Substrings marking events that EVERY hero fires (movement, items, UI, charge
+-- counters, ...). These carry no identity, so they're excluded from a hero's
+-- signature set, leaving only ability-distinctive events.
+local _GENERIC_EVENT_PATTERNS = {
+    "ABILITY_MAX", "ABILITY_EXIT", "COUNTER", "OPTIMIZE", "MODIFIER", "LIFE_BAR",
+    "SHOW", "HIDE", "TILE", "INTERACT", "NETWORK", "REFUGEE", "MASTER", "TAB",
+    "BORDER", "DREAM", "REROLL", "ENERGY", "COMBO", "COLLECT", "IMPACT",
+    "STAGGER", "KILL", "DEAD", "DEATH", "PROJECTILE", "SPAWN", "BARK", "RESET",
+    "CLEAR", "LEGENDARY", "GIVE_MAG", "POSITION", "PRIMARY_", "SECONDARY_",
+    "DEFENSIVE_", "ULTIMATE_", "DASH_", "HEALTH", "TELEPORT", "MAP", "GAME_",
+    "CHEST", "FOUNTAIN", "INGREDIENT", "TRAIT_CHARGE", "AMMO", "TRIGGER",
+    "DUPLICATE", "OBJECT", "REWARD", "WISH", "XP_LEVEL", "ACTIVITY", "BHV",
+    "BUTTON", "MENU", "CHRONO", "GENERATE", "FEEDBACK", "GLOBE",
+}
+local function _is_generic(gp)
+    for _, pat in ipairs(_GENERIC_EVENT_PATTERNS) do
+        if gp:find(pat, 1, true) then return true end
+    end
+    return false
+end
+
+-- name -> { signature event names }. A hero matches when ALL its signature
+-- events have been seen this session. Seed from R.hero.catalog() output (play
+-- each hero, read the distinctive list, paste the hero-exclusive ones here).
+-- Empty entries are placeholders to be filled; an unmatched hero yields nil.
+local _HERO_SIGNATURES = {
+    -- Seeded from in-game catalogs. Each entry = events the hero fires that no
+    -- other hero does; a hero matches when ALL its signature events are seen.
+    -- SHATTER = Snow Queen's freeze->shatter payoff (her core ice mechanic).
+    -- Excluded as non-exclusive: START_DAYMARE/START_NIGHTMARE (global day/night
+    -- cycle), SUMMON_DEAD_ENTITIES/TEARING_SLASHES (talent/object effects).
+    SnowQueen = { "SHATTER" },
+    -- Piper   = { ... },  -- play Piper, read R.hero.catalog(), seed here
+    -- Scarlet = { ... },
+}
+
+-- Gameplay events seen (with fire counts) for the CURRENT hero session. Reset
+-- when the live hero dispatcher changes (switch character / new run). We record
+-- ALL events here; _is_generic only labels them in the catalog so the
+-- hero-distinctive ones are easy to spot for seeding signatures.
+local _hero_events = {}
+local _sig_last_hero = nil
+R.on("*", function(ev, name)
+    if type(name) ~= "string" then return end
+    local gp = name:match("^gameplay:(.+)$")
+    if not gp then return end
+    if _give_hero ~= _sig_last_hero then
+        _hero_events = {}
+        _sig_last_hero = _give_hero
+    end
+    _hero_events[gp] = (_hero_events[gp] or 0) + 1
+end)
+
+-- Short hero name (e.g. "Piper") inferred from the events seen this session, or
+-- nil if no signature has matched yet (early in a run, or hero not yet mapped).
+function R.hero.name()
+    for who, sig in pairs(_HERO_SIGNATURES) do
+        local all = true
+        for _, evname in ipairs(sig) do
+            if not _hero_events[evname] then all = false; break end
+        end
+        if all and #sig > 0 then return who end
+    end
+    return nil
+end
+
+-- True if event `gp` is fired by all heroes (no identity value). Used only to
+-- LABEL catalog output; collection records everything.
+local function _generic(gp) return _is_generic(gp) end
+
+-- True if the current hero is `who` (case-insensitive short name).
+function R.hero.is(who)
+    local n = R.hero.name()
+    return n ~= nil and who ~= nil and n:lower() == tostring(who):lower()
+end
+
+-- Dump the distinctive (non-generic) events seen for the current hero this
+-- session — the raw material for seeding _HERO_SIGNATURES. Play one hero, fire
+-- its abilities, then call this; the hero-exclusive lines become its signature.
+function R.hero.catalog()
+    local names = {}
+    for k in pairs(_hero_events) do names[#names + 1] = k end
+    table.sort(names)
+    R.log(string.format("[rsmm.hero] catalog: %d event(s) this session (hero=%s) "
+        .. "— '*' = hero-distinctive candidate, '.' = generic",
+        #names, tostring(R.hero.name())))
+    for _, k in ipairs(names) do
+        R.log(string.format("[rsmm.hero]   %s %s (x%d)",
+            _generic(k) and "." or "*", k, _hero_events[k]))
+    end
+end
+
+-- Subscribe to a hero ability event by bare NAME, only firing while a hero is
+-- active this run. cb(ev) gets the gameplay payload. Thin sugar over R.on that
+-- documents intent ("this is a hero ability hook") and skips menu-time noise.
+function R.hero.on(name, cb)
+    assert(type(name) == "string", "R.hero.on: name must be string")
+    assert(type(cb) == "function", "R.hero.on: cb must be function")
+    return R.on("gameplay:" .. name, function(ev)
+        if _give_hero ~= nil then cb(ev) end
+    end)
 end
 
 -- netcode (advanced / experimental) -------------------------------------
@@ -769,7 +975,9 @@ function R.item.register(spec)
         spec.description or "",
         spec.base or "",
         entity_path,
-        spec.rarity or 0
+        -- arg 6 is the NUMERIC rarity index; spec.rarity doubles as the path
+        -- tier name (a string like "Common"), so only forward it when numeric.
+        type(spec.rarity) == "number" and spec.rarity or 0
     )
     if ok then
         R.log("[rsmm.item] registered and wired:", spec.id)
@@ -880,6 +1088,70 @@ function R.talent.extra_at_level(lvl)
 end
 
 function R.talent.pending() return _talent_cfg end
+
+-- Define a CUSTOM TALENT: bind your own effect to a gameplay trigger. This is
+-- the tier-2 "build your own talent" entry point — the `effect` callback is the
+-- mod's own logic (heal, grant, buff, count, ...), not a cloned game talent.
+--
+--   R.talent.define{
+--       id     = "lifesteal_on_ability",
+--       on     = "gameplay:ABILITY_EXIT",      -- a gameplay event, or a list
+--       when   = function(ev) return true end, -- optional predicate
+--       effect = function(ev) R.combat.heal(5) end,
+--   }
+--
+-- Threading is handled for you: gameplay-event handlers run on the game's MAIN
+-- thread, so an effect there may call R.combat / R.give / R.entity directly;
+-- if you trigger off a non-gameplay event (e.g. "tick", background thread) the
+-- effect is deferred onto the main-thread pump so engine calls stay safe (see
+-- [[loader-thread-model]]). Each effect is pcall-guarded — a buggy talent logs
+-- and is skipped, it never breaks the event bus for other mods.
+local _talents = {}
+function R.talent.define(spec)
+    assert(type(spec) == "table",            "R.talent.define: spec must be table")
+    assert(type(spec.id) == "string",        "R.talent.define: spec.id required")
+    assert(type(spec.effect) == "function",  "R.talent.define: spec.effect must be function")
+    if _talents[spec.id] then
+        R.log("[rsmm.talent] duplicate id, ignoring:", spec.id)
+        return false
+    end
+    local events = spec.on or "gameplay:ABILITY_EXIT"
+    if type(events) == "string" then events = { events } end
+    assert(type(events) == "table", "R.talent.define: spec.on must be a string or list of strings")
+    _talents[spec.id] = spec
+
+    for _, ev_name in ipairs(events) do
+        R.on(ev_name, function(ev)
+            if spec.when then
+                local okc, keep = pcall(spec.when, ev)
+                if not okc or not keep then return end
+            end
+            local function run()
+                local ok, err = pcall(spec.effect, ev)
+                if not ok then
+                    R.log("[rsmm.talent] '" .. spec.id .. "' effect error: " .. tostring(err))
+                end
+            end
+            -- gameplay events already fire on the main thread; anything else is
+            -- deferred there so engine-mutating effects don't race the engine.
+            if ev_name:sub(1, 9) == "gameplay:" then
+                run()
+            elseif R.schedule and R.schedule.next_main then
+                R.schedule.next_main(run)
+            else
+                run()
+            end
+        end)
+    end
+    R.log("[rsmm.talent] defined:", spec.id)
+    return true
+end
+
+function R.talent.list()
+    local out = {}
+    for _, s in pairs(_talents) do out[#out + 1] = s end
+    return out
+end
 
 -- counters --------------------------------------------------------------
 --

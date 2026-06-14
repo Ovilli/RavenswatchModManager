@@ -290,7 +290,114 @@ bool arm(EventHook& h) {
     return true;
 }
 
+// --- hero capture (once, native) --------------------------------------------
+//
+// The hero CHARACTER object (HP @ +0x15c8, max @ +0x15cc) is param_1 of two
+// hero-bound handlers. Capturing it lets R.entity / R.combat read & modify the
+// local hero's health. Previously rsmm.lua armed these hooks per mod Lua state,
+// which broke two ways: (1) a second mod hooking the same address got
+// MH_ERROR_ALREADY_CREATED, (2) a Lua hot-reload re-armed over its own live
+// hook (also ALREADY_CREATED) and the old state's callback died. Installing
+// once here — at loader-thread time, never on reload — fixes both. The captured
+// pointer is published to shared slot 0 (slot 1 = "authoritative seen"), which
+// every Lua state reads via R.entity.hero().
+constexpr int kHeroSlot = 0;     // hero character pointer
+constexpr int kHeroAuthSlot = 1; // 1 once the hero-only give handler has fired
+constexpr std::uintptr_t kHeroMaxHpOff = 0x15cc;
+
+using GiveHandler_t     = void (*)(void*, void*);
+using GainHealthHandler_t = void (*)(void*, void*, void*);
+GiveHandler_t       g_give_real = nullptr;
+GainHealthHandler_t g_gain_real = nullptr;
+std::uintptr_t g_give_va = 0, g_gain_va = 0;
+
+bool hero_plausible(void* p1) {
+    if (!p1) return false;
+    auto addr = reinterpret_cast<std::uintptr_t>(p1);
+    if (addr & 7) return false;
+    MEMORY_BASIC_INFORMATION mbi{};
+    auto q = addr + kHeroMaxHpOff;
+    if (VirtualQuery(reinterpret_cast<void*>(q), &mbi, sizeof(mbi)) == 0) return false;
+    if (mbi.State != MEM_COMMIT) return false;
+    if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return false;
+    float mx = *reinterpret_cast<float*>(q);
+    return mx > 0.0f && mx < 1.0e6f;
+}
+
+void detour_give(void* p1, void* p2) {
+    if (hero_plausible(p1)) {
+        shared_set(kHeroSlot, reinterpret_cast<std::uint64_t>(p1));
+        shared_set(kHeroAuthSlot, 1);
+    }
+    g_give_real(p1, p2);
+}
+
+void detour_gain_health(void* p1, void* p2, void* p3) {
+    // GAIN_HEALTH fires for any entity that heals (incl. enemies), so only take
+    // it as a tentative capture until the hero-only give handler confirms.
+    if (shared_get(kHeroAuthSlot) == 0 && hero_plausible(p1))
+        shared_set(kHeroSlot, reinterpret_cast<std::uint64_t>(p1));
+    g_gain_real(p1, p2, p3);
+}
+
+// va symbols (no byte pattern) — rebase the preferred-base address by the live
+// image delta, same as the Lua side does via module_base.
+std::uintptr_t rebase(std::uintptr_t preferred) {
+    auto h = GetModuleHandleA("Ravenswatch.exe");
+    if (!h) h = GetModuleHandleA(nullptr);
+    if (!h) return 0;
+    return reinterpret_cast<std::uintptr_t>(h) + (preferred - Sym::kPreferredBase);
+}
+
 } // namespace
+
+bool install_hero_capture() {
+    // OPT-IN while we stabilize: these are the newest engine detours and have
+    // correlated with load-time crashes this dev cycle. Identity / event work
+    // doesn't need them; R.combat / R.entity do. Enable with
+    // RSMM_ENABLE_HERO_CAPTURE=1 once a run is confirmed stable.
+    {
+        char buf[8] = {};
+        DWORD n = GetEnvironmentVariableA("RSMM_ENABLE_HERO_CAPTURE", buf, sizeof(buf));
+        if (!(n > 0 && n < sizeof(buf) && (buf[0] == '1' || buf[0] == 't' || buf[0] == 'T'))) {
+            Loader::get().log("[hero-capture] disabled (set RSMM_ENABLE_HERO_CAPTURE=1 "
+                              "to enable R.combat/R.entity)");
+            return false;
+        }
+    }
+    g_give_va = rebase(Sym::Entity_GiveHandler);
+    g_gain_va = rebase(Sym::Entity_GainHealthHandler);
+    if (g_give_va == 0 || g_gain_va == 0) {
+        Loader::get().log("[hero-capture] module base unavailable; disabled");
+        return false;
+    }
+    bool any = false;
+    if (MH_CreateHook(reinterpret_cast<LPVOID>(g_give_va),
+                      reinterpret_cast<LPVOID>(&detour_give),
+                      reinterpret_cast<LPVOID*>(&g_give_real)) == MH_OK
+        && MH_EnableHook(reinterpret_cast<LPVOID>(g_give_va)) == MH_OK) {
+        any = true;
+    } else {
+        Loader::get().log("[hero-capture] give-handler hook failed");
+    }
+    if (MH_CreateHook(reinterpret_cast<LPVOID>(g_gain_va),
+                      reinterpret_cast<LPVOID>(&detour_gain_health),
+                      reinterpret_cast<LPVOID*>(&g_gain_real)) == MH_OK
+        && MH_EnableHook(reinterpret_cast<LPVOID>(g_gain_va)) == MH_OK) {
+        any = true;
+    } else {
+        Loader::get().log("[hero-capture] gain-health-handler hook failed");
+    }
+    if (any) {
+        // Sentinel: tells rsmm.lua native capture owns these handlers, so it
+        // must NOT re-arm the per-state Lua capture hooks (which would collide
+        // with these as MH_ERROR_ALREADY_CREATED).
+        shared_set(2, 1);
+        Loader::get().log("[hero-capture] armed (hero published to shared slot 0 on "
+                          "first heal/pickup; R.entity/R.combat available to all mods)");
+    }
+    return any;
+}
 
 bool install_event_hooks() {
     const bool analytics = env_truthy("RSMM_ENABLE_GAME_EVENTS");
