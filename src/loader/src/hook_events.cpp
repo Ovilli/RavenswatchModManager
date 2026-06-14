@@ -340,15 +340,6 @@ void detour_gain_health(void* p1, void* p2, void* p3) {
     g_gain_real(p1, p2, p3);
 }
 
-// va symbols (no byte pattern) — rebase the preferred-base address by the live
-// image delta, same as the Lua side does via module_base.
-std::uintptr_t rebase(std::uintptr_t preferred) {
-    auto h = GetModuleHandleA("Ravenswatch.exe");
-    if (!h) h = GetModuleHandleA(nullptr);
-    if (!h) return 0;
-    return reinterpret_cast<std::uintptr_t>(h) + (preferred - Sym::kPreferredBase);
-}
-
 } // namespace
 
 bool install_hero_capture() {
@@ -365,10 +356,24 @@ bool install_hero_capture() {
             return false;
         }
     }
-    g_give_va = rebase(Sym::Entity_GiveHandler);
-    g_gain_va = rebase(Sym::Entity_GainHealthHandler);
-    if (g_give_va == 0 || g_gain_va == 0) {
-        Loader::get().log("[hero-capture] module base unavailable; disabled");
+    // Pattern-resolve both handlers (same path as the gameplay bus) so the
+    // hooks survive game patches instead of trusting a baked, soon-stale VA: a
+    // stale address would land the detour mid-instruction and crash on load.
+    if (!fn_resolver_init()) {
+        Loader::get().log("[hero-capture] fn_resolver_init failed; disabled");
+        return false;
+    }
+    g_give_va = fn_resolve(Sym::Entity_GiveHandler_Pattern);
+    g_gain_va = fn_resolve(Sym::Entity_GainHealthHandler_Pattern);
+    if (g_give_va == 0 || g_give_va == static_cast<std::uintptr_t>(-1)
+        || g_gain_va == 0 || g_gain_va == static_cast<std::uintptr_t>(-1)) {
+        Loader::get().log("[hero-capture] handler resolve failed; disabled");
+        return false;
+    }
+    if (!fn_verify(Sym::Entity_GiveHandler_Pattern, g_give_va)
+        || !fn_verify(Sym::Entity_GainHealthHandler_Pattern, g_gain_va)) {
+        Loader::get().log("[hero-capture] handler verify mismatch (game patched?); "
+                          "disabled to avoid a mid-instruction hook");
         return false;
     }
     bool any = false;
