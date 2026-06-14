@@ -318,6 +318,17 @@ bool arm(EventHook& h) {
 constexpr int kHeroSlot = 0;     // hero character pointer
 constexpr int kHeroAuthSlot = 1; // 1 once a hero-only routine has captured
 constexpr std::uintptr_t kHeroMaxHpOff = 0x15cc;
+constexpr std::uintptr_t kHeroHudMirrorOff = 0x1d80; // ptr to the HUD HP mirror
+
+// True if [addr, addr+size) is committed and readable (no guard/no-access).
+bool committed_readable(std::uintptr_t addr, std::size_t size) {
+    MEMORY_BASIC_INFORMATION mbi{};
+    if (VirtualQuery(reinterpret_cast<void*>(addr), &mbi, sizeof(mbi)) == 0) return false;
+    if (mbi.State != MEM_COMMIT) return false;
+    if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return false;
+    auto region_end = reinterpret_cast<std::uintptr_t>(mbi.BaseAddress) + mbi.RegionSize;
+    return addr + size <= region_end;
+}
 
 using SubscribeAll_t    = void (*)(void*);
 using GiveHandler_t     = void (*)(void*, void*);
@@ -331,13 +342,22 @@ bool hero_plausible(void* p1) {
     if (!p1) return false;
     auto addr = reinterpret_cast<std::uintptr_t>(p1);
     if (addr & 7) return false;
-    MEMORY_BASIC_INFORMATION mbi{};
-    auto q = addr + kHeroMaxHpOff;
-    if (VirtualQuery(reinterpret_cast<void*>(q), &mbi, sizeof(mbi)) == 0) return false;
-    if (mbi.State != MEM_COMMIT) return false;
-    if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return false;
-    float mx = *reinterpret_cast<float*>(q);
-    return mx > 0.0f && mx < 1.0e6f;
+    // (1) max-HP at +0x15cc reads as a sane float.
+    if (!committed_readable(addr + kHeroMaxHpOff, sizeof(float))) return false;
+    float mx = *reinterpret_cast<float*>(addr + kHeroMaxHpOff);
+    if (!(mx > 0.0f && mx < 1.0e6f)) return false;
+    // (2) the HUD HP-mirror pointer at +0x1d80 is a valid, readable pointer.
+    // This is the hero discriminator: Entity_ModifyHealth dereferences
+    // **(hero+0x1d80) unconditionally on any heal/damage, so a captured pointer
+    // that lacks a live mirror here would crash R.combat. Non-player entities
+    // (which Entity_GainHealthHandler also fires for) have no HUD mirror, so
+    // requiring it both rejects false captures AND guarantees the captured
+    // pointer is ModifyHealth-safe. Verified: FUN_140391d30 / FUN_140399a10.
+    if (!committed_readable(addr + kHeroHudMirrorOff, sizeof(void*))) return false;
+    auto mirror = *reinterpret_cast<std::uintptr_t*>(addr + kHeroHudMirrorOff);
+    if (mirror == 0 || (mirror & 7)) return false;
+    // mirror is dereferenced as **(hero+0x1d80) and *(*(hero+0x1d80)+0x10).
+    return committed_readable(mirror, 0x14);
 }
 
 void detour_subscribe_all(void* p1) {

@@ -382,6 +382,7 @@ R.combat = {}
 
 local ENTITY_HP_OFF      = 0x15c8        -- f32 current HP on the hero character
 local ENTITY_MAXHP_OFF   = 0x15cc        -- f32 max HP
+local ENTITY_HUDMIRROR_OFF = 0x1d80      -- ptr to the HUD HP mirror (hero-only)
 local MODIFY_HEALTH_VA   = 0x140399a10   -- Entity_ModifyHealth(hero, delta, tags)
 local GAINHEALTH_HDLR_VA = 0x1403993f0   -- GAIN_HEALTH handler; param_1 = hero
 local GIVE_HDLR_VA       = 0x1403a7ba0   -- give-item handler; param_1 = hero
@@ -407,7 +408,14 @@ local function _native_capture_active()
     return ok and v == 1
 end
 
--- A captured pointer is "hero-like" if its max-HP field reads as a sane float.
+-- A captured pointer is "hero-like" if its max-HP field reads as a sane float
+-- AND it carries a valid HUD HP-mirror pointer at +0x1d80. The mirror is the
+-- hero discriminator: Entity_ModifyHealth dereferences **(hero+0x1d80) on every
+-- heal/damage, so a pointer that lacks a live mirror would crash R.combat.
+-- Non-player entities (GAIN_HEALTH fires for enemies too) have no HUD mirror,
+-- so requiring it rejects false captures and keeps every captured pointer
+-- ModifyHealth-safe. Verified in Ghidra (FUN_140391d30 / FUN_140399a10). All
+-- reads are fault-safe (return nil on a bad address).
 local function _hero_plausible(e)
     if not e or e == 0 then return false end
     local mx = I.read_f32(e + ENTITY_MAXHP_OFF)
@@ -415,8 +423,15 @@ local function _hero_plausible(e)
     -- cur may legitimately EXCEED mx (overheal / shields / HP-boost items), so
     -- only bound it as finite+non-negative, not cur <= mx. mx must be a sane
     -- positive bar size — that's the real garbage-pointer discriminator.
-    return type(mx) == "number" and mx > 0 and mx < 1e6
-        and type(cur) == "number" and cur >= 0 and cur < 1e6
+    if not (type(mx) == "number" and mx > 0 and mx < 1e6
+        and type(cur) == "number" and cur >= 0 and cur < 1e6) then
+        return false
+    end
+    local mirror = I.read_u64(e + ENTITY_HUDMIRROR_OFF)
+    if type(mirror) ~= "number" or mirror == 0 then return false end
+    -- mirror is dereferenced as *(mirror) (a float) by the engine; confirm it's
+    -- readable so a later R.combat call can't fault.
+    return type(I.read_f32(mirror)) == "number"
 end
 
 -- NOTE: ev.entity (= dispatcher - 0x4d8 from the gameplay bus) is NOT the hero
