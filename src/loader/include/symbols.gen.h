@@ -68,10 +68,14 @@ constexpr std::uintptr_t oCEntityValueUnion_vftable = 0x140f8fed8ull;
 // --- event ---
 constexpr std::uintptr_t Analytics_SubmitNamedEvent = 0x1401fa470ull;
 constexpr const char* Analytics_SubmitNamedEvent_Pattern = "FUN_1401fa470";
+constexpr std::uintptr_t Crc32_TableInit = 0x14051df80ull;
+constexpr const char* Crc32_TableInit_Pattern = "FUN_14051df80";
 constexpr std::uintptr_t Event_LevelUp = 0x1401f6410ull;
 constexpr const char* Event_LevelUp_Pattern = "FUN_1401f6410";
 constexpr std::uintptr_t Event_RunEnd = 0x1401f51e0ull;
 constexpr const char* Event_RunEnd_Pattern = "FUN_1401f51e0";
+constexpr std::uintptr_t Id_HashString = 0x14033f7a0ull;
+constexpr const char* Id_HashString_Pattern = "FUN_14033f7a0";
 constexpr std::uintptr_t NamedEvent_ChannelMap_Find = 0x14066cc50ull;
 constexpr const char* NamedEvent_ChannelMap_Find_Pattern = "FUN_14066cc50";
 constexpr std::uintptr_t NamedEvent_Delete = 0x140126da0ull;

@@ -6,6 +6,7 @@ PREFERRED_BASE = 0x140000000
 # name -> preferred-base address
 ADDR: dict[str, int] = {
     "Analytics_SubmitNamedEvent": 0x1401fa470,
+    "Crc32_TableInit": 0x14051df80,
     "Definitions_LoadGroup": 0x14030fa00,
     "EnemyCamp_Stage3Filter": 0x1403194c0,
     "EnemyCamp_TierSelector": 0x14032de90,
@@ -32,6 +33,7 @@ ADDR: dict[str, int] = {
     "Format_String": 0x140204f30,
     "HeroController_Ctor": 0x14038e320,
     "HeroController_HudMirror_Ctor": 0x1403b2f20,
+    "Id_HashString": 0x14033f7a0,
     "InitialLoading_LoadAllDefinitions": 0x14030fa00,
     "InitialLoading_SpawnMagicalObjects": 0x140260280,
     "LevelLoad_Orchestrator": 0x14028dcf0,
@@ -92,6 +94,7 @@ ADDR: dict[str, int] = {
 # name -> function-pattern key (version-resilient), when available
 PATTERN: dict[str, str] = {
     "Analytics_SubmitNamedEvent": "FUN_1401fa470",
+    "Crc32_TableInit": "FUN_14051df80",
     "EnemyCamp_Stage3Filter": "FUN_1403194c0",
     "EnemyCamp_TierSelector": "FUN_14032de90",
     "EnemyCamp_TribeEntryBuilder": "FUN_14032f520",
@@ -117,6 +120,7 @@ PATTERN: dict[str, str] = {
     "Format_String": "FUN_140204f30",
     "HeroController_Ctor": "FUN_14038e320",
     "HeroController_HudMirror_Ctor": "FUN_1403b2f20",
+    "Id_HashString": "FUN_14033f7a0",
     "InitialLoading_LoadAllDefinitions": "FUN_14030fa00",
     "LevelLoad_Orchestrator": "FUN_14028dcf0",
     "MagicalObjectPool_Grow": "FUN_1401550d0",

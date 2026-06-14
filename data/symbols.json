@@ -301,8 +301,26 @@
       "status": "ok",
       "signature": "uint32_t(uint32_t ns, uint32_t name_crc)",
       "cabi": { "ret": "uint32_t", "params": ["uint32_t", "uint32_t"] },
-      "note": "Interned event-id derivation: id = crc32 over the 8 bytes of (ns, name_crc) interleaved byte-wise (standard reflected crc32 table). Event names are interned at static-init as id = NamedEvent_Id_FromCrc(0, crc32(name)) — so the loader can derive the id for ANY event name at runtime (used by the Lua gameplay-emit primitive).",
+      "note": "Interned event-id derivation: id = crc32 over the 8 bytes of (ns, name_crc) interleaved byte-wise (standard reflected crc32 table). Event names are interned at static-init as id = NamedEvent_Id_FromCrc(0, crc32(name)) — so the loader can derive the id for ANY event name at runtime (used by the Lua gameplay-emit primitive). VERIFIED 2026-06-14: the crc table is built by Crc32_TableInit with polynomial 0x04C11DB7 (reflected) = the standard CRC32 table (0xEDB88320); the byte feed order is [ns.b0, crc.b0, ns.b1, crc.b1, ns.b2, crc.b2, ns.b3, crc.b3], init 0xffffffff, final invert. Id_HashString is the runtime one-call form (crc32(name) then this). NOTE: this is the NAMED-EVENT/string id scheme only — the entity-value store (EntityValue_Lookup) keys are NOT these (they are structured/sequential ids, e.g. 0x12e831f3/0x12e831f4 adjacent — impossible for independent CRCs).",
       "refs": ["src/loader/src/script_lua.cpp", "docs/_re/kinds/events-bus.md"]
+    },
+    {
+      "name": "Id_HashString",
+      "kind": "function",
+      "category": "event",
+      "raw": "FUN_14033f7a0",
+      "status": "ok",
+      "note": "Runtime string -> 32-bit id hasher: standard CRC32 over the name bytes (init 0xffffffff, table from Crc32_TableInit), then id = NamedEvent_Id_FromCrc(0, ~runningCrc). Lazily builds the crc table on first use (guard byte DAT_1414366f3). Used by def deserializers to intern a name string into an id (stored e.g. at hero+0x140). The Python equivalent is in data/ tooling-verifiable: id = crc32_pair(0, crc32(name)). Confirms how event/name ids are derived from strings; does NOT generate entity-VALUE-store keys (those are structured ids).",
+      "refs": ["docs/_re/kinds/events-bus.md"]
+    },
+    {
+      "name": "Crc32_TableInit",
+      "kind": "function",
+      "category": "event",
+      "raw": "FUN_14051df80",
+      "status": "ok",
+      "note": "Builds the 256-entry CRC32 lookup table at DAT_141436710 (lazy, runtime — the table is BSS, not stored in the image). Uses polynomial 0x04C11DB7 with input/output bit-reflection, i.e. it produces the standard reflected CRC32 table (equivalent poly 0xEDB88320). Confirms NamedEvent_Id_FromCrc / Id_HashString are plain CRC32, replicable in tooling.",
+      "refs": ["data/symbols.json"]
     },
     {
       "name": "NamedEvent_NetSend",

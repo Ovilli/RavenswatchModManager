@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **82** symbols across 11 categories.
+Total: **84** symbols across 11 categories.
 
 ## enemies
 
@@ -59,8 +59,10 @@ Total: **82** symbols across 11 categories.
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `Analytics_SubmitNamedEvent` | `0x1401fa470` | ✅ ok | ✔ | void(void* analytics_mgr, void* payload_kv, StringDesc* event_name, char has_run_ctx) |
+| `Crc32_TableInit` | `0x14051df80` | ✅ ok |  | Builds the 256-entry CRC32 lookup table at DAT_141436710 (lazy, runtime — the table is … |
 | `Event_LevelUp` → `level_up` | `0x1401f6410` | ✅ ok | ✔ | Emitter whose body references the 'level_up_reach' string (xref 0x1401f64a4). void(ctx,… |
 | `Event_RunEnd` → `run_end` | `0x1401f51e0` | ✅ ok | ✔ | Emitter whose body references the 'run_end' string (xref 0x1401f5347). Loader post-deto… |
+| `Id_HashString` | `0x14033f7a0` | ✅ ok |  | Runtime string -> 32-bit id hasher: standard CRC32 over the name bytes (init 0xffffffff… |
 | `NamedEvent_ChannelMap_Find` | `0x14066cc50` | ✅ ok | ✔ | iter*(void* channel_map, iter* out, uint32_t* event_id) |
 | `NamedEvent_Delete` | `0x140126da0` | ✅ ok | ✔ | void(oCGameNamedEvent* ev) |
 | `NamedEvent_Dispatch` | `0x14066a700` | ✅ ok | ✔ | void(void* dispatcher, oCGameNamedEvent* ev) |

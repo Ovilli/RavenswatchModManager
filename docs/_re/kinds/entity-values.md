@@ -60,22 +60,37 @@ float value = *p;
 // then destruct: FUN_14082ca50(&out)
 ```
 
-## Keys
+## Keys (NOT name CRCs — corrected 2026-06-14)
 
-`crcKey` is the CRC id of the value name. Observed in the heal/damage handlers:
-`0x173900d4`, `0x173900d6` (dream-shards-on-damage family), `0x188831a6`,
-`0x188832a9`, `0x1887e5ac`, `0x1ab19456`. The CRC algorithm is the same one
-behind the gameplay-bus event ids (`NamedEvent_Id_FromCrc` / `FUN_14051e0e0`) —
-confirming it would let a mod compute a key from a plain name string instead of
-hard-coding observed ids. **TODO: confirm the exact CRC matches event-id CRC.**
+`crcKey` is a 32-bit value id. Observed in the heal/damage handlers:
+`0x173900d4`, `0x173900d6` (dream-shards family), `0x188831a6`, `0x188832a9`,
+`0x1887e5ac`, `0x1ab19456`, plus `0x12e831f3` / `0x12e831f4` and `0x171c27b5`
+in `Entity_ModifyHealth`.
+
+These keys are **structured / sequential ids, not hashes of the value name**.
+The decisive evidence: `0x12e831f3` and `0x12e831f4` are adjacent (differ by 1),
+and `0x173900d4` / `0x173900d6` differ by 2 — independent CRC32 hashes of
+different names could never land on consecutive integers. They share namespace
+prefixes (`0x1739xxxx`, `0x1888xxxx`), consistent with ids assigned sequentially
+within a namespace (GUID-derived; cf. the 16-byte GUID handle system in
+`talent-logic-rewire`).
+
+So a mod **cannot** compute a value key by hashing a name. The key must come
+from the value's definition (a GUID/id), or be discovered empirically (observe
+the immediate used by the engine routine that reads the value you want).
+
+For contrast, the engine's string→id hash *does* exist and **is** plain CRC32 —
+`Id_HashString` (`FUN_14033f7a0`) = `crc32_pair(0, crc32(name))`, table built by
+`Crc32_TableInit` with poly `0x04C11DB7` (= standard `0xEDB88320`). But that
+scheme is for **named events / interned name ids**, not these value keys.
 
 ## Toward a mod-facing API (future work)
 
 `R.entity.value(name)` (read-only) is buildable:
 
 1. resolve `EntityValue_Lookup` / `EntityValue_Get` by pattern (already symbols),
-2. compute `crcKey` from `name` (pending CRC confirmation; until then accept a
-   numeric key),
+2. take a **numeric** `crcKey` (name→key hashing does not apply here — see Keys
+   above; the API accepts the id directly),
 3. allocate a zeroed ~0x20-byte scratch buffer for `out`, call the lookup,
 4. read the value per the union layout above,
 5. call the union destructor `FUN_14082ca50(&out)`.
