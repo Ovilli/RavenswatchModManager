@@ -318,6 +318,45 @@ def remint_guids(cooked: bytes, corpus: list[bytes], salt: str) -> bytes:
     return out
 
 
+def find_identity_guid(cooked: bytes, id_name: str) -> bytes | None:
+    """Return the 16-byte ROOT IDENTITY GUID of the item, or None.
+
+    The root node is laid out as ``<16-byte GUID><u32 namelen><name>`` where
+    ``name`` is the item id (the EntitySettingsResource's own name). The 16
+    bytes immediately before that length-prefixed id string are the resource's
+    identity GUID — the value the engine exposes at the runtime def+0x88/0x90,
+    which MagicalObjectPool_SourceLookup matches AND the hero owned-set dedups
+    on (MagicalObject_RegisterInstance). Returns the first match; None if the id
+    node isn't found or has no preceding GUID.
+    """
+    name_b = id_name.encode("utf-8")
+    prefix = struct.pack("<I", len(name_b)) + name_b
+    idx = cooked.find(prefix)
+    if idx < 16:
+        return None
+    g = cooked[idx - 16: idx]
+    if g == b"\x00" * 16 or any(m in g for m in _MARKERS):
+        return None
+    return g
+
+
+def remint_identity_guid(cooked: bytes, id_name: str, salt: str) -> bytes:
+    """Re-mint ONLY the item's root identity GUID, everywhere it occurs.
+
+    Unlike :func:`remint_guids` (which re-mints every own node and breaks
+    instantiation for magical objects), this targets just the top-level
+    resource identity. Registration is path-keyed (versiondef / UsedRscList),
+    and no other entity references this root by GUID, so the clone still spawns
+    by path — only its runtime IDENTITY differs, which is what stops the
+    owned-set dedup from collapsing the clone into its identity-twin base. A
+    no-op (returns input unchanged) if the identity can't be located.
+    """
+    g = find_identity_guid(cooked, id_name)
+    if not g:
+        return cooked
+    return cooked.replace(g, _mint_guid(g, salt.encode("utf-8")))
+
+
 def load_corpus(corpus_dir: Path) -> list[bytes]:
     """Read every cooked magical-object entity under ``corpus_dir`` (recursively)
     as raw bytes, for use as the sibling corpus in :func:`own_node_guids`."""
@@ -367,6 +406,7 @@ def build_magic_item(
     value_patches: list[tuple] | None = None,
     icon: str | None = None,
     bank_base_gen: Path | None = None,
+    remint_identity: bool = False,
 ) -> dict[str, bytes]:
     """Produce every file a new, distinct, named magical object needs.
 
@@ -388,7 +428,9 @@ def build_magic_item(
     ``new_id`` may be any length — :func:`rename_id` re-emits the container
     when it differs from ``base_id``.
     """
-    ent = ItemEdit(base_id=base_id, new_id=new_id, corpus=corpus).apply(base_cooked)
+    ent = ItemEdit(
+        base_id=base_id, new_id=new_id, corpus=corpus, remint_identity=remint_identity
+    ).apply(base_cooked)
     from .talent_values import clear_value_override, is_label_overridden
     for vp in (value_patches or []):
         label, old, new = vp[0], vp[1], vp[2]
@@ -455,6 +497,14 @@ class ItemEdit:
     #: identity GUID captured in-game first (loader pool dump). See memory
     #: item-clone-pipeline-verified + combat-stat-api owned-set notes.
     corpus: list[bytes] = field(default_factory=list)
+    #: Re-mint ONLY the root identity GUID (the fix for the dedup collision
+    #: above), leaving every other GUID intact so the entity still spawns. Safe
+    #: because registration is path-keyed and nothing references the root by
+    #: GUID; only the runtime identity changes. OPT-IN (default False) until
+    #: verified in-game per item, since picking the wrong GUID would silently
+    #: leave the collision or, worst case, touch a referenced node. Enable via
+    #: the manifest item field ``unique_identity = true``.
+    remint_identity: bool = False
 
     def apply(self, cooked: bytes) -> bytes:
         out = cooked
@@ -462,6 +512,9 @@ class ItemEdit:
             # Re-mint BEFORE the string rename so corpus GUID matching (which is
             # name-independent) is unaffected by the id swap.
             out = remint_guids(out, self.corpus, salt=self.new_id)
+        if self.remint_identity:
+            # Locate the identity by the BASE id (pre-rename), re-mint just it.
+            out = remint_identity_guid(out, self.base_id, salt=self.new_id)
         out = rename_id(out, self.base_id, self.new_id)
         for old, new in self.lstr_swaps:
             # The id rename may already have rewritten the id token inside

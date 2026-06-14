@@ -199,6 +199,14 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             # from the id/path rename, which is enough (the engine does not dedupe
             # the clone out). See memory item-clone-pipeline-verified.
             corpus=[],
+            # OPT-IN fix for the owned-set identity collision: a clone keeps its
+            # base's identity GUID, so the hero owned-set dedups the clone out at
+            # grant time when the base is also owned that run (the custom item
+            # silently "doesn't work" — see magic_item_cook.ItemEdit). Setting
+            # `unique_identity = true` on the item re-mints ONLY the root identity
+            # GUID (spawn-safe: registration is path-keyed). Verify spawn in-game
+            # after enabling. Default off so existing mods are unchanged.
+            remint_identity=bool(defn.fields.get("unique_identity", False)),
             rarity=rarity,
             name=name,
             description=description,

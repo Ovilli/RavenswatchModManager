@@ -294,3 +294,53 @@ def test_sdk_custom_png_icon_cooks_texture(tmp_path):
     assert tex, "custom PNG should cook into a Texture.dxt"
     ent = next(p for p in written if "Custom_Icon_Item.entity" in p.name)
     assert C.find_icon(ent.read_bytes()) == "Objects\\UI_Object_Custom_Icon_Item.png"
+
+
+def _blob_with_identity(guid: bytes, item_id: str) -> bytes:
+    # Root node: <16-byte identity GUID><u32 namelen><id>, plus a self-reference
+    # to the same GUID elsewhere (must be re-minted consistently), and an
+    # unrelated sibling GUID that must be left untouched.
+    sibling = bytes(range(0x20, 0x30))
+    return (
+        b"\x11\x11\xbb\xaa"
+        + guid + _lstr(item_id)               # root identity node
+        + sibling + _lstr("ChildNode")        # an unrelated node
+        + b"REF:" + guid                       # an internal self-reference
+        + b"\x22\x22\xbb\xaa"
+    )
+
+
+def test_find_identity_guid():
+    guid = bytes(range(0x40, 0x50))
+    blob = _blob_with_identity(guid, "Armor_Per_Object")
+    assert C.find_identity_guid(blob, "Armor_Per_Object") == guid
+    assert C.find_identity_guid(blob, "Nonexistent_Id") is None
+
+
+def test_remint_identity_only_changes_root_identity():
+    guid = bytes(range(0x40, 0x50))
+    sibling = bytes(range(0x20, 0x30))
+    blob = _blob_with_identity(guid, "Armor_Per_Object")
+    out = C.remint_identity_guid(blob, "Armor_Per_Object", salt="Clone0")
+
+    assert len(out) == len(blob)              # length-preserving
+    assert guid not in out                    # old identity gone everywhere
+    new = C.find_identity_guid(out, "Armor_Per_Object")
+    assert new is not None and new != guid    # fresh identity
+    assert out.count(new) == blob.count(guid)  # self-ref re-minted too
+    assert sibling in out                     # unrelated GUID untouched
+
+
+def test_remint_identity_deterministic():
+    guid = bytes(range(0x40, 0x50))
+    blob = _blob_with_identity(guid, "Armor_Per_Object")
+    a = C.remint_identity_guid(blob, "Armor_Per_Object", salt="Clone0")
+    b = C.remint_identity_guid(blob, "Armor_Per_Object", salt="Clone0")
+    c = C.remint_identity_guid(blob, "Armor_Per_Object", salt="Clone1")
+    assert a == b and a != c                  # stable per salt, distinct across
+
+
+def test_remint_identity_noop_when_absent():
+    blob = _blob_with_identity(bytes(range(0x40, 0x50)), "Armor_Per_Object")
+    # id not present -> unchanged, never raises
+    assert C.remint_identity_guid(blob, "Missing_Id", salt="x") == blob
