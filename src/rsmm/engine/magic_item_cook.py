@@ -436,10 +436,24 @@ class ItemEdit:
     lstr_swaps: list[tuple[str, str]] = field(default_factory=list)
     #: Raw bytes of the sibling item corpus. When non-empty, the clone's own
     #: node GUIDs are re-minted. NOTE: leave this EMPTY for magical objects —
-    #: reminting produces GUIDs the engine cannot resolve at instantiation, so
-    #: the entity fails to spawn and never enters the pool (verified in-game).
-    #: Distinct identity comes from the id/path rename alone; the engine does
-    #: not dedupe the clone out. See memory item-clone-pipeline-verified.
+    #: reminting ALL node GUIDs produces reference GUIDs the engine cannot
+    #: resolve at instantiation, so the entity fails to spawn and never enters
+    #: the pool (verified in-game). Distinct id/path lets it spawn and appear.
+    #:
+    #: KNOWN BUG (2026-06-14, RE'd): the claim that "the engine does not dedupe
+    #: the clone out" is WRONG. The hero's owned-set dedups by DEF IDENTITY GUID
+    #: (def+0x88/+0x90), not by id/path — see MagicalObject_RegisterInstance
+    #: (FUN_1403aae40) and its re-sync path FUN_140446fb0, which RE-SETS the
+    #: existing instance's values rather than stacking. So a clone that shares
+    #: its base's identity GUID (the case today, since remint is skipped) is
+    #: deduped against the base when both are owned in a run: the clone's grant
+    #: re-syncs the base instance instead of adding its own effect → the custom
+    #: item "doesn't work". Intermittent because it only bites when the run also
+    #: gives the base (or another identity-twin). FIX (pending): re-mint ONLY
+    #: the top-level identity GUID (nothing internal references it, so spawn is
+    #: unaffected), not the internal reference GUIDs — needs the per-item
+    #: identity GUID captured in-game first (loader pool dump). See memory
+    #: item-clone-pipeline-verified + combat-stat-api owned-set notes.
     corpus: list[bytes] = field(default_factory=list)
 
     def apply(self, cooked: bytes) -> bytes:

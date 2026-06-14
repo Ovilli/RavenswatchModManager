@@ -231,9 +231,17 @@ void dump_pool(void* pool) {
         if (!entry) continue;
         const auto id  = *reinterpret_cast<std::uint64_t*>(entry + 0x0);
         const auto rsc = *reinterpret_cast<void**>(entry + 0x48);
+        // Identity GUID at def+0x88/+0x90 — the value MagicalObjectPool_SourceLookup
+        // matches AND the owned-set dedups on (MagicalObject_RegisterInstance).
+        // Logged so a custom clone's identity can be mapped to its base and
+        // surgically re-minted (clones that share a base's identity get deduped
+        // out at grant time — see magic_item_cook.py). Read-only.
+        const auto guid_lo = *reinterpret_cast<std::uint64_t*>(entry + 0x88);
+        const auto guid_hi = *reinterpret_cast<std::uint64_t*>(entry + 0x90);
         Loader::get().log("[pool-dump]   [" + std::to_string(i) + "] entry="
                           + hex_ptr(entry) + " id=" + hex_of(id)
-                          + " rsc=" + hex_ptr(rsc));
+                          + " rsc=" + hex_ptr(rsc)
+                          + " guid=" + hex_of(guid_lo) + ":" + hex_of(guid_hi));
     }
 }
 
