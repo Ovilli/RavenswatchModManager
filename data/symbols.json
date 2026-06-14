@@ -346,7 +346,17 @@
       "note": "LOCAL damage/hit application — the enemy-damage counterpart to Entity_ModifyHealth (which is hero-only). param_1 = the TARGET entity; its hit component lives inline (mutex @+0x498, hit-handler list {base @+0x4b0, count @+0x4b8}, reentrancy guard @+0x4c0, pending-hit array {base @+0x4c8, count @+0x4d0, cap @+0x4d4}). param_2 = a fully-built oCEntityHitData (~0xb0 bytes: vft @+0x0, source/instigator entity* @+0x10, copied hit floats/vectors @+0x18..0x90, target entity* @+0xa0; the two entity ptrs are accessed through their vtables, so must be live oCEntity handles). When no hit handler is mid-dispatch it runs the target's hit handlers immediately, otherwise it memcpy-queues a 0xb0 hit-data copy into the pending array. Called by NamedEvent_EmitNetworkDamageFromHit for self/non-networked targets. ENEMY-DAMAGE BLOCKER: there is no low-arity 'damage entity by amount' primitive — both this and the network path require constructing a complete oCEntityHitData with valid source+target handles, which is the real work item for offensive tier-2. Helpers: FUN_1403124b0(entity)=net/replication state (returns obj whose +0x130 byte = is-remote flag), FUN_140726330(entity)=source net-id.",
       "refs": ["data/symbols.json"]
     },
-
+    {
+      "name": "Entity_GetNetComponent",
+      "kind": "function",
+      "category": "netcode",
+      "raw": "FUN_1403124b0",
+      "status": "ok",
+      "signature": "void*(oCEntity* entity)",
+      "cabi": { "ret": "void*", "params": ["void*"] },
+      "note": "SwissTable/F14 component-map lookup on an entity for the fixed type-id 0x154fce5c (the net/replication component). Probes the entity's component map (control bytes @entity+0x5e8, slots @entity+0x5f0, bucket mask @entity+0x600) and returns the component pointer, or 0 if the entity has none (e.g. single-player / non-replicated). The returned component's byte @+0x130 is the local/remote AUTHORITY flag: 0 = locally controlled (this client owns the entity and emits its NETWORK_DAMAGE), nonzero = remotely controlled (apply received state, don't emit). Both hit paths (NamedEvent_EmitNetworkDamageFromHit, the attack resolver FUN_1403dc780) gate network emit on this flag. NOTE: it dereferences the component map unconditionally, so only call on a known-valid entity. Pattern is multi-match (index 3/6, 128-byte sig) — fn_verify-guarded. Relevant to local-vs-remote hero disambiguation in co-op, though hero-capture already pins the local player via the HUD-mirror requirement (only the local player has one).",
+      "refs": ["src/loader/src/hook_events.cpp"]
+    },
     {
       "name": "g_MagicalObjectPool",
       "kind": "data",

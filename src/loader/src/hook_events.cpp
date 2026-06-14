@@ -353,6 +353,11 @@ bool hero_plausible(void* p1) {
     // (which Entity_GainHealthHandler also fires for) have no HUD mirror, so
     // requiring it both rejects false captures AND guarantees the captured
     // pointer is ModifyHealth-safe. Verified: FUN_140391d30 / FUN_140399a10.
+    // CO-OP: only the LOCAL player owns the HUD HP mirror — remote allies render
+    // but have no local HUD — so this requirement also pins capture to the local
+    // hero, the one R.combat should target. (The engine's own local/remote test
+    // is the authority flag on Entity_GetNetComponent(entity)+0x130; we don't
+    // need it here because the mirror is a cheaper, read-only proxy.)
     if (!committed_readable(addr + kHeroHudMirrorOff, sizeof(void*))) return false;
     auto mirror = *reinterpret_cast<std::uintptr_t*>(addr + kHeroHudMirrorOff);
     if (mirror == 0 || (mirror & 7)) return false;

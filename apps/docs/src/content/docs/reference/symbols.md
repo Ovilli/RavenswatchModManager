@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **74** symbols across 11 categories.
+Total: **75** symbols across 11 categories.
 
 ## enemies
 
@@ -119,6 +119,7 @@ Total: **74** symbols across 11 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
+| `Entity_GetNetComponent` | `0x1403124b0` | ✅ ok | ✔ | void*(oCEntity* entity) |
 | `Netcode_Channel_LookupById` | `0x140241150` | ✅ ok | ✔ | iter*(void* channel_map, iter* out, uint32_t* event_id) |
 | `Netcode_Channel_Unsubscribe` | `0x1401c8660` | ✅ ok | ✔ | void(void* node_plus_8, void** sub_slot) |
 | `Netcode_DropPeer` | `0x1402b4450` | ❓ unverified |  | Drops a peer after the reconnect window (default 60s) elapses. Address from netcode cor… |

@@ -44,6 +44,13 @@ inline Entity_FindMagicalObjectComponent_fn Entity_FindMagicalObjectComponent() 
     return reinterpret_cast<Entity_FindMagicalObjectComponent_fn>(rsmm::fn_resolve(Sym::Entity_FindMagicalObjectComponent_Pattern));
 }
 
+// Entity_GetNetComponent  (FUN_1403124b0)
+//   void*(oCEntity* entity)
+using Entity_GetNetComponent_fn = void*(*)(void*);
+inline Entity_GetNetComponent_fn Entity_GetNetComponent() {
+    return reinterpret_cast<Entity_GetNetComponent_fn>(rsmm::fn_resolve(Sym::Entity_GetNetComponent_Pattern));
+}
+
 // Entity_ModifyHealth  (FUN_140399a10)
 //   void(oCEntity* hero, float delta, oCCustomFlagList* sourceTags)
 using Entity_ModifyHealth_fn = void(*)(void*, float, void*);

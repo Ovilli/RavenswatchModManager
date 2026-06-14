@@ -115,6 +115,8 @@ constexpr std::uintptr_t Registry_EnemyDefinition_desc = 0x141470208ull;
 constexpr std::uintptr_t Registry_EnemyTribeDefinition_desc = 0x14146f938ull;
 
 // --- netcode ---
+constexpr std::uintptr_t Entity_GetNetComponent = 0x1403124b0ull;
+constexpr const char* Entity_GetNetComponent_Pattern = "FUN_1403124b0";
 constexpr std::uintptr_t Netcode_Channel_LookupById = 0x140241150ull;
 constexpr const char* Netcode_Channel_LookupById_Pattern = "FUN_140241150";
 constexpr std::uintptr_t Netcode_Channel_Unsubscribe = 0x1401c8660ull;
