@@ -398,6 +398,37 @@
       "refs": ["src/loader/src/hook_events.cpp"]
     },
     {
+      "name": "EntityValue_Lookup",
+      "kind": "function",
+      "category": "entity",
+      "raw": "FUN_1407481d0",
+      "status": "ok",
+      "signature": "oCEntityValueUnion*(void* store, oCEntityValueUnion* out, uint32_t crcKey)",
+      "cabi": { "ret": "void*", "params": ["void*", "void*", "uint32_t"] },
+      "note": "Core read of the engine's generic keyed entity-value store (stats, modifiers, run meta like dream shards). Looks up crcKey: first a linear scan of an override array (store+0xc0, count @store+0xc8, 0x38-byte entries keyed by int @+0x0), then a fallback hash map (store+0x80, Fibonacci hash mult 0xde5fb9d2630458e9). Writes the result into the caller-provided ~0x20-byte oCEntityValueUnion `out` (vft @+0x0 = oCEntityValueUnion_vftable; type tag @+0x8 where 4 = inline; value @+0x10 = inline f32 when tag==4, else (tag & ~1) is a pointer to the value; u16 @+0x18 = 0xa). Missing key => value 0. To call from Lua you must supply a zeroed scratch buffer for `out` and run the union destructor (FUN_14082ca50) after reading — engine-callable but fiddly; see docs/_re/kinds/entity-values.md.",
+      "refs": ["docs/_re/kinds/entity-values.md"]
+    },
+    {
+      "name": "EntityValue_Get",
+      "kind": "function",
+      "category": "entity",
+      "raw": "FUN_1403c71e0",
+      "status": "ok",
+      "signature": "void(void* valueCtx, oCEntityValueUnion* out, uint32_t crcKey)",
+      "cabi": { "ret": "void", "params": ["void*", "void*", "uint32_t"] },
+      "note": "Thin wrapper over EntityValue_Lookup: the entity's value context is hero+0x2f8; this reads the store at valueCtx+0x4c8 (if 0, returns an empty default via FUN_1408299d0). Read recipe for a captured hero: store = *(*(hero+0x2f8)+0x4c8); EntityValue_Lookup(store, &out, crcKey). crcKey is the CRC id of the value name (same id space as the gameplay-bus event ids; e.g. 0x173900d4/0x188831a6 seen in the heal/damage handlers). Read-only; the path to a future R.entity.value(name).",
+      "refs": ["docs/_re/kinds/entity-values.md"]
+    },
+    {
+      "name": "oCEntityValueUnion_vftable",
+      "kind": "data",
+      "category": "entity",
+      "va": "0x140f8fed8",
+      "status": "va",
+      "note": "vftable of oCEntityValueUnion, the ~0x20-byte tagged value returned by EntityValue_Lookup. Layout: vft @+0x0, type tag @+0x8 (4 = inline value), value @+0x10 (inline f32 if tag==4, else (tag & ~1) points to it), u16 @+0x18 = 0xa, byte @+0x1a = 0. Paired base oISerializable::vftable = 0x140efed08. Destruct with FUN_14082ca50.",
+      "refs": ["docs/_re/kinds/entity-values.md"]
+    },
+    {
       "name": "g_MagicalObjectPool",
       "kind": "data",
       "category": "items",

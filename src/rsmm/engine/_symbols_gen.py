@@ -15,6 +15,8 @@ ADDR: dict[str, int] = {
     "EnemyTribeDef_PostLoad": 0x14031b1e0,
     "EnemyTribeDefinition_ctor": 0x1400c5430,
     "Enemy_RuntimeSpawnPicker": 0x140330db0,
+    "EntityValue_Get": 0x1403c71e0,
+    "EntityValue_Lookup": 0x1407481d0,
     "Entity_AllocInstance": 0x14068fe90,
     "Entity_DispatchHit": 0x1406e2d20,
     "Entity_FindComponentByType": 0x1406ca380,
@@ -84,6 +86,7 @@ ADDR: dict[str, int] = {
     "g_RosterManager": 0x141436590,
     "oCCustomFlagList_vftable": 0x140efc320,
     "oCEntityHitData_vftable": 0x140f0e4b8,
+    "oCEntityValueUnion_vftable": 0x140f8fed8,
 }
 
 # name -> function-pattern key (version-resilient), when available
@@ -97,6 +100,8 @@ PATTERN: dict[str, str] = {
     "EnemyTribeDef_PostLoad": "FUN_14031b1e0",
     "EnemyTribeDefinition_ctor": "FUN_1400c5430",
     "Enemy_RuntimeSpawnPicker": "FUN_140330db0",
+    "EntityValue_Get": "FUN_1403c71e0",
+    "EntityValue_Lookup": "FUN_1407481d0",
     "Entity_AllocInstance": "FUN_14068fe90",
     "Entity_DispatchHit": "FUN_1406e2d20",
     "Entity_FindComponentByType": "FUN_1406ca380",

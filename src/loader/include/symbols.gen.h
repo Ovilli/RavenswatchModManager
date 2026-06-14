@@ -38,6 +38,10 @@ constexpr std::uintptr_t Vector_Grow = 0x140154c20ull;
 constexpr const char* Vector_Grow_Pattern = "FUN_140154c20";
 
 // --- entity ---
+constexpr std::uintptr_t EntityValue_Get = 0x1403c71e0ull;
+constexpr const char* EntityValue_Get_Pattern = "FUN_1403c71e0";
+constexpr std::uintptr_t EntityValue_Lookup = 0x1407481d0ull;
+constexpr const char* EntityValue_Lookup_Pattern = "FUN_1407481d0";
 constexpr std::uintptr_t Entity_AllocInstance = 0x14068fe90ull;
 constexpr const char* Entity_AllocInstance_Pattern = "FUN_14068fe90";
 constexpr std::uintptr_t Entity_DispatchHit = 0x1406e2d20ull;
@@ -59,6 +63,7 @@ constexpr const char* HeroController_HudMirror_Ctor_Pattern = "FUN_1403b2f20";
 constexpr std::uintptr_t g_MagicalObjectComponentMeta = 0x141470768ull;
 constexpr std::uintptr_t oCCustomFlagList_vftable = 0x140efc320ull;
 constexpr std::uintptr_t oCEntityHitData_vftable = 0x140f0e4b8ull;
+constexpr std::uintptr_t oCEntityValueUnion_vftable = 0x140f8fed8ull;
 
 // --- event ---
 constexpr std::uintptr_t Analytics_SubmitNamedEvent = 0x1401fa470ull;

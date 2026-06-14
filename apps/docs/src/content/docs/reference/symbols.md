@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **79** symbols across 11 categories.
+Total: **82** symbols across 11 categories.
 
 ## enemies
 
@@ -54,6 +54,8 @@ Total: **79** symbols across 11 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
+| `EntityValue_Get` | `0x1403c71e0` | ✅ ok | ✔ | void(void* valueCtx, oCEntityValueUnion* out, uint32_t crcKey) |
+| `EntityValue_Lookup` | `0x1407481d0` | ✅ ok | ✔ | oCEntityValueUnion*(void* store, oCEntityValueUnion* out, uint32_t crcKey) |
 | `Entity_AllocInstance` | `0x14068fe90` | ✅ ok | ✔ | void*(void* allocator) |
 | `Entity_DispatchHit` | `0x1406e2d20` | ✅ ok | ✔ | void(oCEntity* target, oCEntityHitData* hit) |
 | `Entity_FindComponentByType` | `0x1406ca380` | ✅ ok | ✔ | oIEntityCpnt*(oCEntitySpawnerGo* go, oCMetaClass* meta) |
@@ -66,6 +68,7 @@ Total: **79** symbols across 11 categories.
 | `g_MagicalObjectComponentMeta` | `0x141470768` | 📍 va |  | oCMetaClass* for the magical-object component; passed to Entity_FindMagicalObjectCompon… |
 | `oCCustomFlagList_vftable` | `0x140efc320` | 📍 va |  | vftable of oCCustomFlagList. An empty list is the 0x18-byte struct { vftable @+0x0, lis… |
 | `oCEntityHitData_vftable` | `0x140f0e4b8` | 📍 va |  | vftable of oCEntityHitData (the ~0xb0-byte hit descriptor passed to Entity_DispatchHit … |
+| `oCEntityValueUnion_vftable` | `0x140f8fed8` | 📍 va |  | vftable of oCEntityValueUnion, the ~0x20-byte tagged value returned by EntityValue_Look… |
 
 ## event
 

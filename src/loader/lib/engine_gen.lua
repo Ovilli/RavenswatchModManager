@@ -7,6 +7,8 @@
 -- f=float d=double s=string (see script_lua.cpp::lua_call_native).
 return {
   ["Analytics_SubmitNamedEvent"] = { pattern = "FUN_1401fa470", offset = 0x0, sig = "vpppu" },
+  ["EntityValue_Get"] = { pattern = "FUN_1403c71e0", offset = 0x0, sig = "vppu" },
+  ["EntityValue_Lookup"] = { pattern = "FUN_1407481d0", offset = 0x0, sig = "pppu" },
   ["Entity_AllocInstance"] = { pattern = "FUN_14068fe90", offset = 0x0, sig = "pp" },
   ["Entity_DispatchHit"] = { pattern = "FUN_1406e2d20", offset = 0x0, sig = "vpp" },
   ["Entity_FindComponentByType"] = { pattern = "FUN_1406ca380", offset = 0x0, sig = "ppp" },

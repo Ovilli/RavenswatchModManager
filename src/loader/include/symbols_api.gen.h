@@ -16,6 +16,20 @@ inline Analytics_SubmitNamedEvent_fn Analytics_SubmitNamedEvent() {
     return reinterpret_cast<Analytics_SubmitNamedEvent_fn>(rsmm::fn_resolve(Sym::Analytics_SubmitNamedEvent_Pattern));
 }
 
+// EntityValue_Get  (FUN_1403c71e0)
+//   void(void* valueCtx, oCEntityValueUnion* out, uint32_t crcKey)
+using EntityValue_Get_fn = void(*)(void*, void*, uint32_t);
+inline EntityValue_Get_fn EntityValue_Get() {
+    return reinterpret_cast<EntityValue_Get_fn>(rsmm::fn_resolve(Sym::EntityValue_Get_Pattern));
+}
+
+// EntityValue_Lookup  (FUN_1407481d0)
+//   oCEntityValueUnion*(void* store, oCEntityValueUnion* out, uint32_t crcKey)
+using EntityValue_Lookup_fn = void*(*)(void*, void*, uint32_t);
+inline EntityValue_Lookup_fn EntityValue_Lookup() {
+    return reinterpret_cast<EntityValue_Lookup_fn>(rsmm::fn_resolve(Sym::EntityValue_Lookup_Pattern));
+}
+
 // Entity_AllocInstance  (FUN_14068fe90)
 //   void*(void* allocator)
 using Entity_AllocInstance_fn = void*(*)(void*);
