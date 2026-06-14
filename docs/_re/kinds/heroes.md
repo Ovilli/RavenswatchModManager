@@ -326,3 +326,34 @@ def's bytes verbatim and patch only the offsets above.
   raw `Register_SkillProfileDataSettings`.
 - `docs/_re/out/decompiled_all/0312/FUN_1403122f0__0x1403122f0.c` —
   `SkillProfileDataSettings` schema callback.
+
+## The RUNTIME hero object (distinct from the definition above)
+
+Everything above is the **definition** (`oCDtHeroDefinition`) — static data
+used to *build* a hero. At runtime the playable hero is a different object:
+`oCDtEntityCpntHeroController` (ctor `HeroController_Ctor` / `FUN_14038e320`),
+the hero **controller component** of the entity. This is the object the loader
+captures as the "hero pointer" for `R.entity` / `R.combat` — verified 2026-06-14
+by decompiling the ctor.
+
+Key layout (offsets into the controller):
+
+| Offset | Field |
+| --- | --- |
+| +0x15c8 | current HP (f32, plain mirror) |
+| +0x15cc | max HP (f32) |
+| +0x15d0 | missing-health ratio (f32, default 1.0) |
+| +0x15d4 | ratio divisor (f32, default 0.5) |
+| +0x1d80 | HUD HP-mirror pointer (built by `FUN_1403b2f20`; local player only) |
+| +0x1fc..+0x220 | 10-slot ability/input config (int tags `{0,1,1,1,2,1,1,1,1,3}`) |
+
+Controller size ≈ 0x1e40.
+
+**Architecture — reactive value signals.** Most hero stats are not plain fields;
+they are `oe::EntityCpntValueSignal<bool|int|float|oCVec3>` sub-components (the
+ctor builds dozens). Writing a signal fires a change notification on the
+gameplay bus — which is *why* stat changes show up as named events. HP is the
+exception: it is additionally mirrored to the plain f32 at +0x15c8 for the hot
+path, which is exactly why `R.combat` can read/write HP directly while other
+stats (energy, cooldowns, speed) live inside signal objects with no fixed
+plain-float offset. Reaching those is a per-signal RE job, not a constant lookup.

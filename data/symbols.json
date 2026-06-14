@@ -378,6 +378,26 @@
       "refs": ["docs/_re/kinds/enemy-damage.md"]
     },
     {
+      "name": "HeroController_Ctor",
+      "kind": "function",
+      "category": "entity",
+      "raw": "FUN_14038e320",
+      "status": "ok",
+      "signature": "oCDtEntityCpntHeroController*(oCDtEntityCpntHeroController* self)",
+      "cabi": { "ret": "void*", "params": ["void*"] },
+      "note": "Constructor of oCDtEntityCpntHeroController — THE object R.entity/R.combat capture (the 'hero pointer'); it is the hero CONTROLLER COMPONENT, not the top-level entity. Confirms the capture layout: vftable @+0x0; current HP f32 @+0x15c8, max HP @+0x15cc, missing-health ratio @+0x15d0 (default 1.0f), ratio divisor @+0x15d4 (default 0.5f); HUD HP-mirror pointer @+0x1d80 (index 0x3b0) is built here via HeroController_HudMirror_Ctor (FUN_1403b2f20) — this is why +0x1d80 is the local-hero discriminator. Component size ~0x1e40. ARCHITECTURE: the hero's stats are oe::EntityCpntValueSignal<bool|int|float|oCVec3> reactive-signal sub-components (dozens of them) — a change to a signal fires on the gameplay bus, which is why stat changes are observable as named events. HP is additionally MIRRORED to the plain f32 at +0x15c8 for the hot path, which is exactly why R.combat can read/write it directly while most other stats live inside signal objects (no fixed plain-float offset). A 10-slot ability/input config block of int tags sits at +0x1fc..+0x220 = {0,1,1,1,2,1,1,1,1,3}.",
+      "refs": ["src/loader/lib/rsmm.lua"]
+    },
+    {
+      "name": "HeroController_HudMirror_Ctor",
+      "kind": "function",
+      "category": "entity",
+      "raw": "FUN_1403b2f20",
+      "status": "ok",
+      "note": "Builds the hero's HUD HP-mirror object whose pointer is stored at hero+0x1d80 by HeroController_Ctor. Entity_ModifyHealth writes new HP to *(*(hero+0x1d80)) and the HUD reads it; only the local player gets one, so its presence is the local-hero discriminator used by hero_plausible.",
+      "refs": ["src/loader/src/hook_events.cpp"]
+    },
+    {
       "name": "g_MagicalObjectPool",
       "kind": "data",
       "category": "items",

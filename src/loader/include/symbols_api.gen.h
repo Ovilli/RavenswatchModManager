@@ -84,6 +84,13 @@ inline Event_RunEnd_fn Event_RunEnd() {
     return reinterpret_cast<Event_RunEnd_fn>(rsmm::fn_resolve(Sym::Event_RunEnd_Pattern));
 }
 
+// HeroController_Ctor  (FUN_14038e320)
+//   oCDtEntityCpntHeroController*(oCDtEntityCpntHeroController* self)
+using HeroController_Ctor_fn = void*(*)(void*);
+inline HeroController_Ctor_fn HeroController_Ctor() {
+    return reinterpret_cast<HeroController_Ctor_fn>(rsmm::fn_resolve(Sym::HeroController_Ctor_Pattern));
+}
+
 // MagicalObjectPool_Grow  (FUN_1401550d0)
 //   void(void* pool_plus_0x10, uint32_t count, uint32_t by)
 using MagicalObjectPool_Grow_fn = void(*)(void*, uint32_t, uint32_t);

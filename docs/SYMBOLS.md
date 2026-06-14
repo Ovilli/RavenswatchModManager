@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **77** symbols across 11 categories.
+Total: **79** symbols across 11 categories.
 
 ## enemies
 
@@ -45,6 +45,8 @@ Total: **77** symbols across 11 categories.
 | `Entity_GainHealthHandler` | `0x1403993f0` | ✅ ok |  | void(oCEntity* hero, void* a2, void* valueCtx) |
 | `Entity_ModifyHealth` | `0x140399a10` | ✅ ok | ✔ | void(oCEntity* hero, float delta, oCCustomFlagList* sourceTags) |
 | `Entity_ResolveAttackHits` | `0x1403dc780` | ✅ ok | ✔ | float(void* attacker, uint hitDefIndex, TargetList* targets, float damageMul, float bas… |
+| `HeroController_Ctor` | `0x14038e320` | ✅ ok | ✔ | oCDtEntityCpntHeroController*(oCDtEntityCpntHeroController* self) |
+| `HeroController_HudMirror_Ctor` | `0x1403b2f20` | ✅ ok |  | Builds the hero's HUD HP-mirror object whose pointer is stored at hero+0x1d80 by HeroCo… |
 | `g_MagicalObjectComponentMeta` | `0x141470768` | 📍 va |  | oCMetaClass* for the magical-object component; passed to Entity_FindMagicalObjectCompon… |
 | `oCCustomFlagList_vftable` | `0x140efc320` | 📍 va |  | vftable of oCCustomFlagList. An empty list is the 0x18-byte struct { vftable @+0x0, lis… |
 | `oCEntityHitData_vftable` | `0x140f0e4b8` | 📍 va |  | vftable of oCEntityHitData (the ~0xb0-byte hit descriptor passed to Entity_DispatchHit … |

@@ -17,6 +17,7 @@ return {
   ["Entry_Ctor"] = { pattern = "FUN_140214bb0", offset = 0x0, sig = "vpu" },
   ["Event_LevelUp"] = { pattern = "FUN_1401f6410", offset = 0x0, sig = "ppp" },
   ["Event_RunEnd"] = { pattern = "FUN_1401f51e0", offset = 0x0, sig = "ppp" },
+  ["HeroController_Ctor"] = { pattern = "FUN_14038e320", offset = 0x0, sig = "pp" },
   ["MagicalObjectPool_Grow"] = { pattern = "FUN_1401550d0", offset = 0x0, sig = "vpuu" },
   ["MagicalObjectPool_SourceLookup"] = { pattern = "FUN_1402590c0", offset = 0x0, sig = "pppp" },
   ["MagicalObject_SpawnAllObjects"] = { pattern = "FUN_1402586f0", offset = 0x70, sig = "vpp" },
