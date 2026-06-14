@@ -358,6 +358,26 @@
       "refs": ["src/loader/src/hook_events.cpp"]
     },
     {
+      "name": "Entity_ResolveAttackHits",
+      "kind": "function",
+      "category": "entity",
+      "raw": "FUN_1403dc780",
+      "status": "ok",
+      "signature": "float(void* attacker, uint hitDefIndex, TargetList* targets, float damageMul, float baseDamage)",
+      "cabi": { "ret": "float", "params": ["void*", "uint32_t", "void*", "float", "float"] },
+      "note": "Attack-resolution / multi-target hit applier — the real producer that builds an oCEntityHitData per target and calls Entity_DispatchHit. param_1 = attacker context (its hit-def array @+0xd8, entity @+0x8); param_2 = index into that hit-def array; param_3 = target list {count @+0x0, entity** @+0x8}; param_4 = damage multiplier; param_5 = base damage (if <=0, pulled from the hit-def's value object). Per target it: allocs a hit handle (FUN_140214f30, released by NamedEvent_Delete), stack-builds the 0xb0 oCEntityHitData (vft=oCEntityHitData_vftable, 4 constant template vectors from 0x140fc6c10/6c50/6e70/7240, hit-value obj* whose +0x8 = the damage, attacker @ a slot, target position from target.vtable[+0x48], source net-id via Entity_GetNetComponent), then Entity_DispatchHit(target, hitData). THE ENEMY-DAMAGE ENTRY POINT: there is no standalone oCEntityHitData ctor — construction is inlined here and needs a real attacker hit-def, so synthesizing a hit from nothing is impractical. The viable mod path is to HOOK this and AMPLIFY/redirect: scale the hit-value damage (*(hitval+0x8)) or swap the target list. See docs/_re/kinds/enemy-damage.md.",
+      "refs": ["docs/_re/kinds/enemy-damage.md"]
+    },
+    {
+      "name": "oCEntityHitData_vftable",
+      "kind": "data",
+      "category": "entity",
+      "va": "0x140f0e4b8",
+      "status": "va",
+      "note": "vftable of oCEntityHitData (the ~0xb0-byte hit descriptor passed to Entity_DispatchHit / embedded in oCGameNamedEventNetworkDamage). Layout (offsets from the struct base): vft @+0x0, hit handle/id @+0x8, source/instigator entity* @+0x10 (vtable-accessed, refcounted), float/vector block @+0x18..0x90 (positions/normals/direction — defaults copied from 0x140fc6c10/0x140fc6c50/0x140fc6e70/0x140fc7240), u16 flags @+0x88, ptr @+0x90, target entity* @+0xa0 (vtable-accessed, refcounted). Built inline by Entity_ResolveAttackHits; no separate constructor exists.",
+      "refs": ["docs/_re/kinds/enemy-damage.md"]
+    },
+    {
       "name": "g_MagicalObjectPool",
       "kind": "data",
       "category": "items",

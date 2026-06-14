@@ -58,6 +58,13 @@ inline Entity_ModifyHealth_fn Entity_ModifyHealth() {
     return reinterpret_cast<Entity_ModifyHealth_fn>(rsmm::fn_resolve(Sym::Entity_ModifyHealth_Pattern));
 }
 
+// Entity_ResolveAttackHits  (FUN_1403dc780)
+//   float(void* attacker, uint hitDefIndex, TargetList* targets, float damageMul, float baseDamage)
+using Entity_ResolveAttackHits_fn = float(*)(void*, uint32_t, void*, float, float);
+inline Entity_ResolveAttackHits_fn Entity_ResolveAttackHits() {
+    return reinterpret_cast<Entity_ResolveAttackHits_fn>(rsmm::fn_resolve(Sym::Entity_ResolveAttackHits_Pattern));
+}
+
 // Entry_Ctor  (FUN_140214bb0)
 //   void(void* base, uint32_t count)
 using Entry_Ctor_fn = void(*)(void*, uint32_t);

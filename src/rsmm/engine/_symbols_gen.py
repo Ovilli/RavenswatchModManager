@@ -23,6 +23,7 @@ ADDR: dict[str, int] = {
     "Entity_GetNetComponent": 0x1403124b0,
     "Entity_GiveHandler": 0x1403a7ba0,
     "Entity_ModifyHealth": 0x140399a10,
+    "Entity_ResolveAttackHits": 0x1403dc780,
     "Entry_Ctor": 0x140214bb0,
     "Event_LevelUp": 0x1401f6410,
     "Event_RunEnd": 0x1401f51e0,
@@ -80,6 +81,7 @@ ADDR: dict[str, int] = {
     "g_MagicalObjectPool": 0x1414365d0,
     "g_RosterManager": 0x141436590,
     "oCCustomFlagList_vftable": 0x140efc320,
+    "oCEntityHitData_vftable": 0x140f0e4b8,
 }
 
 # name -> function-pattern key (version-resilient), when available
@@ -101,6 +103,7 @@ PATTERN: dict[str, str] = {
     "Entity_GetNetComponent": "FUN_1403124b0",
     "Entity_GiveHandler": "FUN_1403a7ba0",
     "Entity_ModifyHealth": "FUN_140399a10",
+    "Entity_ResolveAttackHits": "FUN_1403dc780",
     "Entry_Ctor": "FUN_140214bb0",
     "Event_LevelUp": "FUN_1401f6410",
     "Event_RunEnd": "FUN_1401f51e0",

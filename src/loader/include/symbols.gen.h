@@ -50,8 +50,11 @@ constexpr std::uintptr_t Entity_GainHealthHandler = 0x1403993f0ull;
 constexpr const char* Entity_GainHealthHandler_Pattern = "FUN_1403993f0";
 constexpr std::uintptr_t Entity_ModifyHealth = 0x140399a10ull;
 constexpr const char* Entity_ModifyHealth_Pattern = "FUN_140399a10";
+constexpr std::uintptr_t Entity_ResolveAttackHits = 0x1403dc780ull;
+constexpr const char* Entity_ResolveAttackHits_Pattern = "FUN_1403dc780";
 constexpr std::uintptr_t g_MagicalObjectComponentMeta = 0x141470768ull;
 constexpr std::uintptr_t oCCustomFlagList_vftable = 0x140efc320ull;
+constexpr std::uintptr_t oCEntityHitData_vftable = 0x140f0e4b8ull;
 
 // --- event ---
 constexpr std::uintptr_t Analytics_SubmitNamedEvent = 0x1401fa470ull;
