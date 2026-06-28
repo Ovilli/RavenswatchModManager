@@ -64,10 +64,11 @@ FMT_BC3 = 5    # DXT5
 FMT_BC5 = 35   # ATI2 / 3Dc — used for .Texture.nrm normal maps
 FMT_RGBA = 0   # uncompressed 4 bpp (BGRA order)
 
-DEFAULT_GAME = (
-    Path.home()
-    / ".var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch"
-)
+from rsmm.engine.paths import default_game_dir  # noqa: E402
+
+# Cross-platform game-dir resolver (honors RSMM_GAME_DIR + Steam autodetect
+# on Windows/Linux); no user-specific path baked in.
+DEFAULT_GAME = default_game_dir()
 TEXTURE_SUFFIXES = (".png.Texture.dxt", ".tga.Texture.dxt", ".png.Texture.nrm", ".tga.Texture.nrm")
 
 

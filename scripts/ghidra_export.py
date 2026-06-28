@@ -24,11 +24,28 @@ import subprocess
 import sys
 from pathlib import Path
 
-DEFAULT_GHIDRA  = "/home/ovilli/Documents/Programming/ghidra_11.3_PUBLIC"
-DEFAULT_EXE     = (
-    "/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam"
-    "/steamapps/common/Ravenswatch/Ravenswatch.exe"
-)
+
+def _default_ghidra() -> str | None:
+    """Ghidra install dir from the standard `GHIDRA_INSTALL_DIR` env var
+    (set by Ghidra's own scripts); otherwise None so `--ghidra` is required.
+    No user-specific path is baked in."""
+    return os.environ.get("GHIDRA_INSTALL_DIR") or None
+
+
+def _default_exe() -> str | None:
+    """Ravenswatch.exe via the cross-platform game-dir resolver (honors
+    `RSMM_GAME_DIR` + Steam autodetect on Windows/Linux). None if the
+    game can't be located, so `--exe` is required in that case."""
+    try:
+        from rsmm.engine.paths import default_game_dir
+    except ImportError:
+        return None
+    exe = default_game_dir() / "Ravenswatch.exe"
+    return str(exe) if exe.is_file() else None
+
+
+DEFAULT_GHIDRA  = _default_ghidra()
+DEFAULT_EXE     = _default_exe()
 DEFAULT_PROJECT = str(Path(__file__).resolve().parent.parent / "ghidra_project")
 DEFAULT_OUT     = str(Path(__file__).resolve().parent.parent / "data" / "decompiled.jsonl")
 PROJECT_NAME    = "Ravenswatch"
@@ -45,6 +62,14 @@ def main() -> int:
     ap.add_argument("--no-analysis", action="store_true",
                     help="skip auto-analysis (only useful for re-export passes)")
     args = ap.parse_args()
+
+    if not args.ghidra:
+        print("--ghidra is required (or set GHIDRA_INSTALL_DIR)", file=sys.stderr)
+        return 1
+    if not args.exe:
+        print("--exe is required (could not auto-locate Ravenswatch.exe; "
+              "set RSMM_GAME_DIR or pass --exe)", file=sys.stderr)
+        return 1
 
     ghidra = Path(args.ghidra)
     exe    = Path(args.exe)

@@ -42,6 +42,8 @@ from pathlib import Path
 
 import pefile
 
+from ..engine.paths import default_game_dir
+
 
 def candidate_mangles(name: str) -> list[str]:
     """MSVC RTTI mangling: '.?AV' = class, '.?AU' = struct. Game data classes
@@ -145,10 +147,9 @@ def main() -> int:
     ap.add_argument(
         "--exe",
         type=Path,
-        default=Path.home() / (
-            ".var/app/com.valvesoftware.Steam/.local/share/Steam/"
-            "steamapps/common/Ravenswatch/Ravenswatch.exe"
-        ),
+        # Cross-platform game-dir resolver (honors RSMM_GAME_DIR + Steam
+        # autodetect on Windows/Linux); no user-specific path baked in.
+        default=default_game_dir() / "Ravenswatch.exe",
     )
     ap.add_argument(
         "--manifest",

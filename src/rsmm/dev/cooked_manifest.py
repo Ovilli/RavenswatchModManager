@@ -45,10 +45,11 @@ MARK_END = bytes.fromhex("2222bbaa")
 #   .yqz -> .gen, .tpi -> .dxt, .zux -> .nrm
 COOKED_EXTS = (".yqz", ".tpi", ".zux")
 
-DEFAULT_GAME = Path.home() / (
-    ".var/app/com.valvesoftware.Steam/.local/share/Steam/"
-    "steamapps/common/Ravenswatch"
-)
+from ..engine.paths import default_game_dir  # noqa: E402
+
+# Cross-platform game-dir resolver (honors RSMM_GAME_DIR + Steam autodetect
+# on Windows/Linux); no user-specific path baked in.
+DEFAULT_GAME = default_game_dir()
 
 
 class ParseError(Exception):

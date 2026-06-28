@@ -25,13 +25,14 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+from ..engine.paths import default_game_dir
+
 MARK_BEGIN = bytes.fromhex("1111bbaa")
 MARK_END   = bytes.fromhex("2222bbaa")
 
-DEFAULT_GAME = Path.home() / (
-    ".var/app/com.valvesoftware.Steam/.local/share/Steam/"
-    "steamapps/common/Ravenswatch"
-)
+# Cross-platform game-dir resolver (honors RSMM_GAME_DIR + Steam autodetect
+# on Windows/Linux); no user-specific path baked in.
+DEFAULT_GAME = default_game_dir()
 
 
 def parse_root(path: Path) -> tuple[str | None, int]:

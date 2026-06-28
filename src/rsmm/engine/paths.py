@@ -195,8 +195,16 @@ def default_game_dir() -> Path:
     """First candidate whose `_Cooking` tree exists; otherwise the first
     candidate. Autodetects on Windows/Linux without `--game-dir`.
 
+    Honors an explicit `RSMM_GAME_DIR` override (cross-platform escape
+    hatch for non-standard installs / Steam layouts the autodetector
+    misses) before falling back to the per-platform candidate scan,
+    mirroring `RSMM_REPO_ROOT` / `RSMM_MODS_DIR`.
+
     Cached: the filesystem scan only runs on first access.
     """
+    override = os.environ.get("RSMM_GAME_DIR", "").strip()
+    if override:
+        return Path(os.path.expandvars(override)).expanduser()
     cands = _game_dir_candidates()
     for c in cands:
         try:

@@ -29,10 +29,11 @@ from pathlib import Path
 
 import capstone  # type: ignore
 
-DEFAULT_EXE = os.path.expanduser(
-    "~/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/"
-    "common/Ravenswatch/Ravenswatch.exe"
-)
+from rsmm.engine.paths import default_game_dir
+
+# Cross-platform game-dir resolver (honors RSMM_GAME_DIR + Steam autodetect
+# on Windows/Linux); no user-specific path baked in.
+DEFAULT_EXE = str(default_game_dir() / "Ravenswatch.exe")
 PROLOGUE_BYTES_DEFAULT = 32
 PROLOGUE_BYTES_MAX = 128
 MIN_BYTES = 12  # signature must be at least this many bytes
