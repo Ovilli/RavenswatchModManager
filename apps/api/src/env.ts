@@ -56,7 +56,16 @@ export const env = {
       .map((s) => s.trim())
       .filter(Boolean);
     const tauriOrigins = ['tauri://localhost', 'https://tauri.localhost', 'http://tauri.localhost'];
-    return [...new Set([...fromEnv, ...tauriOrigins])];
+    // The marketing/site origin (WEB_URL) must always be accepted so the
+    // browser site can call the API; otherwise prod CORS rejects it.
+    const webOrigin = (() => {
+      try {
+        return new URL(process.env.WEB_URL || 'http://localhost:3000').origin;
+      } catch {
+        return '';
+      }
+    })();
+    return [...new Set([...fromEnv, ...tauriOrigins, webOrigin].filter(Boolean))];
   })(),
   s3: {
     bucket: process.env.S3_BUCKET ?? '',
