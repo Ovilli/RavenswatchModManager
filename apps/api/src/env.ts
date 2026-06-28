@@ -48,21 +48,23 @@ export const env = {
   //   Linux WebKitGTK:   tauri://localhost
   //   Windows WebView2:  http://tauri.localhost
   trustedOrigins: (() => {
-    // The public browser site lives at www.rsmm.me (apex redirects there);
-    // both must be trusted so prod CORS lets the site call the API. These
-    // are baked into the default so deploys work without an env override;
-    // TRUSTED_ORIGINS can still extend/replace the list.
-    const prodSites = 'https://www.rsmm.me,https://rsmm.me';
-    const devDefault = isProduction
-      ? `${prodSites},tauri://localhost,https://tauri.localhost,http://tauri.localhost`
-      : 'http://localhost:3000,http://localhost:1420,tauri://localhost,https://tauri.localhost,http://tauri.localhost';
+    const devDefault = 'http://localhost:3000,http://localhost:1420';
     const fromEnv = (process.env.TRUSTED_ORIGINS || devDefault)
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
-    const tauriOrigins = ['tauri://localhost', 'https://tauri.localhost', 'http://tauri.localhost'];
-    // The marketing/site origin (WEB_URL) must always be accepted so the
-    // browser site can call the API; otherwise prod CORS rejects it.
+    // Always-trusted origins, regardless of NODE_ENV or env overrides:
+    //  - the public browser site (www.rsmm.me; apex redirects there)
+    //  - every Tauri WebView origin the desktop app ships under
+    // Baked in so a CORS-breaking misconfig can't drop them.
+    const alwaysTrusted = [
+      'https://www.rsmm.me',
+      'https://rsmm.me',
+      'tauri://localhost',
+      'https://tauri.localhost',
+      'http://tauri.localhost',
+    ];
+    // Optional extra site origin via WEB_URL (also used for email links).
     const webOrigin = (() => {
       try {
         return new URL(process.env.WEB_URL || 'http://localhost:3000').origin;
@@ -70,7 +72,7 @@ export const env = {
         return '';
       }
     })();
-    return [...new Set([...fromEnv, ...tauriOrigins, webOrigin].filter(Boolean))];
+    return [...new Set([...fromEnv, ...alwaysTrusted, webOrigin].filter(Boolean))];
   })(),
   s3: {
     bucket: process.env.S3_BUCKET ?? '',
