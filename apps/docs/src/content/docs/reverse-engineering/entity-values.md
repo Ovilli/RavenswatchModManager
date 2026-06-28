@@ -12,7 +12,7 @@ code shipped yet.
 ## What it is
 
 Beyond the few stats with plain fixed offsets on the hero controller (HP at
-`+0x15c8` — see [Heroes](/reverse-engineering/heroes/)), most dynamic per-entity
+`+0x15c8` — see [Combat & damage](/reverse-engineering/combat-damage/)), most dynamic per-entity
 values — combat modifiers, "dream shards on damage", run meta, scaling
 coefficients — live in a generic **keyed value store**. Each value is addressed
 by a 32-bit key (same id space as gameplay-bus event ids). This is the engine's
@@ -89,5 +89,4 @@ riskier item — not yet mapped.
 
 ## See also
 
-- [Combat & damage](/reverse-engineering/combat-damage/) — `Entity_ModifyHealth` reads this store.
-- [Heroes](/reverse-engineering/heroes/) — the plain-offset HP mirror vs signal stats.
+- [Combat & damage](/reverse-engineering/combat-damage/) — `Entity_ModifyHealth` reads this store; the plain-offset HP mirror vs signal stats.

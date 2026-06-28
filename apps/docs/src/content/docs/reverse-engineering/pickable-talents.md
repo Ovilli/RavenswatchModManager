@@ -68,8 +68,7 @@ magical-object / reward pool is **variable-length and additive**:
   `*.rewarddef.ot` and registered in `UsedRscList.ot`. Tables are variable-length
   (camp 9 entries, refugee 5) — count is data-driven, not a global constant.
 - The custom magical-object pipeline is proven additive end-to-end (a new item
-  shows in the compendium and can be granted/picked — see
-  [Items](/reverse-engineering/items/)).
+  shows in the compendium and can be granted/picked).
 
 **Binding gap closed.** A custom item's GUID is cook-derived (not recomputable in
 Lua), so the loader resolver `resolve_item_guid(id)` (`hook_items.cpp`) +

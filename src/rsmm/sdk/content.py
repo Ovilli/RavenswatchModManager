@@ -41,7 +41,7 @@ KIND_CONFIDENCE: dict[str, str] = {
     "map": "experimental",    # emit only; no in-game load proof
     "skill": "guess",         # herodef skill-row clone/repoint; in-game hero-page load unproven
     "boss": "guess",          # picker/HP/arena offsets are speculative
-    "modifier": "guess",      # gamemodifierdef clone loads, but UI-slot appearance unproven (cap #16)
+    "modifier": "guess",      # gamemodifierdef clone loads; UI-slot appearance unproven (cap #16)
     "game_mode": "guess",     # chapter re-sequence cooks, but engine honouring it in-game unproven
 }
 
