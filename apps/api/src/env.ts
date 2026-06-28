@@ -48,8 +48,13 @@ export const env = {
   //   Linux WebKitGTK:   tauri://localhost
   //   Windows WebView2:  http://tauri.localhost
   trustedOrigins: (() => {
+    // The public browser site lives at www.rsmm.me (apex redirects there);
+    // both must be trusted so prod CORS lets the site call the API. These
+    // are baked into the default so deploys work without an env override;
+    // TRUSTED_ORIGINS can still extend/replace the list.
+    const prodSites = 'https://www.rsmm.me,https://rsmm.me';
     const devDefault = isProduction
-      ? 'tauri://localhost,https://tauri.localhost,http://tauri.localhost'
+      ? `${prodSites},tauri://localhost,https://tauri.localhost,http://tauri.localhost`
       : 'http://localhost:3000,http://localhost:1420,tauri://localhost,https://tauri.localhost,http://tauri.localhost';
     const fromEnv = (process.env.TRUSTED_ORIGINS || devDefault)
       .split(',')

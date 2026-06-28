@@ -4,12 +4,6 @@ primary_region = "iad"
 [build]
   dockerfile = "Dockerfile"
 
-[env]
-  NODE_ENV = "production"
-  WEB_URL = "https://www.rsmm.me"
-  # CORS allow-list. Tauri origins are appended automatically in env.ts.
-  TRUSTED_ORIGINS = "https://www.rsmm.me,https://rsmm.me"
-
 [http_service]
   internal_port = 3001
   force_https = true
