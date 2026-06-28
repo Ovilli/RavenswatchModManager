@@ -65,7 +65,109 @@ class EntityEdit:
             out.append(j)
             i = j + 1
 
+    def find_lstrings_containing(self, substr: str) -> list[tuple[int, str]]:
+        """Every length-prefixed string whose text *contains* ``substr``.
+
+        Returns ``(offset, full_text)`` pairs (offset points at the u32 length
+        prefix). Used to locate a component by a node-name fragment when the
+        full cooked label carries a variable ``[State]/[Value Operation]/…``
+        path prefix."""
+        out: list[tuple[int, str]] = []
+        needle = substr.encode("utf-8")
+        i = 0
+        c = self.concat
+        n = len(c)
+        while i + 4 <= n:
+            ln = struct.unpack_from("<I", c, i)[0]
+            if 0 < ln < 4096 and i + 4 + ln <= n:
+                blob = c[i + 4:i + 4 + ln]
+                if needle in blob:
+                    try:
+                        out.append((i, blob.decode("utf-8")))
+                    except UnicodeDecodeError:
+                        pass
+            i += 1
+        return out
+
     # -- high-level edits ----------------------------------------------------
+
+    def rewire_ref(self, from_label: str, to_label: str,
+                   *, expect_classid: int = 0x42) -> None:
+        """Repoint a component reference ("picker") at a different target node.
+
+        Cross-references inside a cooked entity are 16-byte GUID handles, not
+        string keys: a picker record is ``1111bbaa`` + ``u32 classid`` (66 =
+        ``0x42`` for ``oCEntityCpntPicker``) + ``16B GUID`` + a redundant
+        length-prefixed ``"[State] Path\\Name"`` label, so the GUID sits exactly
+        16 bytes before its label. The target node is referenced elsewhere by
+        the SAME GUID, so we read it from any picker that already points at
+        ``to_label`` and write it into the picker that points at ``from_label``.
+        Name-based and length-preserving — no hard-coded GUIDs or offsets, and
+        it survives game updates that shift the file layout.
+
+        Both labels are matched as substrings against the ``[State]`` picker
+        labels (e.g. ``"Event Trait Ability Spawn Pets"``). ``expect_classid``
+        guards that the rewritten record really is a class-66 picker.
+        """
+        def _picker_guid_off(substr: str) -> int:
+            hits = [(o, t) for (o, t) in self.find_lstrings_containing(substr)
+                    if t.startswith("[")]  # picker refs carry a [Type] prefix
+            if not hits:
+                raise ValueError(f"no picker reference matching {substr!r}")
+            # All picker refs to one node share its GUID; the bare definition
+            # label (no prefix) is filtered out above. Use the first ref.
+            lstr_off = hits[0][0]
+            guid_off = lstr_off - 16
+            if guid_off < 4:
+                raise ValueError(f"picker {substr!r} has no room for a GUID")
+            classid = struct.unpack_from("<I", self.concat, guid_off - 4)[0]
+            if expect_classid and classid != expect_classid:
+                raise ValueError(
+                    f"picker {substr!r}: expected classid {expect_classid:#x}, "
+                    f"found {classid:#x} (not a reference record?)")
+            return guid_off
+
+        src_guid_off = _picker_guid_off(to_label)
+        target_guid = self.concat[src_guid_off:src_guid_off + 16]
+        dst_guid_off = _picker_guid_off(from_label)
+        if self.concat[dst_guid_off:dst_guid_off + 16] == target_guid:
+            raise ValueError(
+                f"rewire {from_label!r} -> {to_label!r}: already points there")
+        self.queue(dst_guid_off, 16, target_guid)
+
+    def set_int_before_nth_end(self, label: str, end_index: int, new: int,
+                               *, expect: int | None = None) -> int:
+        """Length-preserving write of the int32 sitting just before the
+        ``end_index``-th END marker (0-based) after the node named ``label``.
+
+        Selector / value-union entries (``oCEntityCpntValueUnionSettings``
+        type=1) store one int32 each immediately before their END marker, so a
+        node holding several tiers exposes them as successive END markers. The
+        flat ``set_value_before_end`` only reaches the first; this targets a
+        specific entry by its END ordinal (discover ordinals with the entity
+        decode). Returns the concat offset written. ``expect`` asserts the
+        current value so a drifted layout fails loudly instead of corrupting a
+        neighbour."""
+        pat = struct.pack("<I", len(label)) + label.encode("utf-8")
+        base = self.concat.find(pat)
+        if base < 0:
+            raise ValueError(f"node label {label!r} not found")
+        o = base + len(pat)
+        end = -1
+        for _ in range(end_index + 1):
+            end = self.concat.find(_END, o)
+            if end < 0:
+                raise ValueError(
+                    f"{label!r}: fewer than {end_index + 1} END markers")
+            o = end + 4
+        cur = struct.unpack_from("<i", self.concat, end - 4)[0]
+        if expect is not None and cur != expect:
+            raise ValueError(
+                f"{label!r} END#{end_index}: expected int {expect}, found {cur} "
+                f"(at {end - 4:#x}) — layout drifted")
+        self.queue(end - 4, 4, struct.pack("<i", int(new)))
+        return end - 4
+
 
     def replace_lstring(self, old: str, new: str, *, count: int | None = None) -> int:
         """Rename every length-prefixed ``old`` string to ``new`` (variable

@@ -497,6 +497,20 @@ int lua_register_item(lua_State* L) {
     return 1;
 }
 
+// rsmm._internal.item_guid(id) -> lo, hi  (or nil if not resolvable yet)
+//   Returns a registered custom item's runtime identity GUID once its
+//   definition has loaded into the magical-object pool. nil until then, so the
+//   caller polls. Backs R.item.guid() — the bridge that lets a mod bind
+//   R.item.behavior to its OWN registered item without precomputing the GUID.
+int lua_item_guid(lua_State* L) {
+    const char* id = luaL_checkstring(L, 1);
+    unsigned long long lo = 0, hi = 0;
+    if (!resolve_item_guid(id, &lo, &hi)) { lua_pushnil(L); return 1; }
+    lua_pushinteger(L, (lua_Integer)lo);
+    lua_pushinteger(L, (lua_Integer)hi);
+    return 2;
+}
+
 int lua_read_cstr(lua_State* L) {
     auto va = static_cast<std::uintptr_t>(luaL_checkinteger(L, 1));
     auto max = static_cast<std::size_t>(luaL_optinteger(L, 2, 1024));
@@ -674,6 +688,7 @@ void register_api(lua_State* L) {
         { "shared_get",              lua_shared_get },
         { "shared_set",              lua_shared_set },
         { "register_item",           lua_register_item },
+        { "item_guid",               lua_item_guid },
         { "write_u8",                lua_write_u8 },
         { "write_u16",               lua_write_u16 },
         { "write_u32",               lua_write_u32 },

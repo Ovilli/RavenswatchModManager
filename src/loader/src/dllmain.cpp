@@ -21,6 +21,8 @@
 #include "hook_io.h"
 #include "hook_engine.h"
 #include "hook_skins.h"
+#include "hook_skills.h"
+#include "hook_spawn.h"
 #include "hook_items.h"
 #include "hook_events.h"
 #include "hook_netcode.h"
@@ -81,6 +83,8 @@ static void loader_thread_cxx() {
 
         rsmm::install_engine_hooks();
         rsmm::install_skin_hooks();
+        rsmm::install_skill_hooks();
+        rsmm::install_spawn_hooks();
         rsmm::install_item_hooks();
         rsmm::install_event_hooks();
         // Hero-capture must install in the SAME phase as the other engine hooks

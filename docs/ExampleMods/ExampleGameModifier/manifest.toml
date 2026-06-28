@@ -1,0 +1,23 @@
+[mod]
+id          = "ExampleGameModifier"
+name        = "Example: Custom Negative Mode"
+version     = "0.1.0"
+author      = "rsmm-examples"
+description = "Declarative custom GameModifier ('negative mode'). Clones a vanilla modifier def under a new id and points it at the 'Game Difficulty' behaviour; init.lua reads modifier state at runtime via R.modifier."
+enabled     = false
+sdk_version = ">=3.0,<4"
+# modifier is a 'guess' kind: the cloned def cooks + loads additively (UsedRscList),
+# but a NET-NEW modifier APPEARING in the select screen is unproven — the slot
+# count looks pre-sized to the vanilla set. See docs/_re/kinds/game-modifiers.md.
+experimental = true
+
+# Clone the vanilla "NoBossTimer" def into a new selectable modifier, relabel its
+# display text, and adopt the "Game Difficulty" behaviour (an existing hardcoded
+# effect — brand-new behaviour is layered in init.lua via R.modifier gating).
+[[content]]
+kind        = "modifier"
+id          = "DoubleTrouble"
+base        = "NoBossTimer"
+name        = "Double Trouble"
+description = "Cranks the run difficulty for braver Ravens."
+effect      = "Game Difficulty"

@@ -28,4 +28,14 @@ bool register_native_item(const char* id,
                           const char* entity_path,
                           int rarity);
 
+// Resolve a registered custom item's runtime identity GUID (the def+0x88/+0x90
+// value the engine spawns/grants/dedups on). Looks the item up by id, finds its
+// EntitySettingsResource* via the path lookup, then scans the magical-object
+// pool's SOURCE list for the entry spawned from that resource and reads its
+// GUID. Returns false (and leaves *lo/*hi untouched) until the item's definition
+// has loaded into the pool — so a mod polls this after registration before
+// binding behaviour with it. Read-only; never calls game code. Thread-safe.
+bool resolve_item_guid(const char* id, unsigned long long* lo,
+                       unsigned long long* hi);
+
 } // namespace rsmm

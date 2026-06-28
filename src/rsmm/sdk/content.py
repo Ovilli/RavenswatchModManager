@@ -17,7 +17,7 @@ from pathlib import Path
 
 from .api import sdk_export
 
-KINDS = ("item", "enemy", "boss", "map", "hero", "talent")
+KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "skill", "modifier", "game_mode")
 
 #: Per-kind honesty rating — how much we trust the bytes this kind emits.
 #:
@@ -39,7 +39,10 @@ KIND_CONFIDENCE: dict[str, str] = {
     "enemy": "experimental",  # codecs round-trip; spawn-apply step unproven
     "hero": "experimental",   # clones, but roster detour + library unproven
     "map": "experimental",    # emit only; no in-game load proof
+    "skill": "guess",         # herodef skill-row clone/repoint; in-game hero-page load unproven
     "boss": "guess",          # picker/HP/arena offsets are speculative
+    "modifier": "guess",      # gamemodifierdef clone loads, but UI-slot appearance unproven (cap #16)
+    "game_mode": "guess",     # chapter re-sequence cooks, but engine honouring it in-game unproven
 }
 
 CONFIDENCE_LEVELS = ("confirmed", "experimental", "guess")
@@ -175,6 +178,9 @@ _KIND_MODULES = {
     "map": "maps",
     "hero": "heros",
     "talent": "talents",
+    "skill": "skills",
+    "modifier": "modifiers",
+    "game_mode": "game_modes",
 }
 
 def _load_kind(kind: str):

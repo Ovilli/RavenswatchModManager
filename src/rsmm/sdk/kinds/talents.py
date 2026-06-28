@@ -24,6 +24,17 @@ Fields:
                                selector binding so the inline edit applies (it
                                unbinds the selector/curve — e.g. card-count
                                scaling becomes flat).
+    ``rewires``                list of ``{trigger, action}`` (or ``{from, to}``)
+                               GUID rewires: repoint a component reference whose
+                               label contains ``trigger`` at the node referenced
+                               by ``action`` — e.g. fire a different State from
+                               an existing trigger. Needs ``file`` to select one
+                               entity file. See ``talent-logic-rewire`` RE note.
+    ``int_patches``            list of ``{label, end_index, old, new}`` int32
+                               writes for selector / value-union tier entries
+                               that ``value_patches`` (f32, first-END only)
+                               cannot reach. ``end_index`` is the 0-based END
+                               marker after ``label``. Needs ``file``.
 
 This replaces hand-coded talent mods (the older flow shipped a manually
 byte-edited entity copy). See ``docs/MOD_AUTHORING.md`` and the
@@ -36,6 +47,7 @@ import logging
 from pathlib import Path
 
 from ...engine import talent_values as TV
+from ...engine.entity_edit import EntityEdit
 from ...engine.paths import DATA_DIR
 from ..content import ContentDef, ContentError, SchemaNotMined
 from . import _common as C
@@ -96,6 +108,48 @@ def _apply_patch(cooked: bytes, label: str, old: float, new: float,
     return TV.set_talent_value(cooked, label, new, expect=old)
 
 
+def _coerce_rewires(raw) -> list[tuple[str, str]]:
+    """Normalise ``rewires`` into ``(trigger, action)`` label-substring pairs.
+
+    Each entry repoints a component reference whose label contains ``trigger``
+    (a/k/a ``from``) at the node whose reference label contains ``action``
+    (``to``) — a GUID rewire, see :meth:`EntityEdit.rewire_ref`."""
+    out: list[tuple[str, str]] = []
+    for rw in (raw or []):
+        if isinstance(rw, dict):
+            frm = rw.get("trigger", rw.get("from"))
+            to = rw.get("action", rw.get("to"))
+        else:
+            frm, to = rw[0], rw[1]
+        if not frm or not to:
+            raise ContentError(
+                f"rewires entry needs trigger/action (from/to), got {rw!r}")
+        out.append((str(frm), str(to)))
+    return out
+
+
+def _coerce_int_patches(raw) -> list[tuple[str, int, int, int]]:
+    """Normalise ``int_patches`` into ``(label, end_index, old, new)``.
+
+    Sets the int32 just before the ``end_index``-th END marker of the node
+    named ``label`` — for selector / value-union tier entries that
+    ``value_patches`` (f32, first-END-only) cannot reach. See
+    :meth:`EntityEdit.set_int_before_nth_end`."""
+    out: list[tuple[str, int, int, int]] = []
+    for ip in (raw or []):
+        if isinstance(ip, dict):
+            label = ip.get("label")
+            end_index = ip.get("end_index", ip.get("index"))
+            old, new = ip.get("old"), ip.get("new")
+        else:
+            label, end_index, old, new = ip[0], ip[1], ip[2], ip[3]
+        if not label or end_index is None or old is None or new is None:
+            raise ContentError(
+                f"int_patches entry needs label/end_index/old/new, got {ip!r}")
+        out.append((str(label), int(end_index), int(old), int(new)))
+    return out
+
+
 def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     """Materialize one talent def into the mod's ``assets/`` tree."""
     C.validate_id("talent", defn.id)
@@ -114,8 +168,11 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     file_filter = defn.fields.get("file")
     file_filter = str(file_filter).lower() if file_filter else None
     patches = _coerce_value_patches(defn.fields.get("value_patches"))
-    if not patches:
-        raise ContentError(f"talent {defn.id}: no value_patches given")
+    rewires = _coerce_rewires(defn.fields.get("rewires"))
+    int_patches = _coerce_int_patches(defn.fields.get("int_patches"))
+    if not patches and not rewires and not int_patches:
+        raise ContentError(
+            f"talent {defn.id}: no value_patches, rewires or int_patches given")
 
     # Candidate hero entity files (optionally narrowed by `file`).
     candidates = [p for p in sorted(hero_dir.glob(_GEN_GLOB))
@@ -142,6 +199,27 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                 edited[p] = _apply_patch(cur, label, old, new, clear)
             except ValueError as e:
                 raise ContentError(f"talent {mod_id}/{defn.id}: {e}") from e
+
+    # Rewires + int_patches operate on the cooked concat (GUID/selector level),
+    # not the talent-value table, so they go through one EntityEdit per file.
+    # Restrict to a single file (the `file` filter must disambiguate) — these
+    # edits are pinned to a specific component graph, not broadcast by label.
+    if rewires or int_patches:
+        if len(candidates) != 1:
+            raise ContentError(
+                f"talent {defn.id}: rewires/int_patches need `file` to select "
+                f"exactly one entity file (matched {len(candidates)}: "
+                f"{[p.name for p in candidates]})")
+        p = candidates[0]
+        ed = EntityEdit(edited.get(p) or p.read_bytes())
+        try:
+            for frm, to in rewires:
+                ed.rewire_ref(frm, to)
+            for label, end_index, old, new in int_patches:
+                ed.set_int_before_nth_end(label, end_index, new, expect=old)
+            edited[p] = ed.emit()
+        except ValueError as e:
+            raise ContentError(f"talent {mod_id}/{defn.id}: {e}") from e
 
     written: list[Path] = []
     for p, blob in edited.items():

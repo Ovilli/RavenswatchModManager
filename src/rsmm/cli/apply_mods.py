@@ -152,6 +152,7 @@ class Mod:
             raw_enabled if isinstance(raw_enabled, bool)
             else str(raw_enabled).lower() in ("1", "true", "yes", "on")
         )
+        self.experimental: bool = bool(m.get("experimental", False))
         self.assets_dir = root / "assets"
         self.content_blocks: list[dict] = list(tbl.get("content", []) or [])
 
@@ -423,7 +424,9 @@ def emit_content_blocks(mods: list[Mod]) -> int:
     for m in mods:
         if not m.enabled or not m.content_blocks:
             continue
-        cr = ContentRegistry(mod_id=m.id)
+        # Honor the manifest's `experimental = true` so non-confirmed content
+        # kinds the author opted into actually emit (lint already respects it).
+        cr = ContentRegistry(mod_id=m.id, experimental=m.experimental)
         for block in m.content_blocks:
             kind = block.get("kind")
             cid = block.get("id")
@@ -498,6 +501,55 @@ def apply_health_quarantine(mods: list[Mod], cooking: Path) -> list[Mod]:
     return out
 
 
+_TEXT_BANK_RE = re.compile(r"\.LocalText\.gen(\.Lang.+)?$")
+
+
+def is_text_bank(decoded: str) -> bool:
+    """True for a `~GAM.xls.LocalText.gen` base or a `.Lang<XX>` sibling — the
+    index-aligned key/value text files that multiple item mods append to."""
+    return bool(_TEXT_BANK_RE.search(decoded))
+
+
+# Staging dir for merged text banks (one writer per apply; src must outlive the
+# plan→copy step). Lives under the mods dir so it's cleaned by `restore --all`.
+_TEXT_MERGE_DIR_NAME = ".rsmm_text_merge"
+
+
+def _merge_text_bank(enc: str, srcs: list[Path], vanilla: Path) -> Path | None:
+    """Merge several mods' versions of ONE text-bank file into vanilla + the
+    union of each mod's appended tail, preserving index alignment.
+
+    Each mod's file is vanilla + that mod's appended entries (``append_bank_keys``
+    appends the same count to the base keys file and every language sibling), so
+    concatenating each mod's tail — in a fixed mod order applied identically to
+    the base and every sibling — keeps keys and values aligned. Returns the path
+    to the written merged file, or ``None`` if it can't be parsed as a bank.
+    """
+    from rsmm.engine import text_patches as TP
+    try:
+        van = TP.parse_text_file(vanilla)
+    except Exception:  # noqa: BLE001 — not a parseable bank; skip merge
+        return None
+    n = len(van.entries)
+    merged = list(van.entries)
+    for src in srcs:
+        try:
+            tf = TP.parse_text_file(src)
+        except Exception:  # noqa: BLE001 — not a parseable bank; skip merge
+            return None
+        if len(tf.entries) >= n:
+            merged.extend(tf.entries[n:])
+    out_tf = TP.TextFile(path=vanilla, header=van.header, entries=merged,
+                         footer=van.footer)
+    out_dir = MODS_DIR / _TEXT_MERGE_DIR_NAME
+    out_dir.mkdir(parents=True, exist_ok=True)
+    # Encode the enc path into a flat, unique filename.
+    flat = enc.replace("\\", "__").replace("/", "__")
+    out_path = out_dir / flat
+    out_path.write_bytes(TP.write_text_file(out_tf))
+    return out_path
+
+
 def plan_apply(mods: list[Mod],
                dec2enc: dict[str, str],
                cooking: Path,
@@ -514,7 +566,12 @@ def plan_apply(mods: list[Mod],
                    vanilla asset_map; each needs a 3-line UsedRscList.ot record
                    (built later from the live manifest) so the engine loads it
     """
-    wanted: dict[str, tuple[Path, str]] = {}  # encoded -> (src, mod_id)
+    # Collect every (src, mod_id) that targets each encoded path. Most targets
+    # have one writer, but several item mods legitimately append to the SAME
+    # shared text bank (e.g. Text/Magical_Objects~GAM.xls.LocalText) — those must
+    # be MERGED, not won by the last mod (which silently drops the others' item
+    # names). Non-text conflicts keep the prior last-writer-wins behaviour.
+    collected: dict[str, list[tuple[Path, str, str]]] = {}  # enc -> [(src, mod, decoded)]
     registrations: dict[str, str] = {}        # encoded -> decoded
     for m in mods:
         if not m.enabled:
@@ -533,11 +590,39 @@ def plan_apply(mods: list[Mod],
                     continue
                 registrations[enc] = decoded
                 print(f"  [new] {m.id}: registering new asset '{decoded}'")
-            if enc in wanted:
-                print(f"  [warn] conflict on '{decoded}' "
-                      f"(mods: {wanted[enc][1]} vs {m.id}); "
-                      f"keeping later mod {m.id}", file=sys.stderr)
-            wanted[enc] = (src, m.id)
+            collected.setdefault(enc, []).append((src, m.id, decoded))
+
+    wanted: dict[str, tuple[Path, str]] = {}  # encoded -> (src, mod_id)
+    for enc, writers in collected.items():
+        if len(writers) == 1:
+            src, mod_id, _ = writers[0]
+            wanted[enc] = (src, mod_id)
+            continue
+        decoded = writers[0][2]
+        if is_text_bank(decoded):
+            # Merge all mods' appends into one bank so every item name survives.
+            ordered = sorted(writers, key=lambda w: w[1])  # deterministic by mod id
+            dest = encoded_to_dest(enc, cooking, game_dir)
+            vanilla = dest.parent / (dest.name + BACKUP_SUFFIX)
+            if not vanilla.exists():
+                vanilla = dest if dest.exists() else None
+            merged = _merge_text_bank(enc, [w[0] for w in ordered], vanilla) \
+                if vanilla else None
+            if merged is not None:
+                ids = ", ".join(w[1] for w in ordered)
+                print(f"  [merge] text bank '{decoded}' from {len(ordered)} "
+                      f"mods ({ids})")
+                wanted[enc] = (merged, ordered[-1][1])
+                continue
+            print(f"  [warn] text bank '{decoded}': no vanilla to merge against; "
+                  f"keeping {ordered[-1][1]}", file=sys.stderr)
+            wanted[enc] = (ordered[-1][0], ordered[-1][1])
+        else:
+            last = writers[-1]
+            others = ", ".join(w[1] for w in writers[:-1])
+            print(f"  [warn] conflict on '{decoded}' (mods: {others} vs "
+                  f"{last[1]}); keeping later mod {last[1]}", file=sys.stderr)
+            wanted[enc] = (last[0], last[1])
 
     active: dict[str, dict] = state.active
     additions: list[tuple[str, Path, Path, str]] = []

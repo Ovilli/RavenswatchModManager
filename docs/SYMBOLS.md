@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **86** symbols across 11 categories.
+Total: **92** symbols across 12 categories.
 
 ## enemies
 
@@ -54,6 +54,12 @@ Total: **86** symbols across 11 categories.
 | `oCEntityHitData_vftable` | `0x140f0e4b8` | 📍 va |  | vftable of oCEntityHitData (the ~0xb0-byte hit descriptor passed to Entity_DispatchHit … |
 | `oCEntityValueUnion_vftable` | `0x140f8fed8` | 📍 va |  | vftable of oCEntityValueUnion, the ~0x20-byte tagged value returned by EntityValue_Look… |
 
+## entity-values
+
+| name | address | status | callable | signature / note |
+|------|---------|--------|----------|------------------|
+| `EntityValueRegistry_RegisterAll` | `0x1401d9b70` | ❓ unverified |  | void(void) |
+
 ## event
 
 | name | address | status | callable | signature / note |
@@ -92,6 +98,8 @@ Total: **86** symbols across 11 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
+| `GameModifierDef_RegisterAssetLoader` | `0x1403257b0` | ❓ unverified |  | void(void* assetClassDesc) |
+| `HasGameModifierStateMachine_Register` | `0x140197170` | ❓ unverified |  | void(void) |
 | `Library_AchievementDefinition_vftable` | `0x1414113b0` | 📍 va |  | vftable of oCTLibrary<oe::dt::AchievementDefinition> singleton. |
 | `Library_ChallengeDefinition_vftable` | `0x141413010` | 📍 va |  | vftable of oCTLibrary<oe::dt::ChallengeDefinition> singleton. |
 | `Library_DreamShardDefinition_vftable` | `0x141411050` | 📍 va |  | vftable of oCTLibrary<oCDtDreamShardDefinition> singleton. |
@@ -100,15 +108,17 @@ Total: **86** symbols across 11 categories.
 | `Library_EnemyDefinition_vftable` | `0x1414118c0` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyDefinition> singleton. |
 | `Library_EnemyTribeDefinition_vftable` | `0x141411200` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyTribeDefinition> singleton. |
 | `Library_EntitySettingsResource_vftable` | `0x141441b60` | 📍 va |  | vftable of oCTLibrary<oCEntitySettingsResource> singleton. |
-| `Library_GameModifierDefinition_vftable` | `0x141411b50` | 📍 va |  | vftable of oCTLibrary<oe::dt::GameModifierDefinition> singleton. |
+| `Library_GameModifierDefinition_vftable` | `0x141411b50` | 📍 va |  | vftable of oCTLibrary<oe::dt::GameModifierDefinition> singleton. GameModifiers = the ru… |
 | `Library_IngredientDefinition_vftable` | `0x141412c50` | 📍 va |  | vftable of oCTLibrary<oCDtIngredientDefinition> singleton. |
 | `Library_MapDefinition_vftable` | `0x141412520` | 📍 va |  | vftable of oCTLibrary<oCDtMapDefinition> singleton. |
 | `Library_MelodyDefinition_vftable` | `0x1414129c0` | 📍 va |  | vftable of oCTLibrary<MelodyDefinition> singleton. |
 | `Library_RewardDefinition_vftable` | `0x141412e00` | 📍 va |  | vftable of oCTLibrary<oCDtRewardDefinition> singleton. |
 | `Library_TileDefinition_vftable` | `0x141412080` | 📍 va |  | vftable of oCTLibrary<oCDtTileDefinition> singleton. |
 | `Library_VersionDefinition_vftable` | `0x141412300` | 📍 va |  | vftable of oCTLibrary<oe::dt::VersionDefinition> singleton (LiveOps version manifest). |
+| `MapDef_RegisterAssetLoader` | `0x140322a50` | ❓ unverified |  | void(void* assetClassDesc) |
 | `Registry_EnemyDefinition_desc` | `0x141470208` | 📍 va |  | Class registry descriptor for oCDtEnemyDefinition (set by registrar FUN_14022d940; UID … |
 | `Registry_EnemyTribeDefinition_desc` | `0x14146f938` | 📍 va |  | Class registry descriptor for oCDtEnemyTribeDefinition (registrar FUN_140189410; UID 0x… |
+| `RewardDef_RegisterAssetLoader` | `0x140323b60` | ❓ unverified |  | void(void* assetClassDesc) |
 
 ## netcode
 
@@ -142,6 +152,7 @@ Total: **86** symbols across 11 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
+| `Reward_GenerateAndDistribute` | `0x1401e9020` | ❓ unverified |  | void(void) |
 | `Reward_InitAllRewards` | `0x1401e6030` | ✅ ok |  | _InitAllRewards (7351 bytes): reward-type registrar. The actual reward roller is a sibl… |
 
 ## skins

@@ -65,6 +65,10 @@ constexpr std::uintptr_t oCCustomFlagList_vftable = 0x140efc320ull;
 constexpr std::uintptr_t oCEntityHitData_vftable = 0x140f0e4b8ull;
 constexpr std::uintptr_t oCEntityValueUnion_vftable = 0x140f8fed8ull;
 
+// --- entity-values ---
+constexpr std::uintptr_t EntityValueRegistry_RegisterAll = 0x1401d9b70ull;
+constexpr const char* EntityValueRegistry_RegisterAll_Pattern = "FUN_1401d9b70";
+
 // --- event ---
 constexpr std::uintptr_t Analytics_SubmitNamedEvent = 0x1401fa470ull;
 constexpr const char* Analytics_SubmitNamedEvent_Pattern = "FUN_1401fa470";
@@ -116,6 +120,10 @@ constexpr const char* MagicalObject_SpawnContainingFunc_Pattern = "FUN_1402586f0
 constexpr std::uintptr_t g_MagicalObjectPool = 0x1414365d0ull;
 
 // --- library ---
+constexpr std::uintptr_t GameModifierDef_RegisterAssetLoader = 0x1403257b0ull;
+constexpr const char* GameModifierDef_RegisterAssetLoader_Pattern = "FUN_1403257b0";
+constexpr std::uintptr_t HasGameModifierStateMachine_Register = 0x140197170ull;
+constexpr const char* HasGameModifierStateMachine_Register_Pattern = "FUN_140197170";
 constexpr std::uintptr_t Library_AchievementDefinition_vftable = 0x1414113b0ull;
 constexpr std::uintptr_t Library_ChallengeDefinition_vftable = 0x141413010ull;
 constexpr std::uintptr_t Library_DreamShardDefinition_vftable = 0x141411050ull;
@@ -131,8 +139,12 @@ constexpr std::uintptr_t Library_MelodyDefinition_vftable = 0x1414129c0ull;
 constexpr std::uintptr_t Library_RewardDefinition_vftable = 0x141412e00ull;
 constexpr std::uintptr_t Library_TileDefinition_vftable = 0x141412080ull;
 constexpr std::uintptr_t Library_VersionDefinition_vftable = 0x141412300ull;
+constexpr std::uintptr_t MapDef_RegisterAssetLoader = 0x140322a50ull;
+constexpr const char* MapDef_RegisterAssetLoader_Pattern = "FUN_140322a50";
 constexpr std::uintptr_t Registry_EnemyDefinition_desc = 0x141470208ull;
 constexpr std::uintptr_t Registry_EnemyTribeDefinition_desc = 0x14146f938ull;
+constexpr std::uintptr_t RewardDef_RegisterAssetLoader = 0x140323b60ull;
+constexpr const char* RewardDef_RegisterAssetLoader_Pattern = "FUN_140323b60";
 
 // --- netcode ---
 constexpr std::uintptr_t Entity_GetNetComponent = 0x1403124b0ull;
@@ -163,6 +175,8 @@ constexpr std::uintptr_t Resource_LookupByPath = 0x140487040ull;
 constexpr const char* Resource_LookupByPath_Pattern = "FUN_140487040";
 
 // --- rewards ---
+constexpr std::uintptr_t Reward_GenerateAndDistribute = 0x1401e9020ull;
+constexpr const char* Reward_GenerateAndDistribute_Pattern = "FUN_1401e9020";
 constexpr std::uintptr_t Reward_InitAllRewards = 0x1401e6030ull;
 constexpr const char* Reward_InitAllRewards_Pattern = "FUN_1401e6030";
 

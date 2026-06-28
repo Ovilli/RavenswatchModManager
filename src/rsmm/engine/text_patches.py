@@ -118,6 +118,51 @@ def _pristine(path: Path) -> Path:
     return bak if bak.exists() else path
 
 
+def override_bank_values(base_gen: Path, overrides: dict[str, str]) -> dict[str, bytes]:
+    """Rewrite the VALUE of existing keys in a ``~GAM.xls.LocalText`` bank.
+
+    Unlike :func:`append_bank_keys` (which adds new keys), this changes the
+    display string of keys that already exist — e.g. relabel a vanilla skill by
+    overriding ``Skill_<Suffix>_Name``/``_Desc``. Keys are unchanged, so the
+    base ``.LocalText.gen`` is byte-identical and not returned; only the
+    per-language ``.Ggzy<XX>`` siblings (the VALUE files) are rewritten, with the
+    string at each key's index replaced.
+
+    ``overrides`` maps an existing key -> new English display string (applied to
+    every language sibling). Returns ``{".Lang<XX>": bytes}`` per sibling, the
+    token form the apply layer maps to ``<bank>.LocalText.gen.Lang<XX>``. Raises
+    ``KeyError`` if a key is absent (so a typo'd/wrong-hero key fails loudly).
+
+    Reads each file from its pristine ``.rsmm.bak`` when present so re-apply
+    rebuilds from vanilla instead of stacking on an already-patched file.
+    """
+    keys = parse_text_file(_pristine(base_gen))
+    idx: dict[str, int] = {}
+    for key in overrides:
+        try:
+            idx[key] = keys.entries.index(key)
+        except ValueError as e:
+            raise KeyError(
+                f"{base_gen.name}: text key {key!r} not in bank "
+                f"({len(keys.entries)} keys); wrong hero or skill?") from e
+
+    out: dict[str, bytes] = {}
+    for lang in ALL_LANGS:
+        sib = lang_path_for(base_gen, lang)
+        psib = _pristine(sib)
+        if not psib.exists():
+            continue
+        vf = parse_text_file(psib)
+        if len(vf.entries) != len(keys.entries):
+            raise ValueError(
+                f"{sib.name}: {len(vf.entries)} values != {len(keys.entries)} "
+                f"keys; bank misaligned, refusing to override")
+        for key, i in idx.items():
+            vf.entries[i] = overrides[key]
+        out[f".Lang{lang}"] = write_text_file(vf)
+    return out
+
+
 def append_bank_keys(base_gen: Path, new_pairs: dict[str, str]) -> dict[str, bytes]:
     """Append new key/value text entries to a `~GAM.xls.LocalText` bank.
 

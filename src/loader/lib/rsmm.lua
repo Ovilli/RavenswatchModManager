@@ -568,6 +568,100 @@ _invalidate_hero_capture = function()
     end
 end
 
+-- entity values (generic CRC-keyed run/stat store) ----------------------
+--
+-- Each hero carries a generic keyed value store on its value context
+-- (hero+0x2f8, store @ +0x4c8) holding stats, run meta (dream shards) and the
+-- GameModifier / difficulty state. EntityValue_Get(valueCtx, out, crcKey) reads
+-- one key into a ~0x20-byte oCEntityValueUnion: type tag @+0x8 (4 = inline f32),
+-- value @+0x10. A missing key yields value 0 (safe — never faults). We only read
+-- INLINE numeric values (every modifier/difficulty key is numeric); a non-inline
+-- (string/vector) key returns nil rather than deref an unknown-typed pointer, so
+-- no union destructor is needed. Read-only. See docs/_re/kinds/entity-values.md.
+local ENTITY_VALCTX_OFF = 0x2f8   -- hero -> entity value context
+local EV_TAG_OFF        = 0x08    -- oCEntityValueUnion type tag
+local EV_VAL_OFF        = 0x10    -- inline f32 when tag == EV_TAG_INLINE
+local EV_TAG_INLINE     = 4
+
+-- Read one entity-value by raw CRC key from the current hero's store.
+-- Returns a Lua number (inline f32) or nil (no hero / missing / non-inline).
+function R.entity.value(key)
+    assert(type(key) == "number", "R.entity.value: key must be a number (CRC id)")
+    local e = R.entity.hero(); if not e then return nil end
+    local out = I.scratch(0x20)               -- zeroed; tag starts at 0
+    local ok = pcall(R.engine.call, "EntityValue_Get", e + ENTITY_VALCTX_OFF, out, key)
+    if not ok then return nil end
+    if I.read_u32(out + EV_TAG_OFF) ~= EV_TAG_INLINE then return nil end
+    return I.read_f32(out + EV_VAL_OFF)
+end
+
+-- game modifiers ("negative modes" / run mutators) ----------------------
+--
+-- The toggleable run mutators (No boss timer, No minimap, More experience,
+-- Day only, ...) plus the difficulty / XP scalars each have a CRC-keyed value in
+-- the entity-value store. R.modifier reads them by name. The keys are the literal
+-- ids the engine registers them under (Ghidra: EntityValueRegistry_RegisterAll,
+-- FUN_1401d9b70); full map + provenance in docs/_re/kinds/game-modifiers.md.
+--
+--   R.modifier.value("Game Difficulty")  -- numeric value (or nil)
+--   R.modifier.active("No minimap")      -- true if the toggle is on this run
+--   R.modifier.names()                   -- known modifier/scalar names (sorted)
+--
+-- NOTE: read-only and pending in-game verification that the modifier state lives
+-- on the hero's value store (vs a global game entity); a wrong store just makes
+-- every read return 0/nil, never faults.
+R.modifier = {}
+
+local _MODIFIER_KEYS = {
+    -- toggles (bool: value ~= 0 => active)
+    ["No boss timer"]                            = 0x1a7945fc,
+    ["Less day/night half cycle"]                = 0x1a77d42d,
+    ["More experience"]                          = 0x1a77e2e4,
+    ["No revive token"]                          = 0x1a793d1a,
+    ["No minimap"]                               = 0x99f27eac,
+    ["One chapter"]                              = 0x1a8a3688,
+    ["Day only"]                                 = 0x1a8b53b4,
+    ["Night only"]                               = 0x1a8b53bc,
+    ["Random hero at map start"]                 = 0x1ab183ab,
+    ["All same heroes"]                          = 0x1ab58780,
+    -- difficulty / xp scalars
+    ["Game Difficulty"]                          = 0x18700873,
+    ["Difficulty Xp Modifier"]                   = 0x19bddb2e,
+    ["Global Xp Modifier"]                       = 0x187afd1d,
+    ["Rare Skill Chance Modifier"]               = 0x1871c2fa,
+    ["Dream Shard Costs Modifier"]               = 0x187310ec,
+    ["Half Cycle Count Before Boss Awakens"]     = 0x187443de,
+    ["Camp Difficulty Modifier"]                 = 0x187aaecf,
+    ["Camp Difficulty Modifier Chance To Apply"] = 0x187ab36e,
+}
+
+-- Numeric value of a named modifier/scalar, or nil (unknown name / no hero).
+function R.modifier.value(name)
+    local key = _MODIFIER_KEYS[name]
+    if not key then
+        R.log("[rsmm.modifier] unknown modifier name: " .. tostring(name))
+        return nil
+    end
+    return R.entity.value(key)
+end
+
+-- True if a toggle modifier is active this run (value present and non-zero).
+function R.modifier.active(name)
+    local v = R.modifier.value(name)
+    return type(v) == "number" and v ~= 0
+end
+
+-- The known modifier / scalar names, sorted (for listing / iteration).
+function R.modifier.names()
+    local t = {}
+    for k in pairs(_MODIFIER_KEYS) do t[#t + 1] = k end
+    table.sort(t)
+    return t
+end
+
+-- Read a raw entity-value key the name table doesn't cover (forward-compat).
+function R.modifier.value_by_key(key) return R.entity.value(key) end
+
 -- hero (identity / per-hero scope) --------------------------------------
 --
 -- Every hero has its own ability/event vocabulary (Piper's rats, Juliet's
@@ -1011,6 +1105,41 @@ function R.item.list()
     return out
 end
 
+-- R.item.guid(id) -> lo, hi  (or nil until the item's def loads into the pool).
+-- Resolves a registered custom item's runtime identity GUID so the SAME mod can
+-- bind R.item.behavior to its OWN item without precomputing the cook-derived
+-- GUID. nil until the magical-object pool has the definition, so callers poll
+-- (e.g. R.item.on_guid below, or retry on a tick).
+function R.item.guid(id)
+    assert(type(id) == "string", "R.item.guid: id must be a string")
+    if not (I and I.item_guid) then return nil end
+    return I.item_guid(id)
+end
+
+-- R.item.on_guid(id, cb) — poll until R.item.guid(id) resolves, then cb(lo, hi)
+-- once. The clean way to wire behaviour to a freshly-registered custom item:
+--   R.item.register{ id = "MyTalent", ... }
+--   R.item.on_guid("MyTalent", function(lo, hi)
+--       R.item.behavior{ guid = { lo, hi }, on_tick = ... }
+--   end)
+function R.item.on_guid(id, cb, opts)
+    assert(type(cb) == "function", "R.item.on_guid: cb must be a function")
+    opts = opts or {}
+    local every = opts.every or 1.0
+    local tries, limit = 0, opts.tries or 120
+    local function poll()
+        local lo, hi = R.item.guid(id)
+        if lo then cb(lo, hi); return end
+        tries = tries + 1
+        if tries >= limit then
+            R.log("[rsmm.item] on_guid timed out for", id); return
+        end
+        if R.schedule and R.schedule.after then R.schedule.after(every, poll) end
+    end
+    if R.schedule and R.schedule.after then R.schedule.after(every, poll)
+    else R.log("[rsmm.item] on_guid needs the tick pump (R.schedule)") end
+end
+
 -- Bind custom logic to ownership of a magical object — the core of a
 -- mod-defined item that runs the mod's OWN behaviour, not a cloned game effect.
 -- The item is identified by its definition identity GUID (lo, hi); pair this
@@ -1106,16 +1235,61 @@ end
 
 function R.talent.pending() return _talent_cfg end
 
+-- PICKABLE talents: react to the player choosing a level-up / reward card.
+-- The gameplay bus fires "gameplay:POWER_UP_COLLECT_REQUEST" when a card is
+-- picked; the loader attaches ev.card (the picked card's identity GUID, the
+-- "0xlo:0xhi" payload slot the GIVE-event template fixes at +0x50/+0x58) plus a
+-- confirm window ev.p38..ev.p58. `card` selects WHICH pick fires the callback:
+--   nil / "*"        -> any card pick
+--   function(ev)     -> custom predicate (inspect ev.card / ev.p38..ev.p58)
+--   string id        -> match ev.card (a "0xlo:0xhi" GUID read from the probe;
+--                       see docs/_re/kinds/talents-pick.md)
+local function _pick_matches(card, ev)
+    if card == nil or card == "*" then return true end
+    if type(card) == "function" then
+        local ok, keep = pcall(card, ev)
+        return ok and keep and true or false
+    end
+    return ev ~= nil and tostring(ev.card) == tostring(card)
+end
+
+-- R.talent.on_pick(card, cb) — run cb(ev) when a matching card is picked.
+-- POWER_UP_COLLECT_REQUEST fires on the game's main thread, so cb may call
+-- R.combat / R.give / R.entity directly. cb is pcall-guarded.
+-- IMPORTANT: this event fires for EVERY power-up collect — level-up CARDS and
+-- world orbs/globes alike. Pass a specific `card` GUID to target one talent
+-- card; nil/"*" fires on ANY power-up (use a `function(ev)` predicate if you
+-- need finer discrimination than the identity).
+function R.talent.on_pick(card, cb)
+    if type(card) == "function" and cb == nil then card, cb = nil, card end
+    assert(type(cb) == "function", "R.talent.on_pick: cb must be a function")
+    R.on("gameplay:POWER_UP_COLLECT_REQUEST", function(ev)
+        if not _pick_matches(card, ev) then return end
+        local ok, err = pcall(cb, ev)
+        if not ok then
+            R.log("[rsmm.talent] on_pick callback error: " .. tostring(err))
+        end
+    end)
+    return true
+end
+
 -- Define a CUSTOM TALENT: bind your own effect to a gameplay trigger. This is
 -- the tier-2 "build your own talent" entry point — the `effect` callback is the
 -- mod's own logic (heal, grant, buff, count, ...), not a cloned game talent.
 --
 --   R.talent.define{
 --       id     = "lifesteal_on_ability",
+--       hero   = "Juliet",                     -- optional: scope to ONE hero
 --       on     = "gameplay:ABILITY_EXIT",      -- a gameplay event, or a list
 --       when   = function(ev) return true end, -- optional predicate
 --       effect = function(ev) R.combat.heal(5) end,
 --   }
+--
+-- HERO-SPECIFIC: most talents belong to one hero. Set `hero="<ShortName>"` and
+-- the effect fires only when that hero is active (gated through R.hero.is). This
+-- depends on the hero's signature being seeded in R.hero; the signature-free way
+-- to be hero-specific is a `pickable` talent bound to a hero-exclusive skill-card
+-- GUID (only that hero's herodef has it). See R.talent.for_hero below.
 --
 -- Threading is handled for you: gameplay-event handlers run on the game's MAIN
 -- thread, so an effect there may call R.combat / R.give / R.entity directly;
@@ -1123,6 +1297,21 @@ function R.talent.pending() return _talent_cfg end
 -- effect is deferred onto the main-thread pump so engine calls stay safe (see
 -- [[loader-thread-model]]). Each effect is pcall-guarded — a buggy talent logs
 -- and is skipped, it never breaks the event bus for other mods.
+--
+-- PICKABLE talent (the effect arms only after the player chooses its card in
+-- the level-up book, instead of being an always-on passive):
+--
+--   R.talent.define{
+--       id       = "vampiric_casting",
+--       pickable = true,                  -- dormant until picked
+--       card     = "0x1a92...:0x0",       -- card GUID from TalentPickProbe; omit
+--                                         -- (or "*") to arm on ANY card pick
+--       on       = "gameplay:ABILITY_EXIT",
+--       effect   = function() R.combat.heal(5) end,
+--   }
+--
+-- `pickable = "<card>"` is shorthand for `pickable = true, card = "<card>"`.
+-- Arming resets per run (run_start). Omit `pickable` for the always-on form.
 local _talents = {}
 function R.talent.define(spec)
     assert(type(spec) == "table",            "R.talent.define: spec must be table")
@@ -1137,8 +1326,42 @@ function R.talent.define(spec)
     assert(type(events) == "table", "R.talent.define: spec.on must be a string or list of strings")
     _talents[spec.id] = spec
 
+    -- `pickable = "<card>"` is shorthand for `pickable = true, card = "<card>"`.
+    if type(spec.pickable) == "string" then
+        if spec.card == nil then spec.card = spec.pickable end
+        spec.pickable = true
+    end
+
+    -- Pickable talents stay DORMANT until the player picks their card; `card`
+    -- selects which pick arms it (see R.talent.on_pick). A picked talent is
+    -- permanent for the whole RUN (all chapters/islands), so arming resets only
+    -- on "run_start" — NOT on GAME_START / GAME_CHRONO_START, which re-fire per
+    -- chapter and would silently disarm the talent mid-run.
+    if spec.pickable then
+        spec._armed = false
+        R.talent.on_pick(spec.card, function()
+            -- Hero-scoped pickable: only arm when the matching hero is active.
+            -- (Mostly redundant when `card` is a hero-exclusive skill GUID — that
+            -- GUID exists in one herodef — but matters for card=nil/"*".)
+            if spec.hero and not R.hero.is(spec.hero) then return end
+            if not spec._armed then
+                spec._armed = true
+                R.log("[rsmm.talent] '" .. spec.id .. "' armed (card picked)")
+            end
+        end)
+        R.on("run_start", function() spec._armed = false end)
+    end
+
     for _, ev_name in ipairs(events) do
         R.on(ev_name, function(ev)
+            -- HERO-SPECIFIC gate: most talents belong to one hero. `hero=` fires
+            -- the effect only when that hero is active (via R.hero.is, which
+            -- infers the hero from its exclusive ability events). NOTE: needs the
+            -- hero's signature seeded in R.hero (_HERO_SIGNATURES) — if it isn't,
+            -- prefer a pickable talent bound to a hero-exclusive card GUID, which
+            -- is hero-specific without any signature. See skills-system.md.
+            if spec.hero and not R.hero.is(spec.hero) then return end
+            if spec.pickable and not spec._armed then return end
             if spec.when then
                 local okc, keep = pcall(spec.when, ev)
                 if not okc or not keep then return end
@@ -1168,6 +1391,28 @@ function R.talent.list()
     local out = {}
     for _, s in pairs(_talents) do out[#out + 1] = s end
     return out
+end
+
+-- True once a pickable talent's card has been picked this run (nil if no such
+-- talent, false if defined-but-not-yet-picked). Non-pickable talents read true.
+function R.talent.armed(id)
+    local s = _talents[id]
+    if not s then return nil end
+    if not s.pickable then return true end
+    return s._armed and true or false
+end
+
+-- Scoped builder for a hero's talent file: stamps hero="<name>" onto every
+-- talent so hero-specific talent code reads cleanly and can't leak to other
+-- heroes. Per-talent `hero` still wins if set explicitly.
+--   local J = R.talent.for_hero("Juliet")
+--   J{ id = "bleed_on_dash", on = "gameplay:ABILITY_EXIT", effect = ... }
+function R.talent.for_hero(hero)
+    assert(type(hero) == "string", "R.talent.for_hero: hero must be a string")
+    return function(spec)
+        if type(spec) == "table" and spec.hero == nil then spec.hero = hero end
+        return R.talent.define(spec)
+    end
 end
 
 -- counters --------------------------------------------------------------

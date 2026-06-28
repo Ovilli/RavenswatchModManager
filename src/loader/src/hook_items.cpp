@@ -303,11 +303,19 @@ void WINAPI hook_spawn_all_objects(void* pool, void* spawn_ctx) {
                       + hex_ptr(pool) + " spawn_ctx=" + hex_ptr(spawn_ctx));
     g_real_spawn_all(pool, spawn_ctx);
     Loader::get().log("[item-hook] SpawnAllObjects returned OK");
-    // V1 hook below — see hook_items.h for design.
-    // Troubleshooting: if the game crashes here, check FUN_140487040 and
-    // FUN_140154c20 for ABI mismatches (calling-convention / param count).
-    // The first run log should show the resolved addresses.
-    inject_custom_items(pool);
+    // Inject is opt-in (same gate as deferred_inject_poll): it calls the
+    // resource-by-path lookup FUN_140487040, which mis-resolves on this build and
+    // crashes. Custom items already load via UsedRscList, so the inject is a
+    // redundant fallback — never run it ungated. (Was an ungated crash here when
+    // the detour fired on the primary thread with g_resource_lookup resolved.)
+    char buf[8];
+    if (GetEnvironmentVariableA("RSMM_ENABLE_ITEM_INJECT", buf, sizeof(buf))
+            && buf[0] == '1') {
+        inject_custom_items(pool);
+    } else {
+        Loader::get().log("[item-hook] detour inject gated off "
+                          "(set RSMM_ENABLE_ITEM_INJECT=1 to attempt)");
+    }
 }
 
 // --- resolution helpers ---------------------------------------------------
@@ -346,6 +354,43 @@ bool register_native_item(const char* id_str,
     if (entity_str)   item.entity_path = entity_str;
     item.rarity  = rarity;
     return register_item_locked(item);
+}
+
+bool resolve_item_guid(const char* id_str, unsigned long long* lo,
+                       unsigned long long* hi) {
+    if (!id_str) return false;
+    // Copy out the registered item's path under the lock; don't hold it while
+    // touching game memory.
+    std::string entity_path;
+    {
+        std::lock_guard<std::mutex> g(g_items_mu);
+        for (const auto& it : g_items) {
+            if (it.id == id_str) { entity_path = it.entity_path; break; }
+        }
+    }
+    if (entity_path.empty()) return false;       // unknown id
+
+    void* rsc = find_entity_resource(entity_path);
+    if (!rsc) return false;                       // definition not loaded yet
+
+    void* pool = *reinterpret_cast<void**>(reloc(kPoolPtrGlobalVA));
+    if (!pool) return false;                      // pool not up yet
+    const auto u8 = static_cast<std::uint8_t*>(pool);
+    void**     src_arr   = *reinterpret_cast<void***>(u8 + 0x0);
+    const auto src_count = *reinterpret_cast<std::uint32_t*>(u8 + 0x8);
+    if (!src_arr) return false;
+
+    // Find the source entry spawned from our resource (+0x48) and read its
+    // identity GUID (+0x88/+0x90) — the same fields dump_pool reports.
+    for (std::uint32_t i = 0; i < src_count && i < 4096; ++i) {
+        auto* entry = static_cast<std::uint8_t*>(src_arr[i]);
+        if (!entry) continue;
+        if (*reinterpret_cast<void**>(entry + 0x48) != rsc) continue;
+        if (lo) *lo = *reinterpret_cast<std::uint64_t*>(entry + 0x88);
+        if (hi) *hi = *reinterpret_cast<std::uint64_t*>(entry + 0x90);
+        return true;
+    }
+    return false;                                 // not in source list (yet)
 }
 
 bool install_item_hooks() {

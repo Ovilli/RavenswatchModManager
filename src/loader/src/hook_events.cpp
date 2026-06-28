@@ -190,7 +190,7 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
     const auto id   = *reinterpret_cast<const std::uint32_t*>(ev + 0x30);
     const auto disp = reinterpret_cast<std::uintptr_t>(dispatcher);
 
-    char buf[512];
+    char buf[768];
     int n = std::snprintf(buf, sizeof(buf),
                           "{\"event\":\"gameplay:%s\",\"name\":\"%s\",\"seq\":%u,"
                           "\"id\":%u,\"source\":\"gameplay\","
@@ -225,6 +225,42 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
                            static_cast<unsigned long long>(srcid),
                            static_cast<unsigned long long>(target),
                            static_cast<unsigned long long>(instig));
+    } else if (std::strcmp(name, "POWER_UP_COLLECT_REQUEST") == 0) {
+        // oCDtNamedEventPowerUpCollectRequest — fired when the player picks a
+        // level-up / reward card; the payload carries the picked card's
+        // identity. The exact offset is not yet *confirmed* (the class
+        // registrar region is unanalysed in the corpus — the RTTI string xref
+        // at 0x1402fdb6c is outside any defined function), but the GIVE sibling
+        // (FUN_14030f430) fixes the shared oCGameNamedEvent template: the
+        // object is 0x60 bytes and the def GUID payload sits at +0x50/+0x58.
+        // The pick event's reward-def GUID is the prime suspect at the same
+        // +0x50/+0x58. We still publish a small window to pin it in one in-game
+        // session: +0x38 (covers a no-Network direct subclass whose payload
+        // starts earlier) through +0x58. The read is bounded to +0x58 = the
+        // GIVE template's last field; if the pick event omits the Network layer
+        // it may be smaller, so the high window fields can read a few bytes of
+        // adjacent (still-mapped) heap — benign garbage filtered by the pin
+        // step, never an unmapped fault in practice. NOTE: this event fires for
+        // EVERY power-up collect (level-up cards AND world orbs/globes), so the
+        // identity GUID is what distinguishes a specific talent card. Once
+        // pinned this collapses to one decoded "card" field. See
+        // docs/_re/kinds/talents-pick.md.
+        const auto* q = reinterpret_cast<const std::uint64_t*>(ev);
+        // `card` = the tentative decoded identity (the +0x50/+0x58 GUID, the
+        // GIVE-template payload slot). R.talent.on_pick("<lo>:<hi>", cb) matches
+        // on it, so string-id pickable talents work today; the p38..p58 window
+        // stays so the offset can be confirmed/corrected in one session.
+        n += std::snprintf(buf + n, sizeof(buf) - n,
+                           ",\"card\":\"0x%llx:0x%llx\","
+                           "\"p38\":\"0x%llx\",\"p40\":\"0x%llx\","
+                           "\"p48\":\"0x%llx\",\"p50\":\"0x%llx\",\"p58\":\"0x%llx\"",
+                           static_cast<unsigned long long>(q[10]),
+                           static_cast<unsigned long long>(q[11]),
+                           static_cast<unsigned long long>(q[7]),
+                           static_cast<unsigned long long>(q[8]),
+                           static_cast<unsigned long long>(q[9]),
+                           static_cast<unsigned long long>(q[10]),
+                           static_cast<unsigned long long>(q[11]));
     }
     if (n < 0 || n >= static_cast<int>(sizeof(buf) - 2)) return;
     buf[n] = '}'; buf[n + 1] = '\0';

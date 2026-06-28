@@ -615,8 +615,68 @@
       "category": "library",
       "va": "0x141411b50",
       "status": "va",
-      "note": "vftable of oCTLibrary<oe::dt::GameModifierDefinition> singleton.",
-      "refs": ["docs/_re"]
+      "note": "vftable of oCTLibrary<oe::dt::GameModifierDefinition> singleton. GameModifiers = the run mutators / 'negative modes' (No boss timer, No minimap, More experience, Day only, ...). Defs load from *.gamemodifierdef.ot via the additive dir-scan/UsedRscList path, same as enemy defs.",
+      "refs": ["docs/_re/kinds/game-modifiers.md"]
+    },
+    {
+      "name": "GameModifierDef_RegisterAssetLoader",
+      "kind": "function",
+      "category": "library",
+      "raw": "FUN_1403257b0",
+      "status": "unverified",
+      "signature": "void(void* assetClassDesc)",
+      "note": "Registers the '*.gamemodifierdef.ot' asset glob -> GameModifierDefinition library loader (label 'Game modifier definition'); calls generic glob-register FUN_1404a2190. Proves modifier defs are file-additive (new def file auto-registers, no machinery). Address not pattern-confirmed across updates.",
+      "refs": ["docs/_re/kinds/game-modifiers.md"]
+    },
+    {
+      "name": "EntityValueRegistry_RegisterAll",
+      "kind": "function",
+      "category": "entity-values",
+      "raw": "FUN_1401d9b70",
+      "status": "unverified",
+      "signature": "void(void)",
+      "note": "Registers every CRC-keyed game-state value (label+type) in the generic entity-value store: difficulty/xp scalars, GameModifier toggles, multiplayer, player-location flags. Source of the modifier/difficulty key table in docs/_re/kinds/game-modifiers.md (e.g. Game Difficulty 0x18700873, Camp Difficulty Modifier 0x187aaecf, Global Xp Modifier 0x187afd1d, No boss timer 0x1a7945fc). Address not pattern-confirmed across updates.",
+      "refs": ["docs/_re/kinds/game-modifiers.md", "docs/_re/kinds/entity-values.md"]
+    },
+    {
+      "name": "HasGameModifierStateMachine_Register",
+      "kind": "function",
+      "category": "library",
+      "raw": "FUN_140197170",
+      "status": "unverified",
+      "signature": "void(void)",
+      "note": "Registers the per-run HasGameModifierStateMachine component type (component id 0x1b49a36c) that tracks which GameModifiers are active this run. Address not pattern-confirmed across updates.",
+      "refs": ["docs/_re/kinds/game-modifiers.md"]
+    },
+    {
+      "name": "RewardDef_RegisterAssetLoader",
+      "kind": "function",
+      "category": "library",
+      "raw": "FUN_140323b60",
+      "status": "unverified",
+      "signature": "void(void* assetClassDesc)",
+      "note": "Registers the '*.rewarddef.ot' asset glob -> oCDtRewardDefinition library loader (label 'Reward definition'). Reward defs are the level-up / chest offer pool; codec = cooked_schemas.definitions rewarddef.json. Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/rewards.md"]
+    },
+    {
+      "name": "Reward_GenerateAndDistribute",
+      "kind": "function",
+      "category": "rewards",
+      "raw": "FUN_1401e9020",
+      "status": "unverified",
+      "signature": "void(void)",
+      "note": "The per-level reward roll: SEEDED ('Seed : {0} ; Base seed {1}'), '_InitAllRewards' / 'Distribute' / 'Fill remaining slots with random rewards'. Because the draw is seed-driven and multiplayer host-authoritative/deterministic, a reward BAN must be DATA-LEVEL (remove the candidate from the pool the roll reads) — a per-peer Lua post-filter would desync MP. GENERATE_REWARDS event handlers: FUN_14005c510, FUN_14003b350. Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/rewards.md"]
+    },
+    {
+      "name": "MapDef_RegisterAssetLoader",
+      "kind": "function",
+      "category": "library",
+      "raw": "FUN_140322a50",
+      "status": "unverified",
+      "signature": "void(void* assetClassDesc)",
+      "note": "Registers the '*.mapdef.ot' asset glob -> oCDtMapDefinition library loader. Map defs (codec = cooked_schemas.definitions mapdef.json: level_ref/field_a/tribe_ref) are sequenced into chapters by GameModeDefaultDefinition (*.gamemodedefaultdef.ot); chapter type = GameModeDefInternal::Chapter. The chapter->map sequence lives in the gamemodedefaultdef _tail_hex (not yet typed) — the lever for new/random maps (#9/#10). Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/maps-chapters.md"]
     },
     {
       "name": "Library_TileDefinition_vftable",

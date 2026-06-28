@@ -292,6 +292,22 @@ manifest carries a `synthesized: {offset: value}` map and a
 `cloned_from: <base_id>` field so the apply layer can audit which
 bytes are real schema vs which are inherited.
 
+## Heredos wishlist — harder bosses (#11) & "all moves at once" (#12)
+
+Distinct from *creating* a boss (above):
+
+- **#11 harder bosses (HP / damage, up to 1000%)** — REACHABLE today. A boss is an enemy entity;
+  scale it via the difficulty levers (`Game Difficulty` `0x18700873`, `Camp Difficulty Modifier`
+  `0x187aaecf`; see game-modifiers.md) or per-entity stat overrides (`[[patch]] kind="stat"`, the
+  path `HyperAggro` uses). The "custom slider to 1000%" is a thin UI over a value multiplier — no
+  new RE wall.
+- **#12 "all moves at once"** — HARD, unmapped. Ability sequencing is the boss **behaviour tree**
+  ("BHV" nodes) + per-ability controllers (cooldown / windup / phase gates), not a scalar. True
+  simultaneity needs BHV-asset surgery or a per-tick ability-force-trigger hook (engine-AI,
+  MP-determinism-sensitive). Closest tractable approximation: drive ability **cooldowns** toward
+  zero (if they surface as enemy stats / entity-value keys) for a "spam" feel — pinning those
+  cooldown keys is the next RE step.
+
 ## See also
 
 - [`../MOD_HOOKS.md`](../MOD_HOOKS.md) — `oCTLibrary` ABI, named-event
