@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { apiUrl } from './metadata';
 
+const SITE = 'Ravenswatch Mod Manager';
+
 export async function generateMetadata({
   params,
 }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
@@ -9,15 +11,36 @@ export async function generateMetadata({
     const res = await fetch(`${apiUrl}/api/collections/${slug}`, {
       next: { revalidate: 60 },
     });
-    if (!res.ok) return { title: 'Collection · Ravenswatch Mod Manager' };
+    if (!res.ok) return { title: `Collection · ${SITE}` };
     const json = await res.json();
+    if (!json?.name) return { title: `Collection · ${SITE}` };
+
+    const title = `${json.name} · Collection · ${SITE}`;
+    const description =
+      json.summary ?? `A collection of ${json.modCount} mods for Ravenswatch.`;
+    const image: string | undefined = json.imageUrl;
+
     return {
-      title: `${json.name} · Collection · Ravenswatch Mod Manager`,
-      description: json.summary ?? `A collection of ${json.modCount} mods for Ravenswatch.`,
-      openGraph: json.imageUrl ? { images: [{ url: json.imageUrl }] } : undefined,
+      title,
+      description,
+      alternates: { canonical: `/c/${slug}` },
+      openGraph: {
+        type: 'article',
+        title,
+        description,
+        url: `/c/${slug}`,
+        siteName: SITE,
+        images: image ? [{ url: image, alt: `${json.name} collection` }] : undefined,
+      },
+      twitter: {
+        card: image ? 'summary_large_image' : 'summary',
+        title,
+        description,
+        images: image ? [image] : undefined,
+      },
     };
   } catch {
-    return { title: 'Collection · Ravenswatch Mod Manager' };
+    return { title: `Collection · ${SITE}` };
   }
 }
 
