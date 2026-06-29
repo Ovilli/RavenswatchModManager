@@ -70,25 +70,37 @@ function modJsonLd(slug: string, mod: Mod) {
   const hasRating = mod.rating != null && mod.ratingCount != null && mod.ratingCount > 0;
   return {
     '@context': 'https://schema.org',
-    '@type': 'SoftwareApplication',
-    name: mod.name,
-    description: mod.summary ?? `${mod.name} — a mod for Ravenswatch.`,
-    applicationCategory: 'GameApplication',
-    operatingSystem: 'Windows, Linux',
-    url: `${ORIGIN}/registry/${slug}`,
-    ...(image ? { image } : {}),
-    ...(mod.author ? { author: { '@type': 'Person', name: mod.author } } : {}),
-    offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
-    ...(hasRating
-      ? {
-          aggregateRating: {
-            '@type': 'AggregateRating',
-            ratingValue: mod.rating,
-            ratingCount: mod.ratingCount,
-            bestRating: 5,
-          },
-        }
-      : {}),
+    '@graph': [
+      {
+        '@type': 'SoftwareApplication',
+        name: mod.name,
+        description: mod.summary ?? `${mod.name} — a mod for Ravenswatch.`,
+        applicationCategory: 'GameApplication',
+        operatingSystem: 'Windows, Linux',
+        url: `${ORIGIN}/registry/${slug}`,
+        ...(image ? { image } : {}),
+        ...(mod.author ? { author: { '@type': 'Person', name: mod.author } } : {}),
+        offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+        ...(hasRating
+          ? {
+              aggregateRating: {
+                '@type': 'AggregateRating',
+                ratingValue: mod.rating,
+                ratingCount: mod.ratingCount,
+                bestRating: 5,
+              },
+            }
+          : {}),
+      },
+      {
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Home', item: ORIGIN },
+          { '@type': 'ListItem', position: 2, name: 'Registry', item: `${ORIGIN}/registry` },
+          { '@type': 'ListItem', position: 3, name: mod.name },
+        ],
+      },
+    ],
   };
 }
 

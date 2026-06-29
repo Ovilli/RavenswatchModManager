@@ -2,6 +2,19 @@ import type { Metadata } from 'next';
 import { apiUrl } from './metadata';
 
 const SITE = 'Ravenswatch Mod Manager';
+const ORIGIN = 'https://rsmm.me';
+
+// Deduped with generateMetadata's fetch (same URL+opts) within a request.
+async function getCollection(slug: string): Promise<{ name?: string } | null> {
+  try {
+    const res = await fetch(`${apiUrl}/api/collections/${slug}`, { next: { revalidate: 60 } });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json?.name ? json : null;
+  } catch {
+    return null;
+  }
+}
 
 export async function generateMetadata({
   params,
@@ -44,6 +57,35 @@ export async function generateMetadata({
   }
 }
 
-export default function Layout({ children }: { children: React.ReactNode }) {
-  return children;
+export default async function Layout({
+  children,
+  params,
+}: {
+  children: React.ReactNode;
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+  const collection = await getCollection(slug);
+  return (
+    <>
+      {collection ? (
+        <script
+          type="application/ld+json"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: server-built JSON-LD from our own API, not user HTML.
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: ORIGIN },
+                { '@type': 'ListItem', position: 2, name: 'Collections', item: `${ORIGIN}/c` },
+                { '@type': 'ListItem', position: 3, name: collection.name },
+              ],
+            }),
+          }}
+        />
+      ) : null}
+      {children}
+    </>
+  );
 }

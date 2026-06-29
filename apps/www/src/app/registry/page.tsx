@@ -54,7 +54,9 @@ function RegistryFallback() {
 function RegistryInner() {
   const router = useRouter();
   const search = useSearchParams();
-  const [q, setQ] = useState('');
+  // Seed the search box from `?q=` so deep links (and Google's sitelinks
+  // search box via the WebSite SearchAction) land on pre-filled results.
+  const [q, setQ] = useState(() => search.get('q') ?? '');
   const [cat, setCat] = useState<ModCategory | 'all'>('all');
   const [sort, setSort] = useState<Sort>('popular');
   const [featuredOnly, setFeaturedOnly] = useState(false);

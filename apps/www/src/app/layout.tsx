@@ -1,5 +1,5 @@
 import { SpeedInsights } from '@vercel/speed-insights/next';
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import Link from 'next/link';
 import { Nav } from './nav';
 import { Providers } from './providers';
@@ -29,6 +29,10 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport: Viewport = {
+  themeColor: '#0a0a0a',
+};
+
 const footerLinks = [
   { href: '/download', label: 'Download' },
   { href: 'https://github.com/Ovilli/RavenswatchModManager', label: 'Source Code' },
@@ -41,6 +45,42 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className="dark">
       <body className="flex min-h-screen flex-col">
+        {/* Sitewide structured data: Organization (logo in knowledge panel) +
+            WebSite with a SearchAction (Google sitelinks search box pointing
+            at the registry search). */}
+        <script
+          type="application/ld+json"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: static, server-built JSON-LD — not user input.
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@graph': [
+                {
+                  '@type': 'Organization',
+                  '@id': 'https://rsmm.me/#org',
+                  name: 'Ravenswatch Mod Manager',
+                  url: 'https://rsmm.me',
+                  logo: 'https://rsmm.me/logo.png',
+                },
+                {
+                  '@type': 'WebSite',
+                  '@id': 'https://rsmm.me/#website',
+                  name: 'Ravenswatch Mod Manager',
+                  url: 'https://rsmm.me',
+                  publisher: { '@id': 'https://rsmm.me/#org' },
+                  potentialAction: {
+                    '@type': 'SearchAction',
+                    target: {
+                      '@type': 'EntryPoint',
+                      urlTemplate: 'https://rsmm.me/registry?q={search_term_string}',
+                    },
+                    'query-input': 'required name=search_term_string',
+                  },
+                },
+              ],
+            }),
+          }}
+        />
         <Nav versionBadge={<VersionBadge />} />
         <div className="flex-1">
           <Providers>{children}</Providers>
