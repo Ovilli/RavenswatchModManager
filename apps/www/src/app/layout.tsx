@@ -11,6 +11,22 @@ export const metadata: Metadata = {
   title: 'Ravenswatch Mod Manager',
   description: 'Mod manager for Ravenswatch — browser, Windows, Linux.',
   icons: '/logo.png',
+  // Site-wide social-card defaults. Per-mod / per-collection pages override
+  // title/description/images in their own layout's generateMetadata.
+  openGraph: {
+    type: 'website',
+    siteName: 'Ravenswatch Mod Manager',
+    title: 'Ravenswatch Mod Manager',
+    description: 'Mod manager for Ravenswatch — browser, Windows, Linux.',
+    url: '/',
+    images: [{ url: '/logo.png', alt: 'Ravenswatch Mod Manager' }],
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Ravenswatch Mod Manager',
+    description: 'Mod manager for Ravenswatch — browser, Windows, Linux.',
+    images: ['/logo.png'],
+  },
 };
 
 const footerLinks = [

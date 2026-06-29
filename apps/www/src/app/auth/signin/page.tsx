@@ -31,12 +31,17 @@ function SignInInner() {
 
   const config = useQuery({ queryKey: authConfigQueryKey, queryFn: fetchAuthConfig });
   const next = search.get('next') ?? '/';
-  const callbackURL = next.startsWith('http') ? next : `${window.location.origin}${next}`;
+
+  // Resolved at click time, not during render: `window` is undefined on the
+  // server and reading it in the component body throws on SSR.
+  const resolveCallbackURL = () =>
+    next.startsWith('http') ? next : `${window.location.origin}${next}`;
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setBusy(true);
+    const callbackURL = resolveCallbackURL();
     const res = await signIn.email({ email, password, callbackURL });
     setBusy(false);
     if (res.error) setError(res.error.message ?? 'sign-in failed');
@@ -46,7 +51,7 @@ function SignInInner() {
   async function social(provider: 'google' | 'github') {
     setError(null);
     setBusy(true);
-    const res = await signIn.social({ provider, callbackURL });
+    const res = await signIn.social({ provider, callbackURL: resolveCallbackURL() });
     if (res.error) {
       setBusy(false);
       setError(res.error.message ?? `${provider} sign-in failed`);

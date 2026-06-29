@@ -233,6 +233,13 @@ matching OAuth credentials exist in the API env — `/api/auth-config`
 reports which providers are configured and the UI renders only those. No
 code change is needed to enable them.
 
+> The callback URL **must** be `<BETTER_AUTH_URL>/api/auth/callback/<provider>`
+> where `BETTER_AUTH_URL` is whatever the deployed API actually serves under.
+> If the API runs on Vercel (the current setup) at `https://api.rsmm.me`, the
+> callback is `https://api.rsmm.me/api/auth/callback/google`. A mismatch here
+> is the #1 cause of `Error 400: redirect_uri_mismatch`. Changing
+> `BETTER_AUTH_URL` later means updating BOTH the env var *and* the console.
+
 To turn on **Google**:
 
 1. **Google Cloud Console** → *APIs & Services* → *Credentials* →
@@ -241,24 +248,24 @@ To turn on **Google**:
 2. Under **Authorized redirect URIs**, add (must match `BETTER_AUTH_URL`
    exactly — no trailing slash):
    ```
-   https://rsmm-api.fly.dev/api/auth/callback/google
+   https://api.rsmm.me/api/auth/callback/google
    ```
-   Add a second entry pointing at `http://localhost:3001/...` if you want
-   Google sign-in to work in local dev too.
-3. Copy the generated client ID + secret onto the API:
-   ```sh
-   fly secrets set \
-     GOOGLE_CLIENT_ID='<client-id>' \
-     GOOGLE_CLIENT_SECRET='<client-secret>'
-   ```
-4. `fly deploy` (or wait for the secret-triggered restart). Reload
-   `/auth/signin` — the Google button now appears on both web and the
-   desktop app.
+   Add a second entry `http://localhost:3001/api/auth/callback/google` if you
+   want Google sign-in to work in local dev too — and run the API locally with
+   `BETTER_AUTH_URL=http://localhost:3001` so the generated callback matches
+   (you can't test locally while `BETTER_AUTH_URL` points at prod).
+3. Set the generated client ID + secret on the API host. On **Vercel**:
+   Project → Settings → Environment Variables → add `GOOGLE_CLIENT_ID` and
+   `GOOGLE_CLIENT_SECRET` (Production + Preview), then **redeploy** — Vercel
+   does not apply env changes to the running deployment until you redeploy.
+   (On a Fly/Railway host instead: `fly secrets set GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=...`.)
+4. After the redeploy, reload `/auth/signin` — the Google button appears once
+   `/api/auth-config` reports `google: true`.
 
 **GitHub** is identical: register an OAuth App at
-*GitHub → Settings → Developer settings → OAuth Apps*, set the callback
-to `https://rsmm-api.fly.dev/api/auth/callback/github`, then
-`fly secrets set GITHUB_CLIENT_ID=... GITHUB_CLIENT_SECRET=...`.
+*GitHub → Settings → Developer settings → OAuth Apps*, set the callback to
+`https://api.rsmm.me/api/auth/callback/github`, then set
+`GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` the same way and redeploy.
 
 Both providers are off by default and safe to skip — email/password
 sign-in works without them.
