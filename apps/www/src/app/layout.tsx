@@ -2,6 +2,7 @@ import { SpeedInsights } from '@vercel/speed-insights/next';
 import type { Metadata, Viewport } from 'next';
 import { Cormorant_Garamond, EB_Garamond, JetBrains_Mono, UnifrakturCook } from 'next/font/google';
 import Link from 'next/link';
+import Script from 'next/script';
 import { Nav } from './nav';
 import { Providers } from './providers';
 import { VersionBadge } from './version-badge';
@@ -42,6 +43,8 @@ export const metadata: Metadata = {
   title: 'Ravenswatch Mod Manager',
   description: 'Mod manager for Ravenswatch — browser, Windows, Linux.',
   icons: '/logo.png',
+  // AdSense site-ownership verification (alongside the loader script).
+  other: { 'google-adsense-account': 'ca-pub-9139637424510522' },
   // Site-wide social-card defaults. Per-mod / per-collection pages override
   // title/description/images in their own layout's generateMetadata.
   openGraph: {
@@ -68,6 +71,8 @@ const footerLinks = [
   { href: '/download', label: 'Download' },
   { href: 'https://github.com/Ovilli/RavenswatchModManager', label: 'Source Code' },
   { href: '/registry', label: 'Registry' },
+  { href: '/about', label: 'About' },
+  { href: '/contact', label: 'Contact' },
   { href: '/legal', label: 'Legal Notice' },
   { href: '/privacy', label: 'Privacy Policy' },
 ] as const;
@@ -257,6 +262,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
         </footer>
         <SpeedInsights />
+        {/* Google AdSense loader. Production only (Google rejects the script
+            from localhost/preview). This both verifies the site during the
+            AdSense review and serves Auto Ads once approved. */}
+        {process.env.NODE_ENV === 'production' ? (
+          <Script
+            id="adsbygoogle-init"
+            strategy="afterInteractive"
+            async
+            crossOrigin="anonymous"
+            src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9139637424510522"
+          />
+        ) : null}
       </body>
     </html>
   );

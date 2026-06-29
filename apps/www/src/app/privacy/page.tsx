@@ -74,7 +74,56 @@ export default function PrivacyPage() {
           </section>
 
           <section className="space-y-2">
-            <h2 className="text-lg font-semibold text-foreground">7. Changes to This Policy</h2>
+            <h2 className="text-lg font-semibold text-foreground">7. Advertising &amp; Cookies</h2>
+            <p>
+              This website uses cookies and may display advertising served by Google AdSense and its
+              partners. Third-party vendors, including Google, use cookies to serve ads based on your
+              prior visits to this and other websites.
+            </p>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>
+                Google&apos;s use of advertising cookies (including the DoubleClick DART cookie)
+                enables it and its partners to serve ads to you based on your visit to this site
+                and/or other sites on the Internet.
+              </li>
+              <li>
+                You may opt out of personalised advertising by visiting{' '}
+                <a
+                  href="https://www.google.com/settings/ads"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-foreground"
+                >
+                  Google Ads Settings
+                </a>
+                .
+              </li>
+              <li>
+                You can opt out of a third-party vendor&apos;s use of cookies for personalised
+                advertising at{' '}
+                <a
+                  href="https://www.aboutads.info/choices/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-foreground"
+                >
+                  aboutads.info/choices
+                </a>
+                .
+              </li>
+              <li>
+                Visitors in the EU/EEA/UK are shown a consent prompt before personalised ads and
+                non-essential cookies are used, in line with applicable law.
+              </li>
+            </ul>
+            <p>
+              Essential cookies required for sign-in and security are always set; you can disable all
+              cookies in your browser settings, though parts of the site may stop working.
+            </p>
+          </section>
+
+          <section className="space-y-2">
+            <h2 className="text-lg font-semibold text-foreground">8. Changes to This Policy</h2>
             <p>
               This privacy policy may be updated from time to time. Changes will be announced via
               the project repository.

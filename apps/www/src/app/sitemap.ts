@@ -40,7 +40,16 @@ async function fetchEntries(basePath: string): Promise<Entry[]> {
 // (they hold no publisher content and must not be tied to ad serving).
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
-  const staticRoutes = ['', '/download', '/registry', '/c', '/privacy', '/legal'].map((path) => ({
+  const staticRoutes = [
+    '',
+    '/download',
+    '/registry',
+    '/c',
+    '/about',
+    '/contact',
+    '/privacy',
+    '/legal',
+  ].map((path) => ({
     url: `${BASE}${path}`,
     lastModified: now,
     changeFrequency: (path === '' || path === '/registry' || path === '/c'
