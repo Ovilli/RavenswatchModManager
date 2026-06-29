@@ -1,4 +1,5 @@
-@import url("https://fonts.googleapis.com/css2?family=UnifrakturCook:wght@700&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500;1,600&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=JetBrains+Mono:wght@400;500;700&display=swap");
+/* Fonts are loaded via next/font (see layout.tsx) and exposed as CSS vars
+   (--font-fraktur, --font-cormorant, --font-garamond, --font-mono). */
 
 @tailwind base;
 @tailwind components;
@@ -50,7 +51,7 @@
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
-    font-family: "EB Garamond", Georgia, serif;
+    font-family: var(--font-garamond), Georgia, serif;
     font-size: 16px;
     line-height: 1.55;
     font-feature-settings: "liga" 1, "kern" 1;
@@ -68,19 +69,19 @@
   }
 
   .font-fraktur {
-    font-family: "UnifrakturCook", "UnifrakturMaguntia", serif;
+    font-family: var(--font-fraktur), "UnifrakturMaguntia", serif;
     font-weight: 700;
     letter-spacing: 0.02em;
   }
 
   .font-serif-italic {
-    font-family: "Cormorant Garamond", Georgia, serif;
+    font-family: var(--font-cormorant), Georgia, serif;
     font-style: italic;
     font-weight: 500;
   }
 
   .font-mono {
-    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-family: var(--font-mono), ui-monospace, monospace;
     font-weight: 500;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -105,7 +106,7 @@
     align-items: center;
     gap: 0;
     color: hsl(var(--ash));
-    font-family: "EB Garamond", serif;
+    font-family: var(--font-garamond), serif;
   }
   .rule-fleuron::before,
   .rule-fleuron::after {
@@ -130,7 +131,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: "JetBrains Mono", monospace;
+    font-family: var(--font-mono), monospace;
     font-size: 0.7rem;
     letter-spacing: 0.1em;
     text-transform: lowercase;
@@ -368,7 +369,7 @@
     border-radius: 999px;
     color: hsl(var(--ash));
     background-color: hsl(var(--pitch) / 0.6);
-    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-family: var(--font-mono), ui-monospace, monospace;
     font-size: 0.7rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -398,7 +399,7 @@
     border-radius: calc(var(--radius) - 2px);
     color: hsl(var(--parchment));
     background-color: hsl(var(--char) / 0.22);
-    font-family: "Cormorant Garamond", Georgia, serif;
+    font-family: var(--font-cormorant), Georgia, serif;
     font-style: normal;
     font-weight: 600;
     font-size: 0.95rem;
@@ -453,7 +454,7 @@
     border-radius: calc(var(--radius) - 2px);
     background-color: hsl(var(--pitch) / 0.64);
     color: hsl(var(--parchment));
-    font-family: "Cormorant Garamond", Georgia, serif;
+    font-family: var(--font-cormorant), Georgia, serif;
     font-style: italic;
     font-size: 1rem;
     transition: border-color 150ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 150ms

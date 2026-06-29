@@ -1,10 +1,41 @@
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import type { Metadata, Viewport } from 'next';
+import { Cormorant_Garamond, EB_Garamond, JetBrains_Mono, UnifrakturCook } from 'next/font/google';
 import Link from 'next/link';
 import { Nav } from './nav';
 import { Providers } from './providers';
 import { VersionBadge } from './version-badge';
 import './globals.css';
+
+// Self-hosted + preloaded via next/font (was a render-blocking CSS @import of
+// Google Fonts that serialised the load waterfall). `swap` avoids invisible
+// text; each exposes a CSS var consumed by globals.css.
+const fraktur = UnifrakturCook({
+  weight: '700',
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-fraktur',
+});
+const cormorant = Cormorant_Garamond({
+  weight: ['400', '500', '600'],
+  style: ['normal', 'italic'],
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-cormorant',
+});
+const garamond = EB_Garamond({
+  weight: ['400', '500', '600'],
+  style: ['normal', 'italic'],
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-garamond',
+});
+const mono = JetBrains_Mono({
+  weight: ['400', '500', '700'],
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-mono',
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://rsmm.me'),
@@ -43,7 +74,10 @@ const footerLinks = [
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
+    <html
+      lang="en"
+      className={`dark ${fraktur.variable} ${cormorant.variable} ${garamond.variable} ${mono.variable}`}
+    >
       <body className="flex min-h-screen flex-col">
         {/* Sitewide structured data: Organization (logo in knowledge panel) +
             WebSite with a SearchAction (Google sitelinks search box pointing
