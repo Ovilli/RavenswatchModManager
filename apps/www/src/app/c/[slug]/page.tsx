@@ -22,6 +22,7 @@ import type { Route } from 'next';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { use, useEffect, useState } from 'react';
+import { AdBanner } from '../../components/ad-banner';
 import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
 
@@ -671,6 +672,10 @@ export default function CollectionDetailPage({
           ))}
         </ul>
       )}
+
+      <div className="mx-auto w-full max-w-2xl">
+        <AdBanner slot="1934448674" className="rounded-lg" />
+      </div>
 
       {/* ─── Reviews ─── */}
       <section className="space-y-4">

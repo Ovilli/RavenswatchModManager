@@ -17,6 +17,7 @@ import {
 import type { Route } from 'next';
 import Link from 'next/link';
 import { use, useCallback, useEffect, useMemo, useState } from 'react';
+import { AdBanner } from '../../components/ad-banner';
 import { api } from '../../../lib/api';
 import { getApiUrl } from '../../../lib/api-url';
 import { useSession } from '../../../lib/auth-client';
@@ -273,6 +274,7 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
                 </ul>
               </div>
             ) : null}
+            <AdBanner slot="1934448674" className="rounded-lg" />
           </aside>
         </div>
       </div>
