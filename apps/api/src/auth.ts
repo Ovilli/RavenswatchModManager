@@ -1,3 +1,4 @@
+import { tauri } from '@daveyplate/better-auth-tauri/plugin';
 import { getDb, schema } from '@rsmm/db';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
@@ -41,6 +42,12 @@ export const auth = betterAuth({
     },
   }),
   socialProviders,
+  // Bridges OAuth callbacks back into the Tauri desktop app via the `rsmm://`
+  // deep-link scheme: rewrites the social redirect to a success page that
+  // deep-links into the running app, where the client picks up the session.
+  // No-op for the web flow (which uses normal http callbackURLs) and for
+  // email/password. See apps/desktop/src/main.tsx (setupBetterAuthTauri).
+  plugins: [tauri({ scheme: 'rsmm' })],
   emailAndPassword: {
     enabled: true,
     autoSignIn: !isProduction && !smtpConfigured(),

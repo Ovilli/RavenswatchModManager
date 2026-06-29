@@ -225,6 +225,46 @@ The API is now live at `https://rsmm-api.fly.dev`. Save that URL — Vercel and 
 
 ---
 
+## Step 5b: Social sign-in (optional — Google / GitHub)
+
+The "Continue with Google" / "Continue with GitHub" buttons are **already
+built** into the sign-in and sign-up pages. They stay hidden until the
+matching OAuth credentials exist in the API env — `/api/auth-config`
+reports which providers are configured and the UI renders only those. No
+code change is needed to enable them.
+
+To turn on **Google**:
+
+1. **Google Cloud Console** → *APIs & Services* → *Credentials* →
+   *Create Credentials* → *OAuth client ID*. Application type:
+   **Web application**.
+2. Under **Authorized redirect URIs**, add (must match `BETTER_AUTH_URL`
+   exactly — no trailing slash):
+   ```
+   https://rsmm-api.fly.dev/api/auth/callback/google
+   ```
+   Add a second entry pointing at `http://localhost:3001/...` if you want
+   Google sign-in to work in local dev too.
+3. Copy the generated client ID + secret onto the API:
+   ```sh
+   fly secrets set \
+     GOOGLE_CLIENT_ID='<client-id>' \
+     GOOGLE_CLIENT_SECRET='<client-secret>'
+   ```
+4. `fly deploy` (or wait for the secret-triggered restart). Reload
+   `/auth/signin` — the Google button now appears on both web and the
+   desktop app.
+
+**GitHub** is identical: register an OAuth App at
+*GitHub → Settings → Developer settings → OAuth Apps*, set the callback
+to `https://rsmm-api.fly.dev/api/auth/callback/github`, then
+`fly secrets set GITHUB_CLIENT_ID=... GITHUB_CLIENT_SECRET=...`.
+
+Both providers are off by default and safe to skip — email/password
+sign-in works without them.
+
+---
+
 ## Step 6: Vercel (host for apps/www)
 
 1. Sign up at **<https://vercel.com>**, GitHub login.

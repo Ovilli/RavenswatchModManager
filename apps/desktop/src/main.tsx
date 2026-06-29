@@ -1,13 +1,34 @@
 import '@rsmm/ui/styles.css';
+import { setupBetterAuthTauri } from '@daveyplate/better-auth-tauri';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider, createRouter } from '@tanstack/react-router';
+import { isTauri } from '@tauri-apps/api/core';
 import { Component, type ErrorInfo, type ReactNode, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RouteErrorComponent } from './components/route-error';
+import { authClient } from './lib/auth-client';
 import { wireGlobalErrorHandlers } from './lib/telemetry';
 import { routeTree } from './routeTree.gen';
 
 wireGlobalErrorHandlers();
+
+// Listen for the OAuth deep-link callback (rsmm://…) the API redirects to
+// after a social sign-in completes in the system browser. Only meaningful
+// inside the Tauri shell; the plain Vite dev server / web build skip it.
+if (isTauri()) {
+  setupBetterAuthTauri({
+    authClient,
+    scheme: 'rsmm',
+    onSuccess: (callbackURL) => {
+      // Land back on the app root (or the requested next URL) now that the
+      // session cookie has been exchanged.
+      window.location.href = callbackURL || '/';
+    },
+    onError: (error) => {
+      console.error('[oauth] tauri deep-link auth failed', error);
+    },
+  });
+}
 
 class RootErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   override state = { error: null as Error | null };

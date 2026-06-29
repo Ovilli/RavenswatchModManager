@@ -40,6 +40,17 @@
         ] }
       ]
     },
+    "deep-link:default",
+    "opener:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://api.rsmm.me/**" },
+        { "url": "https://accounts.google.com/**" },
+        { "url": "https://github.com/**" },
+        { "url": "http://localhost:*/**" }
+      ]
+    },
     "updater:default",
     "process:default"
   ]
