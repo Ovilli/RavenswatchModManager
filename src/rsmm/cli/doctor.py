@@ -82,6 +82,18 @@ def check_game_update(game_dir: Path) -> list[Result]:
     return [Result("OK", "game version unchanged")]
 
 
+def _is_writable(d: Path) -> bool:
+    """Probe-write a temp file in `d`. os.access(W_OK) lies on Windows for
+    dirs, so actually attempt the write rsmm's apply will make."""
+    probe = d / ".rsmm_write_probe"
+    try:
+        probe.write_text("", encoding="utf-8")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
+
+
 def check_game_install(game_dir: Path) -> list[Result]:
     if not game_dir.exists():
         return [Result("FAIL", f"game_dir not found: {game_dir}",
@@ -90,7 +102,15 @@ def check_game_install(game_dir: Path) -> list[Result]:
     if not cooking.is_dir():
         return [Result("FAIL", f"_Cooking missing under {game_dir}",
                        f"Expected: {cooking}")]
-    return [Result("OK", f"game install: {game_dir}")]
+    out = [Result("OK", f"game install: {game_dir}")]
+    # apply writes into _Cooking — a read-only/locked tree fails mid-apply
+    # and leaves the install half-modified. Catch it before apply runs.
+    if not _is_writable(cooking):
+        out.append(Result("FAIL", f"_Cooking is not writable: {cooking}",
+                          "Close the game if it's running, then check folder "
+                          "permissions (or run with the rights to write the "
+                          "install). apply WILL fail mid-write otherwise."))
+    return out
 
 
 def check_loader(game_dir: Path) -> list[Result]:

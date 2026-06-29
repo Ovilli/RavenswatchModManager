@@ -21,7 +21,11 @@ from dataclasses import asdict, dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
+from rsmm.logging import get_logger
+
 from .paths import DATA_DIR
+
+logger = get_logger(__name__)
 
 MAGIC_RARITIES = ("Common", "Rare", "Epic", "Legendary", "Cursed", "Powerups")
 
@@ -114,8 +118,10 @@ def registry() -> dict[str, MagicItem]:
             item_id = f.name.split(".entity.ot.", 1)[0]
             try:
                 out[item_id] = _scan_one(item_id, rarity, f)
-            except Exception:
-                # Best-effort; broken/partial dumps just get skipped.
+            except Exception as e:
+                # Best-effort; broken/partial dumps just get skipped, but
+                # log so a missing item in the registry is diagnosable.
+                logger.debug("skipping unscannable magic item %s: %s", f, e)
                 continue
     return out
 
