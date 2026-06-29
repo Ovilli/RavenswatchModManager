@@ -247,48 +247,38 @@ function RegistryInner() {
                           href={`${getApiUrl()}/api/mods/${m.slug}/${m.latestVersion}/download`}
                           className={buttonVariants({ variant: 'outline', size: 'sm' })}
                           title="Download mod archive"
+                          aria-label={`Download ${m.name} archive`}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <Download className="h-3.5 w-3.5" />
+                          <Download className="h-3.5 w-3.5" aria-hidden="true" />
                         </a>
                       ) : null}
                       <a
                         href={`rsmm://mods/${m.slug}`}
                         className={buttonVariants({ variant: 'outline', size: 'sm' })}
                         title="Open in RSMM desktop app"
+                        aria-label={`Open ${m.name} in the RSMM desktop app`}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <ExternalLink className="h-3.5 w-3.5" />
+                        <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                       </a>
                     </div>
                   </div>
                 </CardHeader>
-                {m.summary ? (
-                  <CardContent className="space-y-3">
+                <CardContent className="space-y-3">
+                  {m.summary ? (
                     <p className="text-sm text-muted-foreground line-clamp-2">{m.summary}</p>
-                    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                      <div className="flex items-center gap-2">
-                        {m.category ? <Badge variant="secondary">{m.category}</Badge> : null}
-                        <span>{m.downloads.toLocaleString()} dl</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {m.rating != null ? <span>★ {m.rating.toFixed(1)}</span> : null}
-                      </div>
+                  ) : null}
+                  <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                      {m.category ? <Badge variant="secondary">{m.category}</Badge> : null}
+                      <span>{m.downloads.toLocaleString()} dl</span>
                     </div>
-                  </CardContent>
-                ) : (
-                  <CardContent>
-                    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                      <div className="flex items-center gap-2">
-                        {m.category ? <Badge variant="secondary">{m.category}</Badge> : null}
-                        <span>{m.downloads.toLocaleString()} dl</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {m.rating != null ? <span>★ {m.rating.toFixed(1)}</span> : null}
-                      </div>
+                    <div className="flex items-center gap-1">
+                      {m.rating != null ? <span>★ {m.rating.toFixed(1)}</span> : null}
                     </div>
-                  </CardContent>
-                )}
+                  </div>
+                </CardContent>
               </div>
             ))}
           </div>

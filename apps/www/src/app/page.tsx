@@ -1,9 +1,10 @@
 import type { ModListItem } from '@rsmm/schemas';
-import { Badge, buttonVariants } from '@rsmm/ui';
+import { buttonVariants } from '@rsmm/ui';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { getApiUrl } from '../lib/api-url';
 import { FAQ } from './components/faq';
+import { ModCard } from './components/mod-card';
 import { MockClient } from './mock-client';
 import { OsDownload } from './os-download';
 import { QuickSearch } from './quick-search';
@@ -45,7 +46,11 @@ async function getHomeData(): Promise<HomeData> {
       const body = await modRes.value.json();
       mods = body.items ?? [];
       totalMods = body.total ?? 0;
-      totalModDownloads = mods.reduce((s: number, m: ModListItem) => s + (m.downloads ?? 0), 0);
+      // Prefer the server-side aggregate over all mods; fall back to summing
+      // the current page only if an older API build omits it.
+      totalModDownloads =
+        body.totalDownloads ??
+        mods.reduce((s: number, m: ModListItem) => s + (m.downloads ?? 0), 0);
     }
 
     if (featRes.status === 'fulfilled' && featRes.value.ok) {
@@ -272,20 +277,26 @@ export default async function Home() {
             By the numbers — a growing library of mods and an active community.
           </p>
         </div>
-        <div className="grid gap-6 sm:grid-cols-3">
+        <dl className="grid gap-6 sm:grid-cols-3">
           {[
-            { label: 'Available Mods', value: totalMods || '?' },
-            { label: 'Mod Downloads', value: totalModDownloads || '?' },
-            { label: 'App Downloads', value: appDownloads || '?' },
-          ].map((stat) => (
-            <div key={stat.label} className="grimoire-card p-6 text-center">
-              <div className="text-5xl font-black tracking-tight text-foreground">
-                {typeof stat.value === 'number' ? fmt(stat.value) : stat.value}
+            { label: 'Available Mods', value: totalMods },
+            { label: 'Mod Downloads', value: totalModDownloads },
+            { label: 'App Downloads', value: appDownloads },
+          ].map((stat) => {
+            const hasValue = stat.value > 0;
+            return (
+              <div key={stat.label} className="grimoire-card p-6 text-center">
+                <dd
+                  className="text-5xl font-black tracking-tight text-foreground"
+                  aria-label={hasValue ? undefined : 'Currently unavailable'}
+                >
+                  {hasValue ? fmt(stat.value) : '—'}
+                </dd>
+                <dt className="mt-2 text-sm text-muted-foreground">{stat.label}</dt>
               </div>
-              <div className="mt-2 text-sm text-muted-foreground">{stat.label}</div>
-            </div>
-          ))}
-        </div>
+            );
+          })}
+        </dl>
       </section>
 
       {/* ───── Featured ───── */}
@@ -309,46 +320,7 @@ export default async function Home() {
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {featured.slice(0, 4).map((mod) => (
-              <Link
-                key={mod.id}
-                href={`/registry/${mod.slug}` as Route}
-                className="grimoire-card overflow-hidden group cursor-pointer ring-1 ring-gilt/30 transition-colors hover:border-gilt/60"
-              >
-                {mod.imageUrl ? (
-                  <div className="aspect-[4/3] w-full overflow-hidden bg-muted">
-                    <img
-                      src={mod.imageUrl}
-                      alt={`${mod.name} preview`}
-                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                      loading="lazy"
-                    />
-                  </div>
-                ) : (
-                  <div className="aspect-[4/3] w-full bg-muted" />
-                )}
-                <div className="space-y-2 p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <h3 className="text-sm font-semibold leading-tight text-foreground truncate">
-                        {mod.name}
-                      </h3>
-                      <p className="text-xs text-muted-foreground">by {mod.author ?? 'unknown'}</p>
-                    </div>
-                    <Badge className="shrink-0 bg-gilt/15 text-[0.6rem] text-gilt border-gilt/30">
-                      ★ Featured
-                    </Badge>
-                  </div>
-                  {mod.summary ? (
-                    <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
-                      {mod.summary}
-                    </p>
-                  ) : null}
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    <span>{mod.downloads.toLocaleString()} downloads</span>
-                    {mod.rating != null ? <span>★ {mod.rating.toFixed(1)}</span> : null}
-                  </div>
-                </div>
-              </Link>
+              <ModCard key={mod.id} mod={mod} featured />
             ))}
           </div>
         </section>
@@ -365,59 +337,13 @@ export default async function Home() {
         </div>
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {showcase.length > 0
-            ? showcase.map((mod) => (
-                <Link
-                  key={mod.id}
-                  href={`/registry/${mod.slug}` as Route}
-                  className="grimoire-card overflow-hidden group cursor-pointer hover:border-gilt/40 transition-colors"
-                >
-                  {mod.imageUrl ? (
-                    <div className="aspect-[4/3] w-full overflow-hidden bg-muted">
-                      <img
-                        src={mod.imageUrl}
-                        alt={`${mod.name} preview`}
-                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                        loading="lazy"
-                      />
-                    </div>
-                  ) : (
-                    <div className="aspect-[4/3] w-full bg-muted" />
-                  )}
-                  <div className="space-y-2 p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <h3 className="text-sm font-semibold leading-tight text-foreground truncate">
-                          {mod.name}
-                        </h3>
-                        <p className="text-xs text-muted-foreground">
-                          by {mod.author ?? 'unknown'}
-                        </p>
-                      </div>
-                      {mod.category ? (
-                        <Badge variant="outline" className="shrink-0 text-[0.6rem]">
-                          {mod.category}
-                        </Badge>
-                      ) : null}
-                    </div>
-                    {mod.summary ? (
-                      <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
-                        {mod.summary}
-                      </p>
-                    ) : null}
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      <span>{mod.downloads.toLocaleString()} downloads</span>
-                      {mod.rating != null ? <span>★ {mod.rating.toFixed(1)}</span> : null}
-                      {mod.latestVersion ? (
-                        <span className="ml-auto font-mono text-[0.6rem]">
-                          v{mod.latestVersion}
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                </Link>
-              ))
+            ? showcase.map((mod) => <ModCard key={mod.id} mod={mod} />)
             : ['s1', 's2', 's3', 's4'].map((key) => (
-                <div key={key} className="grimoire-card overflow-hidden">
+                <div
+                  key={key}
+                  className="grimoire-card overflow-hidden animate-pulse"
+                  aria-hidden="true"
+                >
                   <div className="aspect-[4/3] w-full bg-muted" />
                   <div className="space-y-2 p-4">
                     <div className="h-4 w-3/4 bg-muted rounded" />

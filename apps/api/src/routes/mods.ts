@@ -117,10 +117,18 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
     .offset(offset);
 
   const totals = await db
-    .select({ total: sql<number>`count(*)::int` })
+    .select({
+      total: sql<number>`count(*)::int`,
+      totalDownloads: sql<number>`coalesce(sum((
+        select sum(${schema.modDownloads.count})
+        from ${schema.modDownloads}
+        where ${schema.modDownloads.modId} = ${schema.mods.id}
+      )), 0)::int`,
+    })
     .from(schema.mods)
     .where(conditions.length ? and(...conditions) : undefined);
   const total = totals[0]?.total ?? 0;
+  const totalDownloads = totals[0]?.totalDownloads ?? 0;
 
   return c.json({
     items: rows.map((r) => ({
@@ -144,6 +152,7 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
       ownerId: r.ownerId,
     })),
     total,
+    totalDownloads,
   });
 });
 

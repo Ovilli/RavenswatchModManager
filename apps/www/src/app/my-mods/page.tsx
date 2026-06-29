@@ -129,8 +129,9 @@ export default function MyModsPage() {
                       href={`/registry/${m.slug}` as Route}
                       className="inline-flex items-center justify-center gap-1 rounded-md border border-input bg-background px-3 py-2 text-sm hover:bg-accent"
                       title="View public page"
+                      aria-label={`View ${m.name} public page`}
                     >
-                      <ExternalLink className="h-3.5 w-3.5" />
+                      <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                     </Link>
                   </div>
                 </div>
