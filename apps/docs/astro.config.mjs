@@ -29,6 +29,11 @@ export default defineConfig({
         { tag: 'meta', attrs: { name: 'twitter:image', content: 'https://docs.rsmm.me/og.png' } },
         // AI-assistant ingestion (https://llmstxt.org/).
         { tag: 'link', attrs: { rel: 'alternate', type: 'text/plain', title: 'llms.txt', href: '/llms.txt' } },
+        // Vercel Web Analytics. Starlight owns the page layout, so inject the
+        // insights script directly rather than the @vercel/analytics component
+        // (which needs a Head override). Requires Web Analytics enabled on the
+        // docs Vercel project.
+        { tag: 'script', attrs: { defer: true, src: '/_vercel/insights/script.js' } },
       ],
       editLink: {
         baseUrl: 'https://github.com/Ovilli/RavenswatchModManager/edit/main/apps/docs/',
