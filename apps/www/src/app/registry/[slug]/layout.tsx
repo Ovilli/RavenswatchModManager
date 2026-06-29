@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
+import { getApiUrl } from '../../../lib/api-url';
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.rsmm.me';
 const SITE = 'Ravenswatch Mod Manager';
 const ORIGIN = 'https://rsmm.me';
 
@@ -19,7 +19,7 @@ interface Mod {
 // generateMetadata and the layout component share this one round-trip.
 async function getMod(slug: string): Promise<Mod | null> {
   try {
-    const res = await fetch(`${apiUrl}/api/mods/${slug}`, { next: { revalidate: 60 } });
+    const res = await fetch(`${getApiUrl()}/api/mods/${slug}`, { next: { revalidate: 60 } });
     if (!res.ok) return null;
     // GET /api/mods/:slug wraps the record: { mod, versions }.
     const { mod } = await res.json();

@@ -1,7 +1,8 @@
 import type { MetadataRoute } from 'next';
+import { getApiUrl } from '../lib/api-url';
 
 const BASE = 'https://rsmm.me';
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.rsmm.me';
+const apiUrl = getApiUrl();
 
 // Re-fetch the dynamic entries at most hourly so a fresh mod shows up for
 // crawlers without hammering the API on every request.

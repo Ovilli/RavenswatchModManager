@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
+import { getApiUrl } from '../../../lib/api-url';
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.rsmm.me';
 const SITE = 'Ravenswatch Mod Manager';
 
 export async function generateMetadata({
@@ -8,7 +8,7 @@ export async function generateMetadata({
 }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
   try {
-    const res = await fetch(`${apiUrl}/api/users/${id}`, { next: { revalidate: 60 } });
+    const res = await fetch(`${getApiUrl()}/api/users/${id}`, { next: { revalidate: 60 } });
     if (!res.ok) return { title: `Author · ${SITE}` };
     const { user, mods } = await res.json();
     if (!user?.name) return { title: `Author · ${SITE}` };
