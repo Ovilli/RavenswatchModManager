@@ -1,4 +1,3 @@
-import { tauri } from '@daveyplate/better-auth-tauri/plugin';
 import { getDb, schema } from '@rsmm/db';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
@@ -42,12 +41,13 @@ export const auth = betterAuth({
     },
   }),
   socialProviders,
-  // Bridges OAuth callbacks back into the Tauri desktop app via the `rsmm://`
-  // deep-link scheme: rewrites the social redirect to a success page that
-  // deep-links into the running app, where the client picks up the session.
-  // No-op for the web flow (which uses normal http callbackURLs) and for
-  // email/password. See apps/desktop/src/main.tsx (setupBetterAuthTauri).
-  plugins: [tauri({ scheme: 'rsmm' })],
+  // NOTE: the @daveyplate/better-auth-tauri server plugin was removed — its
+  // `before` hook runs on ALL requests (it only gates the desktop behaviour
+  // on a `platform` header the web browser never sends) and mutated the
+  // shared socialProviders redirectURI per-request, breaking the web OAuth
+  // state check ("State not found"). Web Google sign-in works with stock
+  // Better Auth. Desktop deep-link OAuth needs a non-global approach — see
+  // memory google-signin-status. Until then desktop uses email/password.
   emailAndPassword: {
     enabled: true,
     autoSignIn: !isProduction && !smtpConfigured(),
