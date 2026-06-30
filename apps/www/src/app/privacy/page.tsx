@@ -77,8 +77,8 @@ export default function PrivacyPage() {
             <h2 className="text-lg font-semibold text-foreground">7. Advertising &amp; Cookies</h2>
             <p>
               This website uses cookies and may display advertising served by Google AdSense and its
-              partners. Third-party vendors, including Google, use cookies to serve ads based on your
-              prior visits to this and other websites.
+              partners. Third-party vendors, including Google, use cookies to serve ads based on
+              your prior visits to this and other websites.
             </p>
             <ul className="list-disc space-y-1 pl-5">
               <li>
@@ -112,13 +112,16 @@ export default function PrivacyPage() {
                 .
               </li>
               <li>
-                Visitors in the EU/EEA/UK are shown a consent prompt before personalised ads and
-                non-essential cookies are used, in line with applicable law.
+                Visitors in the EU/EEA/UK and other applicable regions are shown a consent prompt,
+                managed through a Google-certified Consent Management Platform, before personalised
+                ads and non-essential cookies are used. Your choice is recorded and applied via
+                Google Consent Mode, and you can withdraw or change it at any time by clearing this
+                site&apos;s cookies in your browser.
               </li>
             </ul>
             <p>
-              Essential cookies required for sign-in and security are always set; you can disable all
-              cookies in your browser settings, though parts of the site may stop working.
+              Essential cookies required for sign-in and security are always set; you can disable
+              all cookies in your browser settings, though parts of the site may stop working.
             </p>
           </section>
 

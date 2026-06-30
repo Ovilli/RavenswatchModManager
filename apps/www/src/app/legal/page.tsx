@@ -63,8 +63,14 @@ export default function LegalPage() {
             <h2 className="text-lg font-semibold text-foreground">Intellectual Property</h2>
             <p>
               &quot;Ravenswatch&quot; is a trademark of Passtech Games. All game assets, trademarks,
-              and copyrights are property of their respective owners. This mod manager operates on
-              local game files and does not distribute copyrighted content.
+              and copyrights are property of their respective owners. The mod manager applies
+              overrides to a user&apos;s own local game files. Community mods are uploaded by their
+              authors; the registry forbids redistribution of copyrighted game assets and removes
+              infringing material on request — see our{' '}
+              <Link href="/dmca" className="underline hover:text-foreground">
+                Content Policy &amp; Copyright
+              </Link>{' '}
+              page.
             </p>
           </section>
         </CardContent>

@@ -50,12 +50,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     '/contact',
     '/privacy',
     '/legal',
+    '/dmca',
   ].map((path) => ({
     url: `${BASE}${path}`,
     lastModified: now,
-    changeFrequency: (path === '' || path === '/registry' || path === '/c'
-      ? 'daily'
-      : 'monthly') as 'daily' | 'monthly',
+    changeFrequency: (path === '' || path === '/registry' || path === '/c' ? 'daily' : 'monthly') as
+      | 'daily'
+      | 'monthly',
     priority: path === '' ? 1 : 0.7,
   }));
 

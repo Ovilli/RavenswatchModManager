@@ -76,6 +76,7 @@ const footerLinks = [
   { href: '/contact', label: 'Contact' },
   { href: '/legal', label: 'Legal Notice' },
   { href: '/privacy', label: 'Privacy Policy' },
+  { href: '/dmca', label: 'Content Policy' },
 ] as const;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

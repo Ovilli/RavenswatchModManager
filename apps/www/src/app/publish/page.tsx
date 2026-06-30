@@ -490,6 +490,15 @@ export default function PublishPage() {
           </p>
         </section>
 
+        <p className="text-xs text-muted-foreground">
+          By publishing you confirm you have the rights to distribute this content and that it does
+          not contain copyrighted game assets or other infringing material. See the{' '}
+          <Link href="/dmca" className="underline hover:text-foreground">
+            Content Policy
+          </Link>
+          .
+        </p>
+
         <div className="flex items-center justify-between gap-3">
           <Link
             href="/registry"
