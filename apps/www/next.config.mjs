@@ -19,7 +19,7 @@ const nextConfig = {
             "default-src 'self'",
             "script-src 'self' 'unsafe-inline' https://pagead2.googlesyndication.com https://*.googlesyndication.com https://partner.googleadservices.com https://tpc.googlesyndication.com https://www.googletagservices.com https://adservice.google.com https://fundingchoicesmessages.google.com",
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-            "connect-src 'self' https://api.rsmm.me https://pagead2.googlesyndication.com https://*.googlesyndication.com https://*.g.doubleclick.net https://www.google.com",
+            "connect-src 'self' https://api.rsmm.me https://pagead2.googlesyndication.com https://*.googlesyndication.com https://*.g.doubleclick.net https://www.google.com https://fundingchoicesmessages.google.com",
             "img-src 'self' data: https://api.rsmm.me https://cdn.rsmm.me https://s3-rsmm.me https://s3-ravenswatch.ovilli.de https://*.googleusercontent.com https://*.googlesyndication.com https://*.g.doubleclick.net https://www.google.com",
             "font-src 'self' https://fonts.gstatic.com",
             "frame-src 'self' https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://www.google.com https://fundingchoicesmessages.google.com",
