@@ -100,17 +100,21 @@ export default function PublishPage() {
   const slugValid = SLUG_RE.test(slug);
   const versionValid = SEMVER_RE.test(version);
   const nameValid = name.trim().length > 0;
-  const canSubmit =
-    !!zip &&
-    slugValid &&
-    versionValid &&
-    nameValid &&
-    phase.kind !== 'hashing' &&
-    phase.kind !== 'presigning' &&
-    phase.kind !== 'uploading-zip' &&
-    phase.kind !== 'scanning' &&
-    phase.kind !== 'uploading-image' &&
-    phase.kind !== 'patching';
+  const busy =
+    phase.kind === 'hashing' ||
+    phase.kind === 'presigning' ||
+    phase.kind === 'uploading-zip' ||
+    phase.kind === 'scanning' ||
+    phase.kind === 'uploading-image' ||
+    phase.kind === 'patching';
+  // Surface exactly what's blocking the Publish button so a stray space or a
+  // missing file isn't an invisible dead end.
+  const blockers: string[] = [];
+  if (!zip) blockers.push('choose a .zip archive');
+  if (!slugValid) blockers.push('enter a valid slug (lowercase letters, digits, - or _)');
+  if (!versionValid) blockers.push('enter a version like 0.1.0');
+  if (!nameValid) blockers.push('enter a display name');
+  const canSubmit = !!zip && slugValid && versionValid && nameValid && !busy;
 
   const tagList = useMemo(
     () =>
@@ -340,7 +344,7 @@ export default function PublishPage() {
               <Input
                 id="slug"
                 value={slug}
-                onChange={(e) => setSlug(e.target.value.toLowerCase())}
+                onChange={(e) => setSlug(e.target.value.toLowerCase().trim())}
                 placeholder="my-cool-mod"
                 aria-invalid={slug.length > 0 && !slugValid ? true : undefined}
               />
@@ -498,6 +502,10 @@ export default function PublishPage() {
           </Link>
           .
         </p>
+
+        {!canSubmit && !busy && blockers.length > 0 ? (
+          <p className="text-xs text-amber-500">To publish: {blockers.join(', ')}.</p>
+        ) : null}
 
         <div className="flex items-center justify-between gap-3">
           <Link
