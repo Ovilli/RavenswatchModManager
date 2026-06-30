@@ -31,6 +31,7 @@ function canViewGuide(guide: GuideVisibility, userId?: string | null): boolean {
 }
 
 const writeLimiter = createRateLimiter({
+  name: 'guide-write',
   windowMs: 60_000,
   maxHits: 30,
   keyFrom: (c) => {
@@ -378,6 +379,7 @@ guidesRouter.post(
 // ─────────── Guide Reviews ───────────
 
 const reviewLimiter = createRateLimiter({
+  name: 'guide-review',
   windowMs: 60_000,
   maxHits: 10,
   keyFrom: (c) => {

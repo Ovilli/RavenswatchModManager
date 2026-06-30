@@ -13,7 +13,7 @@ import { z } from 'zod';
 import { isPgErrorCode } from '../db-errors';
 import { s3Configured, virusTotalConfigured } from '../env';
 import { createRateLimiter } from '../rate-limit';
-import { presignModImage, presignModUpload } from '../storage';
+import { modUploadKey, objectExists, presignModImage, presignModUpload } from '../storage';
 import type { AppEnv } from '../types';
 import { submitVirusTotalUrl } from '../virus-total';
 
@@ -24,7 +24,7 @@ export const modsRouter = new Hono<AppEnv>();
 // arbitrarily fast. 120/min is well above any legitimate launcher
 // install loop and small enough to make brute-forcing slug/version
 // combos expensive.
-const downloadLimiter = createRateLimiter({ windowMs: 60_000, maxHits: 120 });
+const downloadLimiter = createRateLimiter({ name: 'mod-download', windowMs: 60_000, maxHits: 120 });
 
 const listQuerySchema = z.object({
   q: z.string().optional(),
@@ -317,7 +317,11 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
         .where(eq(schema.mods.slug, body.slug))
         .for('update');
       const existing = lockedExisting[0];
-      if (existing && existing.ownerId !== null && existing.ownerId !== user.id) {
+      // Any pre-existing row that isn't owned by the caller is off-limits —
+      // including rows with a null owner (seed/legacy data). Previously
+      // null-owner rows could be claimed and overwritten by any authenticated
+      // user. New slugs (existing === undefined) fall through and are created.
+      if (existing && existing.ownerId !== user.id) {
         ownerConflict = true;
         // Throwing aborts the transaction; the catch below converts
         // this signal into a clean 403 instead of a 500.
@@ -420,6 +424,7 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
 // ─────────────────────────────────────────────────────────────────────
 
 const ownerLimiter = createRateLimiter({
+  name: 'mod-owner',
   windowMs: 60_000,
   maxHits: 60,
   keyFrom: (c) => {
@@ -440,11 +445,6 @@ modsRouter.post(
   async (c) => {
     const user = c.get('user');
     if (!user) return c.json({ error: 'unauthorized' }, 401);
-    // Scanning is optional (see env.ts): when VirusTotal isn't configured, don't
-    // block publishing — report the scan as skipped so the client can proceed.
-    if (!virusTotalConfigured()) {
-      return c.json({ ok: true, skipped: true, reason: 'scanning not configured on this server' });
-    }
 
     const { versionId } = c.req.valid('param');
     const db = getDb();
@@ -452,6 +452,9 @@ modsRouter.post(
     const rows = await db
       .select({
         assetUrl: schema.modVersions.assetUrl,
+        version: schema.modVersions.version,
+        sha256: schema.modVersions.sha256,
+        slug: schema.mods.slug,
         ownerId: schema.mods.ownerId,
       })
       .from(schema.modVersions)
@@ -461,6 +464,18 @@ modsRouter.post(
     const row = rows[0];
     if (!row) return c.json({ error: 'not found' }, 404);
     if (row.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+
+    // Finalize gate: the upload row is created before the client PUTs the zip to
+    // S3. Confirm the object actually landed before this version is treated as
+    // published/scannable — otherwise a listing can exist with a dead download.
+    const exists = await objectExists(modUploadKey(row.slug, row.version, row.sha256));
+    if (!exists) return c.json({ error: 'upload not completed' }, 400);
+
+    // Scanning is optional (see env.ts): when VirusTotal isn't configured, don't
+    // block publishing — report the scan as skipped so the client can proceed.
+    if (!virusTotalConfigured()) {
+      return c.json({ ok: true, skipped: true, reason: 'scanning not configured on this server' });
+    }
 
     try {
       const analysis = await submitVirusTotalUrl(row.assetUrl);
@@ -636,6 +651,7 @@ modsRouter.delete('/:slug/delete', zValidator('param', slugParamSchema), async (
 // ─────────── Reviews ───────────
 
 const reviewLimiter = createRateLimiter({
+  name: 'mod-review',
   windowMs: 60_000,
   maxHits: 10,
   keyFrom: (c) => {

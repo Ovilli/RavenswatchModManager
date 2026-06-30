@@ -51,17 +51,26 @@ app.use('*', async (c, next) => {
   await next();
 });
 
-app.use('/api/auth/*', createRateLimiter({ windowMs: 60_000, maxHits: 10 }));
+app.use('/api/auth/*', createRateLimiter({ name: 'auth', windowMs: 60_000, maxHits: 10 }));
 app.on(['GET', 'POST'], '/api/auth/*', (c) => auth.handler(c.req.raw));
 
-app.use('/api/mods/upload', createRateLimiter({
-  windowMs: 3_600_000,
-  maxHits: 5,
-  keyFrom: (c) => {
-    const user = c.get('user');
-    return user?.id ?? c.req.header('x-real-ip') ?? c.req.header('x-forwarded-for')?.split(',').pop()?.trim() ?? 'anon';
-  },
-}));
+app.use(
+  '/api/mods/upload',
+  createRateLimiter({
+    name: 'mod-upload',
+    windowMs: 3_600_000,
+    maxHits: 5,
+    keyFrom: (c) => {
+      const user = c.get('user');
+      return (
+        user?.id ??
+        c.req.header('x-real-ip') ??
+        c.req.header('x-forwarded-for')?.split(',').pop()?.trim() ??
+        'anon'
+      );
+    },
+  }),
+);
 
 app.get('/api', (c) => c.json({ name: 'rsmm-api', ok: true }));
 app.get('/api/health', (c) => c.json({ ok: true, ts: Date.now() }));

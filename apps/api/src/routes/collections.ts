@@ -22,15 +22,25 @@ export const collectionsRouter = new Hono<AppEnv>();
 const slugParamSchema = z.object({ slug: collectionSlugSchema });
 const slugAndModParamSchema = z.object({
   slug: collectionSlugSchema,
-  modSlug: z.string().min(1).max(128).regex(/^[a-z0-9_-]+$/),
+  modSlug: z
+    .string()
+    .min(1)
+    .max(128)
+    .regex(/^[a-z0-9_-]+$/),
 });
 
 const writeLimiter = createRateLimiter({
+  name: 'collection-write',
   windowMs: 60_000,
   maxHits: 30,
   keyFrom: (c) => {
     const user = c.get('user');
-    return user?.id ?? c.req.header('x-real-ip') ?? c.req.header('x-forwarded-for')?.split(',').pop()?.trim() ?? 'anon';
+    return (
+      user?.id ??
+      c.req.header('x-real-ip') ??
+      c.req.header('x-forwarded-for')?.split(',').pop()?.trim() ??
+      'anon'
+    );
   },
 });
 
@@ -291,19 +301,24 @@ collectionsRouter.patch(
   },
 );
 
-collectionsRouter.delete('/:slug', writeLimiter, zValidator('param', slugParamSchema), async (c) => {
-  const user = c.get('user');
-  if (!user) return c.json({ error: 'unauthorized' }, 401);
-  const { slug } = c.req.valid('param');
-  const db = getDb();
-  const existing = await db.query.collections.findFirst({
-    where: eq(schema.collections.slug, slug),
-  });
-  if (!existing) return c.json({ error: 'not found' }, 404);
-  if (existing.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
-  await db.delete(schema.collections).where(eq(schema.collections.id, existing.id));
-  return c.json({ ok: true });
-});
+collectionsRouter.delete(
+  '/:slug',
+  writeLimiter,
+  zValidator('param', slugParamSchema),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    const { slug } = c.req.valid('param');
+    const db = getDb();
+    const existing = await db.query.collections.findFirst({
+      where: eq(schema.collections.slug, slug),
+    });
+    if (!existing) return c.json({ error: 'not found' }, 404);
+    if (existing.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+    await db.delete(schema.collections).where(eq(schema.collections.id, existing.id));
+    return c.json({ ok: true });
+  },
+);
 
 collectionsRouter.post(
   '/:slug/mods',
@@ -414,11 +429,17 @@ collectionsRouter.post(
 // ─────────── Collection Reviews ───────────
 
 const reviewLimiter = createRateLimiter({
+  name: 'collection-review',
   windowMs: 60_000,
   maxHits: 10,
   keyFrom: (c) => {
     const user = c.get('user');
-    return user?.id ?? c.req.header('x-real-ip') ?? c.req.header('x-forwarded-for')?.split(',').pop()?.trim() ?? 'anon';
+    return (
+      user?.id ??
+      c.req.header('x-real-ip') ??
+      c.req.header('x-forwarded-for')?.split(',').pop()?.trim() ??
+      'anon'
+    );
   },
 });
 
@@ -463,9 +484,7 @@ collectionsRouter.get('/:slug/reviews', zValidator('param', slugParamSchema), as
     updatedAt: r.updatedAt.toISOString(),
   }));
 
-  const average = items.length
-    ? items.reduce((s, r) => s + r.rating, 0) / items.length
-    : null;
+  const average = items.length ? items.reduce((s, r) => s + r.rating, 0) / items.length : null;
 
   return c.json({ items, total: items.length, averageRating: average });
 });

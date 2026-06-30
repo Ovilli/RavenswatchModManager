@@ -1,4 +1,4 @@
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env, s3Configured } from './env.js';
 
@@ -30,13 +30,30 @@ export interface SignedUpload {
   expiresIn: number;
 }
 
+/** Canonical S3 key for a mod version's zip. Single source of truth so the
+ *  upload presign and the post-upload existence check agree. */
+export function modUploadKey(slug: string, version: string, sha256: string): string {
+  return `mods/${slug}/${version}-${sha256.slice(0, 12)}.zip`;
+}
+
+/** HEAD an object to confirm it exists (e.g. that a presigned upload actually
+ *  completed). Works on private buckets, unlike fetching the public URL. */
+export async function objectExists(key: string): Promise<boolean> {
+  try {
+    await s3().send(new HeadObjectCommand({ Bucket: env.s3.bucket, Key: key }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function presignModUpload(args: {
   slug: string;
   version: string;
   sha256: string;
   sizeBytes: number;
 }): Promise<SignedUpload> {
-  const key = `mods/${args.slug}/${args.version}-${args.sha256.slice(0, 12)}.zip`;
+  const key = modUploadKey(args.slug, args.version, args.sha256);
   const cmd = new PutObjectCommand({
     Bucket: env.s3.bucket,
     Key: key,

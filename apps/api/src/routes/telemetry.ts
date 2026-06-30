@@ -19,11 +19,21 @@ const telemetryKey = (c: import('hono').Context): string => {
 
 telemetryRouter.use(
   '/run',
-  createRateLimiter({ windowMs: 60_000, maxHits: 60, keyFrom: telemetryKey }),
+  createRateLimiter({
+    name: 'telemetry-run',
+    windowMs: 60_000,
+    maxHits: 60,
+    keyFrom: telemetryKey,
+  }),
 );
 telemetryRouter.use(
   '/crash',
-  createRateLimiter({ windowMs: 60_000, maxHits: 10, keyFrom: telemetryKey }),
+  createRateLimiter({
+    name: 'telemetry-crash',
+    windowMs: 60_000,
+    maxHits: 10,
+    keyFrom: telemetryKey,
+  }),
 );
 
 telemetryRouter.post('/run', zValidator('json', telemetryRunSchema), async (c) => {
