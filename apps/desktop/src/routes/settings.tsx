@@ -5,6 +5,7 @@ import { Fleuron, Panel, SectionHeader } from '../components/chrome';
 import { useToast } from '../components/toast';
 import { UpdaterSettings } from '../components/updater';
 import { clearLauncherLog, readLauncherLog } from '../lib/launcher-log';
+import { type LoaderFlag, getLoaderFlags, setLoaderFlags } from '../lib/rsmm';
 import { useApp } from '../store';
 
 export const Route = createFileRoute('/settings')({
@@ -179,6 +180,8 @@ function SettingsPage() {
         <UpdaterSettings />
       </Panel>
 
+      <LoaderFlagsPanel />
+
       <Panel>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -271,6 +274,168 @@ function SettingsPage() {
         </label>
       </Panel>
     </div>
+  );
+}
+
+/** Loader feature flags. The native loader reads these from a JSON file next
+ * to winhttp.dll (so they work on native Windows too, where Steam launch
+ * options cannot set environment variables). Only flags the bridge marks
+ * `safe` are togglable here; locked ones are shown greyed-out with the reason. */
+function LoaderFlagsPanel() {
+  const [available, setAvailable] = useState<LoaderFlag[]>([]);
+  const [enabled, setEnabled] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
+  const [loaderInstalled, setLoaderInstalled] = useState<boolean | null>(null);
+  const [launchOptionsPresent, setLaunchOptionsPresent] = useState<boolean | null | undefined>(
+    undefined,
+  );
+  const toast = useToast();
+
+  useEffect(() => {
+    let cancelled = false;
+    getLoaderFlags().then(
+      (res) => {
+        if (cancelled) return;
+        if (!res) {
+          setUnavailable(true);
+        } else {
+          setAvailable(res.available ?? []);
+          setEnabled(new Set(res.enabled ?? []));
+          setUnavailable(!res.gameDir);
+          setLoaderInstalled(res.loaderInstalled ?? null);
+          setLaunchOptionsPresent(res.launchOptionsPresent);
+        }
+        setLoading(false);
+      },
+      () => {
+        if (cancelled) return;
+        setUnavailable(true);
+        setLoading(false);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toggle = async (flag: LoaderFlag, on: boolean) => {
+    if (!flag.safe) return;
+    const next = new Set(enabled);
+    if (on) next.add(flag.name);
+    else next.delete(flag.name);
+    setEnabled(next); // optimistic
+    setSaving(flag.name);
+    try {
+      const res = await setLoaderFlags([...next]);
+      if (res?.ok) {
+        setEnabled(new Set(res.enabled ?? []));
+      } else {
+        setEnabled(enabled); // revert
+        toast.push(res?.error ?? 'Could not save loader flags.', 'error');
+      }
+    } catch {
+      setEnabled(enabled); // revert
+      toast.push('Could not save loader flags.', 'error');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return (
+    <Panel>
+      <h3 className="font-fraktur text-xl text-parchment">Loader features</h3>
+      <Fleuron className="my-3" />
+      <p className="font-serif-italic text-ash mb-3">
+        Opt-in hooks the script loader installs at launch. Off by default — most mods don't need
+        them. Changes take effect next time you launch Modded.
+      </p>
+      {!loading && !unavailable ? (
+        <div className="mb-4 flex flex-wrap gap-2">
+          <StatusChip
+            label="Loader DLL"
+            state={loaderInstalled === null ? 'unknown' : loaderInstalled ? 'ok' : 'missing'}
+            okText="installed"
+            missingText="not installed — launch Modded once"
+          />
+          {launchOptionsPresent !== null && launchOptionsPresent !== undefined ? (
+            <StatusChip
+              label="Launch options"
+              state={launchOptionsPresent ? 'ok' : 'missing'}
+              okText="winhttp override set"
+              missingText="missing — launch Modded to set"
+            />
+          ) : null}
+        </div>
+      ) : null}
+      {loading ? (
+        <p className="font-mono text-sm text-ash">Loading…</p>
+      ) : unavailable ? (
+        <p className="font-mono text-sm text-ash">
+          Set your game install path above, then reopen Settings to manage loader features.
+        </p>
+      ) : (
+        <ul className="space-y-3">
+          {available.map((flag) => {
+            const on = enabled.has(flag.name);
+            return (
+              <li
+                key={flag.name}
+                className="flex items-start justify-between gap-4 border border-border px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-parchment">{flag.label}</span>
+                    {!flag.safe ? (
+                      <span className="font-mono rounded border border-crimson/60 px-1.5 py-0.5 text-[10px] uppercase text-crimson">
+                        locked
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="font-serif-italic mt-0.5 text-sm text-ash">{flag.description}</p>
+                </div>
+                <label className="flex shrink-0 cursor-pointer items-center gap-2 pt-0.5">
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    disabled={!flag.safe || saving === flag.name}
+                    onChange={(e) => toggle(flag, e.target.checked).catch(() => undefined)}
+                    className="h-4 w-4 accent-crimson disabled:opacity-40"
+                  />
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
+function StatusChip({
+  label,
+  state,
+  okText,
+  missingText,
+}: {
+  label: string;
+  state: 'ok' | 'missing' | 'unknown';
+  okText: string;
+  missingText: string;
+}) {
+  const tone =
+    state === 'ok'
+      ? 'border-gilt/50 text-gilt'
+      : state === 'missing'
+        ? 'border-crimson/60 text-crimson'
+        : 'border-border text-ash';
+  const detail = state === 'ok' ? okText : state === 'missing' ? missingText : 'unknown';
+  return (
+    <span className={`font-mono inline-flex items-center gap-1.5 border px-2 py-1 text-xs ${tone}`}>
+      <span className="text-parchment">{label}:</span>
+      <span>{detail}</span>
+    </span>
   );
 }
 

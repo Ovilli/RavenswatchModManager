@@ -6,6 +6,8 @@
 #include <iomanip>
 #include <sstream>
 #include <algorithm>
+#include <cstdlib>
+#include <unordered_set>
 
 #include "json.hpp"   // single-header nlohmann::json (vendored)
 #include "toml.hpp"   // single-header toml++ (vendored)
@@ -220,6 +222,39 @@ void Loader::load_state() {
             m.load_order = j[m.id].value("load_order", 0);
         }
     }
+}
+
+bool flag_enabled(const char* name) {
+    // 1. Environment variable — the original launch-options path. Works on
+    //    Linux/Proton where Steam launch options like `RSMM_ENABLE_X=1
+    //    %command%` set the game process environment.
+    if (const char* v = std::getenv(name); v && (v[0] == '1' || v[0] == 't' || v[0] == 'T'))
+        return true;
+
+    // 2. Flags file next to winhttp.dll, written by the desktop app. Parsed
+    //    once and cached; a missing or malformed file means "no flags set".
+    static std::mutex mu;
+    static bool loaded = false;
+    static std::unordered_set<std::string> enabled;
+    std::lock_guard<std::mutex> lk(mu);
+    if (!loaded) {
+        loaded = true;
+        const fs::path fp = Loader::get().game_dir() / "rsmm_loader_flags.json";
+        if (fs::exists(fp)) {
+            try {
+                std::ifstream f(fp);
+                nlohmann::json j;
+                f >> j;
+                if (j.is_array()) {
+                    for (auto& e : j)
+                        if (e.is_string()) enabled.insert(e.get<std::string>());
+                }
+            } catch (...) {
+                Loader::get().log("rsmm_loader_flags.json parse error; ignoring");
+            }
+        }
+    }
+    return enabled.count(name) != 0;
 }
 
 } // namespace rsmm

@@ -26,6 +26,10 @@ Subcommands:
     rsmm json config get <id>       read a mod's config schema + values
     rsmm json config set <id> <js>  replace a mod's config values
     rsmm json uninstall-mod <id>    remove a mod from mods/<id>/
+    rsmm json loader-flags get      list loader feature flags + enabled set
+    rsmm json loader-flags set <js> write the enabled-flag list (JSON array;
+                                    only safe flags are honoured) to
+                                    <game>/rsmm_loader_flags.json
 
 All commands emit a single JSON object/array on stdout (UTF-8, no trailing
 newline). Stderr is forwarded for diagnostics. Exit code is 0 on success.
@@ -301,6 +305,162 @@ def cmd_active_overrides() -> int:
         "cookingDir": str(cooking_dir),
         "hasActiveOverrides": bool(active),
         "activeOverrideCount": len(active),
+    })
+
+
+# Loader feature flags surfaced in the desktop "Loader features" panel.
+# The loader reads these from <game_dir>/rsmm_loader_flags.json (a JSON array
+# of enabled flag names) OR from a matching environment variable. Only flags
+# marked safe=True are user-togglable; the rest are documented but locked so
+# the UI can explain why (e.g. RSMM_ENABLE_ITEM_INJECT crashes the game).
+LOADER_FLAGS: list[dict[str, Any]] = [
+    {
+        "name": "RSMM_ENABLE_GAMEPLAY_EVENTS",
+        "label": "Gameplay event bus",
+        "description": "Bridge the in-game oCGameNamedEvent bus to Lua "
+                       "(R.on(\"gameplay:<NAME>\")). Required by event-driven mods.",
+        "safe": True,
+    },
+    {
+        "name": "RSMM_ENABLE_GAME_EVENTS",
+        "label": "Analytics event bridge",
+        "description": "Bridge the analytics firehose to rsmm.on_event. "
+                       "Read-only; useful for debugging which events fire.",
+        "safe": True,
+    },
+    {
+        "name": "RSMM_ENABLE_SKILL_HOOK",
+        "label": "Skill hook (read-only)",
+        "description": "Log the herodef skill vector at load. Experimental; "
+                       "may fail to resolve under Proton on some builds.",
+        "safe": True,
+    },
+    {
+        "name": "RSMM_ENABLE_SPAWN_HOOK",
+        "label": "Spawn trace (read-only)",
+        "description": "Log live spawner vtables. Experimental; read-only.",
+        "safe": True,
+    },
+    {
+        "name": "RSMM_ENABLE_ITEM_INJECT",
+        "label": "Item pool injection",
+        "description": "Disabled: crashes the game. Custom items already load "
+                       "via UsedRscList — no injection needed.",
+        "safe": False,
+    },
+    {
+        "name": "RSMM_ENABLE_SKILL_INJECT",
+        "label": "Skill injection (proof-of-path)",
+        "description": "Disabled: experimental loader path that duplicates a "
+                       "skill slot. For development only.",
+        "safe": False,
+    },
+]
+
+_LOADER_FLAGS_FILE = "rsmm_loader_flags.json"
+_SAFE_FLAG_NAMES = frozenset(f["name"] for f in LOADER_FLAGS if f["safe"])
+_KNOWN_FLAG_NAMES = frozenset(f["name"] for f in LOADER_FLAGS)
+
+
+def _read_loader_flags(flags_path: Path) -> list[str]:
+    """Read the enabled-flag list, tolerating a missing/garbage file."""
+    if not flags_path.exists():
+        return []
+    try:
+        data = json.loads(flags_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    if not isinstance(data, list):
+        return []
+    return [x for x in data if isinstance(x, str) and x in _KNOWN_FLAG_NAMES]
+
+
+def _loader_status(game_dir: Path) -> dict[str, Any]:
+    """Whether the native loader is installed + (on Linux/Proton) whether the
+    Steam launch options carry the winhttp override the loader needs. On native
+    Windows the override is irrelevant (winhttp.dll loads from the game dir
+    directly), so launchOptionsPresent is reported as None there."""
+    from rsmm.cli.run import (
+        RAVENSWATCH_APP_ID,
+        _localconfig_paths,
+        _override_present,
+        _read_launch_options,
+        _steam_root,
+    )
+
+    loader_installed = (game_dir / "winhttp.dll").exists()
+
+    launch_present: bool | None = None
+    if sys.platform != "win32":
+        launch_present = False
+        steam_root = _steam_root()
+        if steam_root is not None:
+            for vdf in _localconfig_paths(steam_root):
+                lo = _read_launch_options(vdf, RAVENSWATCH_APP_ID)
+                if lo and _override_present(lo):
+                    launch_present = True
+                    break
+
+    return {
+        "loaderInstalled": loader_installed,
+        "launchOptionsPresent": launch_present,
+    }
+
+
+def cmd_loader_flags_get() -> int:
+    game_dir = find_game_dir()
+    if game_dir is None:
+        return _emit({
+            "ok": True,
+            "gameDir": None,
+            "flagsPath": None,
+            "available": LOADER_FLAGS,
+            "enabled": [],
+            "loaderInstalled": False,
+            "launchOptionsPresent": None,
+        })
+    flags_path = game_dir / _LOADER_FLAGS_FILE
+    return _emit({
+        "ok": True,
+        "gameDir": str(game_dir),
+        "flagsPath": str(flags_path),
+        "available": LOADER_FLAGS,
+        "enabled": _read_loader_flags(flags_path),
+        **_loader_status(game_dir),
+    })
+
+
+def cmd_loader_flags_set(names_json: str) -> int:
+    try:
+        requested = json.loads(names_json)
+    except ValueError as exc:
+        return _emit({"ok": False, "error": f"invalid JSON: {exc}"})
+    if not isinstance(requested, list) or not all(isinstance(x, str) for x in requested):
+        return _emit({"ok": False, "error": "expected a JSON array of flag names"})
+
+    # Only safe flags may be enabled through the UI; silently drop anything
+    # unknown or locked so a stale frontend can never arm a crashing flag.
+    enabled = sorted({n for n in requested if n in _SAFE_FLAG_NAMES})
+
+    game_dir = find_game_dir()
+    if game_dir is None:
+        return _emit({"ok": False, "error": "Ravenswatch install not found"})
+    flags_path = game_dir / _LOADER_FLAGS_FILE
+    try:
+        if enabled:
+            flags_path.write_text(json.dumps(enabled, indent=2) + "\n", encoding="utf-8")
+        elif flags_path.exists():
+            # Empty selection → remove the file so the loader logs cleanly.
+            flags_path.unlink()
+    except OSError as exc:
+        return _emit({"ok": False, "error": f"failed to write flags file: {exc}"})
+
+    return _emit({
+        "ok": True,
+        "gameDir": str(game_dir),
+        "flagsPath": str(flags_path),
+        "available": LOADER_FLAGS,
+        "enabled": enabled,
     })
 
 
@@ -1006,6 +1166,11 @@ def main(argv: list[str] | None = None) -> int:
     p_cfg_set.add_argument("values_json", help="JSON object with config values")
     p_uninstall = sub.add_parser("uninstall-mod", help="remove a mod from mods/<id>/")
     p_uninstall.add_argument("mod_id", help="folder name under mods/")
+    p_flags = sub.add_parser("loader-flags", help="read or set loader feature flags")
+    flags_sub = p_flags.add_subparsers(dest="flags_cmd", required=True)
+    flags_sub.add_parser("get", help="list available flags + which are enabled")
+    p_flags_set = flags_sub.add_parser("set", help="set the enabled-flag list")
+    p_flags_set.add_argument("names_json", help="JSON array of flag names to enable")
 
     args = ap.parse_args(argv)
     if args.cmd == "list":
@@ -1051,6 +1216,13 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if args.cmd == "uninstall-mod":
         return cmd_uninstall_mod(args.mod_id)
+    if args.cmd == "loader-flags":
+        if args.flags_cmd == "get":
+            return cmd_loader_flags_get()
+        if args.flags_cmd == "set":
+            return cmd_loader_flags_set(args.names_json)
+        ap.error(f"unknown loader-flags subcommand: {args.flags_cmd}")
+        return 2
     ap.error(f"unknown subcommand: {args.cmd}")
     return 2
 

@@ -90,4 +90,12 @@ private:
     std::atomic<bool>    ever_drew_{false};
 };
 
+// Loader feature gate. Returns true if the named flag is enabled either via
+// environment variable (==1/t/T — the Linux/Proton launch-options path) or by
+// being listed in <game_dir>/rsmm_loader_flags.json (a JSON array of flag
+// names, written by the desktop app / `rsmm json loader-flags set`). The file
+// path makes the toggles work on native Windows too, where Steam launch
+// options cannot inject environment variables. Result is cached on first call.
+bool flag_enabled(const char* name);
+
 } // namespace rsmm

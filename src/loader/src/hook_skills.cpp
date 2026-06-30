@@ -44,8 +44,8 @@ using Deserialize_t = char (*)(void*, void*);
 Deserialize_t g_real_deserialize = nullptr;
 
 bool env_on(const char* name) {
-    char buf[8];
-    return GetEnvironmentVariableA(name, buf, sizeof(buf)) && buf[0] == '1';
+    // Honour both the env var and the desktop-written flags file.
+    return flag_enabled(name);
 }
 
 // Confirm [addr, addr+size) is committed + readable, so a wrong offset logs/skips

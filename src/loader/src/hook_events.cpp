@@ -294,9 +294,8 @@ bool install_gameplay_bus() {
 }
 
 bool env_truthy(const char* name) {
-    char buf[8] = {};
-    DWORD n = GetEnvironmentVariableA(name, buf, sizeof(buf));
-    return n > 0 && n < sizeof(buf) && (buf[0] == '1' || buf[0] == 't' || buf[0] == 'T');
+    // Honour both the env var and the desktop-written flags file.
+    return flag_enabled(name);
 }
 
 template <int N>

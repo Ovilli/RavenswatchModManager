@@ -505,6 +505,34 @@ export const getConflicts = () => rsmm<ConflictEntry[]>(['conflicts']);
 
 export const doctor = () => rsmm<DoctorResult>(['doctor']);
 
+export interface LoaderFlag {
+  name: string;
+  label: string;
+  description: string;
+  safe: boolean;
+}
+
+export interface LoaderFlagsState {
+  ok: boolean;
+  gameDir?: string | null;
+  flagsPath?: string | null;
+  available: LoaderFlag[];
+  enabled: string[];
+  // Whether winhttp.dll is in place. Only present on `get`.
+  loaderInstalled?: boolean;
+  // Linux/Proton: whether Steam launch options carry the winhttp override.
+  // null on native Windows (override not needed there). Only present on `get`.
+  launchOptionsPresent?: boolean | null;
+  error?: string;
+}
+
+export const getLoaderFlags = () => rsmm<LoaderFlagsState>(['loader-flags', 'get']);
+
+// Writes the full enabled-flag set (the bridge ignores anything not marked
+// safe, so a stale UI can never arm a crashing flag).
+export const setLoaderFlags = (names: string[]) =>
+  rsmm<LoaderFlagsState>(['loader-flags', 'set', JSON.stringify(names)]);
+
 export const applyMods = (opts: ApplyOptions = {}) => {
   const { dryRun, force, noMerge, ...rsmmOpts } = opts;
   const args = ['apply'];
