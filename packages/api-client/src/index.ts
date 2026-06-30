@@ -2,28 +2,28 @@ import {
   type CollectionCreate,
   type CollectionImagePresign,
   type CollectionPatch,
-  collectionDetailSchema,
   type CollectionReviewUpsert,
-  collectionReviewsResponseSchema,
-  collectionSchema,
   type CrashReport,
   type GuideCreate,
   type GuideImagePresign,
   type GuidePatch,
-  guideListItemSchema,
   type GuideReviewUpsert,
-  guideReviewsResponseSchema,
   type ModImagePresign,
   type ModListItem,
-  modListItemSchema,
   type ModPatch,
   type ModUploadRequest,
   type ModVersion,
-  modVersionSchema,
   type ModVersionCreate,
   type ReviewUpsert,
-  reviewsResponseSchema,
   type TelemetryRun,
+  collectionDetailSchema,
+  collectionReviewsResponseSchema,
+  collectionSchema,
+  guideListItemSchema,
+  guideReviewsResponseSchema,
+  modListItemSchema,
+  modVersionSchema,
+  reviewsResponseSchema,
 } from '@rsmm/schemas';
 import { z } from 'zod';
 
@@ -85,7 +85,10 @@ export function createApiClient(options: ApiClientOptions) {
     // cancellation still works.
     if (init.signal) {
       if (init.signal.aborted) ctrl.abort(init.signal.reason);
-      else init.signal.addEventListener('abort', () => ctrl.abort(init.signal?.reason), { once: true });
+      else
+        init.signal.addEventListener('abort', () => ctrl.abort(init.signal?.reason), {
+          once: true,
+        });
     }
     const timer = setTimeout(() => ctrl.abort('timeout'), timeoutMs);
     let res: Response;
@@ -217,7 +220,11 @@ export function createApiClient(options: ApiClientOptions) {
           modDetailResponseSchema,
         ),
       upload: (body: ModUploadRequest) =>
-        request('/api/mods/upload', { method: 'POST', body: JSON.stringify(body) }, uploadResponseSchema),
+        request(
+          '/api/mods/upload',
+          { method: 'POST', body: JSON.stringify(body) },
+          uploadResponseSchema,
+        ),
       scanVersion: (versionId: string) =>
         request(
           `/api/mods/versions/${encodeURIComponent(versionId)}/scan`,
@@ -243,11 +250,7 @@ export function createApiClient(options: ApiClientOptions) {
           uploadResponseSchema,
         ),
       remove: (slug: string) =>
-        request(
-          `/api/mods/${encodeURIComponent(slug)}/delete`,
-          { method: 'DELETE' },
-          okSchema,
-        ),
+        request(`/api/mods/${encodeURIComponent(slug)}/delete`, { method: 'DELETE' }, okSchema),
       reviews: (slug: string) =>
         request(
           `/api/mods/${encodeURIComponent(slug)}/reviews`,
@@ -261,16 +264,16 @@ export function createApiClient(options: ApiClientOptions) {
           okSchema,
         ),
       deleteReview: (slug: string) =>
-        request(
-          `/api/mods/${encodeURIComponent(slug)}/reviews`,
-          { method: 'DELETE' },
-          okSchema,
-        ),
+        request(`/api/mods/${encodeURIComponent(slug)}/reviews`, { method: 'DELETE' }, okSchema),
     },
     me: {
       mods: () => request('/api/me/mods', { method: 'GET' }, myModsResponseSchema),
       presignAvatar: (body: ModImagePresign) =>
-        request('/api/me/avatar', { method: 'POST', body: JSON.stringify(body) }, imagePresignResponseSchema),
+        request(
+          '/api/me/avatar',
+          { method: 'POST', body: JSON.stringify(body) },
+          imagePresignResponseSchema,
+        ),
     },
     users: {
       profile: (idOrHandle: string) =>
@@ -312,11 +315,7 @@ export function createApiClient(options: ApiClientOptions) {
           okSchema,
         ),
       remove: (slug: string) =>
-        request(
-          `/api/collections/${encodeURIComponent(slug)}`,
-          { method: 'DELETE' },
-          okSchema,
-        ),
+        request(`/api/collections/${encodeURIComponent(slug)}`, { method: 'DELETE' }, okSchema),
       addMod: (slug: string, modSlug: string) =>
         request(
           `/api/collections/${encodeURIComponent(slug)}/mods`,
@@ -357,8 +356,24 @@ export function createApiClient(options: ApiClientOptions) {
       },
     },
     guides: {
-      list: () =>
-        request('/api/guides', { method: 'GET' }, z.object({ items: z.array(guideListItemSchema) })),
+      list: (params?: {
+        q?: string;
+        sort?: 'recent' | 'rating' | 'popular' | 'title';
+        limit?: number;
+        offset?: number;
+      }) => {
+        const qs = new URLSearchParams();
+        if (params?.q) qs.set('q', params.q);
+        if (params?.sort) qs.set('sort', params.sort);
+        if (params?.limit != null) qs.set('limit', String(params.limit));
+        if (params?.offset != null) qs.set('offset', String(params.offset));
+        const suffix = qs.toString() ? `?${qs}` : '';
+        return request(
+          `/api/guides${suffix}`,
+          { method: 'GET' },
+          z.object({ items: z.array(guideListItemSchema) }),
+        );
+      },
       mine: () =>
         request(
           '/api/guides/mine',

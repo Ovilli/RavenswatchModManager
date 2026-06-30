@@ -13,6 +13,8 @@ interface Guide {
   status?: string;
   createdAt?: string;
   updatedAt?: string;
+  rating?: number | null;
+  reviewCount?: number;
 }
 
 // Deduped with generateMetadata within a request. Unauthenticated, so the API
@@ -37,8 +39,7 @@ export async function generateMetadata({
   if (!g) return { title: `Guide · ${SITE}` };
 
   const title = `${g.title} · Guides · ${SITE}`;
-  const description =
-    g.summary ?? `A community guide for Ravenswatch on the ${SITE}.`;
+  const description = g.summary ?? `A community guide for Ravenswatch on the ${SITE}.`;
   const image = g.imageUrl ?? undefined;
 
   return {
@@ -76,6 +77,18 @@ function guideJsonLd(slug: string, g: Guide) {
         ...(g.ownerName ? { author: { '@type': 'Person', name: g.ownerName } } : {}),
         ...(g.createdAt ? { datePublished: g.createdAt } : {}),
         ...(g.updatedAt ? { dateModified: g.updatedAt } : {}),
+        // Star rich-result eligibility — only with real reviews.
+        ...(g.rating != null && g.reviewCount && g.reviewCount > 0
+          ? {
+              aggregateRating: {
+                '@type': 'AggregateRating',
+                ratingValue: g.rating,
+                reviewCount: g.reviewCount,
+                bestRating: 5,
+                worstRating: 1,
+              },
+            }
+          : {}),
         publisher: { '@type': 'Organization', name: SITE, logo: `${ORIGIN}/logo.png` },
       },
       {

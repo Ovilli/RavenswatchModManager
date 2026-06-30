@@ -7,7 +7,7 @@ import {
   guideReviewUpsertSchema,
   guideSlugSchema,
 } from '@rsmm/schemas';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { isPgErrorCode } from '../db-errors';
@@ -20,8 +20,7 @@ export const guidesRouter = new Hono<AppEnv>();
 
 const slugParamSchema = z.object({ slug: guideSlugSchema });
 
-const isAdmin = (userId?: string | null): boolean =>
-  !!userId && env.adminUserIds.includes(userId);
+const isAdmin = (userId?: string | null): boolean => !!userId && env.adminUserIds.includes(userId);
 
 type GuideVisibility = Pick<typeof schema.guides.$inferSelect, 'status' | 'ownerId'>;
 
@@ -108,16 +107,48 @@ const listColumns = {
   reviewCount: reviewCountSql,
 };
 
-// Public list — approved guides only.
-guidesRouter.get('/', async (c) => {
+const listQuerySchema = z.object({
+  q: z.string().trim().max(120).optional(),
+  // recent = newest update; rating = highest average review score (unrated
+  // sink last); popular = most reviewed; title = alphabetical.
+  sort: z.enum(['recent', 'rating', 'popular', 'title']).default('recent'),
+  limit: z.coerce.number().int().min(1).max(100).default(100),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+// Public list — approved guides only. Searchable (q) and sortable (sort).
+guidesRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
+  const { q, sort, limit, offset } = c.req.valid('query');
   const db = getDb();
+
+  const conditions = [
+    eq(schema.guides.status, 'approved'),
+    q
+      ? or(
+          ilike(schema.guides.title, `%${q.replace(/[%_\\]/g, '\\$&')}%`),
+          ilike(schema.guides.summary, `%${q.replace(/[%_\\]/g, '\\$&')}%`),
+          ilike(schema.guides.body, `%${q.replace(/[%_\\]/g, '\\$&')}%`),
+        )
+      : undefined,
+  ].filter(Boolean);
+
+  const orderBy =
+    sort === 'rating'
+      ? [sql`${ratingSql} desc nulls last`, desc(schema.guides.updatedAt)]
+      : sort === 'popular'
+        ? [sql`${reviewCountSql} desc`, desc(schema.guides.updatedAt)]
+        : sort === 'title'
+          ? [asc(schema.guides.title)]
+          : [desc(schema.guides.updatedAt)];
+
   const rows = await db
     .select(listColumns)
     .from(schema.guides)
     .innerJoin(schema.users, eq(schema.users.id, schema.guides.ownerId))
-    .where(eq(schema.guides.status, 'approved'))
-    .orderBy(desc(schema.guides.updatedAt))
-    .limit(100);
+    .where(and(...conditions))
+    .orderBy(...orderBy)
+    .limit(limit)
+    .offset(offset);
   return c.json({ items: rows.map(serializeList) });
 });
 
@@ -285,25 +316,35 @@ async function setStatus(slug: string, status: 'approved' | 'rejected', userId: 
   return { code: 200 as const };
 }
 
-guidesRouter.post('/:slug/approve', writeLimiter, zValidator('param', slugParamSchema), async (c) => {
-  const user = c.get('user');
-  if (!user) return c.json({ error: 'unauthorized' }, 401);
-  const { slug } = c.req.valid('param');
-  const r = await setStatus(slug, 'approved', user.id);
-  if (r.code === 403) return c.json({ error: 'forbidden' }, 403);
-  if (r.code === 404) return c.json({ error: 'not found' }, 404);
-  return c.json({ ok: true });
-});
+guidesRouter.post(
+  '/:slug/approve',
+  writeLimiter,
+  zValidator('param', slugParamSchema),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    const { slug } = c.req.valid('param');
+    const r = await setStatus(slug, 'approved', user.id);
+    if (r.code === 403) return c.json({ error: 'forbidden' }, 403);
+    if (r.code === 404) return c.json({ error: 'not found' }, 404);
+    return c.json({ ok: true });
+  },
+);
 
-guidesRouter.post('/:slug/reject', writeLimiter, zValidator('param', slugParamSchema), async (c) => {
-  const user = c.get('user');
-  if (!user) return c.json({ error: 'unauthorized' }, 401);
-  const { slug } = c.req.valid('param');
-  const r = await setStatus(slug, 'rejected', user.id);
-  if (r.code === 403) return c.json({ error: 'forbidden' }, 403);
-  if (r.code === 404) return c.json({ error: 'not found' }, 404);
-  return c.json({ ok: true });
-});
+guidesRouter.post(
+  '/:slug/reject',
+  writeLimiter,
+  zValidator('param', slugParamSchema),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    const { slug } = c.req.valid('param');
+    const r = await setStatus(slug, 'rejected', user.id);
+    if (r.code === 403) return c.json({ error: 'forbidden' }, 403);
+    if (r.code === 404) return c.json({ error: 'not found' }, 404);
+    return c.json({ ok: true });
+  },
+);
 
 guidesRouter.post(
   '/:slug/image',
@@ -423,7 +464,12 @@ guidesRouter.put(
       })
       .onConflictDoUpdate({
         target: [schema.guideReviews.guideId, schema.guideReviews.userId],
-        set: { rating: body.rating, title: body.title ?? null, body: body.body ?? null, updatedAt: now },
+        set: {
+          rating: body.rating,
+          title: body.title ?? null,
+          body: body.body ?? null,
+          updatedAt: now,
+        },
       });
     return c.json({ ok: true });
   },
@@ -438,8 +484,6 @@ guidesRouter.delete('/:slug/reviews', zValidator('param', slugParamSchema), asyn
   if (!guide) return c.json({ error: 'not found' }, 404);
   await db
     .delete(schema.guideReviews)
-    .where(
-      and(eq(schema.guideReviews.guideId, guide.id), eq(schema.guideReviews.userId, user.id)),
-    );
+    .where(and(eq(schema.guideReviews.guideId, guide.id), eq(schema.guideReviews.userId, user.id)));
   return c.json({ ok: true });
 });
