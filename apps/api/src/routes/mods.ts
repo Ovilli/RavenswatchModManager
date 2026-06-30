@@ -14,8 +14,8 @@ import { isPgErrorCode } from '../db-errors';
 import { s3Configured, virusTotalConfigured } from '../env';
 import { createRateLimiter } from '../rate-limit';
 import { presignModImage, presignModUpload } from '../storage';
-import { submitVirusTotalUrl } from '../virus-total';
 import type { AppEnv } from '../types';
+import { submitVirusTotalUrl } from '../virus-total';
 
 export const modsRouter = new Hono<AppEnv>();
 
@@ -40,11 +40,19 @@ const listQuerySchema = z.object({
 });
 
 const slugParamSchema = z.object({
-  slug: z.string().min(1).max(128).regex(/^[a-z0-9_-]+$/),
+  slug: z
+    .string()
+    .min(1)
+    .max(128)
+    .regex(/^[a-z0-9_-]+$/),
 });
 
 const downloadParamSchema = z.object({
-  slug: z.string().min(1).max(128).regex(/^[a-z0-9_-]+$/),
+  slug: z
+    .string()
+    .min(1)
+    .max(128)
+    .regex(/^[a-z0-9_-]+$/),
   version: z.string().regex(/^\d+\.\d+\.\d+(?:[-+][\w.]+)?$/),
 });
 
@@ -275,10 +283,7 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
   const user = c.get('user');
   if (!user) return c.json({ error: 'unauthorized' }, 401);
   if (!s3Configured()) {
-    return c.json(
-      { error: 'object storage is not configured on this server' },
-      503,
-    );
+    return c.json({ error: 'object storage is not configured on this server' }, 503);
   }
   const body = c.req.valid('json');
 
@@ -419,76 +424,87 @@ const ownerLimiter = createRateLimiter({
   maxHits: 60,
   keyFrom: (c) => {
     const user = c.get('user');
-    return user?.id ?? c.req.header('x-real-ip') ?? c.req.header('x-forwarded-for')?.split(',').pop()?.trim() ?? 'anon';
+    return (
+      user?.id ??
+      c.req.header('x-real-ip') ??
+      c.req.header('x-forwarded-for')?.split(',').pop()?.trim() ??
+      'anon'
+    );
   },
 });
 
 modsRouter.use('/versions/:versionId/scan', ownerLimiter);
-modsRouter.post('/versions/:versionId/scan', zValidator('param', versionScanParamSchema), async (c) => {
-  const user = c.get('user');
-  if (!user) return c.json({ error: 'unauthorized' }, 401);
-  if (!virusTotalConfigured()) {
-    return c.json({ error: 'virus total is not configured on this server' }, 503);
-  }
+modsRouter.post(
+  '/versions/:versionId/scan',
+  zValidator('param', versionScanParamSchema),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    // Scanning is optional (see env.ts): when VirusTotal isn't configured, don't
+    // block publishing — report the scan as skipped so the client can proceed.
+    if (!virusTotalConfigured()) {
+      return c.json({ ok: true, skipped: true, reason: 'scanning not configured on this server' });
+    }
 
-  const { versionId } = c.req.valid('param');
-  const db = getDb();
+    const { versionId } = c.req.valid('param');
+    const db = getDb();
 
-  const rows = await db
-    .select({
-      assetUrl: schema.modVersions.assetUrl,
-      ownerId: schema.mods.ownerId,
-    })
-    .from(schema.modVersions)
-    .innerJoin(schema.mods, eq(schema.modVersions.modId, schema.mods.id))
-    .where(eq(schema.modVersions.id, versionId))
-    .limit(1);
-  const row = rows[0];
-  if (!row) return c.json({ error: 'not found' }, 404);
-  if (row.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+    const rows = await db
+      .select({
+        assetUrl: schema.modVersions.assetUrl,
+        ownerId: schema.mods.ownerId,
+      })
+      .from(schema.modVersions)
+      .innerJoin(schema.mods, eq(schema.modVersions.modId, schema.mods.id))
+      .where(eq(schema.modVersions.id, versionId))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return c.json({ error: 'not found' }, 404);
+    if (row.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
 
-  try {
-    const analysis = await submitVirusTotalUrl(row.assetUrl);
-    return c.json({ ok: true, analysisId: analysis.analysisId, permalink: analysis.permalink });
-  } catch (err) {
-    console.error('VirusTotal scan error:', err);
-    return c.json({ error: 'failed to submit VirusTotal scan' }, 502);
-  }
-});
+    try {
+      const analysis = await submitVirusTotalUrl(row.assetUrl);
+      return c.json({ ok: true, analysisId: analysis.analysisId, permalink: analysis.permalink });
+    } catch (err) {
+      console.error('VirusTotal scan error:', err);
+      return c.json({ error: 'failed to submit VirusTotal scan' }, 502);
+    }
+  },
+);
 
-  modsRouter.use('/:slug/edit', ownerLimiter);
-  modsRouter.patch(
-    '/:slug/edit',
-    zValidator('param', slugParamSchema),
-    zValidator('json', modPatchSchema),
-    async (c) => {
-      const user = c.get('user');
-      if (!user) return c.json({ error: 'unauthorized' }, 401);
-      const { slug } = c.req.valid('param');
-      const patch = c.req.valid('json');
-      const db = getDb();
+modsRouter.use('/:slug/edit', ownerLimiter);
+modsRouter.patch(
+  '/:slug/edit',
+  zValidator('param', slugParamSchema),
+  zValidator('json', modPatchSchema),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    const { slug } = c.req.valid('param');
+    const patch = c.req.valid('json');
+    const db = getDb();
 
-      const existing = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
-      if (!existing) return c.json({ error: 'not found' }, 404);
-      if (existing.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+    const existing = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
+    if (!existing) return c.json({ error: 'not found' }, 404);
+    if (existing.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
 
-      // Build an update object that only sets keys the caller sent. The
-      // `?? undefined` dance is needed because zod returns `null` for
-      // fields the caller explicitly cleared and we want those nulls to
-      // persist to the DB.
-      const updates: Partial<typeof schema.mods.$inferInsert> = { updatedAt: new Date() };
-      if (patch.name !== undefined) updates.name = patch.name;
-      if (patch.summary !== undefined) updates.summary = patch.summary;
-      if (patch.description !== undefined) updates.description = patch.description;
-      if (patch.license !== undefined) updates.license = patch.license;
-      if (patch.repoUrl !== undefined) updates.repoUrl = patch.repoUrl;
-      if (patch.homepageUrl !== undefined) updates.homepageUrl = patch.homepageUrl;
-      if (patch.category !== undefined) updates.category = patch.category;
-      if (patch.tags !== undefined) updates.tags = patch.tags;
-      if (patch.imageUrl !== undefined) updates.imageUrl = patch.imageUrl;
-      if (patch.screenshots !== undefined) updates.screenshots = patch.screenshots;
-      if (patch.videos !== undefined) updates.videos = patch.videos;
-      if (patch.nsfw !== undefined) updates.nsfw = patch.nsfw;
+    // Build an update object that only sets keys the caller sent. The
+    // `?? undefined` dance is needed because zod returns `null` for
+    // fields the caller explicitly cleared and we want those nulls to
+    // persist to the DB.
+    const updates: Partial<typeof schema.mods.$inferInsert> = { updatedAt: new Date() };
+    if (patch.name !== undefined) updates.name = patch.name;
+    if (patch.summary !== undefined) updates.summary = patch.summary;
+    if (patch.description !== undefined) updates.description = patch.description;
+    if (patch.license !== undefined) updates.license = patch.license;
+    if (patch.repoUrl !== undefined) updates.repoUrl = patch.repoUrl;
+    if (patch.homepageUrl !== undefined) updates.homepageUrl = patch.homepageUrl;
+    if (patch.category !== undefined) updates.category = patch.category;
+    if (patch.tags !== undefined) updates.tags = patch.tags;
+    if (patch.imageUrl !== undefined) updates.imageUrl = patch.imageUrl;
+    if (patch.screenshots !== undefined) updates.screenshots = patch.screenshots;
+    if (patch.videos !== undefined) updates.videos = patch.videos;
+    if (patch.nsfw !== undefined) updates.nsfw = patch.nsfw;
     if (patch.nsfw !== undefined) updates.nsfw = patch.nsfw;
 
     const rows = await db
@@ -624,7 +640,12 @@ const reviewLimiter = createRateLimiter({
   maxHits: 10,
   keyFrom: (c) => {
     const user = c.get('user');
-    return user?.id ?? c.req.header('x-real-ip') ?? c.req.header('x-forwarded-for')?.split(',').pop()?.trim() ?? 'anon';
+    return (
+      user?.id ??
+      c.req.header('x-real-ip') ??
+      c.req.header('x-forwarded-for')?.split(',').pop()?.trim() ??
+      'anon'
+    );
   },
 });
 
@@ -680,9 +701,7 @@ modsRouter.get('/:slug/reviews', zValidator('param', slugParamSchema), async (c)
     updatedAt: r.updatedAt.toISOString(),
   }));
 
-  const average = items.length
-    ? items.reduce((s, r) => s + r.rating, 0) / items.length
-    : null;
+  const average = items.length ? items.reduce((s, r) => s + r.rating, 0) / items.length : null;
 
   return c.json({ items, total: items.length, averageRating: average });
 });
@@ -742,9 +761,7 @@ modsRouter.delete('/:slug/reviews', zValidator('param', slugParamSchema), async 
 
   await db
     .delete(schema.modReviews)
-    .where(
-      and(eq(schema.modReviews.modId, mod.id), eq(schema.modReviews.userId, user.id)),
-    );
+    .where(and(eq(schema.modReviews.modId, mod.id), eq(schema.modReviews.userId, user.id)));
   await recomputeRating(mod.id);
   return c.json({ ok: true });
 });
