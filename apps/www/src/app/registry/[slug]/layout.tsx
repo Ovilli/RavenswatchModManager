@@ -8,6 +8,7 @@ interface Mod {
   name?: string;
   author?: string | null;
   summary?: string | null;
+  description?: string | null;
   imageUrl?: string | null;
   screenshots?: string[];
   rating?: number | null;
@@ -42,9 +43,17 @@ export async function generateMetadata({
   // Prefer the cover image, fall back to the first screenshot.
   const image = mod.imageUrl ?? mod.screenshots?.[0];
 
+  // Thin-content hygiene: a mod with no author-written summary or long
+  // description is a near-empty page. Keep it reachable but out of the index so
+  // it doesn't drag down the site's overall content quality (matters for ad /
+  // search review). It re-enters the index automatically once the author adds a
+  // description.
+  const thin = !mod.summary?.trim() && (mod.description?.trim().length ?? 0) < 80;
+
   return {
     title,
     description,
+    ...(thin ? { robots: { index: false, follow: true } } : {}),
     alternates: { canonical: `/registry/${slug}` },
     openGraph: {
       type: 'article',

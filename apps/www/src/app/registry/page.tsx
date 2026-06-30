@@ -14,6 +14,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { Download, ExternalLink, EyeOff, Search, Star } from 'lucide-react';
 import type { Route } from 'next';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { api } from '../../lib/api';
@@ -101,9 +102,21 @@ function RegistryInner() {
     <main className="relative overflow-hidden animate-page-in">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,hsl(var(--crimson)/0.08),transparent_50%)]" />
       <div className="relative container mx-auto space-y-6 px-6 py-12">
-        <header>
-          <h1 className="text-4xl font-bold tracking-tight">Registry</h1>
-          <p className="text-sm text-muted-foreground">Community-published mods.</p>
+        <header className="space-y-2">
+          <h1 className="text-4xl font-bold tracking-tight">Mod Registry</h1>
+          <p className="max-w-2xl text-sm text-muted-foreground">
+            Browse community-published mods for Ravenswatch — hero skins, balance tweaks, custom
+            magical objects, quality-of-life improvements, audio swaps, and more. Search or filter
+            by category below, then install in one click with the{' '}
+            <Link href="/download" className="underline hover:text-foreground">
+              Mod Manager
+            </Link>
+            . New to modding? Start with the{' '}
+            <Link href="/modding" className="underline hover:text-foreground">
+              Modding Guide
+            </Link>
+            .
+          </p>
         </header>
 
         <div className="flex flex-wrap items-center gap-3">

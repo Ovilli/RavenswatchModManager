@@ -13,6 +13,7 @@ const navLinks = [
   { href: '/registry' as const, label: 'Registry' },
   { href: '/c' as const, label: 'Collections' },
   { href: '/guides' as const, label: 'Guides' },
+  { href: '/modding' as const, label: 'Modding Guide' },
   { href: '/download' as const, label: 'Download' },
 ];
 
