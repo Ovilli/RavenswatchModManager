@@ -71,6 +71,7 @@ const footerLinks = [
   { href: '/download', label: 'Download' },
   { href: 'https://github.com/Ovilli/RavenswatchModManager', label: 'Source Code' },
   { href: '/registry', label: 'Registry' },
+  { href: '/guides', label: 'Guides' },
   { href: '/about', label: 'About' },
   { href: '/contact', label: 'Contact' },
   { href: '/legal', label: 'Legal Notice' },

@@ -4,6 +4,7 @@ import type { Route } from 'next';
 import Link from 'next/link';
 import { getApiUrl } from '../lib/api-url';
 import { FAQ } from './components/faq';
+import { faqs } from './components/faq-data';
 import { ModCard } from './components/mod-card';
 import { MockClient } from './mock-client';
 import { OsDownload } from './os-download';
@@ -364,6 +365,21 @@ export default async function Home() {
       </section>
 
       {/* ───── FAQ ───── */}
+      <script
+        type="application/ld+json"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: static FAQ content, not user input.
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'FAQPage',
+            mainEntity: faqs.map((f) => ({
+              '@type': 'Question',
+              name: f.q,
+              acceptedAnswer: { '@type': 'Answer', text: f.a },
+            })),
+          }),
+        }}
+      />
       <section className="container mx-auto px-6 py-16 lg:py-24">
         <div className="mx-auto max-w-3xl">
           <div className="mb-10 text-center">

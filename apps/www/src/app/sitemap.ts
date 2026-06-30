@@ -45,6 +45,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     '/download',
     '/registry',
     '/c',
+    '/guides',
     '/about',
     '/contact',
     '/privacy',
@@ -58,9 +59,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: path === '' ? 1 : 0.7,
   }));
 
-  const [mods, collections] = await Promise.all([
+  const [mods, collections, guides] = await Promise.all([
     fetchEntries('/api/mods'),
     fetchEntries('/api/collections'),
+    fetchEntries('/api/guides'),
   ]);
 
   const modRoutes = mods.map((m) => ({
@@ -77,5 +79,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.5,
   }));
 
-  return [...staticRoutes, ...modRoutes, ...collectionRoutes];
+  const guideRoutes = guides.map((g) => ({
+    url: `${BASE}/guides/${g.slug}`,
+    lastModified: g.updatedAt ? new Date(g.updatedAt) : now,
+    changeFrequency: 'weekly' as const,
+    priority: 0.7,
+  }));
+
+  return [...staticRoutes, ...modRoutes, ...collectionRoutes, ...guideRoutes];
 }

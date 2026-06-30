@@ -21,6 +21,7 @@
     "audit:supply-chain": "node scripts/audit-supply-chain.mjs",
     "db:push": "pnpm --filter @rsmm/db push",
     "db:seed": "pnpm --filter @rsmm/db seed",
+    "db:seed:guides": "pnpm --filter @rsmm/db seed:guides",
     "db:migrate": "pnpm --filter @rsmm/db migrate",
     "generate": "pnpm --filter @rsmm/db generate",
     "db:studio": "pnpm --filter @rsmm/db studio",

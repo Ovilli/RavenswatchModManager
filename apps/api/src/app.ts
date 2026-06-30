@@ -6,6 +6,7 @@ import { env, githubConfigured, googleConfigured, isProduction } from './env.js'
 import { log, requestId } from './logger.js';
 import { createRateLimiter } from './rate-limit.js';
 import { collectionsRouter } from './routes/collections.js';
+import { guidesRouter } from './routes/guides.js';
 import { meRouter } from './routes/me.js';
 import { modsRouter } from './routes/mods.js';
 import { telemetryRouter } from './routes/telemetry.js';
@@ -81,4 +82,5 @@ app.route('/api/mods', modsRouter);
 app.route('/api/me', meRouter);
 app.route('/api/users', usersRouter);
 app.route('/api/collections', collectionsRouter);
+app.route('/api/guides', guidesRouter);
 app.route('/api/telemetry', telemetryRouter);

@@ -7,6 +7,12 @@ import {
   collectionReviewsResponseSchema,
   collectionSchema,
   type CrashReport,
+  type GuideCreate,
+  type GuideImagePresign,
+  type GuidePatch,
+  guideListItemSchema,
+  type GuideReviewUpsert,
+  guideReviewsResponseSchema,
   type ModImagePresign,
   type ModListItem,
   modListItemSchema,
@@ -345,6 +351,68 @@ export function createApiClient(options: ApiClientOptions) {
         remove: (slug: string) =>
           request(
             `/api/collections/${encodeURIComponent(slug)}/reviews`,
+            { method: 'DELETE' },
+            okSchema,
+          ),
+      },
+    },
+    guides: {
+      list: () =>
+        request('/api/guides', { method: 'GET' }, z.object({ items: z.array(guideListItemSchema) })),
+      mine: () =>
+        request(
+          '/api/guides/mine',
+          { method: 'GET' },
+          z.object({ items: z.array(guideListItemSchema) }),
+        ),
+      pending: () =>
+        request(
+          '/api/guides/pending',
+          { method: 'GET' },
+          z.object({ items: z.array(guideListItemSchema) }),
+        ),
+      get: (slug: string) =>
+        request(`/api/guides/${encodeURIComponent(slug)}`, { method: 'GET' }, guideListItemSchema),
+      create: (body: GuideCreate) =>
+        request(
+          '/api/guides',
+          { method: 'POST', body: JSON.stringify(body) },
+          z.object({ guide: z.unknown() }),
+        ),
+      patch: (slug: string, body: GuidePatch) =>
+        request(
+          `/api/guides/${encodeURIComponent(slug)}`,
+          { method: 'PATCH', body: JSON.stringify(body) },
+          okSchema,
+        ),
+      remove: (slug: string) =>
+        request(`/api/guides/${encodeURIComponent(slug)}`, { method: 'DELETE' }, okSchema),
+      approve: (slug: string) =>
+        request(`/api/guides/${encodeURIComponent(slug)}/approve`, { method: 'POST' }, okSchema),
+      reject: (slug: string) =>
+        request(`/api/guides/${encodeURIComponent(slug)}/reject`, { method: 'POST' }, okSchema),
+      presignImage: (slug: string, body: GuideImagePresign) =>
+        request(
+          `/api/guides/${encodeURIComponent(slug)}/image`,
+          { method: 'POST', body: JSON.stringify(body) },
+          imagePresignResponseSchema,
+        ),
+      reviews: {
+        list: (slug: string) =>
+          request(
+            `/api/guides/${encodeURIComponent(slug)}/reviews`,
+            { method: 'GET' },
+            guideReviewsResponseSchema,
+          ),
+        upsert: (slug: string, body: GuideReviewUpsert) =>
+          request(
+            `/api/guides/${encodeURIComponent(slug)}/reviews`,
+            { method: 'PUT', body: JSON.stringify(body) },
+            okSchema,
+          ),
+        remove: (slug: string) =>
+          request(
+            `/api/guides/${encodeURIComponent(slug)}/reviews`,
             { method: 'DELETE' },
             okSchema,
           ),

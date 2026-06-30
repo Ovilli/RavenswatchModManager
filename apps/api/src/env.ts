@@ -43,6 +43,12 @@ export const env = {
   // landing target. Defaults to localhost so dev works without extra
   // config; prod overrides via WEB_URL.
   webUrl: process.env.WEB_URL || 'http://localhost:3000',
+  // User IDs allowed to approve/reject community guides (comma-separated).
+  // Empty in dev — see guidesRouter approval endpoints.
+  adminUserIds: (process.env.ADMIN_USER_IDS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
   // Tauri WebView origins vary by platform and must always be accepted
   // regardless of the TRUSTED_ORIGINS env override:
   //   Linux WebKitGTK:   tauri://localhost

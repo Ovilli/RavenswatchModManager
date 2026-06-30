@@ -12,6 +12,7 @@ const navLinks = [
   { href: '/' as const, label: 'Home' },
   { href: '/registry' as const, label: 'Registry' },
   { href: '/c' as const, label: 'Collections' },
+  { href: '/guides' as const, label: 'Guides' },
   { href: '/download' as const, label: 'Download' },
 ];
 

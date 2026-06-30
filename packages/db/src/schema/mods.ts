@@ -203,6 +203,55 @@ export const collectionReviews = pgTable(
   }),
 );
 
+// User-published guides/tutorials (original editorial content). Mirrors the
+// collections shape. `status` gates visibility: only 'approved' guides are
+// public/indexed (see apps/api/src/routes/guides.ts). `body` is markdown.
+export const guides = pgTable(
+  'guides',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    slug: varchar('slug', { length: 80 }).notNull(),
+    ownerId: text('owner_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    summary: text('summary'),
+    body: text('body').notNull(),
+    imageUrl: text('image_url'),
+    screenshots: jsonb('screenshots').$type<{ url: string; caption?: string }[]>(),
+    status: varchar('status', { length: 16 }).notNull().default('draft'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    slugIdx: uniqueIndex('guides_slug_idx').on(table.slug),
+    ownerIdx: index('guides_owner_idx').on(table.ownerId),
+    statusIdx: index('guides_status_idx').on(table.status),
+  }),
+);
+
+export const guideReviews = pgTable(
+  'guide_reviews',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    guideId: uuid('guide_id')
+      .notNull()
+      .references(() => guides.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    rating: integer('rating').notNull(),
+    title: varchar('title', { length: 120 }),
+    body: text('body'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    guideUserIdx: uniqueIndex('guide_reviews_guide_user_idx').on(table.guideId, table.userId),
+    guideIdx: index('guide_reviews_guide_idx').on(table.guideId),
+  }),
+);
+
 export const modsRelations = relations(mods, ({ many, one }) => ({
   versions: many(modVersions),
   authors: many(modAuthors),
@@ -228,6 +277,16 @@ export const collectionReviewsRelations = relations(collectionReviews, ({ one })
     references: [collections.id],
   }),
   user: one(users, { fields: [collectionReviews.userId], references: [users.id] }),
+}));
+
+export const guidesRelations = relations(guides, ({ many, one }) => ({
+  owner: one(users, { fields: [guides.ownerId], references: [users.id] }),
+  reviews: many(guideReviews),
+}));
+
+export const guideReviewsRelations = relations(guideReviews, ({ one }) => ({
+  guide: one(guides, { fields: [guideReviews.guideId], references: [guides.id] }),
+  user: one(users, { fields: [guideReviews.userId], references: [users.id] }),
 }));
 
 export const collectionModsRelations = relations(collectionMods, ({ one }) => ({
