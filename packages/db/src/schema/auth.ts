@@ -8,6 +8,10 @@ export const users = pgTable('user', {
   emailVerified: boolean('email_verified').notNull().default(false),
   image: text('image'),
   handle: text('handle').unique(),
+  // Moderation: a banned user's session is nulled out by the API session
+  // middleware (apps/api/src/app.ts) so they can neither publish nor act.
+  banned: boolean('banned').notNull().default(false),
+  bannedReason: text('banned_reason'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

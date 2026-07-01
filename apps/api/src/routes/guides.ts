@@ -10,8 +10,9 @@ import {
 import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { isAdmin } from '../admin';
 import { isPgErrorCode } from '../db-errors';
-import { env, s3Configured } from '../env';
+import { s3Configured } from '../env';
 import { createRateLimiter } from '../rate-limit';
 import { presignGuideImage } from '../storage';
 import type { AppEnv } from '../types';
@@ -19,8 +20,6 @@ import type { AppEnv } from '../types';
 export const guidesRouter = new Hono<AppEnv>();
 
 const slugParamSchema = z.object({ slug: guideSlugSchema });
-
-const isAdmin = (userId?: string | null): boolean => !!userId && env.adminUserIds.includes(userId);
 
 type GuideVisibility = Pick<typeof schema.guides.$inferSelect, 'status' | 'ownerId'>;
 

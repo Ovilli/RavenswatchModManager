@@ -60,7 +60,7 @@ usersRouter.get('/:idOrHandle', async (c) => {
       ), 0)`,
     })
     .from(schema.mods)
-    .where(and(eq(schema.mods.ownerId, u.id)))
+    .where(and(eq(schema.mods.ownerId, u.id), eq(schema.mods.takedownStatus, 'active')))
     .orderBy(desc(schema.mods.updatedAt));
 
   return c.json({

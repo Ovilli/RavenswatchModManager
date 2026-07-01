@@ -1,12 +1,42 @@
 'use client';
 
-import { Library, LogOut, Settings, Upload, User as UserIcon } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Bell, Library, LogOut, Settings, Upload, User as UserIcon } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
+import { api } from '../lib/api';
 import { signOut, useSession } from '../lib/auth-client';
+
+/** Bell in the header linking to /notifications, with an unread-count badge.
+ *  Polls once a minute so a new notification surfaces without a reload. */
+function NotificationBell() {
+  const { data: session } = useSession();
+  const q = useQuery({
+    queryKey: ['me', 'notifications'],
+    queryFn: () => api.me.notifications(),
+    enabled: !!session,
+    refetchInterval: 60_000,
+  });
+  if (!session) return null;
+  const unread = q.data?.unread ?? 0;
+  return (
+    <Link
+      href="/notifications"
+      aria-label={`Notifications${unread > 0 ? ` (${unread} unread)` : ''}`}
+      className="relative flex h-9 w-9 items-center justify-center rounded-full border border-border/60 text-muted-foreground transition hover:border-crimson/60 hover:text-foreground"
+    >
+      <Bell className="h-4 w-4" />
+      {unread > 0 && (
+        <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-crimson px-1 text-[10px] font-semibold text-white">
+          {unread > 9 ? '9+' : unread}
+        </span>
+      )}
+    </Link>
+  );
+}
 
 const navLinks = [
   { href: '/' as const, label: 'Home' },
@@ -194,7 +224,10 @@ export function Nav({ versionBadge }: { versionBadge?: ReactNode }) {
           {isPending ? (
             <div className="h-9 w-9 animate-pulse rounded-full bg-muted" aria-hidden />
           ) : session?.user ? (
-            <UserMenu />
+            <>
+              <NotificationBell />
+              <UserMenu />
+            </>
           ) : (
             <Link
               href="/auth/signin"

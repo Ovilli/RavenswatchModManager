@@ -134,8 +134,37 @@ export function createApiClient(options: ApiClientOptions) {
     total: z.number().int().nonnegative(),
   });
   const modDetailResponseSchema = z.object({
-    mod: modListItemSchema,
+    mod: modListItemSchema.and(
+      z.object({
+        isFollowing: z.boolean().optional(),
+        followerCount: z.number().int().optional(),
+      }),
+    ),
     versions: z.array(modVersionSchema),
+  });
+  const notificationsResponseSchema = z.object({
+    unread: z.number().int().nonnegative(),
+    items: z.array(
+      z.object({
+        id: z.string(),
+        type: z.string(),
+        title: z.string(),
+        body: z.string().nullable(),
+        link: z.string().nullable(),
+        read: z.boolean(),
+        createdAt: z.string(),
+      }),
+    ),
+  });
+  const followsResponseSchema = z.object({
+    items: z.array(
+      z.object({
+        slug: z.string(),
+        name: z.string(),
+        imageUrl: z.string().nullable(),
+        followedAt: z.string(),
+      }),
+    ),
   });
   const okSchema = z.object({ ok: z.literal(true) });
   const uploadResponseSchema = z.object({
@@ -199,6 +228,41 @@ export function createApiClient(options: ApiClientOptions) {
     totalDownloads: z.number().int().nonnegative(),
   });
 
+  const statsResponseSchema = z.object({
+    days: z.number().int(),
+    totalDownloads: z.number().int().nonnegative(),
+    series: z.array(z.object({ day: z.string(), count: z.number().int() })),
+    perVersion: z.array(z.object({ version: z.string(), count: z.number().int() })),
+  });
+  const authorsResponseSchema = z.object({
+    ownerId: z.string().nullable(),
+    authors: z.array(
+      z.object({
+        userId: z.string(),
+        role: z.string(),
+        name: z.string().nullable(),
+        handle: z.string().nullable(),
+        image: z.string().nullable(),
+      }),
+    ),
+  });
+  const reportItemSchema = z.object({
+    id: z.string(),
+    modId: z.string(),
+    modSlug: z.string(),
+    modName: z.string(),
+    takedownStatus: z.string(),
+    reporterId: z.string().nullable(),
+    reporterName: z.string().nullable(),
+    reason: z.string(),
+    detail: z.string().nullable(),
+    status: z.string(),
+    resolutionNote: z.string().nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  });
+  const reportsResponseSchema = z.object({ items: z.array(reportItemSchema) });
+
   return {
     mods: {
       list: (
@@ -227,7 +291,7 @@ export function createApiClient(options: ApiClientOptions) {
         );
       },
       get: (slug: string) =>
-        request<{ mod: ModListItem; versions: ModVersion[] }>(
+        request(
           `/api/mods/${encodeURIComponent(slug)}`,
           { method: 'GET' },
           modDetailResponseSchema,
@@ -284,6 +348,91 @@ export function createApiClient(options: ApiClientOptions) {
         ),
       deleteReview: (slug: string) =>
         request(`/api/mods/${encodeURIComponent(slug)}/reviews`, { method: 'DELETE' }, okSchema),
+      report: (slug: string, body: { reason: string; detail?: string | null }) =>
+        request(
+          `/api/mods/${encodeURIComponent(slug)}/report`,
+          { method: 'POST', body: JSON.stringify(body) },
+          okSchema,
+        ),
+      stats: (slug: string, days = 30) =>
+        request(
+          `/api/mods/${encodeURIComponent(slug)}/stats?days=${days}`,
+          { method: 'GET' },
+          statsResponseSchema,
+        ),
+      follow: (slug: string) =>
+        request(
+          `/api/mods/${encodeURIComponent(slug)}/follow`,
+          { method: 'POST' },
+          z.object({ ok: z.literal(true), following: z.boolean() }),
+        ),
+      unfollow: (slug: string) =>
+        request(
+          `/api/mods/${encodeURIComponent(slug)}/follow`,
+          { method: 'DELETE' },
+          z.object({ ok: z.literal(true), following: z.boolean() }),
+        ),
+      authors: {
+        list: (slug: string) =>
+          request(
+            `/api/mods/${encodeURIComponent(slug)}/authors`,
+            { method: 'GET' },
+            authorsResponseSchema,
+          ),
+        add: (slug: string, handle: string) =>
+          request(
+            `/api/mods/${encodeURIComponent(slug)}/authors`,
+            { method: 'POST', body: JSON.stringify({ handle }) },
+            okSchema,
+          ),
+        remove: (slug: string, userId: string) =>
+          request(
+            `/api/mods/${encodeURIComponent(slug)}/authors/${encodeURIComponent(userId)}`,
+            { method: 'DELETE' },
+            okSchema,
+          ),
+      },
+    },
+    moderation: {
+      reports: (status?: 'open' | 'reviewing' | 'resolved' | 'dismissed') =>
+        request(
+          `/api/moderation/reports${status ? `?status=${status}` : ''}`,
+          { method: 'GET' },
+          reportsResponseSchema,
+        ),
+      resolveReport: (
+        id: string,
+        body: {
+          status: 'open' | 'reviewing' | 'resolved' | 'dismissed';
+          resolutionNote?: string | null;
+        },
+      ) =>
+        request(
+          `/api/moderation/reports/${encodeURIComponent(id)}`,
+          { method: 'PATCH', body: JSON.stringify(body) },
+          z.object({ ok: z.literal(true), report: z.unknown() }),
+        ),
+      takedown: (
+        slug: string,
+        body: { takedownStatus: 'active' | 'hidden' | 'removed'; reason?: string | null },
+      ) =>
+        request(
+          `/api/moderation/mods/${encodeURIComponent(slug)}/takedown`,
+          { method: 'POST', body: JSON.stringify(body) },
+          z.object({ ok: z.literal(true), mod: z.unknown() }),
+        ),
+      feature: (slug: string, featured: boolean) =>
+        request(
+          `/api/moderation/mods/${encodeURIComponent(slug)}/feature`,
+          { method: 'POST', body: JSON.stringify({ featured }) },
+          z.object({ ok: z.literal(true), mod: z.unknown() }),
+        ),
+      banUser: (id: string, body: { banned: boolean; reason?: string | null }) =>
+        request(
+          `/api/moderation/users/${encodeURIComponent(id)}/ban`,
+          { method: 'POST', body: JSON.stringify(body) },
+          z.object({ ok: z.literal(true), user: z.unknown() }),
+        ),
     },
     me: {
       mods: () => request('/api/me/mods', { method: 'GET' }, myModsResponseSchema),
@@ -293,6 +442,15 @@ export function createApiClient(options: ApiClientOptions) {
           { method: 'POST', body: JSON.stringify(body) },
           imagePresignResponseSchema,
         ),
+      notifications: () =>
+        request('/api/me/notifications', { method: 'GET' }, notificationsResponseSchema),
+      markNotificationsRead: (id?: string) =>
+        request(
+          '/api/me/notifications/read',
+          { method: 'POST', body: JSON.stringify(id ? { id } : {}) },
+          okSchema,
+        ),
+      follows: () => request('/api/me/follows', { method: 'GET' }, followsResponseSchema),
     },
     users: {
       profile: (idOrHandle: string) =>

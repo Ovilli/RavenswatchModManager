@@ -1,3 +1,5 @@
+import { getDb, schema } from '@rsmm/db';
+import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
@@ -9,6 +11,7 @@ import { collectionsRouter } from './routes/collections.js';
 import { guidesRouter } from './routes/guides.js';
 import { legalRouter } from './routes/legal.js';
 import { meRouter } from './routes/me.js';
+import { moderationRouter } from './routes/moderation.js';
 import { modsRouter } from './routes/mods.js';
 import { telemetryRouter } from './routes/telemetry.js';
 import { usersRouter } from './routes/users.js';
@@ -45,7 +48,21 @@ app.notFound((c) => c.json({ error: 'not found' }, 404));
 
 app.use('*', async (c, next) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers }).catch(() => null);
-  const user = session?.user ?? null;
+  let user = session?.user ?? null;
+  // Ban gate: a banned user is treated as anonymous everywhere (can't publish,
+  // review, or moderate). Checked against the DB so a ban takes effect on the
+  // banned user's very next request without waiting for their session to
+  // expire. Only costs a query when a session is actually present.
+  if (user) {
+    const banned = await getDb()
+      .select({ banned: schema.users.banned })
+      .from(schema.users)
+      .where(eq(schema.users.id, user.id))
+      .limit(1)
+      .then((r) => r[0]?.banned ?? false)
+      .catch(() => false);
+    if (banned) user = null;
+  }
   const isVerified = user?.emailVerified === true;
   c.set('user', isProduction && user && !isVerified ? null : user);
   c.set('session', isProduction && user && !isVerified ? null : (session?.session ?? null));
@@ -89,6 +106,7 @@ app.get('/api/auth-config', (c) =>
 );
 
 app.route('/api/mods', modsRouter);
+app.route('/api/moderation', moderationRouter);
 app.route('/api/me', meRouter);
 app.route('/api/users', usersRouter);
 app.route('/api/collections', collectionsRouter);

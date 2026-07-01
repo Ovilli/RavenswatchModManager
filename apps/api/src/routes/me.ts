@@ -1,9 +1,11 @@
 import { zValidator } from '@hono/zod-validator';
 import { getDb, schema } from '@rsmm/db';
 import { modImagePresignSchema } from '@rsmm/schemas';
-import { desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { z } from 'zod';
 import { s3Configured } from '../env';
+import { unreadCount } from '../notify';
 import { presignAvatar } from '../storage';
 import type { AppEnv } from '../types';
 
@@ -68,7 +70,13 @@ meRouter.get('/mods', async (c) => {
       ), 0)`,
     })
     .from(schema.mods)
-    .where(eq(schema.mods.ownerId, user.id))
+    // Mods the user owns OR is a co-author of (mod_authors membership).
+    .where(
+      or(
+        eq(schema.mods.ownerId, user.id),
+        sql`exists (select 1 from ${schema.modAuthors} where ${schema.modAuthors.modId} = ${schema.mods.id} and ${schema.modAuthors.userId} = ${user.id})`,
+      ),
+    )
     .orderBy(desc(schema.mods.updatedAt));
 
   return c.json({
@@ -78,5 +86,76 @@ meRouter.get('/mods', async (c) => {
       createdAt: r.createdAt.toISOString(),
       tags: r.tags ?? [],
     })),
+  });
+});
+
+// ─────────── Notifications ───────────
+
+meRouter.get('/notifications', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'unauthorized' }, 401);
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(schema.notifications)
+    .where(eq(schema.notifications.userId, user.id))
+    .orderBy(desc(schema.notifications.createdAt))
+    .limit(50);
+  const unread = await unreadCount(user.id);
+  return c.json({
+    unread,
+    items: rows.map((n) => ({
+      id: n.id,
+      type: n.type,
+      title: n.title,
+      body: n.body,
+      link: n.link,
+      read: n.readAt != null,
+      createdAt: n.createdAt.toISOString(),
+    })),
+  });
+});
+
+// Mark notifications read. Body `{ id }` marks one; empty body marks all.
+const markReadSchema = z.object({ id: z.string().uuid().optional() });
+meRouter.post('/notifications/read', zValidator('json', markReadSchema), async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'unauthorized' }, 401);
+  const { id } = c.req.valid('json');
+  const db = getDb();
+  const now = new Date();
+  if (id) {
+    await db
+      .update(schema.notifications)
+      .set({ readAt: now })
+      .where(and(eq(schema.notifications.id, id), eq(schema.notifications.userId, user.id)));
+  } else {
+    await db
+      .update(schema.notifications)
+      .set({ readAt: now })
+      .where(and(eq(schema.notifications.userId, user.id), isNull(schema.notifications.readAt)));
+  }
+  return c.json({ ok: true });
+});
+
+// ─────────── Followed mods ───────────
+
+meRouter.get('/follows', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'unauthorized' }, 401);
+  const db = getDb();
+  const rows = await db
+    .select({
+      slug: schema.mods.slug,
+      name: schema.mods.name,
+      imageUrl: schema.mods.imageUrl,
+      followedAt: schema.modFollows.createdAt,
+    })
+    .from(schema.modFollows)
+    .innerJoin(schema.mods, eq(schema.modFollows.modId, schema.mods.id))
+    .where(and(eq(schema.modFollows.userId, user.id), eq(schema.mods.takedownStatus, 'active')))
+    .orderBy(desc(schema.modFollows.createdAt));
+  return c.json({
+    items: rows.map((r) => ({ ...r, followedAt: r.followedAt.toISOString() })),
   });
 });

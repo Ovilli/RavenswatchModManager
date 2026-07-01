@@ -5,13 +5,17 @@ import {
   modPatchSchema,
   modUploadRequestSchema,
   modVersionCreateSchema,
+  reportCreateSchema,
   reviewUpsertSchema,
 } from '@rsmm/schemas';
-import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, ilike, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { isAdmin } from '../admin';
 import { isPgErrorCode } from '../db-errors';
 import { s3Configured, virusTotalConfigured } from '../env';
+import { canManageMod } from '../mod-access';
+import { notify, notifyFollowers } from '../notify';
 import { createRateLimiter } from '../rate-limit';
 import { enqueueScan, isServable, markScan, queueInfo } from '../scan-service';
 import { presignModImage, presignModUpload, remoteObjectExists } from '../storage';
@@ -65,6 +69,8 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
   const db = getDb();
 
   const conditions = [
+    // Admin takedown gate: delisted/removed mods never appear in the public list.
+    eq(schema.mods.takedownStatus, 'active'),
     q
       ? or(
           ilike(schema.mods.name, `%${q.replace(/[%_\\]/g, '\\$&')}%`),
@@ -175,6 +181,13 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
   });
   if (!mod) return c.json({ error: 'not found' }, 404);
 
+  // Admin takedown gate: a delisted/removed mod is 404 to the public. The owner
+  // and admins can still load it (to see the takedown reason / appeal).
+  const viewer = c.get('user');
+  if (mod.takedownStatus !== 'active' && mod.ownerId !== viewer?.id && !isAdmin(viewer?.id)) {
+    return c.json({ error: 'not found' }, 404);
+  }
+
   // Aggregate downloads across all days for this mod. Mirrors the
   // expression used by the list endpoint so the same number shows up
   // everywhere; previously this route hard-coded `downloads: 0` and
@@ -193,6 +206,14 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
   // ('pending'/'queued'), 'flagged', and 'error' versions are withheld so a
   // freshly uploaded mod is never downloadable before its scan clears.
   const visibleVersions = mod.versions.filter((v) => isServable(v.scanStatus));
+
+  // Follow state for the current viewer + total follower count (both cheap).
+  const followerRows = await db
+    .select({ userId: schema.modFollows.userId })
+    .from(schema.modFollows)
+    .where(eq(schema.modFollows.modId, mod.id));
+  const followerCount = followerRows.length;
+  const isFollowing = viewer ? followerRows.some((f) => f.userId === viewer.id) : false;
 
   return c.json({
     mod: {
@@ -217,6 +238,8 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       featured: mod.featured,
       nsfw: mod.nsfw,
       ownerId: mod.ownerId,
+      isFollowing,
+      followerCount,
       dependencies:
         (visibleVersions[0]?.manifestJson as { dependencies?: Record<string, string> } | undefined)
           ?.dependencies ?? undefined,
@@ -251,6 +274,10 @@ modsRouter.get('/:slug/:version/download', zValidator('param', downloadParamSche
   });
 
   if (!mod || !mod.versions[0]) return c.json({ error: 'not found' }, 404);
+
+  // Admin takedown gate: a delisted/removed mod is never downloadable, even by
+  // direct URL. 404 (not 451) so the takedown isn't advertised.
+  if (mod.takedownStatus !== 'active') return c.json({ error: 'not found' }, 404);
 
   const ver = mod.versions[0];
 
@@ -298,6 +325,68 @@ modsRouter.get('/:slug/:version/download', zValidator('param', downloadParamSche
 
   return c.redirect(ver.assetUrl);
 });
+
+// ─────────── Reporting ───────────
+// Anyone (even logged-out) can report a mod — flagging malware must not require
+// an account. Rate-limited hard to stop report-spam. A logged-in user gets one
+// OPEN report per mod (re-filing updates it); anonymous reports always insert.
+const reportLimiter = createRateLimiter({
+  name: 'mod-report',
+  windowMs: 3_600_000,
+  maxHits: 10,
+  keyFrom: (c) => {
+    const user = c.get('user');
+    return (
+      user?.id ??
+      c.req.header('x-real-ip') ??
+      c.req.header('x-forwarded-for')?.split(',').pop()?.trim() ??
+      'anon'
+    );
+  },
+});
+
+modsRouter.use('/:slug/report', reportLimiter);
+modsRouter.post(
+  '/:slug/report',
+  zValidator('param', slugParamSchema),
+  zValidator('json', reportCreateSchema),
+  async (c) => {
+    const { slug } = c.req.valid('param');
+    const { reason, detail } = c.req.valid('json');
+    const user = c.get('user');
+    const db = getDb();
+
+    const mod = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
+    if (!mod) return c.json({ error: 'not found' }, 404);
+
+    // Logged-in: fold repeat reports into the existing open one so a single
+    // user can't stack the queue. Anonymous: always a fresh row.
+    if (user) {
+      const existing = await db.query.modReports.findFirst({
+        where: and(
+          eq(schema.modReports.modId, mod.id),
+          eq(schema.modReports.reporterId, user.id),
+          eq(schema.modReports.status, 'open'),
+        ),
+      });
+      if (existing) {
+        await db
+          .update(schema.modReports)
+          .set({ reason, detail: detail ?? null, updatedAt: new Date() })
+          .where(eq(schema.modReports.id, existing.id));
+        return c.json({ ok: true, updated: true });
+      }
+    }
+
+    await db.insert(schema.modReports).values({
+      modId: mod.id,
+      reporterId: user?.id ?? null,
+      reason,
+      detail: detail ?? null,
+    });
+    return c.json({ ok: true });
+  },
+);
 
 modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c) => {
   const user = c.get('user');
@@ -477,6 +566,7 @@ modsRouter.post(
     const rows = await db
       .select({
         assetUrl: schema.modVersions.assetUrl,
+        modId: schema.mods.id,
         ownerId: schema.mods.ownerId,
       })
       .from(schema.modVersions)
@@ -485,7 +575,9 @@ modsRouter.post(
       .limit(1);
     const row = rows[0];
     if (!row) return c.json({ error: 'not found' }, 404);
-    if (row.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+    if (!(await canManageMod({ id: row.modId, ownerId: row.ownerId }, user.id))) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
 
     // Finalize gate: the upload row is created before the client PUTs the zip to
     // S3. Confirm the object actually landed. Uses a public HTTP HEAD (bucket is
@@ -525,14 +617,16 @@ modsRouter.get(
     const { versionId } = c.req.valid('param');
     const db = getDb();
     const rows = await db
-      .select({ ownerId: schema.mods.ownerId })
+      .select({ modId: schema.mods.id, ownerId: schema.mods.ownerId })
       .from(schema.modVersions)
       .innerJoin(schema.mods, eq(schema.modVersions.modId, schema.mods.id))
       .where(eq(schema.modVersions.id, versionId))
       .limit(1);
     const row = rows[0];
     if (!row) return c.json({ error: 'not found' }, 404);
-    if (row.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+    if (!(await canManageMod({ id: row.modId, ownerId: row.ownerId }, user.id))) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
 
     const info = await queueInfo(versionId);
     if (!info) return c.json({ error: 'not found' }, 404);
@@ -559,7 +653,7 @@ modsRouter.patch(
 
     const existing = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
     if (!existing) return c.json({ error: 'not found' }, 404);
-    if (existing.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+    if (!(await canManageMod(existing, user.id))) return c.json({ error: 'forbidden' }, 403);
 
     // Build an update object that only sets keys the caller sent. The
     // `?? undefined` dance is needed because zod returns `null` for
@@ -604,7 +698,7 @@ modsRouter.post(
 
     const existing = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
     if (!existing) return c.json({ error: 'not found' }, 404);
-    if (existing.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+    if (!(await canManageMod(existing, user.id))) return c.json({ error: 'forbidden' }, 403);
 
     const signed = await presignModImage({
       slug,
@@ -639,7 +733,16 @@ modsRouter.post(
     const db = getDb();
     const existing = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
     if (!existing) return c.json({ error: 'not found' }, 404);
-    if (existing.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+    if (!(await canManageMod(existing, user.id))) return c.json({ error: 'forbidden' }, 403);
+
+    // Only a genuinely new version fans out to followers — re-uploading an
+    // existing version (onConflictDoUpdate) must not re-notify.
+    const priorVersion = await db.query.modVersions.findFirst({
+      where: and(
+        eq(schema.modVersions.modId, existing.id),
+        eq(schema.modVersions.version, body.version),
+      ),
+    });
 
     const signed = await presignModUpload({
       slug,
@@ -677,6 +780,19 @@ modsRouter.post(
         .set({ updatedAt: new Date() })
         .where(eq(schema.mods.id, existing.id));
 
+      if (!priorVersion) {
+        await notifyFollowers(
+          existing.id,
+          {
+            type: 'mod_new_version',
+            title: `${existing.name} released v${body.version}`,
+            body: body.changelog ?? null,
+            link: `/registry/${existing.slug}`,
+          },
+          user.id,
+        );
+      }
+
       return c.json({
         uploadUrl: signed.uploadUrl,
         publicUrl: signed.publicUrl,
@@ -704,6 +820,184 @@ modsRouter.delete('/:slug/delete', zValidator('param', slugParamSchema), async (
   // Cascade removes mod_versions, mod_authors, mod_downloads via FK.
   await db.delete(schema.mods).where(eq(schema.mods.id, existing.id));
   return c.json({ ok: true });
+});
+
+// ─────────── Co-authors / teams ───────────
+// The owner manages the team; co-authors can edit/publish (canManageMod) but
+// cannot add/remove other authors or delete the mod. mod_authors already
+// existed in the schema — these routes wire it up.
+
+modsRouter.use('/:slug/authors', ownerLimiter);
+modsRouter.get('/:slug/authors', zValidator('param', slugParamSchema), async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'unauthorized' }, 401);
+  const { slug } = c.req.valid('param');
+  const db = getDb();
+
+  const mod = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
+  if (!mod) return c.json({ error: 'not found' }, 404);
+  if (!(await canManageMod(mod, user.id))) return c.json({ error: 'forbidden' }, 403);
+
+  const rows = await db
+    .select({
+      userId: schema.modAuthors.userId,
+      role: schema.modAuthors.role,
+      name: schema.users.name,
+      handle: schema.users.handle,
+      image: schema.users.image,
+    })
+    .from(schema.modAuthors)
+    .innerJoin(schema.users, eq(schema.users.id, schema.modAuthors.userId))
+    .where(eq(schema.modAuthors.modId, mod.id));
+
+  return c.json({ ownerId: mod.ownerId, authors: rows });
+});
+
+const addAuthorSchema = z.object({ handle: z.string().min(1).max(64) });
+
+modsRouter.post(
+  '/:slug/authors',
+  zValidator('param', slugParamSchema),
+  zValidator('json', addAuthorSchema),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    const { slug } = c.req.valid('param');
+    const { handle } = c.req.valid('json');
+    const db = getDb();
+
+    const mod = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
+    if (!mod) return c.json({ error: 'not found' }, 404);
+    // Owner-only: co-authors can't grow the team.
+    if (mod.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+
+    const target = await db.query.users.findFirst({ where: eq(schema.users.handle, handle) });
+    if (!target) return c.json({ error: 'no user with that handle' }, 404);
+    if (target.id === mod.ownerId) return c.json({ error: 'owner is already an author' }, 400);
+
+    await db
+      .insert(schema.modAuthors)
+      .values({ modId: mod.id, userId: target.id, role: 'contrib' })
+      .onConflictDoNothing();
+    return c.json({ ok: true });
+  },
+);
+
+modsRouter.delete(
+  '/:slug/authors/:userId',
+  zValidator('param', slugParamSchema.extend({ userId: z.string().min(1) })),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    const { slug, userId } = c.req.valid('param');
+    const db = getDb();
+
+    const mod = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
+    if (!mod) return c.json({ error: 'not found' }, 404);
+    // Owner-only. (The owner can never be in mod_authors, so this can't strip
+    // ownership.)
+    if (mod.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+
+    await db
+      .delete(schema.modAuthors)
+      .where(and(eq(schema.modAuthors.modId, mod.id), eq(schema.modAuthors.userId, userId)));
+    return c.json({ ok: true });
+  },
+);
+
+// ─────────── Author analytics ───────────
+// Time-series downloads for a mod. mod_downloads is already day-bucketed, so
+// this is a cheap group-by. Manage-gated (owner or co-author).
+
+const statsQuerySchema = z.object({
+  days: z.coerce.number().int().min(1).max(365).default(30),
+});
+
+modsRouter.use('/:slug/stats', ownerLimiter);
+modsRouter.get(
+  '/:slug/stats',
+  zValidator('param', slugParamSchema),
+  zValidator('query', statsQuerySchema),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    const { slug } = c.req.valid('param');
+    const { days } = c.req.valid('query');
+    const db = getDb();
+
+    const mod = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
+    if (!mod) return c.json({ error: 'not found' }, 404);
+    if (!(await canManageMod(mod, user.id))) return c.json({ error: 'forbidden' }, 403);
+
+    // Inclusive cutoff = today - (days-1), as a YYYY-MM-DD string (the `day`
+    // column is a DATE).
+    const cutoff = new Date(Date.now() - (days - 1) * 86_400_000).toISOString().slice(0, 10);
+
+    const series = await db
+      .select({
+        day: schema.modDownloads.day,
+        count: sql<number>`sum(${schema.modDownloads.count})::int`,
+      })
+      .from(schema.modDownloads)
+      .where(and(eq(schema.modDownloads.modId, mod.id), gte(schema.modDownloads.day, cutoff)))
+      .groupBy(schema.modDownloads.day)
+      .orderBy(asc(schema.modDownloads.day));
+
+    const perVersion = await db
+      .select({
+        version: schema.modVersions.version,
+        count: sql<number>`coalesce(sum(${schema.modDownloads.count}), 0)::int`,
+      })
+      .from(schema.modDownloads)
+      .innerJoin(schema.modVersions, eq(schema.modDownloads.versionId, schema.modVersions.id))
+      .where(eq(schema.modDownloads.modId, mod.id))
+      .groupBy(schema.modVersions.version)
+      .orderBy(desc(sql`sum(${schema.modDownloads.count})`));
+
+    const totalRow = await db
+      .select({ total: sql<number>`coalesce(sum(${schema.modDownloads.count}), 0)::int` })
+      .from(schema.modDownloads)
+      .where(eq(schema.modDownloads.modId, mod.id));
+
+    return c.json({
+      days,
+      totalDownloads: totalRow[0]?.total ?? 0,
+      series: series.map((s) => ({ day: s.day, count: s.count })),
+      perVersion,
+    });
+  },
+);
+
+// ─────────── Follow / subscribe ───────────
+// Following a mod subscribes the user to new-version notifications (fan-out
+// happens in the /:slug/versions publish route).
+
+modsRouter.use('/:slug/follow', ownerLimiter);
+modsRouter.post('/:slug/follow', zValidator('param', slugParamSchema), async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'unauthorized' }, 401);
+  const { slug } = c.req.valid('param');
+  const db = getDb();
+  const mod = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
+  if (!mod || mod.takedownStatus !== 'active') return c.json({ error: 'not found' }, 404);
+  await db
+    .insert(schema.modFollows)
+    .values({ userId: user.id, modId: mod.id })
+    .onConflictDoNothing();
+  return c.json({ ok: true, following: true });
+});
+
+modsRouter.delete('/:slug/follow', zValidator('param', slugParamSchema), async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'unauthorized' }, 401);
+  const { slug } = c.req.valid('param');
+  const db = getDb();
+  const mod = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
+  if (!mod) return c.json({ error: 'not found' }, 404);
+  await db
+    .delete(schema.modFollows)
+    .where(and(eq(schema.modFollows.userId, user.id), eq(schema.modFollows.modId, mod.id)));
+  return c.json({ ok: true, following: false });
 });
 
 // ─────────── Reviews ───────────
@@ -820,6 +1114,16 @@ modsRouter.put(
       });
 
     await recomputeRating(mod.id);
+    // Tell the owner someone reviewed their mod (in-app only).
+    if (mod.ownerId) {
+      await notify({
+        userId: mod.ownerId,
+        type: 'mod_review',
+        title: `New review on ${mod.name}`,
+        body: `${user.name ?? 'Someone'} rated it ${body.rating}/5.`,
+        link: `/registry/${mod.slug}`,
+      });
+    }
     return c.json({ ok: true });
   },
 );

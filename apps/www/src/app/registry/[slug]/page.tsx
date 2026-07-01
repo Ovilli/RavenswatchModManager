@@ -17,11 +17,13 @@ import {
 import type { Route } from 'next';
 import Link from 'next/link';
 import { use, useCallback, useEffect, useMemo, useState } from 'react';
-import { AdBanner } from '../../components/ad-banner';
 import { api } from '../../../lib/api';
 import { getApiUrl } from '../../../lib/api-url';
 import { useSession } from '../../../lib/auth-client';
 import { toEmbedUrl } from '../../../lib/video-embed';
+import { AdBanner } from '../../components/ad-banner';
+import { FollowButton } from '../../components/follow-button';
+import { ReportModal } from '../../components/report-modal';
 
 // RSMM desktop ships for Windows + Linux only. Non-target platforms (macOS)
 // resolve to 'other' so we label the button neutrally instead of promising a
@@ -149,6 +151,12 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
               <ExternalLink className="mr-1.5 h-4 w-4" />
               Open in App
             </a>
+            <FollowButton
+              slug={mod.slug}
+              initialFollowing={mod.isFollowing ?? false}
+              followerCount={mod.followerCount ?? 0}
+            />
+            <ReportModal slug={mod.slug} />
           </div>
         </header>
 

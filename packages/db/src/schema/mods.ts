@@ -53,6 +53,13 @@ export const mods = pgTable(
     featured: boolean('featured').notNull().default(false),
     featuredAt: timestamp('featured_at', { withTimezone: true }),
     nsfw: boolean('nsfw').notNull().default(false),
+    // Admin moderation gate, independent of the per-version malware scan.
+    //   active  — normal, publicly listed/downloadable
+    //   hidden  — delisted but kept (owner/admin can still see it)
+    //   removed — taken down (e.g. DMCA / malware / stolen assets)
+    // The public list/detail/download routes serve only 'active' mods.
+    takedownStatus: varchar('takedown_status', { length: 16 }).notNull().default('active'),
+    takedownReason: text('takedown_reason'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -61,6 +68,7 @@ export const mods = pgTable(
     ownerIdx: index('mods_owner_idx').on(table.ownerId),
     categoryIdx: index('mods_category_idx').on(table.category),
     featuredIdx: index('mods_featured_idx').on(table.featured),
+    takedownIdx: index('mods_takedown_idx').on(table.takedownStatus),
   }),
 );
 
@@ -78,16 +86,16 @@ export const modVersions = pgTable(
     assetUrl: text('asset_url').notNull(),
     changelog: text('changelog'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    // Malware-scan gate (VirusTotal). `scan_status` is the only field the
-    // public gate reads: a version is hidden/blocked ONLY when it is
-    // 'flagged'. Everything else (pending/clean/skipped/error) is fail-open
-    // so a slow or unconfigured scan never blocks a legit publish.
-    //   queued   — waiting for the in-process scan worker to pick it up
-    //   pending  — submitted, verdict not yet resolved (rate-limited/slow)
-    //   clean    — VT analysis completed, no detections
-    //   flagged  — VT reported malicious/suspicious > 0 (hidden + download 403)
-    //   skipped  — scanning not configured on this server
-    //   error    — submission/poll failed
+    // Malware-scan gate (VirusTotal). FAIL-CLOSED: the public gate serves a
+    // version ONLY when scan_status is 'clean' or 'skipped' (see
+    // scan-service.ts::isServable). Everything else is withheld, so freshly
+    // uploaded bytes are never downloadable before a scan clears.
+    //   queued   — waiting for the in-process scan worker to pick it up (withheld)
+    //   pending  — submitted, verdict not yet resolved (withheld, HTTP 409)
+    //   clean    — VT analysis completed, no detections (servable)
+    //   flagged  — VT reported malicious/suspicious > 0 (withheld, HTTP 451; S3 object deleted)
+    //   skipped  — scanning not configured on this server (servable)
+    //   error    — submission/poll failed (withheld; rescan loop retries)
     scanStatus: varchar('scan_status', { length: 16 }).notNull().default('pending'),
     scanId: text('scan_id'),
     scanStats: jsonb('scan_stats').$type<Record<string, number>>(),
@@ -157,6 +165,88 @@ export const modReviews = pgTable(
   }),
 );
 
+export const modReportReasonEnum = pgEnum('mod_report_reason', [
+  'malware',
+  'stolen',
+  'broken',
+  'inappropriate',
+  'spam',
+  'other',
+]);
+
+// User-submitted reports against a mod. Triaged by admins in the moderation
+// console (apps/api/src/routes/reports.ts). Anonymous reports are allowed
+// (reporterId nullable) so a logged-out user can still flag malware.
+export const modReports = pgTable(
+  'mod_reports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    modId: uuid('mod_id')
+      .notNull()
+      .references(() => mods.id, { onDelete: 'cascade' }),
+    reporterId: text('reporter_id').references(() => users.id, { onDelete: 'set null' }),
+    reason: modReportReasonEnum('reason').notNull(),
+    detail: text('detail'),
+    // open → reviewing → resolved | dismissed
+    status: varchar('status', { length: 16 }).notNull().default('open'),
+    resolutionNote: text('resolution_note'),
+    handledBy: text('handled_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    modIdx: index('mod_reports_mod_idx').on(table.modId),
+    statusIdx: index('mod_reports_status_idx').on(table.status),
+    // One open report per (reporter, mod) — upsert target. Anonymous reports
+    // (null reporter) are not deduped by this partial index.
+    reporterModIdx: uniqueIndex('mod_reports_reporter_mod_idx')
+      .on(table.reporterId, table.modId)
+      .where(sql`${table.reporterId} is not null and ${table.status} = 'open'`),
+  }),
+);
+
+// A user following a mod — drives new-version notifications (fan-out on
+// publish). PK (userId, modId); modId index so we can list followers cheaply.
+export const modFollows = pgTable(
+  'mod_follows',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    modId: uuid('mod_id')
+      .notNull()
+      .references(() => mods.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.userId, table.modId] }),
+    modIdx: index('mod_follows_mod_idx').on(table.modId),
+  }),
+);
+
+// In-app notifications (with optional email fan-out at emit time). `type` is a
+// free string enum (mod_flagged / mod_takedown / report_resolved / mod_review /
+// mod_new_version); `link` is an in-app path the UI routes to; `readAt` null =
+// unread.
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    type: varchar('type', { length: 32 }).notNull(),
+    title: text('title').notNull(),
+    body: text('body'),
+    link: text('link'),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    userIdx: index('notifications_user_idx').on(table.userId, table.createdAt),
+  }),
+);
+
 export const collections = pgTable(
   'collections',
   {
@@ -215,7 +305,10 @@ export const collectionReviews = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    collectionUserIdx: uniqueIndex('collection_reviews_collection_user_idx').on(table.collectionId, table.userId),
+    collectionUserIdx: uniqueIndex('collection_reviews_collection_user_idx').on(
+      table.collectionId,
+      table.userId,
+    ),
     collectionIdx: index('collection_reviews_collection_idx').on(table.collectionId),
   }),
 );
@@ -274,12 +367,28 @@ export const modsRelations = relations(mods, ({ many, one }) => ({
   authors: many(modAuthors),
   owner: one(users, { fields: [mods.ownerId], references: [users.id] }),
   reviews: many(modReviews),
+  reports: many(modReports),
+  follows: many(modFollows),
   inCollections: many(collectionMods),
 }));
 
 export const modReviewsRelations = relations(modReviews, ({ one }) => ({
   mod: one(mods, { fields: [modReviews.modId], references: [mods.id] }),
   user: one(users, { fields: [modReviews.userId], references: [users.id] }),
+}));
+
+export const modReportsRelations = relations(modReports, ({ one }) => ({
+  mod: one(mods, { fields: [modReports.modId], references: [mods.id] }),
+  reporter: one(users, { fields: [modReports.reporterId], references: [users.id] }),
+}));
+
+export const modFollowsRelations = relations(modFollows, ({ one }) => ({
+  mod: one(mods, { fields: [modFollows.modId], references: [mods.id] }),
+  user: one(users, { fields: [modFollows.userId], references: [users.id] }),
+}));
+
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, { fields: [notifications.userId], references: [users.id] }),
 }));
 
 export const collectionsRelations = relations(collections, ({ many, one }) => ({

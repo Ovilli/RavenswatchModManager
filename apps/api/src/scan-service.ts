@@ -1,8 +1,9 @@
 import { getDb, schema } from '@rsmm/db';
 import { and, asc, eq, lt, or, sql } from 'drizzle-orm';
+import { notify } from './notify.js';
 import { deleteObject, getObjectBytes, modUploadKey } from './storage.js';
 import {
-  MAX_VT_FILE_BYTES,
+  MAX_VT_LARGE_BYTES,
   VirusTotalRateLimitError,
   type VirusTotalStats,
   getVirusTotalAnalysis,
@@ -94,9 +95,11 @@ export async function scanVersion(target: ScanTarget): Promise<ScanResult> {
   const key = modUploadKey(target.slug, target.version, target.sha256);
 
   let analysis: { analysisId: string; permalink: string };
-  // Prefer a real file-upload scan when the archive is small enough.
-  if (target.sizeBytes > 0 && target.sizeBytes <= MAX_VT_FILE_BYTES) {
-    const bytes = await getObjectBytes(key, MAX_VT_FILE_BYTES);
+  // Prefer a real byte-upload scan whenever the archive is within the large-file
+  // ceiling — submitVirusTotalFile transparently uses the direct endpoint
+  // (<=32 MB) or the large-file upload_url flow. Only URL-scan the biggest ones.
+  if (target.sizeBytes > 0 && target.sizeBytes <= MAX_VT_LARGE_BYTES) {
+    const bytes = await getObjectBytes(key, MAX_VT_LARGE_BYTES);
     analysis = bytes
       ? await submitVirusTotalFile(bytes, `${target.slug}-${target.version}.zip`)
       : await submitVirusTotalUrl(target.assetUrl);
@@ -131,6 +134,27 @@ export async function scanVersion(target: ScanTarget): Promise<ScanResult> {
       scannedAt: new Date(),
     })
     .where(eq(schema.modVersions.id, target.id));
+
+  // Notify the owner (in-app + email) that their upload was flagged & removed.
+  if (flagged) {
+    const ownerRows = await db
+      .select({ ownerId: schema.mods.ownerId, email: schema.users.email })
+      .from(schema.mods)
+      .leftJoin(schema.users, eq(schema.users.id, schema.mods.ownerId))
+      .where(eq(schema.mods.slug, target.slug))
+      .limit(1);
+    const owner = ownerRows[0];
+    if (owner?.ownerId) {
+      await notify({
+        userId: owner.ownerId,
+        type: 'mod_flagged',
+        title: `Version ${target.version} of "${target.slug}" was flagged`,
+        body: 'Automated malware scanning flagged this upload and the file was removed. If you believe this is a false positive, re-upload a clean build or contact support.',
+        link: `/my-mods/${target.slug}`,
+        email: owner.email ?? null,
+      });
+    }
+  }
 
   return {
     status,

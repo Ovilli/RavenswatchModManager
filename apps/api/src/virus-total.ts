@@ -43,16 +43,43 @@ function normalizeStats(raw: unknown): VirusTotalStats {
 }
 
 /**
- * Largest file the public/free VirusTotal API accepts on the simple
- * `/api/v3/files` endpoint. Anything bigger needs the large-file upload_url
- * dance (premium-ish); we fall back to URL-scan for those instead.
+ * Largest file the simple `/api/v3/files` endpoint accepts. Files between this
+ * and MAX_VT_LARGE_BYTES are byte-scanned via the large-file `upload_url` flow
+ * instead (see submitVirusTotalFile). Anything above that falls back to URL-scan.
  */
 export const MAX_VT_FILE_BYTES = 32 * 1024 * 1024;
 
 /**
+ * Upper bound for byte-upload scanning. VirusTotal's large-file endpoint accepts
+ * up to ~650 MB, but the in-process scan worker buffers the whole file in
+ * memory, so we cap well below that. Larger archives fall back to URL-scan.
+ */
+export const MAX_VT_LARGE_BYTES = 200 * 1024 * 1024;
+
+/**
+ * Files over 32 MB can't go to `/api/v3/files` directly — VirusTotal issues a
+ * one-time upload URL for them. This fetches that URL.
+ */
+async function getVirusTotalUploadUrl(): Promise<string> {
+  const response = await fetch('https://www.virustotal.com/api/v3/files/upload_url', {
+    headers: { 'x-apikey': env.virusTotalApiKey },
+  });
+  const bodyText = await response.text();
+  if (response.status === 429) throw new VirusTotalRateLimitError(bodyText);
+  if (!response.ok) {
+    throw new Error(`VirusTotal upload_url fetch failed (${response.status}): ${bodyText}`.trim());
+  }
+  const json = (bodyText ? JSON.parse(bodyText) : null) as { data?: string } | null;
+  const url = json?.data;
+  if (!url) throw new Error('VirusTotal upload_url response did not include a URL');
+  return url;
+}
+
+/**
  * Upload the actual bytes for a full file analysis. Stronger than URL-scan:
  * VT runs every AV engine on the exact archive we hold, and (VT unpacks
- * archives) on its members. Only viable up to MAX_VT_FILE_BYTES.
+ * archives) on its members. Handles both the direct `/files` endpoint (<=32 MB)
+ * and the large-file `upload_url` flow (up to MAX_VT_LARGE_BYTES).
  */
 export async function submitVirusTotalFile(
   bytes: Buffer,
@@ -61,7 +88,12 @@ export async function submitVirusTotalFile(
   const form = new FormData();
   form.append('file', new Blob([bytes], { type: 'application/zip' }), filename);
 
-  const response = await fetch('https://www.virustotal.com/api/v3/files', {
+  const endpoint =
+    bytes.byteLength > MAX_VT_FILE_BYTES
+      ? await getVirusTotalUploadUrl()
+      : 'https://www.virustotal.com/api/v3/files';
+
+  const response = await fetch(endpoint, {
     method: 'POST',
     headers: { 'x-apikey': env.virusTotalApiKey },
     body: form,

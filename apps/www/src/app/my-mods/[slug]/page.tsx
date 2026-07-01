@@ -24,6 +24,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
 import { toEmbedUrl } from '../../../lib/video-embed';
+import { ModStats } from '../../components/mod-stats';
+import { ModTeam } from '../../components/mod-team';
 
 const MDEditor = dynamic(() => import('@uiw/react-md-editor'), { ssr: false });
 const MDPreview = dynamic(() => import('@uiw/react-md-editor').then((m) => m.default.Markdown), {
@@ -842,6 +844,10 @@ export default function ManageModPage() {
           </div>
         </div>
       </section>
+
+      {/* ─── Analytics + Team ─── */}
+      <ModStats slug={slug} />
+      <ModTeam slug={slug} />
 
       {/* ─── Danger zone ─── */}
       <section className="grimoire-card space-y-3 border-destructive/30 p-5">
