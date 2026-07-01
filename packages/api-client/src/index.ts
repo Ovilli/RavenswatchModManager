@@ -144,10 +144,18 @@ export function createApiClient(options: ApiClientOptions) {
     versionId: z.string().uuid(),
     expiresIn: z.number().int().positive(),
   });
+  // `ok` is false when a scan flagged the version. `analysisId`/`permalink`
+  // are absent for the skipped path (scanning not configured), so both — and
+  // the verdict fields — are optional. (The old schema required analysisId +
+  // permalink and would throw when parsing a skipped response.)
   const virusTotalScanResponseSchema = z.object({
-    ok: z.literal(true),
-    analysisId: z.string(),
-    permalink: z.string().url(),
+    ok: z.boolean(),
+    status: z.enum(['pending', 'clean', 'flagged', 'skipped', 'error']).optional(),
+    flagged: z.boolean().optional(),
+    reason: z.string().optional(),
+    analysisId: z.string().optional(),
+    permalink: z.string().url().optional(),
+    stats: z.record(z.number()).optional(),
   });
   const imagePresignResponseSchema = z.object({
     uploadUrl: z.string().url(),

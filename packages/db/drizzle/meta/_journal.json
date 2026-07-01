@@ -50,6 +50,13 @@
       "when": 1740787200000,
       "tag": "0006_add_nsfw_to_mods",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1751328000000,
+      "tag": "0007_add_scan_to_mod_versions",
+      "breakpoints": true
     }
   ]
 }

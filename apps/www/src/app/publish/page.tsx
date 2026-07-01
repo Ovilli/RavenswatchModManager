@@ -172,7 +172,16 @@ export default function PublishPage() {
       }
 
       setPhase({ kind: 'scanning' });
-      await api.mods.scanVersion(presigned.versionId);
+      const scan = await api.mods.scanVersion(presigned.versionId);
+      // A flagged verdict withholds the version server-side (it won't list or
+      // download). Stop here and tell the author instead of marching on to a
+      // "done" screen for a mod nobody can install.
+      if (scan.flagged) {
+        const hits = scan.stats?.malicious ?? 0;
+        throw new Error(
+          `Malware scan flagged this upload (${hits} detection${hits === 1 ? '' : 's'}). The version has been withheld. If this is a false positive, review the archive and re-publish.`,
+        );
+      }
 
       let imageUrl: string | null = null;
       if (image) {

@@ -333,7 +333,13 @@ export default function ManageModPage() {
         const text = await put.text().catch(() => '');
         throw new Error(`object storage rejected the upload (${put.status}). ${text}`);
       }
-      await api.mods.scanVersion(presigned.versionId);
+      const scan = await api.mods.scanVersion(presigned.versionId);
+      if (scan.flagged) {
+        const hits = scan.stats?.malicious ?? 0;
+        throw new Error(
+          `Malware scan flagged this upload (${hits} detection${hits === 1 ? '' : 's'}). The new version has been withheld.`,
+        );
+      }
     },
     onSuccess: () => {
       setNewZip(null);

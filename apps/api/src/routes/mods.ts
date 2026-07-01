@@ -7,15 +7,15 @@ import {
   modVersionCreateSchema,
   reviewUpsertSchema,
 } from '@rsmm/schemas';
-import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, ne, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { isPgErrorCode } from '../db-errors';
-import { s3Configured, virusTotalConfigured } from '../env';
+import { env, s3Configured, virusTotalConfigured } from '../env';
 import { createRateLimiter } from '../rate-limit';
+import { markScan, scanVersion } from '../scan-service';
 import { modUploadKey, objectExists, presignModImage, presignModUpload } from '../storage';
 import type { AppEnv } from '../types';
-import { submitVirusTotalUrl } from '../virus-total';
 
 export const modsRouter = new Hono<AppEnv>();
 
@@ -109,6 +109,7 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
         select ${schema.modVersions.version}
         from ${schema.modVersions}
         where ${schema.modVersions.modId} = ${schema.mods.id}
+          and ${schema.modVersions.scanStatus} <> 'flagged'
         order by ${schema.modVersions.createdAt} desc
         limit 1
       )`,
@@ -187,6 +188,10 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
     .where(eq(schema.modDownloads.modId, mod.id));
   const downloads = downloadAgg[0]?.total ?? 0;
 
+  // Hide versions a malware scan flagged. Only 'flagged' is withheld; pending/
+  // clean/skipped/error all stay visible (fail-open). See modVersions schema.
+  const visibleVersions = mod.versions.filter((v) => v.scanStatus !== 'flagged');
+
   return c.json({
     mod: {
       id: mod.id,
@@ -198,7 +203,7 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       license: mod.license,
       repoUrl: mod.repoUrl,
       homepageUrl: mod.homepageUrl,
-      latestVersion: mod.versions[0]?.version ?? null,
+      latestVersion: visibleVersions[0]?.version ?? null,
       downloads,
       updatedAt: mod.updatedAt.toISOString(),
       category: mod.category,
@@ -211,10 +216,10 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       nsfw: mod.nsfw,
       ownerId: mod.ownerId,
       dependencies:
-        (mod.versions[0]?.manifestJson as { dependencies?: Record<string, string> } | undefined)
+        (visibleVersions[0]?.manifestJson as { dependencies?: Record<string, string> } | undefined)
           ?.dependencies ?? undefined,
     },
-    versions: mod.versions.map((v) => ({
+    versions: visibleVersions.map((v) => ({
       id: v.id,
       modId: v.modId,
       version: v.version,
@@ -223,6 +228,7 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       manifestJson: v.manifestJson,
       assetUrl: v.assetUrl,
       createdAt: v.createdAt.toISOString(),
+      scanStatus: v.scanStatus,
     })),
   });
 });
@@ -245,6 +251,13 @@ modsRouter.get('/:slug/:version/download', zValidator('param', downloadParamSche
   if (!mod || !mod.versions[0]) return c.json({ error: 'not found' }, 404);
 
   const ver = mod.versions[0];
+
+  // Malware-scan gate: never hand out a version a scan flagged, even by
+  // direct URL. 451 (Unavailable For Legal Reasons) reads better than 404
+  // here — the version exists, it is just withheld.
+  if (ver.scanStatus === 'flagged') {
+    return c.json({ error: 'this version was flagged by malware scanning' }, 451);
+  }
 
   // Record the download. `mod_downloads` is bucketed by day with a
   // composite PK (mod_id, day), so the conflict path bumps today's
@@ -454,6 +467,7 @@ modsRouter.post(
         assetUrl: schema.modVersions.assetUrl,
         version: schema.modVersions.version,
         sha256: schema.modVersions.sha256,
+        sizeBytes: schema.modVersions.sizeBytes,
         slug: schema.mods.slug,
         ownerId: schema.mods.ownerId,
       })
@@ -472,20 +486,109 @@ modsRouter.post(
     if (!exists) return c.json({ error: 'upload not completed' }, 400);
 
     // Scanning is optional (see env.ts): when VirusTotal isn't configured, don't
-    // block publishing — report the scan as skipped so the client can proceed.
+    // block publishing — record the scan as skipped so the client can proceed.
     if (!virusTotalConfigured()) {
-      return c.json({ ok: true, skipped: true, reason: 'scanning not configured on this server' });
+      await markScan(versionId, 'skipped');
+      return c.json({
+        ok: true,
+        status: 'skipped',
+        flagged: false,
+        reason: 'scanning not configured on this server',
+      });
     }
 
     try {
-      const analysis = await submitVirusTotalUrl(row.assetUrl);
-      return c.json({ ok: true, analysisId: analysis.analysisId, permalink: analysis.permalink });
+      // scanVersion uploads the bytes (small archives) or URL-scans, polls for
+      // a verdict, and — on a detection — purges the object from the bucket and
+      // marks the row 'flagged'. Fail-open otherwise (see scan-service).
+      const result = await scanVersion({
+        id: versionId,
+        slug: row.slug,
+        version: row.version,
+        sha256: row.sha256,
+        sizeBytes: row.sizeBytes,
+        assetUrl: row.assetUrl,
+      });
+      return c.json({
+        ok: !result.flagged,
+        status: result.status,
+        flagged: result.flagged,
+        analysisId: result.analysisId,
+        permalink: result.permalink,
+        stats: result.stats,
+      });
     } catch (err) {
       console.error('VirusTotal scan error:', err);
+      // Record the failure but leave the version visible (fail-open): a
+      // broken scanner must not silently disappear a legit upload.
+      await markScan(versionId, 'error');
       return c.json({ error: 'failed to submit VirusTotal scan' }, 502);
     }
   },
 );
+
+// ─────────────────────────────────────────────────────────────────────
+// Scheduled re-scan. VirusTotal signatures improve over time, so a mod
+// that scanned clean at upload can later be recognised as malware. A
+// scheduled job (see .github/workflows/rescan.yml) calls this to re-scan
+// the least-recently-checked versions and purge any that now trip.
+//
+// Auth is a shared CRON_SECRET bearer token, not a user session. Keep the
+// batch tiny: each version costs up to 4 VT lookups and the free tier is
+// 4/min — run it often with a small limit rather than rarely with a big one.
+// ─────────────────────────────────────────────────────────────────────
+const rescanQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(10).default(1),
+});
+modsRouter.post('/rescan', zValidator('query', rescanQuerySchema), async (c) => {
+  const secret = env.cronSecret;
+  if (!secret) return c.json({ error: 'rescan endpoint disabled' }, 403);
+  const auth = c.req.header('authorization');
+  if (auth !== `Bearer ${secret}`) return c.json({ error: 'unauthorized' }, 401);
+  if (!virusTotalConfigured()) return c.json({ ok: true, skipped: true, scanned: 0 });
+
+  const { limit } = c.req.valid('query');
+  const db = getDb();
+
+  // Least-recently-scanned first (never-scanned rows sort first via nulls).
+  // Skip already-flagged versions — their object is already gone.
+  const targets = await db
+    .select({
+      id: schema.modVersions.id,
+      slug: schema.mods.slug,
+      version: schema.modVersions.version,
+      sha256: schema.modVersions.sha256,
+      sizeBytes: schema.modVersions.sizeBytes,
+      assetUrl: schema.modVersions.assetUrl,
+    })
+    .from(schema.modVersions)
+    .innerJoin(schema.mods, eq(schema.modVersions.modId, schema.mods.id))
+    .where(ne(schema.modVersions.scanStatus, 'flagged'))
+    .orderBy(asc(sql`${schema.modVersions.scannedAt} nulls first`))
+    .limit(limit);
+
+  const results: Array<{ id: string; slug: string; status: string; deleted?: boolean }> = [];
+  for (const t of targets) {
+    // A missing object (author deleted the mod, etc.) can't be scanned; mark
+    // it and move on rather than throwing the whole batch.
+    const exists = await objectExists(modUploadKey(t.slug, t.version, t.sha256));
+    if (!exists) {
+      await markScan(t.id, 'error');
+      results.push({ id: t.id, slug: t.slug, status: 'missing-object' });
+      continue;
+    }
+    try {
+      const r = await scanVersion(t);
+      results.push({ id: t.id, slug: t.slug, status: r.status, deleted: r.deleted });
+    } catch (err) {
+      console.error('rescan error', { versionId: t.id, err: String(err) });
+      await markScan(t.id, 'error');
+      results.push({ id: t.id, slug: t.slug, status: 'error' });
+    }
+  }
+
+  return c.json({ ok: true, scanned: results.length, results });
+});
 
 modsRouter.use('/:slug/edit', ownerLimiter);
 modsRouter.patch(

@@ -1,4 +1,10 @@
-import { HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env, s3Configured } from './env.js';
 
@@ -44,6 +50,30 @@ export async function objectExists(key: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/** Delete an object. Used to purge a version whose malware scan flagged it —
+ *  the bucket is public, so hiding the DB row is not enough; the bytes must
+ *  actually leave the bucket or the direct URL keeps serving them. */
+export async function deleteObject(key: string): Promise<void> {
+  await s3().send(new DeleteObjectCommand({ Bucket: env.s3.bucket, Key: key }));
+}
+
+/** Fetch an object's bytes (for scanning archive contents / file-upload scan).
+ *  Returns null if the object is missing or too large to buffer safely. */
+export async function getObjectBytes(key: string, maxBytes: number): Promise<Buffer | null> {
+  try {
+    const res = await s3().send(new GetObjectCommand({ Bucket: env.s3.bucket, Key: key }));
+    const len = Number(res.ContentLength ?? 0);
+    if (len > maxBytes) return null;
+    const body = res.Body as { transformToByteArray?: () => Promise<Uint8Array> } | undefined;
+    if (!body?.transformToByteArray) return null;
+    const bytes = await body.transformToByteArray();
+    if (bytes.byteLength > maxBytes) return null;
+    return Buffer.from(bytes);
+  } catch {
+    return null;
   }
 }
 

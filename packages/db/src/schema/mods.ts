@@ -78,6 +78,19 @@ export const modVersions = pgTable(
     assetUrl: text('asset_url').notNull(),
     changelog: text('changelog'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    // Malware-scan gate (VirusTotal). `scan_status` is the only field the
+    // public gate reads: a version is hidden/blocked ONLY when it is
+    // 'flagged'. Everything else (pending/clean/skipped/error) is fail-open
+    // so a slow or unconfigured scan never blocks a legit publish.
+    //   pending  — submitted, verdict not yet resolved
+    //   clean    — VT analysis completed, no detections
+    //   flagged  — VT reported malicious/suspicious > 0 (hidden + download 403)
+    //   skipped  — scanning not configured on this server
+    //   error    — submission/poll failed
+    scanStatus: varchar('scan_status', { length: 16 }).notNull().default('pending'),
+    scanId: text('scan_id'),
+    scanStats: jsonb('scan_stats').$type<Record<string, number>>(),
+    scannedAt: timestamp('scanned_at', { withTimezone: true }),
   },
   (table) => ({
     modVersionIdx: uniqueIndex('mod_versions_mod_version_idx').on(table.modId, table.version),
