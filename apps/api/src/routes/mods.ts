@@ -13,7 +13,7 @@ import { z } from 'zod';
 import { isPgErrorCode } from '../db-errors';
 import { s3Configured, virusTotalConfigured } from '../env';
 import { createRateLimiter } from '../rate-limit';
-import { enqueueScan, markScan, queueInfo } from '../scan-service';
+import { enqueueScan, isServable, markScan, queueInfo } from '../scan-service';
 import { presignModImage, presignModUpload, remoteObjectExists } from '../storage';
 import type { AppEnv } from '../types';
 
@@ -109,7 +109,7 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
         select ${schema.modVersions.version}
         from ${schema.modVersions}
         where ${schema.modVersions.modId} = ${schema.mods.id}
-          and ${schema.modVersions.scanStatus} <> 'flagged'
+          and ${schema.modVersions.scanStatus} in ('clean', 'skipped')
         order by ${schema.modVersions.createdAt} desc
         limit 1
       )`,
@@ -188,9 +188,11 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
     .where(eq(schema.modDownloads.modId, mod.id));
   const downloads = downloadAgg[0]?.total ?? 0;
 
-  // Hide versions a malware scan flagged. Only 'flagged' is withheld; pending/
-  // clean/skipped/error all stay visible (fail-open). See modVersions schema.
-  const visibleVersions = mod.versions.filter((v) => v.scanStatus !== 'flagged');
+  // Fail-CLOSED: only versions scanned clean (or explicitly skipped when
+  // scanning is disabled server-side) are shown publicly. Un-scanned
+  // ('pending'/'queued'), 'flagged', and 'error' versions are withheld so a
+  // freshly uploaded mod is never downloadable before its scan clears.
+  const visibleVersions = mod.versions.filter((v) => isServable(v.scanStatus));
 
   return c.json({
     mod: {
@@ -252,11 +254,16 @@ modsRouter.get('/:slug/:version/download', zValidator('param', downloadParamSche
 
   const ver = mod.versions[0];
 
-  // Malware-scan gate: never hand out a version a scan flagged, even by
-  // direct URL. 451 (Unavailable For Legal Reasons) reads better than 404
-  // here — the version exists, it is just withheld.
+  // Malware-scan gate (fail-CLOSED): only hand out versions scanned clean or
+  // explicitly skipped. A flagged version is withheld with 451 (Unavailable
+  // For Legal Reasons); an un-scanned ('pending'/'queued') or errored version
+  // is withheld with 409 (Conflict) — it exists but is not yet cleared for
+  // download, so there is no window in which un-scanned bytes are servable.
   if (ver.scanStatus === 'flagged') {
     return c.json({ error: 'this version was flagged by malware scanning' }, 451);
+  }
+  if (!isServable(ver.scanStatus)) {
+    return c.json({ error: 'this version has not passed malware scanning yet' }, 409);
   }
 
   // Record the download. `mod_downloads` is bucketed by day with a

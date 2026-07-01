@@ -50,6 +50,14 @@ function ProfilesPage() {
   const toast = useToast();
 
   const onOpenFolder = async (profileId: string) => {
+    // Guard against path traversal: profileId is interpolated into a
+    // filesystem path passed to `mkdir -p` and `open(file://...)`. Reject
+    // anything that isn't a plain id so a crafted `../` can't create or open
+    // directories outside the mods tree.
+    if (!/^[a-zA-Z0-9_-]+$/.test(profileId)) {
+      toast.push('Invalid profile id', 'error');
+      return;
+    }
     let modsDir = useApp.getState().settings.modsDir?.trim() || '~/.local/share/rsmm/mods';
     if (modsDir.startsWith('~')) {
       modsDir = (await homeDir()) + modsDir.slice(1);

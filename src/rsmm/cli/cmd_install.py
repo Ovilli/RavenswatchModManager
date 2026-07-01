@@ -89,7 +89,10 @@ def _safe_extract(data: bytes, dest_root: Path) -> str:
             if member.is_dir():
                 continue
             target = (dest_root / member.filename).resolve()
-            if not str(target).startswith(str(root_res)):
+            # is_relative_to (not str.startswith): a bare prefix check lets an
+            # entry escape into a sibling dir sharing the prefix (mods/ ->
+            # mods-evil/). Comparing path components rejects that.
+            if not target.is_relative_to(root_res):
                 raise RepoError(f"unsafe path in archive: {member.filename!r}")
             target.parent.mkdir(parents=True, exist_ok=True)
             with zf.open(member) as src, target.open("wb") as out:

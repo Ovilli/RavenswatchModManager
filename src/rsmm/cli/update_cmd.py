@@ -155,9 +155,12 @@ def _install_zip(zip_path: Path, mod_id: str, dry_run: bool) -> None:
         staging.mkdir()
         with zipfile.ZipFile(zip_path) as zf:
             _validate_zip_content(zf, mod_id)
+            staging_parent = staging.parent.resolve()
             for entry in zf.infolist():
                 dest = (staging.parent / entry.filename).resolve()
-                if not str(dest).startswith(str(staging.parent.resolve())):
+                # is_relative_to (not str.startswith): a bare prefix check lets
+                # an entry escape into a sibling dir sharing the prefix.
+                if not dest.is_relative_to(staging_parent):
                     raise RepoError(f"zip slip detected: {entry.filename}")
                 # Extract each entry individually with zf.open() so symlink
                 # entries are read as regular files (their target string
