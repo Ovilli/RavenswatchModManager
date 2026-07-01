@@ -14,7 +14,7 @@ import { isPgErrorCode } from '../db-errors';
 import { env, s3Configured, virusTotalConfigured } from '../env';
 import { createRateLimiter } from '../rate-limit';
 import { markScan, scanVersion } from '../scan-service';
-import { modUploadKey, objectExists, presignModImage, presignModUpload } from '../storage';
+import { presignModImage, presignModUpload, remoteObjectExists } from '../storage';
 import type { AppEnv } from '../types';
 
 export const modsRouter = new Hono<AppEnv>();
@@ -482,7 +482,9 @@ modsRouter.post(
     // Finalize gate: the upload row is created before the client PUTs the zip to
     // S3. Confirm the object actually landed before this version is treated as
     // published/scannable — otherwise a listing can exist with a dead download.
-    const exists = await objectExists(modUploadKey(row.slug, row.version, row.sha256));
+    // Uses a public HTTP HEAD (bucket is public) so a write-scoped S3 key can't
+    // make a present upload look missing.
+    const exists = await remoteObjectExists(row.assetUrl);
     if (!exists) return c.json({ error: 'upload not completed' }, 400);
 
     // Scanning is optional (see env.ts): when VirusTotal isn't configured, don't
@@ -571,7 +573,7 @@ modsRouter.post('/rescan', zValidator('query', rescanQuerySchema), async (c) => 
   for (const t of targets) {
     // A missing object (author deleted the mod, etc.) can't be scanned; mark
     // it and move on rather than throwing the whole batch.
-    const exists = await objectExists(modUploadKey(t.slug, t.version, t.sha256));
+    const exists = await remoteObjectExists(t.assetUrl);
     if (!exists) {
       await markScan(t.id, 'error');
       results.push({ id: t.id, slug: t.slug, status: 'missing-object' });

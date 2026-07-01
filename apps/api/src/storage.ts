@@ -97,6 +97,33 @@ export async function getObjectBytes(key: string, maxBytes: number): Promise<Buf
   }
 }
 
+/**
+ * Confirm an object landed by HEADing its public URL over plain HTTP, with a
+ * short retry to absorb write→read propagation on a CDN-fronted gateway.
+ *
+ * Preferred over the SDK HeadObject for the finalize gate: the bucket is
+ * public (that's how the scanner fetches it), so this needs no credentials —
+ * a write-scoped S3 key that can presign+PUT but is denied HeadObject/GetObject
+ * would otherwise make a present upload look missing.
+ */
+export async function remoteObjectExists(publicUrl: string, tries = 4): Promise<boolean> {
+  const delaysMs = [300, 800, 1800];
+  for (let attempt = 0; attempt < tries; attempt++) {
+    try {
+      const res = await fetch(publicUrl, { method: 'HEAD' });
+      if (res.ok) return true;
+      // 5xx / 429 are worth a retry; a 403/404 usually means not-there-yet or
+      // access issue — retry a couple times then give up.
+    } catch {
+      // network blip — fall through to retry
+    }
+    const delay = delaysMs[attempt];
+    if (delay === undefined) break;
+    await new Promise((r) => setTimeout(r, delay));
+  }
+  return false;
+}
+
 export async function presignModUpload(args: {
   slug: string;
   version: string;
