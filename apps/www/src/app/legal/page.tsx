@@ -1,17 +1,55 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@rsmm/ui';
 import Link from 'next/link';
+import { getApiUrl } from '../../lib/api-url';
 
-export default function LegalPage() {
+interface Impressum {
+  configured: boolean;
+  name?: string;
+  address?: string;
+  email?: string;
+}
+
+// Provider identity is served from the API (env-configured) rather than
+// hardcoded here, so it never lands in git history — see apps/api/src/env.ts.
+async function getImpressum(): Promise<Impressum> {
+  try {
+    const res = await fetch(`${getApiUrl()}/api/legal/impressum`, { next: { revalidate: 3600 } });
+    return await res.json();
+  } catch {
+    return { configured: false };
+  }
+}
+
+export default async function LegalPage() {
+  const impressum = await getImpressum();
+
   return (
     <main className="container mx-auto px-6 py-16 animate-page-in">
       <Card className="mx-auto max-w-3xl grimoire-card">
         <CardHeader>
           <CardTitle>Legal Notice</CardTitle>
           <CardDescription>
-            Impressum — required disclosure under German law (§5 TMG).
+            Impressum — required disclosure under German law (§5 DDG).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6 text-sm text-muted-foreground">
+          <section className="space-y-2">
+            <h2 className="text-lg font-semibold text-foreground">Provider</h2>
+            {impressum.configured ? (
+              <p className="whitespace-pre-line">
+                {impressum.name}
+                {'\n'}
+                {impressum.address}
+                {'\n'}
+                {impressum.email}
+              </p>
+            ) : (
+              <p className="text-destructive">
+                Provider contact details are not configured. This page is not §5 DDG compliant.
+              </p>
+            )}
+          </section>
+
           <section className="space-y-2">
             <h2 className="text-lg font-semibold text-foreground">Contact</h2>
             <p>

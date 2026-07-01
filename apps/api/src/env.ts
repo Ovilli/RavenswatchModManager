@@ -131,6 +131,14 @@ export const env = {
     apikey: process.env.TESTMAIL_APIKEY ?? '',
     namespace: process.env.TESTMAIL_NAMESPACE ?? '',
   },
+  // Impressum (§5 DDG) contact details, served to the www legal page via
+  // /api/legal/impressum. Kept out of git — set in .env.local (dev) or the
+  // host's env dashboard (prod), never hardcoded in source.
+  impressum: {
+    name: process.env.IMPRESSUM_NAME ?? '',
+    address: process.env.IMPRESSUM_ADDRESS ?? '',
+    email: process.env.IMPRESSUM_EMAIL ?? '',
+  },
 };
 
 export function s3Configured(): boolean {
@@ -157,6 +165,10 @@ export function testmailConfigured(): boolean {
   return Boolean(env.testmail.apikey && env.testmail.namespace);
 }
 
+export function impressumConfigured(): boolean {
+  return Boolean(env.impressum.name && env.impressum.address && env.impressum.email);
+}
+
 if (isProduction && !smtpConfigured()) {
   console.warn(
     'SMTP not configured — email verification and password reset will fail. Set SMTP_HOST, SMTP_USER, SMTP_PASS, and EMAIL_FROM to enable them.',
@@ -166,5 +178,11 @@ if (isProduction && !smtpConfigured()) {
 if (isProduction && !virusTotalConfigured()) {
   console.warn(
     'VirusTotal not configured — uploaded mods will not be scanned. Set VIRUS_TOTAL_API_KEY to enable upload scanning.',
+  );
+}
+
+if (isProduction && !impressumConfigured()) {
+  console.warn(
+    'Impressum not configured — the /legal page on rsmm.me is not §5 DDG compliant. Set IMPRESSUM_NAME, IMPRESSUM_ADDRESS, and IMPRESSUM_EMAIL.',
   );
 }
