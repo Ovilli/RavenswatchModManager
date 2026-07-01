@@ -7,13 +7,13 @@ import {
   modVersionCreateSchema,
   reviewUpsertSchema,
 } from '@rsmm/schemas';
-import { and, asc, desc, eq, ilike, ne, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { isPgErrorCode } from '../db-errors';
-import { env, s3Configured, virusTotalConfigured } from '../env';
+import { s3Configured, virusTotalConfigured } from '../env';
 import { createRateLimiter } from '../rate-limit';
-import { markScan, scanVersion } from '../scan-service';
+import { enqueueScan, markScan, queueInfo } from '../scan-service';
 import { presignModImage, presignModUpload, remoteObjectExists } from '../storage';
 import type { AppEnv } from '../types';
 
@@ -451,6 +451,11 @@ const ownerLimiter = createRateLimiter({
   },
 });
 
+// Enqueue a version for malware scanning. Publishing does NOT scan inline —
+// the free tier is 4 lookups/min and a scan can take ~18s — so this just marks
+// the version 'queued' and the in-process worker (scan-worker.ts) drains it
+// ~1/min. Returns the queue position + ETA so the UI can show progress and the
+// author can close the page.
 modsRouter.use('/versions/:versionId/scan', ownerLimiter);
 modsRouter.post(
   '/versions/:versionId/scan',
@@ -465,10 +470,6 @@ modsRouter.post(
     const rows = await db
       .select({
         assetUrl: schema.modVersions.assetUrl,
-        version: schema.modVersions.version,
-        sha256: schema.modVersions.sha256,
-        sizeBytes: schema.modVersions.sizeBytes,
-        slug: schema.mods.slug,
         ownerId: schema.mods.ownerId,
       })
       .from(schema.modVersions)
@@ -480,117 +481,62 @@ modsRouter.post(
     if (row.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
 
     // Finalize gate: the upload row is created before the client PUTs the zip to
-    // S3. Confirm the object actually landed before this version is treated as
-    // published/scannable — otherwise a listing can exist with a dead download.
-    // Uses a public HTTP HEAD (bucket is public) so a write-scoped S3 key can't
-    // make a present upload look missing.
+    // S3. Confirm the object actually landed. Uses a public HTTP HEAD (bucket is
+    // public) so a write-scoped S3 key can't make a present upload look missing.
     const exists = await remoteObjectExists(row.assetUrl);
     if (!exists) return c.json({ error: 'upload not completed' }, 400);
 
-    // Scanning is optional (see env.ts): when VirusTotal isn't configured, don't
-    // block publishing — record the scan as skipped so the client can proceed.
+    // Scanning is optional (see env.ts): when VirusTotal isn't configured, mark
+    // the version skipped so the client can proceed.
     if (!virusTotalConfigured()) {
       await markScan(versionId, 'skipped');
-      return c.json({
-        ok: true,
-        status: 'skipped',
-        flagged: false,
-        reason: 'scanning not configured on this server',
-      });
+      return c.json({ ok: true, status: 'skipped', flagged: false, position: null });
     }
 
-    try {
-      // scanVersion uploads the bytes (small archives) or URL-scans, polls for
-      // a verdict, and — on a detection — purges the object from the bucket and
-      // marks the row 'flagged'. Fail-open otherwise (see scan-service).
-      const result = await scanVersion({
-        id: versionId,
-        slug: row.slug,
-        version: row.version,
-        sha256: row.sha256,
-        sizeBytes: row.sizeBytes,
-        assetUrl: row.assetUrl,
-      });
-      return c.json({
-        ok: !result.flagged,
-        status: result.status,
-        flagged: result.flagged,
-        analysisId: result.analysisId,
-        permalink: result.permalink,
-        stats: result.stats,
-      });
-    } catch (err) {
-      console.error('VirusTotal scan error:', err);
-      // Record the failure but leave the version visible (fail-open): a
-      // broken scanner must not silently disappear a legit upload.
-      await markScan(versionId, 'error');
-      return c.json({ error: 'failed to submit VirusTotal scan' }, 502);
-    }
+    await enqueueScan(versionId);
+    const info = await queueInfo(versionId);
+    return c.json({
+      ok: true,
+      status: 'queued',
+      flagged: false,
+      position: info?.position ?? null,
+      etaSeconds: info?.etaSeconds ?? null,
+    });
   },
 );
 
-// ─────────────────────────────────────────────────────────────────────
-// Scheduled re-scan. VirusTotal signatures improve over time, so a mod
-// that scanned clean at upload can later be recognised as malware. A
-// scheduled job (see .github/workflows/rescan.yml) calls this to re-scan
-// the least-recently-checked versions and purge any that now trip.
-//
-// Auth is a shared CRON_SECRET bearer token, not a user session. Keep the
-// batch tiny: each version costs up to 4 VT lookups and the free tier is
-// 4/min — run it often with a small limit rather than rarely with a big one.
-// ─────────────────────────────────────────────────────────────────────
-const rescanQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(10).default(1),
-});
-modsRouter.post('/rescan', zValidator('query', rescanQuerySchema), async (c) => {
-  const secret = env.cronSecret;
-  if (!secret) return c.json({ error: 'rescan endpoint disabled' }, 403);
-  const auth = c.req.header('authorization');
-  if (auth !== `Bearer ${secret}`) return c.json({ error: 'unauthorized' }, 401);
-  if (!virusTotalConfigured()) return c.json({ ok: true, skipped: true, scanned: 0 });
+// Poll a version's scan state: status + place in the queue + ETA. Used by the
+// publish / my-mods UI to show live progress without blocking.
+modsRouter.use('/versions/:versionId/scan-status', ownerLimiter);
+modsRouter.get(
+  '/versions/:versionId/scan-status',
+  zValidator('param', versionScanParamSchema),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
 
-  const { limit } = c.req.valid('query');
-  const db = getDb();
+    const { versionId } = c.req.valid('param');
+    const db = getDb();
+    const rows = await db
+      .select({ ownerId: schema.mods.ownerId })
+      .from(schema.modVersions)
+      .innerJoin(schema.mods, eq(schema.modVersions.modId, schema.mods.id))
+      .where(eq(schema.modVersions.id, versionId))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return c.json({ error: 'not found' }, 404);
+    if (row.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
 
-  // Least-recently-scanned first (never-scanned rows sort first via nulls).
-  // Skip already-flagged versions — their object is already gone.
-  const targets = await db
-    .select({
-      id: schema.modVersions.id,
-      slug: schema.mods.slug,
-      version: schema.modVersions.version,
-      sha256: schema.modVersions.sha256,
-      sizeBytes: schema.modVersions.sizeBytes,
-      assetUrl: schema.modVersions.assetUrl,
-    })
-    .from(schema.modVersions)
-    .innerJoin(schema.mods, eq(schema.modVersions.modId, schema.mods.id))
-    .where(ne(schema.modVersions.scanStatus, 'flagged'))
-    .orderBy(asc(sql`${schema.modVersions.scannedAt} nulls first`))
-    .limit(limit);
-
-  const results: Array<{ id: string; slug: string; status: string; deleted?: boolean }> = [];
-  for (const t of targets) {
-    // A missing object (author deleted the mod, etc.) can't be scanned; mark
-    // it and move on rather than throwing the whole batch.
-    const exists = await remoteObjectExists(t.assetUrl);
-    if (!exists) {
-      await markScan(t.id, 'error');
-      results.push({ id: t.id, slug: t.slug, status: 'missing-object' });
-      continue;
-    }
-    try {
-      const r = await scanVersion(t);
-      results.push({ id: t.id, slug: t.slug, status: r.status, deleted: r.deleted });
-    } catch (err) {
-      console.error('rescan error', { versionId: t.id, err: String(err) });
-      await markScan(t.id, 'error');
-      results.push({ id: t.id, slug: t.slug, status: 'error' });
-    }
-  }
-
-  return c.json({ ok: true, scanned: results.length, results });
-});
+    const info = await queueInfo(versionId);
+    if (!info) return c.json({ error: 'not found' }, 404);
+    return c.json({
+      status: info.status,
+      position: info.position,
+      etaSeconds: info.etaSeconds,
+      stats: info.stats,
+    });
+  },
+);
 
 modsRouter.use('/:slug/edit', ownerLimiter);
 modsRouter.patch(

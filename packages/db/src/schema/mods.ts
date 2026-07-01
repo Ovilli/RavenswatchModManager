@@ -82,7 +82,8 @@ export const modVersions = pgTable(
     // public gate reads: a version is hidden/blocked ONLY when it is
     // 'flagged'. Everything else (pending/clean/skipped/error) is fail-open
     // so a slow or unconfigured scan never blocks a legit publish.
-    //   pending  — submitted, verdict not yet resolved
+    //   queued   — waiting for the in-process scan worker to pick it up
+    //   pending  — submitted, verdict not yet resolved (rate-limited/slow)
     //   clean    — VT analysis completed, no detections
     //   flagged  — VT reported malicious/suspicious > 0 (hidden + download 403)
     //   skipped  — scanning not configured on this server
@@ -90,6 +91,9 @@ export const modVersions = pgTable(
     scanStatus: varchar('scan_status', { length: 16 }).notNull().default('pending'),
     scanId: text('scan_id'),
     scanStats: jsonb('scan_stats').$type<Record<string, number>>(),
+    // When the version entered the scan queue — drives FIFO drain order and the
+    // "position N in queue" the publish UI shows.
+    scanQueuedAt: timestamp('scan_queued_at', { withTimezone: true }),
     scannedAt: timestamp('scanned_at', { withTimezone: true }),
   },
   (table) => ({

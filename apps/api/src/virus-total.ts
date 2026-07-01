@@ -100,6 +100,7 @@ export async function submitVirusTotalUrl(url: string): Promise<VirusTotalAnalys
 
   const bodyText = await response.text();
 
+  if (response.status === 429) throw new VirusTotalRateLimitError(bodyText);
   if (!response.ok) {
     throw new Error(`VirusTotal scan request failed (${response.status}): ${bodyText}`.trim());
   }

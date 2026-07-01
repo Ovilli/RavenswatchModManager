@@ -94,7 +94,7 @@ export const modVersionSchema = z.object({
   // Malware-scan verdict. Optional for back-compat with older API responses
   // that predate the scan gate. The API only ever returns non-flagged
   // versions publicly, so 'flagged' is never seen here in practice.
-  scanStatus: z.enum(['pending', 'clean', 'flagged', 'skipped', 'error']).optional(),
+  scanStatus: z.enum(['queued', 'pending', 'clean', 'flagged', 'skipped', 'error']).optional(),
 });
 
 export type ModVersion = z.infer<typeof modVersionSchema>;

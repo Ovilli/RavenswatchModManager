@@ -39,9 +39,6 @@ export const env = {
   betterAuthSecret: required('BETTER_AUTH_SECRET'),
   betterAuthUrl: process.env.BETTER_AUTH_URL || 'http://localhost:3001',
   virusTotalApiKey: process.env.VIRUS_TOTAL_API_KEY ?? process.env.VIRUSTOTAL_API_KEY ?? '',
-  // Shared secret protecting the batch re-scan endpoint (POST /api/mods/rescan),
-  // called by the scheduled workflow. Empty disables the endpoint (403).
-  cronSecret: process.env.CRON_SECRET ?? '',
   // Public URL of the marketing site. Used as the verification-email
   // landing target. Defaults to localhost so dev works without extra
   // config; prod overrides via WEB_URL.

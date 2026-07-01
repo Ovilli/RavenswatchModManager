@@ -1,5 +1,5 @@
 import { getDb, schema } from '@rsmm/db';
-import { eq } from 'drizzle-orm';
+import { and, asc, eq, lt, or, sql } from 'drizzle-orm';
 import { deleteObject, getObjectBytes, modUploadKey } from './storage.js';
 import {
   MAX_VT_FILE_BYTES,
@@ -10,7 +10,7 @@ import {
   submitVirusTotalUrl,
 } from './virus-total.js';
 
-export type ScanStatus = 'pending' | 'clean' | 'flagged' | 'skipped' | 'error';
+export type ScanStatus = 'queued' | 'pending' | 'clean' | 'flagged' | 'skipped' | 'error';
 
 export interface ScanResult {
   status: ScanStatus;
@@ -137,4 +137,149 @@ export async function markScan(versionId: string, status: ScanStatus): Promise<v
     .update(schema.modVersions)
     .set({ scanStatus: status, scannedAt: new Date() })
     .where(eq(schema.modVersions.id, versionId));
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Scan queue. Publishing no longer scans inline (the free tier is 4
+// lookups/min and a scan can take ~18s); it enqueues, and an in-process
+// worker (see index.ts) drains one item per tick so publish is instant and
+// the rate limit is never blown.
+// ─────────────────────────────────────────────────────────────────────
+
+/** Seconds between worker ticks — one scan (<=4 VT lookups) per tick keeps us
+ *  inside the 4-lookups/min free-tier budget. Also the unit for ETA math. */
+export const SCAN_TICK_SECONDS = 60;
+
+/** Re-scan a clean/errored version once it's older than this, so newer VT
+ *  signatures catch malware that was undetectable at upload time. */
+const RESCAN_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Mark a version as waiting for the scan worker. */
+export async function enqueueScan(versionId: string): Promise<void> {
+  const db = getDb();
+  await db
+    .update(schema.modVersions)
+    .set({ scanStatus: 'queued', scanQueuedAt: new Date(), scannedAt: null })
+    .where(eq(schema.modVersions.id, versionId));
+}
+
+export interface QueueInfo {
+  status: ScanStatus;
+  /** 1-based place in the queue (only meaningful while status === 'queued'). */
+  position: number | null;
+  /** Rough seconds until this version is scanned. */
+  etaSeconds: number | null;
+  stats?: Record<string, number>;
+}
+
+/** Current queue state for one version: status + place in line + ETA. */
+export async function queueInfo(versionId: string): Promise<QueueInfo | null> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      status: schema.modVersions.scanStatus,
+      queuedAt: schema.modVersions.scanQueuedAt,
+      stats: schema.modVersions.scanStats,
+    })
+    .from(schema.modVersions)
+    .where(eq(schema.modVersions.id, versionId))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+
+  if (row.status !== 'queued' || !row.queuedAt) {
+    return {
+      status: row.status as ScanStatus,
+      position: null,
+      etaSeconds: null,
+      stats: row.stats ?? undefined,
+    };
+  }
+
+  // Position = how many queued rows are ahead of this one (older queuedAt).
+  const ahead = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(schema.modVersions)
+    .where(
+      and(
+        eq(schema.modVersions.scanStatus, 'queued'),
+        lt(schema.modVersions.scanQueuedAt, row.queuedAt),
+      ),
+    );
+  const position = (ahead[0]?.n ?? 0) + 1;
+  return {
+    status: 'queued',
+    position,
+    etaSeconds: position * SCAN_TICK_SECONDS,
+    stats: row.stats ?? undefined,
+  };
+}
+
+/**
+ * One unit of worker work: scan the oldest queued version; if the queue is
+ * empty, re-scan the least-recently-scanned stale version. Returns a short
+ * description of what it did (or null when there was nothing to do).
+ *
+ * A rate-limit while submitting leaves the row queued so the next tick retries.
+ */
+export async function drainOnce(): Promise<{ id: string; action: string; status?: string } | null> {
+  const db = getDb();
+
+  const pickTarget = async () => {
+    // 1) Oldest queued upload.
+    const queued = await selectTarget(
+      and(eq(schema.modVersions.scanStatus, 'queued')),
+      asc(sql`${schema.modVersions.scanQueuedAt} nulls last`),
+    );
+    if (queued) return { target: queued, action: 'scan' as const };
+    // 2) Otherwise a stale clean/error row due for a refresh.
+    const cutoff = new Date(Date.now() - RESCAN_AFTER_MS);
+    const stale = await selectTarget(
+      and(
+        or(eq(schema.modVersions.scanStatus, 'clean'), eq(schema.modVersions.scanStatus, 'error')),
+        lt(schema.modVersions.scannedAt, cutoff),
+      ),
+      asc(sql`${schema.modVersions.scannedAt} nulls first`),
+    );
+    if (stale) return { target: stale, action: 'rescan' as const };
+    return null;
+  };
+
+  const picked = await pickTarget();
+  if (!picked) return null;
+
+  try {
+    const r = await scanVersion(picked.target);
+    return { id: picked.target.id, action: picked.action, status: r.status };
+  } catch (err) {
+    if (err instanceof VirusTotalRateLimitError) {
+      // Leave it in place (queued rows stay queued) and retry next tick.
+      return { id: picked.target.id, action: `${picked.action}:rate-limited` };
+    }
+    console.error('scan worker error', { versionId: picked.target.id, err: String(err) });
+    await markScan(picked.target.id, 'error');
+    return { id: picked.target.id, action: `${picked.action}:error` };
+  }
+}
+
+async function selectTarget(
+  where: ReturnType<typeof and>,
+  order: ReturnType<typeof asc>,
+): Promise<ScanTarget | null> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      id: schema.modVersions.id,
+      slug: schema.mods.slug,
+      version: schema.modVersions.version,
+      sha256: schema.modVersions.sha256,
+      sizeBytes: schema.modVersions.sizeBytes,
+      assetUrl: schema.modVersions.assetUrl,
+    })
+    .from(schema.modVersions)
+    .innerJoin(schema.mods, eq(schema.modVersions.modId, schema.mods.id))
+    .where(where)
+    .orderBy(order)
+    .limit(1);
+  return rows[0] ?? null;
 }

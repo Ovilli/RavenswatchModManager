@@ -3,6 +3,7 @@ import { pingDb } from '@rsmm/db';
 import { app } from './app.js';
 import { env } from './env.js';
 import { log } from './logger.js';
+import { startScanWorker } from './scan-worker.js';
 
 const port = env.port;
 
@@ -18,6 +19,7 @@ async function main() {
   log.info(`rsmm-api listening on http://localhost:${port}`, { port });
   try {
     serve({ fetch: app.fetch, port });
+    startScanWorker();
   } catch (err) {
     log.error('failed to start server', { port, err: String(err) });
     process.exit(1);

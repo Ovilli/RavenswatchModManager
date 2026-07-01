@@ -144,17 +144,22 @@ export function createApiClient(options: ApiClientOptions) {
     versionId: z.string().uuid(),
     expiresIn: z.number().int().positive(),
   });
-  // `ok` is false when a scan flagged the version. `analysisId`/`permalink`
-  // are absent for the skipped path (scanning not configured), so both — and
-  // the verdict fields — are optional. (The old schema required analysisId +
-  // permalink and would throw when parsing a skipped response.)
+  // Scanning is async: POST /scan enqueues and returns status 'queued' with a
+  // place in line; the worker resolves it later. 'skipped' when scanning is off.
+  const scanStatusEnum = z.enum(['queued', 'pending', 'clean', 'flagged', 'skipped', 'error']);
   const virusTotalScanResponseSchema = z.object({
     ok: z.boolean(),
-    status: z.enum(['pending', 'clean', 'flagged', 'skipped', 'error']).optional(),
+    status: scanStatusEnum.optional(),
     flagged: z.boolean().optional(),
     reason: z.string().optional(),
-    analysisId: z.string().optional(),
-    permalink: z.string().url().optional(),
+    position: z.number().int().nullable().optional(),
+    etaSeconds: z.number().int().nullable().optional(),
+  });
+  // Live scan state for polling (GET /scan-status).
+  const scanStatusResponseSchema = z.object({
+    status: scanStatusEnum,
+    position: z.number().int().nullable(),
+    etaSeconds: z.number().int().nullable(),
     stats: z.record(z.number()).optional(),
   });
   const imagePresignResponseSchema = z.object({
@@ -238,6 +243,12 @@ export function createApiClient(options: ApiClientOptions) {
           `/api/mods/versions/${encodeURIComponent(versionId)}/scan`,
           { method: 'POST' },
           virusTotalScanResponseSchema,
+        ),
+      scanStatus: (versionId: string) =>
+        request(
+          `/api/mods/versions/${encodeURIComponent(versionId)}/scan-status`,
+          { method: 'GET' },
+          scanStatusResponseSchema,
         ),
       patch: (slug: string, body: ModPatch) =>
         request(

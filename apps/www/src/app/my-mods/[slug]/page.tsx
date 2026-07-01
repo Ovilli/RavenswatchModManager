@@ -86,6 +86,37 @@ function describeApiError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** Live malware-scan status for one version. Polls while queued/pending so the
+ *  author sees their place in the queue and the eventual verdict. Flagged
+ *  versions are removed server-side, so they simply drop off the list. */
+function ScanBadge({ versionId }: { versionId: string }) {
+  const q = useQuery({
+    queryKey: ['scan-status', versionId],
+    queryFn: () => api.mods.scanStatus(versionId),
+    refetchInterval: (query) => {
+      const s = query.state.data?.status;
+      return s === 'queued' || s === 'pending' ? 5000 : false;
+    },
+  });
+  const d = q.data;
+  if (!d) return null;
+  const label =
+    d.status === 'queued'
+      ? d.position
+        ? `Queued · #${d.position}${d.etaSeconds ? ` · ~${Math.ceil(d.etaSeconds / 60)}m` : ''}`
+        : 'Queued'
+      : d.status === 'pending'
+        ? 'Scanning…'
+        : d.status === 'clean'
+          ? 'Scanned ✓'
+          : d.status === 'skipped'
+            ? 'Scan off'
+            : d.status === 'error'
+              ? 'Scan error'
+              : d.status;
+  return <Badge variant={d.status === 'clean' ? 'secondary' : 'outline'}>{label}</Badge>;
+}
+
 export default function ManageModPage() {
   const router = useRouter();
   const params = useParams<{ slug: string }>();
@@ -333,13 +364,9 @@ export default function ManageModPage() {
         const text = await put.text().catch(() => '');
         throw new Error(`object storage rejected the upload (${put.status}). ${text}`);
       }
-      const scan = await api.mods.scanVersion(presigned.versionId);
-      if (scan.flagged) {
-        const hits = scan.stats?.malicious ?? 0;
-        throw new Error(
-          `Malware scan flagged this upload (${hits} detection${hits === 1 ? '' : 's'}). The new version has been withheld.`,
-        );
-      }
+      // Async scan: enqueue and return. The worker scans within a minute or two
+      // and withholds + removes the version automatically if it trips.
+      await api.mods.scanVersion(presigned.versionId);
     },
     onSuccess: () => {
       setNewZip(null);
@@ -746,7 +773,10 @@ export default function ManageModPage() {
                           {fmtBytes(v.sizeBytes)} · {new Date(v.createdAt).toLocaleDateString()}
                         </p>
                       </div>
-                      <Badge variant="outline">{v.sha256.slice(0, 12)}</Badge>
+                      <div className="flex items-center gap-2">
+                        <ScanBadge versionId={v.id} />
+                        <Badge variant="outline">{v.sha256.slice(0, 12)}</Badge>
+                      </div>
                     </div>
                     {cl ? (
                       <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">

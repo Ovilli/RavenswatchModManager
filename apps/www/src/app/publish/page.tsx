@@ -171,17 +171,12 @@ export default function PublishPage() {
         throw new Error(`object storage rejected the upload (${putRes.status}). ${text}`);
       }
 
+      // Scanning is async now: this enqueues the version and returns instantly
+      // with a place in line. The worker scans it within a minute or two; if it
+      // trips, the version is withheld + removed automatically. The author can
+      // close the page — status shows on the my-mods page.
       setPhase({ kind: 'scanning' });
-      const scan = await api.mods.scanVersion(presigned.versionId);
-      // A flagged verdict withholds the version server-side (it won't list or
-      // download). Stop here and tell the author instead of marching on to a
-      // "done" screen for a mod nobody can install.
-      if (scan.flagged) {
-        const hits = scan.stats?.malicious ?? 0;
-        throw new Error(
-          `Malware scan flagged this upload (${hits} detection${hits === 1 ? '' : 's'}). The version has been withheld. If this is a false positive, review the archive and re-publish.`,
-        );
-      }
+      await api.mods.scanVersion(presigned.versionId);
 
       let imageUrl: string | null = null;
       if (image) {
@@ -294,6 +289,11 @@ export default function PublishPage() {
         <div className="mb-6 rounded-md border border-emerald-500/40 bg-emerald-500/10 p-4">
           <p className="text-sm">
             Published <span className="font-mono">{phase.slug}</span>. Redirecting…
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            A malware scan is queued — it runs in the background (usually a minute or two). You can
+            close this page; the scan status shows on your My Mods page, and a version is
+            automatically withheld if anything is detected.
           </p>
         </div>
       ) : null}
@@ -538,7 +538,7 @@ export default function PublishPage() {
               </>
             ) : phase.kind === 'scanning' ? (
               <>
-                <Spinner /> Scanning zip
+                <Spinner /> Queuing scan
               </>
             ) : phase.kind === 'uploading-image' ? (
               <>
