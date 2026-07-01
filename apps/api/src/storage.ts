@@ -43,14 +43,34 @@ export function modUploadKey(slug: string, version: string, sha256: string): str
 }
 
 /** HEAD an object to confirm it exists (e.g. that a presigned upload actually
- *  completed). Works on private buckets, unlike fetching the public URL. */
-export async function objectExists(key: string): Promise<boolean> {
-  try {
-    await s3().send(new HeadObjectCommand({ Bucket: env.s3.bucket, Key: key }));
-    return true;
-  } catch {
-    return false;
+ *  completed). Works on private buckets, unlike fetching the public URL.
+ *
+ *  Retries a few times: the finalize check fires immediately after the browser
+ *  PUT, and a Cloudflare-fronted / eventually-consistent gateway can 404 a
+ *  just-written key for a moment. A 404/NotFound is treated as "not yet" and
+ *  retried; any other error (bad creds, wrong endpoint) is logged — otherwise
+ *  a misconfig looks identical to a missing upload and silently blocks publish. */
+export async function objectExists(key: string, tries = 4): Promise<boolean> {
+  const delaysMs = [300, 800, 1800];
+  for (let attempt = 0; attempt < tries; attempt++) {
+    try {
+      await s3().send(new HeadObjectCommand({ Bucket: env.s3.bucket, Key: key }));
+      return true;
+    } catch (err) {
+      const status = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata
+        ?.httpStatusCode;
+      const notFound = status === 404 || (err as { name?: string })?.name === 'NotFound';
+      if (!notFound) {
+        // Not a "missing object" — creds/endpoint/permission problem. Surface it.
+        console.error('objectExists HEAD failed (non-404)', { key, status, err: String(err) });
+        return false;
+      }
+      const delay = delaysMs[attempt];
+      if (delay === undefined) break; // out of retries
+      await new Promise((r) => setTimeout(r, delay));
+    }
   }
+  return false;
 }
 
 /** Delete an object. Used to purge a version whose malware scan flagged it —
