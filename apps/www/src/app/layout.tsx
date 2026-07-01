@@ -123,10 +123,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             }),
           }}
         />
-        <Nav versionBadge={<VersionBadge />} />
-        <div className="flex-1">
-          <Providers>{children}</Providers>
-        </div>
+        <Providers>
+          <Nav versionBadge={<VersionBadge />} />
+          <div className="flex-1">{children}</div>
+        </Providers>
 
         <footer className="border-t border-border/40">
           <div className="container mx-auto grid gap-8 px-6 py-12 sm:grid-cols-2 lg:grid-cols-4">
