@@ -56,8 +56,8 @@ export default function ContactPage() {
           <section className="space-y-2">
             <h2 className="text-lg font-semibold text-foreground">Email</h2>
             <p>
-              For matters that are not suited to a public issue — account problems, privacy requests,
-              or content takedowns — email{' '}
+              For matters that are not suited to a public issue — account problems, privacy
+              requests, or content takedowns — email{' '}
               <a href="mailto:contact@rsmm.me" className="underline hover:text-foreground">
                 contact@rsmm.me
               </a>
@@ -66,11 +66,21 @@ export default function ContactPage() {
           </section>
 
           <section className="space-y-2">
-            <h2 className="text-lg font-semibold text-foreground">Report a mod or request removal</h2>
+            <h2 className="text-lg font-semibold text-foreground">
+              Report a mod or request removal
+            </h2>
             <p>
-              If a published mod infringes your copyright, breaks the rules, or should be taken down,
-              email the address above with a link to the mod and a description of the issue. We
-              review reports promptly and remove content that violates our policies or the law.
+              The fastest way to flag a mod is the <strong>Report</strong> button on its page — it
+              files the report directly into the moderation queue, where a moderator reviews it. Use
+              it for malware, stolen work, broken uploads, spam, or inappropriate content.
+            </p>
+            <p>
+              For copyright takedowns and other matters best handled privately, email the address
+              above with a link to the mod and a description of the issue, or see the{' '}
+              <Link href="/dmca" className="underline hover:text-foreground">
+                Content Policy
+              </Link>
+              .
             </p>
           </section>
 

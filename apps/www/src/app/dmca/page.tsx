@@ -94,6 +94,11 @@ export default function DmcaPage() {
               . We also remove content that violates this policy on our own initiative, and we may
               suspend accounts that repeatedly infringe.
             </p>
+            <p>
+              For non-copyright issues — malware, stolen work, broken uploads, spam, or otherwise
+              inappropriate content — use the <strong>Report</strong> button on the mod&apos;s page.
+              Reports go straight to the moderation queue and each is reviewed by a moderator.
+            </p>
           </section>
 
           <section className="space-y-2">
