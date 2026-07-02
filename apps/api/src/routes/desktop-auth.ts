@@ -1,0 +1,167 @@
+import { Hono } from 'hono';
+import { auth } from '../auth.js';
+import { githubConfigured, googleConfigured } from '../env.js';
+import type { AppEnv } from '../types.js';
+
+/**
+ * Desktop OAuth relay.
+ *
+ * The desktop app cannot use Better Auth's social sign-in directly: the
+ * `/sign-in/social` POST sets the OAuth `state` cookie in the app's WebView
+ * cookie jar, but the provider redirects the user's SYSTEM BROWSER to the
+ * callback — a different jar with no `state` cookie — so Better Auth rejects
+ * the callback with `state_mismatch`.
+ *
+ * The @daveyplate/better-auth-tauri plugin "fixes" this by smuggling an
+ * `rsmm://` marker through the OAuth `redirect_uri` query string, but Google
+ * rejects redirect URIs that contain a query string, so it only ever works for
+ * GitHub. This relay works for every provider instead:
+ *
+ *   1. app opens the system browser at  GET /api/desktop-auth/start?provider=…
+ *   2. we kick off Better Auth social sign-in server-side, forwarding the
+ *      `state` Set-Cookie onto the browser, and 302 the browser to the provider
+ *      using the NORMAL registered callback (no query string).
+ *   3. provider → browser → /api/auth/callback/<provider> succeeds (the browser
+ *      now owns the `state` cookie) and Better Auth sets a session cookie IN THE
+ *      BROWSER, then redirects to /api/desktop-auth/complete.
+ *   4. /complete (browser has the session) mints a one-time token and returns an
+ *      HTML page that deep-links  rsmm://desktop-auth?token=…  into the app.
+ *   5. the app exchanges the token via POST /api/auth/one-time-token/verify,
+ *      which sets the session cookie in the app's jar → signed in.
+ */
+export const desktopAuthRouter = new Hono<AppEnv>();
+
+const DEEP_LINK_SCHEME = 'rsmm';
+
+function providerEnabled(provider: string): provider is 'google' | 'github' {
+  if (provider === 'google') return googleConfigured();
+  if (provider === 'github') return githubConfigured();
+  return false;
+}
+
+/** Minimal self-contained status page shown in the system browser. */
+function statusPage(opts: { title: string; body: string; deepLink?: string }): string {
+  const { title, body, deepLink } = opts;
+  const redirectTag = deepLink
+    ? `<meta http-equiv="refresh" content="0;url=${escapeHtml(deepLink)}">`
+    : '';
+  const button = deepLink
+    ? `<p><a class="btn" href="${escapeHtml(deepLink)}">Return to the app</a></p>`
+    : '';
+  const script = deepLink
+    ? `<script>setTimeout(function(){location.href=${JSON.stringify(deepLink)}},50)</script>`
+    : '';
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${escapeHtml(title)}</title>${redirectTag}
+<style>
+  :root{color-scheme:dark light}
+  body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#121212;color:#e1e1e1;
+    display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;line-height:1.5}
+  .card{background:#1e1e1e;border:1px solid #2d2d2d;border-radius:12px;padding:2.5rem;max-width:90%;width:420px;text-align:center}
+  h1{font-size:1.5rem;margin:0 0 1rem}
+  p{color:#b0b0b0;margin:0 0 1rem}
+  .btn{display:inline-block;background:#90caf9;color:#121212;text-decoration:none;font-weight:600;
+    padding:.7rem 1.4rem;border-radius:8px;margin-top:.5rem}
+  .muted{font-size:.85rem;color:#808080;margin-top:1.5rem}
+</style></head><body><div class="card"><h1>${escapeHtml(title)}</h1><p>${body}</p>${button}
+<p class="muted">You can close this window and return to Ravenswatch Mod Manager.</p></div>${script}</body></html>`;
+}
+
+const escapeHtml = (s: string): string =>
+  s.replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string,
+  );
+
+/**
+ * Step 1/2 — open the provider in the system browser with a fresh `state`
+ * cookie set on THAT browser. Returns a 302 to the provider auth URL.
+ */
+desktopAuthRouter.get('/start', async (c) => {
+  const provider = c.req.query('provider') ?? '';
+  if (!providerEnabled(provider)) {
+    return c.html(
+      statusPage({ title: 'Sign-in unavailable', body: 'That sign-in provider is not enabled.' }),
+      400,
+    );
+  }
+
+  try {
+    // disableRedirect → Better Auth returns the auth URL as JSON (with the
+    // `state` Set-Cookie in the headers) instead of a 200-with-Location we
+    // can't turn into a real browser redirect.
+    const res = await auth.api.signInSocial({
+      body: {
+        provider,
+        callbackURL: '/api/desktop-auth/complete',
+        errorCallbackURL: '/api/desktop-auth/error',
+        disableRedirect: true,
+      },
+      headers: c.req.raw.headers,
+      asResponse: true,
+    });
+
+    const { url } = (await res.json()) as { url?: string };
+    if (!url) {
+      return c.html(
+        statusPage({ title: 'Sign-in failed', body: 'Could not start the sign-in flow.' }),
+        502,
+      );
+    }
+
+    // Forward the `state` (and any PKCE) cookies onto the browser so the
+    // callback in step 3 can validate against them.
+    const headers = new Headers({ Location: url });
+    for (const cookie of res.headers.getSetCookie()) headers.append('set-cookie', cookie);
+    return new Response(null, { status: 302, headers });
+  } catch (err) {
+    (c.get('log') ?? console).error?.('[desktop-auth] start failed', { err: String(err) });
+    return c.html(
+      statusPage({ title: 'Sign-in failed', body: 'Could not start the sign-in flow.' }),
+      500,
+    );
+  }
+});
+
+/**
+ * Step 4 — the browser lands here AFTER a successful OAuth callback, so it now
+ * carries a valid session cookie. Mint a one-time token and hand it to the app
+ * over the deep link.
+ */
+desktopAuthRouter.get('/complete', async (c) => {
+  const session = await auth.api.getSession({ headers: c.req.raw.headers }).catch(() => null);
+  if (!session?.user) {
+    return c.html(
+      statusPage({
+        title: 'Sign-in incomplete',
+        body: 'No active session was found. Please return to the app and try again.',
+      }),
+      401,
+    );
+  }
+
+  try {
+    const { token } = await auth.api.generateOneTimeToken({ headers: c.req.raw.headers });
+    const deepLink = `${DEEP_LINK_SCHEME}://desktop-auth?token=${encodeURIComponent(token)}`;
+    return c.html(statusPage({ title: 'Signed in', body: 'Returning you to the app…', deepLink }));
+  } catch (err) {
+    (c.get('log') ?? console).error?.('[desktop-auth] complete failed', { err: String(err) });
+    return c.html(
+      statusPage({ title: 'Sign-in failed', body: 'Could not finish signing you in.' }),
+      500,
+    );
+  }
+});
+
+/** OAuth error landing (Better Auth redirects here on provider failure). */
+desktopAuthRouter.get('/error', (c) => {
+  const reason = c.req.query('error') ?? 'unknown';
+  return c.html(
+    statusPage({
+      title: 'Sign-in failed',
+      body: `The provider reported an error (${escapeHtml(reason)}). Please return to the app and try again.`,
+    }),
+    400,
+  );
+});

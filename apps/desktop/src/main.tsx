@@ -1,8 +1,8 @@
 import '@rsmm/ui/styles.css';
-import { setupBetterAuthTauri } from '@daveyplate/better-auth-tauri';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider, createRouter } from '@tanstack/react-router';
 import { isTauri } from '@tauri-apps/api/core';
+import { getCurrent as getCurrentDeepLink, onOpenUrl } from '@tauri-apps/plugin-deep-link';
 import { Component, type ErrorInfo, type ReactNode, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RouteErrorComponent } from './components/route-error';
@@ -12,22 +12,45 @@ import { routeTree } from './routeTree.gen';
 
 wireGlobalErrorHandlers();
 
-// Listen for the OAuth deep-link callback (rsmm://…) the API redirects to
-// after a social sign-in completes in the system browser. Only meaningful
-// inside the Tauri shell; the plain Vite dev server / web build skip it.
+// Handle the desktop OAuth relay deep link: rsmm://desktop-auth?token=…
+// The system browser drove the whole OAuth flow and minted a one-time token;
+// exchange it here for this client's session cookie (see apps/api desktop-auth
+// relay). Only meaningful inside the Tauri shell.
+async function handleAuthDeepLink(urls: string[] | null) {
+  const raw = urls?.[0];
+  if (!raw) return;
+  let token: string | null = null;
+  try {
+    const url = new URL(raw);
+    // rsmm://desktop-auth?token=…  → host is "desktop-auth"
+    if (url.host !== 'desktop-auth' && !url.pathname.includes('desktop-auth')) return;
+    token = url.searchParams.get('token');
+  } catch {
+    return;
+  }
+  if (!token) return;
+  try {
+    const res = await authClient.$fetch('/one-time-token/verify', {
+      method: 'POST',
+      body: { token },
+    });
+    if (res.error) throw new Error(res.error.message ?? 'token verification failed');
+    // The session cookie is now set for this client; refresh the cached session
+    // before routing so guarded views see the signed-in state.
+    await authClient.getSession({ query: { disableCookieCache: true } });
+    window.location.href = '/';
+  } catch (error) {
+    console.error('[oauth] desktop deep-link auth failed', error);
+  }
+}
+
 if (isTauri()) {
-  setupBetterAuthTauri({
-    authClient,
-    scheme: 'rsmm',
-    onSuccess: (callbackURL) => {
-      // Land back on the app root (or the requested next URL) now that the
-      // session cookie has been exchanged.
-      window.location.href = callbackURL || '/';
-    },
-    onError: (error) => {
-      console.error('[oauth] tauri deep-link auth failed', error);
-    },
-  });
+  // Cold start: the app may have been launched by the deep link.
+  getCurrentDeepLink()
+    .then(handleAuthDeepLink)
+    .catch(() => {});
+  // Warm: the single-instance plugin forwards the URL to the running window.
+  onOpenUrl(handleAuthDeepLink);
 }
 
 class RootErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {

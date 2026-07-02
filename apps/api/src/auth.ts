@@ -1,6 +1,7 @@
 import { getDb, schema } from '@rsmm/db';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { oneTimeToken } from 'better-auth/plugins/one-time-token';
 import { env, githubConfigured, googleConfigured, isProduction, smtpConfigured } from './env.js';
 import { log } from './logger.js';
 import {
@@ -31,6 +32,13 @@ export const auth = betterAuth({
   baseURL: env.betterAuthUrl,
   secret: env.betterAuthSecret,
   trustedOrigins: env.trustedOrigins,
+  // one-time-token backs the desktop OAuth relay: the browser completes the
+  // whole OAuth (normal registered callback — Google-compatible, no query
+  // string) and lands on /api/desktop-auth/complete, which mints a short-lived
+  // token the app exchanges for its own session cookie. See routes/desktop-auth.ts.
+  // Web-safe: this plugin never touches socialProviders (unlike the removed
+  // @daveyplate/better-auth-tauri server plugin that broke web state checks).
+  plugins: [oneTimeToken({ expiresIn: 3 })],
   database: drizzleAdapter(getDb(), {
     provider: 'pg',
     schema: {
@@ -41,13 +49,14 @@ export const auth = betterAuth({
     },
   }),
   socialProviders,
-  // NOTE: the @daveyplate/better-auth-tauri server plugin was removed — its
-  // `before` hook runs on ALL requests (it only gates the desktop behaviour
-  // on a `platform` header the web browser never sends) and mutated the
-  // shared socialProviders redirectURI per-request, breaking the web OAuth
-  // state check ("State not found"). Web Google sign-in works with stock
-  // Better Auth. Desktop deep-link OAuth needs a non-global approach — see
-  // memory google-signin-status. Until then desktop uses email/password.
+  // NOTE: we deliberately DON'T use the @daveyplate/better-auth-tauri server
+  // plugin. Its `before` hook mutated the shared socialProviders redirectURI
+  // per-request (breaking web OAuth state), and its whole mechanism smuggles an
+  // `rsmm://` marker through the OAuth redirect_uri query string — which Google
+  // rejects (redirect URIs can't contain a query), so it only ever works for
+  // GitHub. Desktop OAuth instead goes through the browser-side relay in
+  // routes/desktop-auth.ts + the oneTimeToken plugin above, which works for all
+  // providers and leaves the web flow completely untouched.
   emailAndPassword: {
     enabled: true,
     autoSignIn: !isProduction && !smtpConfigured(),
@@ -80,8 +89,8 @@ export const auth = betterAuth({
   // `updateAge: 1h` slides the expiry forward on active use so legit
   // users don't get bounced mid-session.
   session: {
-    expiresIn: 60 * 60 * 24,        // 24 hours
-    updateAge: 60 * 60,             // re-issue at most once per hour
+    expiresIn: 60 * 60 * 24, // 24 hours
+    updateAge: 60 * 60, // re-issue at most once per hour
   },
   user: {
     // Self-serve account deletion. better-auth tears down the user row

@@ -8,6 +8,7 @@ import { env, githubConfigured, googleConfigured, isProduction } from './env.js'
 import { log, requestId } from './logger.js';
 import { createRateLimiter } from './rate-limit.js';
 import { collectionsRouter } from './routes/collections.js';
+import { desktopAuthRouter } from './routes/desktop-auth.js';
 import { guidesRouter } from './routes/guides.js';
 import { legalRouter } from './routes/legal.js';
 import { meRouter } from './routes/me.js';
@@ -77,6 +78,14 @@ app.use('*', async (c, next) => {
 
 app.use('/api/auth/*', createRateLimiter({ name: 'auth', windowMs: 60_000, maxHits: 10 }));
 app.on(['GET', 'POST'], '/api/auth/*', (c) => auth.handler(c.req.raw));
+
+// Desktop OAuth relay (browser-side flow → one-time-token handoff). Rate-limited
+// like /api/auth to blunt abuse of the provider-redirect kickoff.
+app.use(
+  '/api/desktop-auth/*',
+  createRateLimiter({ name: 'desktop-auth', windowMs: 60_000, maxHits: 20 }),
+);
+app.route('/api/desktop-auth', desktopAuthRouter);
 
 app.use(
   '/api/mods/upload',

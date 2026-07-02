@@ -1,6 +1,6 @@
-import { signInSocial } from '@daveyplate/better-auth-tauri';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { Github, LogIn, UserPlus } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { Button, CopyButton, Panel, SectionHeader } from '../components/chrome';
@@ -63,17 +63,23 @@ function SignInPage() {
   const config = useQuery({ queryKey: ['auth-config'], queryFn: fetchAuthConfig });
   const hasSocial = !!(config.data?.providers.google || config.data?.providers.github);
 
-  // Kicks off OAuth in the system browser. The API redirects back into the
-  // app via the rsmm:// deep link; the listener in main.tsx finalizes the
-  // session, so there's nothing to await here beyond launch errors.
+  // Kicks off OAuth entirely in the system browser via the desktop-auth relay.
+  // The browser completes the flow against the provider's normal callback (so
+  // Google — which rejects redirect URIs with query strings — works too), then
+  // deep-links a one-time token back into the app, where the listener in
+  // main.tsx exchanges it for a session. Nothing to await here beyond launch.
   const social = async (provider: 'google' | 'github') => {
     setError(null);
     setBusy(true);
     try {
-      await signInSocial({ authClient, provider });
+      const base = getApiUrl().replace(/\/+$/, '');
+      await openUrl(`${base}/api/desktop-auth/start?provider=${provider}`);
     } catch (err) {
-      setBusy(false);
       setError(err instanceof Error ? err.message : `${provider} sign-in failed`);
+    } finally {
+      // Re-enable the buttons: the deep-link handler navigates away on success;
+      // if the user cancels in the browser they land back here able to retry.
+      setBusy(false);
     }
   };
 
