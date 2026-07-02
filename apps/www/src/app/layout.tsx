@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next';
 import { Cormorant_Garamond, EB_Garamond, JetBrains_Mono, UnifrakturCook } from 'next/font/google';
 import Link from 'next/link';
 import Script from 'next/script';
+import { BanGate } from './components/ban-gate';
 import { Nav } from './nav';
 import { Providers } from './providers';
 import { VersionBadge } from './version-badge';
@@ -126,6 +127,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Providers>
           <Nav versionBadge={<VersionBadge />} />
           <div className="flex-1">{children}</div>
+          <BanGate />
         </Providers>
 
         <footer className="border-t border-border/40">

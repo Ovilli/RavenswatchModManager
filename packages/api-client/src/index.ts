@@ -438,6 +438,14 @@ export function createApiClient(options: ApiClientOptions) {
           z.object({ ok: z.literal(true), user: z.unknown() }),
         ),
     },
+    // Ban-aware session probe. Returns banned=true (with reason) even though the
+    // Better Auth cookie still reads as signed-in, so the UI can show a notice.
+    session: () =>
+      request(
+        '/api/session',
+        { method: 'GET' },
+        z.object({ banned: z.boolean(), reason: z.string().nullable() }),
+      ),
     me: {
       whoami: () =>
         request('/api/me', { method: 'GET' }, z.object({ id: z.string(), isAdmin: z.boolean() })),

@@ -49,19 +49,25 @@ app.notFound((c) => c.json({ error: 'not found' }, 404));
 app.use('*', async (c, next) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers }).catch(() => null);
   let user = session?.user ?? null;
+  c.set('bannedInfo', null);
   // Ban gate: a banned user is treated as anonymous everywhere (can't publish,
   // review, or moderate). Checked against the DB so a ban takes effect on the
   // banned user's very next request without waiting for their session to
-  // expire. Only costs a query when a session is actually present.
+  // expire. Only costs a query when a session is actually present. The ban is
+  // stashed on the context (bannedInfo) so GET /api/session can tell the still
+  // -cookie'd frontend to show a ban notice instead of a silent dead state.
   if (user) {
-    const banned = await getDb()
-      .select({ banned: schema.users.banned })
+    const row = await getDb()
+      .select({ banned: schema.users.banned, reason: schema.users.bannedReason })
       .from(schema.users)
       .where(eq(schema.users.id, user.id))
       .limit(1)
-      .then((r) => r[0]?.banned ?? false)
-      .catch(() => false);
-    if (banned) user = null;
+      .then((r) => r[0] ?? null)
+      .catch(() => null);
+    if (row?.banned) {
+      c.set('bannedInfo', { banned: true, reason: row.reason ?? null });
+      user = null;
+    }
   }
   const isVerified = user?.emailVerified === true;
   c.set('user', isProduction && user && !isVerified ? null : user);
@@ -92,6 +98,15 @@ app.use(
 
 app.get('/api', (c) => c.json({ name: 'rsmm-api', ok: true }));
 app.get('/api/health', (c) => c.json({ ok: true, ts: Date.now() }));
+
+// Session status probe the web app polls to detect a ban. The Better Auth
+// cookie stays valid after a ban (auth.handler bypasses the ban gate), so the
+// client would otherwise look signed-in while every API call 401s. This lets
+// the UI show an explicit ban notice + sign-out instead of a silent dead state.
+app.get('/api/session', (c) => {
+  const b = c.get('bannedInfo');
+  return c.json({ banned: b?.banned ?? false, reason: b?.reason ?? null });
+});
 
 // Tells the sign-in UI which providers to render. Avoids the frontend
 // hard-coding a list and showing buttons that 500 when an admin hasn't
