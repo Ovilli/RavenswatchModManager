@@ -10,12 +10,12 @@ import {
 import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { isAdmin } from '../admin';
-import { isPgErrorCode } from '../db-errors';
-import { s3Configured } from '../env';
-import { createRateLimiter } from '../rate-limit';
-import { presignGuideImage } from '../storage';
-import type { AppEnv } from '../types';
+import { isAdmin } from '../admin.js';
+import { isPgErrorCode } from '../db-errors.js';
+import { s3Configured } from '../env.js';
+import { createRateLimiter } from '../rate-limit.js';
+import { presignGuideImage } from '../storage.js';
+import type { AppEnv } from '../types.js';
 
 export const guidesRouter = new Hono<AppEnv>();
 

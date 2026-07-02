@@ -4,9 +4,9 @@ import { modTakedownSchema, reportResolveSchema, userBanSchema } from '@rsmm/sch
 import { desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { isAdmin } from '../admin';
-import { notify } from '../notify';
-import type { AppEnv } from '../types';
+import { isAdmin } from '../admin.js';
+import { notify } from '../notify.js';
+import type { AppEnv } from '../types.js';
 
 export const moderationRouter = new Hono<AppEnv>();
 

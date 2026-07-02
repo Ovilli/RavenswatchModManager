@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
-import { env, impressumConfigured } from '../env';
-import type { AppEnv } from '../types';
+import { env, impressumConfigured } from '../env.js';
+import type { AppEnv } from '../types.js';
 
 export const legalRouter = new Hono<AppEnv>();
 

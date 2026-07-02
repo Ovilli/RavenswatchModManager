@@ -4,11 +4,11 @@ import { modImagePresignSchema } from '@rsmm/schemas';
 import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { isAdmin } from '../admin';
-import { s3Configured } from '../env';
-import { unreadCount } from '../notify';
-import { presignAvatar } from '../storage';
-import type { AppEnv } from '../types';
+import { isAdmin } from '../admin.js';
+import { s3Configured } from '../env.js';
+import { unreadCount } from '../notify.js';
+import { presignAvatar } from '../storage.js';
+import type { AppEnv } from '../types.js';
 
 export const meRouter = new Hono<AppEnv>();
 

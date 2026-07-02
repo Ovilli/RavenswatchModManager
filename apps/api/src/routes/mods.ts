@@ -11,15 +11,15 @@ import {
 import { and, asc, desc, eq, gte, ilike, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { isAdmin } from '../admin';
-import { isPgErrorCode } from '../db-errors';
-import { s3Configured, virusTotalConfigured } from '../env';
-import { canManageMod } from '../mod-access';
-import { notify, notifyFollowers } from '../notify';
-import { createRateLimiter } from '../rate-limit';
-import { enqueueScan, isServable, markScan, queueInfo } from '../scan-service';
-import { presignModImage, presignModUpload, remoteObjectExists } from '../storage';
-import type { AppEnv } from '../types';
+import { isAdmin } from '../admin.js';
+import { isPgErrorCode } from '../db-errors.js';
+import { s3Configured, virusTotalConfigured } from '../env.js';
+import { canManageMod } from '../mod-access.js';
+import { notify, notifyFollowers } from '../notify.js';
+import { createRateLimiter } from '../rate-limit.js';
+import { enqueueScan, isServable, markScan, queueInfo } from '../scan-service.js';
+import { presignModImage, presignModUpload, remoteObjectExists } from '../storage.js';
+import type { AppEnv } from '../types.js';
 
 export const modsRouter = new Hono<AppEnv>();
 

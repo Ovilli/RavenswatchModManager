@@ -1,7 +1,7 @@
 import { getDb, schema } from '@rsmm/db';
 import { and, desc, eq, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
-import type { AppEnv } from '../types';
+import type { AppEnv } from '../types.js';
 
 export const usersRouter = new Hono<AppEnv>();
 

@@ -2,8 +2,8 @@ import { zValidator } from '@hono/zod-validator';
 import { getDb, schema } from '@rsmm/db';
 import { crashReportSchema, telemetryRunSchema } from '@rsmm/schemas';
 import { Hono } from 'hono';
-import { createRateLimiter } from '../rate-limit';
-import type { AppEnv } from '../types';
+import { createRateLimiter } from '../rate-limit.js';
+import type { AppEnv } from '../types.js';
 
 export const telemetryRouter = new Hono<AppEnv>();
 

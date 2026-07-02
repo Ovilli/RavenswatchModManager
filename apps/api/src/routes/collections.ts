@@ -11,11 +11,11 @@ import {
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { isPgErrorCode } from '../db-errors';
-import { s3Configured } from '../env';
-import { createRateLimiter } from '../rate-limit';
-import { presignCollectionImage } from '../storage';
-import type { AppEnv } from '../types';
+import { isPgErrorCode } from '../db-errors.js';
+import { s3Configured } from '../env.js';
+import { createRateLimiter } from '../rate-limit.js';
+import { presignCollectionImage } from '../storage.js';
+import type { AppEnv } from '../types.js';
 
 export const collectionsRouter = new Hono<AppEnv>();
 
