@@ -1,7 +1,15 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Bell, Library, LogOut, Settings, Upload, User as UserIcon } from 'lucide-react';
+import {
+  Bell,
+  Library,
+  LogOut,
+  Settings,
+  ShieldCheck,
+  Upload,
+  User as UserIcon,
+} from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -68,6 +76,14 @@ function UserMenu() {
   const { data: session } = useSession();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  // Admin capability drives the moderation link only; routes stay server-gated.
+  const whoami = useQuery({
+    queryKey: ['me', 'whoami'],
+    queryFn: () => api.me.whoami(),
+    enabled: !!session,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -152,6 +168,17 @@ function UserMenu() {
                 </Link>
               );
             })}
+            {whoami.data?.isAdmin && (
+              <Link
+                href="/admin"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2.5 px-3 py-2 text-sm text-foreground/90 transition hover:bg-foreground/5"
+                role="menuitem"
+              >
+                <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+                Moderation
+              </Link>
+            )}
           </nav>
           <div className="border-t border-border/40 py-1">
             <button

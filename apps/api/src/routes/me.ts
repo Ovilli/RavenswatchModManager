@@ -4,6 +4,7 @@ import { modImagePresignSchema } from '@rsmm/schemas';
 import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { isAdmin } from '../admin';
 import { s3Configured } from '../env';
 import { unreadCount } from '../notify';
 import { presignAvatar } from '../storage';
@@ -16,6 +17,15 @@ export const meRouter = new Hono<AppEnv>();
 meRouter.use('*', async (c, next) => {
   if (!c.get('user')) return c.json({ error: 'unauthorized' }, 401);
   await next();
+});
+
+// Lightweight identity + capability probe. The web nav uses `isAdmin` to decide
+// whether to render the moderation link; the moderation routes themselves are
+// still server-gated, so this only controls UI affordances.
+meRouter.get('/', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'unauthorized' }, 401);
+  return c.json({ id: user.id, isAdmin: isAdmin(user.id) });
 });
 
 meRouter.post('/avatar', zValidator('json', modImagePresignSchema), async (c) => {

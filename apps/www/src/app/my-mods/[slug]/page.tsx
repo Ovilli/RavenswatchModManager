@@ -489,6 +489,27 @@ export default function ManageModPage() {
         </Button>
       </header>
 
+      {mod.takedownStatus && mod.takedownStatus !== 'active' ? (
+        <div className="flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/10 p-4">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+          <div className="text-sm">
+            <p className="font-semibold text-destructive">
+              This mod has been {mod.takedownStatus === 'removed' ? 'removed' : 'hidden'} by a
+              moderator.
+            </p>
+            <p className="mt-1 text-muted-foreground">
+              It is not visible in the public registry or downloadable.
+              {mod.takedownReason ? ` Reason: ${mod.takedownReason}.` : ''} If you believe this was
+              a mistake,{' '}
+              <Link href="/contact" className="underline underline-offset-2">
+                contact the moderators
+              </Link>
+              .
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       {/* ─── Cover ─── */}
       <section className="grimoire-card space-y-4 p-5">
         <h2 className="text-lg font-semibold">Cover image</h2>

@@ -238,6 +238,8 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       featured: mod.featured,
       nsfw: mod.nsfw,
       ownerId: mod.ownerId,
+      takedownStatus: mod.takedownStatus,
+      takedownReason: mod.takedownReason,
       isFollowing,
       followerCount,
       dependencies:

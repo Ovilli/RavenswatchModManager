@@ -138,6 +138,10 @@ export function createApiClient(options: ApiClientOptions) {
       z.object({
         isFollowing: z.boolean().optional(),
         followerCount: z.number().int().optional(),
+        // Present for the owner/admin viewing a delisted mod; public callers
+        // never receive a non-active mod so these default to active.
+        takedownStatus: z.enum(['active', 'hidden', 'removed']).optional(),
+        takedownReason: z.string().nullable().optional(),
       }),
     ),
     versions: z.array(modVersionSchema),
@@ -435,6 +439,8 @@ export function createApiClient(options: ApiClientOptions) {
         ),
     },
     me: {
+      whoami: () =>
+        request('/api/me', { method: 'GET' }, z.object({ id: z.string(), isAdmin: z.boolean() })),
       mods: () => request('/api/me/mods', { method: 'GET' }, myModsResponseSchema),
       presignAvatar: (body: ModImagePresign) =>
         request(
