@@ -122,6 +122,19 @@ export const auth = betterAuth({
   advanced: {
     useSecureCookies: isProduction,
     disableCSRFCheck: false,
+    // The OAuth `state` cookie rides a top-level browser redirect (provider →
+    // API callback), so it must be SameSite=Lax. The global SameSite=None below
+    // (needed so the desktop app's cross-site tauri:// XHR carries the session
+    // cookie) gets dropped by browser third-party-cookie blocking on that
+    // cross-site redirect, so the callback sees no state cookie and fails with
+    // `state_mismatch`. Lax is always sent on top-level navigations and isn't
+    // treated as a tracking cookie. Session cookies stay None (set separately by
+    // Better Auth) so the desktop XHR path is unaffected. `secure` is inherited
+    // from useSecureCookies (true in prod, false on http://localhost in dev).
+    cookies: {
+      state: { attributes: { sameSite: 'lax' as const } },
+      oauth_state: { attributes: { sameSite: 'lax' as const } },
+    },
     // Production Tauri builds (all OSes) call the HTTPS API from a different
     // site (tauri://localhost, https://tauri.localhost, etc.) and need
     // SameSite=None. Dev uses the Vite proxy (same-origin) — Lax is fine there.
