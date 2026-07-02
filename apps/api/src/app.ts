@@ -76,6 +76,26 @@ app.use('*', async (c, next) => {
   await next();
 });
 
+// TEMP diagnostic: log what actually reaches the OAuth callback so we can see
+// whether the browser sent the state cookie and whether it matches the state
+// query param (state_mismatch debugging). Remove once desktop OAuth is verified.
+app.use('/api/auth/callback/*', async (c, next) => {
+  const cookie = c.req.header('cookie') ?? '';
+  const cookieNames = cookie
+    .split(';')
+    .map((s) => s.trim().split('=')[0])
+    .filter(Boolean);
+  const stateCookie = cookie.match(/(?:^|;\s*)(?:__Secure-)?better-auth\.state=([^;.]+)/);
+  (c.get('log') ?? log).info('[oauth-debug] callback', {
+    path: c.req.path,
+    stateParam: c.req.query('state') ?? null,
+    stateCookieValue: stateCookie?.[1] ?? null,
+    hasStateCookie: Boolean(stateCookie),
+    cookieNames: cookieNames.join(','),
+  });
+  await next();
+});
+
 app.use('/api/auth/*', createRateLimiter({ name: 'auth', windowMs: 60_000, maxHits: 10 }));
 app.on(['GET', 'POST'], '/api/auth/*', (c) => auth.handler(c.req.raw));
 
