@@ -17,6 +17,10 @@ tauri = { version = "2", features = [] }
 tauri-plugin-shell = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-deep-link = "2"
+# JS dep `@daveyplate/better-auth-tauri` calls `platform()` from
+# `@tauri-apps/plugin-os` during sign-in; without the Rust plugin registered
+# the `__TAURI_OS_PLUGIN_INTERNALS__` global is undefined and login throws.
+tauri-plugin-os = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

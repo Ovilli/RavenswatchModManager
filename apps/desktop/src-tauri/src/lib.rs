@@ -53,6 +53,11 @@ pub fn run() {
     }
 
     builder = builder.plugin(tauri_plugin_shell::init());
+    // OS plugin: the sign-in flow (@daveyplate/better-auth-tauri) probes
+    // `platform()` from `@tauri-apps/plugin-os`. Registering it defines the
+    // `__TAURI_OS_PLUGIN_INTERNALS__` global the JS bridge reads — without it
+    // login crashes with "undefined is not an object".
+    builder = builder.plugin(tauri_plugin_os::init());
     // Opener: lets the frontend launch the system browser for the OAuth flow.
     builder = builder.plugin(tauri_plugin_opener::init());
     // Deep link: receives the `rsmm://` OAuth callback the API redirects to
