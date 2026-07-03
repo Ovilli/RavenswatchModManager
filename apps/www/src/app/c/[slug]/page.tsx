@@ -22,9 +22,9 @@ import type { Route } from 'next';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { use, useEffect, useState } from 'react';
-import { AdBanner } from '../../components/ad-banner';
 import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
+import { AdBanner } from '../../components/ad-banner';
 
 const MDEditor = dynamic(() => import('@uiw/react-md-editor'), { ssr: false });
 const MDPreview = dynamic(() => import('@uiw/react-md-editor').then((m) => m.default.Markdown), {
@@ -673,9 +673,13 @@ export default function CollectionDetailPage({
         </ul>
       )}
 
-      <div className="mx-auto w-full max-w-2xl">
-        <AdBanner slot="1934448674" className="rounded-lg" />
-      </div>
+      {/* AdSense "no ads on screens without publisher content": an empty or
+          undescribed collection is a near-empty page — skip the ad there. */}
+      {c.mods.length > 0 && c.description?.trim() ? (
+        <div className="mx-auto w-full max-w-2xl">
+          <AdBanner slot="1934448674" className="rounded-lg" />
+        </div>
+      ) : null}
 
       {/* ─── Reviews ─── */}
       <section className="space-y-4">

@@ -282,7 +282,10 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
                 </ul>
               </div>
             ) : null}
-            <AdBanner slot="1934448674" className="rounded-lg" />
+            {/* AdSense "no ads on screens without publisher content": a mod
+                with no author-written summary renders a near-empty page (the
+                same rule that noindexes it in layout.tsx), so skip the ad. */}
+            {mod.summary?.trim() ? <AdBanner slot="1934448674" className="rounded-lg" /> : null}
           </aside>
         </div>
       </div>

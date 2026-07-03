@@ -11,6 +11,7 @@ export const revalidate = 3600;
 interface Entry {
   slug: string;
   updatedAt?: string;
+  summary?: string | null;
 }
 
 // Page through a list endpoint (the API caps `limit` at 100) until it runs
@@ -67,12 +68,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     fetchEntries('/api/guides'),
   ]);
 
-  const modRoutes = mods.map((m) => ({
-    url: `${BASE}/registry/${m.slug}`,
-    lastModified: m.updatedAt ? new Date(m.updatedAt) : now,
-    changeFrequency: 'weekly' as const,
-    priority: 0.6,
-  }));
+  // Mods without an author-written summary are noindexed as thin content
+  // (registry/[slug]/layout.tsx) — listing them in the sitemap would send
+  // Google a mixed "index this / don't index this" signal, so leave them out.
+  const modRoutes = mods
+    .filter((m) => m.summary?.trim())
+    .map((m) => ({
+      url: `${BASE}/registry/${m.slug}`,
+      lastModified: m.updatedAt ? new Date(m.updatedAt) : now,
+      changeFrequency: 'weekly' as const,
+      priority: 0.6,
+    }));
 
   const collectionRoutes = collections.map((c) => ({
     url: `${BASE}/c/${c.slug}`,
