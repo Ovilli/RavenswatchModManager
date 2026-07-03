@@ -19,6 +19,12 @@ import type { AppEnv } from '../types.js';
 
 export const collectionsRouter = new Hono<AppEnv>();
 
+// See routes/mods.ts: outer-row refs for correlated subqueries must be raw —
+// drizzle renders interpolated columns unqualified in single-table selects
+// and they resolve against the inner table when it has a same-named column.
+const outerModId = sql.raw('"mods"."id"');
+const outerCollectionId = sql.raw('"collections"."id"');
+
 const slugParamSchema = z.object({ slug: collectionSlugSchema });
 const slugAndModParamSchema = z.object({
   slug: collectionSlugSchema,
@@ -68,7 +74,7 @@ collectionsRouter.get('/', async (c) => {
       ownerImage: schema.users.image,
       modCount: sql<number>`(
         select count(*)::int from ${schema.collectionMods}
-        where ${schema.collectionMods.collectionId} = ${schema.collections.id}
+        where ${schema.collectionMods.collectionId} = ${outerCollectionId}
       )`,
     })
     .from(schema.collections)
@@ -114,7 +120,7 @@ collectionsRouter.get('/mine', async (c) => {
       updatedAt: schema.collections.updatedAt,
       modCount: sql<number>`(
         select count(*)::int from ${schema.collectionMods}
-        where ${schema.collectionMods.collectionId} = ${schema.collections.id}
+        where ${schema.collectionMods.collectionId} = ${outerCollectionId}
       )`,
     })
     .from(schema.collections)
@@ -220,14 +226,14 @@ collectionsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) 
       latestVersion: sql<string | null>`(
         select ${schema.modVersions.version}
         from ${schema.modVersions}
-        where ${schema.modVersions.modId} = ${schema.mods.id}
+        where ${schema.modVersions.modId} = ${outerModId}
         order by ${schema.modVersions.createdAt} desc
         limit 1
       )`,
       downloads: sql<number>`coalesce((
         select sum(${schema.modDownloads.count})::int
         from ${schema.modDownloads}
-        where ${schema.modDownloads.modId} = ${schema.mods.id}
+        where ${schema.modDownloads.modId} = ${outerModId}
       ), 0)`,
     })
     .from(schema.collectionMods)

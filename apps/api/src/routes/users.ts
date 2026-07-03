@@ -5,6 +5,11 @@ import type { AppEnv } from '../types.js';
 
 export const usersRouter = new Hono<AppEnv>();
 
+// See routes/mods.ts: outer-row ref for correlated subqueries must be raw —
+// drizzle renders `${schema.mods.id}` unqualified in single-table selects and
+// it resolves to the inner table's `id`.
+const outerModId = sql.raw('"mods"."id"');
+
 /**
  * Public profile: GET /api/users/:idOrHandle
  *
@@ -49,14 +54,14 @@ usersRouter.get('/:idOrHandle', async (c) => {
       latestVersion: sql<string | null>`(
         select ${schema.modVersions.version}
         from ${schema.modVersions}
-        where ${schema.modVersions.modId} = ${schema.mods.id}
+        where ${schema.modVersions.modId} = ${outerModId}
         order by ${schema.modVersions.createdAt} desc
         limit 1
       )`,
       downloads: sql<number>`coalesce((
         select sum(${schema.modDownloads.count})::int
         from ${schema.modDownloads}
-        where ${schema.modDownloads.modId} = ${schema.mods.id}
+        where ${schema.modDownloads.modId} = ${outerModId}
       ), 0)`,
     })
     .from(schema.mods)

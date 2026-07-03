@@ -12,6 +12,11 @@ import type { AppEnv } from '../types.js';
 
 export const meRouter = new Hono<AppEnv>();
 
+// See routes/mods.ts: outer-row ref for correlated subqueries must be raw —
+// drizzle renders `${schema.mods.id}` unqualified in single-table selects and
+// it resolves to the inner table's `id`.
+const outerModId = sql.raw('"mods"."id"');
+
 // All routes here require an authenticated session — the session
 // middleware in app.ts populates `c.get('user')` from the cookie.
 meRouter.use('*', async (c, next) => {
@@ -69,14 +74,14 @@ meRouter.get('/mods', async (c) => {
       latestVersion: sql<string | null>`(
         select ${schema.modVersions.version}
         from ${schema.modVersions}
-        where ${schema.modVersions.modId} = ${schema.mods.id}
+        where ${schema.modVersions.modId} = ${outerModId}
         order by ${schema.modVersions.createdAt} desc
         limit 1
       )`,
       downloads: sql<number>`coalesce((
         select sum(${schema.modDownloads.count})::int
         from ${schema.modDownloads}
-        where ${schema.modDownloads.modId} = ${schema.mods.id}
+        where ${schema.modDownloads.modId} = ${outerModId}
       ), 0)`,
     })
     .from(schema.mods)
@@ -84,7 +89,7 @@ meRouter.get('/mods', async (c) => {
     .where(
       or(
         eq(schema.mods.ownerId, user.id),
-        sql`exists (select 1 from ${schema.modAuthors} where ${schema.modAuthors.modId} = ${schema.mods.id} and ${schema.modAuthors.userId} = ${user.id})`,
+        sql`exists (select 1 from ${schema.modAuthors} where ${schema.modAuthors.modId} = ${outerModId} and ${schema.modAuthors.userId} = ${user.id})`,
       ),
     )
     .orderBy(desc(schema.mods.updatedAt));

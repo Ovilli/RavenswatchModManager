@@ -23,6 +23,13 @@ import type { AppEnv } from '../types.js';
 
 export const modsRouter = new Hono<AppEnv>();
 
+// Outer-row reference for correlated subqueries, spelled out as raw SQL.
+// Drizzle renders interpolated columns UNQUALIFIED in single-table selects,
+// so `${schema.mods.id}` inside a subquery resolves against the inner table
+// when it has its own `id` (mod_versions does) and the correlation silently
+// never matches — every mod's latestVersion came back null.
+const outerModId = sql.raw('"mods"."id"');
+
 // Per-IP rate limiter for the download redirect endpoint. Without it,
 // a script can spin the download counter (and the underlying S3 bill)
 // arbitrarily fast. 120/min is well above any legitimate launcher
@@ -87,7 +94,7 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
       ? sql`coalesce((
           select sum(${schema.modDownloads.count})
           from ${schema.modDownloads}
-          where ${schema.modDownloads.modId} = ${schema.mods.id}
+          where ${schema.modDownloads.modId} = ${outerModId}
         ), 0) desc`
       : sort === 'featured'
         ? sql`${schema.mods.featured} desc, ${schema.mods.featuredAt} desc nulls last, ${schema.mods.updatedAt} desc`
@@ -114,7 +121,7 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
       latestVersion: sql<string | null>`(
         select ${schema.modVersions.version}
         from ${schema.modVersions}
-        where ${schema.modVersions.modId} = ${schema.mods.id}
+        where ${schema.modVersions.modId} = ${outerModId}
           and ${schema.modVersions.scanStatus} in ('clean', 'skipped')
         order by ${schema.modVersions.createdAt} desc
         limit 1
@@ -122,7 +129,7 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
       downloads: sql<number>`coalesce((
         select sum(${schema.modDownloads.count})::int
         from ${schema.modDownloads}
-        where ${schema.modDownloads.modId} = ${schema.mods.id}
+        where ${schema.modDownloads.modId} = ${outerModId}
       ), 0)`,
     })
     .from(schema.mods)
@@ -137,7 +144,7 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
       totalDownloads: sql<number>`coalesce(sum((
         select sum(${schema.modDownloads.count})
         from ${schema.modDownloads}
-        where ${schema.modDownloads.modId} = ${schema.mods.id}
+        where ${schema.modDownloads.modId} = ${outerModId}
       )), 0)::int`,
     })
     .from(schema.mods)
