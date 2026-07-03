@@ -17,13 +17,11 @@ top-to-bottom.
 | GitHub | Source repo, CI, Releases | yes |
 | Neon | Serverless Postgres for prod registry + telemetry | yes (0.5 GB) |
 | Cloudflare R2 | Object storage for uploaded mod `.zip` files | yes (10 GB/mo egress free) |
-| Vercel | Hosting for `apps/www` (Next.js) **and** `apps/docs` (Astro/Starlight) — two projects, same repo | yes |
-| Fly.io OR Railway | Hosting for `apps/api` (Hono/Node) | free trial only — paid after |
+| Vercel | Hosting for `apps/www` (Next.js), `apps/api` (Hono/Node), **and** `apps/docs` (Astro/Starlight) — three projects, same repo | yes |
 | Domain (rsmm.me or similar) | Friendly URL + email | ~$10/yr |
 
-If money is the issue, you can host the API on Fly's free tier (1 shared
-CPU, 256 MB RAM — fine for a registry) or Railway's $5/mo plan. Skip the
-domain for v1 and use the `*.vercel.app` and `*.fly.dev` URLs.
+If money is the issue, everything runs on Vercel's Hobby tier. Skip the
+domain for v1 and use the `*.vercel.app` URLs.
 
 ---
 
@@ -75,7 +73,7 @@ default `GITHUB_TOKEN` is enough for creating the draft release.
    ```
 
 You now have a production DB. Save the connection string somewhere
-secure (1Password, Bitwarden) — you'll paste it into Vercel and Fly env
+secure (1Password, Bitwarden) — you'll paste it into the Vercel env
 vars in later steps.
 
 ---
@@ -132,96 +130,45 @@ host (Step 5). Never commit it.
 
 ---
 
-## Step 5: Fly.io (host for apps/api)
+## Step 5: Vercel (host for apps/api)
 
-The API is a Node Hono server. Fly is the simplest free-ish host that
-keeps the process alive (Vercel serverless cold-starts hurt Better Auth
-session handling, hence not Vercel for this one).
+The API is a Node Hono server, deployed as its own Vercel project.
+`apps/api/vercel.json` already pins the install and build commands
+(`pnpm --filter api vercel-build`), so the dashboard setup is minimal.
 
-1. Sign up at **<https://fly.io>**. Card required even for free tier.
-2. Install the CLI on your laptop:
+1. Sign up at **<https://vercel.com>**, GitHub login.
+2. Go to **<https://vercel.com/new>** and **Import** the
+   `RavenswatchModManager` repo as a **new project** (separate from the
+   `apps/www` and `apps/docs` projects).
+3. In **Configure Project**:
+   - **Root Directory**: `apps/api` (click *Edit* → select the folder).
+     Vercel still installs the whole pnpm workspace from the repo root.
+   - Build Command / Install Command: leave as-is — `vercel.json`
+     provides them.
+4. **Environment Variables** (Production + Preview):
+   ```
+   DATABASE_URL=postgresql://...neon.tech/rsmm?sslmode=require
+   DB_DRIVER=neon
+   BETTER_AUTH_SECRET=<from step 4>
+   BETTER_AUTH_URL=https://<your-api-project>.vercel.app
+   TRUSTED_ORIGINS=https://www.rsmm.me,https://rsmm.vercel.app,tauri://localhost
+   S3_BUCKET=rsmm-mods
+   S3_REGION=auto
+   S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
+   S3_ACCESS_KEY_ID=<from step 3>
+   S3_SECRET_ACCESS_KEY=<from step 3>
+   S3_PUBLIC_BASE_URL=https://pub-<hash>.r2.dev
+   ```
+5. Click **Deploy**.
+6. Verify:
    ```sh
-   curl -L https://fly.io/install.sh | sh
-   fly auth login
-   ```
-3. Create `apps/api/Dockerfile`:
-   ```dockerfile
-   FROM node:22-alpine AS base
-   RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
-   WORKDIR /repo
-
-   FROM base AS deps
-   COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-   COPY apps/api/package.json apps/api/
-   COPY packages/db/package.json packages/db/
-   COPY packages/schemas/package.json packages/schemas/
-   COPY packages/tsconfig/package.json packages/tsconfig/
-   RUN pnpm install --frozen-lockfile --filter api... --ignore-scripts
-
-   FROM deps AS build
-   COPY . .
-   RUN pnpm --filter api build
-
-   FROM base AS runtime
-   ENV NODE_ENV=production
-   COPY --from=build /repo/node_modules /repo/node_modules
-   COPY --from=build /repo/packages /repo/packages
-   COPY --from=build /repo/apps/api/dist /repo/apps/api/dist
-   COPY --from=build /repo/apps/api/package.json /repo/apps/api/
-   WORKDIR /repo/apps/api
-   EXPOSE 3001
-   CMD ["node", "dist/index.js"]
-   ```
-4. Create `apps/api/fly.toml`:
-   ```toml
-   app = "rsmm-api"
-   primary_region = "iad"          # pick one close to Neon's region
-
-   [build]
-     dockerfile = "Dockerfile"
-
-   [http_service]
-     internal_port = 3001
-     force_https = true
-     auto_stop_machines = "stop"
-     auto_start_machines = true
-     min_machines_running = 0
-
-   [[vm]]
-     cpu_kind = "shared"
-     cpus = 1
-     memory_mb = 256
-   ```
-5. From the repo root:
-   ```sh
-   fly launch --no-deploy --copy-config --name rsmm-api --region iad --org personal
-   ```
-6. Set production env vars on Fly:
-   ```sh
-   fly secrets set \
-     DATABASE_URL='postgresql://...neon.tech/rsmm?sslmode=require' \
-     DB_DRIVER=neon \
-     BETTER_AUTH_SECRET='<from step 4>' \
-     BETTER_AUTH_URL='https://rsmm-api.fly.dev' \
-     TRUSTED_ORIGINS='https://www.rsmm.me,https://rsmm.vercel.app,tauri://localhost' \
-     S3_BUCKET=rsmm-mods \
-     S3_REGION=auto \
-     S3_ENDPOINT='https://<account-id>.r2.cloudflarestorage.com' \
-     S3_ACCESS_KEY_ID='<from step 3>' \
-     S3_SECRET_ACCESS_KEY='<from step 3>' \
-     S3_PUBLIC_BASE_URL='https://pub-<hash>.r2.dev'
-   ```
-7. Deploy:
-   ```sh
-   fly deploy
-   ```
-8. Verify:
-   ```sh
-   curl https://rsmm-api.fly.dev/health
+   curl https://<your-api-project>.vercel.app/health
    # → {"ok":true,"ts":...}
    ```
 
-The API is now live at `https://rsmm-api.fly.dev`. Save that URL — Vercel and the desktop app need it.
+The API is now live. Save that URL — the www project and the desktop app
+need it. Remember: Vercel does **not** apply env-var changes to a running
+deployment — redeploy after every env edit.
 
 ---
 
@@ -258,7 +205,6 @@ To turn on **Google**:
    Project → Settings → Environment Variables → add `GOOGLE_CLIENT_ID` and
    `GOOGLE_CLIENT_SECRET` (Production + Preview), then **redeploy** — Vercel
    does not apply env changes to the running deployment until you redeploy.
-   (On a Fly/Railway host instead: `fly secrets set GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=...`.)
 4. After the redeploy, reload `/auth/signin` — the Google button appears once
    `/api/auth-config` reports `google: true`.
 
@@ -282,15 +228,15 @@ sign-in works without them.
    - **Install Command**: `pnpm install --filter www...`
    - **Framework Preset**: Next.js
 4. **Environment Variables**:
-   - `NEXT_PUBLIC_API_URL` = `https://rsmm-api.fly.dev`
+   - `NEXT_PUBLIC_API_URL` = `https://<your-api-project>.vercel.app` (from Step 5)
 5. Click **Deploy**. First build takes ~2 min.
 6. Vercel gives you a URL like `rsmm.vercel.app`. Open it. The landing
    page should load; `/auth/signin` should work because it talks to your
-   Fly API.
+   API project.
 
 If sign-in fails with CORS errors: go back to Step 5 and make sure your
-Vercel URL is in `TRUSTED_ORIGINS`, then `fly deploy` again to pick up
-the env change.
+Vercel www URL is in the API project's `TRUSTED_ORIGINS`, then redeploy
+the API to pick up the env change.
 
 ---
 
@@ -326,15 +272,15 @@ After registering at Cloudflare:
 |-----------|-----------|-----|
 | `rsmm.me` (apex) | Vercel (www) | Vercel project → Settings → Domains → add `rsmm.me` → Cloudflare DNS: `A @ 76.76.21.21` |
 | `www.rsmm.me` | Vercel (www) | Vercel adds this automatically with the apex |
-| `api.rsmm.me` | Fly | Fly: `fly certs create api.rsmm.me` → follow CNAME instructions in Cloudflare DNS |
+| `api.rsmm.me` | Vercel (api) | Vercel api project → Settings → Domains → add `api.rsmm.me` → add the CNAME it shows in your DNS |
 | `docs.rsmm.me` | Vercel (docs) | Vercel docs project → Settings → Domains → add `docs.rsmm.me` → add the CNAME it shows in your DNS |
 | `cdn.rsmm.me` | R2 public bucket | R2 bucket → Settings → Custom Domains → `cdn.rsmm.me` |
 
-After domain is live, update:
-- Fly secret `BETTER_AUTH_URL` → `https://api.rsmm.me`
-- Fly secret `TRUSTED_ORIGINS` → `https://rsmm.me,https://www.rsmm.me,tauri://localhost`
-- Fly secret `S3_PUBLIC_BASE_URL` → `https://cdn.rsmm.me`
-- Vercel env `NEXT_PUBLIC_API_URL` → `https://api.rsmm.me` + redeploy
+After domain is live, update (api project env, then redeploy the api):
+- `BETTER_AUTH_URL` → `https://api.rsmm.me`
+- `TRUSTED_ORIGINS` → `https://rsmm.me,https://www.rsmm.me,tauri://localhost`
+- `S3_PUBLIC_BASE_URL` → `https://cdn.rsmm.me`
+- www project env `NEXT_PUBLIC_API_URL` → `https://api.rsmm.me` + redeploy www
 
 ---
 
@@ -362,7 +308,7 @@ For code signing (Windows SmartScreen), you'll need a paid cert
 
 When everything is live, this is what each host runs:
 
-**Fly (api.rsmm.me)**
+**Vercel (api — api.rsmm.me)**
 ```
 DATABASE_URL=postgresql://...neon.tech/rsmm?sslmode=require
 DB_DRIVER=neon
@@ -408,8 +354,8 @@ After every step:
 
 - [ ] Step 2: `psql 'postgresql://...neon.tech/...?sslmode=require' -c '\dt'` lists tables
 - [ ] Step 3: `curl -X PUT 'https://<endpoint>/rsmm-mods/test.txt' -H 'x-amz-content-sha256: UNSIGNED-PAYLOAD' -H 'authorization: ...'` returns 200 (or use a tool like rclone)
-- [ ] Step 5: `curl https://rsmm-api.fly.dev/health` → `{"ok":true}`
-- [ ] Step 5: `curl https://rsmm-api.fly.dev/mods` → `{"items":[],"total":0}`
+- [ ] Step 5: `curl https://<your-api-project>.vercel.app/health` → `{"ok":true}`
+- [ ] Step 5: `curl https://<your-api-project>.vercel.app/mods` → `{"items":[],"total":0}`
 - [ ] Step 6: `curl https://rsmm.vercel.app/` returns HTML
 - [ ] Step 6: open `https://rsmm.vercel.app/auth/signup`, create account, check Neon `user` table has row
 - [ ] Step 7: open `docs.rsmm.me` → Starlight site loads
@@ -424,8 +370,7 @@ If any step fails, the rest will fail too. Don't skip ahead.
 |------|----------------------|--------------|
 | Neon | ~100 active users, 0.5 GB | $19/mo Pro |
 | R2 | 10 GB, 10M Class A ops/mo | $0.015/GB after |
-| Vercel | 100 GB egress, no commercial use on free | $20/mo Pro |
-| Fly | 3 shared-CPU 256MB VMs in trial | $2-5/mo per VM |
+| Vercel (www + api) | 100 GB egress, no commercial use on free | $20/mo Pro |
 | Vercel (docs) | static, shares the Vercel Hobby free tier | $20/mo Pro |
 | GitHub Actions | 2000 min/mo private (unlimited public) | $0 for public repos |
 | Domain | n/a | $10/yr |
