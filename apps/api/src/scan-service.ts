@@ -181,6 +181,16 @@ export const SCAN_TICK_SECONDS = 60;
  *  signatures catch malware that was undetectable at upload time. */
 const RESCAN_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** Retry a 'pending' verdict (VT hadn't finished analysing when we last
+ *  polled) after this long. Without a retry lane these rows are stuck
+ *  forever: the fail-closed serve gate hides them and nothing re-polls. */
+const PENDING_RETRY_AFTER_MS = 10 * 60 * 1000;
+
+/** Retry an 'error' scan (transient VT/S3 failure) after this long. Errors
+ *  are fail-closed (hidden + undownloadable), so waiting the full 7-day
+ *  rescan window would hide a legit upload for a week over a blip. */
+const ERROR_RETRY_AFTER_MS = 30 * 60 * 1000;
+
 /** Mark a version as waiting for the scan worker. */
 export async function enqueueScan(versionId: string): Promise<void> {
   const db = getDb();
@@ -248,10 +258,23 @@ export async function queueInfo(versionId: string): Promise<QueueInfo | null> {
  * description of what it did (or null when there was nothing to do).
  *
  * A rate-limit while submitting leaves the row queued so the next tick retries.
+ *
+ * Single-flight per instance: a scan holds the VT budget for ~20s, so a drain
+ * requested while one is running is a no-op rather than a concurrent submit.
  */
-export async function drainOnce(): Promise<{ id: string; action: string; status?: string } | null> {
-  const db = getDb();
+let drainInFlight = false;
 
+export async function drainOnce(): Promise<{ id: string; action: string; status?: string } | null> {
+  if (drainInFlight) return null;
+  drainInFlight = true;
+  try {
+    return await drainOnceInner();
+  } finally {
+    drainInFlight = false;
+  }
+}
+
+async function drainOnceInner(): Promise<{ id: string; action: string; status?: string } | null> {
   const pickTarget = async () => {
     // 1) Oldest queued upload.
     const queued = await selectTarget(
@@ -259,11 +282,41 @@ export async function drainOnce(): Promise<{ id: string; action: string; status?
       asc(sql`${schema.modVersions.scanQueuedAt} nulls last`),
     );
     if (queued) return { target: queued, action: 'scan' as const };
-    // 2) Otherwise a stale clean/error row due for a refresh.
+    // 2) A 'pending' verdict that VT never finished — re-poll by resubmitting
+    //    (VT dedupes by content hash, so this is a cheap lookup for it). These
+    //    rows are hidden by the fail-closed gate; without this lane an
+    //    incomplete first analysis leaves the version undownloadable forever.
+    const pendingCutoff = new Date(Date.now() - PENDING_RETRY_AFTER_MS);
+    const stuck = await selectTarget(
+      and(
+        eq(schema.modVersions.scanStatus, 'pending'),
+        or(
+          lt(schema.modVersions.scannedAt, pendingCutoff),
+          sql`${schema.modVersions.scannedAt} is null`,
+        ),
+      ),
+      asc(sql`${schema.modVersions.scannedAt} nulls first`),
+    );
+    if (stuck) return { target: stuck, action: 'retry' as const };
+    // 3) An errored scan due for a retry — also fail-closed, so retried on a
+    //    much shorter fuse than the routine re-scan of clean rows.
+    const errorCutoff = new Date(Date.now() - ERROR_RETRY_AFTER_MS);
+    const errored = await selectTarget(
+      and(
+        eq(schema.modVersions.scanStatus, 'error'),
+        or(
+          lt(schema.modVersions.scannedAt, errorCutoff),
+          sql`${schema.modVersions.scannedAt} is null`,
+        ),
+      ),
+      asc(sql`${schema.modVersions.scannedAt} nulls first`),
+    );
+    if (errored) return { target: errored, action: 'retry' as const };
+    // 4) Otherwise a stale clean row due for a routine signature refresh.
     const cutoff = new Date(Date.now() - RESCAN_AFTER_MS);
     const stale = await selectTarget(
       and(
-        or(eq(schema.modVersions.scanStatus, 'clean'), eq(schema.modVersions.scanStatus, 'error')),
+        eq(schema.modVersions.scanStatus, 'clean'),
         lt(schema.modVersions.scannedAt, cutoff),
       ),
       asc(sql`${schema.modVersions.scannedAt} nulls first`),

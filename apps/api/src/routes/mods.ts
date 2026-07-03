@@ -18,6 +18,7 @@ import { canManageMod } from '../mod-access.js';
 import { notify, notifyFollowers } from '../notify.js';
 import { createRateLimiter } from '../rate-limit.js';
 import { enqueueScan, isServable, markScan, queueInfo } from '../scan-service.js';
+import { kickScanWorker } from '../scan-worker.js';
 import { presignModImage, presignModUpload, remoteObjectExists } from '../storage.js';
 import type { AppEnv } from '../types.js';
 
@@ -602,6 +603,9 @@ modsRouter.post(
     }
 
     await enqueueScan(versionId);
+    // Nudge the worker now — on serverless the interval tick alone can starve
+    // the queue (it only fires while an instance stays warm).
+    kickScanWorker();
     const info = await queueInfo(versionId);
     return c.json({
       ok: true,
@@ -639,6 +643,9 @@ modsRouter.get(
 
     const info = await queueInfo(versionId);
     if (!info) return c.json({ error: 'not found' }, 404);
+    // Progress polls double as queue nudges: while the publisher watches the
+    // status UI, each poll advances the queue even if no worker tick fires.
+    if (info.status === 'queued' || info.status === 'pending') kickScanWorker();
     return c.json({
       status: info.status,
       position: info.position,

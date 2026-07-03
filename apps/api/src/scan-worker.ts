@@ -40,3 +40,36 @@ export function stopScanWorker(): void {
     timer = null;
   }
 }
+
+/**
+ * Run one drain immediately, detached from the current request. On serverless
+ * the interval above only fires while an instance happens to stay warm, which
+ * starves the queue — so the enqueue and scan-status handlers each nudge it
+ * instead: every publish and every progress poll advances the queue. Safe to
+ * call freely: drainOnce is single-flight per instance and a concurrent kick
+ * is a no-op.
+ *
+ * The promise is registered with the platform's request context (Vercel's
+ * waitUntil) when present so the instance isn't suspended mid-scan; elsewhere
+ * it just runs detached.
+ */
+export function kickScanWorker(): void {
+  if (!virusTotalConfigured()) return;
+  const work = drainOnce()
+    .then((r) => {
+      if (r) log.info('scan worker kick', r);
+    })
+    .catch((err) => log.error('scan worker kick failed', { err: String(err) }));
+  try {
+    const ctx = (
+      globalThis as {
+        [key: symbol]:
+          | { get?: () => { waitUntil?: (p: Promise<unknown>) => void } | undefined }
+          | undefined;
+      }
+    )[Symbol.for('@vercel/request-context')];
+    ctx?.get?.()?.waitUntil?.(work);
+  } catch {
+    // Best-effort — the detached promise still runs if the instance survives.
+  }
+}
