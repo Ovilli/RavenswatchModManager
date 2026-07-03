@@ -10,7 +10,8 @@ import type { AppEnv } from './types.js';
 type Level = 'debug' | 'info' | 'warn' | 'error';
 const ORDER: Record<Level, number> = { debug: 10, info: 20, warn: 30, error: 40 };
 
-const configured = (process.env.LOG_LEVEL as Level | undefined) ?? (isProduction ? 'info' : 'debug');
+const configured =
+  (process.env.LOG_LEVEL as Level | undefined) ?? (isProduction ? 'info' : 'debug');
 const threshold = ORDER[configured] ?? ORDER.info;
 
 export interface Logger {
@@ -22,7 +23,12 @@ export interface Logger {
   child(bindings: Record<string, unknown>): Logger;
 }
 
-function emit(level: Level, bindings: Record<string, unknown>, msg: string, fields?: Record<string, unknown>): void {
+function emit(
+  level: Level,
+  bindings: Record<string, unknown>,
+  msg: string,
+  fields?: Record<string, unknown>,
+): void {
   if (ORDER[level] < threshold) return;
   const time = new Date().toISOString();
   const sink = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;

@@ -315,10 +315,7 @@ async function drainOnceInner(): Promise<{ id: string; action: string; status?: 
     // 4) Otherwise a stale clean row due for a routine signature refresh.
     const cutoff = new Date(Date.now() - RESCAN_AFTER_MS);
     const stale = await selectTarget(
-      and(
-        eq(schema.modVersions.scanStatus, 'clean'),
-        lt(schema.modVersions.scannedAt, cutoff),
-      ),
+      and(eq(schema.modVersions.scanStatus, 'clean'), lt(schema.modVersions.scannedAt, cutoff)),
       asc(sql`${schema.modVersions.scannedAt} nulls first`),
     );
     if (stale) return { target: stale, action: 'rescan' as const };
