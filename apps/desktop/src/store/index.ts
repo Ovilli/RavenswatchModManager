@@ -3,6 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import type { Mod, ModCategory } from '../lib/mod-types';
 import { getPlatform } from '../lib/platform';
 import type { LocalMod } from '../lib/rsmm';
+import { compareVersions } from '../lib/version';
 
 export interface Profile {
   id: string;
@@ -719,18 +720,23 @@ export function detectConflicts(profile: Profile): Conflict[] {
   return conflicts;
 }
 
+// Outdated = the registry's latest orders strictly NEWER than the installed
+// version. Plain inequality would also flag a locally-newer build (e.g. a mod
+// author testing an unpublished version) and offer it a downgrade as an
+// "update".
+function isOutdated(m: Mod | undefined): m is Mod {
+  return !!m?.latestVersion && compareVersions(m.latestVersion, m.version) > 0;
+}
+
 export function outdatedCount(installed: string[]): number {
-  return installed.filter((id) => {
-    const m = getMod(id);
-    return m && m.version !== m.latestVersion;
-  }).length;
+  return installed.filter((id) => isOutdated(getMod(id))).length;
 }
 
 export function outdatedMods(installed: string[]): Mod[] {
   const out: Mod[] = [];
   for (const id of installed) {
     const m = getMod(id);
-    if (m?.latestVersion && m.version !== m.latestVersion) out.push(m);
+    if (isOutdated(m)) out.push(m);
   }
   return out;
 }

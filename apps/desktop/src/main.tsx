@@ -7,6 +7,7 @@ import { Component, type ErrorInfo, type ReactNode, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RouteErrorComponent } from './components/route-error';
 import { authClient } from './lib/auth-client';
+import { reportDesktopAuthFailure } from './lib/desktop-auth';
 import { wireGlobalErrorHandlers } from './lib/telemetry';
 import { routeTree } from './routeTree.gen';
 
@@ -30,6 +31,9 @@ async function handleAuthDeepLink(urls: string[] | null) {
     const expected = localStorage.getItem('rsmm.desktopAuthNonce');
     if (!expected || url.searchParams.get('app') !== expected) {
       console.error('[oauth] deep link rejected: app nonce missing or mismatched');
+      reportDesktopAuthFailure(
+        'That sign-in link did not match a sign-in started by this app. Please try again.',
+      );
       return;
     }
     localStorage.removeItem('rsmm.desktopAuthNonce'); // single-use
@@ -37,7 +41,10 @@ async function handleAuthDeepLink(urls: string[] | null) {
   } catch {
     return;
   }
-  if (!token) return;
+  if (!token) {
+    reportDesktopAuthFailure('The sign-in link was incomplete. Please try again.');
+    return;
+  }
   try {
     const res = await authClient.$fetch('/one-time-token/verify', {
       method: 'POST',
@@ -50,6 +57,9 @@ async function handleAuthDeepLink(urls: string[] | null) {
     window.location.href = '/';
   } catch (error) {
     console.error('[oauth] desktop deep-link auth failed', error);
+    reportDesktopAuthFailure(
+      'Sign-in could not be completed — the sign-in link may have expired or already been used. Please try again.',
+    );
   }
 }
 

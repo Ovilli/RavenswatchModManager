@@ -2,11 +2,12 @@ import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { Github, LogIn, UserPlus } from 'lucide-react';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { Button, CopyButton, Panel, SectionHeader } from '../components/chrome';
 import { describeApiError } from '../lib/api';
 import { getApiUrl } from '../lib/api-url';
 import { authClient, signIn, signUp } from '../lib/auth-client';
+import { onDesktopAuthFailure, takeDesktopAuthFailure } from '../lib/desktop-auth';
 
 export const Route = createFileRoute('/signin')({
   component: SignInPage,
@@ -62,6 +63,19 @@ function SignInPage() {
 
   const config = useQuery({ queryKey: ['auth-config'], queryFn: fetchAuthConfig });
   const hasSocial = !!(config.data?.providers.google || config.data?.providers.github);
+
+  // Surface deep-link relay failures reported by main.tsx: on mount for the
+  // cold-start case (the failure landed before this page existed), via the
+  // event for the warm case (user is sitting on this page when the deep link
+  // comes back broken — the browser flow ends silently otherwise).
+  useEffect(() => {
+    const show = () => {
+      const message = takeDesktopAuthFailure();
+      if (message) setError(message);
+    };
+    show();
+    return onDesktopAuthFailure(show);
+  }, []);
 
   // Kicks off OAuth entirely in the system browser via the desktop-auth relay.
   // The browser completes the flow against the provider's normal callback (so

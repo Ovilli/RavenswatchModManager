@@ -237,4 +237,28 @@ describe('selectors', () => {
     expect(outdatedCount(installed)).toBe(1);
     expect(outdatedMods(installed).map((m) => m.id)).toEqual(['old']);
   });
+
+  it('outdated requires the registry version to be strictly newer', () => {
+    const s = useApp.getState();
+    const pid = s.createProfile('p');
+    s.installMod('ahead', pid);
+    useApp.getState().installMod('ten', pid);
+    useApp
+      .getState()
+      .syncLocalMods([
+        localMod({ id: 'ahead', version: '2.0.0' }),
+        localMod({ id: 'ten', version: '1.9.0' }),
+      ]);
+    useApp.getState().patchRemoteInfo({
+      // Registry is BEHIND the local install (author testing an unpublished
+      // build) — must not be offered as a downgrade-"update".
+      ahead: { latestVersion: '1.0.0' },
+      // Numeric segment ordering: 1.10.0 > 1.9.0 (string compare would say no).
+      ten: { latestVersion: '1.10.0' },
+    });
+
+    const installed = useApp.getState().installed;
+    expect(outdatedMods(installed).map((m) => m.id)).toEqual(['ten']);
+    expect(outdatedCount(installed)).toBe(1);
+  });
 });
