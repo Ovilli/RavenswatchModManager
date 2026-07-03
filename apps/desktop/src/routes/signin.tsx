@@ -68,12 +68,19 @@ function SignInPage() {
   // Google — which rejects redirect URIs with query strings — works too), then
   // deep-links a one-time token back into the app, where the listener in
   // main.tsx exchanges it for a session. Nothing to await here beyond launch.
+  // The `app` nonce binds the eventual deep link to THIS launch: main.tsx
+  // rejects tokens whose nonce doesn't match (login-CSRF guard — the relay
+  // callback can't rely on the browser state cookie, see apps/api desktop-auth).
   const social = async (provider: 'google' | 'github') => {
     setError(null);
     setBusy(true);
     try {
+      const nonce = crypto.randomUUID();
+      // localStorage (not sessionStorage): the deep link may cold-start a
+      // fresh app process, which must still see the nonce.
+      localStorage.setItem('rsmm.desktopAuthNonce', nonce);
       const base = getApiUrl().replace(/\/+$/, '');
-      await openUrl(`${base}/api/desktop-auth/start?provider=${provider}`);
+      await openUrl(`${base}/api/desktop-auth/start?provider=${provider}&app=${nonce}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : `${provider} sign-in failed`);
     } finally {

@@ -1,6 +1,7 @@
 import { getDb, schema } from '@rsmm/db';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { createAuthMiddleware } from 'better-auth/api';
 import { oneTimeToken } from 'better-auth/plugins/one-time-token';
 import { env, githubConfigured, googleConfigured, isProduction, smtpConfigured } from './env.js';
 import { log } from './logger.js';
@@ -119,17 +120,48 @@ export const auth = betterAuth({
       },
     },
   },
+  // Desktop-relay OAuth callbacks must not depend on the browser `state`
+  // cookie. /desktop-auth/start is a textbook "stateful bounce" (land →
+  // Set-Cookie → instant 302 to the provider), and privacy browsers (Brave
+  // bounce-tracking mitigation, and friends) put cookies set during such a
+  // bounce in ephemeral storage or drop them — verified live: the callback
+  // arrived carrying the long-lived session cookie but NOT the state cookie
+  // that /start had set 2 seconds earlier, with BOTH SameSite=Lax and
+  // SameSite=None. So for callbacks whose state row targets the desktop relay
+  // we skip the cookie half of the state check (better-auth's own oauth-proxy
+  // plugin uses this exact escape hatch). The DB half still fully applies:
+  // the state param must match an unguessable, single-use verification row
+  // that expires in 10 minutes. Web OAuth keeps the cookie binding — the flag
+  // is explicitly reset on every non-relay callback so it can never stick.
+  // The relay's initiator binding is re-established end-to-end by the app
+  // nonce (`app` param) relayed through /desktop-auth/start → callbackURL →
+  // deep link, which the desktop app verifies before accepting the token.
+  hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      if (ctx.path !== '/callback/:id') return;
+      let skip = false;
+      const state = ctx.query?.state ?? ctx.body?.state;
+      if (typeof state === 'string' && state) {
+        const row = await ctx.context.internalAdapter
+          .findVerificationValue(state)
+          .catch(() => null);
+        if (row) {
+          try {
+            const parsed = JSON.parse(row.value) as { callbackURL?: unknown };
+            skip =
+              typeof parsed.callbackURL === 'string' &&
+              parsed.callbackURL.startsWith('/api/desktop-auth/complete');
+          } catch {
+            // not a JSON state row → not ours; keep the cookie check.
+          }
+        }
+      }
+      ctx.context.oauthConfig.skipStateCookieCheck = skip;
+    }),
+  },
   advanced: {
     useSecureCookies: isProduction,
     disableCSRFCheck: false,
-    // The OAuth `state` cookie must be SameSite=None (the prod default below).
-    // Google's callback for an already-authorized user (`prompt=none`) reaches
-    // our /api/auth/callback/* in a CROSS-SITE context (silent/iframe flow), not
-    // a top-level navigation — verified live: only the None session cookie
-    // arrived, a SameSite=Lax state cookie was withheld → state_mismatch. None
-    // cookies are delivered cross-site, so the state cookie rides along with the
-    // session cookie. (Do NOT override state to Lax here — it breaks the desktop
-    // relay callback.)
     // Production Tauri builds (all OSes) call the HTTPS API from a different
     // site (tauri://localhost, https://tauri.localhost, etc.) and need
     // SameSite=None. Dev uses the Vite proxy (same-origin) — Lax is fine there.

@@ -24,6 +24,15 @@ async function handleAuthDeepLink(urls: string[] | null) {
     const url = new URL(raw);
     // rsmm://desktop-auth?token=…  → host is "desktop-auth"
     if (url.host !== 'desktop-auth' && !url.pathname.includes('desktop-auth')) return;
+    // Login-CSRF guard: only accept tokens from a flow THIS install started.
+    // signin.tsx minted the nonce and the relay echoed it back; a deep link
+    // someone else crafted (their own OAuth flow → their token) won't match.
+    const expected = localStorage.getItem('rsmm.desktopAuthNonce');
+    if (!expected || url.searchParams.get('app') !== expected) {
+      console.error('[oauth] deep link rejected: app nonce missing or mismatched');
+      return;
+    }
+    localStorage.removeItem('rsmm.desktopAuthNonce'); // single-use
     token = url.searchParams.get('token');
   } catch {
     return;
