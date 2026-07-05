@@ -17,7 +17,8 @@ from pathlib import Path
 
 from .api import sdk_export
 
-KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "skill", "modifier", "game_mode")
+KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "skill", "modifier",
+         "game_mode", "reward")
 
 #: Per-kind honesty rating — how much we trust the bytes this kind emits.
 #:
@@ -43,6 +44,7 @@ KIND_CONFIDENCE: dict[str, str] = {
     "boss": "guess",          # picker/HP/arena offsets are speculative
     "modifier": "guess",      # gamemodifierdef clone loads; UI-slot appearance unproven (cap #16)
     "game_mode": "guess",     # chapter re-sequence cooks, but engine honouring it in-game unproven
+    "reward": "experimental", # codec deserializer-verified, plain override; edited roll unproven
 }
 
 CONFIDENCE_LEVELS = ("confirmed", "experimental", "guess")

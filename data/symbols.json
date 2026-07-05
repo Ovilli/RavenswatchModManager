@@ -664,8 +664,246 @@
       "category": "rewards",
       "raw": "FUN_1401e9020",
       "status": "unverified",
-      "signature": "void(void)",
-      "note": "The per-level reward roll: SEEDED ('Seed : {0} ; Base seed {1}'), '_InitAllRewards' / 'Distribute' / 'Fill remaining slots with random rewards'. Because the draw is seed-driven and multiplayer host-authoritative/deterministic, a reward BAN must be DATA-LEVEL (remove the candidate from the pool the roll reads) — a per-peer Lua post-filter would desync MP. GENERATE_REWARDS event handlers: FUN_14005c510, FUN_14003b350. Address not pattern-confirmed.",
+      "signature": "void(void* mapSceneContext)",
+      "note": "The per-level reward roll: SEEDED ('Seed : {0} ; Base seed {1}'), '_InitAllRewards' / 'Distribute' / 'Fill remaining slots with random rewards'. Because the draw is seed-driven and multiplayer host-authoritative/deterministic, a reward BAN must be DATA-LEVEL (remove the candidate from the pool the roll reads) — a per-peer Lua post-filter would desync MP. After the roll, level load posts GENERATE_REWARDS via NamedEvent_Dispatch + EventQueue_Drain (FUN_14005c510/FUN_14003b350 are just static initializers interning the event name, NOT handlers). Candidate gate per (spawner, oCItem) pair: value f32 (spawner+0x68, lazy) within [oCItem+0xb0, oCItem+0xb4] AND CustomFlagList_ContainsAll(settings+0x100, oCItem+0xc0) AND !CustomFlagList_ContainsAny(settings+0x100, oCItem+0xd8). Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/rewards.md"]
+    },
+    {
+      "name": "CustomFlagList_ContainsAll",
+      "kind": "function",
+      "category": "rewards",
+      "raw": "FUN_140669cc0",
+      "status": "unverified",
+      "signature": "bool(void* flagListA, void* flagListB)",
+      "note": "oCCustomFlagList string-set test: true iff EVERY flag string in B exists in A (memcmp over {char* name, u32 len} entries, 0x18 stride; data ptr @+0x8, count @+0x10). Empty B => true. Reward spawner roll uses it as the REQUIRED-flags gate: ContainsAll(spawnerSettings+0x100, oCItem+0xc0). All shipping rewarddefs carry empty flag lists — mechanism present, unused by data. Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/rewards.md"]
+    },
+    {
+      "name": "CustomFlagList_ContainsAny",
+      "kind": "function",
+      "category": "rewards",
+      "raw": "FUN_140669de0",
+      "status": "unverified",
+      "signature": "bool(void* flagListA, void* flagListB)",
+      "note": "oCCustomFlagList string-set test: true if ANY flag string in B exists in A. Empty B => false. Reward spawner roll uses it as the EXCLUDED-flags gate (the 'suppress field'): candidate rejected when ContainsAny(spawnerSettings+0x100, oCItem+0xd8). Also used by LevelLoad 'Enemies settings loading' against enemy-def flag container @def+0x2c0 — CustomFlagFilter is a generic engine facility, not rewards-specific. Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/rewards.md"]
+    },
+    {
+      "name": "GameScene_FindContextByTester",
+      "kind": "function",
+      "category": "engine-core",
+      "raw": "FUN_14066bb10",
+      "status": "unverified",
+      "signature": "void*(void* gameScene, void* kindOfTypeTester)",
+      "note": "Scene-context lookup: iterates two context arrays on the game scene (data @+0x58 count @+0x60, data @+0x68 count @+0x70), calls tester vtbl+0x8 Test(ctx), returns first match. Callers stack-construct an oCTKindOfTypeTester<T, oIGameSceneContext> (vftable + classdesc global) — the standard way to get MapSceneContext / EntitySceneContext / P2PSessionSceneContext etc. Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/events-bus.md"]
+    },
+    {
+      "name": "EventQueue_Drain",
+      "kind": "function",
+      "category": "event",
+      "raw": "FUN_140663320",
+      "status": "unverified",
+      "signature": "void(void* queue)",
+      "note": "Deferred-event queue flush: critsec @+0x8, reentrancy guard byte @+0x0, count @+0x30, head @+0x38, freelist @+0x48; pops each node and invokes node-vtbl+0x20 handler with node+0x30 payload. Level load drains the game-context queue @ctx+0x1c0 right after posting GENERATE_REWARDS / GENERATE_ENEMY_CAMPS oCGameNamedEvents via NamedEvent_Dispatch. Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/events-bus.md"]
+    },
+    {
+      "name": "MapCtx_DistributeEnemyCampTiers",
+      "kind": "function",
+      "category": "enemies",
+      "raw": "FUN_1401e8050",
+      "status": "unverified",
+      "signature": "void(void* mapSceneContext)",
+      "note": "Runs under 'Level load - MapSceneContext OnLevelStart', just before the reward roll. Camp spawner list @ctx+0xc8 count @+0xd0; each spawner's value f32 @+0x68 lazily evaluated via Property_EvaluateByGuid (on failure logs the settings asset path). Enemy-camp tier defs enumerated from the class registry and filtered by tier band [def+0x288, def+0x28c] — this is enemycamptierdef codec value_a/value_b, now pinned as the tier min/max over the value roll. Seeded pick, then weighted distribution over def rows @+0x290 count @+0x298 (weight @entry+0x40); tier assigned to spawner via FUN_14032de30. Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/enemies.md"]
+    },
+    {
+      "name": "MapCtx_LinkPairedSpawners",
+      "kind": "function",
+      "category": "entity",
+      "raw": "FUN_1401eb2f0",
+      "status": "unverified",
+      "signature": "void(void* mapSceneContext)",
+      "note": "Runs right after the reward roll. Spawner list @ctx+0x198 count @+0x1a0: collects spawners with null link @+0x68 and def+0x110 != 0, then pairs A,B where A.def+0x110 == B.def+0xf8 (link-id match), stores peer ptr @spawner+0x68 and registers both via FUN_1402b6f10(entity+0x570, ...). Semantics inferred from structure (teleporter/portal-style two-way pairing candidate) — not yet observed in-game. Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/spawn-system.md"]
+    },
+    {
+      "name": "HeroDef_LoadBaseEntity",
+      "kind": "function",
+      "category": "heroes",
+      "raw": "FUN_14031e3e0",
+      "status": "unverified",
+      "signature": "void(void* heroDef, void** outEntityRef)",
+      "note": "Lazy loader for the hero's base entity, called per herodef in 'Level load - LoadAndGetRandomHeroEntity' (herodef list @gameScene+0x710 count @+0x718). Entity spec inline in the herodef: path string @+0x8a0, second path @+0x8b0, package ctx @+0x8c0, loaded flag @+0x8c8, cached refcounted entity @+0x8d0. Waits on def+0x68 readiness, resolves the entity-loader service (id 0x53b64d) from ServiceRegistry_Global and calls svc-vtbl+0x18 Load(path, flags, outRef, 0). Key link for the custom-hero path: this is where a herodef turns into a live entity. Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/heroes.md"]
+    },
+    {
+      "name": "HeroDef_LoadSkinEntity",
+      "kind": "function",
+      "category": "heroes",
+      "raw": "FUN_14031e140",
+      "status": "unverified",
+      "signature": "void(void* heroDef, uint16_t skinIndex, void* outHandle)",
+      "note": "Lazy loader for a hero SKIN entity, called in 'Level load - LoadAndGetPlayedHeroEntity' with (herodef, skinIdx u16) pairs. Skin spec table @herodef+0x8f8 (array of spec ptrs), count @+0x900; out-of-range index warns and falls back to 0. Spec layout mirrors the base-entity spec at different offsets: path @spec+0x1c0, second path @+0x1d0, package ctx @+0x1e0, loaded flag @+0x1e8, cached entity @+0x1f0. Complements the baked roster count in FUN_1401dcae0 (hook_skins.cpp): the count gates the UI, THIS table is what actually loads a skin. Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/skins.md"]
+    },
+    {
+      "name": "Property_EvaluateByGuid",
+      "kind": "function",
+      "category": "engine-core",
+      "raw": "FUN_1406aa950",
+      "status": "unverified",
+      "signature": "bool(void* ctx, void* container, void* guid16, float* out)",
+      "note": "Evaluates a GUID-referenced scalar (curve/property) into *out; returns false when the GUID doesn't resolve (callers then fall back to a raw settings read or log the asset path). Feeds the 0..1 'value' rolls consumed by the reward-spawner and enemy-camp tier bands. Semantics partially inferred from two call sites. Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/rewards.md"]
+    },
+    {
+      "name": "ClassRegistry_FindByKey",
+      "kind": "function",
+      "category": "engine-core",
+      "raw": "FUN_14050b2d0",
+      "status": "unverified",
+      "signature": "void*(void* unused, void* identityKey)",
+      "note": "Linear scan of ClassRegistry_Global: for each class descriptor calls desc-vtbl+0x20 to emit a 33-byte identity key (leading u32 type hash, e.g. 0x176f4fdc for RewardDefInternal::oCType, + flag byte @+0x20) and memcmp-matches against the requested key. Every class registration calls this first to dedupe. Address not pattern-confirmed.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "Profiler_GetThreadScopeStack",
+      "kind": "function",
+      "category": "engine-core",
+      "raw": "FUN_140521f20",
+      "status": "unverified",
+      "signature": "void*(void)",
+      "note": "Returns the per-thread profiler scope stack (TLS slot +0x148, lazily created; main-thread fast path via global DAT_1414476d0). Explains the ubiquitous decompile pattern `p = FUN_140521f20(); p[n*4+2]=&LAB_...; p[n*4+4]=\"ScopeName\"` — those are profiler scope pushes, safe to ignore when reading engine code. Address not pattern-confirmed.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "ClassRegistry_Global",
+      "kind": "data",
+      "category": "engine-core",
+      "va": "0x141436690",
+      "status": "va",
+      "note": "Global class-descriptor registry: ptr to {descPtr array @+0x0, u32 count @+0x8}. Scanned by ClassRegistry_FindByKey; every oC* class registration appends here.",
+      "refs": ["docs/_re"]
+    },
+    {
+      "name": "ServiceRegistry_Global",
+      "kind": "data",
+      "category": "engine-core",
+      "va": "0x14146f740",
+      "status": "va",
+      "note": "Global engine service registry: service array @+0x30, u32 count @+0x38; each entry -> service object with u32 service id @+0x8. Id 0x53b64d = entity loader (svc-vtbl+0x18 = LoadEntityByPath(str, flags, outRef, 0)) — used by HeroDef_LoadBaseEntity / HeroDef_LoadSkinEntity.",
+      "refs": ["docs/_re/kinds/heroes.md"]
+    },
+    {
+      "name": "Definition_DeserializeBase",
+      "kind": "function",
+      "category": "library",
+      "raw": "FUN_14030f880",
+      "status": "unverified",
+      "signature": "bool(void* def, void* reader)",
+      "note": "oCDtDefinition (hash 0x1768ce8e) base deserialize, called first by every *def.ot deserializer: class version 0 = nothing, v1+ = two u8 bools into def+0x285 / def+0x284. These are the codec's base_a/base_b bytes. Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/rewards.md"]
+    },
+    {
+      "name": "RewardDef_Deserialize",
+      "kind": "function",
+      "category": "rewards",
+      "raw": "FUN_140323bc0",
+      "status": "unverified",
+      "signature": "bool(void* rewardDef, void* reader)",
+      "note": "oCDtRewardDefinition::Deserialize (vftable slot 3, hash 0x176f164e): Definition_DeserializeBase, then Serializer_ReadPolyPtrVector into def+0x288 (the oCType row vector the roll iterates), then v1+: one u8 bool. Full cooked grammar in docs/_re/kinds/rewards.md. Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/rewards.md"]
+    },
+    {
+      "name": "RewardType_Serialize",
+      "kind": "function",
+      "category": "rewards",
+      "raw": "FUN_140323960",
+      "status": "unverified",
+      "signature": "bool(void* oCType, void* reader)",
+      "note": "RewardDefInternal::oCType serialize (hash 0x176f4fdc): poly-ptr vector of oCItem sub-object ids into this+0x8/count+0x10; v0 legacy f32; v1+: u8 use-float flag -> either u32 count (writes BOTH +0x18 and +0x1c) or legacy f32; v2+: u32 min_count @+0x18, u32 max_count @+0x1c. Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/rewards.md"]
+    },
+    {
+      "name": "RewardItem_Serialize",
+      "kind": "function",
+      "category": "rewards",
+      "raw": "FUN_1403234d0",
+      "status": "unverified",
+      "signature": "bool(void* oCItem, void* reader)",
+      "note": "RewardDefInternal::oCItem serialize (hash 0x176f5023): resource-ref ('EntitySettings' + entity path) @+0x8, f32 value_min @+0xb0, f32 value_max @+0xb4, v<3: skipped u8, v1+: inline oCCustomFlagFilter @+0xb8 (required list lands @+0xc0, excluded @+0xd8), v2+: resource-ref @+0x40, v4+: resource-ref @+0x78 (both empty in retail = the '20 zero bytes'), v5+: u32 enum (<7, observed 3/4, semantics unpinned). Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/rewards.md"]
+    },
+    {
+      "name": "CustomFlagList_Serialize",
+      "kind": "function",
+      "category": "engine-core",
+      "raw": "FUN_140669310",
+      "status": "unverified",
+      "signature": "bool(void* flagList, void* reader)",
+      "note": "oCCustomFlagList serialize (hash 0x15a9d9be): delegates to string-vector read into this+0x8 ({count, count x lstr}). Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/rewards.md"]
+    },
+    {
+      "name": "CustomFlagFilter_Serialize",
+      "kind": "function",
+      "category": "engine-core",
+      "raw": "FUN_140669fa0",
+      "status": "unverified",
+      "signature": "bool(void* flagFilter, void* reader)",
+      "note": "oCCustomFlagFilter serialize (hash 0x15a9d9bf): two inline oCCustomFlagList sub-objects — required @+0x8, excluded @+0x20. Explains the runtime reward-roll offsets: oCItem filter @+0xb8 -> required @+0xc0, excluded @+0xd8. Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/rewards.md"]
+    },
+    {
+      "name": "RewardSelectorSettings_Serialize",
+      "kind": "function",
+      "category": "rewards",
+      "raw": "FUN_14033fb60",
+      "status": "unverified",
+      "signature": "bool(void* settings, void* reader)",
+      "note": "oCDtRewardEntitySelectorToSpawnEntityCpntSettings serialize (hash 0x1740e3e9) — the CANDIDATE side of the reward roll, cooked inside the reward object's entity settings: v<3 legacy discarded resource-ref (default classdesc = oCType), v1+: inline oCCustomFlagList @+0x100 (the flag set matched against oCItem filters — per-entity, editable), v2+: u32 enum (<4) @+0xf8, v3+: u32 enum (<2) @+0xfc (enum semantics unpinned; likely value-source/tier-roll mode). Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/rewards.md"]
+    },
+    {
+      "name": "Serializer_ReadPolyPtrVector",
+      "kind": "function",
+      "category": "engine-core",
+      "raw": "FUN_14020d700",
+      "status": "unverified",
+      "signature": "bool(void* reader, void* vec, const char* label)",
+      "note": "Reads a vector of polymorphic sub-object pointers: u32 count (0xaabb1111 sentinel = optional inline class-header {lstr name, u32 x2} first — not hit in cooked files, where sub-objects live in their own sections referenced by u32 sub-object id), then per element reader-vtbl+0xa8 poly resolve. Count clamped to 1,000,000. Write path labels 'Vector.Length' / 'Vector[%d]'. Vec layout {data @+0x0, u32 size @+0x8, u32 cap @+0xc}. Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/rewards.md"]
+    },
+    {
+      "name": "Serializer_GetClassVersion",
+      "kind": "function",
+      "category": "engine-core",
+      "raw": "FUN_1404fbea0",
+      "status": "unverified",
+      "signature": "void*(void* reader, void* out, uint32_t classHash)",
+      "note": "Returns the version record for a class hash from the cooked file's HEADER class table (codec cooked.parse classes[] version fields); result+0x4 = the version number every versioned field-read checks ('if (ver(hash)+4 < N) skip field'). This is how one binary supports all historical cooked layouts — and how the codec must gate optional fields when typing a def. Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/rewards.md"]
+    },
+    {
+      "name": "ResourceRef_Serialize",
+      "kind": "function",
+      "category": "engine-core",
+      "raw": "FUN_1401c8720",
+      "status": "unverified",
+      "signature": "bool(void* reader, void* refSlot)",
+      "note": "Reads/writes a typed resource reference — cooked form {lstr type tag e.g. 'EntitySettings', lstr asset path} = the codec's tresptr field type. Used for oCItem entity refs, herodef fields, etc. Semantics inferred from call sites + cooked bytes. Address not pattern-confirmed.",
+      "refs": ["docs/_re/kinds/rewards.md"]
+    },
+    {
+      "name": "StringVector_Serialize",
+      "kind": "function",
+      "category": "engine-core",
+      "raw": "FUN_14066c3e0",
+      "status": "unverified",
+      "signature": "bool(void* reader, void* strVec)",
+      "note": "Reads/writes a vector of engine strings ({u32 count, count x lstr}); backing store 0x18-byte entries {ptr @+0x8, u32 len @+0x10} — the layout CustomFlagList_ContainsAll/Any iterate. Semantics inferred from CustomFlagList_Serialize delegation. Address not pattern-confirmed.",
       "refs": ["docs/_re/kinds/rewards.md"]
     },
     {

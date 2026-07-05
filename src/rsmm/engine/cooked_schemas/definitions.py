@@ -29,7 +29,7 @@ from dataclasses import dataclass
 
 from .. import cooked
 from . import register
-from .base import SchemaHandler
+from .base import NotReversedError, SchemaHandler
 
 MARK_BEGIN = b"\x11\x11\xbb\xaa"
 MARK_END = b"\x22\x22\xbb\xaa"
@@ -364,7 +364,6 @@ _DSL_SPECS = [
               [("guid", "blob16"), ("field_a", "u32"), ("flag_a", "u8"),
                ("flag_b", "u8"), ("name", "lstr")]),
     _dsl_spec("oCDtHeroDefinition", "herodef.json", []),
-    _dsl_spec("oCDtRewardDefinition", "rewarddef.json", []),
     _dsl_spec("GameModeDefaultDefinition", "gamemodedefaultdef.json",
               [("field_a", "u32")]),
     _dsl_spec("VersionDefinition", "versiondef.json", []),
@@ -452,5 +451,280 @@ def decode_cooked_to_json(class_name: str, cooked_bytes: bytes) -> bytes:
     return json.dumps(spec.decode_body(cf.sections[-1].payload), indent=2).encode("utf-8")
 
 
+# ---------------------------------------------------------------------------
+# oCDtRewardDefinition (v1.2) — fully typed, multi-section
+# ---------------------------------------------------------------------------
+# Grammar recovered from the deserializers (RewardDef_Deserialize
+# FUN_140323bc0 + RewardType/RewardItem/CustomFlagFilter/CustomFlagList
+# _Serialize); see docs/_re/kinds/rewards.md. Unlike the DSL classes above,
+# the top-level oCType/oCItem rows live in SIBLING SECTIONS referenced by
+# u32 sub-object id, with section 0 acting as a class directory:
+#
+#   sec 0            {u32 n, n x u32 class-table-index}  (one per sub-object)
+#   sec 1..n         sub-objects, each: u32 class-table-index + class body
+#   sec n+1 (last)   def body: u32 res, u8 base_a, u8 base_b,
+#                    {u32 count, count x u32 sub-object id} -> oCType rows
+#
+# Inline (non-vector) sub-objects — the oCCustomFlagFilter inside each
+# oCItem — nest as MARK_BEGIN + u32 class-index + body + MARK_END blocks
+# inside their owner's section payload.
+#
+# Version gates (from the file's class table, enforced below):
+#   oCDtDefinition   vmin>=1: the two base bools
+#   oCDtRewardDef    vmin==1 would add a trailing u8 (retail vmin=2: absent)
+#   oCType           vmin>=1: use_float u8 branch; vmin>=2: min/max u32
+#   oCItem           vmin: <3 legacy u8 skip, >=1 filter, >=2/>=4 extra
+#                    resource-refs, >=5 trailing u32 enum (retail vmin=5)
+
+_REWARD_VERS = {
+    "oCDtDefinition": 1, "oCDtRewardDefinition": 2,
+    "oCType": 2, "oCItem": 5,
+    "oCCustomFlagFilter": 0, "oCCustomFlagList": 0,
+}
+
+
+def _reward_check_versions(classes: list[cooked.ClassDef]) -> dict[str, int]:
+    idx = {c.name: i for i, c in enumerate(classes)}
+    for name, want in _REWARD_VERS.items():
+        c = next((c for c in classes if c.name == name), None)
+        if c is None:
+            raise ValueError(f"rewarddef: class table missing {name}")
+        if c.version_minor != want:
+            raise ValueError(
+                f"rewarddef: {name} v1.{c.version_minor} unsupported "
+                f"(codec typed against v1.{want} — game update? re-verify "
+                "against RewardDef_Deserialize before editing)")
+    return idx
+
+
+def _rd_flaglist(b: bytes, o: int, idx_list: int) -> tuple[list[str], int]:
+    if b[o:o + 4] != MARK_BEGIN:
+        raise ValueError("rewarddef: expected flag-list BEGIN")
+    o += 4
+    ci = struct.unpack_from("<I", b, o)[0]
+    if ci != idx_list:
+        raise ValueError("rewarddef: flag-list class index mismatch")
+    o += 4
+    n = struct.unpack_from("<I", b, o)[0]
+    o += 4
+    out: list[str] = []
+    for _ in range(n):
+        s, o = _rd_lstr(b, o)
+        out.append(s)
+    if b[o:o + 4] != MARK_END:
+        raise ValueError("rewarddef: expected flag-list END")
+    return out, o + 4
+
+
+def _wr_flaglist(flags: list[str], idx_list: int) -> bytes:
+    out = bytearray(MARK_BEGIN)
+    out += struct.pack("<II", idx_list, len(flags))
+    for s in flags:
+        out += _wr_lstr(s)
+    out += MARK_END
+    return bytes(out)
+
+
+class RewardDefinitionHandler(SchemaHandler):
+    """Typed oCDtRewardDefinition codec. Byte-stable round-trip over the
+    shipped corpus; rows are fully editable (add/remove items, retarget
+    entity refs, tier bands, flag filters, min/max counts)."""
+
+    def __init__(self) -> None:
+        super().__init__(class_name="oCDtRewardDefinition",
+                         source_ext="rewarddef.json",
+                         decoded=True, encoded=True)
+
+    # Payload-level (single-section) API is meaningless for a multi-section
+    # class — the container is part of the format.
+    def decode(self, payload: bytes) -> bytes:
+        raise NotReversedError(self.class_name,
+                               "multi-section: use decode_cooked")
+
+    def encode(self, source: bytes) -> bytes:
+        raise NotReversedError(self.class_name,
+                               "multi-section: use encode_container")
+
+    def decode_cooked(self, cooked_bytes: bytes) -> bytes:
+        cf = cooked.parse(cooked_bytes)
+        idx = _reward_check_versions(cf.classes)
+        idx_type, idx_item = idx["oCType"], idx["oCItem"]
+        idx_filter, idx_list = idx["oCCustomFlagFilter"], idx["oCCustomFlagList"]
+
+        if len(cf.sections) < 2:
+            raise ValueError("rewarddef: expected directory + body sections")
+        d = cf.sections[0].payload
+        n = struct.unpack_from("<I", d, 0)[0]
+        directory = list(struct.unpack_from(f"<{n}I", d, 4))
+        if len(d) != 4 + 4 * n or len(cf.sections) != n + 2:
+            raise ValueError("rewarddef: directory/section count mismatch")
+        n_types = sum(1 for x in directory if x == idx_type)
+        if directory != [idx_type] * n_types + [idx_item] * (n - n_types):
+            raise ValueError("rewarddef: unexpected sub-object ordering")
+
+        types = []
+        for si in range(n_types):
+            b = cf.sections[1 + si].payload
+            o = 0
+            ci, cnt = struct.unpack_from("<II", b, o)
+            o += 8
+            if ci != idx_type:
+                raise ValueError("rewarddef: oCType class index mismatch")
+            refs = list(struct.unpack_from(f"<{cnt}I", b, o))
+            o += 4 * cnt
+            row: dict = {"items": [r - n_types for r in refs]}
+            if any(r < n_types for r in refs):
+                raise ValueError("rewarddef: oCType ref points at a type row")
+            use_float = b[o]
+            o += 1
+            if use_float:
+                row["_legacy_weight"] = struct.unpack_from("<f", b, o)[0]
+            else:
+                row["_count_n"] = struct.unpack_from("<I", b, o)[0]
+            o += 4
+            row["min_count"], row["max_count"] = struct.unpack_from("<II", b, o)
+            o += 8
+            if o != len(b):
+                raise ValueError("rewarddef: trailing bytes in oCType row")
+            types.append(row)
+
+        items = []
+        for si in range(n_types, n):
+            b = cf.sections[1 + si].payload
+            o = 0
+            ci = struct.unpack_from("<I", b, o)[0]
+            o += 4
+            if ci != idx_item:
+                raise ValueError("rewarddef: oCItem class index mismatch")
+            tag, o = _rd_lstr(b, o)
+            path, o = _rd_lstr(b, o)
+            vmin, vmax = struct.unpack_from("<ff", b, o)
+            o += 8
+            if b[o:o + 4] != MARK_BEGIN:
+                raise ValueError("rewarddef: expected filter BEGIN")
+            o += 4
+            ci = struct.unpack_from("<I", b, o)[0]
+            if ci != idx_filter:
+                raise ValueError("rewarddef: filter class index mismatch")
+            o += 4
+            req, o = _rd_flaglist(b, o, idx_list)
+            exc, o = _rd_flaglist(b, o, idx_list)
+            if b[o:o + 4] != MARK_END:
+                raise ValueError("rewarddef: expected filter END")
+            o += 4
+            rb1, o = _rd_lstr(b, o)
+            rb2, o = _rd_lstr(b, o)
+            rc1, o = _rd_lstr(b, o)
+            rc2, o = _rd_lstr(b, o)
+            kind = struct.unpack_from("<I", b, o)[0]
+            o += 4
+            if o != len(b):
+                raise ValueError("rewarddef: trailing bytes in oCItem row")
+            items.append({
+                "settings_class": tag, "entity": path,
+                "value_min": vmin, "value_max": vmax,
+                "required_flags": req, "excluded_flags": exc,
+                "_ref_b": [rb1, rb2], "_ref_c": [rc1, rc2],
+                "_kind": kind,
+            })
+
+        b = cf.sections[-1].payload
+        o = 0
+        res = struct.unpack_from("<I", b, o)[0]
+        o += 4
+        base_a, base_b = b[o], b[o + 1]
+        o += 2
+        cnt = struct.unpack_from("<I", b, o)[0]
+        o += 4
+        type_refs = list(struct.unpack_from(f"<{cnt}I", b, o))
+        o += 4 * cnt
+        if o != len(b):
+            raise ValueError("rewarddef: trailing bytes in def body")
+        if type_refs != list(range(n_types)):
+            raise ValueError("rewarddef: non-identity type ref order")
+
+        doc = {
+            "rsmm_class": "oCDtRewardDefinition",
+            "reward_types": types,
+            "reward_items": items,
+            "base_flags": [base_a, base_b],
+            "_res": res,
+            "_container": {
+                "variant": cf.variant, "hdr_a": cf.hdr_a, "flags": cf.flags,
+                "extra": cf.extra, "type_tag": cf.type_tag,
+                "classes": [
+                    [c.name, c.class_id, c.version_major, c.version_minor,
+                     c.parent_id]
+                    for c in cf.classes
+                ],
+            },
+        }
+        return json.dumps(doc, indent=2).encode("utf-8")
+
+    def encode_container(self, source: bytes) -> bytes:
+        doc = json.loads(source)
+        c = doc["_container"]
+        classes = [cooked.ClassDef(nm, i, vmaj, vmin, p)
+                   for nm, i, vmaj, vmin, p in c["classes"]]
+        idx = _reward_check_versions(classes)
+        idx_type, idx_item = idx["oCType"], idx["oCItem"]
+        idx_filter, idx_list = idx["oCCustomFlagFilter"], idx["oCCustomFlagList"]
+
+        types = doc["reward_types"]
+        items = doc["reward_items"]
+        n_types = len(types)
+
+        sections = [cooked.Section(payload=struct.pack(
+            f"<I{n_types + len(items)}I", n_types + len(items),
+            *([idx_type] * n_types + [idx_item] * len(items))))]
+
+        for row in types:
+            out = bytearray(struct.pack("<II", idx_type, len(row["items"])))
+            for it in row["items"]:
+                if not 0 <= int(it) < len(items):
+                    raise ValueError(f"rewarddef: item index {it} out of range")
+                out += struct.pack("<I", n_types + int(it))
+            if "_count_n" in row:
+                out += b"\x00" + struct.pack("<I", int(row["_count_n"]))
+            else:
+                out += b"\x01" + struct.pack(
+                    "<f", float(row.get("_legacy_weight", 1.0)))
+            out += struct.pack("<II", int(row["min_count"]),
+                               int(row["max_count"]))
+            sections.append(cooked.Section(payload=bytes(out)))
+
+        for it in items:
+            out = bytearray(struct.pack("<I", idx_item))
+            out += _wr_lstr(it.get("settings_class", "EntitySettings"))
+            out += _wr_lstr(it["entity"])
+            out += struct.pack("<ff", float(it["value_min"]),
+                               float(it["value_max"]))
+            out += MARK_BEGIN + struct.pack("<I", idx_filter)
+            out += _wr_flaglist(it.get("required_flags", []), idx_list)
+            out += _wr_flaglist(it.get("excluded_flags", []), idx_list)
+            out += MARK_END
+            rb = it.get("_ref_b", ["", ""])
+            rc = it.get("_ref_c", ["", ""])
+            out += _wr_lstr(rb[0]) + _wr_lstr(rb[1])
+            out += _wr_lstr(rc[0]) + _wr_lstr(rc[1])
+            out += struct.pack("<I", int(it.get("_kind", 4)))
+            sections.append(cooked.Section(payload=bytes(out)))
+
+        body = bytearray(struct.pack("<I", int(doc.get("_res", 0))))
+        ba, bb = doc.get("base_flags", [1, 1])
+        body += bytes([int(ba) & 0xFF, int(bb) & 0xFF])
+        body += struct.pack(f"<I{n_types}I", n_types, *range(n_types))
+        sections.append(cooked.Section(payload=bytes(body)))
+
+        cf = cooked.CookedFile(
+            variant=c["variant"], hdr_a=c["hdr_a"], flags=c["flags"],
+            extra=c["extra"], type_tag=c["type_tag"],
+            classes=classes, sections=sections,
+        )
+        return cooked.emit(cf)
+
+
 for _spec in _SPECS.values():
     register(DefinitionHandler(_spec))
+
+register(RewardDefinitionHandler())

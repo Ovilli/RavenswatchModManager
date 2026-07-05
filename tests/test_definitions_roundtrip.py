@@ -14,7 +14,11 @@ import pytest
 
 from rsmm.engine import cooked_schemas
 from rsmm.engine.cooked import parse
-from rsmm.engine.cooked_schemas.definitions import _SPECS, DefinitionHandler
+from rsmm.engine.cooked_schemas.definitions import (
+    _SPECS,
+    DefinitionHandler,
+    RewardDefinitionHandler,
+)
 
 _COOKING_CANDIDATES = [
     Path(os.path.expanduser(
@@ -37,7 +41,7 @@ def files_by_class() -> dict[str, list[Path]]:
     root = _find_cooking_root()
     if root is None:
         pytest.skip("no Ravenswatch install found")
-    targets = set(_SPECS)
+    targets = set(_SPECS) | {"oCDtRewardDefinition"}
     bucket: dict[str, list[Path]] = {}
     for p in root.rglob("*.yqz"):
         try:
@@ -69,3 +73,26 @@ def test_definition_roundtrip(cls: str, files_by_class: dict[str, list[Path]]) -
         raw = p.read_bytes()
         assert h.encode_container(h.decode_cooked(raw)) == raw, \
             f"{cls} round-trip failed for {p.name}"
+
+
+def test_rewarddef_handler_registered() -> None:
+    h = cooked_schemas.get("oCDtRewardDefinition")
+    assert isinstance(h, RewardDefinitionHandler)
+    assert h.decoded and h.encoded
+
+
+def test_rewarddef_roundtrip(files_by_class: dict[str, list[Path]]) -> None:
+    files = files_by_class.get("oCDtRewardDefinition")
+    if not files:
+        pytest.skip("no rewarddef files in cooking dir")
+    h = cooked_schemas.get("oCDtRewardDefinition")
+    for p in files:
+        raw = p.read_bytes()
+        decoded = h.decode_cooked(raw)
+        assert h.encode_container(decoded) == raw, \
+            f"rewarddef round-trip failed for {p.name}"
+        doc = json.loads(decoded)
+        assert doc["rsmm_class"] == "oCDtRewardDefinition"
+        n_items = len(doc["reward_items"])
+        for t in doc["reward_types"]:
+            assert all(0 <= i < n_items for i in t["items"])

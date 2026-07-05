@@ -24,6 +24,8 @@ constexpr std::uintptr_t EnemyTribeDefinition_ctor = 0x1400c5430ull;
 constexpr const char* EnemyTribeDefinition_ctor_Pattern = "FUN_1400c5430";
 constexpr std::uintptr_t Enemy_RuntimeSpawnPicker = 0x140330db0ull;
 constexpr const char* Enemy_RuntimeSpawnPicker_Pattern = "FUN_140330db0";
+constexpr std::uintptr_t MapCtx_DistributeEnemyCampTiers = 0x1401e8050ull;
+constexpr const char* MapCtx_DistributeEnemyCampTiers_Pattern = "FUN_1401e8050";
 
 // --- engine ---
 constexpr std::uintptr_t Entry_Ctor = 0x140214bb0ull;
@@ -36,6 +38,30 @@ constexpr std::uintptr_t String_Assign = 0x1405288b0ull;
 constexpr const char* String_Assign_Pattern = "FUN_1405288b0";
 constexpr std::uintptr_t Vector_Grow = 0x140154c20ull;
 constexpr const char* Vector_Grow_Pattern = "FUN_140154c20";
+
+// --- engine-core ---
+constexpr std::uintptr_t ClassRegistry_FindByKey = 0x14050b2d0ull;
+constexpr const char* ClassRegistry_FindByKey_Pattern = "FUN_14050b2d0";
+constexpr std::uintptr_t ClassRegistry_Global = 0x141436690ull;
+constexpr std::uintptr_t CustomFlagFilter_Serialize = 0x140669fa0ull;
+constexpr const char* CustomFlagFilter_Serialize_Pattern = "FUN_140669fa0";
+constexpr std::uintptr_t CustomFlagList_Serialize = 0x140669310ull;
+constexpr const char* CustomFlagList_Serialize_Pattern = "FUN_140669310";
+constexpr std::uintptr_t GameScene_FindContextByTester = 0x14066bb10ull;
+constexpr const char* GameScene_FindContextByTester_Pattern = "FUN_14066bb10";
+constexpr std::uintptr_t Profiler_GetThreadScopeStack = 0x140521f20ull;
+constexpr const char* Profiler_GetThreadScopeStack_Pattern = "FUN_140521f20";
+constexpr std::uintptr_t Property_EvaluateByGuid = 0x1406aa950ull;
+constexpr const char* Property_EvaluateByGuid_Pattern = "FUN_1406aa950";
+constexpr std::uintptr_t ResourceRef_Serialize = 0x1401c8720ull;
+constexpr const char* ResourceRef_Serialize_Pattern = "FUN_1401c8720";
+constexpr std::uintptr_t Serializer_GetClassVersion = 0x1404fbea0ull;
+constexpr const char* Serializer_GetClassVersion_Pattern = "FUN_1404fbea0";
+constexpr std::uintptr_t Serializer_ReadPolyPtrVector = 0x14020d700ull;
+constexpr const char* Serializer_ReadPolyPtrVector_Pattern = "FUN_14020d700";
+constexpr std::uintptr_t ServiceRegistry_Global = 0x14146f740ull;
+constexpr std::uintptr_t StringVector_Serialize = 0x14066c3e0ull;
+constexpr const char* StringVector_Serialize_Pattern = "FUN_14066c3e0";
 
 // --- entity ---
 constexpr std::uintptr_t EntityValue_Get = 0x1403c71e0ull;
@@ -60,6 +86,8 @@ constexpr std::uintptr_t HeroController_Ctor = 0x14038e320ull;
 constexpr const char* HeroController_Ctor_Pattern = "FUN_14038e320";
 constexpr std::uintptr_t HeroController_HudMirror_Ctor = 0x1403b2f20ull;
 constexpr const char* HeroController_HudMirror_Ctor_Pattern = "FUN_1403b2f20";
+constexpr std::uintptr_t MapCtx_LinkPairedSpawners = 0x1401eb2f0ull;
+constexpr const char* MapCtx_LinkPairedSpawners_Pattern = "FUN_1401eb2f0";
 constexpr std::uintptr_t g_MagicalObjectComponentMeta = 0x141470768ull;
 constexpr std::uintptr_t oCCustomFlagList_vftable = 0x140efc320ull;
 constexpr std::uintptr_t oCEntityHitData_vftable = 0x140f0e4b8ull;
@@ -74,6 +102,8 @@ constexpr std::uintptr_t Analytics_SubmitNamedEvent = 0x1401fa470ull;
 constexpr const char* Analytics_SubmitNamedEvent_Pattern = "FUN_1401fa470";
 constexpr std::uintptr_t Crc32_TableInit = 0x14051df80ull;
 constexpr const char* Crc32_TableInit_Pattern = "FUN_14051df80";
+constexpr std::uintptr_t EventQueue_Drain = 0x140663320ull;
+constexpr const char* EventQueue_Drain_Pattern = "FUN_140663320";
 constexpr std::uintptr_t Event_LevelUp = 0x1401f6410ull;
 constexpr const char* Event_LevelUp_Pattern = "FUN_1401f6410";
 constexpr std::uintptr_t Event_RunEnd = 0x1401f51e0ull;
@@ -101,6 +131,12 @@ constexpr const char* NamedEvent_NetSend_Pattern = "FUN_1407205a0";
 constexpr std::uintptr_t NamedEvent_NetSendToPeer = 0x140720630ull;
 constexpr const char* NamedEvent_NetSendToPeer_Pattern = "FUN_140720630";
 
+// --- heroes ---
+constexpr std::uintptr_t HeroDef_LoadBaseEntity = 0x14031e3e0ull;
+constexpr const char* HeroDef_LoadBaseEntity_Pattern = "FUN_14031e3e0";
+constexpr std::uintptr_t HeroDef_LoadSkinEntity = 0x14031e140ull;
+constexpr const char* HeroDef_LoadSkinEntity_Pattern = "FUN_14031e140";
+
 // --- items ---
 constexpr std::uintptr_t Entity_GiveHandler = 0x1403a7ba0ull;
 constexpr const char* Entity_GiveHandler_Pattern = "FUN_1403a7ba0";
@@ -120,6 +156,8 @@ constexpr const char* MagicalObject_SpawnContainingFunc_Pattern = "FUN_1402586f0
 constexpr std::uintptr_t g_MagicalObjectPool = 0x1414365d0ull;
 
 // --- library ---
+constexpr std::uintptr_t Definition_DeserializeBase = 0x14030f880ull;
+constexpr const char* Definition_DeserializeBase_Pattern = "FUN_14030f880";
 constexpr std::uintptr_t GameModifierDef_RegisterAssetLoader = 0x1403257b0ull;
 constexpr const char* GameModifierDef_RegisterAssetLoader_Pattern = "FUN_1403257b0";
 constexpr std::uintptr_t HasGameModifierStateMachine_Register = 0x140197170ull;
@@ -175,6 +213,18 @@ constexpr std::uintptr_t Resource_LookupByPath = 0x140487040ull;
 constexpr const char* Resource_LookupByPath_Pattern = "FUN_140487040";
 
 // --- rewards ---
+constexpr std::uintptr_t CustomFlagList_ContainsAll = 0x140669cc0ull;
+constexpr const char* CustomFlagList_ContainsAll_Pattern = "FUN_140669cc0";
+constexpr std::uintptr_t CustomFlagList_ContainsAny = 0x140669de0ull;
+constexpr const char* CustomFlagList_ContainsAny_Pattern = "FUN_140669de0";
+constexpr std::uintptr_t RewardDef_Deserialize = 0x140323bc0ull;
+constexpr const char* RewardDef_Deserialize_Pattern = "FUN_140323bc0";
+constexpr std::uintptr_t RewardItem_Serialize = 0x1403234d0ull;
+constexpr const char* RewardItem_Serialize_Pattern = "FUN_1403234d0";
+constexpr std::uintptr_t RewardSelectorSettings_Serialize = 0x14033fb60ull;
+constexpr const char* RewardSelectorSettings_Serialize_Pattern = "FUN_14033fb60";
+constexpr std::uintptr_t RewardType_Serialize = 0x140323960ull;
+constexpr const char* RewardType_Serialize_Pattern = "FUN_140323960";
 constexpr std::uintptr_t Reward_GenerateAndDistribute = 0x1401e9020ull;
 constexpr const char* Reward_GenerateAndDistribute_Pattern = "FUN_1401e9020";
 constexpr std::uintptr_t Reward_InitAllRewards = 0x1401e6030ull;
