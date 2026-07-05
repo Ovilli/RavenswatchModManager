@@ -143,6 +143,7 @@ constexpr const char* Entity_GiveHandler_Pattern = "FUN_1403a7ba0";
 constexpr std::uintptr_t Hero_GrantMagicalObject = 0x140397190ull;
 constexpr const char* Hero_GrantMagicalObject_Pattern = "FUN_140397190";
 constexpr std::uintptr_t InitialLoading_SpawnMagicalObjects = 0x140260280ull;
+constexpr const char* InitialLoading_SpawnMagicalObjects_Pattern = "FUN_140260280";
 constexpr std::uintptr_t MagicalObjectPool_Grow = 0x1401550d0ull;
 constexpr const char* MagicalObjectPool_Grow_Pattern = "FUN_1401550d0";
 constexpr std::uintptr_t MagicalObjectPool_SourceLookup = 0x1402590c0ull;
@@ -192,15 +193,18 @@ constexpr const char* Netcode_Channel_LookupById_Pattern = "FUN_140241150";
 constexpr std::uintptr_t Netcode_Channel_Unsubscribe = 0x1401c8660ull;
 constexpr const char* Netcode_Channel_Unsubscribe_Pattern = "FUN_1401c8660";
 constexpr std::uintptr_t Netcode_DropPeer = 0x1402b4450ull;
+constexpr const char* Netcode_DropPeer_Pattern = "FUN_1402b4450";
 constexpr std::uintptr_t Netcode_EntityReplSetup = 0x140720c10ull;
 constexpr const char* Netcode_EntityReplSetup_Pattern = "FUN_140720c10";
 constexpr std::uintptr_t Netcode_PeerStateTick = 0x1402afaa0ull;
+constexpr const char* Netcode_PeerStateTick_Pattern = "FUN_1402afaa0";
 
 // --- options ---
 constexpr std::uintptr_t g_GameOptions = 0x141436510ull;
 
 // --- resource ---
 constexpr std::uintptr_t Definitions_LoadGroup = 0x14030fa00ull;
+constexpr const char* Definitions_LoadGroup_Pattern = "FUN_14030fa00";
 constexpr std::uintptr_t InitialLoading_LoadAllDefinitions = 0x14030fa00ull;
 constexpr const char* InitialLoading_LoadAllDefinitions_Pattern = "FUN_14030fa00";
 constexpr std::uintptr_t Registry_EnumInstances = 0x140240e50ull;

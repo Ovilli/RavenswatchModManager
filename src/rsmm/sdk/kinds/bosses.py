@@ -36,9 +36,12 @@ from typing import Any
 from ..content import ContentDef, SchemaNotMined
 from . import _common as C
 
-# Offsets confirmed against FUN_140368860 (ctor),
-# FUN_140368e90 (deserialize), FUN_140368fc0 (resolve).
-# See docs/_re/kinds/bosses.md for the full table.
+# Offsets re-verified 2026-07-05 against the CURRENT binary's deserializer
+# FUN_140374250 (oCDtBossTimerUiControllerEntityCpntSettings vftable
+# 0x140f2da98 slot 3; the pre-rebase addresses FUN_140368860/FUN_140368e90
+# cited here before are stale). All six slots read via the sub-object
+# reader (vtbl+0xa0); +0x290 AND +0x310 are both gated on version tag
+# 0x17e9a0ae >= 1. See docs/_re/kinds/bosses.md for the full table.
 _BOSSTIMER_PICKER_OFFSETS: dict[str, int] = {
     # picker 1: arena anchor / target entity to attach to
     "arena_anchor": 0x0F8,

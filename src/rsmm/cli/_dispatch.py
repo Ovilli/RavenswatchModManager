@@ -54,6 +54,7 @@ BUILTIN = {
     "install":           "rsmm.cli.cmd_install",
     "pack":              "rsmm.cli.cmd_pack",
     "log":               "rsmm.cli.cmd_log",
+    "menu":              "rsmm.cli.cmd_menu",
     "decode":            "rsmm.engine.ot_decoder",
     "rebuild-asset-map": "rsmm.engine.find_iyg",
     "install-loader":    "rsmm.cli.install_loader",

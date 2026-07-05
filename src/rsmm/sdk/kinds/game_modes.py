@@ -5,10 +5,16 @@ chapter list (Heredos #10 — sequential / custom map order). ``emit()`` clones 
 shipped ``All_Chapters`` def and replaces its sequence, then writes the cooked
 record; ``apply_mods`` registers it via ``UsedRscList``.
 
-Confidence: ``guess``. The def cooks/loads, but the engine honouring a rewritten
-sequence in-game is unproven, and some orders may be fragile (chapter 0 may be
-coupled to first-run/tutorial setup). A FIXED order is data-safe; true per-run
-randomization is out of scope (needs engine RNG + multiplayer determinism).
+Confidence: ``experimental``. Layout deserializer-verified 2026-07-05:
+``GameModeDefaultDefinition::Deserialize`` (vftable 0x140eff358 slot 3,
+FUN_140324de0) reads the chapter list via ``Serializer_ReadPolyPtrVector`` into
+the ordered vector @def+0x290; each entry (``GameModeDefault``, deser
+FUN_1403256c0) carries a resource-ref to its chapter content @entry+0x8 — so the
+u32 list this cooker rewrites is the ordered chapter roster, order preserved.
+The engine honouring a rewritten order in a live run is still unproven, and some
+orders may be fragile (chapter 0 may be coupled to first-run/tutorial setup).
+A FIXED order is data-safe; true per-run randomization is out of scope (needs
+engine RNG + multiplayer determinism).
 
 Fields:
     ``base`` (str, optional)        gamemode def id to clone (default ``All_Chapters``).

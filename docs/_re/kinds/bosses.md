@@ -66,6 +66,14 @@ oCDtEnemyDefinition                       data class (UID 0x176debb7)
 
 ## Confirmed addresses
 
+> **REBASE NOTE (2026-07-05):** every `0x140368xxx` / `0x14147ff74` address in this
+> table is from the PRE-REBASE corpus and is stale in the current binary. The core
+> claim was re-verified against the current Ghidra DB: settings vftable is now
+> `0x140f2da98`, deserialize = slot 3 = `FUN_140374250`, and it reads exactly
+> `+0xf8`, `+0x138`, `+0x178`, `+0x250` (unconditional, sub-object reader vtbl+0xa0)
+> plus `+0x290` and `+0x310` both gated on class-version tag `0x17e9a0ae >= 1` — the
+> offset table below stands. Re-derive the other rows before using their addresses.
+
 | Symbol | Address | Notes |
 |---|---|---|
 | `oCDtBossTimerUiControllerEntityCpnt::vftable` | `0x14147ff74` | DATA xref to ctor |

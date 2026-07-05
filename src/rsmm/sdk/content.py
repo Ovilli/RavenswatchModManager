@@ -41,9 +41,12 @@ KIND_CONFIDENCE: dict[str, str] = {
     "hero": "experimental",   # clones, but roster detour + library unproven
     "map": "experimental",    # emit only; no in-game load proof
     "skill": "guess",         # herodef skill-row clone/repoint; in-game hero-page load unproven
-    "boss": "guess",          # picker/HP/arena offsets are speculative
-    "modifier": "guess",      # gamemodifierdef clone loads; UI-slot appearance unproven (cap #16)
-    "game_mode": "guess",     # chapter re-sequence cooks, but engine honouring it in-game unproven
+    "boss": "guess",          # BossTimer picker offsets deserializer-verified 2026-07-05, but emit
+                              # still stages manifests (_pending_bosses), no cooked-asset output yet
+    "modifier": "guess",      # gamemodifierdef clone loads; UI-slot appearance unproven (cap #16;
+                              # rows ARE spawner-driven per Ghidra — m_oGameModifierUiSpawner)
+    "game_mode": "experimental",  # chapter vector deserializer-verified 2026-07-05 (poly-ptr
+                              # vector @def+0x290, ordered refs); in-game honoring unproven
     "reward": "experimental", # codec deserializer-verified, plain override; edited roll unproven
 }
 

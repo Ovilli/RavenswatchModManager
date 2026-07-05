@@ -11,7 +11,11 @@ the same path proven for custom items / enemies.
 Confidence: ``guess``. The def cooks and loads, but a NET-NEW modifier *appearing
 in the selection UI* is unproven — the challenge-UI slot count looks data-driven
 and may be pre-sized to the vanilla set (see docs/_re/kinds/game-modifiers.md,
-"#16 cap"). A modifier's EFFECT is hardcoded C++ keyed by an entity-value id, so a
+"#16 cap"). Ghidra 2026-07-05: the challenge UI rows are SPAWNED, not fixed
+entities — ``Dt Challenge Ui Controller`` registers ``m_oGameModifierUiSpawner``
+(property id 0x1871e0aa) plus ``m_bDisplayEmptySlots`` (0x1871e0ab), so the cap
+question reduces to what feeds the spawner (challengedef modifier list vs
+library) — still unresolved. A modifier's EFFECT is hardcoded C++ keyed by an entity-value id, so a
 clone reuses an existing effect; brand-new behaviour is layered in Lua via
 ``R.modifier`` gating.
 

@@ -38,8 +38,14 @@ m.register("game_mode", id="ReverseRun", chapters=[3, 2, 1, 0])  # reorder
 # [0,0,0] repeats biome 0; [3] is a one-chapter run.
 ```
 
-Confidence `guess` (engine honouring the rewrite is playtest-pending; chapter 0 may be coupled to
-first-run setup). Indices must reference existing chapters (`0..3`). Tests:
+Confidence `experimental` (upgraded from `guess` 2026-07-05): the layout is now
+deserializer-verified — `GameModeDefaultDefinition::Deserialize` (FUN_140324de0, vftable
+0x140eff358 slot 3) reads the list via `Serializer_ReadPolyPtrVector` into the ordered vector
+@def+0x290, and each `GameModeDefault` entry (deser FUN_1403256c0) is a resource-ref to its
+chapter content @entry+0x8. So the rewritten u32s are sub-object ids into the file's section
+directory (numerically `[0,1,2,3]` in the vanilla def) and the vector order IS the run order as
+stored. Engine honouring a rewrite in a live run is still playtest-pending; chapter 0 may be
+coupled to first-run setup. Indices must reference existing chapters (`0..3`). Tests:
 `tests/test_game_mode_cook.py`. True per-run *random* order stays out of scope (engine RNG +
 MP-determinism); a fixed custom order is data-safe.
 
