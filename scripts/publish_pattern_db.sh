@@ -27,8 +27,10 @@ import json, sys
 sys.path.insert(0, "src")
 from rsmm.engine.symbols import load_symbol_map
 names = {e["name"] for e in json.load(open("data/function_patterns.json"))}
+# Only status=ok symbols get semantic DB entries (sync_symbol_patterns.py
+# skips the rest — their raw/anchor still points at a pre-patch address).
 missing = [s.pattern_name for s in load_symbol_map().symbols
-           if s.pattern_name and s.pattern_name not in names]
+           if s.status == "ok" and s.pattern_name and s.pattern_name not in names]
 if missing:
     sys.exit(f"{len(missing)} semantic entries missing from DB — run "
              f"scripts/sync_symbol_patterns.py first: {missing[:6]}")
