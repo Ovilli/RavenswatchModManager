@@ -23,16 +23,27 @@ def test_anchor_resolution_math():
     smap = S.load_symbol_map()
     s = smap.by_name("MagicalObject_SpawnAllObjects")
     assert s is not None
-    # parent FUN_1402586f0 + offset 0x70
-    assert s.preferred_addr(smap.preferred_base) == 0x1402586F0 + 0x70
-    # the version-resilient pattern is the parent's
-    assert s.pattern_name == "FUN_1402586f0"
+    # anchor address is parent-raw + offset (values track the current build)
+    parent = int(s.anchor["raw"].split("_", 1)[1], 16)
+    off = int(s.anchor["offset"], 16)
+    assert s.preferred_addr(smap.preferred_base) == parent + off
+    # the version-resilient pattern name is SEMANTIC (stable across game
+    # patches), not the address-derived FUN_ name — see Symbol.pattern_name.
+    assert s.pattern_name == "MagicalObject_SpawnAllObjects.parent"
 
 
 def test_raw_and_va_resolution():
     smap = S.load_symbol_map()
-    assert smap.by_name("Resource_LookupByPath").preferred_addr(smap.preferred_base) == 0x140487040
-    assert smap.by_name("g_MagicalObjectPool").preferred_addr(smap.preferred_base) == 0x1414365D0
+    # A raw symbol resolves to its literal (current-build) address, and its
+    # pattern key is the semantic name.
+    r = smap.by_name("Resource_LookupByPath")
+    assert r.raw is not None
+    assert r.preferred_addr(smap.preferred_base) == int(r.raw.split("_", 1)[1], 16)
+    assert r.pattern_name == "Resource_LookupByPath"
+    # A va (data global) symbol resolves to its stored absolute address.
+    g = smap.by_name("g_MagicalObjectPool")
+    assert g.va is not None
+    assert g.preferred_addr(smap.preferred_base) == int(g.va, 16)
 
 
 def test_status_ok_implies_real_pattern():

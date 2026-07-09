@@ -82,3 +82,10 @@ docs/_re/project/
 .rsmm_emitted.json
 .vercel
 .env*
+data/.symbol_remap.json
+# Raw game-byte dumps for the symbol-remap pipeline (regenerable via Ghidra;
+# never commit copyrighted game bytes — see memory no-game-assets).
+docs/_re/out/text_section.bin
+docs/_re/out/text_section.json
+docs/_re/out_new/
+data/.symbol_remap.json

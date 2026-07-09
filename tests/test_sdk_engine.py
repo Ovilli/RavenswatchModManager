@@ -22,8 +22,11 @@ def test_callables_are_callable_symbols():
 
 
 def test_resolve_and_symbol():
-    assert engine.resolve("Resource_LookupByPath") == 0x140487040
-    assert engine.symbol("Resource_LookupByPath").kind == "function"
+    # Address tracks the current game build (updated by the remap pipeline),
+    # so assert against the symbol map rather than a hardcoded literal.
+    sym = engine.symbol("Resource_LookupByPath")
+    assert sym.kind == "function"
+    assert engine.resolve("Resource_LookupByPath") == int(sym.raw.split("_", 1)[1], 16)
     assert engine.symbol("nope") is None
 
 

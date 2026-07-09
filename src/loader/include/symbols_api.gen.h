@@ -9,145 +9,145 @@
 
 namespace engine {
 
-// Analytics_SubmitNamedEvent  (FUN_1401fa470)
+// Analytics_SubmitNamedEvent  (Analytics_SubmitNamedEvent)
 //   void(void* analytics_mgr, void* payload_kv, StringDesc* event_name, char has_run_ctx)
 using Analytics_SubmitNamedEvent_fn = void(*)(void*, void*, void*, uint32_t);
 inline Analytics_SubmitNamedEvent_fn Analytics_SubmitNamedEvent() {
     return reinterpret_cast<Analytics_SubmitNamedEvent_fn>(rsmm::fn_resolve(Sym::Analytics_SubmitNamedEvent_Pattern));
 }
 
-// BookController_ResolveSettings  (FUN_140307d30)
+// BookController_ResolveSettings  (BookController_ResolveSettings)
 //   void(oCDtEntityCpnt3DBookController* self)
 using BookController_ResolveSettings_fn = void(*)(void*);
 inline BookController_ResolveSettings_fn BookController_ResolveSettings() {
     return reinterpret_cast<BookController_ResolveSettings_fn>(rsmm::fn_resolve(Sym::BookController_ResolveSettings_Pattern));
 }
 
-// BookController_ResolveTabs  (FUN_1403083d0)
+// BookController_ResolveTabs  (BookController_ResolveTabs)
 //   void(oCDtEntityCpnt3DBookController* self)
 using BookController_ResolveTabs_fn = void(*)(void*);
 inline BookController_ResolveTabs_fn BookController_ResolveTabs() {
     return reinterpret_cast<BookController_ResolveTabs_fn>(rsmm::fn_resolve(Sym::BookController_ResolveTabs_Pattern));
 }
 
-// EntityValue_Get  (FUN_1403c71e0)
+// EntityValue_Get  (EntityValue_Get)
 //   void(void* valueCtx, oCEntityValueUnion* out, uint32_t crcKey)
 using EntityValue_Get_fn = void(*)(void*, void*, uint32_t);
 inline EntityValue_Get_fn EntityValue_Get() {
     return reinterpret_cast<EntityValue_Get_fn>(rsmm::fn_resolve(Sym::EntityValue_Get_Pattern));
 }
 
-// EntityValue_Lookup  (FUN_1407481d0)
+// EntityValue_Lookup  (EntityValue_Lookup)
 //   oCEntityValueUnion*(void* store, oCEntityValueUnion* out, uint32_t crcKey)
 using EntityValue_Lookup_fn = void*(*)(void*, void*, uint32_t);
 inline EntityValue_Lookup_fn EntityValue_Lookup() {
     return reinterpret_cast<EntityValue_Lookup_fn>(rsmm::fn_resolve(Sym::EntityValue_Lookup_Pattern));
 }
 
-// Entity_AllocInstance  (FUN_14068fe90)
+// Entity_AllocInstance  (Entity_AllocInstance)
 //   void*(void* allocator)
 using Entity_AllocInstance_fn = void*(*)(void*);
 inline Entity_AllocInstance_fn Entity_AllocInstance() {
     return reinterpret_cast<Entity_AllocInstance_fn>(rsmm::fn_resolve(Sym::Entity_AllocInstance_Pattern));
 }
 
-// Entity_DispatchHit  (FUN_1406e2d20)
+// Entity_DispatchHit  (Entity_DispatchHit)
 //   void(oCEntity* target, oCEntityHitData* hit)
 using Entity_DispatchHit_fn = void(*)(void*, void*);
 inline Entity_DispatchHit_fn Entity_DispatchHit() {
     return reinterpret_cast<Entity_DispatchHit_fn>(rsmm::fn_resolve(Sym::Entity_DispatchHit_Pattern));
 }
 
-// Entity_FindComponentByType  (FUN_1406ca380)
+// Entity_FindComponentByType  (Entity_FindComponentByType)
 //   oIEntityCpnt*(oCEntitySpawnerGo* go, oCMetaClass* meta)
 using Entity_FindComponentByType_fn = void*(*)(void*, void*);
 inline Entity_FindComponentByType_fn Entity_FindComponentByType() {
     return reinterpret_cast<Entity_FindComponentByType_fn>(rsmm::fn_resolve(Sym::Entity_FindComponentByType_Pattern));
 }
 
-// Entity_FindMagicalObjectComponent  (FUN_1406e2250)
+// Entity_FindMagicalObjectComponent  (Entity_FindMagicalObjectComponent)
 //   void*(void* instance, void* mo_component_meta)
 using Entity_FindMagicalObjectComponent_fn = void*(*)(void*, void*);
 inline Entity_FindMagicalObjectComponent_fn Entity_FindMagicalObjectComponent() {
     return reinterpret_cast<Entity_FindMagicalObjectComponent_fn>(rsmm::fn_resolve(Sym::Entity_FindMagicalObjectComponent_Pattern));
 }
 
-// Entity_GetNetComponent  (FUN_1403124b0)
+// Entity_GetNetComponent  (Entity_GetNetComponent)
 //   void*(oCEntity* entity)
 using Entity_GetNetComponent_fn = void*(*)(void*);
 inline Entity_GetNetComponent_fn Entity_GetNetComponent() {
     return reinterpret_cast<Entity_GetNetComponent_fn>(rsmm::fn_resolve(Sym::Entity_GetNetComponent_Pattern));
 }
 
-// Entity_ModifyHealth  (FUN_140399a10)
+// Entity_ModifyHealth  (Entity_ModifyHealth)
 //   void(oCEntity* hero, float delta, oCCustomFlagList* sourceTags)
 using Entity_ModifyHealth_fn = void(*)(void*, float, void*);
 inline Entity_ModifyHealth_fn Entity_ModifyHealth() {
     return reinterpret_cast<Entity_ModifyHealth_fn>(rsmm::fn_resolve(Sym::Entity_ModifyHealth_Pattern));
 }
 
-// Entity_ResolveAttackHits  (FUN_1403dc780)
+// Entity_ResolveAttackHits  (Entity_ResolveAttackHits)
 //   float(void* attacker, uint hitDefIndex, TargetList* targets, float damageMul, float baseDamage)
 using Entity_ResolveAttackHits_fn = float(*)(void*, uint32_t, void*, float, float);
 inline Entity_ResolveAttackHits_fn Entity_ResolveAttackHits() {
     return reinterpret_cast<Entity_ResolveAttackHits_fn>(rsmm::fn_resolve(Sym::Entity_ResolveAttackHits_Pattern));
 }
 
-// Entry_Ctor  (FUN_140214bb0)
+// Entry_Ctor  (Entry_Ctor)
 //   void(void* base, uint32_t count)
 using Entry_Ctor_fn = void(*)(void*, uint32_t);
 inline Entry_Ctor_fn Entry_Ctor() {
     return reinterpret_cast<Entry_Ctor_fn>(rsmm::fn_resolve(Sym::Entry_Ctor_Pattern));
 }
 
-// Event_LevelUp  (FUN_1401f6410)
+// Event_LevelUp  (Event_LevelUp)
 using Event_LevelUp_fn = void*(*)(void*, void*);
 inline Event_LevelUp_fn Event_LevelUp() {
     return reinterpret_cast<Event_LevelUp_fn>(rsmm::fn_resolve(Sym::Event_LevelUp_Pattern));
 }
 
-// Event_RunEnd  (FUN_1401f51e0)
+// Event_RunEnd  (Event_RunEnd)
 using Event_RunEnd_fn = void*(*)(void*, void*);
 inline Event_RunEnd_fn Event_RunEnd() {
     return reinterpret_cast<Event_RunEnd_fn>(rsmm::fn_resolve(Sym::Event_RunEnd_Pattern));
 }
 
-// HeroController_Ctor  (FUN_14038e320)
+// HeroController_Ctor  (HeroController_Ctor)
 //   oCDtEntityCpntHeroController*(oCDtEntityCpntHeroController* self)
 using HeroController_Ctor_fn = void*(*)(void*);
 inline HeroController_Ctor_fn HeroController_Ctor() {
     return reinterpret_cast<HeroController_Ctor_fn>(rsmm::fn_resolve(Sym::HeroController_Ctor_Pattern));
 }
 
-// Hero_GrantMagicalObject  (FUN_140397190)
+// Hero_GrantMagicalObject  (Hero_GrantMagicalObject)
 //   void(oCDtEntityCpntHeroController* hero, void* def, uint16_t count, char dupFlag, void* sourceTags)
 using Hero_GrantMagicalObject_fn = void(*)(void*, void*, uint32_t, uint32_t, void*);
 inline Hero_GrantMagicalObject_fn Hero_GrantMagicalObject() {
     return reinterpret_cast<Hero_GrantMagicalObject_fn>(rsmm::fn_resolve(Sym::Hero_GrantMagicalObject_Pattern));
 }
 
-// MagicalObjectPool_Grow  (FUN_1401550d0)
+// MagicalObjectPool_Grow  (MagicalObjectPool_Grow)
 //   void(void* pool_plus_0x10, uint32_t count, uint32_t by)
 using MagicalObjectPool_Grow_fn = void(*)(void*, uint32_t, uint32_t);
 inline MagicalObjectPool_Grow_fn MagicalObjectPool_Grow() {
     return reinterpret_cast<MagicalObjectPool_Grow_fn>(rsmm::fn_resolve(Sym::MagicalObjectPool_Grow_Pattern));
 }
 
-// MagicalObjectPool_SourceLookup  (FUN_1402590c0)
+// MagicalObjectPool_SourceLookup  (MagicalObjectPool_SourceLookup)
 //   void*(void* pool, void* out, void* id)
 using MagicalObjectPool_SourceLookup_fn = void*(*)(void*, void*, void*);
 inline MagicalObjectPool_SourceLookup_fn MagicalObjectPool_SourceLookup() {
     return reinterpret_cast<MagicalObjectPool_SourceLookup_fn>(rsmm::fn_resolve(Sym::MagicalObjectPool_SourceLookup_Pattern));
 }
 
-// MagicalObject_RegisterInstance  (FUN_1403aae40)
+// MagicalObject_RegisterInstance  (MagicalObject_RegisterInstance)
 //   void(oCDtEntityCpntHeroController* hero, void* instance, char addToActive)
 using MagicalObject_RegisterInstance_fn = void(*)(void*, void*, uint32_t);
 inline MagicalObject_RegisterInstance_fn MagicalObject_RegisterInstance() {
     return reinterpret_cast<MagicalObject_RegisterInstance_fn>(rsmm::fn_resolve(Sym::MagicalObject_RegisterInstance_Pattern));
 }
 
-// MagicalObject_SpawnAllObjects  (FUN_1402586f0)
+// MagicalObject_SpawnAllObjects  (MagicalObject_SpawnAllObjects.parent)
 //   void(void* pool, void* scene)
 using MagicalObject_SpawnAllObjects_fn = void(*)(void*, void*);
 inline MagicalObject_SpawnAllObjects_fn MagicalObject_SpawnAllObjects() {
@@ -155,126 +155,126 @@ inline MagicalObject_SpawnAllObjects_fn MagicalObject_SpawnAllObjects() {
     return a ? reinterpret_cast<MagicalObject_SpawnAllObjects_fn>(a + 0x70) : nullptr;
 }
 
-// NamedEvent_ChannelMap_Find  (FUN_14066cc50)
+// NamedEvent_ChannelMap_Find  (NamedEvent_ChannelMap_Find)
 //   iter*(void* channel_map, iter* out, uint32_t* event_id)
 using NamedEvent_ChannelMap_Find_fn = void*(*)(void*, void*, void*);
 inline NamedEvent_ChannelMap_Find_fn NamedEvent_ChannelMap_Find() {
     return reinterpret_cast<NamedEvent_ChannelMap_Find_fn>(rsmm::fn_resolve(Sym::NamedEvent_ChannelMap_Find_Pattern));
 }
 
-// NamedEvent_Delete  (FUN_140126da0)
+// NamedEvent_Delete  (NamedEvent_Delete)
 //   void(oCGameNamedEvent* ev)
 using NamedEvent_Delete_fn = void(*)(void*);
 inline NamedEvent_Delete_fn NamedEvent_Delete() {
     return reinterpret_cast<NamedEvent_Delete_fn>(rsmm::fn_resolve(Sym::NamedEvent_Delete_Pattern));
 }
 
-// NamedEvent_Dispatch  (FUN_14066a700)
+// NamedEvent_Dispatch  (NamedEvent_Dispatch)
 //   void(void* dispatcher, oCGameNamedEvent* ev)
 using NamedEvent_Dispatch_fn = void(*)(void*, void*);
 inline NamedEvent_Dispatch_fn NamedEvent_Dispatch() {
     return reinterpret_cast<NamedEvent_Dispatch_fn>(rsmm::fn_resolve(Sym::NamedEvent_Dispatch_Pattern));
 }
 
-// NamedEvent_GiveMagicalObject_Ctor  (FUN_14030f430)
+// NamedEvent_GiveMagicalObject_Ctor  (NamedEvent_GiveMagicalObject_Ctor)
 //   oe::dt::NamedEventGiveMagicalObject*(void* buf)
 using NamedEvent_GiveMagicalObject_Ctor_fn = void*(*)(void*);
 inline NamedEvent_GiveMagicalObject_Ctor_fn NamedEvent_GiveMagicalObject_Ctor() {
     return reinterpret_cast<NamedEvent_GiveMagicalObject_Ctor_fn>(rsmm::fn_resolve(Sym::NamedEvent_GiveMagicalObject_Ctor_Pattern));
 }
 
-// NamedEvent_HeroSubscribeAll  (FUN_140391d30)
+// NamedEvent_HeroSubscribeAll  (NamedEvent_HeroSubscribeAll)
 //   void(oCEntity* hero)
 using NamedEvent_HeroSubscribeAll_fn = void(*)(void*);
 inline NamedEvent_HeroSubscribeAll_fn NamedEvent_HeroSubscribeAll() {
     return reinterpret_cast<NamedEvent_HeroSubscribeAll_fn>(rsmm::fn_resolve(Sym::NamedEvent_HeroSubscribeAll_Pattern));
 }
 
-// NamedEvent_Id_FromCrc  (FUN_14051e0e0)
+// NamedEvent_Id_FromCrc  (NamedEvent_Id_FromCrc)
 //   uint32_t(uint32_t ns, uint32_t name_crc)
 using NamedEvent_Id_FromCrc_fn = uint32_t(*)(uint32_t, uint32_t);
 inline NamedEvent_Id_FromCrc_fn NamedEvent_Id_FromCrc() {
     return reinterpret_cast<NamedEvent_Id_FromCrc_fn>(rsmm::fn_resolve(Sym::NamedEvent_Id_FromCrc_Pattern));
 }
 
-// NamedEvent_NetSend  (FUN_1407205a0)
+// NamedEvent_NetSend  (NamedEvent_NetSend)
 //   void(void* net_event_cpnt, oCGameNamedEvent* ev)
 using NamedEvent_NetSend_fn = void(*)(void*, void*);
 inline NamedEvent_NetSend_fn NamedEvent_NetSend() {
     return reinterpret_cast<NamedEvent_NetSend_fn>(rsmm::fn_resolve(Sym::NamedEvent_NetSend_Pattern));
 }
 
-// NamedEvent_NetSendToPeer  (FUN_140720630)
+// NamedEvent_NetSendToPeer  (NamedEvent_NetSendToPeer)
 //   void(void* net_event_cpnt, oCGameNamedEvent* ev, uint64_t* peer_session)
 using NamedEvent_NetSendToPeer_fn = void(*)(void*, void*, void*);
 inline NamedEvent_NetSendToPeer_fn NamedEvent_NetSendToPeer() {
     return reinterpret_cast<NamedEvent_NetSendToPeer_fn>(rsmm::fn_resolve(Sym::NamedEvent_NetSendToPeer_Pattern));
 }
 
-// Netcode_Channel_LookupById  (FUN_140241150)
+// Netcode_Channel_LookupById  (Netcode_Channel_LookupById)
 //   iter*(void* channel_map, iter* out, uint32_t* event_id)
 using Netcode_Channel_LookupById_fn = void*(*)(void*, void*, void*);
 inline Netcode_Channel_LookupById_fn Netcode_Channel_LookupById() {
     return reinterpret_cast<Netcode_Channel_LookupById_fn>(rsmm::fn_resolve(Sym::Netcode_Channel_LookupById_Pattern));
 }
 
-// Netcode_Channel_Unsubscribe  (FUN_1401c8660)
+// Netcode_Channel_Unsubscribe  (Netcode_Channel_Unsubscribe)
 //   void(void* node_plus_8, void** sub_slot)
 using Netcode_Channel_Unsubscribe_fn = void(*)(void*, void*);
 inline Netcode_Channel_Unsubscribe_fn Netcode_Channel_Unsubscribe() {
     return reinterpret_cast<Netcode_Channel_Unsubscribe_fn>(rsmm::fn_resolve(Sym::Netcode_Channel_Unsubscribe_Pattern));
 }
 
-// Netcode_EntityReplSetup  (FUN_140720c10)
+// Netcode_EntityReplSetup  (Netcode_EntityReplSetup)
 //   void(void* replContext)
 using Netcode_EntityReplSetup_fn = void(*)(void*);
 inline Netcode_EntityReplSetup_fn Netcode_EntityReplSetup() {
     return reinterpret_cast<Netcode_EntityReplSetup_fn>(rsmm::fn_resolve(Sym::Netcode_EntityReplSetup_Pattern));
 }
 
-// Registry_EnumInstances  (FUN_140240e50)
+// Registry_EnumInstances  (Registry_EnumInstances)
 //   void*(void* unused, void* out3, void** classDescPtr)
 using Registry_EnumInstances_fn = void*(*)(void*, void*, void*);
 inline Registry_EnumInstances_fn Registry_EnumInstances() {
     return reinterpret_cast<Registry_EnumInstances_fn>(rsmm::fn_resolve(Sym::Registry_EnumInstances_Pattern));
 }
 
-// Resource_LookupByPath  (FUN_140487040)
+// Resource_LookupByPath  (Resource_LookupByPath)
 //   void*(const char* decoded_path, void*, void*, void*)
 using Resource_LookupByPath_fn = void*(*)(const char*, void*, void*, void*);
 inline Resource_LookupByPath_fn Resource_LookupByPath() {
     return reinterpret_cast<Resource_LookupByPath_fn>(rsmm::fn_resolve(Sym::Resource_LookupByPath_Pattern));
 }
 
-// SkinGrid_Populate  (FUN_1401f0f10)
+// SkinGrid_Populate  (SkinGrid_Populate)
 //   void(void* ctx, void* arg)
 using SkinGrid_Populate_fn = void(*)(void*, void*);
 inline SkinGrid_Populate_fn SkinGrid_Populate() {
     return reinterpret_cast<SkinGrid_Populate_fn>(rsmm::fn_resolve(Sym::SkinGrid_Populate_Pattern));
 }
 
-// String_Assign  (FUN_1405288b0)
+// String_Assign  (String_Assign)
 //   void(void* dst_slot, const StringDesc* src)
 using String_Assign_fn = void(*)(void*, const void*);
 inline String_Assign_fn String_Assign() {
     return reinterpret_cast<String_Assign_fn>(rsmm::fn_resolve(Sym::String_Assign_Pattern));
 }
 
-// UiButton_InputPoll  (FUN_1407d6210)
+// UiButton_InputPoll  (UiButton_InputPoll)
 //   void(void* task, ButtonUiCpntArray* cpnts)
 using UiButton_InputPoll_fn = void(*)(void*, void*);
 inline UiButton_InputPoll_fn UiButton_InputPoll() {
     return reinterpret_cast<UiButton_InputPoll_fn>(rsmm::fn_resolve(Sym::UiButton_InputPoll_Pattern));
 }
 
-// UiButton_PressCommit  (FUN_14069f8e0)
+// UiButton_PressCommit  (UiButton_PressCommit)
 //   void(oCUINavigableZoneDesc* widget)
 using UiButton_PressCommit_fn = void(*)(void*);
 inline UiButton_PressCommit_fn UiButton_PressCommit() {
     return reinterpret_cast<UiButton_PressCommit_fn>(rsmm::fn_resolve(Sym::UiButton_PressCommit_Pattern));
 }
 
-// Vector_Grow  (FUN_140154c20)
+// Vector_Grow  (Vector_Grow)
 //   void(void* vec, void* /*dead RDX*/, uint32_t new_cap /*R8*/)
 using Vector_Grow_fn = void(*)(void*, uint64_t, uint32_t);
 inline Vector_Grow_fn Vector_Grow() {

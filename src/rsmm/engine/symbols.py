@@ -57,11 +57,19 @@ class Symbol:
 
     @property
     def pattern_name(self) -> str | None:
-        """The ``FUN_<addr>`` whose byte pattern resolves this symbol, if any."""
+        """Name of the pattern-DB entry that resolves this symbol, if any.
+
+        SEMANTIC, not ``FUN_<addr>``: the DB is re-published between app
+        releases (`rsmm update-data`), and address-derived names change on
+        every game patch — a shipped loader DLL would stop resolving. The
+        semantic key is stable forever; `scripts/sync_symbol_patterns.py`
+        (re-)injects these entries into the DB after every regen (plus
+        legacy ``FUN_<addr>`` aliases for already-shipped DLLs).
+        """
         if self.raw:
-            return self.raw
+            return self.name
         if self.anchor and self.anchor.get("raw"):
-            return self.anchor["raw"]
+            return f"{self.name}.parent"
         return None
 
     @property

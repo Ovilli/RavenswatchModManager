@@ -20,6 +20,21 @@ META=data/function_patterns.meta.json
 [ -f "$DB" ] || { echo "missing $DB — run scripts/gen_function_patterns.py first" >&2; exit 1; }
 [ -f "$META" ] || { echo "missing $META — regen with the updated gen script (it stamps the meta)" >&2; exit 1; }
 
+# Sanity: every symbol's semantic pattern entry must be present — shipped
+# loader DLLs resolve by these stable names (see sync_symbol_patterns.py).
+python3 - <<'EOF'
+import json, sys
+sys.path.insert(0, "src")
+from rsmm.engine.symbols import load_symbol_map
+names = {e["name"] for e in json.load(open("data/function_patterns.json"))}
+missing = [s.pattern_name for s in load_symbol_map().symbols
+           if s.pattern_name and s.pattern_name not in names]
+if missing:
+    sys.exit(f"{len(missing)} semantic entries missing from DB — run "
+             f"scripts/sync_symbol_patterns.py first: {missing[:6]}")
+print(f"ok: all semantic symbol entries present")
+EOF
+
 # Sanity: meta must describe exactly this DB file.
 python3 - "$DB" "$META" <<'EOF'
 import hashlib, json, sys
