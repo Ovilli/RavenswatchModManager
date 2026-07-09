@@ -101,14 +101,10 @@ wrappers — about 46% of functions), each entry records a
 Validation rate on the current build: **99.50%** of entries resolve
 to their recorded VA.
 
-Cross-build accuracy hasn't been measured — when the next patch ships
-we'll know. Regen is one command if it drifts:
-
-```sh
-bash docs/_re/run_dump_symbols.sh
-python3 scripts/gen_function_patterns.py
-python3 scripts/test_pattern_resolve.py --all
-```
+Cross-build accuracy (2026-07-09 patch): **77 of 92** hand-named function
+symbols re-located automatically by byte pattern; the remaining ones had
+prologues that changed too much and were flagged for manual RE (see the
+remap pipeline below). The generic ~53k-entry DB regenerates wholesale.
 
 ## Regen on a fresh checkout
 
@@ -121,16 +117,72 @@ bash docs/_re/run_decompile_all.sh   # full pseudo-C corpus
 python3 scripts/gen_function_patterns.py
 ```
 
-Subsequent runs (after a game patch, re-using the project):
-
-```sh
-bash docs/_re/run_dump_symbols.sh
-python3 scripts/gen_function_patterns.py
-```
-
 The Ghidra project (`docs/_re/project/RSMM.gpr` + `.rep/`) is
 committed. The big derivatives (`out/`, `data/function_patterns.json`)
 are local — see `.gitignore`.
+
+## Recovering the symbol map after a game patch
+
+A game patch shifts every address. The generic pattern DB self-heals at
+runtime (the scan finds the same byte shape), but two things need active
+recovery: `data/symbols.json` (the hand-named semantic addresses that the
+loader's typed API, events, and hooks reference) and the semantic pattern
+entries the loader resolves by name. This is what the remap pipeline does —
+no hand-RE of every address.
+
+Run the stages **in this order** (the old build's `.text` must be dumped
+*before* the exe is re-imported, because the project is overwritten):
+
+```sh
+# 1. Dump the OLD build's .text from the still-current project (pre-import).
+bash docs/_re/scripts/run_dump_text.sh          # -> docs/_re/out/text_section.{bin,json}
+#    (or: analyzeHeadless ... -process Ravenswatch.exe -postScript dump_text_section.py)
+
+# 2. Re-import + analyze the NEW exe into a fresh project (RSMM2), dumping
+#    symbols, strings, xrefs, .text, and vftables of the new build.
+bash docs/_re/run_analysis.sh                    # imports new exe
+#    also run ExportVftables.java -> docs/_re/out_new/vftables.jsonl
+
+# 3. Remap function symbols: old prologue pattern -> scan new .text.
+python3 scripts/remap_symbols.py --update-symbols
+
+# 4. Rewire va data symbols: vftables by RTTI name, globals by data-ref vote.
+python3 scripts/rewire_va_globals.py --remap data/.symbol_remap.json \
+    --vftables data/vftables.jsonl docs/_re/out_new/vftables.jsonl --update-symbols
+
+# 5. Downgrade any symbol whose pattern is unbuildable/ambiguous to
+#    status=unverified (loader skips these — fails safe vs. calling a wrong
+#    address). Then regenerate the DB from the NEW exe and inject the stable
+#    semantic-named entries + legacy FUN_ aliases.
+python3 scripts/gen_function_patterns.py --symbols docs/_re/out_new/symbols.json
+python3 scripts/sync_symbol_patterns.py --legacy-map data/.symbol_remap.json
+
+# 6. Regenerate all six symbol artifacts, verify, rebuild the loader.
+./rsmm symbols gen
+python3 -m pytest tests/test_symbols.py scripts/test_pattern_resolve.py
+bash src/loader/build.sh
+
+# 7. Publish so every user picks it up without an app release.
+bash scripts/publish_pattern_db.sh
+```
+
+**Why semantic pattern names matter.** The loader bakes pattern *names*
+(`Sym::X_Pattern`) at build time. If those were address-derived
+(`FUN_140391d30`) every patch would strand shipped DLLs. Instead the DB
+carries stable semantic keys (`NamedEvent_Dispatch`, `Foo.parent` for
+anchor parents); `sync_symbol_patterns.py` rebuilds them against the new
+exe each regen, plus legacy `FUN_<oldaddr>` aliases so already-shipped
+DLLs keep resolving.
+
+**Delivery without an app release.** `data/function_patterns.json` is
+gitignored (game-derived); it ships as assets on the rolling `pattern-db`
+GitHub release (`scripts/publish_pattern_db.sh`). Users pull it with
+`rsmm update-data`, which the desktop app runs silently on startup —
+so a republished DB reaches every install without a Tauri update. See
+`src/rsmm/engine/data_update.py`.
+
+The raw `.text` dumps (`text_section.bin`, `out_new/`) are gitignored —
+they are copyrighted game bytes and must never be committed.
 
 ## What this enables
 
