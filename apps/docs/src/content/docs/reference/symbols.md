@@ -64,7 +64,7 @@ Total: **120** symbols across 15 categories.
 | `Property_EvaluateByGuid` | `0x1406c3720` | ✅ ok |  | bool(void* ctx, void* container, void* guid16, float* out) |
 | `ResourceRef_Serialize` | `0x1401cbba0` | ✅ ok |  | bool(void* reader, void* refSlot) |
 | `Serializer_GetClassVersion` | `0x140514570` | ✅ ok |  | void*(void* reader, void* out, uint32_t classHash) |
-| `Serializer_ReadPolyPtrVector` | `0x14020d700` | ❓ unverified |  | bool(void* reader, void* vec, const char* label) |
+| `Serializer_ReadPolyPtrVector` | `0x14020e000` | ✅ ok |  | bool(void* reader, void* vec, const char* label) |
 | `ServiceRegistry_Global` | `0x14146f740` | 📍 va |  | Global engine service registry: service array @+0x30, u32 count @+0x38; each entry -> s… |
 | `StringVector_Serialize` | `0x140684f30` | ✅ ok |  | bool(void* reader, void* strVec) |
 
@@ -79,7 +79,7 @@ Total: **120** symbols across 15 categories.
 | `Entity_FindComponentByType` | `0x1406e3210` | ✅ ok | ✔ | oIEntityCpnt*(oCEntitySpawnerGo* go, oCMetaClass* meta) |
 | `Entity_FindMagicalObjectComponent` | `0x1406fb8a2` | ❓ unverified | ✔ | void*(void* instance, void* mo_component_meta) |
 | `Entity_GainHealthHandler` | `0x1403a7710` | ✅ ok |  | void(oCEntity* hero, void* a2, void* valueCtx) |
-| `Entity_ModifyHealth` | `0x140399a10` | ❓ unverified | ✔ | void(oCEntity* hero, float delta, oCCustomFlagList* sourceTags) |
+| `Entity_ModifyHealth` | `0x14039a320` | ✅ ok | ✔ | void(oCEntity* hero, float delta, oCCustomFlagList* sourceTags) |
 | `Entity_ResolveAttackHits` | `0x1403ea610` | ✅ ok | ✔ | float(void* attacker, uint hitDefIndex, TargetList* targets, float damageMul, float bas… |
 | `HeroController_Ctor` | `0x14039c4e0` | ✅ ok | ✔ | oCDtEntityCpntHeroController*(oCDtEntityCpntHeroController* self) |
 | `HeroController_HudMirror_Ctor` | `0x1403aff00` | ✅ ok |  | Builds the hero's HUD HP-mirror object whose pointer is stored at hero+0x1d80 by HeroCo… |
@@ -121,7 +121,7 @@ Total: **120** symbols across 15 categories.
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `HeroDef_LoadBaseEntity` | `0x140329660` | ✅ ok |  | void(void* heroDef, void** outEntityRef) |
-| `HeroDef_LoadSkinEntity` | `0x14031e140` | ❓ unverified |  | void(void* heroDef, uint16_t skinIndex, void* outHandle) |
+| `HeroDef_LoadSkinEntity` | `0x14028e5f0` | ✅ ok |  | void(void* heroDef, uint16_t skinIndex, void* outHandle) |
 
 ## items
 
@@ -141,8 +141,8 @@ Total: **120** symbols across 15 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `Definition_DeserializeBase` | `0x140316470` | ❓ unverified |  | bool(void* def, void* reader) |
-| `GameModifierDef_RegisterAssetLoader` | `0x1403257b0` | ❓ unverified |  | void(void* assetClassDesc) |
+| `Definition_DeserializeBase` | `0x140310180` | ✅ ok |  | bool(void* def, void* reader) |
+| `GameModifierDef_RegisterAssetLoader` | `0x1403260b0` | ✅ ok |  | void(void* assetClassDesc) |
 | `HasGameModifierStateMachine_Register` | `0x140199960` | ✅ ok |  | void(void) |
 | `Library_AchievementDefinition_vftable` | `0x1414113b0` | 📍 va |  | vftable of oCTLibrary<oe::dt::AchievementDefinition> singleton. |
 | `Library_ChallengeDefinition_vftable` | `0x141413010` | 📍 va |  | vftable of oCTLibrary<oe::dt::ChallengeDefinition> singleton. |
@@ -162,7 +162,7 @@ Total: **120** symbols across 15 categories.
 | `MapDef_RegisterAssetLoader` | `0x14032da00` | ✅ ok |  | void(void* assetClassDesc) |
 | `Registry_EnemyDefinition_desc` | `0x141470208` | 📍 va |  | Class registry descriptor for oCDtEnemyDefinition (set by registrar FUN_14022d940; UID … |
 | `Registry_EnemyTribeDefinition_desc` | `0x14146f938` | 📍 va |  | Class registry descriptor for oCDtEnemyTribeDefinition (registrar FUN_140189410; UID 0x… |
-| `RewardDef_RegisterAssetLoader` | `0x140323b60` | ❓ unverified |  | void(void* assetClassDesc) |
+| `RewardDef_RegisterAssetLoader` | `0x140324460` | ✅ ok |  | void(void* assetClassDesc) |
 
 ## netcode
 
@@ -186,7 +186,7 @@ Total: **120** symbols across 15 categories.
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `Definitions_LoadGroup` | `0x14030fa00` | ❓ unverified |  | Loads the 'Definitions' group / VersionDefinition manifest (triggers loading the curate… |
-| `InitialLoading_LoadAllDefinitions` | `0x14030fa00` | ❓ unverified |  | void(void* nameFilter) |
+| `InitialLoading_LoadAllDefinitions` | `0x140260b80` | ✅ ok |  | void(void* nameFilter) |
 | `Registry_EnumInstances` | `0x1402452a0` | ✅ ok | ✔ | void*(void* unused, void* out3, void** classDescPtr) |
 | `Registry_RegisterInstance` | `0x1403183ef` | ❓ unverified |  | void(void* definition) |
 | `ResourceRef_Resolve` | `0x1404a51d0` | ✅ ok |  | void(void* refBlock, void* classDesc, void** outResolved, void* policy) |
@@ -198,10 +198,10 @@ Total: **120** symbols across 15 categories.
 |------|---------|--------|----------|------------------|
 | `CustomFlagList_ContainsAll` | `0x140682810` | ✅ ok |  | bool(void* flagListA, void* flagListB) |
 | `CustomFlagList_ContainsAny` | `0x140682930` | ✅ ok |  | bool(void* flagListA, void* flagListB) |
-| `RewardDef_Deserialize` | `0x140323bc0` | ❓ unverified |  | bool(void* rewardDef, void* reader) |
+| `RewardDef_Deserialize` | `0x1403244c0` | ✅ ok |  | bool(void* rewardDef, void* reader) |
 | `RewardItem_Serialize` | `0x14032e480` | ✅ ok |  | bool(void* oCItem, void* reader) |
 | `RewardSelectorSettings_Serialize` | `0x14034b4c0` | ✅ ok |  | bool(void* settings, void* reader) |
-| `RewardType_Serialize` | `0x140323960` | ❓ unverified |  | bool(void* oCType, void* reader) |
+| `RewardType_Serialize` | `0x140324260` | ✅ ok |  | bool(void* oCType, void* reader) |
 | `Reward_GenerateAndDistribute` | `0x1401ecd10` | ✅ ok |  | void(void* mapSceneContext) |
 | `Reward_InitAllRewards` | `0x1401e9800` | ✅ ok |  | _InitAllRewards (7351 bytes): reward-type registrar. The actual reward roller is a sibl… |
 

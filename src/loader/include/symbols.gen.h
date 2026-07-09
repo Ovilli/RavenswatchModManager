@@ -57,7 +57,7 @@ constexpr std::uintptr_t ResourceRef_Serialize = 0x1401cbba0ull;
 constexpr const char* ResourceRef_Serialize_Pattern = "ResourceRef_Serialize";
 constexpr std::uintptr_t Serializer_GetClassVersion = 0x140514570ull;
 constexpr const char* Serializer_GetClassVersion_Pattern = "Serializer_GetClassVersion";
-constexpr std::uintptr_t Serializer_ReadPolyPtrVector = 0x14020d700ull;
+constexpr std::uintptr_t Serializer_ReadPolyPtrVector = 0x14020e000ull;
 constexpr const char* Serializer_ReadPolyPtrVector_Pattern = "Serializer_ReadPolyPtrVector";
 constexpr std::uintptr_t ServiceRegistry_Global = 0x14146f740ull;
 constexpr std::uintptr_t StringVector_Serialize = 0x140684f30ull;
@@ -78,7 +78,7 @@ constexpr std::uintptr_t Entity_FindMagicalObjectComponent = 0x1406fb8a2ull;
 constexpr const char* Entity_FindMagicalObjectComponent_Pattern = "Entity_FindMagicalObjectComponent";
 constexpr std::uintptr_t Entity_GainHealthHandler = 0x1403a7710ull;
 constexpr const char* Entity_GainHealthHandler_Pattern = "Entity_GainHealthHandler";
-constexpr std::uintptr_t Entity_ModifyHealth = 0x140399a10ull;
+constexpr std::uintptr_t Entity_ModifyHealth = 0x14039a320ull;
 constexpr const char* Entity_ModifyHealth_Pattern = "Entity_ModifyHealth";
 constexpr std::uintptr_t Entity_ResolveAttackHits = 0x1403ea610ull;
 constexpr const char* Entity_ResolveAttackHits_Pattern = "Entity_ResolveAttackHits";
@@ -134,7 +134,7 @@ constexpr const char* NamedEvent_NetSendToPeer_Pattern = "NamedEvent_NetSendToPe
 // --- heroes ---
 constexpr std::uintptr_t HeroDef_LoadBaseEntity = 0x140329660ull;
 constexpr const char* HeroDef_LoadBaseEntity_Pattern = "HeroDef_LoadBaseEntity";
-constexpr std::uintptr_t HeroDef_LoadSkinEntity = 0x14031e140ull;
+constexpr std::uintptr_t HeroDef_LoadSkinEntity = 0x14028e5f0ull;
 constexpr const char* HeroDef_LoadSkinEntity_Pattern = "HeroDef_LoadSkinEntity";
 
 // --- items ---
@@ -157,9 +157,9 @@ constexpr const char* MagicalObject_SpawnContainingFunc_Pattern = "MagicalObject
 constexpr std::uintptr_t g_MagicalObjectPool = 0x1414365d0ull;
 
 // --- library ---
-constexpr std::uintptr_t Definition_DeserializeBase = 0x140316470ull;
+constexpr std::uintptr_t Definition_DeserializeBase = 0x140310180ull;
 constexpr const char* Definition_DeserializeBase_Pattern = "Definition_DeserializeBase";
-constexpr std::uintptr_t GameModifierDef_RegisterAssetLoader = 0x1403257b0ull;
+constexpr std::uintptr_t GameModifierDef_RegisterAssetLoader = 0x1403260b0ull;
 constexpr const char* GameModifierDef_RegisterAssetLoader_Pattern = "GameModifierDef_RegisterAssetLoader";
 constexpr std::uintptr_t HasGameModifierStateMachine_Register = 0x140199960ull;
 constexpr const char* HasGameModifierStateMachine_Register_Pattern = "HasGameModifierStateMachine_Register";
@@ -182,7 +182,7 @@ constexpr std::uintptr_t MapDef_RegisterAssetLoader = 0x14032da00ull;
 constexpr const char* MapDef_RegisterAssetLoader_Pattern = "MapDef_RegisterAssetLoader";
 constexpr std::uintptr_t Registry_EnemyDefinition_desc = 0x141470208ull;
 constexpr std::uintptr_t Registry_EnemyTribeDefinition_desc = 0x14146f938ull;
-constexpr std::uintptr_t RewardDef_RegisterAssetLoader = 0x140323b60ull;
+constexpr std::uintptr_t RewardDef_RegisterAssetLoader = 0x140324460ull;
 constexpr const char* RewardDef_RegisterAssetLoader_Pattern = "RewardDef_RegisterAssetLoader";
 
 // --- netcode ---
@@ -205,7 +205,7 @@ constexpr std::uintptr_t g_GameOptions = 0x141436510ull;
 // --- resource ---
 constexpr std::uintptr_t Definitions_LoadGroup = 0x14030fa00ull;
 constexpr const char* Definitions_LoadGroup_Pattern = "Definitions_LoadGroup";
-constexpr std::uintptr_t InitialLoading_LoadAllDefinitions = 0x14030fa00ull;
+constexpr std::uintptr_t InitialLoading_LoadAllDefinitions = 0x140260b80ull;
 constexpr const char* InitialLoading_LoadAllDefinitions_Pattern = "InitialLoading_LoadAllDefinitions";
 constexpr std::uintptr_t Registry_EnumInstances = 0x1402452a0ull;
 constexpr const char* Registry_EnumInstances_Pattern = "Registry_EnumInstances";
@@ -221,13 +221,13 @@ constexpr std::uintptr_t CustomFlagList_ContainsAll = 0x140682810ull;
 constexpr const char* CustomFlagList_ContainsAll_Pattern = "CustomFlagList_ContainsAll";
 constexpr std::uintptr_t CustomFlagList_ContainsAny = 0x140682930ull;
 constexpr const char* CustomFlagList_ContainsAny_Pattern = "CustomFlagList_ContainsAny";
-constexpr std::uintptr_t RewardDef_Deserialize = 0x140323bc0ull;
+constexpr std::uintptr_t RewardDef_Deserialize = 0x1403244c0ull;
 constexpr const char* RewardDef_Deserialize_Pattern = "RewardDef_Deserialize";
 constexpr std::uintptr_t RewardItem_Serialize = 0x14032e480ull;
 constexpr const char* RewardItem_Serialize_Pattern = "RewardItem_Serialize";
 constexpr std::uintptr_t RewardSelectorSettings_Serialize = 0x14034b4c0ull;
 constexpr const char* RewardSelectorSettings_Serialize_Pattern = "RewardSelectorSettings_Serialize";
-constexpr std::uintptr_t RewardType_Serialize = 0x140323960ull;
+constexpr std::uintptr_t RewardType_Serialize = 0x140324260ull;
 constexpr const char* RewardType_Serialize_Pattern = "RewardType_Serialize";
 constexpr std::uintptr_t Reward_GenerateAndDistribute = 0x1401ecd10ull;
 constexpr const char* Reward_GenerateAndDistribute_Pattern = "Reward_GenerateAndDistribute";

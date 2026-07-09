@@ -89,3 +89,5 @@ docs/_re/out/text_section.bin
 docs/_re/out/text_section.json
 docs/_re/out_new/
 data/.symbol_remap.json
+docs/_re/out_new/candidates/
+docs/_re/out_new/candidates2/

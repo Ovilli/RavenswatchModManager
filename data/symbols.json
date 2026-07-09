@@ -795,8 +795,8 @@
    "name": "Entity_ModifyHealth",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_140399a10",
-   "status": "unverified",
+   "raw": "FUN_14039a320",
+   "status": "ok",
    "signature": "void(oCEntity* hero, float delta, oCCustomFlagList* sourceTags)",
    "cabi": {
     "ret": "void",
@@ -806,7 +806,7 @@
      "void*"
     ]
    },
-   "note": "Core HP-modification routine on the hero CHARACTER object (delta>0 heals, delta<0 damages) \u2014 the engine's own heal/damage primitive, with clamping, the UI mirror write, analytics submit, and the gained/lost named-event cascade. IMPORTANT: hero is NOT the bus dispatcher and NOT dispatcher-0x4d8 (that was a wrong guess that crashed; the dispatcher and the hero character are separate heap objects). The hero is baked into each event subscription as the handler's param_1 \u2014 capture it by hooking a hero-bound handler (Entity_GainHealthHandler / Entity_GiveHandler, both param_1=hero, pointer-only sigs). HERO HEALTH LAYOUT: current HP f32 @hero+0x15c8, max HP f32 @hero+0x15cc, missing-health ratio @+0x15d0, UI/display mirror pointer @hero+0x1d80 (the routine writes new HP to both +0x15c8 and *(*(hero+0x1d80))). HERO-ONLY \u2014 DO NOT call on enemies: param_1+0x1d80 (the HUD mirror) is dereferenced UNCONDITIONALLY for any nonzero delta (`**(param_1+0x1d80)=newHP`, plus `*(*(param_1+0x1d80)+0x10)` on heal and a +0x1db0 secondary mirror) \u2014 an enemy/non-player entity has no HUD mirror there, so calling this on one access-violates. Enemy damage must use a different path (the hit-data network-damage event NamedEvent_EmitNetworkDamageFromHit / oCGameNamedEventNetworkDamage, which carries a full oCEntityHitData), NOT this routine. R.combat is therefore correctly hero-scoped. sourceTags = an oCCustomFlagList ctx (vftable @va 0x140efc320, then {list=0, count=0}); an EMPTY flag list {vftable,0,0} is accepted. Verified by decompiling the inbound GAIN_HEALTH handler FUN_1403993f0, which calls this twice: damage = ModifyHealth(hero, -amt, tags{'Damage'}), heal = ModifyHealth(hero, +amt, tags). Exposed via R.entity / R.combat in rsmm.lua. Float arg requires the (ptr,float,ptr) prototype added to fn_call.cpp. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.]",
+   "note": "Core HP-modification routine on the hero CHARACTER object (delta>0 heals, delta<0 damages) \u2014 the engine's own heal/damage primitive, with clamping, the UI mirror write, analytics submit, and the gained/lost named-event cascade. IMPORTANT: hero is NOT the bus dispatcher and NOT dispatcher-0x4d8 (that was a wrong guess that crashed; the dispatcher and the hero character are separate heap objects). The hero is baked into each event subscription as the handler's param_1 \u2014 capture it by hooking a hero-bound handler (Entity_GainHealthHandler / Entity_GiveHandler, both param_1=hero, pointer-only sigs). HERO HEALTH LAYOUT: current HP f32 @hero+0x15c8, max HP f32 @hero+0x15cc, missing-health ratio @+0x15d0, UI/display mirror pointer @hero+0x1d80 (the routine writes new HP to both +0x15c8 and *(*(hero+0x1d80))). HERO-ONLY \u2014 DO NOT call on enemies: param_1+0x1d80 (the HUD mirror) is dereferenced UNCONDITIONALLY for any nonzero delta (`**(param_1+0x1d80)=newHP`, plus `*(*(param_1+0x1d80)+0x10)` on heal and a +0x1db0 secondary mirror) \u2014 an enemy/non-player entity has no HUD mirror there, so calling this on one access-violates. Enemy damage must use a different path (the hit-data network-damage event NamedEvent_EmitNetworkDamageFromHit / oCGameNamedEventNetworkDamage, which carries a full oCEntityHitData), NOT this routine. R.combat is therefore correctly hero-scoped. sourceTags = an oCCustomFlagList ctx (vftable @va 0x140efc320, then {list=0, count=0}); an EMPTY flag list {vftable,0,0} is accepted. Verified by decompiling the inbound GAIN_HEALTH handler FUN_1403993f0, which calls this twice: damage = ModifyHealth(hero, -amt, tags{'Damage'}), heal = ModifyHealth(hero, +amt, tags). Exposed via R.entity / R.combat in rsmm.lua. Float arg requires the (ptr,float,ptr) prototype added to fn_call.cpp. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered \u2014 (hero,float) sig, heal/damage sign-branch, hero+0x1d80 carrier, decompile-verified.]",
    "refs": [
     "src/loader/lib/rsmm.lua",
     "src/loader/src/fn_call.cpp"
@@ -969,10 +969,10 @@
    "name": "GameModifierDef_RegisterAssetLoader",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_1403257b0",
-   "status": "unverified",
+   "raw": "FUN_1403260b0",
+   "status": "ok",
    "signature": "void(void* assetClassDesc)",
-   "note": "Registers the '*.gamemodifierdef.ot' asset glob -> GameModifierDefinition library loader (label 'Game modifier definition'); calls generic glob-register FUN_1404a2190. Proves modifier defs are file-additive (new def file auto-registers, no machinery). Address not pattern-confirmed across updates. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.]",
+   "note": "Registers the '*.gamemodifierdef.ot' asset glob -> GameModifierDefinition library loader (label 'Game modifier definition'); calls generic glob-register FUN_1404a2190. Proves modifier defs are file-additive (new def file auto-registers, no machinery). Address not pattern-confirmed across updates. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via string/hash anchor.]",
    "refs": [
     "docs/_re/kinds/game-modifiers.md"
    ]
@@ -1006,10 +1006,10 @@
    "name": "RewardDef_RegisterAssetLoader",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_140323b60",
-   "status": "unverified",
+   "raw": "FUN_140324460",
+   "status": "ok",
    "signature": "void(void* assetClassDesc)",
-   "note": "Registers the '*.rewarddef.ot' asset glob -> oCDtRewardDefinition library loader (label 'Reward definition'). Reward defs are the level-up / chest offer pool; codec = cooked_schemas.definitions rewarddef.json. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.]",
+   "note": "Registers the '*.rewarddef.ot' asset glob -> oCDtRewardDefinition library loader (label 'Reward definition'). Reward defs are the level-up / chest offer pool; codec = cooked_schemas.definitions rewarddef.json. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via string/hash anchor.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -1114,10 +1114,10 @@
    "name": "HeroDef_LoadSkinEntity",
    "kind": "function",
    "category": "heroes",
-   "raw": "FUN_14031e140",
-   "status": "unverified",
+   "raw": "FUN_14028e5f0",
+   "status": "ok",
    "signature": "void(void* heroDef, uint16_t skinIndex, void* outHandle)",
-   "note": "Lazy loader for a hero SKIN entity, called in 'Level load - LoadAndGetPlayedHeroEntity' with (herodef, skinIdx u16) pairs. Skin spec table @herodef+0x8f8 (array of spec ptrs), count @+0x900; out-of-range index warns and falls back to 0. Spec layout mirrors the base-entity spec at different offsets: path @spec+0x1c0, second path @+0x1d0, package ctx @+0x1e0, loaded flag @+0x1e8, cached entity @+0x1f0. Complements the baked roster count in FUN_1401dcae0 (hook_skins.cpp): the count gates the UI, THIS table is what actually loads a skin. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.]",
+   "note": "Lazy loader for a hero SKIN entity, called in 'Level load - LoadAndGetPlayedHeroEntity' with (herodef, skinIdx u16) pairs. Skin spec table @herodef+0x8f8 (array of spec ptrs), count @+0x900; out-of-range index warns and falls back to 0. Spec layout mirrors the base-entity spec at different offsets: path @spec+0x1c0, second path @+0x1d0, package ctx @+0x1e0, loaded flag @+0x1e8, cached entity @+0x1f0. Complements the baked roster count in FUN_1401dcae0 (hook_skins.cpp): the count gates the UI, THIS table is what actually loads a skin. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via string/hash anchor.]",
    "refs": [
     "docs/_re/kinds/skins.md"
    ]
@@ -1184,10 +1184,10 @@
    "name": "Definition_DeserializeBase",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_140316470",
-   "status": "unverified",
+   "raw": "FUN_140310180",
+   "status": "ok",
    "signature": "bool(void* def, void* reader)",
-   "note": "oCDtDefinition (hash 0x1768ce8e) base deserialize, called first by every *def.ot deserializer: class version 0 = nothing, v1+ = two u8 bools into def+0x285 / def+0x284. These are the codec's base_a/base_b bytes. [2026-07-09: remap ambiguous/unbuildable pattern; not trusted.]",
+   "note": "oCDtDefinition (hash 0x1768ce8e) base deserialize, called first by every *def.ot deserializer: class version 0 = nothing, v1+ = two u8 bools into def+0x285 / def+0x284. These are the codec's base_a/base_b bytes. [2026-07-09: remap ambiguous/unbuildable pattern; not trusted.] [2026-07-09: recovered via hash/decompile verification.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -1196,10 +1196,10 @@
    "name": "RewardDef_Deserialize",
    "kind": "function",
    "category": "rewards",
-   "raw": "FUN_140323bc0",
-   "status": "unverified",
+   "raw": "FUN_1403244c0",
+   "status": "ok",
    "signature": "bool(void* rewardDef, void* reader)",
-   "note": "oCDtRewardDefinition::Deserialize (vftable slot 3, hash 0x176f164e): Definition_DeserializeBase, then Serializer_ReadPolyPtrVector into def+0x288 (the oCType row vector the roll iterates), then v1+: one u8 bool. Full cooked grammar in docs/_re/kinds/rewards.md. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.]",
+   "note": "oCDtRewardDefinition::Deserialize (vftable slot 3, hash 0x176f164e): Definition_DeserializeBase, then Serializer_ReadPolyPtrVector into def+0x288 (the oCType row vector the roll iterates), then v1+: one u8 bool. Full cooked grammar in docs/_re/kinds/rewards.md. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via hash/decompile verification.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -1208,10 +1208,10 @@
    "name": "RewardType_Serialize",
    "kind": "function",
    "category": "rewards",
-   "raw": "FUN_140323960",
-   "status": "unverified",
+   "raw": "FUN_140324260",
+   "status": "ok",
    "signature": "bool(void* oCType, void* reader)",
-   "note": "RewardDefInternal::oCType serialize (hash 0x176f4fdc): poly-ptr vector of oCItem sub-object ids into this+0x8/count+0x10; v0 legacy f32; v1+: u8 use-float flag -> either u32 count (writes BOTH +0x18 and +0x1c) or legacy f32; v2+: u32 min_count @+0x18, u32 max_count @+0x1c. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.]",
+   "note": "RewardDefInternal::oCType serialize (hash 0x176f4fdc): poly-ptr vector of oCItem sub-object ids into this+0x8/count+0x10; v0 legacy f32; v1+: u8 use-float flag -> either u32 count (writes BOTH +0x18 and +0x1c) or legacy f32; v2+: u32 min_count @+0x18, u32 max_count @+0x1c. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via hash/decompile verification.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -1268,10 +1268,10 @@
    "name": "Serializer_ReadPolyPtrVector",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_14020d700",
-   "status": "unverified",
+   "raw": "FUN_14020e000",
+   "status": "ok",
    "signature": "bool(void* reader, void* vec, const char* label)",
-   "note": "Reads a vector of polymorphic sub-object pointers: u32 count (0xaabb1111 sentinel = optional inline class-header {lstr name, u32 x2} first \u2014 not hit in cooked files, where sub-objects live in their own sections referenced by u32 sub-object id), then per element reader-vtbl+0xa8 poly resolve. Count clamped to 1,000,000. Write path labels 'Vector.Length' / 'Vector[%d]'. Vec layout {data @+0x0, u32 size @+0x8, u32 cap @+0xc}. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.]",
+   "note": "Reads a vector of polymorphic sub-object pointers: u32 count (0xaabb1111 sentinel = optional inline class-header {lstr name, u32 x2} first \u2014 not hit in cooked files, where sub-objects live in their own sections referenced by u32 sub-object id), then per element reader-vtbl+0xa8 poly resolve. Count clamped to 1,000,000. Write path labels 'Vector.Length' / 'Vector[%d]'. Vec layout {data @+0x0, u32 size @+0x8, u32 cap @+0xc}. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via hash/decompile verification.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -1488,10 +1488,10 @@
    "name": "InitialLoading_LoadAllDefinitions",
    "kind": "function",
    "category": "resource",
-   "raw": "FUN_14030fa00",
-   "status": "unverified",
+   "raw": "FUN_140260b80",
+   "status": "ok",
    "signature": "void(void* nameFilter)",
-   "note": "Boot stage 'InitialLoading - Load all definitions'. Loads Versions/LiveOps5.versiondef.ot first, then directory-scans the 'Definitions' folder of the resource FS (index = UsedRscList.ot) and loads EVERY definition file found except 7 excluded classes (tribe class among them; tribes load lazily when an enemy tribe_ref resolves). This is why a custom .enemydef.ot registered in UsedRscList loads at boot with no further reference needed. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.]",
+   "note": "Boot stage 'InitialLoading - Load all definitions'. Loads Versions/LiveOps5.versiondef.ot first, then directory-scans the 'Definitions' folder of the resource FS (index = UsedRscList.ot) and loads EVERY definition file found except 7 excluded classes (tribe class among them; tribes load lazily when an enemy tribe_ref resolves). This is why a custom .enemydef.ot registered in UsedRscList loads at boot with no further reference needed. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via string/hash anchor.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
