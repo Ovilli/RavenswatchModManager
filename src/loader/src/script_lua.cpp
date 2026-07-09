@@ -164,6 +164,47 @@ int lua_state_write(lua_State* L) {
     return 1;
 }
 
+// rsmm._internal.intent_write(op, mod_id) -> bool
+//   Append a mod-lifecycle intent for the HOST-side CLI to consume (the game
+//   runs under Proton; the loader cannot shell out to rsmm in-process). One
+//   JSON object per line in <cooking>/.rsmm_intents.jsonl, next to
+//   .rsmm_state.json; `rsmm intents apply` executes + clears it. The op
+//   allowlist and the mod-id shape are validated HERE so a misbehaving mod
+//   cannot turn the intent file into an arbitrary-write primitive.
+int lua_intent_write(lua_State* L) {
+    static const char* kOps[] = { "enable", "disable", "uninstall" };
+    const char* op = luaL_checkstring(L, 1);
+    const char* mod = luaL_checkstring(L, 2);
+    bool op_ok = false;
+    for (const char* k : kOps) op_ok = op_ok || std::strcmp(op, k) == 0;
+    size_t mlen = std::strlen(mod);
+    bool mod_ok = mlen > 0 && mlen < 64;
+    for (size_t i = 0; mod_ok && i < mlen; ++i) {
+        char c = mod[i];
+        mod_ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                 (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.';
+    }
+    if (mod_ok && (mod[0] == '.' || std::strstr(mod, "..") != nullptr)) mod_ok = false;
+    if (!op_ok || !mod_ok) {
+        Loader::get().log(std::string("[intents] rejected op='") + op + "' mod='" + mod + "'");
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+    const auto path = Loader::get().game_dir() / "DarkTalesResources" / "_Cooking"
+                    / ".rsmm_intents.jsonl";
+    nlohmann::json line = {
+        {"op", op},
+        {"mod", mod},
+        {"ts", static_cast<std::uint64_t>(GetTickCount64())},
+    };
+    std::ofstream f(path, std::ios::binary | std::ios::app);
+    if (!f) { lua_pushboolean(L, 0); return 1; }
+    f << line.dump() << "\n";
+    lua_pushboolean(L, f.good() ? 1 : 0);
+    Loader::get().log(std::string("[intents] queued ") + op + " " + mod);
+    return 1;
+}
+
 // rsmm.tags([mod_id]) -> table
 //   Parsed tags.json for the given mod (default: the calling mod). Returns
 //   { tag_id = { "member", ... }, ... }, or an empty table if none.
@@ -697,6 +738,7 @@ void register_api(lua_State* L) {
         { "write_f64",               lua_write_f64 },
         { "state_read",              lua_state_read },
         { "state_write",             lua_state_write },
+        { "intent_write",            lua_intent_write },
         { nullptr, nullptr }
     };
     luaL_newlib(L, public_lib);          // -1 = rsmm

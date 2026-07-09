@@ -16,6 +16,20 @@ inline Analytics_SubmitNamedEvent_fn Analytics_SubmitNamedEvent() {
     return reinterpret_cast<Analytics_SubmitNamedEvent_fn>(rsmm::fn_resolve(Sym::Analytics_SubmitNamedEvent_Pattern));
 }
 
+// BookController_ResolveSettings  (FUN_140307d30)
+//   void(oCDtEntityCpnt3DBookController* self)
+using BookController_ResolveSettings_fn = void(*)(void*);
+inline BookController_ResolveSettings_fn BookController_ResolveSettings() {
+    return reinterpret_cast<BookController_ResolveSettings_fn>(rsmm::fn_resolve(Sym::BookController_ResolveSettings_Pattern));
+}
+
+// BookController_ResolveTabs  (FUN_1403083d0)
+//   void(oCDtEntityCpnt3DBookController* self)
+using BookController_ResolveTabs_fn = void(*)(void*);
+inline BookController_ResolveTabs_fn BookController_ResolveTabs() {
+    return reinterpret_cast<BookController_ResolveTabs_fn>(rsmm::fn_resolve(Sym::BookController_ResolveTabs_Pattern));
+}
+
 // EntityValue_Get  (FUN_1403c71e0)
 //   void(void* valueCtx, oCEntityValueUnion* out, uint32_t crcKey)
 using EntityValue_Get_fn = void(*)(void*, void*, uint32_t);
@@ -244,6 +258,20 @@ inline SkinGrid_Populate_fn SkinGrid_Populate() {
 using String_Assign_fn = void(*)(void*, const void*);
 inline String_Assign_fn String_Assign() {
     return reinterpret_cast<String_Assign_fn>(rsmm::fn_resolve(Sym::String_Assign_Pattern));
+}
+
+// UiButton_InputPoll  (FUN_1407d6210)
+//   void(void* task, ButtonUiCpntArray* cpnts)
+using UiButton_InputPoll_fn = void(*)(void*, void*);
+inline UiButton_InputPoll_fn UiButton_InputPoll() {
+    return reinterpret_cast<UiButton_InputPoll_fn>(rsmm::fn_resolve(Sym::UiButton_InputPoll_Pattern));
+}
+
+// UiButton_PressCommit  (FUN_14069f8e0)
+//   void(oCUINavigableZoneDesc* widget)
+using UiButton_PressCommit_fn = void(*)(void*);
+inline UiButton_PressCommit_fn UiButton_PressCommit() {
+    return reinterpret_cast<UiButton_PressCommit_fn>(rsmm::fn_resolve(Sym::UiButton_PressCommit_Pattern));
 }
 
 // Vector_Grow  (FUN_140154c20)

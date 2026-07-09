@@ -84,6 +84,13 @@ if ((Test-Path $winhttp_real) -and (Is-Doorstop $winhttp_real)) {
 
 Copy-Item -Path $dll -Destination $winhttp -Force
 Copy-Item -Path (Join-Path $repoDir 'data\asset_map.json') -Destination (Join-Path $GameDir 'asset_map.json') -Force
+$dataDst = Join-Path $GameDir 'rsmm\data'
+New-Item -ItemType Directory -Path $dataDst -Force | Out-Null
+Copy-Item -Path (Join-Path $repoDir 'data\function_patterns.json') -Destination (Join-Path $dataDst 'function_patterns.json') -Force
+$patternsMeta = Join-Path $repoDir 'data\function_patterns.meta.json'
+if (Test-Path $patternsMeta) {
+  Copy-Item -Path $patternsMeta -Destination (Join-Path $dataDst 'function_patterns.meta.json') -Force
+}
 
 # Lua-side SDK: mods do `require "rsmm"` and get the documented R.* surface.
 $luaSrc = Join-Path $repoDir 'src\loader\lua'

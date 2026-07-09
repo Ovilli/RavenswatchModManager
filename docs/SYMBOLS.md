@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **116** symbols across 14 categories.
+Total: **120** symbols across 15 categories.
 
 ## enemies
 
@@ -196,3 +196,12 @@ Total: **116** symbols across 14 categories.
 | `SkinGrid_Populate` | `0x1401f0f10` | ✅ ok | ✔ | void(void* ctx, void* arg) |
 | `SkinRoster_Build` | `0x1401dcae0` | ✅ ok |  | Skin-pack roster builder. Selectable-skin count (9) is baked into its loop; a new selec… |
 | `g_RosterManager` | `0x141436590` | 📍 va |  | Manager pointer global (relocated by the live image base) walked by the skin-grid popul… |
+
+## ui
+
+| name | address | status | callable | signature / note |
+|------|---------|--------|----------|------------------|
+| `BookController_ResolveSettings` | `0x140307d30` | ✅ ok | ✔ | void(oCDtEntityCpnt3DBookController* self) |
+| `BookController_ResolveTabs` | `0x1403083d0` | ✅ ok | ✔ | void(oCDtEntityCpnt3DBookController* self) |
+| `UiButton_InputPoll` | `0x1407d6210` | ✅ ok | ✔ | void(void* task, ButtonUiCpntArray* cpnts) |
+| `UiButton_PressCommit` | `0x14069f8e0` | ✅ ok | ✔ | void(oCUINavigableZoneDesc* widget) |

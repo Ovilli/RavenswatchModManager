@@ -92,6 +92,24 @@ def _sync_lua_and_manifest(game_dir: Path, log) -> int:
     return updated
 
 
+def _consume_intents(game_dir: Path, dry_run: bool, log) -> None:
+    """In-game mod-menu intents (see cmd_intents): when the loader has queued
+    enable/disable/uninstall requests, execute them so the change lands on
+    the next game start without the user touching the CLI."""
+    intents = game_dir / "DarkTalesResources" / "_Cooking" / ".rsmm_intents.jsonl"
+    try:
+        if not intents.is_file() or intents.stat().st_size == 0:
+            return
+    except OSError:
+        return
+    if dry_run:
+        log(f"  ! pending in-game intents at {intents} (skipped: --dry-run)")
+        return
+    cmd = self_cmd(["intents", "apply", "--game-dir", str(game_dir)])
+    log(f"  + in-game intents pending; running: {' '.join(cmd)}")
+    subprocess.call(cmd)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description="Watch mods/ + rebuild + reapply on change"
@@ -130,6 +148,7 @@ def main() -> int:
 
     while not stopped:
         time.sleep(args.interval)
+        _consume_intents(args.game_dir, args.dry_run, log)
         cur = _scan(roots)
         if cur == last:
             continue

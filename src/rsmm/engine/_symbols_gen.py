@@ -6,6 +6,8 @@ PREFERRED_BASE = 0x140000000
 # name -> preferred-base address
 ADDR: dict[str, int] = {
     "Analytics_SubmitNamedEvent": 0x1401fa470,
+    "BookController_ResolveSettings": 0x140307d30,
+    "BookController_ResolveTabs": 0x1403083d0,
     "ClassRegistry_FindByKey": 0x14050b2d0,
     "ClassRegistry_Global": 0x141436690,
     "Crc32_TableInit": 0x14051df80,
@@ -113,6 +115,8 @@ ADDR: dict[str, int] = {
     "SkinRoster_Build": 0x1401dcae0,
     "StringVector_Serialize": 0x14066c3e0,
     "String_Assign": 0x1405288b0,
+    "UiButton_InputPoll": 0x1407d6210,
+    "UiButton_PressCommit": 0x14069f8e0,
     "Vector_Grow": 0x140154c20,
     "g_GameOptions": 0x141436510,
     "g_MagicalObjectComponentMeta": 0x141470768,
@@ -126,6 +130,8 @@ ADDR: dict[str, int] = {
 # name -> function-pattern key (version-resilient), when available
 PATTERN: dict[str, str] = {
     "Analytics_SubmitNamedEvent": "FUN_1401fa470",
+    "BookController_ResolveSettings": "FUN_140307d30",
+    "BookController_ResolveTabs": "FUN_1403083d0",
     "ClassRegistry_FindByKey": "FUN_14050b2d0",
     "Crc32_TableInit": "FUN_14051df80",
     "CustomFlagFilter_Serialize": "FUN_140669fa0",
@@ -214,6 +220,8 @@ PATTERN: dict[str, str] = {
     "SkinRoster_Build": "FUN_1401dcae0",
     "StringVector_Serialize": "FUN_14066c3e0",
     "String_Assign": "FUN_1405288b0",
+    "UiButton_InputPoll": "FUN_1407d6210",
+    "UiButton_PressCommit": "FUN_14069f8e0",
     "Vector_Grow": "FUN_140154c20",
 }
 

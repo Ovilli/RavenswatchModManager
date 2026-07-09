@@ -30,6 +30,9 @@ Subcommands:
     rsmm json loader-flags set <js> write the enabled-flag list (JSON array;
                                     only safe flags are honoured) to
                                     <game>/rsmm_loader_flags.json
+    rsmm json update-data [--check] fetch + install the latest function-
+                                    pattern DB from the rolling pattern-db
+                                    release into <game>/rsmm/data/
 
 All commands emit a single JSON object/array on stdout (UTF-8, no trailing
 newline). Stderr is forwarded for diagnostics. Exit code is 0 on success.
@@ -339,6 +342,13 @@ LOADER_FLAGS: list[dict[str, Any]] = [
         "name": "RSMM_ENABLE_SPAWN_HOOK",
         "label": "Spawn trace (read-only)",
         "description": "Log live spawner vtables. Experimental; read-only.",
+        "safe": True,
+    },
+    {
+        "name": "RSMM_ENABLE_UI_HOOK",
+        "label": "UI button events",
+        "description": "Emit R.on(\"ui:press\") when a native UI button is "
+                       "clicked. Needed by mods that add in-game menu actions.",
         "safe": True,
     },
     {
@@ -1120,13 +1130,59 @@ def cmd_doctor() -> int:
                 })
                 break
 
+    # Structured game-update flag so the UI doesn't have to grep doctor's
+    # prose. True = the install changed since the last apply (Steam patch
+    # or file verify); a plain `apply` auto-recovers.
+    game_updated: bool | None = None
+    try:
+        from rsmm.engine.paths import game_fingerprint, load_stored_fingerprint
+
+        game_dir = find_game_dir()
+        if game_dir is not None:
+            stored = load_stored_fingerprint(game_dir)
+            if stored is not None:
+                game_updated = game_fingerprint(game_dir) != stored
+    except Exception:  # noqa: BLE001 — diagnostics must never break doctor
+        game_updated = None
+
     return _emit({
         "ok": proc.returncode == 0,
         "code": proc.returncode,
         "stdout": proc.stdout,
         "stderr": proc.stderr,
         "checks": checks,
+        "gameUpdated": game_updated,
     })
+
+
+def cmd_update_data(check_only: bool) -> int:
+    """
+    Check for (and by default install) a newer function-pattern DB from
+    the rolling `pattern-db` release — lets users pick up regenerated
+    engine-function patterns after a game update without a new app release.
+    """
+    game_dir = find_game_dir()
+    if game_dir is None:
+        return _emit({"ok": False, "status": "error",
+                      "error": "game directory not found"})
+    try:
+        from rsmm.engine.data_update import apply_update, check
+
+        state = check(game_dir)
+        if not check_only and state["status"] in ("update_available", "not_planted"):
+            state = apply_update(game_dir, state)
+        state.pop("_raw", None)
+        meta = state.get("remote_meta") or {}
+        return _emit({
+            "ok": True,
+            "status": state["status"],
+            "exeMatch": state["exe_match"],
+            "generated": meta.get("generated"),
+            "patternCount": meta.get("pattern_count"),
+            "plantedPath": state["planted_path"],
+        })
+    except Exception as e:  # noqa: BLE001 — bridge must always emit JSON
+        return _emit({"ok": False, "status": "error", "error": str(e)})
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1171,6 +1227,10 @@ def main(argv: list[str] | None = None) -> int:
     flags_sub.add_parser("get", help="list available flags + which are enabled")
     p_flags_set = flags_sub.add_parser("set", help="set the enabled-flag list")
     p_flags_set.add_argument("names_json", help="JSON array of flag names to enable")
+    p_upd = sub.add_parser("update-data",
+                           help="fetch + install the latest function-pattern DB")
+    p_upd.add_argument("--check", action="store_true",
+                       help="report status only, do not install")
 
     args = ap.parse_args(argv)
     if args.cmd == "list":
@@ -1216,6 +1276,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if args.cmd == "uninstall-mod":
         return cmd_uninstall_mod(args.mod_id)
+    if args.cmd == "update-data":
+        return cmd_update_data(args.check)
     if args.cmd == "loader-flags":
         if args.flags_cmd == "get":
             return cmd_loader_flags_get()

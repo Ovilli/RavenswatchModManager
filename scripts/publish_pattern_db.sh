@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Publish the regenerated pattern DB as a rolling GitHub release asset.
+#
+# data/function_patterns.json is gitignored (14MB, game-derived bytes), so
+# it cannot ride the repo. Instead it ships as assets on a rolling release
+# tagged `pattern-db`, which `rsmm update-data` on user machines polls and
+# plants into <game>/rsmm/data/ — no app release needed after a game patch.
+#
+# Workflow after a game update:
+#   python scripts/gen_function_patterns.py   # regenerates DB + meta stamp
+#   scripts/publish_pattern_db.sh             # pushes both to the tag
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+TAG=pattern-db
+DB=data/function_patterns.json
+META=data/function_patterns.meta.json
+
+[ -f "$DB" ] || { echo "missing $DB — run scripts/gen_function_patterns.py first" >&2; exit 1; }
+[ -f "$META" ] || { echo "missing $META — regen with the updated gen script (it stamps the meta)" >&2; exit 1; }
+
+# Sanity: meta must describe exactly this DB file.
+python3 - "$DB" "$META" <<'EOF'
+import hashlib, json, sys
+db, meta = sys.argv[1], sys.argv[2]
+m = json.load(open(meta))
+h = hashlib.sha256(open(db, "rb").read()).hexdigest()
+if m.get("patterns_sha256") != h:
+    sys.exit(f"meta patterns_sha256 does not match {db} — re-run gen_function_patterns.py")
+print(f"ok: {m['pattern_count']} patterns, generated {m['generated']}, "
+      f"game build {m['game_exe_sha256'][:12]}")
+EOF
+
+if ! gh release view "$TAG" >/dev/null 2>&1; then
+    gh release create "$TAG" --title "Pattern DB (rolling)" --notes \
+        "Rolling function-pattern database consumed by \`rsmm update-data\`. Assets are replaced in place after each game update; do not pin." \
+        --latest=false
+fi
+gh release upload "$TAG" "$DB" "$META" --clobber
+echo "published $DB + $META to release '$TAG'"

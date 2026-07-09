@@ -53,6 +53,9 @@ bool env_on(const char* name) {
 bool readable(const void* p, std::size_t size) {
     auto a = reinterpret_cast<std::uintptr_t>(p);
     if (a < 0x10000) return false;
+    // Reject non-canonical / wrapping ranges (sentinel qwords like -1):
+    // `a + size` wrapping made the loop run zero times => bogus `true`.
+    if (a >= 0x0000800000000000ull || size > 0x0000800000000000ull - a) return false;
     const DWORD ok = PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
                      PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY;
     for (std::uintptr_t x = a; x < a + size; ) {

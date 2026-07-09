@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sys
 import time
 from functools import cache
@@ -233,8 +234,59 @@ def mods_dir() -> Path:
 REPO_ROOT: Path     = _find_repo_root()
 DATA_DIR: Path      = REPO_ROOT / "data"
 DIST_DIR: Path      = REPO_ROOT / "dist"
-ASSET_MAP_JSON: Path = DATA_DIR / "asset_map.json"
-ASSET_MAP_CSV: Path  = DATA_DIR / "asset_map.csv"
+
+
+def user_data_dir() -> Path:
+    """Persistent per-user data directory for runtime-written files.
+
+    Honors `RSMM_DATA_DIR`, then falls back to the platform-standard
+    location (`%LOCALAPPDATA%\\rsmm` on Windows, XDG data home on Linux).
+    """
+    override = os.environ.get("RSMM_DATA_DIR", "").strip()
+    if override:
+        return Path(os.path.expandvars(override)).expanduser()
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~\\AppData\\Local")
+    else:
+        base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+    return Path(base) / "rsmm"
+
+
+def _resolve_asset_map_paths() -> tuple[Path, Path]:
+    """Pick where the asset map lives (and is rebuilt to).
+
+    In a source tree that's `data/` in the repo. In a PyInstaller-frozen
+    bundle `DATA_DIR` sits inside `_MEIPASS`, a temp dir wiped on process
+    exit — an asset map rebuilt there (game-update auto-recovery in
+    `apply`) would silently vanish and every later invocation would read
+    the stale build-time snapshot again. So frozen builds redirect the
+    map to `user_data_dir()`, seeded from the bundled copy on first run.
+    """
+    bundled_json = DATA_DIR / "asset_map.json"
+    bundled_csv = DATA_DIR / "asset_map.csv"
+    if not getattr(sys, "frozen", False):
+        return bundled_json, bundled_csv
+    data = user_data_dir() / "data"
+    user_json = data / "asset_map.json"
+    user_csv = data / "asset_map.csv"
+    if not user_json.exists():
+        if not bundled_json.exists():
+            return bundled_json, bundled_csv
+        try:
+            data.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(bundled_json, user_json)
+            if bundled_csv.exists():
+                shutil.copy2(bundled_csv, user_csv)
+        except OSError as e:
+            print(f"warning: cannot seed user asset map at {user_json}: {e}; "
+                  f"using the read-only bundled copy", file=sys.stderr)
+            return bundled_json, bundled_csv
+    return user_json, user_csv
+
+
+ASSET_MAP_JSON: Path
+ASSET_MAP_CSV: Path
+ASSET_MAP_JSON, ASSET_MAP_CSV = _resolve_asset_map_paths()
 GAME_VERSION_FINGERPRINT: str = ".rsmm_game_version.json"
 
 

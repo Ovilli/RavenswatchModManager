@@ -413,6 +413,10 @@ export interface DoctorCheck {
 
 export interface DoctorResult extends RunResult {
   checks: DoctorCheck[];
+  // True when the game install changed since the last apply (Steam patch
+  // or file verify) — mods are stale until the next apply, which
+  // auto-recovers. null/undefined = could not determine.
+  gameUpdated?: boolean | null;
 }
 
 interface ApplyOptions extends RsmmOptions {
@@ -504,6 +508,24 @@ export interface ConflictEntry {
 export const getConflicts = () => rsmm<ConflictEntry[]>(['conflicts']);
 
 export const doctor = () => rsmm<DoctorResult>(['doctor']);
+
+export interface UpdateDataResult {
+  ok: boolean;
+  status: 'up_to_date' | 'updated' | 'update_available' | 'not_planted' | 'error';
+  // Whether the remote DB was generated against the user's exact game build.
+  exeMatch?: boolean | null;
+  generated?: string | null;
+  patternCount?: number | null;
+  plantedPath?: string;
+  error?: string;
+}
+
+// Pulls the latest function-pattern DB (rolling `pattern-db` GitHub release)
+// into <game>/rsmm/data/ so the loader resolves engine functions after a
+// game patch without waiting for an app release. Safe to call every launch:
+// no-ops when already up to date, and any failure is reported, not thrown.
+export const updatePatternDb = (opts: { checkOnly?: boolean } = {}) =>
+  rsmm<UpdateDataResult>(opts.checkOnly ? ['update-data', '--check'] : ['update-data']);
 
 export interface LoaderFlag {
   name: string;

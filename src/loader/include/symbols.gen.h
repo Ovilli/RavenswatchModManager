@@ -241,4 +241,14 @@ constexpr std::uintptr_t SkinRoster_Build = 0x1401dcae0ull;
 constexpr const char* SkinRoster_Build_Pattern = "FUN_1401dcae0";
 constexpr std::uintptr_t g_RosterManager = 0x141436590ull;
 
+// --- ui ---
+constexpr std::uintptr_t BookController_ResolveSettings = 0x140307d30ull;
+constexpr const char* BookController_ResolveSettings_Pattern = "FUN_140307d30";
+constexpr std::uintptr_t BookController_ResolveTabs = 0x1403083d0ull;
+constexpr const char* BookController_ResolveTabs_Pattern = "FUN_1403083d0";
+constexpr std::uintptr_t UiButton_InputPoll = 0x1407d6210ull;
+constexpr const char* UiButton_InputPoll_Pattern = "FUN_1407d6210";
+constexpr std::uintptr_t UiButton_PressCommit = 0x14069f8e0ull;
+constexpr const char* UiButton_PressCommit_Pattern = "FUN_14069f8e0";
+
 }  // namespace Sym

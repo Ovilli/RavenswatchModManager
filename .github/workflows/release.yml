@@ -84,6 +84,21 @@ jobs:
         if: matrix.platform == 'windows-latest'
         uses: ilammy/msvc-dev-cmd@v1
 
+      - name: Fetch pattern DB (rolling pattern-db release)
+        shell: bash
+        # data/function_patterns.json is gitignored (game-derived), so the
+        # checkout never has it. Pull the latest published DB so released
+        # sidecars ship with a baseline; `rsmm update-data` refreshes it on
+        # user machines afterwards. Non-fatal: without it the loader falls
+        # back to rebased stored VAs.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download pattern-db --repo "$GITHUB_REPOSITORY" \
+            --pattern 'function_patterns*' --dir data --clobber
+          ls -la data/function_patterns* || true
+
       - name: Build rsmm sidecar (PyInstaller)
         shell: bash
         run: |
@@ -135,10 +150,14 @@ jobs:
             --add-data "${ROOT}/src/loader/lua${SEP}src/loader/lua"
             --add-data "${ROOT}/src/loader/lib${SEP}src/loader/lib"
           )
-          # function_patterns.json is gitignored (regenerable, 20MB) — bundle
-          # if present, otherwise the loader DLL will regenerate on first use.
+          # function_patterns.json is gitignored (game-derived, ~14MB) —
+          # fetched from the rolling pattern-db release in the step above;
+          # bundle it + its meta stamp if the fetch succeeded.
           if [ -f "${ROOT}/data/function_patterns.json" ]; then
             ADD_DATA+=(--add-data "${ROOT}/data/function_patterns.json${SEP}data")
+          fi
+          if [ -f "${ROOT}/data/function_patterns.meta.json" ]; then
+            ADD_DATA+=(--add-data "${ROOT}/data/function_patterns.meta.json${SEP}data")
           fi
           # schemas/ + templates/ are optional dev assets — bundle if present.
           if [ -d "${ROOT}/data/schemas" ]; then

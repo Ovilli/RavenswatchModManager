@@ -418,13 +418,14 @@ bool install_item_hooks() {
 
     // Locate SpawnAllObjects by resolving its containing function
     // FUN_1402586f0 (which IS in function_patterns.json) and adding the
-    // internal offset +0x70.  Fall back to runtime relocation if pattern
-    // resolution is unavailable.
+    // internal offset +0x70. If the pattern no longer resolves, the game was
+    // likely patched; do not fall back to a baked VA because it may now point
+    // at unrelated code.
     std::uintptr_t spawn_va = fn_resolve("FUN_1402586f0");
     if (spawn_va == 0 || spawn_va == static_cast<std::uintptr_t>(-1)) {
         Loader::get().log("[item-hook] FUN_1402586f0 pattern not found; "
-                          "falling back to runtime relocation");
-        spawn_va = reloc(kSpawnAllObjectsVA);
+                          "disabled until function_patterns.json is regenerated");
+        return false;
     } else {
         spawn_va += kSpawnEntryOffset;
         if (!fn_verify("FUN_1402586f0", spawn_va - kSpawnEntryOffset)) {

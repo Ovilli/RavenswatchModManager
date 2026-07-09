@@ -39,6 +39,11 @@ def menu_bytes() -> bytes:
     if dec is None:
         pytest.skip("Main_Book_Menu not in asset map")
     p = root / Path(*rev[dec].replace("\\", "/").split("/"))
+    # Prefer the pristine backup — the live file may carry the RSMMMenu
+    # override (which retargets the very string this module asserts on).
+    bak = p.with_name(p.name + ".rsmm.bak")
+    if bak.is_file():
+        return bak.read_bytes()
     if not p.is_file():
         pytest.skip("Main_Book_Menu cooked file missing")
     return p.read_bytes()

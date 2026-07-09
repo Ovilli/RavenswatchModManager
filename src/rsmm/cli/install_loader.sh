@@ -86,6 +86,9 @@ install -m 0644 "$DLL" "$GAME_DIR/winhttp.dll"
 install -m 0644 "$REPO_DIR/data/asset_map.json" "$GAME_DIR/asset_map.json"
 install -d "$GAME_DIR/rsmm/data"
 install -m 0644 "$REPO_DIR/data/function_patterns.json" "$GAME_DIR/rsmm/data/function_patterns.json"
+if [ -f "$REPO_DIR/data/function_patterns.meta.json" ]; then
+    install -m 0644 "$REPO_DIR/data/function_patterns.meta.json" "$GAME_DIR/rsmm/data/function_patterns.meta.json"
+fi
 
 # Lua-side SDK: mods do `require "rsmm"` and get the documented R.* surface.
 # The require entrypoint is src/loader/lib/rsmm.lua (the full SDK with

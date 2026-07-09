@@ -7,6 +7,8 @@
 -- f=float d=double s=string (see script_lua.cpp::lua_call_native).
 return {
   ["Analytics_SubmitNamedEvent"] = { pattern = "FUN_1401fa470", offset = 0x0, sig = "vpppu" },
+  ["BookController_ResolveSettings"] = { pattern = "FUN_140307d30", offset = 0x0, sig = "vp" },
+  ["BookController_ResolveTabs"] = { pattern = "FUN_1403083d0", offset = 0x0, sig = "vp" },
   ["EntityValue_Get"] = { pattern = "FUN_1403c71e0", offset = 0x0, sig = "vppu" },
   ["EntityValue_Lookup"] = { pattern = "FUN_1407481d0", offset = 0x0, sig = "pppu" },
   ["Entity_AllocInstance"] = { pattern = "FUN_14068fe90", offset = 0x0, sig = "pp" },
@@ -40,5 +42,7 @@ return {
   ["Resource_LookupByPath"] = { pattern = "FUN_140487040", offset = 0x0, sig = "psppp" },
   ["SkinGrid_Populate"] = { pattern = "FUN_1401f0f10", offset = 0x0, sig = "vpp" },
   ["String_Assign"] = { pattern = "FUN_1405288b0", offset = 0x0, sig = "vpp" },
+  ["UiButton_InputPoll"] = { pattern = "FUN_1407d6210", offset = 0x0, sig = "vpp" },
+  ["UiButton_PressCommit"] = { pattern = "FUN_14069f8e0", offset = 0x0, sig = "vp" },
   ["Vector_Grow"] = { pattern = "FUN_140154c20", offset = 0x0, sig = "vplu" },
 }

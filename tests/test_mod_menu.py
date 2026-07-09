@@ -61,3 +61,26 @@ def test_build_menu_assets_against_install():
 def test_build_menu_assets_missing_map_entry():
     with pytest.raises(mod_menu.ModMenuError, match="asset map is missing"):
         mod_menu.build_menu_assets(Path("/nonexistent"), {}, [])
+
+
+def test_init_lua_shape():
+    lua = mod_menu.init_lua()
+    # The interactive layer must go through the sanctioned R.* surface only —
+    # no raw addresses, no peek/poke (mods-no-raw-addresses rule).
+    assert 'require "rsmm"' in lua
+    assert "R.mods.list()" in lua
+    assert "R.mods.request(" in lua
+    assert 'R.on("ui:press"' in lua
+    assert 'R.on("gameplay:BOOK_MENU_OPEN"' in lua
+    assert "0x14" not in lua
+    for banned in ("peek", "poke", "call_raw", "read_u"):
+        assert banned not in lua
+    # Excludes itself from the toggle list.
+    assert 'MENU_MOD_ID = "RSMMMenu"' in lua
+    # MODS-tab button labels are injected from mods_tab (no drift) and no
+    # placeholder tokens survive rendering.
+    from rsmm.engine import mods_tab
+    assert "@BTN_" not in lua
+    for name in (mods_tab.BUTTON_NEXT, mods_tab.BUTTON_PREV,
+                 mods_tab.BUTTON_TOGGLE):
+        assert f'"{name}"' in lua

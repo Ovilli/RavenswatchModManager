@@ -13,6 +13,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <chrono>
+#include <cwchar>
 #include <filesystem>
 #include <thread>
 
@@ -22,6 +23,7 @@
 #include "hook_engine.h"
 #include "hook_skins.h"
 #include "hook_skills.h"
+#include "hook_ui.h"
 #include "hook_spawn.h"
 #include "hook_items.h"
 #include "hook_events.h"
@@ -31,11 +33,36 @@
 namespace fs = std::filesystem;
 
 static HMODULE g_self_module = nullptr;
+static HANDLE g_loader_guard_event = nullptr;
+static bool g_loader_started = false;
 
 static fs::path module_dir() {
     wchar_t buf[MAX_PATH];
     GetModuleFileNameW(g_self_module, buf, MAX_PATH);
     return fs::path(buf).parent_path();
+}
+
+static bool acquire_loader_guard() {
+    wchar_t name[128];
+    if (std::swprintf(name, sizeof(name) / sizeof(name[0]),
+                      L"Local\\RavenswatchModManager.Loader.%lu",
+                      static_cast<unsigned long>(GetCurrentProcessId())) < 0) {
+        OutputDebugStringA("rsmm loader: failed to format guard name; continuing.");
+        return true;
+    }
+
+    HANDLE event = CreateEventW(nullptr, TRUE, TRUE, name);
+    if (!event) {
+        OutputDebugStringA("rsmm loader: failed to create guard event; continuing.");
+        return true;
+    }
+    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+        CloseHandle(event);
+        OutputDebugStringA("rsmm loader: duplicate loader instance ignored.");
+        return false;
+    }
+    g_loader_guard_event = event;
+    return true;
 }
 
 // C++ exception path. Kept in its own function so the outer SEH wrapper
@@ -84,6 +111,7 @@ static void loader_thread_cxx() {
         rsmm::install_engine_hooks();
         rsmm::install_skin_hooks();
         rsmm::install_skill_hooks();
+        rsmm::install_ui_hooks();
         rsmm::install_spawn_hooks();
         rsmm::install_item_hooks();
         rsmm::install_event_hooks();
@@ -143,14 +171,21 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID) {
     if (reason == DLL_PROCESS_ATTACH) {
         g_self_module = inst;
         DisableThreadLibraryCalls(inst);
+        if (!acquire_loader_guard()) return TRUE;
+        g_loader_started = true;
         std::thread(loader_thread).detach();
     } else if (reason == DLL_PROCESS_DETACH) {
+        if (!g_loader_started) return TRUE;
         rsmm::script_emit_event("exit");
         rsmm::script_shutdown_all();
         rsmm::remove_engine_hooks();
         rsmm::remove_io_hooks();
         MH_Uninitialize();
         rsmm::Loader::get().shutdown();
+        if (g_loader_guard_event) {
+            CloseHandle(g_loader_guard_event);
+            g_loader_guard_event = nullptr;
+        }
     }
     return TRUE;
 }

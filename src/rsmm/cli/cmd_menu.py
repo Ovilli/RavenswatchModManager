@@ -1,7 +1,8 @@
-"""`rsmm menu` — generate the in-game mod-list page (native book UI).
+"""`rsmm menu` — generate and inspect the in-game mod-list page (native book UI).
 
     rsmm menu build [--game-dir DIR] [--mods-dir DIR]   regenerate RSMMMenu
     rsmm menu remove [--mods-dir DIR]                   delete the menu mod
+    rsmm menu inspect LEFT [RIGHT] [--diff]             summarize or compare
 
 `build` reads the installed mods, clones the Tutorial tab's first quick-guide
 page FROM THE USER'S INSTALL, swaps its label keys to RSMM ones, appends those
@@ -17,7 +18,8 @@ import shutil
 import sys
 from pathlib import Path
 
-from ..engine import mod_menu
+from ..engine import entity_inspect as EI
+from ..engine import mod_menu, mods_tab
 from ..engine import paths as P
 from .apply_mods import Mod, load_asset_map
 
@@ -55,19 +57,51 @@ def cmd_build(args: argparse.Namespace) -> int:
         print(f"error: {e}", file=sys.stderr)
         return 2
 
+    tab_note = ""
+    if not args.no_tab:
+        try:
+            tab_assets = mods_tab.build_tab_assets(cooking, load_asset_map())
+        except mods_tab.ModsTabError as e:
+            print(f"warning: page buttons skipped: {e}", file=sys.stderr)
+        else:
+            overlap = set(assets) & set(tab_assets)
+            # Both builders write distinct assets; same-key collision would
+            # mean silent asset loss, so refuse loudly.
+            if overlap:
+                print(f"error: menu/button asset overlap: {sorted(overlap)}",
+                      file=sys.stderr)
+                return 2
+            assets.update(tab_assets)
+            tab_note = " + page buttons (experimental)"
+
+    if args.bookmark:
+        try:
+            bm_assets = mods_tab.build_bookmark_assets(cooking, load_asset_map())
+        except mods_tab.ModsTabError as e:
+            print(f"warning: 6th bookmark skipped: {e}", file=sys.stderr)
+        else:
+            overlap = set(assets) & set(bm_assets)
+            if overlap:
+                print(f"error: bookmark asset overlap: {sorted(overlap)}",
+                      file=sys.stderr)
+                return 2
+            assets.update(bm_assets)
+            tab_note += " + 6th bookmark (experimental)"
+
     root = mods_dir / mod_menu.MENU_MOD_ID
     if root.exists():
         shutil.rmtree(root)
     (root / "assets").mkdir(parents=True)
     (root / "manifest.toml").write_text(mod_menu.manifest_toml(len(mods)),
                                         encoding="utf-8")
+    (root / "init.lua").write_text(mod_menu.init_lua(), encoding="utf-8")
     for dec, blob in assets.items():
         dest = root / "assets" / Path(*dec.split("/"))
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(blob)
 
     print(f"wrote {root} ({len(assets)} asset file(s), {len(mods)} mod(s) "
-          f"listed).")
+          f"listed){tab_note}.")
     print("Run 'rsmm apply' to install — the mod list appears on the "
           "Tutorial tab's first page.")
     return 0
@@ -84,6 +118,39 @@ def cmd_remove(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_inspect(args: argparse.Namespace) -> int:
+    game_dir = Path(args.game_dir) if args.game_dir else P.default_game_dir()
+    cooking = game_dir / "DarkTalesResources" / "_Cooking"
+    if not cooking.is_dir():
+        print(f"error: cooking dir not found: {cooking}", file=sys.stderr)
+        return 2
+
+    dec2enc = load_asset_map()
+    try:
+        left_path, left_bytes = EI.load_entity_asset(cooking, dec2enc, args.left)
+        right_path, right_bytes = EI.load_entity_asset(cooking, dec2enc, args.right)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
+    if args.diff:
+        report = EI.format_diff(
+            EI.diff_entities(
+                left_bytes, right_bytes,
+                left_path=left_path.as_posix(),
+                right_path=right_path.as_posix(),
+            ),
+            max_strings=args.max_strings,
+        )
+    else:
+        report = EI.format_summary(
+            EI.summarize_entity(left_bytes, path=left_path.as_posix()),
+            max_strings=args.max_strings,
+        )
+    print("\n".join(report))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="rsmm menu",
                                  description="In-game mod-list page (native book UI)")
@@ -92,13 +159,32 @@ def main(argv: list[str] | None = None) -> int:
     b = sub.add_parser("build", help="(re)generate the RSMMMenu mod")
     b.add_argument("--game-dir", help="Ravenswatch install dir (auto-detected)")
     b.add_argument("--mods-dir", help="mods directory (default: repo mods/)")
+    b.add_argument("--no-tab", action="store_true",
+                   help="skip the experimental RSMM page buttons (list only)")
+    b.add_argument("--bookmark", action="store_true",
+                   help="include the experimental (in-game inert so far) "
+                        "6th physical book bookmark")
     b.set_defaults(fn=cmd_build)
 
     r = sub.add_parser("remove", help="delete the RSMMMenu mod")
     r.add_argument("--mods-dir", help="mods directory (default: repo mods/)")
     r.set_defaults(fn=cmd_remove)
 
+    i = sub.add_parser("inspect", help="summarize or diff cooked entity assets")
+    i.add_argument("left", help="decoded asset path for the left entity")
+    i.add_argument("right", nargs="?", help="decoded asset path for the right entity")
+    i.add_argument("--game-dir", help="Ravenswatch install dir (auto-detected)")
+    i.add_argument("--diff", action="store_true",
+                   help="compare two entities instead of summarizing one")
+    i.add_argument("--max-strings", type=int, default=12,
+                   help="limit string samples in the output")
+    i.set_defaults(fn=cmd_inspect)
+
     args = ap.parse_args(argv)
+    if args.cmd == "inspect" and args.diff and not args.right:
+        ap.error("inspect --diff requires two entity paths")
+    if args.cmd == "inspect" and not args.diff:
+        args.right = args.left
     return args.fn(args)
 
 

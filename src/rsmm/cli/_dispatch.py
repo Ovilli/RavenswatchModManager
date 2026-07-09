@@ -55,6 +55,7 @@ BUILTIN = {
     "pack":              "rsmm.cli.cmd_pack",
     "log":               "rsmm.cli.cmd_log",
     "menu":              "rsmm.cli.cmd_menu",
+    "intents":           "rsmm.cli.cmd_intents",
     "decode":            "rsmm.engine.ot_decoder",
     "rebuild-asset-map": "rsmm.engine.find_iyg",
     "install-loader":    "rsmm.cli.install_loader",
@@ -62,6 +63,7 @@ BUILTIN = {
     "uncook":            "rsmm.cli.uncook",
     "unify":             "rsmm.cli.unify",
     "symbols":           "rsmm.cli.cmd_symbols",
+    "update-data":       "rsmm.cli.cmd_update_data",
 }
 
 SDK = {

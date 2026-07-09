@@ -1473,6 +1473,41 @@ if R.schedule and R.schedule._main_tick then
     end)
 end
 
+-- R.mods — mod list + host-side lifecycle intents (in-game mod menu) -----
+--
+-- The game runs under Proton while the rsmm CLI lives on the host, so the
+-- loader cannot enable/disable/uninstall a mod itself. Instead an intent is
+-- queued to <cooking>/.rsmm_intents.jsonl (next to .rsmm_state.json) and the
+-- HOST consumes it: `rsmm intents apply` (or the desktop app) performs the
+-- operation and re-runs apply. Ops take effect on the next apply+restart.
+
+R.mods = {}
+
+-- Installed mods as {id, name, version, author, enabled} rows.
+function R.mods.list()
+    if not I.list_mods then return {} end
+    return I.list_mods()
+end
+
+local _INTENT_OPS = { enable = true, disable = true, uninstall = true }
+
+-- Queue a lifecycle intent for the host CLI. Returns true when queued.
+function R.mods.request(op, mod_id)
+    if not I.intent_write then
+        R.log("[mods] intent_write unavailable (loader too old)")
+        return false
+    end
+    if not _INTENT_OPS[op] then
+        R.log("[mods] bad intent op: " .. tostring(op))
+        return false
+    end
+    if type(mod_id) ~= "string" or mod_id == "" then
+        R.log("[mods] bad mod id: " .. tostring(mod_id))
+        return false
+    end
+    return I.intent_write(op, mod_id) and true or false
+end
+
 -- escape hatch ----------------------------------------------------------
 --
 -- Last-resort access to the raw engine bindings. Not part of the

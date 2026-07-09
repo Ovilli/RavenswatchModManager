@@ -88,6 +88,7 @@ def build_sidecar(target: str) -> None:
     add_data_args += _add(REPO_ROOT / "data" / "asset_map.json", "data")
     add_data_args += _add(REPO_ROOT / "data" / "asset_map.csv", "data")
     add_data_args += _add(REPO_ROOT / "data" / "function_patterns.json", "data")
+    add_data_args += _add(REPO_ROOT / "data" / "function_patterns.meta.json", "data")
     add_data_args += _add(REPO_ROOT / "data" / "schemas", "data/schemas")
     add_data_args += _add(REPO_ROOT / "data" / "templates", "data/templates")
     add_data_args += _add(REPO_ROOT / "src" / "rsmm" / "cli" / "install_loader.sh", "src/rsmm/cli")

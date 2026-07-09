@@ -260,16 +260,32 @@ def check_exe_hash(game_dir: Path) -> list[Result]:
         return [Result("WARN", "game executable not found (may be on different OS)",
                        "Cannot verify pattern DB freshness without the game exe")]
 
-    patterns_mtime = patterns.stat().st_mtime
-    exe_mtime = exe.stat().st_mtime
-
-    exe_hash = sha256_file(exe)[:12]
+    exe_hash = sha256_file(exe)
     exe_size = exe.stat().st_size
-    result = [Result("OK", f"game exe: {exe.name} ({exe_size:,} bytes, hash={exe_hash})")]
+    result = [Result("OK", f"game exe: {exe.name} ({exe_size:,} bytes, "
+                           f"hash={exe_hash[:12]})")]
 
-    if exe_mtime > patterns_mtime + 1:
+    # Precise check: the pattern DB actually consulted by the loader is the
+    # planted copy; its meta records which game build it was built against.
+    from rsmm.engine.data_update import bundled_meta, planted_dir, planted_meta
+    meta = planted_meta(game_dir) or bundled_meta()
+    if meta and meta.get("game_exe_sha256"):
+        which = ("planted" if (planted_dir(game_dir) / "function_patterns.meta.json").exists()
+                 else "bundled")
+        if meta["game_exe_sha256"] == exe_hash:
+            result.append(Result("OK", f"pattern DB ({which}) matches this game build"))
+        else:
+            result.append(Result(
+                "WARN", f"pattern DB ({which}) was generated against a different game build",
+                "Game likely updated. Run: rsmm update-data "
+                "(devs: python scripts/gen_function_patterns.py)"))
+        return result
+
+    # Fallback for pre-meta DBs: mtime heuristic.
+    if exe.stat().st_mtime > patterns.stat().st_mtime + 1:
         result.append(Result("WARN", "game exe newer than function_patterns.json",
-                             "Game may have updated. Run: python scripts/gen_function_patterns.py"))
+                             "Game may have updated. Run: rsmm update-data "
+                             "(devs: python scripts/gen_function_patterns.py)"))
     else:
         result.append(Result("OK", "function_patterns.json is fresh relative to game exe"))
 

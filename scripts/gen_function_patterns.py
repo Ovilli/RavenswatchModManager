@@ -259,6 +259,26 @@ def main():
         json.dump(out, f)
     print(f"wrote {args.out}: {len(out)} patterns, {fail} failed")
 
+    # Stamp a sidecar meta file recording which game build these patterns
+    # were generated against. `rsmm update-data` and `rsmm doctor` compare
+    # this against the user's exe to decide freshness, and the sha256 of
+    # the patterns file doubles as the download integrity check.
+    import datetime
+    import hashlib
+    out_path = Path(args.out)
+    meta = {
+        "schema": 1,
+        "generated": datetime.datetime.now(datetime.UTC)
+                             .isoformat(timespec="seconds"),
+        "game_exe_sha256": hashlib.sha256(data).hexdigest(),
+        "game_exe_size": len(data),
+        "pattern_count": len(out),
+        "patterns_sha256": hashlib.sha256(out_path.read_bytes()).hexdigest(),
+    }
+    meta_path = out_path.with_name(out_path.stem + ".meta.json")
+    meta_path.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+    print(f"wrote {meta_path}")
+
 
 if __name__ == "__main__":
     main()

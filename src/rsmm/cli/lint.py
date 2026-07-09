@@ -346,7 +346,9 @@ def _lint_lua_api(modname: str, entry: Path) -> tuple[int, int]:
             # the open-ended oCGameNamedEvent bus — the loader republishes
             # whatever the engine fires, so the name set isn't enumerable and
             # these must not warn.
-            if ev == "*" or ev.startswith("gameplay:"):
+            # "ui:press" is the native-UI button bridge (hook_ui.cpp,
+            # RSMM_ENABLE_UI_HOOK) — loader-emitted, not in the symbol map.
+            if ev == "*" or ev.startswith("gameplay:") or ev.startswith("ui:"):
                 continue
             if ev not in events:
                 print(f"  [WARN] {modname}: {rel}: R.on({ev!r}) — unknown event "
