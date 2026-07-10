@@ -258,13 +258,40 @@ void dump_pool(void* pool) {
 // Reads are gated: the pool global is a zero-init static, so it's null until
 // the manager exists; we never dereference the pool until it reports a
 // non-zero element count. (MinGW has no __try/__except, hence the gating.)
+//
+// Non-null is NOT proof of a live pool: if kPoolPtrGlobalVA is stale (a game
+// patch moved .data — exactly what the 2026-07-09 update did) the slot holds
+// unrelated bytes, and dereferencing them access-violates on a background
+// thread, killing the whole game seconds-to-minutes after boot (CrashDB dumps
+// 2026-07-10). Only dereference pointers that VirtualQuery says are readable.
+static bool readable(const void* p, std::size_t len) {
+    MEMORY_BASIC_INFORMATION mbi{};
+    if (!VirtualQuery(p, &mbi, sizeof(mbi))) return false;
+    if (mbi.State != MEM_COMMIT) return false;
+    if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return false;
+    const auto start = reinterpret_cast<std::uintptr_t>(mbi.BaseAddress);
+    return reinterpret_cast<std::uintptr_t>(p) + len <= start + mbi.RegionSize;
+}
+
 void deferred_inject_poll() {
+    bool warned_unreadable = false;
     for (int i = 0; i < 600; ++i) {  // ~150 s @ 250 ms, then give up
         void* pool = *reinterpret_cast<void**>(reloc(kPoolPtrGlobalVA));
+        if (pool && !readable(pool, kOffRuntimeCount + sizeof(std::uint32_t))) {
+            if (!warned_unreadable) {
+                warned_unreadable = true;
+                Loader::get().log("[item-hook] pool global holds an unreadable "
+                                  "pointer — g_MagicalObjectPool VA is likely "
+                                  "stale for this game build; inject disabled");
+            }
+            pool = nullptr;
+        }
         if (pool) {
             const auto count = *reinterpret_cast<std::uint32_t*>(
                 static_cast<std::uint8_t*>(pool) + kOffRuntimeCount);
-            if (count > 0) {
+            // Sane pool sizes are a few hundred; an absurd count means we are
+            // reading through a stale global into garbage — don't touch it.
+            if (count > 0 && count < 100000) {
                 Loader::get().log("[item-hook] deferred inject: pool populated (count="
                                   + std::to_string(count) + ")");
                 // Read-only source-list dump (opt-in) to learn whether our
