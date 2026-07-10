@@ -375,6 +375,16 @@ int lua_module_base(lua_State* L) {
     return 1;
 }
 
+// rsmm.va_trusted() -> bool
+//   False when the installed game build differs from the build the symbol
+//   map's absolute data addresses were derived for (see Loader::init's
+//   va-gate). Lua features built on such addresses (R.options, R.give's
+//   pool scan) must degrade gracefully instead of reading garbage.
+int lua_va_trusted(lua_State* L) {
+    lua_pushboolean(L, Loader::get().va_globals_trusted() ? 1 : 0);
+    return 1;
+}
+
 int lua_call_native(lua_State* L) {
     // Arg 1: VA (integer) or name (string).
     std::uintptr_t va = 0;
@@ -710,6 +720,7 @@ void register_api(lua_State* L) {
     static const luaL_Reg internal_lib[] = {
         { "resolve",                 lua_resolve },
         { "call",                    lua_call_native },
+        { "va_trusted",              lua_va_trusted },
         { "module_base",             lua_module_base },
         { "game_dir",                lua_game_dir },
         { "is_in_main_menu",         lua_is_in_main_menu },

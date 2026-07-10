@@ -1,8 +1,12 @@
 #include "loader.h"
 
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
 #include <fstream>
 #include <iostream>
 #include <chrono>
+#include <ctime>
 #include <iomanip>
 #include <sstream>
 #include <algorithm>
@@ -26,10 +30,53 @@ void Loader::init(const fs::path& game_dir) {
     mods_dir_  = game_dir / "mods";
     log_path_  = game_dir / "mods" / "_log.txt";
     state_path_ = game_dir / "mods" / "_state.json";
+    log_pid_   = GetCurrentProcessId();
     std::error_code ec;
     fs::create_directories(mods_dir_, ec);
     log("=== RavenswatchModManager init ===");
     log("game_dir=" + game_dir_.string());
+    {
+        char exe[MAX_PATH] = {0};
+        GetModuleFileNameA(nullptr, exe, MAX_PATH);
+        log(std::string("host=") + exe + " pid=" + std::to_string(log_pid_));
+    }
+
+    // Build-fingerprint gate for absolute data addresses. The planted
+    // pattern-DB meta records the exact game exe (size + sha) the current
+    // symbol map was derived from. Function symbols self-heal via byte
+    // scanning, but status=va data globals are absolute — after a game patch
+    // they point into arbitrary memory, which at best reads garbage (every
+    // R.options value nil) and at worst crashes (deferred_inject_poll AV,
+    // 2026-07-10). Size mismatch = different build = fail those features
+    // closed until `rsmm update-data` plants a matching DB.
+    {
+        const fs::path meta = game_dir_ / "rsmm" / "data"
+                              / "function_patterns.meta.json";
+        const fs::path exe  = game_dir_ / "Ravenswatch.exe";
+        std::error_code mec;
+        const auto exe_size = fs::file_size(exe, mec);
+        if (mec || !fs::exists(meta)) {
+            log("[va-gate] no pattern-DB meta or game exe to compare — "
+                "keeping va-globals enabled (unverified)");
+        } else {
+            try {
+                std::ifstream mf(meta);
+                nlohmann::json mj;
+                mf >> mj;
+                const auto want = mj.value("game_exe_size", std::uint64_t{0});
+                if (want != 0 && want != exe_size) {
+                    va_trusted_ = false;
+                    log("[va-gate] game exe size " + std::to_string(exe_size)
+                        + " != symbol-map build " + std::to_string(want)
+                        + " — the game updated; absolute data addresses are "
+                          "DISABLED (run `rsmm update-data`, then re-verify "
+                          "va globals). Pattern-resolved features still work.");
+                }
+            } catch (const std::exception& e) {
+                log(std::string("[va-gate] meta parse error: ") + e.what());
+            }
+        }
+    }
 }
 
 void Loader::shutdown() {
@@ -69,11 +116,19 @@ bool Loader::is_in_main_menu() const {
 void Loader::log(const std::string& msg) {
     std::lock_guard<std::mutex> g(log_mu_);
     using clock = std::chrono::system_clock;
-    auto now = clock::to_time_t(clock::now());
-    std::ostringstream ts;
-    ts << std::put_time(std::localtime(&now), "%F %T");
+    const auto now = clock::now();
+    const auto t   = clock::to_time_t(now);
+    const auto ms  = std::chrono::duration_cast<std::chrono::milliseconds>(
+                         now.time_since_epoch()).count() % 1000;
+    // msvcrt's strftime has no %F/%T (they expand to nothing), which is why
+    // every line used to read "[ ]" — spell the format out instead.
+    char ts[32] = {0};
+    if (std::tm* tm = std::localtime(&t)) {
+        std::strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", tm);
+    }
     std::ofstream f(log_path_, std::ios::app);
-    f << "[" << ts.str() << "] " << msg << "\n";
+    f << "[" << ts << "." << std::setfill('0') << std::setw(3) << ms
+      << " " << log_pid_ << "] " << msg << "\n";
 }
 
 bool Loader::load_asset_map(const fs::path& json_path) {

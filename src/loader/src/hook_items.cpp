@@ -486,6 +486,11 @@ bool install_item_hooks() {
     // also start a deferred poller that injects into the already-built pool
     // once it's populated. inject_custom_items dedups, so if the detour did
     // fire, the poller's inject is a harmless no-op.
+    if (!Loader::get().va_globals_trusted()) {
+        Loader::get().log("[item-hook] va-globals untrusted for this game "
+                          "build; deferred inject poll not started");
+        return true;
+    }
     std::thread(deferred_inject_poll).detach();
     return true;
 }

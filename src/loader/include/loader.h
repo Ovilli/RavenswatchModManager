@@ -63,6 +63,14 @@ public:
     // Logging.
     void log(const std::string& msg);
 
+    // False when the installed game build does not match the build the
+    // symbol map's absolute data addresses (status=va globals) were derived
+    // for — any feature reading a Sym:: data VA must degrade instead of
+    // dereferencing what is now arbitrary memory (a game patch moving .data
+    // crashed the loader this way on 2026-07-10). Pattern-resolved function
+    // symbols are unaffected; they re-scan the binary by bytes.
+    bool va_globals_trusted() const { return va_trusted_; }
+
     const std::filesystem::path& game_dir() const { return game_dir_; }
     const std::filesystem::path& mods_dir() const { return mods_dir_; }
 
@@ -83,6 +91,8 @@ private:
     std::unordered_map<std::string, std::filesystem::path> override_by_encoded_;
 
     mutable std::mutex log_mu_;
+    unsigned long log_pid_ = 0;
+    bool va_trusted_ = true;
 
     // Menu detection.
     std::atomic<int64_t> last_menu_read_ms_{0};

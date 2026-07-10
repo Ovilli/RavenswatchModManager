@@ -167,10 +167,33 @@ static void loader_thread() {
 #endif
 }
 
+// Only run the mod loader inside the game itself. Other executables in the
+// game directory also import WinHTTP — crashpad_handler.exe does, for crash
+// uploads — and pick up our proxy DLL via the app-dir search path. Running
+// the full loader there is pure noise: none of the game's code exists in
+// that process, so every pattern resolve fails, and each launch used to log
+// a confusing second init block whose resolves all failed. The proxy's
+// winhttp export forwarding still works in those hosts; we just never start
+// the loader thread.
+static bool host_is_game() {
+    char exe[MAX_PATH] = {0};
+    if (!GetModuleFileNameA(nullptr, exe, MAX_PATH)) return true;
+    const char* base = exe;
+    for (const char* p = exe; *p; ++p) {
+        if (*p == '\\' || *p == '/') base = p + 1;
+    }
+    return _stricmp(base, "Ravenswatch.exe") == 0;
+}
+
 BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID) {
     if (reason == DLL_PROCESS_ATTACH) {
         g_self_module = inst;
         DisableThreadLibraryCalls(inst);
+        if (!host_is_game()) {
+            OutputDebugStringA("rsmm loader: non-game host process; "
+                               "winhttp proxy only, loader not started.");
+            return TRUE;
+        }
         if (!acquire_loader_guard()) return TRUE;
         g_loader_started = true;
         std::thread(loader_thread).detach();

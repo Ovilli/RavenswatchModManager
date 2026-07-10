@@ -195,6 +195,22 @@ R.engine.fn = setmetatable({}, {
 
 R.give = {}
 
+-- One-time warning when absolute data addresses are disabled because the
+-- game build no longer matches the symbol map (loader va-gate). Reads then
+-- return nil instead of garbage; see loader.h va_globals_trusted().
+local _va_warned = false
+local function _va_ok(feature)
+    if not I.va_trusted then return true end   -- older loader: no gate
+    local ok, trusted = pcall(I.va_trusted)
+    if not ok or trusted ~= false then return true end
+    if not _va_warned then
+        _va_warned = true
+        R.log("[rsmm] game build != symbol-map build — " .. feature ..
+              " (and other va-global features) disabled until data is updated")
+    end
+    return false
+end
+
 -- g_MagicalObjectPool: pointer global; *ptr = { source array @+0,
 -- u32 source count @+8, runtime array @+0x10, u32 runtime count @+0x18 }.
 -- Re-derived 2026-07-10 after the 2026-07-09 game patch (readers of the new
@@ -244,6 +260,7 @@ function R.give.ready() return _give_hero ~= nil end
 function R.give.hero() return _give_hero end
 
 local function _give_pool_vec()
+    if not _va_ok("R.give") then return nil end
     local base = I.module_base()
     if not base or base == 0 then return nil end
     local vec = I.read_u64(base + (GIVE_POOL_VA - GIVE_IMG_BASE))
@@ -542,6 +559,7 @@ local function _modify_health(delta)
         R.log("[rsmm.combat] hero health reads implausible — refusing modify")
         return false
     end
+    if not _va_ok("R.combat") then return false end
     local base = I.module_base()
     if not base or base == 0 then return false end
     -- empty oCCustomFlagList ctx { vftable, list=0, count=0 } in scratch
@@ -914,6 +932,7 @@ local _OPT = {
 local function _opt_value_addr(name)
     local o = _OPT[name]
     if not o then return nil, nil end
+    if not _va_ok("R.options") then return nil, nil end
     local base = I.module_base()
     if not base or base == 0 then return nil, nil end
     local obj = I.read_u64(base + (OPT_GAMEOPTIONS_VA - OPT_IMG_BASE))
