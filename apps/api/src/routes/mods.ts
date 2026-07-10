@@ -214,9 +214,15 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
   // scanning is disabled server-side) are shown publicly. Un-scanned
   // ('pending'/'queued'), 'flagged', and 'error' versions are withheld so a
   // freshly uploaded mod is never downloadable before its scan clears.
-  const visibleVersions = mod.versions
-    .filter((v) => isServable(v.scanStatus))
-    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  // Managers (owner/co-authors) and admins see every version with its scan
+  // status, so an upload still in review isn't invisible to its author —
+  // the download route re-checks the gate, so this reveals state, not bytes.
+  const sortedVersions = [...mod.versions].sort(
+    (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+  );
+  const servableVersions = sortedVersions.filter((v) => isServable(v.scanStatus));
+  const canManage = viewer ? isAdmin(viewer.id) || (await canManageMod(mod, viewer.id)) : false;
+  const visibleVersions = canManage ? sortedVersions : servableVersions;
 
   // Follow state for the current viewer + total follower count (both cheap).
   const followerRows = await db
@@ -237,7 +243,7 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       license: mod.license,
       repoUrl: mod.repoUrl,
       homepageUrl: mod.homepageUrl,
-      latestVersion: visibleVersions[0]?.version ?? null,
+      latestVersion: servableVersions[0]?.version ?? null,
       downloads,
       updatedAt: mod.updatedAt.toISOString(),
       category: mod.category,
@@ -254,7 +260,7 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       isFollowing,
       followerCount,
       dependencies:
-        (visibleVersions[0]?.manifestJson as { dependencies?: Record<string, string> } | undefined)
+        (servableVersions[0]?.manifestJson as { dependencies?: Record<string, string> } | undefined)
           ?.dependencies ?? undefined,
     },
     versions: visibleVersions.map((v) => ({

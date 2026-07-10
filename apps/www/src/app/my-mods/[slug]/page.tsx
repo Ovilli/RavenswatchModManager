@@ -20,7 +20,7 @@ import {
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
 import { formatObjectStorageError } from '../../../lib/object-storage-error';
@@ -91,8 +91,9 @@ function describeApiError(err: unknown): string {
 
 /** Live malware-scan status for one version. Polls while queued/pending so the
  *  author sees their place in the queue and the eventual verdict. Flagged
- *  versions are removed server-side, so they simply drop off the list. */
+ *  versions stay listed for the author (file removed, download blocked). */
 function ScanBadge({ versionId }: { versionId: string }) {
+  const qc = useQueryClient();
   const q = useQuery({
     queryKey: ['scan-status', versionId],
     queryFn: () => api.mods.scanStatus(versionId),
@@ -102,6 +103,17 @@ function ScanBadge({ versionId }: { versionId: string }) {
     },
   });
   const d = q.data;
+  // When a watched scan settles, refetch the mod detail so the version row's
+  // "in review" note (rendered from the cached detail) clears without a reload.
+  const prevStatus = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const s = d?.status;
+    const wasInFlight = prevStatus.current === 'queued' || prevStatus.current === 'pending';
+    if (s && s !== prevStatus.current && wasInFlight) {
+      qc.invalidateQueries({ queryKey: ['my-mod'] });
+    }
+    prevStatus.current = s;
+  }, [d?.status, qc]);
   if (!d) return null;
   const label =
     d.status === 'queued'
@@ -115,9 +127,19 @@ function ScanBadge({ versionId }: { versionId: string }) {
           : d.status === 'skipped'
             ? 'Scan off'
             : d.status === 'error'
-              ? 'Scan error'
-              : d.status;
-  return <Badge variant={d.status === 'clean' ? 'secondary' : 'outline'}>{label}</Badge>;
+              ? 'Scan error — retrying'
+              : d.status === 'flagged'
+                ? 'Flagged ✕'
+                : d.status;
+  return (
+    <Badge
+      variant={
+        d.status === 'clean' ? 'secondary' : d.status === 'flagged' ? 'destructive' : 'outline'
+      }
+    >
+      {label}
+    </Badge>
+  );
 }
 
 export default function ManageModPage() {
@@ -808,6 +830,17 @@ export default function ManageModPage() {
                         <Badge variant="outline">{v.sha256.slice(0, 12)}</Badge>
                       </div>
                     </div>
+                    {v.scanStatus && v.scanStatus !== 'clean' && v.scanStatus !== 'skipped' ? (
+                      <p
+                        className={`mt-2 text-xs ${
+                          v.scanStatus === 'flagged' ? 'text-destructive' : 'text-amber-500'
+                        }`}
+                      >
+                        {v.scanStatus === 'flagged'
+                          ? 'Flagged by malware scanning — the file was removed and this version cannot be downloaded.'
+                          : 'In review — only you can see this version until the malware scan clears (usually a few minutes).'}
+                      </p>
+                    ) : null}
                     {cl ? (
                       <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
                         {cl}
