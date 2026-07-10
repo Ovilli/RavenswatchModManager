@@ -197,7 +197,9 @@ R.give = {}
 
 -- g_MagicalObjectPool: pointer global; *ptr = { source array @+0,
 -- u32 source count @+8, runtime array @+0x10, u32 runtime count @+0x18 }.
-local GIVE_POOL_VA = 0x1414365d0
+-- Re-derived 2026-07-10 after the 2026-07-09 game patch (readers of the new
+-- slot dereference +0x10/+0x18 exactly like the old pool, e.g. FUN_1402b3030).
+local GIVE_POOL_VA = 0x14143cc18
 local GIVE_IMG_BASE = 0x140000000
 
 -- Hero dispatcher, captured from any hero-anchored gameplay event. These all
@@ -383,10 +385,11 @@ R.combat = {}
 local ENTITY_HP_OFF      = 0x15c8        -- f32 current HP on the hero character
 local ENTITY_MAXHP_OFF   = 0x15cc        -- f32 max HP
 local ENTITY_HUDMIRROR_OFF = 0x1d80      -- ptr to the HUD HP mirror (hero-only)
-local MODIFY_HEALTH_VA   = 0x140399a10   -- Entity_ModifyHealth(hero, delta, tags)
-local GAINHEALTH_HDLR_VA = 0x1403993f0   -- GAIN_HEALTH handler; param_1 = hero
-local GIVE_HDLR_VA       = 0x1403a7ba0   -- give-item handler; param_1 = hero
-local FLAGLIST_VFT_VA    = 0x140efc320   -- oCCustomFlagList::vftable
+-- Function addresses are resolved at runtime through the pattern DB
+-- (I.resolve on the semantic symbol name) so a game patch that shifts code
+-- can never leave us hooking/calling a stale VA: an unresolved symbol fails
+-- closed instead. Only data addresses (vftable) stay link-time constants.
+local FLAGLIST_VFT_VA    = 0x140f01650   -- oCCustomFlagList::vftable (re-derived 2026-07-10)
 local ENTITY_IMG_BASE    = 0x140000000
 
 local _hero_char = nil          -- captured hero character object (HP@+0x15c8)
@@ -466,16 +469,20 @@ local function _arm_hero_capture()
             authoritative and " [authoritative]" or " [tentative]"))
     end
     -- Best-effort: a failed capture hook must NEVER abort the mod that
-    -- required rsmm. R.hook raises on install failure (e.g. the handler RVA
-    -- drifted across a game patch -> MH_ERROR_NOT_EXECUTABLE), so guard each
+    -- required rsmm. Handler addresses come from the pattern DB (nil when the
+    -- symbol is unverified for this game build — fail closed, never hook a
+    -- stale VA), and R.hook can still raise on install failure, so guard each
     -- with pcall — capture just stays unavailable; everything else still runs.
-    local ok1 = pcall(R.hook, base + (GAINHEALTH_HDLR_VA - ENTITY_IMG_BASE), "vppp",
+    local gain_va = I.resolve and I.resolve("Entity_GainHealthHandler")
+    local give_va = I.resolve and I.resolve("Entity_GiveHandler")
+    local ok1 = gain_va and pcall(R.hook, gain_va, "vppp",
         function(p1) capture(p1, false); return nil end)
-    local ok2 = pcall(R.hook, base + (GIVE_HDLR_VA - ENTITY_IMG_BASE), "vpp",
+    local ok2 = give_va and pcall(R.hook, give_va, "vpp",
         function(p1) capture(p1, true); return nil end)
     if not (ok1 and ok2) then
-        R.log("[rsmm.entity] hero-capture hooks unavailable (handler addr drift); "
-            .. "R.combat/R.entity disabled this run, other mods unaffected")
+        R.log("[rsmm.entity] hero-capture hooks unavailable (handler unresolved "
+            .. "for this game build); R.combat/R.entity disabled this run, "
+            .. "other mods unaffected")
     end
 end
 
@@ -542,7 +549,12 @@ local function _modify_health(delta)
     I.poke(ctx + 0x00, base + (FLAGLIST_VFT_VA - ENTITY_IMG_BASE), 8)
     I.poke(ctx + 0x08, 0, 8)
     I.poke(ctx + 0x10, 0, 8)
-    local fn = base + (MODIFY_HEALTH_VA - ENTITY_IMG_BASE)
+    local fn = I.resolve and I.resolve("Entity_ModifyHealth")
+    if not fn then
+        R.log("[rsmm.combat] Entity_ModifyHealth unresolved for this game build "
+            .. "— refusing modify (regenerate function_patterns.json)")
+        return false
+    end
     R.engine.call_raw(fn, "vpfp", e, delta + 0.0, ctx)
     return true
 end
@@ -817,19 +829,21 @@ end
 
 R.net = {}
 
-local NET_REPL_SETUP_VA     = 0x140720c10  -- Netcode_EntityReplSetup
 local NET_CTX_TO_NETMGR_OFF = 0x10         -- netmgr = *(ctx + 0x10)
 local NET_ROLE_OFF          = 0xf8         -- role   = *(netmgr + 0xf8); 1=client
-local NET_IMG_BASE          = 0x140000000
 
 -- Hook the per-entity replication setup. cb(netmgr, role, ctx) fires for each
 -- entity; return a number from cb to OVERWRITE role (dangerous), or nil to
--- leave it. Returns the hook handle, or nil if the module base is unavailable.
+-- leave it. Returns the hook handle, or nil if Netcode_EntityReplSetup is
+-- unresolved for this game build (pattern DB fail-closed — never hook stale).
 function R.net.on_repl_setup(cb)
     assert(type(cb) == "function", "R.net.on_repl_setup: cb must be function")
-    local base = I.module_base()
-    if not base or base == 0 then return nil end
-    local va = base + (NET_REPL_SETUP_VA - NET_IMG_BASE)
+    local va = I.resolve and I.resolve("Netcode_EntityReplSetup")
+    if not va then
+        R.log("[rsmm.net] Netcode_EntityReplSetup unresolved for this game "
+            .. "build — on_repl_setup unavailable")
+        return nil
+    end
     return R.hook(va, "vp", function(ctx)
         if not ctx or ctx == 0 then return nil end
         local netmgr = I.read_u64(ctx + NET_CTX_TO_NETMGR_OFF)
@@ -863,18 +877,29 @@ end
 
 R.options = {}
 
-local OPT_GAMEOPTIONS_VA = 0x141436510
+-- Re-derived 2026-07-10 after the 2026-07-09 game patch (ctor is now
+-- FUN_1401ca130, found via the "Forced seed" string xref; it stores the
+-- singleton to this slot as its first write).
+local OPT_GAMEOPTIONS_VA = 0x14143cb58
 local OPT_IMG_BASE = 0x140000000
 local OPT_VALUE_OFF = 0x28
 
 -- name -> { off = byte offset of the option's slot from the object base,
 --           type = "bool" | "uint" | "int" | "float" }
--- Offsets transcribed from the options ctor (FUN_1401c99f0); value at off+0x28.
+-- Offsets transcribed from the options ctor (FUN_1401ca130, 2026-07-09 build);
+-- value at off+0x28. The patch added "Delay before can unpause" / "Max pause
+-- per player", which moved "Pause during choices" (0x10f8 -> 0x10f0); every
+-- other slot is unchanged.
 local _OPT = {
     ["Forced seed"]                                 = { off = 0x0000, type = "uint"  },
+    -- "Dev" is the build-type flag the ctor seeds from a baked constant; the
+    -- engine honours "Forced seed" only while it is true (this is what the
+    -- old seeded-runs raw poke at +0x58 was flipping).
+    ["Dev"]                                         = { off = 0x0030, type = "bool"  },
+    ["Test"]                                        = { off = 0x0060, type = "bool"  },
     ["Dash at cursor"]                              = { off = 0x0e80, type = "bool"  },
     ["Screen shake"]                                = { off = 0x1090, type = "bool"  },
-    ["Pause during choices"]                        = { off = 0x10f8, type = "bool"  },
+    ["Pause during choices"]                        = { off = 0x10f0, type = "bool"  },
     ["Show damage and healing numbers"]             = { off = 0x11b0, type = "bool"  },
     ["Select random skin when using random heroes"] = { off = 0x11e0, type = "bool"  },
     ["Show enemy debug info"]                       = { off = 0x1210, type = "bool"  },

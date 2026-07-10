@@ -135,7 +135,7 @@ Total: **120** symbols across 15 categories.
 | `MagicalObject_RegisterInstance` | `0x1403aae40` | ❓ unverified | ✔ | void(oCDtEntityCpntHeroController* hero, void* instance, char addToActive) |
 | `MagicalObject_SpawnAllObjects` | `0x14025da20` | ✅ ok | ✔ | void(void* pool, void* scene) |
 | `MagicalObject_SpawnContainingFunc` | `0x14025d9b0` | ✅ ok |  | Outer function (1283 bytes) that contains the inlined SpawnAllObjects entry at +0x70. T… |
-| `g_MagicalObjectPool` | `0x1414365d0` | 📍 va |  | Magical-object pool global pointer. Layout at *ptr: +0x0 source array (MagicalObjectDef… |
+| `g_MagicalObjectPool` | `0x14143cc18` | 📍 va |  | [2026-07-10: re-derived post 2026-07-09 patch (was 0x1414365d0); confirmed via readers … |
 
 ## library
 
@@ -179,7 +179,7 @@ Total: **120** symbols across 15 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `g_GameOptions` | `0x141436510` | 📍 va |  | Game-options registry singleton pointer (set by the options ctor FUN_1401c99f0; *ptr = … |
+| `g_GameOptions` | `0x14143cb58` | 📍 va |  | [2026-07-10: re-derived post 2026-07-09 patch (was 0x141436510); ctor is now FUN_1401ca… |
 
 ## resource
 

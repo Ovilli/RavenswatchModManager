@@ -154,7 +154,7 @@ constexpr std::uintptr_t MagicalObject_SpawnAllObjects = 0x14025da20ull;
 constexpr const char* MagicalObject_SpawnAllObjects_Pattern = "MagicalObject_SpawnAllObjects.parent";
 constexpr std::uintptr_t MagicalObject_SpawnContainingFunc = 0x14025d9b0ull;
 constexpr const char* MagicalObject_SpawnContainingFunc_Pattern = "MagicalObject_SpawnContainingFunc";
-constexpr std::uintptr_t g_MagicalObjectPool = 0x1414365d0ull;
+constexpr std::uintptr_t g_MagicalObjectPool = 0x14143cc18ull;
 
 // --- library ---
 constexpr std::uintptr_t Definition_DeserializeBase = 0x140310180ull;
@@ -200,7 +200,7 @@ constexpr std::uintptr_t Netcode_PeerStateTick = 0x1402c7e70ull;
 constexpr const char* Netcode_PeerStateTick_Pattern = "Netcode_PeerStateTick";
 
 // --- options ---
-constexpr std::uintptr_t g_GameOptions = 0x141436510ull;
+constexpr std::uintptr_t g_GameOptions = 0x14143cb58ull;
 
 // --- resource ---
 constexpr std::uintptr_t Definitions_LoadGroup = 0x14030fa00ull;
