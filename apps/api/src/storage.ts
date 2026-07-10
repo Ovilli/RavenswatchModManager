@@ -111,7 +111,13 @@ export async function remoteObjectExists(publicUrl: string, tries = 4): Promise<
   const delaysMs = [300, 800, 1800];
   for (let attempt = 0; attempt < tries; attempt++) {
     try {
-      const res = await fetch(publicUrl, { method: 'HEAD' });
+      // Cache-buster: the public URL is fronted by Cloudflare, which can hold a
+      // cached NoSuchKey 404 from before the object landed (or from a deleted
+      // predecessor). A unique query string forces a cache miss so we check the
+      // origin, not the edge.
+      const url = new URL(publicUrl);
+      url.searchParams.set('rsmm-cb', `${Date.now()}-${attempt}`);
+      const res = await fetch(url, { method: 'HEAD' });
       if (res.ok) return true;
       // 5xx / 429 are worth a retry; a 403/404 usually means not-there-yet or
       // access issue — retry a couple times then give up.

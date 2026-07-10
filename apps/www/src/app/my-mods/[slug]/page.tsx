@@ -833,6 +833,11 @@ export default function ManageModPage() {
                   newVersion.length > 0 && !SEMVER_RE.test(newVersion) ? true : undefined
                 }
               />
+              {newVersion.length > 0 && !SEMVER_RE.test(newVersion) ? (
+                <p className="text-xs text-destructive">
+                  Must be semver, e.g. 0.2.0 (three numbers separated by dots).
+                </p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="newzip">New zip</Label>

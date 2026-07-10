@@ -214,7 +214,9 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
   // scanning is disabled server-side) are shown publicly. Un-scanned
   // ('pending'/'queued'), 'flagged', and 'error' versions are withheld so a
   // freshly uploaded mod is never downloadable before its scan clears.
-  const visibleVersions = mod.versions.filter((v) => isServable(v.scanStatus));
+  const visibleVersions = mod.versions
+    .filter((v) => isServable(v.scanStatus))
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
   // Follow state for the current viewer + total follower count (both cheap).
   const followerRows = await db
