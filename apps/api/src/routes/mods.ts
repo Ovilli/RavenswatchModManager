@@ -231,6 +231,19 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
     .where(eq(schema.modDownloads.modId, mod.id));
   const downloads = downloadAgg[0]?.total ?? 0;
 
+  // Per-version download totals (public). Rows recorded before per-version
+  // day-bucketing shipped attribute a whole day to one version — close
+  // enough for a public counter.
+  const perVersionRows = await db
+    .select({
+      versionId: schema.modDownloads.versionId,
+      n: sql<number>`sum(${schema.modDownloads.count})::int`,
+    })
+    .from(schema.modDownloads)
+    .where(eq(schema.modDownloads.modId, mod.id))
+    .groupBy(schema.modDownloads.versionId);
+  const perVersionDownloads = new Map(perVersionRows.map((r) => [r.versionId, r.n]));
+
   // Fail-CLOSED: only versions scanned clean (or explicitly skipped when
   // scanning is disabled server-side) are shown publicly. Un-scanned
   // ('pending'/'queued'), 'flagged', and 'error' versions are withheld so a
@@ -295,6 +308,7 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       createdAt: v.createdAt.toISOString(),
       scanStatus: v.scanStatus,
       changelog: v.changelog,
+      downloads: perVersionDownloads.get(v.id) ?? 0,
     })),
   });
 });
@@ -334,11 +348,11 @@ modsRouter.get('/:slug/:version/download', zValidator('param', downloadParamSche
     return c.json({ error: 'this version has not passed malware scanning yet' }, 409);
   }
 
-  // Record the download. `mod_downloads` is bucketed by day with a
-  // composite PK (mod_id, day), so the conflict path bumps today's
-  // counter instead of inserting a duplicate row. We fire-and-forget
-  // before the redirect so a tracker hiccup never blocks the actual
-  // file download.
+  // Record the download. `mod_downloads` is bucketed by day per version
+  // (unique index on mod_id, day, version_id), so the conflict path bumps
+  // today's counter for THIS version instead of inserting a duplicate row —
+  // per-version attribution stays accurate. We fire-and-forget before the
+  // redirect so a tracker hiccup never blocks the actual file download.
   void db
     .insert(schema.modDownloads)
     .values({
@@ -348,7 +362,7 @@ modsRouter.get('/:slug/:version/download', zValidator('param', downloadParamSche
       count: 1,
     })
     .onConflictDoUpdate({
-      target: [schema.modDownloads.modId, schema.modDownloads.day],
+      target: [schema.modDownloads.modId, schema.modDownloads.day, schema.modDownloads.versionId],
       set: { count: sql`${schema.modDownloads.count} + 1` },
     })
     .catch((err: unknown) => {

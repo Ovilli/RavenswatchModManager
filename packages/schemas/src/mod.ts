@@ -98,6 +98,8 @@ export const modVersionSchema = z.object({
   // Markdown release notes entered at publish time. Optional for back-compat
   // with API responses that predate the field being exposed publicly.
   changelog: z.string().nullable().optional(),
+  // Lifetime download count for this version. Optional for back-compat.
+  downloads: z.number().int().nonnegative().optional(),
 });
 
 export type ModVersion = z.infer<typeof modVersionSchema>;

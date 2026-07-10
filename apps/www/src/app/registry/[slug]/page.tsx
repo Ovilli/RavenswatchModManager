@@ -321,6 +321,11 @@ function VersionRow({ version, slug }: { version: ModVersion; slug: string }) {
               {(version.sizeBytes / 1024 / 1024).toFixed(2)} MB
             </span>
           ) : null}
+          {version.downloads != null ? (
+            <span className="ml-3 text-xs text-muted-foreground">
+              {version.downloads.toLocaleString()} dl
+            </span>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           {version.changelog ? (

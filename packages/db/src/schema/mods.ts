@@ -69,6 +69,10 @@ export const mods = pgTable(
     categoryIdx: index('mods_category_idx').on(table.category),
     featuredIdx: index('mods_featured_idx').on(table.featured),
     takedownIdx: index('mods_takedown_idx').on(table.takedownStatus),
+    // Trigram index so the list endpoint's leading-wildcard ILIKE search on
+    // name can use an index. Requires `CREATE EXTENSION pg_trgm` (applied
+    // manually — drizzle-kit cannot create extensions).
+    nameTrgmIdx: index('mods_name_trgm_idx').using('gin', sql`${table.name} gin_trgm_ops`),
   }),
 );
 
@@ -139,7 +143,17 @@ export const modDownloads = pgTable(
     count: integer('count').notNull().default(0),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.modId, table.day] }),
+    // Day-bucket rows are unique per (mod, day, version) so per-version
+    // download attribution is accurate. Deliberately a unique index with
+    // default NULLS-DISTINCT semantics rather than a PK: versionId is
+    // nullable (FK is onDelete: 'set null'), and nulls-not-distinct would
+    // make deleting two same-day versions collide. The download route's
+    // ON CONFLICT target must match these columns exactly.
+    modDayVersionIdx: uniqueIndex('mod_downloads_mod_day_version_idx').on(
+      table.modId,
+      table.day,
+      table.versionId,
+    ),
   }),
 );
 
