@@ -167,6 +167,15 @@ export function createApiClient(options: ApiClientOptions) {
         name: z.string(),
         imageUrl: z.string().nullable(),
         followedAt: z.string(),
+        // Enriched card fields — optional for back-compat with older APIs.
+        summary: z.string().nullable().optional(),
+        category: z.string().nullable().optional(),
+        authorName: z.string().nullable().optional(),
+        rating: z.number().nullable().optional(),
+        nsfw: z.boolean().optional(),
+        updatedAt: z.string().optional(),
+        latestVersion: z.string().nullable().optional(),
+        downloads: z.number().int().optional(),
       }),
     ),
   });
@@ -273,21 +282,29 @@ export function createApiClient(options: ApiClientOptions) {
         params: {
           q?: string;
           tag?: string;
+          category?: string;
           limit?: number;
           offset?: number;
           featured?: boolean;
+          /** false = exclude NSFW mods; absent/true = include (server default). */
+          nsfw?: boolean;
           owner?: string;
-          sort?: 'recent' | 'popular' | 'featured';
+          sort?: 'recent' | 'popular' | 'featured' | 'rating';
+          /** Trending window for sort=popular (downloads within last N days). */
+          window?: '7d' | '30d';
         } = {},
       ) => {
         const qs = new URLSearchParams();
         if (params.q) qs.set('q', params.q);
         if (params.tag) qs.set('tag', params.tag);
+        if (params.category) qs.set('category', params.category);
         if (params.limit) qs.set('limit', String(params.limit));
         if (params.offset) qs.set('offset', String(params.offset));
         if (params.featured) qs.set('featured', 'true');
+        if (params.nsfw === false) qs.set('nsfw', 'false');
         if (params.owner) qs.set('owner', params.owner);
         if (params.sort) qs.set('sort', params.sort);
+        if (params.window) qs.set('window', params.window);
         return request<{ items: ModListItem[]; total: number }>(
           `/api/mods?${qs}`,
           { method: 'GET' },

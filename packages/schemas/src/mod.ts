@@ -95,6 +95,9 @@ export const modVersionSchema = z.object({
   // that predate the scan gate. The API only ever returns non-flagged
   // versions publicly, so 'flagged' is never seen here in practice.
   scanStatus: z.enum(['queued', 'pending', 'clean', 'flagged', 'skipped', 'error']).optional(),
+  // Markdown release notes entered at publish time. Optional for back-compat
+  // with API responses that predate the field being exposed publicly.
+  changelog: z.string().nullable().optional(),
 });
 
 export type ModVersion = z.infer<typeof modVersionSchema>;

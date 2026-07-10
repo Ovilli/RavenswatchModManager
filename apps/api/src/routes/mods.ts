@@ -1,6 +1,7 @@
 import { zValidator } from '@hono/zod-validator';
 import { getDb, schema } from '@rsmm/db';
 import {
+  modCategorySchema,
   modImagePresignSchema,
   modPatchSchema,
   modUploadRequestSchema,
@@ -42,12 +43,22 @@ const downloadLimiter = createRateLimiter({ name: 'mod-download', windowMs: 60_0
 const listQuerySchema = z.object({
   q: z.string().optional(),
   tag: z.string().optional(),
+  category: modCategorySchema.optional(),
   featured: z
     .union([z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0')])
     .optional()
     .transform((v) => (v === 'true' || v === '1' ? true : v === undefined ? undefined : false)),
+  // nsfw=false excludes mature-flagged mods. Absent (default) includes them,
+  // matching the pre-existing behavior for CLI/desktop consumers.
+  nsfw: z
+    .union([z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0')])
+    .optional()
+    .transform((v) => (v === 'true' || v === '1' ? true : v === undefined ? undefined : false)),
   owner: z.string().optional(),
-  sort: z.enum(['recent', 'popular', 'featured']).default('recent'),
+  sort: z.enum(['recent', 'popular', 'featured', 'rating']).default('recent'),
+  // Time window for the 'popular' sort: rank by downloads within the last N
+  // days instead of all time (a trending list). Ignored for other sorts.
+  window: z.enum(['7d', '30d']).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(24),
   offset: z.coerce.number().int().min(0).default(0),
 });
@@ -74,33 +85,43 @@ const versionScanParamSchema = z.object({
 });
 
 modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
-  const { q, tag, featured, owner, sort, limit, offset } = c.req.valid('query');
+  const { q, tag, category, featured, nsfw, owner, sort, window, limit, offset } =
+    c.req.valid('query');
   const db = getDb();
 
+  const qEsc = q ? q.replace(/[%_\\]/g, '\\$&') : undefined;
   const conditions = [
     // Admin takedown gate: delisted/removed mods never appear in the public list.
     eq(schema.mods.takedownStatus, 'active'),
-    q
+    qEsc
       ? or(
-          ilike(schema.mods.name, `%${q.replace(/[%_\\]/g, '\\$&')}%`),
-          ilike(schema.mods.slug, `%${q.replace(/[%_\\]/g, '\\$&')}%`),
+          ilike(schema.mods.name, `%${qEsc}%`),
+          ilike(schema.mods.slug, `%${qEsc}%`),
+          ilike(schema.mods.summary, `%${qEsc}%`),
+          ilike(schema.mods.authorName, `%${qEsc}%`),
         )
       : undefined,
     tag ? sql`${tag} = ANY(${schema.mods.tags})` : undefined,
+    category ? eq(schema.mods.category, category) : undefined,
     featured === true ? eq(schema.mods.featured, true) : undefined,
+    nsfw === false ? eq(schema.mods.nsfw, false) : undefined,
     owner ? eq(schema.mods.ownerId, owner) : undefined,
   ].filter(Boolean);
 
+  const windowDays = window === '7d' ? 7 : window === '30d' ? 30 : null;
   const orderBy =
     sort === 'popular'
       ? sql`coalesce((
           select sum(${schema.modDownloads.count})
           from ${schema.modDownloads}
           where ${schema.modDownloads.modId} = ${outerModId}
+          ${windowDays ? sql`and ${schema.modDownloads.day} >= current_date - ${windowDays}::int` : sql``}
         ), 0) desc`
-      : sort === 'featured'
-        ? sql`${schema.mods.featured} desc, ${schema.mods.featuredAt} desc nulls last, ${schema.mods.updatedAt} desc`
-        : desc(schema.mods.updatedAt);
+      : sort === 'rating'
+        ? sql`${schema.mods.rating} desc nulls last, ${schema.mods.updatedAt} desc`
+        : sort === 'featured'
+          ? sql`${schema.mods.featured} desc, ${schema.mods.featuredAt} desc nulls last, ${schema.mods.updatedAt} desc`
+          : desc(schema.mods.updatedAt);
 
   const rows = await db
     .select({
@@ -273,6 +294,7 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       assetUrl: v.assetUrl,
       createdAt: v.createdAt.toISOString(),
       scanStatus: v.scanStatus,
+      changelog: v.changelog,
     })),
   });
 });

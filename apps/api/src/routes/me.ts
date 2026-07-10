@@ -165,12 +165,38 @@ meRouter.get('/follows', async (c) => {
       name: schema.mods.name,
       imageUrl: schema.mods.imageUrl,
       followedAt: schema.modFollows.createdAt,
+      // Enriched card fields (additive — original three stay first-class for
+      // older clients).
+      summary: schema.mods.summary,
+      category: schema.mods.category,
+      authorName: schema.mods.authorName,
+      rating: schema.mods.rating,
+      nsfw: schema.mods.nsfw,
+      updatedAt: schema.mods.updatedAt,
+      latestVersion: sql<string | null>`(
+        select ${schema.modVersions.version}
+        from ${schema.modVersions}
+        where ${schema.modVersions.modId} = ${schema.mods.id}
+          and ${schema.modVersions.scanStatus} in ('clean', 'skipped')
+        order by ${schema.modVersions.createdAt} desc
+        limit 1
+      )`,
+      downloads: sql<number>`coalesce((
+        select sum(${schema.modDownloads.count})::int
+        from ${schema.modDownloads}
+        where ${schema.modDownloads.modId} = ${schema.mods.id}
+      ), 0)`,
     })
     .from(schema.modFollows)
     .innerJoin(schema.mods, eq(schema.modFollows.modId, schema.mods.id))
     .where(and(eq(schema.modFollows.userId, user.id), eq(schema.mods.takedownStatus, 'active')))
     .orderBy(desc(schema.modFollows.createdAt));
   return c.json({
-    items: rows.map((r) => ({ ...r, followedAt: r.followedAt.toISOString() })),
+    items: rows.map((r) => ({
+      ...r,
+      rating: r.rating != null ? Number(r.rating) : null,
+      followedAt: r.followedAt.toISOString(),
+      updatedAt: r.updatedAt.toISOString(),
+    })),
   });
 });

@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import type { Route } from 'next';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { use, useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../../lib/api';
@@ -24,6 +25,10 @@ import { toEmbedUrl } from '../../../lib/video-embed';
 import { AdBanner } from '../../components/ad-banner';
 import { FollowButton } from '../../components/follow-button';
 import { ReportModal } from '../../components/report-modal';
+
+const MDPreview = dynamic(() => import('@uiw/react-md-editor').then((m) => m.default.Markdown), {
+  ssr: false,
+});
 
 // RSMM desktop ships for Windows + Linux only. Non-target platforms (macOS)
 // resolve to 'other' so we label the button neutrally instead of promising a
@@ -168,9 +173,15 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
           <div className="space-y-4 md:col-span-2">
             <div className="grimoire-card p-6">
               <h2 className="text-xl font-bold tracking-tight mb-4">About</h2>
-              <div className="prose prose-sm prose-invert max-w-none text-muted-foreground">
-                {mod.summary ?? 'No description available.'}
-              </div>
+              {mod.description ? (
+                <article data-color-mode="dark" className="md-editor-themed prose-invert max-w-none">
+                  <MDPreview source={mod.description} />
+                </article>
+              ) : (
+                <div className="prose prose-sm prose-invert max-w-none text-muted-foreground">
+                  {mod.summary ?? 'No description available.'}
+                </div>
+              )}
             </div>
 
             {(mod.screenshots?.length ?? 0) > 0 || (mod.videos?.length ?? 0) > 0 ? (
@@ -296,32 +307,53 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
 function VersionRow({ version, slug }: { version: ModVersion; slug: string }) {
   const apiBase = (typeof window !== 'undefined' ? getApiUrl() : '').replace(/\/+$/, '');
   const downloadUrl = `${apiBase}/api/mods/${slug}/${version.version}/download`;
+  const [showChangelog, setShowChangelog] = useState(false);
   return (
-    <div className="flex items-center justify-between gap-4 py-3">
-      <div>
-        <span className="font-mono text-sm font-medium">v{version.version}</span>
-        <span className="ml-3 text-xs text-muted-foreground">
-          {new Date(version.createdAt).toLocaleDateString()}
-        </span>
-        {version.sizeBytes ? (
+    <div className="py-3">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <span className="font-mono text-sm font-medium">v{version.version}</span>
           <span className="ml-3 text-xs text-muted-foreground">
-            {(version.sizeBytes / 1024 / 1024).toFixed(2)} MB
+            {new Date(version.createdAt).toLocaleDateString()}
           </span>
-        ) : null}
+          {version.sizeBytes ? (
+            <span className="ml-3 text-xs text-muted-foreground">
+              {(version.sizeBytes / 1024 / 1024).toFixed(2)} MB
+            </span>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-2">
+          {version.changelog ? (
+            <button
+              type="button"
+              onClick={() => setShowChangelog((s) => !s)}
+              className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+              aria-expanded={showChangelog}
+            >
+              {showChangelog ? 'Hide changelog' : 'Changelog'}
+            </button>
+          ) : null}
+          <a href={downloadUrl} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+            <Download className="mr-1 h-3.5 w-3.5" />
+            Download
+          </a>
+          <a
+            href={`rsmm://mods/${slug}/versions/${version.version}`}
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+            title="Open in RSMM desktop app"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        <a href={downloadUrl} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
-          <Download className="mr-1 h-3.5 w-3.5" />
-          Download
-        </a>
-        <a
-          href={`rsmm://mods/${slug}/versions/${version.version}`}
-          className={buttonVariants({ variant: 'outline', size: 'sm' })}
-          title="Open in RSMM desktop app"
+      {showChangelog && version.changelog ? (
+        <article
+          data-color-mode="dark"
+          className="md-editor-themed prose-invert mt-2 max-w-none rounded-md border border-border/40 p-3 text-sm"
         >
-          <ExternalLink className="h-3.5 w-3.5" />
-        </a>
-      </div>
+          <MDPreview source={version.changelog} />
+        </article>
+      ) : null}
     </div>
   );
 }
