@@ -4,7 +4,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { createAuthMiddleware } from 'better-auth/api';
 import { oneTimeToken } from 'better-auth/plugins/one-time-token';
 import { env, githubConfigured, googleConfigured, isProduction, smtpConfigured } from './env.js';
-import { log } from './logger.js';
+import { errString, log } from './logger.js';
 import {
   changeEmailTemplate,
   resetPasswordTemplate,
@@ -69,7 +69,7 @@ export const auth = betterAuth({
       try {
         await sendMail({ to: user.email, subject: t.subject, text: t.text, html: t.html });
       } catch (err) {
-        log.error('failed to send password-reset email', { err: String(err) });
+        log.error('failed to send password-reset email', { err: errString(err) });
       }
     },
   },
@@ -81,7 +81,7 @@ export const auth = betterAuth({
       try {
         await sendMail({ to: user.email, subject: t.subject, text: t.text, html: t.html });
       } catch (err) {
-        log.error('failed to send verification email', { err: String(err) });
+        log.error('failed to send verification email', { err: errString(err) });
       }
     },
   },
@@ -115,7 +115,7 @@ export const auth = betterAuth({
         try {
           await sendMail({ to: user.email, subject: t.subject, text: t.text, html: t.html });
         } catch (err) {
-          log.error('failed to send change-email verification', { err: String(err) });
+          log.error('failed to send change-email verification', { err: errString(err) });
         }
       },
     },

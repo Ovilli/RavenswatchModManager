@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { auth } from '../auth.js';
+import { errString } from '../logger.js';
 import { githubConfigured, googleConfigured } from '../env.js';
 import type { AppEnv } from '../types.js';
 
@@ -129,7 +130,7 @@ desktopAuthRouter.get('/start', async (c) => {
     for (const cookie of res.headers.getSetCookie()) headers.append('set-cookie', cookie);
     return new Response(null, { status: 302, headers });
   } catch (err) {
-    (c.get('log') ?? console).error?.('[desktop-auth] start failed', { err: String(err) });
+    (c.get('log') ?? console).error?.('[desktop-auth] start failed', { err: errString(err) });
     return c.html(
       statusPage({ title: 'Sign-in failed', body: 'Could not start the sign-in flow.' }),
       500,
@@ -170,7 +171,7 @@ desktopAuthRouter.get('/complete', async (c) => {
     const deepLink = `${DEEP_LINK_SCHEME}://desktop-auth?token=${encodeURIComponent(token)}${nonceParam}`;
     return c.html(statusPage({ title: 'Signed in', body: 'Returning you to the app…', deepLink }));
   } catch (err) {
-    (c.get('log') ?? console).error?.('[desktop-auth] complete failed', { err: String(err) });
+    (c.get('log') ?? console).error?.('[desktop-auth] complete failed', { err: errString(err) });
     return c.html(
       statusPage({ title: 'Sign-in failed', body: 'Could not finish signing you in.' }),
       500,

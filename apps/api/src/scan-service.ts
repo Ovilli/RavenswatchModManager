@@ -1,5 +1,6 @@
 import { getDb, schema } from '@rsmm/db';
 import { and, asc, eq, lt, or, sql } from 'drizzle-orm';
+import { errString } from './logger.js';
 import { notify } from './notify.js';
 import { deleteObject, getObjectBytes, modUploadKey } from './storage.js';
 import {
@@ -112,7 +113,7 @@ export async function scanVersion(target: ScanTarget): Promise<ScanResult> {
     } catch (err) {
       // A failed delete must not swallow the flag — the row still goes
       // 'flagged' (hidden + download blocked). Surface for follow-up.
-      console.error('failed to purge flagged object', { key, err: String(err) });
+      console.error('failed to purge flagged object', { key, err: errString(err) });
     }
   }
 
@@ -333,7 +334,7 @@ async function drainOnceInner(): Promise<{ id: string; action: string; status?: 
       // Leave it in place (queued rows stay queued) and retry next tick.
       return { id: picked.target.id, action: `${picked.action}:rate-limited` };
     }
-    console.error('scan worker error', { versionId: picked.target.id, err: String(err) });
+    console.error('scan worker error', { versionId: picked.target.id, err: errString(err) });
     await markScan(picked.target.id, 'error');
     return { id: picked.target.id, action: `${picked.action}:error` };
   }

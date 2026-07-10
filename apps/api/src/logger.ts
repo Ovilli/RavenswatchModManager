@@ -55,6 +55,22 @@ function make(bindings: Record<string, unknown>): Logger {
 export const log = make({});
 
 /**
+ * Error → string including the `cause` chain. Drizzle and fetch wrap the
+ * real failure ("relation does not exist", ECONNREFUSED, …) in `cause`,
+ * which `String(err)` drops — leaving logs like "Error: Failed query"
+ * with no diagnosis.
+ */
+export function errString(err: unknown): string {
+  const parts: string[] = [];
+  let cur: unknown = err;
+  for (let i = 0; cur != null && i < 5; i++) {
+    parts.push(cur instanceof Error ? `${cur.name}: ${cur.message}` : String(cur));
+    cur = cur instanceof Error ? cur.cause : undefined;
+  }
+  return parts.join(' <- ');
+}
+
+/**
  * Assigns each request a correlation id (honouring an inbound `x-request-id`
  * from the proxy), echoes it on the response, and stashes a child logger at
  * `c.get('log')` for handlers.

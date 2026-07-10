@@ -13,6 +13,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { isAdmin } from '../admin.js';
 import { isPgErrorCode } from '../db-errors.js';
+import { errString } from '../logger.js';
 import { s3Configured, virusTotalConfigured } from '../env.js';
 import { canManageMod } from '../mod-access.js';
 import { notify, notifyFollowers } from '../notify.js';
@@ -321,7 +322,7 @@ modsRouter.get('/:slug/:version/download', zValidator('param', downloadParamSche
       set: { count: sql`${schema.modDownloads.count} + 1` },
     })
     .catch((err: unknown) => {
-      c.get('log').error('download-count upsert failed', { err: String(err) });
+      c.get('log').error('download-count upsert failed', { err: errString(err) });
     });
 
   // In dev without S3, serve a placeholder file
@@ -532,7 +533,7 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
     if (isPgErrorCode(err, '23505')) {
       return c.json({ error: 'version already exists' }, 409);
     }
-    c.get('log').error('upload error', { err: String(err) });
+    c.get('log').error('upload error', { err: errString(err) });
     return c.json({ error: 'failed to create mod version' }, 500);
   }
 });
@@ -816,7 +817,7 @@ modsRouter.post(
         expiresIn: signed.expiresIn,
       });
     } catch (err) {
-      c.get('log').error('version create error', { err: String(err) });
+      c.get('log').error('version create error', { err: errString(err) });
       return c.json({ error: 'failed to create version' }, 500);
     }
   },

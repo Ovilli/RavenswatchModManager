@@ -2,7 +2,7 @@ import { serve } from '@hono/node-server';
 import { pingDb } from '@rsmm/db';
 import { app } from './app.js';
 import { env } from './env.js';
-import { log } from './logger.js';
+import { errString, log } from './logger.js';
 import { startScanWorker } from './scan-worker.js';
 
 const port = env.port;
@@ -21,12 +21,12 @@ async function main() {
     serve({ fetch: app.fetch, port });
     startScanWorker();
   } catch (err) {
-    log.error('failed to start server', { port, err: String(err) });
+    log.error('failed to start server', { port, err: errString(err) });
     process.exit(1);
   }
 }
 
 main().catch((err) => {
-  log.error('fatal startup error', { err: String(err) });
+  log.error('fatal startup error', { err: errString(err) });
   process.exit(1);
 });

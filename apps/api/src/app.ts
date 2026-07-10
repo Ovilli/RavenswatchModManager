@@ -5,7 +5,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { auth } from './auth.js';
 import { env, githubConfigured, googleConfigured, isProduction } from './env.js';
-import { log, requestId } from './logger.js';
+import { errString, log, requestId } from './logger.js';
 import { createRateLimiter } from './rate-limit.js';
 import { collectionsRouter } from './routes/collections.js';
 import { desktopAuthRouter } from './routes/desktop-auth.js';
@@ -41,7 +41,7 @@ app.use('*', async (c, next) => {
 });
 
 app.onError((err, c) => {
-  (c.get('log') ?? log).error('unhandled error', { err: String(err), stack: err.stack });
+  (c.get('log') ?? log).error('unhandled error', { err: errString(err), stack: err.stack });
   return c.json({ error: 'internal server error' }, 500);
 });
 

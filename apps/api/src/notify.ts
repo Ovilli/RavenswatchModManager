@@ -1,7 +1,7 @@
 import { getDb, schema } from '@rsmm/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { smtpConfigured } from './env.js';
-import { log } from './logger.js';
+import { errString, log } from './logger.js';
 import { sendMail } from './mailer.js';
 
 export type NotificationType =
@@ -38,7 +38,7 @@ export async function notify(input: NotifyInput): Promise<void> {
         link: input.link ?? null,
       });
   } catch (err) {
-    log.error('failed to create notification', { err: String(err), type: input.type });
+    log.error('failed to create notification', { err: errString(err), type: input.type });
   }
 
   if (input.email && smtpConfigured()) {
@@ -46,7 +46,7 @@ export async function notify(input: NotifyInput): Promise<void> {
       const text = input.body ? `${input.title}\n\n${input.body}` : input.title;
       await sendMail({ to: input.email, subject: input.title, text });
     } catch (err) {
-      log.error('failed to send notification email', { err: String(err), type: input.type });
+      log.error('failed to send notification email', { err: errString(err), type: input.type });
     }
   }
 }
@@ -79,7 +79,7 @@ export async function notifyFollowers(
       })),
     );
   } catch (err) {
-    log.error('failed to fan out follower notifications', { err: String(err), modId });
+    log.error('failed to fan out follower notifications', { err: errString(err), modId });
   }
 }
 

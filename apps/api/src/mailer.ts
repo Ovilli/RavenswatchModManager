@@ -16,6 +16,12 @@ function getTransport(): Transporter {
     port: env.smtp.port,
     secure: env.smtp.secure,
     auth: { user: env.smtp.user, pass: env.smtp.pass },
+    // Fail fast instead of nodemailer's 2-minute connection default — a
+    // network outage otherwise stalls the awaiting auth response (observed:
+    // 154s on request-password-reset) before the send even errors.
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 30_000,
   });
   return cached;
 }

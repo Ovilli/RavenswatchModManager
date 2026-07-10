@@ -7,6 +7,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env, s3Configured } from './env.js';
+import { errString } from './logger.js';
 
 let cached: S3Client | null = null;
 
@@ -62,7 +63,7 @@ export async function objectExists(key: string, tries = 4): Promise<boolean> {
       const notFound = status === 404 || (err as { name?: string })?.name === 'NotFound';
       if (!notFound) {
         // Not a "missing object" — creds/endpoint/permission problem. Surface it.
-        console.error('objectExists HEAD failed (non-404)', { key, status, err: String(err) });
+        console.error('objectExists HEAD failed (non-404)', { key, status, err: errString(err) });
         return false;
       }
       const delay = delaysMs[attempt];

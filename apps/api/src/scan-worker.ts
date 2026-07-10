@@ -1,5 +1,5 @@
 import { virusTotalConfigured } from './env.js';
-import { log } from './logger.js';
+import { errString, log } from './logger.js';
 import { SCAN_TICK_SECONDS, drainOnce } from './scan-service.js';
 
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -25,7 +25,7 @@ export function startScanWorker(): void {
       const r = await drainOnce();
       if (r) log.info('scan worker tick', r);
     } catch (err) {
-      log.error('scan worker tick failed', { err: String(err) });
+      log.error('scan worker tick failed', { err: errString(err) });
     } finally {
       running = false;
     }
@@ -59,7 +59,7 @@ export function kickScanWorker(): void {
     .then((r) => {
       if (r) log.info('scan worker kick', r);
     })
-    .catch((err) => log.error('scan worker kick failed', { err: String(err) }));
+    .catch((err) => log.error('scan worker kick failed', { err: errString(err) }));
   try {
     const ctx = (
       globalThis as {
