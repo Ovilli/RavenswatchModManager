@@ -6,15 +6,18 @@ import { Badge, Button, Input, Spinner } from '@rsmm/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
+  BarChart3,
   ChevronLeft,
   ChevronRight,
   Eye,
   ImageIcon,
   Loader2,
+  Package,
   Pencil,
   Save,
   Trash2,
   Upload,
+  Users,
   X,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
@@ -50,6 +53,76 @@ const CATEGORIES: ModCategory[] = [
 ];
 
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:[-+][\w.]+)?$/;
+
+/** Manage-page sections. One card pile per concern instead of one long scroll;
+ *  the active section is kept in the URL hash so a reload (or a shared link,
+ *  e.g. /my-mods/foo#versions) lands on the same section. */
+const SECTIONS = [
+  { id: 'listing', label: 'Listing', icon: Pencil },
+  { id: 'gallery', label: 'Gallery', icon: ImageIcon },
+  { id: 'versions', label: 'Versions', icon: Package },
+  { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+  { id: 'team', label: 'Team', icon: Users },
+  { id: 'danger', label: 'Danger zone', icon: AlertTriangle },
+] as const;
+type SectionId = (typeof SECTIONS)[number]['id'];
+
+function SectionNav({
+  active,
+  onSelect,
+  versionCount,
+  hasInReview,
+}: {
+  active: SectionId;
+  onSelect: (id: SectionId) => void;
+  versionCount: number;
+  hasInReview: boolean;
+}) {
+  return (
+    <nav
+      aria-label="Mod sections"
+      className="grimoire-card flex gap-1 overflow-x-auto p-2 md:sticky md:top-24 md:flex-col md:gap-1 md:self-start"
+    >
+      {SECTIONS.map((s) => {
+        const isActive = active === s.id;
+        const Icon = s.icon;
+        const tone =
+          s.id === 'danger'
+            ? isActive
+              ? 'bg-destructive/10 font-medium text-destructive'
+              : 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive'
+            : isActive
+              ? 'bg-secondary/70 font-medium text-foreground'
+              : 'text-muted-foreground hover:bg-secondary/40 hover:text-foreground';
+        return (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => onSelect(s.id)}
+            aria-current={isActive ? 'true' : undefined}
+            className={`flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:w-full ${tone}`}
+          >
+            <Icon className="h-4 w-4 shrink-0" />
+            {s.label}
+            {s.id === 'versions' ? (
+              <span className="ml-auto flex items-center gap-1.5 pl-2">
+                {hasInReview ? (
+                  <span
+                    className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500"
+                    title="A version is in review"
+                  />
+                ) : null}
+                <span className="rounded-full bg-secondary px-1.5 text-[10px] leading-4 text-muted-foreground">
+                  {versionCount}
+                </span>
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
 
 function Label({
   htmlFor,
@@ -171,6 +244,16 @@ export default function ManageModPage() {
   const [videoInput, setVideoInput] = useState('');
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [previewMode, setPreviewMode] = useState(false);
+  const [section, setSection] = useState<SectionId>('listing');
+  // Adopt a section from the URL hash on first load (deep link / reload).
+  useEffect(() => {
+    const h = window.location.hash.slice(1);
+    if (SECTIONS.some((s) => s.id === h)) setSection(h as SectionId);
+  }, []);
+  const selectSection = useCallback((id: SectionId) => {
+    setSection(id);
+    window.history.replaceState(null, '', `#${id}`);
+  }, []);
 
   // Hydrate the form whenever the underlying detail row changes — this
   // also covers the post-mutation refetch so the inputs reflect what
@@ -493,24 +576,37 @@ export default function ManageModPage() {
     );
   }
 
+  const hasInReview = versions.some(
+    (v) => v.scanStatus && v.scanStatus !== 'clean' && v.scanStatus !== 'skipped',
+  );
+
   return (
-    <main className="container mx-auto max-w-3xl space-y-8 px-6 py-12">
+    <main className="container mx-auto max-w-5xl space-y-8 px-6 py-12">
       <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="font-mono text-xs text-muted-foreground">{mod.slug}</p>
-          <h1 className="text-3xl font-bold tracking-tight">{mod.name}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            v{mod.latestVersion ?? '—'} · {mod.downloads.toLocaleString()} downloads ·
-            {mod.category ? ` ${mod.category} · ` : ' '}updated{' '}
-            {new Date(mod.updatedAt).toLocaleDateString()}
-          </p>
-          <div className="mt-3 flex gap-2 text-sm">
-            <Link
-              href={`/registry/${mod.slug}` as never}
-              className="underline-offset-2 hover:underline"
-            >
-              View public page →
-            </Link>
+        <div className="flex items-start gap-4">
+          {mod.imageUrl ? (
+            <img
+              src={mod.imageUrl}
+              alt=""
+              className="mt-1 hidden h-12 w-12 shrink-0 rounded-md border border-border/40 object-cover sm:block"
+            />
+          ) : null}
+          <div>
+            <p className="font-mono text-xs text-muted-foreground">{mod.slug}</p>
+            <h1 className="text-3xl font-bold tracking-tight">{mod.name}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              v{mod.latestVersion ?? '—'} · {mod.downloads.toLocaleString()} downloads ·
+              {mod.category ? ` ${mod.category} · ` : ' '}updated{' '}
+              {new Date(mod.updatedAt).toLocaleDateString()}
+            </p>
+            <div className="mt-3 flex gap-2 text-sm">
+              <Link
+                href={`/registry/${mod.slug}` as never}
+                className="underline-offset-2 hover:underline"
+              >
+                View public page →
+              </Link>
+            </div>
           </div>
         </div>
         <Button type="button" variant="outline" onClick={() => setPreviewMode(true)}>
@@ -539,411 +635,450 @@ export default function ManageModPage() {
         </div>
       ) : null}
 
-      {/* ─── Cover ─── */}
-      <section className="grimoire-card space-y-4 p-5">
-        <h2 className="text-lg font-semibold">Cover image</h2>
-        {mod.imageUrl ? (
-          <div className="aspect-[16/9] w-full overflow-hidden rounded-md bg-muted">
-            <img
-              src={mod.imageUrl}
-              alt={`${mod.name} cover`}
-              className="h-full w-full object-cover"
-            />
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">No cover image yet.</p>
-        )}
-        <div className="space-y-2">
-          <Label htmlFor="cover">
-            <span className="inline-flex items-center gap-2">
-              <ImageIcon className="h-4 w-4" /> Upload new cover (png/jpeg/webp, ≤ 8 MB)
-            </span>
-          </Label>
-          <input
-            id="cover"
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            onChange={(e) => setCoverFile(e.target.files?.[0] ?? null)}
-            className="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-secondary/80"
-          />
-          {coverFile ? (
-            <p className="text-xs text-muted-foreground">
-              {coverFile.name} — {fmtBytes(coverFile.size)}
-            </p>
-          ) : null}
-          <Button
-            onClick={() => uploadCover.mutate()}
-            disabled={!coverFile || uploadCover.isPending}
-            size="sm"
-          >
-            {uploadCover.isPending ? <Spinner /> : null} Upload cover
-          </Button>
-          {uploadCover.isError ? (
-            <p className="text-xs text-destructive">{describeApiError(uploadCover.error)}</p>
-          ) : null}
-        </div>
-      </section>
-
-      {/* ─── Metadata edit ─── */}
-      <section className="grimoire-card space-y-4 p-5">
-        <h2 className="text-lg font-semibold">Metadata</h2>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="name">Display name</Label>
-            <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="summary">Summary</Label>
-            <Input
-              id="summary"
-              value={summary}
-              onChange={(e) => setSummary(e.target.value)}
-              maxLength={512}
-            />
-          </div>
-          <div className="space-y-2 sm:col-span-2">
-            <Label>Description (Markdown)</Label>
-            <div data-color-mode="dark" className="md-editor-themed">
-              <MDEditor value={description} onChange={setDescription} height={320} />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="category">Category</Label>
-            <select
-              id="category"
-              value={category}
-              onChange={(e) => setCategory(e.target.value as ModCategory)}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="license">License</Label>
-            <Input id="license" value={license} onChange={(e) => setLicense(e.target.value)} />
-          </div>
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="tags">Tags (comma-separated)</Label>
-            <Input id="tags" value={tags} onChange={(e) => setTags(e.target.value)} />
-          </div>
-          <div className="space-y-2 sm:col-span-2">
-            <label className="flex cursor-pointer items-center gap-3 text-sm">
-              <input
-                type="checkbox"
-                checked={nsfw}
-                onChange={(e) => setNsfw(e.target.checked)}
-                className="h-4 w-4 rounded border-border accent-crimson"
-              />
-              <span className="text-sm font-medium leading-none">
-                <strong>NSFW / mature content</strong>
-              </span>
-            </label>
-            <p className="text-xs text-muted-foreground">
-              If checked, the mod will be hidden behind a blur by default.
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="repo">Repository URL</Label>
-            <Input
-              id="repo"
-              type="url"
-              value={repoUrl}
-              onChange={(e) => setRepoUrl(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="home">Homepage URL</Label>
-            <Input
-              id="home"
-              type="url"
-              value={homepageUrl}
-              onChange={(e) => setHomepageUrl(e.target.value)}
-            />
-          </div>
-        </div>
-        <div className="flex items-center justify-end gap-3">
-          {saveMessage ? (
-            <span className="text-xs text-muted-foreground">{saveMessage}</span>
-          ) : null}
-          {saveMeta.isError ? (
-            <span className="text-xs text-destructive">{describeApiError(saveMeta.error)}</span>
-          ) : null}
-          <Button onClick={() => saveMeta.mutate()} disabled={saveMeta.isPending}>
-            {saveMeta.isPending ? <Spinner /> : <Save className="h-4 w-4" />} Save metadata
-          </Button>
-        </div>
-      </section>
-
-      {/* ─── Gallery ─── */}
-      <section className="grimoire-card space-y-4 p-5">
-        <div>
-          <h2 className="text-lg font-semibold">Gallery</h2>
-          <p className="text-xs text-muted-foreground">
-            Up to 12 screenshots and 8 YouTube/Vimeo links.
-          </p>
-        </div>
-
-        {/* Screenshots */}
-        <div className="space-y-2">
-          <Label>Screenshots</Label>
-          {screenshots.length > 0 ? (
-            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {screenshots.map((shot, idx) => (
-                <li key={shot.url} className="space-y-2 rounded-md border border-border/40 p-2">
-                  <button
-                    type="button"
-                    onClick={() => setLightboxIdx(idx)}
-                    className="group relative block aspect-video w-full overflow-hidden rounded bg-muted"
-                  >
+      <div className="gap-8 md:grid md:grid-cols-[200px_minmax(0,1fr)]">
+        <SectionNav
+          active={section}
+          onSelect={selectSection}
+          versionCount={versions.length}
+          hasInReview={hasInReview}
+        />
+        <div className="mt-6 min-w-0 space-y-8 md:mt-0">
+          {section === 'listing' ? (
+            <>
+              {/* ─── Cover ─── */}
+              <section className="grimoire-card space-y-4 p-5">
+                <h2 className="text-lg font-semibold">Cover image</h2>
+                {mod.imageUrl ? (
+                  <div className="aspect-[16/9] w-full overflow-hidden rounded-md bg-muted">
                     <img
-                      src={shot.url}
-                      alt={shot.caption || `Screenshot ${idx + 1}`}
-                      className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
+                      src={mod.imageUrl}
+                      alt={`${mod.name} cover`}
+                      className="h-full w-full object-cover"
                     />
-                    <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
-                      click to preview
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No cover image yet.</p>
+                )}
+                <div className="space-y-2">
+                  <Label htmlFor="cover">
+                    <span className="inline-flex items-center gap-2">
+                      <ImageIcon className="h-4 w-4" /> Upload new cover (png/jpeg/webp, ≤ 8 MB)
                     </span>
-                  </button>
-                  <Input
-                    value={shot.caption ?? ''}
-                    onChange={(e) => setCaption(idx, (e.target as HTMLInputElement).value)}
-                    onBlur={() => commitCaption(idx)}
-                    placeholder="Caption (optional, max 200 chars)"
-                    maxLength={200}
+                  </Label>
+                  <input
+                    id="cover"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={(e) => setCoverFile(e.target.files?.[0] ?? null)}
+                    className="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-secondary/80"
                   />
+                  {coverFile ? (
+                    <p className="text-xs text-muted-foreground">
+                      {coverFile.name} — {fmtBytes(coverFile.size)}
+                    </p>
+                  ) : null}
                   <Button
-                    type="button"
+                    onClick={() => uploadCover.mutate()}
+                    disabled={!coverFile || uploadCover.isPending}
                     size="sm"
-                    variant="outline"
-                    onClick={() => removeScreenshot(idx)}
                   >
-                    <Trash2 className="h-3.5 w-3.5" /> Remove
+                    {uploadCover.isPending ? <Spinner /> : null} Upload cover
                   </Button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-xs text-muted-foreground">No screenshots yet.</p>
-          )}
-          {screenshots.length < 12 ? (
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) uploadScreenshot.mutate(f);
-                e.target.value = '';
-              }}
-              disabled={uploadScreenshot.isPending}
-              className="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-secondary/80"
-            />
-          ) : null}
-          {uploadScreenshot.isPending ? (
-            <p className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Spinner /> Uploading…
-            </p>
-          ) : null}
-          {uploadScreenshot.isError ? (
-            <p className="text-xs text-destructive">{describeApiError(uploadScreenshot.error)}</p>
-          ) : null}
-        </div>
+                  {uploadCover.isError ? (
+                    <p className="text-xs text-destructive">
+                      {describeApiError(uploadCover.error)}
+                    </p>
+                  ) : null}
+                </div>
+              </section>
 
-        {/* Videos */}
-        <div className="space-y-2">
-          <Label>Videos (YouTube or Vimeo URLs)</Label>
-          {videos.length > 0 ? (
-            <ul className="space-y-2">
-              {videos.map((url, idx) => (
-                <li
-                  key={url}
-                  className="flex items-center gap-2 rounded-md border border-border/40 px-3 py-2"
-                >
-                  <span className="flex-1 truncate font-mono text-xs">{url}</span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => removeVideo(idx)}
-                  >
-                    remove
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-xs text-muted-foreground">No videos yet.</p>
-          )}
-          {videos.length < 8 ? (
-            <div className="flex gap-2">
-              <Input
-                value={videoInput}
-                onChange={(e) => setVideoInput((e.target as HTMLInputElement).value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    addVideo();
-                  }
-                }}
-                placeholder="https://www.youtube.com/watch?v=…"
-              />
-              <Button type="button" onClick={addVideo} disabled={!videoInput.trim()}>
-                Add
-              </Button>
-            </div>
-          ) : null}
-        </div>
-      </section>
-
-      {/* ─── Versions ─── */}
-      <section className="grimoire-card space-y-4 p-5">
-        <h2 className="text-lg font-semibold">Versions</h2>
-        {versions.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No versions published yet.</p>
-        ) : (
-          <ul className="space-y-3">
-            {versions
-              .slice()
-              .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-              .map((v) => {
-                // changelog isn't on the published ModVersion schema yet
-                // because the public detail endpoint hasn't been
-                // extended — read it from manifestJson as a fallback.
-                const cl =
-                  typeof v.manifestJson === 'object'
-                    ? (v.manifestJson as { changelog?: string })?.changelog
-                    : undefined;
-                return (
-                  <li key={v.id} className="grimoire-card p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <p className="font-semibold">v{v.version}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {fmtBytes(v.sizeBytes)} · {new Date(v.createdAt).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <ScanBadge versionId={v.id} />
-                        <Badge variant="outline">{v.sha256.slice(0, 12)}</Badge>
-                      </div>
+              {/* ─── Metadata edit ─── */}
+              <section className="grimoire-card space-y-4 p-5">
+                <h2 className="text-lg font-semibold">Metadata</h2>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="name">Display name</Label>
+                    <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="summary">Summary</Label>
+                    <Input
+                      id="summary"
+                      value={summary}
+                      onChange={(e) => setSummary(e.target.value)}
+                      maxLength={512}
+                    />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>Description (Markdown)</Label>
+                    <div data-color-mode="dark" className="md-editor-themed">
+                      <MDEditor value={description} onChange={setDescription} height={320} />
                     </div>
-                    {v.scanStatus && v.scanStatus !== 'clean' && v.scanStatus !== 'skipped' ? (
-                      <p
-                        className={`mt-2 text-xs ${
-                          v.scanStatus === 'flagged' ? 'text-destructive' : 'text-amber-500'
-                        }`}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="category">Category</Label>
+                    <select
+                      id="category"
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value as ModCategory)}
+                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      {CATEGORIES.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="license">License</Label>
+                    <Input
+                      id="license"
+                      value={license}
+                      onChange={(e) => setLicense(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="tags">Tags (comma-separated)</Label>
+                    <Input id="tags" value={tags} onChange={(e) => setTags(e.target.value)} />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <label className="flex cursor-pointer items-center gap-3 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={nsfw}
+                        onChange={(e) => setNsfw(e.target.checked)}
+                        className="h-4 w-4 rounded border-border accent-crimson"
+                      />
+                      <span className="text-sm font-medium leading-none">
+                        <strong>NSFW / mature content</strong>
+                      </span>
+                    </label>
+                    <p className="text-xs text-muted-foreground">
+                      If checked, the mod will be hidden behind a blur by default.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="repo">Repository URL</Label>
+                    <Input
+                      id="repo"
+                      type="url"
+                      value={repoUrl}
+                      onChange={(e) => setRepoUrl(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="home">Homepage URL</Label>
+                    <Input
+                      id="home"
+                      type="url"
+                      value={homepageUrl}
+                      onChange={(e) => setHomepageUrl(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-end gap-3">
+                  {saveMessage ? (
+                    <span className="text-xs text-muted-foreground">{saveMessage}</span>
+                  ) : null}
+                  {saveMeta.isError ? (
+                    <span className="text-xs text-destructive">
+                      {describeApiError(saveMeta.error)}
+                    </span>
+                  ) : null}
+                  <Button onClick={() => saveMeta.mutate()} disabled={saveMeta.isPending}>
+                    {saveMeta.isPending ? <Spinner /> : <Save className="h-4 w-4" />} Save metadata
+                  </Button>
+                </div>
+              </section>
+            </>
+          ) : null}
+
+          {section === 'gallery' ? (
+            /* ─── Gallery ─── */
+            <section className="grimoire-card space-y-4 p-5">
+              <div>
+                <h2 className="text-lg font-semibold">Gallery</h2>
+                <p className="text-xs text-muted-foreground">
+                  Up to 12 screenshots and 8 YouTube/Vimeo links.
+                </p>
+              </div>
+
+              {/* Screenshots */}
+              <div className="space-y-2">
+                <Label>Screenshots</Label>
+                {screenshots.length > 0 ? (
+                  <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {screenshots.map((shot, idx) => (
+                      <li
+                        key={shot.url}
+                        className="space-y-2 rounded-md border border-border/40 p-2"
                       >
-                        {v.scanStatus === 'flagged'
-                          ? 'Flagged by malware scanning — the file was removed and this version cannot be downloaded.'
-                          : 'In review — only you can see this version until the malware scan clears (usually a few minutes).'}
+                        <button
+                          type="button"
+                          onClick={() => setLightboxIdx(idx)}
+                          className="group relative block aspect-video w-full overflow-hidden rounded bg-muted"
+                        >
+                          <img
+                            src={shot.url}
+                            alt={shot.caption || `Screenshot ${idx + 1}`}
+                            className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
+                          />
+                          <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
+                            click to preview
+                          </span>
+                        </button>
+                        <Input
+                          value={shot.caption ?? ''}
+                          onChange={(e) => setCaption(idx, (e.target as HTMLInputElement).value)}
+                          onBlur={() => commitCaption(idx)}
+                          placeholder="Caption (optional, max 200 chars)"
+                          maxLength={200}
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => removeScreenshot(idx)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> Remove
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No screenshots yet.</p>
+                )}
+                {screenshots.length < 12 ? (
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) uploadScreenshot.mutate(f);
+                      e.target.value = '';
+                    }}
+                    disabled={uploadScreenshot.isPending}
+                    className="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-secondary/80"
+                  />
+                ) : null}
+                {uploadScreenshot.isPending ? (
+                  <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Spinner /> Uploading…
+                  </p>
+                ) : null}
+                {uploadScreenshot.isError ? (
+                  <p className="text-xs text-destructive">
+                    {describeApiError(uploadScreenshot.error)}
+                  </p>
+                ) : null}
+              </div>
+
+              {/* Videos */}
+              <div className="space-y-2">
+                <Label>Videos (YouTube or Vimeo URLs)</Label>
+                {videos.length > 0 ? (
+                  <ul className="space-y-2">
+                    {videos.map((url, idx) => (
+                      <li
+                        key={url}
+                        className="flex items-center gap-2 rounded-md border border-border/40 px-3 py-2"
+                      >
+                        <span className="flex-1 truncate font-mono text-xs">{url}</span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => removeVideo(idx)}
+                        >
+                          remove
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No videos yet.</p>
+                )}
+                {videos.length < 8 ? (
+                  <div className="flex gap-2">
+                    <Input
+                      value={videoInput}
+                      onChange={(e) => setVideoInput((e.target as HTMLInputElement).value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addVideo();
+                        }
+                      }}
+                      placeholder="https://www.youtube.com/watch?v=…"
+                    />
+                    <Button type="button" onClick={addVideo} disabled={!videoInput.trim()}>
+                      Add
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
+
+          {section === 'versions' ? (
+            /* ─── Versions ─── */
+            <section className="grimoire-card space-y-4 p-5">
+              <h2 className="text-lg font-semibold">Versions</h2>
+              {versions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No versions published yet.</p>
+              ) : (
+                <ul className="space-y-3">
+                  {versions
+                    .slice()
+                    .sort(
+                      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+                    )
+                    .map((v) => {
+                      // changelog isn't on the published ModVersion schema yet
+                      // because the public detail endpoint hasn't been
+                      // extended — read it from manifestJson as a fallback.
+                      const cl =
+                        typeof v.manifestJson === 'object'
+                          ? (v.manifestJson as { changelog?: string })?.changelog
+                          : undefined;
+                      return (
+                        <li key={v.id} className="grimoire-card p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <p className="font-semibold">v{v.version}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {fmtBytes(v.sizeBytes)} ·{' '}
+                                {new Date(v.createdAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <ScanBadge versionId={v.id} />
+                              <Badge variant="outline">{v.sha256.slice(0, 12)}</Badge>
+                            </div>
+                          </div>
+                          {v.scanStatus &&
+                          v.scanStatus !== 'clean' &&
+                          v.scanStatus !== 'skipped' ? (
+                            <p
+                              className={`mt-2 text-xs ${
+                                v.scanStatus === 'flagged' ? 'text-destructive' : 'text-amber-500'
+                              }`}
+                            >
+                              {v.scanStatus === 'flagged'
+                                ? 'Flagged by malware scanning — the file was removed and this version cannot be downloaded.'
+                                : 'In review — only you can see this version until the malware scan clears (usually a few minutes).'}
+                            </p>
+                          ) : null}
+                          {cl ? (
+                            <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
+                              {cl}
+                            </pre>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                </ul>
+              )}
+
+              <div className="border-t border-border/40 pt-4">
+                <h3 className="text-sm font-semibold">Ship a new version</h3>
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="newver">Version</Label>
+                    <Input
+                      id="newver"
+                      value={newVersion}
+                      onChange={(e) => setNewVersion(e.target.value)}
+                      placeholder="0.2.0"
+                      aria-invalid={
+                        newVersion.length > 0 && !SEMVER_RE.test(newVersion) ? true : undefined
+                      }
+                    />
+                    {newVersion.length > 0 && !SEMVER_RE.test(newVersion) ? (
+                      <p className="text-xs text-destructive">
+                        Must be semver, e.g. 0.2.0 (three numbers separated by dots).
                       </p>
                     ) : null}
-                    {cl ? (
-                      <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
-                        {cl}
-                      </pre>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="newzip">New zip</Label>
+                    <input
+                      id="newzip"
+                      type="file"
+                      accept=".zip,application/zip"
+                      onChange={(e) => setNewZip(e.target.files?.[0] ?? null)}
+                      className="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
+                    />
+                    {newZip ? (
+                      <p className="text-xs text-muted-foreground">
+                        {newZip.name} — {fmtBytes(newZip.size)}
+                      </p>
                     ) : null}
-                  </li>
-                );
-              })}
-          </ul>
-        )}
-
-        <div className="border-t border-border/40 pt-4">
-          <h3 className="text-sm font-semibold">Ship a new version</h3>
-          <div className="mt-3 grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="newver">Version</Label>
-              <Input
-                id="newver"
-                value={newVersion}
-                onChange={(e) => setNewVersion(e.target.value)}
-                placeholder="0.2.0"
-                aria-invalid={
-                  newVersion.length > 0 && !SEMVER_RE.test(newVersion) ? true : undefined
-                }
-              />
-              {newVersion.length > 0 && !SEMVER_RE.test(newVersion) ? (
-                <p className="text-xs text-destructive">
-                  Must be semver, e.g. 0.2.0 (three numbers separated by dots).
-                </p>
-              ) : null}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="newzip">New zip</Label>
-              <input
-                id="newzip"
-                type="file"
-                accept=".zip,application/zip"
-                onChange={(e) => setNewZip(e.target.files?.[0] ?? null)}
-                className="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
-              />
-              {newZip ? (
-                <p className="text-xs text-muted-foreground">
-                  {newZip.name} — {fmtBytes(newZip.size)}
-                </p>
-              ) : null}
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label>Changelog (Markdown)</Label>
-              <div data-color-mode="dark" className="md-editor-themed">
-                <MDEditor value={changelog} onChange={setChangelog} height={200} />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>Changelog (Markdown)</Label>
+                    <div data-color-mode="dark" className="md-editor-themed">
+                      <MDEditor value={changelog} onChange={setChangelog} height={200} />
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center justify-end gap-3">
+                  {newVersionMut.isError ? (
+                    <span className="text-xs text-destructive">
+                      {describeApiError(newVersionMut.error)}
+                    </span>
+                  ) : null}
+                  <Button
+                    onClick={() => newVersionMut.mutate()}
+                    disabled={!newZip || !SEMVER_RE.test(newVersion) || newVersionMut.isPending}
+                  >
+                    {newVersionMut.isPending ? <Spinner /> : <Upload className="h-4 w-4" />} Publish
+                    version
+                  </Button>
+                </div>
               </div>
-            </div>
-          </div>
-          <div className="mt-4 flex items-center justify-end gap-3">
-            {newVersionMut.isError ? (
-              <span className="text-xs text-destructive">
-                {describeApiError(newVersionMut.error)}
-              </span>
-            ) : null}
-            <Button
-              onClick={() => newVersionMut.mutate()}
-              disabled={!newZip || !SEMVER_RE.test(newVersion) || newVersionMut.isPending}
-            >
-              {newVersionMut.isPending ? <Spinner /> : <Upload className="h-4 w-4" />} Publish
-              version
-            </Button>
-          </div>
-        </div>
-      </section>
+            </section>
+          ) : null}
 
-      {/* ─── Analytics + Team ─── */}
-      <ModStats slug={slug} />
-      <ModTeam slug={slug} />
+          {section === 'analytics' ? <ModStats slug={slug} /> : null}
+          {section === 'team' ? <ModTeam slug={slug} /> : null}
 
-      {/* ─── Danger zone ─── */}
-      <section className="grimoire-card space-y-3 border-destructive/30 p-5">
-        <div className="flex items-start gap-2">
-          <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
-          <div>
-            <h2 className="text-lg font-semibold">Danger zone</h2>
-            <p className="text-sm text-muted-foreground">
-              Deleting removes the mod row and every published version. The slug becomes available
-              for someone else to claim. This cannot be undone.
-            </p>
-          </div>
+          {section === 'danger' ? (
+            /* ─── Danger zone ─── */
+            <section className="grimoire-card space-y-3 border-destructive/30 p-5">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
+                <div>
+                  <h2 className="text-lg font-semibold">Danger zone</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Deleting removes the mod row and every published version. The slug becomes
+                    available for someone else to claim. This cannot be undone.
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Delete "${mod.name}" and all its versions? This cannot be undone.`,
+                    )
+                  ) {
+                    remove.mutate();
+                  }
+                }}
+                disabled={remove.isPending}
+              >
+                {remove.isPending ? <Spinner /> : <Trash2 className="h-4 w-4" />} Delete mod
+              </Button>
+              {remove.isError ? (
+                <p className="text-xs text-destructive">{describeApiError(remove.error)}</p>
+              ) : null}
+            </section>
+          ) : null}
         </div>
-        <Button
-          variant="destructive"
-          onClick={() => {
-            if (
-              window.confirm(`Delete "${mod.name}" and all its versions? This cannot be undone.`)
-            ) {
-              remove.mutate();
-            }
-          }}
-          disabled={remove.isPending}
-        >
-          {remove.isPending ? <Spinner /> : <Trash2 className="h-4 w-4" />} Delete mod
-        </Button>
-        {remove.isError ? (
-          <p className="text-xs text-destructive">{describeApiError(remove.error)}</p>
-        ) : null}
-      </section>
+      </div>
 
       {lightboxIdx != null && screenshots[lightboxIdx] ? (
         <Lightbox
