@@ -16,7 +16,11 @@ Exit nonzero if any ok symbol resolves to a non-boundary address.
 Usage:  scripts/verify_symbol_resolve.py [--exe PATH]
 """
 from __future__ import annotations
-import argparse, json, re, sys
+
+import argparse
+import json
+import re
+import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
