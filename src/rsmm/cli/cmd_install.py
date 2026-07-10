@@ -22,6 +22,7 @@ import hashlib
 import io
 import sys
 import tempfile
+import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -131,7 +132,9 @@ def main(argv: list[str] | None = None) -> int:
     version = pos[1] if len(pos) > 1 else ""
 
     # --- direct archive url -------------------------------------------
-    if target.endswith(".zip"):
+    # Match on the URL path so a cache-busting query string (registry asset
+    # URLs carry one) doesn't hide the .zip suffix.
+    if urllib.parse.urlparse(target).path.endswith(".zip"):
         try:
             data = _fetch(target)
         except OSError as e:

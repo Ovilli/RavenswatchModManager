@@ -156,6 +156,13 @@ export async function presignModUpload(args: {
     // Standard AWS S3 — virtual-hosted style
     publicUrl = `https://${env.s3.bucket}.s3.${env.s3.region}.amazonaws.com/${key}`;
   }
+  // Unique query string per publish: the object key is deterministic (the
+  // scanner re-derives it from slug/version/sha), so a delete → re-upload of
+  // the same bytes lands at the same URL — where the CDN may still hold a
+  // cached NoSuchKey 404 from the deleted window. A fresh query string gives
+  // each published row its own cache key. (Images avoid this with a random
+  // key suffix instead; see presignModImage.)
+  publicUrl += `?u=${Date.now().toString(36)}`;
   return { uploadUrl, publicUrl, key, expiresIn: env.s3.signedUrlTtlSeconds };
 }
 
