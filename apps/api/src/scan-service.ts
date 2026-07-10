@@ -1,5 +1,5 @@
 import { getDb, schema } from '@rsmm/db';
-import { and, asc, eq, lt, or, sql } from 'drizzle-orm';
+import { and, eq, lt, or, sql, type SQL } from 'drizzle-orm';
 import { errString } from './logger.js';
 import { notify } from './notify.js';
 import { deleteObject, getObjectBytes, modUploadKey } from './storage.js';
@@ -280,7 +280,7 @@ async function drainOnceInner(): Promise<{ id: string; action: string; status?: 
     // 1) Oldest queued upload.
     const queued = await selectTarget(
       and(eq(schema.modVersions.scanStatus, 'queued')),
-      asc(sql`${schema.modVersions.scanQueuedAt} nulls last`),
+      sql`${schema.modVersions.scanQueuedAt} asc nulls last`,
     );
     if (queued) return { target: queued, action: 'scan' as const };
     // 2) A 'pending' verdict that VT never finished — re-poll by resubmitting
@@ -296,7 +296,7 @@ async function drainOnceInner(): Promise<{ id: string; action: string; status?: 
           sql`${schema.modVersions.scannedAt} is null`,
         ),
       ),
-      asc(sql`${schema.modVersions.scannedAt} nulls first`),
+      sql`${schema.modVersions.scannedAt} asc nulls first`,
     );
     if (stuck) return { target: stuck, action: 'retry' as const };
     // 3) An errored scan due for a retry — also fail-closed, so retried on a
@@ -310,14 +310,14 @@ async function drainOnceInner(): Promise<{ id: string; action: string; status?: 
           sql`${schema.modVersions.scannedAt} is null`,
         ),
       ),
-      asc(sql`${schema.modVersions.scannedAt} nulls first`),
+      sql`${schema.modVersions.scannedAt} asc nulls first`,
     );
     if (errored) return { target: errored, action: 'retry' as const };
     // 4) Otherwise a stale clean row due for a routine signature refresh.
     const cutoff = new Date(Date.now() - RESCAN_AFTER_MS);
     const stale = await selectTarget(
       and(eq(schema.modVersions.scanStatus, 'clean'), lt(schema.modVersions.scannedAt, cutoff)),
-      asc(sql`${schema.modVersions.scannedAt} nulls first`),
+      sql`${schema.modVersions.scannedAt} asc nulls first`,
     );
     if (stale) return { target: stale, action: 'rescan' as const };
     return null;
@@ -342,7 +342,7 @@ async function drainOnceInner(): Promise<{ id: string; action: string; status?: 
 
 async function selectTarget(
   where: ReturnType<typeof and>,
-  order: ReturnType<typeof asc>,
+  order: SQL,
 ): Promise<ScanTarget | null> {
   const db = getDb();
   const rows = await db
