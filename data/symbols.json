@@ -41,8 +41,8 @@
    "kind": "function",
    "category": "items",
    "raw": "FUN_140265440",
-   "status": "ok",
-   "note": "Boot 'InitialLoading - MagicalObject SpawnAllObjects' caller that invokes SpawnAllObjects(g_MagicalObjectPool, ...). Pattern-verified 2026-07-05 (unique byte pattern + Ghidra decompile match: InitialLoading stage strings, calls SpawnAllObjects anchor 0x140258760).",
+   "status": "unverified",
+   "note": "Boot 'InitialLoading - MagicalObject SpawnAllObjects' caller that invokes SpawnAllObjects(g_MagicalObjectPool, ...). Pattern-verified 2026-07-05 (unique byte pattern + Ghidra decompile match: InitialLoading stage strings, calls SpawnAllObjects anchor 0x140258760). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re"
    ]
@@ -52,7 +52,7 @@
    "kind": "function",
    "category": "items",
    "raw": "FUN_14025e3e0",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void*(void* pool, void* out, void* id)",
    "cabi": {
     "ret": "void*",
@@ -62,7 +62,7 @@
      "void*"
     ]
    },
-   "note": "Source-list lookup into the magical-object pool. Scans pool source array (*pool, count at pool[1]) for the entry whose GUID matches *id/id[1]; writes the found source into *out and returns out. Re-confirmed in Ghidra 2026-06-07 (decompile @0x1402590c0 matches: 3 args, calls Entity_FindMagicalObjectComponent).",
+   "note": "Source-list lookup into the magical-object pool. Scans pool source array (*pool, count at pool[1]) for the entry whose GUID matches *id/id[1]; writes the found source into *out and returns out. Re-confirmed in Ghidra 2026-06-07 (decompile @0x1402590c0 matches: 3 args, calls Entity_FindMagicalObjectComponent). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re",
     "src/loader/src/hook_items.cpp"
@@ -127,7 +127,7 @@
    "kind": "function",
    "category": "items",
    "raw": "FUN_140156de0",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void(void* pool_plus_0x10, uint32_t count, uint32_t by)",
    "cabi": {
     "ret": "void",
@@ -137,7 +137,7 @@
      "uint32_t"
     ]
    },
-   "note": "Grows the runtime array at pool+0x10 before storing a spawned component. Re-confirmed resolvable in Ghidra 2026-06-07 (@0x1401550d0). Sibling of the generic Vector_Grow.",
+   "note": "Grows the runtime array at pool+0x10 before storing a spawned component. Re-confirmed resolvable in Ghidra 2026-06-07 (@0x1401550d0). Sibling of the generic Vector_Grow. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re",
     "src/loader/src/hook_items.cpp"
@@ -148,7 +148,7 @@
    "kind": "function",
    "category": "entity",
    "raw": "FUN_1406a8d80",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void*(void* allocator)",
    "cabi": {
     "ret": "void*",
@@ -156,7 +156,7 @@
      "void*"
     ]
    },
-   "note": "Free-list instance allocator: pops a node from the allocator's free list (or constructs one via vtable+0x50 when empty), links it into the live list, returns the instance ptr. Single arg = the allocator/pool struct (e.g. resource+0x18). Re-confirmed in Ghidra 2026-06-07 (decompile @0x14068fe90: 1 arg, returns node).",
+   "note": "Free-list instance allocator: pops a node from the allocator's free list (or constructs one via vtable+0x50 when empty), links it into the live list, returns the instance ptr. Single arg = the allocator/pool struct (e.g. resource+0x18). Re-confirmed in Ghidra 2026-06-07 (decompile @0x14068fe90: 1 arg, returns node). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re",
     "src/loader/src/hook_items.cpp"
@@ -206,8 +206,8 @@
    "kind": "function",
    "category": "skins",
    "raw": "FUN_1401e0550",
-   "status": "ok",
-   "note": "Skin-pack roster builder. Selectable-skin count (9) is baked into its loop; a new selectable skin needs a detour here, not pure data.",
+   "status": "unverified",
+   "note": "Skin-pack roster builder. Selectable-skin count (9) is baked into its loop; a new selectable skin needs a detour here, not pure data. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "src/loader/src/hook_skins.cpp",
     "docs/_re"
@@ -218,7 +218,7 @@
    "kind": "function",
    "category": "skins",
    "raw": "FUN_1401f4e80",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void(void* ctx, void* arg)",
    "cabi": {
     "ret": "void",
@@ -227,7 +227,7 @@
      "void*"
     ]
    },
-   "note": "Writes the visible skin roster into the grid; filter compares each node to 3. Loader post-detours this to force-push a custom node.",
+   "note": "Writes the visible skin roster into the grid; filter compares each node to 3. Loader post-detours this to force-push a custom node. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "src/loader/src/hook_skins.cpp",
     "docs/_re"
@@ -249,8 +249,8 @@
    "kind": "function",
    "category": "netcode",
    "raw": "FUN_1402c7e70",
-   "status": "ok",
-   "note": "Per-peer connection-state tick (peer conn-state enum at peer+0xCC; 3=connected). Reconnect-window lever hooks here. Pattern-verified 2026-07-05 (Ghidra decompile: iterates peer array, EP2PConnectionState log strings, state 2=eInterrupted disconnect, calls Netcode_DropPeer on max-window).",
+   "status": "unverified",
+   "note": "Per-peer connection-state tick (peer conn-state enum at peer+0xCC; 3=connected). Reconnect-window lever hooks here. Pattern-verified 2026-07-05 (Ghidra decompile: iterates peer array, EP2PConnectionState log strings, state 2=eInterrupted disconnect, calls Netcode_DropPeer on max-window). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "src/loader/src/hook_netcode.cpp"
    ]
@@ -260,8 +260,8 @@
    "kind": "function",
    "category": "netcode",
    "raw": "FUN_1402cc9c0",
-   "status": "ok",
-   "note": "Drops a peer after the reconnect window (default 60s) elapses. Pattern-verified 2026-07-05 (Ghidra: called from Netcode_PeerStateTick's 'max reconnection time attempt' branch).",
+   "status": "unverified",
+   "note": "Drops a peer after the reconnect window (default 60s) elapses. Pattern-verified 2026-07-05 (Ghidra: called from Netcode_PeerStateTick's 'max reconnection time attempt' branch). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "src/loader/src/hook_netcode.cpp"
    ]
@@ -271,7 +271,7 @@
    "kind": "function",
    "category": "netcode",
    "raw": "FUN_1402455a0",
-   "status": "ok",
+   "status": "unverified",
    "signature": "iter*(void* channel_map, iter* out, uint32_t* event_id)",
    "cabi": {
     "ret": "void*",
@@ -281,7 +281,7 @@
      "void*"
     ]
    },
-   "note": "Event-channel map FIND-OR-CREATE keyed by interned event id (SwissTable-style SIMD probe; hash = id * 0xde5fb9d2630458e9 folded). On miss mallocs a 0x20 channel node { u32 event_id @+0x00; sub** array @+0x08; u32 count @+0x10; u32 cap @+0x14; sub* in_dispatch_cursor @+0x18 } and inserts it. Writes an iterator {ctrl_slot, value_slot, inserted_flag} into out and returns out. Generic template fn (~200 callers); the named-event channel maps live at <dispatcher>+0x28, e.g. entity+0x500 (= entity+0x4d8 dispatcher) and world+0x368. Verified in Ghidra 2026-06-11; promoted from events corpus.",
+   "note": "Event-channel map FIND-OR-CREATE keyed by interned event id (SwissTable-style SIMD probe; hash = id * 0xde5fb9d2630458e9 folded). On miss mallocs a 0x20 channel node { u32 event_id @+0x00; sub** array @+0x08; u32 count @+0x10; u32 cap @+0x14; sub* in_dispatch_cursor @+0x18 } and inserts it. Writes an iterator {ctrl_slot, value_slot, inserted_flag} into out and returns out. Generic template fn (~200 callers); the named-event channel maps live at <dispatcher>+0x28, e.g. entity+0x500 (= entity+0x4d8 dispatcher) and world+0x368. Verified in Ghidra 2026-06-11; promoted from events corpus. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/events-bus.md"
    ]
@@ -290,7 +290,7 @@
    "name": "Netcode_Channel_Unsubscribe",
    "kind": "function",
    "category": "netcode",
-   "raw": "FUN_1401cbae0",
+   "raw": "FUN_1401c8da0",
    "status": "ok",
    "signature": "void(void* node_plus_8, void** sub_slot)",
    "cabi": {
@@ -300,7 +300,7 @@
      "void*"
     ]
    },
-   "note": "REMOVE a subscription from a channel node (the events corpus mislabeled this 'Subscribe' \u2014 verified 2026-06-11 it is the unsubscribe). arg1 = channel_node+0x08 (the {array,count|cap,cursor} triple), arg2 = address of the holder's subscription-handle slot. Reads the sub's index at sub+0x18, swap-removes it from the array, fixes the swapped sub's index, releases the sub (FUN_14051eb00) and nulls the slot. If the sub being removed IS the one currently mid-dispatch (node+0x18 cursor) it just sets the cursor to -1 and lets NamedEvent_Dispatch finish the removal. The real subscribe is inlined per call-site (alloc sub FUN_140219dc0 + store functor FUN_14051b580 + append), so there is no single subscribe symbol.",
+   "note": "REMOVE a subscription from a channel node (the events corpus mislabeled this 'Subscribe' \u2014 verified 2026-06-11 it is the unsubscribe). arg1 = channel_node+0x08 (the {array,count|cap,cursor} triple), arg2 = address of the holder's subscription-handle slot. Reads the sub's index at sub+0x18, swap-removes it from the array, fixes the swapped sub's index, releases the sub (FUN_14051eb00) and nulls the slot. If the sub being removed IS the one currently mid-dispatch (node+0x18 cursor) it just sets the cursor to -1 and lets NamedEvent_Dispatch finish the removal. The real subscribe is inlined per call-site (alloc sub FUN_140219dc0 + store functor FUN_14051b580 + append), so there is no single subscribe symbol. [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
    "refs": [
     "docs/_re/kinds/events-bus.md"
    ]
@@ -310,7 +310,7 @@
    "kind": "function",
    "category": "engine",
    "raw": "FUN_140540ff0",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void(void* dst_slot, const StringDesc* src)",
    "cabi": {
     "ret": "void",
@@ -319,7 +319,7 @@
      "const void*"
     ]
    },
-   "note": "Engine string-assign into a slot from a (ptr,len) StringDesc.",
+   "note": "Engine string-assign into a slot from a (ptr,len) StringDesc. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "src/loader/src/hook_skins.cpp"
    ]
@@ -329,7 +329,7 @@
    "kind": "function",
    "category": "engine",
    "raw": "FUN_140219060",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void(void* base, uint32_t count)",
    "cabi": {
     "ret": "void",
@@ -338,7 +338,7 @@
      "uint32_t"
     ]
    },
-   "note": "Constructs an entry/array element used by the spawn path.",
+   "note": "Constructs an entry/array element used by the spawn path. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.]",
    "refs": [
     "src/loader/src/hook_items.cpp"
    ]
@@ -358,7 +358,7 @@
    "name": "Analytics_SubmitNamedEvent",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_1401fe6d0",
+   "raw": "FUN_1401fad70",
    "status": "ok",
    "signature": "void(void* analytics_mgr, void* payload_kv, StringDesc* event_name, char has_run_ctx)",
    "cabi": {
@@ -370,7 +370,7 @@
      "uint32_t"
     ]
    },
-   "note": "CENTRAL TELEMETRY SINK. ~37 gameplay callers funnel named analytics events through here (run_end, enemy_killed, matchmaking_start, level_up_reach, level_up_book, ...), each building a key-value payload then submitting as JSON (projectId 'passtech-ravenswatch') to Passtech's analytics backend over an authenticated HTTP POST. param_3 is a StringDesc { const char* ptr @+0x0; uint32 len|0x80000000 @+0x8 } holding the event name. The loader 'firehose' detour (hook_events.cpp::install_analytics_firehose) reads that name and re-publishes it to the Lua bus by its raw name, so ONE hook exposes every named event to mods (R.on('enemy_killed', cb)) and survives the game adding new event names. OBSERVATION-GRADE: these fire AFTER the gameplay action and carry analytics KV, not live entity handles \u2014 good for 'when X happens do Y' triggers, not for mutating the actor. For entity-context gameplay events (damage, give-item) see the oCGameNamedEvent bus \u2014 mapped: NamedEvent_Dispatch is the single hook point (R.on('gameplay:<NAME>'), docs/_re/kinds/events-bus.md). Skips 'run_end' to avoid double-firing the typed Event_RunEnd table hook.",
+   "note": "CENTRAL TELEMETRY SINK. ~37 gameplay callers funnel named analytics events through here (run_end, enemy_killed, matchmaking_start, level_up_reach, level_up_book, ...), each building a key-value payload then submitting as JSON (projectId 'passtech-ravenswatch') to Passtech's analytics backend over an authenticated HTTP POST. param_3 is a StringDesc { const char* ptr @+0x0; uint32 len|0x80000000 @+0x8 } holding the event name. The loader 'firehose' detour (hook_events.cpp::install_analytics_firehose) reads that name and re-publishes it to the Lua bus by its raw name, so ONE hook exposes every named event to mods (R.on('enemy_killed', cb)) and survives the game adding new event names. OBSERVATION-GRADE: these fire AFTER the gameplay action and carry analytics KV, not live entity handles \u2014 good for 'when X happens do Y' triggers, not for mutating the actor. For entity-context gameplay events (damage, give-item) see the oCGameNamedEvent bus \u2014 mapped: NamedEvent_Dispatch is the single hook point (R.on('gameplay:<NAME>'), docs/_re/kinds/events-bus.md). Skips 'run_end' to avoid double-firing the typed Event_RunEnd table hook. [2026-07-10: recovered via anchor/decompile-verify (batch 2) after the July-9 remap mis-placed it.]",
    "refs": [
     "src/loader/src/hook_events.cpp",
     "docs/_re/kinds/events.md"
@@ -380,7 +380,7 @@
    "name": "NamedEvent_Dispatch",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_140683250",
+   "raw": "FUN_14066b6b0",
    "status": "ok",
    "signature": "void(void* dispatcher, oCGameNamedEvent* ev)",
    "cabi": {
@@ -390,7 +390,7 @@
      "void*"
     ]
    },
-   "note": "THE oCGameNamedEvent bus dispatch \u2014 one detour here exposes every entity-context gameplay event (NETWORK_DAMAGE, GIVE_MAGICAL_OBJECT, GAIN_REROLL, ...) with a live payload. dispatcher = the NamedEventDispatcher sub-object (entity+0x4d8 for entity events; world+0x340 for world events; channel map at dispatcher+0x28, dispatch queue at +0x00..0x18, re-entrancy guard at +0x60). Clones the event (vcall ev+0x18), enqueues the clone, then (unless re-entrant) drains the queue: find-only channel lookup (NamedEvent_ChannelMap_Find) by *(u32*)(ev+0x30), iterates the node's sub array setting the node+0x18 cursor, invokes (*(sub+0x10))(ev, sub) per subscriber, handles mid-dispatch self-unsubscribe (cursor == -1), erases empty channels, deletes the clone (NamedEvent_Delete). Event header (all classes): vft @+0x00, u32 2 @+0x08, name String {char* @+0x20, u32 cap|0x80000000 @+0x28, u32 len @+0x2c}, u32 interned id @+0x30 \u2014 so the hook reads the PLAINTEXT name straight off the event. Loader detour: hook_events.cpp::install_gameplay_bus (RSMM_ENABLE_GAMEPLAY_EVENTS=1), published as R.on('gameplay:<NAME>'). Also the local-emit primitive: construct an event and call this directly (the give-MO path in FUN_140397190 does exactly that).",
+   "note": "THE oCGameNamedEvent bus dispatch \u2014 one detour here exposes every entity-context gameplay event (NETWORK_DAMAGE, GIVE_MAGICAL_OBJECT, GAIN_REROLL, ...) with a live payload. dispatcher = the NamedEventDispatcher sub-object (entity+0x4d8 for entity events; world+0x340 for world events; channel map at dispatcher+0x28, dispatch queue at +0x00..0x18, re-entrancy guard at +0x60). Clones the event (vcall ev+0x18), enqueues the clone, then (unless re-entrant) drains the queue: find-only channel lookup (NamedEvent_ChannelMap_Find) by *(u32*)(ev+0x30), iterates the node's sub array setting the node+0x18 cursor, invokes (*(sub+0x10))(ev, sub) per subscriber, handles mid-dispatch self-unsubscribe (cursor == -1), erases empty channels, deletes the clone (NamedEvent_Delete). Event header (all classes): vft @+0x00, u32 2 @+0x08, name String {char* @+0x20, u32 cap|0x80000000 @+0x28, u32 len @+0x2c}, u32 interned id @+0x30 \u2014 so the hook reads the PLAINTEXT name straight off the event. Loader detour: hook_events.cpp::install_gameplay_bus (RSMM_ENABLE_GAMEPLAY_EVENTS=1), published as R.on('gameplay:<NAME>'). Also the local-emit primitive: construct an event and call this directly (the give-MO path in FUN_140397190 does exactly that). [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
    "refs": [
     "src/loader/src/hook_events.cpp",
     "src/loader/src/script_lua.cpp",
@@ -401,8 +401,8 @@
    "name": "NamedEvent_ChannelMap_Find",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_14066cc50",
-   "status": "unverified",
+   "raw": "FUN_14066dc10",
+   "status": "ok",
    "signature": "iter*(void* channel_map, iter* out, uint32_t* event_id)",
    "cabi": {
     "ret": "void*",
@@ -412,7 +412,7 @@
      "void*"
     ]
    },
-   "note": "Find-only sibling of Netcode_Channel_LookupById (no insert on miss; miss = iterator at map end). Used by NamedEvent_Dispatch to locate the channel node for an event id. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.]",
+   "note": "Find-only sibling of Netcode_Channel_LookupById (no insert on miss; miss = iterator at map end). Used by NamedEvent_Dispatch to locate the channel node for an event id. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
    "refs": [
     "docs/_re/kinds/events-bus.md"
    ]
@@ -441,8 +441,8 @@
    "kind": "function",
    "category": "event",
    "raw": "FUN_1403a2d00",
-   "status": "ok",
-   "note": "Hero teardown twin of NamedEvent_HeroSubscribeAll: walks the same (id global, slot) pairs and calls Netcode_Channel_Unsubscribe on each. Easiest place to read the full hero event catalog (one lookup+unsubscribe pair per event).",
+   "status": "unverified",
+   "note": "Hero teardown twin of NamedEvent_HeroSubscribeAll: walks the same (id global, slot) pairs and calls Netcode_Channel_Unsubscribe on each. Easiest place to read the full hero event catalog (one lookup+unsubscribe pair per event). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/events-bus.md"
    ]
@@ -470,7 +470,7 @@
    "name": "NamedEvent_Delete",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_140128ab0",
+   "raw": "FUN_1401273b0",
    "status": "ok",
    "signature": "void(oCGameNamedEvent* ev)",
    "cabi": {
@@ -479,7 +479,7 @@
      "void*"
     ]
    },
-   "note": "Virtual delete for bus objects: vcall ev+0x10 = scalar dtor with free flag 1 (frees on the GAME heap). Dispatch uses it on the queued clone. Only call on game-heap objects \u2014 never on loader-owned/static event buffers (their dtor-free would cross heaps).",
+   "note": "Virtual delete for bus objects: vcall ev+0x10 = scalar dtor with free flag 1 (frees on the GAME heap). Dispatch uses it on the queued clone. Only call on game-heap objects \u2014 never on loader-owned/static event buffers (their dtor-free would cross heaps). [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
    "refs": [
     "docs/_re/kinds/events-bus.md"
    ]
@@ -489,7 +489,7 @@
    "kind": "function",
    "category": "event",
    "raw": "FUN_140536820",
-   "status": "ok",
+   "status": "unverified",
    "signature": "uint32_t(uint32_t ns, uint32_t name_crc)",
    "cabi": {
     "ret": "uint32_t",
@@ -498,7 +498,7 @@
      "uint32_t"
     ]
    },
-   "note": "Interned event-id derivation: id = crc32 over the 8 bytes of (ns, name_crc) interleaved byte-wise (standard reflected crc32 table). Event names are interned at static-init as id = NamedEvent_Id_FromCrc(0, crc32(name)) \u2014 so the loader can derive the id for ANY event name at runtime (used by the Lua gameplay-emit primitive). VERIFIED 2026-06-14: the crc table is built by Crc32_TableInit with polynomial 0x04C11DB7 (reflected) = the standard CRC32 table (0xEDB88320); the byte feed order is [ns.b0, crc.b0, ns.b1, crc.b1, ns.b2, crc.b2, ns.b3, crc.b3], init 0xffffffff, final invert. Id_HashString is the runtime one-call form (crc32(name) then this). NOTE: this is the NAMED-EVENT/string id scheme only \u2014 the entity-value store (EntityValue_Lookup) keys are NOT these (they are structured/sequential ids, e.g. 0x12e831f3/0x12e831f4 adjacent \u2014 impossible for independent CRCs).",
+   "note": "Interned event-id derivation: id = crc32 over the 8 bytes of (ns, name_crc) interleaved byte-wise (standard reflected crc32 table). Event names are interned at static-init as id = NamedEvent_Id_FromCrc(0, crc32(name)) \u2014 so the loader can derive the id for ANY event name at runtime (used by the Lua gameplay-emit primitive). VERIFIED 2026-06-14: the crc table is built by Crc32_TableInit with polynomial 0x04C11DB7 (reflected) = the standard CRC32 table (0xEDB88320); the byte feed order is [ns.b0, crc.b0, ns.b1, crc.b1, ns.b2, crc.b2, ns.b3, crc.b3], init 0xffffffff, final invert. Id_HashString is the runtime one-call form (crc32(name) then this). NOTE: this is the NAMED-EVENT/string id scheme only \u2014 the entity-value store (EntityValue_Lookup) keys are NOT these (they are structured/sequential ids, e.g. 0x12e831f3/0x12e831f4 adjacent \u2014 impossible for independent CRCs). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "src/loader/src/script_lua.cpp",
     "docs/_re/kinds/events-bus.md"
@@ -519,9 +519,9 @@
    "name": "Crc32_TableInit",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_1405366c0",
+   "raw": "FUN_14051ef30",
    "status": "ok",
-   "note": "Builds the 256-entry CRC32 lookup table at DAT_141436710 (lazy, runtime \u2014 the table is BSS, not stored in the image). Uses polynomial 0x04C11DB7 with input/output bit-reflection, i.e. it produces the standard reflected CRC32 table (equivalent poly 0xEDB88320). Confirms NamedEvent_Id_FromCrc / Id_HashString are plain CRC32, replicable in tooling.",
+   "note": "Builds the 256-entry CRC32 lookup table at DAT_141436710 (lazy, runtime \u2014 the table is BSS, not stored in the image). Uses polynomial 0x04C11DB7 with input/output bit-reflection, i.e. it produces the standard reflected CRC32 table (equivalent poly 0xEDB88320). Confirms NamedEvent_Id_FromCrc / Id_HashString are plain CRC32, replicable in tooling. [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
    "refs": [
     "data/symbols.json"
    ]
@@ -549,7 +549,7 @@
    "name": "NamedEvent_NetSendToPeer",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_14073d7c0",
+   "raw": "FUN_1407216c0",
    "status": "ok",
    "signature": "void(void* net_event_cpnt, oCGameNamedEvent* ev, uint64_t* peer_session)",
    "cabi": {
@@ -560,7 +560,7 @@
      "void*"
     ]
    },
-   "note": "Wraps the event in an oCNamedEventNetworkMessage {vft 0x140f96b28, msg class id 0x157f6854, ev*} and unicasts it via the session vcall +0xc0 (skips if target session == local). Receive side deserializes via the message's Serialize (FUN_14085dec0; allocates the event from the class registry DAT_14146b2d8 by serialized class index, restores ev+0x30) and dispatches into the target entity's NamedEvent_Dispatch.",
+   "note": "Wraps the event in an oCNamedEventNetworkMessage {vft 0x140f96b28, msg class id 0x157f6854, ev*} and unicasts it via the session vcall +0xc0 (skips if target session == local). Receive side deserializes via the message's Serialize (FUN_14085dec0; allocates the event from the class registry DAT_14146b2d8 by serialized class index, restores ev+0x30) and dispatches into the target entity's NamedEvent_Dispatch. [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
    "refs": [
     "docs/_re/kinds/events-bus.md"
    ]
@@ -570,8 +570,8 @@
    "kind": "function",
    "category": "event",
    "raw": "FUN_140743a00",
-   "status": "ok",
-   "note": "Reference emitter for NETWORK_DAMAGE: stack-builds the full oCGameNamedEventNetworkDamage (size 0x110) \u2014 header as usual, f32 value @+0x40, source net-id @+0x48 (FUN_140726330), embedded oCEntityHitData @+0x50 (vft @+0x50, target entity* @+0x60 refcounted, hit floats/vectors +0x68..0xbc, u64s @+0xc0/0xc8/0xd0, u16 @+0xd8, ptr @+0xe0, instigator entity* @+0xf0 refcounted, flag byte @+0x100) \u2014 then sends via NamedEvent_NetSend. Best anchor for decoding the damage payload. For self/non-networked targets it applies locally via Entity_DispatchHit instead of (or alongside) the net send.",
+   "status": "unverified",
+   "note": "Reference emitter for NETWORK_DAMAGE: stack-builds the full oCGameNamedEventNetworkDamage (size 0x110) \u2014 header as usual, f32 value @+0x40, source net-id @+0x48 (FUN_140726330), embedded oCEntityHitData @+0x50 (vft @+0x50, target entity* @+0x60 refcounted, hit floats/vectors +0x68..0xbc, u64s @+0xc0/0xc8/0xd0, u16 @+0xd8, ptr @+0xe0, instigator entity* @+0xf0 refcounted, flag byte @+0x100) \u2014 then sends via NamedEvent_NetSend. Best anchor for decoding the damage payload. For self/non-networked targets it applies locally via Entity_DispatchHit instead of (or alongside) the net send. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/events-bus.md"
    ]
@@ -580,7 +580,7 @@
    "name": "Entity_DispatchHit",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_1406da9fe",
+   "raw": "FUN_1406e3ce0",
    "status": "ok",
    "signature": "void(oCEntity* target, oCEntityHitData* hit)",
    "cabi": {
@@ -590,7 +590,7 @@
      "void*"
     ]
    },
-   "note": "LOCAL damage/hit application \u2014 the enemy-damage counterpart to Entity_ModifyHealth (which is hero-only). param_1 = the TARGET entity; its hit component lives inline (mutex @+0x498, hit-handler list {base @+0x4b0, count @+0x4b8}, reentrancy guard @+0x4c0, pending-hit array {base @+0x4c8, count @+0x4d0, cap @+0x4d4}). param_2 = a fully-built oCEntityHitData (~0xb0 bytes: vft @+0x0, source/instigator entity* @+0x10, copied hit floats/vectors @+0x18..0x90, target entity* @+0xa0; the two entity ptrs are accessed through their vtables, so must be live oCEntity handles). When no hit handler is mid-dispatch it runs the target's hit handlers immediately, otherwise it memcpy-queues a 0xb0 hit-data copy into the pending array. Called by NamedEvent_EmitNetworkDamageFromHit for self/non-networked targets. ENEMY-DAMAGE BLOCKER: there is no low-arity 'damage entity by amount' primitive \u2014 both this and the network path require constructing a complete oCEntityHitData with valid source+target handles, which is the real work item for offensive tier-2. Helpers: FUN_1403124b0(entity)=net/replication state (returns obj whose +0x130 byte = is-remote flag), FUN_140726330(entity)=source net-id.",
+   "note": "LOCAL damage/hit application \u2014 the enemy-damage counterpart to Entity_ModifyHealth (which is hero-only). param_1 = the TARGET entity; its hit component lives inline (mutex @+0x498, hit-handler list {base @+0x4b0, count @+0x4b8}, reentrancy guard @+0x4c0, pending-hit array {base @+0x4c8, count @+0x4d0, cap @+0x4d4}). param_2 = a fully-built oCEntityHitData (~0xb0 bytes: vft @+0x0, source/instigator entity* @+0x10, copied hit floats/vectors @+0x18..0x90, target entity* @+0xa0; the two entity ptrs are accessed through their vtables, so must be live oCEntity handles). When no hit handler is mid-dispatch it runs the target's hit handlers immediately, otherwise it memcpy-queues a 0xb0 hit-data copy into the pending array. Called by NamedEvent_EmitNetworkDamageFromHit for self/non-networked targets. ENEMY-DAMAGE BLOCKER: there is no low-arity 'damage entity by amount' primitive \u2014 both this and the network path require constructing a complete oCEntityHitData with valid source+target handles, which is the real work item for offensive tier-2. Helpers: FUN_1403124b0(entity)=net/replication state (returns obj whose +0x130 byte = is-remote flag), FUN_140726330(entity)=source net-id. [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
    "refs": [
     "data/symbols.json"
    ]
@@ -599,7 +599,7 @@
    "name": "Entity_GetNetComponent",
    "kind": "function",
    "category": "netcode",
-   "raw": "FUN_14031c010",
+   "raw": "FUN_140312db0",
    "status": "ok",
    "signature": "void*(oCEntity* entity)",
    "cabi": {
@@ -608,7 +608,7 @@
      "void*"
     ]
    },
-   "note": "SwissTable/F14 component-map lookup on an entity for the fixed type-id 0x154fce5c (the net/replication component). Probes the entity's component map (control bytes @entity+0x5e8, slots @entity+0x5f0, bucket mask @entity+0x600) and returns the component pointer, or 0 if the entity has none (e.g. single-player / non-replicated). The returned component's byte @+0x130 is the local/remote AUTHORITY flag: 0 = locally controlled (this client owns the entity and emits its NETWORK_DAMAGE), nonzero = remotely controlled (apply received state, don't emit). Both hit paths (NamedEvent_EmitNetworkDamageFromHit, the attack resolver FUN_1403dc780) gate network emit on this flag. NOTE: it dereferences the component map unconditionally, so only call on a known-valid entity. Pattern is multi-match (index 3/6, 128-byte sig) \u2014 fn_verify-guarded. Relevant to local-vs-remote hero disambiguation in co-op, though hero-capture already pins the local player via the HUD-mirror requirement (only the local player has one).",
+   "note": "SwissTable/F14 component-map lookup on an entity for the fixed type-id 0x154fce5c (the net/replication component). Probes the entity's component map (control bytes @entity+0x5e8, slots @entity+0x5f0, bucket mask @entity+0x600) and returns the component pointer, or 0 if the entity has none (e.g. single-player / non-replicated). The returned component's byte @+0x130 is the local/remote AUTHORITY flag: 0 = locally controlled (this client owns the entity and emits its NETWORK_DAMAGE), nonzero = remotely controlled (apply received state, don't emit). Both hit paths (NamedEvent_EmitNetworkDamageFromHit, the attack resolver FUN_1403dc780) gate network emit on this flag. NOTE: it dereferences the component map unconditionally, so only call on a known-valid entity. Pattern is multi-match (index 3/6, 128-byte sig) \u2014 fn_verify-guarded. Relevant to local-vs-remote hero disambiguation in co-op, though hero-capture already pins the local player via the HUD-mirror requirement (only the local player has one). [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
    "refs": [
     "src/loader/src/hook_events.cpp"
    ]
@@ -617,7 +617,7 @@
    "name": "Entity_ResolveAttackHits",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_1403ea610",
+   "raw": "FUN_1403dd540",
    "status": "ok",
    "signature": "float(void* attacker, uint hitDefIndex, TargetList* targets, float damageMul, float baseDamage)",
    "cabi": {
@@ -630,7 +630,7 @@
      "float"
     ]
    },
-   "note": "Attack-resolution / multi-target hit applier \u2014 the real producer that builds an oCEntityHitData per target and calls Entity_DispatchHit. param_1 = attacker context (its hit-def array @+0xd8, entity @+0x8); param_2 = index into that hit-def array; param_3 = target list {count @+0x0, entity** @+0x8}; param_4 = damage multiplier; param_5 = base damage (if <=0, pulled from the hit-def's value object). Per target it: allocs a hit handle (FUN_140214f30, released by NamedEvent_Delete), stack-builds the 0xb0 oCEntityHitData (vft=oCEntityHitData_vftable, 4 constant template vectors from 0x140fc6c10/6c50/6e70/7240, hit-value obj* whose +0x8 = the damage, attacker @ a slot, target position from target.vtable[+0x48], source net-id via Entity_GetNetComponent), then Entity_DispatchHit(target, hitData). THE ENEMY-DAMAGE ENTRY POINT: there is no standalone oCEntityHitData ctor \u2014 construction is inlined here and needs a real attacker hit-def, so synthesizing a hit from nothing is impractical. The viable mod path is to HOOK this and AMPLIFY/redirect: scale the hit-value damage (*(hitval+0x8)) or swap the target list. See docs/_re/kinds/enemy-damage.md.",
+   "note": "Attack-resolution / multi-target hit applier \u2014 the real producer that builds an oCEntityHitData per target and calls Entity_DispatchHit. param_1 = attacker context (its hit-def array @+0xd8, entity @+0x8); param_2 = index into that hit-def array; param_3 = target list {count @+0x0, entity** @+0x8}; param_4 = damage multiplier; param_5 = base damage (if <=0, pulled from the hit-def's value object). Per target it: allocs a hit handle (FUN_140214f30, released by NamedEvent_Delete), stack-builds the 0xb0 oCEntityHitData (vft=oCEntityHitData_vftable, 4 constant template vectors from 0x140fc6c10/6c50/6e70/7240, hit-value obj* whose +0x8 = the damage, attacker @ a slot, target position from target.vtable[+0x48], source net-id via Entity_GetNetComponent), then Entity_DispatchHit(target, hitData). THE ENEMY-DAMAGE ENTRY POINT: there is no standalone oCEntityHitData ctor \u2014 construction is inlined here and needs a real attacker hit-def, so synthesizing a hit from nothing is impractical. The viable mod path is to HOOK this and AMPLIFY/redirect: scale the hit-value damage (*(hitval+0x8)) or swap the target list. See docs/_re/kinds/enemy-damage.md. [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
    "refs": [
     "docs/_re/kinds/enemy-damage.md"
    ]
@@ -650,7 +650,7 @@
    "name": "HeroController_Ctor",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_14039c4e0",
+   "raw": "FUN_14038ec30",
    "status": "ok",
    "signature": "oCDtEntityCpntHeroController*(oCDtEntityCpntHeroController* self)",
    "cabi": {
@@ -659,7 +659,7 @@
      "void*"
     ]
    },
-   "note": "Constructor of oCDtEntityCpntHeroController \u2014 THE object R.entity/R.combat capture (the 'hero pointer'); it is the hero CONTROLLER COMPONENT, not the top-level entity. Confirms the capture layout: vftable @+0x0; current HP f32 @+0x15c8, max HP @+0x15cc, missing-health ratio @+0x15d0 (default 1.0f), ratio divisor @+0x15d4 (default 0.5f); HUD HP-mirror pointer @+0x1d80 (index 0x3b0) is built here via HeroController_HudMirror_Ctor (FUN_1403b2f20) \u2014 this is why +0x1d80 is the local-hero discriminator. Component size ~0x1e40. ARCHITECTURE: the hero's stats are oe::EntityCpntValueSignal<bool|int|float|oCVec3> reactive-signal sub-components (dozens of them) \u2014 a change to a signal fires on the gameplay bus, which is why stat changes are observable as named events. HP is additionally MIRRORED to the plain f32 at +0x15c8 for the hot path, which is exactly why R.combat can read/write it directly while most other stats live inside signal objects (no fixed plain-float offset). A 10-slot ability/input config block of int tags sits at +0x1fc..+0x220 = {0,1,1,1,2,1,1,1,1,3}.",
+   "note": "Constructor of oCDtEntityCpntHeroController \u2014 THE object R.entity/R.combat capture (the 'hero pointer'); it is the hero CONTROLLER COMPONENT, not the top-level entity. Confirms the capture layout: vftable @+0x0; current HP f32 @+0x15c8, max HP @+0x15cc, missing-health ratio @+0x15d0 (default 1.0f), ratio divisor @+0x15d4 (default 0.5f); HUD HP-mirror pointer @+0x1d80 (index 0x3b0) is built here via HeroController_HudMirror_Ctor (FUN_1403b2f20) \u2014 this is why +0x1d80 is the local-hero discriminator. Component size ~0x1e40. ARCHITECTURE: the hero's stats are oe::EntityCpntValueSignal<bool|int|float|oCVec3> reactive-signal sub-components (dozens of them) \u2014 a change to a signal fires on the gameplay bus, which is why stat changes are observable as named events. HP is additionally MIRRORED to the plain f32 at +0x15c8 for the hot path, which is exactly why R.combat can read/write it directly while most other stats live inside signal objects (no fixed plain-float offset). A 10-slot ability/input config block of int tags sits at +0x1fc..+0x220 = {0,1,1,1,2,1,1,1,1,3}. [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
    "refs": [
     "src/loader/lib/rsmm.lua"
    ]
@@ -668,9 +668,9 @@
    "name": "HeroController_HudMirror_Ctor",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_1403aff00",
+   "raw": "FUN_1403b3c70",
    "status": "ok",
-   "note": "Builds the hero's HUD HP-mirror object whose pointer is stored at hero+0x1d80 by HeroController_Ctor. Entity_ModifyHealth writes new HP to *(*(hero+0x1d80)) and the HUD reads it; only the local player gets one, so its presence is the local-hero discriminator used by hero_plausible.",
+   "note": "Builds the hero's HUD HP-mirror object whose pointer is stored at hero+0x1d80 by HeroController_Ctor. Entity_ModifyHealth writes new HP to *(*(hero+0x1d80)) and the HUD reads it; only the local player gets one, so its presence is the local-hero discriminator used by hero_plausible. [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
    "refs": [
     "src/loader/src/hook_events.cpp"
    ]
@@ -679,7 +679,7 @@
    "name": "EntityValue_Lookup",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_140765960",
+   "raw": "FUN_140749260",
    "status": "ok",
    "signature": "oCEntityValueUnion*(void* store, oCEntityValueUnion* out, uint32_t crcKey)",
    "cabi": {
@@ -690,7 +690,7 @@
      "uint32_t"
     ]
    },
-   "note": "Core read of the engine's generic keyed entity-value store (stats, modifiers, run meta like dream shards). Looks up crcKey: first a linear scan of an override array (store+0xc0, count @store+0xc8, 0x38-byte entries keyed by int @+0x0), then a fallback hash map (store+0x80, Fibonacci hash mult 0xde5fb9d2630458e9). Writes the result into the caller-provided ~0x20-byte oCEntityValueUnion `out` (vft @+0x0 = oCEntityValueUnion_vftable; type tag @+0x8 where 4 = inline; value @+0x10 = inline f32 when tag==4, else (tag & ~1) is a pointer to the value; u16 @+0x18 = 0xa). Missing key => value 0. To call from Lua you must supply a zeroed scratch buffer for `out` and run the union destructor (FUN_14082ca50) after reading \u2014 engine-callable but fiddly; see docs/_re/kinds/entity-values.md.",
+   "note": "Core read of the engine's generic keyed entity-value store (stats, modifiers, run meta like dream shards). Looks up crcKey: first a linear scan of an override array (store+0xc0, count @store+0xc8, 0x38-byte entries keyed by int @+0x0), then a fallback hash map (store+0x80, Fibonacci hash mult 0xde5fb9d2630458e9). Writes the result into the caller-provided ~0x20-byte oCEntityValueUnion `out` (vft @+0x0 = oCEntityValueUnion_vftable; type tag @+0x8 where 4 = inline; value @+0x10 = inline f32 when tag==4, else (tag & ~1) is a pointer to the value; u16 @+0x18 = 0xa). Missing key => value 0. To call from Lua you must supply a zeroed scratch buffer for `out` and run the union destructor (FUN_14082ca50) after reading \u2014 engine-callable but fiddly; see docs/_re/kinds/entity-values.md. [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
    "refs": [
     "docs/_re/kinds/entity-values.md"
    ]
@@ -699,7 +699,7 @@
    "name": "EntityValue_Get",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_1403d4e30",
+   "raw": "FUN_1403c7fa0",
    "status": "ok",
    "signature": "void(void* valueCtx, oCEntityValueUnion* out, uint32_t crcKey)",
    "cabi": {
@@ -710,7 +710,7 @@
      "uint32_t"
     ]
    },
-   "note": "Thin wrapper over EntityValue_Lookup: the entity's value context is hero+0x2f8; this reads the store at valueCtx+0x4c8 (if 0, returns an empty default via FUN_1408299d0). Read recipe for a captured hero: store = *(*(hero+0x2f8)+0x4c8); EntityValue_Lookup(store, &out, crcKey). crcKey is the CRC id of the value name (same id space as the gameplay-bus event ids; e.g. 0x173900d4/0x188831a6 seen in the heal/damage handlers). Read-only; the path to a future R.entity.value(name).",
+   "note": "Thin wrapper over EntityValue_Lookup: the entity's value context is hero+0x2f8; this reads the store at valueCtx+0x4c8 (if 0, returns an empty default via FUN_1408299d0). Read recipe for a captured hero: store = *(*(hero+0x2f8)+0x4c8); EntityValue_Lookup(store, &out, crcKey). crcKey is the CRC id of the value name (same id space as the gameplay-bus event ids; e.g. 0x173900d4/0x188831a6 seen in the heal/damage handlers). Read-only; the path to a future R.entity.value(name). [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
    "refs": [
     "docs/_re/kinds/entity-values.md"
    ]
@@ -817,9 +817,9 @@
    "kind": "function",
    "category": "entity",
    "raw": "FUN_1403a7710",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void(oCEntity* hero, void* a2, void* valueCtx)",
-   "note": "Inbound GAIN_HEALTH / HEALTH_MODIFICATION handler bound to the hero. param_1 = the hero character (HP@+0x15c8); reads it directly and calls Entity_ModifyHealth(hero, ...). Pointer-only args (safe to hook). Hooked read-only by R.entity (rsmm.lua) to CAPTURE the live hero pointer the first time the hero heals/regens.",
+   "note": "Inbound GAIN_HEALTH / HEALTH_MODIFICATION handler bound to the hero. param_1 = the hero character (HP@+0x15c8); reads it directly and calls Entity_ModifyHealth(hero, ...). Pointer-only args (safe to hook). Hooked read-only by R.entity (rsmm.lua) to CAPTURE the live hero pointer the first time the hero heals/regens. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "src/loader/lib/rsmm.lua"
    ]
@@ -829,9 +829,9 @@
    "kind": "function",
    "category": "items",
    "raw": "FUN_1403c7cf0",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void(oCEntity* hero, oCGameNamedEvent* giveEvent)",
-   "note": "Inbound GIVE_MAGICAL_OBJECT handler. param_1 = hero, param_2 = the give event; resolves the MO def via MagicalObjectPool_SourceLookup (FUN_1402590c0 on g_MagicalObjectPool) then grants via FUN_140397190(hero, def, ...). Pointer-only args (safe to hook). Also hooked read-only by R.entity to capture the hero pointer on item pickup/grant.",
+   "note": "Inbound GIVE_MAGICAL_OBJECT handler. param_1 = hero, param_2 = the give event; resolves the MO def via MagicalObjectPool_SourceLookup (FUN_1402590c0 on g_MagicalObjectPool) then grants via FUN_140397190(hero, def, ...). Pointer-only args (safe to hook). Also hooked read-only by R.entity to capture the hero pointer on item pickup/grant. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "src/loader/lib/rsmm.lua"
    ]
@@ -852,7 +852,7 @@
    "kind": "function",
    "category": "netcode",
    "raw": "FUN_14073dda0",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void(void* replContext)",
    "cabi": {
     "ret": "void",
@@ -860,7 +860,7 @@
      "void*"
     ]
    },
-   "note": "Per-entity replication setup; reads the authority role = *(netmgr+0xf8) where netmgr = *(replContext+0x10), with 1 = client/non-master. The host-migration research lever: hook to observe role on host vs client, optionally overwrite it. Exposed via R.net.on_repl_setup (offsets SDK-internal). See docs/_re/MULTIPLAYER.md and [[multiplayer-netcode]].",
+   "note": "Per-entity replication setup; reads the authority role = *(netmgr+0xf8) where netmgr = *(replContext+0x10), with 1 = client/non-master. The host-migration research lever: hook to observe role on host vs client, optionally overwrite it. Exposed via R.net.on_repl_setup (offsets SDK-internal). See docs/_re/MULTIPLAYER.md and [[multiplayer-netcode]]. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "src/loader/lib/rsmm.lua",
     "docs/_re/MULTIPLAYER.md"
@@ -981,10 +981,10 @@
    "name": "EntityValueRegistry_RegisterAll",
    "kind": "function",
    "category": "entity-values",
-   "raw": "FUN_1401dd550",
+   "raw": "FUN_1401da350",
    "status": "ok",
    "signature": "void(void)",
-   "note": "Registers every CRC-keyed game-state value (label+type) in the generic entity-value store: difficulty/xp scalars, GameModifier toggles, multiplayer, player-location flags. Source of the modifier/difficulty key table in docs/_re/kinds/game-modifiers.md (e.g. Game Difficulty 0x18700873, Camp Difficulty Modifier 0x187aaecf, Global Xp Modifier 0x187afd1d, No boss timer 0x1a7945fc). Address not pattern-confirmed across updates.",
+   "note": "Registers every CRC-keyed game-state value (label+type) in the generic entity-value store: difficulty/xp scalars, GameModifier toggles, multiplayer, player-location flags. Source of the modifier/difficulty key table in docs/_re/kinds/game-modifiers.md (e.g. Game Difficulty 0x18700873, Camp Difficulty Modifier 0x187aaecf, Global Xp Modifier 0x187afd1d, No boss timer 0x1a7945fc). Address not pattern-confirmed across updates. [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
    "refs": [
     "docs/_re/kinds/game-modifiers.md",
     "docs/_re/kinds/entity-values.md"
@@ -994,10 +994,10 @@
    "name": "HasGameModifierStateMachine_Register",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_140199960",
+   "raw": "FUN_140197780",
    "status": "ok",
    "signature": "void(void)",
-   "note": "Registers the per-run HasGameModifierStateMachine component type (component id 0x1b49a36c) that tracks which GameModifiers are active this run. Address not pattern-confirmed across updates.",
+   "note": "Registers the per-run HasGameModifierStateMachine component type (component id 0x1b49a36c) that tracks which GameModifiers are active this run. Address not pattern-confirmed across updates. [2026-07-10: recovered via anchor/decompile-verify (batch 2) after the July-9 remap mis-placed it.]",
    "refs": [
     "docs/_re/kinds/game-modifiers.md"
    ]
@@ -1019,9 +1019,9 @@
    "kind": "function",
    "category": "rewards",
    "raw": "FUN_1401ecd10",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void(void* mapSceneContext)",
-   "note": "The per-level reward roll: SEEDED ('Seed : {0} ; Base seed {1}'), '_InitAllRewards' / 'Distribute' / 'Fill remaining slots with random rewards'. Because the draw is seed-driven and multiplayer host-authoritative/deterministic, a reward BAN must be DATA-LEVEL (remove the candidate from the pool the roll reads) \u2014 a per-peer Lua post-filter would desync MP. After the roll, level load posts GENERATE_REWARDS via NamedEvent_Dispatch + EventQueue_Drain (FUN_14005c510/FUN_14003b350 are just static initializers interning the event name, NOT handlers). Candidate gate per (spawner, oCItem) pair: value f32 (spawner+0x68, lazy) within [oCItem+0xb0, oCItem+0xb4] AND CustomFlagList_ContainsAll(settings+0x100, oCItem+0xc0) AND !CustomFlagList_ContainsAny(settings+0x100, oCItem+0xd8).",
+   "note": "The per-level reward roll: SEEDED ('Seed : {0} ; Base seed {1}'), '_InitAllRewards' / 'Distribute' / 'Fill remaining slots with random rewards'. Because the draw is seed-driven and multiplayer host-authoritative/deterministic, a reward BAN must be DATA-LEVEL (remove the candidate from the pool the roll reads) \u2014 a per-peer Lua post-filter would desync MP. After the roll, level load posts GENERATE_REWARDS via NamedEvent_Dispatch + EventQueue_Drain (FUN_14005c510/FUN_14003b350 are just static initializers interning the event name, NOT handlers). Candidate gate per (spawner, oCItem) pair: value f32 (spawner+0x68, lazy) within [oCItem+0xb0, oCItem+0xb4] AND CustomFlagList_ContainsAll(settings+0x100, oCItem+0xc0) AND !CustomFlagList_ContainsAny(settings+0x100, oCItem+0xd8). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -1031,9 +1031,9 @@
    "kind": "function",
    "category": "rewards",
    "raw": "FUN_140682810",
-   "status": "ok",
+   "status": "unverified",
    "signature": "bool(void* flagListA, void* flagListB)",
-   "note": "oCCustomFlagList string-set test: true iff EVERY flag string in B exists in A (memcmp over {char* name, u32 len} entries, 0x18 stride; data ptr @+0x8, count @+0x10). Empty B => true. Reward spawner roll uses it as the REQUIRED-flags gate: ContainsAll(spawnerSettings+0x100, oCItem+0xc0). All shipping rewarddefs carry empty flag lists \u2014 mechanism present, unused by data.",
+   "note": "oCCustomFlagList string-set test: true iff EVERY flag string in B exists in A (memcmp over {char* name, u32 len} entries, 0x18 stride; data ptr @+0x8, count @+0x10). Empty B => true. Reward spawner roll uses it as the REQUIRED-flags gate: ContainsAll(spawnerSettings+0x100, oCItem+0xc0). All shipping rewarddefs carry empty flag lists \u2014 mechanism present, unused by data. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -1043,9 +1043,9 @@
    "kind": "function",
    "category": "rewards",
    "raw": "FUN_140682930",
-   "status": "ok",
+   "status": "unverified",
    "signature": "bool(void* flagListA, void* flagListB)",
-   "note": "oCCustomFlagList string-set test: true if ANY flag string in B exists in A. Empty B => false. Reward spawner roll uses it as the EXCLUDED-flags gate (the 'suppress field'): candidate rejected when ContainsAny(spawnerSettings+0x100, oCItem+0xd8). Also used by LevelLoad 'Enemies settings loading' against enemy-def flag container @def+0x2c0 \u2014 CustomFlagFilter is a generic engine facility, not rewards-specific.",
+   "note": "oCCustomFlagList string-set test: true if ANY flag string in B exists in A. Empty B => false. Reward spawner roll uses it as the EXCLUDED-flags gate (the 'suppress field'): candidate rejected when ContainsAny(spawnerSettings+0x100, oCItem+0xd8). Also used by LevelLoad 'Enemies settings loading' against enemy-def flag container @def+0x2c0 \u2014 CustomFlagFilter is a generic engine facility, not rewards-specific. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -1055,9 +1055,9 @@
    "kind": "function",
    "category": "engine-core",
    "raw": "FUN_140684660",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void*(void* gameScene, void* kindOfTypeTester)",
-   "note": "Scene-context lookup: iterates two context arrays on the game scene (data @+0x58 count @+0x60, data @+0x68 count @+0x70), calls tester vtbl+0x8 Test(ctx), returns first match. Callers stack-construct an oCTKindOfTypeTester<T, oIGameSceneContext> (vftable + classdesc global) \u2014 the standard way to get MapSceneContext / EntitySceneContext / P2PSessionSceneContext etc.",
+   "note": "Scene-context lookup: iterates two context arrays on the game scene (data @+0x58 count @+0x60, data @+0x68 count @+0x70), calls tester vtbl+0x8 Test(ctx), returns first match. Callers stack-construct an oCTKindOfTypeTester<T, oIGameSceneContext> (vftable + classdesc global) \u2014 the standard way to get MapSceneContext / EntitySceneContext / P2PSessionSceneContext etc. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/events-bus.md"
    ]
@@ -1067,9 +1067,9 @@
    "kind": "function",
    "category": "event",
    "raw": "FUN_14067be70",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void(void* queue)",
-   "note": "Deferred-event queue flush: critsec @+0x8, reentrancy guard byte @+0x0, count @+0x30, head @+0x38, freelist @+0x48; pops each node and invokes node-vtbl+0x20 handler with node+0x30 payload. Level load drains the game-context queue @ctx+0x1c0 right after posting GENERATE_REWARDS / GENERATE_ENEMY_CAMPS oCGameNamedEvents via NamedEvent_Dispatch.",
+   "note": "Deferred-event queue flush: critsec @+0x8, reentrancy guard byte @+0x0, count @+0x30, head @+0x38, freelist @+0x48; pops each node and invokes node-vtbl+0x20 handler with node+0x30 payload. Level load drains the game-context queue @ctx+0x1c0 right after posting GENERATE_REWARDS / GENERATE_ENEMY_CAMPS oCGameNamedEvents via NamedEvent_Dispatch. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/events-bus.md"
    ]
@@ -1079,9 +1079,9 @@
    "kind": "function",
    "category": "enemies",
    "raw": "FUN_1401ebd00",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void(void* mapSceneContext)",
-   "note": "Runs under 'Level load - MapSceneContext OnLevelStart', just before the reward roll. Camp spawner list @ctx+0xc8 count @+0xd0; each spawner's value f32 @+0x68 lazily evaluated via Property_EvaluateByGuid (on failure logs the settings asset path). Enemy-camp tier defs enumerated from the class registry and filtered by tier band [def+0x288, def+0x28c] \u2014 this is enemycamptierdef codec value_a/value_b, now pinned as the tier min/max over the value roll. Seeded pick, then weighted distribution over def rows @+0x290 count @+0x298 (weight @entry+0x40); tier assigned to spawner via FUN_14032de30.",
+   "note": "Runs under 'Level load - MapSceneContext OnLevelStart', just before the reward roll. Camp spawner list @ctx+0xc8 count @+0xd0; each spawner's value f32 @+0x68 lazily evaluated via Property_EvaluateByGuid (on failure logs the settings asset path). Enemy-camp tier defs enumerated from the class registry and filtered by tier band [def+0x288, def+0x28c] \u2014 this is enemycamptierdef codec value_a/value_b, now pinned as the tier min/max over the value roll. Seeded pick, then weighted distribution over def rows @+0x290 count @+0x298 (weight @entry+0x40); tier assigned to spawner via FUN_14032de30. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -1091,9 +1091,9 @@
    "kind": "function",
    "category": "entity",
    "raw": "FUN_1401ef131",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void(void* mapSceneContext)",
-   "note": "Runs right after the reward roll. Spawner list @ctx+0x198 count @+0x1a0: collects spawners with null link @+0x68 and def+0x110 != 0, then pairs A,B where A.def+0x110 == B.def+0xf8 (link-id match), stores peer ptr @spawner+0x68 and registers both via FUN_1402b6f10(entity+0x570, ...). Semantics inferred from structure (teleporter/portal-style two-way pairing candidate) \u2014 not yet observed in-game.",
+   "note": "Runs right after the reward roll. Spawner list @ctx+0x198 count @+0x1a0: collects spawners with null link @+0x68 and def+0x110 != 0, then pairs A,B where A.def+0x110 == B.def+0xf8 (link-id match), stores peer ptr @spawner+0x68 and registers both via FUN_1402b6f10(entity+0x570, ...). Semantics inferred from structure (teleporter/portal-style two-way pairing candidate) \u2014 not yet observed in-game. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/spawn-system.md"
    ]
@@ -1103,9 +1103,9 @@
    "kind": "function",
    "category": "heroes",
    "raw": "FUN_140329660",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void(void* heroDef, void** outEntityRef)",
-   "note": "Lazy loader for the hero's base entity, called per herodef in 'Level load - LoadAndGetRandomHeroEntity' (herodef list @gameScene+0x710 count @+0x718). Entity spec inline in the herodef: path string @+0x8a0, second path @+0x8b0, package ctx @+0x8c0, loaded flag @+0x8c8, cached refcounted entity @+0x8d0. Waits on def+0x68 readiness, resolves the entity-loader service (id 0x53b64d) from ServiceRegistry_Global and calls svc-vtbl+0x18 Load(path, flags, outRef, 0). Key link for the custom-hero path: this is where a herodef turns into a live entity.",
+   "note": "Lazy loader for the hero's base entity, called per herodef in 'Level load - LoadAndGetRandomHeroEntity' (herodef list @gameScene+0x710 count @+0x718). Entity spec inline in the herodef: path string @+0x8a0, second path @+0x8b0, package ctx @+0x8c0, loaded flag @+0x8c8, cached refcounted entity @+0x8d0. Waits on def+0x68 readiness, resolves the entity-loader service (id 0x53b64d) from ServiceRegistry_Global and calls svc-vtbl+0x18 Load(path, flags, outRef, 0). Key link for the custom-hero path: this is where a herodef turns into a live entity. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/heroes.md"
    ]
@@ -1127,9 +1127,9 @@
    "kind": "function",
    "category": "engine-core",
    "raw": "FUN_1406c3720",
-   "status": "ok",
+   "status": "unverified",
    "signature": "bool(void* ctx, void* container, void* guid16, float* out)",
-   "note": "Evaluates a GUID-referenced scalar (curve/property) into *out; returns false when the GUID doesn't resolve (callers then fall back to a raw settings read or log the asset path). Feeds the 0..1 'value' rolls consumed by the reward-spawner and enemy-camp tier bands. Semantics partially inferred from two call sites.",
+   "note": "Evaluates a GUID-referenced scalar (curve/property) into *out; returns false when the GUID doesn't resolve (callers then fall back to a raw settings read or log the asset path). Feeds the 0..1 'value' rolls consumed by the reward-spawner and enemy-camp tier bands. Semantics partially inferred from two call sites. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -1139,9 +1139,9 @@
    "kind": "function",
    "category": "engine-core",
    "raw": "FUN_140523a10",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void*(void* unused, void* identityKey)",
-   "note": "Linear scan of ClassRegistry_Global: for each class descriptor calls desc-vtbl+0x20 to emit a 33-byte identity key (leading u32 type hash, e.g. 0x176f4fdc for RewardDefInternal::oCType, + flag byte @+0x20) and memcmp-matches against the requested key. Every class registration calls this first to dedupe.",
+   "note": "Linear scan of ClassRegistry_Global: for each class descriptor calls desc-vtbl+0x20 to emit a 33-byte identity key (leading u32 type hash, e.g. 0x176f4fdc for RewardDefInternal::oCType, + flag byte @+0x20) and memcmp-matches against the requested key. Every class registration calls this first to dedupe. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re"
    ]
@@ -1151,9 +1151,9 @@
    "kind": "function",
    "category": "engine-core",
    "raw": "FUN_14053a660",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void*(void)",
-   "note": "Returns the per-thread profiler scope stack (TLS slot +0x148, lazily created; main-thread fast path via global DAT_1414476d0). Explains the ubiquitous decompile pattern `p = FUN_140521f20(); p[n*4+2]=&LAB_...; p[n*4+4]=\"ScopeName\"` \u2014 those are profiler scope pushes, safe to ignore when reading engine code.",
+   "note": "Returns the per-thread profiler scope stack (TLS slot +0x148, lazily created; main-thread fast path via global DAT_1414476d0). Explains the ubiquitous decompile pattern `p = FUN_140521f20(); p[n*4+2]=&LAB_...; p[n*4+4]=\"ScopeName\"` \u2014 those are profiler scope pushes, safe to ignore when reading engine code. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re"
    ]
@@ -1220,10 +1220,10 @@
    "name": "RewardItem_Serialize",
    "kind": "function",
    "category": "rewards",
-   "raw": "FUN_14032e480",
+   "raw": "FUN_140323dd0",
    "status": "ok",
    "signature": "bool(void* oCItem, void* reader)",
-   "note": "RewardDefInternal::oCItem serialize (hash 0x176f5023): resource-ref ('EntitySettings' + entity path) @+0x8, f32 value_min @+0xb0, f32 value_max @+0xb4, v<3: skipped u8, v1+: inline oCCustomFlagFilter @+0xb8 (required list lands @+0xc0, excluded @+0xd8), v2+: resource-ref @+0x40, v4+: resource-ref @+0x78 (both empty in retail = the '20 zero bytes'), v5+: u32 enum (<7, observed 3/4, semantics unpinned).",
+   "note": "RewardDefInternal::oCItem serialize (hash 0x176f5023): resource-ref ('EntitySettings' + entity path) @+0x8, f32 value_min @+0xb0, f32 value_max @+0xb4, v<3: skipped u8, v1+: inline oCCustomFlagFilter @+0xb8 (required list lands @+0xc0, excluded @+0xd8), v2+: resource-ref @+0x40, v4+: resource-ref @+0x78 (both empty in retail = the '20 zero bytes'), v5+: u32 enum (<7, observed 3/4, semantics unpinned). [2026-07-10: recovered via anchor/decompile-verify (batch 2) after the July-9 remap mis-placed it.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -1233,9 +1233,9 @@
    "kind": "function",
    "category": "engine-core",
    "raw": "FUN_140681e60",
-   "status": "ok",
+   "status": "unverified",
    "signature": "bool(void* flagList, void* reader)",
-   "note": "oCCustomFlagList serialize (hash 0x15a9d9be): delegates to string-vector read into this+0x8 ({count, count x lstr}).",
+   "note": "oCCustomFlagList serialize (hash 0x15a9d9be): delegates to string-vector read into this+0x8 ({count, count x lstr}). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -1256,10 +1256,10 @@
    "name": "RewardSelectorSettings_Serialize",
    "kind": "function",
    "category": "rewards",
-   "raw": "FUN_14034b4c0",
+   "raw": "FUN_140340470",
    "status": "ok",
    "signature": "bool(void* settings, void* reader)",
-   "note": "oCDtRewardEntitySelectorToSpawnEntityCpntSettings serialize (hash 0x1740e3e9) \u2014 the CANDIDATE side of the reward roll, cooked inside the reward object's entity settings: v<3 legacy discarded resource-ref (default classdesc = oCType), v1+: inline oCCustomFlagList @+0x100 (the flag set matched against oCItem filters \u2014 per-entity, editable), v2+: u32 enum (<4) @+0xf8, v3+: u32 enum (<2) @+0xfc (enum semantics unpinned; likely value-source/tier-roll mode).",
+   "note": "oCDtRewardEntitySelectorToSpawnEntityCpntSettings serialize (hash 0x1740e3e9) \u2014 the CANDIDATE side of the reward roll, cooked inside the reward object's entity settings: v<3 legacy discarded resource-ref (default classdesc = oCType), v1+: inline oCCustomFlagList @+0x100 (the flag set matched against oCItem filters \u2014 per-entity, editable), v2+: u32 enum (<4) @+0xf8, v3+: u32 enum (<2) @+0xfc (enum semantics unpinned; likely value-source/tier-roll mode). [2026-07-10: recovered via anchor/decompile-verify (batch 2) after the July-9 remap mis-placed it.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -1281,9 +1281,9 @@
    "kind": "function",
    "category": "engine-core",
    "raw": "FUN_140514570",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void*(void* reader, void* out, uint32_t classHash)",
-   "note": "Returns the version record for a class hash from the cooked file's HEADER class table (codec cooked.parse classes[] version fields); result+0x4 = the version number every versioned field-read checks ('if (ver(hash)+4 < N) skip field'). This is how one binary supports all historical cooked layouts \u2014 and how the codec must gate optional fields when typing a def.",
+   "note": "Returns the version record for a class hash from the cooked file's HEADER class table (codec cooked.parse classes[] version fields); result+0x4 = the version number every versioned field-read checks ('if (ver(hash)+4 < N) skip field'). This is how one binary supports all historical cooked layouts \u2014 and how the codec must gate optional fields when typing a def. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -1293,9 +1293,9 @@
    "kind": "function",
    "category": "engine-core",
    "raw": "FUN_1401cbba0",
-   "status": "ok",
+   "status": "unverified",
    "signature": "bool(void* reader, void* refSlot)",
-   "note": "Reads/writes a typed resource reference \u2014 cooked form {lstr type tag e.g. 'EntitySettings', lstr asset path} = the codec's tresptr field type. Used for oCItem entity refs, herodef fields, etc. Semantics inferred from call sites + cooked bytes.",
+   "note": "Reads/writes a typed resource reference \u2014 cooked form {lstr type tag e.g. 'EntitySettings', lstr asset path} = the codec's tresptr field type. Used for oCItem entity refs, herodef fields, etc. Semantics inferred from call sites + cooked bytes. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -1305,9 +1305,9 @@
    "kind": "function",
    "category": "engine-core",
    "raw": "FUN_140684f30",
-   "status": "ok",
+   "status": "unverified",
    "signature": "bool(void* reader, void* strVec)",
-   "note": "Reads/writes a vector of engine strings ({u32 count, count x lstr}); backing store 0x18-byte entries {ptr @+0x8, u32 len @+0x10} \u2014 the layout CustomFlagList_ContainsAll/Any iterate. Semantics inferred from CustomFlagList_Serialize delegation.",
+   "note": "Reads/writes a vector of engine strings ({u32 count, count x lstr}); backing store 0x18-byte entries {ptr @+0x8, u32 len @+0x10} \u2014 the layout CustomFlagList_ContainsAll/Any iterate. Semantics inferred from CustomFlagList_Serialize delegation. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -1316,10 +1316,10 @@
    "name": "MapDef_RegisterAssetLoader",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_14032da00",
+   "raw": "FUN_140323350",
    "status": "ok",
    "signature": "void(void* assetClassDesc)",
-   "note": "Registers the '*.mapdef.ot' asset glob -> oCDtMapDefinition library loader. Map defs (codec = cooked_schemas.definitions mapdef.json: level_ref/field_a/tribe_ref) are sequenced into chapters by GameModeDefaultDefinition (*.gamemodedefaultdef.ot); chapter type = GameModeDefInternal::Chapter. The chapter->map sequence lives in the gamemodedefaultdef _tail_hex (not yet typed) \u2014 the lever for new/random maps (#9/#10).",
+   "note": "Registers the '*.mapdef.ot' asset glob -> oCDtMapDefinition library loader. Map defs (codec = cooked_schemas.definitions mapdef.json: level_ref/field_a/tribe_ref) are sequenced into chapters by GameModeDefaultDefinition (*.gamemodedefaultdef.ot); chapter type = GameModeDefInternal::Chapter. The chapter->map sequence lives in the gamemodedefaultdef _tail_hex (not yet typed) \u2014 the lever for new/random maps (#9/#10). [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
    "refs": [
     "docs/_re/kinds/maps-chapters.md"
    ]
@@ -1416,7 +1416,7 @@
    "name": "Event_LevelUp",
    "kind": "event",
    "category": "event",
-   "raw": "FUN_1401fa670",
+   "raw": "FUN_1401f6bf0",
    "status": "ok",
    "lua_event": "level_up",
    "cabi": {
@@ -1434,7 +1434,7 @@
      "note": "new hero level; emitter stores (int)*arg at ctx+0xCC (verified in Ghidra 2026-06-05)"
     }
    ],
-   "note": "Emitter whose body references the 'level_up_reach' string (xref 0x1401f64a4). void(ctx, float* level): stores (int)*level at ctx+0xCC. Loader post-detours it to publish 'level_up' with {level} via R.on('level_up', cb).",
+   "note": "Emitter whose body references the 'level_up_reach' string (xref 0x1401f64a4). void(ctx, float* level): stores (int)*level at ctx+0xCC. Loader post-detours it to publish 'level_up' with {level} via R.on('level_up', cb). [2026-07-10: recovered via anchor/decompile-verify (batch 2) after the July-9 remap mis-placed it.]",
    "refs": [
     "src/loader/src/hook_events.cpp",
     "docs/_re/kinds/events.md"
@@ -1444,7 +1444,7 @@
    "name": "Event_RunEnd",
    "kind": "event",
    "category": "event",
-   "raw": "FUN_1401f9440",
+   "raw": "FUN_1401f59c0",
    "status": "ok",
    "lua_event": "run_end",
    "cabi": {
@@ -1454,7 +1454,7 @@
      "void*"
     ]
    },
-   "note": "Emitter whose body references the 'run_end' string (xref 0x1401f5347). Loader post-detours it to publish the 'run_end' Lua event via R.on('run_end', cb).",
+   "note": "Emitter whose body references the 'run_end' string (xref 0x1401f5347). Loader post-detours it to publish the 'run_end' Lua event via R.on('run_end', cb). [2026-07-10: recovered via anchor/decompile-verify (batch 2) after the July-9 remap mis-placed it.]",
    "refs": [
     "src/loader/src/hook_events.cpp",
     "docs/_re/kinds/events.md"
@@ -1465,9 +1465,9 @@
    "kind": "function",
    "category": "enemies",
    "raw": "FUN_140324320",
-   "status": "ok",
+   "status": "unverified",
    "signature": "bool(void* enemyDef)",
-   "note": "oCDtEnemyDefinition vftable+0x90 post-deserialize callback. Resolves the tribe typed-ref block at +0x2e8 (resolved ptr -> +0x318) via ResourceRef_Resolve, then SELF-REGISTERS into the tribe's runtime roster vector (tribe+0x2b8 data / +0x2c0 count, push_back via FUN_1401550d0) and folds min/max spawn-tier aggregates into tribe+0x2c8/+0x2cc/+0x2d0. Finally registers the instance in the class registry (Registry_RegisterInstance). THE tribe-roster writer: any loaded enemy def with a resolvable tribe_ref becomes a spawn candidate automatically.",
+   "note": "oCDtEnemyDefinition vftable+0x90 post-deserialize callback. Resolves the tribe typed-ref block at +0x2e8 (resolved ptr -> +0x318) via ResourceRef_Resolve, then SELF-REGISTERS into the tribe's runtime roster vector (tribe+0x2b8 data / +0x2c0 count, push_back via FUN_1401550d0) and folds min/max spawn-tier aggregates into tribe+0x2c8/+0x2cc/+0x2d0. Finally registers the instance in the class registry (Registry_RegisterInstance). THE tribe-roster writer: any loaded enemy def with a resolvable tribe_ref becomes a spawn candidate automatically. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -1477,9 +1477,9 @@
    "kind": "function",
    "category": "enemies",
    "raw": "FUN_140325540",
-   "status": "ok",
+   "status": "unverified",
    "signature": "bool(void* tribeDef)",
-   "note": "oCDtEnemyTribeDefinition vftable+0x90 post-deserialize callback. Resolves each 0x38-stride typed-ref entry of the COOKED entry vector at +0x2a0/+0x2a8 (empty in all 25 vanilla tribes), then registers in the class registry. Does NOT write the runtime roster (+0x2b8) - enemies self-register there via EnemyDef_PostLoad.",
+   "note": "oCDtEnemyTribeDefinition vftable+0x90 post-deserialize callback. Resolves each 0x38-stride typed-ref entry of the COOKED entry vector at +0x2a0/+0x2a8 (empty in all 25 vanilla tribes), then registers in the class registry. Does NOT write the runtime roster (+0x2b8) - enemies self-register there via EnemyDef_PostLoad. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -1501,9 +1501,9 @@
    "kind": "function",
    "category": "resource",
    "raw": "FUN_1404a51d0",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void(void* refBlock, void* classDesc, void** outResolved, void* policy)",
-   "note": "Generic typed resource-ref resolver. Ref block layout (0x38 bytes): {char* name, u32 hash, char* parentPath, u32 hash2, void* classDescriptor @+0x20, u8 resolved @+0x28, void* resolvedPtr @+0x30}. Resolving loads the target resource on demand.",
+   "note": "Generic typed resource-ref resolver. Ref block layout (0x38 bytes): {char* name, u32 hash, char* parentPath, u32 hash2, void* classDescriptor @+0x20, u8 resolved @+0x28, void* resolvedPtr @+0x30}. Resolving loads the target resource on demand. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -1525,7 +1525,7 @@
    "kind": "function",
    "category": "resource",
    "raw": "FUN_1402452a0",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void*(void* unused, void* out3, void** classDescPtr)",
    "cabi": {
     "ret": "void*",
@@ -1535,7 +1535,7 @@
      "void*"
     ]
    },
-   "note": "Registry hash-map find-or-insert keyed on *classDescPtr (callers copy the class-descriptor global into a local and pass its address). Fills out3 = {ctrl_ptr, entry_ptr, inserted_flag(u8)} and returns out3; entry = {key @+0, instance_data(void**) @+8, count(u32) @+0x10} = all live instances of the definition class. Read-side callers (e.g. camp tier selector FUN_140330db0) guard descriptor != sentinel DAT_14146fe00, falling back to the global all-instances list DAT_141439de0/+8. Used by level-load stage 3, spawn pickers, and the loader registry dump (hook_registry.cpp).",
+   "note": "Registry hash-map find-or-insert keyed on *classDescPtr (callers copy the class-descriptor global into a local and pass its address). Fills out3 = {ctrl_ptr, entry_ptr, inserted_flag(u8)} and returns out3; entry = {key @+0, instance_data(void**) @+8, count(u32) @+0x10} = all live instances of the definition class. Read-side callers (e.g. camp tier selector FUN_140330db0) guard descriptor != sentinel DAT_14146fe00, falling back to the global all-instances list DAT_141439de0/+8. Used by level-load stage 3, spawn pickers, and the loader registry dump (hook_registry.cpp). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/enemies.md",
     "src/loader/src/hook_registry.cpp"
@@ -1570,9 +1570,9 @@
    "kind": "function",
    "category": "enemies",
    "raw": "FUN_140332850",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void(void* selector)",
-   "note": "Camp generation: picks tribes (EnemyCamp_TribeEntryBuilder), then per tribe entry copies the tribe runtime roster (+0x2b8/+0x2c0) as the candidate vector, trims it with EnemyCamp_Stage3Filter, weighted-picks until camp power weight reached. Logs 'Min/Max power weight', 'Generation complete !'.",
+   "note": "Camp generation: picks tribes (EnemyCamp_TribeEntryBuilder), then per tribe entry copies the tribe runtime roster (+0x2b8/+0x2c0) as the candidate vector, trims it with EnemyCamp_Stage3Filter, weighted-picks until camp power weight reached. Logs 'Min/Max power weight', 'Generation complete !'. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -1582,9 +1582,9 @@
    "kind": "function",
    "category": "enemies",
    "raw": "FUN_1403343a0",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void(void* selector, void* specialEntry, void* outEntries, float mult)",
-   "note": "Builds the camp's tribe entry list: tribe pool = map def list (mapdef+0x720 -> +0x2c0 stride 0x38) or, if absent, ALL tribes from the class registry; filters via EnemyTribeDefInternal::SearchFilter, weighted-picks tribes, precomputes per-enemy spawn counts from the tribe roster.",
+   "note": "Builds the camp's tribe entry list: tribe pool = map def list (mapdef+0x720 -> +0x2c0 stride 0x38) or, if absent, ALL tribes from the class registry; filters via EnemyTribeDefInternal::SearchFilter, weighted-picks tribes, precomputes per-enemy spawn counts from the tribe roster. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -1594,9 +1594,9 @@
    "kind": "function",
    "category": "enemies",
    "raw": "FUN_140323830",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void(void* candidatesVec, void* searchFilter)",
-   "note": "Trims an enemy-def candidate vector by tier range (+0x2e0), min tier (+0x2dc), flag include/exclude (+0x2c0 list), tribe whitelist (+0x318) and tier-weight tables. Only removes - never adds. (Rebase of old FUN_14030b000 notes.)",
+   "note": "Trims an enemy-def candidate vector by tier range (+0x2e0), min tier (+0x2dc), flag include/exclude (+0x2c0 list), tribe whitelist (+0x318) and tier-weight tables. Only removes - never adds. (Rebase of old FUN_14030b000 notes.) [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -1606,9 +1606,9 @@
    "kind": "function",
    "category": "enemies",
    "raw": "FUN_140364360",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void(void* spawnerCpnt)",
-   "note": "Spawn-time weighted picker: enumerates ALL enemy defs from the class registry (NOT the tribe roster), filters by tier/flags/allowed-tribe-ptr, weighted-random picks, lazily resolves the entity ref (+0x288 block) and appends spawn data.",
+   "note": "Spawn-time weighted picker: enumerates ALL enemy defs from the class registry (NOT the tribe roster), filters by tier/flags/allowed-tribe-ptr, weighted-random picks, lazily resolves the entity ref (+0x288 block) and appends spawn data. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -1618,9 +1618,9 @@
    "kind": "function",
    "category": "engine",
    "raw": "FUN_1402928c0",
-   "status": "ok",
+   "status": "unverified",
    "signature": "i64(void* levelGs)",
-   "note": "Runs the 'Level load - *' stage chain (hero entities, barks, 'Enemies settings loading' = blocking-load of registry enemy defs filtered by map-def tribe list, map/tile defs, enemy camp generation via named event, navmesh, sectorization).",
+   "note": "Runs the 'Level load - *' stage chain (hero entities, barks, 'Enemies settings loading' = blocking-load of registry enemy defs filtered by map-def tribe list, map/tile defs, enemy camp generation via named event, navmesh, sectorization). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -1671,7 +1671,7 @@
    "kind": "function",
    "category": "ui",
    "status": "ok",
-   "raw": "FUN_14073f0c2",
+   "raw": "FUN_1407d5dc0",
    "cabi": {
     "params": [
      "void*",
@@ -1680,7 +1680,7 @@
     "ret": "void"
    },
    "signature": "void(void* task, ButtonUiCpntArray* cpnts)",
-   "note": "Per-frame 'oCEntityCpntButtonUi - Button input update' scheduled task (registered by FUN_1407d4d30, period field DAT_1412f55a0=6000). Iterates all live ButtonUi cpnts {count@+0, data@+8}; for each visible+enabled+focused pressed button calls FUN_140681820 (raw input latch) then UiButton_PressCommit(*(cpnt+0x268)). cpnt+0x268 = the widget desc the commit receives.",
+   "note": "Per-frame 'oCEntityCpntButtonUi - Button input update' scheduled task (registered by FUN_1407d4d30, period field DAT_1412f55a0=6000). Iterates all live ButtonUi cpnts {count@+0, data@+8}; for each visible+enabled+focused pressed button calls FUN_140681820 (raw input latch) then UiButton_PressCommit(*(cpnt+0x268)). cpnt+0x268 = the widget desc the commit receives. [2026-07-10: recovered via anchor/decompile-verify (batch 2) after the July-9 remap mis-placed it.]",
    "refs": [
     "docs/_re/kinds/ui-menus.md"
    ]
@@ -1690,7 +1690,7 @@
    "kind": "function",
    "category": "ui",
    "status": "ok",
-   "raw": "FUN_140310800",
+   "raw": "FUN_140307a30",
    "cabi": {
     "params": [
      "void*"
@@ -1698,7 +1698,7 @@
     "ret": "void"
    },
    "signature": "void(oCDtEntityCpnt3DBookController* self)",
-   "note": "3DBookController settings->runtime resolve (vftable 0x140f23368 slot 5). PROOF the tab count is HARDCODED at 5: resolves a fixed 5-entry picker array from settings+0x228 (stride 0x40, entries type-checked as oCEntityCpntEntitySpawner) into runtime+0xf8..+0x118 (the 5 tab entities) and a second 5-array settings+0x4e8 -> runtime+0x98. The settings deserializer FUN_140307130 likewise constructs both arrays with _eh_vector_constructor_iterator_(count=5, size=0x40) at settings+0x1f8 and +0x4b8 (version-gated, class hash 0x1781bd84). No children scan anywhere -> a 6th tab cannot be added by data; mod-menu UI must REUSE an existing tab/page slot, or a future loader detour must rewire one of the 5 slots. Runtime class: hash 0x1781bd6c size 0x230 ctor FUN_140307b10 (registrar FUN_14027db30, descriptor global DAT_1414709b8).",
+   "note": "3DBookController settings->runtime resolve (vftable 0x140f23368 slot 5). PROOF the tab count is HARDCODED at 5: resolves a fixed 5-entry picker array from settings+0x228 (stride 0x40, entries type-checked as oCEntityCpntEntitySpawner) into runtime+0xf8..+0x118 (the 5 tab entities) and a second 5-array settings+0x4e8 -> runtime+0x98. The settings deserializer FUN_140307130 likewise constructs both arrays with _eh_vector_constructor_iterator_(count=5, size=0x40) at settings+0x1f8 and +0x4b8 (version-gated, class hash 0x1781bd84). No children scan anywhere -> a 6th tab cannot be added by data; mod-menu UI must REUSE an existing tab/page slot, or a future loader detour must rewire one of the 5 slots. Runtime class: hash 0x1781bd6c size 0x230 ctor FUN_140307b10 (registrar FUN_14027db30, descriptor global DAT_1414709b8). [2026-07-10: recovered via anchor/decompile-verify (batch 2) after the July-9 remap mis-placed it.]",
    "refs": [
     "docs/_re/kinds/ui-menus.md"
    ]
@@ -1707,7 +1707,7 @@
    "name": "BookController_ResolveTabs",
    "kind": "function",
    "category": "ui",
-   "status": "ok",
+   "status": "unverified",
    "raw": "FUN_140311060",
    "cabi": {
     "params": [
@@ -1716,7 +1716,7 @@
     "ret": "void"
    },
    "signature": "void(oCDtEntityCpnt3DBookController* self)",
-   "note": "3DBookController post-resolve tab wire-up (vftable slot 28). Loops the 5 resolved tab entities at self+0xf8 and pulls each one's oCDtEntityCpnt3DBookTabController cpnt (type descriptor global DAT_141470f20; tab class hash 0x18ababa6, ctor FUN_140309a60, registrar FUN_140314660) into self+0x120..+0x148. Best future detour point for swapping which tab controller occupies a slot (tab-slot rewire for a real MODS tab).",
+   "note": "3DBookController post-resolve tab wire-up (vftable slot 28). Loops the 5 resolved tab entities at self+0xf8 and pulls each one's oCDtEntityCpnt3DBookTabController cpnt (type descriptor global DAT_141470f20; tab class hash 0x18ababa6, ctor FUN_140309a60, registrar FUN_140314660) into self+0x120..+0x148. Best future detour point for swapping which tab controller occupies a slot (tab-slot rewire for a real MODS tab). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/ui-menus.md"
    ]
