@@ -18,6 +18,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { authClient, useSession } from '../../lib/auth-client';
+import { formatObjectStorageError } from '../../lib/object-storage-error';
 
 function fmtBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -72,7 +73,10 @@ export default function AccountPage() {
         body: avatarFile,
         headers: { 'Content-Type': avatarFile.type },
       });
-      if (!put.ok) throw new Error(`avatar upload failed (${put.status})`);
+      if (!put.ok) {
+        const text = await put.text().catch(() => '');
+        throw new Error(formatObjectStorageError(put.status, text, 'avatar upload'));
+      }
       const upd = await authClient.updateUser({ image: presigned.publicUrl });
       if (upd.error) throw new Error(upd.error.message ?? 'image update failed');
     },

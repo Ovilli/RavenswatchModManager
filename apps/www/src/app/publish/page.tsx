@@ -26,6 +26,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../lib/api';
 import { useSession } from '../../lib/auth-client';
+import { formatObjectStorageError } from '../../lib/object-storage-error';
 
 // react-md-editor pulls in `navigator` at module top-level; load it on
 // the client only. The non-SSR import keeps the page renderable.
@@ -168,7 +169,7 @@ export default function PublishPage() {
       });
       if (!putRes.ok) {
         const text = await putRes.text().catch(() => '');
-        throw new Error(`object storage rejected the upload (${putRes.status}). ${text}`);
+        throw new Error(formatObjectStorageError(putRes.status, text, 'mod archive upload'));
       }
 
       // Scanning is async now: this enqueues the version and returns instantly
@@ -192,7 +193,7 @@ export default function PublishPage() {
         });
         if (!imgPut.ok) {
           const text = await imgPut.text().catch(() => '');
-          throw new Error(`image upload failed (${imgPut.status}). ${text}`);
+          throw new Error(formatObjectStorageError(imgPut.status, text, 'image upload'));
         }
         imageUrl = imgPresigned.publicUrl;
       }

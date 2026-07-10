@@ -23,6 +23,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
+import { formatObjectStorageError } from '../../../lib/object-storage-error';
 import { toEmbedUrl } from '../../../lib/video-embed';
 import { ModStats } from '../../components/mod-stats';
 import { ModTeam } from '../../components/mod-team';
@@ -218,7 +219,10 @@ export default function ManageModPage() {
         body: coverFile,
         headers: { 'Content-Type': coverFile.type },
       });
-      if (!put.ok) throw new Error(`image upload failed (${put.status})`);
+      if (!put.ok) {
+        const text = await put.text().catch(() => '');
+        throw new Error(formatObjectStorageError(put.status, text, 'cover image upload'));
+      }
       await api.mods.patch(slug, { imageUrl: presigned.publicUrl });
     },
     onSuccess: () => {
@@ -239,7 +243,10 @@ export default function ManageModPage() {
         body: file,
         headers: { 'Content-Type': file.type },
       });
-      if (!put.ok) throw new Error(`upload failed (${put.status})`);
+      if (!put.ok) {
+        const text = await put.text().catch(() => '');
+        throw new Error(formatObjectStorageError(put.status, text, 'screenshot upload'));
+      }
       const next: Screenshot[] = [...screenshots, { url: presigned.publicUrl }].slice(0, 12);
       setScreenshots(next);
       await api.mods.patch(slug, { screenshots: next });
@@ -364,7 +371,7 @@ export default function ManageModPage() {
       });
       if (!put.ok) {
         const text = await put.text().catch(() => '');
-        throw new Error(`object storage rejected the upload (${put.status}). ${text}`);
+        throw new Error(formatObjectStorageError(put.status, text, 'mod archive upload'));
       }
       // Async scan: enqueue and return. The worker scans within a minute or two
       // and withholds + removes the version automatically if it trips.
