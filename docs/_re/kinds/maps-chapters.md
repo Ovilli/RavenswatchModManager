@@ -44,13 +44,19 @@ deserializer-verified — `GameModeDefaultDefinition::Deserialize` (FUN_140324de
 @def+0x290, and each `GameModeDefault` entry (deser FUN_1403256c0) is a resource-ref to its
 chapter content @entry+0x8. So the rewritten u32s are sub-object ids into the file's section
 directory (numerically `[0,1,2,3]` in the vanilla def) and the vector order IS the run order as
-stored. Engine honouring a rewrite in a live run is still playtest-pending; chapter 0 may be
-coupled to first-run setup. Indices must reference existing chapters (`0..3`). Tests:
-`tests/test_game_mode_cook.py`. True per-run *random* order stays out of scope (engine RNG +
-MP-determinism); a fixed custom order is data-safe.
+stored. **In-game proven 2026-07-11** (`mods/SeedRunsChapter3`): overriding the retail
+`All_Chapters` def at its own cooked path with `chapters=[2, 3]` starts the run directly in the
+third chapter — the engine honours the rewritten order, and skipping indices 0/1 hit no
+first-run/tutorial coupling. The proven route is *override-in-place* (same def id, retail path);
+a net-new selectable mode id is still unproven, as are repeat orders (`[0,0,0]`).
+Indices must reference existing chapters (`0..3`). Tests: `tests/test_game_mode_cook.py`.
+True per-run *random* order stays out of scope (engine RNG + MP-determinism); a fixed custom
+order is data-safe. Note: a re-sequenced start is a *fresh* run — no items/talents from the
+skipped chapters; grant a standard loadout at run start via `R.give` if a mod wants one.
 
 ## Next steps
 
-1. Playtest a re-sequenced run (does the engine honour the new chapter order?).
-2. Mapdef remix kind (clone + repoint `tribe_ref`) for "same level, new enemy/biome profile".
-3. New levels (#9 proper) remain blocked on level-asset authoring (out of scope for def cloning).
+1. ~~Playtest a re-sequenced run~~ — DONE 2026-07-11, engine honours the new order (see above).
+2. Prove (or rule out) a net-new selectable game-mode id; test repeat orders like `[0,0,0]`.
+3. Mapdef remix kind (clone + repoint `tribe_ref`) for "same level, new enemy/biome profile".
+4. New levels (#9 proper) remain blocked on level-asset authoring (out of scope for def cloning).

@@ -43,7 +43,7 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev g++-mingw-w64-x86-64
 
       - name: Cache Rust
         uses: swatinem/rust-cache@v2
@@ -70,12 +70,19 @@ jobs:
         run: |
           call src\loader\build.bat
 
+      # Linux leg cross-compiles the same DLL with MinGW. Without this the
+      # Linux sidecar (and therefore the AppImage) ships with no
+      # dist/winhttp.dll, install-loader exits with "Build first" on every
+      # Linux install, and Modded Launch never works for Proton users.
+      - name: Build loader DLL (Linux, MinGW cross)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: src/loader/build.sh
+
       # Fail the release leg if the DLL is missing/malformed/exportless —
       # the silent regression that shipped in 0.1.11 (DLL written to the
       # wrong path, build "succeeded", every sidecar missing it). This
       # gates the artifact that actually reaches users.
-      - name: Validate loader DLL (Windows)
-        if: matrix.platform == 'windows-latest'
+      - name: Validate loader DLL
         shell: bash
         run: python scripts/validate_loader_dll.py dist/winhttp.dll
 
