@@ -8,6 +8,7 @@ import { env, githubConfigured, googleConfigured, isProduction } from './env.js'
 import { errString, log, requestId } from './logger.js';
 import { createRateLimiter } from './rate-limit.js';
 import { collectionsRouter } from './routes/collections.js';
+import { cronRouter } from './routes/cron.js';
 import { desktopAuthRouter } from './routes/desktop-auth.js';
 import { guidesRouter } from './routes/guides.js';
 import { legalRouter } from './routes/legal.js';
@@ -148,6 +149,10 @@ app.get('/api/auth-config', (c) =>
     },
   }),
 );
+
+// Scheduled scan-queue drain (Vercel Cron → Bearer CRON_SECRET). Self-gates on
+// the secret; no session/cookie involved.
+app.route('/api/cron', cronRouter);
 
 app.route('/api/mods', modsRouter);
 app.route('/api/moderation', moderationRouter);

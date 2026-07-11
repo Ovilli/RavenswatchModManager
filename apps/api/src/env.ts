@@ -39,6 +39,13 @@ export const env = {
   betterAuthSecret: required('BETTER_AUTH_SECRET'),
   betterAuthUrl: process.env.BETTER_AUTH_URL || 'http://localhost:3001',
   virusTotalApiKey: process.env.VIRUS_TOTAL_API_KEY ?? process.env.VIRUSTOTAL_API_KEY ?? '',
+  // Shared secret the scheduled scan-drain endpoint checks. Vercel Cron sends
+  // it as `Authorization: Bearer <CRON_SECRET>`. Without a cron the in-process
+  // setInterval worker never fires on serverless (the instance is torn down
+  // between requests), so a freshly uploaded version can sit 'pending' forever
+  // and stay hidden by the fail-closed serve gate. The cron is the guaranteed
+  // heartbeat that drains the queue. Empty in dev (endpoint is then disabled).
+  cronSecret: process.env.CRON_SECRET ?? '',
   // Public URL of the marketing site. Used as the verification-email
   // landing target. Defaults to localhost so dev works without extra
   // config; prod overrides via WEB_URL.
@@ -159,6 +166,10 @@ export function githubConfigured(): boolean {
 
 export function virusTotalConfigured(): boolean {
   return Boolean(env.virusTotalApiKey);
+}
+
+export function cronConfigured(): boolean {
+  return Boolean(env.cronSecret);
 }
 
 export function testmailConfigured(): boolean {

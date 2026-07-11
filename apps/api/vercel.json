@@ -1,5 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm --filter api vercel-build"
+  "buildCommand": "pnpm --filter api vercel-build",
+  "crons": [
+    {
+      "path": "/api/cron/scan-drain",
+      "schedule": "* * * * *"
+    }
+  ]
 }

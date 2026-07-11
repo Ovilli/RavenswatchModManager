@@ -340,6 +340,28 @@ async function drainOnceInner(): Promise<{ id: string; action: string; status?: 
   }
 }
 
+/**
+ * Drain up to `max` queue items in one call, stopping early when the queue is
+ * empty or VirusTotal starts rate-limiting (a rate-limited item is left in
+ * place for the next run). Used by the scheduled cron heartbeat so a backlog
+ * clears over successive ticks without ever exceeding the VT free-tier budget
+ * (each drainOnce holds the budget for the length of one scan, and drainOnce
+ * is single-flight, so back-to-back calls here serialize rather than overlap).
+ * Returns per-item results for logging.
+ */
+export async function drainBatch(
+  max = 1,
+): Promise<Array<{ id: string; action: string; status?: string }>> {
+  const done: Array<{ id: string; action: string; status?: string }> = [];
+  for (let i = 0; i < max; i++) {
+    const r = await drainOnce();
+    if (!r) break; // nothing left to do
+    done.push(r);
+    if (r.action.endsWith(':rate-limited')) break; // back off until next tick
+  }
+  return done;
+}
+
 async function selectTarget(
   where: ReturnType<typeof and>,
   order: SQL,
