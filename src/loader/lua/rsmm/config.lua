@@ -1,5 +1,8 @@
 -- R.config — typed per-mod config bound to the calling mod's id.
--- Backed by the host-side ConfigStore via the loader's IPC bridge.
+-- Backed by <mod_dir>/config.toml, read/written by the loader's native
+-- rsmm._internal.config_* bindings (the sandbox nils `io`, so mods cannot
+-- read the file directly). The host-side ConfigStore (rsmm.sdk.config)
+-- owns the schema; `rsmm apply` / install-loader sync the file in.
 
 local M = {}
 local _watchers = {}     -- key -> { fn, ... }

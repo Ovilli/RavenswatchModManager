@@ -123,6 +123,8 @@ for mod_dir in "$REPO_DIR"/mods/*/; do
     [[ -f "$mod_dir/init.lua" ]] && install -m 0644 "$mod_dir/init.lua" "$GAME_DIR/mods/$name/init.lua"
     # Copy pointers.json for function-resolution hooks.
     [[ -f "$mod_dir/pointers.json" ]] && install -m 0644 "$mod_dir/pointers.json" "$GAME_DIR/mods/$name/pointers.json"
+    # Copy user config so the loader's config_get bindings see it in-game.
+    [[ -f "$mod_dir/config.toml" ]] && install -m 0644 "$mod_dir/config.toml" "$GAME_DIR/mods/$name/config.toml"
     # Copy asset overrides so the runtime IAT hook can find them.
     if [[ -d "$mod_dir/assets" ]]; then
         mkdir -p "$GAME_DIR/mods/$name/assets"

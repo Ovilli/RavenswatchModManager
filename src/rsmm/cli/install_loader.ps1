@@ -123,6 +123,11 @@ Get-ChildItem -Directory (Join-Path $repoDir 'mods') | ForEach-Object {
     Copy-Item -Path $m -Destination (Join-Path $dst 'manifest.toml') -Force
     $init = Join-Path $_.FullName 'init.lua'
     if (Test-Path $init) { Copy-Item -Path $init -Destination (Join-Path $dst 'init.lua') -Force }
+    $ptrs = Join-Path $_.FullName 'pointers.json'
+    if (Test-Path $ptrs) { Copy-Item -Path $ptrs -Destination (Join-Path $dst 'pointers.json') -Force }
+    # User config so the loader's config_get bindings see it in-game.
+    $cfg = Join-Path $_.FullName 'config.toml'
+    if (Test-Path $cfg) { Copy-Item -Path $cfg -Destination (Join-Path $dst 'config.toml') -Force }
   }
 }
 

@@ -23,6 +23,7 @@ extern "C" {
 #include "hook_items.h"
 
 #include "json.hpp"   // single-header nlohmann::json (vendored)
+#include "toml.hpp"   // single-header toml++ (vendored)
 
 #include <windows.h>
 
@@ -161,6 +162,137 @@ int lua_state_write(lua_State* L) {
     std::filesystem::rename(tmp, dst, ec);
     if (ec) { std::filesystem::remove(tmp, ec); lua_pushboolean(L, 0); return 1; }
     lua_pushboolean(L, 1);
+    return 1;
+}
+
+// -- Per-mod config (<mod_dir>/config.toml) --------------------------------
+//
+// The host-side ConfigStore (rsmm.sdk.config) persists user-edited values
+// as a flat `[config]` table of primitives; `rsmm apply` / install-loader
+// sync the file into the game-side mod dir. The sandbox nils `io`, so the
+// file is read here and exposed as rsmm._internal.config_get/_set/_all
+// (consumed by the R.config Lua module). Loaded once per lua_State at
+// script_run_mod_init; a hot-reload of init.lua re-reads it.
+
+void load_mod_config(lua_State* L, const std::filesystem::path& root) {
+    lua_newtable(L);
+    const auto cfg_path = root / "config.toml";
+    std::error_code ec;
+    if (std::filesystem::exists(cfg_path, ec)) {
+        try {
+            toml::table doc = toml::parse_file(cfg_path.string());
+            const toml::table* section = doc["config"].as_table();
+            if (!section) section = &doc;  // tolerate flat files without [config]
+            for (auto&& [key, node] : *section) {
+                if (auto b = node.as_boolean())             lua_pushboolean(L, **b ? 1 : 0);
+                else if (auto i = node.as_integer())        lua_pushinteger(L, (lua_Integer)**i);
+                else if (auto f = node.as_floating_point()) lua_pushnumber(L, **f);
+                else if (auto s = node.as_string())         lua_pushstring(L, (**s).c_str());
+                else continue;
+                lua_setfield(L, -2, std::string(key.str()).c_str());
+            }
+        } catch (const std::exception& e) {
+            Loader::get().log(std::string("[config] parse fail ")
+                              + cfg_path.string() + ": " + e.what());
+        }
+    }
+    lua_setfield(L, LUA_REGISTRYINDEX, "__rsmm_config");
+}
+
+bool config_write_file(lua_State* L, const std::filesystem::path& root) {
+    lua_getfield(L, LUA_REGISTRYINDEX, "__rsmm_config");
+    if (!lua_istable(L, -1)) { lua_pop(L, 1); return false; }
+    toml::table section;
+    lua_pushnil(L);
+    while (lua_next(L, -2)) {
+        if (lua_type(L, -2) == LUA_TSTRING) {
+            const std::string k = lua_tostring(L, -2);
+            switch (lua_type(L, -1)) {
+                case LUA_TBOOLEAN:
+                    section.insert(k, (bool)lua_toboolean(L, -1));
+                    break;
+                case LUA_TNUMBER:
+                    if (lua_isinteger(L, -1))
+                        section.insert(k, (std::int64_t)lua_tointeger(L, -1));
+                    else
+                        section.insert(k, (double)lua_tonumber(L, -1));
+                    break;
+                case LUA_TSTRING:
+                    section.insert(k, std::string(lua_tostring(L, -1)));
+                    break;
+                default: break;  // tables/functions never persist
+            }
+        }
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+    toml::table doc;
+    doc.insert("config", std::move(section));
+    // Temp-file + rename, same crash-safety contract as state_write.
+    const auto tmp = root / "config.toml.tmp";
+    const auto dst = root / "config.toml";
+    {
+        std::ofstream f(tmp, std::ios::trunc);
+        if (!f) return false;
+        f << doc << "\n";
+        if (!f.good()) return false;
+    }
+    std::error_code ec;
+    std::filesystem::rename(tmp, dst, ec);
+    if (ec) { std::filesystem::remove(tmp, ec); return false; }
+    return true;
+}
+
+// rsmm._internal.config_get(key) -> bool|integer|number|string | nil
+int lua_config_get(lua_State* L) {
+    luaL_checkstring(L, 1);
+    lua_getfield(L, LUA_REGISTRYINDEX, "__rsmm_config");
+    if (!lua_istable(L, -1)) { lua_pushnil(L); return 1; }
+    lua_pushvalue(L, 1);
+    lua_gettable(L, -2);
+    return 1;
+}
+
+// rsmm._internal.config_set(key, value) -> bool
+//   Updates the in-memory table and persists <mod_dir>/config.toml. Value
+//   must be nil (= delete key), boolean, number, or string — the primitive
+//   set the host-side schema can validate.
+int lua_config_set(lua_State* L) {
+    luaL_checkstring(L, 1);
+    const int t = lua_type(L, 2);
+    if (t != LUA_TNIL && t != LUA_TBOOLEAN && t != LUA_TNUMBER && t != LUA_TSTRING)
+        return luaL_error(L, "config value must be nil, boolean, number or string");
+    auto* m = current_from_state(L);
+    if (!m) { lua_pushboolean(L, 0); return 1; }
+    lua_getfield(L, LUA_REGISTRYINDEX, "__rsmm_config");
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        lua_newtable(L);
+        lua_pushvalue(L, -1);
+        lua_setfield(L, LUA_REGISTRYINDEX, "__rsmm_config");
+    }
+    lua_pushvalue(L, 1);
+    lua_pushvalue(L, 2);
+    lua_settable(L, -3);
+    lua_pop(L, 1);
+    lua_pushboolean(L, config_write_file(L, m->root) ? 1 : 0);
+    return 1;
+}
+
+// rsmm._internal.config_all() -> table (shallow copy)
+int lua_config_all(lua_State* L) {
+    lua_newtable(L);
+    lua_getfield(L, LUA_REGISTRYINDEX, "__rsmm_config");
+    if (lua_istable(L, -1)) {
+        lua_pushnil(L);
+        while (lua_next(L, -2)) {
+            lua_pushvalue(L, -2);   // key
+            lua_pushvalue(L, -2);   // value
+            lua_settable(L, -6);    // result[key] = value
+            lua_pop(L, 1);
+        }
+    }
+    lua_pop(L, 1);
     return 1;
 }
 
@@ -750,6 +882,9 @@ void register_api(lua_State* L) {
         { "state_read",              lua_state_read },
         { "state_write",             lua_state_write },
         { "intent_write",            lua_intent_write },
+        { "config_get",              lua_config_get },
+        { "config_set",              lua_config_set },
+        { "config_all",              lua_config_all },
         { nullptr, nullptr }
     };
     luaL_newlib(L, public_lib);          // -1 = rsmm
@@ -801,6 +936,7 @@ bool script_run_mod_init(const std::string& mod_id,
 
     lua_pushstring(L, mod_id.c_str());
     lua_setfield(L, LUA_REGISTRYINDEX, "__rsmm_mod_id");
+    load_mod_config(L, mod_root);
     register_api(L);
 
     // Prepend `<game>/rsmm/lib/?.lua` to package.path so `require "rsmm"`
