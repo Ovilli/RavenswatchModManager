@@ -78,6 +78,9 @@ SDK = {
 # repo_cmd multiplexes these four under one module (passes the verb through).
 REPO_ALIASES = ("repo", "sign", "verify", "keygen")
 
+# cmd_mods multiplexes both toggle verbs under one module (verb passed through).
+MOD_TOGGLE_ALIASES = ("enable", "disable")
+
 
 def iter_commands():
     """Yield (command, target_module) for every dispatchable subcommand.
@@ -96,6 +99,8 @@ def iter_commands():
         yield name, mod
     for name in REPO_ALIASES:
         yield name, "rsmm.cli.repo_cmd"
+    for name in MOD_TOGGLE_ALIASES:
+        yield name, "rsmm.cli.cmd_mods"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -127,6 +132,8 @@ def main(argv: list[str] | None = None) -> int:
         return _dispatch_module(SDK[sub], rest)
     if sub in REPO_ALIASES:
         return _dispatch_module("rsmm.cli.repo_cmd", [sub, *rest])
+    if sub in MOD_TOGGLE_ALIASES:
+        return _dispatch_module("rsmm.cli.cmd_mods", [sub, *rest])
 
     if sub in LEGACY:
         mod, prefix = LEGACY[sub]

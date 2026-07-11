@@ -8,6 +8,8 @@ documented `R.*` API. See `docs/MODDING.md`.
     rsmm apply [--dry-run]              install mods/ into the game
     rsmm restore [--all]                roll back active overrides
     rsmm list                           show installed mods + their files
+    rsmm enable <id>... [--only|--all]  enable mods (--only: disable the rest)
+    rsmm disable <id>... [--all]        disable mods
     rsmm new <id>                       scaffold mods/<id>/
     rsmm pack <id> [--allow-vanilla]    bundle mods/<id>/ into a zip
     rsmm doctor                         system health check (recommended often)
