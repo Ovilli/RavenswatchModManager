@@ -19,13 +19,15 @@ def _is_local_only(rel: Path) -> bool:
 
     config.toml holds the packing user's edited values (config_schema.toml
     ships the defaults); .rsmm_state* is the runtime KV store the loader
-    writes next to init.lua.
+    writes next to init.lua; .rsmm_emitted.json is apply-time bookkeeping
+    for stale-asset GC, regenerated on the installing machine.
     """
     if "__pycache__" in rel.parts:
         return True
     name = rel.name
     return (
         name == "config.toml"
+        or name == ".rsmm_emitted.json"
         or name.startswith(".rsmm_state")
         or name.endswith(".tmp")
     )
