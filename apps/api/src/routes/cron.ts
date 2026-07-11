@@ -18,8 +18,10 @@ const CRON_DRAIN_MAX = 3;
  * that advanced the queue were a publish or an owner status-poll — a freshly
  * uploaded version whose VirusTotal analysis wasn't finished at upload time
  * would sit 'pending' forever (hidden by the fail-closed serve gate) once the
- * owner stopped watching. This endpoint gives the queue a guaranteed drain
- * regardless of user traffic. Wire it to Vercel Cron (see apps/api/vercel.json).
+ * owner stopped watching. This endpoint gives the queue a drain independent of
+ * that. Wired to a daily Vercel Cron backstop (Hobby caps crons at once/day;
+ * see apps/api/vercel.json) — the fast path is the opportunistic kick on the
+ * public browse endpoint (routes/mods.ts), which drains on organic traffic.
  *
  * Auth: Vercel Cron sends `Authorization: Bearer <CRON_SECRET>`. We reject
  * anything else so the endpoint can't be used to trigger scans at will.

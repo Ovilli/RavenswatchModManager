@@ -175,6 +175,11 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
   const total = totals[0]?.total ?? 0;
   const totalDownloads = totals[0]?.totalDownloads ?? 0;
 
+  // Opportunistic queue drain: piggyback on organic browse traffic so the scan
+  // queue advances even between the (plan-limited) cron ticks. Single-flight +
+  // fire-and-forget (waitUntil), so it never adds latency to this response.
+  kickScanWorker();
+
   return c.json({
     items: rows.map((r) => ({
       id: r.id,
