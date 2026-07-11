@@ -5,6 +5,10 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# Target Windows 7+ explicitly. Old mingw-w64 headers (Ubuntu 22.04 / GCC 10)
+# default _WIN32_WINNT to XP, which hides Vista+ APIs like GetTickCount64.
+add_compile_definitions(_WIN32_WINNT=0x0601 WINVER=0x0601)
+
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
   add_compile_options(-Wall -Wno-unused-function -Wno-unused-variable -Wno-cast-function-type)
 elseif(MSVC)
