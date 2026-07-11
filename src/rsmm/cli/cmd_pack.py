@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import re
-import shutil
 import sys
+import zipfile
 from pathlib import Path
 
 from rsmm.engine.asset_map import decoded_to_encoded
@@ -12,6 +12,23 @@ from rsmm.engine.hashing import sha256_file as sha256
 from rsmm.engine.paths import COOKING_SUBDIR, DATA_DIR, DEFAULT_GAME_DIR, DIST_DIR, MODS_DIR
 
 _ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
+
+
+def _is_local_only(rel: Path) -> bool:
+    """True for files that belong to the installing user, not the mod.
+
+    config.toml holds the packing user's edited values (config_schema.toml
+    ships the defaults); .rsmm_state* is the runtime KV store the loader
+    writes next to init.lua.
+    """
+    if "__pycache__" in rel.parts:
+        return True
+    name = rel.name
+    return (
+        name == "config.toml"
+        or name.startswith(".rsmm_state")
+        or name.endswith(".tmp")
+    )
 
 _USAGE = (
     "usage: rsmm pack <id> [--allow-vanilla]\n"
@@ -110,9 +127,16 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
     DIST_DIR.mkdir(exist_ok=True)
-    out_base = DIST_DIR / mod_id
-    archive = shutil.make_archive(str(out_base), "zip", root_dir=MODS_DIR, base_dir=mod_id)
-    print(f"Wrote {archive}")
+    out = DIST_DIR / f"{mod_id}.zip"
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in sorted(src.rglob("*")):
+            if not f.is_file():
+                continue
+            rel = f.relative_to(src)
+            if _is_local_only(rel):
+                continue
+            zf.write(f, f"{mod_id}/{rel.as_posix()}")
+    print(f"Wrote {out}")
     return 0
 
 
