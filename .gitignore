@@ -63,6 +63,8 @@ data/uncooked/
 
 # Pattern DB for rsmm.resolve (20 MB, regenerable via scripts/gen_function_patterns.py)
 data/function_patterns.json
+# game-derived: mine_fingerprints currently embeds decompiled function bodies
+data/symbol_fingerprints.json
 
 # Big RE artifacts — outputs are local
 ghidra_project/
