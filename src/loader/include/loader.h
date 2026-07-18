@@ -92,6 +92,12 @@ private:
 
     mutable std::mutex log_mu_;
     unsigned long log_pid_ = 0;
+    // Short per-process token (e.g. "a3f1") stamped on every line so old and
+    // new sessions in the shared log are trivially told apart / grep-filtered.
+    std::string log_session_;
+    // Host exe basename (Ravenswatch.exe, crashpad_handler.exe, ...) — used to
+    // tag lines and to decide whether this process rotates the log on init.
+    std::string log_host_;
     bool va_trusted_ = true;
 
     // Menu detection.

@@ -31,4 +31,12 @@ bool fn_verify(std::string_view name, std::uintptr_t va);
 size_t fn_resolver_pattern_count();
 size_t fn_resolver_resolved_count();
 
+// Ground-truth dump: force-resolve every SEMANTIC pattern (names not of the
+// form FUN_<addr>) against the live exe and write {name, va, first-16-bytes}
+// to `path` as JSON. This is the authoritative "what did the loader actually
+// resolve" record — `rsmm symbols audit` diffs it against data/symbols.json so
+// a mis-resolved address is caught from the RUNNING game, not a Python
+// reimplementation of the scan. Returns the number of symbols written.
+size_t fn_resolver_dump_resolved(const std::string& path);
+
 } // namespace rsmm

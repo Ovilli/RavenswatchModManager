@@ -11,6 +11,7 @@
 #include <sstream>
 #include <algorithm>
 #include <cstdlib>
+#include <cstdio>
 #include <unordered_set>
 
 #include "json.hpp"   // single-header nlohmann::json (vendored)
@@ -25,6 +26,26 @@ Loader& Loader::get() {
     return inst;
 }
 
+namespace {
+// "YYYY-MM-DD HH:MM:SS.mmm" wall-clock stamp. Shared by the per-line prefix and
+// the session banner so both read identically. msvcrt's strftime has no %F/%T,
+// so the format is spelled out.
+std::string format_ts_now() {
+    using clock = std::chrono::system_clock;
+    const auto now = clock::now();
+    const auto t   = clock::to_time_t(now);
+    const auto ms  = std::chrono::duration_cast<std::chrono::milliseconds>(
+                         now.time_since_epoch()).count() % 1000;
+    char ts[32] = {0};
+    if (std::tm* tm = std::localtime(&t)) {
+        std::strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", tm);
+    }
+    char out[40] = {0};
+    std::snprintf(out, sizeof(out), "%s.%03d", ts, static_cast<int>(ms));
+    return out;
+}
+}  // namespace
+
 void Loader::init(const fs::path& game_dir) {
     game_dir_  = game_dir;
     mods_dir_  = game_dir / "mods";
@@ -33,13 +54,62 @@ void Loader::init(const fs::path& game_dir) {
     log_pid_   = GetCurrentProcessId();
     std::error_code ec;
     fs::create_directories(mods_dir_, ec);
-    log("=== RavenswatchModManager init ===");
-    log("game_dir=" + game_dir_.string());
+
+    // Host exe path + basename.
+    char exe[MAX_PATH] = {0};
+    GetModuleFileNameA(nullptr, exe, MAX_PATH);
+    const std::string exe_path(exe);
     {
-        char exe[MAX_PATH] = {0};
-        GetModuleFileNameA(nullptr, exe, MAX_PATH);
-        log(std::string("host=") + exe + " pid=" + std::to_string(log_pid_));
+        const auto slash = exe_path.find_last_of("\\/");
+        log_host_ = (slash == std::string::npos) ? exe_path
+                                                 : exe_path.substr(slash + 1);
     }
+
+    // Per-process session token: 4 hex chars mixed from the tick count and pid.
+    // Stamped on every line so successive/concurrent injections never blur
+    // together — grep one token to isolate a single run.
+    {
+        const unsigned long long mix =
+            (static_cast<unsigned long long>(GetTickCount64()) << 16) ^
+            (static_cast<unsigned long long>(log_pid_) * 2654435761ull);
+        char sid[8] = {0};
+        std::snprintf(sid, sizeof(sid), "%04x",
+                      static_cast<unsigned>((mix >> 8) & 0xffffu));
+        log_session_ = sid;
+    }
+
+    // Rotate the shared log so each real game launch starts clean and the
+    // previous run survives in _log.prev.txt — this is what makes old vs new
+    // sessions separable. ONLY the game process rotates; helper injections
+    // (crashpad_handler.exe & friends) append into the current file with their
+    // host tag, so they can never wipe the game's own log.
+    bool is_game_host = false;
+    {
+        std::string h = log_host_;
+        std::transform(h.begin(), h.end(), h.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        is_game_host = h.find("ravenswatch") != std::string::npos;
+    }
+    if (is_game_host) {
+        std::error_code rec;
+        if (fs::exists(log_path_, rec)) {
+            fs::rename(log_path_, mods_dir_ / "_log.prev.txt", rec);
+        }
+    }
+
+    // Session banner: a strong, greppable ("SESSION") separator between runs.
+    {
+        std::lock_guard<std::mutex> g(log_mu_);
+        std::ofstream f(log_path_, std::ios::app);
+        f << "\n"
+          << "================================================================\n"
+          << "== SESSION " << log_session_ << "  " << format_ts_now()
+          << "  pid " << log_pid_ << "  host " << log_host_
+          << (is_game_host ? "" : "  (helper inject)") << "\n"
+          << "================================================================\n";
+    }
+    log("game_dir=" + game_dir_.string());
+    log(std::string("host=") + exe_path);
 
     // Build-fingerprint gate for absolute data addresses. The planted
     // pattern-DB meta records the exact game exe (size + sha) the current
@@ -115,20 +185,11 @@ bool Loader::is_in_main_menu() const {
 
 void Loader::log(const std::string& msg) {
     std::lock_guard<std::mutex> g(log_mu_);
-    using clock = std::chrono::system_clock;
-    const auto now = clock::now();
-    const auto t   = clock::to_time_t(now);
-    const auto ms  = std::chrono::duration_cast<std::chrono::milliseconds>(
-                         now.time_since_epoch()).count() % 1000;
-    // msvcrt's strftime has no %F/%T (they expand to nothing), which is why
-    // every line used to read "[ ]" — spell the format out instead.
-    char ts[32] = {0};
-    if (std::tm* tm = std::localtime(&t)) {
-        std::strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", tm);
-    }
+    // Prefix: [timestamp | session | pid]. The session token isolates one run
+    // in the shared, multi-launch log; pid is kept for cross-referencing the OS.
     std::ofstream f(log_path_, std::ios::app);
-    f << "[" << ts << "." << std::setfill('0') << std::setw(3) << ms
-      << " " << log_pid_ << "] " << msg << "\n";
+    f << "[" << format_ts_now() << " " << log_session_ << " " << log_pid_
+      << "] " << msg << "\n";
 }
 
 bool Loader::load_asset_map(const fs::path& json_path) {

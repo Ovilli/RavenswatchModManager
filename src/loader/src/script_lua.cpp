@@ -18,6 +18,7 @@ extern "C" {
 #include "script_lua.h"
 #include "loader.h"
 #include "fn_resolver.h"
+#include "symbols_api.gen.h"   // engine:: typed, pattern-resolved accessors
 #include "fn_call.h"
 #include "hook_lua.h"
 #include "hook_items.h"
@@ -33,6 +34,7 @@ extern "C" {
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <mutex>
 #include <type_traits>
 #include <unordered_map>
@@ -694,6 +696,32 @@ int lua_item_guid(lua_State* L) {
     return 2;
 }
 
+// _internal.is_grant_target(entity_va) -> bool
+//   True iff `entity` owns a magical-object component, i.e. it is a grantable
+//   hero and NOT a summon / pet / enemy. Mirrors the discriminator at the top
+//   of Hero_GrantMagicalObject (FUN_140397030): store = *(entity+8), then a
+//   read-only F14 lookup keyed by the entity pointer; heroes are registered in
+//   the store, transient entities are not. R.give's dispatcher capture uses
+//   this to reject a non-hero dispatcher (a summon that fired an anchor event)
+//   from clobbering _give_hero. Every dereference is page-guarded so a bogus
+//   pointer returns false instead of faulting the game.
+int lua_is_grant_target(lua_State* L) {
+    auto entity = static_cast<std::uintptr_t>(luaL_checkinteger(L, 1));
+    // Need the object header + the component-store pointer at entity+0x8.
+    if (!mem_accessible(entity, 0x10, false)) { lua_pushboolean(L, 0); return 1; }
+    std::uintptr_t store = 0;
+    std::memcpy(&store, reinterpret_cast<const void*>(entity + 8), sizeof(store));
+    // The lookup dereferences the store's F14 control/slot arrays at +0x1d0.. —
+    // require the whole header committed before handing it to the engine fn.
+    if (!mem_accessible(store, 0x1f0, false)) { lua_pushboolean(L, 0); return 1; }
+    auto fn = engine::Entity_LookupMagicalObjectComponent();
+    if (!fn) { lua_pushboolean(L, 0); return 1; }
+    void* out = nullptr;
+    fn(reinterpret_cast<void*>(store), &out, reinterpret_cast<void*>(entity));
+    lua_pushboolean(L, out != nullptr ? 1 : 0);
+    return 1;
+}
+
 int lua_read_cstr(lua_State* L) {
     auto va = static_cast<std::uintptr_t>(luaL_checkinteger(L, 1));
     auto max = static_cast<std::size_t>(luaL_optinteger(L, 2, 1024));
@@ -711,7 +739,12 @@ int lua_read_cstr(lua_State* L) {
 // returns nil/false instead of access-violating the game. Confirms the whole
 // [addr, addr+size) range is committed + readable (and writable for poke).
 static bool mem_accessible(std::uintptr_t addr, std::size_t size, bool need_write) {
-    if (addr == 0) return false;
+    if (addr == 0 || size == 0) return false;
+    // Overflow guard: a near-UINT64_MAX addr (e.g. a -1 sentinel read out of an
+    // empty component-store slot) makes `addr + size` wrap, so the range loop
+    // below runs zero iterations and returns true vacuously — handing the bad
+    // pointer straight to the engine. Reject any range that would wrap.
+    if (addr > (std::numeric_limits<std::uintptr_t>::max)() - size) return false;
     const DWORD readable = PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
                            PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE |
                            PAGE_EXECUTE_WRITECOPY;
@@ -794,13 +827,33 @@ int lua_poke(lua_State* L) {
 // every call — callers must finish using it before the next scratch() call.
 // Serialized by the script mutex like every other Lua entry point.
 int lua_scratch(lua_State* L) {
-    constexpr std::size_t kScratchCap = 0x1000;
-    alignas(16) static std::uint8_t buf[kScratchCap];
+    // Ring arena, NOT a single static buffer. Callers legitimately need two
+    // live scratch blocks at once (e.g. a forged event struct plus the empty
+    // string it points at). The old single static buffer made every call
+    // return the SAME address and memset its front — which nulled a live
+    // event's vftable and crashed the engine's virtual fill with a zero
+    // vtable (2026-07-16 R.stat.modify, READ @0x20 at ModifierEvent_Ctor).
+    // Successive allocations now come from distinct arena regions; a block is
+    // only reused after the ring wraps (32 KiB of newer allocations), which a
+    // build-then-call scratch user never survives long enough to see.
+    constexpr std::size_t kArenaCap = 0x8000;
+    constexpr std::size_t kMaxAlloc = 0x1000;   // per-call cap (unchanged API)
+    alignas(16) static std::uint8_t arena[kArenaCap];
+    static std::size_t cursor = 0;
+    static std::mutex m;   // two Lua threads may scratch concurrently
     auto size = static_cast<std::size_t>(luaL_optinteger(L, 1, 0x100));
-    if (size == 0 || size > kScratchCap)
-        return luaL_error(L, "rsmm.scratch: size must be 1..%d", (int)kScratchCap);
-    std::memset(buf, 0, size);
-    lua_pushinteger(L, static_cast<lua_Integer>(reinterpret_cast<std::uintptr_t>(buf)));
+    if (size == 0 || size > kMaxAlloc)
+        return luaL_error(L, "rsmm.scratch: size must be 1..%d", (int)kMaxAlloc);
+    std::uint8_t* p = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(m);
+        std::size_t aligned = (size + 15) & ~static_cast<std::size_t>(15);
+        if (cursor + aligned > kArenaCap) cursor = 0;   // wrap
+        p = arena + cursor;
+        cursor += aligned;
+    }
+    std::memset(p, 0, size);
+    lua_pushinteger(L, static_cast<lua_Integer>(reinterpret_cast<std::uintptr_t>(p)));
     return 1;
 }
 
@@ -873,6 +926,7 @@ void register_api(lua_State* L) {
         { "shared_set",              lua_shared_set },
         { "register_item",           lua_register_item },
         { "item_guid",               lua_item_guid },
+        { "is_grant_target",         lua_is_grant_target },
         { "write_u8",                lua_write_u8 },
         { "write_u16",               lua_write_u16 },
         { "write_u32",               lua_write_u32 },

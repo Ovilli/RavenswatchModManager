@@ -15,6 +15,7 @@
 #include <psapi.h>
 
 #include <atomic>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <mutex>
@@ -223,6 +224,55 @@ size_t fn_resolver_resolved_count() {
         if (v != 0 && v != static_cast<std::uintptr_t>(-1)) n++;
     }
     return n;
+}
+
+size_t fn_resolver_dump_resolved(const std::string& path) {
+    if (!g_inited && !fn_resolver_init()) return 0;
+    // Snapshot the semantic pattern names first (force_resolve mutates the
+    // cache but not the map, so iterating names is stable).
+    std::vector<std::string> names;
+    names.reserve(g_patterns.size());
+    for (auto& [name, _] : g_patterns) {
+        // Skip the FUN_<addr> aliases — only the human-named symbols matter for
+        // an audit against symbols.json.
+        if (name.rfind("FUN_", 0) != 0) names.push_back(name);
+    }
+    std::ofstream out(path, std::ios::trunc);
+    if (!out) {
+        Loader::get().log("[fn] dump: cannot write " + path);
+        return 0;
+    }
+    out << "[\n";
+    size_t written = 0;
+    bool first = true;
+    for (auto& name : names) {
+        auto va = fn_resolve(name);          // force-resolves + caches
+        if (!out) break;
+        if (!first) out << ",\n";
+        first = false;
+        out << "  {\"name\":\"" << name << "\",\"va\":";
+        if (va) {
+            char hexva[24];
+            std::snprintf(hexva, sizeof(hexva), "\"0x%llx\"",
+                          static_cast<unsigned long long>(va));
+            out << hexva << ",\"bytes\":\"";
+            // First 16 bytes at the resolved VA — the prologue an auditor can
+            // re-disassemble to confirm it's a real function start.
+            auto* p = reinterpret_cast<const unsigned char*>(va);
+            char hb[3];
+            for (int i = 0; i < 16; i++) {
+                std::snprintf(hb, sizeof(hb), "%02x", p[i]);
+                out << hb;
+            }
+            out << "\"}";
+            written++;
+        } else {
+            out << "null,\"bytes\":null}";
+        }
+    }
+    out << "\n]\n";
+    Loader::get().log("[fn] dumped " + std::to_string(written) + " resolved symbols -> " + path);
+    return written;
 }
 
 } // namespace rsmm

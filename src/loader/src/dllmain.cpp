@@ -12,6 +12,7 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <atomic>
 #include <chrono>
 #include <cwchar>
 #include <filesystem>
@@ -19,6 +20,7 @@
 
 #include "MinHook.h"
 #include "loader.h"
+#include "fn_resolver.h"
 #include "hook_io.h"
 #include "hook_engine.h"
 #include "hook_skins.h"
@@ -26,6 +28,7 @@
 #include "hook_ui.h"
 #include "hook_spawn.h"
 #include "hook_items.h"
+#include "hook_rewards.h"
 #include "hook_events.h"
 #include "hook_netcode.h"
 #include "script_lua.h"
@@ -35,6 +38,12 @@ namespace fs = std::filesystem;
 static HMODULE g_self_module = nullptr;
 static HANDLE g_loader_guard_event = nullptr;
 static bool g_loader_started = false;
+// Ticker shutdown handshake (dynamic-unload path only). g_ticker_stop tells
+// the loop to exit; g_ticker_idle is set while the loop is parked between
+// ticks and reset while a tick is executing Lua, so the unload path can wait
+// until the VM is quiescent before lua_close.
+static std::atomic<bool> g_ticker_stop{false};
+static HANDLE g_ticker_idle = nullptr;
 
 static fs::path module_dir() {
     wchar_t buf[MAX_PATH];
@@ -114,6 +123,7 @@ static void loader_thread_cxx() {
         rsmm::install_ui_hooks();
         rsmm::install_spawn_hooks();
         rsmm::install_item_hooks();
+        rsmm::install_reward_hooks();
         rsmm::install_event_hooks();
         // Hero-capture must install in the SAME phase as the other engine hooks
         // (after the gameplay bus). Installing it earlier — before mod init —
@@ -122,6 +132,19 @@ static void loader_thread_cxx() {
         // legacy per-state path until this arms; harmless.
         rsmm::install_hero_capture();
         rsmm::install_netcode_patches();
+
+        // Ground-truth symbol dump (opt-in, dev/RE). Force-resolves every
+        // semantic pattern against the live exe and writes
+        // <game>/rsmm/resolved_symbols.json {name, va, prologue} — the
+        // authoritative record `rsmm symbols audit` diffs against symbols.json,
+        // so a mis-resolve is caught from the RUNNING game. ~140 full .text
+        // scans, so gated behind a flag and run here on the loader thread
+        // (already off the main thread) rather than every boot.
+        if (rsmm::flag_enabled("RSMM_DUMP_SYMBOLS")) {
+            const auto dump_path =
+                (L.game_dir() / "rsmm" / "resolved_symbols.json").string();
+            rsmm::fn_resolver_dump_resolved(dump_path);
+        }
 
         rsmm::script_emit_event("ready");
         L.log("loader thread complete");
@@ -135,15 +158,24 @@ static void loader_thread_cxx() {
         // polls each mod's init.lua mtime; on change it rebuilds the
         // lua_State and replays "ready". Iteration loop is now seconds
         // not minutes — no game restart.
+        g_ticker_idle = CreateEventW(nullptr, TRUE, TRUE, nullptr);
         std::thread([] {
             int n = 0;
-            while (true) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            while (!g_ticker_stop.load(std::memory_order_acquire)) {
+                // Sleep in short slices so a dynamic unload isn't stalled
+                // for a full tick interval.
+                for (int i = 0; i < 5 && !g_ticker_stop.load(std::memory_order_acquire); ++i) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                }
+                if (g_ticker_stop.load(std::memory_order_acquire)) break;
+                if (g_ticker_idle) ResetEvent(g_ticker_idle);
                 rsmm::script_emit_event("tick");
                 if ((++n & 1) == 0) {
                     rsmm::script_reload_changed();
                 }
+                if (g_ticker_idle) SetEvent(g_ticker_idle);
             }
+            if (g_ticker_idle) SetEvent(g_ticker_idle);
         }).detach();
     } catch (const std::exception& e) {
         OutputDebugStringA(e.what());
@@ -185,7 +217,7 @@ static bool host_is_game() {
     return _stricmp(base, "Ravenswatch.exe") == 0;
 }
 
-BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID) {
+BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved) {
     if (reason == DLL_PROCESS_ATTACH) {
         g_self_module = inst;
         DisableThreadLibraryCalls(inst);
@@ -199,6 +231,27 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID) {
         std::thread(loader_thread).detach();
     } else if (reason == DLL_PROCESS_DETACH) {
         if (!g_loader_started) return TRUE;
+        // Process termination (reserved != nullptr): every other thread has
+        // already been killed by ExitProcess — possibly MID-Lua-tick, leaving
+        // the VM internally inconsistent. Running lua_close / emit("exit") /
+        // MH_Uninitialize here executed freed or half-mutated state and
+        // crashed every quit (execute-AV at a garbage pointer, dump
+        // 223f5e95 2026-07-17). The OS reclaims memory, hooks, and handles
+        // wholesale at this point — correct behavior is to do NOTHING.
+        if (reserved != nullptr) {
+            rsmm::Loader::get().shutdown();   // log line only
+            return TRUE;
+        }
+        // Dynamic unload (FreeLibrary): threads are still alive. Stop the
+        // ticker and wait until it's parked outside the VM before tearing
+        // the Lua states down. (Waiting on an event, not joining — joining
+        // a thread from DllMain deadlocks on the loader lock.)
+        g_ticker_stop.store(true, std::memory_order_release);
+        if (g_ticker_idle) {
+            WaitForSingleObject(g_ticker_idle, 2000);
+            CloseHandle(g_ticker_idle);
+            g_ticker_idle = nullptr;
+        }
         rsmm::script_emit_event("exit");
         rsmm::script_shutdown_all();
         rsmm::remove_engine_hooks();

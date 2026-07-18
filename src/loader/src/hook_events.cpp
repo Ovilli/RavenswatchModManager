@@ -350,8 +350,10 @@ bool arm(EventHook& h) {
 //   3. GainHealthHandler (FUN_1403993f0) — fires for ANY healing entity, so
 //      tentative only (kept as a fallback for an older corpus where source 1
 //      might not resolve).
-constexpr int kHeroSlot = 0;     // hero character pointer
-constexpr int kHeroAuthSlot = 1; // 1 once a hero-only routine has captured
+constexpr int kHeroSlot = 0;        // hero character pointer (validated)
+constexpr int kHeroAuthSlot = 1;    // 1 once a hero-only routine has captured
+constexpr int kHeroPendingSlot = 3; // spawn-init candidate awaiting field init
+                                    // (slot 2 = native-capture-active flag)
 constexpr std::uintptr_t kHeroMaxHpOff = 0x15cc;
 constexpr std::uintptr_t kHeroHudMirrorOff = 0x1d80; // ptr to the HUD HP mirror
 
@@ -366,7 +368,7 @@ bool committed_readable(std::uintptr_t addr, std::size_t size) {
 }
 
 using SubscribeAll_t    = void (*)(void*);
-using GiveHandler_t     = void (*)(void*, void*);
+using GiveHandler_t     = void (*)(void*, void*, void*);
 using GainHealthHandler_t = void (*)(void*, void*, void*);
 SubscribeAll_t      g_subscribe_real = nullptr;
 GiveHandler_t       g_give_real = nullptr;
@@ -401,27 +403,81 @@ bool hero_plausible(void* p1) {
 }
 
 void detour_subscribe_all(void* p1) {
-    // Hero spawn/post-load init: param_1 is the hero HP-carrier, hero-only and
-    // earliest possible. Authoritative capture with no wait for a hero action.
-    if (hero_plausible(p1)) {
+    // Hero spawn/post-load init (FUN_140391860): param_1 is the hero
+    // HP-carrier, hero-only and earliest possible. The function itself
+    // INITIALIZES the HUD mirror at hero+0x1d80 that hero_plausible checks —
+    // so run the ORIGINAL first, then validate + publish. Capturing before the
+    // original sees an uninitialized mirror and rejects the real hero.
+    //
+    // 2026-07-16 playtest: even post-body the HP/mirror fields may still be
+    // unpopulated (they fill during the load sequence, seconds later). The
+    // identity is authoritative regardless — this init only ever runs for the
+    // local hero — so ALWAYS stash it in the pending slot; the Lua side
+    // re-validates and promotes it once the fields go live, giving instant
+    // capture without a single heuristic-y combat hook needing to fire.
+    g_subscribe_real(p1);
+    shared_set(kHeroPendingSlot, reinterpret_cast<std::uint64_t>(p1));
+    bool ok = hero_plausible(p1);
+    Loader::get().log(ok ? "[hero-capture] hero captured at spawn (instant)"
+                         : "[hero-capture] spawn-init: hero stashed pending "
+                           "(fields not live yet; promoted on first valid read)");
+    if (ok) {
         shared_set(kHeroSlot, reinterpret_cast<std::uint64_t>(p1));
         shared_set(kHeroAuthSlot, 1);
     }
-    g_subscribe_real(p1);
 }
 
-void detour_give(void* p1, void* p2) {
-    if (hero_plausible(p1)) {
-        shared_set(kHeroSlot, reinterpret_cast<std::uint64_t>(p1));
+// First-fires diagnostic: the 2026-07-16 playtest saw ZERO captures across
+// minutes of combat with both hooks verified-installed — so either the
+// handlers never fire on this build, or every candidate fails hero_plausible.
+// Log the first few calls of each detour (args + verdict) so a playtest log
+// answers which. Cheap: fixed cap, no formatting after the cap.
+std::atomic<int> g_give_logged{0}, g_gain_logged{0};
+constexpr int kCaptureLogCap = 8;
+
+void detour_give(void* p1, void* p2, void* p3) {
+    // Entity_GiveHandler (FUN_1403c7560) is a 3-arg routine — param_3 is the hit
+    // context and is dereferenced immediately (*(p3+0x10)/+0x18/+0xa0). The
+    // trampoline MUST be called with all three args or the original runs with a
+    // garbage R8 and faults reading ~-1 (the 2026-07-14 in-menu crash: the
+    // detour + typedef were 2-arg after the handler was re-anchored to a 3-arg
+    // function).
+    //
+    // Param semantics (decompile-verified 2026-07-15): param_1 is the hero's
+    // VALUE CONTEXT (*(hero+0x2f8) — it reads its store at param_1+0x4c8), NOT
+    // the hero entity; param_2 IS the hero entity (the function dispatches the
+    // life-steal/shards-on-hit modifier event at param_2+0x4d8, the entity's
+    // NamedEventDispatcher). So capture p2. hero_plausible (max-HP @+0x15cc +
+    // HUD mirror @+0x1d80) rejects the ctx and any non-hero target outright, so
+    // a mistaken arg can never be published. All three args pass straight
+    // through to the trampoline.
+    bool ok1 = hero_plausible(p1), ok2 = hero_plausible(p2);
+    if (g_give_logged.fetch_add(1) < kCaptureLogCap) {
+        char line[160];
+        std::snprintf(line, sizeof(line),
+                      "[hero-capture] give fired p1=%p(%d) p2=%p(%d)",
+                      p1, (int)ok1, p2, (int)ok2);
+        Loader::get().log(line);
+    }
+    if (ok2) {
+        shared_set(kHeroSlot, reinterpret_cast<std::uint64_t>(p2));
         shared_set(kHeroAuthSlot, 1);
     }
-    g_give_real(p1, p2);
+    g_give_real(p1, p2, p3);
 }
 
 void detour_gain_health(void* p1, void* p2, void* p3) {
     // GAIN_HEALTH fires for any entity that heals (incl. enemies), so only take
     // it as a tentative capture until the hero-only give handler confirms.
-    if (shared_get(kHeroAuthSlot) == 0 && hero_plausible(p1))
+    bool ok1 = hero_plausible(p1);
+    if (g_gain_logged.fetch_add(1) < kCaptureLogCap) {
+        char line[160];
+        std::snprintf(line, sizeof(line),
+                      "[hero-capture] gain fired p1=%p(%d) p2=%p(%d)",
+                      p1, (int)ok1, p2, (int)hero_plausible(p2));
+        Loader::get().log(line);
+    }
+    if (shared_get(kHeroAuthSlot) == 0 && ok1)
         shared_set(kHeroSlot, reinterpret_cast<std::uint64_t>(p1));
     g_gain_real(p1, p2, p3);
 }

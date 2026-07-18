@@ -273,6 +273,34 @@ static bool readable(const void* p, std::size_t len) {
     return reinterpret_cast<std::uintptr_t>(p) + len <= start + mbi.RegionSize;
 }
 
+// The MO-pool inject calls the resource-by-path lookup FUN_140487040, which
+// mis-resolves on the shipped build and crashes the game (CrashDB 2026-07-10).
+// Custom items already load via UsedRscList, so inject is a redundant fallback
+// and MUST NOT be armable by the ordinary loader-flag path. Require BOTH the
+// enable var AND an explicit "I accept it's broken" acknowledgement, so a
+// user who flips the normal flag can never trip the crash. Development-only.
+static bool item_inject_armed() {
+    char e[8], a[8];
+    const bool enabled = GetEnvironmentVariableA(
+        "RSMM_ENABLE_ITEM_INJECT", e, sizeof(e)) && e[0] == '1';
+    if (!enabled) {
+        Loader::get().log("[item-hook] inject gated off "
+                          "(items load via UsedRscList; inject is a broken fallback)");
+        return false;
+    }
+    const bool acknowledged = GetEnvironmentVariableA(
+        "RSMM_I_ACCEPT_ITEM_INJECT_IS_BROKEN", a, sizeof(a)) && a[0] == '1';
+    if (!acknowledged) {
+        Loader::get().log("[item-hook] RSMM_ENABLE_ITEM_INJECT set but refused: "
+                          "inject mis-resolves and crashes on this build. Also set "
+                          "RSMM_I_ACCEPT_ITEM_INJECT_IS_BROKEN=1 (dev only) to force.");
+        return false;
+    }
+    Loader::get().log("[item-hook] WARNING: forcing known-broken item inject "
+                      "(RSMM_I_ACCEPT_ITEM_INJECT_IS_BROKEN=1)");
+    return true;
+}
+
 void deferred_inject_poll() {
     bool warned_unreadable = false;
     for (int i = 0; i < 600; ++i) {  // ~150 s @ 250 ms, then give up
@@ -303,17 +331,10 @@ void deferred_inject_poll() {
                         dump_pool(pool);
                     }
                 }
-                // Inject only when the resource-by-path lookup is trustworthy.
-                // FUN_140487040 currently mis-resolves on some builds and the
-                // call crashes the game, so gate it behind an opt-in env var
-                // until the lookup is verified for this binary.
-                char buf[8];
-                if (GetEnvironmentVariableA("RSMM_ENABLE_ITEM_INJECT", buf, sizeof(buf))
-                        && buf[0] == '1') {
+                // Inject only when double-opted in (known-broken; see
+                // item_inject_armed). Custom items already load via UsedRscList.
+                if (item_inject_armed()) {
                     inject_custom_items(pool);
-                } else {
-                    Loader::get().log("[item-hook] inject gated off "
-                                      "(set RSMM_ENABLE_ITEM_INJECT=1 to attempt)");
                 }
                 return;
             }
@@ -335,13 +356,8 @@ void WINAPI hook_spawn_all_objects(void* pool, void* spawn_ctx) {
     // crashes. Custom items already load via UsedRscList, so the inject is a
     // redundant fallback — never run it ungated. (Was an ungated crash here when
     // the detour fired on the primary thread with g_resource_lookup resolved.)
-    char buf[8];
-    if (GetEnvironmentVariableA("RSMM_ENABLE_ITEM_INJECT", buf, sizeof(buf))
-            && buf[0] == '1') {
+    if (item_inject_armed()) {
         inject_custom_items(pool);
-    } else {
-        Loader::get().log("[item-hook] detour inject gated off "
-                          "(set RSMM_ENABLE_ITEM_INJECT=1 to attempt)");
     }
 }
 
