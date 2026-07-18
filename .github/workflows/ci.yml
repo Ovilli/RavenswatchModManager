@@ -106,10 +106,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install mingw-w64 + cmake
+      - name: Install mingw-w64 + cmake + lua
         run: |
           sudo apt-get update
-          sudo apt-get install -y mingw-w64 cmake build-essential
+          sudo apt-get install -y mingw-w64 cmake build-essential lua5.4
+
+      # The SDK prelude (src/loader/lib/rsmm.lua) is engine-mutating pointer
+      # code loaded into the game at runtime. rsmm_spec.lua exercises it under
+      # a mocked native layer (fake byte-memory + engine-call emulator) — the
+      # only automated coverage the loader has. Run it here where lua exists;
+      # the pytest wrapper (tests/test_loader_lua.py) skips when it doesn't.
+      - name: Loader SDK Lua unit tests
+        run: lua5.4 tests/lua/rsmm_spec.lua src/loader/lib
 
       - name: Build loader DLL
         run: bash src/loader/build.sh

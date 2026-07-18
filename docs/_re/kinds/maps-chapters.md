@@ -60,3 +60,24 @@ skipped chapters; grant a standard loadout at run start via `R.give` if a mod wa
 2. Prove (or rule out) a net-new selectable game-mode id; test repeat orders like `[0,0,0]`.
 3. Mapdef remix kind (clone + repoint `tribe_ref`) for "same level, new enemy/biome profile".
 4. New levels (#9 proper) remain blocked on level-asset authoring (out of scope for def cloning).
+
+## Current-build consumer re-trace (2026-07-12)
+
+Re-anchored on the current binary via stable strings (the `GameModeDefaultDefinition::Deserialize`
+vftable `0x140eff358` / `FUN_140324de0` addresses drifted with the 2026-07-09 patch — the latter is
+now a 3-line copy stub). Model confirmed:
+
+- `FUN_1401da350` is the game-context **blackboard registrar** — it declares every runtime cvar
+  with a hashed id: `"Current chapter"` (hash `0x181d17fd`), `"Current map id"` (`0x193495b8`),
+  `"Random seed"` (`0x17a117c6`), `"Reroll count"` (`0x1a922cd6`), the four biome map ids
+  (Dark Hills…), and all `GameModifier : …` flags (No boss timer `0x1a7945fc`, One chapter
+  `0x1a8a3688`, Day only `0x1a8b53b4`, Night only `0x1a8b53bc`, …).
+- The run-setup `FUN_1401eca80` (called from `FUN_14028e5f0` at "DayNightCycle InitCycle") **reads**
+  those GameModifier hashes via `FUN_1401c9600(ctx, hash)` — so it is also the **game-modifier
+  consumer** (relevant to the `modifier` kind).
+- Chapter order = the `GameModeDefaultDefinition` (`All_Chapters`) ordered vector @def+0x290; the
+  run reads the `"Current chapter"` int to index it, and `GAME_END_NEXT_CHAPTER` advances it.
+
+**Surgical playtest watch-point:** for a re-sequenced `game_mode`, watch which biome the run *starts*
+in and the order it advances through (the "Current chapter" index stepping the rewritten vector).
+Fixed reorder already proven 2026-07-11 (above); repeat orders `[0,0,0]` + net-new mode id still open.

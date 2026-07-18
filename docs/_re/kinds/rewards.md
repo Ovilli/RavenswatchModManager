@@ -130,3 +130,53 @@ per def.
    (section 0), maintained automatically when adding/removing rows. Remaining unpinned trivia:
    rewarddef v1 bool, selector-settings enums — pass through verbatim. oCItem `_kind` enum
    now empirically pinned (1=chest, 3=astrolab, 4=crystal); `_ref_b` = locked chest variant.
+
+## Current-build consumer re-trace (2026-07-12)
+
+Re-anchored on the current binary via stable strings (the older `FUN_1401e9020` /
+`FUN_1401ecd10` addresses drifted with the 2026-07-09 patch). The reward pipeline is
+level-load driven, orchestrated by `FUN_14028e5f0` (the "Level load - *" step machine):
+
+- `FUN_1401e9800` = **Reward_InitAllRewards** (symbols.json status `ok`) runs at
+  "Level load - MapSceneContext OnLevelStart" — loads/initializes every reward def for the level.
+  A modded `*.rewarddef.ot` enters here through the normal def load (UsedRscList → library).
+- "Level load - Generate rewards" then dispatches the `GENERATE_REWARDS` `oCGameNamedEvent`
+  into the scene bus; the reward system's subscriber rolls + places reward entities from the
+  loaded defs.
+
+**Surgical playtest watch-point:** a reward-def edit (ban/count/tier) is honoured at the moment
+the level generates its reward objects — i.e. observe the chests/astrolabs/crystals present at
+map start, not the card draw when one opens (that draw is the MO pool, above).
+
+## Roll-handler RE — why the reward_types ban did NOT work in-game (2026-07-12)
+
+Playtest: shipped a `reward` mod that emptied the basic-chest reward_type (min=max=0, items=[])
+across all 6 Camp_Rewards defs; verified byte-correct + installed on disk; **chests still spawned.**
+Full decompile of the roll handler `FUN_1401e9800` (the fill/distribute fn — mislabeled
+"_InitAllRewards"; carries strings "Distribute" / "Fill remaining rewards on random slot" /
+"Fill remaining slots with random rewards" / "Reward type {}" / "{} ({} reward spawners)")
+explains it. Two independent placement blocks, two def sources:
+
+- **Block 1 (reward_types-driven, count-gated).** Walks a def's reward_types vector @def+0x288
+  (ptr) / +0x290 (len). Per type: min_count @type+0x18, max_count @type+0x1c → spawn count;
+  candidate items from type+0x08/+0x10; each item descriptor has an **exclude byte @item+0x30**
+  (nonzero ⇒ skipped) and tag-match at item+0xc0 / +0xd8 vs spawner+0x100. Emptying a type
+  (min=max=0, items=[]) DOES yield 0 spawns **here** — the edit is honoured in this block. BUT
+  the def list it walks (`local_2f8`) is built from GLOBALS (DAT_141476a58 / DAT_141476450 /
+  DAT_141440420), i.e. a runtime reward registry — not the Camp_Rewards file pointer directly.
+- **Block 2 (guaranteed/forced, count-BYPASSING).** Uses a DIFFERENT def = scene-context
+  `param_1[0x15]` (= game-context +0xa8), its own collections @+0xe0/+0xf0/+0x110, count loops
+  @+0x70/+0x7c, places via FUN_140340a50(spawner, reward). Does **not** read reward_types
+  min/max — a chest placed as "guaranteed" here ignores the type-count edit entirely.
+
+So the reward_types ban is code-correct but insufficient: chests survive if they come from Block 2,
+or if Block 1's registry def isn't our Camp_Rewards override. **A count/type edit is not a reliable
+ban.** Reliable levers per the decompile: (1) item exclude byte @item+0x30, (2) remove the entity
+from the reward_items pool so no type references it, (3) the tag-match filter (item flags vs spawner
+tags) — but all only bind Block 1. Banning a Block-2 guaranteed reward needs the context +0xa8 def.
+
+**OPEN — needs a runtime loader dump** to close: hook FUN_1401e9800, log the def objects in the
+Block-1 list (`local_2f8`) + the context+0xa8 def, dump each one's +0x288 reward_types and whether
+the basic-chest type is present/guaranteed. That pins whether it's a def-identity miss (Block 1) or a
+Block-2 guaranteed placement, and which def+field a working ban must edit. Until then the `reward`
+kind stays experimental and its ban is documented as unreliable.
