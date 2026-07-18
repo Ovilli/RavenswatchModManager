@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **120** symbols across 15 categories.
+Total: **155** symbols across 16 categories.
 
 ## enemies
 
@@ -57,7 +57,7 @@ Total: **120** symbols across 15 categories.
 |------|---------|--------|----------|------------------|
 | `ClassRegistry_FindByKey` | `0x140523a10` | ❓ unverified |  | void*(void* unused, void* identityKey) |
 | `ClassRegistry_Global` | `0x141436690` | 📍 va |  | Global class-descriptor registry: ptr to {descPtr array @+0x0, u32 count @+0x8}. Scanne… |
-| `CustomFlagFilter_Serialize` | `0x140682af0` | ❓ unverified |  | bool(void* flagFilter, void* reader) |
+| `CustomFlagFilter_Serialize` | `0x140189830` | ✅ ok |  | bool(void* flagFilter, void* reader) |
 | `CustomFlagList_Serialize` | `0x140681e60` | ❓ unverified |  | bool(void* flagList, void* reader) |
 | `GameScene_FindContextByTester` | `0x140684660` | ❓ unverified |  | void*(void* gameScene, void* kindOfTypeTester) |
 | `Profiler_GetThreadScopeStack` | `0x14053a660` | ❓ unverified |  | void*(void) |
@@ -72,22 +72,40 @@ Total: **120** symbols across 15 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
+| `EntityPool_AllocNode` | `0x140690e50` | ✅ ok |  | void*(void* pool) |
+| `EntitySpawner_InstantiateRecord` | `0x140730f80` | ✅ ok |  | void(oCEntityCpntEntitySpawner* self, void* spawnRecord) |
+| `EntitySpawner_SpawnOne` | `0x140730150` | ✅ ok |  | void(oCEntityCpntEntitySpawner* self) |
+| `EntityStore_CreateEntity` | `0x1406f5dc0` | ✅ ok |  | void*(void* ctx, void* entityStore, void* xform4x4, void* cbCtx) |
+| `EntityValueEntry_Ctor` | `0x140747120` | ✅ ok | ✔ | void(void*, void*) |
+| `EntityValueOverride_Alloc` | `0x140770290` | ✅ ok | ✔ | void*(void*, uint32_t, uint32_t) |
+| `EntityValueStore_ApplyModifierEvent` | `0x14074b2f0` | ✅ ok | ✔ | void(void* store, void* modifierEvent, void* a3, void* a4) |
+| `EntityValueStore_InitBaseValues` | `0x140747f20` | ✅ ok | ✔ | void(void* store) |
+| `EntityValueStore_Recompute` | `0x140749a90` | ✅ ok | ✔ | void(void* store, void* valueDef) |
+| `EntityValueUnion_Compare` | `0x14082ceb0` | ✅ ok | ✔ | uint32_t(void*, void*) |
+| `EntityValueUnion_CopyAssign` | `0x14082b1d0` | ✅ ok | ✔ | void(void*, void*) |
+| `EntityValueUnion_DefaultCtor` | `0x14082aa60` | ✅ ok | ✔ | void*(void*) |
+| `EntityValueUnion_Destruct` | `0x14082dae0` | ✅ ok | ✔ | void(void*) |
+| `EntityValueUnion_InitAsType` | `0x14082d670` | ✅ ok | ✔ | void(void*, uint32_t) |
 | `EntityValue_Get` | `0x1403c7fa0` | ✅ ok | ✔ | void(void* valueCtx, oCEntityValueUnion* out, uint32_t crcKey) |
 | `EntityValue_Lookup` | `0x140749260` | ✅ ok | ✔ | oCEntityValueUnion*(void* store, oCEntityValueUnion* out, uint32_t crcKey) |
 | `Entity_AllocInstance` | `0x1406a8d80` | ❓ unverified | ✔ | void*(void* allocator) |
 | `Entity_DispatchHit` | `0x1406e3ce0` | ✅ ok | ✔ | void(oCEntity* target, oCEntityHitData* hit) |
 | `Entity_FindComponentByType` | `0x1406e3210` | ✅ ok | ✔ | oIEntityCpnt*(oCEntitySpawnerGo* go, oCMetaClass* meta) |
 | `Entity_FindMagicalObjectComponent` | `0x1406fb8a2` | ❓ unverified | ✔ | void*(void* instance, void* mo_component_meta) |
-| `Entity_GainHealthHandler` | `0x1403a7710` | ❓ unverified |  | void(oCEntity* hero, void* a2, void* valueCtx) |
+| `Entity_GainHealthHandler` | `0x140399d00` | ✅ ok |  | void(oCEntity* hero, void* a2, void* valueCtx) |
+| `Entity_GetComponentByTester` | `0x1406e3210` | ✅ ok | ✔ | void*(void*, void*) |
+| `Entity_GetComponentFast` | `0x1406e31a0` | ✅ ok | ✔ | void*(void*, void*, uint32_t) |
 | `Entity_ModifyHealth` | `0x14039a320` | ✅ ok | ✔ | void(oCEntity* hero, float delta, oCCustomFlagList* sourceTags) |
 | `Entity_ResolveAttackHits` | `0x1403dd540` | ✅ ok | ✔ | float(void* attacker, uint hitDefIndex, TargetList* targets, float damageMul, float bas… |
 | `HeroController_Ctor` | `0x14038ec30` | ✅ ok | ✔ | oCDtEntityCpntHeroController*(oCDtEntityCpntHeroController* self) |
 | `HeroController_HudMirror_Ctor` | `0x1403b3c70` | ✅ ok |  | Builds the hero's HUD HP-mirror object whose pointer is stored at hero+0x1d80 by HeroCo… |
 | `MapCtx_LinkPairedSpawners` | `0x1401ef131` | ❓ unverified |  | void(void* mapSceneContext) |
+| `ModifierEvent_Ctor` | `0x140389fb0` | ✅ ok | ✔ | void*(void* buf, void* valueDef) |
 | `g_MagicalObjectComponentMeta` | `0x141470768` | 📍 va |  | oCMetaClass* for the magical-object component; passed to Entity_FindMagicalObjectCompon… |
 | `oCCustomFlagList_vftable` | `0x140f01650` | 📍 va |  | vftable of oCCustomFlagList. An empty list is the 0x18-byte struct { vftable @+0x0, lis… |
 | `oCEntityHitData_vftable` | `0x140f137d8` | 📍 va |  | vftable of oCEntityHitData (the ~0xb0-byte hit descriptor passed to Entity_DispatchHit … |
 | `oCEntityValueUnion_vftable` | `0x140f95008` | 📍 va |  | vftable of oCEntityValueUnion, the ~0x20-byte tagged value returned by EntityValue_Look… |
+| `oCGameEventNetworkModifier_vftable` | `0x140f322d0` | 📍 va |  | vftable of oCGameEventNetworkModifier — the durable stat-modifier named event (leaf of … |
 
 ## entity-values
 
@@ -109,12 +127,22 @@ Total: **120** symbols across 15 categories.
 | `NamedEvent_Delete` | `0x1401273b0` | ✅ ok | ✔ | void(oCGameNamedEvent* ev) |
 | `NamedEvent_Dispatch` | `0x14066b6b0` | ✅ ok | ✔ | void(void* dispatcher, oCGameNamedEvent* ev) |
 | `NamedEvent_EmitNetworkDamageFromHit` | `0x140743a00` | ❓ unverified |  | Reference emitter for NETWORK_DAMAGE: stack-builds the full oCGameNamedEventNetworkDama… |
-| `NamedEvent_GiveMagicalObject_Ctor` | `0x140316020` | ❓ unverified | ✔ | oe::dt::NamedEventGiveMagicalObject*(void* buf) |
-| `NamedEvent_HeroSubscribeAll` | `0x140391d30` | ❓ unverified | ✔ | void(oCEntity* hero) |
+| `NamedEvent_GiveMagicalObject_Ctor` | `0x14030fd30` | ✅ ok | ✔ | oe::dt::NamedEventGiveMagicalObject*(void* buf) |
+| `NamedEvent_HeroSubscribeAll` | `0x140391860` | ✅ ok | ✔ | void(oCEntity* hero) |
 | `NamedEvent_HeroUnsubscribeAll` | `0x1403a2d00` | ❓ unverified |  | Hero teardown twin of NamedEvent_HeroSubscribeAll: walks the same (id global, slot) pai… |
 | `NamedEvent_Id_FromCrc` | `0x140536820` | ❓ unverified | ✔ | uint32_t(uint32_t ns, uint32_t name_crc) |
 | `NamedEvent_NetSend` | `0x14073d730` | ✅ ok | ✔ | void(void* net_event_cpnt, oCGameNamedEvent* ev) |
 | `NamedEvent_NetSendToPeer` | `0x1407216c0` | ✅ ok | ✔ | void(void* net_event_cpnt, oCGameNamedEvent* ev, uint64_t* peer_session) |
+
+## hero
+
+| name | address | status | callable | signature / note |
+|------|---------|--------|----------|------------------|
+| `Hero_GainExperience` | `0x1402e2f00` | ✅ ok | ✔ | void(void*, void*) |
+| `XpComponent_SetLevel` | `0x1402e3190` | ✅ ok | ✔ | void(void*, uint32_t) |
+| `XpComponent_SetXp` | `0x1402e3630` | ✅ ok | ✔ | void(void*, uint32_t) |
+| `XpComponent_TypeTester` | `0x141476e00` | 📍 va |  | Type-tester global (DAT_141476e00) used by the XP component's own IsKindOf/parent-resol… |
+| `XpComponent_vftable` | `0x140f23200` | 📍 va |  | vftable of the hero XP/Level component (XpComponent). Slots: serialize FUN_1402e2050 @+… |
 
 ## heroes
 
@@ -127,8 +155,9 @@ Total: **120** symbols across 15 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `Entity_GiveHandler` | `0x1403c7cf0` | ❓ unverified |  | void(oCEntity* hero, oCGameNamedEvent* giveEvent) |
-| `Hero_GrantMagicalObject` | `0x140397190` | ❓ unverified | ✔ | void(oCDtEntityCpntHeroController* hero, void* def, uint16_t count, char dupFlag, void*… |
+| `Entity_GiveHandler` | `0x1403c7560` | ✅ ok |  | void(oCEntityValueContext* heroValueCtx, oCEntity* hero, void* hitCtx) |
+| `Entity_LookupMagicalObjectComponent` | `0x1406e3280` | ✅ ok | ✔ | void*(void* componentStore, void** out, oCEntity* entity) |
+| `Hero_GrantMagicalObject` | `0x140397aa0` | ✅ ok | ✔ | void(oCDtEntityCpntHeroController* hero, void* def, uint16_t count, char dupFlag, void*… |
 | `InitialLoading_SpawnMagicalObjects` | `0x140265440` | ❓ unverified |  | Boot 'InitialLoading - MagicalObject SpawnAllObjects' caller that invokes SpawnAllObjec… |
 | `MagicalObjectPool_Grow` | `0x140156de0` | ❓ unverified | ✔ | void(void* pool_plus_0x10, uint32_t count, uint32_t by) |
 | `MagicalObjectPool_SourceLookup` | `0x14025e3e0` | ❓ unverified | ✔ | void*(void* pool, void* out, void* id) |
@@ -143,6 +172,9 @@ Total: **120** symbols across 15 categories.
 |------|---------|--------|----------|------------------|
 | `Definition_DeserializeBase` | `0x140310180` | ✅ ok |  | bool(void* def, void* reader) |
 | `GameModifierDef_RegisterAssetLoader` | `0x1403260b0` | ✅ ok |  | void(void* assetClassDesc) |
+| `GoPtrOwnerRelay_ForwardCall` | `0x14066bf00` | ✅ ok |  | oIGoPtrOwnerRelay base virtual (slot +0x18): resolves owned via slot-0x30, forwards own… |
+| `GoPtrOwnerRelay_ForwardGet` | `0x14066be70` | ✅ ok |  | oIGoPtrOwnerRelay base virtual (vtable 0x140f06820 slot +0x8): resolves the owned objec… |
+| `GoPtrOwnerRelay_ForwardSet` | `0x14066bec0` | ✅ ok |  | oIGoPtrOwnerRelay base virtual (slot +0x10): resolves owned via slot-0x30, forwards own… |
 | `HasGameModifierStateMachine_Register` | `0x140197780` | ✅ ok |  | void(void) |
 | `Library_AchievementDefinition_vftable` | `0x1414113b0` | 📍 va |  | vftable of oCTLibrary<oe::dt::AchievementDefinition> singleton. |
 | `Library_ChallengeDefinition_vftable` | `0x141413010` | 📍 va |  | vftable of oCTLibrary<oe::dt::ChallengeDefinition> singleton. |
@@ -160,9 +192,17 @@ Total: **120** symbols across 15 categories.
 | `Library_TileDefinition_vftable` | `0x141412080` | 📍 va |  | vftable of oCTLibrary<oCDtTileDefinition> singleton. |
 | `Library_VersionDefinition_vftable` | `0x141412300` | 📍 va |  | vftable of oCTLibrary<oe::dt::VersionDefinition> singleton (LiveOps version manifest). |
 | `MapDef_RegisterAssetLoader` | `0x140323350` | ✅ ok |  | void(void* assetClassDesc) |
+| `Mem_Alloc16Zeroed` | `0x14050d5c0` | ✅ ok |  | malloc(0x10) + zero two qwords + bump global alloc counter DAT_1414442b4 = 16-byte zero… |
+| `PtrVector_Resize` | `0x140155230` | ✅ ok |  | pointer-vector resize: param_3==0 frees vec[0] (free-counter DAT_14146d854), else mallo… |
 | `Registry_EnemyDefinition_desc` | `0x141470208` | 📍 va |  | Class registry descriptor for oCDtEnemyDefinition (set by registrar FUN_14022d940; UID … |
 | `Registry_EnemyTribeDefinition_desc` | `0x14146f938` | 📍 va |  | Class registry descriptor for oCDtEnemyTribeDefinition (registrar FUN_140189410; UID 0x… |
 | `RewardDef_RegisterAssetLoader` | `0x140324460` | ✅ ok |  | void(void* assetClassDesc) |
+| `Rt_FailFast` | `0x140cc7e04` | ✅ ok |  | CRT fail-fast: FUN_140cc7c90 then _invoke_watson (noreturn). 4459 refs. Naming it de-no… |
+| `SharedRef_AddRefCopy` | `0x1401663a0` | ✅ ok |  | base virtual: copies {*(this+0x18) data, *(this+0x20) refblock} into out and addrefs at… |
+| `SharedRef_AddRefCopy_b` | `0x14021e390` | ✅ ok |  | identical twin of SharedRef_AddRefCopy (separate TU); base virtual in 298 vtables. Deco… |
+| `TypeDesc_HashName` | `0x1404fd5d0` | ✅ ok |  | base virtual: vcall slot0 -> type descriptor, reads its oCString name (inline @+8 / hea… |
+| `TypeDesc_HashName_b` | `0x1401c96e0` | ✅ ok |  | identical twin of TypeDesc_HashName (separate TU); base virtual in 292 vtables. Decompi… |
+| `oCString_Dtor` | `0x140111d90` | ✅ ok |  | oCString destructor: SSO threshold 0xf; heap buffer's real alloc ptr at [buf-8], frees … |
 
 ## netcode
 
@@ -220,4 +260,4 @@ Total: **120** symbols across 15 categories.
 | `BookController_ResolveSettings` | `0x140307a30` | ✅ ok | ✔ | void(oCDtEntityCpnt3DBookController* self) |
 | `BookController_ResolveTabs` | `0x140311060` | ❓ unverified | ✔ | void(oCDtEntityCpnt3DBookController* self) |
 | `UiButton_InputPoll` | `0x1407d5dc0` | ✅ ok | ✔ | void(void* task, ButtonUiCpntArray* cpnts) |
-| `UiButton_PressCommit` | `0x1406b86d0` | ❓ unverified | ✔ | void(oCUINavigableZoneDesc* widget) |
+| `UiButton_PressCommit` | `0x1406a08a0` | ❓ unverified | ✔ | void(oCUINavigableZoneDesc* widget) |

@@ -421,8 +421,8 @@
    "name": "NamedEvent_HeroSubscribeAll",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_140391d30",
-   "status": "unverified",
+   "raw": "FUN_140391860",
+   "status": "ok",
    "signature": "void(oCEntity* hero)",
    "cabi": {
     "ret": "void",
@@ -430,7 +430,7 @@
      "void*"
     ]
    },
-   "note": "Hero post-spawn/post-load init + named-event subscription setup. Single-arg void(hero) (verified by disasm: only RCX is read; RDX/R8/XMM are overwritten before use, so safe to re-call as (void*)). PROLOGUE re-syncs the hero's own HP from the HUD mirror: reads f32 at *(hero+0x1d80) and writes it to BOTH hero+0x15cc (max) and hero+0x15c8 (cur) \u2014 so param_1 is the hero HP-CARRIER, the same object Entity_ModifyHealth mutates. Then runs 26+ inlined subscribes registering hero handler slots hero+0x2fa..0x321 (qword indices) on the entity channel map (entity+0x500) and the world map (world+0x368); catalog of every (id global, name, slot) pair in docs/_re/kinds/events-bus.md \u2014 includes GIVE_MAGICAL_OBJECT -> hero+0x306. Runs ONCE at hero spawn, before the hero acts, and is hero-only (enemies have no HUD mirror) \u2014 so the loader hooks it read-only as the INSTANT, authoritative hero-capture source (install_hero_capture, hook_events.cpp), eliminating the old capture-on-first-heal/pickup latency. The events corpus called this 'the give-handler'; it is the subscription setup (the give handler proper is the functor it registers for slot 0x306). [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.]",
+   "note": "Hero post-spawn/post-load init (vftable-dispatched: DATA xrefs 0x140f30cd8/0x1414b0804, no static callers). RE-ANCHORED 2026-07-16 to FUN_140391860 (old raw FUN_140391d30 was mid-function after the 2026-07-09 patch). param_1 = the hero HP-carrier: the function INITIALIZES the HUD HP-mirror slot at param_1+0x1d80 (either binds a component sub-object or field-inits the existing buffer), derefs the value ctx *(param_1+0x2f8) (writes ctx+0x310=1), and registers 5 named-event subscriber functors (LAB_1403bd230..2b0 via FUN_140241a50/FUN_14051c530, ids DAT_1412f2040/2af0/2b08/2440/23c8, handles stored at hero+0x17a8..0x17c8). Loader hooks it as the INSTANT, authoritative hero-capture source. IMPORTANT: the mirror at +0x1d80 is only valid AFTER the function body runs \u2014 the capture detour must call the original FIRST, then hero_plausible/publish (capture-before-original sees an uninitialized mirror and rejects). Single arg (decompile shows only param_1 used).",
    "refs": [
     "docs/_re/kinds/events-bus.md",
     "src/loader/src/hook_events.cpp"
@@ -451,8 +451,8 @@
    "name": "NamedEvent_GiveMagicalObject_Ctor",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_140316020",
-   "status": "unverified",
+   "raw": "FUN_14030fd30",
+   "status": "ok",
    "signature": "oe::dt::NamedEventGiveMagicalObject*(void* buf)",
    "cabi": {
     "ret": "void*",
@@ -460,7 +460,7 @@
      "void*"
     ]
    },
-   "note": "In-place ctor of NamedEventGiveMagicalObject (object size 0x60): sets vft chain (oCGameNamedEvent -> ...Network -> NamedEventGiveMagicalObject), u32 2 @+0x08, name 'GIVE_MAGICAL_OBJECT' @+0x20 (non-owned literal, flag 0x80000000 @+0x28), interned id @+0x30, peer -1 @+0x38, 0 @+0x40, -1 @+0x48, payload zeroed: MO definition GUID @+0x50/+0x58 (16 bytes, from MagicalObjectDefinition+0x88). Fill the GUID then call NamedEvent_Dispatch(entity+0x4d8, ev) to give an item locally. NOTE: pattern is non-unique (match_index 11/13 \u2014 small ctor template); resolver picks by rank, fragile across game updates, fn_verify guards misresolution. [2026-07-09: remap ambiguous/unbuildable pattern; not trusted.]",
+   "note": "In-place ctor of NamedEventGiveMagicalObject (object size 0x60): sets vft chain (oCGameNamedEvent -> ...Network -> NamedEventGiveMagicalObject), u32 2 @+0x08, name 'GIVE_MAGICAL_OBJECT' @+0x20 (non-owned literal, flag 0x80000000 @+0x28), interned id @+0x30, peer -1 @+0x38, 0 @+0x40, -1 @+0x48, payload zeroed: MO definition GUID @+0x50/+0x58 (16 bytes, from MagicalObjectDefinition+0x88). Fill the GUID then call NamedEvent_Dispatch(entity+0x4d8, ev) to give an item locally. NOTE: pattern is non-unique (match_index 11/13 \u2014 small ctor template); resolver picks by rank, fragile across game updates, fn_verify guards misresolution. [2026-07-09: remap ambiguous/unbuildable pattern; not trusted.] [2026-07-12: RE-ANCHORED to FUN_14030fd30 (was FUN_140316020, which no longer exists post-patch \u2014 the ctor was thought inlined but is a live standalone fn adjacent to the vtable @14030fd10). Found via DATA-xref to the NamedEventGiveMagicalObject vftable 0x140f270f0 (out_new/vftables.jsonl 2026-07-09). Decompile confirms exact layout: vft chain -> NamedEventGiveMagicalObject::vftable, u32 2@+0x8, name@+0x20 via FUN_140529860, 0x80000000@+0x28, interned id DAT_1412f0610@+0x30, -1@+0x38, -1@+0x48, GUID@+0x50/58 zeroed. Pattern present in DB; status ok. This unbroke R.give (was logging 'GiveMagicalObject ctor failed' 860x/run).]",
    "refs": [
     "src/loader/src/script_lua.cpp",
     "docs/_re/kinds/events-bus.md"
@@ -614,6 +614,27 @@
    ]
   },
   {
+   "name": "Entity_LookupMagicalObjectComponent",
+   "kind": "function",
+   "category": "items",
+   "raw": "FUN_1406e3280",
+   "status": "ok",
+   "signature": "void*(void* componentStore, void** out, oCEntity* entity)",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*",
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Read-only F14/SwissTable lookup that maps an entity to its owned magical-object component. Called at the top of Hero_GrantMagicalObject (FUN_140397030): store = *(entity+8), key = entity; it FNV-1a-hashes the entity pointer, probes the store's control bytes @store+0x1d0 / slots @store+0x1d8 / mask @store+0x1e8, writes the component pointer (or 0 when absent) into *out and returns out. Side-effect-free. Non-null ONLY for entities that can own magical objects (heroes) \u2014 pets, summons and enemies are not registered in the store and resolve to 0. The loader uses this as the grant-target discriminator so R.give's dispatcher capture (rsmm.lua) accepts only a real hero's dispatcher, not a summon's, fixing item-grant on summon heroes (Piper/Scarlet/Geppetto) where an anchor event fired from a pet dispatcher used to clobber _give_hero. Decompile-verified 2026-07-12.",
+   "refs": [
+    "src/loader/src/script_lua.cpp",
+    "src/loader/lib/rsmm.lua"
+   ]
+  },
+  {
    "name": "Entity_ResolveAttackHits",
    "kind": "function",
    "category": "entity",
@@ -742,8 +763,8 @@
    "name": "Hero_GrantMagicalObject",
    "kind": "function",
    "category": "items",
-   "raw": "FUN_140397190",
-   "status": "unverified",
+   "raw": "FUN_140397aa0",
+   "status": "ok",
    "signature": "void(oCDtEntityCpntHeroController* hero, void* def, uint16_t count, char dupFlag, void* sourceTags)",
    "cabi": {
     "ret": "void",
@@ -755,7 +776,7 @@
      "void*"
     ]
    },
-   "note": "Grants a magical object (by its definition) to the hero \u2014 the routine the GIVE_MAGICAL_OBJECT handler calls. Per copy: MagicalObject_RegisterInstance(hero, inst) creates/registers the owned instance, fires the item-acquired scene event 0x1a9cae51, and runs duplicate/curse rolls. PROOF that entity-value keys are STRUCTURED base+index (not name CRCs): the dup rolls read EntityValue_Lookup(store, &out, rarityIdx + 0x1a19e789) and (rarityIdx + 0x1c678b88) \u2014 a base id plus the rarity index 0..5. param_3=count, param_4=apply-dup-roll, param_5=source-tag flag list. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.]",
+   "note": "Grants a magical object (by its definition) to the hero \u2014 the routine the GIVE_MAGICAL_OBJECT handler calls. Per copy: MagicalObject_RegisterInstance(hero, inst) creates/registers the owned instance, fires the item-acquired scene event 0x1a9cae51, and runs duplicate/curse rolls. PROOF that entity-value keys are STRUCTURED base+index (not name CRCs): the dup rolls read EntityValue_Lookup(store, &out, rarityIdx + 0x1a19e789) and (rarityIdx + 0x1c678b88) \u2014 a base id plus the rarity index 0..5. param_3=count, param_4=apply-dup-roll, param_5=source-tag flag list. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [recover_unverified 2026-07-17: relocated to 0x140397aa0 via hash 0x1a9cae51]",
    "refs": [
     "data/symbols.json"
    ]
@@ -786,7 +807,7 @@
    "category": "options",
    "va": "0x14143cb58",
    "status": "va",
-   "note": "[2026-07-10: re-derived post 2026-07-09 patch (was 0x141436510); ctor is now FUN_1401ca130, found via the 'Forced seed' string xref — first write stores the singleton here. Patch added 'Delay before can unpause' / 'Max pause per player', shifting the 'Pause during choices' slot 0x10f8 -> 0x10f0; all other transcribed slot offsets unchanged.] Game-options registry singleton pointer (set by the options ctor FUN_1401ca130; *ptr = the options object). Holds every persisted GameOption inline: volumes, screen shake, plus debug/cheat toggles (Forced seed, Show enemy debug info, Show hourglass debug info, Force epilogue, Force end credits, Sectorize enemy camps, Show damage and healing numbers, ...). Each option is a 0x30-byte struct: +0x0 vftable, +0x8 u32 hashed id, +0x10 name char*, +0x18 flags, +0x28 CURRENT VALUE (bool=u8, uint/int/float=u32), +0x2c default. Consumers hold a resolved option pointer and read the inline +0x28 field (the hashed id is a baked immediate only in the ctor, never at read sites), so writing +0x28 at runtime is authoritative. Exposed via R.options.get/set in rsmm.lua. PROVEN in-game 2026-06-13: write-read-back round-trips stick (Forced seed 0->1337) and 'Show enemy debug info' = true renders per-enemy + hero HP bars \u2014 i.e. that debug feature is NOT double-gated by g_bEnableDebug. Some other pure-debug toggles might still be gated by g_bEnableDebug (a runtime-built CRC cvar \u2014 value not statically resolvable); test per-option in-game.",
+   "note": "[2026-07-10: re-derived post 2026-07-09 patch (was 0x141436510); ctor is now FUN_1401ca130, found via the 'Forced seed' string xref \u2014 first write stores the singleton here. Patch added 'Delay before can unpause' / 'Max pause per player', shifting the 'Pause during choices' slot 0x10f8 -> 0x10f0; all other transcribed slot offsets unchanged.] Game-options registry singleton pointer (set by the options ctor FUN_1401ca130; *ptr = the options object). Holds every persisted GameOption inline: volumes, screen shake, plus debug/cheat toggles (Forced seed, Show enemy debug info, Show hourglass debug info, Force epilogue, Force end credits, Sectorize enemy camps, Show damage and healing numbers, ...). Each option is a 0x30-byte struct: +0x0 vftable, +0x8 u32 hashed id, +0x10 name char*, +0x18 flags, +0x28 CURRENT VALUE (bool=u8, uint/int/float=u32), +0x2c default. Consumers hold a resolved option pointer and read the inline +0x28 field (the hashed id is a baked immediate only in the ctor, never at read sites), so writing +0x28 at runtime is authoritative. Exposed via R.options.get/set in rsmm.lua. PROVEN in-game 2026-06-13: write-read-back round-trips stick (Forced seed 0->1337) and 'Show enemy debug info' = true renders per-enemy + hero HP bars \u2014 i.e. that debug feature is NOT double-gated by g_bEnableDebug. Some other pure-debug toggles might still be gated by g_bEnableDebug (a runtime-built CRC cvar \u2014 value not statically resolvable); test per-option in-game. [2026-07-12: RE-VERIFIED against the current build \u2014 ctor FUN_1401ca130 decompile shows `DAT_14143cb58 = param_1` as its first write, and all 15 transcribed R.options slot offsets (Forced seed@0x0, Dev@0x30, Test@0x60, Dash at cursor@0xe80, Screen shake@0x1090, Pause during choices@0x10f0, ... Force end credits@0x1330) match this binary. Loader now fail-closes: rsmm.lua _ptr_plausible + a Dev/Test bool content probe reject a mis-derived singleton pointer so R.options degrades to no-op instead of a stray write.]",
    "refs": [
     "src/loader/lib/rsmm.lua"
    ]
@@ -816,10 +837,10 @@
    "name": "Entity_GainHealthHandler",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_1403a7710",
-   "status": "unverified",
+   "raw": "FUN_140399d00",
+   "status": "ok",
    "signature": "void(oCEntity* hero, void* a2, void* valueCtx)",
-   "note": "Inbound GAIN_HEALTH / HEALTH_MODIFICATION handler bound to the hero. param_1 = the hero character (HP@+0x15c8); reads it directly and calls Entity_ModifyHealth(hero, ...). Pointer-only args (safe to hook). Hooked read-only by R.entity (rsmm.lua) to CAPTURE the live hero pointer the first time the hero heals/regens. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
+   "note": "Hero damage-taken handler (param_1 = hero HP-carrier; reads current HP @+0x15c8, value ctx @+0x2f8, and the dream-shards-on-damage / damage-reduction value keys 0x188831a6/0x188832a9/0x1887e5ac/0x1ab19456, calling Entity_ModifyHealth for 'Damage' / 'Dream Shards on Damage'). Pointer-only args (ptr,ptr,ptr). RE-ANCHORED 2026-07-13: the prior raw FUN_1403a7710 was mid-function on the current build. Used read-only as a hero-capture anchor (the mirror plausibility check filters non-hero entities that also take damage).",
    "refs": [
     "src/loader/lib/rsmm.lua"
    ]
@@ -828,11 +849,12 @@
    "name": "Entity_GiveHandler",
    "kind": "function",
    "category": "items",
-   "raw": "FUN_1403c7cf0",
-   "status": "unverified",
-   "signature": "void(oCEntity* hero, oCGameNamedEvent* giveEvent)",
-   "note": "Inbound GIVE_MAGICAL_OBJECT handler. param_1 = hero, param_2 = the give event; resolves the MO def via MagicalObjectPool_SourceLookup (FUN_1402590c0 on g_MagicalObjectPool) then grants via FUN_140397190(hero, def, ...). Pointer-only args (safe to hook). Also hooked read-only by R.entity to capture the hero pointer on item pickup/grant. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
+   "raw": "FUN_1403c7560",
+   "status": "ok",
+   "signature": "void(oCEntityValueContext* heroValueCtx, oCEntity* hero, void* hitCtx)",
+   "note": "Hero on-hit handler. THREE pointer args (ptr,ptr,ptr). PARAM SEMANTICS decompile-verified 2026-07-15 (crash triage): param_1 is the hero's VALUE CONTEXT (= *(hero+0x2f8)) \u2014 the function reads its store directly at param_1+0x4c8 (life-steal key 0x15c028c2 + life-on-hit keys 0x174b6ada/0x174b6ad8) and keeps the hit-handler list @param_1+0xae0/+0xae8; param_2 is the HERO ENTITY (the shards/heal modifier event is dispatched at param_2+0x4d8, the entity's NamedEventDispatcher); param_3 = the HIT CONTEXT \u2014 dereferenced immediately (*(p3+0x10) IsKindOf gate, *(p3+0x18..0x2c) hit vecs copied to ctx+0x910/+0x930, *(p3+0xa0), *(p3+0x78)). RE-ANCHORED 2026-07-13 (prior raw FUN_1403c7cf0 was mid-function). Used read-only as a hero-capture anchor \u2014 capture must publish param_2, NOT param_1 (the ctx never passes the HUD-mirror plausibility check, so the old param_1 capture silently never fired). [2026-07-14: detour/typedef were 2-arg while the function is 3-arg -> garbage param_3/R8 -> 0xc0000005 at +0x106 in-menu. FIXED: 3-arg. 2026-07-15: passing hero+0x2f8 (field address) instead of *(hero+0x2f8) to EntityValue_Get made the engine read *(hero+0x7c0)=-1.0f as the store -> EntityValue_Lookup fault at store+0xc8, in-run crash. FIXED in rsmm.lua _ev_ctx.]",
    "refs": [
+    "src/loader/src/hook_events.cpp",
     "src/loader/lib/rsmm.lua"
    ]
   },
@@ -842,7 +864,7 @@
    "category": "entity",
    "va": "0x140f01650",
    "status": "va",
-   "note": "vftable of oCCustomFlagList. An empty list is the 0x18-byte struct { vftable @+0x0, list ptr @+0x8 = 0, u64 count @+0x10 = 0 } \u2014 used as the sourceTags ctx arg to Entity_ModifyHealth. Build it in scratch and rebase the vftable by the live module base.",
+   "note": "vftable of oCCustomFlagList. An empty list is the 0x18-byte struct { vftable @+0x0, list ptr @+0x8 = 0, u64 count @+0x10 = 0 } \u2014 used as the sourceTags ctx arg to Entity_ModifyHealth. Build it in scratch and rebase the vftable by the live module base. [2026-07-12: confirmed a live vftable for the current build \u2014 DATA-xref'd from the oCCustomFlagList ctor FUN_14039ffe0. R.combat stays fail-closed behind _va_ok + _hero_plausible + a pattern-resolved Entity_ModifyHealth.]",
    "refs": [
     "src/loader/lib/rsmm.lua"
    ]
@@ -1244,10 +1266,10 @@
    "name": "CustomFlagFilter_Serialize",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_140682af0",
-   "status": "unverified",
+   "raw": "FUN_140189830",
+   "status": "ok",
    "signature": "bool(void* flagFilter, void* reader)",
-   "note": "oCCustomFlagFilter serialize (hash 0x15a9d9bf): two inline oCCustomFlagList sub-objects \u2014 required @+0x8, excluded @+0x20. Explains the runtime reward-roll offsets: oCItem filter @+0xb8 -> required @+0xc0, excluded @+0xd8. [2026-07-09: remap landed on ambiguous stub; not trusted.]",
+   "note": "oCCustomFlagFilter serialize (hash 0x15a9d9bf): two inline oCCustomFlagList sub-objects \u2014 required @+0x8, excluded @+0x20. Explains the runtime reward-roll offsets: oCItem filter @+0xb8 -> required @+0xc0, excluded @+0xd8. [2026-07-09: remap landed on ambiguous stub; not trusted.] [recover_unverified 2026-07-17: relocated to 0x140189830 via hash 0x15a9d9bf]",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -1652,7 +1674,7 @@
    "kind": "function",
    "category": "ui",
    "status": "unverified",
-   "raw": "FUN_1406b86d0",
+   "raw": "FUN_1406a08a0",
    "cabi": {
     "params": [
      "void*"
@@ -1660,7 +1682,7 @@
     "ret": "void"
    },
    "signature": "void(oCUINavigableZoneDesc* widget)",
-   "note": "Button press COMMIT \u2014 the single choke point every ButtonUi click funnels through (called from UiButton_InputPoll when a pressed ButtonUi passes its visibility/enable/focus gates). Runs the widget press state machine (widget+0x32c state, +0x328 mode; transitions via FUN_1406a05b0) then fires the listener: vcall slot 2 (+0x10) on *(widget+0x570) \u2014 that object is the owning page controller's oINavigableListener. Loader detour here (hook_ui.cpp, RSMM_ENABLE_UI_HOOK=1) emits R.on('ui:press') with candidate name strings scanned from the widget, enabling Lua-scripted native-UI buttons (mod menu). [2026-07-09: remap ambiguous/unbuildable pattern; not trusted.]",
+   "note": "INTENDED: the single click choke point every ButtonUi funnels through, for the R.on('ui:press') native-UI-button bridge (hook_ui.cpp, RSMM_ENABLE_UI_HOOK=1). [2026-07-09: remap ambiguous.] [2026-07-12: RE-ANCHORED to FUN_1406a08a0 via UiButton_InputPoll FUN_1407d72a0 calling FUN_1406a08a0(*(cpnt+0x268)); decompile shows +0x32c state / +0x328 mode machine then vcall [*(widget+0x570)+0x10]. Marked status ok.] [2026-07-14: WRONG ANCHOR / CAUSED IN-GAME CRASH. FUN_1406a08a0 is NOT a click-only choke point \u2014 get_xrefs_to shows 37 callers across the whole UI (FUN_140351a10/14036f4c0/1403a8040/1403f37a0/1404306e0/... and UiButton_InputPoll), and it wraps FUN_1406a1570, a generic WIDGET STATE-TRANSITION helper that fires per-state listeners (+0x4b0/+0x498/+0x4c8/+0x4e0/+0x4f8) on hover/focus/press/release. Detouring it (a) fires the ui:press emit on every widget state change and (b) the hook_ui listenerless-skip path SUPPRESSES real state transitions for non-listener widgets -> menu state corruption -> crash before any hero capture (playtest log session 7268: UI hook armed, 0 '[ui-hook] press' lines, hard crash in menu). DOWNGRADED to unverified + pattern STRIPPED from function_patterns.json so the loader fails closed ('pattern not found; disabled'). The true press choke point is still unidentified \u2014 needs RE of the ButtonUi input->commit path (candidate: the caller that reaches the listener vcall ONLY on a confirmed press, not FUN_1406a1570's per-state fan-out) + a playtest before re-arming.]",
    "refs": [
     "src/loader/src/hook_ui.cpp",
     "docs/_re/kinds/ui-menus.md"
@@ -1719,6 +1741,480 @@
    "note": "3DBookController post-resolve tab wire-up (vftable slot 28). Loops the 5 resolved tab entities at self+0xf8 and pulls each one's oCDtEntityCpnt3DBookTabController cpnt (type descriptor global DAT_141470f20; tab class hash 0x18ababa6, ctor FUN_140309a60, registrar FUN_140314660) into self+0x120..+0x148. Best future detour point for swapping which tab controller occupies a slot (tab-slot rewire for a real MODS tab). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
    "refs": [
     "docs/_re/kinds/ui-menus.md"
+   ]
+  },
+  {
+   "name": "EntityValueOverride_Alloc",
+   "kind": "function",
+   "category": "entity",
+   "raw": "FUN_140770290",
+   "status": "ok",
+   "signature": "void*(void*, uint32_t, uint32_t)",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*",
+     "uint32_t",
+     "uint32_t"
+    ]
+   },
+   "note": "Grows the entity-value override vector and returns a pointer to a fresh 0x38-byte entry slot. arg1 = the override vector (store+0xc0); arg2 = insert index (= current count store+0xc8); arg3 = number of slots (1). Auto-increments the count at *(vec+8). Used by the inlined find-or-create-and-set path (canonical copy FUN_140749a90 LAB_14074a810). Entry layout (0x38): key u32 @+0x00, oCEntityValueUnion @+0x08 (0x20), u32 flags @+0x28, u16 @+0x2c, refcounted modifiers-holder ptr @+0x30. Decompile-verified live 2026-07-13.",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
+   "name": "EntityValueEntry_Ctor",
+   "kind": "function",
+   "category": "entity",
+   "raw": "FUN_140747120",
+   "status": "ok",
+   "signature": "void(void*, void*)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "In-place constructor for a 0x38-byte entity-value override entry: zeroes the key, default-constructs the union at entry+0x08 (EntityValueUnion_DefaultCtor), zeroes +0x28/+0x2c/+0x30, then copies key+union+fields from the source entry (FUN_1407472e0). Call after EntityValueOverride_Alloc to init a freshly-grown slot. Decompile-verified live 2026-07-13.",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
+   "name": "EntityValueUnion_DefaultCtor",
+   "kind": "function",
+   "category": "entity",
+   "raw": "FUN_14082aa60",
+   "status": "ok",
+   "signature": "void*(void*)",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "Default-constructs an oCEntityValueUnion in place (sets vftable, type tag 0 = int/float, zero value). Returns the union ptr. To build an inline-float value for a stat write: default-ctor a 0x20 scratch, then set inline sentinel 4 @+0x08, f32 @+0x10, type-tag byte 0 @+0x18. Decompile-verified live 2026-07-13.",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
+   "name": "EntityValueUnion_InitAsType",
+   "kind": "function",
+   "category": "entity",
+   "raw": "FUN_14082d670",
+   "status": "ok",
+   "signature": "void(void*, uint32_t)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "uint32_t"
+    ]
+   },
+   "note": "Re-initialises an oCEntityValueUnion as a given type tag (0=int32/float 4B, 1=0x10, 2=bool, 3=Vec3, 4=Vec4/color, 5=String, 6/9=ResourcePtr, 7=int64, 0xA=empty). Decompile-verified live 2026-07-13.",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
+   "name": "EntityValueUnion_CopyAssign",
+   "kind": "function",
+   "category": "entity",
+   "raw": "FUN_14082b1d0",
+   "status": "ok",
+   "signature": "void(void*, void*)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Typed copy-assignment for oCEntityValueUnion (dst <- src); handles a type change (frees/re-inits dst payload as needed). The clean way to write a built value into an override entry's union at entry+0x08. Decompile-verified live 2026-07-13.",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
+   "name": "EntityValueUnion_Compare",
+   "kind": "function",
+   "category": "entity",
+   "raw": "FUN_14082ceb0",
+   "status": "ok",
+   "signature": "uint32_t(void*, void*)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Compares two oCEntityValueUnion values (nonzero => differ). The find-or-set fast path uses it to skip a write when the value is unchanged. Decompile-verified live 2026-07-13.",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
+   "name": "EntityValueUnion_Destruct",
+   "kind": "function",
+   "category": "entity",
+   "raw": "FUN_14082dae0",
+   "status": "ok",
+   "signature": "void(void*)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "Clears/destructs an oCEntityValueUnion payload (frees heap-typed payloads: String/ResourcePtr/Vec). Only needed for non-inline (tag != 4) reads; inline numeric reads need no destruct. NOTE this supersedes the stale FUN_14082ca50 (which is not a clean function start in the current build). Decompile-verified live 2026-07-13.",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
+   "name": "Hero_GainExperience",
+   "kind": "function",
+   "category": "hero",
+   "raw": "FUN_1402e2f00",
+   "status": "ok",
+   "signature": "void(void*, void*)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "The engine's gain-experience routine. arg1 = the hero's XP/Level component (XpComponent, sibling component on the hero oCEntity; locate via Entity_GetComponentByTester or by scanning the entity component array for XpComponent_vftable). arg2 = an XP-gain struct whose amount to add is *(int*)(arg2+0x50). Reads current level/xp at *(*(xpComp+0x108)) {[0]=level,[4]=xp}, loops subtracting the per-level threshold (curve at *(xpComp+0x10)+0x1d8, count +0x1e0) and leveling up, then sets remainder via XpComponent_SetXp and new level via XpComponent_SetLevel (which fires the _XP_LEVEL_UP named event). Gated by max-level check FUN_1402e2d90. Decompile-verified live 2026-07-13.",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
+   "name": "XpComponent_SetLevel",
+   "kind": "function",
+   "category": "hero",
+   "raw": "FUN_1402e3190",
+   "status": "ok",
+   "signature": "void(void*, uint32_t)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "uint32_t"
+    ]
+   },
+   "note": "Sets the XP component's current level and, on increase, dispatches the oCGameNamedEvent '_XP_LEVEL_UP' (string @0x140f22130) plus writes custom-flag key 0x12e831f2 (=level, f32) and updates the HUD mirror (*(f32*)(hud+0x238)). Early-outs if the level is unchanged. Decompile-verified live 2026-07-13.",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
+   "name": "XpComponent_SetXp",
+   "kind": "function",
+   "category": "hero",
+   "raw": "FUN_1402e3630",
+   "status": "ok",
+   "signature": "void(void*, uint32_t)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "uint32_t"
+    ]
+   },
+   "note": "Sets the XP component's current-xp-within-level (*(xpComp+0x108)[+4]) and, when xp increased, writes custom-flag key 0x12e831f1 (=xp delta, f32). Decompile-verified live 2026-07-13.",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
+   "name": "Entity_GetComponentByTester",
+   "kind": "function",
+   "category": "entity",
+   "raw": "FUN_1406e3210",
+   "status": "ok",
+   "signature": "void*(void*, void*)",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Linear-scan getComponent: walks the entity component array (entity+0x190, count entity+0x198) and returns the first component whose class IsKindOf the given type-tester vtable. entity = *(heroController+0x2f8). Simplest way to fetch a sibling component (e.g. the XpComponent via XpComponent_TypeTester). Decompile-verified live 2026-07-13.",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
+   "name": "Entity_GetComponentFast",
+   "kind": "function",
+   "category": "entity",
+   "raw": "FUN_1406e31a0",
+   "status": "ok",
+   "signature": "void*(void*, void*, uint32_t)",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*",
+     "void*",
+     "uint32_t"
+    ]
+   },
+   "note": "Fast getComponent: resolves a component through the entity's type->index hash map (entity+0x28), then confirms with a virtual IsKindOf ((*(type+0x58))(type, tester)). arg2 = type-tester, arg3 = 32-bit type key. Prefer Entity_GetComponentByTester when the exact key is unknown. Decompile-verified live 2026-07-13.",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
+   "name": "XpComponent_vftable",
+   "kind": "data",
+   "category": "hero",
+   "va": "0x140f23200",
+   "status": "va",
+   "note": "vftable of the hero XP/Level component (XpComponent). Slots: serialize FUN_1402e2050 @+0x70, deserialize FUN_1402e2080 @+0x78, grant Hero_GainExperience. Match *(component)==this to identify the Xp component when scanning the entity component array (entity+0x190). Base +0x70 derived from the serialize DATA xref @0x140f23270. Verified live 2026-07-13.",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
+   "name": "XpComponent_TypeTester",
+   "kind": "data",
+   "category": "hero",
+   "va": "0x141476e00",
+   "status": "va",
+   "note": "Type-tester global (DAT_141476e00) used by the XP component's own IsKindOf/parent-resolution; pass as arg2 to Entity_GetComponentByTester to fetch the hero XpComponent. Sibling tester DAT_141476d48. Confidence medium (tester provenance) \u2014 the vtable scan via XpComponent_vftable is the fallback. Verified live 2026-07-13.",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
+   "name": "EntityValueStore_Recompute",
+   "kind": "function",
+   "category": "entity",
+   "raw": "FUN_140749a90",
+   "status": "ok",
+   "signature": "void(void* store, void* valueDef)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Recomputes the entity-value override CACHE (store+0xc0 vector, the same one R.stat.set pokes) from scratch: seeds each key with its base value from the definition (valueDef+0xc8/+0xd0), then walks the per-key modifier registry (SwissTable at store+0x88: ctrl @+0x88, slots @+0x90, growth @+0xa0) and applies every registered modifier in priority order via a vcall on the modifier object (`(*(modifier+0x18))(modifier, valueUnion)`), writing the folded result back into the override entry (union @entry+0x08, scalar mirror @entry+0x28, version short @entry+0x2c). Gated by the dirty flag store+0x64 bit 3 (&8). THIS IS WHY a raw R.stat.set union-poke is transient: the next recompute (any gameplay event that dirties the key) rebuilds entry+0x08 from base+modifiers and discards the poke. Durable writes must register a modifier the recompute folds in \u2014 see EntityValueStore_ApplyModifierEvent. Decompile-verified live 2026-07-13.",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
+   "name": "EntityValueStore_ApplyModifierEvent",
+   "kind": "function",
+   "category": "entity",
+   "raw": "FUN_14074b2f0",
+   "status": "ok",
+   "signature": "void(void* store, void* modifierEvent, void* a3, void* a4)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*",
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "The engine's DURABLE add-a-stat-modifier routine. Reads the modifier request (built by ModifierEvent_Ctor into an oCGameEventNetworkModifier, vftable 0x140f322d0), constructs an oCEntityValueModifier (flag@+0x30=1, id@+0x38, value union@+0x08, amount f32@+0x3c, base f32@+0x40, subscriber list @+0x570), inserts it into the per-key modifier registry (store+0x88 SwissTable), then re-folds the override cache entry (store+0xc0 via EntityValueOverride_Alloc) so the new value takes effect immediately AND survives recompute. Combine mode `op` (read from the value-def @+0x68) selects the fold: 1=ADDITIVE (val += amount*scale), 2=SET (override value + base), 3=MATCH-REPLACE (replace a modifier with the same source/id), 4=MIN/priority (keep smallest-delta). This is the correct entry point for a permanent stat change. NOTE: param_2 is a fully-built modifier event; wiring from Lua needs the event payload (op/key/amount, id@+0x54, the virtual fill at def+0x20) decoded + a live playtest before it can be trusted engine-mutating. Decompile-verified live 2026-07-13.",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
+   "name": "EntityValueStore_InitBaseValues",
+   "kind": "function",
+   "category": "entity",
+   "raw": "FUN_140747f20",
+   "status": "ok",
+   "signature": "void(void* store)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "Store bootstrap: registers three internal event listeners (stored at store+0x168/+0x170/+0x178 via the event pool at entity+0x500), then, for a magical-object-owning entity (Entity_LookupMagicalObjectComponent non-null), seeds the override cache (store+0xc0) from the base value defs and the initial modifier set \u2014 the same fold EntityValueStore_Recompute performs, run once at setup. Confirms the store layout used by the R.stat path: keys @store+0x88 registry, cache @store+0xc0/count+0xc8. Read-only reference for durable-modifier wiring. Decompile-verified live 2026-07-13.",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
+   "name": "ModifierEvent_Ctor",
+   "kind": "function",
+   "category": "entity",
+   "raw": "FUN_140389fb0",
+   "status": "ok",
+   "signature": "void*(void* buf, void* valueDef)",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "In-place ctor of an oCGameEventNetworkModifier (the durable stat-modifier named event; object carries a modifier request through the same named-event bus R.give uses). Sets the vft chain oCGameNamedEvent (0x140f05aa8) -> ...Network (0x140f09d98) -> oCGameEventNetworkModifier (0x140f322d0), u32 2@+0x08, event id@+0x30 (from valueDef+0x54), default union@+0x60 (EntityValueUnion_DefaultCtor), scale f32 1.0 @+0x84 and @+0x88, byte 1@+0x8c, then calls the value-def's virtual fill `(*(valueDef+0x20))(valueDef, event)` to populate op/key/amount, and clears u32@+0x08. Feed the built event to EntityValueStore_ApplyModifierEvent (or dispatch it via NamedEvent_Dispatch to the entity's dispatcher) to apply a durable modifier. Decompile-verified live 2026-07-13.",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
+   "name": "oCGameEventNetworkModifier_vftable",
+   "kind": "data",
+   "category": "entity",
+   "va": "0x140f322d0",
+   "status": "va",
+   "note": "vftable of oCGameEventNetworkModifier \u2014 the durable stat-modifier named event (leaf of the oCGameNamedEvent -> ...Network -> Modifier chain). Set as the third/most-derived vftable by ModifierEvent_Ctor. Identifies a modifier event when scanning the named-event bus; anchor for building a durable-stat-modifier event from the loader. Verified live 2026-07-13 (LEA @0x14038a01d in ModifierEvent_Ctor).",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
+   "name": "Mem_Alloc16Zeroed",
+   "kind": "function",
+   "category": "library",
+   "note": "malloc(0x10) + zero two qwords + bump global alloc counter DAT_1414442b4 = 16-byte zeroed refcount-block allocator. Top corpus reference count (11653). Decompile-identified 2026-07-17.",
+   "raw": "FUN_14050d5c0",
+   "status": "ok"
+  },
+  {
+   "name": "Rt_FailFast",
+   "kind": "function",
+   "category": "library",
+   "note": "CRT fail-fast: FUN_140cc7c90 then _invoke_watson (noreturn). 4459 refs. Naming it de-noises decompiles across the binary. Decompile-identified 2026-07-17.",
+   "raw": "FUN_140cc7e04",
+   "status": "ok"
+  },
+  {
+   "name": "PtrVector_Resize",
+   "kind": "function",
+   "category": "library",
+   "note": "pointer-vector resize: param_3==0 frees vec[0] (free-counter DAT_14146d854), else malloc(param_3*8) into vec[0], count/cap at +0xc. 3039 refs. Decompile-identified 2026-07-17.",
+   "raw": "FUN_140155230",
+   "status": "ok"
+  },
+  {
+   "name": "oCString_Dtor",
+   "kind": "function",
+   "category": "library",
+   "note": "oCString destructor: SSO threshold 0xf; heap buffer's real alloc ptr at [buf-8], frees + bumps DAT_14146d854. 2259 refs. Decompile-identified 2026-07-17.",
+   "raw": "FUN_140111d90",
+   "status": "ok"
+  },
+  {
+   "name": "SharedRef_AddRefCopy",
+   "kind": "function",
+   "category": "library",
+   "note": "base virtual: copies {*(this+0x18) data, *(this+0x20) refblock} into out and addrefs at refblock+8. Appears in 528 vtables (top vtable-slot member). Identical twin at 0x14021e390 (SharedRef_AddRefCopy_b). Decompile-identified 2026-07-17.",
+   "raw": "FUN_1401663a0",
+   "status": "ok"
+  },
+  {
+   "name": "SharedRef_AddRefCopy_b",
+   "kind": "function",
+   "category": "library",
+   "note": "identical twin of SharedRef_AddRefCopy (separate TU); base virtual in 298 vtables. Decompile-identified 2026-07-17.",
+   "raw": "FUN_14021e390",
+   "status": "ok"
+  },
+  {
+   "name": "TypeDesc_HashName",
+   "kind": "function",
+   "category": "library",
+   "note": "base virtual: vcall slot0 -> type descriptor, reads its oCString name (inline @+8 / heap @+0x18, cap-bit &0x7fffffff), hashes it. Appears in 538 vtables. Identical twin at 0x1401c96e0 (TypeDesc_HashName_b). Decompile-identified 2026-07-17.",
+   "raw": "FUN_1404fd5d0",
+   "status": "ok"
+  },
+  {
+   "name": "TypeDesc_HashName_b",
+   "kind": "function",
+   "category": "library",
+   "note": "identical twin of TypeDesc_HashName (separate TU); base virtual in 292 vtables. Decompile-identified 2026-07-17.",
+   "raw": "FUN_1401c96e0",
+   "status": "ok"
+  },
+  {
+   "name": "GoPtrOwnerRelay_ForwardGet",
+   "kind": "function",
+   "category": "library",
+   "note": "oIGoPtrOwnerRelay base virtual (vtable 0x140f06820 slot +0x8): resolves the owned object via the derived class's slot-0x30 getter (pure in base), then forwards to owned->slot+0x8 returning a {ptr,val} pair into out (null owned -> zeroed out). Getter. In 323 vtables. Decompile-identified 2026-07-17.",
+   "raw": "FUN_14066be70",
+   "status": "ok"
+  },
+  {
+   "name": "GoPtrOwnerRelay_ForwardSet",
+   "kind": "function",
+   "category": "library",
+   "note": "oIGoPtrOwnerRelay base virtual (slot +0x10): resolves owned via slot-0x30, forwards owned->slot+0x10(a,b) (2-arg void, set-shaped). In 323 vtables. Decompile-identified 2026-07-17.",
+   "raw": "FUN_14066bec0",
+   "status": "ok"
+  },
+  {
+   "name": "GoPtrOwnerRelay_ForwardCall",
+   "kind": "function",
+   "category": "library",
+   "note": "oIGoPtrOwnerRelay base virtual (slot +0x18): resolves owned via slot-0x30, forwards owned->slot+0x18(a) (1-arg void). In 323 vtables. Decompile-identified 2026-07-17.",
+   "raw": "FUN_14066bf00",
+   "status": "ok"
+  },
+  {
+   "name": "EntitySpawner_SpawnOne",
+   "kind": "function",
+   "category": "entity",
+   "raw": "FUN_140730150",
+   "status": "ok",
+   "signature": "void(oCEntityCpntEntitySpawner* self)",
+   "note": "2026-07-18 RE (typed-DB session). oCEntityCpntEntitySpawner vtable slot 28 (+0xe0). CORRECTS the stale note in memory/docs: the spawner vtable is 0x140f26a30 (30 slots), NOT 0x140f20cf0; 0x140f06ad8 is oCTFlagSet, not oCSpawnerGoEntityCollector. Spawn-one routine: resolves the target entity store (spawner+0xc8 vcall +0xf0, else *(owner+0x1a8)+0x98), allocates a spawn record via FUN_1407343a0, fills a 4x4 transform (settings+0x1bc mode 0=identity/1=from spawner+0x180), push_backs the record to the vector at self+0x1c0 {count +0x1c8, cap +0x1cc}, then calls EntitySpawner_InstantiateRecord. Only DATA xrefs (vtable slot) -> reached virtually only. Pattern unique (match_index 0/1, 35 bytes). NOT CALL-TESTED in-game; no cabi on purpose.",
+   "refs": [
+    "docs/_re/kinds/spawn-system.md"
+   ]
+  },
+  {
+   "name": "EntitySpawner_InstantiateRecord",
+   "kind": "function",
+   "category": "entity",
+   "raw": "FUN_140730f80",
+   "status": "ok",
+   "signature": "void(oCEntityCpntEntitySpawner* self, void* spawnRecord)",
+   "note": "2026-07-18 RE (typed-DB session). Record -> live entity bridge. record[0] = entity store, record+8 = 4x4 transform. Calls EntityStore_CreateEntity(ctx=FUN_140730860(), store=record[0], xform=record+8, cbCtx), optionally scales via settings (+0x150/+0x158 float) through FUN_1406e3a90, registers a listener on entity+0x570 vector, appends the entity to self+0x210 and writes it back to record[0x10]. Pattern unique (0/1, 49 bytes). NOT CALL-TESTED.",
+   "refs": [
+    "docs/_re/kinds/spawn-system.md"
+   ]
+  },
+  {
+   "name": "EntityStore_CreateEntity",
+   "kind": "function",
+   "category": "entity",
+   "raw": "FUN_1406f5dc0",
+   "status": "ok",
+   "signature": "void*(void* ctx, void* entityStore, void* xform4x4, void* cbCtx)",
+   "note": "2026-07-18 RE (typed-DB session). Generic create-entity entry used by 9 call sites across the spawn/entity paths. Allocates the entity node via EntityPool_AllocNode(entityStore+0x18), optionally registers cbCtx into entity+0x588 vector, then PLACES it via a vcall ctx->vtbl[+0x18](ctx, entity, xform). Returns the entity. LIMIT (measured, not guessed): this level is TEMPLATE-AGNOSTIC \u2014 no settings/template argument reaches it; template application happens inside the ctx vcall, whose class is still unknown. So this is NOT yet a usable R.spawn(template) primitive. Pattern unique (0/1, 33 bytes). NOT CALL-TESTED.",
+   "refs": [
+    "docs/_re/kinds/spawn-system.md"
+   ]
+  },
+  {
+   "name": "EntityPool_AllocNode",
+   "kind": "function",
+   "category": "entity",
+   "raw": "FUN_140690e50",
+   "status": "ok",
+   "signature": "void*(void* pool)",
+   "note": "2026-07-18 RE (typed-DB session). Free-list node allocator behind EntityStore_CreateEntity {freecount +0x10, head +0x18, livecount +0x28, tail +0x38}. On pool-empty it constructs via a vcall (*(pool+8))->vtbl[+0x50]() then runs vtbl[+0x18] (init) on the new node \u2014 THAT vcall is the real entity constructor and remains statically unresolved (its class is unknown), which is the actual wall for a generic spawn primitive. Pattern unique (0/1, 37 bytes). NOT CALL-TESTED.",
+   "refs": [
+    "docs/_re/kinds/spawn-system.md"
    ]
   }
  ],

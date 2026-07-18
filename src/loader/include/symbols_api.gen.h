@@ -30,6 +30,76 @@ inline BookController_ResolveTabs_fn BookController_ResolveTabs() {
     return reinterpret_cast<BookController_ResolveTabs_fn>(rsmm::fn_resolve(Sym::BookController_ResolveTabs_Pattern));
 }
 
+// EntityValueEntry_Ctor  (EntityValueEntry_Ctor)
+//   void(void*, void*)
+using EntityValueEntry_Ctor_fn = void(*)(void*, void*);
+inline EntityValueEntry_Ctor_fn EntityValueEntry_Ctor() {
+    return reinterpret_cast<EntityValueEntry_Ctor_fn>(rsmm::fn_resolve(Sym::EntityValueEntry_Ctor_Pattern));
+}
+
+// EntityValueOverride_Alloc  (EntityValueOverride_Alloc)
+//   void*(void*, uint32_t, uint32_t)
+using EntityValueOverride_Alloc_fn = void*(*)(void*, uint32_t, uint32_t);
+inline EntityValueOverride_Alloc_fn EntityValueOverride_Alloc() {
+    return reinterpret_cast<EntityValueOverride_Alloc_fn>(rsmm::fn_resolve(Sym::EntityValueOverride_Alloc_Pattern));
+}
+
+// EntityValueStore_ApplyModifierEvent  (EntityValueStore_ApplyModifierEvent)
+//   void(void* store, void* modifierEvent, void* a3, void* a4)
+using EntityValueStore_ApplyModifierEvent_fn = void(*)(void*, void*, void*, void*);
+inline EntityValueStore_ApplyModifierEvent_fn EntityValueStore_ApplyModifierEvent() {
+    return reinterpret_cast<EntityValueStore_ApplyModifierEvent_fn>(rsmm::fn_resolve(Sym::EntityValueStore_ApplyModifierEvent_Pattern));
+}
+
+// EntityValueStore_InitBaseValues  (EntityValueStore_InitBaseValues)
+//   void(void* store)
+using EntityValueStore_InitBaseValues_fn = void(*)(void*);
+inline EntityValueStore_InitBaseValues_fn EntityValueStore_InitBaseValues() {
+    return reinterpret_cast<EntityValueStore_InitBaseValues_fn>(rsmm::fn_resolve(Sym::EntityValueStore_InitBaseValues_Pattern));
+}
+
+// EntityValueStore_Recompute  (EntityValueStore_Recompute)
+//   void(void* store, void* valueDef)
+using EntityValueStore_Recompute_fn = void(*)(void*, void*);
+inline EntityValueStore_Recompute_fn EntityValueStore_Recompute() {
+    return reinterpret_cast<EntityValueStore_Recompute_fn>(rsmm::fn_resolve(Sym::EntityValueStore_Recompute_Pattern));
+}
+
+// EntityValueUnion_Compare  (EntityValueUnion_Compare)
+//   uint32_t(void*, void*)
+using EntityValueUnion_Compare_fn = uint32_t(*)(void*, void*);
+inline EntityValueUnion_Compare_fn EntityValueUnion_Compare() {
+    return reinterpret_cast<EntityValueUnion_Compare_fn>(rsmm::fn_resolve(Sym::EntityValueUnion_Compare_Pattern));
+}
+
+// EntityValueUnion_CopyAssign  (EntityValueUnion_CopyAssign)
+//   void(void*, void*)
+using EntityValueUnion_CopyAssign_fn = void(*)(void*, void*);
+inline EntityValueUnion_CopyAssign_fn EntityValueUnion_CopyAssign() {
+    return reinterpret_cast<EntityValueUnion_CopyAssign_fn>(rsmm::fn_resolve(Sym::EntityValueUnion_CopyAssign_Pattern));
+}
+
+// EntityValueUnion_DefaultCtor  (EntityValueUnion_DefaultCtor)
+//   void*(void*)
+using EntityValueUnion_DefaultCtor_fn = void*(*)(void*);
+inline EntityValueUnion_DefaultCtor_fn EntityValueUnion_DefaultCtor() {
+    return reinterpret_cast<EntityValueUnion_DefaultCtor_fn>(rsmm::fn_resolve(Sym::EntityValueUnion_DefaultCtor_Pattern));
+}
+
+// EntityValueUnion_Destruct  (EntityValueUnion_Destruct)
+//   void(void*)
+using EntityValueUnion_Destruct_fn = void(*)(void*);
+inline EntityValueUnion_Destruct_fn EntityValueUnion_Destruct() {
+    return reinterpret_cast<EntityValueUnion_Destruct_fn>(rsmm::fn_resolve(Sym::EntityValueUnion_Destruct_Pattern));
+}
+
+// EntityValueUnion_InitAsType  (EntityValueUnion_InitAsType)
+//   void(void*, uint32_t)
+using EntityValueUnion_InitAsType_fn = void(*)(void*, uint32_t);
+inline EntityValueUnion_InitAsType_fn EntityValueUnion_InitAsType() {
+    return reinterpret_cast<EntityValueUnion_InitAsType_fn>(rsmm::fn_resolve(Sym::EntityValueUnion_InitAsType_Pattern));
+}
+
 // EntityValue_Get  (EntityValue_Get)
 //   void(void* valueCtx, oCEntityValueUnion* out, uint32_t crcKey)
 using EntityValue_Get_fn = void(*)(void*, void*, uint32_t);
@@ -72,11 +142,32 @@ inline Entity_FindMagicalObjectComponent_fn Entity_FindMagicalObjectComponent() 
     return reinterpret_cast<Entity_FindMagicalObjectComponent_fn>(rsmm::fn_resolve(Sym::Entity_FindMagicalObjectComponent_Pattern));
 }
 
+// Entity_GetComponentByTester  (Entity_GetComponentByTester)
+//   void*(void*, void*)
+using Entity_GetComponentByTester_fn = void*(*)(void*, void*);
+inline Entity_GetComponentByTester_fn Entity_GetComponentByTester() {
+    return reinterpret_cast<Entity_GetComponentByTester_fn>(rsmm::fn_resolve(Sym::Entity_GetComponentByTester_Pattern));
+}
+
+// Entity_GetComponentFast  (Entity_GetComponentFast)
+//   void*(void*, void*, uint32_t)
+using Entity_GetComponentFast_fn = void*(*)(void*, void*, uint32_t);
+inline Entity_GetComponentFast_fn Entity_GetComponentFast() {
+    return reinterpret_cast<Entity_GetComponentFast_fn>(rsmm::fn_resolve(Sym::Entity_GetComponentFast_Pattern));
+}
+
 // Entity_GetNetComponent  (Entity_GetNetComponent)
 //   void*(oCEntity* entity)
 using Entity_GetNetComponent_fn = void*(*)(void*);
 inline Entity_GetNetComponent_fn Entity_GetNetComponent() {
     return reinterpret_cast<Entity_GetNetComponent_fn>(rsmm::fn_resolve(Sym::Entity_GetNetComponent_Pattern));
+}
+
+// Entity_LookupMagicalObjectComponent  (Entity_LookupMagicalObjectComponent)
+//   void*(void* componentStore, void** out, oCEntity* entity)
+using Entity_LookupMagicalObjectComponent_fn = void*(*)(void*, void*, void*);
+inline Entity_LookupMagicalObjectComponent_fn Entity_LookupMagicalObjectComponent() {
+    return reinterpret_cast<Entity_LookupMagicalObjectComponent_fn>(rsmm::fn_resolve(Sym::Entity_LookupMagicalObjectComponent_Pattern));
 }
 
 // Entity_ModifyHealth  (Entity_ModifyHealth)
@@ -119,6 +210,13 @@ inline HeroController_Ctor_fn HeroController_Ctor() {
     return reinterpret_cast<HeroController_Ctor_fn>(rsmm::fn_resolve(Sym::HeroController_Ctor_Pattern));
 }
 
+// Hero_GainExperience  (Hero_GainExperience)
+//   void(void*, void*)
+using Hero_GainExperience_fn = void(*)(void*, void*);
+inline Hero_GainExperience_fn Hero_GainExperience() {
+    return reinterpret_cast<Hero_GainExperience_fn>(rsmm::fn_resolve(Sym::Hero_GainExperience_Pattern));
+}
+
 // Hero_GrantMagicalObject  (Hero_GrantMagicalObject)
 //   void(oCDtEntityCpntHeroController* hero, void* def, uint16_t count, char dupFlag, void* sourceTags)
 using Hero_GrantMagicalObject_fn = void(*)(void*, void*, uint32_t, uint32_t, void*);
@@ -153,6 +251,13 @@ using MagicalObject_SpawnAllObjects_fn = void(*)(void*, void*);
 inline MagicalObject_SpawnAllObjects_fn MagicalObject_SpawnAllObjects() {
     std::uintptr_t a = rsmm::fn_resolve(Sym::MagicalObject_SpawnAllObjects_Pattern);
     return a ? reinterpret_cast<MagicalObject_SpawnAllObjects_fn>(a + 0x70) : nullptr;
+}
+
+// ModifierEvent_Ctor  (ModifierEvent_Ctor)
+//   void*(void* buf, void* valueDef)
+using ModifierEvent_Ctor_fn = void*(*)(void*, void*);
+inline ModifierEvent_Ctor_fn ModifierEvent_Ctor() {
+    return reinterpret_cast<ModifierEvent_Ctor_fn>(rsmm::fn_resolve(Sym::ModifierEvent_Ctor_Pattern));
 }
 
 // NamedEvent_ChannelMap_Find  (NamedEvent_ChannelMap_Find)
@@ -279,6 +384,20 @@ inline UiButton_PressCommit_fn UiButton_PressCommit() {
 using Vector_Grow_fn = void(*)(void*, uint64_t, uint32_t);
 inline Vector_Grow_fn Vector_Grow() {
     return reinterpret_cast<Vector_Grow_fn>(rsmm::fn_resolve(Sym::Vector_Grow_Pattern));
+}
+
+// XpComponent_SetLevel  (XpComponent_SetLevel)
+//   void(void*, uint32_t)
+using XpComponent_SetLevel_fn = void(*)(void*, uint32_t);
+inline XpComponent_SetLevel_fn XpComponent_SetLevel() {
+    return reinterpret_cast<XpComponent_SetLevel_fn>(rsmm::fn_resolve(Sym::XpComponent_SetLevel_Pattern));
+}
+
+// XpComponent_SetXp  (XpComponent_SetXp)
+//   void(void*, uint32_t)
+using XpComponent_SetXp_fn = void(*)(void*, uint32_t);
+inline XpComponent_SetXp_fn XpComponent_SetXp() {
+    return reinterpret_cast<XpComponent_SetXp_fn>(rsmm::fn_resolve(Sym::XpComponent_SetXp_Pattern));
 }
 
 }  // namespace engine
