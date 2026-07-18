@@ -154,3 +154,40 @@ def test_anchor_callable_carries_offset():
     assert s.callable and s.anchor_offset == 0x70
     api = cmd_symbols._gen_api_header(smap)
     assert "+ 0x70" in api
+
+
+def test_audit_flags_null_and_nonprologue(tmp_path, capsys):
+    """`symbols audit` must flag a status=ok symbol the loader resolved to null,
+    and one whose dumped prologue bytes aren't a function start, while passing a
+    genuine prologue. Guards the runtime false-ok gate."""
+    import json
+
+    smap = S.load_symbol_map()
+    ok_names = [s.name for s in smap.symbols if s.status == "ok"
+                and s.kind in ("function", "event")]
+    # Build a dump that resolves EVERY ok symbol to a real prologue, then break
+    # two so only those are reported.
+    good = "48895c2408488968105657"          # mov [rsp+8],rbx; ... (real prologue)
+    dump = [{"name": n, "va": "0x1400aa000", "bytes": good} for n in ok_names]
+    dump[0] = {"name": ok_names[0], "va": None, "bytes": None}          # null
+    dump[1] = {"name": ok_names[1], "va": "0x1400bb000", "bytes": "ff" * 16}  # garbage
+    p = tmp_path / "resolved_symbols.json"
+    p.write_text(json.dumps(dump))
+
+    rc = cmd_symbols._cmd_audit(smap, p)
+    err = capsys.readouterr().err
+    # The null-resolve check needs no capstone and must always fire.
+    assert rc == 1
+    assert ok_names[0] in err and "NULL" in err.upper()
+    # The non-prologue check needs capstone; only assert it when available.
+    try:
+        import capstone  # noqa: F401
+        assert ok_names[1] in err
+    except ImportError:
+        pass
+
+
+def test_audit_missing_dump_returns_2(tmp_path):
+    smap = S.load_symbol_map()
+    rc = cmd_symbols._cmd_audit(smap, tmp_path / "nope.json")
+    assert rc == 2

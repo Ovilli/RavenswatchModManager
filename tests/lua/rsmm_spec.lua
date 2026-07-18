@@ -1,0 +1,625 @@
+-- Unit tests for the loader SDK (src/loader/lib/rsmm.lua) under a mocked
+-- native layer. Run with plain lua 5.4:  lua tests/lua/rsmm_spec.lua
+--
+-- rsmm.lua expects a global `rsmm` table (the native bindings the loader
+-- injects) plus `rsmm._internal` with the memory / call / resolve primitives.
+-- We stand up a byte-addressed fake memory and a tiny engine-call emulator so
+-- the pointer-poking stat/durability code runs end-to-end with NO game — the
+-- code most likely to crash a user's machine, previously untested.
+--
+-- Exits nonzero on the first failed assertion (pytest wrapper checks the code).
+
+local LIB = (arg and arg[1]) or "src/loader/lib"
+package.path = LIB .. "/?.lua;" .. package.path
+
+-- ---------------------------------------------------------------------------
+-- byte-addressed little-endian fake memory
+-- ---------------------------------------------------------------------------
+local mem = {}                    -- addr(int) -> byte(0..255)
+
+local function wbytes(addr, s)
+    for i = 1, #s do mem[addr + i - 1] = s:byte(i) end
+end
+local function rbytes(addr, n)
+    local t = {}
+    for i = 0, n - 1 do t[i + 1] = string.char(mem[addr + i] or 0) end
+    return table.concat(t)
+end
+local function wint(addr, val, n) wbytes(addr, string.pack("<I" .. n, val & (n == 8 and -1 or ((1 << (8 * n)) - 1)))) end
+local function rint(addr, n)       return (string.unpack("<I" .. n, rbytes(addr, n))) end
+
+-- ---------------------------------------------------------------------------
+-- engine-call emulator: models just enough of the entity value store
+-- ---------------------------------------------------------------------------
+local HERO   = 0x10000000          -- fake hero character pointer
+local STORE  = 0x20000000          -- fake value store
+local MIRROR = 0x30000000          -- HUD HP mirror
+local VALCTX_OFF, STORE_OFF = 0x2f8, 0x4c8
+local OVR_DATA_OFF, OVR_COUNT_OFF, OVR_STRIDE = 0xc0, 0xc8, 0x38
+local HP_OFF, MAXHP_OFF, HUDMIRROR_OFF, HASHMAP_OFF = 0x15c8, 0x15cc, 0x1d80, 0x80
+
+-- XP component wiring (matches rsmm.lua constants)
+local ENTITY   = 0x11000000        -- fake entity (hero+0x2f8 dereferences here)
+local XPCOMP   = 0x12000000        -- fake XpComponent
+local XPPROG   = 0x13000000        -- {level u32@0, xp u32@4}
+local XP_VFTABLE_VA = 0x140f23200
+local XP_TESTER_VA  = 0x141476e00  -- XpComponent_TypeTester data global
+local XP_SUBCLASS_VFT = 0x140f99990 -- a subclass vftable the exact scan can't match
+local XP_ARR_OFF, XP_ARR_COUNT_OFF, XP_OWNER_OFF, XP_PROGRESS_OFF = 0x190, 0x198, 0x08, 0x108
+local XP_GAIN_AMOUNT_OFF = 0x50
+
+-- give pool wiring
+local POOL_PTR_VA = 0x14143cc18    -- *(this) = pool vector
+local POOL_VEC = 0x21000000        -- 8-aligned, ptr-plausible
+
+-- Locate the override entry for `key` in the store's override vector, or nil.
+local function ovr_entry(key)
+    local data  = rint(STORE + OVR_DATA_OFF, 8)
+    local count = rint(STORE + OVR_COUNT_OFF, 4)
+    if data == 0 then return nil end
+    for i = 0, count - 1 do
+        local e = data + i * OVR_STRIDE
+        if rint(e, 4) == key then return e end
+    end
+    return nil
+end
+
+-- Named engine functions rsmm.lua's R.stat path calls (dispatched by name).
+local engine = {}
+local heap = 0x50000000
+local function scratch(sz)
+    local a = heap; heap = heap + sz + 16
+    for i = 0, sz - 1 do mem[a + i] = 0 end
+    return a
+end
+
+engine["EntityValue_Get"] = function(valctx, out, key)
+    -- Engine semantics (FUN_1403c7fa0): store = *(valctx+0x4c8). The caller
+    -- must pass the LOADED context pointer *(hero+0x2f8) — passing the field
+    -- address hero+0x2f8 instead reads a garbage store and faults in the real
+    -- engine (the 2026-07-15 in-run crash). Model that hard requirement: any
+    -- valctx whose store slot doesn't hold the seeded store raises, which the
+    -- SDK's pcall turns into a nil read — so a wrong-arg regression makes the
+    -- round-trip tests fail loudly instead of silently passing.
+    local store = rint(valctx + STORE_OFF, 8)
+    if store ~= STORE then
+        error(string.format("EntityValue_Get: bad value-context 0x%x (store slot 0x%x)",
+                            valctx, store))
+    end
+    -- override entry wins over base; report inline union at out+0x08/+0x10/+0x18
+    local e = ovr_entry(key)
+    if e then
+        local u = e + 0x08
+        wint(out + 0x08, rint(u + 0x08, 4), 4)  -- inline sentinel
+        wbytes(out + 0x10, rbytes(u + 0x10, 4)) -- value bytes
+        wint(out + 0x18, 0, 1)
+    else
+        wint(out + 0x08, 0, 4)                  -- no value: non-inline
+    end
+    return out
+end
+
+engine["EntityValueOverride_Alloc"] = function(vecPtr, count, n)
+    local data = rint(vecPtr, 8)
+    if data == 0 then
+        data = scratch(OVR_STRIDE * 64)
+        wint(vecPtr, data, 8)
+    end
+    wint(vecPtr + 8, count + n, 4)              -- store count is vec+8 (= STORE+0xc8)
+    return data + count * OVR_STRIDE
+end
+
+engine["EntityValueUnion_DefaultCtor"] = function(u)
+    -- Real ctor: vftable + inline sentinel 4 + default tag 10 (0x0a).
+    wint(u + 0x08, 4, 8)
+    wint(u + 0x18, 10, 2)
+    return u
+end
+engine["EntityValueUnion_Destruct"] = function(u) return u end
+engine["EntityValueUnion_InitAsType"] = function(u, t)
+    -- Re-init as numeric: keep inline sentinel, tag byte = type (0 = number).
+    wint(u + 0x08, 4, 8)
+    wint(u + 0x18, t & 0xff, 1)
+    return u
+end
+
+-- Models EntityValueStore_ApplyModifierEvent (FUN_14074b2f0): validates the
+-- forged oCGameEventNetworkModifier the SDK builds, then folds the amount
+-- additively into the key's override entry (a stand-in for the modifier
+-- registry + recompute — enough to prove the event reaches the engine intact).
+local MODEV_VFT = 0x140f322d0
+engine["EntityValueStore_ApplyModifierEvent"] = function(store, ev)
+    if store ~= STORE then
+        error(string.format("ApplyModifierEvent: bad store 0x%x", store))
+    end
+    -- The engine dereferences the event's vtable and union unguarded — hold
+    -- the SDK to the exact layout.
+    local vft = rint(ev + 0x00, 8)
+    if vft ~= MODEV_VFT then
+        error(string.format("ApplyModifierEvent: bad vftable 0x%x", vft))
+    end
+    assert(rint(ev + 0x08, 4) == 0, "event state must be 0 (ready)")
+    assert(rint(ev + 0x38, 8) == 0xffffffffffffffff, "fresh modifier id must be -1")
+    assert(rint(ev + 0x68, 8) == 4, "union must be inline (sentinel 4)")
+    assert(rint(ev + 0x78, 1) == 0, "union tag must be numeric (0)")
+    local key = rint(ev + 0x54, 4)
+    local amount = (string.unpack("<f", rbytes(ev + 0x70, 4)))
+    local e = ovr_entry(key)
+    if not e then
+        local data = rint(STORE + OVR_DATA_OFF, 8)
+        local count = rint(STORE + OVR_COUNT_OFF, 4)
+        if data == 0 then
+            data = scratch(OVR_STRIDE * 64)
+            wint(STORE + OVR_DATA_OFF, data, 8)
+        end
+        e = data + count * OVR_STRIDE
+        wint(STORE + OVR_COUNT_OFF, count + 1, 4)
+        wint(e, key, 4)
+        wint(e + 0x08 + 0x08, 4, 8)                 -- inline union
+        wbytes(e + 0x08 + 0x10, string.pack("<f", 0.0))
+    end
+    local cur = (string.unpack("<f", rbytes(e + 0x08 + 0x10, 4)))
+    wbytes(e + 0x08 + 0x10, string.pack("<f", cur + amount))
+    return nil
+end
+
+-- Apply a raw HP delta to the hero character (models Entity_ModifyHealth).
+engine["Entity_ModifyHealth"] = function(e, delta, _ctx)
+    local hp = (string.unpack("<f", rbytes(e + HP_OFF, 4))) + delta
+    wbytes(e + HP_OFF, string.pack("<f", hp))
+    return 0
+end
+
+-- Models Entity_GetComponentByTester (FUN_1406e3210): walks the entity
+-- component array (entity+0x190, count +0x198) and returns the first
+-- component whose class IsKindOf the tester's type. IsKindOf resolves
+-- inheritance, so unlike rsmm.lua's exact-vftable scan it also matches a
+-- SUBCLASS vftable — model that with a two-vftable accept set. Raises on a
+-- wrong tester so a bad rebase fails the test loudly.
+engine["Entity_GetComponentByTester"] = function(entity, tester)
+    if tester ~= XP_TESTER_VA then
+        error(string.format("GetComponentByTester: bad tester 0x%x", tester))
+    end
+    local arr   = rint(entity + XP_ARR_OFF, 8)
+    local count = rint(entity + XP_ARR_COUNT_OFF, 4)
+    if arr == 0 then return 0 end
+    for i = 0, count - 1 do
+        local comp = rint(arr + i * 8, 8)
+        local vft  = comp ~= 0 and rint(comp, 8) or 0
+        if vft == XP_VFTABLE_VA or vft == XP_SUBCLASS_VFT then return comp end
+    end
+    return 0
+end
+
+-- Add XP to the component's progress block (models Hero_GainExperience: it reads
+-- only *(int*)(gain+0x50); our emulator just credits xp so the call path is
+-- exercised end-to-end).
+engine["Hero_GainExperience"] = function(comp, gain)
+    local amount = rint(gain + XP_GAIN_AMOUNT_OFF, 4)
+    local prog = rint(comp + XP_PROGRESS_OFF, 8)
+    wint(prog + 4, rint(prog + 4, 4) + amount, 4)
+    return 0
+end
+
+-- ---------------------------------------------------------------------------
+-- mock native bindings (the `rsmm` global rsmm.lua reads at load)
+-- ---------------------------------------------------------------------------
+local shared  = {}
+local events  = {}                 -- event name -> { cb, ... }
+local resolved = {}                -- pattern -> fake va ; and reverse (va -> pattern)
+local resolve_n = 0                -- monotonic counter for unique fake VAs
+
+local I = {}
+function I.read_u8(a)  return rint(a, 1) end
+function I.read_u32(a) return rint(a, 4) end
+function I.read_u64(a) return rint(a, 8) end
+function I.read_f32(a) return (string.unpack("<f", rbytes(a, 4))) end
+function I.write_u8(a, v)  wint(a, v & 0xff, 1) end
+function I.write_u16(a, v) wint(a, v & 0xffff, 2) end
+function I.write_u32(a, v) wint(a, v & 0xffffffff, 4) end
+function I.write_u64(a, v) wbytes(a, string.pack("<I8", v)) end
+function I.write_f32(a, v) wbytes(a, string.pack("<f", v)) end
+function I.poke(a, v, n) wbytes(a, string.pack("<I" .. (n or 8), v)) end
+function I.scratch(sz) return scratch(sz) end
+function I.module_base() return 0x140000000 end
+local va_trusted_val = true
+function I.va_trusted() return va_trusted_val end
+function I.is_grant_target() return true end
+function I.shared_get(slot) return shared[slot] end
+function I.shared_set(slot, v) shared[slot] = v end
+function I.list_mods() return {} end
+function I.resolve(pat)
+    local va = resolved[pat]
+    if not va then
+        resolve_n = resolve_n + 1
+        va = 0x140000000 + resolve_n * 0x100
+        resolved[pat] = va; resolved[va] = pat
+    end
+    return va
+end
+function I.call(va, _sig, ...)
+    local name = resolved[va]
+    local fn = name and engine[name]
+    if fn then return fn(...) end
+    return nil
+end
+
+rsmm = {
+    _internal = I,
+    log = function() end,
+    on_event = function(ev, cb) events[ev] = events[ev] or {}; table.insert(events[ev], cb) end,
+    mod_dir = function() return "." end,
+    hook = function() return 1 end,
+    unhook = function() end,
+}
+
+-- Fire an event to every matching subscriber (exact name + "*" wildcard).
+local function fire(name, payload)
+    payload = payload or {}
+    for _, cb in ipairs(events[name] or {}) do cb(payload, name) end
+    for _, cb in ipairs(events["*"] or {}) do cb(payload, name) end
+end
+
+-- Make R.entity.hero() succeed: publish a plausible hero + wire the store.
+-- Pointer chain matches the engine (FUN_140399d00): ctx = *(hero+0x2f8) is a
+-- LOADED pointer (ENTITY doubles as the value context), store = *(ctx+0x4c8).
+local function seed_hero()
+    shared[0] = HERO                              -- native capture slot
+    shared[2] = 1                                 -- native capture active
+    I.write_f32(HERO + MAXHP_OFF, 100.0)
+    I.write_f32(HERO + HP_OFF, 80.0)
+    I.write_u64(HERO + HUDMIRROR_OFF, MIRROR)
+    I.write_f32(MIRROR, 80.0)
+    I.write_u64(HERO + VALCTX_OFF, ENTITY)              -- *(hero+0x2f8) = ctx
+    I.write_u64(ENTITY + STORE_OFF, STORE)              -- *(ctx+0x4c8)  = store
+    I.write_u32(STORE + OVR_COUNT_OFF, 0)
+    I.write_u64(STORE + HASHMAP_OFF, 0x40000000)        -- non-null base map
+    I.write_u64(STORE + OVR_DATA_OFF, 0)
+end
+
+-- Wire the hero's XP component: entity[0x190] -> [comp], comp identified by its
+-- vftable + owner back-ptr, progress block at comp+0x108.
+local function seed_xp(level, xp)
+    I.write_u64(HERO + VALCTX_OFF, ENTITY)              -- *(hero+0x2f8) = entity
+    I.write_u64(ENTITY + XP_ARR_OFF, 0x14000000)        -- component ptr array
+    I.write_u32(ENTITY + XP_ARR_COUNT_OFF, 1)
+    I.write_u64(0x14000000, XPCOMP)                     -- arr[0] = comp
+    I.write_u64(XPCOMP, XP_VFTABLE_VA)                  -- *(comp) == vftable
+    I.write_u64(XPCOMP + XP_OWNER_OFF, ENTITY)          -- owner back-ptr
+    I.write_u64(XPCOMP + XP_PROGRESS_OFF, XPPROG)
+    I.write_u32(XPPROG + 0, level)
+    I.write_u32(XPPROG + 4, xp)
+end
+
+-- Wire a magical-object pool of `n` defs; def i has GUID (0xA000+i, 0xB000+i).
+local function seed_pool(n)
+    I.write_u64(POOL_PTR_VA, POOL_VEC)                  -- *(pool va) = vec
+    local data = 0x22000000
+    I.write_u64(POOL_VEC + 0, data)
+    I.write_u32(POOL_VEC + 8, n)
+    for i = 0, n - 1 do
+        local def = 0x23000000 + i * 0x100
+        I.write_u64(data + i * 8, def)
+        I.write_u64(def + 0x88, 0xA000 + i)
+        I.write_u64(def + 0x90, 0xB000 + i)
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- load the SDK under test
+-- ---------------------------------------------------------------------------
+local chunk = assert(loadfile(LIB .. "/rsmm.lua"))
+local R = chunk()
+assert(type(R) == "table", "rsmm.lua did not return the R table")
+
+-- ---------------------------------------------------------------------------
+-- tiny test runner
+-- ---------------------------------------------------------------------------
+local passed, failed = 0, 0
+local function check(cond, msg)
+    if cond then passed = passed + 1
+    else failed = failed + 1; io.write("  FAIL: " .. tostring(msg) .. "\n") end
+end
+local function about(a, b) return math.abs(a - b) < 1e-3 end
+
+-- 1. stat catalog integrity ------------------------------------------------
+do
+    local seen = {}
+    for name, spec in pairs(R.stat.keys) do
+        check(type(spec.key) == "number", "key not number: " .. name)
+        check(spec.kind == "f32" or spec.kind == "int", "bad kind: " .. name)
+        check(seen[spec.key] == nil, "duplicate key 0x" .. string.format("%x", spec.key)
+            .. " (" .. name .. " vs " .. tostring(seen[spec.key]) .. ")")
+        seen[spec.key] = name
+    end
+    local names = R.stat.names()
+    check(#names >= 10, "catalog suspiciously small")
+    for i = 2, #names do check(names[i - 1] <= names[i], "names() not sorted") end
+end
+
+-- 2. writes are gated off by default ---------------------------------------
+do
+    seed_hero()
+    check(R.stat.set("attack_power", 42) == false, "set must fail before enable_writes()")
+end
+
+-- 3. set / get round-trip through the override cache -----------------------
+do
+    R.stat.enable_writes()
+    check(R.stat.set("attack_power", 500) == true, "set should succeed once enabled")
+    check(about(R.stat.get("attack_power"), 500), "get should read back the set value")
+end
+
+-- 4. unknown stat names are rejected ---------------------------------------
+do
+    check(R.stat.set("not_a_stat", 1) == false, "unknown set must fail")
+    check(R.stat.stick("not_a_stat", 1) == false, "unknown stick must fail")
+end
+
+-- 4b. native modifier: R.stat.modify builds a valid engine event ------------
+do
+    -- Seed the modifier-event vftable: slot 0 must point into the module
+    -- (R.stat.modify probes it before forging the event).
+    I.write_u64(MODEV_VFT, 0x140001000)
+
+    check(R.stat.modify("attack_power", 25) == true, "modify should apply")
+    check(about(R.stat.get("attack_power"), 525), "modifier folds additively (+25)")
+    check(R.stat.modify("attack_power", -100) == true, "negative modify should apply")
+    check(about(R.stat.get("attack_power"), 425), "modifier folds additively (-100)")
+    check(R.stat.modify("not_a_stat", 1) == false, "unknown modify must fail")
+    check(R.stat.modify("attack_power", "x") == false, "non-number amount must fail")
+
+    -- int-kind stat rides the same union inline slot.
+    check(R.stat.modify("dream_shards", 100) == true, "int-kind modify should apply")
+
+    -- A garbage vftable slot (wrong build) must refuse before touching engine.
+    I.write_u64(MODEV_VFT, 0)
+    check(R.stat.modify("attack_power", 1) == false, "implausible vftable must refuse")
+    I.write_u64(MODEV_VFT, 0x140001000)
+
+    -- Restore the value later sections assert on.
+    R.stat.set("attack_power", 500)
+end
+
+-- 5. durable stick: survives a recompute clobber ---------------------------
+do
+    check(R.stat.stick("move_speed", 2.5) == true, "stick should apply immediately")
+    check(about(R.stat.get("move_speed"), 2.5), "stick value should be live")
+
+    -- Simulate the engine recompute overwriting the override entry with base.
+    local e = ovr_entry(0x044dadde)              -- move_speed key
+    assert(e, "expected an override entry for move_speed")
+    I.write_f32(e + 0x08 + 0x10, 1.0)            -- clobber union value -> base
+    check(about(R.stat.get("move_speed"), 1.0), "clobber should be visible pre-reassert")
+
+    -- A gameplay-bus event must re-assert the pinned value (drift-gated).
+    fire("*", { source = "gameplay" })
+    check(about(R.stat.get("move_speed"), 2.5), "stick must re-assert after clobber")
+
+    -- A NON-gameplay (background) event must NOT trigger engine-mutating writes.
+    I.write_f32(e + 0x08 + 0x10, 1.0)            -- clobber again
+    fire("tick", { source = "loader" })
+    check(about(R.stat.get("move_speed"), 1.0), "reassert must not run off the main thread")
+end
+
+-- 6. sticky() snapshot + unstick -------------------------------------------
+do
+    local snap = R.stat.sticky()
+    check(snap.move_speed ~= nil, "sticky() should list pinned stats")
+    snap.move_speed = 999                        -- mutate the copy
+    check(R.stat.sticky().move_speed ~= 999, "sticky() must return an independent copy")
+    check(R.stat.unstick("move_speed") == true, "unstick should report it was pinned")
+    check(R.stat.unstick("move_speed") == false, "double unstick should report false")
+
+    -- After unstick, a clobber is no longer re-asserted.
+    local e = ovr_entry(0x044dadde)
+    I.write_f32(e + 0x08 + 0x10, 1.0)
+    fire("*", { source = "gameplay" })
+    check(about(R.stat.get("move_speed"), 1.0), "unpinned stat must not be re-asserted")
+end
+
+-- 7. R.entity / R.combat: HP read + modify ---------------------------------
+do
+    check(about(R.entity.hp(), 80), "entity.hp reads the HP field")
+    check(about(R.entity.max_hp(), 100), "entity.max_hp reads max")
+    check(about(R.entity.hp_frac(), 0.8), "hp_frac = hp/max")
+    check(R.combat.heal(15) == true, "heal should dispatch")
+    check(about(R.entity.hp(), 95), "heal applies +15")
+    check(R.combat.damage(35) == true, "damage should dispatch")
+    check(about(R.entity.hp(), 60), "damage applies -35")
+    check(R.combat.set_hp(50) == true, "set_hp should dispatch")
+    check(about(R.entity.hp(), 50), "set_hp pins absolute HP")
+end
+
+-- 8. R.xp: level / xp read + grant -----------------------------------------
+do
+    seed_xp(3, 120)
+    check(R.xp.level() == 3, "xp.level reads the progress block")
+    check(R.xp.xp() == 120, "xp.xp reads xp-within-level")
+    check(R.xp.grant(0) == false, "grant of 0 is a no-op")
+    check(R.xp.grant(50) == true, "grant should fire Hero_GainExperience")
+    check(R.xp.xp() == 170, "grant credits xp through the engine call")
+end
+
+-- 8b. R.xp: engine-tester fallback when the component is a subclass ---------
+-- The 2026-07-16 playtest kept reporting "XP component not found": the live
+-- component's vftable isn't XpComponent's own, so the exact-vftable scan
+-- misses. grant() (main thread) falls back to the engine's
+-- Entity_GetComponentByTester, whose IsKindOf resolves subclasses, and caches
+-- the hit so the tick-thread readers work afterwards without engine calls.
+do
+    local HERO2, ENTITY2 = 0x10800000, 0x11800000
+    local XPCOMP2, XPPROG2, ARR2, MIRROR2 = 0x12800000, 0x13800000, 0x14800000, 0x30800000
+    -- plausible hero + value wiring (reuse the seeded STORE)
+    shared[0] = HERO2; shared[2] = 1
+    I.write_f32(HERO2 + MAXHP_OFF, 100.0)
+    I.write_f32(HERO2 + HP_OFF, 80.0)
+    I.write_u64(HERO2 + HUDMIRROR_OFF, MIRROR2)
+    I.write_f32(MIRROR2, 80.0)
+    I.write_u64(HERO2 + VALCTX_OFF, ENTITY2)
+    I.write_u64(ENTITY2 + STORE_OFF, STORE)
+    -- XP component with a SUBCLASS vftable — invisible to the exact scan
+    I.write_u64(ENTITY2 + XP_ARR_OFF, ARR2)
+    I.write_u32(ENTITY2 + XP_ARR_COUNT_OFF, 1)
+    I.write_u64(ARR2, XPCOMP2)
+    I.write_u64(XPCOMP2, XP_SUBCLASS_VFT)
+    I.write_u64(XPCOMP2 + XP_OWNER_OFF, ENTITY2)
+    I.write_u64(XPCOMP2 + XP_PROGRESS_OFF, XPPROG2)
+    I.write_u32(XPPROG2 + 0, 5)
+    I.write_u32(XPPROG2 + 4, 200)
+    -- the tester data global must hold a plausible vftable pointer
+    I.write_u64(XP_TESTER_VA, 0x140f10000)
+
+    check(R.xp.xp() == nil, "scan-only read path can't see a subclass component (by design)")
+    check(R.xp.grant(25) == true, "grant finds the subclass via Entity_GetComponentByTester")
+    check(R.xp.xp() == 225, "engine hit is cached — tick-thread reads now work")
+    check(R.xp.level() == 5, "level reads through the cached component")
+
+    shared[0] = HERO                                    -- restore for later sections
+end
+
+-- 9. R.give: pool enumeration math -----------------------------------------
+do
+    seed_pool(3)
+    check(R.give.count() == 3, "give.count reads pool source count")
+    local lo, hi = R.give.guid_at(1)
+    check(lo == 0xA001 and hi == 0xB001, "guid_at returns the def GUID")
+    check(R.give.guid_at(-1) == nil, "guid_at rejects negative index")
+    check(R.give.guid_at(3) == nil, "guid_at rejects out-of-range index")
+    local seen = 0
+    for i, glo, ghi in R.give.each() do
+        check(glo == 0xA000 + i and ghi == 0xB000 + i, "each() yields matching GUIDs")
+        seen = seen + 1
+    end
+    check(seen == 3, "each() iterates every loaded item exactly once")
+end
+
+-- 10. fail-closed guards: the safety net that makes engine writes acceptable --
+do
+    -- (a) symbol-map/build mismatch (va_trusted == false) disables every
+    -- va-gated, engine-mutating feature — no stray writes on a wrong build.
+    va_trusted_val = false
+    check(R.stat.set("attack_power", 1) == false, "stat.set must fail when va untrusted")
+    check(R.stat.modify("attack_power", 1) == false, "stat.modify must fail when va untrusted")
+    check(R.combat.heal(1) == false, "combat.heal must fail when va untrusted")
+    check(R.xp.grant(1) == false, "xp.grant must fail when va untrusted")
+    va_trusted_val = true
+
+    -- (b) an implausible hero (garbage max-HP) is rejected: hero() goes nil, so
+    -- reads return nil and mutators refuse rather than deref a bad pointer.
+    local saved = I.read_f32(HERO + MAXHP_OFF)
+    I.write_f32(HERO + MAXHP_OFF, 0.0)                 -- max HP 0 => implausible
+    check(R.entity.hero() == nil, "implausible hero must not be captured")
+    check(R.entity.hp() == nil, "hp() nil when no valid hero")
+    check(R.combat.heal(1) == false, "combat refuses without a plausible hero")
+    check(R.stat.set("attack_power", 1) == false, "stat.set refuses without a hero")
+    I.write_f32(HERO + MAXHP_OFF, saved)              -- restore
+    check(R.entity.hero() ~= nil, "hero recaptured after restore")
+
+    -- (c) no value store => stat reads degrade to nil, writes refuse.
+    local savedstore = I.read_u64(ENTITY + STORE_OFF)
+    I.write_u64(ENTITY + STORE_OFF, 0)                -- *(ctx+0x4c8) = 0
+    check(R.stat.get("attack_power") == nil, "stat.get nil with no store")
+    check(R.stat.set("attack_power", 1) == false, "stat.set refuses with no store")
+    I.write_u64(ENTITY + STORE_OFF, savedstore)
+
+    -- (d) a dead value-context pointer (*(hero+0x2f8) = 0) => same fail-closed
+    -- behavior; the engine is never called with an unvalidated context. This is
+    -- the 2026-07-15 crash shape: an implausible ctx/store chain must never
+    -- reach EntityValue_Get (whose mock raises on a bad context).
+    local savedctx = I.read_u64(HERO + VALCTX_OFF)
+    I.write_u64(HERO + VALCTX_OFF, 0)
+    check(R.stat.get("attack_power") == nil, "stat.get nil with no value ctx")
+    check(R.stat.set("attack_power", 1) == false, "stat.set refuses with no value ctx")
+    I.write_u64(HERO + VALCTX_OFF, savedctx)
+    check(about(R.stat.get("attack_power"), 500), "stat path healthy again after restore")
+end
+
+-- 11. pointer-safety library -----------------------------------------------
+-- The guardrail that turns the crash-by-bad-pointer class (2026-07-15 ctx
+-- deref, 2026-07-17 probe->engine walk) into fail-closed no-ops.
+do
+    local BASE = I.module_base()               -- 0x140000000 in the mock
+
+    -- in_image: pointer inside the loaded game module span, else false.
+    check(R.ptr.in_image(BASE + 0x1000) == true, "in_image accepts an image pointer")
+    check(R.ptr.in_image(BASE + 0x2000000) == false, "in_image rejects past the image span")
+    check(R.ptr.in_image(0x50000000) == false, "in_image rejects a heap pointer")
+    check(R.ptr.in_image(0) == false, "in_image rejects null")
+
+    -- has_vtable: object whose *(obj) points into the image.
+    local OBJ = 0x60000000
+    I.write_u64(OBJ, BASE + 0x1230)            -- vtable in image
+    check(R.ptr.has_vtable(OBJ) == true, "has_vtable accepts obj with image vtable")
+    I.write_u64(OBJ, 0x50000000)               -- vtable in heap = not a live object
+    check(R.ptr.has_vtable(OBJ) == false, "has_vtable rejects obj with heap vtable")
+
+    -- vector_valid: {data, count} array with per-entry validation.
+    local HOLDER, ARR = 0x61000000, 0x62000000
+    I.write_u64(HOLDER + 0x190, ARR)
+    I.write_u32(HOLDER + 0x198, 2)
+    for i = 0, 1 do
+        local e = 0x63000000 + i * 0x1000
+        I.write_u64(ARR + i * 8, e)
+        I.write_u64(e, BASE + 0x100)           -- entry vtable in image
+        I.write_u64(e + 8, HOLDER)             -- owner back-ptr
+    end
+    local function entry_ok(elem, owner)
+        return R.ptr.has_vtable(elem) and I.read_u64(elem + 8) == owner
+    end
+    check(R.ptr.vector_valid(HOLDER, 0x190, 0x198, { min = 1, check_entry = entry_ok }) == true,
+          "vector_valid accepts a fully-consistent array")
+    -- corrupt entry 1's vtable -> whole vector rejected (fail closed).
+    I.write_u64(0x63001000, 0x50000000)
+    check(R.ptr.vector_valid(HOLDER, 0x190, 0x198, { min = 1, check_entry = entry_ok }) == false,
+          "vector_valid rejects when any entry fails validation")
+    I.write_u64(0x63001000, BASE + 0x100)      -- restore
+    -- an insane count is rejected before any entry read (no spin / no fault).
+    I.write_u32(HOLDER + 0x198, 0x99999)
+    check(R.ptr.vector_valid(HOLDER, 0x190, 0x198, { min = 1 }) == false,
+          "vector_valid rejects an out-of-bound count")
+    I.write_u32(HOLDER + 0x198, 2)
+
+    -- call_safe: on a bad pointer arg it must REFUSE before reaching the
+    -- engine (returns nil, makes no call). A tripwire engine fn records if it
+    -- was ever entered — it must stay false through every refusal.
+    local called = false
+    engine["Entity_GetComponentByTester"] = function() called = true; return 0 end
+    -- Bad arg 1 (null) -> refused.
+    check(R.engine.call_safe("Entity_GetComponentByTester", { 1 }, 0, BASE + 0x10) == nil,
+          "call_safe refuses a null pointer arg")
+    -- Bad arg 2 under a custom validator (must be in image) -> refused.
+    check(R.engine.call_safe("Entity_GetComponentByTester", { { 2, R.ptr.in_image } },
+          OBJ, 0x50000000) == nil, "call_safe refuses when a validator fails")
+    check(called == false, "call_safe never entered the engine on a refusal")
+end
+
+-- 12. R.debug.find_arrays: the generalized struct-hunt aid -------------------
+do
+    local BASE = I.module_base()
+    -- Build a holder whose field +0x38 points at an object carrying a valid
+    -- 3-entry component array at +0x190/+0x198 (every entry an image-vtable'd
+    -- object). find_arrays must locate exactly that field.
+    local ROOT, SUB, ARR = 0x70000000, 0x71000000, 0x72000000
+    I.write_u64(ROOT + 0x38, SUB)
+    I.write_u64(SUB + 0x190, ARR)
+    I.write_u32(SUB + 0x198, 3)
+    for i = 0, 2 do
+        local e = 0x73000000 + i * 0x1000
+        I.write_u64(ARR + i * 8, e)
+        I.write_u64(e, BASE + 0x200)           -- entry vtable in image
+    end
+    local hits = R.debug.find_arrays(ROOT, { max_off = 0x100,
+        check_entry = function(elem) return R.ptr.has_vtable(elem) end })
+    check(#hits == 1, "find_arrays locates exactly one array-holding field")
+    check(hits[1] and hits[1].off == 0x38, "find_arrays reports the right field offset")
+    check(hits[1] and hits[1].count == 3, "find_arrays reports the entry count")
+    check(hits[1] and hits[1].holder == SUB, "find_arrays reports the holder pointer")
+    -- an object with no valid sub-vector yields nothing (fail-quiet).
+    check(#R.debug.find_arrays(0x74000000, { max_off = 0x40 }) == 0,
+          "find_arrays returns empty when nothing matches")
+end
+
+-- ---------------------------------------------------------------------------
+io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
+os.exit(failed == 0 and 0 or 1)
