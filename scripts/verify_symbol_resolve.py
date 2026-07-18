@@ -81,7 +81,34 @@ def main() -> int:
         off = hits[mi]
         checked += 1
         prev = text[max(0, off - 8):off]
-        boundary = prev.endswith((b"\xcc", b"\xc3", b"\x90")) or prev[-1:] in (b"\xc2",)
+        # A function start is preceded by a TERMINATOR of the previous function:
+        # ret (c3), ret imm16 (c2 ..), int3 padding (cc), nop (90), OR a tail
+        # call — jmp rel32 (e9 + 4 disp bytes) / jmp rel8 (eb + 1). The tail-jmp
+        # case is common (a function whose last act is `jmp helper`) and was a
+        # false-positive before: e.g. EntityValueStore_InitBaseValues sits right
+        # after `... 41 5e e9 50 ab fc ff` (pop r14; jmp helper).
+        boundary = (
+            prev.endswith((b"\xcc", b"\xc3", b"\x90"))
+            or prev[-1:] == b"\xc2"
+            or prev[-5:-4] == b"\xe9"          # jmp rel32 ends exactly at off
+            or prev[-2:-1] == b"\xeb"          # jmp rel8 ends exactly at off
+        )
+        # Robust terminator check: disassemble the 16 bytes before `off`; if any
+        # instruction ends EXACTLY at off and is a control-flow terminator
+        # (ret / any jmp form, incl. INDIRECT tail calls like `jmp [rax+0x10]`
+        # = ff /4, which the byte checks above miss), it's a real boundary. This
+        # caught GoPtrOwnerRelay_ForwardCall, preceded by `jmp qword ptr [rax+0x10]`.
+        if not boundary:
+            for start in range(max(0, off - 16), off):
+                pi = next(md.disasm(text[start:off], tva + start, count=1), None)
+                if pi is None:
+                    continue
+                if start + pi.size == off and (
+                    pi.mnemonic == "ret" or pi.mnemonic.startswith("jmp")
+                    or pi.mnemonic == "int3"
+                ):
+                    boundary = True
+                    break
         ins = list(md.disasm(text[off:off + 16], tva + off, count=1))
         first = ins[0].mnemonic if ins else "?"
         prologue = first in PROLOGUE_FIRST

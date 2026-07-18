@@ -36,9 +36,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gen_function_patterns as gen  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO / "tools"))
+try:
+    import mine_fingerprints as fp  # noqa: E402
+except ImportError:
+    fp = None
 OLD_TEXT_BIN = REPO / "docs/_re/out/text_section.bin"
 OLD_TEXT_META = REPO / "docs/_re/out/text_section.json"
 SYMBOLS_JSON = REPO / "data/symbols.json"
+NEW_CORPUS = REPO / "docs/_re/out_new/decompiled_new.jsonl"
 
 PROLOGUE_TRY = (32, 48, 64, 96, 128)  # grow until unique in old .text
 
@@ -191,8 +197,59 @@ def main() -> int:
             still_unmatched.append(entry)
     unmatched = still_unmatched
 
-    print(f"remapped {len(mapping)}: {same} unmoved, {moved} moved; "
-          f"{len(unmatched)} unmatched", file=sys.stderr)
+    # Pass 3 — content fingerprints. Prologue passes fail exactly where the
+    # bytes shifted most (the July false-ok class). data/symbol_fingerprints.json
+    # locates a function by build-invariant CONTENT — its distinctive constants,
+    # string refs, and (crucially) the set of NAMED symbols it calls / is called
+    # by. The name map comes from passes 1-2: the easy symbols they just placed
+    # become the call-graph anchors that pin down the hard ones. Only unique,
+    # corpus-function-start matches are accepted, so this can't reintroduce a
+    # mid-instruction false-ok.
+    fp_recovered = 0
+    if fp is not None and NEW_CORPUS.exists() and unmatched:
+        fps = fp.load_fingerprints()
+        if fps:
+            corpus = fp.load_corpus(NEW_CORPUS)
+            # addr2name for the NEW build from what passes 1-2 already mapped.
+            addr2name: dict[int, str] = {}
+            for _old, v in mapping.items():
+                na = int(v["new_addr"], 16)
+                for nm in v["symbols"]:
+                    addr2name.setdefault(na, nm)
+            unresolved_names = {n for e in unmatched for n in
+                                targets.get(int(e.split()[0], 16), [])}
+            want = {n: f for n, f in fps.items() if n in unresolved_names}
+            located = fp.locate(want, corpus, addr2name) if want else {}
+            fp_hits = {}
+            for name, r in located.items():
+                if not r["unique"] or r["addr"] not in corpus:
+                    continue
+                fp_hits[name] = r["addr"]
+            if fp_hits:
+                # rebuild the unmatched list, promoting fingerprint hits.
+                promoted = []
+                for e in unmatched:
+                    old_addr = int(e.split()[0], 16)
+                    names = targets.get(old_addr, [])
+                    hit = next((fp_hits[n] for n in names if n in fp_hits), None)
+                    if hit is None:
+                        promoted.append(e)
+                        continue
+                    mapping[f"0x{old_addr:x}"] = {
+                        "new_addr": f"0x{hit:x}",
+                        "symbols": names,
+                        "pattern": None,
+                        "match_rank": 0,
+                        "matches": 1,
+                        "via": "fingerprint",
+                    }
+                    moved += 1
+                    fp_recovered += 1
+                unmatched = promoted
+
+    print(f"remapped {len(mapping)}: {same} unmoved, {moved} moved "
+          f"({fp_recovered} via fingerprint); {len(unmatched)} unmatched",
+          file=sys.stderr)
     for u in unmatched:
         print(f"  UNMATCHED {u}", file=sys.stderr)
 
