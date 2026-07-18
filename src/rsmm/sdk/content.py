@@ -47,7 +47,12 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # rows ARE spawner-driven per Ghidra — m_oGameModifierUiSpawner)
     "game_mode": "experimental",  # chapter vector deserializer-verified 2026-07-05 (poly-ptr
                               # vector @def+0x290, ordered refs); in-game honoring unproven
-    "reward": "experimental", # codec deserializer-verified, plain override; edited roll unproven
+    "reward": "experimental", # codec byte-verified, but 2026-07-12 playtest: emptying a
+                              # reward_types row did NOT stop chests. Roll FUN_1401e9800 has 2
+                              # blocks — a count-gated reward_types path (edit honoured) AND a
+                              # guaranteed block on a different (context+0xa8) def that bypasses
+                              # counts. Ban unreliable; needs a runtime def-dump to pin the
+                              # def/field. See docs/_re/kinds/rewards.md
 }
 
 CONFIDENCE_LEVELS = ("confirmed", "experimental", "guess")

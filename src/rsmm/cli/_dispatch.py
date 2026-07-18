@@ -64,6 +64,7 @@ BUILTIN = {
     "unify":             "rsmm.cli.unify",
     "symbols":           "rsmm.cli.cmd_symbols",
     "update-data":       "rsmm.cli.cmd_update_data",
+    "completion":        "rsmm.cli.cmd_completion",
 }
 
 SDK = {

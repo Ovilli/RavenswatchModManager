@@ -365,6 +365,15 @@ LOADER_FLAGS: list[dict[str, Any]] = [
                        "skill slot. For development only.",
         "safe": False,
     },
+    {
+        "name": "RSMM_DUMP_SYMBOLS",
+        "label": "Dump resolved symbols (RE/dev)",
+        "description": "At boot, write <game>/rsmm/resolved_symbols.json — the "
+                       "addresses the loader actually resolved every semantic "
+                       "pattern to. Feeds `rsmm symbols audit`. Read-only; adds "
+                       "~1s to load. Dev/RE aid.",
+        "safe": True,
+    },
 ]
 
 _LOADER_FLAGS_FILE = "rsmm_loader_flags.json"

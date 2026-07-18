@@ -77,6 +77,14 @@ REWARD_DEF: Final = RewardDefOffsets()
 # Source: FUN_1401e0e10 (ctor) + FUN_1401e10f0 (dtor).
 # The three int signals are at +0x1f8/+0x218/+0x238 — labels are
 # TODO_CONFIRM (educated guess from declaration order).
+#
+# SAFETY NOTE: these int-signal offsets are NOT written by the active item
+# pipeline. `items.emit()` clones a real base and applies only author-provided,
+# label-resolved `value_patches` (in-game verified). The rarity/count/level
+# patches below are staged only into the `_emit_legacy_manifest` fallback JSON
+# (`_pending_items/<id>.json`), which no apply/cook step consumes yet — so a
+# wrong label here can never corrupt a shipped item. Do not treat them as live
+# until an apply consumer exists AND the labels are confirmed via save-game diff.
 # ----------------------------------------------------------------------------
 
 @dataclass(frozen=True)

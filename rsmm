@@ -22,6 +22,7 @@ documented `R.*` API. See `docs/MODDING.md`.
     rsmm test [<id>] [--record]         diff build.py output vs checked-in fixture
     rsmm install-loader [game-dir]      copy winhttp.dll + SDK lib into the game install
     rsmm log [-f] [-n N] [--grep S]     read the loader log
+    rsmm completion bash|zsh|fish       emit a shell tab-completion script
     rsmm rebuild-asset-map              re-run find_iyg.py from UsedRscList.ot
     rsmm decode <cooked-file>           dump oCTextSaver structure
 

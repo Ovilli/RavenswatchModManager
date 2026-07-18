@@ -119,6 +119,100 @@ def _cmd_check(smap: SymbolMap) -> int:
     return 1
 
 
+_PROLOGUE_FIRST = frozenset((
+    "push", "sub", "mov", "lea", "xor", "test", "cmp", "and", "or", "ret",
+    "jmp", "movss", "movaps", "movsxd", "movzx", "inc", "dec", "call", "lock",
+    "xchg", "int3",
+))
+
+
+def _cmd_audit(smap: SymbolMap, dump_path: Path) -> int:
+    """Diff the loader's RUNTIME ground-truth dump against the symbol map.
+
+    `<game>/rsmm/resolved_symbols.json` is written by the loader itself
+    (RSMM_DUMP_SYMBOLS=1) — {name, va, first-16-prologue-bytes} for every
+    semantic pattern, resolved by the SAME code that runs in-game. This
+    catches the false-ok class from the actual process, not a Python
+    reimplementation: a status=ok symbol that resolved to null, or whose
+    prologue bytes don't disassemble to a function start, is BROKEN.
+    """
+    if not dump_path.exists():
+        print(f"no runtime dump at {dump_path}\n"
+              "Launch the game once with RSMM_DUMP_SYMBOLS=1 in the loader flags "
+              "(or Steam launch options) to produce it.", file=sys.stderr)
+        return 2
+    try:
+        dump = {d["name"]: d for d in json.loads(dump_path.read_text())}
+    except (json.JSONDecodeError, OSError, KeyError) as exc:
+        print(f"cannot read dump: {exc}", file=sys.stderr)
+        return 2
+
+    md = None
+    try:
+        import capstone
+        md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)
+    except ImportError:
+        pass  # prologue disasm skipped; null/mismatch checks still run
+
+    by_name = {s.name: s for s in smap.symbols}
+    broken: list[tuple[str, str]] = []
+    drift: list[tuple[str, str]] = []
+    ok = 0
+    for name, s in by_name.items():
+        if s.kind not in ("function", "event"):
+            continue
+        rec = dump.get(name)
+        if rec is None:
+            if s.status == "ok":
+                broken.append((name, "status=ok but ABSENT from the runtime dump"))
+            continue
+        va = rec.get("va")
+        if va is None:
+            if s.status == "ok":
+                broken.append((name, "status=ok but the loader RESOLVED IT TO NULL "
+                                     "(pattern missing / no hit) — capability dead in-game"))
+            continue
+        va_int = int(va, 16)
+        # prologue check against the dumped bytes (no exe needed).
+        raw = rec.get("bytes")
+        if md and raw:
+            code = bytes.fromhex(raw)
+            ins = list(md.disasm(code, va_int, count=1))
+            first = ins[0].mnemonic if ins else "?"
+            if first not in _PROLOGUE_FIRST:
+                broken.append((name, f"resolved 0x{va_int:x} but first insn '{first}' "
+                                     "is not a prologue (mid-instruction / wrong fn)"))
+                continue
+        # drift vs the stored raw address (informational — raw may be a build
+        # behind; a large delta on a status=ok symbol is worth a look).
+        try:
+            stored = s.preferred_addr(0x140000000)
+            if abs(stored - va_int) > 0x100000:
+                drift.append((name, f"stored 0x{stored:x} vs runtime 0x{va_int:x} "
+                                    f"(Δ0x{abs(stored - va_int):x})"))
+        except ValueError:
+            pass
+        ok += 1
+
+    print(f"audited {len(dump)} runtime-resolved symbols against the map; {ok} clean.")
+    if drift:
+        print(f"\n{len(drift)} address drift (stored addr is stale — refresh symbols.json "
+              "raw from the runtime VA):", file=sys.stderr)
+        for n, why in drift:
+            print(f"  {n}: {why}", file=sys.stderr)
+    if broken:
+        print(f"\n{len(broken)} BROKEN symbol(s) — the loader is running these wrong:",
+              file=sys.stderr)
+        for n, why in broken:
+            print(f"  {n}: {why}", file=sys.stderr)
+        print("\nRecover the address (scripts/disasm.py --resolve NAME) or downgrade to "
+              "'unverified' + strip the pattern so the loader fails closed. "
+              "See the symbols-pipeline memory.", file=sys.stderr)
+        return 1
+    print("OK: every status=ok symbol resolved in-game to a real function start.")
+    return 0
+
+
 def _cpp_ident(name: str) -> str:
     return name
 
@@ -544,6 +638,10 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="also rename symbols whose address is from an older corpus (risky)",
     )
+    pa = sub.add_parser("audit", help="diff the loader's runtime resolved_symbols.json "
+                                      "against the map (needs a launch with RSMM_DUMP_SYMBOLS=1)")
+    pa.add_argument("--dump", type=Path, default=None,
+                    help="path to resolved_symbols.json (default: <game>/rsmm/…)")
     args = ap.parse_args(argv)
 
     smap = load_symbol_map()
@@ -559,6 +657,12 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_gen(smap, args.check)
     if args.cmd == "ghidra-export":
         return _cmd_ghidra_export(smap, args.json, args.out, args.include_unverified)
+    if args.cmd == "audit":
+        dump = args.dump
+        if dump is None:
+            from rsmm.engine.paths import DEFAULT_GAME_DIR
+            dump = DEFAULT_GAME_DIR / "rsmm" / "resolved_symbols.json"
+        return _cmd_audit(smap, dump)
     ap.print_help()
     return 1
 

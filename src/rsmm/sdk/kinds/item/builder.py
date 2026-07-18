@@ -220,8 +220,10 @@ def build_magical_object(
     initial values plus its flag-list tags.
 
     The rarity/count/level mapping is TODO_CONFIRM — we annotate each
-    patch with ``source="todo_confirm"`` so the apply layer can decide
-    whether to write them or skip them on a strict pass.
+    patch with ``source="todo_confirm"``. These patches are staged only into
+    the legacy ``_pending_items`` manifest and are NOT consumed by the active
+    cook pipeline (``items.emit`` → ``magic_item_cook.build_magic_item``), so
+    they never reach a shipped item's bytes; see ``schema.py`` SAFETY NOTE.
     """
     patches: list[FieldPatch] = [
         FieldPatch("signal_rarity", S.MAGICAL_OBJECT.signal_rarity,

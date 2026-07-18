@@ -25,9 +25,42 @@ def _validate_game_dir(raw: str) -> Path:
     return p
 
 
+def _symbol_resolve_gate(game_dir: Path) -> bool:
+    """Dev-only fail-closed check before planting: run scripts/verify_symbol_resolve.py
+    against the game's OWN exe so a DLL carrying mis-resolved (mid-instruction)
+    symbols is never deployed — the July-2026 false-ok class that shipped ~63
+    broken symbols and crashed the gameplay bus. Returns True (proceed) when the
+    check passes OR cannot run (frozen sidecar, no capstone, no scripts/, no exe)
+    — end users hit those and are unaffected; only a dev checkout gates.
+    """
+    if getattr(sys, "frozen", False):
+        return True
+    script = REPO_ROOT / "scripts" / "verify_symbol_resolve.py"
+    exe = game_dir / "Ravenswatch.exe"
+    if not script.exists() or not exe.exists():
+        return True
+    try:
+        rc = subprocess.call([sys.executable, str(script), "--exe", str(exe)])
+    except OSError:
+        return True
+    if rc != 0:
+        print(
+            "\ninstall-loader: symbol-resolve gate FAILED — refusing to plant a DLL "
+            "with mid-instruction symbols. Recover the addresses or downgrade+strip "
+            "them (see the symbols-pipeline memory), or pass --force to override.",
+            file=sys.stderr,
+        )
+        return False
+    return True
+
+
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
+    force = False
+    if "--force" in argv:
+        force = True
+        argv = [a for a in argv if a != "--force"]
     if not argv:
         if (DEFAULT_GAME_DIR / COOKING_SUBDIR).is_dir():
             argv = [str(DEFAULT_GAME_DIR)]
@@ -46,6 +79,9 @@ def main(argv: list[str] | None = None) -> int:
         argv[0] = str(_validate_game_dir(argv[0]))
     except ValueError as exc:
         print(f"install-loader: {exc}", file=sys.stderr)
+        return 1
+
+    if not force and not _symbol_resolve_gate(Path(argv[0])):
         return 1
 
     # Use REPO_ROOT so this works under both a source checkout and a
