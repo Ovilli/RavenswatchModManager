@@ -42,7 +42,9 @@ local HP_OFF, MAXHP_OFF, HUDMIRROR_OFF, HASHMAP_OFF = 0x15c8, 0x15cc, 0x1d80, 0x
 local ENTITY   = 0x11000000        -- fake entity (hero+0x2f8 dereferences here)
 local XPCOMP   = 0x12000000        -- fake XpComponent
 local XPPROG   = 0x13000000        -- {level u32@0, xp u32@4}
-local XP_VFTABLE_VA = 0x140f23200
+-- Must track rsmm.lua's XP_VFTABLE_VA (corrected 2026-07-18: the old
+-- 0x140f23200 was mid-vtable, not a vtable start).
+local XP_VFTABLE_VA = 0x140f231b0
 local XP_TESTER_VA  = 0x141476e00  -- XpComponent_TypeTester data global
 local XP_SUBCLASS_VFT = 0x140f99990 -- a subclass vftable the exact scan can't match
 local XP_ARR_OFF, XP_ARR_COUNT_OFF, XP_OWNER_OFF, XP_PROGRESS_OFF = 0x190, 0x198, 0x08, 0x108
@@ -324,17 +326,74 @@ local function about(a, b) return math.abs(a - b) < 1e-3 end
 
 -- 1. stat catalog integrity ------------------------------------------------
 do
+    -- Two per-slot families share their base key with the hero-wide stat: the
+    -- registry's crit / cooldown families START at the hero-wide key, so
+    -- `<stat>_primary` is genuinely the same id. attack_power does NOT alias.
+    local allowed_alias = {
+        crit_chance_primary        = "crit_chance",
+        cooldown_reduction_primary = "cooldown_reduction",
+    }
     local seen = {}
     for name, spec in pairs(R.stat.keys) do
         check(type(spec.key) == "number", "key not number: " .. name)
         check(spec.kind == "f32" or spec.kind == "int", "bad kind: " .. name)
-        check(seen[spec.key] == nil, "duplicate key 0x" .. string.format("%x", spec.key)
-            .. " (" .. name .. " vs " .. tostring(seen[spec.key]) .. ")")
-        seen[spec.key] = name
+        local prev = seen[spec.key]
+        local ok = prev == nil or allowed_alias[name] == prev or allowed_alias[prev] == name
+        check(ok, "duplicate key 0x" .. string.format("%x", spec.key)
+            .. " (" .. name .. " vs " .. tostring(prev) .. ")")
+        seen[spec.key] = prev or name
     end
+    check(R.stat.keys.attack_power.key ~= R.stat.keys.attack_power_primary.key,
+          "attack_power must NOT alias its per-slot family base")
     local names = R.stat.names()
     check(#names >= 10, "catalog suspiciously small")
     for i = 2, #names do check(names[i - 1] <= names[i], "names() not sorted") end
+end
+
+-- 1b. per-slot + status keys -----------------------------------------------
+do
+    local fam = { attack_power = 0x15a5cf40, crit_chance = 0x15c7d482,
+                  cooldown_reduction = 0x15b45d80 }
+    local order = { "primary", "secondary", "defensive", "trait", "ultimate" }
+    for family, base in pairs(fam) do
+        for i, slot in ipairs(order) do
+            local spec = R.stat.keys[family .. "_" .. slot]
+            check(spec ~= nil, "missing " .. family .. "_" .. slot)
+            check(spec and spec.key == base + 2 * (i - 1),
+                  family .. "_" .. slot .. " wrong key")
+            check(spec and spec.kind == "f32", family .. "_" .. slot .. " should be f32")
+        end
+    end
+    check(R.stat.keys.attack_power_basic.key == 0x15a5cf51, "attack_power_basic key")
+    check(R.stat.keys.attack_power_dash.key == 0x183a609a, "attack_power_dash key")
+    check(R.stat.keys.crit_chance_dash.key == 0x183a60b6, "crit_chance_dash key")
+    check(R.stat.keys.cooldown_reduction_dash.key == 0x183a5fc9, "cooldown_reduction_dash key")
+    check((R.stat.keys.attack_power_basic.key - 0x15a5cf40) % 2 == 1,
+          "basic is off-parity, so it cannot be a 2*slot member")
+
+    local st = { "strength", "regen", "haste", "concealed", "resistant",
+                 "rooted", "vulnerable", "ignite", "chilled", "poison" }
+    for i, n in ipairs(st) do
+        local spec = R.stat.keys["status_" .. n]
+        check(spec ~= nil, "missing status_" .. n)
+        check(spec and spec.key == 0x16ede056 + 2 * (i - 1), "status_" .. n .. " wrong key")
+        check(spec and spec.kind == "int", "status_" .. n .. " should be int")
+    end
+    for _, n in ipairs({ "shield", "bleed", "cursed", "marked" }) do
+        check(R.stat.keys["status_" .. n] ~= nil, "missing status_" .. n)
+    end
+
+    check(R.stat.key("attack_power", "trait").key == 0x15a5cf46, "key() by slot name")
+    check(R.stat.key("attack_power", 3).key == 0x15a5cf46, "key() by slot index")
+    check(R.stat.key("attack_power") == R.stat.keys.attack_power, "key() with no slot")
+    check(R.stat.key("attack_power", "nope") == nil, "key() unknown slot name -> nil")
+    check(R.stat.key("attack_power", 99) == nil, "key() unknown slot index -> nil")
+    check(R.stat.key("no_such_stat", "trait") == nil, "key() unknown stat -> nil")
+
+    local names, found = R.stat.names(), {}
+    for _, n in ipairs(names) do found[n] = true end
+    check(found.attack_power_ultimate, "names() lists per-slot entries")
+    check(found.status_poison, "names() lists status entries")
 end
 
 -- 2. writes are gated off by default ---------------------------------------

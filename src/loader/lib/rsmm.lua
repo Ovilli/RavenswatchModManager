@@ -947,6 +947,68 @@ R.stat.keys = {
     difficulty_xp_mult = { key = 0x19bddb2e, kind = "f32" },
 }
 
+-- Ability slot order, as registered by EntityValueRegistry_RegisterAll.
+R.stat.slots = { primary = 0, secondary = 1, defensive = 2, trait = 3, ultimate = 4 }
+
+-- Per-slot stat families: the key is `base + 2*slot` (adjacent stats differ by
+-- 2; see docs/_re/kinds/stats.md). These let a mod touch ONE ability's damage /
+-- crit / cooldown instead of the hero-wide stat.
+--
+-- NOTE for attack_power: the hero-wide key (0x15a486c4) is NOT this family's
+-- base -- the per-slot family starts at 0x15a5cf40. For crit_chance and
+-- cooldown_reduction the family base IS the hero-wide key, so `*_primary`
+-- resolves to the same key as the bare name; that mirrors the registry and is
+-- not a bug.
+local _slot_families = {
+    attack_power       = 0x15a5cf40,
+    crit_chance        = 0x15c7d482,
+    cooldown_reduction = 0x15b45d80,
+}
+for family, base in pairs(_slot_families) do
+    for slot_name, slot in pairs(R.stat.slots) do
+        R.stat.keys[family .. "_" .. slot_name] = { key = base + 2 * slot, kind = "f32" }
+    end
+end
+
+-- Off-family specials. `basic` sits +0x11 from the attack-power family base
+-- (NOT a `+2*slot` member), and the dash keys live in a different range
+-- entirely, so they are listed explicitly rather than derived.
+R.stat.keys.attack_power_basic      = { key = 0x15a5cf51, kind = "f32" }
+R.stat.keys.attack_power_dash       = { key = 0x183a609a, kind = "f32" }
+R.stat.keys.crit_chance_dash        = { key = 0x183a60b6, kind = "f32" }
+R.stat.keys.cooldown_reduction_dash = { key = 0x183a5fc9, kind = "f32" }
+
+-- Status-effect family (FUN_1401d9070): `0x16ede056 + 2*i`, in registration
+-- order. Stacks are ints.
+local _status_family = {
+    "strength", "regen", "haste", "concealed", "resistant",
+    "rooted", "vulnerable", "ignite", "chilled", "poison",
+}
+for i, name in ipairs(_status_family) do
+    R.stat.keys["status_" .. name] = { key = 0x16ede056 + 2 * (i - 1), kind = "int" }
+end
+
+-- Status effects registered outside that family.
+R.stat.keys.status_shield = { key = 0x173fcd75, kind = "int" }
+R.stat.keys.status_bleed  = { key = 0x173fcdac, kind = "int" }
+R.stat.keys.status_cursed = { key = 0x1a5d3d69, kind = "int" }
+R.stat.keys.status_marked = { key = 0x1a40367d, kind = "int" }
+
+-- Resolve a family + slot to its key spec: R.stat.key("attack_power", "trait")
+-- or R.stat.key("attack_power", 3). Returns nil for an unknown pair.
+function R.stat.key(name, slot)
+    if slot == nil then return R.stat.keys[name] end
+    local slot_name = slot
+    if type(slot) == "number" then
+        slot_name = nil
+        for n, i in pairs(R.stat.slots) do
+            if i == slot then slot_name = n break end
+        end
+        if not slot_name then return nil end
+    end
+    return R.stat.keys[name .. "_" .. slot_name]
+end
+
 -- oCEntityValueUnion is a 0x20-byte tagged value. In the caller-provided read
 -- buffer it starts at +0; inside a 0x38-byte override entry it starts at +0x08.
 local EV_INLINE_OFF = 0x08   -- union: inline sentinel (== 4 => value is inline)
@@ -1279,7 +1341,12 @@ end
 --   R.xp.grant(100)            -- add XP (levels up as needed)
 R.xp = {}
 
-local XP_VFTABLE_VA      = 0x140f23200  -- XpComponent::vftable
+-- CORRECTED 2026-07-18: was 0x140f23200, which is not a vtable at all -- it
+-- lands 0x50 inside this one (slot 10 of 30), so `*(comp) == VA` could never
+-- match and R.xp returned nil on every build. Real class is
+-- oCDtEntityCpntGroupLevel. Keep in sync with symbols.json XpComponent_vftable
+-- -- this literal mirrors the symbol map by hand.
+local XP_VFTABLE_VA      = 0x140f231b0  -- oCDtEntityCpntGroupLevel::vftable
 local XP_TESTER_VA       = 0x141476e00  -- XpComponent_TypeTester (data global)
 local XP_ARR_OFF         = 0x190        -- entity -> component ptr array
 local XP_ARR_COUNT_OFF   = 0x198        -- entity -> component count
@@ -1413,10 +1480,30 @@ local function _xp_diag(hero)
         local entity = owners[ci]
         local arr   = I.read_u64(entity + XP_ARR_OFF)
         local count = I.read_u32(entity + XP_ARR_COUNT_OFF)
-        R.log(string.format("[rsmm.xp] diag cand%d entity=0x%x arr=0x%x count=%s",
-            ci, entity, arr or 0, tostring(count)))
+        -- The candidate's OWN class matters as much as its components: the
+        -- 2026-07-18 runs showed the probed owners are plain oCEntity, and the
+        -- target is absent from all of them.
+        local ovft = I.read_u64(entity)
+        R.log(string.format("[rsmm.xp] diag cand%d entity=0x%x arr=0x%x count=%s entity_vft=%s",
+            ci, entity, arr or 0, tostring(count),
+            (ovft and ovft > base) and string.format("0x%x", ovft - base + ENTITY_IMG_BASE)
+                or "?"))
+        -- Scan EVERY component and report a verdict rather than dumping a
+        -- prefix: a 12-entry cap hid the answer for five playtests.
         if arr and arr ~= 0 and count and count <= 0x400 then
-            for i = 0, math.min(count, 12) - 1 do
+            local found = nil
+            for i = 0, count - 1 do
+                local comp = I.read_u64(arr + i * 8)
+                local vft  = comp and comp ~= 0 and I.read_u64(comp) or nil
+                if vft and vft - base + ENTITY_IMG_BASE == XP_VFTABLE_VA then
+                    found = i; break
+                end
+            end
+            R.log(string.format("[rsmm.xp] diag cand%d target 0x%x: %s",
+                ci, XP_VFTABLE_VA,
+                found and ("FOUND at index " .. found) or "absent from all " ..
+                    tostring(count) .. " components"))
+            for i = 0, math.min(count, 64) - 1 do
                 local comp = I.read_u64(arr + i * 8)
                 local vft  = comp and comp ~= 0 and I.read_u64(comp) or nil
                 if vft and vft > base then

@@ -174,7 +174,7 @@ constexpr const char* XpComponent_SetLevel_Pattern = "XpComponent_SetLevel";
 constexpr std::uintptr_t XpComponent_SetXp = 0x1402e3630ull;
 constexpr const char* XpComponent_SetXp_Pattern = "XpComponent_SetXp";
 constexpr std::uintptr_t XpComponent_TypeTester = 0x141476e00ull;
-constexpr std::uintptr_t XpComponent_vftable = 0x140f23200ull;
+constexpr std::uintptr_t XpComponent_vftable = 0x140f231b0ull;
 
 // --- heroes ---
 constexpr std::uintptr_t HeroDef_LoadBaseEntity = 0x140329660ull;

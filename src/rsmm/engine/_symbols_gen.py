@@ -150,7 +150,7 @@ ADDR: dict[str, int] = {
     "XpComponent_SetLevel": 0x1402e3190,
     "XpComponent_SetXp": 0x1402e3630,
     "XpComponent_TypeTester": 0x141476e00,
-    "XpComponent_vftable": 0x140f23200,
+    "XpComponent_vftable": 0x140f231b0,
     "g_GameOptions": 0x14143cb58,
     "g_MagicalObjectComponentMeta": 0x141470768,
     "g_MagicalObjectPool": 0x14143cc18,

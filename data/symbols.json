@@ -1975,9 +1975,9 @@
    "name": "XpComponent_vftable",
    "kind": "data",
    "category": "hero",
-   "va": "0x140f23200",
+   "va": "0x140f231b0",
    "status": "va",
-   "note": "vftable of the hero XP/Level component (XpComponent). Slots: serialize FUN_1402e2050 @+0x70, deserialize FUN_1402e2080 @+0x78, grant Hero_GainExperience. Match *(component)==this to identify the Xp component when scanning the entity component array (entity+0x190). Base +0x70 derived from the serialize DATA xref @0x140f23270. Verified live 2026-07-13.",
+   "note": "Vftable of the hero's XP/level component. CORRECTED 2026-07-18 from 0x140f23200, which was NOT a vtable: it lands 0x50 INSIDE this vtable (slot 10 of 30), so the exact-match scan `*(comp)==va` could never hit -- that single constant is why R.xp returned nil across 5 playtests. Real class is oCDtEntityCpntGroupLevel (hash 0x15888c02, size 0x170, ctor 0x1402e1de0); there is no `Xp*` class in the 5993-vtable dump. CONFIRMED 2026-07-19: the component is NOT on the hero -- exactly one instance exists, on EntitySettings/Common_Settings/Group_Scaling.entity.ot ('[Dt Group Level] Group_Scaling\\\\Hero Group'), which is why component scans of hero entities found nothing. Progress is a POINTER at +0x108 -> {u32 level @0, u32 xp @4}. Reachable via the game-scene-context registry (ctx+0x58 array, +0x60 count), not by entity walking. Symbol keeps the XpComponent_* name for loader/SDK compatibility.",
    "refs": [
     "docs/_re/kinds/stats.md"
    ]
