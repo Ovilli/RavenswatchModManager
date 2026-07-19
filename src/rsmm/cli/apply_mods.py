@@ -246,6 +246,34 @@ def resolve_audio_bank(decoded: str) -> str | None:
     return cipher.encode(decoded.replace("/", "\\"))
 
 
+#: Encoded suffix marking a localization sibling: `<base-enc>.Ggzy<enc-lang>`.
+#: `Ggzy` is `cipher.encode("Lang")`.
+_LANG_ENC_SUFFIXES = tuple(
+    f".Ggzy{c}" for c in sorted(LANG_DECODED_TO_ENCODED.values())
+)
+
+
+def is_vanilla_encoded(enc: str) -> bool:
+    """True if `enc` names a file the game itself ships.
+
+    Used to distinguish "this mod adds a brand-new asset" from "the vanilla
+    file that belongs here has gone missing" — see `apply_one`. Localization
+    siblings (`<base>.Ggzy<lang>`) are vanilla too even though only their
+    BASE appears in `asset_map`, which is derived from `UsedRscList.ot`.
+    Getting that second case wrong is not academic: in the 2026-07-11 data
+    loss, 13 of the 14 files lost per text bank were lang siblings.
+    """
+    from rsmm.engine.asset_map import encoded_to_decoded
+
+    known = encoded_to_decoded()
+    if enc in known:
+        return True
+    for suffix in _LANG_ENC_SUFFIXES:
+        if enc.endswith(suffix):
+            return enc[: -len(suffix)] in known
+    return False
+
+
 def resolve_special(decoded: str, dec2enc: dict[str, str]) -> str | None:
     """Resolve decoded paths that aren't directly in asset_map.
 
@@ -719,8 +747,16 @@ _DANGEROUS_ROOT_EXTS = frozenset({
 })
 
 
+class VanillaMissing(RuntimeError):
+    """A vanilla file that should be under a mod override is not on disk.
+
+    Applying over it would record the override as an *added* file, and a later
+    `disable`/`restore` deletes added files — destroying the vanilla asset.
+    """
+
+
 def apply_one(enc: str, src: Path, dest: Path, mod_id: str,
-              state: State, dry_run: bool) -> None:
+              state: State, dry_run: bool, force: bool = False) -> None:
     if enc.startswith(ROOT_PREFIX):
         rel = dest.suffix.lower()
         if rel in _DANGEROUS_ROOT_EXTS:
@@ -737,8 +773,31 @@ def apply_one(enc: str, src: Path, dest: Path, mod_id: str,
                 shutil.copy2(dest, bak)
         else:
             orig_sha = (cur or {}).get("orig_sha256") or sha256(bak)
+    elif is_vanilla_encoded(enc) and not force:
+        # The game ships this file, so it should be sitting here. It isn't —
+        # which means the vanilla copy (and its .rsmm.bak) were wiped, most
+        # often by a game update that also wiped .rsmm_state.json.
+        #
+        # Applying anyway would record the override with orig_sha256="" i.e.
+        # "this file was ADDED by a mod", and the next disable/restore deletes
+        # added files. That is exactly the 2026-07-11 data loss: vanilla
+        # Text/Tutorials~GAM and Hero_Aladdin_Common were destroyed and the
+        # game showed "Default sentence" for every string. Fail closed.
+        raise VanillaMissing(
+            f"{mod_id}: refusing to apply over '{enc}' — the game ships this "
+            f"file but it is not at {dest}, and no backup exists. Applying "
+            "would record it as mod-added, so disabling would DELETE the "
+            "vanilla asset.\n"
+            "  Likely cause: a game update wiped the file and the rsmm state.\n"
+            "  Fix: verify the game files via Steam (Properties > Installed "
+            "Files > Verify integrity), then re-run `rsmm apply` and "
+            "`rsmm install-loader`.\n"
+            "  Override with --force only if you are certain this asset is "
+            "genuinely new."
+        )
     else:
-        # Engine expected this file but it isn't there; mod adds a new asset.
+        # Genuinely new asset (custom item, enemy, texture) — nothing here to
+        # back up, and dropping it on restore is the correct behaviour.
         orig_sha = ""
         print(f"  {_ST.ok(_ADD)} new file {_ST.dim(f'(no original) {dest}')}")
 
@@ -796,6 +855,22 @@ def restore_one(enc: str, cooking: Path, game_dir: Path,
         else:
             print(f"  {_ST.dim(_DEL)} skip    {enc}  {_ST.dim('(no backup, no destination)')}")
             state.active.pop(enc, None)
+        return True
+
+    # No backup and no recorded original normally means "a mod added this
+    # file", and dropping it is right. But if the GAME ships this path, that
+    # inference is wrong however the state got into this shape — a wiped
+    # state file, a stale entry, a `--force`d apply — and acting on it deletes
+    # a vanilla asset. This is the last line of defence for the 2026-07-11
+    # loss, and the one that actually holds: the apply-side guard alone still
+    # let the file be dropped here, because this path fires even when there
+    # is no state entry at all.
+    if is_vanilla_encoded(enc):
+        if dest.exists():
+            print(f"  {_ST.warn(_WARN_TOK)} keep    {enc}  "
+                  + _ST.dim("(game ships this file; not dropping it)"),
+                  file=sys.stderr)
+        state.active.pop(enc, None)
         return True
 
     # No backup, no orig_sha1 → mod added this file. Safe to remove.
@@ -1542,8 +1617,21 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
         if failed_removals:
             print(f"  [WARN] {failed_removals} removal(s) failed; "
                   f"state entries preserved for retry", file=sys.stderr)
+        blocked = 0
         for enc, src, dest, mod_id in additions:
-            apply_one(enc, src, dest, mod_id, state, args.dry_run)
+            try:
+                apply_one(enc, src, dest, mod_id, state, args.dry_run,
+                          force=bool(getattr(args, "force", False)))
+            except VanillaMissing as e:
+                # Skip this file, keep applying the rest: one wiped vanilla
+                # asset must not block every other mod, and skipping is the
+                # safe direction (the override simply isn't installed).
+                blocked += 1
+                print(f"  {_ST.err(_WARN_TOK)} {e}", file=sys.stderr)
+        if blocked:
+            print(f"  {_ST.err(_WARN_TOK)} "
+                  f"{_ST.err(f'{blocked} file(s) NOT applied')} — the vanilla "
+                  "originals are missing (see above)", file=sys.stderr)
 
     if manifest_syncs:
         print(f"Synced {manifest_syncs} mod file(s) (manifests/lua) to game mods directory")
