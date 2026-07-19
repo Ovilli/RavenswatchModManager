@@ -102,6 +102,48 @@ def width(default: int = 100) -> int:
     return max(48, min(cols, MAX_WIDTH))
 
 
+def full_width(default: int = 100) -> int:
+    """Terminal width WITHOUT the MAX_WIDTH cap.
+
+    `width()` clamps to 78 so framed panels and rules line up. That cap is
+    right for chrome and wrong for content: applying it to loader log lines
+    threw away everything past column 74 (one real line lost 862 of its 936
+    characters). Use this for anything the user needs to actually read.
+    """
+    try:
+        cols = shutil.get_terminal_size((default, 24)).columns
+    except OSError:
+        cols = default
+    return max(40, cols)
+
+
+def wrap_line(text: str, limit: int, indent: str = "") -> list[str]:
+    """Hard-wrap one PLAIN line to `limit` columns.
+
+    Deliberately operates on unstyled text: splitting an already-styled string
+    can cut through an ANSI escape and bleed colour across the screen. Callers
+    style the resulting pieces instead. Wraps at a space when there is a
+    sensible one, otherwise mid-token — a 900-character log line has no spaces
+    where we need them and must still be readable.
+    """
+    if limit <= 0:
+        return [text]
+    out: list[str] = []
+    rest = text
+    while True:
+        budget = limit if not out else limit - len(indent)
+        if budget <= 0 or len(rest) <= budget:
+            out.append(rest if not out else indent + rest)
+            return out
+        cut = rest.rfind(" ", max(0, budget - 24), budget)
+        if cut <= 0:
+            cut = budget
+        piece, rest = rest[:cut], rest[cut:].lstrip(" ")
+        out.append(piece if len(out) == 0 else indent + piece)
+        if not rest:
+            return out
+
+
 def height(default: int = 24) -> int:
     """Terminal rows, floored so a tiny window still renders something."""
     try:

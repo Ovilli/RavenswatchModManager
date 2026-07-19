@@ -7,6 +7,7 @@ this CLI and parses its output, so ANSI codes must never reach a pipe.
 from __future__ import annotations
 
 import io
+import os
 
 import pytest
 
@@ -102,3 +103,57 @@ def test_human_bytes(n, expected):
 
 def test_width_is_clamped():
     assert 60 <= _term.width() <= 160
+
+
+# --- full_width / wrap_line ------------------------------------------------
+#
+# The pager used to truncate content at `width()`, which is capped at 78 for
+# panel alignment. On the real loader log that discarded 45 of 55 lines'
+# tails — one 936-character line rendered 74 characters and lost 862.
+
+def test_full_width_is_not_capped_like_width(monkeypatch):
+    import shutil as _sh
+    monkeypatch.setattr(_sh, "get_terminal_size",
+                        lambda _d=None: os.terminal_size((200, 50)))
+    assert _term.width() == _term.MAX_WIDTH      # chrome stays aligned
+    assert _term.full_width() == 200             # content gets the real width
+
+
+def test_full_width_has_a_floor(monkeypatch):
+    import shutil as _sh
+    monkeypatch.setattr(_sh, "get_terminal_size",
+                        lambda _d=None: os.terminal_size((5, 50)))
+    assert _term.full_width() == 40
+
+
+def test_wrap_line_keeps_every_character():
+    line = "[2026-07-19 11:01:02.824 884f 312] [StatGrantDemo] " + \
+           ", ".join(f"stat_name_{i}" for i in range(80))
+    pieces = _term.wrap_line(line, 96, "    ")
+    assert len(pieces) > 1
+    rejoined = "".join(p if i == 0 else p.lstrip(" ")
+                       for i, p in enumerate(pieces))
+    assert rejoined.replace(" ", "") == line.replace(" ", "")
+
+
+def test_wrap_line_respects_the_limit():
+    line = "x" * 500
+    for piece in _term.wrap_line(line, 40, "    "):
+        assert len(piece) <= 40
+
+
+def test_wrap_line_splits_mid_token_when_there_is_no_space():
+    """A 900-char line with no spaces still has to render."""
+    pieces = _term.wrap_line("y" * 200, 50)
+    assert len(pieces) == 4
+    assert all(len(p) <= 50 for p in pieces)
+
+
+def test_wrap_line_indents_continuations_only():
+    pieces = _term.wrap_line("word " * 60, 40, "    ")
+    assert not pieces[0].startswith("    ")
+    assert all(p.startswith("    ") for p in pieces[1:])
+
+
+def test_wrap_line_leaves_short_lines_alone():
+    assert _term.wrap_line("short", 40, "    ") == ["short"]

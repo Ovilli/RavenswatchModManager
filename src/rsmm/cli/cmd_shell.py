@@ -497,24 +497,47 @@ def pager(title: str, lines: list[str], *, colorize=None,
         lines = ["(nothing to show)"]
     note = ""
     top = 0
+    last_layout: tuple[int, int] | None = None
+    rows: list[tuple[str, int, bool]] = []      # (text, source index, is_head)
     with _keys.raw_session():
         while True:
             page = max(4, _term.height() - 8)
-            top = max(0, min(top, max(0, len(lines) - page)))
+            # Content uses the FULL terminal width, not the 78-column cap the
+            # panels use — that cap was silently chopping long loader lines.
+            content_w = _term.full_width() - 4
+            if last_layout != (content_w, len(lines)):
+                # Wrap rather than truncate: the log is the thing the user
+                # came here to read, and a 900-char line lost 92% of itself.
+                rows = [
+                    (piece, i, j == 0)
+                    for i, ln in enumerate(lines)
+                    for j, piece in enumerate(_term.wrap_line(ln, content_w, "    "))
+                ]
+                last_layout = (content_w, len(lines))
+            top = max(0, min(top, max(0, len(rows) - page)))
             w = _term.width()
             sys.stdout.write("\033[2J\033[H")
             _out()
             _out(_term.panel_top("", _ST, w))
-            span = f"{top + 1}-{min(top + page, len(lines))} of {len(lines)}"
+            shown = rows[top:top + page]
+            first_src = shown[0][1] + 1 if shown else 0
+            last_src = shown[-1][1] + 1 if shown else 0
+            span = f"{first_src}-{last_src} of {len(lines)}"
+            if len(rows) != len(lines):
+                span += f"   {len(rows)} rows wrapped"
             _out(_term.panel_row(_ST.heading(title) + _ST.dim(f"   {span}"),
                                  _ST, w))
             _out(_term.panel_bottom(_ST, w))
             _out()
-            for ln in lines[top:top + page]:
-                text = colorize(ln) if colorize else ln
-                # ANSI-aware: a raw slice would cut inside an escape sequence
-                # and bleed colour across the rest of the screen.
-                _out("  " + _term.truncate(text, w - 4))
+            for text, _src, is_head in shown:
+                # Styling is prefix-based (timestamp, tag), so it only applies
+                # to a line's first row; continuations render dim so the eye
+                # can still tell where one log line ends and the next begins.
+                if is_head:
+                    body = colorize(text) if colorize else text
+                else:
+                    body = _ST.dim(text)
+                _out("  " + body)
             _out()
             if note:
                 _out("  " + note)
@@ -548,9 +571,16 @@ def pager(title: str, lines: list[str], *, colorize=None,
             elif key in ("g", _keys.HOME):
                 top = 0
             elif key in ("G", _keys.END):
-                top = len(lines)
+                top = len(rows)
             elif key in ("c", "y"):
-                chunk = lines if key == "c" else lines[top:top + page]
+                if key == "c":
+                    chunk = lines
+                else:
+                    # Copy whole SOURCE lines for what is on screen — copying
+                    # wrapped fragments would paste a mangled log into a bug
+                    # report.
+                    visible = {src for _t, src, _h in rows[top:top + page]}
+                    chunk = [lines[i] for i in sorted(visible)]
                 dest = Path(P.REPO_ROOT) / f"rsmm_{copy_name}_copy.txt"
                 msg = _clip.copy_or_dump("\n".join(chunk) + "\n", dest)
                 if _clip.is_ssh() and "clipboard" not in msg:

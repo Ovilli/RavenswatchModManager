@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
+import sys
 
 import pytest
 
@@ -403,3 +405,72 @@ def test_colorize_log_matches_what_rsmm_log_prints():
 
     line = "[2026-07-19 12:00:00.000 abcd 1234] [va-gate] fail-closed"
     assert cmd_shell._colorize_log(line) == cmd_log._style_line(line)
+
+
+# --- pager wrapping --------------------------------------------------------
+
+
+def _drive_pager(monkeypatch, lines, keys, cols=100, rows=40):
+    """Render the pager once (or per key) and capture what it wrote."""
+    import shutil as _sh
+
+    monkeypatch.setattr(_sh, "get_terminal_size",
+                        lambda _d=None: os.terminal_size((cols, rows)))
+    monkeypatch.setattr(cmd_shell._keys, "raw_session",
+                        lambda *a, **k: contextlib.nullcontext())
+    seq = iter(keys)
+    monkeypatch.setattr(cmd_shell._keys, "read_key", lambda: next(seq, None))
+    out = []
+    monkeypatch.setattr(cmd_shell, "_out", lambda s="": out.append(s))
+    monkeypatch.setattr(sys.stdout, "write", lambda *_a: None)
+    monkeypatch.setattr(sys.stdout, "flush", lambda: None)
+    cmd_shell.pager("t", lines, copy_name="t")
+    return out
+
+
+def test_pager_wraps_a_long_line_instead_of_discarding_its_tail(monkeypatch):
+    """The bug: content was truncated at width(), capped to 78, so a 936-char
+    loader line rendered 74 characters and silently lost the other 862."""
+    tail = "END-OF-LINE-MARKER"
+    line = "[2026-07-19 11:01:02.824 884f 312] " + ("stat_name, " * 80) + tail
+    out = _drive_pager(monkeypatch, [line], [("q",)])
+    rendered = "\n".join(out)
+    assert tail in rendered, "the end of a long line never reached the screen"
+
+
+def test_pager_loses_no_characters_when_wrapping(monkeypatch):
+    import re
+
+    line = "A" * 400 + "-OMEGA"
+    out = _drive_pager(monkeypatch, [line], [("q",)])
+    # Only rows made entirely of the payload — chrome (headers, the key hint)
+    # contains stray capitals and would inflate the count.
+    body = "".join(s.strip() for s in out
+                   if re.fullmatch(r"\s*A+(-OMEGA)?\s*", s))
+    assert body == line, f"reconstructed {len(body)} chars, expected {len(line)}"
+
+
+def test_pager_still_fits_the_terminal(monkeypatch):
+    out = _drive_pager(monkeypatch, ["z" * 500], [("q",)], cols=90)
+    for s in out:
+        assert _term.visible_len(s) <= 90, f"row overflows the terminal: {len(s)}"
+
+
+def test_pager_header_counts_source_lines_not_wrapped_rows(monkeypatch):
+    """"1-3 of 3" must mean log lines; rows are reported separately."""
+    out = _drive_pager(monkeypatch, ["q" * 300] * 3, [("q",)])
+    header = next(s for s in out if "of 3" in s)
+    assert "rows wrapped" in header
+
+
+def test_copy_screen_copies_whole_lines_not_fragments(monkeypatch, tmp_path):
+    """Pasting wrapped fragments into a bug report would mangle the log."""
+    from rsmm.cli import _clip
+
+    captured = {}
+    monkeypatch.setattr(_clip, "copy_or_dump",
+                        lambda text, dest: captured.setdefault("text", text) and "" or "ok")
+    monkeypatch.setattr(_clip, "is_ssh", lambda: False)
+    line = "B" * 300
+    _drive_pager(monkeypatch, [line], [("y",), ("q",)])
+    assert captured["text"].strip() == line
