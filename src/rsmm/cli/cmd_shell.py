@@ -580,9 +580,9 @@ def _log_screen() -> None:
 
 
 def _colorize_log(line: str) -> str:
-    """Reuse cmd_log's severity colouring so the pager matches `rsmm log`."""
-    from rsmm.cli.cmd_log import _colorize
-    return _colorize(line)
+    """Reuse cmd_log's line styling so the pager matches `rsmm log`."""
+    from rsmm.cli.cmd_log import _style_line
+    return _style_line(line)
 
 
 def _symbols_screen() -> None:

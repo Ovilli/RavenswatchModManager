@@ -8,6 +8,7 @@ the state model (what the header claims, what the menu offers, what the
 
 from __future__ import annotations
 
+import contextlib
 import json
 
 import pytest
@@ -366,3 +367,39 @@ def test_log_screen_names_the_missing_file(monkeypatch, tmp_path):
     cmd_shell._log_screen()
 
     assert any("_log.txt" in ln for ln in seen["lines"])
+
+
+def test_log_screen_actually_renders_through_the_real_pager(monkeypatch, tmp_path):
+    """Regression: the Log tab crashed with ImportError inside the pager's
+    colorize callback. The earlier test stubbed `pager` out, so the callback
+    was never invoked and the break went unnoticed. Drive the real pager.
+    """
+    from rsmm.cli import cmd_log
+
+    game = tmp_path / "game"
+    (game / "mods").mkdir(parents=True)
+    (game / "mods" / "_log.txt").write_text(
+        "== SESSION abcd 2026-07-19 ==\n"
+        "[2026-07-19 12:00:00.000 abcd 1234] [lua] hello\n"
+        "plain line\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cmd_log, "DEFAULT_GAME_DIR", game)
+    # One keypress ('q') so the pager draws a frame and then leaves.
+    monkeypatch.setattr(cmd_shell._keys, "read_key", lambda: ("q",))
+    monkeypatch.setattr(cmd_shell._keys, "available", lambda *a, **k: True)
+    monkeypatch.setattr(cmd_shell._keys, "raw_session",
+                        lambda *a, **k: contextlib.nullcontext())
+    monkeypatch.setattr(cmd_shell._keys, "alt_screen",
+                        lambda *a, **k: contextlib.nullcontext())
+
+    cmd_shell._log_screen()          # must not raise
+
+
+def test_colorize_log_matches_what_rsmm_log_prints():
+    """The tab and the command must style identically — they are the same
+    log. Bound by name, which is exactly what broke."""
+    from rsmm.cli import cmd_log
+
+    line = "[2026-07-19 12:00:00.000 abcd 1234] [va-gate] fail-closed"
+    assert cmd_shell._colorize_log(line) == cmd_log._style_line(line)
