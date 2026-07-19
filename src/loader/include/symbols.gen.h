@@ -323,9 +323,11 @@ constexpr std::uintptr_t BookController_ResolveSettings = 0x140307a30ull;
 constexpr const char* BookController_ResolveSettings_Pattern = "BookController_ResolveSettings";
 constexpr std::uintptr_t BookController_ResolveTabs = 0x140311060ull;
 constexpr const char* BookController_ResolveTabs_Pattern = "BookController_ResolveTabs";
-constexpr std::uintptr_t UiButton_InputPoll = 0x1407d5dc0ull;
+constexpr std::uintptr_t UiButton_InputPoll = 0x1407d72a0ull;
 constexpr const char* UiButton_InputPoll_Pattern = "UiButton_InputPoll";
 constexpr std::uintptr_t UiButton_PressCommit = 0x1406a08a0ull;
 constexpr const char* UiButton_PressCommit_Pattern = "UiButton_PressCommit";
+constexpr std::uintptr_t UiButton_PressReturnSite = 0x1407d7382ull;
+constexpr const char* UiButton_PressReturnSite_Pattern = "UiButton_PressReturnSite.parent";
 
 }  // namespace Sym

@@ -1673,7 +1673,7 @@
    "name": "UiButton_PressCommit",
    "kind": "function",
    "category": "ui",
-   "status": "unverified",
+   "status": "ok",
    "raw": "FUN_1406a08a0",
    "cabi": {
     "params": [
@@ -1682,10 +1682,25 @@
     "ret": "void"
    },
    "signature": "void(oCUINavigableZoneDesc* widget)",
-   "note": "INTENDED: the single click choke point every ButtonUi funnels through, for the R.on('ui:press') native-UI-button bridge (hook_ui.cpp, RSMM_ENABLE_UI_HOOK=1). [2026-07-09: remap ambiguous.] [2026-07-12: RE-ANCHORED to FUN_1406a08a0 via UiButton_InputPoll FUN_1407d72a0 calling FUN_1406a08a0(*(cpnt+0x268)); decompile shows +0x32c state / +0x328 mode machine then vcall [*(widget+0x570)+0x10]. Marked status ok.] [2026-07-14: WRONG ANCHOR / CAUSED IN-GAME CRASH. FUN_1406a08a0 is NOT a click-only choke point \u2014 get_xrefs_to shows 37 callers across the whole UI (FUN_140351a10/14036f4c0/1403a8040/1403f37a0/1404306e0/... and UiButton_InputPoll), and it wraps FUN_1406a1570, a generic WIDGET STATE-TRANSITION helper that fires per-state listeners (+0x4b0/+0x498/+0x4c8/+0x4e0/+0x4f8) on hover/focus/press/release. Detouring it (a) fires the ui:press emit on every widget state change and (b) the hook_ui listenerless-skip path SUPPRESSES real state transitions for non-listener widgets -> menu state corruption -> crash before any hero capture (playtest log session 7268: UI hook armed, 0 '[ui-hook] press' lines, hard crash in menu). DOWNGRADED to unverified + pattern STRIPPED from function_patterns.json so the loader fails closed ('pattern not found; disabled'). The true press choke point is still unidentified \u2014 needs RE of the ButtonUi input->commit path (candidate: the caller that reaches the listener vcall ONLY on a confirmed press, not FUN_1406a1570's per-state fan-out) + a playtest before re-arming.]",
+   "note": "RE-UNDERSTOOD 2026-07-19: there is NO click-only choke-point function on this build -- the old FUN_14069f8e0 was inlined away. FUN_1406a08a0 is the widget STATE-COMMIT driver (35 callers): drives the +0x32c state / +0x328 mode machine via FUN_1406a1570 (per-state listener fan-out) and, on the press path, vcalls listener slot 2 at [*(widget+0x570)+0x10] with NO null check. Takes rcx=widget only (edx computed internally). It IS safe to detour -- but ONLY as pure observation: the detour must ALWAYS run the original for native widgets and may treat a call as a confirmed ButtonUi press ONLY when the return address equals UiButton_PressReturnSite (the poll's press branch). Playtest #6 (2026-07-14) proved the failure mode of anything else: emitting per state change + suppressing native transitions for listenerless widgets corrupted menu state and crashed in-menu. The one legitimate skip: ra==press-site AND *(widget+0x570)==null (a cloned mod button the page controller never wired) -- running the original would null-deref, which is also why the skip is REQUIRED there.",
    "refs": [
     "src/loader/src/hook_ui.cpp",
     "docs/_re/kinds/ui-menus.md"
+   ]
+  },
+  {
+   "name": "UiButton_PressReturnSite",
+   "kind": "function",
+   "category": "ui",
+   "anchor": {
+    "raw": "FUN_1407d72a0",
+    "offset": "0xe2"
+   },
+   "status": "ok",
+   "signature": "(code location, not callable)",
+   "note": "Return address of UiButton_InputPoll's press-branch `call UiButton_PressCommit` (call instruction at poll+0xdd, this site at poll+0xe2 = start of the loop's `add rbx,8`). hook_ui.cpp's detour on UiButton_PressCommit compares _ReturnAddress() against this to recognize a confirmed ButtonUi press among the driver's 35 callers. Install-time guard: the 5 bytes ending here must be `e8 rel32` whose target is the resolved UiButton_PressCommit, else the UI hook fails closed. NOT a detour target -- an anchor used as a comparison value.",
+   "refs": [
+    "src/loader/src/hook_ui.cpp"
    ]
   },
   {
@@ -1693,16 +1708,15 @@
    "kind": "function",
    "category": "ui",
    "status": "ok",
-   "raw": "FUN_1407d5dc0",
+   "raw": "FUN_1407d72a0",
    "cabi": {
+    "ret": "void",
     "params": [
-     "void*",
      "void*"
-    ],
-    "ret": "void"
+    ]
    },
-   "signature": "void(void* task, ButtonUiCpntArray* cpnts)",
-   "note": "Per-frame 'oCEntityCpntButtonUi - Button input update' scheduled task (registered by FUN_1407d4d30, period field DAT_1412f55a0=6000). Iterates all live ButtonUi cpnts {count@+0, data@+8}; for each visible+enabled+focused pressed button calls FUN_140681820 (raw input latch) then UiButton_PressCommit(*(cpnt+0x268)). cpnt+0x268 = the widget desc the commit receives. [2026-07-10: recovered via anchor/decompile-verify (batch 2) after the July-9 remap mis-placed it.]",
+   "signature": "void(ButtonUiCpntArray* cpnts)",
+   "note": "The REAL per-frame 'Button input update' poll body (the scheduled-task callback). CORRECTED 2026-07-19: this symbol previously pointed at FUN_1407d5dc0, which is the task REGISTRAR that installs this callback (it writes the fn ptr via `lea rax,[rip+0x142f]` -> 0x1407d72a0) -- and its pattern matched 49 places (match_index=48), so the mapping was both semantically and mechanically fragile. The poll iterates live ButtonUi cpnts; per confirmed press (gates: input-state flags +0x9d/+0x9f/+0xa1/+0xa2, widget visible bit +0x234&0x10, state +0x32c != 4) it calls the input latch FUN_1406827e0 then UiButton_PressCommit(*(cpnt+0x268)) at +0xdd; the return site of that call (+0xe2) is UiButton_PressReturnSite, the discriminator hook_ui's return-address filter keys on.",
    "refs": [
     "docs/_re/kinds/ui-menus.md"
    ]

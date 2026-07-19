@@ -373,8 +373,8 @@ inline String_Assign_fn String_Assign() {
 }
 
 // UiButton_InputPoll  (UiButton_InputPoll)
-//   void(void* task, ButtonUiCpntArray* cpnts)
-using UiButton_InputPoll_fn = void(*)(void*, void*);
+//   void(ButtonUiCpntArray* cpnts)
+using UiButton_InputPoll_fn = void(*)(void*);
 inline UiButton_InputPoll_fn UiButton_InputPoll() {
     return reinterpret_cast<UiButton_InputPoll_fn>(rsmm::fn_resolve(Sym::UiButton_InputPoll_Pattern));
 }
