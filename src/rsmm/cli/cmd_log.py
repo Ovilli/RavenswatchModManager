@@ -24,6 +24,19 @@ _ST = _term.Style()
 
 _SESSION_MARK = "== SESSION "
 
+
+def log_file(game_dir=None, *, prev: bool = False) -> Path:
+    """Where the loader writes its log.
+
+    The single source of this path. The home screen's Log tab used to derive
+    it independently and got it wrong (`<game>/rsmm/rsmm_log.txt`, a file that
+    has never existed), so the tab was permanently blank while `rsmm log`
+    worked fine.
+    """
+    return Path(game_dir or DEFAULT_GAME_DIR) / "mods" / (
+        "_log.prev.txt" if prev else "_log.txt"
+    )
+
 # The loader has no severity levels (see `Loader::log` in src/loader/src/
 # loader.cpp) — every line is `[<ts> <session> <pid>] <msg>`, optionally with a
 # bracketed subsystem tag (`[va-gate]`, `[skin-hook]`, `[lua]`). So there is
@@ -82,8 +95,7 @@ def main(argv: list[str] | None = None) -> int:
         print(__doc__)
         return 0
 
-    mods = Path(a.game_dir) / "mods"
-    log_path = mods / ("_log.prev.txt" if a.prev else "_log.txt")
+    log_path = log_file(a.game_dir, prev=a.prev)
     if a.path:
         print(log_path)
         return 0

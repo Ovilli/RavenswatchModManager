@@ -321,3 +321,48 @@ def test_ctrl_c_is_handled_in_every_interactive_screen():
 
     from rsmm.cli import cmd_mods
     assert "KeyboardInterrupt" in inspect.getsource(cmd_mods._pick_raw)
+
+
+# --- log screen ------------------------------------------------------------
+
+
+def test_log_screen_reads_the_same_file_as_rsmm_log(monkeypatch, tmp_path):
+    """The Log tab derived its own path (`<game>/rsmm/rsmm_log.txt`, which has
+    never existed), so it was permanently blank while `rsmm log` worked."""
+    from rsmm.cli import cmd_log
+
+    game = tmp_path / "game"
+    (game / "mods").mkdir(parents=True)
+    (game / "mods" / "_log.txt").write_text("hello from the loader\n", encoding="utf-8")
+    monkeypatch.setattr(cmd_log, "DEFAULT_GAME_DIR", game)
+
+    seen = {}
+    monkeypatch.setattr(cmd_shell, "pager",
+                        lambda title, lines, **kw: seen.update(lines=lines))
+    cmd_shell._log_screen()
+
+    assert seen["lines"] == ["hello from the loader"]
+
+
+def test_log_screen_does_not_derive_its_own_path():
+    """Structural guard: one path implementation, in cmd_log."""
+    import inspect
+    import re
+
+    src = inspect.getsource(cmd_shell._log_screen)
+    code = "\n".join(re.sub(r"#.*", "", ln) for ln in src.splitlines())
+    assert "log_file()" in code, "must ask cmd_log for the path"
+    assert not re.search(r"_log\.txt|rsmm_log", code), "path re-derived locally"
+
+
+def test_log_screen_names_the_missing_file(monkeypatch, tmp_path):
+    """A blank tab told the user nothing. Say which file was looked for."""
+    from rsmm.cli import cmd_log
+
+    monkeypatch.setattr(cmd_log, "DEFAULT_GAME_DIR", tmp_path / "nogame")
+    seen = {}
+    monkeypatch.setattr(cmd_shell, "pager",
+                        lambda title, lines, **kw: seen.update(lines=lines))
+    cmd_shell._log_screen()
+
+    assert any("_log.txt" in ln for ln in seen["lines"])

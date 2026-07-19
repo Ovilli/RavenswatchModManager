@@ -562,13 +562,16 @@ def pager(title: str, lines: list[str], *, colorize=None,
 
 def _log_screen() -> None:
     """The loader log, scrollable and copyable."""
-    from rsmm.engine.paths import DEFAULT_GAME_DIR
+    # Ask cmd_log where the log is instead of deriving it here — this screen
+    # had its own guess (`<game>/rsmm/rsmm_log.txt`), which has never been a
+    # real path, so the tab was always empty while `rsmm log` worked.
+    from rsmm.cli.cmd_log import log_file
 
-    log_path = Path(DEFAULT_GAME_DIR) / "rsmm" / "rsmm_log.txt"
+    log_path = log_file()
     try:
         lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError as e:
-        pager("log", [f"no log: {e}",
+        pager("log", [f"no log at {log_path}", f"  {e}",
                       "launch the game once with the loader installed"],
               copy_name="log")
         return
