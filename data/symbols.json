@@ -11,7 +11,7 @@
     "raw": "FUN_14025d9b0",
     "offset": "0x70"
    },
-   "status": "ok",
+   "status": "unverified",
    "signature": "void(void* pool, void* scene)",
    "cabi": {
     "ret": "void",
@@ -20,7 +20,7 @@
      "void*"
     ]
    },
-   "note": "Spawns every magical-object resource into the runtime pool. Inlined inside FUN_1402586f0; runs once at boot during InitialLoading. Loader post-detours this to inject custom items.",
+   "note": "Spawns every magical-object resource into the runtime pool. STATUS DOWNGRADED 2026-07-19: the anchor offset +0x70 is STALE. It was derived against the older containing function FUN_1402586f0; the parent was later remapped to FUN_14025d9b0 without re-deriving the offset, and parent+0x70 (0x14025da20) lands 2 bytes INSIDE the 5-byte `call 0x140241750` at 0x14025da1e. A detour there would splice mid-instruction. Not caught earlier because anchors were skipped by verify_symbol_resolve (no top-level `raw`) and are invisible to `symbols audit` (the loader dumps the pattern DB, and an anchor has no pattern of its own); both now handle anchors. Latent only: hook_items is behind the double opt-in RSMM_ENABLE_ITEM_INJECT + RSMM_I_ACCEPT_ITEM_INJECT_IS_BROKEN, which must stay off. Also suspect as the real cause of the historical ITEM_INJECT load crash. TO RECOVER: identify the internal spawn entry inside FUN_14025d9b0 semantically (candidate: the array loop at 0x14025da50 that virtual-calls slot 0x50 per element, preheader 0x14025da3f) and re-derive the offset; do NOT guess one, that is what produced this.",
    "refs": [
     "src/loader/src/hook_items.cpp"
    ]

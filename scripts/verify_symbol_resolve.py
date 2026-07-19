@@ -41,6 +41,38 @@ def _rx(pat: str) -> re.Pattern[bytes]:
         re.DOTALL)
 
 
+def _anchor_parent_name(doc: dict, anchor: dict) -> str:
+    """Map an anchor's `raw` (FUN_<addr>) back to the symbol that owns it.
+
+    The anchor records the parent by its Ghidra name; the pattern DB is keyed
+    by semantic name, so the two have to be joined through symbols.json.
+    """
+    raw = str(anchor.get("raw", ""))
+    for s in doc["symbols"]:
+        if str(s.get("raw", "")) == raw and not s.get("anchor"):
+            return str(s["name"])
+    return raw
+
+
+def _is_instruction_boundary(md, text: bytes, tva: int, start: int,
+                             target: int) -> bool:
+    """Walk instructions from `start`; is `target` a boundary we land on?
+
+    Linear disassembly from a known-good function start is reliable here: x86
+    is variable-length, so an offset that looks plausible can sit inside an
+    instruction. Bounded so a malformed stream cannot spin.
+    """
+    if target <= start:
+        return target == start
+    pos = start
+    while pos < target and pos - start < 0x2000:
+        ins = next(md.disasm(text[pos:pos + 16], tva + pos, count=1), None)
+        if ins is None:
+            return False
+        pos += ins.size
+    return pos == target
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--exe", default=gen.DEFAULT_EXE)
@@ -64,9 +96,41 @@ def main() -> int:
 
     bad = []
     checked = 0
+    anchors_checked = 0
     for s in doc["symbols"]:
         if s.get("status") != "ok" or s.get("kind") not in ("function", "event"):
             continue
+
+        # Anchor symbols (inlined routine = parent pattern + offset) carry no
+        # top-level `raw`, so `raw.startswith("FUN_")` skipped them entirely —
+        # they were verified by NO gate. `symbols audit` cannot see them either
+        # (the loader dumps the pattern DB, and an anchor has no pattern of its
+        # own), so a broken offset was invisible everywhere. MagicalObject_
+        # SpawnAllObjects was landing 2 bytes inside a 5-byte call.
+        anchor = s.get("anchor")
+        if anchor and not str(s.get("raw", "")).startswith("FUN_"):
+            parent = pats.get(_anchor_parent_name(doc, anchor))
+            if not parent:
+                bad.append((s["name"], "anchor parent has no pattern in DB"))
+                continue
+            hits = [m.start() for m in _rx(parent["pattern"]).finditer(text)]
+            mi = parent.get("match_index", 0)
+            if mi >= len(hits):
+                bad.append((s["name"], "anchor parent pattern resolves to 0 hits"))
+                continue
+            off = hits[mi] + int(str(anchor["offset"]), 16)
+            anchors_checked += 1
+            # An internal entry point is NOT a function start, so the prologue
+            # and terminator checks below do not apply. What must hold is that
+            # it is a real instruction boundary — detouring mid-instruction
+            # corrupts the stream.
+            if not _is_instruction_boundary(md, text, tva, hits[mi], off):
+                bad.append((s["name"],
+                            f"anchor offset {anchor['offset']} is NOT an instruction "
+                            f"boundary (lands inside an instruction) — a detour here "
+                            f"would splice mid-instruction"))
+            continue
+
         if not str(s.get("raw", "")).startswith("FUN_"):
             continue
         p = pats.get(s["name"])
@@ -117,7 +181,8 @@ def main() -> int:
                         f"0x{tva + off:x} first={first} boundary={boundary} "
                         f"(mid-instruction / not a function start)"))
 
-    print(f"checked {checked} ok function symbols")
+    print(f"checked {checked} ok function symbols "
+          f"+ {anchors_checked} anchor entry point(s)")
     if bad:
         print(f"\n{len(bad)} SYMBOL(S) FAIL the resolve gate:", file=sys.stderr)
         for n, why in bad:

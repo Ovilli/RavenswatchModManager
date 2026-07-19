@@ -146,7 +146,7 @@ Total: **155** symbols across 16 categories.
 | `MagicalObjectPool_Grow` | `0x140156de0` | ❓ unverified | ✔ | void(void* pool_plus_0x10, uint32_t count, uint32_t by) |
 | `MagicalObjectPool_SourceLookup` | `0x14025e3e0` | ❓ unverified | ✔ | void*(void* pool, void* out, void* id) |
 | `MagicalObject_RegisterInstance` | `0x1403aae40` | ❓ unverified | ✔ | void(oCDtEntityCpntHeroController* hero, void* instance, char addToActive) |
-| `MagicalObject_SpawnAllObjects` | `0x14025da20` | ✅ ok | ✔ | void(void* pool, void* scene) |
+| `MagicalObject_SpawnAllObjects` | `0x14025da20` | ❓ unverified | ✔ | void(void* pool, void* scene) |
 | `MagicalObject_SpawnContainingFunc` | `0x14025d9b0` | ✅ ok |  | Outer function (1283 bytes) that contains the inlined SpawnAllObjects entry at +0x70. T… |
 | `g_MagicalObjectPool` | `0x14143cc18` | 📍 va |  | [2026-07-10: re-derived post 2026-07-09 patch (was 0x1414365d0); confirmed via readers … |
 

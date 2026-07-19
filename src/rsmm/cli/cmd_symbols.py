@@ -231,12 +231,22 @@ def _cmd_audit(smap: SymbolMap, dump_path: Path) -> int:
 
     broken: list[tuple[str, str]] = []
     drift: list[tuple[str, str]] = []
+    uncovered: list[str] = []
     ok = 0
     for name, s in by_name.items():
         if s.kind not in ("function", "event"):
             continue
         rec = dump.get(name)
         if rec is None:
+            # An anchor symbol is a parent pattern + offset and has no pattern
+            # entry of its own, so it can NEVER appear in the dump (the loader
+            # iterates the pattern DB). Calling that "BROKEN" is the right
+            # verdict only by accident; the check that actually validates an
+            # anchor is the instruction-boundary one in verify_symbol_resolve.
+            if getattr(s, "anchor", None):
+                if s.status == "ok":
+                    uncovered.append(name)
+                continue
             if s.status == "ok":
                 broken.append((name, "status=ok but ABSENT from the runtime dump"))
             continue
@@ -281,6 +291,12 @@ def _cmd_audit(smap: SymbolMap, dump_path: Path) -> int:
             f"  could not agree on an image base (best guess held by only "
             f"{confidence:.0%} of symbols) — comparing raw addresses; "
             "treat the drift list below with suspicion."), file=sys.stderr)
+    if uncovered:
+        print(_ST.dim(
+            f"  {len(uncovered)} anchor symbol(s) are not covered by the runtime "
+            "dump by construction (parent pattern + offset, no pattern of their "
+            "own): " + ", ".join(sorted(uncovered)) +
+            " — validated by scripts/verify_symbol_resolve.py instead."))
     if drift:
         # NB: never tell the user to copy the RUNTIME va into symbols.json.
         # Under Proton that address is a rebased, machine-specific value and

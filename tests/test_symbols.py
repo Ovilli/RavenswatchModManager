@@ -204,6 +204,8 @@ def test_audit_missing_dump_returns_2(tmp_path):
 
 import json  # noqa: E402
 
+import pytest  # noqa: E402
+
 from rsmm.cli.cmd_symbols import detect_image_slide  # noqa: E402
 
 _PROTON_SLIDE = 0x6FFEBC670000
@@ -301,3 +303,61 @@ def test_audit_never_tells_the_user_to_copy_a_runtime_va(tmp_path, capsys):
     if "address drift" in err:
         assert "do NOT copy" in err
         assert "refresh symbols.json" not in err
+
+
+# --- anchor symbols were verified by NO gate -------------------------------
+#
+# An anchor is `parent pattern + offset`. It has no top-level `raw`, so
+# verify_symbol_resolve skipped it; and no pattern of its own, so the loader
+# never dumps it and `symbols audit` called it BROKEN for the wrong reason.
+# MagicalObject_SpawnAllObjects sat at status=ok with an offset that landed
+# 2 bytes inside a 5-byte call.
+
+def test_anchor_symbols_are_not_reported_broken_merely_for_being_absent(tmp_path, capsys):
+    import dataclasses
+
+    from rsmm.cli.cmd_symbols import _cmd_audit
+    from rsmm.engine.symbols import load_symbol_map
+
+    smap = load_symbol_map()
+    anchors = [s for s in smap.symbols if s.anchor]
+    if not anchors:
+        pytest.skip("no anchor symbols in the map")
+    # Force one to status=ok so the branch under test is reachable.
+    patched = tuple(dataclasses.replace(s, status="ok") if s.anchor else s
+                    for s in smap.symbols)
+    smap = dataclasses.replace(smap, symbols=patched)
+
+    recs = []
+    for s in smap.symbols:
+        if s.kind not in ("function", "event") or s.anchor:
+            continue
+        try:
+            recs.append({"name": s.name, "va": hex(s.preferred_addr(0x140000000)),
+                         "bytes": ""})
+        except ValueError:
+            pass
+    dump = tmp_path / "resolved_symbols.json"
+    dump.write_text(json.dumps(recs), encoding="utf-8")
+    _cmd_audit(smap, dump)
+
+    out = capsys.readouterr()
+    combined = out.out + out.err
+    assert "not covered by the runtime dump" in combined
+    broken = combined.split("BROKEN")[1][:400] if "BROKEN" in combined else ""
+    for s in anchors:
+        assert s.name not in broken, "anchor called BROKEN for being absent"
+
+
+def test_the_known_bad_anchor_is_not_status_ok():
+    """MagicalObject_SpawnAllObjects' +0x70 lands mid-instruction (verified
+    against the shipped exe). It must not claim to be resolvable until the
+    correct internal entry point is re-derived."""
+    from rsmm.engine.symbols import load_symbol_map
+
+    s = load_symbol_map().by_name("MagicalObject_SpawnAllObjects")
+    assert s is not None
+    assert s.status != "ok", (
+        "re-promoting this needs a re-derived offset AND a passing "
+        "scripts/verify_symbol_resolve.py anchor check"
+    )
