@@ -191,3 +191,113 @@ def test_audit_missing_dump_returns_2(tmp_path):
     smap = S.load_symbol_map()
     rc = cmd_symbols._cmd_audit(smap, tmp_path / "nope.json")
     assert rc == 2
+
+
+# --- audit: image-base slide ----------------------------------------------
+#
+# The loader's dump records absolute runtime VAs and no module base. Under
+# Wine/Proton the exe is NOT at its preferred 0x140000000: the 2026-07-19 dump
+# had every one of 77 resolved symbols at +0x6ffebc670000. Comparing raw VAs
+# reported all 77 as "address drift" and advised refreshing symbols.json from
+# the runtime VA — which would have written Proton-specific, machine-local
+# addresses into the shared map.
+
+import json  # noqa: E402
+
+from rsmm.cli.cmd_symbols import detect_image_slide  # noqa: E402
+
+_PROTON_SLIDE = 0x6FFEBC670000
+
+
+def test_slide_is_detected_when_the_whole_image_moved():
+    pairs = [(0x140000000 + i * 0x1000, 0x140000000 + i * 0x1000 + _PROTON_SLIDE)
+             for i in range(77)]
+    slide, confidence = detect_image_slide(pairs)
+    assert slide == _PROTON_SLIDE
+    assert confidence == 1.0
+
+
+def test_no_slide_reported_when_the_image_is_at_its_preferred_base():
+    """Windows without relocation must behave exactly as before."""
+    pairs = [(0x140000000 + i * 0x1000, 0x140000000 + i * 0x1000) for i in range(20)]
+    assert detect_image_slide(pairs) == (0, 1.0)
+
+
+def test_one_moved_symbol_does_not_shift_the_consensus():
+    """The point of the fix: real drift must survive, not be absorbed."""
+    pairs = [(0x140000000 + i * 0x1000, 0x140000000 + i * 0x1000 + _PROTON_SLIDE)
+             for i in range(50)]
+    pairs.append((0x140900000, 0x140900000 + _PROTON_SLIDE + 0x4000))  # genuinely moved
+    slide, confidence = detect_image_slide(pairs)
+    assert slide == _PROTON_SLIDE
+    assert confidence < 1.0
+    # and the odd one out is still detectable as drift
+    stored, runtime = pairs[-1]
+    assert abs((stored + slide) - runtime) == 0x4000
+
+
+def test_falls_back_to_no_slide_when_there_is_no_consensus():
+    """Garbage in must not produce a confident, invented relocation."""
+    pairs = [(0x140000000 + i, 0x140000000 + i * 7919) for i in range(30)]
+    slide, confidence = detect_image_slide(pairs)
+    assert slide == 0
+    assert confidence < 0.5
+
+
+def test_empty_input_is_safe():
+    assert detect_image_slide([]) == (0, 0.0)
+
+
+def test_audit_reports_no_drift_for_a_uniformly_rebased_image(tmp_path, capsys):
+    """End-to-end through _cmd_audit with a synthetic Proton-style dump."""
+    from rsmm.cli.cmd_symbols import _cmd_audit
+    from rsmm.engine.symbols import load_symbol_map
+
+    smap = load_symbol_map()
+    records = []
+    for s in smap.symbols:
+        if s.kind not in ("function", "event"):
+            continue
+        try:
+            addr = s.preferred_addr(0x140000000)
+        except ValueError:
+            continue
+        records.append({"name": s.name, "va": hex(addr + _PROTON_SLIDE),
+                        "bytes": ""})
+    assert records, "symbol map should yield function symbols"
+
+    dump = tmp_path / "resolved_symbols.json"
+    dump.write_text(json.dumps(records), encoding="utf-8")
+    _cmd_audit(smap, dump)
+
+    out = capsys.readouterr()
+    assert "address drift" not in out.err, "rebase misreported as per-symbol drift"
+    assert f"slide of {hex(_PROTON_SLIDE)}" in out.out
+
+
+def test_audit_never_tells_the_user_to_copy_a_runtime_va(tmp_path, capsys):
+    """That advice would poison symbols.json with machine-local addresses."""
+    from rsmm.cli.cmd_symbols import _cmd_audit
+    from rsmm.engine.symbols import load_symbol_map
+
+    smap = load_symbol_map()
+    records = []
+    for i, s in enumerate(smap.symbols):
+        if s.kind not in ("function", "event"):
+            continue
+        try:
+            addr = s.preferred_addr(0x140000000)
+        except ValueError:
+            continue
+        # Move one symbol independently so the drift branch actually prints.
+        extra = 0x400000 if i == 0 else 0
+        records.append({"name": s.name, "va": hex(addr + _PROTON_SLIDE + extra),
+                        "bytes": ""})
+    dump = tmp_path / "resolved_symbols.json"
+    dump.write_text(json.dumps(records), encoding="utf-8")
+    _cmd_audit(smap, dump)
+
+    err = capsys.readouterr().err
+    if "address drift" in err:
+        assert "do NOT copy" in err
+        assert "refresh symbols.json" not in err

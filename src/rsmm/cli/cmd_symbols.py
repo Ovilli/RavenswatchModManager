@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 
 from rsmm.cli import _term
@@ -153,6 +154,36 @@ _PROLOGUE_FIRST = frozenset((
 ))
 
 
+#: Below this share of agreeing samples the "slide" is not a rebase, it is
+#: noise — fall back to assuming no relocation rather than inventing one.
+_SLIDE_CONSENSUS = 0.5
+
+
+def detect_image_slide(pairs: list[tuple[int, int]]) -> tuple[int, float]:
+    """Infer the runtime image-base slide from (stored_va, runtime_va) pairs.
+
+    Returns ``(slide, confidence)``. The loader's dump records absolute
+    runtime VAs but no module base, and under Wine/Proton the exe is NOT
+    loaded at its preferred 0x140000000 — in the 2026-07-19 dump every one of
+    the 77 resolved symbols sat at +0x6ffebc670000. Comparing raw VAs there
+    reports *every* symbol as drifted and tells the user to refresh
+    symbols.json from the runtime VA, which would write Proton-specific
+    addresses into the map and corrupt it.
+
+    A relocation moves the whole image by one constant, so the true slide is
+    the value the overwhelming majority of symbols agree on. Genuine drift is
+    then a symbol that disagrees with that consensus.
+    """
+    if not pairs:
+        return 0, 0.0
+    counts = Counter(runtime - stored for stored, runtime in pairs)
+    slide, n = counts.most_common(1)[0]
+    confidence = n / len(pairs)
+    if confidence < _SLIDE_CONSENSUS:
+        return 0, confidence
+    return slide, confidence
+
+
 def _cmd_audit(smap: SymbolMap, dump_path: Path) -> int:
     """Diff the loader's RUNTIME ground-truth dump against the symbol map.
 
@@ -182,6 +213,22 @@ def _cmd_audit(smap: SymbolMap, dump_path: Path) -> int:
         pass  # prologue disasm skipped; null/mismatch checks still run
 
     by_name = {s.name: s for s in smap.symbols}
+
+    # First pass: learn where the image actually loaded. Without this every
+    # address comparison below is off by the relocation slide.
+    pairs: list[tuple[int, int]] = []
+    for name, s in by_name.items():
+        if s.kind not in ("function", "event"):
+            continue
+        rec = dump.get(name)
+        if not rec or not rec.get("va"):
+            continue
+        try:
+            pairs.append((s.preferred_addr(0x140000000), int(rec["va"], 16)))
+        except ValueError:
+            continue
+    slide, confidence = detect_image_slide(pairs)
+
     broken: list[tuple[str, str]] = []
     drift: list[tuple[str, str]] = []
     ok = 0
@@ -210,12 +257,13 @@ def _cmd_audit(smap: SymbolMap, dump_path: Path) -> int:
                 broken.append((name, f"resolved 0x{va_int:x} but first insn '{first}' "
                                      "is not a prologue (mid-instruction / wrong fn)"))
                 continue
-        # drift vs the stored raw address (informational — raw may be a build
-        # behind; a large delta on a status=ok symbol is worth a look).
+        # Drift vs the stored raw address, measured AFTER removing the image
+        # slide. A symbol that moved with the rest of the image has not
+        # drifted; only one that disagrees with the consensus has.
         try:
-            stored = s.preferred_addr(0x140000000)
+            stored = s.preferred_addr(0x140000000) + slide
             if abs(stored - va_int) > 0x100000:
-                drift.append((name, f"stored 0x{stored:x} vs runtime 0x{va_int:x} "
+                drift.append((name, f"expected 0x{stored:x} vs runtime 0x{va_int:x} "
                                     f"(Δ0x{abs(stored - va_int):x})"))
         except ValueError:
             pass
@@ -223,9 +271,24 @@ def _cmd_audit(smap: SymbolMap, dump_path: Path) -> int:
 
     print(f"audited {_ST.bold(str(len(dump)))} runtime-resolved symbols against the map; "
           f"{_ST.ok(str(ok))} clean.")
+    if slide:
+        print(_ST.dim(
+            f"  image loaded at a slide of 0x{slide:x} from the preferred base "
+            f"(agreed by {confidence:.0%} of symbols) — addresses compared "
+            "relative to it, not raw."))
+    elif pairs and confidence < _SLIDE_CONSENSUS:
+        print(_ST.warn(
+            f"  could not agree on an image base (best guess held by only "
+            f"{confidence:.0%} of symbols) — comparing raw addresses; "
+            "treat the drift list below with suspicion."), file=sys.stderr)
     if drift:
-        print(f"\n{len(drift)} address drift (stored addr is stale — refresh symbols.json "
-              "raw from the runtime VA):", file=sys.stderr)
+        # NB: never tell the user to copy the RUNTIME va into symbols.json.
+        # Under Proton that address is a rebased, machine-specific value and
+        # writing it into the map would poison it for everyone.
+        print(f"\n{len(drift)} address drift (moved independently of the image "
+              "— re-resolve with scripts/disasm.py --resolve NAME; do NOT copy "
+              "the runtime VA into symbols.json, it is base-relative):",
+              file=sys.stderr)
         for n, why in drift:
             print(f"  {n}: {why}", file=sys.stderr)
     if broken:
