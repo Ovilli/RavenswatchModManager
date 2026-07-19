@@ -384,8 +384,14 @@ HOST_NAME = "Hero_Display"
 #: Component group the appended chain lives in (part of every reference path).
 HOST_GROUP = "UI Social"
 
-#: The named event that opens the mod menu.
-OPEN_EVENT = "RSMM_OPEN_MENU"
+#: The named event our listener subscribes to.  Named events in this engine
+#: are BROADCAST, so subscribing does not steal the event from its existing
+#: listeners — it rides alongside them.  ``BOOK_MENU_OPEN`` is fired by
+#: ``Book_Menu\Book_Mesh_Controller`` every time the player opens the book, so
+#: it needs no new sender and no button (no host has the button + sender
+#: classes without extending its class table).  The mod modal therefore opens
+#: with the book.  This is a v1 trigger: a dedicated opener is future work.
+TRIGGER_EVENT = "BOOK_MENU_OPEN"
 
 #: Our component names.
 _C_LISTENER = "RSMM Open Menu Listener"
@@ -398,14 +404,17 @@ def _ref(kind: str, name: str) -> str:
     return f"[{kind}] {HOST_NAME}\\{HOST_GROUP}\\{name}"
 
 
-#: Donor component -> the string swaps that retarget its clone.  Donors are
-#: picked for MINIMAL coupling: the Report handler is the only one with no
-#: social-handler, state or bank-key references, and the Blacklist spawner the
-#: only one that names no spawner value.
-_CHAIN: tuple[tuple[str, dict[str, str]], ...] = (
+def _chain(event: str) -> tuple[tuple[str, dict[str, str]], ...]:
+    """Donor component -> the string swaps that retarget its clone.
+
+    Donors are picked for MINIMAL coupling: the Report handler is the only one
+    with no social-handler, state or bank-key references, and the Blacklist
+    spawner the only one that names no spawner value.
+    """
+    return (
     ("Spawn Blacklist Modal Event Listener", {
         "Spawn Blacklist Modal Event Listener": _C_LISTENER,
-        "SPAWN_BLACKLIST_MODAL": OPEN_EVENT,
+        "SPAWN_BLACKLIST_MODAL": event,
         f"[Executing Methods] {HOST_NAME}\\{HOST_GROUP}\\Blacklist Methods":
             _ref("Executing Methods", _C_METHODS),
     }),
@@ -429,19 +438,23 @@ _CHAIN: tuple[tuple[str, dict[str, str]], ...] = (
 )
 
 
-def build_open_trigger(host_bytes: bytes) -> bytes:
-    """Append the ``RSMM_OPEN_MENU`` -> spawn-the-mod-modal chain to the host.
+def build_open_trigger(host_bytes: bytes, *, event: str = TRIGGER_EVENT) -> bytes:
+    """Append the ``event`` -> spawn-the-mod-modal chain to the host.
 
     Four components, cloned from the host's own working social-modal chain:
-    a named-event listener, an executing-methods relay, a modal handler and an
-    entity spawner pointed at :data:`MODAL_RESOURCE`.  The listener does not
-    reach the spawner directly — ``ModalHandlerEntityCpntSettings`` sits
-    between them — but that class is generic, driving all three retail modals.
+    a named-event listener (subscribed to ``event``), an executing-methods
+    relay, a modal handler and an entity spawner pointed at
+    :data:`MODAL_RESOURCE`.  The listener does not reach the spawner directly —
+    ``ModalHandlerEntityCpntSettings`` sits between them — but that class is
+    generic, driving all three retail modals.
     """
+    if not event.isascii() or not event:
+        raise ModsModalError(f"event name must be non-empty ASCII: {event!r}")
+    chain = _chain(event)
     cf = cooked.parse(host_bytes)
     names = component_names(host_bytes)
     records, guids = [], {}
-    for donor, _ in _CHAIN:
+    for donor, _ in chain:
         if names.count(donor) != 1:
             raise ModsModalError(
                 f"expected exactly one {donor!r} on {HOST_NAME} — game update "
@@ -454,7 +467,7 @@ def build_open_trigger(host_bytes: bytes) -> bytes:
         guids[guid] = os.urandom(16)
 
     clones = []
-    for record, (donor, swaps) in zip(records, _CHAIN, strict=True):
+    for record, (donor, swaps) in zip(records, chain, strict=True):
         # GUIDs first, so references BETWEEN the clones land on the clones
         # rather than on the components they were copied from.  References
         # out of the set keep the original GUID, which is what we want.

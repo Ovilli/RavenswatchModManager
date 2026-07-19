@@ -328,11 +328,28 @@ def test_trigger_appends_the_whole_chain():
 
 
 @_needs_host
-def test_trigger_names_our_event_and_our_modal():
+def test_trigger_names_its_event_and_our_modal():
     strings = {s for _, _, s in ES.list_strings(MM.build_open_trigger(
         _HOST.read_bytes()))}
-    assert MM.OPEN_EVENT in strings
+    assert MM.TRIGGER_EVENT in strings
     assert MM.MODAL_RESOURCE in strings
+    # The donor's own event must be gone from the clone.
+    assert "SPAWN_BLACKLIST_MODAL" in strings, "vanilla senders remain untouched"
+
+
+@_needs_host
+def test_trigger_event_is_overridable():
+    out = MM.build_open_trigger(_HOST.read_bytes(), event="RSMM_CUSTOM_OPEN")
+    strings = {s for _, _, s in ES.list_strings(out)}
+    assert "RSMM_CUSTOM_OPEN" in strings
+    assert MM.TRIGGER_EVENT not in strings or MM.TRIGGER_EVENT == "RSMM_CUSTOM_OPEN"
+
+
+@_needs_host
+def test_trigger_rides_a_real_vanilla_event_by_default():
+    """The default trigger must be an event the game already fires, or nothing
+    opens the menu."""
+    assert MM.TRIGGER_EVENT == "BOOK_MENU_OPEN"
 
 
 @_needs_host
