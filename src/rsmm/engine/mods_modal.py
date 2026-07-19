@@ -358,7 +358,11 @@ def build_modal_assets(cooking_root: Path, dec2enc: dict[str, str],
     """
     donor_dec = DONOR_DECODED.replace("\\", "/")
     bank_dec = BANK_DECODED.replace("\\", "/")
-    for dec in (donor_dec, bank_dec):
+    checked = [donor_dec, bank_dec]
+    if trigger:
+        checked += [HOST_DECODED.replace("\\", "/"),
+                    CHAIN_SRC_DECODED.replace("\\", "/")]
+    for dec in checked:
         if dec not in dec2enc:
             raise ModsModalError(f"asset map is missing {dec!r} — game update? "
                                  f"re-run 'rsmm rebuild-asset-map'")
@@ -379,10 +383,10 @@ def build_modal_assets(cooking_root: Path, dec2enc: dict[str, str],
 
     if trigger:
         host_dec = HOST_DECODED.replace("\\", "/")
-        if host_dec not in dec2enc:
-            raise ModsModalError(f"asset map is missing {host_dec!r} — game "
-                                 f"update? re-run 'rsmm rebuild-asset-map'")
-        out[host_dec] = build_open_trigger(_pristine(host_dec).read_bytes())
+        src_dec = CHAIN_SRC_DECODED.replace("\\", "/")
+        out[host_dec] = build_open_trigger(
+            _pristine(host_dec).read_bytes(),
+            chain_src_bytes=_pristine(src_dec).read_bytes())
 
     # append_bank_keys resolves .rsmm.bak per language sibling itself, so it
     # needs the LIVE path for its sibling discovery to work.
@@ -394,24 +398,33 @@ def build_modal_assets(cooking_root: Path, dec2enc: dict[str, str],
     return out
 
 
-#: The host we append the open-trigger chain to.  It must already carry every
-#: class the chain uses — ``append_components`` cannot invent class-table
-#: entries — and only ``Hero_Display`` and ``MyNacon`` do.  ``Hero_Display``
-#: also runs this exact chain three times already, so every wiring precedent
-#: is in front of us.
+#: Where the working modal chain is CLONED from.  ``Hero_Display`` is the only
+#: non-social-singleton entity that carries a full
+#: listener -> methods -> handler -> spawner modal chain.
+CHAIN_SRC_DECODED = ("EntitySettings\\GameUis\\All_Book_Pages\\"
+                     "Hero_Display.entity.ot.EntitySettingsResource.gen")
+CHAIN_SRC_ENTITY = "Hero_Display"
+
+#: Where the chain is APPENDED.  Only ``Hero_Display`` and ``MyNacon`` carry
+#: every chain class, and both are social pages that stay DORMANT in
+#: single-player — so the chain is instead relocated onto ``Main_Book_Menu``,
+#: which is loaded whenever the book is open (solo included) and already
+#: receives named events.  It is missing exactly one chain class
+#: (``ModalHandlerEntityCpntSettings``), which is added to its class table;
+#: every other class the chain uses it already has.
 HOST_DECODED = ("EntitySettings\\GameUis\\All_Book_Pages\\"
-                "Hero_Display.entity.ot.EntitySettingsResource.gen")
-HOST_NAME = "Hero_Display"
+                "Main_Book_Menu.entity.ot.EntitySettingsResource.gen")
+HOST_NAME = "Main_Book_Menu"
 #: Component group the appended chain lives in (part of every reference path).
+#: Any consistent label works; ``UI Social`` matches most donor components so
+#: it minimises the group renames.
 HOST_GROUP = "UI Social"
 
 #: The named event our listener subscribes to.  Named events in this engine
 #: are BROADCAST, so subscribing does not steal the event from its existing
 #: listeners — it rides alongside them.  ``BOOK_MENU_OPEN`` is fired by
-#: ``Book_Menu\Book_Mesh_Controller`` every time the player opens the book, so
-#: it needs no new sender and no button (no host has the button + sender
-#: classes without extending its class table).  The mod modal therefore opens
-#: with the book.  This is a v1 trigger: a dedicated opener is future work.
+#: ``Book_Menu\Book_Mesh_Controller`` every time the player opens the book.
+#: The mod modal therefore opens with the book.
 TRIGGER_EVENT = "BOOK_MENU_OPEN"
 
 #: Our component names.
@@ -428,25 +441,28 @@ def _ref(kind: str, name: str) -> str:
 def _chain(event: str) -> tuple[tuple[str, dict[str, str]], ...]:
     """Donor component -> the string swaps that retarget its clone.
 
-    Donors are picked for MINIMAL coupling: the Report handler is the only one
-    with no social-handler, state or bank-key references, and the Blacklist
-    spawner the only one that names no spawner value.
+    Swap KEYS name the donor's own strings (entity ``Hero_Display``); VALUES
+    relocate them onto ``HOST_NAME``.  Donors are picked for MINIMAL coupling:
+    the Report handler is the only one with no social-handler, state or
+    bank-key references, and the Blacklist spawner the only one that names no
+    spawner value.
     """
+    src = CHAIN_SRC_ENTITY
     return (
     ("Spawn Blacklist Modal Event Listener", {
         "Spawn Blacklist Modal Event Listener": _C_LISTENER,
         "SPAWN_BLACKLIST_MODAL": event,
-        f"[Executing Methods] {HOST_NAME}\\{HOST_GROUP}\\Blacklist Methods":
+        f"[Executing Methods] {src}\\{HOST_GROUP}\\Blacklist Methods":
             _ref("Executing Methods", _C_METHODS),
     }),
     ("Blacklist Methods", {
         "Blacklist Methods": _C_METHODS,
-        f"[Modal Handler] {HOST_NAME}\\Blacklist Modal\\Blacklist Modal Handler":
+        f"[Modal Handler] {src}\\Blacklist Modal\\Blacklist Modal Handler":
             _ref("Modal Handler", _C_HANDLER),
     }),
     ("Report Modal Handler", {
         "Report Modal Handler": _C_HANDLER,
-        f"[Entity Spawner] {HOST_NAME}\\{HOST_GROUP}\\Report Modal Entity Spawner":
+        f"[Entity Spawner] {src}\\{HOST_GROUP}\\Report Modal Entity Spawner":
             _ref("Entity Spawner", _C_SPAWNER),
     }),
     ("Blacklist Modal Entity Spawner", {
@@ -459,53 +475,143 @@ def _chain(event: str) -> tuple[tuple[str, dict[str, str]], ...]:
 )
 
 
-def build_open_trigger(host_bytes: bytes, *, event: str = TRIGGER_EVENT) -> bytes:
-    """Append the ``event`` -> spawn-the-mod-modal chain to the host.
+def _class_index_of(cf: cooked.CookedFile, name: str) -> int | None:
+    for i, c in enumerate(cf.classes):
+        if c.name == name:
+            return i
+    return None
 
-    Four components, cloned from the host's own working social-modal chain:
-    a named-event listener (subscribed to ``event``), an executing-methods
-    relay, a modal handler and an entity spawner pointed at
-    :data:`MODAL_RESOURCE`.  The listener does not reach the spawner directly —
-    ``ModalHandlerEntityCpntSettings`` sits between them — but that class is
-    generic, driving all three retail modals.
+
+def extend_class_table(host_cf: cooked.CookedFile, donor_cf: cooked.CookedFile,
+                       needed: set[str]) -> None:
+    """Add any ``needed`` classes missing from ``host_cf``, copied by name from
+    ``donor_cf``.  Their parent classes must already exist in the host (every
+    entity carries the ``oIEntityCpntSettings`` / ``oISerializable`` bases)."""
+    for name in sorted(needed):
+        if _class_index_of(host_cf, name) is not None:
+            continue
+        donor = donor_cf.classes[_class_index_of(donor_cf, name)]
+        if not any(c.class_id == donor.parent_id for c in host_cf.classes):
+            raise ModsModalError(
+                f"cannot add {name!r}: its parent {donor.parent_id} is absent "
+                f"from the host")
+        host_cf.classes.append(cooked.ClassDef(
+            donor.name, donor.class_id, donor.version_major,
+            donor.version_minor, donor.parent_id))
+
+
+def _remap_class_tags(record: bytes, donor_cf: cooked.CookedFile,
+                      host_cf: cooked.CookedFile) -> bytes:
+    """Rewrite a cloned record's class-table indices from donor to host.
+
+    Every inner ``BEGIN <u32>`` tag and the record's leading directory u32 is
+    an index into the file's OWN class table (verified: in the chain records
+    every such position resolves to a valid class).  Each is rewritten to the
+    host index of the SAME class name; a name mismatch fails closed.
+    """
+    def _host_index(donor_idx: int) -> int:
+        name = donor_cf.classes[donor_idx].name
+        hi = _class_index_of(host_cf, name)
+        if hi is None:
+            raise ModsModalError(f"class {name!r} absent from host after extend")
+        return hi
+
+    out = bytearray(record)
+    # Leading directory class index.
+    struct.pack_into("<I", out, 0, _host_index(struct.unpack_from("<I", out, 0)[0]))
+    # Every post-BEGIN class tag.
+    i = 0
+    while i + 4 <= len(out):
+        if out[i:i + 4] == _BEGIN and i + 8 <= len(out):
+            struct.pack_into("<I", out, i + 4,
+                             _host_index(struct.unpack_from("<I", out, i + 4)[0]))
+            i += 8
+            continue
+        i += 1
+    return bytes(out)
+
+
+def build_open_trigger(host_bytes: bytes, *, chain_src_bytes: bytes,
+                       event: str = TRIGGER_EVENT) -> bytes:
+    """Append the ``event`` -> spawn-the-mod-modal chain to ``host_bytes``.
+
+    The chain (listener -> executing-methods -> modal handler -> entity
+    spawner) is cloned from ``chain_src_bytes`` (``Hero_Display``) and relocated
+    onto the host: GUIDs reminted, reference paths moved from the source entity
+    onto :data:`HOST_NAME`, the modal resource retargeted to
+    :data:`MODAL_RESOURCE`, and — because inner ``BEGIN`` tags index the file's
+    own class table — every class index remapped from the source table to the
+    host's (extended by one class where needed).
     """
     if not event.isascii() or not event:
         raise ModsModalError(f"event name must be non-empty ASCII: {event!r}")
     chain = _chain(event)
-    cf = cooked.parse(host_bytes)
-    names = component_names(host_bytes)
-    records, guids = [], {}
+    src_cf = cooked.parse(chain_src_bytes)
+    src_names = component_names(chain_src_bytes)
+
+    # Gather the source records + the set of classes they use.
+    records, guids, used = [], {}, set()
     for donor, _ in chain:
-        if names.count(donor) != 1:
+        if src_names.count(donor) != 1:
             raise ModsModalError(
-                f"expected exactly one {donor!r} on {HOST_NAME} — game update "
-                f"changed its layout?")
-        record = cf.sections[1 + names.index(donor)].payload
+                f"expected exactly one {donor!r} on {CHAIN_SRC_ENTITY} — game "
+                f"update changed its layout?")
+        record = src_cf.sections[1 + src_names.index(donor)].payload
         guid = _component_guid(record)
         if guid is None:
             raise ModsModalError(f"{donor!r} carries no instance GUID")
         records.append(record)
         guids[guid] = os.urandom(16)
+        used.add(src_cf.classes[struct.unpack_from("<I", record, 0)[0]].name)
+        i = 0
+        while i + 4 <= len(record):
+            if record[i:i + 4] == _BEGIN and i + 8 <= len(record):
+                used.add(src_cf.classes[
+                    struct.unpack_from("<I", record, i + 4)[0]].name)
+                i += 8
+                continue
+            i += 1
+
+    # Extend the host's class table with whatever the chain needs.
+    host_cf = cooked.parse(host_bytes)
+    extend_class_table(host_cf, src_cf, used)
+    host_extended = cooked.emit(host_cf)
+    host_cf = cooked.parse(host_extended)  # re-parse so indices are final
 
     clones = []
     for record, (donor, swaps) in zip(records, chain, strict=True):
         # GUIDs first, so references BETWEEN the clones land on the clones
-        # rather than on the components they were copied from.  References
-        # out of the set keep the original GUID, which is what we want.
+        # rather than on the components they were copied from.
         for old, new in guids.items():
             record = record.replace(old, new)
         try:
-            clones.append(EA.replace_blob_strings(record, swaps))
+            record = EA.replace_blob_strings(record, swaps)
         except EA.EntityAppendError as e:
             raise ModsModalError(f"retargeting {donor!r}: {e}") from None
+        clones.append(_remap_class_tags(record, src_cf, host_cf))
 
-    out = EA.append_components(host_bytes, clones)
-    added = set(component_names(out)) - set(names)
+    out = EA.append_components(host_extended, clones)
+    added = set(component_names(out)) - set(component_names(host_bytes))
     expected = {_C_LISTENER, _C_METHODS, _C_HANDLER, _C_SPAWNER}
     if added != expected:
         raise ModsModalError(f"appended {sorted(added)}, expected "
                              f"{sorted(expected)}")
+
+    # Fail closed: the relocation must not have created a reference that
+    # resolves to nothing.  Main_Book_Menu is much larger than the chain, so a
+    # remap slip would surface here as a dangling path.
+    before = _dangling_refs(host_bytes)
+    if _dangling_refs(out) - before:
+        raise ModsModalError("open-trigger relocation introduced a dangling "
+                             "component reference")
     return out
+
+
+def _dangling_refs(cooked_bytes: bytes) -> set[str]:
+    alive = set(component_names(cooked_bytes)) - {""}
+    return {s for _, _, s in ES.list_strings(cooked_bytes)
+            if s.startswith("[") and "\\" in s
+            and s.split("\\")[-1] not in alive}
 
 
 def _named_section(cf: cooked.CookedFile, cooked_bytes: bytes,

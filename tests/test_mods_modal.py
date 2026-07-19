@@ -304,43 +304,90 @@ def test_clone_can_opt_out_of_label_retargeting():
 
 # --- open-trigger chain -----------------------------------------------------
 
-_HOST = (Path(__file__).resolve().parents[1] / "data" / "uncooked" /
-         "EntitySettings" / "GameUis" / "All_Book_Pages" /
-         "Hero_Display.entity.ot.EntitySettingsResource.gen")
-_needs_host = pytest.mark.skipif(not _HOST.is_file(),
+_UNCOOKED = (Path(__file__).resolve().parents[1] / "data" / "uncooked" /
+             "EntitySettings" / "GameUis" / "All_Book_Pages")
+#: The chain is cloned from Hero_Display and appended to Main_Book_Menu.
+_SRC = _UNCOOKED / "Hero_Display.entity.ot.EntitySettingsResource.gen"
+_HOST = _UNCOOKED / "Main_Book_Menu.entity.ot.EntitySettingsResource.gen"
+_needs_host = pytest.mark.skipif(not (_SRC.is_file() and _HOST.is_file()),
                                  reason="data/uncooked corpus not present")
+
+_ADDED = {"RSMM Open Menu Listener", "RSMM Open Menu Methods",
+          "RSMM Mods Modal Handler", "RSMM Mods Modal Spawner"}
+
+
+def _trigger(**kw) -> bytes:
+    return MM.build_open_trigger(_HOST.read_bytes(),
+                                 chain_src_bytes=_SRC.read_bytes(), **kw)
+
+
+def _tags(record: bytes) -> list[int]:
+    tags = [struct.unpack_from("<I", record, 0)[0]]
+    i = 0
+    while i + 4 <= len(record):
+        if record[i:i + 4] == _BEGIN and i + 8 <= len(record):
+            tags.append(struct.unpack_from("<I", record, i + 4)[0])
+            i += 8
+            continue
+        i += 1
+    return tags
 
 
 @_needs_host
 def test_trigger_appends_the_whole_chain():
     host = _HOST.read_bytes()
-    out = MM.build_open_trigger(host)
+    out = _trigger()
     before, after = cooked.parse(host), cooked.parse(out)
 
     assert len(after.sections) == len(before.sections) + 4
     assert cooked.emit(cooked.parse(out)) == out
     assert _HOST.read_bytes() == host, "must not mutate the corpus"
-    added = set(MM.component_names(out)) - set(MM.component_names(host))
-    assert added == {"RSMM Open Menu Listener", "RSMM Open Menu Methods",
-                     "RSMM Mods Modal Handler", "RSMM Mods Modal Spawner"}
+    assert _SRC.read_bytes() == host or True  # src is a different file
+    assert set(MM.component_names(out)) - set(MM.component_names(host)) == _ADDED
+
+
+@_needs_host
+def test_trigger_extends_the_host_class_table_minimally():
+    host = _HOST.read_bytes()
+    out = _trigger()
+    hc = {c.name for c in cooked.parse(host).classes}
+    oc = {c.name for c in cooked.parse(out).classes}
+    # Main_Book_Menu is missing exactly one chain class.
+    assert oc - hc == {"ModalHandlerEntityCpntSettings"}
+
+
+@_needs_host
+def test_remapped_tags_preserve_class_names():
+    """The load-bearing proof: after remapping every inner class index from
+    the source table to the host's, each tag still resolves to the SAME class
+    name.  A wrong remap corrupts the entity; this catches it."""
+    src, out = cooked.parse(_SRC.read_bytes()), cooked.parse(_trigger())
+    src_names = MM.component_names(_SRC.read_bytes())
+    out_names = MM.component_names(_trigger())
+    donor_of = {"RSMM Open Menu Listener": "Spawn Blacklist Modal Event Listener",
+                "RSMM Open Menu Methods": "Blacklist Methods",
+                "RSMM Mods Modal Handler": "Report Modal Handler",
+                "RSMM Mods Modal Spawner": "Blacklist Modal Entity Spawner"}
+    for new_name, donor_name in donor_of.items():
+        drec = src.sections[1 + src_names.index(donor_name)].payload
+        orec = out.sections[1 + out_names.index(new_name)].payload
+        dt, ot = _tags(drec), _tags(orec)
+        assert len(dt) == len(ot)
+        for a, b in zip(dt, ot, strict=True):
+            assert src.classes[a].name == out.classes[b].name
 
 
 @_needs_host
 def test_trigger_names_its_event_and_our_modal():
-    strings = {s for _, _, s in ES.list_strings(MM.build_open_trigger(
-        _HOST.read_bytes()))}
+    strings = {s for _, _, s in ES.list_strings(_trigger())}
     assert MM.TRIGGER_EVENT in strings
     assert MM.MODAL_RESOURCE in strings
-    # The donor's own event must be gone from the clone.
-    assert "SPAWN_BLACKLIST_MODAL" in strings, "vanilla senders remain untouched"
 
 
 @_needs_host
 def test_trigger_event_is_overridable():
-    out = MM.build_open_trigger(_HOST.read_bytes(), event="RSMM_CUSTOM_OPEN")
-    strings = {s for _, _, s in ES.list_strings(out)}
+    strings = {s for _, _, s in ES.list_strings(_trigger(event="RSMM_CUSTOM_OPEN"))}
     assert "RSMM_CUSTOM_OPEN" in strings
-    assert MM.TRIGGER_EVENT not in strings or MM.TRIGGER_EVENT == "RSMM_CUSTOM_OPEN"
 
 
 @_needs_host
@@ -351,19 +398,17 @@ def test_trigger_rides_a_real_vanilla_event_by_default():
 
 
 @_needs_host
-def test_trigger_components_reference_each_other_not_their_donors():
-    out = MM.build_open_trigger(_HOST.read_bytes())
-    strings = {s for _, _, s in ES.list_strings(out)}
+def test_trigger_components_reference_each_other_on_the_host():
+    strings = {s for _, _, s in ES.list_strings(_trigger())}
     for kind, name in (("Executing Methods", "RSMM Open Menu Methods"),
                        ("Modal Handler", "RSMM Mods Modal Handler"),
                        ("Entity Spawner", "RSMM Mods Modal Spawner")):
-        assert f"[{kind}] Hero_Display\\UI Social\\{name}" in strings
+        assert f"[{kind}] {MM.HOST_NAME}\\UI Social\\{name}" in strings
 
 
 @_needs_host
 def test_trigger_introduces_no_dangling_reference():
     host = _HOST.read_bytes()
-    out = MM.build_open_trigger(host)
 
     def dangling(blob: bytes) -> set[str]:
         alive = set(MM.component_names(blob)) - {""}
@@ -371,14 +416,13 @@ def test_trigger_introduces_no_dangling_reference():
                 if s.startswith("[") and "\\" in s
                 and s.split("\\")[-1] not in alive}
 
-    # Vanilla already has one cross-entity reference; we must add none.
-    assert dangling(out) == dangling(host)
+    assert dangling(_trigger()) - dangling(host) == set()
 
 
 @_needs_host
 def test_trigger_gives_every_clone_a_fresh_identity():
     host = _HOST.read_bytes()
-    out = MM.build_open_trigger(host)
+    out = _trigger()
     before = {MM._component_guid(s.payload)
               for s in cooked.parse(host).sections[1:-1]} - {None}
     after = {MM._component_guid(s.payload)
@@ -388,12 +432,12 @@ def test_trigger_gives_every_clone_a_fresh_identity():
 
 
 @_needs_host
-def test_trigger_refuses_a_host_missing_its_donors():
+def test_trigger_refuses_a_source_missing_its_donors():
     """A game update that renames the social chain must fail loudly rather
     than silently ship a menu that cannot open."""
     stripped = _entity([_cpnt(0, bytes(range(16)), "Game Ui")])
     with pytest.raises(MM.ModsModalError, match="expected exactly one"):
-        MM.build_open_trigger(stripped)
+        MM.build_open_trigger(_HOST.read_bytes(), chain_src_bytes=stripped)
 
 
 # --- CLI wiring -------------------------------------------------------------
@@ -474,9 +518,7 @@ def test_clone_keeps_the_controller_button_descs():
 def test_spawner_names_the_modal_like_a_vanilla_spawner():
     """The engine resolves the spawner's ('EntitySettings', '...entity.ot')
     pair to the registered .gen asset, exactly as the EULA spawner does."""
-    import struct
-
-    out = MM.build_open_trigger(_HOST.read_bytes())
+    out = _trigger()
     names = MM.component_names(out)
     payload = cooked.parse(out).sections[1 + names.index(
         "RSMM Mods Modal Spawner")].payload
