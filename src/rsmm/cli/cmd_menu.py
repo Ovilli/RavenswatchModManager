@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 from ..engine import entity_inspect as EI
-from ..engine import mod_menu, mods_tab
+from ..engine import mod_menu, mods_modal, mods_tab
 from ..engine import paths as P
 from .apply_mods import Mod, load_asset_map
 
@@ -87,6 +87,21 @@ def cmd_build(args: argparse.Namespace) -> int:
                 return 2
             assets.update(bm_assets)
             tab_note += " + 6th bookmark (experimental)"
+
+    if args.modal:
+        try:
+            modal_assets = mods_modal.build_modal_assets(
+                cooking, load_asset_map(), mods)
+        except mods_modal.ModsModalError as e:
+            print(f"warning: mod modal skipped: {e}", file=sys.stderr)
+        else:
+            overlap = set(assets) & set(modal_assets)
+            if overlap:
+                print(f"error: modal asset overlap: {sorted(overlap)}",
+                      file=sys.stderr)
+                return 2
+            assets.update(modal_assets)
+            tab_note += " + mods modal (experimental)"
 
     root = mods_dir / mod_menu.MENU_MOD_ID
     if root.exists():
@@ -164,6 +179,9 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--bookmark", action="store_true",
                    help="include the experimental (in-game inert so far) "
                         "6th physical book bookmark")
+    b.add_argument("--modal", action="store_true",
+                   help="include the experimental standalone mods modal "
+                        "(a custom menu entity opened by RSMM_OPEN_MENU)")
     b.set_defaults(fn=cmd_build)
 
     r = sub.add_parser("remove", help="delete the RSMMMenu mod")

@@ -379,3 +379,49 @@ def test_trigger_refuses_a_host_missing_its_donors():
     stripped = _entity([_cpnt(0, bytes(range(16)), "Game Ui")])
     with pytest.raises(MM.ModsModalError, match="expected exactly one"):
         MM.build_open_trigger(stripped)
+
+
+# --- CLI wiring -------------------------------------------------------------
+
+def _run_menu_build(argv: list[str]) -> tuple[int, str]:
+    import contextlib
+    import io
+
+    from rsmm.cli import cmd_menu
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+        rc = cmd_menu.main(["build", "--game-dir", "/nonexistent", *argv])
+    return rc, buf.getvalue()
+
+
+def test_menu_build_accepts_the_modal_flag():
+    # Missing cooking dir means it bails early either way; what matters is
+    # that --modal parses rather than dying as an unknown argument.
+    assert _run_menu_build([])[0] == 2
+    assert _run_menu_build(["--modal"])[0] == 2
+
+
+def test_menu_build_rejects_unknown_flags():
+    with pytest.raises(SystemExit):
+        _run_menu_build(["--bogus-flag"])
+
+
+def test_modal_is_opt_in():
+    """The modal ships a host-entity override, so it must never ride along
+    with a plain `rsmm menu build`."""
+    import argparse
+    import contextlib
+    import io
+
+    from rsmm.cli import cmd_menu
+
+    captured: dict[str, argparse.Namespace] = {}
+    original = cmd_menu.cmd_build
+    try:
+        cmd_menu.cmd_build = lambda args: captured.setdefault("a", args) and 0
+        with contextlib.redirect_stdout(io.StringIO()):
+            cmd_menu.main(["build", "--game-dir", "/nonexistent"])
+    finally:
+        cmd_menu.cmd_build = original
+    assert captured["a"].modal is False
