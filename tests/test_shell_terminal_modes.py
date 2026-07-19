@@ -10,15 +10,15 @@ Runs against a real pty; skipped where termios is unavailable (Windows).
 from __future__ import annotations
 
 import os
-import pty
 import sys
 
 import pytest
 
-from rsmm.cli import _keys, cmd_shell
-
 termios = pytest.importorskip("termios")
 tty = pytest.importorskip("tty")
+pty = pytest.importorskip("pty")
+
+from rsmm.cli import _keys, cmd_shell  # noqa: E402  (must come after the importorskip gate)
 
 # (name, termios attribute index) for the flags cooked output/input needs.
 _IFLAG, _OFLAG, _LFLAG = 0, 1, 3
