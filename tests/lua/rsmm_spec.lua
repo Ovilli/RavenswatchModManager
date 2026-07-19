@@ -666,6 +666,30 @@ do
     I.write_u64(GLCOMP, 0)
     check(R.xp.level() == nil, "capture is dropped once the object stops validating")
 
+    -- 8d. Multiple constructions: session 5f36 proved the ctor can produce a
+    -- TEMPLATE instance with no curve config whose level/xp never move. When
+    -- several instances were constructed, the one with a usable curve must
+    -- win even if a curve-less one was constructed more recently.
+    local GL_LIVE, GL_LIVE_PROG, GL_LIVE_CFG = 0x1c800000, 0x1d800000, 0x1e800000
+    local GL_TMPL, GL_TMPL_PROG = 0x1f800000, 0x20800000
+    local ctor_cb = hooks[ctor_va].cb
+    ctor_cb(GL_LIVE)
+    ctor_cb(GL_TMPL)                                   -- template is NEWER
+    for _, pair in ipairs({{GL_LIVE, GL_LIVE_PROG}, {GL_TMPL, GL_TMPL_PROG}}) do
+        I.write_u64(pair[1], XP_VFTABLE_VA)
+        I.write_u64(pair[1] + XP_PROGRESS_OFF, pair[2])
+    end
+    I.write_u32(GL_LIVE_PROG + 0, 4)
+    I.write_u32(GL_LIVE_PROG + 4, 250)
+    I.write_u32(GL_TMPL_PROG + 0, 1)
+    I.write_u32(GL_TMPL_PROG + 4, 0)
+    -- live instance gets a real curve: cfg flag +0x1d0, count +0x1e0
+    I.write_u64(GL_LIVE + 0x10, GL_LIVE_CFG)
+    I.write_u8(GL_LIVE_CFG + 0x1d0, 1)
+    I.write_u32(GL_LIVE_CFG + 0x1e0, 20)
+    check(R.xp.level() == 4, "instance WITH a curve beats a newer curve-less one")
+    check(R.xp.xp() == 250, "xp reads through the curve-bearing instance")
+
     shared[0] = HERO                                    -- restore for later sections
 end
 

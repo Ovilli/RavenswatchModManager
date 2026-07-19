@@ -1529,9 +1529,36 @@ end
 -- party-wide scaling entity. No amount of walking the hero can reach it.
 --
 -- So stop searching and let the engine hand it over: detour its constructor
--- and keep `this`. The ctor runs once when the scaling entity is built.
-local _gl_pending, _gl_comp = nil, nil
+-- and keep `this`.
+--
+-- The ctor can run MORE THAN ONCE, and not every instance is the live one:
+-- session 5f36 captured an instance whose curve config was empty (max_level
+-- clamps to 1, xp_for_level=0xffffffff) and whose level/xp never moved while
+-- the party demonstrably gained XP — a template/menu construction, not the
+-- run's tracker. So keep the last few constructed pointers and, at read
+-- time, prefer the one with a USABLE curve; an instance may also gain its
+-- config after construction (settings deserialize post-ctor), so the choice
+-- is re-evaluated whenever the current pick has no curve.
+local _gl_seen, _gl_comp = {}, nil
 local _gl_armed = false
+local GL_SEEN_MAX = 8
+
+--- Pure-memory (tick-thread-safe) probe: does this component have a level
+-- curve the engine would actually honor? Mirrors what XpForLevel/GetMaxLevel
+-- read: curve table at *(comp+0x10)+0x1d8 (enable flag +0x1d0, count +0x1e0)
+-- or the "Max Hero Level" signal object at comp+0x70.
+local function _gl_curve_usable(p)
+    local cfg = I.read_u64(p + 0x10)
+    if cfg and cfg ~= 0 and _ptr_plausible(cfg) then
+        local flag  = I.read_u8(cfg + 0x1d0)
+        local count = I.read_u32(cfg + 0x1e0)
+        if flag and flag ~= 0 and count and count > 0 and count < 0x1000 then
+            return true
+        end
+    end
+    local sig = I.read_u64(p + 0x70)
+    return sig ~= nil and sig ~= 0 and _ptr_plausible(sig)
+end
 
 --- True if `p` looks like a fully-constructed GroupLevel component.
 -- Checked lazily rather than at hook time: the hook callback runs BEFORE the
@@ -1590,7 +1617,14 @@ local function _arm_group_level_capture()
     local ok = pcall(R.hook, va, "pp", function(self)
         -- Stash only. Returning nil replays the original, which is what
         -- actually writes the vftable and allocates the progress block.
-        if self and self ~= 0 then _gl_pending = self end
+        -- Newest first; dedupe; bounded (the ctor may run per menu/run).
+        if self and self ~= 0 then
+            for i = #_gl_seen, 1, -1 do
+                if _gl_seen[i] == self then table.remove(_gl_seen, i) end
+            end
+            table.insert(_gl_seen, 1, self)
+            for i = #_gl_seen, GL_SEEN_MAX + 1, -1 do table.remove(_gl_seen, i) end
+        end
         return nil
     end)
     if not ok then
@@ -1600,17 +1634,43 @@ local function _arm_group_level_capture()
 end
 
 --- The live party-wide level/XP component, or nil.
+-- Selection order: (1) a valid captured instance WITH a usable curve — the
+-- one the engine's grant path would honor; (2) the newest valid instance
+-- otherwise (reads still work; grant's gate pre-flight refuses honestly).
+-- The pick is re-evaluated while it has no curve, because settings
+-- deserialize after the ctor and a better instance (or this one's config)
+-- can appear on a later read.
 local function _group_level()
-    if _gl_comp and _gl_valid(_gl_comp) then return _gl_comp end
-    _gl_comp = nil                      -- entity torn down between runs
-    _arm_group_level_capture()
-    if _gl_pending and _gl_valid(_gl_pending) then
-        _gl_comp, _gl_pending = _gl_pending, nil
-        R.log(string.format("[rsmm.xp] group-level component captured @0x%x "
-                            .. "(level %d)", _gl_comp,
-                            I.read_u32(I.read_u64(_gl_comp + XP_PROGRESS_OFF)) or 0))
+    if _gl_comp and _gl_valid(_gl_comp) and _gl_curve_usable(_gl_comp) then
         return _gl_comp
     end
+    _arm_group_level_capture()
+    local fallback = nil
+    for _, p in ipairs(_gl_seen) do
+        if _gl_valid(p) then
+            if _gl_curve_usable(p) then
+                if _gl_comp ~= p then
+                    _gl_comp = p
+                    R.log(string.format("[rsmm.xp] group-level component "
+                        .. "captured @0x%x (level %d, curve present)", p,
+                        I.read_u32(I.read_u64(p + XP_PROGRESS_OFF)) or 0))
+                end
+                return p
+            end
+            fallback = fallback or p
+        end
+    end
+    if fallback then
+        if _gl_comp ~= fallback then
+            _gl_comp = fallback
+            R.log(string.format("[rsmm.xp] group-level component captured "
+                .. "@0x%x (level %d, NO curve config yet — grant will refuse "
+                .. "until it appears)", fallback,
+                I.read_u32(I.read_u64(fallback + XP_PROGRESS_OFF)) or 0))
+        end
+        return fallback
+    end
+    _gl_comp = nil                      -- entity torn down between runs
     return nil
 end
 
