@@ -582,16 +582,19 @@ local function _hero_plausible(e)
     local cur = I.read_f32(e + ENTITY_HP_OFF)
     -- cur may legitimately EXCEED mx (overheal / shields / HP-boost items), so
     -- only bound it as finite+non-negative, not cur <= mx. mx must be a sane
-    -- positive bar size — that's the real garbage-pointer discriminator.
-    if not (type(mx) == "number" and mx > 0 and mx < 1e6
+    -- positive bar size — that's the real garbage-pointer discriminator, and
+    -- the floor is 0.5 rather than >0 because the 2026-07-19 misfire's "max"
+    -- was the DENORMAL 1.6e-43, which a bare >0 accepts.
+    if not (type(mx) == "number" and mx >= 0.5 and mx < 1e6
         and type(cur) == "number" and cur >= 0 and cur < 1e6) then
         return false
     end
     local mirror = I.read_u64(e + ENTITY_HUDMIRROR_OFF)
     if type(mirror) ~= "number" or mirror == 0 then return false end
-    -- mirror is dereferenced as *(mirror) (a float) by the engine; confirm it's
-    -- readable so a later R.combat call can't fault.
-    return type(I.read_f32(mirror)) == "number"
+    -- mirror is dereferenced as *(mirror) (the HUD-rendered HP) by the engine;
+    -- bound the value like cur so a random-but-readable pointer can't pass.
+    local mv = I.read_f32(mirror)
+    return type(mv) == "number" and mv >= 0 and mv < 1e6
 end
 
 -- NOTE: ev.entity (= dispatcher - 0x4d8 from the gameplay bus) is NOT the hero

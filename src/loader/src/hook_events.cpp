@@ -354,6 +354,7 @@ constexpr int kHeroSlot = 0;        // hero character pointer (validated)
 constexpr int kHeroAuthSlot = 1;    // 1 once a hero-only routine has captured
 constexpr int kHeroPendingSlot = 3; // spawn-init candidate awaiting field init
                                     // (slot 2 = native-capture-active flag)
+constexpr std::uintptr_t kHeroHpOff = 0x15c8;
 constexpr std::uintptr_t kHeroMaxHpOff = 0x15cc;
 constexpr std::uintptr_t kHeroHudMirrorOff = 0x1d80; // ptr to the HUD HP mirror
 
@@ -379,10 +380,19 @@ bool hero_plausible(void* p1) {
     if (!p1) return false;
     auto addr = reinterpret_cast<std::uintptr_t>(p1);
     if (addr & 7) return false;
-    // (1) max-HP at +0x15cc reads as a sane float.
-    if (!committed_readable(addr + kHeroMaxHpOff, sizeof(float))) return false;
+    // (1) max-HP at +0x15cc AND current HP at +0x15c8 read as sane floats.
+    // Both bounds matter: the 2026-07-19 session published 0x277b5360 as hero
+    // off a give-handler misfire — its "max HP" was the DENORMAL 1.6e-43
+    // (u32 bits ~114), which passes a bare `> 0` check, and its "HP" was
+    // 7.6e+28, which this gate never looked at. The garbage slot then kept
+    // clobbering the real promoted hero on every later give. `mx >= 0.5` cuts
+    // off the entire denormal range; current HP may legitimately exceed max
+    // (overheal / shields), so it is only bounded as finite-and-sane.
+    if (!committed_readable(addr + kHeroHpOff, 2 * sizeof(float))) return false;
+    float hp = *reinterpret_cast<float*>(addr + kHeroHpOff);
     float mx = *reinterpret_cast<float*>(addr + kHeroMaxHpOff);
-    if (!(mx > 0.0f && mx < 1.0e6f)) return false;
+    if (!(mx >= 0.5f && mx < 1.0e6f)) return false;
+    if (!(hp >= 0.0f && hp < 1.0e6f)) return false;
     // (2) the HUD HP-mirror pointer at +0x1d80 is a valid, readable pointer.
     // This is the hero discriminator: Entity_ModifyHealth dereferences
     // **(hero+0x1d80) unconditionally on any heal/damage, so a captured pointer
@@ -399,7 +409,12 @@ bool hero_plausible(void* p1) {
     auto mirror = *reinterpret_cast<std::uintptr_t*>(addr + kHeroHudMirrorOff);
     if (mirror == 0 || (mirror & 7)) return false;
     // mirror is dereferenced as **(hero+0x1d80) and *(*(hero+0x1d80)+0x10).
-    return committed_readable(mirror, 0x14);
+    if (!committed_readable(mirror, 0x14)) return false;
+    // The mirror's first float is the HUD-rendered HP — bound it like hp so a
+    // random committed pointer (the misfire's 0x11ED68 was low but readable)
+    // can't pass on readability alone.
+    float mv = *reinterpret_cast<float*>(mirror);
+    return mv >= 0.0f && mv < 1.0e6f;
 }
 
 void detour_subscribe_all(void* p1) {

@@ -707,6 +707,23 @@ do
     I.write_f32(HERO + MAXHP_OFF, saved)              -- restore
     check(R.entity.hero() ~= nil, "hero recaptured after restore")
 
+    -- (b2) the 2026-07-19 misfire shapes: a DENORMAL max-HP (1.6e-43, u32
+    -- bits ~114 — passes a bare `> 0`) and a garbage current HP (7.6e+28)
+    -- with max sane. Both must reject.
+    I.write_u32(HERO + MAXHP_OFF, 114)                -- denormal float bits
+    check(R.entity.hero() == nil, "denormal max-HP must not pass the gate")
+    I.write_f32(HERO + MAXHP_OFF, saved)
+    local savedhp = I.read_f32(HERO + HP_OFF)
+    I.write_f32(HERO + HP_OFF, 7.6e28)
+    check(R.entity.hero() == nil, "absurd current HP must not pass the gate")
+    I.write_f32(HERO + HP_OFF, savedhp)
+    -- (b3) a readable-but-garbage mirror value: bound, not just readability.
+    local savedmv = I.read_f32(MIRROR)
+    I.write_f32(MIRROR, -1.0)
+    check(R.entity.hero() == nil, "negative HUD-mirror HP must not pass the gate")
+    I.write_f32(MIRROR, savedmv)
+    check(R.entity.hero() ~= nil, "hero recaptured after impostor-shape checks")
+
     -- (c) no value store => stat reads degrade to nil, writes refuse.
     local savedstore = I.read_u64(ENTITY + STORE_OFF)
     I.write_u64(ENTITY + STORE_OFF, 0)                -- *(ctx+0x4c8) = 0
