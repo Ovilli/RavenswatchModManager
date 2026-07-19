@@ -33,9 +33,11 @@ from __future__ import annotations
 
 import os
 import struct
+from pathlib import Path
 
 from . import cooked
 from . import entity_strings as ES
+from . import text_patches as TP
 
 #: Donor asset (decoded asset-map path, backslash form).
 DONOR_DECODED = ("EntitySettings\\GameUis\\Modal\\"
@@ -159,10 +161,14 @@ def rename_entity(cooked_bytes: bytes, old: str, new: str) -> bytes:
 BANK_DIR = "Text"
 BANK_FILE = "Common~GAM.xls"
 
-#: Component name -> the bank key it should render.
+#: The bank as an asset-map path.
+BANK_DECODED = f"Text\\{BANK_FILE}.LocalText.gen"
+
+#: Component name -> the bank key it should render.  Keys are modal-specific:
+#: the phase-1 page menu owns ``RSMM_Menu_*`` in a different bank.
 LABEL_KEYS: dict[str, str] = {
-    "Title Label": "RSMM_Menu_Title",
-    "Description Label": "RSMM_Menu_Body",
+    "Title Label": "RSMM_Modal_Title",
+    "Description Label": "RSMM_Modal_Body",
 }
 
 
@@ -284,6 +290,63 @@ def label_text_binding(record: bytes) -> tuple[str, str, str] | None:
     n = struct.unpack_from("<I", record, off)[0]
     parts.append(record[off + 4:off + 4 + n].decode("ascii"))
     return tuple(parts) if all(parts) else None
+
+
+def modal_texts(mods: list[dict]) -> dict[str, str]:
+    """Bank key -> display text for the modal's two labels."""
+    enabled = [m for m in mods if m.get("enabled", True)]
+    lines = [
+        ("• " if m.get("enabled", True) else "◦ ")
+        + f"{m.get('name') or m['id']} {m.get('version', '')}".strip()
+        + ("" if m.get("enabled", True) else "  [disabled]")
+        for m in sorted(mods, key=lambda m: str(m.get("name") or m["id"]).lower())
+    ]
+    body = "\n".join(lines) if lines else "(no mods installed)"
+    return {
+        LABEL_KEYS["Title Label"]: "MODS",
+        LABEL_KEYS["Description Label"]: (
+            f"{len(mods)} installed, {len(enabled)} enabled.\n\n{body}"),
+    }
+
+
+def build_modal_assets(cooking_root: Path, dec2enc: dict[str, str],
+                       mods: list[dict]) -> dict[str, bytes]:
+    """Every asset of the mod modal: ``{decoded path token: bytes}``.
+
+    The donor is read from the user's own install, so no game-derived bytes
+    ever ship with rsmm.  The modal itself is a NEW asset — ``apply`` registers
+    it through ``UsedRscList`` — and the bank keys are appended to the existing
+    ``Common~GAM.xls`` across all its language siblings.
+    """
+    donor_dec = DONOR_DECODED.replace("\\", "/")
+    bank_dec = BANK_DECODED.replace("\\", "/")
+    for dec in (donor_dec, bank_dec):
+        if dec not in dec2enc:
+            raise ModsModalError(f"asset map is missing {dec!r} — game update? "
+                                 f"re-run 'rsmm rebuild-asset-map'")
+
+    def _pristine(dec: str) -> Path:
+        """The un-modded cooked file: prefer apply's backup so a rebuild after
+        ``rsmm apply`` doesn't re-edit its own output."""
+        p = cooking_root / Path(*dec2enc[dec].replace("\\", "/").split("/"))
+        bak = p.with_name(p.name + ".rsmm.bak")
+        if bak.is_file():
+            return bak
+        if not p.is_file():
+            raise ModsModalError(f"cooked file not found: {p} — wrong game dir?")
+        return p
+
+    out = {MODAL_DECODED.replace("\\", "/"):
+           build_modal(_pristine(donor_dec).read_bytes())}
+
+    # append_bank_keys resolves .rsmm.bak per language sibling itself, so it
+    # needs the LIVE path for its sibling discovery to work.
+    bank_path = cooking_root / Path(*dec2enc[bank_dec].replace("\\", "/").split("/"))
+    if not bank_path.is_file():
+        raise ModsModalError(f"cooked file not found: {bank_path} — wrong game dir?")
+    for token, blob in TP.append_bank_keys(bank_path, modal_texts(mods)).items():
+        out[bank_dec if token == "__base__" else f"{bank_dec}{token}"] = blob
+    return out
 
 
 def set_component_label(cooked_bytes: bytes, cpnt_name: str, *, key: str,

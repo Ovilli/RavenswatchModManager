@@ -245,6 +245,37 @@ def test_clone_labels_render_from_our_own_bank_keys():
                     donor_cf.sections[1 + donor_names.index(cpnt)].payload))
 
 
+def test_modal_texts_cover_every_retargeted_label():
+    texts = MM.modal_texts([{"id": "a", "name": "Alpha", "version": "1.0"}])
+    assert set(texts) == set(MM.LABEL_KEYS.values())
+    assert all(v for v in texts.values())
+
+
+def test_modal_texts_mark_disabled_mods_and_count_them():
+    texts = MM.modal_texts([
+        {"id": "a", "name": "Alpha", "version": "1.0", "enabled": True},
+        {"id": "b", "name": "Beta", "version": "0.2", "enabled": False},
+    ])
+    body = texts[MM.LABEL_KEYS["Description Label"]]
+    assert "2 installed, 1 enabled." in body
+    assert "Alpha 1.0" in body
+    assert "[disabled]" in body.split("Beta")[1]
+
+
+def test_modal_texts_handle_an_empty_mod_list():
+    body = MM.modal_texts([])[MM.LABEL_KEYS["Description Label"]]
+    assert "0 installed, 0 enabled." in body
+    assert "(no mods installed)" in body
+
+
+def test_modal_keys_do_not_collide_with_the_page_menu():
+    """The page menu owns RSMM_Menu_* in Tutorials~GAM.xls; sharing a key
+    across banks would make the two builders fight over one string."""
+    from rsmm.engine import mod_menu
+
+    assert not (set(MM.LABEL_KEYS.values()) & set(mod_menu.SLOT_KEYS.values()))
+
+
 @_needs_corpus
 def test_clone_can_opt_out_of_label_retargeting():
     clone = MM.build_modal(_DONOR.read_bytes(), labels={})
