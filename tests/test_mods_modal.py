@@ -302,3 +302,80 @@ def test_modal_keys_do_not_collide_with_the_page_menu():
 def test_clone_can_opt_out_of_label_retargeting():
     clone = MM.build_modal(_DONOR.read_bytes(), labels={})
     assert MM.component_label_binding(clone, "Title Label") is None
+
+
+# --- open-trigger chain -----------------------------------------------------
+
+_HOST = (Path(__file__).resolve().parents[1] / "data" / "uncooked" /
+         "EntitySettings" / "GameUis" / "All_Book_Pages" /
+         "Hero_Display.entity.ot.EntitySettingsResource.gen")
+_needs_host = pytest.mark.skipif(not _HOST.is_file(),
+                                 reason="data/uncooked corpus not present")
+
+
+@_needs_host
+def test_trigger_appends_the_whole_chain():
+    host = _HOST.read_bytes()
+    out = MM.build_open_trigger(host)
+    before, after = cooked.parse(host), cooked.parse(out)
+
+    assert len(after.sections) == len(before.sections) + 4
+    assert cooked.emit(cooked.parse(out)) == out
+    assert _HOST.read_bytes() == host, "must not mutate the corpus"
+    added = set(MM.component_names(out)) - set(MM.component_names(host))
+    assert added == {"RSMM Open Menu Listener", "RSMM Open Menu Methods",
+                     "RSMM Mods Modal Handler", "RSMM Mods Modal Spawner"}
+
+
+@_needs_host
+def test_trigger_names_our_event_and_our_modal():
+    strings = {s for _, _, s in ES.list_strings(MM.build_open_trigger(
+        _HOST.read_bytes()))}
+    assert MM.OPEN_EVENT in strings
+    assert MM.MODAL_RESOURCE in strings
+
+
+@_needs_host
+def test_trigger_components_reference_each_other_not_their_donors():
+    out = MM.build_open_trigger(_HOST.read_bytes())
+    strings = {s for _, _, s in ES.list_strings(out)}
+    for kind, name in (("Executing Methods", "RSMM Open Menu Methods"),
+                       ("Modal Handler", "RSMM Mods Modal Handler"),
+                       ("Entity Spawner", "RSMM Mods Modal Spawner")):
+        assert f"[{kind}] Hero_Display\\UI Social\\{name}" in strings
+
+
+@_needs_host
+def test_trigger_introduces_no_dangling_reference():
+    host = _HOST.read_bytes()
+    out = MM.build_open_trigger(host)
+
+    def dangling(blob: bytes) -> set[str]:
+        alive = set(MM.component_names(blob)) - {""}
+        return {s for _, _, s in ES.list_strings(blob)
+                if s.startswith("[") and "\\" in s
+                and s.split("\\")[-1] not in alive}
+
+    # Vanilla already has one cross-entity reference; we must add none.
+    assert dangling(out) == dangling(host)
+
+
+@_needs_host
+def test_trigger_gives_every_clone_a_fresh_identity():
+    host = _HOST.read_bytes()
+    out = MM.build_open_trigger(host)
+    before = {MM._component_guid(s.payload)
+              for s in cooked.parse(host).sections[1:-1]} - {None}
+    after = {MM._component_guid(s.payload)
+             for s in cooked.parse(out).sections[1:-1]} - {None}
+    assert len(after) == len(before) + 4
+    assert before < after, "existing components must keep their GUIDs"
+
+
+@_needs_host
+def test_trigger_refuses_a_host_missing_its_donors():
+    """A game update that renames the social chain must fail loudly rather
+    than silently ship a menu that cannot open."""
+    stripped = _entity([_cpnt(0, bytes(range(16)), "Game Ui")])
+    with pytest.raises(MM.ModsModalError, match="expected exactly one"):
+        MM.build_open_trigger(stripped)

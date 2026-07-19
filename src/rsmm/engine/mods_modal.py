@@ -36,6 +36,7 @@ import struct
 from pathlib import Path
 
 from . import cooked
+from . import entity_append as EA
 from . import entity_strings as ES
 from . import text_patches as TP
 
@@ -321,13 +322,18 @@ def modal_texts(mods: list[dict]) -> dict[str, str]:
 
 
 def build_modal_assets(cooking_root: Path, dec2enc: dict[str, str],
-                       mods: list[dict]) -> dict[str, bytes]:
+                       mods: list[dict], *,
+                       trigger: bool = True) -> dict[str, bytes]:
     """Every asset of the mod modal: ``{decoded path token: bytes}``.
 
     The donor is read from the user's own install, so no game-derived bytes
     ever ship with rsmm.  The modal itself is a NEW asset — ``apply`` registers
     it through ``UsedRscList`` — and the bank keys are appended to the existing
     ``Common~GAM.xls`` across all its language siblings.
+
+    ``trigger`` also emits the host override carrying the ``RSMM_OPEN_MENU``
+    chain; pass ``False`` to ship the modal asset alone (it is then only
+    reachable by something else firing the event).
     """
     donor_dec = DONOR_DECODED.replace("\\", "/")
     bank_dec = BANK_DECODED.replace("\\", "/")
@@ -350,6 +356,13 @@ def build_modal_assets(cooking_root: Path, dec2enc: dict[str, str],
     out = {MODAL_DECODED.replace("\\", "/"):
            build_modal(_pristine(donor_dec).read_bytes())}
 
+    if trigger:
+        host_dec = HOST_DECODED.replace("\\", "/")
+        if host_dec not in dec2enc:
+            raise ModsModalError(f"asset map is missing {host_dec!r} — game "
+                                 f"update? re-run 'rsmm rebuild-asset-map'")
+        out[host_dec] = build_open_trigger(_pristine(host_dec).read_bytes())
+
     # append_bank_keys resolves .rsmm.bak per language sibling itself, so it
     # needs the LIVE path for its sibling discovery to work.
     bank_path = cooking_root / Path(*dec2enc[bank_dec].replace("\\", "/").split("/"))
@@ -357,6 +370,107 @@ def build_modal_assets(cooking_root: Path, dec2enc: dict[str, str],
         raise ModsModalError(f"cooked file not found: {bank_path} — wrong game dir?")
     for token, blob in TP.append_bank_keys(bank_path, modal_texts(mods)).items():
         out[bank_dec if token == "__base__" else f"{bank_dec}{token}"] = blob
+    return out
+
+
+#: The host we append the open-trigger chain to.  It must already carry every
+#: class the chain uses — ``append_components`` cannot invent class-table
+#: entries — and only ``Hero_Display`` and ``MyNacon`` do.  ``Hero_Display``
+#: also runs this exact chain three times already, so every wiring precedent
+#: is in front of us.
+HOST_DECODED = ("EntitySettings\\GameUis\\All_Book_Pages\\"
+                "Hero_Display.entity.ot.EntitySettingsResource.gen")
+HOST_NAME = "Hero_Display"
+#: Component group the appended chain lives in (part of every reference path).
+HOST_GROUP = "UI Social"
+
+#: The named event that opens the mod menu.
+OPEN_EVENT = "RSMM_OPEN_MENU"
+
+#: Our component names.
+_C_LISTENER = "RSMM Open Menu Listener"
+_C_METHODS = "RSMM Open Menu Methods"
+_C_HANDLER = "RSMM Mods Modal Handler"
+_C_SPAWNER = "RSMM Mods Modal Spawner"
+
+
+def _ref(kind: str, name: str) -> str:
+    return f"[{kind}] {HOST_NAME}\\{HOST_GROUP}\\{name}"
+
+
+#: Donor component -> the string swaps that retarget its clone.  Donors are
+#: picked for MINIMAL coupling: the Report handler is the only one with no
+#: social-handler, state or bank-key references, and the Blacklist spawner the
+#: only one that names no spawner value.
+_CHAIN: tuple[tuple[str, dict[str, str]], ...] = (
+    ("Spawn Blacklist Modal Event Listener", {
+        "Spawn Blacklist Modal Event Listener": _C_LISTENER,
+        "SPAWN_BLACKLIST_MODAL": OPEN_EVENT,
+        f"[Executing Methods] {HOST_NAME}\\{HOST_GROUP}\\Blacklist Methods":
+            _ref("Executing Methods", _C_METHODS),
+    }),
+    ("Blacklist Methods", {
+        "Blacklist Methods": _C_METHODS,
+        f"[Modal Handler] {HOST_NAME}\\Blacklist Modal\\Blacklist Modal Handler":
+            _ref("Modal Handler", _C_HANDLER),
+    }),
+    ("Report Modal Handler", {
+        "Report Modal Handler": _C_HANDLER,
+        f"[Entity Spawner] {HOST_NAME}\\{HOST_GROUP}\\Report Modal Entity Spawner":
+            _ref("Entity Spawner", _C_SPAWNER),
+    }),
+    ("Blacklist Modal Entity Spawner", {
+        "Blacklist Modal Entity Spawner": _C_SPAWNER,
+        # The spawner's group is part of every path that names it, so it has
+        # to move into the group the rest of the chain lives in.
+        "Blacklist Modal": HOST_GROUP,
+        "GameUis\\Modal\\Modal_Warning.entity.ot": MODAL_RESOURCE,
+    }),
+)
+
+
+def build_open_trigger(host_bytes: bytes) -> bytes:
+    """Append the ``RSMM_OPEN_MENU`` -> spawn-the-mod-modal chain to the host.
+
+    Four components, cloned from the host's own working social-modal chain:
+    a named-event listener, an executing-methods relay, a modal handler and an
+    entity spawner pointed at :data:`MODAL_RESOURCE`.  The listener does not
+    reach the spawner directly — ``ModalHandlerEntityCpntSettings`` sits
+    between them — but that class is generic, driving all three retail modals.
+    """
+    cf = cooked.parse(host_bytes)
+    names = component_names(host_bytes)
+    records, guids = [], {}
+    for donor, _ in _CHAIN:
+        if names.count(donor) != 1:
+            raise ModsModalError(
+                f"expected exactly one {donor!r} on {HOST_NAME} — game update "
+                f"changed its layout?")
+        record = cf.sections[1 + names.index(donor)].payload
+        guid = _component_guid(record)
+        if guid is None:
+            raise ModsModalError(f"{donor!r} carries no instance GUID")
+        records.append(record)
+        guids[guid] = os.urandom(16)
+
+    clones = []
+    for record, (donor, swaps) in zip(records, _CHAIN, strict=True):
+        # GUIDs first, so references BETWEEN the clones land on the clones
+        # rather than on the components they were copied from.  References
+        # out of the set keep the original GUID, which is what we want.
+        for old, new in guids.items():
+            record = record.replace(old, new)
+        try:
+            clones.append(EA.replace_blob_strings(record, swaps))
+        except EA.EntityAppendError as e:
+            raise ModsModalError(f"retargeting {donor!r}: {e}") from None
+
+    out = EA.append_components(host_bytes, clones)
+    added = set(component_names(out)) - set(names)
+    expected = {_C_LISTENER, _C_METHODS, _C_HANDLER, _C_SPAWNER}
+    if added != expected:
+        raise ModsModalError(f"appended {sorted(added)}, expected "
+                             f"{sorted(expected)}")
     return out
 
 
