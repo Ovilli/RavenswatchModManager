@@ -21,6 +21,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from rsmm.cli import _term
 from rsmm.cli.apply_mods import _LANG_SUFFIXES, is_skippable_asset
 from rsmm.cli.merge import _ranked, _toml_load, collect_patches
 from rsmm.engine.asset_map import decoded_to_encoded
@@ -38,6 +39,14 @@ from rsmm.engine.paths import (
     DEFAULT_GAME_DIR as DEFAULT_GAME,
 )
 
+_ST = _term.Style()
+
+#: Per-kind colouring for the emitted glyph + label. Glyphs are pre-padded to
+#: a common width as PLAIN text before styling — colouring first would make the
+#: ANSI bytes count toward the column width and skew every row.
+_GLYPHS = {"OK": "[OK]  ", "WARN": "[WARN]", "FAIL": "[FAIL]"}
+_PAINT = {"OK": _ST.ok, "WARN": _ST.warn, "FAIL": _ST.err}
+
 
 @dataclass
 class Result:
@@ -47,11 +56,15 @@ class Result:
 
 
 def emit(r: Result) -> None:
-    glyph = {"OK": "[OK]  ", "WARN": "[WARN]", "FAIL": "[FAIL]"}[r.kind]
-    print(f"  {glyph} {r.label}")
+    glyph = _GLYPHS[r.kind]
+    paint = _PAINT[r.kind]
+    # OK rows are the common case — leave their label unstyled so the WARN /
+    # FAIL rows are what the eye lands on.
+    label = r.label if r.kind == "OK" else paint(r.label)
+    print(f"  {paint(glyph)} {label}")
     if r.detail:
         for line in r.detail.splitlines():
-            print(f"         {line}")
+            print(f"         {_ST.dim(line)}")
 
 
 def check_asset_map(game_dir: Path) -> list[Result]:
@@ -438,9 +451,9 @@ def main() -> int:
     ap.add_argument("--game-dir", type=Path, default=DEFAULT_GAME)
     args = ap.parse_args()
 
-    print("rsmm doctor — system health\n")
+    print(_ST.bold("rsmm doctor — system health") + "\n")
     results: list[Result] = []
-    print("game install:")
+    print(_ST.heading("game install:"))
     rs = check_game_install(args.game_dir)
     for r in rs:
         emit(r)
@@ -448,31 +461,31 @@ def main() -> int:
     if any(r.kind == "FAIL" for r in rs):
         return 1
 
-    print("\nasset map:")
+    print("\n" + _ST.heading("asset map:"))
     rs = check_asset_map(args.game_dir)
     for r in rs:
         emit(r)
     results.extend(rs)
 
-    print("\ngame version:")
+    print("\n" + _ST.heading("game version:"))
     rs = check_game_update(args.game_dir)
     for r in rs:
         emit(r)
     results.extend(rs)
 
-    print("\nloader DLL:")
+    print("\n" + _ST.heading("loader DLL:"))
     rs = check_loader(args.game_dir)
     for r in rs:
         emit(r)
     results.extend(rs)
 
-    print("\nmods:")
+    print("\n" + _ST.heading("mods:"))
     rs = check_mods()
     for r in rs:
         emit(r)
     results.extend(rs)
 
-    print("\npatch conflicts:")
+    print("\n" + _ST.heading("patch conflicts:"))
     rs = check_patch_conflicts()
     if not rs:
         emit(Result("OK", "no [[patch]] blocks in any mod"))
@@ -481,7 +494,7 @@ def main() -> int:
             emit(r)
         results.extend(rs)
 
-    print("\ncompatibility graph:")
+    print("\n" + _ST.heading("compatibility graph:"))
     try:
         crs = check_compat_graph()
     except Exception as e:
@@ -491,19 +504,19 @@ def main() -> int:
     # Only non-OK rows count toward the run's pass/fail tally.
     results.extend(r for r in crs if r.kind != "OK")
 
-    print("\ngame executable:")
+    print("\n" + _ST.heading("game executable:"))
     rs = check_exe_hash(args.game_dir)
     for r in rs:
         emit(r)
     results.extend(rs)
 
-    print("\napplier state:")
+    print("\n" + _ST.heading("applier state:"))
     rs = check_state(args.game_dir)
     for r in rs:
         emit(r)
     results.extend(rs)
 
-    print("\nresource manifest (UsedRscList.ot):")
+    print("\n" + _ST.heading("resource manifest (UsedRscList.ot):"))
     rs = check_usedrsclist(args.game_dir)
     for r in rs:
         emit(r)
@@ -512,7 +525,14 @@ def main() -> int:
     fail = sum(1 for r in results if r.kind == "FAIL")
     warn = sum(1 for r in results if r.kind == "WARN")
     ok   = sum(1 for r in results if r.kind == "OK")
-    print(f"\nsummary: {ok} OK, {warn} WARN, {fail} FAIL")
+    # A zero count is good news — render it dim so only the non-zero WARN /
+    # FAIL tallies carry colour.
+    parts = [
+        _ST.ok(f"{ok} OK"),
+        (_ST.warn if warn else _ST.dim)(f"{warn} WARN"),
+        (_ST.err if fail else _ST.dim)(f"{fail} FAIL"),
+    ]
+    print("\n" + _ST.bold("summary:") + " " + ", ".join(parts))
     return 1 if fail else 0
 
 

@@ -20,8 +20,11 @@ import json
 import sys
 from pathlib import Path
 
+from rsmm.cli import _term
 from rsmm.engine.paths import REPO_ROOT
 from rsmm.engine.symbols import SymbolMap, load_symbol_map, validate
+
+_ST = _term.Style()
 
 # Generated artifacts — keep paths stable; CI --check compares against them.
 LOADER_HEADER = REPO_ROOT / "src" / "loader" / "include" / "symbols.gen.h"
@@ -39,16 +42,31 @@ SITE_DOCS_PAGE = (
 _STATUS_GLYPH = {"ok": "OK ", "va": "VA ", "unverified": "?? "}
 
 
+def _status(status: str, text: str) -> str:
+    """Colour a status token by its rating: ok=green, va=yellow, else red.
+
+    The rating is the whole point of the map, so it must be scannable at a
+    glance. Callers pass the already-PADDED plain text — padding a styled
+    string counts the escape bytes as width and breaks column alignment.
+    """
+    if status == "ok":
+        return _ST.ok(text)
+    if status == "va":
+        return _ST.warn(text)
+    return _ST.err(text)
+
+
 def _cmd_list(smap: SymbolMap) -> int:
     for cat in smap.categories:
-        print(f"\n# {cat}")
+        print(f"\n{_ST.heading('# ' + cat)}")
         for s in sorted(smap.by_category(cat), key=lambda x: x.name):
             addr = s.preferred_addr(smap.preferred_base)
             glyph = _STATUS_GLYPH.get(s.status, "?? ")
-            print(f"  [{glyph}] 0x{addr:09x}  {s.name}")
+            marker = _ST.dim("[") + _status(s.status, glyph) + _ST.dim("]")
+            print(f"  {marker} {_ST.dim(f'0x{addr:09x}')}  {_ST.bold(s.name)}")
             if s.signature:
-                print(f"              {s.signature}")
-    print(f"\n{len(smap.symbols)} symbol(s).")
+                print(f"              {_ST.dim(s.signature)}")
+    print(f"\n{_ST.bold(str(len(smap.symbols)))} symbol(s).")
     return 0
 
 
@@ -61,57 +79,66 @@ def _cmd_resolve(smap: SymbolMap, name: str) -> int:
             print("did you mean: " + ", ".join(matches[:8]), file=sys.stderr)
         return 1
     addr = s.preferred_addr(smap.preferred_base)
-    print(f"{s.name}")
-    print(f"  address   0x{addr:x}  (preferred base 0x{smap.preferred_base:x})")
-    print(f"  kind      {s.kind}")
-    print(f"  category  {s.category}")
-    print(f"  status    {s.status}")
+    print(f"{_ST.heading(s.name)}")
+    print(f"  {_ST.dim('address')}   {_ST.accent(f'0x{addr:x}')}  "
+          f"{_ST.dim(f'(preferred base 0x{smap.preferred_base:x})')}")
+    print(f"  {_ST.dim('kind')}      {s.kind}")
+    print(f"  {_ST.dim('category')}  {s.category}")
+    print(f"  {_ST.dim('status')}    {_status(s.status, s.status)}")
     if s.pattern_name:
-        print(f"  pattern   {s.pattern_name}  (version-resilient)")
+        print(f"  {_ST.dim('pattern')}   {_ST.accent(s.pattern_name)}  "
+              f"{_ST.dim('(version-resilient)')}")
     if s.signature:
-        print(f"  signature {s.signature}")
+        print(f"  {_ST.dim('signature')} {s.signature}")
     if s.note:
-        print(f"  note      {s.note}")
+        print(f"  {_ST.dim('note')}      {_ST.dim(s.note)}")
     return 0
 
 
 def _cmd_events(smap: SymbolMap) -> int:
-    print("Subscribe in a mod with R.on('<name>', cb). Gameplay events need "
-          "RSMM_ENABLE_GAME_EVENTS=1.\n")
+    print(_ST.dim("Subscribe in a mod with R.on('<name>', cb). Gameplay events need "
+                  "RSMM_ENABLE_GAME_EVENTS=1.") + "\n")
 
-    print("Lifecycle (always available):")
+    print(_ST.heading("Lifecycle (always available):"))
     for name, desc in (
         ("setup", "all mods' init.lua ran; before overrides apply"),
         ("ready", "first frame; every mod loaded + overrides applied"),
         ("tick", "periodic (~500ms); poll sparingly"),
         ("exit", "DLL unloading; flush state here"),
     ):
-        print(f"  {name:<22} {desc}")
+        # Pad the PLAIN name, then style — padding a styled string would count
+        # the ANSI escape bytes as width and skew every column.
+        print(f"  {_ST.bold(f'{name:<22}')} {_ST.dim(desc)}")
 
     if smap.events:
-        print("\nTyped gameplay events (decoded payload):")
+        print(f"\n{_ST.heading('Typed gameplay events (decoded payload):')}")
         for s in sorted(smap.events, key=lambda x: x.lua_event or ""):
             addr = s.preferred_addr(smap.preferred_base)
             glyph = _STATUS_GLYPH.get(s.status, "?? ")
+            marker = _ST.dim("[") + _status(s.status, glyph) + _ST.dim("]")
             fields = ", ".join(p["name"] for p in s.payload) if s.payload else "envelope"
-            print(f"  [{glyph}] {s.lua_event:<18} {{{fields}}}  ({s.name} 0x{addr:x})")
+            ev = _ST.accent(f"{s.lua_event:<18}")
+            print(f"  {marker} {ev} {_ST.bold(f'{{{fields}}}')}  "
+                  f"{_ST.dim(f'({s.name} 0x{addr:x})')}")
 
     cat = smap.event_catalog
     if cat:
-        print("\nAnalytics firehose (observation-grade, payload = name + seq):")
+        print(f"\n{_ST.heading('Analytics firehose (observation-grade, payload = name + seq):')}")
         for e in sorted(cat, key=lambda x: (x.get("category", ""), x["name"])):
-            print(f"  {e['name']:<22} [{e.get('category', '?')}] {e.get('note', '')}")
-        print("  (+ any other name the game emits — the firehose forwards all)")
+            name = _ST.accent(f"{e['name']:<22}")
+            tag = _ST.dim(f"[{e.get('category', '?')}]")
+            print(f"  {name} {tag} {_ST.dim(e.get('note', ''))}")
+        print(_ST.dim("  (+ any other name the game emits — the firehose forwards all)"))
 
     total = len(smap.events) + len(cat)
-    print(f"\n{total} mapped event(s) + 4 lifecycle.")
+    print(f"\n{_ST.bold(str(total))} mapped event(s) + 4 lifecycle.")
     return 0
 
 
 def _cmd_check(smap: SymbolMap) -> int:
     problems = validate(smap)
     if not problems:
-        print(f"symbols OK: {len(smap.symbols)} symbol(s), no problems.")
+        print(_ST.ok(f"symbols OK: {len(smap.symbols)} symbol(s), no problems."))
         return 0
     print(f"{len(problems)} problem(s):", file=sys.stderr)
     for p in problems:
@@ -194,7 +221,8 @@ def _cmd_audit(smap: SymbolMap, dump_path: Path) -> int:
             pass
         ok += 1
 
-    print(f"audited {len(dump)} runtime-resolved symbols against the map; {ok} clean.")
+    print(f"audited {_ST.bold(str(len(dump)))} runtime-resolved symbols against the map; "
+          f"{_ST.ok(str(ok))} clean.")
     if drift:
         print(f"\n{len(drift)} address drift (stored addr is stale — refresh symbols.json "
               "raw from the runtime VA):", file=sys.stderr)
@@ -209,7 +237,7 @@ def _cmd_audit(smap: SymbolMap, dump_path: Path) -> int:
               "'unverified' + strip the pattern so the loader fails closed. "
               "See the symbols-pipeline memory.", file=sys.stderr)
         return 1
-    print("OK: every status=ok symbol resolved in-game to a real function start.")
+    print(_ST.ok("OK: every status=ok symbol resolved in-game to a real function start."))
     return 0
 
 
@@ -550,11 +578,11 @@ def _cmd_gen(smap: SymbolMap, check: bool) -> int:
             for p in stale:
                 print(f"  {p.relative_to(REPO_ROOT)}", file=sys.stderr)
             return 1
-        print("generated symbol files up to date.")
+        print(_ST.ok("generated symbol files up to date."))
         return 0
     for p, content in targets:
         p.write_text(content, encoding="utf-8")
-        print(f"wrote {p.relative_to(REPO_ROOT)}")
+        print(f"wrote {_ST.dim(str(p.relative_to(REPO_ROOT)))}")
     return 0
 
 
@@ -582,7 +610,7 @@ def _cmd_ghidra_export(
         text = json.dumps(table, indent=2)
         if out:
             out.write_text(text, encoding="utf-8")
-            print(f"wrote {out}")
+            print(f"wrote {_ST.dim(str(out))}")
         else:
             print(text)
         return 0
@@ -614,7 +642,7 @@ def _cmd_ghidra_export(
     text = "\n".join(script)
     if out:
         out.write_text(text, encoding="utf-8")
-        print(f"wrote {out}")
+        print(f"wrote {_ST.dim(str(out))}")
     else:
         print(text)
     return 0

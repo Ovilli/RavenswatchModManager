@@ -19,9 +19,23 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from rsmm.cli import _term
 from rsmm.cli.merge import _toml_load
 from rsmm.engine.paths import MODS_DIR
 from rsmm.manifest_graph import split_dep, version_satisfies
+
+_ST = _term.Style()
+
+# Bullet glyphs. Non-UTF-8 consoles (LANG=C, older Windows) mangle the fancy
+# ones, so fall back to plain ASCII the same way `_term.box_chars` does.
+_BULLETS = {"error": "✗", "warn": "→", "plain": "-"}
+_BULLETS_ASCII = {"error": "-", "warn": "-", "plain": "-"}
+
+
+def _bullet(kind: str) -> str:
+    enc = (getattr(sys.stdout, "encoding", "") or "").lower()
+    table = _BULLETS if "utf" in enc else _BULLETS_ASCII
+    return table[kind]
 
 
 @dataclass
@@ -178,13 +192,19 @@ def main() -> int:
 
     rep = analyze()
     if not rep.summaries:
-        print("No mods discovered.")
+        print(_ST.dim("No mods discovered."))
         return 0
 
-    print(f"{len(rep.summaries)} mod(s):")
+    print(_ST.heading(f"{len(rep.summaries)} mod(s):"))
+    # Pad the PLAIN id first — padding a styled string counts the ANSI bytes
+    # as width and skews every coloured row.
+    id_w = max(len(s.id) for s in rep.summaries)
     for s in rep.summaries:
         active = (s.enabled and s.id not in rep.auto_disabled)
         mark = "ON " if active else "off"
+        mark_txt = _ST.ok(mark) if active else _ST.dim(mark)
+        id_txt = f"{s.id:<{id_w}}"
+        id_txt = _ST.bold(id_txt) if active else _ST.accent(id_txt)
         extras = []
         if s.requires:
             extras.append(f"requires={s.requires}")
@@ -192,27 +212,29 @@ def main() -> int:
             extras.append(f"conflicts={s.conflicts}")
         if s.replaces:
             extras.append(f"replaces={s.replaces}")
+        head = f"  {_ST.dim('[')}{mark_txt}{_ST.dim(']')} {id_txt} {_ST.dim(s.version)}"
         if extras:
-            print(f"  [{mark}] {s.id} {s.version}  {' '.join(extras)}")
+            print(f"{head}  {_ST.dim(' '.join(extras))}")
         else:
-            print(f"  [{mark}] {s.id} {s.version}")
+            print(head)
 
+    err_b, warn_b = _bullet("error"), _bullet("warn")
     if rep.auto_disabled:
-        print("\nauto-disabled:")
+        print(f"\n{_ST.heading('auto-disabled:')}")
         for mid, why in rep.auto_disabled.items():
-            print(f"  - {mid}: {why}")
+            print(f"  {_ST.warn(warn_b)} {_ST.bold(mid)}: {_ST.dim(why)}")
     if rep.unmet_requires:
-        print("\nunmet requires:")
+        print(f"\n{_ST.heading('unmet requires:')}")
         for mid, msg in rep.unmet_requires:
-            print(f"  - {mid}: {msg}")
+            print(f"  {_ST.err(err_b)} {_ST.bold(mid)}: {_ST.err(msg)}")
     if rep.hard_conflicts:
-        print("\nhard conflicts:")
+        print(f"\n{_ST.heading('hard conflicts:')}")
         for a, b in rep.hard_conflicts:
-            print(f"  - {a}  <-->  {b}")
+            print(f"  {_ST.err(err_b)} {_ST.bold(a)}  {_ST.err('<-->')}  {_ST.bold(b)}")
     if rep.cycles:
-        print("\nrequires cycles:")
+        print(f"\n{_ST.heading('requires cycles:')}")
         for c in rep.cycles:
-            print(f"  - {' -> '.join(c)}")
+            print(f"  {_ST.err(err_b)} {_ST.err(' -> '.join(c))}")
 
     if args.fail_on_error and rep.has_errors:
         return 1

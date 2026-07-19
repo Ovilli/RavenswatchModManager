@@ -21,9 +21,24 @@ import re
 import sys
 from pathlib import Path
 
+from rsmm.cli import _term
 from rsmm.cli.merge import _toml_load
 from rsmm.engine.asset_map import decoded_to_encoded
 from rsmm.engine.paths import MODS_DIR
+
+#: Presentation only. `Style()` self-disables when stdout isn't a TTY (or
+#: NO_COLOR is set), so piped/captured output stays byte-identical to the
+#: uncoloured text every CI grep and test already matches on.
+_ST = _term.Style()
+_ST_ERR = _term.Style(stream=sys.stderr)
+
+# Severity tokens pre-styled once. The surrounding spacing is kept at the call
+# sites so the plain-text column layout is unchanged.
+_T_FAIL = _ST.err("[FAIL]")
+_T_ERR = _ST.err("[ERR]")
+_T_WARN = _ST.warn("[WARN]")
+_T_OK = _ST.ok("[OK]")
+_T_ERROR = _ST.err("[ERROR]")
 
 LANG_SUFFIXES = tuple(f".Lang{c}" for c in [
     "EN", "JA", "KO", "RU", "ES", "DE", "PL", "FR", "IT",
@@ -59,27 +74,29 @@ def _stat_names() -> set[str]:
 def lint_one(entry: Path) -> tuple[int, int]:
     """Return (errors, warnings)."""
     mf = entry / "manifest.toml"
+    mod_s = _ST.bold(entry.name)
     if not mf.exists():
-        print(f"  [FAIL] {entry.name}: missing manifest.toml")
+        print(f"  {_T_FAIL} {mod_s}: missing manifest.toml")
         return 1, 0
     try:
         t = _toml_load(mf)
     except Exception as e:
-        print(f"  [FAIL] {entry.name}: manifest parse: {e}")
+        print(f"  {_T_FAIL} {mod_s}: manifest parse: {_ST.dim(str(e))}")
         return 1, 0
 
     errs = warns = 0
     m = t.get("mod", {})
     if "id" not in m:
-        print(f"  [WARN] {entry.name}: manifest missing 'id' (using folder name)")
+        print(f"  {_T_WARN} {mod_s}: manifest missing 'id' "
+              f"{_ST.dim('(using folder name)')}")
         warns += 1
     if "version" not in m:
-        print(f"  [WARN] {entry.name}: manifest missing 'version'")
+        print(f"  {_T_WARN} {mod_s}: manifest missing 'version'")
         warns += 1
     scope = m.get("multiplayer_scope", "cosmetic")
     if scope not in {"cosmetic", "deterministic-shared",
                      "host-authoritative", "local-only"}:
-        print(f"  [FAIL] {entry.name}: unknown multiplayer_scope {scope!r}")
+        print(f"  {_T_FAIL} {mod_s}: unknown multiplayer_scope {_ST.accent(repr(scope))}")
         errs += 1
 
     # assets/
@@ -95,7 +112,8 @@ def lint_one(entry: Path) -> tuple[int, int]:
             if _is_special_decoded(p):
                 continue
             if p not in dec2enc:
-                print(f"  [WARN] {entry.name}: assets/ path not in asset_map: {p}")
+                print(f"  {_T_WARN} {mod_s}: assets/ path not in asset_map: "
+                      f"{_ST.accent(p)}")
                 warns += 1
 
     # [[patch]] blocks
@@ -105,37 +123,39 @@ def lint_one(entry: Path) -> tuple[int, int]:
         if kind == "stat":
             name = str(p.get("name", "")).lower()
             if not name:
-                print(f"  [FAIL] {entry.name}: stat patch missing 'name'")
+                print(f"  {_T_FAIL} {mod_s}: stat patch missing 'name'")
                 errs += 1
             elif name not in stat_set:
-                print(f"  [WARN] {entry.name}: stat name not in catalog: {p.get('name')!r}")
+                print(f"  {_T_WARN} {mod_s}: stat name not in catalog: "
+                      f"{_ST.accent(repr(p.get('name')))}")
                 warns += 1
         elif kind == "texture":
             for side in ("target", "donor"):
                 v = p.get(side)
                 if not v:
-                    print(f"  [FAIL] {entry.name}: texture missing '{side}'")
+                    print(f"  {_T_FAIL} {mod_s}: texture missing '{side}'")
                     errs += 1
                 elif v not in dec2enc:
-                    print(f"  [WARN] {entry.name}: texture {side} not in asset_map: {v!r}")
+                    print(f"  {_T_WARN} {mod_s}: texture {side} not in asset_map: "
+                          f"{_ST.accent(repr(v))}")
                     warns += 1
         elif kind == "text":
             for k in ("bank", "lang", "key", "value"):
                 if k not in p:
-                    print(f"  [FAIL] {entry.name}: text patch missing {k!r}")
+                    print(f"  {_T_FAIL} {mod_s}: text patch missing {_ST.accent(repr(k))}")
                     errs += 1
                     break
         elif kind == "url":
             for k in ("field", "value"):
                 if k not in p:
-                    print(f"  [FAIL] {entry.name}: url patch missing {k!r}")
+                    print(f"  {_T_FAIL} {mod_s}: url patch missing {_ST.accent(repr(k))}")
                     errs += 1
                     break
         elif kind == "composite":
             # Accept any; backing impl may be a no-op today.
             pass
         elif kind:
-            print(f"  [WARN] {entry.name}: unknown patch kind {kind!r}")
+            print(f"  {_T_WARN} {mod_s}: unknown patch kind {_ST.accent(repr(kind))}")
             warns += 1
 
     # [[content]] blocks — item kind + per-kind confidence gate
@@ -156,8 +176,9 @@ def lint_one(entry: Path) -> tuple[int, int]:
 
     n_patch = len(t.get("patch", []) or [])
     n_content = len(t.get("content", []) or [])
-    print(f"  [OK]   {entry.name}  (raw={raw_files} patches={n_patch} "
-          f"content={n_content} scope={scope})")
+    summary = (f"(raw={raw_files} patches={n_patch} "
+               f"content={n_content} scope={scope})")
+    print(f"  {_T_OK}   {_ST.heading(entry.name)}  {_ST.dim(summary)}")
     return errs, warns
 
 
@@ -185,13 +206,16 @@ def _lint_content(modname: str, blocks: list[dict],
         if conf == "confirmed":
             continue
         if not experimental:
-            print(f"  [FAIL] {modname}: content kind {kind!r} is {conf!r} "
-                  f"(emitted bytes not verified in-game). Set "
-                  f"[mod] experimental = true to ship it knowingly.")
+            hint = ("(emitted bytes not verified in-game). Set "
+                    "[mod] experimental = true to ship it knowingly.")
+            print(f"  {_T_FAIL} {_ST.bold(modname)}: content kind "
+                  f"{_ST.accent(repr(kind))} is {_ST.err(repr(conf))} {_ST.dim(hint)}")
             errs += 1
         else:
-            print(f"  [WARN] {modname}: content kind {kind!r} is {conf!r} — "
-                  f"shipping under experimental opt-in (may not work in-game).")
+            hint = "shipping under experimental opt-in (may not work in-game)."
+            print(f"  {_T_WARN} {_ST.bold(modname)}: content kind "
+                  f"{_ST.accent(repr(kind))} is {_ST.warn(repr(conf))} — "
+                  f"{_ST.dim(hint)}")
             warns += 1
     try:
         from rsmm.cli import cmd_items
@@ -204,17 +228,19 @@ def _lint_content(modname: str, blocks: list[dict],
         cid = c.get("id")
         base = c.get("base")
         if not cid:
-            print(f"  [FAIL] {modname}: item content missing 'id'")
+            print(f"  {_T_FAIL} {_ST.bold(modname)}: item content missing 'id'")
             errs += 1
             continue
         if not base:
-            print(f"  [FAIL] {modname}: item {cid}: missing 'base'")
+            print(f"  {_T_FAIL} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
+                  f"missing 'base'")
             errs += 1
             continue
         found = cmd_items._find_item(str(base))
         if found is None:
-            print(f"  [WARN] {modname}: item {cid}: base {base!r} not a known "
-                  f"vanilla item (falls back to legacy manifest)")
+            hint = "not a known vanilla item (falls back to legacy manifest)"
+            print(f"  {_T_WARN} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
+                  f"base {_ST.accent(repr(base))} {_ST.dim(hint)}")
             warns += 1
             continue
         data = found[2].read_bytes()
@@ -224,14 +250,16 @@ def _lint_content(modname: str, blocks: list[dict],
             try:
                 cook.set_value_after_label(data, str(label), float(old), float(old))
             except (ValueError, TypeError) as e:
-                print(f"  [FAIL] {modname}: item {cid}: value_patch {label!r}: {e}")
+                print(f"  {_T_FAIL} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
+                      f"value_patch {_ST.accent(repr(label))}: {_ST.dim(str(e))}")
                 errs += 1
         icon = c.get("icon")
         if icon and "\\" not in str(icon) and "/" not in str(icon) \
                 and not str(icon).lower().endswith(".png"):
             if str(icon) not in cmd_items._icon_stems(None):
-                print(f"  [WARN] {modname}: item {cid}: icon {icon!r} not a known "
-                      f"vanilla stem (try `rsmm items icons`)")
+                hint = "not a known vanilla stem (try `rsmm items icons`)"
+                print(f"  {_T_WARN} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
+                      f"icon {_ST.accent(repr(icon))} {_ST.dim(hint)}")
                 warns += 1
     return errs, warns
 
@@ -267,9 +295,11 @@ def _lint_stray_scripts(modname: str, entry: Path) -> tuple[int, int]:
         rel = f.relative_to(entry).as_posix()
         if f.name in allowed:
             continue
-        print(f"  [FAIL] {modname}: stray script {rel!r} — mods ship data, "
-              f"not code; move its logic into rsmm.sdk and express the mod "
-              f"as [[content]]/[[patch]] (sanctioned hooks: {sorted(allowed)})")
+        hint = (f"— mods ship data, not code; move its logic into rsmm.sdk and "
+                f"express the mod as [[content]]/[[patch]] "
+                f"(sanctioned hooks: {sorted(allowed)})")
+        print(f"  {_T_FAIL} {_ST.bold(modname)}: stray script "
+              f"{_ST.accent(repr(rel))} {_ST.dim(hint)}")
         errs += 1
     return errs, 0
 
@@ -331,15 +361,17 @@ def _lint_lua_api(modname: str, entry: Path) -> tuple[int, int]:
         for ln, line in enumerate(text.splitlines(), 1):
             code = line.split("--", 1)[0]  # ignore comments
             if _RE_RAW_VA.search(code):
-                print(f"  [ERR]  {modname}: {rel}:{ln}: raw game address — mods must "
-                      f"not hardcode engine addresses; add a symbol to data/symbols.json "
-                      f"and reach it through the SDK (R.*)")
+                hint = ("— mods must not hardcode engine addresses; add a symbol "
+                        "to data/symbols.json and reach it through the SDK (R.*)")
+                print(f"  {_T_ERR}  {_ST.bold(modname)}: {_ST.accent(f'{rel}:{ln}')}: "
+                      f"raw game address {_ST.dim(hint)}")
                 errs += 1
             if _RE_LOWLEVEL.search(code):
-                print(f"  [ERR]  {modname}: {rel}:{ln}: low-level primitive "
-                      f"(_internal/peek/poke/read_*/write_*/module_base/scratch/call_raw/"
-                      f"resolve) — wrap the capability in the SDK and expose a high-level "
-                      f"R.* API; mods consume only that")
+                hint = ("(_internal/peek/poke/read_*/write_*/module_base/scratch/"
+                        "call_raw/resolve) — wrap the capability in the SDK and "
+                        "expose a high-level R.* API; mods consume only that")
+                print(f"  {_T_ERR}  {_ST.bold(modname)}: {_ST.accent(f'{rel}:{ln}')}: "
+                      f"low-level primitive {_ST.dim(hint)}")
                 errs += 1
         for ev in _RE_ON.findall(text):
             # "*" is the wildcard channel (every event); "gameplay:<NAME>" is
@@ -351,14 +383,17 @@ def _lint_lua_api(modname: str, entry: Path) -> tuple[int, int]:
             if ev == "*" or ev.startswith("gameplay:") or ev.startswith("ui:"):
                 continue
             if ev not in events:
-                print(f"  [WARN] {modname}: {rel}: R.on({ev!r}) — unknown event "
-                      f"(known: {', '.join(sorted(events))}); handler will never fire")
+                hint = (f"— unknown event (known: {', '.join(sorted(events))}); "
+                        f"handler will never fire")
+                print(f"  {_T_WARN} {_ST.bold(modname)}: {_ST.accent(rel)}: "
+                      f"R.on({ev!r}) {_ST.dim(hint)}")
                 warns += 1
         if callables:
             for nm in _RE_ENGINE.findall(text):
                 if nm not in callables:
-                    print(f"  [WARN] {modname}: {rel}: R.engine call to {nm!r} — not a "
-                          f"callable symbol (see `rsmm symbols list`)")
+                    hint = "— not a callable symbol (see `rsmm symbols list`)"
+                    print(f"  {_T_WARN} {_ST.bold(modname)}: {_ST.accent(rel)}: "
+                          f"R.engine call to {_ST.accent(repr(nm))} {_ST.dim(hint)}")
                     warns += 1
     return errs, warns
 
@@ -372,16 +407,16 @@ def main() -> int:
         # mods/ is user-local and untracked (see .gitignore) — absent on a
         # fresh CI checkout. Nothing to lint is not a failure.
         if args.mod_id:
-            print(f"no such mod: {args.mod_id}", file=sys.stderr)
+            print(_ST_ERR.err(f"no such mod: {args.mod_id}"), file=sys.stderr)
             return 1
-        print("mods/ not found — nothing to lint")
+        print(_ST.dim("mods/ not found — nothing to lint"))
         return 0
 
     candidates: list[Path] = []
     if args.mod_id:
         p = MODS_DIR / args.mod_id
         if not p.is_dir():
-            print(f"no such mod: {args.mod_id}", file=sys.stderr)
+            print(_ST_ERR.err(f"no such mod: {args.mod_id}"), file=sys.stderr)
             return 1
         candidates = [p]
     else:
@@ -404,16 +439,21 @@ def main() -> int:
         graph_e = sum(1 for i in issues if i.severity == "error")
         graph_w = sum(1 for i in issues if i.severity == "warn")
         if graph_e or graph_w:
-            print("\ndependency graph:")
+            print(f"\n{_ST.heading('dependency graph:')}")
             for it in issues:
                 if it.severity == "error":
-                    print(f"  [ERROR] {it.code}: {it.message}")
+                    print(f"  {_T_ERROR} {_ST.accent(it.code)}: {it.message}")
                 elif it.severity == "warn":
-                    print(f"  [WARN]  {it.code}: {it.message}")
+                    print(f"  {_T_WARN}  {_ST.accent(it.code)}: {it.message}")
         total_e += graph_e
         total_w += graph_w
 
-    print(f"\n{len(candidates)} mod(s) linted: {total_e} error(s), {total_w} warning(s)")
+    counted = _ST.bold(f"{len(candidates)} mod(s) linted")
+    e_txt = f"{total_e} error(s)"
+    w_txt = f"{total_w} warning(s)"
+    e_s = _ST.err(e_txt) if total_e else _ST.ok(e_txt)
+    w_s = _ST.warn(w_txt) if total_w else _ST.ok(w_txt)
+    print(f"\n{counted}: {e_s}, {w_s}")
     return 1 if total_e else 0
 
 

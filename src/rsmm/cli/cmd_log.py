@@ -12,11 +12,45 @@ session banners.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 import time
 from pathlib import Path
 
+from rsmm.cli import _term
 from rsmm.engine.paths import DEFAULT_GAME_DIR
+
+_ST = _term.Style()
+
+_SESSION_MARK = "== SESSION "
+
+# The loader has no severity levels (see `Loader::log` in src/loader/src/
+# loader.cpp) — every line is `[<ts> <session> <pid>] <msg>`, optionally with a
+# bracketed subsystem tag (`[va-gate]`, `[skin-hook]`, `[lua]`). So there is
+# nothing to colour by severity; we only dim the machine-generated prefix and
+# accent the subsystem tag so the human-written message stands out. Patterns
+# are strict: anything that does not match is printed through untouched.
+_TS_RE = re.compile(r"\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} [0-9a-f]{4} \d+\]")
+_TAG_RE = re.compile(r"\[[a-z0-9][a-z0-9_-]{1,20}\]")
+_SEP_RE = re.compile(r"=+\Z")
+
+
+def _style_line(s: str) -> str:
+    """Colourise a loader log line IN PLACE — never adds/removes characters."""
+    if not _ST.enabled:
+        return s
+    if _SEP_RE.fullmatch(s):
+        return _ST.dim(s)
+    if s.startswith(_SESSION_MARK):
+        return _ST.heading(s)
+    m = _TS_RE.match(s)
+    if not m:
+        return s
+    head, rest = _ST.dim(s[:m.end()]), s[m.end():]
+    tag = _TAG_RE.match(rest, 1) if rest.startswith(" ") else None
+    if tag:
+        return f"{head} {_ST.accent(tag.group(0))}{rest[tag.end():]}"
+    return head + rest
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -56,25 +90,23 @@ def main(argv: list[str] | None = None) -> int:
     if a.clear:
         if log_path.exists():
             log_path.write_text("")
-            print(f"cleared {log_path}")
+            print(f"cleared {_ST.dim(str(log_path))}")
         else:
-            print(f"no log at {log_path}")
+            print(f"no log at {_ST.dim(str(log_path))}")
         return 0
     if not log_path.exists():
-        print(f"no log yet at {log_path} — launch the game once with the "
-              f"loader installed", file=sys.stderr)
+        print(_ST.err(f"no log yet at {log_path} — launch the game once with the "
+                      f"loader installed"), file=sys.stderr)
         return 1
-
-    _SESSION_MARK = "== SESSION "
 
     if a.sessions:
         with open(log_path, errors="replace") as f:
             marks = [ln.rstrip("\n") for ln in f if _SESSION_MARK in ln]
         if not marks:
-            print("(no session banners — log predates session-aware loader)")
+            print(_ST.dim("(no session banners — log predates session-aware loader)"))
             return 0
         for ln in marks:
-            print(ln)
+            print(_style_line(ln))
         return 0
 
     needle = a.grep.lower() if a.grep else None
@@ -82,7 +114,7 @@ def main(argv: list[str] | None = None) -> int:
     def emit(line: str) -> None:
         s = line.rstrip("\n")
         if needle is None or needle in s.lower():
-            print(s, flush=True)
+            print(_style_line(s), flush=True)
 
     def current_session(lines: list[str]) -> list[str]:
         """Trim to the last session banner onward (unless --all)."""
@@ -111,7 +143,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         f = open(log_path, errors="replace")
     except FileNotFoundError:
-        print(f"Log not found: {log_path}", file=sys.stderr)
+        print(_ST.err(f"Log not found: {log_path}"), file=sys.stderr)
         return 1
 
     try:
@@ -144,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
                     except FileNotFoundError:
                         inode = -1
                 except FileNotFoundError:
-                    print("Log file removed; stopping follow.", file=sys.stderr)
+                    print(_ST.warn("Log file removed; stopping follow."), file=sys.stderr)
                     return 0
     except KeyboardInterrupt:
         return 0
