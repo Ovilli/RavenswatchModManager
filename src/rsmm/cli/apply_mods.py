@@ -48,6 +48,7 @@ import sys
 import tomllib  # Python 3.11+
 from pathlib import Path
 
+from rsmm.cli import _term
 from rsmm.engine import cipher, cook_cache, cooked_schemas
 from rsmm.engine.hashing import sha256_file as sha256
 from rsmm.engine.paths import (
@@ -276,6 +277,17 @@ def resolve_special(decoded: str, dec2enc: dict[str, str]) -> str | None:
         return None
     return base_enc + f".Ggzy{enc_lang}"
 
+
+#: Line-lead tokens for the apply/restore log. Hoisted because Python 3.11
+#: forbids backslash escapes inside f-string expressions, and because every
+#: caller must use the same glyph for the same kind of event.
+_ADD = "+"
+_DEL = "-"
+_WARN_TOK = "!"
+
+#: Module-level style. Colour is auto-disabled when stdout is not a TTY, so
+#: piping `rsmm apply` into a file still yields clean text.
+_ST = _term.Style()
 
 ROOT_PREFIX = "_root\\"
 
@@ -720,7 +732,7 @@ def apply_one(enc: str, src: Path, dest: Path, mod_id: str,
         bak = dest.parent / (dest.name + BACKUP_SUFFIX)
         if not bak.exists():
             orig_sha = sha256(dest)
-            print(f"  + backup {dest.name}")
+            print(f"  {_ST.ok(_ADD)} backup {_ST.dim(dest.name)}")
             if not dry_run:
                 shutil.copy2(dest, bak)
         else:
@@ -728,9 +740,9 @@ def apply_one(enc: str, src: Path, dest: Path, mod_id: str,
     else:
         # Engine expected this file but it isn't there; mod adds a new asset.
         orig_sha = ""
-        print(f"  + new file (no original) {dest}")
+        print(f"  {_ST.ok(_ADD)} new file {_ST.dim(f'(no original) {dest}')}")
 
-    print(f"  + apply  {enc}  <- {mod_id}/{src.name}")
+    print(f"  {_ST.ok(_ADD)} apply  {enc}  {_ST.dim(f'<- {mod_id}/{src.name}')}")
     if not dry_run:
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dest)
@@ -757,7 +769,7 @@ def restore_one(enc: str, cooking: Path, game_dir: Path,
     orig_sha = entry.get("orig_sha256") or entry.get("orig_sha1", "")
 
     if bak.exists():
-        print(f"  - restore {enc}")
+        print(f"  {_ST.accent(_DEL)} restore {enc}")
         if not dry_run:
             # Two-phase: copy then remove — a crash mid-copy preserves the backup
             try:
@@ -782,12 +794,12 @@ def restore_one(enc: str, cooking: Path, game_dir: Path,
             print(f"  [WARN] {enc}: backup missing (orig_sha1 recorded); "
                   f"keeping destination", file=sys.stderr)
         else:
-            print(f"  - skip    {enc}  (no backup, no destination)")
+            print(f"  {_ST.dim(_DEL)} skip    {enc}  {_ST.dim('(no backup, no destination)')}")
             state.active.pop(enc, None)
         return True
 
     # No backup, no orig_sha1 → mod added this file. Safe to remove.
-    print(f"  - drop    {enc}  (no backup -> added file removed)")
+    print(f"  {_ST.accent(_DEL)} drop    {enc}  {_ST.dim('(no backup -> added file removed)')}")
     if not dry_run and dest.exists():
         try:
             dest.unlink()
@@ -1764,21 +1776,76 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
 
 
 def cmd_list(args, repo: Path, cooking: Path) -> int:
+    """Print the installed mods.
+
+    The per-file dump is behind `--files`: it is the useful view when
+    debugging one mod's asset resolution, but it buried the mod list itself
+    under thousands of lines on any real install.
+    """
+    st = _term.Style()
     mods = discover_mods(repo)
     if not mods:
-        print("No mods found in", MODS_DIR)
+        print(st.dim(f"no mods found in {MODS_DIR}"))
         return 0
+
+    only_enabled = bool(getattr(args, "enabled", False))
+    show_files = bool(getattr(args, "files", False))
+    shown = [m for m in mods if m.enabled] if only_enabled else mods
+
     state = State(cooking)
     dec2enc = load_asset_map(repo)
-    for m in mods:
-        n = len(m.files())
-        flag = "on " if m.enabled else "off"
-        print(f"  [{flag}] {m.id}  ({m.name} {m.version})  by {m.author or 'unknown'}  files={n}")
-        for _src, decoded in m.files():
-            enc = dec2enc.get(decoded) or resolve_special(decoded, dec2enc)
-            here = "  active" if (enc and enc in state.active) else ""
-            mark = "" if enc else "  [no asset_map match]"
-            print(f"        {decoded}{mark}{here}")
+
+    total_files = unresolved_total = active_total = 0
+    id_w = min(max((len(m.id) for m in shown), default=8), 34)
+
+    for m in shown:
+        files = m.files()
+        resolved = [
+            (decoded, dec2enc.get(decoded) or resolve_special(decoded, dec2enc))
+            for _src, decoded in files
+        ]
+        unresolved = [d for d, enc in resolved if not enc]
+        active = [d for d, enc in resolved if enc and enc in state.active]
+        total_files += len(files)
+        unresolved_total += len(unresolved)
+        active_total += len(active)
+
+        box = st.ok("[on ]") if m.enabled else st.dim("[off]")
+        # Pad the PLAIN id — padding a styled string counts the ANSI escapes
+        # as width and silently mis-aligns every coloured row.
+        padded = f"{m.id[:id_w]:<{id_w}}"
+        name = st.bold(padded) if m.enabled else padded
+        meta = st.dim(f"{m.name} {m.version} · by {m.author or 'unknown'}")
+        counts = st.dim(f"{len(files)} file(s)")
+        if active:
+            counts += st.dim(" · ") + st.ok(f"{len(active)} active")
+        if unresolved:
+            counts += st.dim(" · ") + st.warn(f"{len(unresolved)} unmapped")
+        print(f"  {box} {name}  {counts}")
+        print(f"        {meta}")
+
+        if not show_files:
+            continue
+        for decoded, enc in resolved:
+            if not enc:
+                tag = "  " + st.warn(_WARN_TOK + " no asset_map match")
+            elif enc in state.active:
+                tag = "  " + st.ok(_ADD + " active")
+            else:
+                tag = ""
+            print(f"        {st.dim(decoded)}{tag}")
+
+    print()
+    summary = (f"{len(shown)} mod(s)"
+               + (st.dim(f" of {len(mods)}") if only_enabled else "")
+               + st.dim(" · ") + f"{total_files} file(s)")
+    if active_total:
+        summary += st.dim(" · ") + st.ok(f"{active_total} active")
+    if unresolved_total:
+        summary += st.dim(" · ") + st.warn(f"{unresolved_total} unmapped")
+    print("  " + summary)
+    if unresolved_total and not show_files:
+        print("  " + st.dim("run with --files to see which paths are unmapped"))
     return 0
 
 
@@ -1812,7 +1879,11 @@ def main() -> int:
     g.add_argument("--restore-all", action="store_true",
                    help="restore every active override and clear state")
     g.add_argument("--list", action="store_true",
-                   help="list discovered mods + their files")
+                   help="list discovered mods")
+    ap.add_argument("--files", action="store_true",
+                    help="with --list: also print every file each mod ships")
+    ap.add_argument("--enabled", action="store_true",
+                    help="with --list: show only enabled mods")
     ap.add_argument("--purge-known-overrides", action="store_true",
                     help="aggressively remove cooked files mapped from "
                          "known mod assets during restore")
