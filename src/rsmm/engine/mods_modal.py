@@ -46,6 +46,11 @@ DONOR_DECODED = ("EntitySettings\\GameUis\\Modal\\"
 #: Entity name embedded in the donor's component-reference paths.
 DONOR_NAME = "Modal_Model"
 
+#: Mod folder for the STANDALONE modal.  Kept fully separate from the legacy
+#: ``RSMMMenu`` (which repurposes the Tutorial page): the modal must never
+#: touch the tutorial, so it ships as its own mod.
+MODAL_MOD_ID = "RSMMModal"
+
 #: Our clone.
 MODAL_NAME = "RSMM_Mods_Modal"
 MODAL_DECODED = (f"EntitySettings\\GameUis\\Modal\\"
@@ -319,6 +324,22 @@ def modal_texts(mods: list[dict]) -> dict[str, str]:
         LABEL_KEYS["Description Label"]: (
             f"{len(mods)} installed, {len(enabled)} enabled.\n\n{body}"),
     }
+
+
+def manifest_toml(mod_count: int) -> str:
+    return f"""[mod]
+id          = "{MODAL_MOD_ID}"
+name        = "RSMM Mods Modal"
+version     = "0.1.0"
+author      = "rsmm"
+description = "Standalone in-game mods modal ({mod_count} mods), opened on \
+BOOK_MENU_OPEN. Does NOT touch the Tutorial page. Regen: rsmm menu modal."
+enabled     = true
+sdk_version = ">=3.0,<4"
+# Ships a NEW menu entity + a host-entity override + a text-bank append;
+# not yet in-game confirmed.
+experimental = true
+"""
 
 
 def build_modal_assets(cooking_root: Path, dec2enc: dict[str, str],

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from rsmm.engine import cooked
+from rsmm.engine import cooked, mod_menu
 from rsmm.engine import entity_strings as ES
 from rsmm.engine import mods_modal as MM
 
@@ -293,8 +293,6 @@ def test_modal_texts_handle_an_empty_mod_list():
 def test_modal_keys_do_not_collide_with_the_page_menu():
     """The page menu owns RSMM_Menu_* in Tutorials~GAM.xls; sharing a key
     across banks would make the two builders fight over one string."""
-    from rsmm.engine import mod_menu
-
     assert not (set(MM.LABEL_KEYS.values()) & set(mod_menu.SLOT_KEYS.values()))
 
 
@@ -400,7 +398,7 @@ def test_trigger_refuses_a_host_missing_its_donors():
 
 # --- CLI wiring -------------------------------------------------------------
 
-def _run_menu_build(argv: list[str]) -> tuple[int, str]:
+def _run_menu(argv: list[str]) -> tuple[int, str]:
     import contextlib
     import io
 
@@ -408,40 +406,43 @@ def _run_menu_build(argv: list[str]) -> tuple[int, str]:
 
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
-        rc = cmd_menu.main(["build", "--game-dir", "/nonexistent", *argv])
+        rc = cmd_menu.main([*argv, "--game-dir", "/nonexistent"])
     return rc, buf.getvalue()
 
 
-def test_menu_build_accepts_the_modal_flag():
-    # Missing cooking dir means it bails early either way; what matters is
-    # that --modal parses rather than dying as an unknown argument.
-    assert _run_menu_build([])[0] == 2
-    assert _run_menu_build(["--modal"])[0] == 2
+def test_modal_has_its_own_subcommand():
+    # Missing cooking dir bails at 2; what matters is that `menu modal` and its
+    # flag parse rather than dying as unknown arguments.
+    assert _run_menu(["modal"])[0] == 2
+    assert _run_menu(["modal", "--no-trigger"])[0] == 2
 
 
-def test_menu_build_rejects_unknown_flags():
+def test_menu_rejects_unknown_flags():
     with pytest.raises(SystemExit):
-        _run_menu_build(["--bogus-flag"])
+        _run_menu(["modal", "--bogus-flag"])
 
 
-def test_modal_is_opt_in():
-    """The modal ships a host-entity override, so it must never ride along
-    with a plain `rsmm menu build`."""
-    import argparse
-    import contextlib
-    import io
-
+def test_plain_build_never_carries_the_modal():
+    """The modal is a separate mod and must never ride on `menu build` — that
+    command repurposes the Tutorial page, which the modal deliberately avoids."""
     from rsmm.cli import cmd_menu
 
-    captured: dict[str, argparse.Namespace] = {}
-    original = cmd_menu.cmd_build
-    try:
-        cmd_menu.cmd_build = lambda args: captured.setdefault("a", args) and 0
-        with contextlib.redirect_stdout(io.StringIO()):
-            cmd_menu.main(["build", "--game-dir", "/nonexistent"])
-    finally:
-        cmd_menu.cmd_build = original
-    assert captured["a"].modal is False
+    build = cmd_menu.cmd_build
+    assert "build_modal_assets" not in build.__code__.co_names
+    # And `menu build` exposes no --modal flag any more.
+    with pytest.raises(SystemExit):
+        _run_menu(["build", "--modal"])
+
+
+def test_modal_mod_is_separate_from_the_menu_mod():
+    assert MM.MODAL_MOD_ID != mod_menu.MENU_MOD_ID
+
+
+def test_modal_manifest_is_experimental_and_self_describing():
+    manifest = MM.manifest_toml(3)
+    assert f'id          = "{MM.MODAL_MOD_ID}"' in manifest
+    assert "experimental = true" in manifest
+    assert "Tutorial" in manifest  # states it does not touch it
 
 
 # --- spawn-readiness (offline de-risk of the in-game spawn) ------------------

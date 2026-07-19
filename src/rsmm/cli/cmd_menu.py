@@ -88,21 +88,6 @@ def cmd_build(args: argparse.Namespace) -> int:
             assets.update(bm_assets)
             tab_note += " + 6th bookmark (experimental)"
 
-    if args.modal:
-        try:
-            modal_assets = mods_modal.build_modal_assets(
-                cooking, load_asset_map(), mods)
-        except mods_modal.ModsModalError as e:
-            print(f"warning: mod modal skipped: {e}", file=sys.stderr)
-        else:
-            overlap = set(assets) & set(modal_assets)
-            if overlap:
-                print(f"error: modal asset overlap: {sorted(overlap)}",
-                      file=sys.stderr)
-                return 2
-            assets.update(modal_assets)
-            tab_note += " + mods modal (experimental)"
-
     root = mods_dir / mod_menu.MENU_MOD_ID
     if root.exists():
         shutil.rmtree(root)
@@ -130,6 +115,54 @@ def cmd_remove(args: argparse.Namespace) -> int:
         return 0
     shutil.rmtree(root)
     print(f"removed {root}. Run 'rsmm apply' to restore the tutorial page.")
+    return 0
+
+
+def cmd_modal(args: argparse.Namespace) -> int:
+    """Build the STANDALONE mods modal — a custom menu entity opened on
+    BOOK_MENU_OPEN. Ships as its own mod and never edits the Tutorial page."""
+    game_dir = Path(args.game_dir) if args.game_dir else P.default_game_dir()
+    cooking = game_dir / "DarkTalesResources" / "_Cooking"
+    if not cooking.is_dir():
+        print(f"error: cooking dir not found: {cooking}", file=sys.stderr)
+        return 2
+    mods_dir = Path(args.mods_dir) if args.mods_dir else P.mods_dir()
+    mods = _load_mods(mods_dir)
+
+    try:
+        assets = mods_modal.build_modal_assets(
+            cooking, load_asset_map(), mods, trigger=not args.no_trigger)
+    except mods_modal.ModsModalError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
+    root = mods_dir / mods_modal.MODAL_MOD_ID
+    if root.exists():
+        shutil.rmtree(root)
+    (root / "assets").mkdir(parents=True)
+    (root / "manifest.toml").write_text(mods_modal.manifest_toml(len(mods)),
+                                        encoding="utf-8")
+    for dec, blob in assets.items():
+        dest = root / "assets" / Path(*dec.split("/"))
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(blob)
+
+    host = "" if args.no_trigger else f", host override {mods_modal.HOST_NAME}"
+    print(f"wrote {root} ({len(assets)} asset file(s), {len(mods)} mod(s)"
+          f"{host}). Does NOT touch the Tutorial page.")
+    print("Run 'rsmm apply' to install, then open the book in-game — the "
+          "modal spawns on BOOK_MENU_OPEN.")
+    return 0
+
+
+def cmd_modal_remove(args: argparse.Namespace) -> int:
+    mods_dir = Path(args.mods_dir) if args.mods_dir else P.mods_dir()
+    root = mods_dir / mods_modal.MODAL_MOD_ID
+    if not root.is_dir():
+        print("modal mod not present.")
+        return 0
+    shutil.rmtree(root)
+    print(f"removed {root}. Run 'rsmm apply' to restore the host entity.")
     return 0
 
 
@@ -179,14 +212,24 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--bookmark", action="store_true",
                    help="include the experimental (in-game inert so far) "
                         "6th physical book bookmark")
-    b.add_argument("--modal", action="store_true",
-                   help="include the experimental standalone mods modal "
-                        "(a custom menu entity opened by RSMM_OPEN_MENU)")
     b.set_defaults(fn=cmd_build)
 
     r = sub.add_parser("remove", help="delete the RSMMMenu mod")
     r.add_argument("--mods-dir", help="mods directory (default: repo mods/)")
     r.set_defaults(fn=cmd_remove)
+
+    m = sub.add_parser("modal", help="build the standalone mods modal "
+                       "(custom menu, does NOT touch the Tutorial page)")
+    m.add_argument("--game-dir", help="Ravenswatch install dir (auto-detected)")
+    m.add_argument("--mods-dir", help="mods directory (default: repo mods/)")
+    m.add_argument("--no-trigger", action="store_true",
+                   help="ship the modal asset alone, without the host "
+                        "override that opens it on BOOK_MENU_OPEN")
+    m.set_defaults(fn=cmd_modal)
+
+    mr = sub.add_parser("modal-remove", help="delete the RSMMModal mod")
+    mr.add_argument("--mods-dir", help="mods directory (default: repo mods/)")
+    mr.set_defaults(fn=cmd_modal_remove)
 
     i = sub.add_parser("inspect", help="summarize or diff cooked entity assets")
     i.add_argument("left", help="decoded asset path for the left entity")
