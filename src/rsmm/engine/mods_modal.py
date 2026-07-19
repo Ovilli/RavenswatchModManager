@@ -192,11 +192,11 @@ def build_modal(donor_bytes: bytes, *, name: str = MODAL_NAME,
     return out
 
 
-#: Value-union block tags.  ``0x14`` wraps an optionally-bound value: a flag
-#: byte (``01`` = a picker follows, ``00`` = the value is static), then the
-#: optional picker + its 4-byte field id, then the ``0x15`` union itself.
-_TAG_BOUND = 0x14
-_TAG_UNION = 0x15
+#: Inner BEGIN tags are indexes into THE FILE'S OWN class table, not global
+#: constants — ``oCEntityCpntValuePicker`` is 0x14 in ``Modal_Model`` but 0x13
+#: in ``System_Book_Page``.  They must always be resolved by class name.
+_CLS_BOUND = "oCEntityCpntValuePicker"   # wraps an optionally-bound value
+_CLS_UNION = "oCEntityValueUnion"        # the value itself
 #: Union type for localized text.
 _UNION_TEXT = 5
 #: Text-source kind: read from a text bank.
@@ -224,18 +224,26 @@ def _matching_end(blob: bytes, begin: int) -> int:
     raise ModsModalError("unbalanced BEGIN/END in component record")
 
 
-def _find_text_block(record: bytes) -> tuple[int, int]:
+def class_index(cf: cooked.CookedFile, name: str) -> int:
+    """Index of ``name`` in this file's class table (tags are file-relative)."""
+    for i, c in enumerate(cf.classes):
+        if c.name == name:
+            return i
+    raise ModsModalError(f"class {name!r} absent from the file's class table")
+
+
+def _find_text_block(record: bytes, bound: int, union_tag: int) -> tuple[int, int]:
     """Span of the label's bound-value block holding its text union.
 
     A label carries exactly one type-5 union; every other union on the record
     is a float/colour/bool, which is what makes this an unambiguous anchor.
     """
     hits = []
-    needle = _BEGIN + struct.pack("<I", _TAG_BOUND)
+    needle = _BEGIN + struct.pack("<I", bound)
     pos = record.find(needle)
     while pos >= 0:
         end = _matching_end(record, pos)
-        union = record.find(_BEGIN + struct.pack("<I", _TAG_UNION), pos, end)
+        union = record.find(_BEGIN + struct.pack("<I", union_tag), pos, end)
         if union >= 0 and struct.unpack_from("<I", record, union + 8)[0] == _UNION_TEXT:
             hits.append((pos, end))
         pos = record.find(needle, pos + 4)
@@ -245,19 +253,20 @@ def _find_text_block(record: bytes) -> tuple[int, int]:
     return hits[0]
 
 
-def _bank_text_block(bank_dir: str, bank_file: str, key: str) -> bytes:
-    """A static ``0x14`` block resolving its text from a text-bank key."""
+def _bank_text_block(bound: int, union_tag: int, bank_dir: str,
+                     bank_file: str, key: str) -> bytes:
+    """A static bound-value block resolving its text from a text-bank key."""
     union = (struct.pack("<I", _UNION_TEXT) + b"\0" * 8
              + struct.pack("<I", _TEXT_FROM_BANK)
              + _lstr(bank_dir) + _lstr(bank_file)
              + struct.pack("<I", 1) + _lstr(key))
-    return (_BEGIN + struct.pack("<I", _TAG_BOUND) + b"\0"
-            + _BEGIN + struct.pack("<I", _TAG_UNION) + union + _END
+    return (_BEGIN + struct.pack("<I", bound) + b"\0"
+            + _BEGIN + struct.pack("<I", union_tag) + union + _END
             + _END)
 
 
-def set_label_text(record: bytes, *, bank_dir: str, bank_file: str,
-                   key: str) -> bytes:
+def set_label_text(record: bytes, *, bound: int, union_tag: int,
+                   bank_dir: str, bank_file: str, key: str) -> bytes:
     """Re-point a label component at a text-bank key.
 
     ``Modal_Model``'s title and description labels bind their text to an
@@ -269,14 +278,16 @@ def set_label_text(record: bytes, *, bank_dir: str, bank_file: str,
     for part in (bank_dir, bank_file, key):
         if not part.isascii():
             raise ModsModalError(f"bank reference must be ASCII: {part!r}")
-    start, end = _find_text_block(record)
-    return record[:start] + _bank_text_block(bank_dir, bank_file, key) + record[end:]
+    start, end = _find_text_block(record, bound, union_tag)
+    block = _bank_text_block(bound, union_tag, bank_dir, bank_file, key)
+    return record[:start] + block + record[end:]
 
 
-def label_text_binding(record: bytes) -> tuple[str, str, str] | None:
+def label_text_binding(record: bytes, *, bound: int,
+                       union_tag: int) -> tuple[str, str, str] | None:
     """``(bank_dir, bank_file, key)`` a label reads its text from, if static."""
-    start, end = _find_text_block(record)
-    union = record.find(_BEGIN + struct.pack("<I", _TAG_UNION), start, end)
+    start, end = _find_text_block(record, bound, union_tag)
+    union = record.find(_BEGIN + struct.pack("<I", union_tag), start, end)
     off = union + 8 + 4 + 8
     if struct.unpack_from("<I", record, off)[0] != _TEXT_FROM_BANK:
         return None
@@ -349,20 +360,36 @@ def build_modal_assets(cooking_root: Path, dec2enc: dict[str, str],
     return out
 
 
+def _named_section(cf: cooked.CookedFile, cooked_bytes: bytes,
+                   cpnt_name: str) -> cooked.Section:
+    matches = [i for i, n in enumerate(component_names(cooked_bytes))
+               if n == cpnt_name]
+    if len(matches) != 1:
+        raise ModsModalError(
+            f"expected exactly one component named {cpnt_name!r}, "
+            f"found {len(matches)}")
+    return cf.sections[1 + matches[0]]
+
+
+def component_label_binding(cooked_bytes: bytes,
+                            cpnt_name: str) -> tuple[str, str, str] | None:
+    """Text-bank binding of a named label, resolving tags from the file."""
+    cf = cooked.parse(cooked_bytes)
+    return label_text_binding(_named_section(cf, cooked_bytes, cpnt_name).payload,
+                              bound=class_index(cf, _CLS_BOUND),
+                              union_tag=class_index(cf, _CLS_UNION))
+
+
 def set_component_label(cooked_bytes: bytes, cpnt_name: str, *, key: str,
                         bank_dir: str = BANK_DIR,
                         bank_file: str = BANK_FILE) -> bytes:
     """Point the named label component at ``key`` in a text bank."""
     cf = cooked.parse(cooked_bytes)
-    names = component_names(cooked_bytes)
-    matches = [i for i, n in enumerate(names) if n == cpnt_name]
-    if len(matches) != 1:
-        raise ModsModalError(
-            f"expected exactly one component named {cpnt_name!r}, "
-            f"found {len(matches)}")
-    sec = cf.sections[1 + matches[0]]
-    sec.payload = set_label_text(sec.payload, bank_dir=bank_dir,
-                                 bank_file=bank_file, key=key)
+    sec = _named_section(cf, cooked_bytes, cpnt_name)
+    sec.payload = set_label_text(
+        sec.payload, bound=class_index(cf, _CLS_BOUND),
+        union_tag=class_index(cf, _CLS_UNION),
+        bank_dir=bank_dir, bank_file=bank_file, key=key)
     return cooked.emit(cf)
 
 
