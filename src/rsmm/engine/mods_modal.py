@@ -51,6 +51,7 @@ MODAL_DECODED = (f"EntitySettings\\GameUis\\Modal\\"
 #: spawners reference the ``.entity.ot`` form, as the EULA spawner does).
 MODAL_RESOURCE = f"GameUis\\Modal\\{MODAL_NAME}.entity.ot"
 
+_BEGIN = cooked.MARK_BEGIN
 _END = cooked.MARK_END
 
 
@@ -151,17 +152,155 @@ def rename_entity(cooked_bytes: bytes, old: str, new: str) -> bytes:
     return ES.replace_strings(cooked_bytes, {s: s.replace(old, new) for s in seen})
 
 
-def build_modal(donor_bytes: bytes, *, name: str = MODAL_NAME) -> bytes:
-    """Clone the donor modal into a standalone entity called ``name``."""
+#: Text bank the clone reads its own labels from.  ``Common~GAM.xls`` is
+#: already referenced by the donor's own button labels, so it is certainly
+#: loaded wherever the modal is; our keys are appended to it at build time
+#: (``text_patches.append_bank_keys``).
+BANK_DIR = "Text"
+BANK_FILE = "Common~GAM.xls"
+
+#: Component name -> the bank key it should render.
+LABEL_KEYS: dict[str, str] = {
+    "Title Label": "RSMM_Menu_Title",
+    "Description Label": "RSMM_Menu_Body",
+}
+
+
+def build_modal(donor_bytes: bytes, *, name: str = MODAL_NAME,
+                labels: dict[str, str] | None = None) -> bytes:
+    """Clone the donor modal into a standalone entity called ``name``.
+
+    ``labels`` maps component name -> text-bank key; it defaults to
+    :data:`LABEL_KEYS`.  Pass ``{}`` to leave the donor's bindings alone.
+    """
     if not name.isascii():
         raise ModsModalError(f"entity name must be ASCII: {name!r}")
     out = rename_entity(donor_bytes, DONOR_NAME, name)
     out = remint_all(out)
+    for cpnt, key in (LABEL_KEYS if labels is None else labels).items():
+        out = set_component_label(out, cpnt, key=key)
     residual = [s for _, _, s in ES.list_strings(out)
                 if DONOR_NAME in s and name not in s]
     if residual:
         raise ModsModalError(f"clone still references the donor: {residual[:3]}")
     return out
+
+
+#: Value-union block tags.  ``0x14`` wraps an optionally-bound value: a flag
+#: byte (``01`` = a picker follows, ``00`` = the value is static), then the
+#: optional picker + its 4-byte field id, then the ``0x15`` union itself.
+_TAG_BOUND = 0x14
+_TAG_UNION = 0x15
+#: Union type for localized text.
+_UNION_TEXT = 5
+#: Text-source kind: read from a text bank.
+_TEXT_FROM_BANK = 3
+
+
+def _lstr(s: str) -> bytes:
+    return struct.pack("<I", len(s)) + s.encode("ascii")
+
+
+def _matching_end(blob: bytes, begin: int) -> int:
+    """Offset just past the END matching the BEGIN at ``begin``."""
+    depth, i = 0, begin
+    while i < len(blob):
+        if blob[i:i + 4] == _BEGIN:
+            depth += 1
+            i += 8
+        elif blob[i:i + 4] == _END:
+            depth -= 1
+            i += 4
+            if depth == 0:
+                return i
+        else:
+            i += 1
+    raise ModsModalError("unbalanced BEGIN/END in component record")
+
+
+def _find_text_block(record: bytes) -> tuple[int, int]:
+    """Span of the label's bound-value block holding its text union.
+
+    A label carries exactly one type-5 union; every other union on the record
+    is a float/colour/bool, which is what makes this an unambiguous anchor.
+    """
+    hits = []
+    needle = _BEGIN + struct.pack("<I", _TAG_BOUND)
+    pos = record.find(needle)
+    while pos >= 0:
+        end = _matching_end(record, pos)
+        union = record.find(_BEGIN + struct.pack("<I", _TAG_UNION), pos, end)
+        if union >= 0 and struct.unpack_from("<I", record, union + 8)[0] == _UNION_TEXT:
+            hits.append((pos, end))
+        pos = record.find(needle, pos + 4)
+    if len(hits) != 1:
+        raise ModsModalError(
+            f"expected exactly one text union on the record, found {len(hits)}")
+    return hits[0]
+
+
+def _bank_text_block(bank_dir: str, bank_file: str, key: str) -> bytes:
+    """A static ``0x14`` block resolving its text from a text-bank key."""
+    union = (struct.pack("<I", _UNION_TEXT) + b"\0" * 8
+             + struct.pack("<I", _TEXT_FROM_BANK)
+             + _lstr(bank_dir) + _lstr(bank_file)
+             + struct.pack("<I", 1) + _lstr(key))
+    return (_BEGIN + struct.pack("<I", _TAG_BOUND) + b"\0"
+            + _BEGIN + struct.pack("<I", _TAG_UNION) + union + _END
+            + _END)
+
+
+def set_label_text(record: bytes, *, bank_dir: str, bank_file: str,
+                   key: str) -> bytes:
+    """Re-point a label component at a text-bank key.
+
+    ``Modal_Model``'s title and description labels bind their text to an
+    ``oCEntityCpntValueSettings`` that the modal's controller fills in, so a
+    clone opened by a plain spawner renders empty.  Swapping the bound block
+    for the static bank form — the shape the donor's own button labels use —
+    makes the clone carry its own text.
+    """
+    for part in (bank_dir, bank_file, key):
+        if not part.isascii():
+            raise ModsModalError(f"bank reference must be ASCII: {part!r}")
+    start, end = _find_text_block(record)
+    return record[:start] + _bank_text_block(bank_dir, bank_file, key) + record[end:]
+
+
+def label_text_binding(record: bytes) -> tuple[str, str, str] | None:
+    """``(bank_dir, bank_file, key)`` a label reads its text from, if static."""
+    start, end = _find_text_block(record)
+    union = record.find(_BEGIN + struct.pack("<I", _TAG_UNION), start, end)
+    off = union + 8 + 4 + 8
+    if struct.unpack_from("<I", record, off)[0] != _TEXT_FROM_BANK:
+        return None
+    off += 4
+    parts = []
+    for _ in range(2):
+        n = struct.unpack_from("<I", record, off)[0]
+        parts.append(record[off + 4:off + 4 + n].decode("ascii"))
+        off += 4 + n
+    off += 4
+    n = struct.unpack_from("<I", record, off)[0]
+    parts.append(record[off + 4:off + 4 + n].decode("ascii"))
+    return tuple(parts) if all(parts) else None
+
+
+def set_component_label(cooked_bytes: bytes, cpnt_name: str, *, key: str,
+                        bank_dir: str = BANK_DIR,
+                        bank_file: str = BANK_FILE) -> bytes:
+    """Point the named label component at ``key`` in a text bank."""
+    cf = cooked.parse(cooked_bytes)
+    names = component_names(cooked_bytes)
+    matches = [i for i, n in enumerate(names) if n == cpnt_name]
+    if len(matches) != 1:
+        raise ModsModalError(
+            f"expected exactly one component named {cpnt_name!r}, "
+            f"found {len(matches)}")
+    sec = cf.sections[1 + matches[0]]
+    sec.payload = set_label_text(sec.payload, bank_dir=bank_dir,
+                                 bank_file=bank_file, key=key)
+    return cooked.emit(cf)
 
 
 def component_names(cooked_bytes: bytes) -> list[str]:

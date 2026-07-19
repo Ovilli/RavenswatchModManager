@@ -160,3 +160,95 @@ def test_donor_clone_keeps_the_controller_buttons():
     for button in ("Validate_Button", "Cancel_Button",
                    "Third_Button", "Fourth_Button"):
         assert button in strings
+
+
+# --- label text binding -----------------------------------------------------
+
+def _label_record(name: str) -> bytes:
+    """A label whose text union is bound to a picker (the donor's shape)."""
+    text_union = (_BEGIN + struct.pack("<I", 0x15)
+                  + struct.pack("<I", 5) + b"\0" * 8 + struct.pack("<I", 3)
+                  + b"\0" * 8 + b"\xff\xff\xff\xff" + b"\0" * 4 + _END)
+    bound = (_BEGIN + struct.pack("<I", 0x14) + b"\x01\x00"
+             + _BEGIN + struct.pack("<I", 0x13) + bytes(range(16))
+             + _lstr("[Value] Modal_Model\\Title Value") + _END
+             + b"\xde\xad\xbe\xef" + text_union + _END)
+    # A float union either side: only the type-5 one may ever be matched.
+    other = (_BEGIN + struct.pack("<I", 0x14) + b"\x00"
+             + _BEGIN + struct.pack("<I", 0x15) + struct.pack("<I", 0)
+             + b"\0" * 8 + _END + _END)
+    return _cpnt(0, bytes(range(32, 48)), name, other + bound + other)
+
+
+def test_label_binding_reads_none_when_controller_driven():
+    assert MM.label_text_binding(_label_record("Title Label")) is None
+
+
+def test_label_retarget_replaces_the_picker_with_a_bank_key():
+    out = MM.set_label_text(_label_record("Title Label"), bank_dir="Text",
+                            bank_file="Common~GAM.xls", key="RSMM_Menu_Title")
+    assert MM.label_text_binding(out) == ("Text", "Common~GAM.xls",
+                                          "RSMM_Menu_Title")
+    assert b"Title Value" not in out, "the value picker must be dropped"
+
+
+def test_label_retarget_is_idempotent():
+    once = MM.set_label_text(_label_record("Title Label"), bank_dir="Text",
+                             bank_file="Common~GAM.xls", key="K")
+    twice = MM.set_label_text(once, bank_dir="Text",
+                              bank_file="Common~GAM.xls", key="K")
+    assert twice == once
+
+
+def test_label_retarget_rejects_non_ascii_keys():
+    with pytest.raises(MM.ModsModalError, match="ASCII"):
+        MM.set_label_text(_label_record("Title Label"), bank_dir="Text",
+                          bank_file="Common~GAM.xls", key="Ünicode")
+
+
+def test_label_retarget_needs_exactly_one_text_union():
+    with pytest.raises(MM.ModsModalError, match="text union"):
+        MM.set_label_text(_cpnt(0, bytes(range(16)), "No Text Here"),
+                          bank_dir="Text", bank_file="B", key="K")
+
+
+@_needs_corpus
+def test_rewriting_a_bank_label_with_its_own_values_is_byte_identical():
+    """The strongest check on the union schema: a no-op rewrite must not
+    disturb a single byte of a label the game itself authored."""
+    cf = cooked.parse(_DONOR.read_bytes())
+    names = MM.component_names(_DONOR.read_bytes())
+    record = cf.sections[1 + names.index("Cancel Button Label")].payload
+    bank_dir, bank_file, key = MM.label_text_binding(record)
+    assert (bank_dir, bank_file, key) == ("Text", "Common~GAM.xls",
+                                          "Common_Back")
+    assert MM.set_label_text(record, bank_dir=bank_dir, bank_file=bank_file,
+                             key=key) == record
+
+
+@_needs_corpus
+def test_clone_labels_render_from_our_own_bank_keys():
+    """Controller-driven labels render empty under a plain spawner, so the
+    clone must carry its own text."""
+    clone = MM.build_modal(_DONOR.read_bytes())
+    cf = cooked.parse(clone)
+    names = MM.component_names(clone)
+    for cpnt, key in MM.LABEL_KEYS.items():
+        record = cf.sections[1 + names.index(cpnt)].payload
+        assert MM.label_text_binding(record) == (MM.BANK_DIR, MM.BANK_FILE, key)
+    # The donor's own button labels must be left exactly as they were.
+    donor_cf = cooked.parse(_DONOR.read_bytes())
+    donor_names = MM.component_names(_DONOR.read_bytes())
+    for cpnt in ("Cancel Button Label", "Validate Button Label"):
+        assert (MM.label_text_binding(cf.sections[1 + names.index(cpnt)].payload)
+                == MM.label_text_binding(
+                    donor_cf.sections[1 + donor_names.index(cpnt)].payload))
+
+
+@_needs_corpus
+def test_clone_can_opt_out_of_label_retargeting():
+    clone = MM.build_modal(_DONOR.read_bytes(), labels={})
+    cf = cooked.parse(clone)
+    names = MM.component_names(clone)
+    record = cf.sections[1 + names.index("Title Label")].payload
+    assert MM.label_text_binding(record) is None
