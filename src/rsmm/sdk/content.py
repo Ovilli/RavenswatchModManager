@@ -18,7 +18,7 @@ from pathlib import Path
 from .api import sdk_export
 
 KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "skill", "modifier",
-         "game_mode", "reward")
+         "game_mode", "reward", "melody")
 
 #: Per-kind honesty rating — how much we trust the bytes this kind emits.
 #:
@@ -53,6 +53,10 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # guaranteed block on a different (context+0xa8) def that bypasses
                               # counts. Ban unreliable; needs a runtime def-dump to pin the
                               # def/field. See docs/_re/kinds/rewards.md
+    "melody": "guess",        # all 12 retail melodydefs round-trip byte-for-byte and every
+                              # mined exclusion string is an exact GameModifier stem, but
+                              # neither lever (effect repoint, exclusion list) has been
+                              # confirmed in-game. See docs/_re/kinds/melodies.md
 }
 
 CONFIDENCE_LEVELS = ("confirmed", "experimental", "guess")
@@ -191,6 +195,7 @@ _KIND_MODULES = {
     "skill": "skills",
     "modifier": "modifiers",
     "game_mode": "game_modes",
+    "melody": "melodies",
 }
 
 def _load_kind(kind: str):

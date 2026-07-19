@@ -49,3 +49,43 @@ def test_decoded_to_encoded_warns_on_collision(tmp_path, monkeypatch, caplog):
         out = asset_map.decoded_to_encoded()
     assert out == {"same/path": "ENC2"}  # last one survives
     assert any("duplicate decoded path" in r.message for r in caplog.records)
+
+
+# --- FMOD sound banks ------------------------------------------------------
+#
+# Banks are the one asset family the engine loads by path instead of through
+# `UsedRscList.ot`, so they are absent from asset_map and must resolve by
+# ciphering the plaintext path directly.
+
+def test_audio_banks_are_absent_from_the_asset_map():
+    """The premise of resolve_audio_bank: a dec2enc lookup can never hit."""
+    dec2enc = asset_map.decoded_to_encoded()
+    assert not [d for d in dec2enc if d.endswith(".bank")]
+
+
+def test_resolve_audio_bank_ciphers_the_plaintext_path():
+    from rsmm.cli.apply_mods import resolve_audio_bank
+
+    # Verified against the shipped tree: _Cooking/Wwtdr/Hwvdb.agzm exists.
+    assert resolve_audio_bank("Audio/Music.bank") == "Wwtdr\\Hwvdb.agzm"
+    assert resolve_audio_bank("Audio/Master.strings.bank") == "Wwtdr\\Hgviqu.viudzyv.agzm"
+    # Backslash input is accepted too (manifests may use either separator).
+    assert resolve_audio_bank("Audio\\Music.bank") == "Wwtdr\\Hwvdb.agzm"
+
+
+def test_resolve_audio_bank_declines_non_banks():
+    from rsmm.cli.apply_mods import resolve_audio_bank
+
+    for decoded in (
+        "Audio/DarkTales.bankset.FModEventProject.gen",  # in asset_map already
+        "Characters/Character_Grey.mat.ot",
+        "Audio/nested/dir/Music.bank",                   # banks are flat
+        "Music.bank",                                    # not under Audio/
+    ):
+        assert resolve_audio_bank(decoded) is None, decoded
+
+
+def test_resolve_special_routes_banks_without_an_asset_map():
+    from rsmm.cli.apply_mods import resolve_audio_bank, resolve_special
+
+    assert resolve_special("Audio/Maps.bank", {}) == resolve_audio_bank("Audio/Maps.bank")

@@ -219,6 +219,32 @@ def is_skippable_asset(decoded: str) -> bool:
     return False
 
 
+#: FMOD sound banks live under `Audio/` as opaque containers. Unlike every
+#: other cooked asset they are NOT listed in `UsedRscList.ot`, so
+#: `asset_map.json` (which is derived from that list) has no entry for them
+#: and a `dec2enc` lookup always misses — see `resolve_audio_bank`.
+AUDIO_DIR_DECODED = "Audio"
+_AUDIO_BANK_RE = re.compile(r"^Audio/[^/\\]+\.bank$")
+
+
+def resolve_audio_bank(decoded: str) -> str | None:
+    """Resolve `Audio/<Name>.bank` to its `_Cooking` encoded path.
+
+    Sound banks are the one asset family the engine loads by *path* rather
+    than through the `UsedRscList.ot` manifest, so they never appear in
+    `asset_map.json` and cannot be resolved by lookup. Their encoding is
+    also the simple case — the `!` directory-collapse rule that complicates
+    normal cooked paths does not apply at this depth, so the plaintext path
+    ciphers straight through (`Audio/Music.bank` -> `Wwtdr\\Hwvdb.agzm`).
+
+    Returns None for anything that is not a bank, so callers can keep
+    falling through to their existing resolution chain.
+    """
+    if not _AUDIO_BANK_RE.match(decoded.replace("\\", "/")):
+        return None
+    return cipher.encode(decoded.replace("/", "\\"))
+
+
 def resolve_special(decoded: str, dec2enc: dict[str, str]) -> str | None:
     """Resolve decoded paths that aren't directly in asset_map.
 
@@ -227,12 +253,17 @@ def resolve_special(decoded: str, dec2enc: dict[str, str]) -> str | None:
     * `_root/<rel>` — top-level files in the install dir (e.g.
       `_root/DarkTalesResources/ApplicationSettings.ot`). Rewritten as
       an internal `_root\\<rel>` key, NOT a cooked-path encoding.
+    * `Audio/<Name>.bank` — FMOD sound banks, absent from `UsedRscList.ot`
+      and therefore from `asset_map` (see `resolve_audio_bank`).
     * `Text/<bank>~GAM.xls.LocalText.gen.Lang<XX>` — localization
       sibling whose base is in `asset_map` but the .Lang<XX> sibling
       isn't. Decoded -> base's encoded path + `.Ggzy<encoded-lang>`.
     """
     if decoded.startswith("_root/"):
         return ROOT_PREFIX + decoded[len("_root/"):].replace("/", "\\")
+    bank = resolve_audio_bank(decoded)
+    if bank:
+        return bank
     m = re.match(r"^(.*\.LocalText\.gen)\.Lang(.+)$", decoded)
     if not m:
         return None

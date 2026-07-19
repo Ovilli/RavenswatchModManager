@@ -32,6 +32,7 @@ except ImportError:
 
 # Repo importable (rsmm.engine.cooked_schemas) — script lives in scripts/.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+from rsmm.engine import cipher as _cipher  # noqa: E402
 from rsmm.engine import cooked as _cooked  # noqa: E402
 from rsmm.engine import cooked_schemas as _schemas  # noqa: E402
 from rsmm.engine.cooked_schemas import (  # noqa: E402
@@ -344,6 +345,33 @@ def process_one(args):
     return ("copy", decoded)
 
 
+#: The bankset descriptor is the only `Audio/` entry that IS listed in
+#: `UsedRscList.ot`, so it already arrives through the CSV — `audio_pairs`
+#: skips it to avoid extracting the same file twice.
+BANKSET_DECODED = "Audio\\DarkTales.bankset.FModEventProject.gen"
+
+
+def audio_pairs(cooking: Path):
+    """Yield (encoded, decoded) pairs for the FMOD sound banks.
+
+    Banks are loaded by path rather than through `UsedRscList.ot`, so they
+    are absent from `asset_map.csv` and a CSV-only walk silently mirrors
+    zero audio. Their encoding has no `!` directory collapse, so the cooked
+    directory can simply be listed and each name deciphered back.
+    """
+    audio_enc = _cipher.encode("Audio")
+    d = cooking / audio_enc
+    if not d.is_dir():
+        return
+    for p in sorted(d.iterdir()):
+        if not p.is_file():
+            continue
+        decoded = f"Audio\\{_cipher.decode(p.name)}"
+        if decoded == BANKSET_DECODED:
+            continue
+        yield f"{audio_enc}\\{p.name}", decoded
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--game-dir", default=str(DEFAULT_GAME))
@@ -373,6 +401,12 @@ def main():
             pairs.append((enc, dec, str(cooking), args.out))
             if args.limit and len(pairs) >= args.limit:
                 break
+
+    if not (args.limit and len(pairs) >= args.limit):
+        for enc, dec in audio_pairs(cooking):
+            if args.filter and args.filter not in dec:
+                continue
+            pairs.append((enc, dec, str(cooking), args.out))
 
     print(f"processing {len(pairs)} entries with {args.jobs} workers...", flush=True)
     counts = {"png": 0, "copy": 0, "raw-tex": 0, "skip": 0, "err": 0}
