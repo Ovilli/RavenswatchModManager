@@ -401,32 +401,84 @@ def _mods_screen() -> None:
                 sys.stdout.flush()
                 with _suspend_raw():
                     _run(verb)
-                    try:
-                        input(_ST.dim("  [enter] back to mods "))
-                    except (EOFError, KeyboardInterrupt):
-                        pass
+                    _pause("back to mods")
                 note = ""
             elif key in ("q", _keys.ESC):
                 return
 
 
+def _drain_stdin() -> None:
+    """Discard anything already queued on stdin.
+
+    Mouse reporting keeps writing to the input buffer while a subcommand owns
+    the screen. Without this the bytes are still there afterwards and the next
+    `input()` consumes them as its answer — the prompt appears to answer
+    itself and the leftovers land in the menu as phantom keypresses.
+    """
+    if not termios:
+        return
+    with contextlib.suppress(OSError, ValueError):
+        termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
+
+
+def _pause(label: str) -> bool:
+    """"[enter] <label>" prompt, with the input queue drained first.
+
+    A long `apply` gives the user seconds to type or move the mouse; those
+    bytes sit in the buffer and would otherwise be swallowed by this prompt,
+    which then returns instantly and looks like the UI skipped past itself.
+
+    Returns False if the user pressed ctrl-c / ctrl-d, so callers can keep
+    treating that as "leave" rather than "continue".
+    """
+    _drain_stdin()
+    try:
+        input(_ST.dim(f"  [enter] {label} "))
+        return True
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+
+
 @contextlib.contextmanager
 def _suspend_raw():
-    """Temporarily restore cooked mode so a subcommand can print and prompt."""
-    fd = sys.stdin.fileno()
+    """Temporarily restore cooked mode so a subcommand can print and prompt.
+
+    Uses `_keys._MOUSE_OFF` / `_MOUSE_ON` rather than its own escape literals.
+    A hand-written copy here disabled 1006 and 1000 but NOT 1003 (all-motion
+    reporting), so while `apply`/`restore` ran, every mouse movement sprayed
+    escape sequences onto the now-echoing terminal and into the `[enter]`
+    prompt. Deriving both strings from one place makes that drift impossible.
+    """
+    # No termios (Windows) means no mode juggling to do — and stdin may not
+    # even have a fileno(), so don't ask for one.
+    fd = sys.stdin.fileno() if termios else -1
     saved = termios.tcgetattr(fd) if termios else None
     try:
         if termios:
-            new = termios.tcgetattr(fd)
-            new[3] |= termios.ECHO | termios.ICANON       # lflags
-            termios.tcsetattr(fd, termios.TCSADRAIN, new)
-        sys.stdout.write("\033[?1006l\033[?1000l\033[?25h")
+            # Restore the REAL cooked attrs captured before tty.setraw. The
+            # old shortcut here only OR-ed ECHO|ICANON back into the raw
+            # attrs, leaving OPOST off (every print() from apply/restore
+            # emitted LF with no CR, so the output stair-stepped down the
+            # screen), ICRNL off (Enter arrived as CR and never satisfied
+            # input()) and ISIG off (ctrl-c dead). That is what "the whole
+            # UI breaks after apply" was.
+            cooked = _keys._PRE_RAW
+            if cooked is None:
+                cooked = termios.tcgetattr(fd)
+                cooked[1] |= termios.OPOST | termios.ONLCR    # oflags
+                cooked[0] |= termios.ICRNL                    # iflags
+                cooked[3] |= termios.ECHO | termios.ICANON | termios.ISIG
+            termios.tcsetattr(fd, termios.TCSADRAIN, cooked)
+        sys.stdout.write(_keys._MOUSE_OFF + _keys._SHOW_CURSOR)
         sys.stdout.flush()
+        _drain_stdin()
         yield
     finally:
+        _drain_stdin()
         if termios and saved is not None:
             termios.tcsetattr(fd, termios.TCSADRAIN, saved)
-        sys.stdout.write("\033[?1000h\033[?1006h\033[?25l")
+        sys.stdout.write(_keys._MOUSE_ON + _keys._HIDE_CURSOR)
         sys.stdout.flush()
 
 
@@ -741,10 +793,8 @@ def _loop(by_key: dict[str, Action], typed_mode: bool) -> int:
                 _run_paged(choice.argv, choice.label.lower())
 
         print()
-        try:
-            input(_ST.dim("  [enter] back to menu "))
-        except (EOFError, KeyboardInterrupt):
-            print()
+        # ctrl-c / ctrl-d at this prompt still means "leave", as before.
+        if not _pause("back to menu"):
             return 0
 
 

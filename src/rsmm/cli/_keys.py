@@ -46,6 +46,11 @@ _SHOW_CURSOR = "\033[?25h"
 _ALT_ON = "\033[?1049h"    # alternate screen buffer
 _ALT_OFF = "\033[?1049l"
 
+#: termios attributes as they were BEFORE `raw_session` called tty.setraw,
+#: i.e. genuine cooked mode. Set only while a raw session is active; see the
+#: comment in `raw_session` for why reconstructing it is not equivalent.
+_PRE_RAW = None
+
 
 @contextlib.contextmanager
 def alt_screen() -> Iterator[None]:
@@ -87,10 +92,18 @@ def raw_session(mouse: bool = True, hide_cursor: bool = True) -> Iterator[None]:
     the block exits. A crash here would otherwise leave the shell with no echo
     and mouse escape codes spraying into it.
     """
+    global _PRE_RAW
     fd = sys.stdin.fileno()
     saved = termios.tcgetattr(fd)
+    prev_pre_raw = _PRE_RAW
     try:
         tty.setraw(fd)
+        # Publish the COOKED state so a nested block can hand the terminal to
+        # a subcommand. Re-deriving it by OR-ing ECHO|ICANON back into the raw
+        # attrs is not equivalent: raw also cleared OPOST (print() then emits
+        # LF with no CR, so output stair-steps), ICRNL (Enter arrives as CR
+        # and never terminates input()) and ISIG (ctrl-c stops working).
+        _PRE_RAW = saved
         if mouse:
             sys.stdout.write(_MOUSE_ON)
         if hide_cursor:
@@ -98,6 +111,7 @@ def raw_session(mouse: bool = True, hide_cursor: bool = True) -> Iterator[None]:
         sys.stdout.flush()
         yield
     finally:
+        _PRE_RAW = prev_pre_raw
         if mouse:
             sys.stdout.write(_MOUSE_OFF)
         if hide_cursor:
