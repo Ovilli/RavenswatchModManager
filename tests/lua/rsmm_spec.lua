@@ -42,6 +42,7 @@ local HP_OFF, MAXHP_OFF, HUDMIRROR_OFF, HASHMAP_OFF = 0x15c8, 0x15cc, 0x1d80, 0x
 local ENTITY   = 0x11000000        -- fake entity (hero+0x2f8 dereferences here)
 local XPCOMP   = 0x12000000        -- fake XpComponent
 local XPPROG   = 0x13000000        -- {level u32@0, xp u32@4}
+local XPMAX    = 0x13f00000        -- max-level object (comp+0x70 -> [+8] = max)
 -- Must track rsmm.lua's XP_VFTABLE_VA (corrected 2026-07-18: the old
 -- 0x140f23200 was mid-vtable, not a vtable start).
 local XP_VFTABLE_VA = 0x140f231b0
@@ -193,10 +194,56 @@ engine["Entity_GetComponentByTester"] = function(entity, tester)
     return 0
 end
 
+-- The three XP-curve routines all operate on the LAST node of the component's
+-- +0x110 next-link chain (disasm-verified 2026-07-19).
+local function xp_chain_last(comp)
+    local nxt = rint(comp + 0x110, 8)
+    while nxt ~= 0 do comp = nxt; nxt = rint(comp + 0x110, 8) end
+    return comp
+end
+
+-- Models FUN_1402e2d30: max level from the +0x70 object ([+8]), clamped >= 1.
+-- The +0x68 inline-data fallback is not modeled — an unconfigured component
+-- reads 0 and clamps to 1, which is exactly the retail no-op trap.
+engine["XpComponent_GetMaxLevel"] = function(comp)
+    comp = xp_chain_last(comp)
+    local obj = rint(comp + 0x70, 8)
+    local m = obj ~= 0 and rint(obj + 8, 4) or 0
+    return m < 1 and 1 or m
+end
+
+-- Models FUN_1402e2d90 (the Hero_GainExperience gate): chain-last level >=
+-- max level. The engine returns via `setae al`, leaving whatever was in the
+-- upper bytes of eax — model that garbage so a caller that forgets to mask
+-- the low byte fails the spec.
+engine["XpComponent_IsMaxLevel"] = function(comp)
+    comp = xp_chain_last(comp)
+    local prog = rint(comp + XP_PROGRESS_OFF, 8)
+    local at_max = rint(prog, 4) >= engine["XpComponent_GetMaxLevel"](comp) and 1 or 0
+    return 0xa5a5a500 | at_max
+end
+
+-- Models FUN_1402e2c30: threshold table at *(node+0x10)+0x1d8 (enable flag
+-- +0x1d0, count +0x1e0); level <= count -> table[level-1], else the last
+-- entry, else 0xffffffff.
+engine["XpComponent_XpForLevel"] = function(comp, level)
+    local cfg = rint(xp_chain_last(comp) + 0x10, 8)
+    if cfg == 0 then return 0xffffffff end
+    local count = rint(cfg + 0x1e0, 4)
+    local arr = rint(cfg + 0x1d8, 8)
+    if rint(cfg + 0x1d0, 1) ~= 0 and level >= 1 and level <= count then
+        return rint(arr + (level - 1) * 4, 4)
+    end
+    if count > 0 then return rint(arr + (count - 1) * 4, 4) end
+    return 0xffffffff
+end
+
 -- Add XP to the component's progress block (models Hero_GainExperience: it reads
--- only *(int*)(gain+0x50); our emulator just credits xp so the call path is
--- exercised end-to-end).
+-- only *(int*)(gain+0x50); our emulator credits xp so the call path is
+-- exercised end-to-end). Faithful to the retail gate: at max level the grant
+-- is dropped without a trace — the exact silent no-op grant() must pre-flight.
 engine["Hero_GainExperience"] = function(comp, gain)
+    if (engine["XpComponent_IsMaxLevel"](comp) & 0xff) ~= 0 then return 0 end
     local amount = rint(gain + XP_GAIN_AMOUNT_OFF, 4)
     local prog = rint(comp + XP_PROGRESS_OFF, 8)
     wint(prog + 4, rint(prog + 4, 4) + amount, 4)
@@ -297,6 +344,8 @@ local function seed_xp(level, xp)
     I.write_u64(XPCOMP + XP_PROGRESS_OFF, XPPROG)
     I.write_u32(XPPROG + 0, level)
     I.write_u32(XPPROG + 4, xp)
+    I.write_u64(XPCOMP + 0x70, XPMAX)                   -- max-level object
+    I.write_u32(XPMAX + 8, 10)                          -- retail curve: max > level
 end
 
 -- Wire a magical-object pool of `n` defs; def i has GUID (0xA000+i, 0xB000+i).
@@ -546,6 +595,7 @@ do
     I.write_u64(XPCOMP2 + XP_PROGRESS_OFF, XPPROG2)
     I.write_u32(XPPROG2 + 0, 5)
     I.write_u32(XPPROG2 + 4, 200)
+    I.write_u64(XPCOMP2 + 0x70, XPMAX)                  -- max level 10 > level 5
     -- the tester data global must hold a plausible vftable pointer
     I.write_u64(XP_TESTER_VA, 0x140f10000)
 
@@ -596,6 +646,21 @@ do
 
     check(R.xp.level() == 7, "captured component is promoted on the next read")
     check(R.xp.xp() == 340, "xp reads through the captured component")
+
+    -- The retail trap (2026-07-19 playtest): the captured component had no
+    -- max-level config, so GetMaxLevel clamps to 1, the gate says "at max"
+    -- for a level-7 party, and Hero_GainExperience dropped the 200-xp grant
+    -- without a trace while grant() logged success. grant() must pre-flight
+    -- the gate and refuse loudly instead.
+    check(R.xp.grant(100) == false, "grant refuses when the engine gate would drop it")
+    check(R.xp.xp() == 340, "refused grant leaves xp untouched")
+
+    -- With a real max level configured the same grant lands.
+    local GLMAX = 0x1b800000
+    I.write_u64(GLCOMP + 0x70, GLMAX)
+    I.write_u32(GLMAX + 8, 20)
+    check(R.xp.grant(100) == true, "grant lands once a level curve exists")
+    check(R.xp.xp() == 440, "granted xp is credited through the engine call")
 
     -- A torn-down entity must not keep serving stale numbers.
     I.write_u64(GLCOMP, 0)

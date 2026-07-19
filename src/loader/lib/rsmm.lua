@@ -1691,12 +1691,47 @@ function R.xp.grant(amount)
     -- place the engine-walk lookup is safe.
     local comp = _xp_component(hero, true)
     if not comp then R.log("[rsmm.xp] XP component not found for this build — refusing"); return false end
+    -- Snapshot progress so a silent engine no-op is detectable afterwards.
+    local prog = I.read_u64(comp + XP_PROGRESS_OFF)
+    local lvl0 = prog and prog ~= 0 and I.read_u32(prog) or nil
+    local xp0  = prog and prog ~= 0 and I.read_u32(prog + 4) or nil
+    -- Pre-flight the engine's own gate. Hero_GainExperience starts with an
+    -- is-max-level check and returns WITHOUT touching anything when the
+    -- (chain-last) level >= max level — and a component with no max-level
+    -- config clamps max to 1, so a level-1 hero is "at max" and every grant
+    -- silently no-ops (the 2026-07-19 playtest: "granted 200 xp", xp stayed
+    -- 0). Surface that instead of reporting success. The gate returns via
+    -- `setae al`, so only the low byte of the return is defined.
+    local okg, gate = pcall(R.engine.call, "XpComponent_IsMaxLevel", comp)
+    if okg and type(gate) == "number" and (gate & 0xff) ~= 0 then
+        local _, maxl = pcall(R.engine.call, "XpComponent_GetMaxLevel", comp)
+        local _, need = pcall(R.engine.call, "XpComponent_XpForLevel", comp, lvl0 or 1)
+        R.log(string.format(
+            "[rsmm.xp] grant refused by engine max-level gate: level=%s xp=%s "
+            .. "max_level=%s xp_for_level=%s next_link=0x%x — the captured "
+            .. "component has no usable level curve, so the engine would "
+            .. "silently drop the grant",
+            tostring(lvl0), tostring(xp0), tostring(maxl), tostring(need),
+            I.read_u64(comp + 0x110) or 0))
+        return false
+    end
     -- The routine reads only *(int*)(xpGain+0x50); a zeroed scratch is enough.
     local gain = I.scratch(0x60)
     I.write_u32(gain + XP_GAIN_AMOUNT_OFF, amount)
     local ok = pcall(R.engine.call, "Hero_GainExperience", comp, gain)
     if not ok then R.log("[rsmm.xp] Hero_GainExperience unresolved/failed"); return false end
-    R.log("[rsmm.xp] granted " .. amount .. " xp")
+    -- Read back: the call returning is not proof anything landed.
+    local lvl1 = prog and prog ~= 0 and I.read_u32(prog) or nil
+    local xp1  = prog and prog ~= 0 and I.read_u32(prog + 4) or nil
+    if lvl1 == lvl0 and xp1 == xp0 then
+        R.log(string.format(
+            "[rsmm.xp] grant NO-OP: level/xp unchanged (level=%s xp=%s) after "
+            .. "Hero_GainExperience — engine dropped it past the max-level gate",
+            tostring(lvl1), tostring(xp1)))
+        return false
+    end
+    R.log(string.format("[rsmm.xp] granted %d xp (level %s->%s, xp %s->%s)",
+        amount, tostring(lvl0), tostring(lvl1), tostring(xp0), tostring(xp1)))
     return true
 end
 
