@@ -393,6 +393,20 @@ inline Vector_Grow_fn Vector_Grow() {
     return reinterpret_cast<Vector_Grow_fn>(rsmm::fn_resolve(Sym::Vector_Grow_Pattern));
 }
 
+// XpComponent_GetMaxLevel  (XpComponent_GetMaxLevel)
+//   uint32_t(void*)
+using XpComponent_GetMaxLevel_fn = uint32_t(*)(void*);
+inline XpComponent_GetMaxLevel_fn XpComponent_GetMaxLevel() {
+    return reinterpret_cast<XpComponent_GetMaxLevel_fn>(rsmm::fn_resolve(Sym::XpComponent_GetMaxLevel_Pattern));
+}
+
+// XpComponent_IsMaxLevel  (XpComponent_IsMaxLevel)
+//   bool(void*)
+using XpComponent_IsMaxLevel_fn = uint32_t(*)(void*);
+inline XpComponent_IsMaxLevel_fn XpComponent_IsMaxLevel() {
+    return reinterpret_cast<XpComponent_IsMaxLevel_fn>(rsmm::fn_resolve(Sym::XpComponent_IsMaxLevel_Pattern));
+}
+
 // XpComponent_SetLevel  (XpComponent_SetLevel)
 //   void(void*, uint32_t)
 using XpComponent_SetLevel_fn = void(*)(void*, uint32_t);
@@ -405,6 +419,13 @@ inline XpComponent_SetLevel_fn XpComponent_SetLevel() {
 using XpComponent_SetXp_fn = void(*)(void*, uint32_t);
 inline XpComponent_SetXp_fn XpComponent_SetXp() {
     return reinterpret_cast<XpComponent_SetXp_fn>(rsmm::fn_resolve(Sym::XpComponent_SetXp_Pattern));
+}
+
+// XpComponent_XpForLevel  (XpComponent_XpForLevel)
+//   uint32_t(void*, uint32_t)
+using XpComponent_XpForLevel_fn = uint32_t(*)(void*, uint32_t);
+inline XpComponent_XpForLevel_fn XpComponent_XpForLevel() {
+    return reinterpret_cast<XpComponent_XpForLevel_fn>(rsmm::fn_resolve(Sym::XpComponent_XpForLevel_Pattern));
 }
 
 }  // namespace engine

@@ -171,11 +171,17 @@ constexpr std::uintptr_t GroupLevelComponent_Ctor = 0x1402e1de0ull;
 constexpr const char* GroupLevelComponent_Ctor_Pattern = "GroupLevelComponent_Ctor";
 constexpr std::uintptr_t Hero_GainExperience = 0x1402e2f00ull;
 constexpr const char* Hero_GainExperience_Pattern = "Hero_GainExperience";
+constexpr std::uintptr_t XpComponent_GetMaxLevel = 0x1402e2d30ull;
+constexpr const char* XpComponent_GetMaxLevel_Pattern = "XpComponent_GetMaxLevel";
+constexpr std::uintptr_t XpComponent_IsMaxLevel = 0x1402e2d90ull;
+constexpr const char* XpComponent_IsMaxLevel_Pattern = "XpComponent_IsMaxLevel";
 constexpr std::uintptr_t XpComponent_SetLevel = 0x1402e3190ull;
 constexpr const char* XpComponent_SetLevel_Pattern = "XpComponent_SetLevel";
 constexpr std::uintptr_t XpComponent_SetXp = 0x1402e3630ull;
 constexpr const char* XpComponent_SetXp_Pattern = "XpComponent_SetXp";
 constexpr std::uintptr_t XpComponent_TypeTester = 0x141476e00ull;
+constexpr std::uintptr_t XpComponent_XpForLevel = 0x1402e2c30ull;
+constexpr const char* XpComponent_XpForLevel_Pattern = "XpComponent_XpForLevel";
 constexpr std::uintptr_t XpComponent_vftable = 0x140f231b0ull;
 
 // --- heroes ---

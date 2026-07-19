@@ -1932,6 +1932,61 @@
    ]
   },
   {
+   "name": "XpComponent_IsMaxLevel",
+   "kind": "function",
+   "category": "hero",
+   "raw": "FUN_1402e2d90",
+   "status": "ok",
+   "signature": "bool(void*)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "The gate at the top of Hero_GainExperience: walks the component's +0x110 next-link chain to the LAST node, reads max level (GetMaxLevel logic: +0x70 object [+8], else inline data at +0x68, clamped to >=1), and returns (last node's level >= max). Returns via `setae al` so only the LOW BYTE of the return is meaningful -- mask with &0xff. When true, Hero_GainExperience returns without applying any XP, which is why a grant on a component with no max-level config (max clamps to 1, level starts at 1) silently no-ops. Disasm-verified live 2026-07-19.",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
+   "name": "XpComponent_GetMaxLevel",
+   "kind": "function",
+   "category": "hero",
+   "raw": "FUN_1402e2d30",
+   "status": "ok",
+   "signature": "uint32_t(void*)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "Max level for an XP/GroupLevel component: walks the +0x110 next-link chain to the last node, then reads the max-level from the +0x70 object ([+8]) or, when +0x70 is null, from the inline small-string/variant data at +0x68; result clamped to >=1. A component with neither configured reports 1 -- which makes level-1 heroes 'at max' and turns Hero_GainExperience into a no-op. Disasm-verified live 2026-07-19.",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
+   "name": "XpComponent_XpForLevel",
+   "kind": "function",
+   "category": "hero",
+   "raw": "FUN_1402e2c30",
+   "status": "ok",
+   "signature": "uint32_t(void*, uint32_t)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*",
+     "uint32_t"
+    ]
+   },
+   "note": "XP threshold to complete `level` (arg2): walks the +0x110 chain to the last node, reads the curve config at *(node+0x10) -- when flag +0x1d0 is set and level <= count (+0x1e0) returns table[level-1] from the array at +0x1d8, otherwise the last table entry, or 0xffffffff when the table is empty. The per-level thresholds Hero_GainExperience's level-up loop consumes. Disasm-verified live 2026-07-19.",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
    "name": "XpComponent_SetXp",
    "kind": "function",
    "category": "hero",

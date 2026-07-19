@@ -61,6 +61,9 @@ return {
   ["UiButton_InputPoll"] = { pattern = "UiButton_InputPoll", offset = 0x0, sig = "vpp" },
   ["UiButton_PressCommit"] = { pattern = "UiButton_PressCommit", offset = 0x0, sig = "vp" },
   ["Vector_Grow"] = { pattern = "Vector_Grow", offset = 0x0, sig = "vplu" },
+  ["XpComponent_GetMaxLevel"] = { pattern = "XpComponent_GetMaxLevel", offset = 0x0, sig = "up" },
+  ["XpComponent_IsMaxLevel"] = { pattern = "XpComponent_IsMaxLevel", offset = 0x0, sig = "up" },
   ["XpComponent_SetLevel"] = { pattern = "XpComponent_SetLevel", offset = 0x0, sig = "vpu" },
   ["XpComponent_SetXp"] = { pattern = "XpComponent_SetXp", offset = 0x0, sig = "vpu" },
+  ["XpComponent_XpForLevel"] = { pattern = "XpComponent_XpForLevel", offset = 0x0, sig = "upu" },
 }

@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **156** symbols across 16 categories.
+Total: **159** symbols across 16 categories.
 
 ## enemies
 
@@ -140,9 +140,12 @@ Total: **156** symbols across 16 categories.
 |------|---------|--------|----------|------------------|
 | `GroupLevelComponent_Ctor` | `0x1402e1de0` | ✅ ok | ✔ | void*(void* self) |
 | `Hero_GainExperience` | `0x1402e2f00` | ✅ ok | ✔ | void(void*, void*) |
+| `XpComponent_GetMaxLevel` | `0x1402e2d30` | ✅ ok | ✔ | uint32_t(void*) |
+| `XpComponent_IsMaxLevel` | `0x1402e2d90` | ✅ ok | ✔ | bool(void*) |
 | `XpComponent_SetLevel` | `0x1402e3190` | ✅ ok | ✔ | void(void*, uint32_t) |
 | `XpComponent_SetXp` | `0x1402e3630` | ✅ ok | ✔ | void(void*, uint32_t) |
 | `XpComponent_TypeTester` | `0x141476e00` | 📍 va |  | Type-tester global (DAT_141476e00) used by the XP component's own IsKindOf/parent-resol… |
+| `XpComponent_XpForLevel` | `0x1402e2c30` | ✅ ok | ✔ | uint32_t(void*, uint32_t) |
 | `XpComponent_vftable` | `0x140f231b0` | 📍 va |  | Vftable of the hero's XP/level component. CORRECTED 2026-07-18 from 0x140f23200, which … |
 
 ## heroes
