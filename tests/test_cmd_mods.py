@@ -82,3 +82,96 @@ def test_all_with_ids_is_an_error(mods_dir):
     _write_manifest(mods_dir, "A")
     with pytest.raises(SystemExit):
         _run("enable", "A", "--all", "--no-apply", "--mods-dir", str(mods_dir))
+
+
+# --- interactive picker ----------------------------------------------------
+
+
+def test_states_parses_the_aligned_manifest_form(mods_dir):
+    """Manifests ship the value aligned; a naive substring check reads them
+    all as disabled, which silently made the home screen report 0 enabled."""
+    (mods_dir / "Aligned").mkdir()
+    (mods_dir / "Aligned" / "manifest.toml").write_text(
+        "[mod]\nenabled     = true\n", encoding="utf-8")
+    _write_manifest(mods_dir, "Off", enabled=False)
+
+    st = CM._states(mods_dir)
+    assert st == {"Aligned": True, "Off": False}
+
+
+def test_states_survives_an_unreadable_manifest(mods_dir):
+    """_states runs on every menu redraw; one bad manifest must render as a
+    disabled row, not take the whole screen down."""
+    _write_manifest(mods_dir, "A", enabled=True)
+    # Explicit id list, so a mod whose manifest vanished between the listing
+    # and the read (or was never a readable file) still gets an entry.
+    assert CM._states(mods_dir, ["A", "Gone"]) == {"A": True, "Gone": False}
+
+
+def test_states_honours_an_explicit_id_list(mods_dir):
+    _write_manifest(mods_dir, "A")
+    _write_manifest(mods_dir, "B")
+    assert CM._states(mods_dir, ["A"]) == {"A": True}
+
+
+def test_resolve_ids_prefers_explicit_ids_over_the_picker(mods_dir, monkeypatch):
+    monkeypatch.setattr(CM, "_pick", lambda *a: pytest.fail("picker used"))
+    args = type("A", (), {"all": False, "ids": ["B", "A", "B"]})()
+    # Duplicates collapse, order preserved.
+    assert CM._resolve_ids(args, None, mods_dir, ["A", "B"], "enable") == ["B", "A"]
+
+
+def test_resolve_ids_expands_all(mods_dir, monkeypatch):
+    monkeypatch.setattr(CM, "_pick", lambda *a: pytest.fail("picker used"))
+    args = type("A", (), {"all": True, "ids": []})()
+    assert CM._resolve_ids(args, None, mods_dir, ["A", "B"], "enable") == ["A", "B"]
+
+
+def test_resolve_ids_errors_when_not_a_tty(mods_dir, monkeypatch):
+    """Scripted use must keep failing loudly instead of blocking on a menu."""
+    monkeypatch.setattr(CM.sys.stdin, "isatty", lambda: False, raising=False)
+    calls = []
+    ap = type("AP", (), {"error": lambda self, m: calls.append(m)})()
+    args = type("A", (), {"all": False, "ids": []})()
+    CM._resolve_ids(args, ap, mods_dir, ["A"], "enable")
+    assert calls and "at least one mod id" in calls[0]
+
+
+def test_resolve_ids_opens_the_picker_on_a_tty(mods_dir, monkeypatch):
+    monkeypatch.setattr(CM.sys.stdin, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(CM.sys.stdout, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(CM, "_pick", lambda md, ids, verb: ["A"])
+    args = type("A", (), {"all": False, "ids": []})()
+    assert CM._resolve_ids(args, None, mods_dir, ["A", "B"], "enable") == ["A"]
+
+
+def test_pick_falls_back_to_a_numeric_prompt_without_raw_mode(mods_dir, monkeypatch):
+    _write_manifest(mods_dir, "A")
+    _write_manifest(mods_dir, "B")
+    monkeypatch.setattr(CM._keys, "available", lambda *a, **k: False)
+    monkeypatch.setattr("builtins.input", lambda *a: "2")
+    assert CM._pick(mods_dir, ["A", "B"], "enable") == ["B"]
+
+
+def test_pick_prompt_accepts_all_and_cancels_on_blank(mods_dir, monkeypatch):
+    monkeypatch.setattr(CM._keys, "available", lambda *a, **k: False)
+    monkeypatch.setattr("builtins.input", lambda *a: "all")
+    assert CM._pick(mods_dir, ["A", "B"], "enable") == ["A", "B"]
+    monkeypatch.setattr("builtins.input", lambda *a: "")
+    assert CM._pick(mods_dir, ["A", "B"], "enable") is None
+
+
+def test_pick_prompt_rejects_out_of_range(mods_dir, monkeypatch):
+    monkeypatch.setattr(CM._keys, "available", lambda *a, **k: False)
+    monkeypatch.setattr("builtins.input", lambda *a: "3")
+    assert CM._pick(mods_dir, ["A", "B"], "enable") is None
+
+
+def test_cancelling_the_picker_changes_nothing(mods_dir, monkeypatch):
+    _write_manifest(mods_dir, "A", enabled=True)
+    monkeypatch.setattr(CM.sys.stdin, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(CM.sys.stdout, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(CM, "_pick", lambda *a: None)
+    rc = _run("disable", "--no-apply", "--mods-dir", str(mods_dir))
+    assert rc == 1
+    assert _enabled(mods_dir, "A")

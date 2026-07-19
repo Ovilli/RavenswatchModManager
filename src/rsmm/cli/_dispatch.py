@@ -54,7 +54,10 @@ BUILTIN = {
     "install":           "rsmm.cli.cmd_install",
     "pack":              "rsmm.cli.cmd_pack",
     "log":               "rsmm.cli.cmd_log",
+    "save":              "rsmm.cli.cmd_save",
+    # `menu` is the in-game mod menu; `home` is this CLI's own home screen.
     "menu":              "rsmm.cli.cmd_menu",
+    "home":              "rsmm.cli.cmd_shell",
     "intents":           "rsmm.cli.cmd_intents",
     "decode":            "rsmm.engine.ot_decoder",
     "rebuild-asset-map": "rsmm.engine.find_iyg",
@@ -107,7 +110,15 @@ def iter_commands():
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
-    if not argv or argv[0] in {"-h", "--help", "help"}:
+    if not argv:
+        # Bare `rsmm` at an interactive terminal opens the home screen. Both
+        # streams must be TTYs: piping or redirecting has to keep printing the
+        # help text so scripts and the desktop sidecar are unaffected.
+        if sys.stdin.isatty() and sys.stdout.isatty():
+            return _dispatch_module("rsmm.cli.cmd_shell", [])
+        print(TOP_LEVEL_HELP or __doc__)
+        return 0
+    if argv[0] in {"-h", "--help", "help"}:
         print(TOP_LEVEL_HELP or __doc__)
         return 0
     sub = argv[0]
