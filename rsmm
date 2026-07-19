@@ -1,32 +1,10 @@
 #!/usr/bin/env python3
 """rsmm — single CLI for Ravenswatch mod install + lifecycle.
 
-Mods are written in Lua against the SDK. Drop a mod under `mods/<id>/`,
-start its `init.lua` with `local R = require "rsmm"`, and use the
-documented `R.*` API. See `docs/MODDING.md`.
-
-    rsmm apply [--dry-run]              install mods/ into the game
-    rsmm restore [--all]                roll back active overrides
-    rsmm list                           show installed mods + their files
-    rsmm enable <id>... [--only|--all]  enable mods (--only: disable the rest)
-    rsmm disable <id>... [--all]        disable mods
-    rsmm new <id>                       scaffold mods/<id>/
-    rsmm pack <id> [--allow-vanilla]    bundle mods/<id>/ into a zip
-    rsmm doctor                         system health check (recommended often)
-    rsmm watch [--interval N]           re-apply on every mods/ change
-    rsmm build [--skip-loader]          asset map + loader + merge + apply
-    rsmm run [--set-launch-options]     launch Ravenswatch via Steam
-    rsmm merge                          compose [[patch]] blocks into mods/_merged
-    rsmm compat                         analyze requires/conflicts/replaces graph
-    rsmm lint [<id>]                    validate manifests + asset paths
-    rsmm test [<id>] [--record]         diff build.py output vs checked-in fixture
-    rsmm install-loader [game-dir]      copy winhttp.dll + SDK lib into the game install
-    rsmm log [-f] [-n N] [--grep S]     read the loader log
-    rsmm completion bash|zsh|fish       emit a shell tab-completion script
-    rsmm rebuild-asset-map              re-run find_iyg.py from UsedRscList.ot
-    rsmm decode <cooked-file>           dump oCTextSaver structure
-
-Help for any subcommand: `rsmm <cmd> --help`.
+The top-level command listing is NOT written here. It is rendered by
+`rsmm.cli._dispatch.render_help()` from the routing table itself, because a
+hand-maintained copy drifted: 23 of the 44 routed commands had fallen out of
+it and were undiscoverable. Add a subcommand to `_dispatch` and it shows up.
 """
 
 from __future__ import annotations
@@ -37,8 +15,6 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from rsmm.cli import _dispatch as _dispatch_mod  # noqa: E402
-
-_dispatch_mod.TOP_LEVEL_HELP = __doc__
 
 if __name__ == "__main__":
     sys.exit(_dispatch_mod.main(sys.argv[1:]))
