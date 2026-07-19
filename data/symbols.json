@@ -1876,6 +1876,24 @@
    ]
   },
   {
+   "name": "GroupLevelComponent_Ctor",
+   "kind": "function",
+   "category": "hero",
+   "raw": "FUN_1402e1de0",
+   "status": "ok",
+   "signature": "void*(void* self)",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "Constructor for oCDtEntityCpntGroupLevel \u2014 the party-wide level/XP component (vftable 0x140f231b0, hash 0x15888c02, size 0x170). Verified 2026-07-19 against the live exe: clean function start (preceded by `pop rdi; ret` + int3 padding); writes the BASE vftable 0x140f77550 at +0 (0x1402e1def) then overwrites +0 with the DERIVED 0x140f231b0 at 0x1402e1e67 (rbx = this) \u2014 the classic base-then-derived ctor shape, so reading only the first vftable write is misleading. Its destructor sits just below and releases *(this+0x108), independently confirming +0x108 as the {level u32, xp u32} progress pointer. WHY THIS EXISTS: the component is NOT on the hero. Exactly one instance is authored, on EntitySettings/Common_Settings/Group_Scaling.entity.ot (corpus-wide search finds no other owner), so scanning the hero's component array can never find it \u2014 confirmed in-game 2026-07-19, absent from all 227 components of all 3 probed owners. Detour this ctor to capture the live instance instead of searching for it.",
+   "refs": [
+    "docs/_re/kinds/stats.md"
+   ]
+  },
+  {
    "name": "Hero_GainExperience",
    "kind": "function",
    "category": "hero",

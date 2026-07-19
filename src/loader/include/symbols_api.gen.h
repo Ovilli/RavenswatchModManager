@@ -203,6 +203,13 @@ inline Event_RunEnd_fn Event_RunEnd() {
     return reinterpret_cast<Event_RunEnd_fn>(rsmm::fn_resolve(Sym::Event_RunEnd_Pattern));
 }
 
+// GroupLevelComponent_Ctor  (GroupLevelComponent_Ctor)
+//   void*(void* self)
+using GroupLevelComponent_Ctor_fn = void*(*)(void*);
+inline GroupLevelComponent_Ctor_fn GroupLevelComponent_Ctor() {
+    return reinterpret_cast<GroupLevelComponent_Ctor_fn>(rsmm::fn_resolve(Sym::GroupLevelComponent_Ctor_Pattern));
+}
+
 // HeroController_Ctor  (HeroController_Ctor)
 //   oCDtEntityCpntHeroController*(oCDtEntityCpntHeroController* self)
 using HeroController_Ctor_fn = void*(*)(void*);

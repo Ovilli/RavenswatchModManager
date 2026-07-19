@@ -34,6 +34,7 @@ return {
   ["Entry_Ctor"] = { pattern = "Entry_Ctor", offset = 0x0, sig = "vpu" },
   ["Event_LevelUp"] = { pattern = "Event_LevelUp", offset = 0x0, sig = "ppp" },
   ["Event_RunEnd"] = { pattern = "Event_RunEnd", offset = 0x0, sig = "ppp" },
+  ["GroupLevelComponent_Ctor"] = { pattern = "GroupLevelComponent_Ctor", offset = 0x0, sig = "pp" },
   ["HeroController_Ctor"] = { pattern = "HeroController_Ctor", offset = 0x0, sig = "pp" },
   ["Hero_GainExperience"] = { pattern = "Hero_GainExperience", offset = 0x0, sig = "vpp" },
   ["Hero_GrantMagicalObject"] = { pattern = "Hero_GrantMagicalObject", offset = 0x0, sig = "vppuup" },

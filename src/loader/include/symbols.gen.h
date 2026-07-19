@@ -167,6 +167,8 @@ constexpr std::uintptr_t NamedEvent_NetSendToPeer = 0x1407216c0ull;
 constexpr const char* NamedEvent_NetSendToPeer_Pattern = "NamedEvent_NetSendToPeer";
 
 // --- hero ---
+constexpr std::uintptr_t GroupLevelComponent_Ctor = 0x1402e1de0ull;
+constexpr const char* GroupLevelComponent_Ctor_Pattern = "GroupLevelComponent_Ctor";
 constexpr std::uintptr_t Hero_GainExperience = 0x1402e2f00ull;
 constexpr const char* Hero_GainExperience_Pattern = "Hero_GainExperience";
 constexpr std::uintptr_t XpComponent_SetLevel = 0x1402e3190ull;

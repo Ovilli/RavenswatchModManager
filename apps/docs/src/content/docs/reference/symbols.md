@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **155** symbols across 16 categories.
+Total: **156** symbols across 16 categories.
 
 ## enemies
 
@@ -138,6 +138,7 @@ Total: **155** symbols across 16 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
+| `GroupLevelComponent_Ctor` | `0x1402e1de0` | ✅ ok | ✔ | void*(void* self) |
 | `Hero_GainExperience` | `0x1402e2f00` | ✅ ok | ✔ | void(void*, void*) |
 | `XpComponent_SetLevel` | `0x1402e3190` | ✅ ok | ✔ | void(void*, uint32_t) |
 | `XpComponent_SetXp` | `0x1402e3630` | ✅ ok | ✔ | void(void*, uint32_t) |

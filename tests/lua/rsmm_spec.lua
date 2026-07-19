@@ -208,6 +208,7 @@ end
 -- ---------------------------------------------------------------------------
 local shared  = {}
 local events  = {}                 -- event name -> { cb, ... }
+local hooks = {}                   -- va -> {sig, cb} installed via rsmm.hook
 local resolved = {}                -- pattern -> fake va ; and reverse (va -> pattern)
 local resolve_n = 0                -- monotonic counter for unique fake VAs
 
@@ -251,7 +252,12 @@ rsmm = {
     log = function() end,
     on_event = function(ev, cb) events[ev] = events[ev] or {}; table.insert(events[ev], cb) end,
     mod_dir = function() return "." end,
-    hook = function() return 1 end,
+    -- Record installed hooks so a spec can simulate the hooked function
+    -- firing. Returning a slot id keeps the existing arm paths happy.
+    hook = function(va, sig, cb)
+        hooks[va] = { sig = sig, cb = cb }
+        return 1
+    end,
     unhook = function() end,
 }
 
@@ -533,6 +539,50 @@ do
     check(R.xp.grant(25) == true, "grant finds the subclass via Entity_GetComponentByTester")
     check(R.xp.xp() == 225, "engine hit is cached — tick-thread reads now work")
     check(R.xp.level() == 5, "level reads through the cached component")
+
+    shared[0] = HERO                                    -- restore for later sections
+end
+
+-- 8c. R.xp: constructor capture — the component is NOT on the hero ---------
+-- Five playtests scanned the hero's component array; the 2026-07-19 run
+-- settled it (absent from all 227 components of all 3 probed owners). Exactly
+-- one oCDtEntityCpntGroupLevel is authored in the whole corpus, on
+-- Group_Scaling.entity.ot, so no hero walk can ever reach it. R.xp therefore
+-- detours the component's CONSTRUCTOR and keeps `this`.
+do
+    local BARE_HERO = 0x18800000               -- a hero with no XP component
+    local GLCOMP, GLPROG, MIRROR3 = 0x19800000, 0x1a800000, 0x31800000
+    shared[0] = BARE_HERO; shared[2] = 1
+    I.write_f32(BARE_HERO + MAXHP_OFF, 100.0)
+    I.write_f32(BARE_HERO + HP_OFF, 90.0)
+    I.write_u64(BARE_HERO + HUDMIRROR_OFF, MIRROR3)
+    I.write_f32(MIRROR3, 90.0)
+    I.write_u64(BARE_HERO + VALCTX_OFF, 0)     -- no value ctx => no component array
+
+    check(R.xp.level() == nil, "no component reachable from the hero (the real situation)")
+
+    -- Arming installs the ctor hook. R.xp.level() above already triggered it.
+    local ctor_va = I.resolve("GroupLevelComponent_Ctor")
+    check(hooks[ctor_va] ~= nil, "ctor hook is installed")
+    check(hooks[ctor_va].sig == "pp", "signature is void*(void*) — one ptr arg, no floats")
+
+    -- The engine constructs the component. The callback runs BEFORE the
+    -- original, so at this instant the object is raw memory.
+    check(hooks[ctor_va].cb(GLCOMP) == nil, "callback returns nil so the ctor runs exactly once")
+    check(R.xp.level() == nil, "an unconstructed object is NOT promoted")
+
+    -- Now the original ctor body runs: vftable at +0, progress block at +0x108.
+    I.write_u64(GLCOMP, XP_VFTABLE_VA)
+    I.write_u64(GLCOMP + XP_PROGRESS_OFF, GLPROG)
+    I.write_u32(GLPROG + 0, 7)
+    I.write_u32(GLPROG + 4, 340)
+
+    check(R.xp.level() == 7, "captured component is promoted on the next read")
+    check(R.xp.xp() == 340, "xp reads through the captured component")
+
+    -- A torn-down entity must not keep serving stale numbers.
+    I.write_u64(GLCOMP, 0)
+    check(R.xp.level() == nil, "capture is dropped once the object stops validating")
 
     shared[0] = HERO                                    -- restore for later sections
 end

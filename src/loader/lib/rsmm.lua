@@ -1515,12 +1515,99 @@ local function _xp_diag(hero)
     end
 end
 
+-- ---------------------------------------------------------------------------
+-- Constructor capture — the component is NOT on the hero.
+--
+-- Five playtests scanned the hero's component array and found nothing; the
+-- 2026-07-19 run settled it with a full scan (absent from all 227 components
+-- of all 3 probed owners, every owner a genuine oCEntity). The reason is
+-- structural: exactly one oCDtEntityCpntGroupLevel is authored in the whole
+-- corpus, on EntitySettings/Common_Settings/Group_Scaling.entity.ot — the
+-- party-wide scaling entity. No amount of walking the hero can reach it.
+--
+-- So stop searching and let the engine hand it over: detour its constructor
+-- and keep `this`. The ctor runs once when the scaling entity is built.
+local _gl_pending, _gl_comp = nil, nil
+local _gl_armed = false
+
+--- True if `p` looks like a fully-constructed GroupLevel component.
+-- Checked lazily rather than at hook time: the hook callback runs BEFORE the
+-- original, so at capture the object is raw memory with no vftable yet (the
+-- same reason hero capture stashes "pending" and promotes on first valid
+-- read). Every read here is page-guarded, so a bad pointer yields nil.
+local function _gl_valid(p)
+    if not p or p == 0 or not _ptr_plausible(p) then return false end
+    local base = I.module_base()
+    if not base or base == 0 then return false end
+    if I.read_u64(p) ~= base + (XP_VFTABLE_VA - ENTITY_IMG_BASE) then return false end
+    -- +0x108 is the {level u32, xp u32} progress pointer (the destructor just
+    -- below the ctor releases exactly this field, which is how it was pinned).
+    local prog = I.read_u64(p + XP_PROGRESS_OFF)
+    if not prog or prog == 0 or not _ptr_plausible(prog) then return false end
+    local lvl = I.read_u32(prog)
+    return lvl ~= nil and lvl >= 1 and lvl <= 200
+end
+
+local function _arm_group_level_capture()
+    if _gl_armed then return end
+    if not R.hook or not I.resolve then return end
+    _gl_armed = true
+    -- nil when the symbol is unverified for this build — fail closed rather
+    -- than hooking a stale VA (a mid-function detour corrupts the stream).
+    local va = I.resolve("GroupLevelComponent_Ctor")
+    if not va or va == 0 then
+        R.log("[rsmm.xp] GroupLevelComponent_Ctor unresolved for this build; "
+            .. "level/xp unavailable this run")
+        return
+    end
+    -- Signature is `void*(void* self)`: return + one pointer arg, no floats.
+    --
+    -- The callback could instead call the supplied `next(self)` to run the
+    -- ctor and validate immediately. Deliberately NOT done: if anything in
+    -- this callback then raised, the loader's error path replays the
+    -- trampoline itself, so the CONSTRUCTOR would run twice on the same
+    -- object — double-initialising it and leaking whatever the first pass
+    -- allocated. Stashing and returning nil keeps the original running
+    -- exactly once, at the cost of validating on the next read instead.
+    local ok = pcall(R.hook, va, "pp", function(self)
+        -- Stash only. Returning nil replays the original, which is what
+        -- actually writes the vftable and allocates the progress block.
+        if self and self ~= 0 then _gl_pending = self end
+        return nil
+    end)
+    if not ok then
+        R.log("[rsmm.xp] could not install GroupLevelComponent_Ctor hook; "
+            .. "level/xp unavailable this run")
+    end
+end
+
+--- The live party-wide level/XP component, or nil.
+local function _group_level()
+    if _gl_comp and _gl_valid(_gl_comp) then return _gl_comp end
+    _gl_comp = nil                      -- entity torn down between runs
+    _arm_group_level_capture()
+    if _gl_pending and _gl_valid(_gl_pending) then
+        _gl_comp, _gl_pending = _gl_pending, nil
+        R.log(string.format("[rsmm.xp] group-level component captured @0x%x "
+                            .. "(level %d)", _gl_comp,
+                            I.read_u32(I.read_u64(_gl_comp + XP_PROGRESS_OFF)) or 0))
+        return _gl_comp
+    end
+    return nil
+end
+
 -- Locate the hero's XpComponent. `allow_engine` (MAIN THREAD ONLY — the
 -- engine walk calls each component's virtual IsKindOf) uses the engine's own
 -- Entity_GetComponentByTester with the XpComponent type-tester, which
 -- resolves subclasses the exact-vftable scan can't. The result is cached per
 -- hero so the tick-thread readers (level/xp) never touch engine code.
 local function _xp_component(hero, allow_engine)
+    -- Constructor capture first: it returns the authored instance directly,
+    -- so it is both cheaper and correct where the hero scan is structurally
+    -- incapable of succeeding. The scans below remain as a fallback in case a
+    -- future build does put a level component on the hero.
+    local captured = _group_level()
+    if captured then return captured end
     if not hero then return nil end
     if hero == _xp_cache_hero and _xp_cache_comp then return _xp_cache_comp end
     local comp = _xp_scan(hero)
