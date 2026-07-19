@@ -1548,6 +1548,21 @@ local function _gl_valid(p)
     return lvl ~= nil and lvl >= 1 and lvl <= 200
 end
 
+-- MUST be armed before the run starts, unlike every other hook here.
+--
+-- First playtest (session 974f) proved it: the hook resolved and installed
+-- correctly on the right function, but lazily — on the first R.xp read, which
+-- the demo does about a minute into a run:
+--
+--   11:43:03  StatGrantDemo init OK
+--   11:43:17  hero spawn-init            <- Group_Scaling built around here
+--   11:44:18  [hook] slot 0 installed    <- 61s too late; ctor already ran
+--
+-- The component is constructed once, at run start. A hook installed after
+-- that never fires, so capture is not "flaky", it is guaranteed to miss.
+-- `setup` (all mods' init.lua ran) is the earliest lifecycle point that is
+-- still safely after module load — arming at module load would let a failure
+-- abort require"rsmm" for every mod, which is why the other hooks are lazy.
 local function _arm_group_level_capture()
     if _gl_armed then return end
     if not R.hook or not I.resolve then return end
@@ -1595,6 +1610,11 @@ local function _group_level()
     end
     return nil
 end
+
+-- Arm at `setup` so the hook is live before the run builds the component.
+-- Subscribing cannot fail the way hooking can, and the arm itself is
+-- pcall-guarded internally, so this cannot abort require"rsmm".
+native.on_event("setup", function() pcall(_arm_group_level_capture) end)
 
 -- Locate the hero's XpComponent. `allow_engine` (MAIN THREAD ONLY — the
 -- engine walk calls each component's virtual IsKindOf) uses the engine's own

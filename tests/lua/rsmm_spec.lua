@@ -496,6 +496,20 @@ do
     check(about(R.entity.hp(), 50), "set_hp pins absolute HP")
 end
 
+-- 7b. the ctor hook must be armed at `setup`, not on first read -------------
+-- Regression guard for session 974f: the level component is constructed once
+-- at run start, so a hook installed lazily (on the first R.xp read, ~61s in)
+-- is not merely late — it is guaranteed to miss. Asserted here, before any
+-- section has called R.xp, so a lazy arm cannot make it pass by accident.
+do
+    local ctor_va = I.resolve("GroupLevelComponent_Ctor")
+    check(hooks[ctor_va] == nil, "nothing has armed the ctor hook yet")
+    fire("setup", {})
+    check(hooks[ctor_va] ~= nil,
+          "setup arms the ctor hook without anything having read xp")
+    check(hooks[ctor_va].sig == "pp", "armed with the void*(void*) signature")
+end
+
 -- 8. R.xp: level / xp read + grant -----------------------------------------
 do
     seed_xp(3, 120)
@@ -561,7 +575,10 @@ do
 
     check(R.xp.level() == nil, "no component reachable from the hero (the real situation)")
 
-    -- Arming installs the ctor hook. R.xp.level() above already triggered it.
+    -- TIMING IS THE WHOLE BUG. Session 974f resolved and installed this hook
+    -- correctly but lazily, on the first R.xp read — 61s after the run had
+    -- already built the component, so the ctor could never fire again. The
+    -- hook must therefore be armed by `setup`, BEFORE anything reads xp.
     local ctor_va = I.resolve("GroupLevelComponent_Ctor")
     check(hooks[ctor_va] ~= nil, "ctor hook is installed")
     check(hooks[ctor_va].sig == "pp", "signature is void*(void*) — one ptr arg, no floats")
