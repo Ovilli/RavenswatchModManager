@@ -442,3 +442,53 @@ def test_modal_is_opt_in():
     finally:
         cmd_menu.cmd_build = original
     assert captured["a"].modal is False
+
+
+# --- spawn-readiness (offline de-risk of the in-game spawn) ------------------
+
+@_needs_corpus
+def test_clone_references_no_other_entity():
+    """A spawner-opened modal must be self-contained: any '[Kind] Other\\...'
+    path would resolve against an entity that is not loaded with it."""
+    clone = MM.build_modal(_DONOR.read_bytes())
+    for _, _, s in ES.list_strings(clone):
+        if s.startswith("[") and "] " in s and "\\" in s:
+            entity = s.split("] ", 1)[1].split("\\", 1)[0]
+            assert entity == MM.MODAL_NAME, f"clone references {entity!r}: {s!r}"
+
+
+@_needs_corpus
+def test_clone_keeps_the_controller_button_descs():
+    """The ModalUiController names its buttons by desc name; those descs must
+    survive the clone or the modal spawns without working buttons."""
+    strings = {s for _, _, s in ES.list_strings(MM.build_modal(_DONOR.read_bytes()))}
+    for desc in ("Validate_Button", "Cancel_Button",
+                 "Third_Button", "Fourth_Button"):
+        assert desc in strings
+    for cpnt in ("Modal Ui Controller", "State Machine", "Game Ui"):
+        assert cpnt in MM.component_names(MM.build_modal(_DONOR.read_bytes()))
+
+
+@_needs_host
+def test_spawner_names_the_modal_like_a_vanilla_spawner():
+    """The engine resolves the spawner's ('EntitySettings', '...entity.ot')
+    pair to the registered .gen asset, exactly as the EULA spawner does."""
+    import struct
+
+    out = MM.build_open_trigger(_HOST.read_bytes())
+    names = MM.component_names(out)
+    payload = cooked.parse(out).sections[1 + names.index(
+        "RSMM Mods Modal Spawner")].payload
+
+    strings, j = [], 0
+    while j + 4 <= len(payload):
+        n = struct.unpack_from("<I", payload, j)[0]
+        if 0 < n <= 80 and j + 4 + n <= len(payload):
+            chunk = payload[j + 4:j + 4 + n]
+            if chunk.isascii() and chunk.decode().isprintable():
+                strings.append(chunk.decode())
+                j += 4 + n
+                continue
+        j += 1
+    assert "EntitySettings" in strings
+    assert MM.MODAL_RESOURCE in strings
