@@ -405,26 +405,26 @@ CHAIN_SRC_DECODED = ("EntitySettings\\GameUis\\All_Book_Pages\\"
                      "Hero_Display.entity.ot.EntitySettingsResource.gen")
 CHAIN_SRC_ENTITY = "Hero_Display"
 
-#: Where the chain is APPENDED.  Only ``Hero_Display`` and ``MyNacon`` carry
-#: every chain class, and both are social pages that stay DORMANT in
-#: single-player — so the chain is instead relocated onto ``Main_Book_Menu``,
-#: which is loaded whenever the book is open (solo included) and already
-#: receives named events.  It is missing exactly one chain class
-#: (``ModalHandlerEntityCpntSettings``), which is added to its class table;
-#: every other class the chain uses it already has.
-HOST_DECODED = ("EntitySettings\\GameUis\\All_Book_Pages\\"
-                "Main_Book_Menu.entity.ot.EntitySettingsResource.gen")
-HOST_NAME = "Main_Book_Menu"
+#: Where the chain is APPENDED.  Named events are dispatched through a
+#: PER-ENTITY dispatcher (verified: the loader's ``NamedEvent_Dispatch`` hook
+#: takes a dispatcher at ``entity+0x4d8``), so a listener only fires for events
+#: delivered to ITS entity.  ``BOOK_MENU_OPEN`` fires (confirmed live) but is
+#: dispatched in the book-mesh scene, not to the GameUis book pages — so the
+#: host must be the entity that NATIVELY receives it.  ``Book_Mesh_Controller``
+#: both sends and listens ``BOOK_MENU_OPEN`` (its ``Book Open Event Listener``),
+#: is loaded whenever the book scene exists, and is missing only two chain
+#: classes.
+HOST_DECODED = ("EntitySettings\\Book_Menu\\"
+                "Book_Mesh_Controller.entity.ot.EntitySettingsResource.gen")
+HOST_NAME = "Book_Mesh_Controller"
 #: Component group the appended chain lives in (part of every reference path).
 #: Any consistent label works; ``UI Social`` matches most donor components so
 #: it minimises the group renames.
 HOST_GROUP = "UI Social"
 
-#: The named event our listener subscribes to.  Named events in this engine
-#: are BROADCAST, so subscribing does not steal the event from its existing
-#: listeners — it rides alongside them.  ``BOOK_MENU_OPEN`` is fired by
-#: ``Book_Menu\Book_Mesh_Controller`` every time the player opens the book.
-#: The mod modal therefore opens with the book.
+#: The named event our listener subscribes to.  ``BOOK_MENU_OPEN`` is fired by
+#: ``Book_Mesh_Controller`` every time the player opens the book — and since we
+#: host on that same entity, its dispatcher delivers the event to our listener.
 TRIGGER_EVENT = "BOOK_MENU_OPEN"
 
 #: Our component names.

@@ -304,11 +304,13 @@ def test_clone_can_opt_out_of_label_retargeting():
 
 # --- open-trigger chain -----------------------------------------------------
 
-_UNCOOKED = (Path(__file__).resolve().parents[1] / "data" / "uncooked" /
-             "EntitySettings" / "GameUis" / "All_Book_Pages")
-#: The chain is cloned from Hero_Display and appended to Main_Book_Menu.
-_SRC = _UNCOOKED / "Hero_Display.entity.ot.EntitySettingsResource.gen"
-_HOST = _UNCOOKED / "Main_Book_Menu.entity.ot.EntitySettingsResource.gen"
+_UNCOOKED = Path(__file__).resolve().parents[1] / "data" / "uncooked" / "EntitySettings"
+#: The chain is cloned from Hero_Display and appended to Book_Mesh_Controller,
+#: the entity that natively receives BOOK_MENU_OPEN.
+_SRC = (_UNCOOKED / "GameUis" / "All_Book_Pages" /
+        "Hero_Display.entity.ot.EntitySettingsResource.gen")
+_HOST = (_UNCOOKED / "Book_Menu" /
+         "Book_Mesh_Controller.entity.ot.EntitySettingsResource.gen")
 _needs_host = pytest.mark.skipif(not (_SRC.is_file() and _HOST.is_file()),
                                  reason="data/uncooked corpus not present")
 
@@ -347,13 +349,14 @@ def test_trigger_appends_the_whole_chain():
 
 
 @_needs_host
-def test_trigger_extends_the_host_class_table_minimally():
+def test_trigger_extends_the_host_class_table():
     host = _HOST.read_bytes()
     out = _trigger()
     hc = {c.name for c in cooked.parse(host).classes}
     oc = {c.name for c in cooked.parse(out).classes}
-    # Main_Book_Menu is missing exactly one chain class.
-    assert oc - hc == {"ModalHandlerEntityCpntSettings"}
+    # Book_Mesh_Controller is missing exactly these two chain classes.
+    assert oc - hc == {"ExecutingMethodsEntityCpntSettings",
+                       "ModalHandlerEntityCpntSettings"}
 
 
 @_needs_host
