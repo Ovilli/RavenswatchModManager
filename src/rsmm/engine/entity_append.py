@@ -105,65 +105,12 @@ def remint_guid(blob: bytes) -> bytes:
     return blob[:g] + os.urandom(16) + blob[g + 16:]
 
 
-#: The trailer section is ``u32 0 | BEGIN | u32 base | u32 count | count*u32``
-#: — an INSTANCE TABLE, and the reason appended components used to do nothing.
-#: Its length tracks the number of GUID-bearing components exactly (verified on
-#: Book_Mesh_Controller 188, Hero_Display 85, Modal_Model 37,
-#: Book_Menu_Table_Model 13), and the entries are the identity sequence
-#: ``0..count-1``.  A record that gets a directory entry but no instance slot
-#: is parsed and then never constructed: no crash, no activation.
-_TRAILER_COUNT_OFF = 12
-_TRAILER_ARRAY_OFF = 16
-
-
-def _extend_instance_table(trailer: bytes, extra: int) -> bytes:
-    """Grow the trailer's instance table by ``extra`` slots."""
-    if extra <= 0:
-        return trailer
-    if len(trailer) < _TRAILER_ARRAY_OFF or trailer[4:8] != cooked.MARK_BEGIN:
-        raise EntityAppendError("trailer is not an instance table — layout "
-                                "changed?")
-    n = struct.unpack_from("<I", trailer, _TRAILER_COUNT_OFF)[0]
-    end = _TRAILER_ARRAY_OFF + 4 * n
-    if end > len(trailer):
-        raise EntityAppendError(
-            f"instance table claims {n} entries but the trailer holds "
-            f"{(len(trailer) - _TRAILER_ARRAY_OFF) // 4}")
-    arr = [struct.unpack_from("<I", trailer, _TRAILER_ARRAY_OFF + 4 * i)[0]
-           for i in range(n)]
-    if arr != list(range(n)):
-        raise EntityAppendError("instance table is not the identity sequence; "
-                                "refusing to guess how to extend it")
-    grown = list(range(n + extra))
-    return (trailer[:_TRAILER_COUNT_OFF]
-            + struct.pack("<I", len(grown))
-            + struct.pack(f"<{len(grown)}I", *grown)
-            + trailer[end:])
-
-
-def _has_instance_guid(record: bytes) -> bool:
-    """Whether a record carries an instance GUID, i.e. needs a table slot.
-
-    Descriptor records have no identity and are absent from the table, so
-    counting every appended record would over-grow it.
-    """
-    pos = record.find(_END)
-    if pos < 0 or pos + 4 + 16 > len(record):
-        return False
-    g = record[pos + 4:pos + 20]
-    return g != b"\0" * 16 and cooked.MARK_BEGIN not in g and _END not in g
-
-
 def append_components(cooked_bytes: bytes,
                       records: list[bytes]) -> bytes:
     """Append component records to a cooked entity, returning new bytes.
 
     Each record must already start with its class-table index u32 (clones of
     existing records keep theirs).
-
-    Both tables that describe a component are updated: the section-0 directory
-    (count + class index) AND the trailer's instance table.  Skipping the
-    latter is why appended components loaded without error and then never ran.
     """
     cf = cooked.parse(cooked_bytes)
     count = validate_layout(cf)
@@ -179,7 +126,5 @@ def append_components(cooked_bytes: bytes,
     trailer = cf.sections.pop()
     for rec in records:
         cf.sections.append(cooked.Section(payload=rec))
-    trailer.payload = _extend_instance_table(
-        trailer.payload, sum(1 for r in records if _has_instance_guid(r)))
     cf.sections.append(trailer)
     return cooked.emit(cf)

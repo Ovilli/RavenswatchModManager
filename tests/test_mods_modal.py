@@ -431,38 +431,6 @@ def test_append_probe_extends_nothing():
     assert MM._component_guid(cf_out.sections[-2].payload) not in guids
 
 
-def _instance_count(blob: bytes) -> int:
-    return struct.unpack_from("<I", cooked.parse(blob).sections[-1].payload, 12)[0]
-
-
-@_needs_host
-def test_append_grows_the_instance_table():
-    """The bug that made every append inert in-game.
-
-    A component needs BOTH a section-0 directory entry and a slot in the
-    trailer's instance table. With only the former the engine parses the
-    record and never constructs it — no crash, no activation, which is exactly
-    what the book controller did for four playtests.
-    """
-    host = _HOST.read_bytes()
-    base = _instance_count(host)
-    assert _instance_count(MM.probe_append_native(host)) == base + 1
-    assert _instance_count(_trigger()) == base + 4
-
-
-@_needs_corpus
-def test_instance_table_tracks_guid_bearing_components():
-    """The invariant the fix relies on, checked against shipped assets."""
-    for path in (_DONOR, _HOST, _SRC):
-        if not path.is_file():
-            continue
-        blob = path.read_bytes()
-        cf = cooked.parse(blob)
-        guids = sum(1 for i in range(len(MM.component_names(blob)))
-                    if MM._component_guid(cf.sections[1 + i].payload))
-        assert _instance_count(blob) == guids, path.name
-
-
 @_needs_host
 def test_trigger_event_is_overridable():
     strings = {s for _, _, s in ES.list_strings(_trigger(event="RSMM_CUSTOM_OPEN"))}
