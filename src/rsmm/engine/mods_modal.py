@@ -345,7 +345,8 @@ experimental = true
 def build_modal_assets(cooking_root: Path, dec2enc: dict[str, str],
                        mods: list[dict], *,
                        trigger: bool = True,
-                       probe: bool = False) -> dict[str, bytes]:
+                       probe: bool = False,
+                       probe_append: bool = False) -> dict[str, bytes]:
     """Every asset of the mod modal: ``{decoded path token: bytes}``.
 
     The donor is read from the user's own install, so no game-derived bytes
@@ -385,11 +386,18 @@ def build_modal_assets(cooking_root: Path, dec2enc: dict[str, str],
     if trigger:
         host_dec = HOST_DECODED.replace("\\", "/")
         src_dec = CHAIN_SRC_DECODED.replace("\\", "/")
-        host = build_open_trigger(
-            _pristine(host_dec).read_bytes(),
-            chain_src_bytes=_pristine(src_dec).read_bytes(),
-            modal_resource=PROBE_RESOURCE if probe else MODAL_RESOURCE)
-        out[host_dec] = probe_host_loaded(host) if probe else host
+        if probe_append:
+            # Native-class append only: no chain, and crucially no SHOW_TAB
+            # rename — hiding the compendium tab would hide the very slot the
+            # probe renders into.
+            out[host_dec] = probe_append_native(
+                _pristine(host_dec).read_bytes())
+        else:
+            host = build_open_trigger(
+                _pristine(host_dec).read_bytes(),
+                chain_src_bytes=_pristine(src_dec).read_bytes(),
+                modal_resource=PROBE_RESOURCE if probe else MODAL_RESOURCE)
+            out[host_dec] = probe_host_loaded(host) if probe else host
 
     # append_bank_keys resolves .rsmm.bak per language sibling itself, so it
     # needs the LIVE path for its sibling discovery to work.
@@ -664,6 +672,41 @@ def probe_host_loaded(host_bytes: bytes,
     sec = _named_section(cf, host_bytes, LOADED_PROBE_CPNT)
     sec.payload = EA.replace_blob_strings(sec.payload, {"SHOW_TAB": event})
     return cooked.emit(cf)
+
+
+#: Native spawner we clone to test appending on its own.
+APPEND_PROBE_DONOR = "Compendium Tab Spawner"
+APPEND_PROBE_CPNT = "RSMM Append Probe Spawner"
+_APPEND_PROBE_FROM = "Book_Menu\\Book_Compendium_Tab_Mesh_Controller.entity.ot"
+_APPEND_PROBE_TO = "Book_Menu\\Book_Tuto_Tab_Mesh_Controller.entity.ot"
+
+
+def probe_append_native(host_bytes: bytes) -> bytes:
+    """Append ONE component built only from classes the host already has.
+
+    Separates two causes that the modal chain conflates.  That chain both
+    appends components AND injects two classes the host never had
+    (``ExecutingMethodsEntityCpntSettings``, ``ModalHandlerEntityCpntSettings``)
+    via :func:`extend_class_table`, so its silence indicts either appending or
+    the class-table extension — no way to tell which.
+
+    This clones a NATIVE tab spawner, so the class table is untouched and only
+    appending is under test.  The clone spawns the Tuto tab controller into the
+    Compendium tab's 3d node: if the compendium tab renders as a tuto tab,
+    appending works and the extended classes are the real problem.  If the book
+    looks stock, appending itself is inert on this host.
+    """
+    cf = cooked.parse(host_bytes)
+    record = _named_section(cf, host_bytes, APPEND_PROBE_DONOR).payload
+    guid = _component_guid(record)
+    if guid is None:
+        raise ModsModalError(f"{APPEND_PROBE_DONOR!r} carries no instance GUID")
+    record = record.replace(guid, os.urandom(16))
+    record = EA.replace_blob_strings(record, {
+        APPEND_PROBE_DONOR: APPEND_PROBE_CPNT,
+        _APPEND_PROBE_FROM: _APPEND_PROBE_TO,
+    })
+    return EA.append_components(host_bytes, [record])
 
 
 def component_label_binding(cooked_bytes: bytes,

@@ -416,6 +416,22 @@ def test_loaded_probe_renames_only_the_one_native_sender():
 
 
 @_needs_host
+def test_append_probe_extends_nothing():
+    """The whole point of this probe is that ONLY appending is under test, so
+    it must not touch the class table the way the modal chain does."""
+    host = _HOST.read_bytes()
+    out = MM.probe_append_native(host)
+    assert [c.name for c in cooked.parse(out).classes] == \
+        [c.name for c in cooked.parse(host).classes]
+    added = set(MM.component_names(out)) - set(MM.component_names(host))
+    assert added == {MM.APPEND_PROBE_CPNT}
+    # A fresh identity, or the clone would collide with its donor.
+    cf_in, cf_out = cooked.parse(host), cooked.parse(out)
+    guids = {MM._component_guid(s.payload) for s in cf_in.sections[1:-1]}
+    assert MM._component_guid(cf_out.sections[-2].payload) not in guids
+
+
+@_needs_host
 def test_trigger_event_is_overridable():
     strings = {s for _, _, s in ES.list_strings(_trigger(event="RSMM_CUSTOM_OPEN"))}
     assert "RSMM_CUSTOM_OPEN" in strings

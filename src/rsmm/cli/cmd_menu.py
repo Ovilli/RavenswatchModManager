@@ -132,7 +132,7 @@ def cmd_modal(args: argparse.Namespace) -> int:
     try:
         assets = mods_modal.build_modal_assets(
             cooking, load_asset_map(), mods, trigger=not args.no_trigger,
-            probe=args.probe)
+            probe=args.probe, probe_append=args.probe_append)
     except mods_modal.ModsModalError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
@@ -231,6 +231,10 @@ def main(argv: list[str] | None = None) -> int:
                         "Modal_Warning instead of ours. If that modal opens "
                         "with the book, the chain fires and the fault is in "
                         "our modal asset; if nothing opens, the chain is inert")
+    m.add_argument("--probe-append", action="store_true",
+                   help="diagnostic: append ONE component using only classes "
+                        "the host already has. Separates 'appending is inert' "
+                        "from 'the injected classes are the problem'")
     m.set_defaults(fn=cmd_modal)
 
     mr = sub.add_parser("modal-remove", help="delete the RSMMModal mod")
