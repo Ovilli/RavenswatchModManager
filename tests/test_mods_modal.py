@@ -281,7 +281,11 @@ def test_modal_texts_mark_disabled_mods_and_count_them():
     body = texts[MM.LABEL_KEYS["Description Label"]]
     assert "2 installed, 1 enabled." in body
     assert "Alpha 1.0" in body
-    assert "[disabled]" in body.split("Beta")[1]
+    # Disabled state is carried by the row glyph plus a single legend, rather
+    # than an "[disabled]" suffix on every row: the page is width-constrained
+    # and long rows overflowed it in-game.
+    assert body.split("Beta")[0].rstrip().endswith("\u25e6") or "\u25e6 Beta" in body
+    assert "\u25e6 = disabled" in body
 
 
 def test_modal_texts_handle_an_empty_mod_list():
@@ -436,6 +440,82 @@ _PAGE_HOST = (Path(__file__).resolve().parents[1] / "data" / "uncooked" /
               "Main_Book_Menu.entity.ot.EntitySettingsResource.gen")
 _needs_page_host = pytest.mark.skipif(not _PAGE_HOST.is_file(),
                                       reason="Main_Book_Menu not in corpus")
+
+
+_PAGE_DONOR = (Path(__file__).resolve().parents[1] / "data" / "uncooked" /
+               "EntitySettings" / "GameUis" / "All_Book_Pages" /
+               "Memories_Book_Page.entity.ot.EntitySettingsResource.gen")
+_needs_page_donor = pytest.mark.skipif(not _PAGE_DONOR.is_file(),
+                                       reason="Memories_Book_Page not in corpus")
+
+
+@_needs_page_donor
+def test_page_clone_is_standalone_and_relabelled():
+    """A modal in a tab slot renders EMPTY — its Modal Ui Controller hides its
+    children until opened as an overlay. The tab needs a real page clone."""
+    page = MM.build_page(_PAGE_DONOR.read_bytes())
+    strings = {s for _, _, s in ES.list_strings(page)}
+    assert not [s for s in strings if MM.PAGE_DONOR_NAME in s]
+    assert set(MM.PAGE_LABEL_KEYS.values()) <= strings
+    # The binding the tab resolves through.
+    assert "Game Ui" in MM.component_names(page)
+
+
+@_needs_page_donor
+def test_page_clone_blanks_the_donors_hero_content():
+    """The donor is a HERO page — its miniature/story spawns rendered a hero
+    compendium beside our text. They are retargeted at the modal, which is the
+    one entity proven to load and draw nothing outside an overlay."""
+    page = MM.build_page(_PAGE_DONOR.read_bytes())
+    strings = {s for _, _, s in ES.list_strings(page)}
+    for hero in MM.PAGE_BLANKED:
+        assert hero not in strings
+    assert MM.MODAL_RESOURCE in strings
+
+
+def test_body_text_is_bounded():
+    """An unbounded list overflows the page — the label has no scroll."""
+    mods = [{"id": f"m{i}", "name": f"Mod {i}", "version": "1.0",
+             "enabled": i % 3 != 0} for i in range(60)]
+    body = MM.modal_texts(mods)[MM.LABEL_KEYS["Description Label"]]
+    rows = [ln for ln in body.splitlines() if ln.startswith(("•", "◦"))]
+    assert len(rows) <= MM.MAX_ROWS
+    assert f"… and {60 - MM.MAX_ROWS} more" in body
+    # Enabled first, so truncation never hides what is actually active.
+    assert rows[0].startswith("•")
+    assert all(len(ln) <= MM.MAX_NAME + 12 for ln in rows)
+
+
+def test_long_mod_names_are_ellipsised():
+    body = MM.modal_texts([{"id": "x", "name": "N" * 80, "enabled": True}])
+    row = [ln for ln in body[MM.LABEL_KEYS["Description Label"]].splitlines()
+           if ln.startswith("•")][0] if isinstance(body, dict) else ""
+    assert "…" in row and len(row) <= MM.MAX_NAME + 12
+
+
+@_needs_page_donor
+def test_page_clone_shares_no_identity_with_its_donor():
+    donor = _PAGE_DONOR.read_bytes()
+    page = MM.build_page(donor)
+    guids_d = {MM._component_guid(s.payload)
+               for s in cooked.parse(donor).sections[1:-1]} - {None}
+    guids_p = {MM._component_guid(s.payload)
+               for s in cooked.parse(page).sections[1:-1]} - {None}
+    assert not (guids_d & guids_p)
+    assert _PAGE_DONOR.read_bytes() == donor, "must not mutate the corpus"
+
+
+@_needs_page_host
+def test_tuto_tab_points_at_the_page_not_the_modal():
+    """The modal still ships (its buttons are the future intent surface), but
+    the TAB must open the page — pointing it at the modal is what produced an
+    empty page in-game."""
+    out = MM.retarget_tuto_tab(_PAGE_HOST.read_bytes(),
+                               resource=MM.PAGE_RESOURCE, entity=MM.PAGE_NAME)
+    strings = {s for _, _, s in ES.list_strings(out)}
+    assert MM.PAGE_RESOURCE in strings
+    assert f"[Game Ui] {MM.PAGE_NAME}\\Game Ui" in strings
+    assert MM.MODAL_RESOURCE not in strings
 
 
 @_needs_page_host

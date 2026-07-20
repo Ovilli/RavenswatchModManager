@@ -179,22 +179,84 @@ LABEL_KEYS: dict[str, str] = {
 
 
 def build_modal(donor_bytes: bytes, *, name: str = MODAL_NAME,
-                labels: dict[str, str] | None = None) -> bytes:
-    """Clone the donor modal into a standalone entity called ``name``.
+                labels: dict[str, str] | None = None,
+                donor_name: str = DONOR_NAME) -> bytes:
+    """Clone the donor entity into a standalone one called ``name``.
 
     ``labels`` maps component name -> text-bank key; it defaults to
     :data:`LABEL_KEYS`.  Pass ``{}`` to leave the donor's bindings alone.
     """
     if not name.isascii():
         raise ModsModalError(f"entity name must be ASCII: {name!r}")
-    out = rename_entity(donor_bytes, DONOR_NAME, name)
+    out = rename_entity(donor_bytes, donor_name, name)
     out = remint_all(out)
     for cpnt, key in (LABEL_KEYS if labels is None else labels).items():
         out = set_component_label(out, cpnt, key=key)
     residual = [s for _, _, s in ES.list_strings(out)
-                if DONOR_NAME in s and name not in s]
+                if donor_name in s and name not in s]
     if residual:
         raise ModsModalError(f"clone still references the donor: {residual[:3]}")
+    return out
+
+
+#: --- The PAGE clone ---------------------------------------------------------
+#:
+#: A modal bound into a tab slot renders EMPTY: its ``Modal Ui Controller``
+#: keeps the children hidden until something opens the modal as an overlay,
+#: and a page slot never does that.  So the tab needs a real BOOK PAGE.
+#:
+#: Donor: ``Memories_Book_Page`` — of every page carrying reusable labels it
+#: has the least coupling (1 spawner, 2 spawned entities, 1 foreign reference;
+#: ``Social_Book_Page`` has 10 foreign refs, which is the coupling trap that
+#: killed the phase-3 social clone).  Its two labels are already the
+#: title/body shape we want.
+PAGE_DONOR_DECODED = ("EntitySettings\\GameUis\\All_Book_Pages\\"
+                      "Memories_Book_Page.entity.ot.EntitySettingsResource.gen")
+PAGE_DONOR_NAME = "Memories_Book_Page"
+
+PAGE_NAME = "RSMM_Mods_Page"
+PAGE_DECODED = (f"EntitySettings\\GameUis\\All_Book_Pages\\"
+                f"{PAGE_NAME}.entity.ot.EntitySettingsResource.gen")
+PAGE_RESOURCE = f"GameUis\\All_Book_Pages\\{PAGE_NAME}.entity.ot"
+
+#: The donor's two labels, repurposed as our title and body.
+PAGE_LABEL_KEYS: dict[str, str] = {
+    "Hero Name Label": "RSMM_Modal_Title",
+    "Hero Unlock Condition Label": "RSMM_Modal_Body",
+}
+
+
+#: Hero content the donor page spawns — the "hero compendium on the other
+#: side".  Each is retargeted at our MODAL, which is the one entity proven to
+#: load and render NOTHING outside an overlay context: that was the empty-page
+#: result, and it makes the modal a perfect blank.  Components can't be
+#: removed (appending is a wall, and shrinking would hit the same instance
+#: table), so neutralising by retarget is the available move.
+PAGE_BLANKED = (
+    "GameUis\\All_Book_Pages\\Hero_Miniature.entity.ot",
+    "GameUis\\All_Book_Pages\\Hero_Story_Page.entity.ot",
+)
+
+
+def build_page(donor_bytes: bytes, *, name: str = PAGE_NAME,
+               labels: dict[str, str] | None = None,
+               blank: bool = True) -> bytes:
+    """Clone the donor book page into our own page entity."""
+    out = build_modal(donor_bytes, name=name, donor_name=PAGE_DONOR_NAME,
+                      labels=PAGE_LABEL_KEYS if labels is None else labels)
+    if blank:
+        present = {s for _, _, s in ES.list_strings(out)}
+        swaps = {s: MODAL_RESOURCE for s in PAGE_BLANKED if s in present}
+        if swaps:
+            out = ES.replace_strings(out, swaps)
+        left = [s for _, _, s in ES.list_strings(out) if s in PAGE_BLANKED]
+        if left:
+            raise ModsModalError(f"hero content still spawned: {left}")
+    # The tab binding resolves "<entity>\Game Ui"; without it the tab opens
+    # onto nothing, which is exactly the empty page the modal produced.
+    if "Game Ui" not in component_names(out):
+        raise ModsModalError(f"{name} has no 'Game Ui' component — the tab "
+                             f"binding would not resolve")
     return out
 
 
@@ -309,20 +371,44 @@ def label_text_binding(record: bytes, *, bound: int,
     return tuple(parts) if all(parts) else None
 
 
+#: The label is a fixed-size box on a book page with no scroll and no clipping
+#: — an unbounded list overflows straight off the page (49 mods did exactly
+#: that in-game). Cap the rows and summarise the remainder.
+MAX_ROWS = 14
+#: Long names push rows past the page width, so they are ellipsised.
+MAX_NAME = 34
+
+_DISABLED_GLYPH = "\u25e6"
+
+
+def _row(m: dict) -> str:
+    on = m.get("enabled", True)
+    name = str(m.get("name") or m["id"])
+    if len(name) > MAX_NAME:
+        name = name[:MAX_NAME - 1] + "…"
+    ver = str(m.get("version", "")).strip()
+    return f"{'•' if on else '◦'} {name}" + (f" {ver}" if ver else "")
+
+
 def modal_texts(mods: list[dict]) -> dict[str, str]:
     """Bank key -> display text for the modal's two labels."""
     enabled = [m for m in mods if m.get("enabled", True)]
-    lines = [
-        ("• " if m.get("enabled", True) else "◦ ")
-        + f"{m.get('name') or m['id']} {m.get('version', '')}".strip()
-        + ("" if m.get("enabled", True) else "  [disabled]")
-        for m in sorted(mods, key=lambda m: str(m.get("name") or m["id"]).lower())
-    ]
+    # Enabled first, so a truncated list shows what is actually active.
+    ordered = sorted(mods, key=lambda m: (not m.get("enabled", True),
+                                          str(m.get("name") or m["id"]).lower()))
+    lines = [_row(m) for m in ordered[:MAX_ROWS]]
+    if len(ordered) > MAX_ROWS:
+        lines.append(f"… and {len(ordered) - MAX_ROWS} more")
     body = "\n".join(lines) if lines else "(no mods installed)"
     return {
         LABEL_KEYS["Title Label"]: "MODS",
         LABEL_KEYS["Description Label"]: (
-            f"{len(mods)} installed, {len(enabled)} enabled.\n\n{body}"),
+            f"{len(mods)} installed, {len(enabled)} enabled."
+            # A legend beats repeating "[disabled]" on every row: the page is
+            # width-constrained and the glyph already carries the state.
+            + (f"   {_DISABLED_GLYPH} = disabled" if len(enabled) < len(mods)
+               else "")
+            + f"\n\n{body}"),
     }
 
 
@@ -359,8 +445,9 @@ def build_modal_assets(cooking_root: Path, dec2enc: dict[str, str],
     (nothing then opens it).
     """
     donor_dec = DONOR_DECODED.replace("\\", "/")
+    page_donor_dec = PAGE_DONOR_DECODED.replace("\\", "/")
     bank_dec = BANK_DECODED.replace("\\", "/")
-    checked = [donor_dec, bank_dec]
+    checked = [donor_dec, page_donor_dec, bank_dec]
     if trigger:
         checked.append(PAGE_HOST_DECODED.replace("\\", "/"))
     for dec in checked:
@@ -379,12 +466,21 @@ def build_modal_assets(cooking_root: Path, dec2enc: dict[str, str],
             raise ModsModalError(f"cooked file not found: {p} — wrong game dir?")
         return p
 
-    out = {MODAL_DECODED.replace("\\", "/"):
-           build_modal(_pristine(donor_dec).read_bytes())}
+    out = {
+        # The page is what the Tuto tab opens.
+        PAGE_DECODED.replace("\\", "/"):
+            build_page(_pristine(page_donor_dec).read_bytes()),
+        # The modal ships too: its four declared buttons are the surface the
+        # intent protocol will hang off, once the page renders.
+        MODAL_DECODED.replace("\\", "/"):
+            build_modal(_pristine(donor_dec).read_bytes()),
+    }
 
     if trigger:
         host_dec = PAGE_HOST_DECODED.replace("\\", "/")
-        out[host_dec] = retarget_tuto_tab(_pristine(host_dec).read_bytes())
+        out[host_dec] = retarget_tuto_tab(
+            _pristine(host_dec).read_bytes(),
+            resource=PAGE_RESOURCE, entity=PAGE_NAME)
 
     # append_bank_keys resolves .rsmm.bak per language sibling itself, so it
     # needs the LIVE path for its sibling discovery to work.
