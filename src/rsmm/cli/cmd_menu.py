@@ -133,7 +133,8 @@ def cmd_modal(args: argparse.Namespace) -> int:
     try:
         assets = mods_modal.build_modal_assets(
             cooking, load_asset_map(), mods, trigger=not args.no_trigger,
-            probe=args.probe, probe_append=args.probe_append)
+            probe=args.probe, probe_append=args.probe_append,
+            blank=not args.no_blank)
     except mods_modal.ModsModalError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
@@ -230,6 +231,10 @@ def main(argv: list[str] | None = None) -> int:
     m.add_argument("--no-trigger", action="store_true",
                    help="ship the modal asset alone, without the host "
                         "override that points the Tuto tab at it")
+    m.add_argument("--no-blank", action="store_true",
+                   help="diagnostic: leave the donor page's hero content in "
+                        "place. Isolates whether an interaction crash comes "
+                        "from the donor itself or from our blanking")
     m.add_argument("--probe", action="store_true",
                    help="diagnostic: point the trigger chain at the RETAIL "
                         "Modal_Warning instead of ours. If that modal opens "

@@ -432,7 +432,8 @@ def build_modal_assets(cooking_root: Path, dec2enc: dict[str, str],
                        mods: list[dict], *,
                        trigger: bool = True,
                        probe: bool = False,
-                       probe_append: bool = False) -> dict[str, bytes]:
+                       probe_append: bool = False,
+                       blank: bool = True) -> dict[str, bytes]:
     """Every asset of the mod modal: ``{decoded path token: bytes}``.
 
     The donor is read from the user's own install, so no game-derived bytes
@@ -469,7 +470,7 @@ def build_modal_assets(cooking_root: Path, dec2enc: dict[str, str],
     out = {
         # The page is what the Tuto tab opens.
         PAGE_DECODED.replace("\\", "/"):
-            build_page(_pristine(page_donor_dec).read_bytes()),
+            build_page(_pristine(page_donor_dec).read_bytes(), blank=blank),
         # The modal ships too: its four declared buttons are the surface the
         # intent protocol will hang off, once the page renders.
         MODAL_DECODED.replace("\\", "/"):
