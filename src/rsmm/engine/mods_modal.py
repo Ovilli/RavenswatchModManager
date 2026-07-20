@@ -385,10 +385,11 @@ def build_modal_assets(cooking_root: Path, dec2enc: dict[str, str],
     if trigger:
         host_dec = HOST_DECODED.replace("\\", "/")
         src_dec = CHAIN_SRC_DECODED.replace("\\", "/")
-        out[host_dec] = build_open_trigger(
+        host = build_open_trigger(
             _pristine(host_dec).read_bytes(),
             chain_src_bytes=_pristine(src_dec).read_bytes(),
             modal_resource=PROBE_RESOURCE if probe else MODAL_RESOURCE)
+        out[host_dec] = probe_host_loaded(host) if probe else host
 
     # append_bank_keys resolves .rsmm.bak per language sibling itself, so it
     # needs the LIVE path for its sibling discovery to work.
@@ -636,6 +637,33 @@ def _named_section(cf: cooked.CookedFile, cooked_bytes: bytes,
             f"expected exactly one component named {cpnt_name!r}, "
             f"found {len(matches)}")
     return cf.sections[1 + matches[0]]
+
+
+#: A native sender on the host whose event we rename to prove the override is
+#: read at all.  It must be one that RELIABLY FIRES: the first pick was a
+#: HIDE_TAB sender, and HIDE_TAB never fires during startup at all, so the
+#: probe proved nothing.  SHOW_TAB fires 7x every launch as the book builds
+#: its tabs, giving a countable baseline (6 + the token).  Worst case the
+#: compendium tab stops appearing, which `rsmm apply` undoes.
+LOADED_PROBE_CPNT = "Show Compendium Tab Event"
+LOADED_PROBE_EVENT = "RSMM_HOST_LOADED"
+
+
+def probe_host_loaded(host_bytes: bytes,
+                      event: str = LOADED_PROBE_EVENT) -> bytes:
+    """Rename one NATIVE sender's event so the log proves the host override
+    is actually loaded.
+
+    Every inert-chain result so far assumes the game reads our file. Nothing
+    has tested that. This edits a component the game has always driven, so if
+    ``event`` shows up on the event bus the override is live and the fault is
+    in our appended chain; if it never fires, the file is not being read and
+    the chain was never the problem.
+    """
+    cf = cooked.parse(host_bytes)
+    sec = _named_section(cf, host_bytes, LOADED_PROBE_CPNT)
+    sec.payload = EA.replace_blob_strings(sec.payload, {"SHOW_TAB": event})
+    return cooked.emit(cf)
 
 
 def component_label_binding(cooked_bytes: bytes,

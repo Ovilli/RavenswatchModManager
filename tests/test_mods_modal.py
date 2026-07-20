@@ -402,6 +402,20 @@ def test_probe_chain_keeps_the_retail_modal():
 
 
 @_needs_host
+def test_loaded_probe_renames_only_the_one_native_sender():
+    """The override-is-loaded probe must touch exactly one component, so a
+    token on the bus can only have come from our file."""
+    host = _HOST.read_bytes()
+    out = MM.probe_host_loaded(host)
+    assert MM.LOADED_PROBE_EVENT in {s for _, _, s in ES.list_strings(out)}
+    # Same inventory, same size class — only one HIDE_TAB became our token.
+    assert MM.component_names(out) == MM.component_names(host)
+    before = [s for _, _, s in ES.list_strings(host)].count("SHOW_TAB")
+    after = [s for _, _, s in ES.list_strings(out)].count("SHOW_TAB")
+    assert after == before - 1
+
+
+@_needs_host
 def test_trigger_event_is_overridable():
     strings = {s for _, _, s in ES.list_strings(_trigger(event="RSMM_CUSTOM_OPEN"))}
     assert "RSMM_CUSTOM_OPEN" in strings
