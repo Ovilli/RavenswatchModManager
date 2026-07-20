@@ -131,7 +131,8 @@ def cmd_modal(args: argparse.Namespace) -> int:
 
     try:
         assets = mods_modal.build_modal_assets(
-            cooking, load_asset_map(), mods, trigger=not args.no_trigger)
+            cooking, load_asset_map(), mods, trigger=not args.no_trigger,
+            probe=args.probe)
     except mods_modal.ModsModalError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
@@ -225,6 +226,11 @@ def main(argv: list[str] | None = None) -> int:
     m.add_argument("--no-trigger", action="store_true",
                    help="ship the modal asset alone, without the host "
                         "override that opens it on BOOK_MENU_OPEN")
+    m.add_argument("--probe", action="store_true",
+                   help="diagnostic: point the trigger chain at the RETAIL "
+                        "Modal_Warning instead of ours. If that modal opens "
+                        "with the book, the chain fires and the fault is in "
+                        "our modal asset; if nothing opens, the chain is inert")
     m.set_defaults(fn=cmd_modal)
 
     mr = sub.add_parser("modal-remove", help="delete the RSMMModal mod")

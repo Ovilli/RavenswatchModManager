@@ -388,6 +388,20 @@ def test_trigger_names_its_event_and_our_modal():
 
 
 @_needs_host
+def test_probe_chain_keeps_the_retail_modal():
+    """`--probe` isolates trigger from render: the chain is built identically
+    but left pointing at the retail Modal_Warning, so whether anything opens
+    in-game answers 'does the appended chain fire?' with one variable."""
+    strings = {s for _, _, s in ES.list_strings(
+        _trigger(modal_resource=MM.PROBE_RESOURCE))}
+    assert MM.PROBE_RESOURCE in strings
+    assert MM.MODAL_RESOURCE not in strings
+    # Same components, same trigger — only the spawned resource differs.
+    assert set(MM.component_names(_trigger(modal_resource=MM.PROBE_RESOURCE))) \
+        - set(MM.component_names(_HOST.read_bytes())) == _ADDED
+
+
+@_needs_host
 def test_trigger_event_is_overridable():
     strings = {s for _, _, s in ES.list_strings(_trigger(event="RSMM_CUSTOM_OPEN"))}
     assert "RSMM_CUSTOM_OPEN" in strings

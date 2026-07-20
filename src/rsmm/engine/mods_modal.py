@@ -344,7 +344,8 @@ experimental = true
 
 def build_modal_assets(cooking_root: Path, dec2enc: dict[str, str],
                        mods: list[dict], *,
-                       trigger: bool = True) -> dict[str, bytes]:
+                       trigger: bool = True,
+                       probe: bool = False) -> dict[str, bytes]:
     """Every asset of the mod modal: ``{decoded path token: bytes}``.
 
     The donor is read from the user's own install, so no game-derived bytes
@@ -386,7 +387,8 @@ def build_modal_assets(cooking_root: Path, dec2enc: dict[str, str],
         src_dec = CHAIN_SRC_DECODED.replace("\\", "/")
         out[host_dec] = build_open_trigger(
             _pristine(host_dec).read_bytes(),
-            chain_src_bytes=_pristine(src_dec).read_bytes())
+            chain_src_bytes=_pristine(src_dec).read_bytes(),
+            modal_resource=PROBE_RESOURCE if probe else MODAL_RESOURCE)
 
     # append_bank_keys resolves .rsmm.bak per language sibling itself, so it
     # needs the LIVE path for its sibling discovery to work.
@@ -438,7 +440,14 @@ def _ref(kind: str, name: str) -> str:
     return f"[{kind}] {HOST_NAME}\\{HOST_GROUP}\\{name}"
 
 
-def _chain(event: str) -> tuple[tuple[str, dict[str, str]], ...]:
+#: The retail modal the chain's donor spawner already points at.  Leaving the
+#: spawner on it turns the chain into a pure trigger probe: if this modal shows
+#: up on book open, the appended chain fires and any silence is our own modal's
+#: fault, not the trigger's.
+PROBE_RESOURCE = "GameUis\\Modal\\Modal_Warning.entity.ot"
+
+
+def _chain(event: str, modal_resource: str) -> tuple[tuple[str, dict[str, str]], ...]:
     """Donor component -> the string swaps that retarget its clone.
 
     Swap KEYS name the donor's own strings (entity ``Hero_Display``); VALUES
@@ -470,7 +479,10 @@ def _chain(event: str) -> tuple[tuple[str, dict[str, str]], ...]:
         # The spawner's group is part of every path that names it, so it has
         # to move into the group the rest of the chain lives in.
         "Blacklist Modal": HOST_GROUP,
-        "GameUis\\Modal\\Modal_Warning.entity.ot": MODAL_RESOURCE,
+        # Identity when probing: the donor already names the retail modal, and
+        # a same-for-same swap would be a no-op the string rewriter rejects.
+        **({} if modal_resource == PROBE_RESOURCE
+           else {PROBE_RESOURCE: modal_resource}),
     }),
 )
 
@@ -532,7 +544,8 @@ def _remap_class_tags(record: bytes, donor_cf: cooked.CookedFile,
 
 
 def build_open_trigger(host_bytes: bytes, *, chain_src_bytes: bytes,
-                       event: str = TRIGGER_EVENT) -> bytes:
+                       event: str = TRIGGER_EVENT,
+                       modal_resource: str = MODAL_RESOURCE) -> bytes:
     """Append the ``event`` -> spawn-the-mod-modal chain to ``host_bytes``.
 
     The chain (listener -> executing-methods -> modal handler -> entity
@@ -545,7 +558,7 @@ def build_open_trigger(host_bytes: bytes, *, chain_src_bytes: bytes,
     """
     if not event.isascii() or not event:
         raise ModsModalError(f"event name must be non-empty ASCII: {event!r}")
-    chain = _chain(event)
+    chain = _chain(event, modal_resource)
     src_cf = cooked.parse(chain_src_bytes)
     src_names = component_names(chain_src_bytes)
 
