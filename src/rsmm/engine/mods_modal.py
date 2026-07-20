@@ -354,16 +354,15 @@ def build_modal_assets(cooking_root: Path, dec2enc: dict[str, str],
     it through ``UsedRscList`` — and the bank keys are appended to the existing
     ``Common~GAM.xls`` across all its language siblings.
 
-    ``trigger`` also emits the host override carrying the ``RSMM_OPEN_MENU``
-    chain; pass ``False`` to ship the modal asset alone (it is then only
-    reachable by something else firing the event).
+    ``trigger`` also emits the ``Main_Book_Menu`` override that points the
+    book's Tuto tab at our modal; pass ``False`` to ship the modal asset alone
+    (nothing then opens it).
     """
     donor_dec = DONOR_DECODED.replace("\\", "/")
     bank_dec = BANK_DECODED.replace("\\", "/")
     checked = [donor_dec, bank_dec]
     if trigger:
-        checked += [HOST_DECODED.replace("\\", "/"),
-                    CHAIN_SRC_DECODED.replace("\\", "/")]
+        checked.append(PAGE_HOST_DECODED.replace("\\", "/"))
     for dec in checked:
         if dec not in dec2enc:
             raise ModsModalError(f"asset map is missing {dec!r} — game update? "
@@ -384,20 +383,8 @@ def build_modal_assets(cooking_root: Path, dec2enc: dict[str, str],
            build_modal(_pristine(donor_dec).read_bytes())}
 
     if trigger:
-        host_dec = HOST_DECODED.replace("\\", "/")
-        src_dec = CHAIN_SRC_DECODED.replace("\\", "/")
-        if probe_append:
-            # Native-class append only: no chain, and crucially no SHOW_TAB
-            # rename — hiding the compendium tab would hide the very slot the
-            # probe renders into.
-            out[host_dec] = probe_append_native(
-                _pristine(host_dec).read_bytes())
-        else:
-            host = build_open_trigger(
-                _pristine(host_dec).read_bytes(),
-                chain_src_bytes=_pristine(src_dec).read_bytes(),
-                modal_resource=PROBE_RESOURCE if probe else MODAL_RESOURCE)
-            out[host_dec] = probe_host_loaded(host) if probe else host
+        host_dec = PAGE_HOST_DECODED.replace("\\", "/")
+        out[host_dec] = retarget_tuto_tab(_pristine(host_dec).read_bytes())
 
     # append_bank_keys resolves .rsmm.bak per language sibling itself, so it
     # needs the LIVE path for its sibling discovery to work.
@@ -443,6 +430,53 @@ _C_LISTENER = "RSMM Open Menu Listener"
 _C_METHODS = "RSMM Open Menu Methods"
 _C_HANDLER = "RSMM Mods Modal Handler"
 _C_SPAWNER = "RSMM Mods Modal Spawner"
+
+
+#: --- Tab retarget (the mechanism that actually works) ------------------------
+#:
+#: Appending components to a cooked entity is a WALL: the engine never
+#: constructs them (directory bumped alone = inert), and forcing the trailer's
+#: instance count to match crashes on a garbage pointer walk at 0x1406e0b8e.
+#: See the phase 6j/6k notes.  What DOES work is editing a component that
+#: already exists — proven in-game by renaming a native sender's event.
+#:
+#: ``Main_Book_Menu`` names each tab's page by resource path, so pointing the
+#: Tuto tab at our own entity is exactly that kind of edit: two strings, no new
+#: components, no class-table surgery.  The Tutorial tab becomes the mod menu.
+#: The vanilla ``Tuto_Compendim_Page`` asset is left untouched on disk — this
+#: changes which page the tab OPENS, it does not rewrite the tutorial.
+PAGE_HOST_DECODED = ("EntitySettings\\GameUis\\All_Book_Pages\\"
+                     "Main_Book_Menu.entity.ot.EntitySettingsResource.gen")
+PAGE_HOST_NAME = "Main_Book_Menu"
+
+#: The tab we take over, as named by the host.
+TUTO_PAGE_ENTITY = "Tuto_Compendim_Page"
+TUTO_PAGE_RESOURCE = f"GameUis\\All_Book_Pages\\{TUTO_PAGE_ENTITY}.entity.ot"
+
+
+def retarget_tuto_tab(host_bytes: bytes, *, resource: str = MODAL_RESOURCE,
+                      entity: str = MODAL_NAME) -> bytes:
+    """Point the book's Tuto tab at ``entity`` instead of the tutorial page.
+
+    Two strings carry the binding: the page's resource path, and a
+    ``"[Game Ui] <Entity>\\Game Ui"`` reference into it.  Our modal clone
+    carries a ``Game Ui`` component (it comes from ``Modal_Model``), so the
+    second resolves as-is.
+    """
+    swaps = {TUTO_PAGE_RESOURCE: resource,
+             f"[Game Ui] {TUTO_PAGE_ENTITY}\\Game Ui": f"[Game Ui] {entity}\\Game Ui"}
+    present = {s for _, _, s in ES.list_strings(host_bytes)}
+    missing = [s for s in swaps if s not in present]
+    if missing:
+        raise ModsModalError(
+            f"{PAGE_HOST_NAME} does not name {missing} — game update changed "
+            f"the tab bindings?")
+    out = ES.replace_strings(host_bytes, swaps)
+    # Nothing may still point at the tutorial page, or the tab would open it.
+    left = [s for _, _, s in ES.list_strings(out) if TUTO_PAGE_ENTITY in s]
+    if left:
+        raise ModsModalError(f"tutorial page still referenced: {left}")
+    return out
 
 
 def _ref(kind: str, name: str) -> str:

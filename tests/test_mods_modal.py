@@ -431,6 +431,59 @@ def test_append_probe_extends_nothing():
     assert MM._component_guid(cf_out.sections[-2].payload) not in guids
 
 
+_PAGE_HOST = (Path(__file__).resolve().parents[1] / "data" / "uncooked" /
+              "EntitySettings" / "GameUis" / "All_Book_Pages" /
+              "Main_Book_Menu.entity.ot.EntitySettingsResource.gen")
+_needs_page_host = pytest.mark.skipif(not _PAGE_HOST.is_file(),
+                                      reason="Main_Book_Menu not in corpus")
+
+
+@_needs_page_host
+def test_tuto_tab_retarget_swaps_both_bindings():
+    """Two strings bind a tab to its page: the resource path and a Game Ui
+    reference into that entity. Missing either leaves the tab on the tutorial.
+    """
+    host = _PAGE_HOST.read_bytes()
+    out = MM.retarget_tuto_tab(host)
+    strings = {s for _, _, s in ES.list_strings(out)}
+    assert MM.MODAL_RESOURCE in strings
+    assert f"[Game Ui] {MM.MODAL_NAME}\\Game Ui" in strings
+    assert not [s for s in strings if MM.TUTO_PAGE_ENTITY in s]
+
+
+@_needs_page_host
+def test_tuto_tab_retarget_touches_nothing_else():
+    """A tab swap must not disturb the other six tabs or add components."""
+    host = _PAGE_HOST.read_bytes()
+    out = MM.retarget_tuto_tab(host)
+    assert MM.component_names(out) == MM.component_names(host)
+    assert len(cooked.parse(out).sections) == len(cooked.parse(host).sections)
+    before = {s for _, _, s in ES.list_strings(host)}
+    after = {s for _, _, s in ES.list_strings(out)}
+    # Exactly the two tuto bindings left, exactly two RSMM bindings arrived.
+    assert len(before - after) == 2
+    assert len(after - before) == 2
+    for other in ("Play_Book_Page", "System_Book_Page", "Social_Book_Page",
+                  "Compendium_Book_Page", "Score_Book_Page"):
+        assert any(other in s for s in after), other
+
+
+@_needs_page_host
+def test_tuto_tab_retarget_refuses_an_unexpected_host():
+    """Fail closed if a game update renames the bindings, rather than
+    silently shipping a host override that changes nothing."""
+    stripped = ES.replace_strings(
+        _PAGE_HOST.read_bytes(), {MM.TUTO_PAGE_RESOURCE: "GameUis\\X.entity.ot"})
+    with pytest.raises(MM.ModsModalError, match="does not name"):
+        MM.retarget_tuto_tab(stripped)
+
+
+@_needs_corpus
+def test_modal_clone_has_the_game_ui_the_tab_binding_needs():
+    """The retarget points at `<entity>\\Game Ui`; the clone must carry it."""
+    assert "Game Ui" in MM.component_names(MM.build_modal(_DONOR.read_bytes()))
+
+
 @_needs_host
 def test_trigger_event_is_overridable():
     strings = {s for _, _, s in ES.list_strings(_trigger(event="RSMM_CUSTOM_OPEN"))}

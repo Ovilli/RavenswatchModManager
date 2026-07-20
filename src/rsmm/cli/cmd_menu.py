@@ -119,8 +119,9 @@ def cmd_remove(args: argparse.Namespace) -> int:
 
 
 def cmd_modal(args: argparse.Namespace) -> int:
-    """Build the STANDALONE mods modal — a custom menu entity opened on
-    BOOK_MENU_OPEN. Ships as its own mod and never edits the Tutorial page."""
+    """Build the STANDALONE mods menu — a custom entity that the book's Tuto
+    tab is pointed at. Ships as its own mod; the vanilla tutorial page asset
+    is left untouched on disk, only the tab binding moves."""
     game_dir = Path(args.game_dir) if args.game_dir else P.default_game_dir()
     cooking = game_dir / "DarkTalesResources" / "_Cooking"
     if not cooking.is_dir():
@@ -148,11 +149,14 @@ def cmd_modal(args: argparse.Namespace) -> int:
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(blob)
 
-    host = "" if args.no_trigger else f", host override {mods_modal.HOST_NAME}"
+    host = ("" if args.no_trigger
+            else f", host override {mods_modal.PAGE_HOST_NAME}")
     print(f"wrote {root} ({len(assets)} asset file(s), {len(mods)} mod(s)"
-          f"{host}). Does NOT touch the Tutorial page.")
-    print("Run 'rsmm apply' to install, then open the book in-game — the "
-          "modal spawns on BOOK_MENU_OPEN.")
+          f"{host}).")
+    if not args.no_trigger:
+        print("The book's Tutorial tab will open the mod menu instead of the "
+              "tutorial page (the tutorial asset itself is not modified).")
+    print("Run 'rsmm apply' to install, then open the book in-game.")
     return 0
 
 
@@ -219,13 +223,13 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--mods-dir", help="mods directory (default: repo mods/)")
     r.set_defaults(fn=cmd_remove)
 
-    m = sub.add_parser("modal", help="build the standalone mods modal "
-                       "(custom menu, does NOT touch the Tutorial page)")
+    m = sub.add_parser("modal", help="build the standalone mods menu "
+                       "(custom entity on the book's Tuto tab)")
     m.add_argument("--game-dir", help="Ravenswatch install dir (auto-detected)")
     m.add_argument("--mods-dir", help="mods directory (default: repo mods/)")
     m.add_argument("--no-trigger", action="store_true",
                    help="ship the modal asset alone, without the host "
-                        "override that opens it on BOOK_MENU_OPEN")
+                        "override that points the Tuto tab at it")
     m.add_argument("--probe", action="store_true",
                    help="diagnostic: point the trigger chain at the RETAIL "
                         "Modal_Warning instead of ours. If that modal opens "
