@@ -137,19 +137,86 @@ def test_apply_leaves_no_temp_files_and_sweeps_stale_ones(install, capsys):
     assert not (cooking / LOCK_NAME).exists()
 
 
-def test_apply_fails_loudly_if_the_written_bytes_do_not_match(install, monkeypatch, capsys):
-    """A short write (full disk, failing drive) must not be recorded as applied."""
-    real_copy = apply_mods.atomic_copy
+def test_apply_fails_loudly_if_the_written_bytes_do_not_match(install, monkeypatch):
+    """A short write (full disk, failing drive) must not be recorded as applied.
 
-    def truncating_copy(src: Path, dest: Path) -> int:
-        # Emulate a drive that accepts the write but stores less than asked.
-        if dest.name == "b.bin":
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(b"TRUNC")
-            return 5
-        return real_copy(src, dest)
+    Emulated at the staging layer: the batch commits, so the truncated bytes
+    reach the destination and the post-commit verification is what has to
+    catch them.
+    """
+    from rsmm.sdk.transaction import ApplyTransaction
 
-    monkeypatch.setattr(apply_mods, "atomic_copy", truncating_copy)
+    class TruncatingTx(ApplyTransaction):
+        def stage_write(self, encoded, src, dest):
+            w = super().stage_write(encoded, src, dest)
+            if dest.name == "b.bin":
+                w.stage.write_bytes(b"TRUNC")
+            return w
+
+    monkeypatch.setattr(apply_mods, "ApplyTransaction", TruncatingTx)
     args = SimpleNamespace(dry_run=False)
     with pytest.raises(OSError, match="did not land intact"):
         apply_mods.cmd_apply(args, install.repo, install.cooking, install.game_dir)
+
+
+def test_a_failed_batch_rolls_the_whole_apply_back(install, capsys):
+    """One bad file must not leave the other overrides half-installed."""
+    cooking = install.cooking
+    # A second mod file so the batch has two writes.
+    second = install.repo / "mods" / "TestMod" / "assets" / "foo" / "two.bin"
+    second.write_bytes(b"SECOND MOD CONTENT")
+    asset_map = install.repo / "asset_map.json"
+    asset_map.write_text(json.dumps({
+        "a\\b.bin": "foo/bar.bin",
+        "a\\c.bin": "foo/two.bin",
+    }))
+    vanilla_b = cooking / "a" / "b.bin"
+    vanilla_c = cooking / "a" / "c.bin"
+    vanilla_c.write_bytes(b"VANILLA TWO")
+
+    from rsmm.sdk.transaction import ApplyTransaction
+
+    class FailingTx(ApplyTransaction):
+        def commit(self):
+            # Make the SECOND replace fail inside commit — the way a file
+            # that vanished or is locked would — so the transaction's own
+            # rollback has to undo the first one.
+            if len(self.pending) > 1:
+                self.pending[1].stage.unlink()
+            return super().commit()
+
+    import pytest as _pytest
+    args = SimpleNamespace(dry_run=False)
+    with _pytest.MonkeyPatch.context() as mp:
+        mp.setattr(apply_mods, "ApplyTransaction", FailingTx)
+        with _pytest.raises(OSError):
+            apply_mods.cmd_apply(args, install.repo, cooking, install.game_dir)
+    capsys.readouterr()
+
+    # Both originals are intact — the committed one was rolled back.
+    assert vanilla_b.read_bytes() == b"VANILLA CONTENT"
+    assert vanilla_c.read_bytes() == b"VANILLA TWO"
+    # And nothing was recorded as an active override.
+    state_path = cooking / apply_mods.STATE_FILE_NAME
+    if state_path.exists():
+        assert json.loads(state_path.read_text()).get("active") == {}
+
+
+def test_apply_refuses_while_the_game_is_running(install, monkeypatch, capsys):
+    """Cooked assets must not be rewritten under a live engine."""
+    monkeypatch.setattr(apply_mods, "is_game_running", lambda: True)
+    assert apply_mods._refuse_if_game_running("apply mods", force=False) is True
+    err = capsys.readouterr().err
+    assert "Ravenswatch is running" in err
+
+    # --force is an explicit override, and warns rather than blocking.
+    assert apply_mods._refuse_if_game_running("apply mods", force=True) is False
+    assert "continuing anyway" in capsys.readouterr().err
+
+
+def test_game_probe_failure_never_blocks_an_apply(install, monkeypatch):
+    """The probe fails open: an unknown state must not make rsmm unusable."""
+    from rsmm.engine import game_proc
+
+    monkeypatch.setattr(game_proc, "_run", lambda cmd: None)
+    assert game_proc.is_game_running() is False

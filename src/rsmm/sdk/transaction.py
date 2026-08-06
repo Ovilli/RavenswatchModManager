@@ -22,6 +22,7 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from rsmm.engine.safeio import atomic_copy
 from rsmm.logging import get_logger
 
 logger = get_logger(__name__)
@@ -101,7 +102,7 @@ class ApplyTransaction:
         rel = self._safe_rel(encoded)
         stage = self.stage_root / rel
         stage.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, stage)
+        atomic_copy(src, stage)
         w = StagedWrite(encoded=encoded, src=src, dest=dest, stage=stage)
         self.pending.append(w)
         return w
@@ -123,7 +124,10 @@ class ApplyTransaction:
                 if w.dest.exists():
                     bak = w.dest.parent / (w.dest.name + BACKUP_SUFFIX)
                     if not bak.exists():
-                        shutil.copy2(w.dest, bak)
+                        # Atomic: a torn backup is worse than none — a later
+                        # restore would put truncated bytes over a working
+                        # install and call it recovered.
+                        atomic_copy(w.dest, bak)
                     w.backup = bak
                 w.dest.parent.mkdir(parents=True, exist_ok=True)
                 os.replace(w.stage, w.dest)

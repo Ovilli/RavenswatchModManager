@@ -51,6 +51,7 @@ from pathlib import Path
 
 from rsmm.cli import _term
 from rsmm.engine import cipher, cook_cache, cooked_schemas
+from rsmm.engine.game_proc import is_game_running
 from rsmm.engine.hashing import sha256_file as sha256
 from rsmm.engine.paths import (
     ASSET_MAP_JSON,
@@ -72,6 +73,7 @@ from rsmm.engine.safeio import (
     install_lock,
     sweep_temp_files,
 )
+from rsmm.sdk.transaction import ApplyTransaction  # noqa: E402 — see module docstring
 
 
 def parse_toml(p: Path) -> dict:
@@ -871,9 +873,31 @@ class VanillaMissing(RuntimeError):
     """
 
 
+def verify_landed(enc: str, mod_id: str, dest: Path, want_sha: str) -> None:
+    """Confirm the bytes on disk are the bytes we meant to write.
+
+    A short write (full disk, failing drive) otherwise gets recorded as a
+    successful apply and the engine loads the truncated asset.
+    """
+    got = sha256(dest)
+    if got != want_sha:
+        raise OSError(
+            f"{mod_id}: {enc} did not land intact (expected {want_sha[:12]}, "
+            f"got {got[:12]}). The install may be out of space or the drive "
+            f"is failing; run `rsmm restore --all`."
+        )
+
+
 def apply_one(enc: str, src: Path, dest: Path, mod_id: str,
               state: State, dry_run: bool, force: bool = False,
-              journal: Journal | None = None) -> None:
+              journal: Journal | None = None, stage=None) -> None:
+    """Apply one override, or STAGE it when `stage` is an ApplyTransaction.
+
+    Staged writes touch nothing live: the batch is committed together, so a
+    failure part-way through rolls the whole apply back instead of leaving
+    the install half-modded. Called without `stage` (tests, single-file
+    paths) it writes directly, as before.
+    """
     if enc.startswith(ROOT_PREFIX):
         rel = dest.suffix.lower()
         if rel in _DANGEROUS_ROOT_EXTS:
@@ -923,24 +947,19 @@ def apply_one(enc: str, src: Path, dest: Path, mod_id: str,
     print(f"  {_ST.ok(_ADD)} apply  {enc}  {_ST.dim(f'<- {mod_id}/{src.name}')}")
     src_sha = sha256(src)
     if not dry_run:
-        # Journal BEFORE the write: if we die between here and the state
-        # save at the end of the run, the next apply/restore still knows
-        # this file was touched. `orig_sha` is empty exactly when nothing
-        # was backed up, i.e. the file is mod-added.
+        # Journal BEFORE anything is written: if we die between here and the
+        # state save at the end of the run, the next apply/restore still
+        # knows this file was touched. `orig_sha` is empty exactly when
+        # nothing was backed up, i.e. the file is mod-added.
         if journal is not None:
             journal.record(enc, mod_id, added=not orig_sha)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        atomic_copy(src, dest)
-        # Verify what actually landed. A short write (full disk, flaky
-        # drive) otherwise gets recorded as a successful apply and the
-        # engine loads the truncated asset.
-        got = sha256(dest)
-        if got != src_sha:
-            raise OSError(
-                f"{mod_id}: {enc} did not land intact (expected "
-                f"{src_sha[:12]}, got {got[:12]}). The install may be out of "
-                f"space or the drive is failing; run `rsmm restore --all`."
-            )
+        if stage is not None:
+            # Nothing live is touched until the batch commits.
+            stage.stage_write(enc, src, dest)
+        else:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            atomic_copy(src, dest)
+            verify_landed(enc, mod_id, dest, src_sha)
     state.active[enc] = {
         "mod": mod_id,
         "src_sha256": src_sha,
@@ -1694,6 +1713,29 @@ def restore_usedrsclist(game_dir: Path, dry_run: bool) -> int:
     return 1
 
 
+def _refuse_if_game_running(operation: str, force: bool) -> bool:
+    """True when the caller should stop.
+
+    Rewriting cooked assets under a live game can fail mid-batch (Windows
+    holds handles on open files) and can hand the running engine a file that
+    changed underneath it. The probe fails open — an unknown state never
+    blocks — and `--force` overrides deliberately.
+    """
+    if not is_game_running():
+        return False
+    if force:
+        print(f"  {_ST.warn(_WARN_TOK)} Ravenswatch appears to be running; "
+              f"continuing anyway (--force).", file=sys.stderr)
+        return False
+    print(f"{_ST.err('[FAIL]')} Ravenswatch is running — close the game before "
+          f"you {operation}.\n"
+          f"  Writing cooked assets under a live game can leave the install "
+          f"half-written, and the engine may load a file mid-replace.\n"
+          f"  Re-run once it has exited, or pass --force if you are sure.",
+          file=sys.stderr)
+    return True
+
+
 @contextmanager
 def _install_lock_or_fail(cooking: Path, operation: str):
     """Hold the install lock for the duration, or explain who has it.
@@ -1726,7 +1768,6 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     # around. Clear/finish it before computing the new plan so we're
     # diffing against a clean install tree.
     try:
-        from rsmm.sdk.transaction import ApplyTransaction
         tx_recover = ApplyTransaction(cooking).recover()
         if tx_recover != "clean":
             print(f"  [apply] recovered previous staging state: {tx_recover}")
@@ -1794,11 +1835,20 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
             print(f"  [WARN] {failed_removals} removal(s) failed; "
                   f"state entries preserved for retry", file=sys.stderr)
         blocked = 0
+        # Stage the whole batch, then commit it in one pass. A failure part
+        # way through commit rolls every file already replaced back to its
+        # backup, so an interrupted apply leaves the install as it was
+        # instead of half-modded. Dry runs stage nothing.
+        tx = None if args.dry_run else ApplyTransaction(cooking)
+        staged: list[tuple[str, str, Path, str]] = []   # enc, mod_id, dest, src_sha
         for enc, src, dest, mod_id in additions:
             try:
                 apply_one(enc, src, dest, mod_id, state, args.dry_run,
                           force=bool(getattr(args, "force", False)),
-                          journal=journal)
+                          journal=journal, stage=tx)
+                if tx is not None:
+                    staged.append((enc, mod_id, dest,
+                                   state.active[enc]["src_sha256"]))
             except VanillaMissing as e:
                 # Skip this file, keep applying the rest: one wiped vanilla
                 # asset must not block every other mod, and skipping is the
@@ -1809,6 +1859,20 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
             print(f"  {_ST.err(_WARN_TOK)} "
                   f"{_ST.err(f'{blocked} file(s) NOT applied')} — the vanilla "
                   "originals are missing (see above)", file=sys.stderr)
+        if tx is not None and staged:
+            try:
+                tx.commit()
+            except Exception as e:
+                # Everything committed before the failure has been rolled
+                # back by the transaction. Drop the state entries we were
+                # about to record: those overrides are not installed.
+                for enc, _mod_id, _dest, _sha in staged:
+                    state.active.pop(enc, None)
+                print(f"{_ST.err('[FAIL]')} apply rolled back: {e}",
+                      file=sys.stderr)
+                raise
+            for enc, mod_id, dest, src_sha in staged:
+                verify_landed(enc, mod_id, dest, src_sha)
 
     if manifest_syncs:
         print(f"Synced {manifest_syncs} mod file(s) (manifests/lua) to game mods directory")
@@ -2208,6 +2272,8 @@ def main() -> int:
         with _install_lock_or_fail(cooking, "restore") as held:
             if not held:
                 return 1
+            if _refuse_if_game_running("restore", bool(getattr(args, "force", False))):
+                return 1
             return cmd_restore_all(args, repo, cooking, game_dir)
     if not _ensure_asset_map():
         return 1
@@ -2252,6 +2318,8 @@ def main() -> int:
 
     with _install_lock_or_fail(cooking, "apply") as held:
         if not held:
+            return 1
+        if _refuse_if_game_running("apply mods", bool(getattr(args, "force", False))):
             return 1
         try:
             return cmd_apply(args, repo, cooking, game_dir)
