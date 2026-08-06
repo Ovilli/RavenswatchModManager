@@ -41,7 +41,7 @@ from .plugins import discover_plugins
 from .repo import RepoIndex, sign_file, verify_file
 from .testkit import ModExpect, assert_no_conflicts, conflicts, expect
 from .transaction import ApplyTransaction
-from .versioning import GameBuildPin, check_compat
+from .versioning import GameBuildPin, check_compat, pin_exists
 
 _ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 
@@ -53,7 +53,7 @@ __all__ = [
     "discover_plugins",
     "RepoIndex", "sign_file", "verify_file",
     "expect", "conflicts", "assert_no_conflicts", "ModExpect",
-    "GameBuildPin", "check_compat",
+    "GameBuildPin", "check_compat", "pin_exists",
     "ApplyTransaction",
     "engine",
     "Mod",

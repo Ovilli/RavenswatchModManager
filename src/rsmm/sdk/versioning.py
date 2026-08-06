@@ -20,6 +20,11 @@ from pathlib import Path
 PIN_FILE_NAME = ".rsmm_game_build.json"
 
 
+def pin_exists(cooking: Path) -> bool:
+    """True when a pin file is present, readable or not."""
+    return (cooking / PIN_FILE_NAME).exists()
+
+
 @dataclass
 class GameBuildPin:
     sha256: str
@@ -38,18 +43,29 @@ class GameBuildPin:
 
     @classmethod
     def load(cls, cooking: Path) -> GameBuildPin | None:
+        """Read the pin, or None if the file is absent OR unreadable.
+
+        Field coercion is inside the guard on purpose: only malformed JSON
+        used to be caught, so a pin whose ``size`` was a string raised
+        ValueError out of here and took the whole apply with it, while
+        malformed JSON returned None. Same corruption, two behaviours.
+
+        Callers must distinguish "no pin" from "bad pin" with
+        :func:`pin_exists` — silently treating a corrupt pin as a first
+        install re-pins the CURRENT exe and hides a game update.
+        """
         p = cooking / PIN_FILE_NAME
         if not p.exists():
             return None
         try:
             raw = json.loads(p.read_text(encoding="utf-8"))
-        except Exception:
+            return cls(
+                sha256=str(raw["sha256"]),
+                size=int(raw["size"]),
+                first_seen=int(raw.get("first_seen", 0)),
+            )
+        except (OSError, ValueError, TypeError, KeyError, AttributeError):
             return None
-        return cls(
-            sha256=str(raw.get("sha256", "")),
-            size=int(raw.get("size", 0)),
-            first_seen=int(raw.get("first_seen", 0)),
-        )
 
     def save(self, cooking: Path) -> None:
         p = cooking / PIN_FILE_NAME
@@ -72,6 +88,14 @@ def check_compat(exe: Path, cooking: Path) -> tuple[bool, str]:
         return False, f"EXE not found: {exe}"
     cur = GameBuildPin.from_exe(exe)
     pin = GameBuildPin.load(cooking)
+    if pin is None and pin_exists(cooking):
+        # Fail closed. Re-pinning here would record whatever is installed
+        # right now as "the known-good build", which is exactly what a
+        # corrupt pin must not be allowed to do after a game update.
+        return False, (
+            f"game build pin at {cooking / PIN_FILE_NAME} is unreadable. "
+            f"Delete it to re-pin against the current install."
+        )
     if pin is None:
         cur.save(cooking)
         return True, f"pinned build {cur.sha256[:12]} ({cur.size} bytes)"

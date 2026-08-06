@@ -695,3 +695,122 @@ def test_install_direct_zip(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(cmd_install, "MODS_DIR", tmp_path / "mods")
     assert cmd_install.main([zip_path.as_uri()]) == 0
     assert (tmp_path / "mods" / "ZipMod" / "init.lua").exists()
+
+
+def test_transaction_rollback_removes_files_it_created(tmp_path: Path):
+    """A failed commit must not leave newly-created assets behind.
+
+    Rollback only restored writes that had a backup. A write that CREATED a
+    file (a new asset registered through UsedRscList) has none, so it used to
+    survive the rollback — and with no `.rsmm.bak` next to it, `restore --all`
+    had nothing to key on and never cleaned it up.
+    """
+    cooking = tmp_path / "cooking"
+    cooking.mkdir()
+    src = tmp_path / "src.bin"
+    src.write_bytes(b"new")
+
+    replaced = cooking / "replaced"
+    replaced.write_bytes(b"vanilla")
+    created = cooking / "created"          # does not exist yet
+    doomed = cooking / "doomed"
+
+    tx = ApplyTransaction(cooking)
+    tx.stage_write("replaced", src, replaced)
+    tx.stage_write("created", src, created)
+    tx.stage_write("doomed", src, doomed)
+    # Make the third replace fail: point it at a path whose parent is a file.
+    tx.pending[2].dest = cooking / "replaced" / "nested"
+
+    with pytest.raises(OSError):
+        tx.commit()
+
+    assert replaced.read_bytes() == b"vanilla"      # restored from backup
+    assert not created.exists()                     # created file removed
+    assert not tx.stage_root.exists()
+    assert not tx.commit_marker.exists()
+
+
+def test_versioning_unreadable_pin_fails_closed(tmp_path: Path):
+    """A corrupt pin must not be silently re-pinned to the current exe."""
+    cooking = tmp_path / "cooking"
+    cooking.mkdir()
+    exe = tmp_path / "exe.bin"
+    exe.write_bytes(b"GAME")
+    (cooking / ".rsmm_game_build.json").write_text("{not json")
+
+    ok, msg = check_compat(exe, cooking)
+    assert not ok
+    assert "unreadable" in msg
+    # And the bad pin is left alone for the user to delete deliberately.
+    assert (cooking / ".rsmm_game_build.json").read_text() == "{not json"
+
+
+def test_versioning_pin_with_bad_field_types_does_not_raise(tmp_path: Path):
+    """Only malformed JSON used to be guarded; a bad field type escaped."""
+    cooking = tmp_path / "cooking"
+    cooking.mkdir()
+    exe = tmp_path / "exe.bin"
+    exe.write_bytes(b"GAME")
+    (cooking / ".rsmm_game_build.json").write_text('{"sha256": "a", "size": "big"}')
+
+    ok, msg = check_compat(exe, cooking)
+    assert not ok and "unreadable" in msg
+
+
+def test_content_emit_does_not_blame_a_missing_emit_for_builder_bugs(tmp_path: Path,
+                                                                    monkeypatch):
+    """An AttributeError inside a builder is that builder's bug.
+
+    Catching it around the emit() CALL reported every such bug as "this kind
+    has no emit()", sending authors after a function that was there.
+    """
+    from rsmm.sdk import content as content_mod
+
+    class Boom:
+        @staticmethod
+        def emit(mod_id, d, out_dir):
+            raise AttributeError("'NoneType' object has no attribute 'rarity'")
+
+    monkeypatch.setattr(content_mod, "_load_kind", lambda kind: Boom)
+    reg = content_mod.ContentRegistry(mod_id="m")
+    reg.register("item", id="thing")
+    with pytest.raises(AttributeError, match="rarity"):
+        reg.emit(tmp_path)
+
+
+def test_content_missing_emit_is_still_reported(tmp_path: Path, monkeypatch):
+    from rsmm.sdk import content as content_mod
+
+    class NoEmit:
+        pass
+
+    monkeypatch.setattr(content_mod, "_load_kind", lambda kind: NoEmit)
+    reg = content_mod.ContentRegistry(mod_id="m")
+    reg.register("item", id="thing")
+    with pytest.raises(content_mod.ContentError, match="no emit"):
+        reg.emit(tmp_path)
+
+
+def test_load_kind_surfaces_a_broken_import_inside_a_builder(monkeypatch):
+    """A missing dependency INSIDE a builder is not "no builder for kind"."""
+    from importlib import import_module as real_import
+
+    from rsmm.sdk import content as content_mod
+
+    def fake_import(name):
+        if name == "rsmm.sdk.kinds.items":
+            raise ModuleNotFoundError("No module named 'numpy'", name="numpy")
+        return real_import(name)
+
+    monkeypatch.setattr(content_mod, "import_module", fake_import)
+    with pytest.raises(ModuleNotFoundError, match="numpy"):
+        content_mod._load_kind("item")
+
+
+def test_load_kind_still_reports_a_genuinely_absent_builder(monkeypatch):
+    from rsmm.sdk import content as content_mod
+
+    monkeypatch.setitem(content_mod._KIND_MODULES, "item", "does_not_exist")
+    with pytest.raises(content_mod.ContentError, match="no builder for kind"):
+        content_mod._load_kind("item")

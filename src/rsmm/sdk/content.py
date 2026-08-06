@@ -175,13 +175,15 @@ class ContentRegistry:
         written: list[Path] = []
         for d in self.defs:
             mod = _load_kind(d.kind)
-            try:
-                paths = mod.emit(self.mod_id, d, out_dir)
-            except AttributeError as e:
-                raise ContentError(
-                    f"kind {d.kind!r} module has no emit(): {e}"
-                ) from e
-            written.extend(paths)
+            # Check for emit() instead of catching AttributeError around the
+            # call: an AttributeError raised INSIDE a builder (a typo, a None
+            # where a def was expected) is a bug in that builder, and
+            # reporting it as "this kind has no emit()" sent authors hunting
+            # for a missing function that was there all along.
+            emit = getattr(mod, "emit", None)
+            if not callable(emit):
+                raise ContentError(f"kind {d.kind!r} module has no emit()")
+            written.extend(emit(self.mod_id, d, out_dir))
         return written
 
 
@@ -201,9 +203,16 @@ _KIND_MODULES = {
 def _load_kind(kind: str):
     """Lazy-import to keep startup cheap and let plugins override kinds."""
     mod_name = _KIND_MODULES.get(kind, f"{kind}s")
+    target = f"rsmm.sdk.kinds.{mod_name}"
     try:
-        return import_module(f"rsmm.sdk.kinds.{mod_name}")
+        return import_module(target)
     except ModuleNotFoundError as e:
-        raise ContentError(f"no builder for kind {kind!r}: {e}") from e
+        # Only "the builder module itself is absent" means there is no
+        # builder. A ModuleNotFoundError from an import INSIDE the builder
+        # is a broken dependency in that builder, and swallowing it into
+        # "no builder for kind" hid the real missing module.
+        if e.name == target or (e.name and target.startswith(f"{e.name}.")):
+            raise ContentError(f"no builder for kind {kind!r}: {e}") from e
+        raise
 
 

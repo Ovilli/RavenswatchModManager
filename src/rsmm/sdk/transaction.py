@@ -69,7 +69,11 @@ class ApplyTransaction:
     def recover(self) -> str:
         """Inspect on-disk state from a previous run; return what happened.
 
-        Returns one of: "clean", "discarded", "resumed".
+        Returns ``"clean"`` (nothing to do) or ``"discarded"`` (leftovers
+        cleared). A commit cannot be *resumed*: the staging tree records
+        what to write but not where each file came from, and re-deriving
+        destinations from a plan we no longer hold would be guesswork on a
+        half-written install. The applier re-plans from scratch instead.
         """
         has_stage = self.stage_root.is_dir()
         has_marker = self.commit_marker.exists()
@@ -138,14 +142,32 @@ class ApplyTransaction:
     # ---- internals ----------------------------------------------------
 
     def _rollback(self, committed: list[StagedWrite]) -> None:
+        """Undo every replace this commit already made.
+
+        Two cases, and only the first used to be handled:
+
+        * the write REPLACED an existing asset — restore it from the backup;
+        * the write CREATED a file that was not there before (a new asset
+          registered through UsedRscList) — there is no backup to restore, so
+          the file itself must be removed. Leaving it behind meant a failed
+          apply still planted assets in the install, and `restore --all` had
+          no `.rsmm.bak` to key on, so nothing ever cleaned them up.
+        """
         for w in reversed(committed):
             if w.backup and w.backup.exists():
                 try:
                     os.replace(w.backup, w.dest)
-                except Exception as e:
+                except OSError as e:
                     # A failed rollback can leave the install half-reverted —
                     # surface it loudly; the caller/`rsmm doctor` can reconcile.
                     logger.error("rollback failed to restore %s: %s", w.dest, e)
+                continue
+            try:
+                w.dest.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError as e:
+                logger.error("rollback failed to remove %s: %s", w.dest, e)
 
     def _safe_rel(self, encoded: str) -> Path:
         """Translate the applier's encoded key into a relative staging path.
