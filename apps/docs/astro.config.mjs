@@ -63,6 +63,7 @@ export default defineConfig({
           items: [
             { label: 'Authoring mods', slug: 'guides/modding' },
             { label: 'Example mods', slug: 'guides/examples' },
+            { label: 'Custom items', slug: 'guides/custom-items' },
             { label: 'Custom enemies', slug: 'guides/custom-enemies' },
             { label: 'Custom skills (talents)', slug: 'guides/custom-skills' },
             { label: 'SDK (v3)', slug: 'guides/sdk' },

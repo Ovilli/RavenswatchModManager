@@ -1,0 +1,104 @@
+---
+title: Custom items
+description: Clone a vanilla magical object into your own item — the guided CLI flow, end to end.
+---
+
+import { Aside, Badge, Steps } from '@astrojs/starlight/components';
+
+Custom magical objects are the one **confirmed** clone-and-patch kind: verified
+in-game, no experimental opt-in, no loader required. <Badge text="Confirmed" variant="success" />
+
+An item mod is a `manifest.toml` and nothing else. You pick a vanilla item to
+clone, rename it, repoint its icon, and retune its numbers; `rsmm apply` cooks
+the definition and registers it.
+
+## The guided flow
+
+<Steps>
+
+1. **Scaffold from a real base.**
+
+   ```sh
+   ./rsmm new IronCrabHide --kind item --base Common/Armor_Per_Object \
+       --name "Iron Crab Hide" --desc "Bonus armor per rare object collected."
+   ```
+
+   Run it without `--base` at a terminal and you get a searchable picker of
+   every vanilla item instead. Both spellings of a base work — the bare
+   `Armor_Per_Object` or the rarity-qualified `Common/Armor_Per_Object`.
+
+2. **Read what it wrote.**
+
+   ```toml title="mods/IronCrabHide/manifest.toml"
+   [[content]]
+   kind          = "item"
+   id            = "IronCrabHide_item_1"
+   base          = 'Common/Armor_Per_Object'
+   name          = 'Iron Crab Hide'
+   description   = 'Bonus armor per rare object collected.'
+   rarity        = 'Common'
+   icon          = 'Objects\UI_Object_GreenArmor.png'
+   value_patches = [['Armor per Object Value', 2.0, 2.0]]
+   ```
+
+   The icon, rarity and every `value_patches` entry are **read out of the base
+   you chose**, not templated. The third number in each patch is the one you
+   change; it starts equal to the current value, so the scaffold applies
+   unchanged.
+
+3. **Retune and check.**
+
+   ```sh
+   ./rsmm items show Common/Armor_Per_Object   # every editable label + default
+   ./rsmm lint IronCrabHide
+   ./rsmm apply
+   ```
+
+</Steps>
+
+## Choosing a base
+
+```sh
+./rsmm items list --rarity Common --grep armor
+./rsmm items icons --grep crab      # usable icon stems
+./rsmm items show Damage_Power      # labels, defaults, [shadowed] markers
+```
+
+The base decides the item's *mechanic* — cloning is a byte-level copy with the
+name, description, icon and magnitudes rewritten. There is no way to author a
+brand-new effect from the manifest; pick the vanilla item whose behaviour you
+want and retune it.
+
+## Why some fields don't get seeded
+
+`rsmm new` deliberately leaves two classes of value field out of the scaffold,
+and prints a note for each it skipped:
+
+- **Shadowed labels.** The inline float is overridden by a selector (a card
+  count, a stack counter), so patching it changes nothing. `set_value_after_label`
+  refuses these outright, and `rsmm items show` marks them.
+- **Labels whose default doesn't round-trip.** `rsmm items show` discovers
+  value fields best-effort, and occasionally reports a `(label, default)` pair
+  that can't be re-found for patching. Seeding one would make the scaffold fail
+  its own lint, so it's dropped.
+
+<Aside type="tip">
+Patches are anchored on **both** the label and the expected current value, and
+the edit is 4 bytes to 4 bytes. That means a wrong "current" is an error rather
+than a corrupted asset — if `rsmm lint` reports `expected value X not found`,
+re-read the real default with `rsmm items show`.
+</Aside>
+
+## What ships
+
+`rsmm apply` writes the cooked entity under
+`EntitySettings/Objects/Magical_Objects/<rarity>/`, appends the name and
+description to the `Magical_Objects~GAM.xls` text bank, and registers the new
+path so the engine loads it — the same `UsedRscList.ot` registration every new
+asset goes through. Removing the mod is `./rsmm restore --all`.
+
+<Aside type="caution">
+A clone keeps the base's registered node GUIDs. Its identity GUID is distinct,
+but if the player also owns the base item in the same run, the hero's owned-set
+can dedup the clone at grant time. Cloning a rarely-rolled base avoids it.
+</Aside>
