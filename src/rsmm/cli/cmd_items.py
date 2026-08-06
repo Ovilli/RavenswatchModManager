@@ -37,10 +37,23 @@ def _iter_items():
 
 
 def _find_item(item_id: str):
-    low = item_id.lower()
+    """Resolve a base id to (id, rarity, cooked_path).
+
+    Accepts both the bare id (``Armor_Per_Object``) and the rarity-qualified
+    path form the corpus is laid out in (``Common/Armor_Per_Object``) — the
+    latter is what the enemy kind uses for its donors, and the docs teach it
+    for items too. A wrong rarity prefix does not match, so a typo still
+    surfaces as "unknown item" rather than resolving to the wrong file.
+    """
+    want_rarity, _, stem = str(item_id).replace("\\", "/").rpartition("/")
+    low = stem.lower()
+    want_low = want_rarity.lower()
     for iid, rarity, p in _iter_items():
-        if iid == item_id or iid.lower() == low:
-            return iid, rarity, p
+        if iid.lower() != low:
+            continue
+        if want_rarity and rarity.lower() != want_low:
+            continue
+        return iid, rarity, p
     return None
 
 

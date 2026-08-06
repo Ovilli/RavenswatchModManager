@@ -43,9 +43,18 @@ TEXT_BANK_OVERRIDES_SUBDIR = "_pending_text_overrides"
 
 def _find_base(base_id: str) -> tuple[bytes, str] | None:
     """Return (cooked_bytes, rarity) for a vanilla item id, or None if no such
-    cooked entity exists under the in-repo magical-object tree."""
-    leaf = f"{base_id}.entity.ot.EntitySettingsResource.gen"
+    cooked entity exists under the in-repo magical-object tree.
+
+    Both spellings resolve: the bare id (``Armor_Per_Object``) and the
+    rarity-qualified path (``Common/Armor_Per_Object``). Without the latter a
+    prefixed base silently missed and fell back to the legacy manifest instead
+    of cooking a real clone.
+    """
+    want_rarity, _, stem = str(base_id).replace("\\", "/").rpartition("/")
+    leaf = f"{stem}.entity.ot.EntitySettingsResource.gen"
     for rarity in _RARITIES:
+        if want_rarity and rarity.lower() != want_rarity.lower():
+            continue
         p = _MO_DIR / rarity / leaf
         if p.is_file():
             return p.read_bytes(), rarity
