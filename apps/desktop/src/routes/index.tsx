@@ -36,7 +36,14 @@ import {
 } from '../lib/library-deps';
 import type { ModCategory } from '../lib/mod-types';
 import { listLocalMods, uninstallLocalMod } from '../lib/rsmm';
-import { activeProfile, detectConflicts, getMod, isEnabledIn, useApp } from '../store';
+import {
+  activeProfile,
+  detectConflicts,
+  getMod,
+  isEnabledIn,
+  unadoptedMods,
+  useApp,
+} from '../store';
 
 export const Route = createFileRoute('/')({
   component: LibraryPage,
@@ -66,6 +73,7 @@ function LibraryPage() {
   const reorderMod = useApp((s) => s.reorderMod);
   const installed = useApp((s) => s.installed);
   const syncLocalMods = useApp((s) => s.syncLocalMods);
+  const adoptMods = useApp((s) => s.adoptMods);
   const activeProfileId = useApp((s) => s.activeProfileId);
   const [view, setView] = useState<ViewMode>('cards');
   const [query, setQuery] = useState('');
@@ -89,6 +97,11 @@ function LibraryPage() {
     () => profile.loadOrder.filter((id) => localModsState[id] && isEnabledIn(profile, id)).length,
     [profile, localModsState],
   );
+  // Mods the CLI found on disk that this profile hasn't opted into — a mod
+  // folder copied in by hand, or one installed while another profile was
+  // active. Without surfacing these, dropping a folder into mods/ looked
+  // like the app had simply ignored it.
+  const unadopted = useMemo(() => unadoptedMods(profile, installed), [profile, installed]);
   const conflicts = useMemo(() => detectConflicts(profile), [profile]);
   const conflictCountByMod = useMemo(() => {
     const counts = new Map<string, number>();
@@ -354,10 +367,11 @@ function LibraryPage() {
     );
   }
 
-  // Mods exist on disk but the active profile hasn't opted any of them
-  // in yet (e.g. a freshly created profile). The Library is profile-
-  // scoped, so we deliberately don't surface the disk-only mods here —
-  // /browse is where the user picks which ones to add.
+  // Mods exist on disk but the active profile hasn't opted any of them in
+  // yet (a fresh profile, or a mod folder copied in by hand). The Library is
+  // profile-scoped, but hiding disk-only mods entirely made a hand-dropped
+  // mod look like it was ignored by the app — so offer to adopt them here
+  // instead of sending the user to /browse to find something already local.
   if (profile.loadOrder.length === 0) {
     return (
       <div className="space-y-6">
@@ -365,14 +379,35 @@ function LibraryPage() {
         <EmptyState
           title={`“${profile.name}” has no mods yet`}
           body={
-            installed.length === 1
-              ? '1 mod is present on disk. Browse to add it to this profile.'
-              : `${installed.length} mods are present on disk. Browse to add them to this profile.`
+            unadopted.length === 0
+              ? 'No mods found on disk yet. Browse the index to add your first.'
+              : unadopted.length === 1
+                ? '1 mod is present on disk but not in this profile.'
+                : `${unadopted.length} mods are present on disk but not in this profile.`
           }
           action={
-            <Link to="/browse" className="btn-grim" data-variant="primary">
-              Browse mods
-            </Link>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {unadopted.length > 0 && profile.id !== 'default' ? (
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={() => {
+                    adoptMods(unadopted);
+                    toast.push(
+                      unadopted.length === 1
+                        ? 'Added 1 mod from disk to this profile'
+                        : `Added ${unadopted.length} mods from disk to this profile`,
+                      'success',
+                    );
+                  }}
+                >
+                  Add {unadopted.length} from disk
+                </Button>
+              ) : null}
+              <Link to="/browse" className="btn-grim" data-variant="default">
+                Browse mods
+              </Link>
+            </div>
           }
         />
       </div>
@@ -380,7 +415,10 @@ function LibraryPage() {
   }
 
   return (
-    <div className="space-y-6">
+    // pb-24 is permanent, not conditional: the bulk-action bar below is a
+    // fixed overlay so selecting a mod never pushes the list down, and the
+    // padding keeps the last row reachable above it either way.
+    <div className="space-y-6 pb-24">
       <SetupBanner />
       <UpdatesPanel />
       <SectionHeader
@@ -471,7 +509,7 @@ function LibraryPage() {
       </div>
 
       {hasSelection ? (
-        <Panel className="flex flex-wrap items-center justify-between gap-3">
+        <Panel className="fixed inset-x-0 bottom-0 z-40 flex flex-wrap items-center justify-between gap-3 rounded-none border-x-0 border-b-0">
           <div>
             <h3 className="font-fraktur text-lg text-parchment">{selected.size} selected</h3>
             <p className="font-serif-italic text-sm text-ash">
@@ -514,20 +552,23 @@ function LibraryPage() {
             {cat === 'all' ? 'All' : CATEGORY_LABEL[cat]}
           </Button>
         ))}
-        {filterCount > 0 ? (
-          <Button
-            type="button"
-            onClick={() => {
-              setQuery('');
-              setCategory('all');
-              setStatus('all');
-            }}
-            variant="default"
-            size="sm"
-          >
-            <X className="h-4 w-4" /> Clear filters
-          </Button>
-        ) : null}
+        {/* Always mounted, disabled when idle — mounting it on the first
+            filter click re-wrapped the chip row and moved every category
+            button out from under the cursor. */}
+        <Button
+          type="button"
+          onClick={() => {
+            setQuery('');
+            setCategory('all');
+            setStatus('all');
+          }}
+          disabled={filterCount === 0}
+          variant="default"
+          size="sm"
+          className="ml-auto disabled:cursor-default disabled:opacity-40"
+        >
+          <X className="h-4 w-4" /> Clear filters
+        </Button>
       </div>
 
       {localModsError ? (
@@ -540,22 +581,49 @@ function LibraryPage() {
         </div>
       ) : null}
 
+      {unadopted.length > 0 ? (
+        <div className="ember-banner flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <span className="font-serif-italic text-base">
+            {unadopted.length === 1
+              ? '1 mod is on disk but not in this profile.'
+              : `${unadopted.length} mods are on disk but not in this profile.`}
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="primary"
+            onClick={() => {
+              adoptMods(unadopted);
+              toast.push(
+                unadopted.length === 1
+                  ? 'Added 1 mod from disk to this profile'
+                  : `Added ${unadopted.length} mods from disk to this profile`,
+                'success',
+              );
+            }}
+          >
+            Add to profile
+          </Button>
+        </div>
+      ) : null}
+
+      {/* Mirrors a real category section — heading, fleuron, then cards at the
+          same min height in the same grid — so the swap to loaded content is a
+          fade in place rather than the page jumping to a new geometry. */}
       {localModsLoading && Object.keys(localModsState).length === 0 ? (
-        <Panel>
-          <div className="space-y-3 animate-pulse" aria-busy="true">
-            <div className="h-6 w-56 rounded bg-oxblood/20" />
-            <div className="h-4 w-96 max-w-full rounded bg-oxblood/15" />
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div
-                  // biome-ignore lint/suspicious/noArrayIndexKey: fixed loading placeholders
-                  key={i}
-                  className="h-36 rounded border border-border bg-pitch/40"
-                />
-              ))}
-            </div>
+        <section className="space-y-3 animate-pulse" aria-busy="true">
+          <div className="h-6 w-56 rounded bg-oxblood/20" />
+          <Fleuron />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: fixed loading placeholders
+                key={i}
+                className="min-h-[15rem] rounded border border-border bg-pitch/40"
+              />
+            ))}
           </div>
-        </Panel>
+        </section>
       ) : null}
 
       {conflicts.length > 0 ? (
@@ -713,7 +781,7 @@ function CardGrid({
                 onOpen?.(mod.slug);
               }
             }}
-            className="grimoire-card flex flex-col gap-3 p-5 transition-colors duration-150 hover:border-gilt/40 cursor-pointer"
+            className="grimoire-card flex h-full min-h-[15rem] flex-col gap-3 p-5 transition-colors duration-150 hover:border-gilt/40 cursor-pointer"
           >
             <header className="flex items-start justify-between gap-3">
               <div>
@@ -737,14 +805,23 @@ function CardGrid({
               />
             </header>
             <p className="font-serif-italic text-sm leading-snug text-smoke">{mod.summary}</p>
-            <div className="flex flex-wrap items-center gap-2">
+            {/* Status tags mount and unmount as a toggle changes conflict and
+                dependency counts. They get their own reserved-height row so
+                that reflow can never reach the controls below. */}
+            <div className="flex min-h-[1.75rem] flex-wrap items-center gap-2">
               {outdated ? <MonoTag tone="gilt">Update {mod.latestVersion}</MonoTag> : null}
               {depCount > 0 ? <MonoTag tone="crimson">{depCount} missing deps</MonoTag> : null}
               {conflictCount > 0 ? (
                 <MonoTag tone="crimson">{conflictCount} conflicts</MonoTag>
               ) : null}
               <MonoTag tone="default">{mod.category}</MonoTag>
-              <StatPill value={`#${orderIdx + 1}`} label="folder" className="tracking-normal" />
+              <StatPill value={`#${orderIdx + 1}`} label="load" className="tracking-normal" />
+            </div>
+            <DependencyStrip mod={mod} profile={profile} onEnableDependency={onEnableDependency} />
+            {/* mt-auto pins the actions to the card's bottom edge, so every
+                card in a grid row puts the switch and uninstall button at the
+                same y — and a tag appearing above never moves them. */}
+            <div className="mt-auto flex items-center gap-2 pt-1">
               <InkSwitch
                 on={enabled}
                 onClick={() => onToggle(id)}
@@ -760,7 +837,6 @@ function CardGrid({
                 uninstall
               </Button>
             </div>
-            <DependencyStrip mod={mod} profile={profile} onEnableDependency={onEnableDependency} />
           </div>
         );
       })}
@@ -854,7 +930,10 @@ function ListView({
                   </>
                 ) : null}
               </p>
-              <div className="mt-1 flex flex-wrap gap-1.5">
+              {/* Reserved height: these tags appear the moment a toggle
+                  creates a conflict, and a 0px→20px row grew every row below
+                  it out from under the pointer. */}
+              <div className="mt-1 flex min-h-[1.25rem] flex-wrap gap-1.5">
                 {(missingDeps.get(id) ?? 0) > 0 ? (
                   <MonoTag tone="crimson">missing deps</MonoTag>
                 ) : null}
@@ -869,7 +948,6 @@ function ListView({
               />
             </div>
             <StatPill value={`#${orderIdx + 1}`} label="load" className="tracking-normal" />
-            <StatPill value={`#${orderIdx + 1}`} label="folder" className="tracking-normal" />
             <Button type="button" onClick={() => onUninstall(id)} variant="danger" size="sm">
               uninstall
             </Button>

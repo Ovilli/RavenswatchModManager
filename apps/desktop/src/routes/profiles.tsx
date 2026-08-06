@@ -9,7 +9,7 @@ import { CheckIcon } from '../components/icons/CheckIcon';
 import { useDialog, useToast } from '../components/toast';
 import { validateProfileName } from '../lib/profile-name';
 import { listLocalMods } from '../lib/rsmm';
-import { getMod, isEnabledIn, useApp } from '../store';
+import { getMod, isEnabledIn, splitProfileMods, useApp } from '../store';
 
 export const Route = createFileRoute('/profiles')({
   component: ProfilesPage,
@@ -35,6 +35,7 @@ function ProfilesPage() {
   const [backupError, setBackupError] = useState<string | null>(null);
   const activeProfileId = useApp((s) => s.activeProfileId);
   const syncLocalMods = useApp((s) => s.syncLocalMods);
+  const pruneMissing = useApp((s) => s.pruneMissingMods);
 
   const localModsQuery = useQuery({
     queryKey: ['rsmm', 'list', activeProfileId],
@@ -296,7 +297,11 @@ function ProfilesPage() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {profiles.map((p) => {
           const isActive = p.id === activeId;
-          const enabled = p.loadOrder.filter((id) => isEnabledIn(p, id)).length;
+          // Count what actually exists. A profile whose mods were deleted
+          // outside the app still holds their ids, and reporting those as
+          // "12 total" is what made empty profiles look full.
+          const { present, missing } = splitProfileMods(p);
+          const enabled = present.filter((id) => isEnabledIn(p, id)).length;
           return (
             <article key={p.id} className="grimoire-card min-w-0 p-5">
               <header className="flex items-start justify-between gap-2 min-w-0">
@@ -308,7 +313,10 @@ function ProfilesPage() {
                     {p.name}
                   </h3>
                   <p className="font-mono mt-1 text-xs text-ash">
-                    {enabled} enabled · {p.loadOrder.length} total
+                    {enabled} enabled · {present.length} on disk
+                    {missing.length > 0 ? (
+                      <span className="text-crimson"> · {missing.length} missing</span>
+                    ) : null}
                   </p>
                 </div>
                 {isActive ? <MonoTag tone="crimson">active</MonoTag> : null}
@@ -322,14 +330,43 @@ function ProfilesPage() {
                 ) : (
                   p.loadOrder.map((id) => {
                     const mod = getMod(id);
+                    // No mod on disk for this id: a half-finished install, a
+                    // folder deleted outside the app, or a legacy API UUID.
+                    // Say so instead of printing the raw id as if it were a
+                    // real (merely disabled) mod.
+                    if (!mod) {
+                      return (
+                        <li key={id} className="text-crimson/80" title={id}>
+                          {id} <span className="font-mono text-[11px]">— not on disk</span>
+                        </li>
+                      );
+                    }
                     return (
                       <li key={id} className={p.disabled.has(id) ? 'opacity-50' : ''}>
-                        {mod?.name ?? id}
+                        {mod.name}
                       </li>
                     );
                   })
                 )}
               </ul>
+
+              {missing.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const removed = pruneMissing(p.id);
+                    toast.push(
+                      removed === 1
+                        ? 'Removed 1 entry with no mod on disk'
+                        : `Removed ${removed} entries with no mods on disk`,
+                      'success',
+                    );
+                  }}
+                  className="font-mono mt-3 w-full border border-crimson/60 px-2.5 py-1.5 text-xs text-crimson hover:bg-crimson/10"
+                >
+                  Remove {missing.length} missing
+                </button>
+              ) : null}
 
               <div className="mt-4 flex items-start justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">

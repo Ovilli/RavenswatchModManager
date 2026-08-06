@@ -336,7 +336,12 @@ function BrowsePage() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {list.map((m) => {
               const onDisk = installed.includes(m.slug);
-              const inProfile = profile.loadOrder.includes(m.slug);
+              // "In profile" must mean the mod is BOTH listed by the profile
+              // and actually on disk. A profile entry whose folder is gone
+              // (failed install, deleted outside the app) otherwise rendered
+              // as "in profile" with the install button disabled — leaving no
+              // way to install the mod it was pointing at.
+              const inProfile = profile.loadOrder.includes(m.slug) && onDisk;
               return (
                 <div
                   key={m.id}
@@ -389,6 +394,10 @@ function BrowsePage() {
                       disabled={inProfile || installing[m.slug]}
                       variant={inProfile ? 'default' : 'primary'}
                       size="sm"
+                      // The label cycles install → downloading → in profile,
+                      // each a different width. Without a floor the button
+                      // resizes mid-download and squeezes the title next to it.
+                      className="min-w-[7.5rem] justify-center whitespace-nowrap"
                       title={
                         inProfile
                           ? `Already in "${profile.name}"`
