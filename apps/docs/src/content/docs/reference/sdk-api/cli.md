@@ -25,7 +25,7 @@ Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcomman
 | `rsmm decode` | `rsmm.engine.ot_decoder` | oCTextSaver binary decoder. |
 | `rsmm disable` | `rsmm.cli.cmd_mods` | `rsmm enable` / `rsmm disable` — toggle mods from the terminal. |
 | `rsmm docs-gen` | `rsmm.cli.docs_gen_cmd` | `rsmm docs-gen` — write the SDK/CLI reference from @sdk_export registrations. |
-| `rsmm doctor` | `rsmm.cli.doctor` | rsmm doctor — system health check. |
+| `rsmm doctor` | `rsmm.cli.doctor` | rsmm doctor — system health check, and the repair path for what it finds. |
 | `rsmm enable` | `rsmm.cli.cmd_mods` | `rsmm enable` / `rsmm disable` — toggle mods from the terminal. |
 | `rsmm enemies` | `rsmm.cli.cmd_enemies` | `rsmm enemies` — discover vanilla enemies for enemy modding. |
 | `rsmm home` | `rsmm.cli.cmd_shell` | Interactive home screen — what bare `./rsmm` opens in a terminal. |

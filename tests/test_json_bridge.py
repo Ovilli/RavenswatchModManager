@@ -141,6 +141,24 @@ def test_cmd_list_empty_when_no_mods_dir(tmp_path, monkeypatch, capsys):
     assert _emit_json(capsys) == []
 
 
+def test_cmd_list_fails_loudly_when_the_folder_cannot_be_read(tmp_path, monkeypatch):
+    """An unreadable mods folder must NOT look like "no mods installed".
+
+    Regression: both cases emitted `[]`, so the desktop app recorded "nothing
+    is installed" from a transient permission error, then refused to install
+    mods it believed were already there.
+    """
+    mods = tmp_path / "mods"
+    mods.mkdir()
+    monkeypatch.setattr(json_bridge, "MODS_DIR", mods)
+
+    def boom(*_a, **_k):
+        raise PermissionError("nope")
+
+    monkeypatch.setattr(json_bridge.Path, "iterdir", boom)
+    assert json_bridge.cmd_list() == 1
+
+
 # --- cmd_uninstall_mod (path-traversal guard) ------------------------------
 
 def test_uninstall_rejects_traversal(tmp_path, monkeypatch, capsys):

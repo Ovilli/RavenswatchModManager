@@ -104,18 +104,27 @@ def _deps_map(manifest: dict[str, Any]) -> dict[str, str]:
 
 
 def cmd_list() -> int:
+    """List installed mods.
+
+    An empty array MUST mean "the folder is readable and holds no mods".
+    Reporting a read failure as `[]` made the two indistinguishable to the
+    desktop app, which then recorded "nothing is installed" from a transient
+    permission error and disabled install buttons for mods that were on disk
+    all along. A failure now exits non-zero so the caller can tell them apart.
+    """
     items: list[dict[str, Any]] = []
     try:
         if not MODS_DIR.is_dir():
+            # Not an error: no mods folder yet is a legitimate empty state.
             return _emit([])
     except (OSError, PermissionError) as e:
-        print(f"warning: could not access mods directory {MODS_DIR}: {e}", file=sys.stderr)
-        return _emit([])
+        print(f"error: could not access mods directory {MODS_DIR}: {e}", file=sys.stderr)
+        return 1
     try:
         entries = sorted(MODS_DIR.iterdir())
     except (OSError, PermissionError) as e:
-        print(f"warning: could not read mods directory {MODS_DIR}: {e}", file=sys.stderr)
-        return _emit([])
+        print(f"error: could not read mods directory {MODS_DIR}: {e}", file=sys.stderr)
+        return 1
     for entry in entries:
         if not entry.is_dir() or entry.name.startswith("_"):
             continue
@@ -1109,35 +1118,55 @@ def cmd_conflicts() -> int:
     return _emit(conflicts)
 
 
-def cmd_doctor() -> int:
+def cmd_doctor(fix: bool = False, force: bool = False) -> int:
     """
     Run doctor as a subprocess so the UI can display the raw, coloured
-    output verbatim, but also parse a coarse OK/WARN/FAIL line tally
-    from the printed summary for at-a-glance status.
+    output verbatim, alongside a structured per-finding list.
+
+    Two runs, deliberately: `--json` for the machine-readable findings
+    (codes, severities, and whether each has an automated repair) and a
+    plain run for the coloured transcript the panel shows. Scraping the
+    coloured output for status was the old approach — a wording change
+    silently emptied the UI's check list.
     """
-    cmd = self_cmd(["doctor"])
+    checks: list[dict[str, Any]] = []
+    repairs: list[dict[str, Any]] = []
+    argv = ["doctor", "--json"]
+    if fix:
+        argv.append("--fix")
+    if force:
+        argv.append("--force")
+    try:
+        structured = subprocess.run(
+            self_cmd(argv), cwd=REPO_ROOT,
+            capture_output=True, text=True, check=False,
+        )
+        payload = json.loads(structured.stdout or "{}")
+    except (FileNotFoundError, json.JSONDecodeError):
+        payload = {}
+    for section in payload.get("sections", []):
+        for r in section.get("results", []):
+            checks.append({
+                "status": r.get("kind"),
+                "ok": r.get("kind") == "OK",
+                "label": r.get("label", ""),
+                "detail": r.get("detail", ""),
+                "code": r.get("code", ""),
+                "section": section.get("section", ""),
+                "fix": r.get("fix"),
+                "fixable": bool((r.get("fix") or {}).get("automatic")),
+            })
+    repairs = payload.get("repairs", [])
+
+    cmd = self_cmd(["doctor"] + (["--fix"] if fix else []) +
+                   (["--force"] if force else []))
     try:
         proc = subprocess.run(
             cmd, cwd=REPO_ROOT, capture_output=True, text=True, check=False,
         )
     except FileNotFoundError as e:
         return _emit({"ok": False, "code": 127, "stdout": "", "stderr": str(e),
-                      "checks": []})
-
-    checks: list[dict[str, Any]] = []
-    for raw in proc.stdout.splitlines():
-        line = raw.strip()
-        if not line:
-            continue
-        for tag in ("OK", "WARN", "FAIL"):
-            prefix = f"[{tag}]"
-            if line.startswith(prefix):
-                checks.append({
-                    "status": tag,
-                    "ok": tag == "OK",
-                    "label": line[len(prefix):].strip(),
-                })
-                break
+                      "checks": checks, "repairs": repairs})
 
     # Structured game-update flag so the UI doesn't have to grep doctor's
     # prose. True = the install changed since the last apply (Steam patch
@@ -1160,6 +1189,8 @@ def cmd_doctor() -> int:
         "stdout": proc.stdout,
         "stderr": proc.stderr,
         "checks": checks,
+        "repairs": repairs,
+        "fixable": sum(1 for c in checks if c["fixable"] and not c["ok"]),
         "gameUpdated": game_updated,
     })
 
@@ -1209,7 +1240,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("restore-all", help="restore every active override")
     sub.add_parser("build", help="build asset map + loader + merge + apply")
     sub.add_parser("conflicts", help="detect all conflicts among enabled mods")
-    sub.add_parser("doctor", help="system health check")
+    p_doctor = sub.add_parser("doctor", help="system health check")
+    p_doctor.add_argument("--fix", action="store_true",
+                          help="run the automated repair for every fixable finding")
+    p_doctor.add_argument("--force", action="store_true",
+                          help="with --fix, also run destructive repairs")
     p_run = sub.add_parser("run", help="launch the game")
     p_run.add_argument("--vanilla", action="store_true", help="restore originals before launching")
     p_pack = sub.add_parser("pack-mod", help="pack a mod for upload + return metadata")
@@ -1262,7 +1297,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "conflicts":
         return cmd_conflicts()
     if args.cmd == "doctor":
-        return cmd_doctor()
+        return cmd_doctor(fix=args.fix, force=args.force)
     if args.cmd == "run":
         rest = []
         if args.vanilla:

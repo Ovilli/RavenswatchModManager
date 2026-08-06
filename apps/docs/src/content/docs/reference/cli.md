@@ -35,12 +35,46 @@ Show installed mods and their status.
 
 ### `rsmm doctor`
 
-Health check. Verifies the asset map, game directory, mod structure, and loader DLL. Run this often.
+Health check, and the repair path for what it finds. Run this often — it is the
+first thing to try when something "just doesn't work".
 
 ```sh
-./rsmm doctor
-./rsmm doctor --mod MyMod          # Check a specific mod
+./rsmm doctor                      # report only (never writes)
+./rsmm doctor --fix                # run the safe repairs, then re-check
+./rsmm doctor --fix --force        # also run destructive repairs
+./rsmm doctor --only loader        # one section; --only list names them all
+./rsmm doctor --json               # machine-readable findings
 ```
+
+Findings carry a stable `code` and, where one exists, the exact rsmm command
+that repairs them. `--fix` runs those repairs and then re-runs every check, so a
+repair is only reported as fixed when the check actually goes green.
+
+| Flag | Meaning |
+|------|---------|
+| `--fix` | Run each finding's automated repair (`apply`, `install-loader`, `rebuild-asset-map`, `update-data`). Repairs are ordinary rsmm commands — doctor never reimplements one. |
+| `--force` | With `--fix`, also run repairs that roll the install back or delete installed files (`restore --all`). |
+| `--only CHECK` | Restrict to named checks; repeatable. `--only list` prints them. |
+| `--json` | Structured report: per-finding kind, code, detail, and whether a repair is automatic. |
+| `--game-dir` | Point at a non-default install. |
+
+Plain `doctor` is read-only on purpose: a health check that silently rewrites a
+game install on every run is a footgun, so repairs are opt-in.
+
+What it covers: game install reachable and writable, asset map freshness, game
+version drift, the loader (DLL bytes by hash, the disk-loaded Lua SDK under
+`<game>/rsmm/lib`, the planted pattern DB, dangerous feature flags left armed,
+and — on Proton — whether Steam's launch options still carry the
+`WINEDLLOVERRIDES` the loader needs), mod manifests and asset paths, raw-file
+and `[[patch]]` conflicts, the dependency graph, applier state versus what is
+actually on disk, `UsedRscList.ot` record alignment, and recent crash dumps.
+
+:::tip
+A planted `winhttp.dll` is only half an install. The Lua SDK and pattern DB are
+loaded from `<game>/rsmm/`, and a Steam update replaces the DLL while deleting
+that tree — which looks exactly like "the loader is broken". Doctor checks all
+three.
+:::
 
 ### `rsmm run`
 
@@ -91,7 +125,31 @@ Scaffold a new mod directory:
 ```sh
 ./rsmm new MyMod
 # Creates: mods/MyMod/manifest.toml
+
+./rsmm new MyMod --kind item        # also seeds a [[content]] block
 ```
+
+`--kind` takes `item`, `talent`, `enemy`, `boss`, `map` or `hero`. Kinds that
+aren't confirmed are scaffolded with `experimental = true` and `enabled = false`.
+
+For `--kind item` the block is read out of the base you clone rather than
+templated — its icon, rarity and every patchable value field with its true
+current value, so the scaffold applies without hand-editing:
+
+```sh
+./rsmm new IronCrabHide --kind item --base Common/Armor_Per_Object \
+    --name "Iron Crab Hide" --desc "Bonus armor per rare object."
+```
+
+| Flag | Meaning |
+|------|---------|
+| `--base ID` | Vanilla id to clone. Bare (`Armor_Per_Object`) or rarity-qualified (`Common/Armor_Per_Object`). Omit it at a terminal to get a searchable picker. |
+| `--name TEXT` | Display name for the mod and its content. |
+| `--desc TEXT` | Description shown in-game. |
+| `--icon ID` | Vanilla icon stem (`rsmm items icons`) or `assets/<file>.png`. Defaults to the base's own icon. |
+| `--rarity R` | `Common`, `Rare`, `Epic`, `Legendary`, `Cursed` or `Powerups`. Defaults to the base's rarity. |
+
+See [Custom items](/guides/custom-items/) for the full walkthrough.
 
 ### `rsmm pack <id>`
 

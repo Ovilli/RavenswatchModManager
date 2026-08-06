@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+import tomllib
 
 
 def test_dispatch_help():
@@ -95,7 +96,10 @@ def test_cmd_new_confirmed_kind_enabled(tmp_path, monkeypatch):
     text = (tmp_path / "mods" / "MyItem" / "manifest.toml").read_text("utf-8")
     assert "enabled     = true" in text
     assert "experimental = true" not in text
-    assert 'base          = "Armor_Per_Object"' in text  # actionable base hint
+    # Asserted on the parsed value, not the quoting: scaffolded strings are
+    # emitted as TOML *literal* strings so cooked icon paths keep their
+    # backslashes.
+    assert tomllib.loads(text)["content"][0]["base"] == "Armor_Per_Object"
 
 
 def test_cmd_new_experimental_kind_opts_in(tmp_path, monkeypatch):

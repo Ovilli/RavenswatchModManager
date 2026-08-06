@@ -210,3 +210,248 @@ def test_compat_graph_missing_requires_fails(tmp_path, monkeypatch):
     monkeypatch.setattr("rsmm.engine.paths.MODS_DIR", mods)
     rs = check_compat_graph()
     assert any(r.kind == "FAIL" and "missing-dep" in r.label for r in rs)
+
+
+# ---------------------------------------------------------------- loader tree
+
+def _fake_install(tmp_path):
+    (tmp_path / "DarkTalesResources" / "_Cooking").mkdir(parents=True)
+    return tmp_path
+
+
+def test_loader_runtime_tree_missing_is_reported(tmp_path, monkeypatch):
+    """A planted DLL with no <game>/rsmm/lib is a non-working loader.
+
+    Regression: doctor called this install healthy, because it only ever
+    looked at winhttp.dll — but the Lua SDK is disk-loaded, so every Lua mod
+    silently failed to load.
+    """
+    from rsmm.cli import doctor as doc
+
+    game = _fake_install(tmp_path)
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "winhttp.dll").write_bytes(b"loader-bytes")
+    (game / "winhttp.dll").write_bytes(b"loader-bytes")
+    monkeypatch.setattr(doc, "DIST_DIR", dist)
+
+    results = doc.check_loader(game)
+    codes = {r.code for r in results}
+    assert "loader.runtime-missing" in codes
+    runtime = next(r for r in results if r.code == "loader.runtime-missing")
+    assert runtime.fix is not None
+    assert runtime.fix.argv == ["install-loader"]
+
+
+def test_loader_complete_install_is_ok(tmp_path, monkeypatch):
+    from rsmm.cli import doctor as doc
+
+    game = _fake_install(tmp_path)
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "winhttp.dll").write_bytes(b"loader-bytes")
+    (game / "winhttp.dll").write_bytes(b"loader-bytes")
+    lib = game / "rsmm" / "lib"
+    lib.mkdir(parents=True)
+    for name in doc._LOADER_LIB_FILES:
+        (lib / name).write_text("-- sdk")
+    (game / "rsmm" / "data").mkdir()
+    (game / "rsmm" / "data" / "function_patterns.json").write_text("{}")
+    monkeypatch.setattr(doc, "DIST_DIR", dist)
+
+    assert all(r.kind == "OK" for r in doc.check_loader(game))
+
+
+def test_loader_detects_replaced_dll_by_hash(tmp_path, monkeypatch):
+    """Steam's stock winhttp.dll must be caught even at a matching size."""
+    from rsmm.cli import doctor as doc
+
+    game = _fake_install(tmp_path)
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "winhttp.dll").write_bytes(b"ours-1234")
+    (game / "winhttp.dll").write_bytes(b"steam-999")  # same length, other bytes
+    monkeypatch.setattr(doc, "DIST_DIR", dist)
+
+    results = doc.check_loader(game)
+    stale = next(r for r in results if r.code == "loader.stale-dll")
+    assert stale.kind == "WARN"
+    assert stale.fix is not None and stale.fix.argv == ["install-loader"]
+
+
+# ---------------------------------------------------------------- loader flags
+
+def test_dangerous_loader_flag_is_flagged(tmp_path, monkeypatch):
+    from rsmm.cli import doctor as doc
+
+    monkeypatch.delenv("RSMM_ENABLE_ITEM_INJECT", raising=False)
+    (tmp_path / "rsmm_loader_flags.json").write_text(
+        json.dumps(["RSMM_ENABLE_GAMEPLAY_EVENTS", "RSMM_ENABLE_ITEM_INJECT"]))
+    results = doc.check_loader_flags(tmp_path)
+    assert any(r.code == "loaderflags.dangerous"
+               and "ITEM_INJECT" in r.label for r in results)
+
+
+def test_safe_loader_flags_are_ok(tmp_path, monkeypatch):
+    from rsmm.cli import doctor as doc
+
+    for name in doc._DANGEROUS_FLAGS:
+        monkeypatch.delenv(name, raising=False)
+    (tmp_path / "rsmm_loader_flags.json").write_text(
+        json.dumps(["RSMM_ENABLE_GAMEPLAY_EVENTS"]))
+    assert all(r.kind == "OK" for r in doc.check_loader_flags(tmp_path))
+
+
+# ---------------------------------------------------------------- crash dumps
+
+def test_recent_crash_dump_warns_old_one_does_not(tmp_path):
+    import os
+    import time
+
+    from rsmm.cli import doctor as doc
+
+    reports = tmp_path / "CrashDB" / "reports"
+    reports.mkdir(parents=True)
+    dump = reports / "recent.dmp"
+    dump.write_bytes(b"x")
+    assert doc.check_crash_dumps(tmp_path)[0].kind == "WARN"
+
+    old = time.time() - 60 * 60 * 24 * 30
+    os.utime(dump, (old, old))
+    # A month-old dump is history — reading it as "the current crash" is how
+    # a debugging session gets wasted.
+    assert doc.check_crash_dumps(tmp_path)[0].kind == "OK"
+
+
+# ------------------------------------------------------------- launch options
+
+def test_orphaned_launch_value_detected(tmp_path):
+    """The exact corruption a truncating rewrite leaves behind."""
+    from rsmm.cli.doctor import _has_orphaned_launch_value
+
+    good = tmp_path / "good.vdf"
+    good.write_text('\t\t"LaunchOptions"\t\t""\n\t\t"LastPlayed"\t\t"0"\n')
+    assert _has_orphaned_launch_value(good) is False
+
+    corrupt = tmp_path / "bad.vdf"
+    corrupt.write_text(
+        '\t\t"LaunchOptions"\t\t""winhttp=n,b\\" %command%"\n')
+    assert _has_orphaned_launch_value(corrupt) is True
+
+
+# ------------------------------------------------------------------- registry
+
+def test_every_check_has_a_unique_name():
+    from rsmm.cli.doctor import _checks
+
+    names = [c.name for c in _checks()]
+    assert len(names) == len(set(names))
+
+
+def test_a_crashing_check_becomes_a_finding(tmp_path):
+    """One exploding check must not cost the user the other twelve."""
+    from rsmm.cli.doctor import Check, _run_check
+
+    def boom(_game_dir):
+        raise RuntimeError("kaboom")
+
+    results = _run_check(Check("boom", "boom", boom), tmp_path)
+    assert len(results) == 1
+    assert results[0].kind == "WARN"
+    assert "kaboom" in results[0].detail
+    assert results[0].code == "boom.crashed"
+
+
+def test_destructive_fix_needs_force(tmp_path, monkeypatch):
+    from rsmm.cli import doctor as doc
+
+    called = []
+    monkeypatch.setattr(doc.subprocess, "run",
+                        lambda *a, **k: called.append(a) or None)
+    r = doc.Result("FAIL", "boom", code="x",
+                   fix=doc.Fix("rsmm restore --all", ["restore", "--all"],
+                               risk="destructive"))
+
+    outcome, detail = doc._apply_fix(r, tmp_path, force=False)
+    assert outcome == "skipped"
+    assert "--force" in detail
+    assert called == [], "destructive repair must not run without --force"
+
+
+def test_manual_fix_is_never_executed(tmp_path, monkeypatch):
+    from rsmm.cli import doctor as doc
+
+    called = []
+    monkeypatch.setattr(doc.subprocess, "run",
+                        lambda *a, **k: called.append(a) or None)
+    r = doc.Result("WARN", "boom", code="x",
+                   fix=doc.Fix("close Steam", [], manual="close Steam first"))
+
+    outcome, _detail = doc._apply_fix(r, tmp_path, force=True)
+    assert outcome == "skipped"
+    assert called == []
+
+
+def test_json_report_shape():
+    from rsmm.cli.doctor import Fix, Result, _as_json
+
+    sections = [
+        ("loader DLL", [
+            Result("OK", "fine"),
+            Result("WARN", "broken", "detail", code="loader.stale-dll",
+                   fix=Fix("rsmm install-loader", ["install-loader"])),
+        ]),
+    ]
+    payload = _as_json(sections, [])
+    assert payload["ok"] is True          # WARN alone doesn't fail the run
+    assert payload["counts"] == {"ok": 1, "warn": 1, "fail": 0}
+    entry = payload["sections"][0]["results"][1]
+    assert entry["code"] == "loader.stale-dll"
+    assert entry["fix"]["automatic"] is True
+    assert entry["fix"]["argv"] == ["install-loader"]
+
+
+def test_game_dir_is_not_appended_to_commands_that_reject_it(tmp_path, monkeypatch):
+    """`rsmm run` has no --game-dir; appending it makes the repair always fail."""
+    from rsmm.cli import doctor as doc
+
+    seen = {}
+
+    class _Proc:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(cmd, **_kw):
+        seen["cmd"] = cmd
+        return _Proc()
+
+    monkeypatch.setattr(doc.subprocess, "run", fake_run)
+    r = doc.Result("WARN", "opts", code="launchopts.no-override",
+                   fix=doc.Fix("rsmm run --set-launch-options --no-launch",
+                               ["run", "--set-launch-options", "--no-launch"],
+                               accepts_game_dir=False))
+
+    outcome, _detail = doc._apply_fix(r, tmp_path / "elsewhere", force=False)
+    assert outcome == "fixed"
+    assert "--game-dir" not in seen["cmd"]
+
+
+def test_game_dir_is_appended_for_commands_that_take_it(tmp_path, monkeypatch):
+    from rsmm.cli import doctor as doc
+
+    seen = {}
+
+    class _Proc:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    monkeypatch.setattr(doc.subprocess, "run",
+                        lambda cmd, **_kw: (seen.update(cmd=cmd), _Proc())[1])
+    r = doc.Result("WARN", "drift", code="state.drifted",
+                   fix=doc.Fix("rsmm apply", ["apply"]))
+
+    outcome, _detail = doc._apply_fix(r, tmp_path / "elsewhere", force=False)
+    assert outcome == "fixed"
+    assert "--game-dir" in seen["cmd"]
