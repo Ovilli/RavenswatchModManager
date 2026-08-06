@@ -178,3 +178,66 @@ def test_uninstall_removes_existing(tmp_path, monkeypatch, capsys):
     res = _emit_json(capsys)
     assert res["ok"] is True and res["removed"] is True
     assert not (mods / "Doomed").exists()
+
+
+# --- cmd_loader_log (desktop Log tab) --------------------------------------
+
+def _write_log(tmp_path: Path, text: str) -> Path:
+    game = tmp_path / "Ravenswatch"
+    (game / "mods").mkdir(parents=True)
+    (game / "mods" / "_log.txt").write_text(text)
+    return game
+
+
+def test_loader_log_missing_is_not_an_error(tmp_path, monkeypatch, capsys):
+    """A fresh install has no log until the game runs once with the loader.
+
+    Reporting that as a failure would put a red error in the Log tab for
+    every new user; `exists: false` lets the UI explain instead.
+    """
+    game = tmp_path / "Ravenswatch"
+    game.mkdir()
+    monkeypatch.setattr(json_bridge, "find_game_dir", lambda: game)
+    assert json_bridge.cmd_loader_log() == 0
+    out = _emit_json(capsys)
+    assert out["exists"] is False
+    assert out["lines"] == []
+    assert out["path"].endswith("_log.txt")
+
+
+def test_loader_log_returns_only_the_latest_session_by_default(tmp_path, monkeypatch, capsys):
+    game = _write_log(
+        tmp_path,
+        "== SESSION one ==\nold line\n== SESSION two ==\nnew line\nnewer line\n",
+    )
+    monkeypatch.setattr(json_bridge, "find_game_dir", lambda: game)
+    assert json_bridge.cmd_loader_log() == 0
+    out = _emit_json(capsys)
+    assert out["lines"] == ["== SESSION two ==", "new line", "newer line"]
+    assert out["sessions"] == 2
+    assert out["truncated"] is False
+
+
+def test_loader_log_all_sessions_and_line_cap(tmp_path, monkeypatch, capsys):
+    game = _write_log(
+        tmp_path,
+        "== SESSION one ==\nold line\n== SESSION two ==\nnew line\n",
+    )
+    monkeypatch.setattr(json_bridge, "find_game_dir", lambda: game)
+
+    assert json_bridge.cmd_loader_log(all_sessions=True) == 0
+    assert _emit_json(capsys)["lines"][0] == "== SESSION one =="
+
+    assert json_bridge.cmd_loader_log(all_sessions=True, lines=2) == 0
+    out = _emit_json(capsys)
+    # Keeps the TAIL — the newest lines are the interesting ones.
+    assert out["lines"] == ["== SESSION two ==", "new line"]
+    assert out["truncated"] is True
+
+
+def test_loader_log_without_session_banners_returns_everything(tmp_path, monkeypatch, capsys):
+    """Logs from a loader predating session banners must not come back empty."""
+    game = _write_log(tmp_path, "just a line\nand another\n")
+    monkeypatch.setattr(json_bridge, "find_game_dir", lambda: game)
+    assert json_bridge.cmd_loader_log() == 0
+    assert _emit_json(capsys)["lines"] == ["just a line", "and another"]

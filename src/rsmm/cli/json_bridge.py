@@ -1017,6 +1017,60 @@ def cmd_install_mod_version(slug: str, version: str) -> int:
     })
 
 
+def cmd_loader_log(lines: int = 400, prev: bool = False, all_sessions: bool = False) -> int:
+    """Read the in-game loader log for the desktop Log tab.
+
+    The path comes from `cmd_log.log_file` rather than being rebuilt here —
+    the home screen's Log tab derived it independently once and got it wrong
+    (`<game>/rsmm/rsmm_log.txt`, which has never existed), so the tab sat
+    permanently blank while `rsmm log` worked.
+
+    A missing file is NOT an error: the loader only writes one after the game
+    has run once with it installed, which is the common case on a fresh
+    install. `exists: false` lets the UI say so instead of showing a failure.
+    """
+    from rsmm.cli.cmd_log import _SESSION_MARK, log_file
+
+    game_dir = find_game_dir()
+    path = log_file(game_dir, prev=prev)
+    try:
+        exists = path.is_file()
+    except OSError:
+        exists = False
+    if not exists:
+        return _emit({
+            "path": str(path), "exists": False, "gameDir": str(game_dir or ""),
+            "lines": [], "truncated": False, "sessions": 0,
+        })
+    try:
+        with open(path, errors="replace") as f:
+            raw = f.read().splitlines()
+    except OSError as e:
+        print(f"error: could not read loader log {path}: {e}", file=sys.stderr)
+        return 1
+
+    sessions = sum(1 for ln in raw if _SESSION_MARK in ln)
+    selected = raw
+    if not all_sessions:
+        # Default to the current run only; the file keeps every session that
+        # has been appended since the last rotation.
+        for i in range(len(selected) - 1, -1, -1):
+            if _SESSION_MARK in selected[i]:
+                selected = selected[i:]
+                break
+    truncated = bool(lines and lines > 0 and len(selected) > lines)
+    if truncated:
+        selected = selected[-lines:]
+    return _emit({
+        "path": str(path),
+        "exists": True,
+        "gameDir": str(game_dir or ""),
+        "lines": selected,
+        "truncated": truncated,
+        "sessions": sessions,
+    })
+
+
 def cmd_conflicts() -> int:
     """
     Detect all conflicts among enabled mods:
@@ -1240,6 +1294,13 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("restore-all", help="restore every active override")
     sub.add_parser("build", help="build asset map + loader + merge + apply")
     sub.add_parser("conflicts", help="detect all conflicts among enabled mods")
+    p_log = sub.add_parser("loader-log", help="read the in-game loader log")
+    p_log.add_argument("--lines", type=int, default=400,
+                       help="cap on returned lines (0 = no cap)")
+    p_log.add_argument("--prev", action="store_true",
+                       help="read the previous run's log (_log.prev.txt)")
+    p_log.add_argument("--all", action="store_true", dest="all_sessions",
+                       help="return every session in the file, not just the latest")
     p_doctor = sub.add_parser("doctor", help="system health check")
     p_doctor.add_argument("--fix", action="store_true",
                           help="run the automated repair for every fixable finding")
@@ -1296,6 +1357,9 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_build([])
     if args.cmd == "conflicts":
         return cmd_conflicts()
+    if args.cmd == "loader-log":
+        return cmd_loader_log(lines=args.lines, prev=args.prev,
+                              all_sessions=args.all_sessions)
     if args.cmd == "doctor":
         return cmd_doctor(fix=args.fix, force=args.force)
     if args.cmd == "run":

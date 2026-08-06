@@ -2,7 +2,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { Link, Outlet, createRootRouteWithContext, useLocation } from '@tanstack/react-router';
 import { exit as processExit } from '@tauri-apps/plugin-process';
 import { AlertTriangle } from 'lucide-react';
-import { FlaskConical, Terminal } from 'lucide-react';
+import { FlaskConical, ScrollText, Terminal } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -41,16 +41,18 @@ interface Nav {
     | '/author'
     | '/settings'
     | '/commands'
+    | '/log'
     | '/about';
   icon: React.ComponentType<{ className?: string }>;
   label: string;
 }
 
+const CONFLICTS_NAV: Nav = { to: '/conflicts', icon: ConflictsIcon, label: 'Conflicts' };
+
 const NAV: Nav[] = [
   { to: '/', icon: LibraryIcon, label: 'Library' },
   { to: '/browse', icon: BrowseIcon, label: 'Browse' },
   { to: '/profiles', icon: ProfilesIcon, label: 'Profiles' },
-  { to: '/conflicts', icon: ConflictsIcon, label: 'Conflicts' },
   // /author is dev-only — cooked-asset inspector, not part of the
   // public client. Visible only in dev builds; route still resolves via
   // direct URL in case a dev pins it for local testing.
@@ -59,8 +61,30 @@ const NAV: Nav[] = [
     : []),
   { to: '/settings', icon: SettingsIcon, label: 'Settings' },
   { to: '/commands', icon: Terminal, label: 'Commands' },
+  { to: '/log', icon: ScrollText, label: 'Log' },
   { to: '/about', icon: AboutIcon, label: 'About' },
 ];
+
+/**
+ * Conflicts is a problem page: it only ever has something to say when two
+ * enabled mods collide. Parking it permanently in the sidebar advertised a
+ * problem that usually isn't there, so it appears only when the active
+ * profile actually has conflicts — or while it is the open route, so the
+ * entry cannot vanish out from under the page you are reading.
+ */
+function useNav(): Nav[] {
+  const profile = useApp(activeProfile);
+  const location = useLocation();
+  const conflictCount = useMemo(() => detectConflicts(profile).length, [profile]);
+  return useMemo(() => {
+    if (conflictCount === 0 && location.pathname !== '/conflicts') return NAV;
+    const items = [...NAV];
+    // Slot it back where it used to live: after Profiles.
+    const at = items.findIndex((n) => n.to === '/profiles');
+    items.splice(at + 1, 0, CONFLICTS_NAV);
+    return items;
+  }, [conflictCount, location.pathname]);
+}
 
 type AppRegionStyle = CSSProperties & { WebkitAppRegion?: 'drag' | 'no-drag' };
 
@@ -420,6 +444,7 @@ function WindowControls() {
 
 function RootLayout() {
   const location = useLocation();
+  const nav = useNav();
   const mainRef = useRef<HTMLElement | null>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-scroll on navigation
@@ -456,7 +481,7 @@ function RootLayout() {
               </div>
 
               <nav className="flex flex-1 flex-col gap-1 px-2 py-2">
-                {NAV.map((n) => (
+                {nav.map((n) => (
                   <NavLink key={n.to} {...n} />
                 ))}
               </nav>
