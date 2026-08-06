@@ -50,6 +50,25 @@ describe('compareVersions', () => {
     expect(compareVersions('1.0', '1.0.1')).toBeLessThan(0);
     expect(compareVersions('2.0.0', '1.9.9')).toBeGreaterThan(0);
   });
+
+  it('ranks a prerelease below the release it qualifies', () => {
+    // Otherwise someone on a mod's beta is never told the stable build is out.
+    expect(compareVersions('1.0.0-rc1', '1.0.0')).toBeLessThan(0);
+    expect(compareVersions('1.0.0', '1.0.0-rc1')).toBeGreaterThan(0);
+    expect(compareVersions('1.0.0-beta', '1.0.1')).toBeLessThan(0);
+    expect(compareVersions('1.0.0', '0.9.9-rc1')).toBeGreaterThan(0);
+  });
+
+  it('orders prereleases against each other', () => {
+    expect(compareVersions('1.0.0-rc1', '1.0.0-rc2')).toBeLessThan(0);
+    expect(compareVersions('1.0.0-alpha', '1.0.0-beta')).toBeLessThan(0);
+    expect(compareVersions('1.0.0-rc1', '1.0.0-rc1')).toBe(0);
+  });
+
+  it('ignores build metadata, which carries no precedence', () => {
+    expect(compareVersions('1.0.0+build9', '1.0.0+build1')).toBe(0);
+    expect(compareVersions('1.0.0+build1', '1.0.1')).toBeLessThan(0);
+  });
 });
 
 describe('buildEnablePlan', () => {

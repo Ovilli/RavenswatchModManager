@@ -24,6 +24,19 @@ export function getPlatform(): Platform {
   return cached.platform;
 }
 
+/**
+ * Join PATH entries with the platform's list separator.
+ *
+ * Windows separates PATH entries with `;`, not `:` — joining with a colon
+ * there glues the prepended entry onto the first inherited one, so BOTH are
+ * lost: the prepended directory never resolves and the first real PATH entry
+ * is corrupted. Takes the platform explicitly so it is testable outside a
+ * WebView (`getPlatform` reads `navigator`).
+ */
+export function joinPathEntries(entries: string[], platform: Platform): string {
+  return entries.filter(Boolean).join(platform === 'windows' ? ';' : ':');
+}
+
 /** "Ctrl+K" shortcut label (Windows + Linux). */
 export function shortcutLabel(key: string): string {
   return `Ctrl+${key.toUpperCase()}`;

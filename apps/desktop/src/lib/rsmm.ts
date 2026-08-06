@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { type Child, Command } from '@tauri-apps/plugin-shell';
 import { useApp } from '../store';
-import { getPlatform } from './platform';
+import { getPlatform, joinPathEntries } from './platform';
 
 interface ExecResult {
   code: number | null;
@@ -148,7 +148,8 @@ function createCommand(name: string, args: string[], opts: Record<string, unknow
   return isSidecar(name) ? Command.sidecar(name, args, opts) : Command.create(name, args, opts);
 }
 
-let resolvedProg: ProgName | null | undefined = undefined;
+/** `undefined` = not resolved yet (next call re-probes). */
+let resolvedProg: ProgName | undefined = undefined;
 let useRustProbe = false;
 let runtimeEnvPromise: Promise<{ repoRoot: string; path: string }> | null = null;
 
@@ -163,9 +164,9 @@ async function envForCommand(profileId?: string): Promise<Record<string, string>
   const env = rsmmEnv(profileId);
   try {
     const runtime = await runtimeEnv();
-    const pathParts = [runtime.repoRoot, runtime.path].filter(Boolean);
-    if (pathParts.length) {
-      env.PATH = pathParts.join(':');
+    const path = joinPathEntries([runtime.repoRoot, runtime.path], getPlatform());
+    if (path) {
+      env.PATH = path;
     }
   } catch {
     // Best effort; fall back to the inherited PATH.
@@ -199,38 +200,39 @@ async function execute(args: string[], options: RsmmOptions): Promise<ExecResult
     // production. If it succeeds, use it for all subsequent calls
     // (bypassing the shell plugin entirely).
     try {
-      const probeResult = await invoke<{ code: number | null; stdout: string; stderr: string }>(
-        'probe_rsmm',
-        { args },
+      // Resolving at all means the Rust side FOUND and ran rsmm, so adopt it
+      // for later calls. The exit code says what the command did, not whether
+      // the CLI exists — keying adoption on `code === 0` meant one legitimately
+      // failing command (a failed apply) made the app declare the CLI missing.
+      const probeResult = await withTimeout(
+        invoke<ExecResult>('probe_rsmm', { args }),
+        args,
+        timeoutMs,
       );
-      if (probeResult.code === 0) {
-        useRustProbe = true;
-        return { code: probeResult.code, stdout: probeResult.stdout, stderr: probeResult.stderr };
-      }
-    } catch {
-      // probe_rsmm unavailable or failed.
+      useRustProbe = true;
+      return probeResult;
+    } catch (err) {
+      if (err instanceof RsmmError) throw err; // timeout — not a missing CLI
+      // probe_rsmm unavailable, or rsmm genuinely not found.
     }
     resolvedProg = undefined;
     throw new RsmmCliMissingError(args);
   }
 
-  if (resolvedProg === null) {
-    resolvedProg = undefined;
-    return execute(args, options);
-  }
-
   // Once the Rust probe succeeded, use it for every call.
   if (useRustProbe) {
-    const result = await invoke<{ code: number | null; stdout: string; stderr: string }>(
-      'probe_rsmm',
-      { args },
-    ).catch(() => null);
-    if (!result || result.code !== 0) {
+    try {
+      // A non-zero exit is the command's answer and belongs to the caller —
+      // `rsmm()` turns it into an RsmmExitError carrying the real stderr.
+      // Reporting it as "CLI not found" hid every genuine failure behind a
+      // reinstall prompt and threw away the resolution on the way out.
+      return await withTimeout(invoke<ExecResult>('probe_rsmm', { args }), args, timeoutMs);
+    } catch (err) {
+      if (err instanceof RsmmError) throw err; // timeout
       useRustProbe = false;
       resolvedProg = undefined;
       throw new RsmmCliMissingError(args);
     }
-    return result;
   }
 
   const cmd = createCommand(resolvedProg, args, opts);
@@ -250,10 +252,15 @@ async function runWithLifecycle(
   if (options.onStdout || options.onStderr || options.signal) {
     return spawnWithLifecycle(name, cmd, args, options, timeoutMs);
   }
-  const exec = cmd.execute();
-  const result = timeoutMs > 0 ? await raceTimeout(exec, args, timeoutMs) : await exec;
+  const result = await withTimeout(cmd.execute(), args, timeoutMs);
   resolvedProg = name as ProgName;
   return result;
+}
+
+/** `timeoutMs <= 0` means "no wallclock limit" — racing a zero-delay timer
+ * against it would reject instantly instead. */
+function withTimeout<T>(p: Promise<T>, args: string[], timeoutMs: number): Promise<T> {
+  return timeoutMs > 0 ? raceTimeout(p, args, timeoutMs) : p;
 }
 
 function raceTimeout<T>(p: Promise<T>, args: string[], timeoutMs: number): Promise<T> {
