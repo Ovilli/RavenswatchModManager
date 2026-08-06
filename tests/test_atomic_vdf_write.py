@@ -105,3 +105,45 @@ def test_missing_app_block_returns_false(tmp_path):
     assert _write_launch_options(p, "9999999", "rsmm-vanilla") is False
     # File untouched.
     assert "9999999" not in p.read_text(encoding="utf-8")
+
+
+def test_replace_escaped_value_leaves_no_residue(tmp_path):
+    """Overwriting an escaped value must consume ALL of it.
+
+    Regression: the replace pattern was `"[^"]*"`, which stops at the first
+    *escaped* quote. Rewriting a real Proton value
+    (`WINEDLLOVERRIDES=\\"winhttp=n,b\\" %command%`) matched only up to `\\"`
+    and stranded the tail after the new value, silently mangling the user's
+    launch options — and every subsequent write compounded it.
+    """
+    escaped = 'WINEDLLOVERRIDES=\\"winhttp=n,b\\" RSMM_ENABLE_GAMEPLAY_EVENTS=1 %command%'
+    body = ('{\n\t\t\t\t\t\t"LaunchOptions"\t\t"' + escaped + '"\n'
+            '\t\t\t\t\t\t"LastPlayed"\t\t"0"\n\t\t\t\t\t}')
+    p = _make_vdf(tmp_path, body)
+
+    assert _write_launch_options(p, APP_ID, "rsmm-vanilla")
+    out = p.read_text(encoding="utf-8")
+
+    assert '"LaunchOptions"\t\t"rsmm-vanilla"' in out
+    # Nothing of the old value survives anywhere in the file.
+    assert "winhttp" not in out
+    assert "RSMM_ENABLE_GAMEPLAY_EVENTS" not in out
+    assert "%command%" not in out
+    assert out.count('"LaunchOptions"') == 1
+    assert '"LastPlayed"\t\t"0"' in out
+
+
+def test_escaped_value_round_trips_through_reader(tmp_path):
+    """Write → read returns exactly what was written, quotes and all."""
+    from rsmm.cli.run import _read_launch_options
+
+    p = _make_vdf(tmp_path, "{\n\t\t\t\t\t\t\"LastPlayed\"\t\t\"0\"\n\t\t\t\t\t}")
+    value = 'WINEDLLOVERRIDES="winhttp=n,b" RSMM_ENABLE_GAMEPLAY_EVENTS=1 %command%'
+
+    assert _write_launch_options(p, APP_ID, value)
+    assert _read_launch_options(p, APP_ID) == value
+
+    # And a second write over the escaped value is still clean.
+    assert _write_launch_options(p, APP_ID, value)
+    assert _read_launch_options(p, APP_ID) == value
+    assert p.read_text(encoding="utf-8").count('"LaunchOptions"') == 1

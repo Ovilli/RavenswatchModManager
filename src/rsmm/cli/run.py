@@ -251,10 +251,15 @@ def _write_launch_options(vdf_path: Path, app_id: str, new_value: str) -> bool:
     open_brace, body_start, body_end = found
     body = text[body_start:body_end]
     escaped = _vdf_escape(new_value)
-    if re.search(r'"LaunchOptions"\s*"[^"]*"', body):
-        new_body = re.sub(
-            r'"LaunchOptions"\s*"[^"]*"',
-            f'"LaunchOptions"\t\t"{escaped}"',
+    # Must be the SAME escape-aware pattern the reader uses. A plain
+    # `"[^"]*"` stops at the first *escaped* quote, so replacing an existing
+    # `WINEDLLOVERRIDES=\"winhttp=n,b\" …` value matched only up to `\"` and
+    # left the rest of the old value stranded after the new one — the file
+    # kept parsing, but the app's launch options were silently mangled.
+    existing = re.compile(r'"LaunchOptions"\s*"(?:[^"\\]|\\.)*"')
+    if existing.search(body):
+        new_body = existing.sub(
+            lambda _m: f'"LaunchOptions"\t\t"{escaped}"',
             body,
             count=1,
         )
@@ -352,6 +357,9 @@ def main() -> int:
                          "as localconfig.vdf.rsmm.bak)")
     ap.add_argument("--clear-launch-options", action="store_true",
                     help="clear Steam LaunchOptions for Ravenswatch before launching")
+    ap.add_argument("--no-launch", action="store_true",
+                    help="with --set-launch-options, write the options and stop "
+                         "(don't start the game)")
     ap.add_argument("--force", action="store_true",
                     help="launch even if launch options are missing the override")
     args = ap.parse_args()
@@ -452,6 +460,12 @@ def main() -> int:
         if _write_launch_options(primary, args.app_id, merged):
             print(f"wrote launch options into {primary}")
             print(f"backup: {primary}.rsmm.bak")
+            if args.no_launch:
+                # Repair-only mode. Launching here also starts Steam, which
+                # takes ownership of localconfig.vdf and rewrites it on exit —
+                # so a caller that only wanted to fix the options (doctor
+                # --fix) would boot the game as a side effect.
+                return 0
             return _open_steam_url(url)
         return 1
 
