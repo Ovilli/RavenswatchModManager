@@ -95,6 +95,32 @@ def test_set_value_after_label():
     assert struct.pack("<f", 50.0) in out
 
 
+def test_set_value_uses_node_layout_not_first_match():
+    """The magnitude is the f32 before the node's END marker, not the first
+    matching float after the label.
+
+    `Power_Up_Armor` is the shipped case: a stray -2.0 sits between the
+    "Armour Value" label and the node's real 6.0. Anchoring on the stray value
+    overwrote four unrelated bytes and left the armour untouched, so a
+    value_patch authored against it was a silent miss. The stale default is
+    refused, and a patch against the real one lands on the node's own field.
+    """
+    blob = (_lstr("Armour Value")
+            + struct.pack("<f", -2.0)          # decoy, nearer the label
+            + b"\x11\x11\xbb\xaa" + struct.pack("<I", 0x0f)
+            + struct.pack("<f", 6.0) + b"\x22\x22\xbb\xaa")
+
+    assert dict(C.list_value_fields(blob)) == {"Armour Value": 6.0}
+
+    with pytest.raises(ValueError, match="node holds"):
+        C.set_value_after_label(blob, "Armour Value", -2.0, 3.0)
+
+    out = C.set_value_after_label(blob, "Armour Value", 6.0, 3.0)
+    assert len(out) == len(blob)
+    assert struct.pack("<f", -2.0) in out      # decoy untouched
+    assert out.endswith(struct.pack("<f", 3.0) + b"\x22\x22\xbb\xaa")
+
+
 def test_set_value_wrong_old_value_raises():
     blob = _lstr("Val") + struct.pack("<f", 2.0)
     with pytest.raises(ValueError, match="expected value"):
