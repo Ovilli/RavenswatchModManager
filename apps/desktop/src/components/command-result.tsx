@@ -1,6 +1,6 @@
 import { AlertTriangle, CheckCircle2, CircleAlert, XCircle } from 'lucide-react';
 import { explainError } from '../lib/errors';
-import type { DoctorCheck, DoctorResult, LocalMod } from '../lib/rsmm';
+import type { DoctorCheck, DoctorRepair, DoctorResult, LocalMod } from '../lib/rsmm';
 import { CopyButton, MonoTag } from './chrome';
 
 /**
@@ -190,6 +190,34 @@ function RunView({ result }: { result: RunLike }) {
   );
 }
 
+function RepairList({ repairs }: { repairs: DoctorRepair[] }) {
+  return (
+    <div className="border border-border px-3 py-2">
+      <p className="font-mono mb-1 text-xs text-ash">repairs</p>
+      <ul className="space-y-1">
+        {repairs.map((r) => (
+          <li key={`${r.code}-${r.fix}`} className="flex items-start gap-2">
+            {r.outcome === 'fixed' ? (
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-gilt" aria-hidden />
+            ) : r.outcome === 'failed' ? (
+              <XCircle className="h-4 w-4 shrink-0 text-crimson" aria-hidden />
+            ) : (
+              <CircleAlert className="h-4 w-4 shrink-0 text-ash" aria-hidden />
+            )}
+            <span className="min-w-0">
+              <span className="text-parchment">{r.fix}</span>
+              <span className="font-mono ml-2 text-xs text-ash">{r.outcome}</span>
+              {r.detail ? (
+                <span className="font-serif-italic block text-sm text-ash">{r.detail}</span>
+              ) : null}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function checkIcon(status: DoctorCheck['status']) {
   if (status === 'OK') return <CheckCircle2 className="h-4 w-4 shrink-0 text-gilt" aria-hidden />;
   if (status === 'WARN')
@@ -199,9 +227,21 @@ function checkIcon(status: DoctorCheck['status']) {
 
 function DoctorView({ result }: { result: DoctorResult }) {
   const checks = result.checks ?? [];
+  const repairs = result.repairs ?? [];
   const failed = checks.filter((c) => c.status === 'FAIL').length;
   const warned = checks.filter((c) => c.status === 'WARN').length;
   const passed = checks.length - failed - warned;
+  const fixable = checks.filter((c) => !c.ok && c.fixable).length;
+  // Group by the section doctor reported, preserving its order — a flat list
+  // of thirty checks reads as noise, and the section is what tells you where
+  // to look.
+  const sections: { name: string; checks: DoctorCheck[] }[] = [];
+  for (const check of checks) {
+    const name = check.section || 'checks';
+    const bucket = sections.find((s) => s.name === name);
+    if (bucket) bucket.checks.push(check);
+    else sections.push({ name, checks: [check] });
+  }
 
   return (
     <div className="space-y-3">
@@ -225,18 +265,41 @@ function DoctorView({ result }: { result: DoctorResult }) {
           </span>
         </p>
       ) : null}
-      <ul className="space-y-1.5">
-        {checks.map((c, i) => (
-          <li
-            // biome-ignore lint/suspicious/noArrayIndexKey: doctor returns a stable, identity-free list
-            key={i}
-            className="flex items-start gap-2"
-          >
-            {checkIcon(c.status)}
-            <span className={c.ok ? 'text-ash' : 'text-parchment'}>{c.label}</span>
-          </li>
-        ))}
-      </ul>
+      {repairs.length > 0 ? <RepairList repairs={repairs} /> : null}
+      {repairs.length === 0 && fixable > 0 ? (
+        <p className="font-serif-italic text-ash">
+          {fixable === 1 ? '1 finding has' : `${fixable} findings have`} an automated repair — run{' '}
+          <span className="font-mono">Doctor + repair</span> to apply{' '}
+          {fixable === 1 ? 'it' : 'them'}.
+        </p>
+      ) : null}
+      {sections.map((section) => (
+        <div key={section.name}>
+          <p className="font-mono mb-1 text-xs text-ash">{section.name}</p>
+          <ul className="space-y-1.5">
+            {section.checks.map((c, i) => (
+              // Codes repeat across sections (one per mod, say), so position
+              // is part of the identity.
+              <li key={`${c.code || c.label}-${i}`} className="flex items-start gap-2">
+                {checkIcon(c.status)}
+                <span className="min-w-0">
+                  <span className={c.ok ? 'text-ash' : 'text-parchment'}>{c.label}</span>
+                  {c.detail ? (
+                    <span className="font-serif-italic block text-sm text-ash">{c.detail}</span>
+                  ) : null}
+                  {!c.ok && c.fix ? (
+                    <span className="font-mono mt-0.5 block text-[11px] text-ash">
+                      fix: {c.fix.label}
+                      {c.fix.manual ? ' (manual)' : ''}
+                      {c.fix.risk === 'destructive' ? ' — destructive' : ''}
+                    </span>
+                  ) : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
       <OutputBlock label="Errors" text={result.stderr ?? ''} tone="error" />
     </div>
   );

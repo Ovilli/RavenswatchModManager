@@ -56,6 +56,8 @@ export function SetupBanner() {
   // patch is a new event each time, so no persisted signature.
   const [repairing, setRepairing] = useState(false);
   const [repairError, setRepairError] = useState<string | null>(null);
+  const [fixing, setFixing] = useState(false);
+  const [fixError, setFixError] = useState<string | null>(null);
   const [updateDismissed, setUpdateDismissed] = useState(false);
   // Session dismissal — overrides the persisted check until next launch.
   const [sessionDismissed, setSessionDismissed] = useState(false);
@@ -102,9 +104,9 @@ export function SetupBanner() {
   }, [runChecks]);
 
   // One-click recovery after a Steam patch: `apply` clears stale backups,
-  // rebuilds the asset map, and re-copies every override. Users who launch
-  // through the app's Play button get this implicitly (runModded applies
-  // first); this banner covers everyone who launches from Steam.
+  // rebuilds the asset map, and re-copies every override. Deliberately NOT
+  // doctor --fix — a game update need not produce a FAIL finding, and this
+  // banner promises a re-apply specifically.
   const repair = useCallback(async () => {
     setRepairing(true);
     setRepairError(null);
@@ -120,6 +122,28 @@ export function SetupBanner() {
       setRepairing(false);
     }
   }, [runChecks]);
+
+  // Doctor carries the repair for each finding it reports (apply,
+  // install-loader, rebuild-asset-map, update-data) and re-runs every check
+  // afterwards, so a repair only reads as fixed when the check goes green.
+  // No --force: destructive repairs roll the install back or delete installed
+  // files, and a banner button must never do that unasked.
+  const fixFindings = useCallback(async () => {
+    setFixing(true);
+    setFixError(null);
+    try {
+      const r = await doctor({ fix: true });
+      if (r) setResult(r);
+      const failedRepairs = (r?.repairs ?? []).filter((x) => x.outcome === 'failed');
+      if (failedRepairs.length > 0) {
+        setFixError(failedRepairs.map((x) => `${x.fix}: ${x.detail || 'failed'}`).join('; '));
+      }
+    } catch (e) {
+      setFixError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFixing(false);
+    }
+  }, []);
 
   const signature = useMemo(() => (result ? signatureFor(result.checks) : ''), [result]);
 
@@ -201,6 +225,7 @@ export function SetupBanner() {
   // newer than pattern db) are informational — they don't block apply
   // and shouldn't dunk a banner on every launch.
   const failing: DoctorCheck[] = result.checks.filter((c) => c.status === 'FAIL');
+  const fixableFailures = failing.filter((c) => c.fixable).length;
   if (sessionDismissed || failing.length === 0 || persistedSignature === signature) {
     return updateBanner;
   }
@@ -244,13 +269,45 @@ export function SetupBanner() {
               <span className={c.ok ? 'text-ash' : 'text-parchment'}>
                 <span className="uppercase tracking-wider text-xs mr-2">{c.status}</span>
                 {c.label}
+                {!c.ok && c.detail ? (
+                  <span className="font-serif-italic mt-0.5 block normal-case tracking-normal text-ash">
+                    {c.detail}
+                  </span>
+                ) : null}
+                {!c.ok && c.fix ? (
+                  <span className="mt-0.5 block text-xs text-ash">
+                    fix: {c.fix.label}
+                    {c.fix.manual ? ' (manual)' : ''}
+                  </span>
+                ) : null}
               </span>
             </li>
           ))}
         </ul>
+        {fixError ? (
+          <p className="font-mono text-sm text-crimson break-all" role="alert">
+            {fixError}
+          </p>
+        ) : null}
         <div className="flex flex-wrap items-center gap-2">
+          {fixableFailures > 0 ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="primary"
+              onClick={() => void fixFindings()}
+              disabled={fixing || running}
+            >
+              {fixing ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <Wrench className="h-3.5 w-3.5" aria-hidden />
+              )}
+              {fixing ? 'Repairing…' : `Repair ${fixableFailures} automatically`}
+            </Button>
+          ) : null}
           <Link to="/settings">
-            <Button type="button" size="sm" variant="primary">
+            <Button type="button" size="sm" variant={fixableFailures > 0 ? 'default' : 'primary'}>
               Open Settings
             </Button>
           </Link>

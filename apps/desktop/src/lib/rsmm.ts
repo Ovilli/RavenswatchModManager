@@ -412,14 +412,41 @@ interface RunResult {
   stderr: string;
 }
 
+/** A repair doctor knows how to run for a finding. `manual` ones need a
+ * human (close Steam, rebuild the DLL); `automatic` ones `--fix` can run. */
+export interface DoctorFix {
+  label: string;
+  argv: string[];
+  risk: 'safe' | 'destructive';
+  manual: boolean;
+  automatic: boolean;
+}
+
 export interface DoctorCheck {
   status: 'OK' | 'WARN' | 'FAIL';
   ok: boolean;
   label: string;
+  /** Longer explanation of the finding. Empty when there is nothing to add. */
+  detail?: string;
+  /** Stable identifier — safe to match on, unlike the label. */
+  code?: string;
+  /** Which doctor section produced it ("loader", "mods", …). */
+  section?: string;
+  fix?: DoctorFix | null;
+  fixable?: boolean;
+}
+
+/** What `--fix` actually did, one entry per attempted repair. */
+export interface DoctorRepair {
+  code: string;
+  fix: string;
+  outcome: 'fixed' | 'failed' | 'skipped' | string;
+  detail: string;
 }
 
 export interface DoctorResult extends RunResult {
   checks: DoctorCheck[];
+  repairs?: DoctorRepair[];
   // True when the game install changed since the last apply (Steam patch
   // or file verify) — mods are stale until the next apply, which
   // auto-recovers. null/undefined = could not determine.
@@ -514,7 +541,41 @@ export interface ConflictEntry {
 
 export const getConflicts = () => rsmm<ConflictEntry[]>(['conflicts']);
 
-export const doctor = () => rsmm<DoctorResult>(['doctor']);
+export interface LoaderLogResult {
+  path: string;
+  /** False until the game has run once with the loader installed — not an
+   * error, and the UI says so rather than showing a failure. */
+  exists: boolean;
+  gameDir: string;
+  lines: string[];
+  /** True when `lines` was capped; the oldest lines were dropped, not the newest. */
+  truncated: boolean;
+  sessions: number;
+}
+
+/** Read the in-game loader log (`<game>/mods/_log.txt`). Defaults to the
+ * latest session only — the file keeps every run since the last rotation. */
+export const readLoaderLog = (
+  opts: { lines?: number; prev?: boolean; allSessions?: boolean } = {},
+) =>
+  rsmm<LoaderLogResult>([
+    'loader-log',
+    '--lines',
+    String(opts.lines ?? 400),
+    ...(opts.prev ? ['--prev'] : []),
+    ...(opts.allSessions ? ['--all'] : []),
+  ]);
+
+/** Health check. `fix` runs each finding's automated repair and re-checks;
+ * `force` additionally allows the destructive ones (they roll the install
+ * back or delete installed files), so it is never implied by `fix`. */
+export const doctor = (opts: { fix?: boolean; force?: boolean } = {}) =>
+  rsmm<DoctorResult>(
+    ['doctor', ...(opts.fix ? ['--fix'] : []), ...(opts.force ? ['--force'] : [])],
+    // A repair run shells out to apply / install-loader / update-data, which
+    // are minutes-long jobs — the default 60s budget would time out mid-repair.
+    opts.fix ? { timeoutMs: LONG_TIMEOUT_MS } : {},
+  );
 
 export interface UpdateDataResult {
   ok: boolean;

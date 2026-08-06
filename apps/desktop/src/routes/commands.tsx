@@ -6,6 +6,7 @@ import {
   RotateCcw,
   ServerCrash,
   ShieldCheck,
+  Stethoscope,
   Terminal,
   Wrench,
 } from 'lucide-react';
@@ -92,6 +93,18 @@ function CommandsPage() {
         kind: 'doctor',
         readOnly: true,
         run: () => doctor(),
+      },
+      {
+        id: 'doctor-fix',
+        label: 'Doctor + repair',
+        description: 'Run the health check, then apply the safe automated repairs it finds.',
+        icon: <Stethoscope className="h-4 w-4" aria-hidden="true" />,
+        tone: 'gilt',
+        kind: 'doctor',
+        // Deliberately no --force: destructive repairs roll the install back
+        // or delete installed files, and a button labelled "repair" must not
+        // do that without the user asking for it explicitly.
+        run: () => doctor({ fix: true }),
       },
       {
         id: 'apply',
