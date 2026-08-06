@@ -46,6 +46,7 @@ import struct
 import subprocess
 import sys
 import tomllib  # Python 3.11+
+from contextlib import contextmanager
 from pathlib import Path
 
 from rsmm.cli import _term
@@ -62,6 +63,15 @@ from rsmm.engine.paths import (
 from rsmm.engine.paths import (
     REPO_ROOT as REPO_DIR,
 )
+from rsmm.engine.safeio import (
+    LockBusy,
+    NotEnoughSpace,
+    atomic_copy,
+    atomic_write_text,
+    ensure_free_space,
+    install_lock,
+    sweep_temp_files,
+)
 
 
 def parse_toml(p: Path) -> dict:
@@ -69,6 +79,7 @@ def parse_toml(p: Path) -> dict:
 
 
 COOKING_REL = Path("DarkTalesResources/_Cooking")
+JOURNAL_FILE_NAME = ".rsmm_journal.jsonl"
 STATE_FILE_NAME = ".rsmm_state.json"
 BACKUP_SUFFIX = ".rsmm.bak"
 
@@ -84,6 +95,106 @@ def find_game_dir() -> Path | None:
         if (c / COOKING_REL).is_dir():
             return c
     return None
+
+
+class Journal:
+    """Write-ahead record of files an apply is ABOUT to touch.
+
+    The state file is written once, at the end of an apply. A crash before
+    that leaves every already-applied override live but unrecorded. For a
+    file that replaced a vanilla asset that is survivable — `restore --all`
+    sweeps orphan `.rsmm.bak` files — but a file a mod *added* has no backup
+    and no state entry, so nothing knew it existed and it stayed in the
+    install forever.
+
+    So each intent is appended (and fsynced) BEFORE the write. On the next
+    apply or restore, leftover intents are folded into state as ordinary
+    entries, which hands them to the existing, tested restore rules: an
+    added file gets dropped, a replaced one gets restored from its backup.
+
+    An intent for a write that never happened is harmless — restore checks
+    the destination exists before touching it.
+    """
+
+    def __init__(self, cooking: Path):
+        self.path = cooking / JOURNAL_FILE_NAME
+
+    def record(self, enc: str, mod_id: str, *, added: bool) -> None:
+        line = json.dumps({"enc": enc, "mod": mod_id, "added": added},
+                          sort_keys=True)
+        try:
+            with open(self.path, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+        except OSError as e:
+            # Journalling is a safety net, not a gate: failing the apply
+            # because the net could not be hung would be worse.
+            print(f"  [warn] could not journal {enc}: {e}", file=sys.stderr)
+
+    def clear(self) -> None:
+        try:
+            self.path.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            print(f"  [warn] could not clear journal: {e}", file=sys.stderr)
+
+    def pending(self) -> list[dict]:
+        """Entries from a previous run that crashed before writing state."""
+        if not self.path.exists():
+            return []
+        out: list[dict] = []
+        try:
+            for raw in self.path.read_text(encoding="utf-8").splitlines():
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    rec = json.loads(raw)
+                except ValueError:
+                    continue  # torn final line — the rest is still good
+                if isinstance(rec, dict) and rec.get("enc"):
+                    out.append(rec)
+        except OSError:
+            return []
+        return out
+
+
+def reconcile_journal(cooking: Path, state: State) -> int:
+    """Fold a crashed run's journal into state; return how many were adopted.
+
+    Called at the start of apply and restore. Entries already tracked in
+    state are dropped — they completed and were recorded.
+    """
+    journal = Journal(cooking)
+    pending = journal.pending()
+    if not pending:
+        return 0
+    adopted = 0
+    for rec in pending:
+        enc = str(rec["enc"])
+        if enc in state.active:
+            continue
+        state.active[enc] = {
+            "mod": str(rec.get("mod", "")),
+            "src_sha256": "",
+            # No recorded original means "added by a mod" to the restore
+            # rules, which is exactly what `added` says. For a replaced file
+            # the backup on disk is what restore keys on, and the vanilla
+            # guard in restore_one still protects game-shipped paths.
+            "orig_sha256": "" if rec.get("added") else "unknown",
+        }
+        adopted += 1
+    if adopted:
+        print(f"  [recover] adopted {adopted} unrecorded write(s) from an "
+              f"interrupted run", file=sys.stderr)
+        try:
+            state.save()
+        except OSError as e:
+            print(f"  [warn] could not save recovered state: {e}", file=sys.stderr)
+    journal.clear()
+    return adopted
 
 
 class State:
@@ -119,10 +230,15 @@ class State:
                 print(f"  [warn] corrupt state file: {e}", file=__import__('sys').stderr)
 
     def save(self) -> None:
-        tmp = self.path.with_suffix(self.path.suffix + ".tmp")
-        tmp.write_text(json.dumps(self.data, indent=2, sort_keys=True),
-                       encoding="utf-8")
-        tmp.replace(self.path)
+        """Write the state file atomically and durably.
+
+        The old tmp+replace had no fsync, so a crash could land the rename
+        with an empty file — losing the record of every live override while
+        the overrides themselves stayed on disk.
+        """
+        atomic_write_text(
+            self.path, json.dumps(self.data, indent=2, sort_keys=True)
+        )
 
     @property
     def active(self) -> dict:
@@ -756,7 +872,8 @@ class VanillaMissing(RuntimeError):
 
 
 def apply_one(enc: str, src: Path, dest: Path, mod_id: str,
-              state: State, dry_run: bool, force: bool = False) -> None:
+              state: State, dry_run: bool, force: bool = False,
+              journal: Journal | None = None) -> None:
     if enc.startswith(ROOT_PREFIX):
         rel = dest.suffix.lower()
         if rel in _DANGEROUS_ROOT_EXTS:
@@ -770,7 +887,9 @@ def apply_one(enc: str, src: Path, dest: Path, mod_id: str,
             orig_sha = sha256(dest)
             print(f"  {_ST.ok(_ADD)} backup {_ST.dim(dest.name)}")
             if not dry_run:
-                shutil.copy2(dest, bak)
+                # Atomic: a torn backup is worse than no backup — restore
+                # would put truncated bytes back over a working install.
+                atomic_copy(dest, bak)
         else:
             orig_sha = (cur or {}).get("orig_sha256") or sha256(bak)
     elif is_vanilla_encoded(enc) and not force:
@@ -802,12 +921,29 @@ def apply_one(enc: str, src: Path, dest: Path, mod_id: str,
         print(f"  {_ST.ok(_ADD)} new file {_ST.dim(f'(no original) {dest}')}")
 
     print(f"  {_ST.ok(_ADD)} apply  {enc}  {_ST.dim(f'<- {mod_id}/{src.name}')}")
+    src_sha = sha256(src)
     if not dry_run:
+        # Journal BEFORE the write: if we die between here and the state
+        # save at the end of the run, the next apply/restore still knows
+        # this file was touched. `orig_sha` is empty exactly when nothing
+        # was backed up, i.e. the file is mod-added.
+        if journal is not None:
+            journal.record(enc, mod_id, added=not orig_sha)
         dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dest)
+        atomic_copy(src, dest)
+        # Verify what actually landed. A short write (full disk, flaky
+        # drive) otherwise gets recorded as a successful apply and the
+        # engine loads the truncated asset.
+        got = sha256(dest)
+        if got != src_sha:
+            raise OSError(
+                f"{mod_id}: {enc} did not land intact (expected "
+                f"{src_sha[:12]}, got {got[:12]}). The install may be out of "
+                f"space or the drive is failing; run `rsmm restore --all`."
+            )
     state.active[enc] = {
         "mod": mod_id,
-        "src_sha256": sha256(src),
+        "src_sha256": src_sha,
         "orig_sha256": orig_sha,
     }
 
@@ -830,9 +966,11 @@ def restore_one(enc: str, cooking: Path, game_dir: Path,
     if bak.exists():
         print(f"  {_ST.accent(_DEL)} restore {enc}")
         if not dry_run:
-            # Two-phase: copy then remove — a crash mid-copy preserves the backup
+            # Two-phase: copy then remove — a crash mid-copy preserves the
+            # backup, and the copy itself is atomic so `dest` is never a
+            # half-written mixture of override and original.
             try:
-                shutil.copy2(bak, dest)
+                atomic_copy(bak, dest)
                 bak.unlink()
             except OSError as e:
                 print(f"  [ERROR] failed to restore {enc}: {e}",
@@ -1556,6 +1694,24 @@ def restore_usedrsclist(game_dir: Path, dry_run: bool) -> int:
     return 1
 
 
+@contextmanager
+def _install_lock_or_fail(cooking: Path, operation: str):
+    """Hold the install lock for the duration, or explain who has it.
+
+    Two rsmm processes writing the same install can interleave a backup
+    against an apply and capture a MODDED file as the "original" — the one
+    corruption no restore can undo, because the vanilla bytes are gone.
+    A short wait covers the common case (the desktop app polling `json list`
+    while the user hits Apply); beyond that, say who holds it.
+    """
+    try:
+        with install_lock(cooking, operation, timeout=10.0):
+            yield True
+    except LockBusy as e:
+        print(f"{_ST.err('[FAIL]')} {e}", file=sys.stderr)
+        yield False
+
+
 def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     _recover_game_update(cooking, game_dir)
     dec2enc = load_asset_map(repo)
@@ -1576,6 +1732,14 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
             print(f"  [apply] recovered previous staging state: {tx_recover}")
     except (OSError, ImportError) as e:
         print(f"  [apply] recover skipped: {e}", file=sys.stderr)
+
+    # Leftovers from a run that died mid-write: temp files the rename never
+    # consumed, and journalled writes the state file never recorded.
+    swept = sweep_temp_files(cooking)
+    if swept:
+        print(f"  [apply] cleared {swept} leftover temp file(s)")
+    reconcile_journal(cooking, state)
+    journal = Journal(cooking)
 
     # Run on_disable.py for any mod that flipped enabled -> disabled BEFORE
     # we touch assets, so the hook can read its own files / restore state
@@ -1610,6 +1774,18 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
 
     if additions or removals:
         print(f"Plan: {len(additions)} apply, {len(removals)} restore")
+        if not args.dry_run and additions:
+            # Every override is written once and the file it replaces is
+            # backed up alongside it, so budget for both. Failing here costs
+            # nothing; running out of space mid-apply leaves a half-modded
+            # install.
+            need = 0
+            for _enc, src, dest, _mod_id in additions:
+                try:
+                    need += src.stat().st_size * (2 if dest.exists() else 1)
+                except OSError:
+                    continue
+            ensure_free_space(cooking, need)
         failed_removals = 0
         for enc in removals:
             if not restore_one(enc, cooking, game_dir, state, args.dry_run):
@@ -1621,7 +1797,8 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
         for enc, src, dest, mod_id in additions:
             try:
                 apply_one(enc, src, dest, mod_id, state, args.dry_run,
-                          force=bool(getattr(args, "force", False)))
+                          force=bool(getattr(args, "force", False)),
+                          journal=journal)
             except VanillaMissing as e:
                 # Skip this file, keep applying the rest: one wiped vanilla
                 # asset must not block every other mod, and skipping is the
@@ -1641,6 +1818,9 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
         try:
             state.save()
             print(f"State written: {state.path}")
+            # State now describes every write, so the write-ahead record has
+            # done its job. Clear it only after the save succeeds.
+            journal.clear()
         except OSError as e:
             print(f"  [warn] failed to write state: {e}", file=sys.stderr)
     return 0
@@ -1648,6 +1828,12 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
 
 def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     state = State(cooking)
+    # A restore is the recovery path, so it must see writes an interrupted
+    # apply never got to record — otherwise mod-added files (which have no
+    # backup to sweep) survive the rollback.
+    if not args.dry_run:
+        sweep_temp_files(cooking)
+        reconcile_journal(cooking, state)
     restored_stale = 0
     cleaned_residue = 0
     purged_known = 0
@@ -1665,6 +1851,26 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
               flush=True)
         # Skip Phase 1 (stale backup recovery) and Phase 2 (state restore):
         # every backup on disk is from the previous game version.
+        #
+        # Mod-ADDED files are the exception. They are not game files, so the
+        # version change says nothing about them, and leaving them behind
+        # keeps stale modded assets in a freshly patched install with nothing
+        # tracking them. restore_one's own guards still apply — a path the
+        # game ships is never dropped, whatever state claims.
+        added = [
+            enc for enc, entry in state.active.items()
+            if not (entry.get("orig_sha256") or entry.get("orig_sha1", ""))
+        ]
+        if added:
+            print(f"Dropping {len(added)} mod-added file(s) "
+                  f"(not game files — safe to remove after an update).")
+            for enc in added:
+                restore_one(enc, cooking, game_dir, state, args.dry_run)
+            if not args.dry_run:
+                try:
+                    state.save()
+                except OSError as e:
+                    print(f"  [warn] failed to write state: {e}", file=sys.stderr)
         save_fingerprint(game_dir, current_fp)
     else:
         # Phase 1: Recover orphaned backups that have no state entry.
@@ -1679,7 +1885,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
             if not args.dry_run:
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 try:
-                    shutil.copy2(bak, dest)
+                    atomic_copy(bak, dest)
                     bak.unlink()
                 except OSError as e:
                     print(f"  [ERROR] failed to restore stale backup {bak.name}: {e}",
@@ -1999,7 +2205,10 @@ def main() -> int:
     if args.restore_all:
         # restore tolerates a missing/corrupt asset map (its residue sweep
         # already guards itself) — never block a rollback on it.
-        return cmd_restore_all(args, repo, cooking, game_dir)
+        with _install_lock_or_fail(cooking, "restore") as held:
+            if not held:
+                return 1
+            return cmd_restore_all(args, repo, cooking, game_dir)
     if not _ensure_asset_map():
         return 1
     if args.list:
@@ -2041,7 +2250,14 @@ def main() -> int:
         except ImportError as e:
             print(f"  [merge] skipped: {e}", file=sys.stderr)
 
-    return cmd_apply(args, repo, cooking, game_dir)
+    with _install_lock_or_fail(cooking, "apply") as held:
+        if not held:
+            return 1
+        try:
+            return cmd_apply(args, repo, cooking, game_dir)
+        except NotEnoughSpace as e:
+            print(f"{_ST.err('[FAIL]')} {e}", file=sys.stderr)
+            return 1
 
 
 if __name__ == "__main__":
