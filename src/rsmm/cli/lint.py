@@ -5,6 +5,8 @@ Surfaces problems before `rsmm apply`:
 
   - missing or malformed manifest fields
   - assets/ paths that don't resolve via asset_map
+  - raw assets/ overrides that no-op, edit a shadowed value, or re-frame the
+    container (needs the vanilla corpus; skipped when it isn't on disk)
   - [[patch]] blocks whose fields don't exist
   - declared multiplayer_scope mismatch with patch kinds
   - dep specs that don't parse
@@ -116,6 +118,11 @@ def lint_one(entry: Path) -> tuple[int, int]:
                       f"{_ST.accent(p)}")
                 warns += 1
 
+    # raw assets/ overrides vs the vanilla corpus
+    re_, rw = _lint_raw_overrides(entry.name, entry)
+    errs += re_
+    warns += rw
+
     # [[patch]] blocks
     stat_set = _stat_names()
     for p in t.get("patch", []) or []:
@@ -179,6 +186,101 @@ def lint_one(entry: Path) -> tuple[int, int]:
     summary = (f"(raw={raw_files} patches={n_patch} "
                f"content={n_content} scope={scope})")
     print(f"  {_T_OK}   {_ST.heading(entry.name)}  {_ST.dim(summary)}")
+    return errs, warns
+
+
+#: Cooked classes whose value nodes the before-END scanner understands. Other
+#: raw overrides still get the byte-level checks, just not the value diff.
+_ENTITY_SUFFIX = ".EntitySettingsResource.gen"
+
+
+def _vanilla_root() -> Path | None:
+    """Mirrored vanilla corpus, or ``None`` when it isn't on disk.
+
+    ``data/uncooked/`` is game-derived and gitignored, so it is absent in fresh
+    clones, in the frozen sidecar, and in git worktrees. Every check below is
+    therefore advisory: no corpus means no comparison, never a failure.
+    """
+    try:
+        from rsmm.engine.paths import DATA_DIR
+    except ImportError:  # pragma: no cover - paths always importable in practice
+        return None
+    root = Path(DATA_DIR) / "uncooked"
+    return root if root.is_dir() else None
+
+
+def _lint_raw_overrides(modname: str, entry: Path, *,
+                        vanilla_root: Path | None = None) -> tuple[int, int]:
+    """Compare each raw ``assets/`` override against its vanilla twin.
+
+    A raw override is the one modding path with no schema behind it — the mod
+    ships finished bytes and ``apply`` copies them over the retail asset, so
+    nothing until the game itself ever inspects what changed. Three failures
+    are invisible without this check:
+
+    * the override is byte-identical to vanilla (ships, applies, does nothing);
+    * it edits a *shadowed* value node, whose inline float the engine ignores
+      because the value is sourced from a selector — the mod claims a nerf and
+      the number in game never moves;
+    * it changes the file length, i.e. it re-framed the container rather than
+      patching in place. That can be legitimate (a re-emitted section) but it
+      is also how a byte-splice bricks an asset, so it is worth saying out loud.
+
+    Returns ``(errors, warnings)``. Only the shadowed-edit case is an error;
+    it is the one where the mod is provably not doing what it says.
+    """
+    assets = entry / "assets"
+    if not assets.is_dir():
+        return 0, 0
+    root = vanilla_root if vanilla_root is not None else _vanilla_root()
+    if root is None:
+        return 0, 0
+    try:
+        from rsmm.engine.talent_values import list_talent_values
+    except ImportError:  # pragma: no cover
+        return 0, 0
+
+    errs = warns = 0
+    mod_s = _ST.bold(modname)
+    for f in sorted(assets.rglob("*")):
+        if not f.is_file():
+            continue
+        rel = f.relative_to(assets)
+        vanilla = root / rel
+        if not vanilla.is_file():
+            continue  # new asset, or a family the corpus doesn't mirror
+        cur, van = f.read_bytes(), vanilla.read_bytes()
+        name = _ST.accent(rel.as_posix())
+        if cur == van:
+            print(f"  {_T_WARN} {mod_s}: override identical to vanilla "
+                  f"{_ST.dim('(applies, changes nothing)')}: {name}")
+            warns += 1
+            continue
+        if len(cur) != len(van):
+            hint = (f"({len(van)} -> {len(cur)} bytes; container re-framed, not "
+                    f"an in-place edit — test this asset on its own)")
+            print(f"  {_T_WARN} {mod_s}: structural override {_ST.dim(hint)}: {name}")
+            warns += 1
+        if not rel.name.endswith(_ENTITY_SUFFIX):
+            continue
+        before = {v.label: v for v in list_talent_values(van)}
+        after = {v.label: v.value for v in list_talent_values(cur)}
+        changed = [lab for lab, v in before.items()
+                   if lab in after and after[lab] != v.value]
+        for lab in changed:
+            if before[lab].is_overridden:
+                hint = ("its value is sourced from a selector/reference, so the "
+                        "inline edit has NO in-game effect")
+                print(f"  {_T_ERROR} {mod_s}: {name}: value {_ST.accent(repr(lab))} "
+                      f"is shadowed — {_ST.dim(hint)}")
+                errs += 1
+            else:
+                delta = f"{before[lab].value:g} -> {after[lab]:g}"
+                print(f"  {_ST.dim('  ·')} {mod_s}: {name}: "
+                      f"{_ST.dim(repr(lab) + ' ' + delta)}")
+        if not changed:
+            print(f"  {_ST.dim('  ·')} {mod_s}: {name}: "
+                  f"{_ST.dim('bytes differ but no value node changed')}")
     return errs, warns
 
 

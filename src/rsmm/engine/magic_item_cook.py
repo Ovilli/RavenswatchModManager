@@ -149,33 +149,82 @@ def set_icon(data: bytes, new_icon: str) -> bytes:
     return replace_lstr_any(data, cur, new_icon)
 
 
-def set_value_after_label(data: bytes, label: str, old_value: float,
-                          new_value: float, *, within: int = 64) -> bytes:
-    """Patch a node's f32 value, anchored on its label + current value.
+def _node_value(data: bytes, label: str) -> tuple[int, float] | None:
+    """Resolve ``label`` to ``(offset, value)`` using the authoritative cooked
+    node layout: the f32 sits immediately **before** the node's closing ``END``
+    marker, not at the first matching float after the label.
 
-    A magical-object effect magnitude is stored as a little-endian f32 a few
-    bytes after the value node's label string (e.g. ``Armor per Object Value``
-    holds ``2.0``). We find ``<u32 len><label>`` then, within the next
-    ``within`` bytes, the exact 4-byte encoding of ``old_value`` and overwrite
-    it with ``new_value``. Anchoring on both the label and the expected old
-    value makes the match unambiguous; the edit is 4->4 bytes so framing is
-    untouched. Raises if the label or the expected value isn't found.
+    Returns ``None`` when the label isn't a resolvable value node (no END in
+    range, or the field is an int32 count rather than an f32 magnitude) — the
+    caller then falls back to the label-anchored scan.
     """
+    from .talent_values import list_talent_values
+    for tv in list_talent_values(data, include_spawner=True):
+        if tv.label == label:
+            return (None if tv.is_int else (tv.offset, tv.value))
+    return None
+
+
+def _scan_after_label(data: bytes, label: str, old_value: float,
+                      within: int) -> int | None:
+    """Offset of the first exact ``old_value`` encoding within ``within`` bytes
+    after ``label``'s length-prefixed string, or ``None``. Legacy locator —
+    kept as a fallback and as a cross-check, never as the primary authority."""
     lb = label.encode("utf-8")
     pat = struct.pack("<I", len(lb)) + lb
     at = data.find(pat)
     if at < 0:
-        raise ValueError(f"value label {label!r} not found")
+        return None
     region_start = at + len(pat)
-    region = data[region_start: region_start + within]
-    old_bytes = struct.pack("<f", old_value)
-    k = region.find(old_bytes)
-    if k < 0:
+    k = data[region_start: region_start + within].find(struct.pack("<f", old_value))
+    return None if k < 0 else region_start + k
+
+
+def set_value_after_label(data: bytes, label: str, old_value: float,
+                          new_value: float, *, within: int = 64) -> bytes:
+    """Patch a value node's f32, anchored on its label + expected current value.
+
+    The magnitude lives at the **end of the node body, just before its closing
+    ``END`` marker** — :func:`_node_value` reads it there. The older locator
+    (first occurrence of ``old_value`` within ``within`` bytes after the label)
+    is only a fallback for blobs with no resolvable node framing, because on the
+    real corpus it lands on the wrong field for roughly a third of all labels:
+    ``Power_Up_Armor``'s ``Armour Value`` is 6.0 but a stray ``-2.0`` sits
+    nearer the label, so anchoring on the stale ``-2.0`` would overwrite four
+    unrelated bytes and leave the armour value untouched.
+
+    That divergence is refused rather than guessed at: when the node resolves
+    but holds a different value than ``old_value``, we raise — even if some
+    other byte window happens to match — so a manifest authored against a
+    phantom default fails loudly instead of corrupting the entity. The edit
+    itself is 4->4 bytes, so container framing is untouched.
+    """
+    if data.find(struct.pack("<I", len(label.encode("utf-8")))
+                 + label.encode("utf-8")) < 0:
+        raise ValueError(f"value label {label!r} not found")
+
+    node = _node_value(data, label)
+    if node is not None:
+        abs_off, cur = node
+        if struct.pack("<f", cur) != struct.pack("<f", old_value):
+            stale = _scan_after_label(data, label, old_value, within)
+            extra = ""
+            if stale is not None:
+                extra = (f" — a stray {old_value!r} does sit near the label, but "
+                         f"it is not this node's value; patching it would "
+                         f"corrupt unrelated bytes")
+            raise ValueError(
+                f"{label!r}: expected value {old_value!r} but the node holds "
+                f"{cur!r}{extra}. Use the value `rsmm items show` reports."
+            )
+        return data[:abs_off] + struct.pack("<f", new_value) + data[abs_off + 4:]
+
+    abs_off = _scan_after_label(data, label, old_value, within)
+    if abs_off is None:
         raise ValueError(
             f"{label!r}: expected value {old_value!r} not found within "
             f"{within} bytes after the label (wrong base value?)"
         )
-    abs_off = region_start + k
     return data[:abs_off] + struct.pack("<f", new_value) + data[abs_off + 4:]
 
 
@@ -208,37 +257,22 @@ def find_lstrings(data: bytes, *, contains: str | None = None,
 def list_value_fields(cooked: bytes, *, within: int = 64) -> list[tuple[str, float]]:
     """Discover an item's editable f32 value fields as ``(label, default)``.
 
-    Magical-object effect magnitudes live in nodes whose display name ends in
-    ``Value`` (e.g. ``Armor per Object Value`` = 2.0); the f32 sits a few bytes
-    after the label. For each such label we report the first clean float in the
-    next ``within`` bytes — skipping byte windows that overlap a container
-    marker (``..bbaa``/``1111``/``2222``) so we don't surface marker noise as a
-    value. These are exactly the labels usable in ``value_patches``; the modder
-    confirms the default via :func:`set_value_after_label` (which errors on a
-    mismatch). Best-effort + de-duplicated by label.
+    Reads each node's magnitude where the format actually stores it — just
+    before the node's closing ``END`` marker — so the defaults printed here are
+    the ones :func:`set_value_after_label` will demand. The earlier
+    label-anchored scan reported the first plausible float *after* the label,
+    which disagreed with the real field on ~a third of the shipped item corpus
+    (and invented labels like ``Icon Value = 3854.41`` out of pointer bytes);
+    authoring a ``value_patches`` entry against one of those phantom defaults
+    produced an edit that silently missed the value it meant to change.
+
+    Names ending in ``Value`` only, de-duplicated, first occurrence wins. int32
+    count nodes are excluded — they are not f32-patchable through this path.
+    ``within`` is accepted for backwards compatibility and unused.
     """
-    seen: set[str] = set()
-    out: list[tuple[str, float]] = []
-    n = len(cooked)
-    for off, s in find_lstrings(cooked):
-        # Authored value nodes have a plain name ending in "Value"; skip
-        # scoped references (`[Value] X\...`) and runtime getters ("...Get...").
-        if (not s.endswith("Value") or s in seen
-                or s.startswith("[") or "Get" in s):
-            continue
-        start = off + 4 + len(s.encode("utf-8"))
-        for k in range(max(0, min(within, n - start - 4))):
-            b4 = cooked[start + k: start + k + 4]
-            if b"\xbb\xaa" in b4 or b"\x11\x11" in b4 or b"\x22\x22" in b4:
-                continue
-            v = struct.unpack("<f", b4)[0]
-            # effect magnitudes are small, human-authored numbers; large values
-            # are almost always a misread int/pointer.
-            if v == v and v != 0.0 and 1e-3 <= abs(v) < 1e4:
-                out.append((s, round(v, 4)))
-                seen.add(s)
-                break
-    return out
+    from .talent_values import list_talent_values
+    return [(tv.label, tv.value) for tv in list_talent_values(cooked)
+            if tv.label.endswith("Value") and not tv.is_int]
 
 
 def _candidate_node_guids(data: bytes) -> list[bytes]:
