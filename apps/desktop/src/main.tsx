@@ -6,12 +6,29 @@ import { getCurrent as getCurrentDeepLink, onOpenUrl } from '@tauri-apps/plugin-
 import { Component, type ErrorInfo, type ReactNode, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RouteErrorComponent } from './components/route-error';
+import { applyAppearance } from './lib/appearance';
 import { authClient } from './lib/auth-client';
 import { reportDesktopAuthFailure } from './lib/desktop-auth';
 import { wireGlobalErrorHandlers } from './lib/telemetry';
 import { routeTree } from './routeTree.gen';
+import { useApp } from './store';
 
 wireGlobalErrorHandlers();
+
+// Typeface + UI scale live on <html>, so they must be written before the
+// first paint — a React effect would flash the default face on every start.
+// The store rehydrates from localStorage synchronously, so getState() here
+// already carries the user's saved choice.
+applyAppearance(useApp.getState().settings);
+useApp.subscribe((state, prev) => {
+  if (
+    state.settings.fontFamily !== prev.settings.fontFamily ||
+    state.settings.fontScale !== prev.settings.fontScale ||
+    state.settings.density !== prev.settings.density
+  ) {
+    applyAppearance(state.settings);
+  }
+});
 
 // Handle the desktop OAuth relay deep link: rsmm://desktop-auth?token=…
 // The system browser drove the whole OAuth flow and minted a one-time token;

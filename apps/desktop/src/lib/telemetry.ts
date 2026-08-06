@@ -1,4 +1,5 @@
 import type { TelemetryRun } from '@rsmm/schemas';
+import { useApp } from '../store';
 import { api } from './api';
 import { appendLauncherLog } from './launcher-log';
 
@@ -24,6 +25,13 @@ export async function reportCrash(args: {
     message: args.message,
     context: args.context ?? null,
   };
+  // The local log entry below is written either way — it never leaves the
+  // machine and is what `rsmm doctor` / a bug report needs. Only the upload
+  // is opt-out (Settings → Privacy).
+  if (!useApp.getState().settings.crashReports) {
+    await appendLauncherLog('error', 'Frontend crash (reporting disabled)', crashPayload);
+    return;
+  }
   try {
     await api.telemetry.crash({
       rsmmVersion: RSMM_VERSION,

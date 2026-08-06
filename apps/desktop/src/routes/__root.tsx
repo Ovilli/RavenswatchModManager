@@ -1,11 +1,10 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { Link, Outlet, createRootRouteWithContext, useLocation } from '@tanstack/react-router';
 import { exit as processExit } from '@tauri-apps/plugin-process';
-import { Command } from '@tauri-apps/plugin-shell';
 import { AlertTriangle } from 'lucide-react';
 import { FlaskConical, Terminal } from 'lucide-react';
-import type { CSSProperties, Dispatch, SetStateAction } from 'react';
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import PromotedBanner from '../components/PromotedBanner';
 import { AccountStrip } from '../components/account-strip';
@@ -21,12 +20,12 @@ import { SettingsIcon } from '../components/icons/SettingsIcon';
 import { WindowCloseIcon } from '../components/icons/WindowCloseIcon';
 import { WindowMaximizeIcon } from '../components/icons/WindowMaximizeIcon';
 import { WindowMinimizeIcon } from '../components/icons/WindowMinimizeIcon';
+import { LaunchProvider, useLaunch } from '../components/launch';
 import { ProfilePopover } from '../components/profile-popover';
 import { DialogProvider, ToastProvider } from '../components/toast';
 import { UpdaterBanner } from '../components/updater';
-import { appendLauncherLog, clearLauncherLog } from '../lib/launcher-log';
-import { getPlatform, shortcutLabel } from '../lib/platform';
-import { restoreAll, runModded, runVanilla } from '../lib/rsmm';
+import { shortcutLabel } from '../lib/platform';
+import { restoreAll } from '../lib/rsmm';
 import { activeProfile, detectConflicts, isEnabledIn, outdatedCount, useApp } from '../store';
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
@@ -67,52 +66,6 @@ type AppRegionStyle = CSSProperties & { WebkitAppRegion?: 'drag' | 'no-drag' };
 
 const dragStyle: AppRegionStyle = { WebkitAppRegion: 'drag' };
 const noDragStyle: AppRegionStyle = { WebkitAppRegion: 'no-drag' };
-const GAME_POLL_INTERVAL_MS = 5000;
-const GAME_START_TIMEOUT_MS = 5 * 60_000;
-
-type LaunchMode = 'vanilla' | 'modded';
-
-interface LaunchState {
-  launching: LaunchMode | null;
-  running: LaunchMode | null;
-  launchError: string | null;
-  setLaunching: Dispatch<SetStateAction<LaunchMode | null>>;
-  setRunning: Dispatch<SetStateAction<LaunchMode | null>>;
-  setLaunchError: Dispatch<SetStateAction<string | null>>;
-}
-
-const LaunchStateContext = createContext<LaunchState | null>(null);
-
-function useLaunchState() {
-  const ctx = useContext(LaunchStateContext);
-  if (!ctx) throw new Error('useLaunchState must be used inside <LaunchStateContext.Provider>');
-  return ctx;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function createGameProbeCommand() {
-  switch (getPlatform()) {
-    case 'windows':
-      return Command.create('tasklist', ['/FI', 'IMAGENAME eq Ravenswatch.exe', '/NH']);
-    default:
-      return Command.create('pgrep', ['-f', 'Ravenswatch.exe']);
-  }
-}
-
-async function isRavenswatchRunning(): Promise<boolean> {
-  try {
-    const result = await createGameProbeCommand().execute();
-    if (getPlatform() === 'windows') {
-      return /\bRavenswatch\.exe\b/i.test(result.stdout);
-    }
-    return result.code === 0;
-  } catch {
-    return false;
-  }
-}
 
 function NavLink({ to, icon: Icon, label }: Nav) {
   const installed = useApp((s) => s.installed);
@@ -139,123 +92,16 @@ function NavLink({ to, icon: Icon, label }: Nav) {
 }
 
 function StatusStrip() {
-  const { launching, running, launchError, setLaunching, setRunning, setLaunchError } =
-    useLaunchState();
+  const { launching, running, launchError, busy, launch } = useLaunch();
   const profile = useApp(activeProfile);
   const installed = useApp((s) => s.installed);
   const localMods = useApp((s) => s.localMods);
-  const profiles = useApp((s) => s.profiles);
-  const launchSeq = useRef(0);
   const enabled = profile.loadOrder.filter(
     (id) => localMods[id] && isEnabledIn(profile, id),
   ).length;
   const disabled = profile.loadOrder.length - enabled;
   const conflictCount = useMemo(() => detectConflicts(profile).length, [profile]);
   const outdated = useMemo(() => outdatedCount(installed), [installed]);
-
-  const trackGameLifecycle = (mode: 'vanilla' | 'modded', seq: number) => {
-    void (async () => {
-      const startedAt = Date.now();
-      let sawGameRunning = false;
-
-      while (Date.now() - startedAt < GAME_START_TIMEOUT_MS) {
-        if (launchSeq.current !== seq) return;
-        if (await isRavenswatchRunning()) {
-          sawGameRunning = true;
-          break;
-        }
-        await delay(GAME_POLL_INTERVAL_MS);
-      }
-
-      if (!sawGameRunning) {
-        if (mode === 'modded') {
-          await appendLauncherLog(
-            'warn',
-            'Could not observe Ravenswatch.exe after launch; automatic restore watcher ended',
-          );
-        }
-        if (launchSeq.current === seq) setRunning(null);
-        return;
-      }
-
-      await appendLauncherLog('info', `Ravenswatch started; waiting for ${mode} session to end`);
-      while (launchSeq.current === seq && (await isRavenswatchRunning())) {
-        await delay(GAME_POLL_INTERVAL_MS);
-      }
-
-      if (launchSeq.current !== seq) return;
-
-      if (mode === 'modded') {
-        try {
-          await appendLauncherLog('info', 'Ravenswatch closed; restoring original files');
-          const result = await restoreAll();
-          if (!result || !result.ok) {
-            throw new Error(result?.stderr?.trim() || result?.stdout?.trim() || 'restore failed');
-          }
-          await appendLauncherLog('info', 'Restore complete');
-        } catch (e) {
-          const message = `Automatic restore failed: ${String(e)}`;
-          setLaunchError(message);
-          await appendLauncherLog('error', message);
-        }
-      } else {
-        await appendLauncherLog('info', 'Ravenswatch closed');
-      }
-
-      if (launchSeq.current === seq) setRunning(null);
-    })();
-  };
-
-  const handleLaunch = async (mode: 'vanilla' | 'modded') => {
-    if (launching || running) return;
-    const seq = ++launchSeq.current;
-    setLaunching(mode);
-    setLaunchError(null);
-    try {
-      await clearLauncherLog();
-      await appendLauncherLog('info', `Launch requested: ${mode}`);
-      const fn = mode === 'vanilla' ? runVanilla : runModded;
-      const result = await fn();
-      if (!result || !result.ok) {
-        const message = `${mode} launch failed (exit ${result?.code ?? 'unknown'})`;
-        setLaunchError(message);
-        await appendLauncherLog('error', message, {
-          code: result?.code ?? null,
-          stdout: result?.stdout ?? '',
-          stderr: result?.stderr ?? '',
-        });
-        if (mode === 'modded') {
-          try {
-            await appendLauncherLog(
-              'info',
-              'Launch failed after applying mods; restoring original files',
-            );
-            const restore = await restoreAll();
-            if (!restore || !restore.ok) {
-              throw new Error(
-                restore?.stderr?.trim() || restore?.stdout?.trim() || 'restore failed',
-              );
-            }
-            await appendLauncherLog('info', 'Rollback complete');
-          } catch (e) {
-            const rollbackMessage = `Rollback after failed launch failed: ${String(e)}`;
-            setLaunchError(rollbackMessage);
-            await appendLauncherLog('error', rollbackMessage);
-          }
-        }
-      } else {
-        setRunning(mode);
-        await appendLauncherLog('info', `Launch handoff complete: ${mode} (running state set)`);
-        trackGameLifecycle(mode, seq);
-      }
-    } catch (e) {
-      const message = String(e);
-      setLaunchError(message);
-      await appendLauncherLog('error', message, { mode });
-    } finally {
-      setLaunching(null);
-    }
-  };
 
   return (
     <div className="surface-grain flex items-center justify-between gap-3 border-b border-border px-3 py-2 backdrop-blur-sm">
@@ -265,12 +111,7 @@ function StatusStrip() {
 
       <div className="flex items-center gap-2">
         <div className="flex items-center gap-2 pr-2" style={noDragStyle}>
-          <Button
-            type="button"
-            size="sm"
-            disabled={launching !== null || running !== null}
-            onClick={() => handleLaunch('vanilla')}
-          >
+          <Button type="button" size="sm" disabled={busy} onClick={() => void launch('vanilla')}>
             <LaunchIcon className="h-5 w-5 text-parchment" />
             <span>
               {launching === 'vanilla'
@@ -284,8 +125,8 @@ function StatusStrip() {
             type="button"
             size="sm"
             variant="primary"
-            disabled={launching !== null || running !== null}
-            onClick={() => handleLaunch('modded')}
+            disabled={busy}
+            onClick={() => void launch('modded')}
           >
             <LaunchIcon className="h-5 w-5 text-parchment" />
             <span>
@@ -332,7 +173,7 @@ async function getAppWindow() {
 }
 
 function WindowControls() {
-  const { running } = useLaunchState();
+  const { running } = useLaunch();
   const [maximized, setMaximized] = useState(false);
   const [available, setAvailable] = useState(false);
   const [quitPromptOpen, setQuitPromptOpen] = useState(false);
@@ -580,20 +421,6 @@ function WindowControls() {
 function RootLayout() {
   const location = useLocation();
   const mainRef = useRef<HTMLElement | null>(null);
-  const [launching, setLaunching] = useState<LaunchMode | null>(null);
-  const [running, setRunning] = useState<LaunchMode | null>(null);
-  const [launchError, setLaunchError] = useState<string | null>(null);
-  const launchState = useMemo(
-    () => ({
-      launching,
-      running,
-      launchError,
-      setLaunching,
-      setRunning,
-      setLaunchError,
-    }),
-    [launchError, launching, running],
-  );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-scroll on navigation
   useEffect(() => {
@@ -603,7 +430,7 @@ function RootLayout() {
   return (
     <ToastProvider>
       <DialogProvider>
-        <LaunchStateContext.Provider value={launchState}>
+        <LaunchProvider>
           <div className="flex h-screen w-screen overflow-hidden">
             <aside className="surface-grain flex w-72 flex-col border-r border-border">
               <div className="px-5 pt-5 pb-4">
@@ -642,7 +469,10 @@ function RootLayout() {
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <StatusStrip />
               <UpdaterBanner />
-              <main ref={mainRef} className="min-h-0 flex-1 overflow-y-auto px-6 py-6 md:px-8">
+              <main
+                ref={mainRef}
+                className="rsmm-main min-h-0 flex-1 overflow-y-auto px-6 py-6 md:px-8"
+              >
                 <div className="mx-auto w-full max-w-7xl animate-page-in">
                   <Outlet />
                 </div>
@@ -651,7 +481,7 @@ function RootLayout() {
 
             <CommandPalette />
           </div>
-        </LaunchStateContext.Provider>
+        </LaunchProvider>
       </DialogProvider>
     </ToastProvider>
   );

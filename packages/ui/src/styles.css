@@ -41,6 +41,16 @@
     --input: 18 15% 18%;
     --ring: var(--gilt);
     --radius: 10px;
+
+    /* Typography tokens. Every font-family in this sheet resolves through
+       these four vars, and every size is rem-relative to `--ui-scale`, so
+       the Settings → Appearance controls can restyle the whole app by
+       overriding them on <html>. Defaults = the Grimoire brand faces. */
+    --font-body: 'EB Garamond', Georgia, serif;
+    --font-display: 'UnifrakturCook', 'UnifrakturMaguntia', serif;
+    --font-accent: 'Cormorant Garamond', Georgia, serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    --ui-scale: 100%;
   }
 
   * {
@@ -51,11 +61,17 @@
     height: 100%;
   }
 
+  /* Root font size drives every rem-based Tailwind utility, so scaling it
+     scales the entire UI — not just body copy. */
+  html {
+    font-size: var(--ui-scale);
+  }
+
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
-    font-family: 'EB Garamond', Georgia, serif;
-    font-size: 16px;
+    font-family: var(--font-body);
+    font-size: 1rem;
     line-height: 1.55;
     font-feature-settings: 'liga' 1, 'kern' 1;
     -webkit-font-smoothing: antialiased;
@@ -75,21 +91,21 @@
   /* Headlines — blackletter Fraktur for the German-feel wordmark / section
      titles. Used sparingly per brief. */
   .font-fraktur {
-    font-family: 'UnifrakturCook', 'UnifrakturMaguntia', serif;
+    font-family: var(--font-display);
     font-weight: 700;
     letter-spacing: 0.02em;
   }
 
   /* Hero serif italic for occasional flourishes (mod titles, hero copy). */
   .font-serif-italic {
-    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-family: var(--font-accent);
     font-style: italic;
     font-weight: 500;
   }
 
   /* Metadata / tags / numbers — uppercase, tracked. */
   .font-mono {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: var(--font-mono);
     font-weight: 500;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -116,7 +132,7 @@
     align-items: center;
     gap: 0;
     color: hsl(var(--ash));
-    font-family: 'EB Garamond', serif;
+    font-family: var(--font-body);
   }
   .rule-fleuron::before,
   .rule-fleuron::after {
@@ -143,7 +159,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.7rem;
     letter-spacing: 0.1em;
     text-transform: lowercase;
@@ -379,7 +395,7 @@
     border-radius: 999px;
     color: hsl(var(--ash));
     background-color: hsl(var(--pitch) / 0.6);
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: var(--font-mono);
     font-size: 0.7rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -410,7 +426,7 @@
     border-radius: calc(var(--radius) - 2px);
     color: hsl(var(--parchment));
     background-color: hsl(var(--char) / 0.22);
-    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-family: var(--font-accent);
     font-style: normal;
     font-weight: 600;
     font-size: 0.95rem;
@@ -491,7 +507,7 @@
     border-radius: calc(var(--radius) - 2px);
     background-color: hsl(var(--pitch) / 0.64);
     color: hsl(var(--parchment));
-    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-family: var(--font-accent);
     font-style: italic;
     font-size: 1rem;
     transition: border-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
@@ -511,7 +527,7 @@
     border-radius: calc(var(--radius) - 2px);
     background-color: hsl(var(--pitch) / 0.64);
     color: hsl(var(--parchment));
-    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-family: var(--font-accent);
     font-style: normal;
     font-weight: 600;
     font-size: 1rem;
@@ -628,4 +644,21 @@
 }
 *::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--ash));
+}
+
+/* Density — Settings → Appearance. Deliberately outside every @layer and at
+   the end of the sheet: Tailwind 3 emits its layers as plain CSS, so these
+   rules must come last to beat the `p-6` / `py-6` utilities they tighten. */
+:root[data-density='compact'] .grimoire-card {
+  padding: 0.85rem;
+}
+:root[data-density='compact'] .rsmm-main {
+  padding-top: 0.85rem;
+  padding-bottom: 0.85rem;
+}
+:root[data-density='compact'] body {
+  line-height: 1.4;
+}
+:root[data-density='compact'] .rsmm-section-header {
+  padding-bottom: 0.6rem;
 }

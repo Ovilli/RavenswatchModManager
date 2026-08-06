@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import {
   CheckCircle2,
+  Loader2,
   Play,
   RotateCcw,
   ServerCrash,
@@ -10,25 +11,25 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Button, Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
-import {
-  applyMods,
-  build,
-  doctor,
-  listLocalMods,
-  restoreAll,
-  runModded,
-  runVanilla,
-} from '../lib/rsmm';
+import { CommandResult, type CommandResultKind } from '../components/command-result';
+import { useLaunch } from '../components/launch';
+import { useToast } from '../components/toast';
+import { explainError } from '../lib/errors';
+import { applyMods, build, doctor, listLocalMods, restoreAll } from '../lib/rsmm';
 
 type CommandStatus = 'idle' | 'running' | 'success' | 'error';
 
 interface CommandEntry {
   id: string;
   label: string;
+  /** Which renderer the result gets — the bridge returns raw JSON, and only
+   * the command that asked for it knows what shape to expect. */
+  kind: CommandResultKind;
   status: CommandStatus;
-  startedAt: string;
-  finishedAt?: string;
-  output: string;
+  startedAt: number;
+  finishedAt?: number;
+  result?: unknown;
+  error?: string;
 }
 
 interface CommandSpec {
@@ -37,6 +38,10 @@ interface CommandSpec {
   description: string;
   icon: React.ReactNode;
   tone: 'default' | 'primary' | 'gilt' | 'danger';
+  kind: CommandResultKind;
+  /** Safe to run while the game is up — read-only inspection. Everything
+   * else writes to the install and must wait for the session to end. */
+  readOnly?: boolean;
   run: () => Promise<unknown>;
 }
 
@@ -44,19 +49,27 @@ export const Route = createFileRoute('/commands')({
   component: CommandsPage,
 });
 
-function stringifyResult(value: unknown): string {
-  if (value == null) return 'No output.';
-  if (typeof value === 'string') return value || 'No output.';
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function formatClock(ms: number): string {
+  return new Date(ms).toLocaleTimeString();
+}
+
+function formatDuration(start: number, end?: number): string | null {
+  if (!end) return null;
+  const s = (end - start) / 1000;
+  return s < 1 ? `${Math.max(1, Math.round(end - start))}ms` : `${s.toFixed(1)}s`;
 }
 
 function CommandsPage() {
   const [entries, setEntries] = useState<CommandEntry[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const toast = useToast();
+  // Launching goes through the shared controller so the restore watcher and
+  // the "quit with active overrides?" guard apply here too.
+  const { launch, busy: launchBusy } = useLaunch();
 
   const commands = useMemo<CommandSpec[]>(
     () => [
@@ -66,6 +79,8 @@ function CommandsPage() {
         description: 'Show every mod currently installed in the local mods folder.',
         icon: <Terminal className="h-4 w-4" aria-hidden="true" />,
         tone: 'default',
+        kind: 'mods',
+        readOnly: true,
         run: () => listLocalMods(),
       },
       {
@@ -74,6 +89,8 @@ function CommandsPage() {
         description: 'Run the health check for paths, loader, and core setup.',
         icon: <ShieldCheck className="h-4 w-4" aria-hidden="true" />,
         tone: 'gilt',
+        kind: 'doctor',
+        readOnly: true,
         run: () => doctor(),
       },
       {
@@ -82,6 +99,7 @@ function CommandsPage() {
         description: 'Write the current profile into the game install without launching.',
         icon: <Wrench className="h-4 w-4" aria-hidden="true" />,
         tone: 'primary',
+        kind: 'run',
         run: () => applyMods(),
       },
       {
@@ -90,6 +108,7 @@ function CommandsPage() {
         description: 'Put every modified file back to its stock state.',
         icon: <RotateCcw className="h-4 w-4" aria-hidden="true" />,
         tone: 'danger',
+        kind: 'run',
         run: () => restoreAll(),
       },
       {
@@ -98,6 +117,7 @@ function CommandsPage() {
         description: 'Generate assets and apply the current mod set in one pass.',
         icon: <ServerCrash className="h-4 w-4" aria-hidden="true" />,
         tone: 'gilt',
+        kind: 'run',
         run: () => build(),
       },
       {
@@ -106,7 +126,8 @@ function CommandsPage() {
         description: 'Restore first, then hand off to Ravenswatch through Steam.',
         icon: <Play className="h-4 w-4" aria-hidden="true" />,
         tone: 'default',
-        run: () => runVanilla(),
+        kind: 'run',
+        run: () => launch('vanilla'),
       },
       {
         id: 'run-modded',
@@ -114,48 +135,49 @@ function CommandsPage() {
         description: 'Apply mods, launch the game, and auto-restore after exit.',
         icon: <CheckCircle2 className="h-4 w-4" aria-hidden="true" />,
         tone: 'primary',
-        run: () => runModded(),
+        kind: 'run',
+        run: () => launch('modded'),
       },
     ],
-    [],
+    [launch],
   );
 
   const runCommand = async (spec: CommandSpec) => {
     if (busyId) return;
-    const startedAt = new Date().toISOString();
+    const startedAt = Date.now();
+    // Entry id is the identity used to patch the row when the command
+    // finishes — matching on label + timestamp updated every row of a
+    // command run twice in the same millisecond.
+    const entryId = `${spec.id}-${startedAt}`;
     setBusyId(spec.id);
     setEntries((current) => [
-      {
-        id: `${spec.id}-${Date.now()}`,
-        label: spec.label,
-        status: 'running',
-        startedAt,
-        output: 'Running…',
-      },
+      { id: entryId, label: spec.label, kind: spec.kind, status: 'running', startedAt },
       ...current,
     ]);
 
+    const patch = (fields: Partial<CommandEntry>) =>
+      setEntries((current) =>
+        current.map((entry) => (entry.id === entryId ? { ...entry, ...fields } : entry)),
+      );
+
     try {
       const result = await spec.run();
-      const output = stringifyResult(result);
-      const finishedAt = new Date().toISOString();
-      setEntries((current) =>
-        current.map((entry) =>
-          entry.label === spec.label && entry.startedAt === startedAt
-            ? { ...entry, status: 'success', finishedAt, output }
-            : entry,
-        ),
+      // A RunResult with ok:false is a failed command, not a failed call —
+      // the sidecar answered, it just answered "no".
+      const failed = isRecord(result) && result.ok === false;
+      patch({
+        status: failed ? 'error' : 'success',
+        finishedAt: Date.now(),
+        result,
+      });
+      toast.push(
+        failed ? `${spec.label} failed — see the log below.` : `${spec.label} finished.`,
+        failed ? 'error' : 'success',
       );
     } catch (error) {
-      const finishedAt = new Date().toISOString();
-      const output = error instanceof Error ? error.message : String(error);
-      setEntries((current) =>
-        current.map((entry) =>
-          entry.label === spec.label && entry.startedAt === startedAt
-            ? { ...entry, status: 'error', finishedAt, output }
-            : entry,
-        ),
-      );
+      const message = error instanceof Error ? error.message : String(error);
+      patch({ status: 'error', finishedAt: Date.now(), error: message });
+      toast.push(`${spec.label} failed: ${explainError(message).title}`, 'error');
     } finally {
       setBusyId(null);
     }
@@ -195,7 +217,12 @@ function CommandsPage() {
                   size="sm"
                   variant={command.tone === 'default' ? 'default' : command.tone}
                   onClick={() => runCommand(command)}
-                  disabled={busyId !== null}
+                  disabled={busyId !== null || (launchBusy && !command.readOnly)}
+                  title={
+                    launchBusy && !command.readOnly
+                      ? 'Unavailable while Ravenswatch is launching or running'
+                      : undefined
+                  }
                 >
                   {command.icon}
                   <span>{busyId === command.id ? 'Running…' : 'Run'}</span>
@@ -240,11 +267,21 @@ function CommandsPage() {
                       {entry.status}
                     </MonoTag>
                   </div>
-                  <span className="font-mono text-xs text-ash">{entry.startedAt}</span>
+                  <span className="font-mono text-xs text-ash">
+                    {formatClock(entry.startedAt)}
+                    {formatDuration(entry.startedAt, entry.finishedAt)
+                      ? ` · ${formatDuration(entry.startedAt, entry.finishedAt)}`
+                      : ''}
+                  </span>
                 </div>
-                <pre className="mt-3 overflow-auto whitespace-pre-wrap font-mono text-sm text-parchment/90">
-                  {entry.output}
-                </pre>
+                {entry.status === 'running' ? (
+                  <p className="font-serif-italic mt-3 flex items-center gap-2 text-ash">
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    Working…
+                  </p>
+                ) : (
+                  <CommandResult kind={entry.kind} result={entry.result} error={entry.error} />
+                )}
               </div>
             ))
           )}

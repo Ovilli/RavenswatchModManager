@@ -335,7 +335,7 @@ export function SectionHeader({
   right?: ReactNode;
 }) {
   return (
-    <header className="flex items-end justify-between gap-6 pb-4">
+    <header className="rsmm-section-header flex items-end justify-between gap-6 pb-4">
       <div>
         <h2 className="font-fraktur text-3xl text-parchment leading-none">{title}</h2>
         {subtitle ? <p className="font-serif-italic mt-2 text-ash text-base">{subtitle}</p> : null}

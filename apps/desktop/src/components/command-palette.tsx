@@ -3,7 +3,11 @@ import { useNavigate } from '@tanstack/react-router';
 import { Search } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { api, logApiError } from '../lib/api';
+import { type PaletteAction, type PaletteRow, buildRows } from '../lib/palette';
+import { restoreAll } from '../lib/rsmm';
 import { useApp } from '../store';
+import { useLaunch } from './launch';
+import { useToast } from './toast';
 
 interface Hit {
   id: string;
@@ -23,6 +27,8 @@ export function CommandPalette() {
   const localMods = useApp((s) => s.localMods);
   const navigate = useNavigate();
   const listboxId = useId();
+  const { launch, busy: launchBusy } = useLaunch();
+  const toast = useToast();
 
   // Remote index search runs only while the palette is open + the user
   // has typed at least 2 chars. React Query caches per `q` so repeated
@@ -117,19 +123,88 @@ export function CommandPalette() {
     return [...local, ...remote];
   }, [trimmedQ, installed, localMods, remoteData]);
 
+  const actions = useMemo<PaletteAction[]>(() => {
+    const go = (
+      to: '/' | '/browse' | '/profiles' | '/conflicts' | '/commands' | '/settings' | '/about',
+      label: string,
+      keywords: string,
+    ): PaletteAction => ({
+      id: `go:${to}`,
+      label,
+      keywords,
+      hint: 'go',
+      run: () => navigate({ to }),
+    });
+    return [
+      {
+        id: 'launch:modded',
+        label: 'Launch Modded',
+        keywords: 'play start game run mods',
+        hint: launchBusy ? 'busy' : 'action',
+        disabled: launchBusy,
+        run: () => void launch('modded'),
+      },
+      {
+        id: 'launch:vanilla',
+        label: 'Launch Vanilla',
+        keywords: 'play start game unmodded clean',
+        hint: launchBusy ? 'busy' : 'action',
+        disabled: launchBusy,
+        run: () => void launch('vanilla'),
+      },
+      {
+        id: 'restore',
+        label: 'Restore original files',
+        keywords: 'undo unapply revert vanilla clean uninstall',
+        hint: launchBusy ? 'busy' : 'action',
+        disabled: launchBusy,
+        run: () => {
+          void (async () => {
+            try {
+              const result = await restoreAll();
+              if (!result || !result.ok)
+                throw new Error(result?.stderr?.trim() || 'restore failed');
+              toast.push('Original files restored.', 'success');
+            } catch (e) {
+              toast.push(`Restore failed: ${e instanceof Error ? e.message : String(e)}`, 'error');
+            }
+          })();
+        },
+      },
+      go('/', 'Library', 'mods installed home'),
+      go('/browse', 'Browse mods', 'search index download store'),
+      go('/profiles', 'Profiles', 'loadout preset switch'),
+      go('/conflicts', 'Conflicts', 'clash overlap same file'),
+      go('/commands', 'Commands', 'apply build doctor terminal'),
+      go('/settings', 'Settings', 'paths font size density options preferences'),
+      go('/about', 'About', 'version credits'),
+    ];
+  }, [navigate, launch, launchBusy, toast]);
+
+  const rows = useMemo<PaletteRow[]>(
+    () => buildRows(actions, hits, trimmedQ),
+    [actions, hits, trimmedQ],
+  );
+
   if (!open) return null;
 
   function commit(idx: number) {
-    const hit = hits[idx];
-    if (!hit) return;
+    const row = rows[idx];
+    if (!row) return;
+    if (row.kind === 'action') {
+      if (row.action.disabled) return;
+      setOpen(false);
+      row.action.run();
+      return;
+    }
     setOpen(false);
-    navigate({ to: '/mod/$slug', params: { slug: hit.slug } });
+    navigate({ to: '/mod/$slug', params: { slug: row.hit.slug } });
   }
 
   return (
     <dialog
       open
-      aria-label="Search mods"
+      aria-label="Search mods and commands"
       className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh] animate-fade-in"
       onClick={() => setOpen(false)}
       onKeyDown={(e) => {
@@ -156,7 +231,7 @@ export function CommandPalette() {
             onKeyDown={(e) => {
               if (e.key === 'ArrowDown') {
                 e.preventDefault();
-                setCursor((c) => Math.min(c + 1, hits.length - 1));
+                setCursor((c) => Math.min(c + 1, rows.length - 1));
               } else if (e.key === 'ArrowUp') {
                 e.preventDefault();
                 setCursor((c) => Math.max(c - 1, 0));
@@ -165,18 +240,18 @@ export function CommandPalette() {
                 setCursor(0);
               } else if (e.key === 'End') {
                 e.preventDefault();
-                setCursor(Math.max(hits.length - 1, 0));
+                setCursor(Math.max(rows.length - 1, 0));
               } else if (e.key === 'Enter') {
                 e.preventDefault();
                 commit(cursor);
               }
             }}
-            placeholder="Search mods — installed and remote"
+            placeholder="Search mods, or type a command — launch, restore, settings…"
             className="w-full bg-transparent text-parchment placeholder:text-ash focus:outline-none"
             role="combobox"
             aria-expanded={true}
             aria-controls={listboxId}
-            aria-activedescendant={hits[cursor] ? `${listboxId}-opt-${cursor}` : undefined}
+            aria-activedescendant={rows[cursor] ? `${listboxId}-opt-${cursor}` : undefined}
             aria-autocomplete="list"
           />
           <span className="font-mono text-ash">ESC</span>
@@ -185,36 +260,50 @@ export function CommandPalette() {
           id={listboxId}
           // biome-ignore lint/a11y/useSemanticElements: custom combobox results list — no native element implements the listbox interaction
           role="listbox"
-          aria-label="Mod search results"
+          aria-label="Search results"
           className="max-h-[50vh] overflow-y-auto py-2"
         >
-          {hits.length === 0 ? (
+          {rows.length === 0 ? (
             <div className="font-serif-italic px-4 py-6 text-center text-ash">
               {remoteError && trimmedQ.length >= 2
-                ? 'No installed mods match — and the remote index is unreachable, so online results are unavailable.'
-                : 'No mods match. Try a different word.'}
+                ? 'Nothing matches here — and the remote index is unreachable, so online results are unavailable.'
+                : 'Nothing matches. Try a different word.'}
             </div>
           ) : (
-            hits.map((h, i) => (
-              <div
-                key={`${h.origin}-${h.id}`}
-                id={`${listboxId}-opt-${i}`}
-                // biome-ignore lint/a11y/useSemanticElements: listbox option in a custom combobox; <option> only works inside <select>
-                role="option"
-                aria-selected={i === cursor}
-                className={`flex cursor-pointer items-center justify-between px-3 py-2 ${
-                  i === cursor ? 'bg-oxblood/30' : ''
-                }`}
-                onMouseEnter={() => setCursor(i)}
-                onClick={() => commit(i)}
-              >
-                <span className="flex items-baseline gap-3">
-                  <span className="text-parchment">{h.name}</span>
-                  <span className="font-serif-italic text-ash">by {h.author}</span>
-                </span>
-                <span className="font-mono text-ash">{h.origin}</span>
-              </div>
-            ))
+            rows.map((row, i) => {
+              const selected = i === cursor;
+              const key = row.kind === 'action' ? row.action.id : `${row.hit.origin}-${row.hit.id}`;
+              return (
+                <div
+                  key={key}
+                  id={`${listboxId}-opt-${i}`}
+                  // biome-ignore lint/a11y/useSemanticElements: listbox option in a custom combobox; <option> only works inside <select>
+                  role="option"
+                  aria-selected={selected}
+                  aria-disabled={row.kind === 'action' && row.action.disabled ? true : undefined}
+                  className={`flex cursor-pointer items-center justify-between px-3 py-2 ${
+                    selected ? 'bg-oxblood/30' : ''
+                  } ${row.kind === 'action' && row.action.disabled ? 'opacity-40' : ''}`}
+                  onMouseEnter={() => setCursor(i)}
+                  onClick={() => commit(i)}
+                >
+                  {row.kind === 'action' ? (
+                    <>
+                      <span className="text-parchment">{row.action.label}</span>
+                      <span className="font-mono text-ash">{row.action.hint}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex items-baseline gap-3">
+                        <span className="text-parchment">{row.hit.name}</span>
+                        <span className="font-serif-italic text-ash">by {row.hit.author}</span>
+                      </span>
+                      <span className="font-mono text-ash">{row.hit.origin}</span>
+                    </>
+                  )}
+                </div>
+              );
+            })
           )}
         </div>
         {remoteError && trimmedQ.length >= 2 && hits.length > 0 ? (

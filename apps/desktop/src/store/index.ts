@@ -1,5 +1,14 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
+import {
+  DEFAULT_FONT,
+  DEFAULT_FONT_SCALE,
+  type Density,
+  type FontChoice,
+  normalizeDensity,
+  normalizeFont,
+  normalizeFontScale,
+} from '../lib/appearance';
 import type { Mod, ModCategory } from '../lib/mod-types';
 import { getPlatform } from '../lib/platform';
 import type { LocalMod } from '../lib/rsmm';
@@ -60,15 +69,31 @@ export interface AppSettings {
   /** Folder where mods live on disk. Forwarded to rsmm via RSMM_MODS_DIR. Empty = rsmm default. */
   modsDir: string;
   sources: string[];
-  density: 'cozy' | 'compact';
+  /** Spacing preset. Applied by `applyAppearance` as `data-density` on <html>. */
+  density: Density;
+  /** UI typeface preset. Applied by `applyAppearance` as CSS vars on <html>. */
+  fontFamily: FontChoice;
+  /** Root font size as a percentage of the browser default (16px). Every
+   * rem-based utility scales with it, so this resizes the whole UI. */
+  fontScale: number;
   /** When false, NSFW mod images are blurred. */
   showNsfw: boolean;
+  /** Send frontend crash reports to the RSMM API. Local launcher-log entries
+   * are written either way — this only controls what leaves the machine. */
+  crashReports: boolean;
 }
 
 interface State {
   profiles: Profile[];
   activeProfileId: string;
-  installed: string[]; // mod IDs present in the local mod folder
+  /**
+   * Mod IDs present in the local mod folder. Derived from the last successful
+   * `rsmm json list`, and deliberately NOT persisted: it is a fact about the
+   * disk, not user state. Persisting it meant a rehydrated session claimed
+   * mods were installed that had since been deleted — Browse then disabled
+   * its own install button for a mod that wasn't there.
+   */
+  installed: string[];
   settings: AppSettings;
   /** Non-persisted: live mods discovered by rsmm on disk, keyed by id. */
   localMods: Record<string, Mod>;
@@ -89,6 +114,15 @@ interface State {
   /** Sync the live rsmm list into the store and keep profiles in sync
    * with what is actually present on disk. */
   syncLocalMods: (mods: LocalMod[]) => void;
+  /**
+   * Drop every entry in a profile that has no mod on disk, and return how
+   * many were removed. Explicit and user-triggered: the sync path keeps
+   * unknown ids on purpose (a half-finished install must not be erased by
+   * the next poll), so this is the escape hatch when they're truly stale.
+   */
+  pruneMissingMods: (profileId: string) => number;
+  /** Add on-disk mods to a profile (the Library's "adopt" action). */
+  adoptMods: (ids: string[], profileId?: string) => void;
   /** Patch latestVersion + image/summary onto local mods after polling the API. */
   patchRemoteInfo: (
     info: Record<
@@ -224,6 +258,32 @@ function normalizeProfiles(profiles: Profile[] | undefined): Profile[] {
   return [defaultProfile, ...rest];
 }
 
+/**
+ * Fold a persisted settings blob onto the current defaults.
+ *
+ * Field-by-field, because zustand's `merge` spreads the persisted state over
+ * the fresh one: a store written before a setting existed would otherwise
+ * carry that key as `undefined` forever. The appearance keys are additionally
+ * sanitized — they are read straight into CSS, so a hand-edited or truncated
+ * localStorage value must not reach the stylesheet.
+ */
+export function hydrateSettings(
+  defaults: AppSettings,
+  persisted: Partial<AppSettings> | undefined,
+): AppSettings {
+  const merged: AppSettings = { ...defaults, ...(persisted ?? {}) };
+  return {
+    ...merged,
+    fontFamily: normalizeFont(merged.fontFamily),
+    fontScale: normalizeFontScale(merged.fontScale),
+    density: normalizeDensity(merged.density),
+    // Anything that isn't an explicit `false` keeps reporting on — but a
+    // stored `false` must survive, so this can't be a truthiness coercion
+    // of a possibly-undefined value.
+    crashReports: merged.crashReports !== false,
+  };
+}
+
 export const useApp = create<State>()(
   persist(
     (set, get) => ({
@@ -240,6 +300,9 @@ export const useApp = create<State>()(
         showNsfw: false,
         sources: ['https://rsmm.me/registry'],
         density: 'cozy',
+        crashReports: true,
+        fontFamily: DEFAULT_FONT,
+        fontScale: DEFAULT_FONT_SCALE,
       },
       localMods: {},
 
@@ -507,7 +570,9 @@ export const useApp = create<State>()(
             activeProfileId: profiles.some((p) => p.id === parsed.activeProfileId)
               ? (parsed.activeProfileId as string)
               : 'default',
-            settings: { ...get().settings, ...(parsed.settings ?? {}) },
+            // Same sanitizing path as rehydrate: a backup file is user-supplied
+            // data, and its appearance keys are read straight into CSS.
+            settings: hydrateSettings(get().settings, parsed.settings),
           });
           return { ok: true };
         } catch (e) {
@@ -549,6 +614,44 @@ export const useApp = create<State>()(
           return { localMods, installed, profiles };
         }),
 
+      pruneMissingMods: (profileId) => {
+        const s = get();
+        const profile = s.profiles.find((p) => p.id === profileId);
+        if (!profile) return 0;
+        const onDisk = new Set(Object.keys(s.localMods));
+        const keep = profile.loadOrder.filter((id) => onDisk.has(id));
+        const removed = profile.loadOrder.length - keep.length;
+        if (removed === 0) return 0;
+        set({
+          profiles: s.profiles.map((p) =>
+            p.id === profileId
+              ? {
+                  ...p,
+                  loadOrder: keep,
+                  disabled: new Set([...p.disabled].filter((id) => onDisk.has(id))),
+                }
+              : p,
+          ),
+        });
+        return removed;
+      },
+
+      adoptMods: (ids, profileId) =>
+        set((s) => {
+          const target = profileId ?? s.activeProfileId;
+          // The default profile is the vanilla load and never carries mods,
+          // so adopting into it would silently do nothing.
+          if (target === 'default') return s;
+          return {
+            profiles: s.profiles.map((p) => {
+              if (p.id !== target) return p;
+              const add = ids.filter((id) => !p.loadOrder.includes(id));
+              if (add.length === 0) return p;
+              return { ...p, loadOrder: [...p.loadOrder, ...add] };
+            }),
+          };
+        }),
+
       patchRemoteInfo: (info) =>
         set((s) => {
           const next: Record<string, Mod> = { ...s.localMods };
@@ -573,6 +676,7 @@ export const useApp = create<State>()(
           ...(current as State),
           ...(persisted as Partial<State>),
         };
+        merged.settings = hydrateSettings((current as State).settings, merged.settings);
         const profiles = normalizeProfiles(merged.profiles);
         const activeProfileId = profiles.some((p) => p.id === merged.activeProfileId)
           ? merged.activeProfileId
@@ -583,8 +687,11 @@ export const useApp = create<State>()(
           activeProfileId,
         };
       },
+      // `localMods` and `installed` are both disk facts, re-derived on every
+      // successful `rsmm json list`. Persisting either one lets a stale
+      // snapshot outlive the thing it describes.
       partialize: (s) => {
-        const { localMods: _omit, ...rest } = s;
+        const { localMods: _omitMods, installed: _omitInstalled, ...rest } = s;
         return rest;
       },
       storage: createJSONStorage(() => localStorage, {
@@ -686,6 +793,31 @@ export function activeProfile(s: State): Profile {
 export interface Conflict {
   path: string;
   modIds: string[];
+}
+
+/**
+ * Split a profile's load order into entries backed by a mod on disk and
+ * entries that are not.
+ *
+ * A profile keeps ids the CLI can't see — an install that failed halfway, a
+ * folder deleted outside the app, a legacy API UUID. That's deliberate (the
+ * user may reinstall), but every count and list must be honest about it:
+ * showing "12 total" for a profile whose mods are all gone, or listing a raw
+ * UUID as though it were a disabled mod, is what made profiles look full when
+ * they were empty.
+ */
+export function splitProfileMods(profile: Profile): { present: string[]; missing: string[] } {
+  const present: string[] = [];
+  const missing: string[] = [];
+  for (const id of profile.loadOrder) {
+    (getMod(id) ? present : missing).push(id);
+  }
+  return { present, missing };
+}
+
+/** Mods on disk that this profile hasn't opted into. */
+export function unadoptedMods(profile: Profile, installed: string[]): string[] {
+  return installed.filter((id) => !profile.loadOrder.includes(id) && Boolean(getMod(id)));
 }
 
 /**

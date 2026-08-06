@@ -3,9 +3,12 @@ import type { LocalMod } from '../lib/rsmm';
 import {
   type Profile,
   detectConflicts,
+  hydrateSettings,
   isEnabledIn,
   outdatedCount,
   outdatedMods,
+  splitProfileMods,
+  unadoptedMods,
   useApp,
 } from './index';
 
@@ -260,5 +263,161 @@ describe('selectors', () => {
     const installed = useApp.getState().installed;
     expect(outdatedMods(installed).map((m) => m.id)).toEqual(['ten']);
     expect(outdatedCount(installed)).toBe(1);
+  });
+
+  it('handles prereleases in both directions', () => {
+    const s = useApp.getState();
+    const pid = s.createProfile('p');
+    s.installMod('on-beta', pid);
+    useApp.getState().installMod('on-stable', pid);
+    useApp
+      .getState()
+      .syncLocalMods([
+        localMod({ id: 'on-beta', version: '1.0.0-rc1' }),
+        localMod({ id: 'on-stable', version: '1.0.0' }),
+      ]);
+    useApp.getState().patchRemoteInfo({
+      // Stable release supersedes the beta the user is running.
+      'on-beta': { latestVersion: '1.0.0' },
+      // A prerelease of the SAME version is not an upgrade for someone
+      // already on the release — offering it would be a downgrade.
+      'on-stable': { latestVersion: '1.0.0-rc2' },
+    });
+
+    const installed = useApp.getState().installed;
+    expect(outdatedMods(installed).map((m) => m.id)).toEqual(['on-beta']);
+  });
+});
+
+describe('profile state vs. what is actually on disk', () => {
+  function withProfile(loadOrder: string[], disabled: string[] = []) {
+    useApp.setState({
+      profiles: [
+        freshDefault(),
+        {
+          id: 'p1',
+          name: 'Run',
+          loadOrder,
+          disabled: new Set(disabled),
+          createdAt: new Date().toISOString(),
+        },
+      ],
+      activeProfileId: 'p1',
+    });
+  }
+
+  it('splits profile entries into present and missing', () => {
+    withProfile(['real-mod', 'ghost-uuid']);
+    useApp.getState().syncLocalMods([localMod({ id: 'real-mod' })]);
+
+    const { present, missing } = splitProfileMods(profileById('p1'));
+    // A profile that lists two mods but only has one on disk must not
+    // report "2 total" — that made empty profiles look full.
+    expect(present).toEqual(['real-mod']);
+    expect(missing).toEqual(['ghost-uuid']);
+  });
+
+  it('pruneMissingMods drops only entries with no mod on disk', () => {
+    withProfile(['real-mod', 'ghost-uuid'], ['ghost-uuid']);
+    useApp.getState().syncLocalMods([localMod({ id: 'real-mod' })]);
+
+    const removed = useApp.getState().pruneMissingMods('p1');
+    expect(removed).toBe(1);
+    const p = profileById('p1');
+    expect(p.loadOrder).toEqual(['real-mod']);
+    // The stale id must leave the disabled set too, or it keeps being
+    // reported as "a disabled mod" that does not exist.
+    expect(p.disabled.has('ghost-uuid')).toBe(false);
+  });
+
+  it('pruneMissingMods is a no-op when everything resolves', () => {
+    withProfile(['real-mod']);
+    useApp.getState().syncLocalMods([localMod({ id: 'real-mod' })]);
+    expect(useApp.getState().pruneMissingMods('p1')).toBe(0);
+  });
+
+  it('reports on-disk mods the active profile has not adopted', () => {
+    withProfile(['adopted']);
+    useApp.getState().syncLocalMods([localMod({ id: 'adopted' }), localMod({ id: 'dropped-in' })]);
+
+    const s = useApp.getState();
+    expect(unadoptedMods(profileById('p1'), s.installed)).toEqual(['dropped-in']);
+  });
+
+  it('adoptMods adds disk mods to the active profile', () => {
+    withProfile([]);
+    useApp.getState().syncLocalMods([localMod({ id: 'dropped-in' })]);
+
+    useApp.getState().adoptMods(['dropped-in']);
+    expect(profileById('p1').loadOrder).toEqual(['dropped-in']);
+    // Idempotent: adopting twice must not duplicate the entry.
+    useApp.getState().adoptMods(['dropped-in']);
+    expect(profileById('p1').loadOrder).toEqual(['dropped-in']);
+  });
+
+  it('adoptMods refuses the default profile, which is the vanilla load', () => {
+    useApp.setState({ profiles: [freshDefault()], activeProfileId: 'default' });
+    useApp.getState().syncLocalMods([localMod({ id: 'dropped-in' })]);
+
+    useApp.getState().adoptMods(['dropped-in']);
+    expect(profileById('default').loadOrder).toEqual([]);
+  });
+
+  it('installed reflects the latest listing, not a stale snapshot', () => {
+    withProfile(['mod-a']);
+    useApp.getState().syncLocalMods([localMod({ id: 'mod-a' })]);
+    expect(useApp.getState().installed).toEqual(['mod-a']);
+
+    // mod-a deleted outside the app: `installed` must follow the disk, or
+    // Browse keeps disabling its install button for a mod that isn't there.
+    useApp.getState().syncLocalMods([]);
+    expect(useApp.getState().installed).toEqual([]);
+  });
+});
+
+describe('hydrateSettings (persisted store → live settings)', () => {
+  const defaults = useApp.getState().settings;
+
+  it('backfills keys a store written by an older build never had', () => {
+    const { fontFamily, fontScale, density, ...withoutAppearance } = defaults;
+    const merged = hydrateSettings(defaults, withoutAppearance);
+    expect(merged.fontFamily).toBe('grimoire');
+    expect(merged.fontScale).toBe(100);
+    expect(merged.density).toBe('cozy');
+  });
+
+  it('keeps the user’s saved choices', () => {
+    const merged = hydrateSettings(defaults, {
+      fontFamily: 'sans',
+      fontScale: 130,
+      density: 'compact',
+      gameDir: '/games/Ravenswatch',
+    });
+    expect(merged.fontFamily).toBe('sans');
+    expect(merged.fontScale).toBe(130);
+    expect(merged.density).toBe('compact');
+    expect(merged.gameDir).toBe('/games/Ravenswatch');
+  });
+
+  it('keeps crash reporting on unless it was explicitly turned off', () => {
+    const { crashReports, ...withoutFlag } = defaults;
+    expect(hydrateSettings(defaults, withoutFlag).crashReports).toBe(true);
+    expect(hydrateSettings(defaults, { crashReports: false }).crashReports).toBe(false);
+    expect(hydrateSettings(defaults, { crashReports: true }).crashReports).toBe(true);
+  });
+
+  it('sanitizes values that would otherwise reach the stylesheet', () => {
+    const merged = hydrateSettings(defaults, {
+      fontFamily: 'wingdings' as never,
+      fontScale: 4000,
+      density: 'roomy' as never,
+    });
+    expect(merged.fontFamily).toBe('grimoire');
+    expect(merged.fontScale).toBe(150);
+    expect(merged.density).toBe('cozy');
+  });
+
+  it('survives a completely absent settings blob', () => {
+    expect(hydrateSettings(defaults, undefined)).toEqual(defaults);
   });
 });

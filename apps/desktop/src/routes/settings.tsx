@@ -1,16 +1,41 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { ChevronDown, EyeOff, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ChevronDown, EyeOff, ShieldAlert, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { Fleuron, Panel, SectionHeader } from '../components/chrome';
+import { useLaunch } from '../components/launch';
 import { useToast } from '../components/toast';
 import { UpdaterSettings } from '../components/updater';
-import { clearLauncherLog, readLauncherLog } from '../lib/launcher-log';
+import {
+  DEFAULT_FONT,
+  DEFAULT_FONT_SCALE,
+  type Density,
+  FONT_CHOICES,
+  FONT_PRESETS,
+  MAX_FONT_SCALE,
+  MIN_FONT_SCALE,
+  normalizeFont,
+  normalizeFontScale,
+} from '../lib/appearance';
+import {
+  type LauncherLogEntry,
+  clearLauncherLog,
+  parseLauncherLog,
+  readLauncherLog,
+} from '../lib/launcher-log';
 import { type LoaderFlag, getLoaderFlags, setLoaderFlags } from '../lib/rsmm';
 import { useApp } from '../store';
 
 export const Route = createFileRoute('/settings')({
   component: SettingsPage,
 });
+
+/** Poll cadence for the launcher log while a launch is live. */
+const LOG_POLL_INTERVAL_MS = 3000;
+
+const DENSITY_CHOICES: { value: Density; hint: string }[] = [
+  { value: 'cozy', hint: 'Roomy padding — the default.' },
+  { value: 'compact', hint: 'Tighter panels; more fits on screen.' },
+];
 
 function SettingsPage() {
   const settings = useApp((s) => s.settings);
@@ -22,6 +47,7 @@ function SettingsPage() {
   const [logLevel, setLogLevel] = useState<'all' | 'info' | 'warn' | 'error'>('all');
   const [loadingLog, setLoadingLog] = useState(false);
   const toast = useToast();
+  const { busy: launchBusy } = useLaunch();
 
   const addSource = () => {
     const v = newSource.trim();
@@ -72,24 +98,39 @@ function SettingsPage() {
     );
   }, []);
 
+  // While a launch is in flight the log is the only place a stuck apply or a
+  // failed restore shows up, and it is written by another process — poll it
+  // so the user isn't left hitting Refresh to find out what happened.
+  useEffect(() => {
+    if (!launchBusy) return;
+    let cancelled = false;
+    const handle = window.setInterval(() => {
+      readLauncherLog().then(
+        (log) => {
+          if (!cancelled) setLauncherLog(log);
+        },
+        () => undefined,
+      );
+    }, LOG_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(handle);
+    };
+  }, [launchBusy]);
+
   const onClearLog = async () => {
     await clearLauncherLog();
     setLauncherLog('');
     toast.push('Launcher log cleared.', 'success');
   };
 
-  const filteredLauncherLog = launcherLog
-    .split('\n')
-    .filter((line) => {
-      const trimmed = line.trim();
-      if (!trimmed) return false;
-      if (logLevel !== 'all' && !trimmed.includes(`[${logLevel.toUpperCase()}]`)) {
-        return false;
-      }
-      if (!logQuery.trim()) return true;
-      return trimmed.toLowerCase().includes(logQuery.trim().toLowerCase());
-    })
-    .join('\n');
+  const logEntries = useMemo(() => parseLauncherLog(launcherLog), [launcherLog]);
+  const query = logQuery.trim().toLowerCase();
+  const filteredEntries = logEntries.filter((entry) => {
+    if (logLevel !== 'all' && entry.level !== logLevel) return false;
+    if (!query) return true;
+    return entry.raw.toLowerCase().includes(query);
+  });
 
   return (
     <div className="space-y-6">
@@ -191,6 +232,12 @@ function SettingsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {launchBusy ? (
+              <span className="font-mono inline-flex items-center gap-1.5 border border-gilt/60 px-2 py-1 text-[10px] text-gilt">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gilt" aria-hidden />
+                live
+              </span>
+            ) : null}
             <button
               type="button"
               onClick={() => refreshLog().catch(() => undefined)}
@@ -232,30 +279,43 @@ function SettingsPage() {
             />
           </div>
         </div>
-        <pre className="font-mono max-h-72 overflow-auto whitespace-pre-wrap border border-border bg-pitch/60 p-3 text-sm text-parchment/90">
-          {filteredLauncherLog.trim()
-            ? filteredLauncherLog
-            : launcherLog.trim()
+        {filteredEntries.length === 0 ? (
+          <p className="font-serif-italic border border-border bg-pitch/60 p-3 text-ash">
+            {logEntries.length > 0
               ? 'No launcher log entries match the current filters.'
-              : 'No launcher log entries yet.'}
-        </pre>
+              : 'No launcher log entries yet. Launch the game once and they will show up here.'}
+          </p>
+        ) : (
+          <ul className="max-h-72 divide-y divide-border/60 overflow-auto border border-border bg-pitch/60">
+            {filteredEntries.map((entry, i) => (
+              // Log lines carry no id and repeat verbatim, so position is
+              // part of the identity.
+              <LogRow key={`${i}-${entry.raw}`} entry={entry} />
+            ))}
+          </ul>
+        )}
       </Panel>
 
       <Panel>
         <h3 className="font-fraktur text-xl text-parchment">Appearance</h3>
         <Fleuron className="my-3" />
+        <TypographyControls />
+        <Fleuron className="my-3" />
         <fieldset className="flex flex-col gap-2">
           <legend className="font-mono mb-2 text-ash">Density</legend>
-          {(['cozy', 'compact'] as const).map((d) => (
-            <label key={d} className="flex cursor-pointer items-center gap-2 text-parchment">
+          {DENSITY_CHOICES.map(({ value, hint }) => (
+            <label key={value} className="flex cursor-pointer items-start gap-2 text-parchment">
               <input
                 type="radio"
                 name="density"
-                checked={settings.density === d}
-                onChange={() => update({ density: d })}
-                className="accent-crimson"
+                checked={settings.density === value}
+                onChange={() => update({ density: value })}
+                className="mt-1 accent-crimson"
               />
-              <span className="font-serif-italic capitalize">{d}</span>
+              <span>
+                <span className="font-serif-italic block capitalize">{value}</span>
+                <span className="font-serif-italic block text-sm text-ash">{hint}</span>
+              </span>
             </label>
           ))}
         </fieldset>
@@ -273,6 +333,150 @@ function SettingsPage() {
           </span>
         </label>
       </Panel>
+
+      <Panel>
+        <h3 className="font-fraktur text-xl text-parchment">Privacy</h3>
+        <Fleuron className="my-3" />
+        <label className="flex cursor-pointer items-start gap-3 text-parchment">
+          <input
+            type="checkbox"
+            checked={settings.crashReports}
+            onChange={(e) => update({ crashReports: e.target.checked })}
+            className="mt-1 h-4 w-4 accent-crimson"
+          />
+          <span>
+            <span className="font-mono text-sm flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-crimson" />
+              Send crash reports
+            </span>
+            <span className="font-serif-italic mt-1 block text-sm text-ash">
+              When the app hits an unexpected error, send the error type, message, stack trace, RSMM
+              version and OS to the RSMM API so it can be fixed. No mod list, no file paths, no
+              account details. Turning this off keeps crashes in your local launcher log only.
+            </span>
+          </span>
+        </label>
+      </Panel>
+    </div>
+  );
+}
+
+const LOG_LEVEL_TONE: Record<LauncherLogEntry['level'], string> = {
+  info: 'border-border text-smoke',
+  warn: 'border-gilt/60 text-gilt',
+  error: 'border-crimson/70 bg-crimson/15 text-parchment',
+  other: 'border-border text-smoke',
+};
+
+/** One launcher-log line: local time, level chip, message, and the JSON
+ * context tucked behind a disclosure so a busy line stays one row tall. */
+function LogRow({ entry }: { entry: LauncherLogEntry }) {
+  return (
+    <li className="px-3 py-2">
+      <div className="flex flex-wrap items-baseline gap-2">
+        <span className="font-mono shrink-0 text-xs text-ash">
+          {entry.at ? new Date(entry.at).toLocaleTimeString() : '—'}
+        </span>
+        <span
+          className={`font-mono shrink-0 border px-1.5 py-[1px] text-[10px] ${LOG_LEVEL_TONE[entry.level]}`}
+        >
+          {entry.level}
+        </span>
+        <span className="min-w-0 break-words text-sm text-parchment/90">{entry.message}</span>
+      </div>
+      {entry.context ? (
+        <details className="mt-1">
+          <summary className="font-mono cursor-pointer text-[10px] text-ash hover:text-parchment">
+            context
+          </summary>
+          <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-xs text-ash">
+            {entry.context}
+          </pre>
+        </details>
+      ) : null}
+    </li>
+  );
+}
+
+/** Typeface + UI scale. Both are written straight to CSS vars on <html> by
+ * `applyAppearance` (subscribed in main.tsx), so every change previews live
+ * across the whole app — this panel only edits the stored values. */
+function TypographyControls() {
+  const settings = useApp((s) => s.settings);
+  const update = useApp((s) => s.updateSettings);
+  const font = normalizeFont(settings.fontFamily);
+  const scale = normalizeFontScale(settings.fontScale);
+  const isDefault = font === DEFAULT_FONT && scale === DEFAULT_FONT_SCALE;
+
+  return (
+    <div className="space-y-4">
+      <fieldset className="flex flex-col gap-2">
+        <legend className="font-mono mb-2 text-ash">Font</legend>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {FONT_CHOICES.map((choice) => {
+            const preset = FONT_PRESETS[choice];
+            const active = font === choice;
+            return (
+              <label
+                key={choice}
+                className={`flex cursor-pointer items-start gap-2 border px-3 py-2 ${
+                  active ? 'border-gilt/60 bg-gilt/10' : 'border-border hover:border-gilt/30'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="font-family"
+                  checked={active}
+                  onChange={() => update({ fontFamily: choice })}
+                  className="mt-1 accent-crimson"
+                />
+                <span className="min-w-0">
+                  <span className="block text-parchment" style={{ fontFamily: preset.vars.body }}>
+                    {preset.label}
+                  </span>
+                  <span className="font-serif-italic block text-sm text-ash">{preset.hint}</span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
+
+      <div>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <span className="font-mono text-ash">Font size</span>
+          <span className="font-mono text-parchment">{scale}%</span>
+        </div>
+        <input
+          type="range"
+          min={MIN_FONT_SCALE}
+          max={MAX_FONT_SCALE}
+          step={5}
+          value={scale}
+          aria-label="UI font size"
+          onChange={(e) => update({ fontScale: normalizeFontScale(e.target.value) })}
+          className="w-full accent-crimson"
+        />
+        <div className="font-mono mt-1 flex justify-between text-[10px] text-ash">
+          <span>{MIN_FONT_SCALE}%</span>
+          <span>100%</span>
+          <span>{MAX_FONT_SCALE}%</span>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 border border-border px-3 py-2">
+        <p className="font-serif-italic min-w-0 text-ash">
+          The quick brown fox jumps over the lazy dog — 0123456789
+        </p>
+        <button
+          type="button"
+          disabled={isDefault}
+          onClick={() => update({ fontFamily: DEFAULT_FONT, fontScale: DEFAULT_FONT_SCALE })}
+          className="shrink-0 border border-border px-3 py-1.5 text-sm text-ash hover:border-gilt/50 hover:text-parchment disabled:opacity-40 disabled:hover:border-border disabled:hover:text-ash"
+        >
+          Reset
+        </button>
+      </div>
     </div>
   );
 }
