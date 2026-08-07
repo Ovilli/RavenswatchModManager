@@ -23,6 +23,55 @@ export interface UpdateCheckError {
   reason: string;
 }
 
+/** Where users get a build when the in-app updater can't write over this install. */
+export const RELEASES_URL = 'https://github.com/Ovilli/RavenswatchModManager/releases/latest';
+
+export interface InstallTarget {
+  /** 'appimage' | 'system-package' | 'portable' | 'unsupported-check' */
+  kind: string;
+  path: string | null;
+  /** False when an in-place update would fail with EACCES. */
+  writable: boolean;
+  reason: string;
+}
+
+/**
+ * Ask the Rust side whether the updater can actually replace this install.
+ *
+ * The Tauri updater rewrites the running binary (on Linux: the `$APPIMAGE`
+ * file, and it needs the containing directory too, because it renames the old
+ * file into a scratch dir alongside it). When that isn't permitted the plugin
+ * only reports `Permission denied (os error 13)` after a full download, so we
+ * check first and route the user to a manual download instead.
+ *
+ * Returns `null` when the check can't run (web preview, older shell) — callers
+ * should treat that as "go ahead and try".
+ */
+export async function getInstallTarget(): Promise<InstallTarget | null> {
+  if (!inTauri()) return null;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke<InstallTarget>('update_install_target');
+  } catch (err) {
+    console.warn('[Updater] install-target probe unavailable:', err);
+    return null;
+  }
+}
+
+/** True when a failure string is the updater's write-permission error. */
+export function isPermissionError(detail: string): boolean {
+  return /os error 13|Permission denied|EACCES|Access is denied|os error 5/i.test(detail);
+}
+
+export async function openReleasesPage(): Promise<void> {
+  if (!inTauri()) {
+    window.open(RELEASES_URL, '_blank', 'noopener');
+    return;
+  }
+  const { openUrl } = await import('@tauri-apps/plugin-opener');
+  await openUrl(RELEASES_URL);
+}
+
 export async function checkForUpdate(): Promise<AvailableUpdate | UpdateCheckError | null> {
   if (!inTauri()) return null;
   const { check } = await import('@tauri-apps/plugin-updater');

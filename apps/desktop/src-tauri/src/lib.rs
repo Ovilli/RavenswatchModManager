@@ -1,5 +1,6 @@
 mod launcher_log;
 mod rsmm_env;
+mod update_env;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -30,6 +31,7 @@ pub fn run() {
             launcher_log::read_launcher_log,
             rsmm_env::rsmm_runtime_env,
             rsmm_env::probe_rsmm,
+            update_env::update_install_target,
         ]);
 
     // Plugins are best-effort. If one fails to initialize (e.g. an

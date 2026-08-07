@@ -6,6 +6,9 @@ import {
   type AvailableUpdate,
   type UpdateCheckError,
   checkForUpdate,
+  getInstallTarget,
+  isPermissionError,
+  openReleasesPage,
   relaunchApp,
 } from '../lib/updater';
 import { Button } from './chrome';
@@ -20,6 +23,9 @@ interface UpdateStatus {
     | 'ready'
     | 'error'
     | 'check-error'
+    // In-place install is impossible on this machine (read-only AppImage
+    // location, or a system-wide .deb install). The user has to download.
+    | 'manual'
     | 'dismissed';
   update?: AvailableUpdate;
   error?: string;
@@ -101,6 +107,23 @@ async function runCheck(): Promise<void> {
 async function applyUpdate(): Promise<void> {
   const update = sharedStatus.update;
   if (!update) return;
+
+  // Pre-flight: the updater overwrites the running binary in place. If this
+  // install lives somewhere we can't write (root-owned AppImage directory, or
+  // a system-wide .deb), downloading 100 MB only to hit
+  // "Permission denied (os error 13)" helps nobody — tell the user now and
+  // point at the downloads page.
+  const target = await getInstallTarget();
+  if (target && !target.writable) {
+    setStatus({ state: 'manual', update, error: target.reason });
+    void appendLauncherLog('warn', '[Updater] In-place update not possible', {
+      kind: target.kind,
+      path: target.path,
+      reason: target.reason,
+    });
+    return;
+  }
+
   setStatus({ state: 'downloading', update, progress: { downloaded: 0, total: null } });
   try {
     await update.apply((downloaded, total) => {
@@ -116,8 +139,18 @@ async function applyUpdate(): Promise<void> {
     });
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
-    setStatus({ state: 'error', error: `Update download/install failed: ${detail}`, update });
     void appendLauncherLog('error', '[Updater] Download/install failed', { error: detail });
+    // The pre-flight can be fooled (path became read-only mid-download, an
+    // AppImage manager holding the file, SELinux). Same remedy either way.
+    if (isPermissionError(detail)) {
+      setStatus({
+        state: 'manual',
+        update,
+        error: `The updater couldn't replace the installed app (${detail}). Download v${update.version} manually and replace this copy.`,
+      });
+      return;
+    }
+    setStatus({ state: 'error', error: `Update download/install failed: ${detail}`, update });
   }
 }
 
@@ -215,6 +248,40 @@ export function UpdaterBanner() {
               Remind me later
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Manual: in-place install is impossible here — offer the download page.
+  if (status.state === 'manual') {
+    return (
+      <div className="flex items-start gap-3 border-b border-gilt/50 bg-gilt/10 px-4 py-3">
+        <AlertTriangle className="h-4 w-4 text-gilt shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <p className="font-serif-italic text-sm text-parchment mb-1">
+            Update v{status.update?.version} must be installed manually
+          </p>
+          <p className="font-mono text-xs text-ash break-words">{status.error}</p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            type="button"
+            size="sm"
+            variant="primary"
+            onClick={() => {
+              openReleasesPage().catch(() => {});
+            }}
+          >
+            <Download className="h-3.5 w-3.5" /> Downloads
+          </Button>
+          <button
+            type="button"
+            onClick={() => set({ state: 'dismissed', update: status.update })}
+            className="font-mono text-xs text-ash hover:text-parchment"
+          >
+            Dismiss
+          </button>
         </div>
       </div>
     );
@@ -333,6 +400,18 @@ export function UpdaterSettings() {
             <Download className="h-3.5 w-3.5" /> Install v{status.update.version}
           </Button>
         ) : null}
+        {status.state === 'manual' ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="primary"
+            onClick={() => {
+              openReleasesPage().catch((e) => toast.push(`Couldn't open downloads: ${e}`, 'error'));
+            }}
+          >
+            <Download className="h-3.5 w-3.5" /> Open downloads page
+          </Button>
+        ) : null}
       </div>
       {status.state === 'ready' && status.update?.body ? (
         <pre className="font-mono whitespace-pre-wrap text-ash text-sm border border-border bg-pitch/40 p-3 max-h-48 overflow-y-auto">
@@ -341,6 +420,11 @@ export function UpdaterSettings() {
       ) : null}
       {status.state === 'error' ? (
         <p className="text-sm text-crimson" role="alert">
+          {status.error}
+        </p>
+      ) : null}
+      {status.state === 'manual' ? (
+        <p className="text-sm text-gilt" role="alert">
           {status.error}
         </p>
       ) : null}
