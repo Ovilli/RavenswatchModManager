@@ -166,6 +166,15 @@ def _item_content_lines(mod_id: str, base: str | None, name: str | None,
             f'base          = {_toml_str(base or _KIND_BASE_HINT["item"])}',
             f'name          = {_toml_str(name or mod_id)}',
             f'description   = {_toml_str(desc or "")}',
+        ]
+        # An explicit --rarity is the author's answer, not something mined:
+        # dropping it because the base could not be read (no game install on
+        # this machine, an unknown id) silently loses what they typed. With
+        # no base to read and no flag, there is nothing to infer, so the key
+        # is left out rather than guessed.
+        if rarity:
+            lines.append(f'rarity        = {_toml_str(rarity)}')
+        lines += [
             f'icon          = {_toml_str(icon or "GreenArmor")}'
             "          # vanilla icon id, or assets/<file>.png",
             "# value_patches = [[\"<label>\", <old>, <new>]]  "

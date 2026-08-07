@@ -104,3 +104,19 @@ def test_apostrophe_in_text_stays_parseable(scaffold):
                    "--name", "Crab's Hide", "--desc", 'The "best" armor.')
     assert doc["content"][0]["name"] == "Crab's Hide"
     assert doc["content"][0]["description"] == 'The "best" armor.'
+
+
+def test_explicit_rarity_survives_an_unreadable_base(scaffold):
+    """A flag the author typed is not something to drop when mining fails.
+
+    Machines without the vanilla corpus (CI, a fresh clone) take the
+    placeholder path, which silently discarded --rarity.
+    """
+    doc = scaffold("demo", "--kind", "item", "--base", "No_Such_Item",
+                   "--rarity", "Epic")
+    assert doc["content"][0]["rarity"] == "Epic"
+
+
+def test_no_rarity_is_left_out_rather_than_guessed(scaffold):
+    doc = scaffold("demo", "--kind", "item", "--base", "No_Such_Item")
+    assert "rarity" not in doc["content"][0]

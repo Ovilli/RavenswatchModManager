@@ -6,6 +6,7 @@ torn writes, lost writes, and two processes writing at once.
 
 import json
 import os
+import time
 from pathlib import Path
 
 import pytest
@@ -101,14 +102,31 @@ def test_install_lock_records_its_owner(tmp_path: Path):
     assert info["operation"] == "apply"
 
 
-def test_install_lock_takes_over_a_dead_owner(tmp_path: Path):
+def test_install_lock_takes_over_a_dead_owner(tmp_path: Path, monkeypatch):
     """A killed rsmm must not wedge the install forever."""
+    # Force the Windows answer (`_pid_alive` cannot probe there) so this
+    # covers the platform where age is the only signal.
+    monkeypatch.setattr("rsmm.engine.safeio._pid_alive", lambda pid: True)
     (tmp_path / LOCK_NAME).write_text(
-        json.dumps({"pid": 999_999_999, "operation": "apply", "started": 0})
+        json.dumps({"pid": 999_999_999, "operation": "apply",
+                    "started": time.time() - 1})
     )
+    with pytest.raises(LockBusy):
+        with install_lock(tmp_path, "apply"):
+            pass
+
+    # A dead owner IS detectable off Windows, and takes over immediately.
+    monkeypatch.setattr("rsmm.engine.safeio._pid_alive", lambda pid: False)
     with install_lock(tmp_path, "apply"):
-        info = json.loads((tmp_path / LOCK_NAME).read_text())
-        assert info["pid"] == os.getpid()
+        assert json.loads((tmp_path / LOCK_NAME).read_text())["pid"] == os.getpid()
+
+
+def test_install_lock_takes_over_a_lock_with_no_timestamp(tmp_path: Path, monkeypatch):
+    """A lock file we did not write is not evidence anyone holds it."""
+    monkeypatch.setattr("rsmm.engine.safeio._pid_alive", lambda pid: True)
+    (tmp_path / LOCK_NAME).write_text("{}")
+    with install_lock(tmp_path, "apply"):
+        assert json.loads((tmp_path / LOCK_NAME).read_text())["pid"] == os.getpid()
 
 
 def test_install_lock_takes_over_an_aged_out_lock(tmp_path: Path, monkeypatch):

@@ -213,7 +213,11 @@ def install_lock(cooking: Path, operation: str = "apply", *, timeout: float = 0.
             info = _read_lock(path)
             owner = int(info.get("pid", 0) or 0)
             started = float(info.get("started", 0) or 0)
-            aged_out = started > 0 and (time.time() - started) > STALE_LOCK_SEC
+            # No timestamp means the file is not one of ours (or was written
+            # torn): there is no evidence anybody holds it. Treating that as
+            # "fresh" wedged the install on Windows, where `_pid_alive` has to
+            # answer True for every pid and age is the only other signal.
+            aged_out = started <= 0 or (time.time() - started) > STALE_LOCK_SEC
             if not _pid_alive(owner) or aged_out:
                 # Abandoned. Remove and retry; if someone else wins the race
                 # the next open simply fails again and we loop.
