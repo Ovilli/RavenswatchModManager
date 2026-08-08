@@ -122,6 +122,31 @@ def test_scan_dangerous_blocks_executables(tmp_path):
         archive.scan_dangerous(zf, "M")
 
 
+def test_scan_dangerous_reports_every_root_overlay(tmp_path):
+    """`_root/` members overwrite the game install itself — always warn.
+
+    Regression: the warning was filtered to a "dangerous root extensions" set
+    whose every member was also hard-blocked and raised first, so it could
+    never fire — and implied `_root/` binaries were merely warned about.
+    """
+    z = _zip(tmp_path / "a.zip", {
+        "M/manifest.toml": b"",
+        "M/assets/normal.bin": b"x",                       # not an overlay
+        "M/_root/DarkTalesResources/ApplicationSettings.ot": b"x",
+    })
+    with zipfile.ZipFile(z) as zf:
+        assert archive.scan_dangerous(zf, "M") == [
+            "DarkTalesResources/ApplicationSettings.ot"
+        ]
+
+
+def test_root_overlay_gets_no_executable_exemption(tmp_path):
+    """A downloaded mod may not ship a binary, least of all into the game root."""
+    z = _zip(tmp_path / "a.zip", {"M/manifest.toml": b"", "M/_root/winhttp.dll": b"MZ"})
+    with zipfile.ZipFile(z) as zf, pytest.raises(ArchiveError, match="blocked file type"):
+        archive.scan_dangerous(zf, "M")
+
+
 # --- rsmm install ----------------------------------------------------------
 
 

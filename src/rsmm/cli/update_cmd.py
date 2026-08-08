@@ -121,7 +121,7 @@ def _verify_download(path: Path, expected_sha256: str,
 def _validate_zip_content(zf: zipfile.ZipFile, mod_id: str) -> None:
     """Scan ZIP for dangerous file types. Raise RepoError if found."""
     for rel in scan_dangerous(zf, mod_id):
-        print(f"  [WARN] {mod_id} overwrites game root file: {rel}",
+        print(f"  [WARN] {mod_id} overwrites game install root file: {rel}",
               file=sys.stderr)
 
 

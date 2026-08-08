@@ -65,12 +65,13 @@ DANGEROUS_EXTENSIONS = frozenset({
     ".wasm", ".php", ".asp", ".aspx", ".jsp",
 })
 
-#: A ``_root/`` overlay is copied into the game install itself. These are not
-#: blocked (the loader legitimately ships a DLL) but the user is warned.
-DANGEROUS_ROOT_EXTENSIONS = frozenset({
-    ".exe", ".dll", ".sys", ".drv", ".scr", ".cpl",
-    ".vbs", ".vbe", ".ps1", ".bat", ".cmd", ".sh",
-})
+#: Prefix marking an overlay copied into the game install root rather than
+#: into the cooked-asset tree. There is deliberately no executable exemption
+#: here: a locally authored mod may drop a binary in its own game dir and is
+#: only warned about it at apply time (``apply_mods.apply_one``), but a mod
+#: arriving over the network may not ship one at all, and ``_root/`` is exactly
+#: the path that would put it somewhere Windows will load from.
+ROOT_OVERLAY_PREFIX = "_root/"
 
 #: Ceilings. Generous enough that no honest mod hits them — the largest
 #: shipped mods are tens of MB of cooked assets — and tight enough that a
@@ -173,29 +174,37 @@ def require_single_top_dir(zf: zipfile.ZipFile, *, what: str = "mod id") -> str:
 
 
 def scan_dangerous(zf: zipfile.ZipFile, label: str) -> list[str]:
-    """Reject blocked file types; return the ``_root/`` paths worth warning on.
+    """Reject blocked file types; return the ``_root/`` overlay paths.
 
     Raises :class:`ArchiveError` listing every blocked member. The extension
     test runs on the path *inside* the mod dir, so a mod whose id happens to
     end in ``.sh`` is not self-blocking.
+
+    The returned list is what the caller should warn about: every ``_root/``
+    member overwrites a file in the game install itself, which is worth saying
+    out loud whatever its extension. It used to be filtered to a set of
+    "dangerous root extensions" — but every extension in that set was also in
+    :data:`DANGEROUS_EXTENSIONS`, which is checked first and raises, so the
+    warning could never fire and implied a leniency for ``_root/`` binaries
+    that does not exist.
     """
     blocked: list[str] = []
-    root_danger: list[str] = []
+    overlays: list[str] = []
     for entry in zf.infolist():
+        if entry.is_dir():
+            continue
         name = _norm(entry.filename)
         parts = name.split("/", 1)
         inner = parts[1] if len(parts) > 1 else parts[0]
         if Path(inner).suffix.lower() in DANGEROUS_EXTENSIONS:
             blocked.append(entry.filename)
-        if inner.startswith("_root/"):
-            rel = inner[len("_root/"):]
-            if Path(rel).suffix.lower() in DANGEROUS_ROOT_EXTENSIONS:
-                root_danger.append(rel)
+        if inner.startswith(ROOT_OVERLAY_PREFIX):
+            overlays.append(inner[len(ROOT_OVERLAY_PREFIX):])
     if blocked:
         raise ArchiveError(
             f"{label} contains blocked file type(s):\n  " + "\n  ".join(blocked[:20])
         )
-    return root_danger
+    return overlays
 
 
 def check_limits(zf: zipfile.ZipFile, label: str, *,

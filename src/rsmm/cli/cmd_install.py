@@ -150,7 +150,7 @@ def _safe_extract(data: bytes, dest_root: Path) -> str:
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
         mod_id = require_single_top_dir(zf)
         for rel in scan_dangerous(zf, mod_id):
-            print(f"  [WARN] {mod_id} overwrites game root file: {rel}",
+            print(f"  [WARN] {mod_id} overwrites game install root file: {rel}",
                   file=sys.stderr)
         dest_root.mkdir(parents=True, exist_ok=True)
         final = dest_root / mod_id   # mod_id validated as a plain dir name

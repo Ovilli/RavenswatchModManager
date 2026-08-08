@@ -803,12 +803,6 @@ def _http_get_json(url: str, *, timeout: int = 30) -> dict[str, Any]:
         return json.loads(resp.read().decode("utf-8"))
 
 
-#: Re-exported from the shared extractor so this module and `rsmm install` /
-#: `rsmm update` cannot drift apart on what a mod is allowed to ship.
-_DANGEROUS_EXTENSIONS = archive.DANGEROUS_EXTENSIONS
-_DANGEROUS_ROOT_EXTENSIONS = archive.DANGEROUS_ROOT_EXTENSIONS
-
-
 def _mod_target(slug: str) -> Path:
     """``mods/<slug>``, with the slug proven to be a plain directory name.
 
@@ -836,10 +830,11 @@ def _extract_downloaded_zip(tmp_path: Path, target: Path, slug: str) -> None | d
         staging = Path(td) / "unpack"
         try:
             with zipfile.ZipFile(tmp_path) as zf:
-                root_danger = archive.scan_dangerous(zf, slug)
-                if root_danger:
-                    print(f"  [WARN] {slug} overwrites game root files:", file=sys.stderr)
-                    for f in root_danger:
+                overlays = archive.scan_dangerous(zf, slug)
+                if overlays:
+                    print(f"  [WARN] {slug} overwrites files in the game install root:",
+                          file=sys.stderr)
+                    for f in overlays:
                         print(f"         {f}", file=sys.stderr)
                 # A single wrapping top dir is stripped so files land directly
                 # under target; a flat zip is taken as-is.

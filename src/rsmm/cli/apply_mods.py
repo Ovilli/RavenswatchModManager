@@ -898,13 +898,15 @@ def apply_one(enc: str, src: Path, dest: Path, mod_id: str,
     the install half-modded. Called without `stage` (tests, single-file
     paths) it writes directly, as before.
     """
-    if enc.startswith(ROOT_PREFIX):
-        rel = dest.suffix.lower()
-        if rel in _DANGEROUS_ROOT_EXTS:
-            print(f"  [WARN] {mod_id} overwrites {dest.name} in game root "
-                  f"(potentially dangerous)", file=sys.stderr)
+    if enc.startswith(ROOT_PREFIX) and dest.suffix.lower() in _DANGEROUS_ROOT_EXTS:
+        print(f"  [WARN] {mod_id} overwrites {dest.name} in game root "
+              f"(potentially dangerous)", file=sys.stderr)
     cur = state.active.get(enc)
-    bak = dest.with_suffix(dest.suffix + BACKUP_SUFFIX) if dest.exists() else None
+    # NB: `dest.parent / (dest.name + SUFFIX)`, never `with_suffix` — the
+    # cooked names carry dots, so `with_suffix` would eat the last segment and
+    # name a backup for a different file. This used to be computed both ways
+    # one line apart, with the wrong one silently overwritten below.
+    bak = None
     if dest.exists():
         bak = dest.parent / (dest.name + BACKUP_SUFFIX)
         if not bak.exists():

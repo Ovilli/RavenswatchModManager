@@ -36,7 +36,8 @@ drifted apart, which is why the rules now live in a single module:
 | Members read with `ZipFile.open` and written as regular files | A symlink member becoming a real symlink that a later member writes through |
 | `safe_dir_name` on every id/slug joined onto `mods/` | An archive whose members all start with `../` yielding the mod id `..`, which `--force` then deletes |
 | Entry count / uncompressed size / compression-ratio caps | Decompression bombs |
-| `DANGEROUS_EXTENSIONS` refusal | Mods shipping `.exe` / `.dll` / `.ps1` / `.sh` payloads |
+| `DANGEROUS_EXTENSIONS` refusal | Mods shipping `.exe` / `.dll` / `.ps1` / `.sh` payloads — including under `_root/`, which has no exemption |
+| Every `_root/` member reported | Silently overwriting files in the game install root |
 | Staged unpack + swap into place | A corrupt or rejected download destroying a working install as a side effect of failing |
 
 Transport is https-only (`file://`, and plain HTTP against loopback, are
