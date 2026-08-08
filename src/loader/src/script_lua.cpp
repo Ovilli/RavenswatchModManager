@@ -756,12 +756,19 @@ static bool mem_accessible(std::uintptr_t addr, std::size_t size, bool need_writ
         if (mbi.State != MEM_COMMIT) return false;
         if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return false;
         if (!(mbi.Protect & readable)) return false;
-        if (need_write && !(mbi.Protect & writable) &&
-            !(mbi.Protect & (PAGE_READONLY | PAGE_EXECUTE_READ))) {
-            // read-only page is fine for poke (we VirtualProtect it RW); only
-            // truly inaccessible protections fail above.
-        }
+        // This used to be an `if` with an empty body, so `need_write` enforced
+        // nothing: a committed *read-only* page passed the guard and the caller
+        // then wrote through it. `write_value<T>` memcpys straight in with no
+        // VirtualProtect, so that access-violated the game — precisely the
+        // fault this function exists to turn into a `false`. (`lua_poke` was
+        // unaffected: it upgrades the protection itself, and now says so by
+        // asking for a read-only check.)
+        if (need_write && !(mbi.Protect & writable)) return false;
         auto region_end = reinterpret_cast<std::uintptr_t>(mbi.BaseAddress) + mbi.RegionSize;
+        // A region that does not advance past `a` would spin here forever,
+        // hanging whichever game thread called in. VirtualQuery should never
+        // return one, but a hang is a worse failure than a refused read.
+        if (region_end <= a) return false;
         a = region_end;
     }
     return true;
@@ -800,7 +807,10 @@ int lua_poke(lua_State* L) {
     auto size = static_cast<int>(luaL_optinteger(L, 3, 8));
     if (size != 1 && size != 2 && size != 4 && size != 8)
         return luaL_error(L, "rsmm.poke: size must be 1, 2, 4 or 8");
-    if (!mem_accessible(addr, static_cast<std::size_t>(size), true)) {
+    // Read-only check on purpose: poke upgrades the protection itself just
+    // below, so demanding a writable page here would refuse the read-only
+    // pages it exists to patch.
+    if (!mem_accessible(addr, static_cast<std::size_t>(size), false)) {
         lua_pushboolean(L, 0);
         return 1;
     }
