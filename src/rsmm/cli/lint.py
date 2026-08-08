@@ -296,8 +296,14 @@ def _lint_raw_overrides(modname: str, entry: Path, *,
                       f"{_ST.dim('was newly shadowed — its inline value no longer applies')}")
                 warns += 1
         if not changed:
+            # Deliberately not "your edit does nothing": `list_talent_values`
+            # only reports *authored magnitude* nodes, so a GUID repoint, a
+            # `...Selector` node or a `...Counter` threshold is invisible to it
+            # by design. PiperGhostHorde is entirely such edits and was reading
+            # as a dead override. Say what was checked, not more.
             print(f"  {_ST.dim('  ·')} {mod_s}: {name}: "
-                  f"{_ST.dim('bytes differ but no value node changed')}")
+                  f"{_ST.dim('bytes differ, but no tracked magnitude node changed')} "
+                  f"{_ST.dim('(GUID/selector/counter edits are not tracked — verify in game)')}")
     return errs, warns
 
 
