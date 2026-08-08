@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import tomllib
 
-from rsmm.cli.merge import _ranked, _toml_fallback, _toml_load, build_merged_mod, collect_patches
+import pytest
+
+from rsmm.cli.merge import _ranked, _toml_load, build_merged_mod, collect_patches
 
 
-def test_toml_fallback_basic(tmp_path):
+def test_toml_load_reads_a_manifest(tmp_path):
     f = tmp_path / "test.toml"
     f.write_text(
         '[mod]\nid = "Test"\nname = "Test"\nversion = "1.0.0"\n'
@@ -15,33 +17,46 @@ def test_toml_fallback_basic(tmp_path):
         '[[patch]]\nkind = "stat"\nname = "Health"\nvalue = 100\n',
         encoding="utf-8",
     )
-    data = _toml_fallback(f)
+    data = _toml_load(f)
     assert data["mod"]["id"] == "Test"
     assert len(data["patch"]) == 1
     assert data["patch"][0]["kind"] == "stat"
     assert data["patch"][0]["value"] == 100
 
 
-def test_toml_fallback_boolean():
-    from rsmm.cli.merge import _toml_fallback
-    f = Path(__file__).parent / "data" / "test_bool.toml"
-    f.parent.mkdir(exist_ok=True)
-    f.write_text('[mod]\nenabled = true\ndisabled = false\n', encoding="utf-8")
-    data = _toml_fallback(f)
-    assert data["mod"]["enabled"] is True
-    assert data["mod"]["disabled"] is False
-    f.unlink()
+def test_toml_load_raises_on_malformed_input(tmp_path):
+    """No lenient re-parse: `collect_patches` skips the mod instead.
+
+    A regex fallback used to accept whatever it could scrape from a manifest
+    tomllib had already rejected, using different semantics into the bargain,
+    so `merge` applied patches from a mod `apply_mods` refused to load.
+    """
+    f = tmp_path / "bad.toml"
+    f.write_text("not toml {{{", encoding="utf-8")
+    with pytest.raises(tomllib.TOMLDecodeError):
+        _toml_load(f)
 
 
-def test_toml_load_fallback_on_failure(tmp_path):
-    f = tmp_path / "test.toml"
-    f.write_text('[mod]\nid = "Test"\n', encoding="utf-8")
-    # tomllib can parse this fine, but if we corrupt it...
-    f2 = tmp_path / "bad.toml"
-    f2.write_text("not toml {{{", encoding="utf-8")
-    # On corrupt toml, _toml_load uses fallback which also fails -> {}
-    data = _toml_load(f2)
-    assert isinstance(data, dict)
+def test_collect_patches_skips_a_mod_apply_would_also_reject(
+        tmp_path, monkeypatch, capsys):
+    """merge and apply must agree on which manifests are valid."""
+    mods = tmp_path / "mods"
+    good = mods / "Good"
+    good.mkdir(parents=True)
+    good.joinpath("manifest.toml").write_text(
+        '[mod]\nid = "Good"\n[[patch]]\nkind = "stat"\nname = "Health"\nvalue = 1\n',
+        encoding="utf-8")
+    bad = mods / "Sneaky"
+    bad.mkdir(parents=True)
+    bad.joinpath("manifest.toml").write_text(
+        '[mod]\nid = "Sneaky"\n[[patch]]\nkind = "stat"\nbroken = = =\n',
+        encoding="utf-8")
+    monkeypatch.setattr("rsmm.cli.merge.MODS_DIR", mods)
+
+    patches = collect_patches()
+
+    assert [p.mod_id for p in patches] == ["Good"]
+    assert "skip Sneaky" in capsys.readouterr().err
 
 
 def test_collect_patches_empty(monkeypatch, tmp_path):

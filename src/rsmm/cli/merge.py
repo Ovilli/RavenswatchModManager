@@ -51,99 +51,25 @@ class _Patch:
     data: dict
 
 
-def _strip_inline_comment(s: str) -> str:
-    in_quotes = False
-    escape = False
-    for i, c in enumerate(s):
-        if escape:
-            escape = False
-            continue
-        if c == '\\':
-            escape = True
-            continue
-        if c == '"':
-            in_quotes = not in_quotes
-        if not in_quotes and c == '#':
-            return s[:i].rstrip()
-    return s
-
-
-def _parse_toml_value(raw: str) -> object:
-    if len(raw) >= 2 and raw.startswith('"') and raw.endswith('"'):
-        s = raw[1:-1]
-        s = s.replace('\\"', '"').replace('\\\\', '\\')
-        return s
-    low = raw.lower()
-    if low in {"true", "false"}:
-        return low == "true"
-    if low in {"on", "off"}:
-        return low == "on"
-    if low in {"yes", "no"}:
-        return low == "yes"
-    try:
-        cleaned = raw.replace("_", "")
-        if cleaned.lstrip("-+").isdigit():
-            return int(raw)
-        return float(raw)
-    except ValueError:
-        return raw
-
-
-def _toml_fallback(p: Path) -> dict:
-    """Minimal subset parser for [mod] + [[patch]] manifests, used when
-    neither tomllib (3.11+) nor tomli is importable."""
-    out: dict = {"mod": {}, "patch": []}
-    cur_table: str | None = None
-    cur_array_entry: dict | None = None
-    for line in p.read_text(encoding="utf-8").splitlines():
-        s = line.strip()
-        if not s or s.startswith("#"):
-            continue
-        m = re.match(r"\[\[\s*([A-Za-z_][A-Za-z0-9_]*)\s*\]\]", s)
-        if m:
-            cur_array_entry = {}
-            out.setdefault(m.group(1), []).append(cur_array_entry)
-            cur_table = None
-            continue
-        m = re.match(r"\[\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\]", s)
-        if m:
-            cur_table = m.group(1)
-            out.setdefault(cur_table, {})
-            cur_array_entry = None
-            continue
-        m = re.match(r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$", s)
-        if not m:
-            continue
-        k, raw = m.group(1), m.group(2).strip()
-        raw = _strip_inline_comment(raw)
-        if not raw:
-            continue
-        v = _parse_toml_value(raw)
-        target = cur_array_entry if cur_array_entry is not None else out.get(cur_table or "mod", {})
-        target[k] = v
-    return out
-
-
 def _toml_load(p: Path) -> dict:
-    # Three-way fallback: prefer stdlib tomllib, then the third-party
-    # tomli backend, finally the in-house _toml_fallback (which only
-    # understands the subset of TOML that mod manifests actually use).
-    # We catch ImportError (backend not installed) and TOMLDecodeError
-    # (backend reports malformed input) so the fallback gets a chance —
-    # bare `except Exception` here silently swallowed programmer errors.
-    import tomllib
-    try:
-        return tomllib.loads(p.read_text(encoding="utf-8"))
-    except (ImportError, tomllib.TOMLDecodeError):
-        pass
-    try:
-        import tomli
-    except ImportError:
-        return _toml_fallback(p)
-    try:
-        return tomli.loads(p.read_text(encoding="utf-8"))
-    except tomli.TOMLDecodeError:
-        return _toml_fallback(p)
+    """Parse a mod manifest. Raises on malformed input, like every other reader.
+
+    This used to fall back to `_toml_fallback`, an in-house regex parser,
+    whenever tomllib reported malformed input. That fallback was written for
+    "no TOML backend installed" — impossible here, since tomllib is stdlib and
+    the project requires 3.11+ — so the only way it ever ran was on a manifest
+    tomllib had already rejected. It then accepted the file anyway, using
+    *different* semantics (`on`/`off`/`yes`/`no` as booleans, which TOML does
+    not have) and keeping whatever its regex could scrape.
+
+    The result was two components disagreeing about whether a mod is valid:
+    `apply_mods.discover_mods` skipped it with a decode error while
+    `collect_patches` merged `[[patch]]` blocks out of it — including fields
+    whose values were parse debris. `collect_patches` already catches
+    TOMLDecodeError and skips the mod with a message, which is the behaviour
+    the comment there always claimed.
+    """
+    return tomllib.loads(p.read_text(encoding="utf-8"))
 
 
 def collect_patches() -> list[_Patch]:
@@ -156,10 +82,9 @@ def collect_patches() -> list[_Patch]:
         mf = entry / "manifest.toml"
         if not mf.exists():
             continue
-        # _toml_load itself falls back through every parser before
-        # raising; a TOMLDecodeError that reaches here means even the
-        # in-house fallback parser couldn't make sense of the manifest.
-        # OSError covers permission / disappearance races.
+        # A manifest that does not parse contributes no patches, matching what
+        # `apply_mods.discover_mods` does with the same file. OSError covers
+        # permission / disappearance races.
         try:
             t = _toml_load(mf)
         except (tomllib.TOMLDecodeError, OSError) as e:
