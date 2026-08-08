@@ -25,12 +25,15 @@ import json
 import shutil
 import sys
 import tempfile
+import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
 
 from rsmm.engine.paths import MODS_DIR
 from rsmm.sdk.api import _parse_v
+from rsmm.sdk.archive import safe_dir_name, safe_extract, scan_dangerous, single_top_dir
 from rsmm.sdk.repo import RepoError, RepoIndex, sha256_file, verify_file
 
 REPOS_FILE = Path.home() / ".rsmm" / "repos.json"
@@ -46,12 +49,27 @@ def _load_repos() -> list[str]:
         return []
 
 
+#: Ceiling on a single download. Buffering is unavoidable (the SHA256 covers
+#: the whole archive) so the transfer needs a bound of its own.
+MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024
+
+
 def _fetch(url: str, timeout: float = 30.0) -> bytes:
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in ("https",):
         raise RepoError(f"refusing to fetch non-HTTPS URL: {url}")
+    buf = bytearray()
     with urllib.request.urlopen(url, timeout=timeout) as r:
-        return r.read()
+        while True:
+            chunk = r.read(1 << 16)
+            if not chunk:
+                return bytes(buf)
+            buf += chunk
+            # Fail rather than truncate: a silently short read would surface
+            # as a checksum mismatch, which reads like a corrupt mirror.
+            if len(buf) > MAX_DOWNLOAD_BYTES:
+                raise RepoError(
+                    f"{url} exceeds the {MAX_DOWNLOAD_BYTES}-byte download limit")
 
 
 def _installed_mods() -> dict[str, str]:
@@ -100,85 +118,37 @@ def _verify_download(path: Path, expected_sha256: str,
         return True, f"verify skipped: {e}"
 
 
-_DANGEROUS_EXTENSIONS = frozenset({
-    ".exe", ".dll", ".sys", ".drv", ".scr", ".cpl",
-    ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh",
-    ".ps1", ".psm1", ".psd1", ".ps1xml",
-    ".sh", ".bash", ".zsh",
-    ".bat", ".cmd",
-    ".jar",
-    ".pyc", ".pyd",
-    ".wasm", ".php", ".asp", ".aspx", ".jsp",
-})
-
-_DANGEROUS_ROOT_EXTENSIONS = frozenset({
-    ".exe", ".dll", ".sys", ".drv", ".scr", ".cpl",
-    ".vbs", ".vbe", ".ps1", ".bat", ".cmd", ".sh",
-})
-
-
 def _validate_zip_content(zf: zipfile.ZipFile, mod_id: str) -> None:
     """Scan ZIP for dangerous file types. Raise RepoError if found."""
-    blocked: list[str] = []
-    root_danger: list[str] = []
-    for entry in zf.infolist():
-        name = entry.filename
-        # Strip mod_id/ prefix if present
-        parts = name.replace("\\", "/").split("/", 1)
-        inner = parts[1] if len(parts) > 1 else parts[0]
-        ext = Path(inner).suffix.lower()
-        if ext in _DANGEROUS_EXTENSIONS:
-            blocked.append(name)
-        if inner.startswith("_root/"):
-            rel = inner[len("_root/"):]
-            if Path(rel).suffix.lower() in _DANGEROUS_ROOT_EXTENSIONS:
-                root_danger.append(rel)
-    if blocked:
-        raise RepoError(
-            f"{mod_id} contains blocked file type(s):\n  "
-            + "\n  ".join(blocked[:20])
-        )
-    if root_danger:
-        print(
-            f"  [WARN] {mod_id} overwrites game root files:",
-            file=sys.stderr,
-        )
-        for f in root_danger:
-            print(f"         {f}", file=sys.stderr)
+    for rel in scan_dangerous(zf, mod_id):
+        print(f"  [WARN] {mod_id} overwrites game root file: {rel}",
+              file=sys.stderr)
 
 
 def _install_zip(zip_path: Path, mod_id: str, dry_run: bool) -> None:
-    """Replace `mods/<mod_id>/` with the zip contents atomically."""
-    target = MODS_DIR / mod_id
+    """Replace `mods/<mod_id>/` with the zip contents atomically.
+
+    `mod_id` comes from the local install (the folder name under `mods/`), not
+    from the archive, but it is validated anyway: it is joined onto MODS_DIR
+    and the result is deleted.
+    """
+    target = MODS_DIR / safe_dir_name(mod_id)
     with tempfile.TemporaryDirectory(prefix=f".rsmm_update_{mod_id}_") as td:
-        staging = Path(td) / mod_id
+        staging = Path(td) / "unpack"
         staging.mkdir()
         with zipfile.ZipFile(zip_path) as zf:
             _validate_zip_content(zf, mod_id)
-            staging_parent = staging.parent.resolve()
-            for entry in zf.infolist():
-                dest = (staging.parent / entry.filename).resolve()
-                # is_relative_to (not str.startswith): a bare prefix check lets
-                # an entry escape into a sibling dir sharing the prefix.
-                if not dest.is_relative_to(staging_parent):
-                    raise RepoError(f"zip slip detected: {entry.filename}")
-                # Extract each entry individually with zf.open() so symlink
-                # entries are read as regular files (their target string
-                # becomes the file content) rather than being created as
-                # filesystem symlinks that could escape the staging dir.
-                if entry.is_dir():
-                    dest.mkdir(parents=True, exist_ok=True)
-                else:
-                    dest.parent.mkdir(parents=True, exist_ok=True)
-                    with zf.open(entry) as src, open(dest, "wb") as dst:
-                        shutil.copyfileobj(src, dst)
-        # The zip may extract as either `<mod_id>/...` or `./...`. Pick
-        # the right inner path.
-        if not staging.exists():
-            inner = next((p for p in Path(td).iterdir() if p.is_dir()), None)
-            if inner is None:
-                raise RepoError("zip is empty or malformed")
-            staging = inner
+            # A packed archive carries its own `<id>/` top-level dir; a
+            # hand-rolled one may be flat. Strip the former so `staging` is
+            # the mod dir in both shapes. The old code instead extracted a
+            # level up and then checked `staging.exists()` — which could never
+            # be false, since staging was mkdir'd unconditionally, so a flat
+            # zip silently replaced the installed mod with an empty directory.
+            top = single_top_dir(zf)
+            safe_extract(zf, staging, label=mod_id,
+                         strip_prefix=f"{top}/" if top else "")
+        if not any(staging.iterdir()):
+            raise RepoError("zip is empty or malformed")
         if dry_run:
             print(f"  [dry] would replace {target}")
             return

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import shutil
 import sys
 import tempfile
 import urllib.parse
@@ -28,6 +29,7 @@ import zipfile
 from pathlib import Path
 
 from rsmm.engine.paths import MODS_DIR
+from rsmm.sdk.archive import require_single_top_dir, safe_extract, scan_dangerous
 from rsmm.sdk.repo import RepoError, RepoIndex, verify_file
 
 # Reuse the same locations the `repo`/`sign` commands use.
@@ -47,12 +49,65 @@ _USAGE = (
 )
 
 
+#: Downloads are buffered in memory (the SHA256 and the signature both cover
+#: the whole archive), so the transfer needs its own ceiling independent of
+#: the uncompressed-size cap enforced during extraction.
+MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024
+
+#: Seconds. A repo that accepts the connection and then never sends a byte
+#: would otherwise hang `rsmm install` forever.
+FETCH_TIMEOUT = 60.0
+
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
+
+
+def _check_url(url: str) -> None:
+    """Refuse fetch schemes that give no integrity guarantee.
+
+    The checksum and signature that authenticate an archive are themselves
+    read from ``repo.json`` over the same transport, so plaintext HTTP means
+    an on-path attacker rewrites both and the verification proves nothing.
+    ``file://`` is allowed (offline installs, tests) and plain HTTP is allowed
+    only against loopback, where there is no path to be on.
+    """
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme in ("https", "file"):
+        return
+    if parsed.scheme == "http" and (parsed.hostname or "") in _LOCAL_HOSTS:
+        return
+    raise RepoError(
+        f"refusing to fetch over {parsed.scheme or 'no'} scheme: {url}\n"
+        "  mod archives must come from https:// (or file:// for local installs)"
+    )
+
+
+def _read_capped(reader, source: str) -> bytes:
+    """Read at most :data:`MAX_DOWNLOAD_BYTES`, then fail rather than truncate.
+
+    Silently truncating would turn a hostile response into a checksum
+    mismatch, which reads like a corrupt mirror instead of an attack.
+    """
+    buf = bytearray()
+    while True:
+        chunk = reader.read(1 << 16)
+        if not chunk:
+            return bytes(buf)
+        buf += chunk
+        if len(buf) > MAX_DOWNLOAD_BYTES:
+            raise RepoError(
+                f"{source} exceeds the {MAX_DOWNLOAD_BYTES}-byte download limit")
+
+
 def _fetch(url_or_path: str) -> bytes:
-    """Read bytes from an http(s)/file URL or a bare local path."""
+    """Read bytes from an https/file URL or a bare local path."""
     if "://" not in url_or_path:
-        return Path(url_or_path).read_bytes()
-    with urllib.request.urlopen(url_or_path) as r:  # noqa: S310 (intended)
-        return r.read()
+        with open(url_or_path, "rb") as f:
+            return _read_capped(f, url_or_path)
+    _check_url(url_or_path)
+    with urllib.request.urlopen(  # noqa: S310 — scheme checked by _check_url
+        url_or_path, timeout=FETCH_TIMEOUT
+    ) as r:
+        return _read_capped(r, url_or_path)
 
 
 def _load_index(repo: str) -> RepoIndex:
@@ -73,32 +128,43 @@ def _resolve(mod_id: str, version: str, repos: list[str]):
     return None, None
 
 
-def _safe_extract(data: bytes, dest_root: Path) -> str:
-    """Extract a packed-mod zip into ``dest_root`` (which becomes
-    ``dest_root/<id>/``). Returns the mod id. Rejects zip-slip and archives
-    that aren't a single top-level dir."""
+def _peek_mod_id(data: bytes) -> str:
+    """Validated mod id of a packed archive, without extracting anything.
+
+    The id names a directory that ``--force`` deletes, so it must never be
+    taken from the archive unchecked: a zip whose members all start with
+    ``../`` yields ``..``, and ``mods/..`` is the repo root.
+    """
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
-        names = [n for n in zf.namelist() if n and not n.endswith("/")]
-        tops = {n.replace("\\", "/").split("/", 1)[0] for n in names}
-        if len(tops) != 1:
-            raise RepoError(
-                f"archive must contain exactly one top-level mod dir, got {sorted(tops)}")
-        mod_id = tops.pop()
+        return require_single_top_dir(zf)
+
+
+def _safe_extract(data: bytes, dest_root: Path) -> str:
+    """Unpack a packed-mod zip so it lands at ``dest_root/<id>/``.
+
+    Returns the mod id. Extraction runs in a staging directory alongside the
+    destination and is moved into place only once every member is written, so
+    a rejected entry or a truncated stream cannot leave a half-installed mod
+    that ``rsmm apply`` would then happily walk.
+    """
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        mod_id = require_single_top_dir(zf)
+        for rel in scan_dangerous(zf, mod_id):
+            print(f"  [WARN] {mod_id} overwrites game root file: {rel}",
+                  file=sys.stderr)
         dest_root.mkdir(parents=True, exist_ok=True)
-        root_res = dest_root.resolve()
-        for member in zf.infolist():
-            if member.is_dir():
-                continue
-            target = (dest_root / member.filename).resolve()
-            # is_relative_to (not str.startswith): a bare prefix check lets an
-            # entry escape into a sibling dir sharing the prefix (mods/ ->
-            # mods-evil/). Comparing path components rejects that.
-            if not target.is_relative_to(root_res):
-                raise RepoError(f"unsafe path in archive: {member.filename!r}")
-            target.parent.mkdir(parents=True, exist_ok=True)
-            with zf.open(member) as src, target.open("wb") as out:
-                out.write(src.read())
-        return mod_id
+        final = dest_root / mod_id   # mod_id validated as a plain dir name
+        with tempfile.TemporaryDirectory(
+            prefix=f".rsmm_install_{mod_id}_", dir=dest_root
+        ) as td:
+            staging = Path(td) / mod_id
+            safe_extract(zf, staging, strip_prefix=f"{mod_id}/", label=mod_id)
+            if final.is_dir():
+                shutil.rmtree(final)
+            elif final.exists():
+                final.unlink()
+            shutil.move(str(staging), str(final))
+    return mod_id
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -137,7 +203,7 @@ def main(argv: list[str] | None = None) -> int:
     if urllib.parse.urlparse(target).path.endswith(".zip"):
         try:
             data = _fetch(target)
-        except OSError as e:
+        except (OSError, RepoError) as e:
             print(f"download failed: {e}", file=sys.stderr)
             return 1
         return _finish(data, None, no_verify, force)
@@ -154,9 +220,13 @@ def main(argv: list[str] | None = None) -> int:
               f"{len(repos)} repo(s)", file=sys.stderr)
         return 1
     print(f"resolving {entry.id} {entry.version} from {repo}")
+    if entry.size and entry.size > MAX_DOWNLOAD_BYTES:
+        print(f"refusing {entry.id}: repo declares {entry.size} bytes, over the "
+              f"{MAX_DOWNLOAD_BYTES}-byte limit", file=sys.stderr)
+        return 1
     try:
         data = _fetch(entry.url)
-    except OSError as e:
+    except (OSError, RepoError) as e:
         print(f"download failed: {e}", file=sys.stderr)
         return 1
     return _finish(data, entry, no_verify, force)
@@ -186,18 +256,19 @@ def _finish(data: bytes, entry, no_verify: bool, force: bool) -> int:
             print("  signature ok")
 
     # Peek the mod id without extracting, to honor --force / collisions.
-    with zipfile.ZipFile(io.BytesIO(data)) as zf:
-        tops = {n.replace("\\", "/").split("/", 1)[0]
-                for n in zf.namelist() if n.strip("/")}
-    mod_id = next(iter(tops)) if len(tops) == 1 else None
-    if mod_id and (MODS_DIR / mod_id).exists() and not force:
+    try:
+        mod_id = _peek_mod_id(data)
+    except (RepoError, zipfile.BadZipFile) as e:
+        print(f"install failed: {e}", file=sys.stderr)
+        return 1
+    if (MODS_DIR / mod_id).exists() and not force:
         print(f"{mod_id} already installed at {MODS_DIR / mod_id}; "
               f"use --force to overwrite", file=sys.stderr)
         return 1
-    if mod_id and force:
-        import shutil
-        shutil.rmtree(MODS_DIR / mod_id, ignore_errors=True)
 
+    # The old code deleted the destination here, before extracting. Deleting
+    # is now _safe_extract's last step, after a full staged unpack succeeded,
+    # so a bad archive can no longer remove a working install.
     try:
         installed = _safe_extract(data, MODS_DIR)
     except (RepoError, zipfile.BadZipFile) as e:

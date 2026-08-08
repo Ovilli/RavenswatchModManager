@@ -59,6 +59,7 @@ from rsmm.cli.apply_mods import clear_runtime_mods, find_game_dir
 from rsmm.cli.merge import _ranked, collect_patches
 from rsmm.engine.paths import DIST_DIR, MODS_DIR, REPO_ROOT, self_cmd
 from rsmm.logging import get_logger
+from rsmm.sdk import archive
 from rsmm.sdk.config import ConfigError, ConfigStore
 
 logger = get_logger(__name__)
@@ -802,92 +803,64 @@ def _http_get_json(url: str, *, timeout: int = 30) -> dict[str, Any]:
         return json.loads(resp.read().decode("utf-8"))
 
 
-_DANGEROUS_EXTENSIONS = frozenset({
-    ".exe", ".dll", ".sys", ".drv", ".scr", ".cpl",
-    ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh",
-    ".ps1", ".psm1", ".psd1", ".ps1xml",
-    ".sh", ".bash", ".zsh",
-    ".bat", ".cmd",
-    ".jar",
-    # .py is allowed — standard mods ship on_disable.py / build hooks.
-    ".pyc", ".pyd",
-    ".wasm", ".php", ".asp", ".aspx", ".jsp",
-})
+#: Re-exported from the shared extractor so this module and `rsmm install` /
+#: `rsmm update` cannot drift apart on what a mod is allowed to ship.
+_DANGEROUS_EXTENSIONS = archive.DANGEROUS_EXTENSIONS
+_DANGEROUS_ROOT_EXTENSIONS = archive.DANGEROUS_ROOT_EXTENSIONS
 
-_DANGEROUS_ROOT_EXTENSIONS = frozenset({
-    ".exe", ".dll", ".sys", ".drv", ".scr", ".cpl",
-    ".vbs", ".vbe", ".ps1", ".bat", ".cmd", ".sh",
-})
+
+def _mod_target(slug: str) -> Path:
+    """``mods/<slug>``, with the slug proven to be a plain directory name.
+
+    The slug arrives straight from argv / the desktop bridge and names a
+    directory the installer deletes and replaces, so ``..`` or an embedded
+    separator would put that deletion outside ``mods/``.
+    """
+    return MODS_DIR / archive.safe_dir_name(slug, what="mod slug")
 
 
 def _extract_downloaded_zip(tmp_path: Path, target: Path, slug: str) -> None | dict[str, Any]:
+    """Unpack a downloaded mod zip into ``target``, replacing what's there.
+
+    Unpacks into a staging directory first and swaps it in only once the whole
+    archive extracted and a manifest was found. The previous version deleted
+    ``target`` up front, so a corrupt or hostile download removed the user's
+    working install as a side effect of failing.
+    """
     import shutil
+    import tempfile
     import zipfile
 
-    if target.exists():
-        shutil.rmtree(target)
-    target.mkdir(parents=True, exist_ok=True)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=f".rsmm_dl_{slug}_", dir=target.parent) as td:
+        staging = Path(td) / "unpack"
+        try:
+            with zipfile.ZipFile(tmp_path) as zf:
+                root_danger = archive.scan_dangerous(zf, slug)
+                if root_danger:
+                    print(f"  [WARN] {slug} overwrites game root files:", file=sys.stderr)
+                    for f in root_danger:
+                        print(f"         {f}", file=sys.stderr)
+                # A single wrapping top dir is stripped so files land directly
+                # under target; a flat zip is taken as-is.
+                top = archive.single_top_dir(zf)
+                archive.safe_extract(zf, staging, label=slug,
+                                     strip_prefix=f"{top}/" if top else "")
+        except archive.ArchiveError as exc:
+            return {"ok": False, "error": str(exc)}
+        except zipfile.BadZipFile as exc:
+            return {"ok": False, "error": f"{slug}: corrupt zip ({exc})"}
 
-    with zipfile.ZipFile(tmp_path) as zf:
-        blocked: list[str] = []
-        root_danger: list[str] = []
-        for entry in zf.infolist():
-            name = entry.filename
-            parts = name.replace("\\", "/").split("/", 1)
-            inner = parts[1] if len(parts) > 1 else parts[0]
-            ext = Path(inner).suffix.lower()
-            if ext in _DANGEROUS_EXTENSIONS:
-                blocked.append(name)
-            if inner.startswith("_root/"):
-                rel = inner[len("_root/"):]
-                if Path(rel).suffix.lower() in _DANGEROUS_ROOT_EXTENSIONS:
-                    root_danger.append(rel)
-        if blocked:
+        if not (staging / "manifest.toml").exists():
             return {
                 "ok": False,
-                "error": f"{slug} contains blocked file type(s):\n  " + "\n  ".join(blocked[:20]),
+                "error": f"{slug} zip does not contain manifest.toml (required for mod detection)",
             }
-        if root_danger:
-            print(f"  [WARN] {slug} overwrites game root files:", file=sys.stderr)
-            for f in root_danger:
-                print(f"         {f}", file=sys.stderr)
-        names = [n for n in zf.namelist() if not n.endswith("/")]
-        top_dirs = {n.split("/", 1)[0] for n in names if "/" in n}
-        strip = len(top_dirs) == 1 and all("/" in n for n in names)
-        stripped_prefix = next(iter(top_dirs)) + "/" if strip else ""
-        for member in zf.infolist():
-            name = member.filename
-            if name.endswith("/"):
-                continue
-            if strip and name.startswith(stripped_prefix):
-                rel = name[len(stripped_prefix) :]
-            else:
-                rel = name
-            rel_norm = os.path.normpath(rel)
-            if rel_norm.startswith("..") or os.path.isabs(rel_norm):
-                return {
-                    "ok": False,
-                    "error": f"refusing zip entry with traversal/abs path: {name!r}",
-                }
-            dest = (target / rel_norm).resolve()
-            target_resolved = target.resolve()
-            try:
-                dest.relative_to(target_resolved)
-            except ValueError:
-                return {
-                    "ok": False,
-                    "error": f"refusing zip entry that escapes target: {name!r}",
-                }
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            with zf.open(member) as src, dest.open("wb") as dst:
-                shutil.copyfileobj(src, dst)
-    # Validate that manifest.toml exists after extraction
-    if not (target / "manifest.toml").exists():
-        shutil.rmtree(target, ignore_errors=True)
-        return {
-            "ok": False,
-            "error": f"{slug} zip does not contain manifest.toml (required for mod detection)",
-        }
+        if target.is_dir():
+            shutil.rmtree(target)
+        elif target.exists():
+            target.unlink()
+        shutil.move(str(staging), str(target))
     return None
 
 
@@ -936,6 +909,10 @@ def cmd_install_mod(slug: str) -> int:
     extract its zip into ``mods/<slug>/``.
     """
     try:
+        target = _mod_target(slug)
+    except archive.ArchiveError as e:
+        return _emit({"ok": False, "error": str(e)})
+    try:
         detail = _http_get_json(f"{_index_base()}/api/mods/{slug}")
     except urllib.error.HTTPError as e:
         if e.code == 404:
@@ -958,7 +935,6 @@ def cmd_install_mod(slug: str) -> int:
     download = _download_mod_version(slug, version, expected_sha)
     if not download["ok"]:
         return _emit(download)
-    target = MODS_DIR / slug
     try:
         extracted = _extract_downloaded_zip(download["tmp_path"], target, slug)
         if extracted is not None:
@@ -979,6 +955,10 @@ def cmd_install_mod(slug: str) -> int:
 
 def cmd_install_mod_version(slug: str, version: str) -> int:
     try:
+        target = _mod_target(slug)
+    except archive.ArchiveError as e:
+        return _emit({"ok": False, "error": str(e)})
+    try:
         detail = _http_get_json(f"{_index_base()}/api/mods/{slug}")
     except urllib.error.HTTPError as e:
         if e.code == 404:
@@ -998,7 +978,6 @@ def cmd_install_mod_version(slug: str, version: str) -> int:
     download = _download_mod_version(slug, version, expected_sha)
     if not download["ok"]:
         return _emit(download)
-    target = MODS_DIR / slug
     try:
         extracted = _extract_downloaded_zip(download["tmp_path"], target, slug)
         if extracted is not None:

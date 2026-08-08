@@ -24,8 +24,9 @@ from __future__ import annotations
 
 import re
 
-from . import engine
+from . import archive, engine
 from .api import API_VERSION, require_api, sdk_export
+from .archive import ArchiveError, safe_dir_name, safe_extract
 from .config import ConfigSchema, ConfigStore
 from .content import (
     KIND_CONFIDENCE,
@@ -52,6 +53,7 @@ __all__ = [
     "KIND_CONFIDENCE", "kind_confidence",
     "discover_plugins",
     "RepoIndex", "sign_file", "verify_file",
+    "archive", "ArchiveError", "safe_extract", "safe_dir_name",
     "expect", "conflicts", "assert_no_conflicts", "ModExpect",
     "GameBuildPin", "check_compat", "pin_exists",
     "ApplyTransaction",

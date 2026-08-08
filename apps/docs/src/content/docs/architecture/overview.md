@@ -19,6 +19,30 @@ Two goals, in priority order:
 2. **Don't fight anti-tamper.** Ravenswatch.exe has anti-tamper logic
    that crashes on common DLL-injection hook points (CreateFileW, Wine
    forwarder patches, etc). v1 avoids the runtime path entirely.
+3. **Treat a downloaded mod as hostile input.** A mod archive comes from
+   a third party over the network. It must not be able to write outside
+   `mods/`, delete anything, ship an executable, or exhaust the disk.
+
+### Untrusted archives
+
+Everything that unpacks a downloaded mod — `rsmm install`, `rsmm update`
+and the desktop bridge's `json install-mod` — goes through one extractor,
+`rsmm.sdk.archive`. It was previously three separate copies that had
+drifted apart, which is why the rules now live in a single module:
+
+| Guard | What it stops |
+|-------|---------------|
+| Component-wise containment check (`is_relative_to`, not `startswith`) | Zip-slip, including escapes into a sibling dir sharing the prefix (`mods/` → `mods-evil/`) |
+| Members read with `ZipFile.open` and written as regular files | A symlink member becoming a real symlink that a later member writes through |
+| `safe_dir_name` on every id/slug joined onto `mods/` | An archive whose members all start with `../` yielding the mod id `..`, which `--force` then deletes |
+| Entry count / uncompressed size / compression-ratio caps | Decompression bombs |
+| `DANGEROUS_EXTENSIONS` refusal | Mods shipping `.exe` / `.dll` / `.ps1` / `.sh` payloads |
+| Staged unpack + swap into place | A corrupt or rejected download destroying a working install as a side effect of failing |
+
+Transport is https-only (`file://`, and plain HTTP against loopback, are
+allowed for offline installs and local development). Downloads are size
+capped and time bounded. Integrity is SHA-256 from `repo.json` plus an
+optional Ed25519 signature — see `rsmm.sdk.repo`.
 
 ## How v1 works
 
