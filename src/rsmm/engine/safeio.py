@@ -41,6 +41,15 @@ LOCK_NAME = ".rsmm.lock"
 #: stealing a live lock is far worse than waiting.
 STALE_LOCK_SEC = 30 * 60
 
+#: How long a lock whose contents carry no timestamp is still respected.
+#: `os.open(O_CREAT | O_EXCL)` publishes the lock *path* before the payload
+#: is written, so there is a window in which the holder's own lock reads as
+#: empty. Treating that as abandoned outright is a lock-stealing race; waiting
+#: `STALE_LOCK_SEC` instead would re-wedge the install this file's ageing
+#: rules exist to unwedge. Seconds is the right order: the write window is
+#: sub-millisecond, and a genuinely orphaned zero-byte lock clears fast.
+TORN_LOCK_GRACE_SEC = 5.0
+
 
 class NotEnoughSpace(OSError):
     """Raised by :func:`ensure_free_space` before anything is written."""
@@ -213,11 +222,19 @@ def install_lock(cooking: Path, operation: str = "apply", *, timeout: float = 0.
             info = _read_lock(path)
             owner = int(info.get("pid", 0) or 0)
             started = float(info.get("started", 0) or 0)
-            # No timestamp means the file is not one of ours (or was written
-            # torn): there is no evidence anybody holds it. Treating that as
-            # "fresh" wedged the install on Windows, where `_pid_alive` has to
-            # answer True for every pid and age is the only other signal.
-            aged_out = started <= 0 or (time.time() - started) > STALE_LOCK_SEC
+            if started > 0:
+                aged_out = (time.time() - started) > STALE_LOCK_SEC
+            else:
+                # No timestamp: either a foreign file, or a lock somebody is
+                # still acquiring (see TORN_LOCK_GRACE_SEC). Its own mtime
+                # tells the two apart without trusting its contents — which
+                # also keeps the Windows case working, where `_pid_alive` must
+                # answer True for every pid and age is the only other signal.
+                try:
+                    age = time.time() - path.stat().st_mtime
+                except OSError:
+                    age = TORN_LOCK_GRACE_SEC + 1
+                aged_out = age > TORN_LOCK_GRACE_SEC
             if not _pid_alive(owner) or aged_out:
                 # Abandoned. Remove and retry; if someone else wins the race
                 # the next open simply fails again and we loop.
@@ -247,7 +264,13 @@ def install_lock(cooking: Path, operation: str = "apply", *, timeout: float = 0.
     finally:
         if fd is not None:
             os.close(fd)
+        # Release only a lock we still own. If ours aged out and another
+        # process legitimately took over, unlinking here would delete *their*
+        # lock and let a third process in alongside them — the exact
+        # interleaving this lock exists to prevent. An unowned leftover is
+        # self-healing: it ages out via TORN_LOCK_GRACE_SEC / STALE_LOCK_SEC.
         try:
-            path.unlink()
-        except FileNotFoundError:
+            if int(_read_lock(path).get("pid", 0) or 0) == os.getpid():
+                path.unlink()
+        except (FileNotFoundError, OSError):
             pass

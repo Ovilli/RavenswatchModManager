@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from rsmm.engine import safeio
 from rsmm.engine.safeio import (
     LOCK_NAME,
     TMP_PREFIX,
@@ -122,11 +123,42 @@ def test_install_lock_takes_over_a_dead_owner(tmp_path: Path, monkeypatch):
 
 
 def test_install_lock_takes_over_a_lock_with_no_timestamp(tmp_path: Path, monkeypatch):
-    """A lock file we did not write is not evidence anyone holds it."""
+    """A lock file we did not write is not evidence anyone holds it — once it
+    is older than the torn-write grace window."""
     monkeypatch.setattr("rsmm.engine.safeio._pid_alive", lambda pid: True)
-    (tmp_path / LOCK_NAME).write_text("{}")
+    lock = tmp_path / LOCK_NAME
+    lock.write_text("{}")
+    old = time.time() - (safeio.TORN_LOCK_GRACE_SEC + 10)
+    os.utime(lock, (old, old))
     with install_lock(tmp_path, "apply"):
-        assert json.loads((tmp_path / LOCK_NAME).read_text())["pid"] == os.getpid()
+        assert json.loads(lock.read_text())["pid"] == os.getpid()
+
+
+def test_install_lock_does_not_steal_a_lock_still_being_acquired(tmp_path: Path,
+                                                                 monkeypatch):
+    """Regression: `os.open(O_CREAT | O_EXCL)` publishes the lock path before
+    the payload lands. Reading it in that window looked exactly like an
+    abandoned lock, so a competing process stole a lock somebody was still
+    taking — and both then wrote the install at once."""
+    monkeypatch.setattr("rsmm.engine.safeio._pid_alive", lambda pid: True)
+    (tmp_path / LOCK_NAME).write_text("")   # created, payload not yet written
+    with pytest.raises(LockBusy), install_lock(tmp_path, "apply"):
+        pass
+
+
+def test_install_lock_does_not_release_a_lock_someone_else_took_over(tmp_path: Path):
+    """Regression: release used to unlink whatever lock file was there.
+
+    If ours aged out and another process legitimately took over, that deleted
+    *their* lock on our way out and let a third process in beside them.
+    """
+    lock = tmp_path / LOCK_NAME
+    with install_lock(tmp_path, "apply"):
+        lock.write_text(json.dumps(
+            {"pid": os.getpid() + 1, "operation": "apply", "started": time.time()}
+        ))
+    assert lock.exists()
+    assert json.loads(lock.read_text())["pid"] == os.getpid() + 1
 
 
 def test_install_lock_takes_over_an_aged_out_lock(tmp_path: Path, monkeypatch):
