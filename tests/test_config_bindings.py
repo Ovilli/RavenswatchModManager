@@ -95,3 +95,48 @@ type = "string"
     store.replace({"b": True, "i": -4, "f": 1.5, "s": "x"})
     parsed = tomllib.loads((tmp_path / "config.toml").read_text(encoding="utf-8"))["config"]
     assert parsed == {"b": True, "i": -4, "f": 1.5, "s": "x"}
+
+
+def test_control_characters_survive_the_toml_round_trip(tmp_path):
+    """Regression: `_toml_repr` escaped only `\\` and `"`.
+
+    TOML basic strings forbid raw control characters, so a value containing a
+    newline — which the desktop config editor accepts — wrote a config.toml
+    that parsed nowhere. The mod's config was then permanently unreadable:
+    every later `reload()` raised, and the only repair was deleting the file
+    by hand.
+    """
+    _write_schema(tmp_path, '[fields.note]\ntype = "string"\ndefault = "hi"\n')
+    store = ConfigStore(tmp_path)
+    payload = 'line1\nline2\r\ttab "quoted" back\\slash \x01 \x7f'
+    store.replace({"note": payload})
+
+    text = (tmp_path / "config.toml").read_text(encoding="utf-8")
+    assert tomllib.loads(text)["config"]["note"] == payload   # parses at all
+    store.reload()
+    assert store.get("note") == payload                        # and survives
+
+
+def test_non_bare_field_name_is_quoted_not_dotted(tmp_path):
+    """A field named `a.b` must stay one key, not become a nested table.
+
+    Emitted raw, `a.b = "x"` is a TOML *dotted* key: it round-trips back as
+    `{"a": {"b": "x"}}`, so the field reads as permanently missing.
+    """
+    _write_schema(tmp_path, '[fields."a.b"]\ntype = "string"\ndefault = "x"\n')
+    store = ConfigStore(tmp_path)
+    store.replace({"a.b": "dotted"})
+
+    raw = tomllib.loads((tmp_path / "config.toml").read_text(encoding="utf-8"))
+    assert raw["config"] == {"a.b": "dotted"}
+    store.reload()
+    assert store.get("a.b") == "dotted"
+
+
+def test_persist_leaves_no_temp_file(tmp_path):
+    """Writes go through safeio, so nothing is left beside config.toml."""
+    _write_schema(tmp_path, '[fields.n]\ntype = "int"\ndefault = 1\n')
+    ConfigStore(tmp_path).replace({"n": 2})
+    assert sorted(p.name for p in tmp_path.iterdir()) == [
+        "config.toml", "config_schema.toml",
+    ]

@@ -17,9 +17,23 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from rsmm.engine.safeio import atomic_write_text
+
 from .api import sdk_export
 
 _TYPES = {"bool", "int", "float", "string", "enum"}
+
+#: The escapes TOML defines a short form for. Every other control character
+#: goes out as `\uXXXX` — see `ConfigStore._toml_repr`.
+_TOML_ESCAPES = {
+    "\\": "\\\\",
+    '"': '\\"',
+    "\b": "\\b",
+    "\t": "\\t",
+    "\n": "\\n",
+    "\f": "\\f",
+    "\r": "\\r",
+}
 
 
 class ConfigError(ValueError):
@@ -187,10 +201,24 @@ class ConfigStore:
         lines = ["[config]"]
         for k in sorted(self._values):
             v = self._values[k]
-            lines.append(f"{k} = {self._toml_repr(v)}")
-        tmp = self.values_path.with_suffix(self.values_path.suffix + ".tmp")
-        tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        tmp.replace(self.values_path)
+            lines.append(f"{self._toml_key(k)} = {self._toml_repr(v)}")
+        # Durable + atomic: a torn config.toml is as unrecoverable for the mod
+        # as a torn asset is for the install, and `tmp.write_text` alone can
+        # leave an empty file behind a completed rename after a crash.
+        atomic_write_text(self.values_path, "\n".join(lines) + "\n")
+
+    @staticmethod
+    def _toml_key(k: str) -> str:
+        """Emit `k` as a TOML key, quoting it when it is not a bare key.
+
+        Field names come from the modder's `config_schema.toml`, so they are
+        not guaranteed bare. Emitting one raw is not merely ugly: `a.b = 1` is
+        a *dotted* key, so a field literally named `a.b` would round-trip back
+        as a nested table and read as a missing key forever.
+        """
+        if k and all(c.isalnum() or c in "-_" for c in k) and k.isascii():
+            return k
+        return ConfigStore._toml_repr(k)
 
     @staticmethod
     def _toml_repr(v: Any) -> str:
@@ -198,6 +226,22 @@ class ConfigStore:
             return "true" if v else "false"
         if isinstance(v, (int, float)):
             return str(v)
-        # string
-        s = str(v).replace("\\", "\\\\").replace('"', '\\"')
-        return f'"{s}"'
+        # String. Escaping only `\` and `"` was not enough: TOML basic strings
+        # forbid raw control characters, so a value containing a newline — which
+        # the desktop config editor happily accepts — produced a config.toml
+        # that wrote fine and then failed to parse on every subsequent load,
+        # permanently bricking that mod's config. The loader reads the same
+        # file through toml++ and rejected it just as hard, logging
+        # `[config] parse fail` and running the mod with no config at all.
+        # (The native writer, `config_write_file` in script_lua.cpp, serialises
+        # through toml++ and was always correct — only this side was not.)
+        out = []
+        for ch in str(v):
+            esc = _TOML_ESCAPES.get(ch)
+            if esc is not None:
+                out.append(esc)
+            elif ch < "\x20" or ch == "\x7f":
+                out.append(f"\\u{ord(ch):04x}")
+            else:
+                out.append(ch)
+        return '"' + "".join(out) + '"'
