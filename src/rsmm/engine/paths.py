@@ -314,6 +314,20 @@ def self_cmd(args: list[str]) -> list[str]:
 # `MODS_DIR` and `DEFAULT_GAME_DIR` are resolved lazily via PEP 562
 # `__getattr__` so `import rsmm.engine.paths` does not trigger the
 # Ravenswatch-install disk scan (slow on Windows with network drives).
+#
+# Caveat, measured: that only holds for importing *this* module. Around
+# nineteen modules do `from rsmm.engine.paths import MODS_DIR`, and a
+# from-import reads the attribute — so importing e.g. `rsmm.cli.cmd_pack`
+# resolves both eagerly after all (and `mods_dir()` mkdirs, so the import has
+# a filesystem side effect). `_scan_game_dir` is cached, so the cost is one
+# scan per process rather than one per module.
+#
+# Making the laziness real would mean `from rsmm.engine import paths` plus
+# `paths.MODS_DIR` at each use site across all nineteen — and would break the
+# many tests that `monkeypatch.setattr(<module>, "MODS_DIR", ...)`, which is
+# the *supported* seam precisely because patching it here does not work (see
+# `tests/conftest.py::_guard_lazy_paths`). Left as-is deliberately; this note
+# exists so the comment above is not read as a stronger promise than it makes.
 
 
 def __getattr__(name: str) -> Path:

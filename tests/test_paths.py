@@ -122,25 +122,33 @@ def test_mods_dir_default(monkeypatch):
 
 
 def test_default_game_dir_scan_is_cached(monkeypatch):
-    """The expensive part — the candidate scan — runs once per process."""
+    """The expensive part — the candidate scan — runs once per process.
+
+    Patch `_game_dir_candidates`, not `_scan_game_dir.__wrapped__`: an
+    `lru_cache` wrapper calls the function it closed over at decoration time,
+    so rebinding `__wrapped__` counts nothing. This test asserted only
+    `a == b` and would have passed with the caching removed entirely.
+    """
     from rsmm.engine import paths as paths_mod
     from rsmm.engine.paths import default_game_dir
 
     monkeypatch.delenv("RSMM_GAME_DIR", raising=False)
-    paths_mod._scan_game_dir.cache_clear()
     calls = {"n": 0}
-    real = paths_mod._scan_game_dir.__wrapped__
+    real = paths_mod._game_dir_candidates
 
-    def counting() -> Path:
+    def counting():
         calls["n"] += 1
         return real()
 
-    monkeypatch.setattr("rsmm.engine.paths._scan_game_dir.__wrapped__", counting)
+    monkeypatch.setattr(paths_mod, "_game_dir_candidates", counting)
     paths_mod._scan_game_dir.cache_clear()
-    a = default_game_dir()
-    b = default_game_dir()
-    assert a == b
-    paths_mod._scan_game_dir.cache_clear()
+    try:
+        a = default_game_dir()
+        b = default_game_dir()
+        assert a == b
+        assert calls["n"] == 1, "the candidate scan must not re-run per call"
+    finally:
+        paths_mod._scan_game_dir.cache_clear()
 
 
 def test_default_game_dir_override_wins_after_first_call(monkeypatch, tmp_path):
