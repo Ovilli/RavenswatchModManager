@@ -273,27 +273,64 @@ def load_manifests(mods_dir: Path) -> dict[str, ManifestRecord]:
     return out
 
 
+def _int_field(meta: dict, key: str, default: int) -> int:
+    raw = meta.get(key, default)
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        raise ValueError(f"mod.{key} must be a whole number, got {raw!r}") from None
+
+
+def _dep_list(meta: dict, key: str) -> list[str]:
+    """A dependency array, or [] when absent.
+
+    A bare string is rejected rather than accepted: `requires = "core"` is an
+    easy thing to write, and `list("core")` yields ['c','o','r','e'] — four
+    phantom dependencies, reported back to the author as four `missing-dep`
+    errors naming single letters, with nothing pointing at the real mistake.
+    """
+    raw = meta.get(key, []) or []
+    if isinstance(raw, str) or not isinstance(raw, list):
+        raise ValueError(
+            f"mod.{key} must be an array of strings, got {type(raw).__name__}"
+            + (f" — did you mean [{raw!r}]?" if isinstance(raw, str) else "")
+        )
+    return [str(item) for item in raw]
+
+
 def _load_one(path: Path, fallback_id: str) -> ManifestRecord:
+    """Never raises: `load_manifests` has no per-entry guard, so a single bad
+    manifest must not take the whole graph down with it. Shape problems come
+    back as a `parse_error` record, which `validate_graph` already reports as
+    the `parse-error` issue code.
+    """
     try:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
-    except Exception as e:
+    except (OSError, ValueError) as e:      # TOMLDecodeError is a ValueError
         return ManifestRecord(
             id=fallback_id, path=path, enabled=False, parse_error=str(e),
         )
-    meta = data.get("mod", {}) or {}
-    return ManifestRecord(
-        id=str(meta.get("id", fallback_id)),
-        path=path,
-        version=str(meta.get("version", "0.0.0")),
-        enabled=bool(meta.get("enabled", True)),
-        load_order=int(meta.get("load_order", 100)),
-        priority=int(meta.get("priority", 0)),
-        requires=list(meta.get("requires", []) or []),
-        recommends=list(meta.get("recommends", []) or []),
-        suggests=list(meta.get("suggests", []) or []),
-        conflicts=list(meta.get("conflicts", []) or []),
-        replaces=list(meta.get("replaces", []) or []),
-    )
+    try:
+        meta = data.get("mod", {}) or {}
+        if not isinstance(meta, dict):
+            raise ValueError(f"[mod] must be a table, got {type(meta).__name__}")
+        return ManifestRecord(
+            id=str(meta.get("id", fallback_id)),
+            path=path,
+            version=str(meta.get("version", "0.0.0")),
+            enabled=bool(meta.get("enabled", True)),
+            load_order=_int_field(meta, "load_order", 100),
+            priority=_int_field(meta, "priority", 0),
+            requires=_dep_list(meta, "requires"),
+            recommends=_dep_list(meta, "recommends"),
+            suggests=_dep_list(meta, "suggests"),
+            conflicts=_dep_list(meta, "conflicts"),
+            replaces=_dep_list(meta, "replaces"),
+        )
+    except (AttributeError, TypeError, ValueError) as e:
+        return ManifestRecord(
+            id=fallback_id, path=path, enabled=False, parse_error=str(e),
+        )
 
 
 # ---------------------------------------------------------------------------

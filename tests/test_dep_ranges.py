@@ -7,6 +7,8 @@ npm/Fabric semver grammar (compound, wildcard, caret, tilde).
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from rsmm.manifest_graph import (
@@ -121,3 +123,65 @@ def test_suggests_is_info_only():
 def test_missing_hard_requires_still_errors():
     user = _rec("user", requires=["lib >=1.0"])
     assert ("missing-dep", "error") in _codes([user])
+
+
+# --- malformed manifests must not take the graph down ----------------------
+
+def _mod(mods: Path, name: str, body: str) -> None:
+    d = mods / name
+    d.mkdir(parents=True)
+    (d / "manifest.toml").write_text(body, encoding="utf-8")
+
+
+def test_load_manifests_is_total(tmp_path):
+    """`load_manifests` has no per-entry guard, so `_load_one` must never raise.
+
+    Regression: `mod = 5` reached `meta.get` (AttributeError) and
+    `load_order = "soon"` reached `int()` (ValueError). Either one aborted the
+    whole scan, so `rsmm doctor`'s compat graph and the desktop's dependency
+    view showed nothing at all — including for every well-formed mod.
+    """
+    from rsmm.manifest_graph import load_manifests
+
+    mods = tmp_path / "mods"
+    _mod(mods, "BadMeta", "mod = 5\n")
+    _mod(mods, "BadOrder", '[mod]\nid = "BadOrder"\nload_order = "soon"\n')
+    _mod(mods, "Good", '[mod]\nid = "Good"\n')
+
+    recs = load_manifests(mods)
+
+    assert sorted(recs) == ["BadMeta", "BadOrder", "Good"]
+    assert recs["Good"].parse_error is None
+    assert "must be a table" in recs["BadMeta"].parse_error
+    assert "whole number" in recs["BadOrder"].parse_error
+    # A record that failed to parse must not be treated as an active mod.
+    assert not recs["BadMeta"].enabled and not recs["BadOrder"].enabled
+
+
+def test_string_dependency_is_an_error_not_four_phantom_deps(tmp_path):
+    """`requires = "core"` is an easy typo; `list("core")` made it four deps.
+
+    The author got `missing-dep` errors naming 'c', 'o', 'r' and 'e', with
+    nothing pointing at the actual mistake.
+    """
+    from rsmm.manifest_graph import load_manifests
+
+    mods = tmp_path / "mods"
+    _mod(mods, "StrRequires", '[mod]\nid = "StrRequires"\nrequires = "core"\n')
+
+    rec = load_manifests(mods)["StrRequires"]
+
+    assert rec.requires == []
+    assert "must be an array of strings" in rec.parse_error
+    assert "did you mean ['core']" in rec.parse_error
+
+
+def test_dependency_entries_are_coerced_to_strings(tmp_path):
+    from rsmm.manifest_graph import load_manifests
+
+    mods = tmp_path / "mods"
+    _mod(mods, "NumDep", '[mod]\nid = "NumDep"\nrequires = [1, 2]\n')
+
+    rec = load_manifests(mods)["NumDep"]
+    assert rec.parse_error is None
+    assert rec.requires == ["1", "2"]
