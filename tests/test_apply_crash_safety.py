@@ -220,3 +220,63 @@ def test_game_probe_failure_never_blocks_an_apply(install, monkeypatch):
 
     monkeypatch.setattr(game_proc, "_run", lambda cmd: None)
     assert game_proc.is_game_running() is False
+
+
+# --- corrupt state file ----------------------------------------------------
+
+def _state_path(cooking):
+    from rsmm.cli.apply_mods import STATE_FILE_NAME
+    return cooking / STATE_FILE_NAME
+
+
+def test_corrupt_state_file_is_preserved_not_overwritten(tmp_path, capsys):
+    """Regression: an unreadable state file was warned about and then silently
+    replaced by an empty one on the next save.
+
+    Replaced assets survive that — `restore --all` sweeps orphan `.rsmm.bak`
+    files — but *added* files have no backup and no state entry, so nothing
+    would ever know they existed. Keep the bytes so the record can be
+    reconstructed.
+    """
+    from rsmm.cli.apply_mods import State
+
+    cooking = tmp_path / "cooking"
+    cooking.mkdir()
+    _state_path(cooking).write_text("{not json", encoding="utf-8")
+
+    st = State(cooking)
+    st.save()   # would have clobbered the original
+
+    assert st.active == {}
+    kept = list(cooking.glob(".rsmm_state.json.corrupt-*"))
+    assert len(kept) == 1
+    assert kept[0].read_text(encoding="utf-8") == "{not json"
+    assert "state file is unreadable" in capsys.readouterr().err
+
+
+def test_state_file_of_the_wrong_shape_is_quarantined(tmp_path, capsys):
+    """Parsing is not the same as being a state file: a bare list used to sail
+    through and die later on `.setdefault` with an AttributeError."""
+    from rsmm.cli.apply_mods import State
+
+    cooking = tmp_path / "cooking"
+    cooking.mkdir()
+    _state_path(cooking).write_text('["not", "a", "state"]', encoding="utf-8")
+
+    st = State(cooking)
+    assert st.active == {}          # usable, not an AttributeError
+    assert list(cooking.glob(".rsmm_state.json.corrupt-*"))
+    assert "not a state object" in capsys.readouterr().err
+
+
+def test_valid_state_file_is_left_alone(tmp_path):
+    from rsmm.cli.apply_mods import State
+
+    cooking = tmp_path / "cooking"
+    cooking.mkdir()
+    _state_path(cooking).write_text(
+        json.dumps({"version": 1, "active": {"a": {"mod": "m"}}}), encoding="utf-8")
+
+    st = State(cooking)
+    assert st.active == {"a": {"mod": "m"}}
+    assert not list(cooking.glob(".rsmm_state.json.corrupt-*"))

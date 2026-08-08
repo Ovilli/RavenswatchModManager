@@ -45,6 +45,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import time
 import tomllib  # Python 3.11+
 from contextlib import contextmanager
 from pathlib import Path
@@ -70,6 +71,7 @@ from rsmm.engine.safeio import (
     atomic_copy,
     atomic_write_text,
     ensure_free_space,
+    fsync_dir,
     install_lock,
     sweep_temp_files,
 )
@@ -125,10 +127,18 @@ class Journal:
         line = json.dumps({"enc": enc, "mod": mod_id, "added": added},
                           sort_keys=True)
         try:
+            fresh = not self.path.exists()
             with open(self.path, "a", encoding="utf-8") as f:
                 f.write(line + "\n")
                 f.flush()
                 os.fsync(f.fileno())
+            if fresh:
+                # fsync on the fd persists the bytes, not the directory entry
+                # that names the file. For the first record that distinction is
+                # the whole journal: a crash could otherwise leave a synced file
+                # nothing points at, which is indistinguishable from never
+                # having journalled at all.
+                fsync_dir(self.path.parent)
         except OSError as e:
             # Journalling is a safety net, not a gate: failing the apply
             # because the net could not be hung would be worse.
@@ -225,11 +235,43 @@ class State:
         self.cooking = cooking
         self.path = cooking / STATE_FILE_NAME
         self.data: dict = {"version": 1, "active": {}}
-        if self.path.exists():
-            try:
-                self.data = json.loads(self.path.read_text(encoding="utf-8"))
-            except (OSError, ValueError) as e:
-                print(f"  [warn] corrupt state file: {e}", file=__import__('sys').stderr)
+        if not self.path.exists():
+            return
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            self._quarantine(f"unreadable ({e})")
+            return
+        # A file that parses but isn't the shape we expect is just as corrupt.
+        # Taking it at face value put a list (or a string) in `self.data`, and
+        # the first `active` access died with an AttributeError instead of a
+        # diagnosis.
+        if not isinstance(raw, dict) or not isinstance(raw.get("active", {}), dict):
+            self._quarantine("not a state object")
+            return
+        self.data = raw
+
+    def _quarantine(self, why: str) -> None:
+        """Move an unusable state file aside instead of overwriting it.
+
+        Continuing with an empty `active` map is not neutral: the next `save()`
+        replaces the file, and every override it recorded becomes untracked.
+        Replaced assets survive that (`restore --all` sweeps orphan `.rsmm.bak`
+        files) but *added* files have no backup and no state entry, so nothing
+        would ever know they existed — precisely the leak the journal exists to
+        prevent, arriving through a different door. Keeping the bytes means the
+        record is still there to be reconstructed by hand.
+        """
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        kept = self.path.with_name(f"{self.path.name}.corrupt-{stamp}")
+        try:
+            os.replace(self.path, kept)
+            where = f"saved as {kept.name}"
+        except OSError as e:
+            where = f"could NOT be preserved ({e})"
+        print(f"  [warn] state file is {why}; {where}. Overrides recorded in it "
+              f"are no longer tracked — run `rsmm doctor` before applying.",
+              file=sys.stderr)
 
     def save(self) -> None:
         """Write the state file atomically and durably.
