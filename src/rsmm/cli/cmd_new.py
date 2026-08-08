@@ -311,10 +311,16 @@ def main(argv: list[str] | None = None) -> int:
         f'id          = "{mod_id}"',
         f'name        = {_toml_str(opts["name"] or mod_id)}',
         'version     = "0.1.0"',
-        'author      = "you"',
+        'author      = "you"           # <- your name; `rsmm lint` flags this default',
         f'description = {_toml_str(opts["desc"] or "")}',
         f"enabled     = {'false' if experimental else 'true'}",
         'sdk_version = ">=3.0,<4"',
+        # Scaffold what the store card renders, rather than leaving an author
+        # to discover the fields exist only when their published mod shows up
+        # blank. Empty values are what `rsmm lint` warns on, so the prompt to
+        # fill them in is the scaffold itself.
+        'tags        = []              # e.g. ["items", "balance"] — how players find it',
+        'license     = ""              # e.g. "MIT" — omit and nobody may fork it',
     ]
     if experimental:
         manifest.append(

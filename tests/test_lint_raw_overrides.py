@@ -124,3 +124,42 @@ def test_newly_shadowing_a_live_value_warns(tmp_path, capsys):
     errs, warns = _lint_raw_overrides("M", entry, vanilla_root=root)
     assert errs == 0 and warns >= 1
     assert "newly shadowed" in capsys.readouterr().out
+
+
+# --- store metadata --------------------------------------------------------
+
+def test_store_metadata_warns_on_each_missing_field(capsys):
+    """These feed the store card and the desktop list (`json_bridge.cmd_list`).
+
+    A mod missing them installs fine and presents as an unlabelled blank, which
+    is exactly the failure nothing else catches — so it warns rather than
+    errors, and names what each field is for.
+    """
+    from rsmm.cli.lint import _lint_store_metadata
+
+    warns = _lint_store_metadata("M", {"author": "Ovilli"})
+    out = capsys.readouterr().out
+    assert warns == 3
+    for field in ("description", "tags", "license"):
+        assert field in out
+
+
+def test_store_metadata_clean_when_populated(capsys):
+    from rsmm.cli.lint import _lint_store_metadata
+
+    warns = _lint_store_metadata("M", {
+        "author": "Ovilli", "description": "does a thing",
+        "tags": ["items"], "license": "MIT",
+    })
+    assert warns == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_scaffold_author_is_not_a_real_attribution(capsys):
+    """`rsmm new` writes author = "you"; shipping that credits nobody."""
+    from rsmm.cli.lint import _lint_store_metadata
+
+    base = {"description": "d", "tags": ["t"], "license": "MIT"}
+    assert _lint_store_metadata("M", {**base, "author": "you"}) == 1
+    assert "placeholder author" in capsys.readouterr().out
+    assert _lint_store_metadata("M", {**base, "author": "Ovilli"}) == 0

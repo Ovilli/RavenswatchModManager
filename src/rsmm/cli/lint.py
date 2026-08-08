@@ -95,6 +95,7 @@ def lint_one(entry: Path) -> tuple[int, int]:
     if "version" not in m:
         print(f"  {_T_WARN} {mod_s}: manifest missing 'version'")
         warns += 1
+    warns += _lint_store_metadata(mod_s, m)
     scope = m.get("multiplayer_scope", "cosmetic")
     if scope not in {"cosmetic", "deterministic-shared",
                      "host-authoritative", "local-only"}:
@@ -207,6 +208,44 @@ def _vanilla_root() -> Path | None:
         return None
     root = Path(DATA_DIR) / "uncooked"
     return root if root.is_dir() else None
+
+
+#: Author names the scaffold writes, or that plainly nobody chose. A mod
+#: published under one has no attribution at all on its store card.
+_PLACEHOLDER_AUTHORS = frozenset({"you", "your name", "author", "me", "unknown", ""})
+
+#: Manifest fields the store and the desktop mod list actually render
+#: (`json_bridge.cmd_list`), with what each one is for.
+_STORE_FIELDS = (
+    ("description", "the store card has nothing to say about this mod"),
+    ("tags", "the mod cannot be found by browsing or filtering"),
+    ("license", "nobody can tell whether they may redistribute or fork it"),
+)
+
+
+def _lint_store_metadata(mod_s: str, m: dict) -> int:
+    """Warn about metadata a published mod needs. Returns the warning count.
+
+    None of this affects whether the mod *works*, which is why it is a warning
+    — but all of it is read straight into the store payload and the desktop
+    mod list, so a mod missing it installs fine and presents as an unlabelled
+    blank. Kept advisory so an unpublished local mod is not nagged into
+    failing CI.
+    """
+    warns = 0
+    for field, why in _STORE_FIELDS:
+        value = m.get(field)
+        if value in (None, "", [], {}):
+            print(f"  {_T_WARN} {mod_s}: no {_ST.accent(field)} "
+                  f"{_ST.dim('— ' + why)}")
+            warns += 1
+    author = str(m.get("author", "")).strip().lower()
+    if author in _PLACEHOLDER_AUTHORS:
+        print(f"  {_T_WARN} {mod_s}: placeholder author "
+              f"{_ST.accent(repr(m.get('author', '')))} "
+              f"{_ST.dim('— scaffold default, not a real attribution')}")
+        warns += 1
+    return warns
 
 
 def _lint_raw_overrides(modname: str, entry: Path, *,
