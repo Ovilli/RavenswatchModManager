@@ -93,3 +93,34 @@ def test_missing_corpus_is_not_a_failure(tmp_path, monkeypatch):
     monkeypatch.setattr("rsmm.cli.lint._vanilla_root", lambda: None)
     entry = _mod(tmp_path, _ENT, _node("Crit Chance Value", 0.15))
     assert _lint_raw_overrides("M", entry) == (0, 0)
+
+
+def test_clearing_the_override_is_a_fix_not_an_error(tmp_path, capsys):
+    """Un-shadowing is the documented way to make an inline value apply.
+
+    Regression: the shadow flag was read off the *vanilla* node, so a mod that
+    correctly cleared the `0e` override — `talent_values.clear_value_override`,
+    the sanctioned fix — was reported as an error claiming its edit had no
+    in-game effect. Exactly backwards, and nothing the author could do about
+    it. Both `DamagePowerTweaks` and `PamsFixes` were failing CI on this.
+    """
+    entry = _mod(tmp_path, _ENT, _node("Damage Value", 0.1, shadowed=False))
+    root = _vanilla(tmp_path, _ENT, _node("Damage Value", 0.2, shadowed=True))
+    errs, _warns = _lint_raw_overrides("M", entry, vanilla_root=root)
+    # Only the error matters here. Dropping the selector ref shortens the node,
+    # so the structural-override warning also fires — legitimate, and a
+    # separate concern from whether the edit takes effect.
+    assert errs == 0
+    out = capsys.readouterr().out
+    assert "un-shadowed" in out
+    assert "0.2 -> 0.1" in out
+
+
+def test_newly_shadowing_a_live_value_warns(tmp_path, capsys):
+    """The opposite direction: a mod that switches a value to a selector has
+    silently disconnected that number, even though it edited nothing else."""
+    entry = _mod(tmp_path, _ENT, _node("Crit Chance Value", 0.1, shadowed=True))
+    root = _vanilla(tmp_path, _ENT, _node("Crit Chance Value", 0.1, shadowed=False))
+    errs, warns = _lint_raw_overrides("M", entry, vanilla_root=root)
+    assert errs == 0 and warns >= 1
+    assert "newly shadowed" in capsys.readouterr().out

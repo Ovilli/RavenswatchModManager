@@ -264,20 +264,37 @@ def _lint_raw_overrides(modname: str, entry: Path, *,
         if not rel.name.endswith(_ENTITY_SUFFIX):
             continue
         before = {v.label: v for v in list_talent_values(van)}
-        after = {v.label: v.value for v in list_talent_values(cur)}
+        after = {v.label: v for v in list_talent_values(cur)}
         changed = [lab for lab, v in before.items()
-                   if lab in after and after[lab] != v.value]
+                   if lab in after and after[lab].value != v.value]
         for lab in changed:
-            if before[lab].is_overridden:
+            delta = f"{before[lab].value:g} -> {after[lab].value:g}"
+            # Judge the shadow flag on the MOD's bytes, not vanilla's. Clearing
+            # the `0e` override sub-field is exactly how a mod makes an inline
+            # value authoritative (`talent_values.clear_value_override`), so
+            # testing vanilla's flag reported that *successful* fix as an error
+            # claiming the edit has no in-game effect — precisely backwards, and
+            # unfixable from the mod author's side.
+            if after[lab].is_overridden:
                 hint = ("its value is sourced from a selector/reference, so the "
                         "inline edit has NO in-game effect")
                 print(f"  {_T_ERROR} {mod_s}: {name}: value {_ST.accent(repr(lab))} "
                       f"is shadowed — {_ST.dim(hint)}")
                 errs += 1
+            elif before[lab].is_overridden:
+                note = "override cleared, so the inline value now applies"
+                print(f"  {_ST.dim('  ·')} {mod_s}: {name}: "
+                      f"{_ST.dim(repr(lab) + ' ' + delta + ' [un-shadowed: ' + note + ']')}")
             else:
-                delta = f"{before[lab].value:g} -> {after[lab]:g}"
                 print(f"  {_ST.dim('  ·')} {mod_s}: {name}: "
                       f"{_ST.dim(repr(lab) + ' ' + delta)}")
+        # A mod that *enables* the override on a value it did not otherwise
+        # change has silently disconnected that number from the asset.
+        for lab, post in after.items():
+            if lab in before and post.is_overridden and not before[lab].is_overridden:
+                print(f"  {_T_WARN} {mod_s}: {name}: value {_ST.accent(repr(lab))} "
+                      f"{_ST.dim('was newly shadowed — its inline value no longer applies')}")
+                warns += 1
         if not changed:
             print(f"  {_ST.dim('  ·')} {mod_s}: {name}: "
                   f"{_ST.dim('bytes differ but no value node changed')}")
