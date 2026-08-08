@@ -10,6 +10,7 @@ from pathlib import Path
 from rsmm.engine.asset_map import decoded_to_encoded
 from rsmm.engine.hashing import sha256_file as sha256
 from rsmm.engine.paths import COOKING_SUBDIR, DATA_DIR, DEFAULT_GAME_DIR, DIST_DIR, MODS_DIR
+from rsmm.sdk import archive
 
 _ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 
@@ -128,16 +129,35 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 1
+    members: list[tuple[Path, str]] = []
+    for f in sorted(src.rglob("*")):
+        if not f.is_file():
+            continue
+        rel = f.relative_to(src)
+        if _is_local_only(rel):
+            continue
+        members.append((f, f"{mod_id}/{rel.as_posix()}"))
+
+    # Same policy the installers enforce, applied before anything is written.
+    # Packing a mod that every user's `rsmm install` will refuse is a failure
+    # the author should see here, not learn about from bug reports.
+    blocked, overlays = archive.classify_members(name for _f, name in members)
+    if blocked:
+        print(f"refusing to pack: {archive.blocked_message(mod_id, blocked)}",
+              file=sys.stderr)
+        print("\nmods ship data, not executables. `rsmm install` and the desktop "
+              "app both refuse these, so a published archive containing them "
+              "cannot be installed by anyone.", file=sys.stderr)
+        return 1
+    for rel in overlays:
+        print(f"  [WARN] {mod_id} overwrites game install root file: {rel}",
+              file=sys.stderr)
+
     DIST_DIR.mkdir(exist_ok=True)
     out = DIST_DIR / f"{mod_id}.zip"
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
-        for f in sorted(src.rglob("*")):
-            if not f.is_file():
-                continue
-            rel = f.relative_to(src)
-            if _is_local_only(rel):
-                continue
-            zf.write(f, f"{mod_id}/{rel.as_posix()}")
+        for f, name in members:
+            zf.write(f, name)
     print(f"Wrote {out}")
     return 0
 

@@ -258,3 +258,58 @@ def test_bridge_keeps_existing_install_when_zip_is_bad(tmp_path):
 def test_bridge_rejects_unsafe_slug():
     with pytest.raises(ArchiveError):
         json_bridge._mod_target("../evil")
+
+
+# --- rsmm pack (producer side of the same policy) --------------------------
+
+def _packable(mods: Path, mod_id: str, extra: dict[str, bytes] | None = None) -> Path:
+    d = mods / mod_id
+    (d / "assets").mkdir(parents=True)
+    (d / "manifest.toml").write_text(f'[mod]\nid = "{mod_id}"\n', encoding="utf-8")
+    (d / "assets" / "a.bin").write_bytes(b"my own bytes")
+    for rel, data in (extra or {}).items():
+        p = d / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(data)
+    return d
+
+
+def _run_pack(tmp_path, monkeypatch, mod_id: str) -> int:
+    from rsmm.cli import cmd_pack
+
+    monkeypatch.setattr(cmd_pack, "MODS_DIR", tmp_path / "mods")
+    monkeypatch.setattr(cmd_pack, "DIST_DIR", tmp_path / "dist")
+    monkeypatch.setattr(cmd_pack, "_vanilla_offenders", lambda _d: [])
+    return cmd_pack.main([mod_id])
+
+
+def test_pack_refuses_what_install_would_reject(tmp_path, monkeypatch, capsys):
+    """Producer and consumer share one policy.
+
+    Otherwise an author packs and publishes a mod that every user's
+    `rsmm install` refuses, and only finds out from bug reports.
+    """
+    _packable(tmp_path / "mods", "PackMe", {"hook.ps1": b"evil"})
+    assert _run_pack(tmp_path, monkeypatch, "PackMe") == 1
+    assert "blocked file type" in capsys.readouterr().err
+    assert not (tmp_path / "dist" / "PackMe.zip").exists()   # no artifact
+
+
+def test_pack_warns_about_root_overlays_but_still_packs(tmp_path, monkeypatch, capsys):
+    _packable(tmp_path / "mods", "Overlay",
+              {"_root/DarkTalesResources/Settings.ot": b"x"})
+    assert _run_pack(tmp_path, monkeypatch, "Overlay") == 0
+    assert "overwrites game install root file" in capsys.readouterr().err
+    assert (tmp_path / "dist" / "Overlay.zip").is_file()
+
+
+def test_packed_archive_installs_cleanly(tmp_path, monkeypatch):
+    """The round trip the two halves exist to guarantee."""
+    _packable(tmp_path / "mods", "RoundTrip")
+    assert _run_pack(tmp_path, monkeypatch, "RoundTrip") == 0
+    data = (tmp_path / "dist" / "RoundTrip.zip").read_bytes()
+
+    assert cmd_install._peek_mod_id(data) == "RoundTrip"
+    dest = tmp_path / "installed"
+    assert cmd_install._safe_extract(data, dest) == "RoundTrip"
+    assert (dest / "RoundTrip" / "assets" / "a.bin").read_bytes() == b"my own bytes"

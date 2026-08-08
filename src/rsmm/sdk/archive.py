@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import os
 import zipfile
+from collections.abc import Iterable
 from pathlib import Path
 
 from .repo import RepoError
@@ -173,12 +174,41 @@ def require_single_top_dir(zf: zipfile.ZipFile, *, what: str = "mod id") -> str:
     return safe_dir_name(top, what=what)
 
 
+def classify_members(names: Iterable[str]) -> tuple[list[str], list[str]]:
+    """Split archive member names into ``(blocked, root_overlays)``.
+
+    Pure and zip-free so the *producer* (``rsmm pack``) can apply exactly the
+    policy the *consumers* enforce. Without that, an author could pack and
+    publish a mod that every user's ``rsmm install`` then refuses, and would
+    only learn about it from bug reports.
+
+    The extension test runs on the path *inside* the mod dir, so a mod whose
+    id happens to end in ``.sh`` is not self-blocking.
+    """
+    blocked: list[str] = []
+    overlays: list[str] = []
+    for raw in names:
+        name = _norm(raw)
+        if not name or name.endswith("/"):
+            continue
+        parts = name.split("/", 1)
+        inner = parts[1] if len(parts) > 1 else parts[0]
+        if Path(inner).suffix.lower() in DANGEROUS_EXTENSIONS:
+            blocked.append(raw)
+        if inner.startswith(ROOT_OVERLAY_PREFIX):
+            overlays.append(inner[len(ROOT_OVERLAY_PREFIX):])
+    return blocked, overlays
+
+
+def blocked_message(label: str, blocked: list[str]) -> str:
+    """The one wording every command uses when refusing executable payloads."""
+    return f"{label} contains blocked file type(s):\n  " + "\n  ".join(blocked[:20])
+
+
 def scan_dangerous(zf: zipfile.ZipFile, label: str) -> list[str]:
     """Reject blocked file types; return the ``_root/`` overlay paths.
 
-    Raises :class:`ArchiveError` listing every blocked member. The extension
-    test runs on the path *inside* the mod dir, so a mod whose id happens to
-    end in ``.sh`` is not self-blocking.
+    Raises :class:`ArchiveError` listing every blocked member.
 
     The returned list is what the caller should warn about: every ``_root/``
     member overwrites a file in the game install itself, which is worth saying
@@ -188,22 +218,11 @@ def scan_dangerous(zf: zipfile.ZipFile, label: str) -> list[str]:
     warning could never fire and implied a leniency for ``_root/`` binaries
     that does not exist.
     """
-    blocked: list[str] = []
-    overlays: list[str] = []
-    for entry in zf.infolist():
-        if entry.is_dir():
-            continue
-        name = _norm(entry.filename)
-        parts = name.split("/", 1)
-        inner = parts[1] if len(parts) > 1 else parts[0]
-        if Path(inner).suffix.lower() in DANGEROUS_EXTENSIONS:
-            blocked.append(entry.filename)
-        if inner.startswith(ROOT_OVERLAY_PREFIX):
-            overlays.append(inner[len(ROOT_OVERLAY_PREFIX):])
+    blocked, overlays = classify_members(
+        e.filename for e in zf.infolist() if not e.is_dir()
+    )
     if blocked:
-        raise ArchiveError(
-            f"{label} contains blocked file type(s):\n  " + "\n  ".join(blocked[:20])
-        )
+        raise ArchiveError(blocked_message(label, blocked))
     return overlays
 
 
