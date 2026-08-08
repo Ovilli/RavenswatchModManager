@@ -22,7 +22,7 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from rsmm.engine.safeio import atomic_copy
+from rsmm.engine.safeio import atomic_copy, atomic_write_text
 from rsmm.logging import get_logger
 
 logger = get_logger(__name__)
@@ -118,7 +118,12 @@ class ApplyTransaction:
         """
         committed: list[StagedWrite] = []
         self.commit_marker.parent.mkdir(parents=True, exist_ok=True)
-        self.commit_marker.write_text("1", encoding="utf-8")
+        # Durably: this marker is the beacon that tells the *next* run a commit
+        # was interrupted. `write_text` leaves it in the page cache, so the
+        # crash that matters — power loss part-way through phase 2 — is exactly
+        # the one that can lose it, and `recover()` would then report "clean"
+        # over a half-committed install.
+        atomic_write_text(self.commit_marker, "1")
         try:
             for w in self.pending:
                 if w.dest.exists():
@@ -160,7 +165,13 @@ class ApplyTransaction:
         for w in reversed(committed):
             if w.backup and w.backup.exists():
                 try:
-                    os.replace(w.backup, w.dest)
+                    # Copy, don't move. `os.replace` restored the asset but
+                    # consumed the backup, so a failed apply left the install
+                    # holding vanilla bytes with no `.rsmm.bak` — destroying the
+                    # only copy of the originals at the exact moment something
+                    # had already gone wrong. atomic_copy is equally atomic and
+                    # keeps it.
+                    atomic_copy(w.backup, w.dest)
                 except OSError as e:
                     # A failed rollback can leave the install half-reverted —
                     # surface it loudly; the caller/`rsmm doctor` can reconcile.

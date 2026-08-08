@@ -246,6 +246,35 @@ def test_transaction_recover_discards_orphan(tmp_path: Path):
     assert not (cooking / ".rsmm_stage").exists()
 
 
+def test_transaction_rollback_restores_and_keeps_the_backup(tmp_path: Path):
+    """Regression: rollback used `os.replace`, which consumed the backup.
+
+    A failed apply then left the install holding vanilla bytes with no
+    `.rsmm.bak` — the only copy of the originals, destroyed at the moment
+    something had already gone wrong. Rollback must restore *and* preserve it.
+    """
+    cooking = tmp_path / "cooking"
+    cooking.mkdir()
+    good_src = tmp_path / "good"
+    good_src.write_bytes(b"new")
+    dest = cooking / "sub" / "asset"
+    dest.parent.mkdir(parents=True)
+    dest.write_bytes(b"vanilla")
+
+    tx = ApplyTransaction(cooking)
+    tx.stage_write("sub/asset", good_src, dest)
+    # Second write whose staged file is gone, so os.replace raises mid-commit.
+    missing = tx.stage_write("sub/other", good_src, cooking / "sub" / "other")
+    missing.stage.unlink()
+
+    with pytest.raises(OSError):
+        tx.commit()
+
+    bak = dest.parent / (dest.name + ".rsmm.bak")
+    assert dest.read_bytes() == b"vanilla"      # rolled back
+    assert bak.exists() and bak.read_bytes() == b"vanilla"   # and still there
+
+
 def test_transaction_rejects_path_escape(tmp_path: Path):
     cooking = tmp_path / "cooking"
     cooking.mkdir()
