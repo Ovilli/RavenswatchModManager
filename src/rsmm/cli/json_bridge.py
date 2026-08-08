@@ -57,6 +57,7 @@ from typing import Any
 
 from rsmm.cli.apply_mods import clear_runtime_mods, find_game_dir
 from rsmm.cli.merge import _ranked, collect_patches
+from rsmm.engine import net
 from rsmm.engine.paths import DIST_DIR, MODS_DIR, REPO_ROOT, self_cmd
 from rsmm.logging import get_logger
 from rsmm.sdk import archive
@@ -789,18 +790,39 @@ _DEFAULT_INDEX_BASE = "https://api.rsmm.me"
 
 def _index_base() -> str:
     """Resolve the public index URL. ``RSMM_INDEX_URL`` overrides for
-    self-hosters / local-dev who run the API on a different host."""
-    return os.environ.get("RSMM_INDEX_URL", _DEFAULT_INDEX_BASE).rstrip("/")
+    self-hosters / local-dev who run the API on a different host.
+
+    The override is checked, not trusted: it decides where mod *archives* come
+    from, and the sha256 that would catch a tampered archive is served over the
+    same connection. `net.require_safe_url` allows https anywhere and plain
+    http only against loopback, which is exactly the local-dev case.
+    """
+    base = os.environ.get("RSMM_INDEX_URL", _DEFAULT_INDEX_BASE).rstrip("/")
+    net.require_safe_url(base)
+    return base
+
+
+def _api_url(*segments: str) -> str:
+    """Build an index URL with every caller-supplied segment escaped.
+
+    A slug or version is interpolated straight into the path; unescaped, a `?`
+    or `..` in one would re-point the request at a different endpoint.
+    """
+    return "/".join([_index_base(), *(urllib.parse.quote(s, safe="") for s in segments)])
 
 
 def _http_get_json(url: str, *, timeout: int = 30) -> dict[str, Any]:
+    net.require_safe_url(url)
     req = urllib.request.Request(url, method="GET")
     req.add_header(
         "User-Agent",
         "rsmm-installer/1.0 (compatible; Mozilla/5.0; like Chrome/126)",
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+        # Capped: an index that streams forever otherwise OOMs the sidecar
+        # before anything gets a chance to reject the response.
+        raw = net.read_capped(resp, url, limit=net.MAX_METADATA_BYTES)
+    return json.loads(raw.decode("utf-8"))
 
 
 def _mod_target(slug: str) -> Path:
@@ -862,27 +884,26 @@ def _extract_downloaded_zip(tmp_path: Path, target: Path, slug: str) -> None | d
 def _download_mod_version(slug: str, version: str, expected_sha: str) -> dict[str, Any]:
     import tempfile
 
-    base = _index_base()
-    dl_url = f"{base}/api/mods/{slug}/{version}/download"
     h = hashlib.sha256()
-    tmp = tempfile.NamedTemporaryFile(prefix=f"rsmm-{slug}-", suffix=".zip", delete=False)
+    tmp = tempfile.NamedTemporaryFile(prefix="rsmm-download-", suffix=".zip", delete=False)
     tmp_path = Path(tmp.name)
+    dl_url = ""
     try:
+        # Inside the try: `_api_url` resolves RSMM_INDEX_URL, which is checked,
+        # so a bad override must surface as an error payload rather than a
+        # traceback out of the JSON bridge.
+        dl_url = _api_url("api", "mods", slug, version, "download")
         req = urllib.request.Request(dl_url, method="GET")
         req.add_header(
             "User-Agent",
             "rsmm-installer/1.0 (compatible; Mozilla/5.0; like Chrome/126)",
         )
-        with urllib.request.urlopen(req, timeout=600) as resp:
+        with urllib.request.urlopen(req, timeout=600) as resp:  # noqa: S310
             with tmp as fh:
-                size = 0
-                while True:
-                    chunk = resp.read(1 << 20)
-                    if not chunk:
-                        break
-                    h.update(chunk)
-                    size += len(chunk)
-                    fh.write(chunk)
+                # Capped: the digest can only be checked once the whole archive
+                # has landed, so without a ceiling a hostile index fills the
+                # disk before anything is in a position to reject it.
+                size = net.copy_capped(resp, fh, dl_url, hasher=h)
         got_sha = h.hexdigest()
         if got_sha != expected_sha:
             return {
@@ -908,7 +929,7 @@ def cmd_install_mod(slug: str) -> int:
     except archive.ArchiveError as e:
         return _emit({"ok": False, "error": str(e)})
     try:
-        detail = _http_get_json(f"{_index_base()}/api/mods/{slug}")
+        detail = _http_get_json(_api_url("api", "mods", slug))
     except urllib.error.HTTPError as e:
         if e.code == 404:
             return _emit({"ok": False, "error": f"mod {slug!r} not found in the index"})
@@ -954,7 +975,7 @@ def cmd_install_mod_version(slug: str, version: str) -> int:
     except archive.ArchiveError as e:
         return _emit({"ok": False, "error": str(e)})
     try:
-        detail = _http_get_json(f"{_index_base()}/api/mods/{slug}")
+        detail = _http_get_json(_api_url("api", "mods", slug))
     except urllib.error.HTTPError as e:
         if e.code == 404:
             return _emit({"ok": False, "error": f"mod {slug!r} not found in the index"})

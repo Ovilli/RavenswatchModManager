@@ -31,6 +31,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+from rsmm.engine import net
 from rsmm.engine.paths import MODS_DIR
 from rsmm.sdk.api import _parse_v
 from rsmm.sdk.archive import safe_dir_name, safe_extract, scan_dangerous, single_top_dir
@@ -49,27 +50,19 @@ def _load_repos() -> list[str]:
         return []
 
 
-#: Ceiling on a single download. Buffering is unavoidable (the SHA256 covers
-#: the whole archive) so the transfer needs a bound of its own.
-MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024
+#: Transport policy (schemes, byte ceilings) is shared with `rsmm install` and
+#: the desktop bridge — see `engine.net` for why each rule exists.
+MAX_DOWNLOAD_BYTES = net.MAX_DOWNLOAD_BYTES
 
 
 def _fetch(url: str, timeout: float = 30.0) -> bytes:
-    parsed = urllib.parse.urlparse(url)
-    if parsed.scheme not in ("https",):
-        raise RepoError(f"refusing to fetch non-HTTPS URL: {url}")
-    buf = bytearray()
-    with urllib.request.urlopen(url, timeout=timeout) as r:
-        while True:
-            chunk = r.read(1 << 16)
-            if not chunk:
-                return bytes(buf)
-            buf += chunk
-            # Fail rather than truncate: a silently short read would surface
-            # as a checksum mismatch, which reads like a corrupt mirror.
-            if len(buf) > MAX_DOWNLOAD_BYTES:
-                raise RepoError(
-                    f"{url} exceeds the {MAX_DOWNLOAD_BYTES}-byte download limit")
+    # No `file://` here: `update` only ever talks to a configured remote repo.
+    try:
+        net.require_safe_url(url)
+        with urllib.request.urlopen(url, timeout=timeout) as r:  # noqa: S310
+            return net.read_capped(r, url)
+    except (net.UnsafeURL, net.TooLarge) as e:
+        raise RepoError(str(e)) from None
 
 
 def _installed_mods() -> dict[str, str]:

@@ -28,6 +28,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+from rsmm.engine import net
 from rsmm.engine.paths import MODS_DIR
 from rsmm.sdk.archive import require_single_top_dir, safe_extract, scan_dangerous
 from rsmm.sdk.repo import RepoError, RepoIndex, verify_file
@@ -49,65 +50,37 @@ _USAGE = (
 )
 
 
-#: Downloads are buffered in memory (the SHA256 and the signature both cover
-#: the whole archive), so the transfer needs its own ceiling independent of
-#: the uncompressed-size cap enforced during extraction.
-MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024
-
-#: Seconds. A repo that accepts the connection and then never sends a byte
-#: would otherwise hang `rsmm install` forever.
-FETCH_TIMEOUT = 60.0
-
-_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
+#: Transport policy (which schemes, how many bytes) lives in `engine.net` so
+#: `install`, `update` and the desktop bridge cannot drift apart on it.
+MAX_DOWNLOAD_BYTES = net.MAX_DOWNLOAD_BYTES
 
 
 def _check_url(url: str) -> None:
     """Refuse fetch schemes that give no integrity guarantee.
 
-    The checksum and signature that authenticate an archive are themselves
-    read from ``repo.json`` over the same transport, so plaintext HTTP means
-    an on-path attacker rewrites both and the verification proves nothing.
-    ``file://`` is allowed (offline installs, tests) and plain HTTP is allowed
-    only against loopback, where there is no path to be on.
+    Thin wrapper that re-raises as ``RepoError``, which every caller here
+    already handles. ``file://`` is allowed: installing a packed archive off
+    disk is a supported workflow and the offline tests rely on it.
     """
-    parsed = urllib.parse.urlparse(url)
-    if parsed.scheme in ("https", "file"):
-        return
-    if parsed.scheme == "http" and (parsed.hostname or "") in _LOCAL_HOSTS:
-        return
-    raise RepoError(
-        f"refusing to fetch over {parsed.scheme or 'no'} scheme: {url}\n"
-        "  mod archives must come from https:// (or file:// for local installs)"
-    )
-
-
-def _read_capped(reader, source: str) -> bytes:
-    """Read at most :data:`MAX_DOWNLOAD_BYTES`, then fail rather than truncate.
-
-    Silently truncating would turn a hostile response into a checksum
-    mismatch, which reads like a corrupt mirror instead of an attack.
-    """
-    buf = bytearray()
-    while True:
-        chunk = reader.read(1 << 16)
-        if not chunk:
-            return bytes(buf)
-        buf += chunk
-        if len(buf) > MAX_DOWNLOAD_BYTES:
-            raise RepoError(
-                f"{source} exceeds the {MAX_DOWNLOAD_BYTES}-byte download limit")
+    try:
+        net.require_safe_url(url, allow_file=True)
+    except net.UnsafeURL as e:
+        raise RepoError(str(e)) from None
 
 
 def _fetch(url_or_path: str) -> bytes:
     """Read bytes from an https/file URL or a bare local path."""
-    if "://" not in url_or_path:
-        with open(url_or_path, "rb") as f:
-            return _read_capped(f, url_or_path)
-    _check_url(url_or_path)
-    with urllib.request.urlopen(  # noqa: S310 — scheme checked by _check_url
-        url_or_path, timeout=FETCH_TIMEOUT
-    ) as r:
-        return _read_capped(r, url_or_path)
+    try:
+        if "://" not in url_or_path:
+            with open(url_or_path, "rb") as f:
+                return net.read_capped(f, url_or_path)
+        _check_url(url_or_path)
+        with urllib.request.urlopen(  # noqa: S310 — scheme checked by _check_url
+            url_or_path, timeout=net.DEFAULT_TIMEOUT
+        ) as r:
+            return net.read_capped(r, url_or_path)
+    except net.TooLarge as e:
+        raise RepoError(str(e)) from None
 
 
 def _load_index(repo: str) -> RepoIndex:
