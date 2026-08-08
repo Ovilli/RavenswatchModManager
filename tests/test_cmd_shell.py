@@ -130,7 +130,7 @@ def test_status_bits_no_mods_enabled(monkeypatch):
 
 def test_probe_survives_missing_everything(monkeypatch, tmp_path):
     """A broken install must still yield a renderable menu, not a traceback."""
-    monkeypatch.setattr(cmd_shell.P, "DEFAULT_GAME_DIR", tmp_path / "nope")
+    monkeypatch.setenv("RSMM_GAME_DIR", str(tmp_path / "nope"))
     monkeypatch.setattr(cmd_shell.P, "mods_dir", lambda: tmp_path / "nomods")
     ctx = cmd_shell.probe()
     assert ctx.game is False
@@ -154,7 +154,7 @@ def test_probe_reads_loader_and_applied_state(monkeypatch, tmp_path):
     (mods / "OffMod" / "manifest.toml").write_text(
         "[mod]\nenabled = false\n", encoding="utf-8")
 
-    monkeypatch.setattr(cmd_shell.P, "DEFAULT_GAME_DIR", game)
+    monkeypatch.setenv("RSMM_GAME_DIR", str(game))
     monkeypatch.setattr(cmd_shell.P, "mods_dir", lambda: mods)
 
     ctx = cmd_shell.probe()
@@ -169,7 +169,7 @@ def test_probe_flags_stock_dll_as_no_loader(monkeypatch, tmp_path):
     game = tmp_path / "game"
     game.mkdir()
     (game / "winhttp.dll").write_bytes(b"\0" * 713_160)     # stock size
-    monkeypatch.setattr(cmd_shell.P, "DEFAULT_GAME_DIR", game)
+    monkeypatch.setenv("RSMM_GAME_DIR", str(game))
     monkeypatch.setattr(cmd_shell.P, "mods_dir", lambda: tmp_path / "none")
     assert cmd_shell.probe().loader is False
 

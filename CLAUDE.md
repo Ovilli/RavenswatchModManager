@@ -93,6 +93,7 @@ Three symbol-map caveats that CI does NOT catch: (1) `data/function_patterns.jso
 - Python uses ruff with `line-length=100`, `target-version=py311`. `F401` (unused imports) is intentionally ignored to keep `__init__.py` re-exports clean.
 - Biome formats/lints TS. Many paths are excluded (`biome.json` `files.ignore`) including `src/rsmm/**`, `scripts/**`, and generated files — touching those won't lint.
 - Tests live in `tests/` (pytest, `testpaths` in `pyproject.toml`). Schema/TS tests are scoped to `@rsmm/schemas` via `pnpm test:ts`. Tests must never mutate tracked `data/` files — an autouse conftest guard fails the offender; `cmd_apply` tests must stub `rsmm.engine.find_iyg.main`.
+- **Never `monkeypatch.setattr` `rsmm.engine.paths.MODS_DIR` / `DEFAULT_GAME_DIR`.** They are PEP 562 `__getattr__` attrs, not dict entries: setattr reads the *real* repo `mods/` as the old value and its undo writes that real path into the module dict, permanently shadowing `__getattr__` — even across `importlib.reload`. Every later `RSMM_MODS_DIR` override is then ignored and `rsmm new` scaffolds into the developer's actual `mods/`. Serial-only failure; xdist hides it by splitting the polluter onto another worker. Use `monkeypatch.setenv("RSMM_MODS_DIR"/"RSMM_GAME_DIR", ...)`; `tests/conftest.py::_guard_lazy_paths` and `_guard_real_mods_dir` fail-close on both. `default_game_dir()` reads its override at call time (only the candidate scan, `_scan_game_dir()`, is `@cache`d) — there is no `default_game_dir.cache_clear()`.
 
 ## Useful docs
 

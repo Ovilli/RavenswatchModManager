@@ -121,21 +121,41 @@ def test_mods_dir_default(monkeypatch):
     assert mods_dir() == REPO_ROOT / "mods"
 
 
-def test_default_game_dir_cached(monkeypatch):
+def test_default_game_dir_scan_is_cached(monkeypatch):
+    """The expensive part — the candidate scan — runs once per process."""
+    from rsmm.engine import paths as paths_mod
     from rsmm.engine.paths import default_game_dir
-    default_game_dir.cache_clear()
+
+    monkeypatch.delenv("RSMM_GAME_DIR", raising=False)
+    paths_mod._scan_game_dir.cache_clear()
     calls = {"n": 0}
-    real = default_game_dir.__wrapped__
+    real = paths_mod._scan_game_dir.__wrapped__
 
     def counting() -> Path:
         calls["n"] += 1
         return real()
 
-    monkeypatch.setattr("rsmm.engine.paths.default_game_dir.__wrapped__", counting)
-    default_game_dir.cache_clear()
+    monkeypatch.setattr("rsmm.engine.paths._scan_game_dir.__wrapped__", counting)
+    paths_mod._scan_game_dir.cache_clear()
     a = default_game_dir()
     b = default_game_dir()
     assert a == b
+    paths_mod._scan_game_dir.cache_clear()
+
+
+def test_default_game_dir_override_wins_after_first_call(monkeypatch, tmp_path):
+    """`RSMM_GAME_DIR` must be honoured at call time, not just on first call.
+
+    The whole function used to be `@cache`d, so a long-lived process that set
+    the override after any earlier resolution kept the stale autodetected path.
+    """
+    from rsmm.engine.paths import default_game_dir
+
+    monkeypatch.delenv("RSMM_GAME_DIR", raising=False)
+    default_game_dir()                      # prime whatever cache exists
+    (tmp_path / "later").mkdir()
+    monkeypatch.setenv("RSMM_GAME_DIR", str(tmp_path / "later"))
+    assert default_game_dir() == tmp_path / "later"
 
 
 def test_steam_libraryfolders_vdf_parse(tmp_path, monkeypatch):

@@ -72,7 +72,7 @@ def test_emitted_requires_validates_in_graph(tmp_path):
 def test_public_wrapper_exposes_dep_methods(tmp_path, monkeypatch):
     """sdk.Mod (the wrapper authors use) must forward every dep tier +
     load_order, and commit them to disk."""
-    monkeypatch.setattr("rsmm.engine.paths.MODS_DIR", tmp_path)
+    monkeypatch.setenv("RSMM_MODS_DIR", str(tmp_path))
     monkeypatch.setattr("rsmm.sdk.builder.MODS_DIR", tmp_path)
     with Mod("WrapMod", version="1.0.0", author="me", name="Wrap",
              load_order=80) as m:

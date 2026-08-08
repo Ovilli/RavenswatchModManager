@@ -181,7 +181,7 @@ def _write_mod(mods: object, mod_id: str, body: str) -> None:
 
 
 def test_compat_graph_no_mods(tmp_path, monkeypatch):
-    monkeypatch.setattr("rsmm.engine.paths.MODS_DIR", tmp_path / "mods")
+    monkeypatch.setenv("RSMM_MODS_DIR", str(tmp_path / "mods"))
     rs = check_compat_graph()
     assert len(rs) == 1 and rs[0].kind == "OK"
 
@@ -190,7 +190,7 @@ def test_compat_graph_clean(tmp_path, monkeypatch):
     mods = tmp_path / "mods"
     _write_mod(mods, "core", "")
     _write_mod(mods, "user", 'requires = ["core >=1.0 <2.0"]\n')
-    monkeypatch.setattr("rsmm.engine.paths.MODS_DIR", mods)
+    monkeypatch.setenv("RSMM_MODS_DIR", str(mods))
     rs = check_compat_graph()
     assert all(r.kind == "OK" for r in rs)
 
@@ -198,7 +198,7 @@ def test_compat_graph_clean(tmp_path, monkeypatch):
 def test_compat_graph_recommend_warns_not_fails(tmp_path, monkeypatch):
     mods = tmp_path / "mods"
     _write_mod(mods, "user", 'recommends = ["sidekick >=1.0"]\n')  # sidekick absent
-    monkeypatch.setattr("rsmm.engine.paths.MODS_DIR", mods)
+    monkeypatch.setenv("RSMM_MODS_DIR", str(mods))
     rs = check_compat_graph()
     assert any(r.kind == "WARN" and "missing-recommend" in r.label for r in rs)
     assert all(r.kind != "FAIL" for r in rs)
@@ -207,7 +207,7 @@ def test_compat_graph_recommend_warns_not_fails(tmp_path, monkeypatch):
 def test_compat_graph_missing_requires_fails(tmp_path, monkeypatch):
     mods = tmp_path / "mods"
     _write_mod(mods, "user", 'requires = ["missing-lib >=2.0"]\n')
-    monkeypatch.setattr("rsmm.engine.paths.MODS_DIR", mods)
+    monkeypatch.setenv("RSMM_MODS_DIR", str(mods))
     rs = check_compat_graph()
     assert any(r.kind == "FAIL" and "missing-dep" in r.label for r in rs)
 

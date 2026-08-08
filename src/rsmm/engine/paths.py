@@ -191,7 +191,6 @@ def _game_dir_candidates() -> list[Path]:
     return unique
 
 
-@cache
 def default_game_dir() -> Path:
     """First candidate whose `_Cooking` tree exists; otherwise the first
     candidate. Autodetects on Windows/Linux without `--game-dir`.
@@ -201,11 +200,22 @@ def default_game_dir() -> Path:
     misses) before falling back to the per-platform candidate scan,
     mirroring `RSMM_REPO_ROOT` / `RSMM_MODS_DIR`.
 
-    Cached: the filesystem scan only runs on first access.
+    The override is read **at call time**, like `mods_dir`'s: the whole
+    function used to be `@cache`d, which meant whichever call happened first
+    in the process pinned the answer forever. A long-lived process — the home
+    screen, or the desktop app repointing rsmm after launch — could then set
+    `RSMM_GAME_DIR` and be silently ignored. Only the expensive part (the
+    filesystem scan) is cached now.
     """
     override = os.environ.get("RSMM_GAME_DIR", "").strip()
     if override:
         return Path(os.path.expandvars(override)).expanduser()
+    return _scan_game_dir()
+
+
+@cache
+def _scan_game_dir() -> Path:
+    """Cached candidate scan. Slow on Windows with network drives."""
     cands = _game_dir_candidates()
     for c in cands:
         try:

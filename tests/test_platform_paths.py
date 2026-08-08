@@ -90,21 +90,15 @@ def test_default_game_dir_respects_env_override(monkeypatch, tmp_path):
     installs the autodetector misses (mirrors RSMM_MODS_DIR)."""
     target = tmp_path / "CustomSteam" / "Ravenswatch"
     monkeypatch.setenv("RSMM_GAME_DIR", str(target))
-    paths_mod.default_game_dir.cache_clear()
-    try:
-        assert paths_mod.default_game_dir() == target
-    finally:
-        paths_mod.default_game_dir.cache_clear()
+    # No cache to clear: the override is read at call time, only the
+    # candidate scan behind it is cached.
+    assert paths_mod.default_game_dir() == target
 
 
 def test_default_game_dir_env_override_expands_user_and_vars(monkeypatch, tmp_path):
     monkeypatch.setenv("RSMM_GAME_DIR", "$RSMM_TEST_BASE/Ravenswatch")
     monkeypatch.setenv("RSMM_TEST_BASE", str(tmp_path))
-    paths_mod.default_game_dir.cache_clear()
-    try:
-        assert paths_mod.default_game_dir() == tmp_path / "Ravenswatch"
-    finally:
-        paths_mod.default_game_dir.cache_clear()
+    assert paths_mod.default_game_dir() == tmp_path / "Ravenswatch"
 
 
 def test_mods_dir_respects_env_override(monkeypatch, tmp_path):
