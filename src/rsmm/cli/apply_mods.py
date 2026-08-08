@@ -296,6 +296,21 @@ class State:
         self.data["enabled_mods"] = sorted(set(ids))
 
 
+def _scalar(value, field: str) -> str:
+    """A manifest string field, or "" when absent — never a list or a table.
+
+    TOML happily gives back whatever the author wrote, and these end up in
+    state keys, log lines and the store payload. A list arriving where a name
+    was expected should be a legible manifest error, not a stringified
+    `['a', 'b']` propagating through the install.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list)):
+        raise ValueError(f"{field} must be a single value, got {type(value).__name__}")
+    return str(value)
+
+
 class Mod:
     def __init__(self, root: Path):
         self.root = root
@@ -303,11 +318,20 @@ class Mod:
         if not manifest.exists():
             raise FileNotFoundError(f"missing manifest: {manifest}")
         tbl = parse_toml(manifest)
+        # Shape checks raise ValueError deliberately, because `discover_mods`
+        # already skips-and-warns on that. Valid TOML of the wrong shape
+        # (`mod = 5`) used to reach `m.get` and raise AttributeError, which
+        # nothing caught — so a single malformed manifest anywhere in `mods/`
+        # aborted the whole apply and every other mod silently stopped being
+        # applied. Widening the except clause instead would have swallowed
+        # genuine bugs in this module along with it.
         m = tbl.get("mod", {})
-        self.id: str = m.get("id") or root.name
-        self.name: str = m.get("name", self.id)
-        self.version: str = m.get("version", "0.0.0")
-        self.author: str = m.get("author", "")
+        if not isinstance(m, dict):
+            raise ValueError(f"[mod] must be a table, got {type(m).__name__}")
+        self.id: str = _scalar(m.get("id"), "mod.id") or root.name
+        self.name: str = _scalar(m.get("name"), "mod.name") or self.id
+        self.version: str = _scalar(m.get("version"), "mod.version") or "0.0.0"
+        self.author: str = _scalar(m.get("author"), "mod.author")
         raw_enabled = m.get("enabled", True)
         self.enabled: bool = (
             raw_enabled if isinstance(raw_enabled, bool)
@@ -315,7 +339,13 @@ class Mod:
         )
         self.experimental: bool = bool(m.get("experimental", False))
         self.assets_dir = root / "assets"
-        self.content_blocks: list[dict] = list(tbl.get("content", []) or [])
+        blocks = tbl.get("content", []) or []
+        if not isinstance(blocks, list) or not all(isinstance(b, dict) for b in blocks):
+            # `list("abc")` on a stray string would have produced ['a','b','c']
+            # and every consumer's `block.get(...)` would then blow up far from
+            # the manifest that caused it.
+            raise ValueError("[[content]] must be a list of tables")
+        self.content_blocks: list[dict] = list(blocks)
 
     def files(self) -> list[tuple[Path, str]]:
         out: list[tuple[Path, str]] = []

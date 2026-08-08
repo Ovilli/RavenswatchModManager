@@ -280,3 +280,50 @@ def test_valid_state_file_is_left_alone(tmp_path):
     st = State(cooking)
     assert st.active == {"a": {"mod": "m"}}
     assert not list(cooking.glob(".rsmm_state.json.corrupt-*"))
+
+
+# --- malformed manifests ---------------------------------------------------
+
+def _mod(mods_dir, name: str, manifest: str):
+    d = mods_dir / name
+    d.mkdir(parents=True)
+    (d / "manifest.toml").write_text(manifest, encoding="utf-8")
+
+
+def test_one_malformed_manifest_does_not_block_every_other_mod(
+        tmp_path, monkeypatch, capsys):
+    """Regression: `discover_mods` skips-and-warns on TOMLDecodeError/OSError/
+    ValueError, but valid TOML of the wrong shape (`mod = 5`) reached `m.get`
+    and raised AttributeError, which nothing caught. One bad manifest anywhere
+    in mods/ therefore aborted the whole apply and silently stopped every other
+    mod from being applied.
+    """
+    from rsmm.cli import apply_mods
+
+    mods_dir = tmp_path / "mods"
+    _mod(mods_dir, "BadShape", "mod = 5\n")
+    # `content` must precede [mod]; after it, TOML nests it inside that table.
+    _mod(mods_dir, "BadContent", 'content = "oops"\n[mod]\nid = "BadContent"\n')
+    _mod(mods_dir, "BadName", '[mod]\nid = "BadName"\nname = ["a", "b"]\n')
+    _mod(mods_dir, "GoodMod", '[mod]\nid = "GoodMod"\n')
+    monkeypatch.setattr(apply_mods, "MODS_DIR", mods_dir)
+
+    found = apply_mods.discover_mods(tmp_path)
+
+    assert [m.id for m in found] == ["GoodMod"]
+    err = capsys.readouterr().err
+    assert "[mod] must be a table" in err
+    assert "[[content]] must be a list of tables" in err
+    assert "mod.name must be a single value" in err
+
+
+def test_manifest_scalars_are_coerced_not_stringified_containers(tmp_path, monkeypatch):
+    """A number is a fine version; a list is a manifest error, not `"['a']"`."""
+    from rsmm.cli import apply_mods
+
+    mods_dir = tmp_path / "mods"
+    _mod(mods_dir, "Coerce", "[mod]\nid = 42\nversion = 1\n")
+    monkeypatch.setattr(apply_mods, "MODS_DIR", mods_dir)
+
+    (mod,) = apply_mods.discover_mods(tmp_path)
+    assert mod.id == "42" and mod.version == "1"
