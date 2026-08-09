@@ -93,8 +93,9 @@ static void loader_thread_cxx() {
         // MinHook must be live BEFORE mod init runs: a mod's init.lua can
         // install a hook via rsmm.hook (e.g. rsmm.lua arms the hero-capture
         // hooks at module load), and MH_CreateHook returns
-        // MH_ERROR_NOT_INITIALIZED if the library isn't up yet. Tolerate
-        // ALREADY_INITIALIZED in case the TLS path (RSMM_TLS_HOOK) beat us.
+        // MH_ERROR_NOT_INITIALIZED if the library isn't up yet.
+        // ALREADY_INITIALIZED is tolerated so a re-entered loader thread
+        // (or a second injection) doesn't disable hooks outright.
         {
             MH_STATUS s = MH_Initialize();
             if (s != MH_OK && s != MH_ERROR_ALREADY_INITIALIZED) {

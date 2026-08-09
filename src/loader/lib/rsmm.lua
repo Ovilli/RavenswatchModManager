@@ -84,6 +84,34 @@ function R.on(event, cb)
     native.on_event(event, cb)
 end
 
+-- Publish an event to EVERY mod (including this one). This is the signalling
+-- half of cross-mod communication: R.api carries data CALLS, but each mod runs
+-- in its own lua_State so a callback cannot be handed across — a producer says
+-- "something happened" by emitting, and consumers subscribe with R.on.
+--
+--     R.emit("mymod:boss_died", { name = "Wolf", chapter = 2 })
+--     R.on("mymod:boss_died", function(ev) R.log(ev.name, ev.from) end)
+--
+-- The payload must be DATA (nil/boolean/number/string/tables of those) since
+-- it is marshalled between states. The loader stamps `event`, `source="mod"`
+-- and `from=<mod id>` onto every payload, overwriting whatever you set: that
+-- is what keeps a mod from impersonating the gameplay bus, whose `source`
+-- field is how R.schedule and R.stat know they are on the game's MAIN thread.
+--
+-- Names are yours except for the loader's own: "gameplay:", "ui:", "rsmm:"
+-- and the lifecycle events (setup/ready/tick/exit) are refused. Prefix with
+-- your mod id to stay clear of other mods.
+function R.emit(event, payload)
+    assert(type(event) == "string", "R.emit: event must be string")
+    assert(payload == nil or type(payload) == "table",
+           "R.emit: payload must be a table or nil")
+    if not native.emit then
+        R.log("[rsmm] R.emit needs a newer loader; event dropped:", event)
+        return false
+    end
+    return native.emit(event, payload) and true or false
+end
+
 -- named engine functions ------------------------------------------------
 --
 -- The symbol map (data/symbols.json) gives engine functions stable
