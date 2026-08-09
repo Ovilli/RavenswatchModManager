@@ -35,6 +35,12 @@ void script_emit_event_json(const std::string& name, const std::string& payload_
 void script_reload_changed();   // re-run init.lua for any mod whose file changed
 void script_shutdown_all();
 
+// True when at least one mod has registered an event handler. The engine-event
+// detours sit on very hot paths (the gameplay bus fires hundreds of times a
+// second in combat), so they check this before building a payload nobody will
+// read — that is what makes it safe to arm the buses by default.
+bool script_any_subscribers();
+
 // Process-global key/value slots (0..15) shared across every mod's lua_State
 // and the native loader. Backs rsmm._internal.shared_get/shared_set; also used
 // by native infrastructure that must publish a handle to all Lua states (e.g.

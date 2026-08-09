@@ -282,6 +282,8 @@ function I.is_grant_target() return true end
 function I.shared_get(slot) return shared[slot] end
 function I.shared_set(slot, v) shared[slot] = v end
 function I.list_mods() return {} end
+local in_main_menu = false
+function I.is_in_main_menu() return in_main_menu end
 function I.resolve(pat)
     local va = resolved[pat]
     if not va then
@@ -1069,6 +1071,192 @@ do
     end)
     R.emit("spec:nested", {})
     check(seen == 3, "re-entrant emit dispatches each level exactly once")
+end
+
+-- 20. subscription lifecycle: off / once / patterns -------------------------
+do
+    local hits = 0
+    local h = R.on("spec:sub", function() hits = hits + 1 end)
+    fire("spec:sub"); check(hits == 1, "R.on fires")
+    check(R.off(h) == true, "R.off reports it cancelled a live subscription")
+    fire("spec:sub"); check(hits == 1, "a cancelled subscription stops firing")
+    check(R.off(h) == false, "R.off is idempotent")
+
+    local once = 0
+    R.once("spec:once", function() once = once + 1 end)
+    fire("spec:once"); fire("spec:once"); fire("spec:once")
+    check(once == 1, "R.once fires exactly once")
+
+    local matched = {}
+    local m = R.on_match("^gameplay:ABILITY_", function(_, name)
+        matched[#matched + 1] = name
+    end)
+    fire("gameplay:ABILITY_EXIT")
+    fire("gameplay:ABILITY_MAX")
+    fire("gameplay:COMBO_LINK")            -- must not match
+    check(#matched == 2, "pattern subscription takes the whole family")
+    check(matched[1] == "gameplay:ABILITY_EXIT", "pattern handler gets the event name")
+    R.off(m)
+
+    -- The callback gets (payload, name) for exact subscriptions too.
+    local got_name
+    local h2 = R.on("spec:named", function(_, name) got_name = name end)
+    fire("spec:named")
+    check(got_name == "spec:named", "exact handler receives the event name")
+    R.off(h2)
+
+    -- One handler raising must not stop the others on the same event.
+    local after = false
+    local hb = R.on("spec:boom", function() error("kaboom") end)
+    local ha = R.on("spec:boom", function() after = true end)
+    fire("spec:boom")
+    check(after, "a raising handler does not break the rest of the chain")
+    R.off(hb); R.off(ha)
+
+    -- Subscribing from inside a dispatch must not fire for THIS event.
+    local late = 0
+    local hs = R.on("spec:reentrant", function()
+        R.on("spec:reentrant", function() late = late + 1 end)
+    end)
+    fire("spec:reentrant")
+    check(late == 0, "a handler added mid-dispatch does not fire for that event")
+    fire("spec:reentrant")
+    check(late >= 1, "the handler added mid-dispatch fires next time")
+    R.off(hs)
+end
+
+-- 21. event catalog ---------------------------------------------------------
+do
+    fire("spec:cat", { alpha = 1, beta = "x" })
+    fire("spec:cat", { alpha = 2 })
+    local seen = R.events.seen()
+    check(seen["spec:cat"] ~= nil, "catalog records an event it saw")
+    check(seen["spec:cat"].count >= 2, "catalog counts fires")
+    check(table.concat(seen["spec:cat"].keys, ","):find("alpha"),
+          "catalog records payload keys")
+    check(R.events.count("spec:cat") >= 2, "count() agrees with the catalog")
+    check(R.events.count("spec:never") == 0, "unseen event counts zero")
+    local list = R.events.list("^spec:")
+    check(#list > 0, "list() filters by pattern")
+    for i = 2, #list do check(list[i - 1] <= list[i], "list() is sorted") end
+
+    -- The STATIC catalog: names available before anything has fired.
+    local bus = R.events.known("gameplay")
+    check(#bus > 100, "known('gameplay') carries the mined bus catalog")
+    local by_name = {}
+    for _, n in ipairs(bus) do by_name[n] = true end
+    for _, n in ipairs({ "GIVE_MAGICAL_OBJECT", "BOSS_DEFEATED", "OPEN_CHEST",
+                         "HERO_REVIVE", "NETWORK_DAMAGE" }) do
+        check(by_name[n], "catalog contains " .. n)
+    end
+    check(R.events.category("BOSS_DEFEATED") == "boss", "category() maps a bus name")
+    check(R.events.category("gameplay:BOSS_DEFEATED") == "boss",
+          "category() accepts the qualified form")
+    check(R.events.category("nope") == nil, "category() is nil for an unknown name")
+    local all = R.events.known()
+    local qualified = false
+    for _, n in ipairs(all) do
+        if n == "gameplay:GIVE_MAGICAL_OBJECT" then qualified = true end
+    end
+    check(qualified, "known() qualifies bus names with the gameplay: prefix")
+    check(#R.events.known("lifecycle") == 4, "lifecycle group is listed")
+    check(#R.events.known("derived") == 7, "loader-derived group is listed")
+    check(#R.events.known("nosuchgroup") == 0, "unknown group yields an empty list")
+end
+
+-- 22. repeating + cancellable timers ---------------------------------------
+do
+    local n = 0
+    local id = R.schedule.every(1.0, function() n = n + 1 end)
+    R.schedule._tick(); check(n == 0, "every() does not fire before its interval")
+    fake_clock = fake_clock + 1.0; R.schedule._tick()
+    check(n == 1, "every() fires at the interval")
+    fake_clock = fake_clock + 1.0; R.schedule._tick()
+    check(n == 2, "every() re-arms itself")
+    check(R.schedule.cancel(id) == true, "cancel() reports it removed the timer")
+    fake_clock = fake_clock + 5.0; R.schedule._tick()
+    check(n == 2, "a cancelled repeater stops")
+    check(R.schedule.cancel(id) == false, "cancel() is idempotent")
+
+    -- A raising repeater survives: a transient failure must not kill the timer.
+    local tries = 0
+    local bad = R.schedule.every(1.0, function() tries = tries + 1; error("nope") end)
+    fake_clock = fake_clock + 1.0; R.schedule._tick()
+    fake_clock = fake_clock + 1.0; R.schedule._tick()
+    check(tries == 2, "a repeater whose callback raises still re-arms")
+    R.schedule.cancel(bad)
+
+    -- after() is still one-shot and cancellable.
+    local once = 0
+    local oid = R.schedule.after(1.0, function() once = once + 1 end)
+    fake_clock = fake_clock + 1.0; R.schedule._tick()
+    check(once == 1, "after() fires")
+    fake_clock = fake_clock + 5.0; R.schedule._tick()
+    check(once == 1, "after() does not repeat")
+    check(R.schedule.cancel(oid) == false, "a fired one-shot is already gone")
+end
+
+-- 23. loader-derived events -------------------------------------------------
+do
+    -- Reach a known baseline BEFORE subscribing: an earlier test already
+    -- drove a tick, so the poller has seen the hero once.
+    shared[0] = 0
+    fire("tick")                    -- drops the capture, unobserved
+
+    local log = {}
+    local subs = {}
+    for _, name in ipairs({ "hero:captured", "hero:changed", "hero:lost",
+                            "menu:enter", "menu:leave", "run:start", "run:end" }) do
+        subs[#subs + 1] = R.on(name, function(ev) log[#log + 1] = { name, ev } end)
+    end
+
+    shared[0] = HERO
+    fire("tick")
+    check(#log == 1 and log[1][1] == "hero:captured", "hero:captured on first sight")
+    check(log[1][2].hero == HERO, "hero:captured carries the hero pointer")
+    check(log[1][2].source == "loader", "derived events are tagged source=loader")
+
+    fire("tick")
+    check(#log == 1, "no event while the hero is unchanged")
+
+    -- Switch character: a different plausible hero pointer.
+    local HERO2 = 0x10500000
+    I.write_f32(HERO2 + MAXHP_OFF, 90.0)
+    I.write_f32(HERO2 + HP_OFF, 90.0)
+    I.write_u64(HERO2 + HUDMIRROR_OFF, MIRROR)
+    shared[0] = HERO2
+    fire("tick")
+    check(#log == 2 and log[2][1] == "hero:changed", "hero:changed on a switch")
+    check(log[2][2].previous == HERO and log[2][2].hero == HERO2,
+          "hero:changed carries both pointers")
+
+    shared[0] = 0
+    fire("tick")
+    check(#log == 3 and log[3][1] == "hero:lost", "hero:lost when capture drops")
+    check(log[3][2].previous == HERO2, "hero:lost names the pointer it dropped")
+
+    -- Menu transitions are edge-triggered (hero stays absent, so nothing else
+    -- can add to the log here).
+    local before = #log
+    in_main_menu = true;  fire("tick")
+    in_main_menu = true;  fire("tick")      -- no repeat on the same state
+    in_main_menu = false; fire("tick")
+    check(#log == before + 2, "menu fires once per edge, not per poll")
+    check(log[before + 1][1] == "menu:enter", "menu:enter on the rising edge")
+    check(log[#log][1] == "menu:leave", "menu:leave on the falling edge")
+
+    -- Run boundaries normalise the analytics names and are idempotent.
+    before = #log
+    fire("run_start"); fire("run_start")
+    check(#log == before + 1 and log[#log][1] == "run:start",
+          "run:start fires once per run")
+    check(R.run.active() == true, "R.run.active() true inside a run")
+    fire("run_end"); fire("run_end")
+    check(#log == before + 2 and log[#log][1] == "run:end",
+          "run:end fires once per run")
+    check(R.run.active() == false, "R.run.active() false after the run")
+
+    for _, id in ipairs(subs) do R.off(id) end
 end
 
 -- ---------------------------------------------------------------------------

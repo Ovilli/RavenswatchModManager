@@ -328,18 +328,31 @@ def cmd_active_overrides() -> int:
 # marked safe=True are user-togglable; the rest are documented but locked so
 # the UI can explain why (e.g. RSMM_ENABLE_ITEM_INJECT crashes the game).
 LOADER_FLAGS: list[dict[str, Any]] = [
+    # Both event buses are ON by default (the loader skips publishing entirely
+    # when no mod has subscribed, so an asset-only install pays nothing). These
+    # entries are the opt-OUT switches, for isolating a suspected event-bus
+    # problem without uninstalling the loader.
     {
-        "name": "RSMM_ENABLE_GAMEPLAY_EVENTS",
-        "label": "Gameplay event bus",
-        "description": "Bridge the in-game oCGameNamedEvent bus to Lua "
-                       "(R.on(\"gameplay:<NAME>\")). Required by event-driven mods.",
+        "name": "RSMM_DISABLE_GAMEPLAY_EVENTS",
+        "label": "Disable gameplay event bus",
+        "description": "Stop bridging the in-game oCGameNamedEvent bus to Lua "
+                       "(R.on(\"gameplay:<NAME>\")). Event-driven mods break "
+                       "while this is on — troubleshooting only.",
         "safe": True,
     },
     {
-        "name": "RSMM_ENABLE_GAME_EVENTS",
-        "label": "Analytics event bridge",
-        "description": "Bridge the analytics firehose to rsmm.on_event. "
-                       "Read-only; useful for debugging which events fire.",
+        "name": "RSMM_DISABLE_GAME_EVENTS",
+        "label": "Disable analytics event bridge",
+        "description": "Stop bridging the analytics firehose (run_start, "
+                       "enemy_killed, ...) to R.on. Troubleshooting only.",
+        "safe": True,
+    },
+    {
+        "name": "RSMM_EVENT_PROBE",
+        "label": "Event payload probe",
+        "description": "Attach a raw field window (ev.w38..ev.w70) to every "
+                       "gameplay event, for reverse-engineering an undecoded "
+                       "payload. Verbose; developers only.",
         "safe": True,
     },
     {

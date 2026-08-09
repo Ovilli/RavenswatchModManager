@@ -21,10 +21,72 @@ function M.next_frame(fn)
     table.insert(_next_frame, fn)
 end
 
+-- Timers carry a handle so they can be cancelled, and `every` repeats until
+-- you do. Before this the only way to stop a repeating poll was a flag the
+-- callback checked itself, and every `on_guid`/`item.behavior` poller
+-- re-armed itself by hand.
+local _next_timer = 0
+local function _add(list, seconds, fn, repeating)
+    _next_timer = _next_timer + 1
+    table.insert(list, { id = _next_timer, fire_at = _now() + seconds,
+                         every = repeating and seconds or nil, fn = fn })
+    return _next_timer
+end
+
 function M.after(seconds, fn)
     assert(type(seconds) == "number", "R.schedule.after: seconds must be a number")
     assert(type(fn) == "function", "R.schedule.after: fn must be a function")
-    table.insert(_timers, { fire_at = _now() + seconds, fn = fn })
+    return _add(_timers, seconds, fn, false)
+end
+
+-- Repeat every `seconds` until cancelled. Returns a handle for M.cancel.
+function M.every(seconds, fn)
+    assert(type(seconds) == "number" and seconds > 0,
+           "R.schedule.every: seconds must be a positive number")
+    assert(type(fn) == "function", "R.schedule.every: fn must be a function")
+    return _add(_timers, seconds, fn, true)
+end
+
+-- Main-thread variant of `every` (see next_main for the threading rules).
+function M.every_main(seconds, fn)
+    assert(type(seconds) == "number" and seconds > 0,
+           "R.schedule.every_main: seconds must be a positive number")
+    assert(type(fn) == "function", "R.schedule.every_main: fn must be a function")
+    return _add(_main_timers, seconds, fn, true)
+end
+
+-- Fire everything due in `list`, re-arming repeaters and dropping one-shots.
+-- `store` writes the surviving list back (the pumps own the upvalues).
+local function _drain(list, label, store)
+    if #list == 0 then return end
+    local now = _now()
+    local keep = {}
+    for _, t in ipairs(list) do
+        if t.fire_at <= now then
+            local ok, err = pcall(t.fn)
+            if not ok and _G.rsmm then
+                _G.rsmm.log("schedule." .. label .. " error: " .. tostring(err))
+            end
+            -- A repeater survives a raising callback: a transient failure
+            -- (hero not spawned yet, say) shouldn't silently kill the timer.
+            -- Schedule off `now`, not fire_at, so a stalled pump doesn't queue
+            -- a burst of catch-up fires.
+            if t.every then t.fire_at = now + t.every; keep[#keep + 1] = t end
+        else
+            keep[#keep + 1] = t
+        end
+    end
+    store(keep)
+end
+
+-- Cancel a timer from either queue. Returns true if it was still pending.
+function M.cancel(handle)
+    for _, list in ipairs({ _timers, _main_timers }) do
+        for i, t in ipairs(list) do
+            if t.id == handle then table.remove(list, i); return true end
+        end
+    end
+    return false
 end
 
 -- MAIN-THREAD variants. The regular tick pump (M._tick) runs on the loader's
@@ -43,7 +105,7 @@ end
 function M.after_main(seconds, fn)
     assert(type(seconds) == "number", "R.schedule.after_main: seconds must be a number")
     assert(type(fn) == "function", "R.schedule.after_main: fn must be a function")
-    table.insert(_main_timers, { fire_at = _now() + seconds, fn = fn })
+    return _add(_main_timers, seconds, fn, false)
 end
 
 -- Pending work, for diagnostics: {next_frame, timers, next_main, main_timers}.
@@ -62,19 +124,7 @@ function M._main_tick()
             if not ok and _G.rsmm then _G.rsmm.log("schedule.next_main error: " .. tostring(err)) end
         end
     end
-    if #_main_timers > 0 then
-        local now = _now()
-        local keep = {}
-        for _, t in ipairs(_main_timers) do
-            if t.fire_at <= now then
-                local ok, err = pcall(t.fn)
-                if not ok and _G.rsmm then _G.rsmm.log("schedule.after_main error: " .. tostring(err)) end
-            else
-                table.insert(keep, t)
-            end
-        end
-        _main_timers = keep
-    end
+    _drain(_main_timers, "after_main", function(t) _main_timers = t end)
 end
 
 -- Frame pump. rsmm.lua subscribes this to the "tick" event so timers fire
@@ -88,19 +138,7 @@ function M._tick()
             if not ok and _G.rsmm then _G.rsmm.log("schedule.next_frame error: " .. tostring(err)) end
         end
     end
-    if #_timers > 0 then
-        local now = _now()
-        local keep = {}
-        for _, t in ipairs(_timers) do
-            if t.fire_at <= now then
-                local ok, err = pcall(t.fn)
-                if not ok and _G.rsmm then _G.rsmm.log("schedule.after error: " .. tostring(err)) end
-            else
-                table.insert(keep, t)
-            end
-        end
-        _timers = keep
-    end
+    _drain(_timers, "after", function(t) _timers = t end)
 end
 
 return M

@@ -78,10 +78,219 @@ end
 -- Wildcard: R.on("*", function(ev, name) ... end) receives EVERY event;
 -- the event name arrives as a second argument.
 
+-- ── event router ──────────────────────────────────────────────────────────
+--
+-- Every subscription in this state is routed by ONE native "*" handler rather
+-- than one native registration per call. The native registry is append-only
+-- (there is no unsubscribe binding), so routing in Lua is what makes R.off,
+-- R.once and pattern subscriptions possible at all — previously a handler,
+-- once added, fired for the rest of the session.
+--
+-- It also gives one place to keep the event CATALOG (R.events), so a mod
+-- author can find out what the game actually fires instead of guessing.
+
+local _subs, _order, _next_sub, _dead_subs = {}, {}, 0, 0
+local _seen, _seen_n = {}, 0
+local SEEN_CAP = 512          -- distinct event names remembered
+
+local function _record(name, ev)
+    local e = _seen[name]
+    if not e then
+        if _seen_n >= SEEN_CAP then return end
+        _seen_n = _seen_n + 1
+        e = { count = 0, keys = {} }
+        _seen[name] = e
+    end
+    e.count = e.count + 1
+    if type(ev) == "table" then
+        for k in pairs(ev) do
+            if type(k) == "string" then e.keys[k] = true end
+        end
+    end
+end
+
+local function _dispatch(name, ev)
+    _record(name, ev)
+    local expired
+    -- Iterate a snapshot length: a handler may subscribe while we dispatch,
+    -- and the new one must not fire for the event that created it.
+    local n = #_order
+    for i = 1, n do
+        local id = _order[i]
+        local s = id and _subs[id]
+        if s then
+            local hit
+            if s.match then hit = name:find(s.match) ~= nil
+            else hit = (s.event == name) or (s.event == "*") end
+            if hit then
+                if s.once then expired = expired or {}; expired[#expired + 1] = id end
+                local ok, err = pcall(s.cb, ev, name)
+                if not ok then
+                    R.log("[rsmm.on] handler error on '" .. name .. "': " .. tostring(err))
+                end
+            end
+        end
+    end
+    if expired then for _, id in ipairs(expired) do R.off(id) end end
+end
+
+local function _add_sub(s)
+    _next_sub = _next_sub + 1
+    _subs[_next_sub] = s
+    _order[#_order + 1] = _next_sub
+    return _next_sub
+end
+
+-- Subscribe to one event name ("*" = every event). Returns a handle for R.off.
+-- The callback receives (payload, event_name).
 function R.on(event, cb)
     assert(type(event) == "string", "R.on: event must be string")
     assert(type(cb) == "function",  "R.on: cb must be function")
-    native.on_event(event, cb)
+    return _add_sub{ event = event, cb = cb }
+end
+
+-- Subscribe by LUA PATTERN against the event name — the practical way to take
+-- a whole family at once, e.g. every ability event or every network event:
+--     R.on_match("^gameplay:ABILITY_", function(ev, name) ... end)
+function R.on_match(pattern, cb)
+    assert(type(pattern) == "string", "R.on_match: pattern must be string")
+    assert(type(cb) == "function",    "R.on_match: cb must be function")
+    return _add_sub{ match = pattern, cb = cb }
+end
+
+-- Fire at most once, then unsubscribe.
+function R.once(event, cb)
+    assert(type(event) == "string", "R.once: event must be string")
+    assert(type(cb) == "function",  "R.once: cb must be function")
+    return _add_sub{ event = event, cb = cb, once = true }
+end
+
+-- Cancel a subscription. Returns true if it was live.
+function R.off(handle)
+    if _subs[handle] == nil then return false end
+    _subs[handle] = nil
+    _dead_subs = _dead_subs + 1
+    -- Compact lazily: a mod that subscribes/unsubscribes per run would
+    -- otherwise walk an ever-growing list of holes on every event.
+    if _dead_subs > 64 then
+        local live = {}
+        for _, id in ipairs(_order) do
+            if _subs[id] then live[#live + 1] = id end
+        end
+        _order, _dead_subs = live, 0
+    end
+    return true
+end
+
+-- Number of live subscriptions in this mod (diagnostics).
+function R.subscriptions()
+    local n = 0
+    for _ in pairs(_subs) do n = n + 1 end
+    return n
+end
+
+-- Publish a loader-derived event locally (source = "loader"). Not exposed to
+-- mods: R.emit is the mod-facing door and it refuses these reserved names.
+local function _publish(name, ev)
+    ev = ev or {}
+    ev.event, ev.source = name, "loader"
+    _dispatch(name, ev)
+end
+
+-- The single native subscription that feeds the router.
+native.on_event("*", function(ev, name) _dispatch(name, ev) end)
+
+-- ── event catalog ─────────────────────────────────────────────────────────
+--
+-- "What events can I even hook?" used to need a Ghidra session. Every event
+-- this state has seen is recorded with its fire count and the payload keys it
+-- carried, so one play session produces the list.
+--
+--     R.on("ready", function() R.schedule.after(60, R.events.dump) end)
+
+R.events = {}
+
+-- { name = { count = n, keys = { "k", ... } }, ... }
+function R.events.seen()
+    local out = {}
+    for name, e in pairs(_seen) do
+        local keys = {}
+        for k in pairs(e.keys) do keys[#keys + 1] = k end
+        table.sort(keys)
+        out[name] = { count = e.count, keys = keys }
+    end
+    return out
+end
+
+-- Sorted list of event names seen so far, optionally filtered by Lua pattern.
+function R.events.list(pattern)
+    local out = {}
+    for name in pairs(_seen) do
+        if not pattern or name:find(pattern) then out[#out + 1] = name end
+    end
+    table.sort(out)
+    return out
+end
+
+-- How many times `name` has fired this session.
+function R.events.count(name) return (_seen[name] or { count = 0 }).count end
+
+-- The STATIC catalog: every event name mined from the shipped exe, available
+-- before anything has fired. R.events.list() answers "what have I seen?";
+-- this answers "what exists?".
+--
+--     for _, n in ipairs(R.events.known("gameplay")) do ... end   -- 150 names
+--     R.events.known()            -- every group, fully-qualified
+--     R.events.category("BOSS_DEFEATED")  -- "boss"
+--
+-- Groups: "lifecycle", "derived", "analytics", "gameplay". Gameplay names are
+-- returned bare; prefix with "gameplay:" to subscribe. NOT a whitelist — the
+-- bus forwards any name the game dispatches, including ones added by a patch.
+local _catalog
+local function catalog()
+    if _catalog == nil then
+        local ok, t = pcall(require, "events_gen")
+        _catalog = (ok and type(t) == "table") and t or {}
+    end
+    return _catalog
+end
+
+function R.events.known(group)
+    local c = catalog()
+    if group then
+        local out = {}
+        for i, n in ipairs(c[group] or {}) do out[i] = n end
+        return out
+    end
+    local out = {}
+    for _, g in ipairs({ "lifecycle", "derived", "analytics" }) do
+        for _, n in ipairs(c[g] or {}) do out[#out + 1] = n end
+    end
+    for _, n in ipairs(c.gameplay or {}) do out[#out + 1] = "gameplay:" .. n end
+    table.sort(out)
+    return out
+end
+
+-- Engine-assigned family of a gameplay event name ("combat", "items", ...).
+function R.events.category(name)
+    local c = catalog()
+    return (c.gameplay_category or {})[(name:gsub("^gameplay:", ""))]
+end
+
+-- Log the catalog: one line per event with its count and payload keys. This
+-- is the discovery tool — run it after playing and the log names every event
+-- the game fired, with the fields each carried.
+function R.events.dump(pattern)
+    local names = R.events.list(pattern)
+    R.log(string.format("[rsmm.events] %d event(s) seen this session%s",
+        #names, pattern and (" matching '" .. pattern .. "'") or ""))
+    local seen = R.events.seen()
+    for _, name in ipairs(names) do
+        local e = seen[name]
+        R.log(string.format("[rsmm.events]   %-44s x%-5d %s",
+            name, e.count, table.concat(e.keys, ",")))
+    end
+    return names
 end
 
 -- Publish an event to EVERY mod (including this one). This is the signalling
@@ -2333,17 +2542,25 @@ function R.item.on_guid(id, cb, opts)
     opts = opts or {}
     local every = opts.every or 1.0
     local tries, limit = 0, opts.tries or 120
-    local function poll()
+    if not (R.schedule and R.schedule.every) then
+        R.log("[rsmm.item] on_guid needs the tick pump (R.schedule)")
+        return nil
+    end
+    local handle
+    handle = R.schedule.every(every, function()
         local lo, hi = R.item.guid(id)
-        if lo then cb(lo, hi); return end
+        if lo then
+            R.schedule.cancel(handle)
+            cb(lo, hi)
+            return
+        end
         tries = tries + 1
         if tries >= limit then
-            R.log("[rsmm.item] on_guid timed out for", id); return
+            R.schedule.cancel(handle)
+            R.log("[rsmm.item] on_guid timed out for", id)
         end
-        if R.schedule and R.schedule.after then R.schedule.after(every, poll) end
-    end
-    if R.schedule and R.schedule.after then R.schedule.after(every, poll)
-    else R.log("[rsmm.item] on_guid needs the tick pump (R.schedule)") end
+    end)
+    return handle   -- pass to R.schedule.cancel to stop polling early
 end
 
 -- Bind custom logic to ownership of a magical object — the core of a
@@ -2374,7 +2591,14 @@ function R.item.behavior(spec)
     local owned = false
     local function ctx() return { lo = lo, hi = hi } end
 
-    local function poll()
+    if not (R.schedule and R.schedule.every) then
+        R.log("[rsmm.item] behavior needs the tick pump (R.schedule) — unavailable")
+        return false
+    end
+    -- Returns the timer handle: pass it to R.schedule.cancel to unbind the
+    -- behavior. (It used to re-arm itself through `after`, which meant there
+    -- was no way to stop it short of a game restart.)
+    return R.schedule.every(every, function()
         local now = R.give.owns(lo, hi)
         if now and not owned then
             owned = true
@@ -2384,15 +2608,7 @@ function R.item.behavior(spec)
             if spec.on_lose then spec.on_lose(ctx()) end
         end
         if now and spec.on_tick then spec.on_tick(ctx()) end
-        if R.schedule and R.schedule.after then R.schedule.after(every, poll) end
-    end
-
-    if R.schedule and R.schedule.after then
-        R.schedule.after(every, poll)
-        return true
-    end
-    R.log("[rsmm.item] behavior needs the tick pump (R.schedule) — unavailable")
-    return false
+    end)
 end
 
 -- NOT-YET-IMPLEMENTED stubs ---------------------------------------------
@@ -2798,6 +3014,73 @@ function R.debug.find_arrays(obj, opts)
     end
     return found
 end
+
+-- loader-derived events --------------------------------------------------
+--
+-- The engine's own buses say what the GAME did; these say what the LOADER
+-- knows. They close the gaps mods used to paper over by polling every tick:
+--
+--   "hero:captured" { hero }              -- the local hero became readable
+--   "hero:changed"  { hero, previous }    -- character switch / new run
+--   "hero:lost"     { previous }          -- run ended, capture invalidated
+--   "menu:enter" / "menu:leave"           -- main-menu transitions
+--   "run:start" / "run:end"               -- run boundaries
+--
+-- All of them are published from the "tick" pump, i.e. the loader's
+-- BACKGROUND thread (`ev.source == "loader"`, never "gameplay"). Engine-
+-- mutating work in these handlers must go through R.schedule.next_main —
+-- see [[loader-thread-model]].
+
+R.run = {}
+
+local _last_hero, _last_menu, _run_active = nil, nil, false
+
+local function _derived_poll()
+    local ok, hero = pcall(R.entity.hero)
+    if not ok then hero = nil end
+    if hero ~= _last_hero then
+        if hero and _last_hero then
+            _publish("hero:changed", { hero = hero, previous = _last_hero })
+        elseif hero then
+            _publish("hero:captured", { hero = hero })
+        else
+            _publish("hero:lost", { previous = _last_hero })
+        end
+        _last_hero = hero
+    end
+
+    local in_menu = false
+    if I.is_in_main_menu then
+        local o, v = pcall(I.is_in_main_menu)
+        in_menu = (o and v) or false
+    end
+    if _last_menu == nil then
+        _last_menu = in_menu            -- first poll establishes the baseline
+    elseif in_menu ~= _last_menu then
+        _last_menu = in_menu
+        _publish(in_menu and "menu:enter" or "menu:leave", {})
+    end
+end
+
+R.on("tick", _derived_poll)
+
+-- Run boundaries, normalised off the analytics firehose so a mod doesn't have
+-- to know which raw name the game uses (and gets an idempotent pair: the raw
+-- events can repeat per chapter).
+R.on("run_start", function()
+    if not _run_active then _run_active = true; _publish("run:start", {}) end
+end)
+R.on("run_end", function(ev)
+    if _run_active then
+        _run_active = false
+        local copy = {}
+        if type(ev) == "table" then for k, v in pairs(ev) do copy[k] = v end end
+        _publish("run:end", copy)
+    end
+end)
+
+-- True between run:start and run:end.
+function R.run.active() return _run_active end
 
 -- escape hatch ----------------------------------------------------------
 --

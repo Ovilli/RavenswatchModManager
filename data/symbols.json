@@ -2377,5 +2377,608 @@
    "category": "run",
    "note": "an in-run event ends"
   }
+ ],
+ "gameplay_event_catalog_doc": "Names dispatched on the oCGameNamedEvent bus, mined from the shipped exe by tools/mine_event_names.py (SCREAMING_CASE literal pools in .rdata, kept only where a pool contains an event name independently CONFIRMED in-game). Subscribe with R.on('gameplay:<NAME>', cb). The loader's bus detour reads the plaintext name off the event object, so this list is a browsable catalog, not a whitelist -- a name the game adds still fires. `category` groups by the engine's own naming, it is not semantics we verified. Regenerate after a game patch: python tools/mine_event_names.py --verify --json - .",
+ "gameplay_event_catalog": [
+  {
+   "name": "ABILITY_EXIT",
+   "category": "abilities"
+  },
+  {
+   "name": "ACTIVITY_FAILED",
+   "category": "world"
+  },
+  {
+   "name": "ACTIVITY_START",
+   "category": "world"
+  },
+  {
+   "name": "ACTIVITY_SUCCESS",
+   "category": "world"
+  },
+  {
+   "name": "ADD_ALL_SKILLS",
+   "category": "skills"
+  },
+  {
+   "name": "ADD_BASIC_CHARGE",
+   "category": "abilities"
+  },
+  {
+   "name": "ADD_DASH_CHARGE",
+   "category": "abilities"
+  },
+  {
+   "name": "ADD_DEFENSIVE_CHARGE",
+   "category": "abilities"
+  },
+  {
+   "name": "ADD_MODIFIER",
+   "category": "modifiers"
+  },
+  {
+   "name": "ADD_PRIMARY_CHARGE",
+   "category": "abilities"
+  },
+  {
+   "name": "ADD_RANDOM_ULTI_SKILL",
+   "category": "skills"
+  },
+  {
+   "name": "ADD_SECONDARY_CHARGE",
+   "category": "abilities"
+  },
+  {
+   "name": "ADD_TRAIT_CHARGE",
+   "category": "abilities"
+  },
+  {
+   "name": "ADD_ULTIMATE_CHARGE",
+   "category": "abilities"
+  },
+  {
+   "name": "ALL_PLAYER_DEAD",
+   "category": "revive"
+  },
+  {
+   "name": "ALTAR_HERO_REVIVE_STAT",
+   "category": "revive"
+  },
+  {
+   "name": "ALTAR_OF_HEROES_PAID",
+   "category": "world"
+  },
+  {
+   "name": "ATTACHMENT_CHANGE",
+   "category": "netcode"
+  },
+  {
+   "name": "BABAYAGA_HOUSE_DEFEATED",
+   "category": "boss"
+  },
+  {
+   "name": "BLOOD_BOMB_EXPLODE",
+   "category": "combat"
+  },
+  {
+   "name": "BOSS_ACTIVATED",
+   "category": "boss"
+  },
+  {
+   "name": "BOSS_DEFEATED",
+   "category": "boss"
+  },
+  {
+   "name": "BOSS_FIGHTING_START",
+   "category": "boss"
+  },
+  {
+   "name": "BOSS_FIGHTING_STOP",
+   "category": "boss"
+  },
+  {
+   "name": "CHARGE_LINK",
+   "category": "abilities"
+  },
+  {
+   "name": "CHOOSE_MELODY",
+   "category": "items"
+  },
+  {
+   "name": "CINE_ASK_SKIP",
+   "category": "cinematic"
+  },
+  {
+   "name": "CINE_END",
+   "category": "cinematic"
+  },
+  {
+   "name": "CINE_RELEASE_CONTROL",
+   "category": "cinematic"
+  },
+  {
+   "name": "CINE_START",
+   "category": "cinematic"
+  },
+  {
+   "name": "CINE_STOP",
+   "category": "cinematic"
+  },
+  {
+   "name": "CINE_TAKE_CONTROL",
+   "category": "cinematic"
+  },
+  {
+   "name": "CLEAR_BASIC_CD",
+   "category": "abilities"
+  },
+  {
+   "name": "CLEAR_CD",
+   "category": "abilities"
+  },
+  {
+   "name": "CLEAR_CHILLED",
+   "category": "state"
+  },
+  {
+   "name": "CLEAR_DASH_CD",
+   "category": "abilities"
+  },
+  {
+   "name": "CLEAR_DEFENSIVE_CD",
+   "category": "abilities"
+  },
+  {
+   "name": "CLEAR_PRIMARY_CD",
+   "category": "abilities"
+  },
+  {
+   "name": "CLEAR_ROSE_SEED",
+   "category": "state"
+  },
+  {
+   "name": "CLEAR_SECONDARY_CD",
+   "category": "abilities"
+  },
+  {
+   "name": "CLEAR_STAGGER",
+   "category": "combat"
+  },
+  {
+   "name": "CLEAR_STATUS",
+   "category": "state"
+  },
+  {
+   "name": "CLEAR_TRAIT_CD",
+   "category": "abilities"
+  },
+  {
+   "name": "CLEAR_ULTIMATE_CD",
+   "category": "abilities"
+  },
+  {
+   "name": "COMBO_LINK",
+   "category": "abilities"
+  },
+  {
+   "name": "CROWS_MAP_REVEAL",
+   "category": "ui"
+  },
+  {
+   "name": "DEATHDOOR_TIMER_END",
+   "category": "revive"
+  },
+  {
+   "name": "DEBUG_RESET_CHESTS",
+   "category": "debug"
+  },
+  {
+   "name": "DEBUG_RESET_HOURGLASS",
+   "category": "debug"
+  },
+  {
+   "name": "DUPLICATE_RANDOM_COMMON_OBJECT",
+   "category": "items"
+  },
+  {
+   "name": "DUPLICATE_RANDOM_EPIC_OBJECT",
+   "category": "items"
+  },
+  {
+   "name": "DUPLICATE_RANDOM_MAGICAL_OBJECT",
+   "category": "items"
+  },
+  {
+   "name": "DUPLICATE_RANDOM_RARE_OBJECT",
+   "category": "items"
+  },
+  {
+   "name": "ENEMY_KILLED",
+   "category": "combat"
+  },
+  {
+   "name": "FIRING_EXPLODE",
+   "category": "combat"
+  },
+  {
+   "name": "FORCE_DEATH",
+   "category": "revive"
+  },
+  {
+   "name": "GAIN_DREAM_SHARDS",
+   "category": "resources"
+  },
+  {
+   "name": "GAIN_HEALTH",
+   "category": "combat"
+  },
+  {
+   "name": "GAIN_INGREDIENT",
+   "category": "resources"
+  },
+  {
+   "name": "GAIN_REROLL",
+   "category": "resources"
+  },
+  {
+   "name": "GAME_CHRONO_START",
+   "category": "run"
+  },
+  {
+   "name": "GAME_END_CHANGE_STATE",
+   "category": "run"
+  },
+  {
+   "name": "GAME_END_FAILED",
+   "category": "run"
+  },
+  {
+   "name": "GAME_END_NEXT_CHAPTER",
+   "category": "run"
+  },
+  {
+   "name": "GAME_END_SUCCESS",
+   "category": "run"
+  },
+  {
+   "name": "GAME_END_SUCCESS_SKIP_NEXT",
+   "category": "run"
+  },
+  {
+   "name": "GAME_START",
+   "category": "run"
+  },
+  {
+   "name": "GENERATE_REWARDS",
+   "category": "items"
+  },
+  {
+   "name": "GIVE_MAGICAL_OBJECT",
+   "category": "items"
+  },
+  {
+   "name": "GRIMOIRE_QUEST_FINISHED",
+   "category": "world"
+  },
+  {
+   "name": "HEALTH_MODIFICATION",
+   "category": "combat"
+  },
+  {
+   "name": "HERO_DEATH_DOOR",
+   "category": "revive"
+  },
+  {
+   "name": "HERO_REVIVE",
+   "category": "revive"
+  },
+  {
+   "name": "HOURGLASS_STATS",
+   "category": "progression"
+  },
+  {
+   "name": "INTERACTION_CANCELED",
+   "category": "world"
+  },
+  {
+   "name": "INTERACTION_FAILED",
+   "category": "world"
+  },
+  {
+   "name": "INTERACTION_REJECT",
+   "category": "world"
+  },
+  {
+   "name": "INTERACTION_REQUEST",
+   "category": "world"
+  },
+  {
+   "name": "INTERACTION_SUCCESS",
+   "category": "world"
+  },
+  {
+   "name": "INTERACTION_VALIDATE",
+   "category": "world"
+  },
+  {
+   "name": "LOCAL_INTERACTION_SUCCESS",
+   "category": "world"
+  },
+  {
+   "name": "LOCK_CONTROL",
+   "category": "state"
+  },
+  {
+   "name": "MAP_GENERATION_DONE",
+   "category": "run"
+  },
+  {
+   "name": "MAX_HEALTH_MODIFICATION",
+   "category": "combat"
+  },
+  {
+   "name": "MINIMAP_PING",
+   "category": "ui"
+  },
+  {
+   "name": "NETWORK_DAMAGE",
+   "category": "netcode"
+  },
+  {
+   "name": "NETWORK_DAMAGE_RESPONSE",
+   "category": "netcode"
+  },
+  {
+   "name": "OPEN_CHEST",
+   "category": "items"
+  },
+  {
+   "name": "POWER_UP_COLLECT_REQUEST",
+   "category": "progression"
+  },
+  {
+   "name": "REDUCE_BASIC_CD",
+   "category": "abilities"
+  },
+  {
+   "name": "REDUCE_CD",
+   "category": "abilities"
+  },
+  {
+   "name": "REDUCE_DASH_CD",
+   "category": "abilities"
+  },
+  {
+   "name": "REDUCE_DEFENSIVE_CD",
+   "category": "abilities"
+  },
+  {
+   "name": "REDUCE_PRIMARY_CD",
+   "category": "abilities"
+  },
+  {
+   "name": "REDUCE_SECONDARY_CD",
+   "category": "abilities"
+  },
+  {
+   "name": "REDUCE_TRAIT_CD",
+   "category": "abilities"
+  },
+  {
+   "name": "REDUCE_ULTIMATE_CD",
+   "category": "abilities"
+  },
+  {
+   "name": "REMOVE_ALL_COMMON_OBJECT",
+   "category": "items"
+  },
+  {
+   "name": "REMOVE_ALL_CURSED_OBJECT",
+   "category": "items"
+  },
+  {
+   "name": "REMOVE_ALL_EPIC_OBJECT",
+   "category": "items"
+  },
+  {
+   "name": "REMOVE_ALL_LEGENDARY_OBJECT",
+   "category": "items"
+  },
+  {
+   "name": "REMOVE_ALL_MAGICAL_OBJECT",
+   "category": "items"
+  },
+  {
+   "name": "REMOVE_ALL_RARE_OBJECT",
+   "category": "items"
+  },
+  {
+   "name": "REMOVE_BASIC_CHARGE",
+   "category": "abilities"
+  },
+  {
+   "name": "REMOVE_DASH_CHARGE",
+   "category": "abilities"
+  },
+  {
+   "name": "REMOVE_DEFENSIVE_CHARGE",
+   "category": "abilities"
+  },
+  {
+   "name": "REMOVE_MAGICAL_OBJECT_FROM_ID",
+   "category": "items"
+  },
+  {
+   "name": "REMOVE_MELODY",
+   "category": "items"
+  },
+  {
+   "name": "REMOVE_MODIFIER",
+   "category": "modifiers"
+  },
+  {
+   "name": "REMOVE_NEWLY_UNLOCK",
+   "category": "state"
+  },
+  {
+   "name": "REMOVE_PRIMARY_CHARGE",
+   "category": "abilities"
+  },
+  {
+   "name": "REMOVE_RANDOM_COMMON_OBJECT",
+   "category": "items"
+  },
+  {
+   "name": "REMOVE_RANDOM_CURSED_OBJECT",
+   "category": "items"
+  },
+  {
+   "name": "REMOVE_RANDOM_EPIC_OBJECT",
+   "category": "items"
+  },
+  {
+   "name": "REMOVE_RANDOM_LEGENDARY_OBJECT",
+   "category": "items"
+  },
+  {
+   "name": "REMOVE_RANDOM_MAGICAL_OBJECT",
+   "category": "items"
+  },
+  {
+   "name": "REMOVE_RANDOM_RARE_OBJECT",
+   "category": "items"
+  },
+  {
+   "name": "REMOVE_SECONDARY_CHARGE",
+   "category": "abilities"
+  },
+  {
+   "name": "REMOVE_TRAIT_CHARGE",
+   "category": "abilities"
+  },
+  {
+   "name": "REMOVE_ULTIMATE_CHARGE",
+   "category": "abilities"
+  },
+  {
+   "name": "RESET_SKILLS",
+   "category": "skills"
+  },
+  {
+   "name": "RESET_STAGGER_RESILIENCE",
+   "category": "combat"
+  },
+  {
+   "name": "REVIVE_REJECT",
+   "category": "revive"
+  },
+  {
+   "name": "REVIVE_RELEASE_TOKEN",
+   "category": "revive"
+  },
+  {
+   "name": "REVIVE_REQUEST",
+   "category": "revive"
+  },
+  {
+   "name": "REVIVE_TOKEN_LOSS",
+   "category": "revive"
+  },
+  {
+   "name": "REVIVE_VALIDATE",
+   "category": "revive"
+  },
+  {
+   "name": "SOLO_ACTIVITY_FAILED",
+   "category": "world"
+  },
+  {
+   "name": "SOLO_ACTIVITY_START",
+   "category": "world"
+  },
+  {
+   "name": "SOLO_ACTIVITY_SUCCESS",
+   "category": "world"
+  },
+  {
+   "name": "STARTUP_LINK",
+   "category": "abilities"
+  },
+  {
+   "name": "START_DAYMARE",
+   "category": "run"
+  },
+  {
+   "name": "START_NIGHTMARE",
+   "category": "run"
+  },
+  {
+   "name": "STORY_QUEST_FINISHED",
+   "category": "world"
+  },
+  {
+   "name": "SYNCHRONISATION_POINT_ACTIVATED",
+   "category": "netcode"
+  },
+  {
+   "name": "SYNCHRONISATION_POINT_VALIDATED",
+   "category": "netcode"
+  },
+  {
+   "name": "TELEPORT_SUBMAP_ENTER",
+   "category": "run"
+  },
+  {
+   "name": "TELEPORT_SUBMAP_EXIT",
+   "category": "run"
+  },
+  {
+   "name": "TUMOR_FIGHTING_START",
+   "category": "boss"
+  },
+  {
+   "name": "TUMOR_FIGHTING_STOP",
+   "category": "boss"
+  },
+  {
+   "name": "UNLOCK_CONTROL",
+   "category": "state"
+  },
+  {
+   "name": "UPDATE_MODIFIER",
+   "category": "modifiers"
+  },
+  {
+   "name": "UPDATE_OBJECT_UI",
+   "category": "items"
+  },
+  {
+   "name": "UPGRADE_LOWER_SKILL",
+   "category": "skills"
+  },
+  {
+   "name": "UPGRADE_LOWER_SKILL_TO_LEGENDARY",
+   "category": "skills"
+  },
+  {
+   "name": "UPGRADE_RANDOM_SKILL",
+   "category": "skills"
+  },
+  {
+   "name": "UPGRADE_SPECIFIC_SKILL",
+   "category": "skills"
+  },
+  {
+   "name": "USE_BLOOD_FOUNTAIN",
+   "category": "resources"
+  },
+  {
+   "name": "USE_HEAL_FOUNTAIN",
+   "category": "resources"
+  },
+  {
+   "name": "WISHING_WELL_FILLED",
+   "category": "resources"
+  }
  ]
 }

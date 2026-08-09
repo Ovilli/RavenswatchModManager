@@ -79,6 +79,7 @@ template <int N>
 std::uintptr_t WINAPI detour(void* ctx, void* arg) {
     EventHook& h = g_hooks[N];
     const auto rv = h.real(ctx, arg);
+    if (!script_any_subscribers()) return rv;
     // Build the payload AFTER the original runs (so fields it writes — e.g.
     // ctx+0xCC for level_up — are populated). Events with a verified schema
     // in data/symbols.json emit typed fields; the rest get the safe
@@ -119,7 +120,7 @@ std::uintptr_t WINAPI analytics_firehose_detour(void* mgr, void* payload,
     // Forward first so the original populates state / sends the event.
     const auto rv = g_submit_real(mgr, payload, name_desc, flag);
 
-    if (name_desc) {
+    if (name_desc && script_any_subscribers()) {
         // arg3 -> { const char* ptr @+0x0; ... }. Both the descriptor and the
         // string it points at are page-guarded: a moved layout after a game
         // patch would otherwise wild-read on every analytics event.
@@ -186,6 +187,7 @@ using Dispatch_t = void (*)(void*, void*);
 Dispatch_t     g_dispatch_real = nullptr;
 std::uintptr_t g_dispatch_va   = 0;
 std::atomic<unsigned> g_gameplay_seq{0};
+bool           g_probe_payloads = false;   // RSMM_EVENT_PROBE
 
 // Copy the event's name (char* at ev+0x20) into `out`, accepting only the
 // [A-Z0-9_] alphabet the bus uses. Returns false on a null/garbled name so a
@@ -212,6 +214,10 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
     g_dispatch_real(dispatcher, event);
 
     if (!event) return;
+    // This is the game's hottest bus — hundreds of dispatches a second in
+    // combat. With nothing subscribed there is no reason to format a payload
+    // and parse it back, so bail before doing any work.
+    if (!script_any_subscribers()) return;
     const auto* ev = static_cast<const unsigned char*>(event);
     char name[64];
     if (!gameplay_event_name(ev, name, sizeof(name))) return;
@@ -301,6 +307,26 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
                            static_cast<unsigned long long>(q[10]),
                            static_cast<unsigned long long>(q[11]));
     }
+    // Generic probe (RSMM_EVENT_PROBE=1): for every event WITHOUT a decoded
+    // layout above, publish a bounded window of the event object as hex
+    // qwords. The payload of a new event is otherwise invisible from Lua, so
+    // pinning one used to mean a C++ change + rebuild + relaunch per guess;
+    // with this a mod reads ev.w38..ev.w70 and finds the field in one session.
+    // Off by default (it triples payload size); every read is page-guarded, so
+    // an event object that really is smaller degrades to fewer fields.
+    if (g_probe_payloads && n < static_cast<int>(sizeof(buf) - 2)) {
+        for (std::uintptr_t off = 0x38; off <= 0x70; off += 8) {
+            std::uint64_t w = 0;
+            if (!mem_load(reinterpret_cast<std::uintptr_t>(ev) + off, &w)) break;
+            const int add = std::snprintf(buf + n, sizeof(buf) - n,
+                                          ",\"w%llx\":\"0x%llx\"",
+                                          static_cast<unsigned long long>(off),
+                                          static_cast<unsigned long long>(w));
+            if (add < 0 || add >= static_cast<int>(sizeof(buf) - n)) break;
+            n += add;
+        }
+    }
+
     if (n < 0 || n >= static_cast<int>(sizeof(buf) - 2)) return;
     buf[n] = '}'; buf[n + 1] = '\0';
 
@@ -327,8 +353,10 @@ bool install_gameplay_bus() {
         g_dispatch_va = 0;
         return false;
     }
-    Loader::get().log("[gameplay-events] oCGameNamedEvent bus armed "
-                      "(every gameplay event -> R.on('gameplay:<NAME>'))");
+    g_probe_payloads = flag_enabled("RSMM_EVENT_PROBE");
+    Loader::get().log(std::string("[gameplay-events] oCGameNamedEvent bus armed "
+                      "(every gameplay event -> R.on('gameplay:<NAME>'))")
+                      + (g_probe_payloads ? " [payload probe ON: ev.w38..ev.w70]" : ""));
     return true;
 }
 
@@ -611,12 +639,17 @@ bool install_hero_capture() {
 }
 
 bool install_event_hooks() {
-    const bool analytics = env_truthy("RSMM_ENABLE_GAME_EVENTS");
-    const bool gameplay  = env_truthy("RSMM_ENABLE_GAMEPLAY_EVENTS");
+    // ON BY DEFAULT since both buses are in-game proven and they are what
+    // makes the SDK worth using: without them R.on() only ever sees the three
+    // lifecycle events, so every event-driven mod needed the user to hand-edit
+    // Steam launch options first. Publishing is skipped entirely when no mod
+    // has subscribed (script_any_subscribers), so an asset-only install pays
+    // nothing for them being armed.
+    const bool analytics = !env_truthy("RSMM_DISABLE_GAME_EVENTS");
+    const bool gameplay  = !env_truthy("RSMM_DISABLE_GAMEPLAY_EVENTS");
     if (!analytics && !gameplay) {
-        Loader::get().log("[game-events] disabled (RSMM_ENABLE_GAME_EVENTS=1 bridges "
-                          "analytics events, RSMM_ENABLE_GAMEPLAY_EVENTS=1 bridges the "
-                          "oCGameNamedEvent bus to rsmm.on_event)");
+        Loader::get().log("[game-events] both buses disabled by "
+                          "RSMM_DISABLE_GAME_EVENTS / RSMM_DISABLE_GAMEPLAY_EVENTS");
         return false;
     }
     if (!fn_resolver_init()) {
