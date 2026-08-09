@@ -109,10 +109,6 @@ CONFIRMED: dict[str, tuple[str, str]] = {
         "The call in PeerStateTick's 'max reconnection time attempt' branch. "
         "Swap-removes a peer from the same global array PeerStateTick walks "
         "(0x60 stride, count decremented)."),
-    "InitialLoading_SpawnMagicalObjects": ("FUN_140259060",
-        "The call immediately after the 'InitialLoading - MagicalObject "
-        "SpawnAllObjects' stage string in the boot orchestrator, invoked with "
-        "the magical-object pool global as arg1 — the note's signature."),
     "HeroDef_LoadBaseEntity": ("FUN_14031ece0",
         "Called from the 'Level load - LoadAndGetRandomHeroEntity' stage, in "
         "the loop over the herodef list at gameScene+0x710 with count +0x718 "
@@ -145,21 +141,108 @@ CONFIRMED: dict[str, tuple[str, str]] = {
         "group name. Weaker than the rest of this table (no versiondef path "
         "reference survives in the body), so treat a failure here as the "
         "first suspect."),
+
+    # --- second pass -------------------------------------------------------
+    "MagicalObject_SpawnAllObjects": ("FUN_140259060",
+        "Invoked from the boot orchestrator right after the 'InitialLoading - "
+        "MagicalObject SpawnAllObjects' stage string as (DAT_14143cc18, "
+        "scene) — DAT_14143cc18 IS g_MagicalObjectPool, so the call matches "
+        "the declared void(void* pool, void* scene) exactly. Replaces the "
+        "stale `anchor` (parent FUN_14025d9b0 + 0x70) that landed 2 bytes "
+        "inside a call instruction; this is a real function start, so the "
+        "hazard the note described is gone."),
+    "NamedEvent_Id_FromCrc": ("FUN_14051f090",
+        "uint(uint ns, uint crc) feeding bytes to the Crc32_TableInit table "
+        "in exactly the documented interleave [ns.b0, crc.b0, ns.b1, crc.b1, "
+        "...], init 0xffffffff, final invert. 1658 callers, all static-init "
+        "event-name interners."),
+    "Netcode_Channel_LookupById": ("FUN_140241a50",
+        "param_3 is uint* (the interned u32 event id), mallocs exactly 0x20 "
+        "and writes the id at +0x00 then zeroes +0x08/+0x10/+0x14/+0x18 — the "
+        "channel-node layout in the note. Uses the same SwissTable probe "
+        "constant. Called once per event by HeroUnsubscribeAll, paired 1:1 "
+        "with Netcode_Channel_Unsubscribe."),
+    "NamedEvent_HeroUnsubscribeAll": ("FUN_140395350",
+        "Calls Netcode_Channel_Unsubscribe 34 times, each paired with a "
+        "Netcode_Channel_LookupById — the 'one lookup+unsubscribe pair per "
+        "event' shape the note calls the easiest place to read the hero "
+        "event catalog. Single arg, like its HeroSubscribeAll twin."),
+    "GameScene_FindContextByTester": ("FUN_14066cad0",
+        "Two loops over (data @+0x58, count @+0x60) and (data @+0x68, count "
+        "@+0x70), each calling tester vtbl+0x8 Test(ctx) and returning the "
+        "first match — the note verbatim."),
+    "EventQueue_Drain": ("FUN_1406642d0",
+        "Called as FUN_1406642d0(ctx + 0x1c0) immediately after the "
+        "NamedEvent_Dispatch on the world dispatcher (+0x340) in the 'Level "
+        "load - Generate rewards' stage — the exact post-GENERATE_REWARDS "
+        "drain the note describes. Takes a critical section."),
+    "Property_EvaluateByGuid": ("FUN_1406ab910",
+        "In MapCtx_DistributeEnemyCampTiers: guarded by `if (spawner+0x68 <= "
+        "0.0)` (the lazy value evaluation) and its false return leads "
+        "straight into the settings-asset-path log fallback — both halves of "
+        "the note's description."),
+    "MagicalObject_RegisterInstance": ("FUN_1403abb90",
+        "Matches all 9 offsets in the note: hero-owned set +0xd70/+0xd78/"
+        "+0xd7c, secondary collection +0xd80/+0xd88, def holder +0xf0 with "
+        "identity at +0x28, rarity +0x1b0/+0x1b8. The one-arg neighbour "
+        "matches 3."),
+    "CustomFlagList_ContainsAll": ("FUN_14066ac70",
+        "Opens with `if (count_A < count_B) return 0` — the ALL precondition "
+        "— then the nested 0x18-stride memcmp over {name @+8} with data @+8 "
+        "and count @+0x10."),
+    "CustomFlagList_ContainsAny": ("FUN_14066ad90",
+        "Same 0x18-stride scan as its immediate neighbour but with no count "
+        "precondition and an early return on first match; an empty B falls "
+        "straight out with 0, i.e. 'Empty B => false' as documented."),
+    "EnemyDefinition_ctor": ("FUN_1401df270",
+        "MSVC ctor chain oISerializable -> oIResource -> oCDtDefinition -> "
+        "oCDtEnemyDefinition, returning param_1. Sets the flag list at "
+        "+0x2c0 to oCCustomFlagList::vftable, minTier f32 @+0x2dc = "
+        "0x3dcccccd, and the tier range @+0x2e0 to {0, 5} — the note's "
+        "initialisers."),
+    "HeroDef_LoadSkinEntity": ("FUN_14031ea40",
+        "Called from the orchestrator's 'Level load - "
+        "LoadAndGetPlayedHeroEntity' stage as (herodef, u16 skin index, "
+        "&out) — the (herodef, skinIdx u16) pair in the note. Sits directly "
+        "before its HeroDef_LoadBaseEntity sibling. This is the symbol that "
+        "was previously pointing at the orchestrator itself."),
+    "BookController_ResolveTabs": ("FUN_140308cd0",
+        "oCDtEntityCpnt3DBookController::vftable[28]. Loops exactly 5 tab "
+        "entities read from self+0xf8 and writes each one's component into "
+        "self+0x120.., pulling them with Entity_FindComponentByType and the "
+        "tab type-descriptor global — the note's wire-up."),
 }
 
 # status=ok symbols proven to point at the WRONG function. Left resolvable but
 # demoted so the loader fails closed instead of detouring a stranger.
 DEMOTE: dict[str, str] = {
-    "HeroDef_LoadSkinEntity":
-        "FALSE OK (found 2026-08-09): FUN_14028e5f0 is the level-load "
-        "orchestrator (all 15 'Level load - *' stage strings), not the skin "
-        "loader — the note itself says this routine is CALLED from the "
-        "'LoadAndGetPlayedHeroEntity' stage, so it cannot be the function "
-        "that contains that stage string. verify_symbol_resolve passed it "
-        "because the address is a real function boundary; the gate proves an "
-        "address is a function, never that it is the RIGHT function. The "
-        "skin loader is the call inside that stage block; re-derive before "
-        "using. Reassigned the address to LevelLoad_Orchestrator.",
+    "InitialLoading_SpawnMagicalObjects":
+        "REDUNDANT (found 2026-08-09): the function this symbol described as "
+        "'the caller that invokes SpawnAllObjects(pool, ...)' is the boot "
+        "orchestrator FUN_140260b80, which is already "
+        "InitialLoading_LoadAllDefinitions — every 'InitialLoading - *' stage "
+        "body is inlined there. The callee it names is now carried by "
+        "MagicalObject_SpawnAllObjects (FUN_140259060). Nothing left for this "
+        "symbol to point at; hook the callee instead.",
+}
+
+# Two names that resolved to ONE function. Not an error — both are referenced
+# by loader code — but silent duplication is how a future remap moves one and
+# not the other, so it is recorded in both notes.
+ALIASES: dict[str, str] = {
+    "Vector_Grow":
+        "SAME FUNCTION as PtrVector_Resize (relocation 2026-08-09 landed both "
+        "on the one routine, and the two notes describe identical behaviour: "
+        "param_3 is the new capacity, malloc/realloc of param_3*8, capacity "
+        "at +0xc). Keep them in step on any future remap, or merge.",
+    "PtrVector_Resize":
+        "SAME FUNCTION as Vector_Grow — see that symbol's note.",
+    "Entity_FindComponentByType":
+        "SAME FUNCTION as Entity_GetComponentByTester (both resolve to "
+        "FUN_1406e3210). Pre-existing duplication, recorded here so a future "
+        "remap moves both or merges them.",
+    "Entity_GetComponentByTester":
+        "SAME FUNCTION as Entity_FindComponentByType — see that symbol's note.",
 }
 
 
@@ -370,6 +453,12 @@ def main() -> int:
     applied = 0
     if args.apply:
         by_name = {x["name"]: x for x in doc["symbols"]}
+        # CONFIRMED runs after DEMOTE, so a name in both would silently undo
+        # its own demotion — which is exactly what happened the first time
+        # InitialLoading_SpawnMagicalObjects was reclassified.
+        clash = set(CONFIRMED) & set(DEMOTE)
+        if clash:
+            raise SystemExit(f"name in both CONFIRMED and DEMOTE: {sorted(clash)}")
 
         # Demotions first: a demoted symbol releases its address, which is what
         # lets the confirmed table hand that address to its real owner.
@@ -391,6 +480,12 @@ def main() -> int:
             sym["note"] = (str(sym.get("note") or "")
                            + f" [RELOCATED to {raw} 2026-08-09, hand-confirmed: {why}]")
             applied += 1
+
+        for name, why in ALIASES.items():
+            sym = by_name.get(name)
+            if sym is None or why in str(sym.get("note") or ""):
+                continue
+            sym["note"] = str(sym.get("note") or "") + " [" + why + "]"
 
         # Scorer winners are NOT written by default. Three of the current
         # "unique"/"vftable" picks are demonstrably wrong (a caller instead of

@@ -20,16 +20,32 @@ def test_symbol_map_validates_clean():
 
 
 def test_anchor_resolution_math():
+    """parent-raw + offset, and a SEMANTIC pattern name.
+
+    The map currently carries no anchor symbols — MagicalObject_SpawnAllObjects
+    was the last one and is now a real function start in its own right — so the
+    arithmetic is exercised on a constructed Symbol. The mechanism still has to
+    work: the next inlined routine somebody documents will use it.
+    """
     smap = S.load_symbol_map()
-    s = smap.by_name("MagicalObject_SpawnAllObjects")
-    assert s is not None
-    # anchor address is parent-raw + offset (values track the current build)
-    parent = int(s.anchor["raw"].split("_", 1)[1], 16)
-    off = int(s.anchor["offset"], 16)
-    assert s.preferred_addr(smap.preferred_base) == parent + off
-    # the version-resilient pattern name is SEMANTIC (stable across game
-    # patches), not the address-derived FUN_ name — see Symbol.pattern_name.
-    assert s.pattern_name == "MagicalObject_SpawnAllObjects.parent"
+    s = S.Symbol(
+        name="Fake_Inlined",
+        kind="function",
+        category="items",
+        anchor={"raw": "FUN_140123000", "offset": "0x70"},
+        status="unverified",
+    )
+    assert s.preferred_addr(smap.preferred_base) == 0x140123000 + 0x70
+    assert s.anchor_offset == 0x70
+    # Version-resilient pattern name is SEMANTIC (stable across game patches),
+    # not the address-derived FUN_ name — see Symbol.pattern_name.
+    assert s.pattern_name == "Fake_Inlined.parent"
+
+    # Any anchor that DOES exist must name a parent that exists in the map,
+    # otherwise its offset can never be re-derived after a patch.
+    by_raw = {x.raw for x in smap.symbols if x.raw}
+    for a in [x for x in smap.symbols if x.anchor]:
+        assert a.anchor["raw"] in by_raw, f"{a.name}: anchor parent not in map"
 
 
 def test_raw_and_va_resolution():
@@ -147,13 +163,25 @@ def test_engine_gen_lua_sigs_valid():
         assert len(sig) == 1 + len(s.cabi["params"]), f"{s.name}: sig arity mismatch"
 
 
-def test_anchor_callable_carries_offset():
-    """The inlined SpawnAllObjects accessor must add its +0x70 offset."""
+def test_callable_accessor_offset_matches_anchor():
+    """A callable accessor adds its anchor offset, and adds nothing without one.
+
+    Was pinned to SpawnAllObjects' +0x70; that symbol resolves directly now, so
+    the check is expressed against whatever the map holds. The failure this
+    guards is an accessor that silently drops a nonzero offset and hands the
+    loader the containing function's entry instead of the inlined routine.
+    """
     smap = S.load_symbol_map()
-    s = smap.by_name("MagicalObject_SpawnAllObjects")
-    assert s.callable and s.anchor_offset == 0x70
     api = cmd_symbols._gen_api_header(smap)
-    assert "+ 0x70" in api
+    for s in smap.symbols:
+        if not s.callable:
+            continue
+        if s.anchor_offset:
+            assert f"+ 0x{s.anchor_offset:x}" in api, f"{s.name}: offset dropped"
+    # SpawnAllObjects specifically: it must NOT carry a leftover offset, or the
+    # detour lands 0x70 bytes into the function it now resolves to directly.
+    s = smap.by_name("MagicalObject_SpawnAllObjects")
+    assert s is not None and s.anchor_offset == 0
 
 
 def test_audit_flags_null_and_nonprologue(tmp_path, capsys):
@@ -349,15 +377,22 @@ def test_anchor_symbols_are_not_reported_broken_merely_for_being_absent(tmp_path
         assert s.name not in broken, "anchor called BROKEN for being absent"
 
 
-def test_the_known_bad_anchor_is_not_status_ok():
-    """MagicalObject_SpawnAllObjects' +0x70 lands mid-instruction (verified
-    against the shipped exe). It must not claim to be resolvable until the
-    correct internal entry point is re-derived."""
+def test_spawn_all_objects_resolves_directly_not_by_anchor():
+    """SpawnAllObjects must be a function START, never a parent+offset again.
+
+    History: it was recorded as `MagicalObject_SpawnContainingFunc + 0x70`, and
+    after the parent was remapped without re-deriving the offset that landed 2
+    bytes inside a 5-byte call — a detour there splices mid-instruction. It is
+    now its own function (invoked from the boot orchestrator as
+    SpawnAllObjects(g_MagicalObjectPool, scene)), so the safe invariant is
+    'top-level raw, no anchor'. Re-introducing an anchor here means re-deriving
+    the offset AND passing the anchor check in
+    scripts/verify_symbol_resolve.py.
+    """
     from rsmm.engine.symbols import load_symbol_map
 
     s = load_symbol_map().by_name("MagicalObject_SpawnAllObjects")
     assert s is not None
-    assert s.status != "ok", (
-        "re-promoting this needs a re-derived offset AND a passing "
-        "scripts/verify_symbol_resolve.py anchor check"
-    )
+    if s.status == "ok":
+        assert s.anchor is None, "status=ok anchor needs a re-derived offset"
+        assert s.raw and s.raw.startswith("FUN_")

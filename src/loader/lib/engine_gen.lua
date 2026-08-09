@@ -41,7 +41,7 @@ return {
   ["MagicalObjectPool_Grow"] = { pattern = "MagicalObjectPool_Grow", offset = 0x0, sig = "vpuu" },
   ["MagicalObjectPool_SourceLookup"] = { pattern = "MagicalObjectPool_SourceLookup", offset = 0x0, sig = "pppp" },
   ["MagicalObject_RegisterInstance"] = { pattern = "MagicalObject_RegisterInstance", offset = 0x0, sig = "vppu" },
-  ["MagicalObject_SpawnAllObjects"] = { pattern = "MagicalObject_SpawnAllObjects.parent", offset = 0x70, sig = "vpp" },
+  ["MagicalObject_SpawnAllObjects"] = { pattern = "MagicalObject_SpawnAllObjects", offset = 0x0, sig = "vpp" },
   ["ModifierEvent_Ctor"] = { pattern = "ModifierEvent_Ctor", offset = 0x0, sig = "ppp" },
   ["NamedEvent_ChannelMap_Find"] = { pattern = "NamedEvent_ChannelMap_Find", offset = 0x0, sig = "pppp" },
   ["NamedEvent_Delete"] = { pattern = "NamedEvent_Delete", offset = 0x0, sig = "vp" },
