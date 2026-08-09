@@ -35,6 +35,7 @@ local I = {
     state_read   = function() return kvblob end,
     state_write  = function(s) kvblob = s; return true end,
     resolve      = function() return 0 end,
+    module_base  = function() return 0x140000000 end,
     shared_get   = function() return 0 end,
     shared_set   = function() end,
 }
@@ -80,7 +81,12 @@ R.stat.modify = function(name, amount, dur)
     return true
 end
 R.combat.heal = function(n) calls[#calls + 1] = "heal:" .. tostring(n); return true end
-R.entity.ready = function() return true end
+-- A mod that acts on the hero needs BOTH: ready() to gate, hero() to compare
+-- an event payload against. Stubbing only ready() sent the real hero() into
+-- the un-mocked native layer.
+local HERO_PTR = 0x2770aa98
+R.entity.hero  = function() return HERO_PTR end
+R.entity.ready = function() return R.entity.hero() ~= nil end
 R.give.ready = function() return true end
 R.give.owned_count = function() return 3 end
 
@@ -145,13 +151,31 @@ if load_mod("bloodlust") then
     -- mod must go completely quiet rather than asking the engine once every
     -- few kills for the whole run. A playtest logged "[rsmm.stat] no hero
     -- captured yet" on repeat because of exactly this.
-    local _ready = R.entity.ready
-    R.entity.ready = function() return false end
+    local _hero = R.entity.hero
+    R.entity.hero = function() return nil end
     calls = {}
     for _ = 1, 30 do fire("gameplay:ENEMY_KILLED") end
     ok(#calls == 0, "bloodlust: silent when no hero is captured, saw "
        .. table.concat(calls, ", "))
-    R.entity.ready = _ready
+    R.entity.hero = _hero
+
+    -- Taking a hit costs stacks AND the partial streak. NETWORK_DAMAGE fires
+    -- for every damaged entity, so a hit on an ENEMY must not touch our count.
+    calls = {}
+    for _ = 1, 3 do fire("gameplay:ENEMY_KILLED") end   -- back to 1 stack
+    ok(had("stat.modify") ~= nil, "bloodlust: re-stacked after the quiet window")
+    fire("gameplay:NETWORK_DAMAGE", { target_entity = "0xdeadbeef" })
+    calls = {}
+    for _ = 1, 3 do fire("gameplay:ENEMY_KILLED") end
+    ok(had("stat.modify") ~= nil,
+       "bloodlust: damage to someone ELSE does not reset the streak")
+    -- Now hit the hero itself (the stub hero pointer).
+    fire("gameplay:NETWORK_DAMAGE",
+         { target_entity = ("0x%x"):format(R.entity.hero()) })
+    calls = {}
+    for _ = 1, 2 do fire("gameplay:ENEMY_KILLED") end
+    ok(had("stat.modify") == nil,
+       "bloodlust: a hit on the hero resets progress toward the next stack")
 
     -- Cap holds: far more kills must not exceed max_stacks modifiers.
     calls = {}
@@ -189,6 +213,17 @@ if load_mod("lucky-chests") then
     ok(c ~= nil, "lucky-chests: fires a duplicate event over many chests")
     ok(c == nil or c:find("MAGICAL_OBJECT", 1, true) ~= nil,
        "lucky-chests: default rarity maps to the any-object event, got " .. tostring(c))
+
+    -- Pity: a dry streak longer than the threshold must force a drop, so the
+    -- mod can never look uninstalled. Verified by making every roll lose.
+    local _rand = math.random
+    math.random = function() return 100 end        -- always above the chance
+    fire("run:start")                              -- clear the streak
+    calls = {}
+    for _ = 1, 7 do fire("gameplay:OPEN_CHEST") end   -- default pity_after = 6
+    local pity = had("emit:gameplay:DUPLICATE")
+    ok(pity ~= nil, "lucky-chests: pity forces a drop after the dry streak")
+    math.random = _rand
 end
 
 -- ---------------------------------------------------------------------------
@@ -207,6 +242,19 @@ if load_mod("raven-chronicle") then
     ok(#calls == 0, "raven-chronicle: made ZERO engine-mutating calls, saw: "
        .. table.concat(calls, ", "))
     ok(#logs > 0, "raven-chronicle: reported something to the log")
+    ok(R.kv.get("best_kills", 0) == 7, "raven-chronicle: recorded a personal best")
+
+    -- A weaker run must NOT overwrite the record.
+    fire("run:start")
+    for _ = 1, 2 do fire("gameplay:ENEMY_KILLED") end
+    fire("run:end")
+    ok(R.kv.get("best_kills", 0) == 7,
+       "raven-chronicle: a worse run leaves the record alone")
+    -- A better one must.
+    fire("run:start")
+    for _ = 1, 11 do fire("gameplay:ENEMY_KILLED") end
+    fire("run:end")
+    ok(R.kv.get("best_kills", 0) == 11, "raven-chronicle: a better run sets a new record")
 end
 
 io.write(("mods_spec: %d passed, %d failed\n"):format(checks - fails, fails))
