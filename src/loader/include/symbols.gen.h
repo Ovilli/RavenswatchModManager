@@ -28,13 +28,13 @@ constexpr std::uintptr_t MapCtx_DistributeEnemyCampTiers = 0x1401e8830ull;
 constexpr const char* MapCtx_DistributeEnemyCampTiers_Pattern = "MapCtx_DistributeEnemyCampTiers";
 
 // --- engine ---
-constexpr std::uintptr_t Entry_Ctor = 0x140219060ull;
+constexpr std::uintptr_t Entry_Ctor = 0x1402154b0ull;
 constexpr const char* Entry_Ctor_Pattern = "Entry_Ctor";
 constexpr std::uintptr_t Format_String = 0x1402092a0ull;
 constexpr const char* Format_String_Pattern = "Format_String";
 constexpr std::uintptr_t LevelLoad_Orchestrator = 0x14028e5f0ull;
 constexpr const char* LevelLoad_Orchestrator_Pattern = "LevelLoad_Orchestrator";
-constexpr std::uintptr_t String_Assign = 0x140540ff0ull;
+constexpr std::uintptr_t String_Assign = 0x140529860ull;
 constexpr const char* String_Assign_Pattern = "String_Assign";
 constexpr std::uintptr_t Vector_Grow = 0x140155230ull;
 constexpr const char* Vector_Grow_Pattern = "Vector_Grow";
@@ -312,9 +312,9 @@ constexpr std::uintptr_t Reward_InitAllRewards = 0x1401e9800ull;
 constexpr const char* Reward_InitAllRewards_Pattern = "Reward_InitAllRewards";
 
 // --- skins ---
-constexpr std::uintptr_t SkinGrid_Populate = 0x1401f4e80ull;
+constexpr std::uintptr_t SkinGrid_Populate = 0x1401f16f0ull;
 constexpr const char* SkinGrid_Populate_Pattern = "SkinGrid_Populate";
-constexpr std::uintptr_t SkinRoster_Build = 0x1401e0550ull;
+constexpr std::uintptr_t SkinRoster_Build = 0x1401dd2c0ull;
 constexpr const char* SkinRoster_Build_Pattern = "SkinRoster_Build";
 constexpr std::uintptr_t g_RosterManager = 0x141436590ull;
 

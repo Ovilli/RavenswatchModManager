@@ -184,6 +184,25 @@ LOCATORS: dict[str, dict] = {
                     "0x1b0", "0x1b8"],
         "lines_min": 120, "lines_max": 200,
     },
+    # --- skins ------------------------------------------------------------
+    "Entry_Ctor": {
+        "strings": ["oCAdditionalContent::vftable"],
+        "lines_min": 35, "lines_max": 55,
+    },
+    "SkinRoster_Build": {
+        "calls": ["Entry_Ctor"],
+    },
+    "String_Assign": {
+        "called_by": ["SkinRoster_Build"],
+        "callers_min": 2000,
+        "lines_max": 60,
+    },
+    "SkinGrid_Populate": {
+        "calls": ["Vector_Grow"],
+        "offsets": ["0x2f8", "0x300", "0x304"],
+        "lines_min": 300, "lines_max": 450,
+    },
+
     "GameScene_FindContextByTester": {
         "offsets": ["0x58", "0x60", "0x68", "0x70"],
         "called_by": ["MapCtx_DistributeEnemyCampTiers"],

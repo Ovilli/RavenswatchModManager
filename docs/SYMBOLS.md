@@ -29,10 +29,10 @@ Total: **160** symbols across 16 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `Entry_Ctor` | `0x140219060` | ❓ unverified | ✔ | void(void* base, uint32_t count) |
+| `Entry_Ctor` | `0x1402154b0` | ✅ ok | ✔ | void(void* base, uint32_t count) |
 | `Format_String` | `0x1402092a0` | ✅ ok |  | printf-style format/string builder (e.g. 'Is Hero liked by {}', 'Chance to give {} MO')… |
 | `LevelLoad_Orchestrator` | `0x14028e5f0` | ✅ ok |  | i64(void* levelGs) |
-| `String_Assign` | `0x140540ff0` | ❓ unverified | ✔ | void(void* dst_slot, const StringDesc* src) |
+| `String_Assign` | `0x140529860` | ✅ ok | ✔ | void(void* dst_slot, const StringDesc* src) |
 | `Vector_Grow` | `0x140155230` | ✅ ok | ✔ | void(void* vec, void* /*dead RDX*/, uint32_t new_cap /*R8*/) |
 
 ## engine-core
@@ -237,8 +237,8 @@ Total: **160** symbols across 16 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `SkinGrid_Populate` | `0x1401f4e80` | ❓ unverified | ✔ | void(void* ctx, void* arg) |
-| `SkinRoster_Build` | `0x1401e0550` | ❓ unverified |  | Skin-pack roster builder. Selectable-skin count (9) is baked into its loop; a new selec… |
+| `SkinGrid_Populate` | `0x1401f16f0` | ✅ ok | ✔ | void(void* ctx, void* arg) |
+| `SkinRoster_Build` | `0x1401dd2c0` | ✅ ok |  | Skin-pack roster builder. Selectable-skin count (9) is baked into its loop; a new selec… |
 | `g_RosterManager` | `0x141436590` | 📍 va |  | Manager pointer global (relocated by the live image base) walked by the skin-grid popul… |
 
 ## ui

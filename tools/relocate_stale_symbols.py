@@ -210,6 +210,30 @@ CONFIRMED: dict[str, tuple[str, str]] = {
         "&out) — the (herodef, skinIdx u16) pair in the note. Sits directly "
         "before its HeroDef_LoadBaseEntity sibling. This is the symbol that "
         "was previously pointing at the orchestrator itself."),
+    # --- skins: all four recovered 2026-08-09, restoring hook_skins ---------
+    "Entry_Ctor": ("FUN_1402154b0",
+        "The oCAdditionalContent ARRAY ctor: void(base, uint32 count), loops "
+        "`count` times storing oISerializable::vftable then "
+        "oCAdditionalContent::vftable and initialising each string slot to the "
+        "empty sentinel DAT_140edaba0 with the 0x80000000 literal bit — the "
+        "exact contract hook_skins.cpp declares. Sole storer of that vftable "
+        "with this signature."),
+    "SkinRoster_Build": ("FUN_1401dd2c0",
+        "Sole caller of Entry_Ctor, void(ctx). Carries the baked selectable-skin "
+        "count of 9 the note describes, plus the manager list writes (+0x8 "
+        "count, +0x10 head, +0x18 tail), key +0x3c, index +0x48 and the string "
+        "slots +0x50/+0x60/+0x70/+0x90 — 10 of the 12 documented offsets."),
+    "String_Assign": ("FUN_140529860",
+        "void(dst_slot, StringDesc*). Masks the source length with 0x7fffffff "
+        "and branches on the sign bit — that IS the literal-bit convention — "
+        "then writes the empty sentinel DAT_140edaba0 / 0x80000000 into the "
+        "destination slot. Called from SkinRoster_Build; 2312 callers overall."),
+    "SkinGrid_Populate": ("FUN_1401f16f0",
+        "void(ctx, arg). Calls the manager vtable[1] filter as "
+        "`(**(code**)(*mgr + 8))(mgr, node)` and pushes the node only when it "
+        "returns 3 — the documented predicate — growing the vector at ctx+0x2f8 "
+        "via Vector_Grow and writing count/cap at +0x300/+0x304."),
+
     "BookController_ResolveTabs": ("FUN_140308cd0",
         "oCDtEntityCpnt3DBookController::vftable[28]. Loops exactly 5 tab "
         "entities read from self+0xf8 and writes each one's component into "

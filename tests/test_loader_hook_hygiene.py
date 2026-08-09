@@ -31,15 +31,15 @@ LOADER_SRC = Path(__file__).resolve().parent.parent / "src" / "loader" / "src"
 # (tools/relocate_stale_symbols.py), after which the literal becomes
 # Sym::<Name>_Pattern and the file leaves this list.
 LEGACY_LITERAL_ALLOWLIST = {
-    # 5 targets, ALL of them wrong on the shipped build: four resolve
-    # mid-function and "FUN_140154c20" is an aligned-array deallocator being
-    # called as a vector-grow. The symbols are status=unverified, so there is
-    # no semantic name to switch to yet. hook_install/resolve_checked refuse
-    # them at runtime, which disables the skin feature until they are
-    # re-derived.
-    "hook_skins.cpp": 5,
-    # No symbol exists for this routine and no pattern is in the DB, so it
-    # resolves to nothing and the capability disables itself.
+    # No symbol exists for these routines and no pattern is in the DB, so each
+    # resolves to nothing and its capability disables itself. Relocate the
+    # routine into data/symbols.json (tools/relocate_stale_symbols.py), then
+    # switch the call to Sym::<Name>_Pattern and drop the entry from here.
+    #
+    # hook_skins.cpp used to hold five of these — all wrong on the shipped
+    # build, one of them an aligned-array deallocator being called as a
+    # vector-grow. All four of its symbols were relocated on 2026-08-09 and it
+    # is now clean.
     "hook_skills.cpp": 1,
     "hook_spawn.cpp": 1,
 }

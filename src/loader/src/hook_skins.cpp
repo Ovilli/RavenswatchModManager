@@ -12,6 +12,7 @@
 #include "hook_skins.h"
 #include "fn_resolver.h"
 #include "hook_util.h"
+#include "symbols.gen.h"  // GENERATED — Sym::
 #include "loader.h"
 #include "mem_safe.h"
 
@@ -433,31 +434,24 @@ bool install_skin_hooks() {
         return false;
     }
 
-    // NONE of these four names is safe on the shipped build. They are the
-    // addresses these routines had two builds ago; the pattern DB keeps them
-    // alive as legacy aliases, so each one resolves and each one passes
-    // fn_verify — and then lands 0x90 to 0xac0 bytes INSIDE an unrelated
-    // function, because the routines were merged into larger ones. The
-    // "roster builder" target sits inside an oCDtEntityCpntMinimapMarker
-    // destructor. `FUN_140154c20`, used below as the vector-grow helper, is
-    // an aligned-array DEALLOCATOR — calling it as a grow would free the
-    // caller's array.
-    //
-    // The symbol map records all four as status=unverified, so there are no
-    // semantic patterns to switch to yet; they need re-deriving (see
-    // tools/relocate_stale_symbols.py). Until then hook_install refuses them
-    // on the .pdata check and the whole feature disables itself, which is the
-    // correct outcome: a mid-function detour corrupts the function it lands
-    // in, and the crash surfaces somewhere unrelated much later.
-    if (!resolve_checked("skin-hook", "entry ctor", "FUN_140214bb0",
+    // These four were FUN_<addr> literals from two builds ago. Every one of
+    // them resolved and passed fn_verify while landing 0x90 to 0xac0 bytes
+    // INSIDE an unrelated function — the "roster builder" target sat inside an
+    // oCDtEntityCpntMinimapMarker destructor, and the vector-grow helper was
+    // an aligned-array DEALLOCATOR that would have freed the caller's array.
+    // The feature was disabled by the .pdata gate rather than corrupting the
+    // game. All four are now relocated in data/symbols.json and referenced by
+    // semantic name, which is stable across game patches.
+    if (!resolve_checked("skin-hook", "entry ctor", Sym::Entry_Ctor_Pattern,
                          reinterpret_cast<void**>(&g_entry_ctor))
-        || !resolve_checked("skin-hook", "string assign", "FUN_1405288b0",
+        || !resolve_checked("skin-hook", "string assign",
+                            Sym::String_Assign_Pattern,
                             reinterpret_cast<void**>(&g_string_assign))) {
         Loader::get().log("[skin-hook] disabled: helper routines do not resolve "
                           "to function starts on this build");
         return false;
     }
-    if (!hook_install("skin-hook", "roster builder", "FUN_1401dcae0",
+    if (!hook_install("skin-hook", "roster builder", Sym::SkinRoster_Build_Pattern,
                       reinterpret_cast<void*>(&hook_roster_builder),
                       reinterpret_cast<void**>(&g_real_builder),
                       &g_builder_va)) {
@@ -473,9 +467,10 @@ bool install_skin_hooks() {
     // brand-new keys). Off by default; see docs/_re/kinds/skins.md (A1/A2).
     g_force_show = flag_enabled("RSMM_SKIN_FORCE_SHOW");
     if (g_force_show) {
-        if (resolve_checked("skin-hook", "vector grow", "FUN_140154c20",
+        if (resolve_checked("skin-hook", "vector grow", Sym::Vector_Grow_Pattern,
                             reinterpret_cast<void**>(&g_vec_grow))
-            && hook_install("skin-hook", "grid populate", "FUN_1401f0f10",
+            && hook_install("skin-hook", "grid populate",
+                            Sym::SkinGrid_Populate_Pattern,
                             reinterpret_cast<void*>(&hook_grid_populate),
                             reinterpret_cast<void**>(&g_real_populate))) {
             Loader::get().log("[skin-hook] force-show enabled "
