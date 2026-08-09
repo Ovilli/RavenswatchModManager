@@ -35,8 +35,19 @@ namespace {
 
 // --- layout constants (preferred-base 0x140000000) -----------------------
 constexpr std::uintptr_t kPreferredBase = 0x140000000ull;
-// Global: oCAdditionalContentManager* (pointer-load `MOV RAX,[rip]->...`).
-constexpr std::uintptr_t kMgrPtrGlobalVA = 0x141436590ull;
+// Global: oCAdditionalContentManager*. UNKNOWN on the shipped build.
+//
+// This held 0x141436590, carried over from an older build. That address has
+// ZERO references anywhere in the current decompiled corpus, so it points at
+// arbitrary bytes — and va_globals_trusted() cannot catch that, because it
+// only proves the game build matches the symbol map's build, not that any
+// individual address was re-derived for it. Keeping a known-wrong absolute in
+// the source is how it gets dereferenced by the next person who flips the
+// feature on, so it is zero: every read is guarded against that below.
+//
+// It may not exist at all on this build — SkinRoster_Build keeps the roster on
+// the screen ctx rather than in a global manager (see append_custom_packs).
+constexpr std::uintptr_t kMgrPtrGlobalVA = 0;
 
 // Entry (oCAdditionalContent) is 0xA0 bytes. Field offsets the builder writes:
 constexpr std::size_t kEntrySize = 0xA0;
@@ -102,6 +113,14 @@ VecGrow_t       g_vec_grow      = nullptr;
 Filter_t        g_real_filter = nullptr;
 std::once_flag  g_filter_hooked;
 void install_filter_hook(void* mgr);  // defined below; called from append_custom_packs
+
+// Set true ONLY after append_custom_packs has been rewritten against the
+// contiguous-array roster this build uses, and playtested. See the long note
+// on append_custom_packs: the current implementation splices into a linked
+// list the game no longer has, and the builder truncates the array to 9 on
+// every rebuild anyway. Kept as a named constant rather than deleted code so
+// the recovered symbols and the RE stay together for whoever does the rewrite.
+constexpr bool kAppendPathValidForThisBuild = false;
 
 // Diagnostic: when RSMM_SKIN_FORCE_SHOW=1, after the engine populates the
 // skin grid we force-push our appended nodes regardless of the vtable[1]
@@ -202,9 +221,44 @@ void link_entry(void* mgr, void* e, std::int32_t idx, const SkinPackDef& def) {
 }
 
 void append_custom_packs() {
-    // kMgrPtrGlobalVA is an absolute .data address: on a build the symbol map
-    // wasn't derived from it points at arbitrary bytes, so gate on the build
-    // fingerprint AND page-guard the read before dereferencing what it holds.
+    // STRUCTURAL REFUSAL — read this before re-enabling.
+    //
+    // Everything below models the roster as a LINKED LIST hanging off a global
+    // oCAdditionalContentManager: it allocates a 0xA0 entry and splices it in
+    // via next/back/owner at +0x08/+0x10/+0x18. That is not how the shipped
+    // build works. SkinRoster_Build (FUN_1401dd2c0, recovered 2026-08-09)
+    // keeps the roster as a CONTIGUOUS ARRAY on the screen ctx —
+    // {data @ +0x13c8, count @ +0x13d0, cap @ +0x13d4} — and allocates it as
+    // one malloc(0x5a0) = 9 * 0xA0.
+    //
+    // Two consequences, both fatal to this code path:
+    //   1. Writing list pointers into an array element overwrites that entry's
+    //      real fields. There is no list to splice into.
+    //   2. The builder TRUNCATES to 9 every time it runs: anything past index 8
+    //      gets its destructor (slot 0x10) called and the array is realloc'd
+    //      back down to 0x5a0 with cap reset to 9. A 10th entry appended after
+    //      the fact is destroyed and freed on the next rebuild.
+    //
+    // kMgrPtrGlobalVA is stale on top of that — 0x141436590 has ZERO references
+    // anywhere in the current decompiled corpus. va_globals_trusted() cannot
+    // catch it: that only proves the game build matches the symbol map's build,
+    // not that this particular address was ever re-derived for it.
+    //
+    // The correct strategy for the array model is to post-detour the builder
+    // and grow ctx+0x13c8 to 9+N, constructing the extra entries with
+    // Entry_Ctor — which is why the four recovered symbols stay wired up here.
+    // Doing that blind, without being able to playtest it, is how you corrupt
+    // somebody's save, so the path refuses instead.
+    if (!kAppendPathValidForThisBuild) {
+        Loader::get().log("[skin-hook] append refused: see kAppendPathValid"
+                          "ForThisBuild in hook_skins.cpp");
+        return;
+    }
+    if (kMgrPtrGlobalVA == 0) {
+        Loader::get().log("[skin-hook] manager global address unknown for this "
+                          "build; refusing to dereference a placeholder");
+        return;
+    }
     if (!Loader::get().va_globals_trusted()) {
         Loader::get().log("[skin-hook] game build != symbol-map build; "
                           "manager global not trusted, skipping append");
@@ -429,6 +483,17 @@ bool load_pack_defs() {
 
 bool install_skin_hooks() {
     if (!load_pack_defs()) return false;
+    if (!kAppendPathValidForThisBuild) {
+        // Nothing this hook could do is correct on this build, so do not
+        // detour at all rather than installing a no-op passthrough.
+        Loader::get().log("[skin-hook] disabled: the roster is a contiguous "
+                          "array on the screen ctx (+0x13c8/+0x13d0/+0x13d4, 9 "
+                          "entries) truncated to 9 on every rebuild, not the "
+                          "linked list this code appends to. Symbols are "
+                          "recovered and correct; the append path needs a "
+                          "rewrite. See hook_skins.cpp.");
+        return false;
+    }
     if (!fn_resolver_init()) {
         Loader::get().log("[skin-hook] fn_resolver_init failed");
         return false;

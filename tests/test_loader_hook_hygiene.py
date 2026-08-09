@@ -152,3 +152,52 @@ def test_boolean_flags_go_through_flag_enabled():
         f"rsmm_loader_flags.json; a raw getenv makes the toggle in the app a "
         f"no-op. Add value-carrying vars to _VALUED_ENV_VARS instead."
     )
+
+
+# Absolute .data addresses that are still hardcoded, with their justification.
+# Shrink this list; never grow it. The fix is a `kind="data"` entry in
+# data/symbols.json referenced as Sym::<Name>, which at least gets the address
+# re-derived by the remap pipeline and reported by `rsmm symbols`.
+DATA_VA_ALLOWLIST = {
+    # Reward-def registry begin/end. Verified live: DAT_141440420 and
+    # DAT_141440428 have 75 corpus references each and are the pair
+    # Registry_RegisterInstance itself pushes through.
+    "hook_rewards.cpp": 2,
+}
+
+_DATA_VA = re.compile(r"0x14[0-9a-f]{7}ull")
+
+
+def test_no_new_hardcoded_data_addresses():
+    """An absolute .data address is the FUN_<addr> problem for globals.
+
+    A code literal at least fails loudly now (the .pdata gate refuses to hook
+    it). A data literal just reads whatever bytes live there. hook_skins.cpp
+    carried 0x141436590 as the additional-content manager pointer; that address
+    has ZERO references anywhere in the current decompiled corpus, and
+    Loader::va_globals_trusted() could not catch it — that only proves the game
+    build matches the symbol map's build, not that this particular address was
+    ever re-derived for it.
+    """
+    found: dict[str, int] = {}
+    for src in _sources():
+        body = _strip_comments(src.read_text())
+        # kPreferredBase / kImgBase are the image base itself, not a datum.
+        hits = [h for h in _DATA_VA.findall(body) if h != "0x140000000ull"]
+        if hits:
+            found[src.name] = len(hits)
+
+    unexpected = {f: n for f, n in found.items() if f not in DATA_VA_ALLOWLIST}
+    assert not unexpected, (
+        f"hardcoded absolute data address(es) in {unexpected}. Add a "
+        f"kind=\"data\" symbol to data/symbols.json and use Sym::<Name> so the "
+        f"address is re-derived on a remap instead of silently rotting."
+    )
+    grew = {f: (n, DATA_VA_ALLOWLIST[f]) for f, n in found.items()
+            if n > DATA_VA_ALLOWLIST[f]}
+    assert not grew, f"data-address count grew (file: got, allowed) {grew}"
+    cleared = {f for f in DATA_VA_ALLOWLIST if f not in found}
+    assert not cleared, (
+        f"{cleared} no longer hardcode data addresses — remove them from "
+        f"DATA_VA_ALLOWLIST so the gate keeps them clean"
+    )
