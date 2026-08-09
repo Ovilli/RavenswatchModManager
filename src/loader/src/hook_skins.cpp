@@ -435,8 +435,46 @@ bool resolve(const char* name, void** out) {
         return false;
     }
     *out = reinterpret_cast<void*>(va);
+    // Log whether the target is a real function entry. These five names are
+    // FUN_<addr> keys from an older build, kept alive as legacy aliases in the
+    // pattern DB — four of them match perfectly at addresses that are 0x90 to
+    // 0xac0 bytes INSIDE a current function, because the routines were merged
+    // into larger ones. fn_verify cannot see that (the bytes do match); only
+    // .pdata can. Hooking such a target splices a jump into the middle of an
+    // unrelated body. The call sites decide what to do with this — see
+    // hook_target_ok below.
+    if (!fn_is_function_start(va)) {
+        Loader::get().log(std::string("[skin-hook] WARNING ") + name + " @ "
+                          + hex_of(va) + " is NOT a function start (.pdata); "
+                          "the pattern is from an older build and now matches "
+                          "mid-function");
+    }
     Loader::get().log(std::string("[skin-hook] ") + name + " -> " + hex_of(va));
     return true;
+}
+
+// Fail-closed gate for anything about to receive a MinHook detour. Splicing a
+// jump into the middle of a live function corrupts it, so a target that .pdata
+// does not list as an entry point is refused outright unless the operator has
+// explicitly accepted the risk. Opt-out exists because the skin feature has
+// been exercised in-game against these very addresses: if that continues to
+// work the flag keeps it working, and if it does not, the default now refuses
+// instead of corrupting the game on boot.
+bool hook_target_ok(const char* what, std::uintptr_t va) {
+    if (fn_is_function_start(va)) return true;
+    if (flag_enabled("RSMM_SKIN_ALLOW_MIDFUNC_HOOK")) {
+        Loader::get().log(std::string("[skin-hook] ") + what + " @ " + hex_of(va)
+                          + " is mid-function; hooking anyway "
+                            "(RSMM_SKIN_ALLOW_MIDFUNC_HOOK=1)");
+        return true;
+    }
+    Loader::get().log(std::string("[skin-hook] REFUSING to hook ") + what + " @ "
+                      + hex_of(va) + ": not a function start. The symbol map "
+                      "entry for this routine is status=unverified and its "
+                      "legacy pattern now matches mid-function. Re-derive it "
+                      "(tools/relocate_stale_symbols.py) or set "
+                      "RSMM_SKIN_ALLOW_MIDFUNC_HOOK=1 to force.");
+    return false;
 }
 
 } // namespace
@@ -453,6 +491,10 @@ bool install_skin_hooks() {
     if (!resolve("FUN_140214bb0", reinterpret_cast<void**>(&g_entry_ctor))) return false;
     if (!resolve("FUN_1405288b0", reinterpret_cast<void**>(&g_string_assign))) return false;
 
+    if (!hook_target_ok("roster builder",
+                        reinterpret_cast<std::uintptr_t>(builder_va))) {
+        return false;
+    }
     const auto rc = MH_CreateHook(builder_va,
                                   reinterpret_cast<LPVOID>(&hook_roster_builder),
                                   reinterpret_cast<LPVOID*>(&g_real_builder));
@@ -477,7 +519,9 @@ bool install_skin_hooks() {
     if (g_force_show) {
         void* populate_va = nullptr;
         if (resolve("FUN_1401f0f10", &populate_va)
-            && resolve("FUN_140154c20", reinterpret_cast<void**>(&g_vec_grow))) {
+            && resolve("FUN_140154c20", reinterpret_cast<void**>(&g_vec_grow))
+            && hook_target_ok("grid populate",
+                              reinterpret_cast<std::uintptr_t>(populate_va))) {
             if (MH_CreateHook(populate_va,
                               reinterpret_cast<LPVOID>(&hook_grid_populate),
                               reinterpret_cast<LPVOID*>(&g_real_populate)) == MH_OK
