@@ -111,7 +111,8 @@ function M.require(name, spec)
                 for i = 1, select("#", ...) do
                     if type(select(i, ...)) == "function" then
                         error(("rsmm.api: %s.%s: callbacks cannot cross mods "
-                            .. "(use R.on/R.emit instead)"):format(name, k), 2)
+                            .. "(have the provider R.emit an event and "
+                            .. "subscribe with R.on)"):format(name, k), 2)
                     end
                 end
                 local ok, res = I.api_call(name, k, ...)

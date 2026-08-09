@@ -62,15 +62,22 @@ src/rsmm/sdk/
 Lua side (loader DLL):
 
 ```
+src/loader/lib/
+  rsmm.lua            # R = require "rsmm" — the core surface (R.on/R.emit,
+                      #   R.entity/R.combat/R.stat/R.xp, R.give, R.item,
+                      #   R.talent, R.options, R.hook, R.kv, R.debug) and it
+                      #   merges the submodules below onto R
+  engine_gen.lua      # GENERATED: semantic name -> {pattern, offset, sig}
 src/loader/lua/
-  rsmm.lua            # R = require "rsmm" — re-exports everything below
-  rsmm/health.lua     # R.health (crash count, last_error)
+  rsmm/health.lua     # R.health (crash count, last_error, checkpoint)
   rsmm/config.lua     # R.config.get/set/on_change
   rsmm/i18n.lua       # R.i18n.t
   rsmm/api.lua        # R.api.expose/require
-  rsmm/events.lua     # R.on / R.emit
-  rsmm/schedule.lua   # R.schedule.{next_frame, after}
+  rsmm/schedule.lua   # R.schedule.{next_frame, after, next_main, after_main}
 ```
+
+Both trees are merged into `<game>/rsmm/lib/` by `rsmm install-loader`, which
+is why `require "rsmm"` and `require "rsmm.schedule"` both resolve in-game.
 
 `rsmm.lua` is rebuilt by `rsmm build` from the Python side so the Lua API
 declarations stay in lockstep with the Python registrations.
@@ -261,6 +268,31 @@ R.api.version("itempack")   -- "1.0.0" | nil
 R.api.list()                -- { itempack = { mod_id = ..., version = ... } }
 ```
 
+### Signalling: `R.emit`
+
+`R.api` is the *call* direction. For the other direction — "something
+happened, whoever cares should react" — emit an event; every mod's state
+receives it.
+
+```lua
+-- producer
+R.emit("itempack:crafted", { id = "FrostBlade", tier = 3 })
+
+-- any consumer
+R.on("itempack:crafted", function(ev)
+  R.log(ev.from, "crafted", ev.id)     -- ev.from = the producer's mod id
+end)
+```
+
+Payloads must be data (they are marshalled between states). The loader
+stamps `event`, `source = "mod"` and `from = <mod id>` onto every payload,
+**overwriting** whatever you set — that is what stops a mod from
+impersonating the gameplay bus, whose `source` field is how `R.schedule`'s
+main-thread pump and `R.stat`'s re-assert know they are running on the
+game's own thread. For the same reason the loader's own names are refused:
+the `gameplay:` / `ui:` / `rsmm:` prefixes and the lifecycle events
+(`setup`, `ready`, `tick`, `exit`). Prefix yours with your mod id.
+
 ## Plugin registry
 
 Third-party Python packages can register SDK extensions via PEP-621
@@ -364,21 +396,19 @@ Trust model:
 No revocation list in v3 (out of scope). Users can hand-delete keys from
 `~/.rsmm/keys/`.
 
-## TLS-callback DLL injection (unlocks `R.hook`)
+## TLS-callback DLL injection (dropped)
 
-Goal: install our DLL before Ravenswatch.exe's entry-point runs, so
-MinHook patches land before the AT integrity sweep.
+The original plan was to install MinHook from a `PIMAGE_TLS_CALLBACK` inside
+`winhttp.dll`, which runs before the EXE's `_DllMainCRTStartup`, so patches
+would land ahead of an anti-tamper integrity sweep.
 
-* The `winhttp.dll` proxy is already loaded via `WINEDLLOVERRIDES=…n,b…`.
-  That happens before `_DllMainCRTStartup` of the EXE, but the runtime is
-  not yet initialized.
-* TLS callback signature `PIMAGE_TLS_CALLBACK` runs once per process at
-  `DLL_PROCESS_ATTACH`. By placing the MinHook initialization in a TLS
-  callback inside our DLL, we run earlier than `DllMain`, which is enough
-  to land hooks before the EXE's `main()` initializes anti-tamper.
-* Gated by env var `RSMM_TLS_HOOK=1` during the trial period; default off.
-
-Plumbing scaffold lives in `src/loader/src/tls_callback.cpp`.
+It was never needed. [The protector
+teardown](/reverse-engineering/protector/) established that the AT is a
+one-shot unpacker with no runtime integrity monitor, so hooks installed from
+the ordinary loader thread are never re-checked. The scaffold sat behind
+`RSMM_TLS_HOOK=1` for a year doing nothing but calling `MH_Initialize`
+early, and its "queue pending hooks" half was an empty stub — so it was
+removed. `R.hook` works from the normal `DllMain` path.
 
 ## Versioning + game updates
 

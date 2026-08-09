@@ -360,6 +360,21 @@ rsmm = {
         return 1
     end,
     unhook = function() end,
+    -- Mirrors the native emit: reserved names refused, provenance stamped by
+    -- the loader (never by the caller), then dispatched to every subscriber.
+    emit = function(name, payload)
+        for _, p in ipairs({ "gameplay:", "ui:", "rsmm:" }) do
+            if name:sub(1, #p) == p then error("rsmm.emit: '" .. name .. "' is reserved") end
+        end
+        for _, e in ipairs({ "setup", "ready", "tick", "exit", "*" }) do
+            if name == e then error("rsmm.emit: '" .. name .. "' is a lifecycle event") end
+        end
+        local ev = {}
+        for k, v in pairs(payload or {}) do ev[k] = v end
+        ev.event, ev.source, ev.from = name, "mod", "spec_mod"
+        _G.__spec_fire(name, ev)
+        return true
+    end,
 }
 
 -- Fire an event to every matching subscriber (exact name + "*" wildcard).
@@ -368,6 +383,8 @@ local function fire(name, payload)
     for _, cb in ipairs(events[name] or {}) do cb(payload, name) end
     for _, cb in ipairs(events["*"] or {}) do cb(payload, name) end
 end
+-- The mocked native emit dispatches through the same path.
+_G.__spec_fire = fire
 
 -- Make R.entity.hero() succeed: publish a plausible hero + wire the store.
 -- Pointer chain matches the engine (FUN_140399d00): ctx = *(hero+0x2f8) is a
@@ -1012,6 +1029,46 @@ do
     local ok2, refused2 = pcall(R.options.set, "Forced seed", nil)
     check(ok2 and refused2 == false, "nil for a numeric option is refused, not raised")
     check(R.options.get("Forced seed") == 12345, "a refused write leaves the value alone")
+end
+
+-- 19. R.emit: cross-mod signalling -----------------------------------------
+do
+    local got
+    R.on("spec:thing", function(ev) got = ev end)
+    check(R.emit("spec:thing", { n = 7 }) == true, "emit returns true")
+    check(got ~= nil and got.n == 7, "subscriber receives the payload")
+    check(got and got.event == "spec:thing", "loader stamps the event name")
+    check(got and got.source == "mod", "loader stamps source=mod")
+    check(got and got.from == "spec_mod", "loader stamps the emitting mod id")
+
+    -- Provenance is NOT forgeable: a mod claiming source="gameplay" would be
+    -- claiming "I am on the game's main thread", which is what R.schedule's
+    -- main pump and R.stat's re-assert gate on.
+    got = nil
+    R.emit("spec:thing", { source = "gameplay", from = "someone_else" })
+    check(got and got.source == "mod" and got.from == "spec_mod",
+          "a caller cannot forge source/from")
+
+    -- Reserved namespaces are refused.
+    for _, name in ipairs({ "gameplay:FAKE", "ui:press", "rsmm:x",
+                            "ready", "tick", "exit", "setup", "*" }) do
+        check(not pcall(R.emit, name, {}), "emit refuses reserved name " .. name)
+    end
+
+    -- Argument validation.
+    check(not pcall(R.emit, 42, {}), "emit rejects a non-string name")
+    check(not pcall(R.emit, "spec:thing", "nope"), "emit rejects a non-table payload")
+    check(pcall(R.emit, "spec:thing"), "emit accepts a nil payload")
+
+    -- Emitting from inside a handler re-enters; must not blow up or lose the
+    -- outer dispatch (the native side is a recursive mutex + snapshot).
+    local depth, seen = 0, 0
+    R.on("spec:nested", function()
+        seen = seen + 1
+        if depth < 2 then depth = depth + 1; R.emit("spec:nested", {}) end
+    end)
+    R.emit("spec:nested", {})
+    check(seen == 3, "re-entrant emit dispatches each level exactly once")
 end
 
 -- ---------------------------------------------------------------------------

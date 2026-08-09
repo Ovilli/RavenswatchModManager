@@ -770,6 +770,61 @@ int lua_api_call(lua_State* L) {
     return 2;
 }
 
+// rsmm._internal.emit(name, payload) -> bool
+//   Publish an event to EVERY mod's state (including the caller's). This is
+//   the signalling half of cross-mod communication: R.api carries data CALLS,
+//   but a callback cannot cross a lua_State boundary, so a producer tells
+//   consumers "something happened" by emitting.
+//
+//   Two rules make a forged event impossible to mistake for an engine one:
+//
+//   * Reserved names are refused. The loader owns "gameplay:" / "ui:" and the
+//     lifecycle events, and a mod that could emit under those names could
+//     drive another mod's engine-mutating handlers whenever it liked.
+//   * `source` and `from` are stamped by the loader, overwriting whatever the
+//     mod supplied. This one matters for thread safety: R.schedule's MAIN
+//     thread pump and R.stat's re-assert both gate on `ev.source ==
+//     "gameplay"`, i.e. "we are inside the NamedEvent_Dispatch detour on the
+//     game's own thread". A mod emitting that from the ticker thread would
+//     run engine-mutating callbacks off-thread — the exact race those gates
+//     exist to prevent (see [[loader-thread-model]]).
+int lua_emit_event(lua_State* L) {
+    const char* name = luaL_checkstring(L, 1);
+    if (!lua_isnoneornil(L, 2)) luaL_checktype(L, 2, LUA_TTABLE);
+
+    static const char* const kReservedPrefix[] = { "gameplay:", "ui:", "rsmm:" };
+    static const char* const kReservedExact[]  = { "setup", "ready", "tick", "exit", "*" };
+    for (const char* p : kReservedPrefix) {
+        if (std::strncmp(name, p, std::strlen(p)) == 0) {
+            return luaL_error(L, "rsmm.emit: '%s' is reserved by the loader "
+                                 "(prefix your own events with '<modid>:')", name);
+        }
+    }
+    for (const char* e : kReservedExact) {
+        if (std::strcmp(name, e) == 0) {
+            return luaL_error(L, "rsmm.emit: '%s' is a lifecycle event and "
+                                 "cannot be emitted by a mod", name);
+        }
+    }
+
+    nlohmann::json payload = nlohmann::json::object();
+    if (lua_istable(L, 2) && !lua_to_json(L, 2, payload)) {
+        return luaL_error(L, "rsmm.emit: payload must be data "
+                             "(nil/boolean/number/string/table)");
+    }
+    if (!payload.is_object()) payload = nlohmann::json::object();
+    auto* m = current_from_state(L);
+    payload["event"]  = name;
+    payload["source"] = "mod";
+    payload["from"]   = m ? m->id : std::string("(unknown)");
+
+    // Recursive mutex: emitting from inside a handler re-enters on the same
+    // thread, and emit_locked dispatches over a snapshot, so that is safe.
+    script_emit_event_json(name, payload.dump());
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
 int lua_register_asset_override(lua_State* L) {
     const char* decoded = luaL_checkstring(L, 1);
     const char* src     = luaL_checkstring(L, 2);
@@ -1356,6 +1411,7 @@ void register_api(lua_State* L) {
         { "tags",                    lua_mod_tags },
         { "register_asset_override", lua_register_asset_override },
         { "on_event",                lua_on_event },
+        { "emit",                    lua_emit_event },
         { "commit",                  lua_commit },
         { "hook",                    lua_hook },
         { "unhook",                  lua_unhook },

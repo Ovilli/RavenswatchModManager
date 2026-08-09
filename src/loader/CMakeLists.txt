@@ -60,8 +60,7 @@ set(LOADER_SRC
     src/hook_lua.cpp
     src/script_lua.cpp
     src/fn_resolver.cpp
-    src/fn_call.cpp
-    src/tls_callback.cpp)
+    src/fn_call.cpp)
 
 add_library(winhttp SHARED
     ${LOADER_SRC}
