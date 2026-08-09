@@ -2994,6 +2994,66 @@
    "refs": [
     "docs/_re"
    ]
+  },
+  {
+   "name": "Registry_UnregisterInstance",
+   "kind": "function",
+   "category": "resource",
+   "raw": "FUN_140311a50",
+   "status": "ok",
+   "signature": "void(void*)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "Exact inverse of Registry_RegisterInstance: decrements the SAME per-instance registration counter at +0x280 and, when it reaches zero, removes the instance from the global list and its per-class registry entry. Reached from every definition's PreUnload (vftable slot 19). 17 callers.",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "SharedRef_Release",
+   "kind": "function",
+   "category": "library",
+   "raw": "FUN_140111cf0",
+   "status": "ok",
+   "signature": "void(void*)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "Refcounted-reference release, the counterpart to SharedRef_AddRefCopy: atomically decrements the count at holder+0x8 and, on the last reference, invokes the deleter through the owner at +0x10 (vtable slot 1). 104 callers \u2014 the release half of every typed resource ref in the engine.",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "Definition_PreUnload",
+   "kind": "function",
+   "category": "library",
+   "raw": "FUN_140310230",
+   "status": "ok",
+   "signature": "void(void*)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "Teardown counterpart to Definition_PostLoad: vftable slot 19 on every oCDtDefinition subclass. Releases the def's typed refs and calls Registry_UnregisterInstance. Slot 19 has 13 distinct implementations, one per definition type, all reachable via a {\"vftable\": {\"class\": ..., \"slot\": 19}} locator if a specific one is ever needed.",
+   "refs": [
+    "docs/_re"
+   ],
+   "locator": {
+    "vftable": {
+     "class": "oCDtDefinition",
+     "slot": 19
+    }
+   }
   }
  ],
  "_event_catalog_doc": "Observation events the loader republishes by raw name from the central telemetry sink (Analytics_SubmitNamedEvent). No address \u2014 the firehose detour reads the name at runtime, so any name the game adds also fires even if absent here. These are confirmed names harvested by string-xref (cluster 0x140f13a00-0x140f13f00); subscribe via R.on('<name>', cb) with RSMM_ENABLE_GAME_EVENTS=1. Shown by `rsmm symbols events`.",

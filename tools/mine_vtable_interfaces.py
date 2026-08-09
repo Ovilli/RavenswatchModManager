@@ -19,6 +19,28 @@ the ubiquitous no-op stubs (one appears in 4153 vtables). The signal is the
 opposite — a slot whose implementations are all DIFFERENT is carrying real
 per-class behaviour.
 
+Slot conventions found so far (a slot number means the same thing across a
+whole family, so one identification names N functions at once):
+
+  Definition  slot 18  PostLoad   — resolve typed refs, then register the
+                                    instance in the class registry. 13 impls,
+                                    all named.
+  Definition  slot 19  PreUnload  — release refs, then
+                                    Registry_UnregisterInstance. 13 impls.
+  Controller  slot 11  cast-by-type-hash — compares an int type id against the
+                                    class's own hashes and returns
+                                    `this + <base offset>` for the matching
+                                    sub-object. 22 impls.
+  unlock cond slot 14  IsUnlocked — see data/symbols.json. 5 impls; the
+                                    AdditionalContent one is the ownership
+                                    check and is deliberately unnamed.
+
+Most slots are NOT like this. Scalar deleting destructors and static
+type-descriptor getters dominate, which is what `classify()` filters: the first
+full run reported 117 "interface" slots and only 82 survived that filter. Do
+not name a slot until you have read two or three implementations and they
+plainly answer the same question.
+
     tools/mine_vtable_interfaces.py                  # ranked report
     tools/mine_vtable_interfaces.py --family Unlock  # one family
     tools/mine_vtable_interfaces.py --json
@@ -90,6 +112,37 @@ def family_key(cls: str) -> str:
     return base
 
 
+# Compiler-generated or trivial bodies. A slot whose implementations are all
+# one of these is a C++ convention, not a decision the engine makes: naming 23
+# of them buys nothing. Measured on the first full run — the large majority of
+# "interface" slots are exactly this, which is why the tool has to say so
+# rather than hand back 117 equally-ranked rows.
+_DELETING_DTOR = re.compile(r"param_2 & 1|uParam2 & 1")
+_CONST_GETTER = re.compile(r"^\s*return (DAT_|_DAT_|&?[A-Za-z_]\w*);\s*$", re.M)
+
+
+def classify(body: str) -> str:
+    """boilerplate | trivial | behaviour"""
+    if not body:
+        return "trivial"
+    n = body.count("\n")
+    if _DELETING_DTOR.search(body) and n < 25:
+        return "boilerplate"          # scalar deleting destructor
+    if n <= 9 and _CONST_GETTER.search(body):
+        return "boilerplate"          # returns a static type/desc global
+    if n <= 4:
+        return "trivial"              # empty or `return 0`
+    return "behaviour"
+
+
+def load_corpus() -> dict:
+    out = {}
+    for line in CORPUS.open():
+        rec = json.loads(line)
+        out[int(rec["addr"], 16)] = rec.get("code") or ""
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--family", help="substring filter on the family key")
@@ -101,6 +154,7 @@ def main() -> int:
 
     vfts = load_vftables()
     stubs = stub_functions(vfts)
+    code = load_corpus()
 
     known = set()
     if SYM.exists():
@@ -137,8 +191,12 @@ def main() -> int:
             shared = sum(1 for v in impls.values() if len(v) > 1)
             unnamed = sum(1 for va in impls
                           if f"FUN_{int(va, 16):x}" not in known)
+            kinds = Counter(classify(code.get(int(va, 16), "")) for va in impls)
+            if kinds["behaviour"] < args.min_impls:
+                continue          # all boilerplate: a convention, not a method
             findings.append({
                 "family": fam, "slot": slot, "implementations": distinct,
+                "behaviour": kinds["behaviour"], "boilerplate": kinds["boilerplate"],
                 "unnamed": unnamed, "shared_bodies": shared,
                 "examples": [
                     {"class": cs[0], "va": va}
@@ -148,18 +206,19 @@ def main() -> int:
 
     # Most implementations first: that is the most-dispatched method, and
     # naming it pays off at every one of those call sites.
-    findings.sort(key=lambda f: (-f["implementations"], f["family"], f["slot"]))
+    # Rank by how many implementations carry real behaviour, not by raw count.
+    findings.sort(key=lambda f: (-f["behaviour"], f["family"], f["slot"]))
 
     if args.json:
         print(json.dumps(findings[:args.top], indent=1))
         return 0
 
     print(f"{len(vfts)} vtables, {len(stubs)} shared stubs filtered out\n")
-    print(f"{'family':<22} {'slot':>4} {'impls':>6} {'unnamed':>8}  example class")
+    print(f"{'family':<22} {'slot':>4} {'behav':>6} {'boiler':>7} {'unnamed':>8}  example")
     for f in findings[:args.top]:
         ex = f["examples"][0]
-        print(f"{f['family']:<22} {f['slot']:>4} {f['implementations']:>6} "
-              f"{f['unnamed']:>8}  {ex['class'][:46]} @{ex['va']}")
+        print(f"{f['family']:<22} {f['slot']:>4} {f['behaviour']:>6} "
+              f"{f['boilerplate']:>7} {f['unnamed']:>8}  {ex['class'][:40]} @{ex['va']}")
     print(f"\n{len(findings)} interface slot(s) with >= {args.min_impls} "
           f"distinct implementations.")
     print("Decompile a few implementations of one slot; they all answer the "

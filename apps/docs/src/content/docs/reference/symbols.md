@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **175** symbols across 16 categories.
+Total: **178** symbols across 16 categories.
 
 ## enemies
 
@@ -182,6 +182,7 @@ Total: **175** symbols across 16 categories.
 | `ChallengeDef_PostLoad` | `0x140324f30` | ✅ ok | ✔ | bool(void* definition) |
 | `Definition_DeserializeBase` | `0x140310180` | ✅ ok |  | bool(void* def, void* reader) |
 | `Definition_PostLoad` | `0x140310200` | ✅ ok | ✔ | bool(void* definition) |
+| `Definition_PreUnload` | `0x140310230` | ✅ ok | ✔ | void(void*) |
 | `DreamShardDef_PostLoad` | `0x140312690` | ✅ ok | ✔ | bool(void* definition) |
 | `EnemyCampTierDef_PostLoad` | `0x140319620` | ✅ ok | ✔ | bool(void* definition) |
 | `GameModeDefaultDef_PostLoad` | `0x140325950` | ✅ ok | ✔ | bool(void* definition) |
@@ -219,6 +220,7 @@ Total: **175** symbols across 16 categories.
 | `Rt_FailFast` | `0x140cc7e04` | ✅ ok |  | CRT fail-fast: FUN_140cc7c90 then _invoke_watson (noreturn). 4459 refs. Naming it de-no… |
 | `SharedRef_AddRefCopy` | `0x1401663a0` | ✅ ok |  | base virtual: copies {*(this+0x18) data, *(this+0x20) refblock} into out and addrefs at… |
 | `SharedRef_AddRefCopy_b` | `0x14021e390` | ✅ ok |  | identical twin of SharedRef_AddRefCopy (separate TU); base virtual in 298 vtables. Deco… |
+| `SharedRef_Release` | `0x140111cf0` | ✅ ok | ✔ | void(void*) |
 | `TypeDesc_HashName` | `0x1404fd5d0` | ✅ ok |  | base virtual: vcall slot0 -> type descriptor, reads its oCString name (inline @+8 / hea… |
 | `TypeDesc_HashName_b` | `0x1401c96e0` | ✅ ok |  | identical twin of TypeDesc_HashName (separate TU); base virtual in 292 vtables. Decompi… |
 | `oCString_Dtor` | `0x140111d90` | ✅ ok |  | oCString destructor: SSO threshold 0xf; heap buffer's real alloc ptr at [buf-8], frees … |
@@ -248,6 +250,7 @@ Total: **175** symbols across 16 categories.
 | `InitialLoading_LoadAllDefinitions` | `0x140260b80` | ✅ ok |  | void(void* nameFilter) |
 | `Registry_EnumInstances` | `0x140241750` | ✅ ok | ✔ | void*(void* unused, void* out3, void** classDescPtr) |
 | `Registry_RegisterInstance` | `0x1403119d0` | ✅ ok |  | void(void* definition) |
+| `Registry_UnregisterInstance` | `0x140311a50` | ✅ ok | ✔ | void(void*) |
 | `ResourceRef_Resolve` | `0x140492540` | ✅ ok |  | void(void* refBlock, void* classDesc, void** outResolved, void* policy) |
 | `Resource_LookupByPath` | `0x14049b2a0` | ✅ ok | ✔ | void*(const char* decoded_path, void*, void*, void*) |
 

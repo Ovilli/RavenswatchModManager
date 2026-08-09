@@ -58,6 +58,13 @@ inline Definition_PostLoad_fn Definition_PostLoad() {
     return reinterpret_cast<Definition_PostLoad_fn>(rsmm::fn_resolve(Sym::Definition_PostLoad_Pattern));
 }
 
+// Definition_PreUnload  (Definition_PreUnload)
+//   void(void*)
+using Definition_PreUnload_fn = void(*)(void*);
+inline Definition_PreUnload_fn Definition_PreUnload() {
+    return reinterpret_cast<Definition_PreUnload_fn>(rsmm::fn_resolve(Sym::Definition_PreUnload_Pattern));
+}
+
 // DreamShardDef_PostLoad  (DreamShardDef_PostLoad)
 //   bool(void* definition)
 using DreamShardDef_PostLoad_fn = uint32_t(*)(void*);
@@ -455,11 +462,25 @@ inline Registry_EnumInstances_fn Registry_EnumInstances() {
     return reinterpret_cast<Registry_EnumInstances_fn>(rsmm::fn_resolve(Sym::Registry_EnumInstances_Pattern));
 }
 
+// Registry_UnregisterInstance  (Registry_UnregisterInstance)
+//   void(void*)
+using Registry_UnregisterInstance_fn = void(*)(void*);
+inline Registry_UnregisterInstance_fn Registry_UnregisterInstance() {
+    return reinterpret_cast<Registry_UnregisterInstance_fn>(rsmm::fn_resolve(Sym::Registry_UnregisterInstance_Pattern));
+}
+
 // Resource_LookupByPath  (Resource_LookupByPath)
 //   void*(const char* decoded_path, void*, void*, void*)
 using Resource_LookupByPath_fn = void*(*)(const char*, void*, void*, void*);
 inline Resource_LookupByPath_fn Resource_LookupByPath() {
     return reinterpret_cast<Resource_LookupByPath_fn>(rsmm::fn_resolve(Sym::Resource_LookupByPath_Pattern));
+}
+
+// SharedRef_Release  (SharedRef_Release)
+//   void(void*)
+using SharedRef_Release_fn = void(*)(void*);
+inline SharedRef_Release_fn SharedRef_Release() {
+    return reinterpret_cast<SharedRef_Release_fn>(rsmm::fn_resolve(Sym::SharedRef_Release_Pattern));
 }
 
 // SkinGrid_Populate  (SkinGrid_Populate)
