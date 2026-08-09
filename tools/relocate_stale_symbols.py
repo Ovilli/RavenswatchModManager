@@ -45,6 +45,7 @@ After --apply:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -258,6 +259,51 @@ _CODE_CALL = re.compile(r"FUN_(1[0-9a-f]{8})\(")
 # corpus
 
 
+def assert_corpus_matches_exe(exe: Path | None = None) -> str:
+    """Refuse to relocate against a corpus from a DIFFERENT game build.
+
+    Every locator here works by matching CONTENT — strings, constants, struct
+    offsets, call graph — against the decompiled corpus. If the corpus came
+    from another build, those matches are just as confident and completely
+    wrong, and the result is a `status="ok"` symbol pointing at unrelated code:
+    the false-ok class this whole toolchain exists to prevent. The corpus used
+    to carry no build identity at all, so the only way to notice was the
+    accident of checking address overlap by hand.
+
+    Returns a human-readable summary. Raises SystemExit on a mismatch.
+    """
+    meta_path = CORPUS.parent / "corpus.meta.json"
+    if not meta_path.exists():
+        raise SystemExit(
+            f"{meta_path} missing — the corpus carries no build identity, so "
+            f"there is no way to tell whether it describes the shipped exe. "
+            f"Regenerate the corpus and stamp it before relocating anything."
+        )
+    meta = json.loads(meta_path.read_text())
+
+    if exe is None:
+        sys.path.insert(0, str(REPO / "scripts"))
+        import gen_function_patterns as gen  # noqa: E402, I001
+        exe = Path(gen.DEFAULT_EXE)
+    if not exe.exists():
+        # No exe to compare against (CI, a fresh clone). Say so rather than
+        # silently trusting the stamp.
+        return f"corpus stamp {meta['game_exe_sha256'][:12]} (exe not present; unverified)"
+
+    sha = hashlib.sha256(exe.read_bytes()).hexdigest()
+    if sha != meta.get("game_exe_sha256"):
+        raise SystemExit(
+            f"CORPUS/EXE MISMATCH — refusing to relocate.\n"
+            f"  corpus was built from {meta.get('game_exe_sha256', '?')[:16]}\n"
+            f"  the exe on disk is    {sha[:16]}\n"
+            f"The game was patched since this corpus was generated. Content "
+            f"matches against it would be confident and wrong. Regenerate the "
+            f"corpus first, then re-stamp corpus.meta.json."
+        )
+    return (f"corpus verified against the shipped exe "
+            f"({meta['function_count']} functions, build {sha[:12]})")
+
+
 class Corpus:
     def __init__(self) -> None:
         self.code: dict[int, str] = {}
@@ -364,6 +410,8 @@ def main() -> int:
     ap.add_argument("--margin", type=float, default=3.0,
                     help="winner must beat runner-up by this much")
     args = ap.parse_args()
+
+    print(assert_corpus_matches_exe())
 
     doc = json.loads(SYM.read_text())
     corpus = Corpus()
