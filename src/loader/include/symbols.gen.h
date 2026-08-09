@@ -185,10 +185,18 @@ constexpr const char* XpComponent_XpForLevel_Pattern = "XpComponent_XpForLevel";
 constexpr std::uintptr_t XpComponent_vftable = 0x140f231b0ull;
 
 // --- heroes ---
+constexpr std::uintptr_t ChallengeUnlock_IsUnlocked = 0x1402b1100ull;
+constexpr const char* ChallengeUnlock_IsUnlocked_Pattern = "ChallengeUnlock_IsUnlocked";
 constexpr std::uintptr_t HeroDef_LoadBaseEntity = 0x14031ece0ull;
 constexpr const char* HeroDef_LoadBaseEntity_Pattern = "HeroDef_LoadBaseEntity";
 constexpr std::uintptr_t HeroDef_LoadSkinEntity = 0x14031ea40ull;
 constexpr const char* HeroDef_LoadSkinEntity_Pattern = "HeroDef_LoadSkinEntity";
+constexpr std::uintptr_t HeroProgressionUnlock_IsUnlocked = 0x1402b2b10ull;
+constexpr const char* HeroProgressionUnlock_IsUnlocked_Pattern = "HeroProgressionUnlock_IsUnlocked";
+constexpr std::uintptr_t HeroRankLock_IsUnlocked = 0x1402b1c10ull;
+constexpr const char* HeroRankLock_IsUnlocked_Pattern = "HeroRankLock_IsUnlocked";
+constexpr std::uintptr_t HeroStoryUnlock_IsUnlocked = 0x1402b21a0ull;
+constexpr const char* HeroStoryUnlock_IsUnlocked_Pattern = "HeroStoryUnlock_IsUnlocked";
 
 // --- items ---
 constexpr std::uintptr_t Entity_GiveHandler = 0x1403c7560ull;

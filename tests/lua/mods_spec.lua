@@ -321,5 +321,29 @@ if load_mod("raven-chronicle") then
     ok(R.kv.get("best_kills", 0) == 11, "raven-chronicle: a better run sets a new record")
 end
 
+-- ---------------------------------------------------------------------------
+-- 5. hero-unlock: opens progression gates, never the ownership one
+-- ---------------------------------------------------------------------------
+if load_mod("hero-unlock") then
+    local asked = {}
+    local _unlock = R.hero.unlock_progression
+    R.hero.unlock_progression = function()
+        -- Mirror the SDK: resolve each gate symbol, count what it would hook.
+        for _, n in ipairs({ "HeroProgressionUnlock_IsUnlocked",
+                             "HeroRankLock_IsUnlocked",
+                             "HeroStoryUnlock_IsUnlocked",
+                             "ChallengeUnlock_IsUnlocked" }) do
+            asked[#asked + 1] = n
+        end
+        return #asked
+    end
+    fire("ready")
+    ok(#asked == 4, "hero-unlock: opens all four progression gates")
+    local joined = table.concat(asked, ",")
+    ok(not joined:find("AdditionalContent", 1, true),
+       "hero-unlock: never touches the ownership gate")
+    R.hero.unlock_progression = _unlock
+end
+
 io.write(("mods_spec: %d passed, %d failed\n"):format(checks - fails, fails))
 os.exit(fails == 0 and 0 or 1)

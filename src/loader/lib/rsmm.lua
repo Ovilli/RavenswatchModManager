@@ -2206,6 +2206,54 @@ R.hero = {}
 -- Live hero dispatcher (instant — captured from the first hero-anchored event,
 -- shared with R.give). This is the right "current hero" handle for emitting
 -- events at the hero; it does NOT require the heal/pickup capture R.combat does.
+--- Unlock the PROGRESSION gates on the hero-select screen.
+--
+-- Every oIGameUnlockConditionData subclass answers "may the player use this?"
+-- through vftable slot 14, `bool IsUnlocked(this)`. The hero picker calls it
+-- per condition when it draws a portrait, so forcing the progression-flavoured
+-- ones to true makes progression-locked heroes selectable without touching the
+-- save — Profile_*.ob is checksummed and Steam Cloud would fight an edit
+-- anyway, so a runtime hook is the durable answer.
+--
+-- WHAT THIS DELIBERATELY DOES NOT TOUCH
+-- oe::AdditionalContentGameUnlockConditionData::vftable[14] is the same slot on
+-- the same base, and its body is `return *(int*)(this+0x28) == 3` — the
+-- OWNERSHIP check. Forcing that would hand out content the player has not
+-- bought, so it has no symbol in data/symbols.json and cannot be reached from
+-- here. A hero gated on ownership stays locked; only progression, rank, story
+-- and challenge gates open.
+--
+-- Returns the number of gates opened (0 if the symbols are unavailable on this
+-- build, which fails closed rather than guessing at an address).
+local PROGRESSION_GATES = {
+    "HeroProgressionUnlock_IsUnlocked",
+    "HeroRankLock_IsUnlocked",
+    "HeroStoryUnlock_IsUnlocked",
+    "ChallengeUnlock_IsUnlocked",
+}
+local _gates_hooked = false
+
+function R.hero.unlock_progression()
+    if _gates_hooked then return 0 end
+    if not (R.hook and I.resolve) then return 0 end
+    _gates_hooked = true
+    local n = 0
+    for _, name in ipairs(PROGRESSION_GATES) do
+        local va = I.resolve(name)
+        -- nil/0 when the symbol is unverified for this build: fail closed
+        -- rather than hooking a stale address.
+        if va and va ~= 0 then
+            -- bool(this): one pointer arg, integer return. Returning 1 short
+            -- circuits the gate; returning nil would replay the original.
+            local ok, slot, why = pcall(R.hook, va, "up", function() return 1 end)
+            if ok and (slot ~= nil or why == "already-hooked") then n = n + 1 end
+        end
+    end
+    R.log(("[rsmm.hero] progression gates opened: %d/%d "
+           .. "(ownership gates untouched)"):format(n, #PROGRESSION_GATES))
+    return n
+end
+
 function R.hero.handle() return _give_hero end
 function R.hero.ready()  return _give_hero ~= nil end
 

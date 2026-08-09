@@ -2634,6 +2634,102 @@
    "refs": [
     "docs/_re/kinds/spawn-system.md"
    ]
+  },
+  {
+   "name": "HeroProgressionUnlock_IsUnlocked",
+   "kind": "function",
+   "category": "heroes",
+   "raw": "FUN_1402b2b10",
+   "status": "ok",
+   "signature": "bool(void* condition_data)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*"
+    ]
+   },
+   "locator": {
+    "vftable": {
+     "class": "oe::dt::HeroProgressionUnlockConditionData",
+     "slot": 14
+    }
+   },
+   "note": "Progression gate: returns required(settings+0xb0) <= reached(data+0x40). IsUnlocked is vftable slot 14 on every oIGameUnlockConditionData subclass (the base leaves 10/11/14 as stubs and each subclass overrides them; 14 is the one taking only `this` and returning a bool). DELIBERATELY EXCLUDED from this set: oe::AdditionalContentGameUnlockConditionData::vftable[14] (0x140699250), whose body is `return *(int*)(this+0x28) == 3` \u2014 that is the ownership / entitlement check, not progression. Forcing it true would hand out content the player has not bought, so no symbol is provided for it.",
+   "refs": [
+    "src/loader/lib/rsmm.lua"
+   ]
+  },
+  {
+   "name": "HeroRankLock_IsUnlocked",
+   "kind": "function",
+   "category": "heroes",
+   "raw": "FUN_1402b1c10",
+   "status": "ok",
+   "signature": "bool(void* condition_data)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*"
+    ]
+   },
+   "locator": {
+    "vftable": {
+     "class": "oe::dt::HeroRankGameLockConditionData",
+     "slot": 14
+    }
+   },
+   "note": "Hero-rank gate: compares the required rank against the profile's rank. IsUnlocked is vftable slot 14 on every oIGameUnlockConditionData subclass (the base leaves 10/11/14 as stubs and each subclass overrides them; 14 is the one taking only `this` and returning a bool). DELIBERATELY EXCLUDED from this set: oe::AdditionalContentGameUnlockConditionData::vftable[14] (0x140699250), whose body is `return *(int*)(this+0x28) == 3` \u2014 that is the ownership / entitlement check, not progression. Forcing it true would hand out content the player has not bought, so no symbol is provided for it.",
+   "refs": [
+    "src/loader/lib/rsmm.lua"
+   ]
+  },
+  {
+   "name": "HeroStoryUnlock_IsUnlocked",
+   "kind": "function",
+   "category": "heroes",
+   "raw": "FUN_1402b21a0",
+   "status": "ok",
+   "signature": "bool(void* condition_data)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*"
+    ]
+   },
+   "locator": {
+    "vftable": {
+     "class": "oe::dt::HeroStoryUnlockConditionData",
+     "slot": 14
+    }
+   },
+   "note": "Story gate: returns false until the story counter reaches the threshold. IsUnlocked is vftable slot 14 on every oIGameUnlockConditionData subclass (the base leaves 10/11/14 as stubs and each subclass overrides them; 14 is the one taking only `this` and returning a bool). DELIBERATELY EXCLUDED from this set: oe::AdditionalContentGameUnlockConditionData::vftable[14] (0x140699250), whose body is `return *(int*)(this+0x28) == 3` \u2014 that is the ownership / entitlement check, not progression. Forcing it true would hand out content the player has not bought, so no symbol is provided for it.",
+   "refs": [
+    "src/loader/lib/rsmm.lua"
+   ]
+  },
+  {
+   "name": "ChallengeUnlock_IsUnlocked",
+   "kind": "function",
+   "category": "heroes",
+   "raw": "FUN_1402b1100",
+   "status": "ok",
+   "signature": "bool(void* condition_data)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*"
+    ]
+   },
+   "locator": {
+    "vftable": {
+     "class": "oe::dt::CompleteChallengeGameUnlockConditionData",
+     "slot": 14
+    }
+   },
+   "note": "Challenge gate: true once the referenced challenge is complete. IsUnlocked is vftable slot 14 on every oIGameUnlockConditionData subclass (the base leaves 10/11/14 as stubs and each subclass overrides them; 14 is the one taking only `this` and returning a bool). DELIBERATELY EXCLUDED from this set: oe::AdditionalContentGameUnlockConditionData::vftable[14] (0x140699250), whose body is `return *(int*)(this+0x28) == 3` \u2014 that is the ownership / entitlement check, not progression. Forcing it true would hand out content the player has not bought, so no symbol is provided for it.",
+   "refs": [
+    "src/loader/lib/rsmm.lua"
+   ]
   }
  ],
  "_event_catalog_doc": "Observation events the loader republishes by raw name from the central telemetry sink (Analytics_SubmitNamedEvent). No address \u2014 the firehose detour reads the name at runtime, so any name the game adds also fires even if absent here. These are confirmed names harvested by string-xref (cluster 0x140f13a00-0x140f13f00); subscribe via R.on('<name>', cb) with RSMM_ENABLE_GAME_EVENTS=1. Shown by `rsmm symbols events`.",

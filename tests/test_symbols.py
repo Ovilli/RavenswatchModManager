@@ -396,3 +396,24 @@ def test_spawn_all_objects_resolves_directly_not_by_anchor():
     if s.status == "ok":
         assert s.anchor is None, "status=ok anchor needs a re-derived offset"
         assert s.raw and s.raw.startswith("FUN_")
+
+
+def test_no_symbol_for_the_ownership_unlock_gate():
+    """The DLC/ownership check must stay unreachable from the SDK.
+
+    IsUnlocked is vftable slot 14 on every oIGameUnlockConditionData subclass,
+    and Hero Unlock forces the progression-flavoured ones to true. The same
+    slot on oe::AdditionalContentGameUnlockConditionData is
+    `return *(int*)(this+0x28) == 3` — the ownership check. A symbol for it
+    would make "unlock content you have not bought" a one-line mod, so the map
+    deliberately does not carry one and this keeps it that way.
+    """
+    smap = S.load_symbol_map()
+    banned = ("additionalcontent", "ownership", "entitlement")
+    hits = [s.name for s in smap.symbols
+            if any(b in s.name.lower() for b in banned)
+            and "isunlocked" in s.name.lower()]
+    assert not hits, (
+        f"{hits} exposes the ownership unlock gate. Progression, rank, story "
+        f"and challenge gates are fair game; ownership is not."
+    )

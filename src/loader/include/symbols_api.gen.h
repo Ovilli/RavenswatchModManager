@@ -30,6 +30,13 @@ inline BookController_ResolveTabs_fn BookController_ResolveTabs() {
     return reinterpret_cast<BookController_ResolveTabs_fn>(rsmm::fn_resolve(Sym::BookController_ResolveTabs_Pattern));
 }
 
+// ChallengeUnlock_IsUnlocked  (ChallengeUnlock_IsUnlocked)
+//   bool(void* condition_data)
+using ChallengeUnlock_IsUnlocked_fn = uint32_t(*)(void*);
+inline ChallengeUnlock_IsUnlocked_fn ChallengeUnlock_IsUnlocked() {
+    return reinterpret_cast<ChallengeUnlock_IsUnlocked_fn>(rsmm::fn_resolve(Sym::ChallengeUnlock_IsUnlocked_Pattern));
+}
+
 // EntityValueEntry_Ctor  (EntityValueEntry_Ctor)
 //   void(void*, void*)
 using EntityValueEntry_Ctor_fn = void(*)(void*, void*);
@@ -215,6 +222,27 @@ inline GroupLevelComponent_Ctor_fn GroupLevelComponent_Ctor() {
 using HeroController_Ctor_fn = void*(*)(void*);
 inline HeroController_Ctor_fn HeroController_Ctor() {
     return reinterpret_cast<HeroController_Ctor_fn>(rsmm::fn_resolve(Sym::HeroController_Ctor_Pattern));
+}
+
+// HeroProgressionUnlock_IsUnlocked  (HeroProgressionUnlock_IsUnlocked)
+//   bool(void* condition_data)
+using HeroProgressionUnlock_IsUnlocked_fn = uint32_t(*)(void*);
+inline HeroProgressionUnlock_IsUnlocked_fn HeroProgressionUnlock_IsUnlocked() {
+    return reinterpret_cast<HeroProgressionUnlock_IsUnlocked_fn>(rsmm::fn_resolve(Sym::HeroProgressionUnlock_IsUnlocked_Pattern));
+}
+
+// HeroRankLock_IsUnlocked  (HeroRankLock_IsUnlocked)
+//   bool(void* condition_data)
+using HeroRankLock_IsUnlocked_fn = uint32_t(*)(void*);
+inline HeroRankLock_IsUnlocked_fn HeroRankLock_IsUnlocked() {
+    return reinterpret_cast<HeroRankLock_IsUnlocked_fn>(rsmm::fn_resolve(Sym::HeroRankLock_IsUnlocked_Pattern));
+}
+
+// HeroStoryUnlock_IsUnlocked  (HeroStoryUnlock_IsUnlocked)
+//   bool(void* condition_data)
+using HeroStoryUnlock_IsUnlocked_fn = uint32_t(*)(void*);
+inline HeroStoryUnlock_IsUnlocked_fn HeroStoryUnlock_IsUnlocked() {
+    return reinterpret_cast<HeroStoryUnlock_IsUnlocked_fn>(rsmm::fn_resolve(Sym::HeroStoryUnlock_IsUnlocked_Pattern));
 }
 
 // Hero_GainExperience  (Hero_GainExperience)
