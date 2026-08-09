@@ -20,6 +20,7 @@
 
 #include "MinHook.h"
 #include "loader.h"
+#include "health.h"
 #include "fn_resolver.h"
 #include "hook_io.h"
 #include "hook_engine.h"
@@ -82,6 +83,9 @@ static void loader_thread_cxx() {
         const fs::path game = module_dir();
         auto& L = rsmm::Loader::get();
         L.init(game);
+        // Before any mod code runs: attribute an unclosed canary from the
+        // previous launch (i.e. a boot crash) and open one for this session.
+        rsmm::health::init(L.mods_dir(), L.session());
         L.load_asset_map(game / "asset_map.json");
         L.scan_mods(game / "mods");
         L.load_state();
@@ -147,6 +151,7 @@ static void loader_thread_cxx() {
         }
 
         rsmm::script_emit_event("ready");
+        rsmm::health::checkpoint("ready");
         L.log("loader thread complete");
 
         // Background ticker: fires "tick" every 500 ms so mods can poll
@@ -173,6 +178,11 @@ static void loader_thread_cxx() {
                 if ((++n & 1) == 0) {
                     rsmm::script_reload_changed();
                 }
+                // Four ticks (~2 s) of the pump running after "ready" is the
+                // definition of "this launch booted": mod init and the whole
+                // hook install phase are behind us. Close the canary so the
+                // NEXT launch doesn't blame this one for a later crash.
+                if (n == 4) rsmm::health::mark_boot_ok();
                 if (g_ticker_idle) SetEvent(g_ticker_idle);
             }
             if (g_ticker_idle) SetEvent(g_ticker_idle);
@@ -248,12 +258,18 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved) {
         // a thread from DllMain deadlocks on the loader lock.)
         g_ticker_stop.store(true, std::memory_order_release);
         if (g_ticker_idle) {
-            WaitForSingleObject(g_ticker_idle, 2000);
-            CloseHandle(g_ticker_idle);
+            HANDLE idle = g_ticker_idle;
+            // Clear the global BEFORE closing so the ticker (which checks it
+            // each iteration) can't SetEvent on a closed handle.
             g_ticker_idle = nullptr;
+            WaitForSingleObject(idle, 2000);
+            CloseHandle(idle);
         }
         rsmm::script_emit_event("exit");
         rsmm::script_shutdown_all();
+        // Every detour lives in this DLL's .text, which is about to be
+        // unmapped — retire them all, not just the two that used to be here.
+        rsmm::remove_event_hooks();
         rsmm::remove_engine_hooks();
         rsmm::remove_io_hooks();
         MH_Uninitialize();

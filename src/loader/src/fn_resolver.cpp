@@ -10,6 +10,7 @@
 
 #include "fn_resolver.h"
 #include "loader.h"
+#include "mem_safe.h"
 
 #include <windows.h>
 #include <psapi.h>
@@ -60,41 +61,57 @@ bool locate_text_section() {
     return false;
 }
 
-void parse_pattern(const std::string& pat, std::vector<std::uint8_t>& bytes,
+// "40 53 ?? 8d" -> bytes + mask. Returns false on a malformed token so a
+// corrupt DB entry is dropped instead of throwing out of the whole load
+// (std::stoi throws, and this runs inside the one-shot init).
+bool parse_pattern(const std::string& pat, std::vector<std::uint8_t>& bytes,
                    std::vector<std::uint8_t>& mask) {
     bytes.clear(); mask.clear();
     std::istringstream iss(pat);
     std::string tok;
     while (iss >> tok) {
-        if (tok == "??") { bytes.push_back(0); mask.push_back(0); }
-        else { bytes.push_back(static_cast<std::uint8_t>(std::stoi(tok, nullptr, 16))); mask.push_back(0xFF); }
+        if (tok == "??" || tok == "?") { bytes.push_back(0); mask.push_back(0); continue; }
+        if (tok.size() != 2 || !std::isxdigit(static_cast<unsigned char>(tok[0]))
+                            || !std::isxdigit(static_cast<unsigned char>(tok[1]))) {
+            return false;
+        }
+        bytes.push_back(static_cast<std::uint8_t>(std::stoi(tok, nullptr, 16)));
+        mask.push_back(0xFF);
     }
+    return !bytes.empty();
 }
 
-// Naive masked scan over .text. Anchors on the first non-wildcard byte
-// for cheap rejection. Hot path is short — runs once per cold call
-// per pattern, then we cache. SSE'd version is a TODO; not the
-// bottleneck while we have only a few hundred mods worth of calls.
+// Masked scan over .text. Anchors on the first non-wildcard byte and finds
+// candidate positions with memchr — the C library's vectorised search — rather
+// than a byte-at-a-time loop. .text is ~20 MB and `symbols audit` forces ~140
+// full scans, so the difference is seconds per launch, not microseconds.
 std::vector<std::uintptr_t> scan_all(const PatEntry& e) {
     std::vector<std::uintptr_t> out;
     if (g_text_base == 0 || e.bytes.empty()) return out;
-    std::size_t plen = e.bytes.size();
+    const std::size_t plen = e.bytes.size();
     if (plen > g_text_size) return out;
-    int anchor = 0;
+    std::size_t anchor = 0;
     for (std::size_t i = 0; i < e.mask.size(); i++) {
-        if (e.mask[i]) { anchor = static_cast<int>(i); break; }
+        if (e.mask[i]) { anchor = i; break; }
     }
-    auto needle = e.bytes[anchor];
-    auto base = reinterpret_cast<const std::uint8_t*>(g_text_base);
-    std::size_t end = g_text_size - plen + 1 + static_cast<std::size_t>(anchor);
-    for (std::size_t i = static_cast<std::size_t>(anchor); i < end; i++) {
-        if (base[i] != needle) continue;
-        std::size_t b = i - anchor;
+    const auto needle = e.bytes[anchor];
+    const auto* base = reinterpret_cast<const std::uint8_t*>(g_text_base);
+    // Last valid match START is g_text_size - plen; the anchor byte for it
+    // sits `anchor` further along, which is the inclusive end of the search.
+    const std::size_t last_anchor = g_text_size - plen + anchor;
+    std::size_t i = anchor;
+    while (i <= last_anchor) {
+        const auto* hit = static_cast<const std::uint8_t*>(
+            std::memchr(base + i, needle, last_anchor - i + 1));
+        if (!hit) break;
+        const std::size_t pos = static_cast<std::size_t>(hit - base);
+        const std::size_t b = pos - anchor;
         bool ok = true;
         for (std::size_t k = 0; k < plen; k++) {
             if (e.mask[k] && base[b + k] != e.bytes[k]) { ok = false; break; }
         }
         if (ok) out.push_back(g_text_base + b);
+        i = pos + 1;
     }
     return out;
 }
@@ -144,26 +161,37 @@ bool fn_resolver_init() {
     std::string body((std::istreambuf_iterator<char>(in)),
                      std::istreambuf_iterator<char>());
     std::size_t pos = 0;
-    auto find_str = [&](const std::string& key, std::size_t obj_end) -> std::string {
-        std::string needle = "\"" + key + "\"";
+    // Locate `"key":` strictly INSIDE the current object. Both helpers used to
+    // do `body.find(':', p) + 1` without checking for npos (which wraps to 0
+    // and then parses from the top of the file) and find_int never bounded its
+    // hit by obj_end, so a record missing "match_index" silently picked up the
+    // NEXT record's index — resolving that symbol to the wrong function.
+    auto value_start = [&](const std::string& key, std::size_t obj_end)
+            -> std::size_t {
+        const std::string needle = "\"" + key + "\"";
         auto p = body.find(needle, pos);
-        if (p == std::string::npos || p > obj_end) return {};
-        p = body.find(':', p) + 1;
-        while (p < body.size() && std::isspace((unsigned char)body[p])) p++;
-        if (p >= body.size() || body[p] != '"') return {};
+        if (p == std::string::npos || p >= obj_end) return std::string::npos;
+        auto colon = body.find(':', p + needle.size());
+        if (colon == std::string::npos || colon >= obj_end) return std::string::npos;
+        auto v = colon + 1;
+        while (v < obj_end && std::isspace((unsigned char)body[v])) v++;
+        return v < obj_end ? v : std::string::npos;
+    };
+    auto find_str = [&](const std::string& key, std::size_t obj_end) -> std::string {
+        auto p = value_start(key, obj_end);
+        if (p == std::string::npos || body[p] != '"') return {};
         p++;
         auto end = body.find('"', p);
         if (end == std::string::npos || end > obj_end) return {};
         return body.substr(p, end - p);
     };
-    auto find_int = [&](const std::string& key, std::size_t obj_end) -> long long {
-        std::string needle = "\"" + key + "\"";
-        auto p = body.find(needle, pos);
-        if (p == std::string::npos || p > obj_end) return 0;
-        p = body.find(':', p) + 1;
-        while (p < body.size() && std::isspace((unsigned char)body[p])) p++;
+    auto find_int = [&](const std::string& key, std::size_t obj_end,
+                        long long fallback) -> long long {
+        auto p = value_start(key, obj_end);
+        if (p == std::string::npos) return fallback;
         return std::strtoll(body.c_str() + p, nullptr, 10);
     };
+    std::size_t malformed = 0;
     while (pos < body.size()) {
         auto open = body.find('{', pos);
         if (open == std::string::npos) break;
@@ -172,13 +200,23 @@ bool fn_resolver_init() {
         pos = open;
         auto name = find_str("name", close);
         auto pat = find_str("pattern", close);
-        auto idx = static_cast<int>(find_int("match_index", close));
+        // A record with no match_index means "the pattern is unique" (index 0).
+        // Defaulting to 0 explicitly beats inheriting a neighbour's value.
+        auto idx = static_cast<int>(find_int("match_index", close, 0));
         if (!name.empty() && !pat.empty()) {
             PatEntry& e = g_patterns[name];
-            parse_pattern(pat, e.bytes, e.mask);
-            e.match_index = idx;
+            if (!parse_pattern(pat, e.bytes, e.mask)) {
+                g_patterns.erase(name);
+                ++malformed;
+            } else {
+                e.match_index = idx;
+            }
         }
         pos = close + 1;
+    }
+    if (malformed) {
+        Loader::get().log("[fn] dropped " + std::to_string(malformed)
+                          + " malformed pattern(s)");
     }
     Loader::get().log("[fn] loaded " + std::to_string(g_patterns.size()) + " patterns");
     g_inited = true;
@@ -208,6 +246,11 @@ bool fn_verify(std::string_view name, std::uintptr_t va) {
     auto it = g_patterns.find(std::string(name));
     if (it == g_patterns.end()) return false;
     auto& e = it->second;
+    // Callers pass an address they computed themselves (a resolve result plus
+    // an anchor offset, or a baked VA), so the range is not guaranteed mapped.
+    // This is the LAST gate before a MinHook install — reading past the end of
+    // .text here would fault during boot.
+    if (!mem_accessible(va, e.bytes.size(), false)) return false;
     auto base = reinterpret_cast<const std::uint8_t*>(va);
     for (std::size_t k = 0; k < e.bytes.size(); k++) {
         if (e.mask[k] && base[k] != e.bytes[k]) return false;
@@ -251,7 +294,7 @@ size_t fn_resolver_dump_resolved(const std::string& path) {
         if (!first) out << ",\n";
         first = false;
         out << "  {\"name\":\"" << name << "\",\"va\":";
-        if (va) {
+        if (va && mem_accessible(va, 16, false)) {
             char hexva[24];
             std::snprintf(hexva, sizeof(hexva), "\"0x%llx\"",
                           static_cast<unsigned long long>(va));

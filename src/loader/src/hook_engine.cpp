@@ -40,6 +40,7 @@ namespace {
 using ResourceLookup_t = std::uintptr_t (*)(void*, void*, void*, void*);
 
 ResourceLookup_t g_real_resource_lookup = nullptr;
+std::uintptr_t   g_lookup_va = 0;
 std::atomic<std::uint64_t> g_lookup_calls{0};
 std::atomic<std::uint64_t> g_lookup_logged{0};
 
@@ -116,16 +117,22 @@ bool install_engine_hooks() {
                           + std::to_string(static_cast<int>(er)));
         return false;
     }
+    g_lookup_va = va;
     Loader::get().log("[engine-hook] installed on FUN_140487040; will log first "
                       + std::to_string(kMaxLogCalls) + " calls");
     return true;
 }
 
 void remove_engine_hooks() {
-    if (!g_real_resource_lookup) return;
-    // Disable + remove the single hook. We don't track the VA separately;
-    // MinHook will look it up via the trampoline pointer.
-    MH_DisableHook(MH_ALL_HOOKS);
+    if (!g_lookup_va) return;
+    // Remove OUR hook only. This used to call MH_DisableHook(MH_ALL_HOOKS),
+    // which tore down every other hook in the process — the gameplay bus, the
+    // hero capture, and every mod's rsmm.hook slot — on a path that is only
+    // supposed to retire one diagnostic detour.
+    auto* p = reinterpret_cast<LPVOID>(g_lookup_va);
+    MH_DisableHook(p);
+    MH_RemoveHook(p);
+    g_lookup_va = 0;
     g_real_resource_lookup = nullptr;
     Loader::get().log("[engine-hook] removed (total calls="
                       + std::to_string(g_lookup_calls.load()) + ")");

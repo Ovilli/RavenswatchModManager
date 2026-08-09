@@ -2085,12 +2085,19 @@ function R.options.set(name, value)
         R.log("[rsmm.options] unknown option or registry not ready:", name)
         return false
     end
+    -- Type-check before writing: `value + 0.0` on a nil/string raised out of
+    -- the setter (aborting the caller) instead of reporting a refused write,
+    -- and math.floor(nil) did the same for the integer path.
     if ty == "bool" then
         I.write_u8(addr, value and 1 or 0)
+    elseif type(value) ~= "number" then
+        R.log("[rsmm.options] '" .. tostring(name) .. "' needs a number, got "
+              .. type(value))
+        return false
     elseif ty == "float" then
         I.write_f32(addr, value + 0.0)
     else
-        I.write_u32(addr, math.floor(value or 0))
+        I.write_u32(addr, math.floor(value))
     end
     return true
 end

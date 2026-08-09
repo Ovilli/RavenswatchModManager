@@ -20,12 +20,21 @@
 //    only hooks become a one-liner). Otherwise the Lua-returned value
 //    becomes the function's RAX.
 //
-// Arity / float caveats: this version reads all 8 slots as uint64_t,
-// which is correct for integer / pointer args on the Windows x64 ABI.
-// FP args (which actually use XMM0-3) currently fall back to whatever
-// happens to land in RCX/RDX/R8/R9 from the previous call -- mostly
-// garbage. Hooks on functions with float args are flagged at install
-// time and the dispatcher logs a warning; treat the FP arg as opaque.
+// Floating-point args and returns ARE supported. On the Windows x64 ABI the
+// first four arguments go in RCX/RDX/R8/R9 *or* XMM0-3 depending on each
+// slot's TYPE, and an FP return comes back in XMM0 rather than RAX — so a
+// detour declared with all-integer parameters reads garbage for any float
+// argument (and returns garbage for a float-returning function). Since a
+// detour's prototype is fixed at compile time, the slot table is indexed by
+// SHAPE as well as slot: `kShapes` = 16 combinations of "is arg N (of the
+// first four) floating-point" x 2 for "is the return floating-point".
+//
+// FP params are declared `double` even for a 'f' (float) slot: a double
+// parameter is just the 64 raw bits of XMM, and the caller of a float-arg
+// function puts the float in the low 32 of that register, so copying the
+// bits out and reinterpreting the low half recovers the value exactly. The
+// same trick works in reverse for the return. Arguments 5..8 arrive on the
+// stack in 8-byte slots regardless of type, so they need no shaping.
 
 extern "C" {
 #include "lua.h"
@@ -43,6 +52,9 @@ extern "C" {
 #include <cstdio>
 #include <cstring>
 #include <mutex>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 namespace rsmm {
 
@@ -53,28 +65,108 @@ namespace {
 
 constexpr int MAX_SLOTS = 64;
 
-// Trampoline prototype: 8 64-bit slots (covers Win x64 ABI for up to
-// 8 integer/pointer args; first 4 in registers, next 4 on stack).
-using Trampoline = std::uintptr_t (WINAPI *)(std::uint64_t, std::uint64_t,
-                                             std::uint64_t, std::uint64_t,
-                                             std::uint64_t, std::uint64_t,
-                                             std::uint64_t, std::uint64_t);
+// Shape = which of the first four arguments are floating-point (bits 0..3)
+// plus whether the return is floating-point (bit 4). See the file header.
+constexpr unsigned kShapeRetBit = 4;
+constexpr unsigned kShapes      = 32;
+
+inline bool is_fp_code(char c) { return c == 'f' || c == 'd'; }
+
+// Shape of a validated signature ("<ret><args...>").
+unsigned sig_shape(std::string_view sig) {
+    unsigned m = 0;
+    if (!sig.empty() && is_fp_code(sig[0])) m |= 1u << kShapeRetBit;
+    const auto args = sig.substr(sig.empty() ? 0 : 1);
+    for (std::size_t i = 0; i < args.size() && i < 4; ++i) {
+        if (is_fp_code(args[i])) m |= 1u << i;
+    }
+    return m;
+}
 
 struct Slot {
     std::uintptr_t target_va = 0;
-    Trampoline     trampoline = nullptr;
+    void*          trampoline = nullptr;   // called through a shaped thunk
     lua_State*     L = nullptr;
     int            cb_ref = LUA_NOREF;
     std::string    sig;          // "rXXXX": ret + args
     std::string    mod_id;
+    unsigned       shape = 0;
     bool           installed = false;
-    bool           has_fp = false;
 };
 
 std::array<Slot, MAX_SLOTS> g_slots{};
 std::mutex g_slots_mu;
 
+// --- ABI shaping ----------------------------------------------------------
+
+// Parameter type for argument I under shape M. FP slots are declared `double`
+// so the compiler routes them through XMM; the 64 raw bits are what we keep,
+// which for a 'f' (float) slot leaves the value in the low half exactly where
+// the ABI puts it.
+template <unsigned M, int I>
+using ArgT = std::conditional_t<((M >> I) & 1u) != 0, double, std::uint64_t>;
+
+template <unsigned M>
+using RetT = std::conditional_t<((M >> kShapeRetBit) & 1u) != 0,
+                                double, std::uintptr_t>;
+
+inline std::uint64_t raw_bits(double d) {
+    std::uint64_t r; std::memcpy(&r, &d, sizeof(r)); return r;
+}
+inline std::uint64_t raw_bits(std::uint64_t v) { return v; }
+
+template <unsigned M, int I>
+inline ArgT<M, I> as_arg(std::uint64_t v) {
+    if constexpr (((M >> I) & 1u) != 0) {
+        double d; std::memcpy(&d, &v, sizeof(d)); return d;
+    } else {
+        return v;
+    }
+}
+
+std::uint64_t dispatch(int slot, std::uint64_t* a);
+
+// Call a MinHook trampoline with the prototype its target actually has.
+// Without this the original would receive integer registers for its float
+// parameters — i.e. a `next()` from a Lua hook on a float-taking function
+// would corrupt the very call it is replaying.
+template <unsigned M>
+std::uint64_t tramp_call_t(void* t, const std::uint64_t* a) {
+    using Fn = RetT<M> (WINAPI*)(ArgT<M, 0>, ArgT<M, 1>, ArgT<M, 2>, ArgT<M, 3>,
+                                 std::uint64_t, std::uint64_t,
+                                 std::uint64_t, std::uint64_t);
+    const auto r = reinterpret_cast<Fn>(t)(
+        as_arg<M, 0>(a[0]), as_arg<M, 1>(a[1]), as_arg<M, 2>(a[2]), as_arg<M, 3>(a[3]),
+        a[4], a[5], a[6], a[7]);
+    return raw_bits(static_cast<
+        std::conditional_t<((M >> kShapeRetBit) & 1u) != 0, double, std::uint64_t>>(r));
+}
+
+using TrampThunk = std::uint64_t (*)(void*, const std::uint64_t*);
+
+template <unsigned... S>
+inline std::array<TrampThunk, sizeof...(S)>
+make_tramp_table(std::integer_sequence<unsigned, S...>) {
+    return { &tramp_call_t<S>... };
+}
+const std::array<TrampThunk, kShapes> g_tramp_table =
+    make_tramp_table(std::make_integer_sequence<unsigned, kShapes>{});
+
+// Replay the original. Returns 0 when there is no trampoline (a hook whose
+// install half-failed), which is the same "act as if it returned nothing"
+// fallback the dispatcher used before.
+inline std::uint64_t call_trampoline(unsigned shape, void* tramp,
+                                     const std::uint64_t* a) {
+    if (!tramp || shape >= kShapes) return 0;
+    return g_tramp_table[shape](tramp, a);
+}
+
 // --- argument marshalling -------------------------------------------------
+//
+// Slot values carry the RAW register bits. For 'd' that is the double; for
+// 'f' it is the float's 32-bit pattern in the low half (which is exactly what
+// the ABI puts in XMM). fn_call.cpp uses the identical convention, so a value
+// can move between a hook callback and rsmm.call without re-encoding.
 
 // Push one positional arg onto the Lua stack per sig type code.
 void push_arg(lua_State* L, char t, std::uint64_t v) {
@@ -112,8 +204,12 @@ std::uint64_t pull_arg(lua_State* L, int idx, char t) {
         case 'l':
         case 'p': return static_cast<std::uint64_t>(luaL_checkinteger(L, idx));
         case 'f': {
-            float f = static_cast<float>(luaL_checknumber(L, idx));
-            double d = f; std::uint64_t r; std::memcpy(&r, &d, sizeof(r)); return r;
+            // Float bits in the LOW half — the mirror of push_arg('f'). This
+            // used to store the *double* encoding, so a float replayed through
+            // next() (or returned from a callback) reached the game as noise.
+            const float f = static_cast<float>(luaL_checknumber(L, idx));
+            std::uint32_t bits; std::memcpy(&bits, &f, sizeof(bits));
+            return static_cast<std::uint64_t>(bits);
         }
         case 'd': {
             double d = luaL_checknumber(L, idx);
@@ -135,24 +231,28 @@ std::uint64_t pull_ret(lua_State* L, int idx, char t) {
 
 int lua_hook_next(lua_State* L) {
     const int slot = static_cast<int>(lua_tointeger(L, lua_upvalueindex(1)));
-    Slot* s = nullptr;
+    // COPY the slot under the lock. The old code kept a `Slot*` and read
+    // `s->sig` / `s->trampoline` after unlocking, so a concurrent uninstall
+    // (which assigns `s = Slot{}` and frees the trampoline) could pull the
+    // signature string out from under this call.
+    Slot snap;
     {
         std::lock_guard<std::mutex> g(g_slots_mu);
         if (slot < 0 || slot >= MAX_SLOTS) return luaL_error(L, "rsmm.hook.next: bad slot");
-        s = &g_slots[slot];
-        if (!s->installed || !s->trampoline) {
-            return luaL_error(L, "rsmm.hook.next: slot not installed");
-        }
+        snap = g_slots[slot];
     }
-    const char  ret_t = s->sig[0];
-    const auto  args_sv = std::string_view(s->sig).substr(1);
+    if (!snap.installed || !snap.trampoline) {
+        return luaL_error(L, "rsmm.hook.next: slot not installed");
+    }
+    const char  ret_t = snap.sig[0];
+    const auto  args_sv = std::string_view(snap.sig).substr(1);
     const int   n_args = static_cast<int>(args_sv.size());
 
     std::uint64_t a[8] = {};
     for (int i = 0; i < n_args && i < 8; i++) {
         a[i] = pull_arg(L, 1 + i, args_sv[i]);
     }
-    std::uint64_t raw = s->trampoline(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
+    const std::uint64_t raw = call_trampoline(snap.shape, snap.trampoline, a);
     push_arg(L, ret_t, raw);
     return ret_t == 'v' ? 0 : 1;
 }
@@ -160,26 +260,27 @@ int lua_hook_next(lua_State* L) {
 // --- dispatcher -----------------------------------------------------------
 
 std::uint64_t dispatch(int slot, std::uint64_t* a) {
-    Slot snap{};
+    if (slot < 0 || slot >= MAX_SLOTS) return 0;
+    // Take the Lua lock BEFORE snapshotting the slot. hook_lua_uninstall takes
+    // the same lock, so a slot that is still `installed` here cannot be torn
+    // down (trampoline freed, callback unref'd) while we run below. Lock order
+    // is script -> slots everywhere, so this cannot deadlock against install /
+    // uninstall / next, all of which are entered from Lua.
+    std::lock_guard<std::recursive_mutex> g(script_lua_mutex());
+    Slot snap;
     {
-        std::lock_guard<std::mutex> g(g_slots_mu);
-        if (slot < 0 || slot >= MAX_SLOTS) return 0;
-        snap = g_slots[slot];   // copy under lock so we can drop it before pcall
+        std::lock_guard<std::mutex> gs(g_slots_mu);
+        snap = g_slots[slot];
     }
     if (!snap.installed) return 0;
 
-    std::lock_guard<std::recursive_mutex> g(script_lua_mutex());
     lua_State* L = snap.L;
-    if (!L) {
-        if (snap.trampoline) return snap.trampoline(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
-        return 0;
-    }
+    if (!L) return call_trampoline(snap.shape, snap.trampoline, a);
     const int base = lua_gettop(L);
     lua_rawgeti(L, LUA_REGISTRYINDEX, snap.cb_ref);
     if (!lua_isfunction(L, -1)) {
         lua_pop(L, 1);
-        if (snap.trampoline) return snap.trampoline(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
-        return 0;
+        return call_trampoline(snap.shape, snap.trampoline, a);
     }
 
     const char ret_t = snap.sig[0];
@@ -197,15 +298,14 @@ std::uint64_t dispatch(int slot, std::uint64_t* a) {
         Loader::get().log(std::string("[hook] cb error in ") + snap.mod_id + ": "
                           + lua_tostring(L, -1));
         lua_settop(L, base);
-        if (snap.trampoline) return snap.trampoline(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
-        return 0;
+        return call_trampoline(snap.shape, snap.trampoline, a);
     }
 
     std::uint64_t r;
     if (lua_isnoneornil(L, -1)) {
         // Convenience: nil return = "act like a no-op, pass through".
         lua_pop(L, 1);
-        r = snap.trampoline ? snap.trampoline(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]) : 0;
+        r = call_trampoline(snap.shape, snap.trampoline, a);
     } else {
         r = pull_ret(L, -1, ret_t);
         lua_pop(L, 1);
@@ -216,37 +316,48 @@ std::uint64_t dispatch(int slot, std::uint64_t* a) {
 
 // --- detour slots: template-instantiated -----------------------------------
 
-template <int Slot>
-std::uintptr_t WINAPI detour_t(std::uint64_t a0, std::uint64_t a1,
-                               std::uint64_t a2, std::uint64_t a3,
-                               std::uint64_t a4, std::uint64_t a5,
-                               std::uint64_t a6, std::uint64_t a7)
+// One detour per (shape, slot): MinHook needs a distinct function POINTER per
+// hook, and the Windows x64 ABI needs a distinct PROTOTYPE per argument shape.
+template <unsigned M, int Slot>
+RetT<M> WINAPI detour_t(ArgT<M, 0> a0, ArgT<M, 1> a1, ArgT<M, 2> a2, ArgT<M, 3> a3,
+                        std::uint64_t a4, std::uint64_t a5,
+                        std::uint64_t a6, std::uint64_t a7)
 {
-    std::uint64_t a[8] = { a0, a1, a2, a3, a4, a5, a6, a7 };
-    return dispatch(Slot, a);
+    std::uint64_t a[8] = { raw_bits(a0), raw_bits(a1), raw_bits(a2), raw_bits(a3),
+                           a4, a5, a6, a7 };
+    const std::uint64_t r = dispatch(Slot, a);
+    if constexpr (((M >> kShapeRetBit) & 1u) != 0) {
+        double d; std::memcpy(&d, &r, sizeof(d)); return d;
+    } else {
+        return static_cast<std::uintptr_t>(r);
+    }
 }
 
-template <int... I>
-constexpr std::array<void*, sizeof...(I)>
-make_detour_table(std::integer_sequence<int, I...>) {
-    return { reinterpret_cast<void*>(&detour_t<I>)... };
+template <unsigned M, int... I>
+inline std::array<void*, sizeof...(I)>
+make_slot_row(std::integer_sequence<int, I...>) {
+    return { reinterpret_cast<void*>(&detour_t<M, I>)... };
 }
 
-const std::array<void*, MAX_SLOTS> g_detour_table =
-    make_detour_table(std::make_integer_sequence<int, MAX_SLOTS>{});
-
-bool sig_has_float(std::string_view sig) {
-    for (char c : sig) if (c == 'f' || c == 'd') return true;
-    return false;
+template <unsigned... S>
+inline std::array<std::array<void*, MAX_SLOTS>, sizeof...(S)>
+make_detour_table(std::integer_sequence<unsigned, S...>) {
+    return { make_slot_row<S>(std::make_integer_sequence<int, MAX_SLOTS>{})... };
 }
 
+const std::array<std::array<void*, MAX_SLOTS>, kShapes> g_detour_table =
+    make_detour_table(std::make_integer_sequence<unsigned, kShapes>{});
+
+// "<ret><args...>": 'v' is a return-only code, every arg code must be a value
+// type, and the arity cap is 8 (the ABI shaping only covers 8 slots).
 bool sig_validate(std::string_view sig) {
     if (sig.empty() || sig.size() > 9) return false;
-    auto ok = [](char c) {
+    auto value_code = [](char c) {
         return c == 'i' || c == 'u' || c == 'l' || c == 'p'
-            || c == 'f' || c == 'd' || c == 's' || c == 'v';
+            || c == 'f' || c == 'd' || c == 's';
     };
-    for (char c : sig) if (!ok(c)) return false;
+    if (!value_code(sig[0]) && sig[0] != 'v') return false;
+    for (char c : sig.substr(1)) if (!value_code(c)) return false;
     return true;
 }
 
@@ -282,16 +393,11 @@ int hook_lua_install(std::uintptr_t target_va,
     s.cb_ref    = cb_ref;
     s.sig.assign(sig);
     s.mod_id    = std::move(mod_id);
-    s.has_fp    = sig_has_float(std::string_view(s.sig).substr(1));
-
-    if (s.has_fp) {
-        Loader::get().log("[hook] WARN sig '" + s.sig + "' has float args; "
-                          "FP shimming not implemented — args may be garbage");
-    }
+    s.shape     = sig_shape(s.sig);
 
     auto rc = MH_CreateHook(reinterpret_cast<LPVOID>(target_va),
-                            g_detour_table[slot],
-                            reinterpret_cast<LPVOID*>(&s.trampoline));
+                            g_detour_table[s.shape][slot],
+                            &s.trampoline);
     if (rc != MH_OK) {
         Loader::get().log("[hook] MH_CreateHook va=0x"
                           + [&]{char b[32]; snprintf(b,sizeof(b),"%llx",(unsigned long long)target_va); return std::string(b);}()
@@ -299,6 +405,12 @@ int hook_lua_install(std::uintptr_t target_va,
         s = Slot{};
         return -1;
     }
+    // Mark installed BEFORE enabling. The other order left a window in which
+    // the game could enter the detour while `installed` was still false — and
+    // the dispatcher's answer to that is "return 0 without calling the
+    // original", i.e. the hooked function silently did nothing on its first
+    // call. (We still hold g_slots_mu, so nothing observes the flag early.)
+    s.installed = true;
     auto er = MH_EnableHook(reinterpret_cast<LPVOID>(target_va));
     if (er != MH_OK) {
         Loader::get().log("[hook] MH_EnableHook rc=" + std::to_string(static_cast<int>(er)));
@@ -306,7 +418,6 @@ int hook_lua_install(std::uintptr_t target_va,
         s = Slot{};
         return -1;
     }
-    s.installed = true;
     Loader::get().log("[hook] slot " + std::to_string(slot) + " installed va=0x"
                       + [&]{char b[32]; snprintf(b,sizeof(b),"%llx",(unsigned long long)target_va); return std::string(b);}()
                       + " sig=" + s.sig + " mod=" + s.mod_id);
@@ -314,6 +425,10 @@ int hook_lua_install(std::uintptr_t target_va,
 }
 
 bool hook_lua_uninstall(int slot) {
+    // Script lock first (see dispatch): it is what guarantees no detour is
+    // mid-callback on this slot when we free its trampoline and drop the
+    // callback ref. Lock order everywhere is script -> slots.
+    std::lock_guard<std::recursive_mutex> gl(script_lua_mutex());
     std::lock_guard<std::mutex> g(g_slots_mu);
     if (slot < 0 || slot >= MAX_SLOTS) return false;
     Slot& s = g_slots[slot];

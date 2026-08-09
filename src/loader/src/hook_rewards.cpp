@@ -23,6 +23,7 @@
 
 #include "MinHook.h"
 #include "loader.h"
+#include "mem_safe.h"
 #include "fn_resolver.h"
 #include "hook_rewards.h"
 
@@ -45,20 +46,8 @@ RollFn g_real_roll = nullptr;
 bool env_on(const char* name) { return flag_enabled(name); }
 
 // Confirm [p, p+size) is committed + readable so a wrong offset logs/skips
-// instead of faulting (MinGW has no __try/__except).
-bool readable(const void* p, std::size_t size) {
-    auto a = reinterpret_cast<std::uintptr_t>(p);
-    if (a < 0x10000) return false;
-    if (a > 0x00007fffffffffffull) return false;
-    for (std::uintptr_t x = a; x < a + size; ) {
-        MEMORY_BASIC_INFORMATION mbi{};
-        if (VirtualQuery(reinterpret_cast<void*>(x), &mbi, sizeof(mbi)) == 0) return false;
-        if (mbi.State != MEM_COMMIT) return false;
-        if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return false;
-        x = reinterpret_cast<std::uintptr_t>(mbi.BaseAddress) + mbi.RegionSize;
-    }
-    return true;
-}
+// instead of faulting (MinGW has no __try/__except). Shared implementation.
+inline bool readable(const void* p, std::size_t size) { return mem_readable(p, size); }
 
 std::string hex_of(std::uintptr_t v) {
     char b[32];

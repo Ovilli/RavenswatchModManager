@@ -12,6 +12,7 @@
 #include "hook_skins.h"
 #include "fn_resolver.h"
 #include "loader.h"
+#include "mem_safe.h"
 
 #include "MinHook.h"
 #include "json.hpp"
@@ -137,8 +138,10 @@ std::string hex_of(std::uintptr_t v) {
 }
 
 // Leak a stable C-string (literal-bit strings are non-owned by the game).
+// Returns nullptr on OOM rather than memcpy-ing through it.
 const char* dup_cstr(const std::string& s) {
     char* p = static_cast<char*>(malloc(s.size() + 1));
+    if (!p) return nullptr;
     std::memcpy(p, s.c_str(), s.size() + 1);
     return p;
 }
@@ -146,6 +149,7 @@ const char* dup_cstr(const std::string& s) {
 void assign_string(void* entry, std::size_t off, const std::string& s) {
     StringDesc d{};
     d.ptr = dup_cstr(s);
+    if (!d.ptr) return;
     d.lenflags = kLiteralBit | static_cast<std::uint32_t>(s.size());
     g_string_assign(static_cast<std::uint8_t*>(entry) + off, &d);
 }
@@ -195,10 +199,25 @@ void link_entry(void* mgr, void* e, std::int32_t idx, const SkinPackDef& def) {
 }
 
 void append_custom_packs() {
-    void* mgr_global = reinterpret_cast<void*>(reloc(kMgrPtrGlobalVA));
-    void* mgr = *reinterpret_cast<void**>(mgr_global);
-    if (!mgr) {
-        Loader::get().log("[skin-hook] manager pointer null; skipping append");
+    // kMgrPtrGlobalVA is an absolute .data address: on a build the symbol map
+    // wasn't derived from it points at arbitrary bytes, so gate on the build
+    // fingerprint AND page-guard the read before dereferencing what it holds.
+    if (!Loader::get().va_globals_trusted()) {
+        Loader::get().log("[skin-hook] game build != symbol-map build; "
+                          "manager global not trusted, skipping append");
+        return;
+    }
+    const auto mgr_global = reloc(kMgrPtrGlobalVA);
+    std::uintptr_t mgr_addr = 0;
+    if (!mem_load(mgr_global, &mgr_addr) || mgr_addr == 0) {
+        Loader::get().log("[skin-hook] manager pointer null/unreadable; "
+                          "skipping append");
+        return;
+    }
+    void* mgr = reinterpret_cast<void*>(mgr_addr);
+    // The list splice writes through mgr+0x08..0x18 and reads its vtable.
+    if (!mem_writable(mgr, 0x20) || !mem_readable(mgr, sizeof(void*))) {
+        Loader::get().log("[skin-hook] manager object not writable; skipping append");
         return;
     }
     // Now that the manager exists, detour its real vtable[1] filter so our
@@ -209,6 +228,10 @@ void append_custom_packs() {
         // Leaked, permanently-stable 0xA0 node (never in the fixed array,
         // never destructed by the engine's shrink path).
         void* e = _aligned_malloc(kEntrySize, 16);
+        if (!e) {
+            Loader::get().log("[skin-hook] entry alloc failed; stopping append");
+            return;
+        }
         std::memset(e, 0, kEntrySize);
         link_entry(mgr, e, idx++, def);
         g_our_nodes.push_back(e);
@@ -250,14 +273,15 @@ void grid_push(void* ctx, void* node) {
 
 void hook_grid_populate(void* ctx, void* arg) {
     g_real_populate(ctx, arg);  // engine builds the filtered roster first
-    void* mgr_global = reinterpret_cast<void*>(reloc(kMgrPtrGlobalVA));
-    void* mgr = mgr_global ? *reinterpret_cast<void**>(mgr_global) : nullptr;
+    std::uintptr_t mgr_addr = 0;
+    (void)mem_load(reloc(kMgrPtrGlobalVA), &mgr_addr);
+    void* mgr = reinterpret_cast<void*>(mgr_addr);
     for (void* node : g_our_nodes) {
         int filt = -1;
-        if (mgr) {
-            void* vtbl = *reinterpret_cast<void**>(mgr);
-            auto fn = *reinterpret_cast<Filter_t*>(
-                static_cast<std::uint8_t*>(vtbl) + kVtblFilter);
+        std::uintptr_t vtbl = 0, fn_addr = 0;
+        if (mgr && mem_load(mgr, &vtbl)
+            && mem_load(vtbl + kVtblFilter, &fn_addr) && fn_addr) {
+            auto fn = reinterpret_cast<Filter_t>(fn_addr);
             filt = fn(mgr, node);  // capture the gate's verdict for A2 RE
         }
         Loader::get().log("[skin-hook] force-show node="
@@ -269,9 +293,11 @@ void hook_grid_populate(void* ctx, void* arg) {
 }
 
 // True if `node`'s pack key (+0x3c) belongs to one of our registered packs.
+// Guarded: this runs from the vtable-filter detour for EVERY roster node the
+// engine tests, including whatever the game hands it.
 bool is_our_node_key(void* node) {
-    const std::int32_t key = *reinterpret_cast<std::int32_t*>(
-        static_cast<std::uint8_t*>(node) + kOffKey);
+    std::int32_t key = 0;
+    if (!mem_load(static_cast<std::uint8_t*>(node) + kOffKey, &key)) return false;
     for (const auto& d : g_packs) {
         if (d.key == key) return true;
     }
@@ -293,9 +319,14 @@ int hook_filter(void* mgr, void* node) {
 // engine will call, so it's correct for whichever manager class is active.
 void install_filter_hook(void* mgr) {
     std::call_once(g_filter_hooked, [mgr]() {
-        void* vtbl = *reinterpret_cast<void**>(mgr);
-        void* filter_addr = *reinterpret_cast<void**>(
-            static_cast<std::uint8_t*>(vtbl) + kVtblFilter);  // vtable[1]
+        std::uintptr_t vtbl = 0, filter_va = 0;
+        if (!mem_load(mgr, &vtbl) || !mem_load(vtbl + kVtblFilter, &filter_va)
+            || filter_va == 0) {
+            Loader::get().log("[skin-hook] manager vtable unreadable; grid "
+                              "filter not hooked");
+            return;
+        }
+        auto* filter_addr = reinterpret_cast<LPVOID>(filter_va);
         if (MH_CreateHook(filter_addr,
                           reinterpret_cast<LPVOID>(&hook_filter),
                           reinterpret_cast<LPVOID*>(&g_real_filter)) == MH_OK

@@ -11,10 +11,12 @@
 
 #include "hook_netcode.h"
 #include "loader.h"
+#include "mem_safe.h"
 
 #include <windows.h>
 
 #include <cstdint>
+#include <cstdlib>
 #include <string>
 
 namespace rsmm {
@@ -88,11 +90,26 @@ bool install_netcode_patches() {
         Loader::get().log("[netcode] could not resolve game module base; skipping");
         return false;
     }
+    // These are absolute .data RVAs — exactly the class of address the build
+    // fingerprint gate exists for. On a mismatched build they point at
+    // arbitrary bytes, and the four-default check below would be reading (and
+    // possibly writing) unrelated memory.
+    if (!Loader::get().va_globals_trusted()) {
+        Loader::get().log("[netcode] game build != symbol-map build; reconnect "
+                          "window not patched (run `rsmm update-data`)");
+        return false;
+    }
 
     auto* ed2 = reinterpret_cast<std::uint8_t*>(base + kInterruptDropRva);
     auto* ed3 = reinterpret_cast<std::uint8_t*>(base + kReconnectMaxRva);
     auto* ed4 = reinterpret_cast<std::uint8_t*>(base + kReconnectUiRva);
     auto* ed5 = reinterpret_cast<std::uint8_t*>(base + kMaxConnectingRva);
+
+    if (!mem_readable(ed2, 4)) {
+        Loader::get().log("[netcode] reconnect-timeout bytes not mapped at the "
+                          "recorded RVA; not patching");
+        return false;
+    }
 
     // Game-update guard: all four defaults must be present at the rebased
     // addresses, or .data has moved and we must not write.

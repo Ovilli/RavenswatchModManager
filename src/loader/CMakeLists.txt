@@ -45,6 +45,8 @@ target_compile_definitions(lua54 PUBLIC LUA_USE_WINDOWS=1)
 set(LOADER_SRC
     src/dllmain.cpp
     src/loader.cpp
+    src/mem_safe.cpp
+    src/health.cpp
     src/hook_io.cpp
     src/hook_engine.cpp
     src/hook_skins.cpp
