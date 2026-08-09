@@ -9,6 +9,13 @@
 
 namespace engine {
 
+// AchievementDef_PostLoad  (AchievementDef_PostLoad)
+//   bool(void* definition)
+using AchievementDef_PostLoad_fn = uint32_t(*)(void*);
+inline AchievementDef_PostLoad_fn AchievementDef_PostLoad() {
+    return reinterpret_cast<AchievementDef_PostLoad_fn>(rsmm::fn_resolve(Sym::AchievementDef_PostLoad_Pattern));
+}
+
 // Analytics_SubmitNamedEvent  (Analytics_SubmitNamedEvent)
 //   void(void* analytics_mgr, void* payload_kv, StringDesc* event_name, char has_run_ctx)
 using Analytics_SubmitNamedEvent_fn = void(*)(void*, void*, void*, uint32_t);
@@ -30,11 +37,39 @@ inline BookController_ResolveTabs_fn BookController_ResolveTabs() {
     return reinterpret_cast<BookController_ResolveTabs_fn>(rsmm::fn_resolve(Sym::BookController_ResolveTabs_Pattern));
 }
 
+// ChallengeDef_PostLoad  (ChallengeDef_PostLoad)
+//   bool(void* definition)
+using ChallengeDef_PostLoad_fn = uint32_t(*)(void*);
+inline ChallengeDef_PostLoad_fn ChallengeDef_PostLoad() {
+    return reinterpret_cast<ChallengeDef_PostLoad_fn>(rsmm::fn_resolve(Sym::ChallengeDef_PostLoad_Pattern));
+}
+
 // ChallengeUnlock_IsUnlocked  (ChallengeUnlock_IsUnlocked)
 //   bool(void* condition_data)
 using ChallengeUnlock_IsUnlocked_fn = uint32_t(*)(void*);
 inline ChallengeUnlock_IsUnlocked_fn ChallengeUnlock_IsUnlocked() {
     return reinterpret_cast<ChallengeUnlock_IsUnlocked_fn>(rsmm::fn_resolve(Sym::ChallengeUnlock_IsUnlocked_Pattern));
+}
+
+// Definition_PostLoad  (Definition_PostLoad)
+//   bool(void* definition)
+using Definition_PostLoad_fn = uint32_t(*)(void*);
+inline Definition_PostLoad_fn Definition_PostLoad() {
+    return reinterpret_cast<Definition_PostLoad_fn>(rsmm::fn_resolve(Sym::Definition_PostLoad_Pattern));
+}
+
+// DreamShardDef_PostLoad  (DreamShardDef_PostLoad)
+//   bool(void* definition)
+using DreamShardDef_PostLoad_fn = uint32_t(*)(void*);
+inline DreamShardDef_PostLoad_fn DreamShardDef_PostLoad() {
+    return reinterpret_cast<DreamShardDef_PostLoad_fn>(rsmm::fn_resolve(Sym::DreamShardDef_PostLoad_Pattern));
+}
+
+// EnemyCampTierDef_PostLoad  (EnemyCampTierDef_PostLoad)
+//   bool(void* definition)
+using EnemyCampTierDef_PostLoad_fn = uint32_t(*)(void*);
+inline EnemyCampTierDef_PostLoad_fn EnemyCampTierDef_PostLoad() {
+    return reinterpret_cast<EnemyCampTierDef_PostLoad_fn>(rsmm::fn_resolve(Sym::EnemyCampTierDef_PostLoad_Pattern));
 }
 
 // EntityValueEntry_Ctor  (EntityValueEntry_Ctor)
@@ -210,6 +245,20 @@ inline Event_RunEnd_fn Event_RunEnd() {
     return reinterpret_cast<Event_RunEnd_fn>(rsmm::fn_resolve(Sym::Event_RunEnd_Pattern));
 }
 
+// GameModeDefaultDef_PostLoad  (GameModeDefaultDef_PostLoad)
+//   bool(void* definition)
+using GameModeDefaultDef_PostLoad_fn = uint32_t(*)(void*);
+inline GameModeDefaultDef_PostLoad_fn GameModeDefaultDef_PostLoad() {
+    return reinterpret_cast<GameModeDefaultDef_PostLoad_fn>(rsmm::fn_resolve(Sym::GameModeDefaultDef_PostLoad_Pattern));
+}
+
+// GameModifierDef_PostLoad  (GameModifierDef_PostLoad)
+//   bool(void* definition)
+using GameModifierDef_PostLoad_fn = uint32_t(*)(void*);
+inline GameModifierDef_PostLoad_fn GameModifierDef_PostLoad() {
+    return reinterpret_cast<GameModifierDef_PostLoad_fn>(rsmm::fn_resolve(Sym::GameModifierDef_PostLoad_Pattern));
+}
+
 // GroupLevelComponent_Ctor  (GroupLevelComponent_Ctor)
 //   void*(void* self)
 using GroupLevelComponent_Ctor_fn = void*(*)(void*);
@@ -222,6 +271,13 @@ inline GroupLevelComponent_Ctor_fn GroupLevelComponent_Ctor() {
 using HeroController_Ctor_fn = void*(*)(void*);
 inline HeroController_Ctor_fn HeroController_Ctor() {
     return reinterpret_cast<HeroController_Ctor_fn>(rsmm::fn_resolve(Sym::HeroController_Ctor_Pattern));
+}
+
+// HeroDef_PostLoad  (HeroDef_PostLoad)
+//   bool(void* definition)
+using HeroDef_PostLoad_fn = uint32_t(*)(void*);
+inline HeroDef_PostLoad_fn HeroDef_PostLoad() {
+    return reinterpret_cast<HeroDef_PostLoad_fn>(rsmm::fn_resolve(Sym::HeroDef_PostLoad_Pattern));
 }
 
 // HeroProgressionUnlock_IsUnlocked  (HeroProgressionUnlock_IsUnlocked)
@@ -259,6 +315,13 @@ inline Hero_GrantMagicalObject_fn Hero_GrantMagicalObject() {
     return reinterpret_cast<Hero_GrantMagicalObject_fn>(rsmm::fn_resolve(Sym::Hero_GrantMagicalObject_Pattern));
 }
 
+// IngredientDef_PostLoad  (IngredientDef_PostLoad)
+//   bool(void* definition)
+using IngredientDef_PostLoad_fn = uint32_t(*)(void*);
+inline IngredientDef_PostLoad_fn IngredientDef_PostLoad() {
+    return reinterpret_cast<IngredientDef_PostLoad_fn>(rsmm::fn_resolve(Sym::IngredientDef_PostLoad_Pattern));
+}
+
 // MagicalObjectPool_Grow  (MagicalObjectPool_Grow)
 //   void(void* pool_plus_0x10, uint32_t count, uint32_t by)
 using MagicalObjectPool_Grow_fn = void(*)(void*, uint32_t, uint32_t);
@@ -285,6 +348,20 @@ inline MagicalObject_RegisterInstance_fn MagicalObject_RegisterInstance() {
 using MagicalObject_SpawnAllObjects_fn = void(*)(void*, void*);
 inline MagicalObject_SpawnAllObjects_fn MagicalObject_SpawnAllObjects() {
     return reinterpret_cast<MagicalObject_SpawnAllObjects_fn>(rsmm::fn_resolve(Sym::MagicalObject_SpawnAllObjects_Pattern));
+}
+
+// MapDef_PostLoad  (MapDef_PostLoad)
+//   bool(void* definition)
+using MapDef_PostLoad_fn = uint32_t(*)(void*);
+inline MapDef_PostLoad_fn MapDef_PostLoad() {
+    return reinterpret_cast<MapDef_PostLoad_fn>(rsmm::fn_resolve(Sym::MapDef_PostLoad_Pattern));
+}
+
+// MelodyDef_PostLoad  (MelodyDef_PostLoad)
+//   bool(void* definition)
+using MelodyDef_PostLoad_fn = uint32_t(*)(void*);
+inline MelodyDef_PostLoad_fn MelodyDef_PostLoad() {
+    return reinterpret_cast<MelodyDef_PostLoad_fn>(rsmm::fn_resolve(Sym::MelodyDef_PostLoad_Pattern));
 }
 
 // ModifierEvent_Ctor  (ModifierEvent_Ctor)

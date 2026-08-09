@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **164** symbols across 16 categories.
+Total: **175** symbols across 16 categories.
 
 ## enemies
 
@@ -178,12 +178,21 @@ Total: **164** symbols across 16 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
+| `AchievementDef_PostLoad` | `0x140312060` | ✅ ok | ✔ | bool(void* definition) |
+| `ChallengeDef_PostLoad` | `0x140324f30` | ✅ ok | ✔ | bool(void* definition) |
 | `Definition_DeserializeBase` | `0x140310180` | ✅ ok |  | bool(void* def, void* reader) |
+| `Definition_PostLoad` | `0x140310200` | ✅ ok | ✔ | bool(void* definition) |
+| `DreamShardDef_PostLoad` | `0x140312690` | ✅ ok | ✔ | bool(void* definition) |
+| `EnemyCampTierDef_PostLoad` | `0x140319620` | ✅ ok | ✔ | bool(void* definition) |
+| `GameModeDefaultDef_PostLoad` | `0x140325950` | ✅ ok | ✔ | bool(void* definition) |
+| `GameModifierDef_PostLoad` | `0x140326250` | ✅ ok | ✔ | bool(void* definition) |
 | `GameModifierDef_RegisterAssetLoader` | `0x1403260b0` | ✅ ok |  | void(void* assetClassDesc) |
 | `GoPtrOwnerRelay_ForwardCall` | `0x14066bf00` | ✅ ok |  | oIGoPtrOwnerRelay base virtual (slot +0x18): resolves owned via slot-0x30, forwards own… |
 | `GoPtrOwnerRelay_ForwardGet` | `0x14066be70` | ✅ ok |  | oIGoPtrOwnerRelay base virtual (vtable 0x140f06820 slot +0x8): resolves the owned objec… |
 | `GoPtrOwnerRelay_ForwardSet` | `0x14066bec0` | ✅ ok |  | oIGoPtrOwnerRelay base virtual (slot +0x10): resolves owned via slot-0x30, forwards own… |
 | `HasGameModifierStateMachine_Register` | `0x140197780` | ✅ ok |  | void(void) |
+| `HeroDef_PostLoad` | `0x14031fd70` | ✅ ok | ✔ | bool(void* definition) |
+| `IngredientDef_PostLoad` | `0x140323190` | ✅ ok | ✔ | bool(void* definition) |
 | `Library_AchievementDefinition_vftable` | `0x1414113b0` | 📍 va |  | vftable of oCTLibrary<oe::dt::AchievementDefinition> singleton. |
 | `Library_ChallengeDefinition_vftable` | `0x141413010` | 📍 va |  | vftable of oCTLibrary<oe::dt::ChallengeDefinition> singleton. |
 | `Library_DreamShardDefinition_vftable` | `0x141411050` | 📍 va |  | vftable of oCTLibrary<oCDtDreamShardDefinition> singleton. |
@@ -199,7 +208,9 @@ Total: **164** symbols across 16 categories.
 | `Library_RewardDefinition_vftable` | `0x141412e00` | 📍 va |  | vftable of oCTLibrary<oCDtRewardDefinition> singleton. |
 | `Library_TileDefinition_vftable` | `0x141412080` | 📍 va |  | vftable of oCTLibrary<oCDtTileDefinition> singleton. |
 | `Library_VersionDefinition_vftable` | `0x141412300` | 📍 va |  | vftable of oCTLibrary<oe::dt::VersionDefinition> singleton (LiveOps version manifest). |
+| `MapDef_PostLoad` | `0x1403234f0` | ✅ ok | ✔ | bool(void* definition) |
 | `MapDef_RegisterAssetLoader` | `0x140323350` | ✅ ok |  | void(void* assetClassDesc) |
+| `MelodyDef_PostLoad` | `0x140326f50` | ✅ ok | ✔ | bool(void* definition) |
 | `Mem_Alloc16Zeroed` | `0x14050d5c0` | ✅ ok |  | malloc(0x10) + zero two qwords + bump global alloc counter DAT_1414442b4 = 16-byte zero… |
 | `PtrVector_Resize` | `0x140155230` | ✅ ok |  | pointer-vector resize: param_3==0 frees vec[0] (free-counter DAT_14146d854), else mallo… |
 | `Registry_EnemyDefinition_desc` | `0x141470208` | 📍 va |  | Class registry descriptor for oCDtEnemyDefinition (set by registrar FUN_14022d940; UID … |

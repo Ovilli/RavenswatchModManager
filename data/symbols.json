@@ -2730,6 +2730,270 @@
    "refs": [
     "src/loader/lib/rsmm.lua"
    ]
+  },
+  {
+   "name": "Definition_PostLoad",
+   "kind": "function",
+   "category": "library",
+   "raw": "FUN_140310200",
+   "status": "ok",
+   "signature": "bool(void* definition)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*"
+    ]
+   },
+   "locator": {
+    "vftable": {
+     "class": "oCDtDefinition",
+     "slot": 18
+    }
+   },
+   "note": "The base implementation: register the instance and return. Post-deserialize callback: vftable slot 18 on every oCDtDefinition subclass. Each one resolves its typed resource refs and then registers the instance in the class registry, which is what makes a def reachable from Registry_EnumInstances \u2014 so this is the hook point for observing or amending a definition as it loads. Found by tools/mine_vtable_interfaces.py: slot 18 has 13 distinct implementations across the Definition family, which is what identifies it as an interface method rather than per-class incidental code.",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "DreamShardDef_PostLoad",
+   "kind": "function",
+   "category": "library",
+   "raw": "FUN_140312690",
+   "status": "ok",
+   "signature": "bool(void* definition)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*"
+    ]
+   },
+   "locator": {
+    "vftable": {
+     "class": "oCDtDreamShardDefinition",
+     "slot": 18
+    }
+   },
+   "note": "Dream-shard def. Post-deserialize callback: vftable slot 18 on every oCDtDefinition subclass. Each one resolves its typed resource refs and then registers the instance in the class registry, which is what makes a def reachable from Registry_EnumInstances \u2014 so this is the hook point for observing or amending a definition as it loads. Found by tools/mine_vtable_interfaces.py: slot 18 has 13 distinct implementations across the Definition family, which is what identifies it as an interface method rather than per-class incidental code.",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "EnemyCampTierDef_PostLoad",
+   "kind": "function",
+   "category": "library",
+   "raw": "FUN_140319620",
+   "status": "ok",
+   "signature": "bool(void* definition)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*"
+    ]
+   },
+   "locator": {
+    "vftable": {
+     "class": "oCDtEnemyCampTierDefinition",
+     "slot": 18
+    }
+   },
+   "note": "Enemy-camp tier def. Post-deserialize callback: vftable slot 18 on every oCDtDefinition subclass. Each one resolves its typed resource refs and then registers the instance in the class registry, which is what makes a def reachable from Registry_EnumInstances \u2014 so this is the hook point for observing or amending a definition as it loads. Found by tools/mine_vtable_interfaces.py: slot 18 has 13 distinct implementations across the Definition family, which is what identifies it as an interface method rather than per-class incidental code.",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "HeroDef_PostLoad",
+   "kind": "function",
+   "category": "library",
+   "raw": "FUN_14031fd70",
+   "status": "ok",
+   "signature": "bool(void* definition)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*"
+    ]
+   },
+   "locator": {
+    "vftable": {
+     "class": "oCDtHeroDefinition",
+     "slot": 18
+    }
+   },
+   "note": "Hero def \u2014 the largest of the set (295 lines) and the entry point for hero content work. Post-deserialize callback: vftable slot 18 on every oCDtDefinition subclass. Each one resolves its typed resource refs and then registers the instance in the class registry, which is what makes a def reachable from Registry_EnumInstances \u2014 so this is the hook point for observing or amending a definition as it loads. Found by tools/mine_vtable_interfaces.py: slot 18 has 13 distinct implementations across the Definition family, which is what identifies it as an interface method rather than per-class incidental code.",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "IngredientDef_PostLoad",
+   "kind": "function",
+   "category": "library",
+   "raw": "FUN_140323190",
+   "status": "ok",
+   "signature": "bool(void* definition)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*"
+    ]
+   },
+   "locator": {
+    "vftable": {
+     "class": "oCDtIngredientDefinition",
+     "slot": 18
+    }
+   },
+   "note": "Ingredient def. Post-deserialize callback: vftable slot 18 on every oCDtDefinition subclass. Each one resolves its typed resource refs and then registers the instance in the class registry, which is what makes a def reachable from Registry_EnumInstances \u2014 so this is the hook point for observing or amending a definition as it loads. Found by tools/mine_vtable_interfaces.py: slot 18 has 13 distinct implementations across the Definition family, which is what identifies it as an interface method rather than per-class incidental code.",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "MapDef_PostLoad",
+   "kind": "function",
+   "category": "library",
+   "raw": "FUN_1403234f0",
+   "status": "ok",
+   "signature": "bool(void* definition)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*"
+    ]
+   },
+   "locator": {
+    "vftable": {
+     "class": "oCDtMapDefinition",
+     "slot": 18
+    }
+   },
+   "note": "Map def. Post-deserialize callback: vftable slot 18 on every oCDtDefinition subclass. Each one resolves its typed resource refs and then registers the instance in the class registry, which is what makes a def reachable from Registry_EnumInstances \u2014 so this is the hook point for observing or amending a definition as it loads. Found by tools/mine_vtable_interfaces.py: slot 18 has 13 distinct implementations across the Definition family, which is what identifies it as an interface method rather than per-class incidental code.",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "AchievementDef_PostLoad",
+   "kind": "function",
+   "category": "library",
+   "raw": "FUN_140312060",
+   "status": "ok",
+   "signature": "bool(void* definition)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*"
+    ]
+   },
+   "locator": {
+    "vftable": {
+     "class": "oe::dt::AchievementDefinition",
+     "slot": 18
+    }
+   },
+   "note": "Achievement def. Post-deserialize callback: vftable slot 18 on every oCDtDefinition subclass. Each one resolves its typed resource refs and then registers the instance in the class registry, which is what makes a def reachable from Registry_EnumInstances \u2014 so this is the hook point for observing or amending a definition as it loads. Found by tools/mine_vtable_interfaces.py: slot 18 has 13 distinct implementations across the Definition family, which is what identifies it as an interface method rather than per-class incidental code.",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "ChallengeDef_PostLoad",
+   "kind": "function",
+   "category": "library",
+   "raw": "FUN_140324f30",
+   "status": "ok",
+   "signature": "bool(void* definition)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*"
+    ]
+   },
+   "locator": {
+    "vftable": {
+     "class": "oe::dt::ChallengeDefinition",
+     "slot": 18
+    }
+   },
+   "note": "Challenge def. Post-deserialize callback: vftable slot 18 on every oCDtDefinition subclass. Each one resolves its typed resource refs and then registers the instance in the class registry, which is what makes a def reachable from Registry_EnumInstances \u2014 so this is the hook point for observing or amending a definition as it loads. Found by tools/mine_vtable_interfaces.py: slot 18 has 13 distinct implementations across the Definition family, which is what identifies it as an interface method rather than per-class incidental code.",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "GameModeDefaultDef_PostLoad",
+   "kind": "function",
+   "category": "library",
+   "raw": "FUN_140325950",
+   "status": "ok",
+   "signature": "bool(void* definition)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*"
+    ]
+   },
+   "locator": {
+    "vftable": {
+     "class": "oe::dt::GameModeDefaultDefinition",
+     "slot": 18
+    }
+   },
+   "note": "Game-mode default def. Post-deserialize callback: vftable slot 18 on every oCDtDefinition subclass. Each one resolves its typed resource refs and then registers the instance in the class registry, which is what makes a def reachable from Registry_EnumInstances \u2014 so this is the hook point for observing or amending a definition as it loads. Found by tools/mine_vtable_interfaces.py: slot 18 has 13 distinct implementations across the Definition family, which is what identifies it as an interface method rather than per-class incidental code.",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "GameModifierDef_PostLoad",
+   "kind": "function",
+   "category": "library",
+   "raw": "FUN_140326250",
+   "status": "ok",
+   "signature": "bool(void* definition)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*"
+    ]
+   },
+   "locator": {
+    "vftable": {
+     "class": "oe::dt::GameModifierDefinition",
+     "slot": 18
+    }
+   },
+   "note": "Run-modifier def. Post-deserialize callback: vftable slot 18 on every oCDtDefinition subclass. Each one resolves its typed resource refs and then registers the instance in the class registry, which is what makes a def reachable from Registry_EnumInstances \u2014 so this is the hook point for observing or amending a definition as it loads. Found by tools/mine_vtable_interfaces.py: slot 18 has 13 distinct implementations across the Definition family, which is what identifies it as an interface method rather than per-class incidental code.",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "MelodyDef_PostLoad",
+   "kind": "function",
+   "category": "library",
+   "raw": "FUN_140326f50",
+   "status": "ok",
+   "signature": "bool(void* definition)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*"
+    ]
+   },
+   "locator": {
+    "vftable": {
+     "class": "oe::dt::MelodyDefinition",
+     "slot": 18
+    }
+   },
+   "note": "Melody def. Post-deserialize callback: vftable slot 18 on every oCDtDefinition subclass. Each one resolves its typed resource refs and then registers the instance in the class registry, which is what makes a def reachable from Registry_EnumInstances \u2014 so this is the hook point for observing or amending a definition as it loads. Found by tools/mine_vtable_interfaces.py: slot 18 has 13 distinct implementations across the Definition family, which is what identifies it as an interface method rather than per-class incidental code.",
+   "refs": [
+    "docs/_re"
+   ]
   }
  ],
  "_event_catalog_doc": "Observation events the loader republishes by raw name from the central telemetry sink (Analytics_SubmitNamedEvent). No address \u2014 the firehose detour reads the name at runtime, so any name the game adds also fires even if absent here. These are confirmed names harvested by string-xref (cluster 0x140f13a00-0x140f13f00); subscribe via R.on('<name>', cb) with RSMM_ENABLE_GAME_EVENTS=1. Shown by `rsmm symbols events`.",
