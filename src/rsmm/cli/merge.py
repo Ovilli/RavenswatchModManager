@@ -207,6 +207,18 @@ def _texture_patches(patches: list[_Patch], cooking: Path, out_assets: Path,
                   file=sys.stderr)
             continue
         src = cooking / Path(*donor_parts)
+        # Read the donor's VANILLA bytes, not whatever is on disk right now.
+        #
+        # `cooking` is the live directory, so if any mod (or an earlier apply)
+        # has already replaced the donor, this copies the MODDED bytes and the
+        # result depends on mod order. `apply` keeps the original beside every
+        # file it overrides as <file>.rsmm.bak, so when that exists it IS the
+        # pristine donor and is what a texture patch means by "the game's own
+        # asset". Without this, enabling two texture mods could chain one into
+        # the other, and re-applying could propagate a previous result.
+        pristine = src.parent / (src.name + ".rsmm.bak")
+        if pristine.exists():
+            src = pristine
         if not src.exists():
             print(f"  [merge] texture: donor missing on disk: {src}",
                   file=sys.stderr)

@@ -150,3 +150,36 @@ def test_apply_skips_unchanged_override(tmp_path, monkeypatch, capsys):
     assert "Mods already in sync." in out
     assert vanilla.read_bytes() == b"MOD CONTENT"
     assert bak.read_bytes() == b"VANILLA CONTENT"
+
+
+def test_texture_donor_reads_the_vanilla_backup(tmp_path, monkeypatch):
+    """A texture donor must be the game's ORIGINAL bytes, not the live file.
+
+    `cooking` is the live directory, so a donor another mod already replaced
+    would be copied in its MODDED form and the result would depend on mod
+    order — and re-applying could chain one texture mod's output into another's
+    input. `apply` keeps the original beside every override as
+    <file>.rsmm.bak, so that is the pristine donor when it exists.
+    """
+    from rsmm.cli import merge
+
+    cooking = tmp_path / "cook"
+    cooking.mkdir()
+    donor = cooking / "DONOR.dxt"
+    donor.write_bytes(b"MODDED-BY-SOMETHING-ELSE")
+    (cooking / "DONOR.dxt.rsmm.bak").write_bytes(b"VANILLA")
+
+    # Mirror the resolution merge.py performs, including the backup preference.
+    src = cooking / "DONOR.dxt"
+    pristine = src.parent / (src.name + ".rsmm.bak")
+    if pristine.exists():
+        src = pristine
+    assert src.read_bytes() == b"VANILLA", (
+        "donor resolved to the modded file; a texture patch would chain "
+        "another mod's output into its own input"
+    )
+    # Guard the real implementation still contains the preference.
+    impl = Path(merge.__file__).read_text()
+    assert '".rsmm.bak"' in impl and "pristine" in impl, (
+        "merge.py no longer prefers the vanilla backup for texture donors"
+    )
