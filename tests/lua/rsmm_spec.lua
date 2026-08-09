@@ -1259,6 +1259,45 @@ do
     for _, id in ipairs(subs) do R.off(id) end
 end
 
+
+-- ---------------------------------------------------------------------------
+-- 24. spawn-init capture: instant, with no combat prerequisite
+--
+-- Without this source the Lua fallback only learns the hero from the heal or
+-- item-grant handlers, i.e. from a hero ACTION. A playtest measured 73 seconds
+-- before anything was captured, and the result was only [tentative] because it
+-- came from the heal path. The hero's own post-load init runs once at spawn,
+-- before it acts — but its fields are not live yet at that moment, so the
+-- identity has to be stashed and promoted when it becomes readable.
+-- ---------------------------------------------------------------------------
+do
+    -- Native capture OFF, so the Lua fallback path is the one under test.
+    shared[0], shared[2], shared[3] = 0, 0, 0
+    local SPAWN = 0x11000000
+    I.write_f32(SPAWN + MAXHP_OFF, 0.0)          -- fields NOT live yet
+    I.write_f32(SPAWN + HP_OFF, 0.0)
+    I.write_u64(SPAWN + HUDMIRROR_OFF, 0)
+
+    check(R.entity.hero() == nil, "no hero before the spawn-init hook fires")
+    local sub_va = I.resolve("NamedEvent_HeroSubscribeAll")
+    check(hooks[sub_va] ~= nil, "spawn-init hook armed on NamedEvent_HeroSubscribeAll")
+    check(hooks[sub_va].sig == "vp", "armed with the void(hero) signature")
+
+    hooks[sub_va].cb(SPAWN)
+    check(R.entity.hero() == nil,
+          "identity stashed, NOT captured while its fields are still zero")
+
+    -- The init routine is what populates these; simulate it completing.
+    I.write_f32(SPAWN + MAXHP_OFF, 120.0)
+    I.write_f32(SPAWN + HP_OFF, 120.0)
+    I.write_u64(SPAWN + HUDMIRROR_OFF, MIRROR)
+    I.write_f32(MIRROR, 120.0)
+
+    check(R.entity.hero() == SPAWN,
+          "promoted on the first read after the fields go live")
+    check(shared[0] == SPAWN, "published to the shared slot for other mod states")
+end
+
 -- ---------------------------------------------------------------------------
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)

@@ -786,6 +786,10 @@ local FLAGLIST_VFT_VA    = 0x140f01650   -- oCCustomFlagList::vftable (re-derive
 local ENTITY_IMG_BASE    = 0x140000000
 
 local _hero_char = nil          -- captured hero character object (HP@+0x15c8)
+-- Spawn-init candidate whose HP/mirror fields are not populated yet. The Lua
+-- mirror of the native pending slot: stashed by the hero's post-load init hook
+-- and promoted by the tick pump the first time it reads plausible.
+local _hero_pending = nil
 local _hero_capture_armed = false
 -- Process-global shared slots (see hook_events.cpp install_hero_capture):
 --   0 = hero character pointer (published by native capture)
@@ -894,8 +898,29 @@ local function _arm_hero_capture()
         if slot == nil and why == "already-hooked" then return true end
         return slot ~= nil
     end
+    -- SPAWN-INIT source. This is what makes capture instant instead of
+    -- "whenever you next heal or pick something up".
+    --
+    -- The other two handlers only fire on a hero ACTION, so with the native
+    -- capture off a run could go a minute or more before anything was
+    -- captured — measured at 73 seconds in one playtest, and the result was
+    -- only [tentative] because it came from the heal path. This routine is the
+    -- hero's own post-load init: it runs once, at spawn, before the hero acts,
+    -- and it is hero-only (enemies have no HUD mirror), so its capture is
+    -- authoritative.
+    --
+    -- Its param_1 is the HP-carrier, but the fields are NOT live yet — this
+    -- function is what populates the HUD mirror the plausibility gate checks.
+    -- So stash the identity and let the tick pump promote it the moment it
+    -- reads plausible, exactly as the native path does with its pending slot.
+    local sub_va = I.resolve and I.resolve("NamedEvent_HeroSubscribeAll")
+    local ok0 = arm(sub_va, "vp", function(p1)
+        if p1 and p1 ~= 0 then _hero_pending = p1 end
+        return nil
+    end)
     local ok1 = arm(gain_va, "vppp", function(p1) capture(p1, false); return nil end)
     local ok2 = arm(give_va, "vppp", function(_, p2) capture(p2, true); return nil end)
+    ok1 = ok1 or ok0
     if not (ok1 or ok2) then
         local why = (gain_va or give_va)
             and "could not be hooked (another mod may own them, or the install failed)"
@@ -945,11 +970,25 @@ function R.entity.hero()
             return p
         end
     end
-    -- Legacy fallback: an older loader without native capture. Arm the per-state
-    -- Lua hooks (safe only when native capture is NOT present — otherwise it
-    -- would collide with the native hooks on the same addresses).
+    -- Legacy fallback: an older loader without native capture, or the native
+    -- capture switched off. Arm the per-state Lua hooks (safe only when native
+    -- capture is NOT present — otherwise it would collide on the same
+    -- addresses).
     if not _native_capture_active() then
         if not _hero_char then _arm_hero_capture() end
+        -- Promote the spawn-init candidate as soon as its fields go live. The
+        -- tick pump calls through here every 500ms, so this lands within one
+        -- tick of the hero becoming readable rather than waiting for the first
+        -- heal or pickup.
+        if not _hero_char and _hero_pending and _hero_plausible(_hero_pending) then
+            _hero_char = _hero_pending
+            _hero_pending = nil
+            if I.shared_set then pcall(I.shared_set, SHARED_HERO_SLOT, _hero_char) end
+            R.log(string.format(
+                "[rsmm.entity] hero captured @0x%x (hp %.0f/%.0f) [spawn-init]",
+                _hero_char, I.read_f32(_hero_char + ENTITY_HP_OFF),
+                I.read_f32(_hero_char + ENTITY_MAXHP_OFF)))
+        end
         return _hero_char
     end
     return nil
