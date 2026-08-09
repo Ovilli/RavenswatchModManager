@@ -428,10 +428,41 @@ R.events.dump()               -- log every event with its count + payload keys
 The catalog is a browsing aid, not a whitelist: the loader reads the plaintext
 name off the event object, so a name a future patch adds fires too.
 
-For an event whose payload isn't decoded yet, enable the `RSMM_EVENT_PROBE`
-loader flag and each gameplay event gains `ev.w38 … ev.w70` — a raw window of
-the event object — so a field can be pinned from Lua in one session instead of
-a C++ rebuild per guess.
+### Event payloads
+
+Most events have **no payload** — and that is the engine's design, not a gap
+in ours. There are only ~24 `oCGameNamedEvent` subclasses that carry data;
+every other name is dispatched as the bare base class, so all it can tell you
+is *that it happened*, plus the `dispatcher` / `entity` handles saying to whom.
+
+For the ~24 that do carry data, the layouts are recovered from the binary by
+`tools/mine_event_payloads.py` (RTTI → vftable → the code that stores it) and
+the loader decodes them by matching the event's **own vftable**, so the match
+is exact:
+
+```lua
+R.on("gameplay:NETWORK_DAMAGE", function(ev)
+    R.log(ev.class)          -- "oCGameNamedEventNetworkDamage"
+    R.log(ev.value)          -- 12.5      (f32, hand-confirmed)
+    R.log(ev.target_entity)  -- "0x2a1f…" (handles are hex strings: a Lua
+end)                         --            number would lose the low bits)
+```
+
+Read the field names honestly: **offsets and widths are recovered, meaning is
+not.** A field only gets a semantic name (`value`, `target_entity`,
+`mo_guid_lo`) where hand-RE confirmed it; everything else is mechanical —
+`u50` is "u32 at +0x50", `f6c` is "float at +0x6c". They are real fields at
+real offsets, but what they *mean* is for you to pin down.
+
+Two things help with that. `ev.class` tells you which struct you are looking
+at, and the `RSMM_EVENT_PROBE` loader flag adds a raw window (`ev.w38 …
+ev.w70`) to every gameplay event — so a field gets pinned from Lua in one
+session instead of a C++ rebuild per guess.
+
+Decoding is gated on the build fingerprint: vftable addresses are
+build-specific, so after a game update the loader falls back to the plain
+envelope until the schemas are re-mined
+(`python tools/mine_event_payloads.py --verify`).
 
 ### Hot-reload (Lua iteration < 5 seconds)
 

@@ -118,6 +118,10 @@ class SymbolMap:
     # the plaintext name off the event object — so the list is a browsable
     # catalog, not a whitelist: a name the game adds still fires.
     gameplay_event_catalog: tuple[dict[str, Any], ...] = ()
+    # Payload layouts for the event subclasses that carry data, keyed by
+    # vftable RVA (tools/mine_event_payloads.py). See the _doc entry in
+    # data/symbols.json for what is recovered and what is not.
+    event_payload_schemas: tuple[dict[str, Any], ...] = ()
 
     def by_name(self, name: str) -> Symbol | None:
         for s in self.symbols:
@@ -171,6 +175,7 @@ def load_symbol_map(path: Path | None = None) -> SymbolMap:
         symbols=tuple(_coerce(e) for e in data["symbols"]),
         event_catalog=tuple(data.get("event_catalog", ())),
         gameplay_event_catalog=tuple(data.get("gameplay_event_catalog", ())),
+        event_payload_schemas=tuple(data.get("event_payload_schemas", ())),
     )
 
 
