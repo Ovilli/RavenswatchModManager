@@ -24,6 +24,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace rsmm {
@@ -444,6 +445,7 @@ bool env_truthy(const char* name) {
 
 template <int N>
 bool arm(EventHook& h) {
+    static_assert(N >= 0, "slot index must be non-negative");
     h.va = fn_resolve(h.fn_name);
     if (h.va == 0 || h.va == static_cast<std::uintptr_t>(-1)) {
         Loader::get().log(std::string("[game-events] resolve ") + h.fn_name + " failed");
@@ -468,6 +470,25 @@ bool arm(EventHook& h) {
                       + h.fn_name + " hooked");
     return true;
 }
+
+// Arm EVERY row of the generated table. This used to read
+//   any |= arm<0>(g_hooks[0]); any |= arm<1>(g_hooks[1]);
+// which silently capped the table at two entries: `rsmm symbols gen` would
+// happily emit a third `kind="event"` row into event_table.gen.h, the code
+// would compile, and the hook would never be installed — a generated table
+// whose size the consumer did not track. The fold over an index_sequence
+// mints the per-slot detour<N> for the ACTUAL table length, so adding a
+// symbol to data/symbols.json is now the only step.
+template <std::size_t... Is>
+bool arm_all(std::index_sequence<Is...>) {
+    bool any = false;
+    // Left-to-right, and every slot is attempted: `any |= arm(...)` inside a
+    // fold keeps a failed resolve from short-circuiting the rest.
+    ((any = arm<static_cast<int>(Is)>(g_hooks[Is]) || any), ...);
+    return any;
+}
+
+constexpr std::size_t kEventHookCount = sizeof(g_hooks) / sizeof(g_hooks[0]);
 
 // --- hero capture (once, native) --------------------------------------------
 //
@@ -735,8 +756,7 @@ bool install_event_hooks() {
     }
     bool any = false;
     if (analytics) {
-        any |= arm<0>(g_hooks[0]);
-        any |= arm<1>(g_hooks[1]);
+        any |= arm_all(std::make_index_sequence<kEventHookCount>{});
         // One detour on the central telemetry sink republishes every named
         // analytics event to the Lua bus (see install_analytics_firehose).
         any |= install_analytics_firehose();

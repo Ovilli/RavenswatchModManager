@@ -40,9 +40,9 @@
    "name": "InitialLoading_SpawnMagicalObjects",
    "kind": "function",
    "category": "items",
-   "raw": "FUN_140265440",
-   "status": "unverified",
-   "note": "Boot 'InitialLoading - MagicalObject SpawnAllObjects' caller that invokes SpawnAllObjects(g_MagicalObjectPool, ...). Pattern-verified 2026-07-05 (unique byte pattern + Ghidra decompile match: InitialLoading stage strings, calls SpawnAllObjects anchor 0x140258760). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
+   "raw": "FUN_140259060",
+   "status": "ok",
+   "note": "Boot 'InitialLoading - MagicalObject SpawnAllObjects' caller that invokes SpawnAllObjects(g_MagicalObjectPool, ...). Pattern-verified 2026-07-05 (unique byte pattern + Ghidra decompile match: InitialLoading stage strings, calls SpawnAllObjects anchor 0x140258760). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_140259060 2026-08-09, hand-confirmed: The call immediately after the 'InitialLoading - MagicalObject SpawnAllObjects' stage string in the boot orchestrator, invoked with the magical-object pool global as arg1 \u2014 the note's signature.]",
    "refs": [
     "docs/_re"
    ]
@@ -94,9 +94,9 @@
    "name": "Definitions_LoadGroup",
    "kind": "function",
    "category": "resource",
-   "raw": "FUN_14030fa00",
-   "status": "unverified",
-   "note": "Loads the 'Definitions' group / VersionDefinition manifest (triggers loading the curated content list). Pattern-verified 2026-07-05 (Ghidra decompile: 'Definitions' group registry walk + Versions/LiveOps5.versiondef.ot reference). [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.]",
+   "raw": "FUN_140310300",
+   "status": "ok",
+   "note": "Loads the 'Definitions' group / VersionDefinition manifest (triggers loading the curated content list). Pattern-verified 2026-07-05 (Ghidra decompile: 'Definitions' group registry walk + Versions/LiveOps5.versiondef.ot reference). [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [RELOCATED to FUN_140310300 2026-08-09, hand-confirmed: Sole corpus function whose only string literal is the 'Definitions' group name. Weaker than the rest of this table (no versiondef path reference survives in the body), so treat a failure here as the first suspect.]",
    "refs": [
     "docs/_re"
    ]
@@ -105,8 +105,8 @@
    "name": "Vector_Grow",
    "kind": "function",
    "category": "engine",
-   "raw": "FUN_140154c20",
-   "status": "unverified",
+   "raw": "FUN_140155230",
+   "status": "ok",
    "signature": "void(void* vec, void* /*dead RDX*/, uint32_t new_cap /*R8*/)",
    "cabi": {
     "ret": "void",
@@ -116,7 +116,7 @@
      "uint32_t"
     ]
    },
-   "note": "Engine vector growth helper. new_cap is the 3rd arg (R8); RDX is dead. Used when force-pushing nodes into engine collections. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.]",
+   "note": "Engine vector growth helper. new_cap is the 3rd arg (R8); RDX is dead. Used when force-pushing nodes into engine collections. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [RELOCATED to FUN_140155230 2026-08-09, hand-confirmed: new_cap is param_3 (R8) and param_2 (RDX) is unused \u2014 the note's exact ABI note. malloc/realloc of param_3*8, capacity stored at +0xc. Reached from both vector-insert helpers.]",
    "refs": [
     "src/loader/src/hook_items.cpp",
     "src/loader/src/hook_skins.cpp"
@@ -248,9 +248,9 @@
    "name": "Netcode_PeerStateTick",
    "kind": "function",
    "category": "netcode",
-   "raw": "FUN_1402c7e70",
-   "status": "unverified",
-   "note": "Per-peer connection-state tick (peer conn-state enum at peer+0xCC; 3=connected). Reconnect-window lever hooks here. Pattern-verified 2026-07-05 (Ghidra decompile: iterates peer array, EP2PConnectionState log strings, state 2=eInterrupted disconnect, calls Netcode_DropPeer on max-window). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
+   "raw": "FUN_1402b03a0",
+   "status": "ok",
+   "note": "Per-peer connection-state tick (peer conn-state enum at peer+0xCC; 3=connected). Reconnect-window lever hooks here. Pattern-verified 2026-07-05 (Ghidra decompile: iterates peer array, EP2PConnectionState log strings, state 2=eInterrupted disconnect, calls Netcode_DropPeer on max-window). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_1402b03a0 2026-08-09, hand-confirmed: Iterates the peer array, reads the conn-state enum at peer+0xCC and skips 3; carries the EP2PConnectionState log strings including the eInterrupted disconnect branch. NOT DropPeer \u2014 the scorer picked this for DropPeer because the 'max reconnection time attempt' string the DropPeer note quotes is logged HERE, at the call site.]",
    "refs": [
     "src/loader/src/hook_netcode.cpp"
    ]
@@ -259,9 +259,9 @@
    "name": "Netcode_DropPeer",
    "kind": "function",
    "category": "netcode",
-   "raw": "FUN_1402cc9c0",
-   "status": "unverified",
-   "note": "Drops a peer after the reconnect window (default 60s) elapses. Pattern-verified 2026-07-05 (Ghidra: called from Netcode_PeerStateTick's 'max reconnection time attempt' branch). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
+   "raw": "FUN_1402b4d50",
+   "status": "ok",
+   "note": "Drops a peer after the reconnect window (default 60s) elapses. Pattern-verified 2026-07-05 (Ghidra: called from Netcode_PeerStateTick's 'max reconnection time attempt' branch). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_1402b4d50 2026-08-09, hand-confirmed: The call in PeerStateTick's 'max reconnection time attempt' branch. Swap-removes a peer from the same global array PeerStateTick walks (0x60 stride, count decremented).]",
    "refs": [
     "src/loader/src/hook_netcode.cpp"
    ]
@@ -1100,10 +1100,10 @@
    "name": "MapCtx_DistributeEnemyCampTiers",
    "kind": "function",
    "category": "enemies",
-   "raw": "FUN_1401ebd00",
-   "status": "unverified",
+   "raw": "FUN_1401e8830",
+   "status": "ok",
    "signature": "void(void* mapSceneContext)",
-   "note": "Runs under 'Level load - MapSceneContext OnLevelStart', just before the reward roll. Camp spawner list @ctx+0xc8 count @+0xd0; each spawner's value f32 @+0x68 lazily evaluated via Property_EvaluateByGuid (on failure logs the settings asset path). Enemy-camp tier defs enumerated from the class registry and filtered by tier band [def+0x288, def+0x28c] \u2014 this is enemycamptierdef codec value_a/value_b, now pinned as the tier min/max over the value roll. Seeded pick, then weighted distribution over def rows @+0x290 count @+0x298 (weight @entry+0x40); tier assigned to spawner via FUN_14032de30. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
+   "note": "Runs under 'Level load - MapSceneContext OnLevelStart', just before the reward roll. Camp spawner list @ctx+0xc8 count @+0xd0; each spawner's value f32 @+0x68 lazily evaluated via Property_EvaluateByGuid (on failure logs the settings asset path). Enemy-camp tier defs enumerated from the class registry and filtered by tier band [def+0x288, def+0x28c] \u2014 this is enemycamptierdef codec value_a/value_b, now pinned as the tier min/max over the value roll. Seeded pick, then weighted distribution over def rows @+0x290 count @+0x298 (weight @entry+0x40); tier assigned to spawner via FUN_14032de30. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_1401e8830 2026-08-09, hand-confirmed: First of the three calls under the 'MapSceneContext OnLevelStart' stage, i.e. before the reward roll (Reward_InitAllRewards) as the note says. Contains 7 of the note's 8 struct offsets (+0x288/+0x28c tier band, +0x290/+0x298 rows, weight +0x40); its neighbour has 1.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -1112,10 +1112,10 @@
    "name": "MapCtx_LinkPairedSpawners",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_1401ef131",
-   "status": "unverified",
+   "raw": "FUN_1401ebad0",
+   "status": "ok",
    "signature": "void(void* mapSceneContext)",
-   "note": "Runs right after the reward roll. Spawner list @ctx+0x198 count @+0x1a0: collects spawners with null link @+0x68 and def+0x110 != 0, then pairs A,B where A.def+0x110 == B.def+0xf8 (link-id match), stores peer ptr @spawner+0x68 and registers both via FUN_1402b6f10(entity+0x570, ...). Semantics inferred from structure (teleporter/portal-style two-way pairing candidate) \u2014 not yet observed in-game. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
+   "note": "Runs right after the reward roll. Spawner list @ctx+0x198 count @+0x1a0: collects spawners with null link @+0x68 and def+0x110 != 0, then pairs A,B where A.def+0x110 == B.def+0xf8 (link-id match), stores peer ptr @spawner+0x68 and registers both via FUN_1402b6f10(entity+0x570, ...). Semantics inferred from structure (teleporter/portal-style two-way pairing candidate) \u2014 not yet observed in-game. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_1401ebad0 2026-08-09, hand-confirmed: The call right AFTER the reward roll in the same stage. Contains all 6 note offsets (+0x198/+0x1a0 spawner list, link +0x68, def +0x110 / +0xf8, register +0x570); the tier-distribute neighbour has 1.]",
    "refs": [
     "docs/_re/kinds/spawn-system.md"
    ]
@@ -1124,10 +1124,10 @@
    "name": "HeroDef_LoadBaseEntity",
    "kind": "function",
    "category": "heroes",
-   "raw": "FUN_140329660",
-   "status": "unverified",
+   "raw": "FUN_14031ece0",
+   "status": "ok",
    "signature": "void(void* heroDef, void** outEntityRef)",
-   "note": "Lazy loader for the hero's base entity, called per herodef in 'Level load - LoadAndGetRandomHeroEntity' (herodef list @gameScene+0x710 count @+0x718). Entity spec inline in the herodef: path string @+0x8a0, second path @+0x8b0, package ctx @+0x8c0, loaded flag @+0x8c8, cached refcounted entity @+0x8d0. Waits on def+0x68 readiness, resolves the entity-loader service (id 0x53b64d) from ServiceRegistry_Global and calls svc-vtbl+0x18 Load(path, flags, outRef, 0). Key link for the custom-hero path: this is where a herodef turns into a live entity. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
+   "note": "Lazy loader for the hero's base entity, called per herodef in 'Level load - LoadAndGetRandomHeroEntity' (herodef list @gameScene+0x710 count @+0x718). Entity spec inline in the herodef: path string @+0x8a0, second path @+0x8b0, package ctx @+0x8c0, loaded flag @+0x8c8, cached refcounted entity @+0x8d0. Waits on def+0x68 readiness, resolves the entity-loader service (id 0x53b64d) from ServiceRegistry_Global and calls svc-vtbl+0x18 Load(path, flags, outRef, 0). Key link for the custom-hero path: this is where a herodef turns into a live entity. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_14031ece0 2026-08-09, hand-confirmed: Called from the 'Level load - LoadAndGetRandomHeroEntity' stage, in the loop over the herodef list at gameScene+0x710 with count +0x718 \u2014 the exact pair recorded in the note.]",
    "refs": [
     "docs/_re/kinds/heroes.md"
    ]
@@ -1137,9 +1137,9 @@
    "kind": "function",
    "category": "heroes",
    "raw": "FUN_14028e5f0",
-   "status": "ok",
+   "status": "unverified",
    "signature": "void(void* heroDef, uint16_t skinIndex, void* outHandle)",
-   "note": "Lazy loader for a hero SKIN entity, called in 'Level load - LoadAndGetPlayedHeroEntity' with (herodef, skinIdx u16) pairs. Skin spec table @herodef+0x8f8 (array of spec ptrs), count @+0x900; out-of-range index warns and falls back to 0. Spec layout mirrors the base-entity spec at different offsets: path @spec+0x1c0, second path @+0x1d0, package ctx @+0x1e0, loaded flag @+0x1e8, cached entity @+0x1f0. Complements the baked roster count in FUN_1401dcae0 (hook_skins.cpp): the count gates the UI, THIS table is what actually loads a skin. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via string/hash anchor.]",
+   "note": "Lazy loader for a hero SKIN entity, called in 'Level load - LoadAndGetPlayedHeroEntity' with (herodef, skinIdx u16) pairs. Skin spec table @herodef+0x8f8 (array of spec ptrs), count @+0x900; out-of-range index warns and falls back to 0. Spec layout mirrors the base-entity spec at different offsets: path @spec+0x1c0, second path @+0x1d0, package ctx @+0x1e0, loaded flag @+0x1e8, cached entity @+0x1f0. Complements the baked roster count in FUN_1401dcae0 (hook_skins.cpp): the count gates the UI, THIS table is what actually loads a skin. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via string/hash anchor.] [FALSE OK (found 2026-08-09): FUN_14028e5f0 is the level-load orchestrator (all 15 'Level load - *' stage strings), not the skin loader \u2014 the note itself says this routine is CALLED from the 'LoadAndGetPlayedHeroEntity' stage, so it cannot be the function that contains that stage string. verify_symbol_resolve passed it because the address is a real function boundary; the gate proves an address is a function, never that it is the RIGHT function. The skin loader is the call inside that stage block; re-derive before using. Reassigned the address to LevelLoad_Orchestrator.]",
    "refs": [
     "docs/_re/kinds/skins.md"
    ]
@@ -1486,10 +1486,10 @@
    "name": "EnemyDef_PostLoad",
    "kind": "function",
    "category": "enemies",
-   "raw": "FUN_140324320",
-   "status": "unverified",
+   "raw": "FUN_14031a800",
+   "status": "ok",
    "signature": "bool(void* enemyDef)",
-   "note": "oCDtEnemyDefinition vftable+0x90 post-deserialize callback. Resolves the tribe typed-ref block at +0x2e8 (resolved ptr -> +0x318) via ResourceRef_Resolve, then SELF-REGISTERS into the tribe's runtime roster vector (tribe+0x2b8 data / +0x2c0 count, push_back via FUN_1401550d0) and folds min/max spawn-tier aggregates into tribe+0x2c8/+0x2cc/+0x2d0. Finally registers the instance in the class registry (Registry_RegisterInstance). THE tribe-roster writer: any loaded enemy def with a resolvable tribe_ref becomes a spawn candidate automatically. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
+   "note": "oCDtEnemyDefinition vftable+0x90 post-deserialize callback. Resolves the tribe typed-ref block at +0x2e8 (resolved ptr -> +0x318) via ResourceRef_Resolve, then SELF-REGISTERS into the tribe's runtime roster vector (tribe+0x2b8 data / +0x2c0 count, push_back via FUN_1401550d0) and folds min/max spawn-tier aggregates into tribe+0x2c8/+0x2cc/+0x2d0. Finally registers the instance in the class registry (Registry_RegisterInstance). THE tribe-roster writer: any loaded enemy def with a resolvable tribe_ref becomes a spawn candidate automatically. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_14031a800 2026-08-09, hand-confirmed: oCDtEnemyDefinition::vftable[18] (+0x90). Body matches the note exactly: tribe ref @+0x2e8 with class-desc default @+0x308 resolved into +0x318, push_back into tribe+0x2b8/+0x2c0, min/max folds into +0x2c8/+0x2cc/+0x2d0, then Registry_RegisterInstance.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -1498,10 +1498,10 @@
    "name": "EnemyTribeDef_PostLoad",
    "kind": "function",
    "category": "enemies",
-   "raw": "FUN_140325540",
-   "status": "unverified",
+   "raw": "FUN_14031bae0",
+   "status": "ok",
    "signature": "bool(void* tribeDef)",
-   "note": "oCDtEnemyTribeDefinition vftable+0x90 post-deserialize callback. Resolves each 0x38-stride typed-ref entry of the COOKED entry vector at +0x2a0/+0x2a8 (empty in all 25 vanilla tribes), then registers in the class registry. Does NOT write the runtime roster (+0x2b8) - enemies self-register there via EnemyDef_PostLoad. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
+   "note": "oCDtEnemyTribeDefinition vftable+0x90 post-deserialize callback. Resolves each 0x38-stride typed-ref entry of the COOKED entry vector at +0x2a0/+0x2a8 (empty in all 25 vanilla tribes), then registers in the class registry. Does NOT write the runtime roster (+0x2b8) - enemies self-register there via EnemyDef_PostLoad. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_14031bae0 2026-08-09, hand-confirmed: oCDtEnemyTribeDefinition::vftable[18] (+0x90). Walks the 0x38-stride entry vector at +0x2a0/+0x2a8 through ResourceRef_Resolve, then Registry_RegisterInstance; never touches the runtime roster +0x2b8 \u2014 the distinguishing negative in the note.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -1522,10 +1522,10 @@
    "name": "ResourceRef_Resolve",
    "kind": "function",
    "category": "resource",
-   "raw": "FUN_1404a51d0",
-   "status": "unverified",
+   "raw": "FUN_140492540",
+   "status": "ok",
    "signature": "void(void* refBlock, void* classDesc, void** outResolved, void* policy)",
-   "note": "Generic typed resource-ref resolver. Ref block layout (0x38 bytes): {char* name, u32 hash, char* parentPath, u32 hash2, void* classDescriptor @+0x20, u8 resolved @+0x28, void* resolvedPtr @+0x30}. Resolving loads the target resource on demand. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.]",
+   "note": "Generic typed resource-ref resolver. Ref block layout (0x38 bytes): {char* name, u32 hash, char* parentPath, u32 hash2, void* classDescriptor @+0x20, u8 resolved @+0x28, void* resolvedPtr @+0x30}. Resolving loads the target resource on demand. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.] [RELOCATED to FUN_140492540 2026-08-09, hand-confirmed: Called by both PostLoad routines. Resolved flag read at +0x28 and resolved pointer written through param_3, per the 0x38-byte ref block in the note; looks up service id 0x53b64d.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -1534,10 +1534,10 @@
    "name": "Registry_RegisterInstance",
    "kind": "function",
    "category": "resource",
-   "raw": "FUN_1403183ef",
-   "status": "unverified",
+   "raw": "FUN_1403119d0",
+   "status": "ok",
    "signature": "void(void* definition)",
-   "note": "Pushes a definition instance into the global instance list (DAT_141439de0) and its per-class registry list (via class descriptor vfunc[0] + Registry_EnumInstances). Guarded by a per-instance registration counter at +0x280. [2026-07-09: remap ambiguous/unbuildable pattern; not trusted.]",
+   "note": "Pushes a definition instance into the global instance list (DAT_141439de0) and its per-class registry list (via class descriptor vfunc[0] + Registry_EnumInstances). Guarded by a per-instance registration counter at +0x280. [2026-07-09: remap ambiguous/unbuildable pattern; not trusted.] [RELOCATED to FUN_1403119d0 2026-08-09, hand-confirmed: Called by both PostLoad routines above. Per-instance registration counter at param_1[0x50] = +0x280 as documented; pushes into the global instance list and the per-class registry entry.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -1546,8 +1546,8 @@
    "name": "Registry_EnumInstances",
    "kind": "function",
    "category": "resource",
-   "raw": "FUN_1402452a0",
-   "status": "unverified",
+   "raw": "FUN_140241750",
+   "status": "ok",
    "signature": "void*(void* unused, void* out3, void** classDescPtr)",
    "cabi": {
     "ret": "void*",
@@ -1557,7 +1557,7 @@
      "void*"
     ]
    },
-   "note": "Registry hash-map find-or-insert keyed on *classDescPtr (callers copy the class-descriptor global into a local and pass its address). Fills out3 = {ctrl_ptr, entry_ptr, inserted_flag(u8)} and returns out3; entry = {key @+0, instance_data(void**) @+8, count(u32) @+0x10} = all live instances of the definition class. Read-side callers (e.g. camp tier selector FUN_140330db0) guard descriptor != sentinel DAT_14146fe00, falling back to the global all-instances list DAT_141439de0/+8. Used by level-load stage 3, spawn pickers, and the loader registry dump (hook_registry.cpp). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
+   "note": "Registry hash-map find-or-insert keyed on *classDescPtr (callers copy the class-descriptor global into a local and pass its address). Fills out3 = {ctrl_ptr, entry_ptr, inserted_flag(u8)} and returns out3; entry = {key @+0, instance_data(void**) @+8, count(u32) @+0x10} = all live instances of the definition class. Read-side callers (e.g. camp tier selector FUN_140330db0) guard descriptor != sentinel DAT_14146fe00, falling back to the global all-instances list DAT_141439de0/+8. Used by level-load stage 3, spawn pickers, and the loader registry dump (hook_registry.cpp). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_140241750 2026-08-09, hand-confirmed: Called by Registry_RegisterInstance to get the per-class entry. SwissTable find-or-insert keyed on *classDescPtr; writes out3 = {ctrl, entry, inserted u8} and inits the entry as {key, data=0, count=0} \u2014 the {key @+0, instance_data @+8, count @+0x10} layout.]",
    "refs": [
     "docs/_re/kinds/enemies.md",
     "src/loader/src/hook_registry.cpp"
@@ -1591,10 +1591,10 @@
    "name": "EnemyCamp_TierSelector",
    "kind": "function",
    "category": "enemies",
-   "raw": "FUN_140332850",
-   "status": "unverified",
+   "raw": "FUN_14032e790",
+   "status": "ok",
    "signature": "void(void* selector)",
-   "note": "Camp generation: picks tribes (EnemyCamp_TribeEntryBuilder), then per tribe entry copies the tribe runtime roster (+0x2b8/+0x2c0) as the candidate vector, trims it with EnemyCamp_Stage3Filter, weighted-picks until camp power weight reached. Logs 'Min/Max power weight', 'Generation complete !'. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
+   "note": "Camp generation: picks tribes (EnemyCamp_TribeEntryBuilder), then per tribe entry copies the tribe runtime roster (+0x2b8/+0x2c0) as the candidate vector, trims it with EnemyCamp_Stage3Filter, weighted-picks until camp power weight reached. Logs 'Min/Max power weight', 'Generation complete !'. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_14032e790 2026-08-09, hand-confirmed: Carries the 'Generation complete !' and 'Min/Max power weight' log strings from the note; sole match in the corpus.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -1603,10 +1603,10 @@
    "name": "EnemyCamp_TribeEntryBuilder",
    "kind": "function",
    "category": "enemies",
-   "raw": "FUN_1403343a0",
-   "status": "unverified",
+   "raw": "FUN_14032fe20",
+   "status": "ok",
    "signature": "void(void* selector, void* specialEntry, void* outEntries, float mult)",
-   "note": "Builds the camp's tribe entry list: tribe pool = map def list (mapdef+0x720 -> +0x2c0 stride 0x38) or, if absent, ALL tribes from the class registry; filters via EnemyTribeDefInternal::SearchFilter, weighted-picks tribes, precomputes per-enemy spawn counts from the tribe roster. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
+   "note": "Builds the camp's tribe entry list: tribe pool = map def list (mapdef+0x720 -> +0x2c0 stride 0x38) or, if absent, ALL tribes from the class registry; filters via EnemyTribeDefInternal::SearchFilter, weighted-picks tribes, precomputes per-enemy spawn counts from the tribe roster. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_14032fe20 2026-08-09, hand-confirmed: Callee of the tier selector that references the map-def tribe list at mapdef+0x720 with 0x38 stride and the EnemyTribeDefInternal SearchFilter, and does NOT touch the tier-band offsets that identify the stage-3 filter.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -1639,10 +1639,10 @@
    "name": "LevelLoad_Orchestrator",
    "kind": "function",
    "category": "engine",
-   "raw": "FUN_1402928c0",
-   "status": "unverified",
+   "raw": "FUN_14028e5f0",
+   "status": "ok",
    "signature": "i64(void* levelGs)",
-   "note": "Runs the 'Level load - *' stage chain (hero entities, barks, 'Enemies settings loading' = blocking-load of registry enemy defs filtered by map-def tribe list, map/tile defs, enemy camp generation via named event, navmesh, sectorization). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
+   "note": "Runs the 'Level load - *' stage chain (hero entities, barks, 'Enemies settings loading' = blocking-load of registry enemy defs filtered by map-def tribe list, map/tile defs, enemy camp generation via named event, navmesh, sectorization). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_14028e5f0 2026-08-09, hand-confirmed: Holds all 15 'Level load - *' stage strings (hero entities, barks, 'Enemies settings loading', map/tile defs, enemy camps, navmesh, sectorization) \u2014 the stage chain the note describes. This address was previously and wrongly assigned to HeroDef_LoadSkinEntity, which is one of the functions this orchestrator CALLS.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
