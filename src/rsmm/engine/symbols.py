@@ -112,6 +112,12 @@ class SymbolMap:
     # {name, category, note}; they have no address (the loader reads the name
     # at runtime), so they live here rather than in `symbols`.
     event_catalog: tuple[dict[str, Any], ...] = ()
+    # Names dispatched on the oCGameNamedEvent bus, mined from the shipped exe
+    # (tools/mine_event_names.py). Entries are {name, category}. Like the
+    # analytics catalog these have no address — the loader's bus detour reads
+    # the plaintext name off the event object — so the list is a browsable
+    # catalog, not a whitelist: a name the game adds still fires.
+    gameplay_event_catalog: tuple[dict[str, Any], ...] = ()
 
     def by_name(self, name: str) -> Symbol | None:
         for s in self.symbols:
@@ -164,6 +170,7 @@ def load_symbol_map(path: Path | None = None) -> SymbolMap:
         preferred_base=_parse_hex(data.get("preferred_base", "0x140000000")),
         symbols=tuple(_coerce(e) for e in data["symbols"]),
         event_catalog=tuple(data.get("event_catalog", ())),
+        gameplay_event_catalog=tuple(data.get("gameplay_event_catalog", ())),
     )
 
 

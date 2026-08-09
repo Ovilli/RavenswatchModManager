@@ -373,6 +373,66 @@ rsmm.write_u8/u16/u32/u64/f32/f64(va, v)
 
 See `mods/ExampleLuaMod/init.lua` and `mods/ExampleSeedPin/init.lua` for working examples. Full game-function API + caveats: [docs/_re/CALLING_GAME_FUNCTIONS.md](/reverse-engineering/calling-game-functions/).
 
+### Events
+
+`R.on` is the whole surface. Both engine buses are armed by default, so a mod
+sees every event the game fires without the user touching launch options.
+
+```lua
+local h = R.on("gameplay:GIVE_MAGICAL_OBJECT", function(ev) ... end)
+R.on_match("^gameplay:ABILITY_", function(ev, name) ... end)  -- whole family
+R.once("run:start", function() ... end)                        -- fire once
+R.off(h)                                                       -- unsubscribe
+R.emit("mymod:something", { n = 1 })                           -- tell other mods
+```
+
+Four sources land on the same bus:
+
+| Source | Names | Notes |
+|---|---|---|
+| Lifecycle | `setup`, `ready`, `tick`, `exit` | loader thread |
+| Analytics firehose | `run_start`, `enemy_killed`, `unlock_hero`, … | after the action, no live handles |
+| Gameplay bus | `gameplay:<NAME>` | at the action, live handles, game's MAIN thread |
+| Loader-derived | `hero:captured`, `hero:changed`, `hero:lost`, `menu:enter`, `menu:leave`, `run:start`, `run:end` | loader thread |
+
+`ev.source` says which (`"analytics"`, `"gameplay"`, `"loader"`, `"mod"`) — and
+it is stamped by the loader, so it can be trusted. **Only `"gameplay"` handlers
+run on the game's main thread**; anything else must route engine-mutating work
+through `R.schedule.next_main` (see [the thread model](/reverse-engineering/event-systems/)).
+
+**150 gameplay events are catalogued** — mined out of the shipped exe by
+`tools/mine_event_names.py` and browsable without launching anything:
+
+```sh
+./rsmm symbols events            # all of them, grouped by family
+./rsmm symbols events boss       # BOSS_ACTIVATED, BOSS_DEFEATED, …
+```
+
+A taste of what's on the bus: `BOSS_DEFEATED`, `OPEN_CHEST`, `HERO_REVIVE`,
+`START_NIGHTMARE`, `WISHING_WELL_FILLED`, `USE_HEAL_FOUNTAIN`,
+`UPGRADE_RANDOM_SKILL`, `DUPLICATE_RANDOM_EPIC_OBJECT`, `CHOOSE_MELODY`,
+`MAP_GENERATION_DONE`, `TELEPORT_SUBMAP_ENTER`, `ENEMY_KILLED`.
+
+The same catalog is available inside the game, plus a live one of everything
+that has actually fired:
+
+```lua
+R.events.known("gameplay")    -- the 150 static names, before anything fires
+R.events.category("BOSS_DEFEATED")   --> "boss"
+
+R.events.list("^gameplay:")   -- sorted names seen THIS session
+R.events.count("enemy_killed")
+R.events.dump()               -- log every event with its count + payload keys
+```
+
+The catalog is a browsing aid, not a whitelist: the loader reads the plaintext
+name off the event object, so a name a future patch adds fires too.
+
+For an event whose payload isn't decoded yet, enable the `RSMM_EVENT_PROBE`
+loader flag and each gameplay event gains `ev.w38 … ev.w70` — a raw window of
+the event object — so a field can be pinned from Lua in one session instead of
+a C++ rebuild per guess.
+
 ### Hot-reload (Lua iteration < 5 seconds)
 
 Run `./rsmm watch` in a side terminal while the game runs. On any save under `mods/`:

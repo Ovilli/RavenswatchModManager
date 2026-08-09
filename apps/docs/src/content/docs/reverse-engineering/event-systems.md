@@ -20,7 +20,7 @@ Ravenswatch has **two** independent event systems. Do not conflate them.
 | Timing | **after** the action | **at** the action (subscribers run inline) |
 | Lua event | `R.on("<name>")` | `R.on("gameplay:<NAME>")` |
 | Use | "when X happens, do Y" triggers | mutate the actor, read damage, give items |
-| Env gate | `RSMM_ENABLE_GAME_EVENTS=1` | `RSMM_ENABLE_GAMEPLAY_EVENTS=1` |
+| Env gate | on by default (`RSMM_DISABLE_GAME_EVENTS=1` to turn off) | on by default (`RSMM_DISABLE_GAMEPLAY_EVENTS=1` to turn off) |
 
 ## Analytics firehose
 

@@ -101,7 +101,8 @@ The loader bridges the game's named events to the Lua bus, so a mod subscribes
 by name — `enemy_killed`, `unlock_hero`, `game_start`, `level_up_reach`, … (one
 hook re-publishes every named analytics event; browse the list in the
 [`R.on` contract](https://github.com/Ovilli/RavenswatchModManager/blob/main/src/loader/lib/rsmm.lua)).
-Needs the loader DLL and `RSMM_ENABLE_GAME_EVENTS=1`.
+Needs the loader DLL. Both event buses are armed by default; the loader
+skips publishing entirely when no mod has subscribed.
 
 ```lua title="mods/ExampleEvents/init.lua"
 local R = require "rsmm"
@@ -109,6 +110,21 @@ local R = require "rsmm"
 R.on("enemy_killed", function(ev)
     R.kv.inc("kills")                          -- persists across restarts
     R.log(("kill #%d"):format(R.kv.get("kills")))
+end)
+
+-- Take a whole family at once, and stop listening when you're done.
+local h = R.on_match("^gameplay:ABILITY_", function(ev, name)
+    R.log("ability event:", name)
+end)
+R.once("run:end", function() R.off(h) end)
+```
+
+Not sure what fires? Let the loader tell you — it records every event it sees
+with its payload keys:
+
+```lua
+R.on("ready", function()
+    R.schedule.after(120, function() R.events.dump() end)  -- play, then read _log.txt
 end)
 ```
 

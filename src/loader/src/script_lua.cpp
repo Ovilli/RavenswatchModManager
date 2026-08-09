@@ -91,6 +91,9 @@ struct ModScript {
     std::string id;
     std::filesystem::path root;
     std::filesystem::file_time_type init_mtime{};
+    // How many rsmm.on_event handlers this state registered, so closing it
+    // can take them back out of the process-wide count.
+    int handlers = 0;
 };
 
 std::recursive_mutex g_mu;
@@ -792,7 +795,11 @@ int lua_emit_event(lua_State* L) {
     const char* name = luaL_checkstring(L, 1);
     if (!lua_isnoneornil(L, 2)) luaL_checktype(L, 2, LUA_TTABLE);
 
-    static const char* const kReservedPrefix[] = { "gameplay:", "ui:", "rsmm:" };
+    // Prefixes the loader publishes under. A mod emitting one of these could
+    // make other mods act on a state change that never happened.
+    static const char* const kReservedPrefix[] = {
+        "gameplay:", "ui:", "rsmm:", "hero:", "menu:", "run:", "mods:",
+    };
     static const char* const kReservedExact[]  = { "setup", "ready", "tick", "exit", "*" };
     for (const char* p : kReservedPrefix) {
         if (std::strncmp(name, p, std::strlen(p)) == 0) {
@@ -922,11 +929,18 @@ int lua_decoded_path(lua_State* L) {
     return 1;
 }
 
+// Total handlers registered across every state. The gameplay bus fires
+// hundreds of times a second in combat, and formatting + parsing a payload
+// nobody reads is pure overhead — the detours check this first and bail.
+std::atomic<int> g_handler_count{0};
+
 // Event callbacks live in the registry under key "__rsmm_events"; each
 // event name maps to a list of refs.
 int lua_on_event(lua_State* L) {
     const char* name = luaL_checkstring(L, 1);
     luaL_checktype(L, 2, LUA_TFUNCTION);
+    g_handler_count.fetch_add(1, std::memory_order_relaxed);
+    if (auto* m = current_from_state(L)) m->handlers++;
     lua_getfield(L, LUA_REGISTRYINDEX, "__rsmm_events");
     if (lua_isnil(L, -1)) {
         lua_pop(L, 1);
@@ -1481,6 +1495,10 @@ void register_api(lua_State* L) {
 
 } // namespace
 
+bool script_any_subscribers() {
+    return g_handler_count.load(std::memory_order_relaxed) > 0;
+}
+
 // External-linkage accessors for the process-global shared slots (declared in
 // script_lua.h). g_shared lives in the anonymous namespace above; these reach
 // it within the same translation unit, giving native code (e.g. hero-capture)
@@ -1657,6 +1675,8 @@ void script_reload_changed() {
             std::lock_guard<std::recursive_mutex> g(g_mu);
             auto it = g_scripts.find(id);
             if (it != g_scripts.end() && it->second.L) {
+                g_handler_count.fetch_sub(it->second.handlers,
+                                          std::memory_order_relaxed);
                 lua_close(it->second.L);
                 g_scripts.erase(it);
             }
@@ -1675,6 +1695,7 @@ void script_shutdown_all() {
     for (auto& [_, s] : g_scripts) {
         if (s.L) lua_close(s.L);
     }
+    g_handler_count.store(0, std::memory_order_relaxed);
     g_scripts.clear();
     g_apis.clear();   // the tables they name lived in the states just closed
 }
