@@ -1,5 +1,9 @@
 # oCGameNamedEvent gameplay bus — entity-context event dispatch + Lua bridge
 
+> 📖 Prose version on the docs site: **https://docs.rsmm.me/reverse-engineering/event-systems/** (`apps/docs/src/content/docs/reverse-engineering/event-systems.md`).
+> This file stays as the raw RE field notes.
+
+
 > Status: Tier-1 RE backing `src/loader/src/hook_events.cpp::install_gameplay_bus`.
 > All addresses verified live against the shipped Ravenswatch.exe via the
 > Ghidra MCP bridge, 2026-06-11 (image base 0x140000000). This is the SECOND,

@@ -1,5 +1,9 @@
 # Stats — granting / setting hero stats (health, XP, damage, speed, …)
 
+> 📖 Prose version on the docs site: **https://docs.rsmm.me/reverse-engineering/stats/** (`apps/docs/src/content/docs/reverse-engineering/stats.md`).
+> This file stays as the raw RE field notes.
+
+
 > Status: RE complete 2026-07-13 (three parallel Ghidra passes, decompile-verified
 > against the live post-2026-07-09 build, image base `0x140000000`). Read path
 > shipped + safe; write / grant paths shipped **experimental, pending in-game

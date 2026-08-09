@@ -1,5 +1,9 @@
 # Skills (talents) system — RE findings + feasibility verdict
 
+> 📖 Prose version on the docs site: **https://docs.rsmm.me/reverse-engineering/skills-system/** (`apps/docs/src/content/docs/reverse-engineering/skills-system.md`).
+> This file stays as the raw RE field notes.
+
+
 > Scope: the requirement "a custom talent that is hero-specific, upgradeable to
 > legendary, and visible in the hero page." In-game these are **Skills**, not
 > "talents" (no "Talent" string exists). This doc maps the system and gives a

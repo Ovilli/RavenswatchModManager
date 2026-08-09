@@ -1,5 +1,9 @@
 # Maps, chapters & the game-mode sequence (#9 / #10)
 
+> 📖 Prose version on the docs site: **https://docs.rsmm.me/reverse-engineering/maps-chapters/** (`apps/docs/src/content/docs/reverse-engineering/maps-chapters.md`).
+> This file stays as the raw RE field notes.
+
+
 Heredos wishlist #9 (new map) and #10 (random / re-sequenced maps). Three layers:
 
 | Layer | Class / asset | Codec |

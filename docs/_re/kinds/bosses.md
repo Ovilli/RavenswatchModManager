@@ -1,5 +1,9 @@
 # Custom bosses — BossTimer controller, named-event triggers, reward hookup
 
+> 📖 Prose version on the docs site: **https://docs.rsmm.me/reverse-engineering/bosses/** (`apps/docs/src/content/docs/reverse-engineering/bosses.md`).
+> This file stays as the raw RE field notes.
+
+
 > Status: Tier-1 RE notes for `src/rsmm/sdk/kinds/bosses.py`. Derived
 > from live Ghidra MCP + headless decompilation under `docs/_re/out/`.
 > Anything marked `# TODO: confirm` is provisional; everything else is

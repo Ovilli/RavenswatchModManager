@@ -1,5 +1,9 @@
 # Melodies (the Piper's lost melodies)
 
+> 📖 Prose version on the docs site: **https://docs.rsmm.me/reverse-engineering/melodies/** (`apps/docs/src/content/docs/reverse-engineering/melodies.md`).
+> This file stays as the raw RE field notes.
+
+
 Class: `oe::dt::MelodyDefinition`, asset glob `*.melodydef.ot`.
 Codec: `cooked_schemas.definitions._dsl_spec("MelodyDefinition", "melodydef.json", …)` —
 generic DSL spec, byte-stable round-trip over **all 12** retail files

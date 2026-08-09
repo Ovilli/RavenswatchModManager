@@ -1,5 +1,9 @@
 # Entity values — the engine's generic keyed stat / modifier store
 
+> 📖 Prose version on the docs site: **https://docs.rsmm.me/reverse-engineering/entity-values/** (`apps/docs/src/content/docs/reverse-engineering/entity-values.md`).
+> This file stays as the raw RE field notes.
+
+
 > Status: RE complete, 2026-06-14. Addresses verified live against the shipped
 > Ravenswatch.exe via the Ghidra MCP bridge (image base 0x140000000). Read path
 > fully mapped; no runtime code shipped yet.

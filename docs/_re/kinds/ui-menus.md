@@ -1,5 +1,9 @@
 # Native UI / book menu system — toward an in-game mod menu
 
+> 📖 Prose version on the docs site: **https://docs.rsmm.me/reverse-engineering/ui-menus/** (`apps/docs/src/content/docs/reverse-engineering/ui-menus.md`).
+> This file stays as the raw RE field notes.
+
+
 Goal: a **native** mod menu (enable/disable/uninstall mods in-game) built the same
 way the game builds its own menus — NOT an injected ImGui overlay (a Vulkan ImGui
 overlay existed pre-843a6c8 and was removed as never-feature-complete; the user

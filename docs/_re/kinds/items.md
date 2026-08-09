@@ -1,5 +1,9 @@
 # Custom items — magical objects, rewards, drop chain
 
+> 📖 Prose version on the docs site: **https://docs.rsmm.me/reverse-engineering/items/** (`apps/docs/src/content/docs/reverse-engineering/items.md`).
+> This file stays as the raw RE field notes.
+
+
 > Status: Tier-1 RE notes for `src/rsmm/sdk/kinds/items.py`. Derived from
 > live Ghidra MCP + headless decompilation under `docs/_re/out/`. Verify
 > any field marked `# TODO: confirm` before relying on it for byte

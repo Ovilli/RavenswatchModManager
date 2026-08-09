@@ -1,5 +1,9 @@
 # Custom skins — `oCAdditionalContent` SkinPack roster
 
+> 📖 Prose version on the docs site: **https://docs.rsmm.me/reverse-engineering/skins/** (`apps/docs/src/content/docs/reverse-engineering/skins.md`).
+> This file stays as the raw RE field notes.
+
+
 > Status: Tier-1 RE backing `src/loader/src/hook_skins.cpp`. Derived from
 > live Ghidra MCP + verification against the shipped `Ravenswatch.exe`
 > (image base `0x140000000`; the anchor `mov [rcx+0x13C8], 9` occurs

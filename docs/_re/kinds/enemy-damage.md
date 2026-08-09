@@ -1,5 +1,9 @@
 # Enemy damage — the hit pipeline and why there is no cheap primitive
 
+> 📖 Prose version on the docs site: **https://docs.rsmm.me/reverse-engineering/combat-damage/** (`apps/docs/src/content/docs/reverse-engineering/combat-damage.md`).
+> This file stays as the raw RE field notes.
+
+
 > Status: RE complete, 2026-06-14. Addresses verified live against the shipped
 > Ravenswatch.exe via the Ghidra MCP bridge (image base 0x140000000). No runtime
 > code shipped — this documents the construction recipe and the recommended mod

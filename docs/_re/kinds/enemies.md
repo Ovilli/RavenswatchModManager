@@ -1,5 +1,9 @@
 # Custom enemies (non-boss) — RE findings
 
+> 📖 Prose version on the docs site: **https://docs.rsmm.me/reverse-engineering/enemies/** (`apps/docs/src/content/docs/reverse-engineering/enemies.md`).
+> This file stays as the raw RE field notes.
+
+
 > Scope: non-boss `oCDtEnemyDefinition` + the camp/tribe machinery that
 > turns it into actual mob spawns. Bosses share the class but route
 > through `oCDtBossTimerUiControllerEntityCpnt` and are out of scope

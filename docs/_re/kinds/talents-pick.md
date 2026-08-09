@@ -1,5 +1,9 @@
 # Pickable talents — `POWER_UP_COLLECT_REQUEST` pick detection
 
+> 📖 Prose version on the docs site: **https://docs.rsmm.me/reverse-engineering/pickable-talents/** (`apps/docs/src/content/docs/reverse-engineering/pickable-talents.md`).
+> This file stays as the raw RE field notes.
+
+
 > Status: Tier-2 (Phase 1 of the pickable-custom-talent feature). The detour and
 > Lua API are wired; the picked-card **identity offset** is pinned empirically
 > in-game (see "Open" below). Backs `R.talent.on_pick` / `R.talent.define{pickable}`

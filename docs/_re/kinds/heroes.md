@@ -1,5 +1,9 @@
 # Custom heroes — `oCDtHeroDefinition` + `SkillProfileDataSettings`
 
+> 📖 Prose version on the docs site: **https://docs.rsmm.me/reverse-engineering/heroes/** (`apps/docs/src/content/docs/reverse-engineering/heroes.md`).
+> This file stays as the raw RE field notes.
+
+
 > Status: Tier-1 RE notes for `src/rsmm/sdk/kinds/heros.py`. Derived
 > from live Ghidra MCP + headless decompilation under `docs/_re/out/`.
 > Verify any field marked `# TODO: confirm` before byte emission;

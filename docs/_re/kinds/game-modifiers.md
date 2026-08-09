@@ -1,5 +1,9 @@
 # Game Modifiers (mutators / "negative modes")
 
+> 📖 Prose version on the docs site: **https://docs.rsmm.me/reverse-engineering/game-modifiers/** (`apps/docs/src/content/docs/reverse-engineering/game-modifiers.md`).
+> This file stays as the raw RE field notes.
+
+
 The toggleable run mutators Ravenswatch calls **GameModifiers** (the New Game Plus
 checkboxes: *No boss timer*, *No minimap*, *Day only*, *More experience*, …). Heredos'
 wishlist items #1 (less item scaling), #2 (less XP), #11 (harder bosses), #16 (>5 negative

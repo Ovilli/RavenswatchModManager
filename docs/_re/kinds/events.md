@@ -1,5 +1,9 @@
 # Gameplay events — engine emitter → Lua event bus
 
+> 📖 Prose version on the docs site: **https://docs.rsmm.me/reverse-engineering/event-systems/** (`apps/docs/src/content/docs/reverse-engineering/event-systems.md`).
+> This file stays as the raw RE field notes.
+
+
 > Status: Tier-1 RE backing `src/loader/src/hook_events.cpp`. Emitter
 > addresses verified by **string-xref against the shipped Ravenswatch.exe**
 > (image base 0x140000000), not from the `docs/_re/out` corpus — the corpus

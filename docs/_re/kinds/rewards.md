@@ -1,5 +1,9 @@
 # Rewards & banning talents/items (#13)
 
+> 📖 Prose version on the docs site: **https://docs.rsmm.me/reverse-engineering/rewards/** (`apps/docs/src/content/docs/reverse-engineering/rewards.md`).
+> This file stays as the raw RE field notes.
+
+
 The level-up / chest offer pool. Heredos wishlist #13 ("ban some talents or items").
 
 Class: `oCDtRewardDefinition`, asset glob `*.rewarddef.ot` (loader

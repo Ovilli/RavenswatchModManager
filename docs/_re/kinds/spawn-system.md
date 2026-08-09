@@ -1,5 +1,9 @@
 # Spawn system — RE toward a generic `R.spawn` SDK primitive
 
+> 📖 Prose version on the docs site: **https://docs.rsmm.me/reverse-engineering/spawn-system/** (`apps/docs/src/content/docs/reverse-engineering/spawn-system.md`).
+> This file stays as the raw RE field notes.
+
+
 > Goal: an SDK `R.spawn(template, pos, opts)` that instantiates an arbitrary
 > entity (rat/pet/enemy/prop) at runtime. Driver: Piper Ghost Horde needs a
 > standalone rat-spawn (the gameplay-event log has NO global spawn-rat event;
