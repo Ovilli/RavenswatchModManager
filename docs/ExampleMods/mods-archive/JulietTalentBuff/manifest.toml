@@ -1,0 +1,25 @@
+[mod]
+id = "JulietTalentBuff"
+name = "Juliet Talent Buff"
+version = "0.2.0"
+author = "rsmm-user"
+enabled = false
+sdk_version = ">=3.0,<4"
+
+description = "Buffs two of Juliet's abilities: Rose Explosion damage 8 to 24, and close-combat attack cooldown 4 to 2."
+tags        = ["balance", "talents", "juliet"]
+# Talent / ability value edit (in-game "Skills"), now declarative. The
+# kind="talent" builder (rsmm.sdk.kinds.talents) patches Juliet's cooked hero
+# entity at apply time and ships it as a plain asset override — no hand-edited
+# .gen committed. Discover any hero's editable values with `rsmm talents <Hero>`.
+# value_patches entries are [label, old, new] (add a 4th `true` to clear a
+# shadowed node's selector override before editing — see docs/MOD_AUTHORING.md).
+[[content]]
+kind = "talent"
+id   = "JulietTalentBuff"
+hero = "Juliet"
+file = "Hero_Juliet.entity"
+value_patches = [
+    ["Primary Ability Rose Explosion Damage Value", 8.0, 24.0],
+    ["Skill Attack Close Combat Cooldown Value", 4.0, 2.0],
+]

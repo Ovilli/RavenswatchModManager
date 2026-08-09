@@ -1,0 +1,25 @@
+[mod]
+id = "WukongFasterQuest"
+name = "Wukong: Faster Rarity Growth"
+version = "0.1.0"
+author = "rsmm-user"
+enabled = false
+sdk_version = ">=3.0,<4"
+
+description = "Sun Wukong's magical-object passive tiers up faster and hits harder: a tier every 5 objects instead of 7, awakened at 6 instead of 8."
+tags        = ["balance", "wukong"]
+# Sun Wukong's passive ("Skill Passive Objects Quest") tiers up its bonus —
+# and the rarity frame shown in the quest-complete feedback — every N magical
+# objects collected. This mod makes that growth faster + stronger via plain
+# length-preserving edits to his cooked hero entity (no re-cook):
+#   * Objective Count          7 -> 5   (a tier every 5 objects, int32)
+#   * Awakened Objective Count 8 -> 6    (awakened tier sooner, int32)
+#   * DMG Per Object         2.0 -> 3.0  (bigger reward per object, f32)
+#
+# NOTE: the rarity *display* itself is "Quest Complete Feedback Skill Rarity
+# Selector", a ValueSelector mapping completion tier -> rarity enum (frame
+# colour). That selector's entry schema is unmined, so it's left untouched
+# (editing it risks a crash); lowering Objective Count makes the existing
+# rarity frames escalate faster, which is the safe data-only lever.
+#
+# Regenerate from data/uncooked if base game data changes.

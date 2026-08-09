@@ -1,0 +1,9 @@
+[mod]
+id          = "seeded_runs"
+name        = "Example: Seed Pinner"
+version     = "0.3.1"
+author      = "rsmm-examples"
+description = "Pin the run RNG seed via the game's own Forced-seed option (R.options). Sets the engine's Dev flag so the forced seed is honoured. Demonstrates R.options and per-mod config (R.config.get); survives game patches — no hardcoded addresses."
+enabled     = false
+sdk_version = ">=3.0,<4"
+tags        = ["seeded-runs", "tools"]

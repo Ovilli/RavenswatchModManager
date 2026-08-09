@@ -1,0 +1,14 @@
+[mod]
+id = "JulietReskin"
+name = "Juliet Reskin (recolor)"
+version = "0.1.0"
+author = "rsmm-user"
+enabled = false
+sdk_version = ">=3.0,<4"
+
+description = "Recolours Juliet's body albedo with a hue-shifted texture. Texture-only reskin, no model or skeleton change."
+tags        = ["cosmetic", "skin", "juliet"]
+# Hero reskin: recolors Juliet's body albedo (channel-rotated hue shift),
+# re-encoded as BC1 2048 matching the slot. Texture-only data override -
+# no model/skeleton change, no loader detour. Demonstrates the achievable
+# hero-customization path (full NEW heroes are blocked, see custom-hero-path).

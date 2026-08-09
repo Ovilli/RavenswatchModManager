@@ -1,0 +1,12 @@
+[mod]
+id          = "RSMMModal"
+name        = "RSMM Mods Modal"
+version     = "0.1.0"
+author      = "rsmm"
+description = "Standalone in-game mods modal (48 mods), opened on BOOK_MENU_OPEN. Does NOT touch the Tutorial page. Regen: rsmm menu modal."
+enabled     = false
+sdk_version = ">=3.0,<4"
+# Ships a NEW menu entity + a host-entity override + a text-bank append;
+# not yet in-game confirmed.
+experimental = true
+tags        = ["ui", "tools"]

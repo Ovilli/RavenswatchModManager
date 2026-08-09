@@ -1,0 +1,9 @@
+[mod]
+id          = "DamagePowerTweaks"
+name        = "Damage Power Tweaks"
+version     = "0.1.0"
+author      = "you"
+description = "Patches Damage_Power: Damage Value 0.2->0.1 + disables the node's value-override sub-field (0e flag 01->00, like the crit node) so the inline float actually applies instead of the card-count selector; Power Crit Chance Value 0.4->0.5"
+enabled     = false
+sdk_version = ">=3.0,<4"
+tags        = ["balance", "items"]

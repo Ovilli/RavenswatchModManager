@@ -1,0 +1,13 @@
+[mod]
+id = "PuppetGhoul"
+name = "Puppet Ghoul (visible test)"
+version = "0.1.0"
+author = "rsmm-user"
+enabled = false
+sdk_version = ">=3.0,<4"
+
+description = "Makes the Dark Hills Devouring Ghouls look like Geppetto's puppet: mesh swap onto the ghoul skeleton plus a puppet albedo."
+tags        = ["cosmetic", "enemies", "model"]
+# Makes Dark Hills Devouring Ghouls look like Geppetto's puppet (mesh swap
+# onto the ghoul skeleton + puppet albedo). Early-biome, frequent spawn =
+# quick visible confirmation of enemy model/texture override.

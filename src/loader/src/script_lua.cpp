@@ -1156,6 +1156,17 @@ int lua_hook(lua_State* L) {
     std::string mod_id = m ? m->id : std::string{"(unknown)"};
 
     int slot = hook_lua_install(va, sig, L, cb_ref, mod_id);
+    if (slot == kHookAlreadyOwned) {
+        // Another mod's state already owns this hook. That is the expected
+        // outcome for the SDK's shared capture hooks whenever more than one
+        // mod is installed, and the hook is live — so this is a soft result,
+        // not an error. Second return value lets rsmm.lua tell "someone else
+        // has it" (fine) from "this build cannot be hooked" (fail closed).
+        luaL_unref(L, LUA_REGISTRYINDEX, cb_ref);
+        lua_pushnil(L);
+        lua_pushstring(L, "already-hooked");
+        return 2;
+    }
     if (slot < 0) {
         luaL_unref(L, LUA_REGISTRYINDEX, cb_ref);
         return luaL_error(L, "rsmm.hook: install failed (see _log.txt)");

@@ -1,0 +1,23 @@
+[mod]
+id          = "AdditivePickableTalent"
+name        = "Additive Pickable Talent (demo)"
+version     = "0.1.0"
+author      = "rsmm"
+description = "ADDITIVE custom talent that replaces nothing: a NEW magical-object 'card' (item SDK kind, UsedRscList-registered) carrying the mod's own Lua effect, bound to the item's runtime identity via R.item.on_guid. The fixed-28 hero skill list can't take a net-new row, but the reward/magical-object pool is variable-length + additive — so this is the engine-supported way to add a pickable talent."
+enabled     = false
+sdk_version = ">=3.0,<4"
+# item is a confirmed additive pipeline; the talent EFFECT is mod Lua, so the
+# whole thing is opt-in experimental until proven in a play session.
+experimental = true
+
+tags        = ["items", "talents", "additive"]
+# A NEW pickable. base= clones a neutral common item's bytes as the template;
+# value_patches zero the inherited stat so only the mod's Lua effect remains.
+[[content]]
+kind          = "item"
+id            = "RSMM_Talent_LightningReflexes"
+base          = "Armor_Per_Object"
+name          = "Lightning Reflexes"
+description   = "RSMM additive talent: heal on each ability use while owned."
+icon          = "GreenArmor"
+value_patches = [["Armor per Object Value", 2.0, 0.0]]

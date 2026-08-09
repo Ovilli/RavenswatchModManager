@@ -1,0 +1,23 @@
+[mod]
+id = "DisableJackQuest"
+name = "Disable Jack Quest"
+version = "0.1.0"
+author = "Ovilli"
+enabled = false
+sdk_version = ">=3.0,<4"
+
+description = "Removes the Jack-and-the-Beanstalk story quest from Dark Hills map generation, so the run rolls a different story tile instead."
+tags        = ["quests", "quality-of-life", "dark-hills"]
+# Removes the Jack-and-the-Beanstalk story quest from Dark Hills map
+# generation. Length-preserving byte edit of the parent quest tiledef
+# (40x40_JackQuest_BeanstalkGrowsPlace): its oCCustomFlagList is
+# [Story, JackQuest, BeanStalk]; the "Story" flag is what the map's
+# story tile slot filters on. Renamed to the unused flag "NoQst", so the
+# tile never enters the story pool and the run rolls the Three Pigs
+# quest instead. The two linked tiles (JackOldHouseCamp, OgreArena) are
+# only placed via the parent's oCLinkedTile flag filters
+# (JackQuest+JackHouse / JackQuest+OgreArena), so the whole chain —
+# Jack NPC, bean collection, beanstalk, ogre arena — vanishes with it.
+# Quest globalvalues (Jack_Quest_*) stay at defaults; nothing else
+# reads them. Regenerate from the install if the game updates
+# (byte offset 420 in the cooked .gen, u32-length-prefixed string).

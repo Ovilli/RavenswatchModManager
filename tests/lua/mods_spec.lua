@@ -70,7 +70,11 @@ local R = require "rsmm"
 -- Stub the engine-mutating surface. The point is to observe that a mod ASKS
 -- for the right thing, not to re-test the SDK's pointer work (rsmm_spec.lua
 -- already does that end-to-end against a fake value store).
-R.stat.enable_writes = function() return true end
+-- Do NOT stub enable_writes with `return true`. The real one returned nothing
+-- for its whole life, and stubbing it generously is what let Bloodlust ship
+-- with `local ok = R.stat.enable_writes()` — nil, so the mod disabled itself
+-- for the entire session and the spec stayed green. A stub that is kinder than
+-- the real API tests the stub.
 R.stat.modify = function(name, amount, dur)
     calls[#calls + 1] = ("stat.modify:%s:%s:%s"):format(name, amount, tostring(dur))
     return true

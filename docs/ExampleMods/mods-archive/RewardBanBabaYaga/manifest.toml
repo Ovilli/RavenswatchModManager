@@ -1,0 +1,55 @@
+[mod]
+id          = "RewardBanBabaYaga"
+name        = "Reward Ban: No Camp Chests"
+version     = "0.2.0"
+author      = "rsmm"
+description = "Playtest demo for the reward kind. Bans the basic chests that normally drop 3-4 per cleared camp, across every biome, so their absence at ANY cleared camp is an unambiguous, easy-to-see confirmation that the engine honours an edited rewarddef roll (Reward_InitAllRewards -> GENERATE_REWARDS). Reversible via disable + apply."
+enabled     = false
+sdk_version = ">=3.0,<4"
+# reward is an 'experimental' kind: the rewarddef codec is deserializer-verified
+# and byte-stable, but the level-load roll consuming an edited def is the thing
+# this mod exists to prove in-game. See docs/_re/kinds/rewards.md.
+experimental = true
+
+tags        = ["rewards", "balance"]
+# Override every biome's camp-reward def (base + live *_Update5 variant) so the
+# ban applies whichever the current build loads and whichever biome the run
+# visits. `ban` is a case-insensitive entity substring; "Basic_Chest" matches
+# the T1/T2/T3 basic chests (and clears their locked variants). Their reward-type
+# (normally min 3 / max 4) empties, so cleared camps drop NO basic chests.
+
+[[content]]
+kind = "reward"
+id   = "Camp_Rewards_Dark_Hills"
+base = "Camp_Rewards_Dark_Hills"
+ban  = ["Basic_Chest"]
+
+[[content]]
+kind = "reward"
+id   = "Camp_Rewards_Dark_Hills_Update5"
+base = "Camp_Rewards_Dark_Hills_Update5"
+ban  = ["Basic_Chest"]
+
+[[content]]
+kind = "reward"
+id   = "Camp_Rewards_Storm_Island"
+base = "Camp_Rewards_Storm_Island"
+ban  = ["Basic_Chest"]
+
+[[content]]
+kind = "reward"
+id   = "Camp_Rewards_Storm_Island_Update5"
+base = "Camp_Rewards_Storm_Island_Update5"
+ban  = ["Basic_Chest"]
+
+[[content]]
+kind = "reward"
+id   = "Camp_Rewards_Avalon"
+base = "Camp_Rewards_Avalon"
+ban  = ["Basic_Chest"]
+
+[[content]]
+kind = "reward"
+id   = "Camp_Rewards_Avalon_Update5"
+base = "Camp_Rewards_Avalon_Update5"
+ban  = ["Basic_Chest"]

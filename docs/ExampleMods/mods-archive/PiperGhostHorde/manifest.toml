@@ -1,0 +1,75 @@
+[mod]
+id = "PiperGhostHorde"
+name = "Piper: Ghost Horde (notes -> 15 rats)"
+version = "0.3.0"
+author = "Ovilli"
+enabled = false
+sdk_version = ">=3.0,<4"
+
+description = "Piper's ghost notes summon a horde. Every 10 notes played spawns up to 15 rats that immediately attack nearby enemies. Verified in game."
+tags        = ["gameplay", "talents", "piper"]
+# A "modified Horde" for Piper, built declaratively from three vanilla pieces:
+#   1. Replace the Horde behaviour with a rewired version (the rewire below).
+#   2. Trigger = the Ghost Note "every N notes played" counter (notes -> 10).
+#   3. Effect  = the Trait "spawn rats that immediately attack nearby enemies"
+#      (the Spawn Pets state), with the rat cap jacked up (-> 15 rats).
+#
+# How it works (RE: talent-logic-rewire / spawn-system): the in-game "Horde"
+# talent already reads "for every {1} notes played, spawn up to {0} rats, which
+# immediately attack" — it fuses a note counter with the rat-spawn state. We
+# wire that chain on unconditionally and tune its two numbers:
+#
+#   rewire   the Ghost-Notes counter's completion action ("Event Skill Attack
+#            Ghost Notes Proc") at the rat-spawn state ("Event Trait Ability
+#            Spawn Pets"). This is a 16-byte GUID repoint — the picker is read
+#            for the target node's GUID by name, no hard-coded ids/offsets.
+#            (Verified in-game 2026-06-04: Piper basic attacks then spawn rats
+#            that immediately attack nearby enemies.)
+#   notes    "Skill Attack Ghost Notes Counter" completion threshold 3 -> 10
+#            (END #5; the counter's inline int32 — the verified edit site).
+#   rats     "Skill Defense Spawn Pets Max Count Selector" per-Horde-rarity caps
+#            7,6,5,4 -> 15 at every tier (END #3/9/15/20), so 15 rats spawn
+#            regardless of whether Horde is owned (default tier is the 4).
+#
+# Shipped declaratively: kind="talent" patches the cooked Hero_Piper entity at
+# apply time (rsmm.sdk.kinds.talents) and installs it as a plain override — no
+# hand-edited .gen committed, no re-cook, length-preserving (21 byte diffs).
+[[content]]
+kind = "talent"
+id   = "piper_ghost_horde"
+hero = "Piper"
+file = "Hero_Piper.entity"
+
+  [[content.rewires]]
+  trigger = "Event Skill Attack Ghost Notes Proc"
+  action  = "Event Trait Ability Spawn Pets"
+
+  [[content.int_patches]]
+  label     = "Skill Attack Ghost Notes Counter"
+  end_index = 5
+  old       = 3
+  new       = 10
+
+  [[content.int_patches]]
+  label     = "Skill Defense Spawn Pets Max Count Selector"
+  end_index = 3
+  old       = 7
+  new       = 15
+
+  [[content.int_patches]]
+  label     = "Skill Defense Spawn Pets Max Count Selector"
+  end_index = 9
+  old       = 6
+  new       = 15
+
+  [[content.int_patches]]
+  label     = "Skill Defense Spawn Pets Max Count Selector"
+  end_index = 15
+  old       = 5
+  new       = 15
+
+  [[content.int_patches]]
+  label     = "Skill Defense Spawn Pets Max Count Selector"
+  end_index = 20
+  old       = 4
+  new       = 15

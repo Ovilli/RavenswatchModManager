@@ -881,14 +881,28 @@ local function _arm_hero_capture()
     -- (*(hero+0x2f8)) and its param_2 is the hero entity (decompile-verified
     -- 2026-07-15; the ctx never passes _hero_plausible, which is why the
     -- authoritative capture silently never fired).
-    local ok1 = gain_va and pcall(R.hook, gain_va, "vppp",
-        function(p1) capture(p1, false); return nil end)
-    local ok2 = give_va and pcall(R.hook, give_va, "vppp",
-        function(_, p2) capture(p2, true); return nil end)
+    -- R.hook returns (nil, "already-hooked") when another mod's lua_State got
+    -- there first. That is the NORMAL case with more than one mod installed and
+    -- the hook is live — the hero still arrives through the shared slot — so it
+    -- must not be counted as a failure. Reporting it as one is what produced
+    -- "both handlers unresolved for this game build" in a log where the
+    -- handlers had resolved perfectly well and another mod owned the hook.
+    local function arm(va, sig, fn)
+        if not va then return false end
+        local ok, slot, why = pcall(R.hook, va, sig, fn)
+        if not ok then return false end
+        if slot == nil and why == "already-hooked" then return true end
+        return slot ~= nil
+    end
+    local ok1 = arm(gain_va, "vppp", function(p1) capture(p1, false); return nil end)
+    local ok2 = arm(give_va, "vppp", function(_, p2) capture(p2, true); return nil end)
     if not (ok1 or ok2) then
-        R.log("[rsmm.entity] hero-capture hooks unavailable (both handlers "
-            .. "unresolved for this game build); R.combat/R.entity/R.stat/R.xp "
-            .. "disabled this run, other mods unaffected")
+        local why = (gain_va or give_va)
+            and "could not be hooked (another mod may own them, or the install failed)"
+            or "unresolved for this game build"
+        R.log("[rsmm.entity] hero-capture handlers " .. why
+            .. "; R.combat/R.entity/R.stat/R.xp disabled this run, "
+            .. "other mods unaffected")
     end
 end
 
@@ -1304,7 +1318,17 @@ end
 
 -- EXPERIMENTAL write opt-in (default off — writes mutate live engine state).
 local _stat_writes_enabled = false
-function R.stat.enable_writes() _stat_writes_enabled = true end
+-- Opt in to the experimental stat write path. Returns TRUE, always: this is a
+-- consent flag, not a capability probe, and whether a write lands depends on
+-- the hero being captured later. It used to return nothing, which reads as a
+-- probe at every call site — the shipped Bloodlust mod did
+-- `local ok = R.stat.enable_writes()` at load, got nil, and disabled itself for
+-- the whole session. Ask R.entity.ready() if you want to know whether a write
+-- can land right now.
+function R.stat.enable_writes()
+    _stat_writes_enabled = true
+    return true
+end
 
 -- Find the override entry for `key` in the store (entry addr, or nil).
 local function _stat_find_entry(store, key)
@@ -1851,7 +1875,7 @@ local function _arm_group_level_capture()
     -- object — double-initialising it and leaking whatever the first pass
     -- allocated. Stashing and returning nil keeps the original running
     -- exactly once, at the cost of validating on the next read instead.
-    local ok = pcall(R.hook, va, "pp", function(self)
+    local ok, slot, why = pcall(R.hook, va, "pp", function(self)
         -- Stash only. Returning nil replays the original, which is what
         -- actually writes the vftable and allocates the progress block.
         -- Newest first; dedupe; bounded (the ctor may run per menu/run).
@@ -1864,7 +1888,12 @@ local function _arm_group_level_capture()
         end
         return nil
     end)
-    if not ok then
+    -- (nil, "already-hooked") means another mod's state armed the same ctor
+    -- hook first. The hook is live and its captures land in this state too, so
+    -- that is a success — reporting it as "level/xp unavailable" once per extra
+    -- mod is how a working four-mod install came to look like three broken ones.
+    if ok and slot == nil and why == "already-hooked" then return end
+    if not ok or slot == nil then
         R.log("[rsmm.xp] could not install GroupLevelComponent_Ctor hook; "
             .. "level/xp unavailable this run")
     end

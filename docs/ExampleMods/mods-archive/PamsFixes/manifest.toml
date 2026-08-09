@@ -1,0 +1,66 @@
+[mod]
+id = "PamsFixes"
+name = "Pam's Fixes"
+version = "0.1.0"
+author = "Pam"
+enabled = false
+sdk_version = ">=3.0,<4"
+
+description = "Pam's balance pass over eight magical objects: epic cooldown-reduction items toned down, Eternal Rose crit chance raised, Ace of Spades reworked, Golden Egg dream-shard gain reduced."
+tags        = ["balance", "items"]
+# Pam's balance pass. Each entry is a length-preserving f32 edit shipped as a
+# plain override of the vanilla magical-object entity (no new asset, no
+# re-cook). Discover any item's editable values with `rsmm items show <id>`.
+#
+# DONE (value patches):
+#   Epic cooldown-reduction items  -25% -> -12%  (CD Reduction Value 0.25->0.12)
+#     Reduce_Dash_CD, Reduce_Defensive_CD, Reduce_Primary_CD,
+#     Reduce_Secondary_CD, Reduce_Ultimate_CD
+#     Rationale (Pam): baseline nerf is -15%, BUT that assumed item
+#     availability was also cut (the epic-fragment system below). Since
+#     fragments are not implementable, availability is unchanged, so the
+#     conditional "-12% without the amount of items reduced" applies.
+#     (Father Time's Hourglass / Reduce_All_Abilities item left at -20%.)
+#   Eternal Rose (Dash_Crit_Chance)   crit chance 10% -> 15%   (0.10 -> 0.15)
+#   Ace of Spades (Damage_Attack)     base/super stat SWAP (needs in-game check):
+#                                     base (always-on) +10% attack speed,
+#                                     super-effect +50% attack damage.
+#                                     Done WITHOUT the re-emit cooker: Ghidra
+#                                     showed oCEntityCpntModifierSettings has no
+#                                     in-item stat field; the stat is carried by
+#                                     the value NODE a modifier reads. So 4
+#                                     length-preserving 16-byte GUID-ref swaps
+#                                     (base/super gameplay + description ops)
+#                                     repoint base->Attack Speed Value(0.10) and
+#                                     super->Damage Value(0.50). If in-game the
+#                                     stat does NOT follow the value node, revert
+#                                     (rsmm restore --all) — then it needs node
+#                                     RENAME via the entity re-emit cooker.
+#   Golden Egg (AP_For_Dream_Shards_Stack)
+#                                     super-effect dream-shard gain 30 -> 20
+#                                     (Dream Shards Effect Value 0.3 -> 0.2)
+#
+# NOT INCLUDED — investigated, confirmed NOT data-patchable:
+#   * "fragment of an epic item in red chests" + "only duplicate epic
+#     fragments" — "fragment" is not a mechanic in the game. The string
+#     "fragment" appears ONLY in scenery tile filenames; there is no fragment
+#     item, loot type, or rarity. Implementing it needs a brand-new item TYPE
+#     plus chest-spawn + duplication-target code (loader/native), not a value
+#     edit. Full design (Pam): red chests drop an epic FRAGMENT; only epic
+#     fragments can be duplicated (no more duplicating whole epics); eating 2
+#     fragments yields one epic item. None of "fragment", "eat fragment", or
+#     "combine fragments" exists in the game's data model. Red_Chest
+#     (Rare_Chest) loot IS data but is a day/night Value-
+#     Selector graph (Legendary/Curse 0.5 via selector; no flat per-rarity
+#     knob, no fragment output). Epic-dup powerup exists
+#     (Power_Up_Sandman_Major_Duplicate_Epic_Object) but "no more duplicating
+#     epics" = removing it from the Sandman shop pool = an availability
+#     mechanic, not an f32.
+#   * Thirst for Immortality "starts at 50 vitality" — no matching cooked item
+#     entity exists in the repo corpus OR the install asset_map. The only
+#     vitality item present is Increase_Vitality_Reduce_Crit_Chance (Cauldron,
+#     a DIFFERENT item Pam did not ask to change). The Increase_Vitality text
+#     key ships with no .gen. Needs the exact in-game item identity (icon /
+#     rarity) to resolve before it can be patched.
+#
+# Regenerate the assets from data/uncooked if base game data changes.

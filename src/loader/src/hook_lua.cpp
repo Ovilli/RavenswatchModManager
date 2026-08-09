@@ -406,10 +406,27 @@ int hook_lua_install(std::uintptr_t target_va,
                             g_detour_table[s.shape][slot],
                             &s.trampoline);
     if (rc != MH_OK) {
-        Loader::get().log("[hook] MH_CreateHook va=0x"
-                          + [&]{char b[32]; snprintf(b,sizeof(b),"%llx",(unsigned long long)target_va); return std::string(b);}()
-                          + " rc=" + std::to_string(static_cast<int>(rc)));
+        const auto hex = [&]{
+            char b[32];
+            snprintf(b, sizeof(b), "%llx", (unsigned long long)target_va);
+            return std::string(b);
+        }();
         s = Slot{};
+        // ALREADY_CREATED is not a failure, it is the NORMAL outcome when more
+        // than one mod wants the same engine hook: every mod runs in its own
+        // lua_State and each arms the SDK's shared capture hooks, so the first
+        // one wins and the rest land here. Reported as a plain error it looked
+        // like three broken mods — and the SDK, unable to tell the two apart,
+        // went on to blame the game build ("handlers unresolved"), which sent
+        // debugging in entirely the wrong direction. Distinct return code so
+        // the caller can say what actually happened.
+        if (rc == MH_ERROR_ALREADY_CREATED) {
+            Loader::get().log("[hook] va=0x" + hex + " already hooked by another "
+                              "mod; sharing it (not an error)");
+            return kHookAlreadyOwned;
+        }
+        Loader::get().log("[hook] MH_CreateHook va=0x" + hex
+                          + " rc=" + std::to_string(static_cast<int>(rc)));
         return -1;
     }
     // Mark installed BEFORE enabling. The other order left a window in which

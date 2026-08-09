@@ -1,0 +1,19 @@
+[mod]
+id = "DevilsPocket"
+name = "Devil's Pocket"
+version = "1.0.0"
+author = "rsmm-user"
+enabled = false
+sdk_version = ">=3.0,<4"
+description = "Rebalances Devil's Pocket: the crit chance granted once the pocket fills drops from 50% to 20%."
+tags        = ["items", "balance"]
+
+
+[[content]]
+kind          = "item"
+id            = "Curse_Stack_Shard_Quest"
+base          = "Curse_Stack_Shard_Quest"
+name          = "Devil's Pocket"
+description   = "20% of collected dream fragments are absorbed by Devil's Pocket until it is full (400 required). Once full, increase crit chance by 50%"
+icon          = "Objects\\Icon_Devil_Pocket_Full.png"
+value_patches = [["Completed Crit Chance", 0.5, 0.2]]

@@ -37,6 +37,12 @@ void hook_lua_shutdown();
 // lua_State; `cb_ref` is a LUA_REGISTRYINDEX ref to the callback. `sig`
 // follows the rsmm.call format (first char = return, rest = args).
 // Returns a slot handle >= 0 on success, -1 on failure.
+// Returned by hook_lua_install when the target is ALREADY hooked — normally
+// by another mod's lua_State arming the same shared SDK hook. The caller does
+// not own a slot, but the hook IS live and its effects (e.g. the shared hero
+// slot) are visible, so this must not be treated as a failure.
+constexpr int kHookAlreadyOwned = -2;
+
 int hook_lua_install(std::uintptr_t target_va,
                      std::string_view sig,
                      lua_State* L,

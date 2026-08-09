@@ -1,0 +1,21 @@
+[mod]
+id = "DesertEagleJuliet"
+name = "Juliet: Desert Eagle"
+version = "0.1.0"
+author = "rsmm-user"
+enabled = true
+sdk_version = ">=3.0,<4"
+
+description = "Replaces Juliet's gun with a Desert Eagle in black and grey metal with a red accent. Custom mesh cooked onto the vanilla gun skeleton, plus a matching palette albedo."
+tags        = ["cosmetic", "weapon", "model", "juliet"]
+# Replaces Juliet's gun with a Desert Eagle (black/gray metal + red accent).
+# Two plain asset overrides (no [[content]] block) — apply cooks them:
+#   * assets/.../Juliet_Gun_GEO.fbx.Geometry.gen  — the mesh, held as glTF
+#     bytes (cook_cache detects glTF by magic, template-swaps onto the gun's
+#     skeleton via engine/geometry_cook.py). Decimated to ~52k verts (the
+#     raw 243k model crashes the renderer; cap is 65535). UVs route each
+#     part to a palette cell so per-material colors show.
+#   * assets/.../Textures/T_JulietGun_ALB.tga.Texture.dxt  — a 512x512 BC1
+#     palette albedo (the gun's M_JulietGun material samples it).
+# Source/baking: the 243k source GLB and the palette generator are not kept
+# in the mod (regenerate from the original download if you re-bake).

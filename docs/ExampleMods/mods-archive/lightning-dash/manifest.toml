@@ -1,0 +1,25 @@
+[mod]
+id          = "lightning-dash"
+name        = "Lightning Dash"
+version     = "0.2.0"
+author      = "RSMM"
+description = "Relabels one of Aladdin's skills into a custom talent — VISIBLE in his level-up cards and Skill Menu. Overrides the per-hero text bank (Skill_*_Name/_Desc), count-neutral and reliable."
+enabled     = false
+sdk_version = ">=3.0,<4"
+# skill is a 'guess' kind (it can also clone net-new rows, which are unproven);
+# the relabel path used here is a safe text override.
+experimental = true
+
+tags        = ["skills", "aladdin", "cosmetic"]
+# Relabel Aladdin's "Attack Dive" skill into "Lightning Dash" with custom text.
+# mode="relabel" (default) edits only the hero text bank, so it shows in-game on
+# that skill's real card/menu slot. Use mode="clone" to also add a NET-NEW row
+# (experimental — in-game list load unproven).
+[[content]]
+kind        = "skill"
+id          = "rsmm_lightning_dash"
+hero        = "Aladdin"
+source      = "Attack Dive"
+name        = "Lightning Dash"
+description = "RSMM custom talent: a dash that crackles with lightning."
+mode        = "relabel"
