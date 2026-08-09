@@ -56,12 +56,10 @@ static HANDLE WINAPI hook_CreateFileW(LPCWSTR lpFileName, DWORD dwDesiredAccess,
     // RSMM_IO_PASSTHROUGH=1 -> pure passthrough, no logic, no logging.
     // RSMM_IO_LOGONLY=1     -> log first call then passthrough.
     // (default)             -> full asset redirection (current behavior).
-    static const bool passthrough = []{
-        char b[4]; return GetEnvironmentVariableA("RSMM_IO_PASSTHROUGH", b, sizeof(b)) && b[0]=='1';
-    }();
-    static const bool logonly = []{
-        char b[4]; return GetEnvironmentVariableA("RSMM_IO_LOGONLY", b, sizeof(b)) && b[0]=='1';
-    }();
+    // flag_enabled honours the env var AND the desktop-written flags file;
+    // reading the environment directly made these unreachable from the app.
+    static const bool passthrough = flag_enabled("RSMM_IO_PASSTHROUGH");
+    static const bool logonly    = flag_enabled("RSMM_IO_LOGONLY");
 
     if (passthrough) {
         return forward_CreateFileW(lpFileName, dwDesiredAccess, dwShareMode, sa,

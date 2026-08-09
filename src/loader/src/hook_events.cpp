@@ -675,14 +675,20 @@ bool install_hero_capture() {
     // correlated with load-time crashes this dev cycle. Identity / event work
     // doesn't need them; R.combat / R.entity do. Enable with
     // RSMM_ENABLE_HERO_CAPTURE=1 once a run is confirmed stable.
-    {
-        char buf[8] = {};
-        DWORD n = GetEnvironmentVariableA("RSMM_ENABLE_HERO_CAPTURE", buf, sizeof(buf));
-        if (!(n > 0 && n < sizeof(buf) && (buf[0] == '1' || buf[0] == 't' || buf[0] == 'T'))) {
-            Loader::get().log("[hero-capture] disabled (set RSMM_ENABLE_HERO_CAPTURE=1 "
-                              "to enable R.combat/R.entity)");
-            return false;
-        }
+    // flag_enabled, NOT a raw getenv. Every other opt-in in the loader goes
+    // through it, which honours both the environment variable AND the
+    // rsmm_loader_flags.json the desktop app writes. This one read the
+    // environment directly, so the desktop flags panel could not turn hero
+    // capture on at all — the toggle appeared to do nothing and the only way
+    // in was Steam launch options.
+    if (!flag_enabled("RSMM_ENABLE_HERO_CAPTURE")) {
+        Loader::get().log("[hero-capture] disabled — R.combat/R.entity/R.stat/R.xp "
+                          "unavailable. Enable it in the desktop app's flags "
+                          "panel, or put RSMM_ENABLE_HERO_CAPTURE=1 BEFORE "
+                          "%command% in the Steam launch options (anything "
+                          "after %command% is passed to the game as an "
+                          "argument, not as an environment variable).");
+        return false;
     }
     // Pattern-resolve both handlers (same path as the gameplay bus) so the
     // hooks survive game patches instead of trusting a baked, soon-stale VA: a

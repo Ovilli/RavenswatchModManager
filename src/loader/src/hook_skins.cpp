@@ -344,12 +344,11 @@ void install_filter_hook(void* mgr) {
     });
 }
 
-bool env_truthy(const char* name) {
-    char buf[8] = {};
-    DWORD n = GetEnvironmentVariableA(name, buf, sizeof(buf));
-    return n > 0 && n < sizeof(buf) && (buf[0] == '1' || buf[0] == 't' || buf[0] == 'T');
-}
-
+// Boolean opt-ins go through flag_enabled (loader.cpp), which honours BOTH the
+// environment variable and the rsmm_loader_flags.json the desktop app writes.
+// This file used to carry a private env_truthy() that read only the
+// environment, so the desktop flags panel silently could not turn the feature
+// on — the same defect that hid hero capture behind Steam launch options.
 // --- pack-def loading ----------------------------------------------------
 
 std::int32_t parse_key(const nlohmann::json& v) {
@@ -472,7 +471,7 @@ bool install_skin_hooks() {
     // Optional diagnostic: force our nodes to render as grid buttons,
     // bypassing the manager vtable[1] filter (which currently rejects
     // brand-new keys). Off by default; see docs/_re/kinds/skins.md (A1/A2).
-    g_force_show = env_truthy("RSMM_SKIN_FORCE_SHOW");
+    g_force_show = flag_enabled("RSMM_SKIN_FORCE_SHOW");
     if (g_force_show) {
         if (resolve_checked("skin-hook", "vector grow", "FUN_140154c20",
                             reinterpret_cast<void**>(&g_vec_grow))

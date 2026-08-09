@@ -273,16 +273,13 @@ static bool readable(const void* p, std::size_t len) { return mem_readable(p, le
 // enable var AND an explicit "I accept it's broken" acknowledgement, so a
 // user who flips the normal flag can never trip the crash. Development-only.
 static bool item_inject_armed() {
-    char e[8], a[8];
-    const bool enabled = GetEnvironmentVariableA(
-        "RSMM_ENABLE_ITEM_INJECT", e, sizeof(e)) && e[0] == '1';
+    const bool enabled = flag_enabled("RSMM_ENABLE_ITEM_INJECT");
     if (!enabled) {
         Loader::get().log("[item-hook] inject gated off "
                           "(items load via UsedRscList; inject is a broken fallback)");
         return false;
     }
-    const bool acknowledged = GetEnvironmentVariableA(
-        "RSMM_I_ACCEPT_ITEM_INJECT_IS_BROKEN", a, sizeof(a)) && a[0] == '1';
+    const bool acknowledged = flag_enabled("RSMM_I_ACCEPT_ITEM_INJECT_IS_BROKEN");
     if (!acknowledged) {
         Loader::get().log("[item-hook] RSMM_ENABLE_ITEM_INJECT set but refused: "
                           "inject mis-resolves and crashes on this build. Also set "
@@ -322,9 +319,8 @@ void deferred_inject_poll() {
                 // Read-only source-list dump (opt-in) to learn whether our
                 // custom definition loaded into the spawn source list.
                 {
-                    char dbuf[8];
-                    if (GetEnvironmentVariableA("RSMM_DUMP_POOL", dbuf, sizeof(dbuf))
-                            && dbuf[0] == '1') {
+                    // flag_enabled: env var OR the desktop flags file.
+                    if (flag_enabled("RSMM_DUMP_POOL")) {
                         dump_pool(pool);
                     }
                 }

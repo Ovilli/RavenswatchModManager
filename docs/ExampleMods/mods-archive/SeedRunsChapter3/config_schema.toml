@@ -1,6 +1,0 @@
-[fields.seed]
-type    = "int"
-min     = 0
-max     = 4294967295
-default = 30758939
-label   = "Race seed (all participants must match)"

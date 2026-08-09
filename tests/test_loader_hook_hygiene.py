@@ -120,3 +120,35 @@ def test_minhook_installs_go_through_the_guarded_helper(src: Path):
         f"target is checked against .pdata — fn_verify only proves the bytes "
         f"match, which a mid-function match also does."
     )
+
+
+# Env vars that carry a VALUE rather than a yes/no. flag_enabled only answers
+# "is this on", so these legitimately read the environment directly.
+_VALUED_ENV_VARS = {"RSMM_RECONNECT_SECONDS", "RSMM_LOCALE", "RSMM_DATA",
+                    "RSMM_GAME_DIR", "RSMM_MODS_DIR"}
+
+_RAW_ENV = re.compile(r'GetEnvironmentVariableA\(\s*"(RSMM_[A-Z0-9_]+)"')
+
+
+def test_boolean_flags_go_through_flag_enabled():
+    """A yes/no opt-in read straight from the environment is invisible to the app.
+
+    `flag_enabled` (loader.cpp) honours the environment variable AND the
+    rsmm_loader_flags.json the desktop app writes. Several files instead had a
+    private `env_truthy` over GetEnvironmentVariableA, so their features could
+    only be armed from Steam launch options and the desktop flags panel
+    silently did nothing — hero capture, the engine hook, the skin force-show
+    and the IO modes were all unreachable from the UI that advertises them.
+    """
+    offenders: dict[str, list[str]] = {}
+    for src in _sources():
+        body = _strip_comments(src.read_text())
+        found = [v for v in set(_RAW_ENV.findall(body)) if v not in _VALUED_ENV_VARS]
+        if found:
+            offenders[src.name] = sorted(found)
+    assert not offenders, (
+        f"boolean RSMM_* flag(s) read via GetEnvironmentVariableA instead of "
+        f"flag_enabled(): {offenders}. flag_enabled also reads the desktop's "
+        f"rsmm_loader_flags.json; a raw getenv makes the toggle in the app a "
+        f"no-op. Add value-carrying vars to _VALUED_ENV_VARS instead."
+    )

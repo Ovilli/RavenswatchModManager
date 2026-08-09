@@ -60,12 +60,6 @@ std::uintptr_t WINAPI hook_resource_lookup(void* a, void* b, void* c, void* d) {
     return g_real_resource_lookup(a, b, c, d);
 }
 
-bool env_truthy(const char* name) {
-    char buf[8] = {};
-    DWORD n = GetEnvironmentVariableA(name, buf, sizeof(buf));
-    return n > 0 && n < sizeof(buf) && (buf[0] == '1' || buf[0] == 't' || buf[0] == 'T');
-}
-
 // File-based opt-in so iteration doesn't need a Steam-options round-trip.
 // Drop `mods/.rsmm_enable_engine_hook` next to the game's mods/ directory
 // to arm the hook; remove it to disarm. Env var still wins if set.
@@ -83,7 +77,12 @@ bool file_marker_present() {
 } // namespace
 
 bool install_engine_hooks() {
-    const bool by_env = env_truthy("RSMM_ENABLE_ENGINE_HOOK");
+    // flag_enabled (loader.cpp) honours BOTH the environment variable and the
+    // rsmm_loader_flags.json the desktop app writes. This file used to carry a
+    // private env_truthy() that read only the environment, so the desktop flags
+    // panel silently could not arm it — the same defect that hid hero capture
+    // behind Steam launch options.
+    const bool by_env = flag_enabled("RSMM_ENABLE_ENGINE_HOOK");
     const bool by_file = file_marker_present();
     if (!by_env && !by_file) {
         Loader::get().log("[engine-hook] disabled (set RSMM_ENABLE_ENGINE_HOOK=1 "

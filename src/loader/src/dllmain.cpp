@@ -114,8 +114,7 @@ static void loader_thread_cxx() {
         rsmm::script_emit_event("setup");
         L.apply_overrides();
 
-        char buf[8];
-        if (GetEnvironmentVariableA("RSMM_ENABLE_IO", buf, sizeof(buf)) && buf[0] == '1') {
+        if (rsmm::flag_enabled("RSMM_ENABLE_IO")) {
             L.log("RSMM_ENABLE_IO=1: installing IO hook (may crash game)");
             rsmm::install_io_hooks();
         } else {
