@@ -168,7 +168,10 @@ class Build:
             addr = int(rec["addr"], 16)
             body = rec.get("code") or ""
             self.code[addr] = body
-            self.calls[addr] = {int(x, 16) for x in _CALL.findall(body)}
+            # Exclude the self-match: the decompile's own signature line
+            # contains `FUN_<addr>(`, so without this every function looks
+            # recursive and "shares a callee with" becomes meaningless.
+            self.calls[addr] = {int(x, 16) for x in _CALL.findall(body)} - {addr}
         for a, cs in self.calls.items():
             for c in cs:
                 self.callers.setdefault(c, set()).add(a)
@@ -196,6 +199,23 @@ class Candidate:
     @property
     def offset_frac(self) -> float:
         return self.offsets_hit / self.offsets_total if self.offsets_total else 0.0
+
+
+def offset_tokens(off: int) -> tuple[str, ...]:
+    """How Ghidra may render a struct offset in decompiled text.
+
+    Values below 0x10 come out as DECIMAL (`param_2 + 8`), not hex, so matching
+    only `0x8` silently never fires. That cost CustomFlagList_ContainsAll its
+    locator: the routine plainly reads `+ 8`, `+ 0x10` and `* 0x18`, but scored
+    2/3 and lost to two unrelated functions.
+    """
+    if off < 0x10:
+        return (f"+ {off}", f"0x{off:x}")
+    return (f"0x{off:x}",)
+
+
+def _has_offset(body: str, off: int) -> bool:
+    return any(tok in body for tok in offset_tokens(off))
 
 
 # --------------------------------------------------------------------------
@@ -261,6 +281,34 @@ def resolve_locator(b: Build, loc: dict, located: dict[str, int],
             pools.append({a for a in pool if a in b.code and a not in anchors})
             why.append(f"{direction} {n}")
 
+    # Call MULTIPLICITY. "Calls X" is weak when X is a common helper — 146
+    # functions call Netcode_Channel_Unsubscribe. "Calls X thirty-odd times"
+    # is a shape almost nothing else has, and it is exactly how a routine that
+    # tears down a fixed list of subscriptions is recognised.
+    for name, least in (loc.get("calls_at_least") or {}).items():
+        va = located.get(name)
+        if va is None:
+            continue
+        tok = f"FUN_{va:x}("
+        pools.append({a for a, body in b.code.items()
+                      if body.count(tok) >= int(least)})
+        why.append(f"calls {name} >={least}x")
+
+    # Co-callees: routines invoked by the same functions that invoke X. Some
+    # utilities are identified purely by the company they keep —
+    # NamedEvent_Id_FromCrc is "the leaf every static-init event-name interner
+    # calls right after Crc32_TableInit", and it shares its 1658 callers with
+    # that symbol exactly.
+    for n in loc.get("co_called_with") or []:
+        va = located.get(n)
+        if va is None:
+            continue
+        sibs: set[int] = set()
+        for caller in b.callers.get(va, ()):
+            sibs |= {c for c in b.calls.get(caller, ()) if c != va and c in b.code}
+        pools.append(sibs)
+        why.append(f"co-called with {n}")
+
     for s in loc.get("strings") or []:
         pools.append({a for a, body in b.code.items() if s in body})
         why.append(f"contains {s!r}")
@@ -278,18 +326,32 @@ def resolve_locator(b: Build, loc: dict, located: dict[str, int],
         # requiring all of them keeps this from behaving like the global
         # offset scoring that made the first version useless.
         pools.append({a for a, body in b.code.items()
-                      if all(f"0x{o:x}" in body for o in offsets_pre)})
+                      if all(_has_offset(body, o) for o in offsets_pre)})
         why.append(f"all {len(offsets_pre)} offsets")
 
-    if not pools:
+    if not pools and loc.get("callers_min") is None:
         return [], "locator has no resolvable key"
 
-    hits = set.intersection(*pools) if len(pools) > 1 else pools[0]
+    hits = (set.intersection(*pools) if len(pools) > 1
+            else (pools[0] if pools else set()))
 
     # Size bounds. Not a strong anchor on its own, but several routines are
     # identified as much by shape as content — NamedEvent_Id_FromCrc is "the
     # small thing 1658 static initialisers call", and nothing else about it is
     # distinctive.
+    # Caller count is a strong, build-invariant shape property for the engine's
+    # hot leaf utilities: only 10 functions in the whole 54k-function corpus
+    # have 1000+ callers, so "is called from everywhere" nearly identifies one
+    # on its own. Nothing else about PtrVector_Resize or Id_FromCrc is
+    # distinctive — they carry no strings and no notable constants.
+    cmin = loc.get("callers_min")
+    if cmin is not None:
+        if not hits:
+            hits = {a for a in b.code if len(b.callers.get(a, ())) >= int(cmin)}
+        else:
+            hits = {a for a in hits if len(b.callers.get(a, ())) >= int(cmin)}
+        why.append(f">={cmin} callers")
+
     lo, hi = loc.get("lines_min"), loc.get("lines_max")
     if lo is not None:
         hits = {a for a in hits if b.lines(a) >= int(lo)}
@@ -305,7 +367,7 @@ def resolve_locator(b: Build, loc: dict, located: dict[str, int],
         best, top = [], -1.0
         for a in hits:
             body = b.code.get(a, "")
-            n = sum(1 for o in offsets if f"0x{o:x}" in body)
+            n = sum(1 for o in offsets if _has_offset(body, o))
             if n > top:
                 best, top = [a], n
             elif n == top:
@@ -570,7 +632,7 @@ def locate(b: Build, note: str, known: dict[str, int], self_name: str = "",
     for c in merged.values():
         body = b.code.get(c.addr, "")
         c.offsets_total = len(a.offsets)
-        c.offsets_hit = sum(1 for o in a.offsets if f"0x{o:x}" in body)
+        c.offsets_hit = sum(1 for o in a.offsets if _has_offset(body, o))
         reasons = c.via.count("+") + 1
         c.score = reasons * 2.0 + c.offset_frac * 4.0
         # Membership in a broad constraint is corroboration, not a candidate

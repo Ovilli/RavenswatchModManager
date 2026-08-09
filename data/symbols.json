@@ -24,7 +24,12 @@
    "locator": {
     "called_by": [
      "InitialLoading_LoadAllDefinitions"
-    ]
+    ],
+    "strings": [
+     "oCEntitySpawnData::vftable"
+    ],
+    "lines_min": 100,
+    "lines_max": 170
    }
   },
   {
@@ -136,9 +141,11 @@
      "_realloc_base",
      "_malloc_base"
     ],
+    "callers_min": 2000,
     "offsets": [
      "0xc"
     ],
+    "lines_min": 30,
     "lines_max": 45
    }
   },
@@ -330,7 +337,9 @@
     ],
     "consts": [
      "0xde5fb9d2630458e9"
-    ]
+    ],
+    "lines_min": 140,
+    "lines_max": 180
    }
   },
   {
@@ -494,9 +503,9 @@
     "docs/_re/kinds/events-bus.md"
    ],
    "locator": {
-    "calls": [
-     "Netcode_Channel_Unsubscribe"
-    ]
+    "calls_at_least": {
+     "Netcode_Channel_Unsubscribe": 20
+    }
    }
   },
   {
@@ -556,9 +565,11 @@
     "docs/_re/kinds/events-bus.md"
    ],
    "locator": {
-    "calls": [
+    "co_called_with": [
      "Crc32_TableInit"
     ],
+    "callers_min": 1500,
+    "lines_min": 20,
     "lines_max": 40
    }
   },
@@ -1140,7 +1151,7 @@
      "0x10",
      "0x18"
     ],
-    "lines_min": 70,
+    "lines_min": 75,
     "lines_max": 80
    }
   },
@@ -1164,8 +1175,8 @@
      "0x10",
      "0x18"
     ],
-    "lines_min": 65,
-    "lines_max": 69
+    "lines_min": 68,
+    "lines_max": 73
    }
   },
   {
@@ -1306,9 +1317,10 @@
      "LevelLoad_Orchestrator"
     ],
     "offsets": [
-     "0x8f8",
-     "0x900"
-    ]
+     "0x120"
+    ],
+    "lines_min": 130,
+    "lines_max": 155
    }
   },
   {
@@ -1325,7 +1337,9 @@
    "locator": {
     "called_by": [
      "MapCtx_DistributeEnemyCampTiers"
-    ]
+    ],
+    "lines_min": 100,
+    "lines_max": 140
    }
   },
   {
@@ -1768,9 +1782,13 @@
      "EnemyDef_PostLoad",
      "EnemyTribeDef_PostLoad"
     ],
+    "calls": [
+     "Registry_EnumInstances"
+    ],
     "offsets": [
      "0x280"
-    ]
+    ],
+    "lines_max": 40
    }
   },
   {

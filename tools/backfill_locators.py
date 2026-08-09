@@ -53,7 +53,9 @@ LOCATORS: dict[str, dict] = {
     # --- call graph -------------------------------------------------------
     "Registry_RegisterInstance": {
         "called_by": ["EnemyDef_PostLoad", "EnemyTribeDef_PostLoad"],
+        "calls": ["Registry_EnumInstances"],
         "offsets": ["0x280"],
+        "lines_max": 40,
     },
     "Registry_EnumInstances": {
         "called_by": ["Registry_RegisterInstance"],
@@ -69,15 +71,21 @@ LOCATORS: dict[str, dict] = {
     },
     "MagicalObject_SpawnAllObjects": {
         "called_by": ["InitialLoading_LoadAllDefinitions"],
+        "strings": ["oCEntitySpawnData::vftable"],
+        "lines_min": 100, "lines_max": 170,
     },
     "HeroDef_LoadBaseEntity": {
         "called_by": ["LevelLoad_Orchestrator"],
         "offsets": ["0x8a0", "0x8b0", "0x8c0", "0x8c8", "0x8d0"],
         "lines_max": 200,
     },
+    # The skin-spec offsets do not appear literally: Ghidra scales pointer
+    # arithmetic by pointee size, so herodef+0x900 renders as `param_1 + 0x120`
+    # on a longlong*. Anchor on the call site and size instead.
     "HeroDef_LoadSkinEntity": {
         "called_by": ["LevelLoad_Orchestrator"],
-        "offsets": ["0x8f8", "0x900"],
+        "offsets": ["0x120"],   # the SCALED form of herodef+0x900
+        "lines_min": 130, "lines_max": 155,
     },
     "MapCtx_DistributeEnemyCampTiers": {
         "called_by": ["LevelLoad_Orchestrator"],
@@ -99,19 +107,26 @@ LOCATORS: dict[str, dict] = {
     },
     "Property_EvaluateByGuid": {
         "called_by": ["MapCtx_DistributeEnemyCampTiers"],
+        "lines_min": 100, "lines_max": 140,
     },
     "Netcode_Channel_LookupById": {
         "called_by": ["NamedEvent_HeroUnsubscribeAll"],
         "consts": ["0xde5fb9d2630458e9"],
+        "lines_min": 140, "lines_max": 180,
     },
+    # One lookup+unsubscribe pair per hero event. 146 functions call
+    # Channel_Unsubscribe; this is the only one that calls it thirty-odd times.
     "NamedEvent_HeroUnsubscribeAll": {
-        "calls": ["Netcode_Channel_Unsubscribe"],
+        "calls_at_least": {"Netcode_Channel_Unsubscribe": 20},
     },
-    # "the small thing every static-init event-name interner calls". Nothing
-    # else about it is distinctive; shape is the anchor.
+    # A leaf with no strings and no notable constants. What identifies it is
+    # the company it keeps: every static-init event-name interner calls
+    # Crc32_TableInit and then this, so the two share their 1658 callers
+    # exactly, and only 10 functions in the corpus are called that often.
     "NamedEvent_Id_FromCrc": {
-        "calls": ["Crc32_TableInit"],
-        "lines_max": 40,
+        "co_called_with": ["Crc32_TableInit"],
+        "callers_min": 1500,
+        "lines_min": 20, "lines_max": 40,
     },
 
     # --- log strings the routine itself carries ---------------------------
@@ -147,15 +162,22 @@ LOCATORS: dict[str, dict] = {
     # neighbourhood; both are 2-arg 0x18-stride string-set tests. ContainsAll
     # is the one with the |A| >= |B| precondition, so it is the SHORTER of the
     # two — the size bound is what separates them.
+    # An adjacent pair of 2-arg 0x18-stride string-set tests sharing the memcmp
+    # temp `_Buf2`. Nothing in either body distinguishes them semantically to a
+    # text match — ContainsAll differs only by its leading |A| >= |B| early-out,
+    # which costs it a few lines. So size is the discriminator, and the bounds
+    # are tight deliberately: if a rebuild moves them the locator FAILS rather
+    # than quietly returning the sibling, which is the wrong answer that
+    # matters here.
     "CustomFlagList_ContainsAll": {
-        "strings": ["_Buf2"],          # the memcmp temp the pair both use
+        "strings": ["_Buf2"],
         "offsets": ["0x8", "0x10", "0x18"],
-        "lines_min": 70, "lines_max": 80,
+        "lines_min": 75, "lines_max": 80,
     },
     "CustomFlagList_ContainsAny": {
         "strings": ["_Buf2"],
         "offsets": ["0x8", "0x10", "0x18"],
-        "lines_min": 65, "lines_max": 69,
+        "lines_min": 68, "lines_max": 73,
     },
     "MagicalObject_RegisterInstance": {
         "offsets": ["0xd70", "0xd78", "0xd7c", "0xd80", "0xd88", "0xf0",
@@ -166,12 +188,14 @@ LOCATORS: dict[str, dict] = {
         "offsets": ["0x58", "0x60", "0x68", "0x70"],
         "called_by": ["MapCtx_DistributeEnemyCampTiers"],
     },
-    # The realloc itself, not the insert helper that wraps it. Both are called
-    # from the same places, so the allocator call is the discriminator.
+    # The resize itself, not the insert helper that wraps it. Both allocate, so
+    # the allocator call does not separate them — being one of the ten most
+    # called functions in the binary does. Same routine as PtrVector_Resize.
     "Vector_Grow": {
         "strings": ["_realloc_base", "_malloc_base"],
+        "callers_min": 2000,
         "offsets": ["0xc"],
-        "lines_max": 45,
+        "lines_min": 30, "lines_max": 45,
     },
 }
 
