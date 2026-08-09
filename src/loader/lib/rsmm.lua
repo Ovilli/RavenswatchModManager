@@ -1325,6 +1325,33 @@ local _stat_writes_enabled = false
 -- `local ok = R.stat.enable_writes()` at load, got nil, and disabled itself for
 -- the whole session. Ask R.entity.ready() if you want to know whether a write
 -- can land right now.
+-- Throttled logging for messages emitted from PER-EVENT paths.
+--
+-- R.stat.modify / R.xp.grant are called from gameplay-event handlers, so their
+-- refusal messages run at the rate the game fires events. A playtest with
+-- Bloodlust installed and hero capture off logged "[rsmm.stat] no hero captured
+-- yet" once every three kills, forever — a real condition, reported so often it
+-- buried everything else in the file.
+--
+-- Logs the first occurrence immediately, then at most once per REPEAT_SECONDS,
+-- carrying the number suppressed so the reader still sees it is ongoing.
+local _log_seen = {}
+local REPEAT_SECONDS = 30
+
+local function _log_throttled(key, msg)
+    local now = (I.now and I.now()) or os.time()
+    local st = _log_seen[key]
+    if st == nil then
+        _log_seen[key] = { at = now, n = 0 }
+        R.log(msg)
+        return
+    end
+    st.n = st.n + 1
+    if now - st.at < REPEAT_SECONDS then return end
+    R.log(("%s (%d more since last report)"):format(msg, st.n))
+    st.at, st.n = now, 0
+end
+
 function R.stat.enable_writes()
     _stat_writes_enabled = true
     return true
@@ -1369,7 +1396,7 @@ function R.stat.set(name, value)
     end
     if not _va_ok("R.stat") then return false end
     local e = R.entity.hero()
-    if not e then R.log("[rsmm.stat] no hero captured yet"); return false end
+    if not e then _log_throttled("stat.nohero", "[rsmm.stat] no hero captured yet"); return false end
     if not _hero_plausible(e) then R.log("[rsmm.stat] hero reads implausible — refusing"); return false end
     local store = _stat_store(e)
     if not store then R.log("[rsmm.stat] value store not found for this build — refusing"); return false end
@@ -1444,7 +1471,7 @@ function R.stat.modify(name, amount, duration)
     end
     if not _va_ok("R.stat.modify") then return false end
     local e = R.entity.hero()
-    if not e then R.log("[rsmm.stat] no hero captured yet"); return false end
+    if not e then _log_throttled("stat.nohero", "[rsmm.stat] no hero captured yet"); return false end
     if not _hero_plausible(e) then R.log("[rsmm.stat] hero reads implausible — refusing"); return false end
     local store = _stat_store(e)
     if not store then R.log("[rsmm.stat] value store not found — refusing"); return false end
@@ -2015,7 +2042,7 @@ function R.xp.grant(amount)
     amount = math.floor(amount or 0)
     if amount <= 0 then return false end
     local hero = R.entity.hero()
-    if not hero then R.log("[rsmm.xp] no hero captured yet"); return false end
+    if not hero then _log_throttled("xp.nohero", "[rsmm.xp] no hero captured yet"); return false end
     -- grant runs on the MAIN thread (schedule.next_main contract) — the only
     -- place the engine-walk lookup is safe.
     local comp = _xp_component(hero, true)

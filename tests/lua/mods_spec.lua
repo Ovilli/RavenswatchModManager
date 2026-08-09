@@ -141,6 +141,18 @@ if load_mod("bloodlust") then
        "bloodlust: 6 displayed units becomes 0.06 store units, got " .. tostring(c))
     ok(c and not c:find(":nil", 1, true), "bloodlust: modifier has a duration")
 
+    -- With no hero captured (the default: loader hero-capture is opt-in), the
+    -- mod must go completely quiet rather than asking the engine once every
+    -- few kills for the whole run. A playtest logged "[rsmm.stat] no hero
+    -- captured yet" on repeat because of exactly this.
+    local _ready = R.entity.ready
+    R.entity.ready = function() return false end
+    calls = {}
+    for _ = 1, 30 do fire("gameplay:ENEMY_KILLED") end
+    ok(#calls == 0, "bloodlust: silent when no hero is captured, saw "
+       .. table.concat(calls, ", "))
+    R.entity.ready = _ready
+
     -- Cap holds: far more kills must not exceed max_stacks modifiers.
     calls = {}
     for _ = 1, 60 do fire("gameplay:ENEMY_KILLED") end
