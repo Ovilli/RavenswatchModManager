@@ -45,3 +45,35 @@ def test_rsmm_lua_spec():
         f"{proc.stdout}\n{proc.stderr}"
     )
     assert "0 failed" in proc.stdout, proc.stdout
+
+
+MODS_SPEC = REPO / "tests" / "lua" / "mods_spec.lua"
+
+
+def test_example_mods_spec():
+    """Load every shipped example mod and drive its event handlers.
+
+    `rsmm lint` reads a mod statically; it cannot tell that a handler calls an
+    R.* function that does not exist, or subscribes to a misspelled event. Both
+    are SILENT in-game — the dispatcher pcalls handlers, so an error is
+    swallowed and the mod simply appears to do nothing. This loads each
+    init.lua for real against the mocked native layer and fires the events it
+    subscribes to.
+    """
+    lua = _lua_bin()
+    if lua is None:
+        pytest.skip("no standalone lua interpreter on PATH (lua5.4/lua)")
+    mods = REPO / "mods"
+    if not mods.is_dir():
+        pytest.skip("mods/ is untracked and absent in this checkout")
+    proc = subprocess.run(
+        [lua, str(MODS_SPEC), str(LIB), str(mods)],
+        capture_output=True,
+        text=True,
+        cwd=str(REPO),
+    )
+    assert proc.returncode == 0, (
+        f"mods_spec.lua failed (exit {proc.returncode}):\n"
+        f"{proc.stdout}\n{proc.stderr}"
+    )
+    assert "0 failed" in proc.stdout, proc.stdout

@@ -472,6 +472,31 @@ def _lint_stray_scripts(modname: str, entry: Path) -> tuple[int, int]:
 #: RE'd gameplay-event catalog in data/symbols.json.
 _BUILTIN_EVENTS = {"setup", "ready", "tick", "exit"}
 
+# Derived events: rsmm.lua watches cheap state each tick and republishes the
+# TRANSITIONS, so a mod can say "when a run starts" instead of polling. They
+# are emitted by the SDK, not by a symbol, so the symbol map never mentions
+# them — without this the linter warned "handler will never fire" on every mod
+# using the surface shipped in 0.4.19. Scraped from rsmm.lua rather than
+# hardcoded so the two cannot drift.
+_SDK_PUBLISH = re.compile(r"""_publish\(\s*['"]([a-z][a-z_]*:[a-z_]+)['"]""")
+_SDK_PUBLISH_TERNARY = re.compile(
+    r"""_publish\(\s*[^,()]*?\s+and\s+['"]([a-z][a-z_]*:[a-z_]+)['"]"""
+    r"""\s+or\s+['"]([a-z][a-z_]*:[a-z_]+)['"]"""
+)
+
+
+def _sdk_derived_events() -> set[str]:
+    """Event names rsmm.lua publishes itself (run:start, menu:enter, ...)."""
+    lua = Path(__file__).resolve().parents[3] / "src" / "loader" / "lib" / "rsmm.lua"
+    try:
+        text = lua.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return set()
+    out = set(_SDK_PUBLISH.findall(text))
+    for a, b in _SDK_PUBLISH_TERNARY.findall(text):
+        out.update((a, b))
+    return out
+
 _RE_ON = re.compile(r"""R\.on\(\s*['"]([^'"]+)['"]""")
 _RE_ENGINE = re.compile(r"""R\.engine\.(?:call|resolve)\(\s*['"]([^'"]+)['"]""")
 
@@ -494,7 +519,7 @@ _RE_LOWLEVEL = re.compile(
 def _engine_vocab() -> tuple[set[str], set[str]]:
     """(valid event names, valid R.engine.* symbol names) from the symbol map,
     plus built-in events. Empty symbol sets if the map can't be loaded."""
-    events = set(_BUILTIN_EVENTS)
+    events = set(_BUILTIN_EVENTS) | _sdk_derived_events()
     callables: set[str] = set()
     try:
         from rsmm.engine.symbols import load_symbol_map
