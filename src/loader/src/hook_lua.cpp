@@ -18,7 +18,11 @@
 //  * Return value: if the Lua callback returns nil and HASN'T already
 //    called `next`, dispatch invokes the trampoline itself (pure read-
 //    only hooks become a one-liner). Otherwise the Lua-returned value
-//    becomes the function's RAX.
+//    becomes the function's RAX. `next` records that it ran in a
+//    thread_local the dispatcher checks, so "call next, post-process,
+//    return nothing" replays the original exactly once — that tracking
+//    was documented here long before it existed, and without it a
+//    post-processing hook silently ran its target twice.
 //
 // Floating-point args and returns ARE supported. On the Windows x64 ABI the
 // first four arguments go in RCX/RDX/R8/R9 *or* XMM0-3 depending on each
@@ -230,6 +234,19 @@ std::uint64_t pull_ret(lua_State* L, int idx, char t) {
 
 // --- the `next` closure ---------------------------------------------------
 
+// Set by `next`, read by the dispatcher that invoked the callback.
+//
+// The header contract says the trampoline is replayed only when the callback
+// returns nil AND has not already called `next` — but nothing tracked the
+// second half, so `next(...)` followed by a nil return ran the original
+// TWICE. For a void begin-an-attack style hook that means the attack fires
+// twice; for anything allocating, it leaks.
+//
+// thread_local, and saved/restored around the pcall in dispatch, because a
+// hooked function may itself call another hooked function: the inner
+// dispatch must not consume or clobber the outer frame's flag.
+thread_local bool tl_next_called = false;
+
 int lua_hook_next(lua_State* L) {
     const int slot = static_cast<int>(lua_tointeger(L, lua_upvalueindex(1)));
     // COPY the slot under the lock. The old code kept a `Slot*` and read
@@ -253,6 +270,7 @@ int lua_hook_next(lua_State* L) {
     for (int i = 0; i < n_args && i < 8; i++) {
         a[i] = pull_arg(L, 1 + i, args_sv[i]);
     }
+    tl_next_called = true;
     const std::uint64_t raw = call_trampoline(snap.shape, snap.trampoline, a);
     push_arg(L, ret_t, raw);
     return ret_t == 'v' ? 0 : 1;
@@ -295,18 +313,33 @@ std::uint64_t dispatch(int slot, std::uint64_t* a) {
     lua_pushcclosure(L, &lua_hook_next, 1);
 
     const int total = n_args + 1;
-    if (lua_pcall(L, total, 1, 0) != LUA_OK) {
+    // A hooked function can call another hooked function, so this frame's
+    // "did the callback call next?" must not be confused with an inner one's.
+    const bool saved_next_called = tl_next_called;
+    tl_next_called = false;
+    const int pcall_rc = lua_pcall(L, total, 1, 0);
+    const bool next_called = tl_next_called;
+    tl_next_called = saved_next_called;
+
+    if (pcall_rc != LUA_OK) {
         Loader::get().log(std::string("[hook] cb error in ") + snap.mod_id + ": "
                           + lua_tostring(L, -1));
         lua_settop(L, base);
-        return call_trampoline(snap.shape, snap.trampoline, a);
+        // The callback raised. If it had already replayed the original, the
+        // side effect happened — running it again to "recover" would double
+        // it, which is worse than the error we are recovering from.
+        return next_called ? 0 : call_trampoline(snap.shape, snap.trampoline, a);
     }
 
     std::uint64_t r;
     if (lua_isnoneornil(L, -1)) {
-        // Convenience: nil return = "act like a no-op, pass through".
+        // Convenience: nil return = "act like a no-op, pass through" — but
+        // only when the callback did NOT already replay the original itself.
+        // A post-processing hook (call next, then adjust the object the
+        // original just wrote) legitimately returns nothing, and replaying
+        // here would run the target twice.
         lua_pop(L, 1);
-        r = call_trampoline(snap.shape, snap.trampoline, a);
+        r = next_called ? 0 : call_trampoline(snap.shape, snap.trampoline, a);
     } else {
         r = pull_ret(L, -1, ret_t);
         lua_pop(L, 1);

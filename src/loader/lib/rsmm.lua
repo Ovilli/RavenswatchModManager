@@ -3216,6 +3216,101 @@ end
 -- mutating work in these handlers must go through R.schedule.next_main —
 -- see [[loader-thread-model]].
 
+-- projectile / attack geometry ------------------------------------------
+--
+-- oCEntityCpntGpnProjectileAttack is the engine's LINE attack: it sweeps a
+-- volume from a start point to an end point and damages every hittable Gpn
+-- inside it ("Damage all hittable Gpn in line"). Its slot-28 begin call
+-- (ProjectileAttack_BeginAttack) seeds that volume once per attack:
+--
+--   cpnt+0xd0/0xd4/0xd8   start xyz  (the owner entity's position)
+--   cpnt+0xdc/0xe0/0xe4   end   xyz  (same at t=0, swept forward as it flies)
+--   cpnt+0xe8             WIDTH — full thickness, from settings+0x100
+--
+-- The width semantics are not a guess: the component's own debug draw (slot
+-- 20) renders the volume using `+0xe8 * 0.5` as the half-extent either side of
+-- the start->end line, so +0xe8 is the full width and scaling it widens the
+-- hit volume symmetrically.
+--
+-- WHAT THIS IS NOT. Two honest limits, both worth reading before shipping a
+-- mod on top of this:
+--
+--  1. It is the HITBOX, not the art. Nothing here touches the mesh, the
+--     particle system or the trail, so a scaled attack hits wider while
+--     looking exactly the same. There is no known entity-value ("stat") for
+--     projectile size — the registered ~40 keys have no size/area/scale
+--     member — so the visual would need a separate, unrelated lever.
+--  2. It is the Gpn line attack, not literally every projectile in the game.
+--     Attacks built some other way are unaffected.
+--
+-- THREAD SAFETY. The write lands on an object the engine populated
+-- microseconds earlier, from inside that same call, on that same thread. It
+-- makes no engine call and allocates nothing, so unlike most of this SDK it
+-- needs no R.schedule.next_main. See [[loader-thread-model]].
+R.projectile = {}
+
+local PROJ_WIDTH_OFF = 0xe8
+local _proj_hooked, _proj_mult = false, 1.0
+
+--- Scale the width of every Gpn line attack by `mult` (1.0 = vanilla).
+--
+-- Idempotent: the hook installs once and later calls only retune the
+-- multiplier, so a mod may call this from a config-reload handler without
+-- stacking detours. Passing 1.0 leaves the hook installed but inert.
+--
+-- Returns true when the hook is live (including when another mod's lua_State
+-- already owns it — the multiplier is per-state, so both still apply their
+-- own), false when the symbol is unavailable on this build.
+function R.projectile.scale_width(mult)
+    mult = tonumber(mult) or 1.0
+    -- A non-positive width collapses the volume and nothing can ever be hit;
+    -- an absurd one turns every attack into a screen-wide sweep. Clamp rather
+    -- than refuse, so a bad config value degrades instead of erroring.
+    if mult < 0.01 then mult = 0.01 elseif mult > 100 then mult = 100 end
+    _proj_mult = mult
+    if _proj_hooked then return true end
+    if not (R.hook and I.resolve and I.read_f32 and I.write_f32) then return false end
+
+    local va = I.resolve("ProjectileAttack_BeginAttack")
+    -- nil/0 when the symbol is unverified for this build: fail closed rather
+    -- than detouring a stale address.
+    if not va or va == 0 then return false end
+
+    local ok, slot, why = pcall(R.hook, va, "vp", function(this, next)
+        -- Run the original FIRST — it is what writes the width we scale. The
+        -- pre-call value is the previous attack's, so scaling before the call
+        -- would be overwritten and do nothing.
+        --
+        -- Return a NON-nil value having called next(). Current loaders track
+        -- that next() ran and will not replay the trampoline, but loaders
+        -- built before that fix replay on any nil return — which would begin
+        -- the attack TWICE. Returning 0 is correct under both, and this SDK
+        -- is disk-loaded, so it routinely runs against an older DLL.
+        next(this)
+        if _proj_mult ~= 1.0 and this and this ~= 0 then
+            local w = I.read_f32(this + PROJ_WIDTH_OFF)
+            -- read_f32 is page-guarded: a bad pointer yields nil, never a
+            -- fault. Width is only ever a small positive extent, so a zero,
+            -- negative or absurd read means this is not the object we think
+            -- it is and the sane response is to leave it alone.
+            if w and w > 0 and w < 1e6 then
+                I.write_f32(this + PROJ_WIDTH_OFF, w * _proj_mult)
+            end
+        end
+        return 0
+    end)
+    if not ok then return false end
+    -- (nil, "already-hooked") means another mod's lua_State installed the
+    -- detour first. The hook is live and this state's callback still runs, so
+    -- that is success, not failure.
+    if slot == nil and why ~= "already-hooked" then return false end
+    _proj_hooked = true
+    return true
+end
+
+--- Current multiplier (1.0 when unscaled).
+function R.projectile.width_scale() return _proj_mult end
+
 R.run = {}
 
 local _last_hero, _last_menu, _run_active = nil, nil, false

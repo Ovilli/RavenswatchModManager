@@ -7,6 +7,10 @@
 namespace Sym {
 constexpr std::uintptr_t kPreferredBase = 0x140000000ull;
 
+// --- combat ---
+constexpr std::uintptr_t ProjectileAttack_BeginAttack = 0x14083e7d0ull;
+constexpr const char* ProjectileAttack_BeginAttack_Pattern = "ProjectileAttack_BeginAttack";
+
 // --- enemies ---
 constexpr std::uintptr_t EnemyCamp_Stage3Filter = 0x140323830ull;
 constexpr const char* EnemyCamp_Stage3Filter_Pattern = "EnemyCamp_Stage3Filter";

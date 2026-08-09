@@ -1353,5 +1353,81 @@ do
 end
 
 -- ---------------------------------------------------------------------------
+-- R.projectile.scale_width — line-attack hit volume
+-- ---------------------------------------------------------------------------
+do
+    local CPNT       = 0x30000000
+    local WIDTH_OFF  = 0xe8
+    local va         = I.resolve("ProjectileAttack_BeginAttack")
+    hooks[va] = nil
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+
+    check(Rp.projectile ~= nil, "R.projectile namespace exists")
+    check(Rp.projectile.width_scale() == 1.0, "unscaled by default")
+
+    check(Rp.projectile.scale_width(2.0) == true, "scale_width arms the hook")
+    check(hooks[va] ~= nil, "hook installed on ProjectileAttack_BeginAttack")
+    check(hooks[va].sig == "vp", "signature is void(void*) — one ptr arg, no floats")
+    check(Rp.projectile.width_scale() == 2.0, "multiplier recorded")
+
+    -- Simulate the engine: the ORIGINAL writes the width, so the mock
+    -- trampoline is what seeds +0xe8. This is the ordering the hook depends
+    -- on — scaling before the original runs would be overwritten.
+    local orig_calls = 0
+    local function next_stub(this)
+        orig_calls = orig_calls + 1
+        I.write_f32(this + WIDTH_OFF, 4.0)      -- vanilla width
+    end
+
+    local ret = hooks[va].cb(CPNT, next_stub)
+    check(orig_calls == 1, "the original ran exactly once")
+    check(about(I.read_f32(CPNT + WIDTH_OFF), 8.0), "width doubled (4.0 -> 8.0)")
+
+    -- THE footgun this guards. hook_lua's dispatch replays the trampoline
+    -- whenever the callback returns nil, and it does NOT track that next()
+    -- already ran (hook_lua.cpp, the lua_isnoneornil branch). A callback that
+    -- calls next() and then returns nil begins the attack TWICE.
+    check(ret ~= nil,
+          "callback returns non-nil after calling next(), so dispatch does "
+          .. "not replay the trampoline a second time")
+
+    -- Idempotent: retuning must not stack detours.
+    local first_cb = hooks[va].cb
+    check(Rp.projectile.scale_width(3.0) == true, "second call still reports live")
+    check(hooks[va].cb == first_cb, "hook not reinstalled — same callback object")
+    check(Rp.projectile.width_scale() == 3.0, "multiplier retuned in place")
+
+    I.write_f32(CPNT + WIDTH_OFF, 0)
+    hooks[va].cb(CPNT, next_stub)
+    check(about(I.read_f32(CPNT + WIDTH_OFF), 12.0), "new multiplier applies (4.0 -> 12.0)")
+
+    -- Clamps. A non-positive width collapses the volume so nothing can ever be
+    -- hit; both ends degrade rather than erroring.
+    Rp.projectile.scale_width(0)
+    check(Rp.projectile.width_scale() == 0.01, "non-positive multiplier clamped up")
+    Rp.projectile.scale_width(1e9)
+    check(Rp.projectile.width_scale() == 100, "absurd multiplier clamped down")
+    Rp.projectile.scale_width("nonsense")
+    check(Rp.projectile.width_scale() == 1.0, "non-numeric falls back to 1.0")
+
+    -- At 1.0 the hook stays installed but must not touch the field.
+    I.write_f32(CPNT + WIDTH_OFF, 0)
+    hooks[va].cb(CPNT, next_stub)
+    check(about(I.read_f32(CPNT + WIDTH_OFF), 4.0), "x1.0 leaves the width alone")
+
+    -- Implausible widths are left alone: a zero/negative/absurd read means
+    -- this is not the object we think it is.
+    Rp.projectile.scale_width(2.0)
+    I.write_f32(CPNT + WIDTH_OFF, 0)
+    hooks[va].cb(CPNT, function() end)          -- original writes nothing
+    check(about(I.read_f32(CPNT + WIDTH_OFF), 0.0), "zero width not scaled")
+
+    hooks[va] = nil
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- ---------------------------------------------------------------------------
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)

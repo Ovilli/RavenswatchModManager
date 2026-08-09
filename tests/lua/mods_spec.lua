@@ -14,7 +14,7 @@ local LIB  = (arg and arg[1]) or "src/loader/lib"
 local MODS = (arg and arg[2]) or "mods"
 package.path = LIB .. "/?.lua;" .. LIB .. "/../lua/?.lua;" .. package.path
 
-local fails, checks = 0, 0
+local fails, checks, skipped = 0, 0, 0
 local function ok(cond, msg)
     checks = checks + 1
     if not cond then
@@ -114,6 +114,19 @@ local function load_mod(dir)
     for _, h in ipairs(_mod_handles) do R.off(h) end
     _mod_handles = {}
     local path = MODS .. "/" .. dir .. "/init.lua"
+    -- ABSENT is not FAILING. `mods/` is gitignored, user-owned content: a
+    -- developer may delete or never create any given mod, and a checkout has
+    -- none of them at all. A spec in this repo therefore cannot require a
+    -- particular mod to be on disk — it can only assert that one which IS
+    -- present behaves. Hard-failing here made an ordinary "I deleted a mod"
+    -- look like a broken build.
+    local probe = io.open(path, "r")
+    if not probe then
+        skipped = skipped + 1
+        io.write("SKIP: ", dir, " is not present in ", MODS, "/\n")
+        return false
+    end
+    probe:close()
     local chunk, err = loadfile(path)
     if not chunk then
         fails = fails + 1
@@ -345,5 +358,6 @@ if load_mod("hero-unlock") then
     R.hero.unlock_progression = _unlock
 end
 
-io.write(("mods_spec: %d passed, %d failed\n"):format(checks - fails, fails))
+io.write(("mods_spec: %d passed, %d failed, %d mod(s) skipped (not present)\n")
+    :format(checks - fails, fails, skipped))
 os.exit(fails == 0 and 0 or 1)

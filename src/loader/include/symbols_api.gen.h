@@ -455,6 +455,13 @@ inline Netcode_EntityReplSetup_fn Netcode_EntityReplSetup() {
     return reinterpret_cast<Netcode_EntityReplSetup_fn>(rsmm::fn_resolve(Sym::Netcode_EntityReplSetup_Pattern));
 }
 
+// ProjectileAttack_BeginAttack  (ProjectileAttack_BeginAttack)
+//   void(void* projectile_attack_cpnt)
+using ProjectileAttack_BeginAttack_fn = void(*)(void*);
+inline ProjectileAttack_BeginAttack_fn ProjectileAttack_BeginAttack() {
+    return reinterpret_cast<ProjectileAttack_BeginAttack_fn>(rsmm::fn_resolve(Sym::ProjectileAttack_BeginAttack_Pattern));
+}
+
 // Registry_EnumInstances  (Registry_EnumInstances)
 //   void*(void* unused, void* out3, void** classDescPtr)
 using Registry_EnumInstances_fn = void*(*)(void*, void*, void*);

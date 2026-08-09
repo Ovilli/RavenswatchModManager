@@ -70,6 +70,7 @@ return {
   ["Netcode_Channel_LookupById"] = { pattern = "Netcode_Channel_LookupById", offset = 0x0, sig = "pppp" },
   ["Netcode_Channel_Unsubscribe"] = { pattern = "Netcode_Channel_Unsubscribe", offset = 0x0, sig = "vpp" },
   ["Netcode_EntityReplSetup"] = { pattern = "Netcode_EntityReplSetup", offset = 0x0, sig = "vp" },
+  ["ProjectileAttack_BeginAttack"] = { pattern = "ProjectileAttack_BeginAttack", offset = 0x0, sig = "vp" },
   ["Registry_EnumInstances"] = { pattern = "Registry_EnumInstances", offset = 0x0, sig = "pppp" },
   ["Registry_UnregisterInstance"] = { pattern = "Registry_UnregisterInstance", offset = 0x0, sig = "vp" },
   ["Resource_LookupByPath"] = { pattern = "Resource_LookupByPath", offset = 0x0, sig = "psppp" },
