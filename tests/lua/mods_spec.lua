@@ -203,6 +203,33 @@ if load_mod("second-wind") then
 end
 
 -- ---------------------------------------------------------------------------
+-- 2b. per-run state must clear even when run:start NEVER fires
+--
+-- run:start is derived from the analytics firehose. If that bus is off, or the
+-- game uses a raw name the SDK does not normalise, it never arrives — and a
+-- mod that only resets there carries the previous run's state forever. For
+-- Second Wind that is one rescue per SESSION instead of per run.
+-- ---------------------------------------------------------------------------
+if load_mod("second-wind") then
+    fire("ready")
+    fire("gameplay:HERO_DEATH_DOOR")
+    ok(had("heal:") ~= nil, "second-wind: rescued once")
+
+    -- End the run and start the next one WITHOUT a run:start anywhere.
+    fire("run:end")
+    calls = {}
+    fire("gameplay:HERO_DEATH_DOOR")
+    ok(had("heal:") ~= nil,
+       "second-wind: run:end alone restores the rescue (no run:start needed)")
+
+    -- And again via the menu boundary only.
+    fire("menu:enter")
+    calls = {}
+    fire("gameplay:HERO_DEATH_DOOR")
+    ok(had("heal:") ~= nil, "second-wind: menu:enter alone restores the rescue")
+end
+
+-- ---------------------------------------------------------------------------
 -- 3. lucky-chests: asks the ENGINE to duplicate, never invents an item
 -- ---------------------------------------------------------------------------
 if load_mod("lucky-chests") then
