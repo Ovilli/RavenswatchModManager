@@ -1025,6 +1025,20 @@ end
 -- True once the hero has been captured (hp/max/heal/damage will work).
 function R.entity.ready() return R.entity.hero() ~= nil end
 
+--- Is hero capture PERMITTED this session (RSMM_ENABLE_HERO_CAPTURE)?
+--
+-- Distinct from R.entity.ready(), which asks whether the hero has been
+-- captured YET. A mod needs both to give useful advice: "not captured" during
+-- loading or a menu is normal and resolves itself, while "not permitted" needs
+-- the player to change a setting. A playtest with the flag correctly ON still
+-- told the user to go and enable it, because the mods had no way to tell the
+-- two apart — capture legitimately took ~3 minutes there, since the hero's HUD
+-- mirror is not populated until the run is actually under way.
+--
+-- False ONLY on an explicit refusal; a loader too old to publish the answer
+-- reports true, matching what it will actually do.
+function R.entity.capture_enabled() return not _capture_denied() end
+
 function R.entity.hp()
     local e = R.entity.hero(); if not e then return nil end
     return I.read_f32(e + ENTITY_HP_OFF)

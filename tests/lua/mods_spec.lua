@@ -27,11 +27,17 @@ end
 -- minimal native mock: enough for event routing, config, kv and logging
 -- ---------------------------------------------------------------------------
 local events, logs, kvblob = {}, {}, nil
+_G.__spec_now = 0
+local function advance(sec)
+    _G.__spec_now = _G.__spec_now + sec
+end
 local calls = {}          -- engine-mutating calls the mods attempted
 
 local I = {
     self_id      = function() return "spec_mod" end,
-    now          = function() return os.clock() end,
+    -- Controllable clock. R.schedule.after() measures against this, so a real
+    -- clock would mean a 15s timer never fires inside a test run.
+    now          = function() return _G.__spec_now end,
     state_read   = function() return kvblob end,
     state_write  = function(s) kvblob = s; return true end,
     resolve      = function() return 0 end,
@@ -87,6 +93,7 @@ R.combat.heal = function(n) calls[#calls + 1] = "heal:" .. tostring(n); return t
 local HERO_PTR = 0x2770aa98
 R.entity.hero  = function() return HERO_PTR end
 R.entity.ready = function() return R.entity.hero() ~= nil end
+R.entity.capture_enabled = function() return true end
 R.give.ready = function() return true end
 R.give.owned_count = function() return 3 end
 
@@ -227,6 +234,36 @@ if load_mod("second-wind") then
     calls = {}
     fire("gameplay:HERO_DEATH_DOOR")
     ok(had("heal:") ~= nil, "second-wind: menu:enter alone restores the rescue")
+end
+
+-- ---------------------------------------------------------------------------
+-- 2c. the 15s nag must fire ONLY when the setting is the problem
+--
+-- A playtest with RSMM_ENABLE_HERO_CAPTURE correctly ON was still told to go
+-- and enable it, because the mod could not tell "capture is off" from "the
+-- hero has not spawned yet". Capture legitimately took ~3 minutes there.
+-- ---------------------------------------------------------------------------
+if load_mod("bloodlust") then
+    local _hero, _cap = R.entity.hero, R.entity.capture_enabled
+    local function nags()
+        local before = #logs
+        fire("ready"); fire("run:start")
+        advance(20)                                -- past the 15s deadline
+        fire("tick")                               -- drives R.schedule.after
+        for i = before + 1, #logs do
+            if logs[i]:find("capture is OFF", 1, true) then return true end
+        end
+        return false
+    end
+
+    R.entity.hero = function() return nil end       -- not captured...
+    R.entity.capture_enabled = function() return true end   -- ...but enabled
+    ok(not nags(), "no nag when capture is enabled and the hero is merely late")
+
+    R.entity.capture_enabled = function() return false end  -- actually off
+    ok(nags(), "nags when capture is genuinely disabled")
+
+    R.entity.hero, R.entity.capture_enabled = _hero, _cap
 end
 
 -- ---------------------------------------------------------------------------
