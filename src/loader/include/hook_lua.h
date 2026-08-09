@@ -8,11 +8,12 @@
 // Hook signature uses the same single-string format as rsmm.call:
 //   first char = return type, remaining = arg types,
 //   types: i u l p f d s v   (i32/u32/i64/ptr/float/double/cstr/void)
+//   ('v' is a return-only code — an argument may not be void.)
 //
-// Arity limit: 8 args. Integer / pointer args supported in this first
-// release; floats are accepted by the sig parser but emit a warning
-// (the trampoline always reads register slots as integers, which is
-// correct for RCX/RDX/R8/R9 but wrong for XMM0-3).
+// Arity limit: 8 args. Floating-point arguments and returns are handled:
+// the detour table is indexed by ABI SHAPE as well as slot, so a float
+// parameter is declared in the XMM position the caller actually used and an
+// FP return comes back through XMM0. See the comment atop hook_lua.cpp.
 
 #include <cstdint>
 #include <string>

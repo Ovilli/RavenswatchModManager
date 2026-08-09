@@ -11,6 +11,7 @@
 #include "fn_resolver.h"
 #include "script_lua.h"
 #include "loader.h"
+#include "mem_safe.h"
 #include "symbols.gen.h"        // GENERATED — Sym::NamedEvent_Dispatch_Pattern
 #include "event_payload.gen.h"  // GENERATED — rsmm::event_payload()
 
@@ -27,6 +28,14 @@
 namespace rsmm {
 namespace {
 
+// True if [addr, addr+size) is committed and readable (no guard/no-access).
+// Shared implementation (mem_safe.cpp): unlike this file's old local copy it
+// also checks the readable-protection bits and spans multiple regions instead
+// of failing a range that happens to straddle a region boundary.
+inline bool committed_readable(std::uintptr_t addr, std::size_t size) {
+    return mem_accessible(addr, size, false);
+}
+
 // Win x64: first two args in RCX/RDX. Emitters are `(ctx, arg*)`.
 using Emitter_t = std::uintptr_t (*)(void*, void*);
 
@@ -35,8 +44,26 @@ struct EventHook {
     const char*  lua_event;   // event published to mods
     Emitter_t    real = nullptr;
     std::uintptr_t va = 0;
-    unsigned     seq = 0;     // per-event fire counter (published in payload)
+    // Per-event fire counter (published in the payload). Emitters can fire
+    // from more than one game thread, so the counter is atomic — a torn
+    // increment would hand mods a duplicate `seq`, which is exactly the
+    // ordering signal they use to de-duplicate.
+    std::atomic<unsigned> seq{0};
 };
+
+// The event name is interpolated into a JSON string literal and then becomes a
+// Lua event key. Accept only the alphabet the game actually uses so a garbled
+// read can neither break the JSON (embedded quote/backslash) nor register an
+// unprintable event name.
+bool json_safe_name(const char* s) {
+    if (!s || !s[0]) return false;
+    for (const char* p = s; *p; ++p) {
+        const unsigned char c = static_cast<unsigned char>(*p);
+        if (c < 0x20 || c > 0x7e) return false;
+        if (c == '"' || c == '\\') return false;
+    }
+    return true;
+}
 
 // Verified by string-xref against the shipped exe (docs/_re/kinds/events.md):
 // the function bodies reference the event name strings. The catalog is
@@ -58,7 +85,8 @@ std::uintptr_t WINAPI detour(void* ctx, void* arg) {
     // envelope (seq + raw arg handles). Decode exprs read persistent
     // objects only; see event_payload.gen.h.
     char buf[256];
-    event_payload(h.lua_event, buf, sizeof(buf), ++h.seq, ctx, arg);
+    event_payload(h.lua_event, buf, sizeof(buf),
+                  h.seq.fetch_add(1, std::memory_order_relaxed) + 1, ctx, arg);
     script_emit_event_json(h.lua_event, buf);
     return rv;
 }
@@ -83,7 +111,7 @@ constexpr const char* kAnalyticsSink = "FUN_1401fa470";
 using Submit_t = std::uintptr_t (*)(void*, void*, void*, std::uintptr_t);
 Submit_t       g_submit_real = nullptr;
 std::uintptr_t g_submit_va   = 0;
-unsigned       g_analytics_seq = 0;
+std::atomic<unsigned> g_analytics_seq{0};
 
 std::uintptr_t WINAPI analytics_firehose_detour(void* mgr, void* payload,
                                                 void* name_desc,
@@ -92,21 +120,20 @@ std::uintptr_t WINAPI analytics_firehose_detour(void* mgr, void* payload,
     const auto rv = g_submit_real(mgr, payload, name_desc, flag);
 
     if (name_desc) {
-        // arg3 -> { const char* ptr @+0x0; ... }. The name is a .rdata
-        // literal; bound the copy defensively in case of a moved layout.
-        const char* name = *reinterpret_cast<const char* const*>(name_desc);
-        if (name) {
+        // arg3 -> { const char* ptr @+0x0; ... }. Both the descriptor and the
+        // string it points at are page-guarded: a moved layout after a game
+        // patch would otherwise wild-read on every analytics event.
+        std::uintptr_t name = 0;
+        if (mem_load(name_desc, &name) && name) {
             char ev[64];
-            size_t i = 0;
-            for (; i < sizeof(ev) - 1 && name[i]; ++i) ev[i] = name[i];
-            ev[i] = '\0';
+            const size_t n = mem_read_cstr(name, ev, sizeof(ev));
             // "run_end" already fires via the typed Event_RunEnd table hook;
             // skip here to avoid publishing it twice.
-            if (ev[0] && std::strcmp(ev, "run_end") != 0) {
+            if (n > 0 && json_safe_name(ev) && std::strcmp(ev, "run_end") != 0) {
                 char buf[160];
                 std::snprintf(buf, sizeof(buf),
                               "{\"event\":\"%s\",\"seq\":%u,\"source\":\"analytics\"}",
-                              ev, ++g_analytics_seq);
+                              ev, g_analytics_seq.fetch_add(1) + 1);
                 script_emit_event_json(ev, buf);
             }
         }
@@ -158,23 +185,25 @@ bool install_analytics_firehose() {
 using Dispatch_t = void (*)(void*, void*);
 Dispatch_t     g_dispatch_real = nullptr;
 std::uintptr_t g_dispatch_va   = 0;
-unsigned       g_gameplay_seq  = 0;
+std::atomic<unsigned> g_gameplay_seq{0};
 
 // Copy the event's name (char* at ev+0x20) into `out`, accepting only the
 // [A-Z0-9_] alphabet the bus uses. Returns false on a null/garbled name so a
-// moved layout degrades to "skip this event", never to a wild read.
+// moved layout degrades to "skip this event", never to a wild read. Both the
+// name slot and the string it points at are page-guarded: this runs on the
+// game's main thread for EVERY dispatched gameplay event, so an offset the
+// next patch invalidates must not be able to fault here.
 bool gameplay_event_name(const unsigned char* ev, char* out, size_t cap) {
-    const char* name = *reinterpret_cast<const char* const*>(ev + 0x20);
-    if (!name) return false;
-    size_t i = 0;
-    for (; i < cap - 1 && name[i]; ++i) {
-        const char c = name[i];
+    std::uintptr_t name = 0;
+    if (!mem_load(ev + 0x20, &name) || name == 0) return false;
+    const size_t n = mem_read_cstr(name, out, cap);
+    if (n == 0 || n >= cap - 1) return false;   // empty or truncated -> reject
+    for (size_t i = 0; i < n; ++i) {
+        const char c = out[i];
         const bool ok = (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
         if (!ok) return false;
-        out[i] = c;
     }
-    out[i] = '\0';
-    return i > 0 && name[i] == '\0';
+    return true;
 }
 
 void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
@@ -187,7 +216,11 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
     char name[64];
     if (!gameplay_event_name(ev, name, sizeof(name))) return;
 
-    const auto id   = *reinterpret_cast<const std::uint32_t*>(ev + 0x30);
+    // Everything past the name is a page-guarded read: this detour sees every
+    // dispatched gameplay event, so a layout change must degrade to a thinner
+    // payload rather than fault the game's main thread.
+    std::uint32_t id = 0;
+    (void)mem_load(ev + 0x30, &id);
     const auto disp = reinterpret_cast<std::uintptr_t>(dispatcher);
 
     char buf[768];
@@ -195,13 +228,15 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
                           "{\"event\":\"gameplay:%s\",\"name\":\"%s\",\"seq\":%u,"
                           "\"id\":%u,\"source\":\"gameplay\","
                           "\"dispatcher\":\"0x%llx\",\"entity\":\"0x%llx\"",
-                          name, name, ++g_gameplay_seq, id,
+                          name, name,
+                          g_gameplay_seq.fetch_add(1, std::memory_order_relaxed) + 1, id,
                           static_cast<unsigned long long>(disp),
                           static_cast<unsigned long long>(disp - 0x4d8));
     if (n < 0 || n >= static_cast<int>(sizeof(buf))) return;
 
     // Verified payload layouts only; everything else gets the envelope.
-    if (std::strcmp(name, "GIVE_MAGICAL_OBJECT") == 0) {
+    if (std::strcmp(name, "GIVE_MAGICAL_OBJECT") == 0
+        && committed_readable(reinterpret_cast<std::uintptr_t>(ev + 0x50), 0x10)) {
         // oe::dt::NamedEventGiveMagicalObject (0x60): MO definition GUID.
         const auto lo = *reinterpret_cast<const std::uint64_t*>(ev + 0x50);
         const auto hi = *reinterpret_cast<const std::uint64_t*>(ev + 0x58);
@@ -209,8 +244,9 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
                            ",\"mo_guid_lo\":\"0x%llx\",\"mo_guid_hi\":\"0x%llx\"",
                            static_cast<unsigned long long>(lo),
                            static_cast<unsigned long long>(hi));
-    } else if (std::strcmp(name, "NETWORK_DAMAGE") == 0
-               || std::strcmp(name, "NETWORK_DAMAGE_RESPONSE") == 0) {
+    } else if ((std::strcmp(name, "NETWORK_DAMAGE") == 0
+                || std::strcmp(name, "NETWORK_DAMAGE_RESPONSE") == 0)
+               && committed_readable(reinterpret_cast<std::uintptr_t>(ev + 0x40), 0xb8)) {
         // oCGameNamedEventNetworkDamage (0x110): f32 value @+0x40, source
         // net-id @+0x48, embedded oCEntityHitData @+0x50 with target entity*
         // @+0x60 and instigator entity* @+0xf0 (see events-bus.md).
@@ -225,7 +261,8 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
                            static_cast<unsigned long long>(srcid),
                            static_cast<unsigned long long>(target),
                            static_cast<unsigned long long>(instig));
-    } else if (std::strcmp(name, "POWER_UP_COLLECT_REQUEST") == 0) {
+    } else if (std::strcmp(name, "POWER_UP_COLLECT_REQUEST") == 0
+               && committed_readable(reinterpret_cast<std::uintptr_t>(ev + 0x38), 0x28)) {
         // oCDtNamedEventPowerUpCollectRequest — fired when the player picks a
         // level-up / reward card; the payload carries the picked card's
         // identity. The exact offset is not yet *confirmed* (the class
@@ -239,8 +276,10 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
         // starts earlier) through +0x58. The read is bounded to +0x58 = the
         // GIVE template's last field; if the pick event omits the Network layer
         // it may be smaller, so the high window fields can read a few bytes of
-        // adjacent (still-mapped) heap — benign garbage filtered by the pin
-        // step, never an unmapped fault in practice. NOTE: this event fires for
+        // adjacent heap — benign garbage filtered by the pin step. The whole
+        // +0x38..+0x58 window is page-guarded above, so an event object that
+        // really does end early degrades to the envelope instead of faulting.
+        // NOTE: this event fires for
         // EVERY power-up collect (level-up cards AND world orbs/globes), so the
         // identity GUID is what distinguishes a specific talent card. Once
         // pinned this collapses to one decoded "card" field. See
@@ -357,16 +396,6 @@ constexpr int kHeroPendingSlot = 3; // spawn-init candidate awaiting field init
 constexpr std::uintptr_t kHeroHpOff = 0x15c8;
 constexpr std::uintptr_t kHeroMaxHpOff = 0x15cc;
 constexpr std::uintptr_t kHeroHudMirrorOff = 0x1d80; // ptr to the HUD HP mirror
-
-// True if [addr, addr+size) is committed and readable (no guard/no-access).
-bool committed_readable(std::uintptr_t addr, std::size_t size) {
-    MEMORY_BASIC_INFORMATION mbi{};
-    if (VirtualQuery(reinterpret_cast<void*>(addr), &mbi, sizeof(mbi)) == 0) return false;
-    if (mbi.State != MEM_COMMIT) return false;
-    if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return false;
-    auto region_end = reinterpret_cast<std::uintptr_t>(mbi.BaseAddress) + mbi.RegionSize;
-    return addr + size <= region_end;
-}
 
 using SubscribeAll_t    = void (*)(void*);
 using GiveHandler_t     = void (*)(void*, void*, void*);
@@ -609,11 +638,21 @@ bool install_event_hooks() {
 }
 
 void remove_event_hooks() {
-    for (auto& h : g_hooks) {
-        if (h.va) MH_DisableHook(reinterpret_cast<LPVOID>(h.va));
-    }
-    if (g_submit_va) MH_DisableHook(reinterpret_cast<LPVOID>(g_submit_va));
-    if (g_dispatch_va) MH_DisableHook(reinterpret_cast<LPVOID>(g_dispatch_va));
+    // Disable AND remove: on a dynamic unload the detours live in this DLL's
+    // .text, so leaving a merely-disabled hook registered keeps MinHook
+    // holding a pointer into memory that is about to be unmapped.
+    auto drop = [](std::uintptr_t va) {
+        if (!va) return;
+        auto* p = reinterpret_cast<LPVOID>(va);
+        MH_DisableHook(p);
+        MH_RemoveHook(p);
+    };
+    for (auto& h : g_hooks) { drop(h.va); h.va = 0; h.real = nullptr; }
+    drop(g_submit_va);   g_submit_va = 0;   g_submit_real = nullptr;
+    drop(g_dispatch_va); g_dispatch_va = 0; g_dispatch_real = nullptr;
+    drop(g_subscribe_va); g_subscribe_va = 0; g_subscribe_real = nullptr;
+    drop(g_give_va);      g_give_va = 0;      g_give_real = nullptr;
+    drop(g_gain_va);      g_gain_va = 0;      g_gain_real = nullptr;
 }
 
 } // namespace rsmm

@@ -17,6 +17,8 @@ extern "C" {
 
 #include "script_lua.h"
 #include "loader.h"
+#include "health.h"
+#include "mem_safe.h"
 #include "fn_resolver.h"
 #include "symbols_api.gen.h"   // engine:: typed, pattern-resolved accessors
 #include "fn_call.h"
@@ -105,6 +107,30 @@ std::recursive_mutex& script_lua_mutex() { return g_mu; }
 
 namespace {
 
+// Newest mtime across every *.lua under a mod directory, or a default-
+// constructed time when the tree can't be walked. Hot-reload keys off this
+// rather than init.lua alone: a mod that splits its code into modules
+// (`require "mymod.thing"`) never reloaded when the module changed, because
+// only the entry point was watched — and the modules are re-required from
+// scratch anyway, since the reload rebuilds the whole lua_State.
+std::filesystem::file_time_type newest_lua_mtime(const std::filesystem::path& root) {
+    std::filesystem::file_time_type newest{};
+    std::error_code ec;
+    std::filesystem::recursive_directory_iterator it(
+        root, std::filesystem::directory_options::skip_permission_denied, ec);
+    if (ec) return newest;
+    int budget = 512;   // don't stat a mod that ships an enormous asset tree
+    for (const auto& entry : it) {
+        if (--budget < 0) break;
+        if (!entry.is_regular_file(ec) || ec) continue;
+        if (entry.path().extension() != ".lua") continue;
+        auto mt = std::filesystem::last_write_time(entry.path(), ec);
+        if (ec) continue;
+        if (mt > newest) newest = mt;
+    }
+    return newest;
+}
+
 ModScript* current_from_state(lua_State* L) {
     lua_getfield(L, LUA_REGISTRYINDEX, "__rsmm_mod_id");
     const char* id = lua_tostring(L, -1);
@@ -127,6 +153,165 @@ int lua_log(lua_State* L) {
 int lua_mod_dir(lua_State* L) {
     auto* m = current_from_state(L);
     lua_pushstring(L, m ? m->root.string().c_str() : "");
+    return 1;
+}
+
+// rsmm._internal.self_id() -> string
+//   The calling mod's id. R.api uses it to namespace exposed APIs; without
+//   this binding every mod's api_name defaulted to "?" and the SECOND mod to
+//   call R.api.expose() errored with "name already taken: ?".
+int lua_self_id(lua_State* L) {
+    auto* m = current_from_state(L);
+    lua_pushstring(L, m ? m->id.c_str() : "");
+    return 1;
+}
+
+// rsmm._internal.now() -> number
+//   Monotonic seconds (fractional) since process start. R.schedule's timers
+//   fall back to os.time() when this is missing, which has ONE-SECOND
+//   resolution — so `R.schedule.after(0.25, ...)` was really "somewhere in the
+//   next second or two", and repeated sub-second polls all fired at once.
+int lua_now(lua_State* L) {
+    static const LARGE_INTEGER freq = []{
+        LARGE_INTEGER f{}; QueryPerformanceFrequency(&f); return f;
+    }();
+    static const LARGE_INTEGER start = []{
+        LARGE_INTEGER c{}; QueryPerformanceCounter(&c); return c;
+    }();
+    LARGE_INTEGER now{};
+    if (freq.QuadPart == 0 || !QueryPerformanceCounter(&now)) {
+        lua_pushnumber(L, static_cast<lua_Number>(GetTickCount64()) / 1000.0);
+        return 1;
+    }
+    lua_pushnumber(L, static_cast<lua_Number>(now.QuadPart - start.QuadPart)
+                        / static_cast<lua_Number>(freq.QuadPart));
+    return 1;
+}
+
+// -- crash history / boot canary (backs rsmm/health.lua) --------------------
+
+int lua_health_count(lua_State* L) {
+    const char* id = luaL_optstring(L, 1, nullptr);
+    auto* m = current_from_state(L);
+    const std::string want = id ? id : (m ? m->id : std::string{});
+    lua_pushinteger(L, health::crash_count(want));
+    return 1;
+}
+
+int lua_health_last_error(lua_State* L) {
+    const char* id = luaL_optstring(L, 1, nullptr);
+    auto* m = current_from_state(L);
+    const std::string want = id ? id : (m ? m->id : std::string{});
+    const std::string err = health::last_error(want);
+    if (err.empty()) lua_pushnil(L); else lua_pushstring(L, err.c_str());
+    return 1;
+}
+
+int lua_health_disable(lua_State* L) {
+    const char* id = luaL_optstring(L, 1, nullptr);
+    const char* reason = luaL_optstring(L, 2, "");
+    auto* m = current_from_state(L);
+    const std::string want = id ? id : (m ? m->id : std::string{});
+    if (want.empty()) { lua_pushboolean(L, 0); return 1; }
+    health::set_disabled(want, reason);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+int lua_health_checkpoint(lua_State* L) {
+    const char* step = luaL_checkstring(L, 1);
+    auto* m = current_from_state(L);
+    health::checkpoint(m ? ("per_mod:" + m->id + ":" + step) : std::string(step));
+    return 0;
+}
+
+// -- localisation (backs rsmm/i18n.lua) ------------------------------------
+//
+// A mod ships <mod>/lang/<LOCALE>.toml (a `[strings]` table, per the SDK
+// guide) or <mod>/lang/<LOCALE>.json (a flat {key: "text"} object). The
+// active locale comes from RSMM_LOCALE, else <game>/rsmm/locale.txt, else EN;
+// a missing locale falls back to EN, which is what the guide promises.
+// Parsed once per lua_State and cached in the registry.
+
+const char* active_locale() {
+    static const std::string locale = []{
+        char buf[16] = {0};
+        DWORD n = GetEnvironmentVariableA("RSMM_LOCALE", buf, sizeof(buf));
+        if (n > 0 && n < sizeof(buf)) return std::string(buf);
+        std::error_code ec;
+        const auto p = Loader::get().game_dir() / "rsmm" / "locale.txt";
+        if (std::filesystem::exists(p, ec)) {
+            std::ifstream f(p);
+            std::string s;
+            if (std::getline(f, s)) {
+                while (!s.empty() && (s.back() == '\r' || s.back() == '\n' ||
+                                      s.back() == ' ')) s.pop_back();
+                if (!s.empty() && s.size() < 16) return s;
+            }
+        }
+        return std::string("EN");
+    }();
+    return locale.c_str();
+}
+
+int lua_i18n_locale(lua_State* L) {
+    lua_pushstring(L, active_locale());
+    return 1;
+}
+
+// Merge one lang file into the table at the top of the stack. Missing file =
+// no-op; a parse error logs and leaves what's already there.
+void load_locale_file(lua_State* L, const std::filesystem::path& path) {
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec)) return;
+    try {
+        if (path.extension() == ".toml") {
+            toml::table doc = toml::parse_file(path.string());
+            const toml::table* section = doc["strings"].as_table();
+            if (!section) section = &doc;   // tolerate a flat file
+            for (auto&& [key, node] : *section) {
+                if (auto s = node.as_string()) {
+                    lua_pushstring(L, (**s).c_str());
+                    lua_setfield(L, -2, std::string(key.str()).c_str());
+                }
+            }
+        } else {
+            std::ifstream f(path);
+            nlohmann::json j;
+            f >> j;
+            if (j.is_object()) {
+                for (auto it = j.begin(); it != j.end(); ++it) {
+                    if (!it.value().is_string()) continue;
+                    lua_pushstring(L, it.value().get_ref<const std::string&>().c_str());
+                    lua_setfield(L, -2, it.key().c_str());
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        Loader::get().log(std::string("[i18n] ") + path.string()
+                          + " parse error: " + e.what());
+    }
+}
+
+int lua_i18n_table(lua_State* L) {
+    lua_getfield(L, LUA_REGISTRYINDEX, "__rsmm_i18n");
+    if (lua_istable(L, -1)) return 1;
+    lua_pop(L, 1);
+
+    lua_newtable(L);
+    if (auto* m = current_from_state(L)) {
+        // EN last so it acts as the fallback: strings the active locale is
+        // missing keep the English text instead of vanishing.
+        std::vector<std::string> locales;
+        if (std::strcmp(active_locale(), "EN") != 0) locales.emplace_back("EN");
+        locales.emplace_back(active_locale());
+        for (const auto& loc : locales) {
+            load_locale_file(L, m->root / "lang" / (loc + ".toml"));
+            load_locale_file(L, m->root / "lang" / (loc + ".json"));
+        }
+    }
+    lua_pushvalue(L, -1);
+    lua_setfield(L, LUA_REGISTRYINDEX, "__rsmm_i18n");
     return 1;
 }
 
@@ -345,16 +530,15 @@ int lua_intent_write(lua_State* L) {
 int lua_mod_tags(lua_State* L) {
     const char* want = lua_tostring(L, 1);  // optional
     const ModScript* m = want ? nullptr : current_from_state(L);
+    std::string id = want ? std::string(want) : (m ? m->id : std::string{});
     std::string raw;
-    if (want) {
-        auto it = g_scripts.find(want);
-        if (it != g_scripts.end()) {
-            for (const auto& mod : Loader::get().mods())
-                if (mod.id == want) { raw = mod.tags_json; break; }
-        }
-    } else if (m) {
+    if (!id.empty()) {
+        // Look the mod up in the LOADER's list, not in g_scripts. Keying off
+        // g_scripts meant a mod without an init.lua (data-only mods are the
+        // common case) had no script entry, so its tags.json read back empty
+        // even though the loader had it parsed and in memory.
         for (const auto& mod : Loader::get().mods())
-            if (mod.id == m->id) { raw = mod.tags_json; break; }
+            if (mod.id == id) { raw = mod.tags_json; break; }
     }
     if (raw.empty()) { lua_newtable(L); return 1; }
     try {
@@ -365,12 +549,250 @@ int lua_mod_tags(lua_State* L) {
     return 1;
 }
 
+// -- cross-mod API bridge (backs rsmm/api.lua) -----------------------------
+//
+// Every mod runs in its OWN lua_State, so a table exposed by mod A is simply
+// not reachable from mod B's state — R.api's registry was a plain Lua table
+// and therefore only ever visible to the mod that filled it. The registry
+// lives natively instead, and calls are marshalled across states as JSON.
+//
+// That means the contract is DATA, not closures: arguments and the return
+// value must be nil / boolean / number / string / table-of-those. A function
+// argument cannot cross a state boundary and is rejected rather than silently
+// arriving as nil.
+
+struct ApiEntry {
+    std::string mod_id;
+    std::string version;
+};
+// Guarded by g_mu. Every path that runs Lua takes it first — mod init,
+// emit_locked, and the hook dispatcher — so a binding body is always already
+// under the lock and may touch g_apis / g_scripts directly.
+std::unordered_map<std::string, ApiEntry> g_apis;
+
+// Serialize the Lua value at `idx` into `out`. Returns false when the value
+// contains something that cannot cross a state boundary.
+bool lua_to_json(lua_State* L, int idx, nlohmann::json& out, int depth = 0) {
+    if (depth > 16) return false;
+    idx = lua_absindex(L, idx);
+    switch (lua_type(L, idx)) {
+        case LUA_TNIL: case LUA_TNONE: out = nullptr; return true;
+        case LUA_TBOOLEAN: out = (lua_toboolean(L, idx) != 0); return true;
+        case LUA_TNUMBER:
+            if (lua_isinteger(L, idx)) out = (long long)lua_tointeger(L, idx);
+            else                       out = (double)lua_tonumber(L, idx);
+            return true;
+        case LUA_TSTRING: {
+            size_t n = 0;
+            const char* s = lua_tolstring(L, idx, &n);
+            out = std::string(s, n);
+            return true;
+        }
+        case LUA_TTABLE: break;
+        default: return false;      // function / userdata / thread
+    }
+    // Array iff keys are exactly 1..n.
+    const auto len = (lua_Integer)lua_rawlen(L, idx);
+    bool is_array = len > 0;
+    if (is_array) {
+        lua_pushnil(L);
+        while (lua_next(L, idx)) {
+            if (!lua_isinteger(L, -2) || lua_tointeger(L, -2) < 1
+                || lua_tointeger(L, -2) > len) {
+                is_array = false;
+                lua_pop(L, 2);
+                break;
+            }
+            lua_pop(L, 1);
+        }
+    }
+    if (is_array) {
+        out = nlohmann::json::array();
+        for (lua_Integer i = 1; i <= len; ++i) {
+            lua_rawgeti(L, idx, i);
+            nlohmann::json v;
+            const bool ok = lua_to_json(L, -1, v, depth + 1);
+            lua_pop(L, 1);
+            if (!ok) return false;
+            out.push_back(std::move(v));
+        }
+        return true;
+    }
+    out = nlohmann::json::object();
+    lua_pushnil(L);
+    while (lua_next(L, idx)) {
+        const int kt = lua_type(L, -2);
+        if (kt != LUA_TSTRING && kt != LUA_TNUMBER) { lua_pop(L, 2); return false; }
+        lua_pushvalue(L, -2);                 // stringify a copy, not the key
+        const std::string key = lua_tostring(L, -1);
+        lua_pop(L, 1);
+        nlohmann::json v;
+        const bool ok = lua_to_json(L, -1, v, depth + 1);
+        lua_pop(L, 1);
+        if (!ok) return false;
+        out[key] = std::move(v);
+    }
+    return true;
+}
+
+// rsmm._internal.api_expose(name, version, table) -> bool
+//   Stashes `table` in this state's registry under `__rsmm_api[name]` and
+//   records name -> (mod, version) in the process-wide map.
+int lua_api_expose(lua_State* L) {
+    const char* name = luaL_checkstring(L, 1);
+    const char* version = luaL_optstring(L, 2, "0.0.0");
+    luaL_checktype(L, 3, LUA_TTABLE);
+    auto* m = current_from_state(L);
+    if (!m) { lua_pushboolean(L, 0); return 1; }
+    auto it = g_apis.find(name);
+    if (it != g_apis.end() && it->second.mod_id != m->id) {
+        return luaL_error(L, "rsmm.api: '%s' is already exposed by mod '%s'",
+                          name, it->second.mod_id.c_str());
+    }
+    lua_getfield(L, LUA_REGISTRYINDEX, "__rsmm_api");
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        lua_newtable(L);
+        lua_pushvalue(L, -1);
+        lua_setfield(L, LUA_REGISTRYINDEX, "__rsmm_api");
+    }
+    lua_pushvalue(L, 3);
+    lua_setfield(L, -2, name);
+    lua_pop(L, 1);
+
+    g_apis[name] = ApiEntry{ m->id, version };
+    Loader::get().log("[api] " + m->id + " exposes '" + std::string(name)
+                      + "' v" + version);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+// rsmm._internal.api_info(name) -> mod_id, version | nil
+int lua_api_info(lua_State* L) {
+    const char* name = luaL_checkstring(L, 1);
+    auto it = g_apis.find(name);
+    if (it == g_apis.end()) { lua_pushnil(L); return 1; }
+    lua_pushstring(L, it->second.mod_id.c_str());
+    lua_pushstring(L, it->second.version.c_str());
+    return 2;
+}
+
+// rsmm._internal.api_list() -> { name = { mod_id, version }, ... }
+int lua_api_list(lua_State* L) {
+    lua_createtable(L, 0, (int)g_apis.size());
+    for (const auto& [name, e] : g_apis) {
+        lua_createtable(L, 0, 2);
+        lua_pushstring(L, e.mod_id.c_str());  lua_setfield(L, -2, "mod_id");
+        lua_pushstring(L, e.version.c_str()); lua_setfield(L, -2, "version");
+        lua_setfield(L, -2, name.c_str());
+    }
+    return 1;
+}
+
+// rsmm._internal.api_call(name, key, ...) -> ok, result_or_error
+//   Invokes `__rsmm_api[name][key](...)` in the PROVIDING mod's lua_State.
+//   Arguments and the result cross as JSON (see the note above). Errors from
+//   the provider are returned as (false, message) rather than propagated, so
+//   a broken provider can't take down its consumer.
+int lua_api_call(lua_State* L) {
+    const char* name = luaL_checkstring(L, 1);
+    const char* key  = luaL_checkstring(L, 2);
+    const int nargs = lua_gettop(L) - 2;
+
+    auto it = g_apis.find(name);
+    if (it == g_apis.end()) {
+        lua_pushboolean(L, 0);
+        lua_pushfstring(L, "rsmm.api: '%s' is not exposed", name);
+        return 2;
+    }
+    auto sit = g_scripts.find(it->second.mod_id);
+    if (sit == g_scripts.end() || !sit->second.L) {
+        lua_pushboolean(L, 0);
+        lua_pushfstring(L, "rsmm.api: provider '%s' has no live state",
+                        it->second.mod_id.c_str());
+        return 2;
+    }
+
+    nlohmann::json args = nlohmann::json::array();
+    for (int i = 0; i < nargs; ++i) {
+        nlohmann::json v;
+        if (!lua_to_json(L, 3 + i, v)) {
+            lua_pushboolean(L, 0);
+            lua_pushfstring(L, "rsmm.api: argument %d is not data "
+                               "(functions/userdata cannot cross mods)", i + 1);
+            return 2;
+        }
+        args.push_back(std::move(v));
+    }
+
+    lua_State* T = sit->second.L;
+    const int base = lua_gettop(T);
+    lua_getfield(T, LUA_REGISTRYINDEX, "__rsmm_api");
+    if (!lua_istable(T, -1)) {
+        lua_settop(T, base);
+        lua_pushboolean(L, 0);
+        lua_pushstring(L, "rsmm.api: provider exposed no table");
+        return 2;
+    }
+    lua_getfield(T, -1, name);
+    if (!lua_istable(T, -1)) {
+        lua_settop(T, base);
+        lua_pushboolean(L, 0);
+        lua_pushfstring(L, "rsmm.api: provider has no '%s' table", name);
+        return 2;
+    }
+    lua_getfield(T, -1, key);
+    if (!lua_isfunction(T, -1)) {
+        // Not callable: expose the VALUE instead (fields are legal too).
+        nlohmann::json v;
+        const bool ok = lua_to_json(T, -1, v);
+        lua_settop(T, base);
+        lua_pushboolean(L, ok ? 1 : 0);
+        if (ok) json_to_lua(L, v);
+        else lua_pushfstring(L, "rsmm.api: '%s.%s' is not callable or data", name, key);
+        return 2;
+    }
+    for (const auto& a : args) json_to_lua(T, a);
+    if (lua_pcall(T, static_cast<int>(args.size()), 1, 0) != LUA_OK) {
+        const char* err = lua_tostring(T, -1);
+        std::string msg = err ? err : "unknown error";
+        lua_settop(T, base);
+        lua_pushboolean(L, 0);
+        lua_pushlstring(L, msg.data(), msg.size());
+        return 2;
+    }
+    nlohmann::json result;
+    const bool ok = lua_to_json(T, -1, result);
+    lua_settop(T, base);
+    lua_pushboolean(L, ok ? 1 : 0);
+    if (ok) json_to_lua(L, result);
+    else lua_pushstring(L, "rsmm.api: provider returned a non-data value");
+    return 2;
+}
+
 int lua_register_asset_override(lua_State* L) {
     const char* decoded = luaL_checkstring(L, 1);
     const char* src     = luaL_checkstring(L, 2);
     auto& Ld = Loader::get();
     auto* m = current_from_state(L);
     if (!m) return 0;
+
+    // The source must live inside the calling mod's own directory. Without
+    // this a mod's init.lua could point an override at ANY file on the user's
+    // disk, and the IO hook would then serve that file's bytes to the game.
+    {
+        std::error_code ec;
+        auto abs_src = std::filesystem::weakly_canonical(
+            std::filesystem::absolute(src, ec), ec);
+        auto abs_root = std::filesystem::weakly_canonical(m->root, ec);
+        const auto rel = abs_src.lexically_relative(abs_root);
+        if (ec || rel.empty() || *rel.begin() == "..") {
+            Ld.log("[lua] " + m->id + " override source rejected (outside the "
+                   "mod directory): " + std::string(src));
+            lua_pushboolean(L, 0);
+            return 1;
+        }
+    }
 
     // Stash into a synthetic mod entry-like override. We piggy-back on the
     // loader's existing override table by translating decoded -> encoded
@@ -547,14 +969,24 @@ int lua_call_native(lua_State* L) {
             case 'u': args[i] = static_cast<std::uint64_t>(static_cast<std::uint32_t>(luaL_checkinteger(L, li))); break;
             case 'l':
             case 'p': args[i] = static_cast<std::uint64_t>(luaL_checkinteger(L, li)); break;
-            case 'f': { float f = static_cast<float>(luaL_checknumber(L, li)); double d = f; std::memcpy(&args[i], &d, sizeof(d)); break; }
-            case 'd': { double d = luaL_checknumber(L, li);                                  std::memcpy(&args[i], &d, sizeof(d)); break; }
+            // 'f' carries the FLOAT's 32 bits in the low half (the ABI's XMM
+            // layout), not a widened double — see fn_call.h.
+            case 'f': { float f = static_cast<float>(luaL_checknumber(L, li));
+                        std::uint32_t b; std::memcpy(&b, &f, sizeof(b)); args[i] = b; break; }
+            case 'd': { double d = luaL_checknumber(L, li); std::memcpy(&args[i], &d, sizeof(d)); break; }
             case 's': args[i] = reinterpret_cast<std::uint64_t>(luaL_checkstring(L, li)); break;
             default:  return luaL_error(L, "rsmm.call: bad arg type '%c'", t);
         }
     }
+    // Validate the return code BEFORE calling: a bad code used to make the
+    // call anyway and only then raise, so a typo'd signature still ran an
+    // engine function with a wrong prototype.
+    switch (ret_t) {
+        case 'v': case 'i': case 'u': case 'l': case 'p': case 'f': case 'd': case 's': break;
+        default: return luaL_error(L, "rsmm.call: bad ret type '%c'", ret_t);
+    }
 
-    std::uint64_t raw = fn_call_raw(va, arg_t, args);
+    std::uint64_t raw = fn_call_raw_ret(va, ret_t, arg_t, args);
 
     switch (ret_t) {
         case 'v': return 0;
@@ -562,20 +994,30 @@ int lua_call_native(lua_State* L) {
         case 'u': lua_pushinteger(L, static_cast<lua_Integer>(static_cast<std::uint32_t>(raw))); return 1;
         case 'l':
         case 'p': lua_pushinteger(L, static_cast<lua_Integer>(raw)); return 1;
-        case 'f': { float f; std::memcpy(&f, &raw, sizeof(f)); lua_pushnumber(L, f); return 1; }
+        case 'f': { float f; auto lo = static_cast<std::uint32_t>(raw);
+                    std::memcpy(&f, &lo, sizeof(f)); lua_pushnumber(L, f); return 1; }
         case 'd': { double d; std::memcpy(&d, &raw, sizeof(d)); lua_pushnumber(L, d); return 1; }
         case 's': {
-            auto p = reinterpret_cast<const char*>(raw);
-            if (!p) lua_pushnil(L); else lua_pushstring(L, p);
+            // The game returned a char*; copy it out through the page guard so
+            // a stale/garbage pointer yields nil instead of faulting.
+            if (!raw) { lua_pushnil(L); return 1; }
+            char buf[1024];
+            const std::size_t n = mem_read_cstr(static_cast<std::uintptr_t>(raw),
+                                                buf, sizeof(buf));
+            if (n == 0 && !mem_accessible(static_cast<std::uintptr_t>(raw), 1, false)) {
+                lua_pushnil(L);
+            } else {
+                lua_pushlstring(L, buf, n);
+            }
             return 1;
         }
-        default: return luaL_error(L, "rsmm.call: bad ret type '%c'", ret_t);
     }
+    return 0;
 }
 
-// Defined below; declared here so the read/write primitives can guard against
-// access-violating the game on a bad pointer (the norm while chasing offsets).
-static bool mem_accessible(std::uintptr_t addr, std::size_t size, bool need_write);
+// The page-state guard (rsmm::mem_accessible, mem_safe.h) keeps every raw
+// read/write primitive from access-violating the game on a bad pointer — the
+// norm while chasing struct offsets.
 
 template <typename T>
 int read_value(lua_State* L) {
@@ -725,53 +1167,14 @@ int lua_is_grant_target(lua_State* L) {
 int lua_read_cstr(lua_State* L) {
     auto va = static_cast<std::uintptr_t>(luaL_checkinteger(L, 1));
     auto max = static_cast<std::size_t>(luaL_optinteger(L, 2, 1024));
-    if (!mem_accessible(va, 1, false)) { lua_pushnil(L); return 1; }
-    auto p = reinterpret_cast<const char*>(va);
-    std::size_t n = 0;
-    // stop at the first byte that would leave the readable range (cross-page
-    // safety) so a non-terminated string near a page boundary can't fault.
-    while (n < max && mem_accessible(va + n, 1, false) && p[n]) n++;
-    lua_pushlstring(L, p, n);
+    if (max == 0 || !mem_accessible(va, 1, false)) { lua_pushnil(L); return 1; }
+    if (max > 0x10000) max = 0x10000;
+    // mem_read_cstr stops at the first byte outside the readable range, so a
+    // non-terminated string near a page boundary can't fault.
+    std::vector<char> buf(max + 1);
+    const std::size_t n = mem_read_cstr(va, buf.data(), buf.size());
+    lua_pushlstring(L, buf.data(), n);
     return 1;
-}
-
-// Page-state guard so a bad pointer (the norm while chasing struct offsets)
-// returns nil/false instead of access-violating the game. Confirms the whole
-// [addr, addr+size) range is committed + readable (and writable for poke).
-static bool mem_accessible(std::uintptr_t addr, std::size_t size, bool need_write) {
-    if (addr == 0 || size == 0) return false;
-    // Overflow guard: a near-UINT64_MAX addr (e.g. a -1 sentinel read out of an
-    // empty component-store slot) makes `addr + size` wrap, so the range loop
-    // below runs zero iterations and returns true vacuously — handing the bad
-    // pointer straight to the engine. Reject any range that would wrap.
-    if (addr > (std::numeric_limits<std::uintptr_t>::max)() - size) return false;
-    const DWORD readable = PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
-                           PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE |
-                           PAGE_EXECUTE_WRITECOPY;
-    const DWORD writable = PAGE_READWRITE | PAGE_WRITECOPY |
-                           PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY;
-    for (std::uintptr_t a = addr; a < addr + size; ) {
-        MEMORY_BASIC_INFORMATION mbi{};
-        if (VirtualQuery(reinterpret_cast<void*>(a), &mbi, sizeof(mbi)) == 0) return false;
-        if (mbi.State != MEM_COMMIT) return false;
-        if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return false;
-        if (!(mbi.Protect & readable)) return false;
-        // This used to be an `if` with an empty body, so `need_write` enforced
-        // nothing: a committed *read-only* page passed the guard and the caller
-        // then wrote through it. `write_value<T>` memcpys straight in with no
-        // VirtualProtect, so that access-violated the game — precisely the
-        // fault this function exists to turn into a `false`. (`lua_poke` was
-        // unaffected: it upgrades the protection itself, and now says so by
-        // asking for a read-only check.)
-        if (need_write && !(mbi.Protect & writable)) return false;
-        auto region_end = reinterpret_cast<std::uintptr_t>(mbi.BaseAddress) + mbi.RegionSize;
-        // A region that does not advance past `a` would spin here forever,
-        // hanging whichever game thread called in. VirtualQuery should never
-        // return one, but a hang is a worse failure than a refused read.
-        if (region_end <= a) return false;
-        a = region_end;
-    }
-    return true;
 }
 
 // rsmm.peek(addr [, size=8]) -> integer | nil   (size in {1,2,4,8})
@@ -891,6 +1294,57 @@ int lua_shared_set(lua_State* L) {
     return 0;
 }
 
+// Remove the parts of the standard library a mod has no business reaching.
+//
+// Nil-ing the GLOBAL is not enough: luaL_openlibs also records every standard
+// library in `package.loaded`, so `local io = require "io"` handed the mod
+// back the very table we had just hidden — and `package.loadlib` / a
+// `package.cpath` search could load an arbitrary DLL into the game process.
+// Both holes are closed here, and the loaders list is trimmed to the Lua-file
+// searcher so `require` can still find SDK modules but can never load native
+// code.
+void apply_sandbox(lua_State* L) {
+    static const char* const kDropGlobals[] = {
+        "dofile", "loadfile", "load", "collectgarbage", "debug", "io",
+    };
+    for (const char* g : kDropGlobals) { lua_pushnil(L); lua_setglobal(L, g); }
+
+    // package.loaded.<lib> = nil, so require can't resurrect them.
+    lua_getfield(L, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+    if (lua_istable(L, -1)) {
+        for (const char* g : kDropGlobals) {
+            lua_pushnil(L); lua_setfield(L, -2, g);
+        }
+    }
+    lua_pop(L, 1);
+
+    lua_getglobal(L, "os");
+    if (lua_istable(L, -1)) {
+        static const char* const kDropOs[] = {
+            "execute", "rename", "remove", "exit", "tmpname", "setlocale",
+        };
+        for (const char* f : kDropOs) { lua_pushnil(L); lua_setfield(L, -2, f); }
+    }
+    lua_pop(L, 1);
+
+    lua_getglobal(L, "package");
+    if (lua_istable(L, -1)) {
+        lua_pushnil(L); lua_setfield(L, -2, "loadlib");
+        lua_pushstring(L, ""); lua_setfield(L, -2, "cpath");
+        // searchers = { preload, lua-file }. Dropping searchers 3 and 4 (the
+        // C-library loaders) is what makes an empty cpath un-bypassable.
+        lua_getfield(L, -1, "searchers");
+        if (lua_istable(L, -1)) {
+            for (int i = static_cast<int>(lua_rawlen(L, -1)); i >= 3; --i) {
+                lua_pushnil(L);
+                lua_rawseti(L, -2, i);
+            }
+        }
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+}
+
 void register_api(lua_State* L) {
     // Public, documented surface. This is what a mod author writes against.
     // High-level behaviors (R.item.register / R.scaling / R.talent / ...)
@@ -917,6 +1371,18 @@ void register_api(lua_State* L) {
         { "call",                    lua_call_native },
         { "va_trusted",              lua_va_trusted },
         { "module_base",             lua_module_base },
+        { "self_id",                 lua_self_id },
+        { "now",                     lua_now },
+        { "health_count",            lua_health_count },
+        { "health_last_error",       lua_health_last_error },
+        { "health_disable",          lua_health_disable },
+        { "health_checkpoint",       lua_health_checkpoint },
+        { "i18n_table",              lua_i18n_table },
+        { "i18n_locale",             lua_i18n_locale },
+        { "api_expose",              lua_api_expose },
+        { "api_info",                lua_api_info },
+        { "api_list",                lua_api_list },
+        { "api_call",                lua_api_call },
         { "game_dir",                lua_game_dir },
         { "is_in_main_menu",         lua_is_in_main_menu },
         { "list_mods",               lua_list_mods },
@@ -974,29 +1440,22 @@ bool script_run_mod_init(const std::string& mod_id,
                          const std::filesystem::path& mod_root) {
     const auto init_path = mod_root / "init.lua";
     if (!std::filesystem::exists(init_path)) return false;
+    if (health::is_disabled(mod_id)) {
+        Loader::get().log("[lua] " + mod_id + " skipped (disabled in "
+                          "mods/_health.json)");
+        return false;
+    }
+    // Stamp the canary before running mod code. If the game dies inside this
+    // init.lua the next launch reads the step back and blames this mod by name
+    // — the whole reason the canary exists.
+    health::checkpoint("per_mod:" + mod_id);
 
     std::lock_guard<std::recursive_mutex> g(g_mu);
     lua_State* L = luaL_newstate();
     if (!L) return false;
     luaL_openlibs(L);
 
-    // Sandbox: remove dangerous functions so mod init.lua can't escape
-    // the asset-override sandbox via os.execute / io.open / debug / load.
-    lua_pushnil(L); lua_setglobal(L, "dofile");
-    lua_pushnil(L); lua_setglobal(L, "loadfile");
-    lua_pushnil(L); lua_setglobal(L, "load");
-    lua_pushnil(L); lua_setglobal(L, "collectgarbage");
-    lua_pushnil(L); lua_setglobal(L, "debug");
-    lua_pushnil(L); lua_setglobal(L, "io");
-    lua_getglobal(L, "os");
-    if (lua_istable(L, -1)) {
-      lua_pushnil(L); lua_setfield(L, -2, "execute");
-      lua_pushnil(L); lua_setfield(L, -2, "rename");
-      lua_pushnil(L); lua_setfield(L, -2, "remove");
-      lua_pushnil(L); lua_setfield(L, -2, "exit");
-      lua_pushnil(L); lua_setfield(L, -2, "tmpname");
-    }
-    lua_pop(L, 1);
+    apply_sandbox(L);
 
     lua_pushstring(L, mod_id.c_str());
     lua_setfield(L, LUA_REGISTRYINDEX, "__rsmm_mod_id");
@@ -1029,17 +1488,18 @@ bool script_run_mod_init(const std::string& mod_id,
     s.L    = L;
     s.id   = mod_id;
     s.root = mod_root;
-    std::error_code ec;
-    s.init_mtime = std::filesystem::last_write_time(init_path, ec);
+    s.init_mtime = newest_lua_mtime(mod_root);
 
     if (luaL_dofile(L, init_path.string().c_str()) != LUA_OK) {
         Loader::get().log(std::string("[lua] ") + mod_id + " init failed: "
                           + lua_tostring(L, -1));
         lua_close(L);
         g_scripts.erase(mod_id);
+        health::checkpoint("post_init:" + mod_id);
         return false;
     }
     Loader::get().log("[lua] " + mod_id + " init OK");
+    health::checkpoint("post_init:" + mod_id);
     return true;
 }
 
@@ -1052,9 +1512,17 @@ namespace {
 template <class PushPayload>
 void emit_locked(const std::string& name, PushPayload push_payload) {
     std::lock_guard<std::recursive_mutex> g(g_mu);
+    // Iterate over a SNAPSHOT of (id, state). The mutex is recursive, so a
+    // handler that re-enters the loader (an engine call whose detour publishes
+    // another event, a hot-reload) runs on this same thread while we hold the
+    // lock — and anything that inserts into or erases from g_scripts would
+    // invalidate the iterator mid-loop.
+    std::vector<std::pair<std::string, lua_State*>> targets;
+    targets.reserve(g_scripts.size());
     for (auto& [id, s] : g_scripts) {
-        if (!s.L) continue;
-        lua_State* L = s.L;
+        if (s.L) targets.emplace_back(id, s.L);
+    }
+    for (auto& [id, L] : targets) {
         lua_getfield(L, LUA_REGISTRYINDEX, "__rsmm_events");
         if (!lua_istable(L, -1)) { lua_pop(L, 1); continue; }
         for (const char* key : {name.c_str(), "*"}) {
@@ -1100,7 +1568,7 @@ void script_emit_event_json(const std::string& name, const std::string& payload_
 }
 
 void script_reload_changed() {
-    // Poll every loaded mod's init.lua; if mtime has advanced, tear
+    // Poll every loaded mod's Lua sources; if any mtime has advanced, tear
     // down the lua_State and re-run init. The mod's own subscribers
     // (rsmm.on_event) live inside the registry table, so closing
     // lua_close drops them automatically — no stale callbacks remain.
@@ -1108,10 +1576,8 @@ void script_reload_changed() {
     {
         std::lock_guard<std::recursive_mutex> g(g_mu);
         for (auto& [id, s] : g_scripts) {
-            const auto init_path = s.root / "init.lua";
-            std::error_code ec;
-            auto mt = std::filesystem::last_write_time(init_path, ec);
-            if (ec) continue;
+            const auto mt = newest_lua_mtime(s.root);
+            if (mt == std::filesystem::file_time_type{}) continue;
             if (mt != s.init_mtime) {
                 to_reload.emplace_back(id, s.root);
             }
@@ -1122,6 +1588,14 @@ void script_reload_changed() {
         // Drop the mod's hooks first; the slots hold cb_refs that
         // become dangling the moment we close the lua_State.
         hook_lua_unregister_mod(id);
+        {
+            // Retract its exposed APIs too: they point into the state we are
+            // about to close, and init.lua re-exposes them on the way back up.
+            std::lock_guard<std::recursive_mutex> g(g_mu);
+            for (auto it = g_apis.begin(); it != g_apis.end(); ) {
+                it = (it->second.mod_id == id) ? g_apis.erase(it) : std::next(it);
+            }
+        }
         // Tear down old state, build new one.
         {
             std::lock_guard<std::recursive_mutex> g(g_mu);
@@ -1146,6 +1620,7 @@ void script_shutdown_all() {
         if (s.L) lua_close(s.L);
     }
     g_scripts.clear();
+    g_apis.clear();   // the tables they name lived in the states just closed
 }
 
 } // namespace rsmm

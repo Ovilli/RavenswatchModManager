@@ -6,16 +6,24 @@ local _timers = {}        -- { fire_at, fn }
 local _main_q = {}        -- main-thread immediate callbacks
 local _main_timers = {}   -- main-thread { fire_at, fn }
 
+-- Monotonic, sub-second clock. os.time() is the fallback ONLY for a loader
+-- too old to provide _internal.now(): it has one-second resolution, so with it
+-- `after(0.25, ...)` really means "some time in the next second or two" and a
+-- burst of sub-second polls all fire in the same tick.
 local _now = function()
-    if _G.rsmm and _G.rsmm._internal.now then return _G.rsmm._internal.now() end
+    local I = _G.rsmm and _G.rsmm._internal
+    if I and I.now then return I.now() end
     return os.time()
 end
 
 function M.next_frame(fn)
+    assert(type(fn) == "function", "R.schedule.next_frame: fn must be a function")
     table.insert(_next_frame, fn)
 end
 
 function M.after(seconds, fn)
+    assert(type(seconds) == "number", "R.schedule.after: seconds must be a number")
+    assert(type(fn) == "function", "R.schedule.after: fn must be a function")
     table.insert(_timers, { fire_at = _now() + seconds, fn = fn })
 end
 
@@ -28,11 +36,20 @@ end
 -- bus (those handlers run on the main thread). Requires the gameplay bus
 -- (RSMM_ENABLE_GAMEPLAY_EVENTS=1) — the only main-thread heartbeat available.
 function M.next_main(fn)
+    assert(type(fn) == "function", "R.schedule.next_main: fn must be a function")
     table.insert(_main_q, fn)
 end
 
 function M.after_main(seconds, fn)
+    assert(type(seconds) == "number", "R.schedule.after_main: seconds must be a number")
+    assert(type(fn) == "function", "R.schedule.after_main: fn must be a function")
     table.insert(_main_timers, { fire_at = _now() + seconds, fn = fn })
+end
+
+-- Pending work, for diagnostics: {next_frame, timers, next_main, main_timers}.
+function M.pending()
+    return { next_frame = #_next_frame, timers = #_timers,
+             next_main = #_main_q, main_timers = #_main_timers }
 end
 
 -- Main-thread pump. Driven by rsmm.lua from gameplay-bus events only.

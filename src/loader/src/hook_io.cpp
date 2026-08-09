@@ -80,8 +80,13 @@ static HANDLE WINAPI hook_CreateFileW(LPCWSTR lpFileName, DWORD dwDesiredAccess,
         auto& L = Loader::get();
         std::wstring w(lpFileName);
         auto slash = w.find_last_of(L"\\/");
-        std::wstring leaf_w = (slash == std::wstring::npos) ? w : w.substr(slash + 1);
-        std::string leaf(leaf_w.begin(), leaf_w.end());
+        const wchar_t* leaf_w = w.c_str() + (slash == std::wstring::npos ? 0 : slash + 1);
+        // Cooked names are ASCII; copy byte-wise instead of truncating each
+        // wchar_t (which mangles any non-ASCII path into a lookalike key).
+        std::string leaf;
+        for (const wchar_t* p = leaf_w; *p; ++p) {
+            leaf.push_back(*p <= 0x7f ? static_cast<char>(*p) : '?');
+        }
         L.note_asset_read(leaf);
 
         if (const auto* override_path = L.lookup_override(lpFileName)) {

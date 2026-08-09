@@ -10,7 +10,11 @@
 -- Exits nonzero on the first failed assertion (pytest wrapper checks the code).
 
 local LIB = (arg and arg[1]) or "src/loader/lib"
-package.path = LIB .. "/?.lua;" .. package.path
+-- Both trees are merged into <game>/rsmm/lib at install time (install_loader
+-- copies src/loader/lua/. then overwrites with lib/rsmm.lua), so the spec has
+-- to put them BOTH on the path or every `require "rsmm.<submodule>"` misses
+-- and R.health / R.config / R.i18n / R.api / R.schedule silently come back nil.
+package.path = LIB .. "/?.lua;" .. LIB .. "/../lua/?.lua;" .. package.path
 
 -- ---------------------------------------------------------------------------
 -- byte-addressed little-endian fake memory
@@ -292,6 +296,56 @@ function I.call(va, _sig, ...)
     local fn = name and engine[name]
     if fn then return fn(...) end
     return nil
+end
+
+-- Bindings the modular submodules (rsmm/*.lua) depend on. Before these
+-- existed natively, R.api namespaced every mod as "?", R.schedule fell back to
+-- one-second os.time() resolution, and R.health / R.i18n were pure no-ops.
+function I.self_id() return "spec_mod" end
+
+local fake_clock = 1000.0
+function I.now() return fake_clock end
+
+local i18n_strings = { greet = "Hello {name}", plain = "no vars" }
+function I.i18n_table() return i18n_strings end
+function I.i18n_locale() return "EN" end
+
+local health_state = { crashes = { badmod = 2 }, errors = { badmod = "boom" },
+                       disabled = {}, checkpoints = {} }
+function I.health_count(id) return health_state.crashes[id] or 0 end
+function I.health_last_error(id) return health_state.errors[id] end
+function I.health_disable(id, reason) health_state.disabled[id] = reason or "" end
+function I.health_checkpoint(step) table.insert(health_state.checkpoints, step) end
+
+-- Cross-state API bridge. The real one marshals JSON between lua_States; here
+-- one process-wide registry stands in, which is enough to pin the CONTRACT:
+-- data-only arguments, provider errors surfacing as (false, msg).
+local api_reg = {}   -- name -> { mod_id, version, table }
+function I.api_expose(name, version, tbl)
+    local prev = api_reg[name]
+    if prev and prev.mod_id ~= I.self_id() then
+        error("rsmm.api: '" .. name .. "' is already exposed by mod '" .. prev.mod_id .. "'")
+    end
+    api_reg[name] = { mod_id = I.self_id(), version = version, table = tbl }
+    return true
+end
+function I.api_info(name)
+    local e = api_reg[name]
+    if not e then return nil end
+    return e.mod_id, e.version
+end
+function I.api_list()
+    local out = {}
+    for n, e in pairs(api_reg) do out[n] = { mod_id = e.mod_id, version = e.version } end
+    return out
+end
+function I.api_call(name, key, ...)
+    local e = api_reg[name]
+    if not e then return false, "rsmm.api: '" .. name .. "' is not exposed" end
+    local v = e.table[key]
+    if type(v) ~= "function" then return v ~= nil, v end
+    local ok, res = pcall(v, ...)
+    return ok, res
 end
 
 rsmm = {
@@ -850,6 +904,114 @@ do
     -- an object with no valid sub-vector yields nothing (fail-quiet).
     check(#R.debug.find_arrays(0x74000000, { max_off = 0x40 }) == 0,
           "find_arrays returns empty when nothing matches")
+end
+
+-- 13. submodules actually load ---------------------------------------------
+do
+    for _, name in ipairs({ "health", "config", "i18n", "api", "schedule" }) do
+        check(type(R[name]) == "table", "R." .. name .. " submodule failed to load")
+    end
+end
+
+-- 14. R.schedule uses the monotonic clock ----------------------------------
+do
+    local fired = {}
+    R.schedule.after(0.25, function() fired[#fired + 1] = "quarter" end)
+    R.schedule.after(2.0,  function() fired[#fired + 1] = "two" end)
+    R.schedule._tick()
+    check(#fired == 0, "no timer fires before its deadline")
+    fake_clock = fake_clock + 0.5          -- sub-second: only reachable via now()
+    R.schedule._tick()
+    check(#fired == 1 and fired[1] == "quarter",
+          "sub-second timer fires once the monotonic clock passes it")
+    fake_clock = fake_clock + 2.0
+    R.schedule._tick()
+    check(#fired == 2 and fired[2] == "two", "later timer fires in order")
+    R.schedule._tick()
+    check(#fired == 2, "a fired timer does not repeat")
+
+    -- next_main must NOT drain on the background tick pump.
+    local main_ran = false
+    R.schedule.next_main(function() main_ran = true end)
+    R.schedule._tick()
+    check(not main_ran, "next_main does not run on the background tick")
+    R.schedule._main_tick()
+    check(main_ran, "next_main runs on the main-thread pump")
+
+    check(R.schedule.pending().timers == 0, "pending() reports a drained timer list")
+    local ok = pcall(R.schedule.after, 1.0, "not a function")
+    check(not ok, "after() rejects a non-function")
+end
+
+-- 15. R.i18n lookup + interpolation ----------------------------------------
+do
+    check(R.i18n.locale() == "EN", "locale comes from the native binding")
+    check(R.i18n.t("greet", { name = "Piper" }) == "Hello Piper",
+          "t() interpolates {vars}")
+    check(R.i18n.t("plain") == "no vars", "t() returns a var-free string as-is")
+    check(R.i18n.t("missing") == "missing", "t() falls back to the key")
+    check(R.i18n.has("greet") and not R.i18n.has("missing"), "has() reports presence")
+end
+
+-- 16. R.health reads the crash history -------------------------------------
+do
+    check(R.health.crash_count("badmod") == 2, "crash_count reads native history")
+    check(R.health.crash_count("cleanmod") == 0, "unknown mod has no crashes")
+    check(R.health.last_error("badmod") == "boom", "last_error reads native history")
+    R.health.checkpoint("phase1")
+    check(health_state.checkpoints[#health_state.checkpoints] == "phase1",
+          "checkpoint reaches the native canary")
+    R.health.disable("badmod", "keeps crashing")
+    check(health_state.disabled.badmod == "keeps crashing", "disable records a reason")
+end
+
+-- 17. R.api crosses the (mocked) state boundary -----------------------------
+do
+    R.api.expose{ api_name = "loot", version = "1.2.0",
+                  roll = function(tier) return { id = "orb", tier = tier } end,
+                  boom = function() error("provider exploded") end }
+    check(R.api.has("loot"), "has() sees an exposed api")
+    check(R.api.version("loot") == "1.2.0", "version() reports the exposed version")
+    check(R.api.list().loot ~= nil, "list() includes the exposed api")
+
+    local loot = R.api.require("loot", ">= 1.0")
+    local item = loot.roll(3)
+    check(type(item) == "table" and item.id == "orb" and item.tier == 3,
+          "a call reaches the provider and returns its data")
+
+    -- Version constraints are enforced.
+    check(not pcall(R.api.require, "loot", ">= 2.0"), "require rejects an unmet spec")
+    check(not pcall(R.api.require, "nope"), "require rejects an unknown api")
+
+    -- A provider error surfaces as a consumer-side error, not a crash.
+    check(not pcall(function() return loot.boom() end),
+          "a raising provider becomes an error in the consumer")
+
+    -- Callbacks cannot cross a state boundary: reject loudly rather than
+    -- silently passing nil.
+    check(not pcall(function() return loot.roll(function() end) end),
+          "a function argument is refused")
+
+    -- The proxy is read-only.
+    check(not pcall(function() loot.roll = 1 end), "proxy rejects assignment")
+end
+
+-- 18. R.options.set type checking ------------------------------------------
+do
+    local OPT_OBJ = 0x60000000
+    I.write_u64(0x140000000 + (0x14143cb58 - 0x140000000), OPT_OBJ)
+    I.write_u8(OPT_OBJ + 0x0030 + 0x28, 1)     -- "Dev"  reads as a real bool
+    I.write_u8(OPT_OBJ + 0x0060 + 0x28, 0)     -- "Test" reads as a real bool
+    check(R.options.get("Dev") == true, "bool option round-trips")
+    check(R.options.set("Forced seed", 12345), "numeric option accepts a number")
+    check(R.options.get("Forced seed") == 12345, "numeric option round-trips")
+    -- A non-number for a numeric option used to raise out of the setter
+    -- (`value + 0.0`), aborting the calling mod instead of refusing.
+    local ok, refused = pcall(R.options.set, "Forced seed", "oops")
+    check(ok and refused == false, "non-number for a numeric option is refused, not raised")
+    local ok2, refused2 = pcall(R.options.set, "Forced seed", nil)
+    check(ok2 and refused2 == false, "nil for a numeric option is refused, not raised")
+    check(R.options.get("Forced seed") == 12345, "a refused write leaves the value alone")
 end
 
 -- ---------------------------------------------------------------------------

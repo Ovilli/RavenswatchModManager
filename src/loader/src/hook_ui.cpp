@@ -24,6 +24,7 @@
 
 #include "MinHook.h"
 #include "loader.h"
+#include "mem_safe.h"
 #include "fn_resolver.h"
 #include "script_lua.h"
 #include "symbols.gen.h"
@@ -47,23 +48,11 @@ PressCommit_t g_real_press_commit = nullptr;
 std::uintptr_t g_press_ra = 0;
 
 // Confirm [p, p+size) is committed + readable (MinGW has no __try/__except).
-bool readable(const void* p, std::size_t size) {
-    auto a = reinterpret_cast<std::uintptr_t>(p);
-    if (a < 0x10000) return false;
-    // Reject non-canonical / wrapping ranges: sentinel values like
-    // 0xffffffffffffffff appear in UI list qwords, and `a + size` wrapping
-    // to a tiny number made the VirtualQuery loop run ZERO times and fall
-    // through to `return true` (the 2026-07-06 in-book crash).
-    if (a >= 0x0000800000000000ull || size > 0x0000800000000000ull - a) return false;
-    for (std::uintptr_t x = a; x < a + size; ) {
-        MEMORY_BASIC_INFORMATION mbi{};
-        if (VirtualQuery(reinterpret_cast<void*>(x), &mbi, sizeof(mbi)) == 0) return false;
-        if (mbi.State != MEM_COMMIT) return false;
-        if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return false;
-        x = reinterpret_cast<std::uintptr_t>(mbi.BaseAddress) + mbi.RegionSize;
-    }
-    return true;
-}
+// Shared implementation in mem_safe.cpp — it also rejects wrapping ranges
+// (sentinel qwords like 0xffffffffffffffff appear in UI list slots, and
+// `a + size` wrapping made the old local loop return true vacuously: the
+// 2026-07-06 in-book crash) and pages without a readable protection bit.
+inline bool readable(const void* p, std::size_t size) { return mem_readable(p, size); }
 
 // Plausible widget/entity identifier: printable ASCII, 2..63 chars.
 int ident_len(const char* s) {

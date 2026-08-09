@@ -14,6 +14,7 @@
 
 #include "MinHook.h"
 #include "loader.h"
+#include "mem_safe.h"
 #include "fn_resolver.h"
 #include "hook_skills.h"
 
@@ -49,24 +50,10 @@ bool env_on(const char* name) {
 }
 
 // Confirm [addr, addr+size) is committed + readable, so a wrong offset logs/skips
-// instead of faulting. (MinGW has no __try/__except.)
-bool readable(const void* p, std::size_t size) {
-    auto a = reinterpret_cast<std::uintptr_t>(p);
-    if (a < 0x10000) return false;
-    // Reject non-canonical / wrapping ranges (sentinel qwords like -1):
-    // `a + size` wrapping made the loop run zero times => bogus `true`.
-    if (a >= 0x0000800000000000ull || size > 0x0000800000000000ull - a) return false;
-    const DWORD ok = PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
-                     PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY;
-    for (std::uintptr_t x = a; x < a + size; ) {
-        MEMORY_BASIC_INFORMATION mbi{};
-        if (VirtualQuery(reinterpret_cast<void*>(x), &mbi, sizeof(mbi)) == 0) return false;
-        if (mbi.State != MEM_COMMIT) return false;
-        if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return false;
-        x = reinterpret_cast<std::uintptr_t>(mbi.BaseAddress) + mbi.RegionSize;
-    }
-    return true;
-}
+// instead of faulting. (MinGW has no __try/__except.) The shared implementation
+// also enforces the readable-protection check this copy declared (`ok`) and then
+// never applied, so a PAGE_EXECUTE-only page used to pass.
+inline bool readable(const void* p, std::size_t size) { return mem_readable(p, size); }
 
 std::string hex_of(std::uintptr_t v) {
     char b[32];

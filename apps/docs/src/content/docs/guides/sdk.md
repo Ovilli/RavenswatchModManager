@@ -140,38 +140,39 @@ exists) or discarded.
 
 ## Boot canary
 
-Loader DLL writes `<cooking>/.rsmm_boot.json` at `DllMain` with:
+The loader opens a canary in `<game>/mods/_health.json` before any mod code
+runs, and stamps a `step` as boot advances:
+
+```
+boot -> per_mod:A -> post_init:A -> per_mod:B -> ... -> ready -> boot_ok
+```
 
 ```json
-{"started_at": 1716120000, "mods": ["A", "B", "C"], "last_step": "init"}
+{
+  "version": 1,
+  "canary": { "open": true, "step": "per_mod:A", "session": "a3f1" },
+  "mods": { "A": { "crashes": 1, "last_error": "...", "disabled": false } }
+}
 ```
 
-`last_step` is updated as each mod's `init.lua` runs:
+The canary is closed (`open: false`) once the tick pump has run for ~2 s past
+`ready` — i.e. the game demonstrably survived load. If the NEXT launch finds
+it still open, the previous run died at the recorded step, so a crash inside
+`per_mod:X` is attributed to mod X and counted.
 
-```
-init        -> per_mod:A -> per_mod:B -> per_mod:C -> ready
-```
-
-On clean shutdown, the file is deleted.
-
-Next launch, `rsmm` reads any stale canary. If `last_step` is `per_mod:X`,
-mod X is flagged. Three strikes (configurable) → mod auto-disabled and
-moved to `crash_history` in `R.health`.
+Three **consecutive** failed boots and the mod is skipped at load
+(`disabled: true` with a reason) — you can't reach an in-game UI to turn off
+a mod that bricks startup. Any launch that boots successfully resets the
+counters. To re-enable, clear the flag in `mods/_health.json`.
 
 ## `R.health` API
 
 ```lua
-R.health.crash_count()          -- int, since SDK install
-R.health.last_error()           -- string|nil
-R.health.last_mod()             -- string|nil
+R.health.crash_count("modid")   -- consecutive failed boots (default: this mod)
+R.health.last_error("modid")    -- string|nil
 R.health.disable("modid", "reason")
-R.health.set_threshold(n)
+R.health.checkpoint("step")     -- stamp your own sub-step into the canary
 ```
-
-`rsmm safe-mode` CLI: disables every mod with `crash_count >= threshold`
-and runs apply.
-
-`rsmm safe-mode --bisect` (planned): disable half, launch, repeat.
 
 ## Config
 
@@ -203,7 +204,8 @@ Validation errors at write-time → rejected with explicit message.
 
 ## i18n
 
-`mods/<id>/lang/<locale>.toml`:
+`mods/<id>/lang/<locale>.toml` (a `.json` object of the same key/value pairs
+works too):
 
 ```toml
 [strings]
@@ -241,15 +243,23 @@ local items = R.api.require("itempack", ">=1.0")
 items.spawn_item("FrostBlade", player.pos)
 ```
 
-`expose` is implicitly namespaced to the calling mod's `id`. `require`
-returns a proxy that:
+`expose` is implicitly namespaced to the calling mod's `id` (override with
+`api_name`). `require` checks the producer's `version` against the semver
+spec and returns a read-only proxy that `pcall`s every call, so a producer
+failure surfaces as an error in the consumer instead of taking it down.
 
-* `pcall`s every call so the producer mod's failure can't crash the
-  consumer,
-* checks the producer's `version` against the semver spec on every call
-  (cheap; cached after first hit),
-* returns the version reported by `provides.api` in the producer's
-  manifest if set.
+**Calls cross a state boundary.** Every mod runs in its own `lua_State`, so
+the proxy marshals through the loader rather than handing over a Lua table
+directly. Arguments and return values must therefore be **data** — `nil`,
+boolean, number, string, or tables of those. Passing a function (a callback)
+is rejected with an error; use an event (`R.on`) for producer → consumer
+signalling.
+
+```lua
+R.api.has("itempack")       -- bool
+R.api.version("itempack")   -- "1.0.0" | nil
+R.api.list()                -- { itempack = { mod_id = ..., version = ... } }
+```
 
 ## Plugin registry
 

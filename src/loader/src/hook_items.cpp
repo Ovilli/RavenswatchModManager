@@ -12,6 +12,7 @@
 #include "hook_items.h"
 #include "fn_resolver.h"
 #include "loader.h"
+#include "mem_safe.h"
 #include "symbols.gen.h"      // GENERATED — addresses (Sym::)
 #include "symbols_api.gen.h"  // GENERATED — typed accessors (engine::)
 
@@ -264,14 +265,7 @@ void dump_pool(void* pool) {
 // unrelated bytes, and dereferencing them access-violates on a background
 // thread, killing the whole game seconds-to-minutes after boot (CrashDB dumps
 // 2026-07-10). Only dereference pointers that VirtualQuery says are readable.
-static bool readable(const void* p, std::size_t len) {
-    MEMORY_BASIC_INFORMATION mbi{};
-    if (!VirtualQuery(p, &mbi, sizeof(mbi))) return false;
-    if (mbi.State != MEM_COMMIT) return false;
-    if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return false;
-    const auto start = reinterpret_cast<std::uintptr_t>(mbi.BaseAddress);
-    return reinterpret_cast<std::uintptr_t>(p) + len <= start + mbi.RegionSize;
-}
+static bool readable(const void* p, std::size_t len) { return mem_readable(p, len); }
 
 // The MO-pool inject calls the resource-by-path lookup FUN_140487040, which
 // mis-resolves on the shipped build and crashes the game (CrashDB 2026-07-10).
@@ -304,7 +298,11 @@ static bool item_inject_armed() {
 void deferred_inject_poll() {
     bool warned_unreadable = false;
     for (int i = 0; i < 600; ++i) {  // ~150 s @ 250 ms, then give up
-        void* pool = *reinterpret_cast<void**>(reloc(kPoolPtrGlobalVA));
+        // Even the pool GLOBAL is read through the guard: on a mismatched
+        // build the rebased RVA can land outside the image's committed pages.
+        std::uintptr_t pool_addr = 0;
+        (void)mem_load(reloc(kPoolPtrGlobalVA), &pool_addr);
+        void* pool = reinterpret_cast<void*>(pool_addr);
         if (pool && !readable(pool, kOffRuntimeCount + sizeof(std::uint32_t))) {
             if (!warned_unreadable) {
                 warned_unreadable = true;
@@ -413,33 +411,45 @@ bool resolve_item_guid(const char* id_str, unsigned long long* lo,
     }
     if (entity_path.empty()) return false;       // unknown id
 
+    // Absolute .data global: only meaningful on the build the symbol map came
+    // from, and every hop below is page-guarded regardless. R.item.guid()
+    // POLLS this from Lua, so an unguarded walk here would fault repeatedly.
+    if (!Loader::get().va_globals_trusted()) return false;
+
     void* rsc = find_entity_resource(entity_path);
     if (!rsc) return false;                       // definition not loaded yet
 
-    void* pool = *reinterpret_cast<void**>(reloc(kPoolPtrGlobalVA));
-    if (!pool) return false;                      // pool not up yet
-    const auto u8 = static_cast<std::uint8_t*>(pool);
-    void**     src_arr   = *reinterpret_cast<void***>(u8 + 0x0);
-    const auto src_count = *reinterpret_cast<std::uint32_t*>(u8 + 0x8);
-    if (!src_arr) return false;
+    std::uintptr_t pool = 0;
+    if (!mem_load(reloc(kPoolPtrGlobalVA), &pool) || pool == 0) return false;
+    std::uintptr_t src_arr = 0;
+    std::uint32_t src_count = 0;
+    if (!mem_load(pool + 0x0, &src_arr) || !mem_load(pool + 0x8, &src_count)) return false;
+    if (!src_arr || src_count > 4096) return false;
 
     // Find the source entry spawned from our resource (+0x48) and read its
     // identity GUID (+0x88/+0x90) — the same fields dump_pool reports.
-    for (std::uint32_t i = 0; i < src_count && i < 4096; ++i) {
-        auto* entry = static_cast<std::uint8_t*>(src_arr[i]);
-        if (!entry) continue;
-        if (*reinterpret_cast<void**>(entry + 0x48) != rsc) continue;
-        if (lo) *lo = *reinterpret_cast<std::uint64_t*>(entry + 0x88);
-        if (hi) *hi = *reinterpret_cast<std::uint64_t*>(entry + 0x90);
+    for (std::uint32_t i = 0; i < src_count; ++i) {
+        std::uintptr_t entry = 0;
+        if (!mem_load(src_arr + i * sizeof(void*), &entry) || entry == 0) continue;
+        std::uintptr_t from = 0;
+        if (!mem_load(entry + 0x48, &from)
+            || from != reinterpret_cast<std::uintptr_t>(rsc)) continue;
+        std::uint64_t glo = 0, ghi = 0;
+        if (!mem_load(entry + 0x88, &glo) || !mem_load(entry + 0x90, &ghi)) return false;
+        if (lo) *lo = glo;
+        if (hi) *hi = ghi;
         return true;
     }
     return false;                                 // not in source list (yet)
 }
 
 bool install_item_hooks() {
-    if (g_items.empty()) {
-        Loader::get().log("[item-hook] no items registered; disabled");
-        return false;
+    {
+        std::lock_guard<std::mutex> g(g_items_mu);
+        if (g_items.empty()) {
+            Loader::get().log("[item-hook] no items registered; disabled");
+            return false;
+        }
     }
 
     if (!fn_resolver_init()) {
@@ -494,8 +504,11 @@ bool install_item_hooks() {
         return false;
     }
 
-    Loader::get().log("[item-hook] installed on FUN_140258760 (SpawnAllObjects); "
-                      + std::to_string(g_items.size()) + " item(s) queued");
+    {
+        std::lock_guard<std::mutex> g(g_items_mu);
+        Loader::get().log("[item-hook] installed on FUN_140258760 (SpawnAllObjects); "
+                          + std::to_string(g_items.size()) + " item(s) queued");
+    }
 
     // The detour above only fires if SpawnAllObjects runs AFTER we arm it.
     // It runs once during InitialLoading and usually races ahead of us, so

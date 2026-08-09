@@ -187,9 +187,37 @@ void Loader::log(const std::string& msg) {
     std::lock_guard<std::mutex> g(log_mu_);
     // Prefix: [timestamp | session | pid]. The session token isolates one run
     // in the shared, multi-launch log; pid is kept for cross-referencing the OS.
-    std::ofstream f(log_path_, std::ios::app);
-    f << "[" << format_ts_now() << " " << log_session_ << " " << log_pid_
-      << "] " << msg << "\n";
+    //
+    // The stream is kept OPEN across calls and flushed per line. Re-opening the
+    // file for every line meant a filesystem open+close inside detours that run
+    // on the game's own thread (the hero-capture and UI hooks log per fire),
+    // and under Proton that is a syscall round trip through the Wine FS layer.
+    // Flushing each line keeps the crash-time tail intact, which is the whole
+    // point of the log.
+    if (!log_stream_.is_open()) {
+        log_stream_.open(log_path_, std::ios::app);
+        if (!log_stream_.is_open()) return;
+    }
+    log_stream_ << "[" << format_ts_now() << " " << log_session_ << " " << log_pid_
+                << "] " << msg << std::endl;
+    // A log that grows without bound across a long session (the spawn trace
+    // and the analytics firehose are chatty) eventually fills the user's disk.
+    // Cap it: once past the limit, roll to _log.prev.txt and start clean.
+    if (++log_lines_ % 512 == 0) {
+        std::error_code ec;
+        const auto sz = std::filesystem::file_size(log_path_, ec);
+        if (!ec && sz > kMaxLogBytes) {
+            log_stream_.close();
+            std::filesystem::rename(log_path_, mods_dir_ / "_log.prev.txt", ec);
+            log_stream_.open(log_path_, std::ios::app);
+            if (log_stream_.is_open()) {
+                log_stream_ << "[" << format_ts_now() << " " << log_session_ << " "
+                            << log_pid_ << "] (log rotated at " << sz
+                            << " bytes; previous part in _log.prev.txt)"
+                            << std::endl;
+            }
+        }
+    }
 }
 
 bool Loader::load_asset_map(const fs::path& json_path) {
@@ -205,15 +233,25 @@ bool Loader::load_asset_map(const fs::path& json_path) {
         log(std::string("asset_map parse error: ") + e.what());
         return false;
     }
+    if (!j.is_object()) {
+        log("asset_map.json is not a JSON object; ignoring");
+        return false;
+    }
     enc_to_dec_.reserve(j.size());
     dec_to_enc_.reserve(j.size());
+    std::size_t skipped = 0;
     for (auto it = j.begin(); it != j.end(); ++it) {
-        const std::string enc = it.key();
-        const std::string dec = it.value().get<std::string>();
+        // Skip non-string values rather than letting get<std::string>() throw:
+        // one bad entry used to abort the whole load, and with no asset map
+        // EVERY file override silently stops working.
+        if (!it.value().is_string()) { ++skipped; continue; }
+        const std::string& enc = it.key();
+        const std::string& dec = it.value().get_ref<const std::string&>();
         enc_to_dec_.emplace(enc, dec);
         dec_to_enc_.emplace(dec, enc);
     }
-    log("asset_map loaded entries=" + std::to_string(enc_to_dec_.size()));
+    log("asset_map loaded entries=" + std::to_string(enc_to_dec_.size())
+        + (skipped ? " (skipped " + std::to_string(skipped) + " non-string)" : ""));
     return true;
 }
 
@@ -277,6 +315,17 @@ void Loader::scan_mods(const fs::path& mods_dir) {
                 m.files.push_back(std::move(mf));
             }
         }
+        // Ids key the script table, the state file and the health history, so
+        // a duplicate would silently make one mod shadow the other everywhere.
+        bool dup = false;
+        for (const auto& existing : mods_) {
+            if (existing.id == m.id) { dup = true; break; }
+        }
+        if (dup) {
+            log("duplicate mod id '" + m.id + "' in " + entry.path().string()
+                + "; ignoring this copy (ids must be unique)");
+            continue;
+        }
         mods_.push_back(std::move(m));
     }
     std::sort(mods_.begin(), mods_.end(),
@@ -301,6 +350,15 @@ void Loader::apply_overrides() {
             // file path, so we key by leaf too.
             auto slash = enc->find_last_of("\\/");
             std::string leaf = (slash == std::string::npos) ? *enc : enc->substr(slash + 1);
+            // Last writer wins (load_order decides, and mods_ is sorted by it),
+            // but say so: two mods overriding the same asset silently produced
+            // whichever one happened to sort later.
+            auto prev = override_by_encoded_.find(leaf);
+            if (prev != override_by_encoded_.end() && prev->second != f.src) {
+                log("[conflict] " + f.decoded_path + " overridden by ["
+                    + m.id + "]; previous source " + prev->second.string()
+                    + " is shadowed (raise its load_order to win)");
+            }
             override_by_encoded_[leaf] = f.src;
         }
     }
@@ -312,8 +370,16 @@ const fs::path* Loader::lookup_override(const std::wstring& path_w) const {
     // Extract basename (the game opens by absolute path; we key on the encoded
     // leaf filename which matches asset_map keys).
     auto slash = path_w.find_last_of(L"\\/");
-    std::wstring leaf_w = (slash == std::wstring::npos) ? path_w : path_w.substr(slash + 1);
-    std::string leaf(leaf_w.begin(), leaf_w.end());
+    const wchar_t* leaf_w = path_w.c_str() + (slash == std::wstring::npos ? 0 : slash + 1);
+    // Encoded cooked names are pure ASCII (the cipher maps letters to letters),
+    // so anything outside ASCII cannot be one of our keys. Bail instead of
+    // truncating each wchar_t to a char, which folds distinct code points onto
+    // the same byte and could match the WRONG override.
+    std::string leaf;
+    for (const wchar_t* p = leaf_w; *p; ++p) {
+        if (*p > 0x7f) return nullptr;
+        leaf.push_back(static_cast<char>(*p));
+    }
     auto it = override_by_encoded_.find(leaf);
     return it == override_by_encoded_.end() ? nullptr : &it->second;
 }
@@ -323,8 +389,19 @@ void Loader::persist_state() const {
     for (const auto& m : mods_) {
         j[m.id] = { {"enabled", m.enabled}, {"load_order", m.load_order} };
     }
-    std::ofstream f(state_path_);
-    f << j.dump(2);
+    // Temp-file + rename: a direct write truncates the existing state first,
+    // so a crash mid-write (or the process being killed) left an empty
+    // _state.json and every mod's enabled/load_order silently reset.
+    const auto tmp = state_path_.string() + ".tmp";
+    {
+        std::ofstream f(tmp, std::ios::trunc);
+        if (!f) return;
+        f << j.dump(2) << "\n";
+        if (!f.good()) return;
+    }
+    std::error_code ec;
+    fs::rename(tmp, state_path_, ec);
+    if (ec) fs::remove(tmp, ec);
 }
 
 void Loader::load_state() {

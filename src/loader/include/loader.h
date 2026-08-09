@@ -3,8 +3,10 @@
 #include <vector>
 #include <unordered_map>
 #include <filesystem>
+#include <fstream>
 #include <mutex>
 #include <atomic>
+#include <cstdint>
 
 namespace rsmm {
 
@@ -73,6 +75,9 @@ public:
 
     const std::filesystem::path& game_dir() const { return game_dir_; }
     const std::filesystem::path& mods_dir() const { return mods_dir_; }
+    // Short per-process token stamped on every log line; also used to label a
+    // crash-canary entry so a post-mortem can find the run in the log.
+    const std::string& session() const { return log_session_; }
 
 private:
     Loader() = default;
@@ -91,6 +96,10 @@ private:
     std::unordered_map<std::string, std::filesystem::path> override_by_encoded_;
 
     mutable std::mutex log_mu_;
+    // Held open across log() calls (see loader.cpp) and rotated past the cap.
+    mutable std::ofstream log_stream_;
+    mutable std::uint64_t log_lines_ = 0;
+    static constexpr std::uint64_t kMaxLogBytes = 32ull * 1024 * 1024;
     unsigned long log_pid_ = 0;
     // Short per-process token (e.g. "a3f1") stamped on every line so old and
     // new sessions in the shared log are trivially told apart / grep-filtered.
