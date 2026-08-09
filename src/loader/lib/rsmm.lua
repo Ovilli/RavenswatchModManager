@@ -799,10 +799,31 @@ local SHARED_HERO_SLOT = 0
 local HERO_AUTH_SLOT = 1
 local NATIVE_CAPTURE_SLOT = 2
 local HERO_PENDING_SLOT = 3   -- spawn-init candidate whose fields weren't live yet
+-- Whether capture is PERMITTED (RSMM_ENABLE_HERO_CAPTURE), as opposed to
+-- whether the native path armed. 0 = loader too old to say, 1 = yes, 2 = no.
+local HERO_PERMIT_SLOT = 4
+local PERMIT_NO = 2
 
 -- True when the loader's native hero-capture is installed. When it is, the Lua
 -- side must not arm its own per-state capture hooks (they'd collide with the
 -- native ones, MH_ERROR_ALREADY_CREATED) — it just reads the shared slot.
+-- The flag was never actually a gate. It stopped the NATIVE hooks, and then
+-- this fallback installed detours on the SAME handlers the first time any mod
+-- touched R.entity — a playtest log showed two `[hook] slot N installed` lines
+-- directly beneath "[hero-capture] disabled", while the loader claimed
+-- R.combat/R.entity/R.stat/R.xp were unavailable. The flag exists because
+-- these detours have correlated with load-time crashes, so "off" has to mean
+-- off everywhere, not just in C++.
+--
+-- Only an EXPLICIT denial refuses. A loader too old to publish the slot leaves
+-- it 0, and those builds keep the previous behaviour rather than silently
+-- losing capture (rsmm.lua is disk-loaded, so it can be newer than the DLL).
+local function _capture_denied()
+    if not I.shared_get then return false end
+    local ok, v = pcall(I.shared_get, HERO_PERMIT_SLOT)
+    return ok and v == PERMIT_NO
+end
+
 local function _native_capture_active()
     if not I.shared_get then return false end
     local ok, v = pcall(I.shared_get, NATIVE_CAPTURE_SLOT)
@@ -850,6 +871,13 @@ end
 -- the original unchanged. Called lazily so R.hook is defined by first use.
 local function _arm_hero_capture()
     if _hero_capture_armed then return end
+    if _capture_denied() then
+        _hero_capture_armed = true   -- refuse once, quietly thereafter
+        R.log("[rsmm.entity] hero capture is disabled "
+              .. "(RSMM_ENABLE_HERO_CAPTURE off) — not installing the capture "
+              .. "hooks. R.combat/R.entity/R.stat/R.xp stay unavailable.")
+        return
+    end
     local base = I.module_base()
     if not base or base == 0 or not R.hook then return end
     _hero_capture_armed = true

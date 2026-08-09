@@ -1299,5 +1299,59 @@ do
 end
 
 -- ---------------------------------------------------------------------------
+-- 25. RSMM_ENABLE_HERO_CAPTURE off must mean off EVERYWHERE
+--
+-- The flag stopped the native hooks and nothing else: this Lua fallback then
+-- installed detours on the same handlers the first time a mod touched
+-- R.entity. A playtest log showed two `[hook] slot N installed` lines directly
+-- under "[hero-capture] disabled", while the loader claimed R.combat/R.entity/
+-- R.stat/R.xp were unavailable. The flag exists because these detours have
+-- correlated with load-time crashes, so a refusal has to be honoured here too.
+-- ---------------------------------------------------------------------------
+do
+    -- The capture handlers, by the names the fallback resolves them under.
+    local capture_vas = {
+        I.resolve("Entity_GainHealthHandler"),
+        I.resolve("Entity_GiveHandler"),
+        I.resolve("NamedEvent_HeroSubscribeAll"),
+    }
+    local function armed_count()
+        local n = 0
+        for _, va in ipairs(capture_vas) do if hooks[va] then n = n + 1 end end
+        return n
+    end
+    local function fresh()
+        for _, va in ipairs(capture_vas) do hooks[va] = nil end
+        shared[0], shared[2], shared[3] = 0, 0, 0   -- nothing captured, native off
+        package.loaded["rsmm"] = nil
+        return require "rsmm"
+    end
+
+    shared[4] = 2                                   -- explicitly DENIED
+    local Rd = fresh()
+    check(Rd.entity.hero() == nil, "denied: no hero")
+    check(armed_count() == 0,
+          "denied: installed NO capture hooks (got " .. armed_count() .. ")")
+
+    -- Unknown (an older loader that never writes the slot) keeps working, so a
+    -- newer rsmm.lua on an older DLL does not silently lose capture.
+    shared[4] = 0
+    local Ru = fresh()
+    Ru.entity.hero()
+    check(armed_count() > 0,
+          "loader too old to answer still arms capture (back-compat)")
+
+    -- Permitted behaves like unknown.
+    shared[4] = 1
+    local Rp = fresh()
+    Rp.entity.hero()
+    check(armed_count() > 0, "permitted: capture hooks armed")
+
+    shared[4] = 0
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- ---------------------------------------------------------------------------
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)

@@ -535,6 +535,20 @@ constexpr int kHeroSlot = 0;        // hero character pointer (validated)
 constexpr int kHeroAuthSlot = 1;    // 1 once a hero-only routine has captured
 constexpr int kHeroPendingSlot = 3; // spawn-init candidate awaiting field init
                                     // (slot 2 = native-capture-active flag)
+// Whether hero capture is PERMITTED at all, which is a different question from
+// whether the native path armed. Tri-state so an older loader (which never
+// writes this slot, leaving 0) is not mistaken for a denial:
+//   0 = unknown / loader too old   1 = permitted   2 = explicitly denied
+//
+// This exists because RSMM_ENABLE_HERO_CAPTURE was not actually a gate. It
+// stopped the NATIVE hooks, then rsmm.lua's fallback installed detours on the
+// same handlers anyway the first time any mod touched R.entity — visible in a
+// playtest log as two `[hook] slot N installed` lines directly under
+// "[hero-capture] disabled". The log's claim that R.combat/R.entity/R.stat/R.xp
+// were unavailable was simply untrue, and the flag exists precisely because
+// these detours have correlated with load-time crashes.
+constexpr int kHeroCapturePermitSlot = 4;
+constexpr std::uint64_t kPermitUnknown = 0, kPermitYes = 1, kPermitNo = 2;
 constexpr std::uintptr_t kHeroHpOff = 0x15c8;
 constexpr std::uintptr_t kHeroMaxHpOff = 0x15cc;
 constexpr std::uintptr_t kHeroHudMirrorOff = 0x1d80; // ptr to the HUD HP mirror
@@ -681,7 +695,11 @@ bool install_hero_capture() {
     // environment directly, so the desktop flags panel could not turn hero
     // capture on at all — the toggle appeared to do nothing and the only way
     // in was Steam launch options.
-    if (!flag_enabled("RSMM_ENABLE_HERO_CAPTURE")) {
+    const bool permitted = flag_enabled("RSMM_ENABLE_HERO_CAPTURE");
+    // Publish the DECISION, not just the outcome, so the Lua fallback honours
+    // the same answer instead of quietly arming what this refused.
+    shared_set(kHeroCapturePermitSlot, permitted ? kPermitYes : kPermitNo);
+    if (!permitted) {
         Loader::get().log("[hero-capture] disabled — R.combat/R.entity/R.stat/R.xp "
                           "unavailable. Enable it in the desktop app's flags "
                           "panel, or put RSMM_ENABLE_HERO_CAPTURE=1 BEFORE "
