@@ -417,3 +417,50 @@ def test_no_symbol_for_the_ownership_unlock_gate():
         f"{hits} exposes the ownership unlock gate. Progression, rank, story "
         f"and challenge gates are fair game; ownership is not."
     )
+
+
+# The whole ownership path, by address. Matching on the NAME alone is not a
+# gate: `ContentPack_Check` at the same address reads as innocuous and sails
+# through. These are the functions the check actually runs, in the current
+# corpus and in the older one the docs quote — a remap that reintroduces
+# either should still trip.
+_OWNERSHIP_PATH_VAS = {
+    # oe::AdditionalContentGameUnlockConditionData::vftable slot 14 —
+    # `return *(int*)(this+0x28) == 3`, the gate itself.
+    0x140699250,
+    # oCLocalAdditionalContentManager::vftable[1] — GetFileAttributesW on the
+    # pack file; returns 3 when present.
+    0x14065FF90, 0x140647440,
+    # oCSteamAdditionalContentManager::vftable[1] — reads the u32 pack key at
+    # node+0x3c and calls ISteamApps::BIsDLCEnabled.
+    0x140A4BFF0, 0x140A2C600,
+}
+
+
+def test_ownership_path_addresses_carry_no_symbol():
+    """No symbol may point at the DLC entitlement path, whatever it is called.
+
+    Companion to the name check above. A semantic name is what makes a
+    function reachable from Lua (`R.engine.call`) and from the generated C++
+    accessors, so keeping these addresses unnamed is what keeps "unlock content
+    you have not bought" off the SDK surface. Progression, rank, story and
+    challenge gates are fair game and have symbols; these do not.
+    """
+    smap = S.load_symbol_map()
+    offenders = []
+    for s in smap.symbols:
+        for field in (s.raw, getattr(s, "va", None)):
+            if not field:
+                continue
+            text = str(field)
+            try:
+                va = int(text[4:], 16) if text.startswith("FUN_") else int(text, 16)
+            except ValueError:
+                continue
+            if va in _OWNERSHIP_PATH_VAS:
+                offenders.append(f"{s.name} -> {text}")
+    assert not offenders, (
+        f"{offenders} names a function on the DLC ownership path. That check is "
+        f"a purchase gate, not a progression gate; it stays unreachable from "
+        f"the SDK. See apps/docs/.../guides/merlin-unlock.md."
+    )

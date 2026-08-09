@@ -68,7 +68,7 @@ export default defineConfig({
             { label: 'Custom skills (talents)', slug: 'guides/custom-skills' },
             { label: 'SDK (v3)', slug: 'guides/sdk' },
             { label: 'Uncooked assets', slug: 'guides/uncooked-assets' },
-            { label: 'Merlin unlock', slug: 'guides/merlin-unlock' },
+            { label: 'Hero unlock gates', slug: 'guides/merlin-unlock' },
           ],
         },
         {
