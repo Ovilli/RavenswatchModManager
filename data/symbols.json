@@ -2980,5 +2980,949 @@
    "name": "WISHING_WELL_FILLED",
    "category": "resources"
   }
+ ],
+ "event_payload_schemas_doc": "Payload layouts for the oCGameNamedEvent subclasses that carry data, recovered by tools/mine_event_payloads.py (RTTI type descriptor -> complete object locator -> vftable -> the code that stores it, walked within .pdata function bounds). Keyed by VFTABLE RVA, not event name: the loader reads *(ev+0) and matches it exactly, so no name mapping can go wrong. Field OFFSETS and WIDTHS are recovered; field MEANING is not, so names are mechanical (u50 = u32 at +0x50) except where hand-RE confirmed one. Only ~24 of the ~150 event names have a payload at all -- the rest are dispatched as the bare base class (header only). RVAs are build-specific: the loader gates this decode on the build fingerprint (va_globals_trusted) and re-verifies with --verify after a patch.",
+ "event_payload_schemas": [
+  {
+   "class": "GameNamedEventNetworkBark",
+   "sites": 7,
+   "vftable_rvas": [
+    "0xf9d890"
+   ],
+   "fields": [
+    {
+     "off": "0x50",
+     "type": "u16",
+     "name": "u50"
+    },
+    {
+     "off": "0x54",
+     "type": "u32",
+     "name": "u54"
+    }
+   ]
+  },
+  {
+   "class": "NamedEventChooseMelody",
+   "sites": 3,
+   "vftable_rvas": [
+    "0xf25c48"
+   ],
+   "fields": [
+    {
+     "off": "0x50",
+     "type": "u64",
+     "name": "u50"
+    },
+    {
+     "off": "0x58",
+     "type": "u32",
+     "name": "u58"
+    },
+    {
+     "off": "0x5c",
+     "type": "u32",
+     "name": "u5c"
+    }
+   ]
+  },
+  {
+   "class": "NamedEventGameEnd",
+   "sites": 6,
+   "vftable_rvas": [
+    "0xf209d0"
+   ],
+   "fields": [
+    {
+     "off": "0x50",
+     "type": "u64",
+     "name": "u50"
+    },
+    {
+     "off": "0x58",
+     "type": "u32",
+     "name": "u58"
+    },
+    {
+     "off": "0x5c",
+     "type": "u32",
+     "name": "u5c"
+    },
+    {
+     "off": "0x60",
+     "type": "u32",
+     "name": "u60"
+    },
+    {
+     "off": "0x64",
+     "type": "u32",
+     "name": "u64"
+    },
+    {
+     "off": "0x68",
+     "type": "u32",
+     "name": "u68"
+    },
+    {
+     "off": "0x6c",
+     "type": "u16",
+     "name": "u6c"
+    },
+    {
+     "off": "0x6e",
+     "type": "u8",
+     "name": "u6e"
+    },
+    {
+     "off": "0x70",
+     "type": "u64",
+     "name": "u70"
+    },
+    {
+     "off": "0x78",
+     "type": "u64",
+     "name": "u78"
+    },
+    {
+     "off": "0x80",
+     "type": "u32",
+     "name": "u80"
+    },
+    {
+     "off": "0xa8",
+     "type": "u32",
+     "name": "ua8"
+    },
+    {
+     "off": "0xb0",
+     "type": "u64",
+     "name": "ub0"
+    },
+    {
+     "off": "0xb8",
+     "type": "f32",
+     "name": "fb8"
+    },
+    {
+     "off": "0xc0",
+     "type": "u64",
+     "name": "uc0"
+    },
+    {
+     "off": "0xc8",
+     "type": "u64",
+     "name": "uc8"
+    },
+    {
+     "off": "0xd0",
+     "type": "u64",
+     "name": "ud0"
+    },
+    {
+     "off": "0xd8",
+     "type": "u32",
+     "name": "ud8"
+    },
+    {
+     "off": "0xdc",
+     "type": "f32",
+     "name": "fdc"
+    },
+    {
+     "off": "0xe0",
+     "type": "f32",
+     "name": "fe0"
+    },
+    {
+     "off": "0xe4",
+     "type": "u16",
+     "name": "ue4"
+    },
+    {
+     "off": "0xe6",
+     "type": "u8",
+     "name": "ue6"
+    },
+    {
+     "off": "0x108",
+     "type": "u64",
+     "name": "u108"
+    },
+    {
+     "off": "0x110",
+     "type": "u64",
+     "name": "u110"
+    },
+    {
+     "off": "0x198",
+     "type": "u64",
+     "name": "u198"
+    }
+   ]
+  },
+  {
+   "class": "NamedEventGiveMagicalObject",
+   "sites": 5,
+   "vftable_rvas": [
+    "0xf270f0"
+   ],
+   "fields": [
+    {
+     "off": "0x50",
+     "type": "u64",
+     "name": "mo_guid_lo"
+    },
+    {
+     "off": "0x58",
+     "type": "u64",
+     "name": "mo_guid_hi"
+    }
+   ]
+  },
+  {
+   "class": "NamedEventRemoveMelody",
+   "sites": 3,
+   "vftable_rvas": [
+    "0xf22608"
+   ],
+   "fields": [
+    {
+     "off": "0x50",
+     "type": "u64",
+     "name": "u50"
+    },
+    {
+     "off": "0x58",
+     "type": "u32",
+     "name": "u58"
+    },
+    {
+     "off": "0x5c",
+     "type": "u32",
+     "name": "u5c"
+    }
+   ]
+  },
+  {
+   "class": "oCDtNamedEventDPCollectIngredient",
+   "sites": 8,
+   "vftable_rvas": [
+    "0xf28d00"
+   ],
+   "fields": [
+    {
+     "off": "0x38",
+     "type": "u64",
+     "name": "u38"
+    },
+    {
+     "off": "0x50",
+     "type": "u32",
+     "name": "u50"
+    }
+   ]
+  },
+  {
+   "class": "oCDtNamedEventExpGain",
+   "sites": 5,
+   "vftable_rvas": [
+    "0xf25270"
+   ],
+   "fields": [
+    {
+     "off": "0x50",
+     "type": "u32",
+     "name": "u50"
+    }
+   ]
+  },
+  {
+   "class": "oCDtNamedEventExpGainNotif",
+   "sites": 5,
+   "vftable_rvas": [
+    "0xf269f8"
+   ],
+   "fields": [
+    {
+     "off": "0x50",
+     "type": "u32",
+     "name": "u50"
+    }
+   ]
+  },
+  {
+   "class": "oCDtNamedEventGainDreamShards",
+   "sites": 6,
+   "vftable_rvas": [
+    "0xf224c0"
+   ],
+   "fields": [
+    {
+     "off": "0x50",
+     "type": "u64",
+     "name": "u50"
+    },
+    {
+     "off": "0x58",
+     "type": "u32",
+     "name": "u58"
+    },
+    {
+     "off": "0x5c",
+     "type": "u8",
+     "name": "u5c"
+    },
+    {
+     "off": "0x5d",
+     "type": "u8",
+     "name": "u5d"
+    }
+   ]
+  },
+  {
+   "class": "oCDtNamedEventGainHealthResource",
+   "sites": 8,
+   "vftable_rvas": [
+    "0xf227b8"
+   ],
+   "fields": [
+    {
+     "off": "0x58",
+     "type": "u64",
+     "name": "u58"
+    },
+    {
+     "off": "0x60",
+     "type": "u32",
+     "name": "u60"
+    },
+    {
+     "off": "0x64",
+     "type": "u32",
+     "name": "u64"
+    }
+   ]
+  },
+  {
+   "class": "oCDtNamedEventGainReroll",
+   "sites": 5,
+   "vftable_rvas": [
+    "0xf263d0"
+   ],
+   "fields": [
+    {
+     "off": "0x50",
+     "type": "u16",
+     "name": "u50"
+    }
+   ]
+  },
+  {
+   "class": "oCDtNamedEventInteraction",
+   "sites": 8,
+   "vftable_rvas": [
+    "0xf21130"
+   ],
+   "fields": [
+    {
+     "off": "0x38",
+     "type": "u64",
+     "name": "u38"
+    },
+    {
+     "off": "0x50",
+     "type": "u64",
+     "name": "u50"
+    }
+   ]
+  },
+  {
+   "class": "oCDtNamedEventLevelUp",
+   "sites": 5,
+   "vftable_rvas": [
+    "0xf23b30"
+   ],
+   "fields": [
+    {
+     "off": "0x50",
+     "type": "u32",
+     "name": "u50"
+    }
+   ]
+  },
+  {
+   "class": "oCDtNamedEventPowerUpCollectRequest",
+   "sites": 5,
+   "vftable_rvas": [
+    "0xf23ef0"
+   ],
+   "fields": [
+    {
+     "off": "0x50",
+     "type": "u64",
+     "name": "u50"
+    }
+   ]
+  },
+  {
+   "class": "oCGameEventGainIngredient",
+   "sites": 7,
+   "vftable_rvas": [
+    "0xf26460"
+   ],
+   "fields": [
+    {
+     "off": "0x50",
+     "type": "u32",
+     "name": "u50"
+    },
+    {
+     "off": "0x54",
+     "type": "u16",
+     "name": "u54"
+    }
+   ]
+  },
+  {
+   "class": "oCGameEventHitPointModification",
+   "sites": 6,
+   "vftable_rvas": [
+    "0xf27810"
+   ],
+   "fields": [
+    {
+     "off": "0x50",
+     "type": "u32",
+     "name": "u50"
+    },
+    {
+     "off": "0x54",
+     "type": "u32",
+     "name": "u54"
+    },
+    {
+     "off": "0x58",
+     "type": "u32",
+     "name": "u58"
+    }
+   ]
+  },
+  {
+   "class": "oCGameEventMaxHitPointModification",
+   "sites": 5,
+   "vftable_rvas": [
+    "0xf28690"
+   ],
+   "fields": [
+    {
+     "off": "0x50",
+     "type": "u32",
+     "name": "u50"
+    },
+    {
+     "off": "0x54",
+     "type": "u32",
+     "name": "u54"
+    },
+    {
+     "off": "0x58",
+     "type": "u32",
+     "name": "u58"
+    }
+   ]
+  },
+  {
+   "class": "oCGameEventNetworkModifier",
+   "sites": 21,
+   "vftable_rvas": [
+    "0xf322d0"
+   ],
+   "fields": [
+    {
+     "off": "0x38",
+     "type": "u64",
+     "name": "u38"
+    },
+    {
+     "off": "0x50",
+     "type": "u32",
+     "name": "u50"
+    },
+    {
+     "off": "0x54",
+     "type": "u32",
+     "name": "u54"
+    },
+    {
+     "off": "0x58",
+     "type": "u32",
+     "name": "u58"
+    },
+    {
+     "off": "0x60",
+     "type": "u64",
+     "name": "u60"
+    },
+    {
+     "off": "0x80",
+     "type": "u32",
+     "name": "u80"
+    },
+    {
+     "off": "0x84",
+     "type": "u32",
+     "name": "u84"
+    },
+    {
+     "off": "0x88",
+     "type": "u32",
+     "name": "u88"
+    },
+    {
+     "off": "0x8c",
+     "type": "u8",
+     "name": "u8c"
+    },
+    {
+     "off": "0x90",
+     "type": "u64",
+     "name": "u90"
+    },
+    {
+     "off": "0xa8",
+     "type": "u64",
+     "name": "ua8"
+    },
+    {
+     "off": "0xb0",
+     "type": "u32",
+     "name": "ub0"
+    },
+    {
+     "off": "0xb8",
+     "type": "u64",
+     "name": "ub8"
+    },
+    {
+     "off": "0xc0",
+     "type": "u64",
+     "name": "uc0"
+    },
+    {
+     "off": "0x120",
+     "type": "u64",
+     "name": "u120"
+    }
+   ]
+  },
+  {
+   "class": "oCGameNamedEventAttachmentChange",
+   "sites": 5,
+   "vftable_rvas": [
+    "0xf7bbc8"
+   ],
+   "fields": [
+    {
+     "off": "0x50",
+     "type": "u64",
+     "name": "u50"
+    },
+    {
+     "off": "0x58",
+     "type": "u64",
+     "name": "u58"
+    }
+   ]
+  },
+  {
+   "class": "oCGameNamedEventNetworkDamage",
+   "sites": 4,
+   "vftable_rvas": [
+    "0xf117d0"
+   ],
+   "fields": [
+    {
+     "off": "0x40",
+     "type": "f32",
+     "name": "value"
+    },
+    {
+     "off": "0x48",
+     "type": "u64",
+     "name": "source_id"
+    },
+    {
+     "off": "0x50",
+     "type": "u64",
+     "name": "u50"
+    },
+    {
+     "off": "0x60",
+     "type": "u64",
+     "name": "target_entity"
+    },
+    {
+     "off": "0x68",
+     "type": "u64",
+     "name": "u68"
+    },
+    {
+     "off": "0x70",
+     "type": "u64",
+     "name": "u70"
+    },
+    {
+     "off": "0x78",
+     "type": "u64",
+     "name": "u78"
+    },
+    {
+     "off": "0x80",
+     "type": "u64",
+     "name": "u80"
+    },
+    {
+     "off": "0x88",
+     "type": "u64",
+     "name": "u88"
+    },
+    {
+     "off": "0x90",
+     "type": "u32",
+     "name": "u90"
+    },
+    {
+     "off": "0x94",
+     "type": "u64",
+     "name": "u94"
+    },
+    {
+     "off": "0x9c",
+     "type": "u64",
+     "name": "u9c"
+    },
+    {
+     "off": "0xa4",
+     "type": "u32",
+     "name": "ua4"
+    },
+    {
+     "off": "0xa8",
+     "type": "u64",
+     "name": "ua8"
+    },
+    {
+     "off": "0xb0",
+     "type": "u64",
+     "name": "ub0"
+    },
+    {
+     "off": "0xb8",
+     "type": "u32",
+     "name": "ub8"
+    },
+    {
+     "off": "0xbc",
+     "type": "u32",
+     "name": "ubc"
+    },
+    {
+     "off": "0xc0",
+     "type": "u64",
+     "name": "uc0"
+    },
+    {
+     "off": "0xc8",
+     "type": "u64",
+     "name": "uc8"
+    },
+    {
+     "off": "0xd8",
+     "type": "u16",
+     "name": "ud8"
+    },
+    {
+     "off": "0xe0",
+     "type": "u64",
+     "name": "ue0"
+    },
+    {
+     "off": "0xf0",
+     "type": "u64",
+     "name": "instigator_entity"
+    },
+    {
+     "off": "0x100",
+     "type": "u8",
+     "name": "u100"
+    }
+   ]
+  },
+  {
+   "class": "oCGameNamedEventNetworkDamageResponse",
+   "sites": 6,
+   "vftable_rvas": [
+    "0xf0dd10"
+   ],
+   "fields": [
+    {
+     "off": "0x50",
+     "type": "u64",
+     "name": "u50"
+    },
+    {
+     "off": "0x60",
+     "type": "u64",
+     "name": "target_entity"
+    },
+    {
+     "off": "0x68",
+     "type": "u64",
+     "name": "u68"
+    },
+    {
+     "off": "0x6c",
+     "type": "u32",
+     "name": "u6c"
+    },
+    {
+     "off": "0x70",
+     "type": "u64",
+     "name": "u70"
+    },
+    {
+     "off": "0x74",
+     "type": "u32",
+     "name": "u74"
+    },
+    {
+     "off": "0x78",
+     "type": "u64",
+     "name": "u78"
+    },
+    {
+     "off": "0x7c",
+     "type": "u32",
+     "name": "u7c"
+    },
+    {
+     "off": "0x80",
+     "type": "u64",
+     "name": "u80"
+    },
+    {
+     "off": "0x88",
+     "type": "u64",
+     "name": "u88"
+    },
+    {
+     "off": "0x90",
+     "type": "u32",
+     "name": "u90"
+    },
+    {
+     "off": "0x94",
+     "type": "u64",
+     "name": "u94"
+    },
+    {
+     "off": "0x9c",
+     "type": "u64",
+     "name": "u9c"
+    },
+    {
+     "off": "0xa4",
+     "type": "u32",
+     "name": "ua4"
+    },
+    {
+     "off": "0xa8",
+     "type": "u64",
+     "name": "ua8"
+    },
+    {
+     "off": "0xb0",
+     "type": "u64",
+     "name": "ub0"
+    },
+    {
+     "off": "0xb8",
+     "type": "u32",
+     "name": "ub8"
+    },
+    {
+     "off": "0xbc",
+     "type": "u32",
+     "name": "ubc"
+    },
+    {
+     "off": "0xc0",
+     "type": "u64",
+     "name": "uc0"
+    },
+    {
+     "off": "0xc8",
+     "type": "u64",
+     "name": "uc8"
+    },
+    {
+     "off": "0xd0",
+     "type": "u64",
+     "name": "ud0"
+    },
+    {
+     "off": "0xd8",
+     "type": "u16",
+     "name": "ud8"
+    },
+    {
+     "off": "0xe0",
+     "type": "u64",
+     "name": "ue0"
+    },
+    {
+     "off": "0xf0",
+     "type": "u64",
+     "name": "instigator_entity"
+    },
+    {
+     "off": "0x100",
+     "type": "u8",
+     "name": "u100"
+    }
+   ]
+  },
+  {
+   "class": "oCNamedEventGainHealth",
+   "sites": 11,
+   "vftable_rvas": [
+    "0xf25648"
+   ],
+   "fields": [
+    {
+     "off": "0x50",
+     "type": "u32",
+     "name": "u50"
+    },
+    {
+     "off": "0x54",
+     "type": "u8",
+     "name": "u54"
+    },
+    {
+     "off": "0x55",
+     "type": "u8",
+     "name": "u55"
+    },
+    {
+     "off": "0xf8",
+     "type": "f32",
+     "name": "ff8"
+    },
+    {
+     "off": "0x108",
+     "type": "u64",
+     "name": "u108"
+    }
+   ]
+  },
+  {
+   "class": "oCNamedEventNetworkMessage",
+   "sites": 13,
+   "vftable_rvas": [
+    "0xf9bec0"
+   ],
+   "fields": [
+    {
+     "off": "0x40",
+     "type": "u64",
+     "name": "u40"
+    },
+    {
+     "off": "0x78",
+     "type": "u64",
+     "name": "u78"
+    }
+   ]
+  },
+  {
+   "class": "oCNamedEventNetworkWithData",
+   "sites": 11,
+   "vftable_rvas": [
+    "0xf0f180"
+   ],
+   "fields": [
+    {
+     "off": "0x38",
+     "type": "u64",
+     "name": "u38"
+    },
+    {
+     "off": "0x40",
+     "type": "f32",
+     "name": "f40"
+    },
+    {
+     "off": "0x50",
+     "type": "u64",
+     "name": "u50"
+    },
+    {
+     "off": "0x58",
+     "type": "u64",
+     "name": "u58"
+    },
+    {
+     "off": "0x68",
+     "type": "u16",
+     "name": "u68"
+    },
+    {
+     "off": "0x6a",
+     "type": "u8",
+     "name": "u6a"
+    },
+    {
+     "off": "0x80",
+     "type": "u64",
+     "name": "u80"
+    },
+    {
+     "off": "0x88",
+     "type": "u64",
+     "name": "u88"
+    },
+    {
+     "off": "0x90",
+     "type": "u64",
+     "name": "u90"
+    },
+    {
+     "off": "0x98",
+     "type": "u32",
+     "name": "u98"
+    },
+    {
+     "off": "0xa0",
+     "type": "u32",
+     "name": "ua0"
+    },
+    {
+     "off": "0xa8",
+     "type": "u32",
+     "name": "ua8"
+    },
+    {
+     "off": "0x130",
+     "type": "u64",
+     "name": "u130"
+    },
+    {
+     "off": "0x138",
+     "type": "u64",
+     "name": "u138"
+    }
+   ]
+  }
  ]
 }

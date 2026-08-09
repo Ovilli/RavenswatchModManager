@@ -14,6 +14,7 @@
 #include "mem_safe.h"
 #include "symbols.gen.h"        // GENERATED — Sym::NamedEvent_Dispatch_Pattern
 #include "event_payload.gen.h"  // GENERATED — rsmm::event_payload()
+#include "event_fields.gen.h"   // GENERATED — vftable-keyed payload layouts
 
 #include "MinHook.h"
 
@@ -188,6 +189,16 @@ Dispatch_t     g_dispatch_real = nullptr;
 std::uintptr_t g_dispatch_va   = 0;
 std::atomic<unsigned> g_gameplay_seq{0};
 bool           g_probe_payloads = false;   // RSMM_EVENT_PROBE
+// The mined payload layouts are keyed by vftable RVA, which is only valid for
+// the build the symbol map was derived from — same gate as any other absolute
+// address (Loader::va_globals_trusted).
+bool           g_schemas_trusted = false;
+
+std::uintptr_t image_base() {
+    HMODULE h = GetModuleHandleA("Ravenswatch.exe");
+    if (!h) h = GetModuleHandleA(nullptr);
+    return reinterpret_cast<std::uintptr_t>(h);
+}
 
 // Copy the event's name (char* at ev+0x20) into `out`, accepting only the
 // [A-Z0-9_] alphabet the bus uses. Returns false on a null/garbled name so a
@@ -240,7 +251,10 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
                           static_cast<unsigned long long>(disp - 0x4d8));
     if (n < 0 || n >= static_cast<int>(sizeof(buf))) return;
 
-    // Verified payload layouts only; everything else gets the envelope.
+    // Hand-RE'd payload layouts first (their field names carry meaning the
+    // mined table cannot). `decoded` stops the generic vftable decode below
+    // from emitting the same offsets again under mechanical names.
+    bool decoded = false;
     if (std::strcmp(name, "GIVE_MAGICAL_OBJECT") == 0
         && committed_readable(reinterpret_cast<std::uintptr_t>(ev + 0x50), 0x10)) {
         // oe::dt::NamedEventGiveMagicalObject (0x60): MO definition GUID.
@@ -250,6 +264,7 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
                            ",\"mo_guid_lo\":\"0x%llx\",\"mo_guid_hi\":\"0x%llx\"",
                            static_cast<unsigned long long>(lo),
                            static_cast<unsigned long long>(hi));
+        decoded = true;
     } else if ((std::strcmp(name, "NETWORK_DAMAGE") == 0
                 || std::strcmp(name, "NETWORK_DAMAGE_RESPONSE") == 0)
                && committed_readable(reinterpret_cast<std::uintptr_t>(ev + 0x40), 0xb8)) {
@@ -267,6 +282,7 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
                            static_cast<unsigned long long>(srcid),
                            static_cast<unsigned long long>(target),
                            static_cast<unsigned long long>(instig));
+        decoded = true;
     } else if (std::strcmp(name, "POWER_UP_COLLECT_REQUEST") == 0
                && committed_readable(reinterpret_cast<std::uintptr_t>(ev + 0x38), 0x28)) {
         // oCDtNamedEventPowerUpCollectRequest — fired when the player picks a
@@ -306,7 +322,62 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
                            static_cast<unsigned long long>(q[9]),
                            static_cast<unsigned long long>(q[10]),
                            static_cast<unsigned long long>(q[11]));
+        decoded = true;
     }
+    // Typed payload, keyed by the event object's OWN vftable. This is what
+    // turns the ~24 payload-carrying event classes from an opaque envelope
+    // into readable fields: read *(ev+0), rebase to an RVA, and look up the
+    // layout mined from the binary (event_fields.gen.h). Matching on vftable
+    // rather than event name makes the match exact — several names share one
+    // class, and one class can be dispatched under names we never listed.
+    //
+    // Skipped when a decoder above already ran (its hand-RE'd names are the
+    // better ones, and duplicate JSON keys would be ambiguous), and when the
+    // build fingerprint says the RVAs are for a different game build.
+    if (!decoded && g_schemas_trusted && n < static_cast<int>(sizeof(buf) - 2)) {
+        std::uintptr_t vft = 0;
+        const auto base = image_base();
+        if (base && mem_load(ev, &vft) && vft > base) {
+            const auto* schema = event_schema_for(
+                static_cast<std::uint32_t>(vft - base));
+            if (schema) {
+                n += std::snprintf(buf + n, sizeof(buf) - n,
+                                   ",\"class\":\"%s\"", schema->cls);
+                for (std::uint16_t i = 0; i < schema->count; ++i) {
+                    const auto& f = schema->fields[i];
+                    const auto at = reinterpret_cast<std::uintptr_t>(ev) + f.off;
+                    char tmp[64];
+                    int add = 0;
+                    switch (f.type) {
+                        case 'b': { std::uint8_t v;  if (!mem_load(at, &v)) continue;
+                            add = std::snprintf(tmp, sizeof(tmp), ",\"%s\":%u", f.name, v); break; }
+                        case 'w': { std::uint16_t v; if (!mem_load(at, &v)) continue;
+                            add = std::snprintf(tmp, sizeof(tmp), ",\"%s\":%u", f.name, v); break; }
+                        case 'u': { std::uint32_t v; if (!mem_load(at, &v)) continue;
+                            add = std::snprintf(tmp, sizeof(tmp), ",\"%s\":%u", f.name, v); break; }
+                        case 'q': { std::uint64_t v; if (!mem_load(at, &v)) continue;
+                            // Pointers/ids as hex strings: a Lua number is a
+                            // double and silently loses the low bits of a
+                            // 64-bit handle.
+                            add = std::snprintf(tmp, sizeof(tmp), ",\"%s\":\"0x%llx\"",
+                                                f.name, (unsigned long long)v); break; }
+                        case 'f': { float v; if (!mem_load(at, &v)) continue;
+                            if (v != v) continue;          // NaN is not valid JSON
+                            add = std::snprintf(tmp, sizeof(tmp), ",\"%s\":%g", f.name,
+                                                static_cast<double>(v)); break; }
+                        case 'd': { double v; if (!mem_load(at, &v)) continue;
+                            if (v != v) continue;
+                            add = std::snprintf(tmp, sizeof(tmp), ",\"%s\":%g", f.name, v); break; }
+                        default: continue;
+                    }
+                    if (add <= 0 || add >= static_cast<int>(sizeof(buf) - n - 2)) break;
+                    std::memcpy(buf + n, tmp, static_cast<std::size_t>(add));
+                    n += add;
+                }
+            }
+        }
+    }
+
     // Generic probe (RSMM_EVENT_PROBE=1): for every event WITHOUT a decoded
     // layout above, publish a bounded window of the event object as hex
     // qwords. The payload of a new event is otherwise invisible from Lua, so
@@ -354,6 +425,12 @@ bool install_gameplay_bus() {
         return false;
     }
     g_probe_payloads = flag_enabled("RSMM_EVENT_PROBE");
+    g_schemas_trusted = Loader::get().va_globals_trusted();
+    if (!g_schemas_trusted) {
+        Loader::get().log("[gameplay-events] game build != symbol-map build; "
+                          "typed payload decode disabled (events still fire "
+                          "with the envelope)");
+    }
     Loader::get().log(std::string("[gameplay-events] oCGameNamedEvent bus armed "
                       "(every gameplay event -> R.on('gameplay:<NAME>'))")
                       + (g_probe_payloads ? " [payload probe ON: ev.w38..ev.w70]" : ""));
