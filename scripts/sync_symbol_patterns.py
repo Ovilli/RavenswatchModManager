@@ -98,6 +98,7 @@ def main() -> int:
 
     smap = load_symbol_map()
     wanted: dict[str, int] = {}  # entry name -> function addr (current build)
+    stale: set[str] = set()      # semantic entries that must NOT survive
     for s in smap.symbols:
         pn = s.pattern_name
         if pn is None:
@@ -106,6 +107,12 @@ def main() -> int:
         # raw/anchor still points at a pre-patch address, so a pattern built
         # there is meaningless. status=ok means the address is current.
         if s.status != "ok":
+            # ...and REMOVE any entry a previous run left behind. Skipping the
+            # write is not enough: demoting a symbol used to leave its old
+            # pattern in the DB, so the loader kept resolving it and hooking
+            # whatever the stale bytes matched. Downgrading status was purely
+            # cosmetic — this is what makes it fail CLOSED.
+            stale.add(pn)
             continue
         parent_raw = s.raw or s.anchor["raw"]
         wanted[pn] = int(parent_raw.split("_", 1)[1], 16)
@@ -133,9 +140,17 @@ def main() -> int:
             db.append(entry)
             added += 1
 
+    # Prune before writing. `wanted` wins on a name in both (a symbol can be
+    # re-promoted in the same run that another is demoted).
+    pruned = 0
+    doomed = stale - set(wanted)
+    if doomed:
+        db = [e for e in db if e["name"] not in doomed]
+        pruned = len(doomed)
+
     DB_PATH.write_text(json.dumps(db))
-    print(f"symbol entries: {added} added, {updated} updated, {failed} failed "
-          f"(db now {len(db)} entries)", file=sys.stderr)
+    print(f"symbol entries: {added} added, {updated} updated, {failed} failed, "
+          f"{pruned} pruned (non-ok) (db now {len(db)} entries)", file=sys.stderr)
 
     meta = {
         "schema": 1,

@@ -11,6 +11,7 @@
 
 #include "hook_skins.h"
 #include "fn_resolver.h"
+#include "hook_util.h"
 #include "loader.h"
 #include "mem_safe.h"
 
@@ -85,6 +86,7 @@ using VecGrow_t       = void (*)(void* vec, std::uint64_t, std::uint32_t new_cap
 using Filter_t        = int  (*)(void* mgr, void* node);  // manager vtable[1]
 
 RosterBuilder_t g_real_builder = nullptr;
+std::uintptr_t  g_builder_va  = 0;
 EntryCtor_t     g_entry_ctor   = nullptr;
 StringAssign_t  g_string_assign = nullptr;
 GridPopulate_t  g_real_populate = nullptr;
@@ -326,16 +328,16 @@ void install_filter_hook(void* mgr) {
                               "filter not hooked");
             return;
         }
-        auto* filter_addr = reinterpret_cast<LPVOID>(filter_va);
-        if (MH_CreateHook(filter_addr,
-                          reinterpret_cast<LPVOID>(&hook_filter),
-                          reinterpret_cast<LPVOID*>(&g_real_filter)) == MH_OK
-            && MH_EnableHook(filter_addr) == MH_OK) {
-            Loader::get().log("[skin-hook] grid filter hooked @ "
-                              + hex_of(reinterpret_cast<std::uintptr_t>(filter_addr))
-                              + "; custom packs will show as buttons");
+        // Read live from the manager's vtable, so it is correct for whichever
+        // manager class the game constructed — but a vtable slot can still
+        // hold a thunk or a garbage pointer if the object is not what we
+        // think, hence the same entry-point requirement as any other hook.
+        if (hook_install_at("skin-hook", "grid filter", filter_va,
+                            reinterpret_cast<void*>(&hook_filter),
+                            reinterpret_cast<void**>(&g_real_filter))) {
+            Loader::get().log("[skin-hook] custom packs will show as buttons");
         } else {
-            Loader::get().log("[skin-hook] WARNING: filter MinHook failed; custom "
+            Loader::get().log("[skin-hook] filter hook unavailable; custom "
                               "packs stay on the roster but render no button "
                               "(set RSMM_SKIN_FORCE_SHOW=1 to force them)");
         }
@@ -423,60 +425,6 @@ bool load_pack_defs() {
     return true;
 }
 
-bool resolve(const char* name, void** out) {
-    const auto va = fn_resolve(name);
-    if (va == 0 || va == static_cast<std::uintptr_t>(-1)) {
-        Loader::get().log(std::string("[skin-hook] resolve ") + name + " failed");
-        return false;
-    }
-    if (!fn_verify(name, va)) {
-        Loader::get().log(std::string("[skin-hook] verify ") + name
-                          + " @ " + hex_of(va) + " mismatch (game patched?)");
-        return false;
-    }
-    *out = reinterpret_cast<void*>(va);
-    // Log whether the target is a real function entry. These five names are
-    // FUN_<addr> keys from an older build, kept alive as legacy aliases in the
-    // pattern DB — four of them match perfectly at addresses that are 0x90 to
-    // 0xac0 bytes INSIDE a current function, because the routines were merged
-    // into larger ones. fn_verify cannot see that (the bytes do match); only
-    // .pdata can. Hooking such a target splices a jump into the middle of an
-    // unrelated body. The call sites decide what to do with this — see
-    // hook_target_ok below.
-    if (!fn_is_function_start(va)) {
-        Loader::get().log(std::string("[skin-hook] WARNING ") + name + " @ "
-                          + hex_of(va) + " is NOT a function start (.pdata); "
-                          "the pattern is from an older build and now matches "
-                          "mid-function");
-    }
-    Loader::get().log(std::string("[skin-hook] ") + name + " -> " + hex_of(va));
-    return true;
-}
-
-// Fail-closed gate for anything about to receive a MinHook detour. Splicing a
-// jump into the middle of a live function corrupts it, so a target that .pdata
-// does not list as an entry point is refused outright unless the operator has
-// explicitly accepted the risk. Opt-out exists because the skin feature has
-// been exercised in-game against these very addresses: if that continues to
-// work the flag keeps it working, and if it does not, the default now refuses
-// instead of corrupting the game on boot.
-bool hook_target_ok(const char* what, std::uintptr_t va) {
-    if (fn_is_function_start(va)) return true;
-    if (flag_enabled("RSMM_SKIN_ALLOW_MIDFUNC_HOOK")) {
-        Loader::get().log(std::string("[skin-hook] ") + what + " @ " + hex_of(va)
-                          + " is mid-function; hooking anyway "
-                            "(RSMM_SKIN_ALLOW_MIDFUNC_HOOK=1)");
-        return true;
-    }
-    Loader::get().log(std::string("[skin-hook] REFUSING to hook ") + what + " @ "
-                      + hex_of(va) + ": not a function start. The symbol map "
-                      "entry for this routine is status=unverified and its "
-                      "legacy pattern now matches mid-function. Re-derive it "
-                      "(tools/relocate_stale_symbols.py) or set "
-                      "RSMM_SKIN_ALLOW_MIDFUNC_HOOK=1 to force.");
-    return false;
-}
-
 } // namespace
 
 bool install_skin_hooks() {
@@ -486,29 +434,38 @@ bool install_skin_hooks() {
         return false;
     }
 
-    void* builder_va = nullptr;
-    if (!resolve("FUN_1401dcae0", &builder_va)) return false;
-    if (!resolve("FUN_140214bb0", reinterpret_cast<void**>(&g_entry_ctor))) return false;
-    if (!resolve("FUN_1405288b0", reinterpret_cast<void**>(&g_string_assign))) return false;
-
-    if (!hook_target_ok("roster builder",
-                        reinterpret_cast<std::uintptr_t>(builder_va))) {
+    // NONE of these four names is safe on the shipped build. They are the
+    // addresses these routines had two builds ago; the pattern DB keeps them
+    // alive as legacy aliases, so each one resolves and each one passes
+    // fn_verify — and then lands 0x90 to 0xac0 bytes INSIDE an unrelated
+    // function, because the routines were merged into larger ones. The
+    // "roster builder" target sits inside an oCDtEntityCpntMinimapMarker
+    // destructor. `FUN_140154c20`, used below as the vector-grow helper, is
+    // an aligned-array DEALLOCATOR — calling it as a grow would free the
+    // caller's array.
+    //
+    // The symbol map records all four as status=unverified, so there are no
+    // semantic patterns to switch to yet; they need re-deriving (see
+    // tools/relocate_stale_symbols.py). Until then hook_install refuses them
+    // on the .pdata check and the whole feature disables itself, which is the
+    // correct outcome: a mid-function detour corrupts the function it lands
+    // in, and the crash surfaces somewhere unrelated much later.
+    if (!resolve_checked("skin-hook", "entry ctor", "FUN_140214bb0",
+                         reinterpret_cast<void**>(&g_entry_ctor))
+        || !resolve_checked("skin-hook", "string assign", "FUN_1405288b0",
+                            reinterpret_cast<void**>(&g_string_assign))) {
+        Loader::get().log("[skin-hook] disabled: helper routines do not resolve "
+                          "to function starts on this build");
         return false;
     }
-    const auto rc = MH_CreateHook(builder_va,
-                                  reinterpret_cast<LPVOID>(&hook_roster_builder),
-                                  reinterpret_cast<LPVOID*>(&g_real_builder));
-    if (rc != MH_OK) {
-        Loader::get().log("[skin-hook] MH_CreateHook failed rc="
-                          + std::to_string(static_cast<int>(rc)));
+    if (!hook_install("skin-hook", "roster builder", "FUN_1401dcae0",
+                      reinterpret_cast<void*>(&hook_roster_builder),
+                      reinterpret_cast<void**>(&g_real_builder),
+                      &g_builder_va)) {
         return false;
     }
-    if (MH_EnableHook(builder_va) != MH_OK) {
-        Loader::get().log("[skin-hook] MH_EnableHook failed");
-        return false;
-    }
-    Loader::get().log("[skin-hook] installed on FUN_1401dcae0 (roster builder); "
-                      + std::to_string(g_packs.size()) + " pack(s) queued");
+    Loader::get().log("[skin-hook] " + std::to_string(g_packs.size())
+                      + " pack(s) queued");
     // The grid-filter detour is installed lazily from append_custom_packs once
     // the live manager (and its real vtable[1]) exists — see install_filter_hook.
 
@@ -517,23 +474,15 @@ bool install_skin_hooks() {
     // brand-new keys). Off by default; see docs/_re/kinds/skins.md (A1/A2).
     g_force_show = env_truthy("RSMM_SKIN_FORCE_SHOW");
     if (g_force_show) {
-        void* populate_va = nullptr;
-        if (resolve("FUN_1401f0f10", &populate_va)
-            && resolve("FUN_140154c20", reinterpret_cast<void**>(&g_vec_grow))
-            && hook_target_ok("grid populate",
-                              reinterpret_cast<std::uintptr_t>(populate_va))) {
-            if (MH_CreateHook(populate_va,
-                              reinterpret_cast<LPVOID>(&hook_grid_populate),
-                              reinterpret_cast<LPVOID*>(&g_real_populate)) == MH_OK
-                && MH_EnableHook(populate_va) == MH_OK) {
-                Loader::get().log("[skin-hook] force-show enabled "
-                                  "(RSMM_SKIN_FORCE_SHOW=1) on FUN_1401f0f10");
-            } else {
-                Loader::get().log("[skin-hook] force-show hook install failed");
-                g_force_show = false;
-            }
+        if (resolve_checked("skin-hook", "vector grow", "FUN_140154c20",
+                            reinterpret_cast<void**>(&g_vec_grow))
+            && hook_install("skin-hook", "grid populate", "FUN_1401f0f10",
+                            reinterpret_cast<void*>(&hook_grid_populate),
+                            reinterpret_cast<void**>(&g_real_populate))) {
+            Loader::get().log("[skin-hook] force-show enabled "
+                              "(RSMM_SKIN_FORCE_SHOW=1)");
         } else {
-            Loader::get().log("[skin-hook] force-show resolve failed; disabled");
+            Loader::get().log("[skin-hook] force-show unavailable; disabled");
             g_force_show = false;
         }
     }

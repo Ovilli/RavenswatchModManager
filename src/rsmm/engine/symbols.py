@@ -234,4 +234,37 @@ def validate(smap: SymbolMap | None = None) -> list[str]:
                 problems.append(
                     f"{s.name}: status=ok but pattern {pn} not in function_patterns.json"
                 )
+        elif s.kind in ("function", "event"):
+            # A non-ok symbol must have NO pattern, or it fails OPEN: the
+            # loader resolves it, hooks whatever the stale bytes match, and the
+            # downgrade that was supposed to disable the capability did
+            # nothing. Demotion is only real once the pattern is gone
+            # (scripts/sync_symbol_patterns.py prunes these).
+            pn = s.pattern_name
+            if pn and pats and pn in pats:
+                problems.append(
+                    f"{s.name}: status={s.status} but pattern {pn} is STILL in "
+                    f"function_patterns.json — the loader will resolve and hook "
+                    f"it. Re-run scripts/sync_symbol_patterns.py to prune."
+                )
+
+    # Two names on one address is legal (the map has documented aliases) but
+    # invisible, and it breaks remapping: a later pass moves one and leaves the
+    # other pointing at the old function. Require the duplication to be
+    # acknowledged in a note.
+    by_addr: dict[str, list[str]] = {}
+    for s in smap.symbols:
+        if s.raw and s.status == "ok":
+            by_addr.setdefault(s.raw, []).append(s.name)
+    for raw, names in by_addr.items():
+        if len(names) < 2:
+            continue
+        for s in smap.symbols:
+            if s.name in names and "SAME FUNCTION" not in (s.note or ""):
+                problems.append(
+                    f"{s.name}: shares address {raw} with "
+                    f"{[n for n in names if n != s.name]} but its note does not "
+                    f"say 'SAME FUNCTION as <other>' — an unacknowledged alias "
+                    f"strands one of the two on the next remap"
+                )
     return problems
