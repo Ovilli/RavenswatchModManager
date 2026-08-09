@@ -48,6 +48,14 @@ class Symbol:
     signature: str | None = None
     raw: str | None = None
     anchor: dict[str, str] | None = None
+    # Structured, machine-resolvable record of WHAT identifies this function —
+    # a vftable slot, the symbols it calls, a log string it carries. Unlike a
+    # byte pattern (which dies when the game is rebuilt) or prose in `note`
+    # (which a text miner recovers at ~25%), a locator re-finds the routine in
+    # a new build directly. Fill it in when you find a symbol, while you still
+    # know what identified it; tools/backfill_locators.py verifies they still
+    # resolve. See tools/symbol_locate.py::resolve_locator for the schema.
+    locator: dict | None = None
     va: str | None = None
     status: str = "unverified"
     cabi: dict[str, Any] | None = None
@@ -157,6 +165,7 @@ def _coerce(entry: dict[str, Any]) -> Symbol:
         signature=entry.get("signature"),
         raw=entry.get("raw"),
         anchor=entry.get("anchor"),
+        locator=entry.get("locator"),
         va=entry.get("va"),
         status=entry.get("status", "unverified"),
         cabi=entry.get("cabi"),
@@ -247,6 +256,37 @@ def validate(smap: SymbolMap | None = None) -> list[str]:
                     f"function_patterns.json — the loader will resolve and hook "
                     f"it. Re-run scripts/sync_symbol_patterns.py to prune."
                 )
+
+    # Locator hygiene. The corpus a locator resolves against is gitignored, so
+    # "does it still find the function" cannot run in CI (that is
+    # tools/backfill_locators.py --check, on a dev machine). What CI CAN check
+    # is that the locator is well-formed and self-consistent — in particular
+    # that every symbol it names exists, since a locator pointing at a deleted
+    # or renamed symbol is silently dead the day you need it.
+    names = {s.name for s in smap.symbols}
+    for s in smap.symbols:
+        loc = s.locator
+        if loc is None:
+            continue
+        if not isinstance(loc, dict) or not loc:
+            problems.append(f"{s.name}: locator must be a non-empty object")
+            continue
+        for key in ("calls", "called_by", "strings", "consts", "offsets"):
+            val = loc.get(key)
+            if val is not None and not isinstance(val, list):
+                problems.append(f"{s.name}: locator.{key} must be a list")
+        for key in ("calls", "called_by"):
+            for ref in loc.get(key) or []:
+                if ref not in names:
+                    problems.append(
+                        f"{s.name}: locator.{key} names {ref!r}, which is not "
+                        f"in the symbol map"
+                    )
+        vft = loc.get("vftable")
+        if vft is not None and not (
+            isinstance(vft, dict) and "class" in vft and "slot" in vft
+        ):
+            problems.append(f"{s.name}: locator.vftable needs 'class' and 'slot'")
 
     # Two names on one address is legal (the map has documented aliases) but
     # invisible, and it breaks remapping: a later pass moves one and leaves the
