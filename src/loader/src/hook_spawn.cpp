@@ -25,6 +25,7 @@
 #include "loader.h"
 #include "mem_safe.h"
 #include "fn_resolver.h"
+#include "hook_util.h"
 #include "hook_spawn.h"
 
 namespace rsmm {
@@ -153,35 +154,14 @@ bool install_spawn_hooks() {
         Loader::get().log("[spawn-trace] disabled (set RSMM_ENABLE_SPAWN_HOOK=1 to arm)");
         return false;
     }
-    if (!fn_resolver_init()) {
-        Loader::get().log("[spawn-trace] fn_resolver_init failed");
-        return false;
-    }
-    std::uintptr_t va = fn_resolve("FUN_140330c30");
-    if (va == 0 || va == static_cast<std::uintptr_t>(-1)) {
-        Loader::get().log("[spawn-trace] FUN_140330c30 pattern not found; disabled");
-        return false;
-    }
-    if (!fn_verify("FUN_140330c30", va)) {
-        Loader::get().log("[spawn-trace] FUN_140330c30 verify failed (game patched?)");
-        return false;
-    }
-    Loader::get().log("[spawn-trace] selector prepare @ " + hex_of(va));
-
-    const auto target = reinterpret_cast<LPVOID>(va);
-    auto rc = MH_CreateHook(target, reinterpret_cast<LPVOID>(&hook_prepare),
-                            reinterpret_cast<LPVOID*>(&g_real_prepare));
-    if (rc != MH_OK) {
-        Loader::get().log("[spawn-trace] MH_CreateHook failed rc="
-                          + std::to_string(static_cast<int>(rc)));
-        return false;
-    }
-    if (MH_EnableHook(target) != MH_OK) {
-        Loader::get().log("[spawn-trace] MH_EnableHook failed");
-        return false;
-    }
-    Loader::get().log("[spawn-trace] installed on FUN_140330c30 (selector prepare)");
-    return true;
+    // "FUN_140330c30" has no entry in the current pattern DB at all, so this
+    // resolves to nothing and the tracer disables itself — which is the
+    // correct behaviour, just previously reported as three separate failures.
+    // It stays a literal because no semantic symbol exists for this routine
+    // yet; add one to data/symbols.json and switch to Sym::<Name>_Pattern.
+    return hook_install("spawn-trace", "selector prepare", "FUN_140330c30",
+                        reinterpret_cast<void*>(&hook_prepare),
+                        reinterpret_cast<void**>(&g_real_prepare));
 }
 
 } // namespace rsmm

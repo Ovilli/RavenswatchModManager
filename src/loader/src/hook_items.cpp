@@ -11,6 +11,7 @@
 
 #include "hook_items.h"
 #include "fn_resolver.h"
+#include "hook_util.h"
 #include "loader.h"
 #include "mem_safe.h"
 #include "symbols.gen.h"      // GENERATED — addresses (Sym::)
@@ -477,38 +478,16 @@ bool install_item_hooks() {
     // no containing-function + offset arithmetic to drift. If the pattern no
     // longer resolves the game was likely patched; do NOT fall back to the
     // baked VA, which may now point at unrelated code.
-    std::uintptr_t spawn_va = fn_resolve(Sym::MagicalObject_SpawnAllObjects_Pattern);
-    if (spawn_va == 0 || spawn_va == static_cast<std::uintptr_t>(-1)) {
-        Loader::get().log("[item-hook] SpawnAllObjects pattern not found; "
-                          "disabled until function_patterns.json is regenerated");
+    if (!hook_install("item-hook", "SpawnAllObjects",
+                      Sym::MagicalObject_SpawnAllObjects_Pattern,
+                      reinterpret_cast<void*>(&hook_spawn_all_objects),
+                      reinterpret_cast<void**>(&g_real_spawn_all))) {
         return false;
     }
-    if (!fn_verify(Sym::MagicalObject_SpawnAllObjects_Pattern, spawn_va)) {
-        Loader::get().log("[item-hook] SpawnAllObjects verify failed; "
-                          "pattern mismatch (game patched?)");
-        return false;
-    }
-    Loader::get().log(std::string("[item-hook] SpawnAllObjects @ ")
-                      + hex_of(spawn_va));
-
-    const auto target = reinterpret_cast<LPVOID>(spawn_va);
-    const auto rc = MH_CreateHook(target,
-                                  reinterpret_cast<LPVOID>(&hook_spawn_all_objects),
-                                  reinterpret_cast<LPVOID*>(&g_real_spawn_all));
-    if (rc != MH_OK) {
-        Loader::get().log("[item-hook] MH_CreateHook failed rc="
-                          + std::to_string(static_cast<int>(rc)));
-        return false;
-    }
-    if (MH_EnableHook(target) != MH_OK) {
-        Loader::get().log("[item-hook] MH_EnableHook failed");
-        return false;
-    }
-
     {
         std::lock_guard<std::mutex> g(g_items_mu);
-        Loader::get().log("[item-hook] installed on FUN_140258760 (SpawnAllObjects); "
-                          + std::to_string(g_items.size()) + " item(s) queued");
+        Loader::get().log("[item-hook] " + std::to_string(g_items.size())
+                          + " item(s) queued");
     }
 
     // The detour above only fires if SpawnAllObjects runs AFTER we arm it.

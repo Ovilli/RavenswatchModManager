@@ -17,6 +17,8 @@
 
 #include "hook_engine.h"
 #include "fn_resolver.h"
+#include "hook_util.h"
+#include "symbols.gen.h"  // GENERATED — Sym::
 #include "loader.h"
 
 #include "MinHook.h"
@@ -90,35 +92,19 @@ bool install_engine_hooks() {
     }
     Loader::get().log(std::string("[engine-hook] arming via ")
                       + (by_env ? "env" : "file marker"));
-    if (!fn_resolver_init()) {
-        Loader::get().log("[engine-hook] fn_resolver_init failed; skipping");
+    // Resolve by SEMANTIC name. This was the literal "FUN_140487040" — the
+    // address the routine had two builds ago, alive only as a legacy alias in
+    // the pattern DB. hook_install adds the check that literal could never
+    // pass on its own: that the resolved address is a .pdata function entry
+    // and not the middle of some larger function the routine was merged into.
+    if (!hook_install("engine-hook", "resource lookup",
+                      Sym::Resource_LookupByPath_Pattern,
+                      reinterpret_cast<void*>(&hook_resource_lookup),
+                      reinterpret_cast<void**>(&g_real_resource_lookup),
+                      &g_lookup_va)) {
         return false;
     }
-    const auto va = fn_resolve("FUN_140487040");
-    if (va == 0 || va == static_cast<std::uintptr_t>(-1)) {
-        Loader::get().log("[engine-hook] resolve FUN_140487040 failed");
-        return false;
-    }
-    Loader::get().log("[engine-hook] FUN_140487040 resolved -> 0x" + [&]{
-        char b[32]; snprintf(b, sizeof(b), "%llx", (unsigned long long)va); return std::string(b);
-    }());
-
-    const auto rc = MH_CreateHook(reinterpret_cast<LPVOID>(va),
-                                  reinterpret_cast<LPVOID>(&hook_resource_lookup),
-                                  reinterpret_cast<LPVOID*>(&g_real_resource_lookup));
-    if (rc != MH_OK) {
-        Loader::get().log("[engine-hook] MH_CreateHook FUN_140487040 failed rc="
-                          + std::to_string(static_cast<int>(rc)));
-        return false;
-    }
-    const auto er = MH_EnableHook(reinterpret_cast<LPVOID>(va));
-    if (er != MH_OK) {
-        Loader::get().log("[engine-hook] MH_EnableHook FUN_140487040 failed rc="
-                          + std::to_string(static_cast<int>(er)));
-        return false;
-    }
-    g_lookup_va = va;
-    Loader::get().log("[engine-hook] installed on FUN_140487040; will log first "
+    Loader::get().log("[engine-hook] will log first "
                       + std::to_string(kMaxLogCalls) + " calls");
     return true;
 }
@@ -129,9 +115,7 @@ void remove_engine_hooks() {
     // which tore down every other hook in the process — the gameplay bus, the
     // hero capture, and every mod's rsmm.hook slot — on a path that is only
     // supposed to retire one diagnostic detour.
-    auto* p = reinterpret_cast<LPVOID>(g_lookup_va);
-    MH_DisableHook(p);
-    MH_RemoveHook(p);
+    hook_remove(g_lookup_va);
     g_lookup_va = 0;
     g_real_resource_lookup = nullptr;
     Loader::get().log("[engine-hook] removed (total calls="

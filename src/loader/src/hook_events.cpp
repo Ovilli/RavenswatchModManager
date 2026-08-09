@@ -9,6 +9,7 @@
 
 #include "hook_events.h"
 #include "fn_resolver.h"
+#include "hook_util.h"
 #include "script_lua.h"
 #include "loader.h"
 #include "mem_safe.h"
@@ -174,11 +175,9 @@ bool install_analytics_firehose() {
                           "the middle of a live function)");
         return false;
     }
-    if (MH_CreateHook(reinterpret_cast<LPVOID>(g_submit_va),
-                      reinterpret_cast<LPVOID>(&analytics_firehose_detour),
-                      reinterpret_cast<LPVOID*>(&g_submit_real)) != MH_OK
-        || MH_EnableHook(reinterpret_cast<LPVOID>(g_submit_va)) != MH_OK) {
-        Loader::get().log("[game-events] analytics firehose hook failed");
+    if (!hook_install_at("game-events", "analytics sink", g_submit_va,
+                         reinterpret_cast<void*>(&analytics_firehose_detour),
+                         reinterpret_cast<void**>(&g_submit_real))) {
         g_submit_va = 0;
         return false;
     }
@@ -438,11 +437,9 @@ bool install_gameplay_bus() {
                           "gameplay bus disabled");
         return false;
     }
-    if (MH_CreateHook(reinterpret_cast<LPVOID>(g_dispatch_va),
-                      reinterpret_cast<LPVOID>(&gameplay_dispatch_detour),
-                      reinterpret_cast<LPVOID*>(&g_dispatch_real)) != MH_OK
-        || MH_EnableHook(reinterpret_cast<LPVOID>(g_dispatch_va)) != MH_OK) {
-        Loader::get().log("[gameplay-events] NamedEvent_Dispatch hook failed");
+    if (!hook_install_at("gameplay-events", "NamedEvent_Dispatch", g_dispatch_va,
+                         reinterpret_cast<void*>(&gameplay_dispatch_detour),
+                         reinterpret_cast<void**>(&g_dispatch_real))) {
         g_dispatch_va = 0;
         return false;
     }
@@ -482,18 +479,11 @@ bool arm(EventHook& h) {
                           + " resolves mid-function; skipping " + h.lua_event);
         return false;
     }
-    if (MH_CreateHook(reinterpret_cast<LPVOID>(h.va),
-                      reinterpret_cast<LPVOID>(&detour<N>),
-                      reinterpret_cast<LPVOID*>(&h.real)) != MH_OK) {
-        Loader::get().log(std::string("[game-events] MH_CreateHook ") + h.fn_name + " failed");
+    if (!hook_install_at("game-events", h.lua_event, h.va,
+                         reinterpret_cast<void*>(&detour<N>),
+                         reinterpret_cast<void**>(&h.real))) {
         return false;
     }
-    if (MH_EnableHook(reinterpret_cast<LPVOID>(h.va)) != MH_OK) {
-        Loader::get().log(std::string("[game-events] MH_EnableHook ") + h.fn_name + " failed");
-        return false;
-    }
-    Loader::get().log(std::string("[game-events] '") + h.lua_event + "' -> "
-                      + h.fn_name + " hooked");
     return true;
 }
 
@@ -719,35 +709,25 @@ bool install_hero_capture() {
     // Source 1 (best-effort, instant): the hero spawn/post-load init. Captures
     // the hero the moment it spawns, before it ever acts. If it can't resolve
     // (older corpus), the give/gain hooks below still provide capture-on-action.
-    g_subscribe_va = fn_resolve(Sym::NamedEvent_HeroSubscribeAll_Pattern);
-    if (g_subscribe_va != 0 && g_subscribe_va != static_cast<std::uintptr_t>(-1)
-        && fn_verify(Sym::NamedEvent_HeroSubscribeAll_Pattern, g_subscribe_va)
-        && MH_CreateHook(reinterpret_cast<LPVOID>(g_subscribe_va),
-                         reinterpret_cast<LPVOID>(&detour_subscribe_all),
-                         reinterpret_cast<LPVOID*>(&g_subscribe_real)) == MH_OK
-        && MH_EnableHook(reinterpret_cast<LPVOID>(g_subscribe_va)) == MH_OK) {
+    if (hook_install("hero-capture", "subscribe-all (instant capture)",
+                     Sym::NamedEvent_HeroSubscribeAll_Pattern,
+                     reinterpret_cast<void*>(&detour_subscribe_all),
+                     reinterpret_cast<void**>(&g_subscribe_real),
+                     &g_subscribe_va)) {
         any = true;
         instant = true;
     } else {
         Loader::get().log("[hero-capture] subscribe-all (instant) hook unavailable; "
                           "falling back to capture-on-action");
     }
-    if (MH_CreateHook(reinterpret_cast<LPVOID>(g_give_va),
-                      reinterpret_cast<LPVOID>(&detour_give),
-                      reinterpret_cast<LPVOID*>(&g_give_real)) == MH_OK
-        && MH_EnableHook(reinterpret_cast<LPVOID>(g_give_va)) == MH_OK) {
-        any = true;
-    } else {
-        Loader::get().log("[hero-capture] give-handler hook failed");
-    }
-    if (MH_CreateHook(reinterpret_cast<LPVOID>(g_gain_va),
-                      reinterpret_cast<LPVOID>(&detour_gain_health),
-                      reinterpret_cast<LPVOID*>(&g_gain_real)) == MH_OK
-        && MH_EnableHook(reinterpret_cast<LPVOID>(g_gain_va)) == MH_OK) {
-        any = true;
-    } else {
-        Loader::get().log("[hero-capture] gain-health-handler hook failed");
-    }
+    // give/gain were resolved + verified above; hook_install_at adds the
+    // .pdata entry-point check the old inline sequence never made.
+    any |= hook_install_at("hero-capture", "give handler", g_give_va,
+                           reinterpret_cast<void*>(&detour_give),
+                           reinterpret_cast<void**>(&g_give_real));
+    any |= hook_install_at("hero-capture", "gain-health handler", g_gain_va,
+                           reinterpret_cast<void*>(&detour_gain_health),
+                           reinterpret_cast<void**>(&g_gain_real));
     if (any) {
         // Sentinel: tells rsmm.lua native capture owns these handlers, so it
         // must NOT re-arm the per-state Lua capture hooks (which would collide
@@ -797,12 +777,7 @@ void remove_event_hooks() {
     // Disable AND remove: on a dynamic unload the detours live in this DLL's
     // .text, so leaving a merely-disabled hook registered keeps MinHook
     // holding a pointer into memory that is about to be unmapped.
-    auto drop = [](std::uintptr_t va) {
-        if (!va) return;
-        auto* p = reinterpret_cast<LPVOID>(va);
-        MH_DisableHook(p);
-        MH_RemoveHook(p);
-    };
+    auto drop = [](std::uintptr_t va) { hook_remove(va); };
     for (auto& h : g_hooks) { drop(h.va); h.va = 0; h.real = nullptr; }
     drop(g_submit_va);   g_submit_va = 0;   g_submit_real = nullptr;
     drop(g_dispatch_va); g_dispatch_va = 0; g_dispatch_real = nullptr;

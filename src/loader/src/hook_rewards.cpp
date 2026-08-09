@@ -25,6 +25,8 @@
 #include "loader.h"
 #include "mem_safe.h"
 #include "fn_resolver.h"
+#include "hook_util.h"
+#include "symbols.gen.h"  // GENERATED — Sym::
 #include "hook_rewards.h"
 
 namespace rsmm {
@@ -164,35 +166,13 @@ bool install_reward_hooks() {
         Loader::get().log("[reward-dump] disabled (set RSMM_ENABLE_REWARD_DUMP=1 to arm)");
         return false;
     }
-    if (!fn_resolver_init()) {
-        Loader::get().log("[reward-dump] fn_resolver_init failed");
-        return false;
-    }
-    std::uintptr_t va = fn_resolve("FUN_1401e9800");
-    if (va == 0 || va == static_cast<std::uintptr_t>(-1)) {
-        Loader::get().log("[reward-dump] FUN_1401e9800 pattern not found; disabled");
-        return false;
-    }
-    if (!fn_verify("FUN_1401e9800", va)) {
-        Loader::get().log("[reward-dump] FUN_1401e9800 verify failed (game patched?)");
-        return false;
-    }
-    Loader::get().log("[reward-dump] reward roll @ " + hex_of(va));
-
-    const auto target = reinterpret_cast<LPVOID>(va);
-    auto rc = MH_CreateHook(target, reinterpret_cast<LPVOID>(&hook_reward_roll),
-                            reinterpret_cast<LPVOID*>(&g_real_roll));
-    if (rc != MH_OK) {
-        Loader::get().log("[reward-dump] MH_CreateHook failed rc="
-                          + std::to_string(static_cast<int>(rc)));
-        return false;
-    }
-    if (MH_EnableHook(target) != MH_OK) {
-        Loader::get().log("[reward-dump] MH_EnableHook failed");
-        return false;
-    }
-    Loader::get().log("[reward-dump] installed on FUN_1401e9800 (reward roll)");
-    return true;
+    // Semantic name, not the build-specific "FUN_1401e9800" literal this used
+    // to carry (see hook_util.h for why a literal is unsafe even when it
+    // resolves and verifies).
+    return hook_install("reward-dump", "reward roll",
+                        Sym::Reward_InitAllRewards_Pattern,
+                        reinterpret_cast<void*>(&hook_reward_roll),
+                        reinterpret_cast<void**>(&g_real_roll));
 }
 
 } // namespace rsmm

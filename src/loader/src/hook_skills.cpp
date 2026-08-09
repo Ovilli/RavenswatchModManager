@@ -14,6 +14,7 @@
 
 #include "MinHook.h"
 #include "loader.h"
+#include "hook_util.h"
 #include "mem_safe.h"
 #include "fn_resolver.h"
 #include "hook_skills.h"
@@ -301,36 +302,13 @@ bool install_skill_hooks() {
         Loader::get().log("[skill-hook] disabled (set RSMM_ENABLE_SKILL_HOOK=1 to arm)");
         return false;
     }
-    if (!fn_resolver_init()) {
-        Loader::get().log("[skill-hook] fn_resolver_init failed");
-        return false;
-    }
-    std::uintptr_t va = fn_resolve("FUN_14031e630");
-    if (va == 0 || va == static_cast<std::uintptr_t>(-1)) {
-        Loader::get().log("[skill-hook] FUN_14031e630 pattern not found; disabled");
-        return false;
-    }
-    if (!fn_verify("FUN_14031e630", va)) {
-        Loader::get().log("[skill-hook] FUN_14031e630 verify failed (game patched?)");
-        return false;
-    }
-    Loader::get().log("[skill-hook] herodef deserialize @ " + hex_of(va));
-
-    const auto target = reinterpret_cast<LPVOID>(va);
-    auto rc = MH_CreateHook(target,
-                            reinterpret_cast<LPVOID>(&hook_herodef_deserialize),
-                            reinterpret_cast<LPVOID*>(&g_real_deserialize));
-    if (rc != MH_OK) {
-        Loader::get().log("[skill-hook] MH_CreateHook failed rc="
-                          + std::to_string(static_cast<int>(rc)));
-        return false;
-    }
-    if (MH_EnableHook(target) != MH_OK) {
-        Loader::get().log("[skill-hook] MH_EnableHook failed");
-        return false;
-    }
-    Loader::get().log("[skill-hook] installed on FUN_14031e630 (herodef deserialize)");
-    return true;
+    // "FUN_14031e630" has no entry in the current pattern DB, so this resolves
+    // to nothing and the hook disables itself. It stays a literal because no
+    // semantic symbol exists for the herodef deserialiser yet — add one to
+    // data/symbols.json and switch to Sym::<Name>_Pattern.
+    return hook_install("skill-hook", "herodef deserialize", "FUN_14031e630",
+                        reinterpret_cast<void*>(&hook_herodef_deserialize),
+                        reinterpret_cast<void**>(&g_real_deserialize));
 }
 
 } // namespace rsmm

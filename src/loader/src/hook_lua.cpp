@@ -43,6 +43,7 @@ extern "C" {
 
 #include "hook_lua.h"
 #include "loader.h"
+#include "hook_util.h"
 
 #include "MinHook.h"
 
@@ -395,6 +396,12 @@ int hook_lua_install(std::uintptr_t target_va,
     s.mod_id    = std::move(mod_id);
     s.shape     = sig_shape(s.sig);
 
+    // Mods hand us a raw address, so this is where a bad one becomes a jump
+    // spliced into the middle of a live function. Warn rather than refuse: x64
+    // may legitimately omit a true leaf from .pdata, and the mod author owns
+    // the risk — but the log now names the address, which turns "the game
+    // crashed" into "your hook target is not a function".
+    hook_entry_warn("hook", "mod hook target", target_va);
     auto rc = MH_CreateHook(reinterpret_cast<LPVOID>(target_va),
                             g_detour_table[s.shape][slot],
                             &s.trampoline);

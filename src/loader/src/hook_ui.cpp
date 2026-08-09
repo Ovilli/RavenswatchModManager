@@ -26,6 +26,7 @@
 #include "loader.h"
 #include "mem_safe.h"
 #include "fn_resolver.h"
+#include "hook_util.h"
 #include "script_lua.h"
 #include "symbols.gen.h"
 #include "hook_ui.h"
@@ -239,17 +240,9 @@ bool install_ui_hooks() {
     }
     g_press_ra = press_ra;
 
-    const auto target = reinterpret_cast<LPVOID>(va);
-    auto rc = MH_CreateHook(target,
-                            reinterpret_cast<LPVOID>(&hook_press_commit),
-                            reinterpret_cast<LPVOID*>(&g_real_press_commit));
-    if (rc != MH_OK) {
-        Loader::get().log("[ui-hook] MH_CreateHook failed rc="
-                          + std::to_string(static_cast<int>(rc)));
-        return false;
-    }
-    if (MH_EnableHook(target) != MH_OK) {
-        Loader::get().log("[ui-hook] MH_EnableHook failed");
+    if (!hook_install_at("ui-hook", "UiButton_PressCommit", va,
+                         reinterpret_cast<void*>(&hook_press_commit),
+                         reinterpret_cast<void**>(&g_real_press_commit))) {
         return false;
     }
     char b[80];
