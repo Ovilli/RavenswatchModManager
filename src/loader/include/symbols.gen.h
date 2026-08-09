@@ -10,21 +10,21 @@ constexpr std::uintptr_t kPreferredBase = 0x140000000ull;
 // --- enemies ---
 constexpr std::uintptr_t EnemyCamp_Stage3Filter = 0x140323830ull;
 constexpr const char* EnemyCamp_Stage3Filter_Pattern = "EnemyCamp_Stage3Filter";
-constexpr std::uintptr_t EnemyCamp_TierSelector = 0x140332850ull;
+constexpr std::uintptr_t EnemyCamp_TierSelector = 0x14032e790ull;
 constexpr const char* EnemyCamp_TierSelector_Pattern = "EnemyCamp_TierSelector";
-constexpr std::uintptr_t EnemyCamp_TribeEntryBuilder = 0x1403343a0ull;
+constexpr std::uintptr_t EnemyCamp_TribeEntryBuilder = 0x14032fe20ull;
 constexpr const char* EnemyCamp_TribeEntryBuilder_Pattern = "EnemyCamp_TribeEntryBuilder";
-constexpr std::uintptr_t EnemyDef_PostLoad = 0x140324320ull;
+constexpr std::uintptr_t EnemyDef_PostLoad = 0x14031a800ull;
 constexpr const char* EnemyDef_PostLoad_Pattern = "EnemyDef_PostLoad";
-constexpr std::uintptr_t EnemyDefinition_ctor = 0x1401dea90ull;
+constexpr std::uintptr_t EnemyDefinition_ctor = 0x1401df270ull;
 constexpr const char* EnemyDefinition_ctor_Pattern = "EnemyDefinition_ctor";
-constexpr std::uintptr_t EnemyTribeDef_PostLoad = 0x140325540ull;
+constexpr std::uintptr_t EnemyTribeDef_PostLoad = 0x14031bae0ull;
 constexpr const char* EnemyTribeDef_PostLoad_Pattern = "EnemyTribeDef_PostLoad";
 constexpr std::uintptr_t EnemyTribeDefinition_ctor = 0x1400c5260ull;
 constexpr const char* EnemyTribeDefinition_ctor_Pattern = "EnemyTribeDefinition_ctor";
 constexpr std::uintptr_t Enemy_RuntimeSpawnPicker = 0x140364360ull;
 constexpr const char* Enemy_RuntimeSpawnPicker_Pattern = "Enemy_RuntimeSpawnPicker";
-constexpr std::uintptr_t MapCtx_DistributeEnemyCampTiers = 0x1401ebd00ull;
+constexpr std::uintptr_t MapCtx_DistributeEnemyCampTiers = 0x1401e8830ull;
 constexpr const char* MapCtx_DistributeEnemyCampTiers_Pattern = "MapCtx_DistributeEnemyCampTiers";
 
 // --- engine ---
@@ -32,11 +32,11 @@ constexpr std::uintptr_t Entry_Ctor = 0x140219060ull;
 constexpr const char* Entry_Ctor_Pattern = "Entry_Ctor";
 constexpr std::uintptr_t Format_String = 0x1402092a0ull;
 constexpr const char* Format_String_Pattern = "Format_String";
-constexpr std::uintptr_t LevelLoad_Orchestrator = 0x1402928c0ull;
+constexpr std::uintptr_t LevelLoad_Orchestrator = 0x14028e5f0ull;
 constexpr const char* LevelLoad_Orchestrator_Pattern = "LevelLoad_Orchestrator";
 constexpr std::uintptr_t String_Assign = 0x140540ff0ull;
 constexpr const char* String_Assign_Pattern = "String_Assign";
-constexpr std::uintptr_t Vector_Grow = 0x140154c20ull;
+constexpr std::uintptr_t Vector_Grow = 0x140155230ull;
 constexpr const char* Vector_Grow_Pattern = "Vector_Grow";
 
 // --- engine-core ---
@@ -47,11 +47,11 @@ constexpr std::uintptr_t CustomFlagFilter_Serialize = 0x140189830ull;
 constexpr const char* CustomFlagFilter_Serialize_Pattern = "CustomFlagFilter_Serialize";
 constexpr std::uintptr_t CustomFlagList_Serialize = 0x140681e60ull;
 constexpr const char* CustomFlagList_Serialize_Pattern = "CustomFlagList_Serialize";
-constexpr std::uintptr_t GameScene_FindContextByTester = 0x140684660ull;
+constexpr std::uintptr_t GameScene_FindContextByTester = 0x14066cad0ull;
 constexpr const char* GameScene_FindContextByTester_Pattern = "GameScene_FindContextByTester";
 constexpr std::uintptr_t Profiler_GetThreadScopeStack = 0x14053a660ull;
 constexpr const char* Profiler_GetThreadScopeStack_Pattern = "Profiler_GetThreadScopeStack";
-constexpr std::uintptr_t Property_EvaluateByGuid = 0x1406c3720ull;
+constexpr std::uintptr_t Property_EvaluateByGuid = 0x1406ab910ull;
 constexpr const char* Property_EvaluateByGuid_Pattern = "Property_EvaluateByGuid";
 constexpr std::uintptr_t ResourceRef_Serialize = 0x1401cbba0ull;
 constexpr const char* ResourceRef_Serialize_Pattern = "ResourceRef_Serialize";
@@ -118,7 +118,7 @@ constexpr std::uintptr_t HeroController_Ctor = 0x14038ec30ull;
 constexpr const char* HeroController_Ctor_Pattern = "HeroController_Ctor";
 constexpr std::uintptr_t HeroController_HudMirror_Ctor = 0x1403b3c70ull;
 constexpr const char* HeroController_HudMirror_Ctor_Pattern = "HeroController_HudMirror_Ctor";
-constexpr std::uintptr_t MapCtx_LinkPairedSpawners = 0x1401ef131ull;
+constexpr std::uintptr_t MapCtx_LinkPairedSpawners = 0x1401ebad0ull;
 constexpr const char* MapCtx_LinkPairedSpawners_Pattern = "MapCtx_LinkPairedSpawners";
 constexpr std::uintptr_t ModifierEvent_Ctor = 0x140389fb0ull;
 constexpr const char* ModifierEvent_Ctor_Pattern = "ModifierEvent_Ctor";
@@ -137,7 +137,7 @@ constexpr std::uintptr_t Analytics_SubmitNamedEvent = 0x1401fad70ull;
 constexpr const char* Analytics_SubmitNamedEvent_Pattern = "Analytics_SubmitNamedEvent";
 constexpr std::uintptr_t Crc32_TableInit = 0x14051ef30ull;
 constexpr const char* Crc32_TableInit_Pattern = "Crc32_TableInit";
-constexpr std::uintptr_t EventQueue_Drain = 0x14067be70ull;
+constexpr std::uintptr_t EventQueue_Drain = 0x1406642d0ull;
 constexpr const char* EventQueue_Drain_Pattern = "EventQueue_Drain";
 constexpr std::uintptr_t Event_LevelUp = 0x1401f6bf0ull;
 constexpr const char* Event_LevelUp_Pattern = "Event_LevelUp";
@@ -157,9 +157,9 @@ constexpr std::uintptr_t NamedEvent_GiveMagicalObject_Ctor = 0x14030fd30ull;
 constexpr const char* NamedEvent_GiveMagicalObject_Ctor_Pattern = "NamedEvent_GiveMagicalObject_Ctor";
 constexpr std::uintptr_t NamedEvent_HeroSubscribeAll = 0x140391860ull;
 constexpr const char* NamedEvent_HeroSubscribeAll_Pattern = "NamedEvent_HeroSubscribeAll";
-constexpr std::uintptr_t NamedEvent_HeroUnsubscribeAll = 0x1403a2d00ull;
+constexpr std::uintptr_t NamedEvent_HeroUnsubscribeAll = 0x140395350ull;
 constexpr const char* NamedEvent_HeroUnsubscribeAll_Pattern = "NamedEvent_HeroUnsubscribeAll";
-constexpr std::uintptr_t NamedEvent_Id_FromCrc = 0x140536820ull;
+constexpr std::uintptr_t NamedEvent_Id_FromCrc = 0x14051f090ull;
 constexpr const char* NamedEvent_Id_FromCrc_Pattern = "NamedEvent_Id_FromCrc";
 constexpr std::uintptr_t NamedEvent_NetSend = 0x14073d730ull;
 constexpr const char* NamedEvent_NetSend_Pattern = "NamedEvent_NetSend";
@@ -185,9 +185,9 @@ constexpr const char* XpComponent_XpForLevel_Pattern = "XpComponent_XpForLevel";
 constexpr std::uintptr_t XpComponent_vftable = 0x140f231b0ull;
 
 // --- heroes ---
-constexpr std::uintptr_t HeroDef_LoadBaseEntity = 0x140329660ull;
+constexpr std::uintptr_t HeroDef_LoadBaseEntity = 0x14031ece0ull;
 constexpr const char* HeroDef_LoadBaseEntity_Pattern = "HeroDef_LoadBaseEntity";
-constexpr std::uintptr_t HeroDef_LoadSkinEntity = 0x14028e5f0ull;
+constexpr std::uintptr_t HeroDef_LoadSkinEntity = 0x14031ea40ull;
 constexpr const char* HeroDef_LoadSkinEntity_Pattern = "HeroDef_LoadSkinEntity";
 
 // --- items ---
@@ -197,16 +197,16 @@ constexpr std::uintptr_t Entity_LookupMagicalObjectComponent = 0x1406e3280ull;
 constexpr const char* Entity_LookupMagicalObjectComponent_Pattern = "Entity_LookupMagicalObjectComponent";
 constexpr std::uintptr_t Hero_GrantMagicalObject = 0x140397aa0ull;
 constexpr const char* Hero_GrantMagicalObject_Pattern = "Hero_GrantMagicalObject";
-constexpr std::uintptr_t InitialLoading_SpawnMagicalObjects = 0x140265440ull;
+constexpr std::uintptr_t InitialLoading_SpawnMagicalObjects = 0x140259060ull;
 constexpr const char* InitialLoading_SpawnMagicalObjects_Pattern = "InitialLoading_SpawnMagicalObjects";
 constexpr std::uintptr_t MagicalObjectPool_Grow = 0x140156de0ull;
 constexpr const char* MagicalObjectPool_Grow_Pattern = "MagicalObjectPool_Grow";
 constexpr std::uintptr_t MagicalObjectPool_SourceLookup = 0x14025e3e0ull;
 constexpr const char* MagicalObjectPool_SourceLookup_Pattern = "MagicalObjectPool_SourceLookup";
-constexpr std::uintptr_t MagicalObject_RegisterInstance = 0x1403aae40ull;
+constexpr std::uintptr_t MagicalObject_RegisterInstance = 0x1403abb90ull;
 constexpr const char* MagicalObject_RegisterInstance_Pattern = "MagicalObject_RegisterInstance";
-constexpr std::uintptr_t MagicalObject_SpawnAllObjects = 0x14025da20ull;
-constexpr const char* MagicalObject_SpawnAllObjects_Pattern = "MagicalObject_SpawnAllObjects.parent";
+constexpr std::uintptr_t MagicalObject_SpawnAllObjects = 0x140259060ull;
+constexpr const char* MagicalObject_SpawnAllObjects_Pattern = "MagicalObject_SpawnAllObjects";
 constexpr std::uintptr_t MagicalObject_SpawnContainingFunc = 0x14025d9b0ull;
 constexpr const char* MagicalObject_SpawnContainingFunc_Pattern = "MagicalObject_SpawnContainingFunc";
 constexpr std::uintptr_t g_MagicalObjectPool = 0x14143cc18ull;
@@ -265,38 +265,38 @@ constexpr const char* oCString_Dtor_Pattern = "oCString_Dtor";
 // --- netcode ---
 constexpr std::uintptr_t Entity_GetNetComponent = 0x140312db0ull;
 constexpr const char* Entity_GetNetComponent_Pattern = "Entity_GetNetComponent";
-constexpr std::uintptr_t Netcode_Channel_LookupById = 0x1402455a0ull;
+constexpr std::uintptr_t Netcode_Channel_LookupById = 0x140241a50ull;
 constexpr const char* Netcode_Channel_LookupById_Pattern = "Netcode_Channel_LookupById";
 constexpr std::uintptr_t Netcode_Channel_Unsubscribe = 0x1401c8da0ull;
 constexpr const char* Netcode_Channel_Unsubscribe_Pattern = "Netcode_Channel_Unsubscribe";
-constexpr std::uintptr_t Netcode_DropPeer = 0x1402cc9c0ull;
+constexpr std::uintptr_t Netcode_DropPeer = 0x1402b4d50ull;
 constexpr const char* Netcode_DropPeer_Pattern = "Netcode_DropPeer";
 constexpr std::uintptr_t Netcode_EntityReplSetup = 0x14073dda0ull;
 constexpr const char* Netcode_EntityReplSetup_Pattern = "Netcode_EntityReplSetup";
-constexpr std::uintptr_t Netcode_PeerStateTick = 0x1402c7e70ull;
+constexpr std::uintptr_t Netcode_PeerStateTick = 0x1402b03a0ull;
 constexpr const char* Netcode_PeerStateTick_Pattern = "Netcode_PeerStateTick";
 
 // --- options ---
 constexpr std::uintptr_t g_GameOptions = 0x14143cb58ull;
 
 // --- resource ---
-constexpr std::uintptr_t Definitions_LoadGroup = 0x14030fa00ull;
+constexpr std::uintptr_t Definitions_LoadGroup = 0x140310300ull;
 constexpr const char* Definitions_LoadGroup_Pattern = "Definitions_LoadGroup";
 constexpr std::uintptr_t InitialLoading_LoadAllDefinitions = 0x140260b80ull;
 constexpr const char* InitialLoading_LoadAllDefinitions_Pattern = "InitialLoading_LoadAllDefinitions";
-constexpr std::uintptr_t Registry_EnumInstances = 0x1402452a0ull;
+constexpr std::uintptr_t Registry_EnumInstances = 0x140241750ull;
 constexpr const char* Registry_EnumInstances_Pattern = "Registry_EnumInstances";
-constexpr std::uintptr_t Registry_RegisterInstance = 0x1403183efull;
+constexpr std::uintptr_t Registry_RegisterInstance = 0x1403119d0ull;
 constexpr const char* Registry_RegisterInstance_Pattern = "Registry_RegisterInstance";
-constexpr std::uintptr_t ResourceRef_Resolve = 0x1404a51d0ull;
+constexpr std::uintptr_t ResourceRef_Resolve = 0x140492540ull;
 constexpr const char* ResourceRef_Resolve_Pattern = "ResourceRef_Resolve";
 constexpr std::uintptr_t Resource_LookupByPath = 0x14049b2a0ull;
 constexpr const char* Resource_LookupByPath_Pattern = "Resource_LookupByPath";
 
 // --- rewards ---
-constexpr std::uintptr_t CustomFlagList_ContainsAll = 0x140682810ull;
+constexpr std::uintptr_t CustomFlagList_ContainsAll = 0x14066ac70ull;
 constexpr const char* CustomFlagList_ContainsAll_Pattern = "CustomFlagList_ContainsAll";
-constexpr std::uintptr_t CustomFlagList_ContainsAny = 0x140682930ull;
+constexpr std::uintptr_t CustomFlagList_ContainsAny = 0x14066ad90ull;
 constexpr const char* CustomFlagList_ContainsAny_Pattern = "CustomFlagList_ContainsAny";
 constexpr std::uintptr_t RewardDef_Deserialize = 0x1403244c0ull;
 constexpr const char* RewardDef_Deserialize_Pattern = "RewardDef_Deserialize";
@@ -321,7 +321,7 @@ constexpr std::uintptr_t g_RosterManager = 0x141436590ull;
 // --- ui ---
 constexpr std::uintptr_t BookController_ResolveSettings = 0x140307a30ull;
 constexpr const char* BookController_ResolveSettings_Pattern = "BookController_ResolveSettings";
-constexpr std::uintptr_t BookController_ResolveTabs = 0x140311060ull;
+constexpr std::uintptr_t BookController_ResolveTabs = 0x140308cd0ull;
 constexpr const char* BookController_ResolveTabs_Pattern = "BookController_ResolveTabs";
 constexpr std::uintptr_t UiButton_InputPoll = 0x1407d72a0ull;
 constexpr const char* UiButton_InputPoll_Pattern = "UiButton_InputPoll";

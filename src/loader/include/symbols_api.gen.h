@@ -252,12 +252,11 @@ inline MagicalObject_RegisterInstance_fn MagicalObject_RegisterInstance() {
     return reinterpret_cast<MagicalObject_RegisterInstance_fn>(rsmm::fn_resolve(Sym::MagicalObject_RegisterInstance_Pattern));
 }
 
-// MagicalObject_SpawnAllObjects  (MagicalObject_SpawnAllObjects.parent)
+// MagicalObject_SpawnAllObjects  (MagicalObject_SpawnAllObjects)
 //   void(void* pool, void* scene)
 using MagicalObject_SpawnAllObjects_fn = void(*)(void*, void*);
 inline MagicalObject_SpawnAllObjects_fn MagicalObject_SpawnAllObjects() {
-    std::uintptr_t a = rsmm::fn_resolve(Sym::MagicalObject_SpawnAllObjects_Pattern);
-    return a ? reinterpret_cast<MagicalObject_SpawnAllObjects_fn>(a + 0x70) : nullptr;
+    return reinterpret_cast<MagicalObject_SpawnAllObjects_fn>(rsmm::fn_resolve(Sym::MagicalObject_SpawnAllObjects_Pattern));
 }
 
 // ModifierEvent_Ctor  (ModifierEvent_Ctor)

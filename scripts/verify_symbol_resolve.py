@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import struct
 import sys
 from pathlib import Path
 
@@ -39,6 +40,25 @@ def _rx(pat: str) -> re.Pattern[bytes]:
     return re.compile(
         b"".join(b"." if t == "??" else re.escape(bytes([int(t, 16)])) for t in pat.split()),
         re.DOTALL)
+
+
+def _pdata_starts(data: bytes, img: int, secs: list[dict]) -> set[int]:
+    """Function entry addresses from .pdata — the binary's own ground truth.
+
+    A prologue heuristic can be fooled by a routine that was merged into a
+    larger one: the recorded bytes still match, but the address is now the
+    middle of somebody else's function. The exception table cannot be.
+    """
+    pd = next((s for s in secs if s["name"] == ".pdata"), None)
+    if pd is None:
+        return set()
+    raw = data[pd["raw_off"]:pd["raw_off"] + pd["raw_size"]]
+    out = set()
+    for o in range(0, len(raw) - 11, 12):
+        begin = struct.unpack_from("<I", raw, o)[0]
+        if begin:
+            out.add(img + begin)
+    return out
 
 
 def _anchor_parent_name(doc: dict, anchor: dict) -> str:
@@ -91,7 +111,8 @@ def main() -> int:
     tva = img + t["rva"]
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)
 
-    pats = {p["name"]: p for p in json.loads(DB.read_text()) if not p["name"].startswith("FUN_")}
+    pats_all = {p["name"]: p for p in json.loads(DB.read_text())}
+    pats = {n: p for n, p in pats_all.items() if not n.startswith("FUN_")}
     doc = json.loads(SYM.read_text())
 
     bad = []
@@ -180,6 +201,47 @@ def main() -> int:
             bad.append((s["name"],
                         f"0x{tva + off:x} first={first} boundary={boundary} "
                         f"(mid-instruction / not a function start)"))
+
+    # --- loader C++ that resolves by raw FUN_<addr> name ---------------------
+    #
+    # The loop above only sees data/symbols.json. Loader sources may call
+    # fn_resolve("FUN_1401dcae0") directly, bypassing the map entirely — those
+    # names live on in the pattern DB as legacy aliases, so they still resolve,
+    # and nothing anywhere checked WHERE. Four of hook_skins.cpp's five names
+    # resolve 0x90..0xac0 bytes inside a current function, because the routines
+    # were merged into larger ones; the recorded bytes match perfectly, so
+    # fn_verify is happy, and MinHook then splices a jump into the middle of an
+    # unrelated body. Reported, not fatal: these are pre-existing and the
+    # loader now refuses such a target at runtime.
+    pdata = _pdata_starts(data, img, secs)
+    midfunc = []
+    for src in sorted((REPO / "src" / "loader" / "src").glob("*.cpp")):
+        body = src.read_text(errors="ignore")
+        # Strip comments first: the notes explaining these very fixes quote the
+        # old names, and counting those would keep the warning alive forever.
+        body = re.sub(r"/\*.*?\*/", "", body, flags=re.DOTALL)
+        body = re.sub(r"//[^\n]*", "", body)
+        for name in sorted(set(re.findall(r'"(FUN_1[0-9a-f]{8})"', body))):
+            p = pats_all.get(name)
+            if not p:
+                midfunc.append((src.name, name, "no pattern in DB"))
+                continue
+            hits = [m.start() for m in _rx(p["pattern"]).finditer(text)]
+            mi = p.get("match_index", 0)
+            if mi >= len(hits):
+                midfunc.append((src.name, name, "resolves to 0 hits"))
+                continue
+            va = tva + hits[mi]
+            if va not in pdata:
+                midfunc.append((src.name, name,
+                                f"resolves to 0x{va:x}, NOT a .pdata function start"))
+    if midfunc:
+        print(f"\nWARNING: {len(midfunc)} hardcoded FUN_<addr> reference(s) in "
+              f"loader sources do not resolve to a function start:")
+        for f, n, why in midfunc:
+            print(f"  {f}: {n} — {why}")
+        print("  Replace with a semantic symbol (Sym::<Name>_Pattern) once the "
+              "routine is relocated; the loader refuses these targets at runtime.")
 
     print(f"checked {checked} ok function symbols "
           f"+ {anchors_checked} anchor entry point(s)")

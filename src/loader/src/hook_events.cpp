@@ -24,6 +24,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace rsmm {
@@ -106,7 +107,16 @@ std::uintptr_t WINAPI detour(void* ctx, void* arg) {
 // the actor (see the oCGameNamedEvent bus for that). The event name lives in
 // arg3, a StringDesc { const char* ptr; uint32 len|0x80000000; ... }.
 
-constexpr const char* kAnalyticsSink = "FUN_1401fa470";
+// Resolve the sink by SEMANTIC name. This was the literal "FUN_1401fa470" —
+// the address that function had two builds ago. The name survives in the
+// pattern DB as a legacy alias, so it still resolved and fn_verify still
+// passed (the recorded bytes DO match) — but it matched at 0x1401fe6d0, which
+// is 0x8d0 bytes INSIDE another function, because the routine was merged into
+// a larger one. The firehose is armed by default on every install, so that
+// detour was splicing a jump into the middle of a live body on every launch.
+// The correct address was in data/symbols.json the whole time, as a status=ok
+// symbol this file simply never referenced.
+constexpr const char* kAnalyticsSink = Sym::Analytics_SubmitNamedEvent_Pattern;
 
 // void(analytics_mgr, payload_kv, StringDesc* name, char has_run_ctx).
 // arg4 is a char in R9B; we take/forward the full register width unchanged.
@@ -152,6 +162,16 @@ bool install_analytics_firehose() {
     if (!fn_verify(kAnalyticsSink, g_submit_va)) {
         Loader::get().log("[game-events] analytics sink verify mismatch "
                           "(game patched?); firehose disabled");
+        return false;
+    }
+    // fn_verify only proves the bytes match; .pdata proves it is an ENTRY
+    // POINT. Both are needed — a pattern from an older build can match
+    // mid-function after the routine is merged into a larger one, and
+    // detouring there corrupts that function instead of intercepting a call.
+    if (!fn_is_function_start(g_submit_va)) {
+        Loader::get().log("[game-events] analytics sink resolves mid-function; "
+                          "firehose disabled (refusing to splice a detour into "
+                          "the middle of a live function)");
         return false;
     }
     if (MH_CreateHook(reinterpret_cast<LPVOID>(g_submit_va),
@@ -411,9 +431,11 @@ bool install_gameplay_bus() {
         Loader::get().log("[gameplay-events] resolve NamedEvent_Dispatch failed");
         return false;
     }
-    if (!fn_verify(Sym::NamedEvent_Dispatch_Pattern, g_dispatch_va)) {
+    if (!fn_verify(Sym::NamedEvent_Dispatch_Pattern, g_dispatch_va)
+        || !fn_is_function_start(g_dispatch_va)) {
         Loader::get().log("[gameplay-events] NamedEvent_Dispatch verify mismatch "
-                          "(game patched?); gameplay bus disabled");
+                          "or mid-function resolve (game patched?); "
+                          "gameplay bus disabled");
         return false;
     }
     if (MH_CreateHook(reinterpret_cast<LPVOID>(g_dispatch_va),
@@ -444,6 +466,7 @@ bool env_truthy(const char* name) {
 
 template <int N>
 bool arm(EventHook& h) {
+    static_assert(N >= 0, "slot index must be non-negative");
     h.va = fn_resolve(h.fn_name);
     if (h.va == 0 || h.va == static_cast<std::uintptr_t>(-1)) {
         Loader::get().log(std::string("[game-events] resolve ") + h.fn_name + " failed");
@@ -452,6 +475,11 @@ bool arm(EventHook& h) {
     if (!fn_verify(h.fn_name, h.va)) {
         Loader::get().log(std::string("[game-events] verify ") + h.fn_name
                           + " mismatch (game patched?); skipping " + h.lua_event);
+        return false;
+    }
+    if (!fn_is_function_start(h.va)) {
+        Loader::get().log(std::string("[game-events] ") + h.fn_name
+                          + " resolves mid-function; skipping " + h.lua_event);
         return false;
     }
     if (MH_CreateHook(reinterpret_cast<LPVOID>(h.va),
@@ -468,6 +496,25 @@ bool arm(EventHook& h) {
                       + h.fn_name + " hooked");
     return true;
 }
+
+// Arm EVERY row of the generated table. This used to read
+//   any |= arm<0>(g_hooks[0]); any |= arm<1>(g_hooks[1]);
+// which silently capped the table at two entries: `rsmm symbols gen` would
+// happily emit a third `kind="event"` row into event_table.gen.h, the code
+// would compile, and the hook would never be installed — a generated table
+// whose size the consumer did not track. The fold over an index_sequence
+// mints the per-slot detour<N> for the ACTUAL table length, so adding a
+// symbol to data/symbols.json is now the only step.
+template <std::size_t... Is>
+bool arm_all(std::index_sequence<Is...>) {
+    bool any = false;
+    // Left-to-right, and every slot is attempted: `any |= arm(...)` inside a
+    // fold keeps a failed resolve from short-circuiting the rest.
+    ((any = arm<static_cast<int>(Is)>(g_hooks[Is]) || any), ...);
+    return any;
+}
+
+constexpr std::size_t kEventHookCount = sizeof(g_hooks) / sizeof(g_hooks[0]);
 
 // --- hero capture (once, native) --------------------------------------------
 //
@@ -735,8 +782,7 @@ bool install_event_hooks() {
     }
     bool any = false;
     if (analytics) {
-        any |= arm<0>(g_hooks[0]);
-        any |= arm<1>(g_hooks[1]);
+        any |= arm_all(std::make_index_sequence<kEventHookCount>{});
         // One detour on the central telemetry sink republishes every named
         // analytics event to the Lua bus (see install_analytics_firehose).
         any |= install_analytics_firehose();

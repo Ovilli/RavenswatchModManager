@@ -258,6 +258,42 @@ bool fn_verify(std::string_view name, std::uintptr_t va) {
     return true;
 }
 
+bool fn_is_function_start(std::uintptr_t va) {
+    // The module's own .pdata (exception directory) lists one RUNTIME_FUNCTION
+    // per function, sorted by BeginAddress. A binary search over it answers
+    // "is this an entry point" exactly, with no prologue guesswork.
+    HMODULE h = GetModuleHandleA("Ravenswatch.exe");
+    if (!h) h = GetModuleHandleA(nullptr);
+    if (!h) return false;
+    const auto base = reinterpret_cast<std::uintptr_t>(h);
+    auto* dos = reinterpret_cast<IMAGE_DOS_HEADER*>(h);
+    if (!mem_accessible(base, sizeof(IMAGE_DOS_HEADER), false)) return false;
+    auto* nt = reinterpret_cast<IMAGE_NT_HEADERS64*>(base + dos->e_lfanew);
+    if (!mem_accessible(reinterpret_cast<std::uintptr_t>(nt),
+                        sizeof(IMAGE_NT_HEADERS64), false)) return false;
+
+    const auto& dir =
+        nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION];
+    if (dir.VirtualAddress == 0 || dir.Size < sizeof(RUNTIME_FUNCTION)) return false;
+    const auto table_addr = base + dir.VirtualAddress;
+    if (!mem_accessible(table_addr, dir.Size, false)) return false;
+
+    const auto* fns = reinterpret_cast<const RUNTIME_FUNCTION*>(table_addr);
+    const std::size_t n = dir.Size / sizeof(RUNTIME_FUNCTION);
+    if (va < base) return false;
+    const auto rva = static_cast<std::uint32_t>(va - base);
+
+    std::size_t lo = 0, hi = n;
+    while (lo < hi) {
+        const std::size_t mid = lo + (hi - lo) / 2;
+        const auto begin = fns[mid].BeginAddress;
+        if (begin == rva) return true;
+        if (begin < rva) lo = mid + 1;
+        else hi = mid;
+    }
+    return false;
+}
+
 size_t fn_resolver_pattern_count() { return g_patterns.size(); }
 
 size_t fn_resolver_resolved_count() {

@@ -48,17 +48,15 @@ constexpr std::size_t kOffRuntimeArray = 0x10;
 constexpr std::size_t kOffRuntimeCount = 0x18;
 constexpr std::size_t kOffRuntimeCap   = 0x1c;
 
-// Ghidra merged SpawnAllObjects + pool collector into the single large
-// function FUN_1402586f0 (1283 bytes).  SpawnAllObjects is an internal
-// entry point at +0x70 within that function (and the pool collector at
-// +0x150).  We resolve FUN_1402586f0 via its byte pattern (it IS in
-// function_patterns.json) and add the internal offset to reach the
-// exact detour target.
-constexpr std::uintptr_t kSpawnAllObjectsVA = Sym::MagicalObject_SpawnAllObjects;
-constexpr std::uintptr_t kContainingFuncVA  = Sym::MagicalObject_SpawnContainingFunc;
-constexpr std::size_t    kSpawnEntryOffset  = 0x70;  // SpawnAllObjects within FUN_1402586f0
-static_assert(kContainingFuncVA + kSpawnEntryOffset == kSpawnAllObjectsVA,
-              "symbol map anchor offset drifted from the +0x70 entry point");
+// SpawnAllObjects used to be recorded as an INTERNAL entry point at +0x70
+// inside a larger merged function, and this file asserted that arithmetic.
+// That model is gone: in the shipped build the routine is its own function,
+// called from the boot orchestrator as SpawnAllObjects(g_MagicalObjectPool,
+// scene) — which is exactly the declared void(void*, void*). The anchor was
+// also the bug: when the parent was remapped without re-deriving the offset,
+// parent+0x70 landed 2 bytes inside a 5-byte call, so a detour there would
+// have spliced mid-instruction. Resolve Sym::MagicalObject_SpawnAllObjects
+// directly (see install_item_hooks); no offset math, nothing to drift.
 
 // --- game function type aliases -----------------------------------------
 // Sourced from the generated typed accessors (engine::), themselves derived
@@ -457,35 +455,38 @@ bool install_item_hooks() {
         return false;
     }
 
-    // Resolve helper functions via patterns (both in function_patterns.json).
-    if (!resolve("FUN_140487040", reinterpret_cast<void**>(&g_resource_lookup))) {
+    // Resolve helper functions by SEMANTIC pattern name. These three used to
+    // be resolved by the address-derived names FUN_140487040 / FUN_140154c20 /
+    // FUN_1402586f0, which are the addresses those functions had two game
+    // builds ago — they survive only as legacy aliases in the pattern DB, so
+    // the resolve was one DB regeneration away from silently returning
+    // nothing. Sym::*_Pattern is stable across patches by construction.
+    if (!resolve(Sym::Resource_LookupByPath_Pattern,
+                 reinterpret_cast<void**>(&g_resource_lookup))) {
         Loader::get().log("[item-hook] resource lookup unavailable; "
                           "items will be registered but not injected until "
                           "function_patterns.json is regenerated");
         // Non-fatal — the hook still installs (injection will log a skip).
     }
-    if (!resolve("FUN_140154c20", reinterpret_cast<void**>(&g_vec_grow))) {
+    if (!resolve(Sym::Vector_Grow_Pattern, reinterpret_cast<void**>(&g_vec_grow))) {
         Loader::get().log("[item-hook] vec_grow unavailable; "
                           "same fallback as above");
     }
 
-    // Locate SpawnAllObjects by resolving its containing function
-    // FUN_1402586f0 (which IS in function_patterns.json) and adding the
-    // internal offset +0x70. If the pattern no longer resolves, the game was
-    // likely patched; do not fall back to a baked VA because it may now point
-    // at unrelated code.
-    std::uintptr_t spawn_va = fn_resolve("FUN_1402586f0");
+    // SpawnAllObjects resolves directly now (see the note at the top) —
+    // no containing-function + offset arithmetic to drift. If the pattern no
+    // longer resolves the game was likely patched; do NOT fall back to the
+    // baked VA, which may now point at unrelated code.
+    std::uintptr_t spawn_va = fn_resolve(Sym::MagicalObject_SpawnAllObjects_Pattern);
     if (spawn_va == 0 || spawn_va == static_cast<std::uintptr_t>(-1)) {
-        Loader::get().log("[item-hook] FUN_1402586f0 pattern not found; "
+        Loader::get().log("[item-hook] SpawnAllObjects pattern not found; "
                           "disabled until function_patterns.json is regenerated");
         return false;
-    } else {
-        spawn_va += kSpawnEntryOffset;
-        if (!fn_verify("FUN_1402586f0", spawn_va - kSpawnEntryOffset)) {
-            Loader::get().log("[item-hook] FUN_1402586f0 verify failed; "
-                              "pattern mismatch (game patched?)");
-            return false;
-        }
+    }
+    if (!fn_verify(Sym::MagicalObject_SpawnAllObjects_Pattern, spawn_va)) {
+        Loader::get().log("[item-hook] SpawnAllObjects verify failed; "
+                          "pattern mismatch (game patched?)");
+        return false;
     }
     Loader::get().log(std::string("[item-hook] SpawnAllObjects @ ")
                       + hex_of(spawn_va));

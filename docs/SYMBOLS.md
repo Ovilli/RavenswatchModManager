@@ -16,14 +16,14 @@ Total: **160** symbols across 16 categories.
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `EnemyCamp_Stage3Filter` | `0x140323830` | ❓ unverified |  | void(void* candidatesVec, void* searchFilter) |
-| `EnemyCamp_TierSelector` | `0x140332850` | ❓ unverified |  | void(void* selector) |
-| `EnemyCamp_TribeEntryBuilder` | `0x1403343a0` | ❓ unverified |  | void(void* selector, void* specialEntry, void* outEntries, float mult) |
-| `EnemyDef_PostLoad` | `0x140324320` | ❓ unverified |  | bool(void* enemyDef) |
-| `EnemyDefinition_ctor` | `0x1401dea90` | ❓ unverified |  | void*(void* self) |
-| `EnemyTribeDef_PostLoad` | `0x140325540` | ❓ unverified |  | bool(void* tribeDef) |
+| `EnemyCamp_TierSelector` | `0x14032e790` | ✅ ok |  | void(void* selector) |
+| `EnemyCamp_TribeEntryBuilder` | `0x14032fe20` | ✅ ok |  | void(void* selector, void* specialEntry, void* outEntries, float mult) |
+| `EnemyDef_PostLoad` | `0x14031a800` | ✅ ok |  | bool(void* enemyDef) |
+| `EnemyDefinition_ctor` | `0x1401df270` | ✅ ok |  | void*(void* self) |
+| `EnemyTribeDef_PostLoad` | `0x14031bae0` | ✅ ok |  | bool(void* tribeDef) |
 | `EnemyTribeDefinition_ctor` | `0x1400c5260` | ✅ ok |  | void*(void* self) |
 | `Enemy_RuntimeSpawnPicker` | `0x140364360` | ❓ unverified |  | void(void* spawnerCpnt) |
-| `MapCtx_DistributeEnemyCampTiers` | `0x1401ebd00` | ❓ unverified |  | void(void* mapSceneContext) |
+| `MapCtx_DistributeEnemyCampTiers` | `0x1401e8830` | ✅ ok |  | void(void* mapSceneContext) |
 
 ## engine
 
@@ -31,9 +31,9 @@ Total: **160** symbols across 16 categories.
 |------|---------|--------|----------|------------------|
 | `Entry_Ctor` | `0x140219060` | ❓ unverified | ✔ | void(void* base, uint32_t count) |
 | `Format_String` | `0x1402092a0` | ✅ ok |  | printf-style format/string builder (e.g. 'Is Hero liked by {}', 'Chance to give {} MO')… |
-| `LevelLoad_Orchestrator` | `0x1402928c0` | ❓ unverified |  | i64(void* levelGs) |
+| `LevelLoad_Orchestrator` | `0x14028e5f0` | ✅ ok |  | i64(void* levelGs) |
 | `String_Assign` | `0x140540ff0` | ❓ unverified | ✔ | void(void* dst_slot, const StringDesc* src) |
-| `Vector_Grow` | `0x140154c20` | ❓ unverified | ✔ | void(void* vec, void* /*dead RDX*/, uint32_t new_cap /*R8*/) |
+| `Vector_Grow` | `0x140155230` | ✅ ok | ✔ | void(void* vec, void* /*dead RDX*/, uint32_t new_cap /*R8*/) |
 
 ## engine-core
 
@@ -43,9 +43,9 @@ Total: **160** symbols across 16 categories.
 | `ClassRegistry_Global` | `0x141436690` | 📍 va |  | Global class-descriptor registry: ptr to {descPtr array @+0x0, u32 count @+0x8}. Scanne… |
 | `CustomFlagFilter_Serialize` | `0x140189830` | ✅ ok |  | bool(void* flagFilter, void* reader) |
 | `CustomFlagList_Serialize` | `0x140681e60` | ❓ unverified |  | bool(void* flagList, void* reader) |
-| `GameScene_FindContextByTester` | `0x140684660` | ❓ unverified |  | void*(void* gameScene, void* kindOfTypeTester) |
+| `GameScene_FindContextByTester` | `0x14066cad0` | ✅ ok |  | void*(void* gameScene, void* kindOfTypeTester) |
 | `Profiler_GetThreadScopeStack` | `0x14053a660` | ❓ unverified |  | void*(void) |
-| `Property_EvaluateByGuid` | `0x1406c3720` | ❓ unverified |  | bool(void* ctx, void* container, void* guid16, float* out) |
+| `Property_EvaluateByGuid` | `0x1406ab910` | ✅ ok |  | bool(void* ctx, void* container, void* guid16, float* out) |
 | `ResourceRef_Serialize` | `0x1401cbba0` | ❓ unverified |  | bool(void* reader, void* refSlot) |
 | `Serializer_GetClassVersion` | `0x140514570` | ❓ unverified |  | void*(void* reader, void* out, uint32_t classHash) |
 | `Serializer_ReadPolyPtrVector` | `0x14020e000` | ✅ ok |  | bool(void* reader, void* vec, const char* label) |
@@ -83,7 +83,7 @@ Total: **160** symbols across 16 categories.
 | `Entity_ResolveAttackHits` | `0x1403dd540` | ✅ ok | ✔ | float(void* attacker, uint hitDefIndex, TargetList* targets, float damageMul, float bas… |
 | `HeroController_Ctor` | `0x14038ec30` | ✅ ok | ✔ | oCDtEntityCpntHeroController*(oCDtEntityCpntHeroController* self) |
 | `HeroController_HudMirror_Ctor` | `0x1403b3c70` | ✅ ok |  | Builds the hero's HUD HP-mirror object whose pointer is stored at hero+0x1d80 by HeroCo… |
-| `MapCtx_LinkPairedSpawners` | `0x1401ef131` | ❓ unverified |  | void(void* mapSceneContext) |
+| `MapCtx_LinkPairedSpawners` | `0x1401ebad0` | ✅ ok |  | void(void* mapSceneContext) |
 | `ModifierEvent_Ctor` | `0x140389fb0` | ✅ ok | ✔ | void*(void* buf, void* valueDef) |
 | `g_MagicalObjectComponentMeta` | `0x141470768` | 📍 va |  | oCMetaClass* for the magical-object component; passed to Entity_FindMagicalObjectCompon… |
 | `oCCustomFlagList_vftable` | `0x140f01650` | 📍 va |  | vftable of oCCustomFlagList. An empty list is the 0x18-byte struct { vftable @+0x0, lis… |
@@ -103,7 +103,7 @@ Total: **160** symbols across 16 categories.
 |------|---------|--------|----------|------------------|
 | `Analytics_SubmitNamedEvent` | `0x1401fad70` | ✅ ok | ✔ | void(void* analytics_mgr, void* payload_kv, StringDesc* event_name, char has_run_ctx) |
 | `Crc32_TableInit` | `0x14051ef30` | ✅ ok |  | Builds the 256-entry CRC32 lookup table at DAT_141436710 (lazy, runtime — the table is … |
-| `EventQueue_Drain` | `0x14067be70` | ❓ unverified |  | void(void* queue) |
+| `EventQueue_Drain` | `0x1406642d0` | ✅ ok |  | void(void* queue) |
 | `Event_LevelUp` → `level_up` | `0x1401f6bf0` | ✅ ok | ✔ | Emitter whose body references the 'level_up_reach' string (xref 0x1401f64a4). void(ctx,… |
 | `Event_RunEnd` → `run_end` | `0x1401f59c0` | ✅ ok | ✔ | Emitter whose body references the 'run_end' string (xref 0x1401f5347). Loader post-deto… |
 | `Id_HashString` | `0x14033f7a0` | ❓ unverified |  | Runtime string -> 32-bit id hasher: standard CRC32 over the name bytes (init 0xffffffff… |
@@ -113,8 +113,8 @@ Total: **160** symbols across 16 categories.
 | `NamedEvent_EmitNetworkDamageFromHit` | `0x140743a00` | ❓ unverified |  | Reference emitter for NETWORK_DAMAGE: stack-builds the full oCGameNamedEventNetworkDama… |
 | `NamedEvent_GiveMagicalObject_Ctor` | `0x14030fd30` | ✅ ok | ✔ | oe::dt::NamedEventGiveMagicalObject*(void* buf) |
 | `NamedEvent_HeroSubscribeAll` | `0x140391860` | ✅ ok | ✔ | void(oCEntity* hero) |
-| `NamedEvent_HeroUnsubscribeAll` | `0x1403a2d00` | ❓ unverified |  | Hero teardown twin of NamedEvent_HeroSubscribeAll: walks the same (id global, slot) pai… |
-| `NamedEvent_Id_FromCrc` | `0x140536820` | ❓ unverified | ✔ | uint32_t(uint32_t ns, uint32_t name_crc) |
+| `NamedEvent_HeroUnsubscribeAll` | `0x140395350` | ✅ ok |  | Hero teardown twin of NamedEvent_HeroSubscribeAll: walks the same (id global, slot) pai… |
+| `NamedEvent_Id_FromCrc` | `0x14051f090` | ✅ ok | ✔ | uint32_t(uint32_t ns, uint32_t name_crc) |
 | `NamedEvent_NetSend` | `0x14073d730` | ✅ ok | ✔ | void(void* net_event_cpnt, oCGameNamedEvent* ev) |
 | `NamedEvent_NetSendToPeer` | `0x1407216c0` | ✅ ok | ✔ | void(void* net_event_cpnt, oCGameNamedEvent* ev, uint64_t* peer_session) |
 
@@ -136,8 +136,8 @@ Total: **160** symbols across 16 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `HeroDef_LoadBaseEntity` | `0x140329660` | ❓ unverified |  | void(void* heroDef, void** outEntityRef) |
-| `HeroDef_LoadSkinEntity` | `0x14028e5f0` | ✅ ok |  | void(void* heroDef, uint16_t skinIndex, void* outHandle) |
+| `HeroDef_LoadBaseEntity` | `0x14031ece0` | ✅ ok |  | void(void* heroDef, void** outEntityRef) |
+| `HeroDef_LoadSkinEntity` | `0x14031ea40` | ✅ ok |  | void(void* heroDef, uint16_t skinIndex, void* outHandle) |
 
 ## items
 
@@ -146,11 +146,11 @@ Total: **160** symbols across 16 categories.
 | `Entity_GiveHandler` | `0x1403c7560` | ✅ ok |  | void(oCEntityValueContext* heroValueCtx, oCEntity* hero, void* hitCtx) |
 | `Entity_LookupMagicalObjectComponent` | `0x1406e3280` | ✅ ok | ✔ | void*(void* componentStore, void** out, oCEntity* entity) |
 | `Hero_GrantMagicalObject` | `0x140397aa0` | ✅ ok | ✔ | void(oCDtEntityCpntHeroController* hero, void* def, uint16_t count, char dupFlag, void*… |
-| `InitialLoading_SpawnMagicalObjects` | `0x140265440` | ❓ unverified |  | Boot 'InitialLoading - MagicalObject SpawnAllObjects' caller that invokes SpawnAllObjec… |
+| `InitialLoading_SpawnMagicalObjects` | `0x140259060` | ❓ unverified |  | Boot 'InitialLoading - MagicalObject SpawnAllObjects' caller that invokes SpawnAllObjec… |
 | `MagicalObjectPool_Grow` | `0x140156de0` | ❓ unverified | ✔ | void(void* pool_plus_0x10, uint32_t count, uint32_t by) |
 | `MagicalObjectPool_SourceLookup` | `0x14025e3e0` | ❓ unverified | ✔ | void*(void* pool, void* out, void* id) |
-| `MagicalObject_RegisterInstance` | `0x1403aae40` | ❓ unverified | ✔ | void(oCDtEntityCpntHeroController* hero, void* instance, char addToActive) |
-| `MagicalObject_SpawnAllObjects` | `0x14025da20` | ❓ unverified | ✔ | void(void* pool, void* scene) |
+| `MagicalObject_RegisterInstance` | `0x1403abb90` | ✅ ok | ✔ | void(oCDtEntityCpntHeroController* hero, void* instance, char addToActive) |
+| `MagicalObject_SpawnAllObjects` | `0x140259060` | ✅ ok | ✔ | void(void* pool, void* scene) |
 | `MagicalObject_SpawnContainingFunc` | `0x14025d9b0` | ✅ ok |  | Outer function (1283 bytes) that contains the inlined SpawnAllObjects entry at +0x70. T… |
 | `g_MagicalObjectPool` | `0x14143cc18` | 📍 va |  | [2026-07-10: re-derived post 2026-07-09 patch (was 0x1414365d0); confirmed via readers … |
 
@@ -197,11 +197,11 @@ Total: **160** symbols across 16 categories.
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `Entity_GetNetComponent` | `0x140312db0` | ✅ ok | ✔ | void*(oCEntity* entity) |
-| `Netcode_Channel_LookupById` | `0x1402455a0` | ❓ unverified | ✔ | iter*(void* channel_map, iter* out, uint32_t* event_id) |
+| `Netcode_Channel_LookupById` | `0x140241a50` | ✅ ok | ✔ | iter*(void* channel_map, iter* out, uint32_t* event_id) |
 | `Netcode_Channel_Unsubscribe` | `0x1401c8da0` | ✅ ok | ✔ | void(void* node_plus_8, void** sub_slot) |
-| `Netcode_DropPeer` | `0x1402cc9c0` | ❓ unverified |  | Drops a peer after the reconnect window (default 60s) elapses. Pattern-verified 2026-07… |
+| `Netcode_DropPeer` | `0x1402b4d50` | ✅ ok |  | Drops a peer after the reconnect window (default 60s) elapses. Pattern-verified 2026-07… |
 | `Netcode_EntityReplSetup` | `0x14073dda0` | ❓ unverified | ✔ | void(void* replContext) |
-| `Netcode_PeerStateTick` | `0x1402c7e70` | ❓ unverified |  | Per-peer connection-state tick (peer conn-state enum at peer+0xCC; 3=connected). Reconn… |
+| `Netcode_PeerStateTick` | `0x1402b03a0` | ✅ ok |  | Per-peer connection-state tick (peer conn-state enum at peer+0xCC; 3=connected). Reconn… |
 
 ## options
 
@@ -213,19 +213,19 @@ Total: **160** symbols across 16 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `Definitions_LoadGroup` | `0x14030fa00` | ❓ unverified |  | Loads the 'Definitions' group / VersionDefinition manifest (triggers loading the curate… |
+| `Definitions_LoadGroup` | `0x140310300` | ✅ ok |  | Loads the 'Definitions' group / VersionDefinition manifest (triggers loading the curate… |
 | `InitialLoading_LoadAllDefinitions` | `0x140260b80` | ✅ ok |  | void(void* nameFilter) |
-| `Registry_EnumInstances` | `0x1402452a0` | ❓ unverified | ✔ | void*(void* unused, void* out3, void** classDescPtr) |
-| `Registry_RegisterInstance` | `0x1403183ef` | ❓ unverified |  | void(void* definition) |
-| `ResourceRef_Resolve` | `0x1404a51d0` | ❓ unverified |  | void(void* refBlock, void* classDesc, void** outResolved, void* policy) |
+| `Registry_EnumInstances` | `0x140241750` | ✅ ok | ✔ | void*(void* unused, void* out3, void** classDescPtr) |
+| `Registry_RegisterInstance` | `0x1403119d0` | ✅ ok |  | void(void* definition) |
+| `ResourceRef_Resolve` | `0x140492540` | ✅ ok |  | void(void* refBlock, void* classDesc, void** outResolved, void* policy) |
 | `Resource_LookupByPath` | `0x14049b2a0` | ✅ ok | ✔ | void*(const char* decoded_path, void*, void*, void*) |
 
 ## rewards
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `CustomFlagList_ContainsAll` | `0x140682810` | ❓ unverified |  | bool(void* flagListA, void* flagListB) |
-| `CustomFlagList_ContainsAny` | `0x140682930` | ❓ unverified |  | bool(void* flagListA, void* flagListB) |
+| `CustomFlagList_ContainsAll` | `0x14066ac70` | ✅ ok |  | bool(void* flagListA, void* flagListB) |
+| `CustomFlagList_ContainsAny` | `0x14066ad90` | ✅ ok |  | bool(void* flagListA, void* flagListB) |
 | `RewardDef_Deserialize` | `0x1403244c0` | ✅ ok |  | bool(void* rewardDef, void* reader) |
 | `RewardItem_Serialize` | `0x140323dd0` | ✅ ok |  | bool(void* oCItem, void* reader) |
 | `RewardSelectorSettings_Serialize` | `0x140340470` | ✅ ok |  | bool(void* settings, void* reader) |
@@ -246,7 +246,7 @@ Total: **160** symbols across 16 categories.
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `BookController_ResolveSettings` | `0x140307a30` | ✅ ok | ✔ | void(oCDtEntityCpnt3DBookController* self) |
-| `BookController_ResolveTabs` | `0x140311060` | ❓ unverified | ✔ | void(oCDtEntityCpnt3DBookController* self) |
+| `BookController_ResolveTabs` | `0x140308cd0` | ✅ ok | ✔ | void(oCDtEntityCpnt3DBookController* self) |
 | `UiButton_InputPoll` | `0x1407d72a0` | ✅ ok | ✔ | void(ButtonUiCpntArray* cpnts) |
 | `UiButton_PressCommit` | `0x1406a08a0` | ✅ ok | ✔ | void(oCUINavigableZoneDesc* widget) |
 | `UiButton_PressReturnSite` | `0x1407d7382` | ✅ ok |  | (code location, not callable) |

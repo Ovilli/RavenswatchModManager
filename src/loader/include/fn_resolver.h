@@ -27,6 +27,21 @@ std::uintptr_t fn_resolve(std::string_view name);
 // the recorded pattern for `name`. Used by guards before calling.
 bool fn_verify(std::string_view name, std::uintptr_t va);
 
+// Is `va` the ENTRY POINT of a function, per the module's own .pdata
+// exception table? This is ground truth from the binary, not a heuristic.
+//
+// fn_verify answers "do the recorded bytes still live here", which is a
+// different question and cannot catch the failure that matters: a pattern
+// recorded from an older build can match perfectly at an address that is now
+// the MIDDLE of a function, because the routine was merged or inlined into a
+// larger one. Detouring there does not intercept a call — it splices a jump
+// into the middle of somebody else's body. Measured on the shipped build:
+// four of the five names hook_skins.cpp resolves land 0x90 to 0xac0 bytes
+// past a real function start.
+//
+// Returns false when the table cannot be read, so callers fail CLOSED.
+bool fn_is_function_start(std::uintptr_t va);
+
 // Diagnostics for `rsmm doctor` & logs.
 size_t fn_resolver_pattern_count();
 size_t fn_resolver_resolved_count();
