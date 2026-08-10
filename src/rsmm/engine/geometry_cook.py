@@ -22,11 +22,14 @@ to validate that a custom mesh loads; full skin re-bind is future work.
 
 from __future__ import annotations
 
+import logging
 import math
 import struct
 
 from .cooked_schemas import geometry as _geo
 from .cooked_schemas.base import NotReversedError
+
+_log = logging.getLogger(__name__)
 
 #: swap_geometry refuses meshes above this vertex count — confirmed in-game
 #: that a 243k-vert mesh crashes a 1.2k-vert weapon slot at load. 65535 is the
@@ -346,6 +349,68 @@ def _merge(submeshes: list[_geo.SubMesh]) -> _geo.SubMesh:
                         indices=indices)
 
 
+def sanitize(mesh: _geo.SubMesh) -> tuple[_geo.SubMesh, dict[str, int]]:
+    """Drop degenerate triangles and repair unusable normals.
+
+    Every shipped scenery mesh measured has **zero** zero-area triangles and
+    unit-length normals throughout. A mesh that breaks either invariant is not
+    merely ugly: a zero-area triangle has no face normal, and a zero-length
+    vertex normal makes `normalize(n)` a division by zero, so the tangent basis
+    the cooked container carries per vertex comes out NaN. That is authored
+    data the engine has no defined behaviour for.
+
+    It is easy to produce by accident — emitting a triangle-fan segment as the
+    quad ``[a, b, c, a]`` yields exactly this, one dead triangle and four dead
+    normals per cap face, and that is what the first custom prop this SDK ever
+    built shipped (48 of 172 triangles, 192 of 344 normals).
+
+    Repairs rather than refuses: exporters legitimately emit the odd sliver, and
+    a mod should not fail to build over one. Returns the cleaned mesh and a
+    count of what was fixed so callers can report it.
+    """
+    fixed = {"degenerate_tris": 0, "bad_normals": 0}
+    pos = mesh.positions
+    tris = [mesh.indices[i:i + 3] for i in range(0, len(mesh.indices) - 2, 3)]
+
+    def area2(t):
+        a, b, c = pos[t[0]], pos[t[1]], pos[t[2]]
+        e1 = (b[0] - a[0], b[1] - a[1], b[2] - a[2])
+        e2 = (c[0] - a[0], c[1] - a[1], c[2] - a[2])
+        n = (e1[1] * e2[2] - e1[2] * e2[1],
+             e1[2] * e2[0] - e1[0] * e2[2],
+             e1[0] * e2[1] - e1[1] * e2[0])
+        return n, math.sqrt(sum(x * x for x in n))
+
+    keep, face_n = [], {}
+    for t in tris:
+        if len(set(t)) < 3:
+            fixed["degenerate_tris"] += 1
+            continue
+        n, ln = area2(t)
+        if ln < 1e-12:
+            fixed["degenerate_tris"] += 1
+            continue
+        keep.append(t)
+        unit = (n[0] / ln, n[1] / ln, n[2] / ln)
+        for v in t:
+            face_n.setdefault(v, unit)
+
+    normals = list(mesh.normals)
+    for i, n in enumerate(normals):
+        ln = math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2])
+        if ln > 1e-6 and abs(ln - 1.0) < 1e-3:
+            continue
+        fixed["bad_normals"] += 1
+        # Prefer a face normal from a surviving triangle; else renormalize;
+        # else point up, which is wrong but finite.
+        normals[i] = face_n.get(i) or (
+            (n[0] / ln, n[1] / ln, n[2] / ln) if ln > 1e-12 else (0.0, 1.0, 0.0))
+
+    out = _geo.SubMesh(positions=pos, normals=normals, uvs=mesh.uvs,
+                       indices=[i for t in keep for i in t])
+    return out, fixed
+
+
 # --- alignment + weight transfer ----------------------------------------
 
 def _extents(pos: list) -> tuple[list[float], list[float], list[float]]:
@@ -513,6 +578,14 @@ def swap_geometry(template_cooked: bytes, glb_bytes: bytes,
     if not submeshes:
         raise ValueError("glb has no indexed triangle mesh to cook")
     merged = _merge(submeshes)
+    merged, repaired = sanitize(merged)
+    if any(repaired.values()):
+        _log.warning(
+            "custom mesh needed repair before cooking: %d degenerate triangle(s) "
+            "dropped, %d unusable normal(s) rebuilt. Every shipped mesh has "
+            "neither; a zero-length normal makes the per-vertex tangent basis "
+            "NaN. Fix this in the source .glb.",
+            repaired["degenerate_tris"], repaired["bad_normals"])
 
     cf = cooked.parse(template_cooked)
     target = next((si for si, sec in enumerate(cf.sections)

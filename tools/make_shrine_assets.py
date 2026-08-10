@@ -87,6 +87,35 @@ def _face(verts: list[Vec3], norms: list[Vec3], uvs: list[tuple[float, float]],
     _face.tris.extend([base, base + 1, base + 2, base, base + 2, base + 3])
 
 
+def _tri(verts: list[Vec3], norms: list[Vec3], uvs: list[tuple[float, float]],
+         tri: list[Vec3], uv_rect: tuple[float, float, float, float]) -> None:
+    """Append one triangle with a flat face normal.
+
+    Caps need this. Emitting a fan segment as the quad ``[a, b, c, a]`` looks
+    harmless — `_face` splits it into (0,1,2) and (0,2,3) — but the second
+    triangle is ``(a, c, a)``: zero area, and its normal comes out ``(0,0,0)``
+    because the edge ``d - a`` is the zero vector. Every vanilla scenery mesh
+    has exactly zero degenerate triangles and unit-length normals throughout;
+    ours had 48 and 192 of them, all from cap fans.
+    """
+    a, b, c = tri
+    u0, v0, u1, v1 = uv_rect
+    e1 = (b[0] - a[0], b[1] - a[1], b[2] - a[2])
+    e2 = (c[0] - a[0], c[1] - a[1], c[2] - a[2])
+    n = (e1[1] * e2[2] - e1[2] * e2[1],
+         e1[2] * e2[0] - e1[0] * e2[2],
+         e1[0] * e2[1] - e1[1] * e2[0])
+    ln = math.sqrt(sum(x * x for x in n))
+    if ln < 1e-12:
+        return  # genuinely degenerate input: drop it rather than ship a NaN
+    n = (n[0] / ln, n[1] / ln, n[2] / ln)
+    base = len(verts)
+    verts.extend([a, b, c])
+    norms.extend([n] * 3)
+    uvs.extend([(u0, v1), (u1, v1), (u1, v0)])
+    _face.tris.extend([base, base + 1, base + 2])
+
+
 def _prism(verts, norms, uvs, sides: int, y0: float, y1: float,
            r0: float, r1: float, uv_rect, twist: float = 0.0,
            cap_top: bool = True, cap_bottom: bool = True) -> None:
@@ -106,12 +135,10 @@ def _prism(verts, norms, uvs, sides: int, y0: float, y1: float,
         _face(verts, norms, uvs, [lo[i], lo[j], hi[j], hi[i]], (su0, v0, su1, v1))
     if cap_top:
         for i in range(1, sides - 1):
-            _face(verts, norms, uvs, [hi[0], hi[i], hi[i + 1], hi[0]],
-                  (u0, v0, u1, v1))
+            _tri(verts, norms, uvs, [hi[0], hi[i], hi[i + 1]], (u0, v0, u1, v1))
     if cap_bottom:
         for i in range(1, sides - 1):
-            _face(verts, norms, uvs, [lo[0], lo[i + 1], lo[i], lo[0]],
-                  (u0, v0, u1, v1))
+            _tri(verts, norms, uvs, [lo[0], lo[i + 1], lo[i]], (u0, v0, u1, v1))
 
 
 def build_shrine_glb() -> bytes:
@@ -466,13 +493,17 @@ def build_icon(size: int = ICON_SIZE) -> bytes:
 # Cooking + output
 # --------------------------------------------------------------------------- #
 
+#: Texture role -> the filename the `poi` folder convention looks for.
+_ROLE_FILES = {"ALB": "albedo.png", "MRA": "mra.png", "NRM": "normal.png"}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--mod", default="runestone-shrine",
                     help="mod directory under mods/ to write assets into")
     ap.add_argument("--size", type=int, default=TEX_SIZE, help="texture edge in px")
-    ap.add_argument("--preview", action="store_true",
-                    help="also write the textures as PNGs for eyeballing")
+    ap.add_argument("--into", default="pois/runestone_shrine",
+                    help="folder under the mod to write source art into")
     args = ap.parse_args(argv if argv is not None else sys.argv[1:])
 
     if not DONOR_GLB.is_file():
@@ -480,30 +511,29 @@ def main(argv: list[str] | None = None) -> int:
               f"run `python scripts/extract_uncooked.py` first", file=sys.stderr)
         return 1
 
-    out = REPO_ROOT / "mods" / args.mod / "assets" / "3D" / "Scenery" / "DarkHills"
+    # SOURCE art, not cooked assets. The `poi` and `mesh` kinds cook a .glb and
+    # .png at apply time, so this tool's job stops at authoring — writing cooked
+    # bytes here would put build output in the mod's `assets/` tree, outside the
+    # content-emit marker that prunes stale files.
+    out = REPO_ROOT / "mods" / args.mod / args.into
     out.mkdir(parents=True, exist_ok=True)
 
-    # --- mesh ---
     glb = build_shrine_glb()
     n_tris = len(_face.tris) // 3
-    template = GC.template_from_uncooked_glb(DONOR_GLB.read_bytes())
-    cooked_geo = GC.swap_geometry(template, glb)
-    (out / "RSMM_Runestone.fbx.Geometry.gen").write_bytes(cooked_geo)
-    print(f"  mesh    RSMM_Runestone.fbx.Geometry.gen   "
-          f"{n_tris} tris, {len(cooked_geo)} B")
+    (out / "model.glb").write_bytes(glb)
+    print(f"  model.glb   {n_tris} tris, {len(glb)} B")
 
-    # --- textures ---
-    handler = TextureHandler()
-    for suffix, rgba in build_textures(args.size).items():
+    for role, rgba in build_textures(args.size).items():
         png = IMG.encode_png(args.size, args.size, rgba)
-        cooked_tex = handler.encode_container(png)
-        name = f"T_RSMM_Runestone_{suffix}.tga.Texture.dxt"
-        (out / name).write_bytes(cooked_tex)
-        print(f"  texture {name:38} {args.size}x{args.size}, {len(cooked_tex)} B")
-        if args.preview:
-            (out / f"preview_{suffix}.png").write_bytes(png)
+        name = _ROLE_FILES[role]
+        (out / name).write_bytes(png)
+        print(f"  {name:<12} {args.size}x{args.size}, {len(png)} B")
 
-    print(f"\nwrote {len(list(out.glob('*')))} file(s) to "
+    icon = build_icon()
+    (out / "icon.png").write_bytes(icon)
+    print(f"  icon.png     {len(icon)} B")
+
+    print(f"\nwrote {len(list(out.glob('*')))} source file(s) to "
           f"{out.relative_to(REPO_ROOT)}")
     return 0
 

@@ -125,3 +125,61 @@ def test_meshes_folder_is_discovered(tmp_path):
         "target": "Scenery\\DarkHills\\X.fbx",
         "model": "meshes/shrine/model.glb",
     }]
+
+
+# --------------------------------------------------------------------------- #
+# geometry sanitation — the defect that shipped in the first custom prop
+# --------------------------------------------------------------------------- #
+
+def _mesh(positions, normals, indices):
+    from rsmm.engine.cooked_schemas import geometry as G
+    return G.SubMesh(positions=positions, normals=normals,
+                     uvs=[(0.0, 0.0)] * len(positions), indices=indices)
+
+
+def test_sanitize_drops_zero_area_triangles():
+    """A fan segment emitted as the quad [a, b, c, a] becomes (a,b,c) plus
+    (a,c,a) — the shape of the bug that put 48 dead triangles in the shrine."""
+    from rsmm.engine import geometry_cook as GC
+
+    P = [(0, 0, 0), (1, 0, 0), (0, 0, 1), (0, 0, 0)]
+    N = [(0, 1, 0)] * 4
+    out, fixed = GC.sanitize(_mesh(P, N, [0, 1, 2, 0, 2, 3]))
+    assert fixed["degenerate_tris"] == 1
+    assert out.indices == [0, 1, 2]
+
+
+def test_sanitize_repairs_zero_length_normals_from_the_face():
+    from rsmm.engine import geometry_cook as GC
+
+    P = [(0, 0, 0), (1, 0, 0), (0, 0, 1)]
+    out, fixed = GC.sanitize(_mesh(P, [(0, 0, 0)] * 3, [0, 1, 2]))
+    assert fixed["bad_normals"] == 3
+    for n in out.normals:
+        ln = sum(c * c for c in n) ** 0.5
+        assert abs(ln - 1.0) < 1e-6, "every normal must come out unit length"
+
+
+def test_sanitize_leaves_a_good_mesh_untouched():
+    from rsmm.engine import geometry_cook as GC
+
+    P = [(0, 0, 0), (1, 0, 0), (0, 0, 1)]
+    m = _mesh(P, [(0, 1, 0)] * 3, [0, 1, 2])
+    out, fixed = GC.sanitize(m)
+    assert fixed == {"degenerate_tris": 0, "bad_normals": 0}
+    assert out.indices == m.indices and out.normals == m.normals
+
+
+@needs_corpus
+def test_the_shipped_shrine_mesh_is_clean():
+    """Regression: the authored model must satisfy the invariant every shipped
+    scenery mesh does, so `sanitize` has nothing to repair."""
+    import glob
+
+    from rsmm.engine import geometry_cook as GC
+
+    for src in glob.glob("mods/*/pois/*/model.glb") + glob.glob("mods/*/meshes/*/model.glb"):
+        subs = GC.glb_to_submeshes(Path(src).read_bytes())
+        merged = GC._merge(subs)
+        _out, fixed = GC.sanitize(merged)
+        assert fixed == {"degenerate_tris": 0, "bad_normals": 0}, f"{src}: {fixed}"
