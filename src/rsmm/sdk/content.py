@@ -18,7 +18,7 @@ from pathlib import Path
 from .api import sdk_export
 
 KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "skill", "modifier",
-         "game_mode", "reward", "melody")
+         "game_mode", "reward", "melody", "poi")
 
 #: Per-kind honesty rating — how much we trust the bytes this kind emits.
 #:
@@ -53,6 +53,10 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # guaranteed block on a different (context+0xa8) def that bypasses
                               # counts. Ban unreliable; needs a runtime def-dump to pin the
                               # def/field. See docs/_re/kinds/rewards.md
+    "poi": "experimental",    # tile_cook round-trips all 237 shipped tiledefs and map_pool all
+                              # 3 tile-generated mapdefs byte-for-byte, and the pool IS the
+                              # per-map gate (retail lists a Storm Island tile in Dark Hills'
+                              # pool). Placement of a mod-added tile is unproven in-game.
     "melody": "guess",        # all 12 retail melodydefs round-trip byte-for-byte and every
                               # mined exclusion string is an exact GameModifier stem, but
                               # neither lever (effect repoint, exclusion list) has been
@@ -198,6 +202,7 @@ _KIND_MODULES = {
     "modifier": "modifiers",
     "game_mode": "game_modes",
     "melody": "melodies",
+    "poi": "poi",
 }
 
 def _load_kind(kind: str):

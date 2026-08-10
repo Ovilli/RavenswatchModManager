@@ -811,6 +811,60 @@ def _merge_text_bank(enc: str, srcs: list[Path], vanilla: Path) -> Path | None:
     return out_path
 
 
+#: Cooked suffix of a chapter's map definition (see `rsmm.engine.map_pool`).
+_MAPDEF_GEN_SUFFIX = ".mapdef.ot.DtMapDefinition.gen"
+
+
+def is_map_def(decoded: str) -> bool:
+    """True for a `*.mapdef.ot.DtMapDefinition.gen` — the per-chapter def whose
+    trailing tile pool several `poi` mods may each want to extend."""
+    return decoded.endswith(_MAPDEF_GEN_SUFFIX)
+
+
+def _merge_map_pool(enc: str, srcs: list[Path], vanilla: Path) -> Path | None:
+    """Union several mods' tile-pool additions to ONE mapdef.
+
+    Each `poi` mod emits vanilla-plus-its-own-tiles, so without this the last
+    writer wins and every other mod's POI is registered as an asset but never
+    pooled — it loads and is never placed, which is invisible until someone
+    plays a full run looking for it. Merging takes the vanilla pool and appends
+    whatever each mod added, in a fixed mod order, de-duplicated.
+
+    Returns the merged file's path, or ``None`` when any input isn't a parseable
+    mapdef (caller then falls back to the last-writer-wins warning).
+    """
+    from rsmm.engine import map_pool as MP
+    try:
+        base = MP.read_pool(vanilla.read_bytes())
+    except Exception:  # noqa: BLE001 — not a parseable mapdef; skip merge
+        return None
+    if base is None:
+        return None
+    merged = list(base)
+    have = set(base)
+    for src in srcs:
+        try:
+            pool = MP.read_pool(src.read_bytes())
+        except Exception:  # noqa: BLE001
+            return None
+        if pool is None:
+            return None
+        for p in pool:
+            if p not in have:
+                merged.append(p)
+                have.add(p)
+    try:
+        out_bytes = MP.set_pool(vanilla.read_bytes(), merged)
+    except Exception:  # noqa: BLE001
+        return None
+    out_dir = MODS_DIR / _TEXT_MERGE_DIR_NAME
+    out_dir.mkdir(parents=True, exist_ok=True)
+    flat = enc.replace("\\", "__").replace("/", "__")
+    out_path = out_dir / flat
+    out_path.write_bytes(out_bytes)
+    return out_path
+
+
 def plan_apply(mods: list[Mod],
                dec2enc: dict[str, str],
                cooking: Path,
@@ -876,6 +930,24 @@ def plan_apply(mods: list[Mod],
                 wanted[enc] = (merged, ordered[-1][1])
                 continue
             print(f"  [warn] text bank '{decoded}': no vanilla to merge against; "
+                  f"keeping {ordered[-1][1]}", file=sys.stderr)
+            wanted[enc] = (ordered[-1][0], ordered[-1][1])
+        elif is_map_def(decoded):
+            # Union every poi mod's tile-pool additions for this chapter.
+            ordered = sorted(writers, key=lambda w: w[1])  # deterministic by mod id
+            dest = encoded_to_dest(enc, cooking, game_dir)
+            vanilla = dest.parent / (dest.name + BACKUP_SUFFIX)
+            if not vanilla.exists():
+                vanilla = dest if dest.exists() else None
+            merged = _merge_map_pool(enc, [w[0] for w in ordered], vanilla) \
+                if vanilla else None
+            if merged is not None:
+                ids = ", ".join(w[1] for w in ordered)
+                print(f"  [merge] tile pool '{decoded}' from {len(ordered)} "
+                      f"mods ({ids})")
+                wanted[enc] = (merged, ordered[-1][1])
+                continue
+            print(f"  [warn] tile pool '{decoded}': no vanilla to merge against; "
                   f"keeping {ordered[-1][1]}", file=sys.stderr)
             wanted[enc] = (ordered[-1][0], ordered[-1][1])
         else:
