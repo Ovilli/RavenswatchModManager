@@ -717,3 +717,82 @@ def test_discover_passes_copies_through(tmp_path):
     _poi_folder(tmp_path, cfg='chapters = ["Dark_Hills"]\ncopies = 6\n',
                 with_art=False)
     assert poi.discover(tmp_path)[0]["copies"] == 6
+
+
+# --------------------------------------------------------------------------- #
+# Identity: a clone must not inherit its donor's level GUID
+# --------------------------------------------------------------------------- #
+
+@needs_prop_corpus
+def test_every_shipped_tile_level_has_a_distinct_guid():
+    """The fact the whole fix rests on. If this ever stops holding, the field
+    is not an identity and re-stamping it is wrong."""
+    import glob
+
+    from rsmm.engine import prop_cook as PC
+    seen = {}
+    for p in glob.glob(str(UNCOOKED / "Ot" / "**" / "Tiles" / "*.level.ot.GameStream.gen"),
+                       recursive=True):
+        g = PC.level_guid(Path(p).read_bytes())
+        assert g, p
+        assert g not in seen, f"{p} shares a GUID with {seen.get(g)}"
+        seen[g] = p
+    assert len(seen) > 200
+
+
+@needs_prop_corpus
+def test_cloned_level_gets_its_own_guid():
+    """A clone keeping the donor's GUID collides in the level registry and the
+    tile silently never appears — no error anywhere, every static check green."""
+    from rsmm.engine import prop_cook as PC
+    donor = (UNCOOKED / LVL_DONOR).read_bytes()
+    out = PC.clone_tile_level(
+        donor, "DarkHills\\Tiles\\6x6_Bleeding_01.level.ot",
+        "DarkHills\\Tiles\\Mine.level.ot",
+        {"DarkHills\\Objects_DarkHills\\Blood_Fountain_DarkHills.entity.ot":
+            "DarkHills\\SceneryObjects_DarkHills\\Mine_Prop.entity.ot"})
+    assert PC.level_guid(out) != PC.level_guid(donor)
+
+
+@needs_prop_corpus
+def test_cloned_level_guid_is_deterministic_and_unique_per_name():
+    """Map generation is seeded run state, so every peer must derive the same
+    bytes — a random GUID would desync multiplayer."""
+    from rsmm.engine import prop_cook as PC
+    donor = (UNCOOKED / LVL_DONOR).read_bytes()
+    old = "DarkHills\\Tiles\\6x6_Bleeding_01.level.ot"
+    swap = {"DarkHills\\Objects_DarkHills\\Blood_Fountain_DarkHills.entity.ot":
+            "DarkHills\\SceneryObjects_DarkHills\\P.entity.ot"}
+    a1 = PC.level_guid(PC.clone_tile_level(donor, old, "DarkHills\\Tiles\\A.level.ot", swap))
+    a2 = PC.level_guid(PC.clone_tile_level(donor, old, "DarkHills\\Tiles\\A.level.ot", swap))
+    b = PC.level_guid(PC.clone_tile_level(donor, old, "DarkHills\\Tiles\\B.level.ot", swap))
+    assert a1 == a2, "same content must give the same GUID"
+    assert a1 != b, "different levels must not collide with each other"
+
+
+@needs_prop_corpus
+def test_cloned_level_guid_does_not_collide_with_any_shipped_level():
+    import glob
+
+    from rsmm.engine import prop_cook as PC
+    van = {PC.level_guid(Path(p).read_bytes())
+           for p in glob.glob(str(UNCOOKED / "Ot" / "**" / "*.level.ot.GameStream.gen"),
+                              recursive=True)}
+    out = PC.clone_tile_level(
+        (UNCOOKED / LVL_DONOR).read_bytes(),
+        "DarkHills\\Tiles\\6x6_Bleeding_01.level.ot", "DarkHills\\Tiles\\Mine.level.ot",
+        {"DarkHills\\Objects_DarkHills\\Blood_Fountain_DarkHills.entity.ot":
+            "DarkHills\\SceneryObjects_DarkHills\\Mine_Prop.entity.ot"})
+    assert PC.level_guid(out) not in van
+
+
+@needs_corpus
+def test_kind_must_match_the_tile_footprint(tmp_path):
+    """Every shipped Wishing_Well is 40x40, so a 6x6 tile claiming that kind is
+    dead weight — it looks like free extra slots and can never fill one."""
+    assert poi.kind_footprints("Wishing_Well") == {(40, 40)}
+    assert (6, 6) in poi.kind_footprints("Fountain")
+    with pytest.raises(ContentError, match="could never fill"):
+        poi.emit("m", ContentDef(kind="poi", id="S", fields={
+            "base": "Dark_Hills/6x6_Bleeding_01", "chapters": ["Dark_Hills"],
+            "kinds": ["Wishing_Well"]}), tmp_path)

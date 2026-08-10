@@ -292,6 +292,34 @@ and re-applying propagates the change; the author's file is never converted in
 place or replaced. `tests/test_poi.py` covers the whole path, asserting the
 cooked geometry carries the mod's vertex count and not the donor's.
 
+### A cloned level needs its own GUID — this is why nothing appeared
+
+The first playtest placed **zero** POIs, with 8 pool copies, everything cooked,
+registered, planted and resolving. The cause was invisible to every static
+check:
+
+A tile **level** carries a 16-byte identity GUID in its literal stream (the
+`oCGameLevelIdentifierRFI` serialises it before the display name; it sits at
+offset 0 of `_literals[1]`). **All 228 shipped tile levels have a distinct
+one.** A clone that keeps its donor's collides with it in the level registry,
+and the tile simply never gets placed — no log line, no crash, no failed
+lookup. `clone_tile_level` now re-stamps it, derived deterministically from the
+new resource path (map generation is seeded run state, so a random GUID would
+desync multiplayer and break reproducible builds).
+
+Two neighbouring fields look identical and must be left alone — uniqueness
+across the corpus is the only thing that separates them:
+
+| field | distinct values | verdict |
+|---|---|---|
+| level GUID (`_literals[1]` +0) | 228 / 228 | identity — re-stamp |
+| prefab entity GUID-shaped field | 168 / 226, one value shared by 37 tiles | type tag — leave |
+| level display name (after the GUID) | three levels all say `6x6_Healing_01` | not identity — leave |
+
+The general lesson for this whole chain: **a clone is not only its references.**
+Rewriting every string path produced an asset that resolved perfectly and still
+did nothing.
+
 ### Traps worth keeping
 
 * **Repoint every LOD.** A scenery donor references its mesh once per LOD. Miss
@@ -303,6 +331,10 @@ cooked geometry carries the mod's vertex count and not the donor's.
   that matched nothing leaves the clone pointing at the donor's art, which
   in-game reads as "my texture didn't apply" and is miserable to trace. Both
   clone helpers raise instead.
+* **A kind has a footprint, not just a name.** Every shipped `Wishing_Well` is
+  40x40, so a 6x6 tile declaring that kind can never fill one of its slots — it
+  reads as a free way to compete for more slots and is dead weight.
+  `poi.kind_footprints()` gates this.
 * **New assets need a same-kind sibling** in the same decoded directory, twice
   over: `synthesize_encoded` clones an encoded prefix from one, and
   `build_usedrsc_record` clones a 3-line manifest record from one. Filing

@@ -15,11 +15,22 @@ mapdef pool ─► tiledef ─► tile prefab entity ─► tile level ─► pr
                                           geometry                material ─► textures
 ```
 
-Nothing in that chain is a GUID or an index, so a mod can splice itself in at
-any hop by cloning the vanilla asset and rewriting the one string that points
-at the next one. That is all this module does — five clones and a handful of
-string rewrites — but it is what turns "reuse a shipped structure" into "ship
-your own".
+Every hop is a reference by string, so a mod splices itself in by cloning the
+vanilla asset and rewriting the one string that points at the next one.
+
+But a clone is not only its references. A tile **level** also carries a 16-byte
+identity GUID, and all 228 shipped tile levels have a distinct one — so a copy
+that keeps its donor's collides with it in the level registry and the tile
+never appears in a generated map. Nothing reports this: the assets cook,
+install, register and resolve perfectly, and every static check passes.
+:func:`clone_tile_level` re-stamps it.
+
+(The reverse trap is just as real. The prefab entity has a GUID-shaped field in
+the same position, but 37 different tiles share one value — that is a type tag,
+and re-stamping it would be inventing a type. The display name beside the level
+GUID is not identity either: three separate levels all call themselves
+`6x6_Healing_01`. Uniqueness across the corpus is what separates the three, and
+it is the only reason to touch a field like this.)
 
 Two different rewrite mechanisms are needed, because the assets are not the
 same shape:
@@ -209,6 +220,71 @@ def clone_prop_entity(donor_cooked: bytes, replacements: dict[str, str]) -> byte
     return entity_strings.replace_strings(donor_cooked, replacements)
 
 
+#: Byte offset of a level's identity GUID inside its second literal chunk.
+#: `oCGameLevelIdentifierRFI` serialises the GUID first, then the display name.
+_LEVEL_GUID_LITERAL = 1
+_LEVEL_GUID_OFF = 0
+_LEVEL_GUID_LEN = 16
+
+
+def level_guid(cooked_or_doc) -> str | None:
+    """The level's identity GUID as hex, or None if the shape is unexpected."""
+    import json as _json
+
+    doc = cooked_or_doc
+    if isinstance(cooked_or_doc, (bytes, bytearray)):
+        doc = _json.loads(
+            cooked_schemas.get("oCGameStream").decode_cooked(bytes(cooked_or_doc)))
+    lits = doc.get("_literals") or []
+    if len(lits) <= _LEVEL_GUID_LITERAL:
+        return None
+    raw = bytes.fromhex(lits[_LEVEL_GUID_LITERAL])
+    if len(raw) < _LEVEL_GUID_OFF + _LEVEL_GUID_LEN:
+        return None
+    return raw[_LEVEL_GUID_OFF:_LEVEL_GUID_OFF + _LEVEL_GUID_LEN].hex()
+
+
+def derive_guid(seed: str) -> bytes:
+    """A stable 16-byte GUID for `seed`, shaped like a v4 UUID.
+
+    Deterministic on purpose. Map generation is part of the seeded run state, so
+    every peer has to derive the same bytes for the same content — a random GUID
+    would desync multiplayer and break reproducible builds.
+    """
+    import hashlib
+
+    h = bytearray(hashlib.sha256(seed.encode("utf-8")).digest()[:16])
+    h[6] = (h[6] & 0x0F) | 0x40      # version 4
+    h[8] = (h[8] & 0x3F) | 0x80      # RFC-4122 variant
+    return bytes(h)
+
+
+def _restamp_level_guid(doc: dict, seed: str) -> None:
+    """Give a cloned level its own identity.
+
+    Every one of the 228 shipped tile levels has a distinct GUID here, so it is
+    an instance identity, not a type tag — and a clone that keeps the donor's
+    collides with it in the level registry. That is invisible in the emitted
+    bytes and in every static check: the assets install, register and resolve
+    perfectly, and the tile simply never appears in a generated map.
+
+    (The display name that follows the GUID is NOT identity: three different
+    levels all call themselves `6x6_Healing_01`, a copy-paste in the shipped
+    data, so it is left alone. The prefab entity has a GUID-shaped field too,
+    but 37 different tiles share one value — that one is a type tag, so it is
+    also left alone.)
+    """
+    lits = doc.get("_literals") or []
+    if len(lits) <= _LEVEL_GUID_LITERAL:
+        raise PropCookError("level has no literal chunk to carry an identity GUID")
+    raw = bytearray(bytes.fromhex(lits[_LEVEL_GUID_LITERAL]))
+    if len(raw) < _LEVEL_GUID_OFF + _LEVEL_GUID_LEN:
+        raise PropCookError("level literal too short to hold an identity GUID")
+    raw[_LEVEL_GUID_OFF:_LEVEL_GUID_OFF + _LEVEL_GUID_LEN] = derive_guid(seed)
+    lits[_LEVEL_GUID_LITERAL] = bytes(raw).hex()
+    doc["_literals"] = lits
+
+
 def clone_tile_level(donor_cooked: bytes, self_ref: str, new_self_ref: str,
                      object_swaps: dict[str, str]) -> bytes:
     """Clone a tile level: rename it, and swap object references inside it.
@@ -222,6 +298,10 @@ def clone_tile_level(donor_cooked: bytes, self_ref: str, new_self_ref: str,
     rotation, scale) the donor's object occupied. Everything else in the level —
     terrain patch, grass scatter, props — is untouched, so the custom structure
     lands in a finished-looking tile instead of on a bare plane.
+
+    The clone is also given a fresh identity GUID (see :func:`_restamp_level_guid`)
+    — without it the copy collides with its donor in the level registry and the
+    tile never appears, with nothing anywhere reporting a problem.
     """
     handler, doc = _refs_doc("oCGameStream", donor_cooked)
     refs = list(doc.get("asset_refs") or [])
@@ -247,6 +327,7 @@ def clone_tile_level(donor_cooked: bytes, self_ref: str, new_self_ref: str,
         else:
             out.append(object_swaps.get(r, r))
     doc["asset_refs"] = out
+    _restamp_level_guid(doc, new_self_ref)
     return _emit(handler, doc)
 
 

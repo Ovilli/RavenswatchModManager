@@ -365,6 +365,26 @@ def discover(mod_root: Path) -> list[dict]:
     return blocks
 
 
+def kind_footprints(kind: str) -> set[tuple[int, int]]:
+    """Tile footprints the shipped corpus uses for ``kind``.
+
+    A slot has a size as well as a kind, so declaring a kind whose tiles are all
+    a different size buys nothing. Empty when the corpus is absent (do not
+    block) or the kind is unknown (the vocabulary check already covers that).
+    """
+    out: set[tuple[int, int]] = set()
+    if not _TILES_DIR.is_dir():
+        return out
+    for p in _TILES_DIR.rglob("*" + TC.GEN_SUFFIX):
+        try:
+            td = TC.read(p.read_bytes())
+        except TC.TileCookError:
+            continue
+        if kind in td.kinds:
+            out.add((td.width, td.height))
+    return out
+
+
 def _validate(defn: ContentDef) -> tuple[str, list[str]]:
     C.validate_id("poi", defn.id)
     f = defn.fields
@@ -440,6 +460,19 @@ def _apply_edits(td: TC.TileDef, defn: ContentDef, chapters: list[str]) -> None:
                     f"poi {defn.id}: chapter {ch} has no slot for kind(s) "
                     f"{', '.join(unknown)} — the tile would load but never be "
                     f"placed. Kinds {ch} uses: {', '.join(sorted(vocab))}."
+                )
+        # A kind's slots have a footprint. Every shipped `Wishing_Well` tile is
+        # 40x40, so a 6x6 tile claiming that kind can never fill one of its
+        # slots — it looks like a free way to compete for more slots and is
+        # actually dead weight.
+        for k in kinds:
+            sizes = kind_footprints(k)
+            if sizes and (td.width, td.height) not in sizes:
+                pretty = ", ".join(f"{w}x{h}" for w, h in sorted(sizes))
+                raise ContentError(
+                    f"poi {defn.id}: kind {k!r} is only used by {pretty} tiles, "
+                    f"but this one is {td.width}x{td.height} — it could never "
+                    f"fill a {k} slot."
                 )
         td.kinds = list(kinds)
 
