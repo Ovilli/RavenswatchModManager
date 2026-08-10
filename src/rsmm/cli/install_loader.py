@@ -39,9 +39,20 @@ def _symbol_resolve_gate(game_dir: Path) -> bool:
     exe = game_dir / "Ravenswatch.exe"
     if not script.exists() or not exe.exists():
         return True
+    # The verifier reports "could not run" (missing capstone / pattern DB /
+    # importable rsmm) separately from "symbols are bad". Conflating them told a
+    # user to go recover addresses when the actual fault was an ImportError.
+    cannot_run = 3
     try:
         rc = subprocess.call([sys.executable, str(script), "--exe", str(exe)])
     except OSError:
+        return True
+    if rc == cannot_run:
+        print(
+            "install-loader: symbol-resolve gate SKIPPED (see reason above) — "
+            "planting anyway. Symbols were not verified against this exe.",
+            file=sys.stderr,
+        )
         return True
     if rc != 0:
         print(

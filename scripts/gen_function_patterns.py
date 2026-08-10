@@ -29,7 +29,13 @@ from pathlib import Path
 
 import capstone  # type: ignore
 
-from rsmm.engine.paths import default_game_dir
+# Run from a plain `python3 scripts/...` with no activated venv too: an editable
+# install puts `rsmm` on the path, but `./rsmm install-loader` shells this out
+# via sys.executable, which is NOT necessarily the interpreter that has it.
+# Without this the import dies and the caller reports it as a symbol failure.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+
+from rsmm.engine.paths import default_game_dir  # noqa: E402
 
 # Cross-platform game-dir resolver (honors RSMM_GAME_DIR + Steam autodetect
 # on Windows/Linux); no user-specific path baked in.

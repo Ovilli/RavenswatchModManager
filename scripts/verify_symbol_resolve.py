@@ -24,8 +24,19 @@ import struct
 import sys
 from pathlib import Path
 
+#: Exit code meaning "the gate could not run", as distinct from 1 = "symbols are
+#: bad". Callers must not treat a missing dependency as a verification failure:
+#: doing so told a user to go recover addresses when the real problem was that
+#: `rsmm` was not importable from the interpreter running this script.
+EXIT_CANNOT_RUN = 3
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import gen_function_patterns as gen  # noqa: E402
+try:
+    import gen_function_patterns as gen  # noqa: E402
+except ImportError as e:  # pragma: no cover — environment-dependent
+    print(f"verify_symbol_resolve: cannot run ({e}); skipping resolve gate",
+          file=sys.stderr)
+    sys.exit(EXIT_CANNOT_RUN)
 
 REPO = Path(__file__).resolve().parent.parent
 SYM = REPO / "data/symbols.json"
@@ -102,7 +113,17 @@ def main() -> int:
         import capstone
     except ImportError:
         print("capstone not installed; skipping resolve gate", file=sys.stderr)
-        return 0
+        return EXIT_CANNOT_RUN
+
+    # The pattern DB is gitignored (14 MB, game-derived), so a fresh clone has
+    # no way to verify anything. That is "cannot run", not "symbols are bad".
+    if not DB.is_file():
+        print(f"{DB} missing (regenerate with scripts/gen_function_patterns.py); "
+              "skipping resolve gate", file=sys.stderr)
+        return EXIT_CANNOT_RUN
+    if not Path(args.exe).is_file():
+        print(f"{args.exe} not found; skipping resolve gate", file=sys.stderr)
+        return EXIT_CANNOT_RUN
 
     data = Path(args.exe).read_bytes()
     img, secs = gen.parse_pe(data)

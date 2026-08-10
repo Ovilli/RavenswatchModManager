@@ -36,6 +36,12 @@ def _default_exe() -> str | None:
     """Ravenswatch.exe via the cross-platform game-dir resolver (honors
     `RSMM_GAME_DIR` + Steam autodetect on Windows/Linux). None if the
     game can't be located, so `--exe` is required in that case."""
+    # Put the package on the path first — without it this silently degraded to
+    # "game not found" outside an activated venv, and the caller was told to
+    # pass --exe for a game that was sitting right there.
+    import sys
+    from pathlib import Path as _P
+    sys.path.insert(0, str(_P(__file__).resolve().parent.parent / "src"))
     try:
         from rsmm.engine.paths import default_game_dir
     except ImportError:
