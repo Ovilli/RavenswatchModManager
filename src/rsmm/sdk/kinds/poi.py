@@ -326,7 +326,7 @@ def discover(mod_root: Path) -> list[dict]:
         # replaced its `Start` kind with `Fountain` and broken run spawning.
         # Only an explicit value in poi.toml may change those in override mode.
         overriding = bool(cfg.get("replace_base"))
-        for key in ("base", "kinds", "weight", "copies", "replace_base"):
+        for key in ("base", "kinds", "weight", "copies", "replace_base", "swaps"):
             if key in cfg:
                 block[key] = cfg.pop(key)
             elif key in preset and not (overriding and key in ("kinds", "weight")):
@@ -653,6 +653,55 @@ def _emitted_assets(out_dir: Path, written: list[Path]) -> list[str]:
     return out
 
 
+def _validated_swaps(defn: ContentDef, base: str) -> dict[str, str]:
+    """Check and return ``swaps`` — re-dress a tile using props the game ships.
+
+    ``swaps = { "<placed>.entity.ot" = "<replacement>.entity.ot" }`` puts a
+    different shipped entity at an object's transform. No new asset is created,
+    which makes it the cheapest way to change what a tile looks like — and the
+    one shape of tile edit whose correctness does not depend on any of this
+    module's cooking.
+
+    Both sides are validated here rather than in-game: the source must be an
+    object the tile's level actually places, and the replacement must already
+    be in the tile's own resource cache. That second rule is the important one.
+    A tile only preloads what its cache lists, and the closure of an arbitrary
+    vanilla entity is not something this SDK can compute — so pointing at a
+    prop the tile does not already load would leave a null in the preloaded
+    vector and crash on teardown, exactly like a missing cache line.
+    """
+    raw = defn.fields.get("swaps")
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict) or not raw:
+        raise ContentError(f"poi {defn.id}: 'swaps' must be a non-empty table")
+    if not defn.fields.get("replace_base"):
+        raise ContentError(
+            f"poi {defn.id}: 'swaps' re-dresses a shipped tile, so it needs "
+            f"replace_base = true. A cloned tile should use 'prop' instead."
+        )
+    for src, dst in raw.items():
+        if not isinstance(dst, str) or not dst.lower().endswith(".entity.ot"):
+            raise ContentError(
+                f"poi {defn.id}: swaps[{src!r}] must be an entity reference "
+                f"ending in .entity.ot, got {dst!r}"
+            )
+
+    cache_rel = RC.cache_path_for(f"{_TILE_ASSET_SUBDIR}/{base}{TC.GEN_SUFFIX}")
+    cache = _UNCOOKED / Path(*cache_rel.split("/"))
+    if cache.is_file():
+        listed = {ln.split("|")[1] for ln in RC.parse(cache.read_bytes())}
+        for dst in raw.values():
+            if dst not in listed:
+                raise ContentError(
+                    f"poi {defn.id}: swaps target {dst!r} is not in "
+                    f"{base}'s resource cache, so the tile never preloads it "
+                    f"— it would leave a null in the preloaded vector and "
+                    f"crash. Pick a prop this tile already places."
+                )
+    return dict(raw)
+
+
 def _extend_map_caches(out_dir: Path, defn_id: str, chapters: list[str],
                        assets: list[str], tile_rels: list[str],
                        written: list[Path]) -> None:
@@ -869,14 +918,17 @@ def _emit_replacing_base(mod_id: str, defn: ContentDef, out_dir: Path,
     written: list[Path] = []
     biome, stem = base.split("/", 1)
 
+    swaps: dict[str, str] = _validated_swaps(defn, base)
     if defn.fields.get("prop"):
-        ent_ref = _emit_prop_art(mod_id, defn, out_dir, written)
+        swaps[defn.fields["prop"]["replaces"]] = _emit_prop_art(
+            mod_id, defn, out_dir, written)
+    if swaps:
         level_ref = _level_ref_of(_prefab_ref_of(base, defn.id), defn.id)
         _write(out_dir, PC.level_cooked_path(level_ref),
                PC.override_tile_level(
                    _corpus(PC.level_cooked_path(level_ref), defn.id,
                            "the tile's level"),
-                   {defn.fields["prop"]["replaces"]: ent_ref}), written)
+                   swaps), written)
 
     # Cosmetic edits (icon / kinds / weight) go onto the base tiledef itself.
     if defn.fields.get("icon_source"):
@@ -906,6 +958,9 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
 
     td = TC.read(_tile_path(base).read_bytes())
     _apply_edits(td, defn, chapters)
+    # Validated here as well as in the override path, so an author who writes
+    # `swaps` without `replace_base` is told rather than silently ignored.
+    _validated_swaps(defn, base)
 
     # `replace_base` mode: rewrite the BASE tile in place instead of adding a
     # new one to the pool. The tile keeps its own id, path, prefab reference and

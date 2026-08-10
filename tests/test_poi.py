@@ -612,6 +612,59 @@ def test_replace_base_still_extends_the_chapter_cache(tmp_path):
 
 
 @needs_corpus
+def test_swaps_redresses_a_tile_with_zero_new_assets(tmp_path):
+    """`swaps` puts a different SHIPPED prop at an object's transform. Its
+    whole point is that nothing is cooked, registered or cached — the only
+    bytes that change are object references inside one level."""
+    from rsmm.engine import prop_cook as PC
+
+    files = poi.emit("m", ContentDef(kind="poi", id="Trees", fields={
+        "base": "Dark_Hills/40x40_Dark_Hills_Start_Update3",
+        "chapters": ["Dark_Hills"], "replace_base": True,
+        "swaps": {
+            "DarkHills\\SceneryObjects_DarkHills\\Wall_Ruins_Block_Small_A.entity.ot":
+                "Enemies\\RavensTree\\RavensTree.entity.ot"},
+    }), tmp_path)
+
+    rel = sorted(f.relative_to(tmp_path).as_posix() for f in files)
+    assert rel == [
+        "Definitions/Maps/Dark_Hills_LiveOps_Update5.mapdef.UsedRscCache.ot",
+        "Definitions/Tiles/Dark_Hills/40x40_Dark_Hills_Start_Update3.tiledef.UsedRscCache.ot",
+        "Ot/DarkHills/Tiles/40x40_DarkHills_Starting_Tile_Update3.level.ot.GameStream.gen",
+    ]
+    lvl = next(f for f in files if f.name.endswith(".GameStream.gen")).read_bytes()
+    assert b"Wall_Ruins_Block_Small_A.entity.ot" not in lvl
+    assert lvl.count(b"RavensTree.entity.ot") >= 22 + 8
+
+    vanilla = (DATA_DIR / "uncooked" / PC.level_cooked_path(
+        "DarkHills\\Tiles\\40x40_DarkHills_Starting_Tile_Update3.level.ot")).read_bytes()
+    assert PC.level_guid(lvl) == PC.level_guid(vanilla)
+
+
+@needs_corpus
+def test_swaps_rejects_a_target_the_tile_never_preloads(tmp_path):
+    """The guard that makes the whole cache bug class unreachable here: a tile
+    only loads what its cache lists, and this SDK cannot compute an arbitrary
+    vanilla entity's closure."""
+    with pytest.raises(ContentError, match="resource cache"):
+        poi.emit("m", ContentDef(kind="poi", id="Bad", fields={
+            "base": "Dark_Hills/40x40_Dark_Hills_Start_Update3",
+            "chapters": ["Dark_Hills"], "replace_base": True,
+            "swaps": {
+                "DarkHills\\SceneryObjects_DarkHills\\Wall_Ruins_Block_Small_A.entity.ot":
+                    "Avalon\\SceneryObjects_Avalon\\Round_Table.entity.ot"},
+        }), tmp_path)
+
+
+def test_swaps_requires_replace_base(tmp_path):
+    with pytest.raises(ContentError, match="replace_base"):
+        poi.emit("m", ContentDef(kind="poi", id="Bad", fields={
+            "base": BASE, "chapters": ["Dark_Hills"],
+            "swaps": {"a.entity.ot": "b.entity.ot"},
+        }), tmp_path)
+
+
+@needs_corpus
 def test_pool_additions_are_mirrored_into_the_map_cache(tmp_path):
     """A tile appended to the pool but missing from the chapter's own cache is
     never loaded, so it is never placed — the gate that survived the per-tile
