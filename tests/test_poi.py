@@ -8,6 +8,7 @@ field does not fail loudly — it produces a map that generates wrong.
 from __future__ import annotations
 
 import glob
+from pathlib import Path
 
 import pytest
 
@@ -584,3 +585,65 @@ def test_declared_manifest_block_wins_over_a_same_id_folder(tmp_path):
     blocks = [b for b in Mod(tmp_path).content_blocks if b.get("id") == "dup"]
     assert len(blocks) == 1
     assert blocks[0]["base"] == "Avalon/6x6_Healing_01"
+
+
+# --------------------------------------------------------------------------- #
+# Custom minimap icon
+# --------------------------------------------------------------------------- #
+
+def test_ui_cooked_path_uses_the_ui_root_not_3d():
+    """UI art cooks under `Ui/`, art under `3D/` — same texture class, different
+    namespace, which is why one helper cannot serve both."""
+    from rsmm.engine import prop_cook as PC
+    assert PC.ui_cooked_path("MiniMap\\Icons\\X.png") == \
+        "Ui/MiniMap/Icons/X.png.Texture.dxt"
+    with pytest.raises(PC.PropCookError):
+        PC.ui_cooked_path("MiniMap\\Icons\\X.glb")
+
+
+def test_discover_picks_up_icon_png_and_drops_a_vanilla_icon_ref(tmp_path):
+    d = _poi_folder(tmp_path, cfg='chapters = ["Dark_Hills"]\n'
+                                  'icon = "MiniMap\\\\Icons\\\\Map_Icon_Key.png"\n',
+                    with_art=False)
+    from rsmm.engine import image as IMG
+    (d / "icon.png").write_bytes(IMG.encode_png(2, 2, bytes([9, 9, 9, 255] * 4)))
+    b = poi.discover(tmp_path)[0]
+    assert b["icon_source"] == "pois/my_shrine/icon.png"
+    assert "icon" not in b, "a shipped icon.png must win over a vanilla ref"
+
+
+@needs_corpus
+def test_emit_cooks_a_custom_icon_and_points_the_tiledef_at_it(tmp_path):
+    from rsmm.engine import cooked as CK
+    from rsmm.engine import image as IMG
+    from rsmm.engine import prop_cook as PC
+    from rsmm.engine.cooked_schemas.texture import TextureHandler
+
+    art = tmp_path / "art"
+    art.mkdir()
+    (art / "icon.png").write_bytes(IMG.encode_png(48, 48, bytes([9, 200, 240, 255] * 48 * 48)))
+    files = poi.emit("mymod", ContentDef(kind="poi", id="Shrine", fields={
+        "base": BASE, "chapters": ["Dark_Hills"],
+        "icon_source": "art/icon.png"}), tmp_path / "assets")
+
+    tile = next(f for f in files if f.name.endswith(TC.GEN_SUFFIX))
+    td = TC.read(tile.read_bytes())
+    assert td.icon[1] == "Ui"
+    assert td.icon[2] == "MiniMap\\Icons\\mymod_Shrine.png"
+
+    cooked_icon = (tmp_path / "assets" / Path(*PC.ui_cooked_path(td.icon[2]).split("/")))
+    assert cooked_icon.is_file(), "tiledef points at an icon the mod does not ship"
+    sch = TextureHandler().parse_payload(
+        CK.parse(cooked_icon.read_bytes()).sections[-1].payload)
+    assert (sch.width, sch.height) == (48, 48)
+
+
+@needs_corpus
+def test_a_custom_icon_asset_can_be_registered_at_apply(tmp_path):
+    """`MiniMap\\Icons` is chosen because the game already ships into it — a new
+    directory has no sibling for synthesize_encoded to anchor on."""
+    from rsmm.cli.apply_mods import load_asset_map, synthesize_encoded
+    from rsmm.engine import prop_cook as PC
+
+    decoded = PC.ui_cooked_path(f"{poi.ICON_DIR}\\mymod_Shrine.png")
+    assert synthesize_encoded(decoded, load_asset_map()) is not None

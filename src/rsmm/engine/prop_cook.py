@@ -128,6 +128,19 @@ def art_cooked_path(ref: str) -> str:
     return f"3D/{p}{suffix}"
 
 
+def ui_cooked_path(ref: str) -> str:
+    """``MiniMap\\Icons\\X.png`` -> ``Ui/MiniMap/Icons/X.png.Texture.dxt``.
+
+    UI art (minimap icons, HUD) cooks under the ``Ui/`` root rather than
+    ``3D/`` — the same texture class, a different namespace, which is why
+    :func:`art_cooked_path` cannot serve both.
+    """
+    p = ref.replace("\\", "/")
+    if not p.lower().endswith((".png", ".tga")):
+        raise PropCookError(f"{ref!r} is not a UI texture reference")
+    return f"Ui/{p}{TEXTURE_SUFFIX}"
+
+
 def entity_cooked_path(ref: str) -> str:
     """``DarkHills\\Objects\\X.entity.ot`` ->
     ``EntitySettings/DarkHills/Objects/X.entity.ot.EntitySettingsResource.gen``."""

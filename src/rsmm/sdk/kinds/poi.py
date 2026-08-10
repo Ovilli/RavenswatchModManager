@@ -173,6 +173,16 @@ DEFAULT_PRESET = "clearing"
 MODEL_NAMES = ("model.glb", "model.gltf")
 TEXTURE_ROLES = ("albedo", "mra", "normal")
 
+#: Drop an `icon.png` in a POI folder and it becomes the minimap icon. Shipped
+#: icons are 48x48 with a transparent background, a thick dark outline and a
+#: flat saturated fill; anything else still works but reads as out of place.
+ICON_NAMES = ("icon.png", "icon.tga")
+
+#: Where a mod's own minimap icons are filed. UI art cooks under the `Ui/` root
+#: (not `3D/`), and the directory has to be one the game already ships into so
+#: `synthesize_encoded` and `build_usedrsc_record` both find a sibling.
+ICON_DIR = "MiniMap\\Icons"
+
 
 def known_tiles() -> list[str]:
     """Every clonable tile as ``<Biome>/<Name>``."""
@@ -279,6 +289,13 @@ def discover(mod_root: Path) -> list[dict]:
         for key in ("chapters", "icon"):
             if key in cfg:
                 block[key] = cfg.pop(key)
+
+        icon_src = next((n for n in ICON_NAMES if (d / n).is_file()), None)
+        if icon_src:
+            # A custom icon file wins over an `icon = "..."` vanilla ref.
+            block["icon_source"] = f"{POIS_DIRNAME}/{d.name}/{icon_src}"
+            cfg.pop("icon", None)
+            block.pop("icon", None)
 
         model = next((m for m in MODEL_NAMES if (d / m).is_file()), None)
         if model:
@@ -411,6 +428,19 @@ def _apply_edits(td: TC.TileDef, defn: ContentDef, chapters: list[str]) -> None:
             td.icon = (resolved, cat or "Ui", icon)
         else:
             td.icon = (resolved, "", "")
+
+
+def _emit_custom_icon(mod_id: str, defn: ContentDef, out_dir: Path,
+                      td: TC.TileDef, written: list[Path]) -> None:
+    """Cook the mod's own `icon.png` and point the tiledef's icon slot at it."""
+    src_rel = defn.fields["icon_source"]
+    src = _mod_source(out_dir, src_rel, defn.id, "icon_source")
+    tag = f"{mod_id}_{defn.id}".replace("-", "_")
+    ref = f"{ICON_DIR}\\{tag}.png"
+    _write(out_dir, PC.ui_cooked_path(ref), PC.cook_texture(src.read_bytes()), written)
+    # `_res` stays as the donor left it; only the path moves.
+    td.icon = (td.icon[0], "Ui", ref)
+    _log.info("poi %s/%s: custom minimap icon from %s", mod_id, defn.id, src_rel)
 
 
 def _corpus(decoded: str, defn_id: str, what: str) -> bytes:
@@ -647,6 +677,10 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     if defn.fields.get("prop"):
         td.entity_ref = ["EntitySettings",
                          _emit_custom_prop(mod_id, defn, out_dir, base, written)]
+
+    # After _apply_edits, so a shipped icon.png beats an `icon = "..."` ref.
+    if defn.fields.get("icon_source"):
+        _emit_custom_icon(mod_id, defn, out_dir, td, written)
 
     tile_rel = f"{_TILE_ASSET_SUBDIR}/{biome}/{tile_name}{TC.GEN_SUFFIX}"
     tile_dest = out_dir / Path(*tile_rel.split("/"))

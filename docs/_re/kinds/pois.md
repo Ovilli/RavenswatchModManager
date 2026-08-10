@@ -236,6 +236,32 @@ declared block wins on id collision — the convention is a shorthand, not a
 second code path. Unknown keys in `poi.toml` raise rather than being ignored,
 since a silently-dropped setting is one the author believes is in effect.
 
+### Minimap icons
+
+A tiledef's icon is a `tresptr` to UI art, and UI cooks under the **`Ui/`** root
+rather than `3D/` — `MiniMap\Icons\X.png` loads from
+`Ui/MiniMap/Icons/X.png.Texture.dxt`. That is a second namespace, so
+`prop_cook.ui_cooked_path` exists alongside `art_cooked_path`.
+
+Drop `icon.png` in a POI folder and it becomes the icon; it beats an
+`icon = "<vanilla ref>"` in `poi.toml`, since shipping a file is the more
+specific intent. Custom icons are filed into `MiniMap\Icons` for the usual
+sibling reason — a fresh directory has nothing for `synthesize_encoded` or
+`build_usedrsc_record` to clone from.
+
+House style, measured off the 60 shipped icons: **48x48** (42 of them),
+transparent background, a thick dark outline fully enclosing the shape, flat
+saturated fill with a little vertical shading, and a rim light on the top-left
+edge. Matching it matters more than the drawing — an icon in a different style
+reads as a bug rather than as content. `tools/make_shrine_assets.py::build_icon`
+draws one by rasterising a material-id mask (supersampled, so diagonals are not
+jagged) and then *growing that finished mask* for the outline; stroking each
+shape separately instead leaves seams where they meet.
+
+One trap worth keeping: the outline ring grows `r` px outward from every filled
+pixel, so two shapes closer than `2*r` fuse. The shrine's crystal is supposed to
+float, and at `r=2` it needed >4px of clear space to still read that way.
+
 ### Source art stays source art
 
 A mod ships `.glb` and `.png` under `mods/<id>/art/` — outside `assets/`, so

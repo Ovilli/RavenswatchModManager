@@ -326,6 +326,143 @@ def build_textures(size: int = TEX_SIZE) -> dict[str, bytes]:
 
 
 # --------------------------------------------------------------------------- #
+# Minimap icon
+# --------------------------------------------------------------------------- #
+
+#: Minimap icons are 48x48 (42 of the 60 shipped ones), transparent, with a
+#: thick black outline around a flat saturated fill and a little vertical
+#: shading. Matching that matters more than the drawing itself — an icon in a
+#: different style reads as a bug, not as content.
+ICON_SIZE = 48
+_OUTLINE_PX = 2
+
+#: Palette, sampled to sit in the same value range as the shipped icons.
+_STONE_HI = (168, 158, 140)
+_STONE_LO = (84, 76, 68)
+_CRYSTAL_HI = (170, 248, 255)
+_CRYSTAL_LO = (24, 150, 205)
+_RUNE = (90, 232, 255)
+_OUTLINE = (16, 14, 20)
+
+
+def _in_poly(px: float, py: float, pts: list[tuple[float, float]]) -> bool:
+    """Even-odd point-in-polygon."""
+    inside = False
+    n = len(pts)
+    for i in range(n):
+        x0, y0 = pts[i]
+        x1, y1 = pts[(i + 1) % n]
+        if (y0 > py) != (y1 > py):
+            xint = x0 + (py - y0) * (x1 - x0) / (y1 - y0)
+            if px < xint:
+                inside = not inside
+    return inside
+
+
+def build_icon(size: int = ICON_SIZE) -> bytes:
+    """Draw the shrine as a minimap icon: obelisk + floating crystal.
+
+    Two-pass: rasterise a material id per pixel (supersampled so the diagonals
+    are not jagged), then grow that mask outward to make the outline. Growing a
+    finished mask is what gives the even, fully-enclosing border the vanilla
+    icons have — stroking each shape separately leaves seams where they meet.
+    """
+    S = size / 48.0          # design at 48 and scale, so shapes stay in place
+    SS = 3                   # supersamples per axis
+
+    # Sized to fill the frame the way the shipped icons do — the first pass was
+    # a thin spire with a third of the canvas empty, which reads as small and
+    # faint next to a cauldron that spans nearly the full width.
+    # The crystal has to read as FLOATING, which is the shape's whole idea, so
+    # the gap between it and the obelisk must survive the outline pass — the
+    # ring grows `r` outward from both, so anything under 2*r closes up. At
+    # r=2 that means >4px of clear space; 6 leaves margin at 48px.
+    crystal = [(24 * S, 1 * S), (31 * S, 7 * S), (24 * S, 13 * S), (17 * S, 7 * S)]
+    # Pyramidion top rather than a needle point: a sharp tip disappears into
+    # the outline at this size.
+    obelisk = [(21 * S, 19 * S), (27 * S, 19 * S), (33 * S, 29 * S),
+               (34 * S, 40 * S), (14 * S, 40 * S), (15 * S, 29 * S)]
+    plinth = [(9 * S, 40 * S), (39 * S, 40 * S), (39 * S, 45 * S), (9 * S, 45 * S)]
+
+    # 0 empty, 1 stone, 2 crystal
+    mat = [[0] * size for _ in range(size)]
+    for y in range(size):
+        for x in range(size):
+            hits = {1: 0, 2: 0}
+            for sy in range(SS):
+                for sx in range(SS):
+                    fx, fy = x + (sx + 0.5) / SS, y + (sy + 0.5) / SS
+                    if _in_poly(fx, fy, crystal):
+                        hits[2] += 1
+                    elif _in_poly(fx, fy, obelisk) or _in_poly(fx, fy, plinth):
+                        hits[1] += 1
+            if hits[2] * 2 >= SS * SS:
+                mat[y][x] = 2
+            elif (hits[1] + hits[2]) * 2 >= SS * SS:
+                mat[y][x] = 1
+
+    # Grow the filled mask to make the outline ring.
+    r = max(1, round(_OUTLINE_PX * S))
+    outline = [[False] * size for _ in range(size)]
+    for y in range(size):
+        for x in range(size):
+            if mat[y][x]:
+                continue
+            near = False
+            for dy in range(-r, r + 1):
+                for dx in range(-r, r + 1):
+                    if dx * dx + dy * dy > r * r:
+                        continue
+                    ny, nx = y + dy, x + dx
+                    if 0 <= ny < size and 0 <= nx < size and mat[ny][nx]:
+                        near = True
+                        break
+                if near:
+                    break
+            outline[y][x] = near
+
+    # Rune band on the shaft — the one detail that says which shrine this is.
+    rune_rows = {int(v * S) for v in (31, 32, 36, 37)}
+
+    # Rim light along the top-left edge, which is what gives the shipped icons
+    # their raised look. A pixel is rim if it is filled and its up-left
+    # neighbour is not.
+    rim = [[False] * size for _ in range(size)]
+    for y in range(size):
+        for x in range(size):
+            if not mat[y][x]:
+                continue
+            up = mat[y - 1][x] if y else 0
+            left = mat[y][x - 1] if x else 0
+            if not up or not left:
+                rim[y][x] = True
+
+    out = bytearray(size * size * 4)
+    for y in range(size):
+        for x in range(size):
+            i = (y * size + x) * 4
+            m = mat[y][x]
+            if m == 0:
+                if outline[y][x]:
+                    out[i:i + 4] = bytes((*_OUTLINE, 255))
+                continue
+            if m == 2:
+                t = (y / S - 1) / 12.0
+                hi, lo = _CRYSTAL_HI, _CRYSTAL_LO
+            else:
+                t = (y / S - 19) / 26.0
+                hi, lo = _STONE_HI, _STONE_LO
+            t = max(0.0, min(1.0, t))
+            col = tuple(int(hi[c] + (lo[c] - hi[c]) * t) for c in range(3))
+            if m == 1 and y in rune_rows and 17 * S <= x <= 31 * S:
+                col = _RUNE
+            elif rim[y][x]:
+                col = tuple(min(255, int(c * 1.30 + 26)) for c in col)
+            out[i:i + 4] = bytes((*col, 255))
+    return bytes(out)
+
+
+# --------------------------------------------------------------------------- #
 # Cooking + output
 # --------------------------------------------------------------------------- #
 
