@@ -796,3 +796,63 @@ def test_kind_must_match_the_tile_footprint(tmp_path):
         poi.emit("m", ContentDef(kind="poi", id="S", fields={
             "base": "Dark_Hills/6x6_Bleeding_01", "chapters": ["Dark_Hills"],
             "kinds": ["Wishing_Well"]}), tmp_path)
+
+
+# --------------------------------------------------------------------------- #
+# replace_base: override the shipped tile instead of adding one
+# --------------------------------------------------------------------------- #
+
+@needs_corpus
+@needs_prop_corpus
+def test_replace_base_touches_no_mapdef_and_overrides_the_base_prefab(tmp_path):
+    """Override mode is both a real re-skin path and the diagnostic that splits
+    this feature: it removes pool membership from the equation entirely."""
+    from rsmm.engine import gltf
+    from rsmm.engine import image as IMG
+
+    art = tmp_path / "art"
+    art.mkdir()
+    b = gltf.GlbBuilder()
+    pi = b.add_positions([(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)])
+    ni = b.add_vec3([(0, 1, 0)] * 4)
+    ui = b.add_vec2([(0, 0)] * 4)
+    ii = b.add_indices([0, 1, 2, 0, 1, 3, 0, 2, 3, 1, 2, 3])
+    m = b.add_mesh(gltf.Mesh(name="t", primitives=[gltf.Primitive(
+        attributes={"POSITION": pi, "NORMAL": ni, "TEXCOORD_0": ui}, indices=ii)]))
+    b.add_node(gltf.Node(name="t", mesh=m), is_root=True)
+    (art / "m.glb").write_bytes(b.build_glb())
+    (art / "m.png").write_bytes(IMG.encode_png(4, 4, bytes([1, 2, 3, 255] * 16)))
+
+    files = poi.emit("mymod", ContentDef(kind="poi", id="S", fields={
+        "base": "Dark_Hills/6x6_Bleeding_01", "chapters": ["Dark_Hills"],
+        "replace_base": True,
+        "prop": {
+            "replaces": "DarkHills\\Objects_DarkHills\\Blood_Fountain_DarkHills.entity.ot",
+            "entity_base":
+                "DarkHills\\SceneryObjects_DarkHills\\Wall_Ruins_Block_Small_A.entity.ot",
+            "material_base": "Scenery\\DarkHills\\M_Walls_Ruins.mat.ot",
+            "model": "art/m.glb",
+            "textures": {
+                "Scenery\\DarkHills\\T_Walls_Ruins_ALB.tga": "art/m.png"},
+        }}), tmp_path / "assets")
+
+    names = {f.name for f in files}
+    assert not any("mapdef" in n for n in names), "override mode must not touch a pool"
+    assert "6x6_Bleeding_01.entity.ot.EntitySettingsResource.gen" in names, \
+        "the base tile's prefab must be the thing overridden"
+    # No clone prefab left behind under a new name.
+    assert not any(n.startswith("mymod_S.entity") for n in names)
+
+    # The overridden prefab must point at the mod's level, not the vanilla one.
+    from rsmm.engine import entity_strings as ES
+    pf = next(f for f in files
+              if f.name == "6x6_Bleeding_01.entity.ot.EntitySettingsResource.gen")
+    levels = {s for _a, _b, s in ES.list_strings(pf.read_bytes())
+              if s.lower().endswith(".level.ot")}
+    assert levels == {"DarkHills\\Tiles\\mymod_S.level.ot"}
+
+
+def test_discover_passes_replace_base_through(tmp_path):
+    _poi_folder(tmp_path, cfg='chapters = ["Dark_Hills"]\nreplace_base = true\n',
+                with_art=False)
+    assert poi.discover(tmp_path)[0]["replace_base"] is True

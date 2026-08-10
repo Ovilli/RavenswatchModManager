@@ -305,7 +305,7 @@ def discover(mod_root: Path) -> list[dict]:
             )
 
         block: dict = {"kind": "poi", "id": cfg.pop("id", None) or d.name}
-        for key in ("base", "kinds", "weight", "copies"):
+        for key in ("base", "kinds", "weight", "copies", "replace_base"):
             if key in cfg:
                 block[key] = cfg.pop(key)
             elif key in preset:
@@ -711,12 +711,73 @@ def _level_ref_of(prefab_ref: str, defn_id: str) -> str:
     return levels[0]
 
 
+def _emit_replacing_base(mod_id: str, defn: ContentDef, out_dir: Path,
+                         base: str, td: TC.TileDef) -> list[Path]:
+    """Override the base tile in place: no new tiledef, no pool edit.
+
+    The custom prop still gets its own level and prop entity — those are new
+    assets either way — but the base tile's PREFAB is overridden so it points at
+    the new level, and the base tiledef is overridden only if the def asked for
+    cosmetic changes (icon/kinds/weight). Nothing is added to any pool, so the
+    structure appears exactly where and as often as the vanilla tile did.
+    """
+    written: list[Path] = []
+    biome, stem = base.split("/", 1)
+
+    if defn.fields.get("prop"):
+        # Reuse the normal chain, then point the BASE prefab at the new level
+        # instead of emitting a separate prefab under a new name.
+        from ...engine import entity_strings as ES
+
+        new_prefab = _emit_custom_prop(mod_id, defn, out_dir, base, written)
+        base_prefab = _prefab_ref_of(base, defn.id)
+        # The prop path emits its prefab under a NEW name. In override mode we
+        # want the ORIGINAL prefab path carrying the new level reference, so
+        # take the level out of the clone and drop the clone itself — the
+        # vanilla tiledef then resolves to a prefab that shows our structure.
+        clone_path = out_dir / Path(*PC.entity_cooked_path(new_prefab).split("/"))
+        new_level = sorted({
+            s for _a, _b, s in ES.list_strings(clone_path.read_bytes())
+            if s.lower().endswith(".level.ot")})[0]
+        clone_path.unlink()
+        written.remove(clone_path)
+        _write(out_dir, PC.entity_cooked_path(base_prefab),
+               PC.clone_tile_prefab(
+                   _corpus(PC.entity_cooked_path(base_prefab), defn.id,
+                           "the base tile's prefab entity"),
+                   _level_ref_of(base_prefab, defn.id), new_level), written)
+
+    # Cosmetic edits (icon / kinds / weight) go onto the base tiledef itself.
+    if defn.fields.get("icon_source"):
+        _emit_custom_icon(mod_id, defn, out_dir, td, written)
+    if any(k in defn.fields for k in ("icon", "icon_source", "kinds", "weight")):
+        _write(out_dir, f"{_TILE_ASSET_SUBDIR}/{biome}/{stem}{TC.GEN_SUFFIX}",
+               TC.write(td), written)
+
+    _log.info("poi %s/%s: REPLACING base tile %s in place (no pool change)",
+              mod_id, defn.id, base)
+    return written
+
+
 def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     """Materialize the cloned tiledef + one patched mapdef per target chapter."""
     base, chapters = _validate(defn)
 
     td = TC.read(_tile_path(base).read_bytes())
     _apply_edits(td, defn, chapters)
+
+    # `replace_base` mode: rewrite the BASE tile in place instead of adding a
+    # new one to the pool. The tile keeps its own id, path, prefab reference and
+    # pool membership — only what it *shows* changes.
+    #
+    # This exists for two reasons. It is the honest way to ship a re-skin of a
+    # structure that already exists (the same reason `reward` and `melody` are
+    # override-only). And it is the diagnostic that separates the two halves of
+    # this feature: if a POI appears in override mode but not in additive mode,
+    # the art chain is fine and the fault is in pool membership; if it appears
+    # in neither, the fault is in the art chain.
+    if defn.fields.get("replace_base"):
+        return _emit_replacing_base(mod_id, defn, out_dir, base, td)
 
     # File the clone next to its donor. `synthesize_encoded` derives a new
     # asset's encoded path by cloning an existing sibling's encoded prefix, so a
