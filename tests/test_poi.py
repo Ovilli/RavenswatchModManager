@@ -856,3 +856,31 @@ def test_discover_passes_replace_base_through(tmp_path):
     _poi_folder(tmp_path, cfg='chapters = ["Dark_Hills"]\nreplace_base = true\n',
                 with_art=False)
     assert poi.discover(tmp_path)[0]["replace_base"] is True
+
+
+@needs_corpus
+def test_replace_base_does_not_inherit_preset_kinds_or_weight(tmp_path):
+    """A preset describes a NEW tile. Applying its `kinds` to an override would
+    rewrite a shipped tile's identity — pointing the default preset at the Start
+    tile would have replaced its `Start` kind with `Fountain`, which is the tile
+    every run spawns on."""
+    _poi_folder(tmp_path, cfg='chapters = ["Dark_Hills"]\nreplace_base = true\n'
+                              'base = "Dark_Hills/40x40_Dark_Hills_Start_Update3"\n',
+                with_art=False)
+    b = poi.discover(tmp_path)[0]
+    assert "kinds" not in b and "weight" not in b
+    assert b["base"] == "Dark_Hills/40x40_Dark_Hills_Start_Update3"
+
+    # ...but an explicit value still wins.
+    import shutil
+    shutil.rmtree(tmp_path / poi.POIS_DIRNAME)
+    _poi_folder(tmp_path, cfg='chapters = ["Dark_Hills"]\nreplace_base = true\n'
+                              'weight = 0.5\n', with_art=False)
+    assert poi.discover(tmp_path)[0]["weight"] == 0.5
+
+
+@needs_corpus
+def test_additive_mode_still_inherits_preset_kinds(tmp_path):
+    _poi_folder(tmp_path, cfg='chapters = ["Dark_Hills"]\n', with_art=False)
+    b = poi.discover(tmp_path)[0]
+    assert b["kinds"] == poi.PRESETS[poi.DEFAULT_PRESET]["kinds"]

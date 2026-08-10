@@ -305,10 +305,16 @@ def discover(mod_root: Path) -> list[dict]:
             )
 
         block: dict = {"kind": "poi", "id": cfg.pop("id", None) or d.name}
+        # In replace_base mode the tile already exists and already has a job.
+        # Inheriting the preset's `kinds`/`weight` would rewrite the identity of
+        # a shipped tile — pointing the preset at the Start tile would have
+        # replaced its `Start` kind with `Fountain` and broken run spawning.
+        # Only an explicit value in poi.toml may change those in override mode.
+        overriding = bool(cfg.get("replace_base"))
         for key in ("base", "kinds", "weight", "copies", "replace_base"):
             if key in cfg:
                 block[key] = cfg.pop(key)
-            elif key in preset:
+            elif key in preset and not (overriding and key in ("kinds", "weight")):
                 block[key] = preset[key]
         for key in ("chapters", "icon"):
             if key in cfg:
