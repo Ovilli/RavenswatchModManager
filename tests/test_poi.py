@@ -858,12 +858,39 @@ def test_discover_rejects_bad_poi_toml(tmp_path, cfg, needle):
         poi.discover(tmp_path)
 
 
-def test_discover_rejects_a_model_with_no_textures(tmp_path):
+def test_a_model_with_no_textures_wears_the_donor_material(tmp_path):
+    """Shipping a shape but no maps is a real choice, not a mistake: the prop
+    keeps `material_base`. It is also the only configuration that exercises the
+    geometry cook WITHOUT the texture and material cooks, which is what makes
+    it usable as a bisect."""
     d = _poi_folder(tmp_path)
     for role in ("albedo", "mra", "normal"):
         (d / f"{role}.png").unlink()
-    with pytest.raises(ContentError, match="no texture next to it"):
-        poi.discover(tmp_path)
+    block = poi.discover(tmp_path)[0]
+    assert block["prop"]["textures"] == {}
+    assert block["prop"]["model"].endswith("model.glb")
+
+
+@needs_corpus
+def test_prop_without_textures_cooks_no_material_or_texture(tmp_path):
+    _poi_art(tmp_path / "art")
+    out = tmp_path / "assets"
+    prop = dict(_PROP)
+    prop.pop("textures")
+    files = poi.emit("mymod", ContentDef(kind="poi", id="Shape", fields={
+        "base": "Dark_Hills/6x6_Bleeding_01", "chapters": ["Dark_Hills"],
+        "kinds": ["Fountain"], "prop": prop}), out)
+
+    names = {f.name for f in files}
+    assert any(n.endswith(".Geometry.gen") for n in names), "the mesh is still ours"
+    assert not any(n.endswith(".Material.gen") for n in names)
+    assert not any(n.endswith(".Texture.dxt") for n in names)
+
+    # The prop entity must point at the DONOR material, untouched.
+    from rsmm.engine import entity_strings as ES
+    ent = next(f for f in files if f.name.endswith(".EntitySettingsResource.gen"))
+    refs = {s for _a, _b, s in ES.list_strings(ent.read_bytes())}
+    assert "Scenery\\DarkHills\\M_Walls_Ruins.mat.ot" in refs
 
 
 @needs_corpus

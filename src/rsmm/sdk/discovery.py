@@ -56,7 +56,7 @@ KIND_DIRS: dict[str, str] = {
     "modifiers": "modifier",
     "rewards": "reward",
     "melodies": "melody",
-    "maps": "map",
+    "meshes": "mesh", "maps": "map",
     "pois": "poi",
 }
 

@@ -354,11 +354,14 @@ def discover(mod_root: Path) -> list[dict]:
                 slot = (cfg.get("slots") or preset["slots"]).get(role)
                 if slot:
                     textures[slot] = f"{rel}/{img}"
+            # No texture files is allowed and means "my shape, the donor's
+            # material" — see `_emit_prop_art`. It is a legitimate way to ship
+            # custom geometry, and the one that does not also exercise the
+            # texture and material cooks.
             if not textures:
-                raise ContentError(
-                    f"poi {d.name}: has {model} but no texture next to it — add "
-                    f"at least one of {', '.join(n + '.png' for n in TEXTURE_ROLES)}."
-                )
+                _log.info("poi %s: model with no textures — using the donor "
+                          "material %s unchanged", d.name,
+                          cfg.get("material_base") or preset["material_base"])
             block["prop"] = {
                 "model": f"{rel}/{model}",
                 "textures": textures,
@@ -768,16 +771,22 @@ def _emit_prop_art(mod_id: str, defn: ContentDef, out_dir: Path,
     spec = defn.fields["prop"]
     if not isinstance(spec, dict):
         raise ContentError(f"poi {defn.id}: 'prop' must be a table")
-    for key in ("model", "textures", "replaces", "entity_base", "material_base"):
+    for key in ("model", "replaces", "entity_base", "material_base"):
         if not spec.get(key):
             raise ContentError(
                 f"poi {defn.id}: prop.{key} is required — see the `poi` docs."
             )
-    textures = spec["textures"]
-    if not isinstance(textures, dict) or not textures:
+    # `textures` is optional: a mod may ship its own SHAPE and wear a shipped
+    # material. That is a real authoring choice (stone is stone), and it is
+    # also the only way to put custom geometry in front of the engine without
+    # depending on the texture and material cooks too — which makes it the
+    # bisect when a custom prop misbehaves and it is not clear which cook is
+    # at fault.
+    textures = spec.get("textures") or {}
+    if not isinstance(textures, dict):
         raise ContentError(
-            f"poi {defn.id}: prop.textures must be a non-empty table mapping a "
-            f"donor texture reference to one of this mod's source images."
+            f"poi {defn.id}: prop.textures must be a table mapping a donor "
+            f"texture reference to one of this mod's source images."
         )
 
     tag = f"{mod_id}_{defn.id}".replace("-", "_")
@@ -824,20 +833,23 @@ def _emit_prop_art(mod_id: str, defn: ContentDef, out_dir: Path,
                PC.cook_texture(src.read_bytes()), written)
         tex_refs[donor_ref] = ref
 
-    # 3. Material: donor's shader wiring, the mod's maps.
-    mat_ref = f"{art_dir}/M_{tag}.mat.ot".replace("/", "\\")
-    _write(out_dir, PC.art_cooked_path(mat_ref),
-           PC.clone_material(
-               _corpus(PC.art_cooked_path(spec["material_base"]), defn.id,
-                       "prop.material_base"), tex_refs), written)
+    # 3. Material: donor's shader wiring, the mod's maps. Skipped entirely when
+    #    the def ships no textures — the prop then keeps `material_base`, so no
+    #    material or texture of ours is cooked at all.
+    swaps = {s: model_ref for s in donor_meshes}
+    if tex_refs:
+        mat_ref = f"{art_dir}/M_{tag}.mat.ot".replace("/", "\\")
+        _write(out_dir, PC.art_cooked_path(mat_ref),
+               PC.clone_material(
+                   _corpus(PC.art_cooked_path(spec["material_base"]), defn.id,
+                           "prop.material_base"), tex_refs), written)
+        swaps[spec["material_base"]] = mat_ref
 
-    # 4. Prop entity: donor's component structure, the mod's mesh + material.
+    # 4. Prop entity: donor's component structure, the mod's mesh (+ material).
     #    Every LOD slot is repointed, or the prop pops back to the donor's
     #    shape at distance.
     ent_dir = spec["entity_base"].replace("\\", "/").rsplit("/", 1)[0]
     ent_ref = f"{ent_dir}/{tag}_Prop.entity.ot".replace("/", "\\")
-    swaps = {s: model_ref for s in donor_meshes}
-    swaps[spec["material_base"]] = mat_ref
     _write(out_dir, PC.entity_cooked_path(ent_ref),
            PC.clone_prop_entity(donor_ent, swaps), written)
 

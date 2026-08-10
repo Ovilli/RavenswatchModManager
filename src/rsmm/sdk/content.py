@@ -18,7 +18,7 @@ from pathlib import Path
 from .api import sdk_export
 
 KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "skill", "modifier",
-         "game_mode", "reward", "melody", "poi")
+         "game_mode", "reward", "melody", "poi", "mesh")
 
 #: Per-kind honesty rating — how much we trust the bytes this kind emits.
 #:
@@ -53,6 +53,9 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # guaranteed block on a different (context+0xa8) def that bypasses
                               # counts. Ban unreliable; needs a runtime def-dump to pin the
                               # def/field. See docs/_re/kinds/rewards.md
+    "mesh": "experimental",   # in-place override of a shipped mesh: one cooked file, no new
+                              # resource name, so nothing but the geometry cook is exercised.
+                              # Same cook `poi`'s `prop` uses; not yet seen rendering in-game.
     "poi": "experimental",    # tile_cook round-trips all 237 shipped tiledefs and map_pool all
                               # 3 tile-generated mapdefs byte-for-byte, and the pool IS the
                               # per-map gate (retail lists a Storm Island tile in Dark Hills'
@@ -202,6 +205,7 @@ _KIND_MODULES = {
     "modifier": "modifiers",
     "game_mode": "game_modes",
     "melody": "melodies",
+    "mesh": "meshes",
     "poi": "poi",
 }
 
