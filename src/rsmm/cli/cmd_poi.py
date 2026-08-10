@@ -91,7 +91,7 @@ def _cmd_list(args) -> int:
     for t, td in rows:
         size = f"{td.width}x{td.height}"
         icon = "*" if td.has_icon else " "
-        print(f" {icon} {t:<62} {size:>7}  w={td.weight:<5.3g} "
+        print(f" {icon} {t:<62} {size:>7}  t={td.weight:<5.3g} "
               f"{', '.join(td.kinds)}")
     print(f"\n{len(rows)} tile(s).  '*' = shows on the minimap.")
     return 0
@@ -126,7 +126,8 @@ def _cmd_show(args) -> int:
     print(f"{args.tile}")
     print(f"  kinds     {', '.join(td.kinds)}")
     print(f"  footprint {td.width}x{td.height}")
-    print(f"  weight    {td.weight:g}   (0 = structural, never rolled alone)")
+    print(f"  weight    {td.weight:g}   (tier field: T1 0.0 / T2 0.33 / T3 0.667,"
+          f" NOT a spawn rate)")
     print(f"  icon      {td.icon[2] or '(none — not shown on the minimap)'}")
     print(f"  prefab    {td.entity_ref[1] if len(td.entity_ref) > 1 else '?'}")
     if td.children:

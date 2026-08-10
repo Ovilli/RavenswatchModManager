@@ -48,8 +48,14 @@ Fields (the explicit ``[[content]]`` form)
     Which maps get it: ``Dark_Hills``, ``Avalon``, ``Storm_Island``. Baba Yaga
     is the scripted boss arena and has no tile pool, so it is rejected.
 ``weight`` (float, optional)
-    Mapgen pick weight. Shipped POIs sit around ``0.15``–``0.33``; ``0.0`` is
-    what structural tiles use and effectively means "never rolled on its own".
+    **Tier**, not a spawn rate — see :data:`TIER_WEIGHTS`. Raising it to make a
+    POI commoner is backwards; use ``copies``.
+``copies`` (int, optional, default 1)
+    How many pool entries this POI gets. A chapter fills a slot from the
+    entries matching that slot's kind, so the share is
+    ``copies / (copies + vanilla entries of that kind)`` — each biome ships two
+    ``Fountain`` tiles, so ``copies = 8`` is ~80% of every fountain slot.
+    Capped at :data:`MAX_COPIES`.
 ``kinds`` (list[str], optional)
     Override the tile's kind list — the join key to the map's slot vocabulary.
     Every entry must be a kind the target chapters actually declare, or the tile
@@ -168,6 +174,24 @@ PRESETS: dict[str, dict] = {
 
 DEFAULT_PRESET = "clearing"
 
+#: `weight` is a TIER field, not a spawn frequency. Across every tier-suffixed
+#: family in the corpus — cauldrons, grimoires and wishing wells, in all three
+#: biomes — the T1/T2/T3 variants carry exactly these values, with no
+#: exceptions. T1 tiles sit at 0.0 and plainly do appear in game, so a 0 weight
+#: does NOT mean "never placed".
+#:
+#: The practical consequence: raising `weight` to make something commoner is
+#: backwards. It marks the tile as a higher-tier variant, which if anything
+#: gates it behind run progression. To change how often a POI turns up, change
+#: how many pool entries it has (`copies`) or how many slot kinds it can fill
+#: (`kinds`).
+TIER_WEIGHTS = {1: 0.0, 2: 0.333, 3: 0.667}
+
+#: Upper bound on `copies`. A POI with more entries than the whole vanilla pool
+#: for its kind crowds every other tile out of those slots, which is a mistake
+#: far more often than an intention.
+MAX_COPIES = 16
+
 #: Conventional source-art filenames inside a POI folder. `model.glb` is the
 #: mesh; the rest are texture roles resolved through the preset's `slots`.
 MODEL_NAMES = ("model.glb", "model.gltf")
@@ -281,7 +305,7 @@ def discover(mod_root: Path) -> list[dict]:
             )
 
         block: dict = {"kind": "poi", "id": cfg.pop("id", None) or d.name}
-        for key in ("base", "kinds", "weight"):
+        for key in ("base", "kinds", "weight", "copies"):
             if key in cfg:
                 block[key] = cfg.pop(key)
             elif key in preset:
@@ -391,7 +415,7 @@ def _apply_edits(td: TC.TileDef, defn: ContentDef, chapters: list[str]) -> None:
         if not 0.0 <= float(w) <= 1.0:
             raise ContentError(
                 f"poi {defn.id}: 'weight' {w} out of range — shipped tiles use "
-                f"0.0 (structural, never rolled alone) to ~0.67."
+                f"0.0 to ~0.67 (see TIER_WEIGHTS; it is a tier field)."
             )
         td.weight = float(w)
 
@@ -682,13 +706,34 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     if defn.fields.get("icon_source"):
         _emit_custom_icon(mod_id, defn, out_dir, td, written)
 
-    tile_rel = f"{_TILE_ASSET_SUBDIR}/{biome}/{tile_name}{TC.GEN_SUFFIX}"
-    tile_dest = out_dir / Path(*tile_rel.split("/"))
-    tile_dest.parent.mkdir(parents=True, exist_ok=True)
-    tile_dest.write_bytes(TC.write(td))
-    written.append(tile_dest)
+    # `copies` is the frequency dial. A chapter draws a slot's tile from the
+    # pool entries matching that slot's kind, so a POI's share is entries-of-its
+    # -kind / total-of-that-kind — Dark Hills ships two `Fountain` tiles, so one
+    # copy is a third of fountain slots and four copies is two thirds. `weight`
+    # does NOT do this (see TIER_WEIGHTS); it marks a tier variant, and turning
+    # it up to get more spawns is backwards.
+    #
+    # The pool is a list of refs and `add_to_pool` de-duplicates, so repeating
+    # one ref cannot work — each copy has to be its own tiledef asset.
+    copies = defn.fields.get("copies", 1)
+    if not isinstance(copies, int) or isinstance(copies, bool) or copies < 1:
+        raise ContentError(
+            f"poi {defn.id}: 'copies' must be a positive integer, got {copies!r}")
+    if copies > MAX_COPIES:
+        raise ContentError(
+            f"poi {defn.id}: 'copies' {copies} exceeds {MAX_COPIES} — that many "
+            f"entries crowds every vanilla tile out of the slots it shares.")
 
-    pool_ref = f"Tiles\\{biome}\\{tile_name}.tiledef.ot"
+    pool_refs: list[str] = []
+    for n in range(1, copies + 1):
+        name = tile_name if n == 1 else f"{tile_name}_{n}"
+        tile_rel = f"{_TILE_ASSET_SUBDIR}/{biome}/{name}{TC.GEN_SUFFIX}"
+        tile_dest = out_dir / Path(*tile_rel.split("/"))
+        tile_dest.parent.mkdir(parents=True, exist_ok=True)
+        tile_dest.write_bytes(TC.write(td))
+        written.append(tile_dest)
+        pool_refs.append(f"Tiles\\{biome}\\{name}.tiledef.ot")
+
     for ch in chapters:
         stem = CHAPTERS[ch]
         map_rel = f"{_MAP_ASSET_SUBDIR}/{stem}{MP.GEN_SUFFIX}"
@@ -711,9 +756,10 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             base_bytes = map_gen.read_bytes()
 
         map_dest.parent.mkdir(parents=True, exist_ok=True)
-        map_dest.write_bytes(MP.add_to_pool(base_bytes, [pool_ref]))
+        map_dest.write_bytes(MP.add_to_pool(base_bytes, pool_refs))
         written.append(map_dest)
 
-    _log.info("poi %s/%s: cloned %s -> %s, added to %s",
-              mod_id, defn.id, base, pool_ref, ", ".join(chapters))
+    _log.info("poi %s/%s: cloned %s -> %d pool entr%s in %s",
+              mod_id, defn.id, base, len(pool_refs),
+              "y" if len(pool_refs) == 1 else "ies", ", ".join(chapters))
     return written

@@ -18,7 +18,7 @@ keeps everything else in ``_tail_hex``. This module types that tail:
     END
     u32   width                      slot footprint, in tile units (3, 6, 20, 40, 50, 64)
     u32   height
-    f32   weight                     mapgen pick weight; 0.0 for structural tiles
+    f32   weight                     TIER, not a spawn rate (see below)
     f32   ratio                      second weight-ish scalar (1.0 on 204/237)
     u32   child_count
     child[child_count]               nested BEGIN..END composite-tile blocks
@@ -37,10 +37,13 @@ the **mapdef** — see :mod:`rsmm.engine.map_pool`.
 Field semantics beyond the layout are only partly mined. ``kinds``, ``width``,
 ``height`` and ``icon`` are certain (name strings match the map's slot
 vocabulary exactly; width/height match the ``NxN_`` filename prefix on every
-tile that has one; icon paths resolve to real shipped textures). ``weight`` is
-inferred — it is 0.0 on 149 tiles, all of them structural (blockers, stairs,
-key pickups) and non-zero on POIs — but it has not been isolated in the
-picker. The 40-byte ``rest`` is preserved verbatim; its first four floats are an
+tile that has one; icon paths resolve to real shipped textures). ``weight`` is a **tier**
+field, not a spawn rate: every tier-suffixed family in the corpus — cauldrons,
+grimoires and wishing wells, across all three biomes — carries exactly
+T1=0.0 / T2=0.333 / T3=0.667 with no exceptions, and T1 tiles plainly do appear
+in game. An earlier reading of it as "mapgen pick weight, 0 = never rolled" was
+wrong; how often a tile turns up is governed by how many pool entries share its
+kind. The 40-byte ``rest`` is preserved verbatim; its first four floats are an
 RGBA that co-varies with the ``Editor`` icon category, so it reads as an editor
 tint rather than anything gameplay-facing.
 """

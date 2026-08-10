@@ -79,10 +79,30 @@ one (`6x6_Teleporter_01` → 6×6, `40x40_Wood_House` → 40×40). `icon` — ev
 non-empty path resolves to a shipped texture. `entity_ref` — the prefab that
 actually gets instantiated.
 
-**Inferred.** `weight` is 0.0 on 149 tiles, and those are *all* structural
-(blockers, stairs, key pickups, corridors), while POIs carry 0.1–0.67. That is a
-strong population signal but the field has not been isolated in the picker, so
-"weight" is a name, not a proof.
+**Certain, and initially got wrong.** `weight` is a **tier** field, not a spawn
+rate. Every tier-suffixed family in the corpus — cauldrons, grimoires and
+wishing wells, across all three biomes — carries exactly `T1=0.0`,
+`T2=0.333`, `T3=0.667`, with no exceptions:
+
+| family | T1 | T2 | T3 |
+|---|---|---|---|
+| Cauldron | 0.0 | 0.33 | 0.66 |
+| Grimoire | 0.0 | 0.333 | 0.667 |
+| Wishing Well | 0.0 | 0.333 | 0.667 |
+
+The first reading of this field was "mapgen pick weight; 0 = never rolled
+alone", inferred from the fact that all 149 zero-weight tiles are structural.
+That inference was backwards — T1 cauldrons carry weight 0.0 and obviously do
+appear in game. Raising `weight` to make a POI commoner marks it as a
+higher-tier variant instead, which if anything gates it behind run progression.
+
+**How often a tile actually appears** is governed by pool share: a chapter fills
+a slot from the pool entries whose kind matches, so a tile's odds are
+`its entries / all entries of that kind`. Each biome ships exactly two
+`Fountain` tiles, so one added entry is a third of fountain slots and eight is
+about 80%. That is what the `poi` kind's `copies` field controls, and why it
+emits N distinct tiledefs rather than repeating one ref — `add_to_pool`
+de-duplicates, so a repeated ref would change nothing.
 
 **Preserved, not understood.** The 40-byte `rest`. Its first four floats are an
 RGBA that co-varies with the `Editor` icon category, so it reads as an editor

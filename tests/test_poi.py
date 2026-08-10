@@ -647,3 +647,73 @@ def test_a_custom_icon_asset_can_be_registered_at_apply(tmp_path):
 
     decoded = PC.ui_cooked_path(f"{poi.ICON_DIR}\\mymod_Shrine.png")
     assert synthesize_encoded(decoded, load_asset_map()) is not None
+
+
+# --------------------------------------------------------------------------- #
+# Frequency: `copies`, and what `weight` actually is
+# --------------------------------------------------------------------------- #
+
+@needs_corpus
+@pytest.mark.slow
+def test_weight_is_a_tier_field_not_a_spawn_rate():
+    """Pins the fact that made `weight` the wrong dial to reach for. Every
+    tier-suffixed family carries exactly T1/T2/T3 values, so a mod raising
+    `weight` to get more spawns is marking itself a higher-tier variant."""
+    import re
+    seen = 0
+    for p in _tiles:
+        m = re.search(r"_T(\d)\.tiledef", Path(p).name)
+        if not m:
+            continue
+        tier = int(m.group(1))
+        w = TC.read(open(p, "rb").read()).weight
+        assert w == pytest.approx(poi.TIER_WEIGHTS[tier], abs=0.01), (p, w)
+        seen += 1
+    assert seen >= 20, f"expected the tier families, only matched {seen}"
+
+
+@needs_corpus
+def test_copies_adds_that_many_distinct_pool_entries(tmp_path):
+    """The pool is a list of refs and `add_to_pool` de-duplicates, so repeating
+    one ref cannot raise a POI's share — each copy must be its own tiledef."""
+    files = poi.emit("m", ContentDef(kind="poi", id="Shrine", fields={
+        "base": "Dark_Hills/6x6_Bleeding_01", "chapters": ["Dark_Hills"],
+        "copies": 4}), tmp_path)
+    tiles = [f for f in files if f.name.endswith(TC.GEN_SUFFIX)]
+    assert len(tiles) == 4
+    assert len({f.name for f in tiles}) == 4, "copies must be distinct assets"
+
+    pool = MP.read_pool(
+        (tmp_path / f"Definitions/Maps/Dark_Hills_LiveOps_Update5{MP.GEN_SUFFIX}").read_bytes())
+    mine = [p for p in pool if "m_Shrine" in p]
+    assert len(mine) == 4 and len(set(mine)) == 4
+
+    # Every copy is the same tile, so they are interchangeable in a slot.
+    bodies = {f.read_bytes() for f in tiles}
+    assert len(bodies) == 1
+
+
+@needs_corpus
+def test_copies_defaults_to_one(tmp_path):
+    files = poi.emit("m", ContentDef(kind="poi", id="S", fields={
+        "base": BASE, "chapters": ["Dark_Hills"]}), tmp_path)
+    assert sum(1 for f in files if f.name.endswith(TC.GEN_SUFFIX)) == 1
+
+
+@needs_corpus
+@pytest.mark.parametrize("copies,needle", [
+    (0, "positive integer"),
+    (-1, "positive integer"),
+    (2.5, "positive integer"),
+    (999, "exceeds"),
+])
+def test_copies_is_validated(tmp_path, copies, needle):
+    with pytest.raises(ContentError, match=needle):
+        poi.emit("m", ContentDef(kind="poi", id="S", fields={
+            "base": BASE, "chapters": ["Dark_Hills"], "copies": copies}), tmp_path)
+
+
+def test_discover_passes_copies_through(tmp_path):
+    _poi_folder(tmp_path, cfg='chapters = ["Dark_Hills"]\ncopies = 6\n',
+                with_art=False)
+    assert poi.discover(tmp_path)[0]["copies"] == 6
