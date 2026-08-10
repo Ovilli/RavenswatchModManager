@@ -706,10 +706,14 @@ def _emit_tile_caches(out_dir: Path, base: str, defn_id: str, assets: list[str],
                RC.extend(donor, [*assets, tile_rel]), written)
 
 
-def _emit_custom_prop(mod_id: str, defn: ContentDef, out_dir: Path,
-                      base: str, written: list[Path]) -> str:
-    """Build the mod's own prop + the tile that shows it, return the new
-    prefab's entity reference for the tiledef to point at."""
+def _emit_prop_art(mod_id: str, defn: ContentDef, out_dir: Path,
+                   written: list[Path]) -> str:
+    """Emit the mod's mesh, textures, material and prop entity.
+
+    Returns the new prop entity's reference. This half is identical whether the
+    POI adds a tile or overrides a shipped one — only what *places* the prop
+    differs, which is why it is separated out.
+    """
     from ...engine import entity_strings as ES
 
     spec = defn.fields["prop"]
@@ -788,8 +792,20 @@ def _emit_custom_prop(mod_id: str, defn: ContentDef, out_dir: Path,
     _write(out_dir, PC.entity_cooked_path(ent_ref),
            PC.clone_prop_entity(donor_ent, swaps), written)
 
-    # 3. Tile level: the base tile's dressing, its centrepiece swapped for ours.
-    tile_stem = base.split("/", 1)[1]
+    _log.info("poi %s/%s: custom prop from %s (+%d texture(s))",
+              mod_id, defn.id, spec["model"], len(tex_refs))
+    return ent_ref
+
+
+def _emit_custom_prop(mod_id: str, defn: ContentDef, out_dir: Path,
+                      base: str, written: list[Path]) -> str:
+    """Additive path: the mod's prop, plus a cloned tile level and prefab that
+    place it. Returns the new prefab reference for the cloned tiledef."""
+    spec = defn.fields["prop"]
+    tag = f"{mod_id}_{defn.id}".replace("-", "_")
+    ent_ref = _emit_prop_art(mod_id, defn, out_dir, written)
+
+    # Tile level: the base tile's dressing, its centrepiece swapped for ours.
     donor_prefab_dec = _prefab_ref_of(base, defn.id)
     level_ref = _level_ref_of(donor_prefab_dec, defn.id)
     new_level_ref = level_ref.rsplit("\\", 1)[0] + f"\\{tag}.level.ot"
@@ -798,16 +814,13 @@ def _emit_custom_prop(mod_id: str, defn: ContentDef, out_dir: Path,
                _corpus(PC.level_cooked_path(level_ref), defn.id, "the tile's level"),
                level_ref, new_level_ref, {spec["replaces"]: ent_ref}), written)
 
-    # 4. Tile prefab entity: points the tiledef at the new level.
+    # Tile prefab entity: points the tiledef at the new level.
     new_prefab_ref = donor_prefab_dec.rsplit("\\", 1)[0] + f"\\{tag}.entity.ot"
     _write(out_dir, PC.entity_cooked_path(new_prefab_ref),
            PC.clone_tile_prefab(
                _corpus(PC.entity_cooked_path(donor_prefab_dec), defn.id,
                        "the tile's prefab entity"),
                level_ref, new_level_ref), written)
-
-    _log.info("poi %s/%s: custom prop from %s (+%d texture(s)) in tile %s",
-              mod_id, defn.id, spec["model"], len(tex_refs), tile_stem)
     return new_prefab_ref
 
 
@@ -840,37 +853,30 @@ def _emit_replacing_base(mod_id: str, defn: ContentDef, out_dir: Path,
                          chapters: list[str]) -> list[Path]:
     """Override the base tile in place: no new tiledef, no pool edit.
 
-    The custom prop still gets its own level and prop entity — those are new
-    assets either way — but the base tile's PREFAB is overridden so it points at
-    the new level, and the base tiledef is overridden only if the def asked for
-    cosmetic changes (icon/kinds/weight). Nothing is added to any pool, so the
-    structure appears exactly where and as often as the vanilla tile did.
+    "In place" is meant literally. The mod's prop is a new asset either way,
+    but the tile's LEVEL is overridden at its own path — same resource name,
+    same bare identifier, same identity GUID — with only the swapped objects
+    changed. Nothing else about the shipped tile moves: no cloned level, no new
+    GUID, no prefab override, no tiledef edit unless the def asked for one.
+
+    It used to clone the level and repoint the prefab, i.e. the additive
+    machinery wearing an override hat, and that crashed the game at load on the
+    Dark Hills starting tile while the additive path in the same build booted
+    fine. A shipped tile can be reached through references a mod does not
+    control, so replacing what it *contains* is safe in a way that replacing
+    *which level it is* is not.
     """
     written: list[Path] = []
     biome, stem = base.split("/", 1)
 
     if defn.fields.get("prop"):
-        # Reuse the normal chain, then point the BASE prefab at the new level
-        # instead of emitting a separate prefab under a new name.
-        from ...engine import entity_strings as ES
-
-        new_prefab = _emit_custom_prop(mod_id, defn, out_dir, base, written)
-        base_prefab = _prefab_ref_of(base, defn.id)
-        # The prop path emits its prefab under a NEW name. In override mode we
-        # want the ORIGINAL prefab path carrying the new level reference, so
-        # take the level out of the clone and drop the clone itself — the
-        # vanilla tiledef then resolves to a prefab that shows our structure.
-        clone_path = out_dir / Path(*PC.entity_cooked_path(new_prefab).split("/"))
-        new_level = sorted({
-            s for _a, _b, s in ES.list_strings(clone_path.read_bytes())
-            if s.lower().endswith(".level.ot")})[0]
-        clone_path.unlink()
-        written.remove(clone_path)
-        _write(out_dir, PC.entity_cooked_path(base_prefab),
-               PC.clone_tile_prefab(
-                   _corpus(PC.entity_cooked_path(base_prefab), defn.id,
-                           "the base tile's prefab entity"),
-                   _level_ref_of(base_prefab, defn.id), new_level), written)
+        ent_ref = _emit_prop_art(mod_id, defn, out_dir, written)
+        level_ref = _level_ref_of(_prefab_ref_of(base, defn.id), defn.id)
+        _write(out_dir, PC.level_cooked_path(level_ref),
+               PC.override_tile_level(
+                   _corpus(PC.level_cooked_path(level_ref), defn.id,
+                           "the tile's level"),
+                   {defn.fields["prop"]["replaces"]: ent_ref}), written)
 
     # Cosmetic edits (icon / kinds / weight) go onto the base tiledef itself.
     if defn.fields.get("icon_source"):

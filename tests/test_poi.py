@@ -1116,18 +1116,28 @@ def test_replace_base_touches_no_mapdef_and_overrides_the_base_prefab(tmp_path):
     # art the overridden tile now reaches has to be preloadable there too.
     assert not any(n.endswith(MP.GEN_SUFFIX) for n in names), \
         "override mode must not touch a pool"
-    assert "6x6_Bleeding_01.entity.ot.EntitySettingsResource.gen" in names, \
-        "the base tile's prefab must be the thing overridden"
-    # No clone prefab left behind under a new name.
-    assert not any(n.startswith("mymod_S.entity") for n in names)
+    # "In place" literally: the tile's own LEVEL is what gets overridden.
+    assert "6x6_Bleeding_01.level.ot.GameStream.gen" in names, \
+        "the base tile's level must be the thing overridden"
+    # Nothing about which level the tile IS may move — no cloned level under a
+    # new name, and the prefab that names it is left alone. Cloning here (the
+    # additive machinery wearing an override hat) crashed the game at load on
+    # the Dark Hills starting tile.
+    assert not any(n.startswith("mymod_S.level") for n in names)
+    assert not any(n.endswith(".entity.ot.EntitySettingsResource.gen")
+                   and "6x6_Bleeding_01" in n for n in names), \
+        "override mode must not touch the tile's prefab"
 
-    # The overridden prefab must point at the mod's level, not the vanilla one.
-    from rsmm.engine import entity_strings as ES
-    pf = next(f for f in files
-              if f.name == "6x6_Bleeding_01.entity.ot.EntitySettingsResource.gen")
-    levels = {s for _a, _b, s in ES.list_strings(pf.read_bytes())
-              if s.lower().endswith(".level.ot")}
-    assert levels == {"DarkHills\\Tiles\\mymod_S.level.ot"}
+    # The overridden level keeps its identity and swaps only the object.
+    from rsmm.engine import prop_cook as PC
+    lvl = next(f for f in files if f.name == "6x6_Bleeding_01.level.ot.GameStream.gen")
+    vanilla = (DATA_DIR / "uncooked"
+               / PC.level_cooked_path("DarkHills\\Tiles\\6x6_Bleeding_01.level.ot"))
+    assert PC.level_guid(lvl.read_bytes()) == PC.level_guid(vanilla.read_bytes()), \
+        "an in-place override is still the same level; its GUID must not move"
+    body = lvl.read_bytes()
+    assert b"Blood_Fountain_DarkHills.entity.ot" not in body
+    assert b"mymod_S_Prop.entity.ot" in body
 
 
 def test_discover_passes_replace_base_through(tmp_path):

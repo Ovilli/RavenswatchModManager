@@ -285,6 +285,33 @@ def _restamp_level_guid(doc: dict, seed: str) -> None:
     doc["_literals"] = lits
 
 
+def override_tile_level(donor_cooked: bytes, object_swaps: dict[str, str]) -> bytes:
+    """Swap placed objects in a tile level, leaving it otherwise untouched.
+
+    The in-place counterpart to :func:`clone_tile_level`: the level keeps its
+    own resource path, its bare identifier and — critically — its identity
+    GUID, because it is still the same level. Only which entity stands at a
+    given transform changes.
+
+    Use this when overriding a *shipped* tile rather than adding a new one.
+    Cloning would mean a second level under a new name, a new GUID, and a
+    prefab override to point at it — three extra moving parts on an asset the
+    engine may reach through references the mod does not control. The Dark
+    Hills starting tile is the case that proves it: cloning its level crashed
+    the game at load, while the additive path in the same build did not.
+    """
+    handler, doc = _refs_doc("oCGameStream", donor_cooked)
+    refs = list(doc.get("asset_refs") or [])
+    missing = [k for k in object_swaps if k not in refs]
+    if missing:
+        raise PropCookError(
+            f"level places no object {missing!r}; it places: "
+            f"{sorted({r for r in refs if r.lower().endswith('.entity.ot')})}"
+        )
+    doc["asset_refs"] = [object_swaps.get(r, r) for r in refs]
+    return _emit(handler, doc)
+
+
 def clone_tile_level(donor_cooked: bytes, self_ref: str, new_self_ref: str,
                      object_swaps: dict[str, str]) -> bytes:
     """Clone a tile level: rename it, and swap object references inside it.
