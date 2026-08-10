@@ -137,12 +137,14 @@ def test_emit_writes_clone_plus_one_mapdef_per_chapter(tmp_path):
     files = poi.emit("mymod", defn, tmp_path)
     rel = sorted(f.relative_to(tmp_path).as_posix() for f in files)
     assert rel == [
+        "Definitions/Maps/Dark_Hills_LiveOps_Update5.mapdef.UsedRscCache.ot",
         "Definitions/Maps/Dark_Hills_LiveOps_Update5.mapdef.ot.DtMapDefinition.gen",
+        "Definitions/Maps/Storm_Island_LiveOps_Update5.mapdef.UsedRscCache.ot",
         "Definitions/Maps/Storm_Island_LiveOps_Update5.mapdef.ot.DtMapDefinition.gen",
         "Definitions/Tiles/Avalon/mymod_Cauldron.tiledef.UsedRscCache.ot",
         "Definitions/Tiles/Avalon/mymod_Cauldron.tiledef.ot.DtTileDefinition.gen",
     ]
-    tile = tmp_path / rel[3]
+    tile = tmp_path / rel[5]
     td = TC.read(tile.read_bytes())
     assert td.weight == pytest.approx(0.4)
     # The clone keeps the donor's prefab — that is what makes it a real structure.
@@ -532,7 +534,8 @@ def test_emitted_tile_cache_lists_every_asset_the_tile_reaches(tmp_path):
     out = tmp_path / "assets"
     files = poi.emit("mymod", defn, out)
 
-    caches = [f for f in files if f.name.endswith(RC.CACHE_SUFFIX)]
+    caches = [f for f in files if f.name.endswith(RC.CACHE_SUFFIX)
+              and "/Tiles/" in f.as_posix()]
     assert len(caches) == 1
     listed = set(RC.parse(caches[0].read_bytes()))
 
@@ -551,12 +554,71 @@ def test_emitted_tile_cache_lists_every_asset_the_tile_reaches(tmp_path):
 
 
 @needs_corpus
+def test_shipped_map_caches_list_their_whole_pool():
+    """The invariant the emitter has to preserve: a chapter preloads exactly its
+    pool. 77 entries, 77 `oCDtTileDefinition` lines, no slack."""
+    from rsmm.engine import rsc_cache as RC
+
+    for stem in poi.CHAPTERS.values():
+        pool = MP.read_pool((MAPS_DIR / f"{stem}{MP.GEN_SUFFIX}").read_bytes())
+        cache = MAPS_DIR / RC.cache_path_for(f"x/{stem}{MP.GEN_SUFFIX}").rsplit("/", 1)[-1]
+        listed = {ln.split("|")[1] for ln in RC.parse(cache.read_bytes())
+                  if ln.endswith("|oCDtTileDefinition")}
+        assert set(pool) == listed, f"{stem}: pool and map cache disagree"
+
+
+@needs_corpus
+def test_pool_additions_are_mirrored_into_the_map_cache(tmp_path):
+    """A tile appended to the pool but missing from the chapter's own cache is
+    never loaded, so it is never placed — the gate that survived the per-tile
+    cache fix and hid the POI for one more playtest."""
+    from rsmm.engine import rsc_cache as RC
+
+    files = poi.emit("m", ContentDef(kind="poi", id="C", fields={
+        "base": BASE, "chapters": ["Dark_Hills"], "copies": 3}), tmp_path)
+    stem = poi.CHAPTERS["Dark_Hills"]
+    pool = MP.read_pool((tmp_path / f"Definitions/Maps/{stem}{MP.GEN_SUFFIX}").read_bytes())
+    cache = next(f for f in files
+                 if f.name == f"{stem}.mapdef{RC.CACHE_SUFFIX}")
+    listed = {ln.split("|")[1] for ln in RC.parse(cache.read_bytes())
+              if ln.endswith("|oCDtTileDefinition")}
+    assert set(pool) == listed
+    assert sum("m_C" in p for p in pool) == 3
+
+
+@needs_corpus
+def test_two_poi_mods_both_survive_the_map_cache_merge(tmp_path, monkeypatch):
+    """Same destructive shape as the pool merge: dropping a mod's preload lines
+    makes its POI pooled-but-unloadable rather than visibly conflicting."""
+    # The merge writes its output under MODS_DIR; never let that be the real one.
+    monkeypatch.setenv("RSMM_MODS_DIR", str(tmp_path / "mods"))
+    from rsmm.cli.apply_mods import _merge_rsc_cache
+    from rsmm.engine import rsc_cache as RC
+
+    stem = poi.CHAPTERS["Dark_Hills"]
+    vanilla = MAPS_DIR / f"{stem}.mapdef{RC.CACHE_SUFFIX}"
+    srcs = []
+    for mod in ("aaa", "zzz"):
+        out = tmp_path / mod
+        poi.emit(mod, ContentDef(kind="poi", id="P", fields={
+            "base": BASE, "chapters": ["Dark_Hills"]}), out)
+        srcs.append(out / f"Definitions/Maps/{stem}.mapdef{RC.CACHE_SUFFIX}")
+
+    merged = _merge_rsc_cache("enc\\x", srcs, vanilla)
+    lines = set(RC.parse(merged.read_bytes()))
+    assert set(RC.parse(vanilla.read_bytes())) <= lines
+    for mod in ("aaa", "zzz"):
+        assert f"Definitions|Tiles\\Avalon\\{mod}_P.tiledef.ot|oCDtTileDefinition" in lines
+
+
+@needs_corpus
 def test_every_copy_gets_its_own_cache_naming_its_own_tiledef(tmp_path):
     from rsmm.engine import rsc_cache as RC
 
     files = poi.emit("m", ContentDef(kind="poi", id="C", fields={
         "base": BASE, "chapters": ["Dark_Hills"], "copies": 3}), tmp_path)
-    caches = sorted(f for f in files if f.name.endswith(RC.CACHE_SUFFIX))
+    caches = sorted(f for f in files if f.name.endswith(RC.CACHE_SUFFIX)
+                    and "/Tiles/" in f.as_posix())
     assert len(caches) == 3
     for c in caches:
         stem = c.name[: -len(RC.CACHE_SUFFIX)]

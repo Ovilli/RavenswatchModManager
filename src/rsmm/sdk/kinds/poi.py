@@ -638,7 +638,22 @@ def _report_share(mod_id: str, defn: ContentDef, td: TC.TileDef,
                 _log.info(msg, *args)
 
 
-def _emit_tile_caches(out_dir: Path, base: str, defn_id: str,
+def _emitted_assets(out_dir: Path, written: list[Path]) -> list[str]:
+    """Decoded cooked paths of the resources a cache must preload.
+
+    Caches never list each other, and a mapdef is the chapter's own definition
+    rather than one of its tiles' resources.
+    """
+    out = []
+    for p in written:
+        rel = p.relative_to(out_dir).as_posix()
+        if rel.endswith(RC.CACHE_SUFFIX) or rel.startswith(f"{_MAP_ASSET_SUBDIR}/"):
+            continue
+        out.append(rel)
+    return out
+
+
+def _emit_tile_caches(out_dir: Path, base: str, defn_id: str, assets: list[str],
                       tile_rels: list[str], written: list[Path]) -> None:
     """Give every tiledef this def emitted its ``*.UsedRscCache.ot`` sibling.
 
@@ -656,13 +671,6 @@ def _emit_tile_caches(out_dir: Path, base: str, defn_id: str,
     donor_cooked = f"{_TILE_ASSET_SUBDIR}/{base}{TC.GEN_SUFFIX}"
     donor = _corpus(RC.cache_path_for(donor_cooked), defn_id,
                     "the base tile's resource cache")
-    # Snapshot before the loop: the caches must not list each other, and a
-    # mapdef belongs to the chapter rather than to any one tile.
-    assets = [
-        rel for p in written
-        if not (rel := p.relative_to(out_dir).as_posix()).endswith(RC.CACHE_SUFFIX)
-        and not rel.startswith(f"{_MAP_ASSET_SUBDIR}/")
-    ]
     for tile_rel in tile_rels:
         _write(out_dir, RC.cache_path_for(tile_rel),
                RC.extend(donor, [*assets, tile_rel]), written)
@@ -843,7 +851,7 @@ def _emit_replacing_base(mod_id: str, defn: ContentDef, out_dir: Path,
     # The base tile keeps its own cache path, so this OVERRIDES the shipped
     # one. It has to: the tile now reaches assets the vanilla cache never
     # listed, and an un-updated cache is what crashed the game on 2026-08-10.
-    _emit_tile_caches(out_dir, base, defn.id,
+    _emit_tile_caches(out_dir, base, defn.id, _emitted_assets(out_dir, written),
                       [f"{_TILE_ASSET_SUBDIR}/{base}{TC.GEN_SUFFIX}"], written)
 
     _log.info("poi %s/%s: REPLACING base tile %s in place (no pool change)",
@@ -924,7 +932,8 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
 
     # Every copy is a separate tiledef asset, so every copy needs its own
     # cache — a tiledef the engine cannot preload is never placed.
-    _emit_tile_caches(out_dir, base, defn.id, tile_rels, written)
+    assets = _emitted_assets(out_dir, written)
+    _emit_tile_caches(out_dir, base, defn.id, assets, tile_rels, written)
     _report_share(mod_id, defn, td, chapters, copies)
 
     for ch in chapters:
@@ -951,6 +960,22 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         map_dest.parent.mkdir(parents=True, exist_ok=True)
         map_dest.write_bytes(MP.add_to_pool(base_bytes, pool_refs))
         written.append(map_dest)
+
+        # The mapdef has a resource cache of its own, and it lists the pool's
+        # tiledefs one for one (Dark Hills: 77 pool entries, 77 lines). A tile
+        # added to the pool but absent from this cache is never loaded, so it
+        # is never placed — the same gate as the per-tile cache, one level up,
+        # and it is what still hid the POI after the per-tile caches landed.
+        map_cache_rel = RC.cache_path_for(map_rel)
+        map_cache_dest = out_dir / Path(*map_cache_rel.split("/"))
+        if map_cache_dest.is_file():
+            cache_base = map_cache_dest.read_bytes()          # earlier def in this mod
+        else:
+            cache_base = _corpus(map_cache_rel, defn.id,
+                                 f"the {ch} mapdef's resource cache")
+        map_cache_dest.parent.mkdir(parents=True, exist_ok=True)
+        map_cache_dest.write_bytes(RC.extend(cache_base, [*tile_rels, *assets]))
+        written.append(map_cache_dest)
 
     _log.info("poi %s/%s: cloned %s -> %d pool entr%s in %s",
               mod_id, defn.id, base, len(pool_refs),

@@ -351,11 +351,21 @@ path gets. Because they are absent from `UsedRscList.ot` they are also absent
 from `asset_map.json`, so `extract_uncooked.py` mirrored **zero** of them until
 `cache_pairs()` was added — the identical blind spot the FMOD sound banks have.
 
-Two ways to get it wrong, both hit in-game on 2026-08-10:
+**It applies at two levels, and missing either one hides the POI.** The mapdef
+has a cache of its own that lists its pool's tiledefs **one for one** — Dark
+Hills: 77 pool entries, 77 `|oCDtTileDefinition` lines. A tile appended to the
+pool but absent from the map's cache is never loaded, so it is never placed.
+Fixing only the per-tile caches left the shrine invisible for one more
+playtest; the assertion worth keeping is `pool ⊆ map cache`, which
+`tests/test_poi.py` now checks per chapter.
+
+Three ways to get it wrong, all three hit in-game on 2026-08-10:
 
 * **No cache** (a new tiledef) — the engine has nothing to preload, so the tile
   is registered, never placed, and reports nothing. This, not the pool, is why
   a POI added to a mapdef pool never showed up.
+* **Pool extended, map cache not** — the chapter loads its 77 cached tiledefs
+  and simply never sees the 78th, however correct the pool entry is.
 * **Stale cache** (`replace_base` edits a shipped tile in place) — the tiledef
   now reaches assets its cache never listed. The missing resource leaves a
   **null** in the preloaded pointer vector, and the teardown loop at

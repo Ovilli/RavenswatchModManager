@@ -841,6 +841,43 @@ def is_map_def(decoded: str) -> bool:
     return decoded.endswith(_MAPDEF_GEN_SUFFIX)
 
 
+def is_rsc_cache(decoded: str) -> bool:
+    """True for a `*.UsedRscCache.ot` — a definition's preload manifest, which
+    several mods editing the same definition may each want to extend."""
+    return decoded.endswith(rsc_cache.CACHE_SUFFIX)
+
+
+def _merge_rsc_cache(enc: str, srcs: list[Path], vanilla: Path) -> Path | None:
+    """Union several mods' additions to ONE resource cache.
+
+    Exactly the same problem as the tile pool, on the file that decides whether
+    a pooled tile is ever loaded: two `poi` mods targeting one chapter each emit
+    vanilla-plus-their-own-lines, so last-writer-wins would drop the other mod's
+    resources and its POI would be pooled but unloadable — invisible short of a
+    full playthrough. Vanilla lines keep their order; each mod's additions
+    follow in a fixed mod order, de-duplicated.
+    """
+    try:
+        base = rsc_cache.parse(vanilla.read_bytes())
+    except (OSError, UnicodeDecodeError):
+        return None
+    merged, have = list(base), set(base)
+    for src in srcs:
+        try:
+            lines = rsc_cache.parse(src.read_bytes())
+        except (OSError, UnicodeDecodeError):
+            return None
+        for ln in lines:
+            if ln not in have:
+                merged.append(ln)
+                have.add(ln)
+    out_dir = MODS_DIR / _TEXT_MERGE_DIR_NAME
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / enc.replace("\\", "__").replace("/", "__")
+    out_path.write_bytes(rsc_cache.render(merged))
+    return out_path
+
+
 def _merge_map_pool(enc: str, srcs: list[Path], vanilla: Path) -> Path | None:
     """Union several mods' tile-pool additions to ONE mapdef.
 
@@ -978,6 +1015,26 @@ def plan_apply(mods: list[Mod],
                 continue
             print(f"  [warn] tile pool '{decoded}': no vanilla to merge against; "
                   f"keeping {ordered[-1][1]}", file=sys.stderr)
+            wanted[enc] = (ordered[-1][0], ordered[-1][1])
+        elif is_rsc_cache(decoded):
+            # Union every mod's preload lines for this definition. Dropping one
+            # mod's lines makes its content load-fail rather than conflict, so
+            # last-writer-wins here is silently destructive.
+            ordered = sorted(writers, key=lambda w: w[1])
+            dest = encoded_to_dest(enc, cooking, game_dir)
+            vanilla = dest.parent / (dest.name + BACKUP_SUFFIX)
+            if not vanilla.exists():
+                vanilla = dest if dest.exists() else None
+            merged = _merge_rsc_cache(enc, [w[0] for w in ordered], vanilla) \
+                if vanilla else None
+            if merged is not None:
+                ids = ", ".join(w[1] for w in ordered)
+                print(f"  [merge] resource cache '{decoded}' from "
+                      f"{len(ordered)} mods ({ids})")
+                wanted[enc] = (merged, ordered[-1][1])
+                continue
+            print(f"  [warn] resource cache '{decoded}': no vanilla to merge "
+                  f"against; keeping {ordered[-1][1]}", file=sys.stderr)
             wanted[enc] = (ordered[-1][0], ordered[-1][1])
         else:
             last = writers[-1]
