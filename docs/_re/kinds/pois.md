@@ -21,7 +21,7 @@ blockers are all the same class. The only thing separating "POI" from
 "structural filler" is whether the record carries a minimap icon — 139 of 237
 do (`Ui` category), 52 carry an `Editor` icon, 46 carry none.
 
-## Two gates, not one
+## Three gates, not one
 
 This is the part that matters, and it is why "add a POI to a chapter" is a
 data edit rather than an engine problem:
@@ -30,6 +30,11 @@ data edit rather than an engine problem:
 |---|---|---|
 | **kind** | `Map_<Biome>_..._TileGeneration.level.ot` | which tile *kinds* each map slot accepts |
 | **pool** | the chapter's `*.mapdef.ot` | which concrete tiledefs the map may draw from at all |
+| **cache** | `<tile>.tiledef.UsedRscCache.ot` | what the tile is allowed to preload — see below |
+
+The third gate went unnoticed for the whole first pass at this feature and cost
+two playtests plus a crash; it is documented under
+[Every tiledef needs a UsedRscCache](#every-tiledef-needs-a-usedrsccache).
 
 The kind vocabulary is mostly **shared** — 42 kinds appear in all three
 tile-generated maps (`Altar_Of_Heroes`, `Wishing_Well`, `Teleporter`,
@@ -320,6 +325,74 @@ The general lesson for this whole chain: **a clone is not only its references.**
 Rewriting every string path produced an asset that resolved perfectly and still
 did nothing.
 
+### Every tiledef needs a UsedRscCache
+
+After the level GUID was fixed the shrine *still* never appeared, and the game
+then crashed at boot. Both had one cause.
+
+Every cooked tiledef ships a sibling **`<name>.tiledef.UsedRscCache.ot`** — a
+plain-text preload manifest, one resource per line,
+`<Root>|<Decoded\Path>|<oCClass>`:
+
+```
+EntitySettings|DarkHills\SceneryObjects_DarkHills\Wall_Ruins_Block_Small_A.entity.ot|oCEntitySettingsResource
+3D|Scenery\DarkHills\Wall_Ruins_Block_Small_A.fbx|oCGeometry
+Ot|DarkHills\Tiles\40x40_DarkHills_Starting_Tile_Update3.level.ot|oCGameStream
+```
+
+It is the tile's full transitive dependency closure — the Dark Hills start tile
+lists 784 resources. **237 of 237 shipped tiledefs have one. No exceptions.**
+
+The engine finds it **by convention, not through `UsedRscList.ot`** — none of
+the 575 shipped caches has a manifest record. `sub_140311110` concatenates the
+literal `.UsedRscCache.ot` (a 17-byte copy at `0x14031165b`, incl. NUL) onto the
+resource name and then runs the same `\` → `!` filename collapse every cooked
+path gets. Because they are absent from `UsedRscList.ot` they are also absent
+from `asset_map.json`, so `extract_uncooked.py` mirrored **zero** of them until
+`cache_pairs()` was added — the identical blind spot the FMOD sound banks have.
+
+Two ways to get it wrong, both hit in-game on 2026-08-10:
+
+* **No cache** (a new tiledef) — the engine has nothing to preload, so the tile
+  is registered, never placed, and reports nothing. This, not the pool, is why
+  a POI added to a mapdef pool never showed up.
+* **Stale cache** (`replace_base` edits a shipped tile in place) — the tiledef
+  now reaches assets its cache never listed. The missing resource leaves a
+  **null** in the preloaded pointer vector, and the teardown loop at
+  `0x140476f60` destroys every element of that vector *without a null check*:
+
+  ```
+  0x140476f6a:  mov  eax, [rcx + 0x88]        ; count
+  0x140476f90:  mov  rcx, [rbx + 0x80]        ; array base
+  0x140476f97:  mov  rcx, [rcx + rdi]         ; element  <- NULL
+  0x140476f9b:  call 0x1401273b0              ; destroy(obj)
+  0x1401273b6:  mov  rax, [rcx]               ; ACCESS VIOLATION, rcx = 0
+  ```
+
+  Crash chain `0x14074677f → 0x140482d90 → 0x140476f60 → 0x1401273b0`, reading
+  address 0, nowhere near the actual mistake.
+
+⚠ `data/symbols.json` names `0x1401273b0` `NamedEvent_Delete`. It has **358
+callers** — it is the generic `destroy(obj)` thunk (`call vtbl[1]`, then tail
+`jmp vtbl[2]` with `edx=1`, the scalar deleting destructor). Do not read that
+name as evidence the crash involves named events.
+
+`rsmm.engine.rsc_cache` builds these. The generated cache is the donor tile's
+**plus** a line per emitted asset — deliberately append-only: a surplus line
+costs a wasted preload of a real shipped file, a missing one crashes the game,
+and proving a line is safe to drop would need the whole reference graph.
+
+### Rare kinds are not broken kinds
+
+A POI competes only against pool entries declaring the **same kind**, so its
+share is `copies / (copies + vanilla entries of that kind)`. Dark Hills has
+2 `Fountain` entries but 7 `Blocker`, 15 `Camp` and 15 `Special`. Six copies of
+a `Fountain` tile win 75% of Fountain slots and are still barely seen, because
+the chapter only lays down one or two Fountain slots. That is a *frequency*
+problem masquerading as a *correctness* problem, and it wasted a playtest —
+`poi.kind_pool_counts()` now reports the share at emit and warns below three
+vanilla entries.
+
 ### Traps worth keeping
 
 * **Repoint every LOD.** A scenery donor references its mesh once per LOD. Miss
@@ -340,6 +413,14 @@ did nothing.
   `build_usedrsc_record` clones a 3-line manifest record from one. Filing
   custom art in an existing vanilla directory satisfies both; a fresh
   `Definitions/Tiles/<Mod>/` satisfies neither and is warn-and-skipped.
+* **A `*.UsedRscCache.ot` must NOT get a UsedRscList record.** It is loaded by
+  convention; registering it appends a 3-line group cloned from a sibling that
+  isn't in the manifest either. `plan_apply` skips them explicitly.
+* **Never let apply back up its own output.** A second apply over a mod-added
+  file used to record the *previous build's* bytes as "the vanilla original",
+  so `restore` resurrected a generated file instead of deleting it. `apply_one`
+  now checks the state's `orig_sha256` first, and warns loudly when an existing
+  install already carries a poisoned entry.
 
 ### Worked example
 

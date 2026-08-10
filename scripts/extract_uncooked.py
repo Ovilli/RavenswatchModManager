@@ -372,6 +372,36 @@ def audio_pairs(cooking: Path):
         yield f"{audio_enc}\\{p.name}", decoded
 
 
+def cache_pairs(cooking: Path):
+    """Yield (encoded, decoded) pairs for the `*.UsedRscCache.ot` manifests.
+
+    Same blind spot as the sound banks: the engine finds a definition's
+    resource cache by convention (append `.UsedRscCache.ot` to the resource
+    name), so the caches are never listed in `UsedRscList.ot`, never enter
+    `asset_map`, and a CSV-only walk mirrors zero of them. Cloning a tiledef
+    then has no donor cache to build from — and a tiledef without one is
+    registered, never placed, and can crash the game (see
+    `rsmm.engine.rsc_cache`).
+
+    Unlike audio these DO use the `!` directory collapse, so the cooked tree is
+    walked and each name deciphered back with its real directory restored.
+    """
+    for p in sorted(cooking.rglob("*")):
+        if not p.is_file() or p.name.endswith(".rsmm.bak"):
+            continue
+        try:
+            leaf = _cipher.decode(p.name)
+        except (ValueError, KeyError):
+            continue
+        if not leaf.endswith(".UsedRscCache.ot"):
+            continue
+        rel = p.relative_to(cooking)
+        # Directories above the collapse point stay real; the leaf carries the
+        # rest as `!`-joined components.
+        prefix = "".join(f"{_cipher.decode(part)}\\" for part in rel.parts[:-1])
+        yield str(rel).replace("/", "\\"), (prefix + leaf).replace("!", "\\")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--game-dir", default=str(DEFAULT_GAME))
@@ -403,10 +433,11 @@ def main():
                 break
 
     if not (args.limit and len(pairs) >= args.limit):
-        for enc, dec in audio_pairs(cooking):
-            if args.filter and args.filter not in dec:
-                continue
-            pairs.append((enc, dec, str(cooking), args.out))
+        for extra in (audio_pairs(cooking), cache_pairs(cooking)):
+            for enc, dec in extra:
+                if args.filter and args.filter not in dec:
+                    continue
+                pairs.append((enc, dec, str(cooking), args.out))
 
     print(f"processing {len(pairs)} entries with {args.jobs} workers...", flush=True)
     counts = {"png": 0, "copy": 0, "raw-tex": 0, "skip": 0, "err": 0}

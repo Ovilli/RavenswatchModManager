@@ -51,7 +51,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from rsmm.cli import _term
-from rsmm.engine import cipher, cook_cache, cooked_schemas
+from rsmm.engine import cipher, cook_cache, cooked_schemas, rsc_cache
 from rsmm.engine.game_proc import is_game_running
 from rsmm.engine.hashing import sha256_file as sha256
 from rsmm.engine.paths import (
@@ -530,6 +530,13 @@ ROOT_PREFIX = "_root\\"
 # `asset_map.json` is itself derived from this file (see find_iyg.py).
 USEDRSCLIST_REL = Path("DarkTalesResources/UsedRscList.ot")
 
+# `*.UsedRscCache.ot` files are found by convention, never listed in
+# UsedRscList.ot, so none of the 575 shipped ones appears in `asset_map` and
+# `is_vanilla_encoded` reports False for every one. Anything reasoning about
+# "does the game ship this path" has to exempt them, hence this token: it is
+# what the cipher makes of `UsedRscCache` inside an encoded filename.
+_CACHE_ENC_TOKEN = cipher.encode("UsedRscCache")
+
 
 def synthesize_encoded(decoded: str, dec2enc: dict[str, str]) -> str | None:
     """Derive the `_Cooking` encoded path for a *new* decoded asset that
@@ -916,8 +923,17 @@ def plan_apply(mods: list[Mod],
                           f"and no sibling to anchor a new path; skipping",
                           file=sys.stderr)
                     continue
-                registrations[enc] = decoded
-                print(f"  [new] {m.id}: registering new asset '{decoded}'")
+                if decoded.endswith(rsc_cache.CACHE_SUFFIX):
+                    # A `*.UsedRscCache.ot` is found by convention (the engine
+                    # appends the suffix to the resource name), never through
+                    # UsedRscList — none of the 575 shipped caches has a record
+                    # there. Registering one would append a 3-line group cloned
+                    # from a sibling that isn't in the manifest either.
+                    print(f"  [new] {m.id}: new resource cache '{decoded}' "
+                          f"(convention-loaded, not registered)")
+                else:
+                    registrations[enc] = decoded
+                    print(f"  [new] {m.id}: registering new asset '{decoded}'")
             collected.setdefault(enc, []).append((src, m.id, decoded))
 
     wanted: dict[str, tuple[Path, str]] = {}  # encoded -> (src, mod_id)
@@ -1066,7 +1082,36 @@ def apply_one(enc: str, src: Path, dest: Path, mod_id: str,
     bak = None
     if dest.exists():
         bak = dest.parent / (dest.name + BACKUP_SUFFIX)
-        if not bak.exists():
+        if (cur is not None and (cur.get("orig_sha256") or cur.get("orig_sha1", ""))
+                and not is_vanilla_encoded(enc)
+                and _CACHE_ENC_TOKEN not in enc):
+            # State claims a vanilla original for a path the game does not
+            # ship. That can only come from an apply that ran before the
+            # mod-added check below existed and backed a generated file up over
+            # itself. Not repaired automatically: deleting a backup is the one
+            # operation that has already caused data loss here, and a wrong
+            # `is_vanilla_encoded` verdict would do it again. (Caches are
+            # exempt — the game ships 575 of them and none is in asset_map.)
+            print(f"  [WARN] {mod_id}: '{enc}' is recorded with a vanilla "
+                  f"original, but the game does not ship this path. Its "
+                  f".rsmm.bak holds output from an earlier apply, so `restore` "
+                  f"would resurrect a generated file instead of deleting it. "
+                  f"Fix: delete '{dest.name}{BACKUP_SUFFIX}' and re-run apply.",
+                  file=sys.stderr)
+            orig_sha = (cur or {}).get("orig_sha256") or sha256(bak)
+        elif cur is not None and not (cur.get("orig_sha256")
+                                      or cur.get("orig_sha1", "")):
+            # A previous apply ADDED this file, so what is on disk right now is
+            # our own output from that run, not a vanilla original. Backing it
+            # up would make `restore` resurrect a generated file instead of
+            # deleting it — and would pin the state's idea of "the original" to
+            # whatever the last build happened to emit. Observed 2026-08-10:
+            # a POI's generated tile level was backed up over itself, so its
+            # .rsmm.bak held an older generated level, not vanilla bytes.
+            orig_sha = ""
+            if bak.exists() and not dry_run:
+                bak.unlink()
+        elif not bak.exists():
             orig_sha = sha256(dest)
             print(f"  {_ST.ok(_ADD)} backup {_ST.dim(dest.name)}")
             if not dry_run:

@@ -139,9 +139,10 @@ def test_emit_writes_clone_plus_one_mapdef_per_chapter(tmp_path):
     assert rel == [
         "Definitions/Maps/Dark_Hills_LiveOps_Update5.mapdef.ot.DtMapDefinition.gen",
         "Definitions/Maps/Storm_Island_LiveOps_Update5.mapdef.ot.DtMapDefinition.gen",
+        "Definitions/Tiles/Avalon/mymod_Cauldron.tiledef.UsedRscCache.ot",
         "Definitions/Tiles/Avalon/mymod_Cauldron.tiledef.ot.DtTileDefinition.gen",
     ]
-    tile = tmp_path / rel[2]
+    tile = tmp_path / rel[3]
     td = TC.read(tile.read_bytes())
     assert td.weight == pytest.approx(0.4)
     # The clone keeps the donor's prefab — that is what makes it a real structure.
@@ -447,6 +448,169 @@ def test_prop_poi_cooks_the_mods_own_glb_and_pngs(tmp_path):
     # The raw .glb/.png must NOT land under assets/ — they are sources, and
     # copying them into the game install would ship uncooked bytes as overrides.
     assert not any(f.suffix in (".glb", ".png") for f in files)
+
+
+# --------------------------------------------------------------------------- #
+# UsedRscCache — the preload manifest without which a tile is never placed
+# --------------------------------------------------------------------------- #
+
+def _poi_art(art: Path) -> None:
+    """A mod's own source art: a 4-vertex mesh and a 4x4 texture."""
+    from rsmm.engine import gltf
+    from rsmm.engine import image as IMG
+
+    art.mkdir(parents=True, exist_ok=True)
+    b = gltf.GlbBuilder()
+    pi = b.add_positions([(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)])
+    ni = b.add_vec3([(0, 1, 0)] * 4)
+    ui = b.add_vec2([(0, 0)] * 4)
+    ii = b.add_indices([0, 1, 2, 0, 1, 3, 0, 2, 3, 1, 2, 3])
+    m = b.add_mesh(gltf.Mesh(name="t", primitives=[gltf.Primitive(
+        attributes={"POSITION": pi, "NORMAL": ni, "TEXCOORD_0": ui}, indices=ii)]))
+    b.add_node(gltf.Node(name="t", mesh=m), is_root=True)
+    (art / "mine.glb").write_bytes(b.build_glb())
+    (art / "mine.png").write_bytes(
+        IMG.encode_png(4, 4, bytes([200, 30, 30, 255] * 16)))
+
+
+_PROP = {
+    "replaces": "DarkHills\\Objects_DarkHills\\Blood_Fountain_DarkHills.entity.ot",
+    "entity_base":
+        "DarkHills\\SceneryObjects_DarkHills\\Wall_Ruins_Block_Small_A.entity.ot",
+    "material_base": "Scenery\\DarkHills\\M_Walls_Ruins.mat.ot",
+    "model": "art/mine.glb",
+    "textures": {"Scenery\\DarkHills\\T_Walls_Ruins_ALB.tga": "art/mine.png"},
+}
+
+
+def test_cache_path_and_entry_match_the_shipped_grammar():
+    from rsmm.engine import rsc_cache as RC
+
+    assert RC.cache_path_for(
+        "Definitions/Tiles/Dark_Hills/X.tiledef.ot.DtTileDefinition.gen"
+    ) == "Definitions/Tiles/Dark_Hills/X.tiledef.UsedRscCache.ot"
+    assert RC.entry_for("3D/Scenery/DarkHills/M_x.mat.ot.Material.gen") == (
+        "3D|Scenery\\DarkHills\\M_x.mat.ot|oCMaterial")
+    assert RC.entry_for("Ui/MiniMap/Icons/x.png.Texture.dxt") == (
+        "Ui|MiniMap\\Icons\\x.png|oCTexture")
+    with pytest.raises(RC.CacheError):
+        RC.entry_for("3D/Scenery/DarkHills/x.unknown.suffix")
+
+
+@needs_corpus
+@pytest.mark.slow
+def test_every_shipped_tiledef_has_a_cache_that_reparses():
+    """237/237 — the invariant the whole feature rests on. If a game patch
+    ever ships a tiledef without one, this is where we find out."""
+    from rsmm.engine import rsc_cache as RC
+
+    missing, bad = [], []
+    for p in _tiles:
+        rel = Path(p).relative_to(DATA_DIR / "uncooked").as_posix()
+        cache = DATA_DIR / "uncooked" / RC.cache_path_for(rel)
+        if not cache.is_file():
+            missing.append(rel)
+            continue
+        lines = RC.parse(cache.read_bytes())
+        if not lines or any(ln.count("|") != 2 for ln in lines):
+            bad.append(rel)
+    assert not missing, f"{len(missing)}/{len(_tiles)} tiledefs have no cache: {missing[:5]}"
+    assert not bad, f"malformed caches: {bad[:5]}"
+
+
+@needs_corpus
+def test_emitted_tile_cache_lists_every_asset_the_tile_reaches(tmp_path):
+    """The 2026-08-10 regression: a POI shipped a prop chain the tile's cache
+    never mentioned. The engine preloads only what the cache lists, so the
+    level's reference resolved to null and the teardown loop destroyed it."""
+    from rsmm.engine import rsc_cache as RC
+
+    _poi_art(tmp_path / "art")
+    defn = ContentDef(kind="poi", id="Tetra", fields={
+        "base": "Dark_Hills/6x6_Bleeding_01", "chapters": ["Dark_Hills"],
+        "kinds": ["Fountain"], "prop": dict(_PROP)})
+    out = tmp_path / "assets"
+    files = poi.emit("mymod", defn, out)
+
+    caches = [f for f in files if f.name.endswith(RC.CACHE_SUFFIX)]
+    assert len(caches) == 1
+    listed = set(RC.parse(caches[0].read_bytes()))
+
+    # Every cooked asset this def emitted must be preloadable, including the
+    # tiledef itself. Mapdefs belong to the chapter, not the tile.
+    for f in files:
+        rel = f.relative_to(out).as_posix()
+        if rel.endswith(RC.CACHE_SUFFIX) or rel.startswith("Definitions/Maps/"):
+            continue
+        assert RC.entry_for(rel) in listed, f"{rel} is not preloaded by the tile cache"
+
+    # And it is still the donor's closure underneath, not a bare 6-line file.
+    donor = (DATA_DIR / "uncooked" / RC.cache_path_for(
+        f"Definitions/Tiles/Dark_Hills/6x6_Bleeding_01{TC.GEN_SUFFIX}")).read_bytes()
+    assert set(RC.parse(donor)) <= listed
+
+
+@needs_corpus
+def test_every_copy_gets_its_own_cache_naming_its_own_tiledef(tmp_path):
+    from rsmm.engine import rsc_cache as RC
+
+    files = poi.emit("m", ContentDef(kind="poi", id="C", fields={
+        "base": BASE, "chapters": ["Dark_Hills"], "copies": 3}), tmp_path)
+    caches = sorted(f for f in files if f.name.endswith(RC.CACHE_SUFFIX))
+    assert len(caches) == 3
+    for c in caches:
+        stem = c.name[: -len(RC.CACHE_SUFFIX)]
+        assert RC.entry_for(
+            f"Definitions/Tiles/Avalon/{stem}.ot.DtTileDefinition.gen"
+        ) in set(RC.parse(c.read_bytes()))
+
+
+@needs_corpus
+def test_replace_base_overrides_the_shipped_cache_not_a_new_one(tmp_path):
+    """Override mode edits the shipped tile in place, so its cache must be
+    overridden at the SHIPPED path — writing a new one leaves the stale
+    original in charge and the tile still can't reach the new prop."""
+    from rsmm.engine import rsc_cache as RC
+
+    _poi_art(tmp_path / "art")
+    defn = ContentDef(kind="poi", id="Over", fields={
+        "base": "Dark_Hills/6x6_Bleeding_01", "chapters": ["Dark_Hills"],
+        "replace_base": True, "prop": dict(_PROP)})
+    out = tmp_path / "assets"
+    files = poi.emit("mymod", defn, out)
+    caches = [f.relative_to(out).as_posix()
+              for f in files if f.name.endswith(RC.CACHE_SUFFIX)]
+    assert caches == ["Definitions/Tiles/Dark_Hills/6x6_Bleeding_01.tiledef.UsedRscCache.ot"]
+
+    listed = set(RC.parse((out / caches[0]).read_bytes()))
+    prop = next(f for f in files if f.name.endswith(".EntitySettingsResource.gen"))
+    assert RC.entry_for(prop.relative_to(out).as_posix()) in listed
+
+
+def test_apply_does_not_register_a_cache_in_usedrsclist(tmp_path):
+    """Caches are convention-loaded; none of the 575 shipped ones has a
+    UsedRscList record, so appending one would clone a 3-line group from a
+    sibling that isn't in the manifest either."""
+    from rsmm.cli import apply_mods
+
+    src = tmp_path / "x"
+    src.write_bytes(b"")
+
+    class _M:
+        id, enabled = "m", True
+
+        def files(self):
+            return [
+                (src, "Definitions/Tiles/Dark_Hills/New.tiledef.UsedRscCache.ot"),
+                (src, "Definitions/Tiles/Dark_Hills/New.tiledef.ot.DtTileDefinition.gen"),
+            ]
+
+    dec2enc = apply_mods.load_asset_map()
+    _adds, _rms, regs = apply_mods.plan_apply(
+        [_M()], dec2enc, tmp_path, tmp_path, apply_mods.State(tmp_path), True)
+    decoded = set(regs.values())
+    assert "Definitions/Tiles/Dark_Hills/New.tiledef.ot.DtTileDefinition.gen" in decoded
+    assert not any(d.endswith(".UsedRscCache.ot") for d in decoded)
 
 
 # --------------------------------------------------------------------------- #

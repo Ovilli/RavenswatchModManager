@@ -115,6 +115,7 @@ from pathlib import Path
 
 from ...engine import map_pool as MP
 from ...engine import prop_cook as PC
+from ...engine import rsc_cache as RC
 from ...engine import tile_cook as TC
 from ...engine.paths import DATA_DIR
 from ..content import ContentDef, ContentError, SchemaNotMined
@@ -224,6 +225,40 @@ def _tile_path(base: str) -> Path:
     )
 
 
+def kind_pool_counts(chapter: str) -> dict[str, int]:
+    """How many tiles in this chapter's vanilla pool declare each kind.
+
+    This is the denominator of a POI's spawn share. A chapter draws each slot
+    from the pool entries matching that slot's kind, so a kind with two entries
+    is a kind the player sees at most twice a run — adding a tile to it makes a
+    *rare* structure however many copies it ships, while a kind with fifteen is
+    common ground. `weight` does not change any of this (see TIER_WEIGHTS).
+    """
+    stem = CHAPTERS.get(chapter)
+    if not stem:
+        return {}
+    gen = _MAPS_DIR / f"{stem}{MP.GEN_SUFFIX}"
+    if not gen.is_file():
+        return {}
+    counts: dict[str, int] = {}
+    for path in MP.read_pool(gen.read_bytes()) or []:
+        # "Tiles\\<Biome>\\<Name>.tiledef.ot" -> data/uncooked path
+        parts = path.replace("\\", "/").split("/")
+        if len(parts) < 3:
+            continue
+        stem_name = parts[-1].removesuffix(".tiledef.ot")
+        p = _TILES_DIR / parts[-2] / f"{stem_name}{TC.GEN_SUFFIX}"
+        if not p.is_file():
+            continue
+        try:
+            kinds = TC.read(p.read_bytes()).kinds
+        except TC.TileCookError:
+            continue
+        for k in kinds:
+            counts[k] = counts.get(k, 0) + 1
+    return counts
+
+
 def chapter_kinds(chapter: str) -> set[str]:
     """The tile kinds this chapter's existing pool can supply.
 
@@ -231,27 +266,7 @@ def chapter_kinds(chapter: str) -> set[str]:
     reachable in that map today, which is the honest bar: a kind no pooled tile
     declares is one no slot is known to accept.
     """
-    stem = CHAPTERS.get(chapter)
-    if not stem:
-        return set()
-    gen = _MAPS_DIR / f"{stem}{MP.GEN_SUFFIX}"
-    if not gen.is_file():
-        return set()
-    pool = MP.read_pool(gen.read_bytes()) or []
-    kinds: set[str] = set()
-    for path in pool:
-        # "Tiles\\<Biome>\\<Name>.tiledef.ot" -> data/uncooked path
-        parts = path.replace("\\", "/").split("/")
-        if len(parts) < 3:
-            continue
-        stem_name = parts[-1].removesuffix(".tiledef.ot")
-        p = _TILES_DIR / parts[-2] / f"{stem_name}{TC.GEN_SUFFIX}"
-        if p.is_file():
-            try:
-                kinds.update(TC.read(p.read_bytes()).kinds)
-            except TC.TileCookError:
-                continue
-    return kinds
+    return set(kind_pool_counts(chapter))
 
 
 #: Folder under a mod root that holds convention-discovered POIs.
@@ -588,6 +603,71 @@ def _write(out_dir: Path, decoded: str, data: bytes,
     written.append(dest)
 
 
+#: Below this many vanilla pool entries, a kind is a rare slot: winning every
+#: entry of it still leaves the structure mostly unseen. Two of the three kinds
+#: in the `clearing` preset's donor sit here, which is why a shrine that WAS
+#: correctly pooled could still go a whole run unnoticed.
+_RARE_KIND = 3
+
+
+def _report_share(mod_id: str, defn: ContentDef, td: TC.TileDef,
+                  chapters: list[str], copies: int) -> None:
+    """Say what share of its slots this POI actually wins, per chapter.
+
+    A POI competes only against pool entries declaring the same kind, so the
+    number that decides whether a player ever sees it is ``copies / (copies +
+    vanilla entries of that kind)`` — not `weight`, and not the size of the
+    pool. Emitting that number is the difference between "it doesn't work" and
+    "it works and is meant to be rare".
+    """
+    for ch in chapters:
+        counts = kind_pool_counts(ch)
+        for kind in td.kinds:
+            vanilla = counts.get(kind, 0)
+            share = copies / (copies + vanilla) if copies + vanilla else 0.0
+            msg = ("poi %s/%s: %s slots in %s — %d vanilla + %d copies "
+                   "= %.0f%% share")
+            args = (mod_id, defn.id, kind, ch, vanilla, copies, 100 * share)
+            if vanilla < _RARE_KIND:
+                _log.warning(
+                    msg + "; '%s' is a RARE slot kind, so the structure stays "
+                    "uncommon however many copies it ships. Add a commoner kind "
+                    "(see `rsmm poi kinds %s`) to be seen more often.",
+                    *args, kind, ch)
+            else:
+                _log.info(msg, *args)
+
+
+def _emit_tile_caches(out_dir: Path, base: str, defn_id: str,
+                      tile_rels: list[str], written: list[Path]) -> None:
+    """Give every tiledef this def emitted its ``*.UsedRscCache.ot`` sibling.
+
+    All 237 shipped tiledefs have one and the engine looks it up by convention,
+    so a clone without it preloads nothing: the tile is registered, never
+    placed, and says nothing about why. When the tile *is* reached with a cache
+    that doesn't list something the level references, the missing resource
+    leaves a null in the preloaded vector and the engine's teardown loop
+    destroys it unchecked — an access violation nowhere near the real mistake.
+    See :mod:`rsmm.engine.rsc_cache`.
+
+    The cache is the donor tile's, plus a line for each asset this def emitted
+    and one for the tiledef itself.
+    """
+    donor_cooked = f"{_TILE_ASSET_SUBDIR}/{base}{TC.GEN_SUFFIX}"
+    donor = _corpus(RC.cache_path_for(donor_cooked), defn_id,
+                    "the base tile's resource cache")
+    # Snapshot before the loop: the caches must not list each other, and a
+    # mapdef belongs to the chapter rather than to any one tile.
+    assets = [
+        rel for p in written
+        if not (rel := p.relative_to(out_dir).as_posix()).endswith(RC.CACHE_SUFFIX)
+        and not rel.startswith(f"{_MAP_ASSET_SUBDIR}/")
+    ]
+    for tile_rel in tile_rels:
+        _write(out_dir, RC.cache_path_for(tile_rel),
+               RC.extend(donor, [*assets, tile_rel]), written)
+
+
 def _emit_custom_prop(mod_id: str, defn: ContentDef, out_dir: Path,
                       base: str, written: list[Path]) -> str:
     """Build the mod's own prop + the tile that shows it, return the new
@@ -760,6 +840,12 @@ def _emit_replacing_base(mod_id: str, defn: ContentDef, out_dir: Path,
         _write(out_dir, f"{_TILE_ASSET_SUBDIR}/{biome}/{stem}{TC.GEN_SUFFIX}",
                TC.write(td), written)
 
+    # The base tile keeps its own cache path, so this OVERRIDES the shipped
+    # one. It has to: the tile now reaches assets the vanilla cache never
+    # listed, and an un-updated cache is what crashed the game on 2026-08-10.
+    _emit_tile_caches(out_dir, base, defn.id,
+                      [f"{_TILE_ASSET_SUBDIR}/{base}{TC.GEN_SUFFIX}"], written)
+
     _log.info("poi %s/%s: REPLACING base tile %s in place (no pool change)",
               mod_id, defn.id, base)
     return written
@@ -825,6 +911,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             f"entries crowds every vanilla tile out of the slots it shares.")
 
     pool_refs: list[str] = []
+    tile_rels: list[str] = []
     for n in range(1, copies + 1):
         name = tile_name if n == 1 else f"{tile_name}_{n}"
         tile_rel = f"{_TILE_ASSET_SUBDIR}/{biome}/{name}{TC.GEN_SUFFIX}"
@@ -832,7 +919,13 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         tile_dest.parent.mkdir(parents=True, exist_ok=True)
         tile_dest.write_bytes(TC.write(td))
         written.append(tile_dest)
+        tile_rels.append(tile_rel)
         pool_refs.append(f"Tiles\\{biome}\\{name}.tiledef.ot")
+
+    # Every copy is a separate tiledef asset, so every copy needs its own
+    # cache — a tiledef the engine cannot preload is never placed.
+    _emit_tile_caches(out_dir, base, defn.id, tile_rels, written)
+    _report_share(mod_id, defn, td, chapters, copies)
 
     for ch in chapters:
         stem = CHAPTERS[ch]
