@@ -446,3 +446,141 @@ def test_prop_poi_cooks_the_mods_own_glb_and_pngs(tmp_path):
     # The raw .glb/.png must NOT land under assets/ — they are sources, and
     # copying them into the game install would ship uncooked bytes as overrides.
     assert not any(f.suffix in (".glb", ".png") for f in files)
+
+
+# --------------------------------------------------------------------------- #
+# Convention discovery — a POI is a folder, not a wall of manifest keys
+# --------------------------------------------------------------------------- #
+
+def _poi_folder(root, name="my_shrine", cfg='chapters = ["Dark_Hills"]\n',
+                with_art=True):
+    from rsmm.engine import gltf
+    from rsmm.engine import image as IMG
+    d = root / poi.POIS_DIRNAME / name
+    d.mkdir(parents=True)
+    (d / "poi.toml").write_text(cfg)
+    if with_art:
+        b = gltf.GlbBuilder()
+        pi = b.add_positions([(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)])
+        ni = b.add_vec3([(0, 1, 0)] * 4)
+        ui = b.add_vec2([(0, 0)] * 4)
+        ii = b.add_indices([0, 1, 2, 0, 1, 3, 0, 2, 3, 1, 2, 3])
+        m = b.add_mesh(gltf.Mesh(name="t", primitives=[gltf.Primitive(
+            attributes={"POSITION": pi, "NORMAL": ni, "TEXCOORD_0": ui}, indices=ii)]))
+        b.add_node(gltf.Node(name="t", mesh=m), is_root=True)
+        (d / "model.glb").write_bytes(b.build_glb())
+        px = bytes([200, 30, 30, 255] * 16)
+        for role in ("albedo", "mra", "normal"):
+            (d / f"{role}.png").write_bytes(IMG.encode_png(4, 4, px))
+    return d
+
+
+def test_discover_returns_nothing_without_a_pois_dir(tmp_path):
+    assert poi.discover(tmp_path) == []
+
+
+def test_discover_fills_everything_from_the_preset(tmp_path):
+    """The point of the folder convention: six lines of config, no engine paths."""
+    _poi_folder(tmp_path)
+    blocks = poi.discover(tmp_path)
+    assert len(blocks) == 1
+    b = blocks[0]
+    assert b["kind"] == "poi" and b["id"] == "my_shrine"
+    preset = poi.PRESETS[poi.DEFAULT_PRESET]
+    assert b["base"] == preset["base"]
+    assert b["kinds"] == preset["kinds"]
+    assert b["weight"] == preset["weight"]
+    # Art is wired by filename convention through the preset's slot map.
+    assert b["prop"]["model"] == "pois/my_shrine/model.glb"
+    assert set(b["prop"]["textures"].values()) == {
+        "pois/my_shrine/albedo.png", "pois/my_shrine/mra.png",
+        "pois/my_shrine/normal.png"}
+    assert set(b["prop"]["textures"]) == set(preset["slots"].values())
+    assert b["prop"]["entity_base"] == preset["entity_base"]
+
+
+def test_discover_lets_poi_toml_override_the_preset(tmp_path):
+    _poi_folder(tmp_path, cfg='chapters = ["Avalon"]\nweight = 0.5\n'
+                              'kinds = ["Camp"]\nid = "renamed"\n')
+    b = poi.discover(tmp_path)[0]
+    assert (b["id"], b["weight"], b["kinds"], b["chapters"]) == (
+        "renamed", 0.5, ["Camp"], ["Avalon"])
+
+
+def test_discover_a_poi_with_no_art_is_a_plain_tile_clone(tmp_path):
+    _poi_folder(tmp_path, with_art=False)
+    b = poi.discover(tmp_path)[0]
+    assert "prop" not in b, "no model means clone the shipped prefab"
+
+
+def test_discover_is_deterministic(tmp_path):
+    for n in ("zeta", "alpha", "mid"):
+        _poi_folder(tmp_path, name=n, with_art=False)
+    assert [b["id"] for b in poi.discover(tmp_path)] == ["alpha", "mid", "zeta"]
+
+
+@pytest.mark.parametrize("cfg,needle", [
+    ('chapters = ["Dark_Hills"]\npreset = "nope"\n', "unknown preset"),
+    ('chapters = ["Dark_Hills"]\nwieght = 0.5\n', "unknown key"),
+    ('weight = 0.5\n', "must set `chapters`"),
+])
+def test_discover_rejects_bad_poi_toml(tmp_path, cfg, needle):
+    _poi_folder(tmp_path, cfg=cfg, with_art=False)
+    with pytest.raises(ContentError, match=needle):
+        poi.discover(tmp_path)
+
+
+def test_discover_rejects_a_model_with_no_textures(tmp_path):
+    d = _poi_folder(tmp_path)
+    for role in ("albedo", "mra", "normal"):
+        (d / f"{role}.png").unlink()
+    with pytest.raises(ContentError, match="no texture next to it"):
+        poi.discover(tmp_path)
+
+
+@needs_corpus
+def test_every_preset_is_wired_to_real_donors():
+    """A preset is a promise to every mod that uses it, so a stale path breaks
+    all of them at once. `replaces` in particular is not guessable from a tile's
+    name — a "Giant_Ruin_Crystal_Field" tile places bone props, not a ruin —
+    which is exactly how a made-up value shipped once."""
+    import json
+
+    from rsmm.engine import cooked_schemas
+    from rsmm.engine import prop_cook as PC
+
+    for name, preset in poi.PRESETS.items():
+        assert poi._tile_path(preset["base"]).is_file(), f"{name}: bad base tile"
+        for key in ("entity_base", "material_base"):
+            rel = (PC.entity_cooked_path(preset[key]) if key.startswith("entity")
+                   else PC.art_cooked_path(preset[key]))
+            assert (DATA_DIR / "uncooked" / rel).is_file(), f"{name}: bad {key}"
+        assert set(preset["slots"]) == set(poi.TEXTURE_ROLES), f"{name}: slot roles"
+
+        # The material must really use every slot the preset claims.
+        mat = (DATA_DIR / "uncooked" / PC.art_cooked_path(preset["material_base"])).read_bytes()
+        mat_refs = set(json.loads(
+            cooked_schemas.get("oCMaterial").decode_cooked(mat))["asset_refs"])
+        assert set(preset["slots"].values()) <= mat_refs, f"{name}: slot not in material"
+
+        # And the base tile's level must really place the object to replace.
+        lvl_ref = poi._level_ref_of(poi._prefab_ref_of(preset["base"], name), name)
+        lvl = (DATA_DIR / "uncooked" / PC.level_cooked_path(lvl_ref)).read_bytes()
+        placed = set(json.loads(
+            cooked_schemas.get("oCGameStream").decode_cooked(lvl))["asset_refs"])
+        assert preset["replaces"] in placed, (
+            f"{name}: replaces {preset['replaces']!r} is not placed by {lvl_ref}")
+
+
+@needs_corpus
+def test_declared_manifest_block_wins_over_a_same_id_folder(tmp_path):
+    """A hand-written block must stay authoritative, or an author cannot
+    override what discovery guessed."""
+    from rsmm.cli.apply_mods import Mod
+    _poi_folder(tmp_path, name="dup", with_art=False)
+    (tmp_path / "manifest.toml").write_text(
+        '[mod]\nid = "m"\n\n[[content]]\nkind = "poi"\nid = "dup"\n'
+        'base = "Avalon/6x6_Healing_01"\nchapters = ["Avalon"]\n')
+    blocks = [b for b in Mod(tmp_path).content_blocks if b.get("id") == "dup"]
+    assert len(blocks) == 1
+    assert blocks[0]["base"] == "Avalon/6x6_Healing_01"

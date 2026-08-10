@@ -346,6 +346,19 @@ class Mod:
             # the manifest that caused it.
             raise ValueError("[[content]] must be a list of tables")
         self.content_blocks: list[dict] = list(blocks)
+        # Convention-discovered content: an `items/<name>/` or `pois/<name>/`
+        # folder is a def, no manifest entry needed (see rsmm.sdk.discovery).
+        # Declared blocks win on id collision so an author can still hand-write
+        # one. A broken folder must not take the whole apply down with it —
+        # every other kind of bad content is warn-and-skip here too.
+        try:
+            from rsmm.sdk.discovery import discover, merge_with_manifest
+
+            self.content_blocks = merge_with_manifest(
+                self.content_blocks, discover(root))
+        except Exception as e:  # noqa: BLE001 — surfaced, never fatal
+            print(f"  [warn] {self.id}: content discovery failed: {e}",
+                  file=sys.stderr)
 
     def files(self) -> list[tuple[Path, str]]:
         out: list[tuple[Path, str]] = []

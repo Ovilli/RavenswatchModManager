@@ -63,6 +63,58 @@ flowchart LR
 
 ---
 
+## Content lives in folders, not in the manifest
+
+`manifest.toml` describes the **mod** — id, author, licence, multiplayer scope.
+It should not grow a table for every item, enemy or structure in it. Content
+goes in the file tree instead, one directory per thing:
+
+```
+mods/my-mod/
+    manifest.toml               what the mod is
+    items/ember_charm/
+        item.toml               what the item is
+    enemies/frost_wolf/
+        enemy.toml
+    pois/runestone_shrine/
+        poi.toml
+        model.glb               your own mesh
+        albedo.png              your own maps, matched to
+        mra.png                 texture slots by filename
+        normal.png
+```
+
+Each folder is one content def. Its id defaults to the folder name, and the
+`<kind>.toml` inside holds the same fields a `[[content]]` block would. `rsmm
+new <id> --kind <kind>` scaffolds this layout.
+
+Directory names are plural, kinds singular: `items/` → `item`, `enemies/` →
+`enemy`, `bosses/`, `heroes/`, `talents/`, `skills/`, `modifiers/`, `rewards/`,
+`melodies/`, `maps/`, `pois/`. `game_mode` is deliberately not on the list — a
+mod has at most one, so it stays in the manifest.
+
+You can still write `[[content]]` by hand, and a declared block **wins** over a
+folder with the same id, so dropping to the explicit form for one def does not
+mean moving the rest.
+
+### POIs get presets and art-by-filename
+
+`poi` goes furthest with the convention, because a structure otherwise needs
+five engine paths. A `poi.toml` usually only has to say which chapters it
+appears in:
+
+```toml
+chapters = ["Dark_Hills", "Avalon", "Storm_Island"]
+```
+
+Everything else — which tile it stands in, which object it takes the place of,
+which prop and material it inherits structure from, its kind and spawn weight —
+comes from a preset. Drop `model.glb` plus `albedo.png` / `mra.png` /
+`normal.png` beside it and those become the structure's own art; omit them and
+you get a clone of a shipped structure. See `rsmm poi` to browse, and
+`mods/runestone-shrine` for a worked example.
+
+
 ## Two override strategies
 
 Independent of *how* you produce the manifest (hand-written TOML or the

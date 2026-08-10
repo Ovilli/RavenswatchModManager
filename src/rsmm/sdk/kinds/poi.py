@@ -16,8 +16,31 @@ Two assets come out of one def:
   keep their order — and multiple ``poi`` mods targeting the same chapter are
   merged rather than fighting (see ``apply_mods._merge_map_pool``).
 
-Fields
-------
+The short way: a POI is a folder
+--------------------------------
+Drop a directory into ``mods/<id>/pois/`` and it is discovered automatically —
+no manifest entry:
+
+.. code-block:: text
+
+    pois/runestone_shrine/
+        poi.toml        chapters, plus anything you want to override
+        model.glb       the mesh
+        albedo.png      \
+        mra.png          }  matched to texture slots by filename
+        normal.png      /
+
+``poi.toml`` usually only needs ``chapters``. Everything else comes from a
+preset (``preset = "clearing"`` / ``"landmark"``; see :data:`PRESETS`), which
+bundles the donor tile, the object to replace, the prop and material to inherit
+structure from, and the role-to-slot texture map. Omit the art entirely and you
+get a plain clone of the preset's tile.
+
+Discovery builds exactly the ``[[content]]`` dict documented below, so the
+explicit form still works and a declared block wins on id collision.
+
+Fields (the explicit ``[[content]]`` form)
+------------------------------------------
 ``base`` (str, required)
     Tiledef to clone, as ``<Biome>/<Name>`` — e.g.
     ``Avalon/40x40_Avalon_Cauldron_T1``. Browse with ``rsmm poi list``.
@@ -109,6 +132,48 @@ CHAPTERS: dict[str, str] = {
 }
 
 
+#: Donor bundles. Everything a custom prop needs to hang on — which tile to
+#: build in, which object in it to take the place of, and which prop/material to
+#: inherit structure from — collapsed to one name. Authors pick a preset (or
+#: none, and get the default) instead of naming five engine paths.
+#:
+#: `slots` maps a conventional source-image name to the donor material's
+#: texture reference, so `albedo.png` in a POI folder simply works.
+#:
+#: Every field here is checked against the corpus by
+#: `tests/test_poi.py::test_every_preset_is_wired_to_real_donors` — including
+#: that `replaces` names an object the base tile's level actually places, which
+#: is not guessable from the tile's name (a "Giant_Ruin_Crystal_Field" tile
+#: turns out to place bone and skull props, not a ruin). A preset is a promise
+#: to every mod that uses it, so a stale path here breaks all of them at once.
+PRESETS: dict[str, dict] = {
+    # A 6x6 clearing built around a single centrepiece: small footprint, its own
+    # terrain patch, grass and props. The default because it is the least
+    # opinionated place to stand something new.
+    "clearing": {
+        "base": "Dark_Hills/6x6_Bleeding_01",
+        "replaces": "DarkHills\\Objects_DarkHills\\Blood_Fountain_DarkHills.entity.ot",
+        "entity_base":
+            "DarkHills\\SceneryObjects_DarkHills\\Wall_Ruins_Block_Small_A.entity.ot",
+        "material_base": "Scenery\\DarkHills\\M_Walls_Ruins.mat.ot",
+        "slots": {
+            "albedo": "Scenery\\DarkHills\\T_Walls_Ruins_ALB.tga",
+            "mra": "Scenery\\DarkHills\\T_Walls_Ruins_MRA.tga",
+            "normal": "Scenery\\DarkHills\\T_Walls_Ruins_NRM.tga",
+        },
+        "kinds": ["Fountain"],
+        "weight": 0.15,
+    },
+}
+
+DEFAULT_PRESET = "clearing"
+
+#: Conventional source-art filenames inside a POI folder. `model.glb` is the
+#: mesh; the rest are texture roles resolved through the preset's `slots`.
+MODEL_NAMES = ("model.glb", "model.gltf")
+TEXTURE_ROLES = ("albedo", "mra", "normal")
+
+
 def known_tiles() -> list[str]:
     """Every clonable tile as ``<Biome>/<Name>``."""
     if not _TILES_DIR.is_dir():
@@ -153,6 +218,110 @@ def chapter_kinds(chapter: str) -> set[str]:
             except TC.TileCookError:
                 continue
     return kinds
+
+
+#: Folder under a mod root that holds convention-discovered POIs.
+POIS_DIRNAME = "pois"
+
+
+def discover(mod_root: Path) -> list[dict]:
+    """Turn ``mods/<id>/pois/<name>/`` folders into ``[[content]]`` blocks.
+
+    The Minecraft-style half of this kind: a POI is a *directory*, not a wall of
+    manifest keys. Drop a folder in, and its contents say what it is —
+
+    .. code-block:: text
+
+        pois/runestone_shrine/
+            poi.toml        chapters + any overrides (optional)
+            model.glb       the mesh
+            albedo.png      \\
+            mra.png          }  texture roles, matched to the preset's slots
+            normal.png      /
+
+    Everything not stated is inherited from the preset (``preset = "..."`` in
+    ``poi.toml``, default :data:`DEFAULT_PRESET`), so the common case needs no
+    engine paths at all. Anything a preset sets can still be overridden key by
+    key, which is why the explicit ``prop`` form remains supported — this
+    function only builds the same dict a hand-written block would.
+
+    Returns blocks in folder-name order so an apply is deterministic.
+    """
+    root = mod_root / POIS_DIRNAME
+    if not root.is_dir():
+        return []
+    import tomllib
+
+    blocks: list[dict] = []
+    for d in sorted(p for p in root.iterdir() if p.is_dir()):
+        cfg: dict = {}
+        cfg_path = d / "poi.toml"
+        if cfg_path.is_file():
+            try:
+                cfg = tomllib.load(cfg_path.open("rb"))
+            except (OSError, tomllib.TOMLDecodeError) as e:
+                raise ContentError(f"poi {d.name}: {cfg_path} is not valid TOML: {e}") from e
+
+        preset_name = cfg.pop("preset", DEFAULT_PRESET)
+        preset = PRESETS.get(preset_name)
+        if preset is None:
+            raise ContentError(
+                f"poi {d.name}: unknown preset {preset_name!r}. "
+                f"Available: {', '.join(sorted(PRESETS))}."
+            )
+
+        block: dict = {"kind": "poi", "id": cfg.pop("id", None) or d.name}
+        for key in ("base", "kinds", "weight"):
+            if key in cfg:
+                block[key] = cfg.pop(key)
+            elif key in preset:
+                block[key] = preset[key]
+        for key in ("chapters", "icon"):
+            if key in cfg:
+                block[key] = cfg.pop(key)
+
+        model = next((m for m in MODEL_NAMES if (d / m).is_file()), None)
+        if model:
+            rel = f"{POIS_DIRNAME}/{d.name}"
+            textures = {}
+            for role in TEXTURE_ROLES:
+                img = next((f"{role}{e}" for e in (".png", ".dds")
+                            if (d / f"{role}{e}").is_file()), None)
+                if not img:
+                    continue
+                slot = (cfg.get("slots") or preset["slots"]).get(role)
+                if slot:
+                    textures[slot] = f"{rel}/{img}"
+            if not textures:
+                raise ContentError(
+                    f"poi {d.name}: has {model} but no texture next to it — add "
+                    f"at least one of {', '.join(n + '.png' for n in TEXTURE_ROLES)}."
+                )
+            block["prop"] = {
+                "model": f"{rel}/{model}",
+                "textures": textures,
+                "replaces": cfg.pop("replaces", preset["replaces"]),
+                "entity_base": cfg.pop("entity_base", preset["entity_base"]),
+                "material_base": cfg.pop("material_base", preset["material_base"]),
+            }
+            if "transform" in cfg:
+                block["prop"]["transform"] = cfg.pop("transform")
+        cfg.pop("slots", None)
+
+        # Anything left is a typo, not a feature. Silently ignoring it is how a
+        # mod ships with a setting the author believes is in effect.
+        unknown = sorted(cfg)
+        if unknown:
+            raise ContentError(
+                f"poi {d.name}: unknown key(s) in poi.toml: {', '.join(unknown)}"
+            )
+        if not block.get("chapters"):
+            raise ContentError(
+                f"poi {d.name}: poi.toml must set `chapters` — which maps it "
+                f"appears in. Valid: {', '.join(sorted(CHAPTERS))}."
+            )
+        blocks.append(block)
+    return blocks
 
 
 def _validate(defn: ContentDef) -> tuple[str, list[str]]:

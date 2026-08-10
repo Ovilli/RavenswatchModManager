@@ -13,7 +13,7 @@ except ImportError:  # pragma: no cover - SDK always present in practice
     def kind_confidence(_k: str) -> str:
         return "guess"
 
-_CONTENT_KINDS = ("item", "talent", "enemy", "boss", "map", "hero")
+_CONTENT_KINDS = ("item", "talent", "enemy", "boss", "map", "hero", "poi")
 
 #: Per-kind seed for the `[[content]]` block — extra manifest lines beyond
 #: the common id/base/name/description. Keeps scaffolds concrete so a fresh
@@ -45,6 +45,41 @@ _KIND_BASE_HINT: dict[str, str] = {
     "hero": "Sun_Priest",
     "map": "<vanilla map id>",
     "boss": "BabaYaga",
+}
+
+#: Kinds scaffolded as a FOLDER rather than a `[[content]]` block. The manifest
+#: should describe the mod, not accumulate one table per thing in it — see
+#: :mod:`rsmm.sdk.discovery`. `talent` and `item` stay inline for now: talent
+#: keys off the hero entity rather than an id, and the item block is mined from
+#: its base, so neither is a plain "fields in a file" case yet.
+_FOLDER_SEED: dict[str, list[str]] = {
+    "poi": [
+        "# A point of interest / structure. Drop `model.glb` + `albedo.png`,",
+        "# `mra.png`, `normal.png` next to this file to make it your OWN art;",
+        "# with no art it is a clone of the preset's shipped tile.",
+        "#",
+        "# Everything not set here comes from the preset: which tile it stands",
+        "# in, which object it replaces, and which prop/material it inherits",
+        "# structure from. `rsmm poi` browses what else is available.",
+        'chapters = ["Dark_Hills", "Avalon", "Storm_Island"]',
+        '# preset = "clearing"',
+        '# weight = 0.15',
+        '# kinds  = ["Fountain"]',
+        '# icon   = "MiniMap\\Icons\\Map_Icons_Crow_Mark.png"',
+    ],
+    "enemy": [
+        '# tribe     = "Gnolls"             # optional: repoint tribe_ref',
+        '# add_flags = ["Elite"]            # optional: extend base tag list',
+    ],
+    "hero": [
+        "# Reskinning an existing hero works today; a brand-new roster slot is",
+        "# blocked on the hero-library singleton + roster detour.",
+    ],
+    "map": [],
+    "boss": [
+        "# WARNING: boss byte layout is a guess — expect rejection/crash until",
+        "# the picker/HP/arena offsets are RE-confirmed.",
+    ],
 }
 _ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
 _USAGE = (
@@ -344,6 +379,31 @@ def main(argv: list[str] | None = None) -> int:
             mod_id, opts["base"], opts["name"], opts["desc"],
             opts["icon"], opts["rarity"])
         manifest += ["", f"# kind {kind!r} confidence: {conf}", *item_lines]
+    elif kind in _FOLDER_SEED:
+        # Folder form: the content lives in its own directory and is discovered,
+        # so the manifest gains nothing but a pointer comment.
+        from rsmm.sdk.discovery import KIND_DIRS
+
+        dirname = next(d for d, k in KIND_DIRS.items() if k == kind)
+        slug = f"{mod_id}_{kind}_1".replace("-", "_")
+        folder = target / dirname / slug
+        folder.mkdir(parents=True, exist_ok=True)
+        seed = [f"# {kind} — confidence: {conf}", *_FOLDER_SEED[kind]]
+        # An explicitly passed --base must always land as a real key. A hint is
+        # only a placeholder, so it stays commented; conflating the two is how
+        # `--base` got silently dropped for every folder kind.
+        if opts["base"]:
+            seed.append(f'base = {_toml_str(opts["base"])}')
+        elif kind != "poi" and (hint := _KIND_BASE_HINT.get(kind)):
+            seed.append(f'# base = {_toml_str(hint)}   # vanilla id to clone')
+        (folder / f"{kind}.toml").write_text("\n".join(seed) + "\n",
+                                             encoding="utf-8")
+        manifest += [
+            "",
+            f"# Content lives in {dirname}/ — one folder per {kind}, discovered",
+            f"# automatically. Edit {dirname}/{slug}/{kind}.toml, or add another",
+            "# folder beside it. Nothing to declare here.",
+        ]
     elif kind:
         base = opts["base"] or _KIND_BASE_HINT.get(kind, "<vanilla id to clone>")
         manifest += [

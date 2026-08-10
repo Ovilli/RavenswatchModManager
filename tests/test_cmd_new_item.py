@@ -28,7 +28,9 @@ def scaffold(tmp_path, monkeypatch):
     def run(*argv: str) -> dict:
         assert cmd_new.main(list(argv)) == 0
         text = (tmp_path / argv[0] / "manifest.toml").read_text(encoding="utf-8")
-        return tomllib.loads(text)
+        doc = tomllib.loads(text)
+        doc["_root"] = tmp_path / argv[0]
+        return doc
 
     return run
 
@@ -90,9 +92,24 @@ def test_unknown_base_still_scaffolds_a_parseable_placeholder(scaffold):
     assert "value_patches" not in doc["content"][0]
 
 
-def test_non_item_kinds_keep_their_template(scaffold):
+def test_folder_kinds_scaffold_a_content_dir_not_a_manifest_block(scaffold):
+    """A folder-form kind keeps the manifest about the MOD; the def lives in
+    its own directory and is discovered (see rsmm.sdk.discovery)."""
+    from rsmm.sdk.discovery import discover
+
     doc = scaffold("demo", "--kind", "enemy", "--base", "Gnoll_Shielded")
-    assert doc["content"][0]["base"] == "Gnoll_Shielded"
+    assert "content" not in doc, "folder kinds must not also emit a [[content]] block"
+
+    cfg = doc["_root"] / "enemies" / "demo_enemy_1" / "enemy.toml"
+    assert cfg.is_file()
+    assert tomllib.loads(cfg.read_text())["base"] == "Gnoll_Shielded"
+
+    # The scaffold must round-trip through discovery, or `rsmm new` produces a
+    # mod that silently contains nothing.
+    blocks = discover(doc["_root"])
+    assert [(b["kind"], b["id"], b["base"]) for b in blocks] == [
+        ("enemy", "demo_enemy_1", "Gnoll_Shielded")]
+
     # Non-confirmed kinds ship opted-in and disabled.
     assert doc["mod"]["experimental"] is True
     assert doc["mod"]["enabled"] is False

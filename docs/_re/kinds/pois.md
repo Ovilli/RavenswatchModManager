@@ -213,6 +213,29 @@ embedded in the `rsmm uncook` GLB that `extract_uncooked.py` actually mirrors
 contributes vertex layout and material-slot count only; positions, normals and
 UVs are all replaced.
 
+### A POI is a folder
+
+The manifest form got long enough to be its own problem — a custom prop needs
+five engine paths plus a texture-slot map, and nobody can write that from
+memory. `poi.discover()` reads `mods/<id>/pois/<name>/` instead:
+
+```
+pois/runestone_shrine/
+    poi.toml        chapters + any overrides
+    model.glb       the mesh
+    albedo.png      matched to the preset's texture slots by filename
+    mra.png
+    normal.png
+```
+
+`PRESETS` bundles the donors (which tile, which object to replace, which prop
+and material to inherit from, and the role→slot map) behind one name, so the
+common case states only `chapters`. Discovery emits exactly the dict a
+hand-written `[[content]]` block would, so the explicit form still works and a
+declared block wins on id collision — the convention is a shorthand, not a
+second code path. Unknown keys in `poi.toml` raise rather than being ignored,
+since a silently-dropped setting is one the author believes is in effect.
+
 ### Source art stays source art
 
 A mod ships `.glb` and `.png` under `mods/<id>/art/` — outside `assets/`, so
