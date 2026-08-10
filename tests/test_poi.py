@@ -568,6 +568,50 @@ def test_shipped_map_caches_list_their_whole_pool():
 
 
 @needs_corpus
+@pytest.mark.slow
+def test_shipped_map_cache_is_a_superset_of_every_tile_it_pools():
+    """Measured on the shipped data: the Dark Hills start tile's 784 cache
+    lines all appear in the chapter's 5636. That is what makes a chapter's
+    cache the thing to extend whenever a tile reaches new art — including in
+    `replace_base`, where no tile is pooled at all."""
+    from rsmm.engine import rsc_cache as RC
+
+    for chapter, stem in poi.CHAPTERS.items():
+        mapc = set(RC.parse((MAPS_DIR / f"{stem}.mapdef{RC.CACHE_SUFFIX}").read_bytes()))
+        pool = MP.read_pool((MAPS_DIR / f"{stem}{MP.GEN_SUFFIX}").read_bytes())
+        for ref in pool:
+            parts = ref.replace("\\", "/").split("/")
+            stem_name = parts[-1].removesuffix(".tiledef.ot")
+            tc = TILES_DIR / parts[-2] / f"{stem_name}.tiledef{RC.CACHE_SUFFIX}"
+            if not tc.is_file():
+                continue
+            extra = set(RC.parse(tc.read_bytes())) - mapc
+            assert not extra, f"{chapter}: {tc.name} has {len(extra)} lines the map cache lacks"
+
+
+@needs_corpus
+def test_replace_base_still_extends_the_chapter_cache(tmp_path):
+    """No tile is pooled in override mode, but the overridden tile now reaches
+    the mod's art — and the chapter preloads a superset of its tiles, so that
+    art has to be listed there too."""
+    from rsmm.engine import rsc_cache as RC
+
+    _poi_art(tmp_path / "art")
+    out = tmp_path / "assets"
+    files = poi.emit("mymod", ContentDef(kind="poi", id="Over", fields={
+        "base": "Dark_Hills/6x6_Bleeding_01", "chapters": ["Dark_Hills"],
+        "replace_base": True, "prop": dict(_PROP)}), out)
+
+    stem = poi.CHAPTERS["Dark_Hills"]
+    mapc = set(RC.parse((out / f"Definitions/Maps/{stem}.mapdef{RC.CACHE_SUFFIX}").read_bytes()))
+    tile_rel = f"Definitions/Tiles/Dark_Hills/6x6_Bleeding_01.tiledef{RC.CACHE_SUFFIX}"
+    tilec = set(RC.parse((out / tile_rel).read_bytes()))
+    assert tilec <= mapc, "chapter cache must stay a superset of the tile's"
+    prop = next(f for f in files if f.name.endswith(".EntitySettingsResource.gen"))
+    assert RC.entry_for(prop.relative_to(out).as_posix()) in mapc
+
+
+@needs_corpus
 def test_pool_additions_are_mirrored_into_the_map_cache(tmp_path):
     """A tile appended to the pool but missing from the chapter's own cache is
     never loaded, so it is never placed — the gate that survived the per-tile
@@ -642,9 +686,13 @@ def test_replace_base_overrides_the_shipped_cache_not_a_new_one(tmp_path):
     files = poi.emit("mymod", defn, out)
     caches = [f.relative_to(out).as_posix()
               for f in files if f.name.endswith(RC.CACHE_SUFFIX)]
-    assert caches == ["Definitions/Tiles/Dark_Hills/6x6_Bleeding_01.tiledef.UsedRscCache.ot"]
+    assert sorted(caches) == [
+        "Definitions/Maps/Dark_Hills_LiveOps_Update5.mapdef.UsedRscCache.ot",
+        "Definitions/Tiles/Dark_Hills/6x6_Bleeding_01.tiledef.UsedRscCache.ot",
+    ]
 
-    listed = set(RC.parse((out / caches[0]).read_bytes()))
+    tile_cache = "Definitions/Tiles/Dark_Hills/6x6_Bleeding_01.tiledef.UsedRscCache.ot"
+    listed = set(RC.parse((out / tile_cache).read_bytes()))
     prop = next(f for f in files if f.name.endswith(".EntitySettingsResource.gen"))
     assert RC.entry_for(prop.relative_to(out).as_posix()) in listed
 
@@ -1063,7 +1111,11 @@ def test_replace_base_touches_no_mapdef_and_overrides_the_base_prefab(tmp_path):
         }}), tmp_path / "assets")
 
     names = {f.name for f in files}
-    assert not any("mapdef" in n for n in names), "override mode must not touch a pool"
+    # The POOL must be untouched. The chapter's resource CACHE is a different
+    # file and legitimately changes: it is a superset of every tile's cache, so
+    # art the overridden tile now reaches has to be preloadable there too.
+    assert not any(n.endswith(MP.GEN_SUFFIX) for n in names), \
+        "override mode must not touch a pool"
     assert "6x6_Bleeding_01.entity.ot.EntitySettingsResource.gen" in names, \
         "the base tile's prefab must be the thing overridden"
     # No clone prefab left behind under a new name.

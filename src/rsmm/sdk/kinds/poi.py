@@ -653,6 +653,36 @@ def _emitted_assets(out_dir: Path, written: list[Path]) -> list[str]:
     return out
 
 
+def _extend_map_caches(out_dir: Path, defn_id: str, chapters: list[str],
+                       assets: list[str], tile_rels: list[str],
+                       written: list[Path]) -> None:
+    """Add this def's tiles and resources to each target chapter's own cache.
+
+    A mapdef has a resource cache like any other definition, and it is a strict
+    **superset** of every one of its tiles' caches — measured on the shipped
+    data, the Dark Hills start tile's 784 lines all appear in the chapter's
+    5636, 784/784. Two consequences, and missing either hides the POI with no
+    diagnostic:
+
+    * the chapter lists its pool's tiledefs one for one (77 entries, 77 lines),
+      so a tile appended to the pool but not here is never loaded;
+    * a tile edited to reference new art needs that art here too, even in
+      ``replace_base`` mode where no tile is added to any pool at all.
+    """
+    for ch in chapters:
+        rel = RC.cache_path_for(f"{_MAP_ASSET_SUBDIR}/{CHAPTERS[ch]}{MP.GEN_SUFFIX}")
+        dest = out_dir / Path(*rel.split("/"))
+        # Build on what an earlier def in this mod already emitted, exactly as
+        # the pool edit does — starting from vanilla each time would make the
+        # last def win and silently strip the others' resources.
+        base_bytes = (dest.read_bytes() if dest.is_file()
+                      else _corpus(rel, defn_id, f"the {ch} mapdef's resource cache"))
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(RC.extend(base_bytes, [*tile_rels, *assets]))
+        if dest not in written:
+            written.append(dest)
+
+
 def _emit_tile_caches(out_dir: Path, base: str, defn_id: str, assets: list[str],
                       tile_rels: list[str], written: list[Path]) -> None:
     """Give every tiledef this def emitted its ``*.UsedRscCache.ot`` sibling.
@@ -806,7 +836,8 @@ def _level_ref_of(prefab_ref: str, defn_id: str) -> str:
 
 
 def _emit_replacing_base(mod_id: str, defn: ContentDef, out_dir: Path,
-                         base: str, td: TC.TileDef) -> list[Path]:
+                         base: str, td: TC.TileDef,
+                         chapters: list[str]) -> list[Path]:
     """Override the base tile in place: no new tiledef, no pool edit.
 
     The custom prop still gets its own level and prop entity — those are new
@@ -851,8 +882,12 @@ def _emit_replacing_base(mod_id: str, defn: ContentDef, out_dir: Path,
     # The base tile keeps its own cache path, so this OVERRIDES the shipped
     # one. It has to: the tile now reaches assets the vanilla cache never
     # listed, and an un-updated cache is what crashed the game on 2026-08-10.
-    _emit_tile_caches(out_dir, base, defn.id, _emitted_assets(out_dir, written),
+    assets = _emitted_assets(out_dir, written)
+    _emit_tile_caches(out_dir, base, defn.id, assets,
                       [f"{_TILE_ASSET_SUBDIR}/{base}{TC.GEN_SUFFIX}"], written)
+    # No tile is pooled here, but the chapter's cache is a superset of every
+    # tile's, so art the overridden tile now reaches has to be listed there too.
+    _extend_map_caches(out_dir, defn.id, chapters, assets, [], written)
 
     _log.info("poi %s/%s: REPLACING base tile %s in place (no pool change)",
               mod_id, defn.id, base)
@@ -877,7 +912,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # the art chain is fine and the fault is in pool membership; if it appears
     # in neither, the fault is in the art chain.
     if defn.fields.get("replace_base"):
-        return _emit_replacing_base(mod_id, defn, out_dir, base, td)
+        return _emit_replacing_base(mod_id, defn, out_dir, base, td, chapters)
 
     # File the clone next to its donor. `synthesize_encoded` derives a new
     # asset's encoded path by cloning an existing sibling's encoded prefix, so a
@@ -961,21 +996,8 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         map_dest.write_bytes(MP.add_to_pool(base_bytes, pool_refs))
         written.append(map_dest)
 
-        # The mapdef has a resource cache of its own, and it lists the pool's
-        # tiledefs one for one (Dark Hills: 77 pool entries, 77 lines). A tile
-        # added to the pool but absent from this cache is never loaded, so it
-        # is never placed — the same gate as the per-tile cache, one level up,
-        # and it is what still hid the POI after the per-tile caches landed.
-        map_cache_rel = RC.cache_path_for(map_rel)
-        map_cache_dest = out_dir / Path(*map_cache_rel.split("/"))
-        if map_cache_dest.is_file():
-            cache_base = map_cache_dest.read_bytes()          # earlier def in this mod
-        else:
-            cache_base = _corpus(map_cache_rel, defn.id,
-                                 f"the {ch} mapdef's resource cache")
-        map_cache_dest.parent.mkdir(parents=True, exist_ok=True)
-        map_cache_dest.write_bytes(RC.extend(cache_base, [*tile_rels, *assets]))
-        written.append(map_cache_dest)
+
+    _extend_map_caches(out_dir, defn.id, chapters, assets, tile_rels, written)
 
     _log.info("poi %s/%s: cloned %s -> %d pool entr%s in %s",
               mod_id, defn.id, base, len(pool_refs),
