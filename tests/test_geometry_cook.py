@@ -245,3 +245,25 @@ def test_swap_updates_the_bounding_box():
     assert find_box(out, new) is not None, \
         "the AABB still describes the rug, so the mesh will be culled"
     assert find_box(out, old) is None, "stale donor bounds left behind"
+
+
+def test_auto_upright_believes_a_plausible_y_over_the_longest_axis():
+    """A T-posed character is WIDER than it is tall, and "longest axis is up"
+    lays it on its side.
+
+    Measured on a real character swap: extents X/Y/Z = 2.5/1.72/0.67 (arms
+    out) guessed a 90 deg roll, so every hero stood sideways. A genuinely Z-up
+    model has Y as its shallow depth axis and sits far below the ratio, so the
+    two cases stay separable — this pins that boundary.
+    """
+    def box(sx, sy, sz):
+        return [(x, y, z) for x in (0, sx) for y in (0, sy) for z in (0, sz)]
+
+    # T-pose: X is longest, but Y is still a believable height -> leave it.
+    assert geometry_cook._auto_upright_euler(box(2.5, 1.72, 0.67)) == (0, 0, 0)
+    # Ordinary Y-up.
+    assert geometry_cook._auto_upright_euler(box(1, 2, 0.5)) == (0, 0, 0)
+    # Real Z-up: Y is the shallow depth axis -> stand it up.
+    assert geometry_cook._auto_upright_euler(box(1, 0.3, 2)) == (-90, 0, 0)
+    # Real X-up.
+    assert geometry_cook._auto_upright_euler(box(2, 0.3, 1)) == (0, 0, 90)

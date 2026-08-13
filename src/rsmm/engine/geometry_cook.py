@@ -453,6 +453,15 @@ def _apply_m(m: list[list[float]], v) -> tuple[float, float, float]:
             m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2])
 
 
+#: How tall Y must be, relative to the longest axis, to be believed as up.
+#: A T-posed character is WIDER than it is tall (arms out), so "longest axis
+#: wins" lays it on its side — which is exactly what happened to a character
+#: swap: extents X/Y/Z = 2.5/1.72/0.67 guessed a 90 deg roll. A genuinely
+#: Z-up model has Y as its shallow depth axis and sits far below this ratio
+#: (~0.3), so the two cases stay cleanly separated.
+_UPRIGHT_Y_RATIO = 0.6
+
+
 def _auto_upright_euler(custom: list) -> tuple[float, float, float]:
     """Best-effort guess: rotate the tallest mesh axis to the game up-axis (Y).
 
@@ -462,6 +471,9 @@ def _auto_upright_euler(custom: list) -> tuple[float, float, float]:
     """
     _mn, _mx, ext = _extents(custom)
     up = ext.index(max(ext))
+    # Believe an already-plausible Y before believing the longest axis.
+    if ext[1] >= _UPRIGHT_Y_RATIO * max(ext):
+        return (0.0, 0.0, 0.0)
     if up == 1:          # already Y-up
         return (0.0, 0.0, 0.0)
     if up == 2:          # Z-up -> bring Z to Y
