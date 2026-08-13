@@ -288,13 +288,24 @@ def _swap_section(main: bytes, merged: _geo.SubMesh) -> bytes:
 # Each submesh ships parallel per-vertex layers sized to ITS vertex count:
 #   ver=9  comp=0  "binormal"/"tangent"  -> one 12 B/vertex vec3 block
 #   ver=11 comp=0  "skinning"            -> two 20 B/vertex blocks
+#   ver=12 comp=0  "skinning"            -> two 20 B/vertex blocks
 # The engine reads these by the meshbuffer's vertex count, so after a swap
 # they MUST be resized to the new count or every vertex gets garbage bone
 # weights and the mesh explodes. We rebuild each block by replicating the
 # template's vertex-0 record — a uniform, valid binding (whole submesh
 # rigidly follows one bone: no deformation, but no glitch).
+#
+# ver=12 was MISSING here, and that is what broke every character swap. The
+# shipped hero meshes carry `oCSkinning8VertexLayer` at version 12, so
+# `_layer_vertex_count` returned None for it, the rewrite loop skipped it as
+# "not a per-vertex layer", and the swapped mesh kept the TEMPLATE's bone data
+# — 3034 vertices' worth of weights addressed by a 15107-vertex mesh. Static
+# checks all passed and the model looked correct until the skeleton moved, at
+# which point it was shredded. Two 20-byte blocks = 8 bones per vertex; the
+# first block is bones 1-4, the second 5-8, which is why anything written to
+# both blocks double-weights the vertex.
 
-_LAYER_VERS = (9, 11)
+_LAYER_VERS = (9, 11, 12)
 
 
 def _layer_vertex_count(payload: bytes) -> int | None:
@@ -741,10 +752,27 @@ def swap_geometry(template_cooked: bytes, glb_bytes: bytes,
             normals=[apply_nrm(n) for n in merged.normals],
             uvs=merged.uvs, indices=merged.indices)
 
-    if src is not None and src["positions"]:
+    skin_mode = str(transform.get("skin", "transfer")) if transform else "transfer"
+    if skin_mode not in ("transfer", "rigid"):
+        raise ValueError(f"transform.skin must be 'transfer' or 'rigid', "
+                         f"got {skin_mode!r}")
+
+    if skin_mode == "rigid":
+        # Bind the WHOLE model to one bone: it follows the character but never
+        # deforms. Per-vertex transfer assumes the custom mesh occupies roughly
+        # the same space as the one it replaces, and for a character it does
+        # not — a replacement body has its limbs somewhere else entirely, so
+        # each vertex ends up weighted to whatever bone happened to be nearest
+        # and the model is torn apart the moment the skeleton animates.
+        nn = None
+        rigid_rec = _rigid_skin(src)
+        blended_skin = None
+    elif src is not None and src["positions"]:
+        rigid_rec = None
         nn = _build_transfer(merged.positions, src)
         blended_skin = _blend_skin_records(merged.normals, nn, src)
     else:
+        rigid_rec = None
         nn = None
         blended_skin = None
 
@@ -767,6 +795,25 @@ def swap_geometry(template_cooked: bytes, glb_bytes: bytes,
             # The swapped submesh's layers get transferred per-vertex records.
             cf.sections[si] = cooked.Section(
                 payload=_transfer_layer(sec.payload, nn, src, blended_skin))
+        elif (rigid_rec and vc == main_count
+                and _layer_name(sec.payload) == "skinning"):
+            # Rigid: the SKINNING layer carries the one chosen bone for every
+            # vertex. Geometric layers (binormal/tangent) fall through to
+            # _rewrite_layer, which replicates the template's vertex 0 — there
+            # is no per-vertex correspondence to transfer them along, and a
+            # uniform tangent basis is fine for a model that never deforms.
+            hdr, blocks = _layer_blocks(sec.payload)
+            new_count = count_map[vc]
+            # Every block gets the same record, because that is the invariant
+            # the SHIPPED meshes hold: measured on Aladdin, each of the two
+            # 20-byte blocks independently sums to weight 1.0 per vertex. So
+            # the blocks are not one 8-bone set to be split across (that would
+            # make vanilla vertices total 2.0); zeroing the second would be
+            # inventing a rule the data contradicts.
+            cf.sections[si] = cooked.Section(
+                payload=_assemble_layer(
+                    hdr, [(stride, [rigid_rec] * new_count)
+                          for stride, _recs in blocks]))
         else:
             cf.sections[si] = cooked.Section(
                 payload=_rewrite_layer(sec.payload, count_map[vc]))
@@ -932,6 +979,43 @@ def _blend_skin_records(cust_normals: list, knn: list, src: dict
             mults = None
         out.append(_blend_skin(recs, dists, mults))
     return out
+
+
+def _rigid_skin(src: dict | None) -> bytes | None:
+    """One skinning record, repeated for every vertex — a rigid bind.
+
+    Which bone matters. The obvious choice, the template's vertex 0, is
+    whatever the exporter happened to write first and is routinely a hand, a
+    hair strand or a weapon attachment — binding a whole body to it makes the
+    model orbit that limb. Instead take the record of the template vertex
+    nearest the template's own centre, which on a humanoid is reliably a spine
+    or pelvis bone: the model then follows the character's overall motion and
+    ignores the limbs.
+
+    The trade is explicit: no deformation at all. Arms and legs will not bend.
+    That is the point — a rigid model that slides around intact is usable,
+    where a mis-transferred one is shredded on the first animation frame.
+    """
+    if not src or not src["positions"]:
+        return None
+    skin_key = next((k for k in src["records"] if k.startswith("skinning#")), None)
+    if skin_key is None:
+        return None
+    recs = src["records"][skin_key]
+    pos = src["positions"]
+    if not recs or len(recs) < len(pos):
+        return None
+    cx = sum(p[0] for p in pos) / len(pos)
+    cy = sum(p[1] for p in pos) / len(pos)
+    cz = sum(p[2] for p in pos) / len(pos)
+    best = min(range(len(pos)),
+               key=lambda i: ((pos[i][0] - cx) ** 2 + (pos[i][1] - cy) ** 2
+                              + (pos[i][2] - cz) ** 2))
+    # Collapse to the single strongest bone of that vertex, weight 1.0: a
+    # blended record would still spread the model across several bones.
+    idx, w = _decode_skin(recs[best])
+    dominant = idx[max(range(4), key=lambda j: w[j])]
+    return _encode_skin((dominant, 0, 0, 0), (1.0, 0.0, 0.0, 0.0))
 
 
 def _build_transfer(custom_pos: list, src: dict) -> list[list[tuple[int, float]]]:

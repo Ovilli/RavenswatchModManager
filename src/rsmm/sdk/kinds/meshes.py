@@ -25,6 +25,23 @@ result keeps the vertex formats, material slots and submesh framing the engine
 already expects from that resource (:func:`rsmm.engine.prop_cook.cook_model`).
 ``transform`` is accepted and forwarded for orientation/scale fixes.
 
+``transform.skin`` (``"transfer"`` default, or ``"rigid"``)
+    How the model is bound to the target's skeleton, and the setting that
+    decides whether replacing a **character** works at all.
+
+    ``transfer`` rebuilds per-vertex weights from the nearest vertices of the
+    mesh being replaced. That is right for a prop or a same-shaped body, and
+    wrong for a different body: it assumes the custom mesh occupies roughly
+    the same space as the original, so when the limbs are somewhere else each
+    vertex binds to whatever bone happened to be nearest and the model is torn
+    apart on the first animation frame.
+
+    ``rigid`` binds every vertex to a single bone — the one owning the
+    template vertex closest to the template's centre, i.e. a spine or pelvis
+    on a humanoid. The model then follows the character intact and never
+    deforms. Limbs will not bend; that is the trade, and for a replacement
+    body it is the difference between a usable model and a shredded one.
+
 Compared with ``poi``'s ``prop`` block this cooks exactly one asset and
 introduces no new resource name, which is also what makes it the way to test a
 custom mesh in isolation: if a `prop` misbehaves, pointing a `mesh` at the same
