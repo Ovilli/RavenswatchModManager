@@ -988,14 +988,34 @@ function R.entity.hero()
         -- the load sequence). Promote it to the real slot the first time it
         -- reads plausible — instant capture with no combat prerequisite.
         local okp, p = pcall(I.shared_get, HERO_PENDING_SLOT)
-        if okp and type(p) == "number" and p ~= 0 and _hero_plausible(p) then
-            if I.shared_set then
-                pcall(I.shared_set, SHARED_HERO_SLOT, p)
-                pcall(I.shared_set, HERO_AUTH_SLOT, 1)
-                pcall(I.shared_set, HERO_PENDING_SLOT, 0)
+        if okp and type(p) == "number" and p ~= 0 then
+            if _hero_plausible(p) then
+                if I.shared_set then
+                    pcall(I.shared_set, SHARED_HERO_SLOT, p)
+                    pcall(I.shared_set, HERO_AUTH_SLOT, 1)
+                    pcall(I.shared_set, HERO_PENDING_SLOT, 0)
+                end
+                R.log(string.format("[rsmm.entity] pending spawn hero 0x%x promoted (instant capture)", p))
+                return p
             end
-            R.log(string.format("[rsmm.entity] pending spawn hero 0x%x promoted (instant capture)", p))
-            return p
+            -- DIAG (first few only): the pending candidate is authoritative by
+            -- construction (the spawn-init routine is hero-only), so a REJECT
+            -- here means the plausibility gate's OFFSETS are wrong for this
+            -- build, not that the pointer is wrong. Rejecting silently is how
+            -- this failed invisibly: every downstream API (R.combat/R.stat/
+            -- R.xp) then no-ops with no line in the log to say why. Dump the
+            -- raw reads so ONE playtest identifies which field moved.
+            if _hero_diag_n < 6 then
+                _hero_diag_n = _hero_diag_n + 1
+                local mirror = I.read_u64(p + ENTITY_HUDMIRROR_OFF)
+                R.log(string.format(
+                    "[rsmm.entity] pending hero 0x%x REJECTED: hp=%s max=%s "
+                    .. "mirror=%s mirror[0]=%s",
+                    p, tostring(I.read_f32(p + ENTITY_HP_OFF)),
+                    tostring(I.read_f32(p + ENTITY_MAXHP_OFF)),
+                    tostring(mirror),
+                    tostring(mirror and mirror ~= 0 and I.read_f32(mirror) or nil)))
+            end
         end
     end
     -- Legacy fallback: an older loader without native capture, or the native
@@ -3343,6 +3363,32 @@ local function _derived_poll()
 end
 
 R.on("tick", _derived_poll)
+
+-- Promote the pending spawn-init hero on the tick pump, not on demand.
+--
+-- The native hook stashes the hero the instant its spawn/post-load init runs,
+-- but its HP/mirror fields are not populated yet, so the plausibility gate
+-- refuses it and it sits in the pending slot. NOTHING re-checked that slot:
+-- promotion happened only inside R.entity.hero(), i.e. only when a mod
+-- happened to ask. A mod that asks once at `ready` asks too early and never
+-- again; a mod that never asks leaves the hero uncaptured forever. In practice
+-- capture then waited for the give/gain handlers, which fire on a hero ACTION
+-- (a pickup or a heal) -- measured at ten minutes in one playtest, and it read
+-- as "R.stat is broken" rather than "nobody polled".
+--
+-- Polling here closes that gap for every mod at once: the fields go live a few
+-- seconds into the load and the very next tick publishes the hero. Safe on the
+-- loader's background thread -- this path only does page-guarded reads and a
+-- shared_set, never an engine call (see [[loader-thread-model]]). Gated on
+-- native capture being active so it can never trigger the legacy branch's
+-- detour install off-thread.
+R.on("tick", function()
+    if not _native_capture_active() then return end
+    if not I.shared_get then return end
+    local ok, h = pcall(I.shared_get, SHARED_HERO_SLOT)
+    if ok and type(h) == "number" and h ~= 0 and _hero_plausible(h) then return end
+    R.entity.hero()          -- runs the pending-promotion + REJECT diagnostic
+end)
 
 -- Run boundaries, normalised off the analytics firehose so a mod doesn't have
 -- to know which raw name the game uses (and gets an idempotent pair: the raw
