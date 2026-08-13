@@ -460,19 +460,41 @@ def _auto_upright_euler(custom: list) -> tuple[float, float, float]:
 
 def _fit_transform(custom: list, template: list,
                    euler_deg: tuple[float, float, float],
-                   scale_mult: float = 1.0):
-    """Rigid rotate by `euler_deg`, then uniform-scale to the template's
-    height and recenter (feet + horizontal centre). A rigid rotation + one
-    uniform scale can never shear/distort the mesh. `scale_mult` multiplies
-    the auto-fit scale so a modeller can shrink/grow a mesh the heuristic
-    fit (which matches only the tallest axis) sized wrong. Returns
-    (apply_pos, apply_nrm)."""
+                   scale_mult: float = 1.0, fit: str = "height"):
+    """Rigid rotate by `euler_deg`, then size into the template's space and
+    recenter (feet + horizontal centre). A rigid rotation + one uniform scale
+    can never shear/distort the mesh. `scale_mult` multiplies the result.
+
+    `fit` chooses what "size into" means:
+
+    ``"height"``
+        Match the template's tallest extent. Right when the custom mesh stands
+        in for the same *kind* of thing — a sword for a sword.
+    ``"none"``
+        Keep the mesh's own dimensions. Right when the donor is a mounting
+        point rather than a size reference, which is the usual case for a
+        structure: a 2.9-unit obelisk taking over a 1.4-unit ruin slab is
+        squashed to 47% by height-fitting and comes out looking like the slab
+        it replaced — it renders perfectly and reads as "nothing happened".
+
+    Returns (apply_pos, apply_nrm)."""
     m = _rot_matrix(euler_deg)
     rotated = [_apply_m(m, p) for p in custom]
     rmn, _rmx, re = _extents(rotated)
     tmn, tmx, te = _extents(template)
-    up = te.index(max(te))
-    scale = (te[up] / re[up] if re[up] else 1.0) * scale_mult
+    # Up is Y, always — not "whichever template axis is longest". The engine is
+    # Y-up and props stand on y=0 (the blood fountain base spans y 0.00..2.46),
+    # so the longest-axis guess only coincides with up for things taller than
+    # they are wide. A prop that is wider than tall breaks it: the ruin slab is
+    # 0.99 x 0.30 x 0.51, so the guess picked X, anchored the custom mesh along
+    # the ground plane and centred it vertically instead of standing it up.
+    up = 1
+    if fit == "none":
+        scale = scale_mult
+    elif fit == "height":
+        scale = (te[up] / re[up] if re[up] else 1.0) * scale_mult
+    else:
+        raise ValueError(f"transform.fit must be 'height' or 'none', got {fit!r}")
     tc = [(tmn[i] + tmx[i]) / 2 for i in range(3)]
 
     def apply_pos(p):
@@ -568,8 +590,11 @@ def swap_geometry(template_cooked: bytes, glb_bytes: bytes,
     template's space (see `_fit_transform`):
       - None            -> auto-upright guess (tallest axis -> up)
       - {"rotate_deg": [x, y, z]}  -> explicit rigid rotation (degrees)
-      - {"scale": s}    -> multiply the auto-fit scale by `s` (e.g. 0.5 to
-                           halve a mesh the tallest-axis heuristic oversized)
+      - {"scale": s}    -> multiply the fitted scale by `s`
+      - {"fit": "none"} -> keep the mesh's OWN size instead of matching the
+                           template's height (see `_fit_transform`); what a
+                           structure usually wants, since its donor is a
+                           mounting point, not a size reference
     Recentering is always automatic; scale stays uniform (never distorts).
     """
     from . import cooked
@@ -638,8 +663,9 @@ def swap_geometry(template_cooked: bytes, glb_bytes: bytes,
         else:
             euler = _auto_upright_euler(merged.positions)
         scale_mult = float(transform["scale"]) if transform and "scale" in transform else 1.0
+        fit = str(transform.get("fit", "height")) if transform else "height"
         apply_pos, apply_nrm = _fit_transform(
-            merged.positions, fit_target, euler, scale_mult)
+            merged.positions, fit_target, euler, scale_mult, fit)
         merged = _geo.SubMesh(
             positions=[apply_pos(p) for p in merged.positions],
             normals=[apply_nrm(n) for n in merged.normals],

@@ -100,17 +100,23 @@ mesh and maps (:mod:`rsmm.engine.prop_cook`). The donors supply *structure*
 ``material_base`` (str, required)
     Vanilla material to clone, e.g. ``Scenery\\DarkHills\\M_Walls_Ruins.mat.ot``.
 
-Confidence: ``experimental``. The tile/pool codecs round-trip the entire
-shipped corpus byte-for-byte (237/237 tiledefs, 3/3 tile-generated mapdefs) and
-the pool is demonstrably the per-chapter gate — retail itself lists a Storm
-Island tile in Dark Hills' pool — but no in-game playtest has confirmed a
-mod-added tile being placed, nor a custom prop rendering.
+Confidence: ``experimental``, with one half now confirmed. **A mod-authored
+mesh + textures on a shipped prop rendered upright in-game on 2026-08-13**
+(``replace_base`` + ``prop``), so the art chain — geometry cook, texture cook,
+in-place override, resource caches — is proven end to end.
+
+What is NOT proven is the *additive* half: a mod-added tiledef has never been
+observed being placed. Treat that with suspicion rather than as merely
+untested, because a level provably cannot reference an entity resource the mod
+introduced (see :func:`_emit_prop_override`), and a new tiledef is a new name
+of the same shape one directory over.
 See ``docs/_re/kinds/pois.md``.
 """
 
 from __future__ import annotations
 
 import logging
+from functools import lru_cache
 from pathlib import Path
 
 from ...engine import map_pool as MP
@@ -122,6 +128,18 @@ from ..content import ContentDef, ContentError, SchemaNotMined
 from . import _common as C
 
 _log = logging.getLogger(__name__)
+
+#: Whether a cloned prop entity gets fresh component identity GUIDs
+#: (:func:`rsmm.engine.prop_cook.restamp_entity_guids`).
+#:
+#: Re-stamping was inferred from the tile-level GUID precedent — a clone that
+#: keeps its donor's identity is a second resource claiming the donor's place —
+#: and it has never been confirmed in-game either way. It also sits directly in
+#: the crash path currently under investigation, and the one experiment that
+#: would separate it (a byte-clone of a shipped entity, no other new asset, no
+#: re-stamp) has not been run. Until it has, this stays off: an unproven
+#: transform of bytes the engine rejects is a worse default than none.
+RESTAMP_ENTITY_GUIDS = False
 
 _UNCOOKED = DATA_DIR / "uncooked"
 _TILES_DIR = _UNCOOKED / "Definitions" / "Tiles"
@@ -163,10 +181,17 @@ PRESETS: dict[str, dict] = {
         "entity_base":
             "DarkHills\\SceneryObjects_DarkHills\\Wall_Ruins_Block_Small_A.entity.ot",
         "material_base": "Scenery\\DarkHills\\M_Walls_Ruins.mat.ot",
+        # The textures of `replaces` ITSELF, because the art is overridden on
+        # that prop's own cooked paths. All three belong to the blood fountain
+        # alone, as does its mesh and material, which is what makes an in-place
+        # override of this prop local to this tile.
         "slots": {
-            "albedo": "Scenery\\DarkHills\\T_Walls_Ruins_ALB.tga",
-            "mra": "Scenery\\DarkHills\\T_Walls_Ruins_MRA.tga",
-            "normal": "Scenery\\DarkHills\\T_Walls_Ruins_NRM.tga",
+            "albedo":
+                "Scenery\\DarkHills\\Blood_Fountain\\T_Blood_Fountain_base_DH_ALB.tga",
+            "mra":
+                "Scenery\\DarkHills\\Blood_Fountain\\T_Blood_Fountain_base_DH_MRA.tga",
+            "normal":
+                "Scenery\\DarkHills\\Blood_Fountain\\T_Blood_Fountain_base_DH_NRM.tga",
         },
         "kinds": ["Fountain"],
         "weight": 0.15,
@@ -343,7 +368,11 @@ def discover(mod_root: Path) -> list[dict]:
             block.pop("icon", None)
 
         model = next((m for m in MODEL_NAMES if (d / m).is_file()), None)
-        if model:
+        # A folder with no model still gets a prop when it names what the prop
+        # takes the place of: the prop is then the donor's shape under a name
+        # this mod owns. Without `replaces` there is nothing to stand in for,
+        # so a bare folder stays a plain tile clone as before.
+        if model or cfg.get("replaces"):
             rel = f"{POIS_DIRNAME}/{d.name}"
             textures = {}
             for role in TEXTURE_ROLES:
@@ -363,7 +392,7 @@ def discover(mod_root: Path) -> list[dict]:
                           "material %s unchanged", d.name,
                           cfg.get("material_base") or preset["material_base"])
             block["prop"] = {
-                "model": f"{rel}/{model}",
+                "model": f"{rel}/{model}" if model else "",
                 "textures": textures,
                 "replaces": cfg.pop("replaces", preset["replaces"]),
                 "entity_base": cfg.pop("entity_base", preset["entity_base"]),
@@ -665,13 +694,19 @@ def _validated_swaps(defn: ContentDef, base: str) -> dict[str, str]:
     one shape of tile edit whose correctness does not depend on any of this
     module's cooking.
 
-    Both sides are validated here rather than in-game: the source must be an
-    object the tile's level actually places, and the replacement must already
-    be in the tile's own resource cache. That second rule is the important one.
-    A tile only preloads what its cache lists, and the closure of an arbitrary
-    vanilla entity is not something this SDK can compute — so pointing at a
-    prop the tile does not already load would leave a null in the preloaded
-    vector and crash on teardown, exactly like a missing cache line.
+    Both sides are validated here rather than in-game, and **both** must be
+    entities the tile's level actually places.
+
+    Being in the tile's resource cache is not enough, though it looks like it
+    should be. A cache is a transitive dependency closure, so it also lists
+    every sub-entity that placed props merely *reference* — this tile caches
+    ``ENV_Model_Selector_Mat_Banner_A_DarkHills``, which exists to be picked
+    from by the banner prop and is not a thing that can stand at a transform on
+    its own. Swapping to one loads, preloads and validates perfectly and then
+    fails to build in-game, which surfaces as the same anonymous access
+    violation as everything else in this area. "Already placed somewhere in
+    this tile" is the property that actually means "can be placed here", and it
+    is checkable, so it is what is checked.
     """
     raw = defn.fields.get("swaps")
     if raw is None:
@@ -690,17 +725,26 @@ def _validated_swaps(defn: ContentDef, base: str) -> dict[str, str]:
                 f"ending in .entity.ot, got {dst!r}"
             )
 
-    cache_rel = RC.cache_path_for(f"{_TILE_ASSET_SUBDIR}/{base}{TC.GEN_SUFFIX}")
-    cache = _UNCOOKED / Path(*cache_rel.split("/"))
-    if cache.is_file():
-        listed = {ln.split("|")[1] for ln in RC.parse(cache.read_bytes())}
-        for dst in raw.values():
-            if dst not in listed:
+    from ...engine import entity_strings as ES
+
+    level_ref = _level_ref_of(_prefab_ref_of(base, defn.id), defn.id)
+    level = _corpus(PC.level_cooked_path(level_ref), defn.id, "the tile's level")
+    placed = {s for _sec, _off, s in ES.list_strings(level)
+              if s.lower().endswith(".entity.ot")}
+    for src, dst in raw.items():
+        for side, ref in (("source", src), ("target", dst)):
+            if ref not in placed:
+                near = sorted(p for p in placed
+                              if Path(ref).name.split(".")[0].lower() in p.lower())
+                hint = f" Did you mean: {near[0]!r}?" if near else ""
                 raise ContentError(
-                    f"poi {defn.id}: swaps target {dst!r} is not in "
-                    f"{base}'s resource cache, so the tile never preloads it "
-                    f"— it would leave a null in the preloaded vector and "
-                    f"crash. Pick a prop this tile already places."
+                    f"poi {defn.id}: swaps {side} {ref!r} is not an object "
+                    f"{base} places. Both sides have to be — a prop that is "
+                    f"only in the tile's resource cache may be a sub-entity "
+                    f"another prop selects from rather than something that can "
+                    f"stand on its own, and swapping to one builds nothing and "
+                    f"crashes.{hint} `rsmm poi show {base}` lists what this "
+                    f"tile places."
                 )
     return dict(raw)
 
@@ -771,11 +815,17 @@ def _emit_prop_art(mod_id: str, defn: ContentDef, out_dir: Path,
     spec = defn.fields["prop"]
     if not isinstance(spec, dict):
         raise ContentError(f"poi {defn.id}: 'prop' must be a table")
-    for key in ("model", "replaces", "entity_base", "material_base"):
+    for key in ("replaces", "entity_base", "material_base"):
         if not spec.get(key):
             raise ContentError(
                 f"poi {defn.id}: prop.{key} is required — see the `poi` docs."
             )
+    # `model` is optional, and omitting it is not a degenerate case: the prop
+    # is then the donor's shape under a name this mod owns. That is worth
+    # having on its own (two POIs can diverge later without either editing a
+    # shipped asset), and it is the narrowest possible test of whether a level
+    # can reference an entity resource the mod introduced at all — nothing new
+    # but the entity, no geometry, no material, no texture.
     # `textures` is optional: a mod may ship its own SHAPE and wear a shipped
     # material. That is a real authoring choice (stone is stone), and it is
     # also the only way to put custom geometry in front of the engine without
@@ -803,18 +853,20 @@ def _emit_prop_art(mod_id: str, defn: ContentDef, out_dir: Path,
     # 1. Mesh. The mod ships a .glb; the graft template comes from the donor
     #    prop's own mesh, which the manifest already names — so the author
     #    never has to pre-cook anything or know what a template is.
-    model_src = _mod_source(out_dir, spec["model"], defn.id, "prop.model")
     donor_meshes = sorted(s for s in donor_strings if s.lower().endswith(".fbx"))
-    if not donor_meshes:
-        raise ContentError(
-            f"poi {defn.id}: prop.entity_base references no mesh, so there is "
-            f"no template to cook prop.model against. Pick a scenery prop."
-        )
-    model_ref = f"{art_dir}/{tag}.fbx".replace("/", "\\")
-    _write(out_dir, PC.art_cooked_path(model_ref),
-           PC.cook_model(model_src.read_bytes(),
-                         _donor_geometry(donor_meshes[0], defn.id),
-                         transform=spec.get("transform")), written)
+    model_ref = None
+    if spec.get("model"):
+        if not donor_meshes:
+            raise ContentError(
+                f"poi {defn.id}: prop.entity_base references no mesh, so there is "
+                f"no template to cook prop.model against. Pick a scenery prop."
+            )
+        model_src = _mod_source(out_dir, spec["model"], defn.id, "prop.model")
+        model_ref = f"{art_dir}/{tag}.fbx".replace("/", "\\")
+        _write(out_dir, PC.art_cooked_path(model_ref),
+               PC.cook_model(model_src.read_bytes(),
+                             _donor_geometry(donor_meshes[0], defn.id),
+                             transform=spec.get("transform")), written)
 
     # 2. Textures. Source PNGs in, cooked oCTexture out, named after the mod.
     tex_refs: dict[str, str] = {}
@@ -836,7 +888,7 @@ def _emit_prop_art(mod_id: str, defn: ContentDef, out_dir: Path,
     # 3. Material: donor's shader wiring, the mod's maps. Skipped entirely when
     #    the def ships no textures — the prop then keeps `material_base`, so no
     #    material or texture of ours is cooked at all.
-    swaps = {s: model_ref for s in donor_meshes}
+    swaps = {s: model_ref for s in donor_meshes} if model_ref else {}
     if tex_refs:
         mat_ref = f"{art_dir}/M_{tag}.mat.ot".replace("/", "\\")
         _write(out_dir, PC.art_cooked_path(mat_ref),
@@ -851,11 +903,136 @@ def _emit_prop_art(mod_id: str, defn: ContentDef, out_dir: Path,
     ent_dir = spec["entity_base"].replace("\\", "/").rsplit("/", 1)[0]
     ent_ref = f"{ent_dir}/{tag}_Prop.entity.ot".replace("/", "\\")
     _write(out_dir, PC.entity_cooked_path(ent_ref),
-           PC.clone_prop_entity(donor_ent, swaps), written)
+           PC.clone_prop_entity(donor_ent, swaps,
+                                ent_ref if RESTAMP_ENTITY_GUIDS else None), written)
 
-    _log.info("poi %s/%s: custom prop from %s (+%d texture(s))",
-              mod_id, defn.id, spec["model"], len(tex_refs))
+    _log.info("poi %s/%s: prop from %s (+%d texture(s))", mod_id, defn.id,
+              spec.get("model") or f"{spec['entity_base']} unchanged", len(tex_refs))
     return ent_ref
+
+
+def _emit_prop_override(mod_id: str, defn: ContentDef, out_dir: Path,
+                        base: str, written: list[Path]) -> None:
+    """Put the mod's art on a shipped prop **in place**, minting no new name.
+
+    This exists because a level cannot reference an asset the mod introduced.
+    Proven in-game the hard way: a byte-for-byte copy of a shipped entity,
+    filed under a new name, correctly registered in ``UsedRscList.ot`` and
+    listed in the tile's resource cache, still fails to load the level that
+    places it. Nothing is wrong with the bytes — introducing the *name* is what
+    fails. Cloning a prop entity is therefore a dead end, and the mechanism
+    that does work is the one the ``mesh`` kind uses and that rendered in-game:
+    write the mod's cooked art over a shipped asset's own cooked path.
+
+    In-place override is global by nature, so the whole trick is picking a prop
+    whose art nothing else uses. That is checked here rather than assumed —
+    ``replaces`` must be placed only in this tile, and its mesh, material and
+    textures must belong to it alone. The corpus makes this practical: 469
+    scenery props appear in exactly one tile, and the default preset's own
+    donor (``Blood_Fountain_DarkHills`` in ``6x6_Bleeding_01``) is one of them,
+    down to its three textures.
+
+    Nothing about the tile changes — no level edit, no swap, no cache line, no
+    registration. The tile keeps placing exactly the prop it always placed; the
+    prop simply looks like the mod's now.
+    """
+    from ...engine import entity_strings as ES
+
+    spec = defn.fields["prop"]
+    ref = spec["replaces"]
+    ent = _corpus(PC.entity_cooked_path(ref), defn.id, "prop.replaces")
+    strings = [s for _sec, _off, s in ES.list_strings(ent)]
+    meshes = sorted({s for s in strings if s.lower().endswith(".fbx")})
+    mats = sorted({s for s in strings if s.lower().endswith(".mat.ot")})
+    if not meshes:
+        raise ContentError(
+            f"poi {defn.id}: {ref} references no mesh, so there is nothing to "
+            f"override. Pick a prop that draws a model."
+        )
+    _assert_art_is_exclusive(defn.id, ref, base, meshes, mats)
+
+    if spec.get("model"):
+        src = _mod_source(out_dir, spec["model"], defn.id, "prop.model")
+        cooked_model = PC.cook_model(src.read_bytes(),
+                                     _donor_geometry(meshes[0], defn.id),
+                                     transform=spec.get("transform"))
+        for mesh in meshes:
+            # Every LOD slot too, or the prop pops back to the shipped shape
+            # as soon as the camera pulls away.
+            _write(out_dir, PC.art_cooked_path(mesh), cooked_model, written)
+
+    for donor_ref, src_rel in (spec.get("textures") or {}).items():
+        src = _mod_source(out_dir, src_rel, defn.id, f"prop.textures[{donor_ref}]")
+        _write(out_dir, PC.art_cooked_path(donor_ref),
+               PC.cook_texture(src.read_bytes()), written)
+
+    _log.info("poi %s/%s: overriding %s's own art in place (%d mesh, %d texture)",
+              mod_id, defn.id, ref, len(meshes), len(spec.get("textures") or {}))
+
+
+@lru_cache(maxsize=1)
+def _prop_placements() -> dict[str, frozenset[str]]:
+    """Entity ref -> the tile levels that place it, over the whole corpus."""
+    import collections
+
+    from ...engine import entity_strings as ES
+
+    tiles = collections.defaultdict(set)
+    for lvl in sorted(_UNCOOKED.glob("Ot/*/Tiles/*.level.ot.GameStream.gen")):
+        try:
+            refs = {s for _s, _o, s in ES.list_strings(lvl.read_bytes())
+                    if s.lower().endswith(".entity.ot")}
+        except (OSError, ValueError):
+            continue
+        for r in refs:
+            tiles[r].add(lvl.name)
+    return {k: frozenset(v) for k, v in tiles.items()}
+
+
+@lru_cache(maxsize=1)
+def _art_users() -> dict[str, frozenset[str]]:
+    """Mesh/material ref -> the entities that reference it, over the corpus."""
+    import collections
+
+    from ...engine import entity_strings as ES
+
+    users = collections.defaultdict(set)
+    for p in _UNCOOKED.glob("EntitySettings/**/*.entity.ot.EntitySettingsResource.gen"):
+        try:
+            strings = {s for _s, _o, s in ES.list_strings(p.read_bytes())}
+        except (OSError, ValueError):
+            continue  # not a parseable entity container; it cannot be a user
+        for a in strings:
+            if a.lower().endswith((".fbx", ".mat.ot")):
+                users[a].add(p.name.split(".entity.ot")[0])
+    return {k: frozenset(v) for k, v in users.items()}
+
+
+def _assert_art_is_exclusive(defn_id: str, ref: str, base: str,
+                             meshes: list[str], mats: list[str]) -> None:
+    """Refuse an in-place override whose art something else also uses.
+
+    Both corpus sweeps are cached: they read ~4,900 files and every prop in
+    every mod asks the same two questions.
+    """
+    tiles = _prop_placements()
+    if len(tiles.get(ref, ())) > 1:
+        raise ContentError(
+            f"poi {defn_id}: {ref} is placed by {len(tiles[ref])} different "
+            f"tiles, and an in-place override changes all of them. Pick a prop "
+            f"only {base} places."
+        )
+
+    users = _art_users()
+    shared = {a: sorted(users.get(a, ()))
+              for a in (*meshes, *mats) if len(users.get(a, ())) > 1}
+    if shared:
+        first = next(iter(shared))
+        raise ContentError(
+            f"poi {defn_id}: {first} is used by {len(shared[first])} entities "
+            f"({', '.join(shared[first][:3])}…), so overriding it would change "
+            f"props outside {base}. Pick a prop whose art is its own."
+        )
 
 
 def _emit_custom_prop(mod_id: str, defn: ContentDef, out_dir: Path,
@@ -881,7 +1058,7 @@ def _emit_custom_prop(mod_id: str, defn: ContentDef, out_dir: Path,
            PC.clone_tile_prefab(
                _corpus(PC.entity_cooked_path(donor_prefab_dec), defn.id,
                        "the tile's prefab entity"),
-               level_ref, new_level_ref), written)
+               level_ref, new_level_ref, new_prefab_ref), written)
     return new_prefab_ref
 
 
@@ -932,8 +1109,10 @@ def _emit_replacing_base(mod_id: str, defn: ContentDef, out_dir: Path,
 
     swaps: dict[str, str] = _validated_swaps(defn, base)
     if defn.fields.get("prop"):
-        swaps[defn.fields["prop"]["replaces"]] = _emit_prop_art(
-            mod_id, defn, out_dir, written)
+        # In place, on the shipped prop's own cooked paths. The tile is not
+        # touched at all — see `_emit_prop_override` for why cloning the entity
+        # under a mod-owned name cannot work.
+        _emit_prop_override(mod_id, defn, out_dir, base, written)
     if swaps:
         level_ref = _level_ref_of(_prefab_ref_of(base, defn.id), defn.id)
         _write(out_dir, PC.level_cooked_path(level_ref),

@@ -62,7 +62,7 @@ from __future__ import annotations
 
 import json
 
-from . import cooked_schemas, entity_strings
+from . import cooked, cooked_schemas, entity_strings
 
 #: Cooked-path suffix per asset family, keyed by the reference form's extension.
 GEOMETRY_SUFFIX = ".Geometry.gen"
@@ -203,11 +203,93 @@ def clone_material(donor_cooked: bytes, textures: dict[str, str]) -> bytes:
     return _emit(handler, doc)
 
 
-def clone_prop_entity(donor_cooked: bytes, replacements: dict[str, str]) -> bytes:
+#: Marker that closes a component's parent-link block. The component's own
+#: 16-byte identity GUID is the field immediately after it, followed by the
+#: length-prefixed component name.
+_COMPONENT_MARK_END = b'""\xbb\xaa'
+_ENTITY_GUID_LEN = 16
+#: Longest plausible component name; used only to reject a false marker hit.
+_MAX_COMPONENT_NAME = 256
+
+
+def component_guids(cooked_bytes: bytes) -> list[bytes]:
+    """Every component's own identity GUID, in section order.
+
+    An ``oCEntitySettingsResource`` is one section per component, each laid out
+    as ``<parent link> 2222bbaa <16-byte own GUID> <u32 len> <name>``. The name
+    is what makes this recognisable rather than guessed: a candidate is only
+    accepted when the four bytes after the GUID are a length that lands on
+    printable ASCII, so a section with a different shape is skipped instead of
+    having sixteen arbitrary bytes rewritten.
+    """
+    out: list[bytes] = []
+    for sec in cooked.parse(cooked_bytes).sections:
+        pl = sec.payload
+        j = pl.find(_COMPONENT_MARK_END)
+        if j < 0:
+            continue
+        g = j + len(_COMPONENT_MARK_END)
+        if g + _ENTITY_GUID_LEN + 4 > len(pl):
+            continue
+        n = int.from_bytes(pl[g + _ENTITY_GUID_LEN:g + _ENTITY_GUID_LEN + 4], "little")
+        name = pl[g + _ENTITY_GUID_LEN + 4:g + _ENTITY_GUID_LEN + 4 + n]
+        if not (0 < n <= _MAX_COMPONENT_NAME and len(name) == n):
+            continue
+        if not all(0x20 <= c < 0x7F for c in name):
+            continue
+        out.append(pl[g:g + _ENTITY_GUID_LEN])
+    return out
+
+
+def restamp_entity_guids(cooked_bytes: bytes, seed: str) -> bytes:
+    """Give a cloned entity resource its own component identity GUIDs.
+
+    Same lesson as :func:`_restamp_level_guid`, one asset further down: a clone
+    that keeps the donor's identity is a second resource claiming the donor's
+    place. Nothing about it fails a static check — the bytes cook, the file
+    installs, the name registers, every reference resolves — and the engine
+    still cannot instantiate it.
+
+    Components also reference *each other* by GUID inside the same file (a
+    child's parent link is the parent's own GUID), so re-stamping one field at
+    a time would sever the component tree. Every own-GUID is therefore mapped
+    first and then substituted **everywhere in the payload**, which carries the
+    internal links across by construction. A GUID that is not one of this
+    file's own — the external entity a picker points at, for instance — is not
+    in the map and is left exactly as it was.
+
+    ``seed`` should be the clone's new reference, so the result is derived, not
+    random: every peer in a multiplayer lobby has to cook the same bytes.
+    """
+    cf = cooked.parse(cooked_bytes)
+    mapping = {old: derive_guid(f"{seed}#{old.hex()}")
+               for old in component_guids(cooked_bytes)}
+    if not mapping:
+        return cooked_bytes
+    cf.sections = [
+        cooked.Section(payload=_replace_all(sec.payload, mapping))
+        for sec in cf.sections
+    ]
+    return cooked.emit(cf)
+
+
+def _replace_all(payload: bytes, mapping: dict[bytes, bytes]) -> bytes:
+    for old, new in mapping.items():
+        payload = payload.replace(old, new)
+    return payload
+
+
+def clone_prop_entity(donor_cooked: bytes, replacements: dict[str, str],
+                      new_self_ref: str | None = None) -> bytes:
     """Clone a scenery-prop entity, repointing its mesh / material strings.
 
     Every replacement must actually fire: a prop whose mesh ref did not get
     rewritten renders the donor's model, which reads as "my model was ignored".
+
+    ``new_self_ref`` is the reference the clone will be filed under. Passing it
+    re-stamps the component identity GUIDs (:func:`restamp_entity_guids`); it
+    is optional only so the low-level "rewrite these strings" use stays
+    available, and every builder in this repo passes it.
     """
     present = {s for _sec, _off, s in entity_strings.list_strings(donor_cooked)}
     missing = [k for k in replacements if k not in present]
@@ -217,7 +299,8 @@ def clone_prop_entity(donor_cooked: bytes, replacements: dict[str, str]) -> byte
             f"art strings it does use: "
             f"{sorted(s for s in present if '.fbx' in s or '.mat' in s)}"
         )
-    return entity_strings.replace_strings(donor_cooked, replacements)
+    out = entity_strings.replace_strings(donor_cooked, replacements)
+    return restamp_entity_guids(out, new_self_ref) if new_self_ref else out
 
 
 #: Byte offset of a level's identity GUID inside its second literal chunk.
@@ -359,12 +442,18 @@ def clone_tile_level(donor_cooked: bytes, self_ref: str, new_self_ref: str,
 
 
 def clone_tile_prefab(donor_cooked: bytes, level_ref: str,
-                      new_level_ref: str) -> bytes:
-    """Clone a tile's prefab entity, repointing it at a different level."""
+                      new_level_ref: str, new_self_ref: str | None = None) -> bytes:
+    """Clone a tile's prefab entity, repointing it at a different level.
+
+    This is an ``oCEntitySettingsResource`` like any prop, so it needs its own
+    component identity GUIDs for the same reason — see
+    :func:`restamp_entity_guids`.
+    """
     present = {s for _sec, _off, s in entity_strings.list_strings(donor_cooked)}
     if level_ref not in present:
         raise PropCookError(
             f"tile prefab does not reference {level_ref!r}; level refs found: "
             f"{sorted(s for s in present if s.lower().endswith('.level.ot'))}"
         )
-    return entity_strings.replace_strings(donor_cooked, {level_ref: new_level_ref})
+    out = entity_strings.replace_strings(donor_cooked, {level_ref: new_level_ref})
+    return restamp_entity_guids(out, new_self_ref) if new_self_ref else out

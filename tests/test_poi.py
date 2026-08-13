@@ -607,8 +607,10 @@ def test_replace_base_still_extends_the_chapter_cache(tmp_path):
     tile_rel = f"Definitions/Tiles/Dark_Hills/6x6_Bleeding_01.tiledef{RC.CACHE_SUFFIX}"
     tilec = set(RC.parse((out / tile_rel).read_bytes()))
     assert tilec <= mapc, "chapter cache must stay a superset of the tile's"
-    prop = next(f for f in files if f.name.endswith(".EntitySettingsResource.gen"))
-    assert RC.entry_for(prop.relative_to(out).as_posix()) in mapc
+    # The overridden art is written on a SHIPPED path, which both caches
+    # already list — the superset invariant is what this guards, not a new line.
+    mesh = next(f for f in files if f.name.endswith(".Geometry.gen"))
+    assert RC.entry_for(mesh.relative_to(out).as_posix()) in mapc
 
 
 @needs_corpus
@@ -746,8 +748,8 @@ def test_replace_base_overrides_the_shipped_cache_not_a_new_one(tmp_path):
 
     tile_cache = "Definitions/Tiles/Dark_Hills/6x6_Bleeding_01.tiledef.UsedRscCache.ot"
     listed = set(RC.parse((out / tile_cache).read_bytes()))
-    prop = next(f for f in files if f.name.endswith(".EntitySettingsResource.gen"))
-    assert RC.entry_for(prop.relative_to(out).as_posix()) in listed
+    mesh = next(f for f in files if f.name.endswith(".Geometry.gen"))
+    assert RC.entry_for(mesh.relative_to(out).as_posix()) in listed
 
 
 def test_apply_does_not_register_a_cache_in_usedrsclist(tmp_path):
@@ -912,11 +914,20 @@ def test_every_preset_is_wired_to_real_donors():
             assert (DATA_DIR / "uncooked" / rel).is_file(), f"{name}: bad {key}"
         assert set(preset["slots"]) == set(poi.TEXTURE_ROLES), f"{name}: slot roles"
 
-        # The material must really use every slot the preset claims.
-        mat = (DATA_DIR / "uncooked" / PC.art_cooked_path(preset["material_base"])).read_bytes()
-        mat_refs = set(json.loads(
-            cooked_schemas.get("oCMaterial").decode_cooked(mat))["asset_refs"])
-        assert set(preset["slots"].values()) <= mat_refs, f"{name}: slot not in material"
+        # Slots name textures of `replaces` ITSELF, because that is where the
+        # mod's art is written — in place, on the shipped prop's own paths.
+        # So they must be textures that prop's own material really uses.
+        from rsmm.engine import entity_strings as ES
+        ent = (DATA_DIR / "uncooked"
+               / PC.entity_cooked_path(preset["replaces"])).read_bytes()
+        mats = sorted({s for _s, _o, s in ES.list_strings(ent)
+                       if s.lower().endswith(".mat.ot")})
+        refs: set[str] = set()
+        for m in mats:
+            raw = (DATA_DIR / "uncooked" / PC.art_cooked_path(m)).read_bytes()
+            refs |= set(json.loads(
+                cooked_schemas.get("oCMaterial").decode_cooked(raw))["asset_refs"])
+        assert set(preset["slots"].values()) <= refs, f"{name}: slot not in material"
 
         # And the base tile's level must really place the object to replace.
         lvl_ref = poi._level_ref_of(poi._prefab_ref_of(preset["base"], name), name)
@@ -1158,9 +1169,14 @@ def test_kind_must_match_the_tile_footprint(tmp_path):
 
 @needs_corpus
 @needs_prop_corpus
-def test_replace_base_touches_no_mapdef_and_overrides_the_base_prefab(tmp_path):
-    """Override mode is both a real re-skin path and the diagnostic that splits
-    this feature: it removes pool membership from the equation entirely."""
+def test_replace_base_overrides_the_shipped_props_own_art(tmp_path):
+    """Override mode puts the mod's art on a shipped prop's own cooked paths.
+
+    It mints no new asset name, because a level cannot reference one: a
+    byte-for-byte copy of a shipped entity under a new name, correctly
+    registered and cached, still fails to load the level that places it
+    (confirmed in-game). So the tile, its level and its prefab are all left
+    exactly as shipped, and only the art behind `replaces` changes."""
     from rsmm.engine import gltf
     from rsmm.engine import image as IMG
 
@@ -1187,37 +1203,46 @@ def test_replace_base_touches_no_mapdef_and_overrides_the_base_prefab(tmp_path):
             "material_base": "Scenery\\DarkHills\\M_Walls_Ruins.mat.ot",
             "model": "art/m.glb",
             "textures": {
-                "Scenery\\DarkHills\\T_Walls_Ruins_ALB.tga": "art/m.png"},
+                "Scenery\\DarkHills\\Blood_Fountain\\"
+                "T_Blood_Fountain_base_DH_ALB.tga": "art/m.png"},
         }}), tmp_path / "assets")
 
     names = {f.name for f in files}
     # The POOL must be untouched. The chapter's resource CACHE is a different
-    # file and legitimately changes: it is a superset of every tile's cache, so
-    # art the overridden tile now reaches has to be preloadable there too.
+    # file and legitimately changes: it is a superset of every tile's cache.
     assert not any(n.endswith(MP.GEN_SUFFIX) for n in names), \
         "override mode must not touch a pool"
-    # "In place" literally: the tile's own LEVEL is what gets overridden.
-    assert "6x6_Bleeding_01.level.ot.GameStream.gen" in names, \
-        "the base tile's level must be the thing overridden"
-    # Nothing about which level the tile IS may move — no cloned level under a
-    # new name, and the prefab that names it is left alone. Cloning here (the
-    # additive machinery wearing an override hat) crashed the game at load on
-    # the Dark Hills starting tile.
-    assert not any(n.startswith("mymod_S.level") for n in names)
-    assert not any(n.endswith(".entity.ot.EntitySettingsResource.gen")
-                   and "6x6_Bleeding_01" in n for n in names), \
-        "override mode must not touch the tile's prefab"
+    # The mod's art lands on the SHIPPED prop's own cooked paths.
+    assert "Blood_Fountain_Base_DH.fbx.Geometry.gen" in names
+    assert "T_Blood_Fountain_base_DH_ALB.tga.Texture.dxt" in names
+    # Nothing that would introduce a new name, and nothing that edits the tile:
+    # no cloned entity, no cloned level, no level override at all.
+    assert not any(n.endswith(".entity.ot.EntitySettingsResource.gen") for n in names), \
+        "override mode must mint no entity resource — a level cannot reference one"
+    assert not any(n.endswith(".level.ot.GameStream.gen") for n in names), \
+        "override mode leaves the tile's level exactly as shipped"
+    assert not any(n.startswith("mymod_S") for n in names), \
+        "override mode introduces no mod-named asset at all"
 
-    # The overridden level keeps its identity and swaps only the object.
-    from rsmm.engine import prop_cook as PC
-    lvl = next(f for f in files if f.name == "6x6_Bleeding_01.level.ot.GameStream.gen")
-    vanilla = (DATA_DIR / "uncooked"
-               / PC.level_cooked_path("DarkHills\\Tiles\\6x6_Bleeding_01.level.ot"))
-    assert PC.level_guid(lvl.read_bytes()) == PC.level_guid(vanilla.read_bytes()), \
-        "an in-place override is still the same level; its GUID must not move"
-    body = lvl.read_bytes()
-    assert b"Blood_Fountain_DarkHills.entity.ot" not in body
-    assert b"mymod_S_Prop.entity.ot" in body
+
+@needs_corpus
+@needs_prop_corpus
+def test_override_refuses_a_prop_whose_art_is_shared(tmp_path):
+    """In-place override is global, so its whole safety rests on the prop's art
+    being its own. A prop many tiles place would silently re-skin all of them."""
+    with pytest.raises(ContentError, match="tiles|entities"):
+        poi.emit("mymod", ContentDef(kind="poi", id="S", fields={
+            "base": "Dark_Hills/40x40_Dark_Hills_Start_Update3",
+            "chapters": ["Dark_Hills"], "replace_base": True,
+            "prop": {
+                "replaces":
+                    "DarkHills\\SceneryObjects_DarkHills\\"
+                    "Wall_Ruins_Block_Small_A.entity.ot",
+                "entity_base":
+                    "DarkHills\\SceneryObjects_DarkHills\\"
+                    "Wall_Ruins_Block_Small_A.entity.ot",
+                "material_base": "Scenery\\DarkHills\\M_Walls_Ruins.mat.ot",
+            }}), tmp_path / "assets")
 
 
 def test_discover_passes_replace_base_through(tmp_path):

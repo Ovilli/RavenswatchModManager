@@ -854,8 +854,10 @@ def _merge_rsc_cache(enc: str, srcs: list[Path], vanilla: Path) -> Path | None:
     a pooled tile is ever loaded: two `poi` mods targeting one chapter each emit
     vanilla-plus-their-own-lines, so last-writer-wins would drop the other mod's
     resources and its POI would be pooled but unloadable — invisible short of a
-    full playthrough. Vanilla lines keep their order; each mod's additions
-    follow in a fixed mod order, de-duplicated.
+    full playthrough. The union is de-duplicated and re-sorted: the engine
+    looks a resource up in this file rather than scanning it, so a line out of
+    ascending order is a line that is never found (see
+    :func:`rsmm.engine.rsc_cache.extend`).
     """
     try:
         base = rsc_cache.parse(vanilla.read_bytes())
@@ -874,7 +876,7 @@ def _merge_rsc_cache(enc: str, srcs: list[Path], vanilla: Path) -> Path | None:
     out_dir = MODS_DIR / _TEXT_MERGE_DIR_NAME
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / enc.replace("\\", "__").replace("/", "__")
-    out_path.write_bytes(rsc_cache.render(merged))
+    out_path.write_bytes(rsc_cache.render(sorted(merged)))
     return out_path
 
 

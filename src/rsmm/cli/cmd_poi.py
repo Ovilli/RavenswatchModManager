@@ -22,6 +22,7 @@ import sys
 
 from rsmm.engine import map_pool as MP
 from rsmm.engine import tile_cook as TC
+from rsmm.sdk.content import ContentError, SchemaNotMined
 from rsmm.sdk.kinds import poi as P
 
 
@@ -118,6 +119,25 @@ def _cmd_kinds(args) -> int:
     return 0
 
 
+def _placed_props(base: str) -> list[tuple[str, int]]:
+    """Entity refs the tile's level places, commonest first, with counts."""
+    import collections
+
+    from rsmm.engine import entity_strings as ES
+    from rsmm.engine import prop_cook as PC
+
+    # Not every tile resolves to exactly one level (composites, absent corpus);
+    # this is a browsing aid, so an unresolvable tile just lists nothing.
+    try:
+        level_ref = P._level_ref_of(P._prefab_ref_of(base, base), base)
+        raw = P._corpus(PC.level_cooked_path(level_ref), base, "the tile's level")
+    except (ContentError, SchemaNotMined, OSError):
+        return []
+    counts = collections.Counter(
+        s for _sec, _off, s in ES.list_strings(raw) if s.lower().endswith(".entity.ot"))
+    return counts.most_common()
+
+
 def _cmd_show(args) -> int:
     td = _tile(args.tile)
     if td is None:
@@ -132,6 +152,14 @@ def _cmd_show(args) -> int:
     print(f"  prefab    {td.entity_ref[1] if len(td.entity_ref) > 1 else '?'}")
     if td.children:
         print(f"  children  {len(td.children)} nested composite block(s)")
+    # What the tile actually places, which is what `swaps` may name on either
+    # side — a prop that is only in the tile's resource cache may be a
+    # sub-entity another prop selects from, not something placeable.
+    placed = _placed_props(args.tile)
+    if placed:
+        print(f"  places    {len(placed)} distinct prop(s):")
+        for ref, n in placed:
+            print(f"    {n:4d}x  {ref}")
     inchap = [c for c in sorted(P.CHAPTERS) if args.tile in _pool_of(c)]
     print(f"  pooled by {', '.join(inchap) or '(no chapter)'}")
     can = [c for c in sorted(P.CHAPTERS)

@@ -173,12 +173,31 @@ def render(lines: Iterable[str]) -> bytes:
 def extend(donor: bytes, cooked_paths: Iterable[str]) -> bytes:
     """``donor`` plus a line for each decoded cooked path not already listed.
 
-    Append-only *by design*. A cloned definition's cache starts as its donor's,
+    Additive *by design*. A cloned definition's cache starts as its donor's,
     which means it keeps lines for resources the clone replaced — those still
     name real shipped files, so preloading them is wasted work and nothing
     more. Dropping them would mean proving no other reference reaches them,
     which the string-reference graph cannot cheaply establish; a missing line
     crashes the game, a surplus line does not.
+
+    **The result is re-sorted, and that is load-bearing.** All 575 shipped
+    caches are in ascending line order, with no exceptions — the engine looks a
+    resource up in here rather than scanning, so a line appended after the end
+    is a line the lookup never reaches. The failure is silent and total: the
+    resource resolves to null, and whatever referenced it fails to build. That
+    cost four playtests. It presents two completely different ways depending on
+    who was doing the looking, and neither points here:
+
+    * a tiledef appended to a **mapdef's** cache is never preloaded, so the
+      tile is registered, pooled, and simply never placed — no error, no crash,
+      nothing in the log;
+    * an entity appended to a **tile's** cache resolves to null while that
+      tile's level deserialises, the level load fails, and the engine's cleanup
+      walks the half-built object array and destroys a null pointer — an
+      access violation at ``0x1401273b6``, nowhere near the real mistake.
+
+    Sorting is a plain ascending byte order over the whole ``root|path|class``
+    line, which is exactly what the shipped files are in.
     """
     lines = parse(donor)
     seen = set(lines)
@@ -187,4 +206,4 @@ def extend(donor: bytes, cooked_paths: Iterable[str]) -> bytes:
         if line not in seen:
             seen.add(line)
             lines.append(line)
-    return render(lines)
+    return render(sorted(lines))

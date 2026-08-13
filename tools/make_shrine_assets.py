@@ -529,9 +529,10 @@ def main(argv: list[str] | None = None) -> int:
         (out / name).write_bytes(png)
         print(f"  {name:<12} {args.size}x{args.size}, {len(png)} B")
 
-    icon = build_icon()
+    # build_icon returns raw RGBA; the folder convention wants a real PNG.
+    icon = IMG.encode_png(ICON_SIZE, ICON_SIZE, build_icon())
     (out / "icon.png").write_bytes(icon)
-    print(f"  icon.png     {len(icon)} B")
+    print(f"  icon.png     {ICON_SIZE}x{ICON_SIZE}, {len(icon)} B")
 
     print(f"\nwrote {len(list(out.glob('*')))} source file(s) to "
           f"{out.relative_to(REPO_ROOT)}")
