@@ -61,6 +61,7 @@ donors explicitly instead of guessing.
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 
 from . import cooked, cooked_schemas, entity_strings
 
@@ -68,6 +69,8 @@ from . import cooked, cooked_schemas, entity_strings
 GEOMETRY_SUFFIX = ".Geometry.gen"
 MATERIAL_SUFFIX = ".Material.gen"
 TEXTURE_SUFFIX = ".Texture.dxt"
+#: Normal maps cook to their own suffix — 591 shipped textures use it.
+TEXTURE_NORMAL_SUFFIX = ".Texture.nrm"
 ENTITY_SUFFIX = ".EntitySettingsResource.gen"
 LEVEL_SUFFIX = ".GameStream.gen"
 
@@ -137,6 +140,39 @@ def art_cooked_path(ref: str) -> str:
             f"texture, .fbx mesh or .mat.ot material reference"
         )
     return f"3D/{p}{suffix}"
+
+
+@lru_cache(maxsize=1)
+def _cooked_paths() -> frozenset[str]:
+    """Every decoded cooked path the game ships, from ``asset_map.json``."""
+    from . import asset_map
+
+    return frozenset(asset_map.encoded_to_decoded().values())
+
+
+def vanilla_cooked_path(ref: str, root: str = "3D") -> str | None:
+    """The cooked path the game ACTUALLY uses for a shipped reference.
+
+    :func:`art_cooked_path` derives a cooked name by convention, which is right
+    for art a mod invents and wrong for art the game already ships — its own
+    docstring says so. The suffix is not a function of the reference: a normal
+    map cooks to ``.Texture.nrm``, not ``.Texture.dxt`` (591 shipped textures
+    do), so an in-place override derived by convention lands on a path nothing
+    reads. The mod's normal map then silently never applies AND the bogus path
+    gets registered in ``UsedRscList.ot`` as a new asset, next to the real
+    record it was supposed to replace.
+
+    Returns ``None`` when the reference is not a shipped asset, so callers can
+    fall back to the convention for art the mod is inventing.
+    """
+    p = ref.replace("\\", "/")
+    known = _cooked_paths()
+    for suffix in (TEXTURE_SUFFIX, TEXTURE_NORMAL_SUFFIX, ".Texture.gen",
+                   GEOMETRY_SUFFIX, MATERIAL_SUFFIX):
+        cand = f"{root}/{p}{suffix}"
+        if cand.replace("/", "\\") in known:
+            return cand
+    return None
 
 
 def ui_cooked_path(ref: str) -> str:

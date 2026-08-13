@@ -484,6 +484,25 @@ _PROP = {
     "textures": {"Scenery\\DarkHills\\T_Walls_Ruins_ALB.tga": "art/mine.png"},
 }
 
+#: Override mode needs a different donor than additive mode, and the difference
+#: is not cosmetic. `_PROP` names the blood fountain, which is fine to swap OUT
+#: of a cloned level (additive) and wrong to override IN PLACE: it is a
+#: composite that spawns eleven children, so the override would land on its
+#: stone base and the model would render inside the fountain. This donor draws
+#: one mesh and spawns nothing.
+_OVERRIDE_BASE = "Dark_Hills/DarkHill_Thieves_Stashes_Magic_Mirror_Underground_01"
+_OVERRIDE_PROP = {
+    "replaces":
+        "DarkHills\\SceneryObjects_DarkHills\\Thieve_Blood_Fountain.entity.ot",
+    "entity_base":
+        "DarkHills\\SceneryObjects_DarkHills\\Thieve_Blood_Fountain.entity.ot",
+    "material_base":
+        "Scenery\\DarkHills\\Blood_Fountain\\M_Blood_Foutain_DH_Thieve.mat.ot",
+    "model": "art/mine.glb",
+    "textures": {"Scenery\\DarkHills\\Blood_Fountain\\T_Blood_Fountain_DH_ALB.tga":
+                 "art/mine.png"},
+}
+
 
 def test_cache_path_and_entry_match_the_shipped_grammar():
     from rsmm.engine import rsc_cache as RC
@@ -599,12 +618,12 @@ def test_replace_base_still_extends_the_chapter_cache(tmp_path):
     _poi_art(tmp_path / "art")
     out = tmp_path / "assets"
     files = poi.emit("mymod", ContentDef(kind="poi", id="Over", fields={
-        "base": "Dark_Hills/6x6_Bleeding_01", "chapters": ["Dark_Hills"],
-        "replace_base": True, "prop": dict(_PROP)}), out)
+        "base": _OVERRIDE_BASE, "chapters": ["Dark_Hills"],
+        "replace_base": True, "prop": dict(_OVERRIDE_PROP)}), out)
 
     stem = poi.CHAPTERS["Dark_Hills"]
     mapc = set(RC.parse((out / f"Definitions/Maps/{stem}.mapdef{RC.CACHE_SUFFIX}").read_bytes()))
-    tile_rel = f"Definitions/Tiles/Dark_Hills/6x6_Bleeding_01.tiledef{RC.CACHE_SUFFIX}"
+    tile_rel = f"Definitions/Tiles/{_OVERRIDE_BASE}.tiledef{RC.CACHE_SUFFIX}"
     tilec = set(RC.parse((out / tile_rel).read_bytes()))
     assert tilec <= mapc, "chapter cache must stay a superset of the tile's"
     # The overridden art is written on a SHIPPED path, which both caches
@@ -735,18 +754,18 @@ def test_replace_base_overrides_the_shipped_cache_not_a_new_one(tmp_path):
 
     _poi_art(tmp_path / "art")
     defn = ContentDef(kind="poi", id="Over", fields={
-        "base": "Dark_Hills/6x6_Bleeding_01", "chapters": ["Dark_Hills"],
-        "replace_base": True, "prop": dict(_PROP)})
+        "base": _OVERRIDE_BASE, "chapters": ["Dark_Hills"],
+        "replace_base": True, "prop": dict(_OVERRIDE_PROP)})
     out = tmp_path / "assets"
     files = poi.emit("mymod", defn, out)
     caches = [f.relative_to(out).as_posix()
               for f in files if f.name.endswith(RC.CACHE_SUFFIX)]
+    tile_cache = f"Definitions/Tiles/{_OVERRIDE_BASE}.tiledef{RC.CACHE_SUFFIX}"
     assert sorted(caches) == [
         "Definitions/Maps/Dark_Hills_LiveOps_Update5.mapdef.UsedRscCache.ot",
-        "Definitions/Tiles/Dark_Hills/6x6_Bleeding_01.tiledef.UsedRscCache.ot",
+        tile_cache,
     ]
 
-    tile_cache = "Definitions/Tiles/Dark_Hills/6x6_Bleeding_01.tiledef.UsedRscCache.ot"
     listed = set(RC.parse((out / tile_cache).read_bytes()))
     mesh = next(f for f in files if f.name.endswith(".Geometry.gen"))
     assert RC.entry_for(mesh.relative_to(out).as_posix()) in listed
@@ -912,7 +931,14 @@ def test_every_preset_is_wired_to_real_donors():
             rel = (PC.entity_cooked_path(preset[key]) if key.startswith("entity")
                    else PC.art_cooked_path(preset[key]))
             assert (DATA_DIR / "uncooked" / rel).is_file(), f"{name}: bad {key}"
-        assert set(preset["slots"]) == set(poi.TEXTURE_ROLES), f"{name}: slot roles"
+        # A preset may deliberately carry NO slots: its donor's material is
+        # shared with other props, so overriding the textures behind it would
+        # re-skin them too, and the honest offer is "your geometry, the shipped
+        # material". Only exactly one upright pooled prop in the corpus has a
+        # material of its own, so this is the common case, not a gap. What a
+        # preset may not do is offer a partial set of roles.
+        assert set(preset["slots"]) in ({}.keys(), set(poi.TEXTURE_ROLES)), \
+            f"{name}: slot roles"
 
         # Slots name textures of `replaces` ITSELF, because that is where the
         # mod's art is written — in place, on the shipped prop's own paths.
@@ -1193,19 +1219,12 @@ def test_replace_base_overrides_the_shipped_props_own_art(tmp_path):
     (art / "m.glb").write_bytes(b.build_glb())
     (art / "m.png").write_bytes(IMG.encode_png(4, 4, bytes([1, 2, 3, 255] * 16)))
 
+    prop = dict(_OVERRIDE_PROP, model="art/m.glb", textures={
+        "Scenery\\DarkHills\\Blood_Fountain\\T_Blood_Fountain_DH_ALB.tga":
+            "art/m.png"})
     files = poi.emit("mymod", ContentDef(kind="poi", id="S", fields={
-        "base": "Dark_Hills/6x6_Bleeding_01", "chapters": ["Dark_Hills"],
-        "replace_base": True,
-        "prop": {
-            "replaces": "DarkHills\\Objects_DarkHills\\Blood_Fountain_DarkHills.entity.ot",
-            "entity_base":
-                "DarkHills\\SceneryObjects_DarkHills\\Wall_Ruins_Block_Small_A.entity.ot",
-            "material_base": "Scenery\\DarkHills\\M_Walls_Ruins.mat.ot",
-            "model": "art/m.glb",
-            "textures": {
-                "Scenery\\DarkHills\\Blood_Fountain\\"
-                "T_Blood_Fountain_base_DH_ALB.tga": "art/m.png"},
-        }}), tmp_path / "assets")
+        "base": _OVERRIDE_BASE, "chapters": ["Dark_Hills"],
+        "replace_base": True, "prop": prop}), tmp_path / "assets")
 
     names = {f.name for f in files}
     # The POOL must be untouched. The chapter's resource CACHE is a different
@@ -1213,8 +1232,8 @@ def test_replace_base_overrides_the_shipped_props_own_art(tmp_path):
     assert not any(n.endswith(MP.GEN_SUFFIX) for n in names), \
         "override mode must not touch a pool"
     # The mod's art lands on the SHIPPED prop's own cooked paths.
-    assert "Blood_Fountain_Base_DH.fbx.Geometry.gen" in names
-    assert "T_Blood_Fountain_base_DH_ALB.tga.Texture.dxt" in names
+    assert "Thieve_Blood_Fountain.fbx.Geometry.gen" in names
+    assert "T_Blood_Fountain_DH_ALB.tga.Texture.dxt" in names
     # Nothing that would introduce a new name, and nothing that edits the tile:
     # no cloned entity, no cloned level, no level override at all.
     assert not any(n.endswith(".entity.ot.EntitySettingsResource.gen") for n in names), \

@@ -133,13 +133,22 @@ _log = logging.getLogger(__name__)
 #: (:func:`rsmm.engine.prop_cook.restamp_entity_guids`).
 #:
 #: Re-stamping was inferred from the tile-level GUID precedent — a clone that
-#: keeps its donor's identity is a second resource claiming the donor's place —
-#: and it has never been confirmed in-game either way. It also sits directly in
-#: the crash path currently under investigation, and the one experiment that
-#: would separate it (a byte-clone of a shipped entity, no other new asset, no
-#: re-stamp) has not been run. Until it has, this stays off: an unproven
-#: transform of bytes the engine rejects is a worse default than none.
-RESTAMP_ENTITY_GUIDS = False
+#: keeps its donor's identity is a second resource claiming the donor's place.
+#:
+#: ARMED 2026-08-13 as the leading hypothesis for why additive POIs fail. The
+#: evidence it has to explain: a byte-for-byte copy of a shipped entity under a
+#: new name — registered in ``UsedRscList.ot``, present at the derived cooked
+#: path, listed in the placing tile's sorted ``UsedRscCache.ot`` — still
+#: resolved to null during level load. Nothing static was wrong with it, and
+#: the one thing a byte copy necessarily duplicates is the donor's component
+#: identity GUIDs. If the engine keys instantiation by GUID, the clone collides
+#: with the shipped entity and the null is explained exactly.
+#:
+#: Every additive attempt so far ran with this OFF, so "additive POIs crash" is
+#: really "additive POIs crash without re-stamped GUIDs" — an untested
+#: variable, not a proven wall. ``mods/additive-poi-test`` is the experiment.
+#: If it loads, the ``prop`` kind's in-place-only restriction can be lifted.
+RESTAMP_ENTITY_GUIDS = True
 
 _UNCOOKED = DATA_DIR / "uncooked"
 _TILES_DIR = _UNCOOKED / "Definitions" / "Tiles"
@@ -195,6 +204,33 @@ PRESETS: dict[str, dict] = {
         },
         "kinds": ["Fountain"],
         "weight": 0.15,
+    },
+    # The override-mode preset. `clearing` re-dresses the blood fountain, which
+    # is correct when the whole entity reference is being swapped out (additive
+    # mode) and WRONG in place: the fountain is a composite that spawns eleven
+    # children, so an in-place override changes its stone base only and the
+    # model renders inside the fountain — confirmed in-game 2026-08-13.
+    #
+    # This donor is one of the eleven props in the corpus that are placed by
+    # exactly one pooled tile, draw a single mesh, spawn no children, and stand
+    # at tilt 0.00 deg / y 0.00 / scale 1.00. Its material is shared with the
+    # other tombstones, so it carries no `slots`: a def using this preset ships
+    # geometry and keeps the shipped stone material. Custom textures need a
+    # donor whose material is its own, and exactly one upright pooled prop
+    # qualifies (`Cone_Chantier` in `Avalon/6x6_Blocker_Wall_Up_01`).
+    "standing_stone": {
+        "base": "Dark_Hills/40x40_Cenotaph_Statues_Alley_WhiteLadies_Camp",
+        "replaces":
+            "DarkHills\\Haunted_Hollow\\SceneryObjects_HauntedHollow"
+            "\\Tombstone_Big_A_Scrap_A.entity.ot",
+        "entity_base":
+            "DarkHills\\Haunted_Hollow\\SceneryObjects_HauntedHollow"
+            "\\Tombstone_Big_A_Scrap_A.entity.ot",
+        "material_base":
+            "Scenery\\DarkHills\\Haunted Hollow\\M_Tombstones_Big_N_Blocks.mat.ot",
+        "slots": {},
+        "kinds": ["Camp"],
+        "weight": 0.0,
     },
 }
 
@@ -911,6 +947,26 @@ def _emit_prop_art(mod_id: str, defn: ContentDef, out_dir: Path,
     return ent_ref
 
 
+def _shipped_path(ref: str, defn_id: str) -> str:
+    """Where the game really keeps ``ref``'s cooked bytes.
+
+    An in-place override only works if it lands on the path the engine reads,
+    and that path is not derivable from the reference: normal maps cook to
+    ``.Texture.nrm`` rather than ``.Texture.dxt``. Deriving it by convention
+    wrote the mod's normal map to a file nothing loads and registered that dead
+    path in ``UsedRscList.ot`` beside the real record — the map silently never
+    applied and the manifest gained a duplicate.
+    """
+    got = PC.vanilla_cooked_path(ref)
+    if got is None:
+        raise ContentError(
+            f"poi {defn_id}: {ref!r} is not an asset the game ships, so there "
+            f"is nothing to override in place. An override has to target a "
+            f"shipped reference."
+        )
+    return got
+
+
 def _emit_prop_override(mod_id: str, defn: ContentDef, out_dir: Path,
                         base: str, written: list[Path]) -> None:
     """Put the mod's art on a shipped prop **in place**, minting no new name.
@@ -949,7 +1005,9 @@ def _emit_prop_override(mod_id: str, defn: ContentDef, out_dir: Path,
             f"poi {defn.id}: {ref} references no mesh, so there is nothing to "
             f"override. Pick a prop that draws a model."
         )
-    _assert_art_is_exclusive(defn.id, ref, base, meshes, mats)
+    _assert_prop_is_not_composite(defn.id, ref, strings)
+    _assert_art_is_exclusive(defn.id, ref, base, meshes, mats,
+                             overrides_textures=bool(spec.get("textures")))
 
     if spec.get("model"):
         src = _mod_source(out_dir, spec["model"], defn.id, "prop.model")
@@ -959,11 +1017,11 @@ def _emit_prop_override(mod_id: str, defn: ContentDef, out_dir: Path,
         for mesh in meshes:
             # Every LOD slot too, or the prop pops back to the shipped shape
             # as soon as the camera pulls away.
-            _write(out_dir, PC.art_cooked_path(mesh), cooked_model, written)
+            _write(out_dir, _shipped_path(mesh, defn.id), cooked_model, written)
 
     for donor_ref, src_rel in (spec.get("textures") or {}).items():
         src = _mod_source(out_dir, src_rel, defn.id, f"prop.textures[{donor_ref}]")
-        _write(out_dir, PC.art_cooked_path(donor_ref),
+        _write(out_dir, _shipped_path(donor_ref, defn.id),
                PC.cook_texture(src.read_bytes()), written)
 
     _log.info("poi %s/%s: overriding %s's own art in place (%d mesh, %d texture)",
@@ -1008,9 +1066,58 @@ def _art_users() -> dict[str, frozenset[str]]:
     return {k: frozenset(v) for k, v in users.items()}
 
 
+def _assert_prop_is_not_composite(defn_id: str, ref: str,
+                                  strings: list[str]) -> None:
+    """Refuse a donor that spawns child entities on top of its own mesh.
+
+    An in-place override replaces the art behind ONE reference. A composite
+    prop draws its own mesh *and* spawns a list of child ``EntitySettings``,
+    and those children keep their shipped art — so the override lands on the
+    base only and everything else still renders in the same spot, hiding the
+    mod's model inside it.
+
+    Found in-game 2026-08-13 and it is a nasty failure to diagnose, because
+    every other check passes: ``Blood_Fountain_DarkHills`` has exactly one mesh
+    (``Blood_Fountain_Base_DH.fbx``, the stone plinth), that mesh and its
+    material and all three textures are used by nothing else, and the prop is
+    placed by exactly one tile. It is also a composite of eleven children —
+    five candles, two parchments, three pebbles and ``Objects_Common\\
+    Blood_Fountain``, the animated fountain itself. So the shrine cooked
+    correctly, applied correctly, and rendered *underneath the fountain*: the
+    author's report was "there is something inside the blood thing".
+
+    Only 14 props in the whole corpus are single-mesh, child-free, exclusively
+    placed and exclusively textured. That is the population an in-place
+    override may target, and it is small enough that guessing does not work.
+    """
+    children = sorted({s for s in strings if s.lower().endswith(".entity.ot")
+                       and s != ref})
+    if not children:
+        return
+    raise ContentError(
+        f"poi {defn_id}: {ref} is a composite — it spawns {len(children)} "
+        f"child entities ({', '.join(c.rsplit(chr(92), 1)[-1] for c in children[:3])}"
+        f"…) on top of its own mesh. Overriding its art in place replaces only "
+        f"the base, so the children keep their shipped look and the model ends "
+        f"up buried inside them. Pick a prop that draws one mesh and spawns "
+        f"nothing."
+    )
+
+
 def _assert_art_is_exclusive(defn_id: str, ref: str, base: str,
-                             meshes: list[str], mats: list[str]) -> None:
+                             meshes: list[str], mats: list[str],
+                             overrides_textures: bool = True) -> None:
     """Refuse an in-place override whose art something else also uses.
+
+    Checked per asset the def ACTUALLY writes, not per asset the donor happens
+    to reference. A def that ships only a model overwrites only the mesh, so a
+    material shared with fifty other props is none of its business — the mesh
+    changes shape and keeps the donor's shader wiring. Demanding exclusivity
+    of the material anyway is what made this kind look unusable: of the props
+    that are upright, ground-level and placed by exactly one *pooled* tile,
+    eleven have an exclusive mesh and only **one** (``Cone_Chantier``) also has
+    an exclusive material. Texture overrides are what really leak across props,
+    and they are only emitted when the def ships texture files.
 
     Both corpus sweeps are cached: they read ~4,900 files and every prop in
     every mod asks the same two questions.
@@ -1024,14 +1131,18 @@ def _assert_art_is_exclusive(defn_id: str, ref: str, base: str,
         )
 
     users = _art_users()
-    shared = {a: sorted(users.get(a, ()))
-              for a in (*meshes, *mats) if len(users.get(a, ())) > 1}
+    checked = (*meshes, *mats) if overrides_textures else tuple(meshes)
+    shared = {a: sorted(users.get(a, ())) for a in checked
+              if len(users.get(a, ())) > 1}
     if shared:
         first = next(iter(shared))
+        extra = "" if overrides_textures else (
+            " (only the mesh is checked here because this def ships no "
+            "textures)")
         raise ContentError(
             f"poi {defn_id}: {first} is used by {len(shared[first])} entities "
             f"({', '.join(shared[first][:3])}…), so overriding it would change "
-            f"props outside {base}. Pick a prop whose art is its own."
+            f"props outside {base}{extra}. Pick a prop whose art is its own."
         )
 
 
