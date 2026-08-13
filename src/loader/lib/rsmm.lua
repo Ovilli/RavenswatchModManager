@@ -803,6 +803,10 @@ local HERO_PENDING_SLOT = 3   -- spawn-init candidate whose fields weren't live 
 -- whether the native path armed. 0 = loader too old to say, 1 = yes, 2 = no.
 local HERO_PERMIT_SLOT = 4
 local PERMIT_NO = 2
+-- Set once when the HP-field scan below has run. Every mod gets its own Lua
+-- state and they all poll, so without a process-wide latch the scan would be
+-- repeated (and re-logged) five times over.
+local HERO_SCAN_SLOT = 5
 
 -- True when the loader's native hero-capture is installed. When it is, the Lua
 -- side must not arm its own per-state capture hooks (they'd collide with the
@@ -959,6 +963,60 @@ local function _arm_hero_capture()
     end
 end
 
+--- One-shot: find where the HP pair really lives on a rejected hero.
+--
+-- The 2026-08-13 playtest narrowed the failure precisely. The pending pointer
+-- IS the hero (the spawn-init routine is hero-only), the HUD-mirror pointer at
+-- +0x1d80 reads as a valid heap address — so the object and its size are what
+-- we expect — and yet `hp`/`max` at +0x15c8/+0x15cc read 0.0 for 18+ seconds
+-- of live play. Readable, plausible object, zero fields: that is a MOVED
+-- FIELD, not a bad pointer, and no amount of waiting fixes it.
+--
+-- So sweep the object for the pair instead of hardcoding a guess: adjacent
+-- f32s where the second is a sane bar size and the first sits inside it. The
+-- hero's real HP pair must appear; anything else that matches is noise the
+-- offsets and values let us reject by eye. All reads are page-guarded (bad
+-- address -> nil, never a fault), and the whole thing runs once per PROCESS
+-- via a shared latch, not once per mod.
+-- Scan a given pointer at these rejection counts, not on the first one. The
+-- fields fill DURING the load sequence, and the 19:56 log shows two different
+-- pending heroes six seconds apart — the menu character, then the run's. A
+-- true one-shot would have measured the wrong object while it was still blank
+-- and latched. Ticks are ~500ms, so these are roughly 5s and 20s in.
+local HERO_SCAN_AT = { [10] = true, [40] = true }
+local HERO_SCAN_MAX = 6              -- total scans per process, all mods
+local HERO_SCAN_LO, HERO_SCAN_HI = 0x1000, 0x2400
+local _hero_scan_seen = {}           -- pointer -> rejections observed here
+
+local function _scan_hp_fields(p)
+    if not (I.shared_get and I.shared_set) then return end
+    local n = (_hero_scan_seen[p] or 0) + 1
+    _hero_scan_seen[p] = n
+    if not HERO_SCAN_AT[n] then return end
+    -- Process-wide budget: every mod has its own Lua state and all of them
+    -- poll, so the cap has to live in the shared slot, not in this state.
+    local oks, used = pcall(I.shared_get, HERO_SCAN_SLOT)
+    used = (oks and type(used) == "number") and used or 0
+    if used >= HERO_SCAN_MAX then return end
+    pcall(I.shared_set, HERO_SCAN_SLOT, used + 1)
+
+    local hits = {}
+    for off = HERO_SCAN_LO, HERO_SCAN_HI, 4 do
+        local cur = I.read_f32(p + off)
+        local mx = I.read_f32(p + off + 4)
+        if type(cur) == "number" and type(mx) == "number"
+            and mx >= 20.0 and mx < 5000.0 and cur > 0.0 and cur <= mx then
+            hits[#hits + 1] = string.format("+0x%x %.1f/%.1f", off, cur, mx)
+            if #hits >= 12 then break end
+        end
+    end
+    R.log(string.format(
+        "[rsmm.entity] HP-FIELD SCAN #%d on 0x%x after %d rejections "
+        .. "(expected +0x%x): %s",
+        used + 1, p, n, ENTITY_HP_OFF,
+        #hits > 0 and table.concat(hits, "  ") or "no candidate pair found"))
+end
+
 -- The captured local hero character pointer, or nil if not seen yet. The
 -- loader's native capture publishes it to the shared slot at hero spawn (it
 -- hooks the hero's spawn/post-load init, NamedEvent_HeroSubscribeAll, whose
@@ -969,7 +1027,36 @@ local _hero_diag_n = 0
 function R.entity.hero()
     if I.shared_get then
         local ok, h = pcall(I.shared_get, SHARED_HERO_SLOT)
-        if ok and type(h) == "number" and h ~= 0 then
+        h = (ok and type(h) == "number") and h or 0
+
+        -- HERO SWITCH: a spawn-init candidate that is BOTH different from the
+        -- published hero and already plausible means the hero changed, and it
+        -- has to win over the published one.
+        --
+        -- Without this the published slot shadows it completely: the check
+        -- below returns early while `h` still reads plausible, so the pending
+        -- branch is never reached and the new hero is invisible until the give
+        -- path happens to notice its dispatcher changed. Measured 2026-08-13
+        -- switching characters mid-run — the new hero sat pending for 95
+        -- seconds with not one rejection logged, because the code never looked
+        -- at it. (Freed memory keeps reading plausible for a long time, so
+        -- "the old pointer still validates" is not evidence it is still the
+        -- hero.) The first capture of a run is NOT this case: there the slot
+        -- is empty and the wait is the hero's own fields going live.
+        local okp, pend = pcall(I.shared_get, HERO_PENDING_SLOT)
+        if okp and type(pend) == "number" and pend ~= 0 and pend ~= h
+            and _hero_plausible(pend) then
+            if I.shared_set then
+                pcall(I.shared_set, SHARED_HERO_SLOT, pend)
+                pcall(I.shared_set, HERO_AUTH_SLOT, 1)
+                pcall(I.shared_set, HERO_PENDING_SLOT, 0)
+            end
+            R.log(string.format(
+                "[rsmm.entity] hero switched to 0x%x (was 0x%x)", pend, h))
+            return pend
+        end
+
+        if h ~= 0 then
             if _hero_plausible(h) then return h end
             -- DIAG (first few only): the native capture published a pointer the
             -- Lua plausibility gate now rejects — log the raw reads so a
@@ -998,13 +1085,19 @@ function R.entity.hero()
                 R.log(string.format("[rsmm.entity] pending spawn hero 0x%x promoted (instant capture)", p))
                 return p
             end
-            -- DIAG (first few only): the pending candidate is authoritative by
-            -- construction (the spawn-init routine is hero-only), so a REJECT
-            -- here means the plausibility gate's OFFSETS are wrong for this
-            -- build, not that the pointer is wrong. Rejecting silently is how
-            -- this failed invisibly: every downstream API (R.combat/R.stat/
-            -- R.xp) then no-ops with no line in the log to say why. Dump the
-            -- raw reads so ONE playtest identifies which field moved.
+            -- DIAG (first few only). A rejection here is NORMAL for a while:
+            -- the candidate is authoritative by construction (the spawn-init
+            -- routine is hero-only) but its HP fields do not populate until
+            -- the run actually starts, so every tick spent in character select
+            -- logs one. Measured 2026-08-13: ~58s from first stash to
+            -- promotion on a fresh run, with the field sweep below finding no
+            -- HP pair anywhere on the object in the meantime — the fields are
+            -- genuinely blank, not moved.
+            --
+            -- What it is still worth printing for: a rejection that persists
+            -- INTO live play means the offsets really did move, and rejecting
+            -- silently is how that failed invisibly before (every downstream
+            -- API no-ops with nothing in the log to say why).
             if _hero_diag_n < 6 then
                 _hero_diag_n = _hero_diag_n + 1
                 local mirror = I.read_u64(p + ENTITY_HUDMIRROR_OFF)
@@ -1016,6 +1109,7 @@ function R.entity.hero()
                     tostring(mirror),
                     tostring(mirror and mirror ~= 0 and I.read_f32(mirror) or nil)))
             end
+            _scan_hp_fields(p)
         end
     end
     -- Legacy fallback: an older loader without native capture, or the native
