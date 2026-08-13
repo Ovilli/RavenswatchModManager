@@ -1264,6 +1264,63 @@ def test_override_refuses_a_prop_whose_art_is_shared(tmp_path):
             }}), tmp_path / "assets")
 
 
+@needs_corpus
+@needs_prop_corpus
+def test_allow_shared_art_waives_exclusivity_but_never_compositeness(tmp_path):
+    """The two guards protect against different things, so only one is
+    waivable.
+
+    Sharing means the override reaches further than the author's own tile —
+    broad, but exactly what someone re-skinning the start tile is asking for
+    (every prop there fails exclusivity, so without the waiver a POI can never
+    be guaranteed visible). A COMPOSITE donor is not broad, it is broken: its
+    children keep their shipped art and render on top, burying the model.
+    """
+    _poi_art(tmp_path / "art")
+    shared = {
+        "replaces":
+            "DarkHills\\SceneryObjects_DarkHills\\Carpet_4x4.entity.ot",
+        "entity_base":
+            "DarkHills\\SceneryObjects_DarkHills\\Carpet_4x4.entity.ot",
+        "material_base": "Scenery\\DarkHills\\M_Carpet_Red.mat.ot",
+        "model": "art/mine.glb",
+    }
+    fields = {"base": "Dark_Hills/40x40_Dark_Hills_Start_Update3",
+              "chapters": ["Dark_Hills"], "replace_base": True}
+
+    with pytest.raises(ContentError, match="tiles|entities"):
+        poi.emit("mymod", ContentDef(kind="poi", id="S", fields=dict(
+            fields, prop=dict(shared))), tmp_path / "no")
+
+    files = poi.emit("mymod", ContentDef(kind="poi", id="S", fields=dict(
+        fields, prop=dict(shared, allow_shared_art=True))), tmp_path / "yes")
+    assert any(f.name == "Carpet_4x4.fbx.Geometry.gen" for f in files), \
+        "the waiver must still write the mod's mesh over the donor's own path"
+
+    # The composite check is not opt-outable, so the same waiver must NOT get a
+    # composite donor through.
+    with pytest.raises(ContentError, match="composite"):
+        poi.emit("mymod", ContentDef(kind="poi", id="C", fields={
+            "base": "Dark_Hills/6x6_Bleeding_01", "chapters": ["Dark_Hills"],
+            "replace_base": True,
+            "prop": {
+                "replaces":
+                    "DarkHills\\Objects_DarkHills\\Blood_Fountain_DarkHills.entity.ot",
+                "entity_base":
+                    "DarkHills\\Objects_DarkHills\\Blood_Fountain_DarkHills.entity.ot",
+                "material_base":
+                    "Scenery\\DarkHills\\Blood_Fountain\\M_Blood_Foutain_base_DH.mat.ot",
+                "allow_shared_art": True,
+            }}), tmp_path / "composite")
+
+
+def test_discover_passes_allow_shared_art_through(tmp_path):
+    _poi_folder(tmp_path, with_art=False, cfg=(
+        'chapters = ["Dark_Hills"]\nreplace_base = true\n'
+        'replaces = "A\\\\B.entity.ot"\nallow_shared_art = true\n'))
+    assert poi.discover(tmp_path)[0]["prop"]["allow_shared_art"] is True
+
+
 def test_discover_passes_replace_base_through(tmp_path):
     _poi_folder(tmp_path, cfg='chapters = ["Dark_Hills"]\nreplace_base = true\n',
                 with_art=False)

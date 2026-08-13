@@ -99,6 +99,23 @@ mesh and maps (:mod:`rsmm.engine.prop_cook`). The donors supply *structure*
     ``DarkHills\\SceneryObjects_DarkHills\\Wall_Ruins_Block_Small_A.entity.ot``.
 ``material_base`` (str, required)
     Vanilla material to clone, e.g. ``Scenery\\DarkHills\\M_Walls_Ruins.mat.ot``.
+``allow_shared_art`` (bool, optional, ``replace_base`` only)
+    Waive the exclusivity check and override a prop whose art other props also
+    use. Everything drawing that mesh changes, everywhere.
+
+    This exists because exclusivity and *being seen* turned out to be mutually
+    exclusive. A prop whose art is its own is, in this corpus, always a prop in
+    a rare tile: the shrine's exclusive donor sits in 1 of the 18 Camp tiles in
+    the Dark Hills pool, so it showed up in roughly one run in ten, and two
+    playtests in a row found nothing. Meanwhile **all 43 props in the start
+    tile — the one tile in every single run — fail the check**, every one of
+    them multi-tile, composite, or sharing a mesh.
+
+    So the honest options are "non-collateral but rare" and "guaranteed but it
+    re-skins N other tiles". This key is how an author says which they want,
+    out loud, per def. It does NOT waive the composite check: a composite donor
+    buries the model inside its own children, which is a broken-looking mod
+    rather than a deliberately broad one.
 
 Confidence: ``experimental``, with one half now confirmed. **A mod-authored
 mesh + textures on a shipped prop rendered upright in-game on 2026-08-13**
@@ -436,6 +453,8 @@ def discover(mod_root: Path) -> list[dict]:
             }
             if "transform" in cfg:
                 block["prop"]["transform"] = cfg.pop("transform")
+            if "allow_shared_art" in cfg:
+                block["prop"]["allow_shared_art"] = cfg.pop("allow_shared_art")
         cfg.pop("slots", None)
 
         # Anything left is a typo, not a feature. Silently ignoring it is how a
@@ -1005,9 +1024,18 @@ def _emit_prop_override(mod_id: str, defn: ContentDef, out_dir: Path,
             f"poi {defn.id}: {ref} references no mesh, so there is nothing to "
             f"override. Pick a prop that draws a model."
         )
+    # The composite guard is NOT opt-outable: a composite donor buries the
+    # model inside its own children, so waiving it produces a mod that looks
+    # broken rather than a mod that changes more than it meant to.
     _assert_prop_is_not_composite(defn.id, ref, strings)
-    _assert_art_is_exclusive(defn.id, ref, base, meshes, mats,
-                             overrides_textures=bool(spec.get("textures")))
+    if spec.get("allow_shared_art"):
+        _log.warning(
+            "poi %s: allow_shared_art — %s's art is overridden globally, so "
+            "every tile that draws it changes too. Deliberate; see poi.toml.",
+            defn.id, ref)
+    else:
+        _assert_art_is_exclusive(defn.id, ref, base, meshes, mats,
+                                 overrides_textures=bool(spec.get("textures")))
 
     if spec.get("model"):
         src = _mod_source(out_dir, spec["model"], defn.id, "prop.model")
