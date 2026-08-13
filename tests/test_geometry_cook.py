@@ -178,3 +178,70 @@ def test_template_extract_rejects_plain_glb():
     with pytest.raises(ValueError):
         geometry_cook.template_from_uncooked_glb(glb)
 
+
+
+# The corpus mirrors geometry as uncooked GLB (the cooked template rides along
+# in extras.rsmm.cooked_b64), not as a .Geometry.gen — see poi._donor_geometry.
+_CARPET = (Path(__file__).resolve().parents[1] / "data" / "uncooked" / "3D"
+           / "Scenery" / "DarkHills" / "Carpet_4x4.fbx.glb")
+
+
+def _tall_glb(height: float) -> bytes:
+    """A trivial closed mesh `height` units tall, taller than a floor rug."""
+    from rsmm.engine import gltf
+
+    h = height
+    b = gltf.GlbBuilder()
+    pi = b.add_positions([(0, 0, 0), (1, 0, 0), (0, 0, 1), (0, h, 0)])
+    ni = b.add_vec3([(0, 1, 0)] * 4)
+    ui = b.add_vec2([(0, 0)] * 4)
+    ii = b.add_indices([0, 1, 2, 0, 1, 3, 0, 2, 3, 1, 2, 3])
+    m = b.add_mesh(gltf.Mesh(name="t", primitives=[gltf.Primitive(
+        attributes={"POSITION": pi, "NORMAL": ni, "TEXCOORD_0": ui},
+        indices=ii)]))
+    b.add_node(gltf.Node(name="t", mesh=m), is_root=True)
+    return b.build_glb()
+
+
+@pytest.mark.skipif(not _CARPET.is_file(), reason="uncooked corpus absent")
+def test_swap_updates_the_bounding_box():
+    """The cooked AABB has to follow the mesh that is now in the file.
+
+    It did not, and that is what made the shrine invisible in-game. The donor
+    was `Carpet_4x4` — a floor rug whose stored box is about 0.1 units tall —
+    and the 2.9-unit obelisk swapped into it kept the rug's bounds, so the
+    engine culled it. Every check upstream passed (correct geometry, applied
+    bytes, resource cache listed) because the mesh really was right; only the
+    box disagreed, which is why three playtests found nothing.
+
+    Uses the real shipped rug rather than a synthetic template: the whole point
+    is that a donor much flatter than the custom mesh is the dangerous case.
+    """
+    def mesh_bbox(cb):
+        cf = cooked.parse(cb)
+        pos = [p for s in cf.sections
+               for r in G._parse_meshbuffers(s.payload) for p in r.positions]
+        return geometry_cook._bbox6(pos)
+
+    def find_box(cb, want):
+        cf = cooked.parse(cb)
+        for s in cf.sections:
+            for off in range(0, len(s.payload) - 24 + 1, 4):
+                got = struct.unpack_from("<6f", s.payload, off)
+                if all(abs(a - b) <= 1e-3
+                       for a, b in zip(got, want, strict=True)):
+                    return off
+        return None
+
+    template = geometry_cook.template_from_uncooked_glb(_CARPET.read_bytes())
+    old = mesh_bbox(template)
+    assert old[4] - old[1] < 0.5, "donor should be the flat rug"
+    assert find_box(template, old) is not None, "template stores its own bounds"
+
+    out = geometry_cook.swap_geometry(template, _tall_glb(6.0),
+                                      transform={"fit": "none"})
+    new = mesh_bbox(out)
+    assert new[4] - new[1] > 5.0, "swapped mesh should be the tall one"
+    assert find_box(out, new) is not None, \
+        "the AABB still describes the rug, so the mesh will be culled"
+    assert find_box(out, old) is None, "stale donor bounds left behind"

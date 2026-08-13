@@ -687,6 +687,9 @@ def swap_geometry(template_cooked: bytes, glb_bytes: bytes,
 
     old_subs = _geo._parse_meshbuffers(cf.sections[target].payload)
     old_counts = [len(s.positions) for s in old_subs]
+    # Captured before the swap: the stored AABB equals these bounds, which is
+    # how _rewrite_aabb finds the field without trusting a tail offset.
+    old_positions = [p for s in old_subs for p in s.positions]
 
     # Vertex-budget guard. CONFIRMED in-game: a 243k-vert mesh swapped onto a
     # 1.2k-vert weapon slot crashes on launch; the vanilla gun (1.2k) is fine.
@@ -768,7 +771,60 @@ def swap_geometry(template_cooked: bytes, glb_bytes: bytes,
             cf.sections[si] = cooked.Section(
                 payload=_rewrite_layer(sec.payload, count_map[vc]))
 
+    _rewrite_aabb(cf, _bbox6(old_positions), _bbox6(merged.positions))
     return cooked.emit(cf)
+
+
+def _bbox6(pos: list) -> tuple[float, ...] | None:
+    """``(xMin, yMin, zMin, xMax, yMax, zMax)`` over `pos`, or None if empty."""
+    if not pos:
+        return None
+    return (min(p[0] for p in pos), min(p[1] for p in pos), min(p[2] for p in pos),
+            max(p[0] for p in pos), max(p[1] for p in pos), max(p[2] for p in pos))
+
+
+def _rewrite_aabb(cf, old_bb, new_bb) -> None:
+    """Move the file's bounding box onto the mesh that is now in it.
+
+    A cooked oCGeometry stores one 6-float AABB, and the swap did not touch it
+    — so every custom mesh shipped with its DONOR's bounds. The engine culls
+    and sorts against that box, so a mesh larger than its donor is clipped away
+    wherever the box is off-screen, and the mod looks like it never applied.
+
+    That is what hid the shrine: `Carpet_4x4` is a floor rug whose box is
+    0.02..0.12 units tall, and the obelisk swapped into it stands 2.91 — the
+    geometry was correct, cooked, applied and listed in the resource cache, and
+    still invisible. It also explains why the very first sighting worked: that
+    donor was a lantern post, tall enough to contain the obelisk.
+
+    Located by VALUE rather than by offset: the stored box equals the
+    template's own mesh bounds, so we search for those six floats instead of
+    trusting a tail layout (`_parse_main_body` reads this field four bytes
+    late, which is a separate defect and not one worth depending on here).
+    Not finding it is not fatal — the mesh still swaps, it just keeps the old
+    bounds — so this warns rather than raises.
+    """
+    if not old_bb or not new_bb:
+        return
+    packed_new = struct.pack("<6f", *new_bb)
+    for si, sec in enumerate(cf.sections):
+        payload = sec.payload
+        for off in range(0, len(payload) - 24 + 1, 4):
+            got = struct.unpack_from("<6f", payload, off)
+            if all(abs(a - b) <= 1e-3 for a, b in zip(got, old_bb, strict=True)):
+                cf.sections[si] = _sec_replace(sec, off, packed_new)
+                return
+    _log.warning(
+        "template AABB not found (mesh bounds %s); the swapped mesh keeps the "
+        "template's bounding box and may be culled if it is larger", old_bb)
+
+
+def _sec_replace(sec, off: int, blob: bytes):
+    from . import cooked
+
+    buf = bytearray(sec.payload)
+    buf[off:off + len(blob)] = blob
+    return cooked.Section(payload=bytes(buf))
 
 
 def _gather_source(cf, target: int, old_subs: list) -> dict | None:
