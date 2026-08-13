@@ -15,6 +15,7 @@ that is what `python-fsb5` does, and why plain ffmpeg cannot read these files.
     scripts/extract_audio.py                        # -> .ogg (no re-encode)
     scripts/extract_audio.py --wav                  # + .wav via ffmpeg
     scripts/extract_audio.py --filter Hero_Piper    # one bank
+    scripts/extract_audio.py --filter Voice_EN --name 'Kintaro|Alice'   # one hero
 
 Output: data/uncooked/Audio/extracted/<BankName>/<SampleName>.<ext>
 """
@@ -82,12 +83,18 @@ def main(argv=None) -> int:
     ap.add_argument("--audio-dir", default=str(AUDIO_DIR))
     ap.add_argument("--out", default=None, help="default: <audio-dir>/extracted")
     ap.add_argument("--filter", help="substring match on bank filename")
+    ap.add_argument(
+        "--name",
+        help="regex on the SAMPLE name (case-insensitive), e.g. 'Kintaro|Alice'. "
+        "Voice_EN.bank alone is 683 MB of samples, so pulling a handful of "
+        "lines out of it is the common case, not a special one.")
     ap.add_argument("--wav", action="store_true", help="also write .wav via ffmpeg")
     ap.add_argument("--limit", type=int, help="stop after N samples per bank (testing)")
     a = ap.parse_args(argv)
 
     audio = Path(a.audio_dir)
     out_root = Path(a.out) if a.out else audio / "extracted"
+    want = re.compile(a.name, re.I) if a.name else None
     banks = sorted(p for p in audio.glob("*.bank") if not a.filter or a.filter in p.name)
     if not banks:
         sys.exit(f"no banks matched under {audio}")
@@ -103,6 +110,12 @@ def main(argv=None) -> int:
             for idx, sample in enumerate(sub.samples):
                 if a.limit and n >= a.limit:
                     break
+                # Match on the RAW name, before sanitising: the game's own
+                # names carry parentheses and commas (`Spawn_(Kintaro,Merlin)`)
+                # that safe_name replaces with underscores, so a pattern the
+                # user copied out of the bank would stop matching.
+                if want and not want.search(sample.name or ""):
+                    continue
                 name = safe_name(sample.name or "", f"sample_{idx:05d}")
                 dst = out_dir / f"{name}.{ext}"
                 try:
