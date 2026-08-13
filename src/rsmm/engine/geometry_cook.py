@@ -540,6 +540,13 @@ def _assemble_layer(header: bytes, blocks: list[tuple[int, list[bytes]]]) -> byt
     return bytes(out)
 
 
+#: Point count at or below which :meth:`_Grid.k_nearest` scans every point
+#: instead of walking cells. Shipped prop templates are far below it (the
+#: tombstone has 52 points, the blood fountain base 400-odd), so this is the
+#: path prop cooking actually takes.
+_GRID_BRUTE_FORCE_MAX = 4096
+
+
 class _Grid:
     """Uniform spatial hash for approximate nearest-neighbour over points."""
 
@@ -551,27 +558,87 @@ class _Grid:
         self.grid: dict[tuple[int, int, int], list[int]] = {}
         for i, p in enumerate(pts):
             self.grid.setdefault(self._key(p), []).append(i)
+        # Bounds of the OCCUPIED cells. The expanding search stops once its
+        # radius covers these, which is what keeps a query point that lands
+        # outside the grid from expanding forever (see k_nearest).
+        keys = self.grid.keys()
+        self.kmin = tuple(min(kk[a] for kk in keys) for a in range(3)) if keys \
+            else (0, 0, 0)
+        self.kmax = tuple(max(kk[a] for kk in keys) for a in range(3)) if keys \
+            else (0, 0, 0)
 
     def _key(self, p) -> tuple[int, int, int]:
         return tuple(int((p[a] - self.mn[a]) // self.cell) for a in range(3))
 
+    @staticmethod
+    def _shell(r: int):
+        """Cell offsets at Chebyshev distance exactly `r` — the new cells only.
+
+        Iterating the full cube each round re-visits everything already seen,
+        which turns an expanding search into O(r^3) repeated work per step and
+        was the dominant cost of the whole geometry cook.
+        """
+        if r == 0:
+            yield (0, 0, 0)
+            return
+        span = range(-r, r + 1)
+        for dx in span:
+            ax = dx in (-r, r)
+            for dy in span:
+                zs = span if (ax or dy in (-r, r)) else (-r, r)
+                for dz in zs:
+                    yield (dx, dy, dz)
+
     def k_nearest(self, p, k: int) -> list[tuple[int, float]]:
-        """Return up to `k` (index, squared-distance) pairs nearest to `p`."""
-        kx, ky, kz = self._key(p)
+        """Return up to `k` (index, squared-distance) pairs nearest to `p`.
+
+        The grid is built over the TEMPLATE's points but queried with the
+        CUSTOM mesh's, and those two need not overlap at all — a 2.9-unit
+        obelisk against a 1.4-unit slab puts most query points well outside the
+        occupied cells. The original loop answered that by rescanning an
+        ever-larger cube from scratch, up to radius 64, for every single
+        vertex: roughly 1e7 dict lookups each, and `rsmm apply` took over ten
+        minutes with one model in the tree. Two bounds fix it — visit each cell
+        once (`_shell`), and stop once the radius has swept past the occupied
+        cells instead of grinding to the hardcoded 64.
+        """
+        if not self.grid:
+            return []
+        # Small templates: scan them. The grid exists to avoid an O(N*M) sweep
+        # over a big mesh, and below this size that sweep is cheaper than the
+        # cell walk it replaces — the shipped tombstone template has 52 points,
+        # against which the expanding search was doing millions of empty-cell
+        # lookups per query. Exact, and it removes the pathological case
+        # entirely rather than bounding it.
+        if len(self.pts) <= _GRID_BRUTE_FORCE_MAX:
+            found = sorted(
+                (((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 + (p[2] - q[2]) ** 2), i)
+                for i, q in enumerate(self.pts))
+            return [(i, d) for d, i in found[:k]]
+
+        # Start from the nearest cell that actually holds points. An
+        # out-of-bounds query would otherwise have to expand all the way back
+        # to the occupied region one ring at a time, and the custom mesh is
+        # routinely far outside the template's extent (a 2.9-unit obelisk
+        # against a 1.4-unit slab, at a cell size derived from the slab).
+        raw = self._key(p)
+        key = tuple(min(max(raw[a], self.kmin[a]), self.kmax[a]) for a in range(3))
+        # Beyond this radius every occupied cell has already been visited, so
+        # another ring cannot add a candidate.
+        max_r = max(max(abs(key[a] - self.kmin[a]), abs(key[a] - self.kmax[a]))
+                    for a in range(3))
         found: list[tuple[float, int]] = []
-        radius = 1
+        radius = 0
         # Expand until we have >= k candidates, then one extra ring so the
         # true k-nearest aren't missed at a cell boundary.
         extra = 1
-        while radius < 64:
-            for dx in range(-radius, radius + 1):
-                for dy in range(-radius, radius + 1):
-                    for dz in range(-radius, radius + 1):
-                        for i in self.grid.get((kx + dx, ky + dy, kz + dz), ()):
-                            q = self.pts[i]
-                            d = ((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2
-                                 + (p[2] - q[2]) ** 2)
-                            found.append((d, i))
+        while radius <= max_r:
+            for dx, dy, dz in self._shell(radius):
+                for i in self.grid.get((key[0] + dx, key[1] + dy, key[2] + dz), ()):
+                    q = self.pts[i]
+                    d = ((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2
+                         + (p[2] - q[2]) ** 2)
+                    found.append((d, i))
             if len(found) >= k:
                 if extra <= 0:
                     break
