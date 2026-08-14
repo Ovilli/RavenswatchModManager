@@ -29,6 +29,8 @@ from . import cooked
 _MAX_LEN = 4096
 # Printable ASCII; engine identifiers/paths/keys never carry control bytes.
 _PRINTABLE = frozenset(range(0x20, 0x7F))
+# Same set as bytes, for the C-speed `translate` test in _scan_payload.
+_PRINTABLE_BYTES = bytes(range(0x20, 0x7F))
 
 
 class EntityStringError(ValueError):
@@ -36,14 +38,36 @@ class EntityStringError(ValueError):
 
 
 def _scan_payload(payload: bytes) -> list[tuple[int, str]]:
-    """Return [(offset_of_length_prefix, string)] for every candidate lstr."""
+    """Return [(offset_of_length_prefix, string)] for every candidate lstr.
+
+    This is the hottest function in `apply`: it runs at every byte offset of
+    every section of every cooked file the corpus sweeps touch, which on a real
+    install was ~114k calls and 251 MILLION `struct.unpack_from` calls — 75% of
+    total runtime. Two changes remove nearly all of that without altering what
+    counts as a candidate:
+
+    * A length prefix must satisfy ``1 <= n <= 4096``, so its top byte is
+      always zero and its second-from-top is at most 0x10. Two array indexes
+      reject ~99.6% of offsets before any `struct` call is made.
+    * `all(b in _PRINTABLE for b in chunk)` built a generator and a set lookup
+      per byte. `bytes.translate` deletes every printable byte in C and leaves
+      an empty result exactly when the chunk was all-printable.
+
+    The accepted set is unchanged, and `tests/test_entity_strings.py` compares
+    this against the straightforward implementation over the shipped corpus.
+    """
     out: list[tuple[int, str]] = []
     i, end = 0, len(payload) - 4
     while i <= end:
-        n = struct.unpack_from("<I", payload, i)[0]
+        # Cheap rejection first — see docstring. `_MAX_LEN` is 4096, so a valid
+        # prefix looks like 00 00 <=10 xx in little-endian byte order.
+        if payload[i + 3] or payload[i + 2] > (_MAX_LEN >> 8):
+            i += 1
+            continue
+        n = payload[i] | (payload[i + 1] << 8) | (payload[i + 2] << 16)
         if 1 <= n <= _MAX_LEN and i + 4 + n <= len(payload):
             chunk = payload[i + 4:i + 4 + n]
-            if all(b in _PRINTABLE for b in chunk):
+            if not chunk.translate(None, _PRINTABLE_BYTES):
                 out.append((i, chunk.decode("ascii")))
                 i += 4 + n
                 continue

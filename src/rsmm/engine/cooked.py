@@ -145,20 +145,25 @@ def _find_section_end(data: bytes, start_pos: int) -> int:
     """
     depth = 1
     pos = start_pos
-    n = len(data)
-    while pos + 4 <= n:
-        tag = data[pos:pos + 4]
-        if tag == MARK_BEGIN:
+    while True:
+        # `bytes.find` in C rather than a Python loop that slices a 4-byte
+        # object at every offset. The old loop stepped `pos += 1` on a miss, so
+        # its effective behaviour was "the earliest marker at or after pos" —
+        # which is exactly what find returns, making this equivalent rather
+        # than merely similar. It was 26s of a 100s apply, second only to the
+        # lstr scanner.
+        b = data.find(MARK_BEGIN, pos)
+        e = data.find(MARK_END, pos)
+        if e < 0 and b < 0:
+            break
+        if b >= 0 and (e < 0 or b < e):
             depth += 1
-            pos += 4
+            pos = b + 4
             continue
-        if tag == MARK_END:
-            depth -= 1
-            pos += 4
-            if depth == 0:
-                return pos
-            continue
-        pos += 1
+        depth -= 1
+        pos = e + 4
+        if depth == 0:
+            return pos
     raise ValueError("unterminated section: no matching END marker")
 
 

@@ -62,6 +62,11 @@ dist/winhttp.dll
 data/uncooked/
 
 # Pattern DB for rsmm.resolve (20 MB, regenerable via scripts/gen_function_patterns.py)
+# Derived index of the uncooked mirror (regenerated on demand; a stale
+# one is detected by fingerprint and rebuilt). Pure cache — never a
+# source of truth, and worthless to anyone else since it describes THIS
+# machine's extracted corpus.
+data/.corpus_cache/
 data/function_patterns.json
 # game-derived: mine_fingerprints currently embeds decompiled function bodies
 data/symbol_fingerprints.json

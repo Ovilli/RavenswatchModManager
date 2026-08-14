@@ -133,9 +133,11 @@ See ``docs/_re/kinds/pois.md``.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
 
+from ...engine import corpus_cache
 from ...engine import map_pool as MP
 from ...engine import prop_cook as PC
 from ...engine import rsc_cache as RC
@@ -404,7 +406,8 @@ def discover(mod_root: Path) -> list[dict]:
         # replaced its `Start` kind with `Fountain` and broken run spawning.
         # Only an explicit value in poi.toml may change those in override mode.
         overriding = bool(cfg.get("replace_base"))
-        for key in ("base", "kinds", "weight", "copies", "replace_base", "swaps"):
+        for key in ("base", "kinds", "weight", "copies", "replace_base",
+                    "own_level", "swaps"):
             if key in cfg:
                 block[key] = cfg.pop(key)
             elif key in preset and not (overriding and key in ("kinds", "weight")):
@@ -768,10 +771,12 @@ def _validated_swaps(defn: ContentDef, base: str) -> dict[str, str]:
         return {}
     if not isinstance(raw, dict) or not raw:
         raise ContentError(f"poi {defn.id}: 'swaps' must be a non-empty table")
-    if not defn.fields.get("replace_base"):
+    if not (defn.fields.get("replace_base") or defn.fields.get("own_level")):
         raise ContentError(
-            f"poi {defn.id}: 'swaps' re-dresses a shipped tile, so it needs "
-            f"replace_base = true. A cloned tile should use 'prop' instead."
+            f"poi {defn.id}: 'swaps' rewrites a tile's level, so it needs "
+            f"replace_base = true (edit the shipped tile in place) or "
+            f"own_level = true (give the clone its own level). A cloned tile "
+            f"that wants its own prop should use 'prop' instead."
         )
     for src, dst in raw.items():
         if not isinstance(dst, str) or not dst.lower().endswith(".entity.ot"):
@@ -787,20 +792,35 @@ def _validated_swaps(defn: ContentDef, base: str) -> dict[str, str]:
     placed = {s for _sec, _off, s in ES.list_strings(level)
               if s.lower().endswith(".entity.ot")}
     for src, dst in raw.items():
-        for side, ref in (("source", src), ("target", dst)):
-            if ref not in placed:
-                near = sorted(p for p in placed
-                              if Path(ref).name.split(".")[0].lower() in p.lower())
-                hint = f" Did you mean: {near[0]!r}?" if near else ""
-                raise ContentError(
-                    f"poi {defn.id}: swaps {side} {ref!r} is not an object "
-                    f"{base} places. Both sides have to be — a prop that is "
-                    f"only in the tile's resource cache may be a sub-entity "
-                    f"another prop selects from rather than something that can "
-                    f"stand on its own, and swapping to one builds nothing and "
-                    f"crashes.{hint} `rsmm poi show {base}` lists what this "
-                    f"tile places."
-                )
+        # The SOURCE must be an object this tile actually places — it is the
+        # transform being reused, so there is nothing to swap otherwise.
+        if src not in placed:
+            near = sorted(p for p in placed
+                          if Path(src).name.split(".")[0].lower() in p.lower())
+            hint = f" Did you mean: {near[0]!r}?" if near else ""
+            raise ContentError(
+                f"poi {defn.id}: swaps source {src!r} is not an object {base} "
+                f"places, so there is no transform to put anything at.{hint} "
+                f"`rsmm poi show {base}` lists what this tile places."
+            )
+        # The TARGET only has to be something SOME shipped level places. The
+        # property being tested is "can stand at a transform on its own", and a
+        # placement anywhere in the corpus proves that just as well as a
+        # placement here. Requiring it in THIS tile made the check simple but
+        # also made it impossible to introduce anything the tile lacked —
+        # including a minimap-marker entity, which is the only way a POI can
+        # ever be marked on the map. Being merely in a resource cache still
+        # does not count: a cache is a dependency closure and lists sub-entities
+        # that exist only to be selected by a prop, and swapping to one of those
+        # builds nothing and crashes.
+        if dst not in placed and dst not in _placeable_entities():
+            raise ContentError(
+                f"poi {defn.id}: swaps target {dst!r} is not placed by any "
+                f"shipped level, so nothing shows that it can stand at a "
+                f"transform on its own. A reference that only appears in a "
+                f"resource cache is usually a sub-entity another prop selects "
+                f"from; swapping to one builds nothing and crashes."
+            )
     return dict(raw)
 
 
@@ -834,8 +854,81 @@ def _extend_map_caches(out_dir: Path, defn_id: str, chapters: list[str],
             written.append(dest)
 
 
+@lru_cache(maxsize=1)
+def _placeable_entities() -> frozenset[str]:
+    """Every entity some shipped LEVEL places, anywhere in the corpus.
+
+    `_validated_swaps` needs to know whether a reference can stand at a
+    transform on its own. Being in a resource cache does not prove that — a
+    cache is a dependency closure and lists sub-entities that exist only to be
+    selected by a prop. Being *placed by a level* does prove it, and this is
+    the corpus-wide version of that evidence, used when the swap target is not
+    already in the tile the def is editing.
+    """
+    from ...engine import entity_strings as ES
+
+    def build() -> list[str]:
+        out: set[str] = set()
+        for lp in sorted((_UNCOOKED / "Ot").rglob("*.level.ot.GameStream.gen")):
+            try:
+                out |= {s for _sec, _off, s in ES.list_strings(lp.read_bytes())
+                        if s.lower().endswith(".entity.ot")}
+            except (OSError, ValueError):
+                continue    # a level this codec cannot frame is not evidence
+        return sorted(out)
+
+    return frozenset(corpus_cache.load_or_build(
+        "placeable_entities", _UNCOOKED, build))
+
+
+@lru_cache(maxsize=1)
+def _tile_cache_by_placed_entity() -> dict[str, str]:
+    """Entity ref -> the cooked cache path of a tiledef whose level places it.
+
+    Swapping in an entity the editing tile never referenced means its whole
+    dependency closure — mesh, material, textures, icon — is absent from that
+    tile's cache, and a resource the level asks for but the cache never listed
+    is precisely the null that crashes level build. Rather than re-deriving the
+    closure (which would need the full reference graph), borrow the cache of a
+    tile that already places the thing: it is guaranteed to contain it. Surplus
+    lines only cost a wasted preload of a real shipped file, which is the same
+    trade `rsc_cache` already makes by being append-only.
+    """
+    from ...engine import entity_strings as ES
+
+    def build() -> dict[str, str]:
+        out: dict[str, str] = {}
+        for tp in sorted((_UNCOOKED / "Definitions" / "Tiles").rglob(f"*{TC.GEN_SUFFIX}")):
+            rel = tp.relative_to(_UNCOOKED / "Definitions" / "Tiles")
+            base = str(rel).replace(TC.GEN_SUFFIX, "")
+            try:
+                td = TC.read(tp.read_bytes())
+                prefab = td.entity_ref[1] if td.entity_ref else None
+                if not prefab:
+                    continue
+                ep = _UNCOOKED / "EntitySettings" / (
+                    prefab.replace("\\", "/") + ".EntitySettingsResource.gen")
+                lv = [s for _sec, _off, s in ES.list_strings(ep.read_bytes())
+                      if s.lower().endswith(".level.ot")]
+                if not lv:
+                    continue
+                lp = _UNCOOKED / "Ot" / (lv[0].replace("\\", "/") + ".GameStream.gen")
+                placed = {s for _sec, _off, s in ES.list_strings(lp.read_bytes())
+                          if s.lower().endswith(".entity.ot")}
+            except (OSError, ValueError, KeyError, IndexError):
+                continue
+            cache_rel = RC.cache_path_for(f"{_TILE_ASSET_SUBDIR}/{base}{TC.GEN_SUFFIX}")
+            for ent in placed:
+                out.setdefault(ent, cache_rel)
+        return out
+
+    return corpus_cache.load_or_build(
+        "tile_cache_by_placed_entity", _UNCOOKED, build)
+
+
 def _emit_tile_caches(out_dir: Path, base: str, defn_id: str, assets: list[str],
-                      tile_rels: list[str], written: list[Path]) -> None:
+                      tile_rels: list[str], written: list[Path],
+                      borrow_for: Iterable[str] = ()) -> None:
     """Give every tiledef this def emitted its ``*.UsedRscCache.ot`` sibling.
 
     All 237 shipped tiledefs have one and the engine looks it up by convention,
@@ -848,13 +941,39 @@ def _emit_tile_caches(out_dir: Path, base: str, defn_id: str, assets: list[str],
 
     The cache is the donor tile's, plus a line for each asset this def emitted
     and one for the tiledef itself.
+
+    `borrow_for` names entities the def swapped IN that the donor tile never
+    referenced. Their dependency closures are absent from the donor's cache, so
+    the cache of a tile that already places each one is unioned in — see
+    :func:`_tile_cache_by_placed_entity` for why borrowing beats deriving.
     """
     donor_cooked = f"{_TILE_ASSET_SUBDIR}/{base}{TC.GEN_SUFFIX}"
     donor = _corpus(RC.cache_path_for(donor_cooked), defn_id,
                     "the base tile's resource cache")
+
+    borrowed: list[str] = []
+    for ent in sorted(set(borrow_for)):
+        cache_rel = _tile_cache_by_placed_entity().get(ent)
+        if cache_rel is None:
+            # Nothing to borrow from means nothing proves the closure is
+            # covered. Say so loudly: the failure mode is a null at level
+            # build, which surfaces as an access violation nowhere near here.
+            _log.warning(
+                "poi %s: no shipped tile places %s, so its resources cannot be "
+                "borrowed into the cache — if the swap fails in-game this is "
+                "the first thing to suspect", defn_id, ent)
+            continue
+        try:
+            borrowed.extend(RC.parse(_corpus(cache_rel, defn_id,
+                                             f"the cache of a tile placing {ent}")))
+        except (ContentError, SchemaNotMined, ValueError) as e:
+            _log.warning("poi %s: could not borrow %s's cache (%s)", defn_id, ent, e)
+
     for tile_rel in tile_rels:
-        _write(out_dir, RC.cache_path_for(tile_rel),
-               RC.extend(donor, [*assets, tile_rel]), written)
+        data = RC.extend(donor, [*assets, tile_rel])
+        if borrowed:
+            data = RC.render(sorted(set(RC.parse(data)) | set(borrowed)))
+        _write(out_dir, RC.cache_path_for(tile_rel), data, written)
 
 
 def _emit_prop_art(mod_id: str, defn: ContentDef, out_dir: Path,
@@ -1037,6 +1156,24 @@ def _emit_prop_override(mod_id: str, defn: ContentDef, out_dir: Path,
         _assert_art_is_exclusive(defn.id, ref, base, meshes, mats,
                                  overrides_textures=bool(spec.get("textures")))
 
+    # Checked after the donor guards, so a bad donor is still the error the
+    # author hears about first — but before anything is written, because an
+    # in-place override that ships neither a mesh nor a texture writes NOTHING.
+    # Both branches below are guarded, so such a def emits its caches and
+    # tiledef, applies cleanly, reports success and changes not one pixel.
+    # That cost a playtest: a canary whose folder happened to have no
+    # `model.glb` looked exactly like a canary that was placed and did not
+    # render, which is the one ambiguity it existed to resolve. Additive mode
+    # is different and stays legal without a model — the clone is then the
+    # donor's shape under a name the mod owns.
+    if not spec.get("model") and not spec.get("textures"):
+        raise ContentError(
+            f"poi {defn.id}: `replaces` names {ref} but the def ships no model "
+            f"and no textures, so an in-place override would write nothing at "
+            f"all. Add a model (e.g. `model.glb` in the POI folder) or a "
+            f"texture, or drop `replaces`."
+        )
+
     if spec.get("model"):
         src = _mod_source(out_dir, spec["model"], defn.id, "prop.model")
         cooked_model = PC.cook_model(src.read_bytes(),
@@ -1047,7 +1184,10 @@ def _emit_prop_override(mod_id: str, defn: ContentDef, out_dir: Path,
             # as soon as the camera pulls away.
             _write(out_dir, _shipped_path(mesh, defn.id), cooked_model, written)
 
-    for donor_ref, src_rel in (spec.get("textures") or {}).items():
+    textures = spec.get("textures") or {}
+    if textures:
+        _assert_textures_belong_to(defn.id, ref, mats, textures)
+    for donor_ref, src_rel in textures.items():
         src = _mod_source(out_dir, src_rel, defn.id, f"prop.textures[{donor_ref}]")
         _write(out_dir, _shipped_path(donor_ref, defn.id),
                PC.cook_texture(src.read_bytes()), written)
@@ -1063,16 +1203,20 @@ def _prop_placements() -> dict[str, frozenset[str]]:
 
     from ...engine import entity_strings as ES
 
-    tiles = collections.defaultdict(set)
-    for lvl in sorted(_UNCOOKED.glob("Ot/*/Tiles/*.level.ot.GameStream.gen")):
-        try:
-            refs = {s for _s, _o, s in ES.list_strings(lvl.read_bytes())
-                    if s.lower().endswith(".entity.ot")}
-        except (OSError, ValueError):
-            continue
-        for r in refs:
-            tiles[r].add(lvl.name)
-    return {k: frozenset(v) for k, v in tiles.items()}
+    def build() -> dict[str, list[str]]:
+        tiles = collections.defaultdict(set)
+        for lvl in sorted(_UNCOOKED.glob("Ot/*/Tiles/*.level.ot.GameStream.gen")):
+            try:
+                refs = {s for _s, _o, s in ES.list_strings(lvl.read_bytes())
+                        if s.lower().endswith(".entity.ot")}
+            except (OSError, ValueError):
+                continue
+            for r in refs:
+                tiles[r].add(lvl.name)
+        return {k: sorted(v) for k, v in tiles.items()}
+
+    raw = corpus_cache.load_or_build("prop_placements", _UNCOOKED, build)
+    return {k: frozenset(v) for k, v in raw.items()}
 
 
 @lru_cache(maxsize=1)
@@ -1082,16 +1226,40 @@ def _art_users() -> dict[str, frozenset[str]]:
 
     from ...engine import entity_strings as ES
 
-    users = collections.defaultdict(set)
-    for p in _UNCOOKED.glob("EntitySettings/**/*.entity.ot.EntitySettingsResource.gen"):
-        try:
-            strings = {s for _s, _o, s in ES.list_strings(p.read_bytes())}
-        except (OSError, ValueError):
-            continue  # not a parseable entity container; it cannot be a user
-        for a in strings:
-            if a.lower().endswith((".fbx", ".mat.ot")):
-                users[a].add(p.name.split(".entity.ot")[0])
-    return {k: frozenset(v) for k, v in users.items()}
+    def build() -> dict[str, list[str]]:
+        users = collections.defaultdict(set)
+        for p in _UNCOOKED.glob(
+                "EntitySettings/**/*.entity.ot.EntitySettingsResource.gen"):
+            try:
+                strings = {s for _s, _o, s in ES.list_strings(p.read_bytes())}
+            except (OSError, ValueError):
+                continue  # not a parseable entity container; cannot be a user
+            for a in strings:
+                if a.lower().endswith((".fbx", ".mat.ot")):
+                    users[a].add(p.name.split(".entity.ot")[0])
+        return {k: sorted(v) for k, v in users.items()}
+
+    raw = corpus_cache.load_or_build("art_users", _UNCOOKED, build)
+    return {k: frozenset(v) for k, v in raw.items()}
+
+
+@lru_cache(maxsize=512)
+def _entity_draws(ref: str) -> bool:
+    """Does this ``EntitySettings`` reference any geometry of its own?
+
+    Used to tell a real composite child (a candle, a fountain) from a
+    settings-only attachment (a perf-profile tester, a material selector).
+    Unresolvable entities answer True so the composite check fails closed —
+    an unknown child is treated as one that draws.
+    """
+    try:
+        cooked = _corpus(PC.entity_cooked_path(ref), "_entity_draws", "a child entity")
+    except (ContentError, SchemaNotMined, OSError, ValueError):
+        return True
+    from ...engine import entity_strings as ES
+
+    return any(s.lower().endswith(".fbx")
+               for _sec, _off, s in ES.list_strings(cooked))
 
 
 def _assert_prop_is_not_composite(defn_id: str, ref: str,
@@ -1117,9 +1285,23 @@ def _assert_prop_is_not_composite(defn_id: str, ref: str,
     Only 14 props in the whole corpus are single-mesh, child-free, exclusively
     placed and exclusively textured. That is the population an in-place
     override may target, and it is small enough that guessing does not work.
+
+    **A child that draws nothing cannot bury anything** (2026-08-14). The first
+    version of this check counted every child ``EntitySettings`` reference, and
+    that is not what the failure was: what hid the shrine was eleven children
+    with *meshes*. Almost every scenery prop in the game carries
+    ``Common_Settings\\Environment_Perf_Profile_Tester`` — a settings-only
+    entity with no geometry at all — so counting references rejected nearly the
+    whole scenery corpus, including `Pebbles_*`, `Wall_Ruins_*`, `Skull` and
+    `RibCage`. That false positive is what made "child-free" props look rare
+    and pushed donor choice toward odd conditional ones. A child is only
+    disqualifying if its own cooked entity references a mesh; a child whose
+    entity cannot be resolved counts as drawing, so the check still fails
+    closed.
     """
     children = sorted({s for s in strings if s.lower().endswith(".entity.ot")
                        and s != ref})
+    children = [c for c in children if _entity_draws(c)]
     if not children:
         return
     raise ContentError(
@@ -1172,6 +1354,104 @@ def _assert_art_is_exclusive(defn_id: str, ref: str, base: str,
             f"({', '.join(shared[first][:3])}…), so overriding it would change "
             f"props outside {base}{extra}. Pick a prop whose art is its own."
         )
+
+
+def _assert_textures_belong_to(defn_id: str, ref: str, mats: list[str],
+                               textures: dict) -> None:
+    """Refuse to write a texture the overridden prop does not actually use.
+
+    `slots` is inherited from the preset when a def does not set it, and the
+    presets name their OWN donor's textures — `clearing`'s slots are the blood
+    fountain's. So a def that overrides `replaces` to some other prop, ships
+    three images and says nothing about `slots` re-skins that prop's mesh while
+    writing its images over the FOUNTAIN's textures, changing every tile that
+    draws a fountain. Nothing else catches it: `_shipped_path` only asks "is
+    this a shipped asset", and `_assert_art_is_exclusive` inspects the donor's
+    meshes and materials rather than the texture refs actually being written.
+
+    The check is what the author meant all along: a texture slot must be one
+    the prop being replaced really references, reached through its materials.
+    """
+    own: set[str] = set()
+    for mat in mats:
+        try:
+            own |= _material_refs(_corpus(PC.art_cooked_path(mat), defn_id,
+                                          "the donor material"))
+        except (ContentError, SchemaNotMined, ValueError, KeyError):
+            # A material this codec cannot read is not evidence of absence, so
+            # it must not turn into a refusal of a legitimate override.
+            _log.warning("poi %s: cannot read %s to verify texture slots; "
+                         "skipping that material", defn_id, mat)
+            continue
+    if not own:
+        return                      # nothing to check against — stay permissive
+    stray = sorted(k for k in textures if k not in own)
+    if stray:
+        raise ContentError(
+            f"poi {defn_id}: texture slot(s) {stray} are not used by "
+            f"{ref} — writing them would re-skin a DIFFERENT prop everywhere "
+            f"it appears. This is what an inherited `slots` from the preset "
+            f"looks like when `replaces` was changed without it: set `slots` "
+            f"to this prop's own textures ({sorted(own)[:3]}…) or drop the "
+            f"images and keep the donor's material."
+        )
+
+
+def _emit_cloned_level(mod_id: str, defn: ContentDef, out_dir: Path,
+                       base: str, written: list[Path]) -> str:
+    """Additive path with a mod-owned LEVEL but no mod-owned entity.
+
+    This is the missing rung of the ladder. The two rungs either side of it are
+    measured (2026-08-14):
+
+    * a mod-owned **tiledef** loads, pools and does not crash;
+    * a mod-owned tiledef **+ prefab + level + prop entity** crashes at level
+      build with a null resource.
+
+    Four names changed at once between them, so "a mod cannot own a level" and
+    "a level cannot reference a mod-owned entity" are still indistinguishable —
+    and they have very different consequences. If levels are fine and only
+    entity names are cursed, a mod can clone a level and re-dress it with
+    SHIPPED entities, which is the only known route to a POI with a minimap
+    icon: icons come from a marker component, an in-place override cannot add
+    one, and `swaps` can only reuse what the donor tile already places. Owning
+    the level is what would let a marker-carrying entity be placed at all.
+
+    So this emits exactly two new names — a level and the prefab that points at
+    it — and zero new entity names. `swaps` may re-dress it, but only between
+    entities the donor level already places, which `_validated_swaps` enforces.
+
+    Returns the new prefab reference for the cloned tiledef to point at.
+    """
+    tag = f"{mod_id}_{defn.id}".replace("-", "_")
+    swaps = _validated_swaps(defn, base)
+
+    donor_prefab_dec = _prefab_ref_of(base, defn.id)
+    level_ref = _level_ref_of(donor_prefab_dec, defn.id)
+    new_level_ref = level_ref.rsplit("\\", 1)[0] + f"\\{tag}.level.ot"
+    _write(out_dir, PC.level_cooked_path(new_level_ref),
+           PC.clone_tile_level(
+               _corpus(PC.level_cooked_path(level_ref), defn.id, "the tile's level"),
+               level_ref, new_level_ref, swaps), written)
+
+    new_prefab_ref = donor_prefab_dec.rsplit("\\", 1)[0] + f"\\{tag}.entity.ot"
+    _write(out_dir, PC.entity_cooked_path(new_prefab_ref),
+           PC.clone_tile_prefab(
+               _corpus(PC.entity_cooked_path(donor_prefab_dec), defn.id,
+                       "the tile's prefab entity"),
+               # `new_prefab_ref` is what restamps the clone's component
+               # identity GUIDs. Omitting it (the four-arg call is optional)
+               # left this prefab carrying the DONOR's identities — a second
+               # resource claiming a shipped resource's place, which is the
+               # collision RESTAMP_ENTITY_GUIDS exists to prevent and the
+               # prime suspect for every earlier additive failure. On the rung
+               # whose whole job is to isolate which name the engine rejects,
+               # that would have made the result unreadable.
+               level_ref, new_level_ref, new_prefab_ref), written)
+
+    _log.info("poi %s/%s: mod-owned level %s (%d swap(s), no new entity names)",
+              mod_id, defn.id, new_level_ref, len(swaps))
+    return new_prefab_ref
 
 
 def _emit_custom_prop(mod_id: str, defn: ContentDef, out_dir: Path,
@@ -1272,7 +1552,8 @@ def _emit_replacing_base(mod_id: str, defn: ContentDef, out_dir: Path,
     # listed, and an un-updated cache is what crashed the game on 2026-08-10.
     assets = _emitted_assets(out_dir, written)
     _emit_tile_caches(out_dir, base, defn.id, assets,
-                      [f"{_TILE_ASSET_SUBDIR}/{base}{TC.GEN_SUFFIX}"], written)
+                      [f"{_TILE_ASSET_SUBDIR}/{base}{TC.GEN_SUFFIX}"], written,
+                      borrow_for=swaps.values())
     # No tile is pooled here, but the chapter's cache is a superset of every
     # tile's, so art the overridden tile now reaches has to be listed there too.
     _extend_map_caches(out_dir, defn.id, chapters, assets, [], written)
@@ -1321,6 +1602,9 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     if defn.fields.get("prop"):
         td.entity_ref = ["EntitySettings",
                          _emit_custom_prop(mod_id, defn, out_dir, base, written)]
+    elif defn.fields.get("own_level"):
+        td.entity_ref = ["EntitySettings",
+                         _emit_cloned_level(mod_id, defn, out_dir, base, written)]
 
     # After _apply_edits, so a shipped icon.png beats an `icon = "..."` ref.
     if defn.fields.get("icon_source"):
@@ -1359,7 +1643,8 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # Every copy is a separate tiledef asset, so every copy needs its own
     # cache — a tiledef the engine cannot preload is never placed.
     assets = _emitted_assets(out_dir, written)
-    _emit_tile_caches(out_dir, base, defn.id, assets, tile_rels, written)
+    _emit_tile_caches(out_dir, base, defn.id, assets, tile_rels, written,
+                      borrow_for=_validated_swaps(defn, base).values())
     _report_share(mod_id, defn, td, chapters, copies)
 
     for ch in chapters:
