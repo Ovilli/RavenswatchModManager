@@ -48,6 +48,7 @@ import sys
 import time
 import tomllib  # Python 3.11+
 from contextlib import contextmanager
+from functools import lru_cache
 from pathlib import Path
 
 from rsmm.cli import _term
@@ -474,7 +475,72 @@ def is_vanilla_encoded(enc: str) -> bool:
     for suffix in _LANG_ENC_SUFFIXES:
         if enc.endswith(suffix):
             return enc[: -len(suffix)] in known
+    # Two whole families the game ships are absent from `asset_map` by
+    # construction, so membership above answers False for every one of them —
+    # exactly the shape of the lang-sibling bug that lost 13 files per text
+    # bank on 2026-07-11. Neither is hypothetical: `poi` overrides shipped
+    # `.UsedRscCache.ot` files on every apply, and the audio kind overrides
+    # shipped banks.
+    decoded = known.get(enc) or _decode_enc(enc)
+    if decoded:
+        norm = decoded.replace("\\", "/")
+        # 1. Resource caches. The engine loads them by CONVENTION (append
+        #    ".UsedRscCache.ot" to the resource name), so none of the 575
+        #    shipped caches has a UsedRscList record and none is in asset_map.
+        #    A cache is vanilla iff the definition it belongs to is — derived
+        #    through rsc_cache's own mapping rather than guessed from the name.
+        if norm.endswith(_CACHE_SUFFIX_NORM) and norm in _shipped_cache_paths():
+            return True
+        # 2. FMOD sound banks. The engine opens `Audio/<Name>.bank` by path, so
+        #    the 16 shipped banks never appear in the manifest either. A mod
+        #    cannot introduce a new bank (the names are fixed in the exe), so
+        #    any cooked path of this shape is a game file.
+        if norm.startswith("Audio/") and norm.endswith(".bank"):
+            return True
     return False
+
+
+_CACHE_SUFFIX_NORM = ".UsedRscCache.ot"
+
+
+def _decode_enc(enc: str) -> str:
+    """Decoded form of an encoded cooked path, or "" if it does not decode."""
+    from rsmm.engine.cipher import decode
+
+    try:
+        return decode(enc)
+    except Exception:            # noqa: BLE001 - a non-cooked key is not fatal
+        return ""
+
+
+@lru_cache(maxsize=1)
+def _shipped_cache_paths() -> frozenset[str]:
+    """Every `.UsedRscCache.ot` path the shipped assets could own.
+
+    Built by asking `rsc_cache` for the cache path of each cooked asset in
+    `asset_map`, which keeps this in step with the engine's naming rule rather
+    than re-deriving it here.
+
+    This is deliberately a SUPERSET: only 575 caches actually ship, but which
+    ones cannot be known without the install (they are absent from the manifest
+    — that is the whole problem), so every asset that could own one is
+    included. The two error directions are not symmetric. Too permissive keeps
+    a mod-added cache that should have been dropped: a stale file the engine
+    preloads and ignores. Too strict deletes a cache the game shipped, and a
+    definition without its cache either never loads or crashes the game at
+    level build. Erring toward keeping is the same trade `rsc_cache` already
+    makes by being append-only.
+    """
+    from rsmm.engine import rsc_cache as RC
+    from rsmm.engine.asset_map import encoded_to_decoded
+
+    out: set[str] = set()
+    for decoded in encoded_to_decoded().values():
+        try:
+            out.add(RC.cache_path_for(decoded).replace("\\", "/"))
+        except Exception:        # noqa: BLE001 - not every asset is a definition
+            continue
+    return frozenset(out)
 
 
 def resolve_special(decoded: str, dec2enc: dict[str, str]) -> str | None:
@@ -982,61 +1048,43 @@ def plan_apply(mods: list[Mod],
             wanted[enc] = (src, mod_id)
             continue
         decoded = writers[0][2]
-        if is_text_bank(decoded):
-            # Merge all mods' appends into one bank so every item name survives.
-            ordered = sorted(writers, key=lambda w: w[1])  # deterministic by mod id
+        # Three asset families are ADDITIVE: every mod appends to the same
+        # shipped file, so last-writer-wins silently discards the others' work
+        # in a way no error surfaces — a text bank loses item names, a tile
+        # pool loses POIs, a resource cache makes a pooled tile unloadable.
+        # One table, because three copies of this block is how the loader's
+        # nine hook-install sites and five `readable()` copies drifted apart.
+        mergers = (
+            (is_text_bank,  _merge_text_bank,  "text bank"),
+            (is_map_def,    _merge_map_pool,   "tile pool"),
+            (is_rsc_cache,  _merge_rsc_cache,  "resource cache"),
+        )
+        merger = next(((fn, label) for pred, fn, label in mergers if pred(decoded)),
+                      None)
+        if merger is not None:
+            merge_fn, label = merger
+            ordered = sorted(writers, key=lambda w: w[1])   # deterministic by mod id
             dest = encoded_to_dest(enc, cooking, game_dir)
             vanilla = dest.parent / (dest.name + BACKUP_SUFFIX)
             if not vanilla.exists():
                 vanilla = dest if dest.exists() else None
-            merged = _merge_text_bank(enc, [w[0] for w in ordered], vanilla) \
-                if vanilla else None
+            merged = merge_fn(enc, [w[0] for w in ordered], vanilla) if vanilla else None
             if merged is not None:
                 ids = ", ".join(w[1] for w in ordered)
-                print(f"  [merge] text bank '{decoded}' from {len(ordered)} "
+                print(f"  [merge] {label} '{decoded}' from {len(ordered)} "
                       f"mods ({ids})")
                 wanted[enc] = (merged, ordered[-1][1])
                 continue
-            print(f"  [warn] text bank '{decoded}': no vanilla to merge against; "
-                  f"keeping {ordered[-1][1]}", file=sys.stderr)
-            wanted[enc] = (ordered[-1][0], ordered[-1][1])
-        elif is_map_def(decoded):
-            # Union every poi mod's tile-pool additions for this chapter.
-            ordered = sorted(writers, key=lambda w: w[1])  # deterministic by mod id
-            dest = encoded_to_dest(enc, cooking, game_dir)
-            vanilla = dest.parent / (dest.name + BACKUP_SUFFIX)
-            if not vanilla.exists():
-                vanilla = dest if dest.exists() else None
-            merged = _merge_map_pool(enc, [w[0] for w in ordered], vanilla) \
-                if vanilla else None
-            if merged is not None:
-                ids = ", ".join(w[1] for w in ordered)
-                print(f"  [merge] tile pool '{decoded}' from {len(ordered)} "
-                      f"mods ({ids})")
-                wanted[enc] = (merged, ordered[-1][1])
-                continue
-            print(f"  [warn] tile pool '{decoded}': no vanilla to merge against; "
-                  f"keeping {ordered[-1][1]}", file=sys.stderr)
-            wanted[enc] = (ordered[-1][0], ordered[-1][1])
-        elif is_rsc_cache(decoded):
-            # Union every mod's preload lines for this definition. Dropping one
-            # mod's lines makes its content load-fail rather than conflict, so
-            # last-writer-wins here is silently destructive.
-            ordered = sorted(writers, key=lambda w: w[1])
-            dest = encoded_to_dest(enc, cooking, game_dir)
-            vanilla = dest.parent / (dest.name + BACKUP_SUFFIX)
-            if not vanilla.exists():
-                vanilla = dest if dest.exists() else None
-            merged = _merge_rsc_cache(enc, [w[0] for w in ordered], vanilla) \
-                if vanilla else None
-            if merged is not None:
-                ids = ", ".join(w[1] for w in ordered)
-                print(f"  [merge] resource cache '{decoded}' from "
-                      f"{len(ordered)} mods ({ids})")
-                wanted[enc] = (merged, ordered[-1][1])
-                continue
-            print(f"  [warn] resource cache '{decoded}': no vanilla to merge "
-                  f"against; keeping {ordered[-1][1]}", file=sys.stderr)
+            # Say WHICH failure this is. The old message always blamed a
+            # missing vanilla file, but the merge helpers also return None when
+            # a source will not parse — and on that path one mod's content is
+            # about to be dropped, so an accurate reason is the difference
+            # between a two-minute fix and a playtest.
+            why = ("no vanilla to merge against" if not vanilla
+                   else "a source file could not be parsed")
+            print(f"  [warn] {label} '{decoded}': {why}; "
+                  f"keeping {ordered[-1][1]} and DISCARDING "
+                  f"{', '.join(w[1] for w in ordered[:-1])}", file=sys.stderr)
             wanted[enc] = (ordered[-1][0], ordered[-1][1])
         else:
             last = writers[-1]

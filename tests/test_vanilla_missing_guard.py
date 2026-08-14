@@ -66,6 +66,42 @@ def test_a_genuinely_new_asset_is_not_vanilla():
     assert not AM.is_vanilla_encoded("Qqpi\\NoSuchBank.yqz.GgzyMU")
 
 
+def _enc(decoded: str) -> str:
+    from rsmm.engine.cipher import encode
+
+    return encode(decoded.replace("/", "\\"))
+
+
+def test_shipped_resource_caches_are_recognised_as_vanilla():
+    """The same shape as the lang-sibling loss, for a second family.
+
+    A `*.UsedRscCache.ot` is loaded by CONVENTION — the engine appends the
+    suffix to the resource name — so none of the 575 shipped caches has a
+    UsedRscList record and none is in asset_map. `enc in asset_map` therefore
+    answers False for every one of them, and the drop path would delete a game
+    file. This is not hypothetical: the `poi` kind overrides shipped caches on
+    every apply (a tiledef whose cache is missing is never placed, and one
+    whose cache is stale crashes the game at level build).
+    """
+    shipped = "Definitions/Tiles/Dark_Hills/40x40_Dark_Hills_Start_Update3.tiledef.UsedRscCache.ot"
+    enc = _enc(shipped)
+    assert enc not in encoded_to_decoded(), "premise: caches are not in asset_map"
+    assert AM.is_vanilla_encoded(enc)
+
+    # A cache belonging to a tile the MOD introduced has no vanilla owner, so
+    # it must stay droppable — otherwise restore leaves the mod's files behind.
+    mod_cache = "Definitions/Tiles/Dark_Hills/mymod_new_tile.tiledef.UsedRscCache.ot"
+    assert not AM.is_vanilla_encoded(_enc(mod_cache))
+
+
+def test_shipped_sound_banks_are_recognised_as_vanilla():
+    """The other family outside asset_map: the engine opens `Audio/<Name>.bank`
+    by path, so the 16 shipped banks never appear in the manifest either."""
+    enc = _enc("Audio/Music.bank")
+    assert enc not in encoded_to_decoded(), "premise: banks are not in asset_map"
+    assert AM.is_vanilla_encoded(enc)
+
+
 # --- the refusal -----------------------------------------------------------
 
 def test_apply_refuses_when_the_vanilla_original_is_missing(tmp_path, state):
