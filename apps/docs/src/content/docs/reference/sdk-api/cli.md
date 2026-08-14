@@ -11,7 +11,7 @@ Every `rsmm` subcommand, auto-generated from the dispatch table (`rsmm.cli._disp
 Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcommand. For task-oriented prose, see the [CLI guide](/reference/cli/).
 :::
 
-**45 commands.**
+**46 commands.**
 
 | Command | Module | Summary |
 |---|---|---|
@@ -42,6 +42,7 @@ Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcomman
 | `rsmm merge` | `rsmm.cli.merge` | Patch-merge layer. |
 | `rsmm new` | `rsmm.cli.cmd_new` | rsmm new — scaffold a mod directory. |
 | `rsmm pack` | `rsmm.cli.cmd_pack` | rsmm pack — bundle a mod for distribution. |
+| `rsmm poi` | `rsmm.cli.cmd_poi` | `rsmm poi` — browse the tiles and kinds a `poi` content def can use. |
 | `rsmm rebuild-asset-map` | `rsmm.engine.find_iyg` | Ravenswatch Asset Decrypter — builds a full obfuscated -> plaintext |
 | `rsmm repo` | `rsmm.cli.repo_cmd` | `rsmm repo`, `rsmm sign`, `rsmm verify`, `rsmm keygen`. |
 | `rsmm restore` | `rsmm.cli.apply_mods` | Ravenswatch Mod Manager — install-time mod applier. |

@@ -96,8 +96,49 @@ def main():
         print(f"appended {len(added)} entries to {args.out}:")
         for name, addr, idx, nhits, used in added:
             print(f"  {name} {addr} match_index={idx}/{nhits} bytes={used}")
+        _restamp_meta(Path(args.out), len(out))
     else:
         print("nothing appended")
+
+
+def _restamp_meta(out_path: Path, pattern_count: int) -> None:
+    """Refresh the sidecar meta's hash and count after appending.
+
+    The meta records `patterns_sha256` of the DB, and `publish_pattern_db.sh`
+    refuses to publish when it disagrees — correctly, since that hash is the
+    download integrity check every user's `rsmm update-data` verifies. Appending
+    used to leave the two out of sync, so the very next publish failed with
+    "re-run gen_function_patterns.py", which is a full multi-minute rebuild of a
+    20 MB file to fix a hash that could just be recomputed.
+
+    Only the fields that actually changed are touched: the game build fields
+    (`game_exe_sha256` / `game_exe_size`) still describe the exe the patterns
+    were mined from, which an append does not alter.
+    """
+    import hashlib
+
+    meta_path = out_path.with_name(out_path.stem + ".meta.json")
+    if not meta_path.is_file():
+        print(f"NOTE: no {meta_path.name} to restamp (run gen_function_patterns.py "
+              f"to create one)")
+        return
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        print(f"WARN: {meta_path.name} unreadable ({e}); not restamped")
+        return
+    import datetime
+
+    meta["pattern_count"] = pattern_count
+    meta["patterns_sha256"] = hashlib.sha256(out_path.read_bytes()).hexdigest()
+    # `generated` describes the DB's contents, not the mining session, and the
+    # publish script prints it as the release's freshness line. Leaving the old
+    # date on a DB that just gained entries would misreport it — and
+    # sync_symbol_patterns.py already bumps it for the same reason.
+    meta["generated"] = (datetime.datetime.now(datetime.UTC)
+                         .isoformat(timespec="seconds"))
+    meta_path.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+    print(f"restamped {meta_path.name} (pattern_count={pattern_count})")
 
 
 if __name__ == "__main__":

@@ -73,15 +73,38 @@ import json, sys
 sys.path.insert(0, "src")
 from rsmm.engine.symbols import load_symbol_map
 fps = json.load(open(sys.argv[1]))
-ok = [s.name for s in load_symbol_map().symbols
-      if s.status == "ok" and s.kind in ("function", "event")]
-missing = [n for n in ok if n not in fps]
-print(f"ok: {len(fps)} fingerprints, covering {len(ok) - len(missing)}/{len(ok)} "
-      f"ok symbols")
+syms = [s for s in load_symbol_map().symbols
+        if s.status == "ok" and s.kind in ("function", "event")]
+
+# An ANCHOR is a code location inside another function (parent raw + offset),
+# not a function entry — UiButton_PressReturnSite is a return address used as a
+# comparison value, deliberately "not a detour target". It has no body of its
+# own, so it can never carry its own fingerprint, and demanding one produced a
+# warning that could not be actioned and so would nag on every publish forever.
+# What actually keeps an anchor alive across a patch is its PARENT's
+# fingerprint, so that is what gets checked.
+own, anchored = [], []
+for s in syms:
+    (anchored if (not s.raw and s.anchor) else own).append(s)
+
+missing = [s.name for s in own if s.name not in fps]
+by_raw = {s.raw: s.name for s in load_symbol_map().symbols if s.raw}
+stranded_anchors = [
+    f"{s.name} (parent {by_raw.get(s.anchor.get('raw'), s.anchor.get('raw'))})"
+    for s in anchored
+    if by_raw.get(s.anchor.get("raw")) not in fps
+]
+
+covered = len(own) - len(missing)
+print(f"ok: {len(fps)} fingerprints, covering {covered}/{len(own)} ok symbols"
+      + (f" (+{len(anchored)} anchor(s) covered via their parent)" if anchored else ""))
 if missing:
     print(f"WARNING: {len(missing)} ok symbol(s) have NO fingerprint and will "
           f"strand on the next game patch — run tools/mine_fingerprints.py: "
           f"{missing[:6]}")
+if stranded_anchors:
+    print(f"WARNING: {len(stranded_anchors)} anchor(s) whose PARENT has no "
+          f"fingerprint — the anchor strands with it: {stranded_anchors[:6]}")
 EOF
 else
     echo "WARNING: $FPS missing — run tools/mine_fingerprints.py so symbols" \
