@@ -12,7 +12,9 @@ from pathlib import Path
 
 import pytest
 
+from rsmm.engine import entity_strings
 from rsmm.engine import map_pool as MP
+from rsmm.engine import prop_cook as PC
 from rsmm.engine import tile_cook as TC
 from rsmm.engine.paths import DATA_DIR
 from rsmm.sdk.content import ContentDef, ContentError, SchemaNotMined
@@ -1312,6 +1314,142 @@ def test_allow_shared_art_waives_exclusivity_but_never_compositeness(tmp_path):
                     "Scenery\\DarkHills\\Blood_Fountain\\M_Blood_Foutain_base_DH.mat.ot",
                 "allow_shared_art": True,
             }}), tmp_path / "composite")
+
+
+def test_texture_slots_must_belong_to_the_prop_being_replaced():
+    """An inherited `slots` must not re-skin a different prop.
+
+    `slots` comes from the preset when a def does not set one, and each preset
+    names ITS OWN donor's textures — `clearing`'s are the blood fountain's. A
+    def that points `replaces` at another prop, ships images and says nothing
+    about `slots` therefore re-skins that prop's mesh while writing its images
+    over the FOUNTAIN's textures, changing every tile that draws one.
+
+    Nothing else catches it: `_shipped_path` only asks whether the target is a
+    shipped asset, and `_assert_art_is_exclusive` looks at the donor's meshes
+    and materials, never at the texture refs actually written.
+
+    Checked directly rather than through `emit`, so the assertion is about this
+    rule alone and does not depend on a donor that also passes exclusivity.
+    """
+    donor = "DarkHills\\SceneryObjects_DarkHills\\Menhir_Big_A.entity.ot"
+    mats = ["Scenery\\DarkHills\\M_Menhirs_Moss.mat.ot"]
+    fountain_tex = ("Scenery\\DarkHills\\Blood_Fountain\\"
+                    "T_Blood_Fountain_base_DH_ALB.tga")
+
+    with pytest.raises(ContentError, match="not used by"):
+        poi._assert_textures_belong_to("S", donor, mats,
+                                       {fountain_tex: "art/albedo.png"})
+
+    # A texture the donor's own material really references is accepted.
+    poi._assert_textures_belong_to(
+        "S", donor, mats,
+        {"Scenery\\DarkHills\\T_Menhirs_ALB.tga": "art/albedo.png"})
+
+    # A material this codec cannot read must not turn into a refusal of a
+    # legitimate override — absence of evidence is not evidence of absence.
+    poi._assert_textures_belong_to("S", donor, ["No\\Such\\M_Nothing.mat.ot"],
+                                   {fountain_tex: "art/albedo.png"})
+
+
+def test_own_level_clones_the_level_without_minting_entity_names(tmp_path):
+    """`own_level` is the isolation rung between the two measured outcomes.
+
+    A mod-owned tiledef loads; a mod-owned tiledef + prefab + level + prop
+    entity crashes. Four names moved at once, so "a mod cannot own a level" and
+    "a level cannot reference a mod-owned entity" are still entangled — and the
+    answer decides whether an own-tile POI can ever carry a minimap icon, since
+    icons need a marker-carrying ENTITY placed in the tile.
+
+    So this path must mint exactly two names, a level and its prefab, and zero
+    entity names.
+    """
+    files = poi.emit("mymod", ContentDef(kind="poi", id="L", fields={
+        "base": "Dark_Hills/6x6_Bleeding_01", "chapters": ["Dark_Hills"],
+        "own_level": True, "copies": 2,
+    }), tmp_path / "own")
+    rel = {str(f.relative_to(tmp_path / "own").as_posix()) for f in files
+           if (tmp_path / "own") in f.parents}
+
+    levels = {r for r in rel if r.startswith("Ot/")}
+    assert len(levels) == 1, f"expected exactly one cloned level, got {levels}"
+    ents = {r for r in rel if r.startswith("EntitySettings/")}
+    assert len(ents) == 1 and "Tiles_Definition" in next(iter(ents)), \
+        f"the only new entity may be the tile PREFAB, got {ents}"
+
+    # Two copies means two tiledefs, each with its required cache sibling.
+    tiles = {r for r in rel if r.startswith("Definitions/Tiles/")}
+    assert len(tiles) == 4, tiles
+
+    # Without `own_level` the same def keeps the donor's prefab and emits no
+    # level at all — that is the layer-1 shape, and the two must stay distinct.
+    plain = poi.emit("mymod", ContentDef(kind="poi", id="L", fields={
+        "base": "Dark_Hills/6x6_Bleeding_01", "chapters": ["Dark_Hills"],
+        "copies": 2,
+    }), tmp_path / "plain")
+    assert not any("Ot/" in str(f) for f in plain)
+
+
+def test_in_place_override_with_no_art_is_refused(tmp_path):
+    """A `replaces` that ships neither mesh nor texture must not "succeed".
+
+    Both write branches in `_emit_prop_override` are guarded, so such a def
+    emits its caches and tiledef, applies cleanly, prints a success line and
+    changes nothing on screen. It cost a playtest on 2026-08-14: a canary POI
+    whose folder happened to have no `model.glb` was indistinguishable from a
+    canary that placed and failed to render — the exact question it existed to
+    answer.
+
+    Additive mode stays legal without a model (the clone is the donor's shape
+    under a mod-owned name), so the refusal is specific to in-place override.
+    """
+    donor = "DarkHills\\SceneryObjects_DarkHills\\Menhir_Big_A.entity.ot"
+    fields = {"base": "Dark_Hills/64x64_Dark_Hills_Menhir_Cultist_Camp",
+              "chapters": ["Dark_Hills"], "replace_base": True,
+              "prop": {"replaces": donor, "entity_base": donor,
+                       "material_base": "Scenery\\DarkHills\\M_Menhirs_Moss.mat.ot"}}
+    with pytest.raises(ContentError, match="nothing at all"):
+        poi.emit("mymod", ContentDef(kind="poi", id="S", fields=fields), tmp_path / "bare")
+
+    # The same def with a mesh is fine, and writes the donor's own cooked path.
+    _poi_art(tmp_path / "art")
+    fields["prop"]["model"] = "art/mine.glb"
+    files = poi.emit("mymod", ContentDef(kind="poi", id="S", fields=fields),
+                     tmp_path / "art_ok")
+    assert any(f.name == "Menhir_Big_A.fbx.Geometry.gen" for f in files)
+
+
+def test_composite_check_ignores_children_that_draw_nothing():
+    """A settings-only child is not a composite child.
+
+    Almost every scenery prop in the game attaches
+    `Common_Settings\\Environment_Perf_Profile_Tester` — an entity with no
+    geometry whatsoever. Counting child references rejected `Pebbles_*`,
+    `Wall_Ruins_*`, `Skull`, `RibCage` and most of the rest of the scenery
+    corpus, which is what made child-free donors look rare and pushed donor
+    choice onto conditional props that never render (2026-08-14: the shrine's
+    donor turned out to be the rug under the Sandman, who does not always
+    spawn — four playtests were spent debugging the cook instead).
+
+    What actually buried the shrine was children WITH meshes, so that is what
+    the guard has to catch, and it still does.
+    """
+    def strings_of(ref):
+        cooked = poi._corpus(PC.entity_cooked_path(ref), "t", "donor")
+        return [s for _sec, _off, s in entity_strings.list_strings(cooked)]
+
+    ok = "DarkHills\\SceneryObjects_DarkHills\\Pebbles_4x4.entity.ot"
+    kids = [s for s in strings_of(ok) if s.lower().endswith(".entity.ot")]
+    assert kids, "this donor is only interesting because it HAS a child"
+    assert not any(poi._entity_draws(k) for k in kids)
+    poi._assert_prop_is_not_composite("t", ok, strings_of(ok))   # must not raise
+
+    bad = "Storm_Island\\Objects_Storm_Island\\Blood_Fountain_Storm_Island.entity.ot"
+    with pytest.raises(ContentError, match="composite"):
+        poi._assert_prop_is_not_composite("t", bad, strings_of(bad))
+
+    # An unresolvable child counts as drawing, so the guard fails closed.
+    assert poi._entity_draws("No\\Such\\Entity.entity.ot") is True
 
 
 def test_discover_passes_allow_shared_art_through(tmp_path):

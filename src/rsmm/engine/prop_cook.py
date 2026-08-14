@@ -298,8 +298,16 @@ def restamp_entity_guids(cooked_bytes: bytes, seed: str) -> bytes:
     random: every peer in a multiplayer lobby has to cook the same bytes.
     """
     cf = cooked.parse(cooked_bytes)
+    # Substitution is blind (`bytes.replace` over the whole payload), which is
+    # what carries the internal parent links across — and also what makes a
+    # DEGENERATE key catastrophic. An all-zero GUID matches every 16-byte run
+    # of zeros in the file: padding, zeroed floats, empty vectors. The result
+    # would still parse and install, silently corrupt. No shipped entity has
+    # one (checked across 1500 of them), so this costs nothing and closes the
+    # class rather than relying on that staying true.
     mapping = {old: derive_guid(f"{seed}#{old.hex()}")
-               for old in component_guids(cooked_bytes)}
+               for old in component_guids(cooked_bytes)
+               if old != bytes(_ENTITY_GUID_LEN)}
     if not mapping:
         return cooked_bytes
     cf.sections = [

@@ -515,7 +515,22 @@ def _fit_transform(custom: list, template: list,
     if fit == "none":
         scale = scale_mult
     elif fit == "height":
-        scale = (te[up] / re[up] if re[up] else 1.0) * scale_mult
+        # BOTH extents need the guard. `re[up]` (the custom mesh) was checked
+        # and `te[up]` (the template) was not — but a donor that is planar in Y
+        # gives te[up] == 0 and hence scale == 0, collapsing the swapped mesh to
+        # a single point. That cooks, applies and renders nothing, which is
+        # indistinguishable from "the override never reached the game" and is
+        # the single most expensive failure to diagnose in this pipeline. A
+        # template with no height cannot express a height fit, so fall back to
+        # the mesh's own dimensions and say so.
+        if not te[up] or not re[up]:
+            _log.warning(
+                "geometry: template has no usable height (extent %.4f); "
+                "fit='height' would scale the mesh to nothing — keeping the "
+                "mesh's own size instead (equivalent to fit='none')", te[up])
+            scale = scale_mult
+        else:
+            scale = (te[up] / re[up]) * scale_mult
     else:
         raise ValueError(f"transform.fit must be 'height' or 'none', got {fit!r}")
     tc = [(tmn[i] + tmx[i]) / 2 for i in range(3)]
