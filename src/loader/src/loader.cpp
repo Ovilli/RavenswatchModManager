@@ -122,9 +122,13 @@ void Loader::init(const fs::path& game_dir) {
     {
         const fs::path meta = game_dir_ / "rsmm" / "data"
                               / "function_patterns.meta.json";
-        const fs::path exe  = game_dir_ / "Ravenswatch.exe";
+        // Named `game_exe`, not `exe`: the enclosing scope already has an
+        // `exe` (the char[MAX_PATH] holding the HOST process path, which for a
+        // helper inject is not Ravenswatch at all). Shadowing the two made the
+        // gate read as if it were fingerprinting the running process.
+        const fs::path game_exe = game_dir_ / "Ravenswatch.exe";
         std::error_code mec;
-        const auto exe_size = fs::file_size(exe, mec);
+        const auto exe_size = fs::file_size(game_exe, mec);
         if (mec || !fs::exists(meta)) {
             log("[va-gate] no pattern-DB meta or game exe to compare — "
                 "keeping va-globals enabled (unverified)");

@@ -13,9 +13,10 @@
 //     if a pattern from an older build happened to match there — which is not
 //     hypothetical: the analytics firehose, armed by default on every install,
 //     was doing precisely that (0x8d0 bytes inside an unrelated function), and
-//     all five of hook_skins.cpp's targets are wrong the same way. `fn_verify`
-//     cannot catch it, because the recorded bytes genuinely ARE at that
-//     address; only the module's .pdata table knows where functions begin.
+//     hook_skins.cpp's five targets were all wrong the same way (its symbols
+//     were relocated on 2026-08-09 and it now resolves through `Sym::`).
+//     `fn_verify` cannot catch it, because the recorded bytes genuinely ARE at
+//     that address; only the module's .pdata table knows where functions begin.
 //   * several skipped fn_verify entirely, so a patched game got a detour on
 //     whatever now lives at the address.
 //   * MH_EnableHook failures were silently ignored in some files, leaving a

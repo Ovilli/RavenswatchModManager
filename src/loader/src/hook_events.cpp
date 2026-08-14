@@ -21,6 +21,7 @@
 
 #include <windows.h>
 
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -238,6 +239,27 @@ bool gameplay_event_name(const unsigned char* ev, char* out, size_t cap) {
     return true;
 }
 
+// Append a formatted field to a JSON payload under construction.
+//
+// `std::snprintf` returns the length it WOULD have written, so the natural
+// `n += snprintf(buf + n, sizeof(buf) - n, ...)` walks `n` PAST the end of the
+// buffer on truncation — and then the next call's `sizeof(buf) - n` underflows
+// to a huge size_t and writes out of bounds. Every payload decoder here used
+// that shape. Formatting into a scratch buffer first also means a field is
+// either written whole or not at all, so `buf` is always a valid JSON prefix
+// and the closing brace can always be appended.
+//
+// Returns false when the field did not fit; the caller stops adding.
+template <typename... A>
+bool json_append(char* buf, int& n, int room, const char* fmt, A... args) {
+    char tmp[192];
+    const int add = std::snprintf(tmp, sizeof(tmp), fmt, args...);
+    if (add <= 0 || add >= static_cast<int>(sizeof(tmp)) || add > room - n) return false;
+    std::memcpy(buf + n, tmp, static_cast<std::size_t>(add));
+    n += add;
+    return true;
+}
+
 void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
     // Forward first: subscribers run, the game applies the effect, and the
     // event object (caller-owned; dispatch consumes a clone) is still alive.
@@ -260,14 +282,27 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
     const auto disp = reinterpret_cast<std::uintptr_t>(dispatcher);
 
     char buf[768];
+    // Largest index a field may end at, leaving room for "}\0". Every append
+    // below is bounded against this rather than against sizeof(buf), so the
+    // closing brace can always be written and the event always reaches Lua.
+    constexpr int kRoom = static_cast<int>(sizeof(buf)) - 2;
+    // No `entity` field. It used to be published as `dispatcher - 0x4d8`, an
+    // offset that was correct until the 2026-07-09 patch moved the dispatcher
+    // sub-object — after which the value pointed into the middle of nothing.
+    // The SDK had already measured it as unusable ("_hero_plausible(ev.entity)
+    // fails"), so every consumer was reading a number that could not be
+    // trusted and had no way to tell. Publishing nothing is strictly better
+    // than publishing a knowingly-wrong pointer: a mod now gets nil, which is
+    // detectable, instead of garbage, which is not. Mods that want the hero
+    // use R.entity.hero(); the SDK derives the dispatcher offset at runtime
+    // (see _learn_dispatcher_offset) rather than hardcoding it.
     int n = std::snprintf(buf, sizeof(buf),
                           "{\"event\":\"gameplay:%s\",\"name\":\"%s\",\"seq\":%u,"
                           "\"id\":%u,\"source\":\"gameplay\","
-                          "\"dispatcher\":\"0x%llx\",\"entity\":\"0x%llx\"",
+                          "\"dispatcher\":\"0x%llx\"",
                           name, name,
                           g_gameplay_seq.fetch_add(1, std::memory_order_relaxed) + 1, id,
-                          static_cast<unsigned long long>(disp),
-                          static_cast<unsigned long long>(disp - 0x4d8));
+                          static_cast<unsigned long long>(disp));
     if (n < 0 || n >= static_cast<int>(sizeof(buf))) return;
 
     // Hand-RE'd payload layouts first (their field names carry meaning the
@@ -279,10 +314,10 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
         // oe::dt::NamedEventGiveMagicalObject (0x60): MO definition GUID.
         const auto lo = *reinterpret_cast<const std::uint64_t*>(ev + 0x50);
         const auto hi = *reinterpret_cast<const std::uint64_t*>(ev + 0x58);
-        n += std::snprintf(buf + n, sizeof(buf) - n,
-                           ",\"mo_guid_lo\":\"0x%llx\",\"mo_guid_hi\":\"0x%llx\"",
-                           static_cast<unsigned long long>(lo),
-                           static_cast<unsigned long long>(hi));
+        json_append(buf, n, kRoom,
+                    ",\"mo_guid_lo\":\"0x%llx\",\"mo_guid_hi\":\"0x%llx\"",
+                    static_cast<unsigned long long>(lo),
+                    static_cast<unsigned long long>(hi));
         decoded = true;
     } else if ((std::strcmp(name, "NETWORK_DAMAGE") == 0
                 || std::strcmp(name, "NETWORK_DAMAGE_RESPONSE") == 0)
@@ -294,13 +329,13 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
         const auto srcid  = *reinterpret_cast<const std::uint64_t*>(ev + 0x48);
         const auto target = *reinterpret_cast<const std::uint64_t*>(ev + 0x60);
         const auto instig = *reinterpret_cast<const std::uint64_t*>(ev + 0xf0);
-        n += std::snprintf(buf + n, sizeof(buf) - n,
-                           ",\"value\":%g,\"source_id\":\"0x%llx\","
-                           "\"target_entity\":\"0x%llx\",\"instigator_entity\":\"0x%llx\"",
-                           static_cast<double>(value),
-                           static_cast<unsigned long long>(srcid),
-                           static_cast<unsigned long long>(target),
-                           static_cast<unsigned long long>(instig));
+        json_append(buf, n, kRoom,
+                    ",\"value\":%g,\"source_id\":\"0x%llx\","
+                    "\"target_entity\":\"0x%llx\",\"instigator_entity\":\"0x%llx\"",
+                    static_cast<double>(value),
+                    static_cast<unsigned long long>(srcid),
+                    static_cast<unsigned long long>(target),
+                    static_cast<unsigned long long>(instig));
         decoded = true;
     } else if (std::strcmp(name, "POWER_UP_COLLECT_REQUEST") == 0
                && committed_readable(reinterpret_cast<std::uintptr_t>(ev + 0x38), 0x28)) {
@@ -330,10 +365,10 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
         // GIVE-template payload slot). R.talent.on_pick("<lo>:<hi>", cb) matches
         // on it, so string-id pickable talents work today; the p38..p58 window
         // stays so the offset can be confirmed/corrected in one session.
-        n += std::snprintf(buf + n, sizeof(buf) - n,
-                           ",\"card\":\"0x%llx:0x%llx\","
-                           "\"p38\":\"0x%llx\",\"p40\":\"0x%llx\","
-                           "\"p48\":\"0x%llx\",\"p50\":\"0x%llx\",\"p58\":\"0x%llx\"",
+        json_append(buf, n, kRoom,
+                    ",\"card\":\"0x%llx:0x%llx\","
+                    "\"p38\":\"0x%llx\",\"p40\":\"0x%llx\","
+                    "\"p48\":\"0x%llx\",\"p50\":\"0x%llx\",\"p58\":\"0x%llx\"",
                            static_cast<unsigned long long>(q[10]),
                            static_cast<unsigned long long>(q[11]),
                            static_cast<unsigned long long>(q[7]),
@@ -360,8 +395,7 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
             const auto* schema = event_schema_for(
                 static_cast<std::uint32_t>(vft - base));
             if (schema) {
-                n += std::snprintf(buf + n, sizeof(buf) - n,
-                                   ",\"class\":\"%s\"", schema->cls);
+                json_append(buf, n, kRoom, ",\"class\":\"%s\"", schema->cls);
                 for (std::uint16_t i = 0; i < schema->count; ++i) {
                     const auto& f = schema->fields[i];
                     const auto at = reinterpret_cast<std::uintptr_t>(ev) + f.off;
@@ -389,7 +423,16 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
                             add = std::snprintf(tmp, sizeof(tmp), ",\"%s\":%g", f.name, v); break; }
                         default: continue;
                     }
-                    if (add <= 0 || add >= static_cast<int>(sizeof(buf) - n - 2)) break;
+                    // Three ways this used to be wrong. `kRoom` keeps the two
+                    // bytes the closing "}\0" needs. The subtraction is done in
+                    // int, not size_t — `sizeof(buf) - n` is unsigned, so an n
+                    // past the end would wrap to a huge value and turn the
+                    // bound into a no-op. And `add` is snprintf's WOULD-HAVE
+                    // written length, so a long field name truncates into `tmp`
+                    // while `add` reports the untruncated size; without the
+                    // sizeof(tmp) check the memcpy below reads past `tmp`.
+                    if (add <= 0 || add >= static_cast<int>(sizeof(tmp))
+                        || add > kRoom - n) break;
                     std::memcpy(buf + n, tmp, static_cast<std::size_t>(add));
                     n += add;
                 }
@@ -404,20 +447,34 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
     // with this a mod reads ev.w38..ev.w70 and finds the field in one session.
     // Off by default (it triples payload size); every read is page-guarded, so
     // an event object that really is smaller degrades to fewer fields.
-    if (g_probe_payloads && n < static_cast<int>(sizeof(buf) - 2)) {
+    if (g_probe_payloads && n < kRoom) {
         for (std::uintptr_t off = 0x38; off <= 0x70; off += 8) {
             std::uint64_t w = 0;
             if (!mem_load(reinterpret_cast<std::uintptr_t>(ev) + off, &w)) break;
-            const int add = std::snprintf(buf + n, sizeof(buf) - n,
-                                          ",\"w%llx\":\"0x%llx\"",
+            char tmp[48];
+            const int add = std::snprintf(tmp, sizeof(tmp), ",\"w%llx\":\"0x%llx\"",
                                           static_cast<unsigned long long>(off),
                                           static_cast<unsigned long long>(w));
-            if (add < 0 || add >= static_cast<int>(sizeof(buf) - n)) break;
+            // Same bound as the typed loop above. It used to allow n to reach
+            // sizeof(buf)-1, leaving no room for the closing brace — and the
+            // check below then DROPPED the whole event. Turning the probe on
+            // therefore made big events vanish from Lua entirely, which is the
+            // exact opposite of what a diagnostic should do. Writing into a
+            // scratch buffer first also stops a truncated snprintf from
+            // leaving a half-written field in `buf`.
+            if (add <= 0 || add > kRoom - n) break;
+            std::memcpy(buf + n, tmp, static_cast<std::size_t>(add));
             n += add;
         }
     }
 
-    if (n < 0 || n >= static_cast<int>(sizeof(buf) - 2)) return;
+    // Never drop an event for being long. Every append above is atomic and
+    // leaves `buf` a valid JSON prefix, so the worst case is an event that
+    // reaches Lua with fewer fields than it has — a mod that reads a missing
+    // field gets nil, whereas a dropped event never fires its handler at all
+    // and looks like the game not emitting it.
+    if (n < 0) return;
+    if (n > kRoom) n = kRoom;
     buf[n] = '}'; buf[n + 1] = '\0';
 
     const std::string lua_event = std::string("gameplay:") + name;
@@ -535,6 +592,15 @@ constexpr int kHeroSlot = 0;        // hero character pointer (validated)
 constexpr int kHeroAuthSlot = 1;    // 1 once a hero-only routine has captured
 constexpr int kHeroPendingSlot = 3; // spawn-init candidate awaiting field init
                                     // (slot 2 = native-capture-active flag)
+// Spawn-init fires several times per boot, and a SINGLE pending slot meant
+// each call discarded the previous candidate. Measured 2026-08-14: five
+// stashes, only the last survived, and that one's HP fields never went live —
+// so the pending path was dead for the whole run and capture waited ~94s for a
+// gain-health fire instead. The candidates are all hero-identity (the routine
+// is hero-only), they just go live at different times, so keep them all and
+// let whichever validates first win.
+constexpr int kHeroRingFirst = 8;   // slots 8..15 (0..5 are taken)
+constexpr int kHeroRingCount = 8;
 // Whether hero capture is PERMITTED at all, which is a different question from
 // whether the native path armed. Tri-state so an older loader (which never
 // writes this slot, leaving 0) is not mistaken for a denial:
@@ -602,6 +668,48 @@ bool hero_plausible(void* p1) {
     return mv >= 0.0f && mv < 1.0e6f;
 }
 
+// The moment hero capture armed, so every capture line can report how long the
+// player actually waited. "Ages" is the whole complaint; a log that cannot
+// measure it cannot settle it.
+std::chrono::steady_clock::time_point g_capture_armed{};
+std::atomic<bool> g_capture_reported{false};
+
+double seconds_since_armed() {
+    if (g_capture_armed.time_since_epoch().count() == 0) return -1.0;
+    return std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - g_capture_armed).count();
+}
+
+// Log the FIRST successful publish, whatever produced it, exactly once and
+// outside the per-detour log caps. Without this the fire that actually
+// captured the hero was invisible: `gain fired` is capped at 8 lines and the
+// early ones all fail, so a log could show nothing but rejections while
+// capture had in fact succeeded seconds later.
+void report_capture(const char* via, void* who) {
+    if (g_capture_reported.exchange(true)) return;
+    char line[192];
+    std::snprintf(line, sizeof(line),
+                  "[hero-capture] HERO PUBLISHED @%p via %s, %.1fs after arming",
+                  who, via, seconds_since_armed());
+    Loader::get().log(line);
+}
+
+// Record a spawn-init candidate in the ring without displacing the others.
+// Duplicates are ignored so one hero re-announcing itself cannot evict the
+// four others; the ring wraps only after eight DISTINCT candidates, which is
+// more than a boot produces.
+std::atomic<int> g_ring_next{0};
+
+void stash_pending_candidate(void* p) {
+    const auto v = reinterpret_cast<std::uint64_t>(p);
+    if (v == 0) return;
+    for (int i = 0; i < kHeroRingCount; ++i) {
+        if (shared_get(kHeroRingFirst + i) == v) return;
+    }
+    const int idx = g_ring_next.fetch_add(1) % kHeroRingCount;
+    shared_set(kHeroRingFirst + idx, v);
+}
+
 void detour_subscribe_all(void* p1) {
     // Hero spawn/post-load init (FUN_140391860): param_1 is the hero
     // HP-carrier, hero-only and earliest possible. The function itself
@@ -617,13 +725,23 @@ void detour_subscribe_all(void* p1) {
     // capture without a single heuristic-y combat hook needing to fire.
     g_subscribe_real(p1);
     shared_set(kHeroPendingSlot, reinterpret_cast<std::uint64_t>(p1));
+    stash_pending_candidate(p1);
     bool ok = hero_plausible(p1);
-    Loader::get().log(ok ? "[hero-capture] hero captured at spawn (instant)"
-                         : "[hero-capture] spawn-init: hero stashed pending "
-                           "(fields not live yet; promoted on first valid read)");
+    // The POINTER matters: this fires several times per boot and the stashes
+    // were previously indistinguishable, so a log could not show whether the
+    // candidate that kept failing was one object retried or five different
+    // ones overwriting each other in the single pending slot.
+    char line[192];
+    std::snprintf(line, sizeof(line),
+                  ok ? "[hero-capture] hero captured at spawn (instant) @%p, %.1fs"
+                     : "[hero-capture] spawn-init: stashed pending @%p, %.1fs "
+                       "(fields not live yet; promoted on first valid read)",
+                  p1, seconds_since_armed());
+    Loader::get().log(line);
     if (ok) {
         shared_set(kHeroSlot, reinterpret_cast<std::uint64_t>(p1));
         shared_set(kHeroAuthSlot, 1);
+        report_capture("spawn-init", p1);
     }
 }
 
@@ -634,6 +752,7 @@ void detour_subscribe_all(void* p1) {
 // answers which. Cheap: fixed cap, no formatting after the cap.
 std::atomic<int> g_give_logged{0}, g_gain_logged{0};
 constexpr int kCaptureLogCap = 8;
+
 
 void detour_give(void* p1, void* p2, void* p3) {
     // Entity_GiveHandler (FUN_1403c7560) is a 3-arg routine — param_3 is the hit
@@ -662,6 +781,7 @@ void detour_give(void* p1, void* p2, void* p3) {
     if (ok2) {
         shared_set(kHeroSlot, reinterpret_cast<std::uint64_t>(p2));
         shared_set(kHeroAuthSlot, 1);
+        report_capture("give-handler", p2);
     }
     g_give_real(p1, p2, p3);
 }
@@ -677,14 +797,19 @@ void detour_gain_health(void* p1, void* p2, void* p3) {
                       p1, (int)ok1, p2, (int)hero_plausible(p2));
         Loader::get().log(line);
     }
-    if (shared_get(kHeroAuthSlot) == 0 && ok1)
+    if (shared_get(kHeroAuthSlot) == 0 && ok1) {
         shared_set(kHeroSlot, reinterpret_cast<std::uint64_t>(p1));
+        report_capture("gain-health", p1);
+    }
     g_gain_real(p1, p2, p3);
 }
 
 } // namespace
 
 bool install_hero_capture() {
+    // Start the clock here so every capture line reports the wait the player
+    // actually experienced, measured from the moment capture became possible.
+    g_capture_armed = std::chrono::steady_clock::now();
     // OPT-IN while we stabilize: these are the newest engine detours and have
     // correlated with load-time crashes this dev cycle. Identity / event work
     // doesn't need them; R.combat / R.entity do. Enable with
