@@ -96,6 +96,7 @@ def test_rejects_bad_defs(tmp_path, fields, needle):
                     tmp_path / "assets")
 
 
+@needs_corpus
 def test_source_art_must_ship_with_the_mod(tmp_path):
     from rsmm.sdk.kinds import meshes
 

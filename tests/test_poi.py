@@ -679,6 +679,7 @@ def test_swaps_rejects_a_target_the_tile_never_preloads(tmp_path):
         }), tmp_path)
 
 
+@needs_corpus
 def test_swaps_requires_replace_base(tmp_path):
     with pytest.raises(ContentError, match="replace_base"):
         poi.emit("m", ContentDef(kind="poi", id="Bad", fields={
@@ -1316,6 +1317,7 @@ def test_allow_shared_art_waives_exclusivity_but_never_compositeness(tmp_path):
             }}), tmp_path / "composite")
 
 
+@needs_corpus
 def test_texture_slots_must_belong_to_the_prop_being_replaced():
     """An inherited `slots` must not re-skin a different prop.
 
@@ -1352,6 +1354,7 @@ def test_texture_slots_must_belong_to_the_prop_being_replaced():
                                    {fountain_tex: "art/albedo.png"})
 
 
+@needs_corpus
 def test_own_level_clones_the_level_without_minting_entity_names(tmp_path):
     """`own_level` is the isolation rung between the two measured outcomes.
 
@@ -1390,6 +1393,7 @@ def test_own_level_clones_the_level_without_minting_entity_names(tmp_path):
     assert not any("Ot/" in str(f) for f in plain)
 
 
+@needs_corpus
 def test_in_place_override_with_no_art_is_refused(tmp_path):
     """A `replaces` that ships neither mesh nor texture must not "succeed".
 
@@ -1419,6 +1423,7 @@ def test_in_place_override_with_no_art_is_refused(tmp_path):
     assert any(f.name == "Menhir_Big_A.fbx.Geometry.gen" for f in files)
 
 
+@needs_corpus
 def test_composite_check_ignores_children_that_draw_nothing():
     """A settings-only child is not a composite child.
 
