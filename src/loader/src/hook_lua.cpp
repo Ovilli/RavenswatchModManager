@@ -97,7 +97,22 @@ struct Slot {
     std::string    mod_id;
     unsigned       shape = 0;
     bool           installed = false;
+    // Consecutive callback errors, and the latch that stops the spam. A hook
+    // whose callback raises EVERY call used to log once per fire — thousands
+    // of lines on a hot function — while the mod author learned nothing and
+    // the log became unreadable for everyone else. Same philosophy as the
+    // health canary's three-strike rule: after enough consecutive failures the
+    // callback is presumed broken and skipped, the ORIGINAL still runs, and
+    // the game is left exactly as if the mod had never hooked it.
+    int            err_streak = 0;
+    bool           cb_disabled = false;
+    unsigned long long fires = 0;
 };
+
+// Consecutive raises before a callback is presumed broken. High enough to ride
+// out a transient (a hero not spawned yet, a nil during a load screen), low
+// enough that a genuinely broken callback stops early.
+constexpr int kCallbackErrorLimit = 20;
 
 std::array<Slot, MAX_SLOTS> g_slots{};
 std::mutex g_slots_mu;
@@ -292,6 +307,14 @@ std::uint64_t dispatch(int slot, std::uint64_t* a) {
         snap = g_slots[slot];
     }
     if (!snap.installed) return 0;
+    {
+        std::lock_guard<std::mutex> gs(g_slots_mu);
+        g_slots[slot].fires++;
+    }
+    // Latched off after too many consecutive raises: run the ORIGINAL and
+    // nothing else, so the game behaves exactly as if this mod had never
+    // hooked the function.
+    if (snap.cb_disabled) return call_trampoline(snap.shape, snap.trampoline, a);
 
     lua_State* L = snap.L;
     if (!L) return call_trampoline(snap.shape, snap.trampoline, a);
@@ -322,13 +345,40 @@ std::uint64_t dispatch(int slot, std::uint64_t* a) {
     tl_next_called = saved_next_called;
 
     if (pcall_rc != LUA_OK) {
-        Loader::get().log(std::string("[hook] cb error in ") + snap.mod_id + ": "
-                          + lua_tostring(L, -1));
+        int streak;
+        {
+            std::lock_guard<std::mutex> gs(g_slots_mu);
+            streak = ++g_slots[slot].err_streak;
+            if (streak >= kCallbackErrorLimit) g_slots[slot].cb_disabled = true;
+        }
+        // Log the first few and then the latch, never every fire: a callback
+        // that raises on a per-frame hook would otherwise write thousands of
+        // identical lines and bury everything else in the log.
+        if (streak <= 3 || streak == kCallbackErrorLimit) {
+            Loader::get().log(std::string("[hook] cb error in ") + snap.mod_id
+                              + " (" + std::to_string(streak) + "): "
+                              + lua_tostring(L, -1));
+        }
+        if (streak == kCallbackErrorLimit) {
+            Loader::get().log("[hook] DISABLING callback for slot "
+                              + std::to_string(slot) + " (" + snap.mod_id
+                              + "): raised " + std::to_string(streak)
+                              + " times in a row. The original function still "
+                              "runs; uninstall/reinstall the hook to retry.");
+        }
         lua_settop(L, base);
         // The callback raised. If it had already replayed the original, the
         // side effect happened — running it again to "recover" would double
         // it, which is worse than the error we are recovering from.
         return next_called ? 0 : call_trampoline(snap.shape, snap.trampoline, a);
+    }
+
+    // A clean call clears the streak: the limit counts CONSECUTIVE failures, so
+    // an intermittent error (a nil during a load screen) never accumulates into
+    // a disable.
+    if (snap.err_streak != 0) {
+        std::lock_guard<std::mutex> gs(g_slots_mu);
+        g_slots[slot].err_streak = 0;
     }
 
     std::uint64_t r;

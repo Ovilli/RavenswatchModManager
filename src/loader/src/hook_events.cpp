@@ -131,6 +131,7 @@ std::uintptr_t WINAPI analytics_firehose_detour(void* mgr, void* payload,
                                                 void* name_desc,
                                                 std::uintptr_t flag) {
     // Forward first so the original populates state / sends the event.
+    hook_note_fire(g_submit_va);
     const auto rv = g_submit_real(mgr, payload, name_desc, flag);
 
     if (name_desc && script_any_subscribers()) {
@@ -261,6 +262,7 @@ bool json_append(char* buf, int& n, int room, const char* fmt, A... args) {
 }
 
 void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
+    hook_note_fire(g_dispatch_va);
     // Forward first: subscribers run, the game applies the effect, and the
     // event object (caller-owned; dispatch consumes a clone) is still alive.
     g_dispatch_real(dispatcher, event);
@@ -723,6 +725,7 @@ void detour_subscribe_all(void* p1) {
     // local hero — so ALWAYS stash it in the pending slot; the Lua side
     // re-validates and promotes it once the fields go live, giving instant
     // capture without a single heuristic-y combat hook needing to fire.
+    hook_note_fire(g_subscribe_va);
     g_subscribe_real(p1);
     shared_set(kHeroPendingSlot, reinterpret_cast<std::uint64_t>(p1));
     stash_pending_candidate(p1);
@@ -770,6 +773,7 @@ void detour_give(void* p1, void* p2, void* p3) {
     // HUD mirror @+0x1d80) rejects the ctx and any non-hero target outright, so
     // a mistaken arg can never be published. All three args pass straight
     // through to the trampoline.
+    hook_note_fire(g_give_va);
     bool ok1 = hero_plausible(p1), ok2 = hero_plausible(p2);
     if (g_give_logged.fetch_add(1) < kCaptureLogCap) {
         char line[160];
@@ -789,6 +793,7 @@ void detour_give(void* p1, void* p2, void* p3) {
 void detour_gain_health(void* p1, void* p2, void* p3) {
     // GAIN_HEALTH fires for any entity that heals (incl. enemies), so only take
     // it as a tentative capture until the hero-only give handler confirms.
+    hook_note_fire(g_gain_va);
     bool ok1 = hero_plausible(p1);
     if (g_gain_logged.fetch_add(1) < kCaptureLogCap) {
         char line[160];

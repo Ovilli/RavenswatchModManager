@@ -5,6 +5,8 @@
 
 #include "MinHook.h"
 
+#include <atomic>
+#include <cstddef>
 #include <string>
 
 namespace rsmm {
@@ -18,6 +20,38 @@ std::string hex_of(std::uintptr_t v) {
 
 std::string prefix(std::string_view tag) {
     return "[" + std::string(tag) + "] ";
+}
+
+// --- armed-hook registry ---------------------------------------------------
+//
+// Fixed table, no allocation, no lock on the read path: `arm` only ever
+// appends and the count is published with release semantics, so a detour
+// scanning it concurrently sees either the old count or a fully-written entry.
+// 64 is comfortably above the 26 call sites plus mod hooks.
+constexpr std::size_t kMaxArmed = 64;
+
+struct ArmedHook {
+    const char*    tag  = nullptr;
+    const char*    what = nullptr;
+    std::uintptr_t va   = 0;
+    std::atomic<unsigned long long> fires{0};
+};
+
+ArmedHook g_armed[kMaxArmed];
+std::atomic<std::size_t> g_armed_n{0};
+
+void register_armed(std::string_view tag, std::string_view what,
+                    std::uintptr_t va) {
+    const auto n = g_armed_n.load(std::memory_order_relaxed);
+    if (n >= kMaxArmed) return;
+    // The callers all pass string literals with static lifetime, which is what
+    // lets this hold pointers instead of copying: a std::string here would
+    // allocate on a path that runs during DLL init.
+    g_armed[n].tag = tag.data();
+    g_armed[n].what = what.data();
+    g_armed[n].va = va;
+    g_armed[n].fires.store(0, std::memory_order_relaxed);
+    g_armed_n.store(n + 1, std::memory_order_release);
 }
 
 // Shared tail: .pdata entry-point check + create + enable. `va` must already
@@ -56,6 +90,7 @@ bool arm(std::string_view tag, std::string_view what, std::uintptr_t va,
         MH_RemoveHook(target);
         return false;
     }
+    register_armed(tag, what, va);
     Loader::get().log(prefix(tag) + "hooked " + std::string(what) + " @ "
                       + hex_of(va));
     return true;
@@ -132,6 +167,28 @@ bool hook_entry_warn(std::string_view tag, std::string_view what,
                       "for a true leaf function and WRONG for anything else — "
                       "if the game crashes, this address is the first suspect.");
     return true;
+}
+
+void hook_note_fire(std::uintptr_t va) {
+    const auto n = g_armed_n.load(std::memory_order_acquire);
+    for (std::size_t i = 0; i < n; ++i) {
+        if (g_armed[i].va == va) {
+            g_armed[i].fires.fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
+    }
+}
+
+std::size_t hook_snapshot(HookInfo* out, std::size_t cap) {
+    const auto n = g_armed_n.load(std::memory_order_acquire);
+    std::size_t w = 0;
+    for (std::size_t i = 0; i < n && w < cap; ++i, ++w) {
+        out[w].tag   = g_armed[i].tag;
+        out[w].what  = g_armed[i].what;
+        out[w].va    = g_armed[i].va;
+        out[w].fires = g_armed[i].fires.load(std::memory_order_relaxed);
+    }
+    return w;
 }
 
 void hook_remove(std::uintptr_t va) {

@@ -294,6 +294,11 @@ function I.is_grant_target() return true end
 function I.shared_get(slot) return shared[slot] end
 function I.shared_set(slot, v) shared[slot] = v end
 function I.list_mods() return {} end
+local hook_report_rows = {
+    { tag = "hero-capture", what = "give handler", va = 0x140abc000, fires = 12 },
+    { tag = "spawn-trace",  what = "selector prepare", va = 0x140def000, fires = 0 },
+}
+function I.hook_report() return hook_report_rows end
 local in_main_menu = false
 function I.is_in_main_menu() return in_main_menu end
 function I.resolve(pat)
@@ -1546,6 +1551,29 @@ do
     hooks[va] = nil
     package.loaded["rsmm"] = nil
     R = require "rsmm"
+end
+
+-- N. R.hooks: installed is not the same as fired -----------------------------
+--
+-- resolve + fn_verify + .pdata + MH_EnableHook all pass for a routine that has
+-- moved to a DIFFERENT caller: it installs cleanly and never runs. That reads
+-- as "the feature is broken" with nothing in the log to say why, and answering
+-- it used to mean correlating loader timestamps against the game's own log.
+do
+    local all = R.hooks.status()
+    check(#all == 2, "status() reports every armed hook")
+    check(all[1].tag == "hero-capture", "and carries the subsystem tag")
+
+    local silent = R.hooks.silent()
+    check(#silent == 1, "silent() isolates the hooks that never fired")
+    check(silent[1].what == "selector prepare",
+          "which is the one whose target is not on a live path")
+
+    -- Degrades on an older loader with no binding, rather than erroring.
+    local real = I.hook_report
+    I.hook_report = nil
+    check(#R.hooks.status() == 0, "no native binding -> empty, not an error")
+    I.hook_report = real
 end
 
 -- N. hero capture: a later spawn-init must not discard earlier candidates ---

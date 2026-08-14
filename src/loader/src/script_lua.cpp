@@ -16,6 +16,7 @@ extern "C" {
 }
 
 #include "script_lua.h"
+#include "hook_util.h"
 #include "loader.h"
 #include "health.h"
 #include "mem_safe.h"
@@ -1244,6 +1245,31 @@ int lua_is_grant_target(lua_State* L) {
     return 1;
 }
 
+// rsmm._internal.hook_report() -> { {tag=, what=, va=, fires=}, ... }
+//
+// The armed-hook registry, so a mod (or `R.hooks.status()`) can answer "is this
+// capability live, and has it ever run". Installed-but-never-fired is the case
+// worth surfacing: it means the target moved to a different caller, which
+// resolve + fn_verify + .pdata all pass happily.
+int lua_hook_report(lua_State* L) {
+    HookInfo info[64];
+    const std::size_t n = hook_snapshot(info, 64);
+    lua_createtable(L, static_cast<int>(n), 0);
+    for (std::size_t i = 0; i < n; ++i) {
+        lua_createtable(L, 0, 4);
+        lua_pushstring(L, info[i].tag ? info[i].tag : "?");
+        lua_setfield(L, -2, "tag");
+        lua_pushstring(L, info[i].what ? info[i].what : "?");
+        lua_setfield(L, -2, "what");
+        lua_pushinteger(L, static_cast<lua_Integer>(info[i].va));
+        lua_setfield(L, -2, "va");
+        lua_pushinteger(L, static_cast<lua_Integer>(info[i].fires));
+        lua_setfield(L, -2, "fires");
+        lua_rawseti(L, -2, static_cast<int>(i) + 1);
+    }
+    return 1;
+}
+
 int lua_read_cstr(lua_State* L) {
     auto va = static_cast<std::uintptr_t>(luaL_checkinteger(L, 1));
     auto max = static_cast<std::size_t>(luaL_optinteger(L, 2, 1024));
@@ -1476,6 +1502,7 @@ void register_api(lua_State* L) {
         { "read_f32",                lua_read_f32 },
         { "read_f64",                lua_read_f64 },
         { "read_cstr",               lua_read_cstr },
+        { "hook_report",             lua_hook_report },
         { "peek",                    lua_peek },
         { "poke",                    lua_poke },
         { "scratch",                 lua_scratch },

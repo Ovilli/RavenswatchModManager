@@ -3424,6 +3424,53 @@ end
 -- for pointer fields that look like component-array holders. All reads are
 -- page-guarded (bad address → nil, never a fault), so this is safe to point
 -- at a half-captured or wrong pointer. Reads only — never mutates.
+-- hook inventory ----------------------------------------------------------
+--
+-- "Is this capability actually live?" was, until now, a question you answered
+-- by reading _log.txt and inferring. Installing a detour proves the pattern
+-- matched, the address is a .pdata function entry and MinHook enabled it — it
+-- does NOT prove the target is on a live code path. A routine that moved to a
+-- different caller still resolves, still verifies, still installs, and never
+-- runs; that reads as "the feature is broken" with nothing to say why.
+--
+-- So each armed hook counts its fires, and `installed but fires == 0 after a
+-- run` is the signal `fn_verify` cannot give you.
+R.hooks = {}
+
+--- Every armed engine hook: { {tag=, what=, va=, fires=}, ... }
+function R.hooks.status()
+    if type(I.hook_report) ~= "function" then return {} end
+    local ok, list = pcall(I.hook_report)
+    return (ok and type(list) == "table") and list or {}
+end
+
+--- Hooks that armed but have never fired. The interesting half.
+function R.hooks.silent()
+    local out = {}
+    for _, h in ipairs(R.hooks.status()) do
+        if (h.fires or 0) == 0 then out[#out + 1] = h end
+    end
+    return out
+end
+
+--- Log the inventory, one line per hook plus a summary. Call it from a mod, or
+--- after a run, to see what actually ran.
+function R.hooks.dump()
+    local list = R.hooks.status()
+    if #list == 0 then
+        R.log("[rsmm.hooks] no armed hooks reported (loader too old?)")
+        return
+    end
+    local silent = 0
+    for _, h in ipairs(list) do
+        if (h.fires or 0) == 0 then silent = silent + 1 end
+        R.log(string.format("[rsmm.hooks]   %-16s %-28s @0x%x  fires=%d%s",
+            tostring(h.tag), tostring(h.what), h.va or 0, h.fires or 0,
+            (h.fires or 0) == 0 and "   <-- never fired" or ""))
+    end
+    R.log(string.format("[rsmm.hooks] %d armed, %d never fired", #list, silent))
+end
+
 R.debug = {}
 
 local function _classify(v)

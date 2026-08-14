@@ -31,6 +31,7 @@
 // Everything here fails CLOSED: any check that cannot be completed returns
 // false and the hook is not installed.
 
+#include <cstddef>
 #include <cstdint>
 #include <string_view>
 
@@ -86,6 +87,38 @@ bool resolve_checked(std::string_view tag, std::string_view what,
 
 // Disable + remove a hook installed above. Safe on 0.
 void hook_remove(std::uintptr_t va);
+
+// ---------------------------------------------------------------------------
+// Did it ever FIRE?
+//
+// Everything above proves a detour was INSTALLED: the pattern still matches,
+// the address is a .pdata entry point, MinHook created and enabled it. None of
+// that proves the target is on a live code path. That gap is the expensive one
+// — a routine that moved to a *different* caller still resolves, still
+// verifies, still installs, and simply never runs, which reads exactly like
+// "the feature is broken" with nothing in the log to say otherwise. Answering
+// "did subscribe-all fire for this run's hero?" previously meant correlating
+// loader timestamps against the game's own log.
+//
+// So each armed hook carries a counter, and `hook_note_fire` bumps it from the
+// detour. An installed hook with ZERO fires after a full run is the signal
+// `fn_verify` cannot give you, because the recorded bytes genuinely are at
+// that address.
+
+struct HookInfo {
+    const char*    tag;    // subsystem, e.g. "hero-capture"
+    const char*    what;   // target name, e.g. "give handler"
+    std::uintptr_t va;
+    unsigned long long fires;
+};
+
+// Bump the fire count for the hook at `va`. Cheap and lock-free on the hot
+// path (a short linear scan over a fixed table of armed hooks, then one atomic
+// increment); unknown addresses are ignored. Safe to call from any thread.
+void hook_note_fire(std::uintptr_t va);
+
+// Copy the registry out, newest last. Returns the number written.
+std::size_t hook_snapshot(HookInfo* out, std::size_t cap);
 
 // The entry-point check on its own, for the one caller that cannot use the
 // helpers above: hook_lua must set its slot's `installed` flag BETWEEN
