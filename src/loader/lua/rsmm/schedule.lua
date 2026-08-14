@@ -26,11 +26,18 @@ end
 -- callback checked itself, and every `on_guid`/`item.behavior` poller
 -- re-armed itself by hand.
 local _next_timer = 0
+-- Every live timer by handle. Cancellation marks the ENTRY through this table
+-- instead of mutating a list: a drain in progress is iterating one of those
+-- lists by index, so a `table.remove` under it shifts entries past the cursor
+-- and silently drops them.
+local _by_id = {}
 local function _add(list, seconds, fn, repeating)
     _next_timer = _next_timer + 1
-    table.insert(list, { id = _next_timer, fire_at = _now() + seconds,
-                         every = repeating and seconds or nil, fn = fn })
-    return _next_timer
+    local t = { id = _next_timer, fire_at = _now() + seconds,
+                every = repeating and seconds or nil, fn = fn }
+    _by_id[t.id] = t
+    table.insert(list, t)
+    return t.id
 end
 
 function M.after(seconds, fn)
@@ -58,35 +65,69 @@ end
 -- Fire everything due in `list`, re-arming repeaters and dropping one-shots.
 -- `store` writes the surviving list back (the pumps own the upvalues).
 local function _drain(list, label, store)
-    if #list == 0 then return end
+    -- Snapshot the length FIRST. `_add` appends to this very table, so an
+    -- unbounded `ipairs` walks straight into work a callback just scheduled
+    -- and runs it in the same pass. With a zero delay that never terminates:
+    -- `R.schedule.after(0, poll)` from inside `poll` — the obvious way to
+    -- write "poll as fast as possible" — spun forever inside one tick and hung
+    -- the loader's pump thread, taking every mod's timers, the hero capture
+    -- and the health canary with it. Work scheduled during a drain therefore
+    -- waits for the next tick, which also gives `after(0, ...)` a consistent
+    -- meaning.
+    local n0 = #list
+    if n0 == 0 then return end
     local now = _now()
     local keep = {}
-    for _, t in ipairs(list) do
-        if t.fire_at <= now then
-            local ok, err = pcall(t.fn)
-            if not ok and _G.rsmm then
-                _G.rsmm.log("schedule." .. label .. " error: " .. tostring(err))
+    for i = 1, n0 do
+        local t = list[i]
+        -- `cancelled` is what counts, not list membership. A callback that
+        -- stops its OWN repeater — the canonical "repeat until done" — cannot
+        -- be seen by this loop any other way: the drain already holds the
+        -- entry and would write it straight back, so the timer ran forever.
+        if t and not t.cancelled then
+            if t.fire_at <= now then
+                local ok, err = pcall(t.fn)
+                if not ok and _G.rsmm then
+                    _G.rsmm.log("schedule." .. label .. " error: " .. tostring(err))
+                end
+                -- A repeater survives a raising callback: a transient failure
+                -- (hero not spawned yet, say) shouldn't silently kill it.
+                -- Re-arm off `now`, not fire_at, so a stalled pump doesn't
+                -- queue a burst of catch-up fires. Re-check `cancelled` — the
+                -- callback may have just stopped it.
+                if t.every and not t.cancelled then
+                    t.fire_at = now + t.every
+                    keep[#keep + 1] = t
+                else
+                    _by_id[t.id] = nil
+                end
+            else
+                keep[#keep + 1] = t
             end
-            -- A repeater survives a raising callback: a transient failure
-            -- (hero not spawned yet, say) shouldn't silently kill the timer.
-            -- Schedule off `now`, not fire_at, so a stalled pump doesn't queue
-            -- a burst of catch-up fires.
-            if t.every then t.fire_at = now + t.every; keep[#keep + 1] = t end
-        else
-            keep[#keep + 1] = t
+        elseif t then
+            _by_id[t.id] = nil
         end
+    end
+    -- Carry over anything scheduled during this drain (appended past the
+    -- snapshot) without running it; dropping these would lose every
+    -- self-rescheduling poll.
+    for i = n0 + 1, #list do
+        local t = list[i]
+        if t and not t.cancelled then keep[#keep + 1] = t end
     end
     store(keep)
 end
 
 -- Cancel a timer from either queue. Returns true if it was still pending.
 function M.cancel(handle)
-    for _, list in ipairs({ _timers, _main_timers }) do
-        for i, t in ipairs(list) do
-            if t.id == handle then table.remove(list, i); return true end
-        end
-    end
-    return false
+    local t = _by_id[handle]
+    if not t or t.cancelled then return false end
+    -- Mark only. The next drain of whichever list holds it does the removal,
+    -- so this is safe to call from inside a timer callback (including the
+    -- timer's own) while that list is being iterated.
+    t.cancelled = true
+    _by_id[handle] = nil
+    return true
 end
 
 -- MAIN-THREAD variants. The regular tick pump (M._tick) runs on the loader's

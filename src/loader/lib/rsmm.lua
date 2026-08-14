@@ -120,8 +120,31 @@ local function _dispatch(name, ev)
         local s = id and _subs[id]
         if s then
             local hit
-            if s.match then hit = name:find(s.match) ~= nil
-            else hit = (s.event == name) or (s.event == "*") end
+            if s.match then
+                -- pcall the MATCH, not just the callback. `find` raises on a
+                -- malformed pattern ("%", "[", ...), and that raise happens
+                -- here in the router — outside the callback's pcall — so it
+                -- unwinds the whole dispatch loop. One mod with a bad pattern
+                -- would silently stop every OTHER mod's handlers from running,
+                -- for every event, with the error surfacing far from its
+                -- cause. R.on_match rejects such patterns at subscribe time;
+                -- this is the belt to that braces (a pattern can also come
+                -- from mod config read at runtime).
+                local ok, found = pcall(name.find, name, s.match)
+                if not ok then
+                    if not s.match_broken then
+                        s.match_broken = true
+                        R.log("[rsmm.on_match] disabling subscription: pattern "
+                              .. string.format("%q", tostring(s.match))
+                              .. " is malformed (" .. tostring(found) .. ")")
+                    end
+                    hit = false
+                else
+                    hit = found ~= nil
+                end
+            else
+                hit = (s.event == name) or (s.event == "*")
+            end
             if hit then
                 if s.once then expired = expired or {}; expired[#expired + 1] = id end
                 local ok, err = pcall(s.cb, ev, name)
@@ -155,6 +178,12 @@ end
 function R.on_match(pattern, cb)
     assert(type(pattern) == "string", "R.on_match: pattern must be string")
     assert(type(cb) == "function",    "R.on_match: cb must be function")
+    -- Reject a malformed pattern HERE, where the mod that wrote it is on the
+    -- stack. Left to the router, the raise lands in the shared dispatch loop
+    -- and reads as "the event bus broke", with nothing pointing at the author.
+    local ok, err = pcall(string.find, "", pattern)
+    assert(ok, "R.on_match: malformed Lua pattern " ..
+               string.format("%q", pattern) .. " (" .. tostring(err) .. ")")
     return _add_sub{ match = pattern, cb = cb }
 end
 
@@ -571,9 +600,70 @@ local _GIVE_ANCHORS = {
 -- changes (hero switch / new run) to drop the now-stale HP-carrier capture.
 local _invalidate_hero_capture
 
--- The NamedEventDispatcher sub-object lives at entity+0x4d8; subtract to reach
--- the owning entity so we can test whether it is a grantable hero.
-local _DISPATCHER_ENTITY_OFF = 0x4d8
+-- The NamedEventDispatcher sub-object lives at some fixed offset inside its
+-- owning entity; subtract it to reach the entity and test whether that entity
+-- is a grantable hero.
+--
+-- LEARNED, NOT HARDCODED. It used to be the literal 0x4d8, which was correct
+-- until the 2026-07-09 game patch moved it — after which `disp - 0x4d8` landed
+-- in the middle of nothing, the component-store slot read a -1 sentinel, and
+-- the discriminator rejected the ONE real hero in the session. The symptom was
+-- "give only works on Aladdin", and it took a live diag to find. A constant
+-- that silently goes wrong on a patch and degrades a feature is worth spending
+-- a few lines to stop hardcoding.
+--
+-- Both ends are observable at runtime: the hero entity is captured natively
+-- (spawn-init -> shared slot, validated against its own HP/mirror fields, a
+-- path that never goes through a dispatcher), and hero-anchored gameplay
+-- events hand us the dispatcher. Their difference IS the offset.
+local _DISPATCHER_ENTITY_OFF = nil       -- nil until corroborated (below)
+local _DISP_OFF_MAX   = 0x4000           -- a sub-object, not a separate alloc
+
+--- Learn the offset from a dispatcher whose owning entity we already know.
+--
+-- The candidate is `disp - hero`, and it is accepted only once TWO different
+-- hero pointers have produced the same value.
+--
+-- Corroboration is the only evidence available here, and the obvious
+-- alternative does not work: asking the engine `is_grant_target(disp - off)`
+-- proves nothing, because `disp - off` IS `hero` by construction, so it merely
+-- re-confirms the hero we already trusted. Any dispatcher sitting 8-aligned
+-- within `_DISP_OFF_MAX` above the hero would have latched — including a
+-- summon's, which also fires anchor events. Latching a wrong offset is
+-- permanent (there is no re-learn) and turns `_dispatcher_is_hero` into a
+-- rejector of the real hero: precisely the "give only works on Aladdin"
+-- failure this code exists to prevent.
+--
+-- The hero pointer changes between runs and on a character switch, so a fixed
+-- layout offset reproduces across those boundaries and a coincidental heap
+-- delta does not. The cost is that the strict summon filter stays dormant
+-- until a second hero has been seen; until then the caller fails OPEN, which
+-- is exactly the behaviour that shipped before, so nothing regresses while it
+-- waits.
+local _disp_off_seen = {}        -- candidate offset -> hero it came from
+
+local function _learn_dispatcher_offset(disp)
+    if _DISPATCHER_ENTITY_OFF or type(disp) ~= "number" then return end
+    local hero = R.entity and R.entity.hero and R.entity.hero()
+    if type(hero) ~= "number" or hero == 0 or disp <= hero then return end
+    local off = disp - hero
+    if off > _DISP_OFF_MAX or off % 8 ~= 0 then return end
+    -- Both ends must look like live objects before their difference means
+    -- anything: the dispatcher is a sub-object with its own vtable.
+    if not _ptr_plausible(hero) or not _obj_has_vtable(disp) then return end
+
+    local prev = _disp_off_seen[off]
+    if prev == nil then
+        _disp_off_seen[off] = hero
+        return
+    end
+    if prev == hero then return end      -- same hero twice is not independent
+    _DISPATCHER_ENTITY_OFF = off
+    R.log(string.format(
+        "[rsmm.give] dispatcher sits at entity+0x%x (corroborated by two "
+        .. "distinct heroes; the hardcoded 0x4d8 went stale on 2026-07-09)",
+        off))
+end
 
 -- True iff `disp`'s owning entity is a grantable hero (not a summon/pet). Uses
 -- the native, page-guarded magical-object-component lookup when available; if
@@ -581,19 +671,24 @@ local _DISPATCHER_ENTITY_OFF = 0x4d8
 -- dispatcher (prior behavior) rather than breaking give outright.
 local function _dispatcher_is_hero(disp)
     if type(I.is_grant_target) ~= "function" then return true end
+    -- Until the offset has been learned there is no way to get from a
+    -- dispatcher to its entity, so accept the dispatcher. See below on why
+    -- accepting is the safe direction.
+    if not _DISPATCHER_ENTITY_OFF then
+        _learn_dispatcher_offset(disp)
+        -- Fall through when that call is the one that corroborated it: the
+        -- offset is usable immediately, and returning early here would skip
+        -- the discriminator for the very dispatcher that taught us.
+        if not _DISPATCHER_ENTITY_OFF then return true end
+    end
     local entity = disp - _DISPATCHER_ENTITY_OFF
-    -- Fail OPEN, not closed. _DISPATCHER_ENTITY_OFF (0x4d8) is stale on the
-    -- 2026-07-09+ build: disp-0x4d8 no longer lands on the real entity, so the
-    -- component-store slot at entity+8 reads a -1 sentinel and the native
-    -- discriminator rejects the actual hero (in-game diag confirmed store=-1,
-    -- is_grant_target=false for the only, real, dispatcher). Only TRUST a
-    -- positive native signal; when the check can't run (implausible entity or
-    -- empty store), accept the dispatcher. The game's own grant handler
-    -- (FUN_140397030) re-checks grantability and safely no-ops a non-hero
-    -- target, so accepting a summon here cannot crash — worst case a grant is a
-    -- silent no-op until the hero's own anchor event re-captures. Restores the
-    -- pre-patch behavior that worked. Re-derive the offset to re-enable the
-    -- strict summon filter -- see [[give-hero-agnostic-fix]].
+    -- Fail OPEN, not closed. Only TRUST a positive native signal; when the
+    -- check cannot run (implausible entity or empty store), accept the
+    -- dispatcher. The game's own grant handler (FUN_140397030) re-checks
+    -- grantability and safely no-ops a non-hero target, so accepting a summon
+    -- here cannot crash — worst case a grant is a silent no-op until the
+    -- hero's own anchor event re-captures. Rejecting wrongly is the expensive
+    -- direction: that is what "give only works on Aladdin" was.
     if not _ptr_plausible(entity) then return true end
     local store = I.read_u64(entity + 8)
     if not _ptr_plausible(store) then return true end
@@ -693,6 +788,25 @@ function R.give.by_guid(lo, hi)
     end
     I.poke(ev + 0x50, lo or 0, 8)
     I.poke(ev + 0x58, hi or 0, 8)
+    -- Validate the dispatcher AT THE CALL, not just when it was captured.
+    -- `_give_hero` is a raw engine pointer that outlives nothing: a run ending
+    -- or a character switch frees the hero, and the capture is only refreshed
+    -- when an anchor event happens to fire. Handing a stale one to the engine
+    -- is the loader's #1 crash class — native reads are page-guarded, but the
+    -- instant a pointer is a call ARGUMENT the engine owns the deref. A dead
+    -- dispatcher no longer looks like a live object, so require the vtable.
+    -- Checked here rather than through `call_safe`: NamedEvent_Dispatch is
+    -- declared "vpp" — void — so a successful call and a refusal both come
+    -- back nil, and there would be no way to tell them apart.
+    if not _obj_has_vtable(_give_hero) then
+        R.log(string.format(
+            "[rsmm.give] dispatcher 0x%x no longer looks live (run ended or "
+            .. "hero switched?); dropping the grant and clearing the capture",
+            _give_hero or 0))
+        _give_hero = nil
+        if _invalidate_hero_capture then _invalidate_hero_capture() end
+        return false
+    end
     R.engine.call("NamedEvent_Dispatch", _give_hero, ev)
     return true
 end
@@ -807,6 +921,33 @@ local PERMIT_NO = 2
 -- state and they all poll, so without a process-wide latch the scan would be
 -- repeated (and re-logged) five times over.
 local HERO_SCAN_SLOT = 5
+-- Ring of spawn-init candidates published by the native hook; see the
+-- promotion loop in R.entity.hero() for why one slot was not enough.
+local HERO_RING_FIRST = 8
+local HERO_RING_COUNT = 8
+
+-- When this state first saw ANY hero candidate, so a capture can report the
+-- wait the player actually experienced. The native side reports its own
+-- captures, but promotion usually happens HERE (the fields go live long after
+-- the stash), and that path printed no timing at all — so the one number the
+-- "capture takes ages" question needs was missing from the log.
+local _hero_first_seen = nil
+
+local function _note_hero_candidate()
+    if not _hero_first_seen and I.now then
+        local ok, t = pcall(I.now)
+        if ok and type(t) == "number" then _hero_first_seen = t end
+    end
+end
+
+--- "N.Ns after the first candidate appeared", or "" when unmeasurable.
+local function _capture_latency()
+    if not (_hero_first_seen and I.now) then return "" end
+    local ok, t = pcall(I.now)
+    if not ok or type(t) ~= "number" then return "" end
+    return string.format(" (%.1fs after the first candidate appeared)",
+                         t - _hero_first_seen)
+end
 
 -- True when the loader's native hero-capture is installed. When it is, the Lua
 -- side must not arm its own per-state capture hooks (they'd collide with the
@@ -1023,7 +1164,25 @@ end
 -- param_1 is the HP-carrier) — so it's available almost immediately, no longer
 -- gated on the hero's first heal/pickup. Read fresh every call so a hero-switch
 -- (which clears the slot) is picked up automatically.
+-- Rejection diagnostics are capped PER MOD STATE, and every installed mod has
+-- its own state — so a 6-line cap became 6 x N identical lines (37 in one
+-- measured session, all the same pointer and the same zero fields). The reason
+-- to print them at all is "a rejection that persists into live play means the
+-- offsets moved", which one state answers as well as seven. `HERO_DIAG_SLOT`
+-- is a cross-state claim: the first state to log takes it, the rest stay quiet.
 local _hero_diag_n = 0
+local HERO_DIAG_SLOT = 6
+
+--- True at most `limit` times across ALL mod states, not per state.
+local function _diag_budget(limit)
+    if _hero_diag_n >= limit then return false end   -- this state has had its say
+    local ok, n = pcall(I.shared_get, HERO_DIAG_SLOT)
+    n = (ok and type(n) == "number") and n or 0
+    if n >= limit then return false end
+    if I.shared_set then pcall(I.shared_set, HERO_DIAG_SLOT, n + 1) end
+    _hero_diag_n = _hero_diag_n + 1
+    return true
+end
 function R.entity.hero()
     if I.shared_get then
         local ok, h = pcall(I.shared_get, SHARED_HERO_SLOT)
@@ -1052,7 +1211,8 @@ function R.entity.hero()
                 pcall(I.shared_set, HERO_PENDING_SLOT, 0)
             end
             R.log(string.format(
-                "[rsmm.entity] hero switched to 0x%x (was 0x%x)", pend, h))
+                "[rsmm.entity] hero CAPTURED 0x%x (was 0x%x)%s", pend, h,
+                _capture_latency()))
             return pend
         end
 
@@ -1061,8 +1221,7 @@ function R.entity.hero()
             -- DIAG (first few only): the native capture published a pointer the
             -- Lua plausibility gate now rejects — log the raw reads so a
             -- playtest log shows WHY (stale/freed entity? moved offsets?).
-            if _hero_diag_n < 6 then
-                _hero_diag_n = _hero_diag_n + 1
+            if _diag_budget(6) then
                 R.log(string.format(
                     "[rsmm.entity] slot hero 0x%x REJECTED: hp=%s max=%s mirror=%s",
                     h, tostring(I.read_f32(h + ENTITY_HP_OFF)),
@@ -1074,6 +1233,33 @@ function R.entity.hero()
         -- identity BEFORE its HP/mirror fields are populated (they fill during
         -- the load sequence). Promote it to the real slot the first time it
         -- reads plausible — instant capture with no combat prerequisite.
+        -- Every spawn-init candidate, not just the latest. The native side
+        -- keeps them in a ring (slots 8..15) because a single slot meant each
+        -- spawn-init discarded the previous candidate: measured 2026-08-14,
+        -- five stashes collapsed to one whose HP fields never went live, so
+        -- the pending path was dead for the entire run and capture fell back
+        -- to waiting ~94s for a gain-health fire. They are all hero-identity
+        -- (the routine is hero-only); they simply go live at different times,
+        -- so promote whichever validates first.
+        for i = 0, HERO_RING_COUNT - 1 do
+            local okr, cand = pcall(I.shared_get, HERO_RING_FIRST + i)
+            if okr and type(cand) == "number" and cand ~= 0 then
+                _note_hero_candidate()
+            end
+            if okr and type(cand) == "number" and cand ~= 0
+                and cand ~= h and _hero_plausible(cand) then
+                if I.shared_set then
+                    pcall(I.shared_set, SHARED_HERO_SLOT, cand)
+                    pcall(I.shared_set, HERO_AUTH_SLOT, 1)
+                    pcall(I.shared_set, HERO_PENDING_SLOT, 0)
+                end
+                R.log(string.format(
+                    "[rsmm.entity] hero CAPTURED 0x%x from ring slot %d%s",
+                    cand, i, _capture_latency()))
+                return cand
+            end
+        end
+
         local okp, p = pcall(I.shared_get, HERO_PENDING_SLOT)
         if okp and type(p) == "number" and p ~= 0 then
             if _hero_plausible(p) then
@@ -1082,7 +1268,9 @@ function R.entity.hero()
                     pcall(I.shared_set, HERO_AUTH_SLOT, 1)
                     pcall(I.shared_set, HERO_PENDING_SLOT, 0)
                 end
-                R.log(string.format("[rsmm.entity] pending spawn hero 0x%x promoted (instant capture)", p))
+                R.log(string.format(
+                    "[rsmm.entity] hero CAPTURED 0x%x from the pending slot%s",
+                    p, _capture_latency()))
                 return p
             end
             -- DIAG (first few only). A rejection here is NORMAL for a while:
@@ -1098,8 +1286,7 @@ function R.entity.hero()
             -- INTO live play means the offsets really did move, and rejecting
             -- silently is how that failed invisibly before (every downstream
             -- API no-ops with nothing in the log to say why).
-            if _hero_diag_n < 6 then
-                _hero_diag_n = _hero_diag_n + 1
+            if _diag_budget(6) then
                 local mirror = I.read_u64(p + ENTITY_HUDMIRROR_OFF)
                 R.log(string.format(
                     "[rsmm.entity] pending hero 0x%x REJECTED: hp=%s max=%s "
@@ -3313,6 +3500,193 @@ function R.debug.find_arrays(obj, opts)
     end
     return found
 end
+
+-- Harvest the readable C strings an object points at.
+--
+-- The engine names everything it loads by string path (see the POI reference
+-- chain: mapdef -> tiledef -> prefab -> level -> prop entity are all string
+-- refs, no GUIDs), so the fastest way to answer "WHICH object is this pointer"
+-- is to look for a resource path hanging off it. This walks `obj`'s pointer
+-- fields one level deep and reads each target as a NUL-terminated string.
+--
+-- Every read is page-guarded on the native side (`read_cstr` stops at the
+-- first byte outside a readable page), so pointing this at a non-object is a
+-- miss, not a fault. `min_len` and the printable filter are what keep binary
+-- garbage out — a 2-char "string" off a float field is noise, not a name.
+--
+-- Returns { {off=, ptr=, text=}, ... } and logs each hit when `opts.log`.
+function R.debug.strings(obj, opts)
+    opts = opts or {}
+    local max_off = opts.max_off or 0x400
+    local min_len = opts.min_len or 4
+    local out = {}
+    if type(I.read_cstr) ~= "function" then
+        R.log("[rsmm.debug] strings: this loader has no read_cstr binding")
+        return out
+    end
+    if not _ptr_plausible(obj) then return out end
+    for off = 0, max_off - 8, 8 do
+        local p = I.read_u64(obj + off)
+        if _ptr_plausible(p) then
+            local s = I.read_cstr(p, opts.max_len or 160)
+            -- Printable-ASCII only. A resource path is ASCII by construction,
+            -- and anything with control bytes in it is a struct we misread as
+            -- a string.
+            if type(s) == "string" and #s >= min_len and not s:find("[^\32-\126]") then
+                out[#out + 1] = { off = off, ptr = p, text = s }
+                if opts.log ~= false then
+                    R.log(string.format("[rsmm.debug] strings: +0x%03x -> %q", off, s))
+                end
+            end
+        end
+    end
+    if #out == 0 and opts.log ~= false then
+        R.log("[rsmm.debug] strings: none found")
+    end
+    return out
+end
+
+-- interaction bus ---------------------------------------------------------
+--
+-- The game already owns a complete interaction system; this is a thin, honest
+-- wrapper over it rather than a reimplementation. What ships in the retail
+-- exe:
+--
+--   oCDtEntityCpntInteractionSettings   authored per entity (122 shipped
+--                                       entity defs carry one: chests,
+--                                       fountains, the wishing well, altars,
+--                                       cauldrons, teleporters, ruins, ...)
+--   oCDtEntityCpntInteraction           the runtime component
+--   oCDtEntityCpntInteractionNetworkData  its replicated half
+--   oCDtNamedEventInteraction           the event object, payload at +0x38
+--                                       and +0x50 (mined, meaning NOT yet
+--                                       confirmed -- exposed raw as `a`/`b`)
+--
+-- and a seven-name request/validate/commit protocol on the gameplay bus:
+--
+--   INTERACTION_REQUEST -> INTERACTION_VALIDATE -> INTERACTION_SUCCESS
+--                                               \-> INTERACTION_REJECT
+--                                               \-> INTERACTION_FAILED
+--                                               \-> INTERACTION_CANCELED
+--   LOCAL_INTERACTION_SUCCESS  -- the local peer's own copy
+--
+-- The shape is host-authoritative, which matches the netcode
+-- ([[multiplayer-netcode]]): a client ASKS, the host validates, and the
+-- outcome comes back. So a mod must treat `request` as an intent it may not
+-- get, and hang real effects off `success` / `local_success`.
+--
+-- WHAT THIS DOES NOT DO YET. It does not tell you WHICH object was
+-- interacted with. The dispatcher pointer and the two payload words are
+-- published verbatim precisely so one playtest can pin that down
+-- (`R.interact.trace(true)` + `R.interact.identify`), rather than the SDK
+-- guessing a meaning and mods building on it.
+R.interact = {}
+
+--- Bus name -> phase. Also the set of names this module listens to.
+local INTERACT_PHASE = {
+    ["gameplay:INTERACTION_REQUEST"]       = "request",
+    ["gameplay:INTERACTION_VALIDATE"]      = "validate",
+    ["gameplay:INTERACTION_SUCCESS"]       = "success",
+    ["gameplay:LOCAL_INTERACTION_SUCCESS"] = "local_success",
+    ["gameplay:INTERACTION_REJECT"]        = "reject",
+    ["gameplay:INTERACTION_FAILED"]        = "failed",
+    ["gameplay:INTERACTION_CANCELED"]      = "canceled",
+}
+
+local _interact_subs = {}     -- phase (or "*") -> { cb, ... }
+local _interact_last = nil
+local _interact_trace = false
+
+--- A payload word arrives as a hex STRING (a Lua number is a double and loses
+--- the low bits of a 64-bit handle). Numbers pass through unchanged.
+local function _word(v)
+    if type(v) == "number" then return v end
+    if type(v) == "string" then return tonumber(v) end
+    return nil
+end
+
+--- The most recent interaction seen, or nil. Same table the callbacks get.
+function R.interact.last() return _interact_last end
+
+--- Log one line per interaction event. Off by default: this fires on every
+--- chest, fountain and teleporter in the run.
+function R.interact.trace(on) _interact_trace = (on ~= false) end
+
+--- Subscribe to one phase, or to "*" for all of them.
+--
+-- The callback gets a table:
+--   phase       "request" | "validate" | "success" | "local_success"
+--               | "reject" | "failed" | "canceled"
+--   name        the raw bus name
+--   seq         the loader's dispatch counter
+--   dispatcher  the entity dispatcher the event fired at (number)
+--   a, b        the event payload words at +0x38 / +0x50, meaning unconfirmed
+--   class       the decoded event class, when the loader could decode one
+function R.interact.on(phase, cb)
+    assert(type(cb) == "function", "R.interact.on: callback must be a function")
+    phase = phase or "*"
+    _interact_subs[phase] = _interact_subs[phase] or {}
+    table.insert(_interact_subs[phase], cb)
+    return { phase = phase, index = #_interact_subs[phase] }
+end
+
+--- Best-effort "what did I just interact with".
+--
+-- Reads the strings hanging off a pointer from the interaction payload and
+-- keeps the ones that look like an engine resource path. Returns the first
+-- such path (and the full list as a second value), or nil.
+--
+-- Best-effort is meant literally: until a playtest says what `a` and `b`
+-- actually point at, this is the tool for FINDING that out, not a stable
+-- identifier to key mod behaviour on.
+function R.interact.identify(ptr, opts)
+    ptr = _word(ptr)
+    if not ptr then return nil, {} end
+    local hits = R.debug.strings(ptr, opts or { log = false })
+    local paths = {}
+    for _, h in ipairs(hits) do
+        if h.text:find("%.ot") or h.text:find("\\") then
+            paths[#paths + 1] = h.text
+        end
+    end
+    return paths[1], paths
+end
+
+R.on("*", function(ev, name)
+    local phase = INTERACT_PHASE[name]
+    if not phase then return end
+    -- Typed fields first (`u38`/`u50`, keyed by the event's own vftable), then
+    -- the generic RSMM_EVENT_PROBE window (`w38`/`w50`). The typed decode is
+    -- gated on the build fingerprint — mined vftable RVAs are build-specific —
+    -- so on a game build the schemas were not re-mined for, `u38` is simply
+    -- absent and the probe window is the only way to see the payload at all.
+    -- Taking both means a mod reads `a`/`b` the same way either way.
+    local info = {
+        phase      = phase,
+        name       = name,
+        seq        = ev.seq,
+        dispatcher = _word(ev.dispatcher),
+        a          = _word(ev.u38) or _word(ev.w38),
+        b          = _word(ev.u50) or _word(ev.w50),
+        class      = ev.class,
+    }
+    _interact_last = info
+    if _interact_trace then
+        R.log(string.format(
+            "[rsmm.interact] %-13s seq=%s disp=0x%x a=0x%x b=0x%x %s",
+            info.phase, tostring(info.seq), info.dispatcher or 0,
+            info.a or 0, info.b or 0, info.class or ""))
+    end
+    for _, key in ipairs({ phase, "*" }) do
+        for _, cb in ipairs(_interact_subs[key] or {}) do
+            -- One bad handler must not take the others down with it, and this
+            -- runs on the engine's dispatch thread — an error escaping here
+            -- unwinds into the game.
+            local ok, err = pcall(cb, info)
+            if not ok then R.log("[rsmm.interact] handler error: " .. tostring(err)) end
+        end
+    end
+end)
 
 -- loader-derived events --------------------------------------------------
 --

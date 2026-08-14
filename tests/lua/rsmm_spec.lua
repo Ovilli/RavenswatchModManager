@@ -268,6 +268,18 @@ function I.read_u8(a)  return rint(a, 1) end
 function I.read_u32(a) return rint(a, 4) end
 function I.read_u64(a) return rint(a, 8) end
 function I.read_f32(a) return (string.unpack("<f", rbytes(a, 4))) end
+-- Faithful to mem_read_cstr: stops at the NUL, and at `max`. Unmapped fake
+-- memory reads as 0, so a pointer into nothing yields "" rather than garbage —
+-- the same "miss, not a fault" the page-guarded native read gives.
+function I.read_cstr(a, max)
+    local out = {}
+    for i = 0, (max or 256) - 1 do
+        local b = mem[a + i]
+        if b == nil or b == 0 then break end
+        out[#out + 1] = string.char(b)
+    end
+    return table.concat(out)
+end
 function I.write_u8(a, v)  wint(a, v & 0xff, 1) end
 function I.write_u16(a, v) wint(a, v & 0xffff, 2) end
 function I.write_u32(a, v) wint(a, v & 0xffffffff, 4) end
@@ -782,6 +794,57 @@ do
     check(seen == 3, "each() iterates every loaded item exactly once")
 end
 
+-- 9b. R.give validates the dispatcher AT THE CALL ---------------------------
+--
+-- `_give_hero` is a raw engine pointer captured from an earlier event. A run
+-- ending or a character switch frees the hero, and the capture only refreshes
+-- when an anchor event happens to fire — so the pointer can be stale by the
+-- time a grant is attempted. Native reads are page-guarded, but a pointer
+-- handed to an engine call as an ARGUMENT is dereferenced by the engine, which
+-- is the loader's #1 crash class.
+do
+    seed_pool(1)
+    -- This block deliberately invalidates the hero capture, which later blocks
+    -- rely on. Snapshot the cross-state slots and put them back at the end.
+    local saved_shared = {}
+    for k, v in pairs(shared) do saved_shared[k] = v end
+
+    -- Capture a dispatcher the normal way: an anchor event with a live object.
+    local DISP = scratch(0x40)
+    I.write_u64(DISP, 0x140f00000)          -- a vtable inside the image
+    fire("gameplay:ABILITY_EXIT", { source = "gameplay",
+                                    dispatcher = string.format("0x%x", DISP) })
+    check(R.give.ready(), "spec fixture: a live dispatcher is captured")
+
+    -- The grant path builds an event object first; give it one so the test
+    -- exercises the dispatcher guard rather than bailing before it.
+    engine["NamedEvent_GiveMagicalObject_Ctor"] = function(buf) return buf end
+
+    -- Sanity: with a LIVE dispatcher the grant goes through. Without this the
+    -- refusal below could pass for the wrong reason.
+    local dispatched = false
+    engine["NamedEvent_Dispatch"] = function() dispatched = true end
+    check(R.give.by_guid(0xA001, 0xB001) == true, "a live dispatcher grants")
+    check(dispatched, "and the engine call is made")
+
+    -- Now make it look dead, the way a freed hero does, and grant again.
+    I.write_u64(DISP, 0)                    -- vtable slot no longer an object
+    dispatched = false
+    local ok = R.give.by_guid(0xA001, 0xB001)
+
+    check(ok == false, "a grant on a dead dispatcher is refused, not attempted")
+    check(not dispatched, "and the engine call is never made")
+    check(not R.give.ready(), "the stale capture is dropped so it can re-arm")
+
+    -- Re-arm for the blocks that follow: restore the slots and hand the bus a
+    -- live dispatcher again.
+    for k in pairs(shared) do shared[k] = nil end
+    for k, v in pairs(saved_shared) do shared[k] = v end
+    I.write_u64(DISP, 0x140f00000)
+    fire("gameplay:ABILITY_EXIT", { source = "gameplay",
+                                    dispatcher = string.format("0x%x", DISP) })
+end
+
 -- 10. fail-closed guards: the safety net that makes engine writes acceptable --
 do
     -- (a) symbol-map/build mismatch (va_trusted == false) disables every
@@ -948,6 +1011,63 @@ do
     check(#fired == 2 and fired[2] == "two", "later timer fires in order")
     R.schedule._tick()
     check(#fired == 2, "a fired timer does not repeat")
+
+    -- A callback that schedules more work must not be run again in the SAME
+    -- drain. `_add` appends to the very table being walked, so an unbounded
+    -- `ipairs` used to march straight into the new entries: with a zero delay,
+    -- `R.schedule.after(0, poll)` from inside `poll` — the obvious way to
+    -- write "poll as fast as possible" — spun forever inside one tick and hung
+    -- the loader's pump thread, taking every mod's timers, the hero capture
+    -- and the health canary with it.
+    local hot, hot_handle = 0, nil
+    local function spin()
+        hot = hot + 1
+        hot_handle = R.schedule.after(0, spin)
+    end
+    hot_handle = R.schedule.after(0, spin)
+    R.schedule._tick()
+    check(hot == 1, "a zero-delay self-reschedule fires ONCE per tick, not forever")
+    R.schedule._tick()
+    check(hot == 2, "and the work it queued runs on the NEXT tick")
+    R.schedule.cancel(hot_handle)
+
+    -- The carry-over must not drop it either: a self-rescheduling poll with a
+    -- real delay keeps going.
+    local polls = 0
+    local function poll()
+        polls = polls + 1
+        if polls < 3 then R.schedule.after(1, poll) end
+    end
+    R.schedule.after(1, poll)
+    for _ = 1, 4 do
+        fake_clock = fake_clock + 1.5
+        R.schedule._tick()
+    end
+    check(polls == 3, "a delayed self-rescheduling poll survives the drain")
+
+    -- A repeater must be able to stop ITSELF — "repeat until done" is the
+    -- whole reason `every` returns a handle. Cancel used to only remove the
+    -- entry from the list, which a drain already in progress cannot observe:
+    -- it held the same entry and wrote it straight back, so the timer polled
+    -- for the rest of the session.
+    local beats, handle = 0, nil
+    handle = R.schedule.every(1, function()
+        beats = beats + 1
+        R.schedule.cancel(handle)
+    end)
+    for _ = 1, 3 do
+        fake_clock = fake_clock + 1.5
+        R.schedule._tick()
+    end
+    check(beats == 1, "a repeater that cancels itself fires exactly once")
+    check(R.schedule.pending().timers == 0, "and leaves nothing pending")
+
+    -- Cancelling from OUTSIDE a drain still works, and is idempotent.
+    local never = R.schedule.every(1, function() check(false, "cancelled timer ran") end)
+    check(R.schedule.cancel(never), "cancel reports it stopped a live timer")
+    check(not R.schedule.cancel(never), "cancelling twice reports false")
+    fake_clock = fake_clock + 5
+    R.schedule._tick()
 
     -- next_main must NOT drain on the background tick pump.
     local main_ran = false
@@ -1426,6 +1546,203 @@ do
     hooks[va] = nil
     package.loaded["rsmm"] = nil
     R = require "rsmm"
+end
+
+-- N. hero capture: a later spawn-init must not discard earlier candidates ---
+--
+-- Spawn-init fires several times per boot and the native side used ONE pending
+-- slot, so each call overwrote the last. Measured 2026-08-14: five stashes
+-- collapsed to a single candidate whose HP fields never went live, the pending
+-- path was dead for the whole run, and capture instead waited ~94s for a
+-- gain-health fire. The candidates are all hero-identity — they just go live
+-- at different times — so all of them are kept and the first to validate wins.
+do
+    package.loaded["rsmm"] = nil
+    local Rh = require "rsmm"
+    local saved = {}
+    for k, v in pairs(shared) do saved[k] = v end
+    for k in pairs(shared) do shared[k] = nil end
+
+    local DEAD, LIVE = 0x21000000, 0x22000000
+    -- DEAD never populates: HP fields stay zero, exactly like the candidate
+    -- that blocked the real run.
+    I.write_f32(DEAD + 0x15c8, 0.0)
+    I.write_f32(DEAD + 0x15cc, 0.0)
+    I.write_u64(DEAD + 0x1d80, 0)
+    -- LIVE is a fully populated hero.
+    I.write_f32(LIVE + 0x15c8, 42.0)
+    I.write_f32(LIVE + 0x15cc, 100.0)
+    I.write_u64(LIVE + 0x1d80, 0x23000000)
+    I.write_f32(0x23000000, 42.0)
+
+    -- The dead one arrives LAST, which under the old single-slot design is
+    -- what made it win and shadow everything before it.
+    shared[8] = LIVE
+    shared[9] = DEAD
+    shared[3] = DEAD
+
+    check(Rh.entity.hero() == LIVE,
+          "a live ring candidate is promoted even when a dead one arrived later")
+    check(shared[0] == LIVE, "and it is published to the shared hero slot")
+
+    for k in pairs(shared) do shared[k] = nil end
+    for k, v in pairs(saved) do shared[k] = v end
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- N. a bad pattern from one mod must not break the bus for everyone --------
+--
+-- `R.on_match` patterns are applied with `string.find`, which RAISES on a
+-- malformed pattern. That call lives in the shared router, outside the
+-- per-callback pcall, so one mod passing "%" used to unwind the whole dispatch
+-- loop: every other mod's handlers stopped running, for every event, and the
+-- error surfaced nowhere near the mod that caused it. The router now pcalls
+-- the match too; this pins the half a spec can observe — the refusal at
+-- subscribe time, where the offending mod is still on the stack.
+do
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+
+    check(not pcall(Rp.on_match, "%", function() end),
+          "a malformed pattern is refused by on_match")
+    check(not pcall(Rp.on_match, "[", function() end),
+          "an unfinished character class is refused too")
+    check(pcall(Rp.on_match, "^gameplay:", function() end),
+          "a valid pattern is still accepted")
+
+    -- A live pattern subscription must not disturb ordinary handlers.
+    local plain, matched = false, 0
+    Rp.on("gameplay:PING", function() plain = true end)
+    Rp.on_match("^gameplay:PI", function() matched = matched + 1 end)
+    fire("gameplay:PING", { source = "gameplay" })
+    check(plain, "a plain handler still fires alongside a pattern subscription")
+    check(matched == 1, "the pattern subscription fired exactly once")
+
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- N. dispatcher offset is learned, and needs real corroboration ------------
+--
+-- The literal 0x4d8 was correct until the 2026-07-09 patch moved the
+-- dispatcher sub-object, after which `disp - 0x4d8` landed on nothing and the
+-- discriminator rejected the only real hero in the session ("give only works
+-- on Aladdin"). It is derived at runtime now — but a single sighting is not
+-- evidence: `disp - off` IS the hero by construction, so asking the engine to
+-- vouch for it re-confirms the hero we already trusted and says nothing about
+-- the dispatcher. A summon's dispatcher also fires anchor events, and latching
+-- its delta would be permanent. Two DIFFERENT hero pointers agreeing on one
+-- offset is what separates a layout constant from a heap coincidence.
+do
+    package.loaded["rsmm"] = nil
+    local Rd = require "rsmm"
+    local saved_shared = {}
+    for k, v in pairs(shared) do saved_shared[k] = v end
+
+    local OFF = 0x520                       -- deliberately NOT the old 0x4d8
+    local function hero_at(addr)
+        I.write_f32(addr + 0x15c8, 50.0)    -- hp
+        I.write_f32(addr + 0x15cc, 100.0)   -- max hp
+        I.write_u64(addr + 0x1d80, 0x12340000)
+        I.write_u64(addr + 8, 0x13000000)   -- component store
+        I.write_u64(0x13000000, 0x13000100)
+        return addr
+    end
+    local function dispatcher_for(hero)
+        local d = hero + OFF
+        I.write_u64(d, 0x140f00000)         -- vtable inside the image
+        return d
+    end
+
+    local asked = {}
+    I.is_grant_target = function(e) asked[#asked + 1] = e; return true end
+
+    -- Hero #1: one sighting must NOT be enough to latch an offset.
+    local h1 = hero_at(0x11000000)
+    shared[0] = h1
+    check(Rd.entity.hero() == h1, "spec fixture: first hero is capturable")
+    fire("gameplay:ABILITY_EXIT", { source = "gameplay",
+        dispatcher = string.format("0x%x", dispatcher_for(h1)) })
+    check(#asked == 0,
+          "one sighting must not latch an offset (a summon could produce it)")
+
+    -- Hero #2, a different pointer, same delta: now it is a layout offset.
+    local h2 = hero_at(0x11800000)
+    shared[0] = h2
+    check(Rd.entity.hero() == h2, "spec fixture: second hero is capturable")
+    fire("gameplay:COMBO_LINK", { source = "gameplay",
+        dispatcher = string.format("0x%x", dispatcher_for(h2)) })
+    check(#asked > 0, "a second, independent hero corroborates the offset")
+    check(asked[#asked] == h2,
+          "the derived entity is disp-off, i.e. the hero — not hero+0x4d8")
+
+    for k in pairs(shared) do shared[k] = nil end
+    for k, v in pairs(saved_shared) do shared[k] = v end
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- N. interaction bus + string harvest --------------------------------------
+--
+-- The payload words arrive as hex STRINGS (a Lua number is a double and would
+-- lose the low bits of a 64-bit handle), which is the part most likely to be
+-- mis-consumed by a mod, so it is pinned here rather than discovered live.
+do
+    local OBJ = scratch(0x100)
+    local STR = scratch(0x40)
+    wbytes(STR, "DarkHills\\SceneryObjects_DarkHills\\Carpet_4x4.entity.ot\0")
+    wint(OBJ + 0x18, STR, 8)             -- a path pointer hanging off the object
+    wint(OBJ + 0x20, 0x41, 8)            -- an int field: must not read as a string
+
+    local seen = {}
+    R.interact.on("success", function(ev) seen[#seen + 1] = ev end)
+    local all = 0
+    R.interact.on("*", function() all = all + 1 end)
+
+    fire("gameplay:INTERACTION_SUCCESS", {
+        source = "gameplay", seq = 7, class = "oCDtNamedEventInteraction",
+        dispatcher = string.format("0x%x", OBJ),
+        u38 = "0x0", u50 = string.format("0x%x", OBJ),
+    })
+
+    check(#seen == 1, "success handler fired once")
+    check(seen[1] and seen[1].phase == "success", "phase normalised to 'success'")
+    check(seen[1] and seen[1].dispatcher == OBJ, "hex-string dispatcher decoded to a number")
+    check(seen[1] and seen[1].b == OBJ, "payload word +0x50 decoded to a number")
+    check(seen[1] and seen[1].a == 0, "payload word +0x38 decoded (zero stays zero)")
+    check(R.interact.last() == seen[1], "last() returns the same table the callback got")
+    check(all == 1, "the wildcard phase subscriber also fired")
+
+    -- A non-interaction event must not reach the module at all.
+    fire("gameplay:OPEN_CHEST", { source = "gameplay", seq = 8 })
+    check(all == 1, "an unrelated gameplay event does not enter the interaction bus")
+    check(R.interact.last().seq == 7, "last() unchanged by an unrelated event")
+
+    -- Identification: the resource path is found through the pointer field,
+    -- and the integer field does not masquerade as a string.
+    local path, paths = R.interact.identify(string.format("0x%x", OBJ), { log = false })
+    check(path == "DarkHills\\SceneryObjects_DarkHills\\Carpet_4x4.entity.ot",
+          "identify finds the resource path hanging off the object")
+    check(#paths == 1, "exactly one path found, the int field is not one")
+
+    -- Untyped build: no u38/u50, only the RSMM_EVENT_PROBE window. `a`/`b`
+    -- must read the same either way, or a mod works on one build and silently
+    -- sees nil on the next.
+    fire("gameplay:INTERACTION_REQUEST", {
+        source = "gameplay", seq = 9,
+        dispatcher = string.format("0x%x", OBJ),
+        w38 = "0x11", w50 = string.format("0x%x", OBJ),
+    })
+    check(R.interact.last().a == 0x11, "probe-window w38 fills in for u38")
+    check(R.interact.last().b == OBJ, "probe-window w50 fills in for u50")
+
+    -- A pointer to nothing is a miss, not an error.
+    check(R.interact.identify(0) == nil, "identify(0) is nil")
+    check(select(1, R.interact.identify(0x999)) == nil, "implausible pointer yields nil")
+
+    local hits = R.debug.strings(OBJ, { log = false })
+    check(#hits == 1 and hits[1].off == 0x18, "strings reports the offset it found the path at")
 end
 
 -- ---------------------------------------------------------------------------
