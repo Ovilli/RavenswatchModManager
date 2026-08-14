@@ -40,7 +40,19 @@ LEGACY_LITERAL_ALLOWLIST = {
     # build, one of them an aligned-array deallocator being called as a
     # vector-grow. All four of its symbols were relocated on 2026-08-09 and it
     # is now clean.
-    "hook_skills.cpp": 1,
+    #
+    # hook_skills.cpp cleared on 2026-08-14: its "FUN_14031e630" was the herodef
+    # deserializer on an older build. Recovered as vftable slot 3 (deserialize)
+    # on oCDtHeroDefinition — the slot holding Definition_DeserializeBase on the
+    # base class — and shipped as Sym::HeroDef_Deserialize.
+    #
+    # hook_spawn.cpp is the last one. "FUN_140330c30" was described as the
+    # selector prepare virtual, but no slot in either oCEntityCpntEntitySpawner
+    # or oCSpawnerGoEntityCollector lands near it on this build, so the routine
+    # has not been re-identified. It stays a literal deliberately: resolving to
+    # nothing disables the trace, whereas guessing a neighbour would install a
+    # detour on the wrong function, which is the failure this whole module
+    # exists to prevent.
     "hook_spawn.cpp": 1,
 }
 

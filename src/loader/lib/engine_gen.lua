@@ -45,6 +45,7 @@ return {
   ["GameModifierDef_PostLoad"] = { pattern = "GameModifierDef_PostLoad", offset = 0x0, sig = "up" },
   ["GroupLevelComponent_Ctor"] = { pattern = "GroupLevelComponent_Ctor", offset = 0x0, sig = "pp" },
   ["HeroController_Ctor"] = { pattern = "HeroController_Ctor", offset = 0x0, sig = "pp" },
+  ["HeroDef_Deserialize"] = { pattern = "HeroDef_Deserialize", offset = 0x0, sig = "upp" },
   ["HeroDef_PostLoad"] = { pattern = "HeroDef_PostLoad", offset = 0x0, sig = "up" },
   ["HeroProgressionUnlock_IsUnlocked"] = { pattern = "HeroProgressionUnlock_IsUnlocked", offset = 0x0, sig = "up" },
   ["HeroRankLock_IsUnlocked"] = { pattern = "HeroRankLock_IsUnlocked", offset = 0x0, sig = "up" },

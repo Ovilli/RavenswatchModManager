@@ -1320,6 +1320,31 @@
    ]
   },
   {
+   "name": "HeroDef_Deserialize",
+   "kind": "function",
+   "category": "heroes",
+   "raw": "FUN_14031ef30",
+   "status": "ok",
+   "signature": "bool(oCDtHeroDefinition* def, oCBinaryStream* stream)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "locator": {
+    "vftable": {
+     "class": "oCDtHeroDefinition",
+     "slot": 3
+    }
+   },
+   "note": "Hero def deserializer: vftable slot 3 on the oCDtDefinition family (the base implementation at that slot IS Definition_DeserializeBase, which this override calls first and bails on). Returns 1 on success, 0 on any field failure. It is the hook point the runtime talent injection needs, because once it returns the herodef is fully populated and the skill vector at def+0x8d8 can be inspected or grown without touching the crash-prone serialized .gen. Confirmed by decompilation: the body writes field_0x8d8 through FUN_14020e000, which is exactly the offset hook_skills.cpp reads. hook_skills.cpp used to resolve this by the literal \"FUN_14031e630\" — an address from an older build with no pattern in the DB, so the capability silently disabled itself on every launch.",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
    "name": "HeroDef_LoadBaseEntity",
    "kind": "function",
    "category": "heroes",

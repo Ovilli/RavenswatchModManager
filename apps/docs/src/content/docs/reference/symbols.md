@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **179** symbols across 17 categories.
+Total: **180** symbols across 17 categories.
 
 ## combat
 
@@ -159,6 +159,7 @@ Total: **179** symbols across 17 categories.
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `ChallengeUnlock_IsUnlocked` | `0x1402b1100` | ✅ ok | ✔ | bool(void* condition_data) |
+| `HeroDef_Deserialize` | `0x14031ef30` | ✅ ok | ✔ | bool(oCDtHeroDefinition* def, oCBinaryStream* stream) |
 | `HeroDef_LoadBaseEntity` | `0x14031ece0` | ✅ ok |  | void(void* heroDef, void** outEntityRef) |
 | `HeroDef_LoadSkinEntity` | `0x14031ea40` | ✅ ok |  | void(void* heroDef, uint16_t skinIndex, void* outHandle) |
 | `HeroProgressionUnlock_IsUnlocked` | `0x1402b2b10` | ✅ ok | ✔ | bool(void* condition_data) |

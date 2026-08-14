@@ -280,6 +280,13 @@ inline HeroController_Ctor_fn HeroController_Ctor() {
     return reinterpret_cast<HeroController_Ctor_fn>(rsmm::fn_resolve(Sym::HeroController_Ctor_Pattern));
 }
 
+// HeroDef_Deserialize  (HeroDef_Deserialize)
+//   bool(oCDtHeroDefinition* def, oCBinaryStream* stream)
+using HeroDef_Deserialize_fn = uint32_t(*)(void*, void*);
+inline HeroDef_Deserialize_fn HeroDef_Deserialize() {
+    return reinterpret_cast<HeroDef_Deserialize_fn>(rsmm::fn_resolve(Sym::HeroDef_Deserialize_Pattern));
+}
+
 // HeroDef_PostLoad  (HeroDef_PostLoad)
 //   bool(void* definition)
 using HeroDef_PostLoad_fn = uint32_t(*)(void*);

@@ -191,6 +191,8 @@ constexpr std::uintptr_t XpComponent_vftable = 0x140f231b0ull;
 // --- heroes ---
 constexpr std::uintptr_t ChallengeUnlock_IsUnlocked = 0x1402b1100ull;
 constexpr const char* ChallengeUnlock_IsUnlocked_Pattern = "ChallengeUnlock_IsUnlocked";
+constexpr std::uintptr_t HeroDef_Deserialize = 0x14031ef30ull;
+constexpr const char* HeroDef_Deserialize_Pattern = "HeroDef_Deserialize";
 constexpr std::uintptr_t HeroDef_LoadBaseEntity = 0x14031ece0ull;
 constexpr const char* HeroDef_LoadBaseEntity_Pattern = "HeroDef_LoadBaseEntity";
 constexpr std::uintptr_t HeroDef_LoadSkinEntity = 0x14031ea40ull;

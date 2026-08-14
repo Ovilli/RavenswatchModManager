@@ -1,9 +1,10 @@
 // Runtime skill (talent) injection — see hook_skills.h for the why.
 //
-// Detours the herodef deserialiser (FUN_14031e630). After the original runs,
-// the herodef instance is fully populated; we inspect (and, when enabled,
-// grow) the runtime skill vector at herodef+0x7d0. This avoids editing the
-// crash-prone serialized .gen entirely.
+// Detours the herodef deserialiser (Sym::HeroDef_Deserialize, vftable slot 3
+// on oCDtHeroDefinition). After the original runs, the herodef instance is
+// fully populated; we inspect (and, when enabled, grow) the runtime skill
+// vector at herodef+0x8d8. This avoids editing the crash-prone serialized
+// .gen entirely.
 
 #include <windows.h>
 
@@ -17,6 +18,7 @@
 #include "hook_util.h"
 #include "mem_safe.h"
 #include "fn_resolver.h"
+#include "symbols.gen.h"   // GENERATED — Sym::HeroDef_Deserialize_Pattern
 #include "hook_skills.h"
 
 namespace rsmm {
@@ -40,8 +42,9 @@ constexpr std::size_t kPtrStride     = 0x08;
 constexpr std::size_t kSpdsSize      = 0xd0;
 constexpr std::size_t kGuidOff       = 0x10;
 
-// The deserialiser: char FUN_14031e630(void* herodef, void* stream). Returns 1
-// on success. Pattern lives in data/function_patterns.json.
+// The deserialiser: char(void* herodef, void* stream). Returns 1 on success.
+// Resolved through Sym::HeroDef_Deserialize_Pattern; pattern lives in
+// data/function_patterns.json.
 using Deserialize_t = char (*)(void*, void*);
 Deserialize_t g_real_deserialize = nullptr;
 
@@ -302,11 +305,16 @@ bool install_skill_hooks() {
         Loader::get().log("[skill-hook] disabled (set RSMM_ENABLE_SKILL_HOOK=1 to arm)");
         return false;
     }
-    // "FUN_14031e630" has no entry in the current pattern DB, so this resolves
-    // to nothing and the hook disables itself. It stays a literal because no
-    // semantic symbol exists for the herodef deserialiser yet — add one to
-    // data/symbols.json and switch to Sym::<Name>_Pattern.
-    return hook_install("skill-hook", "herodef deserialize", "FUN_14031e630",
+    // Was the literal "FUN_14031e630" — an address from an older build with no
+    // entry in the pattern DB, so it resolved to nothing and this capability
+    // silently disabled itself on every launch. The routine is vftable slot 3
+    // (deserialize) on oCDtHeroDefinition; recovered 2026-08-14 by taking the
+    // slot that holds Definition_DeserializeBase on the base class vtable and
+    // reading the same slot on the hero subclass. Confirmed by decompilation:
+    // the body calls Definition_DeserializeBase first and writes
+    // field_0x8d8 — exactly the talent vector this hook reads.
+    return hook_install("skill-hook", "herodef deserialize",
+                        Sym::HeroDef_Deserialize_Pattern,
                         reinterpret_cast<void*>(&hook_herodef_deserialize),
                         reinterpret_cast<void**>(&g_real_deserialize));
 }
