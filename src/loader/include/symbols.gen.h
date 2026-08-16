@@ -8,6 +8,10 @@ namespace Sym {
 constexpr std::uintptr_t kPreferredBase = 0x140000000ull;
 
 // --- combat ---
+constexpr std::uintptr_t HeroStats_OnDamageDealt = 0x14039aef0ull;
+constexpr const char* HeroStats_OnDamageDealt_Pattern = "HeroStats_OnDamageDealt";
+constexpr std::uintptr_t HeroStats_OnDamageTaken = 0x1403a0940ull;
+constexpr const char* HeroStats_OnDamageTaken_Pattern = "HeroStats_OnDamageTaken";
 constexpr std::uintptr_t ProjectileAttack_BeginAttack = 0x14083e7d0ull;
 constexpr const char* ProjectileAttack_BeginAttack_Pattern = "ProjectileAttack_BeginAttack";
 
@@ -155,7 +159,7 @@ constexpr std::uintptr_t NamedEvent_Delete = 0x1401273b0ull;
 constexpr const char* NamedEvent_Delete_Pattern = "NamedEvent_Delete";
 constexpr std::uintptr_t NamedEvent_Dispatch = 0x14066b6b0ull;
 constexpr const char* NamedEvent_Dispatch_Pattern = "NamedEvent_Dispatch";
-constexpr std::uintptr_t NamedEvent_EmitNetworkDamageFromHit = 0x140743a00ull;
+constexpr std::uintptr_t NamedEvent_EmitNetworkDamageFromHit = 0x1407276a0ull;
 constexpr const char* NamedEvent_EmitNetworkDamageFromHit_Pattern = "NamedEvent_EmitNetworkDamageFromHit";
 constexpr std::uintptr_t NamedEvent_GiveMagicalObject_Ctor = 0x14030fd30ull;
 constexpr const char* NamedEvent_GiveMagicalObject_Ctor_Pattern = "NamedEvent_GiveMagicalObject_Ctor";
@@ -305,6 +309,8 @@ constexpr const char* oCString_Dtor_Pattern = "oCString_Dtor";
 // --- netcode ---
 constexpr std::uintptr_t Entity_GetNetComponent = 0x140312db0ull;
 constexpr const char* Entity_GetNetComponent_Pattern = "Entity_GetNetComponent";
+constexpr std::uintptr_t Entity_GetNetId = 0x1407273c0ull;
+constexpr const char* Entity_GetNetId_Pattern = "Entity_GetNetId";
 constexpr std::uintptr_t Netcode_Channel_LookupById = 0x140241a50ull;
 constexpr const char* Netcode_Channel_LookupById_Pattern = "Netcode_Channel_LookupById";
 constexpr std::uintptr_t Netcode_Channel_Unsubscribe = 0x1401c8da0ull;
@@ -352,6 +358,10 @@ constexpr std::uintptr_t Reward_GenerateAndDistribute = 0x1401ecd10ull;
 constexpr const char* Reward_GenerateAndDistribute_Pattern = "Reward_GenerateAndDistribute";
 constexpr std::uintptr_t Reward_InitAllRewards = 0x1401e9800ull;
 constexpr const char* Reward_InitAllRewards_Pattern = "Reward_InitAllRewards";
+
+// --- session ---
+constexpr std::uintptr_t Account_GetDisplayName = 0x140929940ull;
+constexpr const char* Account_GetDisplayName_Pattern = "Account_GetDisplayName";
 
 // --- skins ---
 constexpr std::uintptr_t SkinGrid_Populate = 0x1401f16f0ull;

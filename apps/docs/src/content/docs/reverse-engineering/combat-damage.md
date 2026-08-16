@@ -26,8 +26,8 @@ and amplify/redirect** an attack the hero already makes.
 
 | Function | Symbol | Role |
 |---|---|---|
-| `FUN_1406e2d20` | `Entity_DispatchHit` | LOCAL apply: runs the target's hit handlers. `(oCEntity* target, oCEntityHitData* hit)`. |
-| `FUN_140726610` | `NamedEvent_EmitNetworkDamageFromHit` | wraps the hit in `oCGameNamedEventNetworkDamage`, sends over the network; calls `Entity_DispatchHit` for self/non-networked targets. |
+| `FUN_1406e3ce0` | `Entity_DispatchHit` | LOCAL apply: runs the target's hit handlers. `(oCEntity* target, oCEntityHitData* hit)`. |
+| `FUN_1407276a0` | `NamedEvent_EmitNetworkDamageFromHit` | `(attacker, target, hit)`. Applies locally via `Entity_DispatchHit` when the target is not ours or the attack is not replicated; builds and sends `oCGameNamedEventNetworkDamage` only when this machine owns the target **and** the attacker is remote — which is why the event never fires in solo. |
 
 Both consume a fully-built `oCEntityHitData`.
 
@@ -38,16 +38,27 @@ vftable `0x140f0e4b8`.
 | Offset | Field |
 |---|---|
 | `+0x00` | vftable |
-| `+0x08` | hit handle/id (from `FUN_140214f30`) |
-| `+0x10` | source/instigator entity\* (refcounted) |
+| `+0x10` | refcounted per-hit **handle** |
 | `+0x18..0x90` | float/vector block: positions, normals, direction (defaults from constants `0x140fc6c10`, `0x140fc6c50`, `0x140fc6e70`, `0x140fc7240`) |
+| `+0x70` | attacker **context** (its entity at `+0x8`) |
 | `+0x88` | u16 flags |
-| `+0xa0` | target entity\* (refcounted) |
+| `+0xa0` | hit-**value** object (f32 damage at `+0x8`) |
 
-The damage **amount** is not a plain float here — it lives in a separate
-"hit-value" object (`*(hitval+0x8)` = damage), pointed to from the hit-data.
+:::caution[Layout corrected 2026-08-15]
+`+0x10` and `+0xa0` used to be documented as the source and target entities.
+They are a per-hit handle and the hit-value object: both producers fill them
+from a handle allocator and a value object and release each through its own
+destructor. **The target is not stored in the hit data at all** — it is
+`Entity_DispatchHit`'s first argument. The stale names reached the Lua bus as
+`target_entity` / `instigator_entity` on `gameplay:NETWORK_DAMAGE`, where they
+could never match anything; they have been removed.
+:::
 
-## The producer: `Entity_ResolveAttackHits` (`FUN_1403dc780`)
+The damage **amount** is not a plain float here — it lives in the hit-value
+object at `+0xa0` (`*(hitval+0x8)` = damage). The resolver's RETURN value is
+that same number, which is how `R.damage` reads it without touching the struct.
+
+## The producer: `Entity_ResolveAttackHits` (`FUN_1403dd540`)
 
 ```c
 float resolve(void* attacker, uint hitDefIndex, TargetList* targets,
@@ -73,13 +84,18 @@ corrupts the hit pipeline or desyncs multiplayer.
 
 ## Recommended mod path
 
-**Ride an existing attack.** Hook `Entity_ResolveAttackHits` (`FUN_1403dc780`)
+**Ride an existing attack.** Hook `Entity_ResolveAttackHits` (`FUN_1403dd540`)
 read/modify and either scale the hit-value damage (`*(hitval+0x8)`) for a "+X%"
 effect, or swap/extend the target list to redirect/widen a hit. This reuses a
 real, fully-formed hit the engine already built — no fabrication, netcode-correct.
 Engine-mutating, so it runs on the game main thread (see
 [loader thread model](/reverse-engineering/mod-hooks/)) behind an env gate until
 verified. Not yet implemented.
+
+The **read-only** half of that hook ships today as `R.damage`: it replays the
+original with the arguments it received and only reads the returned damage, so
+per-player damage attribution needs none of the fabrication above. See
+[Authoring mods](/guides/modding/#damage-attribution-rdamage).
 
 ## See also
 
