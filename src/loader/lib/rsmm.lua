@@ -1208,25 +1208,50 @@ end
 -- pending heroes six seconds apart — the menu character, then the run's. A
 -- true one-shot would have measured the wrong object while it was still blank
 -- and latched. Ticks are ~500ms, so these are roughly 5s and 20s in.
-local HERO_SCAN_AT = { [10] = true, [40] = true }
-local HERO_SCAN_MAX = 6              -- total scans per process, all mods
-local HERO_SCAN_LO, HERO_SCAN_HI = 0x1000, 0x2400
-local _hero_scan_seen = {}           -- pointer -> rejections observed here
+-- One table, not four locals: the main chunk is at Lua's 200-local ceiling, so
+-- every new top-level `local` here costs a "too many local variables" compile
+-- failure of the whole SDK.
+local HERO_SCAN = {
+    AT   = { [10] = true, [40] = true },
+    MAX  = 6,                        -- total scans per process, all mods
+    LO   = 0x1000, HI = 0x2400,
+    seen = {},                       -- pointer -> rejections observed here
+}
+
+--- True while the main menu is up (best-effort; false when unknowable).
+--
+-- There is no run hero on the menu, so a candidate the spawn-init hook stashed
+-- there is the menu's preview character and its HP fields are blank BY DESIGN.
+-- Polling it is harmless, but LOGGING it is not: the 2026-08-16 session spent
+-- its entire process-wide budget -- all six field scans and 40+ rejection lines
+-- -- sitting in menus, so the one measurement worth having ("still zero during
+-- LIVE play => the offsets moved") could never be taken, and every scan
+-- correctly reported "no candidate pair found" about an object that had none
+-- yet. Rejections are only counted, and only printed, outside the menu.
+--
+-- The binding is IO-hook derived and answers false whenever it cannot tell
+-- (loader still booting, IO hook off), so this degrades to the previous
+-- always-log behaviour instead of going silent.
+local function _in_main_menu()
+    if not I.is_in_main_menu then return false end
+    local ok, v = pcall(I.is_in_main_menu)
+    return (ok and v) or false
+end
 
 local function _scan_hp_fields(p)
     if not (I.shared_get and I.shared_set) then return end
-    local n = (_hero_scan_seen[p] or 0) + 1
-    _hero_scan_seen[p] = n
-    if not HERO_SCAN_AT[n] then return end
+    local n = (HERO_SCAN.seen[p] or 0) + 1
+    HERO_SCAN.seen[p] = n
+    if not HERO_SCAN.AT[n] then return end
     -- Process-wide budget: every mod has its own Lua state and all of them
     -- poll, so the cap has to live in the shared slot, not in this state.
     local oks, used = pcall(I.shared_get, HERO_SCAN_SLOT)
     used = (oks and type(used) == "number") and used or 0
-    if used >= HERO_SCAN_MAX then return end
+    if used >= HERO_SCAN.MAX then return end
     pcall(I.shared_set, HERO_SCAN_SLOT, used + 1)
 
     local hits = {}
-    for off = HERO_SCAN_LO, HERO_SCAN_HI, 4 do
+    for off = HERO_SCAN.LO, HERO_SCAN.HI, 4 do
         local cur = I.read_f32(p + off)
         local mx = I.read_f32(p + off + 4)
         if type(cur) == "number" and type(mx) == "number"
@@ -1304,7 +1329,7 @@ function R.entity.hero()
             -- DIAG (first few only): the native capture published a pointer the
             -- Lua plausibility gate now rejects — log the raw reads so a
             -- playtest log shows WHY (stale/freed entity? moved offsets?).
-            if _diag_budget(6) then
+            if not _in_main_menu() and _diag_budget(6) then
                 R.log(string.format(
                     "[rsmm.entity] slot hero 0x%x REJECTED: hp=%s max=%s mirror=%s",
                     h, tostring(I.read_f32(h + ENTITY_HP_OFF)),
@@ -1367,17 +1392,24 @@ function R.entity.hero()
             -- INTO live play means the offsets really did move, and rejecting
             -- silently is how that failed invisibly before (every downstream
             -- API no-ops with nothing in the log to say why).
-            if _diag_budget(6) then
-                local mirror = I.read_u64(p + ENTITY_HUDMIRROR_OFF)
-                R.log(string.format(
-                    "[rsmm.entity] pending hero 0x%x REJECTED: hp=%s max=%s "
-                    .. "mirror=%s mirror[0]=%s",
-                    p, tostring(I.read_f32(p + ENTITY_HP_OFF)),
-                    tostring(I.read_f32(p + ENTITY_MAXHP_OFF)),
-                    tostring(mirror),
-                    tostring(mirror and mirror ~= 0 and I.read_f32(mirror) or nil)))
+            --
+            -- Both the line and the field sweep are MENU-GATED: a rejection in
+            -- the menu carries no information (see `_in_main_menu`), and
+            -- spending the shared scan budget there is what made the 2026-08-16
+            -- log six scans of a blank preview character.
+            if not _in_main_menu() then
+                if _diag_budget(6) then
+                    local mirror = I.read_u64(p + ENTITY_HUDMIRROR_OFF)
+                    R.log(string.format(
+                        "[rsmm.entity] pending hero 0x%x REJECTED: hp=%s max=%s "
+                        .. "mirror=%s mirror[0]=%s",
+                        p, tostring(I.read_f32(p + ENTITY_HP_OFF)),
+                        tostring(I.read_f32(p + ENTITY_MAXHP_OFF)),
+                        tostring(mirror),
+                        tostring(mirror and mirror ~= 0 and I.read_f32(mirror) or nil)))
+                end
+                _scan_hp_fields(p)
             end
-            _scan_hp_fields(p)
         end
     end
     -- Legacy fallback: an older loader without native capture, or the native
@@ -5224,6 +5256,11 @@ R.on("tick", _derived_poll)
 R.on("tick", function()
     if not _native_capture_active() then return end
     if not I.shared_get then return end
+    -- Nothing to promote while the main menu is up: the only candidate there is
+    -- the menu's preview character, whose HP fields never populate, and taking
+    -- it would publish a pointer that is stale the moment a run starts. Skip
+    -- the whole poll rather than run it and reject (see `_in_main_menu`).
+    if _in_main_menu() then return end
     local ok, h = pcall(I.shared_get, SHARED_HERO_SLOT)
     if ok and type(h) == "number" and h ~= 0 and _hero_plausible(h) then return end
     R.entity.hero()          -- runs the pending-promotion + REJECT diagnostic
