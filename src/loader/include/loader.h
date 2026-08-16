@@ -82,9 +82,15 @@ public:
 private:
     Loader() = default;
 
+    // Copy a finished run's log into <game>/rsmm/logs/ before the new run
+    // takes over _log.txt, keeping the newest few and pruning the rest.
+    // Returns the archive's filename, or "" if nothing was archived.
+    std::string archive_log(const std::filesystem::path& src);
+
     std::filesystem::path game_dir_;
     std::filesystem::path mods_dir_;
     std::filesystem::path log_path_;
+    std::string log_archived_;      // filename of the run archived at startup
     std::filesystem::path state_path_;
 
     std::unordered_map<std::string, std::string> enc_to_dec_;

@@ -4158,6 +4158,23 @@ end
 -- testing directly rather than only through a live lobby.
 R.lobby._hook = LOBBY_HOOK
 
+-- ARM AT LOAD, not on demand.
+--
+-- The first version armed from R.lobby.refresh(), which the damage board only
+-- calls once it has an unnamed row — i.e. after somebody has dealt damage.
+-- Measured 2026-08-16: the detour went in at 17:20:30, but the members had
+-- joined and had their attributes parsed minutes earlier, so every parse call
+-- worth seeing was already gone and the board kept "Player 2/3/4" for the
+-- whole run. A hook cannot catch an event that has already happened, so the
+-- demand gate (right for a 2 GB sweep) is exactly wrong for a detour: install
+-- it once, up front, and let it cost nothing until the game calls it.
+--
+-- Both lifecycle points, because arming is idempotent and neither is
+-- guaranteed on its own: `setup` runs after every mod's init.lua, `ready` at
+-- the first frame, and a mod loaded late still gets one of them.
+R.on("setup", function() pcall(LOBBY_HOOK.arm) end)
+R.on("ready", function() pcall(LOBBY_HOOK.arm) end)
+
 --- Detour the attribute parser. Idempotent; safe to call from the pump.
 function LOBBY_HOOK.arm()
     if LOBBY_HOOK.state ~= 0 then return end

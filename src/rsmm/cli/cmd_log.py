@@ -1,12 +1,15 @@
 """rsmm log — read the loader log from the game install directory.
 
-Each game launch rotates the log: the fresh run is written to ``_log.txt`` and
-the prior run is kept as ``_log.prev.txt``. Every line is stamped with a short
-per-process session token so concurrent/successive injections never blur.
+Each game launch rotates the log: the fresh run is written to ``_log.txt``, the
+prior run is kept as ``_log.prev.txt``, and every finished run is archived
+under ``<game>/rsmm/logs/<date>_<time>_<session>.log`` (newest 20 kept). Every
+line is stamped with a short per-process session token so concurrent or
+successive injections never blur together.
 
 By default only the current (most-recent) session is shown. Use ``--all`` for
-the whole file, ``--prev`` for the previous run, or ``--sessions`` to list the
-session banners.
+the whole file, ``--prev`` for the previous run, ``--sessions`` to list the
+session banners, ``--list`` to list archived runs, or ``--run <name>`` to read
+one of them (a unique filename prefix is enough).
 """
 
 from __future__ import annotations
@@ -23,6 +26,28 @@ from rsmm.engine.paths import DEFAULT_GAME_DIR
 _ST = _term.Style()
 
 _SESSION_MARK = "== SESSION "
+
+
+def logs_dir(game_dir=None) -> Path:
+    """Where finished runs are archived by the loader.
+
+    Kept OUT of `mods/` on purpose: `restore` clears that directory wholesale,
+    and an archive that a routine restore deletes is not an archive.
+    """
+    return Path(game_dir or DEFAULT_GAME_DIR) / "rsmm" / "logs"
+
+
+def archived_runs(game_dir=None) -> list[Path]:
+    """Archived run logs, newest first.
+
+    Sorted by NAME, not mtime: the filename leads with the run's own start
+    stamp, so lexical order is chronological even though the files are copied
+    (which rewrites mtime) at the START of the following run.
+    """
+    d = logs_dir(game_dir)
+    if not d.is_dir():
+        return []
+    return sorted((p for p in d.glob("*.log") if p.is_file()), reverse=True)
 
 
 def log_file(game_dir=None, *, prev: bool = False) -> Path:
@@ -88,6 +113,10 @@ def main(argv: list[str] | None = None) -> int:
                          "out when the game last launched")
     ap.add_argument("--sessions", action="store_true",
                     help="list the session banners in the log and exit")
+    ap.add_argument("--list", action="store_true", dest="list_runs",
+                    help="list archived runs under <game>/rsmm/logs and exit")
+    ap.add_argument("--run", metavar="NAME",
+                    help="read an archived run (filename or unique prefix)")
     ap.add_argument("--game-dir", default=str(DEFAULT_GAME_DIR))
     ap.add_argument("-h", "--help", action="store_true")
     a = ap.parse_args(argv)
@@ -95,7 +124,33 @@ def main(argv: list[str] | None = None) -> int:
         print(__doc__)
         return 0
 
-    log_path = log_file(a.game_dir, prev=a.prev)
+    if a.list_runs:
+        runs = archived_runs(a.game_dir)
+        if not runs:
+            print(_ST.dim(f"no archived runs yet in {logs_dir(a.game_dir)}"))
+            return 0
+        for p in runs:
+            kb = p.stat().st_size / 1024
+            print(f"  {_ST.bold(p.name):<34} {_ST.dim(f'{kb:>8.0f} KB')}")
+        print(f"\n{len(runs)} archived run(s) in {_ST.dim(str(logs_dir(a.game_dir)))}"
+              f" — read one with {_ST.accent('rsmm log --run <name>')}")
+        return 0
+
+    if a.run:
+        runs = archived_runs(a.game_dir)
+        hits = [p for p in runs if p.name == a.run] or \
+               [p for p in runs if p.name.startswith(a.run)]
+        if not hits:
+            print(_ST.err(f"no archived run matching {a.run!r} — "
+                          f"list them with `rsmm log --list`"), file=sys.stderr)
+            return 1
+        if len(hits) > 1:
+            print(_ST.err(f"{a.run!r} matches {len(hits)} runs: "
+                          + ", ".join(p.name for p in hits[:6])), file=sys.stderr)
+            return 1
+        log_path = hits[0]
+    else:
+        log_path = log_file(a.game_dir, prev=a.prev)
     if a.path:
         print(log_path)
         return 0

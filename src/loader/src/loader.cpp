@@ -46,6 +46,79 @@ std::string format_ts_now() {
 }
 }  // namespace
 
+namespace {
+// Keep this many archived runs. A long co-op session writes a few hundred KB,
+// so twenty is a couple of evenings of play and still bounded — the point of a
+// cap is that an archive nobody prunes eventually IS the bug it was added to
+// prevent.
+constexpr std::size_t kLogArchiveKeep = 20;
+}  // namespace
+
+std::string Loader::archive_log(const fs::path& src) {
+    // Rotation used to be a single rename onto _log.prev.txt, so every launch
+    // destroyed the run before last: reproduce a bug, relaunch to test a fix,
+    // and the log you actually needed was already gone. Keep them.
+    std::error_code ec;
+    const fs::path dir = game_dir_ / "rsmm" / "logs";
+    fs::create_directories(dir, ec);
+    if (ec) return {};                    // no archive dir: rotation still works
+
+    // Name the file after the run it CONTAINS, not the moment we archive it.
+    // The session banner carries that run's own token and start time; falling
+    // back to "now" would stamp every archive with the START of the next run.
+    std::string stamp, sid;
+    {
+        // The banner is NOT line 1: the file opens with a blank line and a
+        // rule, so it lands on line 3 — and the loader writes CRLF, so the
+        // trailing \r has to come off before the last field is parsed. Reading
+        // only the first line named every archive "unknown".
+        std::ifstream in(src);
+        std::string line;
+        for (int i = 0; i < 10 && std::getline(in, line); ++i) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            if (line.rfind("== SESSION ", 0) != 0) continue;
+            // "== SESSION fd1d  2026-08-16 16:23:21.657  pid 320  host ..."
+            std::istringstream ss(line);
+            std::string eq, kw, date, tod;
+            if ((ss >> eq >> kw >> sid >> date >> tod)
+                && date.size() == 10 && tod.size() >= 8) {
+                stamp = date + "_" + tod.substr(0, 2) + tod.substr(3, 2)
+                        + tod.substr(6, 2);
+            } else {
+                sid.clear();
+            }
+            break;
+        }
+    }
+    if (stamp.empty()) {
+        stamp = format_ts_now().substr(0, 10);
+        sid   = "unknown";
+    }
+
+    fs::path dest = dir / (stamp + "_" + sid + ".log");
+    for (int n = 2; fs::exists(dest, ec) && n < 100; ++n) {
+        dest = dir / (stamp + "_" + sid + "." + std::to_string(n) + ".log");
+    }
+    fs::copy_file(src, dest, fs::copy_options::overwrite_existing, ec);
+    if (ec) return {};
+
+    // Prune oldest-first by NAME: the stamp leads, so lexical order is
+    // chronological, and unlike last_write_time it does not lie after a copy.
+    std::vector<fs::path> kept;
+    for (const auto& e : fs::directory_iterator(dir, ec)) {
+        if (!ec && e.is_regular_file() && e.path().extension() == ".log") {
+            kept.push_back(e.path());
+        }
+    }
+    if (kept.size() > kLogArchiveKeep) {
+        std::sort(kept.begin(), kept.end());
+        for (std::size_t i = 0; i + kLogArchiveKeep < kept.size(); ++i) {
+            fs::remove(kept[i], ec);
+        }
+    }
+    return dest.filename().string();
+}
+
 void Loader::init(const fs::path& game_dir) {
     game_dir_  = game_dir;
     mods_dir_  = game_dir / "mods";
@@ -93,7 +166,14 @@ void Loader::init(const fs::path& game_dir) {
     if (is_game_host) {
         std::error_code rec;
         if (fs::exists(log_path_, rec)) {
-            fs::rename(log_path_, mods_dir_ / "_log.prev.txt", rec);
+            log_archived_ = archive_log(log_path_);
+            // _log.prev.txt stays as the "one run back" alias every existing
+            // reader knows (rsmm log --prev, the desktop Log tab). It is a COPY
+            // of what was just archived, so the archive is the durable record
+            // and this remains the cheap shortcut.
+            fs::copy_file(log_path_, mods_dir_ / "_log.prev.txt",
+                          fs::copy_options::overwrite_existing, rec);
+            fs::remove(log_path_, rec);
         }
     }
 
@@ -115,6 +195,12 @@ void Loader::init(const fs::path& game_dir) {
     // older than the build. __DATE__/__TIME__ are the DLL's own compile time,
     // so this cannot drift out of sync with the binary that printed it.
     log(std::string("loader build ") + __DATE__ " " __TIME__);
+    // Say where the previous run went. Without this the archive is invisible
+    // until someone thinks to go looking for the directory, and a naming
+    // fallback ("unknown") would never be noticed at all.
+    if (!log_archived_.empty()) {
+        log("previous run archived -> rsmm/logs/" + log_archived_);
+    }
     // The other half of the stamp. The Lua SDK is disk-loaded and ships
     // INDEPENDENTLY of this DLL (a Lua-only change needs no rebuild), so the
     // two can legitimately disagree and a log has to say which pair produced

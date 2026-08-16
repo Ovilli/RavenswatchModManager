@@ -1611,9 +1611,25 @@ def clear_loader_artifacts(game_dir: Path, dry_run: bool = False) -> int:
                 asset_map.unlink()
 
         if rsmm_dir.exists():
+            # Everything EXCEPT the archived logs. Those are diagnostics, not
+            # loader runtime: an rmtree here deleted them on every
+            # restore -> apply -> install-loader cycle, which is precisely the
+            # loop you are in when you need the previous run's log.
             print(f"Removing loader runtime dir: {rsmm_dir}")
             if not dry_run:
-                shutil.rmtree(rsmm_dir)
+                kept = False
+                for child in rsmm_dir.iterdir():
+                    if child.name == "logs" and child.is_dir():
+                        kept = True
+                        continue
+                    if child.is_dir() and not child.is_symlink():
+                        shutil.rmtree(child)
+                    else:
+                        child.unlink()
+                if kept:
+                    print(f"  kept archived loader logs: {rsmm_dir / 'logs'}")
+                else:
+                    rsmm_dir.rmdir()
     except OSError as e:
         print(f"  [warn] failed to clear loader artifacts: {e}", file=sys.stderr)
         return 0
