@@ -9,6 +9,7 @@ a co-op session with an empty overlay on screen.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -208,10 +209,21 @@ def test_main_json(tmp_path, capsys):
 def test_piped_output_carries_no_ansi(tmp_path):
     """Style() decides colour from the stream, so a redirect must be plain."""
     _install(tmp_path)
+    # No check=True: it raises CalledProcessError carrying only the exit
+    # status, so a CI failure here reported "returned non-zero exit status 1"
+    # and threw away the traceback that said why. Assert on the code and put
+    # stderr in the message instead.
+    #
+    # RSMM_MODS_DIR is pinned for the same reason the in-process tests pin it:
+    # a bare subprocess inherits the developer's real `mods/`, which exists
+    # locally and not on a fresh checkout, so this test would otherwise pass
+    # and fail for reasons that have nothing to do with what it checks.
+    env = {**os.environ, "RSMM_MODS_DIR": str(tmp_path / "library")}
     proc = subprocess.run(
         [sys.executable, "-m", "rsmm.cli.cmd_overlay", "meter", "--game-dir", str(tmp_path)],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, env=env,
     )
+    assert proc.returncode == 0, f"exit {proc.returncode}\n{proc.stderr}"
     assert "\033" not in proc.stdout
 
 
