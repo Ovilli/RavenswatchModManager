@@ -65,8 +65,10 @@ end
 -- (NETWORK_DAMAGE, GIVE_MAGICAL_OBJECT, GAIN_REROLL, REMOVE_*_OBJECT,
 -- CINE_START/STOP, ...; full map in docs/_re/kinds/events-bus.md). Their
 -- payload carries live handles (dispatcher/entity as "0x..." strings) plus
--- decoded fields for verified layouts (NETWORK_DAMAGE: value, source_id,
--- target_entity, instigator_entity; GIVE_MAGICAL_OBJECT: mo_guid_lo/hi).
+-- decoded fields for verified layouts (NETWORK_DAMAGE: value + source_id, the
+-- attacker's NET id — the victim is the `dispatcher` the event was delivered
+-- to; GIVE_MAGICAL_OBJECT: mo_guid_lo/hi). R.damage turns the damage events
+-- into a per-player scoreboard; prefer it over hand-rolling this payload.
 --
 -- The callback receives a payload table:
 --   ev.event  (string)  the event name
@@ -599,6 +601,10 @@ local _GIVE_ANCHORS = {
 -- the shared slot) is defined below. Called when the live hero dispatcher
 -- changes (hero switch / new run) to drop the now-stale HP-carrier capture.
 local _invalidate_hero_capture
+-- True while the natively captured hero still reads live. Used to tell a hero
+-- SWITCH (capture is stale, re-capture) from an ALLY acting (capture is fine,
+-- leave it alone) — see the anchor handler below.
+local _hero_capture_is_live
 
 -- The NamedEventDispatcher sub-object lives at some fixed offset inside its
 -- owning entity; subtract it to reach the entity and test whether that entity
@@ -695,9 +701,54 @@ local function _dispatcher_is_hero(disp)
     return I.is_grant_target(entity) == true
 end
 
+-- Is this dispatcher's entity controlled by THIS machine?
+--
+-- Returns true/false, or nil when it cannot be told (offset not learned yet,
+-- no net component — i.e. single player, where everything is local).
+--
+-- CO-OP CORRECTNESS, learned from a 4-player session on 2026-08-15: allies
+-- fire every one of the anchor events below from their OWN dispatchers. With
+-- no local test, `_give_hero` flip-flopped to whichever ally last acted, and
+-- each flip invalidated the captured hero — the log filled with a re-capture
+-- twice a second, and R.give / R.combat / R.stat spent the run pointed at
+-- somebody else's character.
+-- Offset of the HUD HP mirror pointer on a hero object. Declared HERE, above
+-- its first use, not down in the entity section: a Lua local is invisible to
+-- code written earlier in the file, so referencing it from this function
+-- resolved to a nil GLOBAL and every anchor event raised inside the event
+-- router — which pcalls handlers, so the ally guard silently did nothing and
+-- the hero capture stopped updating. Caught by the spec, not in-game.
+local ENTITY_HUDMIRROR_OFF = 0x1d80      -- ptr to the HUD HP mirror (hero-only)
+local ENTITY_ISLOCAL_OFF   = 0x1d88      -- 1 = this machine's player
+
+local function _dispatcher_is_local(d)
+    if not _DISPATCHER_ENTITY_OFF then return nil end
+    local e = d - _DISPATCHER_ENTITY_OFF
+    if not _ptr_plausible(e) then return nil end
+    -- The engine's OWN is-local byte, read directly.
+    --
+    -- Not Entity_GetNetComponent: that walks the entity component map with no
+    -- guard, and on an object whose store slot holds the -1 sentinel it took
+    -- the whole game down (2026-08-15, dump a97c76fe — AV reading
+    -- 0xffff…ffff at +0x62). Probing is safe; handing a probed pointer to
+    -- engine code is not.
+    --
+    -- Not the HUD mirror either, which was the first replacement: a live probe
+    -- showed an ALLY (is-local byte 0) carrying a non-null mirror pointer, so
+    -- "has a mirror" is not the same question. The byte at +0x1d88 is what the
+    -- engine itself branches on (hero vs ally kill streak in the damage
+    -- bookkeeping), and reading it costs one guarded byte.
+    local flag = I.read_u8(e + ENTITY_ISLOCAL_OFF)
+    if flag == 1 then return true end
+    if flag == 0 then return false end
+    return nil                                   -- unreadable: cannot tell
+end
+
 R.on("*", function(ev, name)
     if _GIVE_ANCHORS[name] and type(ev.dispatcher) == "string" then
         local d = tonumber(ev.dispatcher)
+        -- An ally's dispatcher is not ours to capture.
+        if d and _dispatcher_is_local(d) == false then return end
         if d and d ~= 0 and d ~= _give_hero and _dispatcher_is_hero(d) then
             -- Only a dispatcher whose entity is a real hero reaches here. Summon
             -- and pet entities also fire anchor events (ABILITY_EXIT, ...) from
@@ -706,11 +757,18 @@ R.on("*", function(ev, name)
             -- would silently no-op. That is the "give only works on Aladdin" bug
             -- (Aladdin has no persistent summon to clobber the capture).
             --
-            -- A different (valid hero) dispatcher than last seen means the local
-            -- hero changed — switched character, or a fresh run reallocated the
-            -- entity. The captured HP-carrier and the shared slot point at the
-            -- OLD hero's (possibly freed) memory, so invalidate + re-capture.
-            if _give_hero ~= nil and _invalidate_hero_capture then
+            -- A different (valid hero) dispatcher than last seen USUALLY means
+            -- the local hero changed — switched character, or a fresh run
+            -- reallocated the entity — so the captured HP-carrier is stale.
+            --
+            -- But not always: in co-op an ally's dispatcher reaches here too
+            -- whenever the local test above cannot answer (offset not learned
+            -- yet). Only drop the capture when it has actually gone stale;
+            -- throwing away a LIVE hero because somebody else cast a spell is
+            -- what made every R.combat call in a 4-player run target a random
+            -- character.
+            if _give_hero ~= nil and _invalidate_hero_capture
+                and not (_hero_capture_is_live and _hero_capture_is_live()) then
                 _invalidate_hero_capture()
             end
             _give_hero = d
@@ -891,7 +949,6 @@ R.combat = {}
 
 local ENTITY_HP_OFF      = 0x15c8        -- f32 current HP on the hero character
 local ENTITY_MAXHP_OFF   = 0x15cc        -- f32 max HP
-local ENTITY_HUDMIRROR_OFF = 0x1d80      -- ptr to the HUD HP mirror (hero-only)
 -- Function addresses are resolved at runtime through the pattern DB
 -- (I.resolve on the semantic symbol name) so a game patch that shifts code
 -- can never leave us hooking/calling a stale VA: an unresolved symbol fails
@@ -899,7 +956,17 @@ local ENTITY_HUDMIRROR_OFF = 0x1d80      -- ptr to the HUD HP mirror (hero-only)
 local FLAGLIST_VFT_VA    = 0x140f01650   -- oCCustomFlagList::vftable (re-derived 2026-07-10)
 local ENTITY_IMG_BASE    = 0x140000000
 
-local _hero_char = nil          -- captured hero character object (HP@+0x15c8)
+local _hero_char = nil
+-- Last hero pointer announced in the log. A capture is worth one line; the
+-- same capture re-announced on every poll is not. A 4-player session produced
+-- ~500 identical "hero CAPTURED" lines in ninety seconds, which buried every
+-- other diagnostic in the file.
+local _hero_logged = nil
+local function _log_capture(fmt, hero, ...)
+    if _hero_logged == hero then return end
+    _hero_logged = hero
+    R.log(string.format(fmt, hero, ...))
+end          -- captured hero character object (HP@+0x15c8)
 -- Spawn-init candidate whose HP/mirror fields are not populated yet. The Lua
 -- mirror of the native pending slot: stashed by the hero's post-load init hook
 -- and promoted by the tick pump the first time it reads plausible.
@@ -925,6 +992,23 @@ local HERO_SCAN_SLOT = 5
 -- promotion loop in R.entity.hero() for why one slot was not enough.
 local HERO_RING_FIRST = 8
 local HERO_RING_COUNT = 8
+
+-- ⚠ THE SHARED SLOT MAP IS FULL — there are 16 slots and 15 are spoken for.
+--
+--   0..4   native: hero ptr / auth / capture-active / pending / permit
+--   5      Lua: HP-field scan latch
+--   6      Lua: hero rejection-diagnostic budget
+--   7      Lua: name-probe latch (the only free slot left)
+--   8..15  native: hero candidate RING — POINTERS, written by the loader
+--
+-- Slots 8..15 hold live hero pointers. Taking one for a Lua latch does not
+-- merely collide, it EVICTS a spawn candidate: on 2026-08-16 the name probe
+-- claimed slot 9, wrote 1 into it, and `hero CAPTURED` stopped appearing in
+-- every subsequent session. Lua reads the ring (below) and must never write
+-- it; `lua_shared_set` now refuses that range outright. Adding another latch
+-- means growing g_shared, not borrowing a slot.
+-- Slot 7 is the last free shared slot (8..15 are the native hero ring).
+local LOBBY_REFRESH_SLOT = 7
 
 -- When this state first saw ANY hero candidate, so a capture can report the
 -- wait the player actually experienced. The native side reports its own
@@ -1210,9 +1294,8 @@ function R.entity.hero()
                 pcall(I.shared_set, HERO_AUTH_SLOT, 1)
                 pcall(I.shared_set, HERO_PENDING_SLOT, 0)
             end
-            R.log(string.format(
-                "[rsmm.entity] hero CAPTURED 0x%x (was 0x%x)%s", pend, h,
-                _capture_latency()))
+            _log_capture("[rsmm.entity] hero CAPTURED 0x%x (was 0x%x)%s", pend, h,
+                         _capture_latency())
             return pend
         end
 
@@ -1253,9 +1336,8 @@ function R.entity.hero()
                     pcall(I.shared_set, HERO_AUTH_SLOT, 1)
                     pcall(I.shared_set, HERO_PENDING_SLOT, 0)
                 end
-                R.log(string.format(
-                    "[rsmm.entity] hero CAPTURED 0x%x from ring slot %d%s",
-                    cand, i, _capture_latency()))
+                _log_capture("[rsmm.entity] hero CAPTURED 0x%x from ring slot %d%s",
+                             cand, i, _capture_latency())
                 return cand
             end
         end
@@ -1268,9 +1350,8 @@ function R.entity.hero()
                     pcall(I.shared_set, HERO_AUTH_SLOT, 1)
                     pcall(I.shared_set, HERO_PENDING_SLOT, 0)
                 end
-                R.log(string.format(
-                    "[rsmm.entity] hero CAPTURED 0x%x from the pending slot%s",
-                    p, _capture_latency()))
+                _log_capture("[rsmm.entity] hero CAPTURED 0x%x from the pending slot%s",
+                             p, _capture_latency())
                 return p
             end
             -- DIAG (first few only). A rejection here is NORMAL for a while:
@@ -1401,6 +1482,12 @@ end
 -- Wire the forward-declared invalidator now that _hero_char + the shared slot
 -- exist. On hero switch / new run the captured HP-carrier is stale; drop it and
 -- clear the process-global slot so the next heal/pickup re-captures cleanly.
+_hero_capture_is_live = function()
+    if not I.shared_get then return false end
+    local ok, h = pcall(I.shared_get, SHARED_HERO_SLOT)
+    return ok and type(h) == "number" and h ~= 0 and _hero_plausible(h)
+end
+
 _invalidate_hero_capture = function()
     _hero_char = nil
     if I.shared_set then
@@ -2951,6 +3038,156 @@ function R.kv.all()
     return out
 end
 
+-- player identity -------------------------------------------------------
+--
+-- The LOCAL player's real display name, straight from Steam
+-- (steam_api64.dll's flat API, resolved by the loader). No netcode RE and no
+-- game structures involved, so it survives game patches.
+--
+--     R.player.name()            --> "Ovilli"   (nil if Steam is unavailable)
+--     R.player.name_of(steamid)  --> a known account's name, or nil
+--
+-- REMOTE players are not covered yet. The game resolves their names from the
+-- party member's user-data JSON (steam.personaName / gamertag / Nickname /
+-- pseudo) in FUN_140929940, and stores the result in the party-slot UI model,
+-- but nothing yet links a slot to the hero entity a damage row is keyed by.
+-- That link can only be pinned in a live co-op session; until then a mod
+-- should label unknown players by join order and let the player rename them.
+
+R.player = {}
+
+--- The local player's display name (cached; nil when Steam is not present).
+function R.player.name()
+    if R.player._name ~= nil then
+        return R.player._name or nil          -- false = looked up, unavailable
+    end
+    if type(I.steam_name) ~= "function" then
+        R.player._name = false
+        return nil
+    end
+    local ok, name = pcall(I.steam_name)
+    R.player._name = (ok and type(name) == "string" and name ~= "" and name) or false
+    return R.player._name or nil
+end
+
+--- Another account's display name by SteamID64. Steam only knows accounts it
+--- has seen (a friend, a lobby member), so this is nil more often than not.
+function R.player.name_of(steamid)
+    if type(I.steam_name) ~= "function" or type(steamid) ~= "number" then return nil end
+    local ok, name = pcall(I.steam_name, steamid)
+    if ok and type(name) == "string" and name ~= "" then return name end
+    return nil
+end
+
+-- overlay ---------------------------------------------------------------
+--
+-- Publish a table of rows for the desktop app to draw as an on-top HUD.
+--
+-- The SHAPE of the overlay (title, columns, sorting) is declared by the mod's
+-- manifest `[overlay]` block; this is only the live DATA. The split is
+-- deliberate and matches the rest of the project: a mod ships data, and the
+-- client owns the pixels. A mod cannot hand HTML or script to the desktop
+-- app's webview — that webview can spawn the CLI, so mod-supplied code there
+-- would be arbitrary code execution on the player's machine, and every
+-- overlay would look like whatever its author felt like that day.
+--
+--     R.overlay.publish{
+--         rows = { { label = "You", dealt = 4821, share = 0.57 } },
+--         meta = { total = 8410 },
+--     }
+--     R.overlay.clear()
+--
+-- Rows are written to this mod's own kv state, which the CLI reads back
+-- (`rsmm overlay`). Publish at whatever cadence suits the mod — a write is a
+-- few hundred bytes through a temp-file rename, and an unchanged payload is
+-- skipped entirely.
+
+R.overlay = {}
+
+do
+
+local OV = { last = nil }
+
+-- Minimal JSON encoder: rows are flat records of string/number/boolean, which
+-- is the entire contract. Anything else (a table value, a function) is dropped
+-- rather than guessed at, so a mod cannot smuggle a nested structure the
+-- reader has no column type for.
+local function esc(s)
+    return (s:gsub('[%c"\\]', function(c)
+        if c == '"' then return '\\"' end
+        if c == '\\' then return '\\\\' end
+        if c == '\n' then return '\\n' end
+        if c == '\t' then return '\\t' end
+        if c == '\r' then return '\\r' end
+        return string.format('\\u%04x', string.byte(c))
+    end))
+end
+
+local function scalar(v)
+    local t = type(v)
+    if t == "string" then return '"' .. esc(v) .. '"' end
+    if t == "boolean" then return v and "true" or "false" end
+    if t == "number" then
+        -- NaN/inf are not JSON. A meter that divides by zero once should not
+        -- poison the whole payload.
+        if v ~= v or v == math.huge or v == -math.huge then return "0" end
+        if v == math.floor(v) and math.abs(v) < 1e15 then return string.format("%d", v) end
+        return string.format("%.4f", v)
+    end
+    return nil
+end
+
+local function object(tbl)
+    local keys = {}
+    for k, v in pairs(tbl) do
+        if type(k) == "string" and scalar(v) then keys[#keys + 1] = k end
+    end
+    -- Sorted so an unchanged payload serialises byte-identically and the
+    -- "did anything change?" check below actually works.
+    table.sort(keys)
+    local parts = {}
+    for _, k in ipairs(keys) do
+        parts[#parts + 1] = '"' .. esc(k) .. '":' .. scalar(tbl[k])
+    end
+    return "{" .. table.concat(parts, ",") .. "}"
+end
+
+function OV.encode_rows(rows)
+    local parts = {}
+    for _, row in ipairs(rows or {}) do
+        if type(row) == "table" then parts[#parts + 1] = object(row) end
+    end
+    return "[" .. table.concat(parts, ",") .. "]"
+end
+
+--- Replace the overlay's contents.
+---   spec.rows  array of flat records (string/number/boolean values)
+---   spec.meta  optional flat record shown in the footer
+--- Returns true when something was written (false = unchanged, nothing to do).
+function R.overlay.publish(spec)
+    assert(type(spec) == "table", "R.overlay.publish: expects a table")
+    local rows = OV.encode_rows(spec.rows)
+    local meta = object(type(spec.meta) == "table" and spec.meta or {})
+    local payload = rows .. meta
+    if payload == OV.last then return false end
+    OV.last = payload
+    R.kv.set("overlay.rows", rows)
+    R.kv.set("overlay.meta", meta)
+    R.kv.set("overlay.updated", os.time())
+    R.kv.save()
+    return true
+end
+
+--- Empty the overlay (e.g. at a run boundary) without tearing it down.
+function R.overlay.clear()
+    return R.overlay.publish{ rows = {}, meta = {} }
+end
+
+--- The payload last written, for debugging.
+function R.overlay.last() return OV.last end
+
+end
+
 -- item registry ---------------------------------------------------------
 --
 -- R.item.register{ id=, name=, description=, rarity=, base= }
@@ -3593,6 +3830,266 @@ function R.debug.strings(obj, opts)
     return out
 end
 
+--- Every string laid out INLINE in a byte window, narrow and wide, by offset.
+---
+--- The complement to `R.debug.strings`, which follows POINTERS at 8-byte
+--- offsets and so only ever finds heap-allocated strings. A short name lives
+--- inline (MSVC keeps under 16 characters in the object itself), and a record
+--- full of inline names is exactly what a player-slot table looks like.
+---
+--- Reports OFFSETS relative to `va`, because that is the reusable fact: once
+--- you know a name sits at `+0x30` of a 0x90-byte record you can walk the
+--- whole array, whereas a bare address is true only for this session.
+---
+---   opts.before / opts.after   window around `va` (default 0x40 / 0x100)
+---   opts.min_len               characters (default 3)
+---
+--- Returns { { off = <signed>, text = "...", wide = <bool> }, ... }.
+--- Wide runs are `printable, 0x00` pairs; the narrow pass cannot swallow one
+--- because a UTF-16 run is single characters split by NULs, which never reach
+--- min_len.
+function R.debug.strings_at(va, opts)
+    opts = opts or {}
+    local before = opts.before or 0x40
+    local after = opts.after or 0x100
+    local min_len = opts.min_len or 3
+    local out = {}
+    if not _ptr_plausible(va) then return out end
+
+    local function printable(b)
+        return type(b) == "number" and b >= 32 and b < 127
+    end
+
+    local run, start = {}, nil
+    local function flush()
+        if start and #run >= min_len then
+            out[#out + 1] = { off = start, text = table.concat(run), wide = false }
+        end
+        start, run = nil, {}
+    end
+
+    local i = -before
+    while i < after do
+        local b = I.read_u8(va + i)
+        if printable(b) and I.read_u8(va + i + 1) == 0 then
+            local w, j = {}, i
+            while j < after do
+                local c = I.read_u8(va + j)
+                if not (printable(c) and I.read_u8(va + j + 1) == 0) then break end
+                w[#w + 1] = string.char(c)
+                j = j + 2
+            end
+            if #w >= min_len then
+                flush()
+                out[#out + 1] = { off = i, text = table.concat(w), wide = true }
+                i = j
+                goto continue
+            end
+        end
+        if printable(b) then
+            if not start then start, run = i, {} end
+            run[#run + 1] = string.char(b)
+        else
+            flush()
+        end
+        i = i + 1
+        ::continue::
+    end
+    flush()
+    if opts.log then
+        for _, s in ipairs(out) do
+            R.log(string.format("[rsmm.debug] strings_at: %+d %s%q",
+                s.off, s.wide and "w" or "", s.text))
+        end
+    end
+    return out
+end
+
+--- Decode an MSVC `std::string` at `va`, or nil if it is not one.
+---
+--- Layout is 32 bytes: a 16-byte union (the characters themselves when they
+--- fit) followed by size @+0x10 and capacity @+0x18. Capacity below 16 means
+--- the text is INLINE; at or above, +0x0 is a pointer to the heap buffer.
+--- Both forms are checked, so a key/value pair can be read as strings rather
+--- than guessed at from a printable smear.
+---
+--- Validating `size <= cap` and a sane capacity is what makes this usable as a
+--- PROBE: run it over arbitrary offsets and the ones that are not strings say
+--- so instead of returning garbage.
+function R.debug.stdstring_at(va)
+    if not _ptr_plausible(va) then return nil end
+    local size = I.read_u64(va + 0x10)
+    local cap = I.read_u64(va + 0x18)
+    if type(size) ~= "number" or type(cap) ~= "number" then return nil end
+    if cap < 15 or cap > 0x10000 or size > cap or size == 0 then return nil end
+    local text
+    if cap == 15 then
+        text = I.read_cstr and I.read_cstr(va, 16) or nil
+    else
+        local p = I.read_u64(va)
+        if not _ptr_plausible(p) then return nil end
+        text = I.read_cstr and I.read_cstr(p, math.min(size + 1, 256)) or nil
+    end
+    if type(text) ~= "string" or #text ~= size then return nil end
+    if text:find("[^\32-\126]") then return nil end
+    return text
+end
+
+-- lobby roster ------------------------------------------------------------
+--
+-- The session's players, by their real display names.
+--
+-- Ravenswatch identifies players through EPIC (the exe imports
+-- EOSSDK-Win64-Shipping.dll and not steam_api64.dll) and imports no
+-- `EOS_UserInfo_*` at all, so no name can come from the platform SDK. Steam
+-- can name the LOCAL account and nothing else. Remote names instead arrive as
+-- LOBBY ATTRIBUTES, and that is what this reads.
+--
+-- Layout, from session 364f (`0x62fceb40`, `0x6301bce0`): a flat table of
+-- 32-byte entries, key at +0 and value at +0x10, both NUL-terminated inline:
+--
+--     -0x60  "RequestedHero"  -0x40 "RequestedSkin"  -0x20 "InLobby"
+--     +0x00  "PlayerName"     +0x10 <the name>       +0x20 "LobbyState"
+--     +0xa0  "m_sEosUserId"   +0x100 "m_ePlatform"
+--
+-- Located by searching for the `PlayerName` key, then REQUIRING
+-- `RequestedHero` at -0x60. That neighbour check is what separates a real
+-- lobby block from the copy of the literal that Lua interns for this very
+-- search — every earlier session drowned in those.
+-- Bytes a whole-address-space search may examine. Declared HERE, above its
+-- first use: a Lua local is invisible to code written earlier in the file, and
+-- R.lobby sits ahead of the damage section that also wants it.
+local MEM_SCAN_MB = 4096
+local LOBBY_KEY_STRIDE = 0x20
+local LOBBY_VALUE_OFF = 0x10
+local LOBBY_ANCHOR_OFF = -0x60          -- "RequestedHero" relative to PlayerName
+
+R.lobby = {}
+local _lobby_cache, _lobby_cache_at = nil, 0
+
+--- Inline NUL-terminated string in a fixed-size slot, or nil.
+local function _slot_string(va, cap)
+    if not I.read_cstr then return nil end
+    local s = I.read_cstr(va, cap or 16)
+    if type(s) ~= "string" or s == "" then return nil end
+    if s:find("[^\32-\126]") then return nil end
+    return s
+end
+
+--- Read one lobby block, or nil if `va` no longer looks like one.
+local function _lobby_read(va)
+    if _slot_string(va + LOBBY_ANCHOR_OFF) ~= "RequestedHero" then return nil end
+    if _slot_string(va) ~= "PlayerName" then return nil end
+    local name = _slot_string(va + LOBBY_VALUE_OFF)
+    if not name then return nil end
+    return { name = name, addr = va,
+             hero = _slot_string(va + LOBBY_ANCHOR_OFF + LOBBY_VALUE_OFF) }
+end
+
+--- Every lobby member's display name. NEVER SCANS — cache only.
+---
+--- Returns `{ { name = "Juice", hero = "...", addr = <va> }, ... }`, empty
+--- until `R.lobby.refresh()` has run at least once (and empty forever in a
+--- solo session, which has no lobby block).
+---
+--- The no-scan guarantee is the point. A whole-address-space search costs
+--- ~4 SECONDS; this used to be called from the damage board's label path,
+--- which runs on the MAIN THREAD inside a damage detour, so the first ally to
+--- deal damage froze the game mid-fight and the 30 s cache expiry froze it
+--- again on a timer. Reading is now a handful of guarded byte reads against
+--- addresses found once, and finding those addresses is a separate, explicitly
+--- background-only call.
+function R.lobby.members()
+    if not _lobby_cache then return {} end
+    -- Re-read through the cached addresses rather than trusting stale text:
+    -- a member can leave, and the block is then no longer a block.
+    local out = {}
+    for _, m in ipairs(_lobby_cache) do
+        local fresh = _lobby_read(m.addr)
+        if fresh then out[#out + 1] = fresh end
+    end
+    return out
+end
+
+--- Locate the lobby blocks. EXPENSIVE (~4 s) — background thread only.
+---
+--- Rate-limited: a rescan is only attempted every `RESCAN_SECONDS`, because
+--- the honest answer in a solo session is "there is no lobby block", and
+--- retrying that at speed would be a permanent stutter.
+--- Bytes examined per slice. A FULL sweep copies gigabytes and takes ~4 s;
+--- session d44f proved that even one of those, on the background thread, is
+--- felt as a hitch — ReadProcessMemory at that volume saturates memory
+--- bandwidth and the process VM lock, which stalls the game's threads too.
+--- So the sweep is cut into slices small enough to disappear into a tick.
+local LOBBY_SLICE_MB = 48
+--- Gap between slices. The pump ticks twice a second; one slice per tick keeps
+--- the duty cycle low while still finishing a ~2 GB sweep inside a minute.
+local LOBBY_SLICE_SECONDS = 1
+local _lobby_cursor = 0            -- resume address, 0 = start a fresh sweep
+local _lobby_found, _lobby_seen = {}, {}
+local _lobby_slice_at = -math.huge
+
+--- Advance the lobby sweep by ONE SLICE. Background thread only.
+---
+--- Returns the roster (possibly from a previous completed sweep) and whether
+--- a sweep is still in progress. Call it repeatedly; it is designed to be
+--- cheap enough to sit on a timer.
+function R.lobby.refresh(force)
+    if not I.mem_find then return {} end
+    -- Cheap path: everything we already know still validates, so no sweep.
+    if _lobby_cache and #_lobby_cache > 0 and not force then
+        local live = R.lobby.members()
+        if #live == #_lobby_cache then return live end
+    end
+    local now = os.time()
+    if not force and (now - _lobby_slice_at) < LOBBY_SLICE_SECONDS then
+        return R.lobby.members()
+    end
+    _lobby_slice_at = now
+    if force then _lobby_cursor, _lobby_found, _lobby_seen = 0, {}, {} end
+
+    repeat
+        local hits, nxt = I.mem_find("PlayerName\0", 16,
+                                     force and MEM_SCAN_MB or LOBBY_SLICE_MB,
+                                     _lobby_cursor)
+        for _, va in ipairs(hits or {}) do
+            -- The anchor check: a genuine lobby block has RequestedHero at
+            -- -0x60. Lua's interned copy of the literal "PlayerName" — which
+            -- this very search creates — does not, and without it the roster
+            -- is our own string table.
+            local m = _lobby_read(va)
+            if m and not _lobby_seen[m.name] then
+                _lobby_seen[m.name] = true
+                _lobby_found[#_lobby_found + 1] = m
+            end
+        end
+        _lobby_cursor = nxt or 0
+    until not force or _lobby_cursor == 0
+
+    if _lobby_cursor == 0 then
+        -- Sweep complete: publish, and start the next one from scratch.
+        _lobby_cache, _lobby_cache_at = _lobby_found, now
+        _lobby_found, _lobby_seen = {}, {}
+        return _lobby_cache
+    end
+    return R.lobby.members()      -- mid-sweep: whatever the last sweep found
+end
+
+--- True while a slice sweep is still walking the address space.
+function R.lobby.scanning() return _lobby_cursor ~= 0 end
+
+--- Display names of everyone in the lobby EXCEPT the local player.
+function R.lobby.allies()
+    local me = nil
+    local ok, n = pcall(R.player.name)
+    if ok and type(n) == "string" then me = n end
+    local out = {}
+    for _, m in ipairs(R.lobby.members()) do
+        if m.name ~= me then out[#out + 1] = m.name end
+    end
+    return out
+end
+
 -- interaction bus ---------------------------------------------------------
 --
 -- The game already owns a complete interaction system; this is a thin, honest
@@ -3846,6 +4343,833 @@ end
 --- Current multiplier (1.0 when unscaled).
 function R.projectile.width_scale() return _proj_mult end
 
+-- damage meter --------------------------------------------------------------
+--
+-- Per-player damage attribution: who is carrying the run. Three sources feed
+-- one board, in priority order, and each one is disjoint from the others by
+-- construction so a hit is never counted twice (all three re-confirmed against
+-- the live decompile 2026-08-15).
+--
+-- 1. HeroStats_OnDamageDealt — PRIMARY. The engine's own per-hero damage
+--    bookkeeping, called once per damage application with the DEALING HERO's
+--    controller as its first argument. It is hero-scoped (enemies never reach
+--    it), it sees every path that lands damage rather than one producer, and
+--    it fires for ALLIES too: the engine only skips its own totalling for a
+--    non-local hero (the `+0x1d88` gate), it still runs the function. That is
+--    what makes an ally's damage countable at all — the game itself never
+--    totals it.
+-- 2. Entity_ResolveAttackHits — the local attack resolver. Used for damage
+--    TAKEN (an enemy swinging at a hero reaches it, and it is the only "I got
+--    hit" signal that works in single player), and as the dealt-damage
+--    fallback if the primary symbol is unavailable on a future build.
+-- 3. gameplay:NETWORK_DAMAGE — replicated damage, keyed by the attacker's NET
+--    id (every pointer in that event belongs to the sending machine). Only
+--    credited when the same player's hit did not already arrive through source
+--    1 on this machine; rows are merged by net id, and a matching amount
+--    inside a short window is dropped as the same hit seen twice.
+--
+-- MULTIPLAYER SCOPE. A peer counts what its own machine applies plus what
+-- other machines replicate to it. The host applies enemy damage, so a host's
+-- board is complete; a client is complete for its own damage and as complete
+-- as replication allows for allies. Nothing here is networked by the mod and
+-- no game state is touched — every hook replays the original untouched.
+--
+--     R.damage.enable{ window = 10 }
+--     for rank, row in ipairs(R.damage.board()) do
+--         R.log(rank, row.label, row.dealt, row.share, row.dps)
+--     end
+
+R.damage = {}
+
+-- Constants and helpers are grouped into two tables ON PURPOSE. Lua caps a
+-- function at 200 live locals and the module chunk is one function; as flat
+-- locals this section pushed rsmm.lua over the limit and it stopped compiling
+-- altogether — every mod dead, for a damage meter. Two tables cost two locals.
+local DMG = {
+    -- Engine literals that sit inside the serialized lobby member list, found
+    -- next to the local display name in session 6c4f. Anchoring the name hunt
+    -- on these rather than on a player's name needs no config and cannot
+    -- collide with an asset path.
+    -- Bytes `mem_find` may examine per needle. Was 512 MB, and EVERY hit in
+    -- sessions 5736/274f sat below ~0x1b000000 — the scan was exhausting its
+    -- budget inside the low heap (where Lua's own strings live) and returning
+    -- before it ever reached the game's allocations. The searches were finding
+    -- the probe and the config because those are the only things in the part
+    -- of the address space the probe could afford to look at.
+    NAME_SCAN_MB    = MEM_SCAN_MB,
+    -- Strings that exist ONLY in this SDK. Lua interns every literal in the
+    -- module, so the scan finds rsmm.lua's own string table and reports it as
+    -- a record — most of session 5736's output was the probe finding itself,
+    -- including the marker literals above. A window containing any of these is
+    -- our Lua heap, never a game structure.
+    STATS_SYMBOL    = "HeroStats_OnDamageDealt",
+    TAKEN_SYMBOL    = "HeroStats_OnDamageTaken",
+    ATTACK_SYMBOL   = "Entity_ResolveAttackHits",
+    -- oCDtEntityCpntHeroController
+    HERO_ENTITY_OFF  = 0x08,     -- owning oCEntity
+    HERO_ISLOCAL_OFF = 0x1d88,   -- 1 = this machine's player
+    HERO_MIRROR_OFF  = 0x1d80,   -- HUD HP mirror; LOCAL player only
+    HERO_STATS_OFF   = 0x1db0,   -- per-run stats record (end-screen source)
+    STATS_TOTAL_OFF  = 0xa8,     -- u32 total damage — LOCAL hero only
+    STATS_BEST_OFF   = 0xcc,     -- f32 biggest single hit
+    -- oCDtProcessedDamage
+    PD_VALUE_OFF     = 0x10,     -- -> hit-value object
+    VALUE_AMOUNT_OFF = 0x08,     -- f32 damage inside it
+    PD_SOURCE_OFF    = 0xa0,     -- -> hit-def / source info
+    SOURCE_TYPE_OFF  = 0xc8,     -- u16 attack-type enum
+    -- Entity_ResolveAttackHits arguments
+    CTX_ENTITY_OFF   = 0x08,     -- attacker context -> attacking entity
+    TGT_COUNT_OFF    = 0x00,
+    TGT_DATA_OFF     = 0x08,
+    MAX_TARGETS      = 32,
+    NET_AUTHORITY_OFF = 0x130,   -- net component: 0 = locally owned
+    SAMPLE_CAP       = 4096,     -- rolling-window entries per actor
+    DEDUPE_WINDOW    = 0.4,      -- seconds a replicated echo can lag by
+    -- The engine's own attack-type names, read out of the table at
+    -- 0x1412ed7d0 that the bookkeeping routine indexes with the enum.
+    TYPES = { [0] = "attack", "power", "special", "defense",
+              "trait", "ultimate", "dash" },
+}
+
+local F = {}
+local _dmg = {
+    on       = false,
+    window   = 10,        -- seconds behind `dps`
+    min      = 0,         -- ignore hits at or below this
+    names    = {},        -- slot -> player-supplied label
+    actors   = {},        -- key -> row
+    by_netid = {},        -- net id -> row (merges the replicated view in)
+    order    = {},        -- slot -> row, stable join order
+    seen     = {},        -- entity -> true: known NOT a hero, stop asking
+    subs     = {},        -- per-hit callbacks
+    stats_hooked = false,
+    taken_hooked = false,
+    hooked   = false,     -- resolver
+    local_id = nil,       -- local hero net id (false = unavailable)
+    started  = nil,
+}
+
+function F._dmg_now()
+    if I.now then
+        local ok, t = pcall(I.now)
+        if ok and type(t) == "number" then return t end
+    end
+    return os.time()
+end
+
+-- An entity we are willing to hand to an engine lookup: plausible, and its
+-- component store at +0x8 is a plausible pointer too. Both engine helpers used
+-- below dereference that store unconditionally, so this gate is what keeps a
+-- stale pointer from faulting the game instead of returning false.
+function F._dmg_entity_ok(e)
+    if not _ptr_plausible(e) then return false end
+    return _ptr_plausible(I.read_u64(e + 8))
+end
+
+-- Heroes (including remote ones) own a magical-object component; summons, pets
+-- and enemies do not. Same discriminator R.give uses on a dispatcher.
+function F._dmg_is_hero(e)
+    if type(I.is_grant_target) ~= "function" then return false end
+    -- Plausibility only. The native discriminator page-guards every read it
+    -- makes (entity header, the component store at +0x8, the F14 tables) and
+    -- answers false on a bad pointer, so gating it on OUR idea of a valid
+    -- store is redundant — and it was wrong: a live 4-player log showed the
+    -- hero's +0x8 reading as the -1 sentinel, so this gate refused every
+    -- victim and `taken` stayed 0 for the whole run.
+    if not _ptr_plausible(e) then return false end
+    local ok, v = pcall(I.is_grant_target, e)
+    return ok and v == true
+end
+
+-- The engine's local/remote test: net component +0x130 is 0 when this machine
+-- controls the entity; no net component at all means it is not replicated.
+function F._dmg_entity_is_local(e)
+    -- The engine's is-local byte — see _dispatcher_is_local for why it is
+    -- neither the net component (crashes) nor the HUD mirror (allies have one).
+    if not _ptr_plausible(e) then return false end
+    return I.read_u8(e + DMG.HERO_ISLOCAL_OFF) == 1
+end
+
+-- NO net-id lookup here, deliberately.
+--
+-- This used to call Entity_GetNetId to key rows by a replication-stable id.
+-- It crashed the game (2026-08-15, dump a97c76fe): that function calls
+-- Entity_GetNetComponent, which walks the entity's component map with no
+-- guard, and a hero object whose store slot holds the -1 sentinel takes the
+-- process down. `is_grant_target` accepting an object proves it is a grantable
+-- hero — NOT that a different subsystem can traverse it.
+--
+-- Nothing needed it badly enough to risk that. The replicated path already
+-- carries a net id in its own payload (a plain number off the wire, no engine
+-- call), the local player is identified by its HUD mirror, and cross-source
+-- double counting is caught by the amount+time echo filter.
+
+-- Net id: the identity that survives replication. nil when unavailable.
+function F._dmg_net_id(_e)
+    -- Intentionally always nil: see the note above. Kept as a seam so the
+    -- callers read the same whether or not a SAFE net-id source ever appears.
+    return nil
+end
+
+function F._dmg_label_for(slot, is_local)
+    if _dmg.names[slot] then return _dmg.names[slot] end
+    if is_local then
+        -- The local player's real name, when Steam can tell us. "You" is the
+        -- fallback, not the goal: a scoreboard full of "Player 2" is what this
+        -- avoids for at least one row.
+        local ok, name = pcall(R.player.name)
+        if ok and type(name) == "string" then return name end
+        return "You"
+    end
+    -- A real name from the LOBBY beats "Player 2". Cache-only (R.lobby.members
+    -- never scans) because this runs on the MAIN THREAD inside a damage hook.
+    -- If the roster is not resolved yet the row gets a placeholder and
+    -- F._dmg_relabel fixes it as soon as the background scan lands.
+    --
+    -- Allies are matched in JOIN ORDER against the lobby's non-local members.
+    -- That is the best link available today: the lobby record carries the name
+    -- but nothing tying it to a hero pointer, so with 3+ players the mapping
+    -- is a guess. Rows carry `label_guess` so a UI can say so.
+    local ok, allies = pcall(R.lobby.allies)
+    if ok and type(allies) == "table" then
+        -- Slot 1 is whoever dealt damage first and the local player occupies
+        -- one slot somewhere, so ally N is the Nth non-local ROW, not slot N.
+        local rank = 0
+        for _, row in ipairs(_dmg.order) do
+            if not row.is_local then rank = rank + 1 end
+        end
+        local nm = allies[rank + 1]
+        if nm then return nm end
+    end
+    return "Player " .. tostring(slot)
+end
+
+--- Re-label ally rows once the lobby roster is known.
+---
+--- Rows are created the instant an ally deals damage, which is usually before
+--- the background scan has found the lobby. Without this they would keep the
+--- "Player N" placeholder for the whole run even though the name is available
+--- seconds later.
+function F._dmg_relabel()
+    local ok, allies = pcall(R.lobby.allies)
+    if not ok or type(allies) ~= "table" or #allies == 0 then return end
+    local rank, changed = 0, 0
+    for _, row in ipairs(_dmg.order) do
+        if not row.is_local then
+            rank = rank + 1
+            local nm = _dmg.names[row.slot] or allies[rank]
+            if nm and row.label ~= nm then
+                row.label = nm
+                row.label_guess = #allies > 1
+                changed = changed + 1
+            end
+        end
+    end
+    if changed > 0 then
+        R.log(("[rsmm.damage] lobby roster: %s (%d row(s) renamed)")
+              :format(table.concat(allies, ", "), changed))
+    end
+end
+
+--- Apply the lobby roster to the board's ally rows.
+---
+--- Public because the roster resolves asynchronously: a UI that wants names
+--- the moment they land can call this instead of waiting for the next tick.
+--- Cheap — no scan (see R.lobby.members).
+function R.damage.relabel() return F._dmg_relabel() end
+
+--- Resolve the lobby roster on the BACKGROUND thread, then re-label.
+---
+--- Never call the scan from a gameplay path: it walks the address space and
+--- costs seconds. This is the only place allowed to trigger it.
+function F._dmg_lobby_refresh()
+    if not (R.schedule and R.schedule.every) then return end
+    -- One resolver for the whole process, not one per mod state.
+    if I.shared_get and I.shared_set then
+        local ok, n = pcall(I.shared_get, LOBBY_REFRESH_SLOT)
+        if ok and type(n) == "number" and n > 0 then return end
+        pcall(I.shared_set, LOBBY_REFRESH_SLOT, 1)
+    end
+    -- DEMAND-DRIVEN. The scan is only worth its ~4 s when there is actually a
+    -- row it could name, which makes the common cases free: a solo run never
+    -- scans at all, and a co-op run stops scanning the moment every ally has a
+    -- real name.
+    --
+    -- The previous shape — scan on a 30 s timer, then refuse to rescan for
+    -- 120 s — managed to be both wasteful and too slow: its one scan landed
+    -- during loading, before anyone had joined, found nothing, and the retry
+    -- was still 6 s away when session 1e36 ended. Ticking often but scanning
+    -- rarely is the right way round.
+    -- One SLICE per tick. `refresh` walks a bounded number of bytes and
+    -- returns; the sweep spans many ticks, so nothing ever blocks long enough
+    -- to be felt. The demand gate still applies, so a solo run does no work at
+    -- all beyond the (free) relabel.
+    R.schedule.every(1, function()
+        local ok, err = pcall(function()
+            -- Cheap every time: re-read the known blocks and apply names.
+            F._dmg_relabel()
+            if F._dmg_wants_lobby() then
+                local before = #R.lobby.members()
+                local members = R.lobby.refresh()
+                if #members ~= before then
+                    R.log(("[rsmm.damage] lobby scan: %d member(s)%s")
+                          :format(#members, #members > 0
+                              and (" — " .. F._dmg_roster_text(members)) or ""))
+                end
+                F._dmg_relabel()
+            end
+        end)
+        if not ok then
+            R.log("[rsmm.damage] lobby refresh failed: " .. tostring(err))
+        end
+    end)
+end
+
+--- "Alice (Aladdin), Bob (Scarlet)" — the roster as one log line.
+function F._dmg_roster_text(members)
+    local parts = {}
+    for _, m in ipairs(members) do
+        parts[#parts + 1] = m.hero and (m.name .. " (" .. m.hero .. ")") or m.name
+    end
+    return table.concat(parts, ", ")
+end
+
+--- True when a scan could actually change something: some ally row is still
+--- wearing a "Player N" placeholder. Solo runs never qualify, so they never
+--- pay for a scan.
+function F._dmg_wants_lobby()
+    for _, row in ipairs(_dmg.order) do
+        if not row.is_local and not _dmg.names[row.slot]
+            and row.label:find("^Player %d") then
+            return true
+        end
+    end
+    return false
+end
+
+function F._dmg_new_row(key, is_local)
+    local slot = #_dmg.order + 1
+    local row = {
+        key = key, slot = slot, is_local = is_local or false,
+        label = F._dmg_label_for(slot, is_local),
+        dealt = 0, taken = 0, hits = 0, best = 0, by_type = {},
+        first = F._dmg_now(), last = 0, samples = {}, recent = {},
+    }
+    _dmg.actors[key] = row
+    _dmg.order[slot] = row
+    return row
+end
+
+-- A player is reachable under several keys — its hero CONTROLLER (the engine's
+-- bookkeeping hands us that), its ENTITY (the attack resolver hands us that),
+-- and its NET id (replication hands us that). They must all land on ONE row, or
+-- the same player shows up two or three times on the board and every share is
+-- wrong. Alias keys point at the row; the net id gets its own index.
+function F._dmg_alias(row, key)
+    if key and _dmg.actors[key] == nil then _dmg.actors[key] = row end
+end
+
+function F._dmg_bind_netid(row, entity)
+    if row.netid ~= nil or not entity then return end
+    local id = F._dmg_net_id(entity)
+    row.netid = id or false
+    if id then _dmg.by_netid[id] = row end
+end
+
+-- Row for a hero CONTROLLER (source 1). The controller is what the SDK already
+-- captures for the local player, and its +0x1d88 byte is the engine's own
+-- "this is my player" flag — cheaper and more direct than a net lookup.
+function F._dmg_row_for_hero(hero)
+    if not _ptr_plausible(hero) then return nil end
+    local row = _dmg.actors[hero]
+    if row then return row end
+    local is_local = I.read_u8(hero + DMG.HERO_ISLOCAL_OFF) == 1
+    local entity = I.read_u64(hero + DMG.HERO_ENTITY_OFF)
+    -- ONE line, once per session. The 2026-08-15 co-op run showed the net-id
+    -- lookup refusing this entity, which also explains an empty `taken` column:
+    -- if controller+0x8 is not the entity the rest of the SDK recognises, rows
+    -- cannot be merged with the resolver's view of the same player. Dump the
+    -- raw chain so the next session says which link is wrong instead of
+    -- guessing.
+    if not _dmg.probed then
+        _dmg.probed = true
+        R.log(string.format(
+            "[rsmm.damage] identity probe: controller=0x%x hero?=%s inner=%s "
+            .. "inner_hero?=%s mirror=%s local_byte=%s",
+            hero, tostring(F._dmg_is_hero(hero)), tostring(entity),
+            tostring(_ptr_plausible(entity) and F._dmg_is_hero(entity) or false),
+            tostring(I.read_u64(hero + DMG.HERO_MIRROR_OFF)),
+            tostring(I.read_u8(hero + DMG.HERO_ISLOCAL_OFF))))
+    end
+    -- The resolver may have boarded this player by entity already (it sees
+    -- damage TAKEN before the hero deals any). Reuse that row.
+    local existing = _ptr_plausible(entity) and _dmg.actors[entity] or nil
+    if existing then
+        _dmg.actors[hero] = existing
+        return existing
+    end
+    row = F._dmg_new_row(hero, is_local)
+    F._dmg_alias(row, entity)
+    F._dmg_bind_netid(row, entity)
+    if is_local and _dmg.local_id == nil then
+        _dmg.local_id = (row.netid ~= false and row.netid) or false
+    end
+    return row
+end
+
+-- Row for an ENTITY seen through the attack resolver (source 2). The negative
+-- answer is cached: an enemy attacks hundreds of times a run and each miss
+-- would otherwise be an engine lookup.
+function F._dmg_row_for_entity(e)
+    if not _ptr_plausible(e) then return nil end
+    local row = _dmg.actors[e]
+    if row then return row end
+    if _dmg.seen[e] then return nil end
+    if not F._dmg_is_hero(e) then _dmg.seen[e] = true; return nil end
+    local id = F._dmg_net_id(e)
+    if id and _dmg.by_netid[id] then
+        row = _dmg.by_netid[id]
+        F._dmg_alias(row, e)
+        return row
+    end
+    local is_local = F._dmg_entity_is_local(e)
+    row = F._dmg_new_row(e, is_local)
+    row.netid = id or false
+    if id then _dmg.by_netid[id] = row end
+    if is_local and _dmg.local_id == nil then
+        _dmg.local_id = (row.netid ~= false and row.netid) or false
+    end
+    return row
+end
+
+function F._dmg_publish(row, amount, target, source, kind)
+    if #_dmg.subs == 0 then return end
+    local hit = { label = row.label, slot = row.slot, is_local = row.is_local,
+                  amount = amount, target = target, source = source,
+                  kind = kind or "dealt" }
+    for _, cb in ipairs(_dmg.subs) do pcall(cb, hit) end
+end
+
+-- Has this row just been credited the same amount BY THE LOCAL APPLY PATH?
+-- Sources 1 and 3 are disjoint in theory (the machine that applies a hit is not
+-- the machine that receives its replication), but "in theory" is not a good
+-- enough reason to risk double-counting a player's damage, which is the one
+-- number this whole feature exists to get right.
+--
+-- Only cross-source echoes are dropped, never repeats within one source: a
+-- multi-hit ability lands several IDENTICAL amounts inside a few frames, and an
+-- amount-based filter that ignored the source would silently eat most of a
+-- flurry's damage — the exact opposite of the bug it is there to prevent.
+function F._dmg_is_echo(row, amount, now)
+    local r = row.recent
+    for i = #r, 1, -1 do
+        if now - r[i].t > DMG.DEDUPE_WINDOW then
+            table.remove(r, i)
+        elseif math.abs(r[i].a - amount) < 0.01 then
+            return true
+        end
+    end
+    return false
+end
+
+-- Did ANY player's locally-applied hit just land for this amount?
+--
+-- Without a net id we cannot ask "is this replicated event about me", so the
+-- test widens from one row to all of them: if this machine applied a hit of
+-- the same size a moment ago, the event is that hit coming back, and crediting
+-- it would invent a phantom player. Four rows and a 0.4s window — cheaper than
+-- the engine call it replaces, and it cannot crash the game.
+function F._dmg_echo_of_local(amount, now)
+    for _, row in ipairs(_dmg.order) do
+        if F._dmg_is_echo(row, amount, now) then return true end
+    end
+    return false
+end
+
+function F._dmg_credit(row, amount, target, source, kind)
+    local now = F._dmg_now()
+    row.dealt = row.dealt + amount
+    row.hits  = row.hits + 1
+    row.last  = now
+    if amount > row.best then row.best = amount end
+    if kind then row.by_type[kind] = (row.by_type[kind] or 0) + amount end
+    local s = row.samples
+    s[#s + 1] = { t = now, a = amount }
+    -- Bound the window buffer: a long run at high APM would grow it without
+    -- limit. Dropping the oldest half keeps the recent window (all `dps` reads)
+    -- honest.
+    if #s > DMG.SAMPLE_CAP then
+        local keep = {}
+        for i = #s // 2, #s do keep[#keep + 1] = s[i] end
+        row.samples = keep
+    end
+    -- Only the local apply path seeds the echo filter; see F._dmg_is_echo.
+    if source == "hero-stats" then
+        local r = row.recent
+        r[#r + 1] = { t = now, a = amount }
+        if #r > 32 then table.remove(r, 1) end
+    end
+    F._dmg_publish(row, amount, target, source, "dealt")
+end
+
+-- One resolved hit from the attack resolver. `attacker` may be nil (an enemy
+-- swinging), `target` may be nil. Damage landing on a HERO is never carry
+-- damage — it is that hero's `taken`, and its attacker does not join the board.
+function F._dmg_record(attacker, target, amount, source)
+    if type(amount) ~= "number" or amount ~= amount then return end   -- NaN
+    if amount <= _dmg.min then return end
+    local victim = target and F._dmg_row_for_entity(target) or nil
+    if victim then
+        victim.taken = victim.taken + amount
+        victim.last_hurt = F._dmg_now()
+        F._dmg_publish(victim, amount, target, source, "taken")
+        return
+    end
+    if not attacker then return end
+    -- With the hero-stat hook armed, dealt damage is counted there for EVERY
+    -- hero (allies included); crediting it here as well would double it.
+    if _dmg.stats_hooked then return end
+    F._dmg_credit(attacker, amount, target, source)
+end
+
+-- Source 1: the engine's per-hero bookkeeping. Observation only.
+function F._dmg_observe_stats(hero, target, pd)
+    if not _ptr_plausible(hero) or not _ptr_plausible(pd) then return end
+    local valobj = I.read_u64(pd + DMG.PD_VALUE_OFF)
+    if not _ptr_plausible(valobj) then return end
+    local amount = I.read_f32(valobj + DMG.VALUE_AMOUNT_OFF)
+    if type(amount) ~= "number" or amount ~= amount or amount <= _dmg.min then return end
+    local row = F._dmg_row_for_hero(hero)
+    if not row then return end
+    -- Which ability landed it, for the per-ability breakdown. A source object
+    -- that does not read back cleanly just means "other" — never a reason to
+    -- drop the damage.
+    local kind = "other"
+    local src = I.read_u64(pd + DMG.PD_SOURCE_OFF)
+    if _ptr_plausible(src) then
+        local t = I.read_u16(src + DMG.SOURCE_TYPE_OFF)
+        if type(t) == "number" and DMG.TYPES[t] then kind = DMG.TYPES[t] end
+    end
+    F._dmg_credit(row, amount, target, "hero-stats", kind)
+end
+
+-- Source 1b: the engine's per-hero damage-RECEIVED bookkeeping.
+--
+-- The resolver's victim path cannot name a hero on this build (is_grant_target
+-- answers false for the controller AND for controller+0x8 — probed live on
+-- 2026-08-15), so `taken` was empty for every player. This hook hands the
+-- victim over as the same hero object the rows are already keyed by, so it
+-- merges with no translation and covers allies too.
+function F._dmg_observe_taken(victim, pd)
+    if not _ptr_plausible(victim) or not _ptr_plausible(pd) then return end
+    -- Same processed-damage record as the dealt side: hit-value object at
+    -- +0x10, its f32 at +0x8. The one-shot probe reports the alternative
+    -- (+0xa0) too, so a layout difference shows up as data in the log rather
+    -- than as another silently empty column.
+    local valobj = I.read_u64(pd + DMG.PD_VALUE_OFF)
+    local amount = _ptr_plausible(valobj)
+        and I.read_f32(valobj + DMG.VALUE_AMOUNT_OFF) or nil
+    if not _dmg.probed_taken then
+        _dmg.probed_taken = true
+        local alt = I.read_u64(pd + DMG.PD_SOURCE_OFF)
+        R.log(string.format(
+            "[rsmm.damage] taken probe: victim=0x%x local=%s value@+0x10=%s "
+            .. "alt@+0xa0=%s",
+            victim, tostring(I.read_u8(victim + DMG.HERO_ISLOCAL_OFF)),
+            tostring(amount),
+            tostring(_ptr_plausible(alt) and I.read_f32(alt + 8) or nil)))
+    end
+    if type(amount) ~= "number" or amount ~= amount or amount <= 0 then return end
+    local row = F._dmg_row_for_hero(victim)
+    if not row then return end
+    row.taken = row.taken + amount
+    row.last_hurt = F._dmg_now()
+    F._dmg_publish(row, amount, victim, "hero-stats", "taken")
+end
+
+function F._dmg_arm_taken()
+    if _dmg.taken_hooked then return true end
+    if not (R.hook and I.resolve) then return false end
+    local va = I.resolve(DMG.TAKEN_SYMBOL)
+    if not va or va == 0 then return false end
+    -- void(victim, processedDamage). Observation only: return nil without
+    -- calling next, and the loader replays the original with the raw arguments.
+    local ok, slot, why = pcall(R.hook, va, "vpp", function(victim, pd)
+        if _dmg.on then pcall(F._dmg_observe_taken, victim, pd) end
+        return nil
+    end)
+    if not ok then return false end
+    if slot == nil and why ~= "already-hooked" then return false end
+    _dmg.taken_hooked = true
+    return true
+end
+
+function F._dmg_arm_stats()
+    if _dmg.stats_hooked then return true end
+    if not (R.hook and I.resolve) then return false end
+    local va = I.resolve(DMG.STATS_SYMBOL)
+    if not va or va == 0 then return false end
+    -- void(hero, target, processedDamage, char). Read-only: return nil without
+    -- calling next, and the loader replays the original with the raw arguments
+    -- it received, so the engine's own bookkeeping is bit-for-bit unchanged.
+    local ok, slot, why = pcall(R.hook, va, "vpppi", function(hero, target, pd)
+        if _dmg.on then pcall(F._dmg_observe_stats, hero, target, pd) end
+        return nil
+    end)
+    if not ok then return false end
+    if slot == nil and why ~= "already-hooked" then return false end
+    _dmg.stats_hooked = true
+    return true
+end
+
+-- Source 2: the local attack resolver.
+--
+-- The signature must carry ALL FIVE arguments ("fpupff", matching the symbol's
+-- cabi). The 5th is base damage, which the Windows x64 ABI passes on the
+-- STACK; a 4-argument signature would still install, but `next()` would replay
+-- the original with whatever happened to be in that stack slot — i.e. a random
+-- base damage on every attack in the game.
+function F._dmg_observe_attack(ctx, targets, amount)
+    if type(amount) ~= "number" or amount <= 0 then return end
+    if not _ptr_plausible(ctx) or not _ptr_plausible(targets) then return end
+    local attacker = I.read_u64(ctx + DMG.CTX_ENTITY_OFF)
+    -- `row` is nil when the attacker is not a hero — an enemy swinging. That is
+    -- NOT a reason to stop: the swing may be landing on a hero, and that hero's
+    -- `taken` is the other half of the board (and the "I just got hit" signal
+    -- other mods subscribe to). F._dmg_record handles a nil attacker.
+    local row = F._dmg_row_for_entity(attacker)
+    local n = I.read_u32(targets + DMG.TGT_COUNT_OFF)
+    local data = I.read_u64(targets + DMG.TGT_DATA_OFF)
+    if type(n) ~= "number" or n <= 0 or not _ptr_plausible(data) then
+        if row then F._dmg_record(row, nil, amount, "local") end
+        return
+    end
+    if n > DMG.MAX_TARGETS then n = DMG.MAX_TARGETS end
+    -- ONE line, once per session, for the other half of the board: `taken`
+    -- was 0 for everyone in the 2026-08-15 co-op run, and the two candidate
+    -- explanations (enemy attacks never reach this hook / the victim is not
+    -- recognised as a hero) look identical from outside. Report the first
+    -- swing that is NOT from a boarded hero, with what we make of its target.
+    if not _dmg.probed_victim and not row then
+        _dmg.probed_victim = true
+        local first = I.read_u64(data)
+        R.log(string.format(
+            "[rsmm.damage] victim probe: attacker=%s target=%s hero?=%s boarded=%s",
+            tostring(attacker), tostring(first),
+            tostring(F._dmg_is_hero(first)),
+            tostring(_dmg.actors[first] ~= nil)))
+    end
+    for i = 0, n - 1 do
+        F._dmg_record(row, I.read_u64(data + i * 8), amount, "local")
+    end
+end
+
+function F._dmg_arm_resolver()
+    if _dmg.hooked then return true end
+    if not (R.hook and I.resolve) then return false end
+    local va = I.resolve(DMG.ATTACK_SYMBOL)
+    if not va or va == 0 then return false end
+    local ok, slot, why = pcall(R.hook, va, "fpupff",
+        function(ctx, hitdef, targets, mul, base, nxt)
+            local dmg = nxt(ctx, hitdef, targets, mul, base)
+            if _dmg.on then pcall(F._dmg_observe_attack, ctx, targets, dmg) end
+            return dmg
+        end)
+    if not ok then return false end
+    if slot == nil and why ~= "already-hooked" then return false end
+    _dmg.hooked = true
+    return true
+end
+
+-- Source 3: replicated damage. Identity is the net id; the victim is the
+-- entity the event was dispatched INTO, which the SDK can reach once it has
+-- learned where a dispatcher sits inside its entity (R.give's
+-- _learn_dispatcher_offset). Until then the victim is unknown and the hit is
+-- credited to the attacker — the right default, since the overwhelming
+-- majority of replicated damage is a player hitting an enemy.
+R.on("gameplay:NETWORK_DAMAGE", function(ev)
+    if not _dmg.on then return end
+    local amount = tonumber(ev.value)
+    local id = tonumber(ev.source_id or "")
+    if not amount or amount <= _dmg.min or not id or id == -1 then return end
+    -- Already counted here? Then it is this machine's own hit echoing back via
+    -- another peer, not a new player's damage. (There is no net id to compare
+    -- against any more — asking the engine for one crashed the game.)
+    if F._dmg_echo_of_local(amount, F._dmg_now()) then return end
+    local victim
+    if _DISPATCHER_ENTITY_OFF and type(ev.dispatcher) == "string" then
+        local disp = tonumber(ev.dispatcher)
+        if disp then victim = disp - _DISPATCHER_ENTITY_OFF end
+    end
+    if victim and _dmg.actors[victim] then
+        local row = _dmg.actors[victim]
+        row.taken = row.taken + amount
+        row.last_hurt = F._dmg_now()
+        F._dmg_publish(row, amount, victim, "net", "taken")
+        return
+    end
+    local row = _dmg.by_netid[id]
+    if not row then
+        row = F._dmg_new_row("net:" .. string.format("%x", id), false)
+        row.netid = id
+        _dmg.by_netid[id] = row
+    end
+    F._dmg_credit(row, amount, victim, "net")
+end)
+
+--- Start metering. Idempotent; safe to call from `ready` or from run:start.
+---   opts.window  seconds behind the rolling `dps` figure (default 10)
+---   opts.min     ignore hits at or below this value (default 0)
+---   opts.names   { [slot] = "Alice", ... } fixed labels by join order
+function R.damage.enable(opts)
+    opts = opts or {}
+    if type(opts.window) == "number" and opts.window > 0 then _dmg.window = opts.window end
+    if type(opts.min) == "number" then _dmg.min = opts.min end
+    if type(opts.names) == "table" then
+        for k, v in pairs(opts.names) do
+            if type(k) == "number" and type(v) == "string" then _dmg.names[k] = v end
+        end
+    end
+    if _dmg.on then return true end
+    _dmg.on = true
+    _dmg.started = F._dmg_now()
+    local stats = F._dmg_arm_stats()
+    local taken = F._dmg_arm_taken()
+    local resolver = F._dmg_arm_resolver()
+    R.log(("[rsmm.damage] metering on (window %ds, sources: %s)")
+          :format(_dmg.window, R.damage.mode()))
+    F._dmg_lobby_refresh()
+    if not stats then
+        R.log("[rsmm.damage] " .. DMG.STATS_SYMBOL .. " unresolved on this game "
+              .. "build — ALLY damage will only be counted where the engine "
+              .. "replicates it to this machine")
+    end
+    if not taken then
+        R.log("[rsmm.damage] " .. DMG.TAKEN_SYMBOL .. " unresolved on this game "
+              .. "build — the `taken` column will stay empty")
+    end
+    if not resolver then
+        R.log("[rsmm.damage] " .. DMG.ATTACK_SYMBOL .. " unresolved — solo "
+              .. "damage has no fallback source on this build")
+    end
+    return true
+end
+
+--- Which sources are live, e.g. "hero-stats+resolver+net".
+function R.damage.mode()
+    local parts = {}
+    if _dmg.stats_hooked then parts[#parts + 1] = "hero-stats" end
+    if _dmg.taken_hooked then parts[#parts + 1] = "hero-taken" end
+    if _dmg.hooked then parts[#parts + 1] = "resolver" end
+    parts[#parts + 1] = "net"
+    return table.concat(parts, "+")
+end
+
+--- Stop counting. The detours stay installed (uninstalling a hook another mod
+--- may be using is worse than an early return in a callback) but nothing is
+--- recorded while metering is off.
+function R.damage.disable() _dmg.on = false end
+
+function R.damage.enabled() return _dmg.on end
+
+--- True when the engine's per-hero bookkeeping is hooked — the source that
+--- makes ALLY damage countable. False means ally numbers depend on replication.
+function R.damage.tracks_allies() return _dmg.stats_hooked end
+
+--- True when the local attack resolver is hooked (damage taken, solo damage).
+function R.damage.resolver_armed() return _dmg.hooked end
+
+--- Per-hit callback: cb{ label, slot, is_local, amount, target, source, kind }.
+--- `kind` is "dealt" (they damaged something that is not a hero) or "taken"
+--- (they were damaged) — the reliable "I just got hit" signal, since the local
+--- resolver sees enemy attacks on heroes too.
+function R.damage.on(cb)
+    assert(type(cb) == "function", "R.damage.on: cb must be function")
+    _dmg.subs[#_dmg.subs + 1] = cb
+    return #_dmg.subs
+end
+
+--- Name a player by join order (1 = first actor seen). Applies retroactively.
+function R.damage.name(slot, label)
+    assert(type(slot) == "number", "R.damage.name: slot must be number")
+    assert(type(label) == "string", "R.damage.name: label must be string")
+    _dmg.names[slot] = label
+    local row = _dmg.order[slot]
+    if row then row.label = label end
+end
+
+--- Clear every counter. Called on run boundaries by the meter mod; call it
+--- yourself for per-chapter or per-fight scores.
+function R.damage.reset()
+    _dmg.actors, _dmg.order, _dmg.seen, _dmg.by_netid = {}, {}, {}, {}
+    _dmg.local_id, _dmg.started = nil, F._dmg_now()
+end
+
+--- Total damage dealt to non-hero targets by everyone on the board.
+function R.damage.total()
+    local sum = 0
+    for _, row in ipairs(_dmg.order) do sum = sum + row.dealt end
+    return sum
+end
+
+--- The scoreboard, highest damage first — the ranking, recomputed on every
+--- call so a caller polling it always shows the current order. Each row:
+---   rank, label, slot, is_local, dealt, taken, hits, best, dps, share, by_type
+--- `dps` is over the configured window and `share` is the fraction of all
+--- damage dealt — the "who is carrying" number.
+function R.damage.board()
+    local now = F._dmg_now()
+    local cutoff = now - _dmg.window
+    local total = R.damage.total()
+    local out = {}
+    for _, row in ipairs(_dmg.order) do
+        local recent, keep = 0, {}
+        for _, s in ipairs(row.samples) do
+            if s.t >= cutoff then recent = recent + s.a; keep[#keep + 1] = s end
+        end
+        row.samples = keep
+        local by_type = {}
+        for k, v in pairs(row.by_type) do by_type[k] = v end
+        out[#out + 1] = {
+            label = row.label, slot = row.slot, is_local = row.is_local,
+            dealt = row.dealt, taken = row.taken, hits = row.hits,
+            best = row.best, last = row.last, by_type = by_type,
+            dps = recent / _dmg.window,
+            share = total > 0 and (row.dealt / total) or 0,
+            idle = row.last > 0 and (now - row.last) or nil,
+        }
+    end
+    table.sort(out, function(a, b)
+        if a.dealt ~= b.dealt then return a.dealt > b.dealt end
+        return a.slot < b.slot
+    end)
+    for i, row in ipairs(out) do row.rank = i end
+    return out
+end
+
+--- The player currently on top (or nil when nothing has been recorded).
+function R.damage.leader()
+    local board = R.damage.board()
+    return board[1]
+end
+
+--- The engine's OWN run totals for the local player, straight off the hero's
+--- stats record (+0x1db0) — the numbers the end-of-run summary shows. Useful
+--- as a cross-check that the meter is counting the same fight the game is.
+--- Returns nil when there is no captured hero yet; ally records exist but the
+--- engine never fills them, which is the whole reason this module accumulates.
+function R.damage.engine_totals()
+    local hero = R.entity and R.entity.hero and R.entity.hero()
+    if not _ptr_plausible(hero) then return nil end
+    local rec = I.read_u64(hero + DMG.HERO_STATS_OFF)
+    if not _ptr_plausible(rec) then return nil end
+    return {
+        dealt = I.read_u32(rec + DMG.STATS_TOTAL_OFF),
+        best  = I.read_f32(rec + DMG.STATS_BEST_OFF),
+    }
+end
+
+
 R.run = {}
 
 local _last_hero, _last_menu, _run_active = nil, nil, false
@@ -3929,5 +5253,11 @@ function R.run.active() return _run_active end
 -- contract: function names, signatures, and presence may change.
 
 R._internal = I
+
+-- The SDK build stamp is printed by the LOADER (loader.cpp), not from here.
+-- It was briefly done in Lua via debug.getinfo + io.open, which broke every
+-- mod: apply_sandbox() deliberately removes `debug` and `io` from a mod state,
+-- so the SDK raised at load and damage-meter never initialised. Anything the
+-- SDK needs from the host filesystem has to come through `I.<binding>`.
 
 return R

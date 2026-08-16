@@ -265,6 +265,7 @@ local resolve_n = 0                -- monotonic counter for unique fake VAs
 
 local I = {}
 function I.read_u8(a)  return rint(a, 1) end
+function I.read_u16(a) return rint(a, 2) end
 function I.read_u32(a) return rint(a, 4) end
 function I.read_u64(a) return rint(a, 8) end
 function I.read_f32(a) return (string.unpack("<f", rbytes(a, 4))) end
@@ -291,8 +292,22 @@ function I.module_base() return 0x140000000 end
 local va_trusted_val = true
 function I.va_trusted() return va_trusted_val end
 function I.is_grant_target() return true end
+local steam_persona = "Ovilli"
+function I.steam_name(id)
+    if id then return nil end          -- Steam rarely knows a remote account
+    return steam_persona
+end
 function I.shared_get(slot) return shared[slot] end
-function I.shared_set(slot, v) shared[slot] = v end
+-- Faithful to lua_shared_set: slots 8..15 are the native hero-candidate ring
+-- and REFUSE a Lua write. The mock accepted them, so a probe latch that took
+-- slot 9 passed 628 assertions here and then silently evicted hero spawn
+-- candidates in-game — `hero CAPTURED` simply stopped happening, with nothing
+-- in the log tying it to the probe.
+function I.shared_set(slot, v)
+    assert(slot < 8, ("rsmm.shared_set: slot %d is the native hero ring (8..15) "
+        .. "and is read-only from Lua"):format(slot))
+    shared[slot] = v
+end
 function I.list_mods() return {} end
 local hook_report_rows = {
     { tag = "hero-capture", what = "give handler", va = 0x140abc000, fires = 12 },
@@ -456,7 +471,19 @@ end
 -- load the SDK under test
 -- ---------------------------------------------------------------------------
 local chunk = assert(loadfile(LIB .. "/rsmm.lua"))
-local R = chunk()
+
+-- Load it under the REAL sandbox. script_lua.cpp::apply_sandbox() strips these
+-- globals from every mod state, and plain `lua rsmm_spec.lua` has all of them,
+-- so the spec used to be strictly more permissive than the game. On 2026-08-16
+-- a build stamp using `debug.getinfo` + `io.open` passed 628 assertions here
+-- and then raised at load in-game, taking damage-meter (and every other mod)
+-- with it. Nil them for the duration of the load so that gap cannot reopen.
+local SANDBOXED = { "debug", "io", "load", "loadfile", "dofile", "collectgarbage" }
+local _saved = {}
+for _, g in ipairs(SANDBOXED) do _saved[g] = _G[g]; _G[g] = nil end
+local ok_load, R = pcall(chunk)
+for _, g in ipairs(SANDBOXED) do _G[g] = _saved[g] end
+assert(ok_load, "rsmm.lua raised under the loader sandbox: " .. tostring(R))
 assert(type(R) == "table", "rsmm.lua did not return the R table")
 
 -- ---------------------------------------------------------------------------
@@ -1771,6 +1798,631 @@ do
 
     local hits = R.debug.strings(OBJ, { log = false })
     check(#hits == 1 and hits[1].off == 0x18, "strings reports the offset it found the path at")
+end
+
+-- N. R.damage: per-player damage attribution -------------------------------
+--
+-- The meter has to be right about four things that are easy to get wrong and
+-- invisible in-game: it must not change the damage the engine deals, it must
+-- board ALLIES and not enemies, it must not count one hit twice when two
+-- sources see it, and the ranking must follow the numbers. The hooks are
+-- exercised through their recorded callbacks, so the ABI contracts (replay,
+-- return the original's value, all five resolver arguments) are pinned here
+-- rather than discovered in a playtest.
+do
+    package.loaded["rsmm"] = nil
+    local Rd = require "rsmm"
+
+    -- Two hero CONTROLLERS: ours (is-local byte set) and an ally's.
+    local ME, ALLY = 0x50000000, 0x50100000
+    local ME_ENT, ALLY_ENT = 0x41000000, 0x41100000
+    -- Attack-resolver fixtures.
+    local CTX, ENEMY_A, ENEMY_B = 0x40000000, 0x43000000, 0x43100000
+    local FOE_CTX, FOE = 0x40100000, 0x44000000
+    local TARGETS, TDATA = 0x42000000, 0x42001000
+    -- oCDtProcessedDamage: +0x10 -> value object, +0xa0 -> source info.
+    local PD, PDVAL, PDSRC = 0x46000000, 0x46100000, 0x46200000
+
+    for _, e in ipairs({ ME_ENT, ALLY_ENT, ENEMY_A, ENEMY_B, FOE }) do
+        I.write_u64(e + 8, 0x13000000)          -- plausible component store
+    end
+    I.write_u64(ME + 0x08, ME_ENT)
+    I.write_u64(ALLY + 0x08, ALLY_ENT)
+    I.write_u8(ME + 0x1d88, 1)                  -- the engine's is-local flag
+    I.write_u8(ALLY + 0x1d88, 0)
+    -- Local/remote is the engine's is-local byte at +0x1d88 (see the co-op
+    -- section for why it is neither the net component nor the HUD mirror).
+    I.write_u8(ME_ENT + 0x1d88, 1)
+    I.write_u8(ALLY_ENT + 0x1d88, 0)
+    I.write_u64(CTX + 8, ME_ENT)
+    I.write_u64(FOE_CTX + 8, FOE)
+    I.write_u64(PD + 0x10, PDVAL)
+    I.write_u64(PD + 0xa0, PDSRC)
+
+    local heroes = { [ME_ENT] = true, [ALLY_ENT] = true }
+    I.is_grant_target = function(e) return heroes[e] == true end
+
+    local function set_targets(list)
+        I.write_u32(TARGETS, #list)
+        I.write_u64(TARGETS + 8, TDATA)
+        for i, e in ipairs(list) do I.write_u64(TDATA + (i - 1) * 8, e) end
+    end
+
+    -- The name probe arms from enable(). Mocking mem_find is what makes it get
+    -- as far as claiming its shared slot — without this the probe declines
+    -- early and the slot choice is never exercised, which is exactly how it
+    -- shipped sitting on the native hero ring.
+    I.mem_find = function() return {} end
+
+    Rd.damage.enable{ window = 10 }
+    check(I.shared_get(7) == 1,
+          "the name probe latches shared slot 7 — slots 8..15 are the native "
+          .. "hero candidate ring and a write there evicts a spawn candidate")
+    local stats_hook = hooks[I.resolve("HeroStats_OnDamageDealt")]
+    local atk_hook   = hooks[I.resolve("Entity_ResolveAttackHits")]
+    check(stats_hook ~= nil and stats_hook.sig == "vpppi",
+          "enable() hooks the engine's per-hero damage bookkeeping")
+    check(atk_hook ~= nil and atk_hook.sig == "fpupff",
+          "the resolver hook carries all five arguments — a short signature "
+          .. "would replay the original with a garbage stack-passed base damage")
+    check(Rd.damage.tracks_allies(), "ally tracking reports as available")
+
+    -- Source 1: the bookkeeping hook. `next` is never called by an observer,
+    -- so the loader replays the original itself; the callback returns nil.
+    local function deal(hero, amount, atk_type)
+        I.write_f32(PDVAL + 8, amount)
+        I.write_u16(PDSRC + 0xc8, atk_type or 0)
+        return stats_hook.cb(hero, ENEMY_A, PD, 0, function() error("observer must not replay") end)
+    end
+
+    check(deal(ME, 40.0, 5) == nil, "the bookkeeping hook returns nothing (void)")
+    deal(ALLY, 25.0, 0)
+    deal(ALLY, 25.0, 0)
+
+    local board = Rd.damage.board()
+    check(#board == 2, "an ally is boarded from the engine's own hook")
+    check(board[1].label == "Ally" or board[1].dealt == 50.0,
+          "the board is ranked by damage, ally first at 50 vs 40")
+    check(board[1].rank == 1 and board[2].rank == 2, "rows carry their rank")
+    local me, ally
+    for _, row in ipairs(board) do
+        if row.is_local then me = row else ally = row end
+    end
+    check(me and me.label == "Ovilli",
+          "the local row uses the real Steam name, not a placeholder")
+    check(me and me.dealt == 40.0, "our damage is credited once")
+    check(me and me.by_type.ultimate == 40.0, "damage is split by ability type")
+    check(ally and ally.dealt == 50.0 and ally.hits == 2, "ally damage accumulates")
+    check(ally and ally.label == "Player 2", "the ally gets a join-order label")
+
+    -- The lobby roster names that ally, but ONLY off the background tick: the
+    -- scan costs seconds and the label path runs inside a damage detour.
+    -- Publish a lobby block for that ally and let the resolver run.
+    local LB = 0x1f000000
+    local function putb(va, s)
+        for k = 1, #s do I.write_u8(va + k - 1, s:byte(k)) end
+        I.write_u8(va + #s, 0)
+    end
+    putb(LB - 0x60, "RequestedHero")
+    putb(LB - 0x50, "Scarlet")
+    putb(LB, "PlayerName")
+    putb(LB + 0x10, "Juice")
+    I.mem_find = function(needle)
+        if needle == "PlayerName\0" then return { LB } end
+        return {}
+    end
+    Rd.lobby.refresh(true)
+    Rd.damage.relabel()
+    local named
+    for _, row in ipairs(Rd.damage.board()) do
+        if not row.is_local then named = row end
+    end
+    check(named and named.label == "Juice",
+          "the ally row is renamed from the lobby roster once it resolves")
+    -- Relabelling is idempotent: a second pass must not shuffle names.
+    Rd.damage.relabel()
+    local again
+    for _, row in ipairs(Rd.damage.board()) do
+        if not row.is_local then again = row end
+    end
+    check(again and again.label == "Juice", "relabelling twice is stable")
+    check(math.abs(me.share - 40 / 90) < 1e-6, "share is the fraction of team damage")
+
+    -- Source 3 must not double-count a hit this machine already applied.
+    -- There is no net id to match players on (asking the engine for one
+    -- crashed the game — dump a97c76fe), so the test is amount+time across
+    -- EVERY row: if we just applied a hit that size, the event is that hit
+    -- coming back from another peer.
+    fire("gameplay:NETWORK_DAMAGE", { source = "gameplay", value = 25.0,
+                                      source_id = "0x99" })
+    check(Rd.damage.total() == 90.0, "a replicated echo of a counted hit is dropped")
+    check(#Rd.damage.board() == 2, "and it invents no phantom player")
+
+    -- Damage this machine did NOT apply is somebody else's work, and it gets
+    -- its own row: a replicated event is the only thing we know about it.
+    fire("gameplay:NETWORK_DAMAGE", { source = "gameplay", value = 7.0,
+                                      source_id = "0x99" })
+    check(Rd.damage.total() == 97.0, "unseen replicated damage is credited")
+    check(#Rd.damage.board() == 3, "as a row of its own, keyed by the payload net id")
+
+    -- A second event from that same peer joins the row it already made.
+    fire("gameplay:NETWORK_DAMAGE", { source = "gameplay", value = 11.0,
+                                      source_id = "0x99" })
+    check(#Rd.damage.board() == 3, "the same net id lands on the same row")
+    check(Rd.damage.total() == 108.0, "and adds to it")
+
+    -- A different peer is a different row.
+    fire("gameplay:NETWORK_DAMAGE", { source = "gameplay", value = 12.0,
+                                      source_id = "0x123" })
+    check(#Rd.damage.board() == 4, "another net id is another player")
+
+    -- The echo filter is global, not per row: a hit we applied for the local
+    -- player must not be credited again just because it arrives under an id
+    -- we have never seen.
+    deal(ME, 500.0, 0)
+    local before_echo = Rd.damage.total()
+    fire("gameplay:NETWORK_DAMAGE", { source = "gameplay", value = 500.0,
+                                      source_id = "0xabc" })
+    check(Rd.damage.total() == before_echo,
+          "a replicated echo of a locally-applied hit is dropped")
+    check(#Rd.damage.board() == 4, "and it invents no phantom player either")
+
+    -- Source 2: the resolver. With the bookkeeping hook armed it must NOT add
+    -- dealt damage (that would double every hit), but it is still the only
+    -- source of damage TAKEN.
+    local replayed
+    local function swing(ctx, targets, dmg)
+        return atk_hook.cb(ctx, 0, targets, 1.5, 0.0, function(a, b, c, d, e)
+            replayed = { a, b, c, d, e }
+            return dmg
+        end)
+    end
+    local before_swing = Rd.damage.total()
+    set_targets({ ENEMY_A, ENEMY_B })
+    check(swing(CTX, TARGETS, 40.0) == 40.0, "the resolver hook returns the engine's damage")
+    check(replayed[1] == CTX and replayed[3] == TARGETS and replayed[4] == 1.5,
+          "the original is replayed with the arguments it was given")
+    check(Rd.damage.total() == before_swing,
+          "the resolver does not re-count damage the bookkeeping hook owns")
+
+    -- Damage TAKEN comes from the engine's own per-hero received-damage hook,
+    -- not from the resolver: on the shipped build the resolver's victim cannot
+    -- be identified as a hero at all (is_grant_target says false for both the
+    -- controller and controller+0x8), which left the column empty for a whole
+    -- co-op run. The hook hands over the same hero object the dealt side does,
+    -- so the two merge with no translation.
+    local taken_hook = hooks[I.resolve("HeroStats_OnDamageTaken")]
+    check(taken_hook ~= nil and taken_hook.sig == "vpp",
+          "enable() hooks the engine's damage-received bookkeeping")
+
+    local taken_seen = 0
+    Rd.damage.on(function(hit) if hit.kind == "taken" then taken_seen = taken_seen + 1 end end)
+    local rows_before = #Rd.damage.board()
+    local dealt_before
+    for _, row in ipairs(Rd.damage.board()) do
+        if row.is_local then dealt_before = row.dealt end
+    end
+
+    I.write_f32(PDVAL + 8, 12.0)
+    check(taken_hook.cb(ME, PD, function() error("observer must not replay") end) == nil,
+          "the damage-taken hook returns nothing (void)")
+    check(taken_seen == 1, "a hit on a hero publishes a 'taken' hit")
+    local hurt
+    for _, row in ipairs(Rd.damage.board()) do
+        if row.taken > 0 then hurt = row end
+    end
+    check(hurt and hurt.taken == 12.0, "damage taken lands on the victim's row")
+    check(hurt and hurt.is_local and hurt.dealt == dealt_before,
+          "and on the SAME row as that player's damage dealt")
+    check(#Rd.damage.board() == rows_before, "taking a hit boards nobody new")
+
+    -- An ally taking damage is boarded as that ally, not as us.
+    I.write_f32(PDVAL + 8, 5.0)
+    taken_hook.cb(ALLY, PD, function() end)
+    local ally_row
+    for _, row in ipairs(Rd.damage.board()) do
+        if not row.is_local and row.taken == 5.0 then ally_row = row end
+    end
+    check(ally_row ~= nil, "an ally's damage taken lands on the ally's row")
+
+    Rd.damage.name(2, "Ada")
+    for _, row in ipairs(Rd.damage.board()) do
+        if row.slot == 2 then check(row.label == "Ada", "name() relabels a slot") end
+    end
+    local top = Rd.damage.board()[1]
+    check(Rd.damage.leader().dealt == top.dealt and Rd.damage.leader().rank == 1,
+          "leader() is the top of the ranking")
+
+    Rd.damage.reset()
+    check(#Rd.damage.board() == 0 and Rd.damage.total() == 0,
+          "reset clears the board for the next run")
+
+    -- Metering off means both callbacks still behave exactly as if the mod had
+    -- never hooked: the game must not be able to tell.
+    Rd.damage.disable()
+    deal(ME, 9.0, 0)
+    set_targets({ ENEMY_A })
+    check(swing(CTX, TARGETS, 9.0) == 9.0, "damage is untouched while disabled")
+    check(#Rd.damage.board() == 0, "nothing is recorded while disabled")
+
+    I.is_grant_target = function() return true end
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- N. co-op: an ally must not steal the local hero capture ----------------
+--
+-- From a real 4-player session (2026-08-15): allies fire the very same anchor
+-- events (ABILITY_EXIT, COMBO_LINK, ...) from their own dispatchers. With no
+-- local/remote test the capture flip-flopped to whichever ally acted last, and
+-- every flip invalidated the published hero — ~500 identical "hero CAPTURED"
+-- lines in ninety seconds, and R.give / R.combat / R.stat aimed at somebody
+-- else's character for the whole run.
+do
+    package.loaded["rsmm"] = nil
+    local Rc = require "rsmm"
+    local saved_shared = {}
+    for k, v in pairs(shared) do saved_shared[k] = v end
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...)
+        logged[#logged + 1] = table.concat({ ... }, " ")
+    end
+
+    local OFF = 0x520
+    local MINE, ALLY = 0x1a000000, 0x1a800000
+    local function hero_at(addr)
+        I.write_f32(addr + 0x15c8, 50.0)
+        I.write_f32(addr + 0x15cc, 100.0)
+        I.write_u64(addr + 0x1d80, 0x12340000)
+        I.write_u64(addr + 8, 0x13000000)
+        I.write_u64(0x13000000, 0x13000100)
+        local d = addr + OFF
+        I.write_u64(d, 0x140f00000)          -- dispatcher vtable, inside the image
+        return d
+    end
+    local d_mine, d_ally = hero_at(MINE), hero_at(ALLY)
+    -- An ally is told apart by the engine's own is-local byte at +0x1d88.
+    -- Not the net component (that engine call crashed the game) and not the
+    -- HUD mirror (a live probe found an ALLY carrying one).
+    I.write_u8(MINE + 0x1d88, 1)
+    I.write_u8(ALLY + 0x1d88, 0)
+
+    -- Teach the dispatcher offset. It needs two distinct CAPTURED heroes, and
+    -- only a local one can ever be captured (the plausibility gate requires a
+    -- HUD mirror) — in a real session that is a character switch or a new run,
+    -- never an ally.
+    local MINE2 = 0x1b000000
+    local d_mine2 = hero_at(MINE2)
+    I.write_u8(MINE2 + 0x1d88, 1)
+    shared[0] = MINE
+    check(Rc.entity.hero() == MINE, "spec fixture: local hero captured")
+    fire("gameplay:ABILITY_EXIT", { source = "gameplay",
+                                    dispatcher = string.format("0x%x", d_mine) })
+    shared[0] = MINE2
+    check(Rc.entity.hero() == MINE2, "spec fixture: a second local hero is seen")
+    fire("gameplay:COMBO_LINK", { source = "gameplay",
+                                  dispatcher = string.format("0x%x", d_mine2) })
+
+    -- Now the offset is known, so the local/remote test can run. Publish OUR
+    -- hero and make it the captured dispatcher first — the teaching fires above
+    -- left the ALLY as the last one seen, and asserting against that would pass
+    -- whether or not the guard exists.
+    shared[0] = MINE
+    Rc.entity.hero()
+    fire("gameplay:ENERGY_COUNTER_INC", { source = "gameplay",
+                                          dispatcher = string.format("0x%x", d_mine) })
+    check(Rc.give.hero() == d_mine, "our own dispatcher is captured")
+
+    -- Now let the ally act repeatedly. Nothing about our capture may move.
+    for _ = 1, 5 do
+        fire("gameplay:ABILITY_EXIT", { source = "gameplay",
+                                        dispatcher = string.format("0x%x", d_ally) })
+    end
+    check(Rc.give.hero() == d_mine, "an ally's dispatcher never becomes ours")
+    check(shared[0] == MINE, "and the published hero is left alone")
+
+    -- One capture, one line — no matter how often the hero is polled.
+    local captures = 0
+    for _, line in ipairs(logged) do
+        if line:find("hero CAPTURED", 1, true) then captures = captures + 1 end
+    end
+    for _ = 1, 20 do Rc.entity.hero() end
+    local after = 0
+    for _, line in ipairs(logged) do
+        if line:find("hero CAPTURED", 1, true) then after = after + 1 end
+    end
+    check(after == captures, "re-polling a live capture logs nothing further")
+
+    -- Second guard, for the window BEFORE the dispatcher offset is known (a
+    -- fresh run: nothing can be told apart yet, so ally events are accepted).
+    -- Dropping a LIVE capture there is what produced the re-capture storm, so
+    -- the capture may only be invalidated once it has actually gone stale.
+    package.loaded["rsmm"] = nil
+    local Rf = require "rsmm"          -- fresh state: offset unlearned
+    shared[0] = MINE
+    check(Rf.entity.hero() == MINE, "spec fixture: live capture in a fresh state")
+    fire("gameplay:ABILITY_EXIT", { source = "gameplay",
+                                    dispatcher = string.format("0x%x", d_mine) })
+    fire("gameplay:ABILITY_EXIT", { source = "gameplay",
+                                    dispatcher = string.format("0x%x", d_ally) })
+    check(shared[0] == MINE,
+          "a live capture survives an unrecognised dispatcher change")
+
+    rsmm.log = saved_log
+    for k in pairs(shared) do shared[k] = nil end
+    for k, v in pairs(saved_shared) do shared[k] = v end
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- N. the name probe's string enumerator -----------------------------------
+--
+-- This parser is what turns the next co-op log into a struct layout: it must
+-- report the OFFSET a name sits at, and it must see UTF-16 names, because
+-- session 3e36 showed the local name narrow ("Brig", with a "Me" marker) and
+-- another player's name wide ("E.a.t.c.h") inside the same 0x90-byte record.
+-- Miss either and the log looks empty for reasons that have nothing to do
+-- with the game. Cheaper to pin here than to spend a playtest on it.
+do
+    package.loaded["rsmm"] = nil
+    local Rs = require "rsmm"
+    local BASE = 0x1c000000
+    local function put(off, s)
+        for k = 1, #s do I.write_u8(BASE + off + k - 1, s:byte(k)) end
+        I.write_u8(BASE + off + #s, 0)
+    end
+    local function put_wide(off, s)
+        for k = 1, #s do
+            I.write_u8(BASE + off + (k - 1) * 2, s:byte(k))
+            I.write_u8(BASE + off + (k - 1) * 2 + 1, 0)
+        end
+        I.write_u8(BASE + off + #s * 2, 0)
+        I.write_u8(BASE + off + #s * 2 + 1, 0)
+    end
+    put(-0x0c, "Me")            -- the slot marker seen before the local name
+    put(0, "Brig")              -- the local name, narrow, at the hit itself
+    put_wide(0x40, "Eatch")     -- another player's name, wide, same record
+
+    local by = {}
+    for _, s in ipairs(Rs.debug.strings_at(BASE, { before = 0x20, after = 0x80 })) do
+        by[s.text] = s
+    end
+    check(by["Me"] == nil,
+          "min_len defaults to 3, so the two-character slot marker is dropped")
+    -- ...which is why the record dump lowers it: "Me" is how the local slot
+    -- is told apart from an ally's, and losing it loses that.
+    local by2 = {}
+    for _, s in ipairs(Rs.debug.strings_at(BASE,
+            { before = 0x20, after = 0x80, min_len = 2 })) do
+        by2[s.text] = s
+    end
+    check(by2["Me"] and by2["Me"].off == -0x0c,
+          "a narrow string is reported at its signed offset from the hit")
+    check(by["Brig"] and by["Brig"].off == 0 and by["Brig"].wide == false,
+          "the searched name is reported at offset 0, narrow")
+    check(by["Eatch"] and by["Eatch"].off == 0x40 and by["Eatch"].wide == true,
+          "a UTF-16 name in the same record is decoded, not missed — this is "
+          .. "the ally name the whole probe exists to find")
+    check(by["E"] == nil,
+          "the narrow pass does not shred a wide string into single letters")
+    -- min_len must not be satisfied by the stray printable bytes that fill
+    -- any real struct, or every record dump drowns in two-character noise.
+    put(0x60, "ab")
+    local short = Rs.debug.strings_at(BASE, { before = 0, after = 0x70 })
+    local saw_short = false
+    for _, s in ipairs(short) do if s.text == "ab" then saw_short = true end end
+    check(not saw_short, "runs below min_len are dropped")
+end
+
+-- N. MSVC std::string decoding ---------------------------------------------
+--
+-- A lobby attribute is a key/value pair of std::strings, so reading the value
+-- beside a `PlayerName` key IS the ally name. Both storage forms have to work
+-- (short strings live inline, long ones behind a pointer), and — the part that
+-- makes it usable as a probe over arbitrary offsets — a slot that is NOT a
+-- string must say so rather than return garbage.
+do
+    package.loaded["rsmm"] = nil
+    local Rz = require "rsmm"
+    local S = 0x1d000000
+    local function put_sso(va, s)
+        for k = 1, #s do I.write_u8(va + k - 1, s:byte(k)) end
+        I.write_u8(va + #s, 0)
+        I.write_u64(va + 0x10, #s)
+        I.write_u64(va + 0x18, 15)
+    end
+    local function put_heap(va, buf, s)
+        for k = 1, #s do I.write_u8(buf + k - 1, s:byte(k)) end
+        I.write_u8(buf + #s, 0)
+        I.write_u64(va, buf)
+        I.write_u64(va + 0x10, #s)
+        I.write_u64(va + 0x18, 31)
+    end
+
+    put_sso(S, "Brig")
+    check(Rz.debug.stdstring_at(S) == "Brig", "a short std::string is read inline")
+
+    put_heap(S + 0x20, S + 0x200, "AnAllyWithALongName")
+    check(Rz.debug.stdstring_at(S + 0x20) == "AnAllyWithALongName",
+          "a long std::string is followed through its heap pointer")
+
+    -- Rejection: capacity below 15 is not a std::string, and size > capacity
+    -- is a struct being misread. Both must return nil, or every probed offset
+    -- reports a "name".
+    I.write_u64(S + 0x40 + 0x10, 4)
+    I.write_u64(S + 0x40 + 0x18, 3)
+    check(Rz.debug.stdstring_at(S + 0x40) == nil, "an implausible capacity is rejected")
+    I.write_u64(S + 0x60 + 0x10, 99)
+    I.write_u64(S + 0x60 + 0x18, 15)
+    check(Rz.debug.stdstring_at(S + 0x60) == nil, "size beyond capacity is rejected")
+end
+
+-- N. R.lobby: real player names from the lobby attribute table -------------
+--
+-- Reproduces the block found at 0x62fceb40 in session 364f exactly: 32-byte
+-- entries, key at +0, value at +0x10. The anchor check ("RequestedHero" at
+-- -0x60) is the load-bearing part — Lua interns the literal "PlayerName" for
+-- this very search, and every session before the anchor existed drowned in
+-- those self-hits.
+do
+    package.loaded["rsmm"] = nil
+    local Rl = require "rsmm"
+    local BLOCK = 0x1e000000
+    local function put(va, s)
+        for k = 1, #s do I.write_u8(va + k - 1, s:byte(k)) end
+        I.write_u8(va + #s, 0)
+    end
+    -- A real member record.
+    put(BLOCK - 0x60, "RequestedHero")
+    put(BLOCK - 0x50, "Aladdin")
+    put(BLOCK - 0x20, "InLobby")
+    put(BLOCK, "PlayerName")
+    put(BLOCK + 0x10, "Juice")
+    -- A DECOY: the literal alone, exactly as Lua's string table holds it.
+    local DECOY = 0x1e001000
+    put(DECOY, "PlayerName")
+
+    I.mem_find = function(needle)
+        if needle == "PlayerName\0" then return { DECOY, BLOCK } end
+        return {}
+    end
+
+    -- refresh() is the ONLY scanning entry point; members() is cache-only so
+    -- it can be called from the main thread without a multi-second freeze.
+    check(#Rl.lobby.members() == 0,
+          "members() returns nothing before a refresh — it must never scan")
+    local members = Rl.lobby.refresh(true)
+    check(#members == 1, "the bare literal is rejected; only the anchored "
+          .. "block counts as a lobby member")
+    check(members[1] and members[1].name == "Juice",
+          "the member's display name is read from key+0x10")
+    check(members[1] and members[1].hero == "Aladdin",
+          "the requested hero is read from the same value offset")
+
+    -- allies() must drop the local player, or the board labels an ally with
+    -- our own name.
+    put(0x1e002000 - 0x60, "RequestedHero")
+    put(0x1e002000, "PlayerName")
+    put(0x1e002000 + 0x10, "Ovilli")          -- the mocked Steam persona
+    I.mem_find = function(needle)
+        if needle == "PlayerName\0" then return { BLOCK, 0x1e002000 } end
+        return {}
+    end
+    -- SLICED SWEEP. A full pass costs ~4 s and hitches the game even off the
+    -- main thread, so mem_find is resumable: it returns where it stopped and
+    -- the next call continues from there. Findings must ACCUMULATE across
+    -- slices, and a half-finished sweep must not publish a roster that is
+    -- missing the members it has not reached yet.
+    local A, B = 0x1e003000, 0x1e004000
+    for _, va in ipairs({ A, B }) do
+        put(va - 0x60, "RequestedHero")
+        put(va, "PlayerName")
+    end
+    put(A + 0x10, "Ann")
+    put(B + 0x10, "Bo")
+    local slice = 0
+    I.mem_find = function(needle, _max, _mb, from)
+        if needle ~= "PlayerName\0" then return {}, 0 end
+        slice = slice + 1
+        if from == 0 then return { A }, 0x1e003800 end   -- paused mid-sweep
+        return { B }, 0                                   -- finished
+    end
+    _G.__lobby_reset = true
+    Rl.lobby.refresh(true)      -- force: drains every slice in one call
+    local both = Rl.lobby.members()
+    check(#both == 2, "a forced refresh drains every slice and finds both "
+          .. "members, not just the first slice's")
+    check(slice >= 2, "the sweep really did resume rather than stop at the "
+          .. "first partial result")
+
+    I.mem_find = function(needle)
+        if needle == "PlayerName\0" then return { BLOCK }, 0 end
+        return {}, 0
+    end
+    Rl.lobby.refresh(true)
+    local allies = Rl.lobby.allies()
+    check(#allies == 1 and allies[1] == "Juice",
+          "allies() excludes the local player by Steam name")
+end
+
+-- N. R.player: the local player's real name ------------------------------
+--
+-- A scoreboard of "Player 1 / Player 2" is what this exists to avoid. Steam
+-- can always name the LOCAL account; everything else degrades to nil rather
+-- than to an empty label, which would look like a bug on screen.
+do
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    check(Rp.player.name() == "Ovilli", "the local Steam persona is returned")
+    check(Rp.player.name() == "Ovilli", "and cached on the second call")
+    check(Rp.player.name_of(0x110000100000001) == nil,
+          "an account Steam has never seen is nil, not an empty string")
+
+    -- No Steam (game launched without it, or the DLL is absent): the caller
+    -- must get nil and fall back, never a blank row.
+    package.loaded["rsmm"] = nil
+    local saved = I.steam_name
+    I.steam_name = nil
+    local Rn = require "rsmm"
+    check(Rn.player.name() == nil, "no Steam binding degrades to nil")
+    I.steam_name = saved
+
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- N. R.overlay: a mod publishes HUD rows --------------------------------
+--
+-- The mod writes rows; the CLI and the desktop overlay read them back. The
+-- payload therefore has to survive TWO escaping layers (JSON, then R.kv's
+-- tab-delimited line format), and the "nothing changed" check has to be
+-- reliable or every publish rewrites the state file on disk.
+do
+    package.loaded["rsmm"] = nil
+    local Ro = require "rsmm"
+
+    check(Ro.overlay.publish{ rows = { { label = "You", dealt = 4821.5, share = 0.5, top = true } },
+                              meta = { total = 8410 } },
+          "publish writes the first payload")
+    local payload = Ro.overlay.last()
+    check(payload:find('"label":"You"', 1, true) ~= nil, "string values are quoted")
+    check(payload:find('"top":true', 1, true) ~= nil, "booleans survive as booleans")
+    check(payload:find('"total":8410', 1, true) ~= nil, "meta rides along")
+    -- Keys are emitted in sorted order so an unchanged board serialises
+    -- byte-identically; without that the no-op check below never fires and
+    -- the mod rewrites its state file every single tick.
+    check(payload:find('"dealt".*"label".*"share".*"top"') ~= nil, "keys are sorted")
+
+    check(Ro.overlay.publish{ rows = { { label = "You", dealt = 4821.5, share = 0.5, top = true } },
+                              meta = { total = 8410 } } == false,
+          "an unchanged payload is not written again")
+    check(Ro.overlay.publish{ rows = { { label = "You", dealt = 4900, share = 0.5, top = true } },
+                              meta = { total = 8410 } },
+          "a changed payload is written")
+
+    -- Values the reader has no column type for are dropped rather than
+    -- guessed at; a nested table would break the flat-row contract.
+    Ro.overlay.publish{ rows = { { label = "A", nested = { 1, 2 }, fn = print } } }
+    check(Ro.overlay.last():find("nested", 1, true) == nil, "table values are dropped")
+    check(Ro.overlay.last():find("fn", 1, true) == nil, "function values are dropped")
+
+    -- NaN/inf are not JSON. One divide-by-zero must not poison the payload.
+    Ro.overlay.publish{ rows = { { label = "B", dps = 0 / 0, best = math.huge } } }
+    check(Ro.overlay.last():find("nan") == nil and Ro.overlay.last():find("inf") == nil,
+          "non-finite numbers degrade to 0 instead of emitting invalid JSON")
+
+    -- Control characters must be escaped, or the tab-delimited kv line the
+    -- SDK writes would gain a field and the reader would drop the row.
+    Ro.overlay.publish{ rows = { { label = "A\tB\nC" } } }
+    check(Ro.overlay.last():find("\\t", 1, true) ~= nil, "tabs are escaped")
+    check(Ro.overlay.last():find("\\n", 1, true) ~= nil, "newlines are escaped")
+
+    Ro.overlay.clear()
+    check(Ro.overlay.last() == "[]{}", "clear empties the overlay")
+
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
 end
 
 -- ---------------------------------------------------------------------------
