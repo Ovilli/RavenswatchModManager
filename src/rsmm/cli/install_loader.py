@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -65,6 +66,45 @@ def _symbol_resolve_gate(game_dir: Path) -> bool:
     return True
 
 
+def _lua_syntax_gate() -> bool:
+    """Refuse to plant an SDK that does not compile.
+
+    The Lua SDK is disk-loaded, so `install-loader` is the moment a broken
+    rsmm.lua reaches the game — and a syntax error there is not a degraded
+    feature, it is `require "rsmm"` raising for EVERY mod. It happened on
+    2026-08-16: one `local` too many ("too many local variables (limit is 200)"
+    — the main chunk sits at that ceiling) was planted and would have bricked
+    the next launch, caught only because the same command was run twice by hand.
+
+    Compile-only (`luac -p`) against the files about to be copied. Skips
+    silently when no Lua binary is on PATH or in a frozen bundle, so end users
+    are never blocked by a check they cannot run; CI and dev checkouts have it.
+    """
+    if getattr(sys, "frozen", False):
+        return True
+    lib = REPO_ROOT / "src" / "loader" / "lib"
+    if not lib.is_dir():
+        return True
+    luac = next((c for c in ("luac5.4", "luac5.3", "luac")
+                 if shutil.which(c)), None)
+    if luac is None:
+        return True
+    bad = []
+    for f in sorted(lib.rglob("*.lua")):
+        r = subprocess.run([luac, "-p", str(f)], capture_output=True, text=True)
+        if r.returncode != 0:
+            bad.append(r.stderr.strip() or f"{f}: compile failed")
+    if bad:
+        print("\ninstall-loader: SDK Lua does not compile — refusing to plant it "
+              "(every mod's `require \"rsmm\"` would raise):", file=sys.stderr)
+        for b in bad:
+            print(f"  {b}", file=sys.stderr)
+        print("Fix the syntax error, or pass --force to plant anyway.",
+              file=sys.stderr)
+        return False
+    return True
+
+
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
@@ -90,6 +130,9 @@ def main(argv: list[str] | None = None) -> int:
         argv[0] = str(_validate_game_dir(argv[0]))
     except ValueError as exc:
         print(f"install-loader: {exc}", file=sys.stderr)
+        return 1
+
+    if not force and not _lua_syntax_gate():
         return 1
 
     if not force and not _symbol_resolve_gate(Path(argv[0])):

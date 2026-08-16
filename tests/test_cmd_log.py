@@ -93,3 +93,31 @@ def test_restore_removes_the_rsmm_dir_when_there_is_no_archive(tmp_path):
 
     assert apply_mods.clear_loader_artifacts(game) == 1
     assert not (game / "rsmm").exists()
+
+
+def test_install_loader_refuses_a_non_compiling_sdk(tmp_path, monkeypatch):
+    """A syntax error in the SDK is not a degraded feature — it makes
+    `require "rsmm"` raise for every mod. install-loader must not plant it.
+
+    One `local` too many (the main chunk sits at Lua's 200-local ceiling) was
+    planted on 2026-08-16 and would have bricked the next launch; it was caught
+    only because the same command happened to be run twice by hand.
+    """
+    import shutil as _shutil
+
+    import pytest
+
+    from rsmm.cli import install_loader
+
+    if not any(_shutil.which(c) for c in ("luac5.4", "luac5.3", "luac")):
+        pytest.skip("no luac on PATH")
+
+    lib = tmp_path / "src" / "loader" / "lib"
+    lib.mkdir(parents=True)
+    monkeypatch.setattr(install_loader, "REPO_ROOT", tmp_path)
+
+    (lib / "ok.lua").write_text("local a = 1\nreturn a\n")
+    assert install_loader._lua_syntax_gate() is True
+
+    (lib / "broken.lua").write_text("local x = = 1\n")
+    assert install_loader._lua_syntax_gate() is False

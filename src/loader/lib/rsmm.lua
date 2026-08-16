@@ -4041,6 +4041,9 @@ local LOBBY_HOOK = {
     by_name    = {},
     order      = {},
     records    = {},               -- member-record pointers seen by the detour
+    fires      = 0,                -- times the detour has been entered
+    armed_at   = nil,              -- os.time() when the detour went in
+    warned     = false,
 }
 
 --- One attribute's value out of a raw blob, or nil.
@@ -4215,12 +4218,28 @@ function LOBBY_HOOK.arm()
                 end
             end
         end
+        LOBBY_HOOK.fires = LOBBY_HOOK.fires + 1
         if not blob or blob == 0 then return nil end
-        local ptr, len = I.read_u64(blob), I.read_u32(blob + 8)
-        if not ptr or ptr == 0 or type(len) ~= "number" then return nil end
-        len = len & 0x7fffffff          -- bit 31 is the engine's "literal" flag
+        -- param_2 is {begin, end}, NOT {ptr, len|0x80000000}: the body does
+        -- `rbx=[rdx+8]; rdi=[rdx]; rdx=rbx-rdi` and builds the string from that
+        -- RANGE. Reading +0x8 as a length yielded the low bits of the end
+        -- POINTER — always larger than BLOB_MAX, so every blob was discarded as
+        -- oversized and the fallback never saw a single one.
+        local b, e = I.read_u64(blob), I.read_u64(blob + 8)
+        if not b or b == 0 or not e or e < b then return nil end
+        local len = e - b
         if len < 1 or len > LOBBY_HOOK.BLOB_MAX then return nil end
-        local text = I.read_cstr(ptr, len + 1)
+        local text = I.read_cstr(b, len + 1)
+        -- First few fires, spell out what arrived. "Hooked" only proves the
+        -- detour went in; a session where it never fires and one where it fires
+        -- but decodes to nothing look identical from the outside, and telling
+        -- them apart by guesswork costs a playtest each time.
+        if LOBBY_HOOK.fires <= 3 then
+            R.log(string.format(
+                "[rsmm.lobby] parse #%d: record=0x%x blob=%d byte(s) %q",
+                LOBBY_HOOK.fires, self or 0, len,
+                type(text) == "string" and text:sub(1, 120) or "<unreadable>"))
+        end
         if type(text) == "string" then R.lobby._note_blob(text) end
         return nil
     end)
@@ -4229,6 +4248,7 @@ function LOBBY_HOOK.arm()
     -- log line — the owning state is collecting the same names.
     if ok and slot ~= nil then
         LOBBY_HOOK.state = 1
+        LOBBY_HOOK.armed_at = os.time()
         R.log("[rsmm.lobby] attribute parser hooked — player names arrive "
             .. "without scanning memory")
     else
@@ -4342,6 +4362,16 @@ function R.lobby.refresh(force)
         and (#LOBBY_HOOK.order > 0 or #LOBBY_HOOK.records > 0) then
         return R.lobby.members()      -- names are arriving; never sweep
     end
+    -- Hooked but silent. Installing a detour proves nothing about whether the
+    -- game calls it, and "hooked" in the log read as "working" for a whole
+    -- session that produced no names at all. Say it once; the sweep below is
+    -- already running as the fallback, so this is a diagnosis, not a failure.
+    if LOBBY_HOOK.state == 1 and not LOBBY_HOOK.warned and LOBBY_HOOK.armed_at
+        and LOBBY_HOOK.fires == 0 and (os.time() - LOBBY_HOOK.armed_at) > 90 then
+        LOBBY_HOOK.warned = true
+        R.log("[rsmm.lobby] attribute parser hooked but NEVER CALLED in 90s — "
+            .. "this build routes member attributes elsewhere; using the sweep")
+    end
     if not I.mem_find then return R.lobby.members() end
     local now = os.time()
     -- Cheap path: everything we already know still validates AND the roster is
@@ -4402,6 +4432,18 @@ function R.lobby.refresh(force)
         end
         _lobby_cache, _lobby_cache_at = merged, now
         _lobby_found, _lobby_seen = {}, {}
+        -- Report the first two completed sweeps even when they find NOTHING.
+        -- The caller only logs when the count CHANGES, so a sweep that
+        -- finishes empty is indistinguishable from a sweep that never
+        -- finished — and in the 2b4f session both the hook and the sweep were
+        -- silent, which left no way to tell which one to go and fix.
+        -- Counter lives on LOBBY_HOOK: the main chunk is at Lua's 200-local
+        -- ceiling and one more top-level `local` fails the whole SDK.
+        LOBBY_HOOK.sweeps = (LOBBY_HOOK.sweeps or 0) + 1
+        if LOBBY_HOOK.sweeps <= 2 then
+            R.log(("[rsmm.lobby] address sweep #%d complete: %d attribute "
+                   .. "block(s) found"):format(LOBBY_HOOK.sweeps, #_lobby_cache))
+        end
         return _lobby_cache
     end
     return R.lobby.members()      -- mid-sweep: whatever the last sweep found
