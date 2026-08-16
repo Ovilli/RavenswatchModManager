@@ -4018,6 +4018,123 @@ local function _lobby_read(va)
              hero = _slot_string(va + LOBBY_ANCHOR_OFF + LOBBY_VALUE_OFF) }
 end
 
+-- hook-fed roster ---------------------------------------------------------
+--
+-- The scan below is a fallback, not the design. Every member's attributes
+-- arrive through ONE engine function — `LobbyAttributes_Parse`, whose second
+-- argument is a StringDesc { const char* ptr @+0x0; uint32 len|0x80000000
+-- @+0x8 } holding the serialized blob — so a detour there sees every player's
+-- name at the moment it lands, late joiners included, for the cost of a few
+-- reads instead of a 2 GB sweep.
+--
+-- It also fixes something the sweep cannot: the 32-byte key/value blocks the
+-- sweep searches for are that parse's TRANSIENT storage, not a persistent
+-- roster. A 4-player session (2026-08-16) scanned back exactly two members,
+-- because only two blobs had been parsed recently enough for their buffers to
+-- still be intact. Reading the blob as it arrives has no such window.
+-- One table, not five locals: the main chunk is at Lua's 200-local ceiling
+-- and each new top-level `local` fails compilation of the whole SDK.
+local LOBBY_HOOK = {
+    BLOB_MAX = 4096,
+    state    = 0,                  -- 0 not tried, 1 live here, 2 unavailable
+    by_name  = {},
+    order    = {},
+}
+
+--- One attribute's value out of a raw blob, or nil.
+---
+--- The blob's exact encoding is not pinned down (the writer side builds it
+--- through a serializer, and Stormancer traffic is msgpack), so this accepts
+--- the three shapes it can plausibly be rather than betting on one: JSON
+--- (`"PlayerName":"Akaza"`), plain key/value (`PlayerName=Akaza`), and
+--- length-or-type-prefixed binary, where the value is simply the printable run
+--- that follows the key. Guessing wrong yields nil and the sweep still runs.
+function LOBBY_HOOK.value(text, key)
+    local i = text:find(key, 1, true)
+    if not i then return nil end
+    local rest = text:sub(i + #key, i + #key + 128)
+    -- The bare form must stop at a separator. Matching "everything up to the
+    -- next quote or brace" instead swallowed the rest of the blob:
+    -- `PlayerName=Brig;RequestedHero=Scarlet` came back as the whole tail as
+    -- one name, which then never matches the row it is supposed to label.
+    local v = rest:match('^"?%s*[:=]%s*"([^"]+)"')
+        or rest:match('^"?%s*[:=]%s*([^",}%];&|\n\r\t]+)')
+        or rest:match('^[^\32-\126]([\32-\126]+)')
+    if not v then return nil end
+    v = v:gsub("%s+$", "")
+    -- A value that is itself one of the other keys means the match ran off the
+    -- end of this attribute into the next one.
+    if v == "" or v == "RequestedHero" or v == "RequestedSkin"
+        or v == "InLobby" or v == "LobbyState" or v == "PlayerName" then
+        return nil
+    end
+    return v
+end
+
+--- Record what one parsed blob says. Internal; exposed for the spec.
+function R.lobby._note_blob(text)
+    if type(text) ~= "string" then return nil end
+    local name = LOBBY_HOOK.value(text, "PlayerName")
+    if not name then return nil end
+    local hero = LOBBY_HOOK.value(text, "RequestedHero")
+    local e = LOBBY_HOOK.by_name[name]
+    if e then
+        e.hero = hero or e.hero
+        e.seen = os.time()
+    else
+        e = { name = name, hero = hero, seen = os.time(), src = "hook" }
+        LOBBY_HOOK.by_name[name] = e
+        LOBBY_HOOK.order[#LOBBY_HOOK.order + 1] = e
+    end
+    return e
+end
+
+--- Detour the attribute parser. Idempotent; safe to call from the pump.
+function LOBBY_HOOK.arm()
+    if LOBBY_HOOK.state ~= 0 then return end
+    if not (R.hook and I.resolve and I.read_u64 and I.read_u32 and I.read_cstr) then
+        LOBBY_HOOK.state = 2
+        return
+    end
+    local va = I.resolve("LobbyAttributes_Parse")
+    if not va or va == 0 then
+        -- Fail closed onto the sweep rather than hooking a stale VA: a
+        -- mid-function detour corrupts the function it lands in.
+        LOBBY_HOOK.state = 2
+        R.log("[rsmm.lobby] LobbyAttributes_Parse unresolved on this game "
+            .. "build — falling back to the memory sweep for player names")
+        return
+    end
+    -- void*(void* self, StringDesc* blob): pointer return, two pointer args.
+    local ok, slot, why = pcall(R.hook, va, "ppp", function(_self, blob)
+        -- Runs on the GAME thread inside the detour: page-guarded reads and a
+        -- table write only, never an engine call. Returning nil replays the
+        -- original, so the parse itself is untouched.
+        if not blob or blob == 0 then return nil end
+        local ptr, len = I.read_u64(blob), I.read_u32(blob + 8)
+        if not ptr or ptr == 0 or type(len) ~= "number" then return nil end
+        len = len & 0x7fffffff          -- bit 31 is the engine's "literal" flag
+        if len < 1 or len > LOBBY_HOOK.BLOB_MAX then return nil end
+        local text = I.read_cstr(ptr, len + 1)
+        if type(text) == "string" then R.lobby._note_blob(text) end
+        return nil
+    end)
+    -- "already-hooked": another mod's state owns the detour, so OUR callback
+    -- never fires and this state keeps sweeping. Not an error, and not worth a
+    -- log line — the owning state is collecting the same names.
+    if ok and slot ~= nil then
+        LOBBY_HOOK.state = 1
+        R.log("[rsmm.lobby] attribute parser hooked — player names arrive "
+            .. "without scanning memory")
+    else
+        LOBBY_HOOK.state = 2
+        if not ok then
+            R.log("[rsmm.lobby] could not hook the attribute parser ("
+                .. tostring(slot or why) .. "); using the memory sweep")
+        end
+    end
+end
+
 --- Every lobby member's display name. NEVER SCANS — cache only.
 ---
 --- Returns `{ { name = "Juice", hero = "...", addr = <va> }, ... }`, empty
@@ -4032,13 +4149,23 @@ end
 --- addresses found once, and finding those addresses is a separate, explicitly
 --- background-only call.
 function R.lobby.members()
-    if not _lobby_cache then return {} end
+    local out, seen = {}, {}
+    -- Hook-fed first: these were read from the blob itself, so they do not
+    -- depend on a parse buffer still being intact.
+    for _, m in ipairs(LOBBY_HOOK.order) do
+        if not seen[m.name] then
+            seen[m.name] = true
+            out[#out + 1] = { name = m.name, hero = m.hero, src = "hook" }
+        end
+    end
     -- Re-read through the cached addresses rather than trusting stale text:
     -- a member can leave, and the block is then no longer a block.
-    local out = {}
-    for _, m in ipairs(_lobby_cache) do
+    for _, m in ipairs(_lobby_cache or {}) do
         local fresh = _lobby_read(m.addr)
-        if fresh then out[#out + 1] = fresh end
+        if fresh and not seen[fresh.name] then
+            seen[fresh.name] = true
+            out[#out + 1] = fresh
+        end
     end
     return out
 end
@@ -4057,6 +4184,18 @@ local LOBBY_SLICE_MB = 48
 --- Gap between slices. The pump ticks twice a second; one slice per tick keeps
 --- the duty cycle low while still finishing a ~2 GB sweep inside a minute.
 local LOBBY_SLICE_SECONDS = 1
+--- How long a completed roster is taken as final before sweeping again.
+---
+--- A completed sweep is NOT the last word on who is in the session. Players
+--- join while the run is loading, and a sweep that finishes first publishes a
+--- roster that is merely current — but the cheap path below then re-validated
+--- those blocks, found them all alive, and returned early forever, so the
+--- roster froze at whoever had arrived. Measured in a 4-player session
+--- (2026-08-16): `lobby scan: 2 member(s) — Akaza, Brig`, and the remaining two
+--- rows stayed "Player 3" / "Player 4" for the rest of the log even though the
+--- demand gate was asking for a scan every single second. Shrinkage was the
+--- only thing that could ever trigger another sweep; growth could not.
+local LOBBY_RESCAN_SECONDS = 15
 local _lobby_cursor = 0            -- resume address, 0 = start a fresh sweep
 local _lobby_found, _lobby_seen = {}, {}
 local _lobby_slice_at = -math.huge
@@ -4067,13 +4206,22 @@ local _lobby_slice_at = -math.huge
 --- a sweep is still in progress. Call it repeatedly; it is designed to be
 --- cheap enough to sit on a timer.
 function R.lobby.refresh(force)
-    if not I.mem_find then return {} end
-    -- Cheap path: everything we already know still validates, so no sweep.
-    if _lobby_cache and #_lobby_cache > 0 and not force then
+    -- Cheapest path of all: let the parser hook feed us instead. Armed here
+    -- because this is the one entry point already documented as background-only
+    -- and already called on a timer.
+    LOBBY_HOOK.arm()
+    if LOBBY_HOOK.state == 1 and #LOBBY_HOOK.order > 0 and not force then
+        return R.lobby.members()      -- names are arriving; never sweep
+    end
+    if not I.mem_find then return R.lobby.members() end
+    local now = os.time()
+    -- Cheap path: everything we already know still validates AND the roster is
+    -- recent enough to still be the whole story (see LOBBY_RESCAN_SECONDS).
+    if _lobby_cache and #_lobby_cache > 0 and not force
+        and (now - _lobby_cache_at) < LOBBY_RESCAN_SECONDS then
         local live = R.lobby.members()
         if #live == #_lobby_cache then return live end
     end
-    local now = os.time()
     if not force and (now - _lobby_slice_at) < LOBBY_SLICE_SECONDS then
         return R.lobby.members()
     end
@@ -4100,7 +4248,30 @@ function R.lobby.refresh(force)
 
     if _lobby_cursor == 0 then
         -- Sweep complete: publish, and start the next one from scratch.
-        _lobby_cache, _lobby_cache_at = _lobby_found, now
+        --
+        -- A SLICED sweep merges; a FORCED one replaces. Slices span many ticks,
+        -- so a member whose block is allocated mid-sweep can be missed by the
+        -- slice that already passed its address, and replacing wholesale would
+        -- then DROP a player who is still in the session and re-label their row
+        -- back to "Player 3". Carried-over entries are re-validated through
+        -- `_lobby_read`, so someone who actually left still disappears. `force`
+        -- walks the whole address space in one call, so its result IS the
+        -- roster — merging there would only preserve ghosts.
+        local merged, seen = {}, {}
+        local carry = (not force) and _lobby_cache or nil
+        for _, m in ipairs(_lobby_found) do
+            if not seen[m.name] then
+                seen[m.name] = true
+                merged[#merged + 1] = m
+            end
+        end
+        for _, m in ipairs(carry or {}) do
+            if not seen[m.name] and _lobby_read(m.addr) then
+                seen[m.name] = true
+                merged[#merged + 1] = m
+            end
+        end
+        _lobby_cache, _lobby_cache_at = merged, now
         _lobby_found, _lobby_seen = {}, {}
         return _lobby_cache
     end

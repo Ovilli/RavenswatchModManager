@@ -1824,6 +1824,41 @@
    ]
   },
   {
+   "name": "LobbyAttributes_Parse",
+   "kind": "function",
+   "category": "session",
+   "raw": "FUN_140922f20",
+   "status": "ok",
+   "signature": "void*(void* self, StringDesc* blob)",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Parses one lobby member's ATTRIBUTE BLOB. param_2 is a StringDesc { const char* ptr @+0x0; uint32 len|0x80000000 @+0x8 } holding the serialized attribute text; the body builds a std::string from (ptr, len) and then matches the attribute keys, which is where the only .rdata copies of \"PlayerName\" (0x140f14230), \"RequestedHero\" (0x140fac898), \"RequestedSkin\" (0x140fac8a8), \"InLobby\" (0x140fac8b8) and \"LobbyState\" (0x140fac8c0) are referenced. 12 call sites. Counterpart serializer is LobbyAttributes_Serialize. HOW IT WAS FOUND (2026-08-16): a linear capstone sweep of .text reports ZERO xrefs to \"PlayerName\" because it desyncs on inter-function padding - disassembling per .pdata function range resyncs and yields the three real lea sites. WHY IT MATTERS: player display names cannot come from the platform SDK (the exe imports EOSSDK-Win64-Shipping.dll and no EOS_UserInfo_*; Steam can name only the local account), so a remote name reaches this machine ONLY as a lobby attribute. Detouring this is how R.lobby learns names without sweeping the address space: the 32-byte key/value blocks the old scan searched for are this parse's TRANSIENT storage, not a persistent roster, which is why a 4-player session scanned back only 2 members.",
+   "refs": [
+    "docs/_re/kinds/events-bus.md"
+   ]
+  },
+  {
+   "name": "LobbyAttributes_Serialize",
+   "kind": "function",
+   "category": "session",
+   "raw": "FUN_140923e00",
+   "status": "ok",
+   "signature": "void*(void* out, void* member)",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Writes this machine's lobby attributes - the counterpart to LobbyAttributes_Parse, referencing the same key literals in the same order. param_2 is the member record: PlayerName's value is a StringDesc at +0x0 (ptr) / +0x8 (len|0x80000000, bit 31 cleared with btr before use at 0x140923f44), with further int fields read from +0x18 and +0x1c. Documented for the layout; the loader hooks the PARSE side, since only that one sees REMOTE members."
+  },
+  {
    "name": "MagicalObjectPool_Grow",
    "kind": "function",
    "category": "items",

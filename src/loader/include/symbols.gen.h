@@ -362,6 +362,10 @@ constexpr const char* Reward_InitAllRewards_Pattern = "Reward_InitAllRewards";
 // --- session ---
 constexpr std::uintptr_t Account_GetDisplayName = 0x140929940ull;
 constexpr const char* Account_GetDisplayName_Pattern = "Account_GetDisplayName";
+constexpr std::uintptr_t LobbyAttributes_Parse = 0x140922f20ull;
+constexpr const char* LobbyAttributes_Parse_Pattern = "LobbyAttributes_Parse";
+constexpr std::uintptr_t LobbyAttributes_Serialize = 0x140923e00ull;
+constexpr const char* LobbyAttributes_Serialize_Pattern = "LobbyAttributes_Serialize";
 
 // --- skins ---
 constexpr std::uintptr_t SkinGrid_Populate = 0x1401f16f0ull;

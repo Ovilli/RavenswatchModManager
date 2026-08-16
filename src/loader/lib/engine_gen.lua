@@ -53,6 +53,8 @@ return {
   ["Hero_GainExperience"] = { pattern = "Hero_GainExperience", offset = 0x0, sig = "vpp" },
   ["Hero_GrantMagicalObject"] = { pattern = "Hero_GrantMagicalObject", offset = 0x0, sig = "vppuup" },
   ["IngredientDef_PostLoad"] = { pattern = "IngredientDef_PostLoad", offset = 0x0, sig = "up" },
+  ["LobbyAttributes_Parse"] = { pattern = "LobbyAttributes_Parse", offset = 0x0, sig = "ppp" },
+  ["LobbyAttributes_Serialize"] = { pattern = "LobbyAttributes_Serialize", offset = 0x0, sig = "ppp" },
   ["MagicalObjectPool_Grow"] = { pattern = "MagicalObjectPool_Grow", offset = 0x0, sig = "vpuu" },
   ["MagicalObjectPool_SourceLookup"] = { pattern = "MagicalObjectPool_SourceLookup", offset = 0x0, sig = "pppp" },
   ["MagicalObject_RegisterInstance"] = { pattern = "MagicalObject_RegisterInstance", offset = 0x0, sig = "vppu" },

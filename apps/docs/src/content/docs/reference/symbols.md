@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **184** symbols across 18 categories.
+Total: **186** symbols across 18 categories.
 
 ## combat
 
@@ -282,6 +282,8 @@ Total: **184** symbols across 18 categories.
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `Account_GetDisplayName` | `0x140929940` | ✅ ok |  | void(std::string* out, void* account) |
+| `LobbyAttributes_Parse` | `0x140922f20` | ✅ ok | ✔ | void*(void* self, StringDesc* blob) |
+| `LobbyAttributes_Serialize` | `0x140923e00` | ✅ ok | ✔ | void*(void* out, void* member) |
 
 ## skins
 

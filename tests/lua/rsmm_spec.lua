@@ -2346,6 +2346,115 @@ do
           "allies() excludes the local player by Steam name")
 end
 
+-- N1b. R.lobby: names arrive from the attribute parser, not from a sweep ---
+--
+-- Every member's attributes pass through LobbyAttributes_Parse, so a detour
+-- there sees each name as it lands — late joiners included — instead of
+-- hunting the address space for a parse buffer that may already be recycled.
+-- The blob's encoding is not pinned down, so the extractor accepts JSON,
+-- key/value and prefixed-binary shapes; getting it wrong must yield nil and
+-- leave the sweep as the fallback, never a garbage name.
+do
+    package.loaded["rsmm"] = nil
+    local Rb = require "rsmm"
+
+    local json = '{"InLobby":"1","RequestedHero":"Aladdin","PlayerName":"Akaza"}'
+    local e = Rb.lobby._note_blob(json)
+    check(e and e.name == "Akaza", "a JSON blob yields the player name")
+    check(e and e.hero == "Aladdin", "and the requested hero alongside it")
+
+    check(Rb.lobby._note_blob("PlayerName=Brig;RequestedHero=Scarlet") ~= nil,
+          "a plain key/value blob is accepted too")
+    -- msgpack-ish: a type/length byte sits between key and value.
+    local packed = "\170PlayerName\165Piper\173RequestedHero\166Geppet"
+    local p = Rb.lobby._note_blob(packed)
+    check(p and p.name == "Piper", "a length-prefixed binary blob is accepted")
+
+    local names = {}
+    for _, m in ipairs(Rb.lobby.members()) do names[m.name] = m end
+    check(names.Akaza and names.Brig and names.Piper,
+          "every hooked member shows up in members() with no scan at all")
+    check(names.Akaza.src == "hook", "hook-fed rows are tagged as such")
+
+    check(Rb.lobby._note_blob('{"LobbyState":"Connected"}') == nil,
+          "a blob with no PlayerName records nothing")
+    check(Rb.lobby._note_blob('{"PlayerName":"","InLobby":"1"}') == nil,
+          "an empty name is rejected rather than labelling a row with nothing")
+    check(Rb.lobby._note_blob("PlayerName") == nil,
+          "a truncated blob that ends at the key records nothing")
+    check(Rb.lobby._note_blob("PlayerNameRequestedHero") == nil,
+          "the next KEY is never mistaken for this key's value")
+
+    -- Re-seeing a member updates rather than duplicating.
+    local before = #Rb.lobby.members()
+    Rb.lobby._note_blob('{"PlayerName":"Akaza","RequestedHero":"Scarlet"}')
+    local after = Rb.lobby.members()
+    check(#after == before, "a repeated blob updates the existing row")
+    for _, m in ipairs(after) do
+        if m.name == "Akaza" then
+            check(m.hero == "Scarlet", "and refreshes what it says")
+        end
+    end
+end
+
+-- N2. R.lobby: a completed roster is not the final roster ------------------
+--
+-- Players join while the run is still loading. A sweep that finishes first
+-- publishes a roster that is merely CURRENT, and the cheap path then found
+-- every one of those blocks still alive and returned early — forever. Measured
+-- in a 4-player session (2026-08-16): "lobby scan: 2 member(s)" and the other
+-- two rows stayed "Player 3" / "Player 4" for the rest of the run, with the
+-- demand gate asking for a scan every second and never getting one. Only
+-- SHRINKAGE could trigger another sweep; growth could not.
+do
+    package.loaded["rsmm"] = nil
+    local real_time = os.time
+    local clock = 100000
+    os.time = function() return clock end          -- luacheck: ignore
+    local Rj = require "rsmm"
+    local function put(va, s)
+        for k = 1, #s do I.write_u8(va + k - 1, s:byte(k)) end
+        I.write_u8(va + #s, 0)
+    end
+    local EARLY, LATE = 0x1e005000, 0x1e006000
+    for va, who in pairs({ [EARLY] = "Early", [LATE] = "Late" }) do
+        put(va - 0x60, "RequestedHero")
+        put(va, "PlayerName")
+        put(va + 0x10, who)
+    end
+
+    local visible = { EARLY }
+    I.mem_find = function(needle)
+        if needle ~= "PlayerName\0" then return {}, 0 end
+        return visible, 0            -- one slice, sweep completes immediately
+    end
+
+    Rj.lobby.refresh()
+    check(#Rj.lobby.members() == 1, "the first sweep publishes who is there")
+
+    visible = { EARLY, LATE }        -- a second player joins the session
+    clock = clock + 1
+    Rj.lobby.refresh()
+    check(#Rj.lobby.members() == 1,
+          "a roster this fresh is trusted — no sweep on every tick")
+
+    clock = clock + 20               -- past LOBBY_RESCAN_SECONDS
+    Rj.lobby.refresh()
+    check(#Rj.lobby.members() == 2,
+          "a late joiner is picked up once the roster goes stale")
+
+    -- A slice can pass an address before that member's block exists, so a
+    -- completed sliced sweep MERGES with what it already knew. Replacing
+    -- wholesale would drop a player who never left and re-label their row.
+    visible = { LATE }
+    clock = clock + 20
+    Rj.lobby.refresh()
+    check(#Rj.lobby.members() == 2,
+          "a member missed by a later sweep survives if their block still reads")
+
+    os.time = real_time              -- luacheck: ignore
+end
+
 -- N. R.player: the local player's real name ------------------------------
 --
 -- A scoreboard of "Player 1 / Player 2" is what this exists to avoid. Steam

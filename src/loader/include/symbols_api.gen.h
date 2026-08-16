@@ -336,6 +336,20 @@ inline IngredientDef_PostLoad_fn IngredientDef_PostLoad() {
     return reinterpret_cast<IngredientDef_PostLoad_fn>(rsmm::fn_resolve(Sym::IngredientDef_PostLoad_Pattern));
 }
 
+// LobbyAttributes_Parse  (LobbyAttributes_Parse)
+//   void*(void* self, StringDesc* blob)
+using LobbyAttributes_Parse_fn = void*(*)(void*, void*);
+inline LobbyAttributes_Parse_fn LobbyAttributes_Parse() {
+    return reinterpret_cast<LobbyAttributes_Parse_fn>(rsmm::fn_resolve(Sym::LobbyAttributes_Parse_Pattern));
+}
+
+// LobbyAttributes_Serialize  (LobbyAttributes_Serialize)
+//   void*(void* out, void* member)
+using LobbyAttributes_Serialize_fn = void*(*)(void*, void*);
+inline LobbyAttributes_Serialize_fn LobbyAttributes_Serialize() {
+    return reinterpret_cast<LobbyAttributes_Serialize_fn>(rsmm::fn_resolve(Sym::LobbyAttributes_Serialize_Pattern));
+}
+
 // MagicalObjectPool_Grow  (MagicalObjectPool_Grow)
 //   void(void* pool_plus_0x10, uint32_t count, uint32_t by)
 using MagicalObjectPool_Grow_fn = void(*)(void*, uint32_t, uint32_t);
