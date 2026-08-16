@@ -307,8 +307,12 @@ def _read_one(entry: Path, mf: Path, game_dir: Path | str | None,
     try:
         spec = parse_spec(raw, mod_id=mod_id)
     except OverlayError as e:
-        record.update({"error": str(e), "rows": [], "meta": {}, "updated": 0,
-                       "exists": False})
+        # A `title` even on the failure path. Every consumer treats it as the
+        # one key always present — `render` indexes it directly — so omitting
+        # it turned "report the malformed declaration" into a KeyError that
+        # took the whole command down, which is the opposite of the intent.
+        record.update({"title": record["modName"], "error": str(e),
+                       "rows": [], "meta": {}, "updated": 0, "exists": False})
         return record
     record.update(spec)
     live = read_rows(state_file(game_dir, entry.name))
@@ -366,7 +370,11 @@ def _age(updated: int) -> str:
 
 
 def render(record: dict[str, Any]) -> list[str]:
-    out = [_ST.heading(f"  {record['title']}"), ""]
+    # Belt and braces: a record should always carry a title (see _read_one),
+    # but rendering is the last thing standing between a bad manifest and the
+    # user, and it must degrade rather than raise.
+    title = record.get("title") or record.get("modName") or record.get("modId")
+    out = [_ST.heading(f"  {title}"), ""]
     if record.get("error"):
         out.append("  " + _ST.err(str(record["error"])))
         return out
