@@ -178,25 +178,50 @@ Loader publishes `{mo_guid_lo, mo_guid_hi}` (hex strings).
 
 ### NETWORK_DAMAGE / NETWORK_DAMAGE_RESPONSE — oCGameNamedEventNetworkDamage (size 0x110)
 
-Reference emitter `NamedEvent_EmitNetworkDamageFromHit` `FUN_140726610`
-stack-builds it then `NamedEvent_NetSend`s it:
+Emitter `NamedEvent_EmitNetworkDamageFromHit`, **re-found 2026-08-15 at
+`FUN_1407276a0`** (the older `FUN_140726610` address went stale; it is the
+second caller of `Entity_DispatchHit`). Signature
+`(oCEntity* attacker, oCEntity* target, oCEntityHitData* hit)`. It stack-builds
+the event then sends it through the TARGET's net component (`FUN_140721630`):
 
 ```
-+0x40  f32  damage value (= source+0x30 attack stat * DAT_140fc6a68)
-+0x48  u64  source net-id  (FUN_140726330(source))
-+0x50  oCEntityHitData     embedded:
++0x40  f32  damage value (= *(attacker+0x30)+0x24 attack stat * DAT_140fcbee8)
++0x48  u64  source net-id  (Entity_GetNetId(attacker) = FUN_1407273c0)
++0x50  oCEntityHitData     embedded — copied field-for-field from *hit:
   +0x50  vft (oCEntityHitData)
-  +0x60  oCEntity* target            (refcounted; copied from hit+0x10)
+  +0x60  refcounted per-hit HANDLE   (hit+0x10; NOT the target)
   +0x68 .. 0xbc  hit floats / vectors (position, direction, knockback ...)
-  +0xc0/+0xc8/+0xd0  u64 flags/ids
-  +0xd8  u16
-  +0xe0  ptr
-  +0xf0  oCEntity* instigator        (refcounted)
+  +0xc0  attacker CONTEXT             (hit+0x70; its entity at +0x8)
+  +0xf0  hit-VALUE object             (hit+0xa0; f32 damage at +0x8,
+                                       replication gate byte at +0x70)
   +0x100 char flag
 ```
 
-Loader publishes `{value, source_id, target_entity, instigator_entity}`
-(entities as hex strings; raw pointers, undecoded further).
+**LAYOUT CORRECTION (2026-08-15).** The two fields this doc previously called
+`target` (+0x60) and `instigator` (+0xf0) are a hit handle and the hit-value
+object. Both producers agree: the attack resolver `Entity_ResolveAttackHits`
+allocates the +0x10 slot from a handle allocator and releases it through the
+generic destroy thunk, and fills +0xa0 with the value object it releases
+through `FUN_140407e90` — the same two destructors the emitter uses. **The
+target is not in the hit data at all**: it is the applier's first argument.
+
+Loader publishes `{value, source_id}` only. The mislabelled pointers were
+removed: they are sender-side heap pointers (the event is only ever built on
+the machine that owns the target and then SENT, so every observation is on a
+receiver), and a mod comparing `target_entity` to its hero pointer was
+comparing a hero against a hit handle — a test that silently never fired. The
+victim on the receiving side is the `dispatcher` the event was delivered to.
+
+**Emit gates (why it never fires in solo).** With `authority = *(netcomp+0x130)`
+(0 = this machine owns the entity): the hit is applied LOCALLY via
+`Entity_DispatchHit` when the target has no net component, or is remotely
+owned, or the attack's replication flag is clear; and the event is built and
+sent only when this machine owns the target AND the attacker is remote. So a
+machine never sees a replicated echo of its own attacks, and single player
+never produces one at all.
+
+This is what `R.damage` is built on: local attacks come from the resolver hook,
+replicated ones from this event keyed by `source_id`.
 
 Class name strings: `NETWORK_DAMAGE` @0x140f027f8, `NETWORK_DAMAGE_RESPONSE`
 @0x140f02808, vftable `oCGameNamedEventNetworkDamage::vftable` @0x140f0c4a8.

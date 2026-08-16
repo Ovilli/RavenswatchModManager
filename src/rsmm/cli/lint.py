@@ -102,6 +102,22 @@ def lint_one(entry: Path) -> tuple[int, int]:
         print(f"  {_T_FAIL} {mod_s}: unknown multiplayer_scope {_ST.accent(repr(scope))}")
         errs += 1
 
+    # [overlay] — a mod-declared HUD. Validated here rather than at runtime
+    # because the failure is otherwise invisible: the desktop app would list
+    # the overlay, refuse to open it, and the author would have no idea which
+    # field was wrong.
+    if "overlay" in t:
+        from rsmm.cli.cmd_overlay import OverlayError, parse_spec
+        try:
+            parse_spec(t.get("overlay"), mod_id=str(m.get("id", entry.name)))
+        except OverlayError as e:
+            # parse_spec prefixes its own mod id (its messages also reach the
+            # CLI and the desktop app, where there is no other context); here
+            # the line already names the mod, so trim the repeat.
+            detail = str(e).split(": ", 1)[-1]
+            print(f"  {_T_FAIL} {mod_s}: {detail}")
+            errs += 1
+
     # assets/
     dec2enc = decoded_to_encoded()
     assets = entry / "assets"

@@ -4,7 +4,8 @@ import { Search } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { api, logApiError } from '../lib/api';
 import { type PaletteAction, type PaletteRow, buildRows } from '../lib/palette';
-import { restoreAll } from '../lib/rsmm';
+import { toggleOverlay } from '../lib/overlay-windows';
+import { listOverlays, restoreAll } from '../lib/rsmm';
 import { useApp } from '../store';
 import { useLaunch } from './launch';
 import { useToast } from './toast';
@@ -123,6 +124,43 @@ export function CommandPalette() {
     return [...local, ...remote];
   }, [trimmedQ, installed, localMods, remoteData]);
 
+  const { data: overlayList } = useQuery({
+    queryKey: ['overlays'],
+    queryFn: () => listOverlays(),
+    // Only needed while the palette is open, and a stale entry is harmless.
+    staleTime: 30_000,
+    enabled: open,
+  });
+
+  const overlayActions = useMemo<PaletteAction[]>(
+    () =>
+      (overlayList?.overlays ?? [])
+        .filter((o) => !o.error)
+        .map((o) => ({
+          id: `overlay:${o.modId}`,
+          label: `Toggle ${o.title ?? o.modId} overlay`,
+          keywords: `overlay hud window ${o.modId} ${o.title ?? ''}`,
+          hint: 'action',
+          run: () => {
+            void (async () => {
+              try {
+                const opened = await toggleOverlay(o.modId);
+                toast.push(
+                  `${o.title ?? o.modId} overlay ${opened ? 'opened' : 'closed'}.`,
+                  'success',
+                );
+              } catch (e) {
+                toast.push(
+                  `Overlay failed: ${e instanceof Error ? e.message : String(e)}`,
+                  'error',
+                );
+              }
+            })();
+          },
+        })),
+    [overlayList, toast],
+  );
+
   const actions = useMemo<PaletteAction[]>(() => {
     const go = (
       to: '/' | '/browse' | '/profiles' | '/conflicts' | '/commands' | '/settings' | '/about',
@@ -171,6 +209,9 @@ export function CommandPalette() {
           })();
         },
       },
+      // One entry per mod-declared overlay — the client hardcodes none of
+      // them, so a newly installed mod's HUD shows up here on its own.
+      ...overlayActions,
       go('/', 'Library', 'mods installed home'),
       go('/browse', 'Browse mods', 'search index download store'),
       go('/profiles', 'Profiles', 'loadout preset switch'),
@@ -179,7 +220,7 @@ export function CommandPalette() {
       go('/settings', 'Settings', 'paths font size density options preferences'),
       go('/about', 'About', 'version credits'),
     ];
-  }, [navigate, launch, launchBusy, toast]);
+  }, [navigate, launch, launchBusy, toast, overlayActions]);
 
   const rows = useMemo<PaletteRow[]>(
     () => buildRows(actions, hits, trimmedQ),

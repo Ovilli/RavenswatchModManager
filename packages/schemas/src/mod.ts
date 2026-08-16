@@ -10,6 +10,27 @@ export const semverSchema = z
   .string()
   .regex(/^\d+\.\d+\.\d+(?:[-+][\w.]+)?$/, 'semver x.y.z');
 
+export const overlayColumnTypeSchema = z.enum(['text', 'number', 'percent', 'bar']);
+
+export const overlayColumnSchema = z.object({
+  key: z.string().min(1).max(48),
+  label: z.string().max(24).optional(),
+  type: overlayColumnTypeSchema.optional(),
+  format: z.enum(['plain', 'compact']).optional(),
+  suffix: z.string().max(8).optional(),
+});
+
+export const overlayDeclarationSchema = z.object({
+  title: z.string().max(40).optional(),
+  icon: z.string().max(24).optional(),
+  columns: z.array(overlayColumnSchema).min(1).max(8),
+  sort: z.object({ key: z.string().min(1), dir: z.enum(['asc', 'desc']).optional() }).optional(),
+  highlight: z.string().max(48).optional(),
+  empty: z.string().max(120).optional(),
+});
+
+export type OverlayDeclaration = z.infer<typeof overlayDeclarationSchema>;
+
 export const modManifestSchema = z.object({
   id: modSlugSchema,
   name: z.string().min(1).max(128),
@@ -32,6 +53,12 @@ export const modManifestSchema = z.object({
   sdk_version: z.string().max(32).optional(),
   game_build: z.string().max(64).optional(),
   min_loader: z.string().max(32).optional(),
+  // A mod-declared overlay: the desktop app draws this shape and fills it with
+  // rows the mod publishes at runtime (R.overlay.publish). Declaration only —
+  // a mod never ships markup or script to the client's webview. Mirrors the
+  // validation in `rsmm.cli.cmd_overlay.parse_spec`, which is what actually
+  // gates it at lint time; this keeps a published manifest honest too.
+  overlay: overlayDeclarationSchema.optional(),
 });
 
 export type ModManifest = z.infer<typeof modManifestSchema>;

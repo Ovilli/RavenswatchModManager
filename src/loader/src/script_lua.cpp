@@ -31,6 +31,7 @@ extern "C" {
 
 #include <windows.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <cstring>
@@ -1245,6 +1246,168 @@ int lua_is_grant_target(lua_State* L) {
     return 1;
 }
 
+// _internal.steam_name([steamid64]) -> string | nil
+//   The Steam display name: the local player's with no argument, another
+//   account's with a SteamID64.
+//
+//   Read straight out of steam_api64.dll's FLAT api, which the shipped DLL
+//   exports (SteamAPI_SteamFriends_v017 -> ISteamFriends*, then
+//   SteamAPI_ISteamFriends_GetPersonaName / _GetFriendPersonaName). Going
+//   through the DLL rather than the game's own party structures means this
+//   keeps working across game patches, and it is why "You" can become a real
+//   name today: no netcode RE required for the LOCAL player.
+//
+//   Steam only knows a remote name once it has seen that account (a lobby
+//   member, a friend); for an unknown id it returns the empty string, which
+//   surfaces here as nil rather than a blank row.
+//
+//   Everything is resolved lazily and cached: a miss (game launched without
+//   Steam, DLL absent) must cost one GetProcAddress, not one per call.
+int lua_steam_name(lua_State* L) {
+    using GetFriendsFn = void* (*)();
+    using PersonaFn    = const char* (*)(void*);
+    using FriendFn     = const char* (*)(void*, std::uint64_t);
+
+    static bool          tried   = false;
+    static void*         friends = nullptr;
+    static PersonaFn     persona = nullptr;
+    static FriendFn      friend_name = nullptr;
+
+    if (!tried) {
+        tried = true;
+        if (HMODULE m = GetModuleHandleA("steam_api64.dll")) {
+            auto get_friends = reinterpret_cast<GetFriendsFn>(
+                reinterpret_cast<void*>(GetProcAddress(m, "SteamAPI_SteamFriends_v017")));
+            persona = reinterpret_cast<PersonaFn>(
+                reinterpret_cast<void*>(GetProcAddress(m, "SteamAPI_ISteamFriends_GetPersonaName")));
+            friend_name = reinterpret_cast<FriendFn>(
+                reinterpret_cast<void*>(
+                    GetProcAddress(m, "SteamAPI_ISteamFriends_GetFriendPersonaName")));
+            if (get_friends) friends = get_friends();
+            Loader::get().log(std::string("[steam] persona lookup ")
+                              + (friends && persona ? "available" : "unavailable"));
+        }
+    }
+    if (!friends) { lua_pushnil(L); return 1; }
+
+    const char* name = nullptr;
+    if (lua_isnoneornil(L, 1)) {
+        if (persona) name = persona(friends);
+    } else {
+        const auto id = static_cast<std::uint64_t>(luaL_checkinteger(L, 1));
+        if (friend_name) name = friend_name(friends, id);
+    }
+    // Steam returns "" for an account it has never seen. A blank label is
+    // worse than no label: the caller can fall back to something meaningful.
+    if (!name || !*name) { lua_pushnil(L); return 1; }
+    lua_pushstring(L, name);
+    return 1;
+}
+
+// _internal.mem_find(needle [, max_hits=16] [, budget_mb=512]) -> { va, ... }
+//
+// Every address in the process whose bytes equal `needle`. An RE probe, not a
+// gameplay API: it exists because "where does the engine keep the player
+// names" is a question static analysis kept answering with a maybe. Give it a
+// string you can already see on screen and it reports every copy — and the
+// copies that sit at a regular stride ARE the player table.
+//
+// Two deliberate choices:
+//
+//  1. ReadProcessMemory, not a direct read. A committed page can be decommitted
+//     by another thread between VirtualQuery and the compare, and MinGW has no
+//     __try to catch the fault. RPM validates in the kernel and returns FALSE,
+//     so the worst case is a skipped region rather than a dead game.
+//  2. A hard byte budget. This walks the whole user address space; without a
+//     cap a fragmented heap turns a debug probe into a multi-second freeze.
+//     Private, committed, readable, non-guard pages only — mapped images and
+//     file views cannot hold a runtime-received name.
+int lua_mem_find(lua_State* L) {
+    std::size_t needle_len = 0;
+    const char* needle = luaL_checklstring(L, 1, &needle_len);
+    const auto max_hits = static_cast<std::size_t>(luaL_optinteger(L, 2, 16));
+    auto budget = static_cast<std::size_t>(luaL_optinteger(L, 3, 512)) << 20;
+    if (needle_len == 0 || needle_len > 512 || max_hits == 0) {
+        lua_createtable(L, 0, 0);
+        lua_pushinteger(L, 0);
+        return 2;
+    }
+
+    constexpr std::size_t CHUNK = 1u << 20;
+    // Overlap so a match straddling two chunks is still found.
+    const std::size_t overlap = needle_len - 1;
+    std::vector<char> buf(CHUNK + overlap);
+    std::vector<std::uintptr_t> hits;
+
+    SYSTEM_INFO si{};
+    GetSystemInfo(&si);
+    auto addr = reinterpret_cast<std::uintptr_t>(si.lpMinimumApplicationAddress);
+    const auto limit = reinterpret_cast<std::uintptr_t>(si.lpMaximumApplicationAddress);
+    // RESUME POINT. A full sweep copies gigabytes and takes seconds; even on a
+    // background thread that saturates memory bandwidth and the process VM
+    // lock, which the player feels as a hitch. The caller therefore walks the
+    // address space in small slices across many ticks, passing back the
+    // address this call stopped at. Second return value is that address, or 0
+    // when the sweep is complete.
+    if (auto from = static_cast<std::uintptr_t>(luaL_optinteger(L, 4, 0)); from > addr)
+        addr = from;
+
+    std::uintptr_t resume = 0;
+    MEMORY_BASIC_INFORMATION mbi{};
+    while (addr < limit && hits.size() < max_hits && budget > 0) {
+        if (VirtualQuery(reinterpret_cast<LPCVOID>(addr), &mbi, sizeof(mbi)) != sizeof(mbi))
+            break;
+        const auto region = reinterpret_cast<std::uintptr_t>(mbi.BaseAddress);
+        const std::size_t size = mbi.RegionSize;
+        const DWORD prot = mbi.Protect & 0xFF;
+        const bool usable =
+            mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE
+            && !(mbi.Protect & (PAGE_GUARD | PAGE_NOACCESS))
+            && (prot == PAGE_READWRITE || prot == PAGE_WRITECOPY
+                || prot == PAGE_EXECUTE_READWRITE);
+        if (usable) {
+            std::size_t off = 0;
+            for (; off < size && hits.size() < max_hits && budget > 0; off += CHUNK) {
+                const std::size_t want = (std::min)(CHUNK + overlap, size - off);
+                SIZE_T got = 0;
+                if (!ReadProcessMemory(GetCurrentProcess(),
+                                       reinterpret_cast<LPCVOID>(region + off),
+                                       buf.data(), want, &got) || got < needle_len)
+                    continue;
+                budget = got >= budget ? 0 : budget - got;
+                for (std::size_t i = 0; i + needle_len <= got; ++i) {
+                    if (std::memcmp(buf.data() + i, needle, needle_len) == 0) {
+                        hits.push_back(region + off + i);
+                        if (hits.size() >= max_hits) break;
+                    }
+                }
+            }
+            // Out of budget PART-WAY through a region: resume at the chunk we
+            // did not reach, not at the next region. Advancing past `region +
+            // size` here would silently skip the remainder — and the lobby
+            // block lives in exactly the kind of large region where that
+            // matters.
+            if (budget == 0 && off < size) {
+                resume = region + off;
+                break;
+            }
+        }
+        if (size == 0) break;
+        addr = region + size;
+        if (budget == 0) { resume = addr; break; }
+    }
+
+    lua_createtable(L, static_cast<int>(hits.size()), 0);
+    for (std::size_t i = 0; i < hits.size(); ++i) {
+        lua_pushinteger(L, static_cast<lua_Integer>(hits[i]));
+        lua_rawseti(L, -2, static_cast<int>(i) + 1);
+    }
+    // 0 means "swept to the end of the address space" — the caller uses that
+    // to know a slice sequence is finished rather than merely paused.
+    lua_pushinteger(L, static_cast<lua_Integer>(resume));
+    return 2;
+}
+
 // rsmm._internal.hook_report() -> { {tag=, what=, va=, fires=}, ... }
 //
 // The armed-hook registry, so a mod (or `R.hooks.status()`) can answer "is this
@@ -1393,9 +1556,22 @@ int lua_shared_get(lua_State* L) {
     lua_pushinteger(L, static_cast<lua_Integer>(shared_get(slot)));
     return 1;
 }
+// Slots 8..15 are the native hero-candidate RING (hook_events.cpp
+// kHeroRingFirst): they hold live hero POINTERS published by the spawn-init
+// hook, and Lua's promotion loop reads them. A Lua write there does not just
+// collide with another latch, it EVICTS a spawn candidate — on 2026-08-16 a
+// probe latch took slot 9 and `hero CAPTURED` stopped happening for the rest
+// of the session, with nothing in the log connecting the two. Read-only from
+// Lua, enforced here rather than by convention.
+constexpr int kSharedRingFirst = 8;
+
 int lua_shared_set(lua_State* L) {
     auto slot = static_cast<int>(luaL_checkinteger(L, 1));
     if (slot < 0 || slot >= 16) return luaL_error(L, "rsmm.shared_set: slot must be 0..15");
+    if (slot >= kSharedRingFirst)
+        return luaL_error(L, "rsmm.shared_set: slots %d..15 are the native hero "
+                             "candidate ring and are read-only from Lua",
+                          kSharedRingFirst);
     shared_set(slot, static_cast<std::uint64_t>(luaL_checkinteger(L, 2)));
     return 0;
 }
@@ -1511,6 +1687,8 @@ void register_api(lua_State* L) {
         { "register_item",           lua_register_item },
         { "item_guid",               lua_item_guid },
         { "is_grant_target",         lua_is_grant_target },
+        { "mem_find",                lua_mem_find },
+        { "steam_name",              lua_steam_name },
         { "write_u8",                lua_write_u8 },
         { "write_u16",               lua_write_u16 },
         { "write_u32",               lua_write_u32 },

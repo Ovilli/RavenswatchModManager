@@ -1,3 +1,4 @@
+pub mod graphics_mode;
 mod launcher_log;
 mod rsmm_env;
 mod update_env;
@@ -25,6 +26,28 @@ pub fn run() {
             }
             Ok(())
         })
+        // When the main window goes away, so does the app — even if an
+        // auxiliary window (the damage overlay, which is skipTaskbar and
+        // therefore invisible in alt-tab) is still open. Without this the
+        // process survives its own UI: nothing on screen, nothing in the
+        // taskbar, and a second launch is refused by the single-instance
+        // plugin. Hooked on DESTROYED rather than CloseRequested so a
+        // cancelled quit ("you are still running the game") does not take the
+        // overlay down with it.
+        .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                use tauri::Manager;
+                let app = window.app_handle().clone();
+                for (label, other) in app.webview_windows() {
+                    if label != "main" {
+                        let _ = other.close();
+                    }
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             launcher_log::append_launcher_log,
             launcher_log::clear_launcher_log,
@@ -32,6 +55,8 @@ pub fn run() {
             rsmm_env::rsmm_runtime_env,
             rsmm_env::probe_rsmm,
             update_env::update_install_target,
+            graphics_mode::gpu_acceleration_disabled,
+            graphics_mode::set_gpu_acceleration_disabled,
         ]);
 
     // Plugins are best-effort. If one fails to initialize (e.g. an
@@ -72,6 +97,11 @@ pub fn run() {
     {
         builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
         builder = builder.plugin(tauri_plugin_process::init());
+        // Global shortcut: the escape hatch for a click-through overlay. Once
+        // an overlay ignores the mouse it cannot receive the click that would
+        // un-ignore it, and alt-tabbing to Settings mid-fight is not an
+        // answer — so the toggle has to be reachable while the game has focus.
+        builder = builder.plugin(tauri_plugin_global_shortcut::Builder::new().build());
     }
 
     if let Err(e) = builder.run(tauri::generate_context!()) {

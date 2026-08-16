@@ -60,6 +60,29 @@ If anything is wrong, the Doctor will show warnings and suggest fixes.
 
 Click **Play** to launch Ravenswatch directly from RSMM. The app applies any pending changes before starting the game.
 
+## Overlays
+
+Mods can publish a small always-on-top window — a damage meter, a run timer,
+whatever the mod measures. **Settings → Overlays** lists every installed mod
+that declares one, with an Open/Close button each; the command palette has an
+entry per overlay too.
+
+- Drag it by its header; drag the **bottom-right corner** to resize. It sizes
+  itself to its contents until you resize it by hand, after which it stays put.
+  Each overlay remembers its own position and size; **Recentre** puts it back
+  if it opens off-screen.
+- **Compact** hides the footer.
+- **Click-through** lets clicks pass to the game. Undo it with
+  **Ctrl+Alt+O** without leaving the game (or the button in Settings) — a
+  click-through window cannot receive the click that would disable it, which
+  is why the shortcut exists.
+- An overlay can only sit on top of Ravenswatch if the game runs **borderless
+  windowed** rather than exclusive fullscreen.
+
+The client draws the shape the mod declared and fills it with the rows the mod
+published; it never runs mod code. `rsmm overlay <mod>` shows the same data in
+a terminal.
+
 ## Profiles
 
 You can create multiple profiles — separate sets of enabled mods for different playthroughs. Switch between them from the profile dropdown.

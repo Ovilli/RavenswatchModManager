@@ -55,6 +55,7 @@ BUILTIN = {
     "install":           "rsmm.cli.cmd_install",
     "pack":              "rsmm.cli.cmd_pack",
     "log":               "rsmm.cli.cmd_log",
+    "overlay":           "rsmm.cli.cmd_overlay",
     "save":              "rsmm.cli.cmd_save",
     # The module already declares prog="rsmm cmd"; it was simply never routed.
     "cmd":               "rsmm.cli.console_cmd",
@@ -145,6 +146,7 @@ COMMAND_GROUPS: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("run",      "[--set-launch-options]",     "launch Ravenswatch via Steam"),
         ("install-loader", "[game-dir]",           "copy winhttp.dll + SDK lib into the install"),
         ("log",      "[-f] [-n N] [--grep S]",     "read the loader log"),
+        ("overlay",  "[<mod>] [--watch]",          "live HUD data a mod publishes"),
         ("cmd",      "['/command'] [--tail]",      "send /commands to the in-game console"),
         ("menu",     "",                           "drive the in-game mod menu"),
         ("intents",  "",                           "apply queued in-game menu intents"),

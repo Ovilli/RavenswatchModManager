@@ -76,6 +76,38 @@ If a mod causes issues in-game:
 2. Check the loader log from the app's Debug menu
 3. Ensure your Steam launch options include the DLL override
 
+## PC freezes or blue-screens while RSMM is open (Windows)
+
+RSMM draws through your GPU like any browser window, and browsing mods loads
+images and video players. That is ordinary work — but it is enough to expose a
+broken display driver, and a driver fault takes the whole machine down, not
+just the app.
+
+Check what actually crashed, in PowerShell:
+
+```powershell
+Get-WinEvent -FilterHashtable @{LogName='System'; Id=41,1001,6008} -MaxEvents 5 | Format-List
+```
+
+A bug check such as `VIDEO_SCHEDULER_INTERNAL_ERROR` (`0x119`),
+`VIDEO_TDR_FAILURE` (`0x116`) or `DPC_WATCHDOG_VIOLATION` is a **display
+driver** fault. No user-space program can raise one directly.
+
+What to do, in order:
+
+1. Clean-install your GPU driver (or roll it back, if the crashes started after
+   an update). Open `C:\Windows\Minidump\*.dmp` in WinDbg and run
+   `!analyze -v` — `IMAGE_NAME` names the driver.
+2. Disable GPU-hooking overlays (Discord, GeForce Experience, MSI Afterburner)
+   while you test.
+3. In RSMM: **Settings → Graphics → Disable GPU acceleration**. RSMM then
+   renders in software and stops touching the GPU at all. Restart the app for
+   it to take effect. This is a workaround, not a fix — the driver is still
+   broken for everything else on the machine.
+
+Mod gallery videos are click-to-play precisely so that opening a mod page does
+not start a video pipeline you did not ask for.
+
 ## CLI diagnostics
 
 If you use the command line, these help pin down problems:

@@ -4,6 +4,18 @@
  "_doc": "Canonical symbol map: semantic name -> Ravenswatch engine function/global. This is the source of truth (like Minecraft mappings). Ghidra names, the loader C++ header, and the Python SDK constants are all GENERATED from this file via `rsmm symbols gen`. Resolution: `raw` joins to data/function_patterns.json by name for version-resilient (byte-pattern) lookup; `anchor` is an inlined routine reached as parent_pattern + offset; `va` is a base-relative absolute (data globals, which have no code pattern). `status`: ok = pattern/anchor resolvable in the current corpus; va = base-relative only; unverified = documented in an older corpus, not yet re-confirmed against the shipped pattern DB.",
  "symbols": [
   {
+   "name": "Account_GetDisplayName",
+   "kind": "function",
+   "category": "session",
+   "raw": "FUN_140929940",
+   "status": "ok",
+   "signature": "void(std::string* out, void* account)",
+   "note": "Platform display name for an account object, written into `out` as an MSVC std::string (32 bytes, SSO under 16 chars). One function per platform key: it branches over the strings `gamertag` (Xbox), `personaName` (Steam), `pseudo`, and `Nickname`, so it is the engine's single name abstraction. Its only direct caller is FUN_14044a050, the login/session bring-up, which means this is confirmed for the LOCAL account and not yet proven reachable per-peer. Recorded because the ally-name hunt kept re-deriving it: the exe imports EOSSDK-Win64-Shipping.dll (Lobby/P2P/Connect) and NOT steam_api64.dll, and imports no EOS_UserInfo_* at all, so no ally name can come from the platform SDK - remote names must arrive over the game's own session layer. That they exist at all is settled by the shipped text keys Menu_PauseAskerName and Session_Peer_Disconnect. NOT called by the SDK: it takes an out-string the caller owns and an account pointer we cannot yet validate.",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
    "name": "AchievementDef_PostLoad",
    "kind": "function",
    "category": "library",
@@ -970,6 +982,18 @@
    ]
   },
   {
+   "name": "Entity_GetNetId",
+   "kind": "function",
+   "category": "netcode",
+   "raw": "FUN_1407273c0",
+   "status": "ok",
+   "signature": "uint32_t(void* entity)",
+   "note": "Replication id for an entity: a 49-byte thunk that fetches the entity's net component and returns its id. DO NOT CALL FROM THE SDK. It reaches Entity_GetNetComponent, which walks the component map (control bytes @+0x5e8, slots @+0x5f0, mask @+0x600) with no guard of its own, so an entity whose store slot holds the -1 sentinel is an access violation, not a nil return - that is the 2026-08-15 crash (dump a97c76fe, faulting read of 0xffffffffffffffff at Entity_GetNetComponent+0x62). Recorded so the address is not re-derived, and banned in tests/test_loader_sdk_safety.py. For local-vs-remote use the engine's own byte at hero controller +0x1d88 instead.",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
    "name": "Entity_GiveHandler",
    "kind": "function",
    "category": "items",
@@ -1461,6 +1485,30 @@
    "note": "Hero-rank gate: compares the required rank against the profile's rank. IsUnlocked is vftable slot 14 on every oIGameUnlockConditionData subclass (the base leaves 10/11/14 as stubs and each subclass overrides them; 14 is the one taking only `this` and returning a bool). DELIBERATELY EXCLUDED from this set: oe::AdditionalContentGameUnlockConditionData::vftable[14] (0x140699250), whose body is `return *(int*)(this+0x28) == 3` — that is the ownership / entitlement check, not progression. Forcing it true would hand out content the player has not bought, so no symbol is provided for it.",
    "refs": [
     "src/loader/lib/rsmm.lua"
+   ]
+  },
+  {
+   "name": "HeroStats_OnDamageDealt",
+   "kind": "function",
+   "category": "combat",
+   "raw": "FUN_14039aef0",
+   "status": "ok",
+   "signature": "void(void* hero, void* stats, void* payload, int type)",
+   "note": "Per-hero damage-dealt accounting, and the ONLY source that sees allies. It fires on every hero in the session, local or remote - the engine merely skips the TOTALLING branch for a non-local hero, so the callback itself is a faithful per-player damage feed and is what makes a co-op damage meter possible without netcode RE. param_1 is the hero CONTROLLER (entity @+0x8, is-local byte @+0x1d88, HUD mirror @+0x1d80, stats block @+0x1db0); param_3 is the damage payload (value object @+0x10 -> amount f32 @+0x08, source @+0xa0 -> type u32 @+0xc8). Hook shape 'vpppi'. Backs R.damage.",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "HeroStats_OnDamageTaken",
+   "kind": "function",
+   "category": "combat",
+   "raw": "FUN_1403a0940",
+   "status": "ok",
+   "signature": "void(void* hero, void* payload)",
+   "note": "Per-hero damage-taken accounting; the counterpart to HeroStats_OnDamageDealt and the source of the meter's `taken` column. Found from the stat id 0x17df7da0 referenced at 0x1403a0c8d, with the function bounds taken from .pdata because Ghidra had no function defined there. param_2 carries the amount at +0x10 (the same value is mirrored at +0xa0). Unlike the dealt hook this is NOT a session-wide feed: a hit on an ally is applied on the ALLY's machine, so a remote player's taken is always 0 here. That is netcode, not a bug - the mod documents it. Hook shape 'vpp'.",
+   "refs": [
+    "docs/_re"
    ]
   },
   {
@@ -2093,9 +2141,9 @@
    "name": "NamedEvent_EmitNetworkDamageFromHit",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_140743a00",
-   "status": "unverified",
-   "note": "Reference emitter for NETWORK_DAMAGE: stack-builds the full oCGameNamedEventNetworkDamage (size 0x110) — header as usual, f32 value @+0x40, source net-id @+0x48 (FUN_140726330), embedded oCEntityHitData @+0x50 (vft @+0x50, target entity* @+0x60 refcounted, hit floats/vectors +0x68..0xbc, u64s @+0xc0/0xc8/0xd0, u16 @+0xd8, ptr @+0xe0, instigator entity* @+0xf0 refcounted, flag byte @+0x100) — then sends via NamedEvent_NetSend. Best anchor for decoding the damage payload. For self/non-networked targets it applies locally via Entity_DispatchHit instead of (or alongside) the net send. [2026-07-10: DOWNGRADED — July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
+   "raw": "FUN_1407276a0",
+   "status": "ok",
+   "note": "Reference emitter for NETWORK_DAMAGE: stack-builds the full oCGameNamedEventNetworkDamage (size 0x110) — header as usual, f32 value @+0x40, source net-id @+0x48 (FUN_140726330), embedded oCEntityHitData @+0x50 (vft @+0x50, target entity* @+0x60 refcounted, hit floats/vectors +0x68..0xbc, u64s @+0xc0/0xc8/0xd0, u16 @+0xd8, ptr @+0xe0, instigator entity* @+0xf0 refcounted, flag byte @+0x100) — then sends via NamedEvent_NetSend. Best anchor for decoding the damage payload. For self/non-networked targets it applies locally via Entity_DispatchHit instead of (or alongside) the net send. [2026-07-10: DOWNGRADED — July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RE-PROMOTED 2026-08-16: relocated to FUN_1407276a0, a .pdata function start (0x1407276a0..0x1407279fc). The previous FUN_140743a00 was carried as unverified.]",
    "refs": [
     "docs/_re/kinds/events-bus.md"
    ]

@@ -108,6 +108,28 @@ void Loader::init(const fs::path& game_dir) {
           << (is_game_host ? "" : "  (helper inject)") << "\n"
           << "================================================================\n";
     }
+    // Build stamp, first thing in every session. A pasted log is otherwise
+    // indistinguishable from one produced by a loader that predates the change
+    // being tested — which cost three playtests on 2026-08-16, twice because
+    // `restore` had put the stock DLL back and once because the log was simply
+    // older than the build. __DATE__/__TIME__ are the DLL's own compile time,
+    // so this cannot drift out of sync with the binary that printed it.
+    log(std::string("loader build ") + __DATE__ " " __TIME__);
+    // The other half of the stamp. The Lua SDK is disk-loaded and ships
+    // INDEPENDENTLY of this DLL (a Lua-only change needs no rebuild), so the
+    // two can legitimately disagree and a log has to say which pair produced
+    // it. Its byte size changes on every edit, so nothing needs bumping by
+    // hand. Printed from here rather than from Lua on purpose: apply_sandbox()
+    // removes `debug` and `io` from a mod state, and reaching for them there
+    // broke every mod at load.
+    {
+        std::error_code ec;
+        const auto sdk = game_dir_ / "rsmm" / "lib" / "rsmm.lua";
+        const auto sz = std::filesystem::file_size(sdk, ec);
+        log("sdk build: rsmm.lua "
+            + (ec ? std::string("MISSING - loader runtime not installed")
+                  : std::to_string(sz) + " bytes"));
+    }
     log("game_dir=" + game_dir_.string());
     log(std::string("host=") + exe_path);
 

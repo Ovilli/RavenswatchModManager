@@ -8,6 +8,7 @@ import {
   ChevronRight,
   ExternalLink,
   Globe,
+  Play,
   Plus,
   Trash2,
   X,
@@ -277,35 +278,9 @@ function ModDetailPage() {
               <div className="mt-4 space-y-4">
                 {videos.length > 0 ? (
                   <div className="grid gap-3 sm:grid-cols-2">
-                    {videos.map((url) => {
-                      const embed = toEmbedUrl(url);
-                      return (
-                        <div
-                          key={url}
-                          className="aspect-video overflow-hidden rounded border border-oxblood/30 bg-pitch"
-                        >
-                          {embed ? (
-                            <iframe
-                              src={embed}
-                              title={`${name} video`}
-                              loading="lazy"
-                              allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                              allowFullScreen
-                              className="h-full w-full"
-                            />
-                          ) : (
-                            <a
-                              href={url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex h-full w-full items-center justify-center break-all px-3 text-sm text-parchment underline"
-                            >
-                              {url}
-                            </a>
-                          )}
-                        </div>
-                      );
-                    })}
+                    {videos.map((url) => (
+                      <GalleryVideo key={url} url={url} modName={name} />
+                    ))}
                   </div>
                 ) : null}
                 {screenshots.length > 0 ? (
@@ -483,6 +458,63 @@ function Row({ k, v }: { k: string; v: string }) {
 interface Screenshot {
   url: string;
   caption?: string;
+}
+
+/**
+ * A gallery video: poster first, player only once the user asks for it.
+ *
+ * Opening a mod page used to mount a YouTube/Vimeo iframe straight away — a
+ * full third-party video pipeline, started by merely looking at a page. That
+ * is the heaviest GPU work this app does, and on 2026-08-15 a user's machine
+ * blue-screened here with VIDEO_SCHEDULER_INTERNAL_ERROR (a display-driver
+ * fault, not ours — but we were the one submitting the work). Click-to-play
+ * removes the whole pipeline from the common path; it is also faster, quieter
+ * and loads no third-party script until it is actually wanted.
+ */
+function GalleryVideo({ url, modName }: { url: string; modName: string }) {
+  const [playing, setPlaying] = useState(false);
+  const embed = toEmbedUrl(url);
+
+  if (!embed) {
+    return (
+      <div className="aspect-video overflow-hidden rounded border border-oxblood/30 bg-pitch">
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex h-full w-full items-center justify-center break-all px-3 text-sm text-parchment underline"
+        >
+          {url}
+        </a>
+      </div>
+    );
+  }
+
+  if (playing) {
+    return (
+      <div className="aspect-video overflow-hidden rounded border border-oxblood/30 bg-pitch">
+        <iframe
+          src={`${embed}?autoplay=1`}
+          title={`${modName} video`}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+          className="h-full w-full"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setPlaying(true)}
+      title={url}
+      className="group flex aspect-video w-full items-center justify-center gap-2 overflow-hidden rounded border border-oxblood/30 bg-pitch text-ash transition-colors hover:border-crimson hover:text-parchment"
+    >
+      <Play className="h-6 w-6 transition-transform group-hover:scale-110" />
+      <span className="font-mono text-xs uppercase tracking-[0.2em]">Play video</span>
+    </button>
+  );
 }
 
 function ScreenshotGallery({

@@ -9,12 +9,14 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **180** symbols across 17 categories.
+Total: **184** symbols across 18 categories.
 
 ## combat
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
+| `HeroStats_OnDamageDealt` | `0x14039aef0` | ✅ ok |  | void(void* hero, void* stats, void* payload, int type) |
+| `HeroStats_OnDamageTaken` | `0x1403a0940` | ✅ ok |  | void(void* hero, void* payload) |
 | `ProjectileAttack_BeginAttack` | `0x14083e7d0` | ✅ ok | ✔ | void(void* projectile_attack_cpnt) |
 
 ## enemies
@@ -116,7 +118,7 @@ Total: **180** symbols across 17 categories.
 | `NamedEvent_ChannelMap_Find` | `0x14066dc10` | ✅ ok | ✔ | iter*(void* channel_map, iter* out, uint32_t* event_id) |
 | `NamedEvent_Delete` | `0x1401273b0` | ✅ ok | ✔ | void(oCGameNamedEvent* ev) |
 | `NamedEvent_Dispatch` | `0x14066b6b0` | ✅ ok | ✔ | void(void* dispatcher, oCGameNamedEvent* ev) |
-| `NamedEvent_EmitNetworkDamageFromHit` | `0x140743a00` | ❓ unverified |  | Reference emitter for NETWORK_DAMAGE: stack-builds the full oCGameNamedEventNetworkDama… |
+| `NamedEvent_EmitNetworkDamageFromHit` | `0x1407276a0` | ✅ ok |  | Reference emitter for NETWORK_DAMAGE: stack-builds the full oCGameNamedEventNetworkDama… |
 | `NamedEvent_GiveMagicalObject_Ctor` | `0x14030fd30` | ✅ ok | ✔ | oe::dt::NamedEventGiveMagicalObject*(void* buf) |
 | `NamedEvent_HeroSubscribeAll` | `0x140391860` | ✅ ok | ✔ | void(oCEntity* hero) |
 | `NamedEvent_HeroUnsubscribeAll` | `0x140395350` | ✅ ok |  | Hero teardown twin of NamedEvent_HeroSubscribeAll: walks the same (id global, slot) pai… |
@@ -221,6 +223,7 @@ Total: **180** symbols across 17 categories.
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `Entity_GetNetComponent` | `0x140312db0` | ✅ ok | ✔ | void*(oCEntity* entity) |
+| `Entity_GetNetId` | `0x1407273c0` | ✅ ok |  | uint32_t(void* entity) |
 | `Netcode_Channel_LookupById` | `0x140241a50` | ✅ ok | ✔ | iter*(void* channel_map, iter* out, uint32_t* event_id) |
 | `Netcode_Channel_Unsubscribe` | `0x1401c8da0` | ✅ ok | ✔ | void(void* node_plus_8, void** sub_slot) |
 | `Netcode_DropPeer` | `0x1402b4d50` | ✅ ok |  | Drops a peer after the reconnect window (default 60s) elapses. Pattern-verified 2026-07… |
@@ -257,6 +260,12 @@ Total: **180** symbols across 17 categories.
 | `RewardType_Serialize` | `0x140324260` | ✅ ok |  | bool(void* oCType, void* reader) |
 | `Reward_GenerateAndDistribute` | `0x1401ecd10` | ❓ unverified |  | void(void* mapSceneContext) |
 | `Reward_InitAllRewards` | `0x1401e9800` | ✅ ok |  | _InitAllRewards (7351 bytes): reward-type registrar. The actual reward roller is a sibl… |
+
+## session
+
+| name | address | status | callable | signature / note |
+|------|---------|--------|----------|------------------|
+| `Account_GetDisplayName` | `0x140929940` | ✅ ok |  | void(std::string* out, void* account) |
 
 ## skins
 

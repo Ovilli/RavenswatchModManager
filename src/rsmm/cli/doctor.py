@@ -197,7 +197,11 @@ def check_game_install(game_dir: Path) -> list[Result]:
 #: Files `install-loader` plants under `<game>/rsmm/lib`. The Lua SDK is
 #: disk-loaded, not embedded in the DLL, so a present DLL proves nothing
 #: about whether the loader can actually run a mod.
-_LOADER_LIB_FILES = ("rsmm.lua", "engine_gen.lua")
+# The entrypoint plus one submodule. rsmm.lua require-merges rsmm/*.lua and
+# DEGRADES SILENTLY when one is absent (`R.schedule` simply becomes nil), so a
+# half-planted tree looks healthy from the outside while every timer-driven
+# feature quietly does nothing. Checking a submodule too makes that visible.
+_LOADER_LIB_FILES = ("rsmm.lua", "engine_gen.lua", "rsmm/schedule.lua")
 
 
 def check_loader(game_dir: Path) -> list[Result]:
@@ -343,7 +347,8 @@ def check_launch_options(game_dir: Path) -> list[Result]:
         return [Result("WARN", "no Steam launch options recorded for Ravenswatch",
                        "The loader needs WINEDLLOVERRIDES to load under Proton.",
                        code="launchopts.missing", fix=fix)]
-    if not seen and seen_in is not None and _has_orphaned_launch_value(seen_in):
+    if not seen and seen_in is not None and _has_orphaned_launch_value(
+            seen_in, RAVENSWATCH_APP_ID):
         # An empty parse over a non-empty line means the stored value is
         # malformed — a truncated rewrite leaves the tail of the old value
         # stranded outside the quoted string. Steam keeps loading the file,
@@ -361,22 +366,59 @@ def check_launch_options(game_dir: Path) -> list[Result]:
                    code="launchopts.no-override", fix=fix)]
 
 
-def _has_orphaned_launch_value(vdf: Path) -> bool:
-    """True if a LaunchOptions line carries text the parser can't see.
+def _has_orphaned_launch_value(vdf: Path, app_id: str) -> bool:
+    """True if RAVENSWATCH's LaunchOptions line carries text the parser can't see.
 
     Distinguishes "the user cleared their launch options" (an empty line,
     fine) from "a bad rewrite mangled them" (a line with leftover payload).
+
+    Scoped to the app's own block on purpose. Scanning the whole file matched
+    the LaunchOptions of EVERY installed game, so one unrelated title with
+    `gamemoderun %command%` was enough to report Ravenswatch's own, correctly
+    cleared, options as corrupt — a FAIL pointing at a repair for a file that
+    was fine. That is exactly the state `restore` leaves behind by design.
     """
-    import re
     try:
         text = vdf.read_text(errors="replace")
     except OSError:
         return False
-    for m in re.finditer(r'"LaunchOptions"\s*"([^\n]*)$', text, re.MULTILINE):
-        rest = m.group(1).rstrip()
-        # A well-formed empty value is exactly `"`; anything longer is residue.
-        if rest not in ('"', ''):
-            return True
+    depth = 0
+    inside = False           # within the app_id block
+    inside_depth = 0
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not inside and line == f'"{app_id}"':
+            inside, inside_depth = True, depth
+            continue
+        if line == "{":
+            depth += 1
+            continue
+        if line == "}":
+            depth -= 1
+            if inside and depth <= inside_depth:
+                return False   # left the app block without finding residue
+            continue
+        if inside and line.startswith('"LaunchOptions"'):
+            rest = line[len('"LaunchOptions"'):].lstrip()
+            # A well-formed value is ONE quoted string and nothing else. Match
+            # the opening quote to its first unescaped partner; any non-space
+            # tail after that is the stranded remains of a truncated rewrite.
+            # Checking only `startswith('"') and endswith('"')` is not enough —
+            # the real corruption (`""winhttp=n,b\" %command%"`) satisfies both.
+            if not rest.startswith('"'):
+                return True
+            i, n = 1, len(rest)
+            while i < n:
+                if rest[i] == "\\":
+                    i += 2
+                    continue
+                if rest[i] == '"':
+                    break
+                i += 1
+            else:
+                return True                    # never closed
+            if rest[i + 1:].strip():
+                return True
     return False
 
 

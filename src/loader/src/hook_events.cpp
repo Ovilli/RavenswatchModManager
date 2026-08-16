@@ -323,21 +323,37 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
         decoded = true;
     } else if ((std::strcmp(name, "NETWORK_DAMAGE") == 0
                 || std::strcmp(name, "NETWORK_DAMAGE_RESPONSE") == 0)
-               && committed_readable(reinterpret_cast<std::uintptr_t>(ev + 0x40), 0xb8)) {
+               && committed_readable(reinterpret_cast<std::uintptr_t>(ev + 0x40), 0x10)) {
         // oCGameNamedEventNetworkDamage (0x110): f32 value @+0x40, source
-        // net-id @+0x48, embedded oCEntityHitData @+0x50 with target entity*
-        // @+0x60 and instigator entity* @+0xf0 (see events-bus.md).
+        // net-id @+0x48, embedded oCEntityHitData @+0x50.
+        //
+        // TWO FIELDS REMOVED 2026-08-15. This used to also publish
+        // "target_entity" (ev+0x60) and "instigator_entity" (ev+0xf0), and
+        // both names were wrong. The emitter (FUN_1407276a0) copies the source
+        // oCEntityHitData field-for-field into ev+0x50, and that struct's
+        // +0x10 is a refcounted per-hit HANDLE while its +0xa0 is the
+        // hit-VALUE object (damage f32 at +0x8) — the target is not stored in
+        // the hit data at all, it is the applier's first argument. Confirmed
+        // twice over: the attack resolver (Entity_ResolveAttackHits) builds
+        // the same two slots from a handle allocator and a value object, and
+        // releases each through its matching destructor.
+        //
+        // Publishing them was worse than publishing nothing: a mod comparing
+        // "target_entity" against its hero pointer compared a hero against a
+        // hit handle, so the test silently never fired and there was no way to
+        // tell from the payload. And they are SENDER-side pointers regardless
+        // — the event is only ever built on the machine that owns the target
+        // and then sent, so every observation of it is on a receiver, where a
+        // pointer from another process's heap means nothing.
+        //
+        // What survives the wire is `value` and `source_id`. The victim is the
+        // entity the event was dispatched INTO, i.e. `dispatcher` above.
         const auto value  = *reinterpret_cast<const float*>(ev + 0x40);
         const auto srcid  = *reinterpret_cast<const std::uint64_t*>(ev + 0x48);
-        const auto target = *reinterpret_cast<const std::uint64_t*>(ev + 0x60);
-        const auto instig = *reinterpret_cast<const std::uint64_t*>(ev + 0xf0);
         json_append(buf, n, kRoom,
-                    ",\"value\":%g,\"source_id\":\"0x%llx\","
-                    "\"target_entity\":\"0x%llx\",\"instigator_entity\":\"0x%llx\"",
+                    ",\"value\":%g,\"source_id\":\"0x%llx\"",
                     static_cast<double>(value),
-                    static_cast<unsigned long long>(srcid),
-                    static_cast<unsigned long long>(target),
-                    static_cast<unsigned long long>(instig));
+                    static_cast<unsigned long long>(srcid));
         decoded = true;
     } else if (std::strcmp(name, "POWER_UP_COLLECT_REQUEST") == 0
                && committed_readable(reinterpret_cast<std::uintptr_t>(ev + 0x38), 0x28)) {

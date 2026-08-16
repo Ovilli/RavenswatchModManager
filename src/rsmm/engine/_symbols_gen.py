@@ -5,6 +5,7 @@ PREFERRED_BASE = 0x140000000
 
 # name -> preferred-base address
 ADDR: dict[str, int] = {
+    "Account_GetDisplayName": 0x140929940,
     "AchievementDef_PostLoad": 0x140312060,
     "Analytics_SubmitNamedEvent": 0x1401fad70,
     "BookController_ResolveSettings": 0x140307a30,
@@ -57,6 +58,7 @@ ADDR: dict[str, int] = {
     "Entity_GetComponentByTester": 0x1406e3210,
     "Entity_GetComponentFast": 0x1406e31a0,
     "Entity_GetNetComponent": 0x140312db0,
+    "Entity_GetNetId": 0x1407273c0,
     "Entity_GiveHandler": 0x1403c7560,
     "Entity_LookupMagicalObjectComponent": 0x1406e3280,
     "Entity_ModifyHealth": 0x14039a320,
@@ -83,6 +85,8 @@ ADDR: dict[str, int] = {
     "HeroDef_PostLoad": 0x14031fd70,
     "HeroProgressionUnlock_IsUnlocked": 0x1402b2b10,
     "HeroRankLock_IsUnlocked": 0x1402b1c10,
+    "HeroStats_OnDamageDealt": 0x14039aef0,
+    "HeroStats_OnDamageTaken": 0x1403a0940,
     "HeroStoryUnlock_IsUnlocked": 0x1402b21a0,
     "Hero_GainExperience": 0x1402e2f00,
     "Hero_GrantMagicalObject": 0x140397aa0,
@@ -121,7 +125,7 @@ ADDR: dict[str, int] = {
     "NamedEvent_ChannelMap_Find": 0x14066dc10,
     "NamedEvent_Delete": 0x1401273b0,
     "NamedEvent_Dispatch": 0x14066b6b0,
-    "NamedEvent_EmitNetworkDamageFromHit": 0x140743a00,
+    "NamedEvent_EmitNetworkDamageFromHit": 0x1407276a0,
     "NamedEvent_GiveMagicalObject_Ctor": 0x14030fd30,
     "NamedEvent_HeroSubscribeAll": 0x140391860,
     "NamedEvent_HeroUnsubscribeAll": 0x140395350,
@@ -189,6 +193,7 @@ ADDR: dict[str, int] = {
 
 # name -> function-pattern key (version-resilient), when available
 PATTERN: dict[str, str] = {
+    "Account_GetDisplayName": "Account_GetDisplayName",
     "AchievementDef_PostLoad": "AchievementDef_PostLoad",
     "Analytics_SubmitNamedEvent": "Analytics_SubmitNamedEvent",
     "BookController_ResolveSettings": "BookController_ResolveSettings",
@@ -240,6 +245,7 @@ PATTERN: dict[str, str] = {
     "Entity_GetComponentByTester": "Entity_GetComponentByTester",
     "Entity_GetComponentFast": "Entity_GetComponentFast",
     "Entity_GetNetComponent": "Entity_GetNetComponent",
+    "Entity_GetNetId": "Entity_GetNetId",
     "Entity_GiveHandler": "Entity_GiveHandler",
     "Entity_LookupMagicalObjectComponent": "Entity_LookupMagicalObjectComponent",
     "Entity_ModifyHealth": "Entity_ModifyHealth",
@@ -266,6 +272,8 @@ PATTERN: dict[str, str] = {
     "HeroDef_PostLoad": "HeroDef_PostLoad",
     "HeroProgressionUnlock_IsUnlocked": "HeroProgressionUnlock_IsUnlocked",
     "HeroRankLock_IsUnlocked": "HeroRankLock_IsUnlocked",
+    "HeroStats_OnDamageDealt": "HeroStats_OnDamageDealt",
+    "HeroStats_OnDamageTaken": "HeroStats_OnDamageTaken",
     "HeroStoryUnlock_IsUnlocked": "HeroStoryUnlock_IsUnlocked",
     "Hero_GainExperience": "Hero_GainExperience",
     "Hero_GrantMagicalObject": "Hero_GrantMagicalObject",

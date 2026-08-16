@@ -279,6 +279,29 @@ function raceTimeout<T>(p: Promise<T>, args: string[], timeoutMs: number): Promi
   });
 }
 
+/**
+ * Every sidecar child currently running.
+ *
+ * Quitting used to hard-exit the process while these were still alive, which
+ * on Windows leaves orphaned `rsmm.exe` processes holding the mods directory.
+ * Tracking them is what makes an orderly shutdown possible (see `quitApp`).
+ */
+const liveChildren = new Set<Child>();
+
+/**
+ * Kill every running sidecar. Best-effort by design: a child that has already
+ * exited, or refuses to die, must not be able to block the quit path.
+ */
+export async function killLiveChildren(): Promise<void> {
+  const children = [...liveChildren];
+  liveChildren.clear();
+  await Promise.allSettled(children.map((c) => c.kill()));
+}
+
+export function liveChildCount(): number {
+  return liveChildren.size;
+}
+
 function spawnWithLifecycle(
   name: string,
   cmd: ReturnType<typeof Command.create>,
@@ -347,6 +370,7 @@ function spawnWithLifecycle(
     });
 
     cmd.on('close', ({ code }: { code: number | null }) => {
+      if (child) liveChildren.delete(child);
       if (stdoutBuf && options.onStdout) options.onStdout(stripCR(stdoutBuf));
       if (stderrBuf && options.onStderr) options.onStderr(stripCR(stderrBuf));
       resolvedProg = name as ProgName;
@@ -354,12 +378,14 @@ function spawnWithLifecycle(
     });
 
     cmd.on('error', (err: string) => {
+      if (child) liveChildren.delete(child);
       finish(() => reject(new Error(err)), timeoutHandle);
     });
 
     cmd.spawn().then(
       (c) => {
         child = c;
+        liveChildren.add(c);
       },
       (err) => {
         finish(() => reject(err), timeoutHandle);
@@ -699,3 +725,50 @@ export const installModVersion = (slug: string, version: string, profileId?: str
 
 export const uninstallLocalMod = (modId: string) =>
   rsmm<UninstallResult>(['uninstall-mod', modId], { timeoutMs: LONG_TIMEOUT_MS });
+
+/** A column in a mod-declared overlay (its manifest `[overlay]` block). */
+export interface OverlayColumn {
+  key: string;
+  label: string;
+  type: 'text' | 'number' | 'percent' | 'bar';
+  format: 'plain' | 'compact';
+  suffix: string;
+}
+
+/** One mod's overlay: what it declared, plus the rows it has published. */
+export interface OverlayRecord {
+  modId: string;
+  modName: string;
+  enabled: boolean;
+  /**
+   * Which tree the declaration came from. "library" = the mod has not been
+   * applied yet (dev loop), so it will have no rows until it is.
+   */
+  source?: 'game' | 'library';
+  title?: string;
+  icon?: string;
+  columns?: OverlayColumn[];
+  sort?: { key: string; dir: 'asc' | 'desc' } | null;
+  highlight?: string | null;
+  empty?: string;
+  /** Set when the manifest declaration is malformed; nothing else is usable. */
+  error?: string;
+  rows: Record<string, string | number | boolean>[];
+  meta: Record<string, string | number | boolean>;
+  /** Unix seconds of the mod's last publish; 0 = never. */
+  updated: number;
+  /** false = the mod has not published anything yet this session. */
+  exists: boolean;
+}
+
+export interface OverlayList {
+  gameDir: string;
+  overlays: OverlayRecord[];
+}
+
+/**
+ * Every mod-declared overlay with its live rows. Polled by overlay windows,
+ * so it uses a short timeout: a hung read must not stack up behind the next
+ * tick.
+ */
+export const listOverlays = () => rsmm<OverlayList>(['overlays'], { timeoutMs: 10_000 });
