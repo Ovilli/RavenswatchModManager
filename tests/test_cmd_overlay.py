@@ -239,6 +239,29 @@ def test_piped_output_carries_no_ansi(tmp_path):
     assert "\033" not in proc.stdout
 
 
+def test_a_legacy_codepage_does_not_kill_the_command(tmp_path):
+    """Windows picks cp1252 for a redirected stream; the prose has em dashes.
+
+    `rsmm overlay meter > out.txt` crashed there with a UnicodeEncodeError —
+    a real user-facing bug on the platform the loader targets, invisible on a
+    UTF-8 dev box. PYTHONIOENCODING reproduces it on any host.
+    """
+    _install(tmp_path)
+    src = str(Path(cmd_overlay.__file__).resolve().parents[2])
+    env = {
+        **os.environ,
+        "RSMM_MODS_DIR": str(tmp_path / "library"),
+        "PYTHONPATH": os.pathsep.join(filter(None, [src, os.environ.get("PYTHONPATH")])),
+        "PYTHONIOENCODING": "cp1252",
+    }
+    proc = subprocess.run(
+        [sys.executable, "-m", "rsmm.cli.cmd_overlay", "meter", "--game-dir", str(tmp_path)],
+        capture_output=True, text=True, env=env,
+    )
+    assert proc.returncode == 0, f"exit {proc.returncode}\n{proc.stderr}"
+    assert proc.stdout.strip()
+
+
 def test_an_unapplied_mod_still_lists_its_overlay(tmp_path, monkeypatch):
     """Dev loop: the declaration exists in the authoring tree before `apply`.
 
