@@ -5487,10 +5487,43 @@ R.on("gameplay:NETWORK_DAMAGE", function(ev)
     -- another peer, not a new player's damage. (There is no net id to compare
     -- against any more — asking the engine for one crashed the game.)
     if F._dmg_echo_of_local(amount, F._dmg_now()) then return end
+    -- VICTIM: prefer the payload's own `target_entity` (+0x60 of the embedded
+    -- oCEntityHitData, decoded by event_fields.gen.h) over deriving it from the
+    -- dispatcher. The derived guess was the only source here, which is part of
+    -- why `taken` stayed 0 for every ally: the engine hands us the target
+    -- outright and we were reconstructing it.
     local victim
-    if _DISPATCHER_ENTITY_OFF and type(ev.dispatcher) == "string" then
+    local target = tonumber(ev.target_entity or "")
+    if target and target ~= 0 and _ptr_plausible(target) then victim = target end
+    if not victim and _DISPATCHER_ENTITY_OFF and type(ev.dispatcher) == "string" then
         local disp = tonumber(ev.dispatcher)
         if disp then victim = disp - _DISPATCHER_ENTITY_OFF end
+    end
+    -- One line, once: does the target we now decode actually correspond to a
+    -- player row? If it never does, ally `taken` is not reachable from this
+    -- event either and the answer is netcode, not attribution — but that has
+    -- been ASSERTED in the symbol note without ever being measured.
+    _dmg.net_victim_probes = (_dmg.net_victim_probes or 0) + 1
+    if _dmg.net_victim_probes <= 4 then
+        -- Lookup and classify ONLY, never create. _dmg_row_for_hero and
+        -- _dmg_row_for_entity both CREATE a row for a plausible pointer, and
+        -- most NETWORK_DAMAGE targets are enemies — probing with either would
+        -- have put enemies on the scoreboard.
+        --
+        -- `hero?` is the question that decides the whole feature: if a hit on
+        -- an ALLY never reaches this machine as NETWORK_DAMAGE, then ally
+        -- `taken` is genuinely unavailable here (owner-side only, as the symbol
+        -- note claims) and the column should say so rather than read 0. If it
+        -- does arrive, the row just needs joining — the ally's row is keyed by
+        -- net id, and entity->net-id is dead (see F._dmg_net_id), so that join
+        -- has to be built deliberately rather than by creating a second row.
+        local known = victim ~= nil and _dmg.actors[victim] or nil
+        R.log(string.format(
+            "[rsmm.damage] net victim probe #%d: target=%s row=%s hero?=%s",
+            _dmg.net_victim_probes,
+            target and string.format("0x%x", target) or "nil",
+            known and (known.label or "?") or "none",
+            tostring(victim ~= nil and F._dmg_is_hero(victim) or false)))
     end
     if victim and _dmg.actors[victim] then
         local row = _dmg.actors[victim]
