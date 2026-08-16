@@ -4042,6 +4042,8 @@ local LOBBY_HOOK = {
     order      = {},
     records    = {},               -- member-record pointers seen by the detour
     fires      = 0,                -- times the detour has been entered
+    logged     = 0,                -- roster size at the last log line
+    logs       = 0,
     armed_at   = nil,              -- os.time() when the detour went in
     warned     = false,
 }
@@ -4144,13 +4146,20 @@ function R.lobby._note_blob(text)
     if type(text) ~= "string" then return nil end
     local name = LOBBY_HOOK.value(text, "PlayerName")
     if not name then return nil end
+    -- RequestedHero is a NUMBER in the blob ("RequestedHero":4), and it is the
+    -- exact key that ends positional name<->row matching. Confirmed live
+    -- 2026-08-16; the member record carries the same value at +0x10, but the
+    -- blob is available on every call whereas param_1 is not always a record.
     local hero = LOBBY_HOOK.value(text, "RequestedHero")
+    local hero_id = tonumber(hero)
     local e = LOBBY_HOOK.by_name[name]
     if e then
         e.hero = hero or e.hero
+        e.hero_id = hero_id or e.hero_id
         e.seen = os.time()
     else
-        e = { name = name, hero = hero, seen = os.time(), src = "hook" }
+        e = { name = name, hero = hero, hero_id = hero_id,
+              seen = os.time(), src = "hook" }
         LOBBY_HOOK.by_name[name] = e
         LOBBY_HOOK.order[#LOBBY_HOOK.order + 1] = e
     end
@@ -4290,14 +4299,20 @@ function R.lobby.members()
     for _, m in ipairs(LOBBY_HOOK.order) do
         if not seen[m.name] then
             seen[m.name] = true
-            out[#out + 1] = { name = m.name, hero = m.hero, src = "hook" }
+            out[#out + 1] = { name = m.name, hero = m.hero,
+                              hero_id = m.hero_id, src = "hook" }
         end
     end
     -- Say it ONCE, the first time names exist. Without this the only way to
     -- tell "the hook is feeding us" from "the sweep quietly found the same two
     -- players again" is to correlate timings by hand across a whole log.
-    if not LOBBY_HOOK.logged and #out > 0 then
-        LOBBY_HOOK.logged = true
+    -- Log on GROWTH, not once. The first version logged the first non-empty
+    -- roster and never again: it printed "Brig" while three more players
+    -- joined seconds later, so the log claimed one member for a session whose
+    -- board correctly showed four.
+    if #out > 0 and #out > (LOBBY_HOOK.logged or 0) and (LOBBY_HOOK.logs or 0) < 6 then
+        LOBBY_HOOK.logged = #out
+        LOBBY_HOOK.logs = (LOBBY_HOOK.logs or 0) + 1
         local parts = {}
         for _, m in ipairs(out) do
             parts[#parts + 1] = m.hero_id

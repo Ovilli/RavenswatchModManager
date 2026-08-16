@@ -2358,10 +2358,20 @@ do
     package.loaded["rsmm"] = nil
     local Rb = require "rsmm"
 
+    -- The real thing, captured live 2026-08-16 (session 6c4f): plain JSON,
+    -- RequestedHero a NUMBER, and that number is the join that ends positional
+    -- name<->row matching.
+    local real = '{"RequestedHero":4,"RequestedSkin":7,"InLobby":true,'
+        .. '"PlayerName":"Brig","LobbyState":1,"UnlockedGameDifficulty":3}'
+    local r = Rb.lobby._note_blob(real)
+    check(r and r.name == "Brig", "the shipped blob format yields the name")
+    check(r and r.hero_id == 4, "RequestedHero comes back as a number")
+
     local json = '{"InLobby":"1","RequestedHero":"Aladdin","PlayerName":"Akaza"}'
     local e = Rb.lobby._note_blob(json)
     check(e and e.name == "Akaza", "a JSON blob yields the player name")
     check(e and e.hero == "Aladdin", "and the requested hero alongside it")
+    check(e and e.hero_id == nil, "a non-numeric hero leaves hero_id unset")
 
     check(Rb.lobby._note_blob("PlayerName=Brig;RequestedHero=Scarlet") ~= nil,
           "a plain key/value blob is accepted too")
