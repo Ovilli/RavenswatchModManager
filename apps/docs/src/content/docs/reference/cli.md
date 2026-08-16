@@ -114,6 +114,22 @@ Read the loader log file (`<game>/mods/_log.txt`).
 ./rsmm log --clear                 # Clear the log before a fresh launch
 ```
 
+### `rsmm overlay`
+
+Read the live HUD data a mod publishes. Overlays are **declared by mods** (an
+`[overlay]` block in `manifest.toml`) and filled at runtime with
+`R.overlay.publish` — the client hardcodes none of them.
+
+```sh
+./rsmm overlay                     # every installed mod that declares one
+./rsmm overlay damage-meter        # that mod's board
+./rsmm overlay damage-meter -w     # live, e.g. on a second monitor
+./rsmm overlay damage-meter --json # machine-readable
+```
+
+Columns, sorting and the highlighted row come from the declaration, so the
+terminal view and the desktop app's overlay window show the same thing.
+
 ---
 
 ## Mod management

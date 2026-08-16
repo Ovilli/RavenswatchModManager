@@ -6,7 +6,7 @@ Every `rsmm` subcommand, auto-generated from the dispatch table (`rsmm.cli._disp
 Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcommand. For task-oriented prose, see the [CLI guide](/reference/cli/).
 :::
 
-**46 commands.**
+**47 commands.**
 
 | Command | Module | Summary |
 |---|---|---|
@@ -36,6 +36,7 @@ Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcomman
 | `rsmm menu` | `rsmm.cli.cmd_menu` | `rsmm menu` — generate and inspect the in-game mod-list page (native book UI). |
 | `rsmm merge` | `rsmm.cli.merge` | Patch-merge layer. |
 | `rsmm new` | `rsmm.cli.cmd_new` | rsmm new — scaffold a mod directory. |
+| `rsmm overlay` | `rsmm.cli.cmd_overlay` | rsmm overlay — read the live HUD data a mod publishes. |
 | `rsmm pack` | `rsmm.cli.cmd_pack` | rsmm pack — bundle a mod for distribution. |
 | `rsmm poi` | `rsmm.cli.cmd_poi` | `rsmm poi` — browse the tiles and kinds a `poi` content def can use. |
 | `rsmm rebuild-asset-map` | `rsmm.engine.find_iyg` | Ravenswatch Asset Decrypter — builds a full obfuscated -> plaintext |

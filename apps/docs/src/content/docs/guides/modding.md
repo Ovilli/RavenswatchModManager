@@ -494,14 +494,14 @@ is exact:
 
 ```lua
 R.on("gameplay:NETWORK_DAMAGE", function(ev)
-    R.log(ev.class)          -- "oCGameNamedEventNetworkDamage"
     R.log(ev.value)          -- 12.5      (f32, hand-confirmed)
-    R.log(ev.target_entity)  -- "0x2a1f…" (handles are hex strings: a Lua
-end)                         --            number would lose the low bits)
+    R.log(ev.source_id)      -- "0x2a1f…" (the attacker's NET id; handles are
+    R.log(ev.dispatcher)     --            hex strings, because a Lua number
+end)                         --            would lose the low bits)
 ```
 
 Read the field names honestly: **offsets and widths are recovered, meaning is
-not.** A field only gets a semantic name (`value`, `target_entity`,
+not.** A field only gets a semantic name (`value`, `source_id`,
 `mo_guid_lo`) where hand-RE confirmed it; everything else is mechanical —
 `u50` is "u32 at +0x50", `f6c` is "float at +0x6c". They are real fields at
 real offsets, but what they *mean* is for you to pin down.
@@ -515,6 +515,134 @@ Decoding is gated on the build fingerprint: vftable addresses are
 build-specific, so after a game update the loader falls back to the plain
 envelope until the schemas are re-mined
 (`python tools/mine_event_payloads.py --verify`).
+
+### Damage attribution (`R.damage`)
+
+"Who is carrying the run?" is a question about damage per PLAYER, and no single
+event answers it. `R.damage` merges the three places the engine produces a
+damage number with an attacker attached, and hands you a live ranking:
+
+```lua
+R.damage.enable{ window = 10 }          -- opt-in: it installs engine hooks
+
+R.damage.on(function(hit)
+    -- hit.label / hit.slot / hit.is_local / hit.amount / hit.source
+    -- hit.kind == "dealt" (they hurt something) or "taken" (they got hurt)
+end)
+
+for _, row in ipairs(R.damage.board()) do   -- already sorted, row.rank set
+    R.log(row.rank, row.label, row.dealt, row.share, row.dps, row.by_type.ultimate)
+end
+
+R.damage.leader()          -- the row on top right now
+R.damage.engine_totals()   -- the game's OWN totals for the local player
+R.damage.reset()           -- e.g. per run or per chapter
+```
+
+| Source | Sees | Identity |
+|---|---|---|
+| `HeroStats_OnDamageDealt` (hooked) | **every hero's** damage applied on this machine, allies included | hero controller |
+| `Entity_ResolveAttackHits` (hooked) | attacks resolved locally — used for damage **taken**, and as a fallback | attacker entity |
+| `gameplay:NETWORK_DAMAGE` | damage the target's owner **replicates** to you | attacker net id |
+
+The first source is what makes an ALLY's damage countable. It is the engine's
+own per-hero bookkeeping, and it runs for every hero — the game just declines
+to *total* anything for a hero that is not the local player (its `+0x1d88`
+gate), which is why the end-of-run screen only ever shows your own numbers.
+Hooking it read-only gives every hero's damage, split by ability type
+(`row.by_type.attack / power / special / defense / trait / ultimate / dash`).
+
+The three views are unified per player: a row found by controller, by entity
+and by net id is the same row, so nobody appears twice and `share` stays
+honest. A replicated echo of a hit already counted locally is dropped, while
+repeated identical hits from one source (a multi-hit flurry) are kept.
+
+Every hook is observation-only: it replays the original with the exact
+arguments it received and returns the engine's own result, so no damage value,
+target list or event changes.
+
+:::caution[A peer can only count what its machine sees]
+The replication event is built solely on the machine that OWNS the target, and
+only for a remote attacker — so nothing double-counts, but the **host**, which
+owns the enemies, is the peer with the most complete board. Your own damage is
+always correct on any peer. This is a property of the netcode; no mod can widen
+it.
+:::
+
+The `damage-meter` mod is the ready-made consumer: it reports to the loader log
+and publishes an overlay once a second (see below), which feeds both
+`rsmm overlay damage-meter --watch` and the desktop app's overlay window.
+
+### Player names (`R.player`)
+
+```lua
+R.player.name()              --> "Ovilli"  (nil when Steam is unavailable)
+R.player.name_of(steamid64)  --> a known account's name, or nil
+```
+
+The **local** player's real display name, read from `steam_api64.dll`'s flat
+API by the loader — no game structures, so it survives game patches. `R.damage`
+uses it to label your own row instead of "You".
+
+**Remote** players are not named yet, and the reason is worth knowing before
+you try: the game resolves an ally's name from the party member's user-data
+JSON (`steam.personaName`, `gamertag`, `Nickname`, `pseudo` — `FUN_140929940`)
+and stores it in the party-slot UI model, but nothing observed so far links a
+party slot to the hero entity a damage row is keyed by. Pinning that link needs
+a live co-op session. Until then, label unknown players by join order and let
+the player rename them (the damage-meter mod exposes `player_1..4` for exactly
+that).
+
+### Overlays (`R.overlay`)
+
+The game gives a mod nowhere to draw a HUD, so a mod can publish one to the
+desktop client instead. Two halves:
+
+**Declare the shape** in `manifest.toml`. The client renders exactly this:
+
+```toml
+[overlay]
+title     = "Damage"
+icon      = "swords"                       # from a fixed icon set
+sort      = { key = "dealt", dir = "desc" }
+highlight = "is_local"                     # bool row key -> accented row
+empty     = "Waiting for a run."
+
+[[overlay.columns]]
+key = "label"
+label = "Player"
+type = "text"                              # text | number | percent | bar
+
+[[overlay.columns]]
+key = "dealt"
+label = "Damage"
+type = "number"
+format = "compact"                         # 48.2k
+suffix = ""
+```
+
+**Publish the rows** at runtime, at whatever cadence suits the mod:
+
+```lua
+R.overlay.publish{
+    rows = { { label = "You", dealt = 4821, share = 0.57, is_local = true } },
+    meta = { total = 8410 },               -- shown in the footer
+}
+R.overlay.clear()                          -- e.g. at a run boundary
+```
+
+Rows are flat records of string/number/boolean — anything else is dropped. An
+unchanged payload is skipped, so publishing every tick costs nothing.
+
+Then: **Settings → Overlays** in the desktop app lists every installed mod that
+declares one, and `rsmm overlay <mod>` renders the same board in a terminal.
+
+:::note[Shape is data, never code]
+A mod declares columns; it cannot hand markup or script to the client. That
+webview can spawn the CLI, so mod-supplied code in it would be arbitrary code
+execution on the player's machine — and every overlay would look like whatever
+its author felt like that day. `rsmm lint` rejects a malformed declaration.
+:::
 
 ### Hot-reload (Lua iteration < 5 seconds)
 
