@@ -24,7 +24,7 @@ from pathlib import Path
 
 from rsmm.cli import _term
 from rsmm.engine.paths import REPO_ROOT
-from rsmm.engine.symbols import SymbolMap, load_symbol_map, validate
+from rsmm.engine.symbols import SYMBOLS_PATH, SymbolMap, load_symbol_map, validate
 
 _ST = _term.Style()
 
@@ -252,6 +252,23 @@ def _cmd_audit(smap: SymbolMap, dump_path: Path) -> int:
 
     by_name = {s.name: s for s in smap.symbols}
 
+    # Is the dump old enough to predate symbols the map has since gained?
+    #
+    # The loader writes the dump by iterating the pattern DB, so a symbol added
+    # AFTER the last launch is absent from it for a reason that has nothing to
+    # do with resolution. Reporting that as "BROKEN — the loader is running
+    # these wrong" is a false alarm of exactly the kind this command exists to
+    # kill, and it is the noisiest kind: two symbols added minutes earlier came
+    # back as engine breakage. There are no per-symbol timestamps, but the file
+    # mtimes answer the only question that matters — could this dump have
+    # contained the symbol at all?
+    stale_dump = False
+    try:
+        stale_dump = dump_path.stat().st_mtime < SYMBOLS_PATH.stat().st_mtime
+    except OSError:
+        pass
+    pending: list[str] = []
+
     # First pass: learn where the image actually loaded. Without this every
     # address comparison below is off by the relocation slide.
     pairs: list[tuple[int, int]] = []
@@ -286,7 +303,10 @@ def _cmd_audit(smap: SymbolMap, dump_path: Path) -> int:
                     uncovered.append(name)
                 continue
             if s.status == "ok":
-                broken.append((name, "status=ok but ABSENT from the runtime dump"))
+                if stale_dump:
+                    pending.append(name)
+                else:
+                    broken.append((name, "status=ok but ABSENT from the runtime dump"))
             continue
         va = rec.get("va")
         if va is None:
@@ -335,6 +355,14 @@ def _cmd_audit(smap: SymbolMap, dump_path: Path) -> int:
             "dump by construction (parent pattern + offset, no pattern of their "
             "own): " + ", ".join(sorted(uncovered)) +
             " — validated by scripts/verify_symbol_resolve.py instead."))
+    if pending:
+        print(_ST.warn(
+            f"  {len(pending)} status=ok symbol(s) are absent from the dump, which "
+            f"is OLDER than data/symbols.json — they were most likely added after "
+            f"the last launch and are UNCHECKED, not broken: "
+            + ", ".join(sorted(pending))
+            + " — re-launch with RSMM_DUMP_SYMBOLS to include them."),
+            file=sys.stderr)
     if drift:
         # NB: never tell the user to copy the RUNTIME va into symbols.json.
         # Under Proton that address is a rebased, machine-specific value and

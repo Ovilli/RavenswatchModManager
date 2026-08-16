@@ -215,6 +215,45 @@ def test_audit_flags_null_and_nonprologue(tmp_path, capsys):
         pass
 
 
+def test_audit_does_not_call_a_symbol_broken_when_the_dump_predates_it(tmp_path, capsys):
+    """A symbol added after the last launch is ABSENT from the dump for a reason
+    that has nothing to do with resolution.
+
+    The loader writes the dump by walking the pattern DB, so a symbol the map
+    gained since then cannot be in it. Calling that "BROKEN — the loader is
+    running these wrong" is the false-alarm mirror of the false-ok class this
+    command exists to kill: two symbols added minutes earlier were reported as
+    engine breakage. Absence only proves breakage when the dump is NEWER than
+    the map.
+    """
+    import json
+    import os
+
+    smap = S.load_symbol_map()
+    ok_names = [s.name for s in smap.symbols if s.status == "ok"
+                and s.kind in ("function", "event")]
+    good = "48895c2408488968105657"
+    # Everything present EXCEPT one symbol, which stands in for a fresh entry.
+    missing = ok_names[0]
+    dump = [{"name": n, "va": "0x1400aa000", "bytes": good} for n in ok_names[1:]]
+    p = tmp_path / "resolved_symbols.json"
+    p.write_text(json.dumps(dump))
+
+    # Dump OLDER than data/symbols.json: unchecked, not broken.
+    old = S.SYMBOLS_PATH.stat().st_mtime - 3600
+    os.utime(p, (old, old))
+    assert cmd_symbols._cmd_audit(smap, p) == 0
+    err = capsys.readouterr().err
+    assert missing in err and "UNCHECKED" in err
+    assert "BROKEN" not in err
+
+    # Dump NEWER: the loader really did have its chance, so this is breakage.
+    new = S.SYMBOLS_PATH.stat().st_mtime + 3600
+    os.utime(p, (new, new))
+    assert cmd_symbols._cmd_audit(smap, p) == 1
+    assert "BROKEN" in capsys.readouterr().err
+
+
 def test_audit_missing_dump_returns_2(tmp_path):
     smap = S.load_symbol_map()
     rc = cmd_symbols._cmd_audit(smap, tmp_path / "nope.json")
