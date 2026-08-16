@@ -254,6 +254,8 @@ def test_loader_complete_install_is_ok(tmp_path, monkeypatch):
     lib = game / "rsmm" / "lib"
     lib.mkdir(parents=True)
     for name in doc._LOADER_LIB_FILES:
+        # Some entries are submodules under rsmm/, not flat files.
+        (lib / name).parent.mkdir(parents=True, exist_ok=True)
         (lib / name).write_text("-- sdk")
     (game / "rsmm" / "data").mkdir()
     (game / "rsmm" / "data" / "function_patterns.json").write_text("{}")
@@ -325,18 +327,53 @@ def test_recent_crash_dump_warns_old_one_does_not(tmp_path):
 
 # ------------------------------------------------------------- launch options
 
+APP = "2071280"
+
+
+def _vdf(*apps: tuple[str, str]) -> str:
+    """A localconfig fragment: one `apps` map holding (app_id, launch_options)."""
+    out = ['"apps"', "{"]
+    for app_id, opts in apps:
+        out += [f'\t"{app_id}"', "\t{", f'\t\t"LaunchOptions"\t\t"{opts}"',
+                '\t\t"LastPlayed"\t\t"0"', "\t}"]
+    out.append("}")
+    return "\n".join(out) + "\n"
+
+
 def test_orphaned_launch_value_detected(tmp_path):
     """The exact corruption a truncating rewrite leaves behind."""
     from rsmm.cli.doctor import _has_orphaned_launch_value
 
     good = tmp_path / "good.vdf"
-    good.write_text('\t\t"LaunchOptions"\t\t""\n\t\t"LastPlayed"\t\t"0"\n')
-    assert _has_orphaned_launch_value(good) is False
+    good.write_text(_vdf((APP, "")))
+    assert _has_orphaned_launch_value(good, APP) is False
 
     corrupt = tmp_path / "bad.vdf"
     corrupt.write_text(
-        '\t\t"LaunchOptions"\t\t""winhttp=n,b\\" %command%"\n')
-    assert _has_orphaned_launch_value(corrupt) is True
+        '"apps"\n{\n\t"2071280"\n\t{\n'
+        '\t\t"LaunchOptions"\t\t""winhttp=n,b\\" %command%"\n\t}\n}\n')
+    assert _has_orphaned_launch_value(corrupt, APP) is True
+
+
+def test_another_games_launch_options_are_not_ravenswatchs(tmp_path):
+    """A neighbouring app's options must not make ours look corrupt.
+
+    Regression: the scan ran over the whole file, so one unrelated title with
+    `gamemoderun %command%` turned Ravenswatch's correctly-cleared options into
+    a FAIL telling the user to repair a file that was fine. `restore` clears
+    those options on purpose, so this fired on a completely normal state.
+    """
+    from rsmm.cli.doctor import _has_orphaned_launch_value
+
+    vdf = tmp_path / "localconfig.vdf"
+    vdf.write_text(_vdf(("440", "gamemoderun %command%"), (APP, "")))
+    assert _has_orphaned_launch_value(vdf, APP) is False
+
+    # ...and our own residue is still caught when a neighbour is present.
+    vdf.write_text(
+        '"apps"\n{\n\t"440"\n\t{\n\t\t"LaunchOptions"\t\t"gamemoderun %command%"\n\t}\n'
+        '\t"2071280"\n\t{\n\t\t"LaunchOptions"\t\t""winhttp=n,b\\" %command%"\n\t}\n}\n')
+    assert _has_orphaned_launch_value(vdf, APP) is True
 
 
 # ------------------------------------------------------------------- registry
