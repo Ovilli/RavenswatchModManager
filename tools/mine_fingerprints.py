@@ -37,6 +37,8 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import struct
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -45,7 +47,14 @@ SYM = REPO / "data" / "symbols.json"
 CORPUS = REPO / "docs" / "_re" / "out_new" / "decompiled_new.jsonl"
 OUT = REPO / "data" / "symbol_fingerprints.json"
 
-_CONST_RE = re.compile(r"0x[0-9a-fA-F]{6,8}")
+# `\b` and the 9-digit ceiling are load-bearing: without them a 9-digit game VA
+# (0x1403a0940) matches as its first 8 digits (0x1403a094), which is a token the
+# 0x140.. range filter below can no longer recognise as a VA — so every branch
+# target in a function leaks in as a "distinctive constant" that is really just
+# this build's address. Measured on the first disassembly-mined symbol: 8 of 8
+# consts were truncated VAs. Capping at 9 with a boundary makes an over-long
+# literal match nothing at all rather than match a prefix of itself.
+_CONST_RE = re.compile(r"0x[0-9a-fA-F]{6,9}\b")
 _STR_RE = re.compile(r'"([^"]{5,})"')
 _CALL_RE = re.compile(r"\bFUN_([0-9a-fA-F]{9})\b")
 
@@ -86,6 +95,122 @@ def _tokens(code: str):
     strings = set(_STR_RE.findall(code))
     call_addrs = {int(a, 16) for a in _CALL_RE.findall(code)}
     return consts, strings, call_addrs
+
+
+def _pdata_ranges(data: bytes, img: int, secs) -> list[tuple[int, int]]:
+    """(start, end) VAs from .pdata's RUNTIME_FUNCTION table — the binary's own
+    function bounds. A fixed byte window instead would run off the end of the
+    function and fingerprint whatever code follows it."""
+    pd = next((s for s in secs if s["name"] == ".pdata"), None)
+    if pd is None:
+        return []
+    raw = data[pd["raw_off"]:pd["raw_off"] + pd["raw_size"]]
+    out = []
+    for o in range(0, len(raw) - 11, 12):
+        begin, end, _unwind = struct.unpack_from("<III", raw, o)
+        if begin and end > begin:
+            out.append((img + begin, img + end))
+    out.sort()
+    return out
+
+
+def _cstr_at(data: bytes, img: int, secs, va: int, limit: int = 96) -> str | None:
+    import gen_function_patterns as gen
+    off = gen.va_to_offset(va, img, secs)
+    if off is None:
+        return None
+    blob = data[off:off + limit]
+    end = blob.find(b"\0")
+    if end < 5:                      # too short to be a distinctive literal
+        return None
+    try:
+        s = blob[:end].decode("ascii")
+    except UnicodeDecodeError:
+        return None
+    return s if s.isprintable() else None
+
+
+_RIP_RE = re.compile(r"\[rip \+ (0x[0-9a-f]+)\]")
+_HEX_RE = re.compile(r"0x[0-9a-f]+")
+
+
+def _disasm_code(addrs: set[int], exe: str | None = None) -> dict[int, str]:
+    """Fingerprint-source text for functions the decompiled corpus lacks.
+
+    The corpus is a SNAPSHOT (docs/_re/out_new, mined once). Every symbol named
+    after it — i.e. every symbol a recent RE session added, exactly the ones
+    whose knowledge is freshest and least recoverable — has no corpus entry, and
+    `_build` skipped those silently: they got no fingerprint at all and would
+    strand on the next game patch with nothing but a dead prologue. That is how
+    HeroStats_OnDamageTaken (FUN_1403a0940, named 2026-08-16) came back as "no
+    fingerprint" while its own symbols.json note recorded the distinctive
+    constant (stat id 0x17df7da0) that would have located it.
+
+    So mine the same three token classes straight from the shipped exe instead:
+    immediates, C strings reached by a rip-relative `lea`, and direct call
+    targets. Output is a synthetic code blob in the shape `_tokens` already
+    parses (bare `0x...` consts, `"..."` strings, `FUN_<9 hex>` calls), so it
+    merges into the corpus dict and every downstream stage — rarity counting,
+    the reverse call graph, --verify — works on it unchanged.
+
+    Best-effort by design: no capstone or no exe means the affected symbols keep
+    today's behaviour (no fingerprint) rather than failing the whole mine.
+    """
+    if not addrs:
+        return {}
+    try:
+        import capstone
+    except ImportError:
+        print("capstone not installed (pip install capstone) — "
+              f"{len(addrs)} corpus-missing symbol(s) will have no fingerprint",
+              file=sys.stderr)
+        return {}
+    sys.path.insert(0, str(REPO / "scripts"))
+    import gen_function_patterns as gen
+
+    exe = exe or gen.DEFAULT_EXE
+    if not Path(exe).exists():
+        print(f"exe not found: {exe} — {len(addrs)} corpus-missing symbol(s) "
+              "will have no fingerprint", file=sys.stderr)
+        return {}
+
+    data = Path(exe).read_bytes()
+    img, secs = gen.parse_pe(data)
+    ranges = _pdata_ranges(data, img, secs)
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)
+    md.detail = False
+
+    out: dict[int, str] = {}
+    for va in sorted(addrs):
+        rng = next(((s, e) for s, e in ranges if s == va), None)
+        if rng is None:
+            continue                 # not a .pdata function start; leave it out
+        start, end = rng
+        off = gen.va_to_offset(start, img, secs)
+        if off is None:
+            continue
+        body = data[off:off + (end - start)]
+        lines = [f"// disasm-derived fingerprint source for 0x{start:x}"]
+        for ins in md.disasm(body, start):
+            if ins.mnemonic == "lea":
+                m = _RIP_RE.search(ins.op_str)
+                if m:
+                    s = _cstr_at(data, img, secs,
+                                 ins.address + ins.size + int(m.group(1), 16))
+                    if s:
+                        lines.append(f'  "{s}"')
+                        continue
+            if ins.mnemonic == "call":
+                tgt = _HEX_RE.fullmatch(ins.op_str.strip())
+                if tgt:
+                    lines.append(f"  FUN_{int(tgt.group(0), 16):09x}();")
+                    continue
+            if ins.mnemonic.startswith("j"):
+                continue             # branch targets are this build's addresses
+            for h in _HEX_RE.findall(_RIP_RE.sub("", ins.op_str)):
+                lines.append(f"  {h}")
+        out[start] = "\n".join(lines)
+    return out
 
 
 def _build(symbols, corpus):
@@ -230,10 +355,29 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--verify", action="store_true",
                     help="round-trip check instead of writing the sidecar")
+    ap.add_argument("--exe", default=None,
+                    help="game exe to disassemble for symbols the corpus lacks")
+    ap.add_argument("--no-disasm", action="store_true",
+                    help="corpus only; do not fall back to the exe")
     a = ap.parse_args(argv)
 
     symbols = json.loads(SYM.read_text())["symbols"]
     corpus = _load_corpus()
+
+    # Fill the corpus gaps from the exe before mining, so a symbol named after
+    # the corpus snapshot is fingerprinted like any other (see `_disasm_code`).
+    if not a.no_disasm:
+        missing = {int(s["raw"][4:], 16) for s in symbols
+                   if str(s.get("raw", "")).startswith("FUN_")
+                   and s.get("kind") in ("function", "event")
+                   and s.get("status") == "ok"
+                   and int(s["raw"][4:], 16) not in corpus}
+        filled = _disasm_code(missing, a.exe)
+        corpus.update(filled)
+        if missing:
+            print(f"corpus gaps: {len(missing)} ok symbol(s) absent from "
+                  f"{CORPUS.name}; {len(filled)} recovered by disassembly")
+
     fps, _per, addr2name = _build(symbols, corpus)
 
     if a.verify:
