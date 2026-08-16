@@ -18,6 +18,35 @@ import os
 import shutil
 import sys
 
+
+def _never_die_on_encoding() -> None:
+    """Make stdout/stderr incapable of raising UnicodeEncodeError.
+
+    Windows picks the ANSI codepage (cp1252) for a redirected stream, and the
+    prose in these commands is full of em dashes and the bars/box glyphs below.
+    `rsmm overlay meter > out.txt` therefore CRASHED on Windows with
+    `'charmap' codec can't encode characters` — a real user-facing bug on the
+    platform the loader targets, not merely a CI detail.
+
+    `box_chars()` already degrades for exactly this reason, but it only covers
+    the box; a single em dash anywhere else is enough to kill the process. This
+    is the backstop: keep the stream's own encoding (so a real console still
+    renders what it can) and swap the error handler, so an unrepresentable
+    character becomes a replacement mark instead of a traceback. Output is
+    never worth crashing over.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue                      # not a TextIOWrapper (pytest capture)
+        try:
+            reconfigure(errors="replace")
+        except (ValueError, OSError):     # detached or already closed
+            pass
+
+
+_never_die_on_encoding()
+
 RESET = "\033[0m"
 _CODES = {
     "bold": "1",
