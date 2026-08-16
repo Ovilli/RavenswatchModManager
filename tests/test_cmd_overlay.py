@@ -13,6 +13,7 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import pytest
 
@@ -218,7 +219,18 @@ def test_piped_output_carries_no_ansi(tmp_path):
     # a bare subprocess inherits the developer's real `mods/`, which exists
     # locally and not on a fresh checkout, so this test would otherwise pass
     # and fail for reasons that have nothing to do with what it checks.
-    env = {**os.environ, "RSMM_MODS_DIR": str(tmp_path / "library")}
+    # PYTHONPATH, or the child cannot import rsmm at all. conftest.py puts
+    # `src/` on sys.path for the TEST process; a freshly spawned interpreter
+    # inherits none of that, and CI does not `pip install -e .`. Locally the
+    # editable install papered over it, so this passed here and failed there
+    # with ModuleNotFoundError. Derive the directory from the package we
+    # already imported rather than guessing at a repo layout.
+    src = str(Path(cmd_overlay.__file__).resolve().parents[2])
+    env = {
+        **os.environ,
+        "RSMM_MODS_DIR": str(tmp_path / "library"),
+        "PYTHONPATH": os.pathsep.join(filter(None, [src, os.environ.get("PYTHONPATH")])),
+    }
     proc = subprocess.run(
         [sys.executable, "-m", "rsmm.cli.cmd_overlay", "meter", "--game-dir", str(tmp_path)],
         capture_output=True, text=True, env=env,
