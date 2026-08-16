@@ -5,6 +5,7 @@ import { isTauri } from '@tauri-apps/api/core';
 import { getCurrent as getCurrentDeepLink, onOpenUrl } from '@tauri-apps/plugin-deep-link';
 import { Component, type ErrorInfo, type ReactNode, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { OverlayHud } from './components/overlay-hud';
 import { RouteErrorComponent } from './components/route-error';
 import { applyAppearance } from './lib/appearance';
 import { authClient } from './lib/auth-client';
@@ -80,7 +81,20 @@ async function handleAuthDeepLink(urls: string[] | null) {
   }
 }
 
-if (isTauri()) {
+// An overlay is a SECOND window of this same bundle, told apart by a query
+// parameter rather than a route: the packaged app serves static files, so a
+// deep path like /overlay has no SPA fallback to land on. It also has to skip
+// everything below (router, auth, deep links) — it is a HUD, not the app.
+// `mod` says WHICH mod's overlay to draw; overlays are declared by mods, so
+// the client never hardcodes one.
+const OVERLAY_PARAMS = new URLSearchParams(window.location.search);
+const IS_OVERLAY_WINDOW = OVERLAY_PARAMS.get('window') === 'overlay';
+const OVERLAY_MOD_ID = OVERLAY_PARAMS.get('mod') ?? '';
+
+if (isTauri() && !IS_OVERLAY_WINDOW) {
+  // The overlay un-pin hotkey lives on the main window: overlays come and go,
+  // and a click-through one cannot receive the click that would undo it.
+  void import('./lib/overlay-hotkey').then((m) => m.registerUnpinShortcut());
   // Cold start: the app may have been launched by the deep link.
   getCurrentDeepLink()
     .then(handleAuthDeepLink)
@@ -151,9 +165,13 @@ if (!root) throw new Error('missing #root');
 createRoot(root).render(
   <StrictMode>
     <RootErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
+      {IS_OVERLAY_WINDOW ? (
+        <OverlayHud modId={OVERLAY_MOD_ID} />
+      ) : (
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      )}
     </RootErrorBoundary>
   </StrictMode>,
 );

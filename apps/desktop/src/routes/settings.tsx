@@ -1,6 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { ChevronDown, EyeOff, ShieldAlert, Trash2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { emit, listen } from '@tauri-apps/api/event';
+import { ChevronDown, EyeOff, ShieldAlert, Swords, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Fleuron, Panel, SectionHeader } from '../components/chrome';
 import { useLaunch } from '../components/launch';
 import { useToast } from '../components/toast';
@@ -22,7 +24,20 @@ import {
   parseLauncherLog,
   readLauncherLog,
 } from '../lib/launcher-log';
-import { type LoaderFlag, getLoaderFlags, setLoaderFlags } from '../lib/rsmm';
+import { OVERLAY_INTERACTIVE_EVENT } from '../components/overlay-hud';
+import {
+  closeOverlay,
+  openOverlay,
+  openOverlayMods,
+  resetPosition,
+} from '../lib/overlay-windows';
+import {
+  type LoaderFlag,
+  type OverlayRecord,
+  getLoaderFlags,
+  listOverlays,
+  setLoaderFlags,
+} from '../lib/rsmm';
 import { useApp } from '../store';
 
 export const Route = createFileRoute('/settings')({
@@ -222,6 +237,10 @@ function SettingsPage() {
       </Panel>
 
       <LoaderFlagsPanel />
+
+      <OverlaysPanel />
+
+      <GraphicsPanel />
 
       <Panel>
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -485,6 +504,238 @@ function TypographyControls() {
  * to winhttp.dll (so they work on native Windows too, where Steam launch
  * options cannot set environment variables). Only flags the bridge marks
  * `safe` are togglable here; locked ones are shown greyed-out with the reason. */
+/**
+ * Overlays declared by installed mods.
+ *
+ * Nothing here is hardcoded to a particular mod: a mod declares an `[overlay]`
+ * block in its manifest and publishes rows at runtime, and this lists whatever
+ * is installed. A mod with no declaration simply never appears.
+ *
+ * Click-through is set on the overlay window itself, which then ignores the
+ * mouse completely — including the button that would turn it off. That button
+ * has to live in a window that still receives clicks, so it lives here.
+ */
+function OverlaysPanel() {
+  const [overlays, setOverlays] = useState<OverlayRecord[] | null>(null);
+  const [open, setOpen] = useState<string[]>([]);
+  const [clickThrough, setClickThrough] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Which overlays are open is window state, not React state: re-read it
+  // after anything that could have changed it (including a window the user
+  // closed with its own X button).
+  const refresh = useCallback(async () => {
+    setOpen(await openOverlayMods());
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    listOverlays()
+      .then((list) => {
+        if (alive) setOverlays(list?.overlays ?? []);
+      })
+      .catch((e) => {
+        if (alive) {
+          setOverlays([]);
+          setError(e instanceof Error ? e.message : String(e));
+        }
+      });
+    void refresh();
+    const unlisten = listen<{ enabled: boolean }>('rsmm://overlay-clickthrough', (e) => {
+      setClickThrough(Boolean(e.payload?.enabled));
+    });
+    return () => {
+      alive = false;
+      void unlisten.then((f) => f());
+    };
+  }, [refresh]);
+
+  const toggle = async (modId: string, isOpen: boolean) => {
+    setError(null);
+    try {
+      if (isOpen) {
+        await closeOverlay(modId);
+        setClickThrough(false);
+      } else {
+        await openOverlay(modId);
+      }
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  return (
+    <Panel>
+      <h3 className="font-fraktur text-xl text-parchment">Overlays</h3>
+      <Fleuron className="my-3" />
+      <p className="font-serif-italic text-ash mb-3">
+        Small always-on-top windows published by mods — a damage meter, a run timer, whatever a mod
+        declares. Run the game borderless-windowed so an overlay can sit on top of it.
+      </p>
+      {overlays === null ? (
+        <p className="font-mono text-ash">Loading…</p>
+      ) : overlays.length === 0 ? (
+        <p className="font-mono text-ash">
+          No installed mod declares an overlay. A mod adds one with an{' '}
+          <span className="text-parchment">[overlay]</span> block in its manifest.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {overlays.map((o) => {
+            const isOpen = open.includes(o.modId);
+            return (
+              <li
+                key={o.modId}
+                className="flex flex-wrap items-center justify-between gap-3 border border-border px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <span className="text-parchment">{o.title ?? o.modId}</span>{' '}
+                  <span className="font-mono text-ash">{o.modId}</span>
+                  {o.error ? (
+                    <p className="font-mono mt-1 text-sm text-crimson">{o.error}</p>
+                  ) : o.source === 'library' ? (
+                    <p className="font-mono mt-1 text-sm text-ash">
+                      not applied yet — run Apply, then launch the game to see data
+                    </p>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-2">
+                  {isOpen ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetPosition(o.modId);
+                        void (async () => {
+                          await closeOverlay(o.modId);
+                          await openOverlay(o.modId);
+                          await refresh();
+                        })();
+                      }}
+                      title="Reopen it at the default position — the fix when it lands off-screen"
+                      className="border border-border px-3 py-1 text-ash transition-colors hover:text-parchment"
+                    >
+                      Recentre
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={Boolean(o.error)}
+                    onClick={() => void toggle(o.modId, isOpen)}
+                    className="flex items-center gap-2 border border-crimson px-3 py-1 text-parchment transition-colors hover:bg-crimson/20 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Swords className="h-3.5 w-3.5" />
+                    {isOpen ? 'Close' : 'Open'}
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {clickThrough ? (
+        <button
+          type="button"
+          onClick={() => void emit(OVERLAY_INTERACTIVE_EVENT)}
+          className="mt-3 border border-gilt/60 px-3 py-2 text-parchment transition-colors hover:bg-gilt/10"
+        >
+          Turn off click-through
+        </button>
+      ) : null}
+      {clickThrough ? (
+        <p className="font-mono mt-2 text-sm text-ash">
+          …or press <span className="text-parchment">Ctrl+Alt+O</span> without leaving the game.
+        </p>
+      ) : null}
+      {error ? (
+        <p className="font-mono mt-3 text-sm text-crimson" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </Panel>
+  );
+}
+
+/**
+ * Software-rendering escape hatch.
+ *
+ * A machine blue-screened with VIDEO_SCHEDULER_INTERNAL_ERROR (bug check
+ * 0x119) with a mod page open: a display-driver fault raised by the Windows
+ * video scheduler. The app cannot cause that on its own — it can only submit
+ * GPU work a broken driver mishandles — but "update your driver" is a poor
+ * only-answer, so this turns the app's GPU usage off entirely.
+ *
+ * The renderer is chosen when the webview process starts, so the change lands
+ * on the next launch. Saying that plainly beats a toggle that appears to do
+ * nothing.
+ */
+function GraphicsPanel() {
+  const [disabled, setDisabled] = useState<boolean | null>(null);
+  const [pending, setPending] = useState(false);
+  const [restartNeeded, setRestartNeeded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    invoke<boolean>('gpu_acceleration_disabled')
+      .then((v) => {
+        if (alive) setDisabled(v);
+      })
+      .catch(() => {
+        if (alive) setDisabled(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const toggle = async () => {
+    if (disabled === null || pending) return;
+    setPending(true);
+    setError(null);
+    try {
+      const next = await invoke<boolean>('set_gpu_acceleration_disabled', { disabled: !disabled });
+      setDisabled(next);
+      setRestartNeeded(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <Panel>
+      <h3 className="font-fraktur text-xl text-parchment">Graphics</h3>
+      <Fleuron className="my-3" />
+      <p className="font-serif-italic text-ash mb-3">
+        RSMM draws through your GPU like any browser window. If your machine crashes, freezes or
+        blue-screens while RSMM is open — especially with a display-driver bug check such as{' '}
+        <span className="font-mono">VIDEO_SCHEDULER_INTERNAL_ERROR</span> — switch this on to render
+        in software instead. Update your GPU driver as well; that is the real fix.
+      </p>
+      <label className="flex items-center gap-3">
+        <input
+          type="checkbox"
+          checked={disabled === true}
+          disabled={disabled === null || pending}
+          onChange={() => void toggle()}
+          className="h-4 w-4 accent-crimson"
+        />
+        <span className="text-parchment">Disable GPU acceleration (software rendering)</span>
+      </label>
+      {restartNeeded ? (
+        <p className="font-mono mt-3 text-sm text-gilt">Restart RSMM for this to take effect.</p>
+      ) : null}
+      {error ? (
+        <p className="font-mono mt-3 text-sm text-crimson" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </Panel>
+  );
+}
+
 function LoaderFlagsPanel() {
   const [available, setAvailable] = useState<LoaderFlag[]>([]);
   const [enabled, setEnabled] = useState<Set<string>>(new Set());

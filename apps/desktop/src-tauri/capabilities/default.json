@@ -2,7 +2,10 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default capabilities for desktop app",
-  "windows": ["main"],
+  "windows": [
+    "main",
+    "overlay-*"
+  ],
   "permissions": [
     "core:default",
     "core:window:default",
@@ -10,34 +13,81 @@
     "core:window:allow-maximize",
     "core:window:allow-unmaximize",
     "core:window:allow-close",
+    "core:window:allow-destroy",
     "core:window:allow-is-maximized",
     "core:window:allow-is-minimized",
     "core:window:allow-is-decorated",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-set-ignore-cursor-events",
+    "core:window:allow-start-dragging",
+    "core:window:allow-scale-factor",
+    "core:window:allow-set-size",
+    "core:window:allow-start-resize-dragging",
+    "core:window:allow-outer-position",
+    "core:window:allow-outer-size",
+    "core:window:allow-set-focus",
     "core:webview:default",
+    "core:webview:allow-create-webview-window",
     "core:event:default",
     {
       "identifier": "shell:allow-open",
       "allow": [
-        { "url": "https://github.com/Ovilli/RavenswatchModManager/**" },
-        { "url": "https://api.rsmm.me/**" },
-        { "url": "file:///**" }
+        {
+          "url": "https://github.com/Ovilli/RavenswatchModManager/**"
+        },
+        {
+          "url": "https://api.rsmm.me/**"
+        },
+        {
+          "url": "file:///**"
+        }
       ]
     },
     {
       "identifier": "shell:allow-execute",
       "allow": [
-        { "name": "binaries/rsmm", "sidecar": true, "args": true },
-        { "name": "run-rsmm", "cmd": "rsmm", "args": true },
-        { "name": "mkdir", "cmd": "mkdir", "args": true },
-        { "name": "pgrep", "cmd": "pgrep", "args": [
-          { "validator": "^-f$" },
-          { "validator": "^Ravenswatch(\\.exe)?$" }
-        ] },
-        { "name": "tasklist", "cmd": "tasklist", "args": [
-          { "validator": "^/FI$" },
-          { "validator": "^IMAGENAME eq Ravenswatch\\.exe$" },
-          { "validator": "^/NH$" }
-        ] }
+        {
+          "name": "binaries/rsmm",
+          "sidecar": true,
+          "args": true
+        },
+        {
+          "name": "run-rsmm",
+          "cmd": "rsmm",
+          "args": true
+        },
+        {
+          "name": "mkdir",
+          "cmd": "mkdir",
+          "args": true
+        },
+        {
+          "name": "pgrep",
+          "cmd": "pgrep",
+          "args": [
+            {
+              "validator": "^-f$"
+            },
+            {
+              "validator": "^Ravenswatch(\\.exe)?$"
+            }
+          ]
+        },
+        {
+          "name": "tasklist",
+          "cmd": "tasklist",
+          "args": [
+            {
+              "validator": "^/FI$"
+            },
+            {
+              "validator": "^IMAGENAME eq Ravenswatch\\.exe$"
+            },
+            {
+              "validator": "^/NH$"
+            }
+          ]
+        }
       ]
     },
     "deep-link:default",
@@ -45,14 +95,25 @@
     {
       "identifier": "opener:allow-open-url",
       "allow": [
-        { "url": "https://api.rsmm.me/**" },
-        { "url": "https://accounts.google.com/**" },
-        { "url": "https://github.com/**" },
-        { "url": "http://localhost:*/**" }
+        {
+          "url": "https://api.rsmm.me/**"
+        },
+        {
+          "url": "https://accounts.google.com/**"
+        },
+        {
+          "url": "https://github.com/**"
+        },
+        {
+          "url": "http://localhost:*/**"
+        }
       ]
     },
     "updater:default",
     "process:default",
-    "os:default"
+    "os:default",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "global-shortcut:allow-is-registered"
   ]
 }

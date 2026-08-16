@@ -1,6 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { Link, Outlet, createRootRouteWithContext, useLocation } from '@tanstack/react-router';
-import { exit as processExit } from '@tauri-apps/plugin-process';
 import { AlertTriangle } from 'lucide-react';
 import { FlaskConical, ScrollText, Terminal } from 'lucide-react';
 import type { CSSProperties } from 'react';
@@ -25,6 +24,7 @@ import { ProfilePopover } from '../components/profile-popover';
 import { DialogProvider, ToastProvider } from '../components/toast';
 import { UpdaterBanner } from '../components/updater';
 import { shortcutLabel } from '../lib/platform';
+import { quitApp } from '../lib/quit';
 import { restoreAll } from '../lib/rsmm';
 import { activeProfile, detectConflicts, isEnabledIn, outdatedCount, useApp } from '../store';
 
@@ -273,7 +273,7 @@ function WindowControls() {
     setQuitBusy(true);
     setQuitError(null);
     try {
-      await processExit(0);
+      await quitApp();
       setQuitPromptOpen(false);
     } catch (e) {
       setQuitError(e instanceof Error ? e.message : String(e));
@@ -291,7 +291,7 @@ function WindowControls() {
       if (!result || !result.ok) {
         throw new Error(result?.stderr?.trim() || result?.stdout?.trim() || 'restore failed');
       }
-      await processExit(0);
+      await quitApp();
       setQuitPromptOpen(false);
     } catch (e) {
       setQuitError(e instanceof Error ? e.message : String(e));
@@ -326,7 +326,7 @@ function WindowControls() {
         setQuitPromptOpen(true);
         return;
       }
-      await processExit(0);
+      await quitApp();
     })();
   };
   const doToggleMax = () =>

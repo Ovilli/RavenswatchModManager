@@ -1079,6 +1079,23 @@ def cmd_loader_log(lines: int = 400, prev: bool = False, all_sessions: bool = Fa
     })
 
 
+def cmd_overlays() -> int:
+    """Every mod-declared overlay, with its live rows — the desktop HUD feed.
+
+    Overlays are declared by MODS (an `[overlay]` block in manifest.toml) and
+    filled at runtime through `R.overlay.publish`; the client only draws what
+    it is handed. Parsing lives in cmd_overlay so the desktop window and
+    `rsmm overlay` can never disagree about what a row means.
+    """
+    from rsmm.cli.cmd_overlay import discover
+
+    game_dir = find_game_dir()
+    return _emit({
+        "gameDir": str(game_dir or ""),
+        "overlays": discover(game_dir),
+    })
+
+
 def cmd_conflicts() -> int:
     """
     Detect all conflicts among enabled mods:
@@ -1302,6 +1319,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("restore-all", help="restore every active override")
     sub.add_parser("build", help="build asset map + loader + merge + apply")
     sub.add_parser("conflicts", help="detect all conflicts among enabled mods")
+    sub.add_parser("overlays", help="read every mod-declared overlay + its live rows")
     p_log = sub.add_parser("loader-log", help="read the in-game loader log")
     p_log.add_argument("--lines", type=int, default=400,
                        help="cap on returned lines (0 = no cap)")
@@ -1357,6 +1375,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.no_merge:
             rest.append("--no-merge")
         return cmd_apply(rest)
+    if args.cmd == "overlays":
+        return cmd_overlays()
     if args.cmd == "active-overrides":
         return cmd_active_overrides()
     if args.cmd == "restore-all":
