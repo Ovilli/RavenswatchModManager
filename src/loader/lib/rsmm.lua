@@ -4256,6 +4256,19 @@ function R.lobby.members()
             out[#out + 1] = { name = m.name, hero = m.hero, src = "hook" }
         end
     end
+    -- Say it ONCE, the first time names exist. Without this the only way to
+    -- tell "the hook is feeding us" from "the sweep quietly found the same two
+    -- players again" is to correlate timings by hand across a whole log.
+    if not LOBBY_HOOK.logged and #out > 0 then
+        LOBBY_HOOK.logged = true
+        local parts = {}
+        for _, m in ipairs(out) do
+            parts[#parts + 1] = m.hero_id
+                and string.format("%s(hero %d)", m.name, m.hero_id) or m.name
+            parts[#parts] = parts[#parts] .. "[" .. (m.src or "scan") .. "]"
+        end
+        R.log("[rsmm.lobby] roster: " .. table.concat(parts, ", "))
+    end
     -- Re-read through the cached addresses rather than trusting stale text:
     -- a member can leave, and the block is then no longer a block.
     for _, m in ipairs(_lobby_cache or {}) do
