@@ -2346,6 +2346,37 @@ do
           "allies() excludes the local player by Steam name")
 end
 
+-- N0. Hero diagnostics are gated on being IN A RUN ------------------------
+--
+-- There is no hero to find in the main menu. Session 6c4f sat there for eleven
+-- minutes, spent all six process-wide field scans on a blank object, and then
+-- reported the capture as 443.9s — measured from a candidate stashed while
+-- nobody was playing. The run boundary is the gate; `is_in_main_menu` is not,
+-- because it is derived from MainMenu asset READS and goes false a few seconds
+-- after the menu finishes loading.
+do
+    package.loaded["rsmm"] = nil
+    local Rg = require "rsmm"
+    local H = Rg.entity._scan          -- HERO_SCAN internals
+
+    -- No run signal on this build: fall back to the menu heuristic, i.e. the
+    -- old behaviour. Silence here would hide a genuinely moved HP offset.
+    check(Rg.run.signalled() == false, "no run boundary has been seen yet")
+    check(H.in_play() == true,
+          "without a run signal, diagnostics stay enabled (fail open)")
+
+    -- Once a run boundary HAS been seen, run state decides.
+    Rg.emit("run_start", {})
+    check(Rg.run.signalled() == true, "the run boundary was observed")
+    check(Rg.run.active() == true, "and we are in a run")
+    check(H.in_play() == true, "diagnostics run during a run")
+
+    Rg.emit("run_end", {})
+    check(Rg.run.active() == false, "the run ended")
+    check(H.in_play() == false,
+          "back in the menu with a known run signal, diagnostics are silenced")
+end
+
 -- N1b. R.lobby: names arrive from the attribute parser, not from a sweep ---
 --
 -- Every member's attributes pass through LobbyAttributes_Parse, so a detour

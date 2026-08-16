@@ -1026,9 +1026,19 @@ end
 
 --- "N.Ns after the first candidate appeared", or "" when unmeasurable.
 local function _capture_latency()
-    if not (_hero_first_seen and I.now) then return "" end
+    if not I.now then return "" end
     local ok, t = pcall(I.now)
     if not ok or type(t) ~= "number" then return "" end
+    -- Prefer the RUN start. Measuring from the first candidate answered the
+    -- wrong question: candidates are stashed in the menu, so a player who sat
+    -- in the menu for ten minutes and then captured within seconds of pressing
+    -- start was reported as a 443.9s capture, which reads as a loader bug and
+    -- is not one.
+    local started = R.run and R.run.started_at and R.run.started_at()
+    if type(started) == "number" then
+        return string.format(" (%.1fs after the run started)", t - started)
+    end
+    if not _hero_first_seen then return "" end
     return string.format(" (%.1fs after the first candidate appeared)",
                          t - _hero_first_seen)
 end
@@ -1238,6 +1248,31 @@ local function _in_main_menu()
     return (ok and v) or false
 end
 
+--- Is it worth spending diagnostics on a hero candidate right now?
+---
+--- There is no hero to find in the main menu, so every rejection line and
+--- field scan emitted there is noise that also burns a process-wide budget:
+--- session 6c4f sat in the menu for eleven minutes, spent all six scans on a
+--- blank object, and then reported the capture as taking 443.9s — a number
+--- measured from a candidate that appeared while nobody was playing.
+---
+--- The run boundary is the right signal. `is_in_main_menu` is NOT: it is
+--- derived from MainMenu asset READS, so it goes false about five seconds
+--- after the menu finishes loading and stays false while you sit in it, which
+--- is exactly the window this is meant to suppress. It stays as the fallback
+--- for a session with no run signal at all (see R.run.signalled).
+function HERO_SCAN.in_play()
+    local rr = R.run
+    if rr and rr.signalled and rr.signalled() then
+        return (rr.active and rr.active()) and true or false
+    end
+    return not _in_main_menu()
+end
+
+-- Internals, for the spec: `in_play` decides whether a whole class of
+-- diagnostics runs, so its three states are worth testing directly.
+R.entity._scan = HERO_SCAN
+
 local function _scan_hp_fields(p)
     if not (I.shared_get and I.shared_set) then return end
     local n = (HERO_SCAN.seen[p] or 0) + 1
@@ -1329,7 +1364,7 @@ function R.entity.hero()
             -- DIAG (first few only): the native capture published a pointer the
             -- Lua plausibility gate now rejects — log the raw reads so a
             -- playtest log shows WHY (stale/freed entity? moved offsets?).
-            if not _in_main_menu() and _diag_budget(6) then
+            if HERO_SCAN.in_play() and _diag_budget(6) then
                 R.log(string.format(
                     "[rsmm.entity] slot hero 0x%x REJECTED: hp=%s max=%s mirror=%s",
                     h, tostring(I.read_f32(h + ENTITY_HP_OFF)),
@@ -1397,7 +1432,7 @@ function R.entity.hero()
             -- the menu carries no information (see `_in_main_menu`), and
             -- spending the shared scan budget there is what made the 2026-08-16
             -- log six scans of a blank preview character.
-            if not _in_main_menu() then
+            if HERO_SCAN.in_play() then
                 if _diag_budget(6) then
                     local mirror = I.read_u64(p + ENTITY_HUDMIRROR_OFF)
                     R.log(string.format(
@@ -5680,11 +5715,13 @@ R.on("tick", _derived_poll)
 R.on("tick", function()
     if not _native_capture_active() then return end
     if not I.shared_get then return end
-    -- Nothing to promote while the main menu is up: the only candidate there is
-    -- the menu's preview character, whose HP fields never populate, and taking
-    -- it would publish a pointer that is stale the moment a run starts. Skip
-    -- the whole poll rather than run it and reject (see `_in_main_menu`).
-    if _in_main_menu() then return end
+    -- The poll itself is NOT gated on run state. It is a handful of
+    -- page-guarded reads, and gating it would make capture wait for
+    -- `run_start`, which rides the analytics firehose and can arrive per
+    -- CHAPTER rather than at hero spawn — trading log noise for a slower
+    -- capture, when noise was the only problem. The menu's preview character
+    -- cannot be promoted anyway: the plausibility gate needs live HP. Only the
+    -- DIAGNOSTICS inside are gated (see HERO_SCAN.in_play).
     local ok, h = pcall(I.shared_get, SHARED_HERO_SLOT)
     if ok and type(h) == "number" and h ~= 0 and _hero_plausible(h) then return end
     R.entity.hero()          -- runs the pending-promotion + REJECT diagnostic
@@ -5694,9 +5731,19 @@ end)
 -- to know which raw name the game uses (and gets an idempotent pair: the raw
 -- events can repeat per chapter).
 R.on("run_start", function()
-    if not _run_active then _run_active = true; _publish("run:start", {}) end
+    R.run._signalled = true
+    if not _run_active then
+        _run_active = true
+        if I.now then
+            local ok, t = pcall(I.now)
+            R.run._started_at = (ok and type(t) == "number") and t or nil
+        end
+        _publish("run:start", {})
+    end
 end)
 R.on("run_end", function(ev)
+    R.run._signalled = true
+    R.run._started_at = nil
     if _run_active then
         _run_active = false
         local copy = {}
@@ -5707,6 +5754,19 @@ end)
 
 -- True between run:start and run:end.
 function R.run.active() return _run_active end
+
+--- Has this process ever seen a run boundary at all?
+---
+--- The difference between "not in a run" and "we have no idea" decides whether
+--- anything may be gated on run state. run_start/run_end ride the analytics
+--- firehose, which a session can legitimately be missing (the symbol may not
+--- resolve, or the capability is off), and a gate that treats "no signal" as
+--- "not in a run" would silence the very diagnostics that exist to catch a
+--- moved offset. Callers fall back to their old behaviour when this is false.
+function R.run.signalled() return R.run._signalled == true end
+
+--- When the current run started (I.now clock), or nil.
+function R.run.started_at() return R.run._started_at end
 
 -- escape hatch ----------------------------------------------------------
 --
