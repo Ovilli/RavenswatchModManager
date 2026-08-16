@@ -2397,6 +2397,66 @@ do
     end
 end
 
+-- N1c. R.lobby: the member RECORD, read exactly ----------------------------
+--
+-- param_1 of LobbyAttributes_Parse is the record it fills. Reading it back is
+-- exact where reading the blob has to guess an encoding, and it is the only
+-- source of RequestedHero — which is what lets a caller stop matching names
+-- to heroes by POSITION. Layout comes from pairing each key literal in the
+-- parser with the store it feeds.
+do
+    package.loaded["rsmm"] = nil
+    local Rr = require "rsmm"
+    local H = Rr.lobby._hook          -- internals under test
+    local REC = 0x1f000000
+
+    local function put(va, s)
+        for k = 1, #s do I.write_u8(va + k - 1, s:byte(k)) end
+        I.write_u8(va + #s, 0)
+    end
+
+    -- Compact string, INLINE form: chars at +0, remaining capacity at +0xd,
+    -- flag 0x1000 in the word at +0xe.
+    local function put_inline(va, s)
+        put(va, s)
+        I.write_u8(va + 0xd, 0xd - #s)
+        I.write_u16(va + 0xe, 0x1000)
+    end
+
+    put_inline(REC, "Akaza")
+    I.write_u32(REC + 0x10, 7)            -- RequestedHero
+    I.write_u64(REC + 0xb8, 0x110000100000001)
+    I.write_u8(REC + 0xc4, 1)             -- InLobby
+    I.write_u8(REC + 0xc5, 1)             -- MemberDataInitialized
+
+    local m = H.read(REC)
+    check(m and m.name == "Akaza", "the inline compact string is decoded")
+    check(m and m.hero_id == 7, "RequestedHero comes back as a number")
+    check(m and m.steam_id == 0x110000100000001, "the Steam id is read")
+    check(m and m.in_lobby == true, "InLobby is decoded")
+    check(m and m.src == "record", "record rows are tagged as such")
+
+    -- MemberDataInitialized == 0: the record is still being filled.
+    I.write_u8(REC + 0xc5, 0)
+    check(H.read(REC) == nil, "a record that is not initialised yet is refused")
+    I.write_u8(REC + 0xc5, 1)
+
+    -- HEAP form: length dword at +0, characters behind the pointer at +8.
+    local REC2, TEXT = 0x1f001000, 0x1f002000
+    put(TEXT, "AVeryLongPlayerName")
+    I.write_u32(REC2, 19)
+    I.write_u64(REC2 + 8, TEXT)
+    I.write_u16(REC2 + 0xe, 0)            -- flag clear = not inline
+    I.write_u8(REC2 + 0xc5, 1)
+    local m2 = H.read(REC2)
+    check(m2 and m2.name == "AVeryLongPlayerName",
+          "the heap form of the compact string is decoded too")
+
+    -- A length that disagrees with the bytes is refused rather than smeared.
+    I.write_u32(REC2, 40)
+    check(H.read(REC2) == nil, "a length that does not match the text is refused")
+end
+
 -- N2. R.lobby: a completed roster is not the final roster ------------------
 --
 -- Players join while the run is still loading. A sweep that finishes first

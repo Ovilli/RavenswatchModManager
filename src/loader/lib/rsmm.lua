@@ -4035,10 +4035,12 @@ end
 -- One table, not five locals: the main chunk is at Lua's 200-local ceiling
 -- and each new top-level `local` fails compilation of the whole SDK.
 local LOBBY_HOOK = {
-    BLOB_MAX = 4096,
-    state    = 0,                  -- 0 not tried, 1 live here, 2 unavailable
-    by_name  = {},
-    order    = {},
+    BLOB_MAX   = 4096,
+    RECORD_MAX = 16,               -- plenty for a 4-player lobby, bounded anyway
+    state      = 0,                -- 0 not tried, 1 live here, 2 unavailable
+    by_name    = {},
+    order      = {},
+    records    = {},               -- member-record pointers seen by the detour
 }
 
 --- One attribute's value out of a raw blob, or nil.
@@ -4071,6 +4073,69 @@ function LOBBY_HOOK.value(text, key)
     return v
 end
 
+--- Decode the engine's 16-byte compact string at `va`, or nil.
+---
+--- Not an MSVC `std::string` (see R.debug.stdstring_at for that one). The
+--- parser's own key comparison spells the layout out: bit 0x1000 of the word
+--- at +0xe means the text is INLINE, in which case the byte at +0xd holds the
+--- REMAINING capacity, so the length is 0xd - that; otherwise the length is
+--- the dword at +0x0 and the characters live behind the pointer at +0x8.
+function LOBBY_HOOK.estring(va)
+    if not _ptr_plausible(va) then return nil end
+    local flags = I.read_u16 and I.read_u16(va + 0xe)
+    if type(flags) ~= "number" then return nil end
+    local text, len
+    if (flags & 0x1000) ~= 0 then
+        local rem = I.read_u8(va + 0xd)
+        if type(rem) ~= "number" or rem > 0xd then return nil end
+        len = 0xd - rem
+        if len == 0 then return nil end
+        text = I.read_cstr(va, len + 1)
+    else
+        len = I.read_u32(va)
+        local p = I.read_u64(va + 8)
+        if type(len) ~= "number" or len == 0 or len > 256 then return nil end
+        if not _ptr_plausible(p) then return nil end
+        text = I.read_cstr(p, len + 1)
+    end
+    if type(text) ~= "string" or #text ~= len then return nil end
+    if text:find("[^\32-\126]") then return nil end
+    return text
+end
+
+--- Read one lobby member RECORD, or nil if `va` does not look like one.
+---
+--- Layout recovered 2026-08-16 by pairing each attribute key literal in
+--- LobbyAttributes_Parse with the store it feeds (param_1 is the record —
+--- the prologue homes rcx to [rsp+8], which is the [rbp+0x100] the parser
+--- reloads before every field write):
+---
+---     +0x00 PlayerName (compact string)   +0x10 RequestedHero (u32)
+---     +0x14 RequestedSkin (u16)           +0x18 UnlockedGameDifficulty (u32)
+---     +0x1c LobbyState (u32)              +0x20 UnlockedHeroFlag (u32)
+---     +0xa8 m_sEosUserId (string)         +0xb8 m_sSteamUserId (u64)
+---     +0xc0 m_uVoiceChatMode (u32)        +0xc4 InLobby (u8)
+---     +0xc5 MemberDataInitialized (u8)    +0xc8 m_ePlatform (u32)
+---
+--- Reading the record is exact, where reading the blob has to guess at an
+--- encoding — and it is the only source of `RequestedHero`, which is what a
+--- caller needs to stop matching names to heroes by POSITION.
+function LOBBY_HOOK.read(va)
+    local name = LOBBY_HOOK.estring(va)
+    if not name then return nil end
+    local ready = I.read_u8(va + 0xc5)
+    if ready == 0 then return nil end       -- MemberDataInitialized
+    local hero = I.read_u32(va + 0x10)
+    return {
+        name     = name,
+        hero_id  = (type(hero) == "number" and hero < 0x1000) and hero or nil,
+        steam_id = I.read_u64(va + 0xb8),
+        in_lobby = (I.read_u8(va + 0xc4) or 0) ~= 0,
+        addr     = va,
+        src      = "record",
+    }
+end
+
 --- Record what one parsed blob says. Internal; exposed for the spec.
 function R.lobby._note_blob(text)
     if type(text) ~= "string" then return nil end
@@ -4089,6 +4154,10 @@ function R.lobby._note_blob(text)
     return e
 end
 
+-- Internals, for the spec: the record decoder is layout knowledge worth
+-- testing directly rather than only through a live lobby.
+R.lobby._hook = LOBBY_HOOK
+
 --- Detour the attribute parser. Idempotent; safe to call from the pump.
 function LOBBY_HOOK.arm()
     if LOBBY_HOOK.state ~= 0 then return end
@@ -4106,10 +4175,29 @@ function LOBBY_HOOK.arm()
         return
     end
     -- void*(void* self, StringDesc* blob): pointer return, two pointer args.
-    local ok, slot, why = pcall(R.hook, va, "ppp", function(_self, blob)
+    local ok, slot, why = pcall(R.hook, va, "ppp", function(self, blob)
         -- Runs on the GAME thread inside the detour: page-guarded reads and a
         -- table write only, never an engine call. Returning nil replays the
         -- original, so the parse itself is untouched.
+        --
+        -- param_1 is the member RECORD. Remember it: this call is filling it,
+        -- so its fields are only complete once the original returns — which is
+        -- why the record is read later (from the pump, through
+        -- LOBBY_HOOK.read) rather than here. The blob below is the fallback
+        -- for the first pass, when no record has been read back yet.
+        if self and self ~= 0 then
+            local seen = false
+            for _, p in ipairs(LOBBY_HOOK.records) do
+                if p == self then seen = true break end
+            end
+            if not seen then
+                LOBBY_HOOK.records[#LOBBY_HOOK.records + 1] = self
+                -- Bounded: the parse runs per attribute update, forever.
+                while #LOBBY_HOOK.records > LOBBY_HOOK.RECORD_MAX do
+                    table.remove(LOBBY_HOOK.records, 1)
+                end
+            end
+        end
         if not blob or blob == 0 then return nil end
         local ptr, len = I.read_u64(blob), I.read_u32(blob + 8)
         if not ptr or ptr == 0 or type(len) ~= "number" then return nil end
@@ -4150,8 +4238,18 @@ end
 --- background-only call.
 function R.lobby.members()
     local out, seen = {}, {}
-    -- Hook-fed first: these were read from the blob itself, so they do not
-    -- depend on a parse buffer still being intact.
+    -- Member RECORDS first: read back through the pointers the detour saw, so
+    -- the fields are the engine's own (name, RequestedHero, Steam id) rather
+    -- than anything recovered from the blob's text.
+    for _, va in ipairs(LOBBY_HOOK.records) do
+        local m = LOBBY_HOOK.read(va)
+        if m and not seen[m.name] then
+            seen[m.name] = true
+            out[#out + 1] = m
+        end
+    end
+    -- Then whatever the blob told us on the first pass, for anyone whose
+    -- record has not read back cleanly yet.
     for _, m in ipairs(LOBBY_HOOK.order) do
         if not seen[m.name] then
             seen[m.name] = true
@@ -4210,7 +4308,8 @@ function R.lobby.refresh(force)
     -- because this is the one entry point already documented as background-only
     -- and already called on a timer.
     LOBBY_HOOK.arm()
-    if LOBBY_HOOK.state == 1 and #LOBBY_HOOK.order > 0 and not force then
+    if LOBBY_HOOK.state == 1 and not force
+        and (#LOBBY_HOOK.order > 0 or #LOBBY_HOOK.records > 0) then
         return R.lobby.members()      -- names are arriving; never sweep
     end
     if not I.mem_find then return R.lobby.members() end
@@ -4753,6 +4852,72 @@ end
 --- the background scan has found the lobby. Without this they would keep the
 --- "Player N" placeholder for the whole run even though the name is available
 --- seconds later.
+--- Find the row-side field that carries the lobby's `RequestedHero` id.
+---
+--- Names are matched to rows BY POSITION today: `allies[rank]`, i.e. the order
+--- allies happened to first deal damage in, which is not the lobby's order and
+--- is wrong as often as it is right (rows carry `label_guess` for exactly this
+--- reason). The join that would be exact is the hero: every lobby member record
+--- carries `RequestedHero` (+0x10), so if the row's own object holds the same
+--- id at some offset, name and row line up with no guessing at all.
+---
+--- Rather than hand-RE that offset over several launches, let one session find
+--- it: sweep each row's controller for a dword that equals one of the known
+--- hero ids, and keep only the offsets where EVERY row reads a DIFFERENT known
+--- id. A field that is constant across players, or that only matches for one of
+--- them, is not the hero id — the discriminator is the same "must differ across
+--- siblings" trick that finds abstract vtable slots.
+---
+--- Pure page-guarded reads, once per session, and only when a co-op lobby has
+--- actually produced two identified members and two rows.
+local HERO_ID_PROBE = { done = false, LO = 0, HI = 0x2000 }
+
+function F._dmg_probe_hero_field()
+    if HERO_ID_PROBE.done then return end
+    local okm, members = pcall(R.lobby.members)
+    if not okm or type(members) ~= "table" then return end
+    local ids, n = {}, 0
+    for _, m in ipairs(members) do
+        if m.hero_id and not ids[m.hero_id] then
+            ids[m.hero_id] = m.name
+            n = n + 1
+        end
+    end
+    if n < 2 then return end
+    local rows = {}
+    for _, row in ipairs(_dmg.order) do
+        -- Rows are keyed by controller, entity OR net id; only the pointer
+        -- keys are objects we can read fields out of.
+        if _ptr_plausible(row.key) then rows[#rows + 1] = row end
+    end
+    if #rows < 2 then return end
+    HERO_ID_PROBE.done = true
+
+    local hits = {}
+    for off = HERO_ID_PROBE.LO, HERO_ID_PROBE.HI, 4 do
+        local seen, ok = {}, true
+        for _, row in ipairs(rows) do
+            local v = I.read_u32(row.key + off)
+            if type(v) ~= "number" or not ids[v] or seen[v] then
+                ok = false
+                break
+            end
+            seen[v] = true
+        end
+        if ok then
+            hits[#hits + 1] = string.format("+0x%x", off)
+            if #hits >= 8 then break end
+        end
+    end
+    local known = {}
+    for id, nm in pairs(ids) do known[#known + 1] = string.format("%s=%d", nm, id) end
+    table.sort(known)
+    R.log(("[rsmm.damage] hero-id field probe: %d row(s), lobby ids {%s} -> %s")
+          :format(#rows, table.concat(known, ", "),
+                  #hits > 0 and table.concat(hits, " ")
+                  or "no offset distinguishes the rows"))
+end
+
 function F._dmg_relabel()
     local ok, allies = pcall(R.lobby.allies)
     if not ok or type(allies) ~= "table" or #allies == 0 then return end
@@ -4811,6 +4976,7 @@ function F._dmg_lobby_refresh()
         local ok, err = pcall(function()
             -- Cheap every time: re-read the known blocks and apply names.
             F._dmg_relabel()
+            F._dmg_probe_hero_field()
             if F._dmg_wants_lobby() then
                 local before = #R.lobby.members()
                 local members = R.lobby.refresh()
