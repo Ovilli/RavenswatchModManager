@@ -99,6 +99,21 @@ export async function openOverlayMods(): Promise<string[]> {
   }
 }
 
+/**
+ * The declaration for one mod, or null when that mod ships no overlay.
+ *
+ * Pure on purpose: every place that offers an "open the overlay" control has to
+ * decide whether the control exists at all, and that decision must be identical
+ * everywhere (a button in the library that a mod cannot honour is worse than no
+ * button).
+ */
+export function overlayFor<T extends { modId: string }>(
+  records: readonly T[] | null | undefined,
+  modId: string,
+): T | null {
+  return records?.find((r) => r.modId === modId) ?? null;
+}
+
 export async function openOverlay(modId: string): Promise<void> {
   const existing = await findOverlay(modId);
   if (existing) {

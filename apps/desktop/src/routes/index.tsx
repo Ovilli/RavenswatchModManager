@@ -24,6 +24,7 @@ import {
   StatPill,
 } from '../components/chrome';
 import { ModConfigPanel } from '../components/mod-config-panel';
+import { OverlayButton } from '../components/overlay-button';
 import { SetupBanner } from '../components/setup-banner';
 import { useDialog } from '../components/toast';
 import { useToast } from '../components/toast';
@@ -827,15 +828,16 @@ function CardGrid({
                 onClick={() => onToggle(id)}
                 label={`${enabled ? 'Disable' : 'Enable'} ${mod.name}`}
               />
-              <Button
-                type="button"
-                onClick={() => onUninstall(id)}
-                variant="danger"
-                size="sm"
-                className="ml-auto"
-              >
-                uninstall
-              </Button>
+              {/* ml-auto lives on the GROUP, not on the first button: the
+                  overlay button renders only for a mod that declares an
+                  [overlay] block, and hanging the alignment off it would
+                  left-align uninstall on every other card. */}
+              <div className="ml-auto flex items-center gap-2">
+                <OverlayButton modId={id} />
+                <Button type="button" onClick={() => onUninstall(id)} variant="danger" size="sm">
+                  uninstall
+                </Button>
+              </div>
             </div>
           </div>
         );
@@ -948,6 +950,7 @@ function ListView({
               />
             </div>
             <StatPill value={`#${orderIdx + 1}`} label="load" className="tracking-normal" />
+            <OverlayButton modId={id} />
             <Button type="button" onClick={() => onUninstall(id)} variant="danger" size="sm">
               uninstall
             </Button>

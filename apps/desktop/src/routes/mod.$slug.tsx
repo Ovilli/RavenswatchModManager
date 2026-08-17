@@ -26,6 +26,7 @@ import {
   SectionHeader,
   StatPill,
 } from '../components/chrome';
+import { OverlayButton } from '../components/overlay-button';
 import { useToast } from '../components/toast';
 import { api, describeApiError, logApiError } from '../lib/api';
 import { getApiUrl } from '../lib/api-url';
@@ -239,6 +240,7 @@ function ModDetailPage() {
               <MonoTag tone={enabled ? 'crimson' : 'default'}>
                 {enabled ? 'enabled' : 'disabled'}
               </MonoTag>
+              <OverlayButton modId={liveBySlug.id} />
               <Button type="button" variant="danger" onClick={() => void uninstall(liveBySlug.id)}>
                 <Trash2 className="h-4 w-4" /> Uninstall
               </Button>

@@ -7,7 +7,26 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
   getAllWebviewWindows: async () => [],
 }));
 
-import { overlayLabel, resetPosition, savePosition } from './overlay-windows';
+import { overlayFor, overlayLabel, resetPosition, savePosition } from './overlay-windows';
+
+describe('overlayFor', () => {
+  const records = [{ modId: 'damage-meter' }, { modId: 'run-timer' }];
+
+  it('finds the declaration a mod ships', () => {
+    expect(overlayFor(records, 'run-timer')).toEqual({ modId: 'run-timer' });
+  });
+
+  it('returns null for a mod with no overlay, so no button is offered', () => {
+    expect(overlayFor(records, 'no-hud')).toBeNull();
+  });
+
+  it('tolerates a list that has not loaded (or failed to load)', () => {
+    // Outside Tauri the CLI call throws and the query data is undefined; the
+    // control must simply not render rather than crash the library page.
+    expect(overlayFor(undefined, 'damage-meter')).toBeNull();
+    expect(overlayFor(null, 'damage-meter')).toBeNull();
+  });
+});
 
 describe('overlay window labels', () => {
   it('namespaces by mod id so several overlays can be open at once', () => {

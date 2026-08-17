@@ -63,9 +63,11 @@ Click **Play** to launch Ravenswatch directly from RSMM. The app applies any pen
 ## Overlays
 
 Mods can publish a small always-on-top window — a damage meter, a run timer,
-whatever the mod measures. **Settings → Overlays** lists every installed mod
-that declares one, with an Open/Close button each; the command palette has an
-entry per overlay too.
+whatever the mod measures. A mod that ships one gets an **Overlay** button on
+its own library card, list row, and mod page — click it to open the window,
+click again (**Hide overlay**) to close it. **Settings → Overlays** lists them
+all in one place (with **Recentre**), and the command palette has an entry per
+overlay too. A mod with no overlay shows no button.
 
 - Drag it by its header; drag the **bottom-right corner** to resize. It sizes
   itself to its contents until you resize it by hand, after which it stays put.
