@@ -782,7 +782,10 @@ function CardGrid({
             {/* mt-auto pins the actions to the card's bottom edge, so every
                 card in a grid row puts the switch and uninstall button at the
                 same y — and a tag appearing above never moves them. */}
-            <div className="mt-auto flex items-center gap-2 pt-1">
+            {/* flex-wrap because the row's contents are conditional: a mod with
+                both a config schema and an overlay carries four controls, which
+                overflowed the card at a narrow grid width. */}
+            <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
               <InkSwitch
                 on={enabled}
                 onClick={() => onToggle(id)}
@@ -792,7 +795,7 @@ function CardGrid({
                   overlay button renders only for a mod that declares an
                   [overlay] block, and hanging the alignment off it would
                   left-align uninstall on every other card. */}
-              <div className="ml-auto flex items-center gap-2">
+              <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
                 <ConfigButton slug={mod.slug} hasConfig={mod.hasConfig} />
                 <OverlayButton modId={id} />
                 <Button type="button" onClick={() => onUninstall(id)} variant="danger" size="sm">

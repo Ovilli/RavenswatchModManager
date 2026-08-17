@@ -27,15 +27,19 @@ export function ConfigButton({
   className?: string;
 }) {
   if (!hasConfig) return null;
+  // Icon only: a card's action row already carries a switch, the overlay
+  // button and uninstall, and a fourth labelled control overflowed the card.
+  // The label lives in title + aria-label so it stays reachable.
   return (
     <Link
       to="/mod/$slug"
       params={{ slug }}
       hash={CONFIG_ANCHOR}
-      className={`btn-grim px-3 py-1.5 text-sm ${className ?? ''}`}
-      title="Open this mod's settings"
+      className={`btn-grim shrink-0 px-2 py-1.5 ${className ?? ''}`}
+      title="Configure — open this mod's settings"
+      aria-label="Configure this mod"
     >
-      <SlidersHorizontal className="h-4 w-4" /> Configure
+      <SlidersHorizontal className="h-4 w-4" />
     </Link>
   );
 }
