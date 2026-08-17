@@ -398,7 +398,29 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          gh release edit "$TAG" --draft=false
+          # Resolve the release by ID rather than by tag. A DRAFT has no tag
+          # on GitHub's side until it is published — it lives under an
+          # `untagged-<hash>` id and carries the intended tag only as a
+          # `tag_name` field — so `/releases/tags/<tag>` 404s and
+          # `gh release edit "$TAG"` dies with "release not found". That is
+          # exactly what happened to v0.4.25, whose builds all succeeded:
+          # the release sat as a draft and had to be flipped by hand.
+          #
+          # The upload job above gets away with `gh release upload "$TAG"`
+          # because gh's upload/download paths fall back to scanning the
+          # release LIST (which does include drafts) when the tag lookup
+          # misses; `edit` has no such fallback. Do the list scan ourselves
+          # so this does not depend on which fallbacks a given gh build has.
+          id="$(gh api --paginate "repos/$GH_REPO/releases" \
+                  --jq ".[] | select(.tag_name == \"$TAG\") | .id" | head -n1)"
+          if [ -z "$id" ]; then
+            echo "::error::no release (draft or published) found for tag $TAG"
+            exit 1
+          fi
+          # Idempotent: a PATCH with draft=false on an already-published
+          # release is a no-op, so re-running the job is safe.
+          gh api -X PATCH "repos/$GH_REPO/releases/$id" -F draft=false \
+            --jq '"published " + .html_url'
 
       # GITHUB_TOKEN publish does not trigger `release: published`, so
       # discord-notify.yml never runs for tag-driven releases — notify here.
