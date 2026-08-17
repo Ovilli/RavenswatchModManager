@@ -4849,6 +4849,48 @@ local DMG = {
     NET_AUTHORITY_OFF = 0x130,   -- net component: 0 = locally owned
     SAMPLE_CAP       = 4096,     -- rolling-window entries per actor
     DEDUPE_WINDOW    = 0.4,      -- seconds a replicated echo can lag by
+    -- VICTIM CLASSIFICATION (the enemy-vs-scenery test).
+    --
+    -- The bookkeeping hook's 2nd argument is the VICTIM ENTITY -- not a stats
+    -- block, which is what symbols.json claimed until 2026-08-17. Its sole
+    -- caller hands the same pointer to Entity_GetNetComponent, and this
+    -- function reads the victim's definition at +0x28 to stamp the analytics
+    -- record with the target's resource path. So the victim is already in our
+    -- hands on the primary source; classifying it needs no extra hook.
+    --
+    -- An entity is a gameplay ENEMY when it carries an
+    -- oCDtEntityCpntEnemyController component. Fences, jars, vegetation and
+    -- mission props are Hittable + HitPoint with no controller at all
+    -- (EntitySettings/Destructible_Common/* vs Enemies/NPC_Common/Enemy_Model).
+    -- The test is a pure page-guarded READ of the component array -- never an
+    -- engine call, so a stale offset yields a wrong answer, never a crash.
+    -- Components on an oCEntity live in an F14/SwissTable map keyed by CLASS
+    -- ID, not in the +0x190 pointer array — that array belongs to an
+    -- oCEntitySpawnerGo (Entity_GetComponentByTester's parameter), which is
+    -- why session c536 read `n/a` for every enemy it probed and found the
+    -- controller on nobody. Layout from Entity_GetNetComponent
+    -- (FUN_140312db0), which does this exact lookup for oCEntityCpntNetwork.
+    CPNT_CTRL_OFF    = 0x5e8,    -- entity -> F14 control bytes
+    CPNT_SLOTS_OFF   = 0x5f0,    -- entity -> slot array
+    CPNT_MASK_OFF    = 0x600,    -- entity -> bucket mask (capacity - 1)
+    CPNT_SLOT_STRIDE = 0x10,     -- slot = { u32 class id @+0, cpnt* @+8 }
+    CPNT_SLOT_PTR    = 0x08,
+    MAX_SLOTS        = 0x4000,   -- refuse an implausible capacity outright
+    -- Engine class ids, stamped by each class registrar as
+    -- `mov [desc+0x28], <id>`. A content hash of the class NAME, so it is far
+    -- more patch-stable than a vftable VA — and the same key the engine's own
+    -- component map is indexed by. Mined by tools/mine_class_ids.py; the
+    -- miner is confirmed by 0x154fce5c resolving to oCEntityCpntNetwork,
+    -- the literal Entity_GetNetComponent hardcodes.
+    ENEMY_CTRL_CLASS_ID = 0x1561073c,   -- oCDtEntityCpntEnemyController
+    HERO_CTRL_CLASS_ID  = 0x155aac59,   -- oCDtEntityCpntHeroController
+    ENEMY_CTRL_VFT_VA = 0x140f30b78,    -- symbols.json EnemyController_vftable
+    CPNT_OWNER_OFF   = 0x08,     -- component -> owner entity (back-ptr)
+    VICTIM_DEF_OFF   = 0x28,     -- entity -> oCEntitySettings (confirmed live)
+    SETTINGS_RSRC_OFF = 0x70,    -- settings -> resource the engine stringifies
+    VICTIM_CACHE_CAP = 512,      -- entity -> class cache entries before reset
+    PROBE_VICTIMS    = 12,       -- distinct victims the probe reports, then off
+    PROBE_VFTS       = 6,        -- component vftables logged per victim
     -- The engine's own attack-type names, read out of the table at
     -- 0x1412ed7d0 that the bookkeeping routine indexes with the enum.
     TYPES = { [0] = "attack", "power", "special", "defense",
@@ -4863,6 +4905,7 @@ local _dmg = {
     names    = {},        -- slot -> player-supplied label
     actors   = {},        -- key -> row
     by_netid = {},        -- net id -> row (merges the replicated view in)
+    by_hero  = {},        -- lobby hero id -> row (survives a chapter change)
     order    = {},        -- slot -> row, stable join order
     seen     = {},        -- entity -> true: known NOT a hero, stop asking
     subs     = {},        -- per-hit callbacks
@@ -4871,6 +4914,16 @@ local _dmg = {
     hooked   = false,     -- resolver
     local_id = nil,       -- local hero net id (false = unavailable)
     started  = nil,
+    -- Victim classification. `ignore_scenery` is OPT-IN: the engine's own
+    -- end-screen total counts prop damage, so counting it is what MATCHES the
+    -- game, and dropping it is a deliberate divergence a mod asks for.
+    ignore_scenery = false,
+    probe    = false,     -- log the class of the first few distinct victims
+    probes   = 0,
+    vprobed  = {},        -- victim entity -> already reported
+    vclass   = {},        -- victim entity -> true (enemy) / false (scenery)
+    vclass_n = 0,
+    scenery  = 0,         -- damage dropped by the filter, session-wide
 }
 
 function F._dmg_now()
@@ -4903,6 +4956,172 @@ function F._dmg_is_hero(e)
     if not _ptr_plausible(e) then return false end
     local ok, v = pcall(I.is_grant_target, e)
     return ok and v == true
+end
+
+-- Victim classification: enemy vs scenery ---------------------------------
+--
+-- Everything here is READS. The component array is the same one
+-- Entity_GetComponentByTester (FUN_1406e3210) walks, so the offsets are the
+-- engine's own; the vftable comparison is the same shape R.xp uses to find the
+-- XP component. Nothing is handed to the engine, so the worst a stale offset
+-- can do is answer "unknown" -- and unknown NEVER filters (fail-open, so a
+-- wrong offset under-filters instead of hiding a player's real damage).
+
+-- Rebased EnemyController vftable, or nil when the module base is unavailable.
+function F._dmg_enemy_vft()
+    local base = I.module_base()
+    if not base or base == 0 then return nil end
+    return base + (DMG.ENEMY_CTRL_VFT_VA - ENTITY_IMG_BASE)
+end
+
+--- Scan an entity's components for the enemy controller.
+--- Returns nil when the entity could not be inspected at all, else a table
+--- { enemy, count, slot, owner_ok } — `owner_ok` records whether the matched
+--- component's back-pointer at +0x8 points at the entity, which the probe
+--- reports so the back-ptr assumption is confirmed in-game rather than
+--- assumed (it is NOT required for the match; see _dmg_is_enemy).
+function F._dmg_scan_components(entity)
+    if not _ptr_plausible(entity) then return nil, "entity implausible" end
+    local slots = I.read_u64(entity + DMG.CPNT_SLOTS_OFF)
+    local mask  = I.read_u64(entity + DMG.CPNT_MASK_OFF)
+    -- A NULL map is an answer, not a failure: the entity owns no components at
+    -- all, so it certainly owns no EnemyController. Session ec1d hit this on
+    -- two of twelve victims (both 1.0-damage props) and calling them "unknown"
+    -- would have let exactly the damage this filter exists for through.
+    -- A non-null but implausible pointer is a genuine failed read.
+    if (slots == 0 or slots == nil) and (mask == 0 or mask == nil) then
+        return { enemy = false, count = 0, empty = true }
+    end
+    -- The decline REASON matters: session c536 reported "no components" for
+    -- every enemy and there was no way to tell an empty map from a bad read.
+    if not _ptr_plausible(slots) then
+        return nil, ("slots=0x%x implausible"):format(slots or 0)
+    end
+    if type(mask) ~= "number" or mask < 0 or mask + 1 > DMG.MAX_SLOTS then
+        return nil, ("mask=%s over cap"):format(tostring(mask))
+    end
+    -- The map is walked LINEARLY rather than hashed: the engine's own probe
+    -- computes an F14 hash to find one key fast, but we are reading a handful
+    -- of slots on a bounded table, and a linear pass needs no hash function to
+    -- stay correct across a game patch.
+    local want = F._dmg_enemy_vft()
+    for i = 0, mask do
+        local slot = slots + i * DMG.CPNT_SLOT_STRIDE
+        local id   = I.read_u32(slot)
+        if id == DMG.ENEMY_CTRL_CLASS_ID then
+            local comp = I.read_u64(slot + DMG.CPNT_SLOT_PTR)
+            if _ptr_plausible(comp) then
+                return { enemy = true, count = mask + 1, slot = i,
+                         -- Reported, never required: both are corroboration
+                         -- for the class id, which is the actual test.
+                         vft_ok   = want ~= nil and I.read_u64(comp) == want,
+                         owner_ok = I.read_u64(comp + DMG.CPNT_OWNER_OFF) == entity }
+            end
+        end
+    end
+    return { enemy = false, count = mask + 1 }
+end
+
+--- true = gameplay enemy, false = scenery/prop/mission object, nil = unknown.
+---
+--- Cached per victim pointer because a multi-hit ability re-classifies the
+--- same target several times a frame. The cache is validated against the
+--- entity's own vftable: pointers ARE recycled inside a run (an enemy dies, a
+--- prop lands on its memory), and two reads to re-check beat believing a
+--- stale answer.
+function F._dmg_is_enemy(entity)
+    if not _ptr_plausible(entity) then return nil end
+    local vft = I.read_u64(entity)
+    local hit = _dmg.vclass[entity]
+    if hit and hit.vft == vft then return hit.enemy end
+    local scan = F._dmg_scan_components(entity)
+    if not scan then return nil end
+    if _dmg.vclass_n >= DMG.VICTIM_CACHE_CAP then
+        _dmg.vclass, _dmg.vclass_n = {}, 0
+    end
+    _dmg.vclass[entity] = { vft = vft, enemy = scan.enemy }
+    _dmg.vclass_n = _dmg.vclass_n + 1
+    return scan.enemy
+end
+
+function F._dmg_img_rel(p)
+    local base = I.module_base()
+    if not p or p == 0 or not base or base == 0 or p < base then return nil end
+    return p - base + ENTITY_IMG_BASE
+end
+
+--- One-shot diagnostic: what IS this victim?
+---
+--- Round 1 (2026-08-17, session c536) proved the plumbing and killed the
+--- theory: every victim read back as oCEntity (vft 0x140f743b0) with
+--- oCEntitySettings at +0x28 and real components at +0x190 — but NOT ONE of
+--- twelve carried the EnemyController, and most reported no component array at
+--- all. So this round reports (a) WHY the array read declined, (b) EVERY
+--- component vftable, not the first six, and (c) the settings' resource path,
+--- read as inline strings — that names the victim ("Gnoll_Hunter" vs
+--- "Destructible_Jar") instead of leaving it an address, which is the only
+--- way to tell a wrong offset from a wrong theory.
+---
+--- Bounded (DMG.PROBE_VICTIMS victims per process) because it runs on the MAIN
+--- THREAD inside the damage detour. Reads only — no engine calls, so nothing
+--- here can fault the game.
+function F._dmg_probe_victim(entity, amount)
+    if not _dmg.probe or _dmg.probes >= DMG.PROBE_VICTIMS then return end
+    if not _ptr_plausible(entity) or _dmg.vprobed[entity] then return end
+    _dmg.vprobed[entity] = true
+    _dmg.probes = _dmg.probes + 1
+    local n = _dmg.probes
+    local scan, why = F._dmg_scan_components(entity)
+    -- Image-relative, so the numbers in the log line up with the addresses in
+    -- data/symbols.json across launches (ASLR moves the module, not the RVAs).
+    local function hex(p)
+        local v = F._dmg_img_rel(p)
+        return v and string.format("0x%x", v) or "?"
+    end
+    local slots = I.read_u64(entity + DMG.CPNT_SLOTS_OFF)
+    local mask  = I.read_u64(entity + DMG.CPNT_MASK_OFF)
+    local set   = I.read_u64(entity + DMG.VICTIM_DEF_OFF)
+    R.log(string.format(
+        "[rsmm.damage] victim probe #%d: ent=0x%x vft=%s slots=0x%x mask=%s "
+        .. "enemy=%s slot=%s vft_ok=%s owner_ok=%s settings=0x%x dmg=%.1f%s",
+        n, entity, hex(I.read_u64(entity)), slots or 0, tostring(mask),
+        scan and tostring(scan.enemy) or "unknown",
+        scan and scan.slot and tostring(scan.slot) or "-",
+        scan and scan.slot and tostring(scan.vft_ok) or "-",
+        scan and scan.slot and tostring(scan.owner_ok) or "-",
+        set or 0, amount or 0, why and (" declined: " .. why) or ""))
+    -- Every OCCUPIED slot's class id. These decode offline against
+    -- data/class_ids.json, so one log says exactly which components a fence
+    -- and a gnoll each carry — the thing round 1 could not answer.
+    if scan then
+        local line = {}
+        for i = 0, scan.count - 1 do
+            local slot = slots + i * DMG.CPNT_SLOT_STRIDE
+            local id   = I.read_u32(slot)
+            if id and id ~= 0 and _ptr_plausible(I.read_u64(slot + DMG.CPNT_SLOT_PTR)) then
+                line[#line + 1] = string.format("0x%x", id)
+            end
+            if #line == 8 then
+                R.log(("[rsmm.damage] probe #%d class ids: %s")
+                      :format(n, table.concat(line, " ")))
+                line = {}
+            end
+        end
+        if #line > 0 then
+            R.log(("[rsmm.damage] probe #%d class ids: %s")
+                  :format(n, table.concat(line, " ")))
+        end
+    end
+    -- No string dump here. Reading the victim's asset path out of the settings
+    -- object was tried in session ec1d and returned noise ("JAT_I", "0cbuJ^"):
+    -- the path is not inline at settings+0x70, the engine reaches it through a
+    -- resource handle it resolves with a call. The class ids answer the
+    -- question anyway — an enemy's map holds EnemyController +
+    -- CharacterController + RemoteDamageOwner + ModifierHolder, a prop's holds
+    -- oCEntityCpntNetwork and nothing else — so the string hunt has no
+    -- remaining job. `settings` is still logged as an identity: victims of the
+    -- same TYPE share one settings pointer, which is what makes it usable as a
+    -- classification cache key.
 end
 
 -- The engine's local/remote test: net component +0x130 is 0 when this machine
@@ -4992,7 +5211,8 @@ end
 ---
 --- Pure page-guarded reads, once per session, and only when a co-op lobby has
 --- actually produced two identified members and two rows.
-local HERO_ID_PROBE = { done = false, LO = 0, HI = 0x2000 }
+local HERO_ID_PROBE = { done = false, LO = 0, HI = 0x2000,
+                        off = nil, attempts = 0, MAX_ATTEMPTS = 6 }
 
 function F._dmg_probe_hero_field()
     if HERO_ID_PROBE.done then return end
@@ -5034,23 +5254,106 @@ function F._dmg_probe_hero_field()
     local known = {}
     for id, nm in pairs(ids) do known[#known + 1] = string.format("%s=%d", nm, id) end
     table.sort(known)
+    -- ADOPT the offset, do not just report it. A confirmed hero id is the only
+    -- identity a player keeps across a CHAPTER TRANSITION: the engine builds a
+    -- fresh hero controller for the next chapter, so rows keyed by the
+    -- controller pointer fork — the same player appears twice, the slot counter
+    -- runs past the player count ("Player 6", "Player 7"), and the abandoned
+    -- rows sit at 0.0 dps for the rest of the run. That is exactly what the
+    -- 2026-08-17 evening log shows: seven rows for a four-player lobby, "Juice"
+    -- twice, both marked as the local player.
+    --
+    -- Only an UNAMBIGUOUS sweep is adopted. With two rows several offsets can
+    -- coincidentally hold two distinct known ids; keying identity on the wrong
+    -- one would merge two different players into one row, which is worse than
+    -- the duplicate it fixes. Ambiguity re-arms the probe instead: a later
+    -- sweep with more rows narrows it.
+    if #hits == 1 then
+        HERO_ID_PROBE.off = tonumber(hits[1]:match("0x%x+"))
+        HERO_ID_PROBE.done = true
+        -- BACKFILL every row that was boarded before the identity existed.
+        -- The sweep cannot run until two rows and two named lobby members are
+        -- in hand, so the FIRST row — often an ally, since the sweep fires when
+        -- the second player deals damage — would otherwise carry no hero id and
+        -- fork at the next chapter anyway. That is the residual duplicate the
+        -- first version of this fix would still have produced.
+        F._dmg_backfill_ids()
+    else
+        HERO_ID_PROBE.done = false
+        HERO_ID_PROBE.attempts = (HERO_ID_PROBE.attempts or 0) + 1
+        if HERO_ID_PROBE.attempts >= HERO_ID_PROBE.MAX_ATTEMPTS then
+            HERO_ID_PROBE.done = true          -- give up; pointer keys only
+        end
+    end
     R.log(("[rsmm.damage] hero-id field probe: %d row(s), lobby ids {%s} -> %s")
           :format(#rows, table.concat(known, ", "),
-                  #hits > 0 and table.concat(hits, " ")
-                  or "no offset distinguishes the rows"))
+                  #hits == 1 and (hits[1] .. " ADOPTED as the row identity")
+                  or (#hits > 1
+                      and ("ambiguous (" .. table.concat(hits, " ") .. "), retrying")
+                      or "no offset distinguishes the rows")))
+end
+
+--- Give every row an identity it is missing. Rows boarded before the sweep
+--- adopted an offset have none, and a row without one forks at the next
+--- chapter — so this runs when the offset lands AND on the tick, because a
+--- controller's fields are not always live the first time it is seen.
+function F._dmg_backfill_ids()
+    if not HERO_ID_PROBE.off then return end
+    for _, r in ipairs(_dmg.order) do
+        if not r.hero_id and _ptr_plausible(r.key) then
+            r.hero_id = F._dmg_hero_id(r.key)
+            if r.hero_id then _dmg.by_hero[r.hero_id] = r end
+        end
+    end
+end
+
+--- The player's identity, stable across chapter transitions. nil until the
+--- sweep above has confirmed an offset, or when the value read there is not a
+--- hero id the lobby knows about (a re-created controller can be read before
+--- its fields are live — the same "not live yet" window hero-capture handles).
+function F._dmg_hero_id(hero)
+    local off = HERO_ID_PROBE.off
+    if not off or not _ptr_plausible(hero) then return nil end
+    local id = I.read_u32(hero + off)
+    if type(id) ~= "number" or id <= 0 or id >= 0x1000 then return nil end
+    -- Cross-check against the roster when there is one: the offset was chosen
+    -- from a two-row sample, so a value that is not a known hero id means the
+    -- field has been re-used and the identity must not be trusted.
+    local ok, members = pcall(R.lobby.members)
+    if ok and type(members) == "table" and #members > 0 then
+        for _, m in ipairs(members) do
+            if m.hero_id == id then return id end
+        end
+        return nil
+    end
+    return id
 end
 
 function F._dmg_relabel()
     local ok, allies = pcall(R.lobby.allies)
     if not ok or type(allies) ~= "table" or #allies == 0 then return end
+    -- Name by HERO when the row's identity is known: each lobby member record
+    -- carries its RequestedHero, so this is an exact join. Falling back to join
+    -- ORDER is the old behaviour and is a guess with 3+ players — rows say so
+    -- via `label_guess`, and a UI should too.
+    local by_hero, okm, members = {}, pcall(R.lobby.members)
+    if okm then
+        local list = members
+        if type(list) == "table" then
+            for _, m in ipairs(list) do
+                if m.hero_id and m.name then by_hero[m.hero_id] = m.name end
+            end
+        end
+    end
     local rank, changed = 0, 0
     for _, row in ipairs(_dmg.order) do
         if not row.is_local then
             rank = rank + 1
-            local nm = _dmg.names[row.slot] or allies[rank]
+            local exact = row.hero_id and by_hero[row.hero_id] or nil
+            local nm = _dmg.names[row.slot] or exact or allies[rank]
             if nm and row.label ~= nm then
                 row.label = nm
-                row.label_guess = #allies > 1
+                row.label_guess = exact == nil and #allies > 1
                 changed = changed + 1
             end
         end
@@ -5099,6 +5402,7 @@ function F._dmg_lobby_refresh()
             -- Cheap every time: re-read the known blocks and apply names.
             F._dmg_relabel()
             F._dmg_probe_hero_field()
+            F._dmg_backfill_ids()
             if F._dmg_wants_lobby() then
                 local before = #R.lobby.members()
                 local members = R.lobby.refresh()
@@ -5144,6 +5448,9 @@ function F._dmg_new_row(key, is_local)
         key = key, slot = slot, is_local = is_local or false,
         label = F._dmg_label_for(slot, is_local),
         dealt = 0, taken = 0, hits = 0, best = 0, by_type = {},
+        -- Damage the scenery filter dropped. Kept per row so a UI can show
+        -- "and 4.2k into the furniture" instead of silently losing it.
+        scenery = 0, scenery_hits = 0,
         first = F._dmg_now(), last = 0, samples = {}, recent = {},
     }
     _dmg.actors[key] = row
@@ -5165,6 +5472,49 @@ function F._dmg_bind_netid(row, entity)
     local id = F._dmg_net_id(entity)
     row.netid = id or false
     if id then _dmg.by_netid[id] = row end
+end
+
+--- Adopt an existing row for a hero controller we have not seen before.
+---
+--- The meter used to key rows by the controller pointer alone, which is stable
+--- only WITHIN a chapter. Crossing into the next chapter rebuilds every hero
+--- controller, so every player forked a second row: the 2026-08-17 evening log
+--- shows seven rows for a four-player lobby, "Juice" listed twice (both flagged
+--- as the local player), placeholder labels running to "Player 7", and the
+--- abandoned rows frozen at 0.0 dps while the run continued. Nothing was lost
+--- exactly — it was double-counted into two halves, which is worse, because
+--- every `share` on the board is then wrong.
+---
+--- Two joins, strongest first:
+---   1. the HERO ID, when the sweep has confirmed where it lives. Each player
+---      in a run has a distinct hero, so this is exact.
+---   2. the engine's is-local byte. There is exactly ONE local player, so a
+---      second local controller is always the same person. This needs no RE at
+---      all and fixes the duplicate that matters most (your own row).
+--- Returns the adopted row, or nil to let the caller board a new player.
+function F._dmg_rebind(hero, is_local, entity)
+    local id = F._dmg_hero_id(hero)
+    local prev = id and _dmg.by_hero[id] or nil
+    -- No fallback scan over the rows here: every path that sets `hero_id` also
+    -- writes `by_hero` (see F._dmg_backfill_ids), so a scan could only find what
+    -- the index already has. It was written, could not be made to fail in the
+    -- spec, and was deleted rather than shipped unexercised.
+    if not prev and is_local then
+        for _, r in ipairs(_dmg.order) do
+            if r.is_local then prev = r; break end
+        end
+    end
+    if not prev then return nil end
+    _dmg.actors[hero] = prev
+    prev.key = hero
+    prev.hero_id = id or prev.hero_id
+    if prev.hero_id then _dmg.by_hero[prev.hero_id] = prev end
+    F._dmg_alias(prev, entity)
+    F._dmg_bind_netid(prev, entity)
+    R.log(("[rsmm.damage] rebound %s to controller 0x%x (%s) — chapter change, "
+           .. "not a new player"):format(prev.label, hero,
+              id and ("hero " .. id) or "local flag"))
+    return prev
 end
 
 -- Row for a hero CONTROLLER (source 1). The controller is what the SDK already
@@ -5199,8 +5549,21 @@ function F._dmg_row_for_hero(hero)
         _dmg.actors[hero] = existing
         return existing
     end
+    -- A CHAPTER TRANSITION rebuilds every hero controller, so an unknown
+    -- pointer usually means "same player, new object" — not a new player.
+    -- Adopt the existing row instead of forking a second one for them.
+    existing = F._dmg_rebind(hero, is_local, entity)
+    if existing then return existing end
     row = F._dmg_new_row(hero, is_local)
     F._dmg_alias(row, entity)
+    -- Sweep for the hero-id field as soon as a SECOND row exists, rather than
+    -- waiting for the next tick: the identity is needed by the time the next
+    -- chapter loads, and a row boarded in the meantime would be un-rebindable.
+    -- Self-gating (needs two rows and two identified lobby members) and
+    -- bounded, so this is a no-op on all but a couple of calls per session.
+    F._dmg_probe_hero_field()
+    row.hero_id = F._dmg_hero_id(hero)
+    if row.hero_id then _dmg.by_hero[row.hero_id] = row end
     F._dmg_bind_netid(row, entity)
     if is_local and _dmg.local_id == nil then
         _dmg.local_id = (row.netid ~= false and row.netid) or false
@@ -5317,9 +5680,19 @@ function F._dmg_record(attacker, target, amount, source)
         return
     end
     if not attacker then return end
+    F._dmg_probe_victim(target, amount)
     -- With the hero-stat hook armed, dealt damage is counted there for EVERY
     -- hero (allies included); crediting it here as well would double it.
     if _dmg.stats_hooked then return end
+    -- Same scenery filter as the bookkeeping path — this branch is the SOLO
+    -- fallback on a build where the stat hook is unresolved, and it would
+    -- otherwise keep counting fences on exactly the builds that need it most.
+    if _dmg.ignore_scenery and target and F._dmg_is_enemy(target) == false then
+        attacker.scenery = attacker.scenery + amount
+        attacker.scenery_hits = attacker.scenery_hits + 1
+        _dmg.scenery = _dmg.scenery + amount
+        return
+    end
     F._dmg_credit(attacker, amount, target, source)
 end
 
@@ -5332,6 +5705,18 @@ function F._dmg_observe_stats(hero, target, pd)
     if type(amount) ~= "number" or amount ~= amount or amount <= _dmg.min then return end
     local row = F._dmg_row_for_hero(hero)
     if not row then return end
+    -- What did they hit? The probe reports the first few distinct victims so
+    -- the classification can be confirmed from a log rather than trusted.
+    F._dmg_probe_victim(target, amount)
+    -- Fences, jars, vegetation and mission props inflate a damage board
+    -- without meaning anything. `unknown` (nil) counts: never drop a player's
+    -- damage on a failed read.
+    if _dmg.ignore_scenery and F._dmg_is_enemy(target) == false then
+        row.scenery = row.scenery + amount
+        row.scenery_hits = row.scenery_hits + 1
+        _dmg.scenery = _dmg.scenery + amount
+        return
+    end
     -- Which ability landed it, for the per-ability breakdown. A source object
     -- that does not read back cleanly just means "other" — never a reason to
     -- drop the damage.
@@ -5542,13 +5927,22 @@ R.on("gameplay:NETWORK_DAMAGE", function(ev)
 end)
 
 --- Start metering. Idempotent; safe to call from `ready` or from run:start.
----   opts.window  seconds behind the rolling `dps` figure (default 10)
----   opts.min     ignore hits at or below this value (default 0)
----   opts.names   { [slot] = "Alice", ... } fixed labels by join order
+---   opts.window          seconds behind the rolling `dps` figure (default 10)
+---   opts.min             ignore hits at or below this value (default 0)
+---   opts.names           { [slot] = "Alice", ... } fixed labels by join order
+---   opts.ignore_scenery  drop damage dealt to destructible props and mission
+---                        objects (fences, jars, dream-shard nodes), counting
+---                        only hits on gameplay enemies. Default FALSE, which
+---                        is what matches the game's own end-screen total.
+---                        Dropped damage is still totalled per row (`scenery`).
+---   opts.probe           log the class of the first few distinct victims, so
+---                        the enemy test can be confirmed from a log
 function R.damage.enable(opts)
     opts = opts or {}
     if type(opts.window) == "number" and opts.window > 0 then _dmg.window = opts.window end
     if type(opts.min) == "number" then _dmg.min = opts.min end
+    if opts.ignore_scenery ~= nil then _dmg.ignore_scenery = opts.ignore_scenery and true or false end
+    if opts.probe ~= nil then _dmg.probe = opts.probe and true or false end
     if type(opts.names) == "table" then
         for k, v in pairs(opts.names) do
             if type(k) == "number" and type(v) == "string" then _dmg.names[k] = v end
@@ -5560,8 +5954,15 @@ function R.damage.enable(opts)
     local stats = F._dmg_arm_stats()
     local taken = F._dmg_arm_taken()
     local resolver = F._dmg_arm_resolver()
-    R.log(("[rsmm.damage] metering on (window %ds, sources: %s)")
-          :format(_dmg.window, R.damage.mode()))
+    R.log(("[rsmm.damage] metering on (window %ds, sources: %s, victims: %s%s)")
+          :format(_dmg.window, R.damage.mode(),
+                  _dmg.ignore_scenery and "enemies only" or "everything the game counts",
+                  _dmg.probe and ", probe on" or ""))
+    if _dmg.ignore_scenery and not F._dmg_enemy_vft() then
+        R.log("[rsmm.damage] module base unavailable — the enemy test cannot "
+              .. "run, so nothing is filtered (damage is never dropped on a "
+              .. "failed read)")
+    end
     F._dmg_lobby_refresh()
     if not stats then
         R.log("[rsmm.damage] " .. DMG.STATS_SYMBOL .. " unresolved on this game "
@@ -5603,6 +6004,29 @@ function R.damage.tracks_allies() return _dmg.stats_hooked end
 --- True when the local attack resolver is hooked (damage taken, solo damage).
 function R.damage.resolver_armed() return _dmg.hooked end
 
+--- Is the scenery filter on? Pass a boolean to turn it on or off mid-run
+--- (rows keep both totals, so toggling never loses a number).
+function R.damage.ignore_scenery(on)
+    if on ~= nil then _dmg.ignore_scenery = on and true or false end
+    return _dmg.ignore_scenery
+end
+
+--- Damage the scenery filter dropped this run, across every player. 0 when
+--- the filter is off — nothing is classified unless it is asked for.
+function R.damage.scenery_total() return _dmg.scenery end
+
+--- Offset of the controller field that carries the player's hero id, once the
+--- sweep has confirmed ONE candidate — the identity that lets a row survive a
+--- chapter change. nil while unknown or ambiguous, in which case rows fall back
+--- to pointer identity (and the local player to the engine's is-local byte).
+--- Worth putting in a bug report: it is the field a game patch is most likely
+--- to move.
+function R.damage.hero_id_offset() return HERO_ID_PROBE.off end
+
+--- Classify a victim entity: true = gameplay enemy, false = scenery / prop /
+--- mission object, nil = could not tell (and therefore never filtered).
+function R.damage.is_enemy(entity) return F._dmg_is_enemy(entity) end
+
 --- Per-hit callback: cb{ label, slot, is_local, amount, target, source, kind }.
 --- `kind` is "dealt" (they damaged something that is not a hero) or "taken"
 --- (they were damaged) — the reliable "I just got hit" signal, since the local
@@ -5626,7 +6050,13 @@ end
 --- yourself for per-chapter or per-fight scores.
 function R.damage.reset()
     _dmg.actors, _dmg.order, _dmg.seen, _dmg.by_netid = {}, {}, {}, {}
+    _dmg.by_hero = {}
     _dmg.local_id, _dmg.started = nil, F._dmg_now()
+    -- Victim pointers do not survive a run boundary: the next run reuses the
+    -- addresses for different objects, so a kept cache would answer for the
+    -- wrong entity. (The per-entry vftable check would catch most of that;
+    -- dropping the table is cheaper and exact.)
+    _dmg.vclass, _dmg.vclass_n, _dmg.scenery = {}, 0, 0
 end
 
 --- Total damage dealt to non-hero targets by everyone on the board.
@@ -5656,8 +6086,13 @@ function R.damage.board()
         for k, v in pairs(row.by_type) do by_type[k] = v end
         out[#out + 1] = {
             label = row.label, slot = row.slot, is_local = row.is_local,
+            -- The player's hero, when the identity sweep has found it. A UI can
+            -- show the character, and it is what makes a row survive a chapter
+            -- change, so it is worth surfacing rather than keeping internal.
+            hero_id = row.hero_id, label_guess = row.label_guess,
             dealt = row.dealt, taken = row.taken, hits = row.hits,
             best = row.best, last = row.last, by_type = by_type,
+            scenery = row.scenery, scenery_hits = row.scenery_hits,
             dps = recent / _dmg.window,
             share = total > 0 and (row.dealt / total) or 0,
             idle = row.last > 0 and (now - row.last) or nil,
