@@ -539,6 +539,49 @@ R.damage.engine_totals()   -- the game's OWN totals for the local player
 R.damage.reset()           -- e.g. per run or per chapter
 ```
 
+#### Enemies only, or everything the game counts?
+
+Fences, jars, vegetation and mission props are damageable entities, so damage
+dealt to them reaches the same bookkeeping hook a boss does — and the engine's
+own end-screen total counts it. A player who clears a room of furniture can
+therefore out-rank one who fought. Opt out per meter:
+
+```lua
+R.damage.enable{ ignore_scenery = true }   -- rank enemy damage only
+R.damage.ignore_scenery(true)              -- or toggle it mid-run
+R.damage.scenery_total()                   -- what the filter dropped
+R.damage.is_enemy(entity)                  -- true / false / nil = unknown
+```
+
+The test walks the victim's **component map** — an `oCEntity` keeps its
+components in an F14 table (slots at `entity+0x5f0`, stride `0x10` =
+`{u32 class id, component*}`, bucket mask at `+0x600`) keyed by the engine's
+32-bit class id. A gameplay enemy carries
+`oCDtEntityCpntEnemyController` = `0x1561073c`; destructible props carry only
+Hittable + HitPoint. Class ids are mined by `tools/mine_class_ids.py` into
+`data/class_ids.json`, and a class id is a hash of the class NAME, so it
+survives a game patch that moves every address.
+
+It is a page-guarded READ — never an engine call — so a stale offset gives a
+wrong answer, never a crash, and an entity that cannot be read is `nil`
+(**unknown**), which still counts: a failed read must never delete a player's
+real damage. Filtered damage is not lost either — it stays on the row as
+`row.scenery` / `row.scenery_hits`.
+
+:::caution
+Do **not** look for components in the pointer array at `entity+0x190` /
+`+0x198`. That array belongs to an `oCEntitySpawnerGo` (it is what
+`Entity_GetComponentByTester` takes), not to an `oCEntity`. Reading it off an
+entity returns nothing for most victims and an unrelated vector for the rest —
+which is exactly how the first version of this filter classified every enemy in
+a live run as "unknown" and did nothing at all.
+:::
+
+The SDK default is **off**, because counting props is what agrees with the
+game's own total; filtering is a deliberate divergence a mod asks for. The
+bundled `damage-meter` mod turns it **on** — a prop takes a flat 1.0 per hit, so
+counting props distorts hit counts and DPS far more than damage.
+
 | Source | Sees | Identity |
 |---|---|---|
 | `HeroStats_OnDamageDealt` (hooked) | **every hero's** damage applied on this machine, allies included | hero controller |

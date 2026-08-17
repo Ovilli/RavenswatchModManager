@@ -72,6 +72,9 @@ constexpr std::uintptr_t StringVector_Serialize = 0x140684f30ull;
 constexpr const char* StringVector_Serialize_Pattern = "StringVector_Serialize";
 
 // --- entity ---
+constexpr std::uintptr_t EnemyController_Ctor = 0x140389d00ull;
+constexpr const char* EnemyController_Ctor_Pattern = "EnemyController_Ctor";
+constexpr std::uintptr_t EnemyController_vftable = 0x140f30b78ull;
 constexpr std::uintptr_t EntityPool_AllocNode = 0x140690e50ull;
 constexpr const char* EntityPool_AllocNode_Pattern = "EntityPool_AllocNode";
 constexpr std::uintptr_t EntitySpawner_InstantiateRecord = 0x140730f80ull;

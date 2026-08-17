@@ -9,13 +9,13 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **186** symbols across 18 categories.
+Total: **188** symbols across 18 categories.
 
 ## combat
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `HeroStats_OnDamageDealt` | `0x14039aef0` | ✅ ok |  | void(void* hero, void* stats, void* payload, int type) |
+| `HeroStats_OnDamageDealt` | `0x14039aef0` | ✅ ok |  | void(oCDtEntityCpntHeroController* hero, oCEntity* victim, oCDtProcessedDamage* payload… |
 | `HeroStats_OnDamageTaken` | `0x1403a0940` | ✅ ok |  | void(void* hero, void* payload) |
 | `ProjectileAttack_BeginAttack` | `0x14083e7d0` | ✅ ok | ✔ | void(void* projectile_attack_cpnt) |
 
@@ -64,6 +64,8 @@ Total: **186** symbols across 18 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
+| `EnemyController_Ctor` | `0x140389d00` | ✅ ok | ✔ | oCDtEntityCpntEnemyController*(oCDtEntityCpntEnemyController* self) |
+| `EnemyController_vftable` | `0x140f30b78` | 📍 va |  | Vftable of oCDtEntityCpntEnemyController. Derived from MSVC RTTI (type descriptor .?AVo… |
 | `EntityPool_AllocNode` | `0x140690e50` | ✅ ok |  | void*(void* pool) |
 | `EntitySpawner_InstantiateRecord` | `0x140730f80` | ✅ ok |  | void(oCEntityCpntEntitySpawner* self, void* spawnRecord) |
 | `EntitySpawner_SpawnOne` | `0x140730150` | ✅ ok |  | void(oCEntityCpntEntitySpawner* self) |

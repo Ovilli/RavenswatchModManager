@@ -16,6 +16,7 @@ return {
   ["Definition_PreUnload"] = { pattern = "Definition_PreUnload", offset = 0x0, sig = "vp" },
   ["DreamShardDef_PostLoad"] = { pattern = "DreamShardDef_PostLoad", offset = 0x0, sig = "up" },
   ["EnemyCampTierDef_PostLoad"] = { pattern = "EnemyCampTierDef_PostLoad", offset = 0x0, sig = "up" },
+  ["EnemyController_Ctor"] = { pattern = "EnemyController_Ctor", offset = 0x0, sig = "pp" },
   ["EntityValueEntry_Ctor"] = { pattern = "EntityValueEntry_Ctor", offset = 0x0, sig = "vpp" },
   ["EntityValueOverride_Alloc"] = { pattern = "EntityValueOverride_Alloc", offset = 0x0, sig = "ppuu" },
   ["EntityValueStore_ApplyModifierEvent"] = { pattern = "EntityValueStore_ApplyModifierEvent", offset = 0x0, sig = "vpppp" },

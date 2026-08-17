@@ -2050,6 +2050,359 @@ do
     R = require "rsmm"
 end
 
+-- N. R.damage: enemies vs scenery -----------------------------------------
+--
+-- Damage dealt to fences, jars and dream-shard nodes reaches the bookkeeping
+-- hook exactly like damage dealt to a boss, and the engine's own end-screen
+-- total counts it — so the meter counted it too, and a player who cleared a
+-- room of furniture out-ranked one who fought.
+--
+-- The victim is classified by its COMPONENT MAP: an oCEntity keeps components
+-- in an F14 table (slots @entity+0x5f0, stride 0x10 = {u32 class id, cpnt*},
+-- mask @+0x600) keyed by the engine's 32-bit CLASS ID, and a gameplay enemy
+-- carries oCDtEntityCpntEnemyController = 0x1561073c
+-- (tools/mine_class_ids.py). ⚠ The FIRST attempt read the pointer array at
+-- entity+0x190 instead — that array belongs to an oCEntitySpawnerGo, not to an
+-- oCEntity, so every enemy in the 2026-08-17 playtest classified as "unknown"
+-- and the filter was inert. A class id also survives a game patch, which a
+-- vftable VA does not.
+--
+-- Reads only, and an unreadable victim is UNKNOWN, which counts: a failed read
+-- must never delete a real player's damage.
+do
+    package.loaded["rsmm"] = nil
+    local Rs = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+
+    local ENEMY_ID, HERO_ID, OTHER_ID = 0x1561073c, 0x155aac59, 0x11110000
+    local ENEMY_VFT = I.module_base() + (0x140f30b78 - 0x140000000)
+    local OTHER_VFT = I.module_base() + 0x1000
+
+    local HERO, HERO_ENT = 0x60000000, 0x61000000
+    I.write_u64(HERO + 0x08, HERO_ENT)
+    I.write_u8(HERO + 0x1d88, 1)
+    I.write_u8(HERO_ENT + 0x1d88, 1)
+    I.write_u64(HERO_ENT + 8, 0x13000000)
+
+    -- Build a victim: `ids` is the class id in each map slot. The map is
+    -- power-of-two sized, so the fixture pads to the next power of two and
+    -- leaves the spare slots empty — exactly what a real table looks like.
+    local next_addr = 0x62000000
+    local function victim(ids, opts)
+        opts = opts or {}
+        local ent = next_addr; next_addr = next_addr + 0x100000
+        local slots = next_addr; next_addr = next_addr + 0x100000
+        local cap = 1
+        while cap < #ids do cap = cap * 2 end
+        I.write_u64(ent, OTHER_VFT)                    -- the entity's own vftable
+        I.write_u64(ent + 0x5f0, slots)
+        I.write_u64(ent + 0x600, cap - 1)              -- bucket mask
+        for i = 1, cap do
+            local slot = slots + (i - 1) * 0x10
+            local id = ids[i]
+            if id then
+                local comp = next_addr; next_addr = next_addr + 0x1000
+                I.write_u32(slot, id)
+                I.write_u64(slot + 8, comp)
+                I.write_u64(comp, id == ENEMY_ID and ENEMY_VFT or OTHER_VFT)
+                I.write_u64(comp + 8, opts.orphan and 0 or ent)   -- owner back-ptr
+            else
+                I.write_u32(slot, 0)
+                I.write_u64(slot + 8, 0)
+            end
+        end
+        return ent
+    end
+
+    local GNOLL = victim({ OTHER_ID, ENEMY_ID, OTHER_ID })
+    local FENCE = victim({ OTHER_ID, OTHER_ID })
+    -- A NULL map: slots and mask both zero. Two of twelve victims in session
+    -- ec1d looked like this, all of them 1.0-damage props.
+    local BLANK = 0x63000000
+    -- A BROKEN map: a non-null pointer that is not readable. This is the only
+    -- shape that may answer "unknown".
+    local TORN = 0x63100000
+    I.write_u64(TORN + 0x5f0, 0x5)
+    I.write_u64(TORN + 0x600, 3)
+
+    check(Rs.damage.is_enemy(GNOLL) == true,
+          "an entity carrying the EnemyController component is an enemy")
+    check(Rs.damage.is_enemy(FENCE) == false,
+          "a destructible prop carries no controller and is scenery")
+    check(Rs.damage.is_enemy(BLANK) == false,
+          "an entity with NO component map owns no controller either — a null "
+          .. "map is an answer, not a failed read")
+    check(Rs.damage.is_enemy(TORN) == nil,
+          "a component map we cannot read is UNKNOWN, never asserted scenery")
+    check(Rs.damage.is_enemy(0x1) == nil,
+          "an implausible pointer is refused before any read")
+
+    -- The match must not depend on the component's owner back-pointer, nor on
+    -- its vftable: both are probe DIAGNOSTICS, not requirements. The class id
+    -- is the test, because it is the only one of the three that survives a
+    -- game patch.
+    check(Rs.damage.is_enemy(victim({ ENEMY_ID }, { orphan = true })) == true,
+          "the enemy test matches on the class id, not on the back-pointer")
+    local ODD = victim({ ENEMY_ID })
+    I.write_u64(I.read_u64(I.read_u64(ODD + 0x5f0) + 8), OTHER_VFT)
+    check(Rs.damage.is_enemy(ODD) == true,
+          "nor on the component's vftable — a subclass would carry its own")
+
+    -- An empty slot must not be mistaken for a component: id 0 with a null
+    -- pointer is what most of a real table holds.
+    check(Rs.damage.is_enemy(victim({ nil, nil, nil, nil })) == false,
+          "empty map slots classify as scenery, not as an unreadable entity")
+
+    I.mem_find = function() return {} end
+    Rs.damage.enable{ window = 10, probe = true }
+    local stats = hooks[I.resolve("HeroStats_OnDamageDealt")]
+    local PD2, PDVAL2, PDSRC2 = 0x64000000, 0x64100000, 0x64200000
+    I.write_u64(PD2 + 0x10, PDVAL2)
+    I.write_u64(PD2 + 0xa0, PDSRC2)
+    local function hit(target, amount)
+        I.write_f32(PDVAL2 + 8, amount)
+        I.write_u16(PDSRC2 + 0xc8, 0)
+        stats.cb(HERO, target, PD2, 0, function() end)
+    end
+
+    -- Default is OFF: the meter agrees with the game, whose own end-screen
+    -- total counts prop damage.
+    check(Rs.damage.ignore_scenery() == false,
+          "scenery filtering is opt-in — the default matches the game's total")
+    hit(GNOLL, 10.0); hit(FENCE, 90.0)
+    check(Rs.damage.total() == 100.0, "with the filter off, prop damage counts")
+
+    Rs.damage.reset()
+    check(Rs.damage.ignore_scenery(true) == true, "the filter can be toggled at runtime")
+    hit(GNOLL, 10.0); hit(FENCE, 90.0); hit(FENCE, 5.0)
+    check(Rs.damage.total() == 10.0,
+          "with the filter on, only damage dealt to enemies is ranked")
+    local row = Rs.damage.board()[1]
+    check(row.scenery == 95.0 and row.scenery_hits == 2,
+          "the dropped damage is still totalled per row, never silently lost")
+    check(Rs.damage.scenery_total() == 95.0, "and session-wide")
+    check(row.hits == 1, "a filtered hit does not inflate the hit count")
+
+    hit(TORN, 7.0)
+    check(Rs.damage.total() == 17.0,
+          "an UNREADABLE victim is still counted — a failed read must never "
+          .. "delete a player's damage")
+
+    Rs.damage.reset()
+    check(Rs.damage.scenery_total() == 0, "reset clears the scenery total too")
+
+    -- The probe is a diagnostic, and it runs on the MAIN THREAD inside the
+    -- damage detour: it must report each victim once and then stop for good.
+    local probes = 0
+    for _, line in ipairs(logged) do
+        if line:find("victim probe #", 1, true) and not line:find("components:", 1, true) then
+            probes = probes + 1
+        end
+    end
+    check(probes == 3, "the probe reports each distinct victim exactly once")
+    hit(GNOLL, 1.0)
+    local probes2 = 0
+    for _, line in ipairs(logged) do
+        if line:find("victim probe #", 1, true) and not line:find("components:", 1, true) then
+            probes2 = probes2 + 1
+        end
+    end
+    check(probes2 == probes, "and never reports the same victim twice")
+
+    local enemy_line
+    for _, line in ipairs(logged) do
+        if line:find("victim probe", 1, true) and line:find("enemy=true", 1, true) then
+            enemy_line = line
+        end
+    end
+    check(enemy_line and enemy_line:find("slot=1", 1, true),
+          "the probe reports which component slot matched")
+    check(enemy_line and enemy_line:find("owner_ok=true", 1, true),
+          "and whether the matched component's back-pointer agrees")
+
+    Rs.damage.ignore_scenery(false)
+    Rs.damage.disable()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- N. R.damage: a chapter change must not fork the board -------------------
+--
+-- From a real run (2026-08-17 evening): a four-player lobby produced SEVEN
+-- rows. "Juice" appeared twice, both flagged as the local player; labels ran to
+-- "Player 7"; and the abandoned rows sat at 0.0 dps for the rest of the run
+-- while their totals still counted toward every `share`. Cause: rows were keyed
+-- by the hero CONTROLLER pointer, and crossing into the next chapter rebuilds
+-- every controller, so each player forked a second row halfway through.
+--
+-- A player is re-adopted by hero id when the sweep has confirmed where that
+-- lives, and by the engine's is-local byte otherwise — there is only ever one
+-- local player, so a second local controller is the same person.
+do
+    package.loaded["rsmm"] = nil
+    local Rc = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+
+    -- Chapter 1 controllers, then chapter 2's replacements for the same two
+    -- players. The ally's hero id is planted at the offset the sweep finds.
+    local HERO_OFF = 0x1ae0
+    local ME1, ME2 = 0x70000000, 0x70100000
+    local ALLY1, ALLY2 = 0x70200000, 0x70300000
+    local function controller(addr, is_local, hero_id, entity)
+        I.write_u64(addr + 0x08, entity)
+        I.write_u8(addr + 0x1d88, is_local and 1 or 0)
+        I.write_u32(addr + HERO_OFF, hero_id)
+        I.write_u64(entity + 8, 0x13000000)
+        I.write_u8(entity + 0x1d88, is_local and 1 or 0)
+    end
+    controller(ME1,   true,  4, 0x71000000)
+    controller(ALLY1, false, 7, 0x71100000)
+    controller(ME2,   true,  4, 0x71200000)   -- chapter 2: same players,
+    controller(ALLY2, false, 7, 0x71300000)   -- brand new controllers
+
+    I.mem_find = function() return {} end
+    Rc.damage.enable{ window = 10 }
+    local stats = hooks[I.resolve("HeroStats_OnDamageDealt")]
+    local PD3, PDV3, PDS3 = 0x72000000, 0x72100000, 0x72200000
+    I.write_u64(PD3 + 0x10, PDV3)
+    I.write_u64(PD3 + 0xa0, PDS3)
+    local ENEMY = 0x73000000
+    I.write_u64(ENEMY + 0x5f0, 0x73100000)
+    I.write_u64(ENEMY + 0x600, 0)
+    I.write_u32(0x73100000, 0x1561073c)
+    I.write_u64(0x73100000 + 8, 0x73200000)
+    local function deal(who, amount)
+        I.write_f32(PDV3 + 8, amount)
+        I.write_u16(PDS3 + 0xc8, 0)
+        stats.cb(who, ENEMY, PD3, 0, function() end)
+    end
+
+    -- The hero-id sweep checks candidate offsets against the LOBBY roster, so
+    -- seed it the way the game does — through the attribute parser.
+    Rc.lobby._note_blob('{"PlayerName":"Juice","RequestedHero":4}')
+    Rc.lobby._note_blob('{"PlayerName":"Ada","RequestedHero":7}')
+
+    -- The ALLY deals damage first, deliberately: the sweep cannot run until a
+    -- second row exists, so whoever boards first has no hero id at creation and
+    -- depends on the backfill. An ally boarding first is the ordinary case (the
+    -- host's enemies are hit by whoever engages first), and it is the row that
+    -- showed up as a "phantom player" after the chapter change.
+    deal(ALLY1, 50.0)
+    deal(ME1, 100.0)
+    check(#Rc.damage.board() == 2, "chapter 1 boards one row per player")
+    local swept
+    for _, line in ipairs(logged) do
+        if line:find("hero-id field probe", 1, true) then swept = line end
+    end
+    check(swept and swept:find("ADOPTED", 1, true),
+          "the hero-id sweep adopts the one offset that reads a DIFFERENT known "
+          .. "hero id for every row")
+    check(Rc.damage.hero_id_offset() == HERO_OFF,
+          "and the adopted offset is the field the ids were planted at")
+
+    -- Chapter 2: the same two players, through new controllers.
+    deal(ALLY2, 25.0)
+    deal(ME2, 25.0)
+
+    local board = Rc.damage.board()
+    check(#board == 2,
+          "a chapter change re-adopts both players instead of forking the board")
+    local locals = 0
+    for _, row in ipairs(board) do if row.is_local then locals = locals + 1 end end
+    check(locals == 1,
+          "and the local player is never listed twice — there is only one of you")
+    local me
+    for _, row in ipairs(board) do if row.is_local then me = row end end
+    check(me and me.dealt == 125.0,
+          "the re-adopted row keeps its chapter-1 total and keeps counting")
+    check(Rc.damage.total() == 200.0, "no damage is lost or double-counted")
+
+    local rebound = false
+    for _, line in ipairs(logged) do
+        if line:find("rebound", 1, true) then rebound = true end
+    end
+    check(rebound, "the rebind is logged — a silent identity change is unreadable")
+
+    -- The row boarded FIRST predates the sweep (which needs two rows before it
+    -- can run), so it carries no hero id at the moment it is created. Unless it
+    -- is backfilled it forks at the next chapter anyway — and since the sweep
+    -- fires on the SECOND player's first hit, the un-backfilled row is usually
+    -- an ally, which is precisely the "phantom player" left on the board.
+    local ally
+    for _, row in ipairs(Rc.damage.board()) do
+        if not row.is_local then ally = row end
+    end
+    check(ally and ally.hero_id == 7,
+          "a row boarded before the sweep is backfilled with its hero id")
+    check(ally and ally.dealt == 75.0,
+          "so the ally is re-adopted across the chapter change too, not forked")
+
+    Rc.damage.disable()
+    Rc.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- N. R.damage: an AMBIGUOUS hero-id sweep must not be adopted --------------
+--
+-- The sweep runs on a two-row sample, and two rows are enough for an unrelated
+-- field to hold two distinct known hero ids by chance. Adopting the wrong
+-- offset is worse than adopting none: two different players would then read the
+-- same identity and be MERGED into one row — the mirror image of the bug the
+-- identity exists to fix, and much harder to notice on a live board.
+do
+    package.loaded["rsmm"] = nil
+    local Ra = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+
+    local ME, ALLY = 0x78000000, 0x78100000
+    for addr, id in pairs({ [ME] = 4, [ALLY] = 7 }) do
+        local ent = addr + 0x8000
+        I.write_u64(addr + 0x08, ent)
+        I.write_u8(addr + 0x1d88, addr == ME and 1 or 0)
+        I.write_u64(ent + 8, 0x13000000)
+        -- TWO fields that both read as a distinct known hero id.
+        I.write_u32(addr + 0x1ae0, id)
+        I.write_u32(addr + 0x0800, id)
+    end
+
+    I.mem_find = function() return {} end
+    Ra.lobby._note_blob('{"PlayerName":"Juice","RequestedHero":4}')
+    Ra.lobby._note_blob('{"PlayerName":"Ada","RequestedHero":7}')
+    Ra.damage.enable{ window = 10 }
+    local stats = hooks[I.resolve("HeroStats_OnDamageDealt")]
+    local PD4, PDV4, PDS4 = 0x79000000, 0x79100000, 0x79200000
+    I.write_u64(PD4 + 0x10, PDV4)
+    I.write_u64(PD4 + 0xa0, PDS4)
+    I.write_f32(PDV4 + 8, 10.0)
+    stats.cb(ME, 0x7a000000, PD4, 0, function() end)
+    stats.cb(ALLY, 0x7a000000, PD4, 0, function() end)
+
+    local sweep
+    for _, line in ipairs(logged) do
+        if line:find("hero-id field probe", 1, true) then sweep = line end
+    end
+    check(sweep and sweep:find("ambiguous", 1, true),
+          "two candidate offsets are reported as ambiguous, not adopted")
+    check(Ra.damage.hero_id_offset() == nil,
+          "and NO identity is adopted from an ambiguous sweep — merging two "
+          .. "players onto one row is worse than forking one player onto two")
+
+    Ra.damage.disable()
+    Ra.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
 -- N. co-op: an ally must not steal the local hero capture ----------------
 --
 -- From a real 4-player session (2026-08-15): allies fire the very same anchor

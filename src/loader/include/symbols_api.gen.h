@@ -79,6 +79,13 @@ inline EnemyCampTierDef_PostLoad_fn EnemyCampTierDef_PostLoad() {
     return reinterpret_cast<EnemyCampTierDef_PostLoad_fn>(rsmm::fn_resolve(Sym::EnemyCampTierDef_PostLoad_Pattern));
 }
 
+// EnemyController_Ctor  (EnemyController_Ctor)
+//   oCDtEntityCpntEnemyController*(oCDtEntityCpntEnemyController* self)
+using EnemyController_Ctor_fn = void*(*)(void*);
+inline EnemyController_Ctor_fn EnemyController_Ctor() {
+    return reinterpret_cast<EnemyController_Ctor_fn>(rsmm::fn_resolve(Sym::EnemyController_Ctor_Pattern));
+}
+
 // EntityValueEntry_Ctor  (EntityValueEntry_Ctor)
 //   void(void*, void*)
 using EntityValueEntry_Ctor_fn = void(*)(void*, void*);

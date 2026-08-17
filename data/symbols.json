@@ -442,6 +442,35 @@
    }
   },
   {
+   "name": "EnemyController_Ctor",
+   "kind": "function",
+   "category": "entity",
+   "raw": "FUN_140389d00",
+   "status": "ok",
+   "signature": "oCDtEntityCpntEnemyController*(oCDtEntityCpntEnemyController* self)",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "Constructor of oCDtEntityCpntEnemyController. Kept as the RECOVERY ANCHOR for EnemyController_vftable, whose VA is build-specific: the ctor stores the class vftable with `lea rax,[rip+disp]` at ctor+0x81 and again at ctor+0x141 (the sibling destructor FUN_140389e30 stores it at +0x11), so after a game patch the vftable is re-derivable from this pattern instead of being re-mined by hand. Same recovery shape that fixed XpComponent_vftable. Pattern is multi-match (index 19/31, generic MSVC ctor prologue) -- fn_verify-guarded; re-check with scripts/verify_symbol_resolve.py after any remap.",
+   "refs": [
+    "data/symbols.json"
+   ]
+  },
+  {
+   "name": "EnemyController_vftable",
+   "kind": "data",
+   "category": "entity",
+   "va": "0x140f30b78",
+   "status": "va",
+   "note": "Vftable of oCDtEntityCpntEnemyController. Derived from MSVC RTTI (type descriptor .?AVoCDtEntityCpntEnemyController@@ -> complete object locator -> vftable) and cross-checked by the same derivation reproducing HeroController's vftable at 0x140f30ca0, which HeroController_Ctor (0x14038ec30) provably stores at +0x1c6. ⚠ NOT the right key for 'is this entity an enemy' -- use the CLASS ID 0x1561073c (tools/mine_class_ids.py, data/class_ids.json) instead. Components on an oCEntity live in an F14 map (control bytes @entity+0x5e8, slots @+0x5f0 with stride 0x10 = {u32 class id @+0, cpnt* @+8}, bucket mask @+0x600) keyed by that id -- the exact structure Entity_GetNetComponent probes for oCEntityCpntNetwork (0x154fce5c). A class id is a hash of the class NAME, so it survives a patch that moves every address, while this VA does not. The vftable remains useful as corroboration on a component already found by id. CORRECTED 2026-08-17 after a playtest (session c536) in which the vftable walk classified 12/12 victims as unknown-or-scenery: it was scanning entity+0x190/+0x198, which is the component array of an oCEntitySpawnerGo (see Entity_GetComponentByTester), NOT of an oCEntity. Re-derive after a patch from EnemyController_Ctor+0x81.",
+   "refs": [
+    "data/symbols.json"
+   ]
+  },
+  {
    "name": "EnemyDef_PostLoad",
    "kind": "function",
    "category": "enemies",
@@ -938,7 +967,7 @@
      "void*"
     ]
    },
-   "note": "Linear-scan getComponent: walks the entity component array (entity+0x190, count entity+0x198) and returns the first component whose class IsKindOf the given type-tester vtable. entity = *(heroController+0x2f8). Simplest way to fetch a sibling component (e.g. the XpComponent via XpComponent_TypeTester). Decompile-verified live 2026-07-13. [SAME FUNCTION as Entity_FindComponentByType — see that symbol's note.]",
+   "note": "Linear-scan getComponent: walks the entity component array (entity+0x190, count entity+0x198) and returns the first component whose class IsKindOf the given type-tester vtable. entity = *(heroController+0x2f8). Simplest way to fetch a sibling component (e.g. the XpComponent via XpComponent_TypeTester). Decompile-verified live 2026-07-13. [SAME FUNCTION as Entity_FindComponentByType — see that symbol's note.] ⚠ param_1 is an oCEntitySpawnerGo (see Entity_FindComponentByType's signature), NOT an oCEntity: the +0x190 array does not exist on a plain entity, and reading it there yields either garbage or an unrelated vector that happens to look plausible (it cost a playtest on 2026-08-17). An oCEntity's components are in the F14 map at +0x5e8/+0x5f0/+0x600 keyed by 32-bit CLASS ID -- see Entity_GetNetComponent and data/class_ids.json.",
    "refs": [
     "docs/_re/kinds/stats.md"
    ]
@@ -976,7 +1005,7 @@
      "void*"
     ]
    },
-   "note": "SwissTable/F14 component-map lookup on an entity for the fixed type-id 0x154fce5c (the net/replication component). Probes the entity's component map (control bytes @entity+0x5e8, slots @entity+0x5f0, bucket mask @entity+0x600) and returns the component pointer, or 0 if the entity has none (e.g. single-player / non-replicated). The returned component's byte @+0x130 is the local/remote AUTHORITY flag: 0 = locally controlled (this client owns the entity and emits its NETWORK_DAMAGE), nonzero = remotely controlled (apply received state, don't emit). Both hit paths (NamedEvent_EmitNetworkDamageFromHit, the attack resolver FUN_1403dc780) gate network emit on this flag. NOTE: it dereferences the component map unconditionally, so only call on a known-valid entity. Pattern is multi-match (index 3/6, 128-byte sig) — fn_verify-guarded. Relevant to local-vs-remote hero disambiguation in co-op, though hero-capture already pins the local player via the HUD-mirror requirement (only the local player has one). [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
+   "note": "SwissTable/F14 component-map lookup on an entity for the fixed type-id 0x154fce5c (the net/replication component). Probes the entity's component map (control bytes @entity+0x5e8, slots @entity+0x5f0, bucket mask @entity+0x600) and returns the component pointer, or 0 if the entity has none (e.g. single-player / non-replicated). The returned component's byte @+0x130 is the local/remote AUTHORITY flag: 0 = locally controlled (this client owns the entity and emits its NETWORK_DAMAGE), nonzero = remotely controlled (apply received state, don't emit). Both hit paths (NamedEvent_EmitNetworkDamageFromHit, the attack resolver FUN_1403dc780) gate network emit on this flag. NOTE: it dereferences the component map unconditionally, so only call on a known-valid entity. Pattern is multi-match (index 3/6, 128-byte sig) — fn_verify-guarded. Relevant to local-vs-remote hero disambiguation in co-op, though hero-capture already pins the local player via the HUD-mirror requirement (only the local player has one). [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.] SLOT LAYOUT (recovered 2026-08-17 from the decompile): the slot array at entity+0x5f0 has stride 0x10 -- {u32 class id @+0, component* @+8} -- and the value at +0x600 is the bucket MASK (capacity-1). That makes the map walkable LINEARLY with page-guarded reads and no hash function, which is how R.damage classifies a damage victim (enemy = carries class id 0x1561073c). The id space is mined by tools/mine_class_ids.py; 0x154fce5c resolving to oCEntityCpntNetwork is that miner's acceptance test.",
    "refs": [
     "src/loader/src/hook_events.cpp"
    ]
@@ -1493,8 +1522,8 @@
    "category": "combat",
    "raw": "FUN_14039aef0",
    "status": "ok",
-   "signature": "void(void* hero, void* stats, void* payload, int type)",
-   "note": "Per-hero damage-dealt accounting, and the ONLY source that sees allies. It fires on every hero in the session, local or remote - the engine merely skips the TOTALLING branch for a non-local hero, so the callback itself is a faithful per-player damage feed and is what makes a co-op damage meter possible without netcode RE. param_1 is the hero CONTROLLER (entity @+0x8, is-local byte @+0x1d88, HUD mirror @+0x1d80, stats block @+0x1db0); param_3 is the damage payload (value object @+0x10 -> amount f32 @+0x08, source @+0xa0 -> type u32 @+0xc8). Hook shape 'vpppi'. Backs R.damage.",
+   "signature": "void(oCDtEntityCpntHeroController* hero, oCEntity* victim, oCDtProcessedDamage* payload, char analytics)",
+   "note": "Per-hero damage-dealt accounting, and the ONLY source that sees allies. It fires on every hero in the session, local or remote - the engine merely skips the TOTALLING branch for a non-local hero, so the callback itself is a faithful per-player damage feed and is what makes a co-op damage meter possible without netcode RE. param_1 is the hero CONTROLLER (entity @+0x8, is-local byte @+0x1d88, HUD mirror @+0x1d80, stats block @+0x1db0); param_3 is the damage payload (value object @+0x10 -> amount f32 @+0x08, source @+0xa0 -> type u32 @+0xc8). Hook shape 'vpppi'. Backs R.damage. CORRECTED 2026-08-17: param_2 is the VICTIM ENTITY, not a stats block (the earlier note said stats). Proof: the sole caller FUN_1403c7560 passes its own param_2 to Entity_GetNetComponent (FUN_140312db0) and touches it at +0x28 / +0x4d8, i.e. an oCEntity; inside this function param_2+0x28 is the entity's definition object, whose +0x70 resource path is stringified into the analytics record (falling back to \"Unknown\") and whose flag lists at +0x2c0 / +0x318 are appended to it. That makes the victim available to a hook, which is what lets a damage meter tell an enemy from a destructible prop -- see EnemyController_vftable.",
    "refs": [
     "docs/_re"
    ]
