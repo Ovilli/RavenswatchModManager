@@ -23,18 +23,14 @@ import {
   SectionHeader,
   StatPill,
 } from '../components/chrome';
+import { ConfigButton } from '../components/config-button';
 import { ModConfigPanel } from '../components/mod-config-panel';
 import { OverlayButton } from '../components/overlay-button';
+import { useModToggle } from '../components/use-mod-toggle';
 import { SetupBanner } from '../components/setup-banner';
-import { useDialog } from '../components/toast';
 import { useToast } from '../components/toast';
 import { UpdatesPanel } from '../components/updates-panel';
-import {
-  buildEnablePlan,
-  compareVersions,
-  findBlockingDependents,
-  getMissingDependencyCount,
-} from '../lib/library-deps';
+import { compareVersions, getMissingDependencyCount } from '../lib/library-deps';
 import type { ModCategory } from '../lib/mod-types';
 import { listLocalMods, uninstallLocalMod } from '../lib/rsmm';
 import {
@@ -67,10 +63,8 @@ const CATEGORY_LABEL: Record<ModCategory, string> = {
 
 function LibraryPage() {
   const navigate = useNavigate();
-  const dialog = useDialog();
   const toast = useToast();
   const profile = useApp(activeProfile);
-  const toggleMod = useApp((s) => s.toggleMod);
   const reorderMod = useApp((s) => s.reorderMod);
   const installed = useApp((s) => s.installed);
   const syncLocalMods = useApp((s) => s.syncLocalMods);
@@ -248,48 +242,14 @@ function LibraryPage() {
     setSelected(new Set(filtered.map((row) => row.id)));
   }, [filtered]);
 
-  const requestEnableMods = useCallback(
-    async (ids: string[]) => {
-      const plan = buildEnablePlan(ids);
-      if (plan.missing.length > 0) {
-        const ok = await dialog.confirm({
-          title: 'Missing dependencies',
-          body: `These dependencies are not installed: ${plan.missing.join(', ')}. Enable the selected mods anyway?`,
-          confirmLabel: 'Enable anyway',
-          destructive: true,
-        });
-        if (!ok) return;
-      }
-      for (const id of plan.order) {
-        if (!isEnabledIn(profile, id)) toggleMod(id);
-      }
-      clearSelection();
-    },
-    [clearSelection, dialog, profile, toggleMod],
-  );
+  // Shared with the mod detail page so both screens honour the same
+  // dependency prompts.
+  const {
+    enableMods: requestEnableMods,
+    disableMods: requestDisableMods,
+    toggle: handleToggle,
+  } = useModToggle(clearSelection);
 
-  const requestDisableMods = useCallback(
-    async (ids: string[]) => {
-      const blocked = findBlockingDependents(ids, profile);
-      if (blocked.length > 0) {
-        const body = blocked
-          .map(([target, dependents]) => `${target}: ${dependents.join(', ')}`)
-          .join('\n');
-        const ok = await dialog.confirm({
-          title: 'Broken dependency chain',
-          body: `Disabling these mods will leave others missing dependencies:\n${body}\nContinue?`,
-          confirmLabel: 'Disable anyway',
-          destructive: true,
-        });
-        if (!ok) return;
-      }
-      for (const id of ids) {
-        if (isEnabledIn(profile, id)) toggleMod(id);
-      }
-      clearSelection();
-    },
-    [clearSelection, dialog, profile, toggleMod],
-  );
   const bulkEnable = useCallback(() => {
     void requestEnableMods([...selected]);
   }, [requestEnableMods, selected]);
@@ -345,14 +305,6 @@ function LibraryPage() {
       }
     })();
   }, [clearSelection, refreshLocalMods, removeLocalMod, selected, toast, uninstallModStore]);
-
-  const handleToggle = useCallback(
-    (id: string) => {
-      if (isEnabledIn(profile, id)) void requestDisableMods([id]);
-      else void requestEnableMods([id]);
-    },
-    [profile, requestDisableMods, requestEnableMods],
-  );
 
   if (installed.length === 0) {
     return (
@@ -672,9 +624,17 @@ function LibraryPage() {
             />
           ) : (
             <div className="space-y-4">
+              {/* Only configurable mods appear here. Rendering a full "declares
+                  no editable config fields" panel for every other mod buried
+                  the two that had settings under eighteen that did not. */}
+              {items.filter(({ id }) => getMod(id)?.hasConfig).length === 0 ? (
+                <p className="font-mono text-ash">
+                  No mod in this section declares config fields.
+                </p>
+              ) : null}
               {items.map(({ id }) => {
                 const mod = getMod(id);
-                if (!mod) return null;
+                if (!mod?.hasConfig) return null;
                 return (
                   <ModConfigPanel
                     key={id}
@@ -833,6 +793,7 @@ function CardGrid({
                   [overlay] block, and hanging the alignment off it would
                   left-align uninstall on every other card. */}
               <div className="ml-auto flex items-center gap-2">
+                <ConfigButton slug={mod.slug} hasConfig={mod.hasConfig} />
                 <OverlayButton modId={id} />
                 <Button type="button" onClick={() => onUninstall(id)} variant="danger" size="sm">
                   uninstall
@@ -950,6 +911,7 @@ function ListView({
               />
             </div>
             <StatPill value={`#${orderIdx + 1}`} label="load" className="tracking-normal" />
+            <ConfigButton slug={mod.slug} hasConfig={mod.hasConfig} />
             <OverlayButton modId={id} />
             <Button type="button" onClick={() => onUninstall(id)} variant="danger" size="sm">
               uninstall

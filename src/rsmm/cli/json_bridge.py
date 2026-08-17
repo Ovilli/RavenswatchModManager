@@ -142,6 +142,14 @@ def cmd_list() -> int:
             for f in assets_dir.rglob("*"):
                 if f.is_file():
                     writes.append(f.relative_to(assets_dir).as_posix())
+        # Whether the mod is configurable, answered here rather than by a
+        # `config get` per mod: the desktop library needs it for EVERY row to
+        # decide whether to offer a Configure control, and one CLI spawn per
+        # installed mod to learn a boolean is not worth it. Existence of the
+        # file, not its contents — parsing can fail, and a broken schema must
+        # still surface its error in the config panel rather than hide the
+        # control that opens it.
+        has_config = (entry / "config_schema.toml").is_file()
         # `id` and `slug` are both the folder name. The folder name is
         # the canonical identifier post-install — manifest.id is only
         # the upload-time author-supplied id, which may differ from the
@@ -161,6 +169,7 @@ def cmd_list() -> int:
             "path": str(entry),
             "dependencies": {str(k): str(v) for k, v in deps.items()},
             "writes": writes,
+            "hasConfig": has_config,
         })
     return _emit(items)
 

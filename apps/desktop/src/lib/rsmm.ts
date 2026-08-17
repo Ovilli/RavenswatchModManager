@@ -407,6 +407,12 @@ export interface LocalMod {
   path: string;
   dependencies: Record<string, string>;
   writes: string[];
+  /**
+   * The mod ships a `config_schema.toml`. Carried on the list payload so the
+   * library can offer a Configure control per row without one `config get`
+   * spawn per installed mod. Optional: an older sidecar omits it.
+   */
+  hasConfig?: boolean;
 }
 
 export interface ModConfigField {

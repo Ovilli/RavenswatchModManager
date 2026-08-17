@@ -51,4 +51,6 @@ export interface Mod {
   markdown: string;
   /** Content rating — true if the mod contains NSFW material. */
   nsfw?: boolean;
+  /** The mod declares a config schema, so it has settings worth opening. */
+  hasConfig?: boolean;
 }

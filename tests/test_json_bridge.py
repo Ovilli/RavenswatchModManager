@@ -133,6 +133,26 @@ def test_cmd_list_shape(tmp_path, monkeypatch, capsys):
     assert it["slug"] == "CoolMod" and it["version"] == "1.2.3"
     assert it["enabled"] is True
     assert it["writes"] == ["foo/bar.bin"]
+    assert it["hasConfig"] is False
+
+
+def test_cmd_list_reports_which_mods_are_configurable(tmp_path, monkeypatch, capsys):
+    """The desktop library offers a Configure control per row from this flag.
+
+    It has to arrive with the list: asking `config get` once per installed mod
+    just to learn a boolean is one CLI spawn per mod.
+    """
+    mods = tmp_path / "mods"
+    _write_mod(mods, "Plain", '[mod]\nname = "Plain"\n')
+    _write_mod(mods, "Tunable", '[mod]\nname = "Tunable"\n')
+    (mods / "Tunable" / "config_schema.toml").write_text(
+        '[fields.speed]\ntype = "float"\ndefault = 1.0\n', encoding="utf-8"
+    )
+    monkeypatch.setattr(json_bridge, "MODS_DIR", mods)
+
+    assert json_bridge.cmd_list() == 0
+    flags = {i["id"]: i["hasConfig"] for i in _emit_json(capsys)}
+    assert flags == {"Plain": False, "Tunable": True}
 
 
 def test_cmd_list_empty_when_no_mods_dir(tmp_path, monkeypatch, capsys):

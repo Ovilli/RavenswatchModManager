@@ -39,7 +39,11 @@ If auto-detection fails, you can set the path manually in Settings.
 
 In the **Installed** tab:
 
-- **Enable/Disable** — toggle a mod on or off without uninstalling it
+- **Enable/Disable** — toggle a mod on or off without uninstalling it (the same
+  switch is on the mod's own page, with the same dependency prompts)
+- **Configure** — appears only on mods that declare config fields; opens that
+  mod's settings on its page. The library's config view lists every
+  configurable mod at once
 - **Uninstall** — remove a mod completely
 - **View details** — click a mod to see its description, version history, and files
 

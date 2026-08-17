@@ -1,7 +1,7 @@
 import { ApiError } from '@rsmm/api-client';
 import { cn } from '@rsmm/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
+import { Link, createFileRoute, useNavigate, useRouterState } from '@tanstack/react-router';
 import {
   ArrowLeft,
   ChevronLeft,
@@ -20,14 +20,18 @@ import {
   Cover,
   CoverPlaceholder,
   Fleuron,
+  InkSwitch,
   Markdown,
   MonoTag,
   Panel,
   SectionHeader,
   StatPill,
 } from '../components/chrome';
+import { CONFIG_ANCHOR } from '../components/config-button';
+import { ModConfigPanel } from '../components/mod-config-panel';
 import { OverlayButton } from '../components/overlay-button';
 import { useToast } from '../components/toast';
+import { useModToggle } from '../components/use-mod-toggle';
 import { api, describeApiError, logApiError } from '../lib/api';
 import { getApiUrl } from '../lib/api-url';
 import { inTauri } from '../lib/platform';
@@ -61,6 +65,23 @@ function ModDetailPage() {
   const showNsfw = useApp((s) => s.settings.showNsfw);
   const [versionBusy, setVersionBusy] = useState<string | null>(null);
   const [versionError, setVersionError] = useState<string | null>(null);
+  const { toggle } = useModToggle();
+
+  // The Library's Configure button links here with #mod-config. The router
+  // does not scroll to a hash on its own, and the panel only exists once the
+  // mod is known, so do it here rather than trusting native anchor handling.
+  // The router reports the hash without its '#', but strip one anyway so a
+  // hand-typed link behaves the same.
+  const hash = useRouterState({ select: (s) => s.location.hash.replace(/^#/, '') });
+  const configReady = Boolean(liveBySlug?.hasConfig);
+  useEffect(() => {
+    if (hash !== CONFIG_ANCHOR || !configReady) return;
+    // A frame late on purpose: the panel mounts in this same commit.
+    const raf = requestAnimationFrame(() => {
+      document.getElementById(CONFIG_ANCHOR)?.scrollIntoView({ block: 'start' });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [hash, configReady]);
 
   // A failed index fetch is not a 404 — without this the page falls
   // through to "No mod matches", hiding network/CSP problems entirely.
@@ -237,6 +258,14 @@ function ModDetailPage() {
         right={
           installedHere && liveBySlug ? (
             <div className="flex items-center gap-2">
+              {/* The page used to show only the tag, so enabling a mod meant
+                  navigating back to the Library. Same hook as the Library, so
+                  the dependency prompts are identical here. */}
+              <InkSwitch
+                on={enabled}
+                onClick={() => toggle(liveBySlug.id)}
+                label={`${enabled ? 'Disable' : 'Enable'} ${name}`}
+              />
               <MonoTag tone={enabled ? 'crimson' : 'default'}>
                 {enabled ? 'enabled' : 'disabled'}
               </MonoTag>
@@ -272,6 +301,19 @@ function ModDetailPage() {
             <Fleuron />
             <Markdown source={markdown} className="mt-4" />
           </Panel>
+
+          {/* Settings for the mod live on the mod's own page. The id is the
+              anchor the library's Configure button jumps to. */}
+          {installedHere && liveBySlug?.hasConfig ? (
+            <div id={CONFIG_ANCHOR}>
+              <ModConfigPanel
+                modId={liveBySlug.id}
+                modName={name}
+                enabled={enabled}
+                onToggleEnabled={() => toggle(liveBySlug.id)}
+              />
+            </div>
+          ) : null}
 
           {videos.length > 0 || screenshots.length > 0 ? (
             <Panel>

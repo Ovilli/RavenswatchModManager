@@ -781,6 +781,9 @@ function toMod(m: LocalMod, prev?: Mod): Mod {
     image: prev?.image,
     markdown: prev?.markdown ?? (summary ? `# ${m.name}\n\n${summary}` : `# ${m.name}`),
     nsfw: prev?.nsfw ?? false,
+    // `?? prev` so an older sidecar (which omits the field) doesn't erase what
+    // a previous, newer answer established.
+    hasConfig: m.hasConfig ?? prev?.hasConfig ?? false,
   };
 }
 
