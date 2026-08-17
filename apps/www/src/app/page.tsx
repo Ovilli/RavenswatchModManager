@@ -20,6 +20,47 @@ interface HomeData {
   appDownloads: number;
 }
 
+// Installer bundles only. `latest.json` and `*.sig` are fetched by the updater on
+// every launch, so counting them reports polling traffic, not downloads.
+const INSTALLER_EXT = ['.exe', '.msi', '.deb', '.rpm', '.AppImage', '.dmg'];
+
+function isInstaller(name: string): boolean {
+  return INSTALLER_EXT.some((ext) => name.endsWith(ext));
+}
+
+interface GhRelease {
+  draft?: boolean;
+  assets?: { name: string; download_count?: number }[];
+}
+
+// Sums installer downloads across every published release — `releases/latest`
+// alone reports one version and undercounts the real total by an order of
+// magnitude.
+async function getAppDownloads(): Promise<number> {
+  let total = 0;
+
+  for (let page = 1; page <= 5; page++) {
+    const res = await fetch(
+      `https://api.github.com/repos/Ovilli/RavenswatchModManager/releases?per_page=100&page=${page}`,
+    );
+    if (!res.ok) break;
+
+    const releases: GhRelease[] = await res.json();
+    if (!Array.isArray(releases) || releases.length === 0) break;
+
+    for (const rel of releases) {
+      if (rel.draft) continue;
+      for (const asset of rel.assets ?? []) {
+        if (isInstaller(asset.name)) total += asset.download_count ?? 0;
+      }
+    }
+
+    if (releases.length < 100) break;
+  }
+
+  return total;
+}
+
 async function getHomeData(): Promise<HomeData> {
   const apiBase = getApiUrl().replace(/\/+$/, '');
   const fallback: HomeData = {
@@ -34,7 +75,7 @@ async function getHomeData(): Promise<HomeData> {
     const [modRes, featRes, ghRes] = await Promise.allSettled([
       fetch(`${apiBase}/api/mods?limit=48`),
       fetch(`${apiBase}/api/mods?featured=true&sort=featured&limit=8`),
-      fetch('https://api.github.com/repos/Ovilli/RavenswatchModManager/releases/latest'),
+      getAppDownloads(),
     ]);
 
     let mods: ModListItem[] = [];
@@ -59,14 +100,8 @@ async function getHomeData(): Promise<HomeData> {
       featured = body.items ?? [];
     }
 
-    if (ghRes.status === 'fulfilled' && ghRes.value.ok) {
-      const data = await ghRes.value.json();
-      if (data.assets) {
-        appDownloads = data.assets.reduce(
-          (s: number, a: { download_count?: number }) => s + (a.download_count ?? 0),
-          0,
-        );
-      }
+    if (ghRes.status === 'fulfilled') {
+      appDownloads = ghRes.value;
     }
 
     return { mods, featured, totalMods, totalModDownloads, appDownloads };
