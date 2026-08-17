@@ -2,12 +2,12 @@
  * The un-pin hotkey.
  *
  * A click-through overlay ignores the mouse completely — including the click
- * that would turn click-through back off. Settings has a button for it, but
- * alt-tabbing out of a fight to reach it is not an answer, so the toggle is
- * also bound to a global shortcut that works while the game has focus.
+ * that would turn click-through back off. This shortcut is therefore the only
+ * way out of the pin, and it works while the game has focus, which is the point:
+ * alt-tabbing out of a fight to un-pin a HUD is not an answer.
  *
- * Registered by the MAIN window (overlays come and go); it broadcasts the same
- * event the Settings button emits, so there is one code path to undo the pin.
+ * Registered by the MAIN window (overlays come and go); it broadcasts the event
+ * the overlay listens for, so there is one code path to undo the pin.
  */
 import { isRegistered, register, unregister } from '@tauri-apps/plugin-global-shortcut';
 import { emit } from '@tauri-apps/api/event';
@@ -17,8 +17,8 @@ export const UNPIN_SHORTCUT = 'CommandOrControl+Alt+O';
 
 /**
  * Bind the shortcut. Best effort: another application may already own the
- * combination, and failing to bind must not take the app down — the Settings
- * button still works.
+ * combination, and failing to bind must not take the app down — closing the
+ * overlay from its mod's button still clears the pin.
  *
  * Returns true when the binding is live.
  */

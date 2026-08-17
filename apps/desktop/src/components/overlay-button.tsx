@@ -2,8 +2,9 @@
  * One-click overlay toggle for a single mod.
  *
  * An overlay was previously reachable only through the command palette
- * (Ctrl+K → "Toggle … overlay") or the Settings page — both a detour away from
- * the mod that owns the HUD. This puts the control next to the mod itself.
+ * (Ctrl+K → "Toggle … overlay") or a list in Settings — both a detour away from
+ * the mod that owns the HUD. This puts the control next to the mod itself, and
+ * the Settings list is gone: this button plus the palette entry are the paths.
  *
  * Nothing here is hardcoded to a particular mod: it renders only when the mod
  * declares an `[overlay]` block, and renders nothing otherwise, so the library
@@ -17,7 +18,14 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Gauge } from 'lucide-react';
 import { useState } from 'react';
-import { openOverlayMods, overlayFor, toggleOverlay } from '../lib/overlay-windows';
+import {
+  closeOverlay,
+  openOverlay,
+  openOverlayMods,
+  overlayFor,
+  resetPosition,
+  toggleOverlay,
+} from '../lib/overlay-windows';
 import { listOverlays } from '../lib/rsmm';
 import { Button } from './chrome';
 import { useToast } from './toast';
@@ -68,19 +76,35 @@ export function OverlayButton({ modId, className }: { modId: string; className?:
         record.error
           ? `This mod's overlay declaration is broken: ${record.error}`
           : isOpen
-            ? `Close the ${name} overlay`
-            : `Open the ${name} overlay — an always-on-top HUD window`
+            ? `Close the ${name} overlay (shift-click to recentre it)`
+            : `Open the ${name} overlay — an always-on-top HUD window (shift-click to open it at the default position)`
       }
       aria-pressed={isOpen}
       className={className}
-      onClick={() => {
+      onClick={(e) => {
+        // An overlay reopens where it was left, so a window dragged off a
+        // monitor that is now gone comes back off-screen and cannot be
+        // grabbed. Shift-click forgets the saved position and reopens it at
+        // the default spot — the only recovery, since the window itself is
+        // unreachable.
+        const recentre = e.shiftKey;
         void (async () => {
           setBusy(true);
           try {
+            if (recentre) {
+              resetPosition(modId);
+              await closeOverlay(modId);
+              await openOverlay(modId);
+              toast.push(`${name} overlay recentred.`, 'success');
+              return;
+            }
             const opened = await toggleOverlay(modId);
             toast.push(`${name} overlay ${opened ? 'opened' : 'closed'}.`, 'success');
-          } catch (e) {
-            toast.push(`Overlay failed: ${e instanceof Error ? e.message : String(e)}`, 'error');
+          } catch (err) {
+            toast.push(
+              `Overlay failed: ${err instanceof Error ? err.message : String(err)}`,
+              'error',
+            );
           } finally {
             setBusy(false);
             await queryClient.invalidateQueries({ queryKey: OPEN_WINDOWS_KEY });

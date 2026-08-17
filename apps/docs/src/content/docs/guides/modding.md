@@ -634,8 +634,9 @@ R.overlay.clear()                          -- e.g. at a run boundary
 Rows are flat records of string/number/boolean — anything else is dropped. An
 unchanged payload is skipped, so publishing every tick costs nothing.
 
-Then: **Settings → Overlays** in the desktop app lists every installed mod that
-declares one, and `rsmm overlay <mod>` renders the same board in a terminal.
+Then: the desktop app puts an **Overlay** button on the mod itself (library card,
+list row, mod page) for every mod that declares one, and `rsmm overlay <mod>`
+renders the same board in a terminal.
 
 :::note[Shape is data, never code]
 A mod declares columns; it cannot hand markup or script to the client. That

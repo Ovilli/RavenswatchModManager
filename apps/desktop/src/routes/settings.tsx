@@ -1,8 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { invoke } from '@tauri-apps/api/core';
-import { emit, listen } from '@tauri-apps/api/event';
-import { ChevronDown, EyeOff, ShieldAlert, Swords, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ChevronDown, EyeOff, ShieldAlert, Trash2 } from 'lucide-react';
+import { type KeyboardEvent, useEffect, useMemo, useState } from 'react';
 import { Fleuron, Panel, SectionHeader } from '../components/chrome';
 import { useLaunch } from '../components/launch';
 import { useToast } from '../components/toast';
@@ -24,20 +23,7 @@ import {
   parseLauncherLog,
   readLauncherLog,
 } from '../lib/launcher-log';
-import { OVERLAY_INTERACTIVE_EVENT } from '../components/overlay-hud';
-import {
-  closeOverlay,
-  openOverlay,
-  openOverlayMods,
-  resetPosition,
-} from '../lib/overlay-windows';
-import {
-  type LoaderFlag,
-  type OverlayRecord,
-  getLoaderFlags,
-  listOverlays,
-  setLoaderFlags,
-} from '../lib/rsmm';
+import { type LoaderFlag, getLoaderFlags, setLoaderFlags } from '../lib/rsmm';
 import { useApp } from '../store';
 
 export const Route = createFileRoute('/settings')({
@@ -52,17 +38,160 @@ const DENSITY_CHOICES: { value: Density; hint: string }[] = [
   { value: 'compact', hint: 'Tighter panels; more fits on screen.' },
 ];
 
+/**
+ * Settings is grouped, not split.
+ *
+ * Every panel still lives on this one route — nothing moved to another tab of
+ * the app — but eight stacked panels had turned the page into a long scroll
+ * where the thing you came for was never on screen. The groups below are the
+ * whole page, one group at a time.
+ *
+ * A hidden group is UNMOUNTED, not hidden with CSS: the launcher log polls
+ * every few seconds during a launch and the loader/GPU panels each hit the
+ * sidecar on mount, and none of that should run while you are reading a
+ * different group.
+ */
+const TABS = [
+  { id: 'general', label: 'General', hint: 'Paths, mod sources, updates' },
+  { id: 'appearance', label: 'Appearance', hint: 'Typeface, density, content' },
+  { id: 'game', label: 'Game', hint: 'Loader features, graphics' },
+  { id: 'diagnostics', label: 'Diagnostics', hint: 'Launcher log, crash reports' },
+] as const;
+
+type SettingsTab = (typeof TABS)[number]['id'];
+
 function SettingsPage() {
+  const [tab, setTab] = useState<SettingsTab>('general');
+
+  return (
+    <div className="space-y-6">
+      <SectionHeader title="Settings" subtitle="Where things live. How they look." />
+
+      <SettingsTabs value={tab} onChange={setTab} />
+
+      <div
+        role="tabpanel"
+        id={`settings-panel-${tab}`}
+        aria-labelledby={`settings-tab-${tab}`}
+        className="space-y-6"
+      >
+        {tab === 'general' ? (
+          <>
+            <PathsPanel />
+            <SourcesPanel />
+            <UpdatesPanel />
+          </>
+        ) : null}
+        {tab === 'appearance' ? <AppearancePanel /> : null}
+        {tab === 'game' ? (
+          <>
+            <LoaderFlagsPanel />
+            <GraphicsPanel />
+          </>
+        ) : null}
+        {tab === 'diagnostics' ? (
+          <>
+            <LauncherLogPanel />
+            <PrivacyPanel />
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function SettingsTabs({
+  value,
+  onChange,
+}: {
+  value: SettingsTab;
+  onChange: (tab: SettingsTab) => void;
+}) {
+  // Arrow keys move between tabs, and only the selected tab is a tab stop —
+  // the standard tablist contract, so Tab from the tab strip lands in the
+  // panel rather than walking four buttons first.
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const delta = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (!delta) return;
+    e.preventDefault();
+    const i = TABS.findIndex((t) => t.id === value);
+    const next = TABS[(i + delta + TABS.length) % TABS.length]?.id;
+    if (!next) return;
+    onChange(next);
+    document.getElementById(`settings-tab-${next}`)?.focus();
+  };
+
+  return (
+    <div
+      role="tablist"
+      aria-label="Settings sections"
+      className="flex flex-wrap gap-1 border-b border-border"
+      onKeyDown={onKeyDown}
+    >
+      {TABS.map((t) => {
+        const active = t.id === value;
+        return (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            id={`settings-tab-${t.id}`}
+            aria-selected={active}
+            aria-controls={`settings-panel-${t.id}`}
+            tabIndex={active ? 0 : -1}
+            title={t.hint}
+            onClick={() => onChange(t.id)}
+            className={`font-mono -mb-px border-b-2 px-3 py-2 text-sm transition-colors ${
+              active
+                ? 'border-crimson text-parchment'
+                : 'border-transparent text-ash hover:text-parchment'
+            }`}
+          >
+            {t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function PathsPanel() {
+  const settings = useApp((s) => s.settings);
+  const update = useApp((s) => s.updateSettings);
+
+  return (
+    <Panel>
+      <h3 className="font-fraktur text-xl text-parchment">Paths</h3>
+      <Fleuron className="my-3" />
+      <Field
+        label="Game install"
+        value={settings.gameDir}
+        onChange={(v) => update({ gameDir: v })}
+        validate={(v) => validateDirPath(v, 'Game install path')}
+      />
+      <Field
+        label="Backup folder"
+        value={settings.backupDir}
+        onChange={(v) => update({ backupDir: v })}
+        validate={(v) => validateDirPath(v, 'Backup folder path')}
+      />
+      <Field
+        label="Mods folder"
+        value={settings.modsDir}
+        placeholder="Leave empty to use the default rsmm mods folder"
+        onChange={(v) => update({ modsDir: v })}
+        validate={(v) => validateDirPath(v, 'Mods folder path')}
+      />
+    </Panel>
+  );
+}
+
+function SourcesPanel() {
   const settings = useApp((s) => s.settings);
   const update = useApp((s) => s.updateSettings);
   const [newSource, setNewSource] = useState('');
   const [sourceError, setSourceError] = useState<string | null>(null);
-  const [launcherLog, setLauncherLog] = useState('');
-  const [logQuery, setLogQuery] = useState('');
-  const [logLevel, setLogLevel] = useState<'all' | 'info' | 'warn' | 'error'>('all');
-  const [loadingLog, setLoadingLog] = useState(false);
   const toast = useToast();
-  const { busy: launchBusy } = useLaunch();
 
   const addSource = () => {
     const v = newSource.trim();
@@ -90,6 +219,84 @@ function SettingsPage() {
     setSourceError(null);
     toast.push('Mod source added.', 'success');
   };
+
+  return (
+    <Panel>
+      <h3 className="font-fraktur text-xl text-parchment">Mod sources</h3>
+      <Fleuron className="my-3" />
+      <ul className="space-y-2">
+        {settings.sources.map((src) => (
+          <li
+            key={src}
+            className="flex items-center justify-between gap-3 border border-border px-3 py-2"
+          >
+            <span className="font-mono text-parchment break-all">{src}</span>
+            <button
+              type="button"
+              onClick={() => update({ sources: settings.sources.filter((s) => s !== src) })}
+              className="font-mono text-ash hover:text-crimson"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-3 flex items-center gap-2">
+        <input
+          value={newSource}
+          onChange={(e) => {
+            setNewSource(e.target.value);
+            if (sourceError) setSourceError(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              addSource();
+            }
+          }}
+          placeholder="https://example.invalid/registry"
+          className="font-mono flex-1 border border-border bg-pitch/60 px-3 py-2 text-parchment placeholder:text-ash focus:border-gilt/60 focus:outline-none"
+          aria-invalid={sourceError ? true : undefined}
+        />
+        <button
+          type="button"
+          onClick={addSource}
+          className="border border-crimson bg-crimson/80 px-3 py-2 text-parchment hover:bg-oxblood"
+        >
+          Add
+        </button>
+      </div>
+      {sourceError ? (
+        <p className="font-mono mt-2 text-sm text-crimson" role="alert">
+          {sourceError}
+        </p>
+      ) : null}
+    </Panel>
+  );
+}
+
+function UpdatesPanel() {
+  return (
+    <Panel>
+      <h3 className="font-fraktur text-xl text-parchment">Updates</h3>
+      <Fleuron className="my-3" />
+      <p className="font-serif-italic text-ash mb-3">
+        RSMM checks for new releases automatically. You can also check manually.
+      </p>
+      <UpdaterSettings />
+    </Panel>
+  );
+}
+
+/** The launcher log, filtered. Mounted only while its group is open, which is
+ * also what stops the live poll below when you are elsewhere in Settings. */
+function LauncherLogPanel() {
+  const [launcherLog, setLauncherLog] = useState('');
+  const [logQuery, setLogQuery] = useState('');
+  const [logLevel, setLogLevel] = useState<'all' | 'info' | 'warn' | 'error'>('all');
+  const [loadingLog, setLoadingLog] = useState(false);
+  const toast = useToast();
+  const { busy: launchBusy } = useLaunch();
 
   const refreshLog = async () => {
     setLoadingLog(true);
@@ -148,235 +355,154 @@ function SettingsPage() {
   });
 
   return (
-    <div className="space-y-6">
-      <SectionHeader title="Settings" subtitle="Where things live. How they look." />
-
-      <Panel>
-        <h3 className="font-fraktur text-xl text-parchment">Paths</h3>
-        <Fleuron className="my-3" />
-        <Field
-          label="Game install"
-          value={settings.gameDir}
-          onChange={(v) => update({ gameDir: v })}
-          validate={(v) => validateDirPath(v, 'Game install path')}
-        />
-        <Field
-          label="Backup folder"
-          value={settings.backupDir}
-          onChange={(v) => update({ backupDir: v })}
-          validate={(v) => validateDirPath(v, 'Backup folder path')}
-        />
-        <Field
-          label="Mods folder"
-          value={settings.modsDir}
-          placeholder="Leave empty to use the default rsmm mods folder"
-          onChange={(v) => update({ modsDir: v })}
-          validate={(v) => validateDirPath(v, 'Mods folder path')}
-        />
-      </Panel>
-
-      <Panel>
-        <h3 className="font-fraktur text-xl text-parchment">Mod sources</h3>
-        <Fleuron className="my-3" />
-        <ul className="space-y-2">
-          {settings.sources.map((src) => (
-            <li
-              key={src}
-              className="flex items-center justify-between gap-3 border border-border px-3 py-2"
-            >
-              <span className="font-mono text-parchment break-all">{src}</span>
-              <button
-                type="button"
-                onClick={() => update({ sources: settings.sources.filter((s) => s !== src) })}
-                className="font-mono text-ash hover:text-crimson"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </li>
-          ))}
-        </ul>
-        <div className="mt-3 flex items-center gap-2">
-          <input
-            value={newSource}
-            onChange={(e) => {
-              setNewSource(e.target.value);
-              if (sourceError) setSourceError(null);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                addSource();
-              }
-            }}
-            placeholder="https://example.invalid/registry"
-            className="font-mono flex-1 border border-border bg-pitch/60 px-3 py-2 text-parchment placeholder:text-ash focus:border-gilt/60 focus:outline-none"
-            aria-invalid={sourceError ? true : undefined}
-          />
+    <Panel>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="font-fraktur text-xl text-parchment">Launcher Log</h3>
+          <p className="font-serif-italic text-ash mt-1">
+            Current run only. Cleared whenever you launch Vanilla or Modded.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {launchBusy ? (
+            <span className="font-mono inline-flex items-center gap-1.5 border border-gilt/60 px-2 py-1 text-[10px] text-gilt">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gilt" aria-hidden />
+              live
+            </span>
+          ) : null}
           <button
             type="button"
-            onClick={addSource}
-            className="border border-crimson bg-crimson/80 px-3 py-2 text-parchment hover:bg-oxblood"
+            onClick={() => refreshLog().catch(() => undefined)}
+            className="border border-border px-3 py-2 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
           >
-            Add
+            {loadingLog ? 'Refreshing…' : 'Refresh'}
+          </button>
+          <button
+            type="button"
+            onClick={() => onClearLog().catch(() => undefined)}
+            className="border border-crimson bg-crimson/80 px-3 py-2 text-sm text-parchment hover:bg-oxblood"
+          >
+            Clear
           </button>
         </div>
-        {sourceError ? (
-          <p className="font-mono mt-2 text-sm text-crimson" role="alert">
-            {sourceError}
-          </p>
-        ) : null}
-      </Panel>
-
-      <Panel>
-        <h3 className="font-fraktur text-xl text-parchment">Updates</h3>
-        <Fleuron className="my-3" />
-        <p className="font-serif-italic text-ash mb-3">
-          RSMM checks for new releases automatically. You can also check manually.
+      </div>
+      <Fleuron className="my-3" />
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <input
+          value={logQuery}
+          onChange={(e) => setLogQuery(e.target.value)}
+          placeholder="Search launcher log..."
+          className="font-mono min-w-56 flex-1 border border-border bg-pitch/60 px-3 py-2 text-sm text-parchment placeholder:text-ash focus:border-gilt/60 focus:outline-none"
+        />
+        <div className="relative inline-flex">
+          <select
+            value={logLevel}
+            onChange={(e) => setLogLevel(e.target.value as 'all' | 'info' | 'warn' | 'error')}
+            className="select-grim font-mono appearance-none border border-border bg-pitch/60 py-2 pl-3 pr-9 text-sm text-parchment focus:border-gilt/60 focus:outline-none"
+          >
+            <option value="all">All levels</option>
+            <option value="info">Info</option>
+            <option value="warn">Warnings</option>
+            <option value="error">Errors</option>
+          </select>
+          <ChevronDown
+            className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ash"
+            aria-hidden="true"
+          />
+        </div>
+      </div>
+      {filteredEntries.length === 0 ? (
+        <p className="font-serif-italic border border-border bg-pitch/60 p-3 text-ash">
+          {logEntries.length > 0
+            ? 'No launcher log entries match the current filters.'
+            : 'No launcher log entries yet. Launch the game once and they will show up here.'}
         </p>
-        <UpdaterSettings />
-      </Panel>
-
-      <LoaderFlagsPanel />
-
-      <OverlaysPanel />
-
-      <GraphicsPanel />
-
-      <Panel>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h3 className="font-fraktur text-xl text-parchment">Launcher Log</h3>
-            <p className="font-serif-italic text-ash mt-1">
-              Current run only. Cleared whenever you launch Vanilla or Modded.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {launchBusy ? (
-              <span className="font-mono inline-flex items-center gap-1.5 border border-gilt/60 px-2 py-1 text-[10px] text-gilt">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gilt" aria-hidden />
-                live
-              </span>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => refreshLog().catch(() => undefined)}
-              className="border border-border px-3 py-2 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
-            >
-              {loadingLog ? 'Refreshing…' : 'Refresh'}
-            </button>
-            <button
-              type="button"
-              onClick={() => onClearLog().catch(() => undefined)}
-              className="border border-crimson bg-crimson/80 px-3 py-2 text-sm text-parchment hover:bg-oxblood"
-            >
-              Clear
-            </button>
-          </div>
-        </div>
-        <Fleuron className="my-3" />
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <input
-            value={logQuery}
-            onChange={(e) => setLogQuery(e.target.value)}
-            placeholder="Search launcher log..."
-            className="font-mono min-w-56 flex-1 border border-border bg-pitch/60 px-3 py-2 text-sm text-parchment placeholder:text-ash focus:border-gilt/60 focus:outline-none"
-          />
-          <div className="relative inline-flex">
-            <select
-              value={logLevel}
-              onChange={(e) => setLogLevel(e.target.value as 'all' | 'info' | 'warn' | 'error')}
-              className="select-grim font-mono appearance-none border border-border bg-pitch/60 py-2 pl-3 pr-9 text-sm text-parchment focus:border-gilt/60 focus:outline-none"
-            >
-              <option value="all">All levels</option>
-              <option value="info">Info</option>
-              <option value="warn">Warnings</option>
-              <option value="error">Errors</option>
-            </select>
-            <ChevronDown
-              className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ash"
-              aria-hidden="true"
-            />
-          </div>
-        </div>
-        {filteredEntries.length === 0 ? (
-          <p className="font-serif-italic border border-border bg-pitch/60 p-3 text-ash">
-            {logEntries.length > 0
-              ? 'No launcher log entries match the current filters.'
-              : 'No launcher log entries yet. Launch the game once and they will show up here.'}
-          </p>
-        ) : (
-          <ul className="max-h-72 divide-y divide-border/60 overflow-auto border border-border bg-pitch/60">
-            {filteredEntries.map((entry, i) => (
-              // Log lines carry no id and repeat verbatim, so position is
-              // part of the identity.
-              <LogRow key={`${i}-${entry.raw}`} entry={entry} />
-            ))}
-          </ul>
-        )}
-      </Panel>
-
-      <Panel>
-        <h3 className="font-fraktur text-xl text-parchment">Appearance</h3>
-        <Fleuron className="my-3" />
-        <TypographyControls />
-        <Fleuron className="my-3" />
-        <fieldset className="flex flex-col gap-2">
-          <legend className="font-mono mb-2 text-ash">Density</legend>
-          {DENSITY_CHOICES.map(({ value, hint }) => (
-            <label key={value} className="flex cursor-pointer items-start gap-2 text-parchment">
-              <input
-                type="radio"
-                name="density"
-                checked={settings.density === value}
-                onChange={() => update({ density: value })}
-                className="mt-1 accent-crimson"
-              />
-              <span>
-                <span className="font-serif-italic block capitalize">{value}</span>
-                <span className="font-serif-italic block text-sm text-ash">{hint}</span>
-              </span>
-            </label>
+      ) : (
+        <ul className="max-h-72 divide-y divide-border/60 overflow-auto border border-border bg-pitch/60">
+          {filteredEntries.map((entry, i) => (
+            // Log lines carry no id and repeat verbatim, so position is
+            // part of the identity.
+            <LogRow key={`${i}-${entry.raw}`} entry={entry} />
           ))}
-        </fieldset>
-        <Fleuron className="my-3" />
-        <label className="flex cursor-pointer items-center gap-3 text-parchment">
-          <input
-            type="checkbox"
-            checked={settings.showNsfw}
-            onChange={(e) => update({ showNsfw: e.target.checked })}
-            className="h-4 w-4 accent-crimson"
-          />
-          <span className="font-mono text-sm flex items-center gap-2">
-            <EyeOff className="h-4 w-4 text-crimson" />
-            Show NSFW content
-          </span>
-        </label>
-      </Panel>
+        </ul>
+      )}
+    </Panel>
+  );
+}
 
-      <Panel>
-        <h3 className="font-fraktur text-xl text-parchment">Privacy</h3>
-        <Fleuron className="my-3" />
-        <label className="flex cursor-pointer items-start gap-3 text-parchment">
-          <input
-            type="checkbox"
-            checked={settings.crashReports}
-            onChange={(e) => update({ crashReports: e.target.checked })}
-            className="mt-1 h-4 w-4 accent-crimson"
-          />
-          <span>
-            <span className="font-mono text-sm flex items-center gap-2">
-              <ShieldAlert className="h-4 w-4 text-crimson" />
-              Send crash reports
+function AppearancePanel() {
+  const settings = useApp((s) => s.settings);
+  const update = useApp((s) => s.updateSettings);
+
+  return (
+    <Panel>
+      <h3 className="font-fraktur text-xl text-parchment">Appearance</h3>
+      <Fleuron className="my-3" />
+      <TypographyControls />
+      <Fleuron className="my-3" />
+      <fieldset className="flex flex-col gap-2">
+        <legend className="font-mono mb-2 text-ash">Density</legend>
+        {DENSITY_CHOICES.map(({ value, hint }) => (
+          <label key={value} className="flex cursor-pointer items-start gap-2 text-parchment">
+            <input
+              type="radio"
+              name="density"
+              checked={settings.density === value}
+              onChange={() => update({ density: value })}
+              className="mt-1 accent-crimson"
+            />
+            <span>
+              <span className="font-serif-italic block capitalize">{value}</span>
+              <span className="font-serif-italic block text-sm text-ash">{hint}</span>
             </span>
-            <span className="font-serif-italic mt-1 block text-sm text-ash">
-              When the app hits an unexpected error, send the error type, message, stack trace, RSMM
-              version and OS to the RSMM API so it can be fixed. No mod list, no file paths, no
-              account details. Turning this off keeps crashes in your local launcher log only.
-            </span>
+          </label>
+        ))}
+      </fieldset>
+      <Fleuron className="my-3" />
+      <label className="flex cursor-pointer items-center gap-3 text-parchment">
+        <input
+          type="checkbox"
+          checked={settings.showNsfw}
+          onChange={(e) => update({ showNsfw: e.target.checked })}
+          className="h-4 w-4 accent-crimson"
+        />
+        <span className="font-mono text-sm flex items-center gap-2">
+          <EyeOff className="h-4 w-4 text-crimson" />
+          Show NSFW content
+        </span>
+      </label>
+    </Panel>
+  );
+}
+
+function PrivacyPanel() {
+  const settings = useApp((s) => s.settings);
+  const update = useApp((s) => s.updateSettings);
+
+  return (
+    <Panel>
+      <h3 className="font-fraktur text-xl text-parchment">Privacy</h3>
+      <Fleuron className="my-3" />
+      <label className="flex cursor-pointer items-start gap-3 text-parchment">
+        <input
+          type="checkbox"
+          checked={settings.crashReports}
+          onChange={(e) => update({ crashReports: e.target.checked })}
+          className="mt-1 h-4 w-4 accent-crimson"
+        />
+        <span>
+          <span className="font-mono text-sm flex items-center gap-2">
+            <ShieldAlert className="h-4 w-4 text-crimson" />
+            Send crash reports
           </span>
-        </label>
-      </Panel>
-    </div>
+          <span className="font-serif-italic mt-1 block text-sm text-ash">
+            When the app hits an unexpected error, send the error type, message, stack trace, RSMM
+            version and OS to the RSMM API so it can be fixed. No mod list, no file paths, no
+            account details. Turning this off keeps crashes in your local launcher log only.
+          </span>
+        </span>
+      </label>
+    </Panel>
   );
 }
 
@@ -500,162 +626,6 @@ function TypographyControls() {
   );
 }
 
-/** Loader feature flags. The native loader reads these from a JSON file next
- * to winhttp.dll (so they work on native Windows too, where Steam launch
- * options cannot set environment variables). Only flags the bridge marks
- * `safe` are togglable here; locked ones are shown greyed-out with the reason. */
-/**
- * Overlays declared by installed mods.
- *
- * Nothing here is hardcoded to a particular mod: a mod declares an `[overlay]`
- * block in its manifest and publishes rows at runtime, and this lists whatever
- * is installed. A mod with no declaration simply never appears.
- *
- * Click-through is set on the overlay window itself, which then ignores the
- * mouse completely — including the button that would turn it off. That button
- * has to live in a window that still receives clicks, so it lives here.
- */
-function OverlaysPanel() {
-  const [overlays, setOverlays] = useState<OverlayRecord[] | null>(null);
-  const [open, setOpen] = useState<string[]>([]);
-  const [clickThrough, setClickThrough] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Which overlays are open is window state, not React state: re-read it
-  // after anything that could have changed it (including a window the user
-  // closed with its own X button).
-  const refresh = useCallback(async () => {
-    setOpen(await openOverlayMods());
-  }, []);
-
-  useEffect(() => {
-    let alive = true;
-    listOverlays()
-      .then((list) => {
-        if (alive) setOverlays(list?.overlays ?? []);
-      })
-      .catch((e) => {
-        if (alive) {
-          setOverlays([]);
-          setError(e instanceof Error ? e.message : String(e));
-        }
-      });
-    void refresh();
-    const unlisten = listen<{ enabled: boolean }>('rsmm://overlay-clickthrough', (e) => {
-      setClickThrough(Boolean(e.payload?.enabled));
-    });
-    return () => {
-      alive = false;
-      void unlisten.then((f) => f());
-    };
-  }, [refresh]);
-
-  const toggle = async (modId: string, isOpen: boolean) => {
-    setError(null);
-    try {
-      if (isOpen) {
-        await closeOverlay(modId);
-        setClickThrough(false);
-      } else {
-        await openOverlay(modId);
-      }
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
-
-  return (
-    <Panel>
-      <h3 className="font-fraktur text-xl text-parchment">Overlays</h3>
-      <Fleuron className="my-3" />
-      <p className="font-serif-italic text-ash mb-3">
-        Small always-on-top windows published by mods — a damage meter, a run timer, whatever a mod
-        declares. Run the game borderless-windowed so an overlay can sit on top of it.
-      </p>
-      {overlays === null ? (
-        <p className="font-mono text-ash">Loading…</p>
-      ) : overlays.length === 0 ? (
-        <p className="font-mono text-ash">
-          No installed mod declares an overlay. A mod adds one with an{' '}
-          <span className="text-parchment">[overlay]</span> block in its manifest.
-        </p>
-      ) : (
-        <ul className="space-y-2">
-          {overlays.map((o) => {
-            const isOpen = open.includes(o.modId);
-            return (
-              <li
-                key={o.modId}
-                className="flex flex-wrap items-center justify-between gap-3 border border-border px-3 py-2"
-              >
-                <div className="min-w-0">
-                  <span className="text-parchment">{o.title ?? o.modId}</span>{' '}
-                  <span className="font-mono text-ash">{o.modId}</span>
-                  {o.error ? (
-                    <p className="font-mono mt-1 text-sm text-crimson">{o.error}</p>
-                  ) : o.source === 'library' ? (
-                    <p className="font-mono mt-1 text-sm text-ash">
-                      not applied yet — run Apply, then launch the game to see data
-                    </p>
-                  ) : null}
-                </div>
-                <div className="flex items-center gap-2">
-                  {isOpen ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        resetPosition(o.modId);
-                        void (async () => {
-                          await closeOverlay(o.modId);
-                          await openOverlay(o.modId);
-                          await refresh();
-                        })();
-                      }}
-                      title="Reopen it at the default position — the fix when it lands off-screen"
-                      className="border border-border px-3 py-1 text-ash transition-colors hover:text-parchment"
-                    >
-                      Recentre
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    disabled={Boolean(o.error)}
-                    onClick={() => void toggle(o.modId, isOpen)}
-                    className="flex items-center gap-2 border border-crimson px-3 py-1 text-parchment transition-colors hover:bg-crimson/20 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <Swords className="h-3.5 w-3.5" />
-                    {isOpen ? 'Close' : 'Open'}
-                  </button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {clickThrough ? (
-        <button
-          type="button"
-          onClick={() => void emit(OVERLAY_INTERACTIVE_EVENT)}
-          className="mt-3 border border-gilt/60 px-3 py-2 text-parchment transition-colors hover:bg-gilt/10"
-        >
-          Turn off click-through
-        </button>
-      ) : null}
-      {clickThrough ? (
-        <p className="font-mono mt-2 text-sm text-ash">
-          …or press <span className="text-parchment">Ctrl+Alt+O</span> without leaving the game.
-        </p>
-      ) : null}
-      {error ? (
-        <p className="font-mono mt-3 text-sm text-crimson" role="alert">
-          {error}
-        </p>
-      ) : null}
-    </Panel>
-  );
-}
-
 /**
  * Software-rendering escape hatch.
  *
@@ -736,6 +706,10 @@ function GraphicsPanel() {
   );
 }
 
+/** Loader feature flags. The native loader reads these from a JSON file next
+ * to winhttp.dll (so they work on native Windows too, where Steam launch
+ * options cannot set environment variables). Only flags the bridge marks
+ * `safe` are togglable here; locked ones are shown greyed-out with the reason. */
 function LoaderFlagsPanel() {
   const [available, setAvailable] = useState<LoaderFlag[]>([]);
   const [enabled, setEnabled] = useState<Set<string>>(new Set());
@@ -828,7 +802,7 @@ function LoaderFlagsPanel() {
         <p className="font-mono text-sm text-ash">Loading…</p>
       ) : unavailable ? (
         <p className="font-mono text-sm text-ash">
-          Set your game install path above, then reopen Settings to manage loader features.
+          Set your game install path under General, then reopen Settings to manage loader features.
         </p>
       ) : (
         <ul className="space-y-3">

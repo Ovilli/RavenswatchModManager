@@ -69,19 +69,17 @@ Click **Play** to launch Ravenswatch directly from RSMM. The app applies any pen
 Mods can publish a small always-on-top window — a damage meter, a run timer,
 whatever the mod measures. A mod that ships one gets an **Overlay** button on
 its own library card, list row, and mod page — click it to open the window,
-click again (**Hide overlay**) to close it. **Settings → Overlays** lists them
-all in one place (with **Recentre**), and the command palette has an entry per
-overlay too. A mod with no overlay shows no button.
+click again (**Hide overlay**) to close it. The command palette has an entry
+per overlay too. A mod with no overlay shows no button.
 
 - Drag it by its header; drag the **bottom-right corner** to resize. It sizes
   itself to its contents until you resize it by hand, after which it stays put.
-  Each overlay remembers its own position and size; **Recentre** puts it back
-  if it opens off-screen.
+  Each overlay remembers its own position and size; **shift-click** the Overlay
+  button to reopen it at the default position if it lands off-screen.
 - **Compact** hides the footer.
 - **Click-through** lets clicks pass to the game. Undo it with
-  **Ctrl+Alt+O** without leaving the game (or the button in Settings) — a
-  click-through window cannot receive the click that would disable it, which
-  is why the shortcut exists.
+  **Ctrl+Alt+O** without leaving the game — a click-through window cannot
+  receive the click that would disable it, which is why the shortcut exists.
 - An overlay can only sit on top of Ravenswatch if the game runs **borderless
   windowed** rather than exclusive fullscreen.
 
