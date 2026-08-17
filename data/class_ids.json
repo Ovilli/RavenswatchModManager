@@ -1,0 +1,7735 @@
+{
+ "_doc": "Engine class name -> 32-bit class id, mined from the class registrars by tools/mine_class_ids.py. The id keys the oCEntity component map (slots @entity+0x5f0, stride 0x10).",
+ "classes": {
+  "oC2dAnimPictureDesc": {
+   "id": 126647341,
+   "size": 272,
+   "registrar": "0x14057ed86"
+  },
+  "oC2dButtonDesc": {
+   "id": 126437327,
+   "size": 560,
+   "registrar": "0x14057eb96"
+  },
+  "oC2dElemCoord": {
+   "id": 12343333,
+   "size": 12,
+   "registrar": "0x1403665c1"
+  },
+  "oC2dElementDesc": {
+   "id": 126437069,
+   "size": 160,
+   "registrar": "0x140191576"
+  },
+  "oC2dElementEditionParam": {
+   "id": 126037069,
+   "size": 40,
+   "registrar": "0x140191766"
+  },
+  "oC2dGraph": {
+   "id": 5800,
+   "size": 160,
+   "registrar": "0x14018dde6"
+  },
+  "oC2dGraphConnector": {
+   "id": 5799,
+   "size": 24,
+   "registrar": "0x14018c391"
+  },
+  "oC2dGraphPanel": {
+   "id": 113923793,
+   "size": 904,
+   "registrar": "0x1405703a1"
+  },
+  "oC2dGraphPlugBool": {
+   "id": 5791,
+   "size": 72,
+   "registrar": "0x14018c726"
+  },
+  "oC2dGraphPlugColor": {
+   "id": 5792,
+   "size": 80,
+   "registrar": "0x14018cb06"
+  },
+  "oC2dGraphPlugFloat": {
+   "id": 5795,
+   "size": 72,
+   "registrar": "0x14018ccf6"
+  },
+  "oC2dGraphPlugFloat2": {
+   "id": 5796,
+   "size": 72,
+   "registrar": "0x14018cee6"
+  },
+  "oC2dGraphPlugFloat3": {
+   "id": 5797,
+   "size": 80,
+   "registrar": "0x14018d0d6"
+  },
+  "oC2dGraphPlugInt": {
+   "id": 5793,
+   "size": 72,
+   "registrar": "0x14018c916"
+  },
+  "oC2dGraphPlugMatrix4": {
+   "id": 210687928,
+   "size": 128,
+   "registrar": "0x14018d2c6"
+  },
+  "oC2dLabelDesc": {
+   "id": 126637338,
+   "size": 416,
+   "registrar": "0x140410516"
+  },
+  "oC2dPictureDesc": {
+   "id": 126637343,
+   "size": 320,
+   "registrar": "0x140368946"
+  },
+  "oC2dScrollBarDesc": {
+   "id": 200243872,
+   "size": 336,
+   "registrar": "0x14057ef76"
+  },
+  "oC2dWindowDescGo": {
+   "id": 126437803,
+   "size": 424,
+   "registrar": "0x14046bd16"
+  },
+  "oC2dWindowDescWindow": {
+   "id": 126709208,
+   "size": 944,
+   "registrar": "0x14046bee1"
+  },
+  "oC3dAmbientLight": {
+   "id": 279368646,
+   "size": 216,
+   "registrar": "0x14018fab1"
+  },
+  "oC3dBeamEffect": {
+   "id": 306572625,
+   "size": 336,
+   "registrar": "0x1405d2ed1"
+  },
+  "oC3dBeamEffectSetting": {
+   "id": 306572909,
+   "size": 112,
+   "registrar": "0x1405d35f6"
+  },
+  "oC3dBeamEffectorAlphaRamp": {
+   "id": 306928105,
+   "size": 3633006847,
+   "registrar": "0x1405ff921"
+  },
+  "oC3dBeamEffectorAlphaRampSetting": {
+   "id": 306928101,
+   "size": 3633006847,
+   "registrar": "0x1405ff756"
+  },
+  "oC3dBeamEffectorColorRampSetting": {
+   "id": 306923852,
+   "size": 3633006847,
+   "registrar": "0x1405ff3d6"
+  },
+  "oC3dBeamEffectorFade": {
+   "id": 306940841,
+   "size": 3633006847,
+   "registrar": "0x140600021"
+  },
+  "oC3dBeamEffectorFadeSetting": {
+   "id": 306940829,
+   "size": 3633006847,
+   "registrar": "0x1405ffe56"
+  },
+  "oC3dBeamEffectorOscillation": {
+   "id": 307456714,
+   "size": 3633006847,
+   "registrar": "0x140600aa1"
+  },
+  "oC3dBeamEffectorOscillationSetting": {
+   "id": 307456710,
+   "size": 3633006847,
+   "registrar": "0x1406008d6"
+  },
+  "oC3dBeamEffectorRandomOffset": {
+   "id": 307351564,
+   "size": 3633006847,
+   "registrar": "0x1406003a1"
+  },
+  "oC3dBeamEffectorRandomOffsetSetting": {
+   "id": 307351548,
+   "size": 3633006847,
+   "registrar": "0x1406001d6"
+  },
+  "oC3dBeamEffectorSizeRamp": {
+   "id": 306928605,
+   "size": 3633006847,
+   "registrar": "0x1405ffca1"
+  },
+  "oC3dBeamEffectorSizeRampSetting": {
+   "id": 306928601,
+   "size": 3633006847,
+   "registrar": "0x1405ffad6"
+  },
+  "oC3dBeamEffectorUvOffset": {
+   "id": 307356092,
+   "size": 3633006847,
+   "registrar": "0x140600721"
+  },
+  "oC3dBeamEffectorUvOffsetSetting": {
+   "id": 307355263,
+   "size": 3633006847,
+   "registrar": "0x140600556"
+  },
+  "oC3dBeamEmitter": {
+   "id": 306682431,
+   "size": 3633006847,
+   "registrar": "0x1405fc321"
+  },
+  "oC3dBeamEmitterSettings": {
+   "id": 306682513,
+   "size": 3633006847,
+   "registrar": "0x1405fc4d6"
+  },
+  "oC3dBillboardBeamRenderer": {
+   "id": 307213943,
+   "size": 64,
+   "registrar": "0x140469fb1"
+  },
+  "oC3dBillboardBeamRendererSetting": {
+   "id": 307213765,
+   "size": 72,
+   "registrar": "0x140469de6"
+  },
+  "oC3dDirectionalLight": {
+   "id": 23906768,
+   "size": 240,
+   "registrar": "0x14018fc61"
+  },
+  "oC3dGraphNode": {
+   "id": 6055,
+   "size": 192,
+   "registrar": "0x140182aa1"
+  },
+  "oC3dGraphicObjectSettings": {
+   "id": 360777639,
+   "size": 80,
+   "registrar": "0x1403158a6"
+  },
+  "oC3dLightBase": {
+   "id": 22075330,
+   "size": 200,
+   "registrar": "0x1401836b1"
+  },
+  "oC3dLightParticleRenderer": {
+   "id": 114431039,
+   "size": 56,
+   "registrar": "0x1405f1581"
+  },
+  "oC3dLightParticleRendererSettings": {
+   "id": 114431041,
+   "size": 96,
+   "registrar": "0x1405f1756"
+  },
+  "oC3dMeshBeamRenderer": {
+   "id": 307214133,
+   "size": 3633006847,
+   "registrar": "0x1406023e1"
+  },
+  "oC3dMeshBeamRendererSetting": {
+   "id": 307214128,
+   "size": 3633006847,
+   "registrar": "0x140602216"
+  },
+  "oC3dOmniLight": {
+   "id": 5804,
+   "size": 232,
+   "registrar": "0x14018fe11"
+  },
+  "oC3dParticleEffect": {
+   "id": 81621784,
+   "size": 352,
+   "registrar": "0x1405cf881"
+  },
+  "oC3dParticleEffectSetting": {
+   "id": 81621757,
+   "size": 120,
+   "registrar": "0x1405cffa6"
+  },
+  "oC3dParticleEffectorAlphaConstant": {
+   "id": 322653611,
+   "size": 40,
+   "registrar": "0x1405e90e1"
+  },
+  "oC3dParticleEffectorAlphaConstantSettings": {
+   "id": 322653612,
+   "size": 24,
+   "registrar": "0x1405e9296"
+  },
+  "oC3dParticleEffectorAlphaRamp": {
+   "id": 156240221,
+   "size": 32,
+   "registrar": "0x1405e82e1"
+  },
+  "oC3dParticleEffectorAlphaRampSettings": {
+   "id": 156240222,
+   "size": 112,
+   "registrar": "0x1405e8496"
+  },
+  "oC3dParticleEffectorApplyParentColor": {
+   "id": 114445293,
+   "size": 32,
+   "registrar": "0x1405e9b61"
+  },
+  "oC3dParticleEffectorApplyParentColorSettings": {
+   "id": 114445297,
+   "size": 16,
+   "registrar": "0x1405e9d16"
+  },
+  "oC3dParticleEffectorApplyParentSpeed": {
+   "id": 114445393,
+   "size": 32,
+   "registrar": "0x1405ea261"
+  },
+  "oC3dParticleEffectorApplyParentSpeedSettings": {
+   "id": 114445298,
+   "size": 24,
+   "registrar": "0x1405ea416"
+  },
+  "oC3dParticleEffectorCameraOffset": {
+   "id": 307373597,
+   "size": 32,
+   "registrar": "0x1405eb571"
+  },
+  "oC3dParticleEffectorCameraOffsetSettings": {
+   "id": 307373601,
+   "size": 32,
+   "registrar": "0x1405eb726"
+  },
+  "oC3dParticleEffectorCollisionPlane": {
+   "id": 136130730,
+   "size": 193678591,
+   "registrar": "0x1405e6361"
+  },
+  "oC3dParticleEffectorCollisionPlaneSettings": {
+   "id": 136130734,
+   "size": 193678591,
+   "registrar": "0x1405e6516"
+  },
+  "oC3dParticleEffectorColorConstant": {
+   "id": 136144771,
+   "size": 48,
+   "registrar": "0x1405e8d61"
+  },
+  "oC3dParticleEffectorColorConstantSettings": {
+   "id": 136144772,
+   "size": 40,
+   "registrar": "0x1405e8f16"
+  },
+  "oC3dParticleEffectorColorRamp": {
+   "id": 79641358,
+   "size": 32,
+   "registrar": "0x1405e7be1"
+  },
+  "oC3dParticleEffectorColorRampOld": {
+   "id": 34614276,
+   "size": 48,
+   "registrar": "0x1405ea961"
+  },
+  "oC3dParticleEffectorColorRampSettings": {
+   "id": 79641405,
+   "size": 64,
+   "registrar": "0x1405e7d96"
+  },
+  "oC3dParticleEffectorConstraintZone": {
+   "id": 114622424,
+   "size": 193678591,
+   "registrar": "0x1405e5561"
+  },
+  "oC3dParticleEffectorConstraintZoneSettings": {
+   "id": 114622440,
+   "size": 193678591,
+   "registrar": "0x1405e5716"
+  },
+  "oC3dParticleEffectorDamping": {
+   "id": 116200107,
+   "size": 193678591,
+   "registrar": "0x1405e66e1"
+  },
+  "oC3dParticleEffectorDampingSettings": {
+   "id": 116200116,
+   "size": 193678591,
+   "registrar": "0x1405e6896"
+  },
+  "oC3dParticleEffectorFadeNearCam": {
+   "id": 202770252,
+   "size": 32,
+   "registrar": "0x1404683f1"
+  },
+  "oC3dParticleEffectorFadeNearCamSettings": {
+   "id": 202770253,
+   "size": 24,
+   "registrar": "0x1404685a6"
+  },
+  "oC3dParticleEffectorFadeWithLife": {
+   "id": 5808,
+   "size": 32,
+   "registrar": "0x1405e97e1"
+  },
+  "oC3dParticleEffectorFadeWithLifeSettings": {
+   "id": 79482407,
+   "size": 16,
+   "registrar": "0x1405e9996"
+  },
+  "oC3dParticleEffectorForceFieldSettings": {
+   "id": 79442187,
+   "size": 193678591,
+   "registrar": "0x1405e6f96"
+  },
+  "oC3dParticleEffectorForceOrient": {
+   "id": 136803775,
+   "size": 193678591,
+   "registrar": "0x1405e74e1"
+  },
+  "oC3dParticleEffectorForceOrientSettings": {
+   "id": 136803776,
+   "size": 40,
+   "registrar": "0x1405e7696"
+  },
+  "oC3dParticleEffectorForcePosition": {
+   "id": 216731617,
+   "size": 193678591,
+   "registrar": "0x1405e5fe1"
+  },
+  "oC3dParticleEffectorForcePositionSettings": {
+   "id": 216731616,
+   "size": 193678591,
+   "registrar": "0x1405e6196"
+  },
+  "oC3dParticleEffectorForceSpeedNorm": {
+   "id": 124445311,
+   "size": 32,
+   "registrar": "0x1405ea5e1"
+  },
+  "oC3dParticleEffectorForceSpeedNormSettings": {
+   "id": 114425299,
+   "size": 24,
+   "registrar": "0x1405ea796"
+  },
+  "oC3dParticleEffectorGravityAxis": {
+   "id": 279388359,
+   "size": 193678591,
+   "registrar": "0x1405e5c61"
+  },
+  "oC3dParticleEffectorGravityAxisSettings": {
+   "id": 279389112,
+   "size": 193678591,
+   "registrar": "0x1405e5e16"
+  },
+  "oC3dParticleEffectorGravityPoint": {
+   "id": 116197422,
+   "size": 193678591,
+   "registrar": "0x1405e58e1"
+  },
+  "oC3dParticleEffectorGravityPointSettings": {
+   "id": 116198126,
+   "size": 193678591,
+   "registrar": "0x1405e5a96"
+  },
+  "oC3dParticleEffectorMoveToOrigin": {
+   "id": 198106935,
+   "size": 48,
+   "registrar": "0x1405e9ee1"
+  },
+  "oC3dParticleEffectorMoveToOriginSettings": {
+   "id": 198106936,
+   "size": 16,
+   "registrar": "0x1405ea096"
+  },
+  "oC3dParticleEffectorNoise": {
+   "id": 283273113,
+   "size": 32,
+   "registrar": "0x1405eae71"
+  },
+  "oC3dParticleEffectorNoiseSettings": {
+   "id": 283273114,
+   "size": 24,
+   "registrar": "0x1405eb026"
+  },
+  "oC3dParticleEffectorOrientWithSpeed": {
+   "id": 101923401,
+   "size": 193678591,
+   "registrar": "0x1405e7331"
+  },
+  "oC3dParticleEffectorOrientWithSpeedSettings": {
+   "id": 101923403,
+   "size": 193678591,
+   "registrar": "0x1405e7166"
+  },
+  "oC3dParticleEffectorPhysicCollision": {
+   "id": 279453279,
+   "size": 32,
+   "registrar": "0x1408a5b11"
+  },
+  "oC3dParticleEffectorPhysicCollisionSettings": {
+   "id": 279453284,
+   "size": 56,
+   "registrar": "0x1408a5cc6"
+  },
+  "oC3dParticleEffectorRandomForce": {
+   "id": 143407324,
+   "size": 193678591,
+   "registrar": "0x1405e6a61"
+  },
+  "oC3dParticleEffectorRandomForceSettings": {
+   "id": 143407326,
+   "size": 193678591,
+   "registrar": "0x1405e6c16"
+  },
+  "oC3dParticleEffectorRandomOrient": {
+   "id": 198072454,
+   "size": 32,
+   "registrar": "0x1405e7861"
+  },
+  "oC3dParticleEffectorRandomOrientSettings": {
+   "id": 198072455,
+   "size": 48,
+   "registrar": "0x1405e7a16"
+  },
+  "oC3dParticleEffectorSelfRotate": {
+   "id": 79640254,
+   "size": 32,
+   "registrar": "0x1405e9461"
+  },
+  "oC3dParticleEffectorSelfRotateSettings": {
+   "id": 79640394,
+   "size": 24,
+   "registrar": "0x1405e9616"
+  },
+  "oC3dParticleEffectorSizeConstant": {
+   "id": 136144769,
+   "size": 32,
+   "registrar": "0x1405e89e1"
+  },
+  "oC3dParticleEffectorSizeConstantSettings": {
+   "id": 136144770,
+   "size": 24,
+   "registrar": "0x1405e8b96"
+  },
+  "oC3dParticleEffectorSizeRamp": {
+   "id": 79641469,
+   "size": 32,
+   "registrar": "0x1405e7f61"
+  },
+  "oC3dParticleEffectorSizeRampOld": {
+   "id": 36436845,
+   "size": 56,
+   "registrar": "0x1405eab11"
+  },
+  "oC3dParticleEffectorSizeRampSettings": {
+   "id": 79641475,
+   "size": 168,
+   "registrar": "0x1405e8116"
+  },
+  "oC3dParticleEffectorSubImageIndex": {
+   "id": 156241221,
+   "size": 32,
+   "registrar": "0x1405e8661"
+  },
+  "oC3dParticleEffectorUvRamp": {
+   "id": 283273154,
+   "size": 32,
+   "registrar": "0x1405eb1f1"
+  },
+  "oC3dParticleEffectorUvRampSettings": {
+   "id": 283273155,
+   "size": 176,
+   "registrar": "0x1405eb3a6"
+  },
+  "oC3dParticleEmitter": {
+   "id": 282566514,
+   "size": 64,
+   "registrar": "0x1404676e1"
+  },
+  "oC3dParticleEmitterPoint": {
+   "id": 79481044,
+   "size": 193678591,
+   "registrar": "0x1405d8a91"
+  },
+  "oC3dParticleEmitterPointSettings": {
+   "id": 79481082,
+   "size": 193678591,
+   "registrar": "0x1405d8c46"
+  },
+  "oC3dParticleEmitterSettings": {
+   "id": 282566515,
+   "size": 296,
+   "registrar": "0x1404678b6"
+  },
+  "oC3dParticleModSizeWithLifeOld": {
+   "id": 5811,
+   "size": 48,
+   "registrar": "0x1405eacc1"
+  },
+  "oC3dShapeList": {
+   "id": 1002833,
+   "size": 24,
+   "registrar": "0x1404f15c1"
+  },
+  "oC3dSimpleTrailRenderer": {
+   "id": 329836010,
+   "size": 72,
+   "registrar": "0x140468ca1"
+  },
+  "oC3dSimpleTrailRendererSetting": {
+   "id": 329836007,
+   "size": 96,
+   "registrar": "0x140468ad6"
+  },
+  "oC3dSmoothTrailRenderer": {
+   "id": 329928566,
+   "size": 72,
+   "registrar": "0x140469021"
+  },
+  "oC3dSmoothTrailRendererSetting": {
+   "id": 329928536,
+   "size": 104,
+   "registrar": "0x140468e56"
+  },
+  "oC3dSpotLight": {
+   "id": 22084100,
+   "size": 232,
+   "registrar": "0x14018ffc1"
+  },
+  "oC3dSubParticleRenderer": {
+   "id": 114442598,
+   "size": 40,
+   "registrar": "0x1405f2b61"
+  },
+  "oC3dSubParticleRendererSettings": {
+   "id": 114442595,
+   "size": 144,
+   "registrar": "0x1405f2d16"
+  },
+  "oC3dTrailEffect": {
+   "id": 290416989,
+   "size": 432,
+   "registrar": "0x1405cb311"
+  },
+  "oC3dTrailEffectSetting": {
+   "id": 290417004,
+   "size": 176,
+   "registrar": "0x1405cba36"
+  },
+  "oC3dTrailEffectorAlphaRamp": {
+   "id": 290416871,
+   "size": 32,
+   "registrar": "0x1405bf421"
+  },
+  "oC3dTrailEffectorAlphaRampSettings": {
+   "id": 290416874,
+   "size": 88,
+   "registrar": "0x1405bf5d6"
+  },
+  "oC3dTrailEffectorColorConstant": {
+   "id": 290416891,
+   "size": 32,
+   "registrar": "0x1405bf7a1"
+  },
+  "oC3dTrailEffectorColorConstantSettings": {
+   "id": 290416897,
+   "size": 32,
+   "registrar": "0x1405bf956"
+  },
+  "oC3dTrailEffectorColorRamp": {
+   "id": 290416855,
+   "size": 32,
+   "registrar": "0x1405be9a1"
+  },
+  "oC3dTrailEffectorColorRampSettings": {
+   "id": 290416858,
+   "size": 56,
+   "registrar": "0x1405beb56"
+  },
+  "oC3dTrailEffectorConstantSpeed": {
+   "id": 297251412,
+   "size": 32,
+   "registrar": "0x1405bdf21"
+  },
+  "oC3dTrailEffectorFadeTrailEnd": {
+   "id": 325678895,
+   "size": 32,
+   "registrar": "0x1405c05a1"
+  },
+  "oC3dTrailEffectorFadeTrailEndSettings": {
+   "id": 325678898,
+   "size": 24,
+   "registrar": "0x1405c0756"
+  },
+  "oC3dTrailEffectorFadeWithAge": {
+   "id": 293644203,
+   "size": 32,
+   "registrar": "0x1405bf0a1"
+  },
+  "oC3dTrailEffectorFadeWithAgeSettings": {
+   "id": 293644220,
+   "size": 96,
+   "registrar": "0x1405bf256"
+  },
+  "oC3dTrailEffectorForceField": {
+   "id": 290416846,
+   "size": 32,
+   "registrar": "0x1405be621"
+  },
+  "oC3dTrailEffectorForceFieldSettings": {
+   "id": 290416851,
+   "size": 32,
+   "registrar": "0x1405be7d6"
+  },
+  "oC3dTrailEffectorGravityAxis": {
+   "id": 290421559,
+   "size": 32,
+   "registrar": "0x1405bd821"
+  },
+  "oC3dTrailEffectorGravityPoint": {
+   "id": 290416815,
+   "size": 3068657899,
+   "registrar": "0x1405bd4a1"
+  },
+  "oC3dTrailEffectorGravityPointSettings": {
+   "id": 290416823,
+   "size": 104,
+   "registrar": "0x1405bd656"
+  },
+  "oC3dTrailEffectorNoise": {
+   "id": 290416901,
+   "size": 32,
+   "registrar": "0x1405bfb21"
+  },
+  "oC3dTrailEffectorNoiseSettings": {
+   "id": 290416905,
+   "size": 24,
+   "registrar": "0x1405bfcd6"
+  },
+  "oC3dTrailEffectorRandomForce": {
+   "id": 290416838,
+   "size": 32,
+   "registrar": "0x1405bdba1"
+  },
+  "oC3dTrailEffectorRandomForceSettings": {
+   "id": 290416841,
+   "size": 48,
+   "registrar": "0x1405be456"
+  },
+  "oC3dTrailEffectorSizeRamp": {
+   "id": 290416862,
+   "size": 32,
+   "registrar": "0x1405bed21"
+  },
+  "oC3dTrailEffectorSizeRampSettings": {
+   "id": 290416866,
+   "size": 96,
+   "registrar": "0x1405beed6"
+  },
+  "oC3dTrailEffectorSpeedNorm": {
+   "id": 297702594,
+   "size": 32,
+   "registrar": "0x1405be2a1"
+  },
+  "oC3dTrailEffectorSpeedNormSetting": {
+   "id": 297702587,
+   "size": 24,
+   "registrar": "0x1405be0d6"
+  },
+  "oC3dTrailEffectorSplineDraw": {
+   "id": 318328490,
+   "size": 32,
+   "registrar": "0x1405c0221"
+  },
+  "oC3dTrailEffectorSplineDrawSettings": {
+   "id": 318328491,
+   "size": 24,
+   "registrar": "0x1405c03d6"
+  },
+  "oC3dTrailEffectorUvRamp": {
+   "id": 290416910,
+   "size": 40,
+   "registrar": "0x1405bfea1"
+  },
+  "oC3dTrailEffectorUvRampSettings": {
+   "id": 290416914,
+   "size": 176,
+   "registrar": "0x1405c0056"
+  },
+  "oC3dTrailEmitterPoint": {
+   "id": 291722908,
+   "size": 80,
+   "registrar": "0x1405c2201"
+  },
+  "oC3dTrailEmitterPointSettings": {
+   "id": 291722915,
+   "size": 64,
+   "registrar": "0x1405c23b6"
+  },
+  "oC3dTrailEmitterStick": {
+   "id": 290416936,
+   "size": 96,
+   "registrar": "0x1405c1e81"
+  },
+  "oC3dTrailEmitterStickSettings": {
+   "id": 290416947,
+   "size": 80,
+   "registrar": "0x1405c2036"
+  },
+  "oC3dTrailParticleRenderer": {
+   "id": 133007405,
+   "size": 416,
+   "registrar": "0x14046a671"
+  },
+  "oC3dTrailParticleRendererSettings": {
+   "id": 133007409,
+   "size": 128,
+   "registrar": "0x14046a826"
+  },
+  "oCAchievedBool": {
+   "id": 148903187,
+   "size": 136,
+   "registrar": "0x140666621"
+  },
+  "oCAchievedFloat": {
+   "id": 148903185,
+   "size": 144,
+   "registrar": "0x1406667f1"
+  },
+  "oCAchievedUInt": {
+   "id": 148903186,
+   "size": 136,
+   "registrar": "0x1406669c1"
+  },
+  "oCAchievement": {
+   "id": 347533458,
+   "size": 104,
+   "registrar": "0x140220fc6"
+  },
+  "oCActivateEntityCpntCineBloc": {
+   "id": 264606764,
+   "size": 176,
+   "registrar": "0x14071a9e6"
+  },
+  "oCAdditionalContent": {
+   "id": 4684635,
+   "size": 160,
+   "registrar": "0x140194286"
+  },
+  "oCAlternateAnimatic": {
+   "id": 109162379,
+   "size": 304,
+   "registrar": "0x140870f76"
+  },
+  "oCAnimAddNode": {
+   "id": 352289102,
+   "size": 192,
+   "registrar": "0x14060aa11"
+  },
+  "oCAnimAutoLerpNode": {
+   "id": 51353945,
+   "size": 3633006847,
+   "registrar": "0x140606f61"
+  },
+  "oCAnimEvalNode": {
+   "id": 6148,
+   "size": 3633006847,
+   "registrar": "0x140605fd1"
+  },
+  "oCAnimGraphic3dObject": {
+   "id": 5632,
+   "size": 512,
+   "registrar": "0x1406126c6"
+  },
+  "oCAnimLeftRightBlendNode": {
+   "id": 440953676,
+   "size": 2337079295,
+   "registrar": "0x14060a2b1"
+  },
+  "oCAnimLerpNode": {
+   "id": 49653756,
+   "size": 3633006847,
+   "registrar": "0x140606d91"
+  },
+  "oCAnimMultiBlendNode": {
+   "id": 262708749,
+   "size": 3633006847,
+   "registrar": "0x140608391"
+  },
+  "oCAnimPhysicNode": {
+   "id": 355841295,
+   "size": 48,
+   "registrar": "0x14060b241"
+  },
+  "oCAnimPlayNode": {
+   "id": 262706024,
+   "size": 3633006847,
+   "registrar": "0x140607991"
+  },
+  "oCAnimQuadDirBlendNode": {
+   "id": 263057995,
+   "size": 3633006847,
+   "registrar": "0x1406091e1"
+  },
+  "oCAnimQuadDirTwoSpeedBlendNode": {
+   "id": 263229485,
+   "size": 3633006847,
+   "registrar": "0x1406093b1"
+  },
+  "oCAnimTwoSpeedBlendNode": {
+   "id": 358767572,
+   "size": 328,
+   "registrar": "0x140609b71"
+  },
+  "oCAnimatic": {
+   "id": 109162378,
+   "size": 288,
+   "registrar": "0x1407cc3b6"
+  },
+  "oCAnimaticCpntAnimAlternateSettings": {
+   "id": 354636859,
+   "size": 200,
+   "registrar": "0x1407cbe46"
+  },
+  "oCAnimaticsGroup": {
+   "id": 109162380,
+   "size": 112,
+   "registrar": "0x140871166"
+  },
+  "oCAnimaticsGroupProbabilities": {
+   "id": 126369050,
+   "size": 48,
+   "registrar": "0x140871716"
+  },
+  "oCAnimaticsSet": {
+   "id": 109162381,
+   "size": 128,
+   "registrar": "0x140871546"
+  },
+  "oCAnimation": {
+   "id": 5533,
+   "size": 3633006847,
+   "registrar": "0x140605c76"
+  },
+  "oCAnimationTrack": {
+   "id": 5624,
+   "size": 3633006847,
+   "registrar": "0x140605a86"
+  },
+  "oCApplicationSettings": {
+   "id": 1941779,
+   "size": 40,
+   "registrar": "0x14022dd66"
+  },
+  "oCArcMeshWithBorderSettings": {
+   "id": 207734536,
+   "size": 48,
+   "registrar": "0x14061f146"
+  },
+  "oCArchive": {
+   "id": 5904,
+   "size": 232,
+   "registrar": "0x140185a16"
+  },
+  "oCArchiveEntry": {
+   "id": 398766736,
+   "size": 56,
+   "registrar": "0x140185871"
+  },
+  "oCBallisticComputerEntityCpnt": {
+   "id": 374062612,
+   "size": 248,
+   "registrar": "0x140831b41"
+  },
+  "oCBallisticComputerEntityCpntSettings": {
+   "id": 374062614,
+   "size": 896,
+   "registrar": "0x140831976"
+  },
+  "oCBasicDamage": {
+   "id": 266681793,
+   "size": 136,
+   "registrar": "0x1402253f1"
+  },
+  "oCBasicDamageFeedback": {
+   "id": 267981886,
+   "size": 24,
+   "registrar": "0x1402255a1"
+  },
+  "oCBasicDetourMultiTileNavMeshGo": {
+   "id": 228675113,
+   "size": 736,
+   "registrar": "0x1408b5006"
+  },
+  "oCBasicOctree": {
+   "id": 333469508,
+   "size": 160,
+   "registrar": "0x140234921"
+  },
+  "oCBasicProcessedDamage": {
+   "id": 419870304,
+   "size": 136,
+   "registrar": "0x140225241"
+  },
+  "oCBasicQuadTree2": {
+   "id": 329045297,
+   "size": 144,
+   "registrar": "0x140223131"
+  },
+  "oCBeamEmittersSettings": {
+   "id": 306572878,
+   "size": 24,
+   "registrar": "0x1405d3086"
+  },
+  "oCBeamGraphic3dObject": {
+   "id": 307215880,
+   "size": 193678591,
+   "registrar": "0x1405d2d21"
+  },
+  "oCBeamModifiersSettings": {
+   "id": 306572883,
+   "size": 24,
+   "registrar": "0x1405d3256"
+  },
+  "oCBeamPoint": {
+   "id": 306344696,
+   "size": 56,
+   "registrar": "0x14046a161"
+  },
+  "oCBeamRenderersSettings": {
+   "id": 307217463,
+   "size": 24,
+   "registrar": "0x1405d3426"
+  },
+  "oCBezierSpline": {
+   "id": 262701147,
+   "size": 120,
+   "registrar": "0x14027d381"
+  },
+  "oCBlitSqPow2ImageProcessor": {
+   "id": 219450746,
+   "size": 8,
+   "registrar": "0x14065d761"
+  },
+  "oCBloomRenderBlocSettings": {
+   "id": 289125747,
+   "size": 32,
+   "registrar": "0x140184296"
+  },
+  "oCBonePhysicConstraintSettings": {
+   "id": 355920371,
+   "size": 96,
+   "registrar": "0x1407cd8f6"
+  },
+  "oCBonePhysicVolumeSettings": {
+   "id": 355312362,
+   "size": 352,
+   "registrar": "0x1407cd706"
+  },
+  "oCBoolGoDelegateGameTest": {
+   "id": 8216,
+   "size": 160,
+   "registrar": "0x140487d86"
+  },
+  "oCBoolPerformanceProfileValue": {
+   "id": 328094805,
+   "size": 32,
+   "registrar": "0x1401847b6"
+  },
+  "oCBoolShaderParam": {
+   "id": 279466005,
+   "size": 48,
+   "registrar": "0x14017cad6"
+  },
+  "oCBox2": {
+   "id": 277314441,
+   "size": 16,
+   "registrar": "0x140222df1"
+  },
+  "oCBox3": {
+   "id": 42244338,
+   "size": 24,
+   "registrar": "0x140182411"
+  },
+  "oCBox3dShape": {
+   "id": 8660,
+   "size": 144,
+   "registrar": "0x1402bf716"
+  },
+  "oCBulletApplicationSettingsSection": {
+   "id": 320516270,
+   "size": 72,
+   "registrar": "0x1408581c6"
+  },
+  "oCBulletDynamicBox": {
+   "id": 21545613,
+   "size": 1216,
+   "registrar": "0x140857886"
+  },
+  "oCBulletDynamicCapsule": {
+   "id": 21644624,
+   "size": 1216,
+   "registrar": "0x140858396"
+  },
+  "oCBulletDynamicConvex": {
+   "id": 47304893,
+   "size": 1296,
+   "registrar": "0x140858586"
+  },
+  "oCBulletDynamicCylinder": {
+   "id": 288535257,
+   "size": 1216,
+   "registrar": "0x140858776"
+  },
+  "oCBulletDynamicSphere": {
+   "id": 21545614,
+   "size": 1200,
+   "registrar": "0x140857a76"
+  },
+  "oCBulletGhostBox": {
+   "id": 219685404,
+   "size": 640,
+   "registrar": "0x1407fea61"
+  },
+  "oCBulletGhostCapsule": {
+   "id": 283279796,
+   "size": 640,
+   "registrar": "0x1407fec31"
+  },
+  "oCBulletGhostCylinder": {
+   "id": 219686377,
+   "size": 640,
+   "registrar": "0x1407fee01"
+  },
+  "oCBulletGhostShapeList": {
+   "id": 277822275,
+   "size": 304,
+   "registrar": "0x1407fefd1"
+  },
+  "oCBulletGhostSphere": {
+   "id": 219676518,
+   "size": 624,
+   "registrar": "0x1407ff1a1"
+  },
+  "oCBulletPhysicCharacter": {
+   "id": 21545615,
+   "size": 1008,
+   "registrar": "0x1408574f6"
+  },
+  "oCBulletPhysicTerrain": {
+   "id": 246990747,
+   "size": 768,
+   "registrar": "0x140858021"
+  },
+  "oCBulletSoftRope": {
+   "id": 21545619,
+   "size": 272,
+   "registrar": "0x1408576e1"
+  },
+  "oCBulletStaticBox": {
+   "id": 21545617,
+   "size": 592,
+   "registrar": "0x140857c66"
+  },
+  "oCBulletStaticCapsule": {
+   "id": 21545518,
+   "size": 592,
+   "registrar": "0x140858961"
+  },
+  "oCBulletStaticConvex": {
+   "id": 21545618,
+   "size": 672,
+   "registrar": "0x140858b31"
+  },
+  "oCBulletStaticCylinder": {
+   "id": 21545517,
+   "size": 592,
+   "registrar": "0x140858d01"
+  },
+  "oCBulletStaticShapeList": {
+   "id": 21545621,
+   "size": 624,
+   "registrar": "0x140858ed1"
+  },
+  "oCBulletStaticSharedShapeList": {
+   "id": 21545622,
+   "size": 320,
+   "registrar": "0x140857321"
+  },
+  "oCBulletStaticSphere": {
+   "id": 21545616,
+   "size": 576,
+   "registrar": "0x140857e51"
+  },
+  "oCBulletStaticTriangleMesh": {
+   "id": 21545620,
+   "size": 816,
+   "registrar": "0x1408590a1"
+  },
+  "oCBulletWorld": {
+   "id": 21165609,
+   "size": 22496,
+   "registrar": "0x14022fcf6"
+  },
+  "oCCamAnimPointsCineBloc": {
+   "id": 133883579,
+   "size": 1016,
+   "registrar": "0x1408ae8e6"
+  },
+  "oCCamRootCineBloc": {
+   "id": 182098394,
+   "size": 128,
+   "registrar": "0x1408aeab6"
+  },
+  "oCCamera": {
+   "id": 5775,
+   "size": 144,
+   "registrar": "0x14017a4e1"
+  },
+  "oCCameraShake": {
+   "id": 278149850,
+   "size": 392,
+   "registrar": "0x1408aee96"
+  },
+  "oCCameraShakeAxis": {
+   "id": 278172385,
+   "size": 40,
+   "registrar": "0x1408aeca6"
+  },
+  "oCCascadeInfo": {
+   "id": 346586847,
+   "size": 16,
+   "registrar": "0x1407a1526"
+  },
+  "oCCineBlocCamFov": {
+   "id": 293632184,
+   "size": 200,
+   "registrar": "0x1408af276"
+  },
+  "oCCineBlocCamShake": {
+   "id": 277917759,
+   "size": 480,
+   "registrar": "0x1408af086"
+  },
+  "oCCineBlocDelegate": {
+   "id": 111025162,
+   "size": 192,
+   "registrar": "0x1408af9d6"
+  },
+  "oCCineBlocDelegateDuration": {
+   "id": 140785251,
+   "size": 208,
+   "registrar": "0x1408af806"
+  },
+  "oCCineBlocDummyAnim": {
+   "id": 27086958,
+   "size": 408,
+   "registrar": "0x1408af466"
+  },
+  "oCCineEntityRetrieverSelector": {
+   "id": 314613003,
+   "size": 48,
+   "registrar": "0x1406fddc6"
+  },
+  "oCCinematic": {
+   "id": 20520020,
+   "size": 208,
+   "registrar": "0x14069bcc6"
+  },
+  "oCCollisionMesh": {
+   "id": 3184747,
+   "size": 136,
+   "registrar": "0x1406da9a6"
+  },
+  "oCColor": {
+   "id": 17615398,
+   "size": 16,
+   "registrar": "0x1405130d8"
+  },
+  "oCColorGradingSettings": {
+   "id": 259146714,
+   "size": 88,
+   "registrar": "0x1405af936"
+  },
+  "oCColorInterval": {
+   "id": 282995199,
+   "size": 32,
+   "registrar": "0x1401865a1"
+  },
+  "oCColorPickWindow": {
+   "id": 5729,
+   "size": 1080,
+   "registrar": "0x14054e421"
+  },
+  "oCColorRamp": {
+   "id": 34440114,
+   "size": 40,
+   "registrar": "0x140186751"
+  },
+  "oCColorSchemeSettings": {
+   "id": 331493610,
+   "size": 40,
+   "registrar": "0x140468206"
+  },
+  "oCColorValueCompute": {
+   "id": 283161140,
+   "size": 88,
+   "registrar": "0x140186906"
+  },
+  "oCCombinerCpntTestSettings": {
+   "id": 281347532,
+   "size": 32,
+   "registrar": "0x140776156"
+  },
+  "oCCombinerGameTest": {
+   "id": 8217,
+   "size": 56,
+   "registrar": "0x1404882f6"
+  },
+  "oCComputeEntityCollector": {
+   "id": 404659525,
+   "size": 64,
+   "registrar": "0x140229161"
+  },
+  "oCCone": {
+   "id": 931,
+   "size": 40,
+   "registrar": "0x1401825c1"
+  },
+  "oCConsolesRootGs": {
+   "id": 256742882,
+   "size": 856,
+   "registrar": "0x1401974d1"
+  },
+  "oCControlPoint": {
+   "id": 285782611,
+   "size": 72,
+   "registrar": "0x14027d531"
+  },
+  "oCControlPointCurve": {
+   "id": 285497498,
+   "size": 72,
+   "registrar": "0x14027da41"
+  },
+  "oCCopyFileMasteringActionItem": {
+   "id": 324116794,
+   "size": 40,
+   "registrar": "0x1404a8466"
+  },
+  "oCCopyFilesMasteringAction": {
+   "id": 321194763,
+   "size": 408,
+   "registrar": "0x1404a8656"
+  },
+  "oCCurrentSku": {
+   "id": 319882629,
+   "size": 64,
+   "registrar": "0x1404a7d21"
+  },
+  "oCCurve3dGo": {
+   "id": 286041038,
+   "size": 320,
+   "registrar": "0x14069baf6"
+  },
+  "oCCustomFlagFilter": {
+   "id": 363452863,
+   "size": 56,
+   "registrar": "0x1401898c6"
+  },
+  "oCCustomFlagList": {
+   "id": 363452862,
+   "size": 24,
+   "registrar": "0x1401896d6"
+  },
+  "oCCylinder": {
+   "id": 887,
+   "size": 24,
+   "registrar": "0x14022b661"
+  },
+  "oCCylinder3dShape": {
+   "id": 8650,
+   "size": 144,
+   "registrar": "0x1402bf906"
+  },
+  "oCCylindrical": {
+   "id": 1882851,
+   "size": 12,
+   "registrar": "0x1404b7711"
+  },
+  "oCDebugDrawFlag": {
+   "id": 264420754,
+   "size": 48,
+   "registrar": "0x140179bf6"
+  },
+  "oCDebugDrawFlagsMgr": {
+   "id": 264420752,
+   "size": 72,
+   "registrar": "0x140179de6"
+  },
+  "oCDefaultDeferredPBRAmbLightTypeMaterial": {
+   "id": 319544368,
+   "size": 152,
+   "registrar": "0x1405a1981"
+  },
+  "oCDefaultDeferredPBRDirLightTypeMaterial": {
+   "id": 319544365,
+   "size": 232,
+   "registrar": "0x1405a1471"
+  },
+  "oCDefaultDeferredPBROmniLightTypeMaterial": {
+   "id": 319544366,
+   "size": 192,
+   "registrar": "0x1405a1621"
+  },
+  "oCDefaultDeferredPBRRenderPipeline": {
+   "id": 335280707,
+   "size": 96896,
+   "registrar": "0x1405a2271"
+  },
+  "oCDefaultDeferredPBRSpotLightTypeMaterial": {
+   "id": 319544367,
+   "size": 216,
+   "registrar": "0x1405a17d1"
+  },
+  "oCDeferredLightsRenderLayer": {
+   "id": 221487540,
+   "size": 272,
+   "registrar": "0x1402be611"
+  },
+  "oCDeferredPbrLightsRenderLayer": {
+   "id": 274893607,
+   "size": 408,
+   "registrar": "0x1402be271"
+  },
+  "oCDeleteFilesMasteringAction": {
+   "id": 321716817,
+   "size": 408,
+   "registrar": "0x1404a8846"
+  },
+  "oCDependantRenderLayer": {
+   "id": 84407603,
+   "size": 128,
+   "registrar": "0x1401860c1"
+  },
+  "oCDepthFogSettings": {
+   "id": 319469162,
+   "size": 48,
+   "registrar": "0x1405a1b36"
+  },
+  "oCDetectedEntityCollector": {
+   "id": 315754865,
+   "size": 48,
+   "registrar": "0x1402286e1"
+  },
+  "oCDetectedEntityCollectorSettings": {
+   "id": 315754863,
+   "size": 208,
+   "registrar": "0x140228516"
+  },
+  "oCDetourBoxAreaMark": {
+   "id": 392027150,
+   "size": 88,
+   "registrar": "0x1402becb1"
+  },
+  "oCDetourCylinderAreaMark": {
+   "id": 392027151,
+   "size": 80,
+   "registrar": "0x1402bee81"
+  },
+  "oCDetourFlagSet": {
+   "id": 57846,
+   "size": 1,
+   "registrar": "0x140196881"
+  },
+  "oCDetourFlagsApplicationSettingsSection": {
+   "id": 358072942,
+   "size": 256,
+   "registrar": "0x14086dcd6"
+  },
+  "oCDetourFlagsFindTestGo": {
+   "id": 1287569895,
+   "size": 272,
+   "registrar": "0x1408b51d6"
+  },
+  "oCDetourMeshTile": {
+   "id": 230441926,
+   "size": 168,
+   "registrar": "0x1402bf3a6"
+  },
+  "oCDetourNavMeshByTiles": {
+   "id": 230441925,
+   "size": 488,
+   "registrar": "0x140196df6"
+  },
+  "oCDetourNavMeshConfig": {
+   "id": 23044913,
+   "size": 240,
+   "registrar": "0x140196c06"
+  },
+  "oCDetourOffMeshLink": {
+   "id": 23044555,
+   "size": 72,
+   "registrar": "0x140196a36"
+  },
+  "oCDetourRequestProfile": {
+   "id": 230441955,
+   "size": 296,
+   "registrar": "0x140772db6"
+  },
+  "oCDetourWorld": {
+   "id": 23044914,
+   "size": 288,
+   "registrar": "0x140230251"
+  },
+  "oCDisableShadowCineBloc": {
+   "id": 300787497,
+   "size": 64,
+   "registrar": "0x1407366e6"
+  },
+  "oCDof2RenderBlocSettings": {
+   "id": 289384516,
+   "size": 56,
+   "registrar": "0x1405a1ed6"
+  },
+  "oCDtAbilityAlternateIcon": {
+   "id": 369583714,
+   "size": 32,
+   "registrar": "0x1402f8c71"
+  },
+  "oCDtAbilityAlternateIconSettings": {
+   "id": 369583639,
+   "size": 248,
+   "registrar": "0x1402f8a86"
+  },
+  "oCDtAbilityInputLinkSettings": {
+   "id": 366626843,
+   "size": 80,
+   "registrar": "0x1402f88b1"
+  },
+  "oCDtAmbientLightingSettings": {
+   "id": 256752704,
+   "size": 72,
+   "registrar": "0x140188306"
+  },
+  "oCDtAmbientWindSettings": {
+   "id": 364947851,
+   "size": 40,
+   "registrar": "0x140188a46"
+  },
+  "oCDtAnalyticsSceneContext": {
+   "id": 399801708,
+   "size": 952,
+   "registrar": "0x14022f0e1"
+  },
+  "oCDtAttackComboStepSettings": {
+   "id": 241973104,
+   "size": 392,
+   "registrar": "0x14040d6e6"
+  },
+  "oCDtBossTimerUiControllerEntityCpnt": {
+   "id": 401186993,
+   "size": 296,
+   "registrar": "0x1403b75d1"
+  },
+  "oCDtBossTimerUiControllerEntityCpntSettings": {
+   "id": 401186990,
+   "size": 848,
+   "registrar": "0x1403b7406"
+  },
+  "oCDtChargeAttackStep": {
+   "id": 366805450,
+   "size": 80,
+   "registrar": "0x14040de41"
+  },
+  "oCDtChargeAttackStepSettings": {
+   "id": 366805447,
+   "size": 400,
+   "registrar": "0x14040dc56"
+  },
+  "oCDtCurrentRunProfileData": {
+   "id": 419260611,
+   "size": 560,
+   "registrar": "0x140196356"
+  },
+  "oCDtDamage": {
+   "id": 360594195,
+   "size": 280,
+   "registrar": "0x140229a31"
+  },
+  "oCDtDamageDebuff": {
+   "id": 380741367,
+   "size": 96,
+   "registrar": "0x140229fc1"
+  },
+  "oCDtDamageDebuffSettings": {
+   "id": 380741372,
+   "size": 672,
+   "registrar": "0x140229dd6"
+  },
+  "oCDtDamageFeedback": {
+   "id": 360594259,
+   "size": 56,
+   "registrar": "0x140229c01"
+  },
+  "oCDtDayNightClockUiControllerEntityCpnt": {
+   "id": 401111477,
+   "size": 288,
+   "registrar": "0x1403b7251"
+  },
+  "oCDtDayNightClockUiControllerEntityCpntSettings": {
+   "id": 401111476,
+   "size": 912,
+   "registrar": "0x1403b7086"
+  },
+  "oCDtDefinition": {
+   "id": 392744590,
+   "size": 648,
+   "registrar": "0x140189506"
+  },
+  "oCDtDreamShardDefinition": {
+   "id": 393082697,
+   "size": 712,
+   "registrar": "0x1402f86e6"
+  },
+  "oCDtDreamShardsEntitySelectorToSpawnEntityCpnt": {
+   "id": 387129864,
+   "size": 168,
+   "registrar": "0x140300741"
+  },
+  "oCDtDreamShardsEntitySelectorToSpawnEntityCpntSettings": {
+   "id": 387129856,
+   "size": 376,
+   "registrar": "0x140300576"
+  },
+  "oCDtEncyclopediaSceneContext": {
+   "id": 361190206,
+   "size": 192,
+   "registrar": "0x14022f291"
+  },
+  "oCDtEnemyCampDifficultyDefinition": {
+   "id": 393091356,
+   "size": 664,
+   "registrar": "0x140236706"
+  },
+  "oCDtEnemyCampEntitySelectorToSpawnEntityCpnt": {
+   "id": 381145462,
+   "size": 360,
+   "registrar": "0x14023a0b1"
+  },
+  "oCDtEnemyCampEntitySelectorToSpawnEntityCpntSettings": {
+   "id": 381145461,
+   "size": 1080,
+   "registrar": "0x140239ee6"
+  },
+  "oCDtEnemyCampEntitySelectorToSpawnTribeEntrySettings": {
+   "id": 381164928,
+   "size": 248,
+   "registrar": "0x140239cf6"
+  },
+  "oCDtEnemyCampTierDefinition": {
+   "id": 393091320,
+   "size": 672,
+   "registrar": "0x140236ac6"
+  },
+  "oCDtEnemyDefinition": {
+   "id": 393079735,
+   "size": 848,
+   "registrar": "0x14022e2d6"
+  },
+  "oCDtEnemyDefinitionMaxOccurence": {
+   "id": 410276544,
+   "size": 16,
+   "registrar": "0x14022e0e6"
+  },
+  "oCDtEnemyFlagListEntitySelectorToSpawnEntityCpnt": {
+   "id": 385981438,
+   "size": 192,
+   "registrar": "0x14033de81"
+  },
+  "oCDtEnemyFlagListEntitySelectorToSpawnEntityCpntSettings": {
+   "id": 385981433,
+   "size": 272,
+   "registrar": "0x14033dcb6"
+  },
+  "oCDtEnemyTribeDefinition": {
+   "id": 393069291,
+   "size": 728,
+   "registrar": "0x140189ab6"
+  },
+  "oCDtEntityCpnt3DBookController": {
+   "id": 394378604,
+   "size": 560,
+   "registrar": "0x14027e4c1"
+  },
+  "oCDtEntityCpnt3DBookControllerSettings": {
+   "id": 394378628,
+   "size": 1912,
+   "registrar": "0x14027e2f6"
+  },
+  "oCDtEntityCpnt3DBookTabController": {
+   "id": 413903782,
+   "size": 168,
+   "registrar": "0x140314ff1"
+  },
+  "oCDtEntityCpnt3DBookTabControllerSettings": {
+   "id": 413903786,
+   "size": 440,
+   "registrar": "0x140314e26"
+  },
+  "oCDtEntityCpntAbilityController": {
+   "id": 358953820,
+   "size": 1032,
+   "registrar": "0x1402f91b1"
+  },
+  "oCDtEntityCpntAbilityControllerPersistentData": {
+   "id": 427553357,
+   "size": 88,
+   "registrar": "0x1402f8e16"
+  },
+  "oCDtEntityCpntAbilityControllerSettings": {
+   "id": 358953902,
+   "size": 3888,
+   "registrar": "0x1402f8fe6"
+  },
+  "oCDtEntityCpntAbilityCtrlListener": {
+   "id": 451140086,
+   "size": 408,
+   "registrar": "0x1402f9e01"
+  },
+  "oCDtEntityCpntAbilityCtrlListenerNetworkData": {
+   "id": 451139844,
+   "size": 216,
+   "registrar": "0x1402f9a81"
+  },
+  "oCDtEntityCpntAbilityCtrlListenerSettings": {
+   "id": 451139922,
+   "size": 576,
+   "registrar": "0x1402f9c36"
+  },
+  "oCDtEntityCpntAbilityUiController": {
+   "id": 360158158,
+   "size": 1104,
+   "registrar": "0x140367611"
+  },
+  "oCDtEntityCpntAbilityUiControllerSettings": {
+   "id": 360158044,
+   "size": 472,
+   "registrar": "0x140367446"
+  },
+  "oCDtEntityCpntActorAction": {
+   "id": 374596230,
+   "size": 160,
+   "registrar": "0x1402c3721"
+  },
+  "oCDtEntityCpntActorActionSettings": {
+   "id": 374596220,
+   "size": 352,
+   "registrar": "0x1402c3556"
+  },
+  "oCDtEntityCpntAttackAim": {
+   "id": 360078502,
+   "size": 416,
+   "registrar": "0x14040d531"
+  },
+  "oCDtEntityCpntAttackAimSettings": {
+   "id": 284895361,
+   "size": 1016,
+   "registrar": "0x14040d366"
+  },
+  "oCDtEntityCpntAttackCombo": {
+   "id": 360066559,
+   "size": 328,
+   "registrar": "0x14040daa1"
+  },
+  "oCDtEntityCpntAttackComboSettings": {
+   "id": 210606562,
+   "size": 648,
+   "registrar": "0x14040d8d6"
+  },
+  "oCDtEntityCpntBookMenuUiController": {
+   "id": 392740073,
+   "size": 808,
+   "registrar": "0x140223f31"
+  },
+  "oCDtEntityCpntBookMenuUiControllerSettings": {
+   "id": 392740047,
+   "size": 2248,
+   "registrar": "0x140223d66"
+  },
+  "oCDtEntityCpntCharacterController": {
+   "id": 358677897,
+   "size": 2976,
+   "registrar": "0x140237e31"
+  },
+  "oCDtEntityCpntCharacterControllerSettings": {
+   "id": 358677895,
+   "size": 5528,
+   "registrar": "0x140237c66"
+  },
+  "oCDtEntityCpntChargeAttack": {
+   "id": 366805149,
+   "size": 144,
+   "registrar": "0x14040e1b1"
+  },
+  "oCDtEntityCpntChargeAttackSettings": {
+   "id": 366805188,
+   "size": 392,
+   "registrar": "0x14040dfe6"
+  },
+  "oCDtEntityCpntCinematicUiController": {
+   "id": 377082609,
+   "size": 208,
+   "registrar": "0x1402bbb41"
+  },
+  "oCDtEntityCpntCinematicUiControllerSettings": {
+   "id": 377082606,
+   "size": 256,
+   "registrar": "0x1402bb976"
+  },
+  "oCDtEntityCpntComboPointUiController": {
+   "id": 397318233,
+   "size": 288,
+   "registrar": "0x1403b83f1"
+  },
+  "oCDtEntityCpntComboPointUiControllerSettings": {
+   "id": 397318546,
+   "size": 976,
+   "registrar": "0x1403b8226"
+  },
+  "oCDtEntityCpntContinuousAttack": {
+   "id": 367145605,
+   "size": 168,
+   "registrar": "0x14040e531"
+  },
+  "oCDtEntityCpntContinuousAttackSettings": {
+   "id": 367145608,
+   "size": 696,
+   "registrar": "0x14040e366"
+  },
+  "oCDtEntityCpntDamage": {
+   "id": 360593024,
+   "size": 1008,
+   "registrar": "0x14022a331"
+  },
+  "oCDtEntityCpntDamageSettings": {
+   "id": 360593038,
+   "size": 5160,
+   "registrar": "0x14022a166"
+  },
+  "oCDtEntityCpntDeliveryPoint": {
+   "id": 388824919,
+   "size": 392,
+   "registrar": "0x140314aa1"
+  },
+  "oCDtEntityCpntDeliveryPointNetwotkData": {
+   "id": 404744291,
+   "size": 208,
+   "registrar": "0x140314721"
+  },
+  "oCDtEntityCpntDeliveryPointSettings": {
+   "id": 388824907,
+   "size": 512,
+   "registrar": "0x1403148d6"
+  },
+  "oCDtEntityCpntEnemyController": {
+   "id": 358680380,
+   "size": 280,
+   "registrar": "0x1403bbf41"
+  },
+  "oCDtEntityCpntEnemyControllerSettings": {
+   "id": 358680418,
+   "size": 2447900939,
+   "registrar": "0x1403bbd76"
+  },
+  "oCDtEntityCpntEscapeGameMenuUiController": {
+   "id": 402324560,
+   "size": 296,
+   "registrar": "0x1402242b1"
+  },
+  "oCDtEntityCpntEscapeGameMenuUiControllerSettings": {
+   "id": 402324579,
+   "size": 536,
+   "registrar": "0x1402240e6"
+  },
+  "oCDtEntityCpntGroupLevel": {
+   "id": 361270274,
+   "size": 368,
+   "registrar": "0x140237201"
+  },
+  "oCDtEntityCpntGroupLevelNetworkData": {
+   "id": 404748714,
+   "size": 208,
+   "registrar": "0x140236c91"
+  },
+  "oCDtEntityCpntGroupLevelPersistentData": {
+   "id": 420472208,
+   "size": 88,
+   "registrar": "0x140237016"
+  },
+  "oCDtEntityCpntGroupLevelSettings": {
+   "id": 361270271,
+   "size": 1640,
+   "registrar": "0x140236e46"
+  },
+  "oCDtEntityCpntHeroController": {
+   "id": 358263897,
+   "size": 7752,
+   "registrar": "0x140238b21"
+  },
+  "oCDtEntityCpntHeroControllerListener": {
+   "id": 450622449,
+   "size": 504,
+   "registrar": "0x1403bc641"
+  },
+  "oCDtEntityCpntHeroControllerListenerNetworkData": {
+   "id": 450622356,
+   "size": 208,
+   "registrar": "0x1403bc2c1"
+  },
+  "oCDtEntityCpntHeroControllerListenerSettings": {
+   "id": 450622371,
+   "size": 280,
+   "registrar": "0x1403bc476"
+  },
+  "oCDtEntityCpntHeroControllerNetworkData": {
+   "id": 404749031,
+   "size": 208,
+   "registrar": "0x140237fe1"
+  },
+  "oCDtEntityCpntHeroControllerPersistentData": {
+   "id": 421062170,
+   "size": 280,
+   "registrar": "0x140238936"
+  },
+  "oCDtEntityCpntHeroDefUiController": {
+   "id": 370172495,
+   "size": 1728,
+   "registrar": "0x140317541"
+  },
+  "oCDtEntityCpntHeroDefUiControllerSettings": {
+   "id": 370172492,
+   "size": 688,
+   "registrar": "0x140317376"
+  },
+  "oCDtEntityCpntHeroPhotoCabin": {
+   "id": 393950124,
+   "size": 544,
+   "registrar": "0x14027c5d1"
+  },
+  "oCDtEntityCpntHeroPhotoCabinSettings": {
+   "id": 393950104,
+   "size": 2848,
+   "registrar": "0x14027c406"
+  },
+  "oCDtEntityCpntHeroSpawner": {
+   "id": 370187979,
+   "size": 200,
+   "registrar": "0x1402faf91"
+  },
+  "oCDtEntityCpntHeroSpawnerSettings": {
+   "id": 370187981,
+   "size": 568,
+   "registrar": "0x1402fadc6"
+  },
+  "oCDtEntityCpntHittable": {
+   "id": 358178966,
+   "size": 688,
+   "registrar": "0x140237901"
+  },
+  "oCDtEntityCpntHittableListener": {
+   "id": 450021242,
+   "size": 1176,
+   "registrar": "0x1403bb841"
+  },
+  "oCDtEntityCpntHittableListenerNetworkData": {
+   "id": 450021055,
+   "size": 272,
+   "registrar": "0x1403bb4c1"
+  },
+  "oCDtEntityCpntHittableListenerSettings": {
+   "id": 450021117,
+   "size": 1208,
+   "registrar": "0x1403bb676"
+  },
+  "oCDtEntityCpntHittableSettings": {
+   "id": 358178964,
+   "size": 920,
+   "registrar": "0x140237736"
+  },
+  "oCDtEntityCpntIngredientGain": {
+   "id": 388570468,
+   "size": 120,
+   "registrar": "0x1402fc7d1"
+  },
+  "oCDtEntityCpntIngredientGainSettings": {
+   "id": 388508895,
+   "size": 384,
+   "registrar": "0x1402fc606"
+  },
+  "oCDtEntityCpntIngredientListener": {
+   "id": 388586579,
+   "size": 184,
+   "registrar": "0x1403b6ed1"
+  },
+  "oCDtEntityCpntIngredientListenerSettings": {
+   "id": 388586463,
+   "size": 256,
+   "registrar": "0x1403b6d06"
+  },
+  "oCDtEntityCpntInteraction": {
+   "id": 364207150,
+   "size": 424,
+   "registrar": "0x1402fdcf1"
+  },
+  "oCDtEntityCpntInteractionNetworkData": {
+   "id": 404749539,
+   "size": 2336817130,
+   "registrar": "0x1402fd971"
+  },
+  "oCDtEntityCpntInteractionSettings": {
+   "id": 364207090,
+   "size": 1280,
+   "registrar": "0x1402fdb26"
+  },
+  "oCDtEntityCpntLoadingScreenUiController": {
+   "id": 410777111,
+   "size": 440,
+   "registrar": "0x140365b61"
+  },
+  "oCDtEntityCpntLoadingScreenUiControllerSettings": {
+   "id": 410716557,
+   "size": 648,
+   "registrar": "0x140365996"
+  },
+  "oCDtEntityCpntMagicalObject": {
+   "id": 378137957,
+   "size": 688,
+   "registrar": "0x140236021"
+  },
+  "oCDtEntityCpntMagicalObjectData": {
+   "id": 412268028,
+   "size": 200,
+   "registrar": "0x140236551"
+  },
+  "oCDtEntityCpntMagicalObjectDataSettings": {
+   "id": 412268020,
+   "size": 632,
+   "registrar": "0x140236386"
+  },
+  "oCDtEntityCpntMagicalObjectPersistentData": {
+   "id": 510075630,
+   "size": 88,
+   "registrar": "0x140235c66"
+  },
+  "oCDtEntityCpntMagicalObjectSettings": {
+   "id": 378137922,
+   "size": 3032,
+   "registrar": "0x140235e56"
+  },
+  "oCDtEntityCpntMagicalObjectsDrop": {
+   "id": 378207351,
+   "size": 664,
+   "registrar": "0x14027caf1"
+  },
+  "oCDtEntityCpntMagicalObjectsDropSettings": {
+   "id": 378207398,
+   "size": 2640,
+   "registrar": "0x14027c926"
+  },
+  "oCDtEntityCpntMainMenuUiController": {
+   "id": 365260949,
+   "size": 376,
+   "registrar": "0x140224631"
+  },
+  "oCDtEntityCpntMainMenuUiControllerSettings": {
+   "id": 365260948,
+   "size": 856,
+   "registrar": "0x140224466"
+  },
+  "oCDtEntityCpntMinimap": {
+   "id": 364404732,
+   "size": 120,
+   "registrar": "0x14023a7d1"
+  },
+  "oCDtEntityCpntMinimapMarker": {
+   "id": 364660782,
+   "size": 528,
+   "registrar": "0x14022f611"
+  },
+  "oCDtEntityCpntMinimapMarkerSettings": {
+   "id": 364660786,
+   "size": 2448,
+   "registrar": "0x14022f446"
+  },
+  "oCDtEntityCpntMinimapMarkerUiController": {
+   "id": 364660375,
+   "size": 632,
+   "registrar": "0x140365401"
+  },
+  "oCDtEntityCpntMinimapMarkerUiControllerSettings": {
+   "id": 364660373,
+   "size": 728,
+   "registrar": "0x140365236"
+  },
+  "oCDtEntityCpntMinimapUiController": {
+   "id": 417364041,
+   "size": 224,
+   "registrar": "0x14023ab51"
+  },
+  "oCDtEntityCpntMinimapUiControllerSettings": {
+   "id": 417364040,
+   "size": 368,
+   "registrar": "0x14023a986"
+  },
+  "oCDtEntityCpntMission": {
+   "id": 373796747,
+   "size": 208,
+   "registrar": "0x1402fa511"
+  },
+  "oCDtEntityCpntMissionSettings": {
+   "id": 373796663,
+   "size": 928,
+   "registrar": "0x1402fa346"
+  },
+  "oCDtEntityCpntMissionStepUiController": {
+   "id": 373808460,
+   "size": 280,
+   "registrar": "0x1402fa891"
+  },
+  "oCDtEntityCpntMissionStepUiControllerSettings": {
+   "id": 373808463,
+   "size": 312,
+   "registrar": "0x1402fa6c6"
+  },
+  "oCDtEntityCpntMissionUiController": {
+   "id": 373808402,
+   "size": 296,
+   "registrar": "0x1402fac11"
+  },
+  "oCDtEntityCpntMissionUiControllerSettings": {
+   "id": 373808405,
+   "size": 528,
+   "registrar": "0x1402faa46"
+  },
+  "oCDtEntityCpntPlayBookPageUiController": {
+   "id": 393063938,
+   "size": 8528,
+   "registrar": "0x14040fc01"
+  },
+  "oCDtEntityCpntPlayBookPageUiControllerSettings": {
+   "id": 393063991,
+   "size": 1976,
+   "registrar": "0x14040fa36"
+  },
+  "oCDtEntityCpntPlayerUiController": {
+   "id": 393671486,
+   "size": 496,
+   "registrar": "0x1403b7cd1"
+  },
+  "oCDtEntityCpntPlayerUiControllerSettings": {
+   "id": 393671537,
+   "size": 376,
+   "registrar": "0x1403b7b06"
+  },
+  "oCDtEntityCpntPowerUp": {
+   "id": 362418807,
+   "size": 248,
+   "registrar": "0x14027c081"
+  },
+  "oCDtEntityCpntPowerUpNetworkData": {
+   "id": 505233697,
+   "size": 208,
+   "registrar": "0x14027bd01"
+  },
+  "oCDtEntityCpntPowerUpSettings": {
+   "id": 362418803,
+   "size": 536,
+   "registrar": "0x14027beb6"
+  },
+  "oCDtEntityCpntRemoteDamageOwner": {
+   "id": 385971941,
+   "size": 288,
+   "registrar": "0x140224b61"
+  },
+  "oCDtEntityCpntRemoteDamageOwnerSettings": {
+   "id": 385972026,
+   "size": 696,
+   "registrar": "0x140224996"
+  },
+  "oCDtEntityCpntRemoteDamageTarget": {
+   "id": 390234897,
+   "size": 472,
+   "registrar": "0x140224ee1"
+  },
+  "oCDtEntityCpntRemoteDamageTargetSettings": {
+   "id": 390234895,
+   "size": 952,
+   "registrar": "0x140224d16"
+  },
+  "oCDtEntityCpntResourceGain": {
+   "id": 367926082,
+   "size": 392,
+   "registrar": "0x1402fe241"
+  },
+  "oCDtEntityCpntResourceGainSettings": {
+   "id": 367926063,
+   "size": 1064,
+   "registrar": "0x1402fe076"
+  },
+  "oCDtEntityCpntSandmanMenuUiController": {
+   "id": 387358671,
+   "size": 688,
+   "registrar": "0x1403b67d1"
+  },
+  "oCDtEntityCpntSandmanMenuUiControllerSettings": {
+   "id": 387358661,
+   "size": 2376,
+   "registrar": "0x1403b6606"
+  },
+  "oCDtEntityCpntSelectHeroBookPageUiController": {
+   "id": 393081405,
+   "size": 688,
+   "registrar": "0x14040ff81"
+  },
+  "oCDtEntityCpntSelectHeroBookPageUiControllerSettings": {
+   "id": 393081483,
+   "size": 1080,
+   "registrar": "0x14040fdb6"
+  },
+  "oCDtEntityCpntSelectionMenuUiController": {
+   "id": 368542595,
+   "size": 640,
+   "registrar": "0x1402fbee1"
+  },
+  "oCDtEntityCpntSelectionMenuUiControllerSettings": {
+   "id": 368542593,
+   "size": 728,
+   "registrar": "0x1402fbd16"
+  },
+  "oCDtEntityCpntSkillController": {
+   "id": 368458236,
+   "size": 680,
+   "registrar": "0x1402f9701"
+  },
+  "oCDtEntityCpntSkillControllerPersistentData": {
+   "id": 420543892,
+   "size": 88,
+   "registrar": "0x1402f9366"
+  },
+  "oCDtEntityCpntSkillControllerSettings": {
+   "id": 368458160,
+   "size": 1944,
+   "registrar": "0x1402f9536"
+  },
+  "oCDtEntityCpntTeleporter": {
+   "id": 383732191,
+   "size": 200,
+   "registrar": "0x14023b081"
+  },
+  "oCDtEntityCpntTeleporterNetworkData": {
+   "id": 404744287,
+   "size": 216,
+   "registrar": "0x14023ad01"
+  },
+  "oCDtEntityCpntTeleporterSettings": {
+   "id": 383734325,
+   "size": 496,
+   "registrar": "0x14023aeb6"
+  },
+  "oCDtEntityCpntTileSpawner": {
+   "id": 369581258,
+   "size": 304,
+   "registrar": "0x14023c121"
+  },
+  "oCDtEntityCpntTileSpawnerSettings": {
+   "id": 369581256,
+   "size": 504,
+   "registrar": "0x14023bdb6"
+  },
+  "oCDtEntityModifierPowerUp": {
+   "id": 362828277,
+   "size": 48,
+   "registrar": "0x14027a9d1"
+  },
+  "oCDtEntityModifierPowerUpSettings": {
+   "id": 362828283,
+   "size": 208,
+   "registrar": "0x14027a806"
+  },
+  "oCDtEntityViewer": {
+   "id": 393772217,
+   "size": 1808,
+   "registrar": "0x14027c781"
+  },
+  "oCDtFogSettings": {
+   "id": 256755891,
+   "size": 112,
+   "registrar": "0x1401884d6"
+  },
+  "oCDtGame": {
+   "id": 257589616,
+   "size": 5112,
+   "registrar": "0x140197d26"
+  },
+  "oCDtGameProfile": {
+   "id": 398793968,
+   "size": 968,
+   "registrar": "0x140196526"
+  },
+  "oCDtGameScene": {
+   "id": 260109225,
+   "size": 1952,
+   "registrar": "0x140196fc6"
+  },
+  "oCDtGlobalValueModifier": {
+   "id": 410007455,
+   "size": 48,
+   "registrar": "0x140192b76"
+  },
+  "oCDtHeroDefinition": {
+   "id": 392745161,
+   "size": 2312,
+   "registrar": "0x140195696"
+  },
+  "oCDtHeroEntityCollectorSettings": {
+   "id": 374398243,
+   "size": 408,
+   "registrar": "0x14027ab86"
+  },
+  "oCDtHeroProfileData": {
+   "id": 320768983,
+   "size": 416,
+   "registrar": "0x140195866"
+  },
+  "oCDtHitVignettingSettings": {
+   "id": 279966756,
+   "size": 32,
+   "registrar": "0x140188876"
+  },
+  "oCDtIngredientDefinition": {
+   "id": 393149509,
+   "size": 736,
+   "registrar": "0x140300e26"
+  },
+  "oCDtMagicalObjectProfileData": {
+   "id": 410885600,
+   "size": 112,
+   "registrar": "0x140235a96"
+  },
+  "oCDtMapDefinition": {
+   "id": 393156169,
+   "size": 1104,
+   "registrar": "0x140191ea6"
+  },
+  "oCDtMapScenario": {
+   "id": 381846424,
+   "size": 48,
+   "registrar": "0x14023b236"
+  },
+  "oCDtMissionStep": {
+   "id": 373796712,
+   "size": 80,
+   "registrar": "0x1402fa1a1"
+  },
+  "oCDtMissionStepSettings": {
+   "id": 373796642,
+   "size": 392,
+   "registrar": "0x1402f9fb6"
+  },
+  "oCDtNamedEventDPCollectIngredient": {
+   "id": 424622784,
+   "size": 88,
+   "registrar": "0x140314c51"
+  },
+  "oCDtNamedEventExpGain": {
+   "id": 424622798,
+   "size": 88,
+   "registrar": "0x1402fd401"
+  },
+  "oCDtNamedEventExpGainNotif": {
+   "id": 433243219,
+   "size": 88,
+   "registrar": "0x1402fd5d1"
+  },
+  "oCDtNamedEventGainDreamShards": {
+   "id": 424622827,
+   "size": 96,
+   "registrar": "0x1402fe5c1"
+  },
+  "oCDtNamedEventGainHealthResource": {
+   "id": 425727556,
+   "size": 104,
+   "registrar": "0x1402fdea1"
+  },
+  "oCDtNamedEventGainReroll": {
+   "id": 445882387,
+   "size": 88,
+   "registrar": "0x1402fe791"
+  },
+  "oCDtNamedEventInteraction": {
+   "id": 424622812,
+   "size": 88,
+   "registrar": "0x1402bbcf1"
+  },
+  "oCDtNamedEventPowerUpCollectRequest": {
+   "id": 424622828,
+   "size": 88,
+   "registrar": "0x1402fe3f1"
+  },
+  "oCDtNewGamePlusAppSettingsSection": {
+   "id": 410005119,
+   "size": 40,
+   "registrar": "0x140192f56"
+  },
+  "oCDtNewGamePlusModifier": {
+   "id": 410013977,
+   "size": 568,
+   "registrar": "0x140192d66"
+  },
+  "oCDtNoiseRenderSettings": {
+   "id": 400943109,
+   "size": 24,
+   "registrar": "0x140188fb6"
+  },
+  "oCDtOverlayRenderSettings": {
+   "id": 400602206,
+   "size": 40,
+   "registrar": "0x140188de6"
+  },
+  "oCDtP2PSessionSceneContext": {
+   "id": 367852884,
+   "size": 816,
+   "registrar": "0x14022f996"
+  },
+  "oCDtPbrAmbLightTypeMaterial": {
+   "id": 357059273,
+   "size": 136,
+   "registrar": "0x1402bdd41"
+  },
+  "oCDtPbrDirLightTypeMaterial": {
+   "id": 280591138,
+   "size": 2336817134,
+   "registrar": "0x1402bd9e1"
+  },
+  "oCDtPbrOmniLightTypeMaterial": {
+   "id": 278519845,
+   "size": 168,
+   "registrar": "0x1402bd831"
+  },
+  "oCDtPbrSpotLightTypeMaterial": {
+   "id": 357059234,
+   "size": 200,
+   "registrar": "0x1402bdb91"
+  },
+  "oCDtPlayerProfileData": {
+   "id": 419260609,
+   "size": 32,
+   "registrar": "0x140196186"
+  },
+  "oCDtPowerUpEntityCollector": {
+   "id": 380467657,
+   "size": 48,
+   "registrar": "0x14027b0d1"
+  },
+  "oCDtPowerUpEntityCollectorSettings": {
+   "id": 380467672,
+   "size": 208,
+   "registrar": "0x14027af06"
+  },
+  "oCDtProcessedDamage": {
+   "id": 419875068,
+   "size": 216,
+   "registrar": "0x140229861"
+  },
+  "oCDtRenderPipeline": {
+   "id": 335373922,
+   "size": 571024,
+   "registrar": "0x140189351"
+  },
+  "oCDtRewardDefinition": {
+   "id": 393156174,
+   "size": 664,
+   "registrar": "0x140221936"
+  },
+  "oCDtRewardEntitySelectorToSpawnEntityCpnt": {
+   "id": 390128623,
+   "size": 240,
+   "registrar": "0x14023c4a1"
+  },
+  "oCDtRewardEntitySelectorToSpawnEntityCpntSettings": {
+   "id": 390128617,
+   "size": 280,
+   "registrar": "0x14023c2d6"
+  },
+  "oCDtRootGs": {
+   "id": 257590021,
+   "size": 8688,
+   "registrar": "0x1401979b1"
+  },
+  "oCDtSaturationRenderSettings": {
+   "id": 400601525,
+   "size": 40,
+   "registrar": "0x140188c16"
+  },
+  "oCDtStatus": {
+   "id": 384688080,
+   "size": 40,
+   "registrar": "0x140239086"
+  },
+  "oCDtStatusIconStep": {
+   "id": 384698471,
+   "size": 72,
+   "registrar": "0x140238e96"
+  },
+  "oCDtStatusSettingsGo": {
+   "id": 384683963,
+   "size": 216,
+   "registrar": "0x140239276"
+  },
+  "oCDtStormancerSceneContext": {
+   "id": 367835303,
+   "size": 816,
+   "registrar": "0x140198736"
+  },
+  "oCDtStormancerSteamSceneContext": {
+   "id": 400506330,
+   "size": 832,
+   "registrar": "0x140198906"
+  },
+  "oCDtSurfaceParticleEmitter": {
+   "id": 423322478,
+   "size": 48,
+   "registrar": "0x140187f61"
+  },
+  "oCDtSurfaceParticleEmitterSettings": {
+   "id": 423322552,
+   "size": 224,
+   "registrar": "0x140188136"
+  },
+  "oCDtTerrainDifficultyReaderEntityCpnt": {
+   "id": 398265292,
+   "size": 136,
+   "registrar": "0x140300241"
+  },
+  "oCDtTestingGameSessionInformationsGo": {
+   "id": 378055360,
+   "size": 432,
+   "registrar": "0x14023c656"
+  },
+  "oCDtTileDefinition": {
+   "id": 394381901,
+   "size": 864,
+   "registrar": "0x140189e76"
+  },
+  "oCDtTileFlagConstraint": {
+   "id": 405877935,
+   "size": 40,
+   "registrar": "0x14023b426"
+  },
+  "oCDtTileKind": {
+   "id": 369678231,
+   "size": 104,
+   "registrar": "0x14023b616"
+  },
+  "oCDtTileSlot": {
+   "id": 387639444,
+   "size": 88,
+   "registrar": "0x14023bf81"
+  },
+  "oCDtTileSlotScenarioKindCompatibility": {
+   "id": 387388113,
+   "size": 32,
+   "registrar": "0x14023b806"
+  },
+  "oCDtTileSlotSettings": {
+   "id": 369581308,
+   "size": 64,
+   "registrar": "0x14023b9f6"
+  },
+  "oCDtTileSlotSize": {
+   "id": 387299145,
+   "size": 104,
+   "registrar": "0x14023bbc6"
+  },
+  "oCDtVignettingSettings": {
+   "id": 400945663,
+   "size": 32,
+   "registrar": "0x1401886a6"
+  },
+  "oCDummyGo": {
+   "id": 104859708,
+   "size": 248,
+   "registrar": "0x14069b926"
+  },
+  "oCEditorMemoCamera": {
+   "id": 32347560,
+   "size": 24,
+   "registrar": "0x140665b66"
+  },
+  "oCEditorMemoCameraSlot": {
+   "id": 32347561,
+   "size": 48,
+   "registrar": "0x140665976"
+  },
+  "oCEditorMemoTreeViewStatus": {
+   "id": 56978649,
+   "size": 64,
+   "registrar": "0x140665d56"
+  },
+  "oCEmptyEntityCollector": {
+   "id": 373825983,
+   "size": 40,
+   "registrar": "0x1402278e1"
+  },
+  "oCEngagementGs": {
+   "id": 22183416,
+   "size": 912,
+   "registrar": "0x140197321"
+  },
+  "oCEntity": {
+   "id": 85222487,
+   "size": 1600,
+   "registrar": "0x140183196"
+  },
+  "oCEntity3dLocatorSettings": {
+   "id": 294240363,
+   "size": 2224,
+   "registrar": "0x140190fd6"
+  },
+  "oCEntity3dNodeCpntLocatorSettings": {
+   "id": 262619165,
+   "size": 176,
+   "registrar": "0x140190bf6"
+  },
+  "oCEntity3dTransformPicker": {
+   "id": 323247964,
+   "size": 1448,
+   "registrar": "0x140190de6"
+  },
+  "oCEntityCallMethodCineBloc": {
+   "id": 454238477,
+   "size": 152,
+   "registrar": "0x140736e76"
+  },
+  "oCEntityCollectorSelectorSettings": {
+   "id": 373903513,
+   "size": 32,
+   "registrar": "0x1402271f6"
+  },
+  "oCEntityCpnt3dGraphicObject": {
+   "id": 262619173,
+   "size": 736,
+   "registrar": "0x140315c66"
+  },
+  "oCEntityCpnt3dGraphicObjectSettings": {
+   "id": 262619161,
+   "size": 5056,
+   "registrar": "0x140315a96"
+  },
+  "oCEntityCpnt3dNodeSelector": {
+   "id": 452441876,
+   "size": 480,
+   "registrar": "0x14079ffe1"
+  },
+  "oCEntityCpnt3dNodeSelectorEntrySettings": {
+   "id": 452442529,
+   "size": 200,
+   "registrar": "0x14079fc26"
+  },
+  "oCEntityCpnt3dNodeSelectorSettings": {
+   "id": 452441815,
+   "size": 264,
+   "registrar": "0x14079fe16"
+  },
+  "oCEntityCpnt3dNodeSettings": {
+   "id": 323552108,
+   "size": 4240,
+   "registrar": "0x1403151a6"
+  },
+  "oCEntityCpnt3dText": {
+   "id": 333974022,
+   "size": 976,
+   "registrar": "0x1407a2fb1"
+  },
+  "oCEntityCpnt3dTextSettings": {
+   "id": 333969366,
+   "size": 4704,
+   "registrar": "0x1407a2de6"
+  },
+  "oCEntityCpntActorAction": {
+   "id": 373372257,
+   "size": 288,
+   "registrar": "0x140840dc1"
+  },
+  "oCEntityCpntActorActionSettings": {
+   "id": 373372244,
+   "size": 952,
+   "registrar": "0x140840bf6"
+  },
+  "oCEntityCpntActorSettings": {
+   "id": 373371957,
+   "size": 440,
+   "registrar": "0x14040c8f6"
+  },
+  "oCEntityCpntAmbientLightSettings": {
+   "id": 285762285,
+   "size": 4896,
+   "registrar": "0x1407a1e16"
+  },
+  "oCEntityCpntAngleValue": {
+   "id": 323975287,
+   "size": 304,
+   "registrar": "0x140778301"
+  },
+  "oCEntityCpntAngleValueSettings": {
+   "id": 323975288,
+   "size": 512,
+   "registrar": "0x140778136"
+  },
+  "oCEntityCpntAnimClip": {
+   "id": 210606682,
+   "size": 352,
+   "registrar": "0x1407cbc91"
+  },
+  "oCEntityCpntAnimClipNetworkData": {
+   "id": 413720821,
+   "size": 224,
+   "registrar": "0x1407cb911"
+  },
+  "oCEntityCpntAnimClipSettings": {
+   "id": 265213113,
+   "size": 1144,
+   "registrar": "0x1407cbac6"
+  },
+  "oCEntityCpntAnimLayerNode": {
+   "id": 262781181,
+   "size": 648,
+   "registrar": "0x1407cc751"
+  },
+  "oCEntityCpntAnimLayerNodeSettings": {
+   "id": 262781183,
+   "size": 968,
+   "registrar": "0x1407cc586"
+  },
+  "oCEntityCpntAnimPlayer": {
+   "id": 262778039,
+   "size": 320,
+   "registrar": "0x140735fe1"
+  },
+  "oCEntityCpntAnimPlayerSettings": {
+   "id": 262778041,
+   "size": 456,
+   "registrar": "0x140735e16"
+  },
+  "oCEntityCpntAnimSkeleton": {
+   "id": 382884979,
+   "size": 528,
+   "registrar": "0x140736361"
+  },
+  "oCEntityCpntAnimSkeletonSettings": {
+   "id": 382884924,
+   "size": 2720,
+   "registrar": "0x140736196"
+  },
+  "oCEntityCpntAnimatedBoneController": {
+   "id": 327231920,
+   "size": 184,
+   "registrar": "0x1407a2c31"
+  },
+  "oCEntityCpntAnimatedBoneControllerSettings": {
+   "id": 327231922,
+   "size": 1776,
+   "registrar": "0x1407a2a66"
+  },
+  "oCEntityCpntAnimatedBoneValue": {
+   "id": 350209900,
+   "size": 216,
+   "registrar": "0x1407cb761"
+  },
+  "oCEntityCpntAnimatedBoneValueSettings": {
+   "id": 350209800,
+   "size": 328,
+   "registrar": "0x1407cb596"
+  },
+  "oCEntityCpntAnimatic": {
+   "id": 262773778,
+   "size": 592,
+   "registrar": "0x1407cc201"
+  },
+  "oCEntityCpntAnimaticSettings": {
+   "id": 262773781,
+   "size": 1280,
+   "registrar": "0x1407cc036"
+  },
+  "oCEntityCpntAttackPosComputer": {
+   "id": 272380812,
+   "size": 440,
+   "registrar": "0x1408325c1"
+  },
+  "oCEntityCpntAttackPosComputerSettings": {
+   "id": 272380811,
+   "size": 1208,
+   "registrar": "0x1408323f6"
+  },
+  "oCEntityCpntBasicCamera": {
+   "id": 291648867,
+   "size": 368,
+   "registrar": "0x1407fe1b1"
+  },
+  "oCEntityCpntBasicCameraSettings": {
+   "id": 291648866,
+   "size": 5104,
+   "registrar": "0x1407fdfe6"
+  },
+  "oCEntityCpntBasicDamage": {
+   "id": 266681789,
+   "size": 552,
+   "registrar": "0x140225921"
+  },
+  "oCEntityCpntBasicDamageSettings": {
+   "id": 266681790,
+   "size": 2960,
+   "registrar": "0x140225756"
+  },
+  "oCEntityCpntBasicDynamic": {
+   "id": 276703629,
+   "size": 888,
+   "registrar": "0x140772181"
+  },
+  "oCEntityCpntBasicMove": {
+   "id": 323102800,
+   "size": 384,
+   "registrar": "0x140772501"
+  },
+  "oCEntityCpntBasicMoveSettings": {
+   "id": 323102798,
+   "size": 3248,
+   "registrar": "0x140772336"
+  },
+  "oCEntityCpntBasicPadController": {
+   "id": 268066322,
+   "size": 1040,
+   "registrar": "0x140832241"
+  },
+  "oCEntityCpntBasicPadControllerSettings": {
+   "id": 268064246,
+   "size": 504,
+   "registrar": "0x140832076"
+  },
+  "oCEntityCpntBasicRandom": {
+   "id": 265553615,
+   "size": 176,
+   "registrar": "0x14079e8a1"
+  },
+  "oCEntityCpntBasicRandomPersistentData": {
+   "id": 272801632,
+   "size": 88,
+   "registrar": "0x14079e6b6"
+  },
+  "oCEntityCpntBasicRandomSettings": {
+   "id": 265553612,
+   "size": 504,
+   "registrar": "0x14079e4e6"
+  },
+  "oCEntityCpntBitTestSettings": {
+   "id": 499533142,
+   "size": 272,
+   "registrar": "0x140775f86"
+  },
+  "oCEntityCpntBoolTestSettings": {
+   "id": 281347615,
+   "size": 272,
+   "registrar": "0x140775a16"
+  },
+  "oCEntityCpntButtonUi": {
+   "id": 299497934,
+   "size": 680,
+   "registrar": "0x1403b6b51"
+  },
+  "oCEntityCpntButtonUiSettings": {
+   "id": 299497933,
+   "size": 2880,
+   "registrar": "0x1403b6986"
+  },
+  "oCEntityCpntCharacterLocomotion": {
+   "id": 262099940,
+   "size": 840,
+   "registrar": "0x1408310c1"
+  },
+  "oCEntityCpntCharacterLocomotionNetworkData": {
+   "id": 404744317,
+   "size": 216,
+   "registrar": "0x140830d41"
+  },
+  "oCEntityCpntCharacterLocomotionSettings": {
+   "id": 262099000,
+   "size": 2528,
+   "registrar": "0x140830ef6"
+  },
+  "oCEntityCpntCinematic": {
+   "id": 289226562,
+   "size": 512,
+   "registrar": "0x1407ccad1"
+  },
+  "oCEntityCpntCinematicSettings": {
+   "id": 289226561,
+   "size": 608,
+   "registrar": "0x1407cc906"
+  },
+  "oCEntityCpntCollisionAttack": {
+   "id": 282644610,
+   "size": 224,
+   "registrar": "0x140833741"
+  },
+  "oCEntityCpntCollisionAttackSettings": {
+   "id": 282644606,
+   "size": 512,
+   "registrar": "0x140833576"
+  },
+  "oCEntityCpntCollisionEntityRaycast": {
+   "id": 283864219,
+   "size": 112,
+   "registrar": "0x1407fffc1"
+  },
+  "oCEntityCpntCollisionEntityRaycastSettings": {
+   "id": 283863960,
+   "size": 352,
+   "registrar": "0x1407ffdf6"
+  },
+  "oCEntityCpntCollisionGpn": {
+   "id": 330943903,
+   "size": 480,
+   "registrar": "0x14022c101"
+  },
+  "oCEntityCpntCollisionGpnSettings": {
+   "id": 330943907,
+   "size": 3040,
+   "registrar": "0x14022bf36"
+  },
+  "oCEntityCpntCollisionRaycast": {
+   "id": 312371540,
+   "size": 336,
+   "registrar": "0x140800341"
+  },
+  "oCEntityCpntCollisionRaycastSettings": {
+   "id": 312371537,
+   "size": 4800,
+   "registrar": "0x140800176"
+  },
+  "oCEntityCpntCollisionVolume": {
+   "id": 262190942,
+   "size": 200,
+   "registrar": "0x1407fe8b1"
+  },
+  "oCEntityCpntCollisionVolumeDetector": {
+   "id": 271696722,
+   "size": 144,
+   "registrar": "0x1407ff541"
+  },
+  "oCEntityCpntCollisionVolumeDetectorSettings": {
+   "id": 271696720,
+   "size": 376,
+   "registrar": "0x1407ff376"
+  },
+  "oCEntityCpntCollisionVolumeExtraction": {
+   "id": 262538217,
+   "size": 160,
+   "registrar": "0x1407ff8c1"
+  },
+  "oCEntityCpntCollisionVolumeExtractionSettings": {
+   "id": 262537998,
+   "size": 328,
+   "registrar": "0x1407ff6f6"
+  },
+  "oCEntityCpntCollisionVolumeSettings": {
+   "id": 262190939,
+   "size": 2896,
+   "registrar": "0x1407fe6e6"
+  },
+  "oCEntityCpntCounter": {
+   "id": 291746468,
+   "size": 456,
+   "registrar": "0x140738261"
+  },
+  "oCEntityCpntCounterNetworkData": {
+   "id": 494776078,
+   "size": 208,
+   "registrar": "0x140737ee1"
+  },
+  "oCEntityCpntCounterPersistentData": {
+   "id": 421599965,
+   "size": 88,
+   "registrar": "0x140737cf6"
+  },
+  "oCEntityCpntCounterSettings": {
+   "id": 291746467,
+   "size": 1000,
+   "registrar": "0x140738096"
+  },
+  "oCEntityCpntDespawnSettings": {
+   "id": 265043361,
+   "size": 248,
+   "registrar": "0x140738416"
+  },
+  "oCEntityCpntDetectionVolume": {
+   "id": 346519387,
+   "size": 168,
+   "registrar": "0x1408006c1"
+  },
+  "oCEntityCpntDetectionVolumeForceField": {
+   "id": 346581538,
+   "size": 136,
+   "registrar": "0x140800a41"
+  },
+  "oCEntityCpntDetectionVolumeForceFieldSettings": {
+   "id": 346581337,
+   "size": 336,
+   "registrar": "0x140800876"
+  },
+  "oCEntityCpntDetectionVolumeSettings": {
+   "id": 346519380,
+   "size": 2560,
+   "registrar": "0x1408004f6"
+  },
+  "oCEntityCpntDetourMarkAreaSettings": {
+   "id": 300801091,
+   "size": 416,
+   "registrar": "0x14082f846"
+  },
+  "oCEntityCpntDetourOffmeshLink": {
+   "id": 298904574,
+   "size": 192,
+   "registrar": "0x14082f691"
+  },
+  "oCEntityCpntDetourOffmeshLinkSettings": {
+   "id": 298904575,
+   "size": 640,
+   "registrar": "0x14082f4c6"
+  },
+  "oCEntityCpntDirectionalLight": {
+   "id": 280659816,
+   "size": 880,
+   "registrar": "0x1407a18e1"
+  },
+  "oCEntityCpntDirectionalLightSettings": {
+   "id": 280659815,
+   "size": 4928,
+   "registrar": "0x1407a1716"
+  },
+  "oCEntityCpntEditUiSettings": {
+   "id": 368893475,
+   "size": 1840,
+   "registrar": "0x1407fc1f6"
+  },
+  "oCEntityCpntEntitySpawner": {
+   "id": 267629480,
+   "size": 568,
+   "registrar": "0x1402fb651"
+  },
+  "oCEntityCpntEntitySpawnerSettings": {
+   "id": 267629483,
+   "size": 6800,
+   "registrar": "0x1402fb486"
+  },
+  "oCEntityCpntFModDialog": {
+   "id": 371574129,
+   "size": 176,
+   "registrar": "0x140231cc1"
+  },
+  "oCEntityCpntFModDialogSettings": {
+   "id": 371573989,
+   "size": 744,
+   "registrar": "0x140231af6"
+  },
+  "oCEntityCpntFModDialogUiController": {
+   "id": 373468402,
+   "size": 312,
+   "registrar": "0x140232041"
+  },
+  "oCEntityCpntFModDialogUiControllerSettings": {
+   "id": 373468386,
+   "size": 376,
+   "registrar": "0x140231e76"
+  },
+  "oCEntityCpntFModEvent": {
+   "id": 289663546,
+   "size": 200,
+   "registrar": "0x140886191"
+  },
+  "oCEntityCpntFModEventParamSettings": {
+   "id": 289928911,
+   "size": 152,
+   "registrar": "0x140885dd6"
+  },
+  "oCEntityCpntFModEventSettings": {
+   "id": 289663544,
+   "size": 2784,
+   "registrar": "0x140885fc6"
+  },
+  "oCEntityCpntFModGlobalParam": {
+   "id": 326146189,
+   "size": 128,
+   "registrar": "0x140886511"
+  },
+  "oCEntityCpntFModGlobalParamSettings": {
+   "id": 326146194,
+   "size": 392,
+   "registrar": "0x140886346"
+  },
+  "oCEntityCpntFloatTestSettings": {
+   "id": 281353414,
+   "size": 272,
+   "registrar": "0x140775be6"
+  },
+  "oCEntityCpntFollowCamera": {
+   "id": 321373185,
+   "size": 120,
+   "registrar": "0x140832cc1"
+  },
+  "oCEntityCpntFollowCameraSettings": {
+   "id": 321373184,
+   "size": 392,
+   "registrar": "0x140832af6"
+  },
+  "oCEntityCpntFxSettings": {
+   "id": 214760590,
+   "size": 648,
+   "registrar": "0x1407a06e6"
+  },
+  "oCEntityCpntFxSetup": {
+   "id": 214760588,
+   "size": 4672,
+   "registrar": "0x1407a0516"
+  },
+  "oCEntityCpntGameUi": {
+   "id": 261911251,
+   "size": 208,
+   "registrar": "0x140191b21"
+  },
+  "oCEntityCpntGameUiSettings": {
+   "id": 261911253,
+   "size": 3200,
+   "registrar": "0x140191956"
+  },
+  "oCEntityCpntGaugeUi": {
+   "id": 266406521,
+   "size": 392,
+   "registrar": "0x1403b7951"
+  },
+  "oCEntityCpntGaugeUiSettings": {
+   "id": 266406524,
+   "size": 2248,
+   "registrar": "0x1403b7786"
+  },
+  "oCEntityCpntGetValue": {
+   "id": 380362415,
+   "size": 416,
+   "registrar": "0x140778831"
+  },
+  "oCEntityCpntGetValueNetworkData": {
+   "id": 404744313,
+   "size": 240,
+   "registrar": "0x1407784b1"
+  },
+  "oCEntityCpntGetValueSettings": {
+   "id": 380362436,
+   "size": 568,
+   "registrar": "0x140778666"
+  },
+  "oCEntityCpntGlobalEntityValueSetter": {
+   "id": 361204916,
+   "size": 136,
+   "registrar": "0x140774bc1"
+  },
+  "oCEntityCpntGlobalEntityValueSetterSettings": {
+   "id": 361204913,
+   "size": 384,
+   "registrar": "0x1407749f6"
+  },
+  "oCEntityCpntGoToSteering": {
+   "id": 270029445,
+   "size": 432,
+   "registrar": "0x140830811"
+  },
+  "oCEntityCpntGoToSteeringSettings": {
+   "id": 270029442,
+   "size": 1328,
+   "registrar": "0x140830646"
+  },
+  "oCEntityCpntGpn": {
+   "id": 261823385,
+   "size": 344,
+   "registrar": "0x14022bd81"
+  },
+  "oCEntityCpntGpnDetector": {
+   "id": 271608807,
+   "size": 392,
+   "registrar": "0x1407cf211"
+  },
+  "oCEntityCpntGpnDetectorSettings": {
+   "id": 271608801,
+   "size": 2736,
+   "registrar": "0x1407cf046"
+  },
+  "oCEntityCpntGpnProjectileAttack": {
+   "id": 304357370,
+   "size": 536,
+   "registrar": "0x1406fb301"
+  },
+  "oCEntityCpntGpnProjectileAttackSettings": {
+   "id": 304357366,
+   "size": 1440,
+   "registrar": "0x1406fb136"
+  },
+  "oCEntityCpntGpnProximity": {
+   "id": 341420753,
+   "size": 152,
+   "registrar": "0x1407d0931"
+  },
+  "oCEntityCpntGpnProximitySettings": {
+   "id": 341420712,
+   "size": 560,
+   "registrar": "0x1407d0766"
+  },
+  "oCEntityCpntGpnProximityTester": {
+   "id": 341418412,
+   "size": 136,
+   "registrar": "0x1407d05b1"
+  },
+  "oCEntityCpntGpnProximityTesterSettings": {
+   "id": 341418376,
+   "size": 400,
+   "registrar": "0x1407d03e6"
+  },
+  "oCEntityCpntGpnSettings": {
+   "id": 261823389,
+   "size": 2656,
+   "registrar": "0x14022bbb6"
+  },
+  "oCEntityCpntGpnTargetAttack": {
+   "id": 307901998,
+   "size": 208,
+   "registrar": "0x1406fb681"
+  },
+  "oCEntityCpntGpnTargetAttackSettings": {
+   "id": 307902001,
+   "size": 568,
+   "registrar": "0x1406fb4b6"
+  },
+  "oCEntityCpntGpnTargetComputer": {
+   "id": 307899138,
+   "size": 1056,
+   "registrar": "0x14040ce41"
+  },
+  "oCEntityCpntGpnTargetComputerSettings": {
+   "id": 307899141,
+   "size": 3616,
+   "registrar": "0x14040cc76"
+  },
+  "oCEntityCpntGpnTraverser": {
+   "id": 232213733,
+   "size": 256,
+   "registrar": "0x1402ffec1"
+  },
+  "oCEntityCpntGpnTraverserSettings": {
+   "id": 232213736,
+   "size": 1600,
+   "registrar": "0x1402ffcf6"
+  },
+  "oCEntityCpntGroupSteering": {
+   "id": 272972128,
+   "size": 264,
+   "registrar": "0x140830b91"
+  },
+  "oCEntityCpntGroupSteeringSettings": {
+   "id": 272972125,
+   "size": 1152,
+   "registrar": "0x1408309c6"
+  },
+  "oCEntityCpntHitEjection": {
+   "id": 304176634,
+   "size": 272,
+   "registrar": "0x1408333c1"
+  },
+  "oCEntityCpntHitEjectionSettings": {
+   "id": 304176630,
+   "size": 2896,
+   "registrar": "0x1408331f6"
+  },
+  "oCEntityCpntHitPoint": {
+   "id": 266337273,
+   "size": 568,
+   "registrar": "0x140316e41"
+  },
+  "oCEntityCpntHitPointNetworkData": {
+   "id": 404744310,
+   "size": 216,
+   "registrar": "0x140316c91"
+  },
+  "oCEntityCpntHitPointPersistentData": {
+   "id": 266337270,
+   "size": 112,
+   "registrar": "0x140316aa6"
+  },
+  "oCEntityCpntHitPointSettings": {
+   "id": 266337267,
+   "size": 912,
+   "registrar": "0x1403168d6"
+  },
+  "oCEntityCpntHittable": {
+   "id": 266337263,
+   "size": 600,
+   "registrar": "0x140237581"
+  },
+  "oCEntityCpntHittableListener": {
+   "id": 449500480,
+   "size": 648,
+   "registrar": "0x1403bb311"
+  },
+  "oCEntityCpntHittableListenerNetworkData": {
+   "id": 449570059,
+   "size": 232,
+   "registrar": "0x1403baf91"
+  },
+  "oCEntityCpntHittableListenerSettings": {
+   "id": 449500463,
+   "size": 952,
+   "registrar": "0x1403bb146"
+  },
+  "oCEntityCpntHittableSettings": {
+   "id": 266337261,
+   "size": 728,
+   "registrar": "0x1402373b6"
+  },
+  "oCEntityCpntInputUi": {
+   "id": 308744805,
+   "size": 368,
+   "registrar": "0x1407fc741"
+  },
+  "oCEntityCpntInputUiSettings": {
+   "id": 308744803,
+   "size": 2104,
+   "registrar": "0x1407fc576"
+  },
+  "oCEntityCpntIntTestSettings": {
+   "id": 281438705,
+   "size": 272,
+   "registrar": "0x140775db6"
+  },
+  "oCEntityCpntKeyController": {
+   "id": 267467139,
+   "size": 320,
+   "registrar": "0x140771e01"
+  },
+  "oCEntityCpntKeyControllerSettings": {
+   "id": 267467142,
+   "size": 448,
+   "registrar": "0x140771c36"
+  },
+  "oCEntityCpntLabelModifierSettings": {
+   "id": 369069528,
+   "size": 328,
+   "registrar": "0x1407fd566"
+  },
+  "oCEntityCpntLabelUi": {
+   "id": 266772271,
+   "size": 432,
+   "registrar": "0x1407fcac1"
+  },
+  "oCEntityCpntLabelUiSettings": {
+   "id": 266772273,
+   "size": 2368,
+   "registrar": "0x1407fc8f6"
+  },
+  "oCEntityCpntLeftRightAnimatic": {
+   "id": 440957316,
+   "size": 816,
+   "registrar": "0x1407cd551"
+  },
+  "oCEntityCpntLeftRightAnimaticSettings": {
+   "id": 440957315,
+   "size": 1232,
+   "registrar": "0x1407cd386"
+  },
+  "oCEntityCpntLineOfSight": {
+   "id": 263659647,
+   "size": 656,
+   "registrar": "0x1407fc041"
+  },
+  "oCEntityCpntLineOfSightSettings": {
+   "id": 263659645,
+   "size": 2672,
+   "registrar": "0x1407fbe76"
+  },
+  "oCEntityCpntLocatorOperation": {
+   "id": 346515943,
+   "size": 200,
+   "registrar": "0x140777881"
+  },
+  "oCEntityCpntLocatorOperationSettings": {
+   "id": 346515945,
+   "size": 4704,
+   "registrar": "0x1407776b6"
+  },
+  "oCEntityCpntLookAt": {
+   "id": 266060901,
+   "size": 576,
+   "registrar": "0x140831441"
+  },
+  "oCEntityCpntLookAt3d": {
+   "id": 418141938,
+   "size": 424,
+   "registrar": "0x1408317c1"
+  },
+  "oCEntityCpntLookAt3dSettings": {
+   "id": 418141935,
+   "size": 3264,
+   "registrar": "0x1408315f6"
+  },
+  "oCEntityCpntLosOccluder": {
+   "id": 263639471,
+   "size": 248,
+   "registrar": "0x1407fbcc1"
+  },
+  "oCEntityCpntLosOccluderSettings": {
+   "id": 263639467,
+   "size": 2592,
+   "registrar": "0x1407fbaf6"
+  },
+  "oCEntityCpntModalUiController": {
+   "id": 400929018,
+   "size": 440,
+   "registrar": "0x140442911"
+  },
+  "oCEntityCpntModalUiControllerSettings": {
+   "id": 400928993,
+   "size": 600,
+   "registrar": "0x140442746"
+  },
+  "oCEntityCpntModifier": {
+   "id": 362840613,
+   "size": 288,
+   "registrar": "0x14022d451"
+  },
+  "oCEntityCpntModifierHolder": {
+   "id": 362826522,
+   "size": 392,
+   "registrar": "0x14022d0d1"
+  },
+  "oCEntityCpntModifierHolderNetworkData": {
+   "id": 404744306,
+   "size": 272,
+   "registrar": "0x14022cb81"
+  },
+  "oCEntityCpntModifierHolderPersistentData": {
+   "id": 421507604,
+   "size": 136,
+   "registrar": "0x14022cd36"
+  },
+  "oCEntityCpntModifierHolderSettings": {
+   "id": 362826512,
+   "size": 248,
+   "registrar": "0x14022cf06"
+  },
+  "oCEntityCpntModifierListener": {
+   "id": 363126268,
+   "size": 440,
+   "registrar": "0x14022d7d1"
+  },
+  "oCEntityCpntModifierListenerSettings": {
+   "id": 363126253,
+   "size": 776,
+   "registrar": "0x14022d606"
+  },
+  "oCEntityCpntModifierSettings": {
+   "id": 362838691,
+   "size": 848,
+   "registrar": "0x14022d286"
+  },
+  "oCEntityCpntNamedEventListener": {
+   "id": 278935830,
+   "size": 208,
+   "registrar": "0x14079d8b1"
+  },
+  "oCEntityCpntNamedEventListenerSettings": {
+   "id": 278935827,
+   "size": 408,
+   "registrar": "0x14079d6e6"
+  },
+  "oCEntityCpntNamedEventSender": {
+   "id": 265537009,
+   "size": 160,
+   "registrar": "0x14079d531"
+  },
+  "oCEntityCpntNamedEventSenderSettings": {
+   "id": 265537006,
+   "size": 456,
+   "registrar": "0x14079d366"
+  },
+  "oCEntityCpntNavMeshRebuilderSettings": {
+   "id": 263748816,
+   "size": 1904,
+   "registrar": "0x140800f76"
+  },
+  "oCEntityCpntNavigableListenerUiSettings": {
+   "id": 311178986,
+   "size": 2288,
+   "registrar": "0x1407fcc76"
+  },
+  "oCEntityCpntNavigableZoneUi": {
+   "id": 309887369,
+   "size": 520,
+   "registrar": "0x140222c41"
+  },
+  "oCEntityCpntNavigableZoneUiSettings": {
+   "id": 309887363,
+   "size": 2096,
+   "registrar": "0x140222a76"
+  },
+  "oCEntityCpntNavmeshDistanceComputer": {
+   "id": 340447871,
+   "size": 264,
+   "registrar": "0x14082fd91"
+  },
+  "oCEntityCpntNavmeshDistanceComputerSettings": {
+   "id": 340447872,
+   "size": 2672,
+   "registrar": "0x14082fbc6"
+  },
+  "oCEntityCpntNetwork": {
+   "id": 357551708,
+   "size": 784,
+   "registrar": "0x1402338d1"
+  },
+  "oCEntityCpntNetworkNetworkData": {
+   "id": 404744303,
+   "size": 256,
+   "registrar": "0x140233551"
+  },
+  "oCEntityCpntNetworkSettings": {
+   "id": 357551531,
+   "size": 584,
+   "registrar": "0x140233706"
+  },
+  "oCEntityCpntNodeSettings": {
+   "id": 397051759,
+   "size": 40,
+   "registrar": "0x140778d66"
+  },
+  "oCEntityCpntOmniLight": {
+   "id": 286623883,
+   "size": 896,
+   "registrar": "0x1407a2361"
+  },
+  "oCEntityCpntOmniLightSettings": {
+   "id": 286623723,
+   "size": 5280,
+   "registrar": "0x1407a2196"
+  },
+  "oCEntityCpntPadSteering": {
+   "id": 262108351,
+   "size": 248,
+   "registrar": "0x140830491"
+  },
+  "oCEntityCpntPadSteeringSettings": {
+   "id": 262108354,
+   "size": 776,
+   "registrar": "0x1408302c6"
+  },
+  "oCEntityCpntPathfindingProfileSettings": {
+   "id": 269950174,
+   "size": 408,
+   "registrar": "0x140772fa6"
+  },
+  "oCEntityCpntPersistentData": {
+   "id": 223463865,
+   "size": 80,
+   "registrar": "0x14018bc96"
+  },
+  "oCEntityCpntPhysicSkeletonAnim": {
+   "id": 355307742,
+   "size": 328,
+   "registrar": "0x1407cdcb1"
+  },
+  "oCEntityCpntPhysicSkeletonAnimSettings": {
+   "id": 355307734,
+   "size": 936,
+   "registrar": "0x1407cdae6"
+  },
+  "oCEntityCpntPhysicVolume": {
+   "id": 277748644,
+   "size": 192,
+   "registrar": "0x1407ffc41"
+  },
+  "oCEntityCpntPhysicVolumeSettings": {
+   "id": 277748646,
+   "size": 1056,
+   "registrar": "0x1407ffa76"
+  },
+  "oCEntityCpntPicker": {
+   "id": 228062177,
+   "size": 64,
+   "registrar": "0x14018a216"
+  },
+  "oCEntityCpntPictureUi": {
+   "id": 266925652,
+   "size": 408,
+   "registrar": "0x1403b8056"
+  },
+  "oCEntityCpntPictureUiSettings": {
+   "id": 266925649,
+   "size": 2248,
+   "registrar": "0x1403b7e86"
+  },
+  "oCEntityCpntPrefabSettings": {
+   "id": 287942573,
+   "size": 2544,
+   "registrar": "0x140773326"
+  },
+  "oCEntityCpntQuadDirAnimatic": {
+   "id": 263029959,
+   "size": 816,
+   "registrar": "0x1407cce51"
+  },
+  "oCEntityCpntQuadDirAnimaticSettings": {
+   "id": 263029962,
+   "size": 1184,
+   "registrar": "0x1407ccc86"
+  },
+  "oCEntityCpntQuadDirTwoSpeedAnimatic": {
+   "id": 263234799,
+   "size": 1392,
+   "registrar": "0x1407cd1d1"
+  },
+  "oCEntityCpntQuadDirTwoSpeedAnimaticSettings": {
+   "id": 263234796,
+   "size": 1536,
+   "registrar": "0x1407cd006"
+  },
+  "oCEntityCpntRangedRandom": {
+   "id": 288710298,
+   "size": 264,
+   "registrar": "0x14079f551"
+  },
+  "oCEntityCpntRangedRandomPersistentData": {
+   "id": 288710299,
+   "size": 88,
+   "registrar": "0x14079f366"
+  },
+  "oCEntityCpntRangedRandomSettings": {
+   "id": 288710300,
+   "size": 896,
+   "registrar": "0x14079f196"
+  },
+  "oCEntityCpntReflectionProbe": {
+   "id": 292672322,
+   "size": 112,
+   "registrar": "0x14079bfd1"
+  },
+  "oCEntityCpntReflectionProbeSettings": {
+   "id": 292672321,
+   "size": 312,
+   "registrar": "0x1407a2896"
+  },
+  "oCEntityCpntRenderSettings": {
+   "id": 279729863,
+   "size": 144,
+   "registrar": "0x1407a1c61"
+  },
+  "oCEntityCpntRenderSettingsSettings": {
+   "id": 279729865,
+   "size": 488,
+   "registrar": "0x1407a1a96"
+  },
+  "oCEntityCpntRootMotion": {
+   "id": 266158981,
+   "size": 144,
+   "registrar": "0x140831ec1"
+  },
+  "oCEntityCpntRootMotionSettings": {
+   "id": 266158977,
+   "size": 576,
+   "registrar": "0x140831cf6"
+  },
+  "oCEntityCpntScrollPanelUi": {
+   "id": 312365796,
+   "size": 352,
+   "registrar": "0x1407fd1c1"
+  },
+  "oCEntityCpntScrollPanelUiSettings": {
+   "id": 312365793,
+   "size": 1976,
+   "registrar": "0x1407fcff6"
+  },
+  "oCEntityCpntSelector": {
+   "id": 272384467,
+   "size": 152,
+   "registrar": "0x14079c8c1"
+  },
+  "oCEntityCpntSelectorEntrySettings": {
+   "id": 272384459,
+   "size": 208,
+   "registrar": "0x14079c506"
+  },
+  "oCEntityCpntSelectorSettings": {
+   "id": 272384464,
+   "size": 272,
+   "registrar": "0x14079c6f6"
+  },
+  "oCEntityCpntSequence": {
+   "id": 272301484,
+   "size": 144,
+   "registrar": "0x14079cc41"
+  },
+  "oCEntityCpntSequenceSettings": {
+   "id": 272301487,
+   "size": 392,
+   "registrar": "0x14079ca76"
+  },
+  "oCEntityCpntShaderParam": {
+   "id": 275989187,
+   "size": 144,
+   "registrar": "0x14079f8d1"
+  },
+  "oCEntityCpntShaderParamSettings": {
+   "id": 275989183,
+   "size": 464,
+   "registrar": "0x14079f706"
+  },
+  "oCEntityCpntSimpleBoolTestSettings": {
+   "id": 284395669,
+   "size": 144,
+   "registrar": "0x140775846"
+  },
+  "oCEntityCpntSmoothValue": {
+   "id": 276095210,
+   "size": 432,
+   "registrar": "0x140774841"
+  },
+  "oCEntityCpntSmoothValueSettings": {
+   "id": 276095024,
+   "size": 1232,
+   "registrar": "0x140774676"
+  },
+  "oCEntityCpntSpawnerValue": {
+   "id": 292942782,
+   "size": 136,
+   "registrar": "0x140777c01"
+  },
+  "oCEntityCpntSpawnerValueSettings": {
+   "id": 292942574,
+   "size": 640,
+   "registrar": "0x140777a36"
+  },
+  "oCEntityCpntSpinningWheelController": {
+   "id": 327330979,
+   "size": 296,
+   "registrar": "0x1407744c1"
+  },
+  "oCEntityCpntSpinningWheelControllerSettings": {
+   "id": 327319167,
+   "size": 1088,
+   "registrar": "0x1407742f6"
+  },
+  "oCEntityCpntSpotLight": {
+   "id": 312211529,
+   "size": 880,
+   "registrar": "0x1407a26e1"
+  },
+  "oCEntityCpntSpotLightSettings": {
+   "id": 312211528,
+   "size": 5152,
+   "registrar": "0x1407a2516"
+  },
+  "oCEntityCpntSpreadPos": {
+   "id": 303815929,
+   "size": 576,
+   "registrar": "0x140772c01"
+  },
+  "oCEntityCpntSpreadPosSettings": {
+   "id": 303815841,
+   "size": 6336,
+   "registrar": "0x140772a36"
+  },
+  "oCEntityCpntState": {
+   "id": 260095307,
+   "size": 128,
+   "registrar": "0x1403b9c51"
+  },
+  "oCEntityCpntStateMachine": {
+   "id": 277897763,
+   "size": 120,
+   "registrar": "0x14079c351"
+  },
+  "oCEntityCpntStateMachineSettings": {
+   "id": 277897762,
+   "size": 272,
+   "registrar": "0x14079c186"
+  },
+  "oCEntityCpntStateSettings": {
+   "id": 260095302,
+   "size": 360,
+   "registrar": "0x1403b9a86"
+  },
+  "oCEntityCpntStringFormatValue": {
+   "id": 327140757,
+   "size": 168,
+   "registrar": "0x1402358e1"
+  },
+  "oCEntityCpntStringFormatValueSettings": {
+   "id": 327140755,
+   "size": 392,
+   "registrar": "0x140235716"
+  },
+  "oCEntityCpntSwitchSelector": {
+   "id": 282748890,
+   "size": 168,
+   "registrar": "0x14079d1b1"
+  },
+  "oCEntityCpntSwitchSelectorEntrySettings": {
+   "id": 282748882,
+   "size": 216,
+   "registrar": "0x14079cdf6"
+  },
+  "oCEntityCpntSwitchSelectorSettings": {
+   "id": 282748885,
+   "size": 392,
+   "registrar": "0x14079cfe6"
+  },
+  "oCEntityCpntTeleportSettings": {
+   "id": 305734777,
+   "size": 2704,
+   "registrar": "0x140832776"
+  },
+  "oCEntityCpntTester": {
+   "id": 260116898,
+   "size": 304,
+   "registrar": "0x1407764f1"
+  },
+  "oCEntityCpntTesterSettings": {
+   "id": 260116880,
+   "size": 664,
+   "registrar": "0x140776326"
+  },
+  "oCEntityCpntTimeScale": {
+   "id": 276961424,
+   "size": 128,
+   "registrar": "0x140772881"
+  },
+  "oCEntityCpntTimeScaleSettings": {
+   "id": 276961428,
+   "size": 264,
+   "registrar": "0x1407726b6"
+  },
+  "oCEntityCpntTimer": {
+   "id": 260117219,
+   "size": 472,
+   "registrar": "0x140737b41"
+  },
+  "oCEntityCpntTimerNetworkData": {
+   "id": 404747384,
+   "size": 216,
+   "registrar": "0x1407375d1"
+  },
+  "oCEntityCpntTimerPersistentData": {
+   "id": 351002244,
+   "size": 104,
+   "registrar": "0x140737956"
+  },
+  "oCEntityCpntTimerSettings": {
+   "id": 260117221,
+   "size": 960,
+   "registrar": "0x140737786"
+  },
+  "oCEntityCpntToolFreeCamera": {
+   "id": 306343872,
+   "size": 2208,
+   "registrar": "0x1407fe531"
+  },
+  "oCEntityCpntToolFreeCameraSettings": {
+   "id": 306343871,
+   "size": 2480,
+   "registrar": "0x1407fe366"
+  },
+  "oCEntityCpntTopDownCamera": {
+   "id": 262170473,
+   "size": 456,
+   "registrar": "0x1407fde31"
+  },
+  "oCEntityCpntTopDownCameraSettings": {
+   "id": 262170475,
+   "size": 4400,
+   "registrar": "0x1407fdc66"
+  },
+  "oCEntityCpntTwoSpeedAnimatic": {
+   "id": 358765859,
+   "size": 784,
+   "registrar": "0x1407ce031"
+  },
+  "oCEntityCpntTwoSpeedAnimaticSettings": {
+   "id": 358765813,
+   "size": 1056,
+   "registrar": "0x1407cde66"
+  },
+  "oCEntityCpntValue": {
+   "id": 265467099,
+   "size": 192,
+   "registrar": "0x140300c71"
+  },
+  "oCEntityCpntValueAnim": {
+   "id": 290011507,
+   "size": 440,
+   "registrar": "0x14027ddc1"
+  },
+  "oCEntityCpntValueAnimSettings": {
+   "id": 290011506,
+   "size": 1472,
+   "registrar": "0x14027dbf6"
+  },
+  "oCEntityCpntValueMixer": {
+   "id": 272368905,
+   "size": 176,
+   "registrar": "0x140777181"
+  },
+  "oCEntityCpntValueMixerSettings": {
+   "id": 272368900,
+   "size": 272,
+   "registrar": "0x140776fb6"
+  },
+  "oCEntityCpntValueNetworkData": {
+   "id": 404744294,
+   "size": 264,
+   "registrar": "0x1403008f1"
+  },
+  "oCEntityCpntValueOperation": {
+   "id": 314698862,
+   "size": 216,
+   "registrar": "0x140777501"
+  },
+  "oCEntityCpntValueOperationSettings": {
+   "id": 314698859,
+   "size": 520,
+   "registrar": "0x140777336"
+  },
+  "oCEntityCpntValueOperations": {
+   "id": 397051429,
+   "size": 216,
+   "registrar": "0x1407792e1"
+  },
+  "oCEntityCpntValueOperationsSettings": {
+   "id": 397051492,
+   "size": 296,
+   "registrar": "0x140779116"
+  },
+  "oCEntityCpntValuePicker": {
+   "id": 228062178,
+   "size": 128,
+   "registrar": "0x140190a06"
+  },
+  "oCEntityCpntValueSelector": {
+   "id": 275758952,
+   "size": 232,
+   "registrar": "0x1407754d1"
+  },
+  "oCEntityCpntValueSelectorEntrySettings": {
+   "id": 275759363,
+   "size": 264,
+   "registrar": "0x140775116"
+  },
+  "oCEntityCpntValueSelectorNetworkData": {
+   "id": 404747791,
+   "size": 240,
+   "registrar": "0x140774d71"
+  },
+  "oCEntityCpntValueSelectorPersistentData": {
+   "id": 467639560,
+   "size": 88,
+   "registrar": "0x140774f26"
+  },
+  "oCEntityCpntValueSettings": {
+   "id": 265467094,
+   "size": 384,
+   "registrar": "0x140300aa6"
+  },
+  "oCEntityCpntValueSwitchSelector": {
+   "id": 317132619,
+   "size": 216,
+   "registrar": "0x140776c11"
+  },
+  "oCEntityCpntValueSwitchSelectorEntrySettings": {
+   "id": 317132612,
+   "size": 272,
+   "registrar": "0x140776856"
+  },
+  "oCEntityCpntValueSwitchSelectorNetworkData": {
+   "id": 501339540,
+   "size": 240,
+   "registrar": "0x1407766a1"
+  },
+  "oCEntityCpntValueSwitchSelectorSettings": {
+   "id": 317132615,
+   "size": 400,
+   "registrar": "0x140776a46"
+  },
+  "oCEntityCpntVec3Operator": {
+   "id": 381832626,
+   "size": 304,
+   "registrar": "0x140773bf1"
+  },
+  "oCEntityCpntVec3OperatorSettings": {
+   "id": 381832596,
+   "size": 640,
+   "registrar": "0x140773a26"
+  },
+  "oCEntityCpntWeightedRandom": {
+   "id": 277735940,
+   "size": 192,
+   "registrar": "0x14079efe1"
+  },
+  "oCEntityCpntWeightedRandomPersistentData": {
+   "id": 277738637,
+   "size": 4058513613,
+   "registrar": "0x14079edf6"
+  },
+  "oCEntityCpntWeightedRandomSettings": {
+   "id": 277735936,
+   "size": 528,
+   "registrar": "0x14079ec26"
+  },
+  "oCEntityCpntWindowUi": {
+   "id": 266940327,
+   "size": 328,
+   "registrar": "0x1402228c1"
+  },
+  "oCEntityCpntWindowUiSettings": {
+   "id": 266940329,
+   "size": 1840,
+   "registrar": "0x1402226f6"
+  },
+  "oCEntityCpntZoneAttack": {
+   "id": 266340555,
+   "size": 272,
+   "registrar": "0x1406fbbf1"
+  },
+  "oCEntityCpntZoneAttackSettings": {
+   "id": 266340559,
+   "size": 592,
+   "registrar": "0x1406fba26"
+  },
+  "oCEntityFloatModifier": {
+   "id": 274696937,
+   "size": 16,
+   "registrar": "0x140180086"
+  },
+  "oCEntityGameUiSpawner": {
+   "id": 309953667,
+   "size": 216,
+   "registrar": "0x140191cd6"
+  },
+  "oCEntityGpnAroundPositionTraverserSettings": {
+   "id": 278500506,
+   "size": 2640,
+   "registrar": "0x1402ff3e6"
+  },
+  "oCEntityGpnAttackSettings": {
+   "id": 304263014,
+   "size": 200,
+   "registrar": "0x1406fb836"
+  },
+  "oCEntityGpnClosestTraverserSettings": {
+   "id": 278533198,
+   "size": 2512,
+   "registrar": "0x1402ffb26"
+  },
+  "oCEntityGpnCollectorTester": {
+   "id": 475401469,
+   "size": 96,
+   "registrar": "0x1408426e1"
+  },
+  "oCEntityGpnCollectorTesterSettings": {
+   "id": 475401466,
+   "size": 296,
+   "registrar": "0x1408424f6"
+  },
+  "oCEntityGpnCustomFlagSettings": {
+   "id": 278588499,
+   "size": 160,
+   "registrar": "0x14022b9c6"
+  },
+  "oCEntityGpnFlagMaskTester": {
+   "id": 408299490,
+   "size": 120,
+   "registrar": "0x140841161"
+  },
+  "oCEntityGpnFlagMaskTesterSettings": {
+   "id": 408292363,
+   "size": 344,
+   "registrar": "0x140840f76"
+  },
+  "oCEntityGpnFlagTester": {
+   "id": 407342999,
+   "size": 64,
+   "registrar": "0x140841501"
+  },
+  "oCEntityGpnFlagTesterSettings": {
+   "id": 407253370,
+   "size": 288,
+   "registrar": "0x140841316"
+  },
+  "oCEntityGpnHeightTester": {
+   "id": 408299181,
+   "size": 112,
+   "registrar": "0x1407ce3d1"
+  },
+  "oCEntityGpnHeightTesterSettings": {
+   "id": 408299186,
+   "size": 520,
+   "registrar": "0x1407ce1e6"
+  },
+  "oCEntityGpnHitPointTester": {
+   "id": 407087785,
+   "size": 96,
+   "registrar": "0x140841c21"
+  },
+  "oCEntityGpnHitPointTesterSettings": {
+   "id": 306945565,
+   "size": 528,
+   "registrar": "0x140841a56"
+  },
+  "oCEntityGpnInBoxTraverserSettings": {
+   "id": 300550619,
+   "size": 2768,
+   "registrar": "0x1402ff956"
+  },
+  "oCEntityGpnInConeTraverserSettings": {
+   "id": 278530205,
+   "size": 2768,
+   "registrar": "0x1402ff5b6"
+  },
+  "oCEntityGpnInLineTraverserSettings": {
+   "id": 278532022,
+   "size": 2640,
+   "registrar": "0x1402ff786"
+  },
+  "oCEntityGpnLosTester": {
+   "id": 420904083,
+   "size": 208,
+   "registrar": "0x1407ce751"
+  },
+  "oCEntityGpnLosTesterSettings": {
+   "id": 306930199,
+   "size": 2496,
+   "registrar": "0x1407ce586"
+  },
+  "oCEntityGpnNetworkTester": {
+   "id": 409502306,
+   "size": 64,
+   "registrar": "0x1407ceaf1"
+  },
+  "oCEntityGpnNetworkTesterSettings": {
+   "id": 409502304,
+   "size": 272,
+   "registrar": "0x1407ce906"
+  },
+  "oCEntityGpnPathFindTester": {
+   "id": 454943127,
+   "size": 152,
+   "registrar": "0x1408418a1"
+  },
+  "oCEntityGpnPathFindTesterSettings": {
+   "id": 454943088,
+   "size": 328,
+   "registrar": "0x1408416b6"
+  },
+  "oCEntityGpnPhysicLosTester": {
+   "id": 420904071,
+   "size": 96,
+   "registrar": "0x140841fa1"
+  },
+  "oCEntityGpnPhysicLosTesterSettings": {
+   "id": 337514518,
+   "size": 2528,
+   "registrar": "0x140841dd6"
+  },
+  "oCEntityGpnSelfGpnTester": {
+   "id": 409501989,
+   "size": 3873964234,
+   "registrar": "0x1407cee91"
+  },
+  "oCEntityGpnSelfGpnTesterSettings": {
+   "id": 409502083,
+   "size": 272,
+   "registrar": "0x1407ceca6"
+  },
+  "oCEntityGpnTesterCombiner": {
+   "id": 407319676,
+   "size": 80,
+   "registrar": "0x1402fee81"
+  },
+  "oCEntityGpnTesterCombinerSettings": {
+   "id": 407318968,
+   "size": 288,
+   "registrar": "0x1402fecb6"
+  },
+  "oCEntityGpnTesterPreset": {
+   "id": 409504928,
+   "size": 72,
+   "registrar": "0x140842341"
+  },
+  "oCEntityGpnTesterPresetSettings": {
+   "id": 409504930,
+   "size": 328,
+   "registrar": "0x140842156"
+  },
+  "oCEntityGpnTraverserCommonSettings": {
+   "id": 278500499,
+   "size": 1040,
+   "registrar": "0x1402ff036"
+  },
+  "oCEntityModal": {
+   "id": 402156265,
+   "size": 248,
+   "registrar": "0x14027eba1"
+  },
+  "oCEntityModalSceneContext": {
+   "id": 400950314,
+   "size": 280,
+   "registrar": "0x1402333a1"
+  },
+  "oCEntityModalWithSpawnerCpnt": {
+   "id": 456314784,
+   "size": 248,
+   "registrar": "0x1406fc661"
+  },
+  "oCEntityModifierFloatAddComputer": {
+   "id": 294072016,
+   "size": 16,
+   "registrar": "0x1401805f1"
+  },
+  "oCEntityModifierFloatMaxComputer": {
+   "id": 295865973,
+   "size": 16,
+   "registrar": "0x140180b61"
+  },
+  "oCEntityModifierFloatMinComputer": {
+   "id": 295865878,
+   "size": 16,
+   "registrar": "0x140180991"
+  },
+  "oCEntityModifierFloatMulComputer": {
+   "id": 294070263,
+   "size": 16,
+   "registrar": "0x1401807c1"
+  },
+  "oCEntityModifierSliceCountComputer": {
+   "id": 294072289,
+   "size": 16,
+   "registrar": "0x140180f01"
+  },
+  "oCEntityModifierTargetDetectedEntity": {
+   "id": 362828270,
+   "size": 48,
+   "registrar": "0x14027a2d1"
+  },
+  "oCEntityModifierTargetDetectedEntitySettings": {
+   "id": 362828268,
+   "size": 208,
+   "registrar": "0x14027a106"
+  },
+  "oCEntityModifierTargetEntity": {
+   "id": 362828257,
+   "size": 40,
+   "registrar": "0x140279bd1"
+  },
+  "oCEntityModifierTargetEntitySettings": {
+   "id": 362828255,
+   "size": 144,
+   "registrar": "0x140279a06"
+  },
+  "oCEntityModifierTargetOwner": {
+   "id": 362828264,
+   "size": 40,
+   "registrar": "0x140279f51"
+  },
+  "oCEntityModifierTargetSpawnedEntity": {
+   "id": 362828275,
+   "size": 48,
+   "registrar": "0x14027a651"
+  },
+  "oCEntityModifierTargetSpawnedEntitySettings": {
+   "id": 362828273,
+   "size": 208,
+   "registrar": "0x14027a486"
+  },
+  "oCEntityModifierVec3AddComputer": {
+   "id": 294070769,
+   "size": 24,
+   "registrar": "0x140180d31"
+  },
+  "oCEntityModifiersHolder": {
+   "id": 274696950,
+   "size": 96,
+   "registrar": "0x140181281"
+  },
+  "oCEntityNamedEventSenderCineBloc": {
+   "id": 314715355,
+   "size": 184,
+   "registrar": "0x140735376"
+  },
+  "oCEntityPersistentDataContainer": {
+   "id": 420454077,
+   "size": 32,
+   "registrar": "0x14018c1c6"
+  },
+  "oCEntityPlayAnimCineBloc": {
+   "id": 314785539,
+   "size": 336,
+   "registrar": "0x1407358c6"
+  },
+  "oCEntityReplicaFactorySceneContext": {
+   "id": 364379079,
+   "size": 168,
+   "registrar": "0x140233a81"
+  },
+  "oCEntityRetrieverSelector": {
+   "id": 314554497,
+   "size": 32,
+   "registrar": "0x1406fdbd6"
+  },
+  "oCEntitySceneContext": {
+   "id": 244036451,
+   "size": 1272,
+   "registrar": "0x1401904e6"
+  },
+  "oCEntitySelectorToSpawnEntityCpnt": {
+   "id": 381059020,
+   "size": 128,
+   "registrar": "0x140239b41"
+  },
+  "oCEntitySelectorToSpawnEntityCpntSettings": {
+   "id": 381059019,
+   "size": 336,
+   "registrar": "0x140239976"
+  },
+  "oCEntitySelectorToSpawnEntrySettings": {
+   "id": 381059018,
+   "size": 392,
+   "registrar": "0x140239786"
+  },
+  "oCEntitySettings": {
+   "id": 205233578,
+   "size": 488,
+   "registrar": "0x140182df6"
+  },
+  "oCEntitySettingsEncyclopediaSceneContext": {
+   "id": 361707168,
+   "size": 96,
+   "registrar": "0x140233c31"
+  },
+  "oCEntitySettingsGo": {
+   "id": 207501650,
+   "size": 248,
+   "registrar": "0x140719b86"
+  },
+  "oCEntitySettingsResource": {
+   "id": 385218467,
+   "size": 640,
+   "registrar": "0x140183356"
+  },
+  "oCEntitySettingsRootRef": {
+   "id": 398520022,
+   "size": 112,
+   "registrar": "0x1406fbf46"
+  },
+  "oCEntitySpawnData": {
+   "id": 45198176,
+   "size": 104,
+   "registrar": "0x140182fc6"
+  },
+  "oCEntitySpawner": {
+   "id": 398251339,
+   "size": 96,
+   "registrar": "0x14018c011"
+  },
+  "oCEntitySpawnerGo": {
+   "id": 221923192,
+   "size": 528,
+   "registrar": "0x140226e36"
+  },
+  "oCEntitySpawnerGoState": {
+   "id": 225021985,
+   "size": 32,
+   "registrar": "0x140226c46"
+  },
+  "oCEntityTeleportCineBloc": {
+   "id": 314804187,
+   "size": 184,
+   "registrar": "0x140736516"
+  },
+  "oCEntityTempModifier": {
+   "id": 274696961,
+   "size": 16,
+   "registrar": "0x1401810d1"
+  },
+  "oCEntityValueModifier": {
+   "id": 363002609,
+   "size": 80,
+   "registrar": "0x14017ecf6"
+  },
+  "oCEntityValueModifierAddComputer": {
+   "id": 363015228,
+   "size": 40,
+   "registrar": "0x14017f071"
+  },
+  "oCEntityValueModifierMaxComputer": {
+   "id": 363015352,
+   "size": 40,
+   "registrar": "0x14017f981"
+  },
+  "oCEntityValueModifierMinComputer": {
+   "id": 363021808,
+   "size": 40,
+   "registrar": "0x14017fb51"
+  },
+  "oCEntityValueModifierMultComputer": {
+   "id": 363015292,
+   "size": 40,
+   "registrar": "0x14017f411"
+  },
+  "oCEntityValueModifierOldestComputer": {
+   "id": 461687217,
+   "size": 40,
+   "registrar": "0x14017f7b1"
+  },
+  "oCEntityValueModifierReduceComputer": {
+   "id": 377686703,
+   "size": 40,
+   "registrar": "0x14017f5e1"
+  },
+  "oCEntityValueModifierSubComputer": {
+   "id": 363015272,
+   "size": 40,
+   "registrar": "0x14017f241"
+  },
+  "oCEntityValueModifiersHolder": {
+   "id": 363097367,
+   "size": 48,
+   "registrar": "0x14017fd21"
+  },
+  "oCEntityValueUnion": {
+   "id": 228062179,
+   "size": 32,
+   "registrar": "0x14017eb06"
+  },
+  "oCEntityVec3Modifier": {
+   "id": 276532031,
+   "size": 24,
+   "registrar": "0x140180276"
+  },
+  "oCEntityWindowAnimationCineBloc": {
+   "id": 381332455,
+   "size": 632,
+   "registrar": "0x140736a96"
+  },
+  "oCEntityWindowPictureCineBloc": {
+   "id": 381671354,
+   "size": 240,
+   "registrar": "0x140736c86"
+  },
+  "oCEventSenderEntityCollector": {
+   "id": 424529748,
+   "size": 48,
+   "registrar": "0x14079dc31"
+  },
+  "oCEventSenderEntityCollectorSettings": {
+   "id": 424541681,
+   "size": 208,
+   "registrar": "0x14079da66"
+  },
+  "oCExtentUnion": {
+   "id": 8330,
+   "size": 44,
+   "registrar": "0x14022b4b1"
+  },
+  "oCExternalAnimaticsGroup": {
+   "id": 220711507,
+   "size": 120,
+   "registrar": "0x140871356"
+  },
+  "oCFModActorSettings": {
+   "id": 371579313,
+   "size": 192,
+   "registrar": "0x1408866c6"
+  },
+  "oCFModCodeDrivenEvent": {
+   "id": 8857,
+   "size": 128,
+   "registrar": "0x140893a96"
+  },
+  "oCFModCodeDrivenEventParameter": {
+   "id": 8856,
+   "size": 32,
+   "registrar": "0x1408938e1"
+  },
+  "oCFModDataDrivenEvent": {
+   "id": 8860,
+   "size": 152,
+   "registrar": "0x140230cc6"
+  },
+  "oCFModDataDrivenEventParameter": {
+   "id": 8870,
+   "size": 48,
+   "registrar": "0x140230941"
+  },
+  "oCFModDialogLine": {
+   "id": 371639134,
+   "size": 112,
+   "registrar": "0x140231951"
+  },
+  "oCFModDialogLineSettings": {
+   "id": 371575256,
+   "size": 816,
+   "registrar": "0x140231786"
+  },
+  "oCFModEvent": {
+   "id": 8810,
+   "size": 128,
+   "registrar": "0x140230af6"
+  },
+  "oCFModEventCategory": {
+   "id": 8960,
+   "size": 32,
+   "registrar": "0x140886fd1"
+  },
+  "oCFModEventCategoryGo": {
+   "id": 196782684,
+   "size": 296,
+   "registrar": "0x140887a86"
+  },
+  "oCFModEventCategorySetup": {
+   "id": 8951,
+   "size": 16,
+   "registrar": "0x1408878d1"
+  },
+  "oCFModEventGroupsList": {
+   "id": 8884,
+   "size": 88,
+   "registrar": "0x140887326"
+  },
+  "oCFModEventGroupsListGroup": {
+   "id": 8887,
+   "size": 24,
+   "registrar": "0x140887171"
+  },
+  "oCFModEventGroupsPreloadGo": {
+   "id": 8861,
+   "size": 296,
+   "registrar": "0x140887516"
+  },
+  "oCFModEventMixGo": {
+   "id": 196783985,
+   "size": 224,
+   "registrar": "0x140887c56"
+  },
+  "oCFModEventMixSetup": {
+   "id": 196783973,
+   "size": 120,
+   "registrar": "0x140887e26"
+  },
+  "oCFModEventPreloadGoState": {
+   "id": 149104824,
+   "size": 16,
+   "registrar": "0x1408876e6"
+  },
+  "oCFModEventProject": {
+   "id": 8820,
+   "size": 312,
+   "registrar": "0x140885866"
+  },
+  "oCFModEventReverbPreset": {
+   "id": 8030,
+   "size": 24,
+   "registrar": "0x1408936f6"
+  },
+  "oCFModEventVisualEffect": {
+   "id": 219858403,
+   "size": 128,
+   "registrar": "0x140885a36"
+  },
+  "oCFModEventVisualEffectSetting": {
+   "id": 219858404,
+   "size": 184,
+   "registrar": "0x140885c06"
+  },
+  "oCFModModule": {
+   "id": 5663,
+   "size": 576,
+   "registrar": "0x1402221e1"
+  },
+  "oCFModNarrationSettingsGo": {
+   "id": 371566503,
+   "size": 1088,
+   "registrar": "0x1408868b6"
+  },
+  "oCFile2dGraphNode": {
+   "id": 86440971,
+   "size": 168,
+   "registrar": "0x14064e426"
+  },
+  "oCFillTransparentAlphaImageProcessor": {
+   "id": 269343522,
+   "size": 2336817076,
+   "registrar": "0x14065d931"
+  },
+  "oCFlag": {
+   "id": 357666162,
+   "size": 40,
+   "registrar": "0x1406db8c6"
+  },
+  "oCFlagDef": {
+   "id": 339500574,
+   "size": 48,
+   "registrar": "0x140181c76"
+  },
+  "oCFlagSetPerformanceProfileValue": {
+   "id": 351525019,
+   "size": 2056,
+   "registrar": "0x140467156"
+  },
+  "oCFlagsApplicationSettingsSection": {
+   "id": 342260805,
+   "size": 5168,
+   "registrar": "0x140467346"
+  },
+  "oCFlatCircleMeshSettings": {
+   "id": 207734539,
+   "size": 56,
+   "registrar": "0x14061f336"
+  },
+  "oCFloatArrayShaderParam": {
+   "id": 41875461,
+   "size": 64,
+   "registrar": "0x14017c6f6"
+  },
+  "oCFloatEaseCurve": {
+   "id": 327958574,
+   "size": 12,
+   "registrar": "0x140588771"
+  },
+  "oCFloatGoDelegateGameTest": {
+   "id": 8218,
+   "size": 176,
+   "registrar": "0x140487f56"
+  },
+  "oCFloatInterval": {
+   "id": 81692256,
+   "size": 8,
+   "registrar": "0x140186ff1"
+  },
+  "oCFloatNoiseMethodCineBloc": {
+   "id": 119976522,
+   "size": 216,
+   "registrar": "0x1406d4f06"
+  },
+  "oCFloatPerformanceProfileValue": {
+   "id": 328094804,
+   "size": 72,
+   "registrar": "0x1401849a6"
+  },
+  "oCFloatRamp": {
+   "id": 36421566,
+   "size": 40,
+   "registrar": "0x14027d6e1"
+  },
+  "oCFloatRampMethodCineBloc": {
+   "id": 119976521,
+   "size": 272,
+   "registrar": "0x1406d50d6"
+  },
+  "oCFloatRect": {
+   "id": 213480901,
+   "size": 16,
+   "registrar": "0x14023a261"
+  },
+  "oCFloatShaderParam": {
+   "id": 5819,
+   "size": 48,
+   "registrar": "0x14017c506"
+  },
+  "oCFloatVertexLayer": {
+   "id": 222948080,
+   "size": 40,
+   "registrar": "0x1404dbc26"
+  },
+  "oCFogSettings": {
+   "id": 5777,
+   "size": 28,
+   "registrar": "0x140185521"
+  },
+  "oCFont": {
+   "id": 5730,
+   "size": 208,
+   "registrar": "0x140366776"
+  },
+  "oCFovCameraModifier": {
+   "id": 293624293,
+   "size": 56,
+   "registrar": "0x140667861"
+  },
+  "oCFuncValuesUiAccess": {
+   "id": 56095,
+   "size": 16,
+   "registrar": "0x140512341"
+  },
+  "oCGameApplicationSettingsSection": {
+   "id": 337526515,
+   "size": 136,
+   "registrar": "0x14027e826"
+  },
+  "oCGameCallSignal": {
+   "id": 8210,
+   "size": 24,
+   "registrar": "0x14046b7b6"
+  },
+  "oCGameEventGainIngredient": {
+   "id": 466958919,
+   "size": 88,
+   "registrar": "0x1402fc431"
+  },
+  "oCGameEventHitPointModification": {
+   "id": 424622681,
+   "size": 96,
+   "registrar": "0x140316531"
+  },
+  "oCGameEventListener": {
+   "id": 312368034,
+   "size": 104,
+   "registrar": "0x140194646"
+  },
+  "oCGameEventListenerEntityCpnt": {
+   "id": 316971904,
+   "size": 328,
+   "registrar": "0x140774141"
+  },
+  "oCGameEventListenerEntityCpntPersistentData": {
+   "id": 316971898,
+   "size": 184,
+   "registrar": "0x140773f76"
+  },
+  "oCGameEventListenerEntityCpntSettings": {
+   "id": 316971900,
+   "size": 528,
+   "registrar": "0x140773da6"
+  },
+  "oCGameEventListenerSettings": {
+   "id": 312383802,
+   "size": 88,
+   "registrar": "0x140194456"
+  },
+  "oCGameEventMaxHitPointModification": {
+   "id": 424622693,
+   "size": 96,
+   "registrar": "0x140316701"
+  },
+  "oCGameEventNetworkModifier": {
+   "id": 424622729,
+   "size": 152,
+   "registrar": "0x1403bc0f1"
+  },
+  "oCGameEventSceneContext": {
+   "id": 312367597,
+   "size": 96,
+   "registrar": "0x14022aba1"
+  },
+  "oCGameLevelDatabase": {
+   "id": 105552589,
+   "size": 32,
+   "registrar": "0x140487476"
+  },
+  "oCGameLevelIdentifier": {
+   "id": 105465426,
+   "size": 120,
+   "registrar": "0x14018e8c6"
+  },
+  "oCGameLevelLink": {
+   "id": 333537551,
+   "size": 56,
+   "registrar": "0x14018e371"
+  },
+  "oCGameLevelLinks": {
+   "id": 105465219,
+   "size": 48,
+   "registrar": "0x14018e526"
+  },
+  "oCGameLoadingScreen": {
+   "id": 401895574,
+   "size": 120,
+   "registrar": "0x140197671"
+  },
+  "oCGameLockPersistentData": {
+   "id": 311086678,
+   "size": 176,
+   "registrar": "0x1401949e6"
+  },
+  "oCGameLockSettings": {
+   "id": 311086676,
+   "size": 120,
+   "registrar": "0x140194816"
+  },
+  "oCGameNamedEvent": {
+   "id": 424622382,
+   "size": 1911030063,
+   "registrar": "0x14017a331"
+  },
+  "oCGameNamedEventAttachmentChange": {
+   "id": 424622739,
+   "size": 96,
+   "registrar": "0x140737061"
+  },
+  "oCGameNamedEventNetwork": {
+   "id": 424622496,
+   "size": 80,
+   "registrar": "0x14022c2b1"
+  },
+  "oCGameNamedEventNetworkDamageResponse": {
+   "id": 424622707,
+   "size": 272,
+   "registrar": "0x14022c651"
+  },
+  "oCGameObject": {
+   "id": 6034,
+   "size": 200,
+   "registrar": "0x1402261e6"
+  },
+  "oCGameOptionsInputKeyBinderGs": {
+   "id": 264011596,
+   "size": 160,
+   "registrar": "0x14040e6e1"
+  },
+  "oCGameOptionsMenuGs": {
+   "id": 244997077,
+   "size": 192,
+   "registrar": "0x14040e891"
+  },
+  "oCGameProbe": {
+   "id": 8219,
+   "size": 32,
+   "registrar": "0x14046b0a6"
+  },
+  "oCGameProfileDataManager": {
+   "id": 320767749,
+   "size": 80,
+   "registrar": "0x140193311"
+  },
+  "oCGameSave": {
+   "id": 199100135,
+   "size": 104,
+   "registrar": "0x14046bb46"
+  },
+  "oCGameScene": {
+   "id": 22429585,
+   "size": 1696,
+   "registrar": "0x140190316"
+  },
+  "oCGameUiApplicationSettingsSection": {
+   "id": 370935199,
+   "size": 64,
+   "registrar": "0x14018ee96"
+  },
+  "oCGameUiDesktop": {
+   "id": 262019776,
+   "size": 896,
+   "registrar": "0x14018f581"
+  },
+  "oCGameUiLayerDesc": {
+   "id": 370995198,
+   "size": 80,
+   "registrar": "0x14018eca6"
+  },
+  "oCGameUiLayerPicker": {
+   "id": 671111372,
+   "size": 24,
+   "registrar": "0x14018eab6"
+  },
+  "oCGammaRenderSettings": {
+   "id": 300643763,
+   "size": 24,
+   "registrar": "0x1405afc46"
+  },
+  "oCGenPbrAmbLightTypeMaterial": {
+   "id": 278264958,
+   "size": 144,
+   "registrar": "0x1402bd181"
+  },
+  "oCGenPbrDirLightTypeMaterial": {
+   "id": 278264957,
+   "size": 160,
+   "registrar": "0x1402bcfd1"
+  },
+  "oCGenPbrOmniLightTypeMaterial": {
+   "id": 277312661,
+   "size": 168,
+   "registrar": "0x1402bd331"
+  },
+  "oCGenPbrSpotLightTypeMaterial": {
+   "id": 283097828,
+   "size": 176,
+   "registrar": "0x1402bd4e1"
+  },
+  "oCGeometry": {
+   "id": 5816,
+   "size": 168,
+   "registrar": "0x1403156d6"
+  },
+  "oCGlobalEntityValueSceneContext": {
+   "id": 326032152,
+   "size": 288,
+   "registrar": "0x14018b8d6"
+  },
+  "oCGlobalEntityValueSettings": {
+   "id": 395483890,
+   "size": 192,
+   "registrar": "0x14022c826"
+  },
+  "oCGoComponent": {
+   "id": 3845428,
+   "size": 64,
+   "registrar": "0x140226016"
+  },
+  "oCGoDelegate": {
+   "id": 8331,
+   "size": 128,
+   "registrar": "0x14046af01"
+  },
+  "oCGoDelegateArgument": {
+   "id": 8129,
+   "size": 40,
+   "registrar": "0x14046ad51"
+  },
+  "oCGoGraph": {
+   "id": 5778,
+   "size": 160,
+   "registrar": "0x14018dfd1"
+  },
+  "oCGoStateBuffer": {
+   "id": 112028913,
+   "size": 24,
+   "registrar": "0x14048d606"
+  },
+  "oCGpnApplicationSettingsSection": {
+   "id": 394963219,
+   "size": 32,
+   "registrar": "0x14022b2c6"
+  },
+  "oCGpnFilter": {
+   "id": 278174730,
+   "size": 80,
+   "registrar": "0x140234396"
+  },
+  "oCGpnFilterCustomFlag": {
+   "id": 306767918,
+   "size": 40,
+   "registrar": "0x1402341a6"
+  },
+  "oCGpnIdPicker": {
+   "id": 266401134,
+   "size": 24,
+   "registrar": "0x140233de6"
+  },
+  "oCGpnSceneContext": {
+   "id": 263640329,
+   "size": 208,
+   "registrar": "0x140233fd6"
+  },
+  "oCGpnTesterEntityCpnt": {
+   "id": 409504163,
+   "size": 184,
+   "registrar": "0x1407cf591"
+  },
+  "oCGpnTesterEntityCpntSettings": {
+   "id": 409503878,
+   "size": 536,
+   "registrar": "0x1407cf3c6"
+  },
+  "oCGraphic3dObject": {
+   "id": 5803,
+   "size": 272,
+   "registrar": "0x140487831"
+  },
+  "oCGraphicInstance3dObject": {
+   "id": 315327458,
+   "size": 432,
+   "registrar": "0x14063b6d1"
+  },
+  "oCHashId": {
+   "id": 272726144,
+   "size": 24,
+   "registrar": "0x140513a38"
+  },
+  "oCHeightFogSettings": {
+   "id": 319469163,
+   "size": 48,
+   "registrar": "0x1405a1d06"
+  },
+  "oCInputApplicationSettingsSection": {
+   "id": 1941651,
+   "size": 24,
+   "registrar": "0x140685bf6"
+  },
+  "oCInputModule": {
+   "id": 21855424,
+   "size": 448,
+   "registrar": "0x140221ec1"
+  },
+  "oCInputPadTriggerVibrationState": {
+   "id": 367840488,
+   "size": 14,
+   "registrar": "0x14023cf21"
+  },
+  "oCInputPadVibrationCineBloc": {
+   "id": 119976523,
+   "size": 232,
+   "registrar": "0x1406d52a6"
+  },
+  "oCInputPadVibrationState": {
+   "id": 41662,
+   "size": 2336817142,
+   "registrar": "0x14023d941"
+  },
+  "oCInputTesterGameTest": {
+   "id": 8317,
+   "size": 48,
+   "registrar": "0x140487b96"
+  },
+  "oCInt2": {
+   "id": 1882836,
+   "size": 8,
+   "registrar": "0x140179fd1"
+  },
+  "oCInt3": {
+   "id": 362435462,
+   "size": 12,
+   "registrar": "0x140179381"
+  },
+  "oCIntArrayShaderParam": {
+   "id": 41876079,
+   "size": 64,
+   "registrar": "0x14017ccc6"
+  },
+  "oCIntGoDelegateGameTest": {
+   "id": 7014,
+   "size": 176,
+   "registrar": "0x140488126"
+  },
+  "oCIntInterval": {
+   "id": 288710301,
+   "size": 8,
+   "registrar": "0x14033daa1"
+  },
+  "oCIntPerformanceProfileValue": {
+   "id": 328094806,
+   "size": 72,
+   "registrar": "0x140184b96"
+  },
+  "oCIntShaderParam": {
+   "id": 5820,
+   "size": 48,
+   "registrar": "0x14017c8e6"
+  },
+  "oCItem": {
+   "id": 393170979,
+   "size": 240,
+   "registrar": "0x140221556"
+  },
+  "oCLastHitDamageEntityCollector": {
+   "id": 448207780,
+   "size": 48,
+   "registrar": "0x1402294e1"
+  },
+  "oCLastHitDamageEntityCollectorSettings": {
+   "id": 448207778,
+   "size": 208,
+   "registrar": "0x140229316"
+  },
+  "oCLightHarvester": {
+   "id": 337529386,
+   "size": 94336,
+   "registrar": "0x140183841"
+  },
+  "oCLine3d": {
+   "id": 2376391,
+   "size": 32,
+   "registrar": "0x1404da5b1"
+  },
+  "oCLinkedTile": {
+   "id": 394456273,
+   "size": 80,
+   "registrar": "0x140189c86"
+  },
+  "oCLiveStatFloat": {
+   "id": 150311576,
+   "size": 56,
+   "registrar": "0x1406660e1"
+  },
+  "oCLiveStatUInt": {
+   "id": 150311572,
+   "size": 56,
+   "registrar": "0x1406662b1"
+  },
+  "oCLocalMasteringOption": {
+   "id": 355670698,
+   "size": 112,
+   "registrar": "0x1404a80c1"
+  },
+  "oCLocalSentence": {
+   "id": 875,
+   "size": 112,
+   "registrar": "0x14017af91"
+  },
+  "oCLocalSentencesSet": {
+   "id": 876,
+   "size": 72,
+   "registrar": "0x14068b581"
+  },
+  "oCLocalSentencesSetItem": {
+   "id": 877,
+   "size": 32,
+   "registrar": "0x14068b3d1"
+  },
+  "oCLocalText": {
+   "id": 22016549,
+   "size": 176,
+   "registrar": "0x14017adc6"
+  },
+  "oCLocator": {
+   "id": 5815,
+   "size": 96,
+   "registrar": "0x140315521"
+  },
+  "oCLogImageProcessor": {
+   "id": 217720495,
+   "size": 8,
+   "registrar": "0x14065cc81"
+  },
+  "oCLosSceneContext": {
+   "id": 263644522,
+   "size": 312,
+   "registrar": "0x1407199b6"
+  },
+  "oCManualMesh": {
+   "id": 207734547,
+   "size": 72,
+   "registrar": "0x14061f711"
+  },
+  "oCMasteringApplicationSettingsSection": {
+   "id": 320517270,
+   "size": 552,
+   "registrar": "0x140466f66"
+  },
+  "oCMasteringConfig": {
+   "id": 321701370,
+   "size": 280,
+   "registrar": "0x1404669f1"
+  },
+  "oCMasteringDefine": {
+   "id": 339072820,
+   "size": 112,
+   "registrar": "0x1404a8276"
+  },
+  "oCMasteringOptions": {
+   "id": 319560931,
+   "size": 88,
+   "registrar": "0x140466806"
+  },
+  "oCMaterial": {
+   "id": 5822,
+   "size": 392,
+   "registrar": "0x14017e936"
+  },
+  "oCMaterialDef": {
+   "id": 68047478,
+   "size": 232,
+   "registrar": "0x1406b8356"
+  },
+  "oCMaterialDefParam": {
+   "id": 68684762,
+   "size": 40,
+   "registrar": "0x1406b6e56"
+  },
+  "oCMaterialDefParamBool": {
+   "id": 285419049,
+   "size": 48,
+   "registrar": "0x1406b7206"
+  },
+  "oCMaterialDefParamColor": {
+   "id": 85509664,
+   "size": 56,
+   "registrar": "0x1406b7da6"
+  },
+  "oCMaterialDefParamFloat": {
+   "id": 68723264,
+   "size": 48,
+   "registrar": "0x1406b7016"
+  },
+  "oCMaterialDefParamFloat2": {
+   "id": 68724022,
+   "size": 48,
+   "registrar": "0x1406b75e6"
+  },
+  "oCMaterialDefParamFloat3": {
+   "id": 68714723,
+   "size": 56,
+   "registrar": "0x1406b77d6"
+  },
+  "oCMaterialDefParamInt": {
+   "id": 285419406,
+   "size": 48,
+   "registrar": "0x1406b73f6"
+  },
+  "oCMaterialDefParamList": {
+   "id": 210615467,
+   "size": 40,
+   "registrar": "0x1406b7f96"
+  },
+  "oCMaterialDefParamMatrix4": {
+   "id": 210687445,
+   "size": 112,
+   "registrar": "0x1406b79c6"
+  },
+  "oCMaterialDefParamTexture": {
+   "id": 75730179,
+   "size": 96,
+   "registrar": "0x1406b7bb6"
+  },
+  "oCMaterialDefRenderPass": {
+   "id": 336321120,
+   "size": 32,
+   "registrar": "0x1406b8166"
+  },
+  "oCMaterialOverride": {
+   "id": 40143663,
+   "size": 152,
+   "registrar": "0x140183a01"
+  },
+  "oCMatrix4": {
+   "id": 6742714,
+   "size": 64,
+   "registrar": "0x140179a41"
+  },
+  "oCMatrix4ArrayShaderParam": {
+   "id": 41876219,
+   "size": 64,
+   "registrar": "0x14017dc46"
+  },
+  "oCMatrix4ShaderParam": {
+   "id": 40089883,
+   "size": 112,
+   "registrar": "0x14017da56"
+  },
+  "oCMaxSizeImageProcessor": {
+   "id": 219441740,
+   "size": 8,
+   "registrar": "0x14065ce51"
+  },
+  "oCMesh": {
+   "id": 5824,
+   "size": 136,
+   "registrar": "0x1405f0846"
+  },
+  "oCMesh3dShape": {
+   "id": 8640,
+   "size": 208,
+   "registrar": "0x1402bfaf6"
+  },
+  "oCMeshBuffer": {
+   "id": 5825,
+   "size": 216,
+   "registrar": "0x1404698b6"
+  },
+  "oCMixerValue": {
+   "id": 272369363,
+   "size": 264,
+   "registrar": "0x140776dc6"
+  },
+  "oCModalApplicationSettingsSection": {
+   "id": 402243553,
+   "size": 240,
+   "registrar": "0x1406fc816"
+  },
+  "oCModalSystemMessageGs": {
+   "id": 256487094,
+   "size": 280,
+   "registrar": "0x14027e671"
+  },
+  "oCModifierApplicationSettingsSection": {
+   "id": 395048197,
+   "size": 112,
+   "registrar": "0x14022db76"
+  },
+  "oCMonoStateSaveEntry": {
+   "id": 112484232,
+   "size": 128,
+   "registrar": "0x1404886b6"
+  },
+  "oCMonoStateSaveEntryItem": {
+   "id": 112486287,
+   "size": 120,
+   "registrar": "0x1404884e6"
+  },
+  "oCMonoStateStoreGo": {
+   "id": 112478780,
+   "size": 256,
+   "registrar": "0x140486dc6"
+  },
+  "oCMonoStateStoreGoEntry": {
+   "id": 112474346,
+   "size": 112,
+   "registrar": "0x140486bf6"
+  },
+  "oCMultiStateApplyGo": {
+   "id": 112028825,
+   "size": 336,
+   "registrar": "0x14048db96"
+  },
+  "oCMultiStateSaveEntry": {
+   "id": 112055925,
+   "size": 120,
+   "registrar": "0x14048d436"
+  },
+  "oCMultiStateStoreGo": {
+   "id": 112028715,
+   "size": 280,
+   "registrar": "0x140487666"
+  },
+  "oCMusic": {
+   "id": 5666,
+   "size": 168,
+   "registrar": "0x14027ed56"
+  },
+  "oCNamedEventGainHealth": {
+   "id": 424622750,
+   "size": 88,
+   "registrar": "0x1402f98b1"
+  },
+  "oCNamedEventNetworkWithCpntId": {
+   "id": 427909276,
+   "size": 88,
+   "registrar": "0x140234751"
+  },
+  "oCNamedEventNetworkWithData": {
+   "id": 424622762,
+   "size": 112,
+   "registrar": "0x140234581"
+  },
+  "oCNearFarCameraModifier": {
+   "id": 173020085,
+   "size": 56,
+   "registrar": "0x140666f51"
+  },
+  "oCNoiseCameraModifier": {
+   "id": 110886478,
+   "size": 96,
+   "registrar": "0x140666b96"
+  },
+  "oCNoteGraphNode": {
+   "id": 153924389,
+   "size": 136,
+   "registrar": "0x140570556"
+  },
+  "oCNullAudioModule": {
+   "id": 5653,
+   "size": 176,
+   "registrar": "0x140490d91"
+  },
+  "oCNullPartitioner": {
+   "id": 338763599,
+   "size": 48,
+   "registrar": "0x1402232e1"
+  },
+  "oCOBox3": {
+   "id": 136359471,
+   "size": 96,
+   "registrar": "0x140182c41"
+  },
+  "oCOExtentUnion": {
+   "id": 8430,
+   "size": 112,
+   "registrar": "0x1404db8b1"
+  },
+  "oCObjectFlagSet": {
+   "id": 351593700,
+   "size": 16,
+   "registrar": "0x140182241"
+  },
+  "oCObjectFlagsMgr": {
+   "id": 339497786,
+   "size": 3096,
+   "registrar": "0x140182056"
+  },
+  "oCObjectLookAtCineBloc": {
+   "id": 27086858,
+   "size": 296,
+   "registrar": "0x1408af636"
+  },
+  "oCOpacifyImageProcessor": {
+   "id": 219450744,
+   "size": 8,
+   "registrar": "0x14065d1f1"
+  },
+  "oCOwnerEntityCollector": {
+   "id": 321268906,
+   "size": 40,
+   "registrar": "0x140227fe1"
+  },
+  "oCOwnerEntityCollectorSettings": {
+   "id": 321268883,
+   "size": 280,
+   "registrar": "0x140227e16"
+  },
+  "oCPanToLookAtCameraModifier": {
+   "id": 115486479,
+   "size": 64,
+   "registrar": "0x1406674c1"
+  },
+  "oCParams": {
+   "id": 400434322,
+   "size": 40,
+   "registrar": "0x140223666"
+  },
+  "oCPartHolder3dObject": {
+   "id": 7864456,
+   "size": 136,
+   "registrar": "0x140186af1"
+  },
+  "oCParticleEmittersSettings": {
+   "id": 79479851,
+   "size": 24,
+   "registrar": "0x1405cfa36"
+  },
+  "oCParticleModifiersSettings": {
+   "id": 79443520,
+   "size": 24,
+   "registrar": "0x1405cfc06"
+  },
+  "oCParticleRenderersSettings": {
+   "id": 79644586,
+   "size": 24,
+   "registrar": "0x1405cfdd6"
+  },
+  "oCParticleTank": {
+   "id": 5826,
+   "size": 232,
+   "registrar": "0x140183ba6"
+  },
+  "oCPerformanceProfileSelector": {
+   "id": 270037719,
+   "size": 16,
+   "registrar": "0x14069b736"
+  },
+  "oCPhysicFilter": {
+   "id": 207475000,
+   "size": 24,
+   "registrar": "0x1402239e1"
+  },
+  "oCPhysicFlagSet": {
+   "id": 207474449,
+   "size": 8,
+   "registrar": "0x140223831"
+  },
+  "oCPhysicFlagsApplicationSettingsSection": {
+   "id": 357658492,
+   "size": 2600,
+   "registrar": "0x1406db6d6"
+  },
+  "oCPhysicTerrainGenerator": {
+   "id": 370189409,
+   "size": 368,
+   "registrar": "0x1406d02e6"
+  },
+  "oCPhysicTerrainTile": {
+   "id": 370189406,
+   "size": 72,
+   "registrar": "0x1406d0131"
+  },
+  "oCPhysicUserFlagSet": {
+   "id": 351685392,
+   "size": 16,
+   "registrar": "0x1402bfed1"
+  },
+  "oCPictureCineBlocFadeIn": {
+   "id": 111331870,
+   "size": 192,
+   "registrar": "0x1406d5656"
+  },
+  "oCPictureCineBlocFadeOut": {
+   "id": 111331871,
+   "size": 192,
+   "registrar": "0x1406d5846"
+  },
+  "oCPictureCineBlocFadeOutIn": {
+   "id": 303119635,
+   "size": 200,
+   "registrar": "0x1406d5a36"
+  },
+  "oCPixelShaderFxGraph": {
+   "id": 5829,
+   "size": 184,
+   "registrar": "0x1406460b6"
+  },
+  "oCPosRotGo": {
+   "id": 5488622,
+   "size": 248,
+   "registrar": "0x140226a86"
+  },
+  "oCPositionCameraModifier": {
+   "id": 115762287,
+   "size": 88,
+   "registrar": "0x140666d81"
+  },
+  "oCPostFxGraph": {
+   "id": 5828,
+   "size": 160,
+   "registrar": "0x140645ee1"
+  },
+  "oCPostFxRenderLayer": {
+   "id": 75659943,
+   "size": 1152,
+   "registrar": "0x1402be446"
+  },
+  "oCPov3dObject": {
+   "id": 387728386,
+   "size": 24,
+   "registrar": "0x140182901"
+  },
+  "oCPreset": {
+   "id": 357666163,
+   "size": 48,
+   "registrar": "0x1406dbab6"
+  },
+  "oCQuaternion": {
+   "id": 22084384,
+   "size": 16,
+   "registrar": "0x140179891"
+  },
+  "oCQueryRenderLayer": {
+   "id": 154260791,
+   "size": 144,
+   "registrar": "0x1405bba01"
+  },
+  "oCQuickMeshGo": {
+   "id": 292951901,
+   "size": 528,
+   "registrar": "0x1408a5946"
+  },
+  "oCRVOSettings": {
+   "id": 213113692,
+   "size": 48,
+   "registrar": "0x1404b7526"
+  },
+  "oCRenderApplicationSettingsSection": {
+   "id": 1941662,
+   "size": 520,
+   "registrar": "0x140185166"
+  },
+  "oCRenderPipeline": {
+   "id": 335280658,
+   "size": 408,
+   "registrar": "0x140184461"
+  },
+  "oCRenderSettingsGo": {
+   "id": 256747219,
+   "size": 264,
+   "registrar": "0x1406b8526"
+  },
+  "oCRenderTarget": {
+   "id": 42140684,
+   "size": 224,
+   "registrar": "0x140183d76"
+  },
+  "oCRenderView": {
+   "id": 5817,
+   "size": 48,
+   "registrar": "0x1401856d1"
+  },
+  "oCResourceDbInfo": {
+   "id": 287524415,
+   "size": 72,
+   "registrar": "0x140318346"
+  },
+  "oCResourceRef": {
+   "id": 6744155,
+   "size": 48,
+   "registrar": "0x140178c91"
+  },
+  "oCResourceUniqueId": {
+   "id": 105465753,
+   "size": 64,
+   "registrar": "0x14018e711"
+  },
+  "oCResourceWeakRef": {
+   "id": 397315475,
+   "size": 56,
+   "registrar": "0x140227006"
+  },
+  "oCRopeTrail3dObject": {
+   "id": 82212200,
+   "size": 304,
+   "registrar": "0x1405cd061"
+  },
+  "oCSLNetP2PSessionSceneContext": {
+   "id": 357152641,
+   "size": 608,
+   "registrar": "0x14022f7c6"
+  },
+  "oCSLNetReplicationManagerSceneContext": {
+   "id": 357410003,
+   "size": 592,
+   "registrar": "0x1408c5376"
+  },
+  "oCSceInputPadTriggerValue": {
+   "id": 41668,
+   "size": 9,
+   "registrar": "0x14023d431"
+  },
+  "oCSceInputPadVibrationState": {
+   "id": 41665,
+   "size": 20,
+   "registrar": "0x14023d5e1"
+  },
+  "oCSceneGraph": {
+   "id": 336562311,
+   "size": 432,
+   "registrar": "0x140190171"
+  },
+  "oCScheduledVfx": {
+   "id": 51414162,
+   "size": 368,
+   "registrar": "0x14069be91"
+  },
+  "oCScheduledVfxParam": {
+   "id": 306162478,
+   "size": 128,
+   "registrar": "0x1406b8e01"
+  },
+  "oCScheduledVfxPool": {
+   "id": 51424163,
+   "size": 88,
+   "registrar": "0x1406b8c61"
+  },
+  "oCScheduledVfxSettings": {
+   "id": 5413163,
+   "size": 384,
+   "registrar": "0x1406b8f96"
+  },
+  "oCSearchFilter": {
+   "id": 504697883,
+   "size": 56,
+   "registrar": "0x140193ba1"
+  },
+  "oCSelfEntityCollector": {
+   "id": 315754943,
+   "size": 40,
+   "registrar": "0x140227c61"
+  },
+  "oCSelfEntityCollectorSettings": {
+   "id": 315754942,
+   "size": 144,
+   "registrar": "0x140227a96"
+  },
+  "oCSerializableCallSignal0": {
+   "id": 8231,
+   "size": 24,
+   "registrar": "0x14046b611"
+  },
+  "oCShader": {
+   "id": 40075118,
+   "size": 184,
+   "registrar": "0x14017ba56"
+  },
+  "oCShader2": {
+   "id": 40075948,
+   "size": 160,
+   "registrar": "0x14017b886"
+  },
+  "oCShader2Reflection": {
+   "id": 384690471,
+   "size": 32,
+   "registrar": "0x14017b696"
+  },
+  "oCShader2ReflectionParam": {
+   "id": 384690472,
+   "size": 72,
+   "registrar": "0x14017b4a6"
+  },
+  "oCShaderGraphNodeAddColor": {
+   "id": 5876,
+   "size": 120,
+   "registrar": "0x140651ef1"
+  },
+  "oCShaderGraphNodeAddFloat": {
+   "id": 5870,
+   "size": 120,
+   "registrar": "0x1406517b1"
+  },
+  "oCShaderGraphNodeAddFloat2": {
+   "id": 5869,
+   "size": 120,
+   "registrar": "0x1406515e1"
+  },
+  "oCShaderGraphNodeBlackWhite": {
+   "id": 5837,
+   "size": 120,
+   "registrar": "0x14064fab1"
+  },
+  "oCShaderGraphNodeColorOp": {
+   "id": 6052,
+   "size": 120,
+   "registrar": "0x14064f3d1"
+  },
+  "oCShaderGraphNodeColorOp2": {
+   "id": 6053,
+   "size": 120,
+   "registrar": "0x14064f571"
+  },
+  "oCShaderGraphNodeColor_RGBA": {
+   "id": 5858,
+   "size": 120,
+   "registrar": "0x1406503c1"
+  },
+  "oCShaderGraphNodeContrast": {
+   "id": 5835,
+   "size": 120,
+   "registrar": "0x14064f8e1"
+  },
+  "oCShaderGraphNodeFloat2Op": {
+   "id": 6050,
+   "size": 120,
+   "registrar": "0x14064eec1"
+  },
+  "oCShaderGraphNodeFloat2Op2": {
+   "id": 6051,
+   "size": 120,
+   "registrar": "0x14064f231"
+  },
+  "oCShaderGraphNodeFloat2_XY": {
+   "id": 5856,
+   "size": 120,
+   "registrar": "0x1406501f1"
+  },
+  "oCShaderGraphNodeFloat3_XYZ": {
+   "id": 5855,
+   "size": 120,
+   "registrar": "0x140650021"
+  },
+  "oCShaderGraphNodeFloatClamp": {
+   "id": 5832,
+   "size": 120,
+   "registrar": "0x14064e981"
+  },
+  "oCShaderGraphNodeFloatConstant": {
+   "id": 5830,
+   "size": 120,
+   "registrar": "0x14064e7b1"
+  },
+  "oCShaderGraphNodeFloatOp": {
+   "id": 6047,
+   "size": 120,
+   "registrar": "0x14064e611"
+  },
+  "oCShaderGraphNodeFloatOp2": {
+   "id": 6049,
+   "size": 120,
+   "registrar": "0x14064ed21"
+  },
+  "oCShaderGraphNodeFloatZBuff": {
+   "id": 5833,
+   "size": 120,
+   "registrar": "0x14064eb51"
+  },
+  "oCShaderGraphNodeIfFloatLower": {
+   "id": 85163138,
+   "size": 120,
+   "registrar": "0x140650ea1"
+  },
+  "oCShaderGraphNodeInverse": {
+   "id": 5834,
+   "size": 168,
+   "registrar": "0x14064f711"
+  },
+  "oCShaderGraphNodeMixColor": {
+   "id": 5874,
+   "size": 120,
+   "registrar": "0x140651d21"
+  },
+  "oCShaderGraphNodeMultiplyColor": {
+   "id": 5873,
+   "size": 120,
+   "registrar": "0x140651b51"
+  },
+  "oCShaderGraphNodeMultiplyFloat": {
+   "id": 5864,
+   "size": 120,
+   "registrar": "0x140650cd1"
+  },
+  "oCShaderGraphNodeMultiplyFloat2": {
+   "id": 5865,
+   "size": 120,
+   "registrar": "0x140651071"
+  },
+  "oCShaderGraphNodeRGBA_Color": {
+   "id": 5859,
+   "size": 120,
+   "registrar": "0x140650591"
+  },
+  "oCShaderGraphNodeRotateFloat2": {
+   "id": 5866,
+   "size": 120,
+   "registrar": "0x140651241"
+  },
+  "oCShaderGraphNodeSinFloat": {
+   "id": 5863,
+   "size": 120,
+   "registrar": "0x140650b01"
+  },
+  "oCShaderGraphNodeSphericalUv": {
+   "id": 85792113,
+   "size": 120,
+   "registrar": "0x14064f061"
+  },
+  "oCShaderGraphNodeSubFloat": {
+   "id": 5872,
+   "size": 120,
+   "registrar": "0x140651981"
+  },
+  "oCShaderGraphNodeTexPixel": {
+   "id": 5842,
+   "size": 120,
+   "registrar": "0x14064fc81"
+  },
+  "oCShaderGraphNodeXYZ_Float3": {
+   "id": 5860,
+   "size": 120,
+   "registrar": "0x140650761"
+  },
+  "oCShaderGraphNodeXY_Float2": {
+   "id": 5861,
+   "size": 120,
+   "registrar": "0x140650931"
+  },
+  "oCShaderGraphNodeZTexPixel": {
+   "id": 5843,
+   "size": 120,
+   "registrar": "0x14064fe51"
+  },
+  "oCShaderGraphNodeZoomFloat2": {
+   "id": 5868,
+   "size": 120,
+   "registrar": "0x140651411"
+  },
+  "oCShaderGraphPlugCubeMapTexture": {
+   "id": 213449939,
+   "size": 64,
+   "registrar": "0x14018d896"
+  },
+  "oCShaderGraphPlugShadowTexture": {
+   "id": 329750437,
+   "size": 64,
+   "registrar": "0x14018d6a6"
+  },
+  "oCShaderGraphPlugTexture": {
+   "id": 5794,
+   "size": 64,
+   "registrar": "0x14018d4b6"
+  },
+  "oCShaderParamBlocDef": {
+   "id": 231594485,
+   "size": 88,
+   "registrar": "0x14017e216"
+  },
+  "oCShaderParamBlocValues": {
+   "id": 231594486,
+   "size": 80,
+   "registrar": "0x14017e3e6"
+  },
+  "oCShaderParamSet": {
+   "id": 40046466,
+   "size": 40,
+   "registrar": "0x14017bc26"
+  },
+  "oCShaderParamSetEx": {
+   "id": 231694491,
+   "size": 112,
+   "registrar": "0x14017e5b6"
+  },
+  "oCShadowRenderLayer": {
+   "id": 75659931,
+   "size": 528,
+   "registrar": "0x140185f11"
+  },
+  "oCShadowRenderSettings": {
+   "id": 280915032,
+   "size": 24,
+   "registrar": "0x1405aebd6"
+  },
+  "oCSizeFactorImageProcessor": {
+   "id": 336837977,
+   "size": 8,
+   "registrar": "0x14065d021"
+  },
+  "oCSkeleton": {
+   "id": 5655,
+   "size": 192,
+   "registrar": "0x1405b0276"
+  },
+  "oCSkinning16VertexLayer": {
+   "id": 324328182,
+   "size": 40,
+   "registrar": "0x1404dc5d6"
+  },
+  "oCSkinning8VertexLayer": {
+   "id": 222265247,
+   "size": 48,
+   "registrar": "0x1404dc3e6"
+  },
+  "oCSkuFiltering": {
+   "id": 321782219,
+   "size": 72,
+   "registrar": "0x140466bb6"
+  },
+  "oCSkuGroup": {
+   "id": 319557673,
+   "size": 32,
+   "registrar": "0x140466616"
+  },
+  "oCSound": {
+   "id": 5670,
+   "size": 120,
+   "registrar": "0x140490bc6"
+  },
+  "oCSoundDesc": {
+   "id": 151943977,
+   "size": 104,
+   "registrar": "0x1406b61a6"
+  },
+  "oCSpawnData": {
+   "id": 205152173,
+   "size": 16,
+   "registrar": "0x140181786"
+  },
+  "oCSpawnable": {
+   "id": 205152170,
+   "size": 104,
+   "registrar": "0x140181951"
+  },
+  "oCSpawnableSettings": {
+   "id": 205152176,
+   "size": 96,
+   "registrar": "0x1401815b6"
+  },
+  "oCSpawnedEntityCollector": {
+   "id": 321282731,
+   "size": 48,
+   "registrar": "0x140228a61"
+  },
+  "oCSpawnedEntityCollectorSettings": {
+   "id": 321282714,
+   "size": 208,
+   "registrar": "0x140228896"
+  },
+  "oCSpawner": {
+   "id": 205236841,
+   "size": 88,
+   "registrar": "0x14018be81"
+  },
+  "oCSpawnerGoEntityCollector": {
+   "id": 373901202,
+   "size": 40,
+   "registrar": "0x140228de1"
+  },
+  "oCSpawnerGoEntityCollectorSettings": {
+   "id": 373901190,
+   "size": 224,
+   "registrar": "0x140228c16"
+  },
+  "oCSpawnerGoEntityRetriever": {
+   "id": 314547487,
+   "size": 2336817066,
+   "registrar": "0x1406fda06"
+  },
+  "oCSphere": {
+   "id": 1882830,
+   "size": 20,
+   "registrar": "0x14022b811"
+  },
+  "oCSphere3dShape": {
+   "id": 8630,
+   "size": 144,
+   "registrar": "0x1402bfce6"
+  },
+  "oCSpherical": {
+   "id": 1882845,
+   "size": 12,
+   "registrar": "0x140467531"
+  },
+  "oCSplitAlphaChannelYImageProcessor": {
+   "id": 232907103,
+   "size": 8,
+   "registrar": "0x14065d3c1"
+  },
+  "oCSsaoRenderBlocSettings": {
+   "id": 256741748,
+   "size": 72,
+   "registrar": "0x140185356"
+  },
+  "oCSsgiRenderBlocSettings": {
+   "id": 278887280,
+   "size": 80,
+   "registrar": "0x1405a20a6"
+  },
+  "oCStateApplyState": {
+   "id": 112029823,
+   "size": 2336817105,
+   "registrar": "0x14048d9c6"
+  },
+  "oCStateApplyTarget": {
+   "id": 112031141,
+   "size": 104,
+   "registrar": "0x14048d7f6"
+  },
+  "oCStateSave": {
+   "id": 112052840,
+   "size": 64,
+   "registrar": "0x14046b976"
+  },
+  "oCStaticWallGo": {
+   "id": 292951900,
+   "size": 328,
+   "registrar": "0x1408a5776"
+  },
+  "oCStatisticsCollectGo": {
+   "id": 340796731,
+   "size": 376,
+   "registrar": "0x1406b6c86"
+  },
+  "oCStatisticsCollection": {
+   "id": 320426293,
+   "size": 48,
+   "registrar": "0x14069c416"
+  },
+  "oCStatisticsSample": {
+   "id": 352572780,
+   "size": 192,
+   "registrar": "0x14069c226"
+  },
+  "oCSteeringAngleSettings": {
+   "id": 205236916,
+   "size": 32,
+   "registrar": "0x1404b7336"
+  },
+  "oCSteeringDef": {
+   "id": 205164457,
+   "size": 24,
+   "registrar": "0x1404b7146"
+  },
+  "oCStickTimeBloc": {
+   "id": 20521187,
+   "size": 72,
+   "registrar": "0x1406ceed6"
+  },
+  "oCStormancerSceneContext": {
+   "id": 367168771,
+   "size": 712,
+   "registrar": "0x140198576"
+  },
+  "oCStretchSqPow2ImageProcessor": {
+   "id": 219450745,
+   "size": 8,
+   "registrar": "0x14065d591"
+  },
+  "oCStringFormatEntryListener": {
+   "id": 327147766,
+   "size": 32,
+   "registrar": "0x140235571"
+  },
+  "oCStringFormatEntryPicker": {
+   "id": 327147239,
+   "size": 144,
+   "registrar": "0x140235386"
+  },
+  "oCSwitchInputPadVibrationState": {
+   "id": 41664,
+   "size": 64,
+   "registrar": "0x14023d281"
+  },
+  "oCSwitchInputPadVibrationValue": {
+   "id": 41663,
+   "size": 16,
+   "registrar": "0x14023d0d1"
+  },
+  "oCTerrainApplicationSettingsSection": {
+   "id": 373737480,
+   "size": 40,
+   "registrar": "0x14069b546"
+  },
+  "oCTerrainBrush": {
+   "id": 367685821,
+   "size": 96,
+   "registrar": "0x1404b6736"
+  },
+  "oCTerrainConstantColorInputLayer": {
+   "id": 372848650,
+   "size": 232,
+   "registrar": "0x1406cf0a6"
+  },
+  "oCTerrainEntitySpawnerOutput": {
+   "id": 373998414,
+   "size": 520,
+   "registrar": "0x14071a626"
+  },
+  "oCTerrainEntitySpawnerTile": {
+   "id": 373998410,
+   "size": 208,
+   "registrar": "0x14071a471"
+  },
+  "oCTerrainGo": {
+   "id": 367235694,
+   "size": 512,
+   "registrar": "0x140232b06"
+  },
+  "oCTerrainInputLayerPicker": {
+   "id": 367771371,
+   "size": 96,
+   "registrar": "0x140232596"
+  },
+  "oCTerrainMeshGenerator": {
+   "id": 367341000,
+   "size": 688,
+   "registrar": "0x1406cff46"
+  },
+  "oCTerrainMeshTextureShaderParam": {
+   "id": 369154593,
+   "size": 488,
+   "registrar": "0x1406cfba6"
+  },
+  "oCTerrainPaintedColorInputLayer": {
+   "id": 368009802,
+   "size": 248,
+   "registrar": "0x1406cf616"
+  },
+  "oCTerrainPaintedFloatInputLayer": {
+   "id": 367339496,
+   "size": 248,
+   "registrar": "0x1406cf446"
+  },
+  "oCTerrainSceneContext": {
+   "id": 367691021,
+   "size": 328,
+   "registrar": "0x140233036"
+  },
+  "oCTerrainShapeEntityCpnt": {
+   "id": 373812169,
+   "size": 193678591,
+   "registrar": "0x140773871"
+  },
+  "oCTerrainShapeEntityCpntSettings": {
+   "id": 373812168,
+   "size": 193678591,
+   "registrar": "0x1407736a6"
+  },
+  "oCTerrainSubInputLayer": {
+   "id": 372867931,
+   "size": 264,
+   "registrar": "0x1406cf7e6"
+  },
+  "oCTerrainSubLayerDesc": {
+   "id": 373795126,
+   "size": 40,
+   "registrar": "0x14069b356"
+  },
+  "oCTerrainSubLayerOutput": {
+   "id": 372867938,
+   "size": 288,
+   "registrar": "0x1406cf9b6"
+  },
+  "oCTerrainSubLayerPicker": {
+   "id": 373108339,
+   "size": 16,
+   "registrar": "0x140232cd6"
+  },
+  "oCTerrainValueOutput": {
+   "id": 385891859,
+   "size": 136,
+   "registrar": "0x1406b6716"
+  },
+  "oCTerrainValueReaderEntityCpnt": {
+   "id": 382181279,
+   "size": 200,
+   "registrar": "0x140777f81"
+  },
+  "oCTerrainValueReaderEntityCpntSettings": {
+   "id": 382181281,
+   "size": 272,
+   "registrar": "0x140777db6"
+  },
+  "oCTextStyle": {
+   "id": 184037338,
+   "size": 120,
+   "registrar": "0x140366946"
+  },
+  "oCTexture": {
+   "id": 5878,
+   "size": 248,
+   "registrar": "0x14017c336"
+  },
+  "oCTextureArrayShaderParam": {
+   "id": 41876267,
+   "size": 64,
+   "registrar": "0x14017e026"
+  },
+  "oCTextureMip": {
+   "id": 51878,
+   "size": 24,
+   "registrar": "0x14017c161"
+  },
+  "oCTextureShaderParam": {
+   "id": 40061399,
+   "size": 48,
+   "registrar": "0x14017de36"
+  },
+  "oCThickLine3d": {
+   "id": 30204819,
+   "size": 48,
+   "registrar": "0x1404da766"
+  },
+  "oCTimeSynchronizer": {
+   "id": 391456278,
+   "size": 56,
+   "registrar": "0x140234ad1"
+  },
+  "oCTrailEmittersSettings": {
+   "id": 290416996,
+   "size": 24,
+   "registrar": "0x1405cb4c6"
+  },
+  "oCTrailGraphic3dObject": {
+   "id": 4803,
+   "size": 312,
+   "registrar": "0x140469551"
+  },
+  "oCTrailModifiersSettings": {
+   "id": 290417000,
+   "size": 24,
+   "registrar": "0x1405cb696"
+  },
+  "oCTrailParticleGraphic3dObject": {
+   "id": 325525365,
+   "size": 312,
+   "registrar": "0x140469701"
+  },
+  "oCTrailTank": {
+   "id": 5715,
+   "size": 152,
+   "registrar": "0x1404691d6"
+  },
+  "oCTransformCameraModifier": {
+   "id": 278149885,
+   "size": 80,
+   "registrar": "0x140667121"
+  },
+  "oCTriBool": {
+   "id": 95515525,
+   "size": 4,
+   "registrar": "0x14017e781"
+  },
+  "oCTruncatedCone": {
+   "id": 283097885,
+   "size": 48,
+   "registrar": "0x1404da246"
+  },
+  "oCType": {
+   "id": 393170908,
+   "size": 32,
+   "registrar": "0x140221746"
+  },
+  "oCTypedPtr": {
+   "id": 17,
+   "size": 16,
+   "registrar": "0x14017a181"
+  },
+  "oCUIAnimPicture": {
+   "id": 162897028,
+   "size": 888,
+   "registrar": "0x1402805b1"
+  },
+  "oCUIButton": {
+   "id": 5759,
+   "size": 864,
+   "registrar": "0x140368b31"
+  },
+  "oCUIChartGraph": {
+   "id": 339093878,
+   "size": 800,
+   "registrar": "0x14056fb31"
+  },
+  "oCUICheckBox": {
+   "id": 5764,
+   "size": 832,
+   "registrar": "0x14046a9f1"
+  },
+  "oCUICircularGauge": {
+   "id": 216662165,
+   "size": 848,
+   "registrar": "0x140570aa1"
+  },
+  "oCUICircularGaugeDesc": {
+   "id": 216662160,
+   "size": 320,
+   "registrar": "0x14057f736"
+  },
+  "oCUIColorCtrl": {
+   "id": 77729228,
+   "size": 824,
+   "registrar": "0x1405701f1"
+  },
+  "oCUIColorRamp": {
+   "id": 34437426,
+   "size": 848,
+   "registrar": "0x14056fce1"
+  },
+  "oCUIColorZoneWindow": {
+   "id": 5467,
+   "size": 800,
+   "registrar": "0x14054e5d1"
+  },
+  "oCUICommandBar": {
+   "id": 27701257,
+   "size": 72,
+   "registrar": "0x1402be971"
+  },
+  "oCUIDeferredRenderWindow": {
+   "id": 211167767,
+   "size": 800,
+   "registrar": "0x1404879e1"
+  },
+  "oCUIDesktop": {
+   "id": 35758376,
+   "size": 968,
+   "registrar": "0x1402bdef1"
+  },
+  "oCUIDockTabWindow": {
+   "id": 95271785,
+   "size": 864,
+   "registrar": "0x140583bc1"
+  },
+  "oCUIDropDown": {
+   "id": 5760,
+   "size": 856,
+   "registrar": "0x14056f7d1"
+  },
+  "oCUIEdit": {
+   "id": 5769,
+   "size": 896,
+   "registrar": "0x140410701"
+  },
+  "oCUIEditDesc": {
+   "id": 368874319,
+   "size": 312,
+   "registrar": "0x140410326"
+  },
+  "oCUIEditStyle": {
+   "id": 368875067,
+   "size": 152,
+   "registrar": "0x140410136"
+  },
+  "oCUIFloatRamp": {
+   "id": 36422869,
+   "size": 848,
+   "registrar": "0x14056fe91"
+  },
+  "oCUIGameButton": {
+   "id": 256146604,
+   "size": 1664,
+   "registrar": "0x140280b11"
+  },
+  "oCUIGameButtonFModEventAction": {
+   "id": 314797418,
+   "size": 168,
+   "registrar": "0x140887ff6"
+  },
+  "oCUIGameButtonStateAnim": {
+   "id": 256146599,
+   "size": 32,
+   "registrar": "0x140280926"
+  },
+  "oCUIGameButtonStyle": {
+   "id": 256146624,
+   "size": 808,
+   "registrar": "0x140366b36"
+  },
+  "oCUIGameButtonStyleGo": {
+   "id": 256146698,
+   "size": 1056,
+   "registrar": "0x1406b5fd6"
+  },
+  "oCUIGameInputDisplay": {
+   "id": 246714180,
+   "size": 856,
+   "registrar": "0x140453261"
+  },
+  "oCUIGameInputDisplayDesc": {
+   "id": 208256771,
+   "size": 232,
+   "registrar": "0x140486a06"
+  },
+  "oCUIGauge": {
+   "id": 208256677,
+   "size": 872,
+   "registrar": "0x140570741"
+  },
+  "oCUIGaugeDesc": {
+   "id": 208256776,
+   "size": 384,
+   "registrar": "0x14057f546"
+  },
+  "oCUIGraph": {
+   "id": 5767,
+   "size": 888,
+   "registrar": "0x14056f981"
+  },
+  "oCUIHighlightLayoutWindow": {
+   "id": 362420208,
+   "size": 784,
+   "registrar": "0x14018f3d1"
+  },
+  "oCUILabel": {
+   "id": 5765,
+   "size": 824,
+   "registrar": "0x1404108b1"
+  },
+  "oCUILayoutWindow": {
+   "id": 5736,
+   "size": 784,
+   "registrar": "0x14018f221"
+  },
+  "oCUIMenu": {
+   "id": 22063249,
+   "size": 952,
+   "registrar": "0x140487141"
+  },
+  "oCUINavigable": {
+   "id": 256136032,
+   "size": 1136,
+   "registrar": "0x140222391"
+  },
+  "oCUINavigableDesc": {
+   "id": 256136835,
+   "size": 256,
+   "registrar": "0x1403655b6"
+  },
+  "oCUINavigableListener": {
+   "id": 311172216,
+   "size": 896,
+   "registrar": "0x1406b6371"
+  },
+  "oCUINavigableListenerDesc": {
+   "id": 311172207,
+   "size": 160,
+   "registrar": "0x1406b6526"
+  },
+  "oCUINavigableZone": {
+   "id": 257004346,
+   "size": 864,
+   "registrar": "0x140222541"
+  },
+  "oCUINavigableZoneDesc": {
+   "id": 257004353,
+   "size": 160,
+   "registrar": "0x140366ed6"
+  },
+  "oCUIOpenCloseWindow": {
+   "id": 5768,
+   "size": 944,
+   "registrar": "0x14054e0d1"
+  },
+  "oCUIOpenCloseWindowPanel": {
+   "id": 6042,
+   "size": 792,
+   "registrar": "0x14054e281"
+  },
+  "oCUIPicture": {
+   "id": 5737,
+   "size": 864,
+   "registrar": "0x14018f731"
+  },
+  "oCUIScrollBar": {
+   "id": 10556647,
+   "size": 1048,
+   "registrar": "0x1403b8ca1"
+  },
+  "oCUIScrollPanel": {
+   "id": 10848747,
+   "size": 888,
+   "registrar": "0x1403b8e51"
+  },
+  "oCUIScrollPanelDesc": {
+   "id": 12617668,
+   "size": 576,
+   "registrar": "0x140442cb6"
+  },
+  "oCUISizeableWindow": {
+   "id": 95261785,
+   "size": 824,
+   "registrar": "0x14054dd71"
+  },
+  "oCUISlider": {
+   "id": 5763,
+   "size": 824,
+   "registrar": "0x14056f621"
+  },
+  "oCUISpinner": {
+   "id": 5770,
+   "size": 920,
+   "registrar": "0x14054e781"
+  },
+  "oCUISplitPicture": {
+   "id": 191244891,
+   "size": 848,
+   "registrar": "0x140453411"
+  },
+  "oCUISplitPictureDesc": {
+   "id": 191245379,
+   "size": 352,
+   "registrar": "0x14057f356"
+  },
+  "oCUISplitPictureStyle": {
+   "id": 191245370,
+   "size": 192,
+   "registrar": "0x14057f166"
+  },
+  "oCUISplitPictureStyleGo": {
+   "id": 256120667,
+   "size": 440,
+   "registrar": "0x1406b5c36"
+  },
+  "oCUISplitScrollBarStyle": {
+   "id": 262099201,
+   "size": 416,
+   "registrar": "0x140442ac6"
+  },
+  "oCUISplitScrollBarStyleGo": {
+   "id": 262184936,
+   "size": 664,
+   "registrar": "0x1406b5e06"
+  },
+  "oCUISplitterWindow": {
+   "id": 116266786,
+   "size": 832,
+   "registrar": "0x14054df21"
+  },
+  "oCUITextStyleGo": {
+   "id": 256120663,
+   "size": 368,
+   "registrar": "0x1406b5a66"
+  },
+  "oCUITreeView": {
+   "id": 21225856,
+   "size": 1360,
+   "registrar": "0x14046aba1"
+  },
+  "oCUIVec2Ramp": {
+   "id": 263908882,
+   "size": 888,
+   "registrar": "0x140570041"
+  },
+  "oCUIVfxWindow": {
+   "id": 263736416,
+   "size": 1600,
+   "registrar": "0x1406b8ab1"
+  },
+  "oCUIVfxWindowDesc": {
+   "id": 263736480,
+   "size": 224,
+   "registrar": "0x1406b9336"
+  },
+  "oCUIWarningGauge": {
+   "id": 320854570,
+   "size": 904,
+   "registrar": "0x1405708f1"
+  },
+  "oCUIWindow": {
+   "id": 5771,
+   "size": 784,
+   "registrar": "0x14018f081"
+  },
+  "oCUInt2": {
+   "id": 1882858,
+   "size": 8,
+   "registrar": "0x14017b141"
+  },
+  "oCUIntInterval": {
+   "id": 290422962,
+   "size": 8,
+   "registrar": "0x14022df31"
+  },
+  "oCUIntLightWithDropDown": {
+   "id": 280596512,
+   "size": 16,
+   "registrar": "0x1407a0a86"
+  },
+  "oCUIntLightWithDropDownPerformanceValue": {
+   "id": 280596513,
+   "size": 224,
+   "registrar": "0x1407a0c76"
+  },
+  "oCUIntPerformanceProfileValue": {
+   "id": 320094806,
+   "size": 72,
+   "registrar": "0x140184d86"
+  },
+  "oCUIntRect": {
+   "id": 188846,
+   "size": 16,
+   "registrar": "0x1404da401"
+  },
+  "oCUiDockLayout": {
+   "id": 95271267,
+   "size": 40,
+   "registrar": "0x140468016"
+  },
+  "oCUiDockLayoutDock": {
+   "id": 95271266,
+   "size": 64,
+   "registrar": "0x140467c71"
+  },
+  "oCUiDockLayoutTab": {
+   "id": 95271265,
+   "size": 56,
+   "registrar": "0x140467a86"
+  },
+  "oCUiInputPadTestWindow": {
+   "id": 5636,
+   "size": 912,
+   "registrar": "0x1405885c1"
+  },
+  "oCUniqueId": {
+   "id": 17615402,
+   "size": 16,
+   "registrar": "0x140513558"
+  },
+  "oCUniqueObjectId": {
+   "id": 17655402,
+   "size": 40,
+   "registrar": "0x1405137c8"
+  },
+  "oCUnitConvert": {
+   "id": 280155349,
+   "size": 16,
+   "registrar": "0x140513258"
+  },
+  "oCVFxTesterGo": {
+   "id": 5413161,
+   "size": 368,
+   "registrar": "0x1406b9166"
+  },
+  "oCVariant": {
+   "id": 17615403,
+   "size": 24,
+   "registrar": "0x140510a08"
+  },
+  "oCVec2": {
+   "id": 1882834,
+   "size": 8,
+   "registrar": "0x140179531"
+  },
+  "oCVec2ArrayShaderParam": {
+   "id": 41876113,
+   "size": 64,
+   "registrar": "0x14017d0a6"
+  },
+  "oCVec2EaseCurve": {
+   "id": 327958575,
+   "size": 24,
+   "registrar": "0x140588921"
+  },
+  "oCVec2Ramp": {
+   "id": 263908461,
+   "size": 40,
+   "registrar": "0x14027d891"
+  },
+  "oCVec2ShaderParam": {
+   "id": 40134103,
+   "size": 48,
+   "registrar": "0x14017ceb6"
+  },
+  "oCVec2VertexLayer": {
+   "id": 222193080,
+   "size": 48,
+   "registrar": "0x1404dbe16"
+  },
+  "oCVec3": {
+   "id": 1882833,
+   "size": 12,
+   "registrar": "0x1401796e1"
+  },
+  "oCVec3ArrayShaderParam": {
+   "id": 41876136,
+   "size": 64,
+   "registrar": "0x14017d486"
+  },
+  "oCVec3Interval": {
+   "id": 283599126,
+   "size": 24,
+   "registrar": "0x140187331"
+  },
+  "oCVec3ShaderParam": {
+   "id": 5821,
+   "size": 56,
+   "registrar": "0x14017d296"
+  },
+  "oCVec3ValueCompute": {
+   "id": 283701250,
+   "size": 48,
+   "registrar": "0x1401874e6"
+  },
+  "oCVec3VertexLayer": {
+   "id": 222532171,
+   "size": 48,
+   "registrar": "0x1404dc006"
+  },
+  "oCVec4ArrayShaderParam": {
+   "id": 41876190,
+   "size": 64,
+   "registrar": "0x14017d866"
+  },
+  "oCVec4ShaderParam": {
+   "id": 40090579,
+   "size": 56,
+   "registrar": "0x14017d676"
+  },
+  "oCVertexShaderFxGraph": {
+   "id": 86185262,
+   "size": 160,
+   "registrar": "0x1406462a1"
+  },
+  "oCVfxControlCineBloc": {
+   "id": 127740852,
+   "size": 96,
+   "registrar": "0x14022b0d6"
+  },
+  "oCVfxEventCineBloc": {
+   "id": 127731852,
+   "size": 64,
+   "registrar": "0x14069c036"
+  },
+  "oCVideo": {
+   "id": 26399058,
+   "size": 2337079279,
+   "registrar": "0x14027f0e6"
+  },
+  "oCVideoGs": {
+   "id": 137338188,
+   "size": 328,
+   "registrar": "0x14027f2b6"
+  },
+  "oCVideoTestGo": {
+   "id": 125332878,
+   "size": 352,
+   "registrar": "0x140a45c96"
+  },
+  "oCViewRenderLayer": {
+   "id": 75659950,
+   "size": 624,
+   "registrar": "0x140186261"
+  },
+  "oCVisualEffectBeam": {
+   "id": 306590970,
+   "size": 352,
+   "registrar": "0x1405d37c6"
+  },
+  "oCVisualEffectBeamSetting": {
+   "id": 306591036,
+   "size": 136,
+   "registrar": "0x1405d3996"
+  },
+  "oCVisualEffectCameraShake": {
+   "id": 276422593,
+   "size": 136,
+   "registrar": "0x1406b86f6"
+  },
+  "oCVisualEffectCameraShakeSetting": {
+   "id": 276423096,
+   "size": 120,
+   "registrar": "0x1406b88e6"
+  },
+  "oCVisualEffectParticle": {
+   "id": 136134523,
+   "size": 32,
+   "registrar": "0x1405d06b6"
+  },
+  "oCVisualEffectParticleSetting": {
+   "id": 136134406,
+   "size": 144,
+   "registrar": "0x1405d0886"
+  },
+  "oCVisualEffectSettings": {
+   "id": 136134221,
+   "size": 24,
+   "registrar": "0x1405d04e6"
+  },
+  "oCVisualEffectTrail": {
+   "id": 290417032,
+   "size": 448,
+   "registrar": "0x1405d1376"
+  },
+  "oCVisualEffectTrailSetting": {
+   "id": 290417036,
+   "size": 200,
+   "registrar": "0x1405d1546"
+  },
+  "oCWeightedRandomPicker": {
+   "id": 277738809,
+   "size": 200,
+   "registrar": "0x14079ea56"
+  },
+  "oCWidthColorMeshSettings": {
+   "id": 207734544,
+   "size": 32,
+   "registrar": "0x14061f526"
+  },
+  "oCWindowIdentifierPicker": {
+   "id": 387364254,
+   "size": 32,
+   "registrar": "0x1401911c6"
+  },
+  "oCXInputInputPadTriggerVibrationState": {
+   "id": 367840487,
+   "size": 2,
+   "registrar": "0x14023cbc1"
+  },
+  "oCXInputPadVibrationState": {
+   "id": 41667,
+   "size": 4,
+   "registrar": "0x14023d791"
+  },
+  "oI2dElementStyle": {
+   "id": 12668469,
+   "size": 24,
+   "registrar": "0x1401913b6"
+  },
+  "oI2dGraphNode": {
+   "id": 6046,
+   "size": 120,
+   "registrar": "0x14018da86"
+  },
+  "oI2dGraphPlug": {
+   "id": 6045,
+   "size": 64,
+   "registrar": "0x14018c566"
+  },
+  "oI2dShaderGraphNode": {
+   "id": 103222704,
+   "size": 120,
+   "registrar": "0x14018dc41"
+  },
+  "oI3dBeamEffector": {
+   "id": 306574170,
+   "size": 32,
+   "registrar": "0x1405d2b81"
+  },
+  "oI3dBeamEffectorSetting": {
+   "id": 306574153,
+   "size": 16,
+   "registrar": "0x1405d29c6"
+  },
+  "oI3dBeamEmitter": {
+   "id": 306579970,
+   "size": 56,
+   "registrar": "0x1405d2821"
+  },
+  "oI3dBeamRenderer": {
+   "id": 307213346,
+   "size": 40,
+   "registrar": "0x140469c41"
+  },
+  "oI3dBillboardParticleRenderer": {
+   "id": 79647663,
+   "size": 24,
+   "registrar": "0x1405ed701"
+  },
+  "oI3dBillboardParticleRendererSettings": {
+   "id": 79647733,
+   "size": 88,
+   "registrar": "0x1405ed8d6"
+  },
+  "oI3dMeshParticleRenderer": {
+   "id": 79652066,
+   "size": 224,
+   "registrar": "0x1405f04c1"
+  },
+  "oI3dMeshParticleRendererSettings": {
+   "id": 79652064,
+   "size": 376,
+   "registrar": "0x1405f0676"
+  },
+  "oI3dObject": {
+   "id": 5884,
+   "size": 120,
+   "registrar": "0x140182771"
+  },
+  "oI3dParticleEffector": {
+   "id": 1941972,
+   "size": 32,
+   "registrar": "0x140187891"
+  },
+  "oI3dParticleEffectorSetting": {
+   "id": 79442090,
+   "size": 16,
+   "registrar": "0x1401876d6"
+  },
+  "oI3dParticleEmitter": {
+   "id": 79480131,
+   "size": 40,
+   "registrar": "0x140187bf1"
+  },
+  "oI3dParticleEmitterSetting": {
+   "id": 79480026,
+   "size": 200,
+   "registrar": "0x140187a36"
+  },
+  "oI3dParticleRenderer": {
+   "id": 79644799,
+   "size": 24,
+   "registrar": "0x14046a4d1"
+  },
+  "oI3dParticleRendererSetting": {
+   "id": 79644801,
+   "size": 16,
+   "registrar": "0x14046a316"
+  },
+  "oI3dShape": {
+   "id": 8620,
+   "size": 112,
+   "registrar": "0x1402bf571"
+  },
+  "oI3dTrailEffector": {
+   "id": 290416928,
+   "size": 32,
+   "registrar": "0x1405bd301"
+  },
+  "oI3dTrailEffectorSetting": {
+   "id": 290416923,
+   "size": 16,
+   "registrar": "0x1405bd146"
+  },
+  "oI3dTrailEmitter": {
+   "id": 290416972,
+   "size": 80,
+   "registrar": "0x1405bcfa1"
+  },
+  "oI3dTrailEmitterSetting": {
+   "id": 290416967,
+   "size": 64,
+   "registrar": "0x1405bcde6"
+  },
+  "oI3dTrailRenderer": {
+   "id": 329836003,
+   "size": 72,
+   "registrar": "0x140468931"
+  },
+  "oI3dTrailRendererSetting": {
+   "id": 329836001,
+   "size": 80,
+   "registrar": "0x140468776"
+  },
+  "oIAccess": {
+   "id": 1856083,
+   "size": 8,
+   "registrar": "0x140179051"
+  },
+  "oIAchievedValue": {
+   "id": 148903184,
+   "size": 128,
+   "registrar": "0x140666481"
+  },
+  "oIAnimNode": {
+   "id": 49629763,
+   "size": 3633006847,
+   "registrar": "0x140605e41"
+  },
+  "oIApplicationSettingsSection": {
+   "id": 1941778,
+   "size": 16,
+   "registrar": "0x140184f76"
+  },
+  "oIAudioModule": {
+   "id": 5661,
+   "size": 176,
+   "registrar": "0x140222051"
+  },
+  "oIAutoPopGs": {
+   "id": 138715761,
+   "size": 120,
+   "registrar": "0x14027ef26"
+  },
+  "oIAxisValueCompute": {
+   "id": 283610546,
+   "size": 16,
+   "registrar": "0x1401871a1"
+  },
+  "oIBinarySerializationAccess": {
+   "id": 1856088,
+   "size": 8,
+   "registrar": "0x1404b7a51"
+  },
+  "oICineBloc": {
+   "id": 20520188,
+   "size": 56,
+   "registrar": "0x14022ad56"
+  },
+  "oICollection": {
+   "id": 6728412,
+   "size": 8,
+   "registrar": "0x140508aa6"
+  },
+  "oICollectionAccess": {
+   "id": 60450,
+   "size": 160,
+   "registrar": "0x1401791e1"
+  },
+  "oIConfirmDestroyAccess": {
+   "id": 57191,
+   "size": 8,
+   "registrar": "0x140583d71"
+  },
+  "oIDefaultDeferredPBRLightTypeMaterial": {
+   "id": 319544364,
+   "size": 2337079249,
+   "registrar": "0x1405a12d1"
+  },
+  "oIDeleteAccess": {
+   "id": 3100591,
+   "size": 8,
+   "registrar": "0x1404dae31"
+  },
+  "oIDetourAreaMark": {
+   "id": 392027111,
+   "size": 72,
+   "registrar": "0x1402beb21"
+  },
+  "oIDraw3dAccess": {
+   "id": 2118893,
+   "size": 8,
+   "registrar": "0x1404da951"
+  },
+  "oIDtEntityCpntAttack": {
+   "id": 284994094,
+   "size": 208,
+   "registrar": "0x14040d1b1"
+  },
+  "oIDtEntityCpntAttackSettings": {
+   "id": 284994092,
+   "size": 376,
+   "registrar": "0x14040cff6"
+  },
+  "oIDtEntityCpntBookPageUiController": {
+   "id": 392735431,
+   "size": 384,
+   "registrar": "0x1402bc221"
+  },
+  "oIDtEntityCpntBookPageUiControllerSettings": {
+   "id": 392735229,
+   "size": 312,
+   "registrar": "0x1402bc066"
+  },
+  "oIDtMenuItemSelectable": {
+   "id": 378660735,
+   "size": 8,
+   "registrar": "0x1402fbb81"
+  },
+  "oIDtPbrLightTypeMaterial": {
+   "id": 280591495,
+   "size": 120,
+   "registrar": "0x1402bd691"
+  },
+  "oIDuplicateAccess": {
+   "id": 3098804,
+   "size": 8,
+   "registrar": "0x1404dac91"
+  },
+  "oIDurationCineBloc": {
+   "id": 20520189,
+   "size": 64,
+   "registrar": "0x14022af16"
+  },
+  "oIDynamicBody": {
+   "id": 21165694,
+   "size": 96,
+   "registrar": "0x1406dab71"
+  },
+  "oIDynamicConvex": {
+   "id": 23407329,
+   "size": 96,
+   "registrar": "0x1406db391"
+  },
+  "oIDynamicCylinder": {
+   "id": 288535377,
+   "size": 96,
+   "registrar": "0x1406db051"
+  },
+  "oIDynamicSphere": {
+   "id": 21165696,
+   "size": 96,
+   "registrar": "0x1406daeb1"
+  },
+  "oIEntityCollector": {
+   "id": 315752891,
+   "size": 40,
+   "registrar": "0x140227751"
+  },
+  "oIEntityCollectorSettings": {
+   "id": 315412259,
+   "size": 144,
+   "registrar": "0x140227596"
+  },
+  "oIEntityCpnt": {
+   "id": 207651628,
+   "size": 104,
+   "registrar": "0x140190871"
+  },
+  "oIEntityCpnt3dNode": {
+   "id": 452360757,
+   "size": 104,
+   "registrar": "0x1402c3a91"
+  },
+  "oIEntityCpnt3dNodeSettings": {
+   "id": 452360755,
+   "size": 248,
+   "registrar": "0x1402c38d6"
+  },
+  "oIEntityCpntAnimNode": {
+   "id": 262770535,
+   "size": 192,
+   "registrar": "0x140735721"
+  },
+  "oIEntityCpntAnimaticNode": {
+   "id": 264351043,
+   "size": 416,
+   "registrar": "0x140735c71"
+  },
+  "oIEntityCpntAnimaticNodeSettings": {
+   "id": 264351039,
+   "size": 672,
+   "registrar": "0x140735ab6"
+  },
+  "oIEntityCpntLight": {
+   "id": 280596505,
+   "size": 608,
+   "registrar": "0x1407a1021"
+  },
+  "oIEntityCpntLightSettings": {
+   "id": 280596504,
+   "size": 4896,
+   "registrar": "0x1407a0e66"
+  },
+  "oIEntityCpntNetworkData": {
+   "id": 404744121,
+   "size": 200,
+   "registrar": "0x14022c9f1"
+  },
+  "oIEntityCpntSettings": {
+   "id": 207651625,
+   "size": 248,
+   "registrar": "0x1401906b6"
+  },
+  "oIEntityCpntShadowController": {
+   "id": 347987982,
+   "size": 104,
+   "registrar": "0x1407a1381"
+  },
+  "oIEntityCpntShadowControllerSettings": {
+   "id": 347987981,
+   "size": 248,
+   "registrar": "0x1407a11c6"
+  },
+  "oIEntityCpntTestSettings": {
+   "id": 281347468,
+   "size": 8,
+   "registrar": "0x140775686"
+  },
+  "oIEntityGpnTester": {
+   "id": 407087791,
+   "size": 64,
+   "registrar": "0x1402feb21"
+  },
+  "oIEntityGpnTesterSettings": {
+   "id": 306929174,
+   "size": 264,
+   "registrar": "0x1402fe966"
+  },
+  "oIEntityGpnTraverserSettings": {
+   "id": 278500505,
+   "size": 2384,
+   "registrar": "0x1402ff226"
+  },
+  "oIEntityModifier": {
+   "id": 274696935,
+   "size": 8,
+   "registrar": "0x14017fec6"
+  },
+  "oIEntityModifierComputer": {
+   "id": 294068015,
+   "size": 8,
+   "registrar": "0x140180461"
+  },
+  "oIEntityModifierTarget": {
+   "id": 362828246,
+   "size": 40,
+   "registrar": "0x140279871"
+  },
+  "oIEntityModifierTargetSettings": {
+   "id": 362828244,
+   "size": 144,
+   "registrar": "0x1402796b6"
+  },
+  "oIEntityRetriever": {
+   "id": 314547168,
+   "size": 32,
+   "registrar": "0x1406fd846"
+  },
+  "oIEntitySelectorToSpawnEntityCpnt": {
+   "id": 380379924,
+   "size": 104,
+   "registrar": "0x1402395e1"
+  },
+  "oIEntitySelectorToSpawnEntityCpntSettings": {
+   "id": 380379923,
+   "size": 248,
+   "registrar": "0x140239441"
+  },
+  "oIEntityValueModifierComputer": {
+   "id": 363014924,
+   "size": 40,
+   "registrar": "0x14017eee1"
+  },
+  "oIEntityWindowCineBloc": {
+   "id": 381332418,
+   "size": 152,
+   "registrar": "0x1407368d6"
+  },
+  "oIEnumSuperType": {
+   "id": 1754,
+   "size": 8,
+   "registrar": "0x1405142a1"
+  },
+  "oIFile2dGraphNode": {
+   "id": 86439277,
+   "size": 168,
+   "registrar": "0x14064e266"
+  },
+  "oIFlagSet": {
+   "id": 286032703,
+   "size": 16,
+   "registrar": "0x140181ae1"
+  },
+  "oIFlagsMgr": {
+   "id": 339493421,
+   "size": 3096,
+   "registrar": "0x140181e66"
+  },
+  "oIFloatRampCineBloc": {
+   "id": 119975288,
+   "size": 136,
+   "registrar": "0x1406d4d46"
+  },
+  "oIGame": {
+   "id": 5789,
+   "size": 760,
+   "registrar": "0x140197b66"
+  },
+  "oIGameAtom": {
+   "id": 45428,
+   "size": 16,
+   "registrar": "0x140225c96"
+  },
+  "oIGameObject": {
+   "id": 6033,
+   "size": 48,
+   "registrar": "0x140225e56"
+  },
+  "oIGameProfile": {
+   "id": 398773660,
+   "size": 376,
+   "registrar": "0x140195dc6"
+  },
+  "oIGameProfileData": {
+   "id": 321301591,
+   "size": 48,
+   "registrar": "0x140193646"
+  },
+  "oIGameProfileDataOwner": {
+   "id": 399291470,
+   "size": 40,
+   "registrar": "0x1401934b1"
+  },
+  "oIGameScene": {
+   "id": 21429585,
+   "size": 544,
+   "registrar": "0x14017a691"
+  },
+  "oIGameSceneContext": {
+   "id": 56891785,
+   "size": 40,
+   "registrar": "0x14018b741"
+  },
+  "oIGameState": {
+   "id": 5790,
+   "size": 56,
+   "registrar": "0x140197191"
+  },
+  "oIGameTest": {
+   "id": 8238,
+   "size": 32,
+   "registrar": "0x14046b296"
+  },
+  "oIGameUnlockConditionData": {
+   "id": 313520863,
+   "size": 40,
+   "registrar": "0x1402c2176"
+  },
+  "oIGameUnlockConditionSettings": {
+   "id": 311085980,
+   "size": 120,
+   "registrar": "0x1402c1fb6"
+  },
+  "oIGhostBox": {
+   "id": 263660639,
+   "size": 96,
+   "registrar": "0x1402c1411"
+  },
+  "oIGhostCapsule": {
+   "id": 283279779,
+   "size": 96,
+   "registrar": "0x1402c18f1"
+  },
+  "oIGhostCylinder": {
+   "id": 263660729,
+   "size": 96,
+   "registrar": "0x1402c1751"
+  },
+  "oIGhostShapeList": {
+   "id": 277822181,
+   "size": 104,
+   "registrar": "0x1402c1a91"
+  },
+  "oIGhostSphere": {
+   "id": 263660708,
+   "size": 96,
+   "registrar": "0x1402c15b1"
+  },
+  "oIGoPtr": {
+   "id": 36607958,
+   "size": 80,
+   "registrar": "0x1401966f1"
+  },
+  "oIGoState": {
+   "id": 112028224,
+   "size": 8,
+   "registrar": "0x140225ad6"
+  },
+  "oIImageProcessor": {
+   "id": 217720019,
+   "size": 8,
+   "registrar": "0x14065caf1"
+  },
+  "oIImmaterialGo": {
+   "id": 5488623,
+   "size": 200,
+   "registrar": "0x140238cd6"
+  },
+  "oILightTypeMaterial": {
+   "id": 277312614,
+   "size": 88,
+   "registrar": "0x1402bce41"
+  },
+  "oILiveStatValue": {
+   "id": 150311581,
+   "size": 48,
+   "registrar": "0x140665f41"
+  },
+  "oIMasteringAction": {
+   "id": 321185064,
+   "size": 376,
+   "registrar": "0x140466da6"
+  },
+  "oIMemberNotificationAccess": {
+   "id": 218289110,
+   "size": null,
+   "registrar": "0x1403003f1"
+  },
+  "oIModal": {
+   "id": 402136608,
+   "size": 136,
+   "registrar": "0x14027ea11"
+  },
+  "oIModalSceneContext": {
+   "id": 402140198,
+   "size": 272,
+   "registrar": "0x140233201"
+  },
+  "oIMove3dAccess": {
+   "id": 1856086,
+   "size": 8,
+   "registrar": "0x1402268c6"
+  },
+  "oINetworkP2PSessionSceneContext": {
+   "id": 358692427,
+   "size": 120,
+   "registrar": "0x14022ef26"
+  },
+  "oINetworkReplicationManagerSceneContext": {
+   "id": 358696208,
+   "size": 408,
+   "registrar": "0x140234c86"
+  },
+  "oIOnEntitySpawnEntityCpnt": {
+   "id": 390729323,
+   "size": 104,
+   "registrar": "0x1402fb2e1"
+  },
+  "oIOnEntitySpawnEntityCpntSettings": {
+   "id": 390729320,
+   "size": 248,
+   "registrar": "0x1402fb141"
+  },
+  "oIPartitioning": {
+   "id": 329045251,
+   "size": 8,
+   "registrar": "0x140222fa1"
+  },
+  "oIPerformanceProfileValue": {
+   "id": 1941663,
+   "size": 16,
+   "registrar": "0x1401845f6"
+  },
+  "oIPhysicCharacter": {
+   "id": 21165697,
+   "size": 80,
+   "registrar": "0x1406db531"
+  },
+  "oIPhysicObject": {
+   "id": 21165692,
+   "size": 80,
+   "registrar": "0x1402c00a1"
+  },
+  "oIPhysicSceneContext": {
+   "id": 22044925,
+   "size": 120,
+   "registrar": "0x14022fec6"
+  },
+  "oIPhysicTerrain": {
+   "id": 246990146,
+   "size": 96,
+   "registrar": "0x1402c1271"
+  },
+  "oIPhysicWorld": {
+   "id": 21165608,
+   "size": 16,
+   "registrar": "0x14022fb61"
+  },
+  "oIPick3dAccess": {
+   "id": 2060450,
+   "size": null,
+   "registrar": "0x1404872f1"
+  },
+  "oIPictureDurationCineBloc": {
+   "id": 20520190,
+   "size": 192,
+   "registrar": "0x1406d5496"
+  },
+  "oIRenderCuller": {
+   "id": 324744642,
+   "size": 8,
+   "registrar": "0x140183521"
+  },
+  "oIRenderLayer": {
+   "id": 75659467,
+   "size": 112,
+   "registrar": "0x140183f41"
+  },
+  "oIRenderModule": {
+   "id": 27170017,
+   "size": 480,
+   "registrar": "0x140185be1"
+  },
+  "oIRenderPipelineSettings": {
+   "id": 256747207,
+   "size": 16,
+   "registrar": "0x1401840d6"
+  },
+  "oIResource": {
+   "id": 6070,
+   "size": 104,
+   "registrar": "0x14017ac06"
+  },
+  "oIResourceAccess": {
+   "id": 9053,
+   "size": 8,
+   "registrar": "0x140490f41"
+  },
+  "oIResourceExporter": {
+   "id": 31877128,
+   "size": 8,
+   "registrar": "0x1404a7b91"
+  },
+  "oIResourceImporter": {
+   "id": 31877127,
+   "size": 8,
+   "registrar": "0x1404a7a01"
+  },
+  "oIRigidObject": {
+   "id": 21165693,
+   "size": 96,
+   "registrar": "0x1402c03d1"
+  },
+  "oIRotate3dAccess": {
+   "id": 1856084,
+   "size": 8,
+   "registrar": "0x140226546"
+  },
+  "oIRsRuntime": {
+   "id": 79610352,
+   "size": 16,
+   "registrar": "0x140186ca1"
+  },
+  "oIRsSettings": {
+   "id": 79609644,
+   "size": 8,
+   "registrar": "0x140186e36"
+  },
+  "oIRsSettingsGroup": {
+   "id": 79610629,
+   "size": 193678591,
+   "registrar": "0x1405cb156"
+  },
+  "oISaveRestoreAccess": {
+   "id": 263940145,
+   "size": 8,
+   "registrar": "0x140583f11"
+  },
+  "oIScale3dAccess": {
+   "id": 1856085,
+   "size": 8,
+   "registrar": "0x140226706"
+  },
+  "oISerializable": {
+   "id": 1941868,
+   "size": 8,
+   "registrar": "0x140178ea1"
+  },
+  "oISerializableCall0": {
+   "id": 8230,
+   "size": 16,
+   "registrar": "0x14046b456"
+  },
+  "oIShaderParam": {
+   "id": 1941981,
+   "size": 40,
+   "registrar": "0x14017bdf6"
+  },
+  "oISkeletonProcessor": {
+   "id": 214316617,
+   "size": 8,
+   "registrar": "0x1405b00e1"
+  },
+  "oISoftRope": {
+   "id": 21165701,
+   "size": 80,
+   "registrar": "0x1402c0231"
+  },
+  "oIStaticBox": {
+   "id": 21165699,
+   "size": 96,
+   "registrar": "0x1402c0a51"
+  },
+  "oIStaticCapsule": {
+   "id": 21165708,
+   "size": 96,
+   "registrar": "0x1402c08b1"
+  },
+  "oIStaticConvex": {
+   "id": 21165700,
+   "size": 96,
+   "registrar": "0x1402c0bf1"
+  },
+  "oIStaticCylinder": {
+   "id": 21165707,
+   "size": 96,
+   "registrar": "0x1402c0711"
+  },
+  "oIStaticShapeList": {
+   "id": 21165702,
+   "size": 96,
+   "registrar": "0x1402c0f31"
+  },
+  "oIStaticSharedShapeList": {
+   "id": 21165703,
+   "size": 104,
+   "registrar": "0x1402c10d1"
+  },
+  "oIStaticSphere": {
+   "id": 21165698,
+   "size": 96,
+   "registrar": "0x1402c0571"
+  },
+  "oIStaticTriangleMesh": {
+   "id": 21165704,
+   "size": 96,
+   "registrar": "0x1402c0d91"
+  },
+  "oIStringFormatAccess": {
+   "id": 56093,
+   "size": 8,
+   "registrar": "0x140512511"
+  },
+  "oITerrainAccess": {
+   "id": 367924275,
+   "size": 8,
+   "registrar": "0x1404b6921"
+  },
+  "oITerrainFlattenAccess": {
+   "id": 367770459,
+   "size": 8,
+   "registrar": "0x1404b6e01"
+  },
+  "oITerrainInputLayer": {
+   "id": 367256103,
+   "size": 216,
+   "registrar": "0x140232786"
+  },
+  "oITerrainOutput": {
+   "id": 381077493,
+   "size": 40,
+   "registrar": "0x140232946"
+  },
+  "oITerrainPaintAccess": {
+   "id": 369059573,
+   "size": 8,
+   "registrar": "0x1404b6fa1"
+  },
+  "oITerrainSculptAccess": {
+   "id": 367770458,
+   "size": 8,
+   "registrar": "0x1404b6ac1"
+  },
+  "oITerrainSmoothAccess": {
+   "id": 368979307,
+   "size": 8,
+   "registrar": "0x1404b6c61"
+  },
+  "oITerrainSubInput": {
+   "id": 373127019,
+   "size": 128,
+   "registrar": "0x140232ea1"
+  },
+  "oITerrainTiledOutput": {
+   "id": 367256057,
+   "size": 216,
+   "registrar": "0x1406b6ac6"
+  },
+  "oITextSerializationAccess": {
+   "id": 1856087,
+   "size": 8,
+   "registrar": "0x1404b78c1"
+  },
+  "oITrackEditionAccess": {
+   "id": 112986670,
+   "size": 8,
+   "registrar": "0x14057e9f1"
+  },
+  "oITrailGraphic3dObject": {
+   "id": 82205956,
+   "size": 288,
+   "registrar": "0x1404693a1"
+  },
+  "oITransform3dAccess": {
+   "id": 30584693,
+   "size": 8,
+   "registrar": "0x1402263a1"
+  },
+  "oIUIGameButtonAction": {
+   "id": 314785765,
+   "size": 16,
+   "registrar": "0x140280766"
+  },
+  "oIUiCommand": {
+   "id": 21827725,
+   "size": 280,
+   "registrar": "0x1402be7e1"
+  },
+  "oIValueCompute": {
+   "id": 283169428,
+   "size": 16,
+   "registrar": "0x140186411"
+  },
+  "oIValuesUiAccess": {
+   "id": 56092,
+   "size": 8,
+   "registrar": "0x1405121a1"
+  },
+  "oIVertexLayer": {
+   "id": 222192790,
+   "size": 24,
+   "registrar": "0x1404dba66"
+  },
+  "oIVisualEffect": {
+   "id": 136134277,
+   "size": 16,
+   "registrar": "0x1405d0171"
+  },
+  "oIVisualEffectSetting": {
+   "id": 136134186,
+   "size": 24,
+   "registrar": "0x1405d0326"
+  },
+  "oSAttackIdentifier": {
+   "id": 478965814,
+   "size": 8,
+   "registrar": "0x140225091"
+  },
+  "oSDtAttackIdentifier": {
+   "id": 478965848,
+   "size": 16,
+   "registrar": "0x140229691"
+  },
+  "oSDtHeroIngredient": {
+   "id": 421496192,
+   "size": 24,
+   "registrar": "0x140238366"
+  },
+  "oSModifierValueDesc": {
+   "id": 395064894,
+   "size": 2336817143,
+   "registrar": "0x14022d986"
+  },
+  "oSTriangle": {
+   "id": 6742765,
+   "size": 12,
+   "registrar": "0x1402bf051"
+  },
+  "oSTriangleMesh": {
+   "id": 1941987,
+   "size": 80,
+   "registrar": "0x1402bf201"
+  },
+  "oSValueDef": {
+   "id": 397387882,
+   "size": 144,
+   "registrar": "0x140778f51"
+  }
+ }
+}
