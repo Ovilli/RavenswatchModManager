@@ -19,6 +19,7 @@ import { SettingsIcon } from '../components/icons/SettingsIcon';
 import { WindowCloseIcon } from '../components/icons/WindowCloseIcon';
 import { WindowMaximizeIcon } from '../components/icons/WindowMaximizeIcon';
 import { WindowMinimizeIcon } from '../components/icons/WindowMinimizeIcon';
+import { WindowRestoreIcon } from '../components/icons/WindowRestoreIcon';
 import { LaunchProvider, useLaunch } from '../components/launch';
 import { ProfilePopover } from '../components/profile-popover';
 import { DialogProvider, ToastProvider } from '../components/toast';
@@ -341,22 +342,6 @@ function WindowControls() {
       }
     }, 'maximize');
 
-  const RestoreIcon = ({ className }: { className?: string }) => (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      <rect x="6" y="6" width="12" height="12" rx="1.2" />
-      <path d="M9 6V4h8v8h-2" />
-    </svg>
-  );
-
   if (!available) return null;
 
   return (
@@ -378,7 +363,7 @@ function WindowControls() {
         className="wc-btn wc-maximize"
       >
         {maximized ? (
-          <RestoreIcon className="h-4 w-4 text-parchment" />
+          <WindowRestoreIcon className="h-4 w-4 text-parchment" />
         ) : (
           <WindowMaximizeIcon className="h-4 w-4 text-parchment" />
         )}
