@@ -163,7 +163,7 @@ Mod Lua talks only to the high-level `R.*` SDK — events, entities, stats, sche
 | "Game not found" | Point RSMM at the folder holding `Ravenswatch.exe` |
 | Game crashes or misbehaves | `rsmm safe-mode` (disables everything + re-applies), or Restore, then re-enable mods one at a time |
 | Broke something after a game patch | `rsmm restore --all`, verify game files, re-apply |
-| Desktop app won't open (Windows) | Install [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) |
+| Desktop app won't open (Windows) | Install [WebView2](https://learn.microsoft.com/en-us/microsoft-edge/webview2/) |
 | Gray window (Debian/Ubuntu) | `WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 rsmm` |
 | Lua mods do nothing | `winhttp.dll` next to `Ravenswatch.exe`? Check `rsmm log`. Windows only |
 | Anything else | `rsmm doctor` first, then [full troubleshooting](https://docs.rsmm.me/getting-started/troubleshooting/) |

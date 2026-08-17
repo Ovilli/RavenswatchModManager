@@ -5,7 +5,7 @@ description: Common issues and how to fix them.
 
 ## Desktop app won't open
 
-**Windows**: Make sure you have [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) installed (it ships with Windows 11 and most Windows 10 installations).
+**Windows**: Make sure you have [WebView2](https://learn.microsoft.com/en-us/microsoft-edge/webview2/) installed (it ships with Windows 11 and most Windows 10 installations).
 
 **Linux**: Make sure your system has WebKit2GTK:
 ```sh
