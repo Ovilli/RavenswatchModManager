@@ -1098,6 +1098,118 @@ local function _hero_plausible(e)
     return type(mv) == "number" and mv >= 0 and mv < 1e6
 end
 
+-- Is this candidate THIS machine's player?
+--
+-- The HUD-mirror gate in _hero_plausible is a local-only test by RE (only the
+-- local player owns a HUD HP mirror), and that is the whole defence against
+-- publishing an ALLY as the hero. It is not much of a defence to rest on alone:
+-- the spawn-init hook that feeds the candidate ring fires once per HERO, not
+-- once per machine — the 2026-08-18 four-player session stashed three candidates
+-- inside 5 ms and four more at the next chapter — so the ring is full of remote
+-- allies and the mirror is the only thing between them and R.combat writing to
+-- somebody else's HP.
+--
+-- The engine's own answer is the byte at +0x1d88. It is used to PREFER a
+-- candidate, never to refuse one: a hero object mid-load reads 0 there, and
+-- refusing on that would trade an ally-capture risk for never capturing at all.
+--
+-- ⚠ THESE LIVE ON R.entity, NOT IN LOCALS. rsmm.lua's module chunk is one Lua
+-- function and Lua caps a function at 200 locals; this section is already at the
+-- limit, so four more `local`s here stopped the whole SDK from compiling (every
+-- mod dead — the same wall the DMG table exists to work around). Table fields
+-- cost nothing, and none of this is on a per-hit path.
+function R.entity._is_local(p)
+    if not p or p == 0 then return false end
+    return I.read_u8(p + ENTITY_ISLOCAL_OFF) == 1
+end
+
+-- CHAPTER INVALIDATION -----------------------------------------------------
+--
+-- The engine rebuilds every hero controller when a chapter loads (R.damage's
+-- epoch/rebind machinery exists for the same reason). Nothing retired the
+-- published capture, so after a chapter change slot 0 still held the PREVIOUS
+-- chapter's hero — freed memory, which keeps reading plausible for a long time
+-- (see the hero-switch note in R.entity.hero) — and every R.combat/R.stat/R.xp
+-- write went into a dead object with nothing in the log to say so. The
+-- 2026-08-18 session is exactly that: captured @71611030 at 17:24:48, two
+-- chapter epochs later that pointer was still the published hero and no second
+-- capture line ever appeared.
+--
+-- The native candidate RING (slots 8..15) has the same staleness and cannot be
+-- cleared the same way: `lua_shared_set` refuses that range outright (a mod that
+-- wrote a latch into slot 9 broke capture in every later session), and the
+-- native stash DEDUPES, so a retired pointer is never overwritten either. So the
+-- ring is retired on the Lua side: each entry is remembered with a FINGERPRINT
+-- of the fields capture reads, and a retired entry is skipped only while that
+-- fingerprint still matches. If the allocator hands the same address to the next
+-- chapter's hero the fingerprint moves and the candidate is adopted normally, so
+-- this cannot make a live hero permanently invisible.
+R.entity._stale = {}
+
+function R.entity._fingerprint(p)
+    if not p or p == 0 then return "" end
+    return table.concat({
+        tostring(I.read_u64(p + ENTITY_HUDMIRROR_OFF)),
+        tostring(I.read_f32(p + ENTITY_MAXHP_OFF)),
+        tostring(I.read_f32(p + ENTITY_HP_OFF)),
+        tostring(I.read_u8(p + ENTITY_ISLOCAL_OFF)),
+    }, "/")
+end
+
+--- Was `p` retired at a chapter boundary, and is it still the same object?
+function R.entity._retired(p)
+    local fp = R.entity._stale[p]
+    if fp == nil then return false end
+    if R.entity._fingerprint(p) ~= fp then
+        R.entity._stale[p] = nil        -- a new object at a recycled address
+        return false
+    end
+    return true
+end
+
+--- Retire the captured hero and every pending candidate.
+---
+--- Called on the chapter teardown event, where the controller the capture points
+--- at is about to be freed. Deliberately NOT called on MAP_GENERATION_DONE: the
+--- next chapter's hero can be stashed and published before that event lands, and
+--- retiring then would throw away the capture it just made.
+---
+--- Public because a mod that knows the hero is gone (a hero switch it drove
+--- itself) can say so rather than waiting for a rejection to be noticed.
+function R.entity.invalidate_capture(why)
+    if not (I.shared_get and I.shared_set) then return false end
+    local retired = 0
+    local function retire(slot)
+        local ok, v = pcall(I.shared_get, slot)
+        if ok and type(v) == "number" and v ~= 0 then
+            R.entity._stale[v] = R.entity._fingerprint(v)
+            retired = retired + 1
+        end
+    end
+    retire(SHARED_HERO_SLOT)
+    retire(HERO_PENDING_SLOT)
+    -- The ring is read-only from Lua (see above), so its entries are retired by
+    -- fingerprint instead of by being zeroed.
+    for i = 0, HERO_RING_COUNT - 1 do retire(HERO_RING_FIRST + i) end
+    pcall(I.shared_set, SHARED_HERO_SLOT, 0)
+    pcall(I.shared_set, HERO_AUTH_SLOT, 0)
+    pcall(I.shared_set, HERO_PENDING_SLOT, 0)
+    _hero_char = nil
+    _hero_pending = nil
+    if retired > 0 then
+        R.log(("[rsmm.entity] hero capture retired (%s) — %d candidate(s) belong "
+               .. "to the chapter being torn down; the next spawn re-captures")
+              :format(tostring(why or "chapter change"), retired))
+    end
+    return true
+end
+
+-- Chapter teardown only; see R.entity.invalidate_capture for why
+-- MAP_GENERATION_DONE is not subscribed.
+R.on("gameplay:GAME_END_NEXT_CHAPTER",
+     function() R.entity.invalidate_capture("GAME_END_NEXT_CHAPTER") end)
+R.on("run:end", function() R.entity.invalidate_capture("run:end") end)
+
 -- NOTE: ev.entity (= dispatcher - 0x4d8 from the gameplay bus) is NOT the hero
 -- HP-carrier. Empirically _hero_plausible(ev.entity) fails: the dispatch entity
 -- (dispatcher owner) and the HP-carrier are separate sub-objects — the hero is
@@ -1380,7 +1492,7 @@ function R.entity.hero()
         -- is empty and the wait is the hero's own fields going live.
         local okp, pend = pcall(I.shared_get, HERO_PENDING_SLOT)
         if okp and type(pend) == "number" and pend ~= 0 and pend ~= h
-            and _hero_plausible(pend) then
+            and not R.entity._retired(pend) and _hero_plausible(pend) then
             if I.shared_set then
                 pcall(I.shared_set, SHARED_HERO_SLOT, pend)
                 pcall(I.shared_set, HERO_AUTH_SLOT, 1)
@@ -1416,26 +1528,46 @@ function R.entity.hero()
         -- to waiting ~94s for a gain-health fire. They are all hero-identity
         -- (the routine is hero-only); they simply go live at different times,
         -- so promote whichever validates first.
+        --
+        -- TWO passes, local players first. The ring holds one candidate per HERO
+        -- in a co-op run, not one per machine, so "first plausible entry wins"
+        -- means "whichever ally the allocator happened to place in a lower ring
+        -- slot wins" — and R.combat would then heal, damage and buff somebody
+        -- else's character. The engine's is-local byte decides it when it is
+        -- readable; when nothing claims to be local the old behaviour stands,
+        -- so a build where that byte moved still captures.
+        local fallback, fallback_slot = nil, nil
         for i = 0, HERO_RING_COUNT - 1 do
             local okr, cand = pcall(I.shared_get, HERO_RING_FIRST + i)
             if okr and type(cand) == "number" and cand ~= 0 then
                 _note_hero_candidate()
             end
-            if okr and type(cand) == "number" and cand ~= 0
-                and cand ~= h and _hero_plausible(cand) then
-                if I.shared_set then
-                    pcall(I.shared_set, SHARED_HERO_SLOT, cand)
-                    pcall(I.shared_set, HERO_AUTH_SLOT, 1)
-                    pcall(I.shared_set, HERO_PENDING_SLOT, 0)
+            if okr and type(cand) == "number" and cand ~= 0 and cand ~= h
+                and not R.entity._retired(cand) and _hero_plausible(cand) then
+                if R.entity._is_local(cand) then
+                    fallback, fallback_slot = cand, i
+                    break
+                elseif not fallback then
+                    fallback, fallback_slot = cand, i
                 end
-                _log_capture("[rsmm.entity] hero CAPTURED 0x%x from ring slot %d%s",
-                             cand, i, _capture_latency())
-                return cand
             end
+        end
+        if fallback then
+            if I.shared_set then
+                pcall(I.shared_set, SHARED_HERO_SLOT, fallback)
+                pcall(I.shared_set, HERO_AUTH_SLOT, 1)
+                pcall(I.shared_set, HERO_PENDING_SLOT, 0)
+            end
+            _log_capture("[rsmm.entity] hero CAPTURED 0x%x from ring slot %d "
+                         .. "(local_byte=%s)%s",
+                         fallback, fallback_slot,
+                         tostring(I.read_u8(fallback + ENTITY_ISLOCAL_OFF)),
+                         _capture_latency())
+            return fallback
         end
 
         local okp, p = pcall(I.shared_get, HERO_PENDING_SLOT)
-        if okp and type(p) == "number" and p ~= 0 then
+        if okp and type(p) == "number" and p ~= 0 and not R.entity._retired(p) then
             if _hero_plausible(p) then
                 if I.shared_set then
                     pcall(I.shared_set, SHARED_HERO_SLOT, p)
@@ -4928,6 +5060,12 @@ local DMG = {
     VICTIM_DEF_OFF   = 0x28,     -- entity -> oCEntitySettings (confirmed live)
     SETTINGS_RSRC_OFF = 0x70,    -- settings -> resource the engine stringifies
     VICTIM_CACHE_CAP = 512,      -- entity -> class cache entries before reset
+    -- How many times ONE entity may be re-scanned after an inconclusive read.
+    -- A victim whose component map cannot be read answers `unknown` on every
+    -- hit, and `unknown` is fail-open — so a DoT ticking on it re-ran the full
+    -- linear slot walk on the MAIN THREAD, per tick, for the whole run. Three
+    -- attempts is enough to catch an entity that was merely mid-construction.
+    VICTIM_RETRIES   = 3,
     PROBE_VICTIMS    = 12,       -- distinct victims the probe reports, then off
     PROBE_VFTS       = 6,        -- component vftables logged per victim
     -- The engine's own attack-type names, read out of the table at
@@ -4968,6 +5106,13 @@ local _dmg = {
     vprobed  = {},        -- victim entity -> already reported
     vclass   = {},        -- victim entity -> true (enemy) / false (scenery)
     vclass_n = 0,
+    -- Victim SETTINGS pointer -> enemy/scenery, learned from the entities whose
+    -- component map DID read. Victims of the same type share one settings
+    -- object (see F._dmg_probe_victim), so one conclusive scan of a jar
+    -- classifies every other jar — including the instances whose own component
+    -- map cannot be read, which is the leak this table closes.
+    sclass   = {},
+    sclass_n = 0,
     scenery  = 0,         -- damage dropped by the filter, session-wide
 }
 
@@ -5067,6 +5212,19 @@ function F._dmg_scan_components(entity)
     return { enemy = false, count = mask + 1 }
 end
 
+--- The victim's oCEntitySettings pointer, which is its TYPE identity.
+---
+--- Every jar shares one settings object, every gnoll hunter shares another (the
+--- victim probe logs it for exactly this reason). That makes it the key the
+--- classification should be remembered under: a per-ENTITY answer has to be
+--- re-derived for each instance, and an instance whose component map does not
+--- read is unclassifiable forever, while the TYPE was already answered by a
+--- sibling that read fine.
+function F._dmg_settings(entity)
+    local set = I.read_u64(entity + DMG.VICTIM_DEF_OFF)
+    return _ptr_plausible(set) and set or nil
+end
+
 --- true = gameplay enemy, false = scenery/prop/mission object, nil = unknown.
 ---
 --- Cached per victim pointer because a multi-hit ability re-classifies the
@@ -5074,19 +5232,70 @@ end
 --- entity's own vftable: pointers ARE recycled inside a run (an enemy dies, a
 --- prop lands on its memory), and two reads to re-check beat believing a
 --- stale answer.
+---
+--- THREE tiers, because `unknown` is fail-open and therefore expensive: a
+--- victim that answers unknown has its damage counted, so a family of props
+--- whose component map cannot be read lands on the board as carry damage. The
+--- 2026-08-18 co-op log is that failure — one player at 11,612 hits for 613k
+--- damage (59 per hit, against 353 for the top row), long runs of exactly 1.0
+--- (the flat per-hit prop value), and a `scenery` column frozen for the last
+--- four minutes of the run while their hit count kept climbing.
+---
+---   1. the per-ENTITY cache (vftable-validated), for the multi-hit case;
+---   2. the per-TYPE map, keyed by the settings pointer — filled only from
+---      CONCLUSIVE scans, and consulted when this entity's own scan declines;
+---   3. give up and answer unknown, but stop re-scanning after
+---      DMG.VICTIM_RETRIES attempts. The walk runs on the main thread inside a
+---      damage detour, so re-running it per DoT tick for a whole run is not
+---      free.
 function F._dmg_is_enemy(entity)
     if not _ptr_plausible(entity) then return nil end
     local vft = I.read_u64(entity)
     local hit = _dmg.vclass[entity]
-    if hit and hit.vft == vft then return hit.enemy end
+    if hit and hit.vft == vft then
+        -- A cached `unknown` still gets a bounded number of retries: the first
+        -- read may simply have caught the entity mid-construction.
+        if hit.enemy ~= nil or (hit.tries or 0) >= DMG.VICTIM_RETRIES then
+            -- The type map may have learned the answer from a sibling since.
+            if hit.enemy == nil then
+                -- `set and _dmg.sclass[set] or nil` would turn a learned
+                -- SCENERY answer (false) back into nil, which is the fail-open
+                -- branch this whole table exists to close.
+                local set = F._dmg_settings(entity)
+                if set ~= nil and _dmg.sclass[set] ~= nil then
+                    return _dmg.sclass[set]
+                end
+            end
+            return hit.enemy
+        end
+    end
     local scan = F._dmg_scan_components(entity)
-    if not scan then return nil end
     if _dmg.vclass_n >= DMG.VICTIM_CACHE_CAP then
         _dmg.vclass, _dmg.vclass_n = {}, 0
+        hit = nil
     end
-    _dmg.vclass[entity] = { vft = vft, enemy = scan.enemy }
+    local set = F._dmg_settings(entity)
+    if scan then
+        -- Conclusive. Teach the TYPE, so every sibling instance is answered
+        -- even when its own component map is unreadable.
+        if set and _dmg.sclass[set] == nil then
+            if _dmg.sclass_n >= DMG.VICTIM_CACHE_CAP then
+                _dmg.sclass, _dmg.sclass_n = {}, 0
+            end
+            _dmg.sclass[set] = scan.enemy
+            _dmg.sclass_n = _dmg.sclass_n + 1
+        end
+        _dmg.vclass[entity] = { vft = vft, enemy = scan.enemy }
+        _dmg.vclass_n = _dmg.vclass_n + 1
+        return scan.enemy
+    end
+    -- Inconclusive: remember the attempt so the walk is not repeated forever,
+    -- then fall back to what this victim's TYPE already answered elsewhere.
+    local tries = ((hit and hit.vft == vft) and (hit.tries or 0) or 0) + 1
+    _dmg.vclass[entity] = { vft = vft, enemy = nil, tries = tries }
     _dmg.vclass_n = _dmg.vclass_n + 1
-    return scan.enemy
+    if set ~= nil and _dmg.sclass[set] ~= nil then return _dmg.sclass[set] end
+    return nil
 end
 
 function F._dmg_img_rel(p)
@@ -5503,6 +5712,17 @@ function F._dmg_new_row(key, is_local)
         -- Damage the scenery filter dropped. Kept per row so a UI can show
         -- "and 4.2k into the furniture" instead of silently losing it.
         scenery = 0, scenery_hits = 0,
+        -- Damage credited even though the victim could NOT be classified. The
+        -- filter is fail-open on purpose (never hide a player's damage on a bad
+        -- read), which means an unreadable prop family is counted as carry
+        -- damage — so the amount that rests on that assumption is counted too,
+        -- and a board that looks wrong can be checked against it instead of
+        -- argued about.
+        unknown = 0, unknown_hits = 0,
+        -- Has ANY source ever reported damage taken for this row? `taken` is 0
+        -- both for a player who was never hit and for a player this machine
+        -- cannot observe, and those are not the same claim (see R.damage.board).
+        taken_seen = false,
         first = F._dmg_now(), last = 0, samples = {}, recent = {},
         -- The chapter this row's controller was bound in. See F._dmg_rebind.
         epoch = _dmg.epoch,
@@ -5786,6 +6006,7 @@ function F._dmg_record(attacker, target, amount, source)
     local victim = target and F._dmg_row_for_entity(target) or nil
     if victim then
         victim.taken = victim.taken + amount
+        victim.taken_seen = true
         victim.last_hurt = F._dmg_now()
         F._dmg_publish(victim, amount, target, source, "taken")
         return
@@ -5798,11 +6019,17 @@ function F._dmg_record(attacker, target, amount, source)
     -- Same scenery filter as the bookkeeping path — this branch is the SOLO
     -- fallback on a build where the stat hook is unresolved, and it would
     -- otherwise keep counting fences on exactly the builds that need it most.
-    if _dmg.ignore_scenery and target and F._dmg_is_enemy(target) == false then
+    local cls
+    if _dmg.ignore_scenery and target then cls = F._dmg_is_enemy(target) end
+    if cls == false then
         attacker.scenery = attacker.scenery + amount
         attacker.scenery_hits = attacker.scenery_hits + 1
         _dmg.scenery = _dmg.scenery + amount
         return
+    end
+    if _dmg.ignore_scenery and target and cls == nil then
+        attacker.unknown = attacker.unknown + amount
+        attacker.unknown_hits = attacker.unknown_hits + 1
     end
     F._dmg_credit(attacker, amount, target, source)
 end
@@ -5822,11 +6049,23 @@ function F._dmg_observe_stats(hero, target, pd)
     -- Fences, jars, vegetation and mission props inflate a damage board
     -- without meaning anything. `unknown` (nil) counts: never drop a player's
     -- damage on a failed read.
-    if _dmg.ignore_scenery and F._dmg_is_enemy(target) == false then
+    -- NOT `_dmg.ignore_scenery and F._dmg_is_enemy(target) or nil`: in Lua that
+    -- idiom turns a classified `false` (the scenery answer this filter exists
+    -- for) into `nil`, which is the fail-open branch.
+    local cls
+    if _dmg.ignore_scenery then cls = F._dmg_is_enemy(target) end
+    if cls == false then
         row.scenery = row.scenery + amount
         row.scenery_hits = row.scenery_hits + 1
         _dmg.scenery = _dmg.scenery + amount
         return
+    end
+    if _dmg.ignore_scenery and cls == nil then
+        -- Counted (fail-open), but counted SEPARATELY as well: this is the only
+        -- number that says how much of a row rests on a victim the filter could
+        -- not read.
+        row.unknown = row.unknown + amount
+        row.unknown_hits = row.unknown_hits + 1
     end
     -- Which ability landed it, for the per-ability breakdown. A source object
     -- that does not read back cleanly just means "other" — never a reason to
@@ -5870,6 +6109,7 @@ function F._dmg_observe_taken(victim, pd)
     local row = F._dmg_row_for_hero(victim)
     if not row then return end
     row.taken = row.taken + amount
+    row.taken_seen = true
     row.last_hurt = F._dmg_now()
     F._dmg_publish(row, amount, victim, "hero-stats", "taken")
 end
@@ -6043,6 +6283,7 @@ R.on("gameplay:NETWORK_DAMAGE", function(ev)
     if victim and _dmg.actors[victim] then
         local row = _dmg.actors[victim]
         row.taken = row.taken + amount
+        row.taken_seen = true
         row.last_hurt = F._dmg_now()
         F._dmg_publish(row, amount, victim, "net", "taken")
         return
@@ -6187,6 +6428,9 @@ function R.damage.reset()
     -- wrong entity. (The per-entry vftable check would catch most of that;
     -- dropping the table is cheaper and exact.)
     _dmg.vclass, _dmg.vclass_n, _dmg.scenery = {}, 0, 0
+    -- The TYPE map is dropped with the entity cache: settings objects are
+    -- reloaded per run, so a kept answer could be about a different asset.
+    _dmg.sclass, _dmg.sclass_n = {}, 0
 end
 
 --- Total damage dealt to non-hero targets by everyone on the board.
@@ -6199,8 +6443,15 @@ end
 --- The scoreboard, highest damage first — the ranking, recomputed on every
 --- call so a caller polling it always shows the current order. Each row:
 ---   rank, label, slot, is_local, dealt, taken, hits, best, dps, share, by_type
---- `dps` is over the configured window and `share` is the fraction of all
---- damage dealt — the "who is carrying" number.
+---   scenery, scenery_hits, unknown, unknown_hits, taken_known, dps_window
+--- `dps` is over the configured window (`dps_window`) and `share` is the
+--- fraction of all damage dealt — the "who is carrying" number.
+---
+--- Three keys exist so a UI can say what it does NOT know, instead of printing
+--- a confident zero: `unknown`/`unknown_hits` (damage counted against a victim
+--- the scenery filter could not classify) and `taken_known` (false when nothing
+--- has ever reported damage taken for this player, which is the normal state
+--- for an ally).
 function R.damage.board()
     local now = F._dmg_now()
     local cutoff = now - _dmg.window
@@ -6223,7 +6474,23 @@ function R.damage.board()
             dealt = row.dealt, taken = row.taken, hits = row.hits,
             best = row.best, last = row.last, by_type = by_type,
             scenery = row.scenery, scenery_hits = row.scenery_hits,
+            -- Damage credited to a victim the filter could not classify. A UI
+            -- that shows `hits` should show this too: it is the part of the row
+            -- that may be prop chip damage counted as carry (see F._dmg_is_enemy).
+            unknown = row.unknown, unknown_hits = row.unknown_hits,
+            -- Is `taken = 0` a MEASUREMENT or an absence of one? On this build
+            -- the per-hero damage-RECEIVED bookkeeping only fires for heroes
+            -- this machine owns, so an ally reads 0 all run whether or not they
+            -- were ever hit — and a scoreboard column that cannot tell the two
+            -- apart is a wrong number, not a missing one. False until some
+            -- source has actually reported a hit on this player.
+            taken_known = row.taken_seen == true,
             dps = recent / _dmg.window,
+            -- The window `dps` covers, so a caller can LABEL it. A report
+            -- printed every 15s off a 10s window has a 5s blind spot, and a
+            -- player who stopped attacking 11s ago reads 0.0 dps in a report
+            -- that also shows their damage rising — which reads as a bug.
+            dps_window = _dmg.window,
             share = total > 0 and (row.dealt / total) or 0,
             idle = row.last > 0 and (now - row.last) or nil,
         }

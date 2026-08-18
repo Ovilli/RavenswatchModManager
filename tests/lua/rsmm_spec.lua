@@ -1451,6 +1451,76 @@ do
 end
 
 -- ---------------------------------------------------------------------------
+-- 24b. The candidate ring belongs to ONE chapter, and to ONE player
+--
+-- Two failures from the 2026-08-18 four-player session, both in this loop:
+--
+-- 1. The spawn-init hook that feeds the ring fires once per HERO, not once per
+--    machine (three stashes inside 5 ms, four more at the next chapter). The
+--    loop adopted the first plausible entry, i.e. whichever hero the allocator
+--    put in the lower ring slot — so R.combat/R.stat/R.xp could have been
+--    pointed at an ALLY's character. The engine's +0x1d88 byte decides it.
+--
+-- 2. Nothing retired a chapter's candidates. The engine rebuilds every hero
+--    controller at a chapter load, freed memory keeps reading plausible, and
+--    the native stash DEDUPES (so a retired pointer is never overwritten) —
+--    the published hero stayed on the torn-down chapter's object for the rest
+--    of the run. Retirement is by FINGERPRINT, not by address, so the next
+--    chapter reusing the address is still adopted.
+-- ---------------------------------------------------------------------------
+do
+    shared[0], shared[2], shared[3] = 0, 0, 0
+    for i = 8, 15 do shared[i] = nil end
+    package.loaded["rsmm"] = nil
+    local Rr = require "rsmm"
+
+    local ALLY, MINE = 0x11400000, 0x11500000
+    for _, p in ipairs({ ALLY, MINE }) do
+        I.write_f32(p + MAXHP_OFF, 100.0)
+        I.write_f32(p + HP_OFF, 100.0)
+        I.write_u64(p + HUDMIRROR_OFF, MIRROR)
+    end
+    I.write_f32(MIRROR, 100.0)
+    I.write_u8(ALLY + 0x1d88, 0)          -- a remote ally
+    I.write_u8(MINE + 0x1d88, 1)          -- this machine's player
+    shared[8] = ALLY                      -- the LOWER slot, which used to win
+    shared[9] = MINE
+
+    check(Rr.entity.hero() == MINE,
+          "the ring prefers the candidate the engine flags as local, not the "
+          .. "one in the lowest slot")
+
+    -- Chapter teardown: everything in the ring belongs to the old chapter.
+    check(Rr.entity.invalidate_capture("spec") == true, "invalidate_capture runs")
+    check(shared[0] == 0, "the published hero is dropped, not left dangling")
+    check(Rr.entity.hero() == nil,
+          "and no retired ring candidate is re-adopted, however plausible it "
+          .. "still reads")
+
+    -- Address reuse: the next chapter's hero lands on a retired address. The
+    -- fingerprint moved, so it is a different object and must be adopted.
+    I.write_f32(MINE + MAXHP_OFF, 250.0)
+    check(Rr.entity.hero() == MINE,
+          "a NEW object at a retired address is captured again")
+
+    -- An ally-only ring still captures: the byte is a PREFERENCE, because a
+    -- hero mid-load reads 0 there and refusing would mean never capturing.
+    Rr.entity.invalidate_capture("spec")
+    for i = 8, 15 do shared[i] = nil end
+    shared[8] = ALLY
+    I.write_f32(ALLY + MAXHP_OFF, 101.0)      -- not the retired fingerprint
+    check(Rr.entity.hero() == ALLY,
+          "with nothing claiming to be local, the old behaviour stands")
+
+    Rr.entity.invalidate_capture("spec")
+    for i = 8, 15 do shared[i] = nil end
+    shared[0], shared[2], shared[3] = 0, 0, 0
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+    shared[0] = HERO                       -- restore for later sections
+end
+
+-- ---------------------------------------------------------------------------
 -- 25. RSMM_ENABLE_HERO_CAPTURE off must mean off EVERYWHERE
 --
 -- The flag stopped the native hooks and nothing else: this Lua fallback then
@@ -2221,6 +2291,149 @@ do
           "the probe reports which component slot matched")
     check(enemy_line and enemy_line:find("owner_ok=true", 1, true),
           "and whether the matched component's back-pointer agrees")
+
+    Rs.damage.ignore_scenery(false)
+    Rs.damage.disable()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- N. R.damage: an unreadable victim is classified by its TYPE ---------------
+--
+-- `unknown` is FAIL-OPEN — the damage is counted, because a bad read must never
+-- delete a real player's damage. That makes an unreadable victim FAMILY
+-- expensive: the 2026-08-18 co-op log put one player at 11,612 hits for 613k
+-- damage (59 per hit, against 353 for the top row), with long runs of exactly
+-- 1.0 (the flat per-hit prop value) and a `scenery` column frozen for the last
+-- four minutes while their hit count kept climbing. Thousands of prop hits were
+-- arriving as carry damage.
+--
+-- Instances of one prop type share an oCEntitySettings object (+0x28) — the
+-- victim probe logs it for that reason — so a CONCLUSIVE scan of one jar can
+-- answer for every other jar, including the ones whose own component map does
+-- not read. And a row now carries how much of it rests on an unclassified
+-- victim, so a board that looks wrong can be checked rather than argued about.
+do
+    package.loaded["rsmm"] = nil
+    local Rs = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+
+    local ENEMY_ID, OTHER_ID = 0x1561073c, 0x11110000
+    local ENEMY_VFT = I.module_base() + (0x140f30b78 - 0x140000000)
+    local OTHER_VFT = I.module_base() + 0x1000
+    local JAR_SETTINGS, GNOLL_SETTINGS = 0x66000000, 0x66100000
+
+    local HERO, HERO_ENT = 0x67000000, 0x67100000
+    I.write_u64(HERO + 0x08, HERO_ENT)
+    I.write_u8(HERO + 0x1d88, 1)
+    I.write_u64(HERO_ENT + 8, 0x13000000)
+
+    local next_addr = 0x68000000
+    -- `ids == nil` builds the TORN map (a non-null slot pointer that cannot be
+    -- read) — the only shape that answers unknown.
+    local function victim(ids, settings)
+        local ent = next_addr; next_addr = next_addr + 0x100000
+        I.write_u64(ent, OTHER_VFT)
+        I.write_u64(ent + 0x28, settings or 0)
+        if not ids then
+            I.write_u64(ent + 0x5f0, 0x5)
+            I.write_u64(ent + 0x600, 3)
+            return ent
+        end
+        local slots = next_addr; next_addr = next_addr + 0x100000
+        local cap = 1
+        while cap < #ids do cap = cap * 2 end
+        I.write_u64(ent + 0x5f0, slots)
+        I.write_u64(ent + 0x600, cap - 1)
+        for i = 1, cap do
+            local slot = slots + (i - 1) * 0x10
+            local id = ids[i]
+            if id then
+                local comp = next_addr; next_addr = next_addr + 0x1000
+                I.write_u32(slot, id)
+                I.write_u64(slot + 8, comp)
+                I.write_u64(comp, id == ENEMY_ID and ENEMY_VFT or OTHER_VFT)
+                I.write_u64(comp + 8, ent)
+            else
+                I.write_u32(slot, 0)
+                I.write_u64(slot + 8, 0)
+            end
+        end
+        return ent
+    end
+
+    -- A torn jar asked FIRST is unknown: nothing has been learned yet.
+    local TORN_JAR = victim(nil, JAR_SETTINGS)
+    check(Rs.damage.is_enemy(TORN_JAR) == nil,
+          "an unreadable victim of an unlearned type is still unknown")
+
+    -- One readable jar of the same type answers for the whole family.
+    local GOOD_JAR = victim({ OTHER_ID, OTHER_ID }, JAR_SETTINGS)
+    check(Rs.damage.is_enemy(GOOD_JAR) == false, "the readable jar is scenery")
+    check(Rs.damage.is_enemy(victim(nil, JAR_SETTINGS)) == false,
+          "another unreadable jar of the SAME type is scenery too — this is the "
+          .. "leak that put thousands of flat-1.0 prop hits on the board")
+    check(Rs.damage.is_enemy(TORN_JAR) == false,
+          "and the one already cached as unknown is re-answered, not stuck")
+
+    -- The type map must not overreach: a torn victim of an UNRELATED type is
+    -- still unknown, and unknown still counts.
+    local GOOD_GNOLL = victim({ ENEMY_ID }, GNOLL_SETTINGS)
+    check(Rs.damage.is_enemy(GOOD_GNOLL) == true, "the readable gnoll is an enemy")
+    check(Rs.damage.is_enemy(victim(nil, 0x66200000)) == nil,
+          "an unreadable victim of an unrelated type stays unknown")
+    check(Rs.damage.is_enemy(victim(nil, GNOLL_SETTINGS)) == true,
+          "the type map answers for enemies as well, not only for props")
+
+    -- A victim with NO settings pointer cannot be learned by type, and must not
+    -- pick up some other family's answer.
+    check(Rs.damage.is_enemy(victim(nil, 0)) == nil,
+          "a torn victim with no settings pointer is unknown, never guessed")
+
+    -- The per-row tally: unknown damage is COUNTED (fail-open) and also
+    -- reported, so `hits` and `dps` can be sanity-checked against it.
+    I.mem_find = function() return {} end
+    Rs.damage.enable{ window = 10 }
+    Rs.damage.ignore_scenery(true)
+    Rs.damage.reset()
+    local stats = hooks[I.resolve("HeroStats_OnDamageDealt")]
+    local PD, PDVAL, PDSRC = 0x69000000, 0x69100000, 0x69200000
+    I.write_u64(PD + 0x10, PDVAL)
+    I.write_u64(PD + 0xa0, PDSRC)
+    local function hit(target, amount)
+        I.write_f32(PDVAL + 8, amount)
+        I.write_u16(PDSRC + 0xc8, 0)
+        stats.cb(HERO, target, PD, 0, function() end)
+    end
+    local MYSTERY = victim(nil, 0x66300000)
+    hit(GOOD_GNOLL, 100.0)
+    hit(MYSTERY, 1.0)
+    hit(MYSTERY, 1.0)
+    local row = Rs.damage.board()[1]
+    check(row.dealt == 102.0, "unclassified damage is still counted")
+    check(row.unknown == 2.0 and row.unknown_hits == 2,
+          "and reported separately, so a row full of prop chip damage is visible")
+    check(row.hits == 3, "those hits are in the hit count, as they are counted")
+
+    -- `taken` must not claim 0 for a player nothing ever reported a hit on: on
+    -- this build the damage-RECEIVED bookkeeping only fires for heroes this
+    -- machine owns, so every ALLY read exactly 0 for a whole 55-minute run.
+    check(row.taken == 0 and row.taken_known == false,
+          "taken_known is false until some source has actually reported a hit")
+    local taken = hooks[I.resolve("HeroStats_OnDamageTaken")]
+    if taken then
+        I.write_f32(PDVAL + 8, 25.0)
+        taken.cb(HERO, PD, function() end)
+        local hurt = Rs.damage.board()[1]
+        check(hurt.taken == 25.0 and hurt.taken_known == true,
+              "and true once one has")
+    end
+
+    check(Rs.damage.board()[1].dps_window == 10,
+          "the board reports the window its dps covers, so a caller can label it")
 
     Rs.damage.ignore_scenery(false)
     Rs.damage.disable()

@@ -736,11 +736,21 @@ void detour_subscribe_all(void* p1) {
     // original sees an uninitialized mirror and rejects the real hero.
     //
     // 2026-07-16 playtest: even post-body the HP/mirror fields may still be
-    // unpopulated (they fill during the load sequence, seconds later). The
-    // identity is authoritative regardless — this init only ever runs for the
-    // local hero — so ALWAYS stash it in the pending slot; the Lua side
-    // re-validates and promotes it once the fields go live, giving instant
-    // capture without a single heuristic-y combat hook needing to fire.
+    // unpopulated (they fill during the load sequence, seconds later). So
+    // ALWAYS stash it; the Lua side re-validates and promotes it once the
+    // fields go live, giving instant capture without a single heuristic-y
+    // combat hook needing to fire.
+    //
+    // ⚠ NOT local-only. An earlier version of this comment claimed "this init
+    // only ever runs for the local hero", and the 2026-08-18 four-player
+    // session disproved it: three stashes inside 5 ms, then four more at the
+    // next chapter — one per HERO, remote allies included. Nothing here can
+    // tell them apart (the fields that would are the ones not live yet), so
+    // every candidate is stashed and the LUA side picks: hero_plausible's
+    // HUD-mirror requirement is local-only by RE, and R.entity.hero()
+    // additionally prefers the candidate whose +0x1d88 byte says it is this
+    // machine's player. Publishing an ally here would point R.combat/R.stat at
+    // somebody else's character.
     hook_note_fire(g_subscribe_va);
     g_subscribe_real(p1);
     shared_set(kHeroPendingSlot, reinterpret_cast<std::uint64_t>(p1));
