@@ -1,0 +1,99 @@
+# Publish the loader DLL + Lua SDK to the rolling `loader` release.
+#
+# This is the channel `rsmm update-loader` polls, so a loader or Lua-SDK fix
+# reaches users without a desktop release + reinstall. Manual dispatch only:
+# it is a deliberate publish, never a side effect of a push.
+#
+# Runs here rather than on a laptop because the signing key is already a repo
+# secret. The client refuses an unsigned manifest, and the same key signs the
+# desktop bundles, so publishing from CI keeps that key in exactly one place.
+name: Publish loader channel
+
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: 'What changed in this loader/SDK build (shown by `rsmm update-loader`)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Build, sign and verify, but do not upload or bump the version'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write     # create/upload the release AND push the version bump
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need a real branch (not a detached HEAD) to push the version bump.
+          ref: main
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # MinGW cross-compiler for the DLL; lua5.4 so the SDK compile gate in
+      # the publish script actually runs instead of warning that it cannot.
+      - name: Build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-mingw-w64-x86-64 lua5.4
+
+      # `pnpm --filter desktop exec tauri signer sign` needs the workspace's
+      # devDependencies installed.
+      - name: Install JS deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build loader DLL (MinGW cross)
+        run: src/loader/build.sh
+
+      # Same gate the release workflow applies: a malformed or exportless DLL
+      # must never reach the channel, which plants straight into the game.
+      - name: Validate loader DLL
+        run: python scripts/validate_loader_dll.py dist/winhttp.dll
+
+      - name: Publish (sign + upload)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          scripts/publish_loader.sh \
+            ${{ inputs.dry_run && '--dry-run' || '' }} \
+            --notes "${{ inputs.notes }}"
+
+      # The publish script bumps data/loader_version.json. That stamp is what
+      # stops `restore --all` + `install-loader` from downgrading users, so an
+      # uncommitted bump breaks the guard in both directions — commit it here
+      # rather than relying on a human to remember.
+      - name: Commit the loader version bump
+        if: ${{ !inputs.dry_run }}
+        run: |
+          if git diff --quiet -- data/loader_version.json; then
+            echo "no version change to commit"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          VERSION=$(python -c "import json;print(json.load(open('data/loader_version.json'))['loader_version'])")
+          git add data/loader_version.json
+          git commit -m "chore(loader): publish loader channel v${VERSION}"
+          git push origin HEAD:main
