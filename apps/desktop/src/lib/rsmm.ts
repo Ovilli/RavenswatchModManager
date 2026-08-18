@@ -627,6 +627,41 @@ export interface UpdateDataResult {
 export const updatePatternDb = (opts: { checkOnly?: boolean } = {}) =>
   rsmm<UpdateDataResult>(opts.checkOnly ? ['update-data', '--check'] : ['update-data']);
 
+export interface UpdateLoaderResult {
+  ok: boolean;
+  status:
+    | 'up_to_date'
+    | 'updated'
+    | 'update_available'
+    // The published bundle needs a newer rsmm to plant it — the app itself
+    // must be updated. Distinct from 'error' so the UI can say so.
+    | 'needs_app_update'
+    // Local build is newer than the channel (a dev checkout, or mid-publish).
+    | 'ahead'
+    // Nothing published on the channel yet — normal, not a failure.
+    | 'not_published'
+    | 'error';
+  installedVersion?: number | null;
+  remoteVersion?: number | null;
+  rsmmVersion?: string | null;
+  generated?: string | null;
+  notes?: string | null;
+  planted?: string[] | null;
+  error?: string;
+}
+
+// Pulls the signed loader DLL + Lua SDK bundle (rolling `loader` GitHub
+// release) into the game directory. This is the channel that lets a loader
+// or Lua-SDK fix reach users without a desktop release + reinstall; the app
+// binary itself still updates through the Tauri updater. Safe to call every
+// launch: no-ops when up to date, and any failure is reported, not thrown.
+export const updateLoader = (opts: { checkOnly?: boolean } = {}) =>
+  rsmm<UpdateLoaderResult>(
+    opts.checkOnly ? ['update-loader', '--check'] : ['update-loader'],
+    // Downloads a multi-MB DLL + SDK bundle over the network.
+    { timeoutMs: LONG_TIMEOUT_MS },
+  );
+
 export interface LoaderFlag {
   name: string;
   label: string;

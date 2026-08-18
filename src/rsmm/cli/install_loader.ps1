@@ -112,6 +112,12 @@ $engineGen = Join-Path $repoDir 'src\loader\lib\engine_gen.lua'
 if (Test-Path $engineGen) {
   Copy-Item -Path $engineGen -Destination (Join-Path $luaDst 'engine_gen.lua') -Force
 }
+# rsmm.lua does `pcall(require, "events_gen")` — a pcall, so a missing file is
+# silent and R.events.known() just returns nothing. It was never planted.
+$eventsGen = Join-Path $repoDir 'src\loader\lib\events_gen.lua'
+if (Test-Path $eventsGen) {
+  Copy-Item -Path $eventsGen -Destination (Join-Path $luaDst 'events_gen.lua') -Force
+}
 
 # Sync mod manifests + init.lua
 New-Item -ItemType Directory -Path (Join-Path $GameDir 'mods') -Force | Out-Null

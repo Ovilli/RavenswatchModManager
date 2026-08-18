@@ -71,6 +71,7 @@ BUILTIN = {
     "unify":             "rsmm.cli.unify",
     "symbols":           "rsmm.cli.cmd_symbols",
     "update-data":       "rsmm.cli.cmd_update_data",
+    "update-loader":     "rsmm.cli.cmd_update_loader",
     "completion":        "rsmm.cli.cmd_completion",
 }
 
@@ -160,6 +161,7 @@ COMMAND_GROUPS: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("symbols",  "<gen|list|audit|events|…>",  "the engine symbol map"),
         ("rebuild-asset-map", "",                  "re-run find_iyg.py from UsedRscList.ot"),
         ("update-data", "",                        "fetch the rolling pattern DB"),
+        ("update-loader", "",                      "fetch the loader DLL + Lua SDK"),
     )),
     ("distribution", (
         ("repo",     "",                           "manage a mod repository"),

@@ -110,6 +110,11 @@ fi
 if [[ -f "$REPO_DIR/src/loader/lib/engine_gen.lua" ]]; then
     install -m 0644 "$REPO_DIR/src/loader/lib/engine_gen.lua" "$GAME_DIR/rsmm/lib/engine_gen.lua"
 fi
+# rsmm.lua does `pcall(require, "events_gen")` — a pcall, so a missing file is
+# silent and R.events.known() just returns nothing. It was never planted.
+if [[ -f "$REPO_DIR/src/loader/lib/events_gen.lua" ]]; then
+    install -m 0644 "$REPO_DIR/src/loader/lib/events_gen.lua" "$GAME_DIR/rsmm/lib/events_gen.lua"
+fi
 
 mkdir -p "$GAME_DIR/mods"
 # Sync mod manifests + init.lua so the loader's scan_mods sees every

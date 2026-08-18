@@ -7,6 +7,7 @@ import {
   type DoctorResult,
   applyMods,
   doctor,
+  updateLoader,
   updatePatternDb,
 } from '../lib/rsmm';
 import { Button, CopyButton } from './chrome';
@@ -90,6 +91,13 @@ export function SetupBanner() {
       // release) so doctor grades the freshly-planted copy, not a stale one.
       // Offline / fetch failures are non-fatal — doctor still runs.
       await updatePatternDb().catch(() => null);
+      // Then the loader DLL + Lua SDK (rolling `loader` release). Both are
+      // plain files in the game directory, so a loader or SDK fix reaches
+      // users here rather than through a desktop release + reinstall. The
+      // bundle is signature- and version-gated, and planting fails cleanly
+      // while the game holds winhttp.dll open — so failures are non-fatal
+      // and doctor still runs.
+      await updateLoader().catch(() => null);
       const r = await doctor();
       setResult(r);
     } catch (e) {

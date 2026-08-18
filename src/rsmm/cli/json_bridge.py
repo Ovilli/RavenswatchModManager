@@ -33,6 +33,9 @@ Subcommands:
     rsmm json update-data [--check] fetch + install the latest function-
                                     pattern DB from the rolling pattern-db
                                     release into <game>/rsmm/data/
+    rsmm json update-loader [--check] fetch + install the signed loader
+                                    DLL + Lua SDK bundle from the rolling
+                                    loader release (no app release needed)
 
 All commands emit a single JSON object/array on stdout (UTF-8, no trailing
 newline). Stderr is forwarded for diagnostics. Exit code is 0 on success.
@@ -1313,6 +1316,42 @@ def cmd_update_data(check_only: bool) -> int:
         return _emit({"ok": False, "status": "error", "error": str(e)})
 
 
+def cmd_update_loader(check_only: bool) -> int:
+    """
+    Check for (and by default install) a newer loader DLL + Lua SDK from
+    the rolling `loader` release. Both are planted as plain files in the
+    game directory, so they do not need to ride inside an app release —
+    see rsmm.engine.loader_update for the signing and abi model.
+    """
+    game_dir = find_game_dir()
+    if game_dir is None:
+        return _emit({"ok": False, "status": "error",
+                      "error": "game directory not found"})
+    try:
+        from rsmm.engine.loader_update import apply_update, check
+
+        state = check(game_dir)
+        if not check_only and state["status"] == "update_available":
+            state = apply_update(game_dir, state)
+        return _emit({
+            # A future-abi bundle is a real answer, not a failure: the UI
+            # should say "update the app", not show a transport error.
+            "ok": state["status"] != "needs_app_update",
+            # "not_published" is also normal — the channel simply is not
+            # live yet for this build.
+            "status": state["status"],
+            "installedVersion": state.get("installed_version"),
+            "remoteVersion": state.get("remote_version"),
+            "rsmmVersion": state.get("rsmm_version"),
+            "generated": state.get("generated"),
+            "notes": state.get("notes"),
+            "planted": state.get("planted"),
+            "error": state.get("error"),
+        })
+    except Exception as e:  # noqa: BLE001 — bridge must always emit JSON
+        return _emit({"ok": False, "status": "error", "error": str(e)})
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="rsmm json",
@@ -1371,6 +1410,10 @@ def main(argv: list[str] | None = None) -> int:
                            help="fetch + install the latest function-pattern DB")
     p_upd.add_argument("--check", action="store_true",
                        help="report status only, do not install")
+    p_upd_loader = sub.add_parser(
+        "update-loader", help="fetch + install the signed loader DLL + Lua SDK")
+    p_upd_loader.add_argument("--check", action="store_true",
+                              help="report status only, do not install")
 
     args = ap.parse_args(argv)
     if args.cmd == "list":
@@ -1423,6 +1466,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_uninstall_mod(args.mod_id)
     if args.cmd == "update-data":
         return cmd_update_data(args.check)
+    if args.cmd == "update-loader":
+        return cmd_update_loader(args.check)
     if args.cmd == "loader-flags":
         if args.flags_cmd == "get":
             return cmd_loader_flags_get()

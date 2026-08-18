@@ -151,6 +151,7 @@ jobs:
             --add-data "${ROOT}/pyproject.toml${SEP}."
             --add-data "${ROOT}/data/asset_map.json${SEP}data"
             --add-data "${ROOT}/data/asset_map.csv${SEP}data"
+            --add-data "${ROOT}/data/loader_version.json${SEP}data"
             --add-data "${ROOT}/src/rsmm/cli/install_loader.sh${SEP}src/rsmm/cli"
             --add-data "${ROOT}/src/rsmm/cli/install_loader.ps1${SEP}src/rsmm/cli"
             --add-data "${ROOT}/src/rsmm/cli/install_loader.bat${SEP}src/rsmm/cli"

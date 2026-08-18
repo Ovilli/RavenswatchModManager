@@ -105,6 +105,34 @@ def _lua_syntax_gate() -> bool:
     return True
 
 
+def _replant_newer_loader(game_dir: Path) -> None:
+    """Restore a newer loader that `rsmm update-loader` had already pulled.
+
+    The platform script always plants the loader bundled inside THIS rsmm
+    build. That is correct for a fresh install and wrong for a user who is
+    running ahead of it via the update channel — and `restore --all` wipes
+    the loader, so the restore/install-loader cycle is routine, not rare.
+    Without this, every restore would silently roll such a user back and
+    undo the out-of-band channel.
+
+    Advisory: a failure here leaves a working (older) loader planted, so it
+    warns instead of failing the install.
+    """
+    try:
+        from rsmm.engine.loader_update import LoaderUpdateError, replant_cached
+    except ImportError:
+        return
+    try:
+        result = replant_cached(game_dir)
+    except LoaderUpdateError as exc:
+        print(f"install-loader: cached loader update not replanted: {exc}",
+              file=sys.stderr)
+        return
+    if result:
+        print(f"install-loader: replanted loader v{result['loader_version']} "
+              f"from the update channel ({len(result['planted'])} files)")
+
+
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
@@ -151,12 +179,16 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
                "-File", str(script_ps1), *argv]
-        return subprocess.call(cmd)
+        rc = subprocess.call(cmd)
+    else:
+        if not script_sh.exists():
+            print(f"install script not found: {script_sh}", file=sys.stderr)
+            return 1
+        rc = subprocess.call([str(script_sh), *argv])
 
-    if not script_sh.exists():
-        print(f"install script not found: {script_sh}", file=sys.stderr)
-        return 1
-    return subprocess.call([str(script_sh), *argv])
+    if rc == 0:
+        _replant_newer_loader(Path(argv[0]))
+    return rc
 
 
 if __name__ == "__main__":
