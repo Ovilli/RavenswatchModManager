@@ -14,6 +14,8 @@ Supported patch kinds today:
 
     [[patch]] kind="stat"     name=<field>  [value=N] [min=N] [max=N]
     [[patch]] kind="texture"  target=<decoded_path>  donor=<decoded_path>
+    [[patch]] kind="ot"       selector=<label> field=<name> value=<v>
+                              [file=<game-relative .ot>] [selector_field=<name>]
 
 `text` and `url` patches are passed through to dedicated single-mod
 files (no merge) until their writers are factored out. Conflicts
@@ -31,6 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from rsmm.engine.asset_map import decoded_to_encoded, encoded_to_decoded
+from rsmm.engine.ot_patch import OtPatchError, apply_edits
 from rsmm.engine.paths import (
     COOKING_SUBDIR,
     MODS_DIR,
@@ -230,6 +233,101 @@ def _texture_patches(patches: list[_Patch], cooking: Path, out_assets: Path,
     return written
 
 
+#: The plaintext `.ot` an `ot` patch edits when it does not name one. It is the
+#: only uncooked file mods have a reason to touch today (entity-value modifier
+#: descriptors, friendly-fire factors, the forced-seed option).
+DEFAULT_OT_FILE = "DarkTalesResources/ApplicationSettings.ot"
+
+
+def _ot_patches(patches: list[_Patch], game_dir: Path, out_assets: Path,
+                conflicts: list) -> int:
+    """Compose `kind="ot"` patches: field-level edits to the game's own
+    plaintext `.ot` files, installed back through the `_root/` channel.
+
+    The alternative — and what mods had to do before this — is shipping a whole
+    copy of the game's file, which redistributes a game asset and reverts every
+    unrelated change the next patch makes to it. Here the mod declares three
+    strings and the game's own bytes are the base.
+    """
+    ots = [p for p in patches if p.kind == "ot"]
+    if not ots:
+        return 0
+
+    per_file: dict[str, list[_Patch]] = {}
+    for p in _ranked(ots):
+        rel = str(p.data.get("file") or DEFAULT_OT_FILE).replace("\\", "/").strip("/")
+        per_file.setdefault(rel, []).append(p)
+
+    written = 0
+    for rel, group in per_file.items():
+        parts = Path(rel).parts
+        if Path(rel).is_absolute() or any(seg == ".." for seg in parts):
+            print(f"  [merge] ot: refusing path with traversal segments: {rel!r}",
+                  file=sys.stderr)
+            continue
+        src = game_dir / Path(*parts)
+        # The game's PRISTINE bytes, exactly as the texture merge does it: once
+        # an apply has installed a previous result, `src` is that result, and
+        # composing on top of it would make the outcome depend on how many
+        # times apply has run.
+        pristine = src.parent / (src.name + ".rsmm.bak")
+        if pristine.exists():
+            src = pristine
+        if not src.exists():
+            print(f"  [merge] ot: file not found in the game install: {rel!r}",
+                  file=sys.stderr)
+            continue
+
+        # Same field, two mods, different values: report it and let the later
+        # mod win, like every other kind here.
+        seen: dict[tuple[str, str, str], dict[str, object]] = {}
+        for p in group:
+            key = (str(p.data.get("selector_field") or "m_sLabel"),
+                   str(p.data.get("selector", "")),
+                   str(p.data.get("field", "")))
+            seen.setdefault(key, {})[p.mod_id] = p.data.get("value")
+        for key, owners in seen.items():
+            if len({repr(v) for v in owners.values()}) > 1:
+                conflicts.append(("ot", f"{rel}:{key[1]}:{key[2]}", dict(owners)))
+
+        # `surrogateescape` so a byte the file's declared encoding cannot
+        # represent survives the round trip untouched — an edit must never
+        # rewrite a part of the file it was not asked about.
+        text = src.read_text(encoding="utf-8", errors="surrogateescape")
+        edits = []
+        for p in group:
+            missing = [k for k in ("selector", "field") if not p.data.get(k)]
+            if missing or "value" not in p.data:
+                print(f"  [merge] ot {p.mod_id}: patch missing "
+                      f"{', '.join(missing or ['value'])}", file=sys.stderr)
+                continue
+            edits.append({
+                "selector": p.data["selector"],
+                "field": p.data["field"],
+                "value": p.data["value"],
+                "selector_field": p.data.get("selector_field"),
+            })
+        if not edits:
+            continue
+        try:
+            text, done = apply_edits(text, edits)
+        except OtPatchError as e:
+            # Refuse the FILE, not just the edit: a half-applied set of edits is
+            # a config nobody wrote, and the author's next run would be
+            # debugging a state that exists in no manifest.
+            print(f"  [merge] ot {rel}: {e}", file=sys.stderr)
+            continue
+        for ed in done:
+            print(f"  [merge] ot {rel}: {ed.selector}.{ed.field} "
+                  f"{ed.old} -> {ed.new}  (line {ed.line})")
+
+        dest = out_assets / "_root" / Path(*parts)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(text, encoding="utf-8", errors="surrogateescape")
+        written += 1
+    return written
+
+
 def build_merged_mod(game_dir: Path) -> tuple[Path | None, list]:
     """Compose every supported [[patch]] across mods/ into
     `mods/_merged/`. Returns (path or None, conflict-report list)."""
@@ -252,11 +350,12 @@ def build_merged_mod(game_dir: Path) -> tuple[Path | None, list]:
     written = 0
     written += _stat_patches(patches, cooking, out_assets, conflicts)
     written += _texture_patches(patches, cooking, out_assets, conflicts)
+    written += _ot_patches(patches, game_dir, out_assets, conflicts)
 
     # text/url patches: not yet merged at the cooked-byte level — point
     # users at the dedicated single-mod tools for those kinds.
     unsupported = sorted({p.kind for p in patches
-                          if p.kind not in {"stat", "texture"}})
+                          if p.kind not in {"stat", "texture", "ot"}})
     for k in unsupported:
         owners = sorted({p.mod_id for p in patches if p.kind == k})
         print(f"  [merge] {k!r} patches are not yet composed in mods/_merged "

@@ -75,6 +75,34 @@ class ModBuilder:
     def text(self, target: str, value: str, **fields) -> None:
         self._patch_blocks.append({"kind": "text", "target": target, "value": value, **fields})
 
+    @sdk_export("Mod.ot")
+    def ot(self, selector: str, field: str, value, *,
+           file: str | None = None, selector_field: str | None = None) -> None:
+        """Change one field of a plaintext ``.ot`` the game ships uncooked.
+
+        ``selector`` picks the block by its ``m_sLabel`` (pass
+        ``selector_field`` for a different key), ``field`` is the field inside
+        that block, and ``value`` replaces what the file holds. The field must
+        already exist — an ``ot`` patch edits, it never invents a field the
+        engine would ignore.
+
+        ``file`` defaults to ``DarkTalesResources/ApplicationSettings.ot``, the
+        one uncooked file with anything worth changing in it (entity-value
+        modifier descriptors, friendly-fire factors, the forced-seed option).
+
+            mod.ot("Merlin DMG Zone", "m_eComputerType", 0)
+
+        The game's own bytes are the base, so this ships three strings instead
+        of a copy of a game file, and survives a patch that edits other parts of
+        the same file.
+        """
+        block = {"kind": "ot", "selector": selector, "field": field, "value": value}
+        if file:
+            block["file"] = file
+        if selector_field:
+            block["selector_field"] = selector_field
+        self._patch_blocks.append(block)
+
     # ---- v3 surface ---------------------------------------------------
 
     def config(self, schema: dict) -> None:

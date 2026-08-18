@@ -33,13 +33,17 @@ The game's option system reads its initial values from
 oCTextSaver text and already accepted by the `_root/` override
 mechanism (`docs/MODDING.md`).
 
-1. Open `data/uncooked/_root/DarkTalesResources/ApplicationSettings.ot`.
+1. Open the game's own `DarkTalesResources/ApplicationSettings.ot` (it ships
+   uncooked beside the executable — plain text, no cipher).
 2. Find the block with the `Forced seed` option declaration
    (`oCTString` keys are stored verbatim).
 3. Set the companion bool (id `0x1949b099`) true and the u32 (id
    `0x1949b098`) to the seed you want.
-4. Ship the modified `ApplicationSettings.ot` under
-   `mods/<id>/_root/DarkTalesResources/ApplicationSettings.ot`.
+4. Ship those two as `kind = "ot"` patches rather than a copy of the file —
+   see [Editing a plaintext .ot](/guides/modding/#editing-a-plaintext-ot-kind--ot).
+   A whole-file override still works (`mods/<id>/assets/_root/DarkTalesResources/ApplicationSettings.ot`)
+   but redistributes a game file and reverts whatever the next game patch
+   changes elsewhere in it.
 
 Until the settings block is fully decoded, the safer path is the in-
 process route below.

@@ -127,7 +127,11 @@ Mirror decoded paths under `assets/`. Full control, byte-for-byte. One mod owns 
 
 ### 2. Compose `[[patch]]` blocks (recommended)
 
-Write declarative blocks in `manifest.toml` for stats, text, URLs, and textures. The applier composes every mod's patches into a single cooked file per target. Two mods touching *different* fields of the same file both take effect; conflicts on the *same* field resolve by `load_order` (lower = applies first; later wins on overlap).
+Write declarative blocks in `manifest.toml` for stats, text, URLs, textures, and
+plaintext `.ot` fields. The applier composes every mod's patches into a single
+cooked file per target. Two mods touching *different* fields of the same file
+both take effect; conflicts on the *same* field resolve by `load_order` (lower =
+applies first; later wins on overlap).
 
 Example using the Python SDK:
 
@@ -142,9 +146,72 @@ with sdk.Mod("MyMod", author="me", load_order=50) as m:
     m.url("DiscordUrl", "https://example.com")
     m.texture("hero.romeo.portrait_active",
               donor="hero.sunwukong.portrait_active")
+    m.ot("Merlin DMG Zone", "m_eComputerType", 0)
 ```
 
 Run `python3 mods/MyMod/build.py` to emit `manifest.toml`. Friendly aliases (`hero.<name>.portrait_<state>`) hide the cooked-path lookups.
+
+#### Editing a plaintext `.ot` (`kind = "ot"`)
+
+A few `oCTextSaver` files ship **uncooked** beside the executable —
+`DarkTalesResources/ApplicationSettings.ot` is the one worth touching. It holds
+the friendly-fire factors, the forced-seed option, and the entity-value modifier
+descriptors (see below). It is plain text: no cipher, no cooking.
+
+A mod *could* ship a whole edited copy under `assets/_root/`, and before this
+patch kind that was the only way. Don't: that redistributes a game file, and it
+reverts every unrelated change the next game patch makes to it. Declare the
+field instead — `apply` reads the install's own bytes, rewrites just that field,
+and installs the result through the same `_root/` channel:
+
+```toml
+[[patch]]
+kind     = "ot"
+selector = "Merlin DMG Zone"     # matches s|m_sLabel in a block
+field    = "m_eComputerType"     # must already exist in that block
+value    = 0
+# file           = "DarkTalesResources/ApplicationSettings.ot"   (the default)
+# selector_field = "m_sLabel"                                    (the default)
+```
+
+Rules, all enforced at merge time with an error rather than a silent no-op:
+
+* the selector must match **exactly one** block;
+* the field must **already exist** in that block — a patch edits a value, it
+  never invents a field the engine would ignore;
+* a nested block's fields are not its parent's (`m_oDefaultValue`'s `u16Type` is
+  reached by selecting the nested block, not the descriptor around it);
+* the value's type comes from the **file's** prefix (`i|` int, `u|` unsigned,
+  `f|` float, `b|` bool, `s|` string) — writing a string into `i|` is refused;
+* if any edit in a file fails, the whole file is refused. Half-applied edits are
+  a configuration nobody wrote.
+
+The base is the install's **pristine** copy (`<file>.rsmm.bak` when an earlier
+apply made one), so re-running `apply` is idempotent and two texture-style
+chains cannot compound.
+
+##### Entity values: `m_eComputerType`
+
+Each `oSModifierValueDesc` block in `ApplicationSettings.ot` describes one
+entity value — a label, a default, `m_uMaxStackSize`, `m_eStackMode`, and
+`m_eComputerType`. The last one picks which `oCEntityValueModifier*Computer`
+folds **concurrent modifiers of that value** together. It is not a damage type.
+
+The engine ships seven; three independent orderings in the binary agree on
+`Add(0) Sub(1) Mult(2) Reduce(3) Oldest(4) Max(5) Min(6)`, and `ct=0` = Add
+(contributions sum) anchors it. The shipped file uses `0` forty times, `3` six
+times, `6` once — and every `3` is a persistent zone or trail: `Merlin DMG Zone`,
+`Dullahan_Trail_DOT`, `Mordred_Trail_DOT`, `Fire_Trap_DOT`, `Poison_Trap_DOT`,
+`Piper Pets Within Special`. Players report these do not stack when they overlap,
+which is what a non-additive combiner would do.
+
+:::caution[Inferred, not proven]
+The enum's *names* cannot be recovered from the binary: the strings `Reduce`,
+`Oldest`, `Multiply` and `Substract` have zero code xrefs (the same pointer-table
+interning that defeats event-name scans). The mapping above is inference from
+declaration order. Setting one of the six to `0` and checking whether two
+overlapping instances start stacking is the experiment that settles it.
+:::
 
 ---
 
@@ -155,9 +222,9 @@ mods/MyMod/
     manifest.toml              # Required: id, name, version, author
     assets/                    # Mirrors decoded paths from data/asset_map.csv
         <decoded-path>/<file>
-    _root/                     # Optional: top-level overrides (outside _Cooking/)
-        DarkTalesResources/
-            ApplicationSettings.ot
+        _root/                 # Optional: files outside _Cooking/, at the
+            DarkTalesResources/#   install root. Prefer a `kind = "ot"` patch
+                ApplicationSettings.ot   # for plaintext .ot files (below).
     init.lua                   # Optional: Lua script run by the loader DLL
     build.py                   # Optional: Python SDK build script
     on_disable.py              # Optional: cleanup hook when mod is disabled

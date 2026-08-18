@@ -169,6 +169,26 @@ def lint_one(entry: Path) -> tuple[int, int]:
                     print(f"  {_T_FAIL} {mod_s}: text patch missing {_ST.accent(repr(k))}")
                     errs += 1
                     break
+        elif kind == "ot":
+            # An `ot` patch names a field inside a plaintext .ot the GAME ships,
+            # so the value it sets is checked against the real file at merge
+            # time. What lint can catch without the install is a block that is
+            # missing the three fields the patch is made of — `value` may
+            # legitimately be 0 or false, so it is tested for PRESENCE.
+            for k in ("selector", "field"):
+                if not p.get(k):
+                    print(f"  {_T_FAIL} {mod_s}: ot patch missing {_ST.accent(repr(k))}")
+                    errs += 1
+                    break
+            else:
+                if "value" not in p:
+                    print(f"  {_T_FAIL} {mod_s}: ot patch missing {_ST.accent(repr('value'))}")
+                    errs += 1
+            f = str(p.get("file", "") or "")
+            if f.startswith("/") or ".." in Path(f).parts:
+                print(f"  {_T_FAIL} {mod_s}: ot patch file must be a relative path "
+                      f"inside the install: {_ST.accent(repr(f))}")
+                errs += 1
         elif kind == "url":
             for k in ("field", "value"):
                 if k not in p:
