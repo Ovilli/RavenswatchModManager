@@ -95,7 +95,18 @@ def find_game_dir() -> Path | None:
     The cooked asset tree is the canonical marker (DarkTalesResources/_Cooking).
     Return the first install dir that contains it. Candidate list lives
     in `rsmm.engine.paths` so every CLI agrees.
+
+    `RSMM_GAME_DIR` overrides the scan and is AUTHORITATIVE: when it is set
+    but does not look like an install, this returns None rather than falling
+    back to an autodetected one. `default_game_dir()` has always honored the
+    override, but this function — which the whole JSON bridge and therefore
+    the desktop app route through — ignored it, so pointing rsmm at a
+    specific install silently operated on a *different* one instead.
     """
+    override = os.environ.get("RSMM_GAME_DIR", "").strip()
+    if override:
+        path = Path(os.path.expandvars(override)).expanduser()
+        return path if (path / COOKING_REL).is_dir() else None
     for c in _game_dir_candidates():
         if (c / COOKING_REL).is_dir():
             return c

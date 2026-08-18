@@ -255,3 +255,27 @@ def test_save_fingerprint_atomic(tmp_path):
     # No leftover .tmp file.
     assert not (fp.parent / (fp.name + ".tmp")).exists()
     assert load_stored_fingerprint(tmp_path) == "deadbeef"
+
+
+def test_find_game_dir_honors_rsmm_game_dir(tmp_path, monkeypatch):
+    """`RSMM_GAME_DIR` must steer `find_game_dir`, not only `default_game_dir`.
+
+    The JSON bridge — and therefore every desktop-app action — resolves the
+    install through `find_game_dir`, which ignored the override and silently
+    autodetected a DIFFERENT install instead.
+    """
+    from rsmm.cli.apply_mods import find_game_dir
+
+    game = tmp_path / "game"
+    (game / "DarkTalesResources" / "_Cooking").mkdir(parents=True)
+    monkeypatch.setenv("RSMM_GAME_DIR", str(game))
+    assert find_game_dir() == game
+
+
+def test_find_game_dir_override_is_authoritative(tmp_path, monkeypatch):
+    """An override that is not an install returns None. Falling back to an
+    autodetected install would operate on a game the user did not name."""
+    from rsmm.cli.apply_mods import find_game_dir
+
+    monkeypatch.setenv("RSMM_GAME_DIR", str(tmp_path / "not-a-game"))
+    assert find_game_dir() is None
