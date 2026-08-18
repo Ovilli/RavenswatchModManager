@@ -1222,7 +1222,14 @@ end
 -- every new top-level `local` here costs a "too many local variables" compile
 -- failure of the whole SDK.
 local HERO_SCAN = {
-    AT   = { [10] = true, [40] = true },
+    -- Rejection counts that trigger a scan. Ticks are ~500ms, so 10/40 are
+    -- roughly 5s and 20s after the candidate was stashed -- and session 914f
+    -- (2026-08-18) showed that is entirely inside the LOAD: both scans fired
+    -- before the hero existed in the map (the second one 5s after
+    -- MAP_GENERATION_DONE), found nothing, and no scan ever ran while the hero
+    -- was alive and taking damage. 200 and 800 are ~100s and ~400s in, which is
+    -- mid-fight, and the process-wide budget of MAX still caps the total.
+    AT   = { [10] = true, [40] = true, [200] = true, [800] = true },
     MAX  = 6,                        -- total scans per process, all mods
     LO   = 0x1000, HI = 0x2400,
     seen = {},                       -- pointer -> rejections observed here
@@ -1259,14 +1266,39 @@ end
 --- The run boundary is the right signal. `is_in_main_menu` is NOT: it is
 --- derived from MainMenu asset READS, so it goes false about five seconds
 --- after the menu finishes loading and stays false while you sit in it, which
---- is exactly the window this is meant to suppress. It stays as the fallback
---- for a session with no run signal at all (see R.run.signalled).
+--- is exactly the window this is meant to suppress.
+---
+--- Which is what session ba4f (2026-08-18) hit: the whole process sat in the
+--- menu and the lobby looking for a team, no run boundary had EVER fired, so
+--- the fallback ran — and the fallback answered "in play" five seconds in. The
+--- entire process-wide budget (all six field scans, 40+ rejection lines) was
+--- spent on the character-select preview hero, whose HP fields are blank by
+--- design, before a run ever started. Same outcome as session 6c4f, re-entered
+--- through the fallback the 6c4f fix installed.
+---
+--- Three sources now, strongest first:
+---   1. the analytics run boundary (run_start / run_end) — exact, but it rides
+---      the firehose and a session can legitimately not have it;
+---   2. the gameplay bus (GAME_START / MAP_GENERATION_DONE vs GAME_END_*) —
+---      the same question asked of a different hook, so a build missing one
+---      usually still has the other. NOT routed into run:start/run:end, which
+---      mods reset counters on: MAP_GENERATION_DONE fires per CHAPTER;
+---   3. nothing at all — then SUPPRESS. Diagnostics whose budget is spent
+---      before the measurement can be taken are worse than no diagnostics, and
+---      the suppression says so once, in the log, with the reason.
 function HERO_SCAN.in_play()
     local rr = R.run
     if rr and rr.signalled and rr.signalled() then
         return (rr.active and rr.active()) and true or false
     end
-    return not _in_main_menu()
+    if rr and rr._play_signalled then return rr._play_active == true end
+    if not HERO_SCAN.quiet_logged then
+        HERO_SCAN.quiet_logged = true
+        R.log("[rsmm.entity] hero diagnostics suppressed: no run signal on this "
+              .. "build (neither the analytics run boundary nor the gameplay "
+              .. "bus has fired). They arm themselves the moment a run starts.")
+    end
+    return false
 end
 
 -- Internals, for the spec: `in_play` decides whether a whole class of
@@ -4849,6 +4881,13 @@ local DMG = {
     NET_AUTHORITY_OFF = 0x130,   -- net component: 0 = locally owned
     SAMPLE_CAP       = 4096,     -- rolling-window entries per actor
     DEDUPE_WINDOW    = 0.4,      -- seconds a replicated echo can lag by
+    -- REBIND SAFETY. A row is only re-adopted by a new controller when the old
+    -- controller can no longer be alive. Primary evidence is the CHAPTER EPOCH
+    -- (bumped by the engine's own chapter/map events); this is the fallback for
+    -- a build where those events never arrive -- a row nobody has credited for
+    -- this long has plausibly lost its controller. Only the EXACT hero-id join
+    -- may use it; the is-local guess never may.
+    REBIND_IDLE      = 45,       -- seconds a row must be silent to be adopted
     -- VICTIM CLASSIFICATION (the enemy-vs-scenery test).
     --
     -- The bookkeeping hook's 2nd argument is the VICTIM ENTITY -- not a stats
@@ -4914,6 +4953,12 @@ local _dmg = {
     hooked   = false,     -- resolver
     local_id = nil,       -- local hero net id (false = unavailable)
     started  = nil,
+    -- CHAPTER EPOCH. Incremented by the engine's chapter/map-generation events.
+    -- Rows record the epoch they were last bound in, and a row may only be
+    -- re-adopted by a NEW controller in a LATER epoch -- inside one chapter,
+    -- an unseen hero controller is a different player, never a rebuild.
+    epoch    = 0,
+    refusals = 0,         -- merges declined (logged, bounded)
     -- Victim classification. `ignore_scenery` is OPT-IN: the engine's own
     -- end-screen total counts prop damage, so counting it is what MATCHES the
     -- game, and dropping it is a deliberate divergence a mod asks for.
@@ -5232,7 +5277,14 @@ function F._dmg_probe_hero_field()
         -- keys are objects we can read fields out of.
         if _ptr_plausible(row.key) then rows[#rows + 1] = row end
     end
-    if #rows < 2 then return end
+    -- SAMPLE SIZE. Two rows is the minimum that can discriminate anything, but
+    -- in a four-player lobby it is also the sample most likely to leave an
+    -- unrelated field looking unique — and adopting a wrong offset MERGES two
+    -- players (2026-08-18, session 29a8: four players, two rows). So wait for a
+    -- third row whenever the lobby says a third player exists; a two-player
+    -- lobby still adopts on two, since that is every row there will ever be.
+    local need = n >= 3 and 3 or 2
+    if #rows < need then return end
     HERO_ID_PROBE.done = true
 
     local hits = {}
@@ -5452,6 +5504,8 @@ function F._dmg_new_row(key, is_local)
         -- "and 4.2k into the furniture" instead of silently losing it.
         scenery = 0, scenery_hits = 0,
         first = F._dmg_now(), last = 0, samples = {}, recent = {},
+        -- The chapter this row's controller was bound in. See F._dmg_rebind.
+        epoch = _dmg.epoch,
     }
     _dmg.actors[key] = row
     _dmg.order[slot] = row
@@ -5474,6 +5528,31 @@ function F._dmg_bind_netid(row, entity)
     if id then _dmg.by_netid[id] = row end
 end
 
+--- May `prev` be handed to a controller it has never been bound to?
+---
+--- Only when its own controller cannot still be alive. See F._dmg_rebind for
+--- why this is the whole safety of that function.
+function F._dmg_may_rebind(prev, why)
+    local newer = (prev.epoch or 0) < _dmg.epoch
+    -- The exact join may also adopt a row that has gone quiet for longer than a
+    -- chapter load; the is-local GUESS may not, because a wrong byte would then
+    -- merge live allies the moment one of them stops attacking for 45 seconds.
+    local exact = why ~= "local flag"
+    local idle = exact and prev.last and prev.last > 0
+                 and (F._dmg_now() - prev.last) >= DMG.REBIND_IDLE
+    if newer or idle then return true end
+    -- Say it, but not once per hit: this is the branch that keeps a player on
+    -- the board, and a silent refusal looks exactly like the bug it prevents.
+    _dmg.refusals = _dmg.refusals + 1
+    if _dmg.refusals <= 4 then
+        R.log(("[rsmm.damage] refused to merge a new controller into %s (%s) — "
+               .. "same chapter (epoch %d) and that row is still active, so this "
+               .. "is a DIFFERENT player, not a rebuilt controller")
+              :format(prev.label or "?", why or "?", _dmg.epoch))
+    end
+    return false
+end
+
 --- Adopt an existing row for a hero controller we have not seen before.
 ---
 --- The meter used to key rows by the controller pointer alone, which is stable
@@ -5491,22 +5570,41 @@ end
 ---   2. the engine's is-local byte. There is exactly ONE local player, so a
 ---      second local controller is always the same person. This needs no RE at
 ---      all and fixes the duplicate that matters most (your own row).
+---
+--- BOTH joins are gated on the row's controller being GONE, which is the part
+--- the first version left out — and a merge is far worse than the fork it
+--- replaced. A four-player run (2026-08-18, session 29a8) boarded TWO rows: an
+--- unseen controller inside the SAME chapter is another player standing next to
+--- you, and this function adopted it as "the same person, new object". A
+--- rebuild only happens at a chapter boundary, so that is what is required:
+---
+---   * hero-id join (exact): a later EPOCH, or a row nothing has credited for
+---     REBIND_IDLE seconds (the fallback for a build whose chapter events never
+---     arrive — a live player is never silent across a whole chapter load).
+---   * is-local join (a guess — one misread byte at +0x1d88 folds every ally
+---     onto your row): a later EPOCH, and nothing else.
+---
+--- Refusing costs a duplicate row, which is visible, self-explanatory and
+--- keeps every player's damage. Merging silently deletes a player.
 --- Returns the adopted row, or nil to let the caller board a new player.
 function F._dmg_rebind(hero, is_local, entity)
     local id = F._dmg_hero_id(hero)
     local prev = id and _dmg.by_hero[id] or nil
+    local why = prev and "hero " .. tostring(id) or nil
     -- No fallback scan over the rows here: every path that sets `hero_id` also
     -- writes `by_hero` (see F._dmg_backfill_ids), so a scan could only find what
     -- the index already has. It was written, could not be made to fail in the
     -- spec, and was deleted rather than shipped unexercised.
     if not prev and is_local then
         for _, r in ipairs(_dmg.order) do
-            if r.is_local then prev = r; break end
+            if r.is_local then prev, why = r, "local flag"; break end
         end
     end
     if not prev then return nil end
+    if not F._dmg_may_rebind(prev, why) then return nil end
     _dmg.actors[hero] = prev
     prev.key = hero
+    prev.epoch = _dmg.epoch          -- bound HERE now; see F._dmg_may_rebind
     prev.hero_id = id or prev.hero_id
     if prev.hero_id then _dmg.by_hero[prev.hero_id] = prev end
     F._dmg_alias(prev, entity)
@@ -5556,6 +5654,19 @@ function F._dmg_row_for_hero(hero)
     if existing then return existing end
     row = F._dmg_new_row(hero, is_local)
     F._dmg_alias(row, entity)
+    -- One line per player BOARDED, bounded. Session 29a8 was a four-player run
+    -- that produced two rows, and the log could not say which join collapsed
+    -- them: whether the is-local byte reads 1 for an ally (it must not — there
+    -- is one local player) is a two-byte question that otherwise costs a whole
+    -- playtest, in a timezone eight hours away.
+    _dmg.boarded = (_dmg.boarded or 0) + 1
+    if _dmg.boarded <= 8 then
+        R.log(("[rsmm.damage] boarded row %d (%s): controller=0x%x local_byte=%s "
+               .. "hero_id=%s epoch=%d"):format(
+                  row.slot, row.label or "?", hero,
+                  tostring(I.read_u8(hero + DMG.HERO_ISLOCAL_OFF)),
+                  tostring(F._dmg_hero_id(hero)), _dmg.epoch))
+    end
     -- Sweep for the hero-id field as soon as a SECOND row exists, rather than
     -- waiting for the next tick: the identity is needed by the time the next
     -- chapter loads, and a row boarded in the meantime would be un-rebindable.
@@ -5856,6 +5967,25 @@ function F._dmg_arm_resolver()
     _dmg.hooked = true
     return true
 end
+
+-- CHAPTER EPOCH. The engine rebuilds every hero controller when a chapter
+-- loads, which is the ONLY moment a row may legitimately change controller (see
+-- F._dmg_rebind). Both events are subscribed because neither is guaranteed:
+-- GAME_END_NEXT_CHAPTER fires as the old chapter tears down, MAP_GENERATION_DONE
+-- as the new one is built, and a build that emits only one of them still gets a
+-- bump. Extra bumps are harmless — the epoch only ever UNLOCKS a rebind that a
+-- pointer change already asked for.
+function F._dmg_next_epoch(name)
+    _dmg.epoch = _dmg.epoch + 1
+    if _dmg.on then
+        R.log(("[rsmm.damage] chapter epoch %d (%s) — hero controllers may now "
+               .. "be re-adopted"):format(_dmg.epoch, name))
+    end
+end
+R.on("gameplay:GAME_END_NEXT_CHAPTER",
+     function() F._dmg_next_epoch("GAME_END_NEXT_CHAPTER") end)
+R.on("gameplay:MAP_GENERATION_DONE",
+     function() F._dmg_next_epoch("MAP_GENERATION_DONE") end)
 
 -- Source 3: replicated damage. Identity is the net id; the victim is the
 -- entity the event was dispatched INTO, which the SDK can reach once it has
@@ -6219,6 +6349,36 @@ R.on("run_end", function(ev)
         _publish("run:end", copy)
     end
 end)
+
+-- PLAY STATE, from the gameplay bus — a second opinion on "is a run running",
+-- for gating diagnostics when the analytics boundary never fires (see
+-- HERO_SCAN.in_play). Deliberately NOT wired into run:start / run:end: mods
+-- reset their counters there, and MAP_GENERATION_DONE fires once per CHAPTER,
+-- so publishing it would wipe a damage board three times a run.
+-- GAME_END_NEXT_CHAPTER is absent on purpose — the chapter ends, the run does
+-- not.
+--
+-- Written out rather than looped: a `for` control variable is a local in the
+-- MAIN CHUNK, which is at Lua's 200-local ceiling, and the loop cost the whole
+-- SDK its compile.
+function R.run._play(on)
+    R.run._play_signalled, R.run._play_active = true, on and true or false
+end
+R.on("gameplay:GAME_START",                 function() R.run._play(true) end)
+R.on("gameplay:MAP_GENERATION_DONE",        function() R.run._play(true) end)
+R.on("gameplay:GAME_CHRONO_START",          function() R.run._play(true) end)
+R.on("gameplay:GAME_END_FAILED",            function() R.run._play(false) end)
+R.on("gameplay:GAME_END_SUCCESS",           function() R.run._play(false) end)
+R.on("gameplay:GAME_END_SUCCESS_SKIP_NEXT", function() R.run._play(false) end)
+R.on("gameplay:GAME_END_CHANGE_STATE",      function() R.run._play(false) end)
+
+--- Is a run running according to the GAMEPLAY BUS? nil when it has said
+--- nothing yet — which is a different answer from false, and the reason
+--- diagnostics can tell "menus" apart from "we have no idea".
+function R.run.playing()
+    if not R.run._play_signalled then return nil end
+    return R.run._play_active == true
+end
 
 -- True between run:start and run:end.
 function R.run.active() return _run_active end

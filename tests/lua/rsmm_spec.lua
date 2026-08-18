@@ -2306,6 +2306,13 @@ do
           "and the adopted offset is the field the ids were planted at")
 
     -- Chapter 2: the same two players, through new controllers.
+    --
+    -- The chapter EVENT is what makes the rebind legal. A new controller is
+    -- only ever a rebuilt one after the engine has torn a chapter down; inside
+    -- one chapter it is another player, and adopting it merges two people onto
+    -- one row (2026-08-18: a four-player run showed two rows). So the epoch has
+    -- to move before any of this is allowed to happen.
+    fire("gameplay:GAME_END_NEXT_CHAPTER", { source = "gameplay" })
     deal(ALLY2, 25.0)
     deal(ME2, 25.0)
 
@@ -2398,6 +2405,84 @@ do
 
     Ra.damage.disable()
     Ra.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- N. R.damage: four live players must never be merged onto one row --------
+--
+-- From a real four-player run (2026-08-18, session 29a8): the board showed TWO
+-- players. The chapter-fork fix had taught F._dmg_rebind to adopt an existing
+-- row whenever it met a hero controller it had not seen before — but that is
+-- also exactly what the THIRD and FOURTH players look like when they first deal
+-- damage. Two joins can do it: a misread is-local byte (every ally folds onto
+-- your row) or a wrongly adopted hero-id offset (an ally reads someone else's
+-- id). Both are gated on the chapter EPOCH now: inside one chapter a new
+-- controller is a new person, full stop.
+do
+    package.loaded["rsmm"] = nil
+    local Rm = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+
+    -- Four controllers, and the WORST CASE for each join: every one of them
+    -- reads back as the local player, and every one of them carries the SAME
+    -- value at the field a hero-id sweep might pick. Nothing here may merge.
+    local P = { 0x7b000000, 0x7b100000, 0x7b200000, 0x7b300000 }
+    for i, addr in ipairs(P) do
+        local ent = addr + 0x8000
+        I.write_u64(addr + 0x08, ent)
+        I.write_u8(addr + 0x1d88, 1)          -- misread: "this is my player"
+        I.write_u64(ent + 8, 0x13000000)
+        I.write_u8(ent + 0x1d88, 1)
+        I.write_u32(addr + 0x1ae0, 4)         -- one id for all four rows
+        local _ = i
+    end
+
+    I.mem_find = function() return {} end
+    Rm.damage.enable{ window = 10 }
+    local stats = hooks[I.resolve("HeroStats_OnDamageDealt")]
+    local PD, PDV, PDS = 0x7c000000, 0x7c100000, 0x7c200000
+    I.write_u64(PD + 0x10, PDV)
+    I.write_u64(PD + 0xa0, PDS)
+    I.write_f32(PDV + 8, 10.0)
+    I.write_u16(PDS + 0xc8, 0)
+    for _, addr in ipairs(P) do stats.cb(addr, 0x7d000000, PD, 0, function() end) end
+
+    check(#Rm.damage.board() == 4,
+          "four players in ONE chapter board four rows — an unseen controller "
+          .. "inside a chapter is a different player, never a rebuilt one")
+    local total = 0
+    for _, row in ipairs(Rm.damage.board()) do total = total + row.dealt end
+    check(total == 40.0, "and every player's damage is still on the board")
+    local refused = false
+    for _, line in ipairs(logged) do
+        if line:find("refused to merge", 1, true) then refused = true end
+    end
+    check(refused,
+          "the declined merge is logged — a refusal that leaves a duplicate row "
+          .. "must be explainable from the log alone")
+
+    -- And the rebind still WORKS once the chapter really does change: the same
+    -- four players come back on new controllers and are re-adopted, not forked.
+    fire("gameplay:GAME_END_NEXT_CHAPTER", { source = "gameplay" })
+    local Q = { 0x7b400000, 0x7b500000, 0x7b600000, 0x7b700000 }
+    for _, addr in ipairs(Q) do
+        local ent = addr + 0x8000
+        I.write_u64(addr + 0x08, ent)
+        I.write_u8(addr + 0x1d88, 1)
+        I.write_u64(ent + 8, 0x13000000)
+        I.write_u32(addr + 0x1ae0, 4)
+    end
+    stats.cb(Q[1], 0x7d000000, PD, 0, function() end)
+    check(#Rm.damage.board() == 4,
+          "after a chapter change a rebuilt controller is adopted again, so the "
+          .. "board does not grow a fifth row")
+
+    Rm.damage.disable()
+    Rm.damage.reset()
     rsmm.log = saved_log
     package.loaded["rsmm"] = nil
     R = require "rsmm"
@@ -2707,18 +2792,43 @@ end
 -- nobody was playing. The run boundary is the gate; `is_in_main_menu` is not,
 -- because it is derived from MainMenu asset READS and goes false a few seconds
 -- after the menu finishes loading.
+--
+-- Session ba4f (2026-08-18) then proved the FALLBACK was the same bug: a whole
+-- process spent in the menu and the matchmaking lobby, no run boundary ever
+-- fired, so the old "fail open" branch answered `true` five seconds in and the
+-- entire six-scan budget went on the character-select preview hero. Diagnostics
+-- whose budget is gone before the measurement can be taken are worse than none,
+-- so the gameplay bus is asked second and silence is the answer when neither
+-- source knows.
 do
     package.loaded["rsmm"] = nil
     local Rg = require "rsmm"
     local H = Rg.entity._scan          -- HERO_SCAN internals
 
-    -- No run signal on this build: fall back to the menu heuristic, i.e. the
-    -- old behaviour. Silence here would hide a genuinely moved HP offset.
     check(Rg.run.signalled() == false, "no run boundary has been seen yet")
-    check(H.in_play() == true,
-          "without a run signal, diagnostics stay enabled (fail open)")
+    check(Rg.run.playing() == nil,
+          "and the gameplay bus has said nothing either — which is not the same "
+          .. "as saying 'no run'")
+    check(H.in_play() == false,
+          "with NOTHING claiming a run is running, diagnostics stay quiet "
+          .. "instead of burning their budget in the menu")
 
-    -- Once a run boundary HAS been seen, run state decides.
+    -- The gameplay bus alone is enough, for a build whose analytics run
+    -- boundary never fires.
+    fire("gameplay:MAP_GENERATION_DONE", { source = "gameplay" })
+    check(Rg.run.playing() == true, "map generation means a run is running")
+    check(H.in_play() == true, "so diagnostics arm on the bus alone")
+    fire("gameplay:GAME_END_FAILED", { source = "gameplay" })
+    check(Rg.run.playing() == false, "and the run ended")
+    check(H.in_play() == false, "back to quiet")
+
+    -- A chapter change is NOT a run boundary: the run continues.
+    fire("gameplay:MAP_GENERATION_DONE", { source = "gameplay" })
+    fire("gameplay:GAME_END_NEXT_CHAPTER", { source = "gameplay" })
+    check(Rg.run.playing() == true,
+          "GAME_END_NEXT_CHAPTER ends a chapter, not the run")
+
+    -- The analytics boundary outranks the bus once it exists.
     Rg.emit("run_start", {})
     check(Rg.run.signalled() == true, "the run boundary was observed")
     check(Rg.run.active() == true, "and we are in a run")
@@ -2728,6 +2838,9 @@ do
     check(Rg.run.active() == false, "the run ended")
     check(H.in_play() == false,
           "back in the menu with a known run signal, diagnostics are silenced")
+    fire("gameplay:MAP_GENERATION_DONE", { source = "gameplay" })
+    check(H.in_play() == false,
+          "and the bus does not overrule the exact boundary once it exists")
 end
 
 -- N1b. R.lobby: names arrive from the attribute parser, not from a sweep ---

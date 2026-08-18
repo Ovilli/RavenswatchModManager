@@ -600,6 +600,18 @@ and by net id is the same row, so nobody appears twice and `share` stays
 honest. A replicated echo of a hit already counted locally is dropped, while
 repeated identical hits from one source (a multi-hit flurry) are kept.
 
+A player keeps ONE row across a chapter change, where the engine rebuilds every
+hero controller: the row is re-adopted by hero id (exact — each player's hero is
+distinct) or, failing that, by the engine's is-local byte. Both joins are gated
+on a **chapter epoch**, bumped by `GAME_END_NEXT_CHAPTER` /
+`MAP_GENERATION_DONE`: inside one chapter, a hero controller the meter has never
+seen is a **different player**, never a rebuilt one. Without that gate the
+third and fourth players to deal damage are adopted as "the same person again"
+and a four-player board collapses to two rows — a merge deletes a player, while
+the duplicate it prevents is visible and keeps everyone's damage. A declined
+merge is logged (`refused to merge …`), as is every row boarded, with the
+`local_byte` and `hero_id` the joins were about to use.
+
 Every hook is observation-only: it replays the original with the exact
 arguments it received and returns the engine's own result, so no damage value,
 target list or event changes.
