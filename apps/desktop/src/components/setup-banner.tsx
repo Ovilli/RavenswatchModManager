@@ -5,6 +5,7 @@ import { inTauri } from '../lib/platform';
 import {
   type DoctorCheck,
   type DoctorResult,
+  type UpdateLoaderResult,
   applyMods,
   doctor,
   updateLoader,
@@ -60,6 +61,10 @@ export function SetupBanner() {
   const [fixing, setFixing] = useState(false);
   const [fixError, setFixError] = useState<string | null>(null);
   const [updateDismissed, setUpdateDismissed] = useState(false);
+  // Result of the loader/SDK channel check run on mount. Kept so the two
+  // outcomes a user has to act on can be surfaced instead of swallowed.
+  const [loaderUpdate, setLoaderUpdate] = useState<UpdateLoaderResult | null>(null);
+  const [loaderDismissed, setLoaderDismissed] = useState(false);
   // Session dismissal — overrides the persisted check until next launch.
   const [sessionDismissed, setSessionDismissed] = useState(false);
   // Persisted across launches. Re-shown only when the failure set changes.
@@ -97,7 +102,10 @@ export function SetupBanner() {
       // bundle is signature- and version-gated, and planting fails cleanly
       // while the game holds winhttp.dll open — so failures are non-fatal
       // and doctor still runs.
-      await updateLoader().catch(() => null);
+      // Keep the result: a landed update needs a game restart to take
+      // effect, and a blocked one needs the game closed. Still non-fatal —
+      // a transport failure must not stop doctor from running.
+      setLoaderUpdate(await updateLoader().catch(() => null));
       const r = await doctor();
       setResult(r);
     } catch (e) {
@@ -196,6 +204,66 @@ export function SetupBanner() {
       </section>
     ) : null;
 
+  // The loader is read by the game at process start, so an update that
+  // lands while Ravenswatch is open does nothing until it restarts — and a
+  // silent channel meant the user could never know that. Only the two
+  // actionable outcomes get a banner; up-to-date, nothing-published,
+  // offline and every other status stay quiet.
+  const loaderBanner = (() => {
+    if (!loaderUpdate || loaderDismissed) return null;
+
+    const updated = loaderUpdate.status === 'updated';
+    const needsApp = loaderUpdate.status === 'needs_app_update';
+    const blocked =
+      loaderUpdate.ok === false && /in use/i.test(loaderUpdate.error ?? '');
+    if (!updated && !blocked && !needsApp) return null;
+
+    const message = updated
+      ? `Loader updated to v${loaderUpdate.installedVersion} — restart Ravenswatch to pick it up.`
+      : blocked
+        ? 'A loader update is waiting — close Ravenswatch, then re-check.'
+        : 'A newer loader is available, but it needs a newer version of this app.';
+
+    return (
+      <section
+        aria-label="Loader update"
+        className="ember-banner flex w-full items-start gap-3 px-4 py-3"
+      >
+        {updated ? (
+          <CheckCircle2 className="h-4 w-4 text-gilt shrink-0 mt-1" aria-hidden />
+        ) : (
+          <AlertTriangle className="h-4 w-4 text-crimson shrink-0 mt-1" aria-hidden />
+        )}
+        <div className="flex-1 space-y-1">
+          <p className="font-serif-italic text-base">{message}</p>
+          {updated && loaderUpdate.notes ? (
+            <p className="text-sm text-ash">{loaderUpdate.notes}</p>
+          ) : null}
+        </div>
+        {blocked ? (
+          <Button type="button" size="sm" onClick={() => void runChecks()} disabled={running}>
+            {running ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+            )}
+            Re-check
+          </Button>
+        ) : null}
+        <Button type="button" size="sm" onClick={() => setLoaderDismissed(true)}>
+          Dismiss
+        </Button>
+      </section>
+    );
+  })();
+
+  const banners = (
+    <>
+      {updateBanner}
+      {loaderBanner}
+    </>
+  );
+
   if (error) {
     if (persistedError === error) return null;
     const dismissError = () => {
@@ -228,14 +296,14 @@ export function SetupBanner() {
     );
   }
 
-  if (!result) return null;
+  if (!result) return banners;
   // Only hard FAILs gate mods. WARNs (loader missing on Linux, exe
   // newer than pattern db) are informational — they don't block apply
   // and shouldn't dunk a banner on every launch.
   const failing: DoctorCheck[] = result.checks.filter((c) => c.status === 'FAIL');
   const fixableFailures = failing.filter((c) => c.fixable).length;
   if (sessionDismissed || failing.length === 0 || persistedSignature === signature) {
-    return updateBanner;
+    return banners;
   }
 
   const dismiss = () => {
@@ -246,7 +314,7 @@ export function SetupBanner() {
 
   return (
     <>
-      {updateBanner}
+      {banners}
       <section aria-label="First-run setup" className="grimoire-card flex flex-col gap-3 p-4">
         <header className="flex items-center justify-between gap-3">
           <h3 className="font-fraktur text-xl text-parchment flex items-center gap-2">
