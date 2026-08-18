@@ -450,6 +450,15 @@ void Loader::apply_overrides() {
     for (const auto& m : mods_) {
         if (!m.enabled) continue;
         for (const auto& f : m.files) {
+            // `_root/` assets are NOT cooked and are never opened through the
+            // _Cooking path this map redirects: `rsmm apply` installs them
+            // straight into the install root (ApplicationSettings.ot and the
+            // like), backing the original up beside it. So they have no
+            // encoded name by construction, and reporting that as "no encoded
+            // match" claimed a mod was broken while its bytes were already
+            // live -- printed next to "active overrides=0", which made a
+            // working ot patch look like it had done nothing.
+            if (f.decoded_path.rfind("_root/", 0) == 0) continue;
             // Look up encoded basename for this decoded path.
             // Mod authors write decoded paths; we resolve to the encoded
             // filename that the game actually opens.
