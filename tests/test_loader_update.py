@@ -386,7 +386,11 @@ def test_a_locked_dll_plants_nothing_at_all(tmp_path, channel):
     so this also proves the pre-flight catches what the plant itself
     would not.
     """
-    if os.geteuid() == 0:
+    # POSIX root ignores the permission bits this relies on; Windows has no
+    # euid at all (`os.geteuid` simply does not exist there), and its
+    # read-only attribute does block opening for write, so the test is real
+    # on Windows and only the root case needs skipping.
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
         pytest.skip("root ignores the permission bits this test relies on")
     game, use = channel
     use(_publish(tmp_path))
