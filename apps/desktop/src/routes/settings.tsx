@@ -281,7 +281,8 @@ function UpdatesPanel() {
       <h3 className="font-fraktur text-xl text-parchment">Updates</h3>
       <Fleuron className="my-3" />
       <p className="font-serif-italic text-ash mb-3">
-        RSMM checks for new releases automatically. You can also check manually.
+        RSMM checks for new releases automatically. Checking manually covers both the launcher
+        itself and the game loader &amp; Lua SDK planted in your Ravenswatch folder.
       </p>
       <UpdaterSettings />
     </Panel>

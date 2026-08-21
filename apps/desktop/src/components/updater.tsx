@@ -1,11 +1,14 @@
 import { ProgressBar } from '@rsmm/ui';
 import { AlertTriangle, Download, RefreshCw } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import pkg from '../../package.json';
 import { appendLauncherLog } from '../lib/launcher-log';
+import { type UpdateLoaderResult, updateLoader } from '../lib/rsmm';
 import {
   type AvailableUpdate,
   type UpdateCheckError,
   checkForUpdate,
+  getAppVersion,
   getInstallTarget,
   isPermissionError,
   openReleasesPage,
@@ -355,16 +358,119 @@ export function UpdaterBanner() {
   return null;
 }
 
+/** One "Name — vX" row in the versions block. */
+function VersionRow({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 py-1">
+      <span className="font-serif-italic text-parchment shrink-0">{label}</span>
+      <span className="flex-1 border-b border-dotted border-oxblood/40" aria-hidden />
+      <span className="font-mono text-sm text-gilt shrink-0">{value}</span>
+      {hint ? <span className="font-mono text-xs text-ash shrink-0">{hint}</span> : null}
+    </div>
+  );
+}
+
+/** Human-readable one-liner for a loader-channel result. */
+function loaderSummary(r: UpdateLoaderResult | null): string | null {
+  if (!r) return null;
+  switch (r.status) {
+    case 'updated':
+      return `Updated to v${r.installedVersion} — restart Ravenswatch to pick it up.`;
+    case 'up_to_date':
+      return 'Up to date with the loader channel.';
+    case 'update_available':
+      return `v${r.remoteVersion} is available on the loader channel.`;
+    case 'ahead':
+      return `This build ships v${r.installedVersion}, newer than the channel's v${r.remoteVersion}.`;
+    case 'not_published':
+      return 'Nothing published on the loader channel yet.';
+    case 'needs_app_update':
+      return r.error ?? 'The loader channel needs a newer launcher — update the launcher first.';
+    default:
+      return r.error ?? null;
+  }
+}
+
 export function UpdaterSettings() {
   const [status] = useUpdateStatus();
   const toast = useToast();
+  // package.json is the compiled-in fallback; getAppVersion() replaces it with
+  // the version baked into the running bundle, which is what the updater
+  // actually compares against.
+  const [appVersion, setAppVersion] = useState<string>(pkg.version ?? '0.0.0');
+  const [loader, setLoader] = useState<UpdateLoaderResult | null>(null);
+  const [loaderBusy, setLoaderBusy] = useState(false);
+  const [loaderError, setLoaderError] = useState<string | null>(null);
 
+  useEffect(() => {
+    let alive = true;
+    void getAppVersion().then((v) => {
+      if (alive && v) setAppVersion(v);
+    });
+    // Read-only probe: reports the planted loader version without writing
+    // anything into the game directory. Offline just leaves it unknown —
+    // the button below still works once there is a connection.
+    void updateLoader({ checkOnly: true })
+      .then((r) => {
+        if (alive) setLoader(r);
+      })
+      .catch(() => {
+        /* channel unreachable — version stays "unknown", not an error */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  /** Pull the signed loader DLL + Lua SDK bundle, if the channel is ahead. */
+  const runLoaderUpdate = useCallback(async (): Promise<void> => {
+    setLoaderBusy(true);
+    setLoaderError(null);
+    try {
+      const r = await updateLoader();
+      setLoader(r);
+      void appendLauncherLog('info', '[Updater] loader channel check', {
+        status: r?.status ?? 'null',
+        installed: r?.installedVersion ?? null,
+        remote: r?.remoteVersion ?? null,
+      });
+      if (r?.status === 'updated') {
+        toast.push(
+          `Game loader updated to v${r.installedVersion} — restart Ravenswatch to pick it up.`,
+          'success',
+        );
+      } else if (r && r.ok === false) {
+        // needs_app_update lands here too: a real answer, phrased as an
+        // instruction rather than a transport failure.
+        setLoaderError(loaderSummary(r) ?? r.error ?? 'Loader update failed.');
+      }
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      setLoaderError(`Loader update failed: ${detail}`);
+      void appendLauncherLog('error', '[Updater] loader update failed', { error: detail });
+    } finally {
+      setLoaderBusy(false);
+    }
+  }, [toast]);
+
+  // One button, both channels: the launcher itself ships through the Tauri
+  // updater, the loader DLL + Lua SDK through the rolling `loader` release.
+  // A user who clicks "check for updates" means both.
   const onCheck = () => {
-    runCheck().then(() => {
+    const app = runCheck().then(() => {
       if (sharedStatus.state === 'idle') {
-        toast.push('You are on the latest version.', 'success');
+        toast.push('Launcher is on the latest version.', 'success');
       }
     });
+    void Promise.allSettled([app, runLoaderUpdate()]);
   };
 
   const onApply = () => {
@@ -375,20 +481,33 @@ export function UpdaterSettings() {
     relaunchApp().catch((e) => toast.push(`Restart failed: ${e}`, 'error'));
   };
 
+  const busy = status.state === 'checking' || status.state === 'downloading' || loaderBusy;
+  const loaderVersion =
+    loader?.installedVersion == null ? 'unknown' : `v${loader.installedVersion}`;
+  const loaderPending =
+    loader?.status === 'update_available' && loader.remoteVersion != null
+      ? `→ v${loader.remoteVersion}`
+      : undefined;
+
   return (
     <div className="space-y-3">
+      <div className="border border-border bg-pitch/40 px-3 py-2">
+        <VersionRow
+          label="Launcher"
+          value={`v${appVersion}`}
+          hint={
+            status.state === 'ready' || status.state === 'available'
+              ? `→ v${status.update?.version}`
+              : undefined
+          }
+        />
+        <VersionRow label="Game loader & Lua SDK" value={loaderVersion} hint={loaderPending} />
+      </div>
+
       <div className="flex flex-wrap items-center gap-3">
-        <Button
-          type="button"
-          size="sm"
-          variant="primary"
-          onClick={onCheck}
-          disabled={status.state === 'checking' || status.state === 'downloading'}
-        >
-          <RefreshCw
-            className={`h-3.5 w-3.5 ${status.state === 'checking' ? 'animate-spin' : ''}`}
-          />
-          {status.state === 'checking' ? 'Checking…' : 'Check for updates'}
+        <Button type="button" size="sm" variant="primary" onClick={onCheck} disabled={busy}>
+          <RefreshCw className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} />
+          {busy ? 'Checking…' : 'Check for updates'}
         </Button>
         {status.state === 'ready' && status.update ? (
           <Button type="button" size="sm" variant="primary" onClick={onRestart}>
@@ -413,6 +532,15 @@ export function UpdaterSettings() {
           </Button>
         ) : null}
       </div>
+
+      {loaderError ? (
+        <p className="text-sm text-crimson" role="alert">
+          {loaderError}
+        </p>
+      ) : loader ? (
+        <p className="font-mono text-xs text-ash">{loaderSummary(loader)}</p>
+      ) : null}
+
       {status.state === 'ready' && status.update?.body ? (
         <pre className="font-mono whitespace-pre-wrap text-ash text-sm border border-border bg-pitch/40 p-3 max-h-48 overflow-y-auto">
           {status.update.body}

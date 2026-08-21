@@ -117,3 +117,23 @@ export async function relaunchApp(): Promise<void> {
   const { relaunch } = await import('@tauri-apps/plugin-process');
   await relaunch();
 }
+
+/**
+ * The version of the launcher that is actually running.
+ *
+ * Tauri's `getVersion()` reads the version baked into the bundle at build
+ * time (`tauri.conf.json`), which is the number the updater compares
+ * against — so it is the honest answer for "what am I running?". Outside a
+ * Tauri shell (web preview, unit tests) there is no bundle to ask, and the
+ * caller falls back to the compiled-in `package.json` version.
+ */
+export async function getAppVersion(): Promise<string | null> {
+  if (!inTauri()) return null;
+  try {
+    const { getVersion } = await import('@tauri-apps/api/app');
+    return await getVersion();
+  } catch (err) {
+    console.warn('[Updater] getVersion unavailable:', err);
+    return null;
+  }
+}
