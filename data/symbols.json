@@ -2355,7 +2355,7 @@
      "void*"
     ]
    },
-   "note": "Wraps the event in an oCNamedEventNetworkMessage {vft 0x140f96b28, msg class id 0x157f6854, ev*} and unicasts it via the session vcall +0xc0 (skips if target session == local). Receive side deserializes via the message's Serialize (FUN_14085dec0; allocates the event from the class registry DAT_14146b2d8 by serialized class index, restores ev+0x30) and dispatches into the target entity's NamedEvent_Dispatch. [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
+   "note": "Wraps the event in an oCNamedEventNetworkMessage {vft 0x140f96b28, msg class id 0x157f6854, ev*} and unicasts it via the session vcall +0xc0 (skips if target session == local). Receive side deserializes via the message's Serialize (FUN_14085dec0; allocates the event from the class registry DAT_14146b2d8 by serialized class index, restores ev+0x30) and dispatches into the target entity's NamedEvent_Dispatch. [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.] [2026-08-21 ROUTING PATH, off the disassembly] The unicast is two fields deep and both are named here: rsi = [netcomp+0xc8] is the SCENE, and [rsi+0x28] is the SESSION MANAGER whose vft slot 0x88 writes the LOCAL session id to an out-param (`cmp out,[target]` is the skip-self test). The send itself is the scene's own vft slot 0xc0 taking the target session qword. So the engine routes by the SAME qword the replica calls creatingSystemGUID (Entity_GetNetId's note), and scene+0x28 is the object that must own the session->connection mapping. rsmm.lua's F._dmg_conn_join walks it: the manager's 0x400 bytes, then 0x200 at each pointer it holds, looking for a record that carries a row's owner GUID and a Netcode_PeerSlots slot's own pointer at a CONSTANT delta -- one field layout across several rows, not one lucky window. UNPROVEN in-game as of 2026-08-21.",
    "refs": [
     "docs/_re/kinds/events-bus.md"
    ]
@@ -3268,6 +3268,46 @@
    "note": "oCString destructor: SSO threshold 0xf; heap buffer's real alloc ptr at [buf-8], frees + bumps DAT_14146d854. 2259 refs. Decompile-identified 2026-07-17.",
    "raw": "FUN_140111d90",
    "status": "ok"
+  },
+  {
+   "name": "Netcode_ConnectionRegistry_Emplace",
+   "kind": "function",
+   "category": "netcode",
+   "raw": "FUN_140b2fd80",
+   "status": "unverified",
+   "note": "MSVC std::unordered_map<uint64,...>::try_emplace for the netcode's CONNECTION REGISTRY. Ghidra 2026-08-21: FNV-1a over the key's 8 bytes (seed 0xcbf29ce484222325, prime 0x100000001b3), bucket index = hash & map+0x30, key compare `*(int64*)key == node[2]`, 0x38-byte node malloc. NODE LAYOUT: { _Next @+0x00, _Prev @+0x08, uint64 key @+0x10, value @+0x18 }, and the caller Netcode_ConnectionFactory writes the RakNetConnection* to node+0x18 and its shared_ptr control block to node+0x20 (a second shared_ptr pair follows at +0x28/+0x30). MAP OBJECT: float max_load_factor @+0x00, list sentinel @+0x08, size @+0x10, buckets @+0x18, mask @+0x30, bucket count @+0x38 -- so the whole registry walks off ONE node via _Next. The key IS RakNet::Replica3::creatingSystemGUID, i.e. the same qword a hero row's owner GUID holds (Entity_GetNetId's note), which is what makes a row->connection join an equality. Consumed by rsmm.lua's F._dmg_conn_join. UNVERIFIED: no pattern, and the map instance sits at <transport>+0x80 whose reachability from the entity side is not yet proven."
+  },
+  {
+   "name": "Netcode_ConnectionFactory",
+   "kind": "function",
+   "category": "netcode",
+   "raw": "FUN_140b287f0",
+   "status": "unverified",
+   "note": "Builds a Stormancer::RakNetConnection for an incoming RakNetGUID and files it in the connection registry. Ghidra 2026-08-21: takes `{uint64 g; uint16 systemIndex}` (param_3), copies both into a local pair, calls the RakNetConnection ctor FUN_140b9cd50, then Netcode_ConnectionRegistry_Emplace(this+0x80, out, param_3) and stores the connection at node+0x18. So the registry lives at <this>+0x80. The engine is Stormancer over RakNet: RTTI carries Stormancer::RakNetTransport (vftable 0x140fbbc28), Stormancer::RakNetConnection (0x140fbf788), Stormancer::ConnectionsRepository (0x140fc4550), Stormancer::Scene_Impl (0x140fc1730), RakNet::Replica3 / ReplicaManager3 / RakPeer. UNVERIFIED: no pattern; recorded so the next session does not re-derive the layout."
+  },
+  {
+   "name": "RakNetConnection_Ctor",
+   "kind": "function",
+   "category": "netcode",
+   "raw": "FUN_140b9cd50",
+   "status": "unverified",
+   "note": "Stormancer::RakNetConnection constructor. Ghidra 2026-08-21: installs Stormancer::IConnection::vftable then RakNetConnection::vftable and copies the owning RakNetGUID's 64-bit half with `param_1[0x1f] = *param_2` -- so CONNECTION + 0xF8 IS THE OWNER GUID, the same value Replica3::creatingSystemGUID holds on that player's hero replica. That one offset is what lets a candidate pointer be VERIFIED as the connection for a given row instead of merely being near its GUID (rsmm.lua's F._dmg_is_conn). Two std::strings are copied in at +0xa0 and +0xc0 (the transport's address/id strings, contents not yet identified), a metadata block sits at +0x108, and +0x150 is a shared_ptr to the object that created it. UNVERIFIED: no pattern."
+  },
+  {
+   "name": "Netcode_SessionCtx_LocalGuid",
+   "kind": "function",
+   "category": "netcode",
+   "raw": "FUN_1408b7550",
+   "status": "unverified",
+   "note": "oCDtP2PSessionSceneContext::vft[0x88] — returns THIS machine's session id. Ghidra 2026-08-21, one line: `out = [this+0x210]->vft[0x190](&tmp)`. Both halves matter more than the function does. (1) The object is reached live from any replicated entity: netcomp+0xc8 -> scene, scene+0x28 -> this context — the loader read its vftable as rva 0xf1fd58 in session 7636 and RTTI confirms .?AVoCDtP2PSessionSceneContext@@. (2) ctx+0x210 is an oCSLNetPeer (the RakPeer wrapper): its vft[0x190] (0x140ae3280) is `out = {u64 @this+0x7f0, u16 @this+0x7f8}` = the LOCAL RakNetGUID. NamedEvent_NetSend reaches the same accessor the short way, through netcomp+0xc0, so [netcomp+0xc0] == [[netcomp+0xc8]+0x28]. UNVERIFIED: no pattern; the chain is what matters and it is read, not called."
+  },
+  {
+   "name": "Netcode_RemoteSystemTable",
+   "kind": "function",
+   "category": "netcode",
+   "raw": "FUN_140ae1700",
+   "status": "unverified",
+   "note": "oCSLNetPeer::vft[0x100] — enumerates the connected remote systems, and the reason a damage row can be named at all. Ghidra 2026-08-21, it walks MEMBERS rather than calling RakNet: `for i in 0..*(u32*)(peer+0x258): rs = *(void**)(peer+0x250 + i*8); if *(char*)rs != 0 and *(int*)(rs+0x2cec) == 7: emit SystemAddress at rs+0x08 and {u64 @rs+0x2cc8, u16 @rs+0x2cd0}` — RakNet::RakPeer::RemoteSystemStruct, with systemAddress at +0x08 (sockaddr; sin_port at +0x02, NETWORK order — the caller FUN_1408b7580 ntohs's it via Ordinal_15), RakNetGUID at +0x2cc8 and connectMode at +0x2cec (7 = connected). THE JOIN: rs+0x2cc8 is the same qword Replica3::creatingSystemGUID stamps on a hero's replica (Entity_GetNetId), and the ntohs'd port is the same UDP endpoint Netcode_PeerSlots exposes per peer at slot+0x50 -> +0xc0 beside the player's display NAME. So GUID -> port -> name, entirely by reads. Consumed by rsmm.lua's F._dmg_rak_systems / F._dmg_rak_join. UNVERIFIED in-game as of 2026-08-21: derived from the decompile, gated on an anchor (this machine must not appear among its own remote systems) and distinctness, and it logs the whole table either way."
   }
  ],
  "_event_catalog_doc": "Observation events the loader republishes by raw name from the central telemetry sink (Analytics_SubmitNamedEvent). No address — the firehose detour reads the name at runtime, so any name the game adds also fires even if absent here. These are confirmed names harvested by string-xref (cluster 0x140f13a00-0x140f13f00); subscribe via R.on('<name>', cb) with RSMM_ENABLE_GAME_EVENTS=1. Shown by `rsmm symbols events`.",

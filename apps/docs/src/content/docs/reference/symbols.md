@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **193** symbols across 18 categories.
+Total: **198** symbols across 18 categories.
 
 ## combat
 
@@ -244,9 +244,14 @@ Total: **193** symbols across 18 categories.
 | `Entity_GetNetId` | `0x1407273c0` | ✅ ok |  | uint32_t(void* entity) |
 | `Netcode_Channel_LookupById` | `0x140241a50` | ✅ ok | ✔ | iter*(void* channel_map, iter* out, uint32_t* event_id) |
 | `Netcode_Channel_Unsubscribe` | `0x1401c8da0` | ✅ ok | ✔ | void(void* node_plus_8, void** sub_slot) |
+| `Netcode_ConnectionFactory` | `0x140b287f0` | ❓ unverified |  | Builds a Stormancer::RakNetConnection for an incoming RakNetGUID and files it in the co… |
+| `Netcode_ConnectionRegistry_Emplace` | `0x140b2fd80` | ❓ unverified |  | MSVC std::unordered_map<uint64,...>::try_emplace for the netcode's CONNECTION REGISTRY.… |
 | `Netcode_DropPeer` | `0x1402b4d50` | ✅ ok |  | Drops a peer after the reconnect window (default 60s) elapses. Pattern-verified 2026-07… |
 | `Netcode_EntityReplSetup` | `0x14073dda0` | ❓ unverified | ✔ | void(void* replContext) |
 | `Netcode_PeerStateTick` | `0x1402b03a0` | ✅ ok |  | Per-peer connection-state tick (peer conn-state enum at peer+0xCC; 3=connected). Reconn… |
+| `Netcode_RemoteSystemTable` | `0x140ae1700` | ❓ unverified |  | oCSLNetPeer::vft[0x100] — enumerates the connected remote systems, and the reason a dam… |
+| `Netcode_SessionCtx_LocalGuid` | `0x1408b7550` | ❓ unverified |  | oCDtP2PSessionSceneContext::vft[0x88] — returns THIS machine's session id. Ghidra 2026-… |
+| `RakNetConnection_Ctor` | `0x140b9cd50` | ❓ unverified |  | Stormancer::RakNetConnection constructor. Ghidra 2026-08-21: installs Stormancer::IConn… |
 
 ## options
 

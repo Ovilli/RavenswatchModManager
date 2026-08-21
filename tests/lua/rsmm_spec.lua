@@ -6043,6 +6043,304 @@ do  -- 9d. a bridge that resolves nothing still REPORTS both halves
     R = require "rsmm"
 end
 
+--- Plant the routing chain NamedEvent_NetSendToPeer walks: every row's net
+--- component points at one scene, the scene's +0x28 is the session manager,
+--- and the manager points at one connection record per remote peer. Each
+--- record holds that peer's owner GUID and the peer's own tunnel -- the two
+--- halves no hero-side scan ever found together.
+local function _plant_session_chain(base, ctrl, opts)
+    opts = opts or {}
+    local scene = base + 0xc0000
+    local mgr   = base + 0xc1000
+    for i = 1, 3 do
+        local ent  = I.read_u64(ctrl[i] + 0x08)
+        local comp = I.read_u64(I.read_u64(ent + 0x5f0) + 8)
+        I.write_u64(comp + 0xc8, scene)
+    end
+    I.write_u64(scene + 0x28, mgr)
+    -- Rows 2 and 3 are the allies; peer slots 2 and 3 are Yume and Mascarade.
+    for i = 2, 3 do
+        local conn = base + 0xc2000 + i * 0x1000
+        I.write_u64(mgr + 0x10 + (i - 2) * 8, conn)
+        I.write_u64(conn + 0x08, (opts.guid or {})[i] or (0x51100 + i))
+        local slot = 0x14143f600 + (i - 1) * 0x60
+        I.write_u64(conn + 0x20, I.read_u64(slot + 0x50))   -- that peer's tunnel
+    end
+    return mgr
+end
+
+do  -- 9e. the SESSION MANAGER carries both halves, so the join is an equality
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    -- `plant = {}`: nothing on any hero carries a peer key, which is what
+    -- every live four-player session actually looks like.
+    local ctrl = _peer_world(Rp, 0xb5000000, { plant = {} })
+    _plant_session_chain(0xb5000000, ctrl)
+    check(Rp.damage._peer_join() == false,
+          "the hero-side scan finds nothing, as it does in game")
+    check(Rp.damage._conn_join() == true, "the connection join fires")
+    Rp.damage.relabel()
+    local by = {}
+    for _, row in ipairs(Rp.damage.board()) do by[row.slot] = row end
+    check(by[2] and by[2].player == "Yume" and by[3] and by[3].player == "Mascarade",
+          "each row is named from the connection record holding its owner GUID")
+    check(by[2].label_guess == false, "and it is exact, not a leftover name")
+    local proven, report = false, nil
+    for _, l in ipairs(logged) do
+        if l:find("CONNECTION JOIN PROVEN", 1, true) then proven = true end
+        if l:find("connection join:", 1, true) then report = l end
+    end
+    check(proven, "and says so once")
+    check(report and report:find("guid hit(s)", 1, true),
+          "the report carries both halves whatever the verdict")
+
+    Rp.damage.disable(); Rp.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9f. one GUID on two rows names neither, and does not latch the join off
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    local ctrl = _peer_world(Rp, 0xb6000000, { plant = {} })
+    -- Both allies replicate under the same GUID: the field is not per-player
+    -- on this build, so the join must name nobody rather than pick one.
+    for i = 2, 3 do
+        local ent  = I.read_u64(ctrl[i] + 0x08)
+        local comp = I.read_u64(I.read_u64(ent + 0x5f0) + 8)
+        I.write_u64(I.read_u64(I.read_u64(comp + 0xb8) + 0x100) + 0x28, 0x777777)
+    end
+    _plant_session_chain(0xb6000000, ctrl, { guid = { [2] = 0x777777, [3] = 0x777777 } })
+    check(Rp.damage._conn_join() == false, "nothing is named")
+    Rp.damage.relabel()
+    for _, row in ipairs(Rp.damage.board()) do
+        check(row.slot == 1 or row.player == nil,
+              "a GUID two rows share identifies neither")
+    end
+    local report
+    for _, l in ipairs(logged) do
+        if l:find("connection join:", 1, true) then report = l end
+    end
+    check(report and report:find("SHARED", 1, true),
+          "and the report says the key itself was not per-player")
+
+    Rp.damage.disable(); Rp.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9h. the REGISTRY path: one node reaches every connection in the run
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    local base = 0xb7000000
+    local ctrl = _peer_world(Rp, base, { plant = {} })
+    -- The engine's own shape: a std::unordered_map node
+    --   { _Next @+0x00, _Prev @+0x08, GUID @+0x10, RakNetConnection* @+0x18 }
+    -- whose connection repeats the GUID at +0xf8 (RakNetConnection's ctor
+    -- copies it there). Only ONE node is reachable from the session manager;
+    -- the other has to come off the list walk, which is the point.
+    local scene, mgr = base + 0xc0000, base + 0xc1000
+    for i = 1, 3 do
+        local ent  = I.read_u64(ctrl[i] + 0x08)
+        local comp = I.read_u64(I.read_u64(ent + 0x5f0) + 8)
+        I.write_u64(comp + 0xc8, scene)
+    end
+    I.write_u64(scene + 0x28, mgr)
+    local node = {}
+    for i = 2, 3 do
+        local conn = base + 0xd0000 + i * 0x1000
+        node[i] = base + 0xd8000 + i * 0x1000
+        I.write_u64(conn + 0xf8, 0x51100 + i)
+        -- the peer this connection belongs to, at one constant offset
+        I.write_u64(conn + 0x40, I.read_u64(0x14143f600 + (i - 1) * 0x60 + 0x50))
+        I.write_u64(node[i] + 0x10, 0x51100 + i)
+        I.write_u64(node[i] + 0x18, conn)
+    end
+    I.write_u64(node[2], node[3])          -- _Next
+    I.write_u64(node[3], node[2])          -- and back: a circular bucket list
+    I.write_u64(mgr + 0x18, node[2])       -- only node 2 is directly reachable
+
+    check(Rp.damage._conn_join() == true, "the join fires off the registry")
+    Rp.damage.relabel()
+    local by = {}
+    for _, row in ipairs(Rp.damage.board()) do by[row.slot] = row end
+    check(by[2] and by[2].player == "Yume", "the reachable node names its row")
+    check(by[3] and by[3].player == "Mascarade",
+          "and the row only the LIST reaches is named too — one node is the "
+          .. "whole map, so a four-player lobby costs no more than a two")
+    check(by[3].label_guess == false, "neither name is a guess")
+    local report
+    for _, l in ipairs(logged) do
+        if l:find("connection join:", 1, true) then report = l end
+    end
+    check(report and report:find("1 off the map list", 1, true),
+          "and the report says how much came from the walk, so a broken list "
+          .. "reads as a number rather than as silence")
+
+    Rp.damage.disable(); Rp.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9i. a pointer that is not a connection is refused at +0xf8
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+
+    local base = 0xb8000000
+    local ctrl = _peer_world(Rp, base, { plant = {} })
+    local scene, mgr = base + 0xc0000, base + 0xc1000
+    for i = 1, 3 do
+        local ent  = I.read_u64(ctrl[i] + 0x08)
+        local comp = I.read_u64(I.read_u64(ent + 0x5f0) + 8)
+        I.write_u64(comp + 0xc8, scene)
+    end
+    I.write_u64(scene + 0x28, mgr)
+    -- A node-shaped block whose "connection" does NOT carry the GUID back.
+    local fake, junk = base + 0xd8000, base + 0xd9000
+    I.write_u64(fake + 0x10, 0x51102)
+    I.write_u64(fake + 0x18, junk)
+    I.write_u64(junk + 0x40, I.read_u64(0x14143f600 + 0x60 + 0x50))
+    I.write_u64(mgr + 0x18, fake)
+    check(Rp.damage._conn_join() == false,
+          "a GUID next to a pointer is not a connection: +0xf8 has to agree")
+    Rp.damage.relabel()
+    for _, row in ipairs(Rp.damage.board()) do
+        check(row.slot == 1 or row.player == nil, "so no row is named from it")
+    end
+
+    Rp.damage.disable(); Rp.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+--- Plant RakPeer's remote-system table where oCSLNetPeer::vft[0x100] reads it:
+--- netcomp+0xc8 -> scene, scene+0x28 -> session context, ctx+0x210 ->
+--- oCSLNetPeer, peer+0x250 -> RemoteSystemStruct*[] with the count at +0x258.
+--- Each struct: active byte @+0x00, sockaddr @+0x08 (port network-order at
+--- +0x02), RakNetGUID @+0x2cc8, connect mode @+0x2cec (7 = connected).
+local function _plant_rak_table(base, ctrl, rows)
+    local scene, ctx, peer = base + 0xc0000, base + 0xc1000, base + 0xc2000
+    local list = base + 0xc3000
+    for i = 1, 3 do
+        local ent  = I.read_u64(ctrl[i] + 0x08)
+        local comp = I.read_u64(I.read_u64(ent + 0x5f0) + 8)
+        I.write_u64(comp + 0xc8, scene)
+    end
+    I.write_u64(scene + 0x28, ctx)
+    I.write_u64(ctx + 0x210, peer)
+    I.write_u64(peer + 0x250, list)
+    I.write_u32(peer + 0x258, #rows)
+    for i, r in ipairs(rows) do
+        local rs = base + 0xd0000 + i * 0x4000
+        I.write_u64(list + (i - 1) * 8, rs)
+        I.write_u8(rs, 1)
+        I.write_u16(rs + 0x0a, ((r.port & 0xff) << 8) | ((r.port >> 8) & 0xff))
+        I.write_u64(rs + 0x2cc8, r.guid)
+        I.write_u32(rs + 0x2cec, r.state or 7)
+    end
+end
+
+do  -- 9j. GUID -> UDP port -> peer slot: the join that is read, not searched
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    local base = 0xb9000000
+    local ctrl = _peer_world(Rp, base, { plant = {} })
+    -- _peer_world gives peer slot i the tunnel port 7000+i, so Yume is 7002
+    -- and Mascarade 7003; the rows' owner GUIDs are 0x51100+i.
+    _plant_rak_table(base, ctrl, {
+        { guid = 0x51102, port = 7002 },
+        { guid = 0x51103, port = 7003 },
+    })
+    local sys = Rp.damage._rak_systems()
+    check(sys and #sys == 2, "the remote-system table reads back")
+    check(sys[1].port == 7002 and sys[1].guid == 0x51102,
+          "and the port comes back host-order — the sockaddr holds it in "
+          .. "network order and the engine ntohs's it, so this must too")
+
+    check(Rp.damage._rak_join() == true, "the join fires")
+    Rp.damage.relabel()
+    local by = {}
+    for _, row in ipairs(Rp.damage.board()) do by[row.slot] = row end
+    check(by[2] and by[2].player == "Yume" and by[3] and by[3].player == "Mascarade",
+          "each row is named through its own GUID's UDP endpoint")
+    check(by[2].label_guess == false, "and nothing here is a guess")
+    local proven, report = false, nil
+    for _, l in ipairs(logged) do
+        if l:find("RAKNET JOIN PROVEN", 1, true) then proven = true end
+        if l:find("raknet systems:", 1, true) then report = l end
+    end
+    check(proven, "and says so")
+    check(report and report:find("peer ports", 1, true),
+          "the table and the peer ports are logged whatever the verdict — a "
+          .. "build that moves RemoteSystemStruct reads as garbage here "
+          .. "instead of as a silent 'no co-op'")
+
+    Rp.damage.disable(); Rp.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9k. ANCHOR: this machine cannot be one of its own remote systems
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    local base = 0xba000000
+    local ctrl = _peer_world(Rp, base, { plant = {} })
+    -- The local row's GUID against a remote peer's port: the chain is wrong.
+    _plant_rak_table(base, ctrl, {
+        { guid = 0x51101, port = 7002 },
+        { guid = 0x51103, port = 7003 },
+    })
+    check(Rp.damage._rak_join() == false, "the join refuses")
+    local refused = false
+    for _, l in ipairs(logged) do
+        if l:find("raknet join REFUSED", 1, true) then refused = true end
+    end
+    check(refused, "and says which half contradicted it")
+    Rp.damage.relabel()
+    for _, row in ipairs(Rp.damage.board()) do
+        check(row.slot == 1 or row.player == nil,
+              "no row keeps a name from a refused chain")
+    end
+
+    Rp.damage.disable(); Rp.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
 do  -- 9g. the hero-id DEEP scan does not run unless it is asked for
     -- The heaviest thing the SDK does: ~900k page-guarded reads, 20k per
     -- background tick, ~45 ticks of solid probing. It ran on every session for

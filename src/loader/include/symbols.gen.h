@@ -318,12 +318,22 @@ constexpr std::uintptr_t Netcode_Channel_LookupById = 0x140241a50ull;
 constexpr const char* Netcode_Channel_LookupById_Pattern = "Netcode_Channel_LookupById";
 constexpr std::uintptr_t Netcode_Channel_Unsubscribe = 0x1401c8da0ull;
 constexpr const char* Netcode_Channel_Unsubscribe_Pattern = "Netcode_Channel_Unsubscribe";
+constexpr std::uintptr_t Netcode_ConnectionFactory = 0x140b287f0ull;
+constexpr const char* Netcode_ConnectionFactory_Pattern = "Netcode_ConnectionFactory";
+constexpr std::uintptr_t Netcode_ConnectionRegistry_Emplace = 0x140b2fd80ull;
+constexpr const char* Netcode_ConnectionRegistry_Emplace_Pattern = "Netcode_ConnectionRegistry_Emplace";
 constexpr std::uintptr_t Netcode_DropPeer = 0x1402b4d50ull;
 constexpr const char* Netcode_DropPeer_Pattern = "Netcode_DropPeer";
 constexpr std::uintptr_t Netcode_EntityReplSetup = 0x14073dda0ull;
 constexpr const char* Netcode_EntityReplSetup_Pattern = "Netcode_EntityReplSetup";
 constexpr std::uintptr_t Netcode_PeerStateTick = 0x1402b03a0ull;
 constexpr const char* Netcode_PeerStateTick_Pattern = "Netcode_PeerStateTick";
+constexpr std::uintptr_t Netcode_RemoteSystemTable = 0x140ae1700ull;
+constexpr const char* Netcode_RemoteSystemTable_Pattern = "Netcode_RemoteSystemTable";
+constexpr std::uintptr_t Netcode_SessionCtx_LocalGuid = 0x1408b7550ull;
+constexpr const char* Netcode_SessionCtx_LocalGuid_Pattern = "Netcode_SessionCtx_LocalGuid";
+constexpr std::uintptr_t RakNetConnection_Ctor = 0x140b9cd50ull;
+constexpr const char* RakNetConnection_Ctor_Pattern = "RakNetConnection_Ctor";
 
 // --- options ---
 constexpr std::uintptr_t g_GameOptions = 0x14143cb58ull;

@@ -4644,7 +4644,7 @@ function LOBBY_HOOK.arm()
             -- Stored as TEXT and never parsed into a number here. Whether this
             -- string is the decimal or hex form of the int64 the netcode
             -- stamps on an event (ev+0x38) is exactly the thing that has to be
-            -- PROVEN at runtime rather than assumed -- see F._dmg_session_join.
+            -- PROVEN at runtime rather than assumed -- see R.damage._session_join.
             if e and _ptr_plausible(blob) then
                 local member = blob - 0x28
                 if _ptr_plausible(member) then
@@ -7526,6 +7526,15 @@ end
 --- The engine's peer table as the join sees it (test/diagnostic seam).
 function R.damage._peer_join() return F._dmg_peer_join() end
 
+--- The connection-record join (test/diagnostic seam).
+function R.damage._conn_join() return F._dmg_conn_join() end
+
+--- The RakNet remote-system join (test/diagnostic seam).
+function R.damage._rak_join() return F._dmg_rak_join() end
+
+--- The RakNet remote-system table as the join reads it (diagnostic seam).
+function R.damage._rak_systems() return F._dmg_rak_systems() end
+
 function R.damage._netid_pass()
     return F._dmg_netid_pass()
 end
@@ -7670,6 +7679,64 @@ F._netid = {
     PEER_HASH    = 0x30,       -- u64 hash of the EOS id (FUN_1402aed50)
     PEER_TUNNEL  = 0x50,       -- the P2P connection: +0xc0 port, +0xcc state
     PEER_STR    = { 0x00, 0x10, 0x20 },
+    -- The two fields NamedEvent_NetSendToPeer (0x1407216c0) dereferences to
+    -- unicast an event at ONE session, read straight off its disassembly:
+    --
+    --     rsi = [netcomp + 0xc8]              ; the scene
+    --     rcx = [rsi + 0x28]                  ; the session manager
+    --     call [[rcx] + 0x88](rcx, &out)      ; out = the LOCAL session id
+    --     cmp  out, [target]                  ; skip a send to ourselves
+    --     call [[rsi] + 0xc0](rsi, target, m) ; send to that session
+    --
+    -- So the engine routes by the SAME qword the replica calls
+    -- creatingSystemGUID, and scene+0x28 is the object that owns the
+    -- session->connection mapping. That is where a guid can become a peer.
+    SCENE     = 0xc8,
+    SCENE_MGR = 0x28,
+    -- Stormancer::RakNetConnection + 0xf8 is the owning RakNetGUID, written
+    -- by the ctor as `param_1[0x1f] = *param_2`. The map node the transport
+    -- keeps it in is { _Next, _Prev, GUID @+0x10, connection* @+0x18 }.
+    -- THE RAKNET REMOTE-SYSTEM TABLE, read exactly where the engine reads it.
+    --
+    -- oCDtP2PSessionSceneContext::vft[0x88] (0x1408b7550) is one line --
+    -- `[this+0x210]->vft[0x190](&out)` -- and that callee (0x140ae3280) is
+    -- also one line: `out = {u64 @this+0x7f0, u16 @this+0x7f8}`, i.e. the
+    -- LOCAL RakNetGUID. So ctx+0x210 is an oCSLNetPeer, the RakPeer wrapper.
+    --
+    -- Its vft[0x100] (0x140ae1700) is the enumerator, and it walks members:
+    --
+    --     for i in 0 .. *(u32*)(peer+0x258):
+    --         rs = *(void**)(peer+0x250 + i*8)
+    --         if *(char*)rs != 0 and *(int*)(rs+0x2cec) == 7:      -- connected
+    --             emit SystemAddress at rs+0x08  (sockaddr: port at +2, ntohs)
+    --             emit {u64 @rs+0x2cc8, u16 @rs+0x2cd0}            -- RakNetGUID
+    --
+    -- which is RakNet::RakPeer::RemoteSystemStruct. That GUID is the same
+    -- qword Replica3::creatingSystemGUID puts on a hero's replica, and the
+    -- SystemAddress is the UDP endpoint whose PORT Netcode_PeerSlots already
+    -- exposes per peer (slot+0x50 -> +0xc0, ntohs'd by FUN_1402aa470). One
+    -- table therefore carries both halves of the join, and reading it is
+    -- pure loads -- no engine call, no allocation, nothing to free.
+    CTX_PEER  = 0x210,
+    RS_LIST   = 0x250,
+    RS_COUNT  = 0x258,
+    RS_ADDR   = 0x08,
+    RS_GUID   = 0x2cc8,
+    RS_STATE  = 0x2cec,
+    RS_CONNECTED = 7,
+    RS_MAX    = 64,
+    rak_said  = false,
+    rak_done  = false,
+    CONN_GUID = 0xf8,
+    NODE_KEY  = 0x10,
+    NODE_VAL  = 0x18,
+    NODE_NEXT = 0x00,
+    MAP_MAX   = 64,      -- refuse to walk a list longer than any real lobby
+    MGRWIN    = 0x400,   -- bytes of the session manager to walk for pointers
+    NODEWIN   = 0x200,   -- bytes of each object it points at
+    conn_said = false,
+    conn_done = false,
+    conn_hit  = {},      -- row.key -> peer slot, kept once the hunt answers
     peer_said   = false,
     peer_done   = false,
     peer_gen    = nil,   -- #peers the memo below was built for
@@ -7824,6 +7891,14 @@ end
 --- `creatingSystemGUID` -- the peer that created it, i.e. the machine whose
 --- player owns this hero. Read, never called: three guarded loads.
 function F._dmg_owner_guid(row)
+    -- STICKY. Session 0e36 read a GUID for rows 1 and 2 at 18:43 and then
+    -- reported `row 2 guid=nil, row 3 guid=nil, row 4 guid=nil` five minutes
+    -- later: the chain is only walkable while the row's controller still
+    -- points at a live entity with a net component, and a death or a chapter
+    -- boundary breaks it. The GUID itself is a property of the OWNING MACHINE
+    -- and cannot change under a row, so the first answer is the answer -- and
+    -- a join that runs later must not lose the key it already had.
+    if row.owner_guid then return row.owner_guid end
     if not I.read_u64 or not _ptr_plausible(row.key) then return nil end
     local ent = I.read_u64(row.key + DMG.HERO_ENTITY_OFF)
     if not _ptr_plausible(ent) then return nil end
@@ -7833,6 +7908,7 @@ function F._dmg_owner_guid(row)
     if not inner then return nil end
     local g = I.read_u64(inner + 0x28)
     if type(g) ~= "number" or g == 0 or g == -1 then return nil end
+    row.owner_guid = g
     return g
 end
 
@@ -8003,9 +8079,10 @@ function F._dmg_peer_join()
         F._netid.peer_said = true
         local pp = {}
         for _, e in ipairs(peers) do
-            pp[#pp + 1] = ("#%d %s eos=%s port=%s state=%s hash=%s"):format(
-                e.index, tostring(e.name), tostring(e.eos), tostring(e.port),
-                tostring(e.state), e.hash and ("0x%x"):format(e.hash) or "nil")
+            pp[#pp + 1] = ("#%d %s session=%s eos=%s port=%s state=%s hash=%s"):format(
+                e.index, tostring(e.name), tostring(e.session), tostring(e.eos),
+                tostring(e.port), tostring(e.state),
+                e.hash and ("0x%x"):format(e.hash) or "nil")
         end
         local rr = {}
         for _, row in ipairs(_dmg.order) do
@@ -8156,6 +8233,527 @@ function F._dmg_guid_join()
               .. "member that carries the same GUID.")
     end
     return named
+end
+
+--- The object the engine routes sessions through, reached from a live row.
+---
+--- `netcomp+0xc8` is the scene and `scene+0x28` is the session manager --
+--- both read straight out of NamedEvent_NetSendToPeer, which asks that object
+--- for the LOCAL session id (vft slot 0x88) before unicasting through the
+--- scene's own slot 0xc0. Whatever maps a session qword to a connection lives
+--- there, and a row's owner GUID *is* that qword.
+---
+--- Any row will do: every replicated entity in the run shares one scene.
+function F._dmg_conn_mgr()
+    if not I.read_u64 then return nil end
+    for _, row in ipairs(_dmg.order) do
+        if _ptr_plausible(row.key) then
+            local ent = I.read_u64(row.key + DMG.HERO_ENTITY_OFF)
+            if _ptr_plausible(ent) then
+                local nc = R.net.component(ent)
+                if nc then
+                    local scene = I.read_u64(nc + F._netid.SCENE)
+                    if _ptr_plausible(scene) then
+                        local mgr = I.read_u64(scene + F._netid.SCENE_MGR)
+                        if _ptr_plausible(mgr) then return mgr, scene end
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+
+--- Every 64-bit value that identifies exactly ONE peer slot.
+---
+--- A value two peers share identifies neither, so it is dropped rather than
+--- resolved to whichever was seen last -- the same rule the EOS-hash join
+--- uses, for the same reason.
+function F._dmg_peer_needles(peers)
+    local n = {}
+    local function add(v, e)
+        if type(v) ~= "number" or v == 0 or v == -1 then return end
+        if not _ptr_plausible(v) and v ~= e.hash then return end
+        if n[v] ~= nil and n[v] ~= e then n[v] = false else n[v] = e end
+    end
+    for _, e in ipairs(peers) do
+        add(e.hash, e)                                   -- FUN_1402aed50's EOS hash
+        for _, off in ipairs(F._netid.PEER_STR) do       -- the three string buffers
+            add(I.read_u64(e.slot + off), e)
+        end
+        add(e.peer, e)                                   -- the P2P tunnel object
+        add(e.slot, e)                                   -- the slot itself
+    end
+    return n
+end
+
+--- The RakNet remote-system table for this run: GUID -> UDP port.
+---
+--- Pure reads off the chain in F._netid's notes, all of it decompiled rather
+--- than guessed. Returns a list of `{ guid, port, state }`, or nil when the
+--- chain does not resolve -- never a partial guess.
+function F._dmg_rak_systems()
+    if not (I.read_u64 and I.read_u32 and I.read_u16) then return nil end
+    local mgr = F._dmg_conn_mgr()
+    if not mgr then return nil end
+    local peer = I.read_u64(mgr + F._netid.CTX_PEER)
+    if not _ptr_plausible(peer) then return nil end
+    local list = I.read_u64(peer + F._netid.RS_LIST)
+    local n    = I.read_u32(peer + F._netid.RS_COUNT)
+    if not _ptr_plausible(list) then return nil end
+    if type(n) ~= "number" or n < 1 or n > F._netid.RS_MAX then return nil end
+    local out = {}
+    for i = 0, n - 1 do
+        local rs = I.read_u64(list + i * 8)
+        if _ptr_plausible(rs) then
+            local g  = I.read_u64(rs + F._netid.RS_GUID)
+            -- sockaddr_in: sin_family @+0, sin_port @+2, network order. The
+            -- engine passes it through ntohs (Ordinal_15) and so must we.
+            local np = I.read_u16(rs + F._netid.RS_ADDR + 2)
+            local st = I.read_u32(rs + F._netid.RS_STATE)
+            if type(g) == "number" and g ~= 0 and g ~= -1 and type(np) == "number" then
+                out[#out + 1] = {
+                    guid  = g,
+                    port  = ((np & 0xff) << 8) | ((np >> 8) & 0xff),
+                    state = st,
+                    rs    = rs,
+                }
+            end
+        end
+    end
+    if #out == 0 then return nil end
+    return out
+end
+
+--- Name rows from the RakNet remote-system table, joined on the UDP PORT.
+---
+--- THE ONLY JOIN HERE THAT IS READ RATHER THAN SEARCHED. Both halves are
+--- fields the disassembly names outright:
+---
+---   * a row's owner GUID is Replica3::creatingSystemGUID (Entity_GetNetId),
+---   * RemoteSystemStruct carries that same GUID beside the peer's
+---     SystemAddress (oCSLNetPeer::vft[0x100]),
+---   * and Netcode_PeerSlots carries the display NAME beside the same UDP
+---     port (slot+0x50 -> +0xc0).
+---
+--- So GUID -> port -> name, with no offset ever adopted by agreement and
+--- nothing searched for. The gates below are still here, because a layout can
+--- be right and a build can still have moved: this machine must not appear as
+--- one of its own remote systems, and two rows may not land on one peer.
+function F._dmg_rak_join()
+    if F._netid.rak_done then return false end
+    local wanted = false
+    for _, row in ipairs(_dmg.order) do
+        if not row.is_local and not row.player and _ptr_plausible(row.key) then
+            wanted = true
+            break
+        end
+    end
+    if not wanted then return false end
+
+    local peers = R.net.peers()
+    if #peers == 0 then return false end
+    local systems = F._dmg_rak_systems()
+    if not systems then return false end
+
+    -- port -> peer slot. A port two peers share names neither.
+    local by_port = {}
+    for _, e in ipairs(peers) do
+        if type(e.port) == "number" and e.port ~= 0 then
+            if by_port[e.port] ~= nil and by_port[e.port] ~= e then by_port[e.port] = false
+            else by_port[e.port] = e end
+        end
+    end
+    -- guid -> peer slot, through the remote-system table.
+    local by_guid_peer = {}
+    for _, sys in ipairs(systems) do
+        local e = by_port[sys.port]
+        if e then
+            if by_guid_peer[sys.guid] ~= nil and by_guid_peer[sys.guid] ~= e then
+                by_guid_peer[sys.guid] = false
+            else
+                by_guid_peer[sys.guid] = e
+            end
+        end
+    end
+
+    local pair, notes = {}, {}
+    for _, row in ipairs(_dmg.order) do
+        local g = F._dmg_owner_guid(row)
+        local e = g and by_guid_peer[g]
+        if e then
+            pair[row] = e
+            notes[#notes + 1] = ("row %d 0x%x:%d <-> %s")
+                                :format(row.slot, g, e.port, tostring(e.name))
+        end
+    end
+
+    if not F._netid.rak_said and #systems > 0 then
+        F._netid.rak_said = true
+        local ss = {}
+        for _, sys in ipairs(systems) do
+            ss[#ss + 1] = ("0x%x:%d%s"):format(sys.guid, sys.port,
+                sys.state == F._netid.RS_CONNECTED and "" or (" state=" .. tostring(sys.state)))
+        end
+        -- The whole table, once. If a build moves RemoteSystemStruct this line
+        -- is what says so -- implausible ports and zero GUIDs read as garbage
+        -- at a glance, where a silent `return false` reads as "no co-op".
+        R.log(("[rsmm.damage] raknet systems: %d [%s]; peer ports [%s]; pairs [%s]")
+              :format(#systems, table.concat(ss, " "),
+                      (function()
+                          local t = {}
+                          for _, e in ipairs(peers) do
+                              t[#t + 1] = ("%s:%s"):format(tostring(e.name), tostring(e.port))
+                          end
+                          return table.concat(t, " ")
+                      end)(),
+                      #notes > 0 and table.concat(notes, ", ") or "none"))
+    end
+    if not next(pair) then return false end
+
+    -- ANCHOR. The remote-system table is the OTHER machines; this one being in
+    -- it means the chain is not what the decompile says it is.
+    for row, e in pairs(pair) do
+        if e and row.is_local then
+            R.log(("[rsmm.damage] raknet join REFUSED: this machine's row pairs "
+                   .. "with remote system %q"):format(tostring(e.name)))
+            F._netid.rak_done = true
+            return false
+        end
+    end
+    -- DISTINCTNESS.
+    local by = {}
+    for row, e in pairs(pair) do
+        if e and e.name then
+            if by[e.name] then
+                R.log(("[rsmm.damage] raknet join REFUSED: rows %d and %d both "
+                       .. "pair with %q"):format(by[e.name].slot, row.slot, e.name))
+                F._netid.rak_done = true
+                return false
+            end
+            by[e.name] = row
+        end
+    end
+
+    local named = 0
+    for row, e in pairs(pair) do
+        if e and e.name and not row.is_local and _dmg.names[row.slot] == nil then
+            row.label, row.label_guess, row.player = e.name, false, e.name
+            named = named + 1
+        end
+    end
+    if named > 0 then
+        R.log(("[rsmm.damage] RAKNET JOIN PROVEN: %d row(s) named by matching "
+               .. "Replica3::creatingSystemGUID to RakPeer's remote-system "
+               .. "table and its UDP port to the peer slot's tunnel — read, "
+               .. "not searched"):format(named))
+    end
+    return named > 0
+end
+
+--- Is `obj` the Stormancer RakNetConnection whose owner GUID is `g`?
+---
+--- SELF-VALIDATING, and that is why this join is not another coincidence
+--- search. RakNetConnection's constructor (FUN_140b9cd50, reached from the
+--- factory FUN_140b287f0) copies the RakNetGUID's 64-bit half into
+--- `param_1[0x1f]` -- connection + 0xf8 -- from the `{uint64 g; uint16
+--- systemIndex}` the transport was handed. The same qword is what
+--- Replica3::creatingSystemGUID holds on the hero's replica. So a candidate
+--- pointer either answers with the row's own GUID at that one offset or it is
+--- not a connection, and no window size or scan order can fake it.
+function F._dmg_is_conn(obj, g)
+    if not _ptr_plausible(obj) then return false end
+    return I.read_u64(obj + F._netid.CONN_GUID) == g
+end
+
+--- Join rows to peers through the ENGINE'S OWN CONNECTION REGISTRY.
+---
+--- Every earlier join searched the HERO side for something the peer side
+--- holds, and the hero side never had it: session 2c36 proved no row's net
+--- component reaches a lobby session id, and session 0e36's peer scan found
+--- no EOS hash anywhere in a controller or entity. The registry is where the
+--- engine itself keeps the two halves together.
+---
+--- WHAT THE REGISTRY IS (Ghidra, this build, 2026-08-21). The netcode is
+--- Stormancer over RakNet -- the RTTI carries `Stormancer::RakNetTransport`,
+--- `Stormancer::RakNetConnection`, `Stormancer::ConnectionsRepository`,
+--- `RakNet::Replica3`. FUN_140b287f0 builds a RakNetConnection from an
+--- incoming `{uint64 g; uint16 systemIndex}` and inserts it into a
+--- `std::unordered_map<uint64, ...>` at transport+0x80 via FUN_140b2fd80,
+--- which is textbook MSVC `try_emplace`: FNV-1a over the key's 8 bytes
+--- (`^0xcbf29ce484222325`, `*0x100000001b3`), compare `*(int64*)key ==
+--- node[2]`, 0x38-byte node. So a live node is
+---
+---     { _Next @+0x00, _Prev @+0x08, GUID @+0x10, RakNetConnection* @+0x18 }
+---
+--- and the connection it points at repeats that same GUID at +0xf8. Three
+--- values that must agree, so one hit is proof rather than evidence.
+---
+--- WHAT IS STILL A SEARCH: which peer slot a connection belongs to. That is
+--- the one unproven half, so it is gated the same way every other locator
+--- here is -- a candidate offset must resolve a DIFFERENT peer on every
+--- connection, and the run must not name the local machine.
+---
+--- Bounded and one-shot: 0x400 bytes of each object the net component routes
+--- through, then 0x200 at each pointer they hold. Finding ONE node is enough
+--- to enumerate every connection in the run, because the map is a linked
+--- list -- so the cost does not scale with the lobby.
+function F._dmg_conn_join()
+    if F._netid.conn_done then return false end
+    if not (I.read_u64 and _dmg.order) then return false end
+    local wanted = false
+    for _, row in ipairs(_dmg.order) do
+        if not row.is_local and not row.player and _ptr_plausible(row.key) then
+            wanted = true
+            break
+        end
+    end
+    if not wanted then return false end
+
+    local peers = R.net.peers()
+    if #peers == 0 then return false end
+
+    -- Rows keyed by owner GUID. A GUID two rows share names neither -- and two
+    -- rows sharing one is itself worth saying, because it would mean the field
+    -- is not per-player after all.
+    local by_guid, guids, dup = {}, 0, false
+    for _, row in ipairs(_dmg.order) do
+        local g = F._dmg_owner_guid(row)
+        if g then
+            guids = guids + 1
+            if by_guid[g] and by_guid[g] ~= row then by_guid[g], dup = false, true
+            else by_guid[g] = row end
+        end
+    end
+    if guids == 0 then return false end
+
+    local mgr, scene = F._dmg_conn_mgr()
+    if not mgr then return false end
+    local needles = F._dmg_peer_needles(peers)
+
+    -- The registry, once found, is a linked list: one node reaches all of it.
+    local conns, node_at, walked = {}, nil, 0
+    local guid_at, peer_at, seen, kids = {}, {}, {}, {}
+    local function examine(obj, win, collect)
+        if not _ptr_plausible(obj) or seen[obj] then return end
+        seen[obj] = true
+        for off = 0, win - 8, 8 do
+            local q = I.read_u64(obj + off)
+            if type(q) == "number" and q ~= 0 then
+                local r = by_guid[q]
+                if r then
+                    guid_at[obj + off] = r
+                    -- MAP NODE? The qword after the key is the connection, and
+                    -- the connection repeats the key at +0xf8. Three agreeing
+                    -- values is proof, not evidence.
+                    local val = I.read_u64(obj + off + (F._netid.NODE_VAL - F._netid.NODE_KEY))
+                    if F._dmg_is_conn(val, q) then
+                        conns[q] = val
+                        node_at = node_at or (obj + off - F._netid.NODE_KEY)
+                    end
+                end
+                -- Or the connection itself, held directly.
+                if _ptr_plausible(q) then
+                    local g = I.read_u64(q + F._netid.CONN_GUID)
+                    if type(g) == "number" and by_guid[g] then conns[g] = q end
+                end
+                local e = needles[q]
+                if e then peer_at[obj + off] = e end
+                if collect and _ptr_plausible(q) and off < 0x80 then
+                    kids[#kids + 1] = q
+                end
+            end
+        end
+    end
+
+    -- Every object the net component routes through, not just one: NetSend
+    -- reads C+0xc0 for the local session and NetSendToPeer reads
+    -- [C+0xc8]+0x28 for the same value, so both are entry points into the
+    -- same netcode layer and either may be the one that holds the registry.
+    local objs = { mgr }
+    if scene then objs[#objs + 1] = scene end
+    for off = 0, F._netid.MGRWIN - 8, 8 do
+        local p = I.read_u64(mgr + off)
+        if _ptr_plausible(p) then objs[#objs + 1] = p end
+    end
+    if scene then
+        for off = 0, F._netid.MGRWIN - 8, 8 do
+            local p = I.read_u64(scene + off)
+            if _ptr_plausible(p) then objs[#objs + 1] = p end
+        end
+    end
+    for _, o in ipairs(objs) do examine(o, F._netid.NODEWIN, true) end
+
+    if not next(conns) and not next(guid_at) then
+        -- Second hop, tighter window, capped.
+        local n = 0
+        for _, k in ipairs(kids) do
+            n = n + 1
+            if n > 512 then break end
+            examine(k, 0x100, false)
+        end
+    end
+
+    -- ONE NODE IS THE WHOLE MAP. `_Next` at +0x00 walks the bucket list the
+    -- transport keeps every connection in, so the lobby's size costs nothing:
+    -- the rows this machine has never scanned near are reached anyway.
+    if node_at then
+        local n, cur = 0, I.read_u64(node_at + F._netid.NODE_NEXT)
+        while _ptr_plausible(cur) and cur ~= node_at and n < F._netid.MAP_MAX do
+            local key = I.read_u64(cur + F._netid.NODE_KEY)
+            local val = I.read_u64(cur + F._netid.NODE_VAL)
+            if type(key) == "number" and F._dmg_is_conn(val, key) then
+                conns[key] = val
+                walked = walked + 1
+            end
+            cur = I.read_u64(cur + F._netid.NODE_NEXT)
+            n = n + 1
+        end
+    end
+
+    -- WHICH PEER IS THIS CONNECTION? The only unproven half, so it gets the
+    -- locator discipline: a candidate offset must answer with a DIFFERENT
+    -- peer on every connection it reads, or it is a shared field and names
+    -- nobody. Offsets are relative to the connection object, which makes them
+    -- reportable and re-checkable next session instead of being a one-run
+    -- coincidence.
+    local tally = {}
+    local function offer(off, row, e)
+        local t = tally[off]
+        if t == nil then t = { rows = {}, used = {}, n = 0 }; tally[off] = t end
+        if t.rows[row] and t.rows[row] ~= e then t.bad = true
+        elseif t.used[e] and t.used[e] ~= row then t.bad = true
+        elseif not t.rows[row] then
+            t.rows[row], t.used[e], t.n = e, row, t.n + 1
+        end
+    end
+    for g, obj in pairs(conns) do
+        local row = by_guid[g]
+        if row then
+            for off = 0, F._netid.NODEWIN - 8, 8 do
+                local q = I.read_u64(obj + off)
+                local e = type(q) == "number" and needles[q]
+                if e then offer(off, row, e) end
+            end
+        end
+    end
+    -- FALLBACK, for the case where no connection was reached at all: the same
+    -- rule applied to raw distance between a GUID and a peer value in the
+    -- same region. Weaker (it proves a layout, not an identity), so it only
+    -- runs when the strong path found nothing.
+    if not next(conns) then
+        for ga, row in pairs(guid_at) do
+            if row then
+                for na, e in pairs(peer_at) do
+                    local dd = na - ga
+                    if dd >= -F._netid.NODEWIN and dd <= F._netid.NODEWIN then
+                        offer(dd, row, e)
+                    end
+                end
+            end
+        end
+    end
+    local best, bestd
+    for off, t in pairs(tally) do
+        if not t.bad and t.n >= 2 and (best == nil or t.n > best.n) then
+            best, bestd = t, off
+        end
+    end
+
+    local pair, notes = {}, {}
+    if best then
+        for row, e in pairs(best.rows) do
+            pair[row] = e
+            notes[#notes + 1] = ("row %d <-> %s"):format(row.slot, tostring(e.name))
+        end
+    end
+
+    -- RE-REPORTED WHEN THE INPUT GROWS. Session 7636 logged this line at
+    -- 19:20:44 with ONE row's GUID known, and never again -- by 19:21:28 all
+    -- four were known and the run's real answer went unlogged. A one-shot
+    -- report on a board that fills in over the first minute reports the
+    -- emptiest moment it will ever have.
+    if F._netid.conn_said ~= guids then
+        F._netid.conn_said = guids
+        local gg = {}
+        for _, row in ipairs(_dmg.order) do
+            gg[#gg + 1] = ("row %d=%s"):format(row.slot,
+                row.owner_guid and ("0x%x"):format(row.owner_guid) or "nil")
+        end
+        local ng, np = 0, 0
+        for _ in pairs(guid_at) do ng = ng + 1 end
+        for _ in pairs(peer_at) do np = np + 1 end
+        -- Every half of the search, always. Which one came back empty is the
+        -- whole diagnosis: no GUID hit means the records are not reachable
+        -- from the manager, no peer hit means they are reachable but hold
+        -- nothing that identifies a slot, and both non-zero with no delta
+        -- means they are not one record.
+        local nc = 0
+        for _ in pairs(conns) do nc = nc + 1 end
+        R.log(("[rsmm.damage] connection join: mgr=0x%x%s, %d object(s) walked, "
+               .. "rows [%s]%s, %d guid hit(s), %d peer hit(s), %d connection(s) "
+               .. "(%d off the map list, node %s), locator %s, pairs [%s]")
+              :format(mgr, F._dmg_vft_text(mgr), #objs,
+                      table.concat(gg, " "), dup and " (SHARED — not per-player)" or "",
+                      ng, np, nc, walked,
+                      node_at and ("0x%x"):format(node_at) or "none",
+                      bestd and ("%s0x%x"):format(bestd < 0 and "-" or "+",
+                                                  bestd < 0 and -bestd or bestd)
+                             or "none",
+                      #notes > 0 and table.concat(notes, ", ") or "none"))
+    end
+
+    -- ANCHOR. This machine is not one of its own peers, so the local row
+    -- pairing with a peer slot means the record is shared, not owned.
+    for row, e in pairs(pair) do
+        if e and row.is_local then
+            R.log(("[rsmm.damage] connection join REFUSED: this machine's row "
+                   .. "pairs with peer %q, and a peer is by definition another "
+                   .. "machine"):format(tostring(e.name)))
+            F._netid.conn_done = true
+            return false
+        end
+    end
+    -- DISTINCTNESS.
+    local by = {}
+    for row, e in pairs(pair) do
+        if e and e.name then
+            if by[e.name] then
+                R.log(("[rsmm.damage] connection join REFUSED: rows %d and %d both "
+                       .. "pair with %q"):format(by[e.name].slot, row.slot, e.name))
+                F._netid.conn_done = true
+                return false
+            end
+            by[e.name] = row
+        end
+    end
+
+    local named = 0
+    for row, e in pairs(pair) do
+        if e and e.name and not row.is_local and _dmg.names[row.slot] == nil then
+            row.label, row.label_guess, row.player = e.name, false, e.name
+            F._netid.conn_hit[row.key] = e
+            named = named + 1
+        end
+    end
+    if named > 0 then
+        F._netid.conn_done = true
+        R.log(("[rsmm.damage] CONNECTION JOIN PROVEN: %d row(s) named from the "
+               .. "connection record the engine routes by — the object that "
+               .. "holds the hero's creatingSystemGUID also holds the peer "
+               .. "slot, so the pairing is an equality, not a guess"):format(named))
+    end
+    return named > 0
+end
+
+--- A heap object's vftable as an RVA, for the log. "" when it has none.
+function F._dmg_vft_text(obj)
+    local mb = I.module_base and I.module_base()
+    local vft = I.read_u64 and I.read_u64(obj)
+    if mb and mb ~= 0 and _ptr_plausible(vft) and vft > mb then
+        return (" (vftable rva 0x%x)"):format(vft - mb)
+    end
+    return ""
 end
 
 --- One-shot: what session ids does this row's net component reach?
@@ -8386,6 +8984,10 @@ function F._dmg_netid_pass()
     -- disassembly names outright, and it costs a table lookup per (row,
     -- member) pair. Everything below is a search.
     if F._dmg_guid_join() then return true end
+    -- FIRST, because it is the only one that is read rather than searched.
+    if F._dmg_rak_join() then return true end
+    -- Then the registry walk, then the hero-side scans.
+    if F._dmg_conn_join() then return true end
     if F._dmg_peer_join() then return true end
     local targets = F._dmg_netid_targets()
     if not targets then return false end
