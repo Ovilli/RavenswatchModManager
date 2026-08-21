@@ -20,6 +20,18 @@ local I = native._internal or native
 
 local R = {}
 
+-- `F` is the SDK's private helper table. It is DECLARED here, at the top of
+-- the chunk, and only POPULATED much further down (see "local F" -> "F = {}"
+-- below the damage-meter constants). The declaration has to come first
+-- because closures capture locals LEXICALLY: the LobbyAttributes_Parse detour
+-- is defined above the old declaration site, so `F` compiled there as a
+-- GLOBAL read and was nil at runtime -- "attempt to index a nil value
+-- (global 'F')" on every parse, 20 in a row, after which the hook layer
+-- DISABLED the callback. That killed ally names for the whole session,
+-- because members other than the local one are parsed later (when they join),
+-- long after the callback was switched off.
+local F = {}
+
 -- mod identity ----------------------------------------------------------
 
 function R.mod_dir()  return native.mod_dir() end
@@ -4166,6 +4178,96 @@ function R.debug.stdstring_at(va)
     return text
 end
 
+-- netcode identity ---------------------------------------------------------
+--
+-- The engine's own per-entity network state, read with GUARDED reads only.
+--
+-- Why not just call Entity_GetNetId: it reaches Entity_GetNetComponent, which
+-- walks the component map with no guard of its own, so an entity whose store
+-- slot holds the -1 sentinel is an access violation rather than a nil return.
+-- That is the 2026-08-15 crash (dump a97c76fe) and it is banned from the SDK.
+--
+-- It does not need to be called. The component map is a plain open-addressed
+-- table and its shape is recorded (Entity_GetNetComponent, verified in Ghidra
+-- 2026-08-20): control bytes @entity+0x5e8, slot array @entity+0x5f0, bucket
+-- mask @entity+0x600, slots 0x10 bytes of { u32 class_id; u64 value }. Walking
+-- that array with `I.read_*` gives the same answer and CANNOT fault: a bad page
+-- reads nil. Slower than the engine's SIMD probe and completely safe, which is
+-- the right trade for something a mod calls.
+
+-- EXTEND, never re-create: R.net already exists (on_repl_setup, above). A bare
+-- `R.net = {}` here silently deleted that function for every mod.
+R.net = R.net or {}
+
+-- Fields of R.net, not five `local`s: the module chunk is ONE Lua function and
+-- Lua caps a function at 200 live locals. rsmm.lua already sits at that ceiling
+-- -- five more here stopped the whole SDK compiling, which kills every mod.
+R.net._k = {
+    CLASS = 0x154fce5c,   -- oCEntityCpntNet, per Entity_GetNetComponent
+    AUTH  = 0x130,        -- 0 = this machine owns the entity
+    SLOTS = 0x5f0,        -- component slot array  { u32 class_id; u64 value }
+    MASK  = 0x600,        -- bucket mask; capacity = mask + 1
+    MAX   = 1024,         -- refuse an implausible capacity outright
+}
+
+--- The entity's component of `class_id`, or nil. Never faults, never calls the
+--- engine. Bounded by R.net._k.MAX so a corrupt mask cannot spin.
+function R.net.component(entity, class_id)
+    class_id = class_id or R.net._k.CLASS
+    if not (I.read_u64 and I.read_u32) or not _ptr_plausible(entity) then return nil end
+    local slots = I.read_u64(entity + R.net._k.SLOTS)
+    local mask  = I.read_u64(entity + R.net._k.MASK)
+    if not _ptr_plausible(slots) then return nil end
+    if type(mask) ~= "number" or mask < 0 or mask >= R.net._k.MAX then return nil end
+    for i = 0, mask do
+        local slot = slots + i * 0x10
+        if I.read_u32(slot) == class_id then
+            local v = I.read_u64(slot + 8)
+            if _ptr_plausible(v) then return v end
+            return nil
+        end
+    end
+    return nil
+end
+
+--- Does THIS machine own `entity`? true / false / nil when unknown.
+---
+--- The engine's own test, not a guess: NamedEvent_NetSend refuses to emit a
+--- networked event when this byte is non-zero ("remotely owned, someone else
+--- speaks for it"), and both damage hit paths gate their network emit on it.
+--- Distinct from the hero controller's +0x1d88, which answers "is this the
+--- player at this keyboard" for a HERO; this answers "does this client have
+--- authority over this entity" for anything replicated.
+function R.net.is_local(entity)
+    local c = R.net.component(entity)
+    if not c or not I.read_u8 then return nil end
+    local b = I.read_u8(c + R.net._k.AUTH)
+    if type(b) ~= "number" then return nil end
+    return b == 0
+end
+
+--- The session id an incoming networked event was stamped with, or nil.
+---
+--- `NamedEvent_NetSend` writes the SENDER's session id (int64) to ev+0x38
+--- before handing the event to NamedEvent_NetSendToPeer, so every replicated
+--- event carries the identity of the machine that raised it. This is the only
+--- engine-provided per-player key that reaches gameplay code, and it is what a
+--- sound entity->player join has to be built on -- as opposed to searching the
+--- heap for a name string, which is what the identity sweep did and why it
+--- answered at a different offset every single time it "worked".
+---
+--- ⚠ NOT YET JOINED TO A NAME. The lobby member's key is a std::string session
+--- id at member+0x00 (LobbyMembers_Local); whether that string is this int64's
+--- text form is unproven, and proving it needs one co-op launch with
+--- `R.net.diag(true)`. Until then this returns the raw id and nothing consumes
+--- it -- an unproven join must not be allowed to label a row.
+function R.net.event_session(ev)
+    if not I.read_u64 or not _ptr_plausible(ev) then return nil end
+    local id = I.read_u64(ev + 0x38)
+    if type(id) ~= "number" or id == 0 or id == 0xffffffffffffffff then return nil end
+    return id
+end
+
 -- lobby roster ------------------------------------------------------------
 --
 -- The session's players, by their real display names.
@@ -4235,6 +4337,14 @@ end
 -- and each new top-level `local` fails compilation of the whole SDK.
 local LOBBY_HOOK = {
     BLOB_MAX   = 4096,
+    -- Distinct attribute blobs remembered, so a re-parse of an UNCHANGED
+    -- member costs one table lookup instead of the full decode + snapshot.
+    -- Comfortably more than a lobby's worth of members x their attribute
+    -- states; the whole set is dropped and rebuilt when it overflows, which
+    -- costs one full-price parse per member and needs no LRU bookkeeping.
+    RECENT_BLOBS = 64,
+    recent     = {},
+    recent_n   = 0,
     RECORD_MAX = 16,               -- plenty for a 4-player lobby, bounded anyway
     state      = 0,                -- 0 not tried, 1 live here, 2 unavailable
     by_name    = {},
@@ -4245,6 +4355,17 @@ local LOBBY_HOOK = {
     logs       = 0,
     armed_at   = nil,              -- os.time() when the detour went in
     warned     = false,
+    -- How long a member stays on the roster after the last time the engine
+    -- parsed their attributes. The roster used to be APPEND-ONLY, so a session
+    -- that backed out of matchmaking and searched again accumulated everyone it
+    -- had ever seen: session 5a1d listed SIX members for a four-player run, two
+    -- of whom (TJ, SiggR22) never entered it. The engine re-parses the members
+    -- it still has whenever the lobby changes, so a leaver simply stops being
+    -- refreshed — age is the signal.
+    TTL        = 120,
+    MAX_PLAYERS = 4,               -- the game's own party cap
+    seq        = 0,                -- parse counter: recency without a clock
+    pruned     = {},               -- names already reported as gone
 }
 
 --- One attribute's value out of a raw blob, or nil.
@@ -4351,16 +4472,50 @@ function R.lobby._note_blob(text)
     -- blob is available on every call whereas param_1 is not always a record.
     local hero = LOBBY_HOOK.value(text, "RequestedHero")
     local hero_id = tonumber(hero)
+    -- -1 is "has not picked a hero yet", which every member reads as in the
+    -- lobby before the run starts (session 5a1d: `Ovili(hero -1)`). Storing it
+    -- makes -1 look like a hero id, and worse, a later blob would overwrite a
+    -- REAL id with it when the player re-enters hero select.
+    if hero_id and hero_id < 0 then hero, hero_id = nil, nil end
+    -- The lobby says whether this member is still in it. A member the engine
+    -- re-parses on the way OUT is removed immediately rather than aged out.
+    local inlobby = LOBBY_HOOK.value(text, "InLobby")
+    -- The player's NETWORK identity. A display name has no reason to be stored
+    -- on a hero controller and four sessions of sweeping confirm it is not —
+    -- but a peer id does, because that is what the netcode addresses players
+    -- by. Same needle machinery, better needle.
+    local eos = LOBBY_HOOK.value(text, "m_sEosUserId")
+    if type(eos) ~= "string" or #eos < 8 or #eos > 64 then eos = nil end
     local e = LOBBY_HOOK.by_name[name]
     if e then
         e.hero = hero or e.hero
         e.hero_id = hero_id or e.hero_id
+        e.eos = eos or e.eos
         e.seen = os.time()
+        LOBBY_HOOK.seq = LOBBY_HOOK.seq + 1
+        e.seq = LOBBY_HOOK.seq
+        if inlobby ~= nil then e.in_lobby = (inlobby ~= "false") end
     else
-        e = { name = name, hero = hero, hero_id = hero_id,
-              seen = os.time(), src = "hook" }
+        LOBBY_HOOK.seq = LOBBY_HOOK.seq + 1
+        e = { name = name, hero = hero, hero_id = hero_id, eos = eos,
+              in_lobby = (inlobby == nil) or (inlobby ~= "false"),
+              seen = os.time(), seq = LOBBY_HOOK.seq, src = "hook" }
         LOBBY_HOOK.by_name[name] = e
         LOBBY_HOOK.order[#LOBBY_HOOK.order + 1] = e
+        -- One line the FIRST time a name is seen, for as long as the session
+        -- lasts. The full-blob dump above stops after three fires, which in
+        -- every logged session so far was three parses of the LOCAL player
+        -- inside the first 20 seconds -- so a remote member parsed two minutes
+        -- later left no trace at all, and "the hook is working" and "the hook
+        -- is working and nobody else's attributes ever arrive" read the same
+        -- from outside. They are different problems with different fixes.
+        R.log(("[rsmm.lobby] new member %q (hero %s) on parse #%d")
+              :format(name, tostring(hero_id or hero or "?"), LOBBY_HOOK.fires))
+    end
+    -- Rejoining clears the "they left" latch, so a second departure is
+    -- reported too.
+    if LOBBY_HOOK.pruned[name] then
+        LOBBY_HOOK.pruned[name] = nil
     end
     return e
 end
@@ -4403,7 +4558,7 @@ function LOBBY_HOOK.arm()
         return
     end
     -- void*(void* self, StringDesc* blob): pointer return, two pointer args.
-    local ok, slot, why = pcall(R.hook, va, "ppp", function(self, blob)
+    local function on_parse(self, blob)
         -- Runs on the GAME thread inside the detour: page-guarded reads and a
         -- table write only, never an engine call. Returning nil replays the
         -- original, so the parse itself is untouched.
@@ -4446,9 +4601,144 @@ function LOBBY_HOOK.arm()
             R.log(string.format(
                 "[rsmm.lobby] parse #%d: record=0x%x blob=%d byte(s) %q",
                 LOBBY_HOOK.fires, self or 0, len,
-                type(text) == "string" and text:sub(1, 120) or "<unreadable>"))
+                -- The whole blob, not the first 120 bytes. Every needle the
+                -- identity sweep has comes out of this payload, and session
+                -- fb4f could not be diagnosed because the half that carries
+                -- `m_sEosUserId` was the half being cut off.
+                type(text) == "string" and text:sub(1, 512) or "<unreadable>"))
         end
-        if type(text) == "string" then R.lobby._note_blob(text) end
+        if type(text) == "string" then
+            -- IDENTICAL BLOB = NOTHING CHANGED. Skip the whole body.
+            --
+            -- Session a34f parsed 92,062 times in three minutes -- ~500/s, on
+            -- the GAME THREAD, because the engine re-serialises every member
+            -- on every lobby poll whether or not anything moved. Each call was
+            -- costing four string.find passes over a 376-byte blob plus a
+            -- 0x100-byte member snapshot (32 guarded reads), so this detour
+            -- alone was doing millions of reads a minute. That is the hard
+            -- stutter, and it is on the thread that draws frames.
+            --
+            -- Bounded to RECENT_BLOBS entries and keyed by the text itself: if
+            -- the bytes are the same, the member's attributes are the same by
+            -- definition, so there is nothing for _note_blob to learn and
+            -- nothing new to snapshot. A blob that actually changes misses the
+            -- cache and takes the full path exactly as before.
+            local recent = LOBBY_HOOK.recent
+            if recent[text] then return nil end
+            recent[text] = true
+            LOBBY_HOOK.recent_n = LOBBY_HOOK.recent_n + 1
+            if LOBBY_HOOK.recent_n > LOBBY_HOOK.RECENT_BLOBS then
+                LOBBY_HOOK.recent, LOBBY_HOOK.recent_n = { [text] = true }, 1
+            end
+            local e = R.lobby._note_blob(text)
+            -- THE MEMBER'S OWN SESSION ID, for the row->player join.
+            --
+            -- `blob` is the member's attribute field at member+0x28
+            -- (LobbyMembers_List: the callers do
+            -- `LobbyAttributes_Parse(&rec, *m + 0x28)`), so subtracting 0x28
+            -- recovers the member object for free -- the note on that symbol
+            -- says exactly this. member+0x00 is its std::string session id,
+            -- which LobbyMembers_Local proves is the stable per-player key:
+            -- the engine finds "everyone but me" by comparing it.
+            --
+            -- Stored as TEXT and never parsed into a number here. Whether this
+            -- string is the decimal or hex form of the int64 the netcode
+            -- stamps on an event (ev+0x38) is exactly the thing that has to be
+            -- PROVEN at runtime rather than assumed -- see F._dmg_session_join.
+            if e and _ptr_plausible(blob) then
+                local member = blob - 0x28
+                if _ptr_plausible(member) then
+                    if not e.session then
+                        local sid = R.debug.stdstring_at(member)
+                        if type(sid) == "string" and #sid > 0 then
+                            e.session = sid
+                            if LOBBY_HOOK.fires <= 6 then
+                                R.log(("[rsmm.lobby] %q session id %q (member 0x%x)")
+                                      :format(tostring(e.name), sid, member))
+                            end
+                        end
+                    end
+                    -- SNAPSHOT the member's pointers HERE, inside the detour.
+                    --
+                    -- Reading them later is reading freed memory: the callers
+                    -- do `LobbyMembers_List(scene, &members)` and DESTROY each
+                    -- member afterwards (the note on that symbol says so), so
+                    -- the member address is dangling by the time the damage
+                    -- tick runs. Session 9e4f is what that looks like -- 30
+                    -- hits across four rows, every one naming the SAME player,
+                    -- because only one stale window still read as pointers and
+                    -- nothing was left to poison it.
+                    --
+                    -- Inside the detour the object is alive by construction.
+                    -- The member ADDRESS itself is deliberately not a needle:
+                    -- it is a temporary, so a later allocation reusing it
+                    -- would match.
+                    local ptrs, n, words = {}, 0, {}
+                    -- F._netid.MEMWIN, not a local: the module chunk is one Lua
+                    -- function and Lua caps it at 200 live locals, which this file
+                    -- already sits on. One more stops the whole SDK compiling.
+                    for off = 0, F._netid.MEMWIN - 8, 8 do
+                        local v = I.read_u64(member + off)
+                        if type(v) == "number" and v ~= 0 and v ~= -1 then
+                            -- EVERY qword, not only the pointers. The netcode's
+                            -- owner key is a RakNetGUID: oCSLNetReplica is a
+                            -- RakNet::Replica3 (its ctor installs
+                            -- RakNet::NetworkIDObject and RakNet::Replica3
+                            -- vftables and initialises two 16-byte GUIDs at
+                            -- +0x28 and +0x38), and +0x28 is
+                            -- creatingSystemGUID -- the peer that CREATED the
+                            -- replica, i.e. the player who owns the hero.
+                            -- That is a plain 64-bit number, which a pointer
+                            -- filter throws away. If the game records which
+                            -- peer a lobby member is, this is what it records.
+                            words[v] = true
+                        end
+                        if _ptr_plausible(v) and not ptrs[v] then
+                            ptrs[v] = true; n = n + 1
+                        end
+                    end
+                    if n > 0 then e.ptrs, e.nptrs = ptrs, n end
+                    if next(words) then e.words = words end
+                end
+            end
+            -- Pair the member OBJECT with the name this very call wrote into
+            -- it. The pair is what makes the reverse link possible: a member
+            -- object that points at a hero controller names that controller,
+            -- and the objects outlive the lobby screen.
+            -- ⚠⚠ NOTHING HERE IS A STABLE IDENTITY. RE of the call
+            -- sites (2026-08-19) closed this door for good: the callers do
+            --     LobbyMembers_List(scene, &members);
+            --     for (m : members) LobbyAttributes_Parse(&stack_rec,
+            --                                             *m + 0x28);
+            --     for (m : members) { ...; destroy(m); }
+            -- so param_1 is a stack local AND the members themselves are
+            -- freshly allocated copies that are freed at the end of the same
+            -- call. Session 5636 proved it from the other side: the same
+            -- address arrived as "tyki07" and minutes later as "Ovili".
+            -- Neither argument identifies a player beyond this instant, so the
+            -- reverse "member object -> hero controller" link that lived here
+            -- has been removed rather than tuned. What survives is what the
+            -- blob SAYS: the name and the requested hero, which is what
+            -- _note_blob keeps.
+        end
+    end
+
+    -- The body runs under pcall, and the reason is not defensiveness for its
+    -- own sake: the hook layer DISABLES a callback that raises 20 times in a
+    -- row, and this callback is the ONLY path a remote player's name reaches
+    -- this machine. Session 4c36 is what that costs -- a nil-index bug threw
+    -- on all three of the local player's parses inside the first 20 seconds,
+    -- the slot was switched off, and every ally who joined 90 seconds later
+    -- was parsed by an engine nobody was listening to. Four players on the
+    -- board, one name. A raise here must cost the fields that one parse would
+    -- have set, never the hook.
+    local ok, slot, why = pcall(R.hook, va, "ppp", function(self, blob)
+        local pok, perr = pcall(on_parse, self, blob)
+        if not pok and not LOBBY_HOOK.err_said then
+            LOBBY_HOOK.err_said = true
+            R.log("[rsmm.lobby] parse callback raised (names keep arriving on "
+                .. "later parses): " .. tostring(perr))
+        end
         return nil
     end)
     -- "already-hooked": another mod's state owns the detour, so OUR callback
@@ -4481,13 +4771,124 @@ end
 --- again on a timer. Reading is now a handful of guarded byte reads against
 --- addresses found once, and finding those addresses is a separate, explicitly
 --- background-only call.
-function R.lobby.members()
+--- Is this hook entry still part of the CURRENT lobby?
+---
+--- Age is measured against the NEWEST parse, never against the clock. The
+--- engine re-parses the members it still has whenever the lobby changes, so
+--- everyone present gets refreshed together and a leaver's timestamp simply
+--- stops advancing. Measuring against `os.time()` instead would prune the
+--- whole roster two minutes into a run, because a run in progress parses
+--- nothing at all.
+function LOBBY_HOOK.current(e, newest, rank)
+    -- ⚠ `InLobby` is NOT membership. Session ea68 proved it: the flag goes
+    -- FALSE for everyone the moment the run starts (it means "sitting in the
+    -- lobby menu"), so treating it as "left" pruned all four real players —
+    -- Ovili, BombsAway, Luxman, dickydackydoo, every one of them on the
+    -- end-of-run scoreboard — and left only `jack`, a leftover from a lobby
+    -- that had been abandoned minutes earlier. Elimination then pinned "jack"
+    -- on BombsAway's 3.5k damage. Do not read this flag as presence.
+    --
+    -- What is left is recency, and a hard cap: Ravenswatch runs at most FOUR
+    -- players, so the fifth-most-recently-parsed member cannot be in this run
+    -- whatever their timestamp says. In ea68 that alone is decisive — the four
+    -- real players were parsed 110s before the newest event, `jack` 132s.
+    --
+    -- The player at this keyboard is exempt from BOTH rules, not just the cap.
+    -- Session 6136 dropped "Ovili" mid-run ("last parsed 123s before the
+    -- newest member") because a run in progress re-parses the OTHER members
+    -- (they are still moving through lobby state) and never re-parses us. The
+    -- one member certain to be in the run is the one running the meter.
+    if LOBBY_HOOK.is_local(e) then return true end
+    if rank and rank > LOBBY_HOOK.MAX_PLAYERS then return false end
+    -- ONCE THE RUN STARTS, THE CAP IS THE ONLY RULE. The recency TTL that used to sit here is gone, and
+    -- the exemption above says why: mid-run the engine stops re-parsing lobby
+    -- attributes, so "last parsed 121s before the newest member" is the normal
+    -- state of a player who is present and playing. That was already known for
+    -- the LOCAL member (session 6136 dropped "Ovili" mid-run and the exemption
+    -- was added) -- the same is true of everyone else, which the exemption
+    -- missed because the other members keep being re-parsed for as long as
+    -- anybody is still moving through lobby state, and then stop.
+    --
+    -- Sessions bd68 and 3e36 are the cost. 3e36 evicted three of four players
+    -- SIX times across one 86-minute run ("αβ²" twice, "Xiyufeiniao" three
+    -- times, "on3pmBR" once), each re-added and evicted again, so the name
+    -- pool oscillated the whole run. Guessed labels are drawn from that pool,
+    -- so rows were re-drawn from whatever survived and the final board carried
+    -- "on3pmBR" on TWO rows while Xiyufeiniao never appeared at all.
+    --
+    -- The case the TTL was written for is still covered: in session ea68 the
+    -- leftover "jack" was the FIFTH most recently parsed member, so the party
+    -- cap above rejects it on rank alone. A member who genuinely left and is
+    -- inside the cap now lingers as an unused NAME, which costs a placeholder
+    -- at worst -- against evicting a live player, which puts a real name on
+    -- another player's damage.
+    --
+    -- `InLobby` is the discriminator, and this file already documents why it
+    -- is trustworthy for THIS question even though it is useless as presence:
+    -- it means "sitting in the lobby menu" and goes false for EVERYONE the
+    -- moment the run starts. So while anyone still reads true the lobby is
+    -- live, members are being re-parsed, and one that stopped really did leave
+    -- (session 5a1d's abandoned lobby, where the prune is what stops a
+    -- leftover name being handed to a row). Once they all read false there is
+    -- no lobby left to leave, and a stale timestamp means nothing.
+    if LOBBY_HOOK.in_run() then return true end
+    if not newest or not e.seen then return true end
+    return (newest - e.seen) <= LOBBY_HOOK.TTL
+end
+
+--- Has the run started? True when members exist and NONE is in the lobby menu.
+---
+--- Deliberately not a gameplay-bus signal: session a14f logged "no run signal
+--- on this build (neither the analytics run boundary nor the gameplay bus has
+--- fired)", so the one reliable statement about run state is the one the lobby
+--- blobs carry themselves.
+--- Read the FRESHEST parse, not every member. A leftover from an abandoned
+--- lobby keeps whatever `InLobby` it was last parsed with -- true, forever,
+--- because nothing re-parses it -- so asking "is everyone out of the menu"
+--- lets one dead entry hold the answer at false for the whole session, which
+--- is precisely the state this is meant to detect. The newest parse is the
+--- only one describing the lobby as it is now.
+function LOBBY_HOOK.in_run()
+    local best
+    for _, e in pairs(LOBBY_HOOK.by_name) do
+        if not best or (e.seq or 0) > (best.seq or 0) then best = e end
+    end
+    return best ~= nil and not best.in_lobby
+end
+
+--- Is this entry the player at this keyboard? Steam knows our own name, and
+--- the one member who is certainly in the run must never be capped out.
+function LOBBY_HOOK.is_local(e)
+    local ok, me = pcall(R.player.name)
+    return ok and type(me) == "string" and me == e.name
+end
+
+--- Newest parse timestamp across the hook's entries, or nil.
+function LOBBY_HOOK.newest()
+    local newest = nil
+    for _, e in ipairs(LOBBY_HOOK.order) do
+        if e.seen and (not newest or e.seen > newest) then newest = e.seen end
+    end
+    return newest
+end
+
+--- Every lobby member. Pass `all` to include people who have since LEFT.
+---
+--- The roster is built from a detour, so it accumulates: session 5a1d listed
+--- six members for a four-player run because the session had backed out of
+--- matchmaking and searched again, and every candidate teammate ever parsed
+--- stayed on the list forever. Stale names are not harmless — they are what
+--- "name the leftover row" hands out.
+function R.lobby.members(all)
     local out, seen = {}, {}
+    local newest = LOBBY_HOOK.newest()
     -- Member RECORDS first: read back through the pointers the detour saw, so
     -- the fields are the engine's own (name, RequestedHero, Steam id) rather
     -- than anything recovered from the blob's text.
     for _, va in ipairs(LOBBY_HOOK.records) do
         local m = LOBBY_HOOK.read(va)
+        -- NOT filtered on the record's InLobby byte either — same flag, same
+        -- meaning ("in the lobby menu"), and it is false for everyone in a run.
         if m and not seen[m.name] then
             seen[m.name] = true
             out[#out + 1] = m
@@ -4495,11 +4896,37 @@ function R.lobby.members()
     end
     -- Then whatever the blob told us on the first pass, for anyone whose
     -- record has not read back cleanly yet.
-    for _, m in ipairs(LOBBY_HOOK.order) do
+    -- Most recently parsed first, so `rank` is "how many members are fresher
+    -- than this one" — the party cap then does the rest.
+    local by_recency = {}
+    for _, m in ipairs(LOBBY_HOOK.order) do by_recency[#by_recency + 1] = m end
+    -- By PARSE SEQUENCE, not by `seen`: os.time() has one-second resolution and
+    -- a lobby update parses every member inside the same second, so a
+    -- timestamp sort is a coin flip and the tiebreak silently evicts whoever
+    -- loses it. The counter is exact.
+    table.sort(by_recency, function(a, b) return (a.seq or 0) > (b.seq or 0) end)
+    for rank, m in ipairs(by_recency) do
         if not seen[m.name] then
-            seen[m.name] = true
-            out[#out + 1] = { name = m.name, hero = m.hero,
-                              hero_id = m.hero_id, src = "hook" }
+            if all or LOBBY_HOOK.current(m, newest, rank) then
+                seen[m.name] = true
+                out[#out + 1] = { name = m.name, hero = m.hero,
+                                  hero_id = m.hero_id, seen = m.seen,
+                                  eos = m.eos, session = m.session,
+                                  member = m.member, ptrs = m.ptrs,
+                                  words = m.words,
+                                  in_lobby = m.in_lobby, src = "hook" }
+            elseif not LOBBY_HOOK.pruned[m.name] then
+                -- Once per name. A roster that silently shrinks is as hard to
+                -- read as one that silently grows.
+                LOBBY_HOOK.pruned[m.name] = true
+                R.log(("[rsmm.lobby] %q is not in this lobby (%s) — dropped "
+                       .. "from the roster"):format(m.name,
+                    rank > LOBBY_HOOK.MAX_PLAYERS
+                        and ("%d newer members exist and the game seats %d")
+                            :format(rank - 1, LOBBY_HOOK.MAX_PLAYERS)
+                        or ("last parsed %ds before the newest member")
+                           :format((newest or 0) - (m.seen or 0))))
+            end
         end
     end
     -- Say it ONCE, the first time names exist. Without this the only way to
@@ -4676,6 +5103,31 @@ function R.lobby.allies()
         if m.name ~= me then out[#out + 1] = m.name end
     end
     return out
+end
+
+--- Hero name for a lobby `RequestedHero` id, or nil.
+---
+--- The twelve shipped `Definitions\\Heroes\\*.herodef.ot` in load (alphabetical)
+--- order. INFERRED, not read from the engine: the id is not stored in the
+--- herodef payload, so this is positional. It matches every observation to
+--- hand -- session 304f had the local player at RequestedHero 10, and index 10
+--- is Snow_Queen, which is also the one hero `_HERO_SIGNATURES` was seeded from
+--- (i.e. the hero whose events were catalogued from that very machine).
+---
+--- DISPLAY ONLY. Nothing may name a damage row from this: knowing that a
+--- player picked Juliet does not tell you WHICH ROW is Juliet, because the hero
+--- entity carries no hero id to compare against (Ghidra: the hero entity is a
+--- generic component aggregate with no type/def field). It exists so a roster
+--- line reads "Yume (Juliet)" instead of "Yume (hero 4)", which is what lets a
+--- player map slots to people by eye and fill in player_1..player_4.
+R.lobby.HERO_NAMES = {
+    [0] = "Aladdin", "Beowulf", "Carmilla", "Geppetto", "Juliet", "Melusine",
+          "Merlin", "Piper", "Red", "Romeo", "Snow_Queen", "Sun_Wukong",
+}
+
+function R.lobby.hero_name(id)
+    if type(id) ~= "number" then return nil end
+    return R.lobby.HERO_NAMES[id]
 end
 
 -- interaction bus ---------------------------------------------------------
@@ -5066,6 +5518,9 @@ local DMG = {
     -- linear slot walk on the MAIN THREAD, per tick, for the whole run. Three
     -- attempts is enough to catch an entity that was merely mid-construction.
     VICTIM_RETRIES   = 3,
+    -- Reason string for the stale-ally rebind. A GUESS, not an identity: it
+    -- must never unlock the idle-adoption path in F._dmg_may_rebind.
+    STALE_ALLY = "the only ally row whose controller died with the last chapter",
     PROBE_VICTIMS    = 12,       -- distinct victims the probe reports, then off
     PROBE_VFTS       = 6,        -- component vftables logged per victim
     -- The engine's own attack-type names, read out of the table at
@@ -5074,7 +5529,7 @@ local DMG = {
               "trait", "ultimate", "dash" },
 }
 
-local F = {}
+F = {}   -- populate the table declared at the top of the chunk
 local _dmg = {
     on       = false,
     window   = 10,        -- seconds behind `dps`
@@ -5101,9 +5556,46 @@ local _dmg = {
     -- end-screen total counts prop damage, so counting it is what MATCHES the
     -- game, and dropping it is a deliberate divergence a mod asks for.
     ignore_scenery = false,
+    -- The identity hunt (whole-address-space scan + the 24k-probe blind sweep).
+    -- OPT-IN, and off by default since 2026-08-20.
+    --
+    -- Not because it is slow -- because it is a COINCIDENCE GENERATOR. Every
+    -- ally name it has ever produced, across every shipped log, came through a
+    -- DIFFERENT offset chain:
+    --
+    --     entity+0x610 -> +0x140    "Gennadiy Tiger`s лапки"
+    --     entity+0x678 -> +0x2d0    "Ovili"        (the LOCAL row)
+    --     entity+0xad8 -> +0x1c0    "yjukih"
+    --     entity+0x440 -> +0x2f0    "Shingaro Miamada"
+    --     entity+0xff0 -> +0x8      "Yume"
+    --     member+0x360 -> +0xd0     "Ovili"        (the LOCAL row)
+    --     member+0x920 -> +0x2a8    "Timattttttt"  (the LOCAL row -- and WRONG)
+    --     member+0x1138 -> +0x248   "gaetemp91"
+    --     member+0x210              "exs1stenz"
+    --
+    -- Nine successes, nine offsets, no repeat. A real field answers at the SAME
+    -- offset every time; this is finding whatever copy of a roster string
+    -- happens to be reachable from the object, and which row it lands on is
+    -- arbitrary. Session 6136 is the proof it can be wrong rather than merely
+    -- unlucky: it named the LOCAL row "Timattttttt" with Ovili at the keyboard,
+    -- which then consumed that name and left its real owner on a placeholder.
+    -- Ghidra (2026-08-20) closed the question for two of those chains: the exe
+    -- contains ZERO sites that walk entity+0x678 -> +0x2d0 or +0xad8 -> +0x1c0.
+    --
+    -- It also costs: 89s of blind sweeping across 12 row-passes in session 174f
+    -- (~3.2M guarded reads) for zero names. But the cost is the lesser reason.
+    --
+    -- Turn it on with `R.damage.enable{ identity_hunt = true }` when RE'ing the
+    -- identity itself. `R.damage.sweep_identity()` still works either way --
+    -- that is the explicit call, and gating it would break the one entry point
+    -- a person uses deliberately. To LABEL a run reliably, use player_1..4.
+    identity_hunt = false,
     probe    = false,     -- log the class of the first few distinct victims
     probes   = 0,
     vprobed  = {},        -- victim entity -> already reported
+    -- entity -> session id of the machine driving it (see
+    -- F._dmg_note_session). Empty until an event proves the join.
+    sess_by_entity = {},
     vclass   = {},        -- victim entity -> true (enemy) / false (scenery)
     vclass_n = 0,
     -- Victim SETTINGS pointer -> enemy/scenery, learned from the entities whose
@@ -5423,20 +5915,21 @@ function F._dmg_label_for(slot, is_local)
     -- If the roster is not resolved yet the row gets a placeholder and
     -- F._dmg_relabel fixes it as soon as the background scan lands.
     --
-    -- Allies are matched in JOIN ORDER against the lobby's non-local members.
-    -- That is the best link available today: the lobby record carries the name
-    -- but nothing tying it to a hero pointer, so with 3+ players the mapping
-    -- is a guess. Rows carry `label_guess` so a UI can say so.
+    -- ⚠ A name is only taken here when there is exactly ONE ally it could
+    -- belong to and this is the first ally row — that case is exact by
+    -- elimination. The old code matched allies in JOIN ORDER (`allies[rank]`),
+    -- which is the order they first dealt damage in and has nothing to do with
+    -- the lobby's order, so with 3+ players it attached real names to the wrong
+    -- damage totals (reported 2026-08-19, 4p co-op: the local row was right and
+    -- every ally row was shuffled). A wrong name on a real number is worse than
+    -- no name, so everything else waits for the hero-id join in F._dmg_relabel.
     local ok, allies = pcall(R.lobby.allies)
-    if ok and type(allies) == "table" then
-        -- Slot 1 is whoever dealt damage first and the local player occupies
-        -- one slot somewhere, so ally N is the Nth non-local ROW, not slot N.
-        local rank = 0
+    if ok and type(allies) == "table" and #allies == 1 then
+        local others = 0
         for _, row in ipairs(_dmg.order) do
-            if not row.is_local then rank = rank + 1 end
+            if not row.is_local then others = others + 1 end
         end
-        local nm = allies[rank + 1]
-        if nm then return nm end
+        if others == 0 then return allies[1] end
     end
     return "Player " .. tostring(slot)
 end
@@ -5466,9 +5959,29 @@ end
 --- Pure page-guarded reads, once per session, and only when a co-op lobby has
 --- actually produced two identified members and two rows.
 local HERO_ID_PROBE = { done = false, LO = 0, HI = 0x2000,
-                        off = nil, attempts = 0, MAX_ATTEMPTS = 6 }
+                        HOP_HI = 0x800,   -- how far into a hero definition
+                        BUDGET = 20000,   -- probes per background tick; the deep scan is ~900k,
+                                          -- so this finishes it inside a minute
+                        cursor = nil, hits = nil, rows_n = 0, hop = nil,
+                        off = nil, w = 4, attempts = 0, MAX_ATTEMPTS = 6 }
 
-function F._dmg_probe_hero_field()
+--- Read a hero id of width `w` at `va`.
+---
+--- WIDTH MATTERS. The first version read dwords only, and a hero id is a small
+--- number (session ea68's lobby: 2, 4, 5, 6) — exactly the kind of value an
+--- engine stores in a BYTE. A dword read over a byte field picks up whatever
+--- the next three bytes hold, so the id is invisible unless those happen to be
+--- zero. That sweep reported "no offset distinguishes the rows" on a real
+--- 4-player run; it was never in a position to see a u8 or u16 field.
+function F._dmg_read_id(va, w)
+    if w == 1 then return I.read_u8(va) end
+    if w == 2 then return I.read_u16 and I.read_u16(va) end
+    return I.read_u32(va)
+end
+
+--- @param wide  also sweep BYTE and WORD fields. ~3x the reads, so only the
+---              background tick asks for it; the boarding path stays dword-only.
+function F._dmg_probe_hero_field(wide)
     if HERO_ID_PROBE.done then return end
     local okm, members = pcall(R.lobby.members)
     if not okm or type(members) ~= "table" then return end
@@ -5494,24 +6007,203 @@ function F._dmg_probe_hero_field()
     -- lobby still adopts on two, since that is every row there will ever be.
     local need = n >= 3 and 3 or 2
     if #rows < need then return end
-    HERO_ID_PROBE.done = true
+    -- A NEW row is new evidence: restart the scan so every offset is judged
+    -- against the biggest sample available. Otherwise an offset that looked
+    -- unique against three rows is adopted while a fourth would have vetoed it.
+    local c = HERO_ID_PROBE.cursor
+    -- A WIDER call is new evidence too. The damage path probes u32 only; the
+    -- background tick probes u8/u16/u32. Resuming the narrow scan's cursor
+    -- would skip the byte and word passes entirely — and a byte-sized hero id
+    -- is the case this sweep exists for.
+    if not c or HERO_ID_PROBE.rows_n ~= #rows
+       or ((wide and true or false) and not c.wide) then
+        c = { phase = 1, wi = 1, off = HERO_ID_PROBE.LO, hop = 0, ptrs = nil,
+              wide = wide and true or false }
+        HERO_ID_PROBE.cursor, HERO_ID_PROBE.hits = c, {}
+        HERO_ID_PROBE.rows_n = #rows
+    end
 
-    local hits = {}
-    for off = HERO_ID_PROBE.LO, HERO_ID_PROBE.HI, 4 do
-        local seen, ok = {}, true
-        for _, row in ipairs(rows) do
-            local v = I.read_u32(row.key + off)
-            if type(v) ~= "number" or not ids[v] or seen[v] then
-                ok = false
-                break
-            end
-            seen[v] = true
+    local hits = HERO_ID_PROBE.hits
+    -- Widths, each with its own stride: a byte field can start anywhere, a word
+    -- field on any even address.
+    local widths = wide and { 1, 2, 4 } or { 4 }
+
+    -- Two phases. DIRECT looks for the id as a field on the controller —
+    -- which three live four-player sessions have now reported as "no offset
+    -- distinguishes the rows", at every width. HOP looks one pointer deep,
+    -- because that is where an engine of this shape actually keeps it: the
+    -- controller holds a pointer to the hero DEFINITION, and the id is a field
+    -- of the definition. Same evidence test either way, and it is a strong one
+    -- — three or more rows reading DISTINCT ids that are all on the roster, at
+    -- one offset. Resumable and budgeted: the hop space is ~900k probes, which
+    -- is a few minutes of background ticks, not a frame.
+    -- One FIELD, not one width. A byte holding 4 reads as 4 through u8, u16 and
+    -- u32 whenever the bytes after it happen to be zero, so the same location
+    -- was landing in `hits` three times and every deep scan ended "ambiguous"
+    -- — the one outcome that adopts nothing. Widths are tried narrowest first
+    -- and the narrowest wins: a byte field read as a dword only works while the
+    -- neighbours stay zero, which is exactly the trap the wide sweep was added
+    -- to escape.
+    local function record(off, hop, w, text)
+        for _, h in ipairs(hits) do
+            if h.off == off and h.hop == hop then return end
         end
-        if ok then
-            hits[#hits + 1] = string.format("+0x%x", off)
-            if #hits >= 8 then break end
+        hits[#hits + 1] = { off = off, hop = hop, w = w, text = text }
+    end
+
+    -- GROUND TRUTH, free. Row 1 is the local player, Steam already told us who
+    -- that is, and their lobby blob carries their RequestedHero — so any offset
+    -- claiming to be the hero id MUST read exactly that id on the local row.
+    --
+    -- Without this the test only asks that the rows read DISTINCT ids that are
+    -- on the roster, and a 0x2000-byte controller scanned at strides 1/2/4 is
+    -- thousands of small-int fields, plenty of which satisfy that by accident.
+    -- Session 174f did exactly that: it adopted `+0x1b60/u32`, and a sweep of
+    -- the shipped exe (2026-08-20) finds ZERO reads or writes at +0x1b60 on any
+    -- object base — while every offset this meter uses that IS proven in-game
+    -- (+0x15c8 HP, +0x1d80 mirror, +0x1d88 is-local, +0x1db0 stats) shows 11 to
+    -- 58. The engine never touches +0x1b60; it was uninitialised memory that
+    -- happened to hold three roster hero ids, and every ally name on that board
+    -- came from it.
+    --
+    -- The anchor is exactly as sound as the join it guards: `ids` maps
+    -- RequestedHero -> name, so if the local row does not read the local
+    -- member's RequestedHero, the join is meaningless for every other row too.
+    local anchor_row, anchor_id
+    do
+        local okme, me = pcall(R.player.name)
+        if okme and type(me) == "string" and me ~= "" then
+            for _, m in ipairs(members) do
+                if m.name == me and m.hero_id then anchor_id = m.hero_id break end
+            end
+            if anchor_id then
+                for _, row in ipairs(rows) do
+                    if row.is_local then anchor_row = row break end
+                end
+            end
         end
     end
+    HERO_ID_PROBE.anchored = anchor_row ~= nil
+
+    local function judge(read, strict)
+        local seen, matched = {}, 0
+        for i, row in ipairs(rows) do
+            local v = read(i, row)
+            -- The anchor is a veto, not a vote: a wrong value here disqualifies
+            -- the offset outright, however well every other row reads.
+            if anchor_row and row == anchor_row and v ~= anchor_id then
+                return false
+            end
+            if type(v) == "number" and ids[v] then
+                if seen[v] then return false end   -- two rows, one player
+                seen[v] = true
+                matched = matched + 1
+            end
+        end
+        -- `strict` demands EVERY row, not just `need` of them. The deep scan
+        -- searches ~900k offsets instead of 24k, so the coincidence rate is
+        -- ~40x higher and "three rows agreed" stops being rare — a scan that
+        -- ends ambiguous adopts nothing and the run stays on placeholders.
+        -- Requiring the whole board to read a distinct roster id is a test
+        -- almost nothing passes by accident.
+        --
+        -- ⚠ UNTESTED BRANCH. It only differs from the quorum once there are
+        -- MORE rows than `need` (four players, quorum three), and a four-row
+        -- fixture would not board cleanly in the spec harness. The three-row
+        -- deep-scan test exercises this path with strict == need.
+        return matched >= (strict and #rows or need)
+    end
+
+    -- PHASE 1, the field on the controller itself. Runs to completion in this
+    -- call: it is ~24k probes, and the rest of the meter depends on the answer
+    -- being ready the moment the second row boards.
+    if c.phase == 1 then
+        for _, w in ipairs(widths) do
+            for off = HERO_ID_PROBE.LO, HERO_ID_PROBE.HI, w do
+                if judge(function(_, row)
+                        return F._dmg_read_id(row.key + off, w)
+                    end) then
+                    record(off, nil, w, string.format("+0x%x/u%d", off, w * 8))
+                    if #hits >= 8 then break end
+                end
+            end
+            if #hits >= 8 then break end
+        end
+        -- Anything at all here settles it, one way or the other. The deep scan
+        -- below is for the case three live four-player sessions actually
+        -- produced: nothing on the controller, at any width.
+        c.phase = (#hits == 0) and 2 or 3
+    end
+
+    -- PHASE 2, one pointer deep. The controller holds a pointer to the hero
+    -- DEFINITION and the id is a field of that — which is why every direct
+    -- sweep so far reported "no offset distinguishes the rows". ~900k probes,
+    -- so it is budgeted and resumable across background ticks; the evidence
+    -- test is the same strong one (three or more rows reading DISTINCT roster
+    -- ids at one offset).
+    -- ⛔ PHASE 2 IS RE-ONLY, gated on `identity_hunt`.
+    --
+    -- ~900k page-guarded reads, budgeted at 20k per BACKGROUND TICK, i.e. ~45
+    -- ticks of solid probing on every single run. It was ungated, and it is the
+    -- heaviest thing the SDK does -- the "lags sometimes hard" the board was
+    -- blamed for. What makes it waste rather than cost is that the answer is
+    -- already known: three live four-player sessions found no hero id on the
+    -- controller at any width, and Ghidra (2026-08-20) showed why -- there are
+    -- no fixed component slots on oCEntity, so session 7068's chains were heap
+    -- coincidence. The peer table now supplies names by a different route.
+    --
+    -- Phase 1 stays on for everyone: it is a bounded direct sweep and it is
+    -- what would notice if a patch ever DID put the id back on the controller.
+    if c.phase == 2 and not _dmg.identity_hunt then
+        c.phase = 3
+        if not HERO_ID_PROBE.deep_said then
+            HERO_ID_PROBE.deep_said = true
+            R.log("[rsmm.damage] hero-id deep scan skipped (no id on the "
+                .. "controller on this build; enable identity_hunt to re-run it)")
+        end
+    end
+    local budget = HERO_ID_PROBE.BUDGET
+    while budget > 0 and c.phase == 2 do
+        budget = budget - 1
+        local w = widths[c.wi]
+        -- One pointer read per OFFSET, reused across every hop and width;
+        -- per-probe would triple the cost of the phase.
+        if not c.ptrs then
+            c.ptrs = {}
+            local live = 0
+            for i, row in ipairs(rows) do
+                local ptr = I.read_u64(row.key + c.off)
+                c.ptrs[i] = _ptr_plausible(ptr) and ptr or false
+                if c.ptrs[i] then live = live + 1 end
+            end
+            c.live = live
+        end
+        if c.live >= need
+           and c.live == #rows
+           and judge(function(i)
+                   local ptr = c.ptrs[i]
+                   return ptr and F._dmg_read_id(ptr + c.hop, w) or nil
+               end, true) then
+            record(c.off, c.hop, w, string.format("+0x%x -> +0x%x/u%d",
+                                                  c.off, c.hop, w * 8))
+        end
+        c.hop = c.hop + w
+        if c.hop > HERO_ID_PROBE.HOP_HI then
+            c.hop, c.wi = 0, c.wi + 1
+            if c.wi > #widths then
+                c.wi, c.ptrs = 1, nil
+                c.off = c.off + 8                  -- pointer slots are aligned
+                if c.off > HERO_ID_PROBE.HI then c.phase = 3 end
+            end
+        end
+        if #hits >= 8 then c.phase = 3 end
+    end
+    -- Still scanning: say nothing. The version that re-ran the whole sweep
+    -- every tick logged the same "no offset distinguishes the rows" line each
+    -- time, which buried the log without adding one fact.
+    if c.phase <= 2 then return end
+    HERO_ID_PROBE.cursor = nil
+
     local known = {}
     for id, nm in pairs(ids) do known[#known + 1] = string.format("%s=%d", nm, id) end
     table.sort(known)
@@ -5530,8 +6222,10 @@ function F._dmg_probe_hero_field()
     -- the duplicate it fixes. Ambiguity re-arms the probe instead: a later
     -- sweep with more rows narrows it.
     if #hits == 1 then
-        HERO_ID_PROBE.off = tonumber(hits[1]:match("0x%x+"))
+        HERO_ID_PROBE.off, HERO_ID_PROBE.w = hits[1].off, hits[1].w
+        HERO_ID_PROBE.hop = hits[1].hop
         HERO_ID_PROBE.done = true
+        HERO_ID_PROBE.text = hits[1].text   -- so a withdrawal can name it
         -- BACKFILL every row that was boarded before the identity existed.
         -- The sweep cannot run until two rows and two named lobby members are
         -- in hand, so the FIRST row — often an ally, since the sweep fires when
@@ -5548,10 +6242,85 @@ function F._dmg_probe_hero_field()
     end
     R.log(("[rsmm.damage] hero-id field probe: %d row(s), lobby ids {%s} -> %s")
           :format(#rows, table.concat(known, ", "),
-                  #hits == 1 and (hits[1] .. " ADOPTED as the row identity")
+                  #hits == 1 and (hits[1].text .. " ADOPTED as the row identity")
                   or (#hits > 1
-                      and ("ambiguous (" .. table.concat(hits, " ") .. "), retrying")
-                      or "no offset distinguishes the rows")))
+                      and ("ambiguous (" .. (function()
+                              local ts = {}
+                              for _, h in ipairs(hits) do ts[#ts + 1] = h.text end
+                              return table.concat(ts, " ")
+                          end)() .. "), retrying")
+                      or ("no offset distinguishes the rows (widths tried: %s)")
+                         :format(wide and "u8 u16 u32" or "u32"))))
+end
+
+--- Re-check the adopted hero-id offset against the CURRENT board.
+---
+--- The probe adopts on the first sample big enough to discriminate (three rows
+--- when the lobby seats four) and then sets `done`, whose first act is to make
+--- the probe return immediately. So a FOURTH row — the one piece of evidence
+--- that could still veto the offset — arrives after the decision and is never
+--- consulted. Session 174f: `+0x1b60/u32` adopted at 17:39:54 on three rows,
+--- row 4 boarded at 17:40:11, and the offset was never questioned again.
+---
+--- Withdrawing matters more than mislabelling suggests: `by_hero` is also the
+--- chapter-change rebind key, so a wrong identity MERGES two players' rows at
+--- the next boundary, which deletes a player's damage rather than misnaming it.
+---
+--- Cheap: one guarded read per row, on the background tick.
+function F._dmg_recheck_hero_field()
+    if not HERO_ID_PROBE.off then return end
+    local okm, members = pcall(R.lobby.members)
+    if not okm or type(members) ~= "table" or #members == 0 then return end
+    local ids, anchor_id = {}, nil
+    for _, m in ipairs(members) do
+        if m.hero_id and m.name then ids[m.hero_id] = m.name end
+    end
+    local okme, me = pcall(R.player.name)
+    if okme and type(me) == "string" and me ~= "" then
+        for _, m in ipairs(members) do
+            if m.name == me and m.hero_id then anchor_id = m.hero_id break end
+        end
+    end
+    -- Only POSITIVE contradictions count. A row whose fields are not live yet
+    -- reads nil, and nil is not evidence against the offset.
+    local seen, why = {}, nil
+    for _, row in ipairs(_dmg.order) do
+        if _ptr_plausible(row.key) then
+            local v = F._dmg_hero_id(row.key)
+            if type(v) == "number" then
+                if row.is_local and anchor_id and v ~= anchor_id then
+                    why = ("the local row reads hero %d but this machine's "
+                           .. "player is hero %d"):format(v, anchor_id)
+                elseif seen[v] then
+                    why = ("rows %d and %d both read hero %d"):format(
+                        seen[v], row.slot, v)
+                elseif not ids[v] then
+                    why = ("row %d reads hero %d, which is nobody on the "
+                           .. "roster"):format(row.slot, v)
+                end
+                seen[v] = row.slot
+            end
+        end
+        if why then break end
+    end
+    if not why then return end
+
+    R.log(("[rsmm.damage] WITHDRAWING the hero-id offset %s: %s. Every name it "
+           .. "handed out is unproven, so those rows go back to placeholders.")
+          :format(HERO_ID_PROBE.text or "?", why))
+    HERO_ID_PROBE.off, HERO_ID_PROBE.hop, HERO_ID_PROBE.w = nil, nil, nil
+    HERO_ID_PROBE.text, HERO_ID_PROBE.done = nil, false
+    HERO_ID_PROBE.cursor, HERO_ID_PROBE.hits, HERO_ID_PROBE.rows_n = nil, {}, nil
+    _dmg.by_hero = {}
+    for _, row in ipairs(_dmg.order) do
+        row.hero_id = nil
+        -- A name the SWEEP proved (`row.player`) or one the player configured
+        -- stands; only the hero-join's guesses are taken back.
+        if not row.player and not _dmg.names[row.slot] then
+            row.label = F._dmg_label_for(row.slot, row.is_local)
+            row.label_guess = false
+        end
+    end
 end
 
 --- Give every row an identity it is missing. Rows boarded before the sweep
@@ -5575,7 +6344,15 @@ end
 function F._dmg_hero_id(hero)
     local off = HERO_ID_PROBE.off
     if not off or not _ptr_plausible(hero) then return nil end
-    local id = I.read_u32(hero + off)
+    local base = hero
+    -- An adopted HOP offset means the id lives in the object the controller
+    -- points at (the hero definition), not on the controller itself.
+    if HERO_ID_PROBE.hop then
+        base = I.read_u64(hero + off)
+        if not _ptr_plausible(base) then return nil end
+        off = HERO_ID_PROBE.hop
+    end
+    local id = F._dmg_read_id(base + off, HERO_ID_PROBE.w)
     if type(id) ~= "number" or id <= 0 or id >= 0x1000 then return nil end
     -- Cross-check against the roster when there is one: the offset was chosen
     -- from a two-row sample, so a value that is not a known hero id means the
@@ -5590,33 +6367,980 @@ function F._dmg_hero_id(hero)
     return id
 end
 
+-- Identity by the player's OWN NAME, found in their controller's memory graph.
+--
+-- The hero-id join needs the lobby's `RequestedHero` to sit as a dword on the
+-- hero controller, and a four-player playtest (2026-08-19, session 5a1d) proved
+-- it does not: `4 row(s), lobby ids {...} -> no offset distinguishes the rows`,
+-- repeated all run, every ally on a "Player N" placeholder. A placeholder is
+-- honest but it is not the point of a damage meter — "who did 3252" has to have
+-- an answer.
+--
+-- So stop hunting the id and hunt the thing already in hand: the gamertag. A
+-- player's display name appearing inside their own controller — inline, behind
+-- a pointer, or as the heap data of an MSVC std::string — is SELF-EVIDENT
+-- identity. It needs no cross-row corroboration the way a bare integer does,
+-- because no unrelated field coincidentally spells "Keif_Buddings". One row
+-- identified also yields the offset chain, which names every later row in two
+-- reads.
+--
+-- Bounded, resumable, background-thread only: a fixed read budget per tick, a
+-- cursor that survives across ticks, and page-guarded reads throughout (a bad
+-- address returns nil, it does not fault).
+-- (a field on `F`, not a local: rsmm.lua sits at Lua's 200-live-locals cap
+-- for the module chunk — one more `local` here fails to COMPILE the whole SDK.)
+F._own = {
+    WIN = 0x2000,        -- how far into an object a name may sit
+    HOP = 0x400,         -- and how far into an object one pointer away. 0x100
+                         -- was too shallow to reach a name held deep inside the
+                         -- HUD mirror (+0x1d80) or the stats block (+0x1db0),
+                         -- which are the two objects on a controller most
+                         -- likely to carry one.
+    STRIDE = 8,
+    BUDGET = 24000,      -- probes per tick. A full row is ~264k over both
+                         -- bases, so at 6000 a four-player board took ~3
+                         -- minutes to even finish its FIRST pass — longer than
+                         -- session fb4f's whole run, which is why nothing was
+                         -- named. The reads are page-guarded and cheap.
+    -- Every { base = 1|2, off = n, hop = n|nil } that has named a row, learned
+    -- on THIS board. Deliberately EMPTY at startup.
+    --
+    -- It was briefly seeded with the two chains session 7068 recorded
+    -- (`entity+0x678 -> +0x2d0`, `entity+0xad8 -> +0x1c0`) on the theory that an
+    -- offset chain is a property of the build. Ghidra says otherwise, and the
+    -- theory was wrong because those are not offsets into anything:
+    --
+    --   * Across all 65,347 .pdata functions of the shipped exe there is not a
+    --     single site that loads [X+0x678] and then reads [+0x2d0], nor one for
+    --     [X+0xad8] -> [+0x1c0]. (The same sweep does find real chains, e.g.
+    --     [X+0xb8] -> [+0x20], so it is not blind.)
+    --   * +0xad8 is never touched on any register that also walks an entity.
+    --   * The one qword-pointer write at +0x678 near entity-shaped code belongs
+    --     to `oe::dt::EntityCpntRecapBookPageSettings::~dtor` (FUN_140419aa0),
+    --     an unrelated UI settings class; the other site stores a FLOAT there.
+    --   * There are no fixed component slots on oCEntity to be found anyway:
+    --     Entity_GetNetComponent reaches components through a hash map at
+    --     entity+0x5e8/+0x5f0/+0x600 keyed by class id. See its symbol note.
+    --
+    -- So session 7068's two chains were heap COINCIDENCE — a pointer that
+    -- happened to sit at that offset in that run's hero entity, landing that
+    -- far before a string that happened to hold the id. Seeding a coincidence
+    -- makes it a prior that runs BEFORE every corroborating check, on every
+    -- board, forever. A chain is only trustworthy once it has been observed on
+    -- THIS board and survived the one-owner rule below.
+    chains = {},
+    addrs = nil,         -- where each roster name lives in memory
+    addrs_key = nil,     -- the roster those addresses were scanned for
+    MAX_HITS = 20000,    -- copies of one needle worth collecting. Both 24 and
+                         -- 512 were CEILINGS, not limits: sessions 314f and
+                         -- a84f truncated every needle, and a truncated scan
+                         -- keeps whichever copies sit LOWEST in the address
+                         -- space — never the game-heap object that owns the
+                         -- player. A peer id turns up in hundreds of network
+                         -- buffers, so the cap has to be far above that or it
+                         -- silently decides the answer.
+    -- Bytes of address space one tick may examine. `mem_find`'s own default
+    -- is 512 MB, which is a debug-probe figure: it is seconds of wall time and
+    -- the player feels it as a stall. The lobby sweep has run at 48 MB a tick
+    -- all along without a single report, so this sits beside it. The sweep
+    -- takes MINUTES to cross the address space at this rate, and that is the
+    -- intended trade — it runs on the background thread against a board the
+    -- guessed names have already labelled, so finishing sooner buys nothing a
+    -- player can see, while finishing louder costs a frame.
+    SLICE_MB = 48,
+    cursor_va = 0,       -- resume address for the needle at the head of `queue`
+    hits_n = 0,          -- hits collected for THAT needle, across its slices
+    PAGE = 12,           -- address index granularity (4 KiB), see _dmg_index
+    -- There is no time-based rescan, and the `SCAN_EVERY`/`scan_at` pair that
+    -- claimed to be one was set and never read by anything. What actually
+    -- bounds the scan is `addrs_key` (the roster) plus the chapter epoch, which
+    -- drops the cache in F._dmg_next_epoch — a timer would only reintroduce
+    -- the periodic address-space walk this all exists to avoid.
+    queue = nil,         -- needles still to scan, one per tick
+    TRIES = 4,           -- full sweeps per row before it is given up on
+    RETRY_AFTER = 20,    -- seconds between them. A chapter is shorter than
+                         -- the old 45s, so a row could miss its whole run.
+    cursor = nil,        -- { row = <row>, base = 1, off = 0, hop = nil }
+    found = 0, swept = 0,
+}
+
+--- Where in the process does each player's identity string actually live?
+---
+--- The blind sweep asks the wrong question. It walks ~264k offsets PER ROW
+--- reading a string at every one, which is ~44s of background ticks per row —
+--- session fb4f's whole run finished before the first pass did, and nothing
+--- was named. The engine can answer the question directly: `mem_find` is a
+--- native scan for a byte pattern, so ONE scan per player yields every address
+--- that player's peer id is stored at.
+---
+--- That turns identification into arithmetic. A row owns a name when one of
+--- its pointers lands just before one of that name's addresses — the chain
+--- session 7068 found by brute force (`entity+0x678 -> +0x2d0`) is exactly the
+--- statement "a pointer at entity+0x678 points 0x2d0 bytes before the string".
+--- Testing that costs 2048 pointer reads and some subtraction, not 264k string
+--- reads, and it is the same evidence.
+---
+--- Cached against the roster: re-scanning the address space every tick would
+--- be far worse than the sweep it replaces.
+function F._dmg_find_needles(names)
+    if type(I.mem_find) ~= "function" then return nil end
+    -- PEER IDS ONLY. A gamertag turns up in chat, the friends list and every
+    -- piece of UI text that mentions the player, so scanning for it doubles
+    -- the work to produce the noisiest half of the results. The id is not
+    -- human-facing, so its copies are the objects that actually own the
+    -- player — and it is what named a row in session 314f.
+    local keys = {}
+    for needle, m in pairs(names) do
+        if needle ~= m.name then keys[#keys + 1] = needle end
+    end
+    table.sort(keys)
+    local key = table.concat(keys, "\1")
+    if F._own.addrs_key == key and not F._own.queue then return F._own.addrs end
+    if #keys == 0 then return nil end
+
+    -- ONE needle per tick, and ONE SLICE of that needle per tick. Each scan is
+    -- a native walk of the whole user address space; eight back to back on a
+    -- single tick is the stutter session a84f reported, and even ONE unsliced
+    -- call is gigabytes of ReadProcessMemory holding the process VM lock —
+    -- session a14f's two hard hitches were this call, at the 512 MB default,
+    -- three needles at 11:37:03 and two more at 11:40:01.
+    --
+    -- Dropping `mem_find`'s second return was also a CORRECTNESS bug, and the
+    -- quieter one. That value is the resume address, and the whole reason the
+    -- native side has one. Without it the sweep stopped dead at the default
+    -- budget and never continued, so it searched the low heap — where Lua's
+    -- own strings live — and never reached the game's allocations at all.
+    -- `capped` counts hits, not bytes, so the log called that a clean scan.
+    -- It is the exact failure NAME_SCAN_MB documents for sessions 5736/274f,
+    -- reintroduced one layer up, and it is why this scan has never once
+    -- claimed a row.
+    if F._own.addrs_key ~= key then
+        F._own.addrs_key, F._own.addrs = key, {}
+        F._own.queue, F._own.capped = {}, 0
+        -- The slice cursor belongs to the needle at the head of the queue
+        -- being dropped here. Left behind, the first needle of the NEXT
+        -- roster resumes from a stranger's address and never scans anything
+        -- below it. This is also the chapter-epoch path: `_dmg_next_epoch`
+        -- clears `addrs_key`, so the very next call lands in this branch.
+        F._own.cursor_va, F._own.hits_n = 0, 0
+        for i = #keys, 1, -1 do F._own.queue[#F._own.queue + 1] = keys[i] end
+    end
+    local q = F._own.queue
+    if q and #q > 0 then
+        -- PEEK, don't pop: the needle stays at the head until its sweep
+        -- reaches the end of the address space. Popping here is what made the
+        -- unsliced call look complete.
+        local needle = q[#q]
+        local left = F._own.MAX_HITS - (F._own.hits_n or 0)
+        local nxt = 0
+        if left <= 0 then
+            F._own.capped = (F._own.capped or 0) + 1
+        else
+            local ok, hits, resume = pcall(I.mem_find, needle, left,
+                                           F._own.SLICE_MB,
+                                           F._own.cursor_va or 0)
+            if ok and type(hits) == "table" then
+                local m = names[needle]
+                for _, va in ipairs(hits) do
+                    if va and va > 0x10000 then
+                        F._own.addrs[#F._own.addrs + 1] = { va = va,
+                                                            name = m.name }
+                        F._own.hits_n = (F._own.hits_n or 0) + 1
+                    end
+                end
+                nxt = (type(resume) == "number") and resume or 0
+                if F._own.hits_n >= F._own.MAX_HITS then
+                    F._own.capped, nxt = (F._own.capped or 0) + 1, 0
+                end
+            end
+            -- A raise leaves nxt at 0, which retires the needle. Carrying the
+            -- cursor forward instead would re-raise on the same slice every
+            -- tick for the rest of the run.
+        end
+        F._own.cursor_va = nxt
+        if nxt == 0 then
+            table.remove(q)
+            F._own.hits_n = 0
+        end
+        if #q == 0 then
+            F._own.queue = nil
+            -- Say when a needle hit the ceiling. A truncated scan looks
+            -- exactly like a healthy one in the totals, which is how two
+            -- sessions were spent chasing the wrong thing.
+            R.log(("[rsmm.damage] identity scan: %d needle(s) -> %d "
+                   .. "address(es) in memory%s"):format(
+                #keys, #F._own.addrs,
+                (F._own.capped or 0) > 0
+                    and (", %d TRUNCATED at the %d cap"):format(
+                        F._own.capped, F._own.MAX_HITS) or ""))
+        end
+    end
+    return F._own.addrs
+end
+
+--- Index the found addresses by page.
+---
+--- With the cap raised, a four-player lobby can have a couple of thousand
+--- addresses, and the naive test (every pointer against every address) is
+--- 2048 x 2000 comparisons per row. Bucketing by page makes each test a
+--- constant handful: a string within +0x400 of a pointer is on that pointer's
+--- page or the next one.
+function F._dmg_index(addrs)
+    -- MEMOISED on the address list's identity and length. `addrs` is
+    -- F._own.addrs, which is append-only while the needle queue drains and
+    -- frozen for the rest of the run -- but the caller runs on every
+    -- background tick, and with `guess_names` on a row keeps `row.player ==
+    -- nil` even once it has a label, so "every tick" means "for the whole
+    -- session". Rebuilding a couple of thousand buckets each time is pure
+    -- waste, and it is waste that scales with the number of players.
+    if F._own.page_src == addrs and F._own.page_n == #addrs then
+        return F._own.page_idx
+    end
+    local by_page = {}
+    for _, a in ipairs(addrs) do
+        local k = a.va >> F._own.PAGE
+        local b = by_page[k]
+        if not b then b = {}; by_page[k] = b end
+        b[#b + 1] = a
+    end
+    F._own.page_src, F._own.page_n, F._own.page_idx = addrs, #addrs, by_page
+    return by_page
+end
+
+--- Every roster name this row's own memory reaches, as a set.
+---
+--- Direct (the string is inside the row's object) or one hop (a pointer in the
+--- row's object lands within +0x%x of it). Both are the same test against a
+--- known address, so neither costs a string read.
+function F._dmg_row_names(row, by_page)
+    local found, n = {}, 0
+    -- STRUCTURED, not a log string. `_dmg_chain_name` replays a
+    -- {base, off, hop} in two reads and names every later row for free, but it
+    -- can only do that if this pass hands the chain back as numbers. Recording
+    -- the formatted text alone left that replay unreachable — `if chain.base`
+    -- was false for every chain this path found — so a board with one unnamed
+    -- row paid for a full address-space scan every tick for the rest of the
+    -- session. The names came out right; the game hitched for the whole run.
+    local function note(name, how, base, off, hop)
+        if not found[name] then
+            found[name] = { how = how, base = base, off = off, hop = hop }
+            n = n + 1
+        end
+    end
+    -- Every address within `span` bytes after `from`, via the page index.
+    -- `mk(d)` returns the human text AND the chain that produced it.
+    local function near(from, span, mk)
+        local first, last = from >> F._own.PAGE, (from + span) >> F._own.PAGE
+        for k = first, last do
+            local b = by_page[k]
+            if b then
+                for _, a in ipairs(b) do
+                    if a.va >= from and a.va - from <= span then
+                        note(a.name, mk(a.va - from))
+                    end
+                end
+            end
+        end
+    end
+    local bases = { { row.key, "ctrl" } }
+    local ent = I.read_u64(row.key + 0x08)
+    if _ptr_plausible(ent) then bases[#bases + 1] = { ent, "entity" } end
+    -- `bi` IS `chain.base`: 1 = the controller (row.key), 2 = the entity at
+    -- row.key+0x08 — the same two bases `_dmg_chain_name` re-derives.
+    for bi, b in ipairs(bases) do
+        local base, tag = b[1], b[2]
+        near(base, F._own.WIN, function(d)
+            return ("%s+0x%x"):format(tag, d), bi, d, nil
+        end)
+        for off = 0, F._own.WIN, 8 do
+            local p = I.read_u64(base + off)
+            if _ptr_plausible(p) then
+                near(p, F._own.HOP, function(d)
+                    return ("%s+0x%x -> +0x%x"):format(tag, off, d), bi, off, d
+                end)
+            end
+        end
+    end
+    return found, n
+end
+
+--- Name every row that can be named, in one pass. Background thread only.
+---
+--- The correctness rule is the same one the whole meter is built on: a name is
+--- only used when it can belong to exactly ONE row. A string that several rows
+--- reach is a shared table (the lobby roster, a UI list), not an owner — and
+--- claiming from it would put a real player's damage under someone else's
+--- name, which is the bug this all started with.
+function F._dmg_probe_owner_fast()
+    local names, _ = F._dmg_name_set()
+    if not names or not I.read_u64 then return false end
+    -- Nothing to identify, nothing to scan for. Without this the address
+    -- space is walked again on every roster change of a lobby whose rows are
+    -- all already named.
+    local wanted = false
+    for _, row in ipairs(_dmg.order) do
+        if not row.player and _ptr_plausible(row.key) then wanted = true break end
+    end
+    if not wanted then return false end
+
+    local addrs = F._dmg_find_needles(names)
+    if not addrs or #addrs == 0 then return false end
+
+    local by_page = F._dmg_index(addrs)
+    local rows, cand = {}, {}
+    for _, row in ipairs(_dmg.order) do
+        if not row.player and _ptr_plausible(row.key) then
+            local found, n = F._dmg_row_names(row, by_page)
+            if n > 0 then
+                rows[#rows + 1] = row
+                cand[row] = found
+            end
+        end
+    end
+    if #rows == 0 then return false end
+
+    -- How many rows reach each name. More than one = shared, so it identifies
+    -- nobody.
+    local owners = {}
+    for _, row in ipairs(rows) do
+        for name in pairs(cand[row]) do owners[name] = (owners[name] or 0) + 1 end
+    end
+    local named = false
+    for _, row in ipairs(rows) do
+        local only, hit, count = nil, nil, 0
+        for name, h in pairs(cand[row]) do
+            if owners[name] == 1 then only, hit, count = name, h, count + 1 end
+        end
+        if count == 1 then
+            if F._dmg_claim(row, names, only, hit.how) then
+                -- The chain, not just its text. This is the whole point of the
+                -- scan: one row identified yields the offsets that name every
+                -- later row — and every later RUN — in two reads.
+                F._dmg_note_chain(hit.base, hit.off, hit.hop, hit.how)
+                named = true
+            end
+        elseif count > 1 then
+            R.log(("[rsmm.damage] row %d reaches %d different players' "
+                   .. "identities — shared memory, so it names nobody")
+                  :format(row.slot, count))
+        end
+    end
+    return named
+end
+
+--- Remember a chain that produced a hit, once.
+function F._dmg_note_chain(base, off, hop, text)
+    for _, ch in ipairs(F._own.chains) do
+        if ch.base == base and ch.off == off and ch.hop == hop
+           and ch.text == text then return end
+    end
+    F._own.chains[#F._own.chains + 1] = { base = base, off = off, hop = hop,
+                                          text = text }
+end
+
+--- The roster as a printable list of NAMES. (Distinct from
+--- _dmg_roster_text, which formats a members table the caller already has.)
+---
+--- Deliberately not the needle set: the sweep searches for peer ids as well as
+--- gamertags, and session 7068's dead-end line printed four raw EOS GUIDs
+--- alongside the four players, which reads as a corrupt roster.
+function F._dmg_roster_names()
+    local ok, members = pcall(R.lobby.members)
+    if not ok or type(members) ~= "table" then return "?" end
+    local t, ids = {}, 0
+    for _, m in ipairs(members) do
+        t[#t + 1] = tostring(m.name)
+        if type(m.eos) == "string" and #m.eos > 0 then ids = ids + 1 end
+    end
+    table.sort(t)
+    -- The COUNT of peer ids, because a sweep with no needle to look for and a
+    -- sweep that looked and found nothing are the same log line otherwise —
+    -- which is exactly why session fb4f could not be explained. Printing the
+    -- ids themselves (the first version) made the roster read as corrupt.
+    return ("%s — %d of %d carry a peer id"):format(
+        table.concat(t, ", "), ids, #members)
+end
+
+--- The lobby names as a lookup set, plus the longest one. nil when the roster
+--- is still empty (solo, or names have not arrived yet).
+function F._dmg_name_set()
+    local ok, members = pcall(R.lobby.members)
+    if not ok or type(members) ~= "table" then return nil end
+    local set, longest = {}, 0
+    local function needle(text, m)
+        if type(text) ~= "string" or #text == 0 or #text > 64 then return end
+        -- Every needle resolves to the member, and every hit is reported under
+        -- the member's NAME — a row must never end up labelled with a peer id.
+        set[text] = m
+        if #text > longest then longest = #text end
+    end
+    for _, m in ipairs(members) do
+        if type(m.name) == "string" and #m.name > 0 then
+            needle(m.name, m)
+            needle(m.eos, m)
+        end
+    end
+    if longest == 0 then return nil end
+    return set, longest
+end
+
+--- Does a known player name start at `va`? Returns the name, or nil.
+---
+--- One `read_cstr` per address, not one per candidate name: the read stops at
+--- the first NUL, so a stored name comes back whole and the set does the rest.
+--- That keeps a 70k-probe sweep to 70k reads rather than 70k x roster size.
+function F._dmg_name_at(va, names, longest)
+    if not I.read_cstr or not _ptr_plausible(va) then return nil end
+    local s = I.read_cstr(va, longest + 1)
+    -- Return the member's NAME, not the string that matched: the needle may
+    -- have been their peer id.
+    if type(s) == "string" and names[s] then return names[s].name end
+    return nil
+end
+
+--- Read the adopted chain on `row`. Two reads once the chain is known.
+function F._dmg_chain_name(row, chain, names, longest)
+    local base = chain.base == 2 and I.read_u64(row.key + 0x08) or row.key
+    if not _ptr_plausible(base) then return nil end
+    if not chain.hop then return F._dmg_name_at(base + chain.off, names, longest) end
+    local p = I.read_u64(base + chain.off)
+    if not _ptr_plausible(p) then return nil end
+    return F._dmg_name_at(p + chain.hop, names, longest)
+end
+
+--- Would some OTHER unnamed row resolve this same chain to this same name?
+---
+--- The blind sweep walks ONE row at a time, so on its own it has no way to
+--- tell an owner from a shared table — it claimed whatever it reached first,
+--- and `_dmg_claim`'s duplicate refusal then only stopped the SECOND row, long
+--- after the first had taken a name that may not be its own. That is the same
+--- failure `_dmg_probe_owner_fast`'s one-owner rule and the chain replay's both
+--- refuse, and the sweep undercut both of them by running after them.
+---
+--- Costs two pointer reads per other row, and only at the instant of a claim.
+function F._dmg_chain_shared(row, chain, name, names, longest, me)
+    for _, other in ipairs(_dmg.order) do
+        if other ~= row and not other.player and _ptr_plausible(other.key) then
+            -- The local row is never a rival claimant for somebody else's name:
+            -- Steam already said who is at this keyboard, so a gamertag inside
+            -- YOUR object (session 6136) must not make the real owner's name
+            -- look shared and strand that player on a placeholder.
+            local rival = not (other.is_local and type(me) == "string"
+                               and me ~= "" and name ~= me)
+            if rival
+               and F._dmg_chain_name(other, chain, names, longest) == name then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+--- Bind `row` to the lobby member called `name`.
+---
+--- Refuses a name another row already holds. Two rows resolving to one player
+--- means the chain is reading something shared (a lobby array, the local
+--- player's own copy), and merging two players is the one failure that DELETES
+--- damage from the board — always fail toward the placeholder.
+--- Who is at this keyboard, remembered.
+---
+--- `R.player.name` is a Steam call and it can come back empty on a background
+--- tick even when it answered a moment earlier on the main thread. Session
+--- d536 is that window: the local row's LABEL was resolved at boarding (Steam
+--- fine), then every sweep tick asked again, got nothing, and so skipped the
+--- steam claim -- which left row 1 unclaimed and the duplicate guard with
+--- nothing to compare against. An ally then claimed "Ovilli" off a global the
+--- engine hangs on every entity, and the board showed two of them.
+---
+--- So the answer is cached the first time anyone gets it, and the LOCAL ROW's
+--- own label is the fallback: it was resolved from Steam already, and it is
+--- the one name on the board that was never inferred.
+function F._dmg_me()
+    if _dmg.me then return _dmg.me end
+    local ok, nm = pcall(R.player.name)
+    if ok and type(nm) == "string" and nm ~= "" and nm ~= "You" then
+        _dmg.me = nm
+        return nm
+    end
+    for _, row in ipairs(_dmg.order) do
+        if row.is_local then
+            local lbl = row.player or row.label
+            if type(lbl) == "string" and lbl ~= "" and lbl ~= "You"
+               and not lbl:match("^Player %d+$") then
+                _dmg.me = lbl
+                return lbl
+            end
+        end
+    end
+    return nil
+end
+
+function F._dmg_claim(row, names, name, how)
+    local m = names[name]
+    -- Steam is authoritative for the LOCAL row, and does not depend on the
+    -- roster sweep having seen that player. Session d536 is the roster WITHOUT
+    -- the local member in it, so `names[me]` was nil, the steam claim never
+    -- ran, `row.player` stayed unset on row 1 -- and the duplicate guard below,
+    -- which is what stops a second row taking a name, had nothing to compare
+    -- against. Two rows finished the run labelled "Ovilli".
+    if not m and not (row.is_local and how == "steam") then return false end
+    -- The local row is the ONE row whose name is not an inference: Steam told
+    -- us. Session 6136 renamed it anyway, off a stack frame masquerading as a
+    -- member object. The visible label survived (the local row keeps its Steam
+    -- name below), but `row.player` did not — and that CONSUMED a real
+    -- player's name: row 3 was refused "Timattttttt" twice as a duplicate and
+    -- finished the run as "Player 3". A wrong claim here costs two rows.
+    if row.is_local then
+        local me = F._dmg_me()
+        if me and me ~= name then
+            R.log(("[rsmm.damage] refusing row %d -> %q (%s): that row is this "
+                   .. "machine's player, and Steam calls them %q")
+                  :format(row.slot, name, how, me))
+            return false
+        end
+    end
+    -- AND THE MIRROR: an ally may never be named after this machine's player.
+    -- There is exactly one local player and Steam names them before any sweep
+    -- runs, so a NON-local row resolving to that name is proof the chain is
+    -- shared -- the local player's name is reachable from a global the engine
+    -- hangs off every entity -- not proof of ownership. Session d536 claimed
+    -- `entity+0xcc8 -> +0x39b` for an ally that way and the board showed two
+    -- "Ovilli" rows while the ally's real name, InsertCoin2Start, vanished.
+    --
+    -- This does not depend on the local row having been claimed first, which
+    -- is the whole point: the ordering is what failed.
+    if not row.is_local then
+        local me = F._dmg_me()
+        if me and me == name then
+            if not _dmg.self_claim_said then
+                _dmg.self_claim_said = true
+                R.log(("[rsmm.damage] refusing row %d -> %q (%s): that is this "
+                       .. "machine's player and this row is not them, so the "
+                       .. "chain is shared memory, not ownership")
+                      :format(row.slot, name, how))
+            end
+            return false
+        end
+    end
+    for _, other in ipairs(_dmg.order) do
+        if other ~= row and other.player == name then
+            R.log(("[rsmm.damage] refusing row %d -> %q (%s): row %d already "
+                   .. "holds that name"):format(row.slot, name, how, other.slot))
+            return false
+        end
+    end
+    row.player = name
+    if m and m.hero_id and not row.hero_id then
+        row.hero_id = m.hero_id
+        _dmg.by_hero[m.hero_id] = row
+    end
+    -- The local row keeps the name Steam gave it; they are the same person and
+    -- the Steam persona is the one the player recognises as themselves.
+    if not row.is_local then
+        row.label = name
+        row.label_guess = false
+    end
+    F._own.found = F._own.found + 1
+    R.log(("[rsmm.damage] row %d IS %q (%s)%s"):format(
+        row.slot, name, how, row.is_local and " [local]" or ""))
+    return true
+end
+
+--- Advance the owner-name sweep by one budget's worth. Background thread only.
+function F._dmg_probe_owner()
+    local names, longest = F._dmg_name_set()
+    if not names or not I.read_cstr or not I.read_u64 then return end
+
+    -- The local row is not a mystery: Steam named it before the run started.
+    -- Leaving it unclaimed made every sweep spend a quarter of its budget, and
+    -- four retries, re-deriving a fact already in hand — session 314f swept
+    -- row 1 three times for nothing.
+    -- No `names[me]` gate. The roster is a SWEEP result and it drops members
+    -- that stop being re-parsed, so the local player is routinely absent from
+    -- it (session d536, and the two "not in this lobby - dropped" lines in
+    -- a14f). Gating the local claim on the roster meant the one name the meter
+    -- knows for certain went unclaimed, which in turn disarmed the duplicate
+    -- guard in `_dmg_claim`. Steam is the source here, not the roster.
+    local me = F._dmg_me()
+    if me then
+        for _, row in ipairs(_dmg.order) do
+            if row.is_local and not row.player then
+                F._dmg_claim(row, names, me, "steam")
+            end
+        end
+    end
+
+    -- CHAINS FIRST. A chain is two pointer reads and a string compare; the
+    -- scan below is a native walk of the WHOLE address space, and the lobby
+    -- sweep above already documents why that is felt even from the background
+    -- thread — ReadProcessMemory at that volume saturates memory bandwidth
+    -- and the process VM lock, which stalls the game's threads too. Scanning
+    -- first meant the cheap answer was only ever consulted after the expensive
+    -- one had already been paid for, on every tick with an unnamed row.
+    --
+    -- ALL of them are tried, not just the last — session 7068 named two rows
+    -- through two DIFFERENT chains (`entity+0x678 -> +0x2d0` and
+    -- `entity+0xad8 -> +0x1c0`), so a single remembered chain would have been
+    -- the wrong one for half the board.
+    -- Resolve every chain against every unnamed row FIRST, claim second, under
+    -- the same one-owner rule the scan uses. A chain is a GUESS about where a
+    -- name lives, and two of them are now SEEDED from an older session rather
+    -- than learned on this board — so if two rows resolve a chain to the SAME
+    -- name, that chain is reading something shared (the lobby roster, a UI
+    -- list) and it identifies nobody. Claiming row-by-row in slot order, which
+    -- is what this loop used to do, would hand that name to whichever row came
+    -- first: a real player's damage under another player's name, the one
+    -- failure the whole meter is built to refuse.
+    local cand, hits = {}, 0
+    for _, chain in ipairs(F._own.chains) do
+        if chain.base then
+            for _, row in ipairs(_dmg.order) do
+                if not row.player and _ptr_plausible(row.key) then
+                    local nm = F._dmg_chain_name(row, chain, names, longest)
+                    if nm then
+                        local c = cand[row]
+                        if not c then c = {}; cand[row] = c end
+                        if not c[nm] then c[nm] = chain; hits = hits + 1 end
+                    end
+                end
+            end
+        end
+    end
+    -- The local row is not a claimant for anybody else's name, so it must not
+    -- count as an OWNER of one either. Session 6136's gamertag sat inside the
+    -- local player's own object; `_dmg_claim` already refuses to rename row 1
+    -- off it, but leaving it in the tally makes the real owner's name look
+    -- shared, and the player who actually owns it is then stranded on a
+    -- placeholder — which is the second half of that same bug.
+    if hits > 0 and me then
+        for row, c in pairs(cand) do
+            if row.is_local then
+                for nm in pairs(c) do
+                    if nm ~= me then c[nm] = nil; hits = hits - 1 end
+                end
+            end
+        end
+    end
+    if hits > 0 then
+        local owners = {}
+        for _, c in pairs(cand) do
+            for nm in pairs(c) do owners[nm] = (owners[nm] or 0) + 1 end
+        end
+        -- Over `_dmg.order`, not `pairs(cand)`: claim order must not depend on
+        -- table iteration order, or which row wins an ambiguity changes between
+        -- runs and the board stops being reproducible.
+        for _, row in ipairs(_dmg.order) do
+            local c = cand[row]
+            if c then
+                local only, chain, n = nil, nil, 0
+                for nm, ch in pairs(c) do
+                    if owners[nm] == 1 then only, chain, n = nm, ch, n + 1 end
+                end
+                if n == 1 then
+                    -- Name the chain that claimed the row, so the log tells a
+                    -- seeded offset that still works apart from one a scan had
+                    -- to rediscover.
+                    F._dmg_claim(row, names, only,
+                                 "chain " .. (chain.text or "?"))
+                elseif n > 1 then
+                    R.log(("[rsmm.damage] row %d resolves %d different players "
+                           .. "through its chains — ambiguous, so it names "
+                           .. "nobody"):format(row.slot, n))
+                end
+            end
+        end
+    end
+
+    -- Only now ask the process where the names ARE, and check which row owns
+    -- each. Costs one native scan per player and 2048 pointer reads per row.
+    -- `_dmg_probe_owner_fast` gates itself on there still being an unnamed
+    -- row, so a board the chains finished never reaches this at all. The blind
+    -- sweep below stays as the fallback for a loader without `mem_find`.
+    if F._dmg_probe_owner_fast() then return end
+
+    local c = F._own.cursor
+    if not c or c.row.player or c.row.own_done or c.row.dropped then
+        -- Pick the next row that has neither an identity nor a completed sweep.
+        c = nil
+        for _, row in ipairs(_dmg.order) do
+            if not row.player and _ptr_plausible(row.key)
+               and (not row.own_done
+                    or (row.own_retry_at and F._dmg_now() >= row.own_retry_at)) then
+                row.own_done, row.own_retry_at = false, nil
+                c = { row = row, base = 1, off = 0, hop = nil }
+                break
+            end
+        end
+        F._own.cursor = c
+        if not c then return end
+    end
+
+    local row = c.row
+    local budget = F._own.BUDGET
+    while budget > 0 do
+        local base = c.base == 2 and I.read_u64(row.key + 0x08) or row.key
+        if _ptr_plausible(base) then
+            if c.hop == nil then
+                -- Direct: the name lives in the object itself (an inline
+                -- std::string, a fixed char buffer).
+                local nm = F._dmg_name_at(base + c.off, names, longest)
+                budget = budget - 1
+                if nm then
+                    local ch = { base = c.base, off = c.off, hop = nil }
+                    -- Record it either way: a shared chain is still a fact
+                    -- about this build, and the cross-row rule above is where
+                    -- it gets judged.
+                    F._dmg_note_chain(c.base, c.off, nil)
+                    if F._dmg_chain_shared(row, ch, nm, names, longest, me) then
+                        R.log(("[rsmm.damage] row %d reaches %q at %s, but so "
+                               .. "does another unnamed row — shared memory, "
+                               .. "so it names nobody"):format(row.slot, nm,
+                            ("%s+0x%x"):format(
+                                c.base == 2 and "entity" or "ctrl", c.off)))
+                    else
+                        F._dmg_claim(row, names, nm,
+                            ("%s+0x%x"):format(c.base == 2 and "entity" or "ctrl", c.off))
+                    end
+                    F._own.cursor = nil
+                    return
+                end
+            else
+                -- One hop: the field is a pointer and the name is behind it —
+                -- a `char*`, a `std::string*`, or the heap buffer of an MSVC
+                -- std::string (whose data pointer sits at +0x8, which this
+                -- reaches as hop 0 of that offset).
+                local p = I.read_u64(base + c.off)
+                if _ptr_plausible(p) then
+                    local nm = F._dmg_name_at(p + c.hop, names, longest)
+                    budget = budget - 1
+                    if nm then
+                        local ch = { base = c.base, off = c.off, hop = c.hop }
+                        F._dmg_note_chain(c.base, c.off, c.hop)
+                        local how = ("%s+0x%x -> +0x%x"):format(
+                            c.base == 2 and "entity" or "ctrl", c.off, c.hop)
+                        if F._dmg_chain_shared(row, ch, nm, names, longest, me) then
+                            R.log(("[rsmm.damage] row %d reaches %q at %s, but "
+                                   .. "so does another unnamed row — shared "
+                                   .. "memory, so it names nobody")
+                                  :format(row.slot, nm, how))
+                        else
+                            F._dmg_claim(row, names, nm, how)
+                        end
+                        F._own.cursor = nil
+                        return
+                    end
+                else
+                    c.hop = F._own.HOP        -- nothing to walk; skip the hops
+                    budget = budget - 1
+                end
+            end
+        else
+            budget = budget - 1
+            c.off = F._own.WIN                    -- unreadable base: end this pass
+        end
+
+        -- Cursor advance: hops, then offsets, then base, then the hop stage.
+        if c.hop ~= nil then
+            c.hop = c.hop + F._own.STRIDE
+            if c.hop > F._own.HOP then c.hop = 0; c.off = c.off + F._own.STRIDE end
+        else
+            c.off = c.off + F._own.STRIDE
+        end
+        if c.off > F._own.WIN then
+            c.off = 0
+            if c.base == 1 then
+                c.base = 2
+            elseif c.hop == nil then
+                c.base, c.hop = 1, 0       -- direct pass done; walk pointers
+            else
+                -- Both passes done on both bases: this controller does not
+                -- reach any lobby name. Say so ONCE, with everything needed to
+                -- take it further (the next step is RE, not a wider sweep).
+                row.own_done = true
+                row.own_tries = (row.own_tries or 0) + 1
+                F._own.swept = F._own.swept + 1
+                F._own.cursor = nil
+                -- RETRY, do not retire. A row is swept the moment it deals its
+                -- first damage, and the fields that identify it are not
+                -- necessarily populated yet — session 7068 named rows 1 and 2
+                -- and dead-ended rows 3 and 4, which had boarded seconds
+                -- earlier. Retiring a row after one pass makes that permanent
+                -- for the whole run.
+                -- ⚠ UNTESTED BRANCH. Reaching it in the spec needs a full
+                -- ~264k-probe pass to COMPLETE before the fixture populates
+                -- the row, and a shorter pass simply continues instead. The
+                -- behaviour it guards (a row is not retired after one dead
+                -- end) is covered; the countdown itself is not.
+                if row.own_tries < F._own.TRIES then
+                    row.own_retry_at = F._dmg_now() + F._own.RETRY_AFTER
+                end
+                R.log(("[rsmm.damage] owner-name sweep: row %d (%s, ctrl=0x%x) "
+                       .. "holds no lobby id within +0x%x, direct or one hop "
+                       .. "(attempt %d of %d) — roster was {%s}"):format(
+                    row.slot, row.label, row.key, F._own.WIN,
+                    row.own_tries, F._own.TRIES, F._dmg_roster_names()))
+                return
+            end
+        end
+    end
+end
+
+--- Advance the identity sweep by ONE slice.
+---
+--- The meter already drives this from its background tick; this exists so a
+--- diagnostic ("who is row 3?") or a test can push it along without waiting.
+--- BACKGROUND THREAD ONLY — it walks thousands of addresses.
+function R.damage.sweep_identity()
+    -- Re-check FIRST: a withdrawal clears `done`, so the probe below can start
+    -- looking again in the same call, with whatever rows have since boarded.
+    F._dmg_recheck_hero_field()
+    F._dmg_probe_hero_field(true)     -- byte and word widths too
+    F._dmg_backfill_ids()
+    return F._dmg_probe_owner()
+end
+
+--- What the identity sweep has found. For diagnostics and the spec.
+--- Mark every row as identified. Spec-only: it makes "there is nothing left
+--- to look for" reachable without faking a memory layout for each row.
+function R.damage._name_all()
+    for _, row in ipairs(_dmg.order) do row.player = row.player or row.label end
+end
+
+function R.damage.identity()
+    -- `chain` is the FIRST chain this board learned. Nothing is pre-seeded (see
+    -- F._own.chains), so a non-nil value here means the scan actually ran and
+    -- found something on this build — which is the number worth reading.
+    return { chain = F._own.chains[1], chains = F._own.chains,
+             found = F._own.found, swept = F._own.swept,
+             hero_id_offset = HERO_ID_PROBE.off }
+end
+
 function F._dmg_relabel()
     local ok, allies = pcall(R.lobby.allies)
     if not ok or type(allies) ~= "table" or #allies == 0 then return end
     -- Name by HERO when the row's identity is known: each lobby member record
-    -- carries its RequestedHero, so this is an exact join. Falling back to join
-    -- ORDER is the old behaviour and is a guess with 3+ players — rows say so
-    -- via `label_guess`, and a UI should too.
+    -- carries its RequestedHero, so this is an exact join.
+    --
+    -- There is NO positional fallback. `allies[rank]` — the old fallback — ranks
+    -- rows by the order allies first dealt damage, which is unrelated to the
+    -- lobby's order, so from three players up it printed a real name against
+    -- another player's damage. What remains is ELIMINATION: once every row that
+    -- has a hero id is named, a single unnamed ally row facing a single unclaimed
+    -- ally name can only be that player. Everything else keeps its "Player N"
+    -- placeholder until the hero-id probe lands.
+    -- HERO IDS ARE NOT UNIQUE. Session 8f36 (2026-08-20) is a four-player
+    -- lobby with TWO players on hero 10: "PigGoesQuack(hero 10)" and
+    -- "Ovilli(hero 10)". Ravenswatch does not force distinct heroes, so the
+    -- whole hero-id join is only ever valid for the ids that happen to be
+    -- unique in THIS lobby -- and a duplicate id silently kept the last writer,
+    -- which is a real player's damage under another real player's name.
+    --
+    -- Any id that more than one member claims is dropped outright. The rows
+    -- that would have been named from it keep their placeholders, which is the
+    -- correct answer: the roster genuinely cannot tell those two apart.
     local by_hero, okm, members = {}, pcall(R.lobby.members)
     if okm then
-        local list = members
+        local list, dup = members, {}
         if type(list) == "table" then
             for _, m in ipairs(list) do
-                if m.hero_id and m.name then by_hero[m.hero_id] = m.name end
+                if m.hero_id and m.name then
+                    if by_hero[m.hero_id] and by_hero[m.hero_id] ~= m.name then
+                        dup[m.hero_id] = true
+                    end
+                    by_hero[m.hero_id] = m.name
+                end
+            end
+            for id in pairs(dup) do
+                by_hero[id] = nil
+                if not _dmg.dup_hero_said then
+                    _dmg.dup_hero_said = true
+                    R.log(("[rsmm.damage] hero %d is claimed by more than one "
+                           .. "player this run %s the hero id cannot identify "
+                           .. "either of them, so it names neither")
+                          :format(id, "\u{2014}"))
+                end
             end
         end
     end
-    local rank, changed = 0, 0
+    -- Pass 1: the exact joins, plus the names they account for. `row.player` is
+    -- the owner-name sweep's answer and outranks the hero id — it read the
+    -- player's own gamertag out of the player's own object.
+    local claimed, ally_rows, pending = {}, {}, {}
     for _, row in ipairs(_dmg.order) do
         if not row.is_local then
-            rank = rank + 1
-            local exact = row.hero_id and by_hero[row.hero_id] or nil
-            local nm = _dmg.names[row.slot] or exact or allies[rank]
-            if nm and row.label ~= nm then
-                row.label = nm
-                row.label_guess = exact == nil and #allies > 1
-                changed = changed + 1
+            local exact = row.player or (row.hero_id and by_hero[row.hero_id]) or nil
+            local entry = { row = row, name = exact, guess = false }
+            if exact then claimed[exact] = true else pending[#pending + 1] = entry end
+            ally_rows[#ally_rows + 1] = entry
+        end
+    end
+    -- Pass 2: elimination. Guarded on `#ally_rows <= #allies` because a row that
+    -- forked at a chapter change is a duplicate player, not a new one, and would
+    -- otherwise swallow the name of someone who has not dealt damage yet.
+    local unclaimed = {}
+    for _, nm in ipairs(allies) do
+        if not claimed[nm] then unclaimed[#unclaimed + 1] = nm end
+    end
+    -- STABLE ORDER. `allies` follows R.lobby.members(), which is sorted by
+    -- PARSE RECENCY -- and the engine re-parses every member several times a
+    -- second, so that order flips constantly. Session a34f logged 192 renames
+    -- in one run, `EvilMurray, fruktik_kiwi` and `fruktik_kiwi, EvilMurray`
+    -- alternating once a second, which swapped the two players' names across
+    -- their damage totals for the whole match. A guess may be wrong; it must
+    -- not be wrong DIFFERENTLY every second.
+    table.sort(unclaimed)
+    if #pending == 1 and #ally_rows <= #allies and #unclaimed == 1 then
+        pending[1].name = unclaimed[1]
+        pending[1].guess = true              -- exact by count, not by hero id
+    elseif _dmg.guess_names then
+        -- Hands the leftover names to the leftover rows in JOIN ORDER, which is
+        -- a guess: every row it touches is flagged `label_guess` and a UI that
+        -- shows the name must show the flag (the board prints a trailing "?").
+        --
+        -- ⚠ This branch was made opt-in on 2026-08-20 because the silent
+        -- version put a real name on another player's damage. Turning it OFF BY
+        -- DEFAULT was the wrong half of that fix: the lobby hook reliably learns
+        -- all four names (sessions 6136/5636/0a36/7068/fb4f/314f/a84f/174f/304f/
+        -- 8f36/c536/014f/e736/2c36/9e4f all logged a full four-name roster), but
+        -- no join on this build can say which row is which -- the hero id is
+        -- dead here because players pick duplicate heroes, and the owner-GUID
+        -- key has no member bridge yet. So the default produced a board that
+        -- KNEW every name and printed "Player 1..4" anyway. A marked guess
+        -- beats that; an unmarked one does not. `player_1..player_4` in the
+        -- config remain the way to get names that are never guesses.
+        -- STICKY. A row keeps the guess it was first given for as long as
+        -- that name is still in the lobby, so the board settles instead of
+        -- re-dealing the same names on every tick. Cleared per epoch with the
+        -- rest of the board.
+        _dmg.guessed = _dmg.guessed or {}
+        local live, taken = {}, {}
+        for _, nm in ipairs(allies) do live[nm] = true end
+        for _, entry in ipairs(pending) do
+            local prev = _dmg.guessed[entry.row.slot]
+            if prev and live[prev] and not claimed[prev] and not taken[prev] then
+                entry.name, entry.guess, taken[prev] = prev, true, true
             end
+        end
+        for _, entry in ipairs(pending) do
+            if not entry.name then
+                for _, nm in ipairs(unclaimed) do
+                    if not taken[nm] then
+                        entry.name, entry.guess, taken[nm] = nm, true, true
+                        _dmg.guessed[entry.row.slot] = nm
+                        break
+                    end
+                end
+            end
+        end
+    end
+    local changed = 0
+    for _, entry in ipairs(ally_rows) do
+        local row = entry.row
+        local nm = _dmg.names[row.slot] or entry.name
+        if nm and row.label ~= nm then
+            row.label = nm
+            row.label_guess = _dmg.names[row.slot] == nil and entry.guess
+            changed = changed + 1
         end
     end
     if changed > 0 then
@@ -5662,8 +7386,40 @@ function F._dmg_lobby_refresh()
         local ok, err = pcall(function()
             -- Cheap every time: re-read the known blocks and apply names.
             F._dmg_relabel()
-            F._dmg_probe_hero_field()
+            -- Before the probe, not after: a withdrawal has to clear `done` so
+            -- the same tick can start looking again with the bigger sample.
+            F._dmg_label_hint()
+            F._dmg_recheck_hero_field()
+            F._dmg_probe_hero_field(true)     -- background: byte and word too
             F._dmg_backfill_ids()
+            -- Bounded and one-shot per row: 0x400 bytes of the row's net
+            -- component plus 0x120 at each pointer it holds, looking for a
+            -- 32-hex-character session id. Once a locator is adopted this is
+            -- two reads per unnamed row. Not gated behind `identity_hunt`,
+            -- because unlike the name sweep it cannot answer by coincidence.
+            F._dmg_netid_pass()
+            -- REAL NAMES, and NOT part of `identity_hunt`.
+            --
+            -- This asks the process where each player's peer id physically is
+            -- (one native `mem_find` per player, ONE needle per tick) and then
+            -- checks which row reaches a copy of it, under the one-owner rule.
+            -- It is the path that actually produced names, and it is already
+            -- rate-limited -- the back-to-back scans that caused session a84f's
+            -- stutter were fixed inside it, by spreading the needles.
+            --
+            -- ⚠ It used to sit INSIDE `F._dmg_probe_owner`, so switching
+            -- `identity_hunt` off to stop the blind sweep's stutter switched
+            -- this off too and the board went back to "Player 2". That was a
+            -- regression, not a decision: the expensive part is the sweep
+            -- below, not this.
+            --
+            -- Self-gating: with no unnamed row it returns immediately, so a
+            -- named board and a solo run both cost nothing.
+            F._dmg_probe_owner_fast()
+            -- The BLIND cursor sweep: hundreds of thousands of probes at every
+            -- offset of every row. That is the stutter, and it answered at a
+            -- different offset every time it "worked", so it stays opt-in.
+            if _dmg.identity_hunt then F._dmg_probe_owner() end
             if F._dmg_wants_lobby() then
                 local before = #R.lobby.members()
                 local members = R.lobby.refresh()
@@ -5685,9 +7441,1146 @@ end
 function F._dmg_roster_text(members)
     local parts = {}
     for _, m in ipairs(members) do
-        parts[#parts + 1] = m.hero and (m.name .. " (" .. m.hero .. ")") or m.name
+        -- Prefer the hero NAME over the raw id: "Yume (Juliet)" is something a
+        -- player can match against what they saw on screen; "Yume (hero 4)" is
+        -- not. Display only -- see R.lobby.HERO_NAMES.
+        local hero = m.hero or R.lobby.hero_name(m.hero_id)
+        parts[#parts + 1] = hero and (m.name .. " (" .. hero .. ")") or m.name
     end
     return table.concat(parts, ", ")
+end
+
+--- Record a member's session id without a live lobby. Spec and diagnostics
+--- only: in game this comes from the attribute-parser detour, which recovers
+--- the member as `blob - 0x28`.
+function R.lobby._note_session(name, sid)
+    for _, e in ipairs(LOBBY_HOOK.order) do
+        if e.name == name then e.session = sid; return true end
+    end
+    return false
+end
+
+--- Record the member OBJECT the hook saw for `name`, and snapshot the pointers
+--- it holds (diagnostics and the spec). The hook does both on every parse --
+--- and the SNAPSHOT is the part that matters: the member is destroyed after
+--- the call, so nothing may read it later.
+function R.lobby._note_member(name, addr)
+    for _, e in ipairs(LOBBY_HOOK.order) do
+        if e.name == name then
+            e.member = addr
+            if _ptr_plausible(addr) and I.read_u64 then
+                local ptrs, n, words = {}, 0, {}
+                for off = 0, F._netid.MEMWIN - 8, 8 do
+                    local v = I.read_u64(addr + off)
+                    if type(v) == "number" and v ~= 0 and v ~= -1 then words[v] = true end
+                    if _ptr_plausible(v) and not ptrs[v] then
+                        ptrs[v] = true; n = n + 1
+                    end
+                end
+                if n > 0 then e.ptrs, e.nptrs = ptrs, n end
+                if next(words) then e.words = words end
+            end
+            return true
+        end
+    end
+    return false
+end
+
+--- Expose the session matcher for the spec and for diagnosing a build where
+--- the representations do not line up.
+function R.damage._session_matches(n, text)
+    return F._dmg_session_matches(n, text)
+end
+
+--- Drive the session join directly. Spec and diagnostics only; in game the
+--- gameplay bus feeds it (see the R.on("*") handler below).
+function R.damage._session_join(entity, session)
+    return F._dmg_note_session(entity, session)
+end
+
+--- Drive the cheap identity paths by hand, exactly as the 1 Hz tick does
+--- (the spec). Does NOT include the blind sweep, which is opt-in.
+function R.damage._identity_tick()
+    F._dmg_relabel()
+    F._dmg_backfill_ids()
+    F._dmg_netid_pass()
+    return F._dmg_probe_owner_fast()
+end
+
+--- Record a member's peer id (the spec); the lobby hook does this from the
+--- parsed attribute blob.
+function R.lobby._note_eos(name, id)
+    for _, e in ipairs(LOBBY_HOOK.order) do
+        if e.name == name then e.eos = id; return true end
+    end
+    return false
+end
+
+--- Drive the label hint by hand (the spec); the meter's tick calls it.
+function R.damage._label_hint()
+    return F._dmg_label_hint()
+end
+
+--- Drive one net-id pass by hand (diagnostics and the spec); the meter's own
+--- tick already calls this once a second.
+--- The engine's peer table as the join sees it (test/diagnostic seam).
+function R.damage._peer_join() return F._dmg_peer_join() end
+
+function R.damage._netid_pass()
+    return F._dmg_netid_pass()
+end
+
+--- The adopted net-id locator, or a table with `off == nil` while discovery is
+--- still running. Read-only: a caller must not be able to adopt one by hand.
+function R.damage._netid()
+    local path
+    if F._netid.path then
+        path = {}
+        for i, v in ipairs(F._netid.path) do path[i] = v end
+    end
+    -- A COPY of the path: the adopted locator is the one thing a caller must
+    -- not be able to edit from outside.
+    return { off = F._netid.off, path = path, kind = F._netid.kind }
+end
+
+--- Does the int64 session id `n` and the member's session STRING refer to the
+--- same session? Exact match against every plausible text form, never a
+--- "close enough". The point of this whole path is that it cannot invent an
+--- answer; a fuzzy compare would hand that property straight back.
+function F._dmg_session_forms(n)
+    local hex = ("%016x"):format(n)
+    -- Byte-reversed, for a little-endian half of a GUID printed big-endian.
+    local swapped = hex:gsub("(%x%x)", function(b) return b end)
+    local rev = {}
+    for i = 15, 1, -2 do rev[#rev + 1] = hex:sub(i, i + 1) end
+    swapped = table.concat(rev)
+    return { ("%d"):format(n), ("%x"):format(n), ("%X"):format(n),
+             ("0x%x"):format(n), ("0x%X"):format(n),
+             hex, hex:upper(), swapped, swapped:upper() }
+end
+
+--- Does the member's session id `text` contain this int64 as one of its halves?
+---
+--- The lobby's session id is a 128-bit GUID STRING, not an int64: session 8f36
+--- logged "Ovilli" as "31b1a3aef8ce46e9a4d76be3c7526757", 32 hex characters.
+--- The netcode path deals in 8 bytes (NamedEvent_NetSend stores a single
+--- qword at ev+0x38), so if the two are the same identity at all, the qword
+--- can only be one HALF of that GUID. Both halves and both byte orders are
+--- tried; anything else would be a guess, and a guess is what this design
+--- exists to refuse.
+function F._dmg_session_halves(n, text)
+    if type(text) ~= "string" or #text ~= 32 or text:find("[^0-9a-fA-F]") then
+        return false
+    end
+    local lo, hi = text:sub(1, 16):lower(), text:sub(17, 32):lower()
+    for _, form in ipairs(F._dmg_session_forms(n)) do
+        local f = form:lower()
+        if #f == 16 and (f == lo or f == hi) then return true end
+    end
+    return false
+end
+
+function F._dmg_session_matches(n, text)
+    if type(n) ~= "number" or type(text) ~= "string" then return false end
+    for _, form in ipairs(F._dmg_session_forms(n)) do
+        if form == text then return true end
+    end
+    return F._dmg_session_halves(n, text)
+end
+
+--- The lobby member whose session id is `n`, or nil.
+---
+--- Requires EXACTLY ONE match. Two members answering to one session id means
+--- the representation guess is wrong (e.g. a truncated form colliding), and a
+--- collision must name nobody -- same rule the rest of the meter runs on.
+function F._dmg_session_member(n)
+    local ok, members = pcall(R.lobby.members)
+    if not ok or type(members) ~= "table" then return nil end
+    local hit, count = nil, 0
+    for _, m in ipairs(members) do
+        if type(m.session) == "string" and F._dmg_session_matches(n, m.session) then
+            hit, count = m, count + 1
+        end
+    end
+    if count == 1 then return hit end
+    return nil
+end
+
+-- net-component peer id ----------------------------------------------------
+--
+-- The join the gameplay bus could not give us.
+--
+-- Sessions c536 and e736 settled ev+0x38: every event the bus dispatched in
+-- either run carried the SAME vftable (0xf05aa8), i.e. the base
+-- oCGameNamedEvent, and on the base class +0x38 is not a peer. The values it
+-- held are handles (0x8146_00xx_00000004, 0x8075_00xx_000y_0004) and in one
+-- case a raw code address (0x1463b00a2). So no gameplay event on this build
+-- carries a sender, and F._dmg_note_session can never fire from it.
+--
+-- What DOES have to know the owner is the entity's NET COMPONENT: replication
+-- routes by peer, so whatever replicates a remote hero must name the machine
+-- driving it. The component is a separate allocation reached through the
+-- component map, so the entity+0x2000 sweep never looked at it.
+--
+-- The needle is the lobby member's session id -- 32 hex characters, the same
+-- string LobbyMembers_Local compares to find "everyone but me". A 128-bit
+-- value matching by accident is not a risk worth modelling, and that is what
+-- makes this different in kind from sweeping memory for a display name.
+F._netid = {
+    WIN    = 0x800,    -- bytes of the net component to inspect
+    HOPWIN = 0x180,    -- bytes at each pointer the component holds
+    off    = nil,      -- adopted offset, once a row's own session proves one
+    path   = nil,      -- pointer path from the component, or nil for a direct read
+    kind   = nil,      -- "string" | "qword-lo" | "qword-hi"
+    hits   = {},       -- row.key -> hit list, from the one-shot discovery
+    probed = {},       -- row.key -> true
+    said   = false,
+    counted = false,
+    vft_said = false,
+    guid_said = false,
+    guid_proven = false,
+    guid_done = false,   -- a refusal is final for the run: the gates said no
+    -- The net component fields NamedEvent_NetSend dereferences by name.
+    DEEP    = { 0xb8, 0xc0, 0xc8 },
+    -- oCSLNetworkObject::vft[0x18]: *(*(*(C+0xb8)+0x100)+0x28) is the session
+    -- this entity replicates to. Read straight off the decompile.
+    OWNER_PATH = { 0xb8, 0x100, 0x28 },
+    owner_said = 0,
+    owner_vft_said = false,
+    DEEPWIN = 0x200,   -- bytes of each of those objects to inspect
+    MEMWIN = 0x100,    -- bytes of the lobby member object to harvest
+    -- Netcode_PeerSlots / Netcode_PeerCount, the engine's own list of the
+    -- other machines in the run. Baked VAs, so every read is gated on
+    -- _va_ok(): a stale global is a plausible-looking pointer, not a nil.
+    --
+    -- ⚠ The base is 0x14143f600, NOT 0x14143f650. The tick's `lea rax,
+    -- [rip+...]` lands on 0x14143f650 because it indexes slot+0x50 (the
+    -- tunnel pointer) directly, so reading the array from there is off by
+    -- 0x50 and every string comes back from the NEXT slot. The true base is
+    -- what the slot ctor FUN_1402aedf0 zeroes, field by field.
+    PEER_SLOTS  = 0x14143f600,
+    PEER_COUNT  = 0x14143f780,
+    PEER_STRIDE = 0x60,        -- `lea rax,[rax+rax*2]; shl rax,5` in the tick
+    PEER_MAX    = 32,          -- refuse an implausible count outright
+    -- Slot fields, all decompile-confirmed (FUN_1402aedf0 fills them,
+    -- FUN_1402b5db0 frees them, FUN_1402b0170/FUN_1402b0230 look up by them).
+    PEER_NAME    = 0x00,       -- PlayerName, straight off the parsed record
+    PEER_SESSION = 0x10,       -- the lobby member's +0x00 session id
+    PEER_EOS     = 0x20,       -- m_sEosUserId — the engine's "P2P User"
+    PEER_HASH    = 0x30,       -- u64 hash of the EOS id (FUN_1402aed50)
+    PEER_TUNNEL  = 0x50,       -- the P2P connection: +0xc0 port, +0xcc state
+    PEER_STR    = { 0x00, 0x10, 0x20 },
+    peer_said   = false,
+    peer_done   = false,
+    peer_gen    = nil,   -- #peers the memo below was built for
+    peer_scanned = {},   -- row.key -> true: its window has been walked once
+    peer_hit    = {},    -- row.key -> peer slot, kept after the one-shot scan
+}
+
+--- The lobby MEMBER OBJECTS as pointer needles: every plausible pointer the
+--- member holds, plus the member's own address, mapped back to the member.
+---
+--- Session 2c36 settled the value search: all four rows resolved a real net
+--- component and NONE of them held a session id within +0x400, direct or one
+--- hop. So the peer is not identified there by its GUID -- which is what you
+--- would expect if the engine keys peers by a connection OBJECT rather than by
+--- the id string the lobby exposes.
+---
+--- A pointer both structures hold is a much stronger claim than a matching
+--- integer: it says the member and the net component reference the SAME
+--- allocation. Combined with the anchor and distinctness gates, a coincidence
+--- would have to be a pointer that (a) one member alone holds, (b) one row
+--- alone holds, (c) pairs the local row with the local player, and (d) pairs
+--- every other row with a different member. Nothing shared satisfies that.
+---
+--- A value two members share is poisoned, exactly like a session needle.
+function F._dmg_member_ptrs()
+    local ok, members = pcall(R.lobby.members)
+    if not ok or type(members) ~= "table" or not I.read_u64 then return nil end
+    local by, n, total = {}, 0, 0
+    for _, m in ipairs(members) do
+        if type(m.ptrs) == "table" then
+            for v in pairs(m.ptrs) do
+                if by[v] == nil then by[v] = m
+                elseif by[v] and by[v] ~= m then by[v] = false end
+                total = total + 1
+            end
+            n = n + 1
+        end
+    end
+    -- HOW MANY members contributed, once. Session 9e4f reported 30 hits that
+    -- all named one player, and "every row holds a shared pointer" and "only
+    -- one member had any needles at all, so nothing could poison one" look
+    -- identical in the log without this. They are a different bug each.
+    -- Latch on the first NON-EMPTY answer. Session c236 latched on "0 of 0"
+    -- five seconds into the process, before a single member had been parsed,
+    -- and then never spoke again for the rest of the run -- so the one number
+    -- this line exists to report was the one number it could not report.
+    if not F._netid.counted and n > 0 then
+        F._netid.counted = true
+        R.log(("[rsmm.damage] net id: %d of %d lobby member(s) contributed "
+               .. "%d pointer needle(s)"):format(n, #members, total))
+    end
+    if n == 0 then return nil end
+    return by
+end
+
+--- Both needle sets in one table, so a scan reads each qword once.
+function F._dmg_netid_targets()
+    local hex = F._dmg_session_needles()
+    local ptr = F._dmg_member_ptrs()
+    if not hex and not ptr then return nil end
+    return { hex = hex or {}, ptr = ptr or {} }
+end
+
+--- The lobby's session ids as needles, keyed by the hex text a read would
+--- produce. Text, not integers: a GUID half can exceed the signed 64-bit range
+--- Lua 5.4 parses, and a float compare would match its neighbours too.
+---
+--- Both halves and both byte orders, because the netcode deals in qwords and a
+--- half stored little-endian prints reversed. A needle two members share is
+--- poisoned rather than dropped -- it must never name the first one found.
+function F._dmg_session_needles()
+    local ok, members = pcall(R.lobby.members)
+    if not ok or type(members) ~= "table" then return nil end
+    local function rev(h)
+        local t = {}
+        for i = 15, 1, -2 do t[#t + 1] = h:sub(i, i + 1) end
+        return table.concat(t)
+    end
+    local by, n = {}, 0
+    for _, m in ipairs(members) do
+        local s = m.session
+        if type(s) == "string" and #s == 32 and not s:find("[^0-9a-fA-F]") then
+            s = s:lower()
+            local lo, hi = s:sub(1, 16), s:sub(17, 32)
+            local add = function(key, kind)
+                if by[key] == nil then
+                    by[key] = { m = m, kind = kind }
+                elseif by[key] and by[key].m ~= m then
+                    by[key] = false           -- shared by two members: useless
+                end
+            end
+            add(s, "string")
+            add(lo, "qword-lo")
+            add(hi, "qword-hi")
+            add(rev(lo), "qword-lo")
+            add(rev(hi), "qword-hi")
+            n = n + 1
+        end
+    end
+    if n == 0 then return nil end
+    return by
+end
+
+--- Every match for a member needle in `base[0 .. win)`: a session id as a
+--- qword or a std::string, or a pointer the member itself holds. Guarded
+--- reads only, so an unmapped page costs a nil.
+--- `path` is how `base` was reached from the net component: nil for the
+--- component itself, {a} for `*(nc+a)`, {a,b} for `*(*(nc+a)+b)`. Recorded on
+--- every hit so an adopted locator can be RE-READ on another row -- a hit
+--- nobody can reproduce is not a locator.
+function F._dmg_scan_session(base, win, targets, path)
+    local out = {}
+    if not _ptr_plausible(base) or not I.read_u64 then return out end
+    for off = 0, win - 8, 8 do
+        local q = I.read_u64(base + off)
+        if type(q) == "number" then
+            local h = targets.hex[("%016x"):format(q)]
+            if h then
+                out[#out + 1] = { off = off, path = path, kind = h.kind, m = h.m }
+            else
+                local m = targets.ptr[q]
+                if m then out[#out + 1] = { off = off, path = path, kind = "ptr", m = m } end
+            end
+        end
+        -- A std::string read is up to three more guarded reads, and this
+        -- loop runs tens of thousands of times per row. Only bother where one
+        -- could actually start: the heap form begins with a pointer, and the
+        -- inline form begins with hex characters.
+        local looks = _ptr_plausible(q)
+        if not looks and type(q) == "number" then
+            local c = q & 0xff
+            looks = (c >= 0x30 and c <= 0x39) or (c >= 0x61 and c <= 0x66)
+                    or (c >= 0x41 and c <= 0x46)
+        end
+        local s = looks and R.debug.stdstring_at and R.debug.stdstring_at(base + off)
+        if type(s) == "string" and #s == 32 then
+            local h = targets.hex[s:lower()]
+            if h then out[#out + 1] = { off = off, path = path, kind = "string", m = h.m } end
+        end
+    end
+    return out
+end
+
+--- The owning peer's RakNetGUID for a row, or nil.
+---
+--- `oCSLNetworkObject::vft[0x18]` (0x1408c0d40) is one line:
+---
+---     *out = *(*(netobj + 0x100) + 0x28);
+---
+--- netobj+0x100 is the oCSLNetReplica (set in its ctor, FUN_1408c0890's
+--- param_2), and the replica is a RakNet::Replica3 whose +0x28 is
+--- `creatingSystemGUID` -- the peer that created it, i.e. the machine whose
+--- player owns this hero. Read, never called: three guarded loads.
+function F._dmg_owner_guid(row)
+    if not I.read_u64 or not _ptr_plausible(row.key) then return nil end
+    local ent = I.read_u64(row.key + DMG.HERO_ENTITY_OFF)
+    if not _ptr_plausible(ent) then return nil end
+    local nc = R.net.component(ent)
+    if not nc then return nil end
+    local inner = F._dmg_netid_walk(nc, { 0xb8, 0x100 })
+    if not inner then return nil end
+    local g = I.read_u64(inner + 0x28)
+    if type(g) ~= "number" or g == 0 or g == -1 then return nil end
+    return g
+end
+
+--- One engine string/buffer descriptor: {void* ptr @+0x0; int32 len @+0x8;
+--- uint32 cap @+0xc}. Same shape as LobbyAttributes_Parse's StringDesc, and
+--- the shape the peer-slot destructor frees three of.
+function F._peer_str(va)
+    if not (I.read_u64 and I.read_u32 and I.read_cstr) then return nil end
+    local ptr = I.read_u64(va)
+    if not _ptr_plausible(ptr) then return nil end
+    local len = I.read_u32(va + 8)
+    if type(len) ~= "number" then return nil end
+    len = len & 0x7fffffff                 -- bit 31 is the "not owned" flag
+    if len < 1 or len > 128 then return nil end
+    local t = I.read_cstr(ptr, len + 1)
+    if type(t) ~= "string" or #t ~= len then return nil end
+    if t:find("[^\32-\126]") then return nil end
+    return t
+end
+
+--- The engine's own peer table — one entry per OTHER machine in the run.
+---
+--- Read-only, no engine call, ~`count` * a handful of guarded loads. This is
+--- the only structure that holds one record per remote player, which is what a
+--- row->player join has been missing: the board knows every NAME (lobby
+--- attributes) and a distinct per-row owner RakNetGUID, and nothing joined them.
+---
+--- Layout in `Netcode_PeerSlots`'s note. Returns `{}` rather than guessing when
+--- the va gate is closed or the count is implausible.
+function R.net.peers()
+    if not _va_ok("the netcode peer table") then return {} end
+    if not (I.module_base and I.read_u32 and I.read_u64) then return {} end
+    local base = I.module_base()
+    if not base or base == 0 then return {} end
+    local slots = base + (F._netid.PEER_SLOTS - 0x140000000)
+    local n = I.read_u32(base + (F._netid.PEER_COUNT - 0x140000000))
+    if type(n) ~= "number" or n < 1 or n > F._netid.PEER_MAX then return {} end
+    local out = {}
+    for i = 0, n - 1 do
+        local slot = slots + i * F._netid.PEER_STRIDE
+        local e = { index = i, slot = slot, text = {} }
+        e.name    = F._peer_str(slot + F._netid.PEER_NAME)
+        e.session = F._peer_str(slot + F._netid.PEER_SESSION)
+        e.eos     = F._peer_str(slot + F._netid.PEER_EOS)
+        e.hash    = I.read_u64(slot + F._netid.PEER_HASH)
+        if e.hash == 0 or e.hash == -1 then e.hash = nil end
+        local ptr = I.read_u64(slot + F._netid.PEER_TUNNEL)
+        if _ptr_plausible(ptr) then
+            e.peer  = ptr
+            -- ntohs'd in FUN_1402aa470 (Ordinal_15 = ntohs), so this is a
+            -- UDP PORT in network order, NOT a RakNet system index.
+            e.port  = I.read_u16 and I.read_u16(ptr + 0xc0)
+            e.state = I.read_u32(ptr + 0xcc)
+        end
+        for _, off in ipairs(F._netid.PEER_STR) do
+            local t = F._peer_str(slot + off)
+            if t then e.text[#e.text + 1] = t end
+        end
+        out[#out + 1] = e
+    end
+    return out
+end
+
+--- The owner GUID's SYSTEM INDEX, the other half of the RakNetGUID.
+---
+--- `RakNetGUID` is `{uint64 g; uint16 systemIndex}` — the replica ctor
+--- initialises 16 bytes at +0x28 — so the index sits at replica+0x30. It is
+--- the candidate bridge to the peer table, whose peer objects carry a u16 at
+--- +0xc0 that Netcode_DropPeer's finder matches on.
+function F._dmg_owner_index(row)
+    if not I.read_u16 or not _ptr_plausible(row.key) then return nil end
+    local ent = I.read_u64(row.key + DMG.HERO_ENTITY_OFF)
+    if not _ptr_plausible(ent) then return nil end
+    local nc = R.net.component(ent)
+    if not nc then return nil end
+    local inner = F._dmg_netid_walk(nc, { 0xb8, 0x100 })
+    if not inner then return nil end
+    local ix = I.read_u16(inner + 0x30)
+    if type(ix) ~= "number" or ix == 0xffff then return nil end
+    return ix
+end
+
+--- Join rows to players through the ENGINE'S OWN PEER TABLE.
+---
+--- `Netcode_PeerSlots` is one 0x60-byte slot per other machine in the run, and
+--- the slot already carries the player's display NAME (+0x00), their lobby
+--- session id (+0x10), their EOS ProductUserId (+0x20) and a 64-bit hash of
+--- that id (+0x30). It is a better name source than the lobby roster: the
+--- roster is append-only history, this is current membership.
+---
+--- The unsolved half is which SLOT owns which row. The engine's own join is by
+--- the +0x30 hash -- FUN_140272700 walks the slots and matches each against
+--- `hash(member.m_sEosUserId)`, logging "No party member found for P2P User"
+--- when it cannot -- so that hash is the shape an ownership record would take
+--- on the hero side too. This scans each row's controller and entity for it.
+---
+--- A hit is an EQUALITY on a 64-bit engine-computed id, which is what separates
+--- it from `guess_names`. No hit names nobody, and the report below still says
+--- what both halves held.
+function F._dmg_peer_join()
+    if F._netid.peer_done then return false end
+    -- Nothing unnamed, nothing to look for. Without this the window walk below
+    -- runs on a board that is already fully named, forever.
+    local wanted = false
+    for _, row in ipairs(_dmg.order) do
+        if not row.is_local and not row.player and _ptr_plausible(row.key) then
+            wanted = true
+            break
+        end
+    end
+    if not wanted then return false end
+    local peers = R.net.peers()
+    if #peers == 0 then return false end
+    -- ONE-SHOT PER ROW, re-armed only when the peer set changes.
+    --
+    -- The scan below is 0x800 bytes of the controller plus 0x800 of the entity,
+    -- read a qword at a time through the page guard: ~512 native calls per row.
+    -- The first version ran it on EVERY background tick for every unnamed row
+    -- and never stopped, because a miss returns false rather than latching --
+    -- four rows is ~2000 guarded reads a tick, forever. That is the "lags
+    -- sometimes hard" shape: invisible while it happens to match, brutal while
+    -- it does not. A row's controller does not sprout the key later, so once is
+    -- the right number of times; a NEW peer is the only thing that can change
+    -- the answer, so that is what re-arms it.
+    local gen = #peers
+    if F._netid.peer_gen ~= gen then
+        F._netid.peer_gen, F._netid.peer_scanned = gen, {}
+    end
+
+    -- The engine's own key. FUN_1402aed50 hashes the EOS id into slot+0x30 and
+    -- FUN_140272700 joins a lobby member to a peer by comparing that hash --
+    -- so if anything on the hero side records which player owns it, this
+    -- 64-bit value is the shape it would take. A value two peers share
+    -- identifies neither.
+    local by_hash = {}
+    for _, e in ipairs(peers) do
+        if e.hash then
+            by_hash[e.hash] = (by_hash[e.hash] == nil) and e or false
+        end
+    end
+
+    local hit, found = {}, {}
+    for _, row in ipairs(_dmg.order) do
+        if _ptr_plausible(row.key) and not F._netid.peer_scanned[row.key] then
+            F._netid.peer_scanned[row.key] = true
+            row._peer_ix = F._dmg_owner_index(row)
+            local ent = I.read_u64(row.key + DMG.HERO_ENTITY_OFF)
+            for _, obj in ipairs({ row.key, _ptr_plausible(ent) and ent or nil }) do
+                for off = 0, F._netid.WIN - 8, 8 do
+                    local v = I.read_u64(obj + off)
+                    local e = type(v) == "number" and by_hash[v]
+                    if e then
+                        F._netid.peer_hit = F._netid.peer_hit or {}
+                        F._netid.peer_hit[row.key] = e
+                        found[#found + 1] = ("row %d +0x%x -> %s"):format(
+                            row.slot, off, tostring(e.name))
+                    end
+                end
+            end
+        end
+        -- Carried across ticks: the scan happened once, its answer has to
+        -- outlive it or the join can never act on a row it already solved.
+        local e = F._netid.peer_hit and F._netid.peer_hit[row.key]
+        if e then hit[row] = e end
+    end
+
+    if not F._netid.peer_said then
+        F._netid.peer_said = true
+        local pp = {}
+        for _, e in ipairs(peers) do
+            pp[#pp + 1] = ("#%d %s eos=%s port=%s state=%s hash=%s"):format(
+                e.index, tostring(e.name), tostring(e.eos), tostring(e.port),
+                tostring(e.state), e.hash and ("0x%x"):format(e.hash) or "nil")
+        end
+        local rr = {}
+        for _, row in ipairs(_dmg.order) do
+            local g = F._dmg_owner_guid(row)
+            rr[#rr + 1] = ("row %d guid=%s ix=%s"):format(
+                row.slot, g and ("0x%x"):format(g) or "nil",
+                tostring(row._peer_ix))
+        end
+        -- Both halves, always. A silent failure costs a playtest to work out
+        -- which side was empty; this line says so outright.
+        R.log(("[rsmm.damage] peer table: %d peer(s) [%s]; rows [%s]; hash hits [%s]")
+              :format(#peers, table.concat(pp, ", "), table.concat(rr, ", "),
+                      #found > 0 and table.concat(found, ", ") or "none"))
+    end
+    if not next(hit) then return false end
+
+    -- Same two gates as every other join. The anchor is the one that catches a
+    -- plausible-but-wrong bridge: if this machine's own row comes back as
+    -- somebody else, the mapping is not an identity.
+    local me
+    local okn, nm = pcall(R.player.name)
+    if okn and type(nm) == "string" and nm ~= "" then me = nm end
+    for row, e in pairs(hit) do
+        if row.is_local and me and e.name and e.name ~= me then
+            R.log(("[rsmm.damage] peer join REFUSED: this machine's row resolves "
+                   .. "to %q but Steam calls this player %q"):format(e.name, me))
+            F._netid.peer_done = true
+            return false
+        end
+    end
+    local by = {}
+    for row, e in pairs(hit) do
+        if e.name then
+            if by[e.name] then
+                R.log(("[rsmm.damage] peer join REFUSED: rows %d and %d both "
+                       .. "resolve to %q"):format(by[e.name].slot, row.slot, e.name))
+                F._netid.peer_done = true
+                return false
+            end
+            by[e.name] = row
+        end
+    end
+
+    local named = 0
+    for row, e in pairs(hit) do
+        if e.name and not row.is_local and _dmg.names[row.slot] == nil
+           and row.label ~= e.name then
+            row.label, row.label_guess, row.player = e.name, false, e.name
+            named = named + 1
+        end
+    end
+    if named > 0 then
+        F._netid.peer_done = true
+        R.log(("[rsmm.damage] PEER JOIN PROVEN: %d row(s) named from the engine's "
+               .. "own peer table — exact, not a guess"):format(named))
+    end
+    return named > 0
+end
+
+--- Name rows by matching the owner GUID against the lobby members' own words.
+---
+--- The engine has to know which peer each lobby member is, and a RakNetGUID is
+--- a plain 64-bit number, so if it records that anywhere on the member this
+--- finds it. Same two gates as everything else: the local row must resolve to
+--- the Steam persona, and no two rows may resolve to the same member.
+---
+--- Costs one table lookup per (row, member) pair. Nothing is searched.
+function F._dmg_guid_join()
+    if F._netid.guid_done then return false end
+    local ok, members = pcall(R.lobby.members)
+    if not ok or type(members) ~= "table" then return false end
+    -- NOT gated on the roster size. The GUID report below is about the ROWS --
+    -- distinct values prove the field is the per-player key whether or not any
+    -- member carries one -- and gating the whole function on `#members >= 2`
+    -- suppressed it in exactly the sessions where it was worth having.
+    if #members < 1 then return false end
+    local guid, hit, rows = {}, {}, 0
+    for _, row in ipairs(_dmg.order) do
+        local g = F._dmg_owner_guid(row)
+        if g then
+            guid[row] = g
+            rows = rows + 1
+            local found, count = nil, 0
+            for _, m in ipairs(members) do
+                if type(m.words) == "table" and m.words[g] then
+                    found, count = m, count + 1
+                end
+            end
+            -- A GUID two members claim identifies neither.
+            if count == 1 then hit[row] = found end
+        end
+    end
+    if rows == 0 then return false end
+    -- Report the GUIDs once, whatever happens. Four different values is the
+    -- proof that the field is the owner key even when no member carries it.
+    if not F._netid.guid_said and rows > 1 then
+        F._netid.guid_said = true
+        local seen, n = {}, 0
+        local parts = {}
+        for _, row in ipairs(_dmg.order) do
+            if guid[row] then
+                if not seen[guid[row]] then seen[guid[row]] = true; n = n + 1 end
+                parts[#parts + 1] = ("row %d = 0x%x%s"):format(
+                    row.slot, guid[row], hit[row] and (" -> " .. hit[row].name) or "")
+            end
+        end
+        R.log(("[rsmm.damage] owner GUIDs: %s (%d distinct across %d row(s))")
+              :format(table.concat(parts, ", "), n, rows))
+    end
+    if not next(hit) then return false end
+    -- ANCHOR: the local row must resolve to this machine's player.
+    local me
+    local okn, nm = pcall(R.player.name)
+    if okn and type(nm) == "string" and nm ~= "" then me = nm end
+    for row, m in pairs(hit) do
+        if row.is_local and me and m.name ~= me then
+            R.log(("[rsmm.damage] owner GUID join REFUSED: this machine's row "
+                   .. "resolves to %q but Steam calls this player %q")
+                  :format(m.name, me))
+            F._netid.guid_done = true
+            return false
+        end
+    end
+    -- DISTINCTNESS: two rows resolving to one member means the match is not an
+    -- identity, so it names nobody.
+    local by = {}
+    for row, m in pairs(hit) do
+        if by[m.name] then
+            R.log(("[rsmm.damage] owner GUID join REFUSED: rows %d and %d both "
+                   .. "resolve to %q"):format(by[m.name].slot, row.slot, m.name))
+            F._netid.guid_done = true
+            return false
+        end
+        by[m.name] = row
+    end
+    local names, named = F._dmg_name_set(), false
+    if not names then return false end
+    for row, m in pairs(hit) do
+        if not row.player and names[m.name] then
+            if F._dmg_claim(row, names, m.name, "owner GUID") then named = true end
+        end
+    end
+    if named and not F._netid.guid_proven then
+        F._netid.guid_proven = true
+        R.log("[rsmm.damage] OWNER GUID JOIN PROVEN: rows are named from "
+              .. "RakNet::Replica3::creatingSystemGUID -- the peer the engine "
+              .. "itself says created the hero, matched against the lobby "
+              .. "member that carries the same GUID.")
+    end
+    return named
+end
+
+--- One-shot: what session ids does this row's net component reach?
+---
+--- Logs every hit AND the empty result. "The component holds no session id"
+--- and "the probe never ran" are the same silence otherwise, and that
+--- ambiguity is what cost session 8f36 a whole playtest.
+function F._dmg_probe_netid(row, targets)
+    if F._netid.probed[row.key] then return F._netid.hits[row.key] end
+    if not targets or not I.read_u64 then return nil end
+    local ent = I.read_u64(row.key + DMG.HERO_ENTITY_OFF)
+    if not _ptr_plausible(ent) then return nil end
+    local nc = R.net.component(ent)
+    if not nc then
+        if not F._netid.said then
+            F._netid.said = true
+            R.log(("[rsmm.damage] net id: row %d has no net component — the "
+                   .. "peer-id join cannot be probed"):format(row.slot))
+        end
+        return nil
+    end
+    F._netid.probed[row.key] = true
+    local hits = F._dmg_scan_session(nc, F._netid.WIN, targets, nil)
+    for off = 0, F._netid.WIN - 8, 8 do
+        local p = I.read_u64(nc + off)
+        if _ptr_plausible(p) then
+            for _, h in ipairs(F._dmg_scan_session(p, F._netid.HOPWIN, targets, { off })) do
+                hits[#hits + 1] = h
+            end
+        end
+    end
+    -- TWO hops, but only down the three pointers the disassembly names.
+    --
+    -- NamedEvent_NetSend (0x140721630) and NamedEvent_NetSendToPeer say where
+    -- identity actually lives on this component:
+    --
+    --     [C+0xc0]->vft[0x88](&out)  -> ptr whose [0] is the LOCAL session
+    --     [C+0xb8]->vft[0x18](&out)  -> ptr to the session this entity talks to
+    --     [C+0xc8]                   -> the scene that sends to a session
+    --
+    -- Two things follow. Sessions are compared as a single QWORD
+    -- (`local_res20 != *param_3`), so the netcode's session is 8 bytes and the
+    -- lobby's is a 32-character string -- they are not the same value, which
+    -- is why no scan for the GUID could ever hit. And the value is reached
+    -- through a VCALL, so it sits deeper than the one hop above. If that qword
+    -- is a pointer to a peer object, the object is where a name or a GUID
+    -- would be, and that is exactly two hops down these three fields.
+    --
+    -- Bounded to the named fields on purpose: this is a read of a known
+    -- structure, not a wider sweep.
+    for _, field in ipairs(F._netid.DEEP) do
+        local obj = I.read_u64(nc + field)
+        if _ptr_plausible(obj) then
+            for _, h in ipairs(F._dmg_scan_session(obj, F._netid.DEEPWIN, targets, { field })) do
+                hits[#hits + 1] = h
+            end
+            for off = 0, F._netid.DEEPWIN - 8, 8 do
+                local p = I.read_u64(obj + off)
+                if _ptr_plausible(p) then
+                    for _, h in ipairs(F._dmg_scan_session(p, F._netid.HOPWIN,
+                                                           targets, { field, off })) do
+                        hits[#hits + 1] = h
+                    end
+                end
+            end
+        end
+    end
+-- THE OWNER FIELD, read exactly where the engine reads it.
+    --
+    -- oCSLNetworkObject::vft[0x18] (0x1408c0d40) is one line:
+    --
+    --     *out = *(*(netobj + 0x100) + 0x28);
+    --
+    -- so the session an entity replicates to is `*(*(*(C+0xb8)+0x100)+0x28)`,
+    -- a plain three-hop field path. No vcall needed, and nothing here is a
+    -- guess about WHICH offsets -- the disassembly names all three.
+    --
+    -- The qword itself is logged per row whatever it is. If the four rows hold
+    -- four different values it is the owner key, and the only open question is
+    -- what maps it to a name; if they are all equal it is not.
+    do
+        local owner = F._dmg_netid_walk(nc, F._netid.OWNER_PATH)
+        local raw
+        local o = F._dmg_netid_walk(nc, { 0xb8, 0x100 })
+        if o then raw = I.read_u64(o + 0x28) end
+        if raw and F._netid.owner_said < 4 then
+            F._netid.owner_said = F._netid.owner_said + 1
+            R.log(("[rsmm.damage] net id: row %d owner session = 0x%x%s")
+                  :format(row.slot, raw,
+                          _ptr_plausible(raw) and " (a pointer)" or ""))
+        end
+        -- If it is a pointer, the object behind it is where a session STRING
+        -- would live -- one hop past what any earlier pass reached.
+        if owner then
+            for _, h in ipairs(F._dmg_scan_session(owner, F._netid.DEEPWIN,
+                                                   targets, F._netid.OWNER_PATH)) do
+                hits[#hits + 1] = h
+            end
+            if not F._netid.owner_vft_said then
+                local mb = I.module_base and I.module_base()
+                local vft = I.read_u64(owner)
+                if mb and mb ~= 0 and _ptr_plausible(vft) and vft > mb then
+                    F._netid.owner_vft_said = true
+                    R.log(("[rsmm.damage] net id: owner object vftable rva 0x%x")
+                          :format(vft - mb))
+                end
+            end
+        end
+    end
+    -- The net object's VFTABLE, once. Its slot 0x18 returns the session this
+    -- entity replicates to; decompiling that one function statically answers
+    -- the whole question, and the RVA is the only thing the exe cannot tell me
+    -- without a live instance.
+    if not F._netid.vft_said then
+        local obj = I.read_u64(nc + 0xb8)
+        local mb = I.module_base and I.module_base()
+        if _ptr_plausible(obj) and mb and mb ~= 0 then
+            local vft = I.read_u64(obj)
+            if _ptr_plausible(vft) and vft > mb then
+                F._netid.vft_said = true
+                R.log(("[rsmm.damage] net id: net object vftable rva 0x%x "
+                       .. "(slot 0x18 = the session this entity replicates to)")
+                      :format(vft - mb))
+            end
+        end
+    end
+    F._netid.hits[row.key] = hits
+    -- Cap the per-row detail. Session 9e4f printed thirty of these, which is
+    -- a lot of log for one fact ("this row reaches N locators naming M
+    -- players"); the counts are what a reader acts on, the first few lines are
+    -- enough to see the shape.
+    local who, nwho = {}, 0
+    for _, h in ipairs(hits) do
+        if h.m and not who[h.m.name] then who[h.m.name] = true; nwho = nwho + 1 end
+    end
+    for i, h in ipairs(hits) do
+        if i > 4 then break end
+        R.log(("[rsmm.damage] net id: row %d (%s) netcomp%s +0x%x is %q (%s)")
+              :format(row.slot, tostring(row.label),
+                      F._dmg_netid_path_text(h.path),
+                      h.off, tostring(h.m.name), h.kind))
+    end
+    if #hits > 4 then
+        R.log(("[rsmm.damage] net id: row %d has %d locator(s) naming %d "
+               .. "player(s) (showing 4)"):format(row.slot, #hits, nwho))
+    end
+    if #hits == 0 then
+        R.log(("[rsmm.damage] net id: row %d (%s) netcomp 0x%x carries no lobby "
+               .. "session id and no member pointer within +0x%x, direct or one hop")
+              :format(row.slot, tostring(row.label), nc, F._netid.WIN))
+    end
+    return hits
+end
+
+--- Read the ADOPTED locator on one row and claim the member it names.
+function F._dmg_apply_netid(row, targets)
+    local L = F._netid
+    if not L.off or not targets or not I.read_u64 then return false end
+    local ent = I.read_u64(row.key + DMG.HERO_ENTITY_OFF)
+    if not _ptr_plausible(ent) then return false end
+    local nc = R.net.component(ent)
+    if not nc then return false end
+    local base = F._dmg_netid_walk(nc, L.path)
+    if not base then return false end
+    local m
+    if L.kind == "string" then
+        local s = R.debug.stdstring_at and R.debug.stdstring_at(base + L.off)
+        local hit = (type(s) == "string") and targets.hex[s:lower()] or nil
+        m = hit and hit.m or nil
+    elseif L.kind == "ptr" then
+        local q = I.read_u64(base + L.off)
+        -- The member table is rebuilt every pass, so a pointer that has since
+        -- become shared stops naming anyone rather than keeping a stale answer.
+        m = (type(q) == "number") and targets.ptr[q] or nil
+    else
+        local q = I.read_u64(base + L.off)
+        local hit = (type(q) == "number") and targets.hex[("%016x"):format(q)] or nil
+        m = hit and hit.m or nil
+    end
+    if not m then return false end
+    local names = F._dmg_name_set()
+    if not names or not names[m.name] then return false end
+    return F._dmg_claim(row, names, m.name, ("net id +0x%x (%s)"):format(L.off, L.kind))
+end
+
+--- "netcomp +0xb8 -> +0x40 ->" -- the pointer path, for the log.
+function F._dmg_netid_path_text(path)
+    if not path then return "" end
+    local t = {}
+    for _, v in ipairs(path) do t[#t + 1] = ("+0x%x ->"):format(v) end
+    return " " .. table.concat(t, " ")
+end
+
+--- A locator key, so hits from different rows can be compared. The PATH is
+--- part of the identity: the same offset reached two different ways is two
+--- different locators.
+function F._dmg_netid_key(h)
+    local p = h.path and table.concat(h.path, ",") or "-"
+    return ("%s|%s|%x"):format(p, tostring(h.kind), h.off)
+end
+
+--- Walk an adopted locator's pointer path from the net component. Guarded, so
+--- a path that no longer resolves returns nil instead of faulting.
+function F._dmg_netid_walk(nc, path)
+    local base = nc
+    if not path then return base end
+    for _, v in ipairs(path) do
+        base = I.read_u64(base + v)
+        if not _ptr_plausible(base) then return nil end
+    end
+    return base
+end
+
+--- Discovery, adoption and use, one pass. Background thread only.
+---
+--- Adoption needs BOTH gates, and both exist because a single-row agreement is
+--- exactly what the hero-id probe had when it adopted +0x1b60, an offset the
+--- engine never touches:
+---
+---   1. ANCHOR. The locator must name the LOCAL player on the local row.
+---      Steam already told us who that is, so this is a fact to check against,
+---      not another inference.
+---   2. DISTINCTNESS. Read on every probed row, the locator must name a
+---      DIFFERENT member each time. A field that answers the same on two rows
+---      is a lobby-wide pointer, not an owner.
+function F._dmg_netid_pass()
+    -- The GUID join FIRST: it is the only one of these built on a field the
+    -- disassembly names outright, and it costs a table lookup per (row,
+    -- member) pair. Everything below is a search.
+    if F._dmg_guid_join() then return true end
+    if F._dmg_peer_join() then return true end
+    local targets = F._dmg_netid_targets()
+    if not targets then return false end
+
+    -- Adopted: two reads per unnamed row and nothing else.
+    if F._netid.off then
+        local named = false
+        for _, row in ipairs(_dmg.order) do
+            if not row.player and _ptr_plausible(row.key) then
+                if F._dmg_apply_netid(row, targets) then named = true end
+            end
+        end
+        return named
+    end
+
+    -- Discovery. Every row, once each; rows board over the first minute of a
+    -- run, so this keeps running until a candidate survives both gates.
+    for _, row in ipairs(_dmg.order) do
+        if _ptr_plausible(row.key) then F._dmg_probe_netid(row, targets) end
+    end
+
+    local me
+    local ok, nm = pcall(R.player.name)
+    if ok and type(nm) == "string" and nm ~= "" then me = nm end
+    if not me then return false end
+
+    -- The anchor row's candidate locators: those that read the local player.
+    local anchor
+    for _, row in ipairs(_dmg.order) do
+        if row.is_local then anchor = row break end
+    end
+    if not anchor or not F._netid.hits[anchor.key] then return false end
+    local cand = {}
+    for _, h in ipairs(F._netid.hits[anchor.key]) do
+        if h.m and h.m.name == me then cand[F._dmg_netid_key(h)] = h end
+    end
+    if next(cand) == nil then return false end
+
+    -- Distinctness across every other probed row.
+    local seen = { [me] = true }
+    local rows = 0
+    for _, row in ipairs(_dmg.order) do
+        if row ~= anchor and F._netid.hits[row.key] then
+            rows = rows + 1
+            local got = {}
+            for _, h in ipairs(F._netid.hits[row.key]) do
+                got[F._dmg_netid_key(h)] = h
+            end
+            for key, _ in pairs(cand) do
+                local h = got[key]
+                if not h or not h.m or seen[h.m.name] then
+                    cand[key] = nil
+                else
+                    seen[h.m.name] = true
+                end
+            end
+        end
+    end
+    -- One ally row is the minimum: agreeing with itself proves nothing.
+    if rows == 0 then return false end
+
+    local key, hit = next(cand)
+    if not key then return false end
+    if next(cand, key) ~= nil then
+        -- Several locators survived. Any of them would work, but picking one
+        -- at random makes the log unreproducible; take the lowest offset.
+        for k, h in pairs(cand) do
+            if h.off < hit.off then key, hit = k, h end
+        end
+    end
+    F._netid.off, F._netid.path, F._netid.kind = hit.off, hit.path, hit.kind
+    R.log(("[rsmm.damage] NET ID JOIN PROVEN: netcomp%s +0x%x (%s) holds the "
+           .. "owning player's session id — it reads %q on this machine's own "
+           .. "row and a different lobby member on every other row. Rows are "
+           .. "named from the engine's replication data, not from a search.")
+          :format(F._dmg_netid_path_text(hit.path), hit.off, hit.kind, me))
+    return F._dmg_netid_pass()
+end
+
+--- Learn "this entity is driven by this session" from a networked event.
+---
+--- SELF-VERIFYING, and that is the entire design. The engine stamps ev+0x38
+--- with the session id of the machine that raised the event
+--- (NamedEvent_NetSend), and the lobby hands us each member's session id as a
+--- string. Whether those two are the same value in different clothes is NOT
+--- assumed: this only ever fires when a member's string matches the int64
+--- EXACTLY. If the representations never line up, nothing matches, nobody is
+--- named, and the board stays on placeholders -- which is the correct failure.
+---
+--- Contrast with every earlier mechanism: the memory sweep answered at a
+--- different offset every time it "worked", and the hero-id probe adopted an
+--- offset the engine never touches. Neither could tell you it was wrong. This
+--- one is wrong only if it stays silent.
+function F._dmg_note_session(entity, session)
+    if not _ptr_plausible(entity) or type(session) ~= "number" then return end
+    local prev = _dmg.sess_by_entity[entity]
+    if prev == session then return end
+    _dmg.sess_by_entity[entity] = session
+    local m = F._dmg_session_member(session)
+    if not m then
+        -- Say it ONCE. "The join never matched" and "no events carried a
+        -- session" are the same silence otherwise, and telling them apart is
+        -- what a playtest is for.
+        if not _dmg.sess_warned then
+            _dmg.sess_warned = true
+            R.log(("[rsmm.damage] event session 0x%x matches no lobby member "
+                   .. "session id -- the join is not proven on this build, so "
+                   .. "no row will be named from it"):format(session))
+        end
+        return
+    end
+    if not _dmg.sess_proven then
+        _dmg.sess_proven = true
+        R.log(("[rsmm.damage] SESSION JOIN PROVEN: event session 0x%x == lobby "
+               .. "member %q. Rows are now named from the engine's own peer "
+               .. "id, not from anything found by searching memory.")
+              :format(session, m.name))
+    end
+    -- Bind every row whose controller owns this entity.
+    for _, row in ipairs(_dmg.order) do
+        if not row.player and _ptr_plausible(row.key) then
+            local ent = I.read_u64(row.key + DMG.HERO_ENTITY_OFF)
+            if ent == entity then
+                local names = F._dmg_name_set()
+                if names and names[m.name] then
+                    F._dmg_claim(row, names, m.name, "session")
+                end
+            end
+        end
+    end
+end
+
+--- The ev+0x38 feeder, RETIRED.
+---
+--- Sessions c536, e736 and 014f all agree: every event the gameplay bus
+--- dispatches is the base oCGameNamedEvent (one vftable, 0xf05aa8), and on the
+--- base class +0x38 is not a peer -- the values are handles
+--- (0x8146_00xx_00000004) and in one case a raw code address. It is the sender
+--- only on oCGameNamedEventNetwork subclasses, which this bus never sees.
+---
+--- So this callback ran on EVERY gameplay event, for a field that could never
+--- answer. On the analytics firehose that is the one place per-event Lua work
+--- is actually felt, and the meter is the mod that gets blamed for it. The
+--- owner lives at *(*(*(netcomp+0xb8)+0x100)+0x28) instead -- read once per
+--- row, on the background tick, by F._dmg_probe_netid.
+---
+--- `R.net.event_session(ev)` is kept: a mod hooking a genuine network event
+--- subclass can still read it, and that is where the field IS the sender.
+
+
+--- Say ONCE how to put real names on this run's board.
+---
+--- The board cannot work it out on its own. The engine hands us a set of
+--- players and a set of hero objects and nothing linking the two: the hero
+--- entity carries no hero id, no player id and no name, so every row->player
+--- answer the meter ever produced by searching memory was a coincidence (nine
+--- "successes", nine different offsets, one of them provably the wrong person).
+--- player_1..player_4 IS the mechanism, not a workaround for a missing one.
+function F._dmg_label_hint()
+    if _dmg.hinted then return end
+    local ok, members = pcall(R.lobby.members)
+    if not ok or type(members) ~= "table" then return end
+    -- MORE ROWS THAN PLAYERS ON THE ROSTER. Session c236: four rows fighting,
+    -- one lobby member all run -- this client parsed its OWN attributes three
+    -- times and was never sent anybody else's. No join can help there, because
+    -- there is no name to assign; the meter is missing the input, not the
+    -- link. That case used to fall out of the `#members < 2` guard below and
+    -- say nothing at all, which reads exactly like a broken join.
+    if #members < 2 then
+        local allies = 0
+        for _, row in ipairs(_dmg.order) do
+            if not row.is_local then allies = allies + 1 end
+        end
+        if allies > 0 and not _dmg.roster_warned then
+            _dmg.roster_warned = true
+            R.log(("[rsmm.damage] %d ally row(s) on the board but %d lobby "
+                   .. "member(s) known — this client was never sent the other "
+                   .. "players' lobby attributes, so no ally NAME exists to "
+                   .. "assign this run (set player_1..player_4 in the config "
+                   .. "to label them)"):format(allies, #members))
+        end
+        return
+    end
+    local unnamed = 0
+    for _, row in ipairs(_dmg.order) do
+        if not row.is_local and not _dmg.names[row.slot] then unnamed = unnamed + 1 end
+    end
+    if unnamed == 0 then return end
+    _dmg.hinted = true
+    R.log(("[rsmm.damage] %d row(s) have no proven name. This run's lobby: %s")
+          :format(unnamed, F._dmg_roster_text(members)))
+    R.log("[rsmm.damage] to label the board, set player_1..player_4 in the "
+          .. "damage-meter config, in JOIN ORDER (row N = player_N). Those "
+          .. "always win, and they are the only EXACT method: the engine gives "
+          .. "the meter nothing that links a hero object to a player.")
 end
 
 --- True when a scan could actually change something: some ally row is still
@@ -5755,9 +8648,16 @@ end
 function F._dmg_may_rebind(prev, why)
     local newer = (prev.epoch or 0) < _dmg.epoch
     -- The exact join may also adopt a row that has gone quiet for longer than a
-    -- chapter load; the is-local GUESS may not, because a wrong byte would then
-    -- merge live allies the moment one of them stops attacking for 45 seconds.
-    local exact = why ~= "local flag"
+    -- chapter load; a GUESS may not, because a wrong match would then merge
+    -- live allies the moment one of them stops attacking for 45 seconds.
+    --
+    -- Two reasons are guesses: the is-local byte, and the stale-ally rule
+    -- below (which infers "same player" from "exactly one ally row's
+    -- controller died over this chapter change"). The stale rule is safe
+    -- BECAUSE it needs a chapter boundary -- a player who simply leaves
+    -- mid-run also leaves a dead controller, and letting the idle path adopt
+    -- that row would hand the next player to join their name and their total.
+    local exact = why ~= "local flag" and why ~= DMG.STALE_ALLY
     local idle = exact and prev.last and prev.last > 0
                  and (F._dmg_now() - prev.last) >= DMG.REBIND_IDLE
     if newer or idle then return true end
@@ -5820,6 +8720,42 @@ function F._dmg_rebind(hero, is_local, entity)
             if r.is_local then prev, why = r, "local flag"; break end
         end
     end
+    -- STALE-ROW ADOPTION, for the case that has neither key: an ALLY after a
+    -- chapter change.
+    --
+    -- Session a34f, measured against the game's own end-of-run scoreboard:
+    -- Ovilli 898436 vs 898071 (exact -- the local row rebinds on the is-local
+    -- flag), but the two allies came out as FIVE rows, one player's damage
+    -- split across three of them, because an ally has no hero id on this build
+    -- and is not local, so every chapter handed them a fresh controller and
+    -- `prev` stayed nil.
+    --
+    -- The rule is deliberately narrow, and refuses rather than guesses:
+    -- the new controller must belong to a LATER epoch than the row, the row's
+    -- own controller must no longer read as a live hero, and there must be
+    -- EXACTLY ONE such row. Two stale rows means two allies respawned and
+    -- nothing here can say which is which -- that forks, as before. In a34f
+    -- only one ally's controller moved per chapter (the others kept their
+    -- address), which is precisely the unambiguous case.
+    if not prev and not is_local then
+        local stale, n = nil, 0
+        for _, r in ipairs(_dmg.order) do
+            if not r.is_local and (r.epoch or 0) < _dmg.epoch
+               and not (_ptr_plausible(r.key) and F._dmg_is_hero(r.key)) then
+                stale, n = r, n + 1
+            end
+        end
+        if n == 1 then
+            prev, why = stale, DMG.STALE_ALLY
+        elseif n > 1 then
+            if not _dmg.stale_said then
+                _dmg.stale_said = true
+                R.log(("[rsmm.damage] %d ally row(s) went stale over this "
+                       .. "chapter change — cannot say which is which, so the "
+                       .. "new controller starts its own row"):format(n))
+            end
+        end
+    end
     if not prev then return nil end
     if not F._dmg_may_rebind(prev, why) then return nil end
     _dmg.actors[hero] = prev
@@ -5827,6 +8763,10 @@ function F._dmg_rebind(hero, is_local, entity)
     prev.epoch = _dmg.epoch          -- bound HERE now; see F._dmg_may_rebind
     prev.hero_id = id or prev.hero_id
     if prev.hero_id then _dmg.by_hero[prev.hero_id] = prev end
+    -- New controller, so a sweep that came up empty on the old one deserves
+    -- another go: the name may live on this object even though it did not live
+    -- on the last. (A row that already knows who it is keeps that answer.)
+    prev.own_done = nil
     F._dmg_alias(prev, entity)
     F._dmg_bind_netid(prev, entity)
     R.log(("[rsmm.damage] rebound %s to controller 0x%x (%s) — chapter change, "
@@ -6217,6 +9157,38 @@ end
 -- pointer change already asked for.
 function F._dmg_next_epoch(name)
     _dmg.epoch = _dmg.epoch + 1
+    -- The identity scan's ADDRESSES die with the chapter. Every object it
+    -- recorded is torn down here, so holding them is both useless (a rebuilt
+    -- controller reaches none of them) and unsafe (freed memory is handed back
+    -- out, so a stale address can come to sit next to an unrelated row and name
+    -- it wrongly). Nothing else would ever have dropped them: `addrs_key` is
+    -- the ROSTER, and a chapter change does not touch the roster, so an ally
+    -- still unnamed at the boundary was served a dead cache for the rest of
+    -- the run.
+    --
+    -- The CHAINS are deliberately KEPT. An offset into a rebuilt object is the
+    -- one thing about a player that a chapter change does not move, so they are
+    -- exactly what names the new controllers — in two reads, with no scan.
+    F._own.addrs, F._own.addrs_key, F._own.queue = nil, nil, nil
+    -- The net-id DISCOVERY cache dies with them, for the same reason and one
+    -- worse: it is keyed by controller ADDRESS, and the allocator hands those
+    -- addresses back out. A rebuilt controller landing where a previous row
+    -- sat would read as already probed and inherit the OTHER player's hits,
+    -- which is precisely how a locator gets adopted against the wrong person.
+    -- The ADOPTED locator is kept on purpose -- an offset is what survives a
+    -- chapter change; only the per-controller findings are stale.
+    F._netid.probed, F._netid.hits = {}, {}
+    -- The GUID report is per RUN, and a refusal must not outlive the rows it
+    -- was about: new chapter, new controllers, new chance to resolve.
+    F._netid.guid_said, F._netid.guid_done = false, false
+    F._netid.peer_said, F._netid.peer_done = false, false
+    F._netid.peer_gen, F._netid.peer_scanned, F._netid.peer_hit = nil, {}, {}
+    -- Sticky guesses belong to the board that made them: a chapter change
+    -- re-adopts every controller, so slot N is not the same player it was.
+    _dmg.guessed = {}
+    -- Per RUN, not per process: a later run that also never receives the other
+    -- players' attributes deserves to be told so too.
+    _dmg.roster_warned = false
     if _dmg.on then
         R.log(("[rsmm.damage] chapter epoch %d (%s) — hero controllers may now "
                .. "be re-adopted"):format(_dmg.epoch, name))
@@ -6313,7 +9285,21 @@ function R.damage.enable(opts)
     if type(opts.window) == "number" and opts.window > 0 then _dmg.window = opts.window end
     if type(opts.min) == "number" then _dmg.min = opts.min end
     if opts.ignore_scenery ~= nil then _dmg.ignore_scenery = opts.ignore_scenery and true or false end
+    -- Let unidentified rows borrow the leftover lobby names by join order. OFF
+    -- by default: the mapping is a guess, and a wrong name on a real damage
+    -- total cannot be spotted from inside the game.
+    if opts.guess_names ~= nil then _dmg.guess_names = opts.guess_names and true or false end
     if opts.probe ~= nil then _dmg.probe = opts.probe and true or false end
+    if opts.identity_hunt ~= nil then
+        _dmg.identity_hunt = opts.identity_hunt and true or false
+    end
+    -- Seconds before a row whose sweep found nothing is swept again. A row is
+    -- swept the moment it first deals damage and the object that identifies it
+    -- may not be populated yet, so one pass is not an answer. 0 retries on the
+    -- next tick, which is what the spec uses.
+    if type(opts.retry_after) == "number" and opts.retry_after >= 0 then
+        F._own.RETRY_AFTER = opts.retry_after
+    end
     if type(opts.names) == "table" then
         for k, v in pairs(opts.names) do
             if type(k) == "number" and type(v) == "string" then _dmg.names[k] = v end
@@ -6422,6 +9408,13 @@ end
 function R.damage.reset()
     _dmg.actors, _dmg.order, _dmg.seen, _dmg.by_netid = {}, {}, {}, {}
     _dmg.by_hero = {}
+    -- The sweep's CURSOR points at a row that no longer exists; the CHAIN is a
+    -- fact about the engine's layout and stays.
+    F._own.cursor = nil
+    -- Same split for the member link: the cursor and the per-member "already
+    -- swept" set point at dead rows, the learned OFFSET is layout and stays.
+    -- The candidate table goes too — a hit is only evidence while the row it
+    -- named still exists.
     _dmg.local_id, _dmg.started = nil, F._dmg_now()
     -- Victim pointers do not survive a run boundary: the next run reuses the
     -- addresses for different objects, so a kept cache would answer for the
@@ -6471,6 +9464,9 @@ function R.damage.board()
             -- show the character, and it is what makes a row survive a chapter
             -- change, so it is worth surfacing rather than keeping internal.
             hero_id = row.hero_id, label_guess = row.label_guess,
+            -- The lobby name this row was PROVEN to be (owner-name sweep), as
+            -- opposed to `label`, which may still be a placeholder.
+            player = row.player,
             dealt = row.dealt, taken = row.taken, hits = row.hits,
             best = row.best, last = row.last, by_type = by_type,
             scenery = row.scenery, scenery_hits = row.scenery_hits,

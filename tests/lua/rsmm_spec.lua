@@ -1870,6 +1870,66 @@ do
     check(#hits == 1 and hits[1].off == 0x18, "strings reports the offset it found the path at")
 end
 
+-- N. R.lobby.hero_name: display-only, never load-bearing --------------------
+do
+    check(R.lobby.hero_name(0) == "Aladdin" and R.lobby.hero_name(11) == "Sun_Wukong",
+          "the twelve shipped herodefs map by load (alphabetical) order")
+    check(R.lobby.hero_name(10) == "Snow_Queen",
+          "RequestedHero 10 is Snow_Queen -- the id the local player carried in "
+          .. "session 304f, and the one hero _HERO_SIGNATURES was seeded from")
+    check(R.lobby.hero_name(12) == nil and R.lobby.hero_name(-1) == nil
+          and R.lobby.hero_name("4") == nil,
+          "an id off the roster, or not a number, is nil rather than a guess")
+end
+
+-- N. R.net: the engine's own per-entity network identity -------------------
+--
+-- Read with guarded reads only. Entity_GetNetId is banned from the SDK because
+-- Entity_GetNetComponent walks the component map unguarded, so a -1 store slot
+-- is an access violation, not a nil (2026-08-15, dump a97c76fe). The map is a
+-- plain slot array, so walking it in Lua gives the same answer and cannot fault.
+do
+    local ENT, SLOTS, NETC, OTHER = 0x88000000, 0x88100000, 0x88200000, 0x88300000
+    I.write_u64(ENT + 0x5f0, SLOTS)      -- slot array
+    I.write_u64(ENT + 0x600, 7)          -- bucket mask -> capacity 8
+    I.write_u32(SLOTS + 0 * 0x10, 0x11111111)
+    I.write_u64(SLOTS + 0 * 0x10 + 8, OTHER)
+    I.write_u32(SLOTS + 5 * 0x10, 0x154fce5c)
+    I.write_u64(SLOTS + 5 * 0x10 + 8, NETC)
+
+    check(R.net.component(ENT) == NETC,
+          "the net component is found by walking the slot array, no engine call")
+    check(R.net.component(ENT, 0x11111111) == OTHER,
+          "and any other component class is the same walk")
+    check(R.net.component(ENT, 0xdeadbeef) == nil,
+          "a class the entity does not carry reads nil, not a fault")
+
+    I.write_u8(NETC + 0x130, 0)
+    check(R.net.is_local(ENT) == true,
+          "authority byte 0 = this machine owns the entity (NamedEvent_NetSend "
+          .. "emits only in this case)")
+    I.write_u8(NETC + 0x130, 1)
+    check(R.net.is_local(ENT) == false,
+          "non-zero = somebody else speaks for it, so we never emit for it")
+
+    I.write_u64(ENT + 0x600, 0x7fffffff)
+    check(R.net.component(ENT) == nil,
+          "an implausible capacity is refused outright rather than walked -- a "
+          .. "corrupt mask must not turn a read into a spin")
+    I.write_u64(ENT + 0x600, 7)
+    check(R.net.component(0) == nil and R.net.component(0x1234) == nil,
+          "a null or low entity pointer is nil, never a fault")
+
+    local EV = 0x88400000
+    I.write_u64(EV + 0x38, 0x1234567890abcdef)
+    check(R.net.event_session(EV) == 0x1234567890abcdef,
+          "a networked event carries the SENDER's session id at ev+0x38 -- the "
+          .. "one engine-provided per-player key that reaches gameplay")
+    I.write_u64(EV + 0x38, 0)
+    check(R.net.event_session(EV) == nil,
+          "an unstamped event is nil rather than session 0")
+end
+
 -- N. R.damage: per-player damage attribution -------------------------------
 --
 -- The meter has to be right about four things that are easy to get wrong and
@@ -2623,6 +2683,2348 @@ do
     R = require "rsmm"
 end
 
+-- N. R.damage: an ally name is never a POSITIONAL guess --------------------
+--
+-- Reported 2026-08-19 from a four-player co-op session: the local row carried
+-- the right name against the right damage, and every ally row carried someone
+-- else's. The board matched lobby names to rows with `allies[rank]` — rank
+-- being the order allies first dealt damage, which has nothing to do with the
+-- order the lobby lists them in. A wrong name on a real number is worse than no
+-- name: it is unfalsifiable from inside the game. Three rules now hold:
+--
+--   1. no hero id, several candidates  -> keep the "Player N" placeholder
+--   2. hero id known                   -> exact join, whatever the damage order
+--   3. one row and one name left over  -> elimination (exact by count)
+local function _name_world(base, ids, locals)
+    local ctrl = {}
+    for i, id in ipairs(ids) do
+        local addr = base + i * 0x100000
+        local ent = addr + 0x8000
+        I.write_u64(addr + 0x08, ent)
+        I.write_u8(addr + 0x1d88, locals[i] and 1 or 0)
+        I.write_u64(ent + 8, 0x13000000)
+        I.write_u8(ent + 0x1d88, locals[i] and 1 or 0)
+        if id then I.write_u32(addr + 0x1ae0, id) end
+        ctrl[i] = addr
+    end
+    local PD, PDV, PDS = base + 0x10000, base + 0x20000, base + 0x30000
+    I.write_u64(PD + 0x10, PDV)
+    I.write_u64(PD + 0xa0, PDS)
+    local stats = hooks[I.resolve("HeroStats_OnDamageDealt")]
+    return ctrl, function(who, amount)
+        I.write_f32(PDV + 8, amount)
+        I.write_u16(PDS + 0xc8, 0)
+        stats.cb(who, base + 0x40000, PD, 0, function() end)
+    end
+end
+
+local function _ally_labels(Rx)
+    local out = {}
+    for _, row in ipairs(Rx.damage.board()) do
+        if not row.is_local then out[row.slot] = row.label end
+    end
+    return out
+end
+
+do  -- 1. two candidate allies and no hero id: NOBODY gets named
+    package.loaded["rsmm"] = nil
+    local Rn = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+
+    I.mem_find = function() return {} end
+    Rn.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4}')
+    Rn.lobby._note_blob('{"PlayerName":"Ada","RequestedHero":7}')
+    Rn.lobby._note_blob('{"PlayerName":"Brig","RequestedHero":9}')
+    Rn.damage.enable{ window = 10 }
+    -- No hero id anywhere in the controllers, so the sweep finds nothing and
+    -- the rows have no identity to join on.
+    local ctrl, deal = _name_world(0x7c000000, { false, false, false },
+                                   { true, false, false })
+    deal(ctrl[1], 10.0)
+    deal(ctrl[3], 20.0)      -- Brig's controller boards FIRST of the allies
+    deal(ctrl[2], 30.0)
+    Rn.damage.relabel()
+
+    check(Rn.damage.hero_id_offset() == nil,
+          "no hero id is readable, so the identity sweep adopts nothing")
+    local named = 0
+    for _, label in pairs(_ally_labels(Rn)) do
+        check(label ~= "Ada" and label ~= "Brig",
+              "an ally row is NOT given a lobby name that could belong to "
+              .. "either of two players (got " .. label .. ")")
+        if label:find("^Player %d") then named = named + 1 end
+    end
+    check(named == 2, "both ally rows keep an honest placeholder")
+
+    Rn.damage.disable(); Rn.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 2. the hero-id join ignores damage order
+    package.loaded["rsmm"] = nil
+    local Rn = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+
+    I.mem_find = function() return {} end
+    Rn.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4}')
+    Rn.lobby._note_blob('{"PlayerName":"Ada","RequestedHero":7}')
+    Rn.lobby._note_blob('{"PlayerName":"Brig","RequestedHero":9}')
+    Rn.damage.enable{ window = 10 }
+    local ctrl, deal = _name_world(0x7d000000, { 4, 7, 9 },
+                                   { true, false, false })
+    -- Damage order is the REVERSE of the lobby order: under the old positional
+    -- join this is exactly the session that reported the bug — ally rank 1 is
+    -- Brig, and `allies[1]` is Ada.
+    deal(ctrl[1], 10.0)
+    deal(ctrl[3], 20.0)
+    deal(ctrl[2], 30.0)
+    Rn.damage.relabel()
+
+    local by_dealt = {}
+    for _, row in ipairs(Rn.damage.board()) do by_dealt[row.label] = row.dealt end
+    check(by_dealt["Brig"] == 20.0,
+          "the hero-id join names the row by WHO it is, not by when it hit")
+    check(by_dealt["Ada"] == 30.0, "and the other ally keeps its own total")
+
+    Rn.damage.disable(); Rn.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 3. one unidentified row + one unclaimed name = elimination
+    package.loaded["rsmm"] = nil
+    local Rn = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+
+    I.mem_find = function() return {} end
+    Rn.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4}')
+    Rn.lobby._note_blob('{"PlayerName":"Ada","RequestedHero":7}')
+    Rn.lobby._note_blob('{"PlayerName":"Brig"}')     -- blob without a hero
+    Rn.damage.enable{ window = 10 }
+    local ctrl, deal = _name_world(0x7e000000, { 4, 7, false },
+                                   { true, false, false })
+    -- The UNIDENTIFIED player hits first, so the sweep's first sample is one
+    -- row the roster knows and one it does not. Under a sweep that demanded
+    -- every row match, that row vetoed every candidate offset for as long as it
+    -- lived — six attempts and the probe gave up for the session, which is how
+    -- a whole lobby ends up on placeholders with the identity sitting right
+    -- there at +0x1ae0.
+    deal(ctrl[3], 30.0)
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 20.0)
+    Rn.damage.relabel()
+
+    check(Rn.damage.hero_id_offset() == 0x1ae0,
+          "a row the roster cannot identify does not veto the sweep — it just "
+          .. "contributes no evidence")
+    local by_dealt, guessed = {}, {}
+    for _, row in ipairs(Rn.damage.board()) do
+        by_dealt[row.label] = row.dealt
+        guessed[row.label] = row.label_guess
+    end
+    check(by_dealt["Ada"] == 20.0, "the identified ally is named by hero id")
+    check(by_dealt["Brig"] == 30.0,
+          "and the last row takes the last unclaimed name — with one of each "
+          .. "left there is nothing to get wrong")
+    check(guessed["Ada"] == false and guessed["Brig"] == true,
+          "the eliminated name is still flagged as inferred, the hero-id one "
+          .. "is not")
+
+    Rn.damage.disable(); Rn.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- N. R.damage: the owner-name sweep names a row from the player's OWN object --
+--
+-- Session 5a1d (2026-08-19, 4 players) logged `no offset distinguishes the
+-- rows` on every tick: the lobby's RequestedHero is NOT a dword on the hero
+-- controller, so the hero-id join can never fire and the board sat on
+-- "Player 1/2/3" for the whole run. The sweep that replaces it looks for the
+-- one thing already known to be true — the player's gamertag — inside the
+-- controller's own memory graph, inline or one pointer away.
+local function _own_world(base, names)
+    local ctrl = {}
+    for i, nm in ipairs(names) do
+        local addr = base + i * 0x100000
+        local ent = addr + 0x8000
+        I.write_u64(addr + 0x08, ent)
+        I.write_u8(addr + 0x1d88, i == 1 and 1 or 0)
+        I.write_u64(ent + 8, 0x13000000)
+        I.write_u8(ent + 0x1d88, i == 1 and 1 or 0)
+        ctrl[i] = addr
+    end
+    local PD, PDV, PDS = base + 0x10000, base + 0x20000, base + 0x30000
+    I.write_u64(PD + 0x10, PDV)
+    I.write_u64(PD + 0xa0, PDS)
+    local stats = hooks[I.resolve("HeroStats_OnDamageDealt")]
+    return ctrl, function(who, amount)
+        I.write_f32(PDV + 8, amount)
+        I.write_u16(PDS + 0xc8, 0)
+        stats.cb(who, base + 0x40000, PD, 0, function() end)
+    end
+end
+
+local function _put_str(va, s)
+    for k = 1, #s do I.write_u8(va + k - 1, s:byte(k)) end
+    I.write_u8(va + #s, 0)
+end
+
+-- A lobby member as the engine lays it out (RE 2026-08-19): a std::string
+-- session id at +0x00 and the attribute blob as {begin, end} at +0x28. The
+-- identity sweep only trusts objects with this shape, which is what a stack
+-- frame cannot fake.
+local function _member(addr, id)
+    _put_str(addr, id)                       -- SSO characters, inline
+    I.write_u64(addr + 0x10, #id)            -- size
+    I.write_u64(addr + 0x18, 15)             -- capacity (SSO)
+    I.write_u64(addr + 0x28, addr + 0x1000)  -- blob begin
+    I.write_u64(addr + 0x30, addr + 0x1040)  -- blob end
+    return addr
+end
+
+local function _sweep(Rx, n)
+    for _ = 1, (n or 40) do Rx.damage.sweep_identity() end
+end
+
+do  -- 1. the name inline on the controller, and the chain it teaches
+    package.loaded["rsmm"] = nil
+    local Ro = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+
+    I.mem_find = function() return {} end
+    Ro.lobby._note_blob('{"PlayerName":"Ovili","RequestedHero":4}')
+    Ro.lobby._note_blob('{"PlayerName":"Keif_Buddings","RequestedHero":5}')
+    Ro.lobby._note_blob('{"PlayerName":"boyinglee","RequestedHero":2}')
+    Ro.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x60000000, { "me", "a1", "a2" })
+    -- The engine keeps each player's display name on their controller. No hero
+    -- id anywhere — this is the 5a1d layout, where the id join is dead.
+    _put_str(ctrl[1] + 0x1120, "Ovili")
+    _put_str(ctrl[2] + 0x1120, "Keif_Buddings")
+    _put_str(ctrl[3] + 0x1120, "boyinglee")
+    deal(ctrl[2], 100.0)      -- an ALLY boards first, as in the real log
+    deal(ctrl[1], 50.0)
+    _sweep(Ro)
+    Ro.damage.relabel()
+
+    local id = Ro.damage.identity()
+    check(id.chain and id.chain.off == 0x1120 and id.chain.hop == nil,
+          "the sweep adopts the offset the name was found at")
+    check(Ro.damage.hero_id_offset() == nil,
+          "and it works with NO hero id on the controller — the case that "
+          .. "shipped a board full of placeholders")
+    local by_label = {}
+    for _, row in ipairs(Ro.damage.board()) do by_label[row.label] = row.dealt end
+    check(by_label["Keif_Buddings"] == 100.0,
+          "the ally row carries the name that belongs to its damage")
+
+    -- A row boarded LATER is named from the adopted chain, without a sweep.
+    deal(ctrl[3], 25.0)
+    Ro.damage.sweep_identity()
+    Ro.damage.relabel()
+    local third
+    for _, row in ipairs(Ro.damage.board()) do
+        if row.label == "boyinglee" then third = row end
+    end
+    check(third and third.dealt == 25.0,
+          "a later row is identified straight from the chain")
+    check(third and third.label_guess == false,
+          "a swept name is exact, never flagged as a guess")
+
+    Ro.damage.disable(); Ro.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 2. the name one pointer away (an MSVC std::string on the heap)
+    package.loaded["rsmm"] = nil
+    local Ro = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+
+    I.mem_find = function() return {} end
+    Ro.lobby._note_blob('{"PlayerName":"Ovili","RequestedHero":4}')
+    Ro.lobby._note_blob('{"PlayerName":"TJ","RequestedHero":6}')
+    Ro.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x61000000, { "me", "a1" })
+    -- std::string at ctrl+0x900: the characters live behind the pointer at
+    -- +0x8 of the string, which the sweep reaches as hop 0 of that field.
+    local HEAP = 0x61900000
+    I.write_u64(ctrl[2] + 0x908, HEAP)
+    _put_str(HEAP, "TJ")
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 20.0)
+    _sweep(Ro, 80)
+    Ro.damage.relabel()
+
+    local id = Ro.damage.identity()
+    check(id.chain and id.chain.hop == 0 and id.chain.off == 0x908,
+          "the hop pass finds a name behind a pointer field")
+    local ally
+    for _, row in ipairs(Ro.damage.board()) do
+        if not row.is_local then ally = row end
+    end
+    check(ally and ally.label == "TJ" and ally.dealt == 20.0,
+          "and the heap-string name lands on the row that dealt the damage")
+
+    Ro.damage.disable(); Ro.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 2a. the hero id one pointer deep, in the hero definition (RE-only path)
+    -- Phase 2 is ~900k page-guarded reads at 20k per background tick. It is
+    -- gated on `identity_hunt` because the answer on the shipped build is
+    -- "there is no id on the controller" (three live four-player sessions, plus
+    -- Ghidra 2026-08-20: no fixed component slots on oCEntity), so ungated it
+    -- was ~45 ticks of solid probing per run for a known dead end. The spec
+    -- still covers the machinery, with the flag the RE session would set.
+    package.loaded["rsmm"] = nil
+    local Ro = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+
+    I.mem_find = function() return {} end
+    Ro.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4}')
+    Ro.lobby._note_blob('{"PlayerName":"Dolmin","RequestedHero":10}')
+    Ro.lobby._note_blob('{"PlayerName":"All_never_cry","RequestedHero":2}')
+    Ro.damage.enable{ window = 10, identity_hunt = true }
+    local ctrl, deal = _own_world(0x6a000000, { "me", "a1", "a2" })
+    -- NOTHING on the controller: three live four-player sessions reported
+    -- exactly that ("no offset distinguishes the rows", every width). What the
+    -- controller has is a pointer to the hero DEFINITION, and the id is a
+    -- field of the definition.
+    local DEF = { 0x6a800000, 0x6a810000, 0x6a820000 }
+    for i = 1, 3 do
+        I.write_u64(ctrl[i] + 0x400, DEF[i])
+        I.write_u8(DEF[i] + 0x40, ({ 4, 10, 2 })[i])
+    end
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 20.0)
+    deal(ctrl[3], 30.0)
+    _sweep(Ro, 200)                -- budgeted and resumable, so it needs ticks
+    Ro.damage.relabel()
+
+    check(Ro.damage.hero_id_offset() == 0x400,
+          "the sweep follows the controller's pointer and finds the hero id "
+          .. "inside the definition")
+    local by_label = {}
+    for _, row in ipairs(Ro.damage.board()) do by_label[row.label] = row.dealt end
+    check(by_label["Dolmin"] == 20.0 and by_label["All_never_cry"] == 30.0,
+          "and both allies are named by identity, not by the order they hit")
+    local said = 0
+    for _, line in ipairs(logged) do
+        if line:find("hero%-id field probe") then said = said + 1 end
+    end
+    check(said == 1,
+          "the scan reports ONCE, when it finishes — the version that re-ran "
+          .. "every tick logged the same dead end on every one of them")
+
+    Ro.damage.disable(); Ro.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 2c. a row identified by its PEER id is labelled with the player's name
+    package.loaded["rsmm"] = nil
+    local Ro = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+
+    I.mem_find = function() return {} end
+    -- The blob carries the network identity beside the display name. Four live
+    -- sessions found no gamertag within +0x2000 of a hero controller, direct or
+    -- one hop — but a peer id is what the netcode addresses players BY, so it
+    -- is the needle with a reason to be there.
+    Ro.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4,'
+        .. '"m_sEosUserId":"0002aaaabbbbccccdddd111122223333"}')
+    Ro.lobby._note_blob('{"PlayerName":"bio_tnya","RequestedHero":5,'
+        .. '"m_sEosUserId":"0002ffff9999888877776666555544ab"}')
+    local me = nil
+    for _, m in ipairs(Ro.lobby.members()) do
+        if m.name == "bio_tnya" then me = m end
+    end
+    check(me and me.eos == "0002ffff9999888877776666555544ab",
+          "the peer id is kept beside the name, straight off the blob")
+
+    -- A THIRD player, so elimination cannot name anyone by counting: two
+    -- unnamed rows facing two unclaimed names is a dead end for every other
+    -- path, which leaves the peer id as the only thing that can identify row 2.
+    Ro.lobby._note_blob('{"PlayerName":"ezoz13333","RequestedHero":8,'
+        .. '"m_sEosUserId":"0002cccc7777666655554444333322de"}')
+    Ro.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x6c000000, { "me", "a1", "a2" })
+    _put_str(ctrl[2] + 0x1180, "0002ffff9999888877776666555544ab")
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 90.0)
+    deal(ctrl[3], 50.0)
+    _sweep(Ro, 60)
+    Ro.damage.relabel()
+
+    local rows = {}
+    for _, row in ipairs(Ro.damage.board()) do rows[row.slot] = row end
+    check(rows[2] and rows[2].label == "bio_tnya" and rows[2].dealt == 90.0,
+          "a peer id found in a row's own object names that row — and the row "
+          .. "is labelled with the PLAYER'S NAME, never with the id")
+    check(rows[3] and (rows[3].label:find("^Player %d") ~= nil
+                       or rows[3].label_guess == true),
+          "and the row carrying no id is never presented as MEASURED — with "
+          .. "one row and one name left, elimination may name it, but only "
+          .. "flagged as an inference")
+
+    Ro.damage.disable(); Ro.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 2d. a dead-end row is retried, and every chain found is reused
+    package.loaded["rsmm"] = nil
+    local Ro = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+
+    I.mem_find = function() return {} end
+    Ro.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4,'
+        .. '"m_sEosUserId":"0002102bd8c7446d813dfb03e4c5e20a"}')
+    Ro.lobby._note_blob('{"PlayerName":"Crow","RequestedHero":5,'
+        .. '"m_sEosUserId":"000236deb33044cf83771b0cd0b133a1"}')
+    Ro.lobby._note_blob('{"PlayerName":"BanoKingZ","RequestedHero":10,'
+        .. '"m_sEosUserId":"0002cb6019fa4b43b4d03bd06839a04c"}')
+    Ro.damage.enable{ window = 10, retry_after = 0 }
+    local ctrl, deal = _own_world(0x6d000000, { "me", "a1", "a2" })
+    local ENT = {}
+    for i = 1, 3 do ENT[i] = I.read_u64(ctrl[i] + 0x08) end
+    -- Row 2 is identifiable straight away. Row 3's field is EMPTY when it
+    -- boards — which is the session 7068 shape: a row is swept the instant it
+    -- deals its first damage, and the object is not populated yet.
+    _put_str(ENT[2] + 0x2d0, "000236deb33044cf83771b0cd0b133a1")
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 90.0)
+    deal(ctrl[3], 50.0)
+    _sweep(Ro, 200)
+    Ro.damage.relabel()
+
+    local rows = {}
+    for _, row in ipairs(Ro.damage.board()) do rows[row.slot] = row end
+    check(rows[2] and rows[2].label == "Crow", "the populated row is named")
+    local deadend = false
+    for _, line in ipairs(logged) do
+        if line:find("attempt 1 of") then deadend = true end
+    end
+    check(deadend, "the row that was not yet populated dead-ends, and the log "
+          .. "says which attempt it was")
+    check(rows[3] and rows[3].own_done ~= true,
+          "but it is NOT retired: one pass over an object the engine has not "
+          .. "filled in yet must not settle a player's name for the whole run")
+
+    -- Now the engine fills it in — at an offset NO other row taught, so the
+    -- remembered chains cannot reach it and only a second full sweep can.
+    _put_str(ENT[3] + 0x900, "0002cb6019fa4b43b4d03bd06839a04c")
+    _sweep(Ro, 400)
+    Ro.damage.relabel()
+    rows = {}
+    for _, row in ipairs(Ro.damage.board()) do rows[row.slot] = row end
+    check(rows[3] and rows[3].label == "BanoKingZ",
+          "and the row is still named once the engine populates it, at an "
+          .. "offset no other row taught — a sweep must not settle a player's "
+          .. "name from one pass over an object that was not ready")
+
+    Ro.damage.disable(); Ro.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 2e. the dead end says whether there was a needle to look for
+    package.loaded["rsmm"] = nil
+    local Ro = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+
+    I.mem_find = function() return {} end
+    -- One member's blob carries a peer id, the other's does not. "Nothing to
+    -- search for" and "searched and found nothing" produced the SAME log line
+    -- before, which is why a whole session could not be explained.
+    Ro.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4,'
+        .. '"m_sEosUserId":"0002102bd8c7446d813dfb03e4c5e20a"}')
+    Ro.lobby._note_blob('{"PlayerName":"Protazy92","RequestedHero":5}')
+    Ro.lobby._note_blob('{"PlayerName":"fish","RequestedHero":8}')
+    Ro.damage.enable{ window = 10, retry_after = 0 }
+    local ctrl, deal = _own_world(0x6e000000, { "me", "a1", "a2" })
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 90.0)
+    deal(ctrl[3], 50.0)
+    _sweep(Ro, 200)
+
+    local line
+    for _, l in ipairs(logged) do
+        if l:find("owner%-name sweep") then line = l end
+    end
+    check(line and line:find("1 of 3 carry a peer id", 1, true) ~= nil,
+          "the dead end reports how many roster members had an id at all — "
+          .. "a sweep with no needle is not the same failure as a sweep that "
+          .. "looked everywhere")
+    check(line and line:find("0002102bd8c7", 1, true) == nil,
+          "and it never prints the ids themselves, which made the roster read "
+          .. "as corrupt")
+
+    Ro.damage.disable(); Ro.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 2f. names are located by SCANNING for them, not by sweeping each row
+    package.loaded["rsmm"] = nil
+    local Ro = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    local saved_find = I.mem_find
+
+    local EOS = {
+        Crow      = "000236deb33044cf83771b0cd0b133a1",
+        BanoKingZ = "0002cb6019fa4b43b4d03bd06839a04c",
+    }
+    Ro.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4,'
+        .. '"m_sEosUserId":"0002102bd8c7446d813dfb03e4c5e20a"}')
+    Ro.lobby._note_blob('{"PlayerName":"Crow","RequestedHero":5,'
+        .. '"m_sEosUserId":"' .. EOS.Crow .. '"}')
+    Ro.lobby._note_blob('{"PlayerName":"BanoKingZ","RequestedHero":10,'
+        .. '"m_sEosUserId":"' .. EOS.BanoKingZ .. '"}')
+
+    Ro.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x6f000000, { "me", "a1", "a2" })
+    local ENT = {}
+    for i = 1, 3 do ENT[i] = I.read_u64(ctrl[i] + 0x08) end
+    -- Crow's id sits 0x2d0 into an object the entity points at — the exact
+    -- shape session 7068 needed 264k probes per row to discover.
+    local CROW = 0x6f900000
+    I.write_u64(ENT[2] + 0x678, CROW - 0x2d0)
+    -- BanoKingZ's is inside the controller itself.
+    local BANO = ctrl[3] + 0x1234
+    I.mem_find = function(needle)
+        if needle == EOS.Crow then return { CROW } end
+        if needle == EOS.BanoKingZ then return { BANO } end
+        return {}
+    end
+
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 90.0)
+    deal(ctrl[3], 50.0)
+    -- One native scan per tick — the whole address space is walked per
+    -- needle, and doing them all on one tick is what made the game stutter.
+    -- A few ticks, not the minutes the blind sweep needs.
+    for _ = 1, 6 do Ro.damage.sweep_identity() end
+    Ro.damage.relabel()
+
+    local rows = {}
+    for _, row in ipairs(Ro.damage.board()) do rows[row.slot] = row end
+    check(rows[2] and rows[2].label == "Crow" and rows[2].dealt == 90.0,
+          "a row is named within a tick of its id being scanned for: the scan "
+          .. "says where the id is and a pointer landing just before it says "
+          .. "whose row this is")
+    check(rows[3] and rows[3].label == "BanoKingZ",
+          "and an id held inside the object itself is the same test")
+    local claimed = false
+    for _, l in ipairs(logged) do
+        if l:find('row 1 IS "Ovilli" (steam)', 1, true) then claimed = true end
+    end
+    check(claimed,
+          "the local row is claimed from the Steam persona rather than "
+          .. "searched for — it is the one row whose name was never in doubt, "
+          .. "and searching it spent a quarter of every sweep")
+
+    I.mem_find = saved_find
+    Ro.damage.disable(); Ro.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 2f1. the chain the scan teaches is REPLAYABLE, not just printable
+    package.loaded["rsmm"] = nil
+    local Ro = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    local saved_find = I.mem_find
+
+    -- The bug this guards: `_dmg_probe_owner_fast` recorded its hit as
+    -- note_chain(nil, nil, nil, text), so `if chain.base` was false for every
+    -- chain the WORKING path found and the two-read replay never ran. The
+    -- names still came out right, which is why it survived a playtest — and
+    -- the meter re-walked the whole address space on every tick that had an
+    -- unnamed row, for the rest of the session.
+    local EOS = { Crow = "000236deb33044cf83771b0cd0b133a1" }
+    Ro.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4}')
+    Ro.lobby._note_blob('{"PlayerName":"Crow","RequestedHero":5,'
+        .. '"m_sEosUserId":"' .. EOS.Crow .. '"}')
+    Ro.lobby._note_blob('{"PlayerName":"BanoKingZ","RequestedHero":10}')
+
+    Ro.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x72000000, { "me", "a1", "a2" })
+    local ENT = {}
+    for i = 1, 3 do ENT[i] = I.read_u64(ctrl[i] + 0x08) end
+    -- A world of its own: the mock address space is shared across blocks, and
+    -- the stray pointers this test plants at +0x800 would otherwise show up as
+    -- reachable memory in 2f2/2g, which both build at 0x70000000.
+    -- Deliberately NOT one of the seeded offsets: this has to be a chain the
+    -- scan discovers here, or the test proves nothing about discovery.
+    local CROW = 0x72900000
+    I.write_u64(ENT[2] + 0x800, CROW - 0x40)
+    local scans = 0
+    I.mem_find = function(needle)
+        scans = scans + 1
+        if needle == EOS.Crow then return { CROW } end
+        return {}
+    end
+
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 90.0)
+    for _ = 1, 6 do Ro.damage.sweep_identity() end
+    Ro.damage.relabel()
+
+    local ch = Ro.damage.identity().chain
+    check(ch and ch.base == 2 and ch.off == 0x800 and ch.hop == 0x40,
+          "the scan records the chain it hit as NUMBERS (base/off/hop), not "
+          .. "only as the text it prints")
+
+    -- A row that boards later is named by REPLAYING that chain. Its id is
+    -- never returned by mem_find, so the chain is the only thing that can
+    -- name it, and the scan counter proves it did not run again.
+    local BANO = 0x72a00000
+    I.write_u64(ENT[3] + 0x800, BANO - 0x40)
+    _put_str(BANO, "BanoKingZ")
+    local before = scans
+    deal(ctrl[3], 50.0)
+    Ro.damage.sweep_identity()
+    Ro.damage.relabel()
+
+    local rows = {}
+    for _, row in ipairs(Ro.damage.board()) do rows[row.slot] = row end
+    check(rows[3] and rows[3].label == "BanoKingZ",
+          "a later row is named by replaying the learned chain, out of memory "
+          .. "the scan never reported")
+    check(scans == before, "and replaying it costs no scan at all")
+    local named_by = false
+    for _, l in ipairs(logged) do
+        if l:find("chain entity+0x800 -> +0x40", 1, true) then named_by = true end
+    end
+    check(named_by,
+          "the log names the chain that claimed the row, so a seeded offset "
+          .. "that still works reads differently from one a scan rediscovered")
+
+    I.mem_find = saved_find
+    Ro.damage.disable(); Ro.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 2f2. the address scan is paced, and skipped when nothing needs it
+    package.loaded["rsmm"] = nil
+    local Ro = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    local saved_find = I.mem_find
+
+    local scans = {}
+    I.mem_find = function(needle) scans[#scans + 1] = needle return {} end
+
+    Ro.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4,'
+        .. '"m_sEosUserId":"0002102bd8c7446d813dfb03e4c5e20a"}')
+    Ro.lobby._note_blob('{"PlayerName":"Crow","RequestedHero":5,'
+        .. '"m_sEosUserId":"000236deb33044cf83771b0cd0b133a1"}')
+    Ro.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x71000000, { "me", "a1" })
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 90.0)
+
+    Ro.damage.sweep_identity()
+    check(#scans == 1,
+          "one native scan per tick: each one walks the whole address space, "
+          .. "and doing every needle on a single tick is what made the game "
+          .. "stutter")
+    for _ = 1, 6 do Ro.damage.sweep_identity() end
+    local gamertag = false
+    for _, n in ipairs(scans) do
+        if n == "Ovilli" or n == "Crow" then gamertag = true end
+    end
+    check(not gamertag,
+          "and only peer ids are scanned for — a gamertag appears in chat, "
+          .. "the friends list and every bit of UI text, so it doubles the "
+          .. "work to produce the noisiest half of the answers")
+
+    -- Everything named, and then the lobby changes. Without a gate that is a
+    -- fresh walk of the whole address space for a board with nothing left to
+    -- identify — which is most of a session.
+    Ro.damage._name_all()
+    local before = #scans
+    Ro.lobby._note_blob('{"PlayerName":"BombsAway","RequestedHero":9,'
+        .. '"m_sEosUserId":"0002cb6019fa4b43b4d03bd06839a04c"}')
+    for _ = 1, 6 do Ro.damage.sweep_identity() end
+    check(#scans == before,
+          "a board with nothing left to identify does not scan at all, even "
+          .. "when the roster changes under it")
+
+    I.mem_find = saved_find
+    Ro.damage.disable(); Ro.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 2f3. the address scan is SLICED, and resumes where it stopped
+    package.loaded["rsmm"] = nil
+    local Ro = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    local saved_find = I.mem_find
+
+    local EOS_A = "0002de744058457b83ff0724ad7ce196"
+    Ro.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4}')
+    Ro.lobby._note_blob('{"PlayerName":"DerZaubermaaann","RequestedHero":2,'
+        .. '"m_sEosUserId":"' .. EOS_A .. '"}')
+
+    -- Record the budget and the resume address every call is given. Session
+    -- a14f stalled the game twice because this caller passed neither, taking
+    -- mem_find's 512 MB debug default on one background tick.
+    --
+    -- The sweep needs three slices to cross the address space and the ally's
+    -- peer id lives in the LAST one -- the part an unresumed scan never
+    -- reaches, which is why this scan had never once claimed a row in a real
+    -- session while reporting a clean result every time.
+    local calls = {}
+    local HIT = 0x79500000
+    I.mem_find = function(needle, _max, mb, from)
+        calls[#calls + 1] = { needle = needle, mb = mb, from = from }
+        if from == 0      then return {}, 0x2000 end
+        if from == 0x2000 then return {}, 0x4000 end
+        if needle == EOS_A then return { HIT }, 0 end
+        return {}, 0
+    end
+
+    Ro.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x79000000, { "me", "a1" })
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 90.0)
+
+    Ro.damage.sweep_identity()
+    check(#calls == 1 and type(calls[1].mb) == "number" and calls[1].mb <= 64,
+          "the scan asks for a BOUNDED slice, not mem_find's 512 MB debug "
+          .. "default: one unsliced call is gigabytes of ReadProcessMemory "
+          .. "holding the process VM lock, which the player feels as a stall")
+    check(calls[1].from == 0,
+          "the first slice of a needle starts at the bottom of the address "
+          .. "space")
+
+    Ro.damage.sweep_identity()
+    check(#calls == 2 and calls[2].from == 0x2000
+          and calls[2].needle == calls[1].needle,
+          "the next tick RESUMES the same needle at the address the last "
+          .. "slice stopped at -- dropping that value is what made the sweep "
+          .. "stop inside the low heap and report a clean result")
+
+    Ro.damage.sweep_identity()
+    local done = nil
+    for _, line in ipairs(logged) do
+        if line:find("identity scan:", 1, true) then done = line end
+    end
+    check(#calls == 3 and done and done:find("1 address(es)", 1, true),
+          "an address that only the THIRD slice reaches is still collected: "
+          .. "the sweep is not finished until mem_find says it is")
+
+    I.mem_find = saved_find
+    Ro.damage.disable(); Ro.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 2f4. a needle is retired once, not re-swept every tick
+    package.loaded["rsmm"] = nil
+    local Ro = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    local saved_find = I.mem_find
+
+    -- Two slices, no hits. Nothing is ever named, so the caller keeps asking
+    -- -- which is what makes "did the needle actually retire" observable.
+    local calls = 0
+    I.mem_find = function(_needle, _max, _mb, from)
+        calls = calls + 1
+        if from == 0 then return {}, 0x2000 end
+        return {}, 0
+    end
+
+    Ro.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4}')
+    Ro.lobby._note_blob('{"PlayerName":"Crow","RequestedHero":7,'
+        .. '"m_sEosUserId":"000236deb33044cf83771b0cd0b133a1"}')
+    Ro.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x7a000000, { "me", "a1" })
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 90.0)
+
+    _sweep(Ro)
+    check(calls == 2,
+          "one needle, two slices, then done -- retiring it after the FIRST "
+          .. "slice made a truncated sweep look complete, and never retiring "
+          .. "it walks the address space forever")
+
+    I.mem_find = saved_find
+    Ro.damage.disable(); Ro.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 2f5. a slice that raises retires its needle instead of spinning
+    package.loaded["rsmm"] = nil
+    local Ro = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    local saved_find = I.mem_find
+
+    local calls = 0
+    I.mem_find = function(_needle, _max, _mb, from)
+        calls = calls + 1
+        if from == 0 then return {}, 0x2000 end
+        error("page vanished under the scan")
+    end
+
+    Ro.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4}')
+    Ro.lobby._note_blob('{"PlayerName":"Crow","RequestedHero":7,'
+        .. '"m_sEosUserId":"000236deb33044cf83771b0cd0b133a1"}')
+    Ro.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x7b000000, { "me", "a1" })
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 90.0)
+
+    _sweep(Ro)
+    check(calls == 2,
+          "a slice that raises retires its needle: carrying the cursor "
+          .. "forward would re-raise on the same slice every tick for the "
+          .. "rest of the run")
+
+    I.mem_find = saved_find
+    Ro.damage.disable(); Ro.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 2f6. a chapter change does not strand the slice cursor
+    package.loaded["rsmm"] = nil
+    local Ro = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    local saved_find = I.mem_find
+
+    local froms = {}
+    I.mem_find = function(_needle, _max, _mb, from)
+        froms[#froms + 1] = from
+        return {}, 0x8000        -- never finishes on its own
+    end
+
+    Ro.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4}')
+    Ro.lobby._note_blob('{"PlayerName":"Crow","RequestedHero":7,'
+        .. '"m_sEosUserId":"000236deb33044cf83771b0cd0b133a1"}')
+    Ro.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x7c000000, { "me", "a1" })
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 90.0)
+
+    Ro.damage.sweep_identity()
+    Ro.damage.sweep_identity()
+    check(froms[2] == 0x8000, "mid-sweep, the cursor is carried")
+
+    -- The addresses die with the chapter, so the scan restarts. If the cursor
+    -- survives, the next roster's first needle resumes from a stranger's
+    -- address and never scans anything below it.
+    fire("gameplay:GAME_END_NEXT_CHAPTER", { source = "gameplay" })
+    deal(ctrl[2], 5.0)
+    Ro.damage.sweep_identity()
+    check(froms[#froms] == 0,
+          "after a chapter change the sweep starts from the bottom again -- a "
+          .. "cursor left behind belongs to a needle whose queue was dropped")
+
+    I.mem_find = saved_find
+    Ro.damage.disable(); Ro.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 2g. a name several rows can reach identifies nobody
+    package.loaded["rsmm"] = nil
+    local Ro = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    local saved_find = I.mem_find
+
+    Ro.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4,'
+        .. '"m_sEosUserId":"0002102bd8c7446d813dfb03e4c5e20a"}')
+    Ro.lobby._note_blob('{"PlayerName":"Crow","RequestedHero":5,'
+        .. '"m_sEosUserId":"000236deb33044cf83771b0cd0b133a1"}')
+    Ro.lobby._note_blob('{"PlayerName":"BanoKingZ","RequestedHero":10,'
+        .. '"m_sEosUserId":"0002cb6019fa4b43b4d03bd06839a04c"}')
+
+    Ro.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x70000000, { "me", "a1", "a2" })
+    local ENT = {}
+    for i = 1, 3 do ENT[i] = I.read_u64(ctrl[i] + 0x08) end
+    -- One address, reachable from BOTH ally rows: a shared table (the lobby
+    -- roster, a UI list), not an owner. Naming from it would put one player's
+    -- damage under another player's name — the original bug.
+    local SHARED = 0x70900000
+    I.write_u64(ENT[2] + 0x100, SHARED - 0x10)
+    I.write_u64(ENT[3] + 0x100, SHARED - 0x10)
+    I.mem_find = function(needle)
+        if needle == "000236deb33044cf83771b0cd0b133a1" then return { SHARED } end
+        return {}
+    end
+
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 90.0)
+    deal(ctrl[3], 50.0)
+    for _ = 1, 6 do Ro.damage.sweep_identity() end
+    Ro.damage.relabel()
+
+    local named = 0
+    for _, row in ipairs(Ro.damage.board()) do
+        if row.label == "Crow" then named = named + 1 end
+    end
+    check(named == 0,
+          "an id two rows can both reach names neither of them — a shared "
+          .. "table is not evidence of ownership")
+
+    I.mem_find = saved_find
+    Ro.damage.disable(); Ro.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- N. R.damage: a chapter change keeps the names and drops the ADDRESSES ----
+--
+-- Two things have to survive the boundary and one has to not. A row that
+-- already knows who it is keeps that name through the rebuild; the totals ride
+-- along on the same row; but every address the identity scan recorded points
+-- into an object the teardown has just freed. `addrs_key` is the ROSTER, and a
+-- chapter change does not touch the roster, so nothing dropped that cache --
+-- an ally still unnamed at the boundary was served dead addresses for the rest
+-- of the run and could never be named again.
+do
+    package.loaded["rsmm"] = nil
+    local Rn = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    local saved_find = I.mem_find
+
+    local HERO_OFF = 0x1ae0
+    local ME1, ME2     = 0x7f000000, 0x7f100000
+    local ALLY1, ALLY2 = 0x7f200000, 0x7f300000
+    local E_ME1, E_ME2 = 0x80000000, 0x80100000
+    local E_A1,  E_A2  = 0x80200000, 0x80300000
+    local function controller(addr, is_local, hero_id, entity)
+        I.write_u64(addr + 0x08, entity)
+        I.write_u8(addr + 0x1d88, is_local and 1 or 0)
+        I.write_u32(addr + HERO_OFF, hero_id)
+        I.write_u64(entity + 8, 0x13000000)
+        I.write_u8(entity + 0x1d88, is_local and 1 or 0)
+    end
+    controller(ME1,   true,  4, E_ME1)
+    controller(ALLY1, false, 7, E_A1)
+    controller(ME2,   true,  4, E_ME2)   -- chapter 2: the same two players,
+    controller(ALLY2, false, 7, E_A2)    -- brand new controllers
+
+    local EOS_CROW = "000236deb33044cf83771b0cd0b133a1"
+    Rn.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4}')
+    Rn.lobby._note_blob('{"PlayerName":"Crow","RequestedHero":7,'
+        .. '"m_sEosUserId":"' .. EOS_CROW .. '"}')
+
+    -- Chapter 1: the ally's id is nowhere the scan can reach it. The ordinary
+    -- case for somebody who joined while the chapter was still loading.
+    local scans = 0
+    I.mem_find = function() scans = scans + 1 return {} end
+
+    Rn.damage.enable{ window = 10 }
+    local PD, PDV, PDS = 0x81000000, 0x81100000, 0x81200000
+    I.write_u64(PD + 0x10, PDV)
+    I.write_u64(PD + 0xa0, PDS)
+    local stats = hooks[I.resolve("HeroStats_OnDamageDealt")]
+    local function deal(who, amount)
+        I.write_f32(PDV + 8, amount)
+        I.write_u16(PDS + 0xc8, 0)
+        stats.cb(who, 0x81300000, PD, 0, function() end)
+    end
+
+    deal(ALLY1, 50.0)
+    deal(ME1, 100.0)
+    _sweep(Rn)
+    Rn.damage.relabel()
+    check(scans > 0, "chapter 1 scans for the ally's peer id")
+    local ally1
+    for _, row in ipairs(Rn.damage.board()) do
+        if not row.is_local then ally1 = row end
+    end
+    check(ally1 and ally1.player == nil,
+          "and comes up empty -- the id is not in any memory it can see")
+    local ch1 = scans
+
+    -- Chapter 2. The id is now findable, at a chain that is NOT one of the
+    -- seeded offsets, so only a fresh scan can produce it.
+    fire("gameplay:GAME_END_NEXT_CHAPTER", { source = "gameplay" })
+    local CROW = 0x82000000
+    _put_str(CROW, EOS_CROW)
+    I.write_u64(E_A2 + 0x900, CROW - 0x30)
+    I.mem_find = function(needle)
+        scans = scans + 1
+        if needle == EOS_CROW then return { CROW } end
+        return {}
+    end
+    deal(ALLY2, 25.0)
+    deal(ME2, 25.0)
+    _sweep(Rn)
+    Rn.damage.relabel()
+
+    check(scans > ch1,
+          "the chapter epoch drops the scan's cached addresses, so it looks "
+          .. "again -- they died with the objects they pointed into")
+    local board = Rn.damage.board()
+    check(#board == 2, "the board still holds one row per player, not four")
+    local me2, ally2
+    for _, row in ipairs(board) do
+        if row.is_local then me2 = row else ally2 = row end
+    end
+    check(me2 and me2.dealt == 125.0 and Rn.damage.total() == 200.0,
+          "every chapter-1 number carries across the switch")
+    check(ally2 and ally2.dealt == 75.0,
+          "including the ally's, on the row its new controller was rebound to")
+    check(ally2 and ally2.label == "Crow",
+          "and the ally is named in chapter 2, off its NEW controller")
+    check(math.abs(ally2.share - 75 / 200) < 1e-6,
+          "so every share is computed over the whole run, not the chapter")
+
+    I.mem_find = saved_find
+    Rn.damage.disable(); Rn.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 2h. a SEEDED chain landing on SHARED memory names nobody
+    package.loaded["rsmm"] = nil
+    local Rs = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    local saved_find = I.mem_find
+    I.mem_find = function() return {} end
+
+    Rs.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4}')
+    Rs.lobby._note_blob('{"PlayerName":"Crow","RequestedHero":5}')
+    Rs.lobby._note_blob('{"PlayerName":"BanoKingZ","RequestedHero":10}')
+    Rs.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x83000000, { "me", "a1", "a2" })
+    local ENT = {}
+    for i = 1, 3 do ENT[i] = I.read_u64(ctrl[i] + 0x08) end
+
+    -- One object reached by BOTH allies at the same offset: a lobby roster or
+    -- a UI list, not an owner. Claiming row by row in slot order would hand
+    -- "Crow" to whichever ally boarded first -- one player's damage under
+    -- another player's name. The offset is the one session 7068 recorded and
+    -- Ghidra later disproved (see F._own.chains), which is exactly the shape a
+    -- coincidence takes: reachable, plausible, and owned by nobody.
+    local SHARED = 0x84000000
+    _put_str(SHARED, "Crow")
+    I.write_u64(ENT[2] + 0x678, SHARED - 0x2d0)
+    I.write_u64(ENT[3] + 0x678, SHARED - 0x2d0)
+
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 90.0)
+    deal(ctrl[3], 50.0)
+    _sweep(Rs, 2)
+    Rs.damage.relabel()
+
+    local named = 0
+    for _, row in ipairs(Rs.damage.board()) do
+        if row.label == "Crow" then named = named + 1 end
+    end
+    check(named == 0,
+          "a seeded chain two rows both resolve to the SAME name claims "
+          .. "neither of them")
+    local claimed
+    for _, line in ipairs(logged) do
+        if line:find(" IS ", 1, true) and line:find("(chain ", 1, true) then
+            claimed = line
+        end
+    end
+    check(not claimed,
+          "and no chain claim is logged at all: " .. tostring(claimed))
+    check(Rs.damage.total() == 150.0,
+          "refusing costs only a placeholder -- every number is kept")
+
+    I.mem_find = saved_find
+    Rs.damage.disable(); Rs.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- N. R.damage: the hero-id offset must answer to the local player ---------
+--
+-- Session 174f, from the shipped log: three rows aboard, roster
+-- {Hollow=4, Keshi=5, Ovili=1, claroo=8}, and the probe adopted `+0x1b60/u32`
+-- as the row identity. A sweep of the shipped exe finds ZERO reads or writes at
+-- +0x1b60 on any object base, while every controller offset this meter uses
+-- that IS proven in-game shows 11-58 -- the engine never touches it. It was
+-- uninitialised memory that happened to hold three distinct roster hero ids,
+-- and every ally name on that board came from it.
+--
+-- Two holes let that through, and both are closed here: the test never asked
+-- whether the LOCAL row read the LOCAL player's id (which Steam plus the lobby
+-- blob give for free), and adoption set `done`, so the fourth row -- the only
+-- evidence left that could veto it -- boarded 17s later and was never consulted.
+do  -- 2i. an offset that misreads the local player is never adopted
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    -- "Ovilli" is the Steam persona the harness reports, so the local member is
+    -- known to be hero 1.
+    Rp.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":1}')
+    Rp.lobby._note_blob('{"PlayerName":"Keshi","RequestedHero":5}')
+    Rp.lobby._note_blob('{"PlayerName":"claroo","RequestedHero":8}')
+    Rp.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x85000000, { "me", "a1", "a2" })
+    -- Three DISTINCT roster ids at one offset -- the old test passes -- but the
+    -- local row reads 5 (Keshi) when this machine's player is hero 1.
+    local BAD = 0x1b60
+    I.write_u32(ctrl[1] + BAD, 5)
+    I.write_u32(ctrl[2] + BAD, 8)
+    I.write_u32(ctrl[3] + BAD, 1)
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 90.0)
+    deal(ctrl[3], 50.0)
+    _sweep(Rp, 3)
+    Rp.damage.relabel()
+
+    check(Rp.damage.hero_id_offset() ~= BAD,
+          "an offset whose local row reads somebody else's hero is vetoed, "
+          .. "however distinct the other rows look")
+    local named = 0
+    for _, row in ipairs(Rp.damage.board()) do
+        if row.label == "Keshi" or row.label == "claroo" then named = named + 1 end
+    end
+    check(named == 0,
+          "so no ally row is labelled off it -- placeholders beat a name that "
+          .. "cannot be checked from inside the game")
+
+    Rp.damage.disable(); Rp.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 2j. a row that boards LATER can still withdraw the adopted offset
+    package.loaded["rsmm"] = nil
+    local Rw = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    Rw.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":1}')
+    Rw.lobby._note_blob('{"PlayerName":"Keshi","RequestedHero":5}')
+    Rw.lobby._note_blob('{"PlayerName":"claroo","RequestedHero":8}')
+    Rw.lobby._note_blob('{"PlayerName":"Hollow","RequestedHero":4}')
+    Rw.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x86000000, { "me", "a1", "a2", "a3" })
+    local OFF = 0x1c40
+    I.write_u32(ctrl[1] + OFF, 1)     -- local row agrees: hero 1, so it adopts
+    I.write_u32(ctrl[2] + OFF, 5)
+    I.write_u32(ctrl[3] + OFF, 8)
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 90.0)
+    deal(ctrl[3], 50.0)
+    _sweep(Rw, 3)
+    Rw.damage.relabel()
+    check(Rw.damage.hero_id_offset() == OFF,
+          "three rows that agree, local row included, do adopt an offset")
+    local before = 0
+    for _, row in ipairs(Rw.damage.board()) do
+        if row.label == "Keshi" or row.label == "claroo" then before = before + 1 end
+    end
+    check(before == 2, "and the ally rows are named from it")
+
+    -- The fourth player boards and reads hero 5 as well. Two rows, one player:
+    -- the offset cannot be the identity, and everything it said is suspect.
+    I.write_u32(ctrl[4] + OFF, 5)
+    deal(ctrl[4], 25.0)
+    _sweep(Rw, 3)
+    Rw.damage.relabel()
+
+    check(Rw.damage.hero_id_offset() ~= OFF,
+          "a later row that contradicts the offset withdraws it, instead of "
+          .. "being the one row the decision never consulted")
+    local withdrew = false
+    for _, line in ipairs(logged) do
+        if line:find("WITHDRAWING the hero-id offset", 1, true) then
+            withdrew = true
+        end
+    end
+    check(withdrew, "and the withdrawal is logged, with the reason")
+    local still = 0
+    for _, row in ipairs(Rw.damage.board()) do
+        if row.label == "Keshi" or row.label == "claroo" then still = still + 1 end
+    end
+    check(still == 0,
+          "every name that offset handed out goes back to a placeholder -- an "
+          .. "unproven name outlives the evidence for it otherwise")
+    check(Rw.damage.total() == 175.0, "and no damage is lost in the withdrawal")
+
+    Rw.damage.disable(); Rw.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- N. R.damage: the SESSION join -- the first row->player link that is read,
+-- not searched for --------------------------------------------------------
+--
+-- NamedEvent_NetSend stamps ev+0x38 with the session id of the machine that
+-- raised the event; the lobby hands us each member's session id as a string.
+-- The join fires ONLY on an exact match between the two, so it cannot invent
+-- an answer the way the memory sweep and the hero-id probe both did.
+do  -- 5a. an exact match names the row
+    package.loaded["rsmm"] = nil
+    local Rj = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    Rj.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":10}')
+    Rj.lobby._note_blob('{"PlayerName":"Yume","RequestedHero":4}')
+    check(Rj.lobby._note_session("Yume", "8899776655") == true,
+          "spec fixture: the member carries the session id the engine gave it")
+    Rj.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x90000000, { "me", "a1" })
+    local ENT2 = I.read_u64(ctrl[2] + 0x08)
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 90.0)
+
+    Rj.damage._session_join(ENT2, 8899776655)
+    Rj.damage.relabel()
+    local ally
+    for _, row in ipairs(Rj.damage.board()) do
+        if not row.is_local then ally = row end
+    end
+    check(ally and ally.label == "Yume" and ally.dealt == 90.0,
+          "the row whose controller owns that entity is named from the "
+          .. "engine's own peer id, and keeps its damage")
+    check(ally and ally.label_guess == false,
+          "and it is NOT flagged a guess -- this one is read, not inferred")
+    local proven = false
+    for _, l in ipairs(logged) do
+        if l:find("SESSION JOIN PROVEN", 1, true) then proven = true end
+    end
+    check(proven, "the proof is logged once, naming both sides of the match")
+
+    Rj.damage.disable(); Rj.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 5b. no exact match names NOBODY, and says so once
+    package.loaded["rsmm"] = nil
+    local Rj = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    Rj.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":10}')
+    Rj.lobby._note_blob('{"PlayerName":"Yume","RequestedHero":4}')
+    -- THREE players on purpose. With one ally row and one unclaimed ally name,
+    -- `_dmg_relabel`'s elimination rule names the row correctly on its own and
+    -- the test would pass without proving anything about the session join.
+    Rj.lobby._note_blob('{"PlayerName":"Mascarade","RequestedHero":3}')
+    -- A session id in a form the int64 cannot produce: this is what "the
+    -- representations do not line up on this build" looks like.
+    Rj.lobby._note_session("Yume", "S-1-5-21-not-a-number")
+    Rj.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x91000000, { "me", "a1", "a2" })
+    local ENT2 = I.read_u64(ctrl[2] + 0x08)
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 90.0)
+    deal(ctrl[3], 50.0)
+    Rj.damage._session_join(ENT2, 8899776655)
+    Rj.damage.relabel()
+
+    local named = 0
+    for _, row in ipairs(Rj.damage.board()) do
+        if row.label == "Yume" then named = named + 1 end
+    end
+    check(named == 0,
+          "a session the lobby cannot match names nobody -- the join fails "
+          .. "CLOSED, which is the whole reason to prefer it")
+    local said = false
+    for _, l in ipairs(logged) do
+        if l:find("matches no lobby member session id", 1, true) then said = true end
+    end
+    check(said, "and it says so once, so silence is distinguishable from "
+          .. "'no event carried a session'")
+    check(Rj.damage.total() == 150.0, "no damage is disturbed either way")
+
+    Rj.damage.disable(); Rj.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 5c. two members on one session id is a collision, so it names nobody
+    package.loaded["rsmm"] = nil
+    local Rj = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+
+    Rj.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":10}')
+    Rj.lobby._note_blob('{"PlayerName":"Yume","RequestedHero":4}')
+    Rj.lobby._note_blob('{"PlayerName":"Mascarade","RequestedHero":3}')
+    Rj.lobby._note_session("Yume", "8899776655")
+    Rj.lobby._note_session("Mascarade", "8899776655")
+    Rj.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x92000000, { "me", "a1", "a2" })
+    local ENT2 = I.read_u64(ctrl[2] + 0x08)
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 90.0)
+    deal(ctrl[3], 50.0)
+    Rj.damage._session_join(ENT2, 8899776655)
+    Rj.damage.relabel()
+
+    local named = 0
+    for _, row in ipairs(Rj.damage.board()) do
+        if row.label == "Yume" or row.label == "Mascarade" then named = named + 1 end
+    end
+    check(named == 0,
+          "two members answering one session id is a bad representation "
+          .. "guess, not evidence -- exactly one match, or nobody")
+
+    Rj.damage.disable(); Rj.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 5e. the lobby's session id is a 128-bit GUID string, not an int64
+    -- Session 8f36 logged "Ovilli" as "31b1a3aef8ce46e9a4d76be3c7526757".
+    -- The netcode stores a single qword at ev+0x38, so a match can only ever
+    -- be one HALF of that GUID -- and only an exact one.
+    package.loaded["rsmm"] = nil
+    local Rg = require "rsmm"
+    local GUID = "31b1a3aef8ce46e9a4d76be3c7526757"
+    check(Rg.damage._session_matches(0x31b1a3aef8ce46e9, GUID) == true,
+          "the HIGH half of the GUID matches, big-endian as printed")
+    check(Rg.damage._session_matches(0xa4d76be3c7526757, GUID) == true,
+          "so does the LOW half")
+    check(Rg.damage._session_matches(0xe946cef8aea3b131, GUID) == true,
+          "and a byte-reversed half, for a little-endian qword")
+    check(Rg.damage._session_matches(0x1234567890abcdef, GUID) == false,
+          "an unrelated qword does not match either half")
+    check(Rg.damage._session_matches(0x31b1a3ae, GUID) == false,
+          "and a PREFIX is not a match -- half or nothing, never 'close'")
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 5d. every text form the engine could plausibly print
+    check(R.damage._session_join ~= nil, "the join seam is exposed for diagnostics")
+    package.loaded["rsmm"] = nil
+    local Rj = require "rsmm"
+    for _, form in ipairs({ "8899776655", "212fe1a8f", "212FE1A8F",
+                            "0x212fe1a8f", "0x212FE1A8F" }) do
+        Rj.lobby._note_blob('{"PlayerName":"P' .. form .. '","RequestedHero":4}')
+        check(Rj.lobby._note_session("P" .. form, form) == true,
+              "fixture: session recorded as " .. form)
+    end
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+
+-- N. R.damage: the NET-ID join -- the row->player link read out of the
+-- entity's replication data ------------------------------------------------
+--
+-- ev+0x38 turned out to be a dead end (sessions c536/e736: every gameplay
+-- event is the base oCGameNamedEvent, whose +0x38 is a handle, not a peer), so
+-- the join reads the NET COMPONENT instead. The needle is the member's 32-hex
+-- session id, and adoption needs two independent gates -- the local row must
+-- read the Steam persona, and every row must read a DIFFERENT member.
+local NETID_SESS = {
+    Ovilli     = "1111222233334444aaaabbbbccccdddd",
+    Yume       = "5555666677778888eeeeffff00001111",
+    Mascarade  = "0123456789abcdef0f1e2d3c4b5a6978",
+}
+
+-- Give a row's entity a net component holding `sess`'s low half as a qword at
+-- +0x40, which is what the engine storing a peer id would look like.
+local function _netcomp(ent, comp, slots, sess, off, as_string, buf)
+    I.write_u64(ent + 0x5f0, slots)
+    I.write_u64(ent + 0x600, 0)                -- mask 0 -> capacity 1
+    I.write_u32(slots, 0x154fce5c)             -- oCEntityCpntNet
+    I.write_u64(slots + 8, comp)
+    if not sess then return comp end
+    if as_string then
+        _put_str(buf, sess)                    -- 32 chars: heap form
+        I.write_u64(comp + off, buf)
+        I.write_u64(comp + off + 0x10, #sess)
+        I.write_u64(comp + off + 0x18, 47)
+    else
+        I.write_u64(comp + off, tonumber(sess:sub(1, 16), 16))
+    end
+    return comp
+end
+
+local function _netid_world(Rn, base, rows, opts)
+    opts = opts or {}
+    Rn.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":10}')
+    Rn.lobby._note_blob('{"PlayerName":"Yume","RequestedHero":4}')
+    Rn.lobby._note_blob('{"PlayerName":"Mascarade","RequestedHero":3}')
+    for who, sid in pairs(NETID_SESS) do Rn.lobby._note_session(who, sid) end
+    Rn.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(base, { "me", "a1", "a2" })
+    for i, who in ipairs(rows) do
+        local ent = I.read_u64(ctrl[i] + 0x08)
+        _netcomp(ent, base + 0x50000 + i * 0x1000, base + 0x60000 + i * 0x1000,
+                 who and NETID_SESS[who] or nil, opts.off or 0x40,
+                 opts.as_string, base + 0x70000 + i * 0x1000)
+        deal(ctrl[i], 10.0 * i)
+    end
+    return ctrl, deal
+end
+
+do  -- 6a. the local row anchors it, a distinct ally confirms it, rows are named
+    package.loaded["rsmm"] = nil
+    local Rn = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    _netid_world(Rn, 0x94000000, { "Ovilli", "Yume", "Mascarade" })
+    check(Rn.damage._netid().off == nil, "nothing is adopted before a pass runs")
+    Rn.damage._netid_pass()
+    check(Rn.damage._netid().off == 0x40,
+          "the offset that reads a different member on every row is adopted")
+    check(Rn.damage._netid().kind == "qword-lo",
+          "and it is recorded as the qword half it actually matched")
+    Rn.damage.relabel()
+    local by = {}
+    for _, row in ipairs(Rn.damage.board()) do by[row.slot] = row end
+    check(by[2] and by[2].player == "Yume" and by[3] and by[3].player == "Mascarade",
+          "each ally row is named from its own net component, not by elimination")
+    check(by[2] and by[2].label_guess == false,
+          "and the name is not flagged a guess -- it was read, not inferred")
+    local proven = false
+    for _, l in ipairs(logged) do
+        if l:find("NET ID JOIN PROVEN", 1, true) then proven = true end
+    end
+    check(proven, "the proof is logged once, with the locator it adopted")
+
+    Rn.damage.disable(); Rn.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 6b. the anchor VETO: a locator that misnames the local row is refused
+    package.loaded["rsmm"] = nil
+    local Rn = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+
+    -- The local row's component holds YUME's session. Distinctness alone would
+    -- accept this (three rows, three different members); only the Steam anchor
+    -- catches it -- and this is exactly the shape of the +0x1b60 adoption.
+    _netid_world(Rn, 0x95000000, { "Yume", "Mascarade", "Ovilli" })
+    Rn.damage._netid_pass()
+    check(Rn.damage._netid().off == nil,
+          "an offset that does not read the Steam persona on this machine's "
+          .. "own row is never adopted, however consistent it looks")
+    Rn.damage.relabel()
+    for _, row in ipairs(Rn.damage.board()) do
+        check(row.is_local or row.player == nil,
+              "and no ally row is named from it")
+    end
+
+    Rn.damage.disable(); Rn.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 6c. DISTINCTNESS: a field every row shares identifies nobody
+    package.loaded["rsmm"] = nil
+    local Rn = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+
+    -- Every component holds the LOCAL player's session -- a lobby-wide pointer
+    -- (the host, "my own peer id") rather than the entity's owner. The anchor
+    -- gate passes; only distinctness rejects it.
+    _netid_world(Rn, 0x96000000, { "Ovilli", "Ovilli", "Ovilli" })
+    Rn.damage._netid_pass()
+    check(Rn.damage._netid().off == nil,
+          "an offset that reads the same member on every row is refused")
+
+    Rn.damage.disable(); Rn.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 6d. the session id stored as a std::string is found too
+    package.loaded["rsmm"] = nil
+    local Rn = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+
+    _netid_world(Rn, 0x97000000, { "Ovilli", "Yume", "Mascarade" },
+                 { off = 0x80, as_string = true })
+    Rn.damage._netid_pass()
+    check(Rn.damage._netid().off == 0x80 and Rn.damage._netid().kind == "string",
+          "a 32-character session id held as a std::string is matched whole")
+    Rn.damage.relabel()
+    local named = 0
+    for _, row in ipairs(Rn.damage.board()) do
+        if row.player and not row.is_local then named = named + 1 end
+    end
+    check(named == 2, "and both ally rows are named from it")
+
+    Rn.damage.disable(); Rn.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 6e. no net component at all: no adoption, no crash, no name
+    package.loaded["rsmm"] = nil
+    local Rn = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+
+    Rn.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":10}')
+    Rn.lobby._note_blob('{"PlayerName":"Yume","RequestedHero":4}')
+    Rn.lobby._note_blob('{"PlayerName":"Mascarade","RequestedHero":3}')
+    for who, sid in pairs(NETID_SESS) do Rn.lobby._note_session(who, sid) end
+    Rn.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x98000000, { "me", "a1", "a2" })
+    for i = 1, 3 do deal(ctrl[i], 10.0 * i) end
+    check(Rn.damage._netid_pass() == false,
+          "an entity with no net component yields no join and does not fault")
+    check(Rn.damage._netid().off == nil, "and nothing is adopted")
+
+    Rn.damage.disable(); Rn.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 6f. a POINTER the member and the net component share names the row
+    package.loaded["rsmm"] = nil
+    local Rn = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+
+    -- Session 2c36: the net component holds no session id at all. What it can
+    -- still hold is a pointer to the same peer object the lobby member points
+    -- at -- an allocation both structures reference. That is what this proves.
+    local B = 0x99000000
+    local names = { "Ovilli", "Yume", "Mascarade" }
+    Rn.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":10}')
+    Rn.lobby._note_blob('{"PlayerName":"Yume","RequestedHero":4}')
+    Rn.lobby._note_blob('{"PlayerName":"Mascarade","RequestedHero":3}')
+    for i, who in ipairs(names) do
+        local member = B + 0x10000 + i * 0x1000
+        local peer   = B + 0x20000 + i * 0x1000
+        I.write_u64(member + 0x48, peer)          -- member -> peer object
+        Rn.lobby._note_member(who, member)
+        -- Not a session id anywhere: only the shared pointer links them.
+        Rn.lobby._note_session(who, ("%032x"):format(0xc0ffee00 + i))
+    end
+    Rn.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(B, names)
+    for i = 1, #names do
+        local ent = I.read_u64(ctrl[i] + 0x08)
+        local comp, slots = B + 0x30000 + i * 0x1000, B + 0x40000 + i * 0x1000
+        I.write_u64(ent + 0x5f0, slots)
+        I.write_u64(ent + 0x600, 0)
+        I.write_u32(slots, 0x154fce5c)
+        I.write_u64(slots + 8, comp)
+        I.write_u64(comp + 0x18, B + 0x20000 + i * 0x1000)   -- the same peer
+        deal(ctrl[i], 10.0 * i)
+    end
+    Rn.damage._netid_pass()
+    check(Rn.damage._netid().off == 0x18 and Rn.damage._netid().kind == "ptr",
+          "a pointer held by exactly one member and exactly one row is adopted")
+    Rn.damage.relabel()
+    local by = {}
+    for _, row in ipairs(Rn.damage.board()) do by[row.slot] = row end
+    check(by[2] and by[2].player == "Yume" and by[3] and by[3].player == "Mascarade",
+          "and every ally row is named through it")
+
+    Rn.damage.disable(); Rn.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 6g. a pointer EVERY member holds (the scene, the net manager) names nobody
+    package.loaded["rsmm"] = nil
+    local Rn = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+
+    local B = 0x9a000000
+    local SHARED = B + 0x25000
+    local names = { "Ovilli", "Yume", "Mascarade" }
+    Rn.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":10}')
+    Rn.lobby._note_blob('{"PlayerName":"Yume","RequestedHero":4}')
+    Rn.lobby._note_blob('{"PlayerName":"Mascarade","RequestedHero":3}')
+    for i, who in ipairs(names) do
+        local member = B + 0x10000 + i * 0x1000
+        I.write_u64(member + 0x48, SHARED)        -- every member points at it
+        Rn.lobby._note_member(who, member)
+    end
+    Rn.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(B, names)
+    for i = 1, #names do
+        local ent = I.read_u64(ctrl[i] + 0x08)
+        local comp, slots = B + 0x30000 + i * 0x1000, B + 0x40000 + i * 0x1000
+        I.write_u64(ent + 0x5f0, slots)
+        I.write_u64(ent + 0x600, 0)
+        I.write_u32(slots, 0x154fce5c)
+        I.write_u64(slots + 8, comp)
+        I.write_u64(comp + 0x18, SHARED)
+        deal(ctrl[i], 10.0 * i)
+    end
+    Rn.damage._netid_pass()
+    check(Rn.damage._netid().off == nil,
+          "a pointer several members share is poisoned before it can name a row")
+    Rn.damage.relabel()
+    for _, row in ipairs(Rn.damage.board()) do
+        check(row.is_local or row.player == nil, "so no ally row is named")
+    end
+
+    Rn.damage.disable(); Rn.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 6h. a run whose roster never grew past this machine SAYS SO
+    package.loaded["rsmm"] = nil
+    local Rn = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    -- Session c236 exactly: four rows fighting, and the only lobby attributes
+    -- this client ever parsed were its own. No join can name anybody, because
+    -- there is no name -- and the meter has to say which of the two it is.
+    Rn.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":3}')
+    Rn.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x9b000000, { "me", "a1", "a2" })
+    for i = 1, 3 do deal(ctrl[i], 10.0 * i) end
+    Rn.damage._label_hint()
+    local said = false
+    for _, l in ipairs(logged) do
+        if l:find("never sent the other players", 1, true) then said = true end
+    end
+    check(said, "the missing INPUT is reported, not left to look like a broken join")
+    local again = #logged
+    Rn.damage._label_hint()
+    check(#logged == again, "and it is said once, not once a second")
+
+    Rn.damage.disable(); Rn.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 6i. the session TWO hops down netcomp+0xb8, where the disassembly says it is
+    package.loaded["rsmm"] = nil
+    local Rn = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+
+    -- NamedEvent_NetSend reaches the session as [C+0xb8]->vft[0x18](...), so
+    -- it is behind a vcall, not in a field of the component. This puts it
+    -- where a peer object hanging off the net object would put it, and checks
+    -- the adopted locator can be RE-READ on rows that were never the anchor.
+    local B = 0x9c000000
+    local names = { "Ovilli", "Yume", "Mascarade" }
+    Rn.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":10}')
+    Rn.lobby._note_blob('{"PlayerName":"Yume","RequestedHero":4}')
+    Rn.lobby._note_blob('{"PlayerName":"Mascarade","RequestedHero":3}')
+    local sess = {
+        Ovilli    = "1111222233334444aaaabbbbccccdddd",
+        Yume      = "5555666677778888eeeeffff00001111",
+        Mascarade = "0123456789abcdef0f1e2d3c4b5a6978",
+    }
+    for who, sid in pairs(sess) do Rn.lobby._note_session(who, sid) end
+    Rn.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(B, names)
+    for i, who in ipairs(names) do
+        local ent   = I.read_u64(ctrl[i] + 0x08)
+        local comp  = B + 0x30000 + i * 0x1000
+        local slots = B + 0x40000 + i * 0x1000
+        local netobj = B + 0x50000 + i * 0x1000
+        local peer   = B + 0x60000 + i * 0x1000
+        I.write_u64(ent + 0x5f0, slots)
+        I.write_u64(ent + 0x600, 0)
+        I.write_u32(slots, 0x154fce5c)
+        I.write_u64(slots + 8, comp)
+        I.write_u64(comp + 0xb8, netobj)          -- the net object
+        I.write_u64(netobj + 0x28, peer)          -- the peer it replicates to
+        I.write_u64(peer + 0x30, tonumber(sess[who]:sub(1, 16), 16))
+        deal(ctrl[i], 10.0 * i)
+    end
+    Rn.damage._netid_pass()
+    local L = Rn.damage._netid()
+    check(L.off == 0x30 and L.kind == "qword-lo"
+          and L.path and L.path[1] == 0xb8 and L.path[2] == 0x28,
+          "the two-hop path is adopted WITH the route taken to reach it")
+    Rn.damage.relabel()
+    local by = {}
+    for _, row in ipairs(Rn.damage.board()) do by[row.slot] = row end
+    check(by[2] and by[2].player == "Yume" and by[3] and by[3].player == "Mascarade",
+          "and it re-reads correctly on rows that were not the anchor")
+
+    Rn.damage.disable(); Rn.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 6j. the OWNER path the decompile names: *(*(*(C+0xb8)+0x100)+0x28)
+    package.loaded["rsmm"] = nil
+    local Rn = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    -- oCSLNetworkObject::vft[0x18] is `*out = *(*(netobj+0x100)+0x28)`, so the
+    -- owning session is a three-hop field read. Here that qword is a POINTER
+    -- to a peer object holding the session string -- the shape that would let
+    -- the join close -- and the row must be named from it.
+    local B = 0x9d000000
+    local names = { "Ovilli", "Yume", "Mascarade" }
+    local sess = {
+        Ovilli    = "1111222233334444aaaabbbbccccdddd",
+        Yume      = "5555666677778888eeeeffff00001111",
+        Mascarade = "0123456789abcdef0f1e2d3c4b5a6978",
+    }
+    Rn.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":10}')
+    Rn.lobby._note_blob('{"PlayerName":"Yume","RequestedHero":4}')
+    Rn.lobby._note_blob('{"PlayerName":"Mascarade","RequestedHero":3}')
+    for who, sid in pairs(sess) do Rn.lobby._note_session(who, sid) end
+    Rn.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(B, names)
+    for i, who in ipairs(names) do
+        local ent    = I.read_u64(ctrl[i] + 0x08)
+        local comp   = B + 0x30000 + i * 0x1000
+        local slots  = B + 0x40000 + i * 0x1000
+        local netobj = B + 0x50000 + i * 0x1000
+        local inner  = B + 0x60000 + i * 0x1000
+        local peer   = B + 0x70000 + i * 0x1000
+        I.write_u64(ent + 0x5f0, slots)
+        I.write_u64(ent + 0x600, 0)
+        I.write_u32(slots, 0x154fce5c)
+        I.write_u64(slots + 8, comp)
+        I.write_u64(comp + 0xb8, netobj)
+        I.write_u64(netobj + 0x100, inner)
+        I.write_u64(inner + 0x28, peer)          -- the owning session
+        -- ... which names the player. 32 characters is past the SSO limit, so
+        -- it is the heap form: pointer at +0, size at +0x10, capacity at +0x18.
+        _put_str(peer + 0x200, sess[who])
+        I.write_u64(peer + 0x40, peer + 0x200)
+        I.write_u64(peer + 0x40 + 0x10, 32)
+        I.write_u64(peer + 0x40 + 0x18, 47)
+        deal(ctrl[i], 10.0 * i)
+    end
+    Rn.damage._netid_pass()
+    local L = Rn.damage._netid()
+    check(L.path and #L.path == 3 and L.path[1] == 0xb8 and L.path[2] == 0x100
+          and L.path[3] == 0x28 and L.off == 0x40,
+          "the locator is the exact path oCSLNetworkObject::vft[0x18] walks")
+    Rn.damage.relabel()
+    local by = {}
+    for _, row in ipairs(Rn.damage.board()) do by[row.slot] = row end
+    check(by[2] and by[2].player == "Yume" and by[3] and by[3].player == "Mascarade",
+          "and every ally row is named from the engine's own owner field")
+    local said = false
+    for _, l in ipairs(logged) do
+        if l:find("owner session = 0x", 1, true) then said = true end
+    end
+    check(said, "the raw owner qword is logged per row whatever it turns out to be")
+
+    Rn.damage.disable(); Rn.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 7a. REGRESSION GUARD: names arrive with identity_hunt OFF
+    package.loaded["rsmm"] = nil
+    local Rr = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+
+    -- The shipped config has `identity_hunt = false` (the blind sweep is the
+    -- stutter). Turning it off must NOT take the cheap peer-id path with it --
+    -- that is what put "Player 2" back on a board that used to show names.
+    local B = 0x9e000000
+    local ID = "peer-id-of-yume"
+    Rr.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":10}')
+    Rr.lobby._note_blob('{"PlayerName":"Yume","RequestedHero":4}')
+    Rr.lobby._note_blob('{"PlayerName":"Mascarade","RequestedHero":3}')
+    Rr.lobby._note_eos("Yume", ID)
+    Rr.damage.enable{ window = 10, identity_hunt = false }
+    local ctrl, deal = _own_world(B, { "me", "a1", "a2" })
+    -- The ally row's controller reaches a copy of that peer id, and no other
+    -- row does. That is the whole claim the one-owner rule checks.
+    local COPY = B + 0x80000
+    _put_str(COPY, ID)
+    I.write_u64(ctrl[2] + 0x40, COPY)
+    I.mem_find = function(needle)
+        if needle == ID then return { COPY } end
+        return {}
+    end
+    for i = 1, 3 do deal(ctrl[i], 10.0 * i) end
+    for _ = 1, 8 do Rr.damage._identity_tick() end
+    Rr.damage.relabel()
+    local by = {}
+    for _, row in ipairs(Rr.damage.board()) do by[row.slot] = row end
+    check(by[2] and by[2].player == "Yume",
+          "the peer-id path names the row with identity_hunt off")
+    check(by[2] and by[2].label == "Yume" and by[2].label_guess == false,
+          "and the board shows the real name, not \"Player 2\"")
+
+    Rr.damage.disable(); Rr.damage.reset()
+    I.mem_find = function() return {} end
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- N. R.damage: the OWNER GUID join ----------------------------------------
+--
+-- oCSLNetworkObject::vft[0x18] is `*out = *(*(netobj+0x100)+0x28)`, netobj+0x100
+-- is the oCSLNetReplica, and the replica is a RakNet::Replica3 whose +0x28 is
+-- creatingSystemGUID -- the peer that created the hero. Matching that against
+-- the qwords a lobby member carries is the first row->player link that is a
+-- documented engine field on BOTH sides.
+local function _guid_world(Rg, base, rows, opts)
+    opts = opts or {}
+    local names = { "Ovilli", "Yume", "Mascarade" }
+    for _, who in ipairs(names) do
+        Rg.lobby._note_blob(('{"PlayerName":"%s","RequestedHero":4}'):format(who))
+    end
+    for i, who in ipairs(names) do
+        local member = base + 0x10000 + i * 0x1000
+        local g = opts.member_guid and opts.member_guid[who] or (0x51100 + i)
+        I.write_u64(member + 0x60, g)          -- the member's own peer guid
+        Rg.lobby._note_member(who, member)
+    end
+    Rg.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(base, names)
+    for i, who in ipairs(rows) do
+        local ent    = I.read_u64(ctrl[i] + 0x08)
+        local comp   = base + 0x30000 + i * 0x1000
+        local slots  = base + 0x40000 + i * 0x1000
+        local netobj = base + 0x50000 + i * 0x1000
+        local repl   = base + 0x60000 + i * 0x1000
+        I.write_u64(ent + 0x5f0, slots)
+        I.write_u64(ent + 0x600, 0)
+        I.write_u32(slots, 0x154fce5c)
+        I.write_u64(slots + 8, comp)
+        I.write_u64(comp + 0xb8, netobj)
+        I.write_u64(netobj + 0x100, repl)
+        I.write_u64(repl + 0x28, opts.row_guid and opts.row_guid[i]
+                                 or (0x51100 + (who and i or i)))
+        deal(ctrl[i], 10.0 * i)
+    end
+    return ctrl, deal
+end
+
+do  -- 8a. the GUID names every row
+    package.loaded["rsmm"] = nil
+    local Rg = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    _guid_world(Rg, 0xa1000000, { "Ovilli", "Yume", "Mascarade" })
+    check(Rg.damage._netid_pass() == true, "the join fires")
+    Rg.damage.relabel()
+    local by = {}
+    for _, row in ipairs(Rg.damage.board()) do by[row.slot] = row end
+    check(by[2] and by[2].player == "Yume" and by[3] and by[3].player == "Mascarade",
+          "each ally row is named from RakNet::Replica3::creatingSystemGUID")
+    local proven, reported = false, false
+    for _, l in ipairs(logged) do
+        if l:find("OWNER GUID JOIN PROVEN", 1, true) then proven = true end
+        if l:find("owner GUIDs:", 1, true) then reported = true end
+    end
+    check(proven, "and says so once")
+    check(reported, "the raw GUIDs are reported whatever the outcome")
+
+    Rg.damage.disable(); Rg.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 8b. ANCHOR: a GUID that misnames the local row is refused outright
+    package.loaded["rsmm"] = nil
+    local Rg = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+
+    -- Row 1 is this machine's, but its GUID is the one Yume's member carries.
+    _guid_world(Rg, 0xa2000000, { "Ovilli", "Yume", "Mascarade" },
+                { row_guid = { 0x51102, 0x51101, 0x51103 } })
+    Rg.damage._netid_pass()
+    Rg.damage.relabel()
+    for _, row in ipairs(Rg.damage.board()) do
+        check(row.is_local or row.player == nil,
+              "no row is named when the local row contradicts Steam")
+    end
+
+    Rg.damage.disable(); Rg.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 8c. DISTINCTNESS: one GUID on two rows names nobody
+    package.loaded["rsmm"] = nil
+    local Rg = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+
+    _guid_world(Rg, 0xa3000000, { "Ovilli", "Yume", "Mascarade" },
+                { row_guid = { 0x51101, 0x51102, 0x51102 } })
+    Rg.damage._netid_pass()
+    Rg.damage.relabel()
+    local named = 0
+    for _, row in ipairs(Rg.damage.board()) do
+        if row.player and not row.is_local then named = named + 1 end
+    end
+    check(named == 0, "two rows sharing a GUID is not an identity, so it names nobody")
+
+    Rg.damage.disable(); Rg.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 8d. no member carries a GUID: report it, name nobody, do not fault
+    package.loaded["rsmm"] = nil
+    local Rg = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    -- The likely real-world case: the owner GUID is a genuine per-player key,
+    -- but the lobby member does not record it. The rows must still report four
+    -- DISTINCT values, because that is what proves the field is the owner.
+    _guid_world(Rg, 0xa4000000, { "Ovilli", "Yume", "Mascarade" },
+                { row_guid = { 0x99001, 0x99002, 0x99003 } })
+    Rg.damage._netid_pass()
+    Rg.damage.relabel()
+    local named = 0
+    for _, row in ipairs(Rg.damage.board()) do
+        if row.player and not row.is_local then named = named + 1 end
+    end
+    check(named == 0, "an unmatched GUID names nobody")
+    local reported = false
+    for _, l in ipairs(logged) do
+        if l:find("3 distinct across 3 row(s)", 1, true) then reported = true end
+    end
+    check(reported, "but the distinct count is reported, which is the finding")
+
+    Rg.damage.disable(); Rg.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 8e. a GUID TWO MEMBERS carry identifies neither of them
+    package.loaded["rsmm"] = nil
+    local Rg = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+
+    -- A member window is 0x100 bytes of a live object, so it holds plenty that
+    -- is not the peer id -- an allocator cookie, a shared table pointer, a
+    -- zeroed field. When two members carry the same qword it is one of those,
+    -- not an identity, and the row it "matches" must stay unnamed.
+    _guid_world(Rg, 0xa5000000, { "Ovilli", "Yume", "Mascarade" },
+                { member_guid = { Ovilli = 0x51101, Yume = 0x51102,
+                                  Mascarade = 0x51102 } ,
+                  row_guid = { 0x51101, 0x51102, 0x51103 } })
+    Rg.damage._netid_pass()
+    Rg.damage.relabel()
+    local by = {}
+    for _, row in ipairs(Rg.damage.board()) do by[row.slot] = row end
+    check(by[2] and by[2].player == nil,
+          "the row whose GUID two members claim is NOT named from it")
+
+    Rg.damage.disable(); Rg.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 2a9. an ALLY may never be named after this machine's player (d536)
+    package.loaded["rsmm"] = nil
+    local Ro = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+
+    I.mem_find = function() return {} end
+    -- The d536 lobby, all three members.
+    Ro.lobby._note_blob('{"PlayerName":"InsertCoin2Start","RequestedHero":5}')
+    Ro.lobby._note_blob('{"PlayerName":"R12-1OfAKind","RequestedHero":8}')
+    Ro.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":10}')
+    Ro.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x7d000000, { "me", "a1", "a2" })
+    -- ...and the window that made it possible: the rows board while Steam is
+    -- answering (so the local row's LABEL is right), and then the persona
+    -- lookup goes quiet for the background sweep ticks. d536 has no
+    -- `row 1 IS "Ovilli" (steam)` line for exactly this reason -- the claim
+    -- asked Steam again and got nothing, so row 1 stayed unclaimed.
+    deal(ctrl[1], 1.0)
+    steam_persona = nil
+
+    -- The engine hangs the LOCAL player's name off a global that every entity
+    -- can reach. Session d536 swept an ally to `entity+0xcc8 -> +0x39b`, found
+    -- "Ovilli" there and claimed it as PROVEN: the board finished with two
+    -- rows called Ovilli and InsertCoin2Start gone from it entirely.
+    _put_str(ctrl[2] + 0x8000 + 0x1120, "Ovilli")
+    deal(ctrl[1], 9.0)
+    deal(ctrl[2], 50.0)
+    deal(ctrl[3], 40.0)
+    _sweep(Ro, 120)
+    Ro.damage.relabel()
+    steam_persona = "Ovilli"
+
+    local rows = {}
+    for _, row in ipairs(Ro.damage.board()) do rows[row.slot] = row end
+    local mine = 0
+    for _, row in ipairs(Ro.damage.board()) do
+        if row.label == "Ovilli" then mine = mine + 1 end
+    end
+    check(mine == 1 and rows[1] and rows[1].is_local
+          and rows[1].label == "Ovilli",
+          "exactly ONE row carries this machine's player's name, and it is "
+          .. "the local row -- a non-local row reaching that string has found "
+          .. "shared memory, not its owner")
+    check(rows[2] and rows[2].player ~= "Ovilli",
+          "the ally does not hold it as a proven name either")
+
+    local said = false
+    for _, line in ipairs(logged) do
+        if line:find("this machine's player and this row is not them") then
+            said = true
+        end
+    end
+    check(said, "and the refusal says why, once")
+
+    -- The safe outcome for a row nothing can prove: a PLACEHOLDER, distinct
+    -- per row. d536's board did the opposite -- it printed a real name on the
+    -- wrong damage AND dropped InsertCoin2Start entirely, which is the failure
+    -- mode this whole guard exists to prevent.
+    local labels = {}
+    for _, row in ipairs(Ro.damage.board()) do
+        if not row.is_local then labels[row.label] = (labels[row.label] or 0) + 1 end
+    end
+    check(labels["Player 2"] == 1 and labels["Player 3"] == 1,
+          "the ally rows keep distinct placeholders rather than a real name "
+          .. "attached to the wrong total")
+
+    Ro.damage.disable(); Ro.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 2b. the local row keeps the name Steam gave it
+    package.loaded["rsmm"] = nil
+    local Ro = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+
+    I.mem_find = function() return {} end
+    -- The persona is NOT on this roster — a real case (a platform name that
+    -- differs from the lobby's), and the one where the local row is still
+    -- searched for rather than claimed from Steam up front. That is when the
+    -- refusal below is the only thing standing between the local player and
+    -- somebody else's name.
+    Ro.lobby._note_blob('{"PlayerName":"Timattttttt","RequestedHero":3}')
+    Ro.lobby._note_blob('{"PlayerName":"Luxman","RequestedHero":6}')
+    Ro.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x64000000, { "me", "a1" })
+    -- Another player's gamertag sitting inside the LOCAL player's own object.
+    -- Session 6136 took that at face value and renamed row 1 "Timattttttt"
+    -- with Ovili at the keyboard — and, worse, consumed the name, so the row
+    -- that really owned it was refused it as a duplicate and finished the run
+    -- as "Player 2".
+    _put_str(ctrl[1] + 0x1120, "Timattttttt")
+    _put_str(ctrl[2] + 0x1120, "Timattttttt")
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 90.0)
+    _sweep(Ro, 120)
+    Ro.damage.relabel()
+
+    local rows = {}
+    for _, row in ipairs(Ro.damage.board()) do rows[row.slot] = row end
+    check(rows[1] and rows[1].is_local and rows[1].label == "Ovilli",
+          "a claim that would rename the local player is refused — Steam "
+          .. "already told us who is at this keyboard")
+    -- PREVENTED, not refused. The local row is claimed from Steam at the top
+    -- of every sweep now, with no `names[me]` gate, so the sweep never targets
+    -- it and the "Steam calls them" refusal never has to fire here. Session
+    -- d536 is why the gate went: a roster missing the local player left row 1
+    -- unclaimed, and an unclaimed local row is what disarms the duplicate
+    -- guard that stops a SECOND row taking the same name.
+    local claimed = false
+    for _, line in ipairs(logged) do
+        if line:find('row 1 IS "Ovilli" (steam)', 1, true) then claimed = true end
+    end
+    check(claimed,
+          "the local row is claimed from Steam even when the roster sweep "
+          .. "never saw that player -- Steam is the source, not the roster")
+    check(rows[2] and rows[2].label == "Timattttttt",
+          "so the name stays AVAILABLE for the row that really owns it")
+
+    Ro.damage.disable(); Ro.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 2c. a hero id stored as a BYTE is still a hero id
+    package.loaded["rsmm"] = nil
+    local Ro = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+
+    I.mem_find = function() return {} end
+    Ro.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4}')
+    Ro.lobby._note_blob('{"PlayerName":"Luxman","RequestedHero":6}')
+    Ro.lobby._note_blob('{"PlayerName":"BombsAway","RequestedHero":5}')
+    Ro.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x65000000, { "me", "a1", "a2" })
+    -- Hero ids as BYTES. The dword-only sweep could not see these: reading a
+    -- byte field as a u32 drags in the next three bytes, so it reported "no
+    -- offset distinguishes the rows" — which is exactly what a live 4-player
+    -- session logged all run.
+    I.write_u8(ctrl[1] + 0x1231, 4)
+    I.write_u8(ctrl[2] + 0x1231, 6)
+    I.write_u8(ctrl[3] + 0x1231, 5)
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 20.0)
+    deal(ctrl[3], 30.0)
+    Ro.damage.sweep_identity()      -- the tick's wide sweep runs from here too
+    Ro.damage.relabel()
+
+    check(Ro.damage.hero_id_offset() == 0x1231,
+          "the wide sweep finds a hero id held in a single byte")
+    local by_label = {}
+    for _, row in ipairs(Ro.damage.board()) do by_label[row.label] = row.dealt end
+    check(by_label["Luxman"] == 20.0 and by_label["BombsAway"] == 30.0,
+          "and both allies are named from it, by identity rather than order")
+
+    Ro.damage.disable(); Ro.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 3. a name two rows both reach belongs to neither of them
+    package.loaded["rsmm"] = nil
+    local Ro = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+
+    I.mem_find = function() return {} end
+    Ro.lobby._note_blob('{"PlayerName":"Ovili","RequestedHero":4}')
+    Ro.lobby._note_blob('{"PlayerName":"SiggR22","RequestedHero":5}')
+    Ro.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x62000000, { "me", "a1", "a2" })
+    -- Both ally controllers reach the SAME name — a shared lobby array read
+    -- through a chain that is not per-player.
+    --
+    -- This used to name the row the sweep happened to walk FIRST and refuse
+    -- the second, which is a coin flip: half the time the named row is not the
+    -- player whose damage it is holding, and the board reads as authoritative
+    -- either way. The scan (`_dmg_probe_owner_fast`) and the chain replay both
+    -- already refused to guess here; the blind sweep walks one row at a time
+    -- and so had no cross-row view to refuse WITH, and it ran after both of
+    -- them, which let it undo their answer. It asks the other rows now.
+    _put_str(ctrl[2] + 0x400, "SiggR22")
+    _put_str(ctrl[3] + 0x400, "SiggR22")
+    deal(ctrl[2], 30.0)
+    deal(ctrl[3], 40.0)
+    _sweep(Ro)
+    Ro.damage.relabel()
+
+    local named = 0
+    for _, row in ipairs(Ro.damage.board()) do
+        if row.label == "SiggR22" then named = named + 1 end
+    end
+    check(named == 0,
+          "neither row takes it — a shared array is not evidence of ownership, "
+          .. "and a coin-flip name is one player's damage under the other "
+          .. "player's label")
+    local said = false
+    for _, line in ipairs(logged) do
+        if line:find("shared memory, so it names nobody", 1, true) then
+            said = true
+        end
+    end
+    check(said, "and the reason is logged rather than silently guessed at")
+    check(Ro.damage.total() == 70.0,
+          "both players keep every point of their damage — refusing costs a "
+          .. "placeholder, never a number")
+
+    Ro.damage.disable(); Ro.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 4. a controller that holds no name is reported, once, and left alone
+    package.loaded["rsmm"] = nil
+    local Ro = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+
+    I.mem_find = function() return {} end
+    Ro.lobby._note_blob('{"PlayerName":"Ovili","RequestedHero":4}')
+    Ro.lobby._note_blob('{"PlayerName":"nobody","RequestedHero":9}')
+    Ro.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x63000000, { "me", "a1" })
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 20.0)
+    _sweep(Ro, 120)
+    Ro.damage.relabel()
+
+    local ally
+    for _, row in ipairs(Ro.damage.board()) do
+        if not row.is_local then ally = row end
+    end
+    check(ally and ally.label:find("^Player %d") ~= nil,
+          "a row the sweep cannot identify keeps its placeholder — it does "
+          .. "NOT borrow the one unused lobby name by position")
+    local reported = 0
+    for _, line in ipairs(logged) do
+        if line:find("owner%-name sweep") then reported = reported + 1 end
+    end
+    check(reported >= 1, "the dead end is logged with the roster it searched, "
+          .. "so the next step is RE and not another blind sweep")
+    check(Ro.damage.identity().swept >= 1,
+          "and the row is marked done rather than swept again every tick")
+
+    Ro.damage.disable(); Ro.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- N. R.lobby: the local player is never pruned from the roster -------------
+--
+-- Also 6136: `"Ovili" is not in this lobby (last parsed 123s before the newest
+-- member)` — dropped mid-run, from their own machine. A run in progress
+-- re-parses the OTHER members as they move through lobby state and never
+-- re-parses us, so pure recency ages the local player out. Losing that entry
+-- costs more than a roster line: it is what tells every identity sweep which
+-- row must not be renamed.
+do
+    package.loaded["rsmm"] = nil
+    local Rl = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+
+    I.mem_find = function() return {} end
+    Rl.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4}')   -- persona
+    Rl.lobby._note_blob('{"PlayerName":"gaetemp91","RequestedHero":7}')
+    -- Age the local player far past the TTL, and keep the other fresh.
+    for _, m in ipairs(Rl.lobby._hook.order) do
+        if m.name == "Ovilli" then m.seen = m.seen - 3600; m.seq = 0 end
+    end
+    local found = {}
+    for _, m in ipairs(Rl.lobby.members()) do found[m.name] = true end
+    check(found.Ovilli,
+          "the player running the meter is on the roster whatever their last "
+          .. "parse timestamp says")
+    check(found.gaetemp91, "and so is everyone still being re-parsed")
+
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
 -- N. R.damage: four live players must never be merged onto one row --------
 --
 -- From a real four-player run (2026-08-18, session 29a8): the board showed TWO
@@ -2997,6 +5399,129 @@ do
           "allies() excludes the local player by Steam name")
 end
 
+-- N. R.lobby: the roster is the CURRENT lobby, not everyone ever seen --------
+--
+-- Matchmaking churns: players join, players leave, and a session that backs out
+-- and searches again meets a fresh set of candidates. The roster was
+-- append-only, so session 5a1d listed SIX members for a four-player run (TJ and
+-- SiggR22 never entered it). Stale names are not harmless — they are exactly
+-- what a "give the leftover row the leftover name" rule hands out.
+do
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    Rp.lobby._note_blob('{"PlayerName":"TJ","RequestedHero":6,"InLobby":true}')
+    Rp.lobby._note_blob('{"PlayerName":"Ovili","RequestedHero":-1,"InLobby":true}')
+    check(#Rp.lobby.members() == 2, "both members are on the roster to start")
+    local first
+    for _, m in ipairs(Rp.lobby.members()) do
+        if m.name == "Ovili" then first = m end
+    end
+    check(first and first.hero_id == nil,
+          "RequestedHero -1 is 'no hero picked yet', not hero id -1")
+
+    -- TJ was in the lobby we abandoned. The new lobby re-parses only the
+    -- members it actually has, so TJ's timestamp stops advancing.
+    Rp.lobby._hook.by_name["TJ"].seen = os.time() - 600
+    Rp.lobby._note_blob('{"PlayerName":"Ovili","RequestedHero":4,"InLobby":true}')
+    Rp.lobby._note_blob('{"PlayerName":"Keif_Buddings","RequestedHero":5,"InLobby":true}')
+
+    local names = {}
+    for _, m in ipairs(Rp.lobby.members()) do names[m.name] = m end
+    check(names["TJ"] == nil,
+          "a member the lobby stopped refreshing is dropped from the roster")
+    check(names["Ovili"] and names["Keif_Buddings"],
+          "and the members it IS refreshing stay")
+    check(names["Ovili"].hero_id == 4,
+          "a real hero id lands once the player picks one")
+    local told = false
+    for _, line in ipairs(logged) do
+        if line:find("not in this lobby", 1, true) then told = true end
+    end
+    check(told, "the drop is logged — a roster that silently shrinks is as hard "
+          .. "to read as one that silently grows")
+
+    local all = {}
+    for _, m in ipairs(Rp.lobby.members(true)) do all[m.name] = true end
+    check(all["TJ"], "members(true) still returns everyone ever seen")
+
+    -- ...but ONLY while the lobby is live. Once the run starts the engine
+    -- stops re-parsing attributes, so a frozen timestamp is the normal state
+    -- of a player who is present and playing. Session 3e36 evicted three of
+    -- four players SIX times across one 86-minute run, each re-added and
+    -- evicted again; the guessed labels follow that pool, so the final board
+    -- carried "on3pmBR" on two rows and never showed Xiyufeiniao at all.
+    Rp.lobby._note_blob('{"PlayerName":"Ovili","RequestedHero":4,"InLobby":false}')
+    Rp.lobby._note_blob('{"PlayerName":"Keif_Buddings","RequestedHero":5,"InLobby":false}')
+    Rp.lobby._hook.by_name["Keif_Buddings"].seen = os.time() - 600
+    local inrun = {}
+    for _, m in ipairs(Rp.lobby.members()) do inrun[m.name] = true end
+    check(inrun["Keif_Buddings"],
+          "mid-run a member the engine stopped re-parsing STAYS: nobody is "
+          .. "being re-parsed, so a stale timestamp is not evidence of leaving")
+    check(inrun["Ovili"], "and so does everyone else")
+
+    -- ⚠ `InLobby` is NOT membership. It is "sitting in the lobby menu", and it
+    -- goes false for EVERYONE once the run starts — session ea68 pruned all
+    -- four real players on it and kept the one stale name, which elimination
+    -- then pinned on someone else's 3.5k damage.
+    Rp.lobby._note_blob('{"PlayerName":"Keif_Buddings","RequestedHero":5,"InLobby":false}')
+    local left = {}
+    for _, m in ipairs(Rp.lobby.members()) do left[m.name] = true end
+    check(left["Keif_Buddings"],
+          "InLobby=false does NOT drop a member — it means the run started")
+
+    -- The party cap is the hard signal: a fifth member cannot be in a run the
+    -- game seats four in, whatever the timestamps say.
+    for _, nm in ipairs({ "BombsAway", "Luxman", "dickydackydoo" }) do
+        Rp.lobby._note_blob(('{"PlayerName":"%s","RequestedHero":5,"InLobby":true}')
+                            :format(nm))
+    end
+    local party = {}
+    for _, m in ipairs(Rp.lobby.members()) do party[#party + 1] = m.name end
+    check(#party == 4, "the roster never exceeds the game's four seats, so the "
+          .. "stalest name falls off as a fifth player is parsed")
+    local seated = {}
+    for _, n in ipairs(party) do seated[n] = true end
+    check(seated["BombsAway"] and seated["Luxman"] and seated["dickydackydoo"],
+          "and the seats go to the members the lobby is still refreshing")
+
+    -- The player at this keyboard is certainly in the run, so the cap must
+    -- never evict them however long ago the lobby last mentioned them.
+    Rp.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4}')   -- the mocked persona
+    for _, nm in ipairs({ "n1", "n2", "n3", "n4" }) do
+        Rp.lobby._note_blob(('{"PlayerName":"%s","RequestedHero":5}'):format(nm))
+    end
+    local withme = {}
+    for _, m in ipairs(Rp.lobby.members()) do withme[m.name] = true end
+    check(withme["Ovilli"], "the local player is never capped off the roster")
+
+    -- A RUN parses nothing at all, so the whole roster ages together. Age is
+    -- measured against the NEWEST parse, never against the clock: an hour into
+    -- a run every timestamp is an hour old and the roster must be untouched.
+    -- (Measuring against os.time() would empty the board's name source two
+    -- minutes in, which is worse than the stale names this prune removes.)
+    local before = #Rp.lobby.members()
+    for _, e in pairs(Rp.lobby._hook.by_name) do e.seen = e.seen - 3600 end
+    check(#Rp.lobby.members() == before,
+          "an hour with no parse at all changes nothing — pruning is relative "
+          .. "to the newest parse, not to now")
+
+    -- Rejoining re-arms the report.
+    Rp.lobby._note_blob('{"PlayerName":"TJ","RequestedHero":6,"InLobby":true}')
+    local back = {}
+    for _, m in ipairs(Rp.lobby.members()) do back[m.name] = true end
+    check(back["TJ"], "a player who comes back is on the roster again")
+
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
 -- N0. Hero diagnostics are gated on being IN A RUN ------------------------
 --
 -- There is no hero to find in the main menu. Session 6c4f sat there for eleven
@@ -3310,6 +5835,681 @@ do
     Ro.overlay.clear()
     check(Ro.overlay.last() == "[]{}", "clear empties the overlay")
 
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- ---------------------------------------------------------------------------
+-- N. R.damage: the PEER TABLE join ----------------------------------------
+--
+-- `Netcode_PeerSlots` (0x14143f600, 0x60 stride, count at 0x14143f780) is the
+-- engine's own list of the other machines in the run. Slot layout, all
+-- decompile-confirmed:
+--
+--   +0x00 PlayerName   +0x10 lobby session id   +0x20 m_sEosUserId
+--   +0x30 u64 hash(EOS id)                      +0x50 P2P tunnel
+--
+-- FUN_1402aedf0 fills them, FUN_1402b5db0 frees them, FUN_1402b0170 /
+-- FUN_1402b0230 look a slot up by the EOS id / session id, and FUN_140272700
+-- joins a lobby member to a slot by the +0x30 hash. So the slot is a NAME
+-- source that needs no roster, and the +0x30 hash is the engine's own
+-- ownership key -- which is what the row side is scanned for.
+local PEER_EOS = {
+    Ovilli    = "0002102bd8c7446d813dfb03e4c5e20a",
+    Yume      = "1111222233334444555566667777888a",
+    Mascarade = "99998888777766665555444433332221",
+}
+local PEER_HASH = { Ovilli = 0x1111000000000001,
+                    Yume   = 0x2222000000000002,
+                    Mascarade = 0x3333000000000003 }
+
+--- Build the peer table at the baked VAs plus the rows that should match it.
+--- `opts.plant[i]` = the hash stamped on row i's controller (nil = nothing).
+local function _peer_world(Rp, base, opts)
+    opts = opts or {}
+    local names = { "Ovilli", "Yume", "Mascarade" }
+    Rp.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(base, names)
+    for i = 1, #names do
+        local ent    = I.read_u64(ctrl[i] + 0x08)
+        local comp   = base + 0x30000 + i * 0x1000
+        local slots  = base + 0x40000 + i * 0x1000
+        local netobj = base + 0x50000 + i * 0x1000
+        local repl   = base + 0x60000 + i * 0x1000
+        I.write_u64(ent + 0x5f0, slots)
+        I.write_u64(ent + 0x600, 0)
+        I.write_u32(slots, 0x154fce5c)
+        I.write_u64(slots + 8, comp)
+        I.write_u64(comp + 0xb8, netobj)
+        I.write_u64(netobj + 0x100, repl)
+        I.write_u64(repl + 0x28, 0x51100 + i)
+        I.write_u16(repl + 0x30, i + 6)
+        -- The ownership key, where a row would carry it.
+        local plant = (opts.plant or { nil, PEER_HASH.Yume, PEER_HASH.Mascarade })[i]
+        if plant then I.write_u64(ctrl[i] + 0x120, plant) end
+        deal(ctrl[i], 10.0 * i)
+    end
+    local SLOTS, COUNT = 0x14143f600, 0x14143f780
+    I.write_u32(COUNT, #names)
+    for i = 1, #names do
+        local slot = SLOTS + (i - 1) * 0x60
+        local who  = names[i]
+        local txt  = base + 0x90000 + i * 0x1000
+        local function put(off, str)
+            _put_str(txt + off, str)
+            I.write_u64(slot + off, txt + off)
+            I.write_u32(slot + off + 8, #str)
+            I.write_u32(slot + off + 0xc, #str + 1)
+        end
+        put(0x00, who)
+        put(0x10, "session-" .. who)
+        put(0x20, PEER_EOS[who])
+        I.write_u64(slot + 0x30, (opts.hash or PEER_HASH)[who])
+        local tunnel = base + 0xa0000 + i * 0x1000
+        I.write_u64(slot + 0x50, tunnel)
+        I.write_u16(tunnel + 0xc0, 7000 + i)
+        I.write_u32(tunnel + 0xcc, 3)
+    end
+    return ctrl, deal
+end
+
+do  -- 9a. the slot IS the name source, and the hash joins it to a row
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    _peer_world(Rp, 0xb1000000)
+    local peers = Rp.net.peers()
+    check(#peers == 3, "one slot per other machine in the run")
+    check(peers[2].name == "Yume" and peers[2].eos == PEER_EOS.Yume,
+          "the slot carries the display name AND the EOS id — no roster needed")
+    check(peers[2].port == 7002 and peers[2].state == 3,
+          "and the tunnel behind it reads back")
+
+    check(Rp.damage._peer_join() == true, "the join fires")
+    Rp.damage.relabel()
+    local by = {}
+    for _, row in ipairs(Rp.damage.board()) do by[row.slot] = row end
+    check(by[2] and by[2].player == "Yume" and by[3] and by[3].player == "Mascarade",
+          "each ally row is named from the peer slot its EOS hash matches")
+    check(by[2].label_guess == false,
+          "and the name is exact — a 64-bit equality, not a leftover")
+    local proven = false
+    for _, l in ipairs(logged) do
+        if l:find("PEER JOIN PROVEN", 1, true) then proven = true end
+    end
+    check(proven, "and says so once")
+
+    Rp.damage.disable(); Rp.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9b. a hash TWO peers carry identifies neither
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    _peer_world(Rp, 0xb2000000, {
+        hash  = { Ovilli = 0x9000, Yume = 0x4242, Mascarade = 0x4242 },
+        plant = { nil, 0x4242, 0x4242 },
+    })
+    Rp.damage._peer_join()
+    Rp.damage.relabel()
+    for _, row in ipairs(Rp.damage.board()) do
+        check(row.slot == 1 or row.player == nil,
+              "a shared hash names neither row that carries it")
+    end
+    -- And it must not be reported as a CONTRADICTION. Without the
+    -- `by_hash[...] = false` poison both rows resolve to one peer, the
+    -- distinctness gate fires, and `peer_done` latches for the whole run --
+    -- so one ambiguous key would cost every name for the rest of the session.
+    local refused = false
+    for _, l in ipairs(logged) do
+        if l:find("peer join REFUSED", 1, true) then refused = true end
+    end
+    check(not refused,
+          "an ambiguous key is missing evidence, not evidence the bridge is wrong")
+    check(Rp.damage._peer_join() == false and R.damage ~= nil,
+          "so the join stays armed instead of latching off for the run")
+
+    Rp.damage.disable(); Rp.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9c. ANCHOR: a bridge that misnames THIS machine is refused outright
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    -- Row 1 is the local player, but carries Yume's key.
+    _peer_world(Rp, 0xb3000000, { plant = { PEER_HASH.Yume, nil, PEER_HASH.Mascarade } })
+    check(Rp.damage._peer_join() == false, "the join refuses")
+    local refused = false
+    for _, l in ipairs(logged) do
+        if l:find("peer join REFUSED", 1, true) then refused = true end
+    end
+    check(refused, "and says which half contradicted it")
+    Rp.damage.relabel()
+    for _, row in ipairs(Rp.damage.board()) do
+        check(row.player == nil or row.slot == 1,
+              "no ally row keeps a name from a refused bridge")
+    end
+
+    Rp.damage.disable(); Rp.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9d. a bridge that resolves nothing still REPORTS both halves
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    -- Nothing on any row carries a peer's key.
+    _peer_world(Rp, 0xb4000000, { plant = {} })
+    check(Rp.damage._peer_join() == false, "nothing is named")
+    local report
+    for _, l in ipairs(logged) do
+        if l:find("peer table:", 1, true) then report = l end
+    end
+    check(report ~= nil,
+          "but the peer table and the rows' keys are logged anyway — a silent "
+          .. "failure costs a playtest to tell which half was empty")
+    check(report:find("Yume", 1, true) and report:find("guid=", 1, true)
+          and report:find("hash hits [none]", 1, true),
+          "and the report carries BOTH halves plus the verdict, so the next "
+          .. "session reads the mismatch instead of re-deriving it")
+
+    Rp.damage.disable(); Rp.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9g. the hero-id DEEP scan does not run unless it is asked for
+    -- The heaviest thing the SDK does: ~900k page-guarded reads, 20k per
+    -- background tick, ~45 ticks of solid probing. It ran on every session for
+    -- an answer three live four-player runs had already settled ("no hero id on
+    -- the controller"), and it is the cost the damage board kept being blamed
+    -- for. Phase 1 -- the bounded direct sweep -- stays on for everyone, so a
+    -- patch that puts the id back would still be noticed.
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    Rp.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4}')
+    Rp.lobby._note_blob('{"PlayerName":"Yume","RequestedHero":7}')
+    Rp.lobby._note_blob('{"PlayerName":"Brig","RequestedHero":9}')
+    Rp.damage.enable{ window = 10 }                    -- identity_hunt defaults off
+    local ctrl, deal = _own_world(0xb6000000, { "me", "a1", "a2" })
+    -- A definition one pointer deep carrying a distinct id per row: exactly
+    -- what phase 2 exists to find, so a scan that RAN would find it.
+    for i = 1, 3 do
+        local def = 0xb6000000 + 0x120000 + i * 0x1000
+        I.write_u64(ctrl[i] + 0x300, def)
+        I.write_u32(def + 0x40, ({ 4, 7, 9 })[i])
+        deal(ctrl[i], 10.0 * i)
+    end
+
+    local real_read, reads = I.read_u32, 0
+    I.read_u32 = function(a) reads = reads + 1; return real_read(a) end
+    for _ = 1, 5 do Rp.damage._identity_tick() end
+    I.read_u32 = real_read
+    check(reads < 20000,
+          "five background ticks cost far less than ONE budgeted deep pass")
+    check(Rp.damage.hero_id_offset() == nil,
+          "and no offset is adopted, because the deep scan never ran")
+    local said = false
+    for _, l in ipairs(logged) do
+        if l:find("deep scan skipped", 1, true) then said = true end
+    end
+    check(said, "the skip is stated once, so a quiet board is not a mystery")
+
+    Rp.damage.disable(); Rp.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9h. an UNCHANGED lobby blob costs one table lookup, not a full decode
+    -- Session a34f: 92,062 parses in three minutes -- ~500/s, on the GAME
+    -- THREAD, because the engine re-serialises every member on every lobby
+    -- poll whether or not anything moved. Each one was four string.find passes
+    -- over a 376-byte blob plus a 0x100-byte member snapshot. That is the hard
+    -- stutter, and it is on the thread that draws frames.
+    package.loaded["rsmm"] = nil
+    local Rl = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+
+    local va = I.resolve("LobbyAttributes_Parse")
+    hooks[va] = nil
+    Rl.lobby._hook.arm()
+    local h = hooks[va]
+    local BLOB = '{"PlayerName":"Ovilli","RequestedHero":3}'
+    local M = 0x6b000000
+    _member(M, "aaaabbbbccccddd")
+    _put_str(M + 0x1000, BLOB)
+    I.write_u64(M + 0x28, M + 0x1000)
+    I.write_u64(M + 0x30, M + 0x1000 + #BLOB)
+
+    local real_read, reads = I.read_u64, 0
+    I.read_u64 = function(a) reads = reads + 1; return real_read(a) end
+    h.cb(M + 0x2000, M + 0x28)
+    local first = reads
+    check(first > 8, "the first parse of a blob does the full decode + snapshot")
+    reads = 0
+    for _ = 1, 50 do h.cb(M + 0x2000, M + 0x28) end
+    I.read_u64 = real_read
+    check(reads < first * 50 // 4,
+          "fifty re-parses of the SAME blob cost a fraction of fifty full ones")
+
+    -- A blob that actually changes must still take the full path.
+    local B2 = '{"PlayerName":"Yume","RequestedHero":7}'
+    _put_str(M + 0x1000, B2)
+    I.write_u64(M + 0x30, M + 0x1000 + #B2)
+    h.cb(M + 0x2000, M + 0x28)
+    local names = {}
+    for _, m in ipairs(Rl.lobby.members()) do names[m.name] = true end
+    check(names["Yume"], "a CHANGED blob misses the cache and is decoded")
+
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9i. a guessed name STICKS to its row instead of being re-dealt each tick
+    -- R.lobby.members() is sorted by PARSE RECENCY and the engine re-parses
+    -- several times a second, so the ally order flips constantly. Session a34f
+    -- logged 192 renames in one run -- "EvilMurray, fruktik_kiwi" alternating
+    -- with "fruktik_kiwi, EvilMurray" once a second -- which swapped two
+    -- players' names across their damage totals for the whole match. A guess
+    -- may be wrong; it must not be wrong DIFFERENTLY every second.
+    package.loaded["rsmm"] = nil
+    local Rg = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+
+    Rg.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4}')
+    Rg.lobby._note_blob('{"PlayerName":"EvilMurray","RequestedHero":7}')
+    Rg.lobby._note_blob('{"PlayerName":"fruktik_kiwi","RequestedHero":9}')
+    Rg.damage.enable{ window = 10, guess_names = true }
+    local ctrl, deal = _own_world(0xb7000000, { "me", "a1", "a2" })
+    deal(ctrl[1], 10.0); deal(ctrl[2], 20.0); deal(ctrl[3], 30.0)
+    Rg.damage.relabel()
+    local first = {}
+    for _, row in ipairs(Rg.damage.board()) do first[row.slot] = row.label end
+    check(first[2] and first[3] and first[2] ~= first[3],
+          "both ally rows are labelled, and differently")
+
+    -- Re-parse in the OPPOSITE order, which is what a lobby poll does.
+    for _ = 1, 6 do
+        Rg.lobby._note_blob('{"PlayerName":"fruktik_kiwi","RequestedHero":9}')
+        Rg.lobby._note_blob('{"PlayerName":"EvilMurray","RequestedHero":7}')
+        Rg.damage.relabel()
+    end
+    for _, row in ipairs(Rg.damage.board()) do
+        check(row.label == first[row.slot],
+              "row " .. row.slot .. " keeps the name it was given, however the "
+              .. "roster is re-ordered underneath it")
+    end
+
+    -- A LATE JOINER changes who sorts first. Without stickiness every ally row
+    -- is re-dealt around the newcomer -- two players' names swap across their
+    -- damage totals because somebody else walked in.
+    Rg.lobby._note_blob('{"PlayerName":"Aardvark","RequestedHero":1}')
+    Rg.damage.relabel()
+    for _, row in ipairs(Rg.damage.board()) do
+        check(row.label == first[row.slot],
+              "row " .. row.slot .. " keeps its name when a new player joins "
+              .. "the lobby mid-run")
+    end
+
+    Rg.damage.disable(); Rg.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9k. an ALLY is re-adopted across a chapter, not forked into a new row
+    -- Session a34f, checked against the game's own end-of-run scoreboard:
+    -- Ovilli 898436 vs 898071 (the local row rebinds on the is-local flag, so
+    -- it is exact), but the two allies came out as FIVE rows with one player's
+    -- damage split across three of them. An ally has no hero id on this build
+    -- and is not local, so `F._dmg_rebind` had nothing to match on and every
+    -- chapter handed them a fresh controller and a fresh row. Splitting is
+    -- worse than mislabelling: every `share` on the board is then wrong.
+    package.loaded["rsmm"] = nil
+    local Rk = require "rsmm"
+    local saved_log = rsmm.log
+    local logged = {}
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+    local saved_grant = I.is_grant_target
+
+    Rk.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0xba000000, { "me", "a1" })
+    local ME, ALLY = ctrl[1], ctrl[2]
+    -- No hero id anywhere: the a34f build's actual state.
+    local alive = { [ME] = true, [ALLY] = true }
+    I.is_grant_target = function(e) return alive[e] == true end
+    deal(ME, 100.0)
+    deal(ALLY, 50.0)
+    check(#Rk.damage.board() == 2, "chapter 1 boards one row per player")
+
+    -- The chapter tears down and rebuilds the ally's controller. The local
+    -- player's happens to keep its address, as in a34f.
+    local ALLY2 = 0xba000000 + 0x900000   -- clear of _own_world's controllers
+    fire("gameplay:GAME_END_NEXT_CHAPTER", { source = "gameplay" })
+    alive[ALLY] = nil                     -- the old controller is gone
+    alive[ALLY2] = true
+    -- A FRESH entity too. Reusing the old one would re-adopt through the
+    -- entity alias, which is a stronger key that already worked -- and would
+    -- leave this spec passing without exercising the stale-row rule at all.
+    local ENT2 = ALLY2 + 0x10000
+    alive[ENT2] = true
+    I.write_u64(ALLY2 + 0x08, ENT2)
+    I.write_u8(ALLY2 + 0x1d88, 0)
+    deal(ALLY2, 25.0)
+
+    local board = Rk.damage.board()
+    check(#board == 2,
+          "the rebuilt ally controller re-adopts the ally's row instead of "
+          .. "forking a third one")
+    local ally
+    for _, row in ipairs(board) do if not row.is_local then ally = row end end
+    check(ally and ally.dealt == 75.0,
+          "and the row carries the damage from BOTH chapters — a split total "
+          .. "makes every share on the board wrong")
+
+    I.is_grant_target = saved_grant
+    Rk.damage.disable(); Rk.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9l. TWO stale ally rows are ambiguous, so it refuses instead of guessing
+    package.loaded["rsmm"] = nil
+    local Rk = require "rsmm"
+    local saved_log = rsmm.log
+    local logged = {}
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+    local saved_grant = I.is_grant_target
+
+    Rk.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0xbb000000, { "me", "a1", "a2" })
+    local alive = {}
+    for _, c in ipairs(ctrl) do alive[c] = true end
+    I.is_grant_target = function(e) return alive[e] == true end
+    deal(ctrl[1], 100.0); deal(ctrl[2], 50.0); deal(ctrl[3], 40.0)
+    check(#Rk.damage.board() == 3, "three players, three rows")
+
+    -- BOTH allies respawn: nothing can say which new controller is which, and
+    -- a wrong adoption puts one player's damage on another's name.
+    local NEW = 0xbb000000 + 0x900000     -- clear of _own_world's controllers
+    fire("gameplay:GAME_END_NEXT_CHAPTER", { source = "gameplay" })
+    alive[ctrl[2]], alive[ctrl[3]] = nil, nil
+    alive[NEW] = true
+    local NENT = NEW + 0x10000
+    alive[NENT] = true
+    I.write_u64(NEW + 0x08, NENT)
+    I.write_u8(NEW + 0x1d88, 0)
+    deal(NEW, 25.0)
+
+    check(#Rk.damage.board() == 4,
+          "an ambiguous chapter change forks rather than merging two players")
+    local said = false
+    for _, l in ipairs(logged) do
+        if l:find("went stale over this chapter change", 1, true) then said = true end
+    end
+    check(said, "and says why, so a split board is not a mystery")
+
+    I.is_grant_target = saved_grant
+    Rk.damage.disable(); Rk.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9m. WITHIN a chapter, a dead ally's row is not handed to a newcomer
+    -- The epoch guard is the whole difference between "same player, rebuilt
+    -- controller" and "different player". A player who disconnects mid-chapter
+    -- leaves a row whose controller no longer reads as a hero; without the
+    -- guard the next player to join inherits their name AND their damage.
+    package.loaded["rsmm"] = nil
+    local Rk = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+    local saved_grant = I.is_grant_target
+
+    Rk.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0xbc000000, { "me", "a1" })
+    local alive = { [ctrl[1]] = true, [ctrl[2]] = true }
+    I.is_grant_target = function(e) return alive[e] == true end
+    deal(ctrl[1], 100.0)
+    deal(ctrl[2], 50.0)
+    check(#Rk.damage.board() == 2, "two players on the board")
+
+    -- The ally leaves. NO chapter event: the run is still going.
+    alive[ctrl[2]] = nil
+    local JOINER = 0xbc000000 + 0x900000
+    local JENT = JOINER + 0x10000
+    alive[JOINER], alive[JENT] = true, true
+    I.write_u64(JOINER + 0x08, JENT)
+    I.write_u8(JOINER + 0x1d88, 0)
+    deal(JOINER, 25.0)
+
+    local board = Rk.damage.board()
+    check(#board == 3,
+          "the newcomer gets their OWN row inside a chapter, however dead the "
+          .. "other ally's controller looks")
+    for _, row in ipairs(board) do
+        check(row.dealt ~= 75.0,
+              "and nobody inherits a departed player's total")
+    end
+
+    I.is_grant_target = saved_grant
+    Rk.damage.disable(); Rk.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9j. the FIRST assignment does not depend on parse order either
+    -- Stickiness only holds what it was handed. Two boards that saw the same
+    -- lobby in opposite orders must still label the same row the same way,
+    -- or the name a player gets depends on which poll happened to land first.
+    local function board_with(base, order)
+        package.loaded["rsmm"] = nil
+        local Rx = require "rsmm"
+        local saved = rsmm.log
+        rsmm.log = function() end
+        I.mem_find = function() return {} end
+        Rx.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4}')
+        for _, nm in ipairs(order) do
+            Rx.lobby._note_blob(('{"PlayerName":"%s","RequestedHero":7}'):format(nm))
+        end
+        Rx.damage.enable{ window = 10, guess_names = true }
+        local ctrl, deal = _own_world(base, { "me", "a1", "a2" })
+        deal(ctrl[1], 10.0); deal(ctrl[2], 20.0); deal(ctrl[3], 30.0)
+        Rx.damage.relabel()
+        local out = {}
+        for _, row in ipairs(Rx.damage.board()) do out[row.slot] = row.label end
+        Rx.damage.disable(); Rx.damage.reset()
+        rsmm.log = saved
+        return out
+    end
+    local a = board_with(0xb8000000, { "EvilMurray", "fruktik_kiwi" })
+    local b = board_with(0xb9000000, { "fruktik_kiwi", "EvilMurray" })
+    check(a[2] == b[2] and a[3] == b[3],
+          "the same lobby seen in either order labels the same rows the same "
+          .. "way — the roster is recency-sorted, so the raw order flips "
+          .. "several times a second")
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9f. the window walk is ONE-SHOT per row — this is a lag guard
+    -- The first version re-scanned every unnamed row on every background tick
+    -- and never stopped, because a miss returns false instead of latching.
+    -- Four rows x 0x800 bytes x two objects is ~2000 guarded reads a tick,
+    -- forever, which is what "lags sometimes hard" looks like from inside.
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+
+    -- Nothing matches, so the join keeps returning false — the exact case the
+    -- old code re-scanned forever.
+    _peer_world(Rp, 0xb5000000, { plant = {} })
+    local real_read, reads = I.read_u64, 0
+    I.read_u64 = function(a) reads = reads + 1; return real_read(a) end
+
+    Rp.damage._peer_join()
+    local first = reads
+    check(first > 200, "the first pass really does walk the windows")
+    reads = 0
+    for _ = 1, 20 do Rp.damage._peer_join() end
+    I.read_u64 = real_read
+    check(reads < first,
+          "twenty further ticks cost less than ONE first pass — the walk does "
+          .. "not repeat per tick")
+    check(reads // 20 < first // 10,
+          "and the per-tick cost collapses rather than merely shrinking")
+
+    Rp.damage.disable(); Rp.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9e. the va gate closes the whole thing rather than reading a stale global
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    va_trusted_val = false
+    check(#Rp.net.peers() == 0,
+          "a build the symbol map does not match yields NO peers — a baked va "
+          .. "holds a plausible pointer, not a nil")
+    va_trusted_val = true
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- ---------------------------------------------------------------------------
+-- LOBBY: the parse detour is the only path a REMOTE name takes, so it has to
+-- survive its own bugs.
+--
+-- Session 4c36 is the cost of it not doing so. The detour body indexed `F`,
+-- a local declared BELOW the closure, so it compiled as a global read and was
+-- nil at runtime. Every parse raised. After 20 raises the hook layer disabled
+-- the callback -- and the parses it burned those 20 on were all the LOCAL
+-- player's, inside the first 20 seconds of the session. The four allies who
+-- joined 90 seconds later were parsed by an engine nobody was listening to.
+-- The board showed four rows and one name.
+--
+-- The bug was invisible here because no test had ever driven the INSTALLED
+-- callback: every lobby test called `_note_blob`, which is the half of the
+-- path that was never broken. These checks drive the detour itself.
+do
+    package.loaded["rsmm"] = nil
+    local Rl = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+
+    local va = I.resolve("LobbyAttributes_Parse")
+    hooks[va] = nil
+    Rl.lobby._hook.arm()
+    local h = hooks[va]
+    check(h ~= nil and h.sig == "ppp",
+          "the attribute parser is hooked as void*(void*, void*)")
+
+    -- Drive one parse the way the engine does: param_2 is `member + 0x28`,
+    -- the {begin, end} attribute range, so the detour recovers the member by
+    -- subtracting 0x28.
+    local function parse(member, sid, text)
+        _member(member, sid)
+        _put_str(member + 0x1000, text)
+        I.write_u64(member + 0x28, member + 0x1000)
+        I.write_u64(member + 0x30, member + 0x1000 + #text)
+        return h.cb(member + 0x2000, member + 0x28)
+    end
+
+    local ME, ALLY = 0x6a000000, 0x6a010000
+    check(parse(ME, "aaaabbbbccccddd",
+                '{"PlayerName":"Ovilli","RequestedHero":3}') == nil,
+          "the detour returns nil so the engine's own parse still runs")
+    check(Rl.lobby._hook.err_said == nil,
+          "a parse of the LOCAL member does not raise -- the raise that "
+          .. "burned 20 callbacks in session 4c36 came from exactly this call")
+
+    -- The ally arrives on a LATER parse, which is the whole point: in 4c36
+    -- the callback was already switched off by the time this one happened.
+    parse(ALLY, "1111222233334rr",
+          '{"PlayerName":"Juice","RequestedHero":7}')
+    check(Rl.lobby._hook.err_said == nil, "nor does a REMOTE member's parse")
+
+    local by_name = {}
+    for _, m in ipairs(Rl.lobby.members()) do by_name[m.name] = m end
+    check(by_name["Ovilli"] ~= nil and by_name["Juice"] ~= nil,
+          "both members are on the roster, from the detour alone")
+    check(by_name["Juice"].hero_id == 7 and by_name["Ovilli"].hero_id == 3,
+          "and each carries its own RequestedHero, not the other's")
+    check(by_name["Juice"].session == "1111222233334rr",
+          "the member's session id is snapshotted inside the detour, while "
+          .. "the object is still alive")
+    check(by_name["Juice"].words ~= nil,
+          "so is the qword window the owner-GUID join reads -- the block "
+          .. "that `F` being nil skipped entirely")
+
+    -- A raise inside the body must cost that one parse's fields, never the
+    -- hook: the callback is the only route a remote name has.
+    local saved = Rl.lobby._note_blob
+    Rl.lobby._note_blob = function() error("boom") end
+    check(pcall(parse, 0x6a020000, "zzzzyyyyxxxxwww",
+                '{"PlayerName":"Ada","RequestedHero":9}'),
+          "a raise in the body is contained -- it cannot reach the hook layer "
+          .. "and trip the 20-strikes disable")
+    Rl.lobby._note_blob = saved
+    check(Rl.lobby._hook.err_said == true, "and it is reported once")
+
+    -- The callback still works afterwards. This is the assertion that the
+    -- whole block exists for.
+    parse(0x6a030000, "qqqqppppoooonnn",
+          '{"PlayerName":"Brig","RequestedHero":2}')
+    local after = {}
+    for _, m in ipairs(Rl.lobby.members()) do after[m.name] = true end
+    check(after["Brig"], "a member parsed AFTER a raise still lands on the "
+          .. "roster -- in 4c36 every ally was on this side of the failure")
+
+    rsmm.log = saved_log
     package.loaded["rsmm"] = nil
     R = require "rsmm"
 end

@@ -1005,7 +1005,7 @@
      "void*"
     ]
    },
-   "note": "SwissTable/F14 component-map lookup on an entity for the fixed type-id 0x154fce5c (the net/replication component). Probes the entity's component map (control bytes @entity+0x5e8, slots @entity+0x5f0, bucket mask @entity+0x600) and returns the component pointer, or 0 if the entity has none (e.g. single-player / non-replicated). The returned component's byte @+0x130 is the local/remote AUTHORITY flag: 0 = locally controlled (this client owns the entity and emits its NETWORK_DAMAGE), nonzero = remotely controlled (apply received state, don't emit). Both hit paths (NamedEvent_EmitNetworkDamageFromHit, the attack resolver FUN_1403dc780) gate network emit on this flag. NOTE: it dereferences the component map unconditionally, so only call on a known-valid entity. Pattern is multi-match (index 3/6, 128-byte sig) — fn_verify-guarded. Relevant to local-vs-remote hero disambiguation in co-op, though hero-capture already pins the local player via the HUD-mirror requirement (only the local player has one). [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.] SLOT LAYOUT (recovered 2026-08-17 from the decompile): the slot array at entity+0x5f0 has stride 0x10 -- {u32 class id @+0, component* @+8} -- and the value at +0x600 is the bucket MASK (capacity-1). That makes the map walkable LINEARLY with page-guarded reads and no hash function, which is how R.damage classifies a damage victim (enemy = carries class id 0x1561073c). The id space is mined by tools/mine_class_ids.py; 0x154fce5c resolving to oCEntityCpntNetwork is that miner's acceptance test.",
+   "note": "SwissTable/F14 component-map lookup on an entity for the fixed type-id 0x154fce5c (the net/replication component). Probes the entity's component map (control bytes @entity+0x5e8, slots @entity+0x5f0, bucket mask @entity+0x600) and returns the component pointer, or 0 if the entity has none (e.g. single-player / non-replicated). The returned component's byte @+0x130 is the local/remote AUTHORITY flag: 0 = locally controlled (this client owns the entity and emits its NETWORK_DAMAGE), nonzero = remotely controlled (apply received state, don't emit). Both hit paths (NamedEvent_EmitNetworkDamageFromHit, the attack resolver FUN_1403dc780) gate network emit on this flag. NOTE: it dereferences the component map unconditionally, so only call on a known-valid entity. Pattern is multi-match (index 3/6, 128-byte sig) — fn_verify-guarded. Relevant to local-vs-remote hero disambiguation in co-op, though hero-capture already pins the local player via the HUD-mirror requirement (only the local player has one). [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.] SLOT LAYOUT (recovered 2026-08-17 from the decompile): the slot array at entity+0x5f0 has stride 0x10 -- {u32 class id @+0, component* @+8} -- and the value at +0x600 is the bucket MASK (capacity-1). That makes the map walkable LINEARLY with page-guarded reads and no hash function, which is how R.damage classifies a damage victim (enemy = carries class id 0x1561073c). The id space is mined by tools/mine_class_ids.py; 0x154fce5c resolving to oCEntityCpntNetwork is that miner's acceptance test. NO FIXED COMPONENT SLOTS: because the map is a hash table, an entity component is NOT reachable at any constant offset from the entity, so a chain of the form `entity+CONST -> +CONST` can never be a structural path to a component (or to anything a component owns). Checked 2026-08-20 after the damage meter briefly seeded two such chains from session 7068 (`entity+0x678 -> +0x2d0`, `entity+0xad8 -> +0x1c0`) as if they were build constants: a sweep of all 65,347 .pdata functions finds ZERO sites loading [X+0x678] then reading [+0x2d0], zero for [X+0xad8] -> [+0x1c0], and +0xad8 is never touched on any register that also walks an entity (the same sweep does find real chains such as [X+0xb8] -> [+0x20], so it is not blind). The only qword-pointer write at +0x678 in entity-shaped code is oe::dt::EntityCpntRecapBookPageSettings::~dtor (FUN_140419aa0), an unrelated UI class. Both chains were heap coincidence; they are no longer seeded, and a chain is only used once observed on the live board. Do not re-derive per-player identity as a constant entity offset.",
    "refs": [
     "src/loader/src/hook_events.cpp"
    ]
@@ -1017,7 +1017,7 @@
    "raw": "FUN_1407273c0",
    "status": "ok",
    "signature": "uint32_t(void* entity)",
-   "note": "Replication id for an entity: a 49-byte thunk that fetches the entity's net component and returns its id. DO NOT CALL FROM THE SDK. It reaches Entity_GetNetComponent, which walks the component map (control bytes @+0x5e8, slots @+0x5f0, mask @+0x600) with no guard of its own, so an entity whose store slot holds the -1 sentinel is an access violation, not a nil return - that is the 2026-08-15 crash (dump a97c76fe, faulting read of 0xffffffffffffffff at Entity_GetNetComponent+0x62). Recorded so the address is not re-derived, and banned in tests/test_loader_sdk_safety.py. For local-vs-remote use the engine's own byte at hero controller +0x1d88 instead.",
+   "note": "Replication id for an entity: a 49-byte thunk that fetches the entity's net component and returns its id. DO NOT CALL FROM THE SDK. It reaches Entity_GetNetComponent, which walks the component map (control bytes @+0x5e8, slots @+0x5f0, mask @+0x600) with no guard of its own, so an entity whose store slot holds the -1 sentinel is an access violation, not a nil return - that is the 2026-08-15 crash (dump a97c76fe, faulting read of 0xffffffffffffffff at Entity_GetNetComponent+0x62). Recorded so the address is not re-derived, and banned in tests/test_loader_sdk_safety.py. For local-vs-remote use the engine's own byte at hero controller +0x1d88 instead. [2026-08-20 OWNER FIELD, fully decompiled] netcomp+0xb8 is an oCSLNetworkObject (vftable rva 0xfa5dd0, confirmed live in session 4c36). Its slot 0x20 is this net-id accessor; its slot 0x18 (0x1408c0d40) is ONE LINE: `*out = *(*(netobj+0x100)+0x28)`. netobj+0x100 is the oCSLNetReplica, set as param_2 of the ctor FUN_1408c0890 (`param_1[0x10].vftable = param_2`, object malloc'd at 0x110 bytes by FUN_1408c4540, called from the replica ctor FUN_1408beac0). THE ENGINE IS RAKNET: FUN_1408beac0 installs RakNet::NetworkIDObject::vftable then RakNet::Replica3::vftable and initialises two 16-byte RakNetGUIDs at +0x28 and +0x38 (guid uint64 + systemIndex uint16 = UNASSIGNED at DAT_1412fed98/DAT_1412feda0), i.e. Replica3::creatingSystemGUID and deletingSystemGUID. So *(replica+0x28) is the RakNetGUID of the peer that CREATED the replica -- the machine whose player owns that hero, and the per-player key a row->player join needs. Consumed by rsmm.lua's F._dmg_owner_guid as three guarded reads; no vcall. ⚠ This is NOT the lobby's session id: the lobby member's +0x00 is a 32-character string (EOS), a RakNetGUID is 8 bytes, and no scan of the net component for that string can ever hit.",
    "refs": [
     "docs/_re"
    ]
@@ -1888,6 +1888,33 @@
    "note": "Writes this machine's lobby attributes - the counterpart to LobbyAttributes_Parse, referencing the same key literals in the same order. param_2 is the member record: PlayerName's value is a StringDesc at +0x0 (ptr) / +0x8 (len|0x80000000, bit 31 cleared with btr before use at 0x140923f44), with further int fields read from +0x18 and +0x1c. Documented for the layout; the loader hooks the PARSE side, since only that one sees REMOTE members."
   },
   {
+   "name": "LobbyMembers_List",
+   "kind": "function",
+   "category": "session",
+   "raw": "FUN_140925420",
+   "status": "unverified",
+   "signature": "void(void** scene, std::vector<LobbyMember*>* out)",
+   "note": "Builds the CURRENT lobby member list into `out` as a vector of member pointers. Recovered 2026-08-19 from FUN_140101a10 and FUN_14032b9a0, both of which loop `for (m : members) LobbyAttributes_Parse(&stack_record, *m + 0x28)`. Member layout, from FUN_14032b9a0's member comparison: +0x00 std::string session id (size +0x10, capacity +0x18, characters inline while capacity is 15), +0x28 attribute blob as {begin,end}. ⚠ The caller OWNS the returned members and destroys each one (FUN_140110f80(m+0x50), FUN_140111270(m+0x28), FUN_140111d90(m)) — do not call this without reproducing that teardown. The damage meter does not need to: LobbyAttributes_Parse's second argument is `member + 0x28`, so subtracting 0x28 in the detour recovers the same object for free. See LobbyAttributes_Parse."
+  },
+  {
+   "name": "LobbyMembers_Local",
+   "kind": "function",
+   "category": "session",
+   "raw": "FUN_1409253a0",
+   "status": "unverified",
+   "signature": "void(void** scene, LobbyMember** out)",
+   "note": "The LOCAL member of the current lobby. FUN_14032b9a0 fetches it and then skips the member whose +0x00 session-id string matches it, which is the engine's own way of saying \"everyone but me\" — and the confirmation that +0x00 is the stable per-player key. Same ownership warning as LobbyMembers_List."
+  },
+  {
+   "name": "LobbyPlayerName_Registry",
+   "kind": "data",
+   "category": "session",
+   "va": "0x141476268",
+   "status": "va",
+   "signature": "std::string[]  // count at 0x141476270",
+   "note": "Global append-only table of every player name the session has interned, 0x10 bytes per entry, count in the adjacent global. LobbyAttributes_Parse pushes a member's PlayerName here (and into the parallel table at 0x141475cc0) the first time it sees it, then copies the interned copy back into the record. Mined 2026-08-19. ⚠ Append-only and never pruned, so it is a history of names seen, NOT the current roster — the same trap that made R.lobby's roster grow to six members for a four-player run. Useful as a name POOL, useless as membership."
+  },
+  {
    "name": "MagicalObjectPool_Grow",
    "kind": "function",
    "category": "items",
@@ -2298,7 +2325,7 @@
    "name": "NamedEvent_NetSend",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_14073d730",
+   "raw": "FUN_140721630",
    "status": "ok",
    "signature": "void(void* net_event_cpnt, oCGameNamedEvent* ev)",
    "cabi": {
@@ -2308,7 +2335,7 @@
      "void*"
     ]
    },
-   "note": "Network leg of the bus: on the owning peer stamps ev+0x38 with the local session id and forwards to NamedEvent_NetSendToPeer; replicated events (oCGameNamedEventNetwork subclasses) reach remote entities this way. net_event_cpnt = entity component class-id 0x154fce5c (looked up via FUN_1403124b0(entity), component map at entity+0x5e8).",
+   "note": "Network leg of the bus. RELOCATED 2026-08-20 from FUN_14073d730, which is NOT this function at all: that address is a movement/physics tick (a loop calling FUN_14073d780, whose body carries the \"Dynamic push target\" string and integrates velocity). It resolved, verified and sat at a .pdata entry the whole time - a false ok of exactly the class scripts/verify_symbol_resolve.py cannot catch, and it carried a cabi, so `R.engine.call(\"NamedEvent_NetSend\", a, b)` would have run a physics tick over two mod-supplied pointers. Found by taking the note at its word and asking who CALLS NamedEvent_NetSendToPeer; FUN_140721630 sits immediately before it and matches the description instruction for instruction:\n  if (netcomp+0x148 == 0) {\n    if (netcomp+0x130 == 0) {            // authority: 0 = this machine owns it\n      p = vcall(netcomp+0xc0, +0x88);    // -> ptr to the LOCAL session id (int64)\n      ev+0x38 = *p;                      // stamp the event with the sender session\n      repl = netcomp+0xb8;               // vslot +0x20 = net id (see Entity_GetNetId)\n      if (repl) NetSendToPeer(netcomp, ev, vcall(repl, +0x18));\n    } else FUN_1406e3fd0(netcomp+0x8);   // remotely owned: never emit\n  }\nThis independently CONFIRMS netcomp+0x130 as the local/remote authority flag (0 = local), which until now rested on the two hit paths alone. Net component field set, anchored on the 344 direct callers of Entity_GetNetComponent: +0x80 ptr, +0x88 u32, +0xb8 replication object, +0xc0/+0xc8 session objects, +0x140 sub-struct, +0x149 / +0x24d / +0x24e byte flags. ev+0x38 carrying the ORIGINATING session id is the one engine-provided per-player key reaching gameplay - it is the basis for any sound entity->player join, unlike searching memory for a name string. [2026-08-20 STRUCTURE, from a full decompile] The net component C exposes identity through THREE fields, all reached by vcall: [C+0xc0]->vft[0x88](&out) returns a ptr whose [0] is the LOCAL session, and that qword is what lands in ev+0x38; [C+0xb8] is the net object (Entity_GetNetId is [C+0xb8]->vft[0x20]()), and its vft[0x18](&localSession) returns the session THIS entity replicates to -- the owner key a row->player join needs; [C+0xc8] is the scene, whose vft[0xc0](scene, session, netid, msg, 1, out) unicasts. ⚠ A session is compared as a SINGLE QWORD (`local_res20 != *param_3` in NamedEvent_NetSendToPeer), so the netcode's session id is 8 bytes while the lobby member's is a 32-character string -- they are not the same value, and no scan of the component for that string can ever hit. C+0x148 = send-disabled flag, C+0x130 = remotely-owned flag (0 = this machine owns it).",
    "refs": [
     "docs/_re/kinds/events-bus.md"
    ]
@@ -2419,6 +2446,24 @@
     "src/loader/lib/rsmm.lua",
     "docs/_re/MULTIPLAYER.md"
    ]
+  },
+  {
+   "name": "Netcode_PeerCount",
+   "kind": "data",
+   "category": "session",
+   "va": "0x14143f780",
+   "status": "va",
+   "signature": "uint32_t",
+   "note": "Live entry count for Netcode_PeerSlots. Read as the loop bound by Netcode_PeerStateTick (FUN_1402b03a0), decremented by Netcode_DropPeer (FUN_1402b4d50) after its swap-remove, and zeroed by the teardown at 0x1402afe4d that destroys every slot. Sits 0x130 past the array base, so it is NOT `base + cap*0x60` — do not derive one from the other. ⚠ va: gate on va_globals_trusted."
+  },
+  {
+   "name": "Netcode_PeerSlots",
+   "kind": "data",
+   "category": "session",
+   "va": "0x14143f600",
+   "status": "va",
+   "signature": "PeerSlot[]  // 0x60 stride; live count at Netcode_PeerCount",
+   "note": "Global array of connected-peer slots — the engine's own list of the OTHER machines in the run, one slot per remote player, and the only structure that carries a remote player's DISPLAY NAME outside the lobby-attribute path. Mined 2026-08-21 with Ghidra. ⚠ BASE IS 0x14143f600, NOT 0x14143f650. Netcode_PeerStateTick's `lea rax,[rip+...]` lands on 0x14143f650 because it indexes slot+0x50 (the tunnel pointer) directly; reading the array from there is off by 0x50 and every field comes back from the NEXT slot. The true base is what the slot ctor FUN_1402aedf0 zeroes field by field. Stride 0x60 is fixed by `lea rax,[rax+rax*2]; shl rax,5`. SLOT LAYOUT (FUN_1402aedf0 fills it, FUN_1402b5db0 frees it): +0x00 PlayerName, +0x10 the lobby member's own +0x00 session-id string, +0x20 m_sEosUserId (the engine calls it the \"P2P User\"), +0x30 uint64 hash of the EOS id (FUN_1402aed50), +0x48 connection handle carrying the SystemAddress, +0x50 the P2P tunnel (+0xc0 uint16 UDP port — FUN_1402aa470 passes it through Ordinal_15 = ntohs, so it is a PORT and NOT a RakNet system index; +0xcc conn-state enum, 3 = connected, 2 = eInterrupted; +0xd0 a timestamp). The three string members are the engine's {void* ptr @+0x0; int32 len @+0x8; uint32 cap @+0xc} descriptor, the same shape LobbyAttributes_Parse's StringDesc uses. HOW THE FIELDS WERE PROVEN: FUN_1402aedf0 calls FUN_140918b00(session_mgr, param_1, &record), which walks the lobby members (0x70 stride), memcmp's each member's +0x00 string against param_1, and on a match runs LobbyAttributes_Parse(&record, member+0x28) — so param_1, stored at slot+0x10, IS the member session id, and the record fields copied out to slot+0x00 and slot+0x20 are record+0x00 (PlayerName) and record+0xa8 (m_sEosUserId) by their stack offsets. FUN_1402b0230 finds the LOCAL slot by comparing slot+0x10 to the global at 0x141300958; FUN_1402b0170 finds a slot by slot+0x20. FUN_140272700 is the engine's own member->slot join: it hashes each parsed member's EOS id and compares against slot+0x30, logging \"No tunnel found for P2P User: {}\" / \"No party member found for P2P User: {}\" with slot+0x20 as the argument. WHY IT WAS MINED: the damage board knows every player NAME and a distinct per-row owner RakNetGUID (Entity_GetNetId's note) and nothing joined the two. This table supplies the name directly; the open half is which slot owns which hero row, and slot+0x30 is the engine's own ownership key, so rsmm.lua's F._dmg_peer_join scans each row's controller and entity for it. UNPROVEN in-game. ⚠ va, so build-specific: gate every read on va_globals_trusted. [IN-GAME 2026-08-21, session a34f] The layout READS BACK CORRECTLY on live data: `peer table: 2 peer(s) [#0 fruktik_kiwi eos=0002742cd3f241e6821afcd414945c85 port=59550 state=3, #1 EvilMurray eos=0002b4fab7154a739ef4154809c7f6ea port=33421 state=3]` — real personas at +0x00, real ProductUserIds at +0x20, live ports and state=3 through the tunnel at +0x50, and the peer count equalled the number of remote machines. So this IS a working name table for remote players. ⚠ TWO NEGATIVES from the same session. (1) slot+0x30 is NOT a hash value: it reads 0x2a114260 / 0x2bfbe3a0, i.e. heap addresses in the game's own allocation range, so FUN_1402aed50 returns a POINTER (probably to the interned id) and comparing it across processes is meaningless. (2) Nothing on the hero side carries it: scanning 0x800 of every row's controller and entity gave `hash hits [none]`, and the netcomp locator sweep found +0x2d0/+0x2e8/+0x300 pointing at the SAME player's id on EVERY row — a shared object, not a per-player field. The hero->peer link is therefore NOT on the hero object. The only per-row distinct value remains RakNet::Replica3::creatingSystemGUID, so the next candidate is GUID -> SystemAddress -> the tunnel's +0xc0 PORT, which this table already exposes."
   },
   {
    "name": "Netcode_PeerStateTick",

@@ -307,6 +307,25 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
                           static_cast<unsigned long long>(disp));
     if (n < 0 || n >= static_cast<int>(sizeof(buf))) return;
 
+    // NO SENDER SESSION FIELD. Deliberately removed 2026-08-20.
+    //
+    // ev+0x38 is the sender only on oCGameNamedEventNetwork SUBCLASSES. Three
+    // playtests (c536, e736, 014f) show every event this bus dispatches
+    // carrying ONE vftable -- the base oCGameNamedEvent -- where +0x38 holds a
+    // handle (0x8146_00xx_00000004), the -1 "no peer" sentinel, or in one case
+    // a raw code address. It can never identify a player here.
+    //
+    // Publishing it cost a page probe, a read and an snprintf on EVERY
+    // gameplay event, plus a second pair for the vftable, on the analytics
+    // firehose -- the one place per-event work is actually felt. The payload
+    // decoder below already reads the vftable for its own matching, so nothing
+    // is lost by not publishing either.
+    //
+    // The owner of an entity lives at *(*(*(netcomp+0xb8)+0x100)+0x28)
+    // instead -- oCSLNetworkObject::vft[0x18] (0x1408c0d40) is literally that
+    // one line. It is read once per damage row on a background thread, not
+    // once per event on the game thread. See NamedEvent_NetSend's note.
+
     // Hand-RE'd payload layouts first (their field names carry meaning the
     // mined table cannot). `decoded` stops the generic vftable decode below
     // from emitting the same offsets again under mechanical names.

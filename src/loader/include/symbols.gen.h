@@ -172,7 +172,7 @@ constexpr std::uintptr_t NamedEvent_HeroUnsubscribeAll = 0x140395350ull;
 constexpr const char* NamedEvent_HeroUnsubscribeAll_Pattern = "NamedEvent_HeroUnsubscribeAll";
 constexpr std::uintptr_t NamedEvent_Id_FromCrc = 0x14051f090ull;
 constexpr const char* NamedEvent_Id_FromCrc_Pattern = "NamedEvent_Id_FromCrc";
-constexpr std::uintptr_t NamedEvent_NetSend = 0x14073d730ull;
+constexpr std::uintptr_t NamedEvent_NetSend = 0x140721630ull;
 constexpr const char* NamedEvent_NetSend_Pattern = "NamedEvent_NetSend";
 constexpr std::uintptr_t NamedEvent_NetSendToPeer = 0x1407216c0ull;
 constexpr const char* NamedEvent_NetSendToPeer_Pattern = "NamedEvent_NetSendToPeer";
@@ -369,6 +369,13 @@ constexpr std::uintptr_t LobbyAttributes_Parse = 0x140922f20ull;
 constexpr const char* LobbyAttributes_Parse_Pattern = "LobbyAttributes_Parse";
 constexpr std::uintptr_t LobbyAttributes_Serialize = 0x140923e00ull;
 constexpr const char* LobbyAttributes_Serialize_Pattern = "LobbyAttributes_Serialize";
+constexpr std::uintptr_t LobbyMembers_List = 0x140925420ull;
+constexpr const char* LobbyMembers_List_Pattern = "LobbyMembers_List";
+constexpr std::uintptr_t LobbyMembers_Local = 0x1409253a0ull;
+constexpr const char* LobbyMembers_Local_Pattern = "LobbyMembers_Local";
+constexpr std::uintptr_t LobbyPlayerName_Registry = 0x141476268ull;
+constexpr std::uintptr_t Netcode_PeerCount = 0x14143f780ull;
+constexpr std::uintptr_t Netcode_PeerSlots = 0x14143f600ull;
 
 // --- skins ---
 constexpr std::uintptr_t SkinGrid_Populate = 0x1401f16f0ull;

@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **188** symbols across 18 categories.
+Total: **193** symbols across 18 categories.
 
 ## combat
 
@@ -141,7 +141,7 @@ Total: **188** symbols across 18 categories.
 | `NamedEvent_HeroSubscribeAll` | `0x140391860` | ✅ ok | ✔ | void(oCEntity* hero) |
 | `NamedEvent_HeroUnsubscribeAll` | `0x140395350` | ✅ ok |  | Hero teardown twin of NamedEvent_HeroSubscribeAll: walks the same (id global, slot) pai… |
 | `NamedEvent_Id_FromCrc` | `0x14051f090` | ✅ ok | ✔ | uint32_t(uint32_t ns, uint32_t name_crc) |
-| `NamedEvent_NetSend` | `0x14073d730` | ✅ ok | ✔ | void(void* net_event_cpnt, oCGameNamedEvent* ev) |
+| `NamedEvent_NetSend` | `0x140721630` | ✅ ok | ✔ | void(void* net_event_cpnt, oCGameNamedEvent* ev) |
 | `NamedEvent_NetSendToPeer` | `0x1407216c0` | ✅ ok | ✔ | void(void* net_event_cpnt, oCGameNamedEvent* ev, uint64_t* peer_session) |
 
 ## hero
@@ -286,6 +286,11 @@ Total: **188** symbols across 18 categories.
 | `Account_GetDisplayName` | `0x140929940` | ✅ ok |  | void(std::string* out, void* account) |
 | `LobbyAttributes_Parse` | `0x140922f20` | ✅ ok | ✔ | void*(void* self, StringDesc* blob) |
 | `LobbyAttributes_Serialize` | `0x140923e00` | ✅ ok | ✔ | void*(void* out, void* member) |
+| `LobbyMembers_List` | `0x140925420` | ❓ unverified |  | void(void** scene, std::vector<LobbyMember*>* out) |
+| `LobbyMembers_Local` | `0x1409253a0` | ❓ unverified |  | void(void** scene, LobbyMember** out) |
+| `LobbyPlayerName_Registry` | `0x141476268` | 📍 va |  | std::string[]  // count at 0x141476270 |
+| `Netcode_PeerCount` | `0x14143f780` | 📍 va |  | uint32_t |
+| `Netcode_PeerSlots` | `0x14143f600` | 📍 va |  | PeerSlot[]  // 0x60 stride; live count at Netcode_PeerCount |
 
 ## skins
 
