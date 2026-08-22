@@ -100,44 +100,6 @@ RSMM backs up every file it touches as `<file>.rsmm.bak` and tracks state in the
 
 ---
 
-## Make your first mod
-
-Mods ship **data, not code**: a declarative `manifest.toml` plus assets. No bespoke scripts (`rsmm lint` and CI enforce this).
-
-```sh
-git clone https://github.com/Ovilli/RavenswatchModManager.git
-cd RavenswatchModManager
-python3 -m venv .venv && source .venv/bin/activate   # Windows: python -m venv venv && venv\Scripts\activate
-pip install -e .
-
-./rsmm doctor          # health check — run this first
-./rsmm new MyMod       # scaffold mods/MyMod/
-./rsmm lint MyMod      # validate the manifest + asset paths
-./rsmm apply           # write it into the game
-./rsmm run             # launch Ravenswatch
-```
-
-A minimal texture mod, `mods/MyMod/manifest.toml`:
-
-```toml
-[mod]
-id      = "MyMod"
-name    = "My First Mod"
-version = "0.1.0"
-author  = "you"
-
-[[content]]
-kind   = "texture"
-target = "path/to/original.png"     # decoded game path
-source = "assets/my-texture.png"
-```
-
-Then `./rsmm pack MyMod` → `dist/MyMod.zip`, ready to share or upload to the registry.
-
-Ready-made examples to copy from live in [`docs/ExampleMods/`](docs/ExampleMods) (hello-world, magic item, custom skill, game modifier, events).
-
-Bare `rsmm` in a terminal opens an interactive home screen; `rsmm <cmd> --help` documents any subcommand.
-
 ## Lua mods (Windows)
 
 Texture, stat, talent, text and item mods are **install-time file replacement** — they work anywhere the game runs, with no injection. Lua scripting is the exception: it loads a native DLL into the game process, so it is Windows-only (and experimental under Proton).
