@@ -27,8 +27,12 @@ export default defineConfig({
         { tag: 'meta', attrs: { property: 'og:type', content: 'website' } },
         { tag: 'meta', attrs: { name: 'twitter:card', content: 'summary_large_image' } },
         { tag: 'meta', attrs: { name: 'twitter:image', content: 'https://docs.rsmm.me/og.png' } },
-        // AI-assistant ingestion (https://llmstxt.org/).
+        // AI-assistant ingestion (https://llmstxt.org/). `llms-mods.txt` is
+        // advertised alongside the index because it, not the full corpus, is
+        // what an assistant building a mod should actually pull.
         { tag: 'link', attrs: { rel: 'alternate', type: 'text/plain', title: 'llms.txt', href: '/llms.txt' } },
+        { tag: 'link', attrs: { rel: 'alternate', type: 'text/plain', title: 'llms-mods.txt', href: '/llms-mods.txt' } },
+        { tag: 'link', attrs: { rel: 'alternate', type: 'text/plain', title: 'llms-full.txt', href: '/llms-full.txt' } },
       ],
       editLink: {
         baseUrl: 'https://github.com/Ovilli/RavenswatchModManager/edit/main/apps/docs/',
@@ -62,6 +66,7 @@ export default defineConfig({
           label: 'Guides',
           items: [
             { label: 'Authoring mods', slug: 'guides/modding' },
+            { label: 'Build a mod with an AI assistant', slug: 'guides/ai-assistant' },
             { label: 'Example mods', slug: 'guides/examples' },
             { label: 'Custom items', slug: 'guides/custom-items' },
             { label: 'Custom enemies', slug: 'guides/custom-enemies' },

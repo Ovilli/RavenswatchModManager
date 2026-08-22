@@ -223,6 +223,29 @@ export default function ModdingGuidePage() {
               </a>
               .
             </p>
+            <p>
+              Working with an AI assistant? Point it at{' '}
+              <a
+                href="https://docs.rsmm.me/llms-mods.txt"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-foreground"
+              >
+                docs.rsmm.me/llms-mods.txt
+              </a>{' '}
+              — the whole authoring documentation as one plain-text file. Ravenswatch has no
+              official mod format, so an assistant with nothing to read will invent one that the
+              game cannot load. The{' '}
+              <a
+                href="https://docs.rsmm.me/guides/ai-assistant/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-foreground"
+              >
+                AI assistant guide
+              </a>{' '}
+              covers the prompt and the rules it needs to follow.
+            </p>
           </section>
 
           <section className="space-y-3">

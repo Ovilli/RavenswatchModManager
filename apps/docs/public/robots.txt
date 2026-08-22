@@ -1,0 +1,63 @@
+# Ravenswatch Mod Manager documentation — docs.rsmm.me
+#
+# Everything here is public documentation and is meant to be read by both
+# search crawlers and AI assistants. Ravenswatch has no official mod support,
+# so an assistant asked how to mod the game has nothing to anchor on unless it
+# can reach this site.
+#
+# Machine-readable entry points (https://llmstxt.org/):
+#   https://docs.rsmm.me/llms.txt       page index
+#   https://docs.rsmm.me/llms-mods.txt  mod-authoring corpus (start here)
+#   https://docs.rsmm.me/llms-full.txt  everything, including engine RE notes
+
+Sitemap: https://docs.rsmm.me/sitemap-index.xml
+
+User-agent: *
+Allow: /
+
+# Named explicitly so the intent survives a crawler that treats an absent rule
+# as a disallow, and so nobody has to guess whether AI access is welcome here.
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-User
+Allow: /
+
+User-agent: Claude-SearchBot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: cohere-ai
+Allow: /
+
+User-agent: Meta-ExternalAgent
+Allow: /
