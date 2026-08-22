@@ -134,7 +134,12 @@ function StatusStrip() {
   const outdated = useMemo(() => outdatedCount(installed), [installed]);
 
   return (
-    <div className="surface-grain flex items-center justify-between gap-3 border-b border-border px-3 py-2 backdrop-blur-sm">
+    // `relative z-30`: `.surface-grain` sets `backdrop-filter`, which makes this
+    // strip a stacking context with `z-index: auto` — so its profile menu, no
+    // matter how high its own z-index, is confined here and painted before the
+    // `.grimoire-card`s below (they are `backdrop-filter` stacking contexts too,
+    // and later in the DOM). An explicit z-index lifts the whole strip instead.
+    <div className="surface-grain relative z-30 flex items-center justify-between gap-3 border-b border-border px-3 py-2 backdrop-blur-sm">
       {/* The left half yields space, the right half does not: the launch
           buttons must never be squeezed, so the profile name truncates first.
           It keeps `dragStyle` even though it holds no text of its own — the
