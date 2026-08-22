@@ -39,10 +39,22 @@ const mono = JetBrains_Mono({
   variable: '--font-mono',
 });
 
+// The site's own name is not the thing people search for. Queries are
+// "ravenswatch mods" / "ravenswatch mod manager", and a brand-only <title>
+// ranked nowhere for either while Nexus pages titled "Ravenswatch Mods" took
+// the whole first page. Lead with the query, keep the brand after the dash.
+const SITE_TITLE = 'Ravenswatch Mods — Browse, Install & Manage | RSMM';
+const SITE_DESCRIPTION =
+  'Download and install Ravenswatch mods in one click. Free, open-source mod ' +
+  'manager for Windows and Linux — textures, items, talents and Lua mods, all reversible.';
+
 export const metadata: Metadata = {
   metadataBase: new URL('https://rsmm.me'),
-  title: 'Ravenswatch Mod Manager',
-  description: 'Mod manager for Ravenswatch — browser, Windows, Linux.',
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
+  // Without this the home page emits no canonical at all, so the apex and www
+  // hosts compete as separate URLs and split their own ranking signals.
+  alternates: { canonical: '/' },
   icons: '/logo.png',
   // AdSense site-ownership verification (alongside the loader script).
   other: { 'google-adsense-account': 'ca-pub-9139637424510522' },
@@ -51,15 +63,15 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     siteName: 'Ravenswatch Mod Manager',
-    title: 'Ravenswatch Mod Manager',
-    description: 'Mod manager for Ravenswatch — browser, Windows, Linux.',
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
     url: '/',
     images: [{ url: '/logo.png', alt: 'Ravenswatch Mod Manager' }],
   },
   twitter: {
     card: 'summary',
-    title: 'Ravenswatch Mod Manager',
-    description: 'Mod manager for Ravenswatch — browser, Windows, Linux.',
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
     images: ['/logo.png'],
   },
 };
