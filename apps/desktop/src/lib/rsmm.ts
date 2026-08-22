@@ -662,6 +662,24 @@ export const updateLoader = (opts: { checkOnly?: boolean } = {}) =>
     { timeoutMs: LONG_TIMEOUT_MS },
   );
 
+export interface ChangelogFeedResult {
+  ok: boolean;
+  // 'fetched' = live from the channel, 'cached' = a previous fetch (possibly
+  // stale, `error` says why it could not be refreshed), 'bundled' = this
+  // build's own copy, 'unavailable' = nothing to show at all.
+  status: 'fetched' | 'cached' | 'bundled' | 'unavailable' | 'error';
+  generated?: string;
+  entries: { version: string; date: string; summary?: string; highlights: string[] }[];
+  error?: string | null;
+}
+
+// Reads the rolling `changelog` GitHub release. Notes are published on their
+// own so a loader-channel fix — which reaches users with no app release — can
+// still announce itself. The CLI caches the feed and falls back to its bundled
+// copy, so this is cheap to call on launch and works offline.
+export const fetchChangelog = (opts: { refresh?: boolean } = {}) =>
+  rsmm<ChangelogFeedResult>(opts.refresh ? ['changelog', '--refresh'] : ['changelog']);
+
 export interface LoaderFlag {
   name: string;
   label: string;

@@ -1,15 +1,15 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { Link, Outlet, createRootRouteWithContext, useLocation } from '@tanstack/react-router';
 import { AlertTriangle } from 'lucide-react';
-import { FlaskConical, ScrollText, Terminal } from 'lucide-react';
+import { FlaskConical, PanelLeftClose, PanelLeftOpen, ScrollText, Terminal } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import PromotedBanner from '../components/PromotedBanner';
 import { AccountStrip } from '../components/account-strip';
 import { Button, CopyButton, StatPill } from '../components/chrome';
+import { FirstRunDialogs } from '../components/changelog-dialog';
 import { CommandPalette } from '../components/command-palette';
-import { AboutIcon } from '../components/icons/AboutIcon';
 import { BrowseIcon } from '../components/icons/BrowseIcon';
 import { ConflictsIcon } from '../components/icons/ConflictsIcon';
 import { LaunchIcon } from '../components/icons/LaunchIcon';
@@ -23,7 +23,7 @@ import { WindowRestoreIcon } from '../components/icons/WindowRestoreIcon';
 import { LaunchProvider, useLaunch } from '../components/launch';
 import { ProfilePopover } from '../components/profile-popover';
 import { DialogProvider, ToastProvider } from '../components/toast';
-import { UpdaterBanner } from '../components/updater';
+import { UpdaterBanner, VersionFooter } from '../components/updater';
 import { shortcutLabel } from '../lib/platform';
 import { quitApp } from '../lib/quit';
 import { restoreAll } from '../lib/rsmm';
@@ -34,16 +34,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 interface Nav {
-  to:
-    | '/'
-    | '/browse'
-    | '/profiles'
-    | '/conflicts'
-    | '/author'
-    | '/settings'
-    | '/commands'
-    | '/log'
-    | '/about';
+  to: '/' | '/browse' | '/profiles' | '/conflicts' | '/author' | '/settings' | '/commands' | '/log';
   icon: React.ComponentType<{ className?: string }>;
   label: string;
 }
@@ -60,11 +51,18 @@ const NAV: Nav[] = [
   ...(import.meta.env.DEV
     ? ([{ to: '/author' as const, icon: FlaskConical, label: 'Author' }] satisfies Nav[])
     : []),
-  { to: '/settings', icon: SettingsIcon, label: 'Settings' },
   { to: '/commands', icon: Terminal, label: 'Commands' },
   { to: '/log', icon: ScrollText, label: 'Log' },
-  { to: '/about', icon: AboutIcon, label: 'About' },
 ];
+
+/**
+ * Pinned to the foot of the sidebar rather than sitting in the list.
+ *
+ * Settings is not a destination you browse between — it is where you go to
+ * change how the rest behaves, and About now lives inside it as a tab. Keeping
+ * it out of the run of content pages, down by the collapse control, says that.
+ */
+const SETTINGS_NAV: Nav = { to: '/settings', icon: SettingsIcon, label: 'Settings' };
 
 /**
  * Conflicts is a problem page: it only ever has something to say when two
@@ -92,22 +90,29 @@ type AppRegionStyle = CSSProperties & { WebkitAppRegion?: 'drag' | 'no-drag' };
 const dragStyle: AppRegionStyle = { WebkitAppRegion: 'drag' };
 const noDragStyle: AppRegionStyle = { WebkitAppRegion: 'no-drag' };
 
-function NavLink({ to, icon: Icon, label }: Nav) {
+function NavLink({ to, icon: Icon, label, collapsed }: Nav & { collapsed: boolean }) {
   const installed = useApp((s) => s.installed);
   const outdated = useMemo(() => (to === '/' ? outdatedCount(installed) : 0), [to, installed]);
+  const updates =
+    outdated > 0 ? `${outdated} mod${outdated === 1 ? '' : 's'} with available updates` : null;
   return (
     <Link
       to={to}
-      className="nav-link-grim group"
+      className={collapsed ? 'nav-link-grim group justify-center' : 'nav-link-grim group'}
+      // With the label hidden the icon is the only thing left, and an icon is
+      // not a name: `aria-label` keeps the link readable to a screen reader and
+      // `title` gives everyone else a tooltip for the same text.
+      aria-label={collapsed ? label : undefined}
+      title={collapsed ? label : undefined}
       activeProps={{ 'data-active': 'true' }}
       inactiveProps={{ 'data-active': 'false' }}
     >
       <Icon className="nav-icon" />
-      <span className="font-serif-italic text-base">{label}</span>
-      {outdated > 0 ? (
+      {collapsed ? null : <span className="font-serif-italic text-base">{label}</span>}
+      {updates && !collapsed ? (
         <span
           className="ml-auto inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-gilt/20 px-1.5 font-mono text-[11px] font-semibold text-gilt"
-          title={`${outdated} mod${outdated === 1 ? '' : 's'} with available updates`}
+          title={updates}
         >
           {outdated}
         </span>
@@ -130,13 +135,32 @@ function StatusStrip() {
 
   return (
     <div className="surface-grain flex items-center justify-between gap-3 border-b border-border px-3 py-2 backdrop-blur-sm">
-      <div className="flex items-center gap-4" style={dragStyle}>
-        <span className="font-fraktur text-lg text-parchment">Ravenswatch Mod Manager</span>
+      {/* The left half yields space, the right half does not: the launch
+          buttons must never be squeezed, so the profile name truncates first.
+          It keeps `dragStyle` even though it holds no text of its own — the
+          empty run to the left of the picker is the window's drag handle. */}
+      <div className="flex min-w-0 items-center gap-3" style={dragStyle}>
+        {/* `no-drag`, or the frameless window swallows the click. */}
+        <div className="min-w-0" style={noDragStyle}>
+          <ProfilePopover compact />
+        </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <div className="flex items-center gap-2 pr-2" style={noDragStyle}>
-          <Button type="button" size="sm" disabled={busy} onClick={() => void launch('vanilla')}>
+          <Button
+            type="button"
+            size="sm"
+            disabled={busy}
+            /* A floor, because the label is not fixed: it swaps to "Restoring…"
+               and "Running…" as a launch proceeds, and a button that resizes
+               mid-launch shoves the one beside it. The floor clears the longest
+               label in every typeface preset, so all three states render at the
+               same width; a preset wide enough to exceed it grows rather than
+               clipping. Shared by both buttons so the pair reads as a pair. */
+            className="min-w-[11rem]"
+            onClick={() => void launch('vanilla')}
+          >
             <LaunchIcon className="h-5 w-5 text-parchment" />
             <span>
               {launching === 'vanilla'
@@ -151,6 +175,7 @@ function StatusStrip() {
             size="sm"
             variant="primary"
             disabled={busy}
+            className="min-w-[11rem]"
             onClick={() => void launch('modded')}
           >
             <LaunchIcon className="h-5 w-5 text-parchment" />
@@ -170,7 +195,11 @@ function StatusStrip() {
             <CopyButton value={`Launch error: ${launchError}`} />
           </span>
         ) : null}
-        <div className="flex items-center gap-2" style={noDragStyle}>
+        {/* Hidden rather than squashed below `lg`. The cluster is `shrink-0`
+            so the launch buttons keep their size, which means something has to
+            give when the window is narrow — and a mod count is the most
+            expendable thing in this row. */}
+        <div className="hidden items-center gap-2 lg:flex" style={noDragStyle}>
           <StatPill value={enabled} label="enabled" />
           <StatPill value={disabled} label="disabled" />
           {outdated > 0 ? <StatPill value={outdated} label="updates" tone="gilt" /> : null}
@@ -430,6 +459,8 @@ function WindowControls() {
 function RootLayout() {
   const location = useLocation();
   const nav = useNav();
+  const collapsed = useApp((s) => s.settings.sidebarCollapsed);
+  const update = useApp((s) => s.updateSettings);
   const mainRef = useRef<HTMLElement | null>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-scroll on navigation
@@ -442,38 +473,64 @@ function RootLayout() {
       <DialogProvider>
         <LaunchProvider>
           <div className="flex h-screen w-screen overflow-hidden">
-            <aside className="surface-grain flex w-72 flex-col border-r border-border">
-              <div className="px-5 pt-5 pb-4">
-                <div className="flex items-center gap-3">
-                  <div>
-                    <img
-                      src="/logo.png"
-                      alt="Ravenswatch Mod Manager"
-                      className="h-14 w-14 rounded-md object-cover"
-                    />
-                  </div>
-                  <div>
-                    <h1 className="font-fraktur text-3xl leading-none text-parchment">RSMM</h1>
-                    <p className="font-serif-italic mt-1 text-sm text-ash">
-                      Ravenswatch Mod Manager
-                    </p>
-                  </div>
+            <aside
+              className={`surface-grain flex shrink-0 flex-col border-r border-border ${
+                collapsed ? 'w-20' : 'w-72'
+              }`}
+            >
+              <div className={collapsed ? 'px-3 pt-5 pb-4' : 'px-5 pt-5 pb-4'}>
+                <div className="flex items-center justify-center">
+                  <img
+                    src="/logo.png"
+                    alt="Ravenswatch Mod Manager"
+                    className={`shrink-0 rounded-md object-cover ${
+                      collapsed ? 'h-10 w-10' : 'h-14 w-14'
+                    }`}
+                  />
                 </div>
-              </div>
-
-              <div className="px-4 pb-3">
-                <ProfilePopover />
               </div>
 
               <nav className="flex flex-1 flex-col gap-1 px-2 py-2">
                 {nav.map((n) => (
-                  <NavLink key={n.to} {...n} />
+                  <NavLink key={n.to} {...n} collapsed={collapsed} />
                 ))}
               </nav>
-              <AccountStrip />
-              <div className="px-4 pb-4">
-                <PromotedBanner vertical />
+
+              <div className="border-t border-border/60 px-2 pt-2 pb-1">
+                <NavLink {...SETTINGS_NAV} collapsed={collapsed} />
               </div>
+
+              <div className={collapsed ? 'px-2 pb-2' : 'px-4 pb-2'}>
+                <button
+                  type="button"
+                  onClick={() => update({ sidebarCollapsed: !collapsed })}
+                  aria-label={collapsed ? 'Expand the sidebar' : 'Collapse the sidebar to icons'}
+                  title={collapsed ? 'Expand the sidebar' : 'Collapse the sidebar to icons'}
+                  aria-pressed={collapsed}
+                  className={`flex w-full items-center gap-2 rounded border border-transparent px-2 py-1.5 text-ash hover:border-border hover:text-parchment ${
+                    collapsed ? 'justify-center' : ''
+                  }`}
+                >
+                  {collapsed ? (
+                    <PanelLeftOpen className="h-4 w-4" aria-hidden />
+                  ) : (
+                    <PanelLeftClose className="h-4 w-4" aria-hidden />
+                  )}
+                  {collapsed ? null : <span className="font-mono text-xs">Collapse sidebar</span>}
+                </button>
+              </div>
+
+              {/* Wide controls with nothing meaningful to show at 5rem, so
+                  they step aside rather than being squeezed into an unreadable
+                  version of themselves. */}
+              {collapsed ? null : (
+                <>
+                  <AccountStrip />
+                  <div className="px-4 pb-4">
+                    <PromotedBanner vertical />
+                  </div>
+                </>
+              )}
             </aside>
 
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -490,6 +547,8 @@ function RootLayout() {
             </div>
 
             <CommandPalette />
+            <FirstRunDialogs />
+            <VersionFooter />
           </div>
         </LaunchProvider>
       </DialogProvider>

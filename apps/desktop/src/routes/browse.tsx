@@ -1,10 +1,23 @@
 import type { Collection, ModListItem } from '@rsmm/schemas';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
-import { ExternalLink, EyeOff, Loader2, Plus, Search, WifiOff } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import {
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  EyeOff,
+  LayoutGrid,
+  Loader2,
+  Plus,
+  Rows3,
+  Search,
+  WifiOff,
+  X,
+} from 'lucide-react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { Button, CopyButton, Cover, MonoTag, SectionHeader, StatPill } from '../components/chrome';
 import { CheckIcon } from '../components/icons/CheckIcon';
+import { ModDetail } from '../components/mod-detail';
 import { useToast } from '../components/toast';
 import { api, describeApiError, getApiBaseUrl, logApiError } from '../lib/api';
 import { validateProfileName } from '../lib/profile-name';
@@ -19,11 +32,30 @@ export const Route = createFileRoute('/browse')({
 type Sort = 'recent' | 'popular' | 'rating';
 type Tab = 'mods' | 'collections';
 
+/** Tag chips offered as filters. More than this and the bar outgrows the page. */
+const TAG_FACET_LIMIT = 12;
+
 function BrowsePage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('mods');
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<Sort>('popular');
+  // Filters. Derived facets rather than a hardcoded list, so a category or tag
+  // that nothing in the index uses is never offered as a dead end.
+  const [category, setCategory] = useState<string | null>(null);
+  const [tags, setTags] = useState<string[]>([]);
+  const [hideInstalled, setHideInstalled] = useState(false);
+  // The mod open in the split panel. Selecting rather than navigating is the
+  // point of the whole layout: clicking through five mods should not cost five
+  // navigations and five trips back.
+  const [selected, setSelected] = useState<string | null>(null);
+  // `null` = follow the layout: open when browsing, collapsed while a mod's
+  // details are taking up the middle column. A click on the header pins it
+  // either way, because a filter panel that reopens itself is worse than one
+  // that stays where you put it.
+  const [filtersPinned, setFiltersPinned] = useState<boolean | null>(null);
+  const filterBodyId = useId();
+  const [minRating, setMinRating] = useState(0);
   const installed = useApp((s) => s.installed);
   const profiles = useApp((s) => s.profiles);
   const installMod = useApp((s) => s.installMod);
@@ -31,6 +63,7 @@ function BrowsePage() {
   const syncLocalMods = useApp((s) => s.syncLocalMods);
   const profile = useApp(activeProfile);
   const showNsfw = useApp((s) => s.settings.showNsfw);
+  const view = useApp((s) => s.settings.browseView);
   const update = useApp((s) => s.updateSettings);
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -122,6 +155,35 @@ function BrowsePage() {
     enabled: tab === 'collections',
   });
 
+  /**
+   * What the index actually contains, as filter options.
+   *
+   * Derived from the fetched items rather than from the schema's category enum:
+   * offering "speedrun" when no speedrun mod is published is a filter that can
+   * only ever return nothing. Tags are ranked by how many mods carry them and
+   * capped, because the tag vocabulary is free-form and unbounded.
+   *
+   * Computed BEFORE the category/tag filters are applied — otherwise picking
+   * one facet would delete the others from the bar, and there would be no way
+   * back without a reload.
+   */
+  const facets = useMemo(() => {
+    const items: ModListItem[] = modData?.items ?? [];
+    const visible = items.filter((m) => showNsfw || !m.nsfw);
+    const categories = new Map<string, number>();
+    const tagCounts = new Map<string, number>();
+    for (const m of visible) {
+      if (m.category) categories.set(m.category, (categories.get(m.category) ?? 0) + 1);
+      for (const t of m.tags) tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1);
+    }
+    return {
+      categories: [...categories.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])),
+      tags: [...tagCounts.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .slice(0, TAG_FACET_LIMIT),
+    };
+  }, [modData, showNsfw]);
+
   const list = useMemo(() => {
     if (tab === 'collections') return [];
     const items: ModListItem[] = modData?.items ?? [];
@@ -134,14 +196,35 @@ function BrowsePage() {
             (m.author ?? '').toLowerCase().includes(needle),
         )
       : items;
-    return [...filtered]
-      .filter((m) => showNsfw || !m.nsfw)
-      .sort((a, b) => {
-        if (sort === 'popular') return b.downloads - a.downloads;
-        if (sort === 'rating') return (b.rating ?? 0) - (a.rating ?? 0);
-        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-      });
-  }, [modData, sort, q, tab, showNsfw]);
+    return (
+      [...filtered]
+        .filter((m) => showNsfw || !m.nsfw)
+        .filter((m) => (category ? m.category === category : true))
+        // EVERY selected tag must be present, not any of them. Picking two tags
+        // to widen a search is not what anyone means by it.
+        .filter((m) => tags.every((t) => m.tags.includes(t)))
+        .filter((m) => (minRating > 0 ? (m.rating ?? 0) >= minRating : true))
+        .filter((m) => (hideInstalled ? !installed.includes(m.slug) : true))
+        .sort((a, b) => {
+          if (sort === 'popular') return b.downloads - a.downloads;
+          if (sort === 'rating') return (b.rating ?? 0) - (a.rating ?? 0);
+          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+        })
+    );
+  }, [modData, sort, q, tab, showNsfw, category, tags, minRating, hideInstalled, installed]);
+
+  const activeFilters =
+    (category ? 1 : 0) + tags.length + (minRating > 0 ? 1 : 0) + (hideInstalled ? 1 : 0);
+
+  const clearFilters = () => {
+    setCategory(null);
+    setTags([]);
+    setMinRating(0);
+    setHideInstalled(false);
+  };
+
+  const toggleTag = (t: string) =>
+    setTags((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
 
   const collections = useMemo(() => {
     if (tab === 'mods') return [];
@@ -162,6 +245,212 @@ function BrowsePage() {
   useEffect(() => {
     if (error) logApiError('browse', error);
   }, [error]);
+
+  // Esc closes the detail panel. Registered only while one is open so it never
+  // competes with the command palette or a modal for the same key.
+  useEffect(() => {
+    if (!selected) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelected(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selected]);
+
+  // A filter that hides the open mod would otherwise leave its panel stranded
+  // beside a list that no longer contains it.
+  useEffect(() => {
+    if (selected && !list.some((m) => m.slug === selected)) setSelected(null);
+  }, [list, selected]);
+
+  // The split panel belongs to the list. Cards are the roomy view and open the
+  // full page, so a selection made in the list must not survive a switch to
+  // cards — it would sit there with nothing able to change or close it.
+  useEffect(() => {
+    if (view !== 'list') setSelected(null);
+  }, [view]);
+
+  // Auto-collapse, unless the user has said otherwise.
+  const filtersOpen = filtersPinned ?? selected === null;
+
+  /**
+   * The install control, shared by the card and the list row.
+   *
+   * Extracted rather than duplicated: it encodes four states (installing / in
+   * profile / on disk / not fetched) plus the width floor that stops it
+   * resizing mid-download, and two copies of that would drift apart the first
+   * time one of them was touched.
+   */
+  function InstallButton({ m }: { m: ModListItem }) {
+    const onDisk = installed.includes(m.slug);
+    // "In profile" must mean the mod is BOTH listed by the profile and
+    // actually on disk. A profile entry whose folder is gone (failed install,
+    // deleted outside the app) otherwise rendered as "in profile" with the
+    // button disabled — leaving no way to install the mod it pointed at.
+    const inProfile = profile.loadOrder.includes(m.slug) && onDisk;
+    return (
+      <Button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          openPicker(m.slug);
+        }}
+        disabled={inProfile || installing[m.slug]}
+        variant={inProfile ? 'default' : 'primary'}
+        size="sm"
+        // The label cycles install → downloading → in profile,
+        // each a different width. Without a floor the button
+        // resizes mid-download and squeezes the title next to it.
+        className="min-w-[7.5rem] justify-center whitespace-nowrap"
+        title={
+          inProfile
+            ? `Already in "${profile.name}"`
+            : onDisk
+              ? `On disk — click to add to "${profile.name}"`
+              : `Download from index + add to "${profile.name}"`
+        }
+      >
+        {installing[m.slug] ? (
+          <>
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> downloading
+          </>
+        ) : inProfile ? (
+          <>
+            <CheckIcon className="h-4 w-4" /> in profile
+          </>
+        ) : onDisk ? (
+          <>
+            <Plus className="h-3.5 w-3.5" /> add
+          </>
+        ) : (
+          <>
+            <Plus className="h-3.5 w-3.5" /> install
+          </>
+        )}
+      </Button>
+    );
+  }
+
+  /**
+   * Hoisted so it can be rendered in either place: its own column while
+   * browsing, or folded into the narrow index column once a mod's page has
+   * taken the right-hand side. One definition, two homes — a second copy would
+   * drift the first time a facet was added.
+   */
+  const filterPanel =
+    tab === 'mods' ? (
+      <aside
+        aria-label="Filters"
+        // Its own sticky column while browsing; a plain block at the top of the
+        // index column once a mod is open, where the column already sets the
+        // width and the sticky/order rules would fight it.
+        className={`grimoire-card flex flex-col gap-3 p-3 ${
+          selected
+            ? ''
+            : `p-4 lg:sticky lg:top-2 lg:order-3 lg:shrink-0 ${filtersOpen ? 'lg:w-64' : 'lg:w-auto'}`
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => setFiltersPinned(!filtersOpen)}
+          aria-expanded={filtersOpen}
+          aria-controls={filterBodyId}
+          className="flex items-baseline justify-between gap-3 text-left"
+        >
+          <span className="font-fraktur inline-flex items-baseline gap-2 text-lg text-parchment">
+            {filtersOpen ? (
+              <ChevronDown className="h-4 w-4 self-center text-ash" aria-hidden />
+            ) : (
+              <ChevronRight className="h-4 w-4 self-center text-ash" aria-hidden />
+            )}
+            Filters
+          </span>
+          {/* Collapsed, the count of ACTIVE filters is the load-bearing
+                      number: it is the only way to tell a short result list from a
+                      filtered one when the facets are hidden. */}
+          <span className="font-mono whitespace-nowrap text-xs text-ash">
+            {filtersOpen
+              ? `${list.length} ${list.length === 1 ? 'mod' : 'mods'}`
+              : activeFilters > 0
+                ? `${activeFilters} on`
+                : 'off'}
+          </span>
+        </button>
+
+        {filtersOpen ? (
+          <div id={filterBodyId} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <span className="font-mono text-xs uppercase tracking-widest text-ash">category</span>
+              <div className="flex flex-wrap gap-1.5">
+                <FilterChip active={category === null} onClick={() => setCategory(null)}>
+                  any
+                </FilterChip>
+                {facets.categories.map(([name, count]) => (
+                  <FilterChip
+                    key={name}
+                    active={category === name}
+                    onClick={() => setCategory(category === name ? null : name)}
+                  >
+                    {name} <span className="text-ash">{count}</span>
+                  </FilterChip>
+                ))}
+              </div>
+              {facets.categories.length === 0 ? (
+                <span className="font-serif-italic text-sm text-ash">nothing published yet</span>
+              ) : null}
+            </div>
+
+            {facets.tags.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                <span className="font-mono text-xs uppercase tracking-widest text-ash">tags</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {facets.tags.map(([name, count]) => (
+                    <FilterChip
+                      key={name}
+                      active={tags.includes(name)}
+                      onClick={() => toggleTag(name)}
+                    >
+                      {name} <span className="text-ash">{count}</span>
+                    </FilterChip>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <label className="flex flex-col gap-2">
+              <span className="font-mono text-xs uppercase tracking-widest text-ash">rating</span>
+              <select
+                value={minRating}
+                onChange={(e) => setMinRating(Number(e.target.value))}
+                aria-label="Minimum rating"
+                className="select-grim"
+              >
+                <option value={0}>any</option>
+                <option value={3}>★ 3+</option>
+                <option value={4}>★ 4+</option>
+                <option value={4.5}>★ 4.5+</option>
+              </select>
+            </label>
+
+            <label className="flex cursor-pointer items-start gap-2 text-parchment">
+              <input
+                type="checkbox"
+                checked={hideInstalled}
+                onChange={(e) => setHideInstalled(e.target.checked)}
+                className="mt-1 h-4 w-4 accent-crimson"
+              />
+              <span className="font-serif-italic text-sm">Hide what I already have</span>
+            </label>
+
+            {activeFilters > 0 ? (
+              <Button type="button" size="sm" onClick={clearFilters} className="w-full">
+                <X className="h-3.5 w-3.5" aria-hidden /> clear {activeFilters}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+      </aside>
+    ) : null;
 
   return (
     <div className="space-y-6">
@@ -233,226 +522,274 @@ function BrowsePage() {
                 <EyeOff className="h-3 w-3" /> NSFW
               </span>
             </label>
+            <fieldset className="ml-auto flex items-center gap-1">
+              <legend className="sr-only">Layout</legend>
+              <Button
+                type="button"
+                size="sm"
+                aria-pressed={view === 'grid'}
+                variant={view === 'grid' ? 'gilt' : 'default'}
+                onClick={() => update({ browseView: 'grid' })}
+                title="Cards"
+              >
+                <LayoutGrid className="h-3.5 w-3.5" aria-hidden /> cards
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                aria-pressed={view === 'list'}
+                variant={view === 'list' ? 'gilt' : 'default'}
+                onClick={() => update({ browseView: 'list' })}
+                title="List"
+              >
+                <Rows3 className="h-3.5 w-3.5" aria-hidden /> list
+              </Button>
+            </fieldset>
           </>
         ) : null}
       </div>
 
-      {error ? (
-        <div className="ember-banner flex flex-col gap-2 px-4 py-3">
-          <div className="flex items-center gap-3">
-            <WifiOff className="h-4 w-4 text-crimson shrink-0" />
-            <span className="font-serif-italic text-base">API unreachable.</span>
-            <CopyButton value={describeApiError(error)} />
-            <button
-              type="button"
-              onClick={() => window.open(getApiBaseUrl(), '_blank')}
-              className="font-mono text-xs text-ash underline-offset-2 hover:text-parchment hover:underline flex items-center gap-1"
-            >
-              <ExternalLink className="h-3 w-3" /> open in browser
-            </button>
-          </div>
-          <p className="font-serif-italic text-sm text-ash">{describeApiError(error)}</p>
-          <div className="font-mono text-xs text-ash bg-pitch/30 px-2 py-1 rounded">
-            {getApiBaseUrl()} <span className="text-oxblood/60">|</span> origin:{' '}
-            {window.location.origin}
-          </div>
-        </div>
-      ) : null}
+      {/* TWO columns, never three. Faceted search reads as a column beside the
+          results — but once a mod's page is open there is no room for a third,
+          so the filters fold into the index column (collapsed, see
+          `filtersOpen`) and the store page takes the whole right-hand side.
+          Squeezed into a middle column it had nowhere to put its own two-column
+          layout, and the index beside it was too narrow to show a mod's name.
 
-      {installError ? (
-        <div className="ember-banner flex items-center gap-3 px-4 py-3">
-          <span className="font-serif-italic text-base text-crimson flex-1">
-            Install failed: {installError}
-          </span>
-          <CopyButton value={installError} />
-          <Button type="button" size="sm" onClick={() => setInstallError(null)}>
-            dismiss
-          </Button>
-        </div>
-      ) : null}
-
-      {isLoading ? <BrowseSkeleton /> : null}
-
-      {tab === 'collections' ? (
-        <>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {collections.map((c) => (
-              <div
-                key={c.id}
-                tabIndex={0}
-                // biome-ignore lint/a11y/useSemanticElements: card link with nested interactive controls; <a> may not legally wrap them, so a guarded role="link" is used
-                role="link"
-                aria-label={c.name}
-                onClick={(e) => {
-                  const el = e.target as HTMLElement;
-                  if (el.closest('button, a, input, textarea, select, [role="switch"]')) return;
-                  navigate({ to: '/collection/$slug', params: { slug: c.slug } });
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    navigate({ to: '/collection/$slug', params: { slug: c.slug } });
-                  }
-                }}
-                className="grimoire-card flex flex-col gap-3 p-5 cursor-pointer transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60 focus:outline-none"
+          Below `lg` there is no second column at all, so everything stacks —
+          a filter you cannot reach is worse than one that costs a scroll. */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+        {selected ? (
+          <section aria-label="Mod details" className="min-w-0 flex-1 lg:order-2">
+            <div className="mb-2 flex items-center justify-end gap-2">
+              <Link
+                to="/mod/$slug"
+                params={{ slug: selected }}
+                className="font-mono text-xs text-ash underline-offset-2 hover:text-parchment hover:underline"
               >
-                {c.imageUrl ? (
-                  <Cover src={c.imageUrl} alt={`${c.name} cover`} caption={`${c.slug}.png`} />
-                ) : null}
-                <header className="flex items-start justify-between gap-3">
-                  <div>
-                    <Link
-                      to="/collection/$slug"
-                      params={{ slug: c.slug }}
-                      onClick={(e) => e.stopPropagation()}
-                      className="font-serif-italic text-xl leading-tight text-parchment hover:text-gilt"
-                    >
-                      {c.name}
-                    </Link>
-                    <p className="font-mono mt-1 text-ash">
-                      {c.ownerName ?? 'unknown'} · {c.modCount} mod{c.modCount === 1 ? '' : 's'}
-                    </p>
-                  </div>
-                </header>
-                {c.summary ? (
-                  <p className="font-serif-italic text-sm leading-snug text-smoke">{c.summary}</p>
-                ) : null}
-                <div className="mt-auto flex items-center justify-between gap-2">
-                  <span className="font-mono text-xs text-ash">
-                    updated {new Date(c.updatedAt).toLocaleDateString()}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-          {!isLoading && !error && collections.length === 0 ? (
-            <p className="font-serif-italic py-10 text-center text-ash">
-              {q.trim() ? 'No collections match that search.' : 'No public collections yet.'}
-            </p>
-          ) : null}
-        </>
-      ) : (
-        <>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {list.map((m) => {
-              const onDisk = installed.includes(m.slug);
-              // "In profile" must mean the mod is BOTH listed by the profile
-              // and actually on disk. A profile entry whose folder is gone
-              // (failed install, deleted outside the app) otherwise rendered
-              // as "in profile" with the install button disabled — leaving no
-              // way to install the mod it was pointing at.
-              const inProfile = profile.loadOrder.includes(m.slug) && onDisk;
-              return (
-                <div
-                  key={m.id}
-                  tabIndex={0}
-                  // biome-ignore lint/a11y/useSemanticElements: card link with nested interactive controls; <a> may not legally wrap them, so a guarded role="link" is used
-                  role="link"
-                  aria-label={`${m.name}${m.author ? ` by ${m.author}` : ''}`}
-                  onClick={(e) => {
-                    const el = e.target as HTMLElement;
-                    if (el.closest('button, a, input, textarea, select, [role="switch"]')) return;
-                    navigate({ to: '/mod/$slug', params: { slug: m.slug } });
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      navigate({ to: '/mod/$slug', params: { slug: m.slug } });
-                    }
-                  }}
-                  className="grimoire-card flex flex-col gap-3 p-5 cursor-pointer transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60 focus:outline-none"
+                open full page
+              </Link>
+              <Button type="button" size="sm" onClick={() => setSelected(null)}>
+                <X className="h-3.5 w-3.5" aria-hidden /> close
+              </Button>
+            </div>
+            <ModDetail slug={selected} embedded />
+          </section>
+        ) : null}
+
+        {/* Browsing: the filters get their own column on the right. */}
+        {selected ? null : filterPanel}
+
+        {/* With a mod open the results become an index column, wide enough for
+            a name and its install button and no wider. */}
+        <div
+          className={
+            selected
+              ? 'min-w-0 space-y-3 lg:order-1 lg:w-[22rem] lg:shrink-0'
+              : 'min-w-0 flex-1 space-y-4 lg:order-1'
+          }
+        >
+          {/* …and the filters ride along above it, collapsed. */}
+          {selected ? filterPanel : null}
+          {error ? (
+            <div className="ember-banner flex flex-col gap-2 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <WifiOff className="h-4 w-4 text-crimson shrink-0" />
+                <span className="font-serif-italic text-base">API unreachable.</span>
+                <CopyButton value={describeApiError(error)} />
+                <button
+                  type="button"
+                  onClick={() => window.open(getApiBaseUrl(), '_blank')}
+                  className="font-mono text-xs text-ash underline-offset-2 hover:text-parchment hover:underline flex items-center gap-1"
                 >
-                  {m.imageUrl ? (
-                    <Cover
-                      src={m.imageUrl}
-                      alt={`${m.name} cover`}
-                      caption={`${m.slug}.png`}
-                      nsfw={m.nsfw}
-                    />
-                  ) : null}
-                  <header className="flex items-start justify-between gap-3">
-                    <div>
-                      <Link
-                        to="/mod/$slug"
-                        params={{ slug: m.slug }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="font-serif-italic text-xl leading-tight text-parchment hover:text-gilt"
-                      >
-                        {m.name}
-                      </Link>
-                      <p className="font-mono mt-1 text-ash">
-                        {m.author ?? 'unknown'}
-                        {m.latestVersion ? ` · v${m.latestVersion}` : ''}
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openPicker(m.slug);
-                      }}
-                      disabled={inProfile || installing[m.slug]}
-                      variant={inProfile ? 'default' : 'primary'}
-                      size="sm"
-                      // The label cycles install → downloading → in profile,
-                      // each a different width. Without a floor the button
-                      // resizes mid-download and squeezes the title next to it.
-                      className="min-w-[7.5rem] justify-center whitespace-nowrap"
-                      title={
-                        inProfile
-                          ? `Already in "${profile.name}"`
-                          : onDisk
-                            ? `On disk — click to add to "${profile.name}"`
-                            : `Download from index + add to "${profile.name}"`
-                      }
-                    >
-                      {installing[m.slug] ? (
-                        <>
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" /> downloading
-                        </>
-                      ) : inProfile ? (
-                        <>
-                          <CheckIcon className="h-4 w-4" /> in profile
-                        </>
-                      ) : onDisk ? (
-                        <>
-                          <Plus className="h-3.5 w-3.5" /> add
-                        </>
-                      ) : (
-                        <>
-                          <Plus className="h-3.5 w-3.5" /> install
-                        </>
-                      )}
-                    </Button>
-                  </header>
-                  {m.summary ? (
-                    <p className="font-serif-italic text-sm leading-snug text-smoke">{m.summary}</p>
-                  ) : null}
-                  <div className="mt-auto flex items-center justify-between gap-2">
-                    <div className="flex flex-wrap gap-1">
-                      {m.category ? <MonoTag tone="default">{m.category}</MonoTag> : null}
-                      {m.tags.slice(0, 2).map((t) => (
-                        <MonoTag key={t} tone="default">
-                          {t}
-                        </MonoTag>
-                      ))}
-                    </div>
-                    <StatPill
-                      value={m.rating != null ? `★ ${m.rating.toFixed(1)}` : '—'}
-                      label={`${m.downloads.toLocaleString()} dl`}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          {!isLoading && !error && list.length === 0 ? (
-            <p className="font-serif-italic py-10 text-center text-ash">
-              {q.trim() ? 'No mods match that search.' : 'No mods published to the index yet.'}
-            </p>
+                  <ExternalLink className="h-3 w-3" /> open in browser
+                </button>
+              </div>
+              <p className="font-serif-italic text-sm text-ash">{describeApiError(error)}</p>
+              <div className="font-mono text-xs text-ash bg-pitch/30 px-2 py-1 rounded">
+                {getApiBaseUrl()} <span className="text-oxblood/60">|</span> origin:{' '}
+                {window.location.origin}
+              </div>
+            </div>
           ) : null}
-        </>
-      )}
+
+          {installError ? (
+            <div className="ember-banner flex items-center gap-3 px-4 py-3">
+              <span className="font-serif-italic text-base text-crimson flex-1">
+                Install failed: {installError}
+              </span>
+              <CopyButton value={installError} />
+              <Button type="button" size="sm" onClick={() => setInstallError(null)}>
+                dismiss
+              </Button>
+            </div>
+          ) : null}
+
+          {isLoading ? <BrowseSkeleton /> : null}
+
+          {tab === 'collections' ? (
+            <>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {collections.map((c) => (
+                  <div
+                    key={c.id}
+                    tabIndex={0}
+                    // biome-ignore lint/a11y/useSemanticElements: card link with nested interactive controls; <a> may not legally wrap them, so a guarded role="link" is used
+                    role="link"
+                    aria-label={c.name}
+                    onClick={(e) => {
+                      const el = e.target as HTMLElement;
+                      if (el.closest('button, a, input, textarea, select, [role="switch"]')) return;
+                      navigate({ to: '/collection/$slug', params: { slug: c.slug } });
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        navigate({ to: '/collection/$slug', params: { slug: c.slug } });
+                      }
+                    }}
+                    className="grimoire-card flex flex-col gap-3 p-5 cursor-pointer transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60 focus:outline-none"
+                  >
+                    {c.imageUrl ? (
+                      <Cover src={c.imageUrl} alt={`${c.name} cover`} caption={`${c.slug}.png`} />
+                    ) : null}
+                    <header className="flex items-start justify-between gap-3">
+                      <div>
+                        <Link
+                          to="/collection/$slug"
+                          params={{ slug: c.slug }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="font-serif-italic text-xl leading-tight text-parchment hover:text-gilt"
+                        >
+                          {c.name}
+                        </Link>
+                        <p className="font-mono mt-1 text-ash">
+                          {c.ownerName ?? 'unknown'} · {c.modCount} mod{c.modCount === 1 ? '' : 's'}
+                        </p>
+                      </div>
+                    </header>
+                    {c.summary ? (
+                      <p className="font-serif-italic text-sm leading-snug text-smoke">
+                        {c.summary}
+                      </p>
+                    ) : null}
+                    <div className="mt-auto flex items-center justify-between gap-2">
+                      <span className="font-mono text-xs text-ash">
+                        updated {new Date(c.updatedAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {!isLoading && !error && collections.length === 0 ? (
+                <p className="font-serif-italic py-10 text-center text-ash">
+                  {q.trim() ? 'No collections match that search.' : 'No public collections yet.'}
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <div
+                className={
+                  view === 'list'
+                    ? 'flex flex-col gap-2'
+                    : 'grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3'
+                }
+              >
+                {view === 'list'
+                  ? list.map((m) => (
+                      <ModRow
+                        key={m.id}
+                        m={m}
+                        active={selected === m.slug}
+                        compact={selected !== null}
+                        onOpen={() => setSelected(m.slug)}
+                        install={<InstallButton m={m} />}
+                      />
+                    ))
+                  : list.map((m) => {
+                      return (
+                        <div
+                          key={m.id}
+                          tabIndex={0}
+                          // biome-ignore lint/a11y/useSemanticElements: card link with nested interactive controls; <a> may not legally wrap them, so a guarded role="link" is used
+                          role="link"
+                          aria-label={`${m.name}${m.author ? ` by ${m.author}` : ''}`}
+                          onClick={(e) => {
+                            const el = e.target as HTMLElement;
+                            if (el.closest('button, a, input, textarea, select, [role="switch"]'))
+                              return;
+                            navigate({ to: '/mod/$slug', params: { slug: m.slug } });
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              navigate({ to: '/mod/$slug', params: { slug: m.slug } });
+                            }
+                          }}
+                          aria-current={selected === m.slug ? 'true' : undefined}
+                          className={`grimoire-card flex cursor-pointer flex-col gap-3 p-5 transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60 focus:outline-none ${
+                            selected === m.slug ? 'border-gilt/70 bg-gilt/5' : ''
+                          }`}
+                        >
+                          {m.imageUrl ? (
+                            <Cover
+                              src={m.imageUrl}
+                              alt={`${m.name} cover`}
+                              caption={`${m.slug}.png`}
+                              nsfw={m.nsfw}
+                            />
+                          ) : null}
+                          <header className="flex items-start justify-between gap-3">
+                            <div>
+                              <Link
+                                to="/mod/$slug"
+                                params={{ slug: m.slug }}
+                                onClick={(e) => e.stopPropagation()}
+                                className="font-serif-italic text-xl leading-tight text-parchment hover:text-gilt"
+                              >
+                                {m.name}
+                              </Link>
+                              <p className="font-mono mt-1 text-ash">
+                                {m.author ?? 'unknown'}
+                                {m.latestVersion ? ` · v${m.latestVersion}` : ''}
+                              </p>
+                            </div>
+                            <InstallButton m={m} />
+                          </header>
+                          {m.summary ? (
+                            <p className="font-serif-italic text-sm leading-snug text-smoke">
+                              {m.summary}
+                            </p>
+                          ) : null}
+                          <div className="mt-auto flex items-center justify-between gap-2">
+                            <div className="flex flex-wrap gap-1">
+                              {m.category ? <MonoTag tone="default">{m.category}</MonoTag> : null}
+                              {m.tags.slice(0, 2).map((t) => (
+                                <MonoTag key={t} tone="default">
+                                  {t}
+                                </MonoTag>
+                              ))}
+                            </div>
+                            <StatPill
+                              value={m.rating != null ? `★ ${m.rating.toFixed(1)}` : '—'}
+                              label={`${m.downloads.toLocaleString()} dl`}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+              </div>
+              {!isLoading && !error && list.length === 0 ? (
+                <p className="font-serif-italic py-10 text-center text-ash">
+                  {q.trim() ? 'No mods match that search.' : 'No mods published to the index yet.'}
+                </p>
+              ) : null}
+            </>
+          )}
+        </div>
+      </div>
+
       {pickerSlug ? (
         <ProfilePicker
           slug={pickerSlug}
@@ -463,6 +800,130 @@ function BrowsePage() {
         />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * One mod as a dense row.
+ *
+ * The card view is for discovery — cover art, summary, room to breathe. This is
+ * for comparison: everything on one line, so the eye can run down a column of
+ * ratings or download counts instead of hopping around a grid.
+ *
+ * The install control is passed IN rather than rebuilt here. It carries four
+ * states and a width floor, and a second copy would drift from the card's the
+ * first time either was touched.
+ */
+/**
+ * @param compact  the row is in a narrow column (the split view's index), so
+ *                 drop the stat columns. They are hidden by `md:`/`lg:`
+ *                 breakpoints otherwise — and those measure the VIEWPORT, not
+ *                 this row's container, so on a wide window they kept rendering
+ *                 inside an 18rem column and squeezed the mod name to nothing.
+ */
+function ModRow({
+  m,
+  install,
+  onOpen,
+  active,
+  compact = false,
+}: {
+  m: ModListItem;
+  install: React.ReactNode;
+  onOpen: () => void;
+  active: boolean;
+  compact?: boolean;
+}) {
+  const open = onOpen;
+  return (
+    <div
+      tabIndex={0}
+      // biome-ignore lint/a11y/useSemanticElements: row link with nested interactive controls; <a> may not legally wrap them, so a guarded role="link" is used
+      role="link"
+      aria-label={`${m.name}${m.author ? ` by ${m.author}` : ''}`}
+      onClick={(e) => {
+        const el = e.target as HTMLElement;
+        if (el.closest('button, a, input, textarea, select, [role="switch"]')) return;
+        open();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          open();
+        }
+      }}
+      aria-current={active ? 'true' : undefined}
+      className={`grimoire-card flex cursor-pointer items-center gap-3 px-3 py-2 transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60 focus:outline-none ${
+        active ? 'border-gilt/70 bg-gilt/5' : ''
+      }`}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          {/* Plain text, NOT a link to the full page.
+              The row selects; the name is the most obvious thing to aim at, and
+              having it navigate away instead meant a slightly-off click threw
+              you out of the list you were working through. The detail panel
+              carries an explicit "open full page" for when that IS the intent. */}
+          <span className="font-serif-italic truncate text-base leading-tight text-parchment">
+            {m.name}
+          </span>
+          {m.nsfw ? (
+            <span className="font-mono shrink-0 rounded border border-crimson/30 bg-crimson/10 px-1 text-[10px] uppercase tracking-widest text-crimson/80">
+              nsfw
+            </span>
+          ) : null}
+        </div>
+        <p className="font-mono truncate text-xs text-ash">
+          {m.author ?? 'unknown'}
+          {m.latestVersion ? ` · v${m.latestVersion}` : ''}
+          {m.summary ? ` — ${m.summary}` : ''}
+        </p>
+      </div>
+
+      {/* Category and rating are the two columns worth scanning down, so they
+          get fixed slots rather than flowing with the title's length. Hidden on
+          a narrow window instead of crushing the name. */}
+      {compact ? null : (
+        <>
+          <div className="hidden w-24 shrink-0 md:block">
+            {m.category ? <MonoTag tone="default">{m.category}</MonoTag> : null}
+          </div>
+          <div className="font-mono hidden w-16 shrink-0 text-right text-xs text-gilt lg:block">
+            {m.rating != null ? `★ ${m.rating.toFixed(1)}` : '—'}
+          </div>
+          <div className="font-mono hidden w-20 shrink-0 text-right text-xs text-ash lg:block">
+            {m.downloads.toLocaleString()} dl
+          </div>
+        </>
+      )}
+      <div className="shrink-0">{install}</div>
+    </div>
+  );
+}
+
+/** One toggleable facet in the filter bar. */
+function FilterChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`font-mono rounded border px-2 py-0.5 text-xs lowercase transition-colors duration-150 ${
+        active
+          ? 'border-gilt/70 bg-gilt/15 text-parchment'
+          : 'border-border text-smoke hover:border-gilt/40 hover:text-parchment'
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_ANIMATIONS,
   DEFAULT_FONT,
   DEFAULT_FONT_SCALE,
   FONT_CHOICES,
@@ -7,6 +8,7 @@ import {
   MAX_FONT_SCALE,
   MIN_FONT_SCALE,
   applyAppearance,
+  normalizeAnimations,
   normalizeFont,
   normalizeFontScale,
 } from './appearance';
@@ -60,7 +62,35 @@ function fakeRoot() {
   return { el: el as unknown as HTMLElement, vars, dataset };
 }
 
+describe('animation preference', () => {
+  it('is on unless explicitly turned off', () => {
+    expect(normalizeAnimations(true)).toBe(true);
+    expect(normalizeAnimations(false)).toBe(false);
+  });
+
+  it('reads a missing key as the default, not as off', () => {
+    // An older build's persisted settings carry no `animations` at all, and
+    // reading `undefined` as "off" would silently freeze the UI on upgrade.
+    expect(normalizeAnimations(undefined)).toBe(DEFAULT_ANIMATIONS);
+    expect(normalizeAnimations(null)).toBe(DEFAULT_ANIMATIONS);
+    expect(normalizeAnimations('nonsense')).toBe(DEFAULT_ANIMATIONS);
+    expect(normalizeAnimations(0)).toBe(DEFAULT_ANIMATIONS);
+  });
+});
+
 describe('applyAppearance', () => {
+  it('writes motion as an attribute the stylesheet keys off', () => {
+    const { el, dataset } = fakeRoot();
+    applyAppearance({ animations: false }, el);
+    expect(dataset.motion).toBe('reduced');
+    applyAppearance({ animations: true }, el);
+    expect(dataset.motion).toBe('full');
+    // No stored preference must not read as "reduced" — that would stop the
+    // UI animating for every existing install on the first launch after this.
+    applyAppearance({}, el);
+    expect(dataset.motion).toBe('full');
+  });
+
   it('writes density as an attribute the stylesheet keys off', () => {
     const { el, dataset } = fakeRoot();
     applyAppearance({ density: 'compact' }, el);

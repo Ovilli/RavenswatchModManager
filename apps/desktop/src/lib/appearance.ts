@@ -94,6 +94,27 @@ export function normalizeFontScale(value: unknown): number {
   return Math.min(MAX_FONT_SCALE, Math.max(MIN_FONT_SCALE, Math.round(n)));
 }
 
+/**
+ * Whether the UI animates.
+ *
+ * Written as `data-motion` on <html>; the stylesheet collapses every animation
+ * and transition duration under `[data-motion='reduced']`. Durations rather
+ * than `animation: none`, because a few entrances animate opacity from 0 and
+ * killing the animation outright can strand an element invisible.
+ *
+ * The OS `prefers-reduced-motion` block in the stylesheet is left alone and
+ * still wins on its own: this switch can turn animation OFF for someone whose
+ * system never asked, and it deliberately cannot turn it back ON for someone
+ * whose system did.
+ */
+export const DEFAULT_ANIMATIONS = true;
+
+export function normalizeAnimations(value: unknown): boolean {
+  // Only an explicit `false` disables. An older build's payload has no such
+  // key at all, and `undefined` must read as the default rather than as off.
+  return value === false ? false : DEFAULT_ANIMATIONS;
+}
+
 export type Density = 'cozy' | 'compact';
 
 export const DEFAULT_DENSITY: Density = 'cozy';
@@ -103,7 +124,7 @@ export function normalizeDensity(value: unknown): Density {
 }
 
 export function applyAppearance(
-  settings: { fontFamily?: unknown; fontScale?: unknown; density?: unknown },
+  settings: { fontFamily?: unknown; fontScale?: unknown; density?: unknown; animations?: unknown },
   root: HTMLElement | null = typeof document === 'undefined' ? null : document.documentElement,
 ): void {
   if (!root) return;
@@ -119,4 +140,5 @@ export function applyAppearance(
   // Density is a CSS-only switch: the stylesheet keys padding overrides off
   // this attribute. Until now the setting was stored and read by nobody.
   root.dataset.density = normalizeDensity(settings.density);
+  root.dataset.motion = normalizeAnimations(settings.animations) ? 'full' : 'reduced';
 }

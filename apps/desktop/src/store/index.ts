@@ -1,10 +1,12 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import {
+  DEFAULT_ANIMATIONS,
   DEFAULT_FONT,
   DEFAULT_FONT_SCALE,
   type Density,
   type FontChoice,
+  normalizeAnimations,
   normalizeDensity,
   normalizeFont,
   normalizeFontScale,
@@ -76,6 +78,14 @@ export interface AppSettings {
   /** Root font size as a percentage of the browser default (16px). Every
    * rem-based utility scales with it, so this resizes the whole UI. */
   fontScale: number;
+  /** When true the sidebar shows icons only, with the labels hidden. */
+  sidebarCollapsed: boolean;
+  /** How the store lists mods: roomy cards, or a dense row per mod. */
+  browseView: 'grid' | 'list';
+  /** When false, the UI stops animating. Applied by `applyAppearance` as
+   * `data-motion` on <html>. The OS reduced-motion preference still wins on
+   * its own — this only adds a way to opt out without one. */
+  animations: boolean;
   /** When false, NSFW mod images are blurred. */
   showNsfw: boolean;
   /** Send frontend crash reports to the RSMM API. Local launcher-log entries
@@ -277,6 +287,11 @@ export function hydrateSettings(
     fontFamily: normalizeFont(merged.fontFamily),
     fontScale: normalizeFontScale(merged.fontScale),
     density: normalizeDensity(merged.density),
+    animations: normalizeAnimations(merged.animations),
+    // Same "explicit true only" shape as the flags above: an older build's
+    // payload has no such key, and `undefined` must read as expanded.
+    sidebarCollapsed: merged.sidebarCollapsed === true,
+    browseView: merged.browseView === 'list' ? 'list' : 'grid',
     // Anything that isn't an explicit `false` keeps reporting on — but a
     // stored `false` must survive, so this can't be a truthiness coercion
     // of a possibly-undefined value.
@@ -300,6 +315,9 @@ export const useApp = create<State>()(
         showNsfw: false,
         sources: ['https://rsmm.me/registry'],
         density: 'cozy',
+        animations: DEFAULT_ANIMATIONS,
+        sidebarCollapsed: false,
+        browseView: 'grid',
         crashReports: true,
         fontFamily: DEFAULT_FONT,
         fontScale: DEFAULT_FONT_SCALE,

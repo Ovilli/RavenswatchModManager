@@ -1352,6 +1352,32 @@ def cmd_update_loader(check_only: bool) -> int:
         return _emit({"ok": False, "status": "error", "error": str(e)})
 
 
+def cmd_changelog(refresh: bool) -> int:
+    """
+    Read the rolling release-notes channel.
+
+    Notes ship out of band from the app bundle so a loader-channel fix (or a
+    correction to a note already shipped) can reach users without a desktop
+    release. The payload is display text only and is bounded + sanitized in
+    rsmm.engine.changelog_feed before it gets here.
+    """
+    try:
+        from rsmm.engine.changelog_feed import check
+
+        state = check(force=refresh)
+        return _emit({
+            # "unavailable" is the only genuine failure — offline with a
+            # cached copy is a usable answer, just possibly a stale one.
+            "ok": state["status"] != "unavailable",
+            "status": state["status"],
+            "generated": state["generated"],
+            "entries": state["entries"],
+            "error": state["error"],
+        })
+    except Exception as e:  # noqa: BLE001 — bridge must always emit JSON
+        return _emit({"ok": False, "status": "error", "entries": [], "error": str(e)})
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="rsmm json",
@@ -1414,6 +1440,10 @@ def main(argv: list[str] | None = None) -> int:
         "update-loader", help="fetch + install the signed loader DLL + Lua SDK")
     p_upd_loader.add_argument("--check", action="store_true",
                               help="report status only, do not install")
+    p_changelog = sub.add_parser(
+        "changelog", help="read release notes from the rolling changelog channel")
+    p_changelog.add_argument("--refresh", action="store_true",
+                             help="re-fetch even if the cached copy is fresh")
 
     args = ap.parse_args(argv)
     if args.cmd == "list":
@@ -1468,6 +1498,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_update_data(args.check)
     if args.cmd == "update-loader":
         return cmd_update_loader(args.check)
+    if args.cmd == "changelog":
+        return cmd_changelog(args.refresh)
     if args.cmd == "loader-flags":
         if args.flags_cmd == "get":
             return cmd_loader_flags_get()

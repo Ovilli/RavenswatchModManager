@@ -6,7 +6,12 @@ import { useApp } from '../store';
 import { CheckIcon } from './icons/CheckIcon';
 import { useDialog, useToast } from './toast';
 
-export function ProfilePopover() {
+/**
+ * @param compact  render for a toolbar rather than a sidebar column: one row
+ *                 sized to its content instead of a two-line block filling the
+ *                 available width.
+ */
+export function ProfilePopover({ compact = false }: { compact?: boolean } = {}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -67,25 +72,48 @@ export function ProfilePopover() {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={menuId}
-        className="flex w-full items-center justify-between border border-border bg-pitch/60 px-3 py-2 text-left hover:border-gilt/50 transition-colors duration-150"
+        className={
+          compact
+            ? 'flex max-w-[18rem] items-center gap-2 border border-border bg-pitch/60 px-2.5 py-1 text-left transition-colors duration-150 hover:border-gilt/50'
+            : 'flex w-full items-center justify-between border border-border bg-pitch/60 px-3 py-2 text-left transition-colors duration-150 hover:border-gilt/50'
+        }
       >
-        <span className="min-w-0 flex-1">
-          <span className="block font-mono text-ash">profile</span>
-          <span
-            className="block truncate font-serif-italic text-lg text-parchment"
-            title={active?.name}
-          >
-            {active?.name}
+        {compact ? (
+          <>
+            <span className="font-mono shrink-0 text-xs text-ash">profile</span>
+            <span
+              className="min-w-0 truncate font-serif-italic text-parchment"
+              title={active?.name}
+            >
+              {active?.name}
+            </span>
+          </>
+        ) : (
+          <span className="min-w-0 flex-1">
+            <span className="block font-mono text-ash">profile</span>
+            <span
+              className="block truncate font-serif-italic text-lg text-parchment"
+              title={active?.name}
+            >
+              {active?.name}
+            </span>
           </span>
-        </span>
-        <ChevronDown className="h-4 w-4 text-ash" aria-hidden />
+        )}
+        <ChevronDown className="h-4 w-4 shrink-0 text-ash" aria-hidden />
       </button>
 
       {open ? (
         <div
           id={menuId}
           role="menu"
-          className="absolute left-0 right-0 top-full z-40 mt-1 grimoire-card animate-fade-in"
+          // Sidebar: match the trigger's column width. Toolbar: the trigger is
+          // sized to a profile name, which is far too narrow to list several of
+          // them, so the menu gets its own width and hangs from the left edge.
+          className={
+            compact
+              ? 'grimoire-card animate-fade-in absolute left-0 top-full z-40 mt-1 w-72'
+              : 'grimoire-card animate-fade-in absolute left-0 right-0 top-full z-40 mt-1'
+          }
         >
           <ul className="max-h-72 overflow-y-auto py-1">
             {profiles.map((p) => (

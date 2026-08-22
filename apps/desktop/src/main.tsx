@@ -21,14 +21,14 @@ wireGlobalErrorHandlers();
 // The store rehydrates from localStorage synchronously, so getState() here
 // already carries the user's saved choice.
 applyAppearance(useApp.getState().settings);
+// Re-apply on ANY settings change, rather than diffing the appearance fields
+// by name. The named list was `fontFamily`/`fontScale`/`density`, so the
+// animation toggle added later did nothing until the next launch — a setting
+// that silently needs a restart reads as a broken setting. `updateSettings`
+// replaces the settings object wholesale, so this identity check catches every
+// edit, and `applyAppearance` is a handful of idempotent style writes.
 useApp.subscribe((state, prev) => {
-  if (
-    state.settings.fontFamily !== prev.settings.fontFamily ||
-    state.settings.fontScale !== prev.settings.fontScale ||
-    state.settings.density !== prev.settings.density
-  ) {
-    applyAppearance(state.settings);
-  }
+  if (state.settings !== prev.settings) applyAppearance(state.settings);
 });
 
 // Handle the desktop OAuth relay deep link: rsmm://desktop-auth?token=…

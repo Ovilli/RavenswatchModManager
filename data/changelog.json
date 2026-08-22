@@ -1,0 +1,49 @@
+{
+  "generated": "2026-08-22",
+  "entries": [
+    {
+      "version": "5.1.0",
+      "date": "2026-08-22",
+      "summary": "Release notes now update on their own, the store gained filters and a list view, and the damage meter stops lagging co-op runs.",
+      "highlights": [
+        "Release notes ship on their own channel, so a loader or scripting fix can announce itself without waiting for a launcher build. What's new appears once after an update, and lives in Settings under About.",
+        "Fixed the damage meter lagging co-op runs. A player whose name is not plain ASCII, such as 7♣, read back as nameless, and that left two identity searches running for the whole match instead of stopping once every row was named.",
+        "The damage meter now lists everyone in the lobby, including players who have not dealt damage yet. A support who spends the opening minutes healing was previously missing from the board entirely.",
+        "The store has filters for category, tag and rating, a switch to hide mods you already have, and a dense list view beside the existing cards. Picking a mod in the list opens its page next to the results.",
+        "Settings gained an About tab and moved to the foot of the sidebar, which now collapses to icons.",
+        "Interface animations can be turned off in Settings, and the hover movement is gone.",
+        "The launcher and game loader versions are shown in the corner of the window."
+      ]
+    },
+    {
+      "version": "5.0.2",
+      "date": "2026-08-20",
+      "summary": "Damage-meter ally names, and the loader version is now visible in Settings.",
+      "highlights": [
+        "Ally rows in the damage meter are named from the netcode peer table instead of a positional guess, so names stay correct in co-op.",
+        "Settings shows the running launcher version alongside the planted game-loader version, with pending updates for each.",
+        "Refreshed the function-pattern database against the 2026-08-20 game build."
+      ]
+    },
+    {
+      "version": "5.0.1",
+      "date": "2026-08-16",
+      "summary": "Damage-meter accuracy and a banner for loader-channel updates.",
+      "highlights": [
+        "The damage board no longer counts destructible props as combatants.",
+        "The identity scan that could stall the game during a run has been retired.",
+        "Loader and Lua SDK updates now announce themselves in-app, including when Ravenswatch is holding the loader open and needs closing first."
+      ]
+    },
+    {
+      "version": "5.0.0",
+      "date": "2026-08-14",
+      "summary": "The game loader and Lua SDK now update without a launcher release.",
+      "highlights": [
+        "A signed rolling update channel ships the loader DLL and Lua SDK straight into the game directory, so a scripting fix no longer waits on a full launcher release and reinstall.",
+        "Every payload is verified against the same signing key as the launcher itself, with a fixed destination allowlist. There is no unsigned path.",
+        "RSMM_GAME_DIR is honoured everywhere the game directory is resolved."
+      ]
+    }
+  ]
+}

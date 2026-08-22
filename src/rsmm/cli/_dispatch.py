@@ -72,6 +72,7 @@ BUILTIN = {
     "symbols":           "rsmm.cli.cmd_symbols",
     "update-data":       "rsmm.cli.cmd_update_data",
     "update-loader":     "rsmm.cli.cmd_update_loader",
+    "changelog":         "rsmm.cli.cmd_changelog",
     "completion":        "rsmm.cli.cmd_completion",
 }
 
@@ -174,6 +175,7 @@ COMMAND_GROUPS: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
     )),
     ("system", (
         ("home",     "",                           "the interactive home screen (bare `rsmm`)"),
+        ("changelog", "[--refresh] [-n N]",        "release notes from the rolling channel"),
         ("doctor",   "",                           "system health check (recommended often)"),
         ("sdk-doctor", "",                         "diagnose the SDK/loader surface"),
         ("safe-mode", "",                          "disable every mod and re-apply"),

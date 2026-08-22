@@ -358,6 +358,51 @@ export function UpdaterBanner() {
   return null;
 }
 
+/**
+ * The two versions that matter, parked in the bottom-right corner.
+ *
+ * They are two SEPARATE channels and a bug report is nearly useless without
+ * both: the launcher ships through the Tauri updater, while the game loader and
+ * Lua SDK update out of band (see rsmm.engine.loader_update), so the pair can
+ * legitimately disagree. Settings shows the same numbers with the update
+ * controls; this is the at-a-glance copy.
+ *
+ * `checkOnly` — a read of what is planted in the game directory. Nothing is
+ * written, and a failure leaves the loader half absent rather than showing an
+ * error in the corner of every screen.
+ */
+export function VersionFooter() {
+  const [appVersion, setAppVersion] = useState<string>(pkg.version ?? '0.0.0');
+  const [loaderVersion, setLoaderVersion] = useState<number | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void getAppVersion().then((v) => {
+      if (alive && v) setAppVersion(v);
+    });
+    void updateLoader({ checkOnly: true })
+      .then((r) => {
+        if (alive && r?.installedVersion != null) setLoaderVersion(r.installedVersion);
+      })
+      .catch(() => {
+        /* offline, or no game directory — the loader half just stays quiet */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  return (
+    // `pointer-events-none`: this is a caption, not a control, and it sits over
+    // the scrolling content — it must never eat a click meant for what is
+    // underneath it.
+    <div className="font-mono pointer-events-none fixed bottom-1.5 right-3 z-10 select-none text-[10px] leading-tight text-ash/60">
+      <span>launcher v{appVersion}</span>
+      {loaderVersion != null ? <span> · loader v{loaderVersion}</span> : null}
+    </div>
+  );
+}
+
 /** One "Name — vX" row in the versions block. */
 function VersionRow({
   label,

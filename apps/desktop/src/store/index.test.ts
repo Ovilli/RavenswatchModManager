@@ -57,6 +57,28 @@ function profileById(id: string): Profile {
 
 beforeEach(resetStore);
 
+describe('sidebar collapse setting', () => {
+  it('defaults to expanded', () => {
+    expect(useApp.getState().settings.sidebarCollapsed).toBe(false);
+  });
+
+  it('round-trips through updateSettings', () => {
+    useApp.getState().updateSettings({ sidebarCollapsed: true });
+    expect(useApp.getState().settings.sidebarCollapsed).toBe(true);
+    useApp.getState().updateSettings({ sidebarCollapsed: false });
+    expect(useApp.getState().settings.sidebarCollapsed).toBe(false);
+  });
+
+  it('reads a missing key from an older build as expanded', () => {
+    // Only an explicit `true` collapses. A persisted payload written before
+    // this setting existed has no such key, and `undefined` must not be
+    // coerced into hiding every label on the first launch after an update.
+    const base = useApp.getState().settings;
+    expect(hydrateSettings(base, {}).sidebarCollapsed).toBe(false);
+    expect(hydrateSettings(base, { sidebarCollapsed: true }).sidebarCollapsed).toBe(true);
+  });
+});
+
 describe('share codes (export/import round-trip)', () => {
   it('round-trips a profile, preserving the disabled Set', () => {
     const s = useApp.getState();

@@ -163,15 +163,19 @@ export function CommandPalette() {
 
   const actions = useMemo<PaletteAction[]>(() => {
     const go = (
-      to: '/' | '/browse' | '/profiles' | '/conflicts' | '/commands' | '/settings' | '/about',
+      to: '/' | '/browse' | '/profiles' | '/conflicts' | '/commands' | '/settings',
       label: string,
       keywords: string,
+      // Settings groups its panels into tabs and `?tab=` opens one directly, so
+      // "About" can stay its own palette entry now that it is no longer a page.
+      search?: { tab: string },
     ): PaletteAction => ({
-      id: `go:${to}`,
+      // `to` alone is no longer unique — two entries land on /settings.
+      id: `go:${to}${search?.tab ? `?tab=${search.tab}` : ''}`,
       label,
       keywords,
       hint: 'go',
-      run: () => navigate({ to }),
+      run: () => navigate(search ? { to, search } : { to }),
     });
     return [
       {
@@ -218,7 +222,7 @@ export function CommandPalette() {
       go('/conflicts', 'Conflicts', 'clash overlap same file'),
       go('/commands', 'Commands', 'apply build doctor terminal'),
       go('/settings', 'Settings', 'paths font size density options preferences'),
-      go('/about', 'About', 'version credits'),
+      go('/settings', 'About', 'version credits release notes', { tab: 'about' }),
     ];
   }, [navigate, launch, launchBusy, toast, overlayActions]);
 

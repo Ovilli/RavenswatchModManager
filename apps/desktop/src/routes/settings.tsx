@@ -1,7 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { invoke } from '@tauri-apps/api/core';
-import { ChevronDown, EyeOff, ShieldAlert, Trash2 } from 'lucide-react';
+import { ChevronDown, EyeOff, ShieldAlert, Sparkles, Trash2 } from 'lucide-react';
 import { type KeyboardEvent, useEffect, useMemo, useState } from 'react';
+import { AboutPanels } from '../components/about-panels';
 import { Fleuron, Panel, SectionHeader } from '../components/chrome';
 import { useLaunch } from '../components/launch';
 import { useToast } from '../components/toast';
@@ -28,6 +29,12 @@ import { useApp } from '../store';
 
 export const Route = createFileRoute('/settings')({
   component: SettingsPage,
+  // Only ever a hint at which group to open. Anything unrecognised is dropped
+  // rather than rejected — a stale link should still show Settings. The key is
+  // OMITTED when absent, not set to undefined: a declared-but-undefined search
+  // param makes `search` a required prop on every <Link to="/settings">.
+  validateSearch: (search: Record<string, unknown>): { tab?: string } =>
+    typeof search.tab === 'string' ? { tab: search.tab } : {},
 });
 
 /** Poll cadence for the launcher log while a launch is live. */
@@ -53,15 +60,27 @@ const DENSITY_CHOICES: { value: Density; hint: string }[] = [
  */
 const TABS = [
   { id: 'general', label: 'General', hint: 'Paths, mod sources, updates' },
-  { id: 'appearance', label: 'Appearance', hint: 'Typeface, density, content' },
+  { id: 'appearance', label: 'Appearance', hint: 'Typeface, density, motion, content' },
   { id: 'game', label: 'Game', hint: 'Loader features, graphics' },
   { id: 'diagnostics', label: 'Diagnostics', hint: 'Launcher log, crash reports' },
+  { id: 'about', label: 'About', hint: 'Version, release notes, credits' },
 ] as const;
 
 type SettingsTab = (typeof TABS)[number]['id'];
 
+const TAB_IDS = TABS.map((t) => t.id) as readonly string[];
+
+function isTab(value: unknown): value is SettingsTab {
+  return typeof value === 'string' && TAB_IDS.includes(value);
+}
+
 function SettingsPage() {
-  const [tab, setTab] = useState<SettingsTab>('general');
+  // Seeded from `?tab=`, so a link can land on a specific group — the command
+  // palette's "About" entry is the reason this exists. Kept in local state
+  // afterwards rather than driven by the URL: switching tabs is not navigation
+  // and should not stack up history entries to back out of.
+  const initial = Route.useSearch().tab;
+  const [tab, setTab] = useState<SettingsTab>(isTab(initial) ? initial : 'general');
 
   return (
     <div className="space-y-6">
@@ -95,6 +114,7 @@ function SettingsPage() {
             <PrivacyPanel />
           </>
         ) : null}
+        {tab === 'about' ? <AboutPanels /> : null}
       </div>
     </div>
   );
@@ -459,6 +479,23 @@ function AppearancePanel() {
           </label>
         ))}
       </fieldset>
+      <Fleuron className="my-3" />
+      <label className="flex cursor-pointer items-start gap-3 text-parchment">
+        <input
+          type="checkbox"
+          checked={settings.animations}
+          onChange={(e) => update({ animations: e.target.checked })}
+          className="mt-1 h-4 w-4 accent-crimson"
+        />
+        <span>
+          <span className="font-mono text-sm flex items-center gap-2">Animate the interface</span>
+          <span className="font-serif-italic mt-1 block text-sm text-ash">
+            Page entrances, hover lifts and the button glow. Turn it off for a still interface —
+            useful on a slow machine, or if motion bothers you. If your system already asks for
+            reduced motion, that is honoured whatever this says.
+          </span>
+        </span>
+      </label>
       <Fleuron className="my-3" />
       <label className="flex cursor-pointer items-center gap-3 text-parchment">
         <input

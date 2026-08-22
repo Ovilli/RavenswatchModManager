@@ -325,20 +325,45 @@ export function MonoTag({
   );
 }
 
+/** @param compact  for a header inside a panel rather than at the top of a
+ *                  page — smaller type, less air above and below. */
 export function SectionHeader({
   title,
   subtitle,
   right,
+  compact = false,
 }: {
   title: string;
   subtitle?: string;
   right?: ReactNode;
+  compact?: boolean;
 }) {
   return (
-    <header className="rsmm-section-header flex items-end justify-between gap-6 pb-4">
-      <div>
-        <h2 className="font-fraktur text-3xl text-parchment leading-none">{title}</h2>
-        {subtitle ? <p className="font-serif-italic mt-2 text-ash text-base">{subtitle}</p> : null}
+    <header
+      className={cn(
+        'rsmm-section-header flex items-end justify-between gap-6',
+        compact ? 'gap-3 pb-2' : 'pb-4',
+      )}
+    >
+      <div className="min-w-0">
+        <h2
+          className={cn(
+            'font-fraktur leading-none text-parchment',
+            compact ? 'text-xl' : 'text-3xl',
+          )}
+        >
+          {title}
+        </h2>
+        {subtitle ? (
+          <p
+            className={cn(
+              'font-serif-italic text-ash',
+              compact ? 'mt-1 text-sm' : 'mt-2 text-base',
+            )}
+          >
+            {subtitle}
+          </p>
+        ) : null}
       </div>
       {right ? <div className="shrink-0">{right}</div> : null}
     </header>

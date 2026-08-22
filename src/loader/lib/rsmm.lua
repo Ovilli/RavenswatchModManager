@@ -5590,6 +5590,19 @@ local _dmg = {
     -- that is the explicit call, and gating it would break the one entry point
     -- a person uses deliberately. To LABEL a run reliably, use player_1..4.
     identity_hunt = false,
+    -- The TARGETED address scan (`_dmg_probe_owner_fast`), which is what
+    -- actually names an ally. Bounded per roster (F._own.SWEEP_TRIES), but it
+    -- still reads F._own.SLICE_MB of address space per second while it runs,
+    -- and on a machine where that is felt the honest answer is a switch: the
+    -- board keeps its lobby names, they are just marked as guesses. Set
+    -- player_1..4 in the mod config for names that are never guesses.
+    identity_scan = true,
+    -- Show every lobby member on the board, even before they have dealt any
+    -- damage (see F._dmg_roster_rows). OFF here and ON in the meter, which is
+    -- the right layer for it: `board()` without this is a list of MEASUREMENTS,
+    -- and every caller that reasons about attribution wants exactly that. A
+    -- scoreboard is a presentation, and a presentation is the mod's call.
+    roster_rows = false,
     probe    = false,     -- log the class of the first few distinct victims
     probes   = 0,
     vprobed  = {},        -- victim entity -> already reported
@@ -6457,6 +6470,27 @@ F._own = {
     -- drops the cache in F._dmg_next_epoch — a timer would only reintroduce
     -- the periodic address-space walk this all exists to avoid.
     queue = nil,         -- needles still to scan, one per tick
+    -- Full address-space sweeps allowed PER ROSTER before the scan gives up.
+    --
+    -- Without a bound this never stops, and that is what a player feels as a
+    -- constant stutter for a whole co-op run. Two things conspire:
+    -- `_dmg_probe_owner_fast` gates on `row.player`, which only a VERIFIED
+    -- claim sets — a guessed label (`guess_names`, on by default) leaves it
+    -- nil forever — so the board can display four correct names and still be
+    -- asking to be scanned. And `_dmg_next_epoch` drops `addrs_key` on every
+    -- chapter, which re-arms the whole sweep from cursor 0. A run has several
+    -- chapters, so the sweep restarts before it finishes and the address space
+    -- is walked at SLICE_MB per second, without pause, for the entire run.
+    --
+    -- A sweep that crossed the address space and claimed nobody will not claim
+    -- anybody on a re-run against the same roster, so retrying it forever buys
+    -- nothing at all. Two attempts covers the one case a retry can help: a
+    -- sweep aborted mid-way by a chapter boundary. Any successful claim clears
+    -- the counter, because then the scan is demonstrably working and the rows
+    -- still unnamed deserve the next pass.
+    SWEEP_TRIES = 2,
+    tries = {},          -- roster key -> sweeps started for it
+    gave_up = {},        -- roster key -> true once it is not worth retrying
     TRIES = 4,           -- full sweeps per row before it is given up on
     RETRY_AFTER = 20,    -- seconds between them. A chapter is shorter than
                          -- the old 45s, so a row could miss its whole run.
@@ -6514,7 +6548,26 @@ function F._dmg_find_needles(names)
     -- It is the exact failure NAME_SCAN_MB documents for sessions 5736/274f,
     -- reintroduced one layer up, and it is why this scan has never once
     -- claimed a row.
+    -- Already swept this roster to no effect. Answer from the cache (which is
+    -- nil after a chapter epoch, and a nil answer costs the caller one loop
+    -- over the rows) rather than walking the address space again.
+    if F._own.gave_up[key] then
+        F._own.addrs_key, F._own.queue = key, nil
+        return F._own.addrs
+    end
     if F._own.addrs_key ~= key then
+        local n = (F._own.tries[key] or 0) + 1
+        if n > F._own.SWEEP_TRIES then
+            F._own.gave_up[key] = true
+            F._own.addrs_key, F._own.addrs, F._own.queue = key, nil, nil
+            R.log(("[rsmm.damage] identity scan: %d sweep(s) of this roster "
+                   .. "named nobody — standing down for the rest of the "
+                   .. "session (the board keeps its lobby names; set "
+                   .. "player_1..4 in the mod config for names that are never "
+                   .. "guesses)"):format(F._own.SWEEP_TRIES))
+            return nil
+        end
+        F._own.tries[key] = n
         F._own.addrs_key, F._own.addrs = key, {}
         F._own.queue, F._own.capped = {}, 0
         -- The slice cursor belongs to the needle at the head of the queue
@@ -6672,8 +6725,36 @@ end
 --- claiming from it would put a real player's damage under someone else's
 --- name, which is the bug this all started with.
 function F._dmg_probe_owner_fast()
+    -- The user's opt-out. Checked before anything else so turning it off costs
+    -- exactly one comparison per tick.
+    if not _dmg.identity_scan then return false end
     local names, _ = F._dmg_name_set()
     if not names or not I.read_u64 then return false end
+
+    -- CLAIM THE LOCAL ROW FIRST. Steam already told us who this player is, so
+    -- their identity is the one thing on the board that never needs a scan.
+    --
+    -- This claim used to live ONLY inside `F._dmg_probe_owner`, the blind
+    -- sweep — which is opt-in and off by default, so in a normal session it
+    -- never ran and `row.player` stayed nil on the local row forever. The
+    -- `wanted` gate below reads exactly that field, so every session had at
+    -- least one row permanently asking to be identified, and the address scan
+    -- ran for the whole run hunting for a name already in hand. Solo escaped
+    -- only by accident (no lobby means no needles, so `names` is nil above).
+    --
+    -- It hid from the spec for the same reason it hid in game, from the other
+    -- side: `R.damage.sweep_identity()` — what every test drives — routes
+    -- through `_dmg_probe_owner`, so the claim always ran under test and never
+    -- ran in play. See spec 2f2c, which drives the default path instead.
+    local me = F._dmg_me()
+    if me then
+        for _, row in ipairs(_dmg.order) do
+            if row.is_local and not row.player then
+                F._dmg_claim(row, names, me, "steam")
+            end
+        end
+    end
+
     -- Nothing to identify, nothing to scan for. Without this the address
     -- space is walked again on every roster change of a lobby whose rows are
     -- all already named.
@@ -6941,6 +7022,10 @@ function F._dmg_claim(row, names, name, how)
         row.label_guess = false
     end
     F._own.found = F._own.found + 1
+    -- The sweep budget is there to stop a scan that never answers. This one
+    -- just answered, so clear it: the rows still unnamed have earned the next
+    -- pass, and a roster previously stood down on is worth re-arming.
+    F._own.tries, F._own.gave_up = {}, {}
     R.log(("[rsmm.damage] row %d IS %q (%s)%s"):format(
         row.slot, name, how, row.is_local and " [local]" or ""))
     return true
@@ -7521,6 +7606,9 @@ function R.damage._label_hint()
     return F._dmg_label_hint()
 end
 
+--- Is a string well-formed UTF-8? (test/diagnostic seam for F._utf8_ok.)
+function R.damage._utf8_ok(t) return F._utf8_ok(t) end
+
 --- Drive one net-id pass by hand (diagnostics and the spec); the meter's own
 --- tick already calls this once a second.
 --- The engine's peer table as the join sees it (test/diagnostic seam).
@@ -7727,6 +7815,10 @@ F._netid = {
     RS_MAX    = 64,
     rak_said  = false,
     rak_done  = false,
+    rak_idle  = 0,        -- consecutive passes that named nothing new
+    -- Three is enough to cover a row boarding a tick or two after its peer
+    -- slot appears, without spinning for the rest of the match.
+    RAK_IDLE_MAX = 3,
     CONN_GUID = 0xf8,
     NODE_KEY  = 0x10,
     NODE_VAL  = 0x18,
@@ -7912,6 +8004,44 @@ function F._dmg_owner_guid(row)
     return g
 end
 
+--- Is `t` well-formed UTF-8?
+---
+--- Hand-rolled rather than `utf8.len`: the loader's Lua is 5.4 and does have
+--- the library, but this runs on every peer-slot read against bytes that may be
+--- a stale pointer's contents, and `utf8.len` accepts the over-long and
+--- surrogate encodings that a garbage read produces as readily as a real name.
+--- Rejecting those is the entire point of the check.
+---
+--- On `F` rather than a `local`: the main chunk sits at Lua's 200-local
+--- ceiling, and one more `local function` here costs the whole SDK its compile.
+function F._utf8_ok(t)
+    local i, n = 1, #t
+    while i <= n do
+        local c = t:byte(i)
+        local extra, lo, hi
+        if c < 0x80 then extra = 0
+        elseif c >= 0xc2 and c <= 0xdf then extra, lo, hi = 1, 0x80, 0xbf
+        elseif c == 0xe0 then extra, lo, hi = 2, 0xa0, 0xbf   -- no over-long
+        elseif c >= 0xe1 and c <= 0xec then extra, lo, hi = 2, 0x80, 0xbf
+        elseif c == 0xed then extra, lo, hi = 2, 0x80, 0x9f   -- no surrogates
+        elseif c >= 0xee and c <= 0xef then extra, lo, hi = 2, 0x80, 0xbf
+        elseif c == 0xf0 then extra, lo, hi = 3, 0x90, 0xbf   -- no over-long
+        elseif c >= 0xf1 and c <= 0xf3 then extra, lo, hi = 3, 0x80, 0xbf
+        elseif c == 0xf4 then extra, lo, hi = 3, 0x80, 0x8f   -- <= U+10FFFF
+        else return false
+        end
+        for k = 1, extra do
+            local b = t:byte(i + k)
+            if not b then return false end
+            local min = (k == 1) and lo or 0x80
+            local max = (k == 1) and hi or 0xbf
+            if b < min or b > max then return false end
+        end
+        i = i + 1 + extra
+    end
+    return true
+end
+
 --- One engine string/buffer descriptor: {void* ptr @+0x0; int32 len @+0x8;
 --- uint32 cap @+0xc}. Same shape as LobbyAttributes_Parse's StringDesc, and
 --- the shape the peer-slot destructor frees three of.
@@ -7925,7 +8055,23 @@ function F._peer_str(va)
     if len < 1 or len > 128 then return nil end
     local t = I.read_cstr(ptr, len + 1)
     if type(t) ~= "string" or #t ~= len then return nil end
-    if t:find("[^\32-\126]") then return nil end
+    -- PRINTABLE, not ASCII. This guard used to be `[^\32-\126]`, which threw
+    -- away every player whose name is not plain ASCII -- session 104f's "7♣"
+    -- (U+2663, bytes E2 99 A3) came back nil from the peer slot while its
+    -- session and EOS ids, being hex, came back fine.
+    --
+    -- That is not a cosmetic loss. A nameless peer slot is a row that can never
+    -- be PROVEN, and "is any row still unnamed?" is the gate on both the raknet
+    -- join and the address scan -- so one non-ASCII name in the lobby left both
+    -- running for the entire match, re-announcing the same result once a second
+    -- (70 identical lines in that log). A run with an accented, CJK or emoji
+    -- name in it is the common case, not the exotic one.
+    --
+    -- The guard's real job is rejecting a garbage read, and what garbage looks
+    -- like is CONTROL bytes and malformed sequences, not high bytes. So: no
+    -- C0/DEL, and the high bytes must form valid UTF-8.
+    if t:find("[%z\1-\31\127]") then return nil end
+    if not F._utf8_ok(t) then return nil end
     return t
 end
 
@@ -8325,6 +8471,39 @@ function F._dmg_rak_systems()
     return out
 end
 
+--- The display name for a peer slot, recovering one the slot itself lacks.
+---
+--- Session 104f, match 2: peer #0 read `nil` for its name while carrying a
+--- perfectly good session id AND EOS id — and the lobby roster knew that
+--- player as "7♣". One nameless slot is not a cosmetic loss: the row it
+--- belongs to can never be proven, so `_dmg_rak_join`'s "is anyone still
+--- unnamed?" gate stays open for the rest of the match, re-pairing and
+--- re-announcing every OTHER row once a second forever (70 identical PROVEN
+--- lines in that log), and the address scan next door reads the same shape and
+--- keeps sweeping too.
+---
+--- The recovery is still READ, not searched: `m_sEosUserId` and the session id
+--- are named fields on the lobby member and named fields on the peer slot, so
+--- this is the same kind of join as the port match, on a different column.
+--- EOS first — it is the account, where a session id is per-connection.
+function F._dmg_peer_name(e)
+    if type(e) ~= "table" then return nil end
+    if type(e.name) == "string" and e.name ~= "" then return e.name end
+    local ok, members = pcall(R.lobby.members)
+    if not ok or type(members) ~= "table" then return nil end
+    for _, key in ipairs({ "eos", "session" }) do
+        local want = e[key]
+        if type(want) == "string" and #want > 0 then
+            for _, m in ipairs(members) do
+                if m[key] == want and type(m.name) == "string" and m.name ~= "" then
+                    return m.name
+                end
+            end
+        end
+    end
+    return nil
+end
+
 --- Name rows from the RakNet remote-system table, joined on the UDP PORT.
 ---
 --- THE ONLY JOIN HERE THAT IS READ RATHER THAN SEARCHED. Both halves are
@@ -8435,20 +8614,47 @@ function F._dmg_rak_join()
         end
     end
 
-    local named = 0
+    -- NEWLY named, not pairable. `named` used to count every row the join
+    -- COULD pair, which is a constant for the rest of the match — so a single
+    -- row it could never pair (a nameless peer slot) meant this block rewrote
+    -- the same two labels and logged the same "PROVEN" line every tick for the
+    -- whole run. Counting the rows whose name actually CHANGED makes the log
+    -- an event again and makes the return value mean "I made progress".
+    local named, total = 0, 0
     for row, e in pairs(pair) do
-        if e and e.name and not row.is_local and _dmg.names[row.slot] == nil then
-            row.label, row.label_guess, row.player = e.name, false, e.name
-            named = named + 1
+        local nm = F._dmg_peer_name(e)
+        if nm and not row.is_local and _dmg.names[row.slot] == nil then
+            total = total + 1
+            if row.player ~= nm then
+                row.label, row.label_guess, row.player = nm, false, nm
+                named = named + 1
+            end
         end
     end
     if named > 0 then
-        R.log(("[rsmm.damage] RAKNET JOIN PROVEN: %d row(s) named by matching "
-               .. "Replica3::creatingSystemGUID to RakPeer's remote-system "
-               .. "table and its UDP port to the peer slot's tunnel — read, "
-               .. "not searched"):format(named))
+        R.log(("[rsmm.damage] RAKNET JOIN PROVEN: %d of %d row(s) named by "
+               .. "matching Replica3::creatingSystemGUID to RakPeer's "
+               .. "remote-system table and its UDP port to the peer slot's "
+               .. "tunnel — read, not searched"):format(named, total))
+        F._netid.rak_idle = 0
+        return true
     end
-    return named > 0
+
+    -- Nothing new, and the pairing is a pure read of tables that only change
+    -- when the lobby does. Stand down rather than re-deriving the same answer
+    -- once a second until the run ends; the chapter epoch re-arms it, which is
+    -- the only moment a row's controller (and so its owner GUID) can change.
+    F._netid.rak_idle = (F._netid.rak_idle or 0) + 1
+    if F._netid.rak_idle >= F._netid.RAK_IDLE_MAX then
+        F._netid.rak_done = true
+        if total < #_dmg.order - 1 then
+            R.log(("[rsmm.damage] raknet join: named every row it can (%d); "
+                   .. "the rest have no peer slot carrying a name, so they "
+                   .. "keep their lobby guess — set player_1..4 in the "
+                   .. "damage-meter config for exact labels"):format(total))
+        end
+    end
+    return false
 end
 
 --- Is `obj` the Stormancer RakNetConnection whose owner GUID is `g`?
@@ -9784,6 +9990,10 @@ function F._dmg_next_epoch(name)
     -- was about: new chapter, new controllers, new chance to resolve.
     F._netid.guid_said, F._netid.guid_done = false, false
     F._netid.peer_said, F._netid.peer_done = false, false
+    -- A chapter rebuilds every hero controller, so every row's owner GUID is
+    -- new — the one moment the raknet join has something it has not already
+    -- answered. Without this it stays stood down for the rest of the run.
+    F._netid.rak_done, F._netid.rak_idle, F._netid.rak_said = false, 0, false
     F._netid.peer_gen, F._netid.peer_scanned, F._netid.peer_hit = nil, {}, {}
     -- Sticky guesses belong to the board that made them: a chapter change
     -- re-adopts every controller, so slot N is not the same player it was.
@@ -9882,6 +10092,14 @@ end)
 ---                        Dropped damage is still totalled per row (`scenery`).
 ---   opts.probe           log the class of the first few distinct victims, so
 ---                        the enemy test can be confirmed from a log
+---   opts.roster_rows     board every lobby member, including those who have
+---                        not dealt damage yet, as a zeroed row (default false;
+---                        the shipped meter turns it on)
+---   opts.identity_scan   run the targeted address scan that puts real names
+---                        on ally rows (default TRUE). It is bounded per
+---                        roster, but it does read memory in the background
+---                        while it runs; turn it off if that is felt. The
+---                        board keeps its lobby names, marked as guesses.
 function R.damage.enable(opts)
     opts = opts or {}
     if type(opts.window) == "number" and opts.window > 0 then _dmg.window = opts.window end
@@ -9894,6 +10112,12 @@ function R.damage.enable(opts)
     if opts.probe ~= nil then _dmg.probe = opts.probe and true or false end
     if opts.identity_hunt ~= nil then
         _dmg.identity_hunt = opts.identity_hunt and true or false
+    end
+    if opts.identity_scan ~= nil then
+        _dmg.identity_scan = opts.identity_scan and true or false
+    end
+    if opts.roster_rows ~= nil then
+        _dmg.roster_rows = opts.roster_rows and true or false
     end
     -- Seconds before a row whose sweep found nothing is swept again. A row is
     -- swept the moment it first deals damage and the object that identifies it
@@ -10047,6 +10271,62 @@ end
 --- the scenery filter could not classify) and `taken_known` (false when nothing
 --- has ever reported damage taken for this player, which is the normal state
 --- for an ally).
+--- Lobby members with no row yet, as zeroed placeholder rows.
+---
+--- A row is only ever created when damage is first attributed to a player, so
+--- until someone lands a counted hit they simply are not on the board. For a
+--- support that can be most of a chapter, or all of it: session 104f's "Artur"
+--- carried 57% of the team's healing and did not appear until 110s into a 165s
+--- chapter, which reads as "the meter lost a player", not as "he had not hit
+--- anything yet".
+---
+--- Derived on every call and never stored in `_dmg.order`. That is the whole
+--- safety argument: a placeholder owns no entity key, so it can never absorb a
+--- hit, never forks at a chapter change, and vanishes the instant the real row
+--- exists — the alternative (seeding a real row per member) would have to guess
+--- which controller belongs to whom, which is the join that does not exist.
+---
+--- @param taken  set of names already on the board, by `player` AND by `label`
+---               (a guessed label is still that player's row on screen, and
+---               showing them twice is worse than showing them late).
+function F._dmg_roster_rows(taken, next_slot)
+    local ok, members = pcall(R.lobby.members)
+    if not ok or type(members) ~= "table" then return {} end
+    -- AN UNIDENTIFIED ROW BLOCKS THIS ENTIRELY. `taken` is a set of names, so a
+    -- row still reading "Player 2" matches no member — and every member would
+    -- then be added underneath it, including whoever that row already is. The
+    -- board would show more rows than there are players and list somebody
+    -- twice, which is a worse lie than listing them late. Once the lobby names
+    -- land (guess_names, or the raknet join) this clears by itself.
+    for _, row in ipairs(_dmg.order) do
+        if not row.is_local and type(row.label) == "string"
+           and row.label:match("^Player %d+$") then
+            return {}
+        end
+    end
+    local me, out = F._dmg_me(), {}
+    for _, m in ipairs(members) do
+        local nm = m.name
+        if type(nm) == "string" and nm ~= "" and not taken[nm] then
+            taken[nm] = true
+            next_slot = next_slot + 1
+            out[#out + 1] = {
+                label = nm, slot = next_slot, is_local = (nm == me),
+                hero_id = m.hero_id, label_guess = false, player = nil,
+                -- Not a measurement of zero: this player has no row at all yet.
+                -- A UI that wants to say "waiting" rather than "0" reads this.
+                pending = true,
+                dealt = 0, taken = 0, hits = 0, best = 0, last = 0,
+                by_type = {}, scenery = 0, scenery_hits = 0,
+                unknown = 0, unknown_hits = 0,
+                taken_known = false,
+                dps = 0, dps_window = _dmg.window, share = 0, idle = nil,
+            }
+        end
+    end
+    return out
+end
+
 function R.damage.board()
     local now = F._dmg_now()
     local cutoff = now - _dmg.window
@@ -10092,6 +10372,18 @@ function R.damage.board()
             share = total > 0 and (row.dealt / total) or 0,
             idle = row.last > 0 and (now - row.last) or nil,
         }
+    end
+    -- Everyone in the lobby appears, whether or not they have hit anything yet.
+    -- Zero damage sorts last, so this never displaces a real row.
+    if _dmg.roster_rows then
+        local taken = {}
+        for _, row in ipairs(out) do
+            if row.player then taken[row.player] = true end
+            if row.label then taken[row.label] = true end
+        end
+        for _, row in ipairs(F._dmg_roster_rows(taken, #_dmg.order)) do
+            out[#out + 1] = row
+        end
     end
     table.sort(out, function(a, b)
         if a.dealt ~= b.dealt then return a.dealt > b.dealt end

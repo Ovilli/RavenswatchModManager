@@ -3392,6 +3392,127 @@ do  -- 2f2. the address scan is paced, and skipped when nothing needs it
     R = require "rsmm"
 end
 
+do  -- 2f2b. the address scan gives up instead of sweeping for the whole run
+    package.loaded["rsmm"] = nil
+    local Ro = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    local saved_find = I.mem_find
+
+    -- Every slice answers "nothing here, and there is no more to scan", so a
+    -- sweep completes on the tick it starts. That is the real shape of the
+    -- failure: the scan is not slow, it just never finds anything and was
+    -- never told to stop asking.
+    local scans = 0
+    I.mem_find = function() scans = scans + 1 return {}, 0 end
+
+    Ro.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4,'
+        .. '"m_sEosUserId":"0002102bd8c7446d813dfb03e4c5e20a"}')
+    Ro.lobby._note_blob('{"PlayerName":"Crow","RequestedHero":5,'
+        .. '"m_sEosUserId":"000236deb33044cf83771b0cd0b133a1"}')
+    Ro.damage.enable{ window = 10, guess_names = true }
+    local ctrl, deal = _own_world(0x72000000, { "me", "a1" })
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 90.0)
+    Ro.damage.relabel()
+
+    -- The gate the scan actually reads is `row.player`, and ONLY a verified
+    -- claim sets it. A lobby name applied to a row does not, so the board can
+    -- read as fully named on screen and still be asking to be scanned — which
+    -- is why this ran unbounded in the first place.
+    local unverified = false
+    for _, row in ipairs(Ro.damage.board()) do
+        if not row.is_local and row.player == nil then unverified = true end
+    end
+    check(unverified,
+          "precondition: an ally row that the sweep cannot claim stays "
+          .. "unverified, so the scan's own stop condition is never met")
+
+    for _ = 1, 40 do Ro.damage.sweep_identity() end
+    local first_pass = scans
+    check(first_pass > 0 and first_pass <= 4,
+          "a completed sweep is not restarted every tick (got "
+          .. tostring(first_pass) .. " scans across 40 ticks)")
+
+    -- The chapter boundary is what re-armed it before: it drops the address
+    -- cache, which looks exactly like a brand-new roster. One retry is fair —
+    -- a sweep can legitimately be cut short by a chapter — but only one.
+    for _ = 1, 6 do
+        fire("gameplay:MAP_GENERATION_DONE", { source = "gameplay" })
+        for _ = 1, 20 do Ro.damage.sweep_identity() end
+    end
+    check(scans <= first_pass * 2,
+          "and six chapter changes do not buy six more sweeps: the budget is "
+          .. "per roster, not per chapter, or a multi-chapter run walks the "
+          .. "address space end to end without pause (got " .. tostring(scans)
+          .. " total)")
+
+    local settled = scans
+    for _ = 1, 4 do
+        fire("gameplay:MAP_GENERATION_DONE", { source = "gameplay" })
+        for _ = 1, 20 do Ro.damage.sweep_identity() end
+    end
+    check(scans == settled,
+          "once it has stood down it stays down for the rest of the session")
+
+    local stood_down = false
+    for _, line in ipairs(logged) do
+        if line:find("standing down", 1, true) then stood_down = true end
+    end
+    check(stood_down, "and it says so once, so a quiet board is explainable")
+
+    I.mem_find = saved_find
+    Ro.damage.disable(); Ro.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 2f2c. the DEFAULT path claims the local row, so it stops scanning
+    package.loaded["rsmm"] = nil
+    local Ro = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    local saved_find = I.mem_find
+
+    local scans = 0
+    I.mem_find = function() scans = scans + 1 return {}, 0 end
+
+    -- A lobby of one: the local player, with a peer id. That is a real solo /
+    -- private session, and there is nothing here for a scan to discover —
+    -- Steam already named the only player on the board.
+    Ro.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4,'
+        .. '"m_sEosUserId":"0002102bd8c7446d813dfb03e4c5e20a"}')
+    Ro.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x73000000, { "me" })
+    deal(ctrl[1], 10.0)
+
+    -- Drive `_dmg_probe_owner_fast` DIRECTLY, which is what the 1 Hz tick does
+    -- in a shipped session. `R.damage.sweep_identity()` is NOT the same path:
+    -- it routes through the opt-in blind sweep, which is where the local claim
+    -- used to live — so every spec exercised a claim that never ran in play.
+    for _ = 1, 20 do Ro.damage._identity_tick() end
+
+    local local_row
+    for _, row in ipairs(Ro.damage.board()) do
+        if row.is_local then local_row = row end
+    end
+    check(local_row and local_row.player ~= nil,
+          "the local row is claimed from Steam on the DEFAULT path, not only "
+          .. "when the opt-in blind sweep is switched on")
+    check(scans == 0,
+          "so a board whose only row is the local player never scans at all "
+          .. "(got " .. tostring(scans) .. " scans) — that row kept the gate "
+          .. "open for the whole run, hunting for a name already in hand")
+
+    I.mem_find = saved_find
+    Ro.damage.disable(); Ro.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
 do  -- 2f3. the address scan is SLICED, and resumes where it stopped
     package.loaded["rsmm"] = nil
     local Ro = require "rsmm"
@@ -6260,6 +6381,212 @@ local function _plant_rak_table(base, ctrl, rows)
         I.write_u64(rs + 0x2cc8, r.guid)
         I.write_u32(rs + 0x2cec, r.state or 7)
     end
+end
+
+do  -- 9i1. a player who has not dealt damage yet is still on the board
+    package.loaded["rsmm"] = nil
+    local Rd = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+
+    Rd.lobby._note_blob('{"PlayerName":"Ovilli","RequestedHero":4,'
+        .. '"m_sEosUserId":"0002102bd8c7446d813dfb03e4c5e20a"}')
+    Rd.lobby._note_blob('{"PlayerName":"Lee","RequestedHero":1,'
+        .. '"m_sEosUserId":"0002ad0d3f0144dca89daab8a0cc5576"}')
+    Rd.lobby._note_blob('{"PlayerName":"Artur","RequestedHero":6,'
+        .. '"m_sEosUserId":"0002a8cafa6d46c7820862b9129240df"}')
+
+    -- Only two of the three ever swing. Session 104f's third player was the
+    -- healer: 57% of the team's healing, and no counted hit for 110s of a 165s
+    -- chapter, so the board simply did not contain him.
+    -- Row 2 is pinned to a name, so every row on the board is identified.
+    -- (An unidentified row suppresses placeholders on purpose — see below.)
+    Rd.damage.enable{ window = 10, roster_rows = false, names = { [2] = "Lee" } }
+    local ctrl, deal = _own_world(0x74000000, { "me", "a1" })
+    deal(ctrl[1], 100.0)
+    deal(ctrl[2], 50.0)
+
+    local names = {}
+    for _, row in ipairs(Rd.damage.board()) do names[row.label] = row end
+    check(names["Artur"] == nil,
+          "precondition: a row is created on a player's FIRST counted hit, so "
+          .. "a player who has not hit anything is absent entirely")
+
+    Rd.damage.enable{ roster_rows = true }
+    local board = Rd.damage.board()
+    names = {}
+    for _, row in ipairs(board) do names[row.label] = row end
+    check(names["Artur"] and names["Artur"].pending == true,
+          "with roster rows the whole lobby is on the board, and the row says "
+          .. "it is waiting rather than claiming a measured zero")
+    check(names["Artur"].dealt == 0 and names["Artur"].taken_known == false,
+          "at zero, and `taken` still reports unknown rather than 0")
+    check(board[#board].label == "Artur",
+          "and it sorts last, so a placeholder never displaces a real row")
+
+    -- A member who ALREADY has a row must not also get a placeholder. A
+    -- duplicate is worse than the absence it fixes: two rows for one player
+    -- split their damage and neither total is right.
+    local seen = {}
+    for _, r in ipairs(board) do seen[r.label] = (seen[r.label] or 0) + 1 end
+    check(seen["Ovilli"] == 1,
+          "a member who already has a real row is not boarded twice — the "
+          .. "placeholders are derived on every call against the names already "
+          .. "on the board, never stored, so the two cannot coexist")
+    check(#board == 3, "three lobby members, three rows")
+    check(seen["Lee"] == 1,
+          "and the named ally row is matched by LABEL, not only by a proven "
+          .. "name — a guessed label is still that player's row on screen")
+
+    -- THE BOUND. Whatever the mix of named, guessed and unidentified rows, the
+    -- board must never list more rows than the lobby has players — that is the
+    -- shape a duplicate takes. (An unidentified row matches no member by name,
+    -- so `F._dmg_roster_rows` refuses to add anybody while one is present:
+    -- every member would otherwise be stacked underneath it, including
+    -- whoever that row already is.)
+    Rd.damage.reset()
+    local c2, deal2 = _own_world(0x74800000, { "me", "a1" })
+    deal2(c2[1], 10.0)
+    deal2(c2[2], 10.0)
+    local anon, counted = Rd.damage.board(), {}
+    check(#anon <= #Rd.lobby.members(),
+          "the board never holds more rows than the lobby holds players (got "
+          .. tostring(#anon) .. " for " .. tostring(#Rd.lobby.members()) .. ")")
+    for _, r in ipairs(anon) do
+        check(not counted[r.label], "and no player is listed twice: " .. tostring(r.label))
+        counted[r.label] = true
+    end
+
+    Rd.damage.disable(); Rd.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9i2. a non-ASCII player name (session 104f, match 2)
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    -- The peer-slot string reader used to demand plain ASCII, so a player
+    -- called "7♣" (U+2663 -> E2 99 A3) read back as a NAMELESS slot while
+    -- their hex session and EOS ids read back fine. That is what session 104f
+    -- shows: `#0 nil session=03f2... eos=0002...`.
+    check(Rp.damage._utf8_ok("7\226\153\163"),
+          "a UTF-8 player name is a valid string")
+    check(Rp.damage._utf8_ok("Dard Spirituel") and Rp.damage._utf8_ok("日本語"),
+          "plain ASCII and multi-byte alike")
+    check(not Rp.damage._utf8_ok("bad\254\254"),
+          "but a garbage read is still rejected — invalid lead bytes")
+    check(not Rp.damage._utf8_ok("cut\226\153"),
+          "and a truncated sequence, which is what a stale pointer looks like")
+    check(not Rp.damage._utf8_ok("\237\160\128"),
+          "and a surrogate, which `utf8.len` would wave through")
+
+    local base = 0xba000000
+    local ctrl = _peer_world(Rp, base, { plant = {} })
+    -- Rename peer slot 2 to the non-ASCII name, in place.
+    do
+        local slot = 0x14143f600 + 1 * 0x60
+        local txt  = base + 0x95000
+        local who  = "7\226\153\163"
+        _put_str(txt, who)
+        I.write_u64(slot, txt)
+        I.write_u32(slot + 8, #who)
+        I.write_u32(slot + 0xc, #who + 1)
+    end
+    local peers = R.net and Rp.net.peers() or {}
+    local got
+    for _, e in ipairs(peers) do
+        if e.eos == PEER_EOS.Yume then got = e.name end
+    end
+    check(got == "7\226\153\163",
+          "the peer slot reads its name back whole — before this it came back "
+          .. "nil, and a nameless slot is a row that can never be proven")
+
+    _plant_rak_table(base, ctrl, {
+        { guid = 0x51102, port = 7002 },
+        { guid = 0x51103, port = 7003 },
+    })
+    check(Rp.damage._rak_join() == true, "so the join names it")
+    Rp.damage.relabel()
+    local by = {}
+    for _, row in ipairs(Rp.damage.board()) do by[row.slot] = row end
+    check(by[2] and by[2].player == "7\226\153\163" and by[2].label_guess == false,
+          "with the real name, not a guess")
+
+    Rp.damage.disable(); Rp.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9i3. one row it can never pair must not re-announce the others forever
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    local base = 0xbb000000
+    local ctrl = _peer_world(Rp, base, { plant = {} })
+    -- Only Yume's system is in the remote-system table. Mascarade's row can
+    -- never be paired, so the caller's "is anyone still unnamed?" gate stays
+    -- open — which in session 104f meant the join re-ran, re-wrote the same
+    -- labels and re-logged the same PROVEN line once a second for 70 seconds.
+    _plant_rak_table(base, ctrl, { { guid = 0x51102, port = 7002 } })
+
+    check(Rp.damage._rak_join() == true, "the first pass names what it can")
+    local function proven_lines()
+        local n = 0
+        for _, l in ipairs(logged) do
+            if l:find("RAKNET JOIN PROVEN", 1, true) then n = n + 1 end
+        end
+        return n
+    end
+    local after_first = proven_lines()
+    check(after_first == 1, "and says so once")
+
+    local progressed = false
+    for _ = 1, 40 do
+        if Rp.damage._rak_join() then progressed = true end
+    end
+    check(not progressed,
+          "forty more passes report NO progress: the count is rows newly "
+          .. "named, not rows it could pair — the old count was a constant, "
+          .. "so the join claimed success on every tick forever")
+    check(proven_lines() == after_first,
+          "and announce nothing (got " .. tostring(proven_lines() - after_first)
+          .. " repeats; session 104f logged 70)")
+
+    local stood_down = false
+    for _, l in ipairs(logged) do
+        if l:find("named every row it can", 1, true) then stood_down = true end
+    end
+    check(stood_down,
+          "it stands down and says why, instead of re-deriving a fixed answer "
+          .. "from the peer table once a second for the rest of the match")
+
+    -- A chapter rebuilds every controller, so every owner GUID is new. That is
+    -- the one moment the join has something it has not already answered.
+    fire("gameplay:GAME_END_NEXT_CHAPTER", { source = "gameplay" })
+    _plant_rak_table(base, ctrl, {
+        { guid = 0x51102, port = 7002 },
+        { guid = 0x51103, port = 7003 },
+    })
+    check(Rp.damage._rak_join() == true,
+          "and the chapter epoch re-arms it, or a row that only becomes "
+          .. "pairable in chapter 2 stays a placeholder for the whole run")
+
+    Rp.damage.disable(); Rp.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
 end
 
 do  -- 9j. GUID -> UDP port -> peer slot: the join that is read, not searched
