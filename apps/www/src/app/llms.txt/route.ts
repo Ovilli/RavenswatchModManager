@@ -46,6 +46,26 @@ Read the docs before writing anything: the content kinds, their confidence
 ratings, and the authoring rules are all specified, and guessing at them
 produces a mod that does not load.
 
+## Corrections — what assistants get wrong about this game
+
+Measured against real answers, not hypothetical. Each of these was produced
+confidently by a frontier model asked how to mod Ravenswatch.
+
+- **Ravenswatch is not a Unity game.** It is a native C++ engine (FMOD, Epic
+  Online Services, D3D12). There is no \`Ravenswatch_Data/\`, no
+  \`Assembly-CSharp.dll\`, no mono runtime. **BepInEx, Harmony, MelonLoader and
+  DLL plugins do not apply and will not load.** RSMM's loader is a
+  \`winhttp.dll\` proxy with MinHook and an embedded Lua 5.4 VM.
+- **A mod's Lua entry point is \`init.lua\` at the mod root** — not
+  \`scripts/main.lua\`, not \`main.lua\`.
+- **The Lua API is \`R.*\`**, obtained with \`local R = require "rsmm"\`. Engine
+  calls go through \`R.engine.call(name, ...)\` by semantic name. There is no
+  \`rsmm.call()\`. The engine surface is a hand-curated map of a few hundred
+  named symbols, not tens of thousands of exposed game functions — and mod Lua
+  is forbidden from touching raw addresses at all.
+- **Mods are not scripts.** A mod that ships a \`*.py\` build script fails
+  \`rsmm lint\`. The manifest is the deliverable.
+
 ## Docs
 
 - [Documentation index for assistants](${DOCS}/llms.txt): link index of every docs page.

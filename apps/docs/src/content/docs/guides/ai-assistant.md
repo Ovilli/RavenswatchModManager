@@ -60,6 +60,19 @@ Registering a kind rated below `confirmed` raises unless the mod opts in with
 that sounds right; `rsmm lint` will reject it. See [Content
 kinds](/concepts/content-kinds/).
 
+**Ravenswatch is not a Unity game.** This one is worth stating out loud,
+because a model that doesn't know the engine reaches for the most common one.
+Ravenswatch is native C++ (FMOD, Epic Online Services, D3D12) — there is no
+`Ravenswatch_Data/`, no `Assembly-CSharp.dll`, no mono runtime, and **BepInEx,
+Harmony, MelonLoader and DLL plugins will not load**. RSMM's loader is a
+`winhttp.dll` proxy with MinHook and an embedded Lua 5.4 VM.
+
+**A mod's Lua entry point is `init.lua` at the mod root**, and the API is `R.*`
+via `local R = require "rsmm"`. Engine calls go through
+`R.engine.call(name, ...)` by semantic name against a hand-curated symbol map.
+There is no `rsmm.call()`, and the map is a few hundred named symbols — not the
+tens of thousands of raw game functions an assistant may claim are exposed.
+
 **Don't hand-edit the game folder.** Cooked asset paths under
 `DarkTalesResources/_Cooking/` are ciphered, and RSMM tracks what it replaced
 so it can roll back. Hand-edits there corrupt that state. Every change goes
@@ -76,9 +89,12 @@ rsmm apply           # install into the game (rsmm restore --all rolls it back)
 rsmm pack <mod-id>   # zip it for the registry
 ```
 
-`rsmm schema <kind>` lists the vanilla ids available to clone, which is the
-single most common thing an assistant makes up. Run it and paste the output
-back rather than letting it guess.
+`rsmm schema <kind>` lists the vanilla ids available to clone; `rsmm items
+list` does the same for magical objects specifically. Run one and paste the
+output back rather than letting the assistant guess.
+
+Every command that names a mod takes its **id**, not a path — `rsmm lint MyMod`,
+not `rsmm lint mods/MyMod`, which fails with `no such mod`.
 
 ## Related
 
