@@ -13,6 +13,8 @@
 <p align="center">
   <a href="https://github.com/Ovilli/RavenswatchModManager/releases/latest"><img src="https://img.shields.io/badge/Windows-x64-blue?logo=windows" alt="Windows"></a>
   <a href="https://github.com/Ovilli/RavenswatchModManager/releases/latest"><img src="https://img.shields.io/badge/Linux-x64-orange?logo=linux" alt="Linux"></a>
+  <a href="https://rsmm.me"><img src="https://img.shields.io/badge/website-rsmm.me-crimson" alt="Website"></a>
+  <a href="https://rsmm.me/registry"><img src="https://img.shields.io/badge/mod%20registry-browse-blueviolet" alt="Mod registry"></a>
   <a href="https://docs.rsmm.me"><img src="https://img.shields.io/badge/docs-docs.rsmm.me-8a2be2" alt="Docs"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
 </p>
@@ -24,6 +26,7 @@
 | I want to… | Go to |
 |---|---|
 | **Play with mods** | [Install the desktop app](#1-install-the-desktop-app) — 2 minutes, no terminal |
+| **Browse mods** | [rsmm.me/registry](https://rsmm.me/registry) — community mods, one-click install |
 | **Make a mod** | [Make your first mod](#make-your-first-mod) → [Authoring guide](https://docs.rsmm.me/guides/modding/) |
 | **Script gameplay in Lua** | [Lua mods](#lua-mods-windows) (needs the loader DLL) |
 | **Work on RSMM itself** | [Dev setup](https://docs.rsmm.me/contributing/dev-setup/) · [Architecture](https://docs.rsmm.me/architecture/overview/) |
