@@ -39,7 +39,6 @@ Ravenswatch ships on **Windows**, and runs on **Linux** via Proton / Steam Deck.
 | **Windows** 10/11 | [`RSMM-x64.msi`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) |
 | **Linux** — any distro | [`RSMM-x86_64.AppImage`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) (`chmod +x`, then run) |
 | **Linux** — Debian/Ubuntu | [`rsmm_amd64.deb`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) |
-| **Linux** — Arch | [AUR](https://aur.archlinux.org/packages/rsmm): `yay -S rsmm` |
 
 The app auto-updates itself from GitHub releases.
 
