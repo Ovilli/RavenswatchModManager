@@ -7,6 +7,7 @@ so it used to stay in the install forever with nothing tracking it.
 """
 
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -219,7 +220,69 @@ def test_game_probe_failure_never_blocks_an_apply(install, monkeypatch):
     from rsmm.engine import game_proc
 
     monkeypatch.setattr(game_proc, "_run", lambda cmd: None)
+    monkeypatch.setattr(game_proc.os, "listdir", _raise_oserror)
     assert game_proc.is_game_running() is False
+
+
+def _raise_oserror(*_a, **_kw):
+    raise OSError("probe unavailable")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="the /proc scan is the POSIX path")
+def test_game_probe_ignores_launcher_scaffolding(monkeypatch, tmp_path):
+    """A command line that MENTIONS the exe is not the exe.
+
+    Under Proton the launcher chain — reaper, steam-runtime-launch-client,
+    bwrap, pv-adverb, proton, steam.exe — all carry the full exe path in their
+    arguments, and they outlive the game. The old probe was `pgrep -f`, which
+    matches any command line, so every apply after the first launch of a Steam
+    session was refused with "Ravenswatch is running" while nothing ran (it
+    even matched a shell script waiting for the game to exit). Measured
+    2026-08-23: 9 matching processes, none of them the game.
+    """
+    from rsmm.engine import game_proc
+
+    procs = {
+        # /proc/<pid>/cmdline is NUL-separated, so argv[0] is the FIRST field —
+        # the wrapper binary. The exe path is just one of its arguments.
+        "101": ("reaper", b"/steam/reaper\0SteamLaunch\0AppId=2071280\0--\0"
+                          b"/games/Ravenswatch/Ravenswatch.exe\0"),
+        "102": ("bwrap", b"bwrap\0--args\094\0--\0/proton\0waitforexitandrun\0"
+                         b"/games/Ravenswatch/Ravenswatch.exe\0"),
+        "103": ("bash", b"/bin/bash\0/tmp/wait_for_Ravenswatch.exe.sh\0"),
+    }
+    for pid, (comm, cmdline) in procs.items():
+        d = tmp_path / pid
+        d.mkdir()
+        (d / "comm").write_text(comm + "\n")
+        (d / "cmdline").write_bytes(cmdline)
+    (tmp_path / "not-a-pid").mkdir()
+
+    monkeypatch.setattr(game_proc.os, "listdir",
+                        lambda p: sorted(x.name for x in tmp_path.iterdir()))
+    monkeypatch.setattr(game_proc, "_run", lambda cmd: None)
+    real_open = open
+
+    def fake_open(path, *a, **kw):
+        text = str(path)
+        if text.startswith("/proc/"):
+            return real_open(str(tmp_path / text[len("/proc/"):]), *a, **kw)
+        return real_open(path, *a, **kw)
+
+    monkeypatch.setattr("builtins.open", fake_open)
+    assert game_proc.is_game_running() is False
+
+    # The real thing IS detected — by comm, and by argv[0] when comm is
+    # truncated differently.
+    game = tmp_path / "104"
+    game.mkdir()
+    (game / "comm").write_text("Ravenswatch.exe\n")
+    (game / "cmdline").write_bytes(b"Z:\\games\\Ravenswatch\\Ravenswatch.exe\0")
+    assert game_proc.is_game_running() is True
+
+    (game / "comm").write_text("wine-preloader\n")
+    (game / "cmdline").write_bytes(b"/games/Ravenswatch/Ravenswatch.exe\0-arg\0")
+    assert game_proc.is_game_running() is True
 
 
 # --- corrupt state file ----------------------------------------------------

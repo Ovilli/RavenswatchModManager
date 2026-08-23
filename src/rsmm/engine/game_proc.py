@@ -54,9 +54,38 @@ def is_game_running() -> bool:
         # non-zero when nothing matches, so match the name, not the code.
         return PROCESS_NAME.lower() in (proc.stdout or "").lower()
 
-    # Linux/Proton: the exe name is the process name under Wine. `pgrep -f`
-    # matches the full command line, which is where it shows up.
-    proc = _run(["pgrep", "-f", PROCESS_NAME])
-    if proc is None:
+    # Linux/Proton: scan /proc and match the process ITSELF, never a command
+    # line that merely mentions the exe.
+    #
+    # This used to be `pgrep -f Ravenswatch.exe`, which matches the whole
+    # command line — and under Proton the launcher scaffolding (reaper,
+    # steam-runtime-launch-client, bwrap, pv-adverb, proton, steam.exe) all
+    # carry the exe PATH in their arguments and outlive the game. So every
+    # apply after the first launch of a Steam session was refused with
+    # "Ravenswatch is running" while nothing was running, and `-f` even
+    # matched a shell script that was waiting for the game to exit. Measured
+    # 2026-08-23: 9 matching processes, 0 of them the game.
+    #
+    # `comm` is the kernel's own name for the process (truncated to 15 chars,
+    # which "Ravenswatch.exe" fits exactly) and argv[0] is what the program
+    # was invoked as; the wrappers match neither.
+    try:
+        entries = os.listdir("/proc")
+    except OSError:
         return False
-    return proc.returncode == 0 and bool((proc.stdout or "").strip())
+    want = PROCESS_NAME.lower()
+    for entry in entries:
+        if not entry.isdigit():
+            continue
+        base = "/proc/" + entry
+        try:
+            with open(base + "/comm", encoding="utf-8", errors="replace") as fh:
+                if fh.read().strip().lower() == want:
+                    return True
+            with open(base + "/cmdline", "rb") as fh:
+                argv0 = fh.read().split(b"\0", 1)[0]
+        except OSError:
+            continue                      # the process exited from under us
+        if argv0 and os.path.basename(argv0.decode("utf-8", "replace")).lower() == want:
+            return True
+    return False
