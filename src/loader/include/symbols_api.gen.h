@@ -498,7 +498,7 @@ inline Netcode_EntityReplSetup_fn Netcode_EntityReplSetup() {
 }
 
 // Object_CloneViaSerialize  (Object_CloneViaSerialize)
-//   bool(void* dstObject, void* srcObject, const char* label, void* ctx)
+//   bool(void* dstObject, void* srcObject, void* ignored3, void* ignored4)
 using Object_CloneViaSerialize_fn = uint32_t(*)(void*, void*, void*, void*);
 inline Object_CloneViaSerialize_fn Object_CloneViaSerialize() {
     return reinterpret_cast<Object_CloneViaSerialize_fn>(rsmm::fn_resolve(Sym::Object_CloneViaSerialize_Pattern));

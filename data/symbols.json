@@ -3389,7 +3389,7 @@
    "category": "resource",
    "raw": "FUN_1404fe640",
    "status": "ok",
-   "signature": "bool(void* dstObject, void* srcObject, const char* label, void* ctx)",
+   "signature": "bool(void* dstObject, void* srcObject, void* ignored3, void* ignored4)",
    "cabi": {
     "ret": "uint32_t",
     "params": [
@@ -3399,7 +3399,7 @@
      "void*"
     ]
    },
-   "note": "Deep-copy by round-trip through an oCMemoryBinaryStream: saves srcObject with an oCBinarySaver, then loads it back into dstObject with an oCBinaryLoader, then runs the post-load hook (dst->vtbl[6] guarded by dst->vtbl[5]). Useful as a NO-DISK smoke test for the serializer bridge: if a def clones cleanly, save-to-file is the same path with a file stream.",
+   "note": "Deep-copy by round-trip through an oCMemoryBinaryStream: saves srcObject with an oCBinarySaver, then loads it back into dstObject with an oCBinaryLoader, then runs the post-load hook (dst->vtbl[6] guarded by dst->vtbl[5]). Useful as a NO-DISK smoke test for the serializer bridge: if a def clones cleanly, save-to-file is the same path with a file stream. ARGS 3 AND 4 ARE UNREAD — verified in the disassembly: the prologue overwrites r8 (`lea r8d, [rsi+4]` at 0x1404fe6c3) and r9 before either is used, and the function supplies its OWN label literal to BinarySaver_WriteGraph (`lea r8, [rip+0xa4b79c]` at 0x1404fe6fd). An earlier signature here read `const char* label, void* ctx`, copied from Object_SaveToFile's shape; passing 0 for them is safe and R.serialize.clone does exactly that.",
    "refs": []
   },
   {

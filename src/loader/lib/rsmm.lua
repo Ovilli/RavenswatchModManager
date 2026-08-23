@@ -10695,16 +10695,20 @@ end
 -- The engine's own literals use exactly this shape (0x80000000 | length), and
 -- Object_SaveToFile takes the string BY ADDRESS. One scratch alloc holds both
 -- the header and the bytes — never take a second while the first is live.
+local SCRATCH_MAX = 0x1000        -- lua_scratch's kMaxAlloc; over it it THROWS
+
 local function _octstring(str)
     local n = #str
-    -- +8 of slack so the header can start 8-ALIGNED. The scratch arena hands
-    -- back byte-granular addresses (it bumps by size+16), so a previous alloc
-    -- of odd length leaves the next one unaligned -- and call_safe's pointer
-    -- guard rejects an unaligned argument, which shows up as a save that
-    -- worked once and then refused itself for no visible reason.
+    -- Bound the request rather than let lua_scratch luaL_error out of it: a
+    -- long mod dir plus a long relative path is enough to cross kMaxAlloc, and
+    -- every caller here is documented to fail closed with `nil, err`.
+    if 0x18 + n + 1 > SCRATCH_MAX then return nil end
+    -- Alignment needs no fixup: lua_scratch rounds every allocation up to 16
+    -- over an alignas(16) arena, so scratch addresses are always 16-aligned and
+    -- the header starts aligned for free. (call_safe's pointer guard rejects an
+    -- unaligned argument, so this would matter if the arena were byte-granular.)
     local buf = I.scratch(0x18 + n + 1)
     if not buf or buf == 0 then return nil end
-    buf = buf + ((8 - buf % 8) % 8)
     local bytes = buf + 0x10
     for i = 1, n do I.write_u8(bytes + i - 1, str:byte(i)) end
     I.write_u8(bytes + n, 0)
@@ -10763,6 +10767,11 @@ function R.serialize.clone(dst, src)
     if not R.serialize.ready() then return nil, "serializer bridge unresolved on this build" end
     if not R.serialize.can(dst) then return nil, "dst is not a plausible oISerializable" end
     if not R.serialize.can(src) then return nil, "src is not a plausible oISerializable" end
+    -- args 3 and 4 are IGNORED by the callee, so 0 is safe: the prologue
+    -- overwrites r8 (`lea r8d, [rsi+4]`) and r9 without ever reading them in,
+    -- and supplies its OWN label literal to BinarySaver_WriteGraph at
+    -- 0x1404fe6fd. Unlike Object_SaveToFile, there is no caller-owned string
+    -- here to get wrong.
     local rc = R.engine.call_safe("Object_CloneViaSerialize",
         { { 1, R.serialize.can }, { 2, R.serialize.can } }, dst, src, 0, 0)
     if rc == nil then return nil, "call refused by the pointer guard" end
@@ -10820,7 +10829,13 @@ local MAX_INSTANCES = 0x8000
 function R.rtti.raw(obj)
     if not R.ptr.has_vtable(obj) then return nil end
     local vt = I.read_u64(obj)
+    -- has_vtable read this once already, but the object can be torn down (or
+    -- its page unmapped) between the two reads, and `nil - 8` is an ERROR, not
+    -- a nil — it would escape R.defs.classes()/dump(), which are documented as
+    -- read-only walks that never fault.
+    if not vt then return nil end
     local col = I.read_u64(vt - 8)
+    if not col then return nil end
     if not R.ptr.in_image(col) then return nil end
     local sig = I.read_u32(col)
     if sig ~= 0 and sig ~= 1 then return nil end

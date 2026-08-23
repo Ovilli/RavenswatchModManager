@@ -258,7 +258,7 @@ Total: **210** symbols across 18 categories.
 | `Definitions_LoadGroup` | `0x140310300` | ✅ ok |  | Loads the 'Definitions' group / VersionDefinition manifest (triggers loading the curate… |
 | `FileStream_Open` | `0x14053a730` | ❓ unverified |  | bool(void** outHandle, const char* path, int* mode) |
 | `InitialLoading_LoadAllDefinitions` | `0x140260b80` | ✅ ok |  | void(void* nameFilter) |
-| `Object_CloneViaSerialize` | `0x1404fe640` | ✅ ok | ✔ | bool(void* dstObject, void* srcObject, const char* label, void* ctx) |
+| `Object_CloneViaSerialize` | `0x1404fe640` | ✅ ok | ✔ | bool(void* dstObject, void* srcObject, void* ignored3, void* ignored4) |
 | `Object_LoadFromStream` | `0x1404fd6b0` | ✅ ok | ✔ | bool(void* object, void* readStream) |
 | `Object_SaveToFile` | `0x1404fd7e0` | ✅ ok | ✔ | bool(void* object, void* pathString, bool cooked, void* ctx) |
 | `Registry_EnumInstances` | `0x140241750` | ✅ ok | ✔ | void*(void* unused, void* out3, void** classDescPtr) |

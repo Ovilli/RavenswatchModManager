@@ -74,8 +74,18 @@ end
 -- Named engine functions rsmm.lua's R.stat path calls (dispatched by name).
 local engine = {}
 local heap = 0x50000000
+-- Faithful to lua_scratch (script_lua.cpp): an alignas(16) arena bumped by the
+-- size ROUNDED UP TO 16, and a hard per-call cap of kMaxAlloc that raises
+-- rather than returning nil. Both matter to callers: the rounding is why
+-- _octstring needs no alignment fixup, and the cap is a throw an SDK function
+-- documented to fail closed must not let escape.
+local SCRATCH_MAX_ALLOC = 0x1000
 local function scratch(sz)
-    local a = heap; heap = heap + sz + 16
+    if sz == 0 or sz > SCRATCH_MAX_ALLOC then
+        error(("rsmm.scratch: size must be 1..%d"):format(SCRATCH_MAX_ALLOC))
+    end
+    local a = heap
+    heap = heap + ((sz + 15) - (sz + 15) % 16)
     for i = 0, sz - 1 do mem[a + i] = 0 end
     return a
 end
@@ -7272,11 +7282,20 @@ do
     check(sl == 0x80000000 + #".\\dump\\enemydef.ot",
           "with the literal flag and the exact length the engine expects")
 
-    -- Deliberately a SECOND save: the scratch arena is byte-granular, so this
-    -- call gets an odd start address and only lands if _octstring re-aligns it
-    -- (an unaligned arg is rejected by call_safe's pointer guard).
+    -- A SECOND save: lua_scratch rounds every allocation up to 16 over an
+    -- alignas(16) arena, so the header of the next oCTString is 8-aligned for
+    -- free and still clears call_safe's pointer guard (which rejects an
+    -- unaligned argument).
     local ok2, path2 = R.serialize.save(INST, "dump/raw.ot")
     check(ok2 == true and path2 ~= nil, "a second save still passes the pointer guard")
+    check(saved_args.str % 8 == 0, "and the oCTString header lands 8-aligned")
+
+    -- A path long enough to cross lua_scratch's kMaxAlloc must come back as a
+    -- refusal, not as a luaL_error thrown out of a fail-closed API.
+    local long_ok, long_err = R.serialize.save(INST, string.rep("a", 0x1000))
+    check(long_ok == nil and type(long_err) == "string",
+          "an over-long path is REFUSED (nil, err), not raised -- lua_scratch "
+          .. "throws above kMaxAlloc and save() is documented to fail closed")
 
     -- R.debug.find_u32 / with_u32 — the field-discovery pair
     local OBJ = 0x26000000
