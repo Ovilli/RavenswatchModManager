@@ -50,3 +50,46 @@ def test_roundtrip_byte_stable(path: Path) -> None:
         f"{path.name}: round-trip diverged "
         f"(orig={len(data)}B, emit={len(out)}B)"
     )
+
+
+def _synthetic_type_b() -> bytes:
+    """A minimal type-B container, the shape the ENGINE's own writer emits."""
+    from rsmm.engine.cooked import ClassDef, CookedFile, Section
+
+    cf = CookedFile(variant="B", hdr_a=0x10, flags=0)
+    cf.classes.append(ClassDef("oCDtEnemyDefinition", 0x176DEBB7, 1, 0, 0x1768CE8E))
+    cf.sections.append(Section(payload=b"\x01\x02\x03\x04"))
+    return emit(cf)
+
+
+def test_promote_to_cooked_matches_retail_header():
+    """Engine output is one header promotion away from the retail shape.
+
+    ``Object_SaveToFile`` hardcodes the saver's flag byte to 0, so it always
+    writes type B — no ``uNbFlags=1`` / ``"Cooked"`` / ``"1"`` block. Measured
+    2026-08-23 on a live ``oCDtEnemyDefinition``: engine output was identical to
+    the shipped cooked file for all 523 body bytes and differed only by that
+    15-byte block, so promoting the header is the whole conversion.
+    """
+    from rsmm.engine.cooked import promote_to_cooked
+
+    src = parse(_synthetic_type_b())
+    assert src.variant == "B"
+
+    out = emit(promote_to_cooked(src))
+    assert out[:4] == b"\x10\x00\x00\x00"
+    assert out[4:8] == b"\x01\x00\x00\x00"          # uNbFlags = 1
+    assert out[8:18] == b"\x06\x00\x00\x00Cooked"   # the tag, length-prefixed
+    assert out[18:22] == b"\x01\x00\x00\x00"        # extra
+    assert out[22:23] == b"1"                       # type tag
+
+    # The promotion is header-only: the class table and payload survive, and
+    # the file is exactly 15 bytes longer than the type-B form it came from.
+    again = parse(out)
+    assert again.variant == "A"
+    assert [c.name for c in again.classes] == [c.name for c in src.classes]
+    assert [s.payload for s in again.sections] == [s.payload for s in src.sections]
+    assert len(out) == len(_synthetic_type_b()) + 15
+
+    # Idempotent: promoting an already-type-A file changes nothing.
+    assert emit(promote_to_cooked(again)) == out

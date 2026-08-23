@@ -7140,5 +7140,179 @@ do
 end
 
 -- ---------------------------------------------------------------------------
+-- R.rtti / R.defs / R.serialize
+--
+-- The serializer bridge hands a LIVE object to the engine's own saver, which
+-- vcalls slots 1 and 3 on it before any of our code runs again — a wrong
+-- pointer is a hard fault of the game, not a nil. So the guards are the part
+-- worth testing: RTTI naming (how R.defs identifies a class at all), the
+-- registry walk (page-guarded reads over an absl SwissTable, never the
+-- engine's find-or-INSERT accessor), and the refusal paths on save().
+-- ---------------------------------------------------------------------------
+do
+    local INST = 0x22000000              -- the "live object" (heap)
+
+    -- Seed a complete MSVC RTTI chain relative to `base`: object -> vftable ->
+    -- COL -> type descriptor, plus the two vtable slots the saver vcalls.
+    local function seed_rtti(mangled, base)
+        local vft, col, td = base + 0x700000, base + 0x800000, base + 0x900000
+        I.write_u64(vft - 8, col)
+        I.write_u32(col, 1)                       -- signature 1 (x64)
+        I.write_u32(col + 0x0c, td - base)        -- type descriptor RVA
+        I.write_u32(col + 0x14, col - base)       -- self RVA
+        for i = 1, #mangled do
+            I.write_u8(td + 0x10 + i - 1, mangled:byte(i))
+        end
+        I.write_u8(td + 0x10 + #mangled, 0)
+        I.write_u64(INST, vft)
+        -- slots 1 (GetClassId) and 3 (Serialize) must point at code
+        I.write_u64(vft + 0x08, base + 0x10000)
+        I.write_u64(vft + 0x18, base + 0x11000)
+        return vft
+    end
+
+    local IMG = 0x140000000
+    local VFT = seed_rtti(".?AVoCDtEnemyDefinition@@", IMG)
+
+    check(R.rtti.raw(INST) == ".?AVoCDtEnemyDefinition@@",
+          "R.rtti.raw walks vftable[-1] -> COL -> type descriptor")
+    check(R.rtti.name(INST) == "oCDtEnemyDefinition", "and demangles it")
+    check(R.rtti.name(0) == nil, "a non-object yields nil, not a fault")
+
+    seed_rtti(".?AVoCFoo@dt@oe@@", IMG)
+    check(R.rtti.name(INST) == "oe::dt::oCFoo",
+          "MSVC stores qualifiers innermost-first, so the pieces are reversed")
+    seed_rtti(".?AVoCDtEnemyDefinition@@", IMG)
+
+    -- registry SwissTable: capacity 8, one full slot holding one instance.
+    --
+    -- Seeded at a RELOCATED module base on purpose. The globals are recorded in
+    -- data/symbols.json at image base 0x140000000, and the game is loaded
+    -- wherever Windows puts it — the first in-game run of this code read the
+    -- raw addresses, hit unmapped memory and reported "registry unreadable",
+    -- which is indistinguishable from a global that moved. A default-base mock
+    -- cannot catch that; this one fails unless _table_view rebases.
+    local ALT_BASE = 0x150000000
+    local saved_base = I.module_base
+    I.module_base = function() return ALT_BASE end
+    local function alt(va) return ALT_BASE + (va - 0x140000000) end
+    -- the class name comes from RTTI, which is image-relative: relocate it too
+    seed_rtti(".?AVoCDtEnemyDefinition@@", ALT_BASE)
+
+    local CTRL, SLOTS, DATA = 0x23000000, 0x24000000, 0x25000000
+    I.write_u64(alt(0x1412f0a68), CTRL)
+    I.write_u64(alt(0x1412f0a70), SLOTS)
+    I.write_u64(alt(0x1412f0a80), 7)
+    for i = 0, 7 do I.write_u8(CTRL + i, 0x80) end   -- empty
+    I.write_u8(CTRL + 3, 0x12)                       -- full (high bit clear)
+    I.write_u64(DATA, INST)
+    I.write_u64(SLOTS + 3 * 0x18, 0x30000000)        -- class descriptor (key)
+    I.write_u64(SLOTS + 3 * 0x18 + 8, DATA)
+    I.write_u32(SLOTS + 3 * 0x18 + 0x10, 1)
+
+    check(R.defs.ready() == true, "R.defs reads the registry globals")
+    local classes = R.defs.classes()
+    check(#classes == 1, "one populated slot -> one class (7 empties skipped)")
+    check(classes[1] and classes[1].name == "oCDtEnemyDefinition",
+          "the class is named from its first instance's RTTI")
+    check(R.defs.first("oCDtEnemyDefinition") == INST, "exact name match")
+    check(R.defs.first("EnemyDefinition") == INST,
+          "suffix match, so callers need not spell the oCDt prefix")
+    check(R.defs.first("oCDtMapDefinition") == nil, "a miss returns nil")
+
+    I.write_u64(alt(0x1412f0a80), 6)
+    check(R.defs.ready() == false,
+          "a mask that is not capacity-1 is refused -- a garbage mask would "
+          .. "otherwise turn the walk into a multi-million-iteration probe")
+    check((R.defs.why_not() or ""):find("not capacity%-1") ~= nil,
+          "and why_not() names the reason -- 'unreadable' covers five distinct "
+          .. "failures, and a probe that cannot say which wastes a playtest")
+    I.write_u64(alt(0x1412f0a80), 7)
+    check(R.defs.why_not() == nil, "why_not() is nil once the registry reads")
+
+    -- Back to the default base: the RTTI fixtures above were seeded relative to
+    -- it, and R.ptr.in_image (which every serialize guard leans on) reads it.
+    I.module_base = saved_base
+    seed_rtti(".?AVoCDtEnemyDefinition@@", IMG)
+
+    -- R.serialize guards
+    check(R.serialize.can(INST) == true, "can() accepts vtable slots 1/3 in image")
+    I.write_u64(VFT + 0x18, 0x22000000)
+    check(R.serialize.can(INST) == false, "and rejects a Serialize slot outside it")
+    I.write_u64(VFT + 0x18, IMG + 0x11000)
+
+    local saved_args
+    engine["Object_SaveToFile"] = function(obj, str, cooked, ctx)
+        saved_args = { obj = obj, str = str, cooked = cooked, ctx = ctx }
+        return 1
+    end
+
+    check(select(1, R.serialize.save(INST, "../escape.ot")) == nil,
+          "a path containing '..' is refused before any engine call")
+    check(select(1, R.serialize.save(INST, "/abs/path.ot")) == nil,
+          "so is an absolute path -- destinations are confined to mod_dir")
+    check(select(1, R.serialize.save(0x10, "dump/x.ot")) == nil,
+          "and a pointer that is not a plausible serializable")
+
+    local ok_save, path = R.serialize.save(INST, "dump/enemydef.ot")
+    check(ok_save == true, "a well-formed save reports success")
+    check(path == ".\\dump\\enemydef.ot",
+          "and returns the resolved path, BACKSLASHED -- oCFileBinaryStream::Open "
+          .. "prepends the \\\\?\\ long-path prefix, which disables Win32 path "
+          .. "normalisation, so a forward slash stops being a separator")
+    check(saved_args ~= nil and saved_args.obj == INST, "the object is arg 1")
+    check(saved_args ~= nil and saved_args.cooked == 0,
+          "arg 3 is not the cooked flag -- the engine hardcodes uNbFlags=0, so "
+          .. "the header is promoted host-side (cooked.promote_to_cooked)")
+    -- the oCTString<char> the engine reads BY ADDRESS: {char*, 0x80000000|len}
+    local sp = saved_args and I.read_u64(saved_args.str)
+    local sl = saved_args and I.read_u32(saved_args.str + 8)
+    check(sp ~= nil and I.read_cstr(sp) == ".\\dump\\enemydef.ot",
+          "arg 2 points at an oCTString whose buffer holds the path")
+    check(sl == 0x80000000 + #".\\dump\\enemydef.ot",
+          "with the literal flag and the exact length the engine expects")
+
+    -- Deliberately a SECOND save: the scratch arena is byte-granular, so this
+    -- call gets an odd start address and only lands if _octstring re-aligns it
+    -- (an unaligned arg is rejected by call_safe's pointer guard).
+    local ok2, path2 = R.serialize.save(INST, "dump/raw.ot")
+    check(ok2 == true and path2 ~= nil, "a second save still passes the pointer guard")
+
+    -- R.debug.find_u32 / with_u32 — the field-discovery pair
+    local OBJ = 0x26000000
+    for off = 0, 0x40, 4 do I.write_u32(OBJ + off, 0) end
+    I.write_u32(OBJ + 0x10, 20)
+    I.write_u32(OBJ + 0x14, 20)          -- the {width,height} pair
+    I.write_u32(OBJ + 0x28, 20)          -- a stray 20, NOT followed by 20
+    I.write_u32(OBJ + 0x2c, 7)
+
+    local all = R.debug.find_u32(OBJ, 20, { max_off = 0x40, log = false })
+    check(#all == 3, "find_u32 reports every offset holding the value "
+          .. "(+0x10, +0x14 and the stray at +0x28)")
+    local paired = R.debug.find_u32(OBJ, 20, { max_off = 0x40, pairs_with = 20, log = false })
+    check(#paired == 1 and paired[1].off == 0x10,
+          "pairs_with discriminates a real field pair from a stray match")
+
+    local seen
+    local got = R.debug.with_u32(OBJ, 0x10, 77, function()
+        seen = I.read_u32(OBJ + 0x10)
+        return "done"
+    end)
+    check(seen == 77, "with_u32 applies the value for the duration of the call")
+    check(got == "done", "and hands back what fn returned")
+    check(I.read_u32(OBJ + 0x10) == 20, "and RESTORES the original afterwards")
+
+    local _, why = R.debug.with_u32(OBJ, 0x10, 99, function() error("boom") end)
+    check(I.read_u32(OBJ + 0x10) == 20,
+          "the restore also runs when fn raises -- an unscoped write to a "
+          .. "mis-derived offset is exactly the corruption this guards against")
+    check((why or ""):find("boom") ~= nil, "and the error is reported, not swallowed")
+    check(select(1, R.debug.with_u32(0x10, 0, 1, function() end)) == nil,
+          "an implausible pointer is refused before any write")
+
+    engine["Object_SaveToFile"] = nil
+end
+
+-- ---------------------------------------------------------------------------
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)

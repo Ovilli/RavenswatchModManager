@@ -28,6 +28,23 @@ keeps everything else in ``_tail_hex``. This module types that tail:
 Validated by parsing **all 237 shipped tiledefs with zero failures**, and every
 one re-emits byte-for-byte (``tests/test_tile_cook.py``).
 
+**Live-object offsets** (in-game, 2026-08-23). The same record exists as a live
+``oCDtTileDefinition`` while the game runs, and the engine's own serializer
+writes it back out (see ``R.serialize`` / ``Object_SaveToFile``). Confirmed by
+mutation, not by reading: setting ``obj+0x2e0`` to a sentinel and saving
+produced a cooked file whose decoded ``width`` was that sentinel, one byte
+different from the baseline and nothing else touched.
+
+.. code-block:: text
+
+    obj + 0x2e0   u32  width      (the pair is contiguous, as in the file)
+    obj + 0x2e4   u32  height
+
+That makes the write path for a tile: mutate the live def, call
+``R.serialize.save``, then ``cooked.promote_to_cooked`` for the retail header —
+no need for this module to understand the payload it does not decode, because
+the engine writes those bytes itself.
+
 The ``kinds`` list is the join key to mapgen: a map's tile-generation level
 declares which *kinds* each slot accepts (``Altar_Of_Heroes``, ``Wishing_Well``,
 ``Camp``, …), and a tile is eligible for a slot when one of its kinds matches.

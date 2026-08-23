@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **198** symbols across 18 categories.
+Total: **210** symbols across 18 categories.
 
 ## combat
 
@@ -52,6 +52,8 @@ Total: **198** symbols across 18 categories.
 | `CustomFlagFilter_Serialize` | `0x140189830` | ✅ ok |  | bool(void* flagFilter, void* reader) |
 | `CustomFlagList_Serialize` | `0x140681e60` | ❓ unverified |  | bool(void* flagList, void* reader) |
 | `GameScene_FindContextByTester` | `0x14066cad0` | ✅ ok |  | void*(void* gameScene, void* kindOfTypeTester) |
+| `MetaClass_AddMember` | `0x14050aa30` | ✅ ok |  | void(void* metaClass, void* member, uint32_t id, void* name, void* unused, void* userData) |
+| `MetaClass_FindMember` | `0x14050cd20` | ✅ ok |  | void* (void* metaClass, uint32_t nameOrId, void* kind, bool searchParents) |
 | `Profiler_GetThreadScopeStack` | `0x14053a660` | ❓ unverified |  | void*(void) |
 | `Property_EvaluateByGuid` | `0x1406ab910` | ✅ ok |  | bool(void* ctx, void* container, void* guid16, float* out) |
 | `ResourceRef_Serialize` | `0x1401cbba0` | ❓ unverified |  | bool(void* reader, void* refSlot) |
@@ -175,6 +177,9 @@ Total: **198** symbols across 18 categories.
 |------|---------|--------|----------|------------------|
 | `AchievementDef_PostLoad` | `0x140312060` | ✅ ok | ✔ | bool(void* definition) |
 | `ChallengeDef_PostLoad` | `0x140324f30` | ✅ ok | ✔ | bool(void* definition) |
+| `DefinitionRegistry_Ctrl` | `0x1412f0a68` | 📍 va |  | Instance registry SwissTable (absl flat_hash_map) keyed on the class-descriptor pointer… |
+| `DefinitionRegistry_Mask` | `0x1412f0a80` | 📍 va |  | Instance registry SwissTable (absl flat_hash_map) keyed on the class-descriptor pointer… |
+| `DefinitionRegistry_Slots` | `0x1412f0a70` | 📍 va |  | Instance registry SwissTable (absl flat_hash_map) keyed on the class-descriptor pointer… |
 | `Definition_DeserializeBase` | `0x140310180` | ✅ ok |  | bool(void* def, void* reader) |
 | `Definition_PostLoad` | `0x140310200` | ✅ ok | ✔ | bool(void* definition) |
 | `Definition_PreUnload` | `0x140310230` | ✅ ok | ✔ | void(void*) |
@@ -247,8 +252,15 @@ Total: **198** symbols across 18 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
+| `BinarySaver_CollectDependencies` | `0x1404fc950` | ❓ unverified |  | bool(void* saver, void* rootObject) |
+| `BinarySaver_WriteGraph` | `0x140501a30` | ✅ ok | ✔ | bool(void* saver, void* rootObject, const char* label, void* ctx) |
+| `BinarySaver_WriteObject` | `0x1405016c0` | ✅ ok | ✔ | bool(void* saver, void* object, const char* label, bool flag) |
 | `Definitions_LoadGroup` | `0x140310300` | ✅ ok |  | Loads the 'Definitions' group / VersionDefinition manifest (triggers loading the curate… |
+| `FileStream_Open` | `0x14053a730` | ❓ unverified |  | bool(void** outHandle, const char* path, int* mode) |
 | `InitialLoading_LoadAllDefinitions` | `0x140260b80` | ✅ ok |  | void(void* nameFilter) |
+| `Object_CloneViaSerialize` | `0x1404fe640` | ✅ ok | ✔ | bool(void* dstObject, void* srcObject, const char* label, void* ctx) |
+| `Object_LoadFromStream` | `0x1404fd6b0` | ✅ ok | ✔ | bool(void* object, void* readStream) |
+| `Object_SaveToFile` | `0x1404fd7e0` | ✅ ok | ✔ | bool(void* object, void* pathString, bool cooked, void* ctx) |
 | `Registry_EnumInstances` | `0x140241750` | ✅ ok | ✔ | void*(void* unused, void* out3, void** classDescPtr) |
 | `Registry_RegisterInstance` | `0x1403119d0` | ✅ ok |  | void(void* definition) |
 | `Registry_UnregisterInstance` | `0x140311a50` | ✅ ok | ✔ | void(void*) |

@@ -246,3 +246,30 @@ def emit(cf: CookedFile) -> bytes:
         out += MARK_END
 
     return bytes(out)
+
+
+def promote_to_cooked(cf: CookedFile) -> CookedFile:
+    """Turn a type-B container into the type-A shape retail ships.
+
+    The engine's own writer (``Object_SaveToFile``) always emits type B: its
+    prologue hardcodes the saver's flag byte (``saver+0x10``) to 0, so the
+    ``uNbFlags=1`` / ``"Cooked"`` / ``"1"`` block never gets written, whatever
+    the caller passes. Measured 2026-08-23 against a live ``oCDtEnemyDefinition``:
+    the engine's output was **byte-identical to the shipped cooked file except
+    for exactly that 15-byte block** (523/523 body bytes equal).
+
+    So an engine-written asset is one header promotion away from retail shape,
+    and that promotion is pure container data this codec already models.
+    Idempotent: a type-A file is returned unchanged.
+    """
+    if cf.variant == "A":
+        return cf
+    return CookedFile(
+        variant="A",
+        hdr_a=cf.hdr_a,
+        flags=1,
+        extra=1,
+        type_tag=0x31,          # b"1"
+        classes=list(cf.classes),
+        sections=list(cf.sections),
+    )

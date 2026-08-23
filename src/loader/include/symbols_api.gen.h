@@ -23,6 +23,20 @@ inline Analytics_SubmitNamedEvent_fn Analytics_SubmitNamedEvent() {
     return reinterpret_cast<Analytics_SubmitNamedEvent_fn>(rsmm::fn_resolve(Sym::Analytics_SubmitNamedEvent_Pattern));
 }
 
+// BinarySaver_WriteGraph  (BinarySaver_WriteGraph)
+//   bool(void* saver, void* rootObject, const char* label, void* ctx)
+using BinarySaver_WriteGraph_fn = uint32_t(*)(void*, void*, void*, void*);
+inline BinarySaver_WriteGraph_fn BinarySaver_WriteGraph() {
+    return reinterpret_cast<BinarySaver_WriteGraph_fn>(rsmm::fn_resolve(Sym::BinarySaver_WriteGraph_Pattern));
+}
+
+// BinarySaver_WriteObject  (BinarySaver_WriteObject)
+//   bool(void* saver, void* object, const char* label, bool flag)
+using BinarySaver_WriteObject_fn = uint32_t(*)(void*, void*, void*, uint32_t);
+inline BinarySaver_WriteObject_fn BinarySaver_WriteObject() {
+    return reinterpret_cast<BinarySaver_WriteObject_fn>(rsmm::fn_resolve(Sym::BinarySaver_WriteObject_Pattern));
+}
+
 // BookController_ResolveSettings  (BookController_ResolveSettings)
 //   void(oCDtEntityCpnt3DBookController* self)
 using BookController_ResolveSettings_fn = void(*)(void*);
@@ -481,6 +495,27 @@ inline Netcode_Channel_Unsubscribe_fn Netcode_Channel_Unsubscribe() {
 using Netcode_EntityReplSetup_fn = void(*)(void*);
 inline Netcode_EntityReplSetup_fn Netcode_EntityReplSetup() {
     return reinterpret_cast<Netcode_EntityReplSetup_fn>(rsmm::fn_resolve(Sym::Netcode_EntityReplSetup_Pattern));
+}
+
+// Object_CloneViaSerialize  (Object_CloneViaSerialize)
+//   bool(void* dstObject, void* srcObject, const char* label, void* ctx)
+using Object_CloneViaSerialize_fn = uint32_t(*)(void*, void*, void*, void*);
+inline Object_CloneViaSerialize_fn Object_CloneViaSerialize() {
+    return reinterpret_cast<Object_CloneViaSerialize_fn>(rsmm::fn_resolve(Sym::Object_CloneViaSerialize_Pattern));
+}
+
+// Object_LoadFromStream  (Object_LoadFromStream)
+//   bool(void* object, void* readStream)
+using Object_LoadFromStream_fn = uint32_t(*)(void*, void*);
+inline Object_LoadFromStream_fn Object_LoadFromStream() {
+    return reinterpret_cast<Object_LoadFromStream_fn>(rsmm::fn_resolve(Sym::Object_LoadFromStream_Pattern));
+}
+
+// Object_SaveToFile  (Object_SaveToFile)
+//   bool(void* object, void* pathString, bool cooked, void* ctx)
+using Object_SaveToFile_fn = uint32_t(*)(void*, void*, uint32_t, void*);
+inline Object_SaveToFile_fn Object_SaveToFile() {
+    return reinterpret_cast<Object_SaveToFile_fn>(rsmm::fn_resolve(Sym::Object_SaveToFile_Pattern));
 }
 
 // ProjectileAttack_BeginAttack  (ProjectileAttack_BeginAttack)

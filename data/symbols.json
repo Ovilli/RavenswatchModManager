@@ -3308,6 +3308,169 @@
    "raw": "FUN_140ae1700",
    "status": "unverified",
    "note": "oCSLNetPeer::vft[0x100] — enumerates the connected remote systems, and the reason a damage row can be named at all. Ghidra 2026-08-21, it walks MEMBERS rather than calling RakNet: `for i in 0..*(u32*)(peer+0x258): rs = *(void**)(peer+0x250 + i*8); if *(char*)rs != 0 and *(int*)(rs+0x2cec) == 7: emit SystemAddress at rs+0x08 and {u64 @rs+0x2cc8, u16 @rs+0x2cd0}` — RakNet::RakPeer::RemoteSystemStruct, with systemAddress at +0x08 (sockaddr; sin_port at +0x02, NETWORK order — the caller FUN_1408b7580 ntohs's it via Ordinal_15), RakNetGUID at +0x2cc8 and connectMode at +0x2cec (7 = connected). THE JOIN: rs+0x2cc8 is the same qword Replica3::creatingSystemGUID stamps on a hero's replica (Entity_GetNetId), and the ntohs'd port is the same UDP endpoint Netcode_PeerSlots exposes per peer at slot+0x50 -> +0xc0 beside the player's display NAME. So GUID -> port -> name, entirely by reads. Consumed by rsmm.lua's F._dmg_rak_systems / F._dmg_rak_join. UNVERIFIED in-game as of 2026-08-21: derived from the decompile, gated on an anchor (this machine must not appear among its own remote systems) and distinctness, and it logs the whole table either way."
+  },
+  {
+   "name": "Object_SaveToFile",
+   "kind": "function",
+   "category": "resource",
+   "raw": "FUN_1404fd7e0",
+   "status": "ok",
+   "signature": "bool(void* object, void* pathString, bool cooked, void* ctx)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*",
+     "void*",
+     "uint32_t",
+     "void*"
+    ]
+   },
+   "note": "THE COOKER. Opens an oCFileBinaryStream on `pathString` (an oCTString<char>* passed BY ADDRESS: {char* ptr, u32 flags|len, u32}) via FUN_14053a730, stack-constructs an oCBinarySaver (vftable 0x140f4ab50) over it, writes the header flag table -- `cooked=1` emits uNbFlags=1 + sFlagName=\"Cooked\" (PTR_s_Cooked_140ed9fc8) + sFlagValue, cooked=0 emits uNbFlags=0 -- then calls BinarySaver_WriteGraph(saver, object, \"Object\", ctx). That is the exact file shape rsmm.engine.cooked parses. Retail USES this path (oCGameSave saves through it at 0x140479930), so it is not editor-only dead code. Pass ctx=0. The object only needs the standard oISerializable vtable: slot 1 = GetClassId, slot 3 = Serialize(oISerializer*). See Object_LoadFromStream for the read twin.",
+   "refs": []
+  },
+  {
+   "name": "Object_LoadFromStream",
+   "kind": "function",
+   "category": "resource",
+   "raw": "FUN_1404fd6b0",
+   "status": "ok",
+   "signature": "bool(void* object, void* readStream)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Read twin of Object_SaveToFile: stack-constructs an oCBinaryLoader over `readStream` and calls BinaryLoader_ReadGraph(loader, object, \"Object\"). oCBinaryLoader (vftable 0x140f4a690) and oCBinarySaver implement the SAME 23-slot oISerializer interface slot-for-slot -- see Object_SaveToFile.",
+   "refs": []
+  },
+  {
+   "name": "BinarySaver_WriteGraph",
+   "kind": "function",
+   "category": "resource",
+   "raw": "FUN_140501a30",
+   "status": "ok",
+   "signature": "bool(void* saver, void* rootObject, const char* label, void* ctx)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*",
+     "void*",
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "oCBinarySaver vtable slot 5 (the loader's slot 5 is FUN_140500d70, the reader). Writes the whole cooked file body: `uClassCount`, then per class {rInfo.m_sName, m_uId, m_uVersionMaj, m_uVersionMin, m_uParentId} (0x20 bytes/record, table at saver+0x18 +0x6d0/+0x6d8), then `uOjbectsCount` (engine's typo), then per object its class-table index as `uFoundIndex`, then each sub-object as `SingleObject%d`, then the root. This is byte-for-byte the header rsmm.engine.cooked.parse reads back, INCLUDING the per-class version fields Serializer_GetClassVersion gates optional fields on.",
+   "refs": []
+  },
+  {
+   "name": "BinarySaver_WriteObject",
+   "kind": "function",
+   "category": "resource",
+   "raw": "FUN_1405016c0",
+   "status": "ok",
+   "signature": "bool(void* saver, void* object, const char* label, bool flag)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*",
+     "void*",
+     "void*",
+     "uint32_t"
+    ]
+   },
+   "note": "Writes ONE object through a serializer: calls object->vtbl[1]() = GetClassId, finds that id in the saver's class table, writes the index as `uFoundIndex`, then calls object->vtbl[3](object, saver) = Serialize. PROOF that Serialize is direction-agnostic: slot 3 is the same slot the codec work calls 'Deserialize' (e.g. GameModeDefaultDefinition::Deserialize = vftable slot 3). A def's Serialize branches on serializer vtable slot 4 = IsSaving (oCBinaryLoader returns 0, oCBinarySaver returns 1) -- Definition_DeserializeBase does exactly this at its head -- and transfers fields via the typed slots 13-19 (widths 1/4/8), which read from the loader's stream at +0x68 or write to the saver's at +0x40. So every hand-written Serialize in the engine can WRITE the payloads rsmm's Python codecs still carry as opaque _tail_hex.",
+   "refs": []
+  },
+  {
+   "name": "Object_CloneViaSerialize",
+   "kind": "function",
+   "category": "resource",
+   "raw": "FUN_1404fe640",
+   "status": "ok",
+   "signature": "bool(void* dstObject, void* srcObject, const char* label, void* ctx)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*",
+     "void*",
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Deep-copy by round-trip through an oCMemoryBinaryStream: saves srcObject with an oCBinarySaver, then loads it back into dstObject with an oCBinaryLoader, then runs the post-load hook (dst->vtbl[6] guarded by dst->vtbl[5]). Useful as a NO-DISK smoke test for the serializer bridge: if a def clones cleanly, save-to-file is the same path with a file stream.",
+   "refs": []
+  },
+  {
+   "name": "MetaClass_AddMember",
+   "kind": "function",
+   "category": "engine-core",
+   "raw": "FUN_14050aa30",
+   "status": "ok",
+   "signature": "void(void* metaClass, void* member, uint32_t id, void* name, void* unused, void* userData)",
+   "note": "oIMetaClass::AddMember. Sets member+0x28 = id (name hash, e.g. 0x1871e0aa), calls member vslot 2 = SetName, member+0xa0 = userData, vslot 4 = SetOwner(metaClass), then links the member into the class's ADAPTER (metaClass+0x88): push-front onto the intrusive list at adapter+0x28 (member+0x70 = next, -1 = end) AND append to the vector {ptr adapter+0x08, count +0x10, cap +0x14}. Meta hierarchy: oIMetaItem -> oIMetaMember -> oIMetaField -> oIMetaAttribute (name @+0x08, display name @+0x18, flags @+0x2c, type meta-class ptr @+0x48). ONLY 360 call sites in 143 functions exist in retail, i.e. reflection survives for ~143 engine runtime classes (VFX/particle/FMod/camera-shake/persistent-data/math/app-settings) and for NO asset definition class -- do not plan a schema generator on it. The serializer bridge (Object_SaveToFile) is the route that does cover defs.",
+   "refs": []
+  },
+  {
+   "name": "MetaClass_FindMember",
+   "kind": "function",
+   "category": "engine-core",
+   "raw": "FUN_14050cd20",
+   "status": "ok",
+   "signature": "void* (void* metaClass, uint32_t nameOrId, void* kind, bool searchParents)",
+   "note": "Walks the adapter's member list (head via metaClass vslot 36 = adapter+0x60, next at member+0x70, terminator -1), matching member+0x80 against the requested kind and member vslot 6 against the name/id; recurses to the parent meta class via vslot 39 (= metaClass+0x60) when searchParents. Companion to MetaClass_AddMember.",
+   "refs": []
+  },
+  {
+   "name": "DefinitionRegistry_Ctrl",
+   "kind": "data",
+   "category": "library",
+   "va": "0x1412f0a68",
+   "status": "va",
+   "signature": null,
+   "note": "Instance registry SwissTable (absl flat_hash_map) keyed on the class-descriptor pointer; this is the table Registry_EnumInstances find-or-inserts into and Registry_RegisterInstance appends live definitions to. Slot stride 0x18: {u64 key = class desc ptr, u64 data = void** instance array, u32 count @+0x10}. Control bytes are absl's: a byte with the high bit CLEAR marks a full slot (h2 = hash & 0x7f), 0x80 = empty, 0xfe = deleted. THIS entry is the pointer to the control-byte array. Read the table directly instead of calling Registry_EnumInstances when you only want to LOOK: that function is find-or-INSERT, so a miss mutates the map and can trigger a rehash (FUN_140244620) — an allocation on the game's heap from a read-only probe. R.defs walks these three globals with page-guarded reads and never calls in.",
+   "refs": []
+  },
+  {
+   "name": "DefinitionRegistry_Slots",
+   "kind": "data",
+   "category": "library",
+   "va": "0x1412f0a70",
+   "status": "va",
+   "signature": null,
+   "note": "Instance registry SwissTable (absl flat_hash_map) keyed on the class-descriptor pointer; this is the table Registry_EnumInstances find-or-inserts into and Registry_RegisterInstance appends live definitions to. Slot stride 0x18: {u64 key = class desc ptr, u64 data = void** instance array, u32 count @+0x10}. Control bytes are absl's: a byte with the high bit CLEAR marks a full slot (h2 = hash & 0x7f), 0x80 = empty, 0xfe = deleted. THIS entry is the pointer to the slot array (0x18 stride).",
+   "refs": []
+  },
+  {
+   "name": "DefinitionRegistry_Mask",
+   "kind": "data",
+   "category": "library",
+   "va": "0x1412f0a80",
+   "status": "va",
+   "signature": null,
+   "note": "Instance registry SwissTable (absl flat_hash_map) keyed on the class-descriptor pointer; this is the table Registry_EnumInstances find-or-inserts into and Registry_RegisterInstance appends live definitions to. Slot stride 0x18: {u64 key = class desc ptr, u64 data = void** instance array, u32 count @+0x10}. Control bytes are absl's: a byte with the high bit CLEAR marks a full slot (h2 = hash & 0x7f), 0x80 = empty, 0xfe = deleted. THIS entry is the capacity mask (capacity-1), so slots 0..mask are the whole table.",
+   "refs": []
+  },
+  {
+   "name": "BinarySaver_CollectDependencies",
+   "kind": "function",
+   "category": "resource",
+   "raw": "FUN_1404fc950",
+   "status": "unverified",
+   "signature": "bool(void* saver, void* rootObject)",
+   "note": "The pre-pass that makes Object_SaveToFile self-contained, NOT a gate (it is the `if (FUN_1404fc950() == 1)` at the head of BinarySaver_WriteGraph). It builds an `oCDependencyParser` — another oISerializer implementation — over the saver's own class table (saver+0x18 +0x6d0/+0x6d8) and object list (+0x6e0/+0x6e8), then calls rootObject->vtbl[3](rootObject, parser) = Serialize. Walking the graph through a fake serializer is how the file's class directory and sub-object list get populated: the caller supplies ONE root object and the engine discovers the rest, versions included. It then drains the collected list, serializing each into the parser, and returns false if any object's Serialize fails.",
+   "refs": []
+  },
+  {
+   "name": "FileStream_Open",
+   "kind": "function",
+   "category": "resource",
+   "raw": "FUN_14053a730",
+   "status": "unverified",
+   "signature": "bool(void** outHandle, const char* path, int* mode)",
+   "note": "oCFileBinaryStream::Open. Takes a NARROW path, runs two string replacements and a separator collapse over it, widens it and **prepends the `\\\\?\\` long-path prefix** before CreateFileW. ⚠ That prefix disables Win32 path normalisation, so forward slashes STOP being separators: a path handed to Object_SaveToFile must use backslashes or the open fails and the whole save returns 0 with no other signal (hit in-game 2026-08-23). `mode` is a 3-int struct: [0] 0=read/1=write/2=append maps to CreationDisposition, [1] selects DesiredAccess (1 = GENERIC_WRITE, 2 = GENERIC_READ|WRITE) and ShareMode.",
+   "refs": []
   }
  ],
  "_event_catalog_doc": "Observation events the loader republishes by raw name from the central telemetry sink (Analytics_SubmitNamedEvent). No address — the firehose detour reads the name at runtime, so any name the game adds also fires even if absent here. These are confirmed names harvested by string-xref (cluster 0x140f13a00-0x140f13f00); subscribe via R.on('<name>', cb) with RSMM_ENABLE_GAME_EVENTS=1. Shown by `rsmm symbols events`.",

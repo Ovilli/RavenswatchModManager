@@ -4028,6 +4028,66 @@ function R.debug.find_arrays(obj, opts)
     return found
 end
 
+-- Find every offset in `obj` holding a given u32 — the read half of locating
+-- an unmapped field.
+--
+-- The engine names things by string, but NUMBERS are how a def's scalar fields
+-- are found: a tiledef whose cooked bytes say width=20 has a 20 somewhere in
+-- the live object, and the cooked file tells you what to look for. Returns
+-- { {off=, }, ... }; `opts.pairs_with` additionally requires the NEXT u32 to
+-- equal that value, which is what separates a real {width,height} pair from
+-- the dozens of stray 20s in a 0x400-byte object.
+function R.debug.find_u32(obj, value, opts)
+    opts = opts or {}
+    local max_off = math.min(opts.max_off or 0x400, 0x4000)
+    local found = {}
+    if not _ptr_plausible(obj) then return found end
+    for off = 0, max_off - 4, 4 do
+        if I.read_u32(obj + off) == value then
+            local ok = true
+            if opts.pairs_with then
+                ok = (I.read_u32(obj + off + 4) == opts.pairs_with)
+            end
+            if ok then
+                found[#found + 1] = { off = off }
+                if opts.log ~= false then
+                    R.log(string.format("[rsmm.debug] find_u32: obj+0x%x = %d%s",
+                        off, value, opts.pairs_with and
+                        (string.format(" (next = %d)", opts.pairs_with)) or ""))
+                end
+            end
+        end
+    end
+    return found
+end
+
+-- Temporarily set a u32 field, run `fn`, then put the original back.
+--
+-- The write half of field discovery, scoped so a wrong guess cannot outlive
+-- the call. A mod cannot poke memory (rsmm lint refuses `write_*` / `poke` in
+-- mod Lua, and rightly: an unscoped write to a mis-derived offset corrupts
+-- engine state with no way back). This is the sanctioned form — the value is
+-- restored before returning, on the error path too — and it exists so a
+-- candidate offset can be CONFIRMED by an observable effect rather than
+-- argued about.
+--
+-- Returns whatever `fn` returned, or nil plus a reason when the write is
+-- refused. Engine-mutating: MAIN THREAD only.
+function R.debug.with_u32(obj, off, value, fn)
+    if not _ptr_plausible(obj) then return nil, "not a plausible pointer" end
+    if type(off) ~= "number" or off < 0 or off > 0x4000 then
+        return nil, "offset out of range"
+    end
+    if type(fn) ~= "function" then return nil, "fn must be a function" end
+    local prev = I.read_u32(obj + off)
+    if prev == nil then return nil, "field unreadable" end
+    I.write_u32(obj + off, value)
+    local ok, res = pcall(fn)
+    I.write_u32(obj + off, prev)          -- restore, error path included
+    if not ok then return nil, tostring(res) end
+    return res
+end
+
 -- Harvest the readable C strings an object points at.
 --
 -- The engine names everything it loads by string path (see the POI reference
@@ -10552,6 +10612,374 @@ function R.run.signalled() return R.run._signalled == true end
 
 --- When the current run started (I.now clock), or nil.
 function R.run.started_at() return R.run._started_at end
+
+-- ── R.serialize ───────────────────────────────────────────────────────────
+--
+-- Write engine objects back out through the ENGINE'S OWN serializer.
+--
+-- oCBinaryLoader and oCBinarySaver implement the same 23-slot oISerializer
+-- interface slot-for-slot, and every class's `Serialize` (vftable slot 3 — the
+-- same slot the codec work calls "Deserialize") is direction-agnostic: it asks
+-- the serializer `IsSaving()` (slot 4) and then transfers each field through
+-- the typed slots, which either read the loader's stream or write the saver's.
+-- So the routine that PARSES a cooked def also EMITS it, including every
+-- payload rsmm's Python codecs still carry as opaque `_tail_hex`.
+--
+-- `Object_SaveToFile` is the whole cooker in one call: it opens a file stream,
+-- stack-builds an oCBinarySaver, writes the `Cooked` header flag, then writes
+-- the class table (name/id/version-maj/version-min/parent) and the object
+-- graph — the exact shape `rsmm.engine.cooked.parse` reads back.
+--
+--   R.serialize.ready()            -- is the capability resolvable on this build?
+--   R.serialize.can(obj)           -- does `obj` look like a serializable?
+--   R.serialize.save(obj, "dump/tile.ot")   -- write it, cooked, under mod_dir
+--   R.serialize.clone(dst, src)    -- deep-copy via a memory round-trip (no disk)
+--
+-- ENGINE-MUTATING + FILE IO: call these from the MAIN thread (a gameplay-event
+-- handler, or R.schedule.next_main) — see [[loader-thread-model]]. Destinations
+-- are confined to the calling mod's own directory on purpose: this API writes
+-- whatever bytes the engine produces, and a mod that can aim it at
+-- `<game>/DarkTalesResources` can overwrite retail assets with no backup and no
+-- state entry, which is exactly what `rsmm apply`/`restore` exist to prevent.
+-- Wrapped in an immediately-called function, not a `do` block: the main
+-- chunk is AT Lua's 200-local ceiling, and a do-block's locals still cost
+-- registers in the enclosing function. A new function gets its own budget.
+;(function()
+R.serialize = {}
+
+local SER_LITERAL = 0x80000000     -- oCTString<char> "not owned" flag bit
+
+--- Is the serializer bridge usable on this build?
+function R.serialize.ready()
+    local ok, va = pcall(R.engine.resolve, "Object_SaveToFile")
+    return ok and type(va) == "number" and va ~= 0
+end
+
+--- Does `obj` look like an oISerializable — vftable in the image, with the two
+--- slots the saver will call (1 = GetClassId, 3 = Serialize) pointing at code?
+---
+--- This is the whole guard: the saver dereferences `obj` and vcalls both slots
+--- before any of our code runs again, so a wrong pointer is a hard fault of the
+--- game process, not a nil.
+function R.serialize.can(obj)
+    if not R.ptr.has_vtable(obj) then return false end
+    local vt = I.read_u64(obj)
+    if not vt then return false end
+    local class_id = I.read_u64(vt + 0x08)     -- slot 1
+    local serialize = I.read_u64(vt + 0x18)    -- slot 3
+    return R.ptr.in_image(class_id) and R.ptr.in_image(serialize)
+end
+
+-- Confine a destination to the calling mod's own directory and hand back the
+-- absolute path, WINDOWS-STYLE.
+--
+-- Backslashes are not cosmetic here. oCFileBinaryStream::Open widens the path
+-- and prepends the `\\?\` long-path prefix before CreateFileW, and that prefix
+-- turns OFF Win32 path normalisation — forward slashes are no longer accepted
+-- as separators. A posix-looking `Z:/home/.../x.ot` therefore fails to open and
+-- comes back as a plain "write failure", which is what the first in-game run of
+-- this bridge hit.
+local function _dest_path(rel)
+    if type(rel) ~= "string" or rel == "" then return nil, "path must be a string" end
+    local norm = rel:gsub("/", "\\")
+    if norm:find("%.%.") then return nil, "path may not contain '..'" end
+    if norm:sub(1, 1) == "\\" or norm:find("^%a:") then
+        return nil, "path must be relative to the mod directory"
+    end
+    local dir = R.mod_dir()
+    if type(dir) ~= "string" or dir == "" then return nil, "mod directory unknown" end
+    return (dir:gsub("/", "\\"):gsub("\\+$", "")) .. "\\" .. norm
+end
+
+-- Lay an oCTString<char> out in scratch: { char* ptr, u32 flags|len, u32 }.
+-- The engine's own literals use exactly this shape (0x80000000 | length), and
+-- Object_SaveToFile takes the string BY ADDRESS. One scratch alloc holds both
+-- the header and the bytes — never take a second while the first is live.
+local function _octstring(str)
+    local n = #str
+    -- +8 of slack so the header can start 8-ALIGNED. The scratch arena hands
+    -- back byte-granular addresses (it bumps by size+16), so a previous alloc
+    -- of odd length leaves the next one unaligned -- and call_safe's pointer
+    -- guard rejects an unaligned argument, which shows up as a save that
+    -- worked once and then refused itself for no visible reason.
+    local buf = I.scratch(0x18 + n + 1)
+    if not buf or buf == 0 then return nil end
+    buf = buf + ((8 - buf % 8) % 8)
+    local bytes = buf + 0x10
+    for i = 1, n do I.write_u8(bytes + i - 1, str:byte(i)) end
+    I.write_u8(bytes + n, 0)
+    I.write_u64(buf, bytes)
+    I.write_u32(buf + 0x08, SER_LITERAL + n)
+    I.write_u32(buf + 0x0c, 0)
+    return buf
+end
+
+--- Serialize `obj` to `rel_path` (relative to this mod's directory).
+---
+--- Returns true, path on success and nil, err otherwise — every refusal path is
+--- fail-closed.
+---
+--- ⚠ The engine always writes the TYPE-B container (`uNbFlags = 0`): the
+--- prologue of Object_SaveToFile hardcodes the saver's flag byte (saver+0x10)
+--- to 0, so the `"Cooked"` header block retail files carry is never emitted,
+--- whatever is passed. That is a 15-byte header difference and nothing else —
+--- measured 2026-08-23, the body was byte-identical to the shipped file over
+--- all 523 bytes. Promote it host-side with
+--- `rsmm.engine.cooked.promote_to_cooked` when a retail-shaped file is wanted.
+---
+--- The engine's file stream OPENS a file; it does not create directories. A
+--- `rel_path` with a directory component only works if that directory already
+--- exists, and otherwise comes back as a plain write failure.
+function R.serialize.save(obj, rel_path)
+    if not R.serialize.ready() then return nil, "Object_SaveToFile unresolved on this build" end
+    if not R.serialize.can(obj) then return nil, "object is not a plausible oISerializable" end
+    local path, err = _dest_path(rel_path)
+    if not path then return nil, err end
+    local str = _octstring(path)
+    if not str then return nil, "scratch allocation failed" end
+    -- arg 3 is NOT the cooked flag (see the note above): it is forwarded to a
+    -- stream-setup helper. Pass 0 and promote the header host-side.
+    local rc = R.engine.call_safe("Object_SaveToFile",
+        { { 1, R.serialize.can }, 2 }, obj, str, 0, 0)
+    if rc == nil then return nil, "call refused by the pointer guard" end
+    if rc == 0 then
+        -- Name the path: every failure inside Object_SaveToFile (open refused,
+        -- missing directory, wrong separator form) surfaces as this one zero.
+        return nil, ("engine write failed for %s (directory missing? path form?)"):format(path)
+    end
+    return true, path
+end
+
+--- Deep-copy `src` into `dst` by round-tripping through a memory stream.
+---
+--- No disk involved, so this is the cheap smoke test for the bridge: if a def
+--- clones, save() is the same path with a file stream behind it. Both objects
+--- must already be live instances of the SAME class.
+---
+--- ⚠ DESTRUCTIVE to `dst`: the second half deserializes over it in place. Every
+--- object reachable from R.defs is one the game is still using, so there is no
+--- free destination — do not point this at a live definition to "test" it.
+function R.serialize.clone(dst, src)
+    if not R.serialize.ready() then return nil, "serializer bridge unresolved on this build" end
+    if not R.serialize.can(dst) then return nil, "dst is not a plausible oISerializable" end
+    if not R.serialize.can(src) then return nil, "src is not a plausible oISerializable" end
+    local rc = R.engine.call_safe("Object_CloneViaSerialize",
+        { { 1, R.serialize.can }, { 2, R.serialize.can } }, dst, src, 0, 0)
+    if rc == nil then return nil, "call refused by the pointer guard" end
+    return rc ~= 0
+end
+end)()
+
+-- ── R.rtti / R.defs ───────────────────────────────────────────────────────
+--
+-- Name a live object, and enumerate every definition instance the game has
+-- loaded. Together these are what makes R.serialize usable: the saver needs a
+-- live oISerializable, and until now the SDK had no way to hand it one.
+--
+--   R.rtti.name(obj)          -- "oCDtEnemyDefinition" (MSVC RTTI walk)
+--   R.defs.classes()          -- every populated registry entry, named
+--   R.defs.instances("oCDtEnemyDefinition")  -- live instances of one class
+--   R.defs.first("oCDtMapDefinition")        -- the first one, or nil
+--   R.defs.dump()             -- log the inventory
+--
+-- Reads only. The instance registry is an absl SwissTable keyed on the class
+-- descriptor, and the engine's own accessor (Registry_EnumInstances) is
+-- find-or-INSERT: asking it about a class that has no instances mutates the
+-- map and can trigger a rehash — an allocation on the game's heap, from what
+-- the caller believed was a look. So this walks the table's three globals
+-- directly with page-guarded reads and never calls in.
+--
+-- Wrapped in an immediately-called function for the same reason R.serialize is:
+-- the main chunk is at Lua's 200-local ceiling.
+;(function()
+
+R.rtti = {}
+R.defs = {}
+
+-- absl control bytes: high bit CLEAR = full slot (h2), 0x80 = empty,
+-- 0xfe = deleted. Slot stride 0x18 = { u64 classDesc, u64 data, u32 count }.
+-- Baked at the map's image base and REBASED at read time. The game is loaded
+-- wherever Windows puts it, so a raw read of 0x1412f0a68 lands in unmapped
+-- memory and every read comes back nil — which surfaced as "registry
+-- unreadable", indistinguishable from a moved global. Every other va-global in
+-- this file does the same rebase (see GIVE_POOL_VA / OPT_GAMEOPTIONS_VA).
+local DEFS_IMG_BASE = 0x140000000
+local CTRL_VA  = 0x1412f0a68     -- DefinitionRegistry_Ctrl
+local SLOTS_VA = 0x1412f0a70     -- DefinitionRegistry_Slots
+local MASK_VA  = 0x1412f0a80     -- DefinitionRegistry_Mask
+local SLOT_STRIDE = 0x18
+local MAX_CAPACITY = 0x40000     -- refuse an implausible mask rather than spin
+local MAX_INSTANCES = 0x8000
+
+--- Mangled RTTI name of a live object, e.g. ".?AVoCDtEnemyDefinition@@".
+---
+--- MSVC x64 layout: *obj = vftable, vftable[-1] = complete object locator,
+--- COL+0x0 = signature, COL+0xc = type-descriptor RVA, COL+0x14 = self RVA
+--- (signature 1 only), and the type descriptor carries the name at +0x10.
+--- Every read is page-guarded, so a non-object pointer yields nil, not a fault.
+function R.rtti.raw(obj)
+    if not R.ptr.has_vtable(obj) then return nil end
+    local vt = I.read_u64(obj)
+    local col = I.read_u64(vt - 8)
+    if not R.ptr.in_image(col) then return nil end
+    local sig = I.read_u32(col)
+    if sig ~= 0 and sig ~= 1 then return nil end
+    local td_rva = I.read_u32(col + 0x0c)
+    if not td_rva or td_rva == 0 then return nil end
+    -- Signature 1 images store their own RVA, which gives the base without
+    -- trusting the loader's idea of it; signature 0 (32-bit-style) does not.
+    local base
+    if sig == 1 then
+        local self_rva = I.read_u32(col + 0x14)
+        base = self_rva and (col - self_rva) or nil
+    end
+    base = base or I.module_base()
+    if not base or base == 0 then return nil end
+    local td = base + td_rva
+    if not R.ptr.in_image(td) then return nil end
+    local name = I.read_cstr(td + 0x10)
+    if type(name) ~= "string" or name == "" then return nil end
+    return name
+end
+
+--- Readable class name of a live object: ".?AVoCFoo@bar@@" -> "bar::oCFoo".
+--- MSVC stores the qualifiers innermost-first, so the pieces are reversed.
+function R.rtti.name(obj)
+    local raw = R.rtti.raw(obj)
+    if not raw then return nil end
+    local body = raw:match("^%.%?A[VU](.+)@@$")
+    if not body then return raw end
+    local parts = {}
+    for piece in body:gmatch("[^@]+") do parts[#parts + 1] = piece end
+    for i = 1, #parts // 2 do
+        parts[i], parts[#parts - i + 1] = parts[#parts - i + 1], parts[i]
+    end
+    return table.concat(parts, "::")
+end
+
+-- The three globals, validated together. Returns ctrl, slots, mask — or nil
+-- plus a REASON, because "unreadable" covers five different failures and a
+-- probe that cannot say which one wastes a playtest.
+local function _table_view()
+    if not _va_ok("R.defs") then return nil, "va-gate closed (build != symbol map)" end
+    local base = I.module_base()
+    if not base or base == 0 then return nil, "module base unknown" end
+    local ctrl  = I.read_u64(base + (CTRL_VA  - DEFS_IMG_BASE))
+    local slots = I.read_u64(base + (SLOTS_VA - DEFS_IMG_BASE))
+    local mask  = I.read_u64(base + (MASK_VA  - DEFS_IMG_BASE))
+    if not (ctrl and slots and mask) then
+        return nil, "globals unreadable (moved? too early in boot?)"
+    end
+    -- Deliberately NOT R.ptr.plausible for the control array: that helper
+    -- requires 8-alignment because heap OBJECTS are 8-aligned, and the ctrl
+    -- array is a byte array whose start need not be. Range-check it instead;
+    -- the slot array holds 0x18-stride records and does get the full check.
+    if not ctrl or ctrl < 0x10000 or ctrl > 0x00007fffffffffff then
+        return nil, string.format("ctrl pointer implausible (0x%x)", ctrl or 0)
+    end
+    if not R.ptr.plausible(slots) then
+        return nil, string.format("slot pointer implausible (0x%x)", slots or 0)
+    end
+    -- Capacity is a power of two, so mask is all-ones. A garbage mask would
+    -- otherwise turn the walk below into a multi-million-iteration probe.
+    if mask < 1 or mask >= MAX_CAPACITY then
+        return nil, string.format("capacity mask out of range (0x%x)", mask)
+    end
+    if (mask & (mask + 1)) ~= 0 then
+        return nil, string.format("capacity mask is not capacity-1 (0x%x)", mask)
+    end
+    return ctrl, slots, mask
+end
+
+--- Is the definition registry readable on this build?
+function R.defs.ready() return (_table_view()) ~= nil end
+
+--- Why not, in one line. nil when the registry IS readable.
+function R.defs.why_not()
+    local ok, reason = _table_view()
+    if ok then return nil end
+    return reason or "unknown"
+end
+
+--- Every populated registry entry: { {name=, desc=, data=, count=}, ... }.
+---
+--- `name` comes from the first instance's RTTI, so an entry whose instances
+--- have been torn down reports nil rather than guessing.
+function R.defs.classes()
+    local out = {}
+    local ctrl, slots, mask = _table_view()
+    if not ctrl then return out end
+    for i = 0, mask do
+        local c = I.read_u8(ctrl + i)
+        if c and c < 0x80 then                       -- full slot
+            local slot  = slots + i * SLOT_STRIDE
+            local desc  = I.read_u64(slot)
+            local data  = I.read_u64(slot + 8)
+            local count = I.read_u32(slot + 0x10)
+            if desc and count and count > 0 and count <= MAX_INSTANCES
+               and R.ptr.plausible(data) then
+                out[#out + 1] = {
+                    desc  = desc,
+                    data  = data,
+                    count = count,
+                    name  = R.rtti.name(I.read_u64(data)),
+                }
+            end
+        end
+    end
+    table.sort(out, function(a, b) return (a.name or "") < (b.name or "") end)
+    return out
+end
+
+--- Live instances of one class. `which` is a class name (exact, or a suffix
+--- match so "EnemyDefinition" finds "oCDtEnemyDefinition") or a class-descriptor
+--- pointer from R.defs.classes(). Returns a possibly-empty array of pointers,
+--- each one already vetted as a live C++ object.
+function R.defs.instances(which, limit)
+    local out = {}
+    for _, cls in ipairs(R.defs.classes()) do
+        local hit
+        if type(which) == "number" then
+            hit = (cls.desc == which)
+        elseif type(which) == "string" then
+            hit = (cls.name == which)
+                  or (cls.name ~= nil and cls.name:sub(-#which) == which)
+        end
+        if hit then
+            local n = math.min(cls.count, limit or cls.count)
+            for i = 0, n - 1 do
+                local inst = I.read_u64(cls.data + i * 8)
+                if R.ptr.has_vtable(inst) then out[#out + 1] = inst end
+            end
+            if #out > 0 then return out end
+        end
+    end
+    return out
+end
+
+--- First live instance of `which`, or nil.
+function R.defs.first(which)
+    local list = R.defs.instances(which, 1)
+    return list[1]
+end
+
+--- Log the inventory: one line per class, instance count, first pointer.
+function R.defs.dump()
+    local classes = R.defs.classes()
+    if #classes == 0 then
+        R.log("[rsmm.defs] registry unreadable or empty (build mismatch? too early?)")
+        return
+    end
+    local total = 0
+    for _, c in ipairs(classes) do
+        total = total + c.count
+        R.log(string.format("[rsmm.defs]   %-40s x%-5d first=0x%x",
+            tostring(c.name), c.count, I.read_u64(c.data) or 0))
+    end
+    R.log(string.format("[rsmm.defs] %d classes, %d instances", #classes, total))
+end
+
+end)()
 
 -- escape hatch ----------------------------------------------------------
 --

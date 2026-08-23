@@ -65,8 +65,9 @@ Lua side (loader DLL):
 src/loader/lib/
   rsmm.lua            # R = require "rsmm" — the core surface (R.on/R.emit,
                       #   R.entity/R.combat/R.stat/R.xp, R.give, R.item,
-                      #   R.talent, R.options, R.hook, R.kv, R.debug) and it
-                      #   merges the submodules below onto R
+                      #   R.talent, R.options, R.hook, R.kv, R.debug,
+                      #   R.serialize, R.defs, R.rtti) and it merges the
+                      #   submodules below onto R
   engine_gen.lua      # GENERATED: semantic name -> {pattern, offset, sig}
 src/loader/lua/
   rsmm/health.lua     # R.health (crash count, last_error, checkpoint)

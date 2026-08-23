@@ -8,6 +8,8 @@
 return {
   ["AchievementDef_PostLoad"] = { pattern = "AchievementDef_PostLoad", offset = 0x0, sig = "up" },
   ["Analytics_SubmitNamedEvent"] = { pattern = "Analytics_SubmitNamedEvent", offset = 0x0, sig = "vpppu" },
+  ["BinarySaver_WriteGraph"] = { pattern = "BinarySaver_WriteGraph", offset = 0x0, sig = "upppp" },
+  ["BinarySaver_WriteObject"] = { pattern = "BinarySaver_WriteObject", offset = 0x0, sig = "upppu" },
   ["BookController_ResolveSettings"] = { pattern = "BookController_ResolveSettings", offset = 0x0, sig = "vp" },
   ["BookController_ResolveTabs"] = { pattern = "BookController_ResolveTabs", offset = 0x0, sig = "vp" },
   ["ChallengeDef_PostLoad"] = { pattern = "ChallengeDef_PostLoad", offset = 0x0, sig = "up" },
@@ -74,6 +76,9 @@ return {
   ["Netcode_Channel_LookupById"] = { pattern = "Netcode_Channel_LookupById", offset = 0x0, sig = "pppp" },
   ["Netcode_Channel_Unsubscribe"] = { pattern = "Netcode_Channel_Unsubscribe", offset = 0x0, sig = "vpp" },
   ["Netcode_EntityReplSetup"] = { pattern = "Netcode_EntityReplSetup", offset = 0x0, sig = "vp" },
+  ["Object_CloneViaSerialize"] = { pattern = "Object_CloneViaSerialize", offset = 0x0, sig = "upppp" },
+  ["Object_LoadFromStream"] = { pattern = "Object_LoadFromStream", offset = 0x0, sig = "upp" },
+  ["Object_SaveToFile"] = { pattern = "Object_SaveToFile", offset = 0x0, sig = "uppup" },
   ["ProjectileAttack_BeginAttack"] = { pattern = "ProjectileAttack_BeginAttack", offset = 0x0, sig = "vp" },
   ["Registry_EnumInstances"] = { pattern = "Registry_EnumInstances", offset = 0x0, sig = "pppp" },
   ["Registry_UnregisterInstance"] = { pattern = "Registry_UnregisterInstance", offset = 0x0, sig = "vp" },
