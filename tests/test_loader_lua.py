@@ -87,9 +87,22 @@ def test_example_mods_spec():
 # global read and is nil forever.
 _ALLOWED_GLOBALS = {
     "type", "ipairs", "pairs", "next", "pcall", "select", "tostring", "tonumber",
-    "assert", "require", "setmetatable", "rawget", "rawset", "string", "table",
-    "math", "os", "_G",
+    "assert", "error", "require", "setmetatable", "rawget", "rawset", "string",
+    "table", "math", "os", "_G",
 }
+
+
+def _sdk_lua_files() -> list[Path]:
+    """Every Lua file planted into <game>/rsmm/lib, entrypoint and submodules.
+
+    The submodules matter more than the entrypoint here, not less: a namespace
+    lifted out of rsmm.lua takes its free variables through an env table, and a
+    value the parent forgets to pass compiles to exactly the same silent nil
+    global read this test exists to catch.
+    """
+    files = sorted((REPO / "src" / "loader" / "lib").glob("*.lua"))
+    files += sorted((REPO / "src" / "loader" / "lua" / "rsmm").glob("*.lua"))
+    return files
 
 
 def test_rsmm_lua_reads_no_accidental_globals():
@@ -109,19 +122,29 @@ def test_rsmm_lua_reads_no_accidental_globals():
     luac = shutil.which("luac5.4") or shutil.which("luac54") or shutil.which("luac")
     if luac is None:
         pytest.skip("no luac on PATH (luac5.4/luac)")
-    proc = subprocess.run(
-        [luac, "-p", "-l", "-l", str(LIB / "rsmm.lua")],
-        capture_output=True,
-        text=True,
-        cwd=str(REPO),
-    )
-    assert proc.returncode == 0, proc.stderr
-    found = set(re.findall(r'GETTABUP\s+\S+\s+\S+\s+\S+\s*;\s*_ENV "([A-Za-z_]\w*)"', proc.stdout))
-    assert found, "parsed no global reads at all — the luac listing format changed"
-    unexpected = sorted(found - _ALLOWED_GLOBALS)
-    assert not unexpected, (
-        "rsmm.lua reads undeclared global(s) "
-        + ", ".join(unexpected)
-        + " — these are almost certainly locals declared below the closure that "
-        "uses them, which Lua compiles to a nil global read"
+    files = _sdk_lua_files()
+    assert any(f.name == "rsmm.lua" for f in files), "the SDK entrypoint was not scanned"
+    any_globals = False
+    problems: list[str] = []
+    for path in files:
+        proc = subprocess.run(
+            [luac, "-p", "-l", "-l", str(path)],
+            capture_output=True,
+            text=True,
+            cwd=str(REPO),
+        )
+        assert proc.returncode == 0, f"{path.name}: {proc.stderr}"
+        found = set(
+            re.findall(r'GETTABUP\s+\S+\s+\S+\s+\S+\s*;\s*_ENV "([A-Za-z_]\w*)"', proc.stdout)
+        )
+        any_globals = any_globals or bool(found)
+        for name in sorted(found - _ALLOWED_GLOBALS):
+            problems.append(f"{path.relative_to(REPO)}: {name}")
+    assert any_globals, "parsed no global reads at all — the luac listing format changed"
+    assert not problems, (
+        "undeclared global read(s) in the SDK:\n  "
+        + "\n  ".join(problems)
+        + "\n— these are almost certainly locals declared below the closure that "
+        "uses them (or, in a submodule, a value the parent never passed in), "
+        "which Lua compiles to a nil global read"
     )
