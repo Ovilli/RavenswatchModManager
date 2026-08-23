@@ -86,6 +86,12 @@ def is_game_running() -> bool:
                 argv0 = fh.read().split(b"\0", 1)[0]
         except OSError:
             continue                      # the process exited from under us
-        if argv0 and os.path.basename(argv0.decode("utf-8", "replace")).lower() == want:
+        # Normalise separators before taking the leaf: under Wine/Proton argv[0]
+        # is the WINDOWS path the program was invoked as ("Z:\\...\\Ravenswatch.exe"),
+        # and posix os.path.basename does not split on "\\" — it would hand back
+        # the whole string and this branch would never fire, leaving detection
+        # resting entirely on comm.
+        leaf = argv0.decode("utf-8", "replace").replace("\\", "/")
+        if argv0 and os.path.basename(leaf).lower() == want:
             return True
     return False

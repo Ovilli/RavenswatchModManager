@@ -260,10 +260,17 @@ def test_game_probe_ignores_launcher_scaffolding(monkeypatch, tmp_path):
 
     # NB: game_proc.os IS the os module, so this patch is global — the fake
     # must not itself walk the filesystem, or listing tmp_path recurses into
-    # the fake forever. Bind the real listdir before replacing it.
+    # the fake forever. Bind the real listdir before replacing it. It must also
+    # HONOUR its argument: an arg-ignoring fake hands tmp_path's contents to any
+    # library code that happens to list a directory inside this window.
     real_listdir = os.listdir
-    monkeypatch.setattr(game_proc.os, "listdir",
-                        lambda p: sorted(real_listdir(tmp_path)))
+
+    def fake_listdir(path="."):
+        if str(path) == "/proc":
+            return sorted(real_listdir(tmp_path))
+        return real_listdir(path)
+
+    monkeypatch.setattr(game_proc.os, "listdir", fake_listdir)
     monkeypatch.setattr(game_proc, "_run", lambda cmd: None)
     real_open = open
 
@@ -281,10 +288,16 @@ def test_game_probe_ignores_launcher_scaffolding(monkeypatch, tmp_path):
     game = tmp_path / "104"
     game.mkdir()
     (game / "comm").write_text("Ravenswatch.exe\n")
-    (game / "cmdline").write_bytes(b"Z:\\games\\Ravenswatch\\Ravenswatch.exe\0")
+    (game / "cmdline").write_bytes(b"/games/Ravenswatch/Ravenswatch.exe\0")
     assert game_proc.is_game_running() is True
 
+    # argv[0] only — and in the WINDOWS form Wine actually reports, which posix
+    # os.path.basename does not split. comm must NOT match here or the probe
+    # short-circuits before reading cmdline and this case proves nothing.
     (game / "comm").write_text("wine-preloader\n")
+    (game / "cmdline").write_bytes(b"Z:\\games\\Ravenswatch\\Ravenswatch.exe\0-arg\0")
+    assert game_proc.is_game_running() is True
+
     (game / "cmdline").write_bytes(b"/games/Ravenswatch/Ravenswatch.exe\0-arg\0")
     assert game_proc.is_game_running() is True
 
@@ -394,3 +407,44 @@ def test_manifest_scalars_are_coerced_not_stringified_containers(tmp_path, monke
 
     (mod,) = apply_mods.discover_mods(tmp_path)
     assert mod.id == "42" and mod.version == "1"
+
+
+def test_game_update_recovery_clears_the_manifest_backup_too(tmp_path, monkeypatch, capsys):
+    """Regression: the stale-backup sweep missed UsedRscList.ot.rsmm.bak.
+
+    `_recover_game_update` clears stale backups with `cooking.rglob`, but
+    `sync_usedrsclist` writes its backup one level ABOVE `cooking` — in
+    DarkTalesResources/, not DarkTalesResources/_Cooking/ — so the sweep could
+    not see it and it survived a game update. `find_iyg` then prefers that
+    pristine copy over a live manifest that has grown, so the rebuild whose
+    whole job is refreshing the map for the NEW build read the PRE-update
+    manifest and dropped every asset the patch added.
+    """
+    from rsmm.cli import apply_mods
+
+    game = tmp_path / "game"
+    cooking = game / apply_mods.COOKING_REL
+    cooking.mkdir(parents=True)
+    (game / "Ravenswatch.exe").write_bytes(b"v2" * 64)
+
+    manifest = game / apply_mods.USEDRSCLIST_REL
+    manifest.write_text("live-post-update\n", encoding="utf-8")
+    manifest_bak = manifest.with_name(manifest.name + apply_mods.BACKUP_SUFFIX)
+    manifest_bak.write_text("pristine-pre-update\n", encoding="utf-8")
+    asset_bak = cooking / ("Zsdgs" + apply_mods.BACKUP_SUFFIX)
+    asset_bak.write_bytes(b"old")
+
+    # No stored fingerprint => "the game changed", which is the recovery path.
+    rebuilt_from: list[str] = []
+    monkeypatch.setattr("rsmm.engine.find_iyg.main",
+                        lambda p=None: rebuilt_from.append(p) or 0)
+
+    assert apply_mods._recover_game_update(cooking, game) is True
+
+    assert not manifest_bak.exists(), "the manifest backup is pre-update and must go"
+    assert not asset_bak.exists()
+    assert "cleared 2 stale backup(s)" in capsys.readouterr().out
+
+    # The rebuild must see the POST-update manifest, not the pristine copy.
+    assert rebuilt_from == [str(manifest)]
+    assert Path(rebuilt_from[0]).read_text(encoding="utf-8") == "live-post-update\n"

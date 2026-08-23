@@ -1705,9 +1705,23 @@ def _recover_game_update(cooking: Path, game_dir: Path) -> bool:
 
     print("Game update detected. Recovering...", flush=True)
 
-    # 1. Clear stale backups — they point to pre-update originals
+    # 1. Clear stale backups — they point to pre-update originals.
+    #
+    # UsedRscList.ot's backup lives one level ABOVE `cooking` (it sits in
+    # DarkTalesResources/, not DarkTalesResources/_Cooking/), so the rglob
+    # below cannot see it and it must be named explicitly. Leaving it behind
+    # is not cosmetic: find_iyg prefers the pristine backup over a live
+    # manifest that has grown, so step 3 — whose whole job is refreshing the
+    # map for the NEW build — would rebuild from the PRE-update manifest and
+    # drop every asset the patch added. sync_usedrsclist recomputes the live
+    # manifest from the same stale copy for the same reason.
+    stale = list(cooking.rglob("*.rsmm.bak"))
+    manifest_bak = game_dir / USEDRSCLIST_REL
+    manifest_bak = manifest_bak.with_name(manifest_bak.name + BACKUP_SUFFIX)
+    if manifest_bak.exists():
+        stale.append(manifest_bak)
     cleared = 0
-    for bak in cooking.rglob("*.rsmm.bak"):
+    for bak in stale:
         try:
             bak.unlink()
             cleared += 1
