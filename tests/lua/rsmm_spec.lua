@@ -7332,6 +7332,79 @@ do
     engine["Object_SaveToFile"] = nil
 end
 
+-- N. R.damage: the dispatcher offset is read LIVE, never captured at load ---
+--
+-- R.damage moved into rsmm/damage.lua (2026-08-23) and takes the parent's
+-- values through an env table. Nine of them are constants and copy safely;
+-- `_DISPATCHER_ENTITY_OFF` is NOT. It starts nil and is only assigned once two
+-- distinct heroes corroborate it at RUNTIME, so a load-time copy is nil for the
+-- life of the process — and NETWORK_DAMAGE would silently stop deriving a
+-- victim from the dispatcher, which is the only source of ally `taken`.
+-- Nothing raises and no other check moves, so this is the one thing standing
+-- between that env entry staying a getter and becoming a value.
+do
+    package.loaded["rsmm"] = nil
+    local Rdo = require "rsmm"
+    local saved_grant, saved_find = I.is_grant_target, I.mem_find
+    local saved_log = rsmm.log
+    local logged = {}
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+
+    -- Two distinct LOCAL heroes, each with a dispatcher sub-object, is what
+    -- the parent needs before it will commit to an offset.
+    local OFF = 0x520
+    local H1, H2 = 0x5c000000, 0x5c800000
+    local function hero_at(addr)
+        I.write_f32(addr + 0x15c8, 50.0)
+        I.write_f32(addr + 0x15cc, 100.0)
+        I.write_u64(addr + 0x1d80, 0x12340000)   -- HUD mirror: the plausibility gate
+        I.write_u64(addr + 8, 0x13000000)
+        I.write_u64(0x13000000, 0x13000100)
+        I.write_u8(addr + 0x1d88, 1)             -- the engine's is-local flag
+        local d = addr + OFF
+        I.write_u64(d, 0x140f00000)              -- dispatcher vtable, in the image
+        return d
+    end
+    local d1, d2 = hero_at(H1), hero_at(H2)
+
+    -- Only THIS test's hero answers the discriminator, so a probe line reading
+    -- `hero?=true` can only have come from an instance that derived H1 exactly.
+    I.is_grant_target = function(e) return e == H1 end
+    I.mem_find = function() return {} end
+
+    shared[0] = H1
+    check(Rdo.entity.hero() == H1, "spec fixture: first local hero captured")
+    fire("gameplay:ABILITY_EXIT", { source = "gameplay",
+                                    dispatcher = string.format("0x%x", d1) })
+    shared[0] = H2
+    check(Rdo.entity.hero() == H2, "spec fixture: a second local hero is seen")
+    fire("gameplay:COMBO_LINK", { source = "gameplay",
+                                  dispatcher = string.format("0x%x", d2) })
+    shared[0] = H1
+    Rdo.entity.hero()
+
+    Rdo.damage.enable{ window = 10 }
+    logged = {}
+    -- No target_entity: deriving the victim from the dispatcher is the ONLY
+    -- route left, which is exactly the branch that reads the offset.
+    fire("gameplay:NETWORK_DAMAGE", { source = "gameplay", value = 31.0,
+                                      source_id = "0x5c",
+                                      dispatcher = string.format("0x%x", d1) })
+    local derived = false
+    for _, line in ipairs(logged) do
+        if line:find("net victim probe", 1, true) and line:find("hero?=true", 1, true) then
+            derived = true
+        end
+    end
+    check(derived,
+          "a NETWORK_DAMAGE victim is still derived from the dispatcher after "
+          .. "the offset is learned -- env.dispatcher_entity_off must be a "
+          .. "GETTER; a value copied at require time is nil forever")
+
+    I.is_grant_target, I.mem_find = saved_grant, saved_find
+    rsmm.log = saved_log
+end
+
 -- ---------------------------------------------------------------------------
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)
