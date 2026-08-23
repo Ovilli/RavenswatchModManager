@@ -7405,6 +7405,138 @@ do
     rsmm.log = saved_log
 end
 
+-- N. the SHIPPED damage-meter mod, end to end ------------------------------
+--
+-- Everything above tests the SDK. This drives the actual mod that consumes it:
+-- `mods/damage-meter/init.lua`, loaded the way the loader loads it. R.damage
+-- moved into its own file on 2026-08-23 and the whole suite still passed while
+-- an env entry was silently wrong, so "the SDK's own tests are green" is not
+-- the same claim as "the mod still works".
+--
+-- `mods/` is gitignored, so the flow half only runs on a checkout that has the
+-- mod. The SURFACE half always runs: it is the contract the mod depends on,
+-- and breaking it is what a refactor of this file does.
+do
+    package.loaded["rsmm"] = nil
+    local Rm = require "rsmm"
+
+    -- Every R.damage entry point mods/damage-meter/init.lua calls. Keep this
+    -- list in step with the mod; a name dropped here is a name that can be
+    -- deleted from the SDK without anything noticing until a playtest.
+    for _, fn in ipairs({ "board", "enable", "ignore_scenery", "mode", "on",
+                          "reset", "scenery_total", "total", "tracks_allies" }) do
+        check(type(Rm.damage[fn]) == "function",
+              "R.damage." .. fn .. " is part of the damage-meter contract")
+    end
+    check(type(Rm.config) == "table" and type(Rm.config.get) == "function",
+          "so is R.config.get")
+    check(type(Rm.overlay) == "table" and type(Rm.overlay.publish) == "function",
+          "so is R.overlay.publish")
+    check(type(Rm.schedule) == "table" and type(Rm.schedule.every) == "function",
+          "so is R.schedule.every")
+
+    local mod = loadfile("mods/damage-meter/init.lua")
+    if not mod then
+        io.write("  note: mods/ not present -- the damage-meter FLOW checks "
+                 .. "were skipped (surface checks above still ran)\n")
+    else
+        local saved_grant, saved_find = I.is_grant_target, I.mem_find
+        local saved_log = rsmm.log
+        local logged = {}
+        rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+
+        -- Our hero and one ally, both boardable.
+        local ME, ALLY = 0x70000000, 0x70100000
+        local ME_ENT, ALLY_ENT = 0x71000000, 0x71100000
+        for _, e in ipairs({ ME_ENT, ALLY_ENT }) do I.write_u64(e + 8, 0x13000000) end
+        I.write_u64(ME + 0x08, ME_ENT)
+        I.write_u64(ALLY + 0x08, ALLY_ENT)
+        I.write_u8(ME + 0x1d88, 1);     I.write_u8(ME_ENT + 0x1d88, 1)
+        I.write_u8(ALLY + 0x1d88, 0);   I.write_u8(ALLY_ENT + 0x1d88, 0)
+        local boardable = { [ME_ENT] = true, [ALLY_ENT] = true }
+        I.is_grant_target = function(e) return boardable[e] == true end
+        I.mem_find = function() return {} end
+
+        -- The mod ships with ignore_scenery = true, so the victim must classify
+        -- as a real enemy or every hit is dropped as prop damage. Component map
+        -- at entity+0x5f0 (stride 0x10, mask +0x600), keyed by class id.
+        local ENEMY, PD, PDVAL, PDSRC = 0x72000000, 0x73000000, 0x73100000, 0x73200000
+        local ENEMY_ID  = 0x1561073c            -- oCDtEntityCpntEnemyController
+        local ENEMY_VFT = I.module_base() + (0x140f30b78 - 0x140000000)
+        local slots, comp = 0x72100000, 0x72200000
+        I.write_u64(ENEMY + 8, 0x13000000)
+        I.write_u64(ENEMY, I.module_base() + 0x1000)
+        I.write_u64(ENEMY + 0x5f0, slots)
+        I.write_u64(ENEMY + 0x600, 0)           -- one bucket
+        I.write_u32(slots, ENEMY_ID)
+        I.write_u64(slots + 8, comp)
+        I.write_u64(comp, ENEMY_VFT)
+        I.write_u64(comp + 8, ENEMY)            -- owner back-pointer
+        I.write_u64(PD + 0x10, PDVAL)
+        I.write_u64(PD + 0xa0, PDSRC)
+
+        -- `require "rsmm"` inside the mod must hand back THIS instance.
+        package.loaded["rsmm"] = Rm
+        local ran, err = pcall(mod)
+        check(ran, "mods/damage-meter/init.lua runs against the SDK"
+                   .. (ran and "" or (": " .. tostring(err))))
+
+        if ran then
+            fire("ready", { source = "lifecycle" })
+            local armed = false
+            for _, l in ipairs(logged) do
+                if l:find("armed", 1, true) then armed = true end
+            end
+            check(armed, "and logs its armed banner on ready")
+
+            local stats = hooks[I.resolve("HeroStats_OnDamageDealt")]
+            check(stats ~= nil, "enable() installed the bookkeeping hook")
+            local replayed = false
+            local function deal(who, amount, atk_type)
+                I.write_f32(PDVAL + 8, amount)
+                I.write_u16(PDSRC + 0xc8, atk_type or 0)
+                return stats.cb(who, ENEMY, PD, 0, function() replayed = true end)
+            end
+            check(deal(ME, 400.0, 0) == nil, "the hook is a void observer")
+            deal(ME, 200.0, 1)
+            deal(ALLY, 300.0, 0)
+            check(replayed == false, "an observer never replays the original")
+            check(Rm.damage.total() == 900.0, "every hit is counted")
+            check(Rm.damage.scenery_total() == 0,
+                  "and a victim carrying EnemyController is not prop damage")
+
+            local board = Rm.damage.board()
+            check(#board >= 2, "both players are boarded")
+            check(board[1].dealt == 600.0, "the ranking follows the numbers")
+            check(board[1].is_local == true, "and the local player is marked")
+
+            -- What the desktop overlay actually draws.
+            for _ = 1, 3 do fake_clock = fake_clock + 1.0; R.schedule._tick() end
+            local payload = Rm.overlay.last()
+            check(type(payload) == "string" and payload ~= "[]{}",
+                  "the mod published overlay rows")
+            check(payload:find('"dealt"', 1, true) ~= nil,
+                  "carrying the dealt column its manifest declares")
+            check(payload:find('"is_local"', 1, true) ~= nil,
+                  "and the is_local key the manifest highlights on")
+
+            -- Per-run scoreboard: report BEFORE clearing, then reset.
+            logged = {}
+            fire("run:end", { source = "derived" })
+            local reported = false
+            for _, l in ipairs(logged) do
+                if l:find("dmg", 1, true) then reported = true end
+            end
+            check(reported, "run:end prints the final board before clearing")
+            check(Rm.damage.total() == 0, "then resets the meter")
+            check(Rm.overlay.last() == "[]{}", "and clears the overlay")
+        end
+
+        I.is_grant_target, I.mem_find = saved_grant, saved_find
+        rsmm.log = saved_log
+    end
+end
+
 -- ---------------------------------------------------------------------------
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)

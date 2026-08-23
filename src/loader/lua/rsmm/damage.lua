@@ -15,6 +15,21 @@
 
 return function(env)
 
+-- Validate the env before reading it. A key the parent forgets to pass is nil
+-- here, and nil is a legal value for most of what this module does with them:
+-- MEM_SCAN_MB silently becomes a nil scan budget, LOBBY_REFRESH_SLOT a nil
+-- shared slot. Nothing raises and nothing looks wrong, which is precisely the
+-- failure mode the split had to be defended against. Raising instead means
+-- _submodule_fn logs "failed to install" and R.damage is absent — loud, and
+-- caught by the surface checks in rsmm_spec.
+for _, key in ipairs({ "I", "R", "F", "_va_ok", "_ptr_plausible",
+                       "ENTITY_IMG_BASE", "LOBBY_REFRESH_SLOT", "MEM_SCAN_MB",
+                       "LOBBY_HOOK", "dispatcher_entity_off" }) do
+    if env[key] == nil then
+        error("rsmm.damage: parent did not pass env." .. key, 0)
+    end
+end
+
 local I, R, F                = env.I, env.R, env.F
 local _va_ok, _ptr_plausible = env._va_ok, env._ptr_plausible
 local ENTITY_IMG_BASE        = env.ENTITY_IMG_BASE
