@@ -258,8 +258,12 @@ def test_game_probe_ignores_launcher_scaffolding(monkeypatch, tmp_path):
         (d / "cmdline").write_bytes(cmdline)
     (tmp_path / "not-a-pid").mkdir()
 
+    # NB: game_proc.os IS the os module, so this patch is global — the fake
+    # must not itself walk the filesystem, or listing tmp_path recurses into
+    # the fake forever. Bind the real listdir before replacing it.
+    real_listdir = os.listdir
     monkeypatch.setattr(game_proc.os, "listdir",
-                        lambda p: sorted(x.name for x in tmp_path.iterdir()))
+                        lambda p: sorted(real_listdir(tmp_path)))
     monkeypatch.setattr(game_proc, "_run", lambda cmd: None)
     real_open = open
 
