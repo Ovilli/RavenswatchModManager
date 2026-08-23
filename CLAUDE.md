@@ -8,7 +8,7 @@ Hybrid monorepo with two parallel toolchains:
 
 - **Python CLI** (`src/rsmm/`, entry point `./rsmm` at repo root) — all mod install / lifecycle logic. Stdlib-only at runtime (`pyproject.toml` declares no `dependencies`). Installed editable via `pip install -e .`.
 - **TypeScript pnpm workspace** (`apps/*` + `packages/*`) — Tauri 2 desktop shell, Hono API, Next.js site, Astro docs, shared `@rsmm/*` packages. Orchestrated by Turbo (`turbo.json`).
-- **Native loader DLL** (`src/loader/`, Windows-only) — `winhttp.dll` proxy + MinHook + Lua 5.4 VM injected into Ravenswatch for Lua-scripted mods. Built with CMake. Texture/asset overrides work without it. The Lua SDK (`src/loader/lib/rsmm.lua` + `engine_gen.lua`) is **disk-loaded from `<game>/rsmm/lib/`, not embedded in the DLL** — a Lua-only change ships via `rsmm install-loader` (or a straight file copy), no rebuild.
+- **Native loader DLL** (`src/loader/`, Windows-only) — `winhttp.dll` proxy + MinHook + Lua 5.4 VM injected into Ravenswatch for Lua-scripted mods. Built with CMake. Texture/asset overrides work without it. The Lua SDK (`src/loader/lib/rsmm.lua` + the generated `engine_gen.lua`/`events_gen.lua`, plus the `src/loader/lua/rsmm/*.lua` submodules it requires) is **disk-loaded from `<game>/rsmm/lib/`, not embedded in the DLL** — a Lua-only change ships via `rsmm install-loader` (or a straight file copy), no rebuild.
 
 The desktop app does **not** reimplement the CLI — it bundles the Python CLI as a PyInstaller sidecar (`apps/desktop/src-tauri/binaries/rsmm-<triple>[.exe]`) and shells out via Tauri's `shell:allow-execute`. See `scripts/build-sidecar.py` for the bundle definition (every data file the frozen CLI needs must be in `add_data_args` or it will crash on a fresh user install).
 

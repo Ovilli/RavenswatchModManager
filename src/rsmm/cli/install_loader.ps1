@@ -99,9 +99,9 @@ if (Test-Path $luaSrc) {
   New-Item -ItemType Directory -Path $luaDst -Force | Out-Null
   Copy-Item -Path (Join-Path $luaSrc '*') -Destination $luaDst -Recurse -Force
 }
-# lua/ ships the rsmm/*.lua submodules lib/rsmm.lua pulls in
-# (health/config/i18n/api/schedule, plus damage, which is 45% of the SDK by
-# line count and is required, not merged). Install the entrypoint + engine table
+# lua/ ships every rsmm/*.lua submodule lib/rsmm.lua pulls in (deliberately
+# not enumerated -- the list has grown three times and this comment went stale
+# each time). Install the entrypoint + engine table
 # (R.engine.* resolves names through it) from lib/. Mirrors install_loader.sh;
 # both lua/ and lib/ are bundled into the frozen sidecar.
 New-Item -ItemType Directory -Path $luaDst -Force | Out-Null

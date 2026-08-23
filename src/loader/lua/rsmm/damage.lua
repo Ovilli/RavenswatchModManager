@@ -5,7 +5,7 @@
 -- that nothing else reads, and only the handful of parent values below.
 --
 -- CONTRACT: this module returns a FUNCTION, not a table. The plain-table
--- submodules (health/config/i18n/api/schedule) are standalone; this one needs
+-- submodules merged by _submodule are standalone; this one needs
 -- the parent's private helper table and pointer guards, and it installs its own
 -- hooks, so rsmm.lua calls it with an env and it populates R/F in place.
 --

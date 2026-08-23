@@ -93,9 +93,9 @@ fi
 # Lua-side SDK: mods do `require "rsmm"` and get the documented R.* surface.
 # The require entrypoint is src/loader/lib/rsmm.lua (the full SDK with
 # R.item/R.on/R.kv/R.engine that matches the C++ bindings rsmm._internal.*).
-# Copy the modular src/loader/lua/ tree first (the rsmm/*.lua submodules
-# lib/rsmm.lua pulls in: health/config/i18n/api/schedule, plus damage, which
-# is 45% of the SDK by line count and is required, not merged), then install
+# Copy the modular src/loader/lua/ tree first (every rsmm/*.lua submodule
+# lib/rsmm.lua pulls in -- deliberately NOT enumerated here, the list has
+# grown three times and this comment went stale each time), then install
 # the entrypoint + generated engine_gen.lua from lib/. Both src/loader/lua AND
 # src/loader/lib are bundled into the frozen sidecar (scripts/build-sidecar.py);
 # if lib/ is missing, R.engine/engine_gen and the full SDK won't ship.
