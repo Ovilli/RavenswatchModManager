@@ -65,7 +65,7 @@ async function getAppDownloads(): Promise<number> {
 
 async function getHomeData(): Promise<HomeData> {
   const apiBase = getApiUrl().replace(/\/+$/, '');
-  const noRelease: LatestRelease = { tag: null, windows: null, linux: null };
+  const noRelease: LatestRelease = { tag: null, windows: null, linux: null, assets: [] };
   const fallback: HomeData = {
     mods: [],
     featured: [],

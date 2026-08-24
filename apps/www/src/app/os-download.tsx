@@ -1,6 +1,7 @@
 'use client';
 
 import { buttonVariants } from '@rsmm/ui';
+import type { Route } from 'next';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import type { LatestRelease } from '../lib/releases';
@@ -29,7 +30,16 @@ function detectOS(): 'Windows' | 'Linux' | 'unsupported' {
  * plain cross-origin href downloads without navigating away; the `download`
  * attribute is ignored cross-origin and is not relied on.
  */
-export function OsDownload({ release }: { release: LatestRelease }) {
+export function OsDownload({
+  release,
+  fallbackHref = '/download',
+}: {
+  release: LatestRelease;
+  /** Where to send a visitor with no resolvable asset. Defaults to /download —
+   *  the download page itself passes the GitHub release page instead, since
+   *  falling back to the page you are already on is a dead click. */
+  fallbackHref?: string;
+}) {
   const [os, setOs] = useState<'Windows' | 'Linux' | 'unsupported'>('Linux');
 
   useEffect(() => {
@@ -42,8 +52,12 @@ export function OsDownload({ release }: { release: LatestRelease }) {
 
   if (!href) {
     const label = os === 'unsupported' ? 'Download (Windows / Linux)' : `Download for ${os}`;
-    return (
-      <Link href="/download" className={className}>
+    return fallbackHref.startsWith('http') ? (
+      <a href={fallbackHref} className={className} target="_blank" rel="noreferrer">
+        {label}
+      </a>
+    ) : (
+      <Link href={fallbackHref as Route} className={className}>
         {label}
       </Link>
     );

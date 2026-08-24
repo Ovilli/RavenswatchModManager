@@ -3,17 +3,27 @@ const REPO = 'Ovilli/RavenswatchModManager';
 export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 export const LATEST_RELEASE_URL = `${RELEASES_URL}/latest`;
 
+export interface ReleaseAsset {
+  name: string;
+  url: string;
+  /** Size in bytes, straight from the GitHub API. */
+  size: number;
+}
+
 export interface LatestRelease {
   /** Tag of the latest published release, e.g. `v5.1.0`. */
   tag: string | null;
-  /** Direct `browser_download_url` for each platform's installer, when present. */
+  /** Direct download for each platform's preferred installer, when present. */
   windows: string | null;
   linux: string | null;
+  /** Every downloadable asset, so a caller can offer more than the primary. */
+  assets: ReleaseAsset[];
 }
 
 interface GhAsset {
   name: string;
   browser_download_url: string;
+  size?: number;
 }
 
 /**
@@ -30,15 +40,22 @@ const PICKERS: Record<'windows' | 'linux', string[]> = {
   linux: ['.AppImage', '.deb'],
 };
 
-function pick(assets: GhAsset[], exts: string[]): string | null {
+/** First asset matching any of `exts`, in preference order. */
+export function pickAsset(assets: ReleaseAsset[], exts: string[]): ReleaseAsset | null {
   for (const ext of exts) {
     // `.sig` sits next to every installer as `<installer><ext>.sig`; endsWith on
     // the bare extension already excludes it, but updater metadata does not
     // carry one of these extensions at all.
     const hit = assets.find((a) => a.name.endsWith(ext));
-    if (hit) return hit.browser_download_url;
+    if (hit) return hit;
   }
   return null;
+}
+
+/** Human-readable size for a download button. */
+export function formatBytes(bytes: number): string {
+  const mb = bytes / 1024 / 1024;
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
 }
 
 /**
@@ -52,18 +69,24 @@ function pick(assets: GhAsset[], exts: string[]): string | null {
  * page, which always exists.
  */
 export async function getLatestRelease(): Promise<LatestRelease> {
-  const empty: LatestRelease = { tag: null, windows: null, linux: null };
+  const empty: LatestRelease = { tag: null, windows: null, linux: null, assets: [] };
   try {
     const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
       next: { revalidate: 3600 },
     });
     if (!res.ok) return empty;
     const data = await res.json();
-    const assets: GhAsset[] = Array.isArray(data?.assets) ? data.assets : [];
+    const raw: GhAsset[] = Array.isArray(data?.assets) ? data.assets : [];
+    // Signatures and updater metadata are not downloads anyone wants offered.
+    const assets: ReleaseAsset[] = raw
+      .filter((a) => a?.name && a.browser_download_url && !a.name.endsWith('.sig'))
+      .filter((a) => a.name !== 'latest.json')
+      .map((a) => ({ name: a.name, url: a.browser_download_url, size: a.size ?? 0 }));
     return {
       tag: typeof data?.tag_name === 'string' ? data.tag_name : null,
-      windows: pick(assets, PICKERS.windows),
-      linux: pick(assets, PICKERS.linux),
+      windows: pickAsset(assets, PICKERS.windows)?.url ?? null,
+      linux: pickAsset(assets, PICKERS.linux)?.url ?? null,
+      assets,
     };
   } catch {
     return empty;
