@@ -52,6 +52,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -248,13 +249,44 @@ def _allowed_schemes() -> tuple[str, ...]:
     return ("https://", "file://")
 
 
-def _fetch(url: str, limit: int | None = None) -> bytes:
+def _fetch(url: str, limit: int | None = None,
+           on_progress: Callable[[int, int], None] | None = None) -> bytes:
+    """Fetch a payload, optionally reporting (received, total) as it arrives.
+
+    The bundle is a few MB over a link nobody can predict, and without progress
+    the desktop can only show a spinner that says nothing — the same download
+    the app's own updater draws a bar for. `total` is 0 when the server sends
+    no Content-Length, which the caller must render as "unknown", never as 0%.
+    """
     if not url.startswith(_allowed_schemes()):
         raise LoaderUpdateError(f"refusing to fetch non-HTTPS URL: {url}")
     req = urllib.request.Request(url, headers={"User-Agent": "rsmm-update-loader"})
     try:
         with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
-            data = r.read(limit + 1) if limit else r.read()
+            if on_progress is None:
+                data = r.read(limit + 1) if limit else r.read()
+            else:
+                try:
+                    total = int(r.headers.get("Content-Length") or 0)
+                except ValueError:
+                    total = 0
+                cap = (limit + 1) if limit else None
+                chunks: list[bytes] = []
+                got = 0
+                on_progress(0, total)
+                while True:
+                    want = 1 << 16
+                    if cap is not None:
+                        want = min(want, cap - got)
+                        if want <= 0:
+                            break
+                    chunk = r.read(want)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    got += len(chunk)
+                    on_progress(got, total)
+                data = b"".join(chunks)
     except urllib.error.HTTPError as e:
         if e.code == 404:
             raise ChannelNotPublishedError(
@@ -641,15 +673,21 @@ def _plant_payload(game_dir: Path, manifest: dict, payload: Path) -> list[str]:
     return planted
 
 
-def apply_update(game_dir: Path, state: dict | None = None) -> dict:
-    """Download, verify and plant the remote bundle."""
+def apply_update(game_dir: Path, state: dict | None = None,
+                 on_progress: Callable[[int, int], None] | None = None) -> dict:
+    """Download, verify and plant the remote bundle.
+
+    `on_progress(received, total)` is called as the bundle downloads, so a UI
+    can draw a real meter instead of an indeterminate spinner.
+    """
     if state is None:
         state = check(game_dir)
     if state["status"] == "needs_app_update":
         raise LoaderUpdateError(state["error"])
 
     manifest = state.get("_manifest") or fetch_manifest(state["remote_base"])
-    raw = _fetch(f"{state['remote_base']}/{BUNDLE_NAME}", limit=_MAX_BUNDLE_BYTES)
+    raw = _fetch(f"{state['remote_base']}/{BUNDLE_NAME}", limit=_MAX_BUNDLE_BYTES,
+                 on_progress=on_progress)
     if _sha256(raw) != manifest["bundle_sha256"]:
         raise LoaderUpdateError(
             "bundle hash does not match the signed manifest — refusing to plant"

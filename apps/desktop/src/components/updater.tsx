@@ -3,7 +3,14 @@ import { AlertTriangle, Download, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import pkg from '../../package.json';
 import { appendLauncherLog } from '../lib/launcher-log';
-import { type UpdateLoaderResult, updateLoader } from '../lib/rsmm';
+import {
+  formatBytes,
+  gameStatus,
+  type LoaderDownloadProgress,
+  restartGame,
+  type UpdateLoaderResult,
+  updateLoader,
+} from '../lib/rsmm';
 import {
   type AvailableUpdate,
   type UpdateCheckError,
@@ -454,6 +461,15 @@ export function UpdaterSettings() {
   const [loader, setLoader] = useState<UpdateLoaderResult | null>(null);
   const [loaderBusy, setLoaderBusy] = useState(false);
   const [loaderError, setLoaderError] = useState<string | null>(null);
+  // Download progress for the loader bundle, mirroring what the launcher's own
+  // updater shows. A few MB over an unknown link is long enough that a bare
+  // spinner reads as "stuck".
+  const [loaderProgress, setLoaderProgress] = useState<LoaderDownloadProgress | null>(null);
+  // Set once a bundle has been planted: the running game still has the OLD
+  // loader mapped, because the DLL is loaded at process start. Offering the
+  // restart here is the difference between "updated" and "in effect".
+  const [needsGameRestart, setNeedsGameRestart] = useState(false);
+  const [restarting, setRestarting] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -479,8 +495,9 @@ export function UpdaterSettings() {
   const runLoaderUpdate = useCallback(async (): Promise<void> => {
     setLoaderBusy(true);
     setLoaderError(null);
+    setLoaderProgress(null);
     try {
-      const r = await updateLoader();
+      const r = await updateLoader({ onProgress: setLoaderProgress });
       setLoader(r);
       void appendLauncherLog('info', '[Updater] loader channel check', {
         status: r?.status ?? 'null',
@@ -488,6 +505,7 @@ export function UpdaterSettings() {
         remote: r?.remoteVersion ?? null,
       });
       if (r?.status === 'updated') {
+        setNeedsGameRestart(true);
         toast.push(
           `Game loader updated to v${r.installedVersion} — restart Ravenswatch to pick it up.`,
           'success',
@@ -503,6 +521,36 @@ export function UpdaterSettings() {
       void appendLauncherLog('error', '[Updater] loader update failed', { error: detail });
     } finally {
       setLoaderBusy(false);
+      setLoaderProgress(null);
+    }
+  }, [toast]);
+
+  /** Close the game (if it is up) and launch it again, so a freshly planted
+   *  loader is actually the one in the process. */
+  const onRestartGame = useCallback(async (): Promise<void> => {
+    setRestarting(true);
+    try {
+      const st = await gameStatus();
+      if (st?.running) {
+        // A run in progress dies with the process. Never do that silently.
+        const ok = window.confirm(
+          'Close Ravenswatch and start it again?\n\n' +
+            'Any run in progress will be lost — the new loader only takes effect ' +
+            'in a fresh session.',
+        );
+        if (!ok) return;
+      }
+      const r = await restartGame();
+      if (r?.ok) {
+        setNeedsGameRestart(false);
+        toast.push(r.wasRunning ? 'Ravenswatch restarted.' : 'Ravenswatch launched.', 'success');
+      } else {
+        toast.push(r?.error ?? 'Could not restart Ravenswatch.', 'error');
+      }
+    } catch (e) {
+      toast.push(`Restart failed: ${e instanceof Error ? e.message : String(e)}`, 'error');
+    } finally {
+      setRestarting(false);
     }
   }, [toast]);
 
@@ -577,6 +625,44 @@ export function UpdaterSettings() {
           </Button>
         ) : null}
       </div>
+
+      {loaderBusy && loaderProgress ? (
+        <output className="flex items-center gap-3">
+          <span className="shrink-0 font-serif-italic text-parchment text-sm">
+            Downloading game loader…
+          </span>
+          <div className="max-w-80 flex-1">
+            <ProgressBar
+              value={loaderProgress.received}
+              max={loaderProgress.total}
+              indeterminate={!loaderProgress.total}
+            />
+          </div>
+          <span className="shrink-0 font-mono text-ash text-xs">
+            {formatBytes(loaderProgress.received)}
+            {loaderProgress.total ? ` / ${formatBytes(loaderProgress.total)}` : ''}
+          </span>
+        </output>
+      ) : null}
+
+      {needsGameRestart ? (
+        <div className="flex flex-wrap items-center gap-3 border border-gilt/40 bg-pitch/40 px-3 py-2">
+          <p className="flex-1 text-parchment text-sm">
+            The new loader takes effect in a fresh session — a running game keeps the one it
+            started with.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="primary"
+            onClick={() => void onRestartGame()}
+            disabled={restarting}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${restarting ? 'animate-spin' : ''}`} />
+            {restarting ? 'Restarting…' : 'Restart Ravenswatch'}
+          </Button>
+        </div>
+      ) : null}
 
       {loaderError ? (
         <p className="text-sm text-crimson" role="alert">

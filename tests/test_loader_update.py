@@ -594,3 +594,32 @@ def test_plant_matches_bundle_shortcircuits_on_size(tmp_path, channel, monkeypat
     monkeypatch.setattr(lu, "sha256_file", lambda p: hashed.append(p) or "")
     assert lu.plant_matches_bundle(game) is False
     assert hashed == []
+
+
+# --- download progress -----------------------------------------------------
+
+def test_apply_update_reports_download_progress(tmp_path, channel):
+    """A few MB over an unknown link is long enough that a bare spinner reads
+    as "stuck". The desktop draws the same bar it draws for its own updater."""
+    game, use = channel
+    use(_publish(tmp_path, version=2))
+    seen: list[tuple[int, int]] = []
+
+    state = lu.apply_update(game, on_progress=lambda got, total: seen.append((got, total)))
+    assert state["status"] == "updated"
+
+    assert seen, "no progress was reported"
+    assert seen[0][0] == 0, "the first report should be 0 so a bar starts empty"
+    received = [got for got, _ in seen]
+    assert received == sorted(received), "progress must not go backwards"
+    # file:// has no Content-Length, so `total` is 0 == unknown. What matters is
+    # that the final byte count equals the bundle actually planted.
+    bundle = (tmp_path / "remote" / lu.BUNDLE_NAME).read_bytes()
+    assert received[-1] == len(bundle)
+
+
+def test_progress_is_optional(tmp_path, channel):
+    """Every existing caller passes nothing and must keep working."""
+    game, use = channel
+    use(_publish(tmp_path, version=2))
+    assert lu.apply_update(game)["status"] == "updated"

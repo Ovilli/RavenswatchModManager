@@ -16,8 +16,11 @@ being wrong the other way makes rsmm unusable when the probe misbehaves.
 
 from __future__ import annotations
 
+import contextlib
 import os
+import signal
 import subprocess
+import time
 
 PROCESS_NAME = "Ravenswatch.exe"
 
@@ -94,4 +97,76 @@ def is_game_running() -> bool:
         leaf = argv0.decode("utf-8", "replace").replace("\\", "/")
         if argv0 and os.path.basename(leaf).lower() == want:
             return True
+    return False
+
+
+#: How long to let the game shut down politely before insisting.
+_STOP_GRACE_SEC = 8
+
+
+def _pids() -> list[int]:
+    """PIDs of the game process itself. Linux only; see is_game_running for
+    why matching the process rather than a command line matters here."""
+    out: list[int] = []
+    try:
+        entries = os.listdir("/proc")
+    except OSError:
+        return out
+    want = PROCESS_NAME.lower()
+    for entry in entries:
+        if not entry.isdigit():
+            continue
+        base = "/proc/" + entry
+        try:
+            with open(base + "/comm", encoding="utf-8", errors="replace") as fh:
+                if fh.read().strip().lower() == want:
+                    out.append(int(entry))
+                    continue
+            with open(base + "/cmdline", "rb") as fh:
+                argv0 = fh.read().split(b"\0", 1)[0]
+        except OSError:
+            continue
+        leaf = argv0.decode("utf-8", "replace").replace("\\", "/")
+        if argv0 and os.path.basename(leaf).lower() == want:
+            out.append(int(entry))
+    return out
+
+
+def stop_game(grace_sec: float = _STOP_GRACE_SEC) -> bool:
+    """Ask Ravenswatch to close, then insist. True once nothing is running.
+
+    Polite first in both directions — `taskkill` without `/F` and SIGTERM let
+    the engine flush its save; only a process that ignores that gets killed.
+    A run in progress is lost either way, so nothing calls this without the
+    user having asked for it in as many words.
+    """
+    if not is_game_running():
+        return True
+
+    deadline = time.monotonic() + grace_sec
+    if os.name == "nt":
+        _run(["taskkill", "/IM", PROCESS_NAME])
+    else:
+        for pid in _pids():
+            with contextlib.suppress(OSError):
+                os.kill(pid, signal.SIGTERM)
+
+    while time.monotonic() < deadline:
+        if not is_game_running():
+            return True
+        time.sleep(0.25)
+
+    # Still there: insist.
+    if os.name == "nt":
+        _run(["taskkill", "/F", "/IM", PROCESS_NAME])
+    else:
+        for pid in _pids():
+            with contextlib.suppress(OSError):
+                os.kill(pid, signal.SIGKILL)
+
+    hard_deadline = time.monotonic() + 5
+    while time.monotonic() < hard_deadline:
+        if not is_game_running():
+            return True
+        time.sleep(0.25)
     return False

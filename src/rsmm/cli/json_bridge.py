@@ -51,6 +51,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import tomllib
 import urllib.error
 import urllib.parse
@@ -1316,6 +1317,71 @@ def cmd_update_data(check_only: bool) -> int:
         return _emit({"ok": False, "status": "error", "error": str(e)})
 
 
+def cmd_game_status() -> int:
+    """Is the game up? Lets a UI say "restart" instead of "launch", and explain
+    why a freshly planted loader is not live yet — the running process keeps
+    the DLL it started with."""
+    from rsmm.engine.game_proc import is_game_running
+
+    return _emit({"ok": True, "running": is_game_running()})
+
+
+def cmd_restart_game() -> int:
+    """Close Ravenswatch if it is up, then launch it again.
+
+    This is the other half of a loader update: planting the files does nothing
+    for the session already running, because the DLL is loaded at process
+    start. Making the user find the game window, close it, and go back to Steam
+    is the step where "update the loader" stops being one action.
+
+    A run in progress is lost, so nothing calls this on its own — the UI asks
+    first, and stop_game shuts down politely before it insists.
+    """
+    from rsmm.engine.game_proc import is_game_running, stop_game
+
+    was_running = is_game_running()
+    if was_running and not stop_game():
+        return _emit({
+            "ok": False,
+            "wasRunning": True,
+            "error": "Ravenswatch did not exit — close it manually, then launch again.",
+        })
+    result = _collect_rsmm(["run", "--force"])
+    return _emit({
+        "ok": bool(result.get("ok")),
+        "wasRunning": was_running,
+        "stdout": result.get("stdout"),
+        "error": None if result.get("ok") else (result.get("stderr") or "launch failed"),
+    })
+
+
+def _progress_reporter(phase: str, min_interval: float = 0.1):
+    """Report download progress as NDJSON on STDERR.
+
+    Stdout is contractually a single JSON object (see this module's docstring),
+    so progress cannot go there — the desktop already streams stderr line by
+    line, which is exactly the channel this needs. Anything not looking for
+    progress sees a few extra diagnostic lines, which stderr is for.
+
+    Rate-limited: a 6 MB bundle at 64 KiB a read is ~100 callbacks, and a UI
+    repainting per chunk is worse than one repainting ten times a second. The
+    first and last calls always go out, so a bar starts at 0 and finishes full.
+    """
+    last = [0.0]
+
+    def report(received: int, total: int) -> None:
+        now = time.monotonic()
+        done = total > 0 and received >= total
+        if received and not done and (now - last[0]) < min_interval:
+            return
+        last[0] = now
+        line = json.dumps({"progress": {"phase": phase, "received": received,
+                                        "total": total}})
+        print(line, file=sys.stderr, flush=True)
+
+    return report
+
+
 def cmd_update_loader(check_only: bool) -> int:
     """
     Check for (and by default install) a newer loader DLL + Lua SDK from
@@ -1332,7 +1398,7 @@ def cmd_update_loader(check_only: bool) -> int:
 
         state = check(game_dir)
         if not check_only and state["status"] == "update_available":
-            state = apply_update(game_dir, state)
+            state = apply_update(game_dir, state, on_progress=_progress_reporter("download"))
         return _emit({
             # A future-abi bundle is a real answer, not a failure: the UI
             # should say "update the app", not show a transport error.
@@ -1408,6 +1474,8 @@ def main(argv: list[str] | None = None) -> int:
                           help="with --fix, also run destructive repairs")
     p_run = sub.add_parser("run", help="launch the game")
     p_run.add_argument("--vanilla", action="store_true", help="restore originals before launching")
+    sub.add_parser("game-status", help="is Ravenswatch running right now?")
+    sub.add_parser("restart-game", help="close Ravenswatch (if running) and launch it again")
     p_pack = sub.add_parser("pack-mod", help="pack a mod for upload + return metadata")
     p_pack.add_argument("mod_id", help="folder name under mods/")
     p_up = sub.add_parser("upload-bytes", help="HTTP PUT a file to a presigned URL")
@@ -1477,6 +1545,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.vanilla:
             rest.append("--vanilla")
         return cmd_run(rest)
+    if args.cmd == "game-status":
+        return cmd_game_status()
+    if args.cmd == "restart-game":
+        return cmd_restart_game()
     if args.cmd == "pack-mod":
         return cmd_pack_mod(args.mod_id)
     if args.cmd == "upload-bytes":

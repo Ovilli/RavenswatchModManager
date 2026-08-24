@@ -655,12 +655,85 @@ export interface UpdateLoaderResult {
 // or Lua-SDK fix reach users without a desktop release + reinstall; the app
 // binary itself still updates through the Tauri updater. Safe to call every
 // launch: no-ops when up to date, and any failure is reported, not thrown.
-export const updateLoader = (opts: { checkOnly?: boolean } = {}) =>
+/** Bytes so far and, when the server said, the total. `total: 0` means the
+ *  size is unknown — render that as indeterminate, never as 0%. */
+export interface LoaderDownloadProgress {
+  phase: string;
+  received: number;
+  total: number;
+}
+
+/**
+ * Fetch + plant the loader bundle, reporting download progress.
+ *
+ * The CLI writes progress as NDJSON on STDERR: stdout is contractually one
+ * JSON object, so it cannot carry a stream. Lines that are not progress (real
+ * diagnostics) are ignored here and still reach the error path on failure.
+ */
+export const updateLoader = (
+  opts: { checkOnly?: boolean; onProgress?: (p: LoaderDownloadProgress) => void } = {},
+) =>
   rsmm<UpdateLoaderResult>(
     opts.checkOnly ? ['update-loader', '--check'] : ['update-loader'],
     // Downloads a multi-MB DLL + SDK bundle over the network.
-    { timeoutMs: LONG_TIMEOUT_MS },
+    {
+      timeoutMs: LONG_TIMEOUT_MS,
+      onStderr: opts.onProgress
+        ? (line) => {
+            const p = parseProgressLine(line);
+            if (p) opts.onProgress?.(p);
+          }
+        : undefined,
+    },
   );
+
+/** One stderr line -> progress, or null when it is anything else. */
+export function parseProgressLine(line: string): LoaderDownloadProgress | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('{') || !trimmed.includes('"progress"')) return null;
+  try {
+    const parsed = JSON.parse(trimmed) as { progress?: Partial<LoaderDownloadProgress> };
+    const p = parsed.progress;
+    if (!p || typeof p.received !== 'number' || typeof p.total !== 'number') return null;
+    return { phase: String(p.phase ?? ''), received: p.received, total: p.total };
+  } catch {
+    return null;
+  }
+}
+
+/** "5.4 MB" — for a download meter, where 1 KB = 1024 B and one decimal is
+ *  as much precision as a progress line can use. */
+export function formatBytes(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let v = n;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i += 1;
+  }
+  return `${i === 0 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
+}
+
+export interface GameStatus {
+  ok: boolean;
+  running: boolean;
+}
+
+/** Is the game up? A planted loader does not reach a session already running —
+ *  the DLL is loaded at process start — so this decides "restart" vs "launch". */
+export const gameStatus = () => rsmm<GameStatus>(['game-status']);
+
+export interface RestartGameResult {
+  ok: boolean;
+  wasRunning?: boolean;
+  error?: string | null;
+}
+
+/** Close Ravenswatch (politely, then firmly) and launch it again. Loses a run
+ *  in progress, so callers must confirm first. */
+export const restartGame = () =>
+  rsmm<RestartGameResult>(['restart-game'], { timeoutMs: LONG_TIMEOUT_MS });
 
 export interface ChangelogFeedResult {
   ok: boolean;
