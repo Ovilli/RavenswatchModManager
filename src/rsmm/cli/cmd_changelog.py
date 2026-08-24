@@ -50,7 +50,16 @@ def main() -> int:
         print(st.dim(f"(showing cached notes — {state['error']})"))
 
     for entry in state["entries"][: max(1, args.limit)]:
-        head = f"v{entry['version']}"
+        # A loader-channel note has no app version to show; say which loader
+        # build it describes instead, so "where did this come from" is answered
+        # by the line itself.
+        lv = entry.get("loader_version")
+        if lv and not entry.get("version"):
+            head = f"loader v{lv}"
+        elif lv:
+            head = f"v{entry['version']} (loader v{lv})"
+        else:
+            head = f"v{entry['version']}"
         if entry.get("date"):
             head = f"{head}  {entry['date']}"
         print(st.bold(head))

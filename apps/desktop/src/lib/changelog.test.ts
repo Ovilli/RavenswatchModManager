@@ -17,9 +17,20 @@ const ENTRIES: ChangelogEntry[] = [
 
 describe('bundled changelog data', () => {
   it('is ordered newest-first', () => {
-    const versions = BUNDLED_CHANGELOG.map((e) => e.version);
-    const sorted = [...versions].sort((a, b) => (a > b ? -1 : 1));
-    expect(versions).toEqual(sorted);
+    // By DATE across the whole feed, because a loader-channel note has no app
+    // version to sort by — it belongs to no release. The app entries among
+    // them must still descend by version.
+    const dates = BUNDLED_CHANGELOG.map((e) => e.date);
+    expect(dates).toEqual([...dates].sort((a, b) => (a > b ? -1 : 1)));
+
+    const versions = BUNDLED_CHANGELOG.filter((e) => e.version).map((e) => e.version);
+    expect(versions).toEqual([...versions].sort((a, b) => (a > b ? -1 : 1)));
+  });
+
+  it('identifies every entry as either a release or a loader note', () => {
+    for (const entry of BUNDLED_CHANGELOG) {
+      expect(Boolean(entry.version) || typeof entry.loader_version === 'number').toBe(true);
+    }
   });
 
   it('has a non-empty highlight list and an ISO date per entry', () => {
@@ -121,5 +132,78 @@ describe('pendingEntries', () => {
       hasRunBefore: true,
     });
     expect(got.map((e) => e.version)).toEqual(['5.0.2', '5.0.1']);
+  });
+});
+
+describe('loader-channel notes', () => {
+  // The loader DLL and Lua SDK update out of band, so a fix reaches users with
+  // no app release to announce it in. Those entries carry `loader_version` and
+  // no app `version`, and clamp against the loader the user has PLANTED —
+  // otherwise a note would describe a payload they have not received.
+  const loaderNote = (v: number, date: string): ChangelogEntry => ({
+    version: '',
+    loader_version: v,
+    date,
+    highlights: [`loader v${v} landed`],
+  });
+
+  it('shows a loader note only up to the planted loader build', () => {
+    const entries = [loaderNote(9, '2026-08-25'), loaderNote(8, '2026-08-24')];
+    const shown = entriesSince(entries, '5.1.0', '5.1.0', 3, { current: 8, seen: 7 });
+    expect(shown.map((e) => e.loader_version)).toEqual([8]);
+  });
+
+  it('does not repeat a loader note the user has already seen', () => {
+    const entries = [loaderNote(8, '2026-08-24')];
+    expect(entriesSince(entries, '5.1.0', '5.1.0', 3, { current: 8, seen: 8 })).toEqual([]);
+  });
+
+  it('hides loader notes from a caller that knows nothing about the loader', () => {
+    // An older caller passing no loader context must not have notes announced
+    // early; silence is the safe direction.
+    const entries = [loaderNote(8, '2026-08-24')];
+    expect(entriesSince(entries, '5.1.0', '5.1.0')).toEqual([]);
+  });
+
+  it('still shows app releases alongside', () => {
+    const entries: ChangelogEntry[] = [
+      loaderNote(8, '2026-08-24'),
+      { version: '5.1.1', date: '2026-08-24', highlights: ['app'] },
+    ];
+    const shown = entriesSince(entries, '5.1.0', '5.1.1', 5, { current: 8, seen: 7 });
+    expect(shown.map((e) => e.version || `loader${e.loader_version}`)).toEqual([
+      'loader8',
+      '5.1.1',
+    ]);
+  });
+
+  it('merges loader notes without collapsing them onto each other', () => {
+    // They all share the empty version string, so keying the union on
+    // `version` alone kept exactly one of them.
+    const merged = mergeEntries([loaderNote(9, '2026-08-25')], [loaderNote(8, '2026-08-24')]);
+    expect(merged.map((e) => e.loader_version)).toEqual([9, 8]);
+  });
+
+  it('latestVersion ignores loader notes', () => {
+    const entries: ChangelogEntry[] = [
+      loaderNote(8, '2026-08-24'),
+      { version: '5.1.0', date: '2026-08-22', highlights: ['app'] },
+    ];
+    expect(latestVersion(entries)).toBe('5.1.0');
+  });
+
+  it('does not open a first-run dialog with a loader note', () => {
+    const entries: ChangelogEntry[] = [
+      loaderNote(8, '2026-08-24'),
+      { version: '5.1.0', date: '2026-08-22', highlights: ['app'] },
+    ];
+    const shown = pendingEntries({
+      entries,
+      seen: null,
+      current: '5.1.0',
+      hasRunBefore: true,
+      loader: { current: 8, seen: 0 },
+    });
+    expect(shown.map((e) => e.version)).toEqual(['5.1.0']);
   });
 });

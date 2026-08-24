@@ -21,6 +21,15 @@ on:
         required: false
         default: false
         type: boolean
+      changelog:
+        description: 'Announce this publish in the release-notes feed (users see it without an app release)'
+        required: false
+        default: true
+        type: boolean
+      highlights:
+        description: 'Release-note bullets, ONE PER LINE (default: the notes above, as a single bullet)'
+        required: false
+        type: string
 
 jobs:
   publish:
@@ -84,16 +93,37 @@ jobs:
       # stops `restore --all` + `install-loader` from downgrading users, so an
       # uncommitted bump breaks the guard in both directions — commit it here
       # rather than relying on a human to remember.
+      # A loader publish reaches every user with no app release — which is the
+      # whole point of the channel, and used to mean it landed silently. The
+      # note is a CHANNEL entry (keyed by loader_version, not by an app
+      # version), so the desktop shows it against the loader they have planted.
+      - name: Announce it in the release-notes feed
+        if: ${{ !inputs.dry_run && inputs.changelog }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(python -c "import json;print(json.load(open('data/loader_version.json'))['loader_version'])")
+          ARGS=(--loader-version "$VERSION" --summary "${{ inputs.notes }}")
+          if [ -n "${{ inputs.highlights }}" ]; then
+            while IFS= read -r line; do
+              [ -n "$line" ] && ARGS+=(--highlight "$line")
+            done <<< "${{ inputs.highlights }}"
+          else
+            ARGS+=(--highlight "${{ inputs.notes }}")
+          fi
+          python scripts/add_loader_changelog.py "${ARGS[@]}"
+          scripts/publish_changelog.sh
+
       - name: Commit the loader version bump
         if: ${{ !inputs.dry_run }}
         run: |
-          if git diff --quiet -- data/loader_version.json; then
-            echo "no version change to commit"
+          if git diff --quiet -- data/loader_version.json data/changelog.json; then
+            echo "nothing to commit"
             exit 0
           fi
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           VERSION=$(python -c "import json;print(json.load(open('data/loader_version.json'))['loader_version'])")
-          git add data/loader_version.json
+          git add data/loader_version.json data/changelog.json
           git commit -m "chore(loader): publish loader channel v${VERSION}"
           git push origin HEAD:main

@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import sys
 import time
+from pathlib import Path
 
 import pytest
 
 from rsmm.engine import changelog_feed as cf
+from rsmm.engine.changelog_feed import ChangelogError, parse
 
 GOOD = {
     "generated": "2026-08-22",
@@ -168,3 +171,88 @@ def test_shipped_feed_survives_its_own_parser():
     versions = [e["version"] for e in feed["entries"]]
     assert len(versions) == len(set(versions)), "duplicate version in the shipped feed"
     assert all(e["date"] for e in feed["entries"]), "every shipped entry needs a date"
+
+
+# --- loader-channel notes --------------------------------------------------
+#
+# The loader ships out of band, so a scripting fix reaches users with no app
+# release in between. Every entry used to be keyed by an APP version, and the
+# desktop dialog clamps those to the version the user is running — so a note
+# about a loader build had to be filed under a release it was not part of, or
+# go unread.
+
+def test_a_loader_note_needs_no_app_version():
+    feed = parse(json.dumps({
+        "generated": "2026-08-24",
+        "entries": [{
+            "loader_version": 8,
+            "date": "2026-08-24",
+            "summary": "Stutter fixes.",
+            "highlights": ["The identity probes no longer syscall per value."],
+        }],
+    }).encode())
+    entry = feed["entries"][0]
+    assert entry["loader_version"] == 8
+    assert entry["version"] == ""
+    assert entry["summary"] == "Stutter fixes."
+
+
+def test_an_app_entry_may_also_name_a_loader_build():
+    feed = parse(json.dumps({
+        "entries": [{
+            "version": "5.1.1",
+            "loader_version": 8,
+            "highlights": ["Both at once."],
+        }],
+    }).encode())
+    assert feed["entries"][0]["version"] == "5.1.1"
+    assert feed["entries"][0]["loader_version"] == 8
+
+
+def test_an_entry_identified_by_nothing_is_still_dropped():
+    with pytest.raises(ChangelogError):
+        parse(json.dumps({"entries": [{"highlights": ["orphan"]}]}).encode())
+
+
+@pytest.mark.parametrize("bad", [0, -3, 100_001, "8", 8.0, True, None])
+def test_an_implausible_loader_version_is_ignored(bad):
+    """Bounded like every other field on this untrusted payload. A rejected
+    loader_version does not poison the entry — it just stops identifying it,
+    so an entry with an app version survives and one without is dropped."""
+    feed = parse(json.dumps({
+        "entries": [{"version": "5.1.0", "loader_version": bad, "highlights": ["x"]}],
+    }).encode())
+    assert "loader_version" not in feed["entries"][0]
+
+
+def test_add_loader_changelog_writes_and_replaces(tmp_path):
+    """The publish-side helper: idempotent, because re-publishing a loader
+    version should update its note rather than stack another one."""
+    import subprocess
+
+    feed = tmp_path / "changelog.json"
+    feed.write_text(json.dumps({
+        "generated": "2026-08-01",
+        "entries": [{"version": "5.1.0", "date": "2026-08-01", "highlights": ["old"]}],
+    }), encoding="utf-8")
+    script = Path(__file__).resolve().parent.parent / "scripts" / "add_loader_changelog.py"
+
+    def run(summary: str):
+        return subprocess.run(
+            [sys.executable, str(script), "--loader-version", "8",
+             "--summary", summary, "--highlight", "did a thing",
+             "--date", "2026-08-24", "--feed", str(feed)],
+            capture_output=True, text=True,
+        )
+
+    assert run("first").returncode == 0
+    doc = json.loads(feed.read_text(encoding="utf-8"))
+    assert doc["entries"][0]["loader_version"] == 8
+    assert doc["entries"][0]["summary"] == "first"
+    assert len(doc["entries"]) == 2          # the app entry is untouched
+
+    assert run("second").returncode == 0
+    doc = json.loads(feed.read_text(encoding="utf-8"))
+    assert [e.get("loader_version") for e in doc["entries"]].count(8) == 1
+    assert doc["entries"][0]["summary"] == "second"
+    assert len(doc["entries"]) == 2

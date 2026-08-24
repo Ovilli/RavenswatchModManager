@@ -58,7 +58,10 @@ for e in feed["entries"]:
             sys.exit(f"refusing to publish: v{e['version']} has no date")
 
 newest = feed["entries"][0]
-print(f"ok: {len(feed['entries'])} entries, newest v{newest['version']} "
+# A loader-channel note has no app version to print; name the loader build.
+label = (f"v{newest['version']}" if newest.get("version")
+         else f"loader v{newest.get('loader_version')}")
+print(f"ok: {len(feed['entries'])} entries, newest {label} "
       f"({newest['date']}), generated {feed['generated'] or 'unstamped'}")
 EOF
 

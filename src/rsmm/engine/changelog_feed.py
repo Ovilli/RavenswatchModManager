@@ -122,12 +122,32 @@ def _clean(value: Any, limit: int) -> str:
     return text[:limit].strip()
 
 
+def _loader_version(raw: Any) -> int | None:
+    """The loader-channel version an entry describes, if it is a channel note.
+
+    Loader/SDK updates reach users through `rsmm update-loader` with no app
+    release at all — which is the case this whole channel exists for, and the
+    one it could not describe: every entry was keyed by an APP version, and the
+    desktop dialog clamps those to the version the user is running, so a note
+    about loader v8 either had to lie about which release it belonged to or go
+    unread. A channel note carries `loader_version` instead, and is shown on
+    the loader the user actually has planted.
+    """
+    v = raw.get("loader_version")
+    if isinstance(v, bool) or not isinstance(v, int):
+        return None
+    return v if 0 < v <= 100_000 else None
+
+
 def _entry(raw: Any) -> dict | None:
     """Validate one release entry. Returns None if it is unusable."""
     if not isinstance(raw, dict):
         return None
     version = _clean(raw.get("version"), MAX_VERSION)
-    if not version:
+    loader_version = _loader_version(raw)
+    # One or the other must identify the entry. An app release keeps `version`;
+    # a loader-channel note keeps `loader_version` and may omit it entirely.
+    if not version and loader_version is None:
         return None
     highlights = raw.get("highlights")
     if not isinstance(highlights, list):
@@ -142,6 +162,8 @@ def _entry(raw: Any) -> dict | None:
         "date": _clean(raw.get("date"), MAX_DATE),
         "highlights": lines,
     }
+    if loader_version is not None:
+        entry["loader_version"] = loader_version
     summary = _clean(raw.get("summary"), MAX_TEXT)
     if summary:
         entry["summary"] = summary

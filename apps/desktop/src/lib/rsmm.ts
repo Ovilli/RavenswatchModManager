@@ -669,7 +669,14 @@ export interface ChangelogFeedResult {
   // build's own copy, 'unavailable' = nothing to show at all.
   status: 'fetched' | 'cached' | 'bundled' | 'unavailable' | 'error';
   generated?: string;
-  entries: { version: string; date: string; summary?: string; highlights: string[] }[];
+  entries: {
+    version: string;
+    // Present on a loader-channel note, which belongs to no app release.
+    loader_version?: number;
+    date: string;
+    summary?: string;
+    highlights: string[];
+  }[];
   error?: string | null;
 }
 

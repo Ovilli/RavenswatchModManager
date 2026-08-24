@@ -2,15 +2,25 @@
   "generated": "2026-08-24",
   "entries": [
     {
+      "loader_version": 8,
+      "date": "2026-08-24",
+      "summary": "Stutter fixes for the damage meter, and it now attributes a transformed hero to the right player.",
+      "highlights": [
+        "Fixed the stuttering reported in co-op. The meter's background probes were asking the operating system about a page of memory once per value read — tens of thousands of times a second. They now read a page at a time, which the game's own thread feels as a stutter no longer competing with it.",
+        "An ability that swaps your hero — Sun Wukong's transform, a respawn — no longer counts you as a second player. Your damage follows you through it, and for allies too, using the identity the game itself stamps on every hit.",
+        "Hits the game does not count are no longer counted by the meter either, so the board matches the end-of-run screen. Rows now show kills.",
+        "Turning the meter off now stops its background work as well as its counting, and a board that has split a player into two rows no longer guesses names."
+      ]
+    },
+    {
       "version": "5.1.1",
       "date": "2026-08-24",
-      "summary": "The damage meter no longer stutters the game after a transform, turning it off now really turns it off, and an installed mod no longer arrives switched off.",
+      "summary": "Publishing a mod version now cannot mislabel it, restoring no longer deletes the previous run's log, and an installed mod arrives switched on.",
       "highlights": [
-        "Fixed the stuttering players reported after unlocking ultimates or playing Sun Wukong. An ability that swaps your hero for another one handed the meter a character it had never seen, so it counted you as a second player — and a duplicate row can never be named, which left the name search scanning memory for the rest of the run.",
-        "Your damage now follows you through a transform or a respawn instead of splitting across two rows. An ally who transforms still appears twice: nothing in this build of the game identifies another player through the swap, and guessing would put one player's damage under someone else's name.",
-        "Turning the damage meter off now stops its background work as well as its counting. It used to keep scanning once a second for the rest of the session.",
         "Fixed installed mods arriving switched off. A mod packaged while its author had it disabled shipped that setting with it, so it installed, applied, and then did nothing — with no error anywhere, because a disabled mod has its code removed rather than skipped. Packaging now always marks the mod as on, and whether you run it stays your choice in the launcher.",
-        "The damage-meter fixes arrive through the game-loader channel, so there is nothing to reinstall — the launcher plants them on the next check. The packaging fix is part of the launcher itself and arrives with this update."
+        "Publishing a mod version now checks that the version you are publishing matches the one inside the package. When they disagreed, the store offered an update that installed correctly and never changed the version, so pressing Update appeared to do nothing forever.",
+        "Restoring no longer deletes the previous run's log. The loader archives it at the start of the next launch, and restore was removing it first — so the archive it was supposed to produce never had anything to save, and neither did the crash history that decides whether a mod is disabled after repeated failed launches.",
+        "The launcher now tells you when the loader planted in your game folder is not the one it carries, instead of reporting everything as up to date."
       ]
     },
     {

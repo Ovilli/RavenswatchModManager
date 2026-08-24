@@ -19,8 +19,24 @@ import { compareVersions } from './version';
  * go out on its own.
  */
 export interface ChangelogEntry {
-  /** Release version, matching the tag without the leading `v`. */
+  /**
+   * Release version, matching the tag without the leading `v`.
+   *
+   * Empty on a LOADER-CHANNEL note, which belongs to no app release: the
+   * loader DLL and Lua SDK update out of band, so a fix can reach every user
+   * with no build to announce it in. Those entries carry `loader_version`
+   * instead and are shown against the loader the user has planted.
+   */
   version: string;
+  /**
+   * Loader-channel build this entry describes, when it describes one.
+   *
+   * snake_case because that is the wire shape — the bundled feed is imported
+   * straight from data/changelog.json and the CLI emits the same keys, so a
+   * camelCase field here would simply read undefined at runtime with nothing
+   * to catch it.
+   */
+  loader_version?: number;
   /** ISO date (YYYY-MM-DD) of the release. */
   date: string;
   /** Optional one-line framing for the release as a whole. */
@@ -31,9 +47,15 @@ export interface ChangelogEntry {
 /** The copy shipped inside this build. Used when the channel is unreachable. */
 export const BUNDLED_CHANGELOG: ChangelogEntry[] = feed.entries;
 
-/** Newest release described by a set of entries. */
+/** Newest APP release described by a set of entries (loader notes are skipped:
+ *  they belong to no release and would otherwise report an empty version). */
 export function latestVersion(entries: ChangelogEntry[] = BUNDLED_CHANGELOG): string {
-  return entries[0]?.version ?? '0.0.0';
+  return entries.find((e) => e.version)?.version ?? '0.0.0';
+}
+
+/** Is this a loader-channel note rather than an app release? */
+export function isLoaderEntry(e: ChangelogEntry): boolean {
+  return !e.version && typeof e.loader_version === 'number';
 }
 
 /**
@@ -51,10 +73,20 @@ export function mergeEntries(
   remote: ChangelogEntry[],
   bundled: ChangelogEntry[] = BUNDLED_CHANGELOG,
 ): ChangelogEntry[] {
-  const byVersion = new Map<string, ChangelogEntry>();
-  for (const entry of bundled) byVersion.set(entry.version, entry);
-  for (const entry of remote) byVersion.set(entry.version, entry);
-  return [...byVersion.values()].sort((a, b) => compareVersions(b.version, a.version));
+  // Key on what IDENTIFIES the entry. Keying on `version` alone collapsed every
+  // loader note onto one another, because they all share the empty string.
+  const key = (e: ChangelogEntry) => (e.version ? `app:${e.version}` : `loader:${e.loader_version}`);
+  const byKey = new Map<string, ChangelogEntry>();
+  for (const entry of bundled) byKey.set(key(entry), entry);
+  for (const entry of remote) byKey.set(key(entry), entry);
+  return [...byKey.values()].sort(compareEntries);
+}
+
+/** Newest-first: by version between releases, by date when either side is a
+ *  loader note (which has no version to compare). */
+function compareEntries(a: ChangelogEntry, b: ChangelogEntry): number {
+  if (a.version && b.version) return compareVersions(b.version, a.version);
+  return (b.date ?? '').localeCompare(a.date ?? '');
 }
 
 /**
@@ -76,9 +108,21 @@ export function entriesSince(
   seen: string,
   current: string,
   limit = 3,
+  loader?: { current: number; seen: number },
 ): ChangelogEntry[] {
   return entries
-    .filter((e) => compareVersions(e.version, seen) > 0 && compareVersions(e.version, current) <= 0)
+    .filter((e) => {
+      if (isLoaderEntry(e)) {
+        // A loader note has no app version to clamp against; the equivalent
+        // ceiling is the loader the user actually has planted, so a note never
+        // describes a payload they have not received. Without loader context
+        // (an older caller) they stay hidden rather than being announced early.
+        if (!loader) return false;
+        const v = e.loader_version as number;
+        return v > loader.seen && v <= loader.current;
+      }
+      return compareVersions(e.version, seen) > 0 && compareVersions(e.version, current) <= 0;
+    })
     .slice(0, limit);
 }
 
@@ -102,11 +146,15 @@ export function pendingEntries(args: {
   current: string;
   hasRunBefore: boolean;
   limit?: number;
+  /** Planted loader build, and the newest loader note already shown. */
+  loader?: { current: number; seen: number };
 }): ChangelogEntry[] {
-  const { entries, seen, current, hasRunBefore, limit = 3 } = args;
-  if (seen !== null) return entriesSince(entries, seen, current, limit);
+  const { entries, seen, current, hasRunBefore, limit = 3, loader } = args;
+  if (seen !== null) return entriesSince(entries, seen, current, limit, loader);
   if (!hasRunBefore) return [];
-  const newest = entries.find((e) => compareVersions(e.version, current) <= 0);
+  // First run with a mark of any kind: show the current release only. A loader
+  // note is not "the current release", so it is not the thing to open with.
+  const newest = entries.find((e) => e.version && compareVersions(e.version, current) <= 0);
   return newest ? [newest] : [];
 }
 
@@ -125,5 +173,7 @@ export async function loadChangelog(opts: { refresh?: boolean } = {}): Promise<C
   } catch {
     /* channel unreachable, or not running under Tauri — bundled copy stands */
   }
-  return [...BUNDLED_CHANGELOG].sort((a, b) => compareVersions(b.version, a.version));
+  // Loader notes sort by date among the releases: they have no version to
+  // compare, and `compareVersions('', x)` would bury them all at the bottom.
+  return [...BUNDLED_CHANGELOG].sort(compareEntries);
 }
