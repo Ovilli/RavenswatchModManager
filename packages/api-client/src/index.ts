@@ -131,9 +131,13 @@ export function createApiClient(options: ApiClientOptions) {
     }
   }
 
+  const facetSchema = z.array(z.object({ name: z.string(), count: z.number().int() }));
   const modListResponseSchema = z.object({
     items: z.array(modListItemSchema),
     total: z.number().int().nonnegative(),
+    // Present only when the caller asked for `facets`; optional as well as
+    // nullable so an older API build still validates.
+    facets: z.object({ categories: facetSchema, tags: facetSchema }).nullable().optional(),
   });
   const modDetailResponseSchema = z.object({
     mod: modListItemSchema.and(
@@ -369,6 +373,12 @@ export function createApiClient(options: ApiClientOptions) {
         params: {
           q?: string;
           tag?: string;
+          /** AND semantics: a mod must carry every tag listed. */
+          tags?: string[];
+          /** Minimum star rating; unrated mods are excluded once set. */
+          minRating?: number;
+          /** Ask for category/tag facet counts alongside the page. */
+          facets?: boolean;
           category?: string;
           limit?: number;
           offset?: number;
@@ -384,6 +394,9 @@ export function createApiClient(options: ApiClientOptions) {
         const qs = new URLSearchParams();
         if (params.q) qs.set('q', params.q);
         if (params.tag) qs.set('tag', params.tag);
+        if (params.tags?.length) qs.set('tags', params.tags.join(','));
+        if (params.minRating) qs.set('minRating', String(params.minRating));
+        if (params.facets) qs.set('facets', '1');
         if (params.category) qs.set('category', params.category);
         if (params.limit) qs.set('limit', String(params.limit));
         if (params.offset) qs.set('offset', String(params.offset));
@@ -392,11 +405,14 @@ export function createApiClient(options: ApiClientOptions) {
         if (params.owner) qs.set('owner', params.owner);
         if (params.sort) qs.set('sort', params.sort);
         if (params.window) qs.set('window', params.window);
-        return request<{ items: ModListItem[]; total: number }>(
-          `/api/mods?${qs}`,
-          { method: 'GET' },
-          modListResponseSchema,
-        );
+        return request<{
+          items: ModListItem[];
+          total: number;
+          facets?: {
+            categories: { name: string; count: number }[];
+            tags: { name: string; count: number }[];
+          } | null;
+        }>(`/api/mods?${qs}`, { method: 'GET' }, modListResponseSchema);
       },
       get: (slug: string) =>
         request(

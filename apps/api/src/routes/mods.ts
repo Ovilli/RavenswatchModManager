@@ -41,9 +41,26 @@ const outerModOwnerId = sql.raw('"mods"."owner_id"');
 // combos expensive.
 const downloadLimiter = createRateLimiter({ name: 'mod-download', windowMs: 60_000, maxHits: 120 });
 
+/** How many tag facets the list endpoint offers. Matches the desktop client's
+ * bar: more than this and the filter panel outgrows the page. */
+const TAG_FACET_LIMIT = 12;
+
 const listQuerySchema = z.object({
   q: z.string().optional(),
   tag: z.string().optional(),
+  // Comma-separated, AND semantics: a mod must carry EVERY tag listed. `tag`
+  // (singular) stays for existing callers and is folded in as one more required
+  // tag. Picking two tags to widen a search is not what anyone means by it.
+  tags: z.string().optional(),
+  // Minimum star rating. A mod with no rating is excluded once this is set,
+  // matching the desktop client's `(rating ?? 0) >= min`.
+  minRating: z.coerce.number().min(0).max(5).optional(),
+  // Return facet counts alongside the page. Off by default because it costs two
+  // extra aggregates and only the registry's filter panel wants them.
+  facets: z
+    .union([z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0')])
+    .optional()
+    .transform((v) => v === 'true' || v === '1'),
   category: modCategorySchema.optional(),
   featured: z
     .union([z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0')])
@@ -86,12 +103,37 @@ const versionScanParamSchema = z.object({
 });
 
 modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
-  const { q, tag, category, featured, nsfw, owner, sort, window, limit, offset } =
-    c.req.valid('query');
+  const {
+    q,
+    tag,
+    tags,
+    minRating,
+    facets,
+    category,
+    featured,
+    nsfw,
+    owner,
+    sort,
+    window,
+    limit,
+    offset,
+  } = c.req.valid('query');
   const db = getDb();
 
   const qEsc = q ? q.replace(/[%_\\]/g, '\\$&') : undefined;
-  const conditions = [
+
+  // Every tag the caller asked for, from either parameter, de-duplicated.
+  const tagList = [
+    ...new Set(
+      [tag, ...(tags?.split(',') ?? [])].map((t) => t?.trim()).filter((t): t is string => !!t),
+    ),
+  ];
+
+  // Conditions that describe WHAT the caller is looking at, as opposed to which
+  // facet they have narrowed to. The facet counts below are computed over these
+  // alone — including category/tag/rating would delete every unpicked option
+  // from the panel the moment one was picked, with no way back.
+  const baseConditions = [
     // Admin takedown gate: delisted/removed mods never appear in the public list.
     eq(schema.mods.takedownStatus, 'active'),
     qEsc
@@ -102,11 +144,19 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
           ilike(schema.mods.authorName, `%${qEsc}%`),
         )
       : undefined,
-    tag ? sql`${tag} = ANY(${schema.mods.tags})` : undefined,
-    category ? eq(schema.mods.category, category) : undefined,
     featured === true ? eq(schema.mods.featured, true) : undefined,
     nsfw === false ? eq(schema.mods.nsfw, false) : undefined,
     owner ? eq(schema.mods.ownerId, owner) : undefined,
+  ].filter(Boolean);
+
+  const conditions = [
+    ...baseConditions,
+    // One parameterised `= ANY` per tag, AND-ed. Deliberately not a single
+    // `tags @> ARRAY[...]` built by string interpolation: `sql.raw` bypasses
+    // parameter binding, and tag values arrive straight from the query string.
+    ...tagList.map((t) => sql`${t} = ANY(${schema.mods.tags})`),
+    category ? eq(schema.mods.category, category) : undefined,
+    minRating ? sql`${schema.mods.rating} >= ${minRating}` : undefined,
   ].filter(Boolean);
 
   const windowDays = window === '7d' ? 7 : window === '30d' ? 30 : null;
@@ -184,12 +234,49 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
   const total = totals[0]?.total ?? 0;
   const totalDownloads = totals[0]?.totalDownloads ?? 0;
 
+  /**
+   * Facet counts for the filter panel, over `baseConditions` only.
+   *
+   * Derived from what the index actually contains rather than from the category
+   * enum, so a category nothing is published under is never offered as a filter
+   * that can only return nothing. Tags are ranked by how many mods carry them
+   * and capped, because the tag vocabulary is free-form and unbounded.
+   */
+  const facetData = facets
+    ? await (async () => {
+        const where = baseConditions.length ? and(...baseConditions) : undefined;
+        const [cats, tagRows] = await Promise.all([
+          db
+            .select({ name: schema.mods.category, count: sql<number>`count(*)::int` })
+            .from(schema.mods)
+            .where(where)
+            .groupBy(schema.mods.category)
+            .orderBy(sql`count(*) desc`),
+          db
+            .select({ name: sql<string>`t.tag`, count: sql<number>`count(*)::int` })
+            .from(schema.mods)
+            .innerJoin(sql`lateral unnest(${schema.mods.tags}) as t(tag)`, sql`true`)
+            .where(where)
+            .groupBy(sql`t.tag`)
+            .orderBy(sql`count(*) desc, t.tag asc`)
+            .limit(TAG_FACET_LIMIT),
+        ]);
+        return {
+          // `group by category` yields a row for the NULL bucket (mods with no
+          // category); it is not a facet anyone can pick, so drop it.
+          categories: cats.flatMap((r) => (r.name ? [{ name: r.name, count: r.count }] : [])),
+          tags: tagRows.map((r) => ({ name: r.name, count: r.count })),
+        };
+      })()
+    : null;
+
   // Opportunistic queue drain: piggyback on organic browse traffic so the scan
   // queue advances even between the (plan-limited) cron ticks. Single-flight +
   // fire-and-forget (waitUntil), so it never adds latency to this response.
   kickScanWorker();
 
   return c.json({
+    facets: facetData,
     items: rows.map((r) => ({
       id: r.id,
       slug: r.slug,
