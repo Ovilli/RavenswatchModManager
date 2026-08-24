@@ -3,6 +3,7 @@ import { buttonVariants } from '@rsmm/ui';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { getApiUrl } from '../lib/api-url';
+import { type LatestRelease, getLatestRelease } from '../lib/releases';
 import { FAQ } from './components/faq';
 import { faqs } from './components/faq-data';
 import { ModCard } from './components/mod-card';
@@ -18,6 +19,7 @@ interface HomeData {
   totalMods: number;
   totalModDownloads: number;
   appDownloads: number;
+  release: LatestRelease;
 }
 
 // Installer bundles only. `latest.json` and `*.sig` are fetched by the updater on
@@ -63,19 +65,22 @@ async function getAppDownloads(): Promise<number> {
 
 async function getHomeData(): Promise<HomeData> {
   const apiBase = getApiUrl().replace(/\/+$/, '');
+  const noRelease: LatestRelease = { tag: null, windows: null, linux: null };
   const fallback: HomeData = {
     mods: [],
     featured: [],
     totalMods: 0,
     totalModDownloads: 0,
     appDownloads: 0,
+    release: noRelease,
   };
 
   try {
-    const [modRes, featRes, ghRes] = await Promise.allSettled([
+    const [modRes, featRes, ghRes, relRes] = await Promise.allSettled([
       fetch(`${apiBase}/api/mods?limit=48`),
       fetch(`${apiBase}/api/mods?featured=true&sort=featured&limit=8`),
       getAppDownloads(),
+      getLatestRelease(),
     ]);
 
     let mods: ModListItem[] = [];
@@ -83,6 +88,7 @@ async function getHomeData(): Promise<HomeData> {
     let totalMods = 0;
     let totalModDownloads = 0;
     let appDownloads = 0;
+    let release = noRelease;
 
     if (modRes.status === 'fulfilled' && modRes.value.ok) {
       const body = await modRes.value.json();
@@ -104,7 +110,11 @@ async function getHomeData(): Promise<HomeData> {
       appDownloads = ghRes.value;
     }
 
-    return { mods, featured, totalMods, totalModDownloads, appDownloads };
+    if (relRes.status === 'fulfilled') {
+      release = relRes.value;
+    }
+
+    return { mods, featured, totalMods, totalModDownloads, appDownloads, release };
   } catch {
     return fallback;
   }
@@ -240,8 +250,9 @@ function fmt(n: number): string {
 }
 
 export default async function Home() {
-  const { mods, featured, totalMods, totalModDownloads, appDownloads } = await getHomeData();
-  const showcase = [...mods].sort((a, b) => b.downloads - a.downloads).slice(0, 4);
+  const { mods, featured, totalMods, totalModDownloads, appDownloads, release } =
+    await getHomeData();
+  const showcase = [...mods].sort((a, b) => (b.downloads ?? 0) - (a.downloads ?? 0)).slice(0, 4);
 
   return (
     <main className="relative overflow-hidden">
@@ -259,7 +270,7 @@ export default async function Home() {
           </p>
 
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <OsDownload />
+            <OsDownload release={release} />
             <Link
               href="/download"
               className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"

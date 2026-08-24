@@ -30,14 +30,14 @@ const platforms: Platform[] = [
   {
     name: 'Windows',
     details:
-      'Best option for most players. Ships as an MSI installer for 64-bit Windows 10 and 11.',
-    assetHint: 'Ravenswatch.Mod.Manager_*_x64_en-US.msi',
+      'Best option for most players. Ships as an NSIS installer for 64-bit Windows 10 and 11.',
+    assetHint: 'Ravenswatch.Mod.Manager_*_x64-setup.exe',
     note: 'Auto-updater is enabled — once installed, the app checks for new releases on launch and applies them in one click.',
   },
   {
     name: 'Linux',
     details: 'AppImage for portable use, or a Debian package for apt-based distros.',
-    assetHint: 'rsmm-desktop_*.AppImage  ·  rsmm-desktop_*_amd64.deb',
+    assetHint: 'Ravenswatch.Mod.Manager_*_amd64.AppImage  ·  Ravenswatch.Mod.Manager_*_amd64.deb',
     note: 'AppImage needs the executable bit set (chmod +x). On Debian/Ubuntu, install the .deb with apt. WebKitGTK 4.1 must be present.',
   },
 ];
