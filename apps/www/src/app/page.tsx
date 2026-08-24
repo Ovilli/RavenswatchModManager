@@ -436,7 +436,7 @@ export default async function Home() {
           <p className="mt-8 text-center text-sm text-muted-foreground">
             Have a different question and cannot find the answer? Check out our{' '}
             <a
-              href="https://github.com/Ovilli/RavenswatchModManager"
+              href="https://docs.rsmm.me"
               target="_blank"
               rel="noopener noreferrer"
               className="underline underline-offset-2 hover:text-foreground"
@@ -454,6 +454,32 @@ export default async function Home() {
             </a>
             .
           </p>
+        </div>
+      </section>
+
+      {/* ───── Guides ─────
+          Guides came out of the top bar, so this is now the only route to them
+          from the home page. It is a block rather than a bare link for that
+          reason: a one-word link at the foot of a long page is not a
+          replacement for a nav item, and this is the last thing a reader who
+          got all the way here sees. */}
+      <section className="container mx-auto px-6 pb-20">
+        <div className="grimoire-card mx-auto flex max-w-3xl flex-col items-start gap-4 p-8 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1.5">
+            <h2 className="text-2xl font-bold tracking-tight">Community guides</h2>
+            <p className="max-w-md text-sm text-muted-foreground">
+              Walkthroughs written by other players — setting mods up, getting a run working, and
+              what to do when the game will not start.
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Link href="/guides" className={buttonVariants({ size: 'sm' })}>
+              Browse guides
+            </Link>
+            <Link href="/modding" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+              Make a mod
+            </Link>
+          </div>
         </div>
       </section>
     </main>

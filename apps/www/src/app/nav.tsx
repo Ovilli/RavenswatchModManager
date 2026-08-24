@@ -47,11 +47,14 @@ function NotificationBell() {
   );
 }
 
+// Guides is deliberately absent: it is reached from the block at the foot of
+// the home page and from the footer's Product column, not from the top bar.
+// The bar is for the things someone arrives wanting — the catalogue and the
+// app — and a sixth item was crowding them.
 const navLinks = [
   { href: '/' as const, label: 'Home' },
   { href: '/registry' as const, label: 'Registry' },
   { href: '/c' as const, label: 'Collections' },
-  { href: '/guides' as const, label: 'Guides' },
   { href: '/modding' as const, label: 'Modding Guide' },
   { href: '/download' as const, label: 'Download' },
 ];
