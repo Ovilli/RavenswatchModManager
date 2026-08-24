@@ -90,6 +90,54 @@
         }
       ]
     },
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "binaries/rsmm",
+          "sidecar": true,
+          "args": true
+        },
+        {
+          "name": "run-rsmm",
+          "cmd": "rsmm",
+          "args": true
+        },
+        {
+          "name": "mkdir",
+          "cmd": "mkdir",
+          "args": true
+        },
+        {
+          "name": "pgrep",
+          "cmd": "pgrep",
+          "args": [
+            {
+              "validator": "^-f$"
+            },
+            {
+              "validator": "^Ravenswatch(\\.exe)?$"
+            }
+          ]
+        },
+        {
+          "name": "tasklist",
+          "cmd": "tasklist",
+          "args": [
+            {
+              "validator": "^/FI$"
+            },
+            {
+              "validator": "^IMAGENAME eq Ravenswatch\\.exe$"
+            },
+            {
+              "validator": "^/NH$"
+            }
+          ]
+        }
+      ]
+    },
+    "shell:allow-kill",
     "deep-link:default",
     "opener:default",
     {

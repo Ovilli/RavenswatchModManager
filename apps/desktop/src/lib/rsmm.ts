@@ -239,6 +239,16 @@ async function execute(args: string[], options: RsmmOptions): Promise<ExecResult
   return runWithLifecycle(resolvedProg, cmd, args, options, timeoutMs);
 }
 
+/**
+ * Tauri refuses any command the capability does not list. A build that ships
+ * `shell:allow-execute` without `shell:allow-spawn` fails every streaming
+ * call outright — the whole command dies, not merely its progress reporting.
+ */
+function isSpawnForbidden(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes('plugin:shell|spawn') && msg.includes('not allowed');
+}
+
 async function runWithLifecycle(
   name: string,
   cmd: ReturnType<typeof Command.create>,
@@ -250,7 +260,14 @@ async function runWithLifecycle(
   // listeners. Otherwise stick with the simpler execute() path and
   // wrap a wallclock timeout around it.
   if (options.onStdout || options.onStderr || options.signal) {
-    return spawnWithLifecycle(name, cmd, args, options, timeoutMs);
+    try {
+      return await spawnWithLifecycle(name, cmd, args, options, timeoutMs);
+    } catch (err) {
+      // Cancellation has no execute() equivalent, so only the callers that
+      // merely wanted output lines can degrade to the plain path. Losing a
+      // progress meter beats losing the command.
+      if (options.signal || !isSpawnForbidden(err)) throw err;
+    }
   }
   const result = await withTimeout(cmd.execute(), args, timeoutMs);
   resolvedProg = name as ProgName;
