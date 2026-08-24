@@ -111,6 +111,31 @@ local DMG = {
     -- oCDtProcessedDamage
     PD_VALUE_OFF     = 0x10,     -- -> hit-value object
     VALUE_AMOUNT_OFF = 0x08,     -- f32 damage inside it
+    -- Two flag bytes on the SAME value object, both read straight off the
+    -- engine (Ghidra 2026-08-24).
+    --
+    -- +0x1b is the gate the engine puts its OWN accounting behind. In
+    -- HeroStats_OnDamageDealt the entire body — the HUD mirror at hero+0x1d80,
+    -- the end-screen total at stats+0xa8, the best-hit at +0xcc, the per-ability
+    -- split, the analytics submit — sits inside
+    --     if (*(char *)(value + 0x1b) != '\0') { ... }
+    -- and Entity_GiveHandler skips the whole on-hit chain (life steal, "life on
+    -- hit", the modifier events) on the same byte. So a hit with this clear is
+    -- one the game itself does not count, and the meter counting it is the
+    -- likeliest explanation for session a34f reading 898436 against the game's
+    -- own 898071 for the same player: close, but consistently OVER.
+    --
+    -- +0x11 is the kill flag: it is what selects the killed-target analytics
+    -- branch (the one that stamps KilledByPet / KilledBySummon).
+    VALUE_APPLIED_OFF = 0x1b,
+    VALUE_KILLED_OFF  = 0x11,
+    -- Fail-open guard for the gate above. If the flag reads clear on nearly
+    -- everything, the offset does not mean here what it means in the decompile
+    -- (a game patch moved the field), and filtering on it would silently zero
+    -- the board — the worst failure this meter has. Past this many observed
+    -- hits, if that few passed, the gate turns itself off and says so.
+    GATE_MIN_SAMPLE  = 40,
+    GATE_MIN_PASS    = 0.10,
     PD_SOURCE_OFF    = 0xa0,     -- -> hit-def / source info
     SOURCE_TYPE_OFF  = 0xc8,     -- u16 attack-type enum
     -- Entity_ResolveAttackHits arguments
@@ -154,7 +179,17 @@ local DMG = {
     CPNT_MASK_OFF    = 0x600,    -- entity -> bucket mask (capacity - 1)
     CPNT_SLOT_STRIDE = 0x10,     -- slot = { u32 class id @+0, cpnt* @+8 }
     CPNT_SLOT_PTR    = 0x08,
-    MAX_SLOTS        = 0x4000,   -- refuse an implausible capacity outright
+    -- Refuse an implausible capacity outright. This is a LINEAR walk of the
+    -- component map with one page-guarded read per slot, and it runs on the
+    -- GAME thread inside the damage detour, so the cap is the worst-case cost
+    -- of one hit on an unclassifiable victim. 0x4000 allowed 16,384 guarded
+    -- reads for a victim whose mask read as garbage — three times over
+    -- (VICTIM_RETRIES) before the entity was given up on. A real entity's map
+    -- holds a handful of components and its capacity is a small power of two;
+    -- rsmm.lua's own copy of this walk (R.net.component) has always capped at
+    -- 1024. 512 is still an order of magnitude above anything real and makes
+    -- the bad case 32x cheaper.
+    MAX_SLOTS        = 512,
     -- Engine class ids, stamped by each class registrar as
     -- `mov [desc+0x28], <id>`. A content hash of the class NAME, so it is far
     -- more patch-stable than a vftable VA — and the same key the engine's own
@@ -211,6 +246,12 @@ local _dmg = {
     -- an unseen hero controller is a different player, never a rebuild.
     epoch    = 0,
     refusals = 0,         -- merges declined (logged, bounded)
+    -- The engine's applied-damage gate (see F._dmg_applied). Starts armed and
+    -- SAMPLING: it counts everything until it has seen enough hits to prove
+    -- the flag means what the decompile says on this build.
+    gate_on   = true,
+    gate_seen = 0,
+    gate_pass = 0,
     -- Victim classification. `ignore_scenery` is OPT-IN: the engine's own
     -- end-screen total counts prop damage, so counting it is what MATCHES the
     -- game, and dropping it is a deliberate divergence a mod asks for.
@@ -4141,6 +4182,10 @@ function F._dmg_new_row(key, is_local)
         -- Damage the scenery filter dropped. Kept per row so a UI can show
         -- "and 4.2k into the furniture" instead of silently losing it.
         scenery = 0, scenery_hits = 0,
+        -- Kills this player landed, and hits the engine's own gate discarded
+        -- (see F._dmg_applied). Initialised here rather than lazily so every
+        -- consumer sees a number from the first frame.
+        kills = 0, discarded = 0, discarded_amount = 0,
         -- Damage credited even though the victim could NOT be classified. The
         -- filter is fail-open on purpose (never hide a player's damage on a bad
         -- read), which means an unreadable prop family is counted as carry
@@ -4587,14 +4632,69 @@ function F._dmg_record(attacker, target, amount, source)
 end
 
 -- Source 1: the engine's per-hero bookkeeping. Observation only.
+--- Did the engine count this hit? true / false / nil when the flag is
+--- unreadable (which is fail-OPEN: never drop a player's damage on a bad read).
+---
+--- Self-disarming. The flag is a single byte at an RE-derived offset, and the
+--- failure mode of getting it wrong is catastrophic and silent: every hit
+--- filtered, a board of zeroes, and nothing in the log saying why. So the
+--- first GATE_MIN_SAMPLE hits are only MEASURED; if fewer than GATE_MIN_PASS
+--- of them passed, the offset cannot mean what the decompile says it means on
+--- this build and the gate retires itself for the session.
+function F._dmg_applied(valobj)
+    if not _dmg.gate_on then return nil end
+    if not I.read_u8 then return nil end
+    local b = I.read_u8(valobj + DMG.VALUE_APPLIED_OFF)
+    if type(b) ~= "number" then return nil end
+    local pass = b ~= 0
+    _dmg.gate_seen = (_dmg.gate_seen or 0) + 1
+    if pass then _dmg.gate_pass = (_dmg.gate_pass or 0) + 1 end
+    if _dmg.gate_seen == DMG.GATE_MIN_SAMPLE then
+        local ratio = (_dmg.gate_pass or 0) / _dmg.gate_seen
+        if ratio < DMG.GATE_MIN_PASS then
+            _dmg.gate_on = false
+            R.log(("[rsmm.damage] the engine's applied-damage flag (+0x%x) read "
+                   .. "set on only %d of %d hits — that offset does not mean "
+                   .. "what it means in the decompile on this build, so the "
+                   .. "filter is OFF for this session and every hit counts "
+                   .. "(report this: it means a game patch moved the field)")
+                  :format(DMG.VALUE_APPLIED_OFF, _dmg.gate_pass or 0, _dmg.gate_seen))
+            return nil
+        end
+        R.log(("[rsmm.damage] engine applied-flag gate live: %d of %d hits "
+               .. "counted by the game"):format(_dmg.gate_pass or 0, _dmg.gate_seen))
+    end
+    -- While still sampling, count everything: a gate that has not proven
+    -- itself must not be allowed to drop damage.
+    if _dmg.gate_seen < DMG.GATE_MIN_SAMPLE then return nil end
+    return pass
+end
+
+--- Did this hit kill the target? The flag the engine uses to pick its
+--- killed-target analytics branch.
+function F._dmg_killed(valobj)
+    if not I.read_u8 then return false end
+    return I.read_u8(valobj + DMG.VALUE_KILLED_OFF) == 1
+end
+
 function F._dmg_observe_stats(hero, target, pd)
     if not _ptr_plausible(hero) or not _ptr_plausible(pd) then return end
     local valobj = I.read_u64(pd + DMG.PD_VALUE_OFF)
     if not _ptr_plausible(valobj) then return end
     local amount = I.read_f32(valobj + DMG.VALUE_AMOUNT_OFF)
     if type(amount) ~= "number" or amount ~= amount or amount <= _dmg.min then return end
+    -- THE ENGINE'S OWN GATE. See DMG.VALUE_APPLIED_OFF: everything the game
+    -- counts for this hit sits behind this byte, so a hit with it clear is one
+    -- the end screen will not show and the meter should not either.
+    local applied = F._dmg_applied(valobj)
     local row = F._dmg_row_for_hero(hero)
     if not row then return end
+    if applied == false then
+        row.discarded = (row.discarded or 0) + 1
+        row.discarded_amount = (row.discarded_amount or 0) + amount
+        return
+    end
+    if F._dmg_killed(valobj) then row.kills = (row.kills or 0) + 1 end
     -- What did they hit? The probe reports the first few distinct victims so
     -- the classification can be confirmed from a log rather than trusted.
     F._dmg_probe_victim(target, amount)
@@ -4821,11 +4921,66 @@ R.on("gameplay:MAP_GENERATION_DONE",
 -- _learn_dispatcher_offset). Until then the victim is unknown and the hit is
 -- credited to the attacker — the right default, since the overwhelming
 -- majority of replicated damage is a player hitting an enemy.
+--- Is the replicated `value` field actually DAMAGE on this build?
+---
+--- ⚠ Ghidra 2026-08-24, reading the emitter (NamedEvent_NetSend's producer,
+--- FUN_1407276a0) field by field as it builds oCGameNamedEventNetworkDamage:
+---
+---     ev+0x38 = -1                              (sender id, stamped later)
+---     ev+0x40 = *(float*)(*(attacker+0x30)+0x24) * DAT_140fcbee8
+---     ev+0x48 = FUN_1407273c0(attacker)         (netcomp -> vft[0x20] id)
+---     ev+0x50 = embedded oCEntityHitData, copied field-for-field from the pd
+---
+--- `*(entity+0x30)` is the SCENE CONTEXT — HeroStats_OnDamageDealt applies
+--- oCTKindOfTypeTester<oCGameEventSceneContext> to that exact pointer, and
+--- feeds `+0x24` into its recent-hits window, comparing it against a seconds
+--- threshold. So on the SENDER, ev+0x40 is a clock, not a damage number, and
+--- the payload schema calling it `value` is asking this meter to credit a
+--- timestamp as damage — a phantom row climbing by hundreds per hit.
+---
+--- What a RECEIVER sees is a different question: the netcode reconstructs the
+--- event from the wire and the serializer may well land damage there. Nobody
+--- has measured it, and this client has never received one (no `net victim
+--- probe` line in any shipped log), so neither reading can be assumed.
+---
+--- Rather than guess, let the data decide. A clock only ever goes UP; damage
+--- does not. After enough strictly-increasing values in a row the field is a
+--- clock, crediting stops, and the log says so — on any build, without a
+--- playtest to arrange.
+function F._dmg_net_value_is_clock(amount)
+    if _dmg.net_credit == false then return true end
+    local prev = _dmg.net_last
+    _dmg.net_last = amount
+    if prev and amount > prev then
+        _dmg.net_rising = (_dmg.net_rising or 0) + 1
+    else
+        _dmg.net_rising = 0
+    end
+    if (_dmg.net_rising or 0) < 8 then return false end
+    _dmg.net_credit = false
+    R.log(("[rsmm.damage] the replicated damage field has risen on %d "
+           .. "consecutive events (now %.1f) — that is a CLOCK, not damage "
+           .. "(the emitter writes scene-time*k at ev+0x40), so replicated "
+           .. "hits stop being credited. Local and hero-stat sources are "
+           .. "unaffected."):format(_dmg.net_rising, amount))
+    return true
+end
+
 R.on("gameplay:NETWORK_DAMAGE", function(ev)
     if not _dmg.on then return end
     local amount = tonumber(ev.value)
     local id = tonumber(ev.source_id or "")
     if not amount or amount <= _dmg.min or not id or id == -1 then return end
+    -- One line per event, three times, whatever happens next: this client has
+    -- never received one of these, so the first session that does is the one
+    -- that settles what the field means.
+    _dmg.net_logged = (_dmg.net_logged or 0) + 1
+    if _dmg.net_logged <= 3 then
+        R.log(("[rsmm.damage] replicated hit #%d: value=%.3f source_id=0x%x "
+               .. "(is that damage, or scene time? see F._dmg_net_value_is_clock)")
+              :format(_dmg.net_logged, amount, id))
+    end
+    if F._dmg_net_value_is_clock(amount) then return end
     -- Already counted here? Then it is this machine's own hit echoing back via
     -- another peer, not a new player's damage. (There is no net id to compare
     -- against any more — asking the engine for one crashed the game.)
@@ -5047,6 +5202,12 @@ function R.damage.reset()
     _dmg.fork_said = false
     _dmg.swaps = 0
     _dmg.owner_joins = 0
+    -- Re-arm the gate's SAMPLE, not the gate's verdict: a run that proved the
+    -- offset wrong keeps it off (gate_on is deliberately not touched here).
+    _dmg.gate_seen, _dmg.gate_pass = 0, 0
+    -- Per run, like the gate's sample: a fresh board re-measures the field.
+    -- `net_credit` is NOT reset -- a build that proved it a clock keeps that.
+    _dmg.net_last, _dmg.net_rising, _dmg.net_logged = nil, 0, 0
     -- The sweep's CURSOR points at a row that no longer exists; the CHAIN is a
     -- fact about the engine's layout and stays.
     F._own.cursor = nil
@@ -5165,6 +5326,12 @@ function R.damage.board()
             dealt = row.dealt, taken = row.taken, hits = row.hits,
             best = row.best, last = row.last, by_type = by_type,
             scenery = row.scenery, scenery_hits = row.scenery_hits,
+            -- Kills, and what the engine's own gate threw away. `discarded`
+            -- being large next to `dealt` is the signal that this build
+            -- discards more than expected — worth seeing rather than hiding.
+            kills = row.kills or 0,
+            discarded = row.discarded or 0,
+            discarded_amount = row.discarded_amount or 0,
             -- Damage credited to a victim the filter could not classify. A UI
             -- that shows `hits` should show this too: it is the part of the row
             -- that may be prop chip damage counted as carry (see F._dmg_is_enemy).

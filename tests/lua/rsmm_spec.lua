@@ -7798,5 +7798,191 @@ do
     R = require "rsmm"
 end
 
+
+-- N. R.damage: the engine's own applied-damage gate -------------------------
+--
+-- HeroStats_OnDamageDealt puts its ENTIRE body behind `*(char*)(value+0x1b)`
+-- -- the HUD mirror, the end-screen total at stats+0xa8, the best hit, the
+-- per-ability split, the analytics submit -- and Entity_GiveHandler skips the
+-- whole on-hit chain on the same byte (Ghidra 2026-08-24). A hit with it clear
+-- is one the GAME does not count, which is the likeliest reason session a34f
+-- read 898436 against the game's own 898071 for the same player.
+--
+-- The flag is one byte at an RE-derived offset and getting it wrong drops
+-- EVERY hit, so the gate samples before it filters and retires itself if the
+-- offset does not behave.
+do
+    package.loaded["rsmm"] = nil
+    local Rq = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    local function said(needle)
+        for _, l in ipairs(logged) do if l:find(needle, 1, true) then return true end end
+        return false
+    end
+
+    local ME, ME_ENT = 0x90000000, 0x91000000
+    local PD, PDVAL, PDSRC = 0x92000000, 0x92100000, 0x92200000
+    local VICTIM = 0x93000000
+    I.write_u64(ME + 0x08, ME_ENT)
+    I.write_u8(ME + 0x1d88, 1)
+    I.write_u64(ME_ENT + 8, 0x13000000)
+    I.write_u64(VICTIM + 8, 0x13000000)
+    I.write_u64(PD + 0x10, PDVAL)
+    I.write_u64(PD + 0xa0, PDSRC)
+    I.write_u16(PDSRC + 0xc8, 0)
+    I.mem_find = function() return {} end
+
+    Rq.damage.enable{ window = 10 }
+    local stats = hooks[I.resolve("HeroStats_OnDamageDealt")]
+    local function deal(amount, applied, killed)
+        I.write_f32(PDVAL + 8, amount)
+        I.write_u8(PDVAL + 0x1b, applied and 1 or 0)
+        I.write_u8(PDVAL + 0x11, killed and 1 or 0)
+        stats.cb(ME, VICTIM, PD, 0, function() end)
+    end
+
+    -- SAMPLING. Below the sample size nothing is filtered: an unproven gate
+    -- must never drop damage.
+    for _ = 1, 10 do deal(1.0, false, false) end
+    check(Rq.damage.board()[1].dealt == 10.0,
+          "while sampling, the gate counts everything — including hits it will "
+          .. "later discard")
+
+    -- Now feed it a healthy mix so the gate proves out and arms.
+    for _ = 1, 40 do deal(1.0, true, false) end
+    check(said("engine applied-flag gate live"), "the gate arms once proven")
+    local before = Rq.damage.board()[1].dealt
+    deal(100.0, false, false)
+    local row = Rq.damage.board()[1]
+    check(row.dealt == before,
+          "an armed gate drops a hit the engine itself does not count")
+    check(row.discarded == 1 and row.discarded_amount == 100.0,
+          "and the dropped hit is REPORTED, not silently vanished")
+
+    deal(7.0, true, true)
+    check(Rq.damage.board()[1].kills == 1, "the kill flag is counted per row")
+
+    Rq.damage.disable(); Rq.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- N. R.damage: a gate that does not behave RETIRES itself -------------------
+--
+-- The catastrophic failure this guard exists for: a game patch moves the flag,
+-- the byte reads clear on everything, and the meter filters every hit into a
+-- board of zeroes with nothing in the log to explain it.
+do
+    package.loaded["rsmm"] = nil
+    local Rr = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+
+    local ME, ME_ENT = 0x94000000, 0x95000000
+    local PD, PDVAL, PDSRC = 0x96000000, 0x96100000, 0x96200000
+    local VICTIM = 0x97000000
+    I.write_u64(ME + 0x08, ME_ENT)
+    I.write_u8(ME + 0x1d88, 1)
+    I.write_u64(ME_ENT + 8, 0x13000000)
+    I.write_u64(VICTIM + 8, 0x13000000)
+    I.write_u64(PD + 0x10, PDVAL)
+    I.write_u64(PD + 0xa0, PDSRC)
+    I.write_u16(PDSRC + 0xc8, 0)
+    I.write_u8(PDVAL + 0x11, 0)
+    I.mem_find = function() return {} end
+
+    Rr.damage.enable{ window = 10 }
+    local stats = hooks[I.resolve("HeroStats_OnDamageDealt")]
+    I.write_f32(PDVAL + 8, 3.0)
+    I.write_u8(PDVAL + 0x1b, 0)          -- the "moved field" case: always clear
+    for _ = 1, 60 do stats.cb(ME, VICTIM, PD, 0, function() end) end
+
+    local said = false
+    for _, l in ipairs(logged) do
+        if l:find("does not mean what it means in the decompile", 1, true) then said = true end
+    end
+    check(said, "a flag that never passes retires the gate, loudly")
+    check(Rr.damage.board()[1].dealt == 180.0,
+          "and every hit is counted after it retires — the board is never "
+          .. "zeroed by a filter that stopped making sense")
+
+    Rr.damage.disable(); Rr.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+
+-- N. R.damage: a replicated "damage" field that is really a CLOCK -----------
+--
+-- The emitter (FUN_1407276a0) writes scene-time*k at ev+0x40, and the payload
+-- schema publishes that offset as `value` — so on a receiver the meter could
+-- be crediting a timestamp as damage, inventing a row that climbs by hundreds
+-- per hit. What the field means after the netcode rebuilds the event on the
+-- far side is unmeasured (no shipped log has ever received one), so the meter
+-- decides from the data: a clock only goes up.
+do
+    package.loaded["rsmm"] = nil
+    local Rc2 = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    local function said(needle)
+        for _, l in ipairs(logged) do if l:find(needle, 1, true) then return true end end
+        return false
+    end
+    I.mem_find = function() return {} end
+    Rc2.damage.enable{ window = 10 }
+
+    -- A rising sequence, exactly what scene time looks like.
+    for i = 1, 12 do
+        __spec_fire("gameplay:NETWORK_DAMAGE",
+                    { value = tostring(100 + i * 3), source_id = "0x99", source = "gameplay" })
+    end
+    check(said("that is a CLOCK, not damage"),
+          "a strictly rising replicated value is recognised as a clock")
+    local after = Rc2.damage.total()
+    __spec_fire("gameplay:NETWORK_DAMAGE",
+                { value = "500", source_id = "0x99", source = "gameplay" })
+    check(Rc2.damage.total() == after,
+          "and replicated hits stop being credited once it is")
+
+    Rc2.damage.disable(); Rc2.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- N. R.damage: real replicated damage is NOT mistaken for a clock -----------
+do
+    package.loaded["rsmm"] = nil
+    local Rc3 = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+    Rc3.damage.enable{ window = 10 }
+
+    -- Damage from a real fight jitters; it does not march upward forever.
+    local amounts = { 40, 12, 65, 12, 33, 91, 7, 55, 21, 48, 13, 77 }
+    for _, a in ipairs(amounts) do
+        __spec_fire("gameplay:NETWORK_DAMAGE",
+                    { value = tostring(a), source_id = "0xabc", source = "gameplay" })
+    end
+    local sum = 0
+    for _, a in ipairs(amounts) do sum = sum + a end
+    check(Rc3.damage.total() == sum,
+          "a jittering replicated value is credited in full — the guard costs "
+          .. "nothing on a build where the field really is damage")
+
+    Rc3.damage.disable(); Rc3.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)
