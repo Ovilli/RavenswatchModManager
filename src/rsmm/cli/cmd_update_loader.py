@@ -68,10 +68,20 @@ def main(argv: list[str] | None = None) -> int:
         # in the mod instead of in the plant. The channel cannot fix this one:
         # what is behind is the game dir, not the download.
         if state.get("plant_stale"):
-            print(f"note: the game dir holds loader v{state['planted_version']}, "
-                  f"but this build bundles v{state['bundled_version']} — the game "
-                  f"loads the planted copy. Run `rsmm install-loader` to update it.",
-                  file=sys.stderr)
+            planted = state.get("planted_version")
+            if planted is None:
+                # No manifest: `install-loader` planted these files and wrote
+                # none, so there is no version to name — only the fact that the
+                # bytes are not the ones this build carries.
+                print("note: the loader planted in the game dir is not the build "
+                      "this one carries (its winhttp.dll differs), and the game "
+                      "loads the planted copy. Run `rsmm install-loader` to "
+                      "replace it.", file=sys.stderr)
+            else:
+                print(f"note: the game dir holds loader v{planted}, but this "
+                      f"build bundles v{state['bundled_version']} — the game "
+                      f"loads the planted copy. Run `rsmm install-loader` to "
+                      f"update it.", file=sys.stderr)
         if status == "needs_app_update":
             print(state["error"], file=sys.stderr)
             return 1

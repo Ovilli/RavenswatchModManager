@@ -523,12 +523,74 @@ def test_check_does_not_cry_stale_for_a_current_plant(tmp_path, channel, monkeyp
     assert lu.check(game)["plant_stale"] is False
 
 
-def test_check_does_not_cry_stale_when_nothing_is_planted(tmp_path, channel):
-    """No manifest means install-loader has never run. `check_loader` in doctor
-    already says that; claiming the plant is *stale* would be a second, wronger
-    way to say it."""
+def test_check_does_not_cry_stale_when_the_plant_is_current(tmp_path, channel, monkeypatch):
+    """No manifest is the NORMAL state — `install-loader` writes none — so it
+    cannot mean "stale" on its own. What decides it there is whether the bytes
+    on disk are the ones this build carries.
+    """
     game, use = channel
     use(_publish(tmp_path))
+    bundled = tmp_path / "dist" / "winhttp.dll"
+    bundled.parent.mkdir(parents=True, exist_ok=True)
+    bundled.write_bytes((game / "winhttp.dll").read_bytes())
+    monkeypatch.setattr(lu, "bundled_loader_dll", lambda: bundled)
     state = lu.check(game)
     assert state["planted_version"] is None
     assert state["plant_stale"] is False
+
+
+def test_plant_stale_when_no_manifest_but_the_dll_differs(tmp_path, channel, monkeypatch):
+    """The case that made `update-loader` say "up to date" over an old plant.
+
+    `install-loader` plants the bundled copy and writes NO manifest, so
+    `planted_version` falls back to the bundled stamp and every version
+    comparison reports current — however old the bytes on disk are. On
+    2026-08-24 a game dir planted by an older desktop build read as v8 while
+    running an SDK from v6, and the channel had nothing to say about it.
+    """
+    game, use = channel
+    use(_publish(tmp_path, version=1))
+    bundled = tmp_path / "dist" / "winhttp.dll"
+    bundled.parent.mkdir(parents=True, exist_ok=True)
+    bundled.write_bytes(b"MZ the loader THIS build carries")
+    monkeypatch.setattr(lu, "bundled_loader_dll", lambda: bundled)
+    # The channel fixture already planted a DIFFERENT winhttp.dll.
+    assert not lu.planted_manifest_path(game).exists()
+
+    state = lu.check(game)
+    assert state["planted_version"] is None
+    assert state["plant_stale"] is True
+
+
+def test_plant_not_stale_when_the_planted_dll_is_the_bundled_one(tmp_path, channel, monkeypatch):
+    game, use = channel
+    use(_publish(tmp_path, version=1))
+    bundled = tmp_path / "dist" / "winhttp.dll"
+    bundled.parent.mkdir(parents=True, exist_ok=True)
+    bundled.write_bytes((game / "winhttp.dll").read_bytes())
+    monkeypatch.setattr(lu, "bundled_loader_dll", lambda: bundled)
+    assert lu.check(game)["plant_stale"] is False
+
+
+def test_plant_stale_is_false_when_it_cannot_be_told(tmp_path, channel, monkeypatch):
+    """A source checkout that has never built a DLL must not nag."""
+    game, use = channel
+    use(_publish(tmp_path, version=1))
+    monkeypatch.setattr(lu, "bundled_loader_dll", lambda: tmp_path / "nope" / "winhttp.dll")
+    assert lu.check(game)["plant_stale"] is False
+    assert lu.plant_matches_bundle(game) is None
+
+
+def test_plant_matches_bundle_shortcircuits_on_size(tmp_path, channel, monkeypatch):
+    """Size first, so the launch-path check does not hash 5 MB to learn what a
+    stat() already settled."""
+    game, use = channel
+    use(_publish(tmp_path, version=1))
+    bundled = tmp_path / "dist" / "winhttp.dll"
+    bundled.parent.mkdir(parents=True, exist_ok=True)
+    bundled.write_bytes(b"x" * (len((game / "winhttp.dll").read_bytes()) + 1))
+    monkeypatch.setattr(lu, "bundled_loader_dll", lambda: bundled)
+    hashed = []
+    monkeypatch.setattr(lu, "sha256_file", lambda p: hashed.append(p) or "")
+    assert lu.plant_matches_bundle(game) is False
+    assert hashed == []

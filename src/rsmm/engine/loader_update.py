@@ -55,9 +55,10 @@ import urllib.request
 from contextlib import contextmanager
 from pathlib import Path
 
+from rsmm.engine.hashing import sha256_file
 from rsmm.engine.minisign import MinisignError
 from rsmm.engine.minisign import verify as minisign_verify
-from rsmm.engine.paths import DATA_DIR
+from rsmm.engine.paths import DATA_DIR, REPO_ROOT
 
 MANIFEST_NAME = "loader.manifest.json"
 SIGNATURE_NAME = "loader.manifest.json.minisig"
@@ -179,6 +180,37 @@ def planted_manifest_version(game_dir: Path) -> int | None:
         return None
     v = m.get("loader_version")
     return v if isinstance(v, int) else None
+
+
+def bundled_loader_dll() -> Path:
+    """The winhttp.dll this build carries. Same relative path in a source
+    checkout and in a frozen bundle (REPO_ROOT resolves to _MEIPASS)."""
+    return REPO_ROOT / "dist" / "winhttp.dll"
+
+
+def plant_matches_bundle(game_dir: Path) -> bool | None:
+    """Does the game dir hold the same loader binary this build carries?
+
+    True / False / None when it cannot be told (either file missing, or the
+    bundle has no DLL — a source checkout that has never built one).
+
+    This is the only signal available when the game dir has NO planted
+    manifest, which is the normal state after `install-loader`: that path
+    plants the bundled copy and writes no manifest, so `planted_version` falls
+    back to the bundled stamp and every version comparison says "current" no
+    matter how old the files on disk actually are.
+    """
+    src, dst = bundled_loader_dll(), game_dir / "winhttp.dll"
+    try:
+        if not src.is_file() or not dst.is_file():
+            return None
+        # Size first: a mismatch settles it without hashing 5 MB on a path
+        # that runs at every launch check.
+        if src.stat().st_size != dst.stat().st_size:
+            return False
+        return sha256_file(src) == sha256_file(dst)
+    except OSError:
+        return None
 
 
 def planted_version(game_dir: Path) -> int:
@@ -332,6 +364,14 @@ def fetch_manifest(base: str | None = None) -> dict:
     return manifest
 
 
+def _plant_stale(game_dir: Path) -> bool:
+    """Shared by `check`'s early returns; see the comment in `check`."""
+    planted = planted_manifest_version(game_dir)
+    if planted is not None:
+        return planted < bundled_version()
+    return plant_matches_bundle(game_dir) is False
+
+
 def check(game_dir: Path) -> dict:
     """Compare the remote manifest against what is installed. Manifest fetch
     only — the bundle itself is not downloaded here."""
@@ -346,8 +386,7 @@ def check(game_dir: Path) -> dict:
             "installed_version": have,
             "planted_version": planted_manifest_version(game_dir),
             "bundled_version": bundled_version(),
-            "plant_stale": (planted_manifest_version(game_dir) or 0) < bundled_version()
-                           and planted_manifest_version(game_dir) is not None,
+            "plant_stale": _plant_stale(game_dir),
         }
     except AbiTooNewError as e:
         # A real answer, not a transport failure: report it as a status so
@@ -358,16 +397,26 @@ def check(game_dir: Path) -> dict:
             "installed_version": have,
             "planted_version": planted_manifest_version(game_dir),
             "bundled_version": bundled_version(),
-            "plant_stale": (planted_manifest_version(game_dir) or 0) < bundled_version()
-                           and planted_manifest_version(game_dir) is not None,
+            "plant_stale": _plant_stale(game_dir),
             "error": str(e),
         }
 
     remote_version = int(manifest["loader_version"])
     planted_now = planted_manifest_version(game_dir)
-    # A plant older than the copy this build carries. `install-loader` fixes
-    # it; `update-loader` cannot, because the channel is not what is behind.
-    plant_stale = planted_now is not None and planted_now < bundled_version()
+    # A plant that is not what this build carries. `install-loader` fixes it;
+    # `update-loader` cannot, because the channel is not what is behind.
+    #
+    # Two ways to be behind, and the second is the one that bit on 2026-08-24:
+    #   * a manifest with an older version — the plain case; or
+    #   * NO manifest, because `install-loader` planted and wrote none, while
+    #     the bytes on disk are not the ones this build ships. Version
+    #     comparison is blind to that (planted_version falls back to the
+    #     bundled stamp), so `update-loader` said "up to date (v8)" over a game
+    #     dir running an SDK from an older desktop build.
+    if planted_now is not None:
+        plant_stale = planted_now < bundled_version()
+    else:
+        plant_stale = plant_matches_bundle(game_dir) is False
     if remote_version > have:
         status = "update_available"
     elif remote_version == have:

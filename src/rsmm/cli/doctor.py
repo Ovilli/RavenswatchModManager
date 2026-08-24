@@ -263,6 +263,8 @@ def check_loader(game_dir: Path) -> list[Result]:
     # in the bundled stamp — so nothing else in the tool says this out loud.
     from rsmm.engine.loader_update import bundled_version, planted_manifest_version
     planted_v = planted_manifest_version(game_dir)
+    # The no-manifest case is already covered above by the DLL hash check
+    # (loader.stale-dll), which is what `update-loader` now reuses too.
     if planted_v is not None and planted_v < bundled_version():
         out.append(Result("WARN", f"planted loader is v{planted_v}, this build "
                                   f"bundles v{bundled_version()}",
