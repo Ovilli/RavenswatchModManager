@@ -88,10 +88,8 @@ function FilterChip({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-        active
-          ? 'border-crimson/60 bg-crimson/15 text-foreground'
-          : 'border-border/70 text-muted-foreground hover:border-border hover:text-foreground'
+      className={`rounded px-1.5 py-0.5 text-xs transition-colors ${
+        active ? 'bg-crimson/20 text-foreground' : 'text-muted-foreground hover:text-foreground'
       }`}
     >
       {children}
@@ -372,50 +370,48 @@ function RegistryInner() {
         {/* Two columns: the panel reads as a column beside the results on a wide
             screen and folds above them on a narrow one. */}
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+          {/* No card chrome on purpose. As a `grimoire-card` this read as a
+              second piece of content competing with the results rather than as
+              a control for them — it is a margin, so it is drawn like one:
+              no border, no background, small muted labels. */}
           <aside
             aria-label="Filters"
-            className="grimoire-card flex shrink-0 flex-col gap-3 p-4 lg:sticky lg:top-4 lg:w-64"
+            className="flex shrink-0 flex-col gap-2.5 border-b border-border/40 pb-4 lg:sticky lg:top-4 lg:w-44 lg:border-b-0 lg:pb-0"
           >
             <button
               type="button"
               onClick={() => setFiltersOpen((v) => !v)}
               aria-expanded={filtersOpen}
               aria-controls={filterBodyId}
-              className="flex items-baseline justify-between gap-3 text-left"
+              className="flex items-center justify-between gap-2 text-left text-muted-foreground transition-colors hover:text-foreground"
             >
-              <span className="inline-flex items-baseline gap-2 text-base font-semibold">
+              <span className="inline-flex items-center gap-1 font-mono text-[0.7rem] uppercase tracking-widest">
                 {filtersOpen ? (
-                  <ChevronDown
-                    className="h-4 w-4 self-center text-muted-foreground"
-                    aria-hidden="true"
-                  />
+                  <ChevronDown className="h-3 w-3" aria-hidden="true" />
                 ) : (
-                  <ChevronUp
-                    className="h-4 w-4 self-center text-muted-foreground"
-                    aria-hidden="true"
-                  />
+                  <ChevronUp className="h-3 w-3" aria-hidden="true" />
                 )}
                 Filters
               </span>
               {/* Collapsed, the count of ACTIVE filters is the load-bearing
                   number: it is the only way to tell a short result list from a
                   filtered one once the facets are hidden. */}
-              <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+              <span className="whitespace-nowrap font-mono text-[0.7rem]">
                 {filtersOpen
-                  ? `${total.toLocaleString()} ${total === 1 ? 'mod' : 'mods'}`
+                  ? total.toLocaleString()
                   : activeFilters > 0
                     ? `${activeFilters} on`
-                    : 'off'}
+                    : ''}
               </span>
             </button>
 
             {filtersOpen ? (
-              <div id={filterBodyId} className="flex flex-col gap-4">
-                <div className="flex flex-col gap-2">
-                  <span className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+              <div id={filterBodyId} className="flex flex-col gap-3.5">
+                <div className="flex flex-col gap-1">
+                  <span className="font-mono text-[0.65rem] uppercase tracking-widest text-muted-foreground/60">
                     category
                   </span>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-wrap gap-x-2 gap-y-0.5">
                     <FilterChip active={cat === 'all'} onClick={() => setCat('all')}>
                       any
                     </FilterChip>
@@ -435,11 +431,11 @@ function RegistryInner() {
                 </div>
 
                 {facets.tags.length > 0 ? (
-                  <div className="flex flex-col gap-2">
-                    <span className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+                  <div className="flex flex-col gap-1">
+                    <span className="font-mono text-[0.65rem] uppercase tracking-widest text-muted-foreground/60">
                       tags
                     </span>
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap gap-x-2 gap-y-0.5">
                       {facets.tags.map((t) => (
                         <FilterChip
                           key={t.name}
@@ -451,22 +447,22 @@ function RegistryInner() {
                       ))}
                     </div>
                     {tags.length > 1 ? (
-                      <span className="text-xs text-muted-foreground">
-                        Showing mods carrying every selected tag.
+                      <span className="text-[0.7rem] text-muted-foreground/70">
+                        matching all {tags.length}
                       </span>
                     ) : null}
                   </div>
                 ) : null}
 
-                <label className="flex flex-col gap-2">
-                  <span className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+                <label className="flex flex-col gap-1">
+                  <span className="font-mono text-[0.65rem] uppercase tracking-widest text-muted-foreground/60">
                     rating
                   </span>
                   <select
                     value={minRating}
                     onChange={(e) => setMinRating(Number(e.target.value))}
                     aria-label="Minimum rating"
-                    className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                    className="rounded border border-border/60 bg-transparent px-1.5 py-1 text-xs text-muted-foreground"
                   >
                     {RATINGS.map((r) => (
                       <option key={r.value} value={r.value}>
@@ -480,9 +476,9 @@ function RegistryInner() {
                   <button
                     type="button"
                     onClick={clearFacets}
-                    className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                    className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
                   >
-                    <X className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Clear {activeFilters}
+                    <X className="h-3 w-3" aria-hidden="true" /> clear {activeFilters}
                   </button>
                 ) : null}
               </div>

@@ -1,4 +1,6 @@
+import { buttonVariants } from '@rsmm/ui';
 import { SpeedInsights } from '@vercel/speed-insights/next';
+import { Github } from 'lucide-react';
 import type { Metadata, Viewport } from 'next';
 import { Cormorant_Garamond, EB_Garamond, JetBrains_Mono, UnifrakturCook } from 'next/font/google';
 import Link from 'next/link';
@@ -80,17 +82,49 @@ export const viewport: Viewport = {
   themeColor: '#0a0a0a',
 };
 
-const footerLinks = [
-  { href: '/download', label: 'Download' },
-  { href: 'https://github.com/Ovilli/RavenswatchModManager', label: 'Source Code' },
-  { href: '/registry', label: 'Registry' },
-  { href: '/guides', label: 'Guides' },
-  { href: '/modding', label: 'Modding Guide' },
-  { href: '/about', label: 'About' },
-  { href: '/contact', label: 'Contact' },
-  { href: '/legal', label: 'Legal Notice' },
-  { href: '/privacy', label: 'Privacy Policy' },
-  { href: '/dmca', label: 'Content Policy' },
+const REPO = 'https://github.com/Ovilli/RavenswatchModManager';
+
+/**
+ * Footer navigation, grouped by what someone is actually looking for.
+ *
+ * One structure rather than a `footerLinks` array plus two inline ones: the
+ * old shape put ten links in a "Links" column beside a "Support" column of two
+ * and a "Social" column of one, and reached `/legal` three times under three
+ * different names — "Legal Notice" in the list, then "Terms of Service" and
+ * "Transparency" in the bottom bar, all the same page. Privacy was listed
+ * twice for the same reason. Each destination now appears once across these
+ * columns; Download and the repo also appear in the brand block, but as
+ * actions rather than as a second navigation entry.
+ */
+const footerSections = [
+  {
+    title: 'Product',
+    links: [
+      { href: '/download', label: 'Download' },
+      { href: '/registry', label: 'Mod Registry' },
+      { href: '/c', label: 'Collections' },
+      { href: '/guides', label: 'Guides' },
+    ],
+  },
+  {
+    title: 'Develop',
+    links: [
+      { href: '/modding', label: 'Modding Guide' },
+      { href: 'https://docs.rsmm.me', label: 'Documentation' },
+      { href: REPO, label: 'Source Code' },
+      { href: `${REPO}/issues`, label: 'Report a Bug' },
+    ],
+  },
+  {
+    title: 'Project',
+    links: [
+      { href: '/about', label: 'About' },
+      { href: '/contact', label: 'Contact' },
+      { href: '/legal', label: 'Legal Notice' },
+      { href: '/privacy', label: 'Privacy Policy' },
+      { href: '/dmca', label: 'Content Policy' },
+    ],
+  },
 ] as const;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -142,9 +176,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <BanGate />
         </Providers>
 
-        <footer className="border-t border-border/40">
-          <div className="container mx-auto grid gap-8 px-6 py-12 sm:grid-cols-2 lg:grid-cols-4">
-            {/* Brand */}
+        <footer className="mt-16 border-t border-border/40">
+          <div className="container mx-auto grid gap-10 px-6 py-12 md:grid-cols-[1.4fr_repeat(3,1fr)]">
+            {/* Brand. Carries the one action the footer should still be able to
+                start — a visitor who scrolled the whole page without clicking
+                Download had, until now, nothing to click down here. */}
             <div className="space-y-3">
               <Link href="/" className="flex items-center gap-2.5">
                 <img
@@ -156,125 +192,71 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   Ravenswatch Mod Manager
                 </span>
               </Link>
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                A small, open-source app for installing and managing mods for the game Ravenswatch
-                by Passtech Games. Not affiliated with Passtech Games or NACON.
+              <p className="max-w-xs text-xs leading-relaxed text-muted-foreground">
+                A small, open-source app for installing and managing mods for Ravenswatch. Free,
+                reversible, and Windows/Linux only.
               </p>
+              <div className="flex items-center gap-2 pt-1">
+                <Link
+                  href="/download"
+                  className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                >
+                  Download
+                </Link>
+                <a
+                  href={REPO}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="RSMM on GitHub"
+                  className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+                >
+                  <Github className="h-4 w-4" aria-hidden="true" />
+                </a>
+              </div>
             </div>
 
-            {/* Links */}
-            <div className="space-y-3">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-foreground/60">
-                Links
-              </h4>
-              <ul className="space-y-2">
-                {footerLinks.map((link) => (
-                  <li key={link.label}>
-                    {link.href.startsWith('http') ? (
-                      <a
-                        href={link.href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                      >
-                        {link.label}
-                      </a>
-                    ) : (
-                      <Link
-                        href={link.href}
-                        className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                      >
-                        {link.label}
-                      </Link>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Support */}
-            <div className="space-y-3">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-foreground/60">
-                Support
-              </h4>
-              <ul className="space-y-2">
-                {[
-                  {
-                    href: 'https://github.com/Ovilli/RavenswatchModManager#readme',
-                    label: 'Documentation',
-                  },
-                  {
-                    href: 'https://github.com/Ovilli/RavenswatchModManager/issues',
-                    label: 'Report Bug',
-                  },
-                ].map((link) => (
-                  <li key={link.label}>
-                    <a
-                      href={link.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                    >
-                      {link.label}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Social */}
-            <div className="space-y-3">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-foreground/60">
-                Social
-              </h4>
-              <ul className="space-y-2">
-                {[{ href: 'https://github.com/Ovilli/RavenswatchModManager', label: 'GitHub' }].map(
-                  (link) => (
-                    <li key={link.label}>
-                      <a
-                        href={link.href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                      >
-                        {link.label}
-                      </a>
+            {footerSections.map((section) => (
+              <nav key={section.title} aria-label={section.title} className="space-y-3">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-foreground/60">
+                  {section.title}
+                </h4>
+                <ul className="space-y-2">
+                  {section.links.map((link) => (
+                    <li key={link.href}>
+                      {link.href.startsWith('http') ? (
+                        <a
+                          href={link.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                        >
+                          {link.label}
+                        </a>
+                      ) : (
+                        <Link
+                          href={link.href}
+                          className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                        >
+                          {link.label}
+                        </Link>
+                      )}
                     </li>
-                  ),
-                )}
-              </ul>
-            </div>
+                  ))}
+                </ul>
+              </nav>
+            ))}
           </div>
 
-          {/* Bottom bar */}
+          {/* Bottom bar: copyright and the disclaimer only. The legal pages have
+              their own column now, so repeating them here — under invented
+              names that all pointed at /legal — bought nothing. */}
           <div className="border-t border-border/20">
-            <div className="container mx-auto flex flex-col items-center justify-between gap-2 px-6 py-4 sm:flex-row">
-              <p className="text-xs text-muted-foreground">
-                &copy; {new Date().getFullYear()} | Ravenswatch Mod Manager. Not affiliated with
-                Passtech Games or NACON.
+            <div className="container mx-auto flex flex-col items-center justify-between gap-2 px-6 py-4 text-xs text-muted-foreground sm:flex-row">
+              <p>&copy; {new Date().getFullYear()} Ravenswatch Mod Manager</p>
+              <p>
+                Not affiliated with Passtech Games or NACON. Ravenswatch is a trademark of its
+                respective owners.
               </p>
-              <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <Link
-                  href="/privacy"
-                  className="underline-offset-2 hover:text-foreground hover:underline"
-                >
-                  Privacy Policy
-                </Link>
-                <span aria-hidden="true">·</span>
-                <Link
-                  href="/legal"
-                  className="underline-offset-2 hover:text-foreground hover:underline"
-                >
-                  Terms of Service
-                </Link>
-                <span aria-hidden="true">·</span>
-                <Link
-                  href="/legal"
-                  className="underline-offset-2 hover:text-foreground hover:underline"
-                >
-                  Transparency
-                </Link>
-              </div>
             </div>
           </div>
         </footer>
