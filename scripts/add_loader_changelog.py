@@ -57,6 +57,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     entry = {
+        # Explicitly empty rather than absent. The client parser normalises a
+        # missing version to "" anyway, but the desktop imports this file
+        # DIRECTLY as typed data — an absent key makes the entry a different
+        # shape from every other one and fails the build.
+        "version": "",
         "loader_version": a.loader_version,
         "date": a.date,
         "summary": a.summary,

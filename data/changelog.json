@@ -2,6 +2,7 @@
   "generated": "2026-08-24",
   "entries": [
     {
+      "version": "",
       "loader_version": 8,
       "date": "2026-08-24",
       "summary": "Stutter fixes for the damage meter, and it now attributes a transformed hero to the right player.",
