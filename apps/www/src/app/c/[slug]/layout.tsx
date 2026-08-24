@@ -1,60 +1,68 @@
 import type { Metadata } from 'next';
-import { apiUrl } from './metadata';
+import { notFound } from 'next/navigation';
+import { type Entity, fetchEntity } from '../../../lib/entity';
 
 const SITE = 'Ravenswatch Mod Manager';
 const ORIGIN = 'https://rsmm.me';
 
-// Deduped with generateMetadata's fetch (same URL+opts) within a request.
-async function getCollection(slug: string): Promise<{ name?: string } | null> {
-  try {
-    const res = await fetch(`${apiUrl}/api/collections/${slug}`, { next: { revalidate: 60 } });
-    if (!res.ok) return null;
-    const json = await res.json();
-    return json?.name ? json : null;
-  } catch {
-    return null;
-  }
+interface Collection {
+  name?: string;
+  summary?: string | null;
+  modCount?: number;
+  imageUrl?: string;
+}
+
+// One helper for both generateMetadata and the layout body (the fetch itself is
+// deduped by Next within a request); they used to hand-roll the same request
+// twice and disagree about what "not found" meant.
+async function getCollection(slug: string): Promise<Entity<Collection>> {
+  const res = await fetchEntity<Collection>(`/api/collections/${slug}`);
+  if (res.state !== 'ok') return res;
+  return res.data?.name ? res : { state: 'error' };
+}
+
+// Own canonical + noindex, else the root layout's `canonical: '/'` leaks onto
+// a URL that resolves to nothing.
+function fallbackMetadata(slug: string): Metadata {
+  return {
+    title: `Collection · ${SITE}`,
+    robots: { index: false, follow: false },
+    alternates: { canonical: `/c/${slug}` },
+  };
 }
 
 export async function generateMetadata({
   params,
 }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  try {
-    const res = await fetch(`${apiUrl}/api/collections/${slug}`, {
-      next: { revalidate: 60 },
-    });
-    if (!res.ok) return { title: `Collection · ${SITE}` };
-    const json = await res.json();
-    if (!json?.name) return { title: `Collection · ${SITE}` };
+  const res = await getCollection(slug);
+  if (res.state !== 'ok') return fallbackMetadata(slug);
+  const collection = res.data;
 
-    const title = `${json.name} · Collection · ${SITE}`;
-    const description =
-      json.summary ?? `A collection of ${json.modCount} mods for Ravenswatch.`;
-    const image: string | undefined = json.imageUrl;
+  const title = `${collection.name} · Collection · ${SITE}`;
+  const description =
+    collection.summary ?? `A collection of ${collection.modCount} mods for Ravenswatch.`;
+  const image = collection.imageUrl;
 
-    return {
+  return {
+    title,
+    description,
+    alternates: { canonical: `/c/${slug}` },
+    openGraph: {
+      type: 'article',
       title,
       description,
-      alternates: { canonical: `/c/${slug}` },
-      openGraph: {
-        type: 'article',
-        title,
-        description,
-        url: `/c/${slug}`,
-        siteName: SITE,
-        images: image ? [{ url: image, alt: `${json.name} collection` }] : undefined,
-      },
-      twitter: {
-        card: image ? 'summary_large_image' : 'summary',
-        title,
-        description,
-        images: image ? [image] : undefined,
-      },
-    };
-  } catch {
-    return { title: `Collection · ${SITE}` };
-  }
+      url: `/c/${slug}`,
+      siteName: SITE,
+      images: image ? [{ url: image, alt: `${collection.name} collection` }] : undefined,
+    },
+    twitter: {
+      card: image ? 'summary_large_image' : 'summary',
+      title,
+      description,
+      images: image ? [image] : undefined,
+    },
+  };
 }
 
 export default async function Layout({
@@ -65,10 +73,12 @@ export default async function Layout({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const collection = await getCollection(slug);
+  const res = await getCollection(slug);
+  // Real 404 for a slug the API does not know; an API blip falls through.
+  if (res.state === 'missing') notFound();
   return (
     <>
-      {collection ? (
+      {res.state === 'ok' ? (
         <script
           type="application/ld+json"
           // biome-ignore lint/security/noDangerouslySetInnerHtml: server-built JSON-LD from our own API, not user HTML.
@@ -79,7 +89,7 @@ export default async function Layout({
               itemListElement: [
                 { '@type': 'ListItem', position: 1, name: 'Home', item: ORIGIN },
                 { '@type': 'ListItem', position: 2, name: 'Collections', item: `${ORIGIN}/c` },
-                { '@type': 'ListItem', position: 3, name: collection.name },
+                { '@type': 'ListItem', position: 3, name: res.data.name },
               ],
             }),
           }}

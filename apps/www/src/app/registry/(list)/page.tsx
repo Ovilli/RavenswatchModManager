@@ -25,8 +25,8 @@ import type { Route } from 'next';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
-import { api } from '../../lib/api';
-import { getApiUrl } from '../../lib/api-url';
+import { api } from '../../../lib/api';
+import { getApiUrl } from '../../../lib/api-url';
 
 type Sort = 'popular' | 'recent' | 'rating';
 
