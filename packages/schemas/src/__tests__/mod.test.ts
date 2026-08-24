@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { modListItemSchema, modManifestSchema, modVersionSchema } from '../mod';
+import {
+  modListItemSchema,
+  modManifestSchema,
+  modVersionCreateSchema,
+  modVersionSchema,
+} from '../mod';
 
 describe('modListItemSchema', () => {
   it('validates a correct mod list item', () => {
@@ -150,5 +155,34 @@ describe('modVersionSchema', () => {
       assetUrl: 'https://example.com/mod.zip',
       createdAt: new Date().toISOString(),
     })).toThrow();
+  });
+});
+
+describe('modVersionCreateSchema', () => {
+  const manifest = { id: 'damage-meter', name: 'Damage Meter', version: '1.2.3' };
+  const base = {
+    version: '1.2.3',
+    sha256: 'a'.repeat(64),
+    sizeBytes: 16447,
+    manifest,
+  };
+
+  it('accepts a row whose version matches the packed manifest', () => {
+    expect(modVersionCreateSchema.parse(base).version).toBe('1.2.3');
+  });
+
+  it('rejects a row labelled differently from the manifest inside it', () => {
+    // The damage-meter case (2026-08-24): published as 1.2.3 with a manifest
+    // that still said 1.2.2. Nothing errored — the client installed it, the
+    // files landed, the manifest read 1.2.2, and the library went on offering
+    // the same update forever. Pressing it changed nothing, which reads as a
+    // broken app rather than a mislabelled artifact.
+    const bad = { ...base, manifest: { ...manifest, version: '1.2.2' } };
+    const res = modVersionCreateSchema.safeParse(bad);
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.issues[0]?.message).toMatch(/match the version inside the packed manifest/);
+      expect(res.error.issues[0]?.path).toEqual(['version']);
+    }
   });
 });

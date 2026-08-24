@@ -167,13 +167,32 @@ export const modPatchSchema = z.object({
 export type ModPatch = z.infer<typeof modPatchSchema>;
 
 /** Owner-only: presign a new version upload. Changelog is per-version. */
-export const modVersionCreateSchema = z.object({
-  version: semverSchema,
-  sha256: z.string().regex(/^[a-f0-9]{64}$/),
-  sizeBytes: z.number().int().positive(),
-  manifest: modManifestSchema,
-  changelog: z.string().max(16_000).optional(),
-});
+export const modVersionCreateSchema = z
+  .object({
+    version: semverSchema,
+    sha256: z.string().regex(/^[a-f0-9]{64}$/),
+    sizeBytes: z.number().int().positive(),
+    manifest: modManifestSchema,
+    changelog: z.string().max(16_000).optional(),
+  })
+  // The row's version and the SHIPPED manifest's version must agree. They are
+  // separate fields, and nothing used to check them against each other, so a
+  // publish could label an artifact 1.2.3 while the manifest inside it still
+  // said 1.2.2 — which is exactly what happened to damage-meter on 2026-08-24.
+  //
+  // The failure is invisible and looks like a broken app: the client installs
+  // "1.2.3", the files land, the manifest reads 1.2.2, so the library compares
+  // installed-vs-latest and still offers the update. Pressing it downloads the
+  // same bytes again and the version never moves. Nothing errors, because
+  // nothing went wrong — the artifact is simply mislabelled.
+  //
+  // The manifest is the source of truth (`rsmm json pack-mod` reads the version
+  // out of it); this stops a caller from claiming otherwise.
+  .refine((v) => v.manifest.version === v.version, {
+    message:
+      'version must match the version inside the packed manifest — bump [mod].version and re-pack',
+    path: ['version'],
+  });
 
 export type ModVersionCreate = z.infer<typeof modVersionCreateSchema>;
 
