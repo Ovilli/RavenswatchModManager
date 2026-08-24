@@ -1,6 +1,17 @@
 {
-  "generated": "2026-08-22",
+  "generated": "2026-08-24",
   "entries": [
+    {
+      "version": "5.1.1",
+      "date": "2026-08-24",
+      "summary": "The damage meter no longer stutters the game after a transform, and turning it off now really turns it off.",
+      "highlights": [
+        "Fixed the stuttering players reported after unlocking ultimates or playing Sun Wukong. An ability that swaps your hero for another one handed the meter a character it had never seen, so it counted you as a second player — and a duplicate row can never be named, which left the name search scanning memory for the rest of the run.",
+        "Your damage now follows you through a transform or a respawn instead of splitting across two rows. An ally who transforms still appears twice: nothing in this build of the game identifies another player through the swap, and guessing would put one player's damage under someone else's name.",
+        "Turning the damage meter off now stops its background work as well as its counting. It used to keep scanning once a second for the rest of the session.",
+        "These fixes arrive through the game-loader channel, so there is nothing to reinstall — the launcher plants them on the next check."
+      ]
+    },
     {
       "version": "5.1.0",
       "date": "2026-08-22",
