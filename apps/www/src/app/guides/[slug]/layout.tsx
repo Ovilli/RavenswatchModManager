@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
-import { getApiUrl } from '../../../lib/api-url';
+import { notFound } from 'next/navigation';
+import { type Entity, fetchEntity } from '../../../lib/entity';
 
 const SITE = 'Ravenswatch Mod Manager';
 const ORIGIN = 'https://rsmm.me';
@@ -17,26 +18,40 @@ interface Guide {
   reviewCount?: number;
 }
 
-// Deduped with generateMetadata within a request. Unauthenticated, so the API
-// only returns approved guides — drafts/pending get the generic fallback and
-// are never indexed.
-async function getGuide(slug: string): Promise<Guide | null> {
-  try {
-    const res = await fetch(`${getApiUrl()}/api/guides/${slug}`, { next: { revalidate: 60 } });
-    if (!res.ok) return null;
-    const g = await res.json();
-    return g?.title && g.status === 'approved' ? g : null;
-  } catch {
-    return null;
-  }
+// Deduped with generateMetadata's fetch within a request. Unauthenticated, so
+// the API only exposes what a crawler may see.
+//
+// A non-approved guide is deliberately NOT reported as `missing`: its author
+// reaches the same URL with a session and the client page renders the draft for
+// them, so 404-ing it server-side would hide a guide from the person who wrote
+// it. It is kept out of the index by metadata instead.
+async function getGuide(slug: string): Promise<Entity<Guide>> {
+  const res = await fetchEntity<Guide>(`/api/guides/${slug}`);
+  if (res.state !== 'ok') return res;
+  return res.data?.title ? res : { state: 'error' };
+}
+
+function isPublic(res: Entity<Guide>): res is { state: 'ok'; data: Guide } {
+  return res.state === 'ok' && res.data.status === 'approved';
+}
+
+// Own canonical + noindex: without `alternates` the root layout's
+// `canonical: '/'` leaks onto a dead or unapproved guide URL.
+function fallbackMetadata(slug: string): Metadata {
+  return {
+    title: `Guide · ${SITE}`,
+    robots: { index: false, follow: false },
+    alternates: { canonical: `/guides/${slug}` },
+  };
 }
 
 export async function generateMetadata({
   params,
 }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const g = await getGuide(slug);
-  if (!g) return { title: `Guide · ${SITE}` };
+  const res = await getGuide(slug);
+  if (!isPublic(res)) return fallbackMetadata(slug);
+  const g = res.data;
 
   const title = `${g.title} · Guides · ${SITE}`;
   const description = g.summary ?? `A community guide for Ravenswatch on the ${SITE}.`;
@@ -111,14 +126,16 @@ export default async function Layout({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const g = await getGuide(slug);
+  const res = await getGuide(slug);
+  // A slug the API does not know is a real 404. A transient API error is not.
+  if (res.state === 'missing') notFound();
   return (
     <>
-      {g ? (
+      {isPublic(res) ? (
         <script
           type="application/ld+json"
           // biome-ignore lint/security/noDangerouslySetInnerHtml: server-built JSON-LD from our own API, not user HTML.
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(guideJsonLd(slug, g)) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(guideJsonLd(slug, res.data)) }}
         />
       ) : null}
       {children}

@@ -67,7 +67,8 @@ export const env = {
       .map((s) => s.trim())
       .filter(Boolean);
     // Always-trusted origins, regardless of NODE_ENV or env overrides:
-    //  - the public browser site (www.rsmm.me; apex redirects there)
+    //  - the public browser site (rsmm.me is canonical; www 308s to it,
+    //    but keep www trusted so a request already in flight isn't rejected)
     //  - every Tauri WebView origin the desktop app ships under
     // Baked in so a CORS-breaking misconfig can't drop them.
     const alwaysTrusted = [

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
-import { getApiUrl } from '../../../lib/api-url';
+import { notFound } from 'next/navigation';
+import { type Entity, fetchEntity } from '../../../lib/entity';
 
 const SITE = 'Ravenswatch Mod Manager';
 const ORIGIN = 'https://rsmm.me';
@@ -16,26 +17,33 @@ interface Mod {
   downloads?: number;
 }
 
+// GET /api/mods/:slug wraps the record: { mod, versions }.
 // fetch() with identical args is deduped by Next within a request, so
 // generateMetadata and the layout component share this one round-trip.
-async function getMod(slug: string): Promise<Mod | null> {
-  try {
-    const res = await fetch(`${getApiUrl()}/api/mods/${slug}`, { next: { revalidate: 60 } });
-    if (!res.ok) return null;
-    // GET /api/mods/:slug wraps the record: { mod, versions }.
-    const { mod } = await res.json();
-    return mod?.name ? mod : null;
-  } catch {
-    return null;
-  }
+async function getMod(slug: string): Promise<Entity<Mod>> {
+  const res = await fetchEntity<{ mod?: Mod }>(`/api/mods/${slug}`);
+  if (res.state !== 'ok') return res;
+  return res.data?.mod?.name ? { state: 'ok', data: res.data.mod } : { state: 'error' };
+}
+
+// A URL that resolves to nothing must never be indexable, and must carry its
+// OWN canonical — without `alternates` the root layout's `canonical: '/'` wins
+// and the dead URL claims to be the home page.
+function fallbackMetadata(slug: string): Metadata {
+  return {
+    title: `Mod · ${SITE}`,
+    robots: { index: false, follow: false },
+    alternates: { canonical: `/registry/${slug}` },
+  };
 }
 
 export async function generateMetadata({
   params,
 }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const mod = await getMod(slug);
-  if (!mod) return { title: `Mod · ${SITE}` };
+  const res = await getMod(slug);
+  if (res.state !== 'ok') return fallbackMetadata(slug);
+  const mod = res.data;
 
   const title = `${mod.name}${mod.author ? ` by ${mod.author}` : ''} · ${SITE}`;
   const description =
@@ -121,14 +129,21 @@ export default async function Layout({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const mod = await getMod(slug);
+  const res = await getMod(slug);
+  // Deleted / never-existed slug: answer 404 rather than a 200 shell. This only
+  // reaches the client as a real 404 because nothing above `[slug]` streams a
+  // Suspense fallback first — see the note in `(list)/loading.tsx`.
+  //
+  // An API blip (state 'error') deliberately falls through to the client page,
+  // which retries on its own: an outage must not 404 the whole registry.
+  if (res.state === 'missing') notFound();
   return (
     <>
-      {mod ? (
+      {res.state === 'ok' ? (
         <script
           type="application/ld+json"
           // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD must be inlined as a script body; the payload is server-built from our own API, not user HTML.
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(modJsonLd(slug, mod)) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(modJsonLd(slug, res.data)) }}
         />
       ) : null}
       {children}
