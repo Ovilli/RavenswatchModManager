@@ -7627,5 +7627,94 @@ do
 end
 
 -- ---------------------------------------------------------------------------
+-- N. R.damage: the fork stand-down must not fire on a PARTIAL roster --------
+--
+-- The stand-down exists because a forked board (one player, two rows) can
+-- never be named and would otherwise keep the address-space sweep running for
+-- the whole run. But "more rows than lobby members" is ALSO what a normal
+-- co-op run looks like on this build: the client is routinely never sent the
+-- other players' attributes (session c236: four rows, one member, all run;
+-- 2026-08-24: two rows, ZERO members, ally named through the raknet join).
+-- Standing down there would trade a stutter fix for an ally-names regression.
+do
+    package.loaded["rsmm"] = nil
+    local Rf = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    local function said(needle)
+        for _, line in ipairs(logged) do
+            if line:find(needle, 1, true) then return true end
+        end
+        return false
+    end
+
+    I.mem_find = function() return {} end
+    -- ONE member known, two players actually fighting: the roster is partial,
+    -- not the board forked.
+    Rf.lobby._note_blob('{"PlayerName":"Keif","RequestedHero":5}')
+    Rf.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x66000000, { "me", "a1" })
+    _put_str(ctrl[2] + 0x1120, "Keif")
+    deal(ctrl[1], 40.0)
+    deal(ctrl[2], 60.0)
+    _sweep(Rf)
+    Rf.damage.relabel()
+
+    check(not said("forked the board"),
+          "a partial roster is not reported as a fork")
+    local ally
+    for _, row in ipairs(Rf.damage.board()) do
+        if not row.is_local then ally = row end
+    end
+    check(ally and ally.label == "Keif" and ally.label_guess == false,
+          "and the sweep still runs, so the ally is named from its own object")
+
+    Rf.damage.disable(); Rf.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- N. R.damage: a genuinely forked board DOES stand the scan down -----------
+do
+    package.loaded["rsmm"] = nil
+    local Rg = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    local function said(needle)
+        for _, line in ipairs(logged) do
+            if line:find(needle, 1, true) then return true end
+        end
+        return false
+    end
+
+    local scans = 0
+    I.mem_find = function() scans = scans + 1 return {} end
+    -- A roster the client DID receive in full: two players, and a third row
+    -- that can only be one of them twice.
+    Rg.lobby._note_blob('{"PlayerName":"Ovili","RequestedHero":4}')
+    Rg.lobby._note_blob('{"PlayerName":"Keif","RequestedHero":5}')
+    Rg.damage.enable{ window = 10 }
+    local ctrl, deal = _own_world(0x67000000, { "me", "a1", "a2" })
+    deal(ctrl[1], 10.0)
+    deal(ctrl[2], 20.0)
+    deal(ctrl[3], 30.0)
+    scans = 0
+    _sweep(Rg)
+
+    check(said("forked the board"),
+          "three rows against a two-player roster is reported as a fork")
+    check(scans == 0,
+          "and the address-space sweep does not run — that is the stutter this "
+          .. "bound exists to stop")
+
+    Rg.damage.disable(); Rg.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)

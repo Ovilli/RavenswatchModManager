@@ -1453,8 +1453,16 @@ function F._dmg_probe_owner_fast()
     -- build identifies an ALLY, so their forks are not mergeable and this is
     -- the bound instead. Names already claimed are kept; the rest stay lobby
     -- guesses, which is what they would have been anyway.
+    -- ⚠ `#members >= 2`, not `> 0`. A roster this client was never fully sent
+    -- is the NORMAL case on this build, not a fork: session c236 saw four rows
+    -- against one lobby member all run, and today's 2-player log named its ally
+    -- through the raknet join with ZERO members parsed. Comparing rows against
+    -- a roster that only ever held this player would call every co-op run
+    -- forked and stand the name scan down on all of them -- turning a fix for
+    -- a stutter into a regression in ally names. Two members is the same
+    -- threshold the rest of this file uses before it believes the roster.
     local members = R.lobby.members()
-    if #members > 0 and #_dmg.order > #members then
+    if #members >= 2 and #_dmg.order > #members then
         if not _dmg.fork_said then
             _dmg.fork_said = true
             R.log(("[rsmm.damage] %d rows for a %d-player lobby — a hero object "
@@ -2179,6 +2187,14 @@ function F._dmg_lobby_refresh()
         -- reported on 2026-08-24 ("background processes still running with the
         -- mod off"). Cancelling the timer instead would be wrong: `enable()`
         -- is idempotent and would not re-arm it.
+        --
+        -- One consequence, deliberate: the tick is claimed by ONE lua_State
+        -- per process (LOBBY_REFRESH_SLOT), so if that state stops metering,
+        -- no other state's board gets relabelled either. Releasing the slot
+        -- here would let a second state arm its own timer, and then a
+        -- re-enable would leave TWO running -- doubling the very scans this
+        -- gate exists to stop. One mod owns R.damage in practice, so the
+        -- cheaper failure is the right one.
         if not _dmg.on then return end
         local ok, err = pcall(function()
             -- Cheap every time: re-read the known blocks and apply names.
@@ -4399,9 +4415,17 @@ function F._dmg_row_for_entity(e)
         for _, r in ipairs(_dmg.order) do
             if r.is_local then
                 F._dmg_alias(r, e)
-                R.log(("[rsmm.damage] local hero object changed to 0x%x "
-                       .. "(transform or respawn) — reusing row %d, not a new "
-                       .. "player"):format(e, r.slot))
+                -- Bounded like the boarding log above. One line per swap is
+                -- useful; a hero whose ability spawns a fresh object per cast
+                -- would otherwise write one per cast for a whole run, into the
+                -- log a player is asked to attach to a bug report.
+                _dmg.swaps = (_dmg.swaps or 0) + 1
+                if _dmg.swaps <= 8 then
+                    R.log(("[rsmm.damage] local hero object changed to 0x%x "
+                           .. "(transform or respawn) — reusing row %d, not a "
+                           .. "new player%s"):format(e, r.slot,
+                              _dmg.swaps == 8 and " (further swaps silent)" or ""))
+                end
                 return r
             end
         end
@@ -4981,6 +5005,7 @@ function R.damage.reset()
     -- Per RUN, like _dmg.roster_warned: a fresh board deserves to be told its
     -- own forking story rather than inheriting the last run's silence.
     _dmg.fork_said = false
+    _dmg.swaps = 0
     -- The sweep's CURSOR points at a row that no longer exists; the CHAIN is a
     -- fact about the engine's layout and stays.
     F._own.cursor = nil

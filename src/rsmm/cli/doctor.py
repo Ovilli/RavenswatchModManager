@@ -257,6 +257,19 @@ def check_loader(game_dir: Path) -> list[Result]:
                           code="loader.runtime-missing", fix=install_fix))
     else:
         out.append(Result("OK", "loader runtime tree present (<game>/rsmm/lib)"))
+    # A plant older than what this build carries. The DLL hash check above does
+    # not catch it (the DLL can match while the Lua SDK beside it is older), and
+    # `update-loader` reports "up to date" because its eligibility figure folds
+    # in the bundled stamp — so nothing else in the tool says this out loud.
+    from rsmm.engine.loader_update import bundled_version, planted_manifest_version
+    planted_v = planted_manifest_version(game_dir)
+    if planted_v is not None and planted_v < bundled_version():
+        out.append(Result("WARN", f"planted loader is v{planted_v}, this build "
+                                  f"bundles v{bundled_version()}",
+                          "The game loads the planted copy, so a newer SDK in "
+                          "this build is not in the process. `update-loader` "
+                          "will not fix it — only re-planting will.",
+                          code="loader.stale-plant", fix=install_fix))
     if not (runtime / "data" / "function_patterns.json").is_file():
         out.append(Result("WARN", "planted pattern DB missing "
                                   "(<game>/rsmm/data/function_patterns.json)",
@@ -275,6 +288,11 @@ _DANGEROUS_FLAGS = {
         "load. Custom items don't need it; they register via UsedRscList.",
     "RSMM_ENABLE_SKILL_INJECT":
         "unverified skill-table detour; crashes on current builds.",
+    "RSMM_ENABLE_IO":
+        "IAT-patches CreateFileW in the main exe to trace asset loads. The "
+        "loader itself logs \"may crash game\" when it arms this, and asset "
+        "overrides do not need it — they are install-time file replacement. "
+        "Debugging only.",
 }
 
 

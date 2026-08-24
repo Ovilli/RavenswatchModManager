@@ -61,6 +61,17 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if state["status"] != "needs_app_update" else 1
 
         status = state["status"]
+        # Say this BEFORE any status line. `installed_version` is the
+        # update-eligibility figure (max of planted and bundled), so a game dir
+        # running an older planted SDK still reports "up to date" — which is
+        # exactly what sent a 2026-08-24 debugging session looking for the bug
+        # in the mod instead of in the plant. The channel cannot fix this one:
+        # what is behind is the game dir, not the download.
+        if state.get("plant_stale"):
+            print(f"note: the game dir holds loader v{state['planted_version']}, "
+                  f"but this build bundles v{state['bundled_version']} — the game "
+                  f"loads the planted copy. Run `rsmm install-loader` to update it.",
+                  file=sys.stderr)
         if status == "needs_app_update":
             print(state["error"], file=sys.stderr)
             return 1

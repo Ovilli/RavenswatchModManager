@@ -168,11 +168,33 @@ def planted_manifest(game_dir: Path) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
+def planted_manifest_version(game_dir: Path) -> int | None:
+    """What the game dir ACTUALLY holds, or None if nothing is planted.
+
+    Unlike `planted_version` this does not fold in the bundled stamp, so it
+    answers the question the running game answers: which SDK will load?
+    """
+    m = planted_manifest(game_dir)
+    if not m:
+        return None
+    v = m.get("loader_version")
+    return v if isinstance(v, int) else None
+
+
 def planted_version(game_dir: Path) -> int:
     """Highest loader version present in the game dir — planted or bundled.
 
     `install-loader` plants the bundled copy, so a game dir with no
     manifest is at `bundled_version()`, not at zero.
+
+    ⚠ This is the UPDATE-ELIGIBILITY figure, not "what is installed". The max
+    is what stops the channel re-planting a payload this build already
+    carries, but it also hides an OLDER planted copy behind a newer bundled
+    stamp — and the older copy is the one the game loads. On 2026-08-24 that
+    read "loader is up to date (v7)" while `<game>/rsmm` held v6 and the SDK
+    fix under test was not in the process at all. Use
+    `planted_manifest_version` for anything a user reads, and see the
+    `plant_stale` flag on `check()`.
     """
     m = planted_manifest(game_dir)
     planted = int(m.get("loader_version", 0)) if m else 0
@@ -322,6 +344,10 @@ def check(game_dir: Path) -> dict:
             "status": "not_published",
             "remote_base": base,
             "installed_version": have,
+            "planted_version": planted_manifest_version(game_dir),
+            "bundled_version": bundled_version(),
+            "plant_stale": (planted_manifest_version(game_dir) or 0) < bundled_version()
+                           and planted_manifest_version(game_dir) is not None,
         }
     except AbiTooNewError as e:
         # A real answer, not a transport failure: report it as a status so
@@ -330,10 +356,18 @@ def check(game_dir: Path) -> dict:
             "status": "needs_app_update",
             "remote_base": base,
             "installed_version": have,
+            "planted_version": planted_manifest_version(game_dir),
+            "bundled_version": bundled_version(),
+            "plant_stale": (planted_manifest_version(game_dir) or 0) < bundled_version()
+                           and planted_manifest_version(game_dir) is not None,
             "error": str(e),
         }
 
     remote_version = int(manifest["loader_version"])
+    planted_now = planted_manifest_version(game_dir)
+    # A plant older than the copy this build carries. `install-loader` fixes
+    # it; `update-loader` cannot, because the channel is not what is behind.
+    plant_stale = planted_now is not None and planted_now < bundled_version()
     if remote_version > have:
         status = "update_available"
     elif remote_version == have:
@@ -345,6 +379,9 @@ def check(game_dir: Path) -> dict:
         "status": status,
         "remote_base": base,
         "installed_version": have,
+        "planted_version": planted_now,
+        "bundled_version": bundled_version(),
+        "plant_stale": plant_stale,
         "remote_version": remote_version,
         "rsmm_version": manifest.get("rsmm_version"),
         "generated": manifest.get("generated"),

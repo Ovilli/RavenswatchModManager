@@ -484,3 +484,51 @@ def test_an_unpublished_channel_is_a_status_not_an_error(tmp_path, channel, monk
     state = lu.check(game)
     assert state["status"] == "not_published"
     assert state["installed_version"] == 1
+
+
+# --- "installed" vs "what the game actually loads" -------------------------
+
+def test_check_reports_a_plant_older_than_the_bundled_copy(tmp_path, channel, monkeypatch):
+    """`installed_version` is update ELIGIBILITY, not what is installed.
+
+    It folds in the bundled stamp so the channel cannot re-plant a payload
+    this build already carries. The cost is that an older PLANTED copy — the
+    one the game actually loads — hides behind a newer bundled number, and
+    `update-loader` answers "up to date" for a game dir that is behind. That
+    is what sent a 2026-08-24 session hunting the bug in the mod for three
+    game restarts. The flag exists so a human is told.
+    """
+    game, use = channel
+    use(_publish(tmp_path, version=3))
+    lu.planted_manifest_path(game).parent.mkdir(parents=True, exist_ok=True)
+    lu.planted_manifest_path(game).write_text(json.dumps({"loader_version": 2}),
+                                              encoding="utf-8")
+    monkeypatch.setattr(lu, "bundled_version", lambda: 5)
+
+    state = lu.check(game)
+    assert state["planted_version"] == 2      # what the game loads
+    assert state["bundled_version"] == 5
+    assert state["installed_version"] == 5    # eligibility, unchanged
+    assert state["plant_stale"] is True
+    assert state["status"] == "ahead"         # channel v3 < bundled v5
+
+
+def test_check_does_not_cry_stale_for_a_current_plant(tmp_path, channel, monkeypatch):
+    game, use = channel
+    use(_publish(tmp_path, version=1))
+    lu.planted_manifest_path(game).parent.mkdir(parents=True, exist_ok=True)
+    lu.planted_manifest_path(game).write_text(json.dumps({"loader_version": 4}),
+                                              encoding="utf-8")
+    monkeypatch.setattr(lu, "bundled_version", lambda: 4)
+    assert lu.check(game)["plant_stale"] is False
+
+
+def test_check_does_not_cry_stale_when_nothing_is_planted(tmp_path, channel):
+    """No manifest means install-loader has never run. `check_loader` in doctor
+    already says that; claiming the plant is *stale* would be a second, wronger
+    way to say it."""
+    game, use = channel
+    use(_publish(tmp_path))
+    state = lu.check(game)
+    assert state["planted_version"] is None
+    assert state["plant_stale"] is False

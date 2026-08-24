@@ -10,7 +10,7 @@
         "Your damage now follows you through a transform or a respawn instead of splitting across two rows. An ally who transforms still appears twice: nothing in this build of the game identifies another player through the swap, and guessing would put one player's damage under someone else's name.",
         "Turning the damage meter off now stops its background work as well as its counting. It used to keep scanning once a second for the rest of the session.",
         "Fixed installed mods arriving switched off. A mod packaged while its author had it disabled shipped that setting with it, so it installed, applied, and then did nothing — with no error anywhere, because a disabled mod has its code removed rather than skipped. Packaging now always marks the mod as on, and whether you run it stays your choice in the launcher.",
-        "These fixes arrive through the game-loader channel, so there is nothing to reinstall — the launcher plants them on the next check."
+        "The damage-meter fixes arrive through the game-loader channel, so there is nothing to reinstall — the launcher plants them on the next check. The packaging fix is part of the launcher itself and arrives with this update."
       ]
     },
     {
