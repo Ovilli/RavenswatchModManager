@@ -83,7 +83,7 @@ template <int N>
 std::uintptr_t WINAPI detour(void* ctx, void* arg) {
     EventHook& h = g_hooks[N];
     const auto rv = h.real(ctx, arg);
-    if (!script_any_subscribers()) return rv;
+    if (!script_has_handler(h.lua_event)) return rv;
     // Build the payload AFTER the original runs (so fields it writes — e.g.
     // ctx+0xCC for level_up — are populated). Events with a verified schema
     // in data/symbols.json emit typed fields; the rest get the safe
@@ -144,7 +144,11 @@ std::uintptr_t WINAPI analytics_firehose_detour(void* mgr, void* payload,
             const size_t n = mem_read_cstr(name, ev, sizeof(ev));
             // "run_end" already fires via the typed Event_RunEnd table hook;
             // skip here to avoid publishing it twice.
-            if (n > 0 && json_safe_name(ev) && std::strcmp(ev, "run_end") != 0) {
+            // Gate on THIS name, not on "any mod has any handler": the sink
+            // carries every analytics event the game emits, and a mod
+            // subscribes to a handful.
+            if (n > 0 && json_safe_name(ev) && std::strcmp(ev, "run_end") != 0
+                    && script_has_handler(ev)) {
                 char buf[160];
                 std::snprintf(buf, sizeof(buf),
                               "{\"event\":\"%s\",\"seq\":%u,\"source\":\"analytics\"}",
@@ -276,6 +280,23 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
     char name[64];
     if (!gameplay_event_name(ev, name, sizeof(name))) return;
 
+    // Nobody listening to THIS event? Then stop here, before the payload
+    // decode, the 768-byte format, the JSON parse and the per-state walk.
+    // The name read above is the cheap part and is needed to ask the question.
+    char lua_ev[72];
+    const int en = std::snprintf(lua_ev, sizeof(lua_ev), "gameplay:%s", name);
+    if (en <= 0 || en >= static_cast<int>(sizeof(lua_ev))) return;
+    // Two tiers. A handler registered for THIS name gets everything. A
+    // wildcard-only audience gets the envelope — which is what the SDK's own
+    // pump handler reads (it looks at ev.source and nothing else) — and skips
+    // the strcmp chain, the page probes and the schema decode below. Nobody at
+    // all: stop here.
+    // RSMM_EVENT_PROBE exists to inspect payloads of events nothing subscribes
+    // to yet, so it opts back into the full decode — otherwise the diagnostic
+    // flag would show exactly the events the tiering just thinned.
+    const bool want_full = script_has_handler(lua_ev) || g_probe_payloads;
+    if (!want_full && !script_has_wildcard()) return;
+
     // Everything past the name is a page-guarded read: this detour sees every
     // dispatched gameplay event, so a layout change must degrade to a thinner
     // payload rather than fault the game's main thread.
@@ -326,183 +347,189 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
     // one line. It is read once per damage row on a background thread, not
     // once per event on the game thread. See NamedEvent_NetSend's note.
 
-    // Hand-RE'd payload layouts first (their field names carry meaning the
-    // mined table cannot). `decoded` stops the generic vftable decode below
-    // from emitting the same offsets again under mechanical names.
-    bool decoded = false;
-    if (std::strcmp(name, "GIVE_MAGICAL_OBJECT") == 0
-        && committed_readable(reinterpret_cast<std::uintptr_t>(ev + 0x50), 0x10)) {
-        // oe::dt::NamedEventGiveMagicalObject (0x60): MO definition GUID.
-        const auto lo = *reinterpret_cast<const std::uint64_t*>(ev + 0x50);
-        const auto hi = *reinterpret_cast<const std::uint64_t*>(ev + 0x58);
-        json_append(buf, n, kRoom,
-                    ",\"mo_guid_lo\":\"0x%llx\",\"mo_guid_hi\":\"0x%llx\"",
-                    static_cast<unsigned long long>(lo),
-                    static_cast<unsigned long long>(hi));
-        decoded = true;
-    } else if ((std::strcmp(name, "NETWORK_DAMAGE") == 0
-                || std::strcmp(name, "NETWORK_DAMAGE_RESPONSE") == 0)
-               && committed_readable(reinterpret_cast<std::uintptr_t>(ev + 0x40), 0x10)) {
-        // oCGameNamedEventNetworkDamage (0x110): f32 value @+0x40, source
-        // net-id @+0x48, embedded oCEntityHitData @+0x50.
+    // Typed payload decode: only for an event a mod named. This is the
+    // expensive half of the detour — a strcmp chain, VirtualQuery-backed
+    // probes and a vftable schema lookup, per dispatch, on the main thread.
+    if (want_full) {
+        // Hand-RE'd payload layouts first (their field names carry meaning the
+        // mined table cannot). `decoded` stops the generic vftable decode below
+        // from emitting the same offsets again under mechanical names.
+        bool decoded = false;
+        if (std::strcmp(name, "GIVE_MAGICAL_OBJECT") == 0
+            && committed_readable(reinterpret_cast<std::uintptr_t>(ev + 0x50), 0x10)) {
+            // oe::dt::NamedEventGiveMagicalObject (0x60): MO definition GUID.
+            const auto lo = *reinterpret_cast<const std::uint64_t*>(ev + 0x50);
+            const auto hi = *reinterpret_cast<const std::uint64_t*>(ev + 0x58);
+            json_append(buf, n, kRoom,
+                        ",\"mo_guid_lo\":\"0x%llx\",\"mo_guid_hi\":\"0x%llx\"",
+                        static_cast<unsigned long long>(lo),
+                        static_cast<unsigned long long>(hi));
+            decoded = true;
+        } else if ((std::strcmp(name, "NETWORK_DAMAGE") == 0
+                    || std::strcmp(name, "NETWORK_DAMAGE_RESPONSE") == 0)
+                   && committed_readable(reinterpret_cast<std::uintptr_t>(ev + 0x40), 0x10)) {
+            // oCGameNamedEventNetworkDamage (0x110): f32 value @+0x40, source
+            // net-id @+0x48, embedded oCEntityHitData @+0x50.
+            //
+            // TWO FIELDS REMOVED 2026-08-15. This used to also publish
+            // "target_entity" (ev+0x60) and "instigator_entity" (ev+0xf0), and
+            // both names were wrong. The emitter (FUN_1407276a0) copies the source
+            // oCEntityHitData field-for-field into ev+0x50, and that struct's
+            // +0x10 is a refcounted per-hit HANDLE while its +0xa0 is the
+            // hit-VALUE object (damage f32 at +0x8) — the target is not stored in
+            // the hit data at all, it is the applier's first argument. Confirmed
+            // twice over: the attack resolver (Entity_ResolveAttackHits) builds
+            // the same two slots from a handle allocator and a value object, and
+            // releases each through its matching destructor.
+            //
+            // Publishing them was worse than publishing nothing: a mod comparing
+            // "target_entity" against its hero pointer compared a hero against a
+            // hit handle, so the test silently never fired and there was no way to
+            // tell from the payload. And they are SENDER-side pointers regardless
+            // — the event is only ever built on the machine that owns the target
+            // and then sent, so every observation of it is on a receiver, where a
+            // pointer from another process's heap means nothing.
+            //
+            // What survives the wire is `value` and `source_id`. The victim is the
+            // entity the event was dispatched INTO, i.e. `dispatcher` above.
+            const auto value  = *reinterpret_cast<const float*>(ev + 0x40);
+            const auto srcid  = *reinterpret_cast<const std::uint64_t*>(ev + 0x48);
+            json_append(buf, n, kRoom,
+                        ",\"value\":%g,\"source_id\":\"0x%llx\"",
+                        static_cast<double>(value),
+                        static_cast<unsigned long long>(srcid));
+            decoded = true;
+        } else if (std::strcmp(name, "POWER_UP_COLLECT_REQUEST") == 0
+                   && committed_readable(reinterpret_cast<std::uintptr_t>(ev + 0x38), 0x28)) {
+            // oCDtNamedEventPowerUpCollectRequest — fired when the player picks a
+            // level-up / reward card; the payload carries the picked card's
+            // identity. The exact offset is not yet *confirmed* (the class
+            // registrar region is unanalysed in the corpus — the RTTI string xref
+            // at 0x1402fdb6c is outside any defined function), but the GIVE sibling
+            // (FUN_14030f430) fixes the shared oCGameNamedEvent template: the
+            // object is 0x60 bytes and the def GUID payload sits at +0x50/+0x58.
+            // The pick event's reward-def GUID is the prime suspect at the same
+            // +0x50/+0x58. We still publish a small window to pin it in one in-game
+            // session: +0x38 (covers a no-Network direct subclass whose payload
+            // starts earlier) through +0x58. The read is bounded to +0x58 = the
+            // GIVE template's last field; if the pick event omits the Network layer
+            // it may be smaller, so the high window fields can read a few bytes of
+            // adjacent heap — benign garbage filtered by the pin step. The whole
+            // +0x38..+0x58 window is page-guarded above, so an event object that
+            // really does end early degrades to the envelope instead of faulting.
+            // NOTE: this event fires for
+            // EVERY power-up collect (level-up cards AND world orbs/globes), so the
+            // identity GUID is what distinguishes a specific talent card. Once
+            // pinned this collapses to one decoded "card" field. See
+            // docs/_re/kinds/talents-pick.md.
+            const auto* q = reinterpret_cast<const std::uint64_t*>(ev);
+            // `card` = the tentative decoded identity (the +0x50/+0x58 GUID, the
+            // GIVE-template payload slot). R.talent.on_pick("<lo>:<hi>", cb) matches
+            // on it, so string-id pickable talents work today; the p38..p58 window
+            // stays so the offset can be confirmed/corrected in one session.
+            json_append(buf, n, kRoom,
+                        ",\"card\":\"0x%llx:0x%llx\","
+                        "\"p38\":\"0x%llx\",\"p40\":\"0x%llx\","
+                        "\"p48\":\"0x%llx\",\"p50\":\"0x%llx\",\"p58\":\"0x%llx\"",
+                               static_cast<unsigned long long>(q[10]),
+                               static_cast<unsigned long long>(q[11]),
+                               static_cast<unsigned long long>(q[7]),
+                               static_cast<unsigned long long>(q[8]),
+                               static_cast<unsigned long long>(q[9]),
+                               static_cast<unsigned long long>(q[10]),
+                               static_cast<unsigned long long>(q[11]));
+            decoded = true;
+        }
+        // Typed payload, keyed by the event object's OWN vftable. This is what
+        // turns the ~24 payload-carrying event classes from an opaque envelope
+        // into readable fields: read *(ev+0), rebase to an RVA, and look up the
+        // layout mined from the binary (event_fields.gen.h). Matching on vftable
+        // rather than event name makes the match exact — several names share one
+        // class, and one class can be dispatched under names we never listed.
         //
-        // TWO FIELDS REMOVED 2026-08-15. This used to also publish
-        // "target_entity" (ev+0x60) and "instigator_entity" (ev+0xf0), and
-        // both names were wrong. The emitter (FUN_1407276a0) copies the source
-        // oCEntityHitData field-for-field into ev+0x50, and that struct's
-        // +0x10 is a refcounted per-hit HANDLE while its +0xa0 is the
-        // hit-VALUE object (damage f32 at +0x8) — the target is not stored in
-        // the hit data at all, it is the applier's first argument. Confirmed
-        // twice over: the attack resolver (Entity_ResolveAttackHits) builds
-        // the same two slots from a handle allocator and a value object, and
-        // releases each through its matching destructor.
-        //
-        // Publishing them was worse than publishing nothing: a mod comparing
-        // "target_entity" against its hero pointer compared a hero against a
-        // hit handle, so the test silently never fired and there was no way to
-        // tell from the payload. And they are SENDER-side pointers regardless
-        // — the event is only ever built on the machine that owns the target
-        // and then sent, so every observation of it is on a receiver, where a
-        // pointer from another process's heap means nothing.
-        //
-        // What survives the wire is `value` and `source_id`. The victim is the
-        // entity the event was dispatched INTO, i.e. `dispatcher` above.
-        const auto value  = *reinterpret_cast<const float*>(ev + 0x40);
-        const auto srcid  = *reinterpret_cast<const std::uint64_t*>(ev + 0x48);
-        json_append(buf, n, kRoom,
-                    ",\"value\":%g,\"source_id\":\"0x%llx\"",
-                    static_cast<double>(value),
-                    static_cast<unsigned long long>(srcid));
-        decoded = true;
-    } else if (std::strcmp(name, "POWER_UP_COLLECT_REQUEST") == 0
-               && committed_readable(reinterpret_cast<std::uintptr_t>(ev + 0x38), 0x28)) {
-        // oCDtNamedEventPowerUpCollectRequest — fired when the player picks a
-        // level-up / reward card; the payload carries the picked card's
-        // identity. The exact offset is not yet *confirmed* (the class
-        // registrar region is unanalysed in the corpus — the RTTI string xref
-        // at 0x1402fdb6c is outside any defined function), but the GIVE sibling
-        // (FUN_14030f430) fixes the shared oCGameNamedEvent template: the
-        // object is 0x60 bytes and the def GUID payload sits at +0x50/+0x58.
-        // The pick event's reward-def GUID is the prime suspect at the same
-        // +0x50/+0x58. We still publish a small window to pin it in one in-game
-        // session: +0x38 (covers a no-Network direct subclass whose payload
-        // starts earlier) through +0x58. The read is bounded to +0x58 = the
-        // GIVE template's last field; if the pick event omits the Network layer
-        // it may be smaller, so the high window fields can read a few bytes of
-        // adjacent heap — benign garbage filtered by the pin step. The whole
-        // +0x38..+0x58 window is page-guarded above, so an event object that
-        // really does end early degrades to the envelope instead of faulting.
-        // NOTE: this event fires for
-        // EVERY power-up collect (level-up cards AND world orbs/globes), so the
-        // identity GUID is what distinguishes a specific talent card. Once
-        // pinned this collapses to one decoded "card" field. See
-        // docs/_re/kinds/talents-pick.md.
-        const auto* q = reinterpret_cast<const std::uint64_t*>(ev);
-        // `card` = the tentative decoded identity (the +0x50/+0x58 GUID, the
-        // GIVE-template payload slot). R.talent.on_pick("<lo>:<hi>", cb) matches
-        // on it, so string-id pickable talents work today; the p38..p58 window
-        // stays so the offset can be confirmed/corrected in one session.
-        json_append(buf, n, kRoom,
-                    ",\"card\":\"0x%llx:0x%llx\","
-                    "\"p38\":\"0x%llx\",\"p40\":\"0x%llx\","
-                    "\"p48\":\"0x%llx\",\"p50\":\"0x%llx\",\"p58\":\"0x%llx\"",
-                           static_cast<unsigned long long>(q[10]),
-                           static_cast<unsigned long long>(q[11]),
-                           static_cast<unsigned long long>(q[7]),
-                           static_cast<unsigned long long>(q[8]),
-                           static_cast<unsigned long long>(q[9]),
-                           static_cast<unsigned long long>(q[10]),
-                           static_cast<unsigned long long>(q[11]));
-        decoded = true;
-    }
-    // Typed payload, keyed by the event object's OWN vftable. This is what
-    // turns the ~24 payload-carrying event classes from an opaque envelope
-    // into readable fields: read *(ev+0), rebase to an RVA, and look up the
-    // layout mined from the binary (event_fields.gen.h). Matching on vftable
-    // rather than event name makes the match exact — several names share one
-    // class, and one class can be dispatched under names we never listed.
-    //
-    // Skipped when a decoder above already ran (its hand-RE'd names are the
-    // better ones, and duplicate JSON keys would be ambiguous), and when the
-    // build fingerprint says the RVAs are for a different game build.
-    if (!decoded && g_schemas_trusted && n < static_cast<int>(sizeof(buf) - 2)) {
-        std::uintptr_t vft = 0;
-        const auto base = image_base();
-        if (base && mem_load(ev, &vft) && vft > base) {
-            const auto* schema = event_schema_for(
-                static_cast<std::uint32_t>(vft - base));
-            if (schema) {
-                json_append(buf, n, kRoom, ",\"class\":\"%s\"", schema->cls);
-                for (std::uint16_t i = 0; i < schema->count; ++i) {
-                    const auto& f = schema->fields[i];
-                    const auto at = reinterpret_cast<std::uintptr_t>(ev) + f.off;
-                    char tmp[64];
-                    int add = 0;
-                    switch (f.type) {
-                        case 'b': { std::uint8_t v;  if (!mem_load(at, &v)) continue;
-                            add = std::snprintf(tmp, sizeof(tmp), ",\"%s\":%u", f.name, v); break; }
-                        case 'w': { std::uint16_t v; if (!mem_load(at, &v)) continue;
-                            add = std::snprintf(tmp, sizeof(tmp), ",\"%s\":%u", f.name, v); break; }
-                        case 'u': { std::uint32_t v; if (!mem_load(at, &v)) continue;
-                            add = std::snprintf(tmp, sizeof(tmp), ",\"%s\":%u", f.name, v); break; }
-                        case 'q': { std::uint64_t v; if (!mem_load(at, &v)) continue;
-                            // Pointers/ids as hex strings: a Lua number is a
-                            // double and silently loses the low bits of a
-                            // 64-bit handle.
-                            add = std::snprintf(tmp, sizeof(tmp), ",\"%s\":\"0x%llx\"",
-                                                f.name, (unsigned long long)v); break; }
-                        case 'f': { float v; if (!mem_load(at, &v)) continue;
-                            if (v != v) continue;          // NaN is not valid JSON
-                            add = std::snprintf(tmp, sizeof(tmp), ",\"%s\":%g", f.name,
-                                                static_cast<double>(v)); break; }
-                        case 'd': { double v; if (!mem_load(at, &v)) continue;
-                            if (v != v) continue;
-                            add = std::snprintf(tmp, sizeof(tmp), ",\"%s\":%g", f.name, v); break; }
-                        default: continue;
+        // Skipped when a decoder above already ran (its hand-RE'd names are the
+        // better ones, and duplicate JSON keys would be ambiguous), and when the
+        // build fingerprint says the RVAs are for a different game build.
+        if (!decoded && g_schemas_trusted && n < static_cast<int>(sizeof(buf) - 2)) {
+            std::uintptr_t vft = 0;
+            const auto base = image_base();
+            if (base && mem_load(ev, &vft) && vft > base) {
+                const auto* schema = event_schema_for(
+                    static_cast<std::uint32_t>(vft - base));
+                if (schema) {
+                    json_append(buf, n, kRoom, ",\"class\":\"%s\"", schema->cls);
+                    for (std::uint16_t i = 0; i < schema->count; ++i) {
+                        const auto& f = schema->fields[i];
+                        const auto at = reinterpret_cast<std::uintptr_t>(ev) + f.off;
+                        char tmp[64];
+                        int add = 0;
+                        switch (f.type) {
+                            case 'b': { std::uint8_t v;  if (!mem_load(at, &v)) continue;
+                                add = std::snprintf(tmp, sizeof(tmp), ",\"%s\":%u", f.name, v); break; }
+                            case 'w': { std::uint16_t v; if (!mem_load(at, &v)) continue;
+                                add = std::snprintf(tmp, sizeof(tmp), ",\"%s\":%u", f.name, v); break; }
+                            case 'u': { std::uint32_t v; if (!mem_load(at, &v)) continue;
+                                add = std::snprintf(tmp, sizeof(tmp), ",\"%s\":%u", f.name, v); break; }
+                            case 'q': { std::uint64_t v; if (!mem_load(at, &v)) continue;
+                                // Pointers/ids as hex strings: a Lua number is a
+                                // double and silently loses the low bits of a
+                                // 64-bit handle.
+                                add = std::snprintf(tmp, sizeof(tmp), ",\"%s\":\"0x%llx\"",
+                                                    f.name, (unsigned long long)v); break; }
+                            case 'f': { float v; if (!mem_load(at, &v)) continue;
+                                if (v != v) continue;          // NaN is not valid JSON
+                                add = std::snprintf(tmp, sizeof(tmp), ",\"%s\":%g", f.name,
+                                                    static_cast<double>(v)); break; }
+                            case 'd': { double v; if (!mem_load(at, &v)) continue;
+                                if (v != v) continue;
+                                add = std::snprintf(tmp, sizeof(tmp), ",\"%s\":%g", f.name, v); break; }
+                            default: continue;
+                        }
+                        // Three ways this used to be wrong. `kRoom` keeps the two
+                        // bytes the closing "}\0" needs. The subtraction is done in
+                        // int, not size_t — `sizeof(buf) - n` is unsigned, so an n
+                        // past the end would wrap to a huge value and turn the
+                        // bound into a no-op. And `add` is snprintf's WOULD-HAVE
+                        // written length, so a long field name truncates into `tmp`
+                        // while `add` reports the untruncated size; without the
+                        // sizeof(tmp) check the memcpy below reads past `tmp`.
+                        if (add <= 0 || add >= static_cast<int>(sizeof(tmp))
+                            || add > kRoom - n) break;
+                        std::memcpy(buf + n, tmp, static_cast<std::size_t>(add));
+                        n += add;
                     }
-                    // Three ways this used to be wrong. `kRoom` keeps the two
-                    // bytes the closing "}\0" needs. The subtraction is done in
-                    // int, not size_t — `sizeof(buf) - n` is unsigned, so an n
-                    // past the end would wrap to a huge value and turn the
-                    // bound into a no-op. And `add` is snprintf's WOULD-HAVE
-                    // written length, so a long field name truncates into `tmp`
-                    // while `add` reports the untruncated size; without the
-                    // sizeof(tmp) check the memcpy below reads past `tmp`.
-                    if (add <= 0 || add >= static_cast<int>(sizeof(tmp))
-                        || add > kRoom - n) break;
-                    std::memcpy(buf + n, tmp, static_cast<std::size_t>(add));
-                    n += add;
                 }
             }
         }
-    }
 
-    // Generic probe (RSMM_EVENT_PROBE=1): for every event WITHOUT a decoded
-    // layout above, publish a bounded window of the event object as hex
-    // qwords. The payload of a new event is otherwise invisible from Lua, so
-    // pinning one used to mean a C++ change + rebuild + relaunch per guess;
-    // with this a mod reads ev.w38..ev.w70 and finds the field in one session.
-    // Off by default (it triples payload size); every read is page-guarded, so
-    // an event object that really is smaller degrades to fewer fields.
-    if (g_probe_payloads && n < kRoom) {
-        for (std::uintptr_t off = 0x38; off <= 0x70; off += 8) {
-            std::uint64_t w = 0;
-            if (!mem_load(reinterpret_cast<std::uintptr_t>(ev) + off, &w)) break;
-            char tmp[48];
-            const int add = std::snprintf(tmp, sizeof(tmp), ",\"w%llx\":\"0x%llx\"",
-                                          static_cast<unsigned long long>(off),
-                                          static_cast<unsigned long long>(w));
-            // Same bound as the typed loop above. It used to allow n to reach
-            // sizeof(buf)-1, leaving no room for the closing brace — and the
-            // check below then DROPPED the whole event. Turning the probe on
-            // therefore made big events vanish from Lua entirely, which is the
-            // exact opposite of what a diagnostic should do. Writing into a
-            // scratch buffer first also stops a truncated snprintf from
-            // leaving a half-written field in `buf`.
-            if (add <= 0 || add > kRoom - n) break;
-            std::memcpy(buf + n, tmp, static_cast<std::size_t>(add));
-            n += add;
+        // Generic probe (RSMM_EVENT_PROBE=1): for every event WITHOUT a decoded
+        // layout above, publish a bounded window of the event object as hex
+        // qwords. The payload of a new event is otherwise invisible from Lua, so
+        // pinning one used to mean a C++ change + rebuild + relaunch per guess;
+        // with this a mod reads ev.w38..ev.w70 and finds the field in one session.
+        // Off by default (it triples payload size); every read is page-guarded, so
+        // an event object that really is smaller degrades to fewer fields.
+        if (g_probe_payloads && n < kRoom) {
+            for (std::uintptr_t off = 0x38; off <= 0x70; off += 8) {
+                std::uint64_t w = 0;
+                if (!mem_load(reinterpret_cast<std::uintptr_t>(ev) + off, &w)) break;
+                char tmp[48];
+                const int add = std::snprintf(tmp, sizeof(tmp), ",\"w%llx\":\"0x%llx\"",
+                                              static_cast<unsigned long long>(off),
+                                              static_cast<unsigned long long>(w));
+                // Same bound as the typed loop above. It used to allow n to reach
+                // sizeof(buf)-1, leaving no room for the closing brace — and the
+                // check below then DROPPED the whole event. Turning the probe on
+                // therefore made big events vanish from Lua entirely, which is the
+                // exact opposite of what a diagnostic should do. Writing into a
+                // scratch buffer first also stops a truncated snprintf from
+                // leaving a half-written field in `buf`.
+                if (add <= 0 || add > kRoom - n) break;
+                std::memcpy(buf + n, tmp, static_cast<std::size_t>(add));
+                n += add;
+            }
         }
+
     }
 
     // Never drop an event for being long. Every append above is atomic and
@@ -514,8 +541,7 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
     if (n > kRoom) n = kRoom;
     buf[n] = '}'; buf[n + 1] = '\0';
 
-    const std::string lua_event = std::string("gameplay:") + name;
-    script_emit_event_json(lua_event, buf);
+    script_emit_event_json(lua_ev, buf);
 }
 
 bool install_gameplay_bus() {

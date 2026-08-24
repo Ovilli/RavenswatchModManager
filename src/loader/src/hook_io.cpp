@@ -21,6 +21,7 @@
 
 #include <atomic>
 #include <string>
+#include <string_view>
 
 namespace rsmm {
 
@@ -76,16 +77,22 @@ static HANDLE WINAPI hook_CreateFileW(LPCWSTR lpFileName, DWORD dwDesiredAccess,
 
     if (lpFileName) {
         auto& L = Loader::get();
-        std::wstring w(lpFileName);
-        auto slash = w.find_last_of(L"\\/");
-        const wchar_t* leaf_w = w.c_str() + (slash == std::wstring::npos ? 0 : slash + 1);
+        // No allocation on this path. It runs for EVERY file the game opens —
+        // thousands during a level load — and used to build a std::wstring, a
+        // std::string leaf, and a second std::wstring for the lookup call.
+        const wchar_t* leaf_w = lpFileName;
+        for (const wchar_t* p = lpFileName; *p; ++p) {
+            if (*p == L'\\' || *p == L'/') leaf_w = p + 1;
+        }
         // Cooked names are ASCII; copy byte-wise instead of truncating each
         // wchar_t (which mangles any non-ASCII path into a lookalike key).
-        std::string leaf;
-        for (const wchar_t* p = leaf_w; *p; ++p) {
-            leaf.push_back(*p <= 0x7f ? static_cast<char>(*p) : '?');
+        char leaf[260];
+        std::size_t ln = 0;
+        for (const wchar_t* p = leaf_w; *p && ln < sizeof(leaf) - 1; ++p) {
+            leaf[ln++] = (*p <= 0x7f) ? static_cast<char>(*p) : '?';
         }
-        L.note_asset_read(leaf);
+        leaf[ln] = '\0';
+        L.note_asset_read(std::string_view(leaf, ln));
 
         if (const auto* override_path = L.lookup_override(lpFileName)) {
             std::wstring repl = override_path->wstring();

@@ -41,6 +41,28 @@ void script_shutdown_all();
 // read — that is what makes it safe to arm the buses by default.
 bool script_any_subscribers();
 
+// True when some mod has a handler for THIS event name (or a wildcard "*"
+// handler). `script_any_subscribers` is far too coarse for the buses: one mod
+// with one handler makes it true forever, after which every gameplay dispatch
+// paid for a name read, a 768-byte snprintf, a JSON parse and a per-state
+// table walk — for an event nobody had subscribed to. The damage meter listens
+// to 3 of the ~150 catalogued names, so ~98% of that work was waste, on the
+// main thread, in combat.
+//
+// Over-approximates on purpose: names are remembered process-wide and never
+// removed, so a mod that unsubscribes (or is hot-reloaded away) costs one
+// wasted emit that finds no handlers — exactly what happened before. It never
+// under-approximates, which would silently drop a mod's event.
+bool script_has_handler(const char* name);
+
+// True when some state holds an R.on("*") handler. The SDK itself registers
+// one in every mod state (it is how main-thread work is pumped off the
+// gameplay bus), so this is effectively always true in practice — which is
+// why the buses tier their work instead of skipping it: a wildcard subscriber
+// gets the envelope, and only an event someone subscribed to BY NAME pays for
+// the typed payload decode.
+bool script_has_wildcard();
+
 // Process-global key/value slots (0..15) shared across every mod's lua_State
 // and the native loader. Backs rsmm._internal.shared_get/shared_set; also used
 // by native infrastructure that must publish a handle to all Lua states (e.g.

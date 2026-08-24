@@ -273,7 +273,7 @@ int64_t now_ms() {
 }
 }
 
-void Loader::note_asset_read(const std::string& leaf) {
+void Loader::note_asset_read(std::string_view leaf) {
     // Main-menu assets are emitted from cooked names whose encoded path
     // contains the prefix HgdzHqzw (decoded "MainMenu") or Jd\HgdzHqzw
     // (decoded "Ui\MainMenu"). Treat any opened file containing that token
@@ -486,12 +486,15 @@ void Loader::apply_overrides() {
     log("active overrides=" + std::to_string(override_by_encoded_.size()));
 }
 
-const fs::path* Loader::lookup_override(const std::wstring& path_w) const {
-    if (override_by_encoded_.empty()) return nullptr;
+const fs::path* Loader::lookup_override(const wchar_t* path_w) const {
+    if (!path_w || override_by_encoded_.empty()) return nullptr;
     // Extract basename (the game opens by absolute path; we key on the encoded
-    // leaf filename which matches asset_map keys).
-    auto slash = path_w.find_last_of(L"\\/");
-    const wchar_t* leaf_w = path_w.c_str() + (slash == std::wstring::npos ? 0 : slash + 1);
+    // leaf filename which matches asset_map keys). Scanned in place: this runs
+    // on every file the game opens.
+    const wchar_t* leaf_w = path_w;
+    for (const wchar_t* p = path_w; *p; ++p) {
+        if (*p == L'\\' || *p == L'/') leaf_w = p + 1;
+    }
     // Encoded cooked names are pure ASCII (the cipher maps letters to letters),
     // so anything outside ASCII cannot be one of our keys. Bail instead of
     // truncating each wchar_t to a char, which folds distinct code points onto

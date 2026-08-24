@@ -114,6 +114,41 @@ struct Slot {
 // enough that a genuinely broken callback stops early.
 constexpr int kCallbackErrorLimit = 20;
 
+// What a detour actually needs from a slot, with no heap in it.
+//
+// Both dispatch paths used to copy the whole `Slot`, whose two std::strings
+// meant TWO allocations (and two frees) per hooked call — on the game thread,
+// inside the lock, on functions that fire per attack. `mod_id` is only ever
+// read on the error path, where it is fetched under the lock instead, and the
+// signature is bounded at 9 characters by sig_validate so it fits inline.
+struct SlotView {
+    void*      trampoline = nullptr;
+    lua_State* L = nullptr;
+    int        cb_ref = LUA_NOREF;
+    unsigned   shape = 0;
+    bool       installed = false;
+    bool       cb_disabled = false;
+    int        err_streak = 0;
+    char       sig[10] = {};
+};
+
+// Caller must hold g_slots_mu.
+SlotView view_of_locked(const Slot& s) {
+    SlotView v;
+    v.trampoline = s.trampoline;
+    v.L = s.L;
+    v.cb_ref = s.cb_ref;
+    v.shape = s.shape;
+    v.installed = s.installed;
+    v.cb_disabled = s.cb_disabled;
+    v.err_streak = s.err_streak;
+    const std::size_t n = s.sig.size() < sizeof(v.sig) - 1 ? s.sig.size()
+                                                           : sizeof(v.sig) - 1;
+    std::memcpy(v.sig, s.sig.data(), n);
+    v.sig[n] = '\0';
+    return v;
+}
+
 std::array<Slot, MAX_SLOTS> g_slots{};
 std::mutex g_slots_mu;
 
@@ -268,11 +303,16 @@ int lua_hook_next(lua_State* L) {
     // `s->sig` / `s->trampoline` after unlocking, so a concurrent uninstall
     // (which assigns `s = Slot{}` and frees the trampoline) could pull the
     // signature string out from under this call.
-    Slot snap;
+    // ⚠ Range-check BEFORE taking the lock. Lua is compiled as C in this
+    // build (CMakeLists builds lua54 from .c), so luaL_error longjmps — it
+    // does not throw — and a raise from inside the lock_guard scope skips the
+    // destructor, leaving g_slots_mu locked for the life of the process. Every
+    // later dispatch, install and uninstall would then block forever.
+    if (slot < 0 || slot >= MAX_SLOTS) return luaL_error(L, "rsmm.hook.next: bad slot");
+    SlotView snap;
     {
         std::lock_guard<std::mutex> g(g_slots_mu);
-        if (slot < 0 || slot >= MAX_SLOTS) return luaL_error(L, "rsmm.hook.next: bad slot");
-        snap = g_slots[slot];
+        snap = view_of_locked(g_slots[slot]);
     }
     if (!snap.installed || !snap.trampoline) {
         return luaL_error(L, "rsmm.hook.next: slot not installed");
@@ -301,16 +341,14 @@ std::uint64_t dispatch(int slot, std::uint64_t* a) {
     // is script -> slots everywhere, so this cannot deadlock against install /
     // uninstall / next, all of which are entered from Lua.
     std::lock_guard<std::recursive_mutex> g(script_lua_mutex());
-    Slot snap;
+    SlotView snap;
     {
+        // One acquisition, not two: snapshot and bump the counter together.
         std::lock_guard<std::mutex> gs(g_slots_mu);
-        snap = g_slots[slot];
+        snap = view_of_locked(g_slots[slot]);
+        if (snap.installed) g_slots[slot].fires++;
     }
     if (!snap.installed) return 0;
-    {
-        std::lock_guard<std::mutex> gs(g_slots_mu);
-        g_slots[slot].fires++;
-    }
     // Latched off after too many consecutive raises: run the ORIGINAL and
     // nothing else, so the game behaves exactly as if this mod had never
     // hooked the function.
@@ -354,14 +392,19 @@ std::uint64_t dispatch(int slot, std::uint64_t* a) {
         // Log the first few and then the latch, never every fire: a callback
         // that raises on a per-frame hook would otherwise write thousands of
         // identical lines and bury everything else in the log.
+        std::string who;
+        {
+            std::lock_guard<std::mutex> gs(g_slots_mu);
+            who = g_slots[slot].mod_id;      // error path only: allocation is fine here
+        }
         if (streak <= 3 || streak == kCallbackErrorLimit) {
-            Loader::get().log(std::string("[hook] cb error in ") + snap.mod_id
+            Loader::get().log(std::string("[hook] cb error in ") + who
                               + " (" + std::to_string(streak) + "): "
                               + lua_tostring(L, -1));
         }
         if (streak == kCallbackErrorLimit) {
             Loader::get().log("[hook] DISABLING callback for slot "
-                              + std::to_string(slot) + " (" + snap.mod_id
+                              + std::to_string(slot) + " (" + who
                               + "): raised " + std::to_string(streak)
                               + " times in a row. The original function still "
                               "runs; uninstall/reinstall the hook to retry.");

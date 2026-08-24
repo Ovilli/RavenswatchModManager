@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <string_view>
 #include <vector>
 #include <unordered_map>
 #include <filesystem>
@@ -51,13 +52,16 @@ public:
     void load_state();
 
     // Asset redirection lookup. Returns nullptr if no override.
-    const std::filesystem::path* lookup_override(const std::wstring& original_path_w) const;
+    // Takes the raw pointer the IO hook already has. Binding a std::wstring
+    // here meant constructing (and freeing) one per CreateFileW the game
+    // makes, purely to be searched for a backslash.
+    const std::filesystem::path* lookup_override(const wchar_t* original_path_w) const;
 
     // Menu-state tracking. The file-IO hook calls note_asset_read() with
     // the encoded leaf filename on every CreateFileW; we infer "currently
     // on main menu" from the recency of MainMenu-prefixed reads. The
     // overlay polls is_in_main_menu() each frame for auto-show.
-    void note_asset_read(const std::string& encoded_leaf);
+    void note_asset_read(std::string_view encoded_leaf);
     bool is_in_main_menu() const;
     bool game_ever_drew() const { return ever_drew_.load(); }
     void note_present() { ever_drew_.store(true); }

@@ -40,6 +40,8 @@ extern "C" {
 #include <iterator>
 #include <limits>
 #include <mutex>
+#include <set>
+#include <string_view>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
@@ -936,12 +938,25 @@ int lua_decoded_path(lua_State* L) {
 // nobody reads is pure overhead — the detours check this first and bail.
 std::atomic<int> g_handler_count{0};
 
+// Every event name any state has ever subscribed to, plus whether anyone holds
+// a wildcard. Written on registration (rare), read from the engine detours
+// (hot) — see script_has_handler for why this over-approximates by design.
+std::mutex g_names_mu;
+std::set<std::string, std::less<>> g_event_names;
+std::atomic<bool> g_wildcard_handler{false};
+
 // Event callbacks live in the registry under key "__rsmm_events"; each
 // event name maps to a list of refs.
 int lua_on_event(lua_State* L) {
     const char* name = luaL_checkstring(L, 1);
     luaL_checktype(L, 2, LUA_TFUNCTION);
     g_handler_count.fetch_add(1, std::memory_order_relaxed);
+    if (name[0] == '*' && name[1] == '\0') {
+        g_wildcard_handler.store(true, std::memory_order_relaxed);
+    } else {
+        std::lock_guard<std::mutex> g(g_names_mu);
+        g_event_names.emplace(name);
+    }
     if (auto* m = current_from_state(L)) m->handlers++;
     lua_getfield(L, LUA_REGISTRYINDEX, "__rsmm_events");
     if (lua_isnil(L, -1)) {
@@ -1715,6 +1730,22 @@ bool script_any_subscribers() {
     return g_handler_count.load(std::memory_order_relaxed) > 0;
 }
 
+bool script_has_wildcard() {
+    return g_wildcard_handler.load(std::memory_order_relaxed);
+}
+
+bool script_has_handler(const char* name) {
+    if (!name || !*name) return false;
+    if (g_handler_count.load(std::memory_order_relaxed) <= 0) return false;
+    // A wildcard subscriber wants everything, so no name test can help.
+    if (g_wildcard_handler.load(std::memory_order_relaxed)) return true;
+    std::lock_guard<std::mutex> g(g_names_mu);
+    // std::less<> is transparent, so this looks up a string_view without
+    // constructing a std::string — the whole point is to avoid an allocation
+    // on a path that runs hundreds of times a second.
+    return g_event_names.find(std::string_view(name)) != g_event_names.end();
+}
+
 // External-linkage accessors for the process-global shared slots (declared in
 // script_lua.h). g_shared lives in the anonymous namespace above; these reach
 // it within the same translation unit, giving native code (e.g. hero-capture)
@@ -1807,12 +1838,17 @@ void emit_locked(const std::string& name, PushPayload push_payload) {
     // another event, a hot-reload) runs on this same thread while we hold the
     // lock — and anything that inserts into or erases from g_scripts would
     // invalidate the iterator mid-loop.
-    std::vector<std::pair<std::string, lua_State*>> targets;
+    // Pointers, not copies. The id is only read (for an error line), and the
+    // map entries cannot move while we hold the lock — copying every mod id
+    // per emit put two allocations on a path the tick and the event buses run
+    // hundreds of times a second.
+    std::vector<std::pair<const std::string*, lua_State*>> targets;
     targets.reserve(g_scripts.size());
     for (auto& [id, s] : g_scripts) {
-        if (s.L) targets.emplace_back(id, s.L);
+        if (s.L) targets.emplace_back(&id, s.L);
     }
-    for (auto& [id, L] : targets) {
+    for (auto& [idp, L] : targets) {
+        const std::string& id = *idp;
         lua_getfield(L, LUA_REGISTRYINDEX, "__rsmm_events");
         if (!lua_istable(L, -1)) { lua_pop(L, 1); continue; }
         for (const char* key : {name.c_str(), "*"}) {
