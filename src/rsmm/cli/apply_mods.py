@@ -1573,9 +1573,27 @@ def _sync_mod_manifests(mods: list[Mod], game_dir: Path, dry_run: bool) -> int:
     return synced
 
 
+#: Files under `<game>/mods/` that belong to the LOADER, not to any mod, and
+#: must survive a runtime clear. The loader writes its log there, and the next
+#: launch is what archives it into `<game>/rsmm/logs/` and copies it to
+#: `_log.prev.txt` — so deleting `_log.txt` here does not just remove a file,
+#: it destroys the previous run's log before anything can preserve it. That is
+#: why "the previous run log never gets written": `restore --all` runs on every
+#: iterate cycle, and the archive it was supposed to produce never had an input.
+#: `_health.json` is the same shape of thing — the boot canary and the
+#: three-strike crash history, which exist precisely to survive a bad run.
+_LOADER_OWNED_RUNTIME_FILES = frozenset({
+    "_log.txt", "_log.prev.txt", "_health.json",
+})
+
+
 def clear_runtime_mods(game_dir: Path, dry_run: bool = False) -> int:
     """Remove the game-side `mods/` runtime sidecars so a vanilla launch
     starts without any mod manifests or Lua entrypoints loaded.
+
+    Keeps the loader's own files (see `_LOADER_OWNED_RUNTIME_FILES`): they are
+    diagnostics, not mod runtime, and a vanilla launch is exactly when you want
+    the last modded run's log to still exist.
 
     Returns 1 on success (or nothing to clear), 0 on filesystem error.
     """
@@ -1586,7 +1604,17 @@ def clear_runtime_mods(game_dir: Path, dry_run: bool = False) -> int:
     if dry_run:
         return 1
     try:
-        shutil.rmtree(game_mods)
+        kept = 0
+        for child in game_mods.iterdir():
+            if child.name in _LOADER_OWNED_RUNTIME_FILES and child.is_file():
+                kept += 1
+                continue
+            if child.is_dir() and not child.is_symlink():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+        if kept:
+            print(f"  kept {kept} loader file(s) (log + health history)")
     except OSError as e:
         print(f"  [warn] failed to clear {game_mods}: {e}", file=sys.stderr)
         return 0
