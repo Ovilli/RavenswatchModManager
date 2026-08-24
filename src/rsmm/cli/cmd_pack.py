@@ -18,10 +18,17 @@ _ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 # Anchored to the line so a commented-out copy or an `enabled` key nested in
 # another table is not what gets rewritten (the [mod] section is isolated
 # first, see _stamp_enabled).
-_MOD_TABLE_RE = re.compile(r"^\[mod\][^\S\n]*$\n?", re.MULTILINE)
+# CRLF-safe by construction: the manifest is read with newline="" so a Windows
+# author's line endings survive the round trip, which means every pattern here
+# has to tolerate a \r sitting where it expects end-of-line. `\s` would swallow
+# it (and the blank lines after it), so runs of horizontal space are spelled
+# [^\S\r\n] throughout.
+_MOD_TABLE_RE = re.compile(r"^\[mod\][^\S\r\n]*\r?\n?", re.MULTILINE)
 _TABLE_RE = re.compile(r"^\[", re.MULTILINE)
-_ENABLED_RE = re.compile(r"^(?P<lhs>enabled\s*=\s*)(?:true|false)(?P<rest>\s*(?:#.*)?)$",
-                         re.MULTILINE)
+_ENABLED_RE = re.compile(
+    r"^(?P<lhs>enabled[^\S\r\n]*=[^\S\r\n]*)(?:true|false)"
+    r"(?P<rest>[^\S\r\n]*(?:#[^\r\n]*)?\r?)$",
+    re.MULTILINE)
 
 
 def _stamp_enabled(text: str) -> str | None:
@@ -205,7 +212,12 @@ def main(argv: list[str] | None = None) -> int:
         for f, name in members:
             if f.name == "manifest.toml" and f.parent == src:
                 try:
-                    text = f.read_text(encoding="utf-8")
+                    # newline="" disables translation in BOTH directions: the
+                    # text keeps whatever the author wrote, so a manifest this
+                    # function declines to stamp is byte-identical to the file
+                    # on disk, and a stamped one differs only in the flag.
+                    with f.open(encoding="utf-8", newline="") as fh:
+                        text = fh.read()
                 except (OSError, UnicodeDecodeError):
                     text = None
                 fixed = _stamp_enabled(text) if text is not None else None

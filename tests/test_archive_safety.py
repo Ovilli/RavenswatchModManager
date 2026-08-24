@@ -326,7 +326,10 @@ def test_packed_archive_installs_cleanly(tmp_path, monkeypatch):
 def _pack_manifest(tmp_path, monkeypatch, mod_id: str, manifest: str) -> str:
     d = tmp_path / "mods" / mod_id
     (d / "assets").mkdir(parents=True)
-    (d / "manifest.toml").write_text(manifest, encoding="utf-8")
+    # newline="" or Windows writes CRLF for every \n here, and the fixture no
+    # longer says what the test thinks it says (CI, 2026-08-24).
+    with (d / "manifest.toml").open("w", encoding="utf-8", newline="") as fh:
+        fh.write(manifest)
     (d / "assets" / "a.bin").write_bytes(b"my own bytes")
     assert _run_pack(tmp_path, monkeypatch, mod_id) == 0
     with zipfile.ZipFile(tmp_path / "dist" / f"{mod_id}.zip") as zf:
@@ -358,3 +361,15 @@ def test_pack_does_not_rewrite_an_already_enabled_manifest(tmp_path, monkeypatch
     src = '[mod]\nid = "OnAlready"\nenabled = true\n'
     assert _pack_manifest(tmp_path, monkeypatch, "OnAlready", src) == src
     assert "packed as enabled" not in capsys.readouterr().out
+
+
+def test_pack_preserves_windows_line_endings(tmp_path, monkeypatch):
+    """A CRLF manifest comes back CRLF, stamped or not.
+
+    The flag is a one-word edit; rewriting every line ending of a file the
+    author maintains is not something a packer should do behind their back.
+    """
+    crlf = '[mod]\r\nid = "Crlf"\r\nenabled     = false\r\n'
+    packed = _pack_manifest(tmp_path, monkeypatch, "Crlf", crlf)
+    assert packed == crlf.replace("enabled     = false", "enabled     = true")
+    assert packed.count("\r\n") == crlf.count("\r\n")
