@@ -103,6 +103,13 @@ def is_game_running() -> bool:
 #: How long to let the game shut down politely before insisting.
 _STOP_GRACE_SEC = 8
 
+#: Windows has no SIGKILL (it is stopped through taskkill instead), so the
+#: constants are resolved defensively rather than referenced by name. The posix
+#: branch below is unreachable there, but a module that cannot even be imported
+#: on Windows would take the whole CLI with it.
+_SIGTERM = getattr(signal, "SIGTERM", 15)
+_SIGKILL = getattr(signal, "SIGKILL", _SIGTERM)
+
 
 def _pids() -> list[int]:
     """PIDs of the game process itself. Linux only; see is_game_running for
@@ -149,7 +156,7 @@ def stop_game(grace_sec: float = _STOP_GRACE_SEC) -> bool:
     else:
         for pid in _pids():
             with contextlib.suppress(OSError):
-                os.kill(pid, signal.SIGTERM)
+                os.kill(pid, _SIGTERM)
 
     while time.monotonic() < deadline:
         if not is_game_running():
@@ -162,7 +169,7 @@ def stop_game(grace_sec: float = _STOP_GRACE_SEC) -> bool:
     else:
         for pid in _pids():
             with contextlib.suppress(OSError):
-                os.kill(pid, signal.SIGKILL)
+                os.kill(pid, _SIGKILL)
 
     hard_deadline = time.monotonic() + 5
     while time.monotonic() < hard_deadline:

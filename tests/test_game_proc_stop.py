@@ -36,7 +36,7 @@ def test_stop_asks_politely_before_it_insists(monkeypatch):
     monkeypatch.setattr(gp.time, "sleep", lambda _s: None)
 
     assert gp.stop_game(grace_sec=5) is True
-    assert signals == [gp.signal.SIGTERM], "a game that exits politely is never killed"
+    assert signals == [gp._SIGTERM], "a game that exits politely is never killed"
 
 
 def test_stop_kills_a_process_that_ignores_the_polite_ask(monkeypatch):
@@ -48,8 +48,10 @@ def test_stop_kills_a_process_that_ignores_the_polite_ask(monkeypatch):
     monkeypatch.setattr(gp.time, "sleep", lambda _s: None)
 
     assert gp.stop_game(grace_sec=0.01) is False   # honest: it is still there
-    assert gp.signal.SIGTERM in signals
-    assert gp.signal.SIGKILL in signals
+    # Referenced through the module's own constants: Windows has no SIGKILL,
+    # and this test drives the posix branch on every platform.
+    assert gp._SIGTERM in signals
+    assert gp._SIGKILL in signals
 
 
 def test_stop_survives_a_process_that_exits_underneath_it(monkeypatch):
