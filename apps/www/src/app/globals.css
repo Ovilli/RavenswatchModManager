@@ -145,7 +145,7 @@
     box-shadow: inset 0 0 0 1px hsl(var(--parchment) / 0.03), 0 10px 28px -22px
       hsl(var(--pitch) / 0.9);
     transition: border-color 200ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 200ms
-      cubic-bezier(0.4, 0, 0.2, 1), transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+      cubic-bezier(0.4, 0, 0.2, 1);
   }
   .grimoire-card:hover {
     border-color: hsl(var(--gilt) / 0.45);
@@ -239,10 +239,6 @@
     height: 3.5rem;
   }
 
-  .grimoire-card:hover {
-    transform: translateY(-4px) scale(1.01);
-  }
-
   .btn-grim[data-variant="primary"] {
     box-shadow: inset 0 0 0 1px hsl(var(--parchment) / 0.08), 0 6px 20px -10px
       hsl(var(--crimson) / 0.25);
@@ -288,7 +284,6 @@
       160ms ease, border-color 160ms ease;
   }
   .nav-link-grim:hover .nav-icon {
-    transform: scale(1.08) translateY(-1px);
     filter: saturate(1.6) contrast(1.22) brightness(1.16)
       drop-shadow(0 10px 26px rgba(0, 0, 0, 0.36));
     box-shadow: 0 14px 36px -18px hsl(var(--pitch) / 0.72), 0 6px 18px rgba(0, 0, 0, 0.28);
@@ -341,7 +336,6 @@
   }
   .wc-btn:hover {
     background: hsl(var(--parchment) / 0.04);
-    transform: translateY(-1px);
   }
   .wc-minimize svg,
   .wc-maximize svg {
@@ -568,28 +562,22 @@
   animation-delay: 216ms;
 }
 
-.nav-link-grim:hover .nav-icon {
-  transform: scale(1.04) translateY(-0.4px);
-}
-
-@keyframes pulse-soft {
-  from {
-    box-shadow: 0 6px 16px -12px rgba(136, 32, 41, 0.12);
-  }
-  to {
-    box-shadow: 0 10px 26px -12px rgba(136, 32, 41, 0.16);
-  }
-}
-.btn-grim[data-variant="primary"]:hover {
-  animation: pulse-soft 520ms ease-in-out 1 both;
-}
+/* Hover does not MOVE anything on this site, matching the desktop client: the
+ * card lift, the nav-icon scale, the window-button lift and the primary
+ * button's hover heartbeat were removed outright rather than damped. Pointing
+ * at something while you read it should not make it jump.
+ *
+ * What stays is feedback that holds still — border and background colour, the
+ * icon brightening, an image fading or un-blurring — and `.btn-grim:active`,
+ * which is a click affordance you asked for rather than one you tripped over.
+ *
+ * So: no `:hover { transform }` and no `hover:scale` / `group-hover:scale`
+ * utility anywhere in this app. */
 
 @media (prefers-reduced-motion: reduce) {
   .animate-page-in,
   .animate-float,
-  .nav-link-grim,
-  .nav-link-grim:hover .nav-icon,
-  .btn-grim[data-variant="primary"]:hover {
+  .nav-link-grim {
     animation: none !important;
     transition: none !important;
     transform: none !important;

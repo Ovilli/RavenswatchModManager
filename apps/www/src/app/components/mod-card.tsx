@@ -22,7 +22,7 @@ export function ModCard({ mod, featured = false }: ModCardProps) {
           <img
             src={mod.imageUrl}
             alt={`${mod.name} preview`}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            className="h-full w-full object-cover"
             loading="lazy"
           />
         </div>
