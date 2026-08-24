@@ -2,7 +2,7 @@
 
 import { Badge, Input, Spinner, buttonVariants } from '@rsmm/ui';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Star } from 'lucide-react';
+import { BookOpen, Search, Star } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -180,6 +180,33 @@ function GuidesIndex() {
           </Link>
         </div>
       </div>
+
+      {/* The first-party modding guide. It came out of the top bar, and this is
+          where someone after how-to material already is — but it is framed
+          separately from the grid below on purpose: it is maintained
+          documentation, not a community submission, and listing it as one more
+          card would misrepresent both. */}
+      <Link
+        href="/modding"
+        className="grimoire-card flex flex-col items-start gap-3 p-5 transition-colors hover:border-gilt/40 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div className="flex items-start gap-3">
+          <BookOpen className="mt-0.5 h-5 w-5 shrink-0 text-gilt" aria-hidden="true" />
+          <div>
+            <h2 className="font-semibold">Modding Guide</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              The official walkthrough for building a mod — assets, manifests, the SDK, and getting
+              your first change into the game.
+            </p>
+          </div>
+        </div>
+        <span
+          className={`${buttonVariants({ variant: 'outline', size: 'sm' })} shrink-0`}
+          aria-hidden="true"
+        >
+          Read it
+        </span>
+      </Link>
 
       {/* Moderation queue — only when toggled and there's something to review. */}
       {reviewMode && pendingCount > 0 ? (
