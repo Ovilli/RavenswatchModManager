@@ -635,7 +635,19 @@ local HERO_ID_PROBE = { done = false, LO = 0, HI = 0x2000,
                         BUDGET = 20000,   -- probes per background tick; the deep scan is ~900k,
                                           -- so this finishes it inside a minute
                         cursor = nil, hits = nil, rows_n = 0, hop = nil,
-                        off = nil, w = 4, attempts = 0, MAX_ATTEMPTS = 6 }
+                        off = nil, w = 4, attempts = 0, MAX_ATTEMPTS = 6,
+                        -- Seconds a restart-worthy change has to wait when one
+                        -- just happened. The scan restarts whenever the row
+                        -- COUNT changes, which is right (a new row is a bigger
+                        -- sample and may veto an offset) but was unbounded: a
+                        -- board that forks rows -- a transform, a respawn, an
+                        -- ally the build cannot identify -- threw the ~900k
+                        -- probe scan back to phase 1 as often as rows appeared,
+                        -- so it burned its per-tick budget forever and never
+                        -- finished. Coalescing costs nothing: `rows_n` is left
+                        -- stale while cooling, so the restart still happens,
+                        -- just once for a burst instead of once per row.
+                        RESTART_EVERY = 30, restarted_at = nil }
 
 --- Read a hero id of width `w` at `va`.
 ---
@@ -687,12 +699,17 @@ function F._dmg_probe_hero_field(wide)
     -- background tick probes u8/u16/u32. Resuming the narrow scan's cursor
     -- would skip the byte and word passes entirely — and a byte-sized hero id
     -- is the case this sweep exists for.
-    if not c or HERO_ID_PROBE.rows_n ~= #rows
+    local churn = (HERO_ID_PROBE.rows_n ~= #rows)
+    local now = F._dmg_now()
+    local cooling = churn and HERO_ID_PROBE.restarted_at ~= nil
+                    and (now - HERO_ID_PROBE.restarted_at) < HERO_ID_PROBE.RESTART_EVERY
+    if not c or (churn and not cooling)
        or ((wide and true or false) and not c.wide) then
         c = { phase = 1, wi = 1, off = HERO_ID_PROBE.LO, hop = 0, ptrs = nil,
               wide = wide and true or false }
         HERO_ID_PROBE.cursor, HERO_ID_PROBE.hits = c, {}
         HERO_ID_PROBE.rows_n = #rows
+        HERO_ID_PROBE.restarted_at = now
     end
 
     local hits = HERO_ID_PROBE.hits
@@ -983,6 +1000,9 @@ function F._dmg_recheck_hero_field()
     HERO_ID_PROBE.off, HERO_ID_PROBE.hop, HERO_ID_PROBE.w = nil, nil, nil
     HERO_ID_PROBE.text, HERO_ID_PROBE.done = nil, false
     HERO_ID_PROBE.cursor, HERO_ID_PROBE.hits, HERO_ID_PROBE.rows_n = nil, {}, nil
+    -- A withdrawal is not row churn; it must not be throttled by the restart
+    -- cooldown, or the re-scan it exists to trigger waits up to RESTART_EVERY.
+    HERO_ID_PROBE.restarted_at = nil
     _dmg.by_hero = {}
     for _, row in ipairs(_dmg.order) do
         row.hero_id = nil
@@ -1422,6 +1442,28 @@ function F._dmg_probe_owner_fast()
         if not row.player and _ptr_plausible(row.key) then wanted = true break end
     end
     if not wanted then return false end
+
+    -- MORE ROWS THAN PLAYERS means the board has forked, and a forked board is
+    -- one the scan cannot answer: two rows belong to the same person, so every
+    -- name they both reach is "shared" under the one-owner rule below and
+    -- identifies nobody. Scanning on is pure cost, and cost the player feels --
+    -- an ally who keeps swapping hero objects (a transform, a respawn) adds a
+    -- row each time and each new row re-opens `wanted` above forever. The local
+    -- player cannot fork any more (F._dmg_row_for_entity), but nothing on this
+    -- build identifies an ALLY, so their forks are not mergeable and this is
+    -- the bound instead. Names already claimed are kept; the rest stay lobby
+    -- guesses, which is what they would have been anyway.
+    local members = R.lobby.members()
+    if #members > 0 and #_dmg.order > #members then
+        if not _dmg.fork_said then
+            _dmg.fork_said = true
+            R.log(("[rsmm.damage] %d rows for a %d-player lobby — a hero object "
+                   .. "swap forked the board, so the identity scan cannot "
+                   .. "answer and stands down (rows keep their lobby names)")
+                  :format(#_dmg.order, #members))
+        end
+        return false
+    end
 
     local addrs = F._dmg_find_needles(names)
     if not addrs or #addrs == 0 then return false end
@@ -2127,6 +2169,17 @@ function F._dmg_lobby_refresh()
     -- to be felt. The demand gate still applies, so a solo run does no work at
     -- all beyond the (free) relabel.
     R.schedule.every(1, function()
+        -- METERING OFF MEANS OFF. The detours stay installed (see
+        -- R.damage.disable) and cost an early return, but this tick is the
+        -- expensive half of the meter -- address-space sweeps, the hero-field
+        -- probe, the per-row netid pass -- and it used to keep running for the
+        -- rest of the process after `disable()`, because nothing here ever
+        -- read `_dmg.on` and the timer is never cancelled. A player who turned
+        -- the meter off still paid for it, which is exactly what a user
+        -- reported on 2026-08-24 ("background processes still running with the
+        -- mod off"). Cancelling the timer instead would be wrong: `enable()`
+        -- is idempotent and would not re-arm it.
+        if not _dmg.on then return end
         local ok, err = pcall(function()
             -- Cheap every time: re-read the known blocks and apply names.
             F._dmg_relabel()
@@ -4325,6 +4378,34 @@ function F._dmg_row_for_entity(e)
         return row
     end
     local is_local = F._dmg_entity_is_local(e)
+    -- THE LOCAL PLAYER IS ONE ROW, whatever object the engine hands us.
+    --
+    -- F._dmg_row_for_hero adopts an existing local row on the is-local flag
+    -- ("same player, new object"); this path never did, so any swap of the
+    -- hero OBJECT mid-chapter forked a second row for the same person. Sun
+    -- Wukong's transform is the reported case (2026-08-24), and it is not the
+    -- only one -- a respawn rebuilds the object too. The fork is not just a
+    -- duplicate row: it is a row that can never be named (F._dmg_claim refuses
+    -- a name another row already holds), so `wanted` in
+    -- F._dmg_probe_owner_fast stays true for the rest of the run and the
+    -- address-space sweep keeps running behind it. That is the stutter.
+    --
+    -- Sound by construction: there is exactly one local player per process,
+    -- and the is-local byte is the engine's own answer (see
+    -- F._dmg_entity_is_local). Allies get no such rule -- nothing on this
+    -- build identifies them (the hero-id join is dead here), so an ally swap
+    -- still forks rather than guessing which row it belongs to.
+    if is_local then
+        for _, r in ipairs(_dmg.order) do
+            if r.is_local then
+                F._dmg_alias(r, e)
+                R.log(("[rsmm.damage] local hero object changed to 0x%x "
+                       .. "(transform or respawn) — reusing row %d, not a new "
+                       .. "player"):format(e, r.slot))
+                return r
+            end
+        end
+    end
     row = F._dmg_new_row(e, is_local)
     row.netid = id or false
     if id then _dmg.by_netid[id] = row end
@@ -4897,6 +4978,9 @@ end
 function R.damage.reset()
     _dmg.actors, _dmg.order, _dmg.seen, _dmg.by_netid = {}, {}, {}, {}
     _dmg.by_hero = {}
+    -- Per RUN, like _dmg.roster_warned: a fresh board deserves to be told its
+    -- own forking story rather than inheriting the last run's silence.
+    _dmg.fork_said = false
     -- The sweep's CURSOR points at a row that no longer exists; the CHAIN is a
     -- fact about the engine's layout and stays.
     F._own.cursor = nil

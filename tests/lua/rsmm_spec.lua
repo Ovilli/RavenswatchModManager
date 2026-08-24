@@ -2190,6 +2190,95 @@ do
     R = require "rsmm"
 end
 
+-- N. R.damage: a hero OBJECT swap is the same player, and off means off ------
+--
+-- Both halves come from one user report (2026-08-24): the game stutters more
+-- once ultimates unlock and when Sun Wukong transforms, and it keeps stuttering
+-- with the meter switched off.
+--
+--   * A transform (and a respawn) hands the resolver a NEW hero object for a
+--     player already on the board. F._dmg_row_for_hero adopts the existing
+--     local row on the is-local flag; F._dmg_row_for_entity did not, so the
+--     same person forked a row per transform. A forked row can never be named
+--     (F._dmg_claim refuses a name another row holds), which pins `wanted` in
+--     F._dmg_probe_owner_fast true and keeps the address-space sweep running.
+--   * R.damage.disable() sets `_dmg.on = false`, which the detours read -- but
+--     nothing in the once-a-second background tick did, and the timer is never
+--     cancelled. Metering off still paid for the expensive half of the meter.
+do
+    package.loaded["rsmm"] = nil
+    local Rx = require "rsmm"
+    local saved_log, saved_grant = rsmm.log, I.is_grant_target
+    rsmm.log = function() end
+
+    local CTX1, CTX2, ALLY_CTX = 0x70000000, 0x70100000, 0x70200000
+    local ENT1, ENT2, ALLY_ENT = 0x71000000, 0x71100000, 0x71200000
+    local TGT, TDT, ENEMY = 0x72000000, 0x72001000, 0x73000000
+    for _, e in ipairs({ ENT1, ENT2, ALLY_ENT, ENEMY }) do
+        I.write_u64(e + 8, 0x13000000)          -- plausible component store
+    end
+    I.write_u8(ENT1 + 0x1d88, 1)
+    I.write_u8(ENT2 + 0x1d88, 1)                -- still THIS machine's player
+    I.write_u8(ALLY_ENT + 0x1d88, 0)
+    I.write_u64(CTX1 + 8, ENT1)
+    I.write_u64(CTX2 + 8, ENT2)
+    I.write_u64(ALLY_CTX + 8, ALLY_ENT)
+    I.write_u32(TGT, 1)
+    I.write_u64(TGT + 8, TDT)
+    I.write_u64(TDT, ENEMY)
+    local heroes = { [ENT1] = true, [ENT2] = true, [ALLY_ENT] = true }
+    I.is_grant_target = function(e) return heroes[e] == true end
+
+    local scans = 0
+    I.mem_find = function() scans = scans + 1 return {} end
+    -- The lobby resolver is claimed ONCE per process through a shared slot, and
+    -- an earlier block in this spec already holds it. Release it, or this
+    -- instance never arms the background tick and the half of the report about
+    -- work surviving `disable()` is not exercised at all.
+    I.shared_set(7, 0)   -- LOBBY_REFRESH_SLOT
+
+    Rx.damage.enable{ window = 10 }
+    local atk = hooks[I.resolve("Entity_ResolveAttackHits")]
+    local function swing(ctx, dmg)
+        return atk.cb(ctx, 0, TGT, 1.5, 0.0, function() return dmg end)
+    end
+
+    swing(CTX1, 30.0)
+    check(#Rx.damage.board() == 1, "the local player boards once")
+    swing(CTX2, 20.0)            -- transform: same player, new hero object
+    check(#Rx.damage.board() == 1,
+          "a hero object swap boards no second row — a transform is not a new "
+          .. "player")
+    check(Rx.damage.board()[1].is_local,
+          "and the row it reuses is the local one")
+    swing(ALLY_CTX, 10.0)
+    check(#Rx.damage.board() == 2,
+          "an ALLY still boards separately — the rule is the is-local flag, "
+          .. "not 'merge anything'")
+
+    -- The background tick. It scans for the lobby while an ally row is still a
+    -- placeholder, so `scans` counts the work the player feels.
+    scans = 0
+    fake_clock = fake_clock + 2.0; fire("tick"); Rx.schedule._tick()
+    local while_on = scans
+    check(while_on > 0, "metering on, the background tick scans for the roster")
+
+    Rx.damage.disable()
+    scans = 0
+    for _ = 1, 3 do
+        fake_clock = fake_clock + 2.0; fire("tick"); Rx.schedule._tick()
+    end
+    check(scans == 0,
+          "metering off, the background tick does no work at all — it used to "
+          .. "sweep the address space for the rest of the process")
+
+    Rx.damage.reset()
+    I.is_grant_target = saved_grant
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
 -- N. R.damage: enemies vs scenery -----------------------------------------
 --
 -- Damage dealt to fences, jars and dream-shard nodes reaches the bookkeeping
