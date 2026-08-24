@@ -698,10 +698,65 @@ local HERO_ID_PROBE = { done = false, LO = 0, HI = 0x2000,
 --- the next three bytes hold, so the id is invisible unless those happen to be
 --- zero. That sweep reported "no offset distinguishes the rows" on a real
 --- 4-player run; it was never in a position to see a u8 or u16 field.
-function F._dmg_read_id(va, w)
+--- PAGE CACHE for the probe sweeps.
+---
+--- Every I.read_* is a page check — one VirtualQuery — before it copies its
+--- 1..8 bytes. That is the right shape for a mod poking at a struct, and the
+--- wrong one entirely for these sweeps: they budget 20,000 (hero-id) and
+--- 24,000 (owner) probes PER TICK, so between them they were asking the OS
+--- ~44,000 times a second whether a page was readable. Under Proton each of
+--- those goes through Wine's memory manager and takes the process VM lock —
+--- the same lock the game's own thread needs to touch memory. Nothing runs on
+--- the main thread, and the player still feels a stutter. That is the report
+--- this exists to answer ("only this mod left, still stutters").
+---
+--- One read_block per 4 KiB page instead, unpacked from the snapshot: a
+--- sequential sweep of a 0x2000 window drops from 8,192 syscalls to 2.
+---
+--- Cache lifetime is ONE TICK (F._dmg_pflush), so a value is at most a tick
+--- stale — irrelevant to these probes, which are looking for a field that
+--- holds the same id all run. Bounded to PAGES blocks so a scattered sweep
+--- cannot turn into megabytes of Lua strings; past that it just reads the old
+--- way.
+F._pg = { SIZE = 0x1000, PAGES = 256, blocks = {}, n = 0 }
+
+function F._dmg_pflush()
+    if F._pg.n > 0 then F._pg.blocks, F._pg.n = {}, 0 end
+end
+
+--- Guarded single read, the fallback for anything the cache cannot serve.
+function F._dmg_read_raw(va, w)
     if w == 1 then return I.read_u8(va) end
     if w == 2 then return I.read_u16 and I.read_u16(va) end
+    if w == 8 then return I.read_u64(va) end
     return I.read_u32(va)
+end
+
+local _PG_FMT = { [1] = "<I1", [2] = "<I2", [4] = "<I4", [8] = "<I8" }
+
+--- Read `w` bytes at `va` through the page cache.
+function F._dmg_pread(va, w)
+    if type(va) ~= "number" or va <= 0 then return nil end
+    if not I.read_block then return F._dmg_read_raw(va, w) end
+    local base = va - (va % F._pg.SIZE)
+    local blk = F._pg.blocks[base]
+    if blk == nil then
+        if F._pg.n >= F._pg.PAGES then return F._dmg_read_raw(va, w) end
+        blk = I.read_block(base, F._pg.SIZE) or false
+        F._pg.blocks[base], F._pg.n = blk, F._pg.n + 1
+    end
+    if not blk then return nil end
+    local off = va - base + 1
+    -- A field straddling the page boundary is not in this snapshot; the
+    -- guarded read handles it (and costs one syscall, rarely).
+    if off + w - 1 > #blk then return F._dmg_read_raw(va, w) end
+    local ok, v = pcall(string.unpack, _PG_FMT[w] or "<I4", blk, off)
+    if not ok then return nil end
+    return v
+end
+
+function F._dmg_read_id(va, w)
+    return F._dmg_pread(va, w)
 end
 
 --- @param wide  also sweep BYTE and WORD fields. ~3x the reads, so only the
@@ -902,7 +957,7 @@ function F._dmg_probe_hero_field(wide)
             c.ptrs = {}
             local live = 0
             for i, row in ipairs(rows) do
-                local ptr = I.read_u64(row.key + c.off)
+                local ptr = F._dmg_pread(row.key + c.off, 8)
                 c.ptrs[i] = _ptr_plausible(ptr) and ptr or false
                 if c.ptrs[i] then live = live + 1 end
             end
@@ -1620,9 +1675,35 @@ end
 --- One `read_cstr` per address, not one per candidate name: the read stops at
 --- the first NUL, so a stored name comes back whole and the set does the rest.
 --- That keeps a 70k-probe sweep to 70k reads rather than 70k x roster size.
+--- NUL-terminated string at `va`, through the page cache (see F._dmg_pread).
+--- Falls back to the guarded reader when the string would run past the cached
+--- page, which is the only case the snapshot cannot answer.
+function F._dmg_pstr(va, max)
+    if type(va) ~= "number" or va <= 0 then return nil end
+    if not I.read_block then return I.read_cstr and I.read_cstr(va, max) or nil end
+    local base = va - (va % F._pg.SIZE)
+    local blk = F._pg.blocks[base]
+    if blk == nil then
+        if F._pg.n >= F._pg.PAGES then
+            return I.read_cstr and I.read_cstr(va, max) or nil
+        end
+        blk = I.read_block(base, F._pg.SIZE) or false
+        F._pg.blocks[base], F._pg.n = blk, F._pg.n + 1
+    end
+    if not blk then return nil end
+    local from = va - base + 1
+    if from > #blk then return nil end
+    local stop = blk:find("\0", from, true)
+    -- No terminator inside the page: the string may continue past it, so let
+    -- the guarded reader answer rather than truncating at a page boundary.
+    if not stop then return I.read_cstr and I.read_cstr(va, max) or nil end
+    if stop - from > max then return nil end
+    return blk:sub(from, stop - 1)
+end
+
 function F._dmg_name_at(va, names, longest)
-    if not I.read_cstr or not _ptr_plausible(va) then return nil end
-    local s = I.read_cstr(va, longest + 1)
+    if not _ptr_plausible(va) then return nil end
+    local s = F._dmg_pstr(va, longest + 1)
     -- Return the member's NAME, not the string that matched: the needle may
     -- have been their peer id.
     if type(s) == "string" and names[s] then return names[s].name end
@@ -1913,7 +1994,7 @@ function F._dmg_probe_owner()
     local row = c.row
     local budget = F._own.BUDGET
     while budget > 0 do
-        local base = c.base == 2 and I.read_u64(row.key + 0x08) or row.key
+        local base = c.base == 2 and F._dmg_pread(row.key + 0x08, 8) or row.key
         if _ptr_plausible(base) then
             if c.hop == nil then
                 -- Direct: the name lives in the object itself (an inline
@@ -1944,7 +2025,7 @@ function F._dmg_probe_owner()
                 -- a `char*`, a `std::string*`, or the heap buffer of an MSVC
                 -- std::string (whose data pointer sits at +0x8, which this
                 -- reaches as hop 0 of that offset).
-                local p = I.read_u64(base + c.off)
+                local p = F._dmg_pread(base + c.off, 8)
                 if _ptr_plausible(p) then
                     local nm = F._dmg_name_at(p + c.hop, names, longest)
                     budget = budget - 1
@@ -2127,7 +2208,7 @@ function F._dmg_relabel()
     if #pending == 1 and #ally_rows <= #allies and #unclaimed == 1 then
         pending[1].name = unclaimed[1]
         pending[1].guess = true              -- exact by count, not by hero id
-    elseif _dmg.guess_names then
+    elseif _dmg.guess_names and not F._dmg_board_forked(members) then
         -- Hands the leftover names to the leftover rows in JOIN ORDER, which is
         -- a guess: every row it touches is flagged `label_guess` and a UI that
         -- shows the name must show the flag (the board prints a trailing "?").
@@ -2184,6 +2265,22 @@ function F._dmg_relabel()
     end
 end
 
+--- More rows than the lobby has players. The same signal the identity scan
+--- stands down on, asked separately because it disqualifies GUESSING too.
+---
+--- A player log from a 4-player run (2026-08-24) came back with FIVE rows, one
+--- of them labelled `X ?` against 57,699 damage. Join-order guessing cannot be
+--- right on a board with more rows than players — one row is a duplicate of
+--- another, so at least one name is on the wrong damage by construction, and
+--- the trailing "?" reads as "roughly right" when it is "certainly wrong for
+--- somebody". A placeholder is the honest answer there.
+function F._dmg_board_forked(members)
+    if type(members) ~= "table" or #members < 2 then return false end
+    local rows = 0
+    for _ in ipairs(_dmg.order) do rows = rows + 1 end
+    return rows > #members
+end
+
 --- Apply the lobby roster to the board's ally rows.
 ---
 --- Public because the roster resolves asynchronously: a UI that wants names
@@ -2238,6 +2335,9 @@ function F._dmg_lobby_refresh()
         -- cheaper failure is the right one.
         if not _dmg.on then return end
         local ok, err = pcall(function()
+            -- The page cache is per TICK: drop last tick's snapshot before
+            -- anything reads, so a probe never sees a second-old value.
+            F._dmg_pflush()
             -- Cheap every time: re-read the known blocks and apply names.
             F._dmg_relabel()
             -- Before the probe, not after: a withdrawal has to clear `done` so
@@ -2712,7 +2812,7 @@ function F._dmg_scan_session(base, win, targets, path)
     local out = {}
     if not _ptr_plausible(base) or not I.read_u64 then return out end
     for off = 0, win - 8, 8 do
-        local q = I.read_u64(base + off)
+        local q = F._dmg_pread(base + off, 8)
         if type(q) == "number" then
             local h = targets.hex[("%016x"):format(q)]
             if h then
@@ -3753,7 +3853,7 @@ function F._dmg_probe_netid(row, targets)
     F._netid.probed[row.key] = true
     local hits = F._dmg_scan_session(nc, F._netid.WIN, targets, nil)
     for off = 0, F._netid.WIN - 8, 8 do
-        local p = I.read_u64(nc + off)
+        local p = F._dmg_pread(nc + off, 8)
         if _ptr_plausible(p) then
             for _, h in ipairs(F._dmg_scan_session(p, F._netid.HOPWIN, targets, { off })) do
                 hits[#hits + 1] = h
@@ -3786,7 +3886,7 @@ function F._dmg_probe_netid(row, targets)
                 hits[#hits + 1] = h
             end
             for off = 0, F._netid.DEEPWIN - 8, 8 do
-                local p = I.read_u64(obj + off)
+                local p = F._dmg_pread(obj + off, 8)
                 if _ptr_plausible(p) then
                     for _, h in ipairs(F._dmg_scan_session(p, F._netid.HOPWIN,
                                                            targets, { field, off })) do
@@ -5191,6 +5291,12 @@ function R.damage.name(slot, label)
     local row = _dmg.order[slot]
     if row then row.label = label end
 end
+
+--- The page-cached reader and its flush, exposed for the spec and for a mod
+--- doing its own struct walking. Same answer as a guarded read, one syscall
+--- per 4 KiB page instead of one per value (see F._dmg_pread).
+function R.damage._pread(va, w) return F._dmg_pread(va, w) end
+function R.damage._pflush() return F._dmg_pflush() end
 
 --- Clear every counter. Called on run boundaries by the meter mod; call it
 --- yourself for per-chapter or per-fight scores.

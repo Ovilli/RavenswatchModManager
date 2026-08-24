@@ -1105,6 +1105,10 @@ int lua_call_native(lua_State* L) {
 // read/write primitive from access-violating the game on a bad pointer — the
 // norm while chasing struct offsets.
 
+// Ceiling for one read_block call. 64 KiB is far above any struct a probe
+// walks and keeps a bad `len` from asking for a gigabyte-sized Lua string.
+constexpr std::size_t MAX_BLOCK = 0x10000;
+
 template <typename T>
 int read_value(lua_State* L) {
     auto va = static_cast<std::uintptr_t>(luaL_checkinteger(L, 1));
@@ -1448,6 +1452,33 @@ int lua_hook_report(lua_State* L) {
     return 1;
 }
 
+// rsmm.read_block(va, len) -> string | nil
+//
+// ONE page check for a whole range, then a bulk copy. The per-value readers
+// above guard every single read, which is correct and, at the scale the
+// identity probes work at, ruinous: they budget 20,000-24,000 reads PER TICK,
+// so each of them was 20,000-24,000 VirtualQuery calls a second. On Windows
+// that is merely wasteful; under Proton every one goes through Wine's memory
+// manager and contends on the process VM lock, which the game's own thread
+// needs — and the player feels that as a stutter with no mod code running on
+// the main thread at all.
+//
+// Exactly as safe as the per-value path: the range is verified and copied
+// adjacently, so a page that goes away later cannot be read through this
+// string. A range that is only partly readable halves down to its readable
+// prefix rather than failing outright (same rule as mem_read_cstr), because a
+// struct that ends near an unmapped page is the normal case, not an error.
+int lua_read_block(lua_State* L) {
+    auto va = static_cast<std::uintptr_t>(luaL_checkinteger(L, 1));
+    auto len = static_cast<std::size_t>(luaL_checkinteger(L, 2));
+    if (len == 0) { lua_pushnil(L); return 1; }
+    if (len > MAX_BLOCK) len = MAX_BLOCK;
+    while (len > 0 && !mem_accessible(va, len, false)) len /= 2;
+    if (len == 0) { lua_pushnil(L); return 1; }
+    lua_pushlstring(L, reinterpret_cast<const char*>(va), len);
+    return 1;
+}
+
 int lua_read_cstr(lua_State* L) {
     auto va = static_cast<std::uintptr_t>(luaL_checkinteger(L, 1));
     auto max = static_cast<std::size_t>(luaL_optinteger(L, 2, 1024));
@@ -1693,6 +1724,7 @@ void register_api(lua_State* L) {
         { "read_f32",                lua_read_f32 },
         { "read_f64",                lua_read_f64 },
         { "read_cstr",               lua_read_cstr },
+        { "read_block",              lua_read_block },
         { "hook_report",             lua_hook_report },
         { "peek",                    lua_peek },
         { "poke",                    lua_poke },

@@ -276,8 +276,8 @@ local resolve_n = 0                -- monotonic counter for unique fake VAs
 local I = {}
 function I.read_u8(a)  return rint(a, 1) end
 function I.read_u16(a) return rint(a, 2) end
-function I.read_u32(a) return rint(a, 4) end
-function I.read_u64(a) return rint(a, 8) end
+function I.read_u32(a) I.reads.single = I.reads.single + 1 return rint(a, 4) end
+function I.read_u64(a) I.reads.single = I.reads.single + 1 return rint(a, 8) end
 function I.read_f32(a) return (string.unpack("<f", rbytes(a, 4))) end
 -- Faithful to mem_read_cstr: stops at the NUL, and at `max`. Unmapped fake
 -- memory reads as 0, so a pointer into nothing yields "" rather than garbage —
@@ -291,6 +291,19 @@ function I.read_cstr(a, max)
     end
     return table.concat(out)
 end
+-- Faithful to the native read_block: ONE guard for the range, then a bulk copy
+-- of whatever is mapped. Unmapped fake memory reads as 0 (same as every other
+-- reader here), and `reads` counts calls so a test can prove the page cache
+-- actually replaced thousands of single reads with a handful of blocks.
+I.reads = { block = 0, single = 0 }
+function I.read_block(a, len)
+    if type(a) ~= "number" or a <= 0 or not len or len <= 0 then return nil end
+    I.reads.block = I.reads.block + 1
+    local out = {}
+    for i = 0, len - 1 do out[#out + 1] = string.char(mem[a + i] or 0) end
+    return table.concat(out)
+end
+
 function I.write_u8(a, v)  wint(a, v & 0xff, 1) end
 function I.write_u16(a, v) wint(a, v & 0xffff, 2) end
 function I.write_u32(a, v) wint(a, v & 0xffffffff, 4) end
@@ -7979,6 +7992,139 @@ do
           .. "nothing on a build where the field really is damage")
 
     Rc3.damage.disable(); Rc3.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+
+-- N. R.damage: the probe sweeps read PAGES, not one value at a time ---------
+--
+-- Every I.read_* is a page check (one VirtualQuery) around a 1..8 byte copy.
+-- The sweeps budget 20,000 and 24,000 probes PER TICK, so between them they
+-- asked the OS ~44,000 times a second whether a page was readable. Under
+-- Proton each call goes through Wine's memory manager and takes the process VM
+-- lock -- the one the game's own thread needs -- so a player feels a stutter
+-- while no mod code runs on the main thread at all. That is the shape of the
+-- "only this mod left and it still stutters" report.
+do
+    package.loaded["rsmm"] = nil
+    local Rp2 = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    local F = Rp2._F or nil
+
+    -- Drive the cached reader directly: it is the primitive every sweep sits
+    -- on (F._dmg_read_id and the hero-field pointer pass both route here).
+    local BASE = 0xa0000000
+    for i = 0, 0x1fff, 4 do I.write_u32(BASE + i, i) end
+
+    I.reads.block, I.reads.single = 0, 0
+    local vals, ok = {}, true
+    for off = 0, 0x1fff, 4 do
+        local v = Rp2.damage._pread(BASE + off, 4)
+        if v ~= off then ok = false end
+        vals[#vals + 1] = v
+    end
+    check(ok and #vals == 2048, "the cached reader returns the same bytes as a guarded read")
+    check(I.reads.block <= 4,
+          ("a 0x2000 sweep costs a couple of block reads, not thousands "
+           .. "(blocks=%d)"):format(I.reads.block))
+    check(I.reads.single == 0,
+          ("and no per-value page checks at all (singles=%d)"):format(I.reads.single))
+
+    -- A flush is what keeps a value at most one tick stale.
+    I.write_u32(BASE + 8, 0xdeadbeef)
+    check(Rp2.damage._pread(BASE + 8, 4) == 8, "within a tick the snapshot is reused")
+    Rp2.damage._pflush()
+    check(Rp2.damage._pread(BASE + 8, 4) == 0xdeadbeef,
+          "and the next tick sees the new value")
+
+    -- Unmapped memory is a nil, never a fault and never a stale neighbour.
+    check(Rp2.damage._pread(0, 4) == nil, "a null address reads nil")
+
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+
+-- N. R.damage: a REAL sweep costs pages, not tens of thousands of reads -----
+--
+-- The end-to-end version of the check above, on the path a co-op run actually
+-- drives. Measured on this fixture: 12,382 guarded single reads before, 7
+-- block reads after — and in the loader every one of those singles is a
+-- VirtualQuery through Wine's memory manager, holding the lock the game's own
+-- thread needs.
+do
+    package.loaded["rsmm"] = nil
+    local Rm = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+    Rm.lobby._note_blob('{"PlayerName":"Ovili","RequestedHero":4}')
+    Rm.lobby._note_blob('{"PlayerName":"Keif","RequestedHero":5}')
+    Rm.damage.enable{ window = 10, identity_hunt = true }
+    local ctrl, deal = _own_world(0x6a000000, { "me", "a1", "a2" })
+    _put_str(ctrl[2] + 0x1120, "Keif")
+    deal(ctrl[1], 10.0); deal(ctrl[2], 20.0); deal(ctrl[3], 30.0)
+
+    -- BEFORE: hide the bulk primitive, which is exactly the old per-value path.
+    local blk = I.read_block
+    I.read_block = nil
+    I.reads.block, I.reads.single = 0, 0
+    for _ = 1, 5 do Rm.damage.sweep_identity() end
+    local before = I.reads.single
+    check(before > 1000,
+          ("the old path really is thousands of guarded reads (%d)"):format(before))
+
+    I.read_block = blk
+    Rm.damage.reset()
+    deal(ctrl[1], 10.0); deal(ctrl[2], 20.0); deal(ctrl[3], 30.0)
+    I.reads.block, I.reads.single = 0, 0
+    for _ = 1, 5 do Rm.damage.sweep_identity() end
+    local after = I.reads.single + I.reads.block
+    check(after * 100 < before,
+          ("the same sweep now costs 100x fewer OS-level reads (%d -> %d)")
+          :format(before, after))
+
+    Rm.damage.disable(); Rm.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+
+-- N. R.damage: a forked board does not GUESS names -------------------------
+--
+-- From a player's 4-player log (2026-08-24): five rows, one of them printed as
+-- `X ?` against 57,699 damage. Join-order guessing cannot be right when there
+-- are more rows than players -- one row duplicates another, so at least one
+-- name sits on the wrong damage, and the "?" reads as "roughly right" when it
+-- is "certainly wrong for somebody".
+do
+    package.loaded["rsmm"] = nil
+    local Rk = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+    Rk.lobby._note_blob('{"PlayerName":"Juice","RequestedHero":4}')
+    Rk.lobby._note_blob('{"PlayerName":"Zhe","RequestedHero":5}')
+    Rk.damage.enable{ window = 10, guess_names = true }
+
+    -- Two known players, THREE rows: the shape the player log came back with.
+    local ctrl, deal = _own_world(0x6b000000, { "me", "a1", "a2" })
+    deal(ctrl[1], 10.0); deal(ctrl[2], 20.0); deal(ctrl[3], 30.0)
+    Rk.damage.relabel()
+    local guessed = 0
+    for _, row in ipairs(Rk.damage.board()) do
+        if row.label_guess then guessed = guessed + 1 end
+    end
+    check(guessed == 0,
+          "no row is handed a guessed name while the board holds more rows "
+          .. "than the lobby holds players")
+
+    Rk.damage.disable(); Rk.damage.reset()
     rsmm.log = saved_log
     package.loaded["rsmm"] = nil
     R = require "rsmm"
