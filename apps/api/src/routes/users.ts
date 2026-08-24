@@ -1,6 +1,7 @@
 import { getDb, schema } from '@rsmm/db';
 import { and, desc, eq, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { isAdmin } from '../admin.js';
 import type { AppEnv } from '../types.js';
 
 export const usersRouter = new Hono<AppEnv>();
@@ -19,6 +20,16 @@ const outerModId = sql.raw('"mods"."id"');
  * email-verified flag, no timestamps that would leak account age) plus
  * the list of mods owned by that user, formatted exactly like the
  * registry list response so the website can reuse its card components.
+ *
+ * Two account privacy flags gate this response (see users.publicProfile /
+ * users.publicDownloadCounts):
+ *   publicProfile=false        — 404, as if the profile did not exist. The
+ *                                mods themselves stay listed in the registry;
+ *                                only the person-shaped page disappears.
+ *   publicDownloadCounts=false — every `downloads` figure comes back null
+ *                                rather than zero, so the UI can hide the stat
+ *                                instead of reporting a wrong number.
+ * The owner and admins always see their own real figures.
  */
 usersRouter.get('/:idOrHandle', async (c) => {
   const param = c.req.param('idOrHandle');
@@ -32,9 +43,17 @@ usersRouter.get('/:idOrHandle', async (c) => {
       name: true,
       handle: true,
       image: true,
+      publicProfile: true,
+      publicDownloadCounts: true,
     },
   });
   if (!u) return c.json({ error: 'not found' }, 404);
+
+  const viewer = c.get('user');
+  const isSelf = viewer?.id === u.id;
+  const privileged = isSelf || isAdmin(viewer?.id);
+  if (!u.publicProfile && !privileged) return c.json({ error: 'not found' }, 404);
+  const showDownloads = u.publicDownloadCounts || privileged;
 
   const rows = await db
     .select({
@@ -83,7 +102,7 @@ usersRouter.get('/:idOrHandle', async (c) => {
       summary: r.summary,
       license: r.license,
       latestVersion: r.latestVersion,
-      downloads: r.downloads,
+      downloads: showDownloads ? r.downloads : null,
       updatedAt: r.updatedAt.toISOString(),
       category: r.category,
       imageUrl: r.imageUrl,
@@ -92,6 +111,6 @@ usersRouter.get('/:idOrHandle', async (c) => {
       featured: r.featured,
       ownerId: r.ownerId,
     })),
-    totalDownloads: rows.reduce((s, r) => s + r.downloads, 0),
+    totalDownloads: showDownloads ? rows.reduce((s, r) => s + r.downloads, 0) : null,
   });
 });

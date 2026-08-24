@@ -1,6 +1,12 @@
 import { zValidator } from '@hono/zod-validator';
 import { getDb, schema } from '@rsmm/db';
-import { modImagePresignSchema } from '@rsmm/schemas';
+import {
+  PRIVACY_DEFAULTS,
+  type PrivacySettings,
+  modImagePresignSchema,
+  privacySettingsSchema,
+  privacySettingsUpdateSchema,
+} from '@rsmm/schemas';
 import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -31,6 +37,65 @@ meRouter.get('/', async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'unauthorized' }, 401);
   return c.json({ id: user.id, isAdmin: isAdmin(user.id) });
+});
+
+// ─────────── Privacy preferences ───────────
+//
+// Read/written here rather than through Better Auth's user update so the
+// allowed shape is one zod schema (`privacySettingsSchema`) shared with the
+// client, and so a request can never smuggle `banned` or `emailVerified` in
+// alongside a privacy toggle.
+
+// Two shapes for the same five fields: `query.findFirst` takes a column *mask*,
+// `.returning()` takes column *refs*. Keeping both here means adding a
+// preference touches one place.
+const PRIVACY_COLUMNS = {
+  telemetryLevel: true,
+  crashReportLevel: true,
+  publicProfile: true,
+  publicDownloadCounts: true,
+  emailAnnouncements: true,
+} as const;
+
+const PRIVACY_RETURNING = {
+  telemetryLevel: schema.users.telemetryLevel,
+  crashReportLevel: schema.users.crashReportLevel,
+  publicProfile: schema.users.publicProfile,
+  publicDownloadCounts: schema.users.publicDownloadCounts,
+  emailAnnouncements: schema.users.emailAnnouncements,
+} as const;
+
+/**
+ * Coerce a stored row to the schema's shape. The two level columns are plain
+ * varchars, so a value written before an enum change (or by hand) must not be
+ * handed back as-is — fall back to the default, which is the more private of
+ * the two plausible readings.
+ */
+function toSettings(row: Record<string, unknown> | undefined): PrivacySettings {
+  const parsed = privacySettingsSchema.safeParse(row);
+  return parsed.success ? parsed.data : PRIVACY_DEFAULTS;
+}
+
+meRouter.get('/privacy', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'unauthorized' }, 401);
+  const row = await getDb().query.users.findFirst({
+    where: eq(schema.users.id, user.id),
+    columns: PRIVACY_COLUMNS,
+  });
+  return c.json(toSettings(row));
+});
+
+meRouter.patch('/privacy', zValidator('json', privacySettingsUpdateSchema), async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'unauthorized' }, 401);
+  const patch = c.req.valid('json');
+  const [row] = await getDb()
+    .update(schema.users)
+    .set({ ...patch, updatedAt: new Date() })
+    .where(eq(schema.users.id, user.id))
+    .returning(PRIVACY_RETURNING);
+  return c.json(toSettings(row));
 });
 
 meRouter.post('/avatar', zValidator('json', modImagePresignSchema), async (c) => {

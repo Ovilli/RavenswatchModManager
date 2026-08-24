@@ -249,7 +249,9 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
               <dl className="space-y-2 text-sm">
                 {mod.category ? <Row k="Category" v={mod.category} /> : null}
                 {mod.rating != null ? <Row k="Rating" v={`${mod.rating.toFixed(1)} ★`} /> : null}
-                <Row k="Downloads" v={mod.downloads.toLocaleString()} />
+                {mod.downloads != null ? (
+                  <Row k="Downloads" v={mod.downloads.toLocaleString()} />
+                ) : null}
                 {sizeBytes != null ? (
                   <Row k="Size" v={`${(sizeBytes / 1024 / 1024).toFixed(2)} MB`} />
                 ) : null}

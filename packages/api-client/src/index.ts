@@ -14,6 +14,7 @@ import {
   type ModUploadRequest,
   type ModVersion,
   type ModVersionCreate,
+  type PrivacySettingsUpdate,
   type ReviewUpsert,
   type TelemetryRun,
   collectionDetailSchema,
@@ -23,6 +24,7 @@ import {
   guideReviewsResponseSchema,
   modListItemSchema,
   modVersionSchema,
+  privacySettingsSchema,
   reviewsResponseSchema,
 } from '@rsmm/schemas';
 import { z } from 'zod';
@@ -235,10 +237,95 @@ export function createApiClient(options: ApiClientOptions) {
       name: z.string(),
       handle: z.string().nullable(),
       image: z.string().nullable(),
-      joinedAt: z.string(),
+      // Optional because the API deliberately does not send it: GET
+      // /api/users/:id trims timestamps so a profile does not leak account age.
+      // It was declared required here, which made `schema.parse` throw on every
+      // single author page — the profile route has never returned the field.
+      joinedAt: z.string().optional(),
     }),
     mods: z.array(modListItemSchema),
-    totalDownloads: z.number().int().nonnegative(),
+    // null when the author has turned off public download counts.
+    totalDownloads: z.number().int().nonnegative().nullable(),
+  });
+
+  const countBucket = z.object({ n: z.number().int() });
+  const daySeries = z.array(z.object({ day: z.string(), n: z.number().int() }));
+
+  // Admin business overview. Kept permissive on the nested blocks (`.nullable()`
+  // rather than exhaustive shapes) so a server that gains a field does not fail
+  // validation in an older web build — the console renders what it recognises.
+  const adminStatsResponseSchema = z.object({
+    generatedAt: z.string(),
+    users: z.object({
+      total: z.number().int(),
+      new1d: z.number().int(),
+      new7d: z.number().int(),
+      new30d: z.number().int(),
+      banned: z.number().int(),
+      verified: z.number().int(),
+      active: z.number().int(),
+      creators: z.number().int(),
+    }),
+    consent: z.object({
+      telemetryOff: z.number().int(),
+      telemetryAnonymous: z.number().int(),
+      telemetryLinked: z.number().int(),
+      announcementOptIn: z.number().int(),
+    }),
+    mods: z
+      .object({
+        total: z.number().int(),
+        active: z.number().int(),
+        hidden: z.number().int(),
+        removed: z.number().int(),
+        featured: z.number().int(),
+        nsfw: z.number().int(),
+        new7d: z.number().int(),
+        new30d: z.number().int(),
+        noSummary: z.number().int(),
+      })
+      .nullable(),
+    versions: z
+      .object({
+        total: z.number().int(),
+        new7d: z.number().int(),
+        awaitingScan: z.number().int(),
+        flagged: z.number().int(),
+        scanErrors: z.number().int(),
+      })
+      .nullable(),
+    downloads: z
+      .object({
+        total: z.number().int(),
+        d1: z.number().int(),
+        d7: z.number().int(),
+        d30: z.number().int(),
+      })
+      .nullable(),
+    reviews: z.object({
+      total: z.number().int(),
+      new7d: z.number().int(),
+      avgRating: z.number().nullable(),
+    }),
+    reports: z
+      .object({ open: z.number().int(), reviewing: z.number().int(), new7d: z.number().int() })
+      .nullable(),
+    guides: z
+      .object({ total: z.number().int(), approved: z.number().int(), pending: z.number().int() })
+      .nullable(),
+    collections: z.number().int(),
+    follows: z.number().int(),
+    client: z.object({
+      runs7d: z.number().int(),
+      runs30d: z.number().int(),
+      successRate7d: z.number().nullable(),
+      crashes7d: z.number().int(),
+      crashes30d: z.number().int(),
+      osSplit: z.array(z.object({ os: z.string(), n: z.number().int() })),
+      versionSplit: z.array(z.object({ version: z.string(), n: z.number().int() })),
+    }),
+    topMods: z.array(z.object({ slug: z.string(), name: z.string(), downloads: z.number().int() })),
+    series: z.object({ signups: daySeries, downloads: daySeries }),
   });
 
   const statsResponseSchema = z.object({
@@ -415,6 +502,8 @@ export function createApiClient(options: ApiClientOptions) {
       },
     },
     moderation: {
+      /** Admin-only business overview powering the console's Overview tab. */
+      stats: () => request('/api/moderation/stats', { method: 'GET' }, adminStatsResponseSchema),
       reports: (status?: 'open' | 'reviewing' | 'resolved' | 'dismissed') =>
         request(
           `/api/moderation/reports${status ? `?status=${status}` : ''}`,
@@ -467,6 +556,13 @@ export function createApiClient(options: ApiClientOptions) {
       whoami: () =>
         request('/api/me', { method: 'GET' }, z.object({ id: z.string(), isAdmin: z.boolean() })),
       mods: () => request('/api/me/mods', { method: 'GET' }, myModsResponseSchema),
+      privacy: () => request('/api/me/privacy', { method: 'GET' }, privacySettingsSchema),
+      updatePrivacy: (body: PrivacySettingsUpdate) =>
+        request(
+          '/api/me/privacy',
+          { method: 'PATCH', body: JSON.stringify(body) },
+          privacySettingsSchema,
+        ),
       presignAvatar: (body: ModImagePresign) =>
         request(
           '/api/me/avatar',

@@ -555,7 +555,7 @@ export default function ManageModPage() {
               .filter(Boolean),
             license: license || mod.license,
             imageUrl: mod.imageUrl,
-            downloads: mod.downloads,
+            downloads: mod.downloads ?? 0,
           }}
           description={description}
           screenshots={screenshots}
@@ -595,7 +595,7 @@ export default function ManageModPage() {
             <p className="font-mono text-xs text-muted-foreground">{mod.slug}</p>
             <h1 className="text-3xl font-bold tracking-tight">{mod.name}</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              v{mod.latestVersion ?? '—'} · {mod.downloads.toLocaleString()} downloads ·
+              v{mod.latestVersion ?? '—'} · {(mod.downloads ?? 0).toLocaleString()} downloads ·
               {mod.category ? ` ${mod.category} · ` : ' '}updated{' '}
               {new Date(mod.updatedAt).toLocaleDateString()}
             </p>

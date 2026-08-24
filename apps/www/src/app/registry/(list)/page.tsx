@@ -358,7 +358,7 @@ function RegistryInner() {
                   <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                     <div className="flex items-center gap-2">
                       {m.category ? <Badge variant="secondary">{m.category}</Badge> : null}
-                      <span>{m.downloads.toLocaleString()} dl</span>
+                      {m.downloads != null ? <span>{m.downloads.toLocaleString()} dl</span> : null}
                     </div>
                     <div className="flex items-center gap-1">
                       {m.rating != null ? <span>★ {m.rating.toFixed(1)}</span> : null}

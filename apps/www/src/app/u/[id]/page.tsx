@@ -53,10 +53,12 @@ export default function AuthorPage({ params }: { params: Promise<{ id: string }>
   }
 
   const { user, mods, totalDownloads } = detail.data;
-  const joined = new Date(user.joinedAt).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'long',
-  });
+  // GET /api/users/:id deliberately trims timestamps so a profile does not leak
+  // account age, so `joinedAt` is normally absent — render the line only when a
+  // server actually sends one.
+  const joined = user.joinedAt
+    ? new Date(user.joinedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long' })
+    : null;
 
   return (
     <main className="relative overflow-hidden animate-page-in">
@@ -77,13 +79,17 @@ export default function AuthorPage({ params }: { params: Promise<{ id: string }>
           <div className="min-w-0 flex-1">
             <h1 className="text-3xl font-bold tracking-tight">{user.name}</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              {user.handle ? `@${user.handle} · ` : ''}joined {joined}
+              {user.handle ? `@${user.handle}` : ''}
+              {user.handle && joined ? ' · ' : ''}
+              {joined ? `joined ${joined}` : ''}
             </p>
             <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
               <Badge variant="outline">
                 {mods.length} mod{mods.length === 1 ? '' : 's'}
               </Badge>
-              <Badge variant="outline">{totalDownloads.toLocaleString()} total downloads</Badge>
+              {totalDownloads != null ? (
+                <Badge variant="outline">{totalDownloads.toLocaleString()} total downloads</Badge>
+              ) : null}
             </div>
           </div>
         </header>
@@ -143,7 +149,7 @@ export default function AuthorPage({ params }: { params: Promise<{ id: string }>
                       </p>
                     ) : null}
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      <span>{m.downloads.toLocaleString()} dl</span>
+                      {m.downloads != null ? <span>{m.downloads.toLocaleString()} dl</span> : null}
                       {m.rating != null ? <span>★ {m.rating.toFixed(1)}</span> : null}
                     </div>
                   </div>

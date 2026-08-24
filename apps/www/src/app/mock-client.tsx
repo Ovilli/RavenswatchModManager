@@ -328,7 +328,7 @@ export function MockClient({ mods }: { mods: ModListItem[] }) {
                       </div>
                       <span className="stat-pill">
                         <strong>{mod.rating != null ? `★ ${mod.rating.toFixed(1)}` : '—'}</strong>
-                        <span>{mod.downloads.toLocaleString()} dl</span>
+                        <span>{(mod.downloads ?? 0).toLocaleString()} dl</span>
                       </span>
                     </div>
                   </div>

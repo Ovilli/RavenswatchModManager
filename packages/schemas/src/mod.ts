@@ -87,7 +87,10 @@ export const modListItemSchema = z.object({
   repoUrl: z.string().url().nullable().optional(),
   homepageUrl: z.string().url().nullable().optional(),
   latestVersion: semverSchema.nullable(),
-  downloads: z.number().int().nonnegative(),
+  // null — not 0 — when the mod's owner has turned off public download counts
+  // (users.public_download_counts). Rendering it as 0 would claim the mod has
+  // never been installed, so every display site must skip the stat instead.
+  downloads: z.number().int().nonnegative().nullable(),
   updatedAt: z.string().datetime(),
   category: modCategorySchema.nullable(),
   imageUrl: z.string().url().nullable(),
@@ -125,8 +128,9 @@ export const modVersionSchema = z.object({
   // Markdown release notes entered at publish time. Optional for back-compat
   // with API responses that predate the field being exposed publicly.
   changelog: z.string().nullable().optional(),
-  // Lifetime download count for this version. Optional for back-compat.
-  downloads: z.number().int().nonnegative().optional(),
+  // Lifetime download count for this version. Optional for back-compat, and
+  // null when the owner hides download counts.
+  downloads: z.number().int().nonnegative().nullable().optional(),
 });
 
 export type ModVersion = z.infer<typeof modVersionSchema>;

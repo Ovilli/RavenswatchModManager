@@ -1,4 +1,4 @@
-import { boolean, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { boolean, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core';
 
 // Better Auth core tables. Names and columns match Better Auth defaults.
 export const users = pgTable('user', {
@@ -12,6 +12,20 @@ export const users = pgTable('user', {
   // middleware (apps/api/src/app.ts) so they can neither publish nor act.
   banned: boolean('banned').notNull().default(false),
   bannedReason: text('banned_reason'),
+  // ─── Privacy preferences ───
+  // Account-level and server-enforced, not a client-side courtesy: the
+  // telemetry routes read these before writing a row, so a modified or
+  // out-of-date client cannot store more than the account allows. Shape and
+  // semantics live in `@rsmm/schemas` (privacySettingsSchema) — 'off' drops the
+  // submission, 'anonymous' stores it with user_id NULL, 'linked' keeps the id.
+  telemetryLevel: varchar('telemetry_level', { length: 16 }).notNull().default('anonymous'),
+  crashReportLevel: varchar('crash_report_level', { length: 16 }).notNull().default('anonymous'),
+  // Hide the /u/<id> profile and the display name shown beside owned mods.
+  publicProfile: boolean('public_profile').notNull().default(true),
+  // Hide per-mod download counts on the public page. Aggregates still count them.
+  publicDownloadCounts: boolean('public_download_counts').notNull().default(true),
+  // Non-essential mail. Defaults to false: marketing consent is opt-in.
+  emailAnnouncements: boolean('email_announcements').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

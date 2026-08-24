@@ -6,13 +6,17 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { api } from '../../lib/api';
 import { useSession } from '../../lib/auth-client';
+import { AdminOverview } from './overview';
 
 type Status = 'open' | 'reviewing' | 'resolved' | 'dismissed';
 
 const STATUS_TABS: Status[] = ['open', 'reviewing', 'resolved', 'dismissed'];
 
+type Pane = 'overview' | 'reports';
+
 export default function AdminPage() {
   const { data: session, isPending } = useSession();
+  const [pane, setPane] = useState<Pane>('overview');
   const [tab, setTab] = useState<Status>('open');
   const qc = useQueryClient();
 
@@ -78,115 +82,136 @@ export default function AdminPage() {
 
   return (
     <main className="container mx-auto space-y-6 px-6 py-10">
-      <h1 className="text-3xl font-bold tracking-tight">Moderation console</h1>
+      <h1 className="text-3xl font-bold tracking-tight">Admin console</h1>
 
-      <div className="flex gap-2">
-        {STATUS_TABS.map((s) => (
-          <Button
-            key={s}
-            variant={tab === s ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setTab(s)}
-          >
-            {s}
-          </Button>
-        ))}
+      <div className="flex gap-2 border-b border-border/70 pb-3">
+        <Button
+          variant={pane === 'overview' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => setPane('overview')}
+        >
+          Overview
+        </Button>
+        <Button
+          variant={pane === 'reports' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => setPane('reports')}
+        >
+          Reports
+        </Button>
       </div>
 
-      {reports.isLoading ? (
-        <Spinner />
-      ) : reports.data && reports.data.items.length === 0 ? (
-        <p className="text-muted-foreground">No {tab} reports.</p>
-      ) : (
-        <ul className="space-y-4">
-          {reports.data?.items.map((r) => (
-            <li key={r.id} className="rounded-lg border border-border p-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline">{r.reason}</Badge>
-                <Badge variant={r.status === 'open' ? 'default' : 'secondary'}>{r.status}</Badge>
-                {r.takedownStatus !== 'active' && (
-                  <Badge variant="destructive">{r.takedownStatus}</Badge>
-                )}
-                <Link
-                  href={`/registry/${r.modSlug}`}
-                  className="font-medium underline underline-offset-2"
-                >
-                  {r.modName}
-                </Link>
-                <span className="text-xs text-muted-foreground">
-                  by {r.reporterName ?? 'anonymous'} · {new Date(r.createdAt).toLocaleString()}
-                </span>
-              </div>
-              {r.detail && <p className="mt-2 text-sm text-muted-foreground">{r.detail}</p>}
-              {r.resolutionNote && (
-                <p className="mt-1 text-xs text-muted-foreground">Note: {r.resolutionNote}</p>
-              )}
+      {pane === 'overview' ? <AdminOverview /> : null}
 
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => resolve.mutate({ id: r.id, status: 'reviewing' })}
-                >
-                  Mark reviewing
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => resolve.mutate({ id: r.id, status: 'resolved' })}
-                >
-                  Resolve
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => resolve.mutate({ id: r.id, status: 'dismissed' })}
-                >
-                  Dismiss
-                </Button>
-                {r.takedownStatus === 'active' ? (
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() =>
-                      takedown.mutate({ slug: r.modSlug, status: 'removed', reason: r.reason })
-                    }
+      <div className={pane === 'reports' ? 'space-y-6' : 'hidden'}>
+        <div className="flex gap-2">
+          {STATUS_TABS.map((s) => (
+            <Button
+              key={s}
+              variant={tab === s ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setTab(s)}
+            >
+              {s}
+            </Button>
+          ))}
+        </div>
+
+        {reports.isLoading ? (
+          <Spinner />
+        ) : reports.data && reports.data.items.length === 0 ? (
+          <p className="text-muted-foreground">No {tab} reports.</p>
+        ) : (
+          <ul className="space-y-4">
+            {reports.data?.items.map((r) => (
+              <li key={r.id} className="rounded-lg border border-border p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline">{r.reason}</Badge>
+                  <Badge variant={r.status === 'open' ? 'default' : 'secondary'}>{r.status}</Badge>
+                  {r.takedownStatus !== 'active' && (
+                    <Badge variant="destructive">{r.takedownStatus}</Badge>
+                  )}
+                  <Link
+                    href={`/registry/${r.modSlug}`}
+                    className="font-medium underline underline-offset-2"
                   >
-                    Take down
-                  </Button>
-                ) : (
+                    {r.modName}
+                  </Link>
+                  <span className="text-xs text-muted-foreground">
+                    by {r.reporterName ?? 'anonymous'} · {new Date(r.createdAt).toLocaleString()}
+                  </span>
+                </div>
+                {r.detail && <p className="mt-2 text-sm text-muted-foreground">{r.detail}</p>}
+                {r.resolutionNote && (
+                  <p className="mt-1 text-xs text-muted-foreground">Note: {r.resolutionNote}</p>
+                )}
+
+                <div className="mt-3 flex flex-wrap gap-2">
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => takedown.mutate({ slug: r.modSlug, status: 'active' })}
+                    onClick={() => resolve.mutate({ id: r.id, status: 'reviewing' })}
                   >
-                    Restore
+                    Mark reviewing
                   </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => feature.mutate({ slug: r.modSlug, featured: true })}
-                >
-                  Feature
-                </Button>
-                {r.reporterId && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => resolve.mutate({ id: r.id, status: 'resolved' })}
+                  >
+                    Resolve
+                  </Button>
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="text-destructive"
-                    onClick={() =>
-                      ban.mutate({ id: r.reporterId as string, banned: true, reason: 'abuse' })
-                    }
+                    onClick={() => resolve.mutate({ id: r.id, status: 'dismissed' })}
                   >
-                    Ban reporter
+                    Dismiss
                   </Button>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+                  {r.takedownStatus === 'active' ? (
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() =>
+                        takedown.mutate({ slug: r.modSlug, status: 'removed', reason: r.reason })
+                      }
+                    >
+                      Take down
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => takedown.mutate({ slug: r.modSlug, status: 'active' })}
+                    >
+                      Restore
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => feature.mutate({ slug: r.modSlug, featured: true })}
+                  >
+                    Feature
+                  </Button>
+                  {r.reporterId && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive"
+                      onClick={() =>
+                        ban.mutate({ id: r.reporterId as string, banned: true, reason: 'abuse' })
+                      }
+                    >
+                      Ban reporter
+                    </Button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </main>
   );
 }

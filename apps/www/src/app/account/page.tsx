@@ -19,6 +19,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { authClient, useSession } from '../../lib/auth-client';
 import { formatObjectStorageError } from '../../lib/object-storage-error';
+import { PrivacyPanel } from './privacy-panel';
 
 function fmtBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -279,6 +280,8 @@ export default function AccountPage() {
           {emailMsg ? <p className="text-xs text-muted-foreground">{emailMsg}</p> : null}
         </CardContent>
       </Card>
+
+      <PrivacyPanel />
 
       <Card className="grimoire-card">
         <CardHeader>

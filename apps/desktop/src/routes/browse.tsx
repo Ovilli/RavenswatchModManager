@@ -206,7 +206,7 @@ function BrowsePage() {
         .filter((m) => (minRating > 0 ? (m.rating ?? 0) >= minRating : true))
         .filter((m) => (hideInstalled ? !installed.includes(m.slug) : true))
         .sort((a, b) => {
-          if (sort === 'popular') return b.downloads - a.downloads;
+          if (sort === 'popular') return (b.downloads ?? 0) - (a.downloads ?? 0);
           if (sort === 'rating') return (b.rating ?? 0) - (a.rating ?? 0);
           return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
         })
@@ -773,7 +773,7 @@ function BrowsePage() {
                             </div>
                             <StatPill
                               value={m.rating != null ? `★ ${m.rating.toFixed(1)}` : '—'}
-                              label={`${m.downloads.toLocaleString()} dl`}
+                              label={m.downloads != null ? `${m.downloads.toLocaleString()} dl` : ''}
                             />
                           </div>
                         </div>
@@ -892,7 +892,7 @@ function ModRow({
             {m.rating != null ? `★ ${m.rating.toFixed(1)}` : '—'}
           </div>
           <div className="font-mono hidden w-20 shrink-0 text-right text-xs text-ash lg:block">
-            {m.downloads.toLocaleString()} dl
+            {m.downloads != null ? `${m.downloads.toLocaleString()} dl` : ''}
           </div>
         </>
       )}

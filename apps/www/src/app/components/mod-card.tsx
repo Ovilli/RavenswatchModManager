@@ -53,7 +53,7 @@ export function ModCard({ mod, featured = false }: ModCardProps) {
           </p>
         ) : null}
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span>{mod.downloads.toLocaleString()} downloads</span>
+          {mod.downloads != null ? <span>{mod.downloads.toLocaleString()} downloads</span> : null}
           {mod.rating != null ? <span>★ {mod.rating.toFixed(1)}</span> : null}
           {!featured && mod.latestVersion ? (
             <span className="ml-auto font-mono text-[0.6rem]">v{mod.latestVersion}</span>

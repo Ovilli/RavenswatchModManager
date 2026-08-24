@@ -14,8 +14,8 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { isAdmin } from '../admin.js';
 import { isPgErrorCode } from '../db-errors.js';
-import { errString } from '../logger.js';
 import { s3Configured, virusTotalConfigured } from '../env.js';
+import { errString } from '../logger.js';
 import { canManageMod } from '../mod-access.js';
 import { notify, notifyFollowers } from '../notify.js';
 import { createRateLimiter } from '../rate-limit.js';
@@ -32,6 +32,7 @@ export const modsRouter = new Hono<AppEnv>();
 // when it has its own `id` (mod_versions does) and the correlation silently
 // never matches — every mod's latestVersion came back null.
 const outerModId = sql.raw('"mods"."id"');
+const outerModOwnerId = sql.raw('"mods"."owner_id"');
 
 // Per-IP rate limiter for the download redirect endpoint. Without it,
 // a script can spin the download counter (and the underlying S3 bill)
@@ -154,6 +155,14 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
         from ${schema.modDownloads}
         where ${schema.modDownloads.modId} = ${outerModId}
       ), 0)`,
+      // Owner opted out of showing per-mod download counts (users.public_download_counts).
+      // Resolved in SQL rather than by joining and post-filtering so an
+      // owner-less mod (owner_id NULL) coalesces to "show", not to a null row.
+      hideDownloads: sql<boolean>`coalesce((
+        select not ${schema.users.publicDownloadCounts}
+        from ${schema.users}
+        where ${schema.users.id} = ${outerModOwnerId}
+      ), false)`,
     })
     .from(schema.mods)
     .where(conditions.length ? and(...conditions) : undefined)
@@ -189,7 +198,9 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
       summary: r.summary,
       license: r.license,
       latestVersion: r.latestVersion,
-      downloads: r.downloads,
+      // null (not 0) when the owner hides the count, so the UI omits the stat
+      // instead of reporting a mod with zero installs.
+      downloads: r.hideDownloads ? null : r.downloads,
       updatedAt: r.updatedAt.toISOString(),
       category: r.category,
       imageUrl: r.imageUrl,
@@ -235,6 +246,19 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
     .from(schema.modDownloads)
     .where(eq(schema.modDownloads.modId, mod.id));
   const downloads = downloadAgg[0]?.total ?? 0;
+
+  // Owner privacy: users.public_download_counts hides the per-mod figure from
+  // the public. The owner and admins keep seeing the real number, and it is
+  // reported as null rather than 0 so the UI drops the stat instead of
+  // claiming the mod has never been installed.
+  const owner = mod.ownerId
+    ? await db.query.users.findFirst({
+        where: eq(schema.users.id, mod.ownerId),
+        columns: { publicDownloadCounts: true },
+      })
+    : null;
+  const showDownloads =
+    owner?.publicDownloadCounts !== false || mod.ownerId === viewer?.id || isAdmin(viewer?.id);
 
   // Per-version download totals (public). Rows recorded before per-version
   // day-bucketing shipped attribute a whole day to one version — close
@@ -283,7 +307,7 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       repoUrl: mod.repoUrl,
       homepageUrl: mod.homepageUrl,
       latestVersion: servableVersions[0]?.version ?? null,
-      downloads,
+      downloads: showDownloads ? downloads : null,
       updatedAt: mod.updatedAt.toISOString(),
       category: mod.category,
       imageUrl: mod.imageUrl,
@@ -313,7 +337,7 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       createdAt: v.createdAt.toISOString(),
       scanStatus: v.scanStatus,
       changelog: v.changelog,
-      downloads: perVersionDownloads.get(v.id) ?? 0,
+      downloads: showDownloads ? (perVersionDownloads.get(v.id) ?? 0) : null,
     })),
   });
 });
