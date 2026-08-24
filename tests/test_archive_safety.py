@@ -313,3 +313,48 @@ def test_packed_archive_installs_cleanly(tmp_path, monkeypatch):
     dest = tmp_path / "installed"
     assert cmd_install._safe_extract(data, dest) == "RoundTrip"
     assert (dest / "RoundTrip" / "assets" / "a.bin").read_bytes() == b"my own bytes"
+
+
+# --- rsmm pack: the enabled flag is the AUTHOR's state, not the mod's ------
+#
+# A mod packed while switched off installs, applies, and then does nothing:
+# `_sync_mod_manifests` copies the manifest and DELETES init.lua for a
+# disabled mod, so the loader logs `scan_mods found=1` with no init line.
+# That is indistinguishable from a broken mod from inside the game, and it
+# cost three restarts to diagnose on damage-meter 1.2.2 (2026-08-24).
+
+def _pack_manifest(tmp_path, monkeypatch, mod_id: str, manifest: str) -> str:
+    d = tmp_path / "mods" / mod_id
+    (d / "assets").mkdir(parents=True)
+    (d / "manifest.toml").write_text(manifest, encoding="utf-8")
+    (d / "assets" / "a.bin").write_bytes(b"my own bytes")
+    assert _run_pack(tmp_path, monkeypatch, mod_id) == 0
+    with zipfile.ZipFile(tmp_path / "dist" / f"{mod_id}.zip") as zf:
+        return zf.read(f"{mod_id}/manifest.toml").decode("utf-8")
+
+
+def test_pack_stamps_a_disabled_mod_as_enabled(tmp_path, monkeypatch, capsys):
+    packed = _pack_manifest(
+        tmp_path, monkeypatch, "Offish",
+        '[mod]\nid = "Offish"\nenabled     = false\nload_order  = 60\n')
+    # Alignment is preserved: the manifest is a file authors read and edit.
+    assert "enabled     = true" in packed
+    assert "false" not in packed
+    assert "packed as enabled" in capsys.readouterr().out
+
+
+def test_pack_leaves_other_tables_alone(tmp_path, monkeypatch):
+    """`enabled` is a plausible key in a mod's own config or overlay block,
+    and rewriting one of those changes what the mod DOES."""
+    packed = _pack_manifest(
+        tmp_path, monkeypatch, "Tables",
+        '[mod]\nid = "Tables"\nenabled = false\n\n[overlay]\nenabled = false\n')
+    mod, _, overlay = packed.partition("[overlay]")
+    assert "enabled = true" in mod
+    assert "enabled = false" in overlay
+
+
+def test_pack_does_not_rewrite_an_already_enabled_manifest(tmp_path, monkeypatch, capsys):
+    src = '[mod]\nid = "OnAlready"\nenabled = true\n'
+    assert _pack_manifest(tmp_path, monkeypatch, "OnAlready", src) == src
+    assert "packed as enabled" not in capsys.readouterr().out

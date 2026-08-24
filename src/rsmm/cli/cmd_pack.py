@@ -14,6 +14,51 @@ from rsmm.sdk import archive
 
 _ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 
+# `enabled = <bool>` as it appears in a manifest, alignment padding and all.
+# Anchored to the line so a commented-out copy or an `enabled` key nested in
+# another table is not what gets rewritten (the [mod] section is isolated
+# first, see _stamp_enabled).
+_MOD_TABLE_RE = re.compile(r"^\[mod\][^\S\n]*$\n?", re.MULTILINE)
+_TABLE_RE = re.compile(r"^\[", re.MULTILINE)
+_ENABLED_RE = re.compile(r"^(?P<lhs>enabled\s*=\s*)(?:true|false)(?P<rest>\s*(?:#.*)?)$",
+                         re.MULTILINE)
+
+
+def _stamp_enabled(text: str) -> str | None:
+    """Return `text` with `[mod].enabled` forced to true, or None if it
+    already is (or the key is absent, which the loader reads as true).
+
+    A mod's `enabled` flag is the PACKING user's local state, not a property
+    of the mod -- the same class of thing as config.toml, which _is_local_only
+    already drops. Shipping it meant an author who happened to pack with the
+    mod switched off published an archive that installs, applies, and then
+    does nothing: `_sync_mod_manifests` copies the manifest and DELETES
+    init.lua for a disabled mod, so the game logs `scan_mods found=1` and no
+    init line, which reads as a broken mod rather than an off one. That is
+    exactly what happened to damage-meter 1.2.2 on 2026-08-24 -- installed
+    into a desktop profile from a zip packed while it was disabled, and
+    diagnosed through three game restarts.
+
+    Only the `[mod]` table is touched: `enabled` is a plausible key name for a
+    mod's own config schema or an [overlay] block, and rewriting one of those
+    would change what the mod DOES.
+    """
+    start = _MOD_TABLE_RE.search(text)
+    if not start:
+        return None
+    # The [mod] table runs to the next table header, or to EOF. Slicing on the
+    # header rather than on the first "\n[" matters: a manifest may open with a
+    # comment block, in which case the first bracket IS [mod] and a naive split
+    # would search an empty section and stamp nothing.
+    rest = text[start.end():]
+    nxt = _TABLE_RE.search(rest)
+    body = rest[:nxt.start()] if nxt else rest
+    stamped, n = _ENABLED_RE.subn(
+        lambda m: f"{m.group('lhs')}true{m.group('rest')}", body, count=1)
+    if not n or stamped == body:
+        return None
+    return text[:start.end()] + stamped + (rest[nxt.start():] if nxt else "")
+
 
 def _is_local_only(rel: Path) -> bool:
     """True for files that belong to the installing user, not the mod.
@@ -155,9 +200,27 @@ def main(argv: list[str] | None = None) -> int:
 
     DIST_DIR.mkdir(exist_ok=True)
     out = DIST_DIR / f"{mod_id}.zip"
+    stamped = False
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
         for f, name in members:
+            if f.name == "manifest.toml" and f.parent == src:
+                try:
+                    text = f.read_text(encoding="utf-8")
+                except (OSError, UnicodeDecodeError):
+                    text = None
+                fixed = _stamp_enabled(text) if text is not None else None
+                if fixed is not None:
+                    # Keep the source file's timestamp: the archive should differ
+                    # from a pack of the same tree only where the flag differs.
+                    info = zipfile.ZipInfo.from_file(f, name)
+                    info.compress_type = zipfile.ZIP_DEFLATED
+                    zf.writestr(info, fixed)
+                    stamped = True
+                    continue
             zf.write(f, name)
+    if stamped:
+        print(f"  [note] {mod_id} is disabled locally; packed as enabled "
+              f"(the flag is your state, not the mod's)")
     print(f"Wrote {out}")
     return 0
 
