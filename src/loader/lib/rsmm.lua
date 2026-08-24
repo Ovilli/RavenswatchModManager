@@ -2576,6 +2576,11 @@ R.net._k = {
     SLOTS = 0x5f0,        -- component slot array  { u32 class_id; u64 value }
     MASK  = 0x600,        -- bucket mask; capacity = mask + 1
     MAX   = 1024,         -- refuse an implausible capacity outright
+    -- The owner chain, netcomp -> network object -> holder -> id. See
+    -- R.net.owner for the two Ghidra sites this was read off.
+    NETOBJ     = 0xb8,    -- netcomp -> oCSLNetworkObject
+    OWNER_HOP  = 0x100,   -- netobj  -> owner holder
+    OWNER_OFF  = 0x28,    -- holder  -> u64 identity
 }
 
 --- The entity's component of `class_id`, or nil. Never faults, never calls the
@@ -2596,6 +2601,48 @@ function R.net.component(entity, class_id)
         end
     end
     return nil
+end
+
+--- The OWNER identity of `entity` — the same 64-bit value the engine itself
+--- stamps into every hit it resolves. nil when unavailable.
+---
+--- Ghidra 2026-08-24, from the two ends that matter:
+---
+---   Entity_ResolveAttackHits (FUN_1403dd540), per target:
+---       netcomp = Entity_GetNetComponent(attacker_entity)
+---       if netcomp and *(netcomp+0xb8) then
+---           (*(netcomp+0xb8))->vft[0x18](obj, &out)     -- this chain
+---       else fallback *(*(entity+0x30)+0x230)->vft[0x88](&out), else -1
+---       hitdata+0x18 = out
+---
+---   oCSLNetworkObject::vft[0x18] (FUN_1408c0d40) is one line:
+---       *out = *(*(obj+0x100) + 0x28)
+---
+--- So this is not a heuristic: it is the field the engine uses to answer "who
+--- dealt this" for its own bookkeeping, read the same way. Two entities that
+--- answer with the SAME id belong to the same owner — which is what makes a
+--- transformed or cloned hero attributable to the player it came from, for
+--- ALLIES as well as the local player (nothing else on this build does that;
+--- the hero-id join is dead here and the name sweep answers by coincidence).
+---
+--- Guarded reads only, no engine call. `Entity_GetNetId` — the engine's own
+--- accessor for this — is BANNED from the SDK: it walks the component map
+--- unguarded and a hero whose store slot holds the -1 sentinel takes the
+--- process down (2026-08-15, dump a97c76fe). R.net.component reimplements the
+--- lookup as a bounded scan that returns nil instead of faulting.
+function R.net.owner(entity)
+    local c = R.net.component(entity)
+    if not c or not I.read_u64 then return nil end
+    local obj = I.read_u64(c + R.net._k.NETOBJ)
+    if not _ptr_plausible(obj) then return nil end
+    local inner = I.read_u64(obj + R.net._k.OWNER_HOP)
+    if not _ptr_plausible(inner) then return nil end
+    local id = I.read_u64(inner + R.net._k.OWNER_OFF)
+    -- 0 and the -1 sentinel are the engine's own "no owner" answers (the
+    -- fallback branch above returns -1 outright), never an identity.
+    if type(id) ~= "number" or id == 0 or id == -1
+       or id == 0xffffffffffffffff then return nil end
+    return id
 end
 
 --- Does THIS machine own `entity`? true / false / nil when unknown.

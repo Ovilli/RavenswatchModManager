@@ -7716,5 +7716,87 @@ do
     R = require "rsmm"
 end
 
+
+-- N. R.damage: the OWNER join merges an ally through a hero swap ------------
+--
+-- The identity is the engine's own: Entity_ResolveAttackHits stamps
+-- *(*(*(netcomp+0xb8)+0x100)+0x28) into every hit it builds, and
+-- oCSLNetworkObject::vft[0x18] is literally that one line (Ghidra 2026-08-24).
+-- Two entities answering with the same id have the same owner, which is the
+-- only thing on this build that can attribute an ALLY's transformed hero -- the
+-- hero-id join is dead here and the name sweep answers by coincidence.
+do
+    package.loaded["rsmm"] = nil
+    local Rv = require "rsmm"
+    local saved_log, saved_grant = rsmm.log, I.is_grant_target
+    rsmm.log = function() end
+
+    -- Two entities, one owner. Component map: one slot holding the net class.
+    local OWNER = 0x51a2b3c4d5e6f708
+    local function make(ent, netcomp, netobj, holder, owner, hero)
+        I.write_u64(ent + 8, 0x13000000)             -- plausible component store
+        I.write_u64(ent + 0x5f0, ent + 0x9000)       -- slots
+        I.write_u64(ent + 0x600, 0)                  -- mask: one bucket
+        I.write_u32(ent + 0x9000, 0x154fce5c)        -- slot class = oCEntityCpntNet
+        I.write_u64(ent + 0x9008, netcomp)           -- slot value = the component
+        I.write_u64(netcomp + 0xb8, netobj)
+        I.write_u64(netobj + 0x100, holder)
+        I.write_u64(holder + 0x28, owner)
+        I.write_u8(ent + 0x1d88, hero and 1 or 0)
+    end
+    local A, B = 0x80000000, 0x80100000
+    make(A, 0x80200000, 0x80300000, 0x80400000, OWNER, false)
+    make(B, 0x80500000, 0x80600000, 0x80700000, OWNER, false)
+
+    check(Rv.net.owner(A) == OWNER, "R.net.owner reads the engine's owner chain")
+    check(Rv.net.owner(B) == OWNER, "and both of one owner's entities answer alike")
+    I.write_u64(0x80400000 + 0x28, 0)
+    check(Rv.net.owner(A) == nil, "a zero id is 'no owner', never an identity")
+    I.write_u64(0x80400000 + 0x28, OWNER)
+
+    local heroes = { [A] = true, [B] = true }
+    I.is_grant_target = function(e) return heroes[e] == true end
+    local TGT, TDT, ENEMY = 0x82000000, 0x82001000, 0x83000000
+    I.write_u64(ENEMY + 8, 0x13000000)
+    I.write_u32(TGT, 1); I.write_u64(TGT + 8, TDT); I.write_u64(TDT, ENEMY)
+    I.mem_find = function() return {} end
+    Rv.damage.enable{ window = 10 }
+    local atk = hooks[I.resolve("Entity_ResolveAttackHits")]
+    local function swing(ctx, dmg)
+        return atk.cb(ctx, 0, TGT, 1.5, 0.0, function() return dmg end)
+    end
+    local CTX_A, CTX_B = 0x84000000, 0x84100000
+    I.write_u64(CTX_A + 8, A)
+    I.write_u64(CTX_B + 8, B)
+
+    swing(CTX_A, 25.0)
+    check(#Rv.damage.board() == 1, "the ally boards once")
+    -- The swap: A's object is gone (no longer a hero), B is the new one.
+    heroes[A] = nil
+    swing(CTX_B, 25.0)
+    check(#Rv.damage.board() == 1,
+          "an ALLY's hero swap joins the existing row on the owner id — the "
+          .. "case the is-local rule cannot reach")
+
+    -- The guard that matters: a THIRD entity with the same owner, arriving
+    -- while the row's current object is still a live hero, is a second player
+    -- (one machine can own two heroes in local co-op) — not a swap. It must
+    -- fork. `A` cannot test this: it is still aliased to the row it boarded.
+    local C, CTX_C = 0x80800000, 0x84200000
+    make(C, 0x80900000, 0x80a00000, 0x80b00000, OWNER, false)
+    heroes[C] = true
+    I.write_u64(CTX_C + 8, C)
+    swing(CTX_C, 5.0)
+    check(#Rv.damage.board() == 2,
+          "a same-owner entity arriving while the row's hero is still ALIVE "
+          .. "forks — that is two players, not a transform")
+
+    Rv.damage.disable(); Rv.damage.reset()
+    I.is_grant_target = saved_grant
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)

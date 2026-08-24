@@ -4349,6 +4349,12 @@ function F._dmg_row_for_hero(hero)
     existing = F._dmg_rebind(hero, is_local, entity)
     if existing then return existing end
     row = F._dmg_new_row(hero, is_local)
+    -- The owner id lives on the ENTITY (the component map is the entity's),
+    -- not on the controller — so stamp it from the entity this controller
+    -- owns, or the two sources key the same player differently.
+    if _ptr_plausible(entity) and R.net and R.net.owner then
+        row.owner = R.net.owner(entity)
+    end
     F._dmg_alias(row, entity)
     -- One line per player BOARDED, bounded. Session 29a8 was a four-player run
     -- that produced two rows, and the log could not say which join collapsed
@@ -4411,6 +4417,39 @@ function F._dmg_row_for_entity(e)
     -- F._dmg_entity_is_local). Allies get no such rule -- nothing on this
     -- build identifies them (the hero-id join is dead here), so an ally swap
     -- still forks rather than guessing which row it belongs to.
+    -- OWNER JOIN — the identity the engine itself uses. R.net.owner reads the
+    -- exact field Entity_ResolveAttackHits stamps into every hit it builds
+    -- (netcomp -> +0xb8 -> +0x100 -> +0x28, confirmed in Ghidra 2026-08-24),
+    -- so two entities answering with the same id have the same owner. That is
+    -- what makes an ALLY's transformed or cloned hero attributable: no roster,
+    -- no name, no guess. Tried before the is-local rule because it is exact
+    -- where that one is a fallback.
+    --
+    -- Deliberately narrow, because the failure it must never have is merging
+    -- two live players (one machine can own two heroes in local co-op, and
+    -- the host owns every enemy):
+    --   * both ids must be present and equal;
+    --   * the row's OWN key must no longer read as a live hero. A swap
+    --     replaces the object, so the old one is dead — whereas two heroes
+    --     that are both alive are two players, whatever they share.
+    local owner = R.net and R.net.owner and R.net.owner(e) or nil
+    if owner then
+        for _, r in ipairs(_dmg.order) do
+            if r.owner == owner and r.key ~= e
+               and not (_ptr_plausible(r.key) and F._dmg_is_hero(r.key)) then
+                F._dmg_alias(r, e)
+                r.key = e
+                _dmg.owner_joins = (_dmg.owner_joins or 0) + 1
+                if _dmg.owner_joins <= 8 then
+                    R.log(("[rsmm.damage] owner join: entity 0x%x has the same "
+                           .. "owner as row %d (%s) whose object is gone — "
+                           .. "transform or respawn, not a new player")
+                          :format(e, r.slot, r.label or "?"))
+                end
+                return r
+            end
+        end
+    end
     if is_local then
         for _, r in ipairs(_dmg.order) do
             if r.is_local then
@@ -4431,6 +4470,7 @@ function F._dmg_row_for_entity(e)
         end
     end
     row = F._dmg_new_row(e, is_local)
+    row.owner = owner
     row.netid = id or false
     if id then _dmg.by_netid[id] = row end
     if is_local and _dmg.local_id == nil then
@@ -5006,6 +5046,7 @@ function R.damage.reset()
     -- own forking story rather than inheriting the last run's silence.
     _dmg.fork_said = false
     _dmg.swaps = 0
+    _dmg.owner_joins = 0
     -- The sweep's CURSOR points at a row that no longer exists; the CHAIN is a
     -- fact about the engine's layout and stays.
     F._own.cursor = nil

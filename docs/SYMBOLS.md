@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **210** symbols across 18 categories.
+Total: **211** symbols across 18 categories.
 
 ## combat
 
@@ -241,6 +241,7 @@ Total: **210** symbols across 18 categories.
 | `Netcode_RemoteSystemTable` | `0x140ae1700` | ❓ unverified |  | oCSLNetPeer::vft[0x100] — enumerates the connected remote systems, and the reason a dam… |
 | `Netcode_SessionCtx_LocalGuid` | `0x1408b7550` | ❓ unverified |  | oCDtP2PSessionSceneContext::vft[0x88] — returns THIS machine's session id. Ghidra 2026-… |
 | `RakNetConnection_Ctor` | `0x140b9cd50` | ❓ unverified |  | Stormancer::RakNetConnection constructor. Ghidra 2026-08-21: installs Stormancer::IConn… |
+| `SLNetworkObject_GetOwnerId` | `0x1408c0d40` | ❓ unverified |  | void* __fastcall(oCSLNetworkObject* self, uint64_t* out) |
 
 ## options
 

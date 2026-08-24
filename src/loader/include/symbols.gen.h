@@ -341,6 +341,8 @@ constexpr std::uintptr_t Netcode_SessionCtx_LocalGuid = 0x1408b7550ull;
 constexpr const char* Netcode_SessionCtx_LocalGuid_Pattern = "Netcode_SessionCtx_LocalGuid";
 constexpr std::uintptr_t RakNetConnection_Ctor = 0x140b9cd50ull;
 constexpr const char* RakNetConnection_Ctor_Pattern = "RakNetConnection_Ctor";
+constexpr std::uintptr_t SLNetworkObject_GetOwnerId = 0x1408c0d40ull;
+constexpr const char* SLNetworkObject_GetOwnerId_Pattern = "SLNetworkObject_GetOwnerId";
 
 // --- options ---
 constexpr std::uintptr_t g_GameOptions = 0x14143cb58ull;
