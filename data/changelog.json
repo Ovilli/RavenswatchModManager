@@ -16,8 +16,9 @@
     {
       "version": "5.1.1",
       "date": "2026-08-24",
-      "summary": "Publishing a mod version now cannot mislabel it, restoring no longer deletes the previous run's log, and an installed mod arrives switched on.",
+      "summary": "The game loader now shows a download bar and can restart the game for you, publishing a mod version cannot mislabel it, and restoring no longer deletes the previous run's log.",
       "highlights": [
+        "Updating the game loader now shows a real download bar instead of a spinner, and offers to restart Ravenswatch when it finishes — a running game keeps the loader it started with, so the update only takes effect in a fresh session. If a run is in progress it asks first.",
         "Fixed installed mods arriving switched off. A mod packaged while its author had it disabled shipped that setting with it, so it installed, applied, and then did nothing — with no error anywhere, because a disabled mod has its code removed rather than skipped. Packaging now always marks the mod as on, and whether you run it stays your choice in the launcher.",
         "Publishing a mod version now checks that the version you are publishing matches the one inside the package. When they disagreed, the store offered an update that installed correctly and never changed the version, so pressing Update appeared to do nothing forever.",
         "Restoring no longer deletes the previous run's log. The loader archives it at the start of the next launch, and restore was removing it first — so the archive it was supposed to produce never had anything to save, and neither did the crash history that decides whether a mod is disabled after repeated failed launches.",
