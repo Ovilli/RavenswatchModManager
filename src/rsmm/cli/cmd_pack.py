@@ -9,7 +9,13 @@ from pathlib import Path
 
 from rsmm.engine.asset_map import decoded_to_encoded
 from rsmm.engine.hashing import sha256_file as sha256
-from rsmm.engine.paths import COOKING_SUBDIR, DATA_DIR, DEFAULT_GAME_DIR, DIST_DIR, MODS_DIR
+from rsmm.engine.paths import (
+    COOKING_SUBDIR,
+    DATA_DIR,
+    DEFAULT_GAME_DIR,
+    MODS_DIR,
+    dist_out_dir,
+)
 from rsmm.sdk import archive
 
 _ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
@@ -205,8 +211,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  [WARN] {mod_id} overwrites game install root file: {rel}",
               file=sys.stderr)
 
-    DIST_DIR.mkdir(exist_ok=True)
-    out = DIST_DIR / f"{mod_id}.zip"
+    out_dir = dist_out_dir()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / f"{mod_id}.zip"
     stamped = False
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
         for f, name in members:

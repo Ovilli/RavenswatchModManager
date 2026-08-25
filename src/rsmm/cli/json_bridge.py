@@ -67,7 +67,7 @@ from rsmm.cli.apply_mods import (
 )
 from rsmm.cli.merge import _ranked, collect_patches
 from rsmm.engine import net
-from rsmm.engine.paths import DIST_DIR, MODS_DIR, REPO_ROOT, self_cmd
+from rsmm.engine.paths import MODS_DIR, REPO_ROOT, dist_out_dir, self_cmd
 from rsmm.logging import get_logger
 from rsmm.sdk import archive
 from rsmm.sdk.config import ConfigError, ConfigStore
@@ -709,7 +709,7 @@ def cmd_pack_mod(mod_id: str) -> int:
             "stderr": pack_result["stderr"],
         })
 
-    zip_path = DIST_DIR / f"{mod_id}.zip"
+    zip_path = dist_out_dir() / f"{mod_id}.zip"
     if not zip_path.is_file():
         return _emit({"ok": False, "error": f"pack succeeded but {zip_path} missing"})
 

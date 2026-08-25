@@ -29,17 +29,29 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from .paths import DATA_DIR
+from .paths import DATA_DIR, user_data_dir
 
 #: Bumped when a cached value's SHAPE changes, so an old file is ignored
 #: rather than deserialized into the wrong structure.
 _SCHEMA = 1
 
-_CACHE_DIR = DATA_DIR / ".corpus_cache"
+
+def _cache_dir() -> Path:
+    """Where the sweep cache lives.
+
+    Frozen builds must not use `DATA_DIR`: it sits inside `_MEIPASS`, the
+    temp directory PyInstaller deletes on exit. Writing there succeeds, so
+    nothing errors — the entry is simply gone by the next invocation and
+    every run rebuilds from scratch, permanently, while looking cached.
+    """
+    if getattr(sys, "frozen", False):
+        return user_data_dir() / ".corpus_cache"
+    return DATA_DIR / ".corpus_cache"
 
 
 def _fingerprint(root: Path) -> str:
@@ -69,7 +81,8 @@ def load_or_build(name: str, root: Path, build: Callable[[], Any]) -> Any:
     if not root.is_dir():
         return build()
     key = _fingerprint(root)
-    path = _CACHE_DIR / f"{name}.json"
+    cache_dir = _cache_dir()
+    path = cache_dir / f"{name}.json"
     try:
         doc = json.loads(path.read_text(encoding="utf-8"))
         if doc.get("key") == key:
@@ -79,7 +92,7 @@ def load_or_build(name: str, root: Path, build: Callable[[], Any]) -> Any:
 
     value = build()
     try:
-        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cache_dir.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps({"key": key, "value": value}),
                        encoding="utf-8")

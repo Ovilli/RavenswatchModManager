@@ -278,7 +278,9 @@ def _run_pack(tmp_path, monkeypatch, mod_id: str) -> int:
     from rsmm.cli import cmd_pack
 
     monkeypatch.setattr(cmd_pack, "MODS_DIR", tmp_path / "mods")
-    monkeypatch.setattr(cmd_pack, "DIST_DIR", tmp_path / "dist")
+    # Output location is a function now, not a constant: frozen builds must
+    # not write into `_MEIPASS`. See `paths.dist_out_dir`.
+    monkeypatch.setattr(cmd_pack, "dist_out_dir", lambda: tmp_path / "dist")
     monkeypatch.setattr(cmd_pack, "_vanilla_offenders", lambda _d: [])
     return cmd_pack.main([mod_id])
 

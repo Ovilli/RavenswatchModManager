@@ -243,6 +243,10 @@ def mods_dir() -> Path:
 
 REPO_ROOT: Path     = _find_repo_root()
 DATA_DIR: Path      = REPO_ROOT / "data"
+#: Where build ARTEFACTS are read from — notably the bundled `winhttp.dll`,
+#: which `--add-data`s into `dist/` inside the bundle. This is a READ location
+#: in a frozen build. Anything the CLI *writes* at runtime must use
+#: `dist_out_dir()` instead; see its docstring.
 DIST_DIR: Path      = REPO_ROOT / "dist"
 
 
@@ -260,6 +264,26 @@ def user_data_dir() -> Path:
     else:
         base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
     return Path(base) / "rsmm"
+
+
+def dist_out_dir() -> Path:
+    """Where the CLI WRITES build output (`rsmm pack` / `rsmm json pack-mod`).
+
+    Same hazard `_resolve_asset_map_paths` documents, on a different path.
+    In a onefile PyInstaller bundle `REPO_ROOT` is `_MEIPASS`, a temp
+    directory PyInstaller deletes when the process exits — so `DIST_DIR`
+    there is write-once-then-vanish. `pack-mod` hands its `path` back to the
+    UI for a SEPARATE `upload-bytes` invocation, and by the time that second
+    process starts the zip is gone: publishing from the desktop app fails
+    with a missing file that nothing on disk explains.
+
+    So frozen builds write under `user_data_dir()` instead, which persists.
+    `DIST_DIR` stays pointed at the bundle because that is where the bundled
+    `winhttp.dll` is read from.
+    """
+    if not getattr(sys, "frozen", False):
+        return DIST_DIR
+    return user_data_dir() / "dist"
 
 
 def _resolve_asset_map_paths() -> tuple[Path, Path]:
