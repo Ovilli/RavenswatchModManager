@@ -863,7 +863,36 @@ export interface UninstallResult {
   removed?: boolean;
   removedPath?: string;
   error?: string;
+  /**
+   * What happened to the mod's `on_disable.py` — its one chance to undo
+   * state it wrote at runtime, since after the folder is deleted there is
+   * nothing left to run. `ok` | `absent` | `not-enabled` are all fine;
+   * anything else means the mod is gone but its cleanup never happened.
+   */
+  disableHook?: string;
+  disableHookDetail?: string;
 }
+
+/** Statuses where no cleanup was owed, or it completed. */
+const DISABLE_HOOK_OK = new Set(['ok', 'absent', 'not-enabled']);
+
+/**
+ * A user-facing warning when a mod was removed but its cleanup did not run,
+ * or null when there is nothing to say.
+ *
+ * Reported symptom this exists for: a seed-pinning mod wrote `Forced seed`
+ * into the game's own settings, and uninstalling it deleted the only code
+ * that knew how to unpin it — so the run seed stayed frozen with no mod left
+ * to blame. A silent "Mod uninstalled." is the wrong thing to show then.
+ */
+export const disableHookWarning = (result: UninstallResult | null): string | null => {
+  const status = result?.disableHook;
+  if (!status || DISABLE_HOOK_OK.has(status)) return null;
+  const detail = result?.disableHookDetail?.trim();
+  const who = result?.modId ? `${result.modId}'s` : "The mod's";
+  const because = detail ? `: ${detail}` : '';
+  return `${who} cleanup step did not run (${status})${because}. It may have left settings behind in the game.`;
+};
 
 /**
  * Download a mod from the public index by slug + extract into the

@@ -32,7 +32,7 @@ import { useToast } from '../components/toast';
 import { UpdatesPanel } from '../components/updates-panel';
 import { compareVersions, getMissingDependencyCount } from '../lib/library-deps';
 import type { ModCategory } from '../lib/mod-types';
-import { listLocalMods, uninstallLocalMod } from '../lib/rsmm';
+import { disableHookWarning, listLocalMods, uninstallLocalMod } from '../lib/rsmm';
 import {
   activeProfile,
   detectConflicts,
@@ -270,6 +270,7 @@ function LibraryPage() {
     if (!result || !result.ok) {
       throw new Error(result?.error || `Failed to uninstall ${id}`);
     }
+    return result;
   }, []);
 
   const uninstallModStore = useApp((s) => s.uninstallMod);
@@ -278,10 +279,12 @@ function LibraryPage() {
       // Card/list buttons call this fire-and-forget — catch here or a
       // sidecar failure becomes an unhandled rejection the user never sees.
       try {
-        await removeLocalMod(id);
+        const result = await removeLocalMod(id);
         uninstallModStore(id);
         await refreshLocalMods();
-        toast.push('Mod uninstalled.', 'success');
+        const warning = disableHookWarning(result);
+        if (warning) toast.push(warning, 'error');
+        else toast.push('Mod uninstalled.', 'success');
       } catch (err) {
         console.error('[library] uninstall failed', err);
         toast.push(err instanceof Error ? err.message : String(err), 'error');
@@ -293,13 +296,16 @@ function LibraryPage() {
   const bulkUninstall = useCallback(() => {
     void (async () => {
       try {
+        const warnings: string[] = [];
         for (const id of selected) {
-          await removeLocalMod(id);
+          const warning = disableHookWarning(await removeLocalMod(id));
+          if (warning) warnings.push(warning);
           uninstallModStore(id);
         }
         await refreshLocalMods();
         clearSelection();
-        toast.push('Selected mods uninstalled.', 'success');
+        if (warnings.length) toast.push(warnings.join(' '), 'error');
+        else toast.push('Selected mods uninstalled.', 'success');
       } catch (err) {
         toast.push(err instanceof Error ? err.message : String(err), 'error');
       }

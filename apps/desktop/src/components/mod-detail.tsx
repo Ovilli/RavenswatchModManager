@@ -35,7 +35,12 @@ import { useModToggle } from './use-mod-toggle';
 import { api, describeApiError, logApiError } from '../lib/api';
 import { getApiUrl } from '../lib/api-url';
 import { inTauri } from '../lib/platform';
-import { installModVersion, listLocalMods, uninstallLocalMod } from '../lib/rsmm';
+import {
+  disableHookWarning,
+  installModVersion,
+  listLocalMods,
+  uninstallLocalMod,
+} from '../lib/rsmm';
 import { toEmbedUrl } from '../lib/video-embed';
 import { activeProfile, isEnabledIn, useApp } from '../store';
 
@@ -139,7 +144,9 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
         uninstallModStore(modId);
         await refreshLocalMods();
         await queryClient.invalidateQueries({ queryKey: ['mods', 'detail', slug] });
-        toast.push('Mod uninstalled.', 'success');
+        const warning = disableHookWarning(result);
+        if (warning) toast.push(warning, 'error');
+        else toast.push('Mod uninstalled.', 'success');
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to uninstall mod.';
         setVersionError(message);

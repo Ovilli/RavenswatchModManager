@@ -31,6 +31,10 @@ def _dispatch_module(modname: str, argv: list[str]) -> int:
     return 2
 
 
+#: Reserved internal verb — see `rsmm.cli.cmd_run_hook`. Kept here rather than
+#: imported from that module so `main()` can route without importing it.
+HOOK_RUNNER_VERB = "__on-disable"
+
 LEGACY = {
     "apply":         ("rsmm.cli.apply_mods",                 []),
     "list":          ("rsmm.cli.apply_mods",                 ["--list"]),
@@ -248,6 +252,13 @@ def main(argv: list[str] | None = None) -> int:
         # Strip --all from any position so ordering doesn't matter.
         rest = [a for a in rest if a != "--all"]
         return _dispatch_module("rsmm.cli.apply_mods", ["--restore-all", *rest])
+
+    # Internal: how a FROZEN rsmm runs a mod's on_disable.py, since there is
+    # no Python interpreter on disk to hand the script to. Deliberately not in
+    # BUILTIN/SDK/LEGACY, so it stays out of `iter_commands()` and therefore
+    # out of the help listing and the generated CLI docs.
+    if sub == HOOK_RUNNER_VERB:
+        return _dispatch_module("rsmm.cli.cmd_run_hook", rest)
 
     if sub in BUILTIN:
         return _dispatch_module(BUILTIN[sub], rest)

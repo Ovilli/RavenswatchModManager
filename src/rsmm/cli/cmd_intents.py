@@ -80,7 +80,7 @@ def set_mod_enabled(mods_dir: Path, mod_id: str, enabled: bool) -> str:
     return "ok"
 
 
-def uninstall_mod(mods_dir: Path, mod_id: str) -> str:
+def uninstall_mod(mods_dir: Path, mod_id: str, game_dir: Path | None = None) -> str:
     target = (mods_dir / mod_id).resolve()
     try:
         target.relative_to(mods_dir.resolve())
@@ -88,6 +88,19 @@ def uninstall_mod(mods_dir: Path, mod_id: str) -> str:
         return "invalid"
     if not target.is_dir():
         return "missing"
+    # The mod's own cleanup gets to run while its directory still exists —
+    # after the rmtree there is nothing left to run. See
+    # `apply_mods.run_uninstall_hook` for why that mattered in the field.
+    if game_dir is not None:
+        from rsmm.cli.apply_mods import State, run_uninstall_hook
+        cooking = game_dir / "DarkTalesResources" / "_Cooking"
+        status, detail = run_uninstall_hook(
+            target, mod_id, game_dir, cooking, State(cooking))
+        if status not in ("ok", "absent", "not-enabled"):
+            print(f"warning: {mod_id}: on_disable.py {status}: {detail}",
+                  file=sys.stderr)
+        elif detail and status == "ok":
+            print(f"  ~ on_disable {mod_id}: {detail}")
     shutil.rmtree(target)
     return "ok"
 
@@ -152,7 +165,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
     for it in latest.values():
         op, mod = it["op"], it["mod"]
         if op == "uninstall":
-            status = uninstall_mod(mods_dir, mod)
+            status = uninstall_mod(mods_dir, mod, game_dir)
         else:
             status = set_mod_enabled(mods_dir, mod, op == "enable")
         ok = status in ("ok", "unchanged")
