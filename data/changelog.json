@@ -1,6 +1,17 @@
 {
-  "generated": "2026-08-24",
+  "generated": "2026-08-25",
   "entries": [
+    {
+      "version": "5.1.2",
+      "date": "2026-08-25",
+      "summary": "Uninstalling a mod now runs its cleanup step, so a mod can no longer leave game settings behind after it is gone.",
+      "highlights": [
+        "Mods can ship a cleanup step that undoes settings they changed while running. In the installed app that step never actually ran — it only worked in a development checkout — so every mod's cleanup had been silently doing nothing. It runs now.",
+        "Uninstalling a mod deleted its folder before giving it a chance to clean up, which removed the only thing that knew how to undo the change. Reported as a run seed that stayed frozen after a seed-pinning mod was removed: the mod was gone, its setting was not. Cleanup now runs first.",
+        "If a mod's cleanup cannot run — it failed, or the mod folder was deleted by hand while it was still enabled — the app says so instead of reporting a clean uninstall that quietly left settings behind.",
+        "Publishing a mod from the app wrote the packaged file into a temporary folder that was deleted a moment later, so the upload had nothing to send. It now writes somewhere that lasts."
+      ]
+    },
     {
       "version": "",
       "loader_version": 8,
