@@ -581,13 +581,25 @@ def pager(title: str, lines: list[str], *, colorize=None,
                     # report.
                     visible = {src for _t, src, _h in rows[top:top + page]}
                     chunk = [lines[i] for i in sorted(visible)]
-                dest = Path(P.REPO_ROOT) / f"rsmm_{copy_name}_copy.txt"
+                # Not REPO_ROOT: in a frozen build that is `_MEIPASS`, wiped
+                # when this process exits — the dump would be reported as
+                # written and then not be there.
+                dest = _dump_dir() / f"rsmm_{copy_name}_copy.txt"
                 msg = _clip.copy_or_dump("\n".join(chunk) + "\n", dest)
                 if _clip.is_ssh() and "clipboard" not in msg:
                     msg += " (ssh session: no local clipboard)"
                 note = _ST.ok(f"{len(chunk)} lines \u2014 ") + _ST.dim(msg)
             elif key in ("q", _keys.ESC):
                 return
+
+
+def _dump_dir() -> Path:
+    """Directory for clipboard-fallback dumps, writable in both modes."""
+    if getattr(sys, "frozen", False):
+        d = P.user_data_dir()
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+    return Path(P.REPO_ROOT)
 
 
 def _log_screen() -> None:

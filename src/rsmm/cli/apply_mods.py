@@ -51,7 +51,7 @@ from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 
-from rsmm.cli import _term
+from rsmm.cli import _dispatch, _term
 from rsmm.engine import cipher, cook_cache, cooked_schemas, rsc_cache
 from rsmm.engine.game_proc import is_game_running
 from rsmm.engine.hashing import sha256_file as sha256
@@ -62,6 +62,7 @@ from rsmm.engine.paths import (
     game_fingerprint,
     load_stored_fingerprint,
     save_fingerprint,
+    self_cmd,
 )
 from rsmm.engine.paths import (
     REPO_ROOT as REPO_DIR,
@@ -1368,6 +1369,95 @@ DEACTIVATION_SCRIPT_NAME = "on_disable.py"
 DEACTIVATION_TIMEOUT_SEC = 30
 
 
+def _hook_argv(script: Path) -> list[str]:
+    """Argv that actually executes `script`, frozen or not.
+
+    `[sys.executable, script]` is only correct in a source checkout. In the
+    PyInstaller sidecar — what every desktop user runs — `sys.executable` IS
+    rsmm and there is no interpreter to hand a .py to, so that argv becomes
+    `rsmm on_disable.py`, an unknown subcommand that exits 2 having run none
+    of the hook. The caller then recorded it as "ran", so a mod's cleanup
+    silently did nothing in the desktop app forever. Frozen builds go back
+    through rsmm itself (`self_cmd`) and `runpy` the script on the bundled
+    interpreter instead.
+    """
+    if getattr(sys, "frozen", False):
+        return self_cmd([_dispatch.HOOK_RUNNER_VERB, str(script)])
+    return [sys.executable, str(script)]
+
+
+def run_disable_hook(mod_root: Path,
+                     game_dir: Path,
+                     cooking: Path) -> subprocess.CompletedProcess[str]:
+    """Run one mod's `on_disable.py` and return the finished process.
+
+    Shared by `apply` (a mod flipped enabled -> disabled) and by uninstall
+    (the directory is about to be deleted, so this is the hook's last
+    chance to run at all). Raises `subprocess.TimeoutExpired` / `OSError`
+    for the caller to report — a mod's cleanup must never be able to hang
+    or kill the CLI.
+
+    Env contract: RSMM_GAME_DIR, RSMM_COOKING, RSMM_MOD_DIR.
+    """
+    script = mod_root / DEACTIVATION_SCRIPT_NAME
+    env = os.environ.copy()
+    env["RSMM_GAME_DIR"] = str(game_dir)
+    env["RSMM_COOKING"] = str(cooking)
+    env["RSMM_MOD_DIR"] = str(mod_root)
+    return subprocess.run(
+        _hook_argv(script),
+        env=env, cwd=str(mod_root),
+        timeout=DEACTIVATION_TIMEOUT_SEC,
+        capture_output=True, text=True,
+    )
+
+
+def run_uninstall_hook(mod_root: Path,
+                       mod_id: str,
+                       game_dir: Path,
+                       cooking: Path,
+                       state: State) -> tuple[str, str]:
+    """Last-chance `on_disable.py` for a mod about to be deleted.
+
+    Deleting `mods/<id>/` is the one deactivation `apply` can never clean up
+    after: by the time the next apply notices the mod is gone, so is the hook
+    that knew how to undo it. Whatever the mod wrote at RUNTIME — a `[Debug]`
+    key in `_Save/GameSettings.ini`, a profile flag — then outlives every
+    trace of the mod that wrote it, with nothing left to connect the two.
+    (Reported as "I uninstalled the mod and my run seed still won't change".)
+
+    So uninstall runs the hook itself, BEFORE the rmtree.
+
+    Gated on the mod having been enabled, per `.rsmm_state.json`. `on_disable.py`
+    is unsandboxed Python, and a mod that was never enabled never ran, so it
+    can have no runtime state to undo — without this gate, "install a mod and
+    uninstall it without ever turning it on" would be an arbitrary-code path.
+
+    Returns (status, detail) where status is one of:
+      ok / failed / timeout / error   — the hook ran (or tried to)
+      absent                          — the mod ships no hook
+      not-enabled                     — skipped by the gate above
+    """
+    script = mod_root / DEACTIVATION_SCRIPT_NAME
+    if not script.is_file():
+        return "absent", ""
+    if mod_id not in set(state.enabled_mods):
+        return "not-enabled", (
+            f"{mod_id} was never applied as enabled; skipping its "
+            f"{DEACTIVATION_SCRIPT_NAME}"
+        )
+    try:
+        r = run_disable_hook(mod_root, game_dir, cooking)
+    except subprocess.TimeoutExpired:
+        return "timeout", f"{DEACTIVATION_SCRIPT_NAME} timed out after {DEACTIVATION_TIMEOUT_SEC}s"
+    except (OSError, ValueError) as e:
+        return "error", f"{DEACTIVATION_SCRIPT_NAME} could not be run: {e}"
+    detail = (r.stdout or "").strip() or (r.stderr or "").strip()
+    if r.returncode != 0:
+        return "failed", f"{DEACTIVATION_SCRIPT_NAME} exited {r.returncode}: {detail}".strip()
+    return "ok", detail
+
+
 def _run_deactivation_hooks(mods: list[Mod],
                             state: State,
                             game_dir: Path,
@@ -1394,8 +1484,17 @@ def _run_deactivation_hooks(mods: list[Mod],
     "yes" reply). Set ``RSMM_NONINTERACTIVE=1`` to force `--yes` as
     the only acceptable trigger (CI, scripts).
 
-    Returns (ran, missing) — mod ids whose hook fired vs flipped mods
-    with no on_disable.py present (silent; not an error).
+    Returns (ran, missing) — mod ids whose hook ran to a clean exit vs
+    flipped mods whose cleanup did not complete (no hook, hook errored,
+    hook timed out, or the mod is gone).
+
+    A flipped mod that is still on disk without an on_disable.py is
+    silent: it declared no cleanup, so there is nothing to say. A
+    flipped mod whose directory is GONE is not silent — it was enabled
+    when it was deleted, so any hook it shipped can never run and any
+    runtime state it wrote (a [Debug] key in _Save/GameSettings.ini, a
+    profile flag) stays in the install with nothing left to point at
+    it. That leak is invisible from the game side, so we warn.
     """
     prev_enabled = set(state.enabled_mods)
     if not prev_enabled:
@@ -1452,6 +1551,14 @@ def _run_deactivation_hooks(mods: list[Mod],
     for mod_id in flipped:
         m = cur_by_id.get(mod_id)
         if m is None:
+            # Deleted while enabled: no directory left to read a hook from.
+            print(
+                f"  [WARN] {mod_id}: was enabled but its mods/ directory is "
+                f"gone, so its on_disable.py (if it had one) can never run. "
+                f"Runtime state it wrote may still be in the install — check "
+                f"{game_dir / '_Save' / 'GameSettings.ini'}.",
+                file=sys.stderr,
+            )
             missing.append(mod_id)
             continue
         script = m.root / DEACTIVATION_SCRIPT_NAME
@@ -1462,17 +1569,8 @@ def _run_deactivation_hooks(mods: list[Mod],
         if dry_run:
             ran.append(mod_id)
             continue
-        env = os.environ.copy()
-        env["RSMM_GAME_DIR"] = str(game_dir)
-        env["RSMM_COOKING"] = str(cooking)
-        env["RSMM_MOD_DIR"] = str(m.root)
         try:
-            r = subprocess.run(
-                [sys.executable, str(script)],
-                env=env, cwd=str(m.root),
-                timeout=DEACTIVATION_TIMEOUT_SEC,
-                capture_output=True, text=True,
-            )
+            r = run_disable_hook(m.root, game_dir, cooking)
             if r.returncode != 0:
                 print(f"    on_disable {mod_id} exited {r.returncode}",
                       file=sys.stderr)
@@ -1480,16 +1578,19 @@ def _run_deactivation_hooks(mods: list[Mod],
                     print(r.stdout, file=sys.stderr)
                 if r.stderr:
                     print(r.stderr, file=sys.stderr)
+                missing.append(mod_id)
             else:
-                if r.stdout.strip():
-                    for ln in r.stdout.splitlines():
-                        print(f"    {ln}")
-            ran.append(mod_id)
+                # Only a clean exit counts as cleanup that happened. Counting
+                # a failure as "ran" is what let the frozen-build breakage go
+                # unnoticed: every hook "ran" and none of them had.
+                ran.append(mod_id)
         except subprocess.TimeoutExpired:
             print(f"    on_disable {mod_id} TIMEOUT after "
                   f"{DEACTIVATION_TIMEOUT_SEC}s", file=sys.stderr)
+            missing.append(mod_id)
         except (OSError, ValueError) as e:
             print(f"    on_disable {mod_id} failed: {e}", file=sys.stderr)
+            missing.append(mod_id)
     return ran, missing
 
 

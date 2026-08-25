@@ -59,10 +59,15 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from rsmm.cli.apply_mods import clear_runtime_mods, find_game_dir
+from rsmm.cli.apply_mods import (
+    State,
+    clear_runtime_mods,
+    find_game_dir,
+    run_uninstall_hook,
+)
 from rsmm.cli.merge import _ranked, collect_patches
 from rsmm.engine import net
-from rsmm.engine.paths import DIST_DIR, MODS_DIR, REPO_ROOT, self_cmd
+from rsmm.engine.paths import MODS_DIR, REPO_ROOT, dist_out_dir, self_cmd
 from rsmm.logging import get_logger
 from rsmm.sdk import archive
 from rsmm.sdk.config import ConfigError, ConfigStore
@@ -235,6 +240,21 @@ def cmd_uninstall_mod(mod_id: str) -> int:
     except ValueError:
         return _emit({"ok": False, "error": f"invalid mod id: {mod_id!r}"})
 
+    # Give the mod its on_disable.py while the directory still exists — see
+    # `apply_mods.run_uninstall_hook`. Deleting first is what left a pinned
+    # `Forced seed` in GameSettings.ini after a user uninstalled a seed mod.
+    hook_status, hook_detail = "absent", ""
+    if mod_path.is_dir():
+        game_dir = find_game_dir()
+        if game_dir is not None:
+            cooking = game_dir / "DarkTalesResources" / "_Cooking"
+            hook_status, hook_detail = run_uninstall_hook(
+                mod_path, mod_id, game_dir, cooking, State(cooking))
+        elif (mod_path / "on_disable.py").is_file():
+            hook_status = "no-game-dir"
+            hook_detail = ("Ravenswatch install not found, so this mod's "
+                           "on_disable.py could not run before removal.")
+
     try:
         if mod_path.is_dir():
             shutil.rmtree(mod_path)
@@ -252,6 +272,10 @@ def cmd_uninstall_mod(mod_id: str) -> int:
         "modId": mod_id,
         "removed": removed,
         "removedPath": str(mod_path),
+        # So the UI can say "this mod's cleanup did not run" instead of
+        # reporting a clean uninstall that quietly left state behind.
+        "disableHook": hook_status,
+        "disableHookDetail": hook_detail,
     })
 
 
@@ -685,7 +709,7 @@ def cmd_pack_mod(mod_id: str) -> int:
             "stderr": pack_result["stderr"],
         })
 
-    zip_path = DIST_DIR / f"{mod_id}.zip"
+    zip_path = dist_out_dir() / f"{mod_id}.zip"
     if not zip_path.is_file():
         return _emit({"ok": False, "error": f"pack succeeded but {zip_path} missing"})
 
