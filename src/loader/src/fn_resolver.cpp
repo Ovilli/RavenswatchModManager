@@ -78,7 +78,17 @@ bool parse_pattern(const std::string& pat, std::vector<std::uint8_t>& bytes,
         bytes.push_back(static_cast<std::uint8_t>(std::stoi(tok, nullptr, 16)));
         mask.push_back(0xFF);
     }
-    return !bytes.empty();
+    if (bytes.empty()) return false;
+    // At least one FIXED byte, or the scan is meaningless: scan_all anchors on
+    // the first masked byte, and with none it anchors on bytes[0] — a zero it
+    // never actually wrote — then finds the first 0x00 in .text and passes the
+    // mask check vacuously, resolving the symbol to a garbage address that
+    // every later check (fn_verify, .pdata) would then be asked about. Reject
+    // it here so the entry is DROPPED and the capability disables itself.
+    for (const auto m : mask) {
+        if (m) return true;
+    }
+    return false;
 }
 
 // Masked scan over .text. Anchors on the first non-wildcard byte and finds

@@ -48,6 +48,7 @@ extern "C" {
 #include "hook_lua.h"
 #include "loader.h"
 #include "hook_util.h"
+#include "lua_err.h"
 
 #include "MinHook.h"
 
@@ -378,7 +379,7 @@ std::uint64_t dispatch(int slot, std::uint64_t* a) {
     // "did the callback call next?" must not be confused with an inner one's.
     const bool saved_next_called = tl_next_called;
     tl_next_called = false;
-    const int pcall_rc = lua_pcall(L, total, 1, 0);
+    const int pcall_rc = lua_pcall_traced(L, total, 1);
     const bool next_called = tl_next_called;
     tl_next_called = saved_next_called;
 
@@ -400,7 +401,7 @@ std::uint64_t dispatch(int slot, std::uint64_t* a) {
         if (streak <= 3 || streak == kCallbackErrorLimit) {
             Loader::get().log(std::string("[hook] cb error in ") + who
                               + " (" + std::to_string(streak) + "): "
-                              + lua_tostring(L, -1));
+                              + lua_err_str(L));
         }
         if (streak == kCallbackErrorLimit) {
             Loader::get().log("[hook] DISABLING callback for slot "

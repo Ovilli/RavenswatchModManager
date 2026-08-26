@@ -60,8 +60,22 @@ def main(argv: list[str] | None = None) -> int:
             if not st.mods:
                 print("  no crash records")
             for mid, body in sorted(st.mods.items()):
-                tag = "DISABLED" if body.disabled_by_health else "ok"
-                print(f"  [{tag:>8}] {mid:24}  crashes={body.crashes}")
+                tag = "DISABLED" if body.disabled else "ok"
+                line = f"  [{tag:>8}] {mid:24}  crashes={body.crashes}"
+                if body.disabled and body.disabled_reason:
+                    line += f"  ({body.disabled_reason})"
+                print(line)
+                if body.last_error:
+                    print(f"{'':>13}{body.last_error[:96]}")
+
+            canary = h.read_canary()
+            if canary:
+                step = str(canary.get("step", "?"))
+                print(f"  [      !!] boot canary still OPEN at step {step!r} — "
+                      "the last launch did not finish booting")
+                attrib = h.attribute_crash(canary)
+                if attrib:
+                    print(f"{'':>13}attributed to mod {attrib!r}")
 
             print("\nGame build:")
             exe = game / "Ravenswatch.exe"

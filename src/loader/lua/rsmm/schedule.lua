@@ -4,6 +4,10 @@ local M = {}
 local _next_frame = {}
 local _timers = {}        -- { fire_at, fn }
 local _main_q = {}        -- main-thread immediate callbacks
+-- Streak holders for the two fire-and-forget queues. Each callback there is
+-- one-shot, so the streak is per QUEUE: it catches "every next_frame callback
+-- this mod queues raises", which is the shape that floods the log.
+local _frame_errs, _main_errs = {}, {}
 local _main_timers = {}   -- main-thread { fire_at, fn }
 
 -- Monotonic, sub-second clock. os.time() is the fallback ONLY for a loader
@@ -14,6 +18,45 @@ local _now = function()
     local I = _G.rsmm and _G.rsmm._internal
     if I and I.now then return I.now() end
     return os.time()
+end
+
+-- Traceback-carrying message handler. The loader sandbox removes `debug` from
+-- every mod state, so `xpcall(fn, debug.traceback)` is unavailable here; the
+-- native binding is luaL_traceback, which lives in the C library. Falls back to
+-- the bare message on a loader older than the binding — the Lua SDK ships
+-- independently of the DLL and routinely runs against one.
+local _msgh = _G.rsmm and _G.rsmm._internal and _G.rsmm._internal.traceback
+              or function(e) return tostring(e) end
+
+-- Consecutive raises a callback may log before it is silenced. A repeater is
+-- deliberately NOT killed by a raising callback (a transient failure — hero not
+-- spawned yet — must not silently stop the poll), but `every(0.1, broken)` then
+-- writes ten identical lines a second for the rest of the session, which pushes
+-- the loader log past its size cap and rotates away everything useful. Keep the
+-- timer, drop the noise.
+local LOG_LIMIT = 3
+local SILENCE_AT = 20
+
+-- Run one scheduled callback, reporting at most LOG_LIMIT consecutive failures.
+-- `slot` is any table used to hold the streak (the timer entry, or a shared
+-- table for the fire-and-forget queues).
+local function _run(slot, label, fn)
+    local ok, err = xpcall(fn, _msgh)
+    if ok then
+        slot.err_streak = nil
+        return true
+    end
+    local n = (slot.err_streak or 0) + 1
+    slot.err_streak = n
+    if not _G.rsmm then return false end
+    if n <= LOG_LIMIT then
+        _G.rsmm.log("schedule." .. label .. " error (" .. n .. "): " .. tostring(err))
+    elseif n == SILENCE_AT then
+        _G.rsmm.log("schedule." .. label .. " has raised " .. n ..
+                    " times in a row; SILENCING further reports (the timer "
+                    .. "still runs — cancel it if that is not what you want)")
+    end
+    return false
 end
 
 function M.next_frame(fn)
@@ -86,10 +129,7 @@ local function _drain(list, label, store)
         -- entry and would write it straight back, so the timer ran forever.
         if t and not t.cancelled then
             if t.fire_at <= now then
-                local ok, err = pcall(t.fn)
-                if not ok and _G.rsmm then
-                    _G.rsmm.log("schedule." .. label .. " error: " .. tostring(err))
-                end
+                _run(t, label, t.fn)
                 -- A repeater survives a raising callback: a transient failure
                 -- (hero not spawned yet, say) shouldn't silently kill it.
                 -- Re-arm off `now`, not fire_at, so a stalled pump doesn't
@@ -161,8 +201,7 @@ function M._main_tick()
         local cur = _main_q
         _main_q = {}
         for _, fn in ipairs(cur) do
-            local ok, err = pcall(fn)
-            if not ok and _G.rsmm then _G.rsmm.log("schedule.next_main error: " .. tostring(err)) end
+            _run(_main_errs, "next_main", fn)
         end
     end
     _drain(_main_timers, "after_main", function(t) _main_timers = t end)
@@ -175,8 +214,7 @@ function M._tick()
         local cur = _next_frame
         _next_frame = {}
         for _, fn in ipairs(cur) do
-            local ok, err = pcall(fn)
-            if not ok and _G.rsmm then _G.rsmm.log("schedule.next_frame error: " .. tostring(err)) end
+            _run(_frame_errs, "next_frame", fn)
         end
     end
     _drain(_timers, "after", function(t) _timers = t end)

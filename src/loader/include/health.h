@@ -38,6 +38,14 @@ void mark_boot_ok();
 int         crash_count(const std::string& mod_id);
 std::string last_error(const std::string& mod_id);
 
+// Record a NON-fatal failure against a mod: its init.lua raised, an event
+// handler was latched off, and so on. Does not touch the crash counter — only
+// the boot canary decides that a mod took the game down, and a mod whose init
+// fails cleanly has not. Exists because until it did, a mod that simply failed
+// to load left no record outside _log.txt, which the next few launches rotate
+// away; _health.json is the durable, machine-readable one.
+void note_error(const std::string& mod_id, const std::string& msg);
+
 // Flag a mod as skipped-at-load, with a reason. Persists across launches.
 void set_disabled(const std::string& mod_id, const std::string& reason);
 bool is_disabled(const std::string& mod_id);

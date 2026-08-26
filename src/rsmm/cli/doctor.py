@@ -467,6 +467,89 @@ def check_crash_dumps(game_dir: Path) -> list[Result]:
     return [Result(kind, label, detail, code="crash.dumps")]
 
 
+def check_mod_health(game_dir: Path) -> list[Result]:
+    """Report what the loader's boot canary has concluded.
+
+    The loader is the only thing that can watch a mod take the game down, and
+    it acts on what it sees: three consecutive failed boots and the mod is
+    skipped at load, because a mod that bricks startup cannot be turned off
+    from inside the game. Nothing user-facing read that verdict, so the effect
+    was a mod that silently stopped doing anything while every UI still showed
+    it enabled. This is where that becomes visible.
+    """
+    health_path = game_dir / "mods" / "_health.json"
+    if not health_path.is_file():
+        return [Result("OK", "no crash history recorded", code="health.none")]
+    try:
+        from rsmm.sdk.health import DEFAULT_THRESHOLD, Health
+        h = Health(game_dir)
+        st = h.load()
+    except (OSError, ValueError, ImportError) as e:
+        return [Result("WARN", "could not read mod health history",
+                       f"{health_path}: {e}", code="health.unreadable")]
+
+    out: list[Result] = []
+    disabled = sorted(mid for mid, m in st.mods.items() if m.disabled)
+    for mid in disabled:
+        m = st.mods[mid]
+        detail = m.disabled_reason or f"{m.crashes} crash(es) recorded"
+        if m.last_error:
+            detail += f"\nlast error: {m.last_error}"
+        out.append(Result(
+            "FAIL", f"{mid} is quarantined by the loader", detail,
+            code="health.quarantined",
+            fix=Fix(f"clear the quarantine on {mid}",
+                    ["safe-mode", "--reset", mid]),
+        ))
+
+    # A mod with crashes but under the limit is the interesting middle: it is
+    # still loading, and one more bad launch turns it off.
+    #
+    # A mod can also have an error on record with crashes == 0: the loader
+    # calls note_error when a mod's init.lua RAISES (or an event handler latches
+    # into its error streak) — a clean failure that never took the game down, so
+    # the boot counter never moved. Filtering on `crashes <= 0` hid every one of
+    # those, and a mod whose init.lua died reported as "no quarantined mods
+    # (1 with history)". The record only exists to be seen.
+    for mid, m in sorted(st.mods.items()):
+        if m.disabled:
+            continue
+        if m.crashes > 0:
+            out.append(Result(
+                "WARN",
+                f"{mid}: {m.crashes} failed boot(s) in a row "
+                f"({DEFAULT_THRESHOLD} in a row disables it)",
+                m.last_error, code="health.crashing"))
+        elif m.last_error:
+            out.append(Result(
+                "WARN",
+                f"{mid}: reported an error but is still loading",
+                m.last_error, code="health.errored"))
+
+    canary = None
+    try:
+        canary = h.read_canary()
+    except (OSError, ValueError):
+        pass
+    if canary:
+        step = str(canary.get("step", "?"))
+        who = h.attribute_crash(canary)
+        detail = (f"the last launch never finished booting (stopped at {step!r}).\n"
+                  + (f"attributed to mod {who!r}." if who
+                     else "it stopped before any mod ran, so this is the loader "
+                          "itself, not a mod."))
+        out.append(Result("WARN", "boot canary is still open", detail,
+                          code="health.canary-open"))
+
+    if not out:
+        n = len(st.mods)
+        return [Result("OK",
+                       f"no quarantined mods ({n} with history)" if n
+                       else "no crash history recorded",
+                       code="health.clean")]
+    return out
+
+
 def check_mods() -> list[Result]:
     out: list[Result] = []
     if not MODS_DIR.is_dir():
@@ -807,6 +890,7 @@ def _checks() -> list[Check]:
         Check("state", "applier state", check_state),
         Check("usedrsclist", "resource manifest (UsedRscList.ot)", check_usedrsclist),
         Check("crash-dumps", "crash dumps", check_crash_dumps),
+        Check("mod-health", "mod crash history", check_mod_health),
     ]
 
 

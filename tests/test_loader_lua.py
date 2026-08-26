@@ -88,6 +88,7 @@ def test_example_mods_spec():
 _ALLOWED_GLOBALS = {
     "type", "ipairs", "pairs", "next", "pcall", "select", "tostring", "tonumber",
     "assert", "error", "require", "setmetatable", "rawget", "rawset", "string",
+    "xpcall",
     "table", "math", "os", "_G",
 }
 

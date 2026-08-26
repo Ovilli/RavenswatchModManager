@@ -4,8 +4,9 @@
 local M = {}
 
 local function _table()
-    if _G.rsmm and _G.rsmm._internal.i18n_table then
-        return _G.rsmm._internal.i18n_table() or {}
+    local I = _G.rsmm and _G.rsmm._internal
+    if I and I.i18n_table then
+        return I.i18n_table() or {}
     end
     return {}
 end
@@ -33,8 +34,9 @@ function M.has(key)
 end
 
 function M.locale()
-    if _G.rsmm and _G.rsmm._internal.i18n_locale then
-        return _G.rsmm._internal.i18n_locale()
+    local I = _G.rsmm and _G.rsmm._internal
+    if I and I.i18n_locale then
+        return I.i18n_locale()
     end
     return "EN"
 end

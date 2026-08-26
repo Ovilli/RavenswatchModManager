@@ -20,8 +20,10 @@
 #include "hook_io.h"
 
 #include <atomic>
+#include <mutex>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace rsmm {
 
@@ -107,6 +109,16 @@ static HANDLE WINAPI hook_CreateFileW(LPCWSTR lpFileName, DWORD dwDesiredAccess,
 
 // --- IAT walker ---------------------------------------------------------
 
+// Every slot we overwrote, with the value that was in it. Needed to UNDO the
+// patch: the IAT points into this DLL's .text, so leaving it patched across a
+// FreeLibrary means the game's next file open jumps into unmapped memory.
+struct PatchedSlot {
+    uintptr_t* slot;
+    uintptr_t  original;
+};
+static std::mutex g_slots_mu;
+static std::vector<PatchedSlot> g_patched;
+
 static bool patch_iat_entry(HMODULE mod, const char* target_dll,
                             const char* target_fn, void* new_fn, void** out_old) {
     auto base = reinterpret_cast<BYTE*>(mod);
@@ -133,14 +145,26 @@ static bool patch_iat_entry(HMODULE mod, const char* target_dll,
                               base + nameThunk->u1.AddressOfData);
             if (strcmp(reinterpret_cast<const char*>(iname->Name), target_fn) != 0) continue;
 
-            DWORD oldprot;
-            VirtualProtect(&thunk->u1.Function, sizeof(uintptr_t),
-                           PAGE_READWRITE, &oldprot);
+            DWORD oldprot = 0;
+            // Checked: the import directory can sit on a read-only page, and
+            // an unchecked failure here means the very next line writes to it
+            // and takes an access violation inside our own installer.
+            if (!VirtualProtect(&thunk->u1.Function, sizeof(uintptr_t),
+                                PAGE_READWRITE, &oldprot)) {
+                Loader::get().log("io: VirtualProtect failed on the CreateFileW "
+                                  "IAT slot; leaving it alone");
+                return false;
+            }
+            const uintptr_t prev = thunk->u1.Function;
             if (out_old && !*out_old) {
-                *out_old = reinterpret_cast<void*>(thunk->u1.Function);
+                *out_old = reinterpret_cast<void*>(prev);
             }
             thunk->u1.Function = reinterpret_cast<uintptr_t>(new_fn);
             VirtualProtect(&thunk->u1.Function, sizeof(uintptr_t), oldprot, &oldprot);
+            {
+                std::lock_guard<std::mutex> g(g_slots_mu);
+                g_patched.push_back(PatchedSlot{&thunk->u1.Function, prev});
+            }
             return true;
         }
     }
@@ -184,8 +208,31 @@ void install_io_hooks() {
 }
 
 void remove_io_hooks() {
-    // IAT patching is not reversed at shutdown; the process is dying and
-    // the OS reclaims memory. Leaving the slots patched is harmless.
+    // This is reached ONLY from the dynamic-unload path (FreeLibrary), where
+    // the process is explicitly NOT dying — the termination path returns from
+    // DllMain long before it. So "the OS reclaims it" was never true here: the
+    // patched slots point at hook_CreateFileW, which lives in the .text about
+    // to be unmapped, and the game's very next file open would jump into a
+    // hole. Put the original values back.
+    std::lock_guard<std::mutex> g(g_slots_mu);
+    std::size_t restored = 0;
+    for (auto it = g_patched.rbegin(); it != g_patched.rend(); ++it) {
+        DWORD oldprot = 0;
+        if (!VirtualProtect(it->slot, sizeof(uintptr_t), PAGE_READWRITE, &oldprot)) {
+            continue;
+        }
+        // Only undo OUR value: if something else hooked the same slot after us,
+        // clobbering it with the pre-us pointer would unhook them too, and they
+        // may still be mapped.
+        if (*it->slot == reinterpret_cast<uintptr_t>(&hook_CreateFileW)) {
+            *it->slot = it->original;
+            ++restored;
+        }
+        VirtualProtect(it->slot, sizeof(uintptr_t), oldprot, &oldprot);
+    }
+    g_patched.clear();
+    Loader::get().log("io hooks removed (restored " + std::to_string(restored)
+                      + " IAT slot(s))");
 }
 
 } // namespace rsmm

@@ -67,12 +67,13 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"threshold = {st.threshold}")
         for mid, body in sorted(st.mods.items()):
-            tag = "DISABLED" if body.disabled_by_health else "ok"
+            tag = "DISABLED" if body.disabled else "ok"
             print(f"  [{tag:>8}] {mid:24}  crashes={body.crashes}  "
                   f"last_error={body.last_error[:60]!r}")
     canary = h.read_canary()
     if canary:
-        print(f"\nstale boot canary present: last_step={canary.get('last_step')!r}")
+        print(f"\nopen boot canary: step={canary.get('step')!r} "
+              f"session={canary.get('session')!r}")
         attrib = h.attribute_crash(canary)
         if attrib:
             print(f"  attributed to: {attrib}")
@@ -97,7 +98,7 @@ def _bisect_step(h: Health) -> int:
 
     from rsmm.engine.paths import MODS_DIR
     st = h.load()
-    quarantined = {mid for mid, m in st.mods.items() if m.disabled_by_health}
+    quarantined = {mid for mid, m in st.mods.items() if m.disabled}
     candidates: list[str] = []
     if MODS_DIR.is_dir():
         for entry in sorted(MODS_DIR.iterdir()):
@@ -129,8 +130,14 @@ def _bisect_step(h: Health) -> int:
         # immediately, regardless of prior crash count.
         st2 = h.load()
         sm = st2.mods.get(mid)
-        if sm and not sm.disabled_by_health:
-            sm.disabled_by_health = True
+        if sm and not sm.disabled:
+            sm.disabled = True
+            # Say WHY. doctor.py falls back to "{crashes} crash(es) recorded"
+            # when this is empty, so a mod turned off by the bisect was
+            # reported as having crashed — pointing the user at a crash that
+            # never happened, on the very command whose job is to find the real
+            # one.
+            sm.disabled_reason = "disabled by safe-mode --bisect"
             h.save(st2)
     print(f"bisect step: disabled {len(suspects)} of {len(candidates)} "
           f"candidates: {', '.join(suspects)}")

@@ -51,15 +51,69 @@ def test_health_record_and_disable(tmp_path: Path):
 
 
 def test_health_canary(tmp_path: Path):
+    """The canary lives INSIDE the loader's _health.json, not beside it."""
     h = Health(tmp_path)
     assert h.read_canary() is None
-    (tmp_path / ".rsmm_boot.json").write_text(json.dumps({
-        "started_at": 1, "last_step": "per_mod:Bar",
+    h.health_path.parent.mkdir(parents=True, exist_ok=True)
+    h.health_path.write_text(json.dumps({
+        "version": 1,
+        "canary": {"open": True, "step": "per_mod:Bar", "session": "fd1d"},
     }))
     c = h.read_canary()
     assert c and h.attribute_crash(c) == "Bar"
     h.clear_canary()
     assert h.read_canary() is None
+
+
+def test_health_reads_the_loader_file(tmp_path: Path):
+    """Guard the bug this schema rewrite fixed.
+
+    The CLI addressed `<cooking>/.rsmm_health.json` with a `disabled_by_health`
+    flag; the loader writes `<game>/mods/_health.json` with `disabled`. Nothing
+    bridged them, so a mod the loader had quarantined read as healthy in
+    `rsmm doctor`, `apply` never skipped it, and the user saw an enabled mod
+    that did nothing.
+    """
+    mods = tmp_path / "mods"
+    mods.mkdir()
+    (mods / "_health.json").write_text(json.dumps({
+        "version": 1,
+        "canary": {"open": False, "step": "boot_ok", "session": "aaaa"},
+        "mods": {"Foo": {"crashes": 3, "last_error": "init.lua failed: nope",
+                         "disabled": True,
+                         "disabled_reason": "failed to boot 3 times in a row"}},
+    }))
+    h = Health(tmp_path)
+    assert h.disabled_mods() == {"Foo"}
+    body = h.load().mods["Foo"]
+    assert body.crashes == 3
+    assert body.disabled_reason == "failed to boot 3 times in a row"
+    assert "nope" in body.last_error
+
+
+def test_health_write_preserves_the_loader_canary(tmp_path: Path):
+    """A CLI write must not drop the node the loader is keeping."""
+    mods = tmp_path / "mods"
+    mods.mkdir()
+    (mods / "_health.json").write_text(json.dumps({
+        "version": 1,
+        "canary": {"open": True, "step": "per_mod:Bar", "session": "fd1d"},
+        "mods": {},
+    }))
+    h = Health(tmp_path)
+    h.record_crash("Baz", "boom")
+    doc = json.loads(h.health_path.read_text())
+    assert doc["canary"] == {"open": True, "step": "per_mod:Bar", "session": "fd1d"}
+    assert doc["mods"]["Baz"]["crashes"] == 1
+
+
+def test_health_accepts_the_cooking_dir(tmp_path: Path):
+    """Every existing caller passes <game>/DarkTalesResources/_Cooking."""
+    cooking = tmp_path / "DarkTalesResources" / "_Cooking"
+    cooking.mkdir(parents=True)
+    (tmp_path / "mods").mkdir()
+    h = Health(cooking)
+    assert h.health_path == tmp_path / "mods" / "_health.json"
 
 
 # ---------------------------------------------------------------------------
