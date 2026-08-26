@@ -1,6 +1,18 @@
 {
-  "generated": "2026-08-25",
+  "generated": "2026-08-26",
   "entries": [
+    {
+      "version": "",
+      "loader_version": 9,
+      "date": "2026-08-26",
+      "summary": "Mod failures are now durable and visible: a mod whose init.lua fails is recorded in the health file and reported by rsmm doctor, repeated handler errors latch instead of flooding the log, and one failing hook installer no longer stops every other capability from arming.",
+      "highlights": [
+        "A mod whose init.lua fails is now recorded in the health file and reported by rsmm doctor, instead of vanishing into a log that rotates away.",
+        "Repeated handler errors latch after a few consecutive failures rather than writing a line per event fire.",
+        "One failing hook installer no longer stops every other capability from arming, or blocks mods from starting.",
+        "A mod that raises a non-string error (error{...}) no longer takes the game down from inside the loader's own error handler; Lua errors now carry a full traceback."
+      ]
+    },
     {
       "version": "5.1.2",
       "date": "2026-08-25",

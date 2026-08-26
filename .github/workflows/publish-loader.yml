@@ -79,15 +79,26 @@ jobs:
       - name: Validate loader DLL
         run: python scripts/validate_loader_dll.py dist/winhttp.dll
 
+      # `notes` reaches the shell through the ENVIRONMENT, never through
+      # `${{ inputs.notes }}` interpolation. Interpolating it pastes the raw
+      # text into the script body, where bash reads it as code: a note
+      # containing backticks runs as command substitution (that is exactly how
+      # the v9 publish died — "`rsmm doctor`" became "rsmm: command not found",
+      # exit 127 — and it swallowed the words either side of it in the
+      # published manifest). A dispatcher who can write the note could
+      # otherwise run arbitrary commands on a runner holding the signing key.
       - name: Publish (sign + upload)
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ inputs.notes }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          scripts/publish_loader.sh \
-            ${{ inputs.dry_run && '--dry-run' || '' }} \
-            --notes "${{ inputs.notes }}"
+          ARGS=()
+          [ "$DRY_RUN" = "true" ] && ARGS+=(--dry-run)
+          ARGS+=(--notes "$NOTES")
+          scripts/publish_loader.sh "${ARGS[@]}"
 
       # The publish script bumps data/loader_version.json. That stamp is what
       # stops `restore --all` + `install-loader` from downgrading users, so an
@@ -101,15 +112,17 @@ jobs:
         if: ${{ !inputs.dry_run && inputs.changelog }}
         env:
           GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ inputs.notes }}
+          HIGHLIGHTS: ${{ inputs.highlights }}
         run: |
           VERSION=$(python -c "import json;print(json.load(open('data/loader_version.json'))['loader_version'])")
-          ARGS=(--loader-version "$VERSION" --summary "${{ inputs.notes }}")
-          if [ -n "${{ inputs.highlights }}" ]; then
+          ARGS=(--loader-version "$VERSION" --summary "$NOTES")
+          if [ -n "$HIGHLIGHTS" ]; then
             while IFS= read -r line; do
               [ -n "$line" ] && ARGS+=(--highlight "$line")
-            done <<< "${{ inputs.highlights }}"
+            done <<< "$HIGHLIGHTS"
           else
-            ARGS+=(--highlight "${{ inputs.notes }}")
+            ARGS+=(--highlight "$NOTES")
           fi
           python scripts/add_loader_changelog.py "${ARGS[@]}"
           scripts/publish_changelog.sh

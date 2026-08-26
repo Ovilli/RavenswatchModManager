@@ -48,14 +48,22 @@ if dropped:
     sys.exit(f"refusing to publish: {dropped} entry/entries would be dropped "
              "as unusable (needs a non-empty version and at least one highlight)")
 
+# Identity, not `version` alone. A loader-channel entry carries an EMPTY
+# version and identifies by loader_version, so keying the dedup on `version`
+# made every channel entry collide with every other one — the feed could hold
+# exactly one loader note, and adding a second refused the whole publish. That
+# stayed invisible while loader v8 was the only channel entry and bit on v9.
+def _key(e):
+    return f"v{e['version']}" if e.get("version") else f"loader:{e.get('loader_version')}"
+
 seen = set()
 for e in feed["entries"]:
-    if e["version"] in seen:
-        sys.exit(f"refusing to publish: duplicate version {e['version']}")
-    seen.add(e["version"])
-    for field, value in (("date", e.get("date")), ("summary", e.get("summary"))):
-        if field == "date" and not value:
-            sys.exit(f"refusing to publish: v{e['version']} has no date")
+    k = _key(e)
+    if k in seen:
+        sys.exit(f"refusing to publish: duplicate entry {k}")
+    seen.add(k)
+    if not e.get("date"):
+        sys.exit(f"refusing to publish: {k} has no date")
 
 newest = feed["entries"][0]
 # A loader-channel note has no app version to print; name the loader build.
