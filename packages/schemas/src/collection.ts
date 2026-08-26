@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { httpUrlSchema, safeHttpUrl, sanitizedHttpUrlSchema } from './url';
 import { modListItemSchema, modSlugSchema } from './mod';
 
 export const collectionSlugSchema = z
@@ -7,10 +8,23 @@ export const collectionSlugSchema = z
   .max(64)
   .regex(/^[a-z0-9][a-z0-9-_]*$/, 'lowercase alphanumeric with -_');
 
+// Input side: a screenshot URL that is not http(s) is refused outright.
 const screenshotSchema = z.object({
-  url: z.string().url(),
+  url: httpUrlSchema,
   caption: z.string().max(200).optional(),
 });
+
+// Response side: sanitize instead of reject, so one legacy row cannot fail the
+// parse of the whole list. See sanitizedHttpUrlSchema in url.ts.
+const storedScreenshotSchema = z
+  .array(z.object({ url: z.string(), caption: z.string().max(200).optional() }))
+  .transform((list) =>
+    list.flatMap((s) => {
+      const url = safeHttpUrl(s.url);
+      return url ? [{ ...s, url }] : [];
+    }),
+  )
+  .optional();
 
 export const collectionSchema = z.object({
   id: z.string().uuid(),
@@ -21,8 +35,8 @@ export const collectionSchema = z.object({
   name: z.string(),
   summary: z.string().nullable(),
   description: z.string().nullable(),
-  imageUrl: z.string().url().nullable(),
-  screenshots: z.array(screenshotSchema).optional(),
+  imageUrl: sanitizedHttpUrlSchema,
+  screenshots: storedScreenshotSchema,
   isPublic: z.boolean(),
   modCount: z.number().int().nonnegative(),
   createdAt: z.string().datetime(),
@@ -41,8 +55,8 @@ export const collectionCreateSchema = z.object({
   slug: collectionSlugSchema,
   name: z.string().min(1).max(128),
   summary: z.string().max(512).nullable().optional(),
-  description: z.string().optional(),
-  imageUrl: z.string().url().nullable().optional(),
+  description: z.string().max(32_000).optional(),
+  imageUrl: httpUrlSchema.nullable().optional(),
   screenshots: z.array(screenshotSchema).optional(),
   isPublic: z.boolean().optional(),
 });
@@ -52,8 +66,8 @@ export type CollectionCreate = z.infer<typeof collectionCreateSchema>;
 export const collectionPatchSchema = z.object({
   name: z.string().min(1).max(128).optional(),
   summary: z.string().max(512).nullable().optional(),
-  description: z.string().nullable().optional(),
-  imageUrl: z.string().url().nullable().optional(),
+  description: z.string().max(32_000).nullable().optional(),
+  imageUrl: httpUrlSchema.nullable().optional(),
   screenshots: z.array(screenshotSchema).optional(),
   isPublic: z.boolean().optional(),
 });
@@ -91,7 +105,9 @@ export type CollectionReview = z.infer<typeof collectionReviewSchema>;
 export const collectionReviewUpsertSchema = z.object({
   rating: z.number().int().min(1).max(5),
   title: z.string().max(120).nullable().optional(),
-  body: z.string().nullable().optional(),
+  // Bounded to match reviewUpsertSchema (mods). Unbounded free text from any
+  // signed-in account is a storage-exhaustion lever, not a feature.
+  body: z.string().max(4000).nullable().optional(),
 });
 
 export type CollectionReviewUpsert = z.infer<typeof collectionReviewUpsertSchema>;

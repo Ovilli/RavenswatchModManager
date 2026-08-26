@@ -1,3 +1,4 @@
+import { jsonLd } from '@rsmm/schemas';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { type Entity, fetchEntity } from '../../../lib/entity';
@@ -81,9 +82,9 @@ export default async function Layout({
       {res.state === 'ok' ? (
         <script
           type="application/ld+json"
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: server-built JSON-LD from our own API, not user HTML.
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD must be inlined as a script body. The payload carries the user-submitted collection name, so it goes through jsonLd() — see lib/json-ld.ts.
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
+            __html: jsonLd({
               '@context': 'https://schema.org',
               '@type': 'BreadcrumbList',
               itemListElement: [

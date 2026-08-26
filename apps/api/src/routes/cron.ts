@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { getDb, schema } from '@rsmm/db';
 import { lt } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -7,6 +8,24 @@ import { drainBatch } from '../scan-service.js';
 import type { AppEnv } from '../types.js';
 
 export const cronRouter = new Hono<AppEnv>();
+
+/**
+ * Constant-time string compare for the cron bearer secret.
+ *
+ * `timingSafeEqual` throws on a length mismatch, and comparing the raw bytes
+ * would leak the secret's length through that early return, so both sides are
+ * hashed to a fixed 32 bytes first and the digests are what get compared. The
+ * previous hand-rolled version bailed on `auth.length === expected.length`
+ * before folding characters, which is exactly the leak this avoids — and its
+ * `.split('').reduce()` over a UTF-16 string is not constant-time in any case,
+ * since V8 short-circuits and the intermediate array allocation is
+ * length-dependent.
+ */
+function timingSafeEqualStr(a: string, b: string): boolean {
+  const ha = createHash('sha256').update(a, 'utf8').digest();
+  const hb = createHash('sha256').update(b, 'utf8').digest();
+  return timingSafeEqual(ha, hb);
+}
 
 /**
  * Telemetry retention. The privacy policy states that usage and crash reports
@@ -56,12 +75,7 @@ cronRouter.get('/scan-drain', async (c) => {
 
   const auth = c.req.header('authorization') ?? '';
   const expected = `Bearer ${env.cronSecret}`;
-  // Constant-time-ish compare: bail on length mismatch, then char-fold.
-  const ok =
-    auth.length === expected.length &&
-    auth.split('').reduce((acc, ch, i) => acc | (ch.charCodeAt(0) ^ expected.charCodeAt(i)), 0) ===
-      0;
-  if (!ok) return c.json({ error: 'unauthorized' }, 401);
+  if (!timingSafeEqualStr(auth, expected)) return c.json({ error: 'unauthorized' }, 401);
 
   // Retention runs first and independently: a scan-drain failure must not be
   // the reason expired telemetry survives another day.

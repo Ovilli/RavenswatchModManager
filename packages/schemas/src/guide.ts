@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { httpUrlSchema, safeHttpUrl, sanitizedHttpUrlSchema } from './url';
 
 export const guideSlugSchema = z
   .string()
@@ -13,10 +14,23 @@ export const guideSlugSchema = z
 export const guideStatusSchema = z.enum(['draft', 'pending', 'approved', 'rejected']);
 export type GuideStatus = z.infer<typeof guideStatusSchema>;
 
+// Input side: a screenshot URL that is not http(s) is refused outright.
 const screenshotSchema = z.object({
-  url: z.string().url(),
+  url: httpUrlSchema,
   caption: z.string().max(200).optional(),
 });
+
+// Response side: sanitize instead of reject, so one legacy row cannot fail the
+// parse of the whole list. See sanitizedHttpUrlSchema in url.ts.
+const storedScreenshotSchema = z
+  .array(z.object({ url: z.string(), caption: z.string().max(200).optional() }))
+  .transform((list) =>
+    list.flatMap((s) => {
+      const url = safeHttpUrl(s.url);
+      return url ? [{ ...s, url }] : [];
+    }),
+  )
+  .optional();
 
 export const guideSchema = z.object({
   id: z.string().uuid(),
@@ -27,8 +41,8 @@ export const guideSchema = z.object({
   title: z.string(),
   summary: z.string().nullable(),
   body: z.string(),
-  imageUrl: z.string().url().nullable(),
-  screenshots: z.array(screenshotSchema).optional(),
+  imageUrl: sanitizedHttpUrlSchema,
+  screenshots: storedScreenshotSchema,
   status: guideStatusSchema,
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -48,7 +62,7 @@ export const guideCreateSchema = z.object({
   title: z.string().min(1).max(160),
   summary: z.string().max(512).nullable().optional(),
   body: z.string().min(1).max(100_000),
-  imageUrl: z.string().url().nullable().optional(),
+  imageUrl: httpUrlSchema.nullable().optional(),
   screenshots: z.array(screenshotSchema).optional(),
 });
 
@@ -58,7 +72,7 @@ export const guidePatchSchema = z.object({
   title: z.string().min(1).max(160).optional(),
   summary: z.string().max(512).nullable().optional(),
   body: z.string().min(1).max(100_000).optional(),
-  imageUrl: z.string().url().nullable().optional(),
+  imageUrl: httpUrlSchema.nullable().optional(),
   screenshots: z.array(screenshotSchema).optional(),
   // Author-initiated transitions only (draft <-> pending). Admin approval
   // uses the dedicated review endpoint, not this patch.
@@ -85,7 +99,8 @@ export type GuideReview = z.infer<typeof guideReviewSchema>;
 export const guideReviewUpsertSchema = z.object({
   rating: z.number().int().min(1).max(5),
   title: z.string().max(120).nullable().optional(),
-  body: z.string().nullable().optional(),
+  // Bounded to match reviewUpsertSchema (mods) — see the note there.
+  body: z.string().max(4000).nullable().optional(),
 });
 
 export type GuideReviewUpsert = z.infer<typeof guideReviewUpsertSchema>;

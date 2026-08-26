@@ -1,4 +1,11 @@
 import { z } from 'zod';
+import {
+  httpUrlSchema,
+  safeHttpUrl,
+  sanitizedOptionalHttpUrlSchema,
+  sanitizedHttpUrlArraySchema,
+  sanitizedHttpUrlSchema,
+} from './url';
 
 export const modSlugSchema = z
   .string()
@@ -39,8 +46,12 @@ export const modManifestSchema = z.object({
   summary: z.string().max(512).optional(),
   description: z.string().max(8192).optional(),
   license: z.string().max(64).optional(),
-  repo_url: z.string().url().optional(),
-  homepage_url: z.string().url().optional(),
+  // Sanitizing rather than rejecting: this schema doubles as the mod-detail
+  // RESPONSE shape (modVersionSchema.manifestJson), so a hard failure here
+  // would blank an entire mod page over one bad legacy link. Dropping the
+  // value keeps a non-http(s) URL out of the database and off the page alike.
+  repo_url: sanitizedOptionalHttpUrlSchema,
+  homepage_url: sanitizedOptionalHttpUrlSchema,
   tags: z.array(z.string().max(32)).max(16).optional(),
   enabled: z.boolean().optional(),
   // Map of mod-id -> version *range* (not a single pin): npm/Fabric-style
@@ -84,8 +95,8 @@ export const modListItemSchema = z.object({
   summary: z.string().nullable(),
   description: z.string().nullable().optional(),
   license: z.string().nullable(),
-  repoUrl: z.string().url().nullable().optional(),
-  homepageUrl: z.string().url().nullable().optional(),
+  repoUrl: sanitizedHttpUrlSchema,
+  homepageUrl: sanitizedHttpUrlSchema,
   latestVersion: semverSchema.nullable(),
   // null — not 0 — when the mod's owner has turned off public download counts
   // (users.public_download_counts). Rendering it as 0 would claim the mod has
@@ -93,13 +104,22 @@ export const modListItemSchema = z.object({
   downloads: z.number().int().nonnegative().nullable(),
   updatedAt: z.string().datetime(),
   category: modCategorySchema.nullable(),
-  imageUrl: z.string().url().nullable(),
+  imageUrl: sanitizedHttpUrlSchema,
   rating: z.number().min(0).max(5).nullable(),
   tags: z.array(z.string()),
+  // Sanitizing, not rejecting — see sanitizedHttpUrlSchema. A screenshot whose
+  // stored URL is not http(s) is dropped from the list rather than failing the
+  // parse of every mod alongside it.
   screenshots: z
-    .array(z.object({ url: z.string().url(), caption: z.string().max(200).optional() }))
+    .array(z.object({ url: z.string(), caption: z.string().max(200).optional() }))
+    .transform((list) =>
+      list.flatMap((s) => {
+        const url = safeHttpUrl(s.url);
+        return url ? [{ ...s, url }] : [];
+      }),
+    )
     .optional(),
-  videos: z.array(z.string()).optional(),
+  videos: sanitizedHttpUrlArraySchema,
   featured: z.boolean().optional(),
   nsfw: z.boolean().optional(),
   ownerId: z.string().nullable().optional(),
@@ -119,7 +139,7 @@ export const modVersionSchema = z.object({
   sha256: z.string().regex(/^[a-f0-9]{64}$/),
   sizeBytes: z.number().int().positive(),
   manifestJson: modManifestSchema,
-  assetUrl: z.string().url(),
+  assetUrl: httpUrlSchema,
   createdAt: z.string().datetime(),
   // Malware-scan verdict. Optional for back-compat with older API responses
   // that predate the scan gate. The API only ever returns non-flagged
@@ -151,16 +171,16 @@ export const modPatchSchema = z.object({
   summary: z.string().max(512).nullable().optional(),
   description: z.string().max(32_000).nullable().optional(),
   license: z.string().max(64).nullable().optional(),
-  repoUrl: z.string().url().nullable().optional(),
-  homepageUrl: z.string().url().nullable().optional(),
+  repoUrl: httpUrlSchema.nullable().optional(),
+  homepageUrl: httpUrlSchema.nullable().optional(),
   category: modCategorySchema.nullable().optional(),
   tags: z.array(z.string().max(32)).max(16).optional(),
-  imageUrl: z.string().url().nullable().optional(),
+  imageUrl: httpUrlSchema.nullable().optional(),
   screenshots: z
-    .array(z.object({ url: z.string().url(), caption: z.string().max(200).optional() }))
+    .array(z.object({ url: httpUrlSchema, caption: z.string().max(200).optional() }))
     .max(12)
     .optional(),
-  videos: z.array(z.string().url()).max(8).optional(),
+  videos: z.array(httpUrlSchema).max(8).optional(),
   nsfw: z.boolean().optional(),
 });
 

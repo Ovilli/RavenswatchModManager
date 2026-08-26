@@ -1,6 +1,7 @@
 import { getDb, schema } from '@rsmm/db';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { auth } from './auth.js';
@@ -38,8 +39,49 @@ app.use('*', async (c, next) => {
   c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
   c.header('X-XSS-Protection', '0');
   c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  // This API answers JSON to a browser and to the desktop app; it never serves
+  // a document that should be framed, embedded, or allowed to reach a device
+  // API. The CSP is the belt to X-Frame-Options' braces and also neutralises
+  // any error page or third-party HTML that might otherwise render inline.
+  c.header(
+    'Content-Security-Policy',
+    "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+  );
+  c.header('Cross-Origin-Resource-Policy', 'same-site');
+  c.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), interest-cohort=()');
   await next();
 });
+
+/**
+ * Hard cap on request bodies.
+ *
+ * Every write endpoint here takes a small JSON document — mod archives and
+ * images go straight to object storage through a presigned PUT and never pass
+ * through the API at all. The platform's own limit is 100 MB, so without this
+ * any signed-in account could make the function buffer and JSON-parse 100 MB
+ * per request. The largest legitimate body is a guide (100 000 chars of body
+ * plus metadata), which stays comfortably under 1 MB even fully multi-byte.
+ */
+app.use(
+  '*',
+  bodyLimit({
+    maxSize: 1024 * 1024,
+    onError: (c) => c.json({ error: 'request body too large' }, 413),
+  }),
+);
+
+/**
+ * Global rate-limit backstop.
+ *
+ * The tuned per-endpoint limiters (auth, upload, report, review, download…)
+ * stay authoritative; this only catches the endpoints that had none at all —
+ * the public browse/detail/profile reads, which are the cheapest thing to
+ * scrape and the most expensive to serve, since each one fans out into several
+ * correlated aggregate subqueries. 600/min per IP is far above any real
+ * session (a registry page load is a handful of calls) and still turns an
+ * unbounded scrape into a bounded one.
+ */
+app.use('/api/*', createRateLimiter({ name: 'global', windowMs: 60_000, maxHits: 600 }));
 
 app.onError((err, c) => {
   (c.get('log') ?? log).error('unhandled error', { err: errString(err), stack: err.stack });
@@ -77,22 +119,20 @@ app.use('*', async (c, next) => {
   await next();
 });
 
-// TEMP diagnostic: log what actually reaches the OAuth callback so we can see
-// whether the browser sent the state cookie and whether it matches the state
-// query param (state_mismatch debugging). Remove once desktop OAuth is verified.
+// OAuth callback diagnostics. Records only whether the browser presented a
+// state cookie, never the value: the `state` param and the `better-auth.state`
+// cookie ARE the CSRF token for the flow, and the verification row they key is
+// still live and single-use when the callback runs. Logging either put a
+// replayable credential into the log pipeline (and into every downstream log
+// aggregator) for the sake of debugging a cookie-presence question that the
+// boolean answers on its own.
 app.use('/api/auth/callback/*', async (c, next) => {
   const cookie = c.req.header('cookie') ?? '';
-  const cookieNames = cookie
-    .split(';')
-    .map((s) => s.trim().split('=')[0])
-    .filter(Boolean);
-  const stateCookie = cookie.match(/(?:^|;\s*)(?:__Secure-)?better-auth\.state=([^;.]+)/);
-  (c.get('log') ?? log).info('[oauth-debug] callback', {
+  const hasStateCookie = /(?:^|;\s*)(?:__Secure-)?better-auth\.state=/.test(cookie);
+  (c.get('log') ?? log).info('oauth callback', {
     path: c.req.path,
-    stateParam: c.req.query('state') ?? null,
-    stateCookieValue: stateCookie?.[1] ?? null,
-    hasStateCookie: Boolean(stateCookie),
-    cookieNames: cookieNames.join(','),
+    hasStateParam: Boolean(c.req.query('state')),
+    hasStateCookie,
   });
   await next();
 });

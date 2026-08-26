@@ -1,3 +1,4 @@
+import { jsonLd } from '@rsmm/schemas';
 import { Card, CardContent, CardHeader, CardTitle } from '@rsmm/ui';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -68,8 +69,8 @@ export default function ModdingGuidePage() {
     <main className="container mx-auto px-6 py-16 animate-page-in">
       <script
         type="application/ld+json"
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: static, server-built JSON-LD.
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(articleLd) }}
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: static, server-built JSON-LD. Still serialized through jsonLd() so every ld+json block on the site escapes identically.
+        dangerouslySetInnerHTML={{ __html: jsonLd(articleLd) }}
       />
 
       <div className="mx-auto max-w-3xl">

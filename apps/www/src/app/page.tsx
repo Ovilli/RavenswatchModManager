@@ -1,4 +1,4 @@
-import type { ModListItem } from '@rsmm/schemas';
+import { jsonLd, type ModListItem } from '@rsmm/schemas';
 import { buttonVariants } from '@rsmm/ui';
 import type { Route } from 'next';
 import Link from 'next/link';
@@ -413,9 +413,9 @@ export default async function Home() {
       {/* ───── FAQ ───── */}
       <script
         type="application/ld+json"
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: static FAQ content, not user input.
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: static FAQ content. Still serialized through jsonLd() so every ld+json block on the site escapes identically.
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: jsonLd({
             '@context': 'https://schema.org',
             '@type': 'FAQPage',
             mainEntity: faqs.map((f) => ({
