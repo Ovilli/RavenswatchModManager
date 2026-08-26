@@ -168,8 +168,15 @@ def test_shipped_feed_survives_its_own_parser():
     feed = cf.parse(cf.bundled_path().read_bytes())
     source = json.loads(cf.bundled_path().read_text(encoding="utf-8"))
     assert len(feed["entries"]) == len(source["entries"]), "an entry would be dropped as unusable"
-    versions = [e["version"] for e in feed["entries"]]
-    assert len(versions) == len(set(versions)), "duplicate version in the shipped feed"
+    # Identity, not `version` alone — mirrors the _key() in publish_changelog.sh.
+    # A loader-channel entry has an EMPTY version and identifies by
+    # loader_version, so keying on `version` made every channel entry collide
+    # with every other one: the feed could hold exactly one loader note. That
+    # was invisible while loader v8 was the only channel entry and failed the
+    # moment v9 was added.
+    keys = [f"v{e['version']}" if e.get("version") else f"loader:{e.get('loader_version')}"
+            for e in feed["entries"]]
+    assert len(keys) == len(set(keys)), "duplicate entry in the shipped feed"
     assert all(e["date"] for e in feed["entries"]), "every shipped entry needs a date"
 
 
