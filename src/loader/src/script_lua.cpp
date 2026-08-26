@@ -19,6 +19,8 @@ extern "C" {
 #include "hook_util.h"
 #include "loader.h"
 #include "health.h"
+#include "lua_err.h"
+#include "fs_iter.h"
 #include "mem_safe.h"
 #include "fn_resolver.h"
 #include "symbols_api.gen.h"   // engine:: typed, pattern-resolved accessors
@@ -39,6 +41,7 @@ extern "C" {
 #include <fstream>
 #include <iterator>
 #include <limits>
+#include <map>
 #include <mutex>
 #include <set>
 #include <string_view>
@@ -122,19 +125,20 @@ namespace {
 // scratch anyway, since the reload rebuilds the whole lua_State.
 std::filesystem::file_time_type newest_lua_mtime(const std::filesystem::path& root) {
     std::filesystem::file_time_type newest{};
-    std::error_code ec;
-    std::filesystem::recursive_directory_iterator it(
-        root, std::filesystem::directory_options::skip_permission_denied, ec);
-    if (ec) return newest;
     int budget = 512;   // don't stat a mod that ships an enormous asset tree
-    for (const auto& entry : it) {
-        if (--budget < 0) break;
-        if (!entry.is_regular_file(ec) || ec) continue;
-        if (entry.path().extension() != ".lua") continue;
-        auto mt = std::filesystem::last_write_time(entry.path(), ec);
-        if (ec) continue;
-        if (mt > newest) newest = mt;
-    }
+    // for_each_in_tree, not a range-for: this runs on the detached TICKER
+    // thread, which has no catch, and the range-for's `++it` throws on a read
+    // error mid-walk — a mod folder deleted or a share blinking while the
+    // hot-reload poll walks it would have been std::terminate.
+    for_each_in_tree(root, [&](const std::filesystem::directory_entry& entry) {
+        if (--budget < 0) return false;
+        std::error_code ec;
+        if (!entry.is_regular_file(ec) || ec) return true;
+        if (entry.path().extension() != ".lua") return true;
+        const auto mt = std::filesystem::last_write_time(entry.path(), ec);
+        if (!ec && mt > newest) newest = mt;
+        return true;
+    });
     return newest;
 }
 
@@ -760,9 +764,8 @@ int lua_api_call(lua_State* L) {
         return 2;
     }
     for (const auto& a : args) json_to_lua(T, a);
-    if (lua_pcall(T, static_cast<int>(args.size()), 1, 0) != LUA_OK) {
-        const char* err = lua_tostring(T, -1);
-        std::string msg = err ? err : "unknown error";
+    if (lua_pcall_traced(T, static_cast<int>(args.size()), 1) != LUA_OK) {
+        std::string msg = lua_err_str(T);
         lua_settop(T, base);
         lua_pushboolean(L, 0);
         lua_pushlstring(L, msg.data(), msg.size());
@@ -937,6 +940,29 @@ int lua_decoded_path(lua_State* L) {
 // hundreds of times a second in combat, and formatting + parsing a payload
 // nobody reads is pure overhead — the detours check this first and bail.
 std::atomic<int> g_handler_count{0};
+
+// Consecutive-error streaks per (mod, event). The gameplay bus fires hundreds
+// of times a second in combat, so a handler that raises every time used to
+// write one log line per fire: thousands of identical entries that pushed the
+// log past kMaxLogBytes and rotated away the history anyone actually needed.
+// Log the first few and the latch, then go quiet until it succeeds again —
+// the same shape hook_lua has always used for detour callbacks.
+// Declared here rather than beside the emit path because the mod-teardown
+// paths above it must be able to clear a mod's streaks.
+constexpr int kEventErrorLogLimit = 5;
+std::map<std::pair<std::string, std::string>, int> g_event_err_streak;  // guarded by g_mu
+
+// Drop every streak a mod owns. A streak is only ever cleared by a SUCCESSFUL
+// call, so a mod that latched at kEventErrorLogLimit and was then hot-reloaded
+// (or torn down after a failed init) came back from the rebuilt lua_State
+// still silenced: the next failure logged nothing at all — exactly the
+// edit-and-watch loop the reload path exists to serve. Call with g_mu held.
+void clear_mod_handler_errors(const std::string& mod_id) {
+    for (auto it = g_event_err_streak.begin(); it != g_event_err_streak.end(); ) {
+        it = (it->first.first == mod_id) ? g_event_err_streak.erase(it)
+                                         : std::next(it);
+    }
+}
 
 // Every event name any state has ever subscribed to, plus whether anyone holds
 // a wildcard. Written on registration (rare), read from the engine detours
@@ -1427,6 +1453,16 @@ int lua_mem_find(lua_State* L) {
     return 2;
 }
 
+// rsmm._internal.traceback(err) -> string
+//   An xpcall MESSAGE HANDLER. apply_sandbox drops the `debug` global from
+//   every mod state, so `xpcall(f, debug.traceback)` — the one idiom every Lua
+//   author reaches for — is unavailable to the SDK's own event router, and
+//   handler errors were reported as a bare message with no call chain. This is
+//   luaL_traceback, which lives in the C library and needs no `debug` table.
+int lua_traceback_binding(lua_State* L) {
+    return lua_err_traceback(L);
+}
+
 // rsmm._internal.hook_report() -> { {tag=, what=, va=, fires=}, ... }
 //
 // The armed-hook registry, so a mod (or `R.hooks.status()`) can answer "is this
@@ -1706,6 +1742,7 @@ void register_api(lua_State* L) {
         { "health_last_error",       lua_health_last_error },
         { "health_disable",          lua_health_disable },
         { "health_checkpoint",       lua_health_checkpoint },
+        { "traceback",               lua_traceback_binding },
         { "i18n_table",              lua_i18n_table },
         { "i18n_locale",             lua_i18n_locale },
         { "api_expose",              lua_api_expose },
@@ -1789,6 +1826,20 @@ std::uint64_t shared_get(int slot) {
     return (slot >= 0 && slot < 16) ? g_shared[slot].load() : 0;
 }
 
+namespace {
+// The first line of a (possibly traceback-carrying) error, capped. _health.json
+// is a status file read by tools and UIs, not a log: a 40-frame traceback in a
+// JSON string field is unreadable everywhere it is displayed. The full text —
+// traceback included — is already in _log.txt.
+std::string first_line(const std::string& msg) {
+    const auto nl = msg.find_first_of("\r\n");
+    std::string out = (nl == std::string::npos) ? msg : msg.substr(0, nl);
+    constexpr std::size_t kMax = 300;
+    if (out.size() > kMax) out = out.substr(0, kMax) + "...";
+    return out;
+}
+}  // namespace
+
 bool script_run_mod_init(const std::string& mod_id,
                          const std::filesystem::path& mod_root) {
     const auto init_path = mod_root / "init.lua";
@@ -1843,11 +1894,41 @@ bool script_run_mod_init(const std::string& mod_id,
     s.root = mod_root;
     s.init_mtime = newest_lua_mtime(mod_root);
 
-    if (luaL_dofile(L, init_path.string().c_str()) != LUA_OK) {
-        Loader::get().log(std::string("[lua] ") + mod_id + " init failed: "
-                          + lua_tostring(L, -1));
+    if (lua_dofile_traced(L, init_path.string().c_str()) != LUA_OK) {
+        // lua_err_str, not lua_tostring: a mod that raises a TABLE (error{...})
+        // hands us a null char* here, and appending that to a std::string is
+        // UB — the loader's own error handler was the crash.
+        const std::string err = lua_err_str(L);
+        Loader::get().log(std::string("[lua] ") + mod_id + " init failed: " + err);
+        // An init.lua that installed a hook (or exposed an API) and THEN raised
+        // leaves both pointing at the lua_State we are about to free. The
+        // hot-reload path has always torn these down; this one did not, so the
+        // next time the hooked function fired the detour did lua_rawgeti on a
+        // destroyed VM — a crash with no connection to the mod that caused it.
+        // Order matters: drop the hooks BEFORE lua_close, since uninstalling
+        // unrefs the callback in that state.
+        hook_lua_unregister_mod(mod_id);
+        for (auto it = g_apis.begin(); it != g_apis.end(); ) {
+            it = (it->second.mod_id == mod_id) ? g_apis.erase(it) : std::next(it);
+        }
+        // Give back the handler count this state registered. rsmm.lua
+        // subscribes at `require` time, so a mod that raises AFTER the require
+        // has already bumped the counter; leaking it leaves
+        // script_any_subscribers() true for the rest of the session and the
+        // gameplay bus paying per-fire dispatch for a mod that is not loaded.
+        // Same fetch_sub the hot-reload path does.
+        if (const auto it = g_scripts.find(mod_id); it != g_scripts.end()) {
+            g_handler_count.fetch_sub(it->second.handlers,
+                                      std::memory_order_relaxed);
+        }
+        clear_mod_handler_errors(mod_id);
         lua_close(L);
         g_scripts.erase(mod_id);
+        // Persist WHY it failed. Only the boot canary used to write here, so a
+        // mod that failed cleanly (rather than taking the game down) left no
+        // record anywhere but _log.txt, which is rotated away by the next few
+        // launches.
+        health::note_error(mod_id, "init.lua failed: " + first_line(err));
         health::checkpoint("post_init:" + mod_id);
         return false;
     }
@@ -1857,6 +1938,35 @@ bool script_run_mod_init(const std::string& mod_id,
 }
 
 namespace {
+
+// Streak bookkeeping for the dispatch below; the map itself and the per-mod
+// reset live up beside g_handler_count, where the teardown paths can reach
+// them. Both of these are called with g_mu held (emit_locked takes it).
+void log_handler_error(const std::string& mod_id, const std::string& event,
+                       const std::string& err) {
+    const int streak = ++g_event_err_streak[{mod_id, event}];
+    if (streak < kEventErrorLogLimit) {
+        Loader::get().log(std::string("[lua] ") + mod_id + " event " + event
+                          + " (" + std::to_string(streak) + "): " + err);
+    } else if (streak == kEventErrorLogLimit) {
+        Loader::get().log(std::string("[lua] ") + mod_id + " event " + event
+                          + " (" + std::to_string(streak) + "): " + err);
+        Loader::get().log(std::string("[lua] ") + mod_id + " raised "
+                          + std::to_string(streak) + " times in a row on '"
+                          + event + "'; SILENCING this pair until it succeeds "
+                          "(the handler still runs)");
+        health::note_error(mod_id, "event '" + event + "' handler failing: "
+                                   + first_line(err));
+    }
+}
+
+void clear_handler_errors(const std::string& mod_id, const std::string& event) {
+    // Erase rather than zero: the map is keyed by every (mod, event) pair the
+    // process ever sees, and a healthy session must not accumulate an entry per
+    // pair forever.
+    const auto it = g_event_err_streak.find({mod_id, event});
+    if (it != g_event_err_streak.end()) g_event_err_streak.erase(it);
+}
 
 // Shared dispatch: call every handler of `name` with one argument — the
 // payload table (built per-state by `push_payload`). Handlers registered
@@ -1893,10 +2003,11 @@ void emit_locked(const std::string& name, PushPayload push_payload) {
                 lua_rawgeti(L, -1, i);     // handler fn
                 push_payload(L);           // arg 1: payload table
                 if (wildcard) lua_pushlstring(L, name.data(), name.size());  // arg 2
-                if (lua_pcall(L, wildcard ? 2 : 1, 0, 0) != LUA_OK) {
-                    Loader::get().log(std::string("[lua] ") + id + " event " + name + ": "
-                                      + lua_tostring(L, -1));
+                if (lua_pcall_traced(L, wildcard ? 2 : 1, 0) != LUA_OK) {
+                    log_handler_error(id, name, lua_err_str(L));
                     lua_pop(L, 1);
+                } else {
+                    clear_handler_errors(id, name);
                 }
             }
             lua_pop(L, 1);
@@ -1961,6 +2072,7 @@ void script_reload_changed() {
             if (it != g_scripts.end() && it->second.L) {
                 g_handler_count.fetch_sub(it->second.handlers,
                                           std::memory_order_relaxed);
+                clear_mod_handler_errors(id);
                 lua_close(it->second.L);
                 g_scripts.erase(it);
             }
@@ -1980,6 +2092,7 @@ void script_shutdown_all() {
         if (s.L) lua_close(s.L);
     }
     g_handler_count.store(0, std::memory_order_relaxed);
+    g_event_err_streak.clear();   // keyed by mod id; every state is gone
     g_scripts.clear();
     g_apis.clear();   // the tables they name lived in the states just closed
 }

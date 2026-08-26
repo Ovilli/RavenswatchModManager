@@ -75,6 +75,24 @@ static bool acquire_loader_guard() {
     return true;
 }
 
+// Run one hook installer, absorbing anything it throws. Named so the log says
+// which capability is missing rather than just stopping.
+template <class Fn>
+static void install_guarded(const char* what, Fn&& fn) {
+    try {
+        fn();
+    } catch (const std::exception& e) {
+        rsmm::Loader::get().log(std::string("[install] ") + what
+                                + " hooks FAILED: " + e.what()
+                                + " — that capability is off this session; "
+                                  "everything else still loads");
+    } catch (...) {
+        rsmm::Loader::get().log(std::string("[install] ") + what
+                                + " hooks FAILED (unknown exception) — that "
+                                  "capability is off this session");
+    }
+}
+
 // C++ exception path. Kept in its own function so the outer SEH wrapper
 // below stays free of objects with destructors (MSVC won't compile
 // __try/__except in a function that constructs unwindable C++ objects).
@@ -121,21 +139,27 @@ static void loader_thread_cxx() {
             L.log("IO hook disabled by default (set RSMM_ENABLE_IO=1 to enable)");
         }
 
-        rsmm::install_engine_hooks();
-        rsmm::install_skin_hooks();
-        rsmm::install_skill_hooks();
-        rsmm::install_ui_hooks();
-        rsmm::install_spawn_hooks();
-        rsmm::install_item_hooks();
-        rsmm::install_reward_hooks();
-        rsmm::install_event_hooks();
+        // Each installer is isolated. They resolve engine patterns and touch
+        // game memory, and any one of them can fail after a game patch — but
+        // they used to share the outer try/catch, so ONE throwing installer
+        // skipped every installer after it AND the "ready" emit, which is what
+        // actually starts mods. A capability failing to arm must cost that
+        // capability, not the whole loader.
+        install_guarded("engine",  rsmm::install_engine_hooks);
+        install_guarded("skins",   rsmm::install_skin_hooks);
+        install_guarded("skills",  rsmm::install_skill_hooks);
+        install_guarded("ui",      rsmm::install_ui_hooks);
+        install_guarded("spawn",   rsmm::install_spawn_hooks);
+        install_guarded("items",   rsmm::install_item_hooks);
+        install_guarded("rewards", rsmm::install_reward_hooks);
+        install_guarded("events",  rsmm::install_event_hooks);
         // Hero-capture must install in the SAME phase as the other engine hooks
         // (after the gameplay bus). Installing it earlier — before mod init —
         // made MH_CreateHook fail on a fresh launch (and the game crashed on
         // load). Mods touching R.entity during init just fall back to the
         // legacy per-state path until this arms; harmless.
-        rsmm::install_hero_capture();
-        rsmm::install_netcode_patches();
+        install_guarded("hero_capture", rsmm::install_hero_capture);
+        install_guarded("netcode",      rsmm::install_netcode_patches);
 
         // Ground-truth symbol dump (opt-in, dev/RE). Force-resolves every
         // semantic pattern against the live exe and writes
@@ -174,10 +198,21 @@ static void loader_thread_cxx() {
                 }
                 if (g_ticker_stop.load(std::memory_order_acquire)) break;
                 if (g_ticker_idle) ResetEvent(g_ticker_idle);
-                rsmm::script_emit_event("tick");
-                if ((++n & 1) == 0) {
-                    rsmm::script_reload_changed();
+                // This thread is DETACHED and had no handler: anything escaping
+                // here was std::terminate, i.e. the game vanished with no
+                // dialog and a log whose last line was unrelated. A tick that
+                // throws must cost that tick, nothing more.
+                try {
+                    rsmm::script_emit_event("tick");
+                    if (((n + 1) & 1) == 0) {
+                        rsmm::script_reload_changed();
+                    }
+                } catch (const std::exception& e) {
+                    rsmm::Loader::get().log(std::string("[tick] aborted: ") + e.what());
+                } catch (...) {
+                    rsmm::Loader::get().log("[tick] aborted (unknown exception)");
                 }
+                ++n;
                 // Four ticks (~2 s) of the pump running after "ready" is the
                 // definition of "this launch booted": mod init and the whole
                 // hook install phase are behind us. Close the canary so the
@@ -188,7 +223,16 @@ static void loader_thread_cxx() {
             if (g_ticker_idle) SetEvent(g_ticker_idle);
         }).detach();
     } catch (const std::exception& e) {
+        // The log, not just OutputDebugString: nobody attaches a debugger to a
+        // shipped game, so an init that threw left a _log.txt that simply
+        // STOPPED — no error, no last line, nothing to report. This is the one
+        // place that can explain why no mod loaded.
+        rsmm::Loader::get().log(std::string("[fatal] loader init aborted: ")
+                                + e.what());
         OutputDebugStringA(e.what());
+    } catch (...) {
+        rsmm::Loader::get().log("[fatal] loader init aborted (unknown exception)");
+        OutputDebugStringA("rsmm loader: unknown exception in loader init.");
     }
 }
 

@@ -123,6 +123,22 @@ local function _record(name, ev)
     end
 end
 
+-- Message handler for handler calls. `debug` is removed from every mod state by
+-- the loader's sandbox, so `debug.traceback` — the idiom this would otherwise
+-- use — does not exist here; the native binding is luaL_traceback, which lives
+-- in the C library and needs no `debug` table. Falls back to the bare message
+-- on an older loader that predates the binding, because a Lua SDK ships
+-- independently of the DLL and routinely runs against one.
+local _msgh = native and native._internal and native._internal.traceback
+              or function(e) return tostring(e) end
+
+-- Consecutive raises before a subscription is latched off. A handler that
+-- raises on gameplay:tick raises hundreds of times a second: without a latch
+-- that is hundreds of log lines a second, which pushes the loader log past its
+-- size cap and rotates away the history that explains anything. Same shape and
+-- limit the native hook bridge uses for detour callbacks.
+local ERR_LIMIT = 20
+
 local function _dispatch(name, ev)
     _record(name, ev)
     local expired
@@ -159,11 +175,28 @@ local function _dispatch(name, ev)
             else
                 hit = (s.event == name) or (s.event == "*")
             end
-            if hit then
+            if hit and not s.cb_disabled then
                 if s.once then expired = expired or {}; expired[#expired + 1] = id end
-                local ok, err = pcall(s.cb, ev, name)
-                if not ok then
-                    R.log("[rsmm.on] handler error on '" .. name .. "': " .. tostring(err))
+                local ok, err = xpcall(s.cb, _msgh, ev, name)
+                if ok then
+                    -- Only CONSECUTIVE failures latch: a handler that raises on
+                    -- one odd payload and works the rest of the time must not
+                    -- accumulate its way to being switched off.
+                    s.err_streak = nil
+                else
+                    local n = (s.err_streak or 0) + 1
+                    s.err_streak = n
+                    if n <= 3 or n == ERR_LIMIT then
+                        R.log("[rsmm.on] handler error on '" .. name .. "' ("
+                              .. n .. "): " .. tostring(err))
+                    end
+                    if n >= ERR_LIMIT then
+                        s.cb_disabled = true
+                        R.log("[rsmm.on] DISABLING subscription " .. tostring(id)
+                              .. " for '" .. tostring(s.event or s.match)
+                              .. "': raised " .. n .. " times in a row. Fix it and "
+                              .. "re-subscribe (or save the mod to hot-reload).")
+                    end
                 end
             end
         end

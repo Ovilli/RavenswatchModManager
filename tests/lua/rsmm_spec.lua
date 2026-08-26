@@ -1117,6 +1117,29 @@ do
     check(beats == 1, "a repeater that cancels itself fires exactly once")
     check(R.schedule.pending().timers == 0, "and leaves nothing pending")
 
+    -- A repeater whose callback raises EVERY fire keeps running (a transient
+    -- failure must not silently kill a poll) but must stop writing a log line
+    -- per fire: `every(0.1, broken)` is ten identical lines a second for the
+    -- rest of the session, which pushes the loader log past its size cap and
+    -- rotates away everything that explains anything.
+    local saved_sched_log = rsmm.log
+    local sched_logged = {}
+    rsmm.log = function(...) sched_logged[#sched_logged + 1] = table.concat({ ... }, " ") end
+    local raises = 0
+    local bad = R.schedule.every(1, function()
+        raises = raises + 1
+        error("always")
+    end)
+    for _ = 1, 30 do
+        fake_clock = fake_clock + 1.5
+        R.schedule._tick()
+    end
+    R.schedule.cancel(bad)
+    rsmm.log = saved_sched_log
+    check(raises == 30, "a raising repeater keeps firing (a transient failure must not kill it)")
+    check(#sched_logged == 4,
+          "but it logs only the first 3 failures plus one silencing notice, not 30")
+
     -- Cancelling from OUTSIDE a drain still works, and is idempotent.
     local never = R.schedule.every(1, function() check(false, "cancelled timer ran") end)
     check(R.schedule.cancel(never), "cancel reports it stopped a live timer")
@@ -1287,6 +1310,26 @@ do
     fire("spec:boom")
     check(after, "a raising handler does not break the rest of the chain")
     R.off(hb); R.off(ha)
+
+    -- A handler that raises EVERY time is latched off, so a per-frame event
+    -- cannot turn one broken mod into hundreds of log lines a second.
+    local fires = 0
+    local hl = R.on("spec:latch", function() fires = fires + 1; error("always") end)
+    for _ = 1, 40 do fire("spec:latch") end
+    check(fires == 20, "a permanently raising handler stops being called after 20 raises")
+    R.off(hl)
+
+    -- ...but only CONSECUTIVE raises count: an occasional failure must not
+    -- accumulate its way to a latch over a long session.
+    local n, calls = 0, 0
+    local hi = R.on("spec:flaky", function()
+        calls = calls + 1
+        n = n + 1
+        if n % 2 == 1 then error("odd one") end
+    end)
+    for _ = 1, 60 do fire("spec:flaky") end
+    check(calls == 60, "a handler that succeeds between raises is never latched off")
+    R.off(hi)
 
     -- Subscribing from inside a dispatch must not fire for THIS event.
     local late = 0

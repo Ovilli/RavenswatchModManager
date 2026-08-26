@@ -10,6 +10,7 @@ from rsmm.cli.doctor import (
     check_compat_graph,
     check_exe_hash,
     check_game_install,
+    check_mod_health,
     check_mods,
     check_patch_conflicts,
     check_state,
@@ -492,3 +493,135 @@ def test_game_dir_is_appended_for_commands_that_take_it(tmp_path, monkeypatch):
     outcome, _detail = doc._apply_fix(r, tmp_path / "elsewhere", force=False)
     assert outcome == "fixed"
     assert "--game-dir" in seen["cmd"]
+
+
+# ---------------------------------------------------------------------------
+# mod health — the loader's verdict, made visible
+# ---------------------------------------------------------------------------
+
+
+def _write_health(game_dir, doc):
+    mods = game_dir / "mods"
+    mods.mkdir(parents=True, exist_ok=True)
+    (mods / "_health.json").write_text(json.dumps(doc), encoding="utf-8")
+
+
+def test_check_mod_health_no_file_is_ok(tmp_path):
+    results = check_mod_health(tmp_path)
+    assert [r.kind for r in results] == ["OK"]
+
+
+def test_check_mod_health_reports_quarantine_with_a_repair(tmp_path):
+    """The gap this closes: the loader disables a mod after three failed boots
+    and nothing user-facing said so, so it silently stopped working while every
+    UI still showed it enabled."""
+    _write_health(tmp_path, {
+        "version": 1,
+        "mods": {"Broken": {"crashes": 3, "last_error": "init.lua failed: boom",
+                            "disabled": True,
+                            "disabled_reason": "failed to boot 3 times in a row"}},
+    })
+    results = check_mod_health(tmp_path)
+    fail = [r for r in results if r.kind == "FAIL"]
+    assert len(fail) == 1
+    assert fail[0].code == "health.quarantined"
+    assert "Broken" in fail[0].label
+    assert "boom" in fail[0].detail
+    # The repair must be runnable, not just described.
+    assert fail[0].fix is not None
+    assert fail[0].fix.argv == ["safe-mode", "--reset", "Broken"]
+
+
+def test_check_mod_health_warns_before_the_threshold(tmp_path):
+    _write_health(tmp_path, {
+        "version": 1,
+        "mods": {"Flaky": {"crashes": 1, "last_error": "nope",
+                           "disabled": False, "disabled_reason": ""}},
+    })
+    results = check_mod_health(tmp_path)
+    assert [r.code for r in results] == ["health.crashing"]
+    assert results[0].kind == "WARN"
+
+
+def test_check_mod_health_reports_an_open_canary(tmp_path):
+    _write_health(tmp_path, {
+        "version": 1,
+        "canary": {"open": True, "step": "per_mod:Bar", "session": "fd1d"},
+        "mods": {},
+    })
+    results = check_mod_health(tmp_path)
+    canary = [r for r in results if r.code == "health.canary-open"]
+    assert len(canary) == 1
+    assert "Bar" in canary[0].detail
+
+
+def test_check_mod_health_ignores_a_closed_canary(tmp_path):
+    _write_health(tmp_path, {
+        "version": 1,
+        "canary": {"open": False, "step": "boot_ok", "session": "fd1d"},
+        "mods": {"Ok": {"crashes": 0, "disabled": False}},
+    })
+    results = check_mod_health(tmp_path)
+    assert [r.kind for r in results] == ["OK"]
+
+
+def test_check_mod_health_survives_a_corrupt_file(tmp_path):
+    mods = tmp_path / "mods"
+    mods.mkdir(parents=True)
+    (mods / "_health.json").write_text("{not json", encoding="utf-8")
+    results = check_mod_health(tmp_path)
+    # A corrupt history is a warning, never an exception out of doctor.
+    assert results and results[0].kind in {"OK", "WARN"}
+
+
+def test_check_mod_health_surfaces_an_error_with_no_crashes(tmp_path):
+    """A mod whose init.lua RAISES fails cleanly — the game survives, so the
+    boot counter never moves. Filtering the middle band on `crashes > 0` hid
+    every one of those behind "no quarantined mods (1 with history)", which is
+    the opposite of why the loader writes the record."""
+    _write_health(tmp_path, {
+        "version": 1,
+        "mods": {"Raiser": {"crashes": 0,
+                            "last_error": "init.lua failed: boom",
+                            "disabled": False, "disabled_reason": ""}},
+    })
+    results = check_mod_health(tmp_path)
+    assert [r.code for r in results] == ["health.errored"]
+    assert results[0].kind == "WARN"
+    assert "boom" in results[0].detail
+
+
+def test_check_mod_health_stays_quiet_for_a_clean_mod(tmp_path):
+    _write_health(tmp_path, {
+        "version": 1,
+        "mods": {"Fine": {"crashes": 0, "last_error": "",
+                          "disabled": False, "disabled_reason": ""}},
+    })
+    assert [r.kind for r in check_mod_health(tmp_path)] == ["OK"]
+
+
+def test_bisect_says_why_it_disabled_a_mod(tmp_path, monkeypatch):
+    """doctor falls back to "{crashes} crash(es) recorded" when the reason is
+    empty, so a bisect-disabled mod was reported as having crashed — pointing
+    the user at a crash that never happened, from the very command whose job is
+    to find the real one."""
+    from rsmm.cli import safe_mode
+    from rsmm.sdk.health import Health
+
+    mods = tmp_path / "mods"
+    (mods / "Alpha").mkdir(parents=True)
+    (mods / "Alpha" / "manifest.toml").write_text(
+        '[mod]\nid = "Alpha"\nenabled = true\n', encoding="utf-8")
+    monkeypatch.setenv("RSMM_MODS_DIR", str(mods))
+
+    assert safe_mode._bisect_step(Health(tmp_path)) == 0
+
+    entry = Health(tmp_path).load().mods["Alpha"]
+    assert entry.disabled
+    assert "bisect" in entry.disabled_reason
+
+    results = check_mod_health(tmp_path)
+    fail = [r for r in results if r.code == "health.quarantined"]
+    assert len(fail) == 1
+    assert "bisect" in fail[0].detail
+    assert "crash(es) recorded" not in fail[0].detail

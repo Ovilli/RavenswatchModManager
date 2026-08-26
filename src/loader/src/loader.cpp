@@ -14,6 +14,8 @@
 #include <cstdio>
 #include <unordered_set>
 
+#include "fs_iter.h"
+
 #include "json.hpp"   // single-header nlohmann::json (vendored)
 #include "toml.hpp"   // single-header toml++ (vendored)
 
@@ -105,11 +107,13 @@ std::string Loader::archive_log(const fs::path& src) {
     // Prune oldest-first by NAME: the stamp leads, so lexical order is
     // chronological, and unlike last_write_time it does not lie after a copy.
     std::vector<fs::path> kept;
-    for (const auto& e : fs::directory_iterator(dir, ec)) {
-        if (!ec && e.is_regular_file() && e.path().extension() == ".log") {
+    for_each_in_dir(dir, [&](const fs::directory_entry& e) {
+        std::error_code eec;
+        if (e.is_regular_file(eec) && !eec && e.path().extension() == ".log") {
             kept.push_back(e.path());
         }
-    }
+        return true;
+    });
     if (kept.size() > kLogArchiveKeep) {
         std::sort(kept.begin(), kept.end());
         for (std::size_t i = 0; i + kLogArchiveKeep < kept.size(); ++i) {
@@ -384,12 +388,17 @@ const std::string* Loader::decoded_to_encoded(const std::string& dec) const {
 
 void Loader::scan_mods(const fs::path& mods_dir) {
     mods_.clear();
-    if (!fs::exists(mods_dir)) return;
+    std::error_code scan_ec;
+    if (!fs::exists(mods_dir, scan_ec)) return;
 
-    for (const auto& entry : fs::directory_iterator(mods_dir)) {
-        if (!entry.is_directory()) continue;
+    // Non-throwing walk: this used to be a bare directory_iterator, so a single
+    // unreadable entry threw out of scan_mods and the loader's outer catch
+    // reported "no mods" — with the reason only in OutputDebugString.
+    for_each_in_dir(mods_dir, [&](const fs::directory_entry& entry) {
+        std::error_code eec;
+        if (!entry.is_directory(eec) || eec) return true;
         const fs::path manifest = entry.path() / "manifest.toml";
-        if (!fs::exists(manifest)) continue;
+        if (!fs::exists(manifest, eec)) return true;
 
         Mod m;
         m.root = entry.path();
@@ -404,12 +413,12 @@ void Loader::scan_mods(const fs::path& mods_dir) {
             m.load_order = tbl["mod"]["load_order"].value_or(0);
         } catch (const std::exception& e) {
             log("manifest parse fail " + manifest.string() + ": " + e.what());
-            continue;
+            return true;
         }
 
         // Stash tags.json verbatim (parsed lazily by the rsmm.tags() binding).
         const fs::path tags_path = entry.path() / "tags.json";
-        if (fs::exists(tags_path)) {
+        if (fs::exists(tags_path, eec)) {
             std::ifstream tf(tags_path);
             std::stringstream ss;
             ss << tf.rdbuf();
@@ -418,15 +427,16 @@ void Loader::scan_mods(const fs::path& mods_dir) {
 
         // Discover override files under <mod>/assets/<decoded_path>.
         const fs::path assets = entry.path() / "assets";
-        if (fs::exists(assets)) {
-            for (auto& f : fs::recursive_directory_iterator(assets)) {
-                if (!f.is_regular_file()) continue;
-                ModFile mf;
-                mf.src = f.path();
-                mf.decoded_path = fs::relative(f.path(), assets).generic_string();
-                m.files.push_back(std::move(mf));
-            }
-        }
+        for_each_in_tree(assets, [&](const fs::directory_entry& f) {
+            std::error_code fec;
+            if (!f.is_regular_file(fec) || fec) return true;
+            ModFile mf;
+            mf.src = f.path();
+            mf.decoded_path = fs::relative(f.path(), assets, fec).generic_string();
+            if (fec || mf.decoded_path.empty()) return true;
+            m.files.push_back(std::move(mf));
+            return true;
+        });
         // Ids key the script table, the state file and the health history, so
         // a duplicate would silently make one mod shadow the other everywhere.
         bool dup = false;
@@ -436,10 +446,11 @@ void Loader::scan_mods(const fs::path& mods_dir) {
         if (dup) {
             log("duplicate mod id '" + m.id + "' in " + entry.path().string()
                 + "; ignoring this copy (ids must be unique)");
-            continue;
+            return true;
         }
         mods_.push_back(std::move(m));
-    }
+        return true;
+    });
     std::sort(mods_.begin(), mods_.end(),
               [](const Mod& a, const Mod& b){ return a.load_order < b.load_order; });
     log("scan_mods found=" + std::to_string(mods_.size()));
