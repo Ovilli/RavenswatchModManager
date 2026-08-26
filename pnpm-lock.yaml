@@ -32,9 +32,6 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: 3.1051.0
         version: 3.1051.0
-      '@daveyplate/better-auth-tauri':
-        specifier: 0.1.9
-        version: 0.1.9(@tauri-apps/api@2.11.0)(@tauri-apps/plugin-deep-link@2.2.1)(@tauri-apps/plugin-http@2.4.3)(@tauri-apps/plugin-opener@2.2.6)(@tauri-apps/plugin-os@2.2.1)(better-auth@1.4.17(drizzle-orm@0.45.2(@neondatabase/serverless@0.10.4)(@types/pg@8.11.10)(kysely@0.28.17)(pg@8.13.1))(next@15.3.9(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(pg@8.13.1)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)(solid-js@1.9.13)(vitest@3.0.9(@types/debug@4.1.13)(@types/node@22.10.5)(jiti@2.7.0)(tsx@4.19.2)(yaml@2.9.0)))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       '@hono/node-server':
         specifier: 1.13.7
         version: 1.13.7(hono@4.12.21)
@@ -6232,7 +6229,7 @@ snapshots:
       '@better-auth/utils': 0.3.0
       '@better-fetch/fetch': 1.1.21
       '@standard-schema/spec': 1.1.0
-      better-call: 1.1.8(zod@4.4.3)
+      better-call: 1.1.8(zod@3.25.76)
       jose: 6.2.3
       kysely: 0.28.17
       nanostores: 1.3.0
@@ -6288,17 +6285,6 @@ snapshots:
   '@chevrotain/types@11.1.2': {}
 
   '@ctrl/tinycolor@4.2.0': {}
-
-  '@daveyplate/better-auth-tauri@0.1.9(@tauri-apps/api@2.11.0)(@tauri-apps/plugin-deep-link@2.2.1)(@tauri-apps/plugin-http@2.4.3)(@tauri-apps/plugin-opener@2.2.6)(@tauri-apps/plugin-os@2.2.1)(better-auth@1.4.17(drizzle-orm@0.45.2(@neondatabase/serverless@0.10.4)(@types/pg@8.11.10)(kysely@0.28.17)(pg@8.13.1))(next@15.3.9(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(pg@8.13.1)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)(solid-js@1.9.13)(vitest@3.0.9(@types/debug@4.1.13)(@types/node@22.10.5)(jiti@2.7.0)(tsx@4.19.2)(yaml@2.9.0)))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)':
-    dependencies:
-      '@tauri-apps/api': 2.11.0
-      '@tauri-apps/plugin-deep-link': 2.2.1
-      '@tauri-apps/plugin-http': 2.4.3
-      '@tauri-apps/plugin-opener': 2.2.6
-      '@tauri-apps/plugin-os': 2.2.1
-      better-auth: 1.4.17(drizzle-orm@0.45.2(@neondatabase/serverless@0.10.4)(@types/pg@8.11.10)(kysely@0.28.17)(pg@8.13.1))(next@15.3.9(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(pg@8.13.1)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)(solid-js@1.9.13)(vitest@3.0.9(@types/debug@4.1.13)(@types/node@22.10.5)(jiti@2.7.0)(tsx@4.19.2)(yaml@2.9.0))
-      react: 19.0.0
-      react-dom: 19.0.0(react@19.0.0)
 
   '@daveyplate/better-auth-tauri@0.1.9(@tauri-apps/api@2.5.0)(@tauri-apps/plugin-deep-link@2.2.1)(@tauri-apps/plugin-http@2.4.3)(@tauri-apps/plugin-opener@2.2.6)(@tauri-apps/plugin-os@2.2.1)(better-auth@1.4.17(drizzle-orm@0.45.2(@neondatabase/serverless@0.10.4)(@types/pg@8.11.10)(kysely@0.28.17)(pg@8.13.1))(next@15.3.9(@babel/core@7.29.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(pg@8.13.1)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)(solid-js@1.9.13)(vitest@3.0.9(@types/debug@4.1.13)(@types/node@24.12.4)(jiti@2.7.0)(tsx@4.19.2)(yaml@2.9.0)))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)':
     dependencies:
@@ -8119,7 +8105,7 @@ snapshots:
       '@better-fetch/fetch': 1.1.21
       '@noble/ciphers': 2.2.0
       '@noble/hashes': 2.2.0
-      better-call: 1.1.8(zod@4.4.3)
+      better-call: 1.1.8(zod@3.25.76)
       defu: 6.1.7
       jose: 6.2.3
       kysely: 0.28.17
@@ -8133,6 +8119,15 @@ snapshots:
       react-dom: 19.0.0(react@19.0.0)
       solid-js: 1.9.13
       vitest: 3.0.9(@types/debug@4.1.13)(@types/node@22.10.5)(jiti@2.7.0)(tsx@4.19.2)(yaml@2.9.0)
+
+  better-call@1.1.8(zod@3.25.76):
+    dependencies:
+      '@better-auth/utils': 0.3.0
+      '@better-fetch/fetch': 1.1.21
+      rou3: 0.7.12
+      set-cookie-parser: 2.7.2
+    optionalDependencies:
+      zod: 3.25.76
 
   better-call@1.1.8(zod@4.4.3):
     dependencies:

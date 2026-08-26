@@ -1265,7 +1265,14 @@ modsRouter.put(
 
     const mod = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
     if (!mod) return c.json({ error: 'not found' }, 404);
-    if (mod.ownerId === user.id) {
+    // A taken-down mod stops accepting reviews along with everything else.
+    if (mod.takedownStatus !== 'active') return c.json({ error: 'not found' }, 404);
+    // Self-review gate covers the whole author TEAM, not just the owner. The
+    // check used to be `mod.ownerId === user.id`, so a co-author (mod_authors)
+    // could rate the mod they publish — and the owner could hand out that
+    // ability by adding accounts to the team, which is exactly the rating
+    // manipulation this rule exists to prevent.
+    if (await canManageMod(mod, user.id)) {
       return c.json({ error: 'authors cannot review their own mod' }, 400);
     }
 

@@ -554,7 +554,9 @@ export default function ManageModPage() {
               .map((t) => t.trim())
               .filter(Boolean),
             license: license || mod.license,
-            imageUrl: mod.imageUrl,
+            // imageUrl is optional on ModListItem now that the schema sanitizes
+            // stored URLs; the preview wants an explicit null for "no image".
+            imageUrl: mod.imageUrl ?? null,
             downloads: mod.downloads ?? 0,
           }}
           description={description}

@@ -1,3 +1,4 @@
+import { jsonLd } from '@rsmm/schemas';
 import { buttonVariants } from '@rsmm/ui';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { Github } from 'lucide-react';
@@ -139,9 +140,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             at the registry search). */}
         <script
           type="application/ld+json"
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: static, server-built JSON-LD — not user input.
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: static, server-built JSON-LD. Still serialized through jsonLd() so every ld+json block on the site escapes identically.
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
+            __html: jsonLd({
               '@context': 'https://schema.org',
               '@graph': [
                 {

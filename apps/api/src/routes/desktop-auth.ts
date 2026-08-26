@@ -146,15 +146,16 @@ desktopAuthRouter.get('/start', async (c) => {
 desktopAuthRouter.get('/complete', async (c) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers }).catch(() => null);
   if (!session?.user) {
-    // TEMP diagnostic (see the oauth-debug middleware in app.ts): if a privacy
-    // browser also drops the session cookie set during the callback redirect,
-    // this is where the flow dies — log what cookies actually arrived.
-    const cookieNames = (c.req.header('cookie') ?? '')
+    // If a privacy browser also drops the session cookie set during the callback
+    // redirect, this is where the flow dies. Record the COUNT of cookies that
+    // arrived, not their names or values — a cookie name list is a fingerprint
+    // of the visitor's other sessions on the domain, and none of it is needed
+    // to tell "browser sent nothing" apart from "browser sent something else".
+    const cookieCount = (c.req.header('cookie') ?? '')
       .split(';')
-      .map((s) => s.trim().split('=')[0])
-      .filter(Boolean)
-      .join(',');
-    (c.get('log') ?? console).info?.('[oauth-debug] complete without session', { cookieNames });
+      .map((s) => s.trim())
+      .filter(Boolean).length;
+    (c.get('log') ?? console).info?.('desktop-auth complete without session', { cookieCount });
     return c.html(
       statusPage({
         title: 'Sign-in incomplete',

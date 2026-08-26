@@ -1,3 +1,4 @@
+import { jsonLd } from '@rsmm/schemas';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { type Entity, fetchEntity } from '../../../lib/entity';
@@ -142,8 +143,8 @@ export default async function Layout({
       {res.state === 'ok' ? (
         <script
           type="application/ld+json"
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD must be inlined as a script body; the payload is server-built from our own API, not user HTML.
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(modJsonLd(slug, res.data)) }}
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD must be inlined as a script body. The payload carries user-submitted mod metadata, so it goes through jsonLd(), which escapes `<`/`>`/`&` — see lib/json-ld.ts.
+          dangerouslySetInnerHTML={{ __html: jsonLd(modJsonLd(slug, res.data)) }}
         />
       ) : null}
       {children}

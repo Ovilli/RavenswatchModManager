@@ -1,3 +1,4 @@
+import { jsonLd } from '@rsmm/schemas';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { type Entity, fetchEntity } from '../../../lib/entity';
@@ -134,8 +135,8 @@ export default async function Layout({
       {isPublic(res) ? (
         <script
           type="application/ld+json"
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: server-built JSON-LD from our own API, not user HTML.
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(guideJsonLd(slug, res.data)) }}
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD must be inlined as a script body. The payload carries the user-submitted guide title/summary, so it goes through jsonLd() — see lib/json-ld.ts.
+          dangerouslySetInnerHTML={{ __html: jsonLd(guideJsonLd(slug, res.data)) }}
         />
       ) : null}
       {children}

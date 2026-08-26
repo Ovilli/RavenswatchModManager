@@ -31,9 +31,15 @@ const outerModId = sql.raw('"mods"."id"');
  *                                instead of reporting a wrong number.
  * The owner and admins always see their own real figures.
  */
+// Longest thing this can legitimately be is a user id or a handle; anything
+// past that is not a lookup, so it is refused before it becomes a query
+// parameter and an index scan.
+const MAX_ID_OR_HANDLE = 128;
+
 usersRouter.get('/:idOrHandle', async (c) => {
   const param = c.req.param('idOrHandle');
   if (!param) return c.json({ error: 'missing id' }, 400);
+  if (param.length > MAX_ID_OR_HANDLE) return c.json({ error: 'not found' }, 404);
   const db = getDb();
 
   const u = await db.query.users.findFirst({

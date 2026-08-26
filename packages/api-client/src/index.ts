@@ -80,7 +80,16 @@ export function createApiClient(options: ApiClientOptions) {
     return h;
   };
 
-  async function request<T>(path: string, init: RequestInit, schema: z.ZodType<T>): Promise<T> {
+  // `z.ZodType<T>` defaults its Input parameter to T, which excludes any schema
+  // carrying a `.transform()`. The response schemas now sanitize stored URLs
+  // (see @rsmm/schemas url.ts), so their input and output shapes legitimately
+  // differ — what the caller cares about is the parsed OUTPUT type, so the
+  // input is left unconstrained.
+  async function request<T>(
+    path: string,
+    init: RequestInit,
+    schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  ): Promise<T> {
     const baseUrl = options.baseUrl.replace(/\/+$/, '');
     const ctrl = new AbortController();
     // Compose caller's signal (if any) with our timeout so explicit
