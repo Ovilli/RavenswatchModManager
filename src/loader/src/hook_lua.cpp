@@ -399,7 +399,7 @@ std::uint64_t dispatch(int slot, std::uint64_t* a) {
             who = g_slots[slot].mod_id;      // error path only: allocation is fine here
         }
         if (streak <= 3 || streak == kCallbackErrorLimit) {
-            Loader::get().log(std::string("[hook] cb error in ") + who
+            Loader::get().log_err(std::string("[hook] cb error in ") + who
                               + " (" + std::to_string(streak) + "): "
                               + lua_err_str(L));
         }

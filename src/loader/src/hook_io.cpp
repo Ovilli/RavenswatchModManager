@@ -151,7 +151,7 @@ static bool patch_iat_entry(HMODULE mod, const char* target_dll,
             // and takes an access violation inside our own installer.
             if (!VirtualProtect(&thunk->u1.Function, sizeof(uintptr_t),
                                 PAGE_READWRITE, &oldprot)) {
-                Loader::get().log("io: VirtualProtect failed on the CreateFileW "
+                Loader::get().log_err("io: VirtualProtect failed on the CreateFileW "
                                   "IAT slot; leaving it alone");
                 return false;
             }

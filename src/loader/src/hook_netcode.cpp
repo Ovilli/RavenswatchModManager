@@ -87,7 +87,7 @@ bool install_netcode_patches() {
 
     const std::uintptr_t base = game_base();
     if (base == 0) {
-        Loader::get().log("[netcode] could not resolve game module base; skipping");
+        Loader::get().log_err("[netcode] could not resolve game module base; skipping");
         return false;
     }
     // These are absolute .data RVAs — exactly the class of address the build
@@ -126,7 +126,7 @@ bool install_netcode_patches() {
 
     DWORD oldprot = 0;
     if (!VirtualProtect(ed3, 1, PAGE_EXECUTE_READWRITE, &oldprot)) {
-        Loader::get().log("[netcode] VirtualProtect failed; not patching");
+        Loader::get().log_err("[netcode] VirtualProtect failed; not patching");
         return false;
     }
     *ed3 = window;

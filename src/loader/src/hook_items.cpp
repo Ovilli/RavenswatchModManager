@@ -281,7 +281,7 @@ static bool item_inject_armed() {
     }
     const bool acknowledged = flag_enabled("RSMM_I_ACCEPT_ITEM_INJECT_IS_BROKEN");
     if (!acknowledged) {
-        Loader::get().log("[item-hook] RSMM_ENABLE_ITEM_INJECT set but refused: "
+        Loader::get().log_warn("[item-hook] RSMM_ENABLE_ITEM_INJECT set but refused: "
                           "inject mis-resolves and crashes on this build. Also set "
                           "RSMM_I_ACCEPT_ITEM_INJECT_IS_BROKEN=1 (dev only) to force.");
         return false;
@@ -448,7 +448,7 @@ bool install_item_hooks() {
     }
 
     if (!fn_resolver_init()) {
-        Loader::get().log("[item-hook] fn_resolver_init failed");
+        Loader::get().log_err("[item-hook] fn_resolver_init failed");
         return false;
     }
 

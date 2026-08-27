@@ -121,3 +121,55 @@ def test_install_loader_refuses_a_non_compiling_sdk(tmp_path, monkeypatch):
 
     (lib / "broken.lua").write_text("local x = = 1\n")
     assert install_loader._lua_syntax_gate() is False
+
+
+# --- severity ---------------------------------------------------------------
+
+def test_line_severity_reads_the_loader_tag():
+    """`Loader::log_err` / `log_warn` stamp the severity BEFORE the subsystem
+    tag, so both survive and `[subsystem]` stays where readers look for it."""
+    from rsmm.cli.cmd_log import line_severity
+
+    stamp = "[2026-08-27 12:00:00.123 ab12 42]"
+    assert line_severity(f"{stamp} [err] [ui-hook] resolve failed") == "err"
+    assert line_severity(f"{stamp} [warn] flags parse error") == "warn"
+    assert line_severity(f"{stamp} [va-gate] fine") is None
+    # Unclassified means unclassified — a message that merely says "failed"
+    # must not be promoted, or the filter fills up with noise again.
+    assert line_severity(f"{stamp} [lua] mod said: failed") is None
+    assert line_severity("== SESSION ab12 ==") is None
+
+
+def test_style_line_keeps_both_tokens_and_adds_no_characters(monkeypatch):
+    """Colouring must be in place: the log tab aligns on the plain text."""
+    import re
+
+    from rsmm.cli import cmd_log
+
+    monkeypatch.setattr(cmd_log._ST, "enabled", True, raising=False)
+    raw = "[2026-08-27 12:00:00.123 ab12 42] [err] [ui-hook] resolve failed"
+    styled = cmd_log._style_line(raw)
+    assert re.sub(r"\x1b\[[0-9;]*m", "", styled) == raw
+
+
+def test_errors_filter_keeps_session_banners(tmp_path, monkeypatch, capsys):
+    """An error with no run attached to it is not much use, so the banners
+    survive the filter even though they carry no severity."""
+    from rsmm.cli import cmd_log
+
+    game = tmp_path / "game"
+    (game / "mods").mkdir(parents=True)
+    stamp = "[2026-08-27 12:00:00.123 ab12 42]"
+    (game / "mods" / "_log.txt").write_text(
+        "== SESSION ab12 ==\n"
+        f"{stamp} [va-gate] quiet\n"
+        f"{stamp} [err] [ui-hook] resolve failed\n"
+        f"{stamp} [warn] odd\n"
+    )
+    monkeypatch.setenv("NO_COLOR", "1")
+    assert cmd_log.main(["--errors", "--game-dir", str(game)]) == 0
+    out = capsys.readouterr().out
+    assert "resolve failed" in out
+    assert "odd" in out
+    assert "quiet" not in out
+    assert "== SESSION" in out

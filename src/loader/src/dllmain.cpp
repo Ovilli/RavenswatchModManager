@@ -117,7 +117,7 @@ static void loader_thread_cxx() {
         {
             MH_STATUS s = MH_Initialize();
             if (s != MH_OK && s != MH_ERROR_ALREADY_INITIALIZED) {
-                L.log("MH_Initialize failed; hooks disabled");
+                L.log_err("MH_Initialize failed; hooks disabled");
                 return;
             }
         }

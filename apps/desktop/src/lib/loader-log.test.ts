@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loaderLogTags, parseLoaderLog } from './loader-log';
+import { loaderLogProblems, loaderLogTags, parseLoaderLog } from './loader-log';
 
 const STAMP = '2026-08-06 21:14:03.881';
 
@@ -12,6 +12,7 @@ describe('parseLoaderLog', () => {
       session: 'a3f1',
       pid: '12044',
       tag: null,
+      severity: null,
       message: 'loader attached',
       raw: `[${STAMP} a3f1 12044] loader attached`,
     });
@@ -59,5 +60,47 @@ describe('loaderLogTags', () => {
       `[${STAMP} a3f1 1] untagged`,
     ]);
     expect(loaderLogTags(parsed)).toEqual(['lua', 'va-gate']);
+  });
+});
+
+describe('severity', () => {
+  it('peels [err]/[warn] off ahead of the subsystem tag', () => {
+    const [err] = parseLoaderLog([`[${STAMP} a3f1 12044] [err] [ui-hook] resolve failed`]);
+    expect(err?.severity).toBe('err');
+    // Severity is a separate token precisely so `tag` keeps meaning the
+    // subsystem, where every existing reader looks for it.
+    expect(err?.tag).toBe('ui-hook');
+    expect(err?.message).toBe('resolve failed');
+
+    const [warn] = parseLoaderLog([`[${STAMP} a3f1 12044] [warn] flags parse error`]);
+    expect(warn?.severity).toBe('warn');
+    expect(warn?.tag).toBeNull();
+    expect(warn?.message).toBe('flags parse error');
+  });
+
+  it('leaves an unclassified line unflagged rather than guessing', () => {
+    // The word "failed" in a message the loader did not classify must not be
+    // promoted to an error — severity comes from log_err/log_warn only.
+    const [line] = parseLoaderLog([`[${STAMP} a3f1 12044] [lua] mod said: failed`]);
+    expect(line?.severity).toBeNull();
+  });
+
+  it('does not mistake a subsystem tag for a severity', () => {
+    const [line] = parseLoaderLog([`[${STAMP} a3f1 12044] [va-gate] fine`]);
+    expect(line?.severity).toBeNull();
+    expect(line?.tag).toBe('va-gate');
+  });
+
+  it('counts problems and points at the first error', () => {
+    const lines = parseLoaderLog([
+      `[${STAMP} a3f1 12044] [va-gate] fine`,
+      `[${STAMP} a3f1 12044] [warn] odd`,
+      `[${STAMP} a3f1 12044] [err] [ui-hook] first`,
+      `[${STAMP} a3f1 12044] [err] second`,
+    ]);
+    const { errors, warnings, firstError } = loaderLogProblems(lines);
+    expect(errors).toBe(2);
+    expect(warnings).toBe(1);
+    expect(firstError?.message).toBe('first');
   });
 });

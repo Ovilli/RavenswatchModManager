@@ -155,13 +155,13 @@ bool fn_resolver_init() {
     }
     auto pf = locate_patterns_file();
     if (pf.empty()) {
-        Loader::get().log("[fn] function_patterns.json not found "
+        Loader::get().log_err("[fn] function_patterns.json not found "
                           "(set RSMM_DATA=/path/to/data)");
         return false;
     }
     std::ifstream in(pf);
     if (!in) {
-        Loader::get().log("[fn] failed to open " + pf.string());
+        Loader::get().log_err("[fn] failed to open " + pf.string());
         return false;
     }
     // Minimal hand-rolled JSON parse: the file is a flat array of
@@ -328,7 +328,7 @@ size_t fn_resolver_dump_resolved(const std::string& path) {
     }
     std::ofstream out(path, std::ios::trunc);
     if (!out) {
-        Loader::get().log("[fn] dump: cannot write " + path);
+        Loader::get().log_warn("[fn] dump: cannot write " + path);
         return 0;
     }
     out << "[\n";
