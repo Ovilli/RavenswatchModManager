@@ -30,7 +30,7 @@ The desktop app does **not** reimplement the CLI — it bundles the Python CLI a
 | Fast Python tests (~2s) | `pnpm test:python:fast` (= `pytest -n auto -m "not slow"`; heavy corpus-scan tests are auto-marked `slow`) |
 | Single Python test | `pytest tests/test_apply_restore.py::test_name` |
 | Loader Lua SDK spec | `lua tests/lua/rsmm_spec.lua` (also wrapped as `pytest tests/test_loader_lua.py`) — engine-faithful mocks; extend it when touching `rsmm.lua` engine-call paths |
-| TS schema tests | `pnpm test:ts` |
+| TS tests (vitest) | `pnpm test:ts` — `@rsmm/schemas` + `@rsmm/api-client` + `desktop` |
 | Regen symbol artifacts | `rsmm symbols gen` (after editing `data/symbols.json`; CI runs `--check`) |
 | Local Postgres | `pnpm db:up` then `pnpm db:push` (Drizzle) |
 | Publish a loader/SDK update (no app release) | `scripts/publish_loader.sh --notes "what changed"` — signs + uploads `dist/winhttp.dll` + the Lua SDK to the rolling `loader` release; **commit the `data/loader_version.json` bump it writes** |
@@ -141,7 +141,7 @@ Three symbol-map caveats that CI does NOT catch: (1) `data/function_patterns.jso
 - Commit messages follow `chore(release): bump to 0.1.x + <short reason>` for releases; otherwise free-form imperative. Don't add `Co-Authored-By` lines (see memory).
 - Python uses ruff with `line-length=100`, `target-version=py311`. `F401` (unused imports) is intentionally ignored to keep `__init__.py` re-exports clean.
 - Biome formats/lints TS. Many paths are excluded (`biome.json` `files.ignore`) including `src/rsmm/**`, `scripts/**`, and generated files — touching those won't lint.
-- Tests live in `tests/` (pytest, `testpaths` in `pyproject.toml`). Schema/TS tests are scoped to `@rsmm/schemas` via `pnpm test:ts`. Tests must never mutate tracked `data/` files — an autouse conftest guard fails the offender; `cmd_apply` tests must stub `rsmm.engine.find_iyg.main`.
+- Tests live in `tests/` (pytest, `testpaths` in `pyproject.toml`). TS tests run under vitest in `@rsmm/schemas`, `@rsmm/api-client` and `apps/desktop` — `pnpm test:ts` runs those three, `pnpm test` (what CI runs) adds `apps/api`. Tests must never mutate tracked `data/` files — an autouse conftest guard fails the offender; `cmd_apply` tests must stub `rsmm.engine.find_iyg.main`.
 - **Never `monkeypatch.setattr` `rsmm.engine.paths.MODS_DIR` / `DEFAULT_GAME_DIR`.** They are PEP 562 `__getattr__` attrs, not dict entries: setattr reads the *real* repo `mods/` as the old value and its undo writes that real path into the module dict, permanently shadowing `__getattr__` — even across `importlib.reload`. Every later `RSMM_MODS_DIR` override is then ignored and `rsmm new` scaffolds into the developer's actual `mods/`. Serial-only failure; xdist hides it by splitting the polluter onto another worker. Use `monkeypatch.setenv("RSMM_MODS_DIR"/"RSMM_GAME_DIR", ...)`; `tests/conftest.py::_guard_lazy_paths` and `_guard_real_mods_dir` fail-close on both. `default_game_dir()` reads its override at call time (only the candidate scan, `_scan_game_dir()`, is `@cache`d) — there is no `default_game_dir.cache_clear()`.
 
 ## Useful docs

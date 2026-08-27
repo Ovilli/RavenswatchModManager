@@ -125,6 +125,112 @@ describe('share codes (export/import round-trip)', () => {
   });
 });
 
+/**
+ * A backup code is a base64 blob designed to be pasted between people, so it is
+ * hostile input by default. Two of its fields used to reach the filesystem
+ * untouched: `settings.modsDir` (which becomes RSMM_MODS_DIR for every CLI
+ * call, and an argument to mkdir / open) and `profiles[].id` (a path segment
+ * inside it).
+ */
+describe('importBackup treats the payload as untrusted', () => {
+  function hostileCode(payload: Record<string, unknown>): string {
+    return btoa(JSON.stringify({ kind: 'rsmm-backup', ...payload }));
+  }
+
+  it("keeps this machine's directories instead of the ones in the code", () => {
+    useApp.setState({
+      settings: {
+        ...useApp.getState().settings,
+        modsDir: '/home/me/.local/share/rsmm/mods',
+        gameDir: '/home/me/games/Ravenswatch',
+        backupDir: '/home/me/.local/share/rsmm/backups',
+      },
+    });
+
+    const res = useApp.getState().importBackup(
+      hostileCode({
+        profiles: [{ id: 'default', name: 'Default', loadOrder: [], disabled: [] }],
+        settings: {
+          modsDir: '/tmp/attacker',
+          gameDir: '/tmp/attacker-game',
+          backupDir: '/tmp/attacker-backups',
+        },
+      }),
+    );
+
+    expect(res.ok).toBe(true);
+    const s = useApp.getState().settings;
+    expect(s.modsDir).toBe('/home/me/.local/share/rsmm/mods');
+    expect(s.gameDir).toBe('/home/me/games/Ravenswatch');
+    expect(s.backupDir).toBe('/home/me/.local/share/rsmm/backups');
+  });
+
+  it('still imports the parts of a backup that are safe to carry', () => {
+    const res = useApp.getState().importBackup(
+      hostileCode({
+        profiles: [
+          { id: 'default', name: 'Default', loadOrder: [], disabled: [] },
+          { id: 'keeper', name: 'Keeper', loadOrder: ['mod-a'], disabled: ['mod-a'] },
+        ],
+        settings: { density: 'compact' },
+      }),
+    );
+    expect(res.ok).toBe(true);
+    const keeper = useApp.getState().profiles.find((p) => p.name === 'Keeper');
+    expect(keeper?.loadOrder).toEqual(['mod-a']);
+    expect(useApp.getState().settings.density).toBe('compact');
+  });
+
+  it('rewrites a traversing profile id rather than storing it', () => {
+    const res = useApp.getState().importBackup(
+      hostileCode({
+        profiles: [
+          { id: 'default', name: 'Default', loadOrder: [], disabled: [] },
+          { id: '../../../../tmp/pwned', name: 'Evil', loadOrder: ['mod-a'], disabled: [] },
+        ],
+        activeProfileId: '../../../../tmp/pwned',
+      }),
+    );
+
+    expect(res.ok).toBe(true);
+    const state = useApp.getState();
+    for (const p of state.profiles) {
+      expect(p.id).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
+    }
+    // The id it asked to make active no longer exists, so the store falls back
+    // to the default profile rather than pointing RSMM_MODS_DIR at /tmp.
+    expect(state.activeProfileId).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
+    expect(state.activeProfileId).not.toContain('..');
+    // The profile's contents survive the id rewrite — a corrupt store should
+    // not cost the user their mod list.
+    expect(state.profiles.find((p) => p.name === 'Evil')?.loadOrder).toEqual(['mod-a']);
+  });
+
+  it('drops a non-http registry source from a code', () => {
+    const res = useApp.getState().importBackup(
+      hostileCode({
+        profiles: [{ id: 'default', name: 'Default', loadOrder: [], disabled: [] }],
+        settings: { sources: ['javascript:alert(1)', 'https://mirror.example/registry'] },
+      }),
+    );
+    expect(res.ok).toBe(true);
+    expect(useApp.getState().settings.sources).toEqual(['https://mirror.example/registry']);
+  });
+});
+
+describe('hydrateSettings sanitizes a persisted blob', () => {
+  it('falls back on a directory containing control characters', () => {
+    const defaults = useApp.getState().settings;
+    const out = hydrateSettings(defaults, { modsDir: '/srv/mods\u0000/etc' });
+    expect(out.modsDir).toBe(defaults.modsDir);
+  });
+
+  it('keeps an ordinary persisted directory', () => {
+    const defaults = useApp.getState().settings;
+    expect(hydrateSettings(defaults, { modsDir: 'D:\\rsmm\\mods' }).modsDir).toBe('D:\\rsmm\\mods');
+  });
+});
+
 describe('install / uninstall / toggle / reorder', () => {
   it('routes installs targeting the default profile into a new "My Mods" profile', () => {
     const s = useApp.getState();

@@ -35,6 +35,15 @@ export interface ApiClientOptions {
   getToken?: () => string | null | undefined;
   /** Wallclock timeout for each request. Defaults to 30s. */
   timeoutMs?: number;
+  /**
+   * Extra attempts for a request that failed in a way retrying can fix.
+   * Defaults to 2 (so up to 3 tries). Set 0 to disable.
+   */
+  retries?: number;
+  /** Base backoff in ms; doubles per attempt. Defaults to 300. Tests set 0. */
+  retryBackoffMs?: number;
+  /** Injected for tests so backoff does not really sleep. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 export class ApiError extends Error {
@@ -69,10 +78,54 @@ export function isRateLimited(err: unknown): err is RateLimitError {
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_RETRIES = 2;
+const DEFAULT_RETRY_BACKOFF_MS = 300;
+
+/**
+ * Whether a failed attempt is worth repeating.
+ *
+ * Only the failures that are plausibly transient AND safe to repeat:
+ *
+ *  - a network-level throw (offline, DNS blip, connection reset). The desktop
+ *    app polls this API continuously while the user has it open, on machines
+ *    that sleep and change networks, so this is the common case.
+ *  - 502/503/504, which mean the edge could not reach an instance.
+ *  - 408 and 425, which explicitly ask for a repeat.
+ *
+ * Deliberately NOT retried: 429, which carries a Retry-After the CALLER must
+ * honour (silently retrying inside the client would burn the user's budget and
+ * hide the signal), any other 4xx, which will fail identically forever, and a
+ * timeout, whose whole point is a wallclock bound the caller chose. 500 is
+ * excluded too — it usually means a real server-side bug, and a non-idempotent
+ * POST may well have taken effect before it.
+ */
+const RETRYABLE_STATUS = new Set([408, 425, 502, 503, 504]);
+
+/** Only methods with no side effects are retried; a POST may have landed. */
+const RETRYABLE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function isRetryable(err: unknown): boolean {
+  // A timeout is a bound the caller asked for; repeating it would multiply the
+  // wait they specified. A rate limit carries a Retry-After they must honour.
+  if (err instanceof ApiTimeoutError || err instanceof RateLimitError) return false;
+  if (err instanceof ApiError) return RETRYABLE_STATUS.has(err.status);
+  // Anything else that escaped `attempt` is a network-level throw. An explicit
+  // caller abort is excluded by the loop before this is consulted.
+  if (err instanceof DOMException && err.name === 'AbortError') return false;
+  if (err instanceof Error && err.name === 'AbortError') return false;
+  return err instanceof Error;
+}
 
 export function createApiClient(options: ApiClientOptions) {
   const f = options.fetch ?? fetch;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const retries = Math.max(0, options.retries ?? DEFAULT_RETRIES);
+  const retryBackoffMs = options.retryBackoffMs ?? DEFAULT_RETRY_BACKOFF_MS;
+  const sleep = options.sleep ?? defaultSleep;
   const headers = (): Record<string, string> => {
     const h: Record<string, string> = { 'Content-Type': 'application/json' };
     const tok = options.getToken?.();
@@ -85,7 +138,7 @@ export function createApiClient(options: ApiClientOptions) {
   // (see @rsmm/schemas url.ts), so their input and output shapes legitimately
   // differ — what the caller cares about is the parsed OUTPUT type, so the
   // input is left unconstrained.
-  async function request<T>(
+  async function attempt<T>(
     path: string,
     init: RequestInit,
     schema: z.ZodType<T, z.ZodTypeDef, unknown>,
@@ -138,6 +191,38 @@ export function createApiClient(options: ApiClientOptions) {
         error: err instanceof Error ? err.message : 'invalid response',
       });
     }
+  }
+
+  /**
+   * One request, plus a bounded retry for the failures that are transient AND
+   * safe to repeat (see RETRYABLE_STATUS / RETRYABLE_METHODS).
+   *
+   * The desktop app polls this API for as long as it is open, on machines that
+   * sleep, roam between networks and sit behind flaky hotel wifi — where a
+   * single dropped connection surfaced as a hard error in the UI. Backoff is
+   * exponential from `retryBackoffMs`, and a caller-supplied AbortSignal ends
+   * the whole sequence rather than only the attempt in flight.
+   */
+  async function request<T>(
+    path: string,
+    init: RequestInit,
+    schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  ): Promise<T> {
+    const method = (init.method ?? 'GET').toUpperCase();
+    const mayRetry = RETRYABLE_METHODS.has(method);
+    let lastErr: unknown;
+
+    for (let i = 0; i <= retries; i++) {
+      try {
+        return await attempt(path, init, schema);
+      } catch (err) {
+        lastErr = err;
+        const isLast = i === retries;
+        if (!mayRetry || isLast || init.signal?.aborted || !isRetryable(err)) throw err;
+        await sleep(retryBackoffMs * 2 ** i);
+      }
+    }
+    throw lastErr;
   }
 
   const facetSchema = z.array(z.object({ name: z.string(), count: z.number().int() }));

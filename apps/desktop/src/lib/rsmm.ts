@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { type Child, Command } from '@tauri-apps/plugin-shell';
 import { useApp } from '../store';
 import { getPlatform, joinPathEntries } from './platform';
+import { isSafeProfileId } from './untrusted-state';
 
 interface ExecResult {
   code: number | null;
@@ -123,20 +124,41 @@ function defaultModsDir(): string {
   }
 }
 
-function rsmmEnv(profileId?: string): Record<string, string> {
+/**
+ * Environment handed to every CLI invocation. Exported for tests: the profile
+ * id it interpolates decides which directory the CLI creates, overwrites and
+ * deletes in, so the fail-closed behaviour below is worth asserting directly
+ * rather than through a mocked process spawn.
+ */
+export function rsmmEnv(profileId?: string): Record<string, string> {
   const state = useApp.getState();
   const rootDir = state.settings.modsDir?.trim() || defaultModsDir();
-  const id = profileId ?? state.activeProfileId;
+  const requested = profileId ?? state.activeProfileId;
+  // Defence in depth. The store sanitizes every profile id at the boundary
+  // (see lib/untrusted-state.ts), but this is the SINK: the id lands inside
+  // RSMM_MODS_DIR, which is where the CLI creates, overwrites and deletes
+  // files. An id that ever slipped through unvalidated — a future code path,
+  // a caller passing one straight from an API response — would traverse out of
+  // the mods tree from here. Fail closed onto the default profile instead.
+  const id = isSafeProfileId(requested) ? requested : 'default';
   return { RSMM_MODS_DIR: `${rootDir}/profiles/${id}` };
 }
 
+/**
+ * Programs the shell plugin may run, in probe order.
+ *
+ * `run-rsmm` (a bare `rsmm` resolved from PATH) used to sit here as a second
+ * entry and shipped in the production capability with it. In a release build
+ * the sidecar wins the probe, so the only way that entry was ever reached was
+ * a build whose sidecar is missing — the documented CI failure mode — and it
+ * then ran whatever `rsmm` the user's PATH happened to point at. On Windows,
+ * where PATH routinely contains user-writable directories, that is a binary
+ * planting surface for no benefit: the Rust `probe_rsmm` fallback below
+ * already covers development by locating `<repo_root>/rsmm` directly, without
+ * involving PATH at all.
+ */
 const SIDECAR_PROGS = ['binaries/rsmm'] as const;
-const CMD_PROGS = ['run-rsmm'] as const;
-type ProgName = (typeof SIDECAR_PROGS)[number] | (typeof CMD_PROGS)[number];
-
-function isSidecar(name: string): name is (typeof SIDECAR_PROGS)[number] {
-  return (SIDECAR_PROGS as readonly string[]).includes(name);
-}
+type ProgName = (typeof SIDECAR_PROGS)[number];
 
 // Strip a trailing CR from a line so Windows `\r\n` output produces clean
 // lines in `onStdout` / `onStderr` callbacks.
@@ -145,7 +167,7 @@ function stripCR(s: string): string {
 }
 
 function createCommand(name: string, args: string[], opts: Record<string, unknown> | undefined) {
-  return isSidecar(name) ? Command.sidecar(name, args, opts) : Command.create(name, args, opts);
+  return Command.sidecar(name, args, opts);
 }
 
 /** `undefined` = not resolved yet (next call re-probes). */
@@ -187,7 +209,7 @@ async function execute(args: string[], options: RsmmOptions): Promise<ExecResult
   // resolved one. If discovery fails, keep retrying on later calls so
   // a transient startup env issue doesn't permanently poison the app.
   if (resolvedProg === undefined) {
-    for (const name of [...SIDECAR_PROGS, ...CMD_PROGS]) {
+    for (const name of SIDECAR_PROGS) {
       try {
         const probe = createCommand(name, args, opts);
         return await runWithLifecycle(name, probe, args, options, timeoutMs);

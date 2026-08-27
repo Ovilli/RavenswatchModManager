@@ -37,9 +37,6 @@
         },
         {
           "url": "https://api.rsmm.me/**"
-        },
-        {
-          "url": "file:///**"
         }
       ]
     },
@@ -49,16 +46,6 @@
         {
           "name": "binaries/rsmm",
           "sidecar": true,
-          "args": true
-        },
-        {
-          "name": "run-rsmm",
-          "cmd": "rsmm",
-          "args": true
-        },
-        {
-          "name": "mkdir",
-          "cmd": "mkdir",
           "args": true
         },
         {
@@ -96,16 +83,6 @@
         {
           "name": "binaries/rsmm",
           "sidecar": true,
-          "args": true
-        },
-        {
-          "name": "run-rsmm",
-          "cmd": "rsmm",
-          "args": true
-        },
-        {
-          "name": "mkdir",
-          "cmd": "mkdir",
           "args": true
         },
         {
@@ -151,9 +128,6 @@
         },
         {
           "url": "https://github.com/**"
-        },
-        {
-          "url": "http://localhost:*/**"
         }
       ]
     },
