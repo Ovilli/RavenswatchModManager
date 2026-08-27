@@ -1,6 +1,19 @@
 {
-  "generated": "2026-08-26",
+  "generated": "2026-08-27",
   "entries": [
+    {
+      "version": "5.1.3",
+      "date": "2026-08-27",
+      "summary": "A security and reliability pass over the desktop app, the mod index and the website: shared backup codes can no longer redirect where mods are installed, the app asks Windows for far fewer permissions, and store requests survive a dropped connection.",
+      "highlights": [
+        "Importing a shared profile or backup code can no longer change where mods are installed. Folder settings now always stay the ones chosen on this machine, and a code carrying an odd profile name can no longer point installs outside your mods folder.",
+        "The app now asks the operating system for much less: opening a profile folder is one built-in action instead of blanket permission to open any file and create any directory.",
+        "Fixed on Windows: the default mods location (%APPDATA%\\rsmm\\mods) was never expanded, so \"Open folder\" could create a literal \"%APPDATA%\" folder beside the app instead of opening the real one.",
+        "Store and index requests now retry briefly through a dropped connection or a temporary server hiccup instead of failing straight to an error. Uploads and edits are never retried, so nothing is submitted twice.",
+        "Website: mod, guide and collection pages no longer render publisher-supplied links or text into the page unchecked. Links must be ordinary http(s) addresses, and page metadata is escaped.",
+        "Fixed: \"What's new\" could fold several loader-only updates into a single entry, hiding notes you had not seen yet."
+      ]
+    },
     {
       "version": "",
       "loader_version": 9,
