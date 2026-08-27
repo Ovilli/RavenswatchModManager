@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config as loadEnv } from 'dotenv';
+import { resolveUpstashCredentials } from './rate-limit.js';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const repoRoot = resolve(here, '..', '..', '..');
@@ -232,7 +233,11 @@ if (isProduction && !virusTotalConfigured()) {
  * pastebin with a soft cap.
  */
 export function distributedRateLimitsConfigured(): boolean {
-  return Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
+  // Shares the resolver with the limiter itself: a warning that disagrees with
+  // what the limiter actually does is worse than no warning, because it sends
+  // you looking in the wrong place.
+  const { url, token } = resolveUpstashCredentials(process.env);
+  return Boolean(url && token);
 }
 
 if (isProduction && !distributedRateLimitsConfigured()) {

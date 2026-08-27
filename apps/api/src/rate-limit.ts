@@ -34,8 +34,37 @@ setInterval(() => {
 const DEFAULT_WINDOW_MS = 60_000;
 const DEFAULT_MAX_HITS = 30;
 
-const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL?.replace(/\/$/, '') ?? '';
-const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
+/**
+ * Upstash REST credentials, under either name they arrive as.
+ *
+ * `UPSTASH_REDIS_REST_*` is what Upstash's own docs use and what a
+ * hand-configured deploy sets. The Vercel Marketplace integration
+ * (`upstash/upstash-kv`) instead injects `KV_REST_API_URL` /
+ * `KV_REST_API_TOKEN` and is the thing that ROTATES them, so reading only the
+ * first pair means provisioning the integration correctly and still silently
+ * falling back to per-instance counters. Copying the values across by hand
+ * would fix that for exactly as long as the credentials stay put.
+ *
+ * `KV_REST_API_READ_ONLY_TOKEN` is deliberately not consulted: the limiter
+ * INCRs, so a read-only token would fail every call and disable the limiter
+ * in the least obvious way possible.
+ *
+ * Takes the environment as an argument rather than reading `process.env`
+ * directly so it is testable: Vitest inlines `process.env.X` at transform
+ * time, which makes a test that deletes a variable at runtime pass or fail
+ * depending on what happens to be in the developer's own `.env.local`.
+ */
+export function resolveUpstashCredentials(env: Record<string, string | undefined>): {
+  url: string;
+  token: string;
+} {
+  return {
+    url: (env.UPSTASH_REDIS_REST_URL || env.KV_REST_API_URL || '').trim().replace(/\/$/, ''),
+    token: (env.UPSTASH_REDIS_REST_TOKEN || env.KV_REST_API_TOKEN || '').trim(),
+  };
+}
+
+const { url: UPSTASH_URL, token: UPSTASH_TOKEN } = resolveUpstashCredentials(process.env);
 const upstashEnabled = Boolean(UPSTASH_URL && UPSTASH_TOKEN);
 
 /**
