@@ -50,6 +50,19 @@ async function purgeExpiredTelemetry(): Promise<{ runs: number; crashes: number 
   return { runs: runs.length, crashes: crashes.length };
 }
 
+/**
+ * Shared-log retention. Every share is stamped with an `expiresAt` at write
+ * time and the read path already refuses an expired row, so this is what
+ * turns "the link stops working" into "the text is actually gone".
+ */
+async function purgeExpiredSharedLogs(): Promise<number> {
+  const rows = await getDb()
+    .delete(schema.sharedLogs)
+    .where(lt(schema.sharedLogs.expiresAt, new Date()))
+    .returning({ id: schema.sharedLogs.id });
+  return rows.length;
+}
+
 // How many queue items one cron invocation drains. Each drainOnce holds the
 // VirusTotal budget for the length of a scan and bails on a 429, so a small
 // batch clears a backlog over successive ticks without blowing the free-tier
@@ -79,12 +92,19 @@ cronRouter.get('/scan-drain', async (c) => {
 
   // Retention runs first and independently: a scan-drain failure must not be
   // the reason expired telemetry survives another day.
-  let purged = { runs: 0, crashes: 0 };
+  let purged = { runs: 0, crashes: 0, sharedLogs: 0 };
   try {
-    purged = await purgeExpiredTelemetry();
-    if (purged.runs || purged.crashes) log.info('cron telemetry purge', purged);
+    const t = await purgeExpiredTelemetry();
+    purged = { ...purged, ...t };
+    if (t.runs || t.crashes) log.info('cron telemetry purge', t);
   } catch (err) {
     log.error('cron telemetry purge failed', { err: errString(err) });
+  }
+  try {
+    purged.sharedLogs = await purgeExpiredSharedLogs();
+    if (purged.sharedLogs) log.info('cron shared-log purge', { deleted: purged.sharedLogs });
+  } catch (err) {
+    log.error('cron shared-log purge failed', { err: errString(err) });
   }
 
   try {

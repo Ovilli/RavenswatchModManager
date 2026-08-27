@@ -1,6 +1,7 @@
 export * from './collection';
 export * from './guide';
 export * from './html';
+export * from './log-share';
 export * from './mod';
 export * from './privacy';
 export * from './report';
