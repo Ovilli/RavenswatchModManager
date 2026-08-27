@@ -162,6 +162,20 @@ The API is a Node Hono server, deployed as its own Vercel project.
    UPSTASH_REDIS_REST_TOKEN=<from the Upstash console>
    ```
 
+   The Upstash pair is easiest to get by provisioning the Marketplace
+   integration rather than by hand:
+
+   ```sh
+   vercel integration add upstash/upstash-kv --no-claim
+   ```
+
+   It provisions a free-tier Redis and injects the credentials into the
+   project. Note it injects them as `KV_REST_API_URL` / `KV_REST_API_TOKEN`,
+   not under the `UPSTASH_REDIS_REST_*` names Upstash's own docs use — the
+   limiter reads both spellings for exactly that reason. Afterwards, delete any
+   `apps/api/.env.local` the CLI wrote: Vite bakes those values into the test
+   transform, and the suite then talks to production.
+
    :::caution[Set the Upstash pair before going public]
    Without it, rate limiting falls back to an in-memory window that is
    **per process**. On Vercel that means every concurrently warm instance
