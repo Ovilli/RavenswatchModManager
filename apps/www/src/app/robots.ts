@@ -20,7 +20,17 @@ import type { MetadataRoute } from 'next';
  * Search Console coverage problem, and an account screen is no more public to a
  * model than to a search index.
  */
-const PRIVATE = ['/auth/', '/account', '/my-mods', '/publish', '/admin', '/notifications'];
+const PRIVATE = [
+  '/auth/',
+  '/account',
+  '/my-mods',
+  '/publish',
+  '/admin',
+  '/notifications',
+  // Shared diagnostic logs. Unlisted URLs pasted into support threads, holding
+  // one user's crash output — nothing that belongs in a training corpus.
+  '/l/',
+];
 
 /**
  * AI crawlers, named explicitly. `User-agent: *` already permits them, but an

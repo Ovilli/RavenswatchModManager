@@ -26,6 +26,11 @@ Subcommands:
     rsmm json config get <id>       read a mod's config schema + values
     rsmm json config set <id> <js>  replace a mod's config values
     rsmm json uninstall-mod <id>    remove a mod from mods/<id>/
+    rsmm json loader-log [--run N]  read the loader log, or an archived run
+    rsmm json loader-runs           list archived runs under <game>/rsmm/logs
+    rsmm json loader-health         boot canary + per-mod crash history
+    rsmm json loader-health-reset <id>
+                                    clear a mod's crash record
     rsmm json loader-flags get      list loader feature flags + enabled set
     rsmm json loader-flags set <js> write the enabled-flag list (JSON array;
                                     only safe flags are honoured) to
@@ -1062,7 +1067,29 @@ def cmd_install_mod_version(slug: str, version: str) -> int:
     })
 
 
-def cmd_loader_log(lines: int = 400, prev: bool = False, all_sessions: bool = False) -> int:
+def cmd_loader_runs() -> int:
+    """List archived runs under `<game>/rsmm/logs`, newest first.
+
+    The loader keeps the last 20 finished runs, but until now the desktop app
+    could only reach the live log and the one-run-back alias — a crash three
+    launches ago was CLI-only. Names are opaque handles to hand straight back
+    to `loader-log --run`; the UI never builds a path of its own.
+    """
+    from rsmm.cli.cmd_log import archived_runs, logs_dir
+
+    game_dir = find_game_dir()
+    runs = []
+    for p in archived_runs(game_dir):
+        try:
+            st = p.stat()
+        except OSError:
+            continue
+        runs.append({"name": p.name, "bytes": st.st_size, "mtime": int(st.st_mtime)})
+    return _emit({"dir": str(logs_dir(game_dir)), "runs": runs})
+
+
+def cmd_loader_log(lines: int = 400, prev: bool = False, all_sessions: bool = False,
+                   run: str | None = None) -> int:
     """Read the in-game loader log for the desktop Log tab.
 
     The path comes from `cmd_log.log_file` rather than being rebuilt here —
@@ -1074,10 +1101,19 @@ def cmd_loader_log(lines: int = 400, prev: bool = False, all_sessions: bool = Fa
     has run once with it installed, which is the common case on a fresh
     install. `exists: false` lets the UI say so instead of showing a failure.
     """
-    from rsmm.cli.cmd_log import _SESSION_MARK, log_file
+    from rsmm.cli.cmd_log import _SESSION_MARK, RunNotFound, log_file, resolve_run
 
     game_dir = find_game_dir()
-    path = log_file(game_dir, prev=prev)
+    if run:
+        # Resolved against the archive listing, never joined onto a directory —
+        # this name comes from the desktop UI. See cmd_log.resolve_run.
+        try:
+            path = resolve_run(run, game_dir)
+        except RunNotFound as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+    else:
+        path = log_file(game_dir, prev=prev)
     try:
         exists = path.is_file()
     except OSError:
@@ -1085,7 +1121,7 @@ def cmd_loader_log(lines: int = 400, prev: bool = False, all_sessions: bool = Fa
     if not exists:
         return _emit({
             "path": str(path), "exists": False, "gameDir": str(game_dir or ""),
-            "lines": [], "truncated": False, "sessions": 0,
+            "lines": [], "truncated": False, "sessions": 0, "bytes": 0,
         })
     try:
         with open(path, errors="replace") as f:
@@ -1106,6 +1142,10 @@ def cmd_loader_log(lines: int = 400, prev: bool = False, all_sessions: bool = Fa
     truncated = bool(lines and lines > 0 and len(selected) > lines)
     if truncated:
         selected = selected[-lines:]
+    try:
+        size = path.stat().st_size
+    except OSError:
+        size = 0
     return _emit({
         "path": str(path),
         "exists": True,
@@ -1113,7 +1153,88 @@ def cmd_loader_log(lines: int = 400, prev: bool = False, all_sessions: bool = Fa
         "lines": selected,
         "truncated": truncated,
         "sessions": sessions,
+        # Byte length at read time. The desktop app seeds its incremental tail
+        # from this so the follow poll never re-reads what it already has.
+        "bytes": size,
     })
+
+
+def cmd_loader_health() -> int:
+    """The loader's boot canary + per-mod crash history, for the desktop UI.
+
+    `src/loader/src/health.cpp` is the only thing that can observe a crashy
+    boot: it stamps `<game>/mods/_health.json` as each mod's `init.lua` runs
+    and disables a mod after three consecutive failed boots. That verdict was
+    reachable from `rsmm doctor` and from nowhere in the app — so the desktop
+    showed a mod as simply "off" with no hint that the loader had quarantined
+    it for bricking startup, which is the single most useful thing the loader
+    knows.
+
+    An OPEN canary is the live signal: the loader closes it once a launch has
+    survived boot, so one still open at read time means the previous run died
+    at the step it names.
+    """
+    from rsmm.sdk.health import Health
+
+    game_dir = find_game_dir()
+    if not game_dir:
+        return _emit({"exists": False, "canary": None, "mods": [], "threshold": 0})
+    health = Health(Path(game_dir))
+    try:
+        exists = health.health_path.is_file()
+    except OSError:
+        exists = False
+    canary = health.read_canary() if exists else None
+    state = health.load() if exists else None
+    payload: dict[str, Any] = {
+        "path": str(health.health_path),
+        "exists": exists,
+        "threshold": state.threshold if state else 0,
+        "canary": None,
+        "mods": [],
+    }
+    if canary:
+        payload["canary"] = {
+            "open": True,
+            "step": str(canary.get("step", "")),
+            "session": str(canary.get("session", "")),
+            # Which mod the loader holds responsible, or null when the run died
+            # before any mod code ran (then it is not a mod's fault).
+            "blamedMod": health.attribute_crash(canary),
+        }
+    if state:
+        payload["mods"] = [
+            {
+                "id": mid,
+                "crashes": h.crashes,
+                "lastError": h.last_error,
+                "disabled": h.disabled,
+                "disabledReason": h.disabled_reason,
+                "lastSeen": h.last_seen,
+            }
+            for mid, h in sorted(state.mods.items())
+            # Only rows that say something. A mod with a clean record is the
+            # normal case and would otherwise bury the ones that crashed.
+            if h.crashes or h.disabled
+        ]
+    return _emit(payload)
+
+
+def cmd_loader_health_reset(mod_id: str) -> int:
+    """Clear a mod's crash record so the loader stops skipping it at load.
+
+    The counters exist so a mod that bricks startup can be turned off from
+    outside the game; re-enabling has to be equally reachable from outside, or
+    the only cure is hand-editing JSON in the game directory.
+    """
+    from rsmm.sdk.health import Health
+
+    game_dir = find_game_dir()
+    if not game_dir:
+        print("error: game directory not found", file=sys.stderr)
+        return 1
+    Health(Path(game_dir)).re_enable(mod_id)
+    return _emit({"ok": True, "modId": mod_id})
 
 
 def cmd_overlays() -> int:
@@ -1491,6 +1612,14 @@ def main(argv: list[str] | None = None) -> int:
                        help="read the previous run's log (_log.prev.txt)")
     p_log.add_argument("--all", action="store_true", dest="all_sessions",
                        help="return every session in the file, not just the latest")
+    p_log.add_argument("--run", metavar="NAME",
+                       help="read an archived run under <game>/rsmm/logs (name or "
+                            "unique prefix) instead of the live log")
+    sub.add_parser("loader-runs", help="list archived loader runs, newest first")
+    sub.add_parser("loader-health", help="loader boot canary + per-mod crash history")
+    p_health_reset = sub.add_parser(
+        "loader-health-reset", help="clear a mod's crash record so the loader loads it again")
+    p_health_reset.add_argument("mod_id", help="folder name under mods/")
     p_doctor = sub.add_parser("doctor", help="system health check")
     p_doctor.add_argument("--fix", action="store_true",
                           help="run the automated repair for every fixable finding")
@@ -1561,7 +1690,13 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_conflicts()
     if args.cmd == "loader-log":
         return cmd_loader_log(lines=args.lines, prev=args.prev,
-                              all_sessions=args.all_sessions)
+                              all_sessions=args.all_sessions, run=args.run)
+    if args.cmd == "loader-runs":
+        return cmd_loader_runs()
+    if args.cmd == "loader-health":
+        return cmd_loader_health()
+    if args.cmd == "loader-health-reset":
+        return cmd_loader_health_reset(args.mod_id)
     if args.cmd == "doctor":
         return cmd_doctor(fix=args.fix, force=args.force)
     if args.cmd == "run":

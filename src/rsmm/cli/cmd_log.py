@@ -50,6 +50,32 @@ def archived_runs(game_dir=None) -> list[Path]:
     return sorted((p for p in d.glob("*.log") if p.is_file()), reverse=True)
 
 
+class RunNotFound(LookupError):
+    """No archived run matched, or the prefix matched several."""
+
+
+def resolve_run(name: str, game_dir=None) -> Path:
+    """Map a user-supplied run name (or unique prefix) to an archived log.
+
+    The only source of candidates is :func:`archived_runs`, so the result is
+    always a real file inside `<game>/rsmm/logs/` no matter what the caller
+    passed. That is deliberate: this resolver is reachable from the desktop UI
+    (`rsmm json loader-log --run <name>`), where the name arrives from the
+    frontend, and matching against a listing rather than joining a path onto a
+    directory makes traversal impossible by construction instead of by
+    validation.
+    """
+    runs = archived_runs(game_dir)
+    hits = [p for p in runs if p.name == name] or [p for p in runs if p.name.startswith(name)]
+    if not hits:
+        raise RunNotFound(f"no archived run matching {name!r}")
+    if len(hits) > 1:
+        raise RunNotFound(
+            f"{name!r} matches {len(hits)} runs: " + ", ".join(p.name for p in hits[:6])
+        )
+    return hits[0]
+
+
 def log_file(game_dir=None, *, prev: bool = False) -> Path:
     """Where the loader writes its log.
 
@@ -62,15 +88,31 @@ def log_file(game_dir=None, *, prev: bool = False) -> Path:
         "_log.prev.txt" if prev else "_log.txt"
     )
 
-# The loader has no severity levels (see `Loader::log` in src/loader/src/
-# loader.cpp) — every line is `[<ts> <session> <pid>] <msg>`, optionally with a
-# bracketed subsystem tag (`[va-gate]`, `[skin-hook]`, `[lua]`). So there is
-# nothing to colour by severity; we only dim the machine-generated prefix and
-# accent the subsystem tag so the human-written message stands out. Patterns
-# are strict: anything that does not match is printed through untouched.
+# A line is `[<ts> <session> <pid>] <msg>`, where `<msg>` may carry a severity
+# token (`[err]` / `[warn]`, from `Loader::log_err` / `log_warn`) and then a
+# bracketed subsystem tag (`[va-gate]`, `[skin-hook]`, `[lua]`). Severity comes
+# FIRST and is a separate token so `[subsystem]` stays where every existing
+# reader looks for it. We dim the machine-generated prefix, colour the severity,
+# and accent the subsystem tag so the human-written message stands out.
+# Patterns are strict: anything that does not match is printed through untouched.
 _TS_RE = re.compile(r"\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} [0-9a-f]{4} \d+\]")
 _TAG_RE = re.compile(r"\[[a-z0-9][a-z0-9_-]{1,20}\]")
+_SEV_RE = re.compile(r"\[(err|warn)\]")
 _SEP_RE = re.compile(r"=+\Z")
+
+
+def line_severity(s: str) -> str | None:
+    """`'err'`, `'warn'`, or None when the loader did not classify the line.
+
+    None means UNCLASSIFIED, not "fine": severity exists only where the loader
+    was taught to emit it, so filters lift what is tagged rather than hiding
+    what is not.
+    """
+    m = _TS_RE.match(s)
+    if not m:
+        return None
+    sev = _SEV_RE.match(s, m.end() + 1)
+    return sev.group(1) if sev else None
 
 
 def _style_line(s: str) -> str:
@@ -85,6 +127,11 @@ def _style_line(s: str) -> str:
     if not m:
         return s
     head, rest = _ST.dim(s[:m.end()]), s[m.end():]
+    sev = _SEV_RE.match(rest, 1) if rest.startswith(" ") else None
+    if sev:
+        colour = _ST.err if sev.group(1) == "err" else _ST.warn
+        head = f"{head} {colour(sev.group(0))}"
+        rest = rest[sev.end():]
     tag = _TAG_RE.match(rest, 1) if rest.startswith(" ") else None
     if tag:
         return f"{head} {_ST.accent(tag.group(0))}{rest[tag.end():]}"
@@ -103,6 +150,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--clear", action="store_true",
                     help="truncate the log file")
     ap.add_argument("--grep", help="filter to lines matching this substring (case-insensitive)")
+    ap.add_argument("--errors", action="store_true",
+                    help="show only lines the loader flagged [err] or [warn] "
+                         "(session banners are always kept for context)")
     ap.add_argument("--path", action="store_true",
                     help="print the log path and exit")
     ap.add_argument("--all", action="store_true",
@@ -137,18 +187,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if a.run:
-        runs = archived_runs(a.game_dir)
-        hits = [p for p in runs if p.name == a.run] or \
-               [p for p in runs if p.name.startswith(a.run)]
-        if not hits:
-            print(_ST.err(f"no archived run matching {a.run!r} — "
-                          f"list them with `rsmm log --list`"), file=sys.stderr)
+        try:
+            log_path = resolve_run(a.run, a.game_dir)
+        except RunNotFound as e:
+            print(_ST.err(f"{e} — list them with `rsmm log --list`"), file=sys.stderr)
             return 1
-        if len(hits) > 1:
-            print(_ST.err(f"{a.run!r} matches {len(hits)} runs: "
-                          + ", ".join(p.name for p in hits[:6])), file=sys.stderr)
-            return 1
-        log_path = hits[0]
     else:
         log_path = log_file(a.game_dir, prev=a.prev)
     if a.path:
@@ -180,8 +223,13 @@ def main(argv: list[str] | None = None) -> int:
 
     def emit(line: str) -> None:
         s = line.rstrip("\n")
-        if needle is None or needle in s.lower():
-            print(_style_line(s), flush=True)
+        if needle is not None and needle not in s.lower():
+            return
+        # Banners survive the severity filter: an error with no run attached to
+        # it is not much use.
+        if a.errors and line_severity(s) is None and _SESSION_MARK not in s:
+            return
+        print(_style_line(s), flush=True)
 
     def current_session(lines: list[str]) -> list[str]:
         """Trim to the last session banner onward (unless --all)."""

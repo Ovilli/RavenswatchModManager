@@ -68,6 +68,21 @@ public:
 
     // Logging.
     void log(const std::string& msg);
+    /// Severity-tagged log lines.
+    ///
+    /// Every line the loader writes used to carry the same weight, so reading
+    /// a crash meant scanning several hundred equal-looking lines by eye. The
+    /// severity is emitted as its own bracketed token BEFORE the subsystem
+    /// tag (`[err] [game-events] ...`), which keeps `[subsystem]` where every
+    /// existing reader already looks for it and lets the desktop Log screen
+    /// and `rsmm log` filter and colour by severity.
+    ///
+    /// Reserved for things that actually went wrong. A capability that is off
+    /// because the user did not arm it, or because the mod set is empty, is
+    /// plain `log()` — tagging those as errors is exactly the noise this is
+    /// meant to remove.
+    void log_warn(const std::string& msg);
+    void log_err(const std::string& msg);
 
     // False when the installed game build does not match the build the
     // symbol map's absolute data addresses (status=va globals) were derived

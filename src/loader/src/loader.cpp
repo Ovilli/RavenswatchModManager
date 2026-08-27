@@ -299,6 +299,10 @@ bool Loader::is_in_main_menu() const {
     return (now - menu) < 5000 && menu >= game - 500;
 }
 
+void Loader::log_warn(const std::string& msg) { log("[warn] " + msg); }
+
+void Loader::log_err(const std::string& msg) { log("[err] " + msg); }
+
 void Loader::log(const std::string& msg) {
     std::lock_guard<std::mutex> g(log_mu_);
     // Prefix: [timestamp | session | pid]. The session token isolates one run
@@ -578,7 +582,7 @@ bool flag_enabled(const char* name) {
                         if (e.is_string()) enabled.insert(e.get<std::string>());
                 }
             } catch (...) {
-                Loader::get().log("rsmm_loader_flags.json parse error; ignoring");
+                Loader::get().log_warn("rsmm_loader_flags.json parse error; ignoring");
             }
         }
     }

@@ -163,11 +163,11 @@ std::uintptr_t WINAPI analytics_firehose_detour(void* mgr, void* payload,
 bool install_analytics_firehose() {
     g_submit_va = fn_resolve(kAnalyticsSink);
     if (g_submit_va == 0 || g_submit_va == static_cast<std::uintptr_t>(-1)) {
-        Loader::get().log("[game-events] resolve analytics sink failed");
+        Loader::get().log_err("[game-events] resolve analytics sink failed");
         return false;
     }
     if (!fn_verify(kAnalyticsSink, g_submit_va)) {
-        Loader::get().log("[game-events] analytics sink verify mismatch "
+        Loader::get().log_err("[game-events] analytics sink verify mismatch "
                           "(game patched?); firehose disabled");
         return false;
     }
@@ -547,12 +547,12 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
 bool install_gameplay_bus() {
     g_dispatch_va = fn_resolve(Sym::NamedEvent_Dispatch_Pattern);
     if (g_dispatch_va == 0 || g_dispatch_va == static_cast<std::uintptr_t>(-1)) {
-        Loader::get().log("[gameplay-events] resolve NamedEvent_Dispatch failed");
+        Loader::get().log_err("[gameplay-events] resolve NamedEvent_Dispatch failed");
         return false;
     }
     if (!fn_verify(Sym::NamedEvent_Dispatch_Pattern, g_dispatch_va)
         || !fn_is_function_start(g_dispatch_va)) {
-        Loader::get().log("[gameplay-events] NamedEvent_Dispatch verify mismatch "
+        Loader::get().log_err("[gameplay-events] NamedEvent_Dispatch verify mismatch "
                           "or mid-function resolve (game patched?); "
                           "gameplay bus disabled");
         return false;
@@ -913,19 +913,19 @@ bool install_hero_capture() {
     // hooks survive game patches instead of trusting a baked, soon-stale VA: a
     // stale address would land the detour mid-instruction and crash on load.
     if (!fn_resolver_init()) {
-        Loader::get().log("[hero-capture] fn_resolver_init failed; disabled");
+        Loader::get().log_err("[hero-capture] fn_resolver_init failed; disabled");
         return false;
     }
     g_give_va = fn_resolve(Sym::Entity_GiveHandler_Pattern);
     g_gain_va = fn_resolve(Sym::Entity_GainHealthHandler_Pattern);
     if (g_give_va == 0 || g_give_va == static_cast<std::uintptr_t>(-1)
         || g_gain_va == 0 || g_gain_va == static_cast<std::uintptr_t>(-1)) {
-        Loader::get().log("[hero-capture] handler resolve failed; disabled");
+        Loader::get().log_err("[hero-capture] handler resolve failed; disabled");
         return false;
     }
     if (!fn_verify(Sym::Entity_GiveHandler_Pattern, g_give_va)
         || !fn_verify(Sym::Entity_GainHealthHandler_Pattern, g_gain_va)) {
-        Loader::get().log("[hero-capture] handler verify mismatch (game patched?); "
+        Loader::get().log_err("[hero-capture] handler verify mismatch (game patched?); "
                           "disabled to avoid a mid-instruction hook");
         return false;
     }
@@ -982,7 +982,7 @@ bool install_event_hooks() {
         return false;
     }
     if (!fn_resolver_init()) {
-        Loader::get().log("[game-events] fn_resolver_init failed");
+        Loader::get().log_err("[game-events] fn_resolver_init failed");
         return false;
     }
     bool any = false;

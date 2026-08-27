@@ -130,6 +130,22 @@ export default function PrivacyPage() {
               off is enough to stop the upload. Local log entries are written on your machine
               regardless — they never leave it, and they are what a bug report needs.
             </p>
+            <p className="pt-2">
+              <strong className="text-foreground">Shared logs are different.</strong> When you press{' '}
+              <em>Share link</em> on the app’s Log screen, the app uploads the log text you were
+              shown in the preview and gives you a URL to paste into a bug report. This is not
+              covered by the settings above, because nothing is sent until you ask for it — the act
+              of sharing is the consent. The page is <em>unlisted, not private</em>: anyone you give
+              the link to can read it, and you should treat it as public. It is deleted
+              automatically 30 days after upload.
+            </p>
+            <p className="pt-2">
+              Before uploading, the app replaces your account name in file paths, e-mail addresses,
+              IP addresses, Steam IDs and player names with placeholders. That is pattern matching
+              on a log we do not control, so it is a strong default rather than a guarantee — the
+              dialog shows you the exact text first, and you can turn the replacement off. Read the
+              preview before you share.
+            </p>
           </Section>
 
           <Section n={4} title="What Other People Can See">
@@ -201,8 +217,9 @@ export default function PrivacyPage() {
             <p className="pt-2">
               Account data is kept until you delete your account. Mod files stay available until
               removed by their author or by a moderator. Session records expire with the session.
-              Usage and crash reports are kept for 12 months and then deleted. Download counters are
-              day-buckets with no identifier and are kept indefinitely.
+              Usage and crash reports are kept for 12 months and then deleted. Logs you share by
+              link are deleted 30 days after upload. Download counters are day-buckets with no
+              identifier and are kept indefinitely.
             </p>
           </Section>
 

@@ -196,16 +196,16 @@ bool install_ui_hooks() {
         return false;
     }
     if (!fn_resolver_init()) {
-        Loader::get().log("[ui-hook] fn_resolver_init failed");
+        Loader::get().log_err("[ui-hook] fn_resolver_init failed");
         return false;
     }
     std::uintptr_t va = fn_resolve(Sym::UiButton_PressCommit_Pattern);
     if (va == 0 || va == static_cast<std::uintptr_t>(-1)) {
-        Loader::get().log("[ui-hook] UiButton_PressCommit pattern not found; disabled");
+        Loader::get().log_err("[ui-hook] UiButton_PressCommit pattern not found; disabled");
         return false;
     }
     if (!fn_verify(Sym::UiButton_PressCommit_Pattern, va)) {
-        Loader::get().log("[ui-hook] UiButton_PressCommit verify failed (game patched?)");
+        Loader::get().log_err("[ui-hook] UiButton_PressCommit verify failed (game patched?)");
         return false;
     }
 
@@ -221,7 +221,7 @@ bool install_ui_hooks() {
                   "symbol map press-site offset drifted from the poll's press branch");
     std::uintptr_t poll = fn_resolve(Sym::UiButton_InputPoll_Pattern);
     if (poll == 0 || poll == static_cast<std::uintptr_t>(-1)) {
-        Loader::get().log("[ui-hook] UiButton_InputPoll pattern not found; disabled");
+        Loader::get().log_err("[ui-hook] UiButton_InputPoll pattern not found; disabled");
         return false;
     }
     const std::uintptr_t press_ra = poll + kPressRaOff;

@@ -390,7 +390,7 @@ void load_mod_config(lua_State* L, const std::filesystem::path& root) {
                 lua_setfield(L, -2, std::string(key.str()).c_str());
             }
         } catch (const std::exception& e) {
-            Loader::get().log(std::string("[config] parse fail ")
+            Loader::get().log_err(std::string("[config] parse fail ")
                               + cfg_path.string() + ": " + e.what());
         }
     }

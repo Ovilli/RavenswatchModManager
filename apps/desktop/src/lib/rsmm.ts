@@ -622,20 +622,76 @@ export interface LoaderLogResult {
   /** True when `lines` was capped; the oldest lines were dropped, not the newest. */
   truncated: boolean;
   sessions: number;
+  /** Byte length at read time. The follow loop seeds its incremental tail from
+   *  this so the first poll does not re-read what this call already returned.
+   *  Optional: an older sidecar omits it. */
+  bytes?: number;
 }
 
 /** Read the in-game loader log (`<game>/mods/_log.txt`). Defaults to the
  * latest session only — the file keeps every run since the last rotation. */
 export const readLoaderLog = (
-  opts: { lines?: number; prev?: boolean; allSessions?: boolean } = {},
+  opts: { lines?: number; prev?: boolean; allSessions?: boolean; run?: string } = {},
 ) =>
   rsmm<LoaderLogResult>([
     'loader-log',
     '--lines',
     String(opts.lines ?? 400),
-    ...(opts.prev ? ['--prev'] : []),
+    // `--run` names an archived run and is mutually exclusive with `--prev`;
+    // the sidecar resolves the name against its own listing, so nothing
+    // outside <game>/rsmm/logs is reachable through it.
+    ...(opts.run ? ['--run', opts.run] : opts.prev ? ['--prev'] : []),
     ...(opts.allSessions ? ['--all'] : []),
   ]);
+
+export interface ArchivedRun {
+  /** Opaque handle to pass back as `readLoaderLog({ run })`. */
+  name: string;
+  bytes: number;
+  /** Unix seconds. */
+  mtime: number;
+}
+
+/** Archived runs under `<game>/rsmm/logs`, newest first. The loader keeps the
+ *  last 20, and until this existed a crash three launches ago was CLI-only. */
+export const listLoaderRuns = () => rsmm<{ dir: string; runs: ArchivedRun[] }>(['loader-runs']);
+
+export interface ModHealthRow {
+  id: string;
+  crashes: number;
+  lastError: string;
+  disabled: boolean;
+  disabledReason: string;
+  /** Unix seconds, 0 when never recorded. */
+  lastSeen: number;
+}
+
+export interface LoaderHealth {
+  path?: string;
+  exists: boolean;
+  /** Consecutive failed boots before the loader quarantines a mod. */
+  threshold: number;
+  /** Present only while a canary is OPEN — the loader closes it once a launch
+   *  has survived boot, so an open one means the previous run died. */
+  canary: {
+    open: true;
+    step: string;
+    session: string;
+    /** Null when the run died before any mod code ran: not a mod's fault. */
+    blamedMod: string | null;
+  } | null;
+  /** Only mods with a crash record; a clean mod would bury the rest. */
+  mods: ModHealthRow[];
+}
+
+/** The loader's boot canary + crash history (`<game>/mods/_health.json`).
+ *  The loader is the only process that can see a crashy boot, and it disables
+ *  a mod after three in a row — this is how the app can say so. */
+export const loaderHealth = () => rsmm<LoaderHealth>(['loader-health']);
+
+/** Clear a mod's crash record so the loader stops skipping it at load. */
+export const resetModHealth = (modId: string) =>
+  rsmm<{ ok: boolean; modId: string }>(['loader-health-reset', modId]);
 
 /** Health check. `fix` runs each finding's automated repair and re-checks;
  * `force` additionally allows the destructive ones (they roll the install

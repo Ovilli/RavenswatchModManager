@@ -8,6 +8,7 @@ import {
   type GuideImagePresign,
   type GuidePatch,
   type GuideReviewUpsert,
+  type LogShareCreate,
   type ModImagePresign,
   type ModListItem,
   type ModPatch,
@@ -22,6 +23,8 @@ import {
   collectionSchema,
   guideListItemSchema,
   guideReviewsResponseSchema,
+  logShareCreatedSchema,
+  logShareSchema,
   modListItemSchema,
   modVersionSchema,
   privacySettingsSchema,
@@ -846,6 +849,17 @@ export function createApiClient(options: ApiClientOptions) {
             okSchema,
           ),
       },
+    },
+    /**
+     * Diagnostic log sharing. Uploads the text once and hands back a URL, so
+     * a bug report is a link instead of a several-thousand-line paste.
+     */
+    logs: {
+      share: (body: LogShareCreate) =>
+        request('/api/logs', { method: 'POST', body: JSON.stringify(body) }, logShareCreatedSchema),
+      get: (id: string) => request(`/api/logs/${encodeURIComponent(id)}`, {}, logShareSchema),
+      remove: (id: string) =>
+        request(`/api/logs/${encodeURIComponent(id)}`, { method: 'DELETE' }, okSchema),
     },
     telemetry: {
       run: (body: TelemetryRun) =>

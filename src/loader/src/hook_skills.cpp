@@ -242,7 +242,7 @@ void inspect_and_maybe_inject(void* herodef) {
 
     void* clone = std::malloc(kSpdsSize);
     if (!clone) {
-        Loader::get().log("[skill-hook] inject skip: clone malloc failed");
+        Loader::get().log_err("[skill-hook] inject skip: clone malloc failed");
         return;
     }
     std::memcpy(clone, tmpl, kSpdsSize);
@@ -269,7 +269,7 @@ void inspect_and_maybe_inject(void* herodef) {
     void** grown = static_cast<void**>(std::malloc((std::size_t)new_cap * sizeof(void*)));
     if (!grown) {
         std::free(clone);
-        Loader::get().log("[skill-hook] inject skip: array malloc failed");
+        Loader::get().log_err("[skill-hook] inject skip: array malloc failed");
         return;
     }
     std::memcpy(grown, src, (std::size_t)count * sizeof(void*));

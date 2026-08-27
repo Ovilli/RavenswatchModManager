@@ -250,7 +250,7 @@ void append_custom_packs() {
     // Doing that blind, without being able to playtest it, is how you corrupt
     // somebody's save, so the path refuses instead.
     if (!kAppendPathValidForThisBuild) {
-        Loader::get().log("[skin-hook] append refused: see kAppendPathValid"
+        Loader::get().log_warn("[skin-hook] append refused: see kAppendPathValid"
                           "ForThisBuild in hook_skins.cpp");
         return;
     }
@@ -274,7 +274,7 @@ void append_custom_packs() {
     void* mgr = reinterpret_cast<void*>(mgr_addr);
     // The list splice writes through mgr+0x08..0x18 and reads its vtable.
     if (!mem_writable(mgr, 0x20) || !mem_readable(mgr, sizeof(void*))) {
-        Loader::get().log("[skin-hook] manager object not writable; skipping append");
+        Loader::get().log_warn("[skin-hook] manager object not writable; skipping append");
         return;
     }
     // Now that the manager exists, detour its real vtable[1] filter so our
@@ -286,7 +286,7 @@ void append_custom_packs() {
         // never destructed by the engine's shrink path).
         void* e = _aligned_malloc(kEntrySize, 16);
         if (!e) {
-            Loader::get().log("[skin-hook] entry alloc failed; stopping append");
+            Loader::get().log_err("[skin-hook] entry alloc failed; stopping append");
             return;
         }
         std::memset(e, 0, kEntrySize);
@@ -486,7 +486,7 @@ bool install_skin_hooks() {
     if (!kAppendPathValidForThisBuild) {
         // Nothing this hook could do is correct on this build, so do not
         // detour at all rather than installing a no-op passthrough.
-        Loader::get().log("[skin-hook] disabled: the roster is a contiguous "
+        Loader::get().log_warn("[skin-hook] disabled: the roster is a contiguous "
                           "array on the screen ctx (+0x13c8/+0x13d0/+0x13d4, 9 "
                           "entries) truncated to 9 on every rebuild, not the "
                           "linked list this code appends to. Symbols are "
@@ -495,7 +495,7 @@ bool install_skin_hooks() {
         return false;
     }
     if (!fn_resolver_init()) {
-        Loader::get().log("[skin-hook] fn_resolver_init failed");
+        Loader::get().log_err("[skin-hook] fn_resolver_init failed");
         return false;
     }
 
@@ -512,7 +512,7 @@ bool install_skin_hooks() {
         || !resolve_checked("skin-hook", "string assign",
                             Sym::String_Assign_Pattern,
                             reinterpret_cast<void**>(&g_string_assign))) {
-        Loader::get().log("[skin-hook] disabled: helper routines do not resolve "
+        Loader::get().log_err("[skin-hook] disabled: helper routines do not resolve "
                           "to function starts on this build");
         return false;
     }
@@ -541,7 +541,7 @@ bool install_skin_hooks() {
             Loader::get().log("[skin-hook] force-show enabled "
                               "(RSMM_SKIN_FORCE_SHOW=1)");
         } else {
-            Loader::get().log("[skin-hook] force-show unavailable; disabled");
+            Loader::get().log_warn("[skin-hook] force-show unavailable; disabled");
             g_force_show = false;
         }
     }

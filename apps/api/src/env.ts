@@ -193,6 +193,27 @@ if (isProduction && !virusTotalConfigured()) {
   );
 }
 
+/**
+ * Whether rate limits are shared across instances.
+ *
+ * Without Upstash, `createRateLimiter` falls back to a per-process sliding
+ * window, so on a serverless deploy the effective limit is
+ * `maxHits x instances` — the counters are not merely approximate, they are
+ * independent. That is survivable for read endpoints and not for the ones
+ * whose limit IS the abuse control: `/api/logs` stores up to 150 KB of
+ * user-supplied text per accepted call, which without a shared counter is a
+ * pastebin with a soft cap.
+ */
+export function distributedRateLimitsConfigured(): boolean {
+  return Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
+}
+
+if (isProduction && !distributedRateLimitsConfigured()) {
+  console.warn(
+    'Upstash not configured — rate limits are per-instance, so on a scaled deploy the real limit is maxHits x instances. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN; the shared-log endpoint (/api/logs) depends on this to bound how much user-supplied text it will store.',
+  );
+}
+
 if (isProduction && !impressumConfigured()) {
   console.warn(
     'Impressum not configured — the /legal page on rsmm.me is not §5 DDG compliant. Set IMPRESSUM_NAME, IMPRESSUM_ADDRESS, and IMPRESSUM_EMAIL.',

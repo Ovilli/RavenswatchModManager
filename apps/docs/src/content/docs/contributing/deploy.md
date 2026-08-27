@@ -158,7 +158,21 @@ The API is a Node Hono server, deployed as its own Vercel project.
    S3_ACCESS_KEY_ID=<from step 3>
    S3_SECRET_ACCESS_KEY=<from step 3>
    S3_PUBLIC_BASE_URL=https://pub-<hash>.r2.dev
+   UPSTASH_REDIS_REST_URL=https://<db>.upstash.io
+   UPSTASH_REDIS_REST_TOKEN=<from the Upstash console>
    ```
+
+   :::caution[Set the Upstash pair before going public]
+   Without it, rate limiting falls back to an in-memory window that is
+   **per process**. On Vercel that means every concurrently warm instance
+   keeps its own counter, so the real limit is `maxHits x instances` — not an
+   approximation of the configured limit but an independent copy of it.
+
+   That is survivable for read endpoints. It is not for `/api/logs`, which
+   stores up to 150 KB of user-supplied text per accepted call and relies on
+   its hourly cap to stay a support tool rather than free file hosting. The
+   API logs a warning at boot in production when the pair is missing.
+   :::
 5. Click **Deploy**.
 6. Verify:
    ```sh
