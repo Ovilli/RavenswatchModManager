@@ -121,6 +121,51 @@ For merge conflicts or asset collisions, inspect `mods/_merged/asset_map.json`
 and `asset_map.csv` for duplicate entries, then resolve by renaming or adjusting
 the offending manifests.
 
+## Reading the log
+
+The desktop app's **Log** screen shows what the script loader wrote inside the
+game. Three things worth knowing:
+
+- **Problems only.** The loader tags the lines where something actually failed
+  (`err`) or went sideways (`warn`); tick *problems only* to see just those. A
+  capability that is switched off because you did not arm it is not an error
+  and is deliberately not tagged — so an unflagged line means "not classified",
+  not "fine".
+- **Older runs.** The dropdown lists the last 20 finished runs, archived under
+  `<game>/rsmm/logs`. A crash three launches ago is still there; you no longer
+  need the CLI to read it.
+- **Startup crashes.** If a mod kills the game during startup, the loader
+  cannot be told to stop loading it from inside the game — so it skips the mod
+  after three failed launches in a row. When that happens the Log screen says
+  which mod, why, and offers *Try again* once you think it is fixed.
+
+From the command line the same filters are `rsmm log --errors`,
+`rsmm log --list` and `rsmm log --run <name>`.
+
+## Share your log instead of pasting it
+
+A loader log runs to thousands of lines, and pasting it into Discord or a
+GitHub issue truncates it, mangles the alignment, and drops the session banners
+that say which run it came from. The desktop app can upload it instead:
+
+1. Open **Log**.
+2. Press **Share link**.
+3. Say what went wrong, check the preview, press **Upload and get link**.
+4. Paste the link into your issue or support thread.
+
+The upload includes a short header — app version, OS, and which mods were
+installed and enabled — because those are the first three questions anyone
+helping you will ask. Tick *include app log* to add the desktop app's own log
+as well, which is what you want when the app itself misbehaves rather than the
+game.
+
+**Read the preview.** The dialog shows the exact text that will be uploaded.
+Your Windows account name, home folder, e-mail addresses, IP addresses, Steam
+IDs and player names are replaced with placeholders before upload, but that is
+pattern matching on a log we do not control — a strong default, not a promise.
+The page is unlisted rather than private: anyone with the link can read it, so
+treat it as public. It is deleted automatically 30 days after upload.
+
 ## Still stuck?
 
 Open an issue on [GitHub](https://github.com/Ovilli/RavenswatchModManager/issues) with:
@@ -129,4 +174,5 @@ Open an issue on [GitHub](https://github.com/Ovilli/RavenswatchModManager/issues
 - RSMM version (shown in About)
 - Ravenswatch version
 - Steps to reproduce the problem
+- A shared log link (see above) — far more useful than a pasted excerpt
 - Any error messages or screenshots

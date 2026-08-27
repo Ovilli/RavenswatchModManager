@@ -1,5 +1,6 @@
 pub mod graphics_mode;
 mod launcher_log;
+mod loader_log;
 mod profile_dir;
 mod rsmm_env;
 mod update_env;
@@ -53,6 +54,7 @@ pub fn run() {
             launcher_log::append_launcher_log,
             launcher_log::clear_launcher_log,
             launcher_log::read_launcher_log,
+            loader_log::read_loader_log_chunk,
             rsmm_env::rsmm_runtime_env,
             rsmm_env::probe_rsmm,
             update_env::update_install_target,
