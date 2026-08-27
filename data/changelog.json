@@ -2,6 +2,19 @@
   "generated": "2026-08-27",
   "entries": [
     {
+      "version": "5.2.0",
+      "date": "2026-08-27",
+      "summary": "Reporting a problem is now a link instead of a wall of pasted text, and the Log screen finally shows the things the loader already knew: older runs, which lines are real failures, and why a mod was switched off.",
+      "highlights": [
+        "New: Share link on the Log screen uploads your log once and gives you a URL to paste into a bug report, instead of pasting thousands of lines into chat. It attaches the details anyone helping would ask for next — app version, system, and which mods were on.",
+        "Before anything is uploaded you see exactly what will be sent. Your Windows account name, home folder, e-mail addresses, IP addresses, Steam IDs and player names are replaced with placeholders first. The page is deleted automatically after 30 days, and anyone with the link can read it, so treat it as public.",
+        "The Log screen can now open any of your last 20 game runs, not just the current and previous one — a crash from three launches ago is no longer out of reach.",
+        "New: a problems only filter, plus a count of errors and warnings for the run, so you can find what went wrong without reading the whole log.",
+        "When the loader switches a mod off for crashing during startup, the Log screen now says which mod, why, and offers to try it again. Previously the mod just appeared to be off with no explanation.",
+        "The log now updates while you watch it without the app constantly working in the background, and it stops updating entirely while the window is hidden."
+      ]
+    },
+    {
       "version": "",
       "loader_version": 10,
       "date": "2026-08-27",
