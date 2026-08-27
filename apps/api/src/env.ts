@@ -33,6 +33,25 @@ function parsePort(raw: string | undefined, fallback: number): number {
   return n;
 }
 
+/** Canonical public site origin, used when the deploy did not say. */
+const CANONICAL_WEB_URL = 'https://rsmm.me';
+
+function isLocalhostUrl(url: string): boolean {
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(url);
+}
+
+function resolveWebUrl(): string {
+  const raw = process.env.WEB_URL?.trim();
+  if (!isProduction) return raw || 'http://localhost:3000';
+  if (!raw || isLocalhostUrl(raw)) {
+    console.warn(
+      `WEB_URL is ${raw ? 'a localhost address' : 'not set'} in production — user-facing links (shared logs, email landings) would point at the developer's machine. Falling back to ${CANONICAL_WEB_URL}; set WEB_URL on the deploy to make this explicit.`,
+    );
+    return CANONICAL_WEB_URL;
+  }
+  return raw;
+}
+
 export const env = {
   port: parsePort(process.env.API_PORT, 3001),
   databaseUrl: required('DATABASE_URL'),
@@ -46,10 +65,18 @@ export const env = {
   // and stay hidden by the fail-closed serve gate. The cron is the guaranteed
   // heartbeat that drains the queue. Empty in dev (endpoint is then disabled).
   cronSecret: process.env.CRON_SECRET ?? '',
-  // Public URL of the marketing site. Used as the verification-email
-  // landing target. Defaults to localhost so dev works without extra
-  // config; prod overrides via WEB_URL.
-  webUrl: process.env.WEB_URL || 'http://localhost:3000',
+  // Public URL of the marketing site — the origin every user-facing link the
+  // API hands out is built from (a shared log's /l/<id>, email landing pages).
+  //
+  // Defaults to localhost so dev works without extra config, but that default
+  // is actively wrong in production and fails SILENTLY: the API answers 200
+  // and the user is handed http://localhost:3000/l/<id>, a link that works on
+  // nobody's machine but the developer's. That shipped — the WEB_URL var was
+  // simply never set on the deploy. So in production a missing or localhost
+  // value is treated as the misconfiguration it is and replaced with the
+  // canonical origin, which is the same call apps/www/src/lib/api-url.ts
+  // already makes in the other direction for the same reason.
+  webUrl: resolveWebUrl(),
   // User IDs allowed to approve/reject community guides (comma-separated).
   // Empty in dev — see guidesRouter approval endpoints.
   adminUserIds: (process.env.ADMIN_USER_IDS || '')
