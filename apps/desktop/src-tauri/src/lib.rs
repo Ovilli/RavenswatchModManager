@@ -1,5 +1,6 @@
 pub mod graphics_mode;
 mod launcher_log;
+mod profile_dir;
 mod rsmm_env;
 mod update_env;
 
@@ -57,6 +58,7 @@ pub fn run() {
             update_env::update_install_target,
             graphics_mode::gpu_acceleration_disabled,
             graphics_mode::set_gpu_acceleration_disabled,
+            profile_dir::open_profile_dir,
         ]);
 
     // Plugins are best-effort. If one fails to initialize (e.g. an

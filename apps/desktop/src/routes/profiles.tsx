@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
-import { homeDir } from '@tauri-apps/api/path';
-import { Command, open } from '@tauri-apps/plugin-shell';
+import { invoke } from '@tauri-apps/api/core';
 import { Copy, Download, FolderOpen, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
@@ -9,6 +8,7 @@ import { CheckIcon } from '../components/icons/CheckIcon';
 import { useDialog, useToast } from '../components/toast';
 import { validateProfileName } from '../lib/profile-name';
 import { listLocalMods } from '../lib/rsmm';
+import { isSafeProfileId } from '../lib/untrusted-state';
 import { getMod, isEnabledIn, splitProfileMods, useApp } from '../store';
 
 export const Route = createFileRoute('/profiles')({
@@ -51,21 +51,26 @@ function ProfilesPage() {
   const toast = useToast();
 
   const onOpenFolder = async (profileId: string) => {
-    // Guard against path traversal: profileId is interpolated into a
-    // filesystem path passed to `mkdir -p` and `open(file://...)`. Reject
-    // anything that isn't a plain id so a crafted `../` can't create or open
-    // directories outside the mods tree.
-    if (!/^[a-zA-Z0-9_-]+$/.test(profileId)) {
+    // Creating and revealing the directory happens in Rust
+    // (`profile_dir::open_profile_dir`), which re-validates the profile id,
+    // expands `~` / `%VAR%`, and asserts the result stayed inside the mods
+    // root. That let the default capability drop two grants this call used to
+    // need — `mkdir` with arbitrary args, and `shell:allow-open` over
+    // `file:///**` — neither of which anything else wanted.
+    if (!isSafeProfileId(profileId)) {
       toast.push('Invalid profile id', 'error');
       return;
     }
-    let modsDir = useApp.getState().settings.modsDir?.trim() || '~/.local/share/rsmm/mods';
-    if (modsDir.startsWith('~')) {
-      modsDir = (await homeDir()) + modsDir.slice(1);
+    const modsRoot = useApp.getState().settings.modsDir?.trim();
+    if (!modsRoot) {
+      toast.push('Set a mods folder in Settings first', 'error');
+      return;
     }
-    const profileDir = `${modsDir}/profiles/${profileId}`;
-    await Command.create('mkdir', ['-p', profileDir]).execute();
-    open(`file://${profileDir}`);
+    try {
+      await invoke('open_profile_dir', { modsRoot, profileId });
+    } catch (err) {
+      toast.push(err instanceof Error ? err.message : String(err), 'error');
+    }
   };
 
   function onImport() {

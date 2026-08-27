@@ -2,7 +2,7 @@
   "name": "rsmm-monorepo",
   "version": "0.1.0",
   "private": true,
-  "description": "Ravenswatch Mod Manager — cross-platform GUI (browser + Tauri desktop) + Neon-backed registry.",
+  "description": "Ravenswatch Mod Manager \u2014 cross-platform GUI (browser + Tauri desktop) + Neon-backed registry.",
   "packageManager": "pnpm@9.12.0",
   "engines": {
     "node": ">=20.11"
@@ -28,7 +28,7 @@
     "test": "turbo run test",
     "test:python": "python -m pytest -n auto",
     "test:python:fast": "python -m pytest -n auto -m \"not slow\"",
-    "test:ts": "turbo run test --filter=@rsmm/schemas",
+    "test:ts": "turbo run test --filter=@rsmm/schemas --filter=@rsmm/api-client --filter=desktop",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
     "clean": "turbo run clean && rm -rf node_modules .turbo"

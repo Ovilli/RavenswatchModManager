@@ -20,6 +20,13 @@ import { CheckIcon } from '../components/icons/CheckIcon';
 import { ModDetail } from '../components/mod-detail';
 import { useToast } from '../components/toast';
 import { api, describeApiError, getApiBaseUrl, logApiError } from '../lib/api';
+import {
+  type BrowseSort,
+  computeFacets,
+  countActiveFilters,
+  filterCollections,
+  filterMods,
+} from '../lib/browse-filter';
 import { validateProfileName } from '../lib/profile-name';
 import { installModFromIndex, listLocalModsForProfile } from '../lib/rsmm';
 import { activeProfile, useApp } from '../store';
@@ -29,11 +36,8 @@ export const Route = createFileRoute('/browse')({
   component: BrowsePage,
 });
 
-type Sort = 'recent' | 'popular' | 'rating';
+type Sort = BrowseSort;
 type Tab = 'mods' | 'collections';
-
-/** Tag chips offered as filters. More than this and the bar outgrows the page. */
-const TAG_FACET_LIMIT = 12;
 
 function BrowsePage() {
   const navigate = useNavigate();
@@ -155,66 +159,23 @@ function BrowsePage() {
     enabled: tab === 'collections',
   });
 
-  /**
-   * What the index actually contains, as filter options.
-   *
-   * Derived from the fetched items rather than from the schema's category enum:
-   * offering "speedrun" when no speedrun mod is published is a filter that can
-   * only ever return nothing. Tags are ranked by how many mods carry them and
-   * capped, because the tag vocabulary is free-form and unbounded.
-   *
-   * Computed BEFORE the category/tag filters are applied — otherwise picking
-   * one facet would delete the others from the bar, and there would be no way
-   * back without a reload.
-   */
-  const facets = useMemo(() => {
-    const items: ModListItem[] = modData?.items ?? [];
-    const visible = items.filter((m) => showNsfw || !m.nsfw);
-    const categories = new Map<string, number>();
-    const tagCounts = new Map<string, number>();
-    for (const m of visible) {
-      if (m.category) categories.set(m.category, (categories.get(m.category) ?? 0) + 1);
-      for (const t of m.tags) tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1);
-    }
-    return {
-      categories: [...categories.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])),
-      tags: [...tagCounts.entries()]
-        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-        .slice(0, TAG_FACET_LIMIT),
-    };
-  }, [modData, showNsfw]);
+  const facets = useMemo(() => computeFacets(modData?.items ?? [], showNsfw), [modData, showNsfw]);
 
   const list = useMemo(() => {
     if (tab === 'collections') return [];
-    const items: ModListItem[] = modData?.items ?? [];
-    const needle = q.trim().toLowerCase();
-    const filtered = needle
-      ? items.filter(
-          (m) =>
-            m.name.toLowerCase().includes(needle) ||
-            (m.summary ?? '').toLowerCase().includes(needle) ||
-            (m.author ?? '').toLowerCase().includes(needle),
-        )
-      : items;
-    return (
-      [...filtered]
-        .filter((m) => showNsfw || !m.nsfw)
-        .filter((m) => (category ? m.category === category : true))
-        // EVERY selected tag must be present, not any of them. Picking two tags
-        // to widen a search is not what anyone means by it.
-        .filter((m) => tags.every((t) => m.tags.includes(t)))
-        .filter((m) => (minRating > 0 ? (m.rating ?? 0) >= minRating : true))
-        .filter((m) => (hideInstalled ? !installed.includes(m.slug) : true))
-        .sort((a, b) => {
-          if (sort === 'popular') return (b.downloads ?? 0) - (a.downloads ?? 0);
-          if (sort === 'rating') return (b.rating ?? 0) - (a.rating ?? 0);
-          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-        })
-    );
+    return filterMods(modData?.items ?? [], {
+      q,
+      sort,
+      showNsfw,
+      category,
+      tags,
+      minRating,
+      hideInstalled,
+      installed,
+    });
   }, [modData, sort, q, tab, showNsfw, category, tags, minRating, hideInstalled, installed]);
 
-  const activeFilters =
-    (category ? 1 : 0) + tags.length + (minRating > 0 ? 1 : 0) + (hideInstalled ? 1 : 0);
+  const activeFilters = countActiveFilters({ category, tags, minRating, hideInstalled });
 
   const clearFilters = () => {
     setCategory(null);
@@ -226,18 +187,10 @@ function BrowsePage() {
   const toggleTag = (t: string) =>
     setTags((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
 
-  const collections = useMemo(() => {
-    if (tab === 'mods') return [];
-    const items: Collection[] = colData?.items ?? [];
-    const needle = q.trim().toLowerCase();
-    return needle
-      ? items.filter(
-          (c) =>
-            c.name.toLowerCase().includes(needle) ||
-            (c.summary ?? '').toLowerCase().includes(needle),
-        )
-      : items;
-  }, [colData, q, tab]);
+  const collections = useMemo(
+    () => (tab === 'mods' ? [] : filterCollections(colData?.items ?? [], q)),
+    [colData, q, tab],
+  );
 
   const isLoading = tab === 'mods' ? modLoading : colLoading;
   const error = tab === 'mods' ? modError : colError;
@@ -272,64 +225,6 @@ function BrowsePage() {
 
   // Auto-collapse, unless the user has said otherwise.
   const filtersOpen = filtersPinned ?? selected === null;
-
-  /**
-   * The install control, shared by the card and the list row.
-   *
-   * Extracted rather than duplicated: it encodes four states (installing / in
-   * profile / on disk / not fetched) plus the width floor that stops it
-   * resizing mid-download, and two copies of that would drift apart the first
-   * time one of them was touched.
-   */
-  function InstallButton({ m }: { m: ModListItem }) {
-    const onDisk = installed.includes(m.slug);
-    // "In profile" must mean the mod is BOTH listed by the profile and
-    // actually on disk. A profile entry whose folder is gone (failed install,
-    // deleted outside the app) otherwise rendered as "in profile" with the
-    // button disabled — leaving no way to install the mod it pointed at.
-    const inProfile = profile.loadOrder.includes(m.slug) && onDisk;
-    return (
-      <Button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          openPicker(m.slug);
-        }}
-        disabled={inProfile || installing[m.slug]}
-        variant={inProfile ? 'default' : 'primary'}
-        size="sm"
-        // The label cycles install → downloading → in profile,
-        // each a different width. Without a floor the button
-        // resizes mid-download and squeezes the title next to it.
-        className="min-w-[7.5rem] justify-center whitespace-nowrap"
-        title={
-          inProfile
-            ? `Already in "${profile.name}"`
-            : onDisk
-              ? `On disk — click to add to "${profile.name}"`
-              : `Download from index + add to "${profile.name}"`
-        }
-      >
-        {installing[m.slug] ? (
-          <>
-            <Loader2 className="h-3.5 w-3.5 animate-spin" /> downloading
-          </>
-        ) : inProfile ? (
-          <>
-            <CheckIcon className="h-4 w-4" /> in profile
-          </>
-        ) : onDisk ? (
-          <>
-            <Plus className="h-3.5 w-3.5" /> add
-          </>
-        ) : (
-          <>
-            <Plus className="h-3.5 w-3.5" /> install
-          </>
-        )}
-      </Button>
-    );
-  }
 
   /**
    * Hoisted so it can be rendered in either place: its own column while
@@ -704,7 +599,15 @@ function BrowsePage() {
                         active={selected === m.slug}
                         compact={selected !== null}
                         onOpen={() => setSelected(m.slug)}
-                        install={<InstallButton m={m} />}
+                        install={
+                          <InstallButton
+                            m={m}
+                            installed={installed}
+                            profile={profile}
+                            installing={installing}
+                            onPick={openPicker}
+                          />
+                        }
                       />
                     ))
                   : list.map((m) => {
@@ -755,7 +658,13 @@ function BrowsePage() {
                                 {m.latestVersion ? ` · v${m.latestVersion}` : ''}
                               </p>
                             </div>
-                            <InstallButton m={m} />
+                            <InstallButton
+                              m={m}
+                              installed={installed}
+                              profile={profile}
+                              installing={installing}
+                              onPick={openPicker}
+                            />
                           </header>
                           {m.summary ? (
                             <p className="font-serif-italic text-sm leading-snug text-smoke">
@@ -803,6 +712,73 @@ function BrowsePage() {
   );
 }
 
+interface InstallButtonProps {
+  m: ModListItem;
+  /** Slugs present on disk. */
+  installed: string[];
+  profile: Profile;
+  installing: Record<string, boolean>;
+  onPick: (slug: string) => void;
+}
+
+/**
+ * The install control, shared by the card and the list row.
+ *
+ * Extracted rather than duplicated: it encodes four states (installing / in
+ * profile / on disk / not fetched) plus the width floor that stops it
+ * resizing mid-download, and two copies of that would drift apart the first
+ * time one of them was touched.
+ */
+function InstallButton({ m, installed, profile, installing, onPick }: InstallButtonProps) {
+  const onDisk = installed.includes(m.slug);
+  // "In profile" must mean the mod is BOTH listed by the profile and
+  // actually on disk. A profile entry whose folder is gone (failed install,
+  // deleted outside the app) otherwise rendered as "in profile" with the
+  // button disabled — leaving no way to install the mod it pointed at.
+  const inProfile = profile.loadOrder.includes(m.slug) && onDisk;
+  return (
+    <Button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onPick(m.slug);
+      }}
+      disabled={inProfile || installing[m.slug]}
+      variant={inProfile ? 'default' : 'primary'}
+      size="sm"
+      // The label cycles install → downloading → in profile,
+      // each a different width. Without a floor the button
+      // resizes mid-download and squeezes the title next to it.
+      className="min-w-[7.5rem] justify-center whitespace-nowrap"
+      title={
+        inProfile
+          ? `Already in "${profile.name}"`
+          : onDisk
+            ? `On disk — click to add to "${profile.name}"`
+            : `Download from index + add to "${profile.name}"`
+      }
+    >
+      {installing[m.slug] ? (
+        <>
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> downloading
+        </>
+      ) : inProfile ? (
+        <>
+          <CheckIcon className="h-4 w-4" /> in profile
+        </>
+      ) : onDisk ? (
+        <>
+          <Plus className="h-3.5 w-3.5" /> add
+        </>
+      ) : (
+        <>
+          <Plus className="h-3.5 w-3.5" /> install
+        </>
+      )}
+    </Button>
+  );
+}
+
 /**
  * One mod as a dense row.
  *
@@ -813,8 +789,7 @@ function BrowsePage() {
  * The install control is passed IN rather than rebuilt here. It carries four
  * states and a width floor, and a second copy would drift from the card's the
  * first time either was touched.
- */
-/**
+ *
  * @param compact  the row is in a narrow column (the split view's index), so
  *                 drop the stat columns. They are hidden by `md:`/`lg:`
  *                 breakpoints otherwise — and those measure the VIEWPORT, not

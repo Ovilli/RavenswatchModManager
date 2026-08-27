@@ -30,7 +30,16 @@ import { useModToggle } from '../components/use-mod-toggle';
 import { SetupBanner } from '../components/setup-banner';
 import { useToast } from '../components/toast';
 import { UpdatesPanel } from '../components/updates-panel';
-import { compareVersions, getMissingDependencyCount } from '../lib/library-deps';
+import {
+  type LibrarySort,
+  type LibraryStatusFilter,
+  buildLibraryRows,
+  conflictCountByMod as buildConflictCounts,
+  missingDepCounts as buildMissingDepCounts,
+  countLibraryFilters,
+  filterLibraryRows,
+  groupByCategory,
+} from '../lib/library-filter';
 import type { ModCategory } from '../lib/mod-types';
 import { disableHookWarning, listLocalMods, uninstallLocalMod } from '../lib/rsmm';
 import {
@@ -47,8 +56,6 @@ export const Route = createFileRoute('/')({
 });
 
 type ViewMode = 'cards' | 'list' | 'config';
-type LibraryStatusFilter = 'all' | 'enabled' | 'disabled' | 'outdated' | 'missingDeps';
-type LibrarySort = 'load-order' | 'name' | 'author' | 'version';
 
 const CATEGORY_LABEL: Record<ModCategory, string> = {
   gameplay: 'Gameplay',
@@ -98,15 +105,7 @@ function LibraryPage() {
   // like the app had simply ignored it.
   const unadopted = useMemo(() => unadoptedMods(profile, installed), [profile, installed]);
   const conflicts = useMemo(() => detectConflicts(profile), [profile]);
-  const conflictCountByMod = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const conflict of conflicts) {
-      for (const modId of conflict.modIds) {
-        counts.set(modId, (counts.get(modId) ?? 0) + 1);
-      }
-    }
-    return counts;
-  }, [conflicts]);
+  const conflictCountByMod = useMemo(() => buildConflictCounts(conflicts), [conflicts]);
 
   const {
     data: localMods,
@@ -123,53 +122,18 @@ function LibraryPage() {
     if (localMods) syncLocalMods(localMods);
   }, [localMods, syncLocalMods]);
 
-  const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    const rows = profile.loadOrder
-      .map((id, orderIdx) => {
-        const mod = localModsState[id];
-        if (!mod) return null;
-        const enabled = isEnabledIn(profile, id);
-        const outdated = mod.version !== mod.latestVersion;
-        const missingDeps = getMissingDependencyCount(mod, profile);
-        return { id, orderIdx, mod, enabled, outdated, missingDeps };
-      })
-      .filter((row): row is NonNullable<typeof row> => {
-        if (!row) return false;
-        if (category !== 'all' && row.mod.category !== category) return false;
-        if (status === 'enabled' && !row.enabled) return false;
-        if (status === 'disabled' && row.enabled) return false;
-        if (status === 'outdated' && !row.outdated) return false;
-        if (status === 'missingDeps' && row.missingDeps === 0) return false;
-        if (!needle) return true;
-        return (
-          row.mod.name.toLowerCase().includes(needle) ||
-          row.mod.author.toLowerCase().includes(needle) ||
-          row.mod.summary.toLowerCase().includes(needle) ||
-          row.mod.slug.toLowerCase().includes(needle) ||
-          row.mod.version.toLowerCase().includes(needle) ||
-          row.mod.category.toLowerCase().includes(needle) ||
-          row.mod.tags.some((tag) => tag.toLowerCase().includes(needle))
-        );
-      });
-    return [...rows].sort((a, b) => {
-      if (sort === 'load-order') return a.orderIdx - b.orderIdx;
-      if (sort === 'name') return a.mod.name.localeCompare(b.mod.name);
-      if (sort === 'author') return a.mod.author.localeCompare(b.mod.author);
-      if (sort === 'version') return compareVersions(b.mod.version, a.mod.version);
-      return a.orderIdx - b.orderIdx;
-    });
-  }, [category, localModsState, profile, query, sort, status]);
+  const filtered = useMemo(
+    () =>
+      filterLibraryRows(buildLibraryRows(profile, localModsState), {
+        query,
+        category,
+        status,
+        sort,
+      }),
+    [category, localModsState, profile, query, sort, status],
+  );
 
-  const grouped = useMemo(() => {
-    const groups = new Map<ModCategory, { id: string; orderIdx: number }[]>();
-    for (const { id, orderIdx, mod } of filtered) {
-      const list = groups.get(mod.category) ?? [];
-      list.push({ id, orderIdx });
-      groups.set(mod.category, list);
-    }
-    return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [filtered]);
+  const grouped = useMemo(() => groupByCategory(filtered), [filtered]);
 
   const selectedRows = useMemo(
     () => filtered.filter((row) => selected.has(row.id)),
@@ -180,17 +144,9 @@ function LibraryPage() {
     [selectedRows],
   );
 
-  const missingDepCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const row of filtered) {
-      if (row.missingDeps > 0) counts.set(row.id, row.missingDeps);
-    }
-    return counts;
-  }, [filtered]);
+  const missingDepCounts = useMemo(() => buildMissingDepCounts(filtered), [filtered]);
 
-  const filterCount = [category !== 'all', status !== 'all', query.trim().length > 0].filter(
-    Boolean,
-  ).length;
+  const filterCount = countLibraryFilters({ category, status, query });
   const hasDirtyConfigs = dirtyConfigs.size > 0;
   const hasSelection = selected.size > 0;
   const markConfigDirty = useCallback((id: string, dirty: boolean) => {

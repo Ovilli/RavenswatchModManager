@@ -14,6 +14,12 @@ import {
 import type { Mod, ModCategory } from '../lib/mod-types';
 import { getPlatform } from '../lib/platform';
 import type { LocalMod } from '../lib/rsmm';
+import {
+  MACHINE_LOCAL_SETTING_KEYS,
+  isSafeProfileId,
+  sanitizeDirSetting,
+  sanitizeSources,
+} from '../lib/untrusted-state';
 import { compareVersions } from '../lib/version';
 
 export interface Profile {
@@ -147,8 +153,14 @@ interface State {
   ) => void;
 }
 
+/**
+ * Fresh profile id. Used as a directory name under `<modsDir>/profiles/`, so it
+ * has to be collision-free and a safe path segment (see PROFILE_ID_RE).
+ * `Math.random().toString(36).slice(2, 8)` was neither reliably unique nor
+ * uniform — `toString(36)` drops trailing zeroes, so short ids appeared.
+ */
 function uid(): string {
-  return Math.random().toString(36).slice(2, 10);
+  return crypto.randomUUID().replaceAll('-', '').slice(0, 12);
 }
 
 function defaultGameDir(): string {
@@ -247,6 +259,14 @@ function reconcileProfileModIds(
 function normalizeProfiles(profiles: Profile[] | undefined): Profile[] {
   const list = (profiles ?? []).map((p) => ({
     ...p,
+    // A profile id becomes a path segment in RSMM_MODS_DIR and in the
+    // `mkdir`/`open` calls behind "open folder", so it is validated HERE, at
+    // the one place every persisted and imported profile passes through —
+    // not at each sink, where the next sink added would forget.
+    // An unsafe id is replaced rather than dropped: for a corrupt localStorage
+    // that keeps the user's mod list, and for a hostile import the profile is
+    // inert either way.
+    id: isSafeProfileId(p.id) ? p.id : uid(),
     disabled: normalizeDisabled(p.disabled as Profile['disabled'] | string[] | undefined),
   }));
 
@@ -288,6 +308,14 @@ export function hydrateSettings(
     fontScale: normalizeFontScale(merged.fontScale),
     density: normalizeDensity(merged.density),
     animations: normalizeAnimations(merged.animations),
+    // The directory settings get the same treatment as the appearance keys
+    // above, for the same reason: a persisted blob is not typed input by the
+    // time it is read back. modsDir in particular becomes RSMM_MODS_DIR on
+    // every CLI call and an argument to `mkdir -p`.
+    gameDir: sanitizeDirSetting(merged.gameDir, defaults.gameDir),
+    modsDir: sanitizeDirSetting(merged.modsDir, defaults.modsDir),
+    backupDir: sanitizeDirSetting(merged.backupDir, defaults.backupDir),
+    sources: sanitizeSources(merged.sources, defaults.sources),
     // Same "explicit true only" shape as the flags above: an older build's
     // payload has no such key, and `undefined` must read as expanded.
     sidebarCollapsed: merged.sidebarCollapsed === true,
@@ -297,6 +325,31 @@ export function hydrateSettings(
     // of a possibly-undefined value.
     crashReports: merged.crashReports !== false,
   };
+}
+
+/**
+ * Fold an IMPORTED settings blob onto the current ones.
+ *
+ * Same sanitizing as `hydrateSettings`, plus one rule that only applies to an
+ * import: the machine-local directories are pinned to what this install
+ * already uses and are never taken from the payload.
+ *
+ * A backup code is meant to be pasted between people, so its paths describe
+ * somebody else's computer — importing one used to silently repoint
+ * `RSMM_MODS_DIR`, and therefore every `rsmm apply` / `restore`, at a directory
+ * the person importing never chose and never saw. Preserving the local paths
+ * is simultaneously the safe behaviour and the one a user expects: a friend's
+ * profile list should arrive, their `C:\Users\them\...` should not.
+ */
+export function hydrateImportedSettings(
+  current: AppSettings,
+  imported: Partial<AppSettings> | undefined,
+): AppSettings {
+  const next = hydrateSettings(current, imported);
+  for (const key of MACHINE_LOCAL_SETTING_KEYS) {
+    next[key] = current[key];
+  }
+  return next;
 }
 
 export const useApp = create<State>()(
@@ -588,9 +641,11 @@ export const useApp = create<State>()(
             activeProfileId: profiles.some((p) => p.id === parsed.activeProfileId)
               ? (parsed.activeProfileId as string)
               : 'default',
-            // Same sanitizing path as rehydrate: a backup file is user-supplied
-            // data, and its appearance keys are read straight into CSS.
-            settings: hydrateSettings(get().settings, parsed.settings),
+            // A backup code is user-supplied data that travels between
+            // machines: appearance keys are sanitized (they are read straight
+            // into CSS) and the directory settings are pinned to this install's
+            // own, never taken from the payload. See hydrateImportedSettings.
+            settings: hydrateImportedSettings(get().settings, parsed.settings),
           });
           return { ok: true };
         } catch (e) {

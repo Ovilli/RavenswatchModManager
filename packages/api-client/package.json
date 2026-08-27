@@ -9,7 +9,8 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@rsmm/schemas": "workspace:*",
@@ -17,6 +18,7 @@
   },
   "devDependencies": {
     "@rsmm/tsconfig": "workspace:*",
-    "typescript": "5.7.3"
+    "typescript": "5.7.3",
+    "vitest": "3.0.9"
   }
 }
