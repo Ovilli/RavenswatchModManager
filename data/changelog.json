@@ -2,6 +2,16 @@
   "generated": "2026-08-27",
   "entries": [
     {
+      "version": "",
+      "loader_version": 10,
+      "date": "2026-08-27",
+      "summary": "Loader log lines now say which ones are actually failures.",
+      "highlights": [
+        "The in-game log now marks the lines where something genuinely failed, so tracking down a crash no longer means reading several hundred equal-looking lines. The app's Log screen can filter to just those, and so can rsmm log --errors.",
+        "A capability that is simply switched off — because you never enabled it, or because no mod uses it — is deliberately not marked as a failure, so the filter stays worth using."
+      ]
+    },
+    {
       "version": "5.1.3",
       "date": "2026-08-27",
       "summary": "A security and reliability pass over the desktop app, the mod index and the website: shared backup codes can no longer redirect where mods are installed, the app asks Windows for far fewer permissions, and store requests survive a dropped connection.",
