@@ -18,6 +18,7 @@ import argparse
 import sys
 
 from rsmm.engine import cooked
+from rsmm.engine import enemy_pools as EP
 from rsmm.engine.cooked_schemas import definitions as _defs
 from rsmm.engine.paths import DATA_DIR
 
@@ -117,27 +118,11 @@ def _cmd_tribes(args) -> int:
 
 #: Per-biome spawn pools — the `oCGameStream` EntityPooling assets list the
 #: entities eligible to spawn in each biome. An enemy can only appear in a
-#: biome whose pool contains its `entity_ref`.
-_OT_DIR = DATA_DIR / "uncooked" / "Ot"
-_POOL_GLOB = "*EntityPooling_Settings.level.ot.GameStream.gen"
-
-
-def _pool_files():
-    """Yield (biome, path) for every EntityPooling GameStream asset."""
-    if not _OT_DIR.is_dir():
-        return
-    for p in sorted(_OT_DIR.rglob(_POOL_GLOB)):
-        biome = p.name.split("_EntityPooling", 1)[0]
-        if biome.startswith("Map_"):
-            biome = biome[len("Map_"):]
-        yield biome, p
-
-
-def _pool_entities(path) -> list[str]:
-    """Enemy entity refs in a pooling asset (filters to Enemies\\... paths)."""
-    from rsmm.engine.cooked_schemas.asset_refs import _decode
-    doc = _decode(path.read_bytes(), "oCGameStream")
-    return [r for r in doc["asset_refs"] if r.lower().startswith("enemies\\")]
+#: biome whose pool contains its `entity_ref`. The reading lives in
+#: :mod:`rsmm.engine.enemy_pools` because the `enemy` content builder needs the
+#: same answers to keep an `override` swap inside one biome.
+_pool_files = EP.pool_files
+_pool_entities = EP.pool_entities
 
 
 def _cmd_pools(args) -> int:

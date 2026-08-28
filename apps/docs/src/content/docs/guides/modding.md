@@ -391,6 +391,78 @@ Donor-swap only. PNG → cooked texture cooker needs the `oCTexture` container R
 ./rsmm apply
 ```
 
+### Randomise or replace a monster population (`kind="enemy"`, `mode="override"`)
+
+Rewrites **retail** enemy definitions in place so a biome's slots instantiate
+different creatures. Camps, tiers, tribes and difficulty are untouched — only
+the prefab each slot spawns changes.
+
+```toml
+[[content]]
+kind        = "enemy"
+mode        = "override"
+id          = "random_roster"
+cross_biome = true     # draw from every creature in the game, and repoint each
+                       # biome's EntityPooling asset so they are streamed there
+mix         = "shuffle"  # each biome gets as many distinct creatures as it has
+seed        = 1337       # pool slots, each used once ("random" draws with
+weight      = 5.0        # replacement and leaves ~a third of the slots unused)
+```
+
+**`cross_biome` is the load-bearing flag.** Without it a swap must stay inside
+the biome's own entity pool, so the randomiser can only permute the cast that
+chapter already had — Storm Island still shows crabs and gnolls, and it looks
+identical to vanilla. With it, each chapter draws from all 50 camp-spawnable
+creatures and gets 8-11 foreign ones. A biome hosts exactly as many distinct
+creatures as it has pool slots (10-15): an `oCGameStream` ref can be repointed,
+but the vector cannot grow.
+
+Or pin a whole biome to one monster:
+
+```toml
+[[content]]
+kind   = "enemy"
+mode   = "override"
+id     = "treant_world"
+pools  = ["Dark_Hills"]
+entity = "Enemies\\Treant\\Standard_Clawed_Treant.entity.ot"
+```
+
+`rsmm enemies pools` lists the biome pools; `rsmm enemies pool <biome>` lists
+the prefabs valid as `entity` there. Scope defaults to every open-world pool;
+narrow it with `pools`, extend it with `enemies`, and drop individuals with
+`exclude`.
+
+Two rules the builder enforces rather than documents, because both fail
+silently in-game:
+
+- **A creature is only ever assigned to a biome that streams it.** Candidates
+  come from the biome's own cast, and under `cross_biome` the pool is rewritten
+  first so the cast is streamed. Only def-owned pool slots are repointed —
+  never the projectiles, attack zones and VFX trails a real attack needs.
+- **The resource cache travels with the swap.** Each rewritten definition gets
+  the sorted union of its own `*.UsedRscCache.ot` and that of the definition
+  owning the new prefab. Without it the new meshes are unlisted, resolve to
+  null at level build, and the engine's teardown loop destroys the null — an
+  access violation nowhere near the edit.
+
+Bosses, summons and quest enemies are never in scope: no pool streams them, so
+they are placed by the script owning their encounter rather than rolled by a
+camp selector.
+
+:::caution[Unproven: imported creatures' support entities]
+A creature's projectiles and attack zones live in *its home* biome's pool. When
+`cross_biome` imports it elsewhere those entries are not repointed in, though
+the merged `UsedRscCache` does carry them. Whether pool membership is
+separately required for them is untested — if an imported creature misfires,
+this is the first thing to suspect.
+:::
+
+**The roll happens once, at `rsmm apply`**, and is baked into the emitted
+assets — not re-rolled per run. That is what keeps co-op consistent: peers
+have to agree on the seed, not on a runtime RNG. A peer without the mod sees
+vanilla monsters.
+
 ### Magical-object & talent values (`value_patches`)
 
 Edit the numbers inside a magical object or a hero talent ("Skill"). Discover
@@ -846,7 +918,8 @@ them. Don't trust prose over that table — but here it is in plain terms:
 | **Custom magic item** (`kind="item"`) | ✅ confirmed | New magical object shows in compendium + drops (verified 2026-06-02). Clone a vanilla `base`, patch values. See `ItemCloneTest`. |
 | **Edit talent / item values** (`kind="talent"`, `value_patches`) | ✅ confirmed | In-place magnitude override. See `JulietTalentBuff`. |
 | **Reskin an existing hero** (texture/model override) | ✅ confirmed | See `JulietReskin`. |
-| **Custom enemy** (`kind="enemy"`) | ⚠️ experimental | Codec round-trips and the def registers, but the in-game spawn-apply step is unproven (flag-list selector resolution unconfirmed). |
+| **Custom enemy** (`kind="enemy"`, `mode="clone"`) | ⚠️ experimental | Codec round-trips and the def self-registers at load (`EnemyDef_PostLoad` push_backs onto the tribe roster), so `UsedRscList` registration is the whole contract — but a clone has not yet been seen spawning in-game. |
+| **Randomise / replace a population** (`kind="enemy"`, `mode="override"`) | ✅ proven in-game | Verified 2026-08-28: a fixed-entity override turned every Dark Hills camp into treants, and `cross_biome` placed chapter-2/3 creatures in an earlier chapter. The kind stays ⚠️ overall because `mode="clone"` is still unproven. Remaining unknown: an imported creature's projectiles/attack zones (see the caution above). |
 | **Custom hero / map** (`kind="hero"`, `kind="map"`) | ⚠️ experimental | Clones and emits, but the roster detour / library singleton (hero) and in-game load (map) are unproven. |
 | **Custom boss** (`kind="boss"`) | ❓ guess | Picker/HP/arena byte offsets are speculative. May be rejected or crash. |
 | **Reward placement edits** (`kind="reward"`) | ⚠️ experimental | Ban chests/astrolabs/crystals or tune per-category spawn counts by overriding a retail `*.rewarddef.ot`. Codec is deserializer-verified and byte-stable; the level-load roll consuming edited data is unproven in-game. |

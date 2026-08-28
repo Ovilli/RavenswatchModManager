@@ -37,7 +37,10 @@ KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "skill", "modifier",
 KIND_CONFIDENCE: dict[str, str] = {
     "item": "confirmed",      # verified in compendium + drops (2026-06-02)
     "talent": "confirmed",    # plain in-place magnitude override, tested
-    "enemy": "experimental",  # codecs round-trip; spawn-apply step unproven
+    "enemy": "experimental",  # mode="override" is PROVEN in-game 2026-08-28 (entity_ref is
+                              # what the camp instantiates; cross_biome pool repoint places
+                              # foreign-chapter creatures). mode="clone" — adding a NEW def —
+                              # is still unproven, and the rating covers the whole kind.
     "hero": "experimental",   # clones, but roster detour + library unproven
     "map": "experimental",    # emit only; no in-game load proof
     "skill": "guess",         # herodef skill-row clone/repoint; in-game hero-page load unproven
