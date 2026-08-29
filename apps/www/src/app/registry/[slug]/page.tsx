@@ -97,28 +97,6 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
     <main className="relative overflow-hidden animate-page-in">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,hsl(var(--crimson)/0.08),transparent_50%)]" />
       <div className="relative container mx-auto space-y-6 px-6 pb-12 pt-6">
-        {mod.imageUrl ? (
-          <div
-            className={`group relative aspect-[21/9] w-full overflow-hidden rounded-xl border border-border/50 bg-muted ${mod.nsfw ? 'relative' : ''}`}
-          >
-            <img
-              src={mod.imageUrl}
-              alt={`${mod.name} cover`}
-              className={`h-full w-full object-cover ${mod.nsfw ? 'blur-xl saturate-0 transition-all duration-300 group-hover:blur-none group-hover:saturate-100' : ''}`}
-            />
-            {mod.nsfw ? (
-              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2">
-                <EyeOff className="h-8 w-8 text-crimson/80" />
-                <span className="font-mono text-xs uppercase tracking-widest text-crimson/80">
-                  NSFW
-                </span>
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <div className="aspect-[21/9] w-full rounded-xl border border-border/50 bg-muted" />
-        )}
-
         {/* Name and byline are server-rendered by `[slug]/layout.tsx` so they
             reach a crawler without JS; the owner link stays here because it is
             the one part of the byline that needs the client record. */}

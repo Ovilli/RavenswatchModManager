@@ -1,4 +1,4 @@
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, EyeOff } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { renderMarkdown } from '../../lib/markdown';
@@ -28,6 +28,7 @@ export function ServerProse({
   title,
   byline,
   summary,
+  image,
   body,
   bodyHeading,
   bodyFallback,
@@ -40,6 +41,16 @@ export function ServerProse({
   title: string;
   byline?: string | null;
   summary?: string | null;
+  /** Cover image. Rendered above the title so the body still reads as the
+   *  section under the picture, the way it did before any of this moved. */
+  image?: {
+    url?: string | null;
+    alt: string;
+    /** Blur until hover, matching the registry's own treatment. */
+    nsfw?: boolean;
+    /** Reserve the frame when there is no image (registry only). */
+    placeholder?: boolean;
+  };
   /** Markdown. Sanitized here before it reaches the DOM. */
   body?: string | null;
   bodyHeading?: string;
@@ -81,6 +92,33 @@ export function ServerProse({
       >
         <ArrowLeft className="mr-1.5 h-4 w-4" /> {backLabel}
       </Link>
+
+      {image?.url ? (
+        <div
+          className="group relative aspect-[21/9] w-full overflow-hidden rounded-xl border border-border/50 bg-muted"
+        >
+          {/* Plain <img>: mod art lives on arbitrary remote hosts, which next/image would need allowlisted one by one. Same choice the client pages made. */}
+          <img
+            src={image.url}
+            alt={image.alt}
+            className={`h-full w-full object-cover ${
+              image.nsfw
+                ? 'blur-xl saturate-0 transition-all duration-300 group-hover:blur-none group-hover:saturate-100'
+                : ''
+            }`}
+          />
+          {image.nsfw ? (
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2">
+              <EyeOff className="h-8 w-8 text-crimson/80" />
+              <span className="font-mono text-xs uppercase tracking-widest text-crimson/80">
+                NSFW
+              </span>
+            </div>
+          ) : null}
+        </div>
+      ) : image?.placeholder ? (
+        <div className="aspect-[21/9] w-full rounded-xl border border-border/50 bg-muted" />
+      ) : null}
 
       <header>
         <h1 className={titleClassName}>{title}</h1>

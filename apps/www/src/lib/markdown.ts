@@ -88,6 +88,18 @@ export function renderMarkdown(source: string | null | undefined): string {
     // Untrusted outbound links: deny referrer and opener, and tell search
     // engines this is not an endorsement.
     transformTags: {
+      // Demote every heading one level. The page's own <h1> is the mod or
+      // guide title; an author who opens their description with `# Title`
+      // would otherwise put a second <h1> on it, which is exactly the signal
+      // server-rendering this prose was meant to clean up. Each mapping is
+      // applied to the ORIGINAL tag name, so this shifts the whole scale once
+      // rather than cascading h1 all the way down to h6.
+      h1: 'h2',
+      h2: 'h3',
+      h3: 'h4',
+      h4: 'h5',
+      h5: 'h6',
+      h6: 'h6',
       a: sanitizeHtml.simpleTransform('a', {
         rel: 'nofollow ugc noopener noreferrer',
         target: '_blank',

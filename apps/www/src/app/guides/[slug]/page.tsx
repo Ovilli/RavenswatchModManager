@@ -152,7 +152,9 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
         </div>
       </div>
 
-      {g.imageUrl && !editing ? (
+      {/* An approved guide's cover is server-rendered with the rest of the
+          prose; a draft has no server block, so it still renders here. */}
+      {g.imageUrl && !editing && g.status !== 'approved' ? (
         <div className="aspect-[21/9] w-full overflow-hidden rounded-lg bg-muted">
           <img src={g.imageUrl} alt={`${g.title} cover`} className="h-full w-full object-cover" />
         </div>
