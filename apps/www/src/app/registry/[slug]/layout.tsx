@@ -13,6 +13,7 @@ interface Mod {
   summary?: string | null;
   description?: string | null;
   imageUrl?: string | null;
+  nsfw?: boolean | null;
   screenshots?: string[];
   rating?: number | null;
   ratingCount?: number | null;
@@ -171,6 +172,12 @@ export default async function Layout({
           titleClassName="text-4xl font-bold tracking-tight"
           byline={modByline(res.data)}
           summary={res.data.summary}
+          image={{
+            url: res.data.imageUrl,
+            alt: `${res.data.name ?? slug} cover`,
+            nsfw: res.data.nsfw ?? false,
+            placeholder: true,
+          }}
           body={res.data.description}
           bodyHeading="About"
           bodyFallback={res.data.summary ?? 'No description available.'}

@@ -33,9 +33,19 @@ describe('renderMarkdown — sanitization', () => {
     });
   }
 
+  it('demotes headings so the page keeps a single h1', () => {
+    // The page's h1 is the mod/guide title; a description opening with
+    // `# Title` must not add a second one.
+    const html = renderMarkdown('# Top\n\n## Sub\n\n###### Deepest');
+    expect(html).not.toContain('<h1>');
+    expect(html).toContain('<h2>Top</h2>');
+    expect(html).toContain('<h3>Sub</h3>');
+    expect(html).toContain('<h6>Deepest</h6>');
+  });
+
   it('keeps the markup Markdown is actually for', () => {
     const html = renderMarkdown('## Title\n\n- one\n- two\n\n**bold** and `code`');
-    expect(html).toContain('<h2>Title</h2>');
+    expect(html).toContain('<h3>Title</h3>');
     expect(html).toContain('<li>one</li>');
     expect(html).toContain('<strong>bold</strong>');
     expect(html).toContain('<code>code</code>');

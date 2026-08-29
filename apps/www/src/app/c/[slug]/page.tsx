@@ -244,12 +244,6 @@ export default function CollectionDetailPage({
         ) : null}
       </div>
 
-      {c.imageUrl && !editing ? (
-        <div className="aspect-[21/9] w-full overflow-hidden rounded-lg bg-muted">
-          <img src={c.imageUrl} alt={`${c.name} cover`} className="h-full w-full object-cover" />
-        </div>
-      ) : null}
-
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           {editing ? (

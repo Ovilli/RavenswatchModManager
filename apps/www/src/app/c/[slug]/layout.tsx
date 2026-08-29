@@ -117,6 +117,7 @@ export default async function Layout({
           title={res.data.name ?? slug}
           byline={collectionByline(res.data)}
           summary={res.data.summary}
+          image={{ url: res.data.imageUrl, alt: `${res.data.name ?? slug} cover` }}
           body={res.data.description}
           bodyHeading="About"
           card
