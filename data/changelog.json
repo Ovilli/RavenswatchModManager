@@ -2,6 +2,17 @@
   "generated": "2026-08-29",
   "entries": [
     {
+      "version": "5.4.1",
+      "date": "2026-08-29",
+      "summary": "On Linux, the app could fail to start at all on current systems \u2014 Debian 13, Ubuntu 24.04 and newer, recent Fedora \u2014 because of how it was packaged. It starts normally on those now, including after the app has moved itself to ~/Applications.",
+      "highlights": [
+        "The Linux AppImage quit immediately with an error about libfuse.so.2 on any system that no longer ships the older FUSE library \u2014 which is now most of them. It is packaged against a newer runtime that does not need it, so it just starts.",
+        "The same fault had a worse form: if you let the app move itself to ~/Applications so it could update on its own, your launcher icon was pointed at a copy that could not start, and the app appeared to vanish. The shortcut and the restart after the move both work now.",
+        "Stuck with a shortcut that does nothing? Download the AppImage from this release and run it once \u2014 it starts, and your existing shortcut opens it from then on. Installing libfuse2 by hand is no longer necessary.",
+        "Nothing else changed: your profiles, mods and settings are untouched, and Windows was never affected."
+      ]
+    },
+    {
       "version": "5.4.0",
       "date": "2026-08-29",
       "summary": "The app speaks \u7b80\u4f53\u4e2d\u6587. Pick your language in Settings \u2192 Appearance and the whole interface switches over immediately \u2014 no restart, and nothing else about your setup changes.",
