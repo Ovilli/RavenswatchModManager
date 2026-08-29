@@ -2,6 +2,18 @@
   "generated": "2026-08-29",
   "entries": [
     {
+      "version": "5.4.0",
+      "date": "2026-08-29",
+      "summary": "The app speaks \u7b80\u4f53\u4e2d\u6587. Pick your language in Settings \u2192 Appearance and the whole interface switches over immediately \u2014 no restart, and nothing else about your setup changes.",
+      "highlights": [
+        "New: a full Simplified Chinese translation of the app \u2014 every screen, button, dialog, error and tooltip. On a fresh install the language is chosen from the languages your system reports, so a Chinese system starts in Chinese; after that it is whatever you picked.",
+        "Switching language takes effect the moment you click it. Your profiles, mods and settings are untouched.",
+        "Chinese text gets a proper font: the typeface presets keep their look for Latin text and fall back to a Chinese face only for the characters they cannot draw, so headings and body text stay consistent instead of mixing three random fonts.",
+        "Text that RSMM does not write stays in its original language on purpose: output from the rsmm command-line tool, anything a mod supplies (an overlay's columns, a mod's description) and the game's own strings.",
+        "English is unchanged. If you never open the language setting, nothing about the app looks different."
+      ]
+    },
+    {
       "version": "5.3.1",
       "date": "2026-08-29",
       "summary": "On Linux, an app installed from the .deb (or from a folder you don't own) could never update itself \u2014 every release meant downloading and installing it again by hand. It can now move itself, once, to a copy that updates normally.",
