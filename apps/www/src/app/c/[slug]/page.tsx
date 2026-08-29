@@ -24,13 +24,10 @@ import Link from 'next/link';
 import { use, useEffect, useState } from 'react';
 import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
+import { useEditingFlag } from '../../../lib/use-editing-flag';
 import { AdBanner } from '../../components/ad-banner';
 
 const MDEditor = dynamic(() => import('@uiw/react-md-editor'), { ssr: false });
-const MDPreview = dynamic(() => import('@uiw/react-md-editor').then((m) => m.default.Markdown), {
-  ssr: false,
-});
-
 function describeApiError(err: unknown): string {
   if (isRateLimited(err)) {
     return `Rate limited — try again in ${err.retryAfter}s.`;
@@ -71,6 +68,7 @@ export default function CollectionDetailPage({
 
   // Edit mode state
   const [editing, setEditing] = useState(false);
+  useEditingFlag(editing);
   const [editName, setEditName] = useState('');
   const [editSummary, setEditSummary] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -235,11 +233,10 @@ export default function CollectionDetailPage({
   const userReview = reviews.data?.items.find((r) => r.userId === session?.user?.id);
 
   return (
-    <main className="container mx-auto space-y-6 px-6 py-12">
-      <div className="flex items-center justify-between">
-        <Link href={'/c' as Route} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
-          <ArrowLeft className="mr-1.5 h-4 w-4" /> Back to Collections
-        </Link>
+    <main className="container mx-auto space-y-6 px-6 pb-12 pt-6">
+      <div className="flex items-center justify-end">
+        {/* Back link, name, byline, summary and description are server-rendered
+            by `[slug]/layout.tsx` — see ServerProse. */}
         {isOwner && !editing ? (
           <Button type="button" variant="outline" size="sm" onClick={startEditing}>
             <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
@@ -263,24 +260,13 @@ export default function CollectionDetailPage({
               maxLength={128}
             />
           ) : (
-            <h1 className="text-3xl font-bold tracking-tight">{c.name}</h1>
-          )}
-          <p className="mt-1 text-sm text-muted-foreground">
-            by{' '}
             <Link
               href={`/u/${c.ownerId}` as Route}
-              className="text-foreground hover:text-gilt hover:underline underline-offset-2"
+              className="text-sm text-muted-foreground hover:text-gilt hover:underline underline-offset-2"
             >
-              {c.ownerName ?? 'unknown'}
-            </Link>{' '}
-            · updated {new Date(c.updatedAt).toLocaleDateString()}
-            {reviews.data?.averageRating != null ? (
-              <>
-                {' '}
-                · {reviews.data.averageRating.toFixed(1)} ★ ({reviews.data.total})
-              </>
-            ) : null}
-          </p>
+              More by {c.ownerName ?? 'unknown'}
+            </Link>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {editing ? (
@@ -377,8 +363,6 @@ export default function CollectionDetailPage({
           className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           placeholder="Summary"
         />
-      ) : c.summary ? (
-        <p className="max-w-3xl text-muted-foreground">{c.summary}</p>
       ) : null}
 
       {/* Description */}
@@ -394,13 +378,6 @@ export default function CollectionDetailPage({
               preview="edit"
               height={300}
             />
-          </div>
-        </div>
-      ) : c.description ? (
-        <div className="grimoire-card space-y-3 p-6">
-          <h2 className="text-xl font-bold tracking-tight">About</h2>
-          <div data-color-mode="dark" className="prose prose-sm prose-invert max-w-none">
-            <MDPreview source={c.description} style={{ background: 'transparent' }} />
           </div>
         </div>
       ) : null}

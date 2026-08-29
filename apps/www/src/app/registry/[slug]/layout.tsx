@@ -2,6 +2,7 @@ import { jsonLd } from '@rsmm/schemas';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { type Entity, fetchEntity } from '../../../lib/entity';
+import { ServerProse } from '../../components/server-prose';
 
 const SITE = 'Ravenswatch Mod Manager';
 const ORIGIN = 'https://rsmm.me';
@@ -16,6 +17,8 @@ interface Mod {
   rating?: number | null;
   ratingCount?: number | null;
   downloads?: number;
+  latestVersion?: string | null;
+  updatedAt?: string | null;
 }
 
 // GET /api/mods/:slug wraps the record: { mod, versions }.
@@ -79,6 +82,15 @@ export async function generateMetadata({
       images: image ? [image] : undefined,
     },
   };
+}
+
+// Mirrors the byline the client page used to render, so moving it to the
+// server is not also a copy change: author · version · updated date.
+function modByline(mod: Mod): string {
+  const parts = [mod.author ?? 'unknown'];
+  if (mod.latestVersion) parts.push(`v${mod.latestVersion}`);
+  if (mod.updatedAt) parts.push(`updated ${new Date(mod.updatedAt).toLocaleDateString('en-US')}`);
+  return parts.join(' · ');
 }
 
 function modJsonLd(slug: string, mod: Mod) {
@@ -145,6 +157,24 @@ export default async function Layout({
           type="application/ld+json"
           // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD must be inlined as a script body. The payload carries user-submitted mod metadata, so it goes through jsonLd(), which escapes `<`/`>`/`&` — see lib/json-ld.ts.
           dangerouslySetInnerHTML={{ __html: jsonLd(modJsonLd(slug, res.data)) }}
+        />
+      ) : null}
+      {/* Name, byline, summary and description, rendered on the server so the
+          page has crawlable text before any client fetch resolves. The client
+          page below no longer renders these — it owns the cover image, the
+          action buttons and everything interactive. */}
+      {res.state === 'ok' ? (
+        <ServerProse
+          backHref="/registry"
+          backLabel="Back to Registry"
+          title={res.data.name ?? slug}
+          titleClassName="text-4xl font-bold tracking-tight"
+          byline={modByline(res.data)}
+          summary={res.data.summary}
+          body={res.data.description}
+          bodyHeading="About"
+          bodyFallback={res.data.summary ?? 'No description available.'}
+          card
         />
       ) : null}
       {children}

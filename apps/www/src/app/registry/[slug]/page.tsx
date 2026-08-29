@@ -96,11 +96,7 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
   return (
     <main className="relative overflow-hidden animate-page-in">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,hsl(var(--crimson)/0.08),transparent_50%)]" />
-      <div className="relative container mx-auto space-y-6 px-6 py-12">
-        <Link href="/registry" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
-          <ArrowLeft className="mr-1.5 h-4 w-4" /> Back to Registry
-        </Link>
-
+      <div className="relative container mx-auto space-y-6 px-6 pb-12 pt-6">
         {mod.imageUrl ? (
           <div
             className={`group relative aspect-[21/9] w-full overflow-hidden rounded-xl border border-border/50 bg-muted ${mod.nsfw ? 'relative' : ''}`}
@@ -123,23 +119,19 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
           <div className="aspect-[21/9] w-full rounded-xl border border-border/50 bg-muted" />
         )}
 
-        <header className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-4xl font-bold tracking-tight">{mod.name}</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              {mod.ownerId ? (
-                <Link
-                  href={`/u/${mod.ownerId}` as Route}
-                  className="text-foreground hover:text-gilt hover:underline underline-offset-2"
-                >
-                  {mod.author ?? 'unknown'}
-                </Link>
-              ) : (
-                (mod.author ?? 'unknown')
-              )}
-              {mod.latestVersion ? ` · v${mod.latestVersion}` : ''}
-              {mod.updatedAt ? ` · updated ${new Date(mod.updatedAt).toLocaleDateString()}` : ''}
-            </p>
+        {/* Name and byline are server-rendered by `[slug]/layout.tsx` so they
+            reach a crawler without JS; the owner link stays here because it is
+            the one part of the byline that needs the client record. */}
+        <header className="flex flex-wrap items-center justify-between gap-4">
+          <div className="text-sm text-muted-foreground">
+            {mod.ownerId ? (
+              <Link
+                href={`/u/${mod.ownerId}` as Route}
+                className="text-foreground hover:text-gilt hover:underline underline-offset-2"
+              >
+                More by {mod.author ?? 'unknown'}
+              </Link>
+            ) : null}
           </div>
           <div className="flex items-center gap-2">
             {downloadUrl ? (
@@ -165,25 +157,8 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
           </div>
         </header>
 
-        {mod.summary ? (
-          <p className="text-lg text-muted-foreground max-w-3xl">{mod.summary}</p>
-        ) : null}
-
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           <div className="space-y-4 md:col-span-2">
-            <div className="grimoire-card p-6">
-              <h2 className="text-xl font-bold tracking-tight mb-4">About</h2>
-              {mod.description ? (
-                <article data-color-mode="dark" className="md-editor-themed prose-invert max-w-none">
-                  <MDPreview source={mod.description} />
-                </article>
-              ) : (
-                <div className="prose prose-sm prose-invert max-w-none text-muted-foreground">
-                  {mod.summary ?? 'No description available.'}
-                </div>
-              )}
-            </div>
-
             {(mod.screenshots?.length ?? 0) > 0 || (mod.videos?.length ?? 0) > 0 ? (
               <div className="grimoire-card space-y-4 p-6">
                 <h2 className="text-xl font-bold tracking-tight">Gallery</h2>

@@ -2,6 +2,7 @@ import { jsonLd } from '@rsmm/schemas';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { type Entity, fetchEntity } from '../../../lib/entity';
+import { ServerProse } from '../../components/server-prose';
 
 const SITE = 'Ravenswatch Mod Manager';
 const ORIGIN = 'https://rsmm.me';
@@ -79,6 +80,15 @@ export async function generateMetadata({
   };
 }
 
+// Same byline the client page rendered: author, then the star average once
+// there are real reviews behind it.
+function guideByline(g: Guide): string {
+  const author = `by ${g.ownerName ?? 'unknown'}`;
+  return g.reviewCount && g.reviewCount > 0 && g.rating != null
+    ? `${author} · ★ ${g.rating.toFixed(1)} (${g.reviewCount})`
+    : author;
+}
+
 function guideJsonLd(slug: string, g: Guide) {
   const image = g.imageUrl ?? undefined;
   return {
@@ -137,6 +147,21 @@ export default async function Layout({
           type="application/ld+json"
           // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD must be inlined as a script body. The payload carries the user-submitted guide title/summary, so it goes through jsonLd() — see lib/json-ld.ts.
           dangerouslySetInnerHTML={{ __html: jsonLd(guideJsonLd(slug, res.data)) }}
+        />
+      ) : null}
+      {/* Only an approved guide is rendered here: a draft is visible to its
+          author alone, and the API serves it to their session, not to this
+          unauthenticated server fetch. The client page still renders the
+          title and body itself for the non-approved case. */}
+      {isPublic(res) ? (
+        <ServerProse
+          backHref="/guides"
+          backLabel="Back to Guides"
+          title={res.data.title ?? slug}
+          byline={guideByline(res.data)}
+          summary={res.data.summary}
+          body={res.data.body}
+          containerClassName="container mx-auto max-w-3xl space-y-6 px-6 pt-12"
         />
       ) : null}
       {children}

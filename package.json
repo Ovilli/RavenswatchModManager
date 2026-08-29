@@ -28,7 +28,7 @@
     "test": "turbo run test",
     "test:python": "python -m pytest -n auto",
     "test:python:fast": "python -m pytest -n auto -m \"not slow\"",
-    "test:ts": "turbo run test --filter=@rsmm/schemas --filter=@rsmm/api-client --filter=desktop",
+    "test:ts": "turbo run test --filter=@rsmm/schemas --filter=@rsmm/api-client --filter=desktop --filter=www",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
     "clean": "turbo run clean && rm -rf node_modules .turbo"

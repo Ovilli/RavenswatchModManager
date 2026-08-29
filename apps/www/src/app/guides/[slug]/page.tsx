@@ -11,6 +11,7 @@ import { use, useState } from 'react';
 import { AdBanner } from '../../components/ad-banner';
 import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
+import { useEditingFlag } from '../../../lib/use-editing-flag';
 
 const MDEditor = dynamic(() => import('@uiw/react-md-editor'), { ssr: false });
 const MDPreview = dynamic(() => import('@uiw/react-md-editor').then((m) => m.default.Markdown), {
@@ -48,6 +49,7 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
   });
 
   const [editing, setEditing] = useState(false);
+  useEditingFlag(editing);
   const [editTitle, setEditTitle] = useState('');
   const [editSummary, setEditSummary] = useState('');
   const [editBody, setEditBody] = useState('');
@@ -119,11 +121,25 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
   };
 
   return (
-    <main className="container mx-auto max-w-3xl space-y-6 px-6 py-12">
+    <main
+      className={`container mx-auto max-w-3xl space-y-6 px-6 pb-12 ${
+        g.status === 'approved' ? 'pt-6' : 'pt-12'
+      }`}
+    >
       <div className="flex items-center justify-between">
-        <Link href={'/guides' as Route} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
-          <ArrowLeft className="mr-1.5 h-4 w-4" /> Back to Guides
-        </Link>
+        {/* An approved guide gets its back link from the server-rendered block
+            in `[slug]/layout.tsx`; a draft has no such block, so it needs one
+            here. */}
+        {g.status !== 'approved' ? (
+          <Link
+            href={'/guides' as Route}
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          >
+            <ArrowLeft className="mr-1.5 h-4 w-4" /> Back to Guides
+          </Link>
+        ) : (
+          <span />
+        )}
         <div className="flex items-center gap-2">
           {g.status !== 'approved' ? (
             <Badge variant="outline">{STATUS_LABEL[g.status] ?? g.status}</Badge>
@@ -166,19 +182,26 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
           </div>
         </div>
       ) : (
-        <>
-          <header className="space-y-1">
-            <h1 className="text-3xl font-bold tracking-tight">{g.title}</h1>
-            <p className="text-sm text-muted-foreground">
-              by {g.ownerName ?? 'unknown'}
-              {g.reviewCount > 0 && g.rating != null ? ` · ★ ${g.rating.toFixed(1)} (${g.reviewCount})` : ''}
-            </p>
-          </header>
+        // An approved guide has its title and body server-rendered by
+        // `[slug]/layout.tsx`, so rendering them again here would duplicate
+        // them on the page. A draft or in-review guide is not in that server
+        // fetch (it is visible only to its author's session), so it still
+        // renders here.
+        g.status !== 'approved' ? (
+          <>
+            <header className="space-y-1">
+              <h1 className="text-3xl font-bold tracking-tight">{g.title}</h1>
+              <p className="text-sm text-muted-foreground">
+                by {g.ownerName ?? 'unknown'}
+                {g.reviewCount > 0 && g.rating != null ? ` · ★ ${g.rating.toFixed(1)} (${g.reviewCount})` : ''}
+              </p>
+            </header>
 
-          <article data-color-mode="dark" className="md-editor-themed prose-invert max-w-none">
-            <MDPreview source={g.body} />
-          </article>
-        </>
+            <article data-color-mode="dark" className="md-editor-themed prose-invert max-w-none">
+              <MDPreview source={g.body} />
+            </article>
+          </>
+        ) : null
       )}
 
       {/* Owner / admin lifecycle controls */}
