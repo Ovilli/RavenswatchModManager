@@ -195,6 +195,45 @@ jobs:
       - name: Rebuild lifecycle scripts (post-audit)
         run: pnpm rebuild
 
+      # --- AppImage runtime ---------------------------------------------------
+      # Tauri bundles the AppImage through `linuxdeploy --output appimage`,
+      # which embeds AppImageKit's *continuous* runtime. That runtime mounts its
+      # squashfs by dlopen'ing `libfuse.so.2`, and fuse2 is gone from every
+      # current distribution — Debian 13, Ubuntu 24.04+, Fedora 40+ ship fuse3
+      # only. There the shipped AppImage dies before any of our code runs:
+      #
+      #   dlopen(): error loading libfuse.so.2
+      #
+      # That is not only a bad first-run for someone downloading the AppImage
+      # by hand. `update_migrate.rs` plants this exact file and repoints the
+      # user's launcher at it, so an unrunnable runtime turns a self-update
+      # into an app that cannot be started at all, from the icon or from the
+      # post-migration relaunch.
+      #
+      # AppImage's type2-runtime links squashfuse statically and needs no fuse2.
+      # `LDAI_RUNTIME_FILE` is linuxdeploy-plugin-appimage's supported override,
+      # read when the AppImage is assembled — i.e. before Tauri signs it, so the
+      # updater signature still covers the exact bytes users receive and nothing
+      # about the signing flow changes.
+      #
+      # Pinned to a dated release with a recorded hash rather than tracking
+      # `continuous`: this runtime is the first code executed on every Linux
+      # launch, so an upstream rebuild must fail the release loudly instead of
+      # shipping unreviewed bytes into it.
+      - name: Fetch AppImage runtime (fuse3-capable)
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="20251108"
+          sha="2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d"
+          dest="$RUNNER_TEMP/appimage-runtime-x86_64"
+          curl -fsSL --retry 3 -o "$dest" \
+            "https://github.com/AppImage/type2-runtime/releases/download/${version}/runtime-x86_64"
+          echo "${sha}  ${dest}" | sha256sum -c -
+          chmod +x "$dest"
+          echo "LDAI_RUNTIME_FILE=$dest" >> "$GITHUB_ENV"
+
       - name: Build desktop (Tauri, Linux)
         # `tauri-action@v0` produced bundles + `.sig` files locally but
         # actively deleted the sig files before subsequent steps could
@@ -209,6 +248,33 @@ jobs:
         run: |
           set -euo pipefail
           pnpm tauri build ${{ matrix.args }}
+
+      # The override above is an environment variable read by a tool we do not
+      # control, so nothing about a successful build proves it was honoured. A
+      # runtime that still wants fuse2 produces a perfectly valid-looking
+      # AppImage that no current distribution can launch, and the first person
+      # to find out would be a user whose launcher was just repointed at it.
+      # Assert on the artifact instead: the fuse2 dlopen strings live in the
+      # runtime prefix, so their absence is direct evidence of which runtime
+      # got embedded.
+      - name: Verify AppImage runtime needs no fuse2
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          set -euo pipefail
+          img="$(find apps/desktop/src-tauri/target -path '*/bundle/appimage/*' -name '*.AppImage' -type f | head -n1)"
+          if [ -z "$img" ]; then
+            echo "::error::No AppImage produced — cannot verify its runtime."
+            exit 1
+          fi
+          echo "checking $img"
+          # 256 KiB comfortably covers the ~944 KiB runtime's string table start
+          # while never reaching the squashfs payload of a real bundle.
+          if head -c 262144 "$img" | grep -qa 'libfuse\.so\.2'; then
+            echo "::error::AppImage embeds the fuse2 runtime — LDAI_RUNTIME_FILE was not honoured. It would not start on Debian 13 / Ubuntu 24.04+ / Fedora 40+."
+            exit 1
+          fi
+          echo "OK: runtime does not reference libfuse.so.2"
 
       - name: Build desktop (Tauri, Windows)
         # PowerShell is required on windows-latest because `shell: bash`
