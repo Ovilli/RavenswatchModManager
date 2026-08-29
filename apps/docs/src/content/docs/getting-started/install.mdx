@@ -31,6 +31,16 @@ The desktop app gives you a graphical interface to browse, install, and manage m
     | Arch Linux | [AUR](https://aur.archlinux.org/packages/rsmm): `yay -S rsmm` |
     | Other | Use the [CLI](#cli-advanced) or `pipx` below |
 
+    <Aside type="tip">
+    **Prefer the AppImage if you want automatic updates.** The in-app updater
+    replaces the running file, which it can only do for an AppImage you own —
+    put it somewhere like `~/Applications`. Installed from the `.deb` or from a
+    root-owned directory instead? The app offers a one-click **Install to
+    ~/Applications** the next time an update lands, and updates itself from
+    then on. The old system copy stays put; the app tells you the
+    `sudo apt remove` line for it.
+    </Aside>
+
     <Aside type="caution">
     Gray screen on launch (Debian/Ubuntu)? Run with the compositing fallback:
     ```sh

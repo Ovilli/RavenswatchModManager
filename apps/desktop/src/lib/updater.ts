@@ -33,7 +33,23 @@ export interface InstallTarget {
   /** False when an in-place update would fail with EACCES. */
   writable: boolean;
   reason: string;
+  /** True when `migrateToAppImage()` can rescue this install (Linux only). */
+  canMigrate?: boolean;
 }
+
+/** What `migrateToAppImage()` planted, and what it left behind. */
+export interface MigrationResult {
+  /** Where the self-updating AppImage now lives. */
+  path: string;
+  /** The desktop entry that was rewritten to point at it, if any. */
+  desktopEntry: string | null;
+  version: string;
+  /** How to remove the system package this copy supersedes, when there is one. */
+  leftover: string | null;
+}
+
+/** Progress event emitted by the Rust side while the AppImage downloads. */
+export const MIGRATE_PROGRESS_EVENT = 'updater://migrate-progress';
 
 /**
  * Ask the Rust side whether the updater can actually replace this install.
@@ -42,7 +58,8 @@ export interface InstallTarget {
  * file, and it needs the containing directory too, because it renames the old
  * file into a scratch dir alongside it). When that isn't permitted the plugin
  * only reports `Permission denied (os error 13)` after a full download, so we
- * check first and route the user to a manual download instead.
+ * check first and offer `migrateToAppImage()` (or, failing that, a manual
+ * download) instead.
  *
  * Returns `null` when the check can't run (web preview, older shell) — callers
  * should treat that as "go ahead and try".
@@ -70,6 +87,46 @@ export async function openReleasesPage(): Promise<void> {
   }
   const { openUrl } = await import('@tauri-apps/plugin-opener');
   await openUrl(RELEASES_URL);
+}
+
+/**
+ * Escape a Linux install the updater can never write to.
+ *
+ * A `.deb` lives in `/usr/bin` and an AppImage can sit in a root-owned store;
+ * either way Tauri's in-place updater dead-ends and the user has been
+ * reinstalling by hand on every release. This downloads the pending update
+ * (signature-verified by the updater plugin, same pubkey as a normal update),
+ * installs it as an AppImage under `~/Applications`, and repoints the desktop
+ * entry. `$APPIMAGE` is set from the next launch onward, so the ordinary
+ * updater takes over and this never runs again.
+ *
+ * Call `relaunchMigrated()` and then quit — the new process starts once this
+ * one is gone (single-instance would otherwise bounce it).
+ */
+export async function migrateToAppImage(
+  onProgress?: (downloaded: number, total: number | null) => void,
+): Promise<MigrationResult> {
+  if (!inTauri()) throw new Error('Not running in the desktop app.');
+  const { invoke } = await import('@tauri-apps/api/core');
+  const { listen } = await import('@tauri-apps/api/event');
+
+  const stop = onProgress
+    ? await listen<{ downloaded: number; total: number | null }>(MIGRATE_PROGRESS_EVENT, (e) => {
+        onProgress(e.payload.downloaded, e.payload.total ?? null);
+      })
+    : null;
+  try {
+    return await invoke<MigrationResult>('migrate_to_appimage');
+  } finally {
+    stop?.();
+  }
+}
+
+/** Queue the migrated AppImage to start once this process exits. */
+export async function relaunchMigrated(): Promise<void> {
+  if (!inTauri()) return;
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('relaunch_migrated_appimage');
 }
 
 export async function checkForUpdate(): Promise<AvailableUpdate | UpdateCheckError | null> {

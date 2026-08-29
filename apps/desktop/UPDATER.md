@@ -50,9 +50,45 @@ manifest that the client polls for new versions.
 
 ## Cross-platform notes
 
-- **Windows** — installer is MSI. Updater applies a new MSI in-place.
-- **Linux** — AppImage. Updater rewrites the AppImage on disk; the OS handles
-  the rest on next launch.
+- **Windows** — NSIS installer. The updater runs the new installer in place.
+- **Linux** — AppImage. The updater rewrites the AppImage on disk; the OS
+  handles the rest on next launch.
+
+### Linux installs the updater cannot write to
+
+The updater only ever rewrites the *running* binary, so two Linux cases
+dead-end: a `.deb` install (the binary is `/usr/bin/...`, root-owned, and
+`$APPIMAGE` is unset) and an AppImage parked somewhere root-owned (`/opt`, an
+AppImageLauncher store). Before this was handled, both meant a manual reinstall
+on **every** release.
+
+`src-tauri/src/update_env.rs` detects the state up front — the plugin otherwise
+only reports `Permission denied (os error 13)` after a full download — and
+`src-tauri/src/update_migrate.rs` provides the way out:
+
+1. The pending update is downloaded through `Update::download()`, so its
+   minisign signature is verified against the same embedded pubkey as any
+   other update. Nothing unsigned is ever written.
+2. The payload is checked for the AppImage type-2 marker, staged under a
+   PID-qualified name, `chmod 0755`, and renamed to
+   `~/Applications/RavenswatchModManager.AppImage`.
+3. The system `.desktop` entry (found by matching `Exec=` against the running
+   binary, not by guessing its name) is copied to
+   `~/.local/share/applications` under the **same file name** — which shadows
+   `/usr/share/applications` — with only `Exec=` repointed and `TryExec=`
+   dropped. `Name`, `Icon`, `StartupWMClass` and the
+   `x-scheme-handler/rsmm` registration the OAuth deep link needs all survive;
+   themed icons are copied into `~/.local/share/icons` so they outlive the
+   package.
+4. The app queues the new AppImage on a 2-second delay and quits through
+   `quitApp()`. The delay is load-bearing: `tauri-plugin-single-instance` would
+   otherwise hand the new process's argv to the dying one and the new copy
+   would exit immediately.
+
+Nothing outside `$HOME` is touched — the old system copy stays where the
+package manager put it, and the UI reports the `apt remove` line for it. From
+the next launch `$APPIMAGE` is set, so the ordinary in-place updater takes over
+and the migration never runs again.
 
 If the feed reports no newer version, the banner stays hidden. If
 `latest.json` is missing/unreachable or the signature does not match the

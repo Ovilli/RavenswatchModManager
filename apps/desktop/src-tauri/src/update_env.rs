@@ -12,13 +12,17 @@
 //! the "AppImage" the updater tries to rewrite is `/usr/bin/<app>`, and no
 //! amount of retrying will ever succeed.
 //!
-//! This module reports that state up-front so the UI can point at the
-//! downloads page instead of failing with an errno.
+//! This module reports that state up-front, so the UI can offer the escape
+//! hatch in `update_migrate` (plant a self-updating AppImage under `$HOME`)
+//! instead of failing with an errno.
 
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
 #[derive(Serialize)]
+// Tauri camel-cases command *arguments*, never the payload it returns — a
+// snake_case field would reach the frontend verbatim and read as `undefined`.
+#[serde(rename_all = "camelCase")]
 pub struct UpdateTarget {
     /// `appimage` | `system-package` | `portable` | `unsupported-check`.
     pub kind: String,
@@ -28,6 +32,10 @@ pub struct UpdateTarget {
     pub writable: bool,
     /// Human-readable explanation, empty when `writable` is true.
     pub reason: String,
+    /// True when `update_migrate` can rescue this install by planting a
+    /// self-updating AppImage under `$HOME` instead. Every blocked Linux case
+    /// qualifies — that is the whole point of the escape hatch.
+    pub can_migrate: bool,
 }
 
 impl UpdateTarget {
@@ -37,6 +45,7 @@ impl UpdateTarget {
             path: path.map(|p| p.display().to_string()),
             writable: true,
             reason: String::new(),
+            can_migrate: false,
         }
     }
 
@@ -46,6 +55,7 @@ impl UpdateTarget {
             path: path.map(|p| p.display().to_string()),
             writable: false,
             reason: reason.into(),
+            can_migrate: cfg!(target_os = "linux"),
         }
     }
 }
@@ -106,8 +116,8 @@ fn detect() -> UpdateTarget {
                 Some(path.clone()),
                 format!(
                     "No write access to {} — the updater has to replace the AppImage in place. \
-                     Move it somewhere you own (for example ~/Applications) and relaunch, or \
-                     download the new version manually.",
+                     A copy can be installed under your home directory instead, which updates \
+                     itself from then on.",
                     parent.display()
                 ),
             );
@@ -126,8 +136,8 @@ fn detect() -> UpdateTarget {
             "system-package",
             Some(exe),
             "This copy was installed system-wide (.deb or distro package), so the in-app \
-             updater can't replace it. Install the new version from the downloads page, \
-             or use your package manager.",
+             updater can't replace it. A copy can be installed under your home directory \
+             instead, which updates itself from then on.",
         );
     }
 
@@ -138,7 +148,8 @@ fn detect() -> UpdateTarget {
             Some(exe),
             format!(
                 "No write access to {} — the updater has to replace the app binary in place. \
-                 Download the new version manually instead.",
+                 A copy can be installed under your home directory instead, which updates \
+                 itself from then on.",
                 parent.display()
             ),
         );
@@ -186,5 +197,8 @@ mod tests {
         let t = detect();
         assert!(!t.kind.is_empty());
         assert_eq!(t.writable, t.reason.is_empty());
+        // A blocked install always has a way out on Linux; a writable one
+        // never needs one.
+        assert_eq!(t.can_migrate, !t.writable);
     }
 }

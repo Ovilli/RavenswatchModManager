@@ -4,6 +4,7 @@ mod loader_log;
 mod profile_dir;
 mod rsmm_env;
 mod update_env;
+mod update_migrate;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -58,6 +59,8 @@ pub fn run() {
             rsmm_env::rsmm_runtime_env,
             rsmm_env::probe_rsmm,
             update_env::update_install_target,
+            update_migrate::migrate_to_appimage,
+            update_migrate::relaunch_migrated_appimage,
             graphics_mode::gpu_acceleration_disabled,
             graphics_mode::set_gpu_acceleration_disabled,
             profile_dir::open_profile_dir,

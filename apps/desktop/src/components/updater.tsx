@@ -3,23 +3,28 @@ import { AlertTriangle, Download, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import pkg from '../../package.json';
 import { appendLauncherLog } from '../lib/launcher-log';
+import { quitApp } from '../lib/quit';
 import {
+  type LoaderDownloadProgress,
+  type UpdateLoaderResult,
   formatBytes,
   gameStatus,
-  type LoaderDownloadProgress,
   restartGame,
-  type UpdateLoaderResult,
   updateLoader,
 } from '../lib/rsmm';
 import {
   type AvailableUpdate,
+  type InstallTarget,
+  type MigrationResult,
   type UpdateCheckError,
   checkForUpdate,
   getAppVersion,
   getInstallTarget,
   isPermissionError,
+  migrateToAppImage,
   openReleasesPage,
   relaunchApp,
+  relaunchMigrated,
 } from '../lib/updater';
 import { Button } from './chrome';
 import { useToast } from './toast';
@@ -36,11 +41,19 @@ interface UpdateStatus {
     // In-place install is impossible on this machine (read-only AppImage
     // location, or a system-wide .deb install). The user has to download.
     | 'manual'
+    // Same dead end, but on Linux, where we can offer to plant a
+    // self-updating AppImage under $HOME instead of a manual reinstall.
+    | 'migrate'
+    | 'migrating'
+    | 'migrated'
     | 'dismissed';
   update?: AvailableUpdate;
   error?: string;
   checkError?: UpdateCheckError;
   progress?: { downloaded: number; total: number | null };
+  migration?: MigrationResult;
+  /** Why the in-place path is unavailable — shown alongside the offer. */
+  blockedReason?: string;
 }
 
 /** Shared store so the Settings panel and the layout banner stay in sync. */
@@ -125,12 +138,20 @@ async function applyUpdate(): Promise<void> {
   // point at the downloads page.
   const target = await getInstallTarget();
   if (target && !target.writable) {
-    setStatus({ state: 'manual', update, error: target.reason });
     void appendLauncherLog('warn', '[Updater] In-place update not possible', {
       kind: target.kind,
       path: target.path,
       reason: target.reason,
+      canMigrate: target.canMigrate ?? false,
     });
+    // Linux has a way out: install a self-updating AppImage under $HOME. It
+    // moves where the app lives and restarts it, so it is offered rather than
+    // done automatically.
+    setStatus(
+      target.canMigrate
+        ? { state: 'migrate', update, blockedReason: target.reason }
+        : { state: 'manual', update, error: target.reason },
+    );
     return;
   }
 
@@ -162,6 +183,58 @@ async function applyUpdate(): Promise<void> {
     }
     setStatus({ state: 'error', error: `Update download/install failed: ${detail}`, update });
   }
+}
+
+/**
+ * Move this install onto a self-updating AppImage under `$HOME`.
+ *
+ * The relaunch is deliberately two steps: Rust queues the new process on a
+ * short delay and we quit through the normal shutdown path, because the
+ * single-instance plugin would otherwise hand the new process's argv to this
+ * one and the new copy would exit immediately.
+ */
+async function runMigration(): Promise<void> {
+  const update = sharedStatus.update;
+  const blockedReason = sharedStatus.blockedReason;
+  setStatus({ state: 'migrating', update, progress: { downloaded: 0, total: null } });
+  try {
+    const migration = await migrateToAppImage((downloaded, total) => {
+      setStatus({ state: 'migrating', update, progress: { downloaded, total } });
+    });
+    void appendLauncherLog('info', '[Updater] migrated to a self-updating AppImage', {
+      path: migration.path,
+      desktopEntry: migration.desktopEntry,
+      version: migration.version,
+    });
+    setStatus({ state: 'migrated', update, migration });
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    void appendLauncherLog('error', '[Updater] migration failed', { error: detail });
+    // Nothing was moved — the old install is untouched, so the manual
+    // download is still the honest fallback.
+    setStatus({
+      state: 'manual',
+      update,
+      error: `${blockedReason ?? ''} Installing a self-updating copy failed: ${detail}`.trim(),
+    });
+  }
+}
+
+/** Start the migrated AppImage and quit, so the new copy takes over. */
+async function finishMigration(): Promise<void> {
+  try {
+    await relaunchMigrated();
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    void appendLauncherLog('error', '[Updater] migrated relaunch failed', { error: detail });
+    setStatus({
+      state: 'error',
+      update: sharedStatus.update,
+      error: `The new copy is installed but couldn't be started (${detail}). Close this window and open it from your launcher.`,
+    });
+    return;
+  }
+  await quitApp();
 }
 
 export function UpdaterBanner() {
@@ -258,6 +331,122 @@ export function UpdaterBanner() {
               Remind me later
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Migrating: the replacement AppImage is downloading into ~/Applications.
+  if (status.state === 'migrating') {
+    const p = status.progress;
+    return (
+      <output className="flex w-full items-center gap-3 border-b border-oxblood/60 bg-oxblood/20 px-4 py-2">
+        <RefreshCw className="h-4 w-4 text-gilt shrink-0 animate-spin" />
+        <span className="font-serif-italic text-parchment shrink-0">
+          Installing a self-updating copy…
+        </span>
+        <div className="flex-1 max-w-80">
+          <ProgressBar value={p?.downloaded ?? 0} max={p?.total ?? 0} indeterminate={!p?.total} />
+        </div>
+      </output>
+    );
+  }
+
+  // Migrated: everything is on disk, the app just has to restart into it.
+  if (status.state === 'migrated' && status.migration) {
+    const m = status.migration;
+    return (
+      <div
+        role="alert"
+        className="fixed inset-0 z-[80] flex items-center justify-center bg-pitch/90"
+      >
+        <div className="mx-4 w-full max-w-lg rounded-lg border-2 border-crimson bg-pitch p-8 shadow-2xl">
+          <div className="text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-crimson/20">
+              <Download className="h-8 w-8 text-crimson" />
+            </div>
+            <h2 className="font-fraktur text-3xl text-crimson">Ready to restart</h2>
+            <p className="mt-2 font-serif-italic text-parchment">
+              v{m.version} is installed at
+              <span className="font-mono block mt-1 break-all text-sm text-ash">{m.path}</span>
+            </p>
+            <p className="mt-3 font-serif-italic text-sm text-ash">
+              From now on updates install themselves — this is the last time you have to do this.
+            </p>
+          </div>
+
+          {m.leftover ? (
+            <p className="font-mono mt-4 rounded border border-oxblood/30 bg-pitch/60 p-3 text-xs text-ash leading-relaxed">
+              {m.leftover}
+            </p>
+          ) : null}
+
+          <div className="mt-6 flex flex-col items-center gap-3">
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => {
+                finishMigration().catch(() => {});
+              }}
+            >
+              <Download className="h-4 w-4" /> Restart into the new copy
+            </Button>
+            <button
+              type="button"
+              onClick={() => set({ state: 'dismissed', update: status.update })}
+              className="font-mono text-xs text-ash underline-offset-2 hover:text-parchment hover:underline"
+            >
+              Later
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Migrate: in-place is impossible, but on Linux we can move the install
+  // somewhere that updates itself. Offered, never done silently — it relocates
+  // the app and restarts it.
+  if (status.state === 'migrate') {
+    return (
+      <div className="flex items-start gap-3 border-b border-gilt/50 bg-gilt/10 px-4 py-3">
+        <AlertTriangle className="h-4 w-4 text-gilt shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <p className="font-serif-italic text-sm text-parchment mb-1">
+            Update v{status.update?.version} can't be installed over this copy
+          </p>
+          <p className="font-mono text-xs text-ash break-words">
+            {status.blockedReason} Installing it to ~/Applications instead takes a few seconds and
+            makes every future update automatic.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            type="button"
+            size="sm"
+            variant="primary"
+            onClick={() => {
+              runMigration().catch(() => {});
+            }}
+          >
+            <Download className="h-3.5 w-3.5" /> Install to ~/Applications
+          </Button>
+          <button
+            type="button"
+            onClick={() => {
+              openReleasesPage().catch(() => {});
+            }}
+            className="font-mono text-xs text-ash hover:text-parchment"
+          >
+            Downloads
+          </button>
+          <button
+            type="button"
+            onClick={() => set({ state: 'dismissed', update: status.update })}
+            className="font-mono text-xs text-ash hover:text-parchment"
+          >
+            Dismiss
+          </button>
         </div>
       </div>
     );
@@ -470,11 +659,19 @@ export function UpdaterSettings() {
   // restart here is the difference between "updated" and "in effect".
   const [needsGameRestart, setNeedsGameRestart] = useState(false);
   const [restarting, setRestarting] = useState(false);
+  // Non-null only where the in-place updater can never work (a Linux .deb, a
+  // root-owned AppImage store). Offering the escape hatch here — rather than
+  // only when a newer release happens to exist — is what lets a user who is
+  // already up to date get off the reinstall treadmill before it bites.
+  const [migratable, setMigratable] = useState<InstallTarget | null>(null);
 
   useEffect(() => {
     let alive = true;
     void getAppVersion().then((v) => {
       if (alive && v) setAppVersion(v);
+    });
+    void getInstallTarget().then((t) => {
+      if (alive && t && !t.writable && t.canMigrate) setMigratable(t);
     });
     // Read-only probe: reports the planted loader version without writing
     // anything into the game directory. Offline just leaves it unknown —
@@ -626,6 +823,26 @@ export function UpdaterSettings() {
         ) : null}
       </div>
 
+      {migratable ? (
+        <div className="flex flex-wrap items-center gap-3 border border-gilt/40 bg-pitch/40 px-3 py-2">
+          <p className="flex-1 text-parchment text-sm">
+            This copy can't update itself.
+            <span className="mt-1 block font-mono text-ash text-xs">{migratable.reason}</span>
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="primary"
+            disabled={busy || status.state === 'migrating'}
+            onClick={() => {
+              runMigration().catch(() => {});
+            }}
+          >
+            <Download className="h-3.5 w-3.5" /> Install to ~/Applications
+          </Button>
+        </div>
+      ) : null}
+
       {loaderBusy && loaderProgress ? (
         <output className="flex items-center gap-3">
           <span className="shrink-0 font-serif-italic text-parchment text-sm">
@@ -648,8 +865,8 @@ export function UpdaterSettings() {
       {needsGameRestart ? (
         <div className="flex flex-wrap items-center gap-3 border border-gilt/40 bg-pitch/40 px-3 py-2">
           <p className="flex-1 text-parchment text-sm">
-            The new loader takes effect in a fresh session — a running game keeps the one it
-            started with.
+            The new loader takes effect in a fresh session — a running game keeps the one it started
+            with.
           </p>
           <Button
             type="button"
