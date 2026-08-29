@@ -2,6 +2,18 @@
   "generated": "2026-08-29",
   "entries": [
     {
+      "version": "5.3.1",
+      "date": "2026-08-29",
+      "summary": "On Linux, an app installed from the .deb (or from a folder you don't own) could never update itself \u2014 every release meant downloading and installing it again by hand. It can now move itself, once, to a copy that updates normally.",
+      "highlights": [
+        "Installed the .deb, or keeping the AppImage somewhere like /opt? The app can now install itself to ~/Applications for you and restart into it. From then on updates arrive the same way they do everywhere else, with no download page and no reinstall.",
+        "The offer appears when an update is waiting, and there is also a button for it in Settings, so you can get it over with while you are already up to date.",
+        "Your launcher entry, icon and sign-in links are carried over, so the shortcut you already have keeps working and simply opens the new copy.",
+        "The download is signature-checked exactly like any other update before a single byte is installed, and nothing outside your home folder is touched \u2014 the old system-wide copy stays where your package manager put it, and the app tells you the command to remove it.",
+        "Windows is unaffected: updates there already installed themselves."
+      ]
+    },
+    {
       "version": "5.3.0",
       "date": "2026-08-29",
       "summary": "Banning magical objects no longer means knowing their internal names \u2014 pick them from a searchable list of the game's own icons \u2014 and a mod's settings now open in place instead of throwing you into a page of every mod's settings.",
