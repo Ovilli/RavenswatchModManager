@@ -2,6 +2,7 @@ import { Cpu } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ackDisclosure, disclosureAck } from '../lib/first-run';
+import { useT } from '../lib/i18n-react';
 import { Button } from './chrome';
 
 /**
@@ -38,6 +39,7 @@ async function openExternal(url: string): Promise<void> {
  * never shown two stacked modals.
  */
 export function AiDisclosureDialog({ onAcknowledged }: { onAcknowledged?: () => void }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only — the ack is read from storage, and re-running on a new onAcknowledged identity would reopen a dialog the user just closed
@@ -67,30 +69,27 @@ export function AiDisclosureDialog({ onAcknowledged }: { onAcknowledged?: () => 
         <header className="flex items-start gap-3">
           <div>
             <h2 id="ai-disclosure-title" className="font-fraktur text-2xl text-parchment">
-              How this project was built
+              {t('How this project was built')}
             </h2>
             <p className="font-serif-italic mt-1 text-ash">
-              A one-time note on the tools behind RSMM. It will not appear again.
+              {t('A one-time note on the tools behind RSMM. It will not appear again.')}
             </p>
           </div>
         </header>
 
         <div className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
           <p className="font-serif-italic leading-relaxed text-parchment/90">
-            Ravenswatch ships no modding API. Everything RSMM does had to be reverse-engineered from
-            the shipped executable and its data files: the cooked-asset cipher, the engine function
-            map, the Lua scripting layer. That work was done with the usual instruments. Ghidra, a
-            disassembler, pattern scanners, custom miners, and a great deal of in-game testing. An
-            AI coding assistant (Claude) was one of those instruments, used for reading decompiler
-            output, drafting analysis tooling, and writing application code.
+            {t(
+              'Ravenswatch ships no modding API. Everything RSMM does had to be reverse-engineered from the shipped executable and its data files: the cooked-asset cipher, the engine function map, the Lua scripting layer. That work was done with the usual instruments. Ghidra, a disassembler, pattern scanners, custom miners, and a great deal of in-game testing. An AI coding assistant (Claude) was one of those instruments, used for reading decompiler output, drafting analysis tooling, and writing application code.',
+            )}
           </p>
         </div>
         <footer className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-border pt-4">
           <Button type="button" size="sm" onClick={() => void openExternal(REPO_URL)}>
-            View the source
+            {t('View the source')}
           </Button>
           <Button type="button" size="sm" variant="primary" onClick={accept}>
-            Understood
+            {t('Understood')}
           </Button>
         </footer>
       </div>

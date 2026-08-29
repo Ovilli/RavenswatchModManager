@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import pkg from '../../package.json';
 import { type ChangelogEntry, loadChangelog, pendingEntries } from '../lib/changelog';
 import { changelogSeen, hasRunBefore, markChangelogSeen } from '../lib/first-run';
+import { TParts, useT } from '../lib/i18n-react';
 import { getAppVersion } from '../lib/updater';
 import { AiDisclosureDialog } from './ai-disclosure';
 import { Button, MonoTag } from './chrome';
@@ -44,6 +45,7 @@ export function ChangelogSection({ entry }: { entry: ChangelogEntry }) {
  * the notes again rather than swallow them.
  */
 export function ChangelogDialog({ enabled }: { enabled: boolean }) {
+  const t = useT();
   const [entries, setEntries] = useState<ChangelogEntry[]>([]);
   const [current, setCurrent] = useState<string>(pkg.version ?? '0.0.0');
 
@@ -111,10 +113,15 @@ export function ChangelogDialog({ enabled }: { enabled: boolean }) {
           </span>
           <div>
             <h2 id="changelog-title" className="font-fraktur text-2xl text-parchment">
-              What's new
+              {t("What's new")}
             </h2>
+            {/* The version is markup, not text, so the whole sentence stays
+                one message and the styled node fills its placeholder. */}
             <p className="font-serif-italic mt-1 text-ash">
-              RSMM updated to <span className="font-mono text-gilt">v{current}</span>.
+              <TParts
+                text={t('RSMM updated to {version}.')}
+                parts={{ version: <span className="font-mono text-gilt">v{current}</span> }}
+              />
             </p>
           </div>
         </header>
@@ -127,7 +134,7 @@ export function ChangelogDialog({ enabled }: { enabled: boolean }) {
 
         <footer className="mt-5 flex items-center justify-end gap-2 border-t border-border pt-4">
           <Button type="button" size="sm" variant="primary" onClick={dismiss}>
-            Continue
+            {t('Continue')}
           </Button>
         </footer>
       </div>

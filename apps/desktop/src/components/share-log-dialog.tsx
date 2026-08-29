@@ -3,6 +3,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { Check, ExternalLink, Link2, Loader2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { api, describeApiError } from '../lib/api';
+import { useT } from '../lib/i18n-react';
 import { appendLauncherLog, readLauncherLog } from '../lib/launcher-log';
 import { buildLogReport } from '../lib/log-share';
 import type { LocalMod } from '../lib/rsmm';
@@ -30,6 +31,7 @@ export function ShareLogDialog({
   loaderPath?: string | null;
   onClose: () => void;
 }) {
+  const t = useT();
   const toast = useToast();
   const [note, setNote] = useState('');
   const [redact, setRedact] = useState(true);
@@ -88,11 +90,14 @@ export function ShareLogDialog({
         expiresAt: res.expiresAt,
         bytes: report.content.length,
       });
-      toast.push('Log uploaded — link copied below.', 'success');
+      toast.push(t('Log uploaded — link copied below.'), 'success');
     } catch (err) {
       setError(
         isRateLimited(err)
-          ? `Too many uploads — try again in ${err.retryAfter}s. (Shares are rate limited to keep this from being used as file hosting.)`
+          ? t(
+              'Too many uploads — try again in {seconds}s. (Shares are rate limited to keep this from being used as file hosting.)',
+              { seconds: err.retryAfter },
+            )
           : describeApiError(err),
       );
     } finally {
@@ -101,7 +106,7 @@ export function ShareLogDialog({
   };
 
   const expiryLabel = shared
-    ? new Date(shared.expiresAt).toLocaleDateString(undefined, {
+    ? new Date(shared.expiresAt).toLocaleDateString(t.tag, {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
@@ -113,16 +118,17 @@ export function ShareLogDialog({
       <Panel className="max-h-[90vh] w-full max-w-3xl overflow-auto">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="font-fraktur text-2xl text-parchment">Share this log</h3>
+            <h3 className="font-fraktur text-2xl text-parchment">{t('Share this log')}</h3>
             <p className="font-serif-italic mt-1 text-sm text-ash">
-              Uploads the log once and gives you a link to paste into a bug report — no more pasting
-              thousands of lines into chat.
+              {t(
+                'Uploads the log once and gives you a link to paste into a bug report — no more pasting thousands of lines into chat.',
+              )}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t('Close')}
             className="text-ash transition-colors hover:text-parchment"
           >
             <X className="h-5 w-5" aria-hidden />
@@ -134,7 +140,7 @@ export function ShareLogDialog({
         {shared ? (
           <div className="space-y-3">
             <p className="font-serif-italic text-parchment">
-              Uploaded. Paste this link wherever you are asking for help.
+              {t('Uploaded. Paste this link wherever you are asking for help.')}
             </p>
             <div className="flex flex-wrap items-center gap-2 border border-gilt/40 bg-pitch/60 p-3">
               <span className="font-mono min-w-0 flex-1 break-all text-sm text-gilt">
@@ -143,16 +149,18 @@ export function ShareLogDialog({
               <CopyButton value={shared.url} />
               <Button type="button" size="sm" onClick={() => void openUrl(shared.url)}>
                 <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-                Open
+                {t('Open')}
               </Button>
             </div>
             <p className="font-serif-italic text-xs text-ash">
-              The link stops working on {expiryLabel} and the text is deleted then. Anyone with the
-              link can read it, so treat it as public.
+              {t(
+                'The link stops working on {date} and the text is deleted then. Anyone with the link can read it, so treat it as public.',
+                { date: expiryLabel },
+              )}
             </p>
             <div className="flex justify-end">
               <Button type="button" variant="gilt" onClick={onClose}>
-                Done
+                {t('Done')}
               </Button>
             </div>
           </div>
@@ -160,46 +168,53 @@ export function ShareLogDialog({
           <div className="space-y-3">
             <label className="block">
               <span className="font-mono text-xs uppercase tracking-wider text-ash">
-                What went wrong? (optional)
+                {t('What went wrong? (optional)')}
               </span>
               <textarea
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 rows={2}
-                placeholder="Crashes a few seconds after entering Dark Hills with 3 mods on."
+                placeholder={t('Crashes a few seconds after entering Dark Hills with 3 mods on.')}
                 className="mt-1 w-full border border-border bg-pitch/60 px-3 py-2 text-sm text-parchment placeholder:text-ash focus:border-gilt/60 focus:outline-none"
               />
             </label>
 
             <div className="flex flex-wrap gap-4">
-              <Toggle checked={redact} onChange={setRedact} label="hide personal details" />
+              <Toggle checked={redact} onChange={setRedact} label={t('hide personal details')} />
               <Toggle
                 checked={includeLauncher}
                 onChange={setIncludeLauncher}
-                label="include app log"
+                label={t('include app log')}
               />
-              <Toggle checked={includeMods} onChange={setIncludeMods} label="include mod list" />
+              <Toggle
+                checked={includeMods}
+                onChange={setIncludeMods}
+                label={t('include mod list')}
+              />
             </div>
 
             {redact ? (
               <p className="font-serif-italic text-xs text-ash">
-                Your Windows account name, home folder, e-mail addresses, Steam IDs, player names
-                and IP addresses are replaced with placeholders. Check the preview — this is pattern
-                matching, not a guarantee.
+                {t(
+                  'Your Windows account name, home folder, e-mail addresses, Steam IDs, player names and IP addresses are replaced with placeholders. Check the preview — this is pattern matching, not a guarantee.',
+                )}
               </p>
             ) : (
               <p className="font-serif-italic text-xs text-crimson">
-                Redaction is off. The upload will include your account name, file paths and any
-                player names the loader logged.
+                {t(
+                  'Redaction is off. The upload will include your account name, file paths and any player names the loader logged.',
+                )}
               </p>
             )}
 
             <div className="flex flex-wrap items-center gap-2">
               <MonoTag>{(report.content.length / 1024).toFixed(1)} KB</MonoTag>
-              <MonoTag>{report.content.split('\n').length} lines</MonoTag>
-              {report.truncated ? <MonoTag tone="gilt">oldest lines dropped</MonoTag> : null}
+              <MonoTag>{t('{n} lines', { n: report.content.split('\n').length })}</MonoTag>
+              {report.truncated ? <MonoTag tone="gilt">{t('oldest lines dropped')}</MonoTag> : null}
               <Button type="button" size="sm" onClick={() => setShowPreview((p) => !p)}>
-                {showPreview ? 'Hide' : 'Preview'} exactly what is uploaded
+                {showPreview
+                  ? t('Hide exactly what is uploaded')
+                  : t('Preview exactly what is uploaded')}
               </Button>
             </div>
 
@@ -217,7 +232,7 @@ export function ShareLogDialog({
 
             <div className="flex items-center justify-end gap-2">
               <Button type="button" onClick={onClose}>
-                Cancel
+                {t('Cancel')}
               </Button>
               <Button
                 type="button"
@@ -230,7 +245,7 @@ export function ShareLogDialog({
                 ) : (
                   <Link2 className="h-3.5 w-3.5" aria-hidden />
                 )}
-                {uploading ? 'Uploading…' : 'Upload and get link'}
+                {uploading ? t('Uploading…') : t('Upload and get link')}
               </Button>
             </div>
           </div>

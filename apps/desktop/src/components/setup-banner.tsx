@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, Wrench } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { TParts, useT } from '../lib/i18n-react';
 import { inTauri } from '../lib/platform';
 import {
   type DoctorCheck,
@@ -51,6 +52,7 @@ function writeDismissed(key: string, value: string): void {
  * (rsmm CLI missing, game dir not detected, etc.).
  */
 export function SetupBanner() {
+  const t = useT();
   const [result, setResult] = useState<DoctorResult | null>(null);
   const [running, setRunning] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -129,7 +131,11 @@ export function SetupBanner() {
     try {
       const r = await applyMods();
       if (r && r.ok === false) {
-        throw new Error(r.stderr.trim() || r.stdout.trim() || `apply exited with code ${r.code}`);
+        throw new Error(
+          r.stderr.trim() ||
+            r.stdout.trim() ||
+            t('apply exited with code {code}', { code: r.code }),
+        );
       }
       await runChecks();
     } catch (e) {
@@ -137,7 +143,7 @@ export function SetupBanner() {
     } finally {
       setRepairing(false);
     }
-  }, [runChecks]);
+  }, [runChecks, t]);
 
   // Doctor carries the repair for each finding it reports (apply,
   // install-loader, rebuild-asset-map, update-data) and re-runs every check
@@ -152,14 +158,14 @@ export function SetupBanner() {
       if (r) setResult(r);
       const failedRepairs = (r?.repairs ?? []).filter((x) => x.outcome === 'failed');
       if (failedRepairs.length > 0) {
-        setFixError(failedRepairs.map((x) => `${x.fix}: ${x.detail || 'failed'}`).join('; '));
+        setFixError(failedRepairs.map((x) => `${x.fix}: ${x.detail || t('failed')}`).join('; '));
       }
     } catch (e) {
       setFixError(e instanceof Error ? e.message : String(e));
     } finally {
       setFixing(false);
     }
-  }, []);
+  }, [t]);
 
   const signature = useMemo(() => (result ? signatureFor(result.checks) : ''), [result]);
 
@@ -168,17 +174,18 @@ export function SetupBanner() {
   const updateBanner =
     result?.gameUpdated === true && !updateDismissed ? (
       <section
-        aria-label="Game updated"
+        aria-label={t('Game updated')}
         className="ember-banner flex w-full items-start gap-3 px-4 py-3"
       >
         <Wrench className="h-4 w-4 text-crimson shrink-0 mt-1" aria-hidden />
         <div className="flex-1 space-y-1">
           <p className="font-serif-italic text-base">
-            Ravenswatch updated — your mods were disabled by the game update.
+            {t('Ravenswatch updated — your mods were disabled by the game update.')}
           </p>
           <p className="text-sm text-ash">
-            Repair re-applies every enabled mod against the new game files. Playing modded from the
-            app's Play button also repairs automatically.
+            {t(
+              "Repair re-applies every enabled mod against the new game files. Playing modded from the app's Play button also repairs automatically.",
+            )}
           </p>
           {repairError ? (
             <p className="font-mono text-sm text-crimson break-all">{repairError}</p>
@@ -196,10 +203,10 @@ export function SetupBanner() {
           ) : (
             <Wrench className="h-3.5 w-3.5" aria-hidden />
           )}
-          {repairing ? 'Repairing…' : 'Repair'}
+          {repairing ? t('Repairing…') : t('Repair')}
         </Button>
         <Button type="button" size="sm" onClick={() => setUpdateDismissed(true)}>
-          Dismiss
+          {t('Dismiss')}
         </Button>
       </section>
     ) : null;
@@ -214,19 +221,20 @@ export function SetupBanner() {
 
     const updated = loaderUpdate.status === 'updated';
     const needsApp = loaderUpdate.status === 'needs_app_update';
-    const blocked =
-      loaderUpdate.ok === false && /in use/i.test(loaderUpdate.error ?? '');
+    const blocked = loaderUpdate.ok === false && /in use/i.test(loaderUpdate.error ?? '');
     if (!updated && !blocked && !needsApp) return null;
 
     const message = updated
-      ? `Loader updated to v${loaderUpdate.installedVersion} — restart Ravenswatch to pick it up.`
+      ? t('Loader updated to v{version} — restart Ravenswatch to pick it up.', {
+          version: loaderUpdate.installedVersion ?? '',
+        })
       : blocked
-        ? 'A loader update is waiting — close Ravenswatch, then re-check.'
-        : 'A newer loader is available, but it needs a newer version of this app.';
+        ? t('A loader update is waiting — close Ravenswatch, then re-check.')
+        : t('A newer loader is available, but it needs a newer version of this app.');
 
     return (
       <section
-        aria-label="Loader update"
+        aria-label={t('Loader update')}
         className="ember-banner flex w-full items-start gap-3 px-4 py-3"
       >
         {updated ? (
@@ -247,11 +255,11 @@ export function SetupBanner() {
             ) : (
               <RefreshCw className="h-3.5 w-3.5" aria-hidden />
             )}
-            Re-check
+            {t('Re-check')}
           </Button>
         ) : null}
         <Button type="button" size="sm" onClick={() => setLoaderDismissed(true)}>
-          Dismiss
+          {t('Dismiss')}
         </Button>
       </section>
     );
@@ -276,7 +284,7 @@ export function SetupBanner() {
         <AlertTriangle className="h-4 w-4 text-crimson shrink-0 mt-1" aria-hidden />
         <div className="flex-1 space-y-1">
           <p className="font-serif-italic text-base">
-            Couldn't reach the rsmm CLI to verify the install.
+            {t("Couldn't reach the rsmm CLI to verify the install.")}
           </p>
           <p className="font-mono text-sm text-ash break-all">{error}</p>
         </div>
@@ -287,10 +295,10 @@ export function SetupBanner() {
           ) : (
             <RefreshCw className="h-3.5 w-3.5" aria-hidden />
           )}
-          Re-check
+          {t('Re-check')}
         </Button>
         <Button type="button" size="sm" onClick={dismissError}>
-          Dismiss
+          {t('Dismiss')}
         </Button>
       </output>
     );
@@ -315,20 +323,22 @@ export function SetupBanner() {
   return (
     <>
       {banners}
-      <section aria-label="First-run setup" className="grimoire-card flex flex-col gap-3 p-4">
+      <section aria-label={t('First-run setup')} className="grimoire-card flex flex-col gap-3 p-4">
         <header className="flex items-center justify-between gap-3">
           <h3 className="font-fraktur text-xl text-parchment flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-crimson" aria-hidden />
-            First-run setup
+            {t('First-run setup')}
           </h3>
           <Button type="button" size="sm" onClick={dismiss}>
-            Dismiss
+            {t('Dismiss')}
           </Button>
         </header>
         <p className="font-serif-italic text-ash">
-          {failing.length === 1
-            ? '1 check needs your attention before mods will apply cleanly.'
-            : `${failing.length} checks need your attention before mods will apply cleanly.`}
+          {t.n(
+            failing.length,
+            '{n} check needs your attention before mods will apply cleanly.',
+            '{n} checks need your attention before mods will apply cleanly.',
+          )}
         </p>
         <ul className="space-y-2">
           {result.checks.map((c, i) => (
@@ -350,10 +360,12 @@ export function SetupBanner() {
                     {c.detail}
                   </span>
                 ) : null}
+                {/* `c.fix.label` is the CLI's own wording — passed through
+                    untranslated, like every other doctor string. */}
                 {!c.ok && c.fix ? (
                   <span className="mt-0.5 block text-xs text-ash">
-                    fix: {c.fix.label}
-                    {c.fix.manual ? ' (manual)' : ''}
+                    {t('fix:')} {c.fix.label}
+                    {c.fix.manual ? ` ${t('(manual)')}` : ''}
                   </span>
                 ) : null}
               </span>
@@ -379,12 +391,12 @@ export function SetupBanner() {
               ) : (
                 <Wrench className="h-3.5 w-3.5" aria-hidden />
               )}
-              {fixing ? 'Repairing…' : `Repair ${fixableFailures} automatically`}
+              {fixing ? t('Repairing…') : t('Repair {n} automatically', { n: fixableFailures })}
             </Button>
           ) : null}
           <Link to="/settings">
             <Button type="button" size="sm" variant={fixableFailures > 0 ? 'default' : 'primary'}>
-              Open Settings
+              {t('Open Settings')}
             </Button>
           </Link>
           <Button type="button" size="sm" onClick={() => void runChecks(true)} disabled={running}>
@@ -393,12 +405,16 @@ export function SetupBanner() {
             ) : (
               <RefreshCw className="h-3.5 w-3.5" aria-hidden />
             )}
-            Re-check
+            {t('Re-check')}
           </Button>
         </div>
         <p className="font-serif-italic text-sm text-ash">
-          Fix paths in Settings, then re-check — or run{' '}
-          <span className="font-mono">rsmm doctor</span> from a terminal for diagnostic detail.
+          <TParts
+            text={t(
+              'Fix paths in Settings, then re-check — or run {command} from a terminal for diagnostic detail.',
+            )}
+            parts={{ command: <span className="font-mono">rsmm doctor</span> }}
+          />
         </p>
       </section>
     </>

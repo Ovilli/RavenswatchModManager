@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute } from '@tanstack/react-router';
 import { AlertTriangle, FileType, ShieldCheck, Swords } from 'lucide-react';
 import { Button, Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
+import { msg } from '../lib/i18n';
+import { useT } from '../lib/i18n-react';
 import { type ConflictEntry, getConflicts } from '../lib/rsmm';
 import { activeProfile, getMod, isEnabledIn, useApp } from '../store';
 
@@ -15,24 +17,29 @@ const TYPE_META: Record<
 > = {
   file: {
     icon: FileType,
-    label: 'Same file',
-    explanation: 'Each listed mod writes this same file. Keep one enabled and disable the others.',
+    label: msg('Same file'),
+    explanation: msg(
+      'Each listed mod writes this same file. Keep one enabled and disable the others.',
+    ),
   },
   patch: {
     icon: Swords,
-    label: 'Patch conflict',
-    explanation:
+    label: msg('Patch conflict'),
+    explanation: msg(
       'Each listed mod patches the same field with a different value. Keep one enabled and disable the others.',
+    ),
   },
   manifest: {
     icon: AlertTriangle,
-    label: 'Declared conflict',
-    explanation:
+    label: msg('Declared conflict'),
+    explanation: msg(
       'These mods declare each other as incompatible via manifest.conflicts. They cannot be enabled at the same time.',
+    ),
   },
 };
 
 function ConflictsPage() {
+  const t = useT();
   const profile = useApp(activeProfile);
   const toggle = useApp((s) => s.toggleMod);
   const { data } = useQuery({
@@ -59,14 +66,14 @@ function ConflictsPage() {
     return (
       <div className="space-y-6">
         <SectionHeader
-          title="Conflicts"
-          subtitle="File, patch, and manifest conflicts among enabled mods."
+          title={t('Conflicts')}
+          subtitle={t('File, patch, and manifest conflicts among enabled mods.')}
         />
         <Panel className="flex flex-col items-center gap-3 py-12 text-center">
           <ShieldCheck className="h-8 w-8 text-crimson" />
-          <p className="font-fraktur text-2xl text-parchment">All quiet</p>
+          <p className="font-fraktur text-2xl text-parchment">{t('All quiet')}</p>
           <p className="font-serif-italic text-ash">
-            No enabled mod in {profile.name} conflicts with another.
+            {t('No enabled mod in {profile} conflicts with another.', { profile: profile.name })}
           </p>
         </Panel>
       </div>
@@ -76,10 +83,13 @@ function ConflictsPage() {
   return (
     <div className="space-y-6">
       <SectionHeader
-        title="Conflicts"
-        subtitle={`${conflicts.length} ${
-          conflicts.length === 1 ? 'collision' : 'collisions'
-        } among enabled mods in ${profile.name}.`}
+        title={t('Conflicts')}
+        subtitle={t.n(
+          conflicts.length,
+          '{n} collision among enabled mods in {profile}.',
+          '{n} collisions among enabled mods in {profile}.',
+          { profile: profile.name },
+        )}
       />
 
       <ul className="space-y-4">
@@ -91,10 +101,10 @@ function ConflictsPage() {
             <li key={key}>
               <Panel>
                 <div className="flex items-baseline justify-between gap-2">
-                  <h3 className="font-fraktur text-lg text-parchment">{meta.label}</h3>
+                  <h3 className="font-fraktur text-lg text-parchment">{t(meta.label)}</h3>
                   <div className="flex items-center gap-2">
-                    <MonoTag tone="crimson">conflict</MonoTag>
-                    <MonoTag tone="gilt">{c.modIds.length} mods</MonoTag>
+                    <MonoTag tone="crimson">{t('conflict')}</MonoTag>
+                    <MonoTag tone="gilt">{t.n(c.modIds.length, '{n} mod', '{n} mods')}</MonoTag>
                     {c.modIds.some((id) => isEnabledIn(profile, id)) ? (
                       <Button
                         type="button"
@@ -102,7 +112,7 @@ function ConflictsPage() {
                         variant="danger"
                         onClick={() => disableAll(c.modIds)}
                       >
-                        Disable all
+                        {t('Disable all')}
                       </Button>
                     ) : null}
                   </div>
@@ -116,7 +126,7 @@ function ConflictsPage() {
                 ) : null}
                 <Fleuron className="my-4" />
 
-                <p className="font-serif-italic text-smoke mb-3">{meta.explanation}</p>
+                <p className="font-serif-italic text-smoke mb-3">{t(meta.explanation)}</p>
 
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   {c.modIds.map((id) => {
@@ -145,7 +155,7 @@ function ConflictsPage() {
                         <p className="font-serif-italic mt-2 text-sm text-smoke">{mod.summary}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           <MonoTag tone={enabled ? 'crimson' : 'default'}>
-                            {enabled ? 'enabled' : 'disabled'}
+                            {enabled ? t('enabled') : t('disabled')}
                           </MonoTag>
                           <Icon className="h-4 w-4 text-crimson" />
                         </div>
@@ -156,11 +166,11 @@ function ConflictsPage() {
                             variant={enabled ? 'danger' : 'primary'}
                             onClick={() => keepOnly(id, c.modIds)}
                           >
-                            {enabled ? 'Keep this one' : 'Enable this one'}
+                            {enabled ? t('Keep this one') : t('Enable this one')}
                           </Button>
                           {enabled ? (
                             <Button type="button" size="sm" onClick={() => toggle(id)}>
-                              Disable this mod
+                              {t('Disable this mod')}
                             </Button>
                           ) : null}
                         </div>

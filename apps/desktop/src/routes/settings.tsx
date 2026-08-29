@@ -18,6 +18,8 @@ import {
   normalizeFont,
   normalizeFontScale,
 } from '../lib/appearance';
+import { LOCALES, LOCALE_CHOICES, type Locale, msg, t as tr } from '../lib/i18n';
+import { TParts, useT } from '../lib/i18n-react';
 import {
   type LauncherLogEntry,
   clearLauncherLog,
@@ -40,9 +42,9 @@ export const Route = createFileRoute('/settings')({
 /** Poll cadence for the launcher log while a launch is live. */
 const LOG_POLL_INTERVAL_MS = 3000;
 
-const DENSITY_CHOICES: { value: Density; hint: string }[] = [
-  { value: 'cozy', hint: 'Roomy padding — the default.' },
-  { value: 'compact', hint: 'Tighter panels; more fits on screen.' },
+const DENSITY_CHOICES: { value: Density; label: string; hint: string }[] = [
+  { value: 'cozy', label: msg('Cozy'), hint: msg('Roomy padding — the default.') },
+  { value: 'compact', label: msg('Compact'), hint: msg('Tighter panels; more fits on screen.') },
 ];
 
 /**
@@ -59,11 +61,15 @@ const DENSITY_CHOICES: { value: Density; hint: string }[] = [
  * different group.
  */
 const TABS = [
-  { id: 'general', label: 'General', hint: 'Paths, mod sources, updates' },
-  { id: 'appearance', label: 'Appearance', hint: 'Typeface, density, motion, content' },
-  { id: 'game', label: 'Game', hint: 'Loader features, graphics' },
-  { id: 'diagnostics', label: 'Diagnostics', hint: 'Launcher log, crash reports' },
-  { id: 'about', label: 'About', hint: 'Version, release notes, credits' },
+  { id: 'general', label: msg('General'), hint: msg('Paths, mod sources, updates') },
+  {
+    id: 'appearance',
+    label: msg('Appearance'),
+    hint: msg('Language, typeface, density, motion, content'),
+  },
+  { id: 'game', label: msg('Game'), hint: msg('Loader features, graphics') },
+  { id: 'diagnostics', label: msg('Diagnostics'), hint: msg('Launcher log, crash reports') },
+  { id: 'about', label: msg('About'), hint: msg('Version, release notes, credits') },
 ] as const;
 
 type SettingsTab = (typeof TABS)[number]['id'];
@@ -75,6 +81,7 @@ function isTab(value: unknown): value is SettingsTab {
 }
 
 function SettingsPage() {
+  const t = useT();
   // Seeded from `?tab=`, so a link can land on a specific group — the command
   // palette's "About" entry is the reason this exists. Kept in local state
   // afterwards rather than driven by the URL: switching tabs is not navigation
@@ -84,7 +91,7 @@ function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <SectionHeader title="Settings" subtitle="Where things live. How they look." />
+      <SectionHeader title={t('Settings')} subtitle={t('Where things live. How they look.')} />
 
       <SettingsTabs value={tab} onChange={setTab} />
 
@@ -127,6 +134,7 @@ function SettingsTabs({
   value: SettingsTab;
   onChange: (tab: SettingsTab) => void;
 }) {
+  const t = useT();
   // Arrow keys move between tabs, and only the selected tab is a tab stop —
   // the standard tablist contract, so Tab from the tab strip lands in the
   // panel rather than walking four buttons first.
@@ -144,30 +152,30 @@ function SettingsTabs({
   return (
     <div
       role="tablist"
-      aria-label="Settings sections"
+      aria-label={t('Settings sections')}
       className="flex flex-wrap gap-1 border-b border-border"
       onKeyDown={onKeyDown}
     >
-      {TABS.map((t) => {
-        const active = t.id === value;
+      {TABS.map((tab) => {
+        const active = tab.id === value;
         return (
           <button
-            key={t.id}
+            key={tab.id}
             type="button"
             role="tab"
-            id={`settings-tab-${t.id}`}
+            id={`settings-tab-${tab.id}`}
             aria-selected={active}
-            aria-controls={`settings-panel-${t.id}`}
+            aria-controls={`settings-panel-${tab.id}`}
             tabIndex={active ? 0 : -1}
-            title={t.hint}
-            onClick={() => onChange(t.id)}
+            title={t(tab.hint)}
+            onClick={() => onChange(tab.id)}
             className={`font-mono -mb-px border-b-2 px-3 py-2 text-sm transition-colors ${
               active
                 ? 'border-crimson text-parchment'
                 : 'border-transparent text-ash hover:text-parchment'
             }`}
           >
-            {t.label}
+            {t(tab.label)}
           </button>
         );
       })}
@@ -176,37 +184,39 @@ function SettingsTabs({
 }
 
 function PathsPanel() {
+  const t = useT();
   const settings = useApp((s) => s.settings);
   const update = useApp((s) => s.updateSettings);
 
   return (
     <Panel>
-      <h3 className="font-fraktur text-xl text-parchment">Paths</h3>
+      <h3 className="font-fraktur text-xl text-parchment">{t('Paths')}</h3>
       <Fleuron className="my-3" />
       <Field
-        label="Game install"
+        label={t('Game install')}
         value={settings.gameDir}
         onChange={(v) => update({ gameDir: v })}
-        validate={(v) => validateDirPath(v, 'Game install path')}
+        validate={(v) => validateDirPath(v, t('Game install path'))}
       />
       <Field
-        label="Backup folder"
+        label={t('Backup folder')}
         value={settings.backupDir}
         onChange={(v) => update({ backupDir: v })}
-        validate={(v) => validateDirPath(v, 'Backup folder path')}
+        validate={(v) => validateDirPath(v, t('Backup folder path'))}
       />
       <Field
-        label="Mods folder"
+        label={t('Mods folder')}
         value={settings.modsDir}
-        placeholder="Leave empty to use the default rsmm mods folder"
+        placeholder={t('Leave empty to use the default rsmm mods folder')}
         onChange={(v) => update({ modsDir: v })}
-        validate={(v) => validateDirPath(v, 'Mods folder path')}
+        validate={(v) => validateDirPath(v, t('Mods folder path'))}
       />
     </Panel>
   );
 }
 
 function SourcesPanel() {
+  const t = useT();
   const settings = useApp((s) => s.settings);
   const update = useApp((s) => s.updateSettings);
   const [newSource, setNewSource] = useState('');
@@ -216,33 +226,33 @@ function SourcesPanel() {
   const addSource = () => {
     const v = newSource.trim();
     if (!v) {
-      setSourceError('Enter a URL first.');
+      setSourceError(t('Enter a URL first.'));
       return;
     }
     let parsed: URL;
     try {
       parsed = new URL(v);
     } catch {
-      setSourceError('Not a valid URL (include https:// or http://).');
+      setSourceError(t('Not a valid URL (include https:// or http://).'));
       return;
     }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      setSourceError('URL must use http or https.');
+      setSourceError(t('URL must use http or https.'));
       return;
     }
     if (settings.sources.includes(v)) {
-      setSourceError('That source is already in the list.');
+      setSourceError(t('That source is already in the list.'));
       return;
     }
     update({ sources: [...settings.sources, v] });
     setNewSource('');
     setSourceError(null);
-    toast.push('Mod source added.', 'success');
+    toast.push(t('Mod source added.'), 'success');
   };
 
   return (
     <Panel>
-      <h3 className="font-fraktur text-xl text-parchment">Mod sources</h3>
+      <h3 className="font-fraktur text-xl text-parchment">{t('Mod sources')}</h3>
       <Fleuron className="my-3" />
       <ul className="space-y-2">
         {settings.sources.map((src) => (
@@ -283,7 +293,7 @@ function SourcesPanel() {
           onClick={addSource}
           className="border border-crimson bg-crimson/80 px-3 py-2 text-parchment hover:bg-oxblood"
         >
-          Add
+          {t('Add')}
         </button>
       </div>
       {sourceError ? (
@@ -296,13 +306,15 @@ function SourcesPanel() {
 }
 
 function UpdatesPanel() {
+  const t = useT();
   return (
     <Panel>
-      <h3 className="font-fraktur text-xl text-parchment">Updates</h3>
+      <h3 className="font-fraktur text-xl text-parchment">{t('Updates')}</h3>
       <Fleuron className="my-3" />
       <p className="font-serif-italic text-ash mb-3">
-        RSMM checks for new releases automatically. Checking manually covers both the launcher
-        itself and the game loader &amp; Lua SDK planted in your Ravenswatch folder.
+        {t(
+          'RSMM checks for new releases automatically. Checking manually covers both the launcher itself and the game loader & Lua SDK planted in your Ravenswatch folder.',
+        )}
       </p>
       <UpdaterSettings />
     </Panel>
@@ -312,6 +324,7 @@ function UpdatesPanel() {
 /** The launcher log, filtered. Mounted only while its group is open, which is
  * also what stops the live poll below when you are elsewhere in Settings. */
 function LauncherLogPanel() {
+  const t = useT();
   const [launcherLog, setLauncherLog] = useState('');
   const [logQuery, setLogQuery] = useState('');
   const [logLevel, setLogLevel] = useState<'all' | 'info' | 'warn' | 'error'>('all');
@@ -364,7 +377,7 @@ function LauncherLogPanel() {
   const onClearLog = async () => {
     await clearLauncherLog();
     setLauncherLog('');
-    toast.push('Launcher log cleared.', 'success');
+    toast.push(t('Launcher log cleared.'), 'success');
   };
 
   const logEntries = useMemo(() => parseLauncherLog(launcherLog), [launcherLog]);
@@ -379,16 +392,16 @@ function LauncherLogPanel() {
     <Panel>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="font-fraktur text-xl text-parchment">Launcher Log</h3>
+          <h3 className="font-fraktur text-xl text-parchment">{t('Launcher Log')}</h3>
           <p className="font-serif-italic text-ash mt-1">
-            Current run only. Cleared whenever you launch Vanilla or Modded.
+            {t('Current run only. Cleared whenever you launch Vanilla or Modded.')}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {launchBusy ? (
             <span className="font-mono inline-flex items-center gap-1.5 border border-gilt/60 px-2 py-1 text-[10px] text-gilt">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gilt" aria-hidden />
-              live
+              {t('live')}
             </span>
           ) : null}
           <button
@@ -396,14 +409,14 @@ function LauncherLogPanel() {
             onClick={() => refreshLog().catch(() => undefined)}
             className="border border-border px-3 py-2 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
           >
-            {loadingLog ? 'Refreshing…' : 'Refresh'}
+            {loadingLog ? t('Refreshing…') : t('Refresh')}
           </button>
           <button
             type="button"
             onClick={() => onClearLog().catch(() => undefined)}
             className="border border-crimson bg-crimson/80 px-3 py-2 text-sm text-parchment hover:bg-oxblood"
           >
-            Clear
+            {t('Clear')}
           </button>
         </div>
       </div>
@@ -412,7 +425,7 @@ function LauncherLogPanel() {
         <input
           value={logQuery}
           onChange={(e) => setLogQuery(e.target.value)}
-          placeholder="Search launcher log..."
+          placeholder={t('Search launcher log...')}
           className="font-mono min-w-56 flex-1 border border-border bg-pitch/60 px-3 py-2 text-sm text-parchment placeholder:text-ash focus:border-gilt/60 focus:outline-none"
         />
         <div className="relative inline-flex">
@@ -421,10 +434,10 @@ function LauncherLogPanel() {
             onChange={(e) => setLogLevel(e.target.value as 'all' | 'info' | 'warn' | 'error')}
             className="select-grim font-mono appearance-none border border-border bg-pitch/60 py-2 pl-3 pr-9 text-sm text-parchment focus:border-gilt/60 focus:outline-none"
           >
-            <option value="all">All levels</option>
-            <option value="info">Info</option>
-            <option value="warn">Warnings</option>
-            <option value="error">Errors</option>
+            <option value="all">{t('All levels')}</option>
+            <option value="info">{t('Info')}</option>
+            <option value="warn">{t('Warnings')}</option>
+            <option value="error">{t('Errors')}</option>
           </select>
           <ChevronDown
             className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ash"
@@ -435,8 +448,8 @@ function LauncherLogPanel() {
       {filteredEntries.length === 0 ? (
         <p className="font-serif-italic border border-border bg-pitch/60 p-3 text-ash">
           {logEntries.length > 0
-            ? 'No launcher log entries match the current filters.'
-            : 'No launcher log entries yet. Launch the game once and they will show up here.'}
+            ? t('No launcher log entries match the current filters.')
+            : t('No launcher log entries yet. Launch the game once and they will show up here.')}
         </p>
       ) : (
         <ul className="max-h-72 divide-y divide-border/60 overflow-auto border border-border bg-pitch/60">
@@ -452,18 +465,21 @@ function LauncherLogPanel() {
 }
 
 function AppearancePanel() {
+  const t = useT();
   const settings = useApp((s) => s.settings);
   const update = useApp((s) => s.updateSettings);
 
   return (
     <Panel>
-      <h3 className="font-fraktur text-xl text-parchment">Appearance</h3>
+      <h3 className="font-fraktur text-xl text-parchment">{t('Appearance')}</h3>
+      <Fleuron className="my-3" />
+      <LanguageControl />
       <Fleuron className="my-3" />
       <TypographyControls />
       <Fleuron className="my-3" />
       <fieldset className="flex flex-col gap-2">
-        <legend className="font-mono mb-2 text-ash">Density</legend>
-        {DENSITY_CHOICES.map(({ value, hint }) => (
+        <legend className="font-mono mb-2 text-ash">{t('Density')}</legend>
+        {DENSITY_CHOICES.map(({ value, label, hint }) => (
           <label key={value} className="flex cursor-pointer items-start gap-2 text-parchment">
             <input
               type="radio"
@@ -473,8 +489,8 @@ function AppearancePanel() {
               className="mt-1 accent-crimson"
             />
             <span>
-              <span className="font-serif-italic block capitalize">{value}</span>
-              <span className="font-serif-italic block text-sm text-ash">{hint}</span>
+              <span className="font-serif-italic block">{t(label)}</span>
+              <span className="font-serif-italic block text-sm text-ash">{t(hint)}</span>
             </span>
           </label>
         ))}
@@ -488,11 +504,13 @@ function AppearancePanel() {
           className="mt-1 h-4 w-4 accent-crimson"
         />
         <span>
-          <span className="font-mono text-sm flex items-center gap-2">Animate the interface</span>
+          <span className="font-mono text-sm flex items-center gap-2">
+            {t('Animate the interface')}
+          </span>
           <span className="font-serif-italic mt-1 block text-sm text-ash">
-            Page entrances, hover lifts and the button glow. Turn it off for a still interface —
-            useful on a slow machine, or if motion bothers you. If your system already asks for
-            reduced motion, that is honoured whatever this says.
+            {t(
+              'Page entrances, hover lifts and the button glow. Turn it off for a still interface — useful on a slow machine, or if motion bothers you. If your system already asks for reduced motion, that is honoured whatever this says.',
+            )}
           </span>
         </span>
       </label>
@@ -506,7 +524,7 @@ function AppearancePanel() {
         />
         <span className="font-mono text-sm flex items-center gap-2">
           <EyeOff className="h-4 w-4 text-crimson" />
-          Show NSFW content
+          {t('Show NSFW content')}
         </span>
       </label>
     </Panel>
@@ -514,12 +532,13 @@ function AppearancePanel() {
 }
 
 function PrivacyPanel() {
+  const t = useT();
   const settings = useApp((s) => s.settings);
   const update = useApp((s) => s.updateSettings);
 
   return (
     <Panel>
-      <h3 className="font-fraktur text-xl text-parchment">Privacy</h3>
+      <h3 className="font-fraktur text-xl text-parchment">{t('Privacy')}</h3>
       <Fleuron className="my-3" />
       <label className="flex cursor-pointer items-start gap-3 text-parchment">
         <input
@@ -531,12 +550,12 @@ function PrivacyPanel() {
         <span>
           <span className="font-mono text-sm flex items-center gap-2">
             <ShieldAlert className="h-4 w-4 text-crimson" />
-            Send crash reports
+            {t('Send crash reports')}
           </span>
           <span className="font-serif-italic mt-1 block text-sm text-ash">
-            When the app hits an unexpected error, send the error type, message, stack trace, RSMM
-            version and OS to the RSMM API so it can be fixed. No mod list, no file paths, no
-            account details. Turning this off keeps crashes in your local launcher log only.
+            {t(
+              'When the app hits an unexpected error, send the error type, message, stack trace, RSMM version and OS to the RSMM API so it can be fixed. No mod list, no file paths, no account details. Turning this off keeps crashes in your local launcher log only.',
+            )}
           </span>
         </span>
       </label>
@@ -554,11 +573,12 @@ const LOG_LEVEL_TONE: Record<LauncherLogEntry['level'], string> = {
 /** One launcher-log line: local time, level chip, message, and the JSON
  * context tucked behind a disclosure so a busy line stays one row tall. */
 function LogRow({ entry }: { entry: LauncherLogEntry }) {
+  const t = useT();
   return (
     <li className="px-3 py-2">
       <div className="flex flex-wrap items-baseline gap-2">
         <span className="font-mono shrink-0 text-xs text-ash">
-          {entry.at ? new Date(entry.at).toLocaleTimeString() : '—'}
+          {entry.at ? new Date(entry.at).toLocaleTimeString(t.tag) : '—'}
         </span>
         <span
           className={`font-mono shrink-0 border px-1.5 py-[1px] text-[10px] ${LOG_LEVEL_TONE[entry.level]}`}
@@ -570,7 +590,7 @@ function LogRow({ entry }: { entry: LauncherLogEntry }) {
       {entry.context ? (
         <details className="mt-1">
           <summary className="font-mono cursor-pointer text-[10px] text-ash hover:text-parchment">
-            context
+            {t('context')}
           </summary>
           <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-xs text-ash">
             {entry.context}
@@ -581,10 +601,65 @@ function LogRow({ entry }: { entry: LauncherLogEntry }) {
   );
 }
 
+/**
+ * UI language.
+ *
+ * Lives beside typeface because it is the same kind of setting — how the app
+ * reads — and because switching it is instant: every component holds a `t` from
+ * `useT()`, which is subscribed to this value, so there is nothing to restart.
+ */
+function LanguageControl() {
+  const t = useT();
+  const language = useApp((s) => s.settings.language);
+  const update = useApp((s) => s.updateSettings);
+
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <legend className="font-mono mb-2 text-ash">{t('Language')}</legend>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {LOCALE_CHOICES.map((choice: Locale) => {
+          const meta = LOCALES[choice];
+          const active = language === choice;
+          return (
+            <label
+              key={choice}
+              className={`flex cursor-pointer items-start gap-2 border px-3 py-2 ${
+                active ? 'border-gilt/60 bg-gilt/10' : 'border-border hover:border-gilt/30'
+              }`}
+            >
+              <input
+                type="radio"
+                name="language"
+                checked={active}
+                onChange={() => update({ language: choice })}
+                className="mt-1 accent-crimson"
+              />
+              <span className="min-w-0">
+                {/* The native name is never translated — someone looking for
+                    their own language looks for it written their way. */}
+                <span className="block text-parchment" lang={meta.tag}>
+                  {meta.native}
+                </span>
+                <span className="font-serif-italic block text-sm text-ash">{t(meta.english)}</span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      <p className="font-serif-italic text-sm text-ash">
+        {t(
+          'Applies immediately. Text that comes from the rsmm command-line tool, from a mod, or from the game itself stays in its own language.',
+        )}
+      </p>
+    </fieldset>
+  );
+}
+
 /** Typeface + UI scale. Both are written straight to CSS vars on <html> by
  * `applyAppearance` (subscribed in main.tsx), so every change previews live
  * across the whole app — this panel only edits the stored values. */
 function TypographyControls() {
+  const t = useT();
   const settings = useApp((s) => s.settings);
   const update = useApp((s) => s.updateSettings);
   const font = normalizeFont(settings.fontFamily);
@@ -594,7 +669,7 @@ function TypographyControls() {
   return (
     <div className="space-y-4">
       <fieldset className="flex flex-col gap-2">
-        <legend className="font-mono mb-2 text-ash">Font</legend>
+        <legend className="font-mono mb-2 text-ash">{t('Font')}</legend>
         <div className="grid gap-2 sm:grid-cols-2">
           {FONT_CHOICES.map((choice) => {
             const preset = FONT_PRESETS[choice];
@@ -615,9 +690,9 @@ function TypographyControls() {
                 />
                 <span className="min-w-0">
                   <span className="block text-parchment" style={{ fontFamily: preset.vars.body }}>
-                    {preset.label}
+                    {t(preset.label)}
                   </span>
-                  <span className="font-serif-italic block text-sm text-ash">{preset.hint}</span>
+                  <span className="font-serif-italic block text-sm text-ash">{t(preset.hint)}</span>
                 </span>
               </label>
             );
@@ -627,7 +702,7 @@ function TypographyControls() {
 
       <div>
         <div className="mb-2 flex items-center justify-between gap-3">
-          <span className="font-mono text-ash">Font size</span>
+          <span className="font-mono text-ash">{t('Font size')}</span>
           <span className="font-mono text-parchment">{scale}%</span>
         </div>
         <input
@@ -636,7 +711,7 @@ function TypographyControls() {
           max={MAX_FONT_SCALE}
           step={5}
           value={scale}
-          aria-label="UI font size"
+          aria-label={t('UI font size')}
           onChange={(e) => update({ fontScale: normalizeFontScale(e.target.value) })}
           className="w-full accent-crimson"
         />
@@ -648,8 +723,10 @@ function TypographyControls() {
       </div>
 
       <div className="flex items-center justify-between gap-3 border border-border px-3 py-2">
+        {/* A pangram: it exists to show the typeface, so each language wants
+            its own specimen rather than a literal translation. */}
         <p className="font-serif-italic min-w-0 text-ash">
-          The quick brown fox jumps over the lazy dog — 0123456789
+          {t('The quick brown fox jumps over the lazy dog — 0123456789')}
         </p>
         <button
           type="button"
@@ -657,7 +734,7 @@ function TypographyControls() {
           onClick={() => update({ fontFamily: DEFAULT_FONT, fontScale: DEFAULT_FONT_SCALE })}
           className="shrink-0 border border-border px-3 py-1.5 text-sm text-ash hover:border-gilt/50 hover:text-parchment disabled:opacity-40 disabled:hover:border-border disabled:hover:text-ash"
         >
-          Reset
+          {t('Reset')}
         </button>
       </div>
     </div>
@@ -678,6 +755,7 @@ function TypographyControls() {
  * nothing.
  */
 function GraphicsPanel() {
+  const t = useT();
   const [disabled, setDisabled] = useState<boolean | null>(null);
   const [pending, setPending] = useState(false);
   const [restartNeeded, setRestartNeeded] = useState(false);
@@ -714,13 +792,15 @@ function GraphicsPanel() {
 
   return (
     <Panel>
-      <h3 className="font-fraktur text-xl text-parchment">Graphics</h3>
+      <h3 className="font-fraktur text-xl text-parchment">{t('Graphics')}</h3>
       <Fleuron className="my-3" />
       <p className="font-serif-italic text-ash mb-3">
-        RSMM draws through your GPU like any browser window. If your machine crashes, freezes or
-        blue-screens while RSMM is open — especially with a display-driver bug check such as{' '}
-        <span className="font-mono">VIDEO_SCHEDULER_INTERNAL_ERROR</span> — switch this on to render
-        in software instead. Update your GPU driver as well; that is the real fix.
+        <TParts
+          text={t(
+            'RSMM draws through your GPU like any browser window. If your machine crashes, freezes or blue-screens while RSMM is open — especially with a display-driver bug check such as {code} — switch this on to render in software instead. Update your GPU driver as well; that is the real fix.',
+          )}
+          parts={{ code: <span className="font-mono">VIDEO_SCHEDULER_INTERNAL_ERROR</span> }}
+        />
       </p>
       <label className="flex items-center gap-3">
         <input
@@ -730,10 +810,12 @@ function GraphicsPanel() {
           onChange={() => void toggle()}
           className="h-4 w-4 accent-crimson"
         />
-        <span className="text-parchment">Disable GPU acceleration (software rendering)</span>
+        <span className="text-parchment">{t('Disable GPU acceleration (software rendering)')}</span>
       </label>
       {restartNeeded ? (
-        <p className="font-mono mt-3 text-sm text-gilt">Restart RSMM for this to take effect.</p>
+        <p className="font-mono mt-3 text-sm text-gilt">
+          {t('Restart RSMM for this to take effect.')}
+        </p>
       ) : null}
       {error ? (
         <p className="font-mono mt-3 text-sm text-crimson" role="alert">
@@ -749,6 +831,7 @@ function GraphicsPanel() {
  * options cannot set environment variables). Only flags the bridge marks
  * `safe` are togglable here; locked ones are shown greyed-out with the reason. */
 function LoaderFlagsPanel() {
+  const t = useT();
   const [available, setAvailable] = useState<LoaderFlag[]>([]);
   const [enabled, setEnabled] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -800,11 +883,11 @@ function LoaderFlagsPanel() {
         setEnabled(new Set(res.enabled ?? []));
       } else {
         setEnabled(enabled); // revert
-        toast.push(res?.error ?? 'Could not save loader flags.', 'error');
+        toast.push(res?.error ?? t('Could not save loader flags.'), 'error');
       }
     } catch {
       setEnabled(enabled); // revert
-      toast.push('Could not save loader flags.', 'error');
+      toast.push(t('Could not save loader flags.'), 'error');
     } finally {
       setSaving(null);
     }
@@ -812,35 +895,38 @@ function LoaderFlagsPanel() {
 
   return (
     <Panel>
-      <h3 className="font-fraktur text-xl text-parchment">Loader features</h3>
+      <h3 className="font-fraktur text-xl text-parchment">{t('Loader features')}</h3>
       <Fleuron className="my-3" />
       <p className="font-serif-italic text-ash mb-3">
-        Opt-in hooks the script loader installs at launch. Off by default — most mods don't need
-        them. Changes take effect next time you launch Modded.
+        {t(
+          "Opt-in hooks the script loader installs at launch. Off by default — most mods don't need them. Changes take effect next time you launch Modded.",
+        )}
       </p>
       {!loading && !unavailable ? (
         <div className="mb-4 flex flex-wrap gap-2">
           <StatusChip
-            label="Loader DLL"
+            label={t('Loader DLL')}
             state={loaderInstalled === null ? 'unknown' : loaderInstalled ? 'ok' : 'missing'}
-            okText="installed"
-            missingText="not installed — launch Modded once"
+            okText={t('installed')}
+            missingText={t('not installed — launch Modded once')}
           />
           {launchOptionsPresent !== null && launchOptionsPresent !== undefined ? (
             <StatusChip
-              label="Launch options"
+              label={t('Launch options')}
               state={launchOptionsPresent ? 'ok' : 'missing'}
-              okText="winhttp override set"
-              missingText="missing — launch Modded to set"
+              okText={t('winhttp override set')}
+              missingText={t('missing — launch Modded to set')}
             />
           ) : null}
         </div>
       ) : null}
       {loading ? (
-        <p className="font-mono text-sm text-ash">Loading…</p>
+        <p className="font-mono text-sm text-ash">{t('Loading…')}</p>
       ) : unavailable ? (
         <p className="font-mono text-sm text-ash">
-          Set your game install path under General, then reopen Settings to manage loader features.
+          {t(
+            'Set your game install path under General, then reopen Settings to manage loader features.',
+          )}
         </p>
       ) : (
         <ul className="space-y-3">
@@ -856,7 +942,7 @@ function LoaderFlagsPanel() {
                     <span className="font-mono text-parchment">{flag.label}</span>
                     {!flag.safe ? (
                       <span className="font-mono rounded border border-crimson/60 px-1.5 py-0.5 text-[10px] uppercase text-crimson">
-                        locked
+                        {t('locked')}
                       </span>
                     ) : null}
                   </div>
@@ -891,13 +977,14 @@ function StatusChip({
   okText: string;
   missingText: string;
 }) {
+  const t = useT();
   const tone =
     state === 'ok'
       ? 'border-gilt/50 text-gilt'
       : state === 'missing'
         ? 'border-crimson/60 text-crimson'
         : 'border-border text-ash';
-  const detail = state === 'ok' ? okText : state === 'missing' ? missingText : 'unknown';
+  const detail = state === 'ok' ? okText : state === 'missing' ? missingText : t('unknown');
   return (
     <span className={`font-mono inline-flex items-center gap-1.5 border px-2 py-1 text-xs ${tone}`}>
       <span className="text-parchment">{label}:</span>
@@ -910,17 +997,18 @@ function StatusChip({
  * like a URL or shell metacharacter blob is good enough for inline UI
  * feedback; the real existence check happens when the sidecar tries to
  * read from it. */
+/** `label` arrives already translated from the call site. */
 function validateDirPath(raw: string, label: string): string | null {
   const v = (raw ?? '').trim();
   if (!v) return null;
   for (const ch of v) {
     const code = ch.codePointAt(0);
     if (code !== undefined && code < 0x20) {
-      return `${label} contains control characters.`;
+      return tr('{label} contains control characters.', { label });
     }
   }
   if (v.includes('://')) {
-    return `${label} must be a filesystem path, not a URL.`;
+    return tr('{label} must be a filesystem path, not a URL.', { label });
   }
   return null;
 }

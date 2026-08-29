@@ -16,6 +16,7 @@ export interface AvailableUpdate {
   apply: (onProgress?: (downloaded: number, total: number | null) => void) => Promise<void>;
 }
 
+import { t } from './i18n';
 import { inTauri } from './platform';
 
 export interface UpdateCheckError {
@@ -106,7 +107,7 @@ export async function openReleasesPage(): Promise<void> {
 export async function migrateToAppImage(
   onProgress?: (downloaded: number, total: number | null) => void,
 ): Promise<MigrationResult> {
-  if (!inTauri()) throw new Error('Not running in the desktop app.');
+  if (!inTauri()) throw new Error(t('Not running in the desktop app.'));
   const { invoke } = await import('@tauri-apps/api/core');
   const { listen } = await import('@tauri-apps/api/event');
 
@@ -141,7 +142,7 @@ export async function checkForUpdate(): Promise<AvailableUpdate | UpdateCheckErr
     // Return error to let UI display it instead of silently failing
     return {
       error: true,
-      reason: `Update check failed: ${reason}`,
+      reason: t('Update check failed: {error}', { error: reason }),
     };
   }
   if (!update) return null;

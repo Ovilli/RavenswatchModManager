@@ -3,6 +3,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { FileSearch, FlaskConical, Layers, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { Button, MonoTag, Panel, SectionHeader } from '../components/chrome';
+import { TParts, useT } from '../lib/i18n-react';
 import { type CookedInfo, uncookInfo } from '../lib/rsmm';
 
 export const Route = createFileRoute('/author')({
@@ -10,6 +11,7 @@ export const Route = createFileRoute('/author')({
 });
 
 function AuthorPage() {
+  const t = useT();
   const [path, setPath] = useState('');
   const [info, setInfo] = useState<CookedInfo | null>(null);
 
@@ -22,19 +24,24 @@ function AuthorPage() {
   return (
     <div className="space-y-6">
       <SectionHeader
-        title="Author"
-        subtitle="Inspect cooked Ravenswatch assets. Per-class schema reversal in progress — see docs/RE_NOTES.md."
+        title={t('Author')}
+        subtitle={t(
+          'Inspect cooked Ravenswatch assets. Per-class schema reversal in progress — see docs/RE_NOTES.md.',
+        )}
       />
 
       <Panel>
         <div className="flex items-baseline justify-between gap-2">
-          <h3 className="font-fraktur text-lg text-parchment">Inspect cooked file</h3>
+          <h3 className="font-fraktur text-lg text-parchment">{t('Inspect cooked file')}</h3>
           <MonoTag tone="gilt">.yqz / .tpi / .zux / .gen</MonoTag>
         </div>
         <p className="font-serif-italic mt-1 text-ash">
-          Paste the absolute path to a cooked file under{' '}
-          <span className="font-mono">DarkTalesResources/_Cooking/</span>. The container header,
-          class registry, and section sizes are extracted by the rsmm sidecar.
+          <TParts
+            text={t(
+              'Paste the absolute path to a cooked file under {path}. The container header, class registry, and section sizes are extracted by the rsmm sidecar.',
+            )}
+            parts={{ path: <span className="font-mono">DarkTalesResources/_Cooking/</span> }}
+          />
         </p>
 
         <div className="mt-4 flex flex-col gap-3 sm:flex-row">
@@ -52,11 +59,11 @@ function AuthorPage() {
           >
             {inspect.isPending ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin" /> Inspecting
+                <Loader2 className="h-4 w-4 animate-spin" /> {t('Inspecting')}
               </>
             ) : (
               <>
-                <FileSearch className="h-4 w-4" /> Inspect
+                <FileSearch className="h-4 w-4" /> {t('Inspect')}
               </>
             )}
           </Button>
@@ -75,41 +82,43 @@ function AuthorPage() {
 }
 
 function InfoView({ info }: { info: CookedInfo }) {
+  const t = useT();
   return (
     <div className="space-y-4">
       <Panel>
         <div className="flex items-baseline justify-between gap-2">
-          <h3 className="font-fraktur text-lg text-parchment">Container</h3>
+          <h3 className="font-fraktur text-lg text-parchment">{t('Container')}</h3>
           <div className="flex items-center gap-2">
             <MonoTag tone="gilt">{info.root_class}</MonoTag>
             <MonoTag tone={info.schema_status === 'stub' ? 'crimson' : 'gilt'}>
-              schema: {info.schema_status}
+              {t('schema:')} {info.schema_status}
             </MonoTag>
           </div>
         </div>
         <p className="font-mono mt-1 break-all text-ash">{info.path}</p>
         <dl className="font-mono mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-parchment sm:grid-cols-4">
-          <Stat label="size" value={`${info.size} B`} />
-          <Stat label="variant" value={info.variant} />
-          <Stat label="flags" value={`0x${info.flags.toString(16)}`} />
-          <Stat label="source ext" value={info.source_ext} />
+          <Stat label={t('size')} value={`${info.size} B`} />
+          <Stat label={t('variant')} value={info.variant} />
+          <Stat label={t('flags')} value={`0x${info.flags.toString(16)}`} />
+          <Stat label={t('source ext')} value={info.source_ext} />
         </dl>
       </Panel>
 
       <Panel>
         <div className="flex items-baseline justify-between gap-2">
           <h3 className="font-fraktur text-lg text-parchment">
-            <Layers className="mr-1 inline h-4 w-4" /> Class registry ({info.classes.length})
+            <Layers className="mr-1 inline h-4 w-4" />{' '}
+            {t('Class registry ({n})', { n: info.classes.length })}
           </h3>
         </div>
         <div className="mt-3 overflow-x-auto">
           <table className="font-mono w-full text-sm">
             <thead className="text-ash">
               <tr>
-                <th className="py-1 pr-4 text-left">name</th>
-                <th className="py-1 pr-4 text-left">uid</th>
-                <th className="py-1 pr-4 text-left">version</th>
-                <th className="py-1 pr-4 text-left">parent uid</th>
+                <th className="py-1 pr-4 text-left">{t('name')}</th>
+                <th className="py-1 pr-4 text-left">{t('uid')}</th>
+                <th className="py-1 pr-4 text-left">{t('version')}</th>
+                <th className="py-1 pr-4 text-left">{t('parent uid')}</th>
               </tr>
             </thead>
             <tbody>
@@ -131,10 +140,11 @@ function InfoView({ info }: { info: CookedInfo }) {
       <Panel>
         <div className="flex items-baseline justify-between gap-2">
           <h3 className="font-fraktur text-lg text-parchment">
-            <FlaskConical className="mr-1 inline h-4 w-4" /> Sections ({info.sections.length})
+            <FlaskConical className="mr-1 inline h-4 w-4" />{' '}
+            {t('Sections ({n})', { n: info.sections.length })}
           </h3>
           <p className="font-serif-italic text-ash">
-            Total {sum(info.sections.map((s) => s.size))} B
+            {t('Total {n} B', { n: sum(info.sections.map((s) => s.size)) })}
           </p>
         </div>
         <ul className="font-mono mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
@@ -149,8 +159,12 @@ function InfoView({ info }: { info: CookedInfo }) {
           ))}
         </ul>
         <p className="font-serif-italic mt-3 text-sm text-ash">
-          Extract a section's bytes with the CLI:{' '}
-          <span className="font-mono">rsmm uncook --raw --section N {info.path}</span>
+          <TParts
+            text={t("Extract a section's bytes with the CLI: {command}")}
+            parts={{
+              command: <span className="font-mono">rsmm uncook --raw --section N {info.path}</span>,
+            }}
+          />
         </p>
       </Panel>
     </div>

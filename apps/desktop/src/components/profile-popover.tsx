@@ -1,6 +1,7 @@
 import { useNavigate } from '@tanstack/react-router';
 import { ChevronDown, Copy, Plus } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
+import { useT } from '../lib/i18n-react';
 import { validateProfileName } from '../lib/profile-name';
 import { useApp } from '../store';
 import { CheckIcon } from './icons/CheckIcon';
@@ -12,6 +13,7 @@ import { useDialog, useToast } from './toast';
  *                 available width.
  */
 export function ProfilePopover({ compact = false }: { compact?: boolean } = {}) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -48,10 +50,10 @@ export function ProfilePopover({ compact = false }: { compact?: boolean } = {}) 
   const onNewProfile = async () => {
     setOpen(false);
     const name = await dialog.prompt({
-      title: 'New profile',
-      label: 'Name',
-      initialValue: 'New Run',
-      submitLabel: 'Create',
+      title: t('New profile'),
+      label: t('Name'),
+      initialValue: t('New Run'),
+      submitLabel: t('Create'),
     });
     const trimmed = name?.trim();
     if (!trimmed) return;
@@ -80,7 +82,7 @@ export function ProfilePopover({ compact = false }: { compact?: boolean } = {}) 
       >
         {compact ? (
           <>
-            <span className="font-mono shrink-0 text-xs text-ash">profile</span>
+            <span className="font-mono shrink-0 text-xs text-ash">{t('profile')}</span>
             <span
               className="min-w-0 truncate font-serif-italic text-parchment"
               title={active?.name}
@@ -90,7 +92,7 @@ export function ProfilePopover({ compact = false }: { compact?: boolean } = {}) 
           </>
         ) : (
           <span className="min-w-0 flex-1">
-            <span className="block font-mono text-ash">profile</span>
+            <span className="block font-mono text-ash">{t('profile')}</span>
             <span
               className="block truncate font-serif-italic text-lg text-parchment"
               title={active?.name}
@@ -132,7 +134,9 @@ export function ProfilePopover({ compact = false }: { compact?: boolean } = {}) 
                     <span className="block truncate text-parchment" title={p.name}>
                       {p.name}
                     </span>
-                    <span className="font-mono ml-2 text-ash">{p.loadOrder.length} mods</span>
+                    <span className="font-mono ml-2 text-ash">
+                      {t.n(p.loadOrder.length, '{n} mod', '{n} mods')}
+                    </span>
                   </span>
                   {p.id === activeId ? <CheckIcon className="h-5 w-5 text-crimson" /> : null}
                 </button>
@@ -146,7 +150,7 @@ export function ProfilePopover({ compact = false }: { compact?: boolean } = {}) 
               onClick={onNewProfile}
               className="flex flex-1 items-center justify-center gap-2 border border-border px-2 py-1.5 text-sm hover:border-gilt/50"
             >
-              <Plus className="h-3.5 w-3.5" /> New
+              <Plus className="h-3.5 w-3.5" /> {t('New')}
             </button>
             <button
               type="button"
@@ -157,7 +161,7 @@ export function ProfilePopover({ compact = false }: { compact?: boolean } = {}) 
               }}
               className="flex flex-1 items-center justify-center gap-2 border border-border px-2 py-1.5 text-sm hover:border-gilt/50"
             >
-              <Copy className="h-3.5 w-3.5" /> Duplicate
+              <Copy className="h-3.5 w-3.5" /> {t('Duplicate')}
             </button>
           </div>
           <div className="border-t border-border p-2">
@@ -170,7 +174,7 @@ export function ProfilePopover({ compact = false }: { compact?: boolean } = {}) 
               }}
               className="font-mono w-full px-2 py-1 text-ash hover:text-parchment"
             >
-              Manage profiles →
+              {t('Manage profiles →')}
             </button>
           </div>
         </div>

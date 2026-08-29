@@ -10,6 +10,7 @@ import { RouteErrorComponent } from './components/route-error';
 import { applyAppearance } from './lib/appearance';
 import { authClient } from './lib/auth-client';
 import { reportDesktopAuthFailure } from './lib/desktop-auth';
+import { setLocale, t } from './lib/i18n';
 import { wireGlobalErrorHandlers } from './lib/telemetry';
 import { routeTree } from './routeTree.gen';
 import { useApp } from './store';
@@ -21,6 +22,9 @@ wireGlobalErrorHandlers();
 // The store rehydrates from localStorage synchronously, so getState() here
 // already carries the user's saved choice.
 applyAppearance(useApp.getState().settings);
+// The module-level translator used outside React (toasts, error mappers) reads
+// this. Components go through `useT()` and re-render on their own.
+setLocale(useApp.getState().settings.language);
 // Re-apply on ANY settings change, rather than diffing the appearance fields
 // by name. The named list was `fontFamily`/`fontScale`/`density`, so the
 // animation toggle added later did nothing until the next launch — a setting
@@ -28,7 +32,9 @@ applyAppearance(useApp.getState().settings);
 // replaces the settings object wholesale, so this identity check catches every
 // edit, and `applyAppearance` is a handful of idempotent style writes.
 useApp.subscribe((state, prev) => {
-  if (state.settings !== prev.settings) applyAppearance(state.settings);
+  if (state.settings === prev.settings) return;
+  applyAppearance(state.settings);
+  setLocale(state.settings.language);
 });
 
 // Handle the desktop OAuth relay deep link: rsmm://desktop-auth?token=…
@@ -119,7 +125,9 @@ class RootErrorBoundary extends Component<{ children: ReactNode }, { error: Erro
       return (
         <div className="flex h-screen w-screen items-center justify-center bg-pitch p-8">
           <div className="max-w-md text-center space-y-4">
-            <h1 className="font-fraktur text-3xl text-crimson">Something went wrong</h1>
+            {/* A class component, and the app may be too broken to re-render:
+                the module-level translator is the right one here. */}
+            <h1 className="font-fraktur text-3xl text-crimson">{t('Something went wrong')}</h1>
             <pre className="font-mono text-sm text-ash whitespace-pre-wrap break-all">
               {this.state.error.message}
             </pre>
@@ -128,7 +136,7 @@ class RootErrorBoundary extends Component<{ children: ReactNode }, { error: Erro
               onClick={() => window.location.reload()}
               className="border border-crimson px-4 py-2 text-parchment hover:bg-crimson/20"
             >
-              Reload
+              {t('Reload')}
             </button>
           </div>
         </div>

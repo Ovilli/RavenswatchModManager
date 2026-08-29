@@ -7,9 +7,12 @@
  * else is allowed to set those vars — this is the single writer.
  */
 
+import { LOCALES, type Locale, msg, normalizeLocale } from './i18n';
+
 export type FontChoice = 'grimoire' | 'serif' | 'sans' | 'mono';
 
 interface FontPreset {
+  /** English source; Settings renders it through `t()`. */
   label: string;
   hint: string;
   /** CSS var overrides written onto <html>. */
@@ -26,10 +29,23 @@ const SYSTEM_SANS =
 const SYSTEM_SERIF = 'Georgia, "Times New Roman", "Liberation Serif", serif';
 const SYSTEM_MONO = '"JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace';
 
+/**
+ * Appended to every font var while a CJK language is active.
+ *
+ * None of the grimoire faces carry Han glyphs, and a browser falling back on
+ * its own picks a different face per var — headings in one font, body in
+ * another, both unrelated to the preset. Naming the fallbacks keeps the CJK
+ * text coherent (and picks the system UI face on each platform) while Latin
+ * text still renders in the chosen preset, because the preset fonts come
+ * first and only the glyphs they lack fall through.
+ */
+const CJK_FALLBACK =
+  '"Noto Sans SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", "WenQuanYi Micro Hei", sans-serif';
+
 export const FONT_PRESETS: Record<FontChoice, FontPreset> = {
   grimoire: {
-    label: 'Grimoire',
-    hint: 'Blackletter headings, Garamond body — the default look.',
+    label: msg('Grimoire'),
+    hint: msg('Blackletter headings, Garamond body — the default look.'),
     vars: {
       body: "'EB Garamond', Georgia, serif",
       display: "'UnifrakturCook', 'UnifrakturMaguntia', serif",
@@ -38,8 +54,8 @@ export const FONT_PRESETS: Record<FontChoice, FontPreset> = {
     },
   },
   serif: {
-    label: 'Plain serif',
-    hint: 'Same shape, no blackletter. Easier on long reading.',
+    label: msg('Plain serif'),
+    hint: msg('Same shape, no blackletter. Easier on long reading.'),
     vars: {
       body: SYSTEM_SERIF,
       display: SYSTEM_SERIF,
@@ -48,8 +64,8 @@ export const FONT_PRESETS: Record<FontChoice, FontPreset> = {
     },
   },
   sans: {
-    label: 'System sans',
-    hint: 'Maximum legibility — your OS UI font everywhere.',
+    label: msg('System sans'),
+    hint: msg('Maximum legibility — your OS UI font everywhere.'),
     vars: {
       body: SYSTEM_SANS,
       display: SYSTEM_SANS,
@@ -58,8 +74,8 @@ export const FONT_PRESETS: Record<FontChoice, FontPreset> = {
     },
   },
   mono: {
-    label: 'Monospace',
-    hint: 'Everything in JetBrains Mono. For the terminal-minded.',
+    label: msg('Monospace'),
+    hint: msg('Everything in JetBrains Mono. For the terminal-minded.'),
     vars: {
       body: SYSTEM_MONO,
       display: SYSTEM_MONO,
@@ -123,18 +139,33 @@ export function normalizeDensity(value: unknown): Density {
   return value === 'compact' ? 'compact' : DEFAULT_DENSITY;
 }
 
+/** Suffix a preset stack with the CJK faces, for a CJK UI language. */
+function withCjk(stack: string, locale: Locale): string {
+  return LOCALES[locale].cjk ? `${stack}, ${CJK_FALLBACK}` : stack;
+}
+
 export function applyAppearance(
-  settings: { fontFamily?: unknown; fontScale?: unknown; density?: unknown; animations?: unknown },
+  settings: {
+    fontFamily?: unknown;
+    fontScale?: unknown;
+    density?: unknown;
+    animations?: unknown;
+    language?: unknown;
+  },
   root: HTMLElement | null = typeof document === 'undefined' ? null : document.documentElement,
 ): void {
   if (!root) return;
   const font = normalizeFont(settings.fontFamily);
   const scale = normalizeFontScale(settings.fontScale);
+  const locale = normalizeLocale(settings.language);
   const { vars } = FONT_PRESETS[font];
-  root.style.setProperty('--font-body', vars.body);
-  root.style.setProperty('--font-display', vars.display);
-  root.style.setProperty('--font-accent', vars.accent);
-  root.style.setProperty('--font-mono', vars.mono);
+  root.style.setProperty('--font-body', withCjk(vars.body, locale));
+  root.style.setProperty('--font-display', withCjk(vars.display, locale));
+  root.style.setProperty('--font-accent', withCjk(vars.accent, locale));
+  root.style.setProperty('--font-mono', withCjk(vars.mono, locale));
+  // `lang` drives the browser's own line-breaking and font selection for CJK,
+  // and is what a screen reader switches voice on.
+  root.lang = LOCALES[locale].tag;
   root.style.setProperty('--ui-scale', `${scale}%`);
   root.dataset.font = font;
   // Density is a CSS-only switch: the stylesheet keys padding overrides off

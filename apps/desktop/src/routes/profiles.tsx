@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
 import { CheckIcon } from '../components/icons/CheckIcon';
 import { useDialog, useToast } from '../components/toast';
+import { useT } from '../lib/i18n-react';
 import { validateProfileName } from '../lib/profile-name';
 import { listLocalMods } from '../lib/rsmm';
 import { isSafeProfileId } from '../lib/untrusted-state';
@@ -47,6 +48,7 @@ function ProfilesPage() {
     if (localModsQuery.data) syncLocalMods(localModsQuery.data);
   }, [localModsQuery.data, syncLocalMods]);
 
+  const t = useT();
   const dialog = useDialog();
   const toast = useToast();
 
@@ -58,12 +60,12 @@ function ProfilesPage() {
     // need — `mkdir` with arbitrary args, and `shell:allow-open` over
     // `file:///**` — neither of which anything else wanted.
     if (!isSafeProfileId(profileId)) {
-      toast.push('Invalid profile id', 'error');
+      toast.push(t('Invalid profile id'), 'error');
       return;
     }
     const modsRoot = useApp.getState().settings.modsDir?.trim();
     if (!modsRoot) {
-      toast.push('Set a mods folder in Settings first', 'error');
+      toast.push(t('Set a mods folder in Settings first'), 'error');
       return;
     }
     try {
@@ -76,14 +78,14 @@ function ProfilesPage() {
   function onImport() {
     const id = importP(code);
     if (!id) {
-      setImportError('Could not read that code. Check it and try again.');
+      setImportError(t('Could not read that code. Check it and try again.'));
       return;
     }
 
     setCode('');
     setImporting(false);
     setImportError(null);
-    toast.push('Profile imported.', 'success');
+    toast.push(t('Profile imported.'), 'success');
   }
 
   function onImportBackup() {
@@ -95,15 +97,15 @@ function ProfilesPage() {
     setBackupCode('');
     setImportingBackup(false);
     setBackupError(null);
-    toast.push('Backup imported.', 'success');
+    toast.push(t('Backup imported.'), 'success');
   }
 
   const onNewProfile = async () => {
     const name = await dialog.prompt({
-      title: 'New profile',
-      label: 'Name',
-      initialValue: 'New Run',
-      submitLabel: 'Create',
+      title: t('New profile'),
+      label: t('Name'),
+      initialValue: t('New Run'),
+      submitLabel: t('Create'),
     });
     const trimmed = name?.trim();
     if (!trimmed) return;
@@ -117,10 +119,10 @@ function ProfilesPage() {
 
   const onRename = async (id: string, currentName: string) => {
     const name = await dialog.prompt({
-      title: 'Rename profile',
-      label: 'Name',
+      title: t('Rename profile'),
+      label: t('Name'),
       initialValue: currentName,
-      submitLabel: 'Save',
+      submitLabel: t('Save'),
     });
     const trimmed = name?.trim();
     if (!trimmed) return;
@@ -134,14 +136,14 @@ function ProfilesPage() {
 
   const onDelete = async (id: string, name: string) => {
     const ok = await dialog.confirm({
-      title: 'Delete profile',
-      body: `Delete profile "${name}"? This cannot be undone.`,
-      confirmLabel: 'Delete',
+      title: t('Delete profile'),
+      body: t('Delete profile "{name}"? This cannot be undone.', { name }),
+      confirmLabel: t('Delete'),
       destructive: true,
     });
     if (ok) {
       remove(id);
-      toast.push(`Profile "${name}" deleted.`);
+      toast.push(t('Profile "{name}" deleted.', { name }));
     }
   };
 
@@ -149,13 +151,13 @@ function ProfilesPage() {
     const text = exportP(id);
     try {
       await navigator.clipboard.writeText(text);
-      toast.push('Profile code copied to clipboard.', 'success');
+      toast.push(t('Profile code copied to clipboard.'), 'success');
     } catch {
       await dialog.prompt({
-        title: 'Profile code',
-        label: 'Copy this code to share the profile',
+        title: t('Profile code'),
+        label: t('Copy this code to share the profile'),
         initialValue: text,
-        submitLabel: 'Close',
+        submitLabel: t('Close'),
         multiline: true,
       });
     }
@@ -165,13 +167,13 @@ function ProfilesPage() {
     const text = exportBackup();
     try {
       await navigator.clipboard.writeText(text);
-      toast.push('Backup code copied to clipboard.', 'success');
+      toast.push(t('Backup code copied to clipboard.'), 'success');
     } catch {
       await dialog.prompt({
-        title: 'Backup code',
-        label: 'Copy this code to restore the full app state',
+        title: t('Backup code'),
+        label: t('Copy this code to restore the full app state'),
         initialValue: text,
-        submitLabel: 'Close',
+        submitLabel: t('Close'),
         multiline: true,
       });
     }
@@ -180,8 +182,8 @@ function ProfilesPage() {
   return (
     <div className="space-y-6">
       <SectionHeader
-        title="Profiles"
-        subtitle="Different loadouts for different runs. Share one as a code."
+        title={t('Profiles')}
+        subtitle={t('Different loadouts for different runs. Share one as a code.')}
         right={
           <div className="flex items-center gap-2">
             <button
@@ -189,21 +191,21 @@ function ProfilesPage() {
               onClick={() => setImporting((v) => !v)}
               className="flex items-center gap-2 border border-border px-3 py-2 hover:border-gilt/50"
             >
-              <Upload className="h-4 w-4" /> Import
+              <Upload className="h-4 w-4" /> {t('Import')}
             </button>
             <button
               type="button"
               onClick={() => setImportingBackup((v) => !v)}
               className="flex items-center gap-2 border border-border px-3 py-2 hover:border-gilt/50"
             >
-              <Upload className="h-4 w-4" /> Backup
+              <Upload className="h-4 w-4" /> {t('Backup')}
             </button>
             <button
               type="button"
               onClick={onNewProfile}
               className="flex items-center gap-2 border border-crimson bg-crimson/80 px-3 py-2 text-parchment hover:bg-oxblood transition-colors duration-150"
             >
-              <Plus className="h-4 w-4" /> New profile
+              <Plus className="h-4 w-4" /> {t('New profile')}
             </button>
           </div>
         }
@@ -211,14 +213,16 @@ function ProfilesPage() {
 
       {importing ? (
         <Panel>
-          <h3 className="font-fraktur text-lg text-parchment mb-2">Import profile</h3>
-          <p className="font-serif-italic text-ash mb-3">Paste an exported profile code below.</p>
+          <h3 className="font-fraktur text-lg text-parchment mb-2">{t('Import profile')}</h3>
+          <p className="font-serif-italic text-ash mb-3">
+            {t('Paste an exported profile code below.')}
+          </p>
           <textarea
             value={code}
             onChange={(e) => setCode(e.target.value)}
             rows={4}
             className="font-mono w-full resize-none border border-border bg-pitch/60 p-3 text-parchment focus:border-gilt/60 focus:outline-none"
-            placeholder="base64-encoded profile…"
+            placeholder={t('base64-encoded profile…')}
           />
           {importError ? (
             <p className="text-sm text-crimson mt-2" role="alert">
@@ -231,14 +235,14 @@ function ProfilesPage() {
               onClick={() => setImporting(false)}
               className="border border-border px-3 py-1.5 text-ash hover:text-parchment"
             >
-              Cancel
+              {t('Cancel')}
             </button>
             <button
               type="button"
               onClick={onImport}
               className="border border-crimson bg-crimson/80 px-3 py-1.5 text-parchment hover:bg-oxblood"
             >
-              Import
+              {t('Import')}
             </button>
           </div>
         </Panel>
@@ -246,16 +250,16 @@ function ProfilesPage() {
 
       {importingBackup ? (
         <Panel>
-          <h3 className="font-fraktur text-lg text-parchment mb-2">Import backup</h3>
+          <h3 className="font-fraktur text-lg text-parchment mb-2">{t('Import backup')}</h3>
           <p className="font-serif-italic text-ash mb-3">
-            Paste a full-state backup code to restore profiles and settings.
+            {t('Paste a full-state backup code to restore profiles and settings.')}
           </p>
           <textarea
             value={backupCode}
             onChange={(e) => setBackupCode(e.target.value)}
             rows={4}
             className="font-mono w-full resize-none border border-border bg-pitch/60 p-3 text-parchment focus:border-gilt/60 focus:outline-none"
-            placeholder="base64-encoded backup…"
+            placeholder={t('base64-encoded backup…')}
           />
           {backupError ? (
             <p className="text-sm text-crimson mt-2" role="alert">
@@ -268,14 +272,14 @@ function ProfilesPage() {
               onClick={() => setImportingBackup(false)}
               className="border border-border px-3 py-1.5 text-ash hover:text-parchment"
             >
-              Cancel
+              {t('Cancel')}
             </button>
             <button
               type="button"
               onClick={onImportBackup}
               className="border border-crimson bg-crimson/80 px-3 py-1.5 text-parchment hover:bg-oxblood"
             >
-              Import backup
+              {t('Import backup')}
             </button>
           </div>
         </Panel>
@@ -284,9 +288,9 @@ function ProfilesPage() {
       <Panel>
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h3 className="font-fraktur text-lg text-parchment mb-2">Backup</h3>
+            <h3 className="font-fraktur text-lg text-parchment mb-2">{t('Backup')}</h3>
             <p className="font-serif-italic text-ash">
-              Save or restore all profiles, the active profile, and settings.
+              {t('Save or restore all profiles, the active profile, and settings.')}
             </p>
           </div>
           <button
@@ -294,7 +298,7 @@ function ProfilesPage() {
             onClick={onExportBackup}
             className="flex items-center gap-1.5 border border-border px-3 py-2 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
           >
-            <Download className="h-3.5 w-3.5" /> Export backup
+            <Download className="h-3.5 w-3.5" /> {t('Export backup')}
           </button>
         </div>
       </Panel>
@@ -318,20 +322,26 @@ function ProfilesPage() {
                     {p.name}
                   </h3>
                   <p className="font-mono mt-1 text-xs text-ash">
-                    {enabled} enabled · {present.length} on disk
+                    {t('{enabled} enabled · {present} on disk', {
+                      enabled,
+                      present: present.length,
+                    })}
                     {missing.length > 0 ? (
-                      <span className="text-crimson"> · {missing.length} missing</span>
+                      <span className="text-crimson">
+                        {' '}
+                        · {t('{n} missing', { n: missing.length })}
+                      </span>
                     ) : null}
                   </p>
                 </div>
-                {isActive ? <MonoTag tone="crimson">active</MonoTag> : null}
+                {isActive ? <MonoTag tone="crimson">{t('active')}</MonoTag> : null}
               </header>
 
               <Fleuron className="my-4" />
 
               <ul className="font-serif-italic max-h-32 space-y-0.5 overflow-y-auto text-sm text-smoke">
                 {p.loadOrder.length === 0 ? (
-                  <li className="text-ash">No mods.</li>
+                  <li className="text-ash">{t('No mods.')}</li>
                 ) : (
                   p.loadOrder.map((id) => {
                     const mod = getMod(id);
@@ -342,7 +352,7 @@ function ProfilesPage() {
                     if (!mod) {
                       return (
                         <li key={id} className="text-crimson/80" title={id}>
-                          {id} <span className="font-mono text-[11px]">— not on disk</span>
+                          {id} <span className="font-mono text-[11px]">{t('— not on disk')}</span>
                         </li>
                       );
                     }
@@ -361,15 +371,17 @@ function ProfilesPage() {
                   onClick={() => {
                     const removed = pruneMissing(p.id);
                     toast.push(
-                      removed === 1
-                        ? 'Removed 1 entry with no mod on disk'
-                        : `Removed ${removed} entries with no mods on disk`,
+                      t.n(
+                        removed,
+                        'Removed 1 entry with no mod on disk',
+                        'Removed {n} entries with no mods on disk',
+                      ),
                       'success',
                     );
                   }}
                   className="font-mono mt-3 w-full border border-crimson/60 px-2.5 py-1.5 text-xs text-crimson hover:bg-crimson/10"
                 >
-                  Remove {missing.length} missing
+                  {t('Remove {n} missing', { n: missing.length })}
                 </button>
               ) : null}
 
@@ -381,7 +393,7 @@ function ProfilesPage() {
                       onClick={() => setActive(p.id)}
                       className="flex items-center gap-1.5 border border-crimson bg-crimson/80 px-2.5 py-1.5 text-sm text-parchment hover:bg-oxblood"
                     >
-                      <CheckIcon className="h-4 w-4" /> Activate
+                      <CheckIcon className="h-4 w-4" /> {t('Activate')}
                     </button>
                   ) : null}
                   <button
@@ -389,28 +401,28 @@ function ProfilesPage() {
                     onClick={() => duplicate(p.id)}
                     className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
                   >
-                    <Copy className="h-3.5 w-3.5" /> Duplicate
+                    <Copy className="h-3.5 w-3.5" /> {t('Duplicate')}
                   </button>
                   <button
                     type="button"
                     onClick={() => onRename(p.id, p.name)}
                     className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
                   >
-                    <Pencil className="h-3.5 w-3.5" /> Rename
+                    <Pencil className="h-3.5 w-3.5" /> {t('Rename')}
                   </button>
                   <button
                     type="button"
                     onClick={() => onExport(p.id)}
                     className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
                   >
-                    <Download className="h-3.5 w-3.5" /> Export
+                    <Download className="h-3.5 w-3.5" /> {t('Export')}
                   </button>
                   <button
                     type="button"
                     onClick={() => onOpenFolder(p.id)}
                     className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
                   >
-                    <FolderOpen className="h-3.5 w-3.5" /> Open folder
+                    <FolderOpen className="h-3.5 w-3.5" /> {t('Open folder')}
                   </button>
                 </div>
                 {profiles.length > 1 ? (
@@ -419,7 +431,7 @@ function ProfilesPage() {
                     onClick={() => onDelete(p.id, p.name)}
                     className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-crimson hover:text-crimson"
                   >
-                    <Trash2 className="h-3.5 w-3.5" /> Delete
+                    <Trash2 className="h-3.5 w-3.5" /> {t('Delete')}
                   </button>
                 ) : null}
               </div>

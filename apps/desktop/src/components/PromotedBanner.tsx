@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useT } from '../lib/i18n-react';
 import { inTauri } from '../lib/platform';
 
 const AD_ORIGIN = import.meta.env.VITE_ADS_ORIGIN ?? 'https://rsmm.me';
@@ -13,6 +14,7 @@ const AD_BANNER_PATH = '/ads/banner';
  * mismatch errors when previewing in a regular browser.
  */
 export default function PromotedBanner({ vertical }: { vertical?: boolean } = {}) {
+  const t = useT();
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -40,7 +42,7 @@ export default function PromotedBanner({ vertical }: { vertical?: boolean } = {}
         }
       >
         <span className="font-mono text-xs uppercase tracking-[0.22em] text-ash">
-          ad slot offline
+          {t('ad slot offline')}
         </span>
       </div>
     );
@@ -51,7 +53,7 @@ export default function PromotedBanner({ vertical }: { vertical?: boolean } = {}
   return (
     <div className={`grimoire-card overflow-hidden ${sizeClass}`}>
       <iframe
-        title="Sponsored content"
+        title={t('Sponsored content')}
         src={src}
         loading="lazy"
         sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"

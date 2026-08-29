@@ -11,6 +11,7 @@ import {
   normalizeFont,
   normalizeFontScale,
 } from '../lib/appearance';
+import { type Locale, detectLocale, normalizeLocale } from '../lib/i18n';
 import type { Mod, ModCategory } from '../lib/mod-types';
 import { getPlatform } from '../lib/platform';
 import type { LocalMod } from '../lib/rsmm';
@@ -94,6 +95,9 @@ export interface AppSettings {
   animations: boolean;
   /** When false, NSFW mod images are blurred. */
   showNsfw: boolean;
+  /** UI language. Seeded from the OS languages on a fresh install; after that
+   * it is whatever the user picked and is never re-detected. */
+  language: Locale;
   /** Send frontend crash reports to the RSMM API. Local launcher-log entries
    * are written either way — this only controls what leaves the machine. */
   crashReports: boolean;
@@ -324,6 +328,10 @@ export function hydrateSettings(
     // stored `false` must survive, so this can't be a truthiness coercion
     // of a possibly-undefined value.
     crashReports: merged.crashReports !== false,
+    // An unknown tag (a build that shipped a language this one dropped, a
+    // hand-edited blob) falls back to English rather than leaving the UI
+    // looking up messages in a catalog that does not exist.
+    language: normalizeLocale(merged.language),
   };
 }
 
@@ -366,6 +374,7 @@ export const useApp = create<State>()(
             : '~/.local/share/rsmm/backups',
         modsDir: defaultModsDir(),
         showNsfw: false,
+        language: detectLocale(),
         sources: ['https://rsmm.me/registry'],
         density: 'cozy',
         animations: DEFAULT_ANIMATIONS,

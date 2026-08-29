@@ -16,6 +16,7 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 import { api, describeApiError, logApiError } from '../lib/api';
 import { getApiUrl } from '../lib/api-url';
+import { useT } from '../lib/i18n-react';
 import { inTauri } from '../lib/platform';
 import {
   disableHookWarning,
@@ -53,6 +54,7 @@ import { useModToggle } from './use-mod-toggle';
  *                  control, which is meaningless when the list is on screen.
  */
 export function ModDetail({ slug, embedded = false }: { slug: string; embedded?: boolean }) {
+  const t = useT();
   const navigate = useNavigate();
   const router = useRouter();
   const canGoBack = useCanGoBack();
@@ -120,12 +122,12 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
         }
         await queryClient.invalidateQueries({ queryKey: ['mods', 'detail', slug] });
       } catch (err) {
-        setVersionError(err instanceof Error ? err.message : 'Failed to install this version.');
+        setVersionError(err instanceof Error ? err.message : t('Failed to install this version.'));
       } finally {
         setVersionBusy(null);
       }
     },
-    [installMod, queryClient, slug, syncLocalMods],
+    [installMod, queryClient, slug, syncLocalMods, t],
   );
 
   const uninstallModStore = useApp((s) => s.uninstallMod);
@@ -136,23 +138,23 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
       try {
         const result = await uninstallLocalMod(modId);
         if (!result || !result.ok) {
-          throw new Error(result?.error || `Failed to uninstall ${modId}`);
+          throw new Error(result?.error || t('Failed to uninstall {id}', { id: modId }));
         }
         uninstallModStore(modId);
         await refreshLocalMods();
         await queryClient.invalidateQueries({ queryKey: ['mods', 'detail', slug] });
         const warning = disableHookWarning(result);
         if (warning) toast.push(warning, 'error');
-        else toast.push('Mod uninstalled.', 'success');
+        else toast.push(t('Mod uninstalled.'), 'success');
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to uninstall mod.';
+        const message = err instanceof Error ? err.message : t('Failed to uninstall mod.');
         setVersionError(message);
         toast.push(message, 'error');
       } finally {
         setVersionBusy(null);
       }
     },
-    [queryClient, refreshLocalMods, slug, toast, uninstallModStore],
+    [queryClient, refreshLocalMods, slug, t, toast, uninstallModStore],
   );
 
   if (isLoading) {
@@ -180,27 +182,29 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
     return (
       <div className="space-y-4">
         <Button type="button" size="sm" onClick={goBack}>
-          ← back
+          ← {t('back')}
         </Button>
         {fetchFailed ? (
           <div className="ember-banner flex flex-col gap-2 px-4 py-3">
             <div className="flex items-center gap-3">
               <span className="font-serif-italic text-base">
-                Couldn’t load “{slug}” from the index.
+                {t('Couldn’t load “{slug}” from the index.', { slug })}
               </span>
               <CopyButton value={describeApiError(error)} />
             </div>
             <p className="font-serif-italic text-sm text-ash">{describeApiError(error)}</p>
           </div>
         ) : (
-          <p className="font-serif-italic text-parchment">No mod matches “{slug}”.</p>
+          <p className="font-serif-italic text-parchment">
+            {t('No mod matches “{slug}”.', { slug })}
+          </p>
         )}
       </div>
     );
   }
 
   const name = apiMod?.name ?? liveBySlug?.name ?? slug;
-  const author = apiMod?.author ?? liveBySlug?.author ?? 'unknown';
+  const author = apiMod?.author ?? liveBySlug?.author ?? t('unknown');
   const summary = apiMod?.summary ?? liveBySlug?.summary ?? '';
   const description = apiMod?.description ?? liveBySlug?.description ?? '';
   const category = apiMod?.category ?? liveBySlug?.category ?? null;
@@ -237,14 +241,14 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
       {/* Nothing to go back TO when the list is already beside this. */}
       {embedded ? null : (
         <Button type="button" size="sm" onClick={goBack}>
-          <ArrowLeft className="h-3.5 w-3.5" /> back
+          <ArrowLeft className="h-3.5 w-3.5" /> {t('back')}
         </Button>
       )}
 
       {fetchFailed ? (
         <div className="ember-banner flex items-center gap-3 px-4 py-2">
           <span className="font-serif-italic text-sm flex-1">
-            Index unreachable — showing locally installed data only.
+            {t('Index unreachable — showing locally installed data only.')}
           </span>
           <CopyButton value={describeApiError(error)} />
         </div>
@@ -256,7 +260,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
       {imageUrl ? (
         <Cover
           src={imageUrl}
-          alt={`${name} cover art`}
+          alt={t('{name} cover art', { name })}
           caption={`${slug}-hero.png`}
           className={embedded ? 'aspect-[21/6]' : 'aspect-[21/9]'}
           nsfw={!showNsfw && nsfw}
@@ -284,14 +288,14 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
               <InkSwitch
                 on={enabled}
                 onClick={() => toggle(liveBySlug.id)}
-                label={`${enabled ? 'Disable' : 'Enable'} ${name}`}
+                label={enabled ? t('Disable {name}', { name }) : t('Enable {name}', { name })}
               />
               <MonoTag tone={enabled ? 'crimson' : 'default'}>
-                {enabled ? 'enabled' : 'disabled'}
+                {enabled ? t('enabled') : t('disabled')}
               </MonoTag>
               <OverlayButton modId={liveBySlug.id} />
               <Button type="button" variant="danger" onClick={() => void uninstall(liveBySlug.id)}>
-                <Trash2 className="h-4 w-4" /> Uninstall
+                <Trash2 className="h-4 w-4" /> {t('Uninstall')}
               </Button>
             </div>
           ) : (
@@ -308,7 +312,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
                 installMod(modFolderId);
               }}
             >
-              <Plus className="h-4 w-4" /> {versionBusy ? 'Installing…' : 'Install'}
+              <Plus className="h-4 w-4" /> {versionBusy ? t('Installing…') : t('Install')}
             </Button>
           )
         }
@@ -317,14 +321,14 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         <div className="space-y-4 md:col-span-2">
           <Panel>
-            <h3 className="font-fraktur text-xl text-parchment mb-3">About</h3>
+            <h3 className="font-fraktur text-xl text-parchment mb-3">{t('About')}</h3>
             <Fleuron />
             <Markdown source={markdown} className="mt-4" />
           </Panel>
 
           {videos.length > 0 || screenshots.length > 0 ? (
             <Panel>
-              <h3 className="font-fraktur text-xl text-parchment mb-3">Gallery</h3>
+              <h3 className="font-fraktur text-xl text-parchment mb-3">{t('Gallery')}</h3>
               <Fleuron />
               <div className="mt-4 space-y-4">
                 {videos.length > 0 ? (
@@ -343,7 +347,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
 
           {liveBySlug?.changelog ? (
             <Panel>
-              <h3 className="font-fraktur text-xl text-parchment mb-3">Changelog</h3>
+              <h3 className="font-fraktur text-xl text-parchment mb-3">{t('Changelog')}</h3>
               <Fleuron />
               <pre className="font-mono mt-4 whitespace-pre-wrap text-ash">
                 {liveBySlug.changelog}
@@ -353,7 +357,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
 
           {data?.versions && data.versions.length > 0 ? (
             <Panel>
-              <h3 className="font-fraktur text-xl text-parchment mb-3">Versions</h3>
+              <h3 className="font-fraktur text-xl text-parchment mb-3">{t('Versions')}</h3>
               <Fleuron />
               {versionError ? (
                 <div className="ember-banner mb-3 px-4 py-2 text-sm text-ash">{versionError}</div>
@@ -364,7 +368,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
                     <div className="flex items-baseline gap-3">
                       <span className="font-mono text-sm text-parchment">v{v.version}</span>
                       <span className="font-mono text-xs text-ash">
-                        {new Date(v.createdAt).toLocaleDateString()}
+                        {new Date(v.createdAt).toLocaleDateString(t.tag)}
                       </span>
                       {v.sizeBytes ? (
                         <span className="font-mono text-xs text-ash">
@@ -377,10 +381,10 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
                         href={`${apiBase}/api/mods/${slug}/${v.version}/download`}
                         className="font-mono text-xs text-gilt hover:underline"
                       >
-                        download
+                        {t('download')}
                       </a>
                       {localVersion === v.version ? (
-                        <MonoTag tone="gilt">current</MonoTag>
+                        <MonoTag tone="gilt">{t('current')}</MonoTag>
                       ) : (
                         <Button
                           type="button"
@@ -388,7 +392,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
                           onClick={() => installVersion(v.version)}
                           disabled={versionBusy === v.version}
                         >
-                          {installedHere ? 'downgrade' : 'install'}
+                          {installedHere ? t('downgrade') : t('install')}
                         </Button>
                       )}
                     </div>
@@ -401,22 +405,22 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
 
         <aside className="space-y-4">
           <Panel>
-            <h4 className="font-mono text-ash mb-3">Facts</h4>
+            <h4 className="font-mono text-ash mb-3">{t('Facts')}</h4>
             <dl className="space-y-2 text-sm">
-              {category ? <Row k="Category" v={category} /> : null}
-              {rating != null ? <Row k="Rating" v={`${rating.toFixed(1)} ★`} /> : null}
-              <Row k="Downloads" v={downloads.toLocaleString()} />
+              {category ? <Row k={t('Category')} v={category} /> : null}
+              {rating != null ? <Row k={t('Rating')} v={`${rating.toFixed(1)} ★`} /> : null}
+              <Row k={t('Downloads')} v={downloads.toLocaleString(t.tag)} />
               {sizeBytes != null ? (
-                <Row k="Size" v={`${(sizeBytes / 1024 / 1024).toFixed(2)} MB`} />
+                <Row k={t('Size')} v={`${(sizeBytes / 1024 / 1024).toFixed(2)} MB`} />
               ) : null}
-              {apiLatest ? <Row k="Latest" v={`v${apiLatest}`} /> : null}
-              {license ? <Row k="License" v={license} /> : null}
+              {apiLatest ? <Row k={t('Latest')} v={`v${apiLatest}`} /> : null}
+              {license ? <Row k={t('License')} v={license} /> : null}
             </dl>
           </Panel>
 
           {repoUrl || homepageUrl ? (
             <Panel>
-              <h4 className="font-mono text-ash mb-3">Links</h4>
+              <h4 className="font-mono text-ash mb-3">{t('Links')}</h4>
               <ul className="space-y-2 text-sm">
                 {homepageUrl ? (
                   <li>
@@ -426,7 +430,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 text-parchment underline-offset-2 hover:underline"
                     >
-                      <Globe className="h-3.5 w-3.5" /> Homepage
+                      <Globe className="h-3.5 w-3.5" /> {t('Homepage')}
                       <ExternalLink className="h-3 w-3 opacity-60" />
                     </a>
                   </li>
@@ -439,7 +443,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 text-parchment underline-offset-2 hover:underline"
                     >
-                      <ExternalLink className="h-3.5 w-3.5" /> Repository
+                      <ExternalLink className="h-3.5 w-3.5" /> {t('Repository')}
                     </a>
                   </li>
                 ) : null}
@@ -449,7 +453,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
 
           {tags.length > 0 ? (
             <Panel>
-              <h4 className="font-mono text-ash mb-3">Tags</h4>
+              <h4 className="font-mono text-ash mb-3">{t('Tags')}</h4>
               <div className="flex flex-wrap gap-1.5">
                 {tags.map((t) => (
                   <MonoTag key={t}>{t}</MonoTag>
@@ -460,7 +464,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
 
           {Object.keys(dependencies).length > 0 ? (
             <Panel>
-              <h4 className="font-mono text-ash mb-3">Requires</h4>
+              <h4 className="font-mono text-ash mb-3">{t('Requires')}</h4>
               <ul className="space-y-1.5 text-sm">
                 {Object.entries(dependencies).map(([depSlug, range]) => {
                   const depInstalled = Object.values(useApp.getState().localMods).some(
@@ -478,9 +482,9 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
                       <span className="flex items-center gap-1.5">
                         <code className="font-mono text-xs text-ash">{range}</code>
                         {depInstalled ? (
-                          <MonoTag tone="gilt">ok</MonoTag>
+                          <MonoTag tone="gilt">{t('ok')}</MonoTag>
                         ) : (
-                          <MonoTag tone="crimson">missing</MonoTag>
+                          <MonoTag tone="crimson">{t('missing')}</MonoTag>
                         )}
                       </span>
                     </li>
@@ -523,6 +527,7 @@ interface Screenshot {
  * and loads no third-party script until it is actually wanted.
  */
 function GalleryVideo({ url, modName }: { url: string; modName: string }) {
+  const t = useT();
   const [playing, setPlaying] = useState(false);
   const embed = toEmbedUrl(url);
 
@@ -546,7 +551,7 @@ function GalleryVideo({ url, modName }: { url: string; modName: string }) {
       <div className="aspect-video overflow-hidden rounded border border-oxblood/30 bg-pitch">
         <iframe
           src={`${embed}?autoplay=1`}
-          title={`${modName} video`}
+          title={t('{name} video', { name: modName })}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowFullScreen
           className="h-full w-full"
@@ -563,7 +568,7 @@ function GalleryVideo({ url, modName }: { url: string; modName: string }) {
       className="group flex aspect-video w-full items-center justify-center gap-2 overflow-hidden rounded border border-oxblood/30 bg-pitch text-ash transition-colors hover:border-crimson hover:text-parchment"
     >
       <Play className="h-6 w-6" />
-      <span className="font-mono text-xs uppercase tracking-[0.2em]">Play video</span>
+      <span className="font-mono text-xs uppercase tracking-[0.2em]">{t('Play video')}</span>
     </button>
   );
 }
@@ -573,6 +578,7 @@ function ScreenshotGallery({
   modName,
   nsfw,
 }: { shots: Screenshot[]; modName: string; nsfw?: boolean }) {
+  const t = useT();
   const [idx, setIdx] = useState<number | null>(null);
   const close = useCallback(() => setIdx(null), []);
   const prev = useCallback(() => {
@@ -612,7 +618,7 @@ function ScreenshotGallery({
               >
                 <img
                   src={shot.url}
-                  alt={shot.caption || `${modName} screenshot ${i + 1}`}
+                  alt={shot.caption || t('{name} screenshot {n}', { name: modName, n: i + 1 })}
                   loading="lazy"
                   className={cn(
                     'h-full w-full object-cover transition-opacity group-hover:opacity-90',
@@ -631,7 +637,9 @@ function ScreenshotGallery({
       {active ? (
         <dialog
           open
-          aria-label={active.caption || `${modName} screenshot ${(idx ?? 0) + 1}`}
+          aria-label={
+            active.caption || t('{name} screenshot {n}', { name: modName, n: (idx ?? 0) + 1 })
+          }
           className="fixed inset-0 z-[90] bg-pitch/95"
         >
           <div className="absolute inset-0 overflow-y-auto">
@@ -639,7 +647,7 @@ function ScreenshotGallery({
               type="button"
               onClick={close}
               className="absolute inset-0 h-full w-full cursor-default"
-              aria-label="Close preview"
+              aria-label={t('Close preview')}
             />
             <div className="pointer-events-none relative flex min-h-full items-center justify-center px-4 py-16 sm:px-20">
               <figure
@@ -648,11 +656,18 @@ function ScreenshotGallery({
               >
                 <img
                   src={active.url}
-                  alt={active.caption || `${modName} screenshot ${(idx ?? 0) + 1}`}
+                  alt={
+                    active.caption ||
+                    t('{name} screenshot {n}', { name: modName, n: (idx ?? 0) + 1 })
+                  }
                   className="max-w-full rounded-md object-contain shadow-2xl"
                 />
                 <figcaption className="max-w-3xl text-center text-sm text-ash">
-                  {active.caption || `Screenshot ${(idx ?? 0) + 1} of ${shots.length}`}
+                  {active.caption ||
+                    t('Screenshot {n} of {total}', {
+                      n: (idx ?? 0) + 1,
+                      total: shots.length,
+                    })}
                 </figcaption>
                 <p className="font-mono text-xs text-ash/70">
                   {(idx ?? 0) + 1} / {shots.length}
@@ -664,7 +679,7 @@ function ScreenshotGallery({
             type="button"
             onClick={close}
             className="fixed right-4 top-4 z-20 rounded-md bg-oxblood/60 p-2 text-parchment hover:bg-oxblood"
-            aria-label="Close"
+            aria-label={t('Close')}
           >
             <X className="h-5 w-5" />
           </button>
@@ -674,7 +689,7 @@ function ScreenshotGallery({
                 type="button"
                 onClick={prev}
                 className="fixed left-2 sm:left-4 top-1/2 z-20 -translate-y-1/2 rounded-md bg-oxblood/60 p-3 text-parchment hover:bg-oxblood"
-                aria-label="Previous"
+                aria-label={t('Previous')}
               >
                 <ChevronLeft className="h-6 w-6" />
               </button>
@@ -682,7 +697,7 @@ function ScreenshotGallery({
                 type="button"
                 onClick={next}
                 className="fixed right-2 sm:right-4 top-1/2 z-20 -translate-y-1/2 rounded-md bg-oxblood/60 p-3 text-parchment hover:bg-oxblood"
-                aria-label="Next"
+                aria-label={t('Next')}
               >
                 <ChevronRight className="h-6 w-6" />
               </button>

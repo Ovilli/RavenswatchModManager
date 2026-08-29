@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { useT } from '../lib/i18n-react';
 
 type ToastTone = 'default' | 'success' | 'error';
 
@@ -117,6 +118,7 @@ function DialogModal({
   state: Exclude<DialogState, null>;
   onClose: () => void;
 }) {
+  const t = useT();
   const isPrompt = state.kind === 'prompt';
   const [value, setValue] = useState(isPrompt ? (state.opts.initialValue ?? '') : '');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -215,7 +217,7 @@ function DialogModal({
             onClick={cancel}
             className="border border-border px-3 py-1.5 text-ash hover:text-parchment"
           >
-            Cancel
+            {t('Cancel')}
           </button>
           <button
             type="button"
@@ -227,9 +229,11 @@ function DialogModal({
                 : 'border-crimson bg-crimson/80 hover:bg-oxblood'
             }`}
           >
+            {/* Caller-supplied labels arrive already translated — the call
+                sites hold a `t` of their own. Only the default is ours. */}
             {state.kind === 'prompt'
-              ? (state.opts.submitLabel ?? 'OK')
-              : (state.opts.confirmLabel ?? 'OK')}
+              ? (state.opts.submitLabel ?? t('OK'))
+              : (state.opts.confirmLabel ?? t('OK'))}
           </button>
         </div>
       </div>

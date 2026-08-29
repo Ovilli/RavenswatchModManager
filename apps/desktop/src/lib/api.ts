@@ -1,5 +1,6 @@
 import { ApiError, ApiTimeoutError, createApiClient } from '@rsmm/api-client';
 import { getApiUrl } from './api-url';
+import { t } from './i18n';
 
 const API_BASE = getApiUrl();
 
@@ -33,18 +34,37 @@ export function getApiBaseUrl(): string {
  */
 export function describeApiError(err: unknown): string {
   if (err instanceof ApiTimeoutError) {
-    return `The API at ${API_BASE} did not respond in time. It may be down or your connection is slow.`;
+    return t(
+      'The API at {url} did not respond in time. It may be down or your connection is slow.',
+      {
+        url: API_BASE,
+      },
+    );
   }
   if (err instanceof ApiError) {
-    return `The API at ${API_BASE} responded with HTTP ${err.status}. (${err.message})`;
+    return t('The API at {url} responded with HTTP {status}. ({message})', {
+      url: API_BASE,
+      status: err.status,
+      message: err.message,
+    });
   }
   if (err instanceof TypeError) {
     const origin = typeof window !== 'undefined' ? window.location.origin : '<unknown>';
+    // The second half names source files a maintainer greps for, so it stays
+    // one message: a translator can move the placeholders, not split the file
+    // paths out of it.
     return [
-      `Request to ${API_BASE} was blocked before reaching the server (${err.message}).`,
-      'If you are offline, reconnect and retry. Otherwise this is usually config:',
-      `the app origin ${origin} must be in the API's CORS trustedOrigins (apps/api/src/env.ts),`,
-      `and ${API_BASE} must be in the CSP connect-src (apps/desktop/src-tauri/tauri.conf.json).`,
+      t('Request to {url} was blocked before reaching the server ({message}).', {
+        url: API_BASE,
+        message: err.message,
+      }),
+      t('If you are offline, reconnect and retry. Otherwise this is usually config:'),
+      t("the app origin {origin} must be in the API's CORS trustedOrigins (apps/api/src/env.ts),", {
+        origin,
+      }),
+      t('and {url} must be in the CSP connect-src (apps/desktop/src-tauri/tauri.conf.json).', {
+        url: API_BASE,
+      }),
     ].join(' ');
   }
   return err instanceof Error ? err.message : String(err);

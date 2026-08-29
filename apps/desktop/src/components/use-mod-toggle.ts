@@ -8,6 +8,7 @@
  * the other screen protects.
  */
 import { useCallback } from 'react';
+import { useT } from '../lib/i18n-react';
 import { buildEnablePlan, findBlockingDependents } from '../lib/library-deps';
 import { activeProfile, isEnabledIn, useApp } from '../store';
 import { useDialog } from './toast';
@@ -26,6 +27,7 @@ export interface ModToggle {
  *   prompt) — the Library uses it to clear its selection.
  */
 export function useModToggle(onSettled?: () => void): ModToggle {
+  const t = useT();
   const dialog = useDialog();
   const profile = useApp(activeProfile);
   const toggleMod = useApp((s) => s.toggleMod);
@@ -35,9 +37,12 @@ export function useModToggle(onSettled?: () => void): ModToggle {
       const plan = buildEnablePlan(ids);
       if (plan.missing.length > 0) {
         const ok = await dialog.confirm({
-          title: 'Missing dependencies',
-          body: `These dependencies are not installed: ${plan.missing.join(', ')}. Enable the selected mods anyway?`,
-          confirmLabel: 'Enable anyway',
+          title: t('Missing dependencies'),
+          body: t(
+            'These dependencies are not installed: {list}. Enable the selected mods anyway?',
+            { list: plan.missing.join(', ') },
+          ),
+          confirmLabel: t('Enable anyway'),
           destructive: true,
         });
         if (!ok) return;
@@ -47,7 +52,7 @@ export function useModToggle(onSettled?: () => void): ModToggle {
       }
       onSettled?.();
     },
-    [dialog, onSettled, profile, toggleMod],
+    [dialog, onSettled, profile, t, toggleMod],
   );
 
   const disableMods = useCallback(
@@ -58,9 +63,9 @@ export function useModToggle(onSettled?: () => void): ModToggle {
           .map(([target, dependents]) => `${target}: ${dependents.join(', ')}`)
           .join('\n');
         const ok = await dialog.confirm({
-          title: 'Broken dependency chain',
-          body: `Disabling these mods will leave others missing dependencies:\n${body}\nContinue?`,
-          confirmLabel: 'Disable anyway',
+          title: t('Broken dependency chain'),
+          body: `${t('Disabling these mods will leave others missing dependencies:')}\n${body}\n${t('Continue?')}`,
+          confirmLabel: t('Disable anyway'),
           destructive: true,
         });
         if (!ok) return;
@@ -70,7 +75,7 @@ export function useModToggle(onSettled?: () => void): ModToggle {
       }
       onSettled?.();
     },
-    [dialog, onSettled, profile, toggleMod],
+    [dialog, onSettled, profile, t, toggleMod],
   );
 
   const toggle = useCallback(

@@ -16,6 +16,7 @@ import { CommandResult, type CommandResultKind } from '../components/command-res
 import { useLaunch } from '../components/launch';
 import { useToast } from '../components/toast';
 import { explainError } from '../lib/errors';
+import { useT } from '../lib/i18n-react';
 import { applyMods, build, doctor, listLocalMods, restoreAll } from '../lib/rsmm';
 
 type CommandStatus = 'idle' | 'running' | 'success' | 'error';
@@ -54,8 +55,8 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-function formatClock(ms: number): string {
-  return new Date(ms).toLocaleTimeString();
+function formatClock(ms: number, locale: string): string {
+  return new Date(ms).toLocaleTimeString(locale);
 }
 
 function formatDuration(start: number, end?: number): string | null {
@@ -65,6 +66,7 @@ function formatDuration(start: number, end?: number): string | null {
 }
 
 function CommandsPage() {
+  const t = useT();
   const [entries, setEntries] = useState<CommandEntry[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const toast = useToast();
@@ -76,8 +78,8 @@ function CommandsPage() {
     () => [
       {
         id: 'list',
-        label: 'List local mods',
-        description: 'Show every mod currently installed in the local mods folder.',
+        label: t('List local mods'),
+        description: t('Show every mod currently installed in the local mods folder.'),
         icon: <Terminal className="h-4 w-4" aria-hidden="true" />,
         tone: 'default',
         kind: 'mods',
@@ -86,8 +88,8 @@ function CommandsPage() {
       },
       {
         id: 'doctor',
-        label: 'Doctor',
-        description: 'Run the health check for paths, loader, and core setup.',
+        label: t('Doctor'),
+        description: t('Run the health check for paths, loader, and core setup.'),
         icon: <ShieldCheck className="h-4 w-4" aria-hidden="true" />,
         tone: 'gilt',
         kind: 'doctor',
@@ -96,8 +98,8 @@ function CommandsPage() {
       },
       {
         id: 'doctor-fix',
-        label: 'Doctor + repair',
-        description: 'Run the health check, then apply the safe automated repairs it finds.',
+        label: t('Doctor + repair'),
+        description: t('Run the health check, then apply the safe automated repairs it finds.'),
         icon: <Stethoscope className="h-4 w-4" aria-hidden="true" />,
         tone: 'gilt',
         kind: 'doctor',
@@ -108,8 +110,8 @@ function CommandsPage() {
       },
       {
         id: 'apply',
-        label: 'Apply mods',
-        description: 'Write the current profile into the game install without launching.',
+        label: t('Apply mods'),
+        description: t('Write the current profile into the game install without launching.'),
         icon: <Wrench className="h-4 w-4" aria-hidden="true" />,
         tone: 'primary',
         kind: 'run',
@@ -117,8 +119,8 @@ function CommandsPage() {
       },
       {
         id: 'restore',
-        label: 'Restore originals',
-        description: 'Put every modified file back to its stock state.',
+        label: t('Restore originals'),
+        description: t('Put every modified file back to its stock state.'),
         icon: <RotateCcw className="h-4 w-4" aria-hidden="true" />,
         tone: 'danger',
         kind: 'run',
@@ -126,8 +128,8 @@ function CommandsPage() {
       },
       {
         id: 'build',
-        label: 'Build',
-        description: 'Generate assets and apply the current mod set in one pass.',
+        label: t('Build'),
+        description: t('Generate assets and apply the current mod set in one pass.'),
         icon: <ServerCrash className="h-4 w-4" aria-hidden="true" />,
         tone: 'gilt',
         kind: 'run',
@@ -135,8 +137,8 @@ function CommandsPage() {
       },
       {
         id: 'run-vanilla',
-        label: 'Run vanilla',
-        description: 'Restore first, then hand off to Ravenswatch through Steam.',
+        label: t('Run vanilla'),
+        description: t('Restore first, then hand off to Ravenswatch through Steam.'),
         icon: <Play className="h-4 w-4" aria-hidden="true" />,
         tone: 'default',
         kind: 'run',
@@ -144,15 +146,15 @@ function CommandsPage() {
       },
       {
         id: 'run-modded',
-        label: 'Run modded',
-        description: 'Apply mods, launch the game, and auto-restore after exit.',
+        label: t('Run modded'),
+        description: t('Apply mods, launch the game, and auto-restore after exit.'),
         icon: <CheckCircle2 className="h-4 w-4" aria-hidden="true" />,
         tone: 'primary',
         kind: 'run',
         run: () => launch('modded'),
       },
     ],
-    [launch],
+    [launch, t],
   );
 
   const runCommand = async (spec: CommandSpec) => {
@@ -184,13 +186,22 @@ function CommandsPage() {
         result,
       });
       toast.push(
-        failed ? `${spec.label} failed — see the log below.` : `${spec.label} finished.`,
+        failed
+          ? t('{command} failed — see the log below.', { command: spec.label })
+          : t('{command} finished.', { command: spec.label }),
         failed ? 'error' : 'success',
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       patch({ status: 'error', finishedAt: Date.now(), error: message });
-      toast.push(`${spec.label} failed: ${explainError(message).title}`, 'error');
+      // `explainError` returns an English source; translate it here.
+      toast.push(
+        t('{command} failed: {reason}', {
+          command: spec.label,
+          reason: t(explainError(message).title),
+        }),
+        'error',
+      );
     } finally {
       setBusyId(null);
     }
@@ -199,12 +210,12 @@ function CommandsPage() {
   return (
     <div className="space-y-6">
       <SectionHeader
-        title="Commands"
-        subtitle="Run the common rsmm lifecycle commands from one place."
+        title={t('Commands')}
+        subtitle={t('Run the common rsmm lifecycle commands from one place.')}
       />
 
       <Panel>
-        <h3 className="font-fraktur text-xl text-parchment">Quick actions</h3>
+        <h3 className="font-fraktur text-xl text-parchment">{t('Quick actions')}</h3>
         <Fleuron className="my-3" />
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {commands.map((command) => (
@@ -233,12 +244,12 @@ function CommandsPage() {
                   disabled={busyId !== null || (launchBusy && !command.readOnly)}
                   title={
                     launchBusy && !command.readOnly
-                      ? 'Unavailable while Ravenswatch is launching or running'
+                      ? t('Unavailable while Ravenswatch is launching or running')
                       : undefined
                   }
                 >
                   {command.icon}
-                  <span>{busyId === command.id ? 'Running…' : 'Run'}</span>
+                  <span>{busyId === command.id ? t('Running…') : t('Run')}</span>
                 </Button>
               </div>
             </div>
@@ -249,19 +260,19 @@ function CommandsPage() {
       <Panel>
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h3 className="font-fraktur text-xl text-parchment">Command log</h3>
+            <h3 className="font-fraktur text-xl text-parchment">{t('Command log')}</h3>
             <p className="font-serif-italic mt-1 text-ash">
-              Outputs from the last commands you ran in this page.
+              {t('Outputs from the last commands you ran in this page.')}
             </p>
           </div>
           <Button type="button" size="sm" onClick={() => setEntries([])}>
-            Clear log
+            {t('Clear log')}
           </Button>
         </div>
         <Fleuron className="my-3" />
         <div className="space-y-3">
           {entries.length === 0 ? (
-            <p className="font-serif-italic text-ash">No commands have been run yet.</p>
+            <p className="font-serif-italic text-ash">{t('No commands have been run yet.')}</p>
           ) : (
             entries.map((entry) => (
               <div key={entry.id} className="border border-border bg-pitch/60 p-4">
@@ -277,11 +288,17 @@ function CommandsPage() {
                             : 'default'
                       }
                     >
-                      {entry.status}
+                      {entry.status === 'running'
+                        ? t('running')
+                        : entry.status === 'success'
+                          ? t('success')
+                          : entry.status === 'error'
+                            ? t('error')
+                            : t('idle')}
                     </MonoTag>
                   </div>
                   <span className="font-mono text-xs text-ash">
-                    {formatClock(entry.startedAt)}
+                    {formatClock(entry.startedAt, t.tag)}
                     {formatDuration(entry.startedAt, entry.finishedAt)
                       ? ` · ${formatDuration(entry.startedAt, entry.finishedAt)}`
                       : ''}
@@ -290,7 +307,7 @@ function CommandsPage() {
                 {entry.status === 'running' ? (
                   <p className="font-serif-italic mt-3 flex items-center gap-2 text-ash">
                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                    Working…
+                    {t('Working…')}
                   </p>
                 ) : (
                   <CommandResult kind={entry.kind} result={entry.result} error={entry.error} />

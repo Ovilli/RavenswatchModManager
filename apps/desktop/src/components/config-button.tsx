@@ -17,6 +17,7 @@
 import { SlidersHorizontal, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useT } from '../lib/i18n-react';
 import { Button } from './chrome';
 import { ModConfigPanel } from './mod-config-panel';
 
@@ -35,6 +36,7 @@ export function ConfigButton({
   onToggleEnabled?: () => void;
   className?: string;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -82,8 +84,8 @@ export function ConfigButton({
       <button
         type="button"
         className={`btn-grim shrink-0 px-2 py-1.5 ${className ?? ''}`}
-        title="Configure — open this mod's settings"
-        aria-label="Configure this mod"
+        title={t("Configure — open this mod's settings")}
+        aria-label={t('Configure this mod')}
         aria-haspopup="dialog"
         onClick={(e) => {
           e.stopPropagation();
@@ -99,7 +101,7 @@ export function ConfigButton({
               // biome-ignore lint/a11y/useSemanticElements: see ai-disclosure.tsx — <dialog>'s top-layer backdrop conflicts with the app's overlay stacking
               role="dialog"
               aria-modal="true"
-              aria-label={`Configure ${modName ?? modId}`}
+              aria-label={t('Configure {name}', { name: modName ?? modId })}
               className="fixed inset-0 z-[75] flex items-center justify-center p-4 animate-fade-in"
               onClick={(e) => e.stopPropagation()}
             >
@@ -118,8 +120,8 @@ export function ConfigButton({
                     type="button"
                     onClick={close}
                     className="btn-grim shrink-0 px-2 py-1.5"
-                    aria-label="Close config"
-                    title="Close"
+                    aria-label={t('Close config')}
+                    title={t('Close')}
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -139,14 +141,14 @@ export function ConfigButton({
                 {confirming ? (
                   <div className="ember-banner mt-3 flex shrink-0 flex-wrap items-center justify-between gap-3 px-4 py-3">
                     <span className="font-serif-italic text-base">
-                      Unsaved config changes. Discard them?
+                      {t('Unsaved config changes. Discard them?')}
                     </span>
                     <span className="flex items-center gap-2">
                       <Button type="button" size="sm" onClick={() => setConfirming(false)}>
-                        Keep editing
+                        {t('Keep editing')}
                       </Button>
                       <Button type="button" size="sm" variant="danger" onClick={discard}>
-                        Discard
+                        {t('Discard')}
                       </Button>
                     </span>
                   </div>

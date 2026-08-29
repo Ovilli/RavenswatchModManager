@@ -91,6 +91,35 @@ a terminal.
 
 You can create multiple profiles — separate sets of enabled mods for different playthroughs. Switch between them from the profile dropdown.
 
+## Language
+
+Settings → Appearance → **Language** switches the interface between English and
+简体中文 (Simplified Chinese). The change applies immediately — no restart — and
+is remembered per machine.
+
+On a fresh install the language is picked from the languages your OS reports:
+anything Chinese (`zh`, `zh-Hans`, `zh-TW`, …) starts in Simplified Chinese,
+everything else starts in English. After that it is whatever you chose, and is
+never re-detected.
+
+Three kinds of text stay in their own language by design, because RSMM does not
+author them:
+
+- output from the `rsmm` command-line tool (the Commands page, doctor findings,
+  the raw text behind an error),
+- anything a mod supplies — an overlay's columns, a config field's label, a
+  mod's store description,
+- the game's own strings.
+
+Selecting a CJK language also appends a CJK font stack to every typeface preset,
+so Chinese text renders in a coherent face while Latin text keeps the preset you
+chose.
+
+Adding a language means adding a catalog under `apps/desktop/src/locales/`; the
+`coverage.test.ts` suite fails the build if a catalog is missing an entry, keeps
+one nothing renders any more, drops a `{placeholder}`, or lets a glossary term
+drift (profile 方案, overlay 悬浮窗, loader 加载器, mod 模组, …).
+
 ## Cross-platform notes
 
 RSMM works identically on **Windows and Linux**. The interface, features, and workflow are the same on both platforms. (macOS is not supported.)

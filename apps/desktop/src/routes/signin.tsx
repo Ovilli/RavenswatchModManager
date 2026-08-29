@@ -8,6 +8,7 @@ import { describeApiError } from '../lib/api';
 import { getApiUrl } from '../lib/api-url';
 import { authClient, signIn, signUp } from '../lib/auth-client';
 import { onDesktopAuthFailure, takeDesktopAuthFailure } from '../lib/desktop-auth';
+import { useT } from '../lib/i18n-react';
 
 export const Route = createFileRoute('/signin')({
   component: SignInPage,
@@ -54,6 +55,7 @@ function GoogleIcon() {
 }
 
 function SignInPage() {
+  const t = useT();
   const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
@@ -96,7 +98,7 @@ function SignInPage() {
       const base = getApiUrl().replace(/\/+$/, '');
       await openUrl(`${base}/api/desktop-auth/start?provider=${provider}&app=${nonce}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : `${provider} sign-in failed`);
+      setError(err instanceof Error ? err.message : t('{provider} sign-in failed', { provider }));
     } finally {
       // Re-enable the buttons: the deep-link handler navigates away on success;
       // if the user cancels in the browser they land back here able to retry.
@@ -109,11 +111,11 @@ function SignInPage() {
     setError(null);
     const trimmedEmail = email.trim().toLowerCase();
     if (!trimmedEmail || !password) {
-      setError('Email and password are required.');
+      setError(t('Email and password are required.'));
       return;
     }
     if (password.length < 8) {
-      setError('Password must be at least 8 characters.');
+      setError(t('Password must be at least 8 characters.'));
       return;
     }
     setBusy(true);
@@ -137,11 +139,11 @@ function SignInPage() {
       const session = await authClient.getSession({ query: { disableCookieCache: true } });
       if (!session.data?.user) {
         if (mode === 'signup') {
-          setError('Account created. Check your email to verify, then sign in.');
+          setError(t('Account created. Check your email to verify, then sign in.'));
           setMode('signin');
           return;
         }
-        setError('Signed in, but the session could not be loaded. Try again.');
+        setError(t('Signed in, but the session could not be loaded. Try again.'));
         return;
       }
       navigate({ to: '/' });
@@ -153,7 +155,7 @@ function SignInPage() {
         console.error('[signin] auth request blocked', err);
         setError(describeApiError(err));
       } else {
-        setError(err instanceof Error ? err.message : 'Unexpected error.');
+        setError(err instanceof Error ? err.message : t('Unexpected error.'));
       }
     } finally {
       setBusy(false);
@@ -170,29 +172,29 @@ function SignInPage() {
   ) => {
     const code = err.code ?? '';
     if (code === 'USER_ALREADY_EXISTS' || code === 'EMAIL_ALREADY_EXISTS') {
-      setError('That email is already registered. Try signing in instead.');
+      setError(t('That email is already registered. Try signing in instead.'));
       // Nudge the user toward the right tab so the next click works.
       if (flow === 'signup') setMode('signin');
       return;
     }
     if (code === 'INVALID_EMAIL_OR_PASSWORD' || err.status === 401) {
-      setError('Email or password did not match an existing account.');
+      setError(t('Email or password did not match an existing account.'));
       return;
     }
     if (code === 'PASSWORD_TOO_SHORT' || code === 'PASSWORD_TOO_LONG') {
-      setError(err.message ?? 'Password does not meet the requirements.');
+      setError(err.message ?? t('Password does not meet the requirements.'));
       return;
     }
     if (err.status === 429) {
-      setError('Too many attempts. Wait a minute and try again.');
+      setError(t('Too many attempts. Wait a minute and try again.'));
       return;
     }
     if (err.status === 422 || code === 'VALIDATION_ERROR') {
-      setError(err.message ?? 'The server rejected the form — check your inputs.');
+      setError(err.message ?? t('The server rejected the form — check your inputs.'));
       return;
     }
     setError(
-      err.message ?? (flow === 'signup' ? 'Could not create account.' : 'Could not sign in.'),
+      err.message ?? (flow === 'signup' ? t('Could not create account.') : t('Could not sign in.')),
     );
   };
 
@@ -201,11 +203,11 @@ function SignInPage() {
   return (
     <div className="mx-auto w-full max-w-md space-y-6">
       <SectionHeader
-        title={isSignup ? 'Create an account' : 'Sign in'}
+        title={isSignup ? t('Create an account') : t('Sign in')}
         subtitle={
           isSignup
-            ? 'Join the rsmm index to track your library and sync your profiles.'
-            : 'Welcome back, modder.'
+            ? t('Join the rsmm index to track your library and sync your profiles.')
+            : t('Welcome back, modder.')
         }
       />
 
@@ -220,7 +222,7 @@ function SignInPage() {
                 onClick={() => social('google')}
                 className="w-full justify-center"
               >
-                <GoogleIcon /> Continue with Google
+                <GoogleIcon /> {t('Continue with Google')}
               </Button>
             ) : null}
             {config.data?.providers.github ? (
@@ -231,19 +233,21 @@ function SignInPage() {
                 onClick={() => social('github')}
                 className="w-full justify-center"
               >
-                <Github className="h-4 w-4" /> Continue with GitHub
+                <Github className="h-4 w-4" /> {t('Continue with GitHub')}
               </Button>
             ) : null}
             <div className="flex items-center gap-3 pt-1 font-mono text-xs uppercase tracking-[0.18em] text-ash">
               <div className="h-px flex-1 bg-ash/30" />
-              <span>or</span>
+              <span>{t('or')}</span>
               <div className="h-px flex-1 bg-ash/30" />
             </div>
           </div>
         ) : null}
         <form className="space-y-4" onSubmit={onSubmit}>
           <label className="block space-y-1">
-            <span className="font-mono text-xs uppercase tracking-[0.22em] text-ash">Email</span>
+            <span className="font-mono text-xs uppercase tracking-[0.22em] text-ash">
+              {t('Email')}
+            </span>
             <input
               type="email"
               autoComplete="email"
@@ -256,7 +260,9 @@ function SignInPage() {
           </label>
 
           <label className="block space-y-1">
-            <span className="font-mono text-xs uppercase tracking-[0.22em] text-ash">Password</span>
+            <span className="font-mono text-xs uppercase tracking-[0.22em] text-ash">
+              {t('Password')}
+            </span>
             <input
               type="password"
               autoComplete={isSignup ? 'new-password' : 'current-password'}
@@ -268,7 +274,7 @@ function SignInPage() {
               disabled={busy}
             />
             {isSignup ? (
-              <span className="font-mono text-xs text-ash">Minimum 8 characters.</span>
+              <span className="font-mono text-xs text-ash">{t('Minimum 8 characters.')}</span>
             ) : null}
           </label>
 
@@ -285,12 +291,12 @@ function SignInPage() {
             {isSignup ? (
               <>
                 <UserPlus className="h-4 w-4" />
-                {busy ? 'Creating…' : 'Create account'}
+                {busy ? t('Creating…') : t('Create account')}
               </>
             ) : (
               <>
                 <LogIn className="h-4 w-4" />
-                {busy ? 'Signing in…' : 'Sign in'}
+                {busy ? t('Signing in…') : t('Sign in')}
               </>
             )}
           </Button>
@@ -298,7 +304,7 @@ function SignInPage() {
       </Panel>
 
       <p className="font-serif-italic text-center text-ash">
-        {isSignup ? 'Already have an account?' : 'No account yet?'}{' '}
+        {isSignup ? t('Already have an account?') : t('No account yet?')}{' '}
         <button
           type="button"
           onClick={() => {
@@ -307,7 +313,7 @@ function SignInPage() {
           }}
           className="text-gilt underline-offset-2 hover:underline"
         >
-          {isSignup ? 'Sign in.' : 'Create one.'}
+          {isSignup ? t('Sign in.') : t('Create one.')}
         </button>
       </p>
     </div>

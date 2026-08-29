@@ -1,9 +1,10 @@
 import { Cpu } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import pkg from '../../package.json';
+import { BUNDLED_CHANGELOG, type ChangelogEntry, loadChangelog } from '../lib/changelog';
+import { TParts, useT } from '../lib/i18n-react';
 import { ChangelogSection } from './changelog-dialog';
 import { Crest, Fleuron, MonoTag, Panel } from './chrome';
-import { BUNDLED_CHANGELOG, type ChangelogEntry, loadChangelog } from '../lib/changelog';
 
 /** Releases shown before the panel asks you to expand it. */
 const NOTES_COLLAPSED = 1;
@@ -16,6 +17,7 @@ const NOTES_COLLAPSED = 1;
  * still lands somewhere sensible.
  */
 export function AboutPanels() {
+  const t = useT();
   const version = pkg.version ?? '0.0.0';
   const [showAll, setShowAll] = useState(false);
   // Starts from this build's copy so the panel renders immediately, then swaps
@@ -42,37 +44,42 @@ export function AboutPanels() {
         <div className="flex items-center gap-4">
           <Crest size="lg" iconSrc="/logo.png" iconAlt="Ravenswatch Mod Manager Tauri icon" />
           <div>
+            {/* The product name is a proper noun and stays as-is. */}
             <h2 className="font-fraktur text-2xl text-parchment">Ravenswatch Mod Manager</h2>
             <p className="font-serif-italic text-ash">
-              Version <span className="font-mono">{version}</span>
+              <TParts
+                text={t('Version {version}')}
+                parts={{ version: <span className="font-mono">{version}</span> }}
+              />
             </p>
           </div>
         </div>
 
         <p className="font-serif-italic leading-relaxed text-parchment/90">
-          RSMM is a community mod manager for Ravenswatch. It applies cooked-asset overrides and
-          Lua-scripted mods without requiring manual edits to the game's install directory. Profiles
-          let you keep a vanilla loadout for daily runs and a curated mod set for other playstyles.
+          {t(
+            "RSMM is a community mod manager for Ravenswatch. It applies cooked-asset overrides and Lua-scripted mods without requiring manual edits to the game's install directory. Profiles let you keep a vanilla loadout for daily runs and a curated mod set for other playstyles.",
+          )}
         </p>
 
         <Fleuron className="my-2" />
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <h3 className="font-fraktur text-lg text-parchment mb-2">Key features</h3>
+            <h3 className="font-fraktur text-lg text-parchment mb-2">{t('Key features')}</h3>
             <ul className="font-serif-italic space-y-2 text-smoke">
-              <li>· Browse community mods and install in one click</li>
-              <li>· Toggle individual mods on or off per profile</li>
-              <li>· Export and share profiles as short codes</li>
-              <li>· Detect file-level conflicts before launching</li>
+              <li>· {t('Browse community mods and install in one click')}</li>
+              <li>· {t('Toggle individual mods on or off per profile')}</li>
+              <li>· {t('Export and share profiles as short codes')}</li>
+              <li>· {t('Detect file-level conflicts before launching')}</li>
             </ul>
           </div>
 
           <div>
-            <h3 className="font-fraktur text-lg text-parchment mb-2">Get involved</h3>
+            <h3 className="font-fraktur text-lg text-parchment mb-2">{t('Get involved')}</h3>
             <p className="font-serif-italic text-smoke leading-relaxed mb-3">
-              Contribute, report issues, join the community Discord, or read developer notes in the
-              repository.
+              {t(
+                'Contribute, report issues, join the community Discord, or read developer notes in the repository.',
+              )}
             </p>
             <div className="flex gap-2">
               <a
@@ -81,7 +88,7 @@ export function AboutPanels() {
                 rel="noreferrer noopener"
                 className={buttonClass}
               >
-                View repository
+                {t('View repository')}
               </a>
               <a
                 href="https://discord.gg/TSVdCaqd"
@@ -89,7 +96,7 @@ export function AboutPanels() {
                 rel="noreferrer noopener"
                 className={buttonClass}
               >
-                Discord
+                {t('Discord')}
               </a>
               <a
                 href="https://github.com/Ovilli/RavenswatchModManager/blob/main/docs/INSTALLATION.md"
@@ -98,7 +105,7 @@ export function AboutPanels() {
                 className={`${buttonClass} btn-grim-primary`}
                 data-variant="primary"
               >
-                Read docs
+                {t('Read docs')}
               </a>
             </div>
           </div>
@@ -109,38 +116,33 @@ export function AboutPanels() {
         <div className="flex items-start gap-3">
           <div>
             <h3 className="font-fraktur text-lg text-parchment">
-              AI assistance & reverse engineering
+              {t('AI assistance & reverse engineering')}
             </h3>
             <p className="font-serif-italic mt-1 text-ash">
-              Shown once on first launch, kept here for reference.
+              {t('Shown once on first launch, kept here for reference.')}
             </p>
           </div>
         </div>
         <p className="font-serif-italic leading-relaxed text-parchment/90">
-          Ravenswatch ships no modding API, so every capability here was reverse-engineered from the
-          shipped game with Ghidra, disassembly and pattern-mining tools, plus a great deal of
-          in-game testing. An AI coding assistant (Claude) was one instrument in that toolchain,
-          used for reading decompiler output, drafting analysis tooling and writing application
-          code. It is not the author of the result.
+          {t(
+            'Ravenswatch ships no modding API, so every capability here was reverse-engineered from the shipped game with Ghidra, disassembly and pattern-mining tools, plus a great deal of in-game testing. An AI coding assistant (Claude) was one instrument in that toolchain, used for reading decompiler output, drafting analysis tooling and writing application code. It is not the author of the result.',
+          )}
         </p>
         <p className="font-serif-italic leading-relaxed text-smoke">
-          Nothing reaches your game on an unverified claim: engine addresses are resolved by
-          byte-pattern scan against your own copy of the game and re-verified before the loader is
-          planted, CI re-derives the generated loader and SDK artifacts and fails on drift, a
-          capability is only marked confirmed once it has been proven in a real run, and the loader
-          bundle is cryptographically signed. Every file RSMM replaces is backed up, and Restore
-          returns the install to stock.
+          {t(
+            'Nothing reaches your game on an unverified claim: engine addresses are resolved by byte-pattern scan against your own copy of the game and re-verified before the loader is planted, CI re-derives the generated loader and SDK artifacts and fails on drift, a capability is only marked confirmed once it has been proven in a real run, and the loader bundle is cryptographically signed. Every file RSMM replaces is backed up, and Restore returns the install to stock.',
+          )}
         </p>
       </Panel>
 
       <Panel className="flex flex-col gap-4">
         <div className="flex items-baseline justify-between gap-3">
           <div>
-            <h3 className="font-fraktur text-lg text-parchment">Release notes</h3>
+            <h3 className="font-fraktur text-lg text-parchment">{t('Release notes')}</h3>
             <p className="font-serif-italic mt-1 text-ash">
               {showAll
-                ? `Every release this build knows about (${entries.length}).`
-                : 'The latest release. Older ones are a click away.'}
+                ? t('Every release this build knows about ({n}).', { n: entries.length })
+                : t('The latest release. Older ones are a click away.')}
             </p>
           </div>
           {entries.length > NOTES_COLLAPSED ? (
@@ -149,7 +151,7 @@ export function AboutPanels() {
               onClick={() => setShowAll((v) => !v)}
               className="font-mono shrink-0 text-xs text-ash underline-offset-2 hover:text-parchment hover:underline"
             >
-              {showAll ? 'Show less' : `Show all ${entries.length}`}
+              {showAll ? t('Show less') : t('Show all {n}', { n: entries.length })}
             </button>
           ) : null}
         </div>
@@ -173,9 +175,9 @@ export function AboutPanels() {
 
       <Panel className="flex flex-col md:flex-row items-center justify-between gap-3">
         <div>
-          <h4 className="font-fraktur text-base text-parchment">Credits</h4>
+          <h4 className="font-fraktur text-base text-parchment">{t('Credits')}</h4>
           <p className="text-smoke font-serif-italic">
-            Created by the RSMM community · Licensed under the project license
+            {t('Created by the RSMM community · Licensed under the project license')}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -186,7 +188,7 @@ export function AboutPanels() {
             rel="noreferrer noopener"
             className={buttonClass}
           >
-            View license
+            {t('View license')}
           </a>
         </div>
       </Panel>

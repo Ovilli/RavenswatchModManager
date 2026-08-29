@@ -18,6 +18,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Gauge } from 'lucide-react';
 import { useState } from 'react';
+import { useT } from '../lib/i18n-react';
 import {
   closeOverlay,
   openOverlay,
@@ -48,6 +49,7 @@ export function useDeclaredOverlays() {
 }
 
 export function OverlayButton({ modId, className }: { modId: string; className?: string }) {
+  const t = useT();
   const toast = useToast();
   const queryClient = useQueryClient();
   const { data: declared } = useDeclaredOverlays();
@@ -74,10 +76,13 @@ export function OverlayButton({ modId, className }: { modId: string; className?:
       disabled={busy || Boolean(record.error)}
       title={
         record.error
-          ? `This mod's overlay declaration is broken: ${record.error}`
+          ? t("This mod's overlay declaration is broken: {error}", { error: record.error })
           : isOpen
-            ? `Close the ${name} overlay (shift-click to recentre it)`
-            : `Open the ${name} overlay — an always-on-top HUD window (shift-click to open it at the default position)`
+            ? t('Close the {name} overlay (shift-click to recentre it)', { name })
+            : t(
+                'Open the {name} overlay — an always-on-top HUD window (shift-click to open it at the default position)',
+                { name },
+              )
       }
       aria-pressed={isOpen}
       className={className}
@@ -95,14 +100,21 @@ export function OverlayButton({ modId, className }: { modId: string; className?:
               resetPosition(modId);
               await closeOverlay(modId);
               await openOverlay(modId);
-              toast.push(`${name} overlay recentred.`, 'success');
+              toast.push(t('{name} overlay recentred.', { name }), 'success');
               return;
             }
             const opened = await toggleOverlay(modId);
-            toast.push(`${name} overlay ${opened ? 'opened' : 'closed'}.`, 'success');
+            toast.push(
+              opened
+                ? t('{name} overlay opened.', { name })
+                : t('{name} overlay closed.', { name }),
+              'success',
+            );
           } catch (err) {
             toast.push(
-              `Overlay failed: ${err instanceof Error ? err.message : String(err)}`,
+              t('Overlay failed: {error}', {
+                error: err instanceof Error ? err.message : String(err),
+              }),
               'error',
             );
           } finally {
@@ -112,7 +124,7 @@ export function OverlayButton({ modId, className }: { modId: string; className?:
         })();
       }}
     >
-      <Gauge className="h-4 w-4" /> {isOpen ? 'Hide overlay' : 'Overlay'}
+      <Gauge className="h-4 w-4" /> {isOpen ? t('Hide overlay') : t('Overlay')}
     </Button>
   );
 }

@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, CircleAlert, XCircle } from 'lucide-react';
 import { explainError } from '../lib/errors';
+import { TParts, useT } from '../lib/i18n-react';
 import type { DoctorCheck, DoctorRepair, DoctorResult, LocalMod } from '../lib/rsmm';
 import { CopyButton, MonoTag } from './chrome';
 
@@ -64,6 +65,7 @@ export function CommandResult({
   result: unknown;
   error?: string | null;
 }) {
+  const t = useT();
   if (error) {
     const { title, hint } = explainError(error);
     return (
@@ -71,13 +73,14 @@ export function CommandResult({
         <div className="border border-crimson/50 bg-crimson/10 p-3">
           <p className="flex items-center gap-2 text-parchment">
             <XCircle className="h-4 w-4 shrink-0 text-crimson" aria-hidden />
-            <span className="font-serif-italic">{title}</span>
+            {/* `explainError` hands back English sources — see lib/errors. */}
+            <span className="font-serif-italic">{t(title)}</span>
           </p>
-          {hint ? <p className="font-serif-italic mt-1 text-sm text-ash">{hint}</p> : null}
+          {hint ? <p className="font-serif-italic mt-1 text-sm text-ash">{t(hint)}</p> : null}
         </div>
         <details className="border border-border/70">
           <summary className="font-mono cursor-pointer px-3 py-2 text-xs text-ash hover:text-parchment">
-            Error detail
+            {t('Error detail')}
           </summary>
           <div className="flex items-start gap-2 border-t border-border/70 p-3">
             <pre className="max-h-64 flex-1 overflow-auto whitespace-pre-wrap font-mono text-xs text-crimson/90">
@@ -93,7 +96,7 @@ export function CommandResult({
   if (result == null) {
     return (
       <p className="font-serif-italic mt-3 text-ash">
-        No response from rsmm. Check the game path in Settings, then try again.
+        {t('No response from rsmm. Check the game path in Settings, then try again.')}
       </p>
     );
   }
@@ -117,11 +120,12 @@ export function CommandResult({
 }
 
 function RawDetails({ result }: { result: unknown }) {
+  const t = useT();
   const raw = stringify(result);
   return (
     <details className="border border-border/70">
       <summary className="font-mono cursor-pointer px-3 py-2 text-xs text-ash hover:text-parchment">
-        Raw output
+        {t('Raw output')}
       </summary>
       <div className="flex items-start gap-2 border-t border-border/70 p-3">
         <pre className="max-h-64 flex-1 overflow-auto whitespace-pre-wrap font-mono text-xs text-parchment/80">
@@ -172,28 +176,32 @@ function OutputBlock({ label, text, tone }: { label: string; text: string; tone?
 }
 
 function RunView({ result }: { result: RunLike }) {
+  const t = useT();
   const stdout = cleanOutput(result.stdout ?? '');
   const stderr = cleanOutput(result.stderr ?? '');
   return (
     <div className="space-y-3">
       <StatusLine
         ok={result.ok}
-        okText="Finished successfully."
-        failText={`Failed with exit code ${result.code}.`}
+        okText={t('Finished successfully.')}
+        failText={t('Failed with exit code {code}.', { code: result.code })}
       />
       {!stdout && !stderr ? (
-        <p className="font-serif-italic text-ash">Nothing to report — rsmm printed no output.</p>
+        <p className="font-serif-italic text-ash">
+          {t('Nothing to report — rsmm printed no output.')}
+        </p>
       ) : null}
-      <OutputBlock label="Output" text={stdout} />
-      <OutputBlock label="Errors" text={stderr} tone="error" />
+      <OutputBlock label={t('Output')} text={stdout} />
+      <OutputBlock label={t('Errors')} text={stderr} tone="error" />
     </div>
   );
 }
 
 function RepairList({ repairs }: { repairs: DoctorRepair[] }) {
+  const t = useT();
   return (
     <div className="border border-border px-3 py-2">
-      <p className="font-mono mb-1 text-xs text-ash">repairs</p>
+      <p className="font-mono mb-1 text-xs text-ash">{t('repairs')}</p>
       <ul className="space-y-1">
         {repairs.map((r) => (
           <li key={`${r.code}-${r.fix}`} className="flex items-start gap-2">
@@ -226,6 +234,7 @@ function checkIcon(status: DoctorCheck['status']) {
 }
 
 function DoctorView({ result }: { result: DoctorResult }) {
+  const t = useT();
   const checks = result.checks ?? [];
   const repairs = result.repairs ?? [];
   const failed = checks.filter((c) => c.status === 'FAIL').length;
@@ -246,31 +255,38 @@ function DoctorView({ result }: { result: DoctorResult }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <MonoTag tone="gilt">{passed} ok</MonoTag>
-        {warned > 0 ? <MonoTag>{warned} warnings</MonoTag> : null}
-        {failed > 0 ? <MonoTag tone="crimson">{failed} failed</MonoTag> : null}
+        <MonoTag tone="gilt">{t('{n} ok', { n: passed })}</MonoTag>
+        {warned > 0 ? <MonoTag>{t.n(warned, '{n} warning', '{n} warnings')}</MonoTag> : null}
+        {failed > 0 ? <MonoTag tone="crimson">{t('{n} failed', { n: failed })}</MonoTag> : null}
       </div>
       <p className="font-serif-italic text-ash">
         {failed > 0
-          ? 'Fix the failing checks below — mods will not apply cleanly until they pass.'
+          ? t('Fix the failing checks below — mods will not apply cleanly until they pass.')
           : warned > 0
-            ? 'Everything essential passed. The warnings are informational.'
-            : 'Every check passed. Your setup is ready.'}
+            ? t('Everything essential passed. The warnings are informational.')
+            : t('Every check passed. Your setup is ready.')}
       </p>
       {result.gameUpdated ? (
         <p className="flex items-center gap-2 border border-border px-3 py-2 text-parchment">
           <CircleAlert className="h-4 w-4 shrink-0 text-parchment" aria-hidden />
           <span className="font-serif-italic">
-            The game install changed since the last apply. Run Apply mods again before playing.
+            {t(
+              'The game install changed since the last apply. Run Apply mods again before playing.',
+            )}
           </span>
         </p>
       ) : null}
       {repairs.length > 0 ? <RepairList repairs={repairs} /> : null}
       {repairs.length === 0 && fixable > 0 ? (
         <p className="font-serif-italic text-ash">
-          {fixable === 1 ? '1 finding has' : `${fixable} findings have`} an automated repair — run{' '}
-          <span className="font-mono">Doctor + repair</span> to apply{' '}
-          {fixable === 1 ? 'it' : 'them'}.
+          <TParts
+            text={t.n(
+              fixable,
+              '{n} finding has an automated repair — run {command} to apply it.',
+              '{n} findings have an automated repair — run {command} to apply them.',
+            )}
+            parts={{ command: <span className="font-mono">{t('Doctor + repair')}</span> }}
+          />
         </p>
       ) : null}
       {sections.map((section) => (
@@ -287,11 +303,12 @@ function DoctorView({ result }: { result: DoctorResult }) {
                   {c.detail ? (
                     <span className="font-serif-italic block text-sm text-ash">{c.detail}</span>
                   ) : null}
+                  {/* CLI text (`c.fix.label`) passes through untranslated. */}
                   {!c.ok && c.fix ? (
                     <span className="font-mono mt-0.5 block text-[11px] text-ash">
-                      fix: {c.fix.label}
-                      {c.fix.manual ? ' (manual)' : ''}
-                      {c.fix.risk === 'destructive' ? ' — destructive' : ''}
+                      {t('fix:')} {c.fix.label}
+                      {c.fix.manual ? ` ${t('(manual)')}` : ''}
+                      {c.fix.risk === 'destructive' ? ` ${t('— destructive')}` : ''}
                     </span>
                   ) : null}
                 </span>
@@ -300,16 +317,17 @@ function DoctorView({ result }: { result: DoctorResult }) {
           </ul>
         </div>
       ))}
-      <OutputBlock label="Errors" text={result.stderr ?? ''} tone="error" />
+      <OutputBlock label={t('Errors')} text={result.stderr ?? ''} tone="error" />
     </div>
   );
 }
 
 function ModListView({ mods }: { mods: LocalMod[] }) {
+  const t = useT();
   if (mods.length === 0) {
     return (
       <p className="font-serif-italic text-ash">
-        No mods in your mods folder yet. Install one from Browse.
+        {t('No mods in your mods folder yet. Install one from Browse.')}
       </p>
     );
   }
@@ -317,7 +335,14 @@ function ModListView({ mods }: { mods: LocalMod[] }) {
   return (
     <div className="space-y-3">
       <p className="font-serif-italic text-ash">
-        {mods.length} mod{mods.length === 1 ? '' : 's'} on disk — {enabled} enabled.
+        {t.n(
+          mods.length,
+          '{n} mod on disk — {enabled} enabled.',
+          '{n} mods on disk — {enabled} enabled.',
+          {
+            enabled,
+          },
+        )}
       </p>
       <ul className="divide-y divide-border border border-border">
         {mods.map((mod) => (
@@ -332,7 +357,7 @@ function ModListView({ mods }: { mods: LocalMod[] }) {
               </p>
             </div>
             <MonoTag tone={mod.enabled ? 'gilt' : 'default'}>
-              {mod.enabled ? 'enabled' : 'disabled'}
+              {mod.enabled ? t('enabled') : t('disabled')}
             </MonoTag>
           </li>
         ))}

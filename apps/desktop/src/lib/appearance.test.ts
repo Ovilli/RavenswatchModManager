@@ -52,6 +52,8 @@ function fakeRoot() {
   const vars: Record<string, string> = {};
   const dataset: Record<string, string> = {};
   const el = {
+    // `applyAppearance` also stamps `lang`; a plain property is enough.
+    lang: '',
     style: {
       setProperty: (k: string, v: string) => {
         vars[k] = v;
@@ -121,5 +123,33 @@ describe('applyAppearance', () => {
 
   it('is a no-op without a document (SSR / node import)', () => {
     expect(() => applyAppearance({ fontFamily: 'sans', fontScale: 110 }, null)).not.toThrow();
+  });
+});
+
+describe('language', () => {
+  it('appends a CJK stack and stamps lang for a CJK language', () => {
+    const { el, vars } = fakeRoot();
+    applyAppearance({ language: 'zh-CN' }, el);
+    expect(el.lang).toBe('zh-CN');
+    // The preset faces still come first: Latin text keeps the chosen typeface
+    // and only the glyphs it lacks fall through to the CJK stack.
+    expect(vars['--font-body']?.startsWith("'EB Garamond'")).toBe(true);
+    for (const key of ['--font-body', '--font-display', '--font-accent', '--font-mono']) {
+      expect(vars[key]).toContain('Noto Sans SC');
+    }
+  });
+
+  it('leaves a non-CJK language untouched', () => {
+    const { el, vars } = fakeRoot();
+    applyAppearance({ language: 'en' }, el);
+    expect(el.lang).toBe('en');
+    expect(vars['--font-body']).not.toContain('Noto Sans SC');
+  });
+
+  it('treats an unknown language as English rather than failing', () => {
+    const { el, vars } = fakeRoot();
+    applyAppearance({ language: 'kl-GL' }, el);
+    expect(el.lang).toBe('en');
+    expect(vars['--font-body']).not.toContain('Noto Sans SC');
   });
 });

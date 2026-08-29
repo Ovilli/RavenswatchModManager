@@ -29,6 +29,7 @@ import { CheckIcon } from '../components/icons/CheckIcon';
 import { useToast } from '../components/toast';
 import { useDialog } from '../components/toast';
 import { api, describeApiError, logApiError } from '../lib/api';
+import { useT } from '../lib/i18n-react';
 import { installModFromIndex, listLocalMods, listLocalModsForProfile } from '../lib/rsmm';
 import { activeProfile, useApp } from '../store';
 
@@ -37,6 +38,7 @@ export const Route = createFileRoute('/collection/$slug')({
 });
 
 function CollectionDetailPage() {
+  const t = useT();
   const { slug } = Route.useParams();
   const navigate = useNavigate();
   const router = useRouter();
@@ -89,17 +91,20 @@ function CollectionDetailPage() {
       if (!installed.includes(modSlug)) {
         const result = await installModFromIndex(modSlug, targetId);
         if (!result || !result.ok) {
-          throw new Error(result?.error ?? 'install failed');
+          throw new Error(result?.error ?? t('install failed'));
         }
         const local = targetId ? await listLocalModsForProfile(targetId) : await listLocalMods();
         if (local) syncLocalMods(local);
       }
       installMod(modSlug, targetId);
       await queryClient.invalidateQueries({ queryKey: ['mods', 'list'] });
-      toast.push(`Added ${modSlug} to profile`, 'success');
+      toast.push(t('Added {slug} to profile', { slug: modSlug }), 'success');
     } catch (err) {
       if (isRateLimited(err)) {
-        toast.push(`Rate limited — try again in ${err.retryAfter ?? 60}s`, 'error');
+        toast.push(
+          t('Rate limited — try again in {seconds}s', { seconds: err.retryAfter ?? 60 }),
+          'error',
+        );
       } else {
         setInstallError(err instanceof Error ? err.message : String(err));
       }
@@ -113,7 +118,7 @@ function CollectionDetailPage() {
     if (!currentInstalled.includes(modSlug)) {
       const result = await installModFromIndex(modSlug, targetProfileId);
       if (!result || !result.ok) {
-        throw new Error(result?.error ?? `failed to install ${modSlug}`);
+        throw new Error(result?.error ?? t('failed to install {slug}', { slug: modSlug }));
       }
     }
     installMod(modSlug, targetProfileId);
@@ -146,18 +151,25 @@ function CollectionDetailPage() {
     await queryClient.invalidateQueries({ queryKey: ['mods', 'list'] });
     setInstallAllRunning(false);
     setInstallProgress({ value: 0, max: 0 });
-    toast.push(`Installed ${data.mods.length} mods to current profile`, 'success');
+    toast.push(
+      t.n(
+        data.mods.length,
+        'Installed {n} mod to current profile',
+        'Installed {n} mods to current profile',
+      ),
+      'success',
+    );
   }
 
   async function installAsProfile() {
     if (!data?.mods || data.mods.length === 0) {
-      toast.push('This collection has no mods to install.', 'error');
+      toast.push(t('This collection has no mods to install.'), 'error');
       return;
     }
     const name = await dialog.prompt({
-      title: 'New profile from collection',
-      initialValue: `Collection: ${data.name}`,
-      placeholder: 'Profile name',
+      title: t('New profile from collection'),
+      initialValue: t('Collection: {name}', { name: data.name }),
+      placeholder: t('Profile name'),
     });
     if (!name) return;
     setInstallAllRunning(true);
@@ -182,7 +194,15 @@ function CollectionDetailPage() {
     await queryClient.invalidateQueries({ queryKey: ['mods', 'list'] });
     setInstallAllRunning(false);
     setInstallProgress({ value: 0, max: 0 });
-    toast.push(`Created profile "${name}" with ${data.mods.length} mods`, 'success');
+    toast.push(
+      t.n(
+        data.mods.length,
+        'Created profile "{name}" with {n} mod',
+        'Created profile "{name}" with {n} mods',
+        { name },
+      ),
+      'success',
+    );
   }
 
   const allInstalled = data?.mods?.every((m) => profile.loadOrder.includes(m.slug)) ?? false;
@@ -207,18 +227,22 @@ function CollectionDetailPage() {
     return (
       <div className="space-y-4">
         <Button type="button" size="sm" onClick={goBack}>
-          ← back
+          ← {t('back')}
         </Button>
         {fetchFailed ? (
           <div className="ember-banner flex flex-col gap-2 px-4 py-3">
             <div className="flex items-center gap-3">
-              <span className="font-serif-italic text-base">Could not load this collection.</span>
+              <span className="font-serif-italic text-base">
+                {t('Could not load this collection.')}
+              </span>
               <CopyButton value={describeApiError(error)} />
             </div>
             <p className="font-serif-italic text-sm text-ash">{describeApiError(error)}</p>
           </div>
         ) : (
-          <p className="font-serif-italic text-parchment">{`No collection matches "${slug}".`}</p>
+          <p className="font-serif-italic text-parchment">
+            {t('No collection matches "{slug}".', { slug })}
+          </p>
         )}
       </div>
     );
@@ -241,13 +265,13 @@ function CollectionDetailPage() {
   return (
     <div className="space-y-6">
       <Button type="button" size="sm" onClick={goBack}>
-        <ArrowLeft className="h-3.5 w-3.5" /> back
+        <ArrowLeft className="h-3.5 w-3.5" /> {t('back')}
       </Button>
 
       {imageUrl ? (
         <Cover
           src={imageUrl}
-          alt={`${name} cover art`}
+          alt={t('{name} cover art', { name })}
           caption={`${slug}-hero.png`}
           className="aspect-[21/9]"
         />
@@ -257,11 +281,15 @@ function CollectionDetailPage() {
 
       <SectionHeader
         title={name}
-        subtitle={`${ownerName ?? 'unknown'} · ${modCount} mod${modCount === 1 ? '' : 's'} · ${new Date(updatedAt).toLocaleDateString()}`}
+        subtitle={`${ownerName ?? t('unknown')} · ${t.n(
+          modCount,
+          '{n} mod',
+          '{n} mods',
+        )} · ${new Date(updatedAt).toLocaleDateString(t.tag)}`}
         right={
           <div className="flex items-center gap-2">
             {allInstalled ? (
-              <MonoTag tone="gilt">all installed</MonoTag>
+              <MonoTag tone="gilt">{t('all installed')}</MonoTag>
             ) : mods.length > 0 ? (
               <>
                 <Button
@@ -272,15 +300,15 @@ function CollectionDetailPage() {
                 >
                   {installAllRunning ? (
                     <>
-                      <Loader2 className="h-4 w-4 animate-spin" /> installing…
+                      <Loader2 className="h-4 w-4 animate-spin" /> {t('installing…')}
                     </>
                   ) : someInstalled ? (
                     <>
-                      <Plus className="h-4 w-4" /> install rest
+                      <Plus className="h-4 w-4" /> {t('install rest')}
                     </>
                   ) : (
                     <>
-                      <Download className="h-4 w-4" /> install all
+                      <Download className="h-4 w-4" /> {t('install all')}
                     </>
                   )}
                 </Button>
@@ -290,7 +318,7 @@ function CollectionDetailPage() {
                   onClick={installAsProfile}
                   disabled={installAllRunning}
                 >
-                  <UserPlus className="h-4 w-4" /> new profile
+                  <UserPlus className="h-4 w-4" /> {t('new profile')}
                 </Button>
               </>
             ) : null}
@@ -302,7 +330,10 @@ function CollectionDetailPage() {
         <ProgressBar
           value={installProgress.value}
           max={installProgress.max}
-          label={`Installing ${installProgress.value}/${installProgress.max}…`}
+          label={t('Installing {done}/{total}…', {
+            done: installProgress.value,
+            total: installProgress.max,
+          })}
         />
       ) : null}
 
@@ -310,7 +341,7 @@ function CollectionDetailPage() {
         <div className="space-y-4 md:col-span-2">
           {markdownBody ? (
             <Panel>
-              <h3 className="font-fraktur text-xl text-parchment mb-3">About</h3>
+              <h3 className="font-fraktur text-xl text-parchment mb-3">{t('About')}</h3>
               <Fleuron />
               <Markdown source={markdownBody} className="mt-4" />
             </Panel>
@@ -318,7 +349,7 @@ function CollectionDetailPage() {
 
           {screenshots && screenshots.length > 0 ? (
             <Panel>
-              <h3 className="font-fraktur text-xl text-parchment mb-3">Gallery</h3>
+              <h3 className="font-fraktur text-xl text-parchment mb-3">{t('Gallery')}</h3>
               <Fleuron />
               <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {screenshots.map((shot, i) => (
@@ -331,7 +362,7 @@ function CollectionDetailPage() {
                     <div className="aspect-video overflow-hidden rounded border border-oxblood/30 bg-pitch">
                       <img
                         src={shot.url}
-                        alt={shot.caption || `Screenshot ${i + 1}`}
+                        alt={shot.caption || t('Screenshot {n}', { n: i + 1 })}
                         loading="lazy"
                         className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
                       />
@@ -347,7 +378,7 @@ function CollectionDetailPage() {
 
           {mods.length > 0 ? (
             <Panel>
-              <h3 className="font-fraktur text-xl text-parchment mb-3">Mods</h3>
+              <h3 className="font-fraktur text-xl text-parchment mb-3">{t('Mods')}</h3>
               <Fleuron />
               <ul className="mt-4 divide-y divide-oxblood/20">
                 {mods.map((m) => {
@@ -363,7 +394,7 @@ function CollectionDetailPage() {
                           {m.name}
                         </button>
                         <p className="font-mono text-xs text-ash">
-                          {m.author ?? 'unknown'}
+                          {m.author ?? t('unknown')}
                           {m.latestVersion ? ` · v${m.latestVersion}` : ''}
                         </p>
                         {m.summary ? (
@@ -394,20 +425,22 @@ function CollectionDetailPage() {
             </Panel>
           ) : mods.length === 0 ? (
             <Panel>
-              <h3 className="font-fraktur text-xl text-parchment mb-3">Mods</h3>
+              <h3 className="font-fraktur text-xl text-parchment mb-3">{t('Mods')}</h3>
               <Fleuron />
-              <p className="mt-4 font-serif-italic text-ash">This collection has no mods yet.</p>
+              <p className="mt-4 font-serif-italic text-ash">
+                {t('This collection has no mods yet.')}
+              </p>
             </Panel>
           ) : null}
         </div>
 
         <aside className="space-y-4">
           <Panel>
-            <h4 className="font-mono text-ash mb-3">Facts</h4>
+            <h4 className="font-mono text-ash mb-3">{t('Facts')}</h4>
             <dl className="space-y-2 text-sm">
-              <Row k="Mods" v={String(modCount)} />
-              <Row k="Updated" v={new Date(updatedAt).toLocaleDateString()} />
-              {ownerName ? <Row k="Author" v={ownerName} /> : null}
+              <Row k={t('Mods')} v={String(modCount)} />
+              <Row k={t('Updated')} v={new Date(updatedAt).toLocaleDateString(t.tag)} />
+              {ownerName ? <Row k={t('Author')} v={ownerName} /> : null}
             </dl>
           </Panel>
         </aside>
@@ -417,7 +450,7 @@ function CollectionDetailPage() {
         <div className="ember-banner flex items-center gap-3 px-4 py-3">
           <span className="font-serif-italic text-base text-crimson flex-1">{installError}</span>
           <Button type="button" size="sm" onClick={() => setInstallError(null)}>
-            dismiss
+            {t('dismiss')}
           </Button>
         </div>
       ) : null}
@@ -459,6 +492,7 @@ function ScreenshotLightbox({
   onPrev: () => void;
   onNext: () => void;
 }) {
+  const t = useT();
   const active = shots[idx];
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -475,7 +509,7 @@ function ScreenshotLightbox({
   return (
     <dialog
       open
-      aria-label={active.caption || `Screenshot ${idx + 1}`}
+      aria-label={active.caption || t('Screenshot {n}', { n: idx + 1 })}
       className="fixed inset-0 z-[90] bg-pitch/95"
     >
       <div className="absolute inset-0 overflow-y-auto">
@@ -483,7 +517,7 @@ function ScreenshotLightbox({
           type="button"
           onClick={onClose}
           className="absolute inset-0 h-full w-full cursor-default"
-          aria-label="Close preview"
+          aria-label={t('Close preview')}
         />
         <div className="pointer-events-none relative flex min-h-full items-center justify-center px-4 py-16 sm:px-20">
           <figure
@@ -492,11 +526,12 @@ function ScreenshotLightbox({
           >
             <img
               src={active.url}
-              alt={active.caption || `Screenshot ${idx + 1}`}
+              alt={active.caption || t('Screenshot {n}', { n: idx + 1 })}
               className="max-w-full rounded-md object-contain shadow-2xl"
             />
             <figcaption className="max-w-3xl text-center text-sm text-ash">
-              {active.caption || `Screenshot ${idx + 1} of ${shots.length}`}
+              {active.caption ||
+                t('Screenshot {n} of {total}', { n: idx + 1, total: shots.length })}
             </figcaption>
             <p className="font-mono text-xs text-ash/70">
               {idx + 1} / {shots.length}
@@ -508,7 +543,7 @@ function ScreenshotLightbox({
         type="button"
         onClick={onClose}
         className="fixed right-4 top-4 z-20 rounded-md bg-oxblood/60 p-2 text-parchment hover:bg-oxblood"
-        aria-label="Close"
+        aria-label={t('Close')}
       >
         <X className="h-5 w-5" />
       </button>
@@ -518,7 +553,7 @@ function ScreenshotLightbox({
             type="button"
             onClick={onPrev}
             className="fixed left-2 sm:left-4 top-1/2 z-20 -translate-y-1/2 rounded-md bg-oxblood/60 p-3 text-parchment hover:bg-oxblood"
-            aria-label="Previous"
+            aria-label={t('Previous')}
           >
             <ChevronLeft className="h-6 w-6" />
           </button>
@@ -526,7 +561,7 @@ function ScreenshotLightbox({
             type="button"
             onClick={onNext}
             className="fixed right-2 sm:right-4 top-1/2 z-20 -translate-y-1/2 rounded-md bg-oxblood/60 p-3 text-parchment hover:bg-oxblood"
-            aria-label="Next"
+            aria-label={t('Next')}
           >
             <ChevronRight className="h-6 w-6" />
           </button>

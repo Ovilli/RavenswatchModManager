@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import { GripHorizontal } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useT } from '../lib/i18n-react';
 import { savePosition } from '../lib/overlay-windows';
 import { type OverlayColumn, type OverlayRecord, listOverlays } from '../lib/rsmm';
 
@@ -145,6 +146,7 @@ function Cell({
 }
 
 export function OverlayHud({ modId }: { modId: string }) {
+  const t = useT();
   const [record, setRecord] = useState<OverlayRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [compact, setCompact] = useState(false);
@@ -271,7 +273,7 @@ export function OverlayHud({ modId }: { modId: string }) {
   const rowCount = record?.rows?.length ?? 0;
   useEffect(() => {
     if (!native || manualSize || !body.current) return;
-    const chrome = compact ? 26 : 46;              // header (+ footer)
+    const chrome = compact ? 26 : 46; // header (+ footer)
     // Measured content, floored by the row count: `scrollHeight` is a frame
     // behind on the render that adds a row, and a HUD that lags one player
     // behind the fight looks broken.
@@ -304,8 +306,7 @@ export function OverlayHud({ modId }: { modId: string }) {
   const rows = record?.rows ?? [];
   const highlight = record?.highlight ?? null;
   const stale =
-    !record?.exists ||
-    (record.updated > 0 && Date.now() / 1000 - record.updated > STALE_AFTER_S);
+    !record?.exists || (record.updated > 0 && Date.now() / 1000 - record.updated > STALE_AFTER_S);
 
   // Rank changes flash, so a takeover is visible without staring at numbers.
   const rowKey = (row: Record<string, string | number | boolean>, i: number) =>
@@ -350,7 +351,7 @@ export function OverlayHud({ modId }: { modId: string }) {
         <button
           type="button"
           onClick={() => setCompact((c) => !c)}
-          title={compact ? 'Show details' : 'Compact'}
+          title={compact ? t('Show details') : t('Compact')}
           className="text-ash transition-colors hover:text-parchment"
         >
           {compact ? <Maximize2 className="h-3 w-3" /> : <Minimize2 className="h-3 w-3" />}
@@ -360,8 +361,8 @@ export function OverlayHud({ modId }: { modId: string }) {
           onClick={() => void toggleClickThrough()}
           title={
             clickThrough
-              ? 'Click-through on — press Ctrl+Alt+O (or use Settings) to undo'
-              : 'Let clicks pass through to the game'
+              ? t('Click-through on — press Ctrl+Alt+O (or use Settings) to undo')
+              : t('Let clicks pass through to the game')
           }
           className={`transition-colors hover:text-parchment ${
             clickThrough ? 'text-gilt' : 'text-ash'
@@ -372,7 +373,7 @@ export function OverlayHud({ modId }: { modId: string }) {
         <button
           type="button"
           onClick={() => native && void getCurrentWindow().close()}
-          title="Close overlay"
+          title={t('Close overlay')}
           className="text-ash transition-colors hover:text-crimson"
         >
           <X className="h-3.5 w-3.5" />
@@ -410,10 +411,11 @@ export function OverlayHud({ modId }: { modId: string }) {
           </ul>
         ) : (
           <p className="px-3 py-4 text-center text-xs text-ash">
+            {/* `record.empty` is the MOD's own copy — shown as published. */}
             {error ??
               (record?.source === 'library'
-                ? 'This mod is not applied yet — run Apply, then start the game.'
-                : (record?.empty ?? 'No data yet.'))}
+                ? t('This mod is not applied yet — run Apply, then start the game.')
+                : (record?.empty ?? t('No data yet.')))}
           </p>
         )}
       </div>
@@ -424,7 +426,7 @@ export function OverlayHud({ modId }: { modId: string }) {
       {native && (
         <button
           type="button"
-          title="Drag to resize"
+          title={t('Drag to resize')}
           onMouseDown={(e) => {
             e.preventDefault();
             setManualSize(true);
@@ -450,7 +452,7 @@ export function OverlayHud({ modId }: { modId: string }) {
             ))}
           <span className="flex-1" />
           {clickThrough ? <span className="text-gilt">ctrl+alt+O</span> : null}
-          <span>{stale ? 'idle' : 'live'}</span>
+          <span>{stale ? t('idle') : t('live')}</span>
         </footer>
       )}
     </div>

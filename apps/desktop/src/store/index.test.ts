@@ -229,6 +229,15 @@ describe('hydrateSettings sanitizes a persisted blob', () => {
     const defaults = useApp.getState().settings;
     expect(hydrateSettings(defaults, { modsDir: 'D:\\rsmm\\mods' }).modsDir).toBe('D:\\rsmm\\mods');
   });
+
+  it('keeps a stored language and drops one this build does not ship', () => {
+    const defaults = useApp.getState().settings;
+    expect(hydrateSettings(defaults, { language: 'zh-CN' }).language).toBe('zh-CN');
+    // A build that dropped a language, or a hand-edited blob: fall back to
+    // English rather than looking messages up in a catalog that is not there.
+    expect(hydrateSettings(defaults, { language: 'kl-GL' } as never).language).toBe('en');
+    expect(hydrateSettings(defaults, {}).language).toBe(defaults.language);
+  });
 });
 
 describe('install / uninstall / toggle / reorder', () => {

@@ -3,8 +3,9 @@ import { useNavigate } from '@tanstack/react-router';
 import { Search } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { api, logApiError } from '../lib/api';
-import { type PaletteAction, type PaletteRow, buildRows } from '../lib/palette';
+import { useT } from '../lib/i18n-react';
 import { toggleOverlay } from '../lib/overlay-windows';
+import { type PaletteAction, type PaletteRow, buildRows } from '../lib/palette';
 import { listOverlays, restoreAll } from '../lib/rsmm';
 import { useApp } from '../store';
 import { useLaunch } from './launch';
@@ -19,6 +20,7 @@ interface Hit {
 }
 
 export function CommandPalette() {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [cursor, setCursor] = useState(0);
@@ -118,11 +120,11 @@ export function CommandPalette() {
         id: m.id,
         slug: m.slug,
         name: m.name,
-        author: m.author ?? 'unknown',
+        author: m.author ?? t('unknown'),
         origin: installed.includes(m.id) ? 'library' : 'remote',
       }));
     return [...local, ...remote];
-  }, [trimmedQ, installed, localMods, remoteData]);
+  }, [trimmedQ, installed, localMods, remoteData, t]);
 
   const { data: overlayList } = useQuery({
     queryKey: ['overlays'],
@@ -138,27 +140,34 @@ export function CommandPalette() {
         .filter((o) => !o.error)
         .map((o) => ({
           id: `overlay:${o.modId}`,
-          label: `Toggle ${o.title ?? o.modId} overlay`,
+          label: t('Toggle {name} overlay', { name: o.title ?? o.modId }),
+          // Keywords stay English on purpose: they are match fodder, never
+          // shown, and the translated label is matched too.
           keywords: `overlay hud window ${o.modId} ${o.title ?? ''}`,
-          hint: 'action',
+          hint: t('action'),
           run: () => {
             void (async () => {
               try {
                 const opened = await toggleOverlay(o.modId);
+                const name = o.title ?? o.modId;
                 toast.push(
-                  `${o.title ?? o.modId} overlay ${opened ? 'opened' : 'closed'}.`,
+                  opened
+                    ? t('{name} overlay opened.', { name })
+                    : t('{name} overlay closed.', { name }),
                   'success',
                 );
               } catch (e) {
                 toast.push(
-                  `Overlay failed: ${e instanceof Error ? e.message : String(e)}`,
+                  t('Overlay failed: {error}', {
+                    error: e instanceof Error ? e.message : String(e),
+                  }),
                   'error',
                 );
               }
             })();
           },
         })),
-    [overlayList, toast],
+    [overlayList, t, toast],
   );
 
   const actions = useMemo<PaletteAction[]>(() => {
@@ -174,41 +183,46 @@ export function CommandPalette() {
       id: `go:${to}${search?.tab ? `?tab=${search.tab}` : ''}`,
       label,
       keywords,
-      hint: 'go',
+      hint: t('go'),
       run: () => navigate(search ? { to, search } : { to }),
     });
     return [
       {
         id: 'launch:modded',
-        label: 'Launch Modded',
+        label: t('Launch Modded'),
         keywords: 'play start game run mods',
-        hint: launchBusy ? 'busy' : 'action',
+        hint: launchBusy ? t('busy') : t('action'),
         disabled: launchBusy,
         run: () => void launch('modded'),
       },
       {
         id: 'launch:vanilla',
-        label: 'Launch Vanilla',
+        label: t('Launch Vanilla'),
         keywords: 'play start game unmodded clean',
-        hint: launchBusy ? 'busy' : 'action',
+        hint: launchBusy ? t('busy') : t('action'),
         disabled: launchBusy,
         run: () => void launch('vanilla'),
       },
       {
         id: 'restore',
-        label: 'Restore original files',
+        label: t('Restore original files'),
         keywords: 'undo unapply revert vanilla clean uninstall',
-        hint: launchBusy ? 'busy' : 'action',
+        hint: launchBusy ? t('busy') : t('action'),
         disabled: launchBusy,
         run: () => {
           void (async () => {
             try {
               const result = await restoreAll();
               if (!result || !result.ok)
-                throw new Error(result?.stderr?.trim() || 'restore failed');
-              toast.push('Original files restored.', 'success');
+                throw new Error(result?.stderr?.trim() || t('restore failed'));
+              toast.push(t('Original files restored.'), 'success');
             } catch (e) {
-              toast.push(`Restore failed: ${e instanceof Error ? e.message : String(e)}`, 'error');
+              toast.push(
+                t('Restore failed: {error}', {
+                  error: e instanceof Error ? e.message : String(e),
+                }),
+                'error',
+              );
             }
           })();
         },
@@ -216,15 +230,15 @@ export function CommandPalette() {
       // One entry per mod-declared overlay — the client hardcodes none of
       // them, so a newly installed mod's HUD shows up here on its own.
       ...overlayActions,
-      go('/', 'Library', 'mods installed home'),
-      go('/browse', 'Browse mods', 'search index download store'),
-      go('/profiles', 'Profiles', 'loadout preset switch'),
-      go('/conflicts', 'Conflicts', 'clash overlap same file'),
-      go('/commands', 'Commands', 'apply build doctor terminal'),
-      go('/settings', 'Settings', 'paths font size density options preferences'),
-      go('/settings', 'About', 'version credits release notes', { tab: 'about' }),
+      go('/', t('Library'), 'mods installed home'),
+      go('/browse', t('Browse mods'), 'search index download store'),
+      go('/profiles', t('Profiles'), 'loadout preset switch'),
+      go('/conflicts', t('Conflicts'), 'clash overlap same file'),
+      go('/commands', t('Commands'), 'apply build doctor terminal'),
+      go('/settings', t('Settings'), 'paths font size density options preferences'),
+      go('/settings', t('About'), 'version credits release notes', { tab: 'about' }),
     ];
-  }, [navigate, launch, launchBusy, toast, overlayActions]);
+  }, [navigate, launch, launchBusy, t, toast, overlayActions]);
 
   const rows = useMemo<PaletteRow[]>(
     () => buildRows(actions, hits, trimmedQ),
@@ -249,7 +263,7 @@ export function CommandPalette() {
   return (
     <dialog
       open
-      aria-label="Search mods and commands"
+      aria-label={t('Search mods and commands')}
       className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh] animate-fade-in"
       onClick={() => setOpen(false)}
       onKeyDown={(e) => {
@@ -291,7 +305,7 @@ export function CommandPalette() {
                 commit(cursor);
               }
             }}
-            placeholder="Search mods, or type a command — launch, restore, settings…"
+            placeholder={t('Search mods, or type a command — launch, restore, settings…')}
             className="w-full bg-transparent text-parchment placeholder:text-ash focus:outline-none"
             role="combobox"
             aria-expanded={true}
@@ -305,14 +319,16 @@ export function CommandPalette() {
           id={listboxId}
           // biome-ignore lint/a11y/useSemanticElements: custom combobox results list — no native element implements the listbox interaction
           role="listbox"
-          aria-label="Search results"
+          aria-label={t('Search results')}
           className="max-h-[50vh] overflow-y-auto py-2"
         >
           {rows.length === 0 ? (
             <div className="font-serif-italic px-4 py-6 text-center text-ash">
               {remoteError && trimmedQ.length >= 2
-                ? 'Nothing matches here — and the remote index is unreachable, so online results are unavailable.'
-                : 'Nothing matches. Try a different word.'}
+                ? t(
+                    'Nothing matches here — and the remote index is unreachable, so online results are unavailable.',
+                  )
+                : t('Nothing matches. Try a different word.')}
             </div>
           ) : (
             rows.map((row, i) => {
@@ -341,9 +357,13 @@ export function CommandPalette() {
                     <>
                       <span className="flex items-baseline gap-3">
                         <span className="text-parchment">{row.hit.name}</span>
-                        <span className="font-serif-italic text-ash">by {row.hit.author}</span>
+                        <span className="font-serif-italic text-ash">
+                          {t('by {author}', { author: row.hit.author })}
+                        </span>
                       </span>
-                      <span className="font-mono text-ash">{row.hit.origin}</span>
+                      <span className="font-mono text-ash">
+                        {row.hit.origin === 'library' ? t('library') : t('remote')}
+                      </span>
                     </>
                   )}
                 </div>
@@ -353,7 +373,7 @@ export function CommandPalette() {
         </div>
         {remoteError && trimmedQ.length >= 2 && hits.length > 0 ? (
           <p className="border-t border-border px-4 py-2 font-mono text-xs text-crimson">
-            Remote index unreachable — showing installed mods only.
+            {t('Remote index unreachable — showing installed mods only.')}
           </p>
         ) : null}
       </div>

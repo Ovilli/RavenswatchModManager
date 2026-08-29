@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { t } from '../lib/i18n';
 import { appendLauncherLog, clearLauncherLog } from '../lib/launcher-log';
 import { getPlatform } from '../lib/platform';
 import { restoreAll, runModded, runVanilla } from '../lib/rsmm';
@@ -131,7 +132,9 @@ export function LaunchProvider({ children }: { children: ReactNode }) {
           }
           await appendLauncherLog('info', 'Restore complete');
         } catch (e) {
-          const message = `Automatic restore failed: ${String(e)}`;
+          // Shown in the status strip, so it is translated; the launcher log
+          // line below keeps the same (English) text a support reader expects.
+          const message = t('Automatic restore failed: {error}', { error: String(e) });
           setLaunchError(message);
           await appendLauncherLog('error', message);
         }
@@ -155,7 +158,10 @@ export function LaunchProvider({ children }: { children: ReactNode }) {
         const fn = mode === 'vanilla' ? runVanilla : runModded;
         const result = await fn();
         if (!result || !result.ok) {
-          const message = `${mode} launch failed (exit ${result?.code ?? 'unknown'})`;
+          const message =
+            mode === 'vanilla'
+              ? t('Vanilla launch failed (exit {code})', { code: result?.code ?? t('unknown') })
+              : t('Modded launch failed (exit {code})', { code: result?.code ?? t('unknown') });
           setLaunchError(message);
           await appendLauncherLog('error', message, {
             code: result?.code ?? null,
@@ -179,7 +185,9 @@ export function LaunchProvider({ children }: { children: ReactNode }) {
               }
               await appendLauncherLog('info', 'Rollback complete');
             } catch (e) {
-              const rollbackMessage = `Rollback after failed launch failed: ${String(e)}`;
+              const rollbackMessage = t('Rollback after failed launch failed: {error}', {
+                error: String(e),
+              });
               setLaunchError(rollbackMessage);
               await appendLauncherLog('error', rollbackMessage);
             }

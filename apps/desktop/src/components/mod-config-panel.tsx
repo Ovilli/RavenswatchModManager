@@ -1,6 +1,8 @@
 import { Input } from '@rsmm/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fragment, type ReactNode, useEffect, useMemo, useState } from 'react';
+import { t as tr } from '../lib/i18n';
+import { useT } from '../lib/i18n-react';
 import { inTauri } from '../lib/platform';
 import { type ModConfigChoice, type ModConfigField, getModConfig, setModConfig } from '../lib/rsmm';
 import { Button, Fleuron, InkSwitch, Panel } from './chrome';
@@ -24,6 +26,7 @@ export function ModConfigPanel({
    * (the per-mod config dialog), where nesting two cards doubles the border. */
   frameless?: boolean;
 }) {
+  const t = useT();
   const queryClient = useQueryClient();
   const Shell = frameless ? FramelessShell : Panel;
   const [draft, setDraft] = useState<Record<string, ConfigValue>>({});
@@ -117,14 +120,15 @@ export function ModConfigPanel({
   if (configQuery.isLoading) {
     return (
       <Shell>
-        <h3 className="font-fraktur text-xl text-parchment mb-3">Config</h3>
+        <h3 className="font-fraktur text-xl text-parchment mb-3">{t('Config')}</h3>
         <Fleuron />
         {/* Say what the wait IS. A field backed by a catalog provider decodes
             every icon out of the cooked game files on first open, which is a
             few seconds of staring at a pulsing box otherwise. */}
         <p className="mt-4 font-mono text-ash" aria-live="polite">
-          Reading config… a mod that lists game content decodes its art from the install, so the
-          first open can take a few seconds.
+          {t(
+            'Reading config… a mod that lists game content decodes its art from the install, so the first open can take a few seconds.',
+          )}
         </p>
         <div className="mt-3 space-y-3 animate-pulse" aria-busy="true">
           <div className="h-10 rounded bg-oxblood/15" />
@@ -137,7 +141,7 @@ export function ModConfigPanel({
   if (configQuery.error) {
     return (
       <Shell>
-        <h3 className="font-fraktur text-xl text-parchment mb-3">Config</h3>
+        <h3 className="font-fraktur text-xl text-parchment mb-3">{t('Config')}</h3>
         <Fleuron />
         <p className="mt-4 text-sm text-ash">{configQuery.error.message}</p>
       </Shell>
@@ -147,10 +151,10 @@ export function ModConfigPanel({
   if (!keys.length) {
     return (
       <Shell>
-        <h3 className="font-fraktur text-xl text-parchment mb-3">Config</h3>
+        <h3 className="font-fraktur text-xl text-parchment mb-3">{t('Config')}</h3>
         <Fleuron />
         <p className="mt-4 text-sm text-ash">
-          This mod does not declare any editable config fields.
+          {t('This mod does not declare any editable config fields.')}
         </p>
       </Shell>
     );
@@ -160,7 +164,7 @@ export function ModConfigPanel({
     <Shell>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="font-fraktur text-xl text-parchment mb-3">Config</h3>
+          <h3 className="font-fraktur text-xl text-parchment mb-3">{t('Config')}</h3>
           <Fleuron />
         </div>
         <div className="flex items-center gap-2">
@@ -168,7 +172,11 @@ export function ModConfigPanel({
             <InkSwitch
               on={enabled}
               onClick={onToggleEnabled}
-              label={`${enabled ? 'Disable' : 'Enable'} ${modName}`}
+              label={
+                enabled
+                  ? t('Disable {name}', { name: modName })
+                  : t('Enable {name}', { name: modName })
+              }
             />
           ) : null}
           <Button
@@ -181,7 +189,7 @@ export function ModConfigPanel({
             }}
             disabled={!isDirty || saveMutation.isPending}
           >
-            Reset to defaults
+            {t('Reset to defaults')}
           </Button>
           <Button
             type="button"
@@ -190,7 +198,7 @@ export function ModConfigPanel({
             onClick={() => saveMutation.mutate(validation.normalized)}
             disabled={!isDirty || saveMutation.isPending || validation.hasErrors}
           >
-            {saveMutation.isPending ? 'Saving…' : 'Save'}
+            {saveMutation.isPending ? t('Saving…') : t('Save')}
           </Button>
         </div>
       </div>
@@ -232,18 +240,25 @@ export function ModConfigPanel({
           reaches a running game never — it needs a full quit and relaunch. */}
       {saveMutation.isSuccess && !isDirty ? (
         <div className="ember-banner mt-4 px-4 py-3">
-          <p className="font-serif-italic text-base">Saved — the running game will not see it.</p>
+          <p className="font-serif-italic text-base">
+            {t('Saved — the running game will not see it.')}
+          </p>
           <p className="font-mono mt-1 text-ash">
-            Quit Ravenswatch completely, then press Play.{' '}
+            {t('Quit Ravenswatch completely, then press Play.')}{' '}
             {cooksAssets
-              ? 'Launch rebuilds the affected game assets first, which takes a moment.'
-              : 'The mod reads its config when the game loads it.'}
+              ? t('Launch rebuilds the affected game assets first, which takes a moment.')
+              : t('The mod reads its config when the game loads it.')}
           </p>
         </div>
       ) : (
         <p className="font-mono mt-4 text-ash">
-          Config is read at game load{cooksAssets ? ' and baked into game assets on launch' : ''} —
-          changes need a full game restart, not just a new run.
+          {cooksAssets
+            ? t(
+                'Config is read at game load and baked into game assets on launch — changes need a full game restart, not just a new run.',
+              )
+            : t(
+                'Config is read at game load — changes need a full game restart, not just a new run.',
+              )}
         </p>
       )}
     </Shell>
@@ -267,6 +282,7 @@ function MultiSelectField({
   value: string[];
   onChange: (next: string[]) => void;
 }) {
+  const t = useT();
   const [search, setSearch] = useState('');
 
   // A field with no provider still works: its static `choices` become plain
@@ -296,7 +312,7 @@ function MultiSelectField({
   if (options.length === 0) {
     return (
       <p className="text-sm text-ash">
-        No options available. {field.source ? 'Is Ravenswatch installed?' : null}
+        {t('No options available.')} {field.source ? t('Is Ravenswatch installed?') : null}
       </p>
     );
   }
@@ -308,25 +324,29 @@ function MultiSelectField({
           id={id}
           type="search"
           value={search}
-          placeholder={`Search ${options.length} options…`}
+          placeholder={t('Search {n} options…', { n: options.length })}
           onChange={(e) => setSearch(e.target.value)}
           className="flex-1"
         />
-        <span className="whitespace-nowrap text-xs text-ash">{selected.size} selected</span>
+        <span className="whitespace-nowrap text-xs text-ash">
+          {t('{n} selected', { n: selected.size })}
+        </span>
         {selected.size > 0 ? (
           <button
             type="button"
             onClick={() => onChange([])}
             className="whitespace-nowrap text-xs text-ash underline hover:text-parchment"
           >
-            Clear
+            {t('Clear')}
           </button>
         ) : null}
       </div>
 
       <div className="max-h-96 space-y-2 overflow-y-auto rounded border border-border bg-pitch/40 p-2">
         {shown.length === 0 ? (
-          <p className="p-2 text-center text-sm text-ash">Nothing matches “{search}”.</p>
+          <p className="p-2 text-center text-sm text-ash">
+            {t('Nothing matches “{query}”.', { query: search })}
+          </p>
         ) : (
           shown.map((opt) => {
             const on = selected.has(opt.id);
@@ -399,6 +419,7 @@ function ConfigFieldRow({
   choices?: ModConfigChoice[];
   onChange: (value: ConfigValue) => void;
 }) {
+  const t = useT();
   const id = `config-${name}`;
   const label = field.label || name;
 
@@ -410,9 +431,9 @@ function ConfigFieldRow({
           <span className="font-mono text-xs text-ash">{field.choices.join(' · ')}</span>
         ) : field.type === 'int' || field.type === 'float' ? (
           <span className="font-mono text-xs text-ash">
-            {field.min != null ? `min ${field.min}` : ''}
+            {field.min != null ? t('min {value}', { value: field.min }) : ''}
             {field.min != null && field.max != null ? ' · ' : ''}
-            {field.max != null ? `max ${field.max}` : ''}
+            {field.max != null ? t('max {value}', { value: field.max }) : ''}
           </span>
         ) : null}
       </div>
@@ -434,7 +455,7 @@ function ConfigFieldRow({
             onChange={(e) => onChange(e.target.checked)}
             className="h-4 w-4 rounded border-border bg-pitch/60 text-gilt focus:ring-gilt/40"
           />
-          <span className="text-sm text-ash">{value ? 'Enabled' : 'Disabled'}</span>
+          <span className="text-sm text-ash">{value ? t('Enabled') : t('Disabled')}</span>
         </div>
       ) : field.type === 'enum' ? (
         <select
@@ -551,8 +572,13 @@ function validateConfigDraft(
     normalized,
     errors,
     hasErrors: errorCount > 0,
+    // Plain functions, so they use the module-level translator rather than the
+    // hook. A language switch replaces the settings object, which re-renders
+    // the panel, so these strings are re-derived in the new language.
     summary: errorCount
-      ? `${errorCount} field${errorCount === 1 ? '' : 's'} need attention before saving.`
+      ? errorCount === 1
+        ? tr('{n} field needs attention before saving.', { n: errorCount })
+        : tr('{n} fields need attention before saving.', { n: errorCount })
       : '',
   };
 }
@@ -583,8 +609,8 @@ function validateField(
       return {
         error:
           field.choices.length === 1
-            ? `Choose ${field.choices[0]}.`
-            : `Choose one of: ${field.choices.join(', ')}.`,
+            ? tr('Choose {value}.', { value: field.choices[0] ?? '' })
+            : tr('Choose one of: {list}.', { list: field.choices.join(', ') }),
       };
     }
     return { value };
@@ -595,17 +621,19 @@ function validateField(
     if (!touched && field.default == null) {
       return { value: fieldFallback(field) };
     }
-    return { error: 'Enter a value.' };
+    return { error: tr('Enter a value.') };
   }
   const parsed = field.type === 'int' ? Number.parseInt(text, 10) : Number.parseFloat(text);
   if (!Number.isFinite(parsed) || (field.type === 'int' && !Number.isInteger(parsed))) {
-    return { error: field.type === 'int' ? 'Enter a whole number.' : 'Enter a valid number.' };
+    return {
+      error: field.type === 'int' ? tr('Enter a whole number.') : tr('Enter a valid number.'),
+    };
   }
   if (field.min != null && parsed < field.min) {
-    return { error: `Must be at least ${field.min}.` };
+    return { error: tr('Must be at least {value}.', { value: field.min }) };
   }
   if (field.max != null && parsed > field.max) {
-    return { error: `Must be at most ${field.max}.` };
+    return { error: tr('Must be at most {value}.', { value: field.max }) };
   }
   return { value: parsed };
 }

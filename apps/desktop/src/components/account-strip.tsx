@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router';
 import { ExternalLink, LogIn, LogOut, Settings, WifiOff } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { signOut, useSession } from '../lib/auth-client';
+import { useT } from '../lib/i18n-react';
 import { inTauri } from '../lib/platform';
 import { CopyButton } from './chrome';
 import { useToast } from './toast';
@@ -27,12 +28,13 @@ export function AccountStrip() {
 }
 
 function AccountStripInner() {
+  const t = useT();
   const { data: session, isPending, error } = useSession();
 
   if (isPending) {
     return (
       <div className="border-t border-border px-4 py-3">
-        <p className="font-mono text-xs text-ash">Checking session…</p>
+        <p className="font-mono text-xs text-ash">{t('Checking session…')}</p>
       </div>
     );
   }
@@ -42,10 +44,10 @@ function AccountStripInner() {
       <div className="border-t border-border px-4 py-3">
         <p className="font-mono text-xs text-ash flex items-center gap-1.5">
           <WifiOff className="h-3 w-3" />
-          API unavailable
+          {t('API unavailable')}
         </p>
         <div className="flex justify-end mt-2">
-          <CopyButton value={`API session error: ${error.message}`} />
+          <CopyButton value={t('API session error: {error}', { error: error.message })} />
         </div>
       </div>
     );
@@ -55,7 +57,7 @@ function AccountStripInner() {
     return (
       <div className="border-t border-border px-4 py-3">
         <Link to="/signin" className="btn-grim w-full justify-center" data-variant="primary">
-          <LogIn className="h-4 w-4" /> Sign in
+          <LogIn className="h-4 w-4" /> {t('Sign in')}
         </Link>
       </div>
     );
@@ -71,6 +73,7 @@ interface SessionUser {
 }
 
 function ProfileMenu({ user }: { user: SessionUser }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const toast = useToast();
@@ -93,7 +96,7 @@ function ProfileMenu({ user }: { user: SessionUser }) {
   }, [open]);
 
   const initials = initialsFor(user.name, user.email);
-  const displayName = user.name?.trim() || user.email || 'Account';
+  const displayName = user.name?.trim() || user.email || t('Account');
 
   async function handleSignOut() {
     setOpen(false);
@@ -102,11 +105,19 @@ function ProfileMenu({ user }: { user: SessionUser }) {
     try {
       const result = await signOut();
       if (result?.error) {
-        throw new Error(result.error.message ?? `sign-out rejected (HTTP ${result.error.status})`);
+        throw new Error(
+          result.error.message ??
+            t('sign-out rejected (HTTP {status})', { status: result.error.status ?? '' }),
+        );
       }
     } catch (err) {
       console.error('[account] sign-out failed', err);
-      toast.push(`Sign out failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+      toast.push(
+        t('Sign out failed: {error}', {
+          error: err instanceof Error ? err.message : String(err),
+        }),
+        'error',
+      );
     }
   }
 
@@ -151,7 +162,7 @@ function ProfileMenu({ user }: { user: SessionUser }) {
             className="flex items-center gap-2.5 px-3 py-2 font-mono text-xs text-parchment transition hover:bg-char/60"
           >
             <Settings className="h-3.5 w-3.5 text-ash" />
-            Settings
+            {t('Settings')}
           </Link>
           <a
             href={WEB_ACCOUNT_URL}
@@ -162,7 +173,7 @@ function ProfileMenu({ user }: { user: SessionUser }) {
             className="flex items-center gap-2.5 px-3 py-2 font-mono text-xs text-parchment transition hover:bg-char/60"
           >
             <ExternalLink className="h-3.5 w-3.5 text-ash" />
-            Web account
+            {t('Web account')}
           </a>
           <button
             type="button"
@@ -171,7 +182,7 @@ function ProfileMenu({ user }: { user: SessionUser }) {
             className="flex w-full items-center gap-2.5 border-t border-oxblood/40 px-3 py-2 text-left font-mono text-xs text-parchment transition hover:bg-char/60"
           >
             <LogOut className="h-3.5 w-3.5 text-ash" />
-            Sign out
+            {t('Sign out')}
           </button>
         </div>
       ) : null}

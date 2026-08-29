@@ -28,6 +28,7 @@ import {
   filterCollections,
   filterMods,
 } from '../lib/browse-filter';
+import { TParts, useT } from '../lib/i18n-react';
 import { validateProfileName } from '../lib/profile-name';
 import { installModFromIndex, listLocalModsForProfile } from '../lib/rsmm';
 import { activeProfile, useApp } from '../store';
@@ -41,6 +42,7 @@ type Sort = BrowseSort;
 type Tab = 'mods' | 'collections';
 
 function BrowsePage() {
+  const t = useT();
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('mods');
   const [q, setQ] = useState('');
@@ -87,7 +89,7 @@ function BrowsePage() {
       if (!installed.includes(slug)) {
         const result = await installModFromIndex(slug, targetProfileId);
         if (!result || !result.ok) {
-          throw new Error(result?.error ?? 'install failed');
+          throw new Error(result?.error ?? t('install failed'));
         }
         const local = await listLocalModsForProfile(targetProfileId);
         if (local) syncLocalMods(local);
@@ -96,8 +98,8 @@ function BrowsePage() {
       // Default profile installs create a new "My Mods" profile — read the
       // active profile after installMod, not the requested id.
       const { profiles, activeProfileId } = useApp.getState();
-      const profileName = profiles.find((p) => p.id === activeProfileId)?.name ?? 'profile';
-      toast.push(`Added ${slug} to “${profileName}”.`, 'success');
+      const profileName = profiles.find((p) => p.id === activeProfileId)?.name ?? t('profile');
+      toast.push(t('Added {slug} to “{profile}”.', { slug, profile: profileName }), 'success');
       // Bust the list cache so download counts refresh.
       await queryClient.invalidateQueries({ queryKey: ['mods', 'list'] });
     } catch (err) {
@@ -236,7 +238,7 @@ function BrowsePage() {
   const filterPanel =
     tab === 'mods' ? (
       <aside
-        aria-label="Filters"
+        aria-label={t('Filters')}
         // Its own sticky column while browsing; a plain block at the top of the
         // index column once a mod is open, where the column already sets the
         // width and the sticky/order rules would fight it.
@@ -259,27 +261,29 @@ function BrowsePage() {
             ) : (
               <ChevronRight className="h-4 w-4 self-center text-ash" aria-hidden />
             )}
-            Filters
+            {t('Filters')}
           </span>
           {/* Collapsed, the count of ACTIVE filters is the load-bearing
                       number: it is the only way to tell a short result list from a
                       filtered one when the facets are hidden. */}
           <span className="font-mono whitespace-nowrap text-xs text-ash">
             {filtersOpen
-              ? `${list.length} ${list.length === 1 ? 'mod' : 'mods'}`
+              ? t.n(list.length, '{n} mod', '{n} mods')
               : activeFilters > 0
-                ? `${activeFilters} on`
-                : 'off'}
+                ? t('{n} on', { n: activeFilters })
+                : t('off')}
           </span>
         </button>
 
         {filtersOpen ? (
           <div id={filterBodyId} className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-              <span className="font-mono text-xs uppercase tracking-widest text-ash">category</span>
+              <span className="font-mono text-xs uppercase tracking-widest text-ash">
+                {t('category')}
+              </span>
               <div className="flex flex-wrap gap-1.5">
                 <FilterChip active={category === null} onClick={() => setCategory(null)}>
-                  any
+                  {t('any')}
                 </FilterChip>
                 {facets.categories.map(([name, count]) => (
                   <FilterChip
@@ -292,13 +296,17 @@ function BrowsePage() {
                 ))}
               </div>
               {facets.categories.length === 0 ? (
-                <span className="font-serif-italic text-sm text-ash">nothing published yet</span>
+                <span className="font-serif-italic text-sm text-ash">
+                  {t('nothing published yet')}
+                </span>
               ) : null}
             </div>
 
             {facets.tags.length > 0 ? (
               <div className="flex flex-col gap-2">
-                <span className="font-mono text-xs uppercase tracking-widest text-ash">tags</span>
+                <span className="font-mono text-xs uppercase tracking-widest text-ash">
+                  {t('tags')}
+                </span>
                 <div className="flex flex-wrap gap-1.5">
                   {facets.tags.map(([name, count]) => (
                     <FilterChip
@@ -314,14 +322,16 @@ function BrowsePage() {
             ) : null}
 
             <label className="flex flex-col gap-2">
-              <span className="font-mono text-xs uppercase tracking-widest text-ash">rating</span>
+              <span className="font-mono text-xs uppercase tracking-widest text-ash">
+                {t('rating')}
+              </span>
               <select
                 value={minRating}
                 onChange={(e) => setMinRating(Number(e.target.value))}
-                aria-label="Minimum rating"
+                aria-label={t('Minimum rating')}
                 className="select-grim"
               >
-                <option value={0}>any</option>
+                <option value={0}>{t('any')}</option>
                 <option value={3}>★ 3+</option>
                 <option value={4}>★ 4+</option>
                 <option value={4.5}>★ 4.5+</option>
@@ -335,12 +345,12 @@ function BrowsePage() {
                 onChange={(e) => setHideInstalled(e.target.checked)}
                 className="mt-1 h-4 w-4 accent-crimson"
               />
-              <span className="font-serif-italic text-sm">Hide what I already have</span>
+              <span className="font-serif-italic text-sm">{t('Hide what I already have')}</span>
             </label>
 
             {activeFilters > 0 ? (
               <Button type="button" size="sm" onClick={clearFilters} className="w-full">
-                <X className="h-3.5 w-3.5" aria-hidden /> clear {activeFilters}
+                <X className="h-3.5 w-3.5" aria-hidden /> {t('clear {n}', { n: activeFilters })}
               </Button>
             ) : null}
           </div>
@@ -351,11 +361,11 @@ function BrowsePage() {
   return (
     <div className="space-y-6">
       <SectionHeader
-        title={tab === 'mods' ? 'Browse' : 'Collections'}
+        title={tab === 'mods' ? t('Browse') : t('Collections')}
         subtitle={
           tab === 'mods'
-            ? 'The remote index. Mods from the community catalog.'
-            : 'Curated bundles of mods made by the community.'
+            ? t('The remote index. Mods from the community catalog.')
+            : t('Curated bundles of mods made by the community.')
         }
       />
 
@@ -367,7 +377,7 @@ function BrowsePage() {
             variant={tab === 'mods' ? 'primary' : 'default'}
             onClick={() => setTab('mods')}
           >
-            Mods
+            {t('Mods')}
           </Button>
           <Button
             type="button"
@@ -375,7 +385,7 @@ function BrowsePage() {
             variant={tab === 'collections' ? 'primary' : 'default'}
             onClick={() => setTab('collections')}
           >
-            Collections
+            {t('Collections')}
           </Button>
         </div>
         <div className="relative flex-1 min-w-[260px]">
@@ -386,8 +396,8 @@ function BrowsePage() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder={tab === 'mods' ? 'Search the index…' : 'Search collections…'}
-            aria-label={tab === 'mods' ? 'Search mods' : 'Search collections'}
+            placeholder={tab === 'mods' ? t('Search the index…') : t('Search collections…')}
+            aria-label={tab === 'mods' ? t('Search mods') : t('Search collections')}
             className="input-grim"
           />
         </div>
@@ -403,7 +413,7 @@ function BrowsePage() {
                   variant={sort === s ? 'gilt' : 'default'}
                   size="sm"
                 >
-                  {s}
+                  {s === 'popular' ? t('popular') : s === 'recent' ? t('recent') : t('rating')}
                 </Button>
               ))}
             </div>
@@ -419,16 +429,16 @@ function BrowsePage() {
               </span>
             </label>
             <fieldset className="ml-auto flex items-center gap-1">
-              <legend className="sr-only">Layout</legend>
+              <legend className="sr-only">{t('Layout')}</legend>
               <Button
                 type="button"
                 size="sm"
                 aria-pressed={view === 'grid'}
                 variant={view === 'grid' ? 'gilt' : 'default'}
                 onClick={() => update({ browseView: 'grid' })}
-                title="Cards"
+                title={t('Cards')}
               >
-                <LayoutGrid className="h-3.5 w-3.5" aria-hidden /> cards
+                <LayoutGrid className="h-3.5 w-3.5" aria-hidden /> {t('cards')}
               </Button>
               <Button
                 type="button"
@@ -436,9 +446,9 @@ function BrowsePage() {
                 aria-pressed={view === 'list'}
                 variant={view === 'list' ? 'gilt' : 'default'}
                 onClick={() => update({ browseView: 'list' })}
-                title="List"
+                title={t('List')}
               >
-                <Rows3 className="h-3.5 w-3.5" aria-hidden /> list
+                <Rows3 className="h-3.5 w-3.5" aria-hidden /> {t('list')}
               </Button>
             </fieldset>
           </>
@@ -456,17 +466,17 @@ function BrowsePage() {
           a filter you cannot reach is worse than one that costs a scroll. */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         {selected ? (
-          <section aria-label="Mod details" className="min-w-0 flex-1 lg:order-2">
+          <section aria-label={t('Mod details')} className="min-w-0 flex-1 lg:order-2">
             <div className="mb-2 flex items-center justify-end gap-2">
               <Link
                 to="/mod/$slug"
                 params={{ slug: selected }}
                 className="font-mono text-xs text-ash underline-offset-2 hover:text-parchment hover:underline"
               >
-                open full page
+                {t('open full page')}
               </Link>
               <Button type="button" size="sm" onClick={() => setSelected(null)}>
-                <X className="h-3.5 w-3.5" aria-hidden /> close
+                <X className="h-3.5 w-3.5" aria-hidden /> {t('close')}
               </Button>
             </div>
             <ModDetail slug={selected} embedded />
@@ -491,19 +501,19 @@ function BrowsePage() {
             <div className="ember-banner flex flex-col gap-2 px-4 py-3">
               <div className="flex items-center gap-3">
                 <WifiOff className="h-4 w-4 text-crimson shrink-0" />
-                <span className="font-serif-italic text-base">API unreachable.</span>
+                <span className="font-serif-italic text-base">{t('API unreachable.')}</span>
                 <CopyButton value={describeApiError(error)} />
                 <button
                   type="button"
                   onClick={() => window.open(getApiBaseUrl(), '_blank')}
                   className="font-mono text-xs text-ash underline-offset-2 hover:text-parchment hover:underline flex items-center gap-1"
                 >
-                  <ExternalLink className="h-3 w-3" /> open in browser
+                  <ExternalLink className="h-3 w-3" /> {t('open in browser')}
                 </button>
               </div>
               <p className="font-serif-italic text-sm text-ash">{describeApiError(error)}</p>
               <div className="font-mono text-xs text-ash bg-pitch/30 px-2 py-1 rounded">
-                {getApiBaseUrl()} <span className="text-oxblood/60">|</span> origin:{' '}
+                {getApiBaseUrl()} <span className="text-oxblood/60">|</span> {t('origin:')}{' '}
                 {window.location.origin}
               </div>
             </div>
@@ -512,11 +522,11 @@ function BrowsePage() {
           {installError ? (
             <div className="ember-banner flex items-center gap-3 px-4 py-3">
               <span className="font-serif-italic text-base text-crimson flex-1">
-                Install failed: {installError}
+                {t('Install failed: {error}', { error: installError })}
               </span>
               <CopyButton value={installError} />
               <Button type="button" size="sm" onClick={() => setInstallError(null)}>
-                dismiss
+                {t('dismiss')}
               </Button>
             </div>
           ) : null}
@@ -547,7 +557,11 @@ function BrowsePage() {
                     className="grimoire-card flex flex-col gap-3 p-5 cursor-pointer transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60 focus:outline-none"
                   >
                     {c.imageUrl ? (
-                      <Cover src={c.imageUrl} alt={`${c.name} cover`} caption={`${c.slug}.png`} />
+                      <Cover
+                        src={c.imageUrl}
+                        alt={t('{name} cover', { name: c.name })}
+                        caption={`${c.slug}.png`}
+                      />
                     ) : null}
                     <header className="flex items-start justify-between gap-3">
                       <div>
@@ -560,7 +574,7 @@ function BrowsePage() {
                           {c.name}
                         </Link>
                         <p className="font-mono mt-1 text-ash">
-                          {c.ownerName ?? 'unknown'} · {c.modCount} mod{c.modCount === 1 ? '' : 's'}
+                          {c.ownerName ?? t('unknown')} · {t.n(c.modCount, '{n} mod', '{n} mods')}
                         </p>
                       </div>
                     </header>
@@ -571,7 +585,9 @@ function BrowsePage() {
                     ) : null}
                     <div className="mt-auto flex items-center justify-between gap-2">
                       <span className="font-mono text-xs text-ash">
-                        updated {new Date(c.updatedAt).toLocaleDateString()}
+                        {t('updated {date}', {
+                          date: new Date(c.updatedAt).toLocaleDateString(t.tag),
+                        })}
                       </span>
                     </div>
                   </div>
@@ -579,7 +595,9 @@ function BrowsePage() {
               </div>
               {!isLoading && !error && collections.length === 0 ? (
                 <p className="font-serif-italic py-10 text-center text-ash">
-                  {q.trim() ? 'No collections match that search.' : 'No public collections yet.'}
+                  {q.trim()
+                    ? t('No collections match that search.')
+                    : t('No public collections yet.')}
                 </p>
               ) : null}
             </>
@@ -618,7 +636,11 @@ function BrowsePage() {
                           tabIndex={0}
                           // biome-ignore lint/a11y/useSemanticElements: card link with nested interactive controls; <a> may not legally wrap them, so a guarded role="link" is used
                           role="link"
-                          aria-label={`${m.name}${m.author ? ` by ${m.author}` : ''}`}
+                          aria-label={
+                            m.author
+                              ? t('{name} by {author}', { name: m.name, author: m.author })
+                              : m.name
+                          }
                           onClick={(e) => {
                             const el = e.target as HTMLElement;
                             if (el.closest('button, a, input, textarea, select, [role="switch"]'))
@@ -639,7 +661,7 @@ function BrowsePage() {
                           {m.imageUrl ? (
                             <Cover
                               src={m.imageUrl}
-                              alt={`${m.name} cover`}
+                              alt={t('{name} cover', { name: m.name })}
                               caption={`${m.slug}.png`}
                               nsfw={m.nsfw}
                             />
@@ -655,7 +677,7 @@ function BrowsePage() {
                                 {m.name}
                               </Link>
                               <p className="font-mono mt-1 text-ash">
-                                {m.author ?? 'unknown'}
+                                {m.author ?? t('unknown')}
                                 {m.latestVersion ? ` · v${m.latestVersion}` : ''}
                               </p>
                             </div>
@@ -684,7 +706,9 @@ function BrowsePage() {
                             <StatPill
                               value={m.rating != null ? `★ ${m.rating.toFixed(1)}` : '—'}
                               label={
-                                m.downloads != null ? `${m.downloads.toLocaleString()} dl` : ''
+                                m.downloads != null
+                                  ? t('{n} dl', { n: m.downloads.toLocaleString(t.tag) })
+                                  : ''
                               }
                             />
                           </div>
@@ -694,7 +718,9 @@ function BrowsePage() {
               </div>
               {!isLoading && !error && list.length === 0 ? (
                 <p className="font-serif-italic py-10 text-center text-ash">
-                  {q.trim() ? 'No mods match that search.' : 'No mods published to the index yet.'}
+                  {q.trim()
+                    ? t('No mods match that search.')
+                    : t('No mods published to the index yet.')}
                 </p>
               ) : null}
             </>
@@ -733,6 +759,7 @@ interface InstallButtonProps {
  * time one of them was touched.
  */
 function InstallButton({ m, installed, profile, installing, onPick }: InstallButtonProps) {
+  const t = useT();
   const onDisk = installed.includes(m.slug);
   // "In profile" must mean the mod is BOTH listed by the profile and
   // actually on disk. A profile entry whose folder is gone (failed install,
@@ -755,27 +782,27 @@ function InstallButton({ m, installed, profile, installing, onPick }: InstallBut
       className="min-w-[7.5rem] justify-center whitespace-nowrap"
       title={
         inProfile
-          ? `Already in "${profile.name}"`
+          ? t('Already in "{profile}"', { profile: profile.name })
           : onDisk
-            ? `On disk — click to add to "${profile.name}"`
-            : `Download from index + add to "${profile.name}"`
+            ? t('On disk — click to add to "{profile}"', { profile: profile.name })
+            : t('Download from index + add to "{profile}"', { profile: profile.name })
       }
     >
       {installing[m.slug] ? (
         <>
-          <Loader2 className="h-3.5 w-3.5 animate-spin" /> downloading
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('downloading')}
         </>
       ) : inProfile ? (
         <>
-          <CheckIcon className="h-4 w-4" /> in profile
+          <CheckIcon className="h-4 w-4" /> {t('in profile')}
         </>
       ) : onDisk ? (
         <>
-          <Plus className="h-3.5 w-3.5" /> add
+          <Plus className="h-3.5 w-3.5" /> {t('add')}
         </>
       ) : (
         <>
-          <Plus className="h-3.5 w-3.5" /> install
+          <Plus className="h-3.5 w-3.5" /> {t('install')}
         </>
       )}
     </Button>
@@ -812,13 +839,14 @@ function ModRow({
   active: boolean;
   compact?: boolean;
 }) {
+  const t = useT();
   const open = onOpen;
   return (
     <div
       tabIndex={0}
       // biome-ignore lint/a11y/useSemanticElements: row link with nested interactive controls; <a> may not legally wrap them, so a guarded role="link" is used
       role="link"
-      aria-label={`${m.name}${m.author ? ` by ${m.author}` : ''}`}
+      aria-label={m.author ? t('{name} by {author}', { name: m.name, author: m.author }) : m.name}
       onClick={(e) => {
         const el = e.target as HTMLElement;
         if (el.closest('button, a, input, textarea, select, [role="switch"]')) return;
@@ -847,12 +875,12 @@ function ModRow({
           </span>
           {m.nsfw ? (
             <span className="font-mono shrink-0 rounded border border-crimson/30 bg-crimson/10 px-1 text-[10px] uppercase tracking-widest text-crimson/80">
-              nsfw
+              {t('nsfw')}
             </span>
           ) : null}
         </div>
         <p className="font-mono truncate text-xs text-ash">
-          {m.author ?? 'unknown'}
+          {m.author ?? t('unknown')}
           {m.latestVersion ? ` · v${m.latestVersion}` : ''}
           {m.summary ? ` — ${m.summary}` : ''}
         </p>
@@ -870,7 +898,7 @@ function ModRow({
             {m.rating != null ? `★ ${m.rating.toFixed(1)}` : '—'}
           </div>
           <div className="font-mono hidden w-20 shrink-0 text-right text-xs text-ash lg:block">
-            {m.downloads != null ? `${m.downloads.toLocaleString()} dl` : ''}
+            {m.downloads != null ? t('{n} dl', { n: m.downloads.toLocaleString(t.tag) }) : ''}
           </div>
         </>
       )}
@@ -918,6 +946,7 @@ function ProfilePicker({
   onCreate: (name: string) => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   const selectable = profiles.filter((p) => p.id !== 'default');
   const [creating, setCreating] = useState(selectable.length === 0);
   const [name, setName] = useState('');
@@ -940,7 +969,7 @@ function ProfilePicker({
       open
       ref={rootRef}
       tabIndex={-1}
-      aria-label="Choose profile"
+      aria-label={t('Choose profile')}
       className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in outline-none"
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
@@ -951,9 +980,12 @@ function ProfilePicker({
     >
       <div className="absolute inset-0 bg-pitch/80" onClick={onCancel} />
       <div className="grimoire-card relative w-[min(480px,92vw)] p-5">
-        <h3 className="font-fraktur text-xl text-parchment">Install to profile</h3>
+        <h3 className="font-fraktur text-xl text-parchment">{t('Install to profile')}</h3>
         <p className="font-serif-italic text-ash mt-2">
-          Pick which profile receives <span className="font-mono">{slug}</span>.
+          <TParts
+            text={t('Pick which profile receives {slug}.')}
+            parts={{ slug: <span className="font-mono">{slug}</span> }}
+          />
         </p>
         {!creating && selectable.length > 0 ? (
           <ul className="mt-4 space-y-2">
@@ -968,7 +1000,7 @@ function ProfilePicker({
                     {p.name}
                   </div>
                   <div className="font-mono text-xs text-ash">
-                    {p.loadOrder.length} mod{p.loadOrder.length === 1 ? '' : 's'}
+                    {t.n(p.loadOrder.length, '{n} mod', '{n} mods')}
                   </div>
                 </button>
               </li>
@@ -978,7 +1010,7 @@ function ProfilePicker({
         {creating ? (
           <div className="mt-4 space-y-2">
             <label htmlFor="new-profile-name" className="font-mono block text-ash">
-              New profile name
+              {t('New profile name')}
             </label>
             <input
               id="new-profile-name"
@@ -991,7 +1023,7 @@ function ProfilePicker({
                   if (name.trim()) onCreate(name);
                 }
               }}
-              placeholder="My Mods"
+              placeholder={t('My Mods')}
               className="input-grim w-full"
             />
           </div>
@@ -999,14 +1031,14 @@ function ProfilePicker({
         <div className="mt-5 flex items-center justify-between gap-2">
           {selectable.length > 0 ? (
             <Button type="button" size="sm" onClick={() => setCreating((c) => !c)}>
-              {creating ? 'pick existing' : 'create new'}
+              {creating ? t('pick existing') : t('create new')}
             </Button>
           ) : (
             <span />
           )}
           <div className="flex gap-2">
             <Button type="button" size="sm" onClick={onCancel}>
-              cancel
+              {t('cancel')}
             </Button>
             {creating ? (
               <Button
@@ -1016,7 +1048,7 @@ function ProfilePicker({
                 onClick={() => onCreate(name)}
                 disabled={!name.trim()}
               >
-                create + install
+                {t('create + install')}
               </Button>
             ) : null}
           </div>

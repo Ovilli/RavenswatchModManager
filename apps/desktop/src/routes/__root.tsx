@@ -24,6 +24,8 @@ import { LaunchProvider, useLaunch } from '../components/launch';
 import { ProfilePopover } from '../components/profile-popover';
 import { DialogProvider, ToastProvider } from '../components/toast';
 import { UpdaterBanner, VersionFooter } from '../components/updater';
+import { msg } from '../lib/i18n';
+import { useT } from '../lib/i18n-react';
 import { shortcutLabel } from '../lib/platform';
 import { quitApp } from '../lib/quit';
 import { restoreAll } from '../lib/rsmm';
@@ -39,16 +41,19 @@ interface Nav {
   label: string;
 }
 
-const CONFLICTS_NAV: Nav = { to: '/conflicts', icon: ConflictsIcon, label: 'Conflicts' };
+// Labels are declared in English and translated at render (`NavLink` calls
+// `t(label)`): this table is module scope, where there is no active locale and
+// nothing to re-render when it changes.
+const CONFLICTS_NAV: Nav = { to: '/conflicts', icon: ConflictsIcon, label: msg('Conflicts') };
 
 const NAV: Nav[] = [
-  { to: '/', icon: LibraryIcon, label: 'Library' },
-  { to: '/browse', icon: BrowseIcon, label: 'Browse' },
-  { to: '/profiles', icon: ProfilesIcon, label: 'Profiles' },
+  { to: '/', icon: LibraryIcon, label: msg('Library') },
+  { to: '/browse', icon: BrowseIcon, label: msg('Browse') },
+  { to: '/profiles', icon: ProfilesIcon, label: msg('Profiles') },
   // /author (the cooked-asset inspector) has no sidebar entry — it is a dev
   // tool, not a destination. The route still resolves by direct URL.
-  { to: '/commands', icon: Terminal, label: 'Commands' },
-  { to: '/log', icon: ScrollText, label: 'Log' },
+  { to: '/commands', icon: Terminal, label: msg('Commands') },
+  { to: '/log', icon: ScrollText, label: msg('Log') },
 ];
 
 /**
@@ -58,7 +63,7 @@ const NAV: Nav[] = [
  * change how the rest behaves, and About now lives inside it as a tab. Keeping
  * it out of the run of content pages, down by the collapse control, says that.
  */
-const SETTINGS_NAV: Nav = { to: '/settings', icon: SettingsIcon, label: 'Settings' };
+const SETTINGS_NAV: Nav = { to: '/settings', icon: SettingsIcon, label: msg('Settings') };
 
 /**
  * Conflicts is a problem page: it only ever has something to say when two
@@ -86,11 +91,15 @@ type AppRegionStyle = CSSProperties & { WebkitAppRegion?: 'drag' | 'no-drag' };
 const dragStyle: AppRegionStyle = { WebkitAppRegion: 'drag' };
 const noDragStyle: AppRegionStyle = { WebkitAppRegion: 'no-drag' };
 
-function NavLink({ to, icon: Icon, label, collapsed }: Nav & { collapsed: boolean }) {
+function NavLink({ to, icon: Icon, label: source, collapsed }: Nav & { collapsed: boolean }) {
+  const t = useT();
   const installed = useApp((s) => s.installed);
   const outdated = useMemo(() => (to === '/' ? outdatedCount(installed) : 0), [to, installed]);
+  const label = t(source);
   const updates =
-    outdated > 0 ? `${outdated} mod${outdated === 1 ? '' : 's'} with available updates` : null;
+    outdated > 0
+      ? t.n(outdated, '{n} mod with an available update', '{n} mods with available updates')
+      : null;
   return (
     <Link
       to={to}
@@ -118,6 +127,7 @@ function NavLink({ to, icon: Icon, label, collapsed }: Nav & { collapsed: boolea
 }
 
 function StatusStrip() {
+  const t = useT();
   const { launching, running, launchError, busy, launch } = useLaunch();
   const profile = useApp(activeProfile);
   const installed = useApp((s) => s.installed);
@@ -165,10 +175,10 @@ function StatusStrip() {
             <LaunchIcon className="h-5 w-5 text-parchment" />
             <span>
               {launching === 'vanilla'
-                ? 'Restoring…'
+                ? t('Restoring…')
                 : running === 'vanilla'
-                  ? 'Running…'
-                  : 'Launch Vanilla'}
+                  ? t('Running…')
+                  : t('Launch Vanilla')}
             </span>
           </Button>
           <Button
@@ -182,10 +192,10 @@ function StatusStrip() {
             <LaunchIcon className="h-5 w-5 text-parchment" />
             <span>
               {launching === 'modded'
-                ? 'Applying…'
+                ? t('Applying…')
                 : running === 'modded'
-                  ? 'Running…'
-                  : 'Launch Modded'}
+                  ? t('Running…')
+                  : t('Launch Modded')}
             </span>
           </Button>
         </div>
@@ -193,7 +203,7 @@ function StatusStrip() {
         {launchError ? (
           <span className="flex items-center gap-2 text-xs text-destructive" role="alert">
             <span className="truncate max-w-[300px]">{launchError}</span>
-            <CopyButton value={`Launch error: ${launchError}`} />
+            <CopyButton value={t('Launch error: {error}', { error: launchError })} />
           </span>
         ) : null}
         {/* Hidden rather than squashed below `lg`. The cluster is `shrink-0`
@@ -201,16 +211,16 @@ function StatusStrip() {
             give when the window is narrow — and a mod count is the most
             expendable thing in this row. */}
         <div className="hidden items-center gap-2 lg:flex" style={noDragStyle}>
-          <StatPill value={enabled} label="enabled" />
-          <StatPill value={disabled} label="disabled" />
-          {outdated > 0 ? <StatPill value={outdated} label="updates" tone="gilt" /> : null}
+          <StatPill value={enabled} label={t('enabled')} />
+          <StatPill value={disabled} label={t('disabled')} />
+          {outdated > 0 ? <StatPill value={outdated} label={t('updates')} tone="gilt" /> : null}
           {conflictCount > 0 ? (
             <Link to="/conflicts" className="inline-flex items-center gap-1">
               <AlertTriangle className="h-4 w-4 text-crimson" />
-              <StatPill value={conflictCount} label="conflicts" tone="crimson" />
+              <StatPill value={conflictCount} label={t('conflicts')} tone="crimson" />
             </Link>
           ) : null}
-          <StatPill label="command" value={shortcutLabel('K')} className="tracking-normal" />
+          <StatPill label={t('command')} value={shortcutLabel('K')} className="tracking-normal" />
         </div>
         <WindowControls />
       </div>
@@ -228,6 +238,7 @@ async function getAppWindow() {
 }
 
 function WindowControls() {
+  const t = useT();
   const { running } = useLaunch();
   const [maximized, setMaximized] = useState(false);
   const [available, setAvailable] = useState(false);
@@ -320,7 +331,9 @@ function WindowControls() {
     try {
       const result = await restoreAll();
       if (!result || !result.ok) {
-        throw new Error(result?.stderr?.trim() || result?.stdout?.trim() || 'restore failed');
+        // CLI output is passed through untranslated — it is the sidecar's own
+        // text, and mistranslating a diagnostic is worse than showing it as-is.
+        throw new Error(result?.stderr?.trim() || result?.stdout?.trim() || t('restore failed'));
       }
       await quitApp();
       setQuitPromptOpen(false);
@@ -378,18 +391,18 @@ function WindowControls() {
     <div className="window-controls ml-3 flex items-center gap-2" style={noDragStyle}>
       <button
         type="button"
-        title="Minimize"
+        title={t('Minimize')}
         onClick={doMinimize}
-        aria-label="Minimize"
+        aria-label={t('Minimize')}
         className="wc-btn wc-minimize"
       >
         <WindowMinimizeIcon className="h-4 w-4 text-parchment" />
       </button>
       <button
         type="button"
-        title={maximized ? 'Restore' : 'Maximize'}
+        title={maximized ? t('Restore') : t('Maximize')}
         onClick={doToggleMax}
-        aria-label={maximized ? 'Restore' : 'Maximize'}
+        aria-label={maximized ? t('Restore') : t('Maximize')}
         className="wc-btn wc-maximize"
       >
         {maximized ? (
@@ -400,9 +413,9 @@ function WindowControls() {
       </button>
       <button
         type="button"
-        title="Close"
+        title={t('Close')}
         onClick={doClose}
-        aria-label="Close"
+        aria-label={t('Close')}
         className="wc-btn wc-close"
       >
         <WindowCloseIcon className="h-4 w-4 text-crimson" />
@@ -416,10 +429,13 @@ function WindowControls() {
                 onClick={() => !quitBusy && setQuitPromptOpen(false)}
               />
               <div className="grimoire-card relative w-[min(520px,92vw)] p-5">
-                <h3 className="font-fraktur text-xl text-parchment">Quit with active overrides?</h3>
+                <h3 className="font-fraktur text-xl text-parchment">
+                  {t('Quit with active overrides?')}
+                </h3>
                 <p className="font-serif-italic mt-2 text-ash">
-                  Ravenswatch is still running with modded files applied. Quitting now leaves those
-                  overrides in place until you restore them.
+                  {t(
+                    'Ravenswatch is still running with modded files applied. Quitting now leaves those overrides in place until you restore them.',
+                  )}
                 </p>
                 <div className="mt-4 flex flex-nowrap justify-end gap-2">
                   <button
@@ -428,7 +444,7 @@ function WindowControls() {
                     disabled={quitBusy}
                     className="whitespace-nowrap border border-border px-3 py-1.5 text-ash hover:text-parchment disabled:opacity-60"
                   >
-                    Cancel
+                    {t('Cancel')}
                   </button>
                   <button
                     type="button"
@@ -436,7 +452,7 @@ function WindowControls() {
                     disabled={quitBusy}
                     className="whitespace-nowrap border border-gilt/60 bg-gilt/20 px-3 py-1.5 text-parchment hover:bg-gilt/30 disabled:opacity-60"
                   >
-                    Restore & quit
+                    {t('Restore & quit')}
                   </button>
                   <button
                     type="button"
@@ -444,7 +460,7 @@ function WindowControls() {
                     disabled={quitBusy}
                     className="whitespace-nowrap border border-crimson bg-crimson/80 px-3 py-1.5 text-parchment hover:bg-oxblood disabled:opacity-60"
                   >
-                    Quit anyway
+                    {t('Quit anyway')}
                   </button>
                 </div>
                 {quitError ? <p className="mt-3 text-sm text-crimson">{quitError}</p> : null}
@@ -458,6 +474,7 @@ function WindowControls() {
 }
 
 function RootLayout() {
+  const t = useT();
   const location = useLocation();
   const nav = useNav();
   const collapsed = useApp((s) => s.settings.sidebarCollapsed);
@@ -505,8 +522,10 @@ function RootLayout() {
                 <button
                   type="button"
                   onClick={() => update({ sidebarCollapsed: !collapsed })}
-                  aria-label={collapsed ? 'Expand the sidebar' : 'Collapse the sidebar to icons'}
-                  title={collapsed ? 'Expand the sidebar' : 'Collapse the sidebar to icons'}
+                  aria-label={
+                    collapsed ? t('Expand the sidebar') : t('Collapse the sidebar to icons')
+                  }
+                  title={collapsed ? t('Expand the sidebar') : t('Collapse the sidebar to icons')}
                   aria-pressed={collapsed}
                   className={`flex w-full items-center gap-2 rounded border border-transparent px-2 py-1.5 text-ash hover:border-border hover:text-parchment ${
                     collapsed ? 'justify-center' : ''
@@ -517,7 +536,9 @@ function RootLayout() {
                   ) : (
                     <PanelLeftClose className="h-4 w-4" aria-hidden />
                   )}
-                  {collapsed ? null : <span className="font-mono text-xs">Collapse sidebar</span>}
+                  {collapsed ? null : (
+                    <span className="font-mono text-xs">{t('Collapse sidebar')}</span>
+                  )}
                 </button>
               </div>
 

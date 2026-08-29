@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from 'react';
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useT } from '../lib/i18n-react';
 
 export function Fleuron({
   className,
@@ -64,6 +65,7 @@ export function Button({
 }
 
 export function CopyButton({ value }: { value: string }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -97,8 +99,8 @@ export function CopyButton({ value }: { value: string }) {
       <button
         type="button"
         onClick={copy}
-        title="Copy error details"
-        aria-label="Copy error details to clipboard"
+        title={t('Copy error details')}
+        aria-label={t('Copy error details to clipboard')}
         className={cn(
           'ml-auto inline-flex min-w-24 items-center justify-center gap-1.5 border border-border bg-pitch/70 px-3 py-1.5',
           'font-mono text-xs tracking-wider uppercase text-ash transition-colors duration-150',
@@ -106,7 +108,7 @@ export function CopyButton({ value }: { value: string }) {
         )}
       >
         <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-        <span>{copied ? 'copied' : 'copy'}</span>
+        <span>{copied ? t('copied') : t('copy')}</span>
       </button>
     </>
   );
@@ -196,6 +198,7 @@ export function Cover({
  * Element classes keep the grimoire palette intact.
  */
 export function Markdown({ source, className }: { source: string; className?: string }) {
+  const t = useT();
   return (
     <div className={cn('space-y-4 text-parchment/90', className)}>
       <ReactMarkdown
@@ -289,7 +292,7 @@ export function Markdown({ source, className }: { source: string; className?: st
             <img
               {...props}
               src={src}
-              alt={typeof alt === 'string' && alt.length > 0 ? alt : 'mod image'}
+              alt={typeof alt === 'string' && alt.length > 0 ? alt : t('mod image')}
               className="max-w-full rounded border border-oxblood/30"
             />
           ),

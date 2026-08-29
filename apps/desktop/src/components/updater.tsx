@@ -2,6 +2,8 @@ import { ProgressBar } from '@rsmm/ui';
 import { AlertTriangle, Download, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import pkg from '../../package.json';
+import { t as tr } from '../lib/i18n';
+import { useT } from '../lib/i18n-react';
 import { appendLauncherLog } from '../lib/launcher-log';
 import { quitApp } from '../lib/quit';
 import {
@@ -181,7 +183,13 @@ async function applyUpdate(): Promise<void> {
       });
       return;
     }
-    setStatus({ state: 'error', error: `Update download/install failed: ${detail}`, update });
+    setStatus({
+      state: 'error',
+      // Module-scope helper: the banner re-renders on a language change because
+      // the store's settings object is replaced, so `tr` is enough here.
+      error: tr('Update download/install failed: {error}', { error: detail }),
+      update,
+    });
   }
 }
 
@@ -238,6 +246,7 @@ async function finishMigration(): Promise<void> {
 }
 
 export function UpdaterBanner() {
+  const t = useT();
   const [status, set] = useUpdateStatus();
   const startedRef = useRef(false);
 
@@ -260,7 +269,7 @@ export function UpdaterBanner() {
       <output className="flex w-full items-center gap-3 border-b border-oxblood/60 bg-oxblood/20 px-4 py-2">
         <RefreshCw className="h-4 w-4 text-gilt shrink-0 animate-spin" />
         <span className="font-serif-italic text-parchment shrink-0">
-          Downloading v{status.update?.version}…
+          {t('Downloading v{version}…', { version: status.update?.version ?? '' })}
         </span>
         <div className="flex-1 max-w-80">
           <ProgressBar value={p?.downloaded ?? 0} max={p?.total ?? 0} indeterminate={!p?.total} />
@@ -283,12 +292,12 @@ export function UpdaterBanner() {
               <Download className="h-8 w-8 text-crimson" />
             </div>
             <h2 className="font-fraktur text-3xl text-crimson">
-              Action Needed: Update Your Launcher!
+              {t('Action Needed: Update Your Launcher!')}
             </h2>
             <p className="mt-2 font-serif-italic text-parchment">
-              Version {v.version} is ready to install
+              {t('Version {version} is ready to install', { version: v.version })}
               <span className="font-mono block mt-1 text-sm text-ash">
-                (currently running v{v.currentVersion})
+                {t('(currently running v{version})', { version: v.currentVersion ?? '' })}
               </span>
             </p>
           </div>
@@ -315,20 +324,23 @@ export function UpdaterBanner() {
                   setStatus({
                     state: 'error',
                     update: v,
-                    error: `Couldn't restart automatically. Close and reopen the app to finish updating to v${v.version}. (${detail})`,
+                    error: t(
+                      "Couldn't restart automatically. Close and reopen the app to finish updating to v{version}. ({error})",
+                      { version: v.version, error: detail },
+                    ),
                   });
                   void appendLauncherLog('error', '[Updater] relaunch failed', { error: detail });
                 });
               }}
             >
-              <Download className="h-4 w-4" /> Restart &amp; update
+              <Download className="h-4 w-4" /> {t('Restart & update')}
             </Button>
             <button
               type="button"
               onClick={() => set({ state: 'dismissed', update: v })}
               className="font-mono text-xs text-ash underline-offset-2 hover:text-parchment hover:underline"
             >
-              Remind me later
+              {t('Remind me later')}
             </button>
           </div>
         </div>
@@ -343,7 +355,7 @@ export function UpdaterBanner() {
       <output className="flex w-full items-center gap-3 border-b border-oxblood/60 bg-oxblood/20 px-4 py-2">
         <RefreshCw className="h-4 w-4 text-gilt shrink-0 animate-spin" />
         <span className="font-serif-italic text-parchment shrink-0">
-          Installing a self-updating copy…
+          {t('Installing a self-updating copy…')}
         </span>
         <div className="flex-1 max-w-80">
           <ProgressBar value={p?.downloaded ?? 0} max={p?.total ?? 0} indeterminate={!p?.total} />
@@ -365,13 +377,15 @@ export function UpdaterBanner() {
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-crimson/20">
               <Download className="h-8 w-8 text-crimson" />
             </div>
-            <h2 className="font-fraktur text-3xl text-crimson">Ready to restart</h2>
+            <h2 className="font-fraktur text-3xl text-crimson">{t('Ready to restart')}</h2>
             <p className="mt-2 font-serif-italic text-parchment">
-              v{m.version} is installed at
+              {t('v{version} is installed at', { version: m.version })}
               <span className="font-mono block mt-1 break-all text-sm text-ash">{m.path}</span>
             </p>
             <p className="mt-3 font-serif-italic text-sm text-ash">
-              From now on updates install themselves — this is the last time you have to do this.
+              {t(
+                'From now on updates install themselves — this is the last time you have to do this.',
+              )}
             </p>
           </div>
 
@@ -389,14 +403,14 @@ export function UpdaterBanner() {
                 finishMigration().catch(() => {});
               }}
             >
-              <Download className="h-4 w-4" /> Restart into the new copy
+              <Download className="h-4 w-4" /> {t('Restart into the new copy')}
             </Button>
             <button
               type="button"
               onClick={() => set({ state: 'dismissed', update: status.update })}
               className="font-mono text-xs text-ash underline-offset-2 hover:text-parchment hover:underline"
             >
-              Later
+              {t('Later')}
             </button>
           </div>
         </div>
@@ -413,11 +427,16 @@ export function UpdaterBanner() {
         <AlertTriangle className="h-4 w-4 text-gilt shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
           <p className="font-serif-italic text-sm text-parchment mb-1">
-            Update v{status.update?.version} can't be installed over this copy
+            {t("Update v{version} can't be installed over this copy", {
+              version: status.update?.version ?? '',
+            })}
           </p>
+          {/* `blockedReason` comes from the Rust side, already phrased. */}
           <p className="font-mono text-xs text-ash break-words">
-            {status.blockedReason} Installing it to ~/Applications instead takes a few seconds and
-            makes every future update automatic.
+            {status.blockedReason}{' '}
+            {t(
+              'Installing it to ~/Applications instead takes a few seconds and makes every future update automatic.',
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -429,7 +448,7 @@ export function UpdaterBanner() {
               runMigration().catch(() => {});
             }}
           >
-            <Download className="h-3.5 w-3.5" /> Install to ~/Applications
+            <Download className="h-3.5 w-3.5" /> {t('Install to ~/Applications')}
           </Button>
           <button
             type="button"
@@ -438,14 +457,14 @@ export function UpdaterBanner() {
             }}
             className="font-mono text-xs text-ash hover:text-parchment"
           >
-            Downloads
+            {t('Downloads')}
           </button>
           <button
             type="button"
             onClick={() => set({ state: 'dismissed', update: status.update })}
             className="font-mono text-xs text-ash hover:text-parchment"
           >
-            Dismiss
+            {t('Dismiss')}
           </button>
         </div>
       </div>
@@ -459,7 +478,9 @@ export function UpdaterBanner() {
         <AlertTriangle className="h-4 w-4 text-gilt shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
           <p className="font-serif-italic text-sm text-parchment mb-1">
-            Update v{status.update?.version} must be installed manually
+            {t('Update v{version} must be installed manually', {
+              version: status.update?.version ?? '',
+            })}
           </p>
           <p className="font-mono text-xs text-ash break-words">{status.error}</p>
         </div>
@@ -472,14 +493,14 @@ export function UpdaterBanner() {
               openReleasesPage().catch(() => {});
             }}
           >
-            <Download className="h-3.5 w-3.5" /> Downloads
+            <Download className="h-3.5 w-3.5" /> {t('Downloads')}
           </Button>
           <button
             type="button"
             onClick={() => set({ state: 'dismissed', update: status.update })}
             className="font-mono text-xs text-ash hover:text-parchment"
           >
-            Dismiss
+            {t('Dismiss')}
           </button>
         </div>
       </div>
@@ -491,7 +512,7 @@ export function UpdaterBanner() {
     return (
       <div className="flex items-center gap-3 border-b border-crimson/40 bg-crimson/10 px-4 py-2">
         <span className="font-serif-italic text-sm text-crimson flex-1">
-          {status.error ?? 'Update check failed.'}
+          {status.error ?? t('Update check failed.')}
         </span>
         <button
           type="button"
@@ -500,7 +521,7 @@ export function UpdaterBanner() {
           }}
           className="font-mono text-xs text-ash hover:text-parchment"
         >
-          Retry
+          {t('Retry')}
         </button>
       </div>
     );
@@ -512,7 +533,7 @@ export function UpdaterBanner() {
       <div className="flex items-start gap-3 border-b border-crimson/60 bg-crimson/15 px-4 py-3">
         <AlertTriangle className="h-4 w-4 text-crimson shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
-          <p className="font-serif-italic text-sm text-crimson mb-1">Update check failed</p>
+          <p className="font-serif-italic text-sm text-crimson mb-1">{t('Update check failed')}</p>
           <p className="font-mono text-xs text-ash break-words">{status.checkError.reason}</p>
         </div>
         <button
@@ -522,7 +543,7 @@ export function UpdaterBanner() {
           }}
           className="font-mono text-xs text-ash hover:text-parchment shrink-0 ml-2"
         >
-          Retry
+          {t('Retry')}
         </button>
       </div>
     );
@@ -534,7 +555,9 @@ export function UpdaterBanner() {
     const v = status.update;
     return (
       <div className="ember-banner flex items-center justify-between gap-3 border-b border-border px-4 py-2">
-        <span className="font-serif-italic text-parchment">Update available — v{v.version}</span>
+        <span className="font-serif-italic text-parchment">
+          {t('Update available — v{version}', { version: v.version })}
+        </span>
         <div className="flex items-center gap-2">
           <Button
             type="button"
@@ -544,7 +567,7 @@ export function UpdaterBanner() {
               applyUpdate().catch(() => {});
             }}
           >
-            <Download className="h-3.5 w-3.5" /> Install
+            <Download className="h-3.5 w-3.5" /> {t('Install')}
           </Button>
         </div>
       </div>
@@ -568,6 +591,7 @@ export function UpdaterBanner() {
  * error in the corner of every screen.
  */
 export function VersionFooter() {
+  const t = useT();
   const [appVersion, setAppVersion] = useState<string>(pkg.version ?? '0.0.0');
   const [loaderVersion, setLoaderVersion] = useState<number | null>(null);
 
@@ -593,8 +617,10 @@ export function VersionFooter() {
     // the scrolling content — it must never eat a click meant for what is
     // underneath it.
     <div className="font-mono pointer-events-none fixed bottom-1.5 right-3 z-10 select-none text-[10px] leading-tight text-ash/60">
-      <span>launcher v{appVersion}</span>
-      {loaderVersion != null ? <span> · loader v{loaderVersion}</span> : null}
+      <span>{t('launcher v{version}', { version: appVersion })}</span>
+      {loaderVersion != null ? (
+        <span> · {t('loader v{version}', { version: loaderVersion })}</span>
+      ) : null}
     </div>
   );
 }
@@ -624,23 +650,33 @@ function loaderSummary(r: UpdateLoaderResult | null): string | null {
   if (!r) return null;
   switch (r.status) {
     case 'updated':
-      return `Updated to v${r.installedVersion} — restart Ravenswatch to pick it up.`;
+      return tr('Updated to v{version} — restart Ravenswatch to pick it up.', {
+        version: r.installedVersion ?? '',
+      });
     case 'up_to_date':
-      return 'Up to date with the loader channel.';
+      return tr('Up to date with the loader channel.');
     case 'update_available':
-      return `v${r.remoteVersion} is available on the loader channel.`;
+      return tr('v{version} is available on the loader channel.', {
+        version: r.remoteVersion ?? '',
+      });
     case 'ahead':
-      return `This build ships v${r.installedVersion}, newer than the channel's v${r.remoteVersion}.`;
+      return tr("This build ships v{installed}, newer than the channel's v{remote}.", {
+        installed: r.installedVersion ?? '',
+        remote: r.remoteVersion ?? '',
+      });
     case 'not_published':
-      return 'Nothing published on the loader channel yet.';
+      return tr('Nothing published on the loader channel yet.');
     case 'needs_app_update':
-      return r.error ?? 'The loader channel needs a newer launcher — update the launcher first.';
+      return (
+        r.error ?? tr('The loader channel needs a newer launcher — update the launcher first.')
+      );
     default:
       return r.error ?? null;
   }
 }
 
 export function UpdaterSettings() {
+  const t = useT();
   const [status] = useUpdateStatus();
   const toast = useToast();
   // package.json is the compiled-in fallback; getAppVersion() replaces it with
@@ -704,23 +740,25 @@ export function UpdaterSettings() {
       if (r?.status === 'updated') {
         setNeedsGameRestart(true);
         toast.push(
-          `Game loader updated to v${r.installedVersion} — restart Ravenswatch to pick it up.`,
+          t('Game loader updated to v{version} — restart Ravenswatch to pick it up.', {
+            version: r.installedVersion ?? '',
+          }),
           'success',
         );
       } else if (r && r.ok === false) {
         // needs_app_update lands here too: a real answer, phrased as an
         // instruction rather than a transport failure.
-        setLoaderError(loaderSummary(r) ?? r.error ?? 'Loader update failed.');
+        setLoaderError(loaderSummary(r) ?? r.error ?? t('Loader update failed.'));
       }
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);
-      setLoaderError(`Loader update failed: ${detail}`);
+      setLoaderError(t('Loader update failed: {error}', { error: detail }));
       void appendLauncherLog('error', '[Updater] loader update failed', { error: detail });
     } finally {
       setLoaderBusy(false);
       setLoaderProgress(null);
     }
-  }, [toast]);
+  }, [t, toast]);
 
   /** Close the game (if it is up) and launch it again, so a freshly planted
    *  loader is actually the one in the process. */
@@ -731,25 +769,31 @@ export function UpdaterSettings() {
       if (st?.running) {
         // A run in progress dies with the process. Never do that silently.
         const ok = window.confirm(
-          'Close Ravenswatch and start it again?\n\n' +
-            'Any run in progress will be lost — the new loader only takes effect ' +
-            'in a fresh session.',
+          `${t('Close Ravenswatch and start it again?')}\n\n${t(
+            'Any run in progress will be lost — the new loader only takes effect in a fresh session.',
+          )}`,
         );
         if (!ok) return;
       }
       const r = await restartGame();
       if (r?.ok) {
         setNeedsGameRestart(false);
-        toast.push(r.wasRunning ? 'Ravenswatch restarted.' : 'Ravenswatch launched.', 'success');
+        toast.push(
+          r.wasRunning ? t('Ravenswatch restarted.') : t('Ravenswatch launched.'),
+          'success',
+        );
       } else {
-        toast.push(r?.error ?? 'Could not restart Ravenswatch.', 'error');
+        toast.push(r?.error ?? t('Could not restart Ravenswatch.'), 'error');
       }
     } catch (e) {
-      toast.push(`Restart failed: ${e instanceof Error ? e.message : String(e)}`, 'error');
+      toast.push(
+        t('Restart failed: {error}', { error: e instanceof Error ? e.message : String(e) }),
+        'error',
+      );
     } finally {
       setRestarting(false);
     }
-  }, [toast]);
+  }, [t, toast]);
 
   // One button, both channels: the launcher itself ships through the Tauri
   // updater, the loader DLL + Lua SDK through the rolling `loader` release.
@@ -757,23 +801,23 @@ export function UpdaterSettings() {
   const onCheck = () => {
     const app = runCheck().then(() => {
       if (sharedStatus.state === 'idle') {
-        toast.push('Launcher is on the latest version.', 'success');
+        toast.push(t('Launcher is on the latest version.'), 'success');
       }
     });
     void Promise.allSettled([app, runLoaderUpdate()]);
   };
 
   const onApply = () => {
-    applyUpdate().catch((e) => toast.push(`Update failed: ${e}`, 'error'));
+    applyUpdate().catch((e) => toast.push(t('Update failed: {error}', { error: e }), 'error'));
   };
 
   const onRestart = () => {
-    relaunchApp().catch((e) => toast.push(`Restart failed: ${e}`, 'error'));
+    relaunchApp().catch((e) => toast.push(t('Restart failed: {error}', { error: e }), 'error'));
   };
 
   const busy = status.state === 'checking' || status.state === 'downloading' || loaderBusy;
   const loaderVersion =
-    loader?.installedVersion == null ? 'unknown' : `v${loader.installedVersion}`;
+    loader?.installedVersion == null ? t('unknown') : `v${loader.installedVersion}`;
   const loaderPending =
     loader?.status === 'update_available' && loader.remoteVersion != null
       ? `→ v${loader.remoteVersion}`
@@ -783,7 +827,7 @@ export function UpdaterSettings() {
     <div className="space-y-3">
       <div className="border border-border bg-pitch/40 px-3 py-2">
         <VersionRow
-          label="Launcher"
+          label={t('Launcher')}
           value={`v${appVersion}`}
           hint={
             status.state === 'ready' || status.state === 'available'
@@ -791,22 +835,24 @@ export function UpdaterSettings() {
               : undefined
           }
         />
-        <VersionRow label="Game loader & Lua SDK" value={loaderVersion} hint={loaderPending} />
+        <VersionRow label={t('Game loader & Lua SDK')} value={loaderVersion} hint={loaderPending} />
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
         <Button type="button" size="sm" variant="primary" onClick={onCheck} disabled={busy}>
           <RefreshCw className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} />
-          {busy ? 'Checking…' : 'Check for updates'}
+          {busy ? t('Checking…') : t('Check for updates')}
         </Button>
         {status.state === 'ready' && status.update ? (
           <Button type="button" size="sm" variant="primary" onClick={onRestart}>
-            <Download className="h-3.5 w-3.5" /> Restart v{status.update.version}
+            <Download className="h-3.5 w-3.5" />{' '}
+            {t('Restart v{version}', { version: status.update.version })}
           </Button>
         ) : null}
         {status.state === 'available' && status.update ? (
           <Button type="button" size="sm" variant="primary" onClick={onApply}>
-            <Download className="h-3.5 w-3.5" /> Install v{status.update.version}
+            <Download className="h-3.5 w-3.5" />{' '}
+            {t('Install v{version}', { version: status.update.version })}
           </Button>
         ) : null}
         {status.state === 'manual' ? (
@@ -815,10 +861,12 @@ export function UpdaterSettings() {
             size="sm"
             variant="primary"
             onClick={() => {
-              openReleasesPage().catch((e) => toast.push(`Couldn't open downloads: ${e}`, 'error'));
+              openReleasesPage().catch((e) =>
+                toast.push(t("Couldn't open downloads: {error}", { error: e }), 'error'),
+              );
             }}
           >
-            <Download className="h-3.5 w-3.5" /> Open downloads page
+            <Download className="h-3.5 w-3.5" /> {t('Open downloads page')}
           </Button>
         ) : null}
       </div>
@@ -826,7 +874,7 @@ export function UpdaterSettings() {
       {migratable ? (
         <div className="flex flex-wrap items-center gap-3 border border-gilt/40 bg-pitch/40 px-3 py-2">
           <p className="flex-1 text-parchment text-sm">
-            This copy can't update itself.
+            {t("This copy can't update itself.")}
             <span className="mt-1 block font-mono text-ash text-xs">{migratable.reason}</span>
           </p>
           <Button
@@ -838,7 +886,7 @@ export function UpdaterSettings() {
               runMigration().catch(() => {});
             }}
           >
-            <Download className="h-3.5 w-3.5" /> Install to ~/Applications
+            <Download className="h-3.5 w-3.5" /> {t('Install to ~/Applications')}
           </Button>
         </div>
       ) : null}
@@ -846,7 +894,7 @@ export function UpdaterSettings() {
       {loaderBusy && loaderProgress ? (
         <output className="flex items-center gap-3">
           <span className="shrink-0 font-serif-italic text-parchment text-sm">
-            Downloading game loader…
+            {t('Downloading game loader…')}
           </span>
           <div className="max-w-80 flex-1">
             <ProgressBar
@@ -865,8 +913,9 @@ export function UpdaterSettings() {
       {needsGameRestart ? (
         <div className="flex flex-wrap items-center gap-3 border border-gilt/40 bg-pitch/40 px-3 py-2">
           <p className="flex-1 text-parchment text-sm">
-            The new loader takes effect in a fresh session — a running game keeps the one it started
-            with.
+            {t(
+              'The new loader takes effect in a fresh session — a running game keeps the one it started with.',
+            )}
           </p>
           <Button
             type="button"
@@ -876,7 +925,7 @@ export function UpdaterSettings() {
             disabled={restarting}
           >
             <RefreshCw className={`h-3.5 w-3.5 ${restarting ? 'animate-spin' : ''}`} />
-            {restarting ? 'Restarting…' : 'Restart Ravenswatch'}
+            {restarting ? t('Restarting…') : t('Restart Ravenswatch')}
           </Button>
         </div>
       ) : null}

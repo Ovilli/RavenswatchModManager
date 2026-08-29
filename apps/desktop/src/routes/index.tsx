@@ -32,6 +32,8 @@ import { SetupBanner } from '../components/setup-banner';
 import { useToast } from '../components/toast';
 import { UpdatesPanel } from '../components/updates-panel';
 import { useModToggle } from '../components/use-mod-toggle';
+import { msg } from '../lib/i18n';
+import { useT } from '../lib/i18n-react';
 import {
   type LibrarySort,
   type LibraryStatusFilter,
@@ -75,18 +77,29 @@ export const Route = createFileRoute('/')({
 /** Anchor a config panel carries, so Configure can scroll to one mod. */
 export const configAnchorId = (modId: string) => `mod-config-${modId}`;
 
+/** English sources; render sites pass them through `t()`. */
 const CATEGORY_LABEL: Record<ModCategory, string> = {
-  gameplay: 'Gameplay',
-  balance: 'Balance',
-  cosmetic: 'Cosmetic',
-  qol: 'Quality of life',
-  audio: 'Audio',
-  difficulty: 'Difficulty',
-  speedrun: 'Speedrun',
-  utility: 'Utility',
+  gameplay: msg('Gameplay'),
+  balance: msg('Balance'),
+  cosmetic: msg('Cosmetic'),
+  qol: msg('Quality of life'),
+  audio: msg('Audio'),
+  difficulty: msg('Difficulty'),
+  speedrun: msg('Speedrun'),
+  utility: msg('Utility'),
+};
+
+/** Status filter chips. The stored value is the filter; the label is copy. */
+const STATUS_LABEL: Record<LibraryStatusFilter, string> = {
+  all: msg('all'),
+  enabled: msg('enabled'),
+  disabled: msg('disabled'),
+  outdated: msg('outdated'),
+  missingDeps: msg('missing deps'),
 };
 
 function LibraryPage() {
+  const t = useT();
   const navigate = useNavigate();
   const toast = useToast();
   const profile = useApp(activeProfile);
@@ -206,7 +219,7 @@ function LibraryPage() {
 
   const changeView = (next: ViewMode) => {
     if (view === 'config' && next !== 'config' && hasDirtyConfigs) {
-      const ok = window.confirm('You have unsaved config changes. Discard them?');
+      const ok = window.confirm(t('You have unsaved config changes. Discard them?'));
       if (!ok) return;
     }
     setView(next);
@@ -251,13 +264,16 @@ function LibraryPage() {
     }
   }, [syncLocalMods, queryClient, activeProfileId]);
 
-  const removeLocalMod = useCallback(async (id: string) => {
-    const result = await uninstallLocalMod(id);
-    if (!result || !result.ok) {
-      throw new Error(result?.error || `Failed to uninstall ${id}`);
-    }
-    return result;
-  }, []);
+  const removeLocalMod = useCallback(
+    async (id: string) => {
+      const result = await uninstallLocalMod(id);
+      if (!result || !result.ok) {
+        throw new Error(result?.error || t('Failed to uninstall {id}', { id }));
+      }
+      return result;
+    },
+    [t],
+  );
 
   const uninstallModStore = useApp((s) => s.uninstallMod);
   const uninstall = useCallback(
@@ -270,13 +286,13 @@ function LibraryPage() {
         await refreshLocalMods();
         const warning = disableHookWarning(result);
         if (warning) toast.push(warning, 'error');
-        else toast.push('Mod uninstalled.', 'success');
+        else toast.push(t('Mod uninstalled.'), 'success');
       } catch (err) {
         console.error('[library] uninstall failed', err);
         toast.push(err instanceof Error ? err.message : String(err), 'error');
       }
     },
-    [refreshLocalMods, removeLocalMod, toast, uninstallModStore],
+    [refreshLocalMods, removeLocalMod, t, toast, uninstallModStore],
   );
 
   const bulkUninstall = useCallback(() => {
@@ -291,21 +307,21 @@ function LibraryPage() {
         await refreshLocalMods();
         clearSelection();
         if (warnings.length) toast.push(warnings.join(' '), 'error');
-        else toast.push('Selected mods uninstalled.', 'success');
+        else toast.push(t('Selected mods uninstalled.'), 'success');
       } catch (err) {
         toast.push(err instanceof Error ? err.message : String(err), 'error');
       }
     })();
-  }, [clearSelection, refreshLocalMods, removeLocalMod, selected, toast, uninstallModStore]);
+  }, [clearSelection, refreshLocalMods, removeLocalMod, selected, t, toast, uninstallModStore]);
 
   if (installed.length === 0) {
     return (
       <EmptyState
-        title="An empty grimoire"
-        body="No mods installed yet. Browse the index to add your first."
+        title={t('An empty grimoire')}
+        body={t('No mods installed yet. Browse the index to add your first.')}
         action={
           <Link to="/browse" className="btn-grim" data-variant="primary">
-            Browse mods
+            {t('Browse mods')}
           </Link>
         }
       />
@@ -322,13 +338,15 @@ function LibraryPage() {
       <div className="space-y-6">
         <SetupBanner />
         <EmptyState
-          title={`“${profile.name}” has no mods yet`}
+          title={t('“{name}” has no mods yet', { name: profile.name })}
           body={
             unadopted.length === 0
-              ? 'No mods found on disk yet. Browse the index to add your first.'
-              : unadopted.length === 1
-                ? '1 mod is present on disk but not in this profile.'
-                : `${unadopted.length} mods are present on disk but not in this profile.`
+              ? t('No mods found on disk yet. Browse the index to add your first.')
+              : t.n(
+                  unadopted.length,
+                  '1 mod is present on disk but not in this profile.',
+                  '{n} mods are present on disk but not in this profile.',
+                )
           }
           action={
             <div className="flex flex-wrap items-center justify-center gap-2">
@@ -339,18 +357,20 @@ function LibraryPage() {
                   onClick={() => {
                     adoptMods(unadopted);
                     toast.push(
-                      unadopted.length === 1
-                        ? 'Added 1 mod from disk to this profile'
-                        : `Added ${unadopted.length} mods from disk to this profile`,
+                      t.n(
+                        unadopted.length,
+                        'Added 1 mod from disk to this profile',
+                        'Added {n} mods from disk to this profile',
+                      ),
                       'success',
                     );
                   }}
                 >
-                  Add {unadopted.length} from disk
+                  {t('Add {n} from disk', { n: unadopted.length })}
                 </Button>
               ) : null}
               <Link to="/browse" className="btn-grim" data-variant="default">
-                Browse mods
+                {t('Browse mods')}
               </Link>
             </div>
           }
@@ -367,8 +387,12 @@ function LibraryPage() {
       <SetupBanner />
       <UpdatesPanel />
       <SectionHeader
-        title="Library"
-        subtitle={`${installed.length} mods in the local folder.`}
+        title={t('Library')}
+        subtitle={t.n(
+          installed.length,
+          '{n} mod in the local folder.',
+          '{n} mods in the local folder.',
+        )}
         right={
           <div className="flex items-center gap-2">
             <Button
@@ -377,7 +401,7 @@ function LibraryPage() {
               aria-pressed={view === 'cards'}
               variant={view === 'cards' ? 'gilt' : 'default'}
               size="sm"
-              aria-label="Card view"
+              aria-label={t('Card view')}
             >
               <LayoutGrid className="h-4 w-4" />
             </Button>
@@ -387,7 +411,7 @@ function LibraryPage() {
               aria-pressed={view === 'list'}
               variant={view === 'list' ? 'gilt' : 'default'}
               size="sm"
-              aria-label="List view"
+              aria-label={t('List view')}
             >
               <List className="h-4 w-4" />
             </Button>
@@ -397,12 +421,12 @@ function LibraryPage() {
               aria-pressed={view === 'config'}
               variant={view === 'config' ? 'gilt' : 'default'}
               size="sm"
-              aria-label="Config view"
+              aria-label={t('Config view')}
             >
               <SlidersHorizontal className="h-4 w-4" />
             </Button>
             <Link to="/browse" className="btn-grim ml-2" data-variant="primary">
-              <Plus className="h-4 w-4" /> Add mod
+              <Plus className="h-4 w-4" /> {t('Add mod')}
             </Link>
           </div>
         }
@@ -425,15 +449,15 @@ function LibraryPage() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search…"
-              aria-label="Search installed mods"
+              placeholder={t('Search…')}
+              aria-label={t('Search installed mods')}
               className="input-grim w-full pl-9"
             />
           </div>
 
           <div className="space-y-2">
             <span className="font-mono flex items-center gap-2 text-[0.65rem] text-ash uppercase tracking-[0.22em]">
-              <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden /> Status
+              <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden /> {t('Status')}
             </span>
             <div className="flex flex-wrap gap-1.5">
               {(['all', 'enabled', 'disabled', 'outdated', 'missingDeps'] as const).map((item) => (
@@ -445,7 +469,7 @@ function LibraryPage() {
                   variant={status === item ? 'gilt' : 'default'}
                   size="sm"
                 >
-                  {item}
+                  {t(STATUS_LABEL[item])}
                 </Button>
               ))}
             </div>
@@ -454,7 +478,7 @@ function LibraryPage() {
           {availableCategories.length > 1 ? (
             <div className="space-y-2">
               <span className="font-mono text-[0.65rem] text-ash uppercase tracking-[0.22em]">
-                Category
+                {t('Category')}
               </span>
               <div className="flex flex-wrap gap-1.5">
                 {availableCategories.map((cat) => (
@@ -466,7 +490,7 @@ function LibraryPage() {
                     variant={category === cat ? 'danger' : 'default'}
                     size="sm"
                   >
-                    {cat === 'all' ? 'All' : CATEGORY_LABEL[cat]}
+                    {cat === 'all' ? t('All') : t(CATEGORY_LABEL[cat])}
                   </Button>
                 ))}
               </div>
@@ -475,18 +499,18 @@ function LibraryPage() {
 
           <div className="space-y-2">
             <span className="font-mono flex items-center gap-2 text-[0.65rem] text-ash uppercase tracking-[0.22em]">
-              <ArrowUpDown className="h-3.5 w-3.5" aria-hidden /> Sort
+              <ArrowUpDown className="h-3.5 w-3.5" aria-hidden /> {t('Sort')}
             </span>
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as LibrarySort)}
               className="select-grim font-mono w-full border border-border bg-pitch/60 px-3 py-2 text-parchment text-xs focus:border-gilt/60 focus:outline-none"
-              aria-label="Sort mods"
+              aria-label={t('Sort mods')}
             >
-              <option value="load-order">Load order</option>
-              <option value="name">Name</option>
-              <option value="author">Author</option>
-              <option value="version">Version</option>
+              <option value="load-order">{t('Load order')}</option>
+              <option value="name">{t('Name')}</option>
+              <option value="author">{t('Author')}</option>
+              <option value="version">{t('Version')}</option>
             </select>
           </div>
 
@@ -504,7 +528,7 @@ function LibraryPage() {
             size="sm"
             className="w-full disabled:cursor-default disabled:opacity-40"
           >
-            <X className="h-4 w-4" /> Clear filters
+            <X className="h-4 w-4" /> {t('Clear filters')}
           </Button>
         </aside>
 
@@ -513,7 +537,7 @@ function LibraryPage() {
             <div className="ember-banner flex items-center gap-3 px-4 py-3">
               <AlertTriangle className="h-4 w-4 text-crimson shrink-0" />
               <span className="font-serif-italic text-base">
-                Couldn’t reach rsmm CLI. Showing cached library only.
+                {t('Couldn’t reach rsmm CLI. Showing cached library only.')}
               </span>
               <CopyButton value={(localModsError as Error).message} />
             </div>
@@ -522,9 +546,11 @@ function LibraryPage() {
           {unadopted.length > 0 ? (
             <div className="ember-banner flex flex-wrap items-center justify-between gap-3 px-4 py-3">
               <span className="font-serif-italic text-base">
-                {unadopted.length === 1
-                  ? '1 mod is on disk but not in this profile.'
-                  : `${unadopted.length} mods are on disk but not in this profile.`}
+                {t.n(
+                  unadopted.length,
+                  '1 mod is on disk but not in this profile.',
+                  '{n} mods are on disk but not in this profile.',
+                )}
               </span>
               <Button
                 type="button"
@@ -533,14 +559,16 @@ function LibraryPage() {
                 onClick={() => {
                   adoptMods(unadopted);
                   toast.push(
-                    unadopted.length === 1
-                      ? 'Added 1 mod from disk to this profile'
-                      : `Added ${unadopted.length} mods from disk to this profile`,
+                    t.n(
+                      unadopted.length,
+                      'Added 1 mod from disk to this profile',
+                      'Added {n} mods from disk to this profile',
+                    ),
                     'success',
                   );
                 }}
               >
-                Add to profile
+                {t('Add to profile')}
               </Button>
             </div>
           ) : null}
@@ -572,17 +600,20 @@ function LibraryPage() {
               <span className="flex items-center gap-3">
                 <AlertTriangle className="h-4 w-4 text-crimson" />
                 <span className="font-serif-italic text-base">
-                  {conflicts.length} {conflicts.length === 1 ? 'conflict' : 'conflicts'} between
-                  enabled mods.
+                  {t.n(
+                    conflicts.length,
+                    '{n} conflict between enabled mods.',
+                    '{n} conflicts between enabled mods.',
+                  )}
                 </span>
               </span>
-              <span className="font-mono text-ash">Resolve →</span>
+              <span className="font-mono text-ash">{t('Resolve →')}</span>
             </Link>
           ) : null}
 
           {grouped.map(([category, items]) => (
             <section key={category} className="space-y-3">
-              <h3 className="font-fraktur text-xl text-parchment">{CATEGORY_LABEL[category]}</h3>
+              <h3 className="font-fraktur text-xl text-parchment">{t(CATEGORY_LABEL[category])}</h3>
               <Fleuron />
               {view === 'cards' ? (
                 <CardGrid
@@ -617,7 +648,7 @@ function LibraryPage() {
                   the two that had settings under eighteen that did not. */}
                   {items.filter(({ id }) => getMod(id)?.hasConfig).length === 0 ? (
                     <p className="font-mono text-ash">
-                      No mod in this section declares config fields.
+                      {t('No mod in this section declares config fields.')}
                     </p>
                   ) : null}
                   {items.map(({ id }) => {
@@ -643,24 +674,29 @@ function LibraryPage() {
           {view === 'config' && hasDirtyConfigs ? (
             <div className="ember-banner flex items-center justify-between gap-3 px-4 py-3">
               <span className="font-serif-italic text-base">
-                {dirtyConfigs.size} config panel{dirtyConfigs.size === 1 ? '' : 's'} have unsaved
-                changes.
+                {t.n(
+                  dirtyConfigs.size,
+                  '{n} config panel has unsaved changes.',
+                  '{n} config panels have unsaved changes.',
+                )}
               </span>
-              <span className="font-mono text-ash">Save or reset before leaving.</span>
+              <span className="font-mono text-ash">{t('Save or reset before leaving.')}</span>
             </div>
           ) : null}
 
           <div className="font-mono pt-6 text-center text-ash">
             <div className="flex justify-center">
-              <StatPill value={installed.length} label="in folder" />
-              <StatPill value={enabledCount} label="enabled in profile" className="ml-2" />
+              <StatPill value={installed.length} label={t('in folder')} />
+              <StatPill value={enabledCount} label={t('enabled in profile')} className="ml-2" />
             </div>
           </div>
 
           {!localModsLoading && filtered.length === 0 ? (
             <EmptyState
-              title="No mods match those filters"
-              body="Try a broader search or clear one of the filters to show more installed mods."
+              title={t('No mods match those filters')}
+              body={t(
+                'Try a broader search or clear one of the filters to show more installed mods.',
+              )}
               action={
                 <Button
                   type="button"
@@ -671,7 +707,7 @@ function LibraryPage() {
                   }}
                   variant="primary"
                 >
-                  Reset filters
+                  {t('Reset filters')}
                 </Button>
               }
             />
@@ -682,29 +718,35 @@ function LibraryPage() {
       {hasSelection ? (
         <Panel className="fixed inset-x-0 bottom-0 z-40 flex flex-wrap items-center justify-between gap-3 rounded-none border-x-0 border-b-0">
           <div>
-            <h3 className="font-fraktur text-lg text-parchment">{selected.size} selected</h3>
+            <h3 className="font-fraktur text-lg text-parchment">
+              {t('{n} selected', { n: selected.size })}
+            </h3>
             <p className="font-serif-italic text-sm text-ash">
-              Bulk actions apply to the active profile.
+              {t('Bulk actions apply to the active profile.')}
               {selectedMissingDeps > 0
-                ? ` ${selectedMissingDeps} missing dependencies across the selection.`
+                ? ` ${t.n(
+                    selectedMissingDeps,
+                    '{n} missing dependency across the selection.',
+                    '{n} missing dependencies across the selection.',
+                  )}`
                 : ''}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button type="button" size="sm" variant="primary" onClick={bulkEnable}>
-              Enable selected
+              {t('Enable selected')}
             </Button>
             <Button type="button" size="sm" onClick={bulkDisable}>
-              Disable selected
+              {t('Disable selected')}
             </Button>
             <Button type="button" size="sm" variant="danger" onClick={bulkUninstall}>
-              Uninstall selected
+              {t('Uninstall selected')}
             </Button>
             <Button type="button" size="sm" onClick={selectAllVisible}>
-              Select filtered
+              {t('Select filtered')}
             </Button>
             <Button type="button" size="sm" onClick={clearSelection}>
-              Clear
+              {t('Clear')}
             </Button>
           </div>
         </Panel>
@@ -739,6 +781,7 @@ function CardGrid({
   missingDeps,
   onEnableDependency,
 }: RowProps) {
+  const t = useT();
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {items.map(({ id, orderIdx }) => {
@@ -790,8 +833,8 @@ function CardGrid({
                 type="button"
                 onClick={() => onOpen?.(mod.slug)}
                 className="btn-grim shrink-0 px-2 py-1.5"
-                title="Open this mod's store page"
-                aria-label={`Open the store page for ${mod.name}`}
+                title={t("Open this mod's store page")}
+                aria-label={t('Open the store page for {name}', { name: mod.name })}
               >
                 <ExternalLink className="h-4 w-4" />
               </button>
@@ -801,13 +844,23 @@ function CardGrid({
                 dependency counts. They get their own reserved-height row so
                 that reflow can never reach the controls below. */}
             <div className="flex min-h-[1.75rem] flex-wrap items-center gap-2">
-              {outdated ? <MonoTag tone="gilt">Update {mod.latestVersion}</MonoTag> : null}
-              {depCount > 0 ? <MonoTag tone="crimson">{depCount} missing deps</MonoTag> : null}
-              {conflictCount > 0 ? (
-                <MonoTag tone="crimson">{conflictCount} conflicts</MonoTag>
+              {outdated ? (
+                <MonoTag tone="gilt">
+                  {t('Update {version}', { version: mod.latestVersion })}
+                </MonoTag>
               ) : null}
-              <MonoTag tone="default">{mod.category}</MonoTag>
-              <StatPill value={`#${orderIdx + 1}`} label="load" className="tracking-normal" />
+              {depCount > 0 ? (
+                <MonoTag tone="crimson">
+                  {t.n(depCount, '{n} missing dep', '{n} missing deps')}
+                </MonoTag>
+              ) : null}
+              {conflictCount > 0 ? (
+                <MonoTag tone="crimson">
+                  {t.n(conflictCount, '{n} conflict', '{n} conflicts')}
+                </MonoTag>
+              ) : null}
+              <MonoTag tone="default">{t(CATEGORY_LABEL[mod.category])}</MonoTag>
+              <StatPill value={`#${orderIdx + 1}`} label={t('load')} className="tracking-normal" />
             </div>
             <DependencyStrip mod={mod} profile={profile} onEnableDependency={onEnableDependency} />
             {/* mt-auto pins the actions to the card's bottom edge, so every
@@ -820,7 +873,11 @@ function CardGrid({
               <InkSwitch
                 on={enabled}
                 onClick={() => onToggle(id)}
-                label={`${enabled ? 'Disable' : 'Enable'} ${mod.name}`}
+                label={
+                  enabled
+                    ? t('Disable {name}', { name: mod.name })
+                    : t('Enable {name}', { name: mod.name })
+                }
               />
               {/* ml-auto lives on the GROUP, not on the first button: the
                   overlay button renders only for a mod that declares an
@@ -836,7 +893,7 @@ function CardGrid({
                 />
                 <OverlayButton modId={id} />
                 <Button type="button" onClick={() => onUninstall(id)} variant="danger" size="sm">
-                  uninstall
+                  {t('uninstall')}
                 </Button>
               </div>
             </div>
@@ -859,6 +916,7 @@ function ListView({
   missingDeps,
   onOpen,
 }: RowProps) {
+  const t = useT();
   const [dragId, setDragId] = useState<string | null>(null);
   const reorderable = Boolean(onReorder);
 
@@ -872,9 +930,9 @@ function ListView({
         const isSelected = selected.has(id);
         const flags =
           (missingDeps.get(id) ?? 0) > 0
-            ? 'missing deps'
+            ? t('missing deps')
             : (conflictCounts.get(id) ?? 0) > 0
-              ? 'conflict'
+              ? t('conflict')
               : null;
         return (
           <li
@@ -944,7 +1002,11 @@ function ListView({
             <InkSwitch
               on={enabled}
               onClick={() => onToggle(id)}
-              label={`${enabled ? 'Disable' : 'Enable'} ${mod.name}`}
+              label={
+                enabled
+                  ? t('Disable {name}', { name: mod.name })
+                  : t('Enable {name}', { name: mod.name })
+              }
             />
             {/* One line. The old row stacked name, author, a reserved tag
                 strip and a dependency strip — four blocks tall, so a dozen
@@ -971,8 +1033,8 @@ function ListView({
               type="button"
               onClick={() => onOpen?.(mod.slug)}
               className="btn-grim shrink-0 px-2 py-1.5"
-              title="Open this mod's store page"
-              aria-label={`Open the store page for ${mod.name}`}
+              title={t("Open this mod's store page")}
+              aria-label={t('Open the store page for {name}', { name: mod.name })}
             >
               <ExternalLink className="h-4 w-4" />
             </button>
@@ -981,8 +1043,8 @@ function ListView({
               onClick={() => onUninstall(id)}
               className="btn-grim shrink-0 px-2 py-1.5"
               data-variant="danger"
-              title="Uninstall this mod"
-              aria-label={`Uninstall ${mod.name}`}
+              title={t('Uninstall this mod')}
+              aria-label={t('Uninstall {name}', { name: mod.name })}
             >
               <Trash2 className="h-4 w-4" />
             </button>
@@ -1002,17 +1064,18 @@ function DependencyStrip({
   profile: ReturnType<typeof activeProfile>;
   onEnableDependency: (id: string) => void;
 }) {
+  const t = useT();
   if (mod.dependencies.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <span className="font-mono text-[11px] tracking-[0.18em] text-ash">Requires</span>
+      <span className="font-mono text-[11px] tracking-[0.18em] text-ash">{t('Requires')}</span>
       {mod.dependencies.map((depId) => {
         const dep = getMod(depId);
         const enabled = dep ? isEnabledIn(profile, depId) : false;
         if (!dep) {
           return (
             <MonoTag key={depId} tone="crimson">
-              {depId} missing
+              {t('{id} missing', { id: depId })}
             </MonoTag>
           );
         }

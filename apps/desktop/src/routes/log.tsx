@@ -6,6 +6,7 @@ import { useLaunch } from '../components/launch';
 import { ShareLogDialog } from '../components/share-log-dialog';
 import { useToast } from '../components/toast';
 import { explainError } from '../lib/errors';
+import { TParts, useT } from '../lib/i18n-react';
 import {
   type LoaderLogLine,
   loaderLogProblems,
@@ -50,13 +51,15 @@ const LINE_CAP = 2000;
  *  name is an opaque handle the sidecar resolves against its own listing. */
 type Source = { kind: 'current' } | { kind: 'prev' } | { kind: 'run'; name: string };
 
-function sourceLabel(source: Source): string {
-  if (source.kind === 'current') return 'Current run';
-  if (source.kind === 'prev') return 'Previous run';
+/** `t` is passed in: this is a plain helper, and the label is copy. */
+function sourceLabel(source: Source, t: (message: string) => string): string {
+  if (source.kind === 'current') return t('Current run');
+  if (source.kind === 'prev') return t('Previous run');
   return source.name.replace(/\.log$/, '');
 }
 
 function LogPage() {
+  const t = useT();
   const { running } = useLaunch();
   const toast = useToast();
   const [source, setSource] = useState<Source>({ kind: 'current' });
@@ -230,7 +233,7 @@ function LogPage() {
   const onReEnable = async (modId: string) => {
     try {
       await resetModHealth(modId);
-      toast.push(`${modId} will load again on the next launch.`, 'success');
+      toast.push(t('{mod} will load again on the next launch.', { mod: modId }), 'success');
       await refreshHealth();
     } catch (e) {
       toast.push(e instanceof Error ? e.message : String(e), 'error');
@@ -239,28 +242,29 @@ function LogPage() {
 
   return (
     <div className="space-y-6">
-      <SectionHeader title="Log" subtitle="What the script loader wrote inside the game, live." />
+      <SectionHeader
+        title={t('Log')}
+        subtitle={t('What the script loader wrote inside the game, live.')}
+      />
 
       <HealthBanner health={health} onReEnable={onReEnable} />
 
       <Panel>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-fraktur text-xl text-parchment">{sourceLabel(source)}</h3>
+            <h3 className="font-fraktur text-xl text-parchment">{sourceLabel(source, t)}</h3>
             {running && followable ? (
-              <MonoTag tone="gilt">game running</MonoTag>
+              <MonoTag tone="gilt">{t('game running')}</MonoTag>
             ) : meta?.exists ? (
-              <MonoTag>
-                {sessions} session{sessions === 1 ? '' : 's'}
-              </MonoTag>
+              <MonoTag>{t.n(sessions, '{n} session', '{n} sessions')}</MonoTag>
             ) : null}
-            {tail.truncated ? <MonoTag>oldest lines trimmed</MonoTag> : null}
+            {tail.truncated ? <MonoTag>{t('oldest lines trimmed')}</MonoTag> : null}
             {problems.errors > 0 ? (
-              <MonoTag tone="crimson">
-                {problems.errors} error{problems.errors === 1 ? '' : 's'}
-              </MonoTag>
+              <MonoTag tone="crimson">{t.n(problems.errors, '{n} error', '{n} errors')}</MonoTag>
             ) : null}
-            {problems.warnings > 0 ? <MonoTag>{problems.warnings} warnings</MonoTag> : null}
+            {problems.warnings > 0 ? (
+              <MonoTag>{t.n(problems.warnings, '{n} warning', '{n} warnings')}</MonoTag>
+            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -272,9 +276,9 @@ function LogPage() {
               title={
                 followable
                   ? follow
-                    ? 'Stop watching the log file'
-                    : 'Watch the log file for new lines'
-                  : 'A finished run never changes — nothing to follow'
+                    ? t('Stop watching the log file')
+                    : t('Watch the log file for new lines')
+                  : t('A finished run never changes — nothing to follow')
               }
             >
               {follow && followable ? (
@@ -282,11 +286,11 @@ function LogPage() {
               ) : (
                 <Play className="h-3.5 w-3.5" aria-hidden />
               )}
-              {follow && followable ? 'Following' : 'Paused'}
+              {follow && followable ? t('Following') : t('Paused')}
             </Button>
             <Button type="button" size="sm" onClick={() => void load()}>
               <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-              Refresh
+              {t('Refresh')}
             </Button>
             <CopyButton value={buffered.join('\n')} />
             <Button
@@ -294,10 +298,10 @@ function LogPage() {
               size="sm"
               disabled={!meta?.exists || buffered.length === 0}
               onClick={() => setSharing({ lines: buffered, path: meta?.path ?? null })}
-              title="Upload this log and get a link to paste into a bug report"
+              title={t('Upload this log and get a link to paste into a bug report')}
             >
               <Link2 className="h-3.5 w-3.5" aria-hidden />
-              Share link
+              {t('Share link')}
             </Button>
           </div>
         </div>
@@ -318,10 +322,10 @@ function LogPage() {
                     : { kind: 'run', name: v.slice('run:'.length) },
               )
             }
-            ariaLabel="Which run to read"
+            ariaLabel={t('Which run to read')}
           >
-            <option value="now">Current run</option>
-            <option value="prev">Previous run</option>
+            <option value="now">{t('Current run')}</option>
+            <option value="prev">{t('Previous run')}</option>
             {runs.map((r) => (
               <option key={r.name} value={`run:${r.name}`}>
                 {r.name.replace(/\.log$/, '')} · {Math.max(1, Math.round(r.bytes / 1024))} KB
@@ -331,11 +335,11 @@ function LogPage() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search the log..."
+            placeholder={t('Search the log...')}
             className="font-mono min-w-56 flex-1 border border-border bg-pitch/60 px-3 py-2 text-sm text-parchment placeholder:text-ash focus:border-gilt/60 focus:outline-none"
           />
-          <Select value={tag} onChange={setTag} ariaLabel="Filter by subsystem">
-            <option value="all">All subsystems</option>
+          <Select value={tag} onChange={setTag} ariaLabel={t('Filter by subsystem')}>
+            <option value="all">{t('All subsystems')}</option>
             {tags.map((t) => (
               <option key={t} value={t}>
                 {t}
@@ -349,7 +353,7 @@ function LogPage() {
               onChange={(e) => setProblemsOnly(e.target.checked)}
               className="h-3.5 w-3.5 accent-crimson"
             />
-            problems only
+            {t('problems only')}
           </label>
           <label className="font-mono flex cursor-pointer items-center gap-2 text-xs text-ash">
             <input
@@ -358,14 +362,15 @@ function LogPage() {
               onChange={(e) => setAllSessions(e.target.checked)}
               className="h-3.5 w-3.5 accent-crimson"
             />
-            all sessions
+            {t('all sessions')}
           </label>
         </div>
 
         {problemsOnly ? (
           <p className="font-serif-italic mb-2 text-xs text-ash">
-            Showing lines the loader flagged. Only failures it was taught to classify carry a tag,
-            so an unflagged line means “not classified”, not “fine”.
+            {t(
+              'Showing lines the loader flagged. Only failures it was taught to classify carry a tag, so an unflagged line means “not classified”, not “fine”.',
+            )}
           </p>
         ) : null}
 
@@ -411,6 +416,7 @@ function HealthBanner({
   health: LoaderHealth | null;
   onReEnable: (modId: string) => void | Promise<void>;
 }) {
+  const t = useT();
   if (!health?.exists) return null;
   const disabled = health.mods.filter((m) => m.disabled);
   const canary = health.canary;
@@ -424,20 +430,23 @@ function HealthBanner({
           {canary ? (
             <div>
               <h3 className="font-fraktur text-lg text-parchment">
-                The last launch did not finish starting up
+                {t('The last launch did not finish starting up')}
               </h3>
               <p className="font-serif-italic mt-1 text-sm text-ash">
                 {canary.blamedMod ? (
-                  <>
-                    The game stopped while{' '}
-                    <strong className="text-parchment">{canary.blamedMod}</strong> was loading. The
-                    log below is from that run.
-                  </>
+                  <TParts
+                    text={t(
+                      'The game stopped while {mod} was loading. The log below is from that run.',
+                    )}
+                    parts={{
+                      mod: <strong className="text-parchment">{canary.blamedMod}</strong>,
+                    }}
+                  />
                 ) : (
-                  <>
-                    The game stopped before any mod ran ({canary.step || 'boot'}), so this is the
-                    loader or the game itself rather than one of your mods.
-                  </>
+                  t(
+                    'The game stopped before any mod ran ({step}), so this is the loader or the game itself rather than one of your mods.',
+                    { step: canary.step || t('boot') },
+                  )
                 )}
               </p>
             </div>
@@ -446,13 +455,17 @@ function HealthBanner({
           {disabled.length > 0 ? (
             <div>
               <h3 className="font-fraktur text-lg text-parchment">
-                {disabled.length === 1
-                  ? 'A mod was switched off by the loader'
-                  : `${disabled.length} mods were switched off by the loader`}
+                {t.n(
+                  disabled.length,
+                  'A mod was switched off by the loader',
+                  '{n} mods were switched off by the loader',
+                )}
               </h3>
               <p className="font-serif-italic mt-1 text-sm text-ash">
-                A mod that crashes the game during startup cannot be turned off from inside it, so
-                the loader skips it after {health.threshold} failed launches in a row.
+                {t(
+                  'A mod that crashes the game during startup cannot be turned off from inside it, so the loader skips it after {n} failed launches in a row.',
+                  { n: health.threshold },
+                )}
               </p>
               <ul className="mt-2 space-y-2">
                 {disabled.map((m) => (
@@ -462,12 +475,12 @@ function HealthBanner({
                   >
                     <span className="font-mono text-sm text-parchment">{m.id}</span>
                     <span className="font-serif-italic min-w-0 flex-1 text-xs text-ash">
-                      {m.disabledReason || `${m.crashes} failed launches`}
+                      {m.disabledReason || t('{n} failed launches', { n: m.crashes })}
                       {m.lastError ? ` — ${m.lastError}` : ''}
                     </span>
                     <Button type="button" size="sm" onClick={() => void onReEnable(m.id)}>
                       <RotateCcw className="h-3.5 w-3.5" aria-hidden />
-                      Try again
+                      {t('Try again')}
                     </Button>
                   </li>
                 ))}
@@ -526,23 +539,26 @@ function LogBody({
   scrollRef: React.RefObject<HTMLDivElement | null>;
   onScroll: () => void;
 }) {
+  const t = useT();
   if (loading && !meta) {
-    return <p className="font-serif-italic text-ash">Reading the loader log…</p>;
+    return <p className="font-serif-italic text-ash">{t('Reading the loader log…')}</p>;
   }
   if (error) {
+    // `explainError` returns English sources — see lib/errors.
     const { title, hint } = explainError(error);
     return (
       <div className="border border-crimson/50 bg-crimson/10 p-3">
-        <p className="font-serif-italic text-parchment">{title}</p>
-        {hint ? <p className="font-serif-italic mt-1 text-sm text-ash">{hint}</p> : null}
+        <p className="font-serif-italic text-parchment">{t(title)}</p>
+        {hint ? <p className="font-serif-italic mt-1 text-sm text-ash">{t(hint)}</p> : null}
       </div>
     );
   }
   if (!meta?.exists) {
     return (
       <p className="font-serif-italic border border-border bg-pitch/60 p-3 text-ash">
-        No loader log yet. It appears the first time you launch Modded with the script loader
-        installed — asset and texture mods work without it and never write here.
+        {t(
+          'No loader log yet. It appears the first time you launch Modded with the script loader installed — asset and texture mods work without it and never write here.',
+        )}
       </p>
     );
   }
@@ -550,8 +566,8 @@ function LogBody({
     return (
       <p className="font-serif-italic border border-border bg-pitch/60 p-3 text-ash">
         {total > 0
-          ? 'No lines match the current filters.'
-          : 'The log is empty for this run — the loader attached but wrote nothing.'}
+          ? t('No lines match the current filters.')
+          : t('The log is empty for this run — the loader attached but wrote nothing.')}
       </p>
     );
   }
