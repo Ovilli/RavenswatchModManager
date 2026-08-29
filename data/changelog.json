@@ -1,14 +1,26 @@
 {
-  "generated": "2026-08-27",
+  "generated": "2026-08-29",
   "entries": [
+    {
+      "version": "5.3.0",
+      "date": "2026-08-29",
+      "summary": "Banning magical objects no longer means knowing their internal names \u2014 pick them from a searchable list of the game's own icons \u2014 and a mod's settings now open in place instead of throwing you into a page of every mod's settings.",
+      "highlights": [
+        "New: the Banned Items mod is edited from a picker that shows every magical object the game can offer you, with its real name, icon, description and rarity, read straight out of your own install. Banned objects are removed from the game's catalogue, so they can never be offered, dropped or found.",
+        "A ban is written into the game's data rather than filtered while you play, which means everyone in a co-op run sees the same pool \u2014 provided everyone has the same mod installed.",
+        "Configure on a mod now opens that one mod's settings in a window over the library. It used to navigate the whole library into a list of every configurable mod's settings, with yours somewhere in it.",
+        "The close button in that window stays where you put it and always closes. It previously drifted as the panel loaded and could end up off the top of the screen, and the unsaved-changes prompt could answer itself without ever appearing.",
+        "Settings screens now say what they are waiting for: the first open of a picker decodes the game's icons and takes a few seconds, and after saving, the panel says the running game will not see the change \u2014 quit Ravenswatch completely and press Play, which rebuilds the affected game files first."
+      ]
+    },
     {
       "version": "5.2.0",
       "date": "2026-08-27",
       "summary": "Reporting a problem is now a link instead of a wall of pasted text, and the Log screen finally shows the things the loader already knew: older runs, which lines are real failures, and why a mod was switched off.",
       "highlights": [
-        "New: Share link on the Log screen uploads your log once and gives you a URL to paste into a bug report, instead of pasting thousands of lines into chat. It attaches the details anyone helping would ask for next — app version, system, and which mods were on.",
+        "New: Share link on the Log screen uploads your log once and gives you a URL to paste into a bug report, instead of pasting thousands of lines into chat. It attaches the details anyone helping would ask for next \u2014 app version, system, and which mods were on.",
         "Before anything is uploaded you see exactly what will be sent. Your Windows account name, home folder, e-mail addresses, IP addresses, Steam IDs and player names are replaced with placeholders first. The page is deleted automatically after 30 days, and anyone with the link can read it, so treat it as public.",
-        "The Log screen can now open any of your last 20 game runs, not just the current and previous one — a crash from three launches ago is no longer out of reach.",
+        "The Log screen can now open any of your last 20 game runs, not just the current and previous one \u2014 a crash from three launches ago is no longer out of reach.",
         "New: a problems only filter, plus a count of errors and warnings for the run, so you can find what went wrong without reading the whole log.",
         "When the loader switches a mod off for crashing during startup, the Log screen now says which mod, why, and offers to try it again. Previously the mod just appeared to be off with no explanation.",
         "The log now updates while you watch it without the app constantly working in the background, and it stops updating entirely while the window is hidden."
@@ -21,7 +33,7 @@
       "summary": "Loader log lines now say which ones are actually failures.",
       "highlights": [
         "The in-game log now marks the lines where something genuinely failed, so tracking down a crash no longer means reading several hundred equal-looking lines. The app's Log screen can filter to just those, and so can rsmm log --errors.",
-        "A capability that is simply switched off — because you never enabled it, or because no mod uses it — is deliberately not marked as a failure, so the filter stays worth using."
+        "A capability that is simply switched off \u2014 because you never enabled it, or because no mod uses it \u2014 is deliberately not marked as a failure, so the filter stays worth using."
       ]
     },
     {
@@ -54,9 +66,9 @@
       "date": "2026-08-25",
       "summary": "Uninstalling a mod now runs its cleanup step, so a mod can no longer leave game settings behind after it is gone.",
       "highlights": [
-        "Mods can ship a cleanup step that undoes settings they changed while running. In the installed app that step never actually ran — it only worked in a development checkout — so every mod's cleanup had been silently doing nothing. It runs now.",
+        "Mods can ship a cleanup step that undoes settings they changed while running. In the installed app that step never actually ran \u2014 it only worked in a development checkout \u2014 so every mod's cleanup had been silently doing nothing. It runs now.",
         "Uninstalling a mod deleted its folder before giving it a chance to clean up, which removed the only thing that knew how to undo the change. Reported as a run seed that stayed frozen after a seed-pinning mod was removed: the mod was gone, its setting was not. Cleanup now runs first.",
-        "If a mod's cleanup cannot run — it failed, or the mod folder was deleted by hand while it was still enabled — the app says so instead of reporting a clean uninstall that quietly left settings behind.",
+        "If a mod's cleanup cannot run \u2014 it failed, or the mod folder was deleted by hand while it was still enabled \u2014 the app says so instead of reporting a clean uninstall that quietly left settings behind.",
         "Publishing a mod from the app wrote the packaged file into a temporary folder that was deleted a moment later, so the upload had nothing to send. It now writes somewhere that lasts."
       ]
     },
@@ -66,8 +78,8 @@
       "date": "2026-08-24",
       "summary": "Stutter fixes for the damage meter, and it now attributes a transformed hero to the right player.",
       "highlights": [
-        "Fixed the stuttering reported in co-op. The meter's background probes were asking the operating system about a page of memory once per value read — tens of thousands of times a second. They now read a page at a time, which the game's own thread feels as a stutter no longer competing with it.",
-        "An ability that swaps your hero — Sun Wukong's transform, a respawn — no longer counts you as a second player. Your damage follows you through it, and for allies too, using the identity the game itself stamps on every hit.",
+        "Fixed the stuttering reported in co-op. The meter's background probes were asking the operating system about a page of memory once per value read \u2014 tens of thousands of times a second. They now read a page at a time, which the game's own thread feels as a stutter no longer competing with it.",
+        "An ability that swaps your hero \u2014 Sun Wukong's transform, a respawn \u2014 no longer counts you as a second player. Your damage follows you through it, and for allies too, using the identity the game itself stamps on every hit.",
         "Hits the game does not count are no longer counted by the meter either, so the board matches the end-of-run screen. Rows now show kills.",
         "Turning the meter off now stops its background work as well as its counting, and a board that has split a player into two rows no longer guesses names."
       ]
@@ -77,10 +89,10 @@
       "date": "2026-08-24",
       "summary": "The game loader now shows a download bar and can restart the game for you, publishing a mod version cannot mislabel it, and restoring no longer deletes the previous run's log.",
       "highlights": [
-        "Updating the game loader now shows a real download bar instead of a spinner, and offers to restart Ravenswatch when it finishes — a running game keeps the loader it started with, so the update only takes effect in a fresh session. If a run is in progress it asks first.",
-        "Fixed installed mods arriving switched off. A mod packaged while its author had it disabled shipped that setting with it, so it installed, applied, and then did nothing — with no error anywhere, because a disabled mod has its code removed rather than skipped. Packaging now always marks the mod as on, and whether you run it stays your choice in the launcher.",
+        "Updating the game loader now shows a real download bar instead of a spinner, and offers to restart Ravenswatch when it finishes \u2014 a running game keeps the loader it started with, so the update only takes effect in a fresh session. If a run is in progress it asks first.",
+        "Fixed installed mods arriving switched off. A mod packaged while its author had it disabled shipped that setting with it, so it installed, applied, and then did nothing \u2014 with no error anywhere, because a disabled mod has its code removed rather than skipped. Packaging now always marks the mod as on, and whether you run it stays your choice in the launcher.",
         "Publishing a mod version now checks that the version you are publishing matches the one inside the package. When they disagreed, the store offered an update that installed correctly and never changed the version, so pressing Update appeared to do nothing forever.",
-        "Restoring no longer deletes the previous run's log. The loader archives it at the start of the next launch, and restore was removing it first — so the archive it was supposed to produce never had anything to save, and neither did the crash history that decides whether a mod is disabled after repeated failed launches.",
+        "Restoring no longer deletes the previous run's log. The loader archives it at the start of the next launch, and restore was removing it first \u2014 so the archive it was supposed to produce never had anything to save, and neither did the crash history that decides whether a mod is disabled after repeated failed launches.",
         "The launcher now tells you when the loader planted in your game folder is not the one it carries, instead of reporting everything as up to date."
       ]
     },
@@ -90,7 +102,7 @@
       "summary": "Release notes now update on their own, the store gained filters and a list view, and the damage meter stops lagging co-op runs.",
       "highlights": [
         "Release notes ship on their own channel, so a loader or scripting fix can announce itself without waiting for a launcher build. What's new appears once after an update, and lives in Settings under About.",
-        "Fixed the damage meter lagging co-op runs. A player whose name is not plain ASCII, such as 7♣, read back as nameless, and that left two identity searches running for the whole match instead of stopping once every row was named.",
+        "Fixed the damage meter lagging co-op runs. A player whose name is not plain ASCII, such as 7\u2663, read back as nameless, and that left two identity searches running for the whole match instead of stopping once every row was named.",
         "The damage meter now lists everyone in the lobby, including players who have not dealt damage yet. A support who spends the opening minutes healing was previously missing from the board entirely.",
         "The store has filters for category, tag and rating, a switch to hide mods you already have, and a dense list view beside the existing cards. Picking a mod in the list opens its page next to the results.",
         "Settings gained an About tab and moved to the foot of the sidebar, which now collapses to icons.",
