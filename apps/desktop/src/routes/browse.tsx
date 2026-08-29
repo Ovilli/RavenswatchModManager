@@ -14,7 +14,8 @@ import {
   WifiOff,
   X,
 } from 'lucide-react';
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Button, CopyButton, Cover, MonoTag, SectionHeader, StatPill } from '../components/chrome';
 import { CheckIcon } from '../components/icons/CheckIcon';
 import { ModDetail } from '../components/mod-detail';
@@ -682,7 +683,9 @@ function BrowsePage() {
                             </div>
                             <StatPill
                               value={m.rating != null ? `★ ${m.rating.toFixed(1)}` : '—'}
-                              label={m.downloads != null ? `${m.downloads.toLocaleString()} dl` : ''}
+                              label={
+                                m.downloads != null ? `${m.downloads.toLocaleString()} dl` : ''
+                              }
                             />
                           </div>
                         </div>
@@ -918,12 +921,27 @@ function ProfilePicker({
   const selectable = profiles.filter((p) => p.id !== 'default');
   const [creating, setCreating] = useState(selectable.length === 0);
   const [name, setName] = useState('');
+  const rootRef = useRef<HTMLDialogElement>(null);
 
-  return (
+  // Escape only reaches onKeyDown when focus is inside the dialog, and nothing
+  // here is focused when the profile list (rather than the name field) renders.
+  useEffect(() => {
+    rootRef.current?.focus();
+  }, []);
+
+  // Portalled to <body> on purpose. Rendered in place, this lands inside
+  // `main > .animate-page-in`, whose transform animation makes it the
+  // containing block for `position: fixed` descendants — so `fixed inset-0`
+  // pinned itself to the *page* box, not the viewport, and the picker opened
+  // off-screen above the fold whenever the user hit Install after scrolling.
+  // Same reason the quit prompt and the mod config dialog portal.
+  return createPortal(
     <dialog
       open
+      ref={rootRef}
+      tabIndex={-1}
       aria-label="Choose profile"
-      className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in"
+      className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in outline-none"
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
           e.preventDefault();
@@ -1004,7 +1022,8 @@ function ProfilePicker({
           </div>
         </div>
       </div>
-    </dialog>
+    </dialog>,
+    document.body,
   );
 }
 

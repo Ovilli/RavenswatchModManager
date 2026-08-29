@@ -558,8 +558,15 @@
     transform: none;
   }
 }
+/* `backwards`, never `both`: a *filling* transform animation keeps the element
+ * a containing block for `position: fixed` descendants in Chromium/WebView2
+ * long after it has finished, which silently turns every fixed overlay inside
+ * a page into an absolutely-positioned one anchored to the top of the scrolled
+ * content. `backwards` holds the from-state before the animation starts (the
+ * part that matters — it stops the pre-paint flash) and lets the element fall
+ * back to its base style, which is identical to the `to` keyframe, after. */
 .animate-page-in {
-  animation: page-in var(--anim-page-duration) var(--anim-page-ease) both;
+  animation: page-in var(--anim-page-duration) var(--anim-page-ease) backwards;
 }
 
 /* Nav links are always visible. A staggered entrance animation was removed
