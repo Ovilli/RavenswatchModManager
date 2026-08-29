@@ -204,7 +204,8 @@ def lint_one(entry: Path) -> tuple[int, int]:
 
     # [[content]] blocks — item kind + per-kind confidence gate
     ce, cw = _lint_content(entry.name, t.get("content", []) or [],
-                           experimental=bool(m.get("experimental", False)))
+                           experimental=bool(m.get("experimental", False)),
+                           mod_root=entry)
     errs += ce
     warns += cw
 
@@ -382,8 +383,21 @@ def _lint_raw_overrides(modname: str, entry: Path, *,
     return errs, warns
 
 
+def _has_ban_picker(mod_root: Path | None) -> bool:
+    """Does this mod declare the `multiselect` ban picker (so an empty `items`
+    list means "nothing banned yet", not a broken manifest)?"""
+    if mod_root is None:
+        return False
+    try:
+        from rsmm.engine.item_bans import has_picker
+    except ImportError:  # pragma: no cover — trimmed install
+        return False
+    return has_picker(mod_root.name, mod_root.parent)
+
+
 def _lint_content(modname: str, blocks: list[dict],
-                  *, experimental: bool = False) -> tuple[int, int]:
+                  *, experimental: bool = False,
+                  mod_root: Path | None = None) -> tuple[int, int]:
     """Validate `[[content]] kind="item"` blocks against the cooked corpus:
     base resolves, value_patch labels + defaults match, icon exists.
 
@@ -435,7 +449,14 @@ def _lint_content(modname: str, blocks: list[dict],
             # A ban removes vanilla entries from the magical-object catalog; it
             # has no `base` to clone and no value_patches to check. The ids are
             # validated at emit against the install catalog (or the corpus).
-            if not c.get("items"):
+            #
+            # An empty list is only broken when the manifest is the ONLY editing
+            # surface. A mod carrying the picker is edited through it — the
+            # manifest is a mirror — and "nothing banned" is a state the player
+            # can legitimately be in, which `_emit_ban` already accepts. Failing
+            # it here made the shippable state of the managed `banned-items` mod
+            # unlintable.
+            if not c.get("items") and not _has_ban_picker(mod_root):
                 print(f"  {_T_FAIL} {_ST.bold(modname)}: item "
                       f"{_ST.accent(str(cid))}: mode='ban' needs a non-empty "
                       f"'items' list")
