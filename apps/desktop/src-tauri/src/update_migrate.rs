@@ -127,6 +127,80 @@ fn install_appimage(bytes: &[u8]) -> Result<PathBuf, String> {
     Ok(dest)
 }
 
+/// Must this AppImage unpack itself instead of mounting?
+///
+/// A type-2 AppImage built against AppImageKit's old runtime mounts its
+/// squashfs by dlopen'ing **libfuse 2**, which no current distribution ships —
+/// Debian 13, Ubuntu 24.04+ and Fedora 40+ carry fuse3 only. There it exits
+/// with `dlopen(): error loading libfuse.so.2` before a line of our code runs,
+/// and because migration also repoints the user's launcher at it, the result is
+/// an app that starts from neither the icon nor the post-migration relaunch.
+/// It fails silently too: the runtime writes to stderr, and nothing is running
+/// to read it.
+///
+/// `APPIMAGE_EXTRACT_AND_RUN=1` makes the runtime unpack to a temporary
+/// directory and execute from there instead, which works with or without fuse.
+///
+/// Both halves of the question are asked, because either one alone is wrong:
+///
+/// * The **system** half — is `libfuse.so.2` there — because a modern host
+///   needs no fallback whatever runtime it is handed.
+/// * The **runtime** half — does this file even want fuse2 — because releases
+///   now embed AppImage's type2-runtime (see `LDAI_RUNTIME_FILE` in
+///   `release.yml`), which links squashfuse statically. Asking only about the
+///   system would saddle every fuse3-only machine with a permanent ~130 MB
+///   unpack per launch to dodge a problem its AppImage does not have.
+///
+/// So the fallback engages only where it is genuinely needed, and retires
+/// itself on the machines whose runtime outgrew the bug.
+///
+/// Probed by filename because `libfuse.so.2` is precisely the string the old
+/// runtime dlopens: a `libfuse.so.2.9.9` with no matching link would not
+/// satisfy it either. Unreadable AppImage or lib directory falls to "mounts
+/// fine" — the caller has already written this file, and a failed read is no
+/// evidence about the host.
+#[cfg(target_os = "linux")]
+fn needs_extract_and_run(appimage: &Path) -> bool {
+    if std::env::var_os("APPIMAGE_EXTRACT_AND_RUN").is_some() {
+        return true;
+    }
+    const DIRS: [&str; 7] = [
+        "/lib/x86_64-linux-gnu",
+        "/usr/lib/x86_64-linux-gnu",
+        "/lib64",
+        "/usr/lib64",
+        "/lib",
+        "/usr/lib",
+        "/usr/local/lib",
+    ];
+    if DIRS.iter().any(|d| Path::new(d).join("libfuse.so.2").exists()) {
+        return false;
+    }
+    runtime_wants_fuse2(appimage)
+}
+
+/// Does this AppImage's runtime dlopen `libfuse.so.2`?
+///
+/// The runtime is the ELF prefix ahead of the squashfs payload — under 1 MiB
+/// for both the old AppImageKit build and type2-runtime — so a 256 KiB window
+/// reaches the string table of either without ever reading application bytes.
+#[cfg(target_os = "linux")]
+fn runtime_wants_fuse2(appimage: &Path) -> bool {
+    use std::io::Read;
+
+    const WINDOW: usize = 256 * 1024;
+    const NEEDLE: &[u8] = b"libfuse.so.2";
+
+    let Ok(file) = std::fs::File::open(appimage) else {
+        return false;
+    };
+    let mut head = Vec::new();
+    if file.take(WINDOW as u64).read_to_end(&mut head).is_err() {
+        return false;
+    }
+    head.windows(NEEDLE.len()).any(|w| w == NEEDLE)
+}
+
 /// Escape a path for a `.desktop` `Exec=` value.
 #[cfg(target_os = "linux")]
 fn desktop_quote(path: &Path) -> String {
@@ -141,6 +215,24 @@ fn desktop_quote(path: &Path) -> String {
     }
     out.push('"');
     out
+}
+
+/// The `Exec=` line pointing a launcher at the planted AppImage.
+///
+/// `env VAR=1 <path>` rather than the equivalent `--appimage-extract-and-run`
+/// flag: the entry also carries `%U`, and a launcher substitutes the
+/// `rsmm://` deep-link URL there. The flag form would sit ahead of that URL in
+/// argv, and the runtime only honours it as the FIRST argument — so the two
+/// features would be mutually exclusive. An environment variable takes no argv
+/// slot and leaves the deep link exactly where the app expects it.
+#[cfg(target_os = "linux")]
+fn exec_line(appimage: &Path, extract_and_run: bool) -> String {
+    let path = desktop_quote(appimage);
+    if extract_and_run {
+        format!("Exec=env APPIMAGE_EXTRACT_AND_RUN=1 {path} %U")
+    } else {
+        format!("Exec={path} %U")
+    }
 }
 
 /// The system `.desktop` entry for the copy we are replacing, as
@@ -276,7 +368,7 @@ fn write_desktop_entry(appimage: &Path) -> Option<String> {
     let dir = home.join(".local/share/applications");
     std::fs::create_dir_all(&dir).ok()?;
 
-    let exec = format!("Exec={} %U", desktop_quote(appimage));
+    let exec = exec_line(appimage, needs_extract_and_run(appimage));
     let (name, contents) = match system_desktop_entry() {
         Some((name, text)) => {
             let (out, icon) = rewrite_exec(&text, &exec);
@@ -428,14 +520,19 @@ fn relaunch() -> Result<(), String> {
     if !dest.is_file() {
         return Err(format!("{} is missing — nothing to relaunch.", dest.display()));
     }
-    std::process::Command::new("sh")
-        .arg("-c")
+    let mut cmd = std::process::Command::new("sh");
+    cmd.arg("-c")
         .arg("sleep 2; exec \"$0\"")
         .arg(&dest)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
+        .stderr(std::process::Stdio::null());
+    // Same reason as the desktop entry: without fuse2 the fresh copy would exit
+    // on `dlopen()` and the user would watch the app quit and never come back.
+    if needs_extract_and_run(&dest) {
+        cmd.env("APPIMAGE_EXTRACT_AND_RUN", "1");
+    }
+    cmd.spawn()
         .map_err(|e| format!("Could not start {}: {e}", dest.display()))?;
     Ok(())
 }
@@ -500,6 +597,54 @@ mod tests {
             desktop_quote(Path::new("/home/we\"ird/$HOME/App")),
             "\"/home/we\\\"ird/\\$HOME/App\""
         );
+    }
+
+    #[test]
+    fn the_runtime_itself_decides_whether_fuse2_matters() {
+        let dir = std::env::temp_dir().join(format!("rsmm-rt-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // The old AppImageKit runtime dlopens this by name; the literal sits in
+        // the ELF prefix, well ahead of the squashfs payload.
+        let old = dir.join("old.AppImage");
+        let mut bytes = vec![0u8; 4096];
+        bytes.extend_from_slice(b"dlopen(): error loading libfuse.so.2");
+        bytes.extend(std::iter::repeat(0u8).take(4096));
+        std::fs::write(&old, &bytes).unwrap();
+        assert!(runtime_wants_fuse2(&old));
+
+        // type2-runtime links squashfuse statically and never names fuse2, so a
+        // fuse3-only host must NOT be pushed into unpacking 130 MB per launch.
+        let new = dir.join("new.AppImage");
+        std::fs::write(&new, b"\x7fELFsquashfuse 0.5.2 statically linked").unwrap();
+        assert!(!runtime_wants_fuse2(&new));
+
+        // A file we cannot read says nothing about the host: assume it mounts.
+        assert!(!runtime_wants_fuse2(&dir.join("absent.AppImage")));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn fuseless_systems_get_the_extracting_exec_line() {
+        let img = Path::new("/home/u/Applications/x.AppImage");
+
+        // With libfuse 2 present the AppImage mounts itself — plain path.
+        assert_eq!(
+            exec_line(img, false),
+            "Exec=\"/home/u/Applications/x.AppImage\" %U"
+        );
+
+        // Without it the runtime dies in dlopen(), so it must self-extract.
+        let extracting = exec_line(img, true);
+        assert_eq!(
+            extracting,
+            "Exec=env APPIMAGE_EXTRACT_AND_RUN=1 \"/home/u/Applications/x.AppImage\" %U"
+        );
+        // The deep-link placeholder stays last: the runtime only honours the
+        // flag form as argv[1], which is where a launcher puts the rsmm:// URL.
+        assert!(extracting.ends_with(" %U"));
+        assert!(!extracting.contains("--appimage-extract-and-run"));
     }
 
     #[test]
