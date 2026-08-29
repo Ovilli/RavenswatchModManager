@@ -1,7 +1,7 @@
 import { ApiError } from '@rsmm/api-client';
 import { cn } from '@rsmm/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
+import { Link, useCanGoBack, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import {
   ArrowLeft,
   ChevronLeft,
@@ -14,6 +14,17 @@ import {
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import { api, describeApiError, logApiError } from '../lib/api';
+import { getApiUrl } from '../lib/api-url';
+import { inTauri } from '../lib/platform';
+import {
+  disableHookWarning,
+  installModVersion,
+  listLocalMods,
+  uninstallLocalMod,
+} from '../lib/rsmm';
+import { toEmbedUrl } from '../lib/video-embed';
+import { activeProfile, isEnabledIn, useApp } from '../store';
 import {
   Button,
   CopyButton,
@@ -27,22 +38,9 @@ import {
   SectionHeader,
   StatPill,
 } from './chrome';
-import { CONFIG_ANCHOR } from './config-button';
-import { ModConfigPanel } from './mod-config-panel';
 import { OverlayButton } from './overlay-button';
 import { useToast } from './toast';
 import { useModToggle } from './use-mod-toggle';
-import { api, describeApiError, logApiError } from '../lib/api';
-import { getApiUrl } from '../lib/api-url';
-import { inTauri } from '../lib/platform';
-import {
-  disableHookWarning,
-  installModVersion,
-  listLocalMods,
-  uninstallLocalMod,
-} from '../lib/rsmm';
-import { toEmbedUrl } from '../lib/video-embed';
-import { activeProfile, isEnabledIn, useApp } from '../store';
 
 /**
  * A mod's store page.
@@ -56,6 +54,21 @@ import { activeProfile, isEnabledIn, useApp } from '../store';
  */
 export function ModDetail({ slug, embedded = false }: { slug: string; embedded?: boolean }) {
   const navigate = useNavigate();
+  const router = useRouter();
+  const canGoBack = useCanGoBack();
+
+  /**
+   * Return the way the user arrived.
+   *
+   * This used to navigate to /browse unconditionally, which sent anyone who
+   * opened a mod from the Library to the store index instead — a page they had
+   * never been on. /browse is only the right guess when there is no history to
+   * step back through, which happens on a deep link or a fresh window.
+   */
+  const goBack = () => {
+    if (canGoBack) router.history.back();
+    else navigate({ to: '/browse' });
+  };
   const queryClient = useQueryClient();
   const toast = useToast();
 
@@ -76,22 +89,6 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
   const [versionBusy, setVersionBusy] = useState<string | null>(null);
   const [versionError, setVersionError] = useState<string | null>(null);
   const { toggle } = useModToggle();
-
-  // The Library's Configure button links here with #mod-config. The router
-  // does not scroll to a hash on its own, and the panel only exists once the
-  // mod is known, so do it here rather than trusting native anchor handling.
-  // The router reports the hash without its '#', but strip one anyway so a
-  // hand-typed link behaves the same.
-  const hash = useRouterState({ select: (s) => s.location.hash.replace(/^#/, '') });
-  const configReady = Boolean(liveBySlug?.hasConfig);
-  useEffect(() => {
-    if (hash !== CONFIG_ANCHOR || !configReady) return;
-    // A frame late on purpose: the panel mounts in this same commit.
-    const raf = requestAnimationFrame(() => {
-      document.getElementById(CONFIG_ANCHOR)?.scrollIntoView({ block: 'start' });
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [hash, configReady]);
 
   // A failed index fetch is not a 404 — without this the page falls
   // through to "No mod matches", hiding network/CSP problems entirely.
@@ -182,7 +179,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
   if (!apiMod && !liveBySlug) {
     return (
       <div className="space-y-4">
-        <Button type="button" size="sm" onClick={() => navigate({ to: '/browse' })}>
+        <Button type="button" size="sm" onClick={goBack}>
           ← back
         </Button>
         {fetchFailed ? (
@@ -239,7 +236,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
     <div className={embedded ? 'space-y-3' : 'space-y-6'} data-embedded={embedded ? '' : undefined}>
       {/* Nothing to go back TO when the list is already beside this. */}
       {embedded ? null : (
-        <Button type="button" size="sm" onClick={() => navigate({ to: '/browse' })}>
+        <Button type="button" size="sm" onClick={goBack}>
           <ArrowLeft className="h-3.5 w-3.5" /> back
         </Button>
       )}
@@ -324,19 +321,6 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
             <Fleuron />
             <Markdown source={markdown} className="mt-4" />
           </Panel>
-
-          {/* Settings for the mod live on the mod's own page. The id is the
-              anchor the library's Configure button jumps to. */}
-          {installedHere && liveBySlug?.hasConfig ? (
-            <div id={CONFIG_ANCHOR}>
-              <ModConfigPanel
-                modId={liveBySlug.id}
-                modName={name}
-                enabled={enabled}
-                onToggleEnabled={() => toggle(liveBySlug.id)}
-              />
-            </div>
-          ) : null}
 
           {videos.length > 0 || screenshots.length > 0 ? (
             <Panel>

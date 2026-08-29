@@ -1,5 +1,13 @@
 """Item (magical-object) content builder — SDK entry point.
 
+Two modes, dispatched by the declaration's ``mode`` field:
+
+* ``mode="clone"`` (default) — ADD a new, distinct, droppable magical object,
+  cooked from a vanilla ``base``. Described below.
+* ``mode="ban"`` — REMOVE vanilla items from the catalog so no draw can offer
+  them, the multiplayer-correct lever for "disable this item". See
+  :func:`_emit_ban`.
+
 ``emit()`` turns one ``[[content]] kind="item"`` declaration (or
 ``registry.register("item", ...)``) into the real cooked files a new,
 distinct, droppable magical object needs, written straight into the mod's
@@ -21,7 +29,9 @@ reminted clone with a custom value drops and functions as its own item.
 
 from __future__ import annotations
 
+import json
 import logging
+import struct
 from pathlib import Path
 
 from ...engine import magic_item_cook as cook
@@ -38,6 +48,7 @@ _MO_DIR = DATA_DIR / "uncooked" / "EntitySettings" / "Objects" / "Magical_Object
 _RARITIES = ("Common", "Rare", "Epic", "Legendary", "Cursed", "Powerups")
 
 PENDING_ITEMS_SUBDIR = "_pending_items"
+PENDING_BANS_SUBDIR = "_pending_bans"
 TEXT_BANK_OVERRIDES_SUBDIR = "_pending_text_overrides"
 
 
@@ -144,8 +155,189 @@ def _coerce_value_patches(raw) -> list[tuple[str, float, float, bool]]:
     return out
 
 
+#: Fields ``mode="ban"`` understands. Enforced (an unknown key raises) because
+#: every one of them is a silent no-op when misspelled: a ban that names nothing
+#: emits a well-formed file that changes no item, and the mistake only surfaces
+#: as "the banned item still dropped" a playtest later.
+_BAN_FIELDS = ("mode", "items")
+
+
+def _vanilla_item_ids() -> set[str]:
+    """Every vanilla magical-object id present in the in-repo corpus.
+
+    Empty when ``data/uncooked`` is absent (a frozen build, a fresh checkout),
+    in which case ban ids simply go unvalidated here and are checked again at
+    apply time against the install's own versiondef vector.
+    """
+    out: set[str] = set()
+    for rarity in _RARITIES:
+        d = _MO_DIR / rarity
+        if not d.is_dir():
+            continue
+        for f in d.glob("*.entity.ot.EntitySettingsResource.gen"):
+            out.add(f.name.split(".entity.ot", 1)[0])
+    return out
+
+
+def _catalog_item_ids() -> set[str] | None:
+    """Item ids actually listed in the install's LiveOps magical-object vector,
+    or None when no install is reachable.
+
+    This is a STRICTER set than the corpus and the one a ban is really checked
+    against: the shipped corpus carries ~20 entities the catalog never lists
+    (``*_Model`` templates, unreleased items), and banning one of those is a
+    no-op that a corpus-only check would happily accept.
+    """
+    try:
+        from rsmm.cli.apply_mods import (
+            BACKUP_SUFFIX,
+            VERSIONDEF_GEN_LEAF,
+            _find_mo_vector,
+            _locate_cooked_by_leaf,
+            _mo_entry_stem,
+            _mo_vector_entries,
+            find_game_dir,
+        )
+        game = find_game_dir()
+        if game is None:
+            return None
+        gen = _locate_cooked_by_leaf(game, VERSIONDEF_GEN_LEAF)
+        if gen is None:
+            return None
+        # Read the pristine backup when one exists: the live file may already
+        # carry this very ban, which would make the id look unknown.
+        bak = gen.with_name(gen.name + BACKUP_SUFFIX)
+        blob = (bak if bak.exists() else gen).read_bytes()
+        loc = _find_mo_vector(blob)
+        if loc is None:
+            return None
+        co, _end, cnt = loc
+        return {_mo_entry_stem(e[2]) for e in _mo_vector_entries(blob, co, cnt)}
+    except (ImportError, OSError, ValueError, struct.error):
+        return None
+
+
+def _config_selection(mod_root: Path) -> list[str] | None:
+    """The mod's `multiselect` ban picker value, or None if it has no picker.
+
+    Returns a list (possibly empty) only when the mod actually declares the
+    field, so "no picker" and "picker with nothing selected" stay
+    distinguishable — they mean opposite things for the manifest fallback.
+    """
+    from rsmm.engine.item_bans import CONFIG_FIELD
+    from rsmm.sdk.config import ConfigError, ConfigStore
+
+    if not (mod_root / "config_schema.toml").is_file():
+        return None
+    try:
+        store = ConfigStore(mod_root)
+    except (OSError, ConfigError, ValueError):
+        return None
+    field = store.schema.fields.get(CONFIG_FIELD)
+    if field is None or field.type != "multiselect":
+        return None
+    value = store.get(CONFIG_FIELD) or []
+    return sorted({str(x) for x in value}) if isinstance(value, list) else []
+
+
+def _emit_ban(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
+    """Stage a list of vanilla items to drop from the magical-object catalog.
+
+    Emits no cooked asset. The ban is applied by :mod:`rsmm.cli.apply_mods`,
+    which rebuilds the LiveOps versiondef MO vector without the named entries,
+    so the engine never loads them into ``g_MagicalObjectPool`` and no draw can
+    ever offer them.
+
+    **This is the only multiplayer-correct way to ban an item.** The offer draw
+    is seeded and host-authoritative deterministic, so a per-peer runtime filter
+    (a loader hook, Lua) makes peers disagree about the roll and desyncs the run
+    — see ``docs/_re/kinds/rewards.md``. A data-level ban instead leaves every
+    peer building an identical pool from identical assets, so the deterministic
+    draw stays identical everywhere. That holds only while every peer runs the
+    same mod: mismatched installs do not crash (a grant networks by GUID and
+    ``MagicalObjectPool_SourceLookup`` guards a miss), but players then see
+    different offers.
+
+    Fields:
+        ``items`` (list[str], required)  vanilla item ids to ban, e.g.
+                                        ``["Armor_Per_Object", "Balor_Eye"]``.
+    """
+    C.validate_id("item", defn.id)
+    unknown = sorted(set(defn.fields) - set(_BAN_FIELDS))
+    if unknown:
+        raise ContentError(
+            f"item {defn.id}: unknown field(s) for mode='ban': "
+            f"{', '.join(unknown)}; expected {', '.join(_BAN_FIELDS)}"
+        )
+
+    # A mod that declares the `multiselect` picker is EDITED through it, so the
+    # picker's saved selection wins over the manifest's `items` list. They are
+    # kept in step by `item_bans.write_bans`, but only the picker is live while
+    # the player is clicking, and a stale manifest silently re-banning what
+    # they just un-banned is the worst failure available here.
+    picked = _config_selection(out_dir.parent)
+    raw = picked if picked is not None else defn.fields.get("items")
+    if isinstance(raw, str):
+        raw = [raw]
+    if raw is None or not isinstance(raw, (list, tuple)):
+        raise ContentError(
+            f"item {defn.id}: mode='ban' needs a non-empty 'items' list of "
+            f"vanilla item ids to ban"
+        )
+    if not raw:
+        # An empty pick is a real state — "ban nothing" — not a broken manifest,
+        # so it emits nothing rather than raising and blocking the whole apply.
+        if picked is not None:
+            return []
+        raise ContentError(
+            f"item {defn.id}: mode='ban' needs a non-empty 'items' list of "
+            f"vanilla item ids to ban"
+        )
+    items = [str(x).strip() for x in raw]
+    if not all(items):
+        raise ContentError(f"item {defn.id}: 'items' contains an empty id")
+
+    # Validate as strictly as the environment allows. A typo here is otherwise
+    # invisible until a playtest, because banning a name nothing matches is a
+    # perfectly well-formed no-op. Prefer the install's own catalog — the
+    # corpus is a superset and would accept ids that can never be banned.
+    known, where = _catalog_item_ids(), "the install catalog"
+    if known is None:
+        known, where = _vanilla_item_ids(), "the asset corpus"
+    if known:
+        missing = sorted({i for i in items if i not in known})
+        if missing:
+            raise ContentError(
+                f"item {defn.id}: no magical object named "
+                f"{', '.join(missing)} in {where} ({len(known)} items). "
+                f"Ban ids are bare item ids, e.g. 'Armor_Per_Object'."
+            )
+
+    dest = out_dir / PENDING_BANS_SUBDIR / f"{defn.id}.json"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(
+        json.dumps({"mod": mod_id, "id": defn.id, "items": sorted(set(items))},
+                   indent=1),
+        encoding="utf-8",
+    )
+    _log.info("item %s/%s: staged ban of %d item(s)", mod_id, defn.id, len(set(items)))
+    return [dest]
+
+
 def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
-    """Materialize one item def into the mod's ``assets/`` tree.
+    """Dispatch on ``mode`` — see :func:`_emit_clone` / :func:`_emit_ban`."""
+    mode = defn.fields.get("mode", "clone")
+    if mode == "ban":
+        return _emit_ban(mod_id, defn, out_dir)
+    if mode != "clone":
+        raise ContentError(
+            f"item {defn.id}: unknown mode {mode!r}; expected 'clone' or 'ban'"
+        )
+    return _emit_clone(mod_id, defn, out_dir)
+
+
+def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
+    """Materialize one cloned item def into the mod's ``assets/`` tree.
 
     Fields:
         ``base`` (str, required)   vanilla item id to clone.

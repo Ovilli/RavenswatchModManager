@@ -549,3 +549,38 @@ describe('hydrateSettings (persisted store → live settings)', () => {
     expect(hydrateSettings(defaults, undefined)).toEqual(defaults);
   });
 });
+
+describe('adopting mods from disk', () => {
+  it('seeds the profile from each mod manifest, not all-enabled', () => {
+    // Adopting a folder of mostly turned-off mods used to switch every one of
+    // them on, because membership in `loadOrder` IS enabled.
+    const s = useApp.getState();
+    s.syncLocalMods([
+      localMod({ id: 'on-a', enabled: true }),
+      localMod({ id: 'off-b', enabled: false }),
+      localMod({ id: 'off-c', enabled: false }),
+    ]);
+    const pid = useApp.getState().createProfile('T');
+    useApp.getState().setActiveProfile(pid);
+    useApp.getState().adoptMods(['on-a', 'off-b', 'off-c']);
+
+    const p = profileById(pid);
+    expect(p.loadOrder.sort()).toEqual(['off-b', 'off-c', 'on-a']);
+    expect(isEnabledIn(p, 'on-a')).toBe(true);
+    expect(isEnabledIn(p, 'off-b')).toBe(false);
+    expect(isEnabledIn(p, 'off-c')).toBe(false);
+  });
+
+  it('does not invent conflicts between mods the user never enabled', () => {
+    const s = useApp.getState();
+    s.syncLocalMods([
+      localMod({ id: 'off-x', enabled: false, writes: ['same/file.gen'] }),
+      localMod({ id: 'off-y', enabled: false, writes: ['same/file.gen'] }),
+    ]);
+    const pid = useApp.getState().createProfile('T2');
+    useApp.getState().setActiveProfile(pid);
+    useApp.getState().adoptMods(['off-x', 'off-y']);
+    const p = profileById(pid);
+    expect(detectConflicts(p)).toEqual([]);
+  });
+});

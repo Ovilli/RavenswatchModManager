@@ -765,6 +765,37 @@ def discover_mods(repo: Path) -> list[Mod]:
     return mods
 
 
+def _drop_emitted(m: Mod) -> None:
+    """Delete the files a mod's content emit wrote last time, and the marker.
+
+    Used when a mod no longer emits anything at all, which is exactly the case
+    the normal in-emit cleanup cannot reach — it only runs when there is still
+    a content block to emit.
+    """
+    marker = m.root / ".rsmm_emitted.json"
+    if not marker.is_file():
+        return
+    try:
+        prev = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        prev = []
+    removed = 0
+    for rel in prev if isinstance(prev, list) else []:
+        stale = m.assets_dir / Path(str(rel))
+        try:
+            if stale.is_file():
+                stale.unlink()
+                removed += 1
+        except OSError:
+            pass
+    if removed:
+        print(f"  [content] {m.id}: removed {removed} stale emitted file(s)")
+    try:
+        marker.unlink()
+    except OSError:
+        pass
+
+
 def emit_content_blocks(mods: list[Mod]) -> int:
     """Materialize every mod's [[content]] block declarations under its
     own `assets/` tree. Idempotent — re-running just refreshes the
@@ -782,6 +813,14 @@ def emit_content_blocks(mods: list[Mod]) -> int:
     total = 0
     for m in mods:
         if not m.enabled or not m.content_blocks:
+            # A mod that USED to emit content still has to be cleaned up:
+            # dropping its last `[[content]]` block (or disabling the mod)
+            # otherwise orphans whatever it wrote last time, and the apply
+            # pipeline keeps consuming those files forever. That is not
+            # theoretical — an emptied item ban left its `_pending_bans` entry
+            # behind and `apply` went on banning 103 items after the list was
+            # cleared, which crashed the game.
+            _drop_emitted(m)
             continue
         # Honor the manifest's `experimental = true` so non-confirmed content
         # kinds the author opted into actually emit (lint already respects it).
@@ -2000,38 +2039,185 @@ def _find_mo_vector(b: bytes) -> tuple[int, int, int] | None:
     return None
 
 
-def _patch_versiondef_gen(pristine: bytes, paths: list[str]) -> bytes | None:
-    """Return ``pristine`` with each ``paths`` entry appended to the MO vector
-    (count bumped), skipping any already present. None if the vector or any
-    entry can't be located/encoded."""
+def _mo_vector_entries(b: bytes, co: int, cnt: int) -> list[tuple[int, int, str]]:
+    """Split the MO vector into ``(start, end, path)`` per entry.
+
+    Offsets are absolute and span the whole ``<lstr type><lstr path>`` pair, so
+    an entry can be dropped by simply not copying its slice.
+    """
+    def rd(o: int) -> tuple[str, int]:
+        ln = struct.unpack_from("<I", b, o)[0]
+        return b[o + 4 : o + 4 + ln].decode("latin1"), o + 4 + ln
+
+    out: list[tuple[int, int, str]] = []
+    o = co + 4
+    for _ in range(cnt):
+        start = o
+        _type, o = rd(o)          # "EntitySettings"
+        path, o = rd(o)
+        out.append((start, o, path))
+    return out
+
+
+def _mo_entry_stem(path: str) -> str:
+    """``Objects\\Magical_Objects\\Common\\Armor_Per_Object.entity.ot`` ->
+    ``Armor_Per_Object``."""
+    leaf = path.replace("/", "\\").rsplit("\\", 1)[-1]
+    return leaf.split(".entity.ot", 1)[0]
+
+
+def _patch_versiondef_gen(pristine: bytes, paths: list[str],
+                          bans: set[str] | None = None) -> bytes | None:
+    """Return ``pristine`` with the MO vector rebuilt: every ``bans`` entry
+    dropped, then each ``paths`` entry appended, count set to what survived.
+    None if the vector can't be located.
+
+    Both edits go through one rebuild rather than an append plus a separate
+    delete, so the count field can never disagree with the entries actually
+    present — a mismatch the engine reads as a truncated or over-long vector.
+    """
     loc = _find_mo_vector(pristine)
     if loc is None:
         return None
     co, vec_end, cnt = loc
-    existing = pristine[co + 4 : vec_end]
+    entries = _mo_vector_entries(pristine, co, cnt)
+    banned = {b.lower() for b in (bans or ())}
+    kept = [e for e in entries if _mo_entry_stem(e[2]).lower() not in banned]
+    have = {e[2] for e in kept}
+
     add = b""
     added = 0
     for path in paths:
-        pb = path.encode("latin1")
-        if struct.pack("<I", len(pb)) + pb in existing:
+        if path in have:
             continue  # already referenced
+        pb = path.encode("latin1")
         add += struct.pack("<I", len(b"EntitySettings")) + b"EntitySettings"
         add += struct.pack("<I", len(pb)) + pb
         added += 1
-    if added == 0:
+    if added == 0 and len(kept) == len(entries):
         return pristine
-    out = bytearray(pristine[:vec_end] + add + pristine[vec_end:])
-    struct.pack_into("<I", out, co, cnt + added)
-    return bytes(out)
+    body = b"".join(pristine[s:e] for s, e, _ in kept)
+    return (pristine[:co] + struct.pack("<I", len(kept) + added)
+            + body + add + pristine[vec_end:])
+
+
+def _mo_entry_rarity(path: str) -> str:
+    """``Objects\\Magical_Objects\\Common\\X.entity.ot`` -> ``Common``."""
+    parts = path.replace("/", "\\").split("\\")
+    return parts[-2] if len(parts) >= 2 else ""
+
+
+def _clamp_bans(pristine: bytes, bans: set[str]) -> set[str]:
+    """Refuse a ban set that would empty any rarity in the catalog.
+
+    The engine picks an offer with `rand() % candidate_count`, so a pool that
+    reaches zero is not an empty shop — it is an INT_DIVIDE_BY_ZERO that kills
+    the process (observed 2026-08-28: 103 of 104 items banned, crash at
+    0x1405183dd on opening the shop).
+
+    Rarity is the grouping the catalog itself is organised by, and the small
+    ones are small — Common and Rare ship 10 items each — so a single global
+    floor would happily allow wiping one out. This does NOT prove a ban is
+    safe: the per-slot candidate sets are not mapped, and a slot that only ever
+    offers one specific item would still break. It rules out the whole-pool
+    case, which is the one that has actually been seen.
+
+    The set is refused whole rather than partially applied: choosing which of
+    the user's picks to honour would be inventing intent, and a loud no-op they
+    can act on beats a half-applied edit they cannot see.
+    """
+    if not bans:
+        return bans
+    loc = _find_mo_vector(pristine)
+    if loc is None:
+        return bans
+    co, _vec_end, cnt = loc
+    entries = _mo_vector_entries(pristine, co, cnt)
+    lowered = {b.lower() for b in bans}
+
+    total: dict[str, int] = {}
+    banned: dict[str, int] = {}
+    for _s, _e, ref in entries:
+        rarity = _mo_entry_rarity(ref) or "?"
+        total[rarity] = total.get(rarity, 0) + 1
+        if _mo_entry_stem(ref).lower() in lowered:
+            banned[rarity] = banned.get(rarity, 0) + 1
+
+    emptied = sorted(r for r, n in total.items() if banned.get(r, 0) >= n)
+    if not emptied:
+        return bans
+    detail = ", ".join(f"{r} ({total[r]})" for r in emptied)
+    print(f"  [warn] ban: refusing the whole ban list — it would leave no items "
+          f"at all in: {detail}. The game picks offers with a modulo over the "
+          f"candidate count, so an empty pool is a divide-by-zero crash, not an "
+          f"empty shop. Nothing banned.", file=sys.stderr)
+    return set()
+
+
+def _warn_unmatched_bans(pristine: bytes, bans: set[str]) -> None:
+    """Report ban ids that match no entry in the install's own MO vector.
+
+    Banning a name no item has is a well-formed no-op that emits, installs and
+    reports success, and only shows up as "the banned item still dropped" a
+    playtest later — so it is called out loudly here even though it cannot fail
+    the apply.
+    """
+    if not bans:
+        return
+    loc = _find_mo_vector(pristine)
+    if loc is None:
+        return
+    co, _vec_end, cnt = loc
+    have = {_mo_entry_stem(e[2]).lower()
+            for e in _mo_vector_entries(pristine, co, cnt)}
+    missing = sorted(b for b in bans if b.lower() not in have)
+    if missing:
+        print(f"  [warn] ban: no item named {', '.join(missing)} in the "
+              f"LiveOps manifest ({cnt} items); nothing banned for those",
+              file=sys.stderr)
+
+
+def collect_item_bans(mods: list[Mod]) -> set[str]:
+    """Union the item ids every enabled mod stages under ``_pending_bans/``.
+
+    Unioned rather than last-one-wins for the same reason mod content merges
+    elsewhere do: two mods each banning a different item must yield both bans,
+    and a ban is idempotent, so a union can never produce a worse result than
+    either mod alone.
+    """
+    out: set[str] = set()
+    for m in mods:
+        if not m.enabled:
+            continue
+        d = m.assets_dir / "_pending_bans"
+        if not d.is_dir():
+            continue
+        for f in sorted(d.glob("*.json")):
+            try:
+                doc = json.loads(f.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as e:
+                print(f"  [warn] {m.id}: unreadable ban file {f.name}: {e}",
+                      file=sys.stderr)
+                continue
+            out.update(str(x) for x in (doc.get("items") or []))
+    return out
 
 
 def sync_versiondef(game_dir: Path, registrations: dict[str, str],
-                    dry_run: bool) -> int:
+                    dry_run: bool, bans: set[str] | None = None) -> int:
     """Ensure every new magical-object entity in ``registrations`` is listed in
     the active LiveOps version manifest (.gen vector) AND its resource cache,
-    so the engine loads + spawns it. Both files are backed up once and rebuilt
-    from the pristine backup each apply (idempotent; clean drop on removal).
-    Returns the number of files changed."""
+    so the engine loads + spawns it, and that every id in ``bans`` is NOT — so
+    the engine never pools it and no draw can offer it. Both files are backed
+    up once and rebuilt from the pristine backup each apply (idempotent; clean
+    drop on removal). Returns the number of files changed.
+
+    A ban touches only the .gen vector, never the resource cache: the banned
+    entity's file is still on disk and other assets may still reference it, and
+    a surplus cache line only wastes a preload while a missing one crashes the
+    load (see the ``UsedRscCache`` invariant in CLAUDE.md).
+    """
+    bans = bans or set()
     mo_paths = sorted(
         {p for d in registrations.values() if (p := _mo_versiondef_path(d))}
     )
@@ -2042,7 +2228,7 @@ def sync_versiondef(game_dir: Path, registrations: dict[str, str],
     # --- .gen vector ---
     if gen is not None:
         bak = gen.with_name(gen.name + BACKUP_SUFFIX)
-        if not mo_paths:
+        if not mo_paths and not bans:
             if bak.exists() and not dry_run:
                 shutil.copy2(bak, gen)
                 bak.unlink()
@@ -2052,13 +2238,19 @@ def sync_versiondef(game_dir: Path, registrations: dict[str, str],
             if not bak.exists() and not dry_run:
                 shutil.copy2(gen, bak)
             pristine = (bak if bak.exists() else gen).read_bytes()
-            patched = _patch_versiondef_gen(pristine, mo_paths)
+            _warn_unmatched_bans(pristine, bans)
+            bans = _clamp_bans(pristine, bans)
+            patched = _patch_versiondef_gen(pristine, mo_paths, bans)
             if patched is None:
                 print("  [warn] could not locate magical-object vector in "
                       f"{gen.name}; new item won't spawn", file=sys.stderr)
             elif patched != gen.read_bytes():
-                print(f"  [versiondef] registering {len(mo_paths)} item(s) in "
-                      "LiveOps manifest")
+                what = []
+                if mo_paths:
+                    what.append(f"registering {len(mo_paths)} item(s)")
+                if bans:
+                    what.append(f"banning {len(bans)} item(s)")
+                print(f"  [versiondef] {' + '.join(what)} in LiveOps manifest")
                 if not dry_run:
                     gen.write_bytes(patched)
                 changed += 1
@@ -2284,7 +2476,8 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     # Register new magical objects in the LiveOps version manifest + resource
     # cache so the engine actually loads + spawns them (UsedRscList alone only
     # makes them loadable-by-path). See sync_versiondef.
-    versiondef_changes = sync_versiondef(game_dir, registrations, args.dry_run)
+    versiondef_changes = sync_versiondef(game_dir, registrations, args.dry_run,
+                                         bans=collect_item_bans(mods))
 
     # Sync manifests so game knows which mods are enabled
     manifest_syncs = _sync_mod_manifests(mods, game_dir, args.dry_run)

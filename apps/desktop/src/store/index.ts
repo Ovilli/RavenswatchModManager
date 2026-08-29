@@ -720,7 +720,17 @@ export const useApp = create<State>()(
               if (p.id !== target) return p;
               const add = ids.filter((id) => !p.loadOrder.includes(id));
               if (add.length === 0) return p;
-              return { ...p, loadOrder: [...p.loadOrder, ...add] };
+              // Seed each adopted mod from what its manifest says on disk.
+              // Adding every id to `loadOrder` alone marks it ENABLED (that is
+              // what `isEnabledIn` means), so adopting a folder of mostly
+              // turned-off mods silently switched all of them on — and the
+              // conflict badge then counted collisions between mods the user
+              // had never enabled.
+              const disabled = new Set(p.disabled);
+              for (const id of add) {
+                if (s.localMods[id]?.diskEnabled === false) disabled.add(id);
+              }
+              return { ...p, loadOrder: [...p.loadOrder, ...add], disabled };
             }),
           };
         }),
@@ -857,6 +867,7 @@ function toMod(m: LocalMod, prev?: Mod): Mod {
     // `?? prev` so an older sidecar (which omits the field) doesn't erase what
     // a previous, newer answer established.
     hasConfig: m.hasConfig ?? prev?.hasConfig ?? false,
+    diskEnabled: m.enabled,
   };
 }
 

@@ -3,12 +3,14 @@ import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import {
   AlertTriangle,
   ArrowUpDown,
+  ExternalLink,
   GripVertical,
   LayoutGrid,
   List,
   Plus,
   Search,
   SlidersHorizontal,
+  Trash2,
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -26,15 +28,15 @@ import {
 import { ConfigButton } from '../components/config-button';
 import { ModConfigPanel } from '../components/mod-config-panel';
 import { OverlayButton } from '../components/overlay-button';
-import { useModToggle } from '../components/use-mod-toggle';
 import { SetupBanner } from '../components/setup-banner';
 import { useToast } from '../components/toast';
 import { UpdatesPanel } from '../components/updates-panel';
+import { useModToggle } from '../components/use-mod-toggle';
 import {
   type LibrarySort,
   type LibraryStatusFilter,
-  buildLibraryRows,
   conflictCountByMod as buildConflictCounts,
+  buildLibraryRows,
   missingDepCounts as buildMissingDepCounts,
   countLibraryFilters,
   filterLibraryRows,
@@ -51,11 +53,27 @@ import {
   useApp,
 } from '../store';
 
+type ViewMode = 'cards' | 'list' | 'config';
+
+const VIEW_MODES: ViewMode[] = ['cards', 'list', 'config'];
+
+/**
+ * The view lives in the URL so the per-mod Configure button can link straight
+ * into the config view. It used to link to the mod's store page, which is no
+ * longer where settings live.
+ */
 export const Route = createFileRoute('/')({
   component: LibraryPage,
+  validateSearch: (search: Record<string, unknown>): { view?: ViewMode } => {
+    const v = search.view;
+    return typeof v === 'string' && (VIEW_MODES as string[]).includes(v)
+      ? { view: v as ViewMode }
+      : {};
+  },
 });
 
-type ViewMode = 'cards' | 'list' | 'config';
+/** Anchor a config panel carries, so Configure can scroll to one mod. */
+export const configAnchorId = (modId: string) => `mod-config-${modId}`;
 
 const CATEGORY_LABEL: Record<ModCategory, string> = {
   gameplay: 'Gameplay',
@@ -77,7 +95,16 @@ function LibraryPage() {
   const syncLocalMods = useApp((s) => s.syncLocalMods);
   const adoptMods = useApp((s) => s.adoptMods);
   const activeProfileId = useApp((s) => s.activeProfileId);
-  const [view, setView] = useState<ViewMode>('cards');
+  const search = Route.useSearch();
+  const [view, setView] = useState<ViewMode>(search.view ?? 'cards');
+  // Following a Configure link while the Library is already open changes the
+  // search param without remounting, so the view has to track it.
+  // `view` is the value being synced, not an input: listing it would re-run
+  // the effect on every local view change and fight the toolbar.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see above
+  useEffect(() => {
+    if (search.view && search.view !== view) setView(search.view);
+  }, [search.view]);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<ModCategory | 'all'>('all');
   const [status, setStatus] = useState<LibraryStatusFilter>('all');
@@ -183,6 +210,9 @@ function LibraryPage() {
       if (!ok) return;
     }
     setView(next);
+    // Keep the URL in step so a Configure link and the toolbar agree, and so
+    // the view survives a reload.
+    void navigate({ to: '/', search: next === 'cards' ? {} : { view: next }, replace: true });
   };
 
   const clearSelection = useCallback(() => setSelected(new Set()), []);
@@ -378,48 +408,274 @@ function LibraryPage() {
         }
       />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[260px] flex-1">
-          <Search
-            className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ash"
-            aria-hidden
-          />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search installed mods…"
-            aria-label="Search installed mods"
-            className="input-grim pl-9"
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-2 font-mono text-xs uppercase tracking-[0.22em] text-ash">
-            <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden /> Filters
-          </span>
-          {(['all', 'enabled', 'disabled', 'outdated', 'missingDeps'] as const).map((item) => (
-            <Button
-              key={item}
-              type="button"
-              onClick={() => setStatus(item)}
-              aria-pressed={status === item}
-              variant={status === item ? 'gilt' : 'default'}
-              size="sm"
+      {/* Filters live in a rail beside the list, not in a bar above it. As a
+          horizontal strip they wrapped onto two or three rows at narrow widths
+          and pushed the mods themselves below the fold. */}
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_15rem]">
+        {/* The rail stays FIRST in the DOM so that on a narrow window — where
+            the grid collapses to one column — the filters are still above the
+            list rather than stranded below it. `order` moves it to the right
+            only once there are two columns to move it between. */}
+        <aside className="grimoire-card space-y-5 p-4 lg:sticky lg:top-4 lg:order-2">
+          <div className="relative">
+            <Search
+              className="-translate-y-1/2 absolute top-1/2 left-3 h-4 w-4 text-ash"
+              aria-hidden
+            />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search…"
+              aria-label="Search installed mods"
+              className="input-grim w-full pl-9"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <span className="font-mono flex items-center gap-2 text-[0.65rem] text-ash uppercase tracking-[0.22em]">
+              <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden /> Status
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {(['all', 'enabled', 'disabled', 'outdated', 'missingDeps'] as const).map((item) => (
+                <Button
+                  key={item}
+                  type="button"
+                  onClick={() => setStatus(item)}
+                  aria-pressed={status === item}
+                  variant={status === item ? 'gilt' : 'default'}
+                  size="sm"
+                >
+                  {item}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {availableCategories.length > 1 ? (
+            <div className="space-y-2">
+              <span className="font-mono text-[0.65rem] text-ash uppercase tracking-[0.22em]">
+                Category
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {availableCategories.map((cat) => (
+                  <Button
+                    key={cat}
+                    type="button"
+                    onClick={() => setCategory(cat)}
+                    aria-pressed={category === cat}
+                    variant={category === cat ? 'danger' : 'default'}
+                    size="sm"
+                  >
+                    {cat === 'all' ? 'All' : CATEGORY_LABEL[cat]}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="space-y-2">
+            <span className="font-mono flex items-center gap-2 text-[0.65rem] text-ash uppercase tracking-[0.22em]">
+              <ArrowUpDown className="h-3.5 w-3.5" aria-hidden /> Sort
+            </span>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as LibrarySort)}
+              className="select-grim font-mono w-full border border-border bg-pitch/60 px-3 py-2 text-parchment text-xs focus:border-gilt/60 focus:outline-none"
+              aria-label="Sort mods"
             >
-              {item}
-            </Button>
-          ))}
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value as LibrarySort)}
-            className="select-grim font-mono border border-border bg-pitch/60 px-3 py-2 text-xs text-parchment focus:border-gilt/60 focus:outline-none"
-            aria-label="Sort mods"
+              <option value="load-order">Load order</option>
+              <option value="name">Name</option>
+              <option value="author">Author</option>
+              <option value="version">Version</option>
+            </select>
+          </div>
+
+          {/* Always mounted, disabled when idle — mounting it on the first
+              filter click re-flowed the rail under the cursor. */}
+          <Button
+            type="button"
+            onClick={() => {
+              setQuery('');
+              setCategory('all');
+              setStatus('all');
+            }}
+            disabled={filterCount === 0}
+            variant="default"
+            size="sm"
+            className="w-full disabled:cursor-default disabled:opacity-40"
           >
-            <option value="load-order">Load order</option>
-            <option value="name">Name</option>
-            <option value="author">Author</option>
-            <option value="version">Version</option>
-          </select>
-          <ArrowUpDown className="h-4 w-4 text-ash" aria-hidden />
+            <X className="h-4 w-4" /> Clear filters
+          </Button>
+        </aside>
+
+        <div className="min-w-0 space-y-6 lg:order-1">
+          {localModsError ? (
+            <div className="ember-banner flex items-center gap-3 px-4 py-3">
+              <AlertTriangle className="h-4 w-4 text-crimson shrink-0" />
+              <span className="font-serif-italic text-base">
+                Couldn’t reach rsmm CLI. Showing cached library only.
+              </span>
+              <CopyButton value={(localModsError as Error).message} />
+            </div>
+          ) : null}
+
+          {unadopted.length > 0 ? (
+            <div className="ember-banner flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+              <span className="font-serif-italic text-base">
+                {unadopted.length === 1
+                  ? '1 mod is on disk but not in this profile.'
+                  : `${unadopted.length} mods are on disk but not in this profile.`}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="primary"
+                onClick={() => {
+                  adoptMods(unadopted);
+                  toast.push(
+                    unadopted.length === 1
+                      ? 'Added 1 mod from disk to this profile'
+                      : `Added ${unadopted.length} mods from disk to this profile`,
+                    'success',
+                  );
+                }}
+              >
+                Add to profile
+              </Button>
+            </div>
+          ) : null}
+
+          {/* Mirrors a real category section — heading, fleuron, then cards at the
+          same min height in the same grid — so the swap to loaded content is a
+          fade in place rather than the page jumping to a new geometry. */}
+          {localModsLoading && Object.keys(localModsState).length === 0 ? (
+            <section className="space-y-3 animate-pulse" aria-busy="true">
+              <div className="h-6 w-56 rounded bg-oxblood/20" />
+              <Fleuron />
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div
+                    // biome-ignore lint/suspicious/noArrayIndexKey: fixed loading placeholders
+                    key={i}
+                    className="min-h-[15rem] rounded border border-border bg-pitch/40"
+                  />
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {conflicts.length > 0 ? (
+            <Link
+              to="/conflicts"
+              className="ember-banner flex items-center justify-between px-4 py-3"
+            >
+              <span className="flex items-center gap-3">
+                <AlertTriangle className="h-4 w-4 text-crimson" />
+                <span className="font-serif-italic text-base">
+                  {conflicts.length} {conflicts.length === 1 ? 'conflict' : 'conflicts'} between
+                  enabled mods.
+                </span>
+              </span>
+              <span className="font-mono text-ash">Resolve →</span>
+            </Link>
+          ) : null}
+
+          {grouped.map(([category, items]) => (
+            <section key={category} className="space-y-3">
+              <h3 className="font-fraktur text-xl text-parchment">{CATEGORY_LABEL[category]}</h3>
+              <Fleuron />
+              {view === 'cards' ? (
+                <CardGrid
+                  items={items}
+                  profile={profile}
+                  onOpen={(slug) => navigate({ to: '/mod/$slug', params: { slug } })}
+                  onToggle={handleToggle}
+                  onUninstall={uninstall}
+                  selected={selected}
+                  onSelect={toggleSelected}
+                  conflictCounts={conflictCountByMod}
+                  missingDeps={missingDepCounts}
+                  onEnableDependency={(depId) => void requestEnableMods([depId])}
+                />
+              ) : view === 'list' ? (
+                <ListView
+                  items={items}
+                  profile={profile}
+                  onToggle={handleToggle}
+                  onUninstall={uninstall}
+                  onReorder={reorderMod}
+                  selected={selected}
+                  onSelect={toggleSelected}
+                  conflictCounts={conflictCountByMod}
+                  missingDeps={missingDepCounts}
+                  onEnableDependency={(depId) => void requestEnableMods([depId])}
+                />
+              ) : (
+                <div className="space-y-4">
+                  {/* Only configurable mods appear here. Rendering a full "declares
+                  no editable config fields" panel for every other mod buried
+                  the two that had settings under eighteen that did not. */}
+                  {items.filter(({ id }) => getMod(id)?.hasConfig).length === 0 ? (
+                    <p className="font-mono text-ash">
+                      No mod in this section declares config fields.
+                    </p>
+                  ) : null}
+                  {items.map(({ id }) => {
+                    const mod = getMod(id);
+                    if (!mod?.hasConfig) return null;
+                    return (
+                      <div key={id} id={configAnchorId(id)}>
+                        <ModConfigPanel
+                          modId={id}
+                          modName={mod.name}
+                          enabled={isEnabledIn(profile, id)}
+                          onToggleEnabled={() => handleToggle(id)}
+                          onDirtyChange={markConfigDirty}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          ))}
+
+          {view === 'config' && hasDirtyConfigs ? (
+            <div className="ember-banner flex items-center justify-between gap-3 px-4 py-3">
+              <span className="font-serif-italic text-base">
+                {dirtyConfigs.size} config panel{dirtyConfigs.size === 1 ? '' : 's'} have unsaved
+                changes.
+              </span>
+              <span className="font-mono text-ash">Save or reset before leaving.</span>
+            </div>
+          ) : null}
+
+          <div className="font-mono pt-6 text-center text-ash">
+            <div className="flex justify-center">
+              <StatPill value={installed.length} label="in folder" />
+              <StatPill value={enabledCount} label="enabled in profile" className="ml-2" />
+            </div>
+          </div>
+
+          {!localModsLoading && filtered.length === 0 ? (
+            <EmptyState
+              title="No mods match those filters"
+              body="Try a broader search or clear one of the filters to show more installed mods."
+              action={
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setQuery('');
+                    setCategory('all');
+                    setStatus('all');
+                  }}
+                  variant="primary"
+                >
+                  Reset filters
+                </Button>
+              }
+            />
+          ) : null}
         </div>
       </div>
 
@@ -452,202 +708,6 @@ function LibraryPage() {
             </Button>
           </div>
         </Panel>
-      ) : null}
-
-      <div className="flex flex-wrap gap-1.5">
-        {availableCategories.map((cat) => (
-          <Button
-            key={cat}
-            type="button"
-            onClick={() => setCategory(cat)}
-            aria-pressed={category === cat}
-            variant={category === cat ? 'danger' : 'default'}
-            size="sm"
-          >
-            {cat === 'all' ? 'All' : CATEGORY_LABEL[cat]}
-          </Button>
-        ))}
-        {/* Always mounted, disabled when idle — mounting it on the first
-            filter click re-wrapped the chip row and moved every category
-            button out from under the cursor. */}
-        <Button
-          type="button"
-          onClick={() => {
-            setQuery('');
-            setCategory('all');
-            setStatus('all');
-          }}
-          disabled={filterCount === 0}
-          variant="default"
-          size="sm"
-          className="ml-auto disabled:cursor-default disabled:opacity-40"
-        >
-          <X className="h-4 w-4" /> Clear filters
-        </Button>
-      </div>
-
-      {localModsError ? (
-        <div className="ember-banner flex items-center gap-3 px-4 py-3">
-          <AlertTriangle className="h-4 w-4 text-crimson shrink-0" />
-          <span className="font-serif-italic text-base">
-            Couldn’t reach rsmm CLI. Showing cached library only.
-          </span>
-          <CopyButton value={(localModsError as Error).message} />
-        </div>
-      ) : null}
-
-      {unadopted.length > 0 ? (
-        <div className="ember-banner flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <span className="font-serif-italic text-base">
-            {unadopted.length === 1
-              ? '1 mod is on disk but not in this profile.'
-              : `${unadopted.length} mods are on disk but not in this profile.`}
-          </span>
-          <Button
-            type="button"
-            size="sm"
-            variant="primary"
-            onClick={() => {
-              adoptMods(unadopted);
-              toast.push(
-                unadopted.length === 1
-                  ? 'Added 1 mod from disk to this profile'
-                  : `Added ${unadopted.length} mods from disk to this profile`,
-                'success',
-              );
-            }}
-          >
-            Add to profile
-          </Button>
-        </div>
-      ) : null}
-
-      {/* Mirrors a real category section — heading, fleuron, then cards at the
-          same min height in the same grid — so the swap to loaded content is a
-          fade in place rather than the page jumping to a new geometry. */}
-      {localModsLoading && Object.keys(localModsState).length === 0 ? (
-        <section className="space-y-3 animate-pulse" aria-busy="true">
-          <div className="h-6 w-56 rounded bg-oxblood/20" />
-          <Fleuron />
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div
-                // biome-ignore lint/suspicious/noArrayIndexKey: fixed loading placeholders
-                key={i}
-                className="min-h-[15rem] rounded border border-border bg-pitch/40"
-              />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {conflicts.length > 0 ? (
-        <Link to="/conflicts" className="ember-banner flex items-center justify-between px-4 py-3">
-          <span className="flex items-center gap-3">
-            <AlertTriangle className="h-4 w-4 text-crimson" />
-            <span className="font-serif-italic text-base">
-              {conflicts.length} {conflicts.length === 1 ? 'conflict' : 'conflicts'} between enabled
-              mods.
-            </span>
-          </span>
-          <span className="font-mono text-ash">Resolve →</span>
-        </Link>
-      ) : null}
-
-      {grouped.map(([category, items]) => (
-        <section key={category} className="space-y-3">
-          <h3 className="font-fraktur text-xl text-parchment">{CATEGORY_LABEL[category]}</h3>
-          <Fleuron />
-          {view === 'cards' ? (
-            <CardGrid
-              items={items}
-              profile={profile}
-              onOpen={(slug) => navigate({ to: '/mod/$slug', params: { slug } })}
-              onToggle={handleToggle}
-              onUninstall={uninstall}
-              selected={selected}
-              onSelect={toggleSelected}
-              conflictCounts={conflictCountByMod}
-              missingDeps={missingDepCounts}
-              onEnableDependency={(depId) => void requestEnableMods([depId])}
-            />
-          ) : view === 'list' ? (
-            <ListView
-              items={items}
-              profile={profile}
-              onToggle={handleToggle}
-              onUninstall={uninstall}
-              onReorder={reorderMod}
-              selected={selected}
-              onSelect={toggleSelected}
-              conflictCounts={conflictCountByMod}
-              missingDeps={missingDepCounts}
-              onEnableDependency={(depId) => void requestEnableMods([depId])}
-            />
-          ) : (
-            <div className="space-y-4">
-              {/* Only configurable mods appear here. Rendering a full "declares
-                  no editable config fields" panel for every other mod buried
-                  the two that had settings under eighteen that did not. */}
-              {items.filter(({ id }) => getMod(id)?.hasConfig).length === 0 ? (
-                <p className="font-mono text-ash">
-                  No mod in this section declares config fields.
-                </p>
-              ) : null}
-              {items.map(({ id }) => {
-                const mod = getMod(id);
-                if (!mod?.hasConfig) return null;
-                return (
-                  <ModConfigPanel
-                    key={id}
-                    modId={id}
-                    modName={mod.name}
-                    enabled={isEnabledIn(profile, id)}
-                    onToggleEnabled={() => handleToggle(id)}
-                    onDirtyChange={markConfigDirty}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </section>
-      ))}
-
-      {view === 'config' && hasDirtyConfigs ? (
-        <div className="ember-banner flex items-center justify-between gap-3 px-4 py-3">
-          <span className="font-serif-italic text-base">
-            {dirtyConfigs.size} config panel{dirtyConfigs.size === 1 ? '' : 's'} have unsaved
-            changes.
-          </span>
-          <span className="font-mono text-ash">Save or reset before leaving.</span>
-        </div>
-      ) : null}
-
-      <div className="font-mono pt-6 text-center text-ash">
-        <div className="flex justify-center">
-          <StatPill value={installed.length} label="in folder" />
-          <StatPill value={enabledCount} label="enabled in profile" className="ml-2" />
-        </div>
-      </div>
-
-      {!localModsLoading && filtered.length === 0 ? (
-        <EmptyState
-          title="No mods match those filters"
-          body="Try a broader search or clear one of the filters to show more installed mods."
-          action={
-            <Button
-              type="button"
-              onClick={() => {
-                setQuery('');
-                setCategory('all');
-                setStatus('all');
-              }}
-              variant="primary"
-            >
-              Reset filters
-            </Button>
-          }
-        />
       ) : null}
     </div>
   );
@@ -692,40 +752,49 @@ function CardGrid({
         return (
           <div
             key={id}
+            // Card click SELECTS, matching the list. It used to navigate to
+            // the store page, so a mis-aimed click left the library entirely.
             onClick={(e) => {
               const el = e.target as HTMLElement;
               if (el.closest('button, a, input, textarea, select, [role="switch"]')) return;
               e.preventDefault();
-              onOpen?.(mod.slug);
+              onSelect(id);
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                onOpen?.(mod.slug);
+                onSelect(id);
               }
             }}
-            className="grimoire-card flex h-full min-h-[15rem] flex-col gap-3 p-5 transition-colors duration-150 hover:border-gilt/40 cursor-pointer"
+            // The card itself is the control; see the list row for why.
+            // biome-ignore lint/a11y/useSemanticElements: composite card, see above
+            role="checkbox"
+            aria-checked={selectedHere}
+            tabIndex={0}
+            className={[
+              'grimoire-card flex h-full min-h-[15rem] cursor-pointer flex-col gap-3 p-5',
+              'transition-colors duration-150',
+              selectedHere ? 'border-gilt/60 bg-gilt/10' : 'hover:border-gilt/40',
+            ].join(' ')}
           >
             <header className="flex items-start justify-between gap-3">
               <div>
-                <Link
-                  to="/mod/$slug"
-                  params={{ slug: mod.slug }}
-                  className="font-serif-italic text-xl leading-tight text-parchment hover:text-gilt"
-                >
+                <span className="font-serif-italic text-xl leading-tight text-parchment">
                   {mod.name}
-                </Link>
+                </span>
                 <p className="font-mono mt-1 text-ash">
                   {mod.author} · v{mod.version}
                 </p>
               </div>
-              <input
-                type="checkbox"
-                checked={selectedHere}
-                onChange={() => onSelect(id)}
-                className="mt-1 h-4 w-4 rounded border-border bg-pitch/60"
-                aria-label={`Select ${mod.name}`}
-              />
+              <button
+                type="button"
+                onClick={() => onOpen?.(mod.slug)}
+                className="btn-grim shrink-0 px-2 py-1.5"
+                title="Open this mod's store page"
+                aria-label={`Open the store page for ${mod.name}`}
+              >
+                <ExternalLink className="h-4 w-4" />
+              </button>
             </header>
             <p className="font-serif-italic text-sm leading-snug text-smoke">{mod.summary}</p>
             {/* Status tags mount and unmount as a toggle changes conflict and
@@ -758,7 +827,13 @@ function CardGrid({
                   [overlay] block, and hanging the alignment off it would
                   left-align uninstall on every other card. */}
               <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-                <ConfigButton slug={mod.slug} hasConfig={mod.hasConfig} />
+                <ConfigButton
+                  modId={id}
+                  modName={mod.name}
+                  hasConfig={mod.hasConfig}
+                  enabled={enabled}
+                  onToggleEnabled={() => onToggle(id)}
+                />
                 <OverlayButton modId={id} />
                 <Button type="button" onClick={() => onUninstall(id)} variant="danger" size="sm">
                   uninstall
@@ -782,7 +857,7 @@ function ListView({
   onSelect,
   conflictCounts,
   missingDeps,
-  onEnableDependency,
+  onOpen,
 }: RowProps) {
   const [dragId, setDragId] = useState<string | null>(null);
   const reorderable = Boolean(onReorder);
@@ -794,6 +869,13 @@ function ListView({
         if (!mod) return null;
         const enabled = isEnabledIn(profile, id);
         const isDragging = dragId === id;
+        const isSelected = selected.has(id);
+        const flags =
+          (missingDeps.get(id) ?? 0) > 0
+            ? 'missing deps'
+            : (conflictCounts.get(id) ?? 0) > 0
+              ? 'conflict'
+              : null;
         return (
           <li
             key={id}
@@ -824,63 +906,86 @@ function ListView({
                   }
                 : undefined
             }
-            className={`flex items-center gap-4 px-4 py-3 transition-opacity duration-150 ${
-              isDragging ? 'opacity-40' : ''
-            } ${dragId && !isDragging ? 'opacity-60' : ''} hover:bg-oxblood/10`}
+            // Clicking the row SELECTS it. It used to open the mod's store
+            // page, so a mis-aimed click navigated away from the library; and
+            // selection needed its own checkbox sitting right beside the
+            // enable switch, two lookalike controls doing opposite things.
+            // Now the row is the checkbox and the switch is the only toggle.
+            onClick={(e) => {
+              if ((e.target as HTMLElement).closest('button, a, input, [role="switch"]')) return;
+              onSelect(id);
+            }}
+            // The row itself is the control: an <input type="checkbox"> cannot
+            // wrap a switch, tags and four buttons — which is exactly why the
+            // separate checkbox column went away.
+            // biome-ignore lint/a11y/useSemanticElements: composite row, see above
+            // biome-ignore lint/a11y/noNoninteractiveElementToInteractiveRole: same
+            role="checkbox"
+            aria-checked={isSelected}
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter' && e.key !== ' ') return;
+              e.preventDefault();
+              onSelect(id);
+            }}
+            className={[
+              'flex items-center gap-3 px-3 py-1.5 text-sm transition-colors',
+              isSelected ? 'bg-gilt/15' : 'hover:bg-oxblood/10',
+              isDragging ? 'opacity-40' : '',
+              dragId && !isDragging ? 'opacity-60' : '',
+            ].join(' ')}
           >
-            {reorderable ? <GripVertical className="h-4 w-4 cursor-grab text-ash" /> : null}
-            <input
-              type="checkbox"
-              checked={selected.has(id)}
-              onChange={() => onSelect(id)}
-              className="h-4 w-4 rounded border-border bg-pitch/60"
-              aria-label={`Select ${mod.name}`}
-            />
+            {reorderable ? (
+              <GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-ash" />
+            ) : null}
+            <span className="font-mono w-7 shrink-0 text-right text-[0.7rem] text-ash">
+              {orderIdx + 1}
+            </span>
             <InkSwitch
               on={enabled}
               onClick={() => onToggle(id)}
               label={`${enabled ? 'Disable' : 'Enable'} ${mod.name}`}
             />
-            <div className="flex-1">
-              <Link
-                to="/mod/$slug"
-                params={{ slug: mod.slug }}
-                className="font-serif-italic text-lg text-parchment hover:text-gilt"
-              >
-                {mod.name}
-              </Link>
-              <p className="font-mono text-ash">
-                {mod.author} · v{mod.version}
-                {mod.version !== mod.latestVersion ? (
-                  <>
-                    {' '}
-                    · <span className="text-gilt">→ {mod.latestVersion}</span>
-                  </>
-                ) : null}
-              </p>
-              {/* Reserved height: these tags appear the moment a toggle
-                  creates a conflict, and a 0px→20px row grew every row below
-                  it out from under the pointer. */}
-              <div className="mt-1 flex min-h-[1.25rem] flex-wrap gap-1.5">
-                {(missingDeps.get(id) ?? 0) > 0 ? (
-                  <MonoTag tone="crimson">missing deps</MonoTag>
-                ) : null}
-                {(conflictCounts.get(id) ?? 0) > 0 ? (
-                  <MonoTag tone="crimson">conflict</MonoTag>
-                ) : null}
-              </div>
-              <DependencyStrip
-                mod={mod}
-                profile={profile}
-                onEnableDependency={onEnableDependency}
-              />
-            </div>
-            <StatPill value={`#${orderIdx + 1}`} label="load" className="tracking-normal" />
-            <ConfigButton slug={mod.slug} hasConfig={mod.hasConfig} />
+            {/* One line. The old row stacked name, author, a reserved tag
+                strip and a dependency strip — four blocks tall, so a dozen
+                mods no longer fit on screen. */}
+            <span className="min-w-0 flex-1 truncate text-parchment" title={mod.name}>
+              {mod.name}
+            </span>
+            <span className="font-mono hidden shrink-0 text-[0.7rem] text-ash sm:inline">
+              {mod.author} · v{mod.version}
+            </span>
+            {mod.version !== mod.latestVersion ? (
+              <MonoTag tone="gilt">→ {mod.latestVersion}</MonoTag>
+            ) : null}
+            {flags ? <MonoTag tone="crimson">{flags}</MonoTag> : null}
+            <ConfigButton
+              modId={id}
+              modName={mod.name}
+              hasConfig={mod.hasConfig}
+              enabled={enabled}
+              onToggleEnabled={() => onToggle(id)}
+            />
             <OverlayButton modId={id} />
-            <Button type="button" onClick={() => onUninstall(id)} variant="danger" size="sm">
-              uninstall
-            </Button>
+            <button
+              type="button"
+              onClick={() => onOpen?.(mod.slug)}
+              className="btn-grim shrink-0 px-2 py-1.5"
+              title="Open this mod's store page"
+              aria-label={`Open the store page for ${mod.name}`}
+            >
+              <ExternalLink className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => onUninstall(id)}
+              className="btn-grim shrink-0 px-2 py-1.5"
+              data-variant="danger"
+              title="Uninstall this mod"
+              aria-label={`Uninstall ${mod.name}`}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
           </li>
         );
       })}

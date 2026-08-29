@@ -1,9 +1,15 @@
 """Per-mod config: schema validation + persisted store.
 
 Schema:
-    {fields.<key>.{type, default, min, max, label, choices, enum}}
+    {fields.<key>.{type, default, min, max, label, choices, enum, source}}
 
-Types: bool, int, float, string, enum.
+Types: bool, int, float, string, enum, multiselect.
+
+A `multiselect` field holds a LIST of ids. Its options are either spelled out
+in `choices`, or fetched from an allowlisted provider named by `source` — see
+`rsmm.sdk.config_choices`. A provider supplies a label, a group and an icon per
+option, which is what lets the client draw a searchable grid of game art
+instead of a wall of internal ids.
 
 Storage:
     mods/<id>/config.toml  — user-edited values
@@ -21,7 +27,7 @@ from rsmm.engine.safeio import atomic_write_text
 
 from .api import sdk_export
 
-_TYPES = {"bool", "int", "float", "string", "enum"}
+_TYPES = {"bool", "int", "float", "string", "enum", "multiselect"}
 
 #: The escapes TOML defines a short form for. Every other control character
 #: goes out as `\uXXXX` — see `ConfigStore._toml_repr`.
@@ -40,6 +46,20 @@ class ConfigError(ValueError):
     pass
 
 
+def _check_source(name: str, raw: Any) -> str | None:
+    """Validate a `multiselect` field's option provider against the allowlist."""
+    if raw is None:
+        return None
+    from .config_choices import PROVIDERS
+    src = str(raw)
+    if src not in PROVIDERS:
+        raise ConfigError(
+            f"{name}: source {src!r} is not a known option provider "
+            f"(one of {', '.join(sorted(PROVIDERS))})"
+        )
+    return src
+
+
 @dataclass
 class Field:
     name: str
@@ -49,6 +69,10 @@ class Field:
     max: float | int | None = None
     choices: list[str] = field(default_factory=list)
     label: str = ""
+    #: Allowlisted option provider for a `multiselect`. A NAME, never a path or
+    #: a command: the desktop webview can spawn the CLI, so anything a mod
+    #: could inject here would run on the player's machine.
+    source: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -58,6 +82,7 @@ class Field:
             "max": self.max,
             "choices": list(self.choices),
             "label": self.label,
+            "source": self.source,
         }
 
     def coerce(self, value: Any) -> Any:
@@ -84,6 +109,22 @@ class Field:
                     f"{self.name}: {v!r} not in {self.choices}"
                 )
             return v
+        if self.type == "multiselect":
+            if isinstance(value, str):
+                value = [value]
+            if not isinstance(value, (list, tuple)):
+                raise ConfigError(f"{self.name}: expected a list of ids")
+            out = sorted({str(x) for x in value if str(x).strip()})
+            # A `source` field's valid set lives in the game install and can be
+            # absent (no install yet, a game update). Rejecting an unknown id
+            # here would DELETE the player's selection the first time the CLI
+            # ran somewhere the catalog could not be read, so membership is
+            # only enforced for a statically declared `choices` list.
+            if self.choices and self.source is None:
+                bad = [v for v in out if v not in self.choices]
+                if bad:
+                    raise ConfigError(f"{self.name}: {bad} not in {self.choices}")
+            return out
         raise ConfigError(f"{self.name}: unknown type {self.type!r}")
 
     def _range_check(self, v: float | int) -> None:
@@ -112,6 +153,7 @@ class ConfigSchema:
                 max=body.get("max"),
                 choices=list(body.get("choices", []) or []),
                 label=str(body.get("label", name)),
+                source=_check_source(name, body.get("source")),
             )
             # Validate the default eagerly so a broken schema fails at build.
             if s.fields[name].default is not None:
@@ -226,6 +268,8 @@ class ConfigStore:
             return "true" if v else "false"
         if isinstance(v, (int, float)):
             return str(v)
+        if isinstance(v, (list, tuple)):
+            return "[" + ", ".join(ConfigStore._toml_repr(x) for x in v) + "]"
         # String. Escaping only `\` and `"` was not enough: TOML basic strings
         # forbid raw control characters, so a value containing a newline — which
         # the desktop config editor happily accepts — produced a config.toml

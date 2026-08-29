@@ -1,14 +1,14 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { Link, Outlet, createRootRouteWithContext, useLocation } from '@tanstack/react-router';
 import { AlertTriangle } from 'lucide-react';
-import { FlaskConical, PanelLeftClose, PanelLeftOpen, ScrollText, Terminal } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, ScrollText, Terminal } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import PromotedBanner from '../components/PromotedBanner';
 import { AccountStrip } from '../components/account-strip';
-import { Button, CopyButton, StatPill } from '../components/chrome';
 import { FirstRunDialogs } from '../components/changelog-dialog';
+import { Button, CopyButton, StatPill } from '../components/chrome';
 import { CommandPalette } from '../components/command-palette';
 import { BrowseIcon } from '../components/icons/BrowseIcon';
 import { ConflictsIcon } from '../components/icons/ConflictsIcon';
@@ -34,7 +34,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 interface Nav {
-  to: '/' | '/browse' | '/profiles' | '/conflicts' | '/author' | '/settings' | '/commands' | '/log';
+  to: '/' | '/browse' | '/profiles' | '/conflicts' | '/settings' | '/commands' | '/log';
   icon: React.ComponentType<{ className?: string }>;
   label: string;
 }
@@ -45,12 +45,8 @@ const NAV: Nav[] = [
   { to: '/', icon: LibraryIcon, label: 'Library' },
   { to: '/browse', icon: BrowseIcon, label: 'Browse' },
   { to: '/profiles', icon: ProfilesIcon, label: 'Profiles' },
-  // /author is dev-only — cooked-asset inspector, not part of the
-  // public client. Visible only in dev builds; route still resolves via
-  // direct URL in case a dev pins it for local testing.
-  ...(import.meta.env.DEV
-    ? ([{ to: '/author' as const, icon: FlaskConical, label: 'Author' }] satisfies Nav[])
-    : []),
+  // /author (the cooked-asset inspector) has no sidebar entry — it is a dev
+  // tool, not a destination. The route still resolves by direct URL.
   { to: '/commands', icon: Terminal, label: 'Commands' },
   { to: '/log', icon: ScrollText, label: 'Log' },
 ];

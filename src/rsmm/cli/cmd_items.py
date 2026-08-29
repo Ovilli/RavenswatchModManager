@@ -10,6 +10,13 @@ the in-repo cooked corpus (``data/uncooked``), no game install required.
   rsmm items list --rarity Common --grep armor
   rsmm items show Armor_Per_Object # rarity, icon, editable value fields
   rsmm items icons [--grep arm]    # list usable icon stems
+  rsmm items catalog               # what the INSTALL actually offers, with names
+  rsmm items ban --add Armor_Per_Object   # edit the managed ban list
+
+`list`/`show`/`icons` read the in-repo corpus and serve item AUTHORING.
+`catalog`/`ban` read the install and serve item BANNING — a different set,
+because the corpus carries templates and unreleased items the game never
+offers, and only what the catalog lists can be banned.
 """
 
 from __future__ import annotations
@@ -152,6 +159,75 @@ def _cmd_icons(args) -> int:
     return 0
 
 
+def _cmd_catalog(args) -> int:
+    """What the install's catalog actually offers, with display names + icons."""
+    from rsmm.engine import item_catalog as IC
+
+    if args.json:
+        print(IC.to_json(icons=args.icons, lang=args.lang))
+        return 0
+    items = IC.catalog(lang=args.lang)
+    if not items:
+        print("no install reachable (or no LiveOps manifest found)", file=sys.stderr)
+        return 1
+    banned = set(_bans(args))
+    for it in items:
+        if args.rarity and it.rarity.lower() != args.rarity.lower():
+            continue
+        hay = f"{it.id} {it.name or ''}".lower()
+        if args.grep and args.grep.lower() not in hay:
+            continue
+        mark = "BANNED" if it.id in banned else ""
+        print(f"  [{it.rarity:<10}] {(it.name or '—'):<28} {it.id:<44} {mark}")
+    return 0
+
+
+def _bans(args) -> list[str]:
+    from rsmm.engine import item_bans
+    return item_bans.read_bans(getattr(args, "mod", None) or item_bans.DEFAULT_MOD_ID)
+
+
+def _cmd_ban(args) -> int:
+    """Read or edit the managed ban list."""
+    import json as _json
+
+    from rsmm.engine import item_bans
+
+    mod = args.mod or item_bans.DEFAULT_MOD_ID
+    current = set(item_bans.read_bans(mod))
+
+    if args.set is not None:
+        wanted = {x for x in args.set.split(",") if x.strip()}
+    else:
+        wanted = set(current)
+        wanted |= {x for x in (args.add or "").split(",") if x.strip()}
+        wanted -= {x for x in (args.remove or "").split(",") if x.strip()}
+
+    changed = wanted != current
+    if changed:
+        try:
+            path = item_bans.write_bans(sorted(wanted), mod)
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+    else:
+        path = item_bans.manifest_path(mod)
+
+    if args.json:
+        print(_json.dumps({"ok": True, "mod": mod, "items": sorted(wanted),
+                           "changed": changed, "path": str(path)}, indent=1))
+        return 0
+    if not wanted:
+        print(f"{mod}: no items banned")
+    else:
+        print(f"{mod}: {len(wanted)} item(s) banned")
+        for i in sorted(wanted):
+            print(f"  {i}")
+    if changed:
+        print("\nRun `rsmm apply` to write it to the game.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="rsmm items",
                                  description="Discover vanilla magical objects.")
@@ -170,11 +246,32 @@ def main(argv: list[str] | None = None) -> int:
     pi = sub.add_parser("icons", help="list usable icon stems")
     pi.add_argument("--grep", help="substring filter on stem")
 
+    pc = sub.add_parser("catalog",
+                        help="items the INSTALL offers, with display names")
+    pc.add_argument("--json", action="store_true", help="machine-readable output")
+    pc.add_argument("--icons", action="store_true",
+                    help="with --json, inline each icon as a base64 PNG data URL")
+    pc.add_argument("--lang", default="EN", help="display-name language (default EN)")
+    pc.add_argument("--rarity", help="filter: " + ", ".join(_RARITIES))
+    pc.add_argument("--grep", help="substring filter on id or display name")
+    pc.add_argument("--mod", help="ban-list mod to mark against (default: managed)")
+
+    pb = sub.add_parser("ban", help="read or edit the managed item ban list")
+    pb.add_argument("--add", help="comma-separated item ids to ban")
+    pb.add_argument("--remove", help="comma-separated item ids to un-ban")
+    pb.add_argument("--set", help="comma-separated ids to ban, replacing the list")
+    pb.add_argument("--mod", help="mod folder to edit (default: banned-items)")
+    pb.add_argument("--json", action="store_true", help="machine-readable output")
+
     args = ap.parse_args(argv if argv is not None else sys.argv[1:])
     if args.cmd == "show":
         return _cmd_show(args)
     if args.cmd == "icons":
         return _cmd_icons(args)
+    if args.cmd == "catalog":
+        return _cmd_catalog(args)
+    if args.cmd == "ban":
+        return _cmd_ban(args)
     # default (no subcommand or `list`)
     if args.cmd in (None, "list"):
         if not hasattr(args, "rarity"):

@@ -48,6 +48,7 @@ newline). Stderr is forwarded for diagnostics. Exit code is 0 on success.
 from __future__ import annotations
 
 import argparse
+import base64
 import contextlib
 import hashlib
 import json
@@ -208,7 +209,24 @@ def cmd_config_get(mod_id: str) -> int:
         "path": str(store.mod_dir),
         "schema": store.schema_as_dict(),
         "values": store.as_dict(),
+        "choices": _resolved_choices(store),
     })
+
+
+def _resolved_choices(store: ConfigStore) -> dict[str, list[dict[str, Any]]]:
+    """Options for every `multiselect` field that names a provider.
+
+    Sent with the schema rather than fetched separately so the panel can draw
+    labels and art in one round trip. Only provider-backed fields appear —
+    a field with a static `choices` list already carries everything it needs.
+    """
+    from rsmm.sdk.config_choices import provide
+
+    out: dict[str, list[dict[str, Any]]] = {}
+    for name, field in store.schema.fields.items():
+        if field.type == "multiselect" and field.source:
+            out[name] = provide(field.source)
+    return out
 
 
 def cmd_config_set(mod_id: str, values_json: str) -> int:
@@ -1589,6 +1607,68 @@ def cmd_changelog(refresh: bool) -> int:
         return _emit({"ok": False, "status": "error", "entries": [], "error": str(e)})
 
 
+def cmd_item_catalog(icons: bool, lang: str) -> int:
+    """Every magical object the install's catalog offers, for the item picker.
+
+    Icons are inlined as base64 PNG data URLs because the desktop CSP already
+    allows ``data:`` for images, so the grid needs no asset-protocol plumbing.
+    Decoding all of them costs a few seconds once and is cached on disk, so the
+    cost is paid on first open and not on every one.
+    """
+    from rsmm.engine import item_bans, item_catalog
+
+    try:
+        game_dir = find_game_dir()
+    except Exception as exc:                      # noqa: BLE001 - reported, not raised
+        return _emit({"ok": False, "error": str(exc), "items": []})
+    if game_dir is None:
+        return _emit({"ok": False, "items": [],
+                      "error": "no Ravenswatch install found"})
+    try:
+        items = item_catalog.catalog(game_dir, lang=lang)
+    except Exception as exc:                      # noqa: BLE001
+        return _emit({"ok": False, "error": str(exc), "items": []})
+
+    banned = set(item_bans.read_bans())
+    rows = []
+    for it in items:
+        row = it.to_json()
+        row["banned"] = it.id in banned
+        if icons:
+            png = item_catalog.icon_png(game_dir, it)
+            row["icon_png"] = (
+                "data:image/png;base64," + base64.b64encode(png).decode()
+            ) if png else None
+        rows.append(row)
+    return _emit({"ok": True, "items": rows, "count": len(rows),
+                  "mod": item_bans.DEFAULT_MOD_ID})
+
+
+def cmd_item_bans_get() -> int:
+    from rsmm.engine import item_bans
+    return _emit({"ok": True, "mod": item_bans.DEFAULT_MOD_ID,
+                  "items": item_bans.read_bans()})
+
+
+def cmd_item_bans_set(items_json: str) -> int:
+    """Replace the managed ban list. The caller sends the whole list, never a
+    delta, so two picker windows cannot interleave into a half-applied set."""
+    from rsmm.engine import item_bans
+
+    try:
+        payload = json.loads(items_json)
+    except ValueError as exc:
+        return _emit({"ok": False, "error": f"invalid JSON: {exc}"})
+    if not isinstance(payload, list) or not all(isinstance(x, str) for x in payload):
+        return _emit({"ok": False, "error": "payload must be a JSON array of item ids"})
+    try:
+        path = item_bans.write_bans(payload)
+    except (ValueError, OSError) as exc:
+        return _emit({"ok": False, "error": str(exc)})
+    return _emit({"ok": True, "mod": item_bans.DEFAULT_MOD_ID,
+                  "items": item_bans.read_bans(), "path": str(path)})
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="rsmm json",
@@ -1646,6 +1726,16 @@ def main(argv: list[str] | None = None) -> int:
     p_cfg_set = cfg_sub.add_parser("set", help="replace config values")
     p_cfg_set.add_argument("mod_id", help="folder name under mods/")
     p_cfg_set.add_argument("values_json", help="JSON object with config values")
+    p_cat = sub.add_parser("item-catalog",
+                           help="magical objects the install offers, for the picker")
+    p_cat.add_argument("--icons", action="store_true",
+                       help="inline each icon as a base64 PNG data URL")
+    p_cat.add_argument("--lang", default="EN", help="display-name language")
+    p_bans = sub.add_parser("item-bans", help="read or set the managed item ban list")
+    bans_sub = p_bans.add_subparsers(dest="bans_cmd", required=True)
+    bans_sub.add_parser("get", help="read the current ban list")
+    p_bans_set = bans_sub.add_parser("set", help="replace the ban list")
+    p_bans_set.add_argument("items_json", help="JSON array of item ids to ban")
     p_uninstall = sub.add_parser("uninstall-mod", help="remove a mod from mods/<id>/")
     p_uninstall.add_argument("mod_id", help="folder name under mods/")
     p_flags = sub.add_parser("loader-flags", help="read or set loader feature flags")
@@ -1723,6 +1813,13 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_config_set(args.mod_id, args.values_json)
         ap.error(f"unknown config subcommand: {args.config_cmd}")
         return 2
+    if args.cmd == "item-catalog":
+        return cmd_item_catalog(args.icons, args.lang)
+    if args.cmd == "item-bans":
+        if args.bans_cmd == "get":
+            return cmd_item_bans_get()
+        if args.bans_cmd == "set":
+            return cmd_item_bans_set(args.items_json)
     if args.cmd == "uninstall-mod":
         return cmd_uninstall_mod(args.mod_id)
     if args.cmd == "update-data":

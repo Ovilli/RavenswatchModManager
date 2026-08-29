@@ -53,4 +53,11 @@ export interface Mod {
   nsfw?: boolean;
   /** The mod declares a config schema, so it has settings worth opening. */
   hasConfig?: boolean;
+  /**
+   * `enabled` as the mod's own `manifest.toml` states it — what `rsmm apply`
+   * reads. Distinct from being enabled in a PROFILE (`isEnabledIn`): this is
+   * disk truth, and adopting a mod into a profile seeds the profile from it so
+   * a folder the user had turned off does not come back on.
+   */
+  diskEnabled?: boolean;
 }

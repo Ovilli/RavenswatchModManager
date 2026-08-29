@@ -35,7 +35,13 @@ KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "skill", "modifier",
 #: enforces this. Keep this table honest — it is the single source of
 #: truth consumed by the SDK, the linter, and ``docs/MODDING.md``.
 KIND_CONFIDENCE: dict[str, str] = {
-    "item": "confirmed",      # verified in compendium + drops (2026-06-02)
+    "item": "confirmed",      # mode="clone" verified in compendium + drops (2026-06-02).
+                              # mode="ban" (dropping vanilla entries from the same
+                              # LiveOps MO vector) is the exact inverse of that proven
+                              # write and is refused at emit for an id the corpus does
+                              # not have, but is NOT yet in-game proven. Rating stays
+                              # confirmed because downgrading it would newly require
+                              # experimental=true from every working clone mod.
     "talent": "confirmed",    # plain in-place magnitude override, tested
     "enemy": "experimental",  # mode="override" is PROVEN in-game 2026-08-28 (entity_ref is
                               # what the camp instantiates; cross_biome pool repoint places

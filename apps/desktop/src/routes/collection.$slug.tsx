@@ -1,7 +1,7 @@
 import { ApiError, isRateLimited } from '@rsmm/api-client';
 import { ProgressBar } from '@rsmm/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, useCanGoBack, useNavigate, useRouter } from '@tanstack/react-router';
 import {
   ArrowLeft,
   ChevronLeft,
@@ -39,6 +39,19 @@ export const Route = createFileRoute('/collection/$slug')({
 function CollectionDetailPage() {
   const { slug } = Route.useParams();
   const navigate = useNavigate();
+  const router = useRouter();
+  const canGoBack = useCanGoBack();
+
+  /**
+   * Return the way the user arrived. /browse is only correct when there is no
+   * history to step back through (a deep link, a fresh window) — navigating
+   * there unconditionally sent anyone who opened this from elsewhere to a page
+   * they had never been on.
+   */
+  const goBack = () => {
+    if (canGoBack) router.history.back();
+    else navigate({ to: '/browse' });
+  };
   const queryClient = useQueryClient();
   const toast = useToast();
   const dialog = useDialog();
@@ -193,7 +206,7 @@ function CollectionDetailPage() {
   if (!data) {
     return (
       <div className="space-y-4">
-        <Button type="button" size="sm" onClick={() => navigate({ to: '/browse' })}>
+        <Button type="button" size="sm" onClick={goBack}>
           ← back
         </Button>
         {fetchFailed ? (
@@ -227,7 +240,7 @@ function CollectionDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Button type="button" size="sm" onClick={() => navigate({ to: '/browse' })}>
+      <Button type="button" size="sm" onClick={goBack}>
         <ArrowLeft className="h-3.5 w-3.5" /> back
       </Button>
 

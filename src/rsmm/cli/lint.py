@@ -431,6 +431,16 @@ def _lint_content(modname: str, blocks: list[dict],
             print(f"  {_T_FAIL} {_ST.bold(modname)}: item content missing 'id'")
             errs += 1
             continue
+        if c.get("mode") == "ban":
+            # A ban removes vanilla entries from the magical-object catalog; it
+            # has no `base` to clone and no value_patches to check. The ids are
+            # validated at emit against the install catalog (or the corpus).
+            if not c.get("items"):
+                print(f"  {_T_FAIL} {_ST.bold(modname)}: item "
+                      f"{_ST.accent(str(cid))}: mode='ban' needs a non-empty "
+                      f"'items' list")
+                errs += 1
+            continue
         if not base:
             print(f"  {_T_FAIL} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
                   f"missing 'base'")

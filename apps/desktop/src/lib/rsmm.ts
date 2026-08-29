@@ -455,12 +455,28 @@ export interface LocalMod {
 }
 
 export interface ModConfigField {
-  type: 'bool' | 'int' | 'float' | 'string' | 'enum';
-  default: boolean | number | string | null;
+  /** `multiselect` holds a LIST of ids. Its options are either the static
+   *  `choices` list or, when `source` names an allowlisted CLI provider, the
+   *  richer `ModConfigChoice[]` delivered alongside the schema. */
+  type: 'bool' | 'int' | 'float' | 'string' | 'enum' | 'multiselect';
+  default: boolean | number | string | string[] | null;
   min: number | null;
   max: number | null;
   choices: string[];
   label: string;
+  source?: string | null;
+}
+
+/** One option of a provider-backed `multiselect`. */
+export interface ModConfigChoice {
+  id: string;
+  label: string;
+  /** Heading to group under; empty when the provider gives none. */
+  group: string;
+  /** Inline `data:image/png;base64,` URL, or empty. The CLI drops any other
+   *  form, so this can never become a request to a remote host. */
+  icon: string;
+  description: string;
 }
 
 export interface ModConfigSchema {
@@ -473,7 +489,9 @@ export interface ModConfigResponse {
   modId?: string;
   path?: string;
   schema?: ModConfigSchema;
-  values?: Record<string, boolean | number | string>;
+  values?: Record<string, boolean | number | string | string[]>;
+  /** Resolved options, per provider-backed `multiselect` field. */
+  choices?: Record<string, ModConfigChoice[]>;
 }
 
 interface RunResult {
@@ -589,7 +607,7 @@ export async function getModConfig(modId: string): Promise<ModConfigResponse> {
 
 export async function setModConfig(
   modId: string,
-  values: Record<string, boolean | number | string>,
+  values: Record<string, boolean | number | string | string[]>,
 ): Promise<ModConfigResponse> {
   const result = await rsmm<ModConfigResponse>(['config', 'set', modId, JSON.stringify(values)], {
     timeoutMs: LONG_TIMEOUT_MS,

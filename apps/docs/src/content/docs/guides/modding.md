@@ -313,6 +313,56 @@ m.i18n("FR", {"FrostBlade_desc": "Gèle à l'impact."})
 print(m.summary())                            # dict of everything staged, no disk write
 ```
 
+#### Config with icons (`multiselect`)
+
+A config field is normally `bool`/`int`/`float`/`string`/`enum`. A
+`multiselect` holds a **list** of ids and, when it names an allowlisted option
+provider, the desktop draws it as a searchable list of the game's own art:
+
+```toml
+# mods/<id>/config_schema.toml
+[fields.banned]
+type   = "multiselect"
+source = "item-catalog"   # allowlisted provider; NOT a path or a command
+label  = "Banned items"
+default = []
+```
+
+The CLI resolves `source` into options — `{id, label, group, icon,
+description}` — and sends them with the schema, so the panel renders labels,
+grouping, search and art in one round trip. Read the value back with the normal
+config API (`ConfigStore(mod_dir).get("banned")`); the `banned-items` mod's
+`[[content]]` ban block takes its item list from exactly that.
+
+#### A saved config reaches the game on the next launch, never sooner
+
+Nothing about config is hot-reloaded. The loader hands a mod its values once,
+when it loads the mod, and a config that feeds `[[content]]` (an item ban, say)
+only becomes real when `rsmm apply` rewrites the cooked asset that carries it —
+which the desktop runs as part of Play. So an edit made while Ravenswatch is
+running changes nothing in that session: quit the game completely, then launch
+again. The desktop config panel says so after every save, and marks the
+asset-rebuilding case (any provider-backed field) explicitly, because that
+launch does real work before the game starts.
+
+Providers are an **allowlist**: a mod supplies a name, never a path, a URL or a
+command. The desktop webview can spawn the CLI, so anything a mod could inject
+there would run on the player's machine — the same reason overlay shape is data
+and never markup. `item-catalog` is the only provider today.
+
+:::caution[An option icon must be an inline data URL]
+`data:image/png;base64,…` only, under 64 KB. A path or a remote URL is dropped
+rather than passed through, so a mod can never make the client fetch on its
+behalf. The CLI decodes the game's own cooked textures to PNG
+(`rsmm.engine.icon_decode`, pure stdlib — the shipped CLI has no runtime
+dependencies) and caches them under `<game>/rsmm/cache/items/`.
+:::
+
+A provider-backed field does **not** reject ids it cannot currently see. The
+valid set lives in the game install, which may be missing or newly patched, and
+dropping an unrecognised id would silently delete the player's selection the
+first time the CLI ran somewhere the catalog could not be read.
+
 ### Test offline (no game)
 
 `rsmm.sdk.testkit` asserts over staged state without applying:
@@ -462,6 +512,66 @@ this is the first thing to suspect.
 assets — not re-rolled per run. That is what keeps co-op consistent: peers
 have to agree on the seed, not on a runtime RNG. A peer without the mod sees
 vanilla monsters.
+
+### Disable items (`kind="item"`, `mode="ban"`)
+
+Drop vanilla magical objects from the catalog so they can never be offered or
+drop — the "ban the crutch items" challenge-run lever.
+
+```toml
+[[content]]
+kind  = "item"
+mode  = "ban"
+id    = "no_crutches"
+items = ["Avoid_Death_Once_Per_Chapter", "Armor_Per_Object"]
+```
+
+Or skip the ids entirely and **pick the items from a list of the game's own
+icons**: the `banned-items` mod declares a `multiselect` config field (see
+[Config with icons](#config-with-icons-multiselect)), so opening its config in
+the desktop app shows every item with its art, display name and effect text, and
+the ban list is whatever you ticked. `rsmm items catalog` is the same list in a
+terminal, and `rsmm items ban --add <id>` edits it without a UI. When a mod
+declares the picker, the picker's selection wins over the manifest's `items`
+list.
+
+`items` are bare vanilla item ids — the filenames under
+`EntitySettings/Objects/Magical_Objects/<Rarity>/`. `rsmm apply` rebuilds the
+LiveOps `versiondef` magical-object vector without them, so the engine never
+loads them into the pool and no draw can reach them. The vanilla manifest is
+backed up once and rebuilt from that pristine copy on every apply, so disabling
+the mod restores the full catalog.
+
+Bans from several mods are **unioned**, so two mods each banning a different
+item yield both bans.
+
+:::caution[This works in multiplayer only if every peer runs the mod]
+The offer draw is seeded and *host-authoritative deterministic*, so a per-peer
+runtime filter — a loader hook, a Lua callback — would make peers disagree
+about the roll and desync the run. That is why the ban is data-level: every
+peer builds an identical pool from identical assets, so the deterministic draw
+stays identical everywhere.
+
+Mismatched installs do **not** crash — a grant networks by GUID and the pool
+lookup guards a miss, so a peer without the item simply doesn't receive it —
+but players will see different offers. Whether a host-only install is enough
+(i.e. whether offers are drawn host-side and broadcast, or replayed per peer
+from a shared seed) is **untested**; don't rely on it.
+:::
+
+Two side effects worth knowing:
+
+- A banned item **disappears from the compendium** too. The catalog entry is
+  what the compendium enumerates; there is no separate "hide from drops only"
+  flag.
+- The entity file itself stays installed and its resource-cache line is left
+  alone. That is deliberate: a surplus cache line only wastes a preload, while
+  a missing one crashes the load.
+
+An id that no vanilla item has is refused at emit time when the asset corpus is
+available, and reported as a `[warn]` against the install's own manifest at
+apply time. Banning a name nothing matches is otherwise a perfectly well-formed
+no-op that only surfaces as "the banned item still dropped" a playtest later.
 
 ### Magical-object & talent values (`value_patches`)
 
@@ -916,6 +1026,7 @@ them. Don't trust prose over that table — but here it is in plain terms:
 | **PNG → cooked texture** | ✅ confirmed | `engine/cooked_schemas/texture.py` cooks PNG/DDS/TGA into the `oCTexture` container at apply-time. |
 | **Custom 3D mesh** (`.glb`/`.gltf`) | ⚠️ experimental | `engine/geometry_cook.py` round-trips and retargets a mesh onto the original's skeleton (≤65535 verts), but in-game render is only partially proven. See `DesertEagleJuliet`. |
 | **Custom magic item** (`kind="item"`) | ✅ confirmed | New magical object shows in compendium + drops (verified 2026-06-02). Clone a vanilla `base`, patch values. See `ItemCloneTest`. |
+| **Disable an item** (`kind="item"`, `mode="ban"`) | ⚠️ unproven | Exact inverse of the proven catalog write above — drops entries from the same LiveOps MO vector. Data-level, so multiplayer-correct when every peer runs the mod. Not yet confirmed in-game. |
 | **Edit talent / item values** (`kind="talent"`, `value_patches`) | ✅ confirmed | In-place magnitude override. See `JulietTalentBuff`. |
 | **Reskin an existing hero** (texture/model override) | ✅ confirmed | See `JulietReskin`. |
 | **Custom enemy** (`kind="enemy"`, `mode="clone"`) | ⚠️ experimental | Codec round-trips and the def self-registers at load (`EnemyDef_PostLoad` push_backs onto the tribe roster), so `UsedRscList` registration is the whole contract — but a clone has not yet been seen spawning in-game. |

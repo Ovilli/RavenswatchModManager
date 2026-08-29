@@ -1,11 +1,11 @@
 import { Input } from '@rsmm/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { inTauri } from '../lib/platform';
-import { type ModConfigField, getModConfig, setModConfig } from '../lib/rsmm';
+import { type ModConfigChoice, type ModConfigField, getModConfig, setModConfig } from '../lib/rsmm';
 import { Button, Fleuron, InkSwitch, Panel } from './chrome';
 
-type ConfigValue = boolean | number | string;
+type ConfigValue = boolean | number | string | string[];
 
 export function ModConfigPanel({
   modId,
@@ -13,14 +13,19 @@ export function ModConfigPanel({
   enabled,
   onToggleEnabled,
   onDirtyChange,
+  frameless,
 }: {
   modId: string;
   modName: string;
   enabled?: boolean;
   onToggleEnabled?: () => void;
   onDirtyChange?: (modId: string, dirty: boolean) => void;
+  /** Drop the panel's own card chrome — for a host that already draws one
+   * (the per-mod config dialog), where nesting two cards doubles the border. */
+  frameless?: boolean;
 }) {
   const queryClient = useQueryClient();
+  const Shell = frameless ? FramelessShell : Panel;
   const [draft, setDraft] = useState<Record<string, ConfigValue>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
@@ -70,6 +75,13 @@ export function ModConfigPanel({
   const schema = configQuery.data?.schema?.fields ?? {};
   const keys = Object.keys(schema);
   const loadedValues = configQuery.data?.values ?? {};
+  // Options for provider-backed `multiselect` fields, resolved by the CLI and
+  // delivered with the schema so the panel draws labels and art in one trip.
+  const choices: Record<string, ModConfigChoice[]> = configQuery.data?.choices ?? {};
+  // A provider-backed field picks from the game's own catalog (items, so far),
+  // and `apply` turns that selection into rewritten cooked assets. That is the
+  // edit that costs a rebuild on the next launch, so it gets the louder wording.
+  const cooksAssets = Object.values(schemaFields ?? {}).some((f) => Boolean(f.source));
   const defaults = useMemo(() => buildDefaultDraft(schema), [schema]);
   const loadedDraft = useMemo(() => buildDraft(schema, loadedValues), [schema, loadedValues]);
   const validation = useMemo(
@@ -104,41 +116,48 @@ export function ModConfigPanel({
 
   if (configQuery.isLoading) {
     return (
-      <Panel>
+      <Shell>
         <h3 className="font-fraktur text-xl text-parchment mb-3">Config</h3>
         <Fleuron />
-        <div className="mt-4 space-y-3 animate-pulse" aria-busy="true">
+        {/* Say what the wait IS. A field backed by a catalog provider decodes
+            every icon out of the cooked game files on first open, which is a
+            few seconds of staring at a pulsing box otherwise. */}
+        <p className="mt-4 font-mono text-ash" aria-live="polite">
+          Reading config… a mod that lists game content decodes its art from the install, so the
+          first open can take a few seconds.
+        </p>
+        <div className="mt-3 space-y-3 animate-pulse" aria-busy="true">
           <div className="h-10 rounded bg-oxblood/15" />
           <div className="h-10 rounded bg-oxblood/15" />
         </div>
-      </Panel>
+      </Shell>
     );
   }
 
   if (configQuery.error) {
     return (
-      <Panel>
+      <Shell>
         <h3 className="font-fraktur text-xl text-parchment mb-3">Config</h3>
         <Fleuron />
         <p className="mt-4 text-sm text-ash">{configQuery.error.message}</p>
-      </Panel>
+      </Shell>
     );
   }
 
   if (!keys.length) {
     return (
-      <Panel>
+      <Shell>
         <h3 className="font-fraktur text-xl text-parchment mb-3">Config</h3>
         <Fleuron />
         <p className="mt-4 text-sm text-ash">
           This mod does not declare any editable config fields.
         </p>
-      </Panel>
+      </Shell>
     );
   }
 
   return (
-    <Panel>
+    <Shell>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="font-fraktur text-xl text-parchment mb-3">Config</h3>
@@ -191,6 +210,7 @@ export function ModConfigPanel({
               key={key}
               name={key}
               field={field}
+              choices={choices[key]}
               value={draft[key] ?? loadedValues[key] ?? fieldFallback(field)}
               error={validation.errors[key]}
               onChange={(next) => {
@@ -205,7 +225,162 @@ export function ModConfigPanel({
       {saveMutation.error ? (
         <p className="mt-4 text-sm text-crimson">{saveMutation.error.message}</p>
       ) : null}
-    </Panel>
+
+      {/* Nothing here is hot-reloaded: the loader hands a mod its config once,
+          at load, and any config that feeds COOKED content is baked into the
+          game's asset files by the `apply` that runs on Play. So a saved value
+          reaches a running game never — it needs a full quit and relaunch. */}
+      {saveMutation.isSuccess && !isDirty ? (
+        <div className="ember-banner mt-4 px-4 py-3">
+          <p className="font-serif-italic text-base">Saved — the running game will not see it.</p>
+          <p className="font-mono mt-1 text-ash">
+            Quit Ravenswatch completely, then press Play.{' '}
+            {cooksAssets
+              ? 'Launch rebuilds the affected game assets first, which takes a moment.'
+              : 'The mod reads its config when the game loads it.'}
+          </p>
+        </div>
+      ) : (
+        <p className="font-mono mt-4 text-ash">
+          Config is read at game load{cooksAssets ? ' and baked into game assets on launch' : ''} —
+          changes need a full game restart, not just a new run.
+        </p>
+      )}
+    </Shell>
+  );
+}
+
+function FramelessShell({ children }: { children: ReactNode }) {
+  return <div>{children}</div>;
+}
+
+function MultiSelectField({
+  id,
+  field,
+  choices,
+  value,
+  onChange,
+}: {
+  id: string;
+  field: ModConfigField;
+  choices: ModConfigChoice[];
+  value: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [search, setSearch] = useState('');
+
+  // A field with no provider still works: its static `choices` become plain
+  // options with no art, so the same control serves both kinds.
+  const options: ModConfigChoice[] =
+    choices.length > 0
+      ? choices
+      : field.choices.map((c) => ({ id: c, label: c, group: '', icon: '', description: '' }));
+
+  const q = search.trim().toLowerCase();
+  const shown = q
+    ? options.filter((o) => `${o.label} ${o.id} ${o.description}`.toLowerCase().includes(q))
+    : options;
+
+  const selected = new Set(value);
+  const toggle = (oid: string) => {
+    const next = new Set(selected);
+    if (next.has(oid)) next.delete(oid);
+    else next.add(oid);
+    onChange([...next].sort());
+  };
+
+  // Options arrive already grouped and sorted, so a heading is emitted
+  // whenever the neighbour's group differs — no second pass over the list.
+  let lastGroup: string | null = null;
+
+  if (options.length === 0) {
+    return (
+      <p className="text-sm text-ash">
+        No options available. {field.source ? 'Is Ravenswatch installed?' : null}
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <Input
+          id={id}
+          type="search"
+          value={search}
+          placeholder={`Search ${options.length} options…`}
+          onChange={(e) => setSearch(e.target.value)}
+          className="flex-1"
+        />
+        <span className="whitespace-nowrap text-xs text-ash">{selected.size} selected</span>
+        {selected.size > 0 ? (
+          <button
+            type="button"
+            onClick={() => onChange([])}
+            className="whitespace-nowrap text-xs text-ash underline hover:text-parchment"
+          >
+            Clear
+          </button>
+        ) : null}
+      </div>
+
+      <div className="max-h-96 space-y-2 overflow-y-auto rounded border border-border bg-pitch/40 p-2">
+        {shown.length === 0 ? (
+          <p className="p-2 text-center text-sm text-ash">Nothing matches “{search}”.</p>
+        ) : (
+          shown.map((opt) => {
+            const on = selected.has(opt.id);
+            const heading = opt.group && opt.group !== lastGroup ? opt.group : null;
+            lastGroup = opt.group || lastGroup;
+            return (
+              <Fragment key={opt.id}>
+                {heading ? (
+                  <p className="px-1 pt-2 font-fraktur text-ash text-xs uppercase tracking-wide">
+                    {heading}
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  aria-pressed={on}
+                  title={opt.description || opt.id}
+                  onClick={() => toggle(opt.id)}
+                  className={[
+                    'flex w-full items-center gap-3 rounded px-2 py-1.5 text-left transition',
+                    on ? 'bg-crimson/20 text-parchment' : 'hover:bg-char/40 text-smoke',
+                  ].join(' ')}
+                >
+                  {opt.icon ? (
+                    <img
+                      src={opt.icon}
+                      alt=""
+                      className={['h-8 w-8 shrink-0 object-contain', on ? 'grayscale' : ''].join(
+                        ' ',
+                      )}
+                    />
+                  ) : (
+                    <span className="h-8 w-8 shrink-0" />
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm">{opt.label}</span>
+                    {opt.description ? (
+                      <span className="block truncate text-ash text-xs">{opt.description}</span>
+                    ) : null}
+                  </span>
+                  <span
+                    className={[
+                      'flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border text-[0.6rem]',
+                      on ? 'border-crimson bg-crimson/40 text-parchment' : 'border-ash/50',
+                    ].join(' ')}
+                  >
+                    {on ? '\u2715' : ''}
+                  </span>
+                </button>
+              </Fragment>
+            );
+          })
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -214,12 +389,14 @@ function ConfigFieldRow({
   field,
   value,
   error,
+  choices,
   onChange,
 }: {
   name: string;
   field: ModConfigField;
   value: ConfigValue;
   error?: string;
+  choices?: ModConfigChoice[];
   onChange: (value: ConfigValue) => void;
 }) {
   const id = `config-${name}`;
@@ -240,7 +417,15 @@ function ConfigFieldRow({
         ) : null}
       </div>
 
-      {field.type === 'bool' ? (
+      {field.type === 'multiselect' ? (
+        <MultiSelectField
+          id={id}
+          field={field}
+          choices={choices ?? []}
+          value={Array.isArray(value) ? value : []}
+          onChange={onChange}
+        />
+      ) : field.type === 'bool' ? (
         <div className="flex items-center gap-2">
           <input
             id={id}
@@ -300,7 +485,10 @@ function cloneConfigValues(values: Record<string, ConfigValue>): Record<string, 
 }
 
 function fieldFallback(field: ModConfigField): ConfigValue {
-  if (field.default != null) return field.default;
+  if (field.type === 'multiselect') {
+    return Array.isArray(field.default) ? [...field.default] : [];
+  }
+  if (field.default != null) return field.default as ConfigValue;
   if (field.type === 'bool') return false;
   return '';
 }
@@ -379,6 +567,12 @@ function validateField(
   }
   if (field.type === 'string') {
     return { value: raw == null ? '' : String(raw) };
+  }
+  if (field.type === 'multiselect') {
+    // A provider-backed field's valid ids live in the game install and may be
+    // unreadable here, so membership is not enforced client-side — dropping an
+    // id we merely cannot see right now would silently discard the selection.
+    return { value: Array.isArray(raw) ? raw.map(String) : [] };
   }
   if (field.type === 'enum') {
     const value = raw == null ? '' : String(raw);
