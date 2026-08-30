@@ -409,6 +409,32 @@ if load_mod("saga") then
 
     ok(#calls == 0, "saga: made ZERO engine-mutating calls, saw: "
        .. table.concat(calls, ", "))
+
+    -- Co-op attribution. R.hero.handle() reads live memory the mock has none
+    -- of, so it answers nil here — which is itself the case that matters most:
+    -- with no local hero known, NOTHING may be filtered, or solo counts zero.
+    local k0 = R.kv.get("total_kills", 0)
+    fire("gameplay:ENEMY_KILLED", { dispatcher = "0x2000" })
+    ok(R.kv.get("total_kills", 0) == k0 + 1,
+       "saga: with no local hero known, attribution fails OPEN")
+
+    local _handle = R.hero.handle
+    R.hero.handle = function() return 0x1000 end
+    -- An ally is LEARNED from a hero-anchored event at a dispatcher that is
+    -- not ours. Nothing is filtered until one has been.
+    fire("gameplay:ABILITY_EXIT", { dispatcher = "0x2000" })
+
+    k0 = R.kv.get("total_kills", 0)
+    fire("gameplay:ENEMY_KILLED", { dispatcher = "0x2000" })
+    ok(R.kv.get("total_kills", 0) == k0, "saga: an ally's kill is not mine")
+    fire("gameplay:ENEMY_KILLED", { dispatcher = "0x1000" })
+    ok(R.kv.get("total_kills", 0) == k0 + 1, "saga: my own kill still counts")
+    -- The world dispatcher belongs to nobody and must not be mistaken for an
+    -- ally's: dropping world-anchored events would zero the mod out in solo.
+    fire("gameplay:ENEMY_KILLED", { dispatcher = "0x9999" })
+    ok(R.kv.get("total_kills", 0) == k0 + 2,
+       "saga: an unattributable event still counts")
+    R.hero.handle = _handle
 end
 
 io.write(("mods_spec: %d passed, %d failed, %d mod(s) skipped (not present)\n")
