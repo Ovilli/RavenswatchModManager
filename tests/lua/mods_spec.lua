@@ -358,6 +358,59 @@ if load_mod("hero-unlock") then
     R.hero.unlock_progression = _unlock
 end
 
+-- ---------------------------------------------------------------------------
+-- 6. saga: abandoning a run is not losing it, and an ambiguous end never eats
+--    a win
+-- ---------------------------------------------------------------------------
+if load_mod("saga") then
+    local function n(k) return R.kv.get(k, 0) end
+    -- The mocked lobby is empty and there is no Steam name, so every run here
+    -- books as solo with an unknown hero — which is exactly the degraded path
+    -- a real solo session takes when the lobby attributes never parse.
+    local W = "hero.Unknown.solo.wins"
+    local L = "hero.Unknown.solo.losses"
+    local A = "hero.Unknown.solo.abandons"
+    local w0, l0, a0 = n(W), n(L), n(A)
+    -- The mod settles a pending abandon on its own 3s main-thread timer, and
+    -- that pump is driven by gameplay-bus events only (ev.source), so a bare
+    -- fire() would never run it.
+    local function pump()
+        advance(5)
+        fire("gameplay:ENEMY_KILLED", { source = "gameplay" })
+    end
+
+    fire("ready")
+
+    fire("run:start")
+    fire("gameplay:GAME_END_SUCCESS")
+    ok(n(W) == w0 + 1, "saga: a won run is a win")
+
+    -- The regression this block exists for. `run:end` rides the analytics
+    -- firehose and GAME_END_SUCCESS the gameplay bus; nothing orders the two,
+    -- and the outcome latch is one-shot. Booking the abandon on the spot filed
+    -- a won run as a walk-away and took the win, the flawless and every win
+    -- feat with it.
+    fire("run:start")
+    fire("run:end")
+    fire("gameplay:GAME_END_SUCCESS")
+    pump()
+    ok(n(W) == w0 + 2, "saga: run:end before GAME_END_SUCCESS still records the win")
+    ok(n(A) == a0, "saga: ...and books no abandon for it")
+
+    fire("run:start")
+    fire("gameplay:GAME_END_FAILED")
+    ok(n(L) == l0 + 1, "saga: running out of feathers is a defeat")
+
+    fire("run:start")
+    fire("menu:enter")
+    pump()
+    ok(n(A) == a0 + 1, "saga: quitting to the menu is an abandon, not a defeat")
+    ok(n(L) == l0 + 1, "saga: ...and leaves the defeat count where it was")
+
+    ok(#calls == 0, "saga: made ZERO engine-mutating calls, saw: "
+       .. table.concat(calls, ", "))
+end
+
 io.write(("mods_spec: %d passed, %d failed, %d mod(s) skipped (not present)\n")
     :format(checks - fails, fails, skipped))
 os.exit(fails == 0 and 0 or 1)
