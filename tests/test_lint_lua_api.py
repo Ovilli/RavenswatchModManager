@@ -56,3 +56,16 @@ def test_single_quotes_and_subdir_lua(tmp_path):
     (d / "sub" / "extra.lua").write_text("R.on('bogus_event', function() end)\n")
     errs, warns = lint._lint_lua_api("LuaMod", d)
     assert warns == 1
+
+
+def test_analytics_firehose_events_recognised():
+    """The loader republishes the analytics sink's events by raw name, so they
+    fire even though no symbol carries them. Warning on those told authors a
+    working handler was dead — and pushed them onto the typed event instead."""
+    events, _ = lint._engine_vocab()
+    assert {"run_start", "level_up_reach", "level_up_book", "enemy_killed"} <= events
+
+
+def test_analytics_event_does_not_warn(tmp_path):
+    d = _mod(tmp_path, 'R.on("level_up_reach", function() end)\n')
+    assert lint._lint_lua_api("LuaMod", d) == (0, 0)

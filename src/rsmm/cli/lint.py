@@ -592,6 +592,15 @@ def _engine_vocab() -> tuple[set[str], set[str]]:
         from rsmm.engine.symbols import load_symbol_map
         smap = load_symbol_map()
         events |= {e.lua_event for e in smap.events if e.lua_event}
+        # The analytics firehose. The loader detours ONE telemetry sink
+        # (Analytics_SubmitNamedEvent) and republishes every event it sees by
+        # its raw name, so these have no symbol of their own and were absent
+        # from the vocabulary — `R.on("level_up_reach")` warned "handler will
+        # never fire" while firing perfectly well, and `run_start` warned next
+        # to `run_end`, which passed only because a typed symbol happens to
+        # carry that lua_event. Same catalog `rsmm symbols gen` writes into
+        # events_gen.lua's `analytics` group, so the two cannot drift.
+        events |= {n for e in smap.event_catalog if (n := e.get("name"))}
         callables = {s.name for s in smap.callable_symbols}
     except Exception:
         pass
