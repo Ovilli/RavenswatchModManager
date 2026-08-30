@@ -371,40 +371,45 @@ if load_mod("saga") then
     local L = "hero.Unknown.solo.losses"
     local A = "hero.Unknown.solo.abandons"
     local w0, l0, a0 = n(W), n(L), n(A)
-    -- The mod settles a pending abandon on its own 3s main-thread timer, and
-    -- that pump is driven by gameplay-bus events only (ev.source), so a bare
-    -- fire() would never run it.
-    local function pump()
-        advance(5)
-        fire("gameplay:ENEMY_KILLED", { source = "gameplay" })
-    end
-
     fire("ready")
 
     fire("run:start")
     fire("gameplay:GAME_END_SUCCESS")
+    fire("menu:enter")
     ok(n(W) == w0 + 1, "saga: a won run is a win")
+
+    -- Session e304: the chapter-1 boss died, GAME_END_SUCCESS fired two
+    -- seconds before GAME_END_NEXT_CHAPTER, and the run carried on. Acting on
+    -- the success booked a win and unlocked "Dawn At Last" at the end of
+    -- chapter one.
+    fire("run:start")
+    fire("gameplay:GAME_END_SUCCESS")
+    fire("gameplay:GAME_END_NEXT_CHAPTER")
+    fire("menu:enter")
+    ok(n(W) == w0 + 1, "saga: clearing a chapter is not winning the run")
+    ok(n(A) == a0 + 1, "saga: ...it settles as the abandon it was")
 
     -- The regression this block exists for. `run:end` rides the analytics
     -- firehose and GAME_END_SUCCESS the gameplay bus; nothing orders the two,
     -- and the outcome latch is one-shot. Booking the abandon on the spot filed
     -- a won run as a walk-away and took the win, the flawless and every win
     -- feat with it.
+    -- run:end rides the analytics firehose and GAME_END_SUCCESS the gameplay
+    -- bus; nothing orders them, and whichever arrived first used to win
+    -- outright.
     fire("run:start")
-    fire("run:end")
     fire("gameplay:GAME_END_SUCCESS")
-    pump()
-    ok(n(W) == w0 + 2, "saga: run:end before GAME_END_SUCCESS still records the win")
-    ok(n(A) == a0, "saga: ...and books no abandon for it")
+    fire("run:end")
+    ok(n(W) == w0 + 2, "saga: a win settled by run:end is still a win")
 
     fire("run:start")
     fire("gameplay:GAME_END_FAILED")
+    fire("menu:enter")
     ok(n(L) == l0 + 1, "saga: running out of feathers is a defeat")
 
     fire("run:start")
     fire("menu:enter")
-    pump()
-    ok(n(A) == a0 + 1, "saga: quitting to the menu is an abandon, not a defeat")
+    ok(n(A) == a0 + 2, "saga: quitting with no claim at all is an abandon")
     ok(n(L) == l0 + 1, "saga: ...and leaves the defeat count where it was")
 
     ok(#calls == 0, "saga: made ZERO engine-mutating calls, saw: "
