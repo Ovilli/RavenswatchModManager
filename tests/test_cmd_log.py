@@ -173,3 +173,48 @@ def test_errors_filter_keeps_session_banners(tmp_path, monkeypatch, capsys):
     assert "odd" in out
     assert "quiet" not in out
     assert "== SESSION" in out
+
+
+def test_log_is_read_as_utf8_regardless_of_locale(tmp_path, monkeypatch, capsys):
+    """The loader writes UTF-8; a bare open() decodes with the LOCALE's
+    preferred encoding instead.
+
+    A shared diagnostic log from a Chinese-locale Windows came back with every
+    em dash as "\u9c9f" and the co-op partner's gamertag as mojibake — cp936
+    reading UTF-8 bytes. That reads as a loader bug and is really the reader
+    guessing, so the encoding is pinned at every read site.
+
+    Asserted on the CALL, not by faking a locale: `open()` resolves the default
+    encoding in C and ignores a patched `locale.getpreferredencoding`, so a
+    locale-shaped test would pass with the bug still in place.
+    """
+    import builtins
+
+    from rsmm.cli import cmd_log
+
+    game = tmp_path / "game"
+    (game / "mods").mkdir(parents=True)
+    log = game / "mods" / "_log.txt"
+    stamp = "[2026-08-27 12:00:00.123 ab12 42]"
+    log.write_text(
+        "== SESSION ab12 ==\n"
+        f"{stamp} [lobby] new member \u67f3\u6708 \u2014 named without a scan\n",
+        encoding="utf-8",
+    )
+
+    real_open = builtins.open
+    seen: list[str | None] = []
+
+    def spy(file, *args, **kw):
+        if str(file) == str(log):
+            seen.append(kw.get("encoding"))
+        return real_open(file, *args, **kw)
+
+    monkeypatch.setattr(builtins, "open", spy)
+    monkeypatch.setenv("NO_COLOR", "1")
+    assert cmd_log.main(["--game-dir", str(game)]) == 0
+
+    assert seen, "the log was never opened — the spy is watching the wrong path"
+    assert set(seen) == {"utf-8"}, f"log opened with encoding={seen}"
+    out = capsys.readouterr().out
+    assert "\u67f3\u6708" in out and "\u2014" in out

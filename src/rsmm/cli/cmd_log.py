@@ -209,8 +209,16 @@ def main(argv: list[str] | None = None) -> int:
                       f"loader installed"), file=sys.stderr)
         return 1
 
+    # `encoding="utf-8"` on every read of this file, always. The loader writes
+    # it as UTF-8 (em dashes in its own copy, and player gamertags straight off
+    # the lobby blob), but a bare `open()` decodes with the LOCALE preferred
+    # encoding — cp936 on a Chinese Windows, cp1251 on a Russian one. A shared
+    # diagnostic log came back with every "—" as "鈥" and a Chinese player's
+    # name as "鏌樻湀", which reads as a loader bug and is really just the
+    # reader guessing. `errors="replace"` stays as the backstop for a torn
+    # final line.
     if a.sessions:
-        with open(log_path, errors="replace") as f:
+        with open(log_path, encoding="utf-8", errors="replace") as f:
             marks = [ln.rstrip("\n") for ln in f if _SESSION_MARK in ln]
         if not marks:
             print(_ST.dim("(no session banners — log predates session-aware loader)"))
@@ -241,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
         return lines
 
     if not a.follow:
-        with open(log_path, errors="replace") as f:
+        with open(log_path, encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
         lines = current_session(lines)
         if a.lines and a.lines > 0:
@@ -256,7 +264,7 @@ def main(argv: list[str] | None = None) -> int:
         inode = -1
 
     try:
-        f = open(log_path, errors="replace")
+        f = open(log_path, encoding="utf-8", errors="replace")
     except FileNotFoundError:
         print(_ST.err(f"Log not found: {log_path}"), file=sys.stderr)
         return 1
@@ -278,14 +286,14 @@ def main(argv: list[str] | None = None) -> int:
                 st = log_path.stat()
                 if st.st_ino != inode or st.st_size < f.tell():
                     f.close()
-                    f = open(log_path, errors="replace")
+                    f = open(log_path, encoding="utf-8", errors="replace")
                     inode = st.st_ino
             except (FileNotFoundError, OSError):
                 # Log file was rotated or deleted; wait and retry
                 f.close()
                 time.sleep(1)
                 try:
-                    f = open(log_path, errors="replace")
+                    f = open(log_path, encoding="utf-8", errors="replace")
                     try:
                         inode = log_path.stat().st_ino
                     except FileNotFoundError:
