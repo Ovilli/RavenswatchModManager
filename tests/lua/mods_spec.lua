@@ -465,6 +465,28 @@ if load_mod("steamroller") then
        .. tostring(stuck.attack_power))
     ok(stuck.crit_chance == 1.0, "steamroller: crit chance is a fraction, not a percent")
 
+    -- Health writes require a LANDED stat pin. Session 8c4f adopted a wrong
+    -- object through the give-handler; the value store refused every stat, but
+    -- R.entity.hp() is an unvalidated fixed-offset read that still returned
+    -- plausible floats, and Entity_ModifyHealth then faulted on that pointer.
+    local healed = false
+    local _sethp, _frac, _max = R.combat.set_hp, R.entity.hp_frac, R.entity.max_hp
+    R.combat.set_hp  = function() healed = true; return true end
+    R.entity.hp_frac = function() return 0.1 end   -- "hurt", as the bad read looked
+    R.entity.max_hp  = function() return 100 end
+
+    R.stat.stick = function() return false end     -- value store refuses
+    stuck = {}
+    fire("run:start")                              -- clears the pinned latch
+    fire("gameplay:ENEMY_KILLED", { source = "gameplay" })
+    ok(not healed, "steamroller: no health write when every stat pin was refused")
+
+    R.stat.stick = function(name, value) stuck[name] = value; return true end
+    fire("run:start")
+    fire("gameplay:ENEMY_KILLED", { source = "gameplay" })
+    ok(healed, "steamroller: heals once the pins prove the hero is readable")
+
+    R.combat.set_hp, R.entity.hp_frac, R.entity.max_hp = _sethp, _frac, _max
     R.stat.stick, R.entity.ready = _stick, _ready
 end
 
