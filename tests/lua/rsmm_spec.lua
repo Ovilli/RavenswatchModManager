@@ -41,6 +41,12 @@ local MIRROR = 0x30000000          -- HUD HP mirror
 local VALCTX_OFF, STORE_OFF = 0x2f8, 0x4c8
 local OVR_DATA_OFF, OVR_COUNT_OFF, OVR_STRIDE = 0xc0, 0xc8, 0x38
 local HP_OFF, MAXHP_OFF, HUDMIRROR_OFF, HASHMAP_OFF = 0x15c8, 0x15cc, 0x1d80, 0x80
+-- The chain Entity_ModifyHealth reads in its first four instructions:
+--   r14 = *(entity + 0x8);  rbx = *(r14 + 0x30)
+-- Modelled because it is unguarded on the engine side: session 8c4f had the
+-- -1 sentinel in that slot and the read of 0x2f took the process down.
+local MHSTORE_OFF, MHSTORE_HOP = 0x08, 0x30
+local MHSTORE = 0x24000000
 
 -- XP component wiring (matches rsmm.lua constants)
 local ENTITY   = 0x11000000        -- fake entity (hero+0x2f8 dereferences here)
@@ -453,6 +459,8 @@ local function seed_hero()
     I.write_f32(HERO + HP_OFF, 80.0)
     I.write_u64(HERO + HUDMIRROR_OFF, MIRROR)
     I.write_f32(MIRROR, 80.0)
+    I.write_u64(HERO + MHSTORE_OFF, MHSTORE)            -- *(hero+0x8)
+    I.write_u64(MHSTORE + MHSTORE_HOP, 0x25000000)      -- what ModifyHealth reads
     I.write_u64(HERO + VALCTX_OFF, ENTITY)              -- *(hero+0x2f8) = ctx
     I.write_u64(ENTITY + STORE_OFF, STORE)              -- *(ctx+0x4c8)  = store
     I.write_u32(STORE + OVR_COUNT_OFF, 0)
@@ -683,6 +691,22 @@ do
     check(about(R.entity.hp(), 60), "damage applies -35")
     check(R.combat.set_hp(50) == true, "set_hp should dispatch")
     check(about(R.entity.hp(), 50), "set_hp pins absolute HP")
+
+    -- Session 8c4f. Entity_ModifyHealth reads *(entity+0x8) then +0x30 with no
+    -- check of its own, so the -1 sentinel in that slot makes it read 0x2f and
+    -- take the whole process down. The pointer that did it had a sane HP pair
+    -- and a live HUD mirror, so _hero_plausible passed it: the mirror proves
+    -- "this is a hero", never "the engine can walk its value store".
+    local hp_before = R.entity.hp()
+    I.write_u64(HERO + MHSTORE_OFF, 0xffffffffffffffff)
+    check(R.combat.heal(10) == false, "refuse ModifyHealth on the -1 store sentinel")
+    check(about(R.entity.hp(), hp_before), "...and no health write happened")
+
+    I.write_u64(HERO + MHSTORE_OFF, 0)
+    check(R.combat.heal(10) == false, "refuse ModifyHealth on a null store slot")
+
+    I.write_u64(HERO + MHSTORE_OFF, MHSTORE)
+    check(R.combat.heal(10) == true, "a sound store chain still dispatches")
 end
 
 -- 7b. the ctor hook must be armed at `setup`, not on first read -------------

@@ -58,6 +58,12 @@ R.combat = {}
 
 local ENTITY_HP_OFF      = 0x15c8        -- f32 current HP on the hero character
 local ENTITY_MAXHP_OFF   = 0x15cc        -- f32 max HP
+-- The chain Entity_ModifyHealth dereferences in its first four instructions:
+--   r14 = *(entity + 0x8);  rbx = *(r14 + 0x30)
+-- Both are unguarded on the engine side, so both are ours to check. See
+-- _modify_health_safe below.
+local ENTITY_STORE_OFF   = 0x08          -- component/value-store pointer
+local ENTITY_STORE_HOP   = 0x30          -- first field ModifyHealth reads off it
 -- Function addresses are resolved at runtime through the pattern DB
 -- (I.resolve on the semantic symbol name) so a game patch that shifts code
 -- can never leave us hooking/calling a stale VA: an unresolved symbol fails
@@ -181,11 +187,18 @@ end
 -- A captured pointer is "hero-like" if its max-HP field reads as a sane float
 -- AND it carries a valid HUD HP-mirror pointer at +0x1d80. The mirror is the
 -- hero discriminator: Entity_ModifyHealth dereferences **(hero+0x1d80) on every
--- heal/damage, so a pointer that lacks a live mirror would crash R.combat.
--- Non-player entities (GAIN_HEALTH fires for enemies too) have no HUD mirror,
--- so requiring it rejects false captures and keeps every captured pointer
--- ModifyHealth-safe. Verified in Ghidra (FUN_140391d30 / FUN_140399a10). All
--- reads are fault-safe (return nil on a bad address).
+-- heal/damage. Non-player entities (GAIN_HEALTH fires for enemies too) have no
+-- HUD mirror, so requiring it rejects false captures. Verified in Ghidra
+-- (FUN_140391d30 / FUN_140399a10). All reads are fault-safe (return nil on a
+-- bad address).
+--
+-- ⚠ THIS DOES NOT MAKE A POINTER ModifyHealth-SAFE, though it claimed to until
+-- session 8c4f. That run adopted 0x3cb111a0 through the give-handler; it had a
+-- sane HP pair and a live mirror, passed here, and still took the process down
+-- at Entity_ModifyHealth+0x45 — because the function reads a DIFFERENT chain
+-- first (*(entity+0x8) then +0x30), and that slot held the -1 sentinel. The
+-- mirror says "this is a hero"; it says nothing about the value store. Callers
+-- that hand the pointer to the engine must use _modify_health_safe.
 local function _hero_plausible(e)
     if not e or e == 0 then return false end
     local mx = I.read_f32(e + ENTITY_MAXHP_OFF)
@@ -780,6 +793,37 @@ end
 -- Apply a raw health delta (delta>0 heals, delta<0 damages). Returns true on
 -- dispatch, false if the hero isn't captured yet, the module base is
 -- unavailable, or health reads implausible (guards against a bad pointer).
+-- Can the engine safely traverse what Entity_ModifyHealth traverses?
+--
+-- Its first four instructions are
+--   0x14039a361  mov r14, [rcx + 0x8]
+--   0x14039a365  mov rbx, [r14 + 0x30]     <- +0x45, the faulting one
+-- with no null or sentinel check of its own. A store slot holding the -1
+-- sentinel therefore reads address 0x2f and takes the whole process down —
+-- which is exactly what happened in session 8c4f, on a pointer that had
+-- already satisfied _hero_plausible.
+--
+-- Both reads here are page-guarded, so probing costs nothing; the moment the
+-- pointer becomes a call ARGUMENT the engine owns the deref, so this is the
+-- last place it can be checked. Same reason Entity_GetNetId is banned from the
+-- SDK (it walks the component map unguarded and dies on the same sentinel).
+local function _modify_health_safe(e)
+    local store = I.read_u64(e + ENTITY_STORE_OFF)
+    if type(store) ~= "number" or store == 0
+        or store == 0xffffffffffffffff or store == -1 then
+        return false, "value store slot holds the -1 sentinel or null"
+    end
+    if not _ptr_plausible(store) then
+        return false, "value store pointer is not a plausible address"
+    end
+    -- The engine reads this one next, unguarded. If it is not readable here it
+    -- will not be readable a microsecond later inside the detour.
+    if I.read_u64(store + ENTITY_STORE_HOP) == nil then
+        return false, "value store is not readable at +0x30"
+    end
+    return true
+end
+
 local function _modify_health(delta)
     local e = R.entity.hero()
     if not e then
@@ -789,6 +833,12 @@ local function _modify_health(delta)
     end
     if not _hero_plausible(e) then
         R.log("[rsmm.combat] hero health reads implausible — refusing modify")
+        return false
+    end
+    local ok_store, why = _modify_health_safe(e)
+    if not ok_store then
+        R.log(("[rsmm.combat] refusing modify on 0x%x: %s — Entity_ModifyHealth "
+               .. "would fault reading it"):format(e, why))
         return false
     end
     if not _va_ok("R.combat") then return false end
