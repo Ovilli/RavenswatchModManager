@@ -442,6 +442,32 @@ if load_mod("saga") then
     R.hero.handle = _handle
 end
 
+-- ---------------------------------------------------------------------------
+-- 7. steamroller: pins on the main thread only, and in STORE units
+-- ---------------------------------------------------------------------------
+if load_mod("steamroller") then
+    local stuck = {}
+    local _stick, _ready = R.stat.stick, R.entity.ready
+    R.stat.stick = function(name, value) stuck[name] = value; return true end
+    R.entity.ready = function() return true end
+
+    -- "tick" is the loader's BACKGROUND thread. An engine-mutating write from
+    -- there is the documented way to crash the game, so nothing may pin here.
+    fire("tick")
+    ok(next(stuck) == nil, "steamroller: does not write from the background thread")
+
+    fire("gameplay:ENEMY_KILLED", { source = "gameplay" })
+    ok(stuck.attack_power ~= nil, "steamroller: pins once the gameplay bus runs")
+    -- Store units are the displayed value / 100. Passing 4000 straight through
+    -- asks the engine for 400000 attack power.
+    ok(stuck.attack_power == 40,
+       "steamroller: converts displayed attack power to store units, got "
+       .. tostring(stuck.attack_power))
+    ok(stuck.crit_chance == 1.0, "steamroller: crit chance is a fraction, not a percent")
+
+    R.stat.stick, R.entity.ready = _stick, _ready
+end
+
 io.write(("mods_spec: %d passed, %d failed, %d mod(s) skipped (not present)\n")
     :format(checks - fails, fails, skipped))
 os.exit(fails == 0 and 0 or 1)
