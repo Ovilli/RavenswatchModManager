@@ -328,3 +328,39 @@ def test_clone_mode_is_unchanged(tmp_path):
     (out,) = enemies.emit("TestEnemyOverrideMod", defn, tmp_path)
     assert out.name.startswith("Dreadgnoll.")
     assert _weight_of(out) == 4.0
+
+
+def test_cross_biome_casts_keep_the_pools_disjoint():
+    """The shipped EntityPooling assets partition — no entity is in two of
+    them. `cross_biome` must not break that.
+
+    It did: an independent draw per biome from the same 50-creature set put 12
+    of 39 entities into two-to-four pools at once. A shared entity is a shared
+    lifetime, and every chapter after the first tears the previous biome's pool
+    down while building its own, so a creature both of them list can be freed
+    out from under the incoming preload vector — a black screen entering
+    chapter 2 with chapter 1 perfectly healthy.
+    """
+    from rsmm.engine import enemy_pools as EP
+    from rsmm.sdk.kinds import enemies as E
+
+    vanilla = {b: [e.lower() for e in ents] for b, ents in EP.pools().items()
+               if b not in EP.BOSS_ARENA_POOLS}
+    seen: dict[str, list[str]] = {}
+    for biome, ents in vanilla.items():
+        for e in ents:
+            seen.setdefault(e, []).append(biome)
+    assert not [e for e, bs in seen.items() if len(bs) > 1], (
+        "the shipped pools no longer partition — the premise of this test "
+        "changed, not the code under it"
+    )
+
+    groups = E._pool_groups("t", None, None, None)
+    for seed in (1337, 1, 99999):
+        casts = E._biome_casts("t", groups, None, seed, True)
+        placed: dict[str, list[str]] = {}
+        for biome, ents in casts.items():
+            for e in ents:
+                placed.setdefault(e.lower(), []).append(biome)
+        dupes = {e: bs for e, bs in placed.items() if len(bs) > 1}
+        assert not dupes, f"seed {seed}: entities in >1 pool: {dupes}"

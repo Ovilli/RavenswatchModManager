@@ -494,13 +494,43 @@ def _biome_casts(defn_id: str, groups: dict[str, list[str]], entity, seed,
 
     global_pool = EP.spawnable_entities()
     out: dict[str, list[str]] = {}
-    for biome in groups:
-        slots = _def_owned_slots(biome)
-        if entity is not None:
-            out[biome] = [entity]
-            continue
-        rng = _rng(seed, biome, "cast")
-        out[biome] = sorted(rng.sample(global_pool, k=min(len(slots), len(global_pool))))
+    if entity is not None:
+        # A fixed prefab everywhere is the one configuration that CANNOT keep
+        # the pools disjoint — the whole point is that every biome streams the
+        # same creature. Left as the author asked for; see the partition note
+        # below for what that costs.
+        return {biome: [entity] for biome in groups}
+
+    # ONE global deal, not an independent draw per biome.
+    #
+    # The shipped pools PARTITION: no entity is in two of them (measured, 0 of
+    # 57). Drawing each biome's cast independently from the same 50-entity set
+    # broke that — 12 of 39 entities ended up in two to four pools at once —
+    # and a shared entity is a shared lifetime. Chapter 1 has nothing before it
+    # and loads fine; every later chapter tears the previous biome's pool down
+    # while building its own, so an entity both of them list can be freed out
+    # from under the incoming preload vector. That is the same null-in-the-
+    # preload-vector shape the tiledef cache work hit, and it presents as a
+    # black screen entering chapter 2 with chapter 1 perfectly healthy.
+    #
+    # Dealing one permutation across the biomes keeps the invariant by
+    # construction. It fits exactly: 50 def-owned slots, 50 spawnable
+    # creatures, so a full-scope roll uses every creature exactly once.
+    order = sorted(groups)
+    rng = _rng(seed, "cast")
+    deck = list(global_pool)
+    rng.shuffle(deck)
+    at = 0
+    for biome in order:
+        want = len(_def_owned_slots(biome))
+        take = deck[at:at + want]
+        at += len(take)
+        if len(take) < want:
+            # More slots than creatures in scope. Reuse rather than leave a
+            # slot pointing at a creature no definition owns, and accept the
+            # duplication that the partition otherwise avoids.
+            take += [deck[i % len(deck)] for i in range(want - len(take))]
+        out[biome] = sorted(take)
     return out
 
 
