@@ -498,7 +498,18 @@ void Loader::apply_overrides() {
             override_by_encoded_[leaf] = f.src;
         }
     }
-    log("active overrides=" + std::to_string(override_by_encoded_.size()));
+    // Say WHICH table this is. `lookup_override` has exactly one caller --
+    // the IO hook, which is off unless RSMM_ENABLE_IO=1 -- and this counts
+    // files found under <game>/mods/<id>/assets/, which `rsmm apply`
+    // deliberately never populates (it syncs only a mod's top-level files and
+    // writes the assets themselves into DarkTalesResources/_Cooking). So the
+    // normal, fully-applied install reports ZERO here, and a bare
+    // "active overrides=0" reads as "none of your mods are doing anything".
+    // It cost a support thread exactly that misdiagnosis. Whether a data mod
+    // is applied is answered by .rsmm_state.json / `rsmm doctor`, never here.
+    log("IO-hook override table: " + std::to_string(override_by_encoded_.size())
+        + " file(s) under mods/*/assets (unused unless RSMM_ENABLE_IO=1; NOT a"
+          " count of applied mods -- see `rsmm doctor`)");
 }
 
 const fs::path* Loader::lookup_override(const wchar_t* path_w) const {
