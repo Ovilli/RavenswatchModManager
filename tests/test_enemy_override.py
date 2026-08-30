@@ -365,3 +365,54 @@ def test_cross_biome_casts_keep_the_pools_disjoint():
                 placed.setdefault(e.lower(), []).append(biome)
         dupes = {e: bs for e, bs in placed.items() if len(bs) > 1}
         assert not dupes, f"seed {seed}: entities in >1 pool: {dupes}"
+
+
+def test_cross_biome_defs_resolve_inside_their_own_pool():
+    """Invariant 1, checked where `cross_biome` actually breaks it.
+
+    A def is reached through the ENTITY it owns, so the pool that must stream
+    its donor is the pool that entity was dealt to — not the biome the def
+    shipped in. Those diverge the moment `cross_biome` deals across pools, and
+    the assignment used to key on the shipped biome: 40 of 57 pool entries
+    resolved to a prefab their own biome never streamed.
+
+    The engine leaves a null in that pool's preload vector and the teardown
+    loop at 0x140476f60 destroys it unchecked -- an access violation at
+    0x1401273b6 pointing nowhere near this code (dumps 06721fec / bf959d79,
+    both entering chapter 2 with chapter 1 perfectly healthy).
+
+    Making the pools disjoint made this WORSE, not better (24 of 57 -> 40 of
+    57): once no entity is in two pools, a donor in another pool is guaranteed
+    not to be streamed here. So the two invariants have to be asserted
+    together -- fixing either one alone is what produced both bugs.
+    """
+    from rsmm.engine import enemy_pools as EP
+    from rsmm.sdk.kinds import enemies as E
+
+    _require_corpus()
+    owner = {r["entity"].lower(): eid
+             for eid, r in EP.enemy_index().items() if r["entity"]}
+
+    groups = E._pool_groups("t", None, None, None)
+    for seed in (1337, 1, 99999):
+        casts = E._biome_casts("t", groups, None, seed, True)
+        assign = E._assignment("t", groups, casts, None, "shuffle", seed, True)
+
+        placed: dict[str, list[str]] = {}
+        for biome, ents in casts.items():
+            for e in ents:
+                placed.setdefault(e.lower(), []).append(biome)
+        assert not [e for e, bs in placed.items() if len(bs) > 1], (
+            f"seed {seed}: the pools stopped partitioning"
+        )
+
+        for biome, ents in casts.items():
+            have = {e.lower() for e in ents}
+            for e in ents:
+                eid = owner.get(e.lower())
+                if eid is None or eid not in assign:
+                    continue
+                assert assign[eid].lower() in have, (
+                    f"seed {seed}: {biome} streams {e} -> def {eid} resolves to "
+                    f"{assign[eid]}, which {biome} does not stream"
+                )

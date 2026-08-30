@@ -601,14 +601,48 @@ def _emit_pool(biome: str, cast: list[str], out_dir: Path,
 
 
 def _assignment(defn_id: str, groups: dict[str, list[str]],
-                casts: dict[str, list[str]], entity, mix, seed) -> dict[str, str]:
+                casts: dict[str, list[str]], entity, mix, seed,
+                cross_biome: bool = False) -> dict[str, str]:
     """``enemy id -> the entity_ref it should end up pointing at``.
 
-    Draws from the biome's own cast, so the result is streamed there by
-    construction rather than by a check that could be forgotten.
+    Draws from the pool that will actually stream the def, so the result is
+    streamed there by construction rather than by a check that could be
+    forgotten.
+
+    WHICH pool that is, is the whole subtlety. A def is reached through the
+    ENTITY it owns, so what matters is the pool that entity ends up in — not
+    the biome the def shipped in. Those are the same thing until
+    ``cross_biome`` deals entities across pools, and then they are routinely
+    different: keying on the shipped biome gave a def a donor its own former
+    biome streams, while the def is now reached from the pool its entity was
+    dealt to, which streams no such thing.
+
+    That is invariant 1 broken, and it is what crashed chapter 2 (session
+    e304/9d36: 40 of 57 entries resolved outside their pool). The engine
+    leaves a null in the pool's preload vector and the teardown loop at
+    ``0x140476f60`` destroys it unchecked — an access violation at
+    ``0x1401273b6`` with nothing pointing back here. Making the pools disjoint
+    made it worse rather than better (24 of 57 -> 40 of 57): once no entity is
+    in two pools, "the donor is in another pool" *guarantees* "not streamed
+    here".
     """
     if entity is not None:
         return {eid: entity for ids in groups.values() for eid in ids}
+
+    if cross_biome:
+        # Re-key by DESTINATION. Each pool entry names an entity; the def that
+        # owns it is the one that pool will resolve, so that def must draw its
+        # donor from this pool. The pools partition, so each def lands in
+        # exactly one group and every def still gets exactly one donor.
+        owner = {row["entity"].lower(): eid
+                 for eid, row in EP.enemy_index().items() if row["entity"]}
+        by_dest: dict[str, list[str]] = {}
+        for biome, cast in casts.items():
+            for ent in cast:
+                eid = owner.get(ent.lower())
+                if eid is not None:
+                    by_dest.setdefault(biome, []).append(eid)
+        groups = {b: sorted(set(ids)) for b, ids in by_dest.items()}
 
     out: dict[str, str] = {}
     for biome, ids in groups.items():
@@ -837,7 +871,8 @@ def _emit_override(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             if pool is not None:
                 written.append(pool)
 
-    assignment = _assignment(defn.id, groups, casts, entity, mix, seed)
+    assignment = _assignment(defn.id, groups, casts, entity, mix, seed,
+                             cross_biome)
     changed = 0
     index = EP.enemy_index()
     for enemy_id, new_entity in sorted(assignment.items()):
