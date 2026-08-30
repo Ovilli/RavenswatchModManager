@@ -344,6 +344,7 @@ def test_cross_biome_casts_keep_the_pools_disjoint():
     from rsmm.engine import enemy_pools as EP
     from rsmm.sdk.kinds import enemies as E
 
+    _require_corpus()
     vanilla = {b: [e.lower() for e in ents] for b, ents in EP.pools().items()
                if b not in EP.BOSS_ARENA_POOLS}
     seen: dict[str, list[str]] = {}
