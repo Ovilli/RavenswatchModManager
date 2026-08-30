@@ -2,6 +2,15 @@
   "generated": "2026-08-30",
   "entries": [
     {
+      "version": "5.4.2",
+      "date": "2026-08-30",
+      "summary": "Fixes the loader log being unreadable on a non-English Windows. The log is written as UTF-8, but the app read it with whatever encoding the system locale preferred — so on a Chinese, Russian or Japanese Windows every dash and every non-ASCII player name came out as mojibake, in the Log screen and in any log shared for support.",
+      "highlights": [
+        "Loader log reads correctly on every system locale — player names with non-Latin characters are no longer mangled.",
+        "Shared diagnostic logs can now be opened by an assistant the user sends the link to, instead of only by a human."
+      ]
+    },
+    {
       "version": "",
       "loader_version": 11,
       "date": "2026-08-30",
