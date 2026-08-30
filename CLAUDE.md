@@ -18,7 +18,7 @@ The desktop app does **not** reimplement the CLI — it bundles the Python CLI a
 |------|---------|
 | Install Python CLI editable | `pip install -e .` (after `python3 -m venv .venv && source .venv/bin/activate`) |
 | Install JS deps | `pnpm install` |
-| Desktop app (Tauri dev) | `pnpm dev` (= `turbo run dev --filter=desktop`) |
+| Desktop app (Tauri dev) | `pnpm dev` (= `turbo run dev --filter=desktop`). **Not `npm run dev`** — that makes corepack fetch the pinned `pnpm@9.12.0`, and turbo swallows corepack's confirm prompt, so the run stops dead after `! Corepack is about to download …` with no window and no error. `export COREPACK_ENABLE_DOWNLOAD_PROMPT=0` in your shell rc; it recurs on a fresh clone or an nvm version switch. |
 | Desktop app w/ local CLI | `pnpm --filter desktop dev:with-cli` (puts repo root on PATH so it uses `./rsmm` not the bundled sidecar) |
 | API server (`:3001`) | `pnpm api:dev` |
 | Website (`:3000`) | `pnpm www:dev` |
