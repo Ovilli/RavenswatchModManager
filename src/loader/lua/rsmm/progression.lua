@@ -21,7 +21,8 @@ return function(env)
 for _, key in ipairs({ "native", "I", "R", "_va_ok", "_ptr_plausible",
                        "_in_image", "_obj_has_vtable", "_vector_valid",
                        "GIVE_IMG_BASE", "ENTITY_IMG_BASE", "ENTITY_VALCTX_OFF",
-                       "EV_STORE_OFF", "_hero_plausible", "_ev_ctx" }) do
+                       "EV_STORE_OFF", "_hero_plausible", "_ev_ctx",
+                       "_ctx_chain_ok" }) do
     if env[key] == nil then
         error("rsmm.progression: parent did not pass env." .. key, 0)
     end
@@ -39,6 +40,7 @@ local ENTITY_VALCTX_OFF = env.ENTITY_VALCTX_OFF
 local EV_STORE_OFF      = env.EV_STORE_OFF
 local _hero_plausible   = env._hero_plausible
 local _ev_ctx           = env._ev_ctx
+local _ctx_chain_ok     = env._ctx_chain_ok
 
 -- stats (generic keyed value store — read/grant any per-hero stat) -------
 --
@@ -191,6 +193,22 @@ local function _published_ctx()
     local s = I.read_u64(ctx + EV_STORE_OFF)
     if not s or s == 0 then
         _ctx_why = string.format("published ctx 0x%x has no store at +0x%x", ctx, EV_STORE_OFF)
+        return nil
+    end
+    -- Validate the chain the engine walks UNGUARDED before calling into it.
+    -- This is not belt-and-braces: the semantic gate below IS an engine call,
+    -- so skipping it means the first thing a stale context does is fault. A
+    -- published context outlives the chapter it came from — the loader has no
+    -- teardown signal on the give path — so after GAME_END_NEXT_CHAPTER this
+    -- pointer is dangling, and once the allocator reuses the page, +0x4c8
+    -- reads back non-zero again and every pointer-shaped check passes.
+    -- Dump 434d75a5 is exactly that: count 0x60160, Lookup walked 22 MB.
+    -- ⚠ pcall does NOT catch an access violation, so there is no recovering
+    -- from the call once it is made; the only defence is not making it.
+    if not _ctx_chain_ok(ctx) then
+        _ctx_why = string.format(
+            "published ctx 0x%x is stale — store 0x%x is not walkable " ..
+            "(count/entries implausible); the chapter it came from is gone", ctx, s)
         return nil
     end
     -- Semantic gate: a hero's store answers with a positive, finite max health.

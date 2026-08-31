@@ -1014,7 +1014,7 @@ end
 -- path calls them through those upvalues.
 local ENTITY_IMG_BASE, SHARED_HERO_SLOT, LOBBY_REFRESH_SLOT
 local ENTITY_VALCTX_OFF, EV_STORE_OFF
-local _native_capture_active, _hero_plausible, _ev_ctx
+local _native_capture_active, _hero_plausible, _ev_ctx, _ctx_chain_ok
 do
     local ok, x = _submodule_fn("entity", {
         I = I, R = R,
@@ -1034,6 +1034,7 @@ do
     _native_capture_active = x._native_capture_active
     _hero_plausible        = x._hero_plausible
     _ev_ctx                = x._ev_ctx
+    _ctx_chain_ok          = x._ctx_chain_ok
     -- Into the forward declarations near the top of the chunk, not new locals.
     _hero_capture_is_live    = x._hero_capture_is_live
     _invalidate_hero_capture = x._invalidate_hero_capture
@@ -1044,7 +1045,7 @@ do
     for _, k in ipairs({ "ENTITY_IMG_BASE", "SHARED_HERO_SLOT",
                          "LOBBY_REFRESH_SLOT", "ENTITY_VALCTX_OFF",
                          "EV_STORE_OFF", "_native_capture_active",
-                         "_hero_plausible", "_ev_ctx",
+                         "_hero_plausible", "_ev_ctx", "_ctx_chain_ok",
                          "_hero_capture_is_live", "_invalidate_hero_capture" }) do
         assert(x[k] ~= nil, "rsmm/entity.lua did not export " .. k)
     end
@@ -1142,6 +1143,7 @@ _submodule_fn("progression", {
     EV_STORE_OFF      = EV_STORE_OFF,
     _hero_plausible   = _hero_plausible,
     _ev_ctx           = _ev_ctx,
+    _ctx_chain_ok     = _ctx_chain_ok,
 })
 
 -- hero (identity / per-hero scope) --------------------------------------

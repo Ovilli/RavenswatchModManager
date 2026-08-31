@@ -231,6 +231,11 @@ std::uintptr_t image_base() {
 // name slot and the string it points at are page-guarded: this runs on the
 // game's main thread for EVERY dispatched gameplay event, so an offset the
 // next patch invalidates must not be able to fault here.
+// Drop the published value context when the chapter it belongs to ends.
+// Defined next to publish_value_ctx; declared here because the gameplay
+// dispatch below runs long before that section.
+void drop_value_ctx_on_teardown(const char* ev_name);
+
 bool gameplay_event_name(const unsigned char* ev, char* out, size_t cap) {
     std::uintptr_t name = 0;
     if (!mem_load(ev + 0x20, &name) || name == 0) return false;
@@ -279,6 +284,10 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
     const auto* ev = static_cast<const unsigned char*>(event);
     char name[64];
     if (!gameplay_event_name(ev, name, sizeof(name))) return;
+
+    // Before any subscriber tiering: a teardown event has to be acted on even
+    // if nothing is listening for it by name.
+    drop_value_ctx_on_teardown(name);
 
     // Nobody listening to THIS event? Then stop here, before the payload
     // decode, the 768-byte format, the JSON parse and the per-state walk.
@@ -941,6 +950,38 @@ void publish_value_ctx(void* ctx) {
     }
     shared_set(kHeroValueCtxSlot, static_cast<std::uint64_t>(addr));
     ctx_note("PUBLISHED", ctx, store);
+}
+
+// A published value context belongs to the chapter it was captured in, and
+// nothing used to clear it. On teardown it dangles: the page is freed, the
+// allocator hands it out again, and *(ctx+0x4c8) reads back non-zero — so
+// every pointer-shaped check passes and EntityValue_Get feeds a garbage store
+// to EntityValue_Lookup, which scans store+0xc0 for store+0xc8 entries with no
+// bound of its own. Dump 434d75a5 (2026-08-31) is that walk: count 0x60160,
+// 393,568 entries / 22 MB past the array, access violation at +0x32, ~20 s
+// after GAME_END_NEXT_CHAPTER while a mod retried a stat pin.
+//
+// The SDK now validates that vector before every call (rsmm/entity.lua
+// _ctx_chain_ok), which is the fail-closed half. This is the other half:
+// stop publishing a pointer we already know is dead. Both are wanted — the
+// guard cannot tell a recycled page from a live one, only that this one is
+// not walkable, so without the drop a mod can still bind to a dead chapter's
+// store for a whole run whenever the garbage happens to look plausible.
+void drop_value_ctx_on_teardown(const char* ev_name) {
+    if (!ev_name) return;
+    if (std::strcmp(ev_name, "GAME_END_NEXT_CHAPTER") != 0 &&
+        std::strcmp(ev_name, "GAME_END_SUCCESS") != 0 &&
+        std::strcmp(ev_name, "GAME_END_SUCCESS_SKIP_NEXT") != 0 &&
+        std::strcmp(ev_name, "GAME_END_FAILED") != 0) {
+        return;
+    }
+    if (shared_get(kHeroValueCtxSlot) == 0) return;
+    shared_set(kHeroValueCtxSlot, 0);
+    char line[160];
+    std::snprintf(line, sizeof(line),
+                  "[hero-capture] value-ctx dropped on %s — it belonged to the chapter "
+                  "being torn down; the next give republishes", ev_name);
+    Loader::get().log(line);
 }
 
 void detour_gain_health(void* p1, void* p2, void* p3) {

@@ -1040,6 +1040,22 @@ do
           "a published context with no store is refused")
     I.write_u64(ENTITY + STORE_OFF, savedstore)
 
+    -- A published context that has been TORN DOWN. The shape checks all pass —
+    -- ctx readable, store non-zero and plausible — but the store's override
+    -- vector is garbage, and EntityValue_Lookup scans it LINEARLY with no
+    -- bound of its own. Dump 434d75a5 (2026-08-31): count came back 0x60160,
+    -- Lookup walked 393,568 entries / 22 MB off the end of the heap and
+    -- faulted at +0x32. pcall does not catch an access violation, and the
+    -- semantic max_health gate is ITSELF an engine call, so the only defence
+    -- is refusing before the call is made.
+    local saved_count = I.read_u32(STORE + 0xc8)
+    I.write_u32(STORE + 0xc8, 0x60160)
+    check(R.stat.set("attack_power", 13) == false,
+          "a published context whose store count is implausible is refused")
+    check(R.stat.get("attack_power") == nil,
+          "and reading through it is refused too")
+    I.write_u32(STORE + 0xc8, saved_count)
+
     shared[CTX_SLOT] = nil
     shared[0], shared[8] = saved_hero_slot, saved_ring
 end

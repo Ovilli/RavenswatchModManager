@@ -986,34 +986,53 @@ local EV_TAG_OFF        = 0x08    -- oCEntityValueUnion type tag
 local EV_VAL_OFF        = 0x10    -- inline f32 when tag == EV_TAG_INLINE
 local EV_TAG_INLINE     = 4
 
--- Resolve the hero's value CONTEXT pointer, fail-closed. Validates the whole
--- chain the engine will dereference unguarded inside EntityValue_Get /
--- EntityValue_Lookup before we hand it a pointer:
---   ctx   = *(hero+0x2f8)  must be a plausible, readable pointer
---   store = *(ctx+0x4c8)   may be 0 (engine handles it) — but if non-zero it
---                          must be plausible AND its hot fields readable:
---                          count u32 @store+0xc8 (read unconditionally), the
---                          override array ptr @store+0xc0 (read when count>0)
---                          and the base hashmap ptr @store+0x80 (deref'd
---                          unconditionally on a cache miss).
--- Every probe is page-guarded (nil on unmapped), so validation cannot fault.
--- Returns ctx, or nil if any link is implausible.
+-- How EntityValue_Lookup walks the override vector, so a validator can bound
+-- exactly what it will touch: entries at store+0xc0, `count` of them at
+-- store+0xc8, stride 0x38, scanned LINEARLY with no bound of its own.
+local EV_ENTRY_STRIDE   = 0x38
+local EV_MAX_ENTRIES    = 0x10000
+
+-- Validate the chain EntityValue_Get / EntityValue_Lookup dereference
+-- UNGUARDED, given a value-context pointer:
+--   store = *(ctx+0x4c8)   may be 0 — EntityValue_Get null-checks it and
+--                          default-constructs instead, so 0 is SAFE. Only a
+--                          non-zero garbage store is fatal.
+--   store+0xc8 count       read unconditionally by Lookup
+--   store+0xc0 entries     walked linearly to `count`
+--   store+0x80 hashmap     deref'd unconditionally on a cache miss
+-- Every probe is page-guarded (nil on unmapped), so validating cannot fault.
+--
+-- ⚠ The count bound and the LAST-ENTRY probe are both load-bearing, and the
+-- absence of the second one crashed the game (dump 434d75a5, 2026-08-31):
+-- a stale context read back count = 0x60160 with a plausible entries pointer,
+-- and Lookup scanned 393,568 entries — 22 MB — off the end of the heap before
+-- faulting at EntityValue_Lookup+0x32. Checking that the final key dword the
+-- scan can touch is mapped is what bounds the walk; a plausible-but-short
+-- array passes every pointer check and still runs off.
+local function _ctx_chain_ok(ctx)
+    if not ctx or ctx == 0 or not _ptr_plausible(ctx) then return false end
+    local store = I.read_u64(ctx + EV_STORE_OFF)
+    if store == nil then return false end                   -- ctx page unreadable
+    if store == 0 then return true end                      -- engine handles null
+    if not _ptr_plausible(store) then return false end
+    local count = I.read_u32(store + 0xc8)
+    if count == nil or count > EV_MAX_ENTRIES then return false end
+    if count > 0 then
+        local data = I.read_u64(store + 0xc0)
+        if not data or not _ptr_plausible(data) then return false end
+        if I.read_u32(data + (count - 1) * EV_ENTRY_STRIDE) == nil then return false end
+    end
+    local hmap = I.read_u64(store + 0x80)
+    if not hmap or not _ptr_plausible(hmap) then return false end
+    return true
+end
+
+-- Resolve the hero's value CONTEXT pointer, fail-closed: ctx = *(hero+0x2f8),
+-- validated through _ctx_chain_ok. Returns ctx, or nil if any link is
+-- implausible.
 local function _ev_ctx(hero)
     local ctx = I.read_u64(hero + ENTITY_VALCTX_OFF)
-    if not ctx or not _ptr_plausible(ctx) then return nil end
-    local store = I.read_u64(ctx + EV_STORE_OFF)
-    if store == nil then return nil end                     -- ctx page unreadable
-    if store ~= 0 then
-        if not _ptr_plausible(store) then return nil end
-        local count = I.read_u32(store + 0xc8)
-        if count == nil or count > 0x10000 then return nil end
-        if count > 0 then
-            local data = I.read_u64(store + 0xc0)
-            if not data or not _ptr_plausible(data) then return nil end
-        end
-        local hmap = I.read_u64(store + 0x80)
-        if not hmap or not _ptr_plausible(hmap) then return nil end
-    end
+    if not _ctx_chain_ok(ctx) then return nil end
     return ctx
 end
 
@@ -1042,6 +1061,7 @@ return {
     _native_capture_active   = _native_capture_active,
     _hero_plausible          = _hero_plausible,
     _ev_ctx                  = _ev_ctx,
+    _ctx_chain_ok            = _ctx_chain_ok,
     _hero_capture_is_live    = _hero_capture_is_live,
     _invalidate_hero_capture = _invalidate_hero_capture,
 }
