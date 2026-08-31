@@ -456,17 +456,37 @@ end
 -- every new top-level `local` here costs a "too many local variables" compile
 -- failure of the whole SDK.
 local HERO_SCAN = {
-    -- Rejection counts that trigger a scan. Ticks are ~500ms, so 10/40 are
-    -- roughly 5s and 20s after the candidate was stashed -- and session 914f
-    -- (2026-08-18) showed that is entirely inside the LOAD: both scans fired
-    -- before the hero existed in the map (the second one 5s after
-    -- MAP_GENERATION_DONE), found nothing, and no scan ever ran while the hero
-    -- was alive and taking damage. 200 and 800 are ~100s and ~400s in, which is
-    -- mid-fight, and the process-wide budget of MAX still caps the total.
-    AT   = { [10] = true, [40] = true, [200] = true, [800] = true },
+    -- SECONDS OF LIVE PLAY since this candidate was first seen in play.
+    --
+    -- These were rejection COUNTS ({10,40,200,800}) on the assumption that
+    -- "ticks are ~500ms", so 200 rejections meant ~100s in. That assumption is
+    -- dead: mods now subscribe to the gameplay bus with R.on("*"), and every
+    -- event asks for the hero, so the counter is driven by event RATE, not by
+    -- time. Session 4b4f (2026-08-31) reached 200 rejections in THREE SECONDS
+    -- and spent the entire process-wide budget between GAME_START (15:20:35)
+    -- and MAP_GENERATION_DONE (15:20:39.6) -- all six scans, on a hero that had
+    -- not spawned into the map yet. Every one of them printed "no candidate
+    -- pair found" about an object whose HP was legitimately still zero, and the
+    -- one measurement worth having (does a pair exist while the hero is ALIVE
+    -- and taking damage) was never taken. That is the same failure sessions
+    -- 6c4f / ba4f / 914f each hit through a different door; counting anything
+    -- other than elapsed time is the door.
+    --
+    -- Wall-clock milestones close it for good: whatever the event rate, 30s of
+    -- live play is live play. In 4b4f's timeline these land at 15:21:05,
+    -- 15:22:05 and 15:24:35 -- all after the first item pickup at 15:21:00,
+    -- i.e. all in real combat.
+    AT_S = { 30, 90, 240 },
     MAX  = 6,                        -- total scans per process, all mods
-    LO   = 0x1000, HI = 0x2400,
-    seen = {},                       -- pointer -> rejections observed here
+    -- Sweep window. Was 0x1000..0x2400, which brackets the KNOWN offsets
+    -- (hp +0x15c8, HUD mirror +0x1d80) -- fine for confirming they are still
+    -- there, useless for the question the sweep exists to answer, which is
+    -- where they went. A pair outside the window reads exactly like no pair at
+    -- all. Widened to the whole plausible object; six sweeps per process of a
+    -- few thousand page-guarded reads each is not a cost worth optimising.
+    LO   = 0x0, HI = 0x3000,
+    seen = {},                       -- pointer -> { t0 = first in-play sight,
+                                     --              next = index into AT_S }
 }
 
 --- True while the main menu is up (best-effort; false when unknowable).
@@ -541,9 +561,24 @@ R.entity._scan = HERO_SCAN
 
 local function _scan_hp_fields(p)
     if not (I.shared_get and I.shared_set) then return end
-    local n = (HERO_SCAN.seen[p] or 0) + 1
-    HERO_SCAN.seen[p] = n
-    if not HERO_SCAN.AT[n] then return end
+    -- Clock, not counter. No clock means no way to tell load from play, and a
+    -- scan that cannot tell those apart is the bug above -- so do nothing.
+    if not I.now then return end
+    local okt, now = pcall(I.now)
+    if not (okt and type(now) == "number") then return end
+
+    -- t0 is the first time this candidate was seen WHILE IN PLAY: the caller
+    -- only reaches here inside the in_play() gate, so load time is never
+    -- counted against the milestones.
+    local st = HERO_SCAN.seen[p]
+    if not st then
+        HERO_SCAN.seen[p] = { t0 = now, next = 1 }
+        return
+    end
+    local elapsed = now - st.t0
+    if st.next > #HERO_SCAN.AT_S then return end
+    if elapsed < HERO_SCAN.AT_S[st.next] then return end
+    st.next = st.next + 1
     -- Process-wide budget: every mod has its own Lua state and all of them
     -- poll, so the cap has to live in the shared slot, not in this state.
     local oks, used = pcall(I.shared_get, HERO_SCAN_SLOT)
@@ -561,12 +596,33 @@ local function _scan_hp_fields(p)
             if #hits >= 12 then break end
         end
     end
+    -- Report the whole candidate RING alongside the sweep. Which candidates
+    -- exist is half the question and the scan line never carried it: session
+    -- 4b4f stashed exactly ONE pointer all run and it stayed blank, whereas
+    -- 384f (which captured) stashed a SECOND one 244s in and that was the real
+    -- hero. From the old line those two runs are indistinguishable -- both just
+    -- say "no candidate pair found" -- so the log could not tell "the hero
+    -- never arrived" apart from "the hero arrived and the offsets moved".
+    local ring = {}
+    for i = 0, HERO_RING_COUNT - 1 do
+        local okr, v = pcall(I.shared_get, HERO_RING_FIRST + i)
+        if okr and type(v) == "number" and v ~= 0 then
+            ring[#ring + 1] = string.format("0x%x%s", v,
+                _hero_plausible(v) and "*" or "")
+        end
+    end
     R.log(string.format(
-        "[rsmm.entity] HP-FIELD SCAN #%d on 0x%x after %d rejections "
-        .. "(expected +0x%x): %s",
-        used + 1, p, n, ENTITY_HP_OFF,
-        #hits > 0 and table.concat(hits, "  ") or "no candidate pair found"))
+        "[rsmm.entity] HP-FIELD SCAN #%d on 0x%x after %.0fs of live play "
+        .. "(expected +0x%x): %s | ring[%d]: %s",
+        used + 1, p, elapsed, ENTITY_HP_OFF,
+        #hits > 0 and table.concat(hits, "  ") or "no candidate pair found",
+        #ring, #ring > 0 and table.concat(ring, " ") or "empty"))
 end
+
+-- Exposed for the spec, like HERO_SCAN itself: the milestone logic decides
+-- whether the ONE measurement that can identify moved HP offsets ever gets
+-- taken, so it is worth driving directly against a fake clock.
+HERO_SCAN.sweep = _scan_hp_fields
 
 -- The captured local hero character pointer, or nil if not seen yet. The
 -- loader's native capture publishes it to the shared slot at hero spawn (it
@@ -584,6 +640,22 @@ local _hero_diag_n = 0
 local HERO_DIAG_SLOT = 6
 
 --- True at most `limit` times across ALL mod states, not per state.
+-- Last rejection line this state emitted. A rejection is only news when the
+-- READING changes: session 4b4f printed the identical
+-- "hp=0.0 max=0.0 mirror=... mirror[0]=0.0" line twice per state in the same
+-- millisecond (six lines across three mods), spending a third of the shared
+-- budget to say one thing. Suppressing exact repeats keeps the budget for the
+-- line that actually matters -- the one where hp finally reads non-zero, or
+-- where it still reads zero long into live play.
+local _hero_diag_last = nil
+
+--- Spend a diagnostic slot only if `key` differs from the last one spent here.
+local function _diag_new(key)
+    if _hero_diag_last == key then return false end
+    _hero_diag_last = key
+    return true
+end
+
 local function _diag_budget(limit)
     if _hero_diag_n >= limit then return false end   -- this state has had its say
     local ok, n = pcall(I.shared_get, HERO_DIAG_SLOT)
@@ -719,15 +791,16 @@ function R.entity.hero()
             -- spending the shared scan budget there is what made the 2026-08-16
             -- log six scans of a blank preview character.
             if HERO_SCAN.in_play() then
-                if _diag_budget(6) then
-                    local mirror = I.read_u64(p + ENTITY_HUDMIRROR_OFF)
-                    R.log(string.format(
-                        "[rsmm.entity] pending hero 0x%x REJECTED: hp=%s max=%s "
-                        .. "mirror=%s mirror[0]=%s",
-                        p, tostring(I.read_f32(p + ENTITY_HP_OFF)),
-                        tostring(I.read_f32(p + ENTITY_MAXHP_OFF)),
-                        tostring(mirror),
-                        tostring(mirror and mirror ~= 0 and I.read_f32(mirror) or nil)))
+                local mirror = I.read_u64(p + ENTITY_HUDMIRROR_OFF)
+                local line = string.format(
+                    "[rsmm.entity] pending hero 0x%x REJECTED: hp=%s max=%s "
+                    .. "mirror=%s mirror[0]=%s",
+                    p, tostring(I.read_f32(p + ENTITY_HP_OFF)),
+                    tostring(I.read_f32(p + ENTITY_MAXHP_OFF)),
+                    tostring(mirror),
+                    tostring(mirror and mirror ~= 0 and I.read_f32(mirror) or nil))
+                if _diag_new(line) and _diag_budget(6) then
+                    R.log(line)
                 end
                 _scan_hp_fields(p)
             end

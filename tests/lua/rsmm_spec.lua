@@ -5881,6 +5881,63 @@ do
           "and the bus does not overrule the exact boundary once it exists")
 end
 
+-- N1a2. The HP-field scan is paced by the CLOCK, not by rejection counts ----
+--
+-- Regression for session 4b4f (2026-08-31). The milestones used to be rejection
+-- COUNTS ({10,40,200,800}) on the assumption that a rejection meant ~500ms had
+-- passed. Mods now call R.on("*") and ask for the hero on every gameplay event,
+-- so 200 rejections arrived in three seconds and the whole process-wide budget
+-- was spent between GAME_START and MAP_GENERATION_DONE -- on a hero that had
+-- not spawned yet, every scan dutifully reporting "no candidate pair found"
+-- about an object whose HP was legitimately still zero. The measurement that
+-- would prove the offsets moved was never taken in any of eight runs.
+do
+    package.loaded["rsmm"] = nil
+    local Rs = require "rsmm"
+    local H = Rs.entity._scan
+
+    local logged = {}
+    local real_log = Rs.log
+    Rs.log = function(s) logged[#logged + 1] = tostring(s) end
+
+    local CAND = 0x31000000
+    H.seen = {}
+    I.shared_set(5, 0)                       -- HERO_SCAN_SLOT: budget unspent
+    local t0 = fake_clock
+
+    -- A burst of calls with NO time passing is the exact 4b4f shape.
+    for _ = 1, 500 do H.sweep(CAND) end
+    check(#logged == 0,
+          "500 sweeps inside the same instant produce NO scan -- event rate is "
+          .. "not evidence that time has passed")
+
+    -- Still nothing just short of the first milestone.
+    fake_clock = t0 + (H.AT_S[1] - 1)
+    H.sweep(CAND)
+    check(#logged == 0, "and none one second before the first milestone")
+
+    -- Crossing it fires exactly one.
+    fake_clock = t0 + H.AT_S[1]
+    H.sweep(CAND)
+    check(#logged == 1, "crossing the first milestone fires exactly one scan")
+    check(logged[1]:find("of live play", 1, true) ~= nil,
+          "and the line reports elapsed play time, not a rejection count")
+    check(logged[1]:find("ring[", 1, true) ~= nil,
+          "and carries the candidate ring, so 'the hero never arrived' is "
+          .. "distinguishable from 'the hero arrived and the offsets moved'")
+
+    -- A second burst at the same instant does not spend another slot.
+    for _ = 1, 100 do H.sweep(CAND) end
+    check(#logged == 1, "and the milestone does not re-fire while time stands still")
+
+    fake_clock = t0 + H.AT_S[2]
+    H.sweep(CAND)
+    check(#logged == 2, "the next milestone fires once time actually reaches it")
+
+    Rs.log = real_log
+    fake_clock = t0
+end
+
 -- N1b. R.lobby: names arrive from the attribute parser, not from a sweep ---
 --
 -- Every member's attributes pass through LobbyAttributes_Parse, so a detour
