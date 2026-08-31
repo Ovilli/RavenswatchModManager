@@ -648,48 +648,40 @@ def _emit_pool(biome: str, cast: list[str], out_dir: Path,
 
 
 def _assignment(defn_id: str, groups: dict[str, list[str]],
-                casts: dict[str, list[str]], entity, mix, seed,
-                cross_biome: bool = False) -> dict[str, str]:
+                casts: dict[str, list[str]], entity, mix, seed) -> dict[str, str]:
     """``enemy id -> the entity_ref it should end up pointing at``.
 
     Draws from the pool that will actually stream the def, so the result is
     streamed there by construction rather than by a check that could be
     forgotten.
 
-    WHICH pool that is, is the whole subtlety. A def is reached through the
-    ENTITY it owns, so what matters is the pool that entity ends up in — not
-    the biome the def shipped in. Those are the same thing until
-    ``cross_biome`` deals entities across pools, and then they are routinely
-    different: keying on the shipped biome gave a def a donor its own former
-    biome streams, while the def is now reached from the pool its entity was
-    dealt to, which streams no such thing.
+    WHICH pool that is, is the whole subtlety, and it is settled by the spawn
+    chain rather than by the entity: a def is rolled by a camp because its
+    TRIBE's runtime roster is what the tier selector reads, and neither the
+    tribe nor the camps move when this kind rewrites an ``entity_ref``. So a
+    def keeps spawning in the biome it shipped in — the biome it is keyed
+    under in ``groups`` — and its donor must come from THAT biome's cast,
+    which is exactly what :func:`_emit_pool` makes the biome stream.
 
-    That is invariant 1 broken, and it is what crashed chapter 2 (session
-    e304/9d36: 40 of 57 entries resolved outside their pool). The engine
-    leaves a null in the pool's preload vector and the teardown loop at
-    ``0x140476f60`` destroys it unchecked — an access violation at
-    ``0x1401273b6`` with nothing pointing back here. Making the pools disjoint
-    made it worse rather than better (24 of 57 -> 40 of 57): once no entity is
-    in two pools, "the donor is in another pool" *guarantees* "not streamed
-    here".
+    ⚠ It was keyed the other way for one day (690df15, reverted 2026-08-31):
+    "a def is reached through the ENTITY it owns, so key by where that entity
+    was dealt". That inverts cause and effect. The entity is a consequence of
+    the def, not the route to it, and after this function runs the def does
+    not own that entity any more — the ownership map it keyed on describes
+    only the vanilla state it is in the middle of replacing. The metric it
+    was justified by (40 of 57 pool entries "resolving outside their pool")
+    is that same wrong model measuring itself, and it did not change the
+    chapter-2 crash it was written for.
+
+    What it DID do is silently drop defs: it replaced ``groups`` with the
+    owners of the cast, so a scoped run (``pools = ["Dark_Hills"]``, whose
+    cast is dealt from every biome) emitted 7 of the 15 Dark Hills defs and 8
+    out-of-scope ones instead. The 8 unemitted defs kept pointing at vanilla
+    entities the repointed pool no longer streams, so they could not spawn —
+    the population looked untouched, which is how it was found.
     """
     if entity is not None:
         return {eid: entity for ids in groups.values() for eid in ids}
-
-    if cross_biome:
-        # Re-key by DESTINATION. Each pool entry names an entity; the def that
-        # owns it is the one that pool will resolve, so that def must draw its
-        # donor from this pool. The pools partition, so each def lands in
-        # exactly one group and every def still gets exactly one donor.
-        owner = {row["entity"].lower(): eid
-                 for eid, row in EP.enemy_index().items() if row["entity"]}
-        by_dest: dict[str, list[str]] = {}
-        for biome, cast in casts.items():
-            for ent in cast:
-                eid = owner.get(ent.lower())
-                if eid is not None:
-                    by_dest.setdefault(biome, []).append(eid)
-        groups = {b: sorted(set(ids)) for b, ids in by_dest.items()}
 
     out: dict[str, str] = {}
     for biome, ids in groups.items():
@@ -921,6 +913,35 @@ def _emit_override(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                 f"cross_biome = true to repoint those pools so they stream it."
             )
 
+    if cross_biome and entity is None:
+        # A scoped cross_biome run CANNOT keep the pools disjoint. The cast is
+        # dealt from every spawnable creature in the game, but only the pools
+        # in scope are rewritten — so a creature dealt in from Storm Island is
+        # now listed by BOTH Dark Hills and Storm Island, whose pool nothing
+        # touched. MEASURED with pools = ["Dark_Hills"], seed 1337: 8 of the
+        # 15 dealt entities ended up in two pools at once.
+        #
+        # That is precisely the shared-lifetime shape the partition work
+        # removed: every chapter after the first tears the previous biome's
+        # pool down while building its own, so a creature both list can be
+        # freed out from under the incoming preload vector — a black screen
+        # entering chapter 2 with chapter 1 healthy. Narrowing the scope was
+        # tried as a way to make cross_biome safer; it re-creates the exact
+        # bug instead, so refuse rather than plant it.
+        open_world = {b for b in EP.pools() if b not in EP.BOSS_ARENA_POOLS}
+        missing = sorted(open_world - set(groups))
+        if missing:
+            raise ContentError(
+                f"enemy {defn.id}: cross_biome deals creatures from every "
+                f"biome, so it has to rewrite every biome's pool — but this "
+                f"scope leaves {', '.join(missing)} untouched. Those pools "
+                f"would keep listing creatures now also pooled for "
+                f"{', '.join(sorted(groups))}, and an entity in two pools is "
+                f"freed out from under whichever chapter loads second. Drop "
+                f"'pools' to cover every biome, or use cross_biome = false "
+                f"for a within-biome shuffle."
+            )
+
     casts = _biome_casts(defn.id, groups, entity, seed, cross_biome, imports)
 
     written: list[Path] = []
@@ -950,8 +971,7 @@ def _emit_override(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             if pool is not None:
                 written.append(pool)
 
-    assignment = _assignment(defn.id, groups, casts, entity, mix, seed,
-                             cross_biome)
+    assignment = _assignment(defn.id, groups, casts, entity, mix, seed)
     changed = 0
     index = EP.enemy_index()
     for enemy_id, new_entity in sorted(assignment.items()):

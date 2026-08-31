@@ -368,54 +368,43 @@ def test_cross_biome_casts_keep_the_pools_disjoint():
 
 
 def test_cross_biome_defs_resolve_inside_their_own_pool():
-    """Invariant 1, checked where `cross_biome` actually breaks it.
+    """Invariant 1: every def in scope gets a donor its own biome streams.
 
-    A def is reached through the ENTITY it owns, so the pool that must stream
-    its donor is the pool that entity was dealt to — not the biome the def
-    shipped in. Those diverge the moment `cross_biome` deals across pools, and
-    the assignment used to key on the shipped biome: 40 of 57 pool entries
-    resolved to a prefab their own biome never streamed.
+    A def is rolled by a camp because of its TRIBE, and a `cross_biome` run
+    moves neither tribes nor camps — so a def still spawns in the biome it is
+    keyed under, and its donor has to come from that biome's repointed cast.
 
-    The engine leaves a null in that pool's preload vector and the teardown
-    loop at 0x140476f60 destroys it unchecked -- an access violation at
-    0x1401273b6 pointing nowhere near this code (dumps 06721fec / bf959d79,
-    both entering chapter 2 with chapter 1 perfectly healthy).
-
-    Making the pools disjoint made this WORSE, not better (24 of 57 -> 40 of
-    57): once no entity is in two pools, a donor in another pool is guaranteed
-    not to be streamed here. So the two invariants have to be asserted
-    together -- fixing either one alone is what produced both bugs.
+    Asserted for a SCOPED run as well as a full one, because that is where it
+    broke. For one day the assignment was re-keyed by where each cast entity
+    had been dealt (690df15); with `pools = ["Dark_Hills"]` — whose cast is
+    drawn from every biome — that emitted 7 of the 15 Dark Hills defs plus 8
+    out-of-scope ones. The 8 missing defs kept pointing at vanilla entities
+    the repointed pool no longer streams, so they could not spawn and the
+    population looked untouched.
     """
-    from rsmm.engine import enemy_pools as EP
     from rsmm.sdk.kinds import enemies as E
 
     _require_corpus()
-    owner = {r["entity"].lower(): eid
-             for eid, r in EP.enemy_index().items() if r["entity"]}
+    scopes = [None, ["Dark_Hills"]]
+    for pools in scopes:
+        groups = E._pool_groups("t", pools, None, None)
+        for seed in (1337, 1, 99999):
+            casts = E._biome_casts("t", groups, None, seed, True)
+            assign = E._assignment("t", groups, casts, None, "shuffle", seed)
 
-    groups = E._pool_groups("t", None, None, None)
-    for seed in (1337, 1, 99999):
-        casts = E._biome_casts("t", groups, None, seed, True)
-        assign = E._assignment("t", groups, casts, None, "shuffle", seed, True)
-
-        placed: dict[str, list[str]] = {}
-        for biome, ents in casts.items():
-            for e in ents:
-                placed.setdefault(e.lower(), []).append(biome)
-        assert not [e for e, bs in placed.items() if len(bs) > 1], (
-            f"seed {seed}: the pools stopped partitioning"
-        )
-
-        for biome, ents in casts.items():
-            have = {e.lower() for e in ents}
-            for e in ents:
-                eid = owner.get(e.lower())
-                if eid is None or eid not in assign:
-                    continue
-                assert assign[eid].lower() in have, (
-                    f"seed {seed}: {biome} streams {e} -> def {eid} resolves to "
-                    f"{assign[eid]}, which {biome} does not stream"
-                )
+            in_scope = {eid for ids in groups.values() for eid in ids}
+            assert set(assign) == in_scope, (
+                f"scope {pools}, seed {seed}: assignment covers "
+                f"{len(assign)} def(s), scope has {len(in_scope)}"
+            )
+            for biome, ids in groups.items():
+                have = {e.lower() for e in casts[biome]}
+                for eid in ids:
+                    assert assign[eid].lower() in have, (
+                        f"scope {pools}, seed {seed}: {biome} def {eid} "
+                        f"resolves to {assign[eid]}, which {biome} does not "
+                        f"stream"
+                    )
 
 
 def test_bounded_imports_preserve_the_partition_and_the_native_majority():
@@ -474,3 +463,23 @@ def test_bounded_imports_preserve_the_partition_and_the_native_majority():
     assert _foreign_total(1) < _foreign_total(6), (
         "raising imports did not import more"
     )
+
+
+def test_scoped_cross_biome_is_refused():
+    """`cross_biome` narrower than every open-world pool must not plant.
+
+    The cast is dealt from every spawnable creature, but only the pools in
+    scope are rewritten — so a creature dealt in from another biome is listed
+    by two pools at once (measured: 8 of 15 with pools = ["Dark_Hills"], seed
+    1337). That is the shared-lifetime shape the partition work removed, and
+    it is what a scoped run silently re-creates.
+    """
+    from rsmm.sdk.kinds import enemies as E
+
+    _require_corpus()
+    defn = ContentDef(kind="enemy", id="scoped",
+                      fields={"mode": "override", "pools": ["Dark_Hills"],
+                              "cross_biome": True, "seed": 1337,
+                              "mix": "shuffle"})
+    with pytest.raises(ContentError, match="every biome's pool"):
+        E.emit("TestEnemyOverrideMod", defn, Path("/nonexistent"))
