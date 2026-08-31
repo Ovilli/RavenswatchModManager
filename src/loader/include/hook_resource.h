@@ -38,6 +38,23 @@
 //
 // It only ever READS, through the mem_safe guards, and logs. It changes no
 // engine state.
+//
+// ⚠⚠ SUSPECT FOR RENDER FAILURES — ARM IT DELIBERATELY, AND ALONE.
+// This detours a function called ~90,000 times a session, and the sampled
+// resolve names at boot are ALL "shaders", so it sits on the shader/render
+// resource path. On 2026-08-31 chapter 2 black-screened (no world, NO HUD,
+// game still simulating: MAP_GENERATION_DONE fired, stats re-pinned, live
+// combat 5s later) on both runs where this was armed — and those are the ONLY
+// two runs that ever reached chapter 2 with the mod config under test, so the
+// trace and the config were never separated. A total black screen INCLUDING
+// the HUD does not fit "some enemy prefabs failed to stream" (the HUD would
+// still draw) and does fit "something global in the render path", which is
+// what this hook is closest to.
+//
+// Read-only after the trampoline is not a proof of harmlessness here: a
+// MinHook trampoline plus an uncached VirtualQuery per call, on the render
+// resource path, is a real perturbation. Never arm this at the same time as
+// another change you are trying to evaluate.
 
 namespace rsmm {
 
