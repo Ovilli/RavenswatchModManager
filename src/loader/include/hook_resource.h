@@ -22,10 +22,19 @@
 // object in question with no pointer guessing.
 //
 // WHAT IT ANSWERS
-//   * does a resolve ever hand back a state other than 1, and which resource;
 //   * what the state values actually are (the enum is NOT established — "1 =
-//     usable" is inferred from a single comparison);
-//   * whether the crashing chapter transition is preceded by such a resolve.
+//     usable" was inferred from a single comparison);
+//   * whether a value seen at a FAILING chapter transition differs from the
+//     ones seen during a healthy one.
+//
+// ⚠ FIRST RESULT (2026-08-31, 90k resolves in one session): `state != 1` is
+// ROUTINE — 7113 of 90000 (~8%), throughout a session whose chapter 1 was
+// perfectly healthy, overwhelmingly state 0. So the hypothesis this hook was
+// built to test — that LevelStream_LoadStep refusing on `state != 1` is the
+// chapter-transition fault — is REFUTED. That refusal is ordinary control
+// flow. The trace stays because the per-value histogram can still show a value
+// appearing only at a failing transition, but nothing here should treat
+// `state != 1` as an error.
 //
 // It only ever READS, through the mem_safe guards, and logs. It changes no
 // engine state.

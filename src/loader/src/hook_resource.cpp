@@ -40,9 +40,17 @@ constexpr std::size_t kObjRefCountOff = 0x08;  // refcount the release path decr
 // How much to say. Resolves are frequent (a chapter load is thousands), so the
 // budget is spent on the two things worth seeing: what NORMAL looks like, and
 // every ANOMALY.
-constexpr int kSampleLines   = 12;   // first few resolves, to show the shape
-constexpr int kAnomalyLines  = 64;   // every state != 1, capped
-constexpr long kSummaryEvery = 2000; // periodic histogram
+constexpr int  kSampleLines   = 12;   // first few resolves, to show the shape
+constexpr long kSummaryEvery  = 2000; // window size for the histogram
+// Lines per WINDOW, not per session. The first version spent a flat 64-line
+// budget first-come and burned every one of them inside the first SECOND of
+// boot, on shader resolves — so the run that mattered (the chapter-2
+// transition, 100 seconds later) produced nothing at all. That is precisely
+// the failure diagnosed in the HP-field scan and then repeated here: any
+// budget that is not tied to the phase you want to measure gets spent by
+// whatever happens to run first. A per-window allowance keeps coverage across
+// the whole session, including every chapter load.
+constexpr int  kLinesPerWindow = 4;
 
 using ResolveFn = void (*)(void*, void*, void**, void*);
 ResolveFn g_real_resolve = nullptr;
@@ -53,8 +61,34 @@ std::atomic<long> g_state_ok{0};      // state == 1
 std::atomic<long> g_state_other{0};   // state != 1
 std::atomic<long> g_null_out{0};      // resolve produced no object
 std::atomic<int>  g_sampled{0};
-std::atomic<int>  g_anomalies{0};
+std::atomic<int>  g_window_lines{0};  // reset every window
 std::atomic<long> g_next_summary{kSummaryEvery};
+
+// Distinct state values seen, with counts. ⚠ MEASURED 2026-08-31: state != 1
+// is ROUTINE — 7113 of 90000 resolves (~8%) across a session whose chapter 1
+// was perfectly healthy. So "state != 1" is NOT a fault and must not be logged
+// as a warning; what is worth seeing is WHICH values occur and whether a new
+// one shows up at a transition that fails.
+constexpr int kStateSlots = 8;
+std::atomic<std::uint32_t> g_state_val[kStateSlots];
+std::atomic<long>          g_state_cnt[kStateSlots];
+std::atomic<long>          g_state_overflow{0};
+
+void note_state(std::uint32_t v) {
+    for (int i = 0; i < kStateSlots; ++i) {
+        auto cur = g_state_val[i].load();
+        if (cur == v && g_state_cnt[i].load() > 0) { g_state_cnt[i].fetch_add(1); return; }
+        if (g_state_cnt[i].load() == 0) {
+            std::uint32_t expect = 0;
+            // Claim the slot; if someone beat us to it, fall through and retry.
+            if (g_state_val[i].compare_exchange_strong(expect, v) || g_state_val[i].load() == v) {
+                g_state_cnt[i].fetch_add(1);
+                return;
+            }
+        }
+    }
+    g_state_overflow.fetch_add(1);
+}
 
 // The ref block's name, or a placeholder. Never trusts the pointer: a stale or
 // half-built block is exactly what this trace exists to catch, so an unreadable
@@ -98,12 +132,26 @@ std::uint32_t obj_refcount(void* obj) {
 }
 
 void log_summary(const char* why) {
-    char line[256];
+    char hist[192];
+    int n = 0;
+    hist[0] = '\0';
+    for (int i = 0; i < kStateSlots && n < (int)sizeof(hist) - 24; ++i) {
+        const long c = g_state_cnt[i].load();
+        if (c == 0) continue;
+        n += std::snprintf(hist + n, sizeof(hist) - n, " %u:%ld",
+                           g_state_val[i].load(), c);
+    }
+    if (g_state_overflow.load()) {
+        std::snprintf(hist + n, sizeof(hist) - n, " (+%ld other)",
+                      g_state_overflow.load());
+    }
+    char line[384];
     std::snprintf(line, sizeof(line),
                   "[rsc-trace] %s: %ld resolve(s) / %ld release(s); "
-                  "state==1: %ld, state!=1: %ld, no object: %ld",
+                  "state==1: %ld, state!=1: %ld, no object: %ld; states:%s",
                   why, g_resolves.load(), g_releases.load(),
-                  g_state_ok.load(), g_state_other.load(), g_null_out.load());
+                  g_state_ok.load(), g_state_other.load(), g_null_out.load(),
+                  hist[0] ? hist : " none");
     Loader::get().log(line);
 }
 
@@ -138,24 +186,12 @@ void detour_resolve(void* ref, void* class_desc, void** out, void* policy) {
         g_state_ok.fetch_add(1);
     } else {
         g_state_other.fetch_add(1);
+        note_state(state);
     }
 
-    // ANOMALY: the exact condition LevelStream_LoadStep refuses on. This is the
-    // line the whole trace exists to produce.
-    if (have && state != 1 && g_anomalies.fetch_add(1) < kAnomalyLines) {
-        char name[256];
-        ref_name(ref, name, sizeof(name));
-        char line[512];
-        std::snprintf(line, sizeof(line),
-                      "[rsc-trace] STATE!=1 obj=%p state=%u refcount=%u  \"%s\"  "
-                      "(this is what LevelStream_LoadStep refuses on)",
-                      obj, state, obj_refcount(obj), name);
-        Loader::get().log_warn(line);
-        return;
-    }
-
-    // A resolve that produced nothing readable is its own anomaly.
-    if (!have && obj != nullptr && g_anomalies.fetch_add(1) < kAnomalyLines) {
+    // A resolve that produced a non-null object we cannot read at +0x38 is a
+    // genuine oddity — unlike state != 1, which is routine (see note_state).
+    if (!have && obj != nullptr && g_window_lines.fetch_add(1) < kLinesPerWindow) {
         char name[256];
         ref_name(ref, name, sizeof(name));
         char line[512];
@@ -166,9 +202,13 @@ void detour_resolve(void* ref, void* class_desc, void** out, void* policy) {
         return;
     }
 
-    // Sample the first few so the log shows what NORMAL looks like — without
-    // it, "no anomalies" is indistinguishable from "the hook never fired".
-    if (g_sampled.fetch_add(1) < kSampleLines) {
+    // A few lines per WINDOW, so every phase — including the chapter load that
+    // matters — gets some. Prefer a non-1 state when one turns up in this
+    // window, because that is the value in question; otherwise show a normal
+    // one so "quiet" stays distinguishable from "hook dead".
+    const bool interesting = have && state != 1;
+    if ((interesting || g_sampled.fetch_add(1) < kSampleLines)
+            && g_window_lines.fetch_add(1) < kLinesPerWindow) {
         char name[256];
         ref_name(ref, name, sizeof(name));
         char st[24];
@@ -183,6 +223,7 @@ void detour_resolve(void* ref, void* class_desc, void** out, void* policy) {
 
     if (n >= g_next_summary.load()) {
         g_next_summary.fetch_add(kSummaryEvery);
+        g_window_lines.store(0);   // refresh the per-window line allowance
         log_summary("progress");
     }
 }
