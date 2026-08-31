@@ -864,6 +864,24 @@ def _emit_override(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
 
     written: list[Path] = []
     if cross_biome:
+        # KNOWN BROKEN — repointing a pool still crashes entering chapter 2.
+        # The engine fails to load one of the newly-pooled entities and then
+        # tears the half-built vector down through the destroy loop at
+        # 0x140476f60, which has no null check (dump a8bb7d8c: 12 entries,
+        # null at index 8 = Storm Island's Standard_Thief_Marksman, dealt in
+        # from Common). Ruled out: the entity assets exist and resolve; the
+        # emitted caches match the engine's own sort order; every pooled
+        # entity is listed in its owning def's cache; and the
+        # destination-keyed assignment fix below (40/57 -> 0/57 out-of-pool
+        # resolutions) did NOT change the crash. Why that one load fails is
+        # still unknown, so warn loudly rather than pretend this is safe.
+        _log.warning(
+            "enemy %s: cross_biome repoints biome spawn pools, which is known "
+            "to crash on chapter transition on the current build. The cause is "
+            "not understood yet — see the note in this function. Use "
+            "cross_biome = false for a within-biome shuffle that ships today.",
+            defn.id,
+        )
         # Repoint each biome's pool FIRST: an entity_ref is only meaningful if
         # the biome streams that prefab, and this is what makes it do so.
         for biome, cast in sorted(casts.items()):
