@@ -982,6 +982,68 @@ do
     check(about(R.stat.get("attack_power"), 500), "stat path healthy again after restore")
 end
 
+-- 10b. R.stat works off the PUBLISHED value context when capture fails ------
+--
+-- Hero capture is the part that keeps failing: sessions 4b4f and a868 each
+-- played a full chapter with the spawn-init hook holding one candidate that
+-- never went live, so every stat write was refused and steamroller pinned
+-- nothing for two playtests running. But the store is *(*(hero+0x2f8)+0x4c8),
+-- and *(hero+0x2f8) is exactly the give handler's param_1 — the entity is not
+-- on that path at all. The loader publishes that context to slot 16.
+do
+    local CTX_SLOT = 16
+    -- The published context is validated SEMANTICALLY, not just by shape: one
+    -- a868 run saw three distinct give param_1 values, so "a readable store" is
+    -- not "the local hero's store". The gate asks the store for max_health and
+    -- requires a sane answer, so seed one while the hero is still captured.
+    check(R.stat.set("max_health", 100) == true, "seed a max_health the gate can read")
+
+    -- No hero: break the capture the way the real failure does.
+    local saved_hero_slot = shared[0]
+    local saved_ring = shared[8]
+    shared[0], shared[8] = 0, 0
+    check(R.entity.hero() == nil, "no hero is captured, as in 4b4f / a868")
+
+    -- and with nothing published either, writes stay refused — the fallback
+    -- must be fail-closed, not a way in.
+    shared[CTX_SLOT] = nil
+    check(R.stat.set("attack_power", 7) == false,
+          "no hero AND no published context still refuses")
+
+    -- Publish the real context: writes and reads come back without a hero.
+    shared[CTX_SLOT] = ENTITY
+    check(R.stat.set("attack_power", 321) == true,
+          "a published value context is enough to write a stat with no hero")
+    check(about(R.stat.get("attack_power"), 321),
+          "and to read it back")
+
+    -- The SEMANTIC gate, which is the whole point: a store that is present and
+    -- perfectly readable but does not answer like a hero's must be refused.
+    -- Shape alone cannot tell the local hero's context from the other two that
+    -- showed up as give param_1 in one a868 run.
+    shared[0], shared[8] = saved_hero_slot, saved_ring   -- hero back, to write
+    check(R.stat.set("max_health", 0) == true, "make the store answer implausibly")
+    shared[0], shared[8] = 0, 0
+    check(R.entity.hero() == nil, "hero gone again")
+    check(R.stat.set("attack_power", 11) == false,
+          "a readable store that reports max_health 0 is not a hero's store")
+    shared[0], shared[8] = saved_hero_slot, saved_ring
+    R.stat.set("max_health", 100)                        -- restore
+    shared[0], shared[8] = 0, 0
+
+    -- A published pointer whose store slot is empty must be refused, not
+    -- handed to EntityValue_Get (whose mock raises on a bad context — the
+    -- 2026-07-15 crash shape).
+    local savedstore = I.read_u64(ENTITY + STORE_OFF)
+    I.write_u64(ENTITY + STORE_OFF, 0)
+    check(R.stat.set("attack_power", 9) == false,
+          "a published context with no store is refused")
+    I.write_u64(ENTITY + STORE_OFF, savedstore)
+
+    shared[CTX_SLOT] = nil
+    shared[0], shared[8] = saved_hero_slot, saved_ring
+end
+
 -- 11. pointer-safety library -----------------------------------------------
 -- The guardrail that turns the crash-by-bad-pointer class (2026-07-15 ctx
 -- deref, 2026-07-17 probe->engine walk) into fail-closed no-ops.

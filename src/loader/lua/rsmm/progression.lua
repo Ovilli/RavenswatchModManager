@@ -155,13 +155,56 @@ local OVR_DATA_OFF  = 0xc0   -- store -> override vector data ptr (vec base)
 local OVR_COUNT_OFF = 0xc8   -- store -> override count (vec+8)
 local OVR_STRIDE    = 0x38   -- override entry stride
 
--- Resolve the value-store pointer for a captured hero: *(ctx+0x4c8) where
--- ctx = *(hero+0x2f8). _ev_ctx (entity-values section above) has already
--- validated the whole chain — plausible ctx, plausible store, readable hot
--- fields — so a non-nil ctx with a non-zero store slot is usable as-is.
--- Returns the store ptr or nil.
+-- The loader publishes the give handler's param_1 -- the hero's VALUE CONTEXT
+-- -- to this slot. See kHeroValueCtxSlot in hook_events.cpp.
+local HERO_VALUE_CTX_SLOT = 16
+
+-- A context published by the give handler, IF it answers like a hero's.
+--
+-- Why a fallback exists at all: every stat write used to be gated on capturing
+-- the hero ENTITY, and capture is the part that keeps failing -- sessions 4b4f
+-- and a868 each played a full chapter while the spawn-init hook held one
+-- candidate that never went live, so R.stat refused every write and steamroller
+-- pinned nothing for two playtests running. But the store is
+-- *(*(hero+0x2f8) + 0x4c8), and *(hero+0x2f8) is exactly what the give handler
+-- receives as param_1. The entity is not on that path; only its context is.
+--
+-- The loader checks SHAPE (store pointer present and readable). It cannot check
+-- MEANING, because the stat key table lives here -- and it must be checked: one
+-- a868 run saw three distinct param_1 values, so "a readable store" is not
+-- "the local hero's store". Asking the store for a stat every hero has, and
+-- requiring a sane answer, is the check that distinguishes them.
+local function _published_ctx()
+    if not I.shared_get then return nil end
+    local ok, ctx = pcall(I.shared_get, HERO_VALUE_CTX_SLOT)
+    if not (ok and type(ctx) == "number" and ctx ~= 0) then return nil end
+    local s = I.read_u64(ctx + EV_STORE_OFF)
+    if not s or s == 0 then return nil end
+    -- Semantic gate: a hero's store answers with a positive, finite max health.
+    local out = I.scratch(0x20)
+    local okc = pcall(R.engine.call, "EntityValue_Get", ctx, out,
+                      R.stat.keys.max_health and R.stat.keys.max_health.key
+                          or R.stat.keys.attack_power.key)
+    if not okc then return nil end
+    if I.read_u32(out + EV_INLINE_OFF) ~= EV_INLINE then return nil end
+    local v = I.read_f32(out + EV_VALUE_OFF)
+    if type(v) ~= "number" or not (v > 0.0 and v < 1.0e6) then return nil end
+    return ctx
+end
+
+-- Resolve the value-store pointer: *(ctx+0x4c8) where ctx = *(hero+0x2f8).
+-- _ev_ctx (entity-values section above) has already validated the whole chain
+-- — plausible ctx, plausible store, readable hot fields — so a non-nil ctx with
+-- a non-zero store slot is usable as-is. Falls back to the published context
+-- when no hero has been captured. Returns the store ptr or nil.
+local function _stat_ctx(hero)
+    local ctx = hero and _ev_ctx(hero) or nil
+    if ctx then return ctx end
+    return _published_ctx()
+end
+
 local function _stat_store(hero)
-    local ctx = _ev_ctx(hero)
+    local ctx = _stat_ctx(hero)
     if not ctx then return nil end
     local s = I.read_u64(ctx + EV_STORE_OFF)
     if not s or s == 0 then return nil end
@@ -171,8 +214,7 @@ end
 -- Read one stat by its spec ({key,kind}) from the current hero. Always safe:
 -- the engine call is made only with an _ev_ctx-validated context pointer.
 local function _stat_read(spec)
-    local e = R.entity.hero(); if not e then return nil end
-    local ctx = _ev_ctx(e); if not ctx then return nil end
+    local ctx = _stat_ctx(R.entity.hero()); if not ctx then return nil end
     local out = I.scratch(0x20)                               -- zeroed union buffer
     local ok = pcall(R.engine.call, "EntityValue_Get", ctx, out, spec.key)
     if not ok then return nil end
@@ -275,11 +317,23 @@ function R.stat.set(name, value)
         return false
     end
     if not _va_ok("R.stat") then return false end
+    -- A captured hero is preferred but not required: the store hangs off the
+    -- hero's value CONTEXT, and the give handler publishes that directly. When
+    -- the entity never validates (which is the common failure) the context is
+    -- still good, and refusing on the entity alone is what left R.stat dead for
+    -- two full playtests. A hero that IS captured must still read plausible —
+    -- a live-but-wrong entity is a different problem from no entity at all.
     local e = R.entity.hero()
-    if not e then _log_throttled("stat.nohero", "[rsmm.stat] no hero captured yet"); return false end
-    if not _hero_plausible(e) then R.log("[rsmm.stat] hero reads implausible — refusing"); return false end
+    if e and not _hero_plausible(e) then
+        R.log("[rsmm.stat] hero reads implausible — refusing"); return false
+    end
     local store = _stat_store(e)
-    if not store then R.log("[rsmm.stat] value store not found for this build — refusing"); return false end
+    if not store then
+        _log_throttled("stat.nostore",
+            "[rsmm.stat] no value store yet (no hero captured and no value "
+            .. "context published — the context arrives on the first item pickup)")
+        return false
+    end
     local entry = _stat_find_entry(store, spec.key)
     if not entry then
         -- Miss: grow the override vector via the engine allocator, init the slot.
@@ -351,10 +405,16 @@ function R.stat.modify(name, amount, duration)
     end
     if not _va_ok("R.stat.modify") then return false end
     local e = R.entity.hero()
-    if not e then _log_throttled("stat.nohero", "[rsmm.stat] no hero captured yet"); return false end
-    if not _hero_plausible(e) then R.log("[rsmm.stat] hero reads implausible — refusing"); return false end
+    if e and not _hero_plausible(e) then
+        R.log("[rsmm.stat] hero reads implausible — refusing"); return false
+    end
     local store = _stat_store(e)
-    if not store then R.log("[rsmm.stat] value store not found — refusing"); return false end
+    if not store then
+        _log_throttled("stat.nostore",
+            "[rsmm.stat] no value store yet (no hero captured and no value "
+            .. "context published — the context arrives on the first item pickup)")
+        return false
+    end
 
     -- Rebase the vftable va and sanity-probe it: slot 0 must hold a pointer
     -- into the game module (a wrong build / stale va reads as garbage and we
@@ -454,7 +514,8 @@ local _STAT_DRIFT = 1e-4
 -- thread (called only from the gameplay-bus handler installed below).
 local function _stat_reassert()
     if not _stat_writes_enabled then return end
-    if not R.entity.hero() then return end
+    -- Re-assert whenever a store is reachable, by hero or by published context.
+    if not _stat_store(R.entity.hero()) then return end
     for name, value in pairs(_stat_sticky) do
         local cur = R.stat.get(name)
         if cur == nil or math.abs(cur - value) > _STAT_DRIFT then

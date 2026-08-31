@@ -677,6 +677,28 @@ constexpr int kHeroRingCount = 8;
 // were unavailable was simply untrue, and the flag exists precisely because
 // these detours have correlated with load-time crashes.
 constexpr int kHeroCapturePermitSlot = 4;
+// The hero's VALUE CONTEXT (*(hero+0x2f8)), published straight off the give
+// handler's param_1.
+//
+// Why this exists: R.stat resolves its store as *(*(hero+0x2f8) + 0x4c8), so
+// every stat write is gated on capturing the hero ENTITY — and capture is the
+// part that keeps failing. Sessions 4b4f and a868 both ran a full chapter with
+// the spawn-init hook stashing exactly ONE candidate that never went live
+// (hp/max 0 at +0x15c8, and a +0x1d80 "mirror" that held a DIFFERENT pointer
+// on each sample, so the layout does not fit that object at all). A widened
+// 0x0..0x3000 sweep found no HP pair anywhere in it.
+//
+// But the give handler hands us the context DIRECTLY, and it fires early in
+// every run (a868: 35s in, on the first pickup). The store does not need the
+// entity — only the entity's +0x2f8, which is exactly what param_1 already is.
+// So publish it and let R.stat work while capture is still broken.
+//
+// Deliberately NOT a hero-entity substitute: it is a value context, it has no
+// HP fields, and R.combat must keep requiring a real captured hero.
+constexpr int kHeroValueCtxSlot = 16;
+constexpr std::uintptr_t kValueCtxStoreOff = 0x4c8;
+
+void publish_value_ctx(void* ctx);   // defined below, used by detour_give
 constexpr std::uint64_t kPermitUnknown = 0, kPermitYes = 1, kPermitNo = 2;
 constexpr std::uintptr_t kHeroHpOff = 0x15c8;
 constexpr std::uintptr_t kHeroMaxHpOff = 0x15cc;
@@ -858,7 +880,41 @@ void detour_give(void* p1, void* p2, void* p3) {
         shared_set(kHeroAuthSlot, 1);
         report_capture("give-handler", p2);
     }
+    // Publish the value context even when the hero entity itself never
+    // validates — that is precisely the case R.stat is stranded by. Only the
+    // shape is checked here (the store pointer is present and readable); the
+    // semantic check, "does this store answer with a sane stat", is Lua's,
+    // because that is where the key table lives. Three distinct param_1 values
+    // showed up in one a868 run, so a shape check alone must NOT be treated as
+    // proof this is the local hero's context.
+    publish_value_ctx(p1);
     g_give_real(p1, p2, p3);
+}
+
+// Publish a candidate hero value context if it is shaped like one: the store
+// pointer at +0x4c8 must be present and readable. Never overwrites a context
+// that still looks live, so one odd give (an ally, a prop) cannot displace the
+// one Lua has already validated.
+void publish_value_ctx(void* ctx) {
+    if (!ctx) return;
+    auto addr = reinterpret_cast<std::uintptr_t>(ctx);
+    if (addr & 7) return;
+    if (!committed_readable(addr + kValueCtxStoreOff, sizeof(void*))) return;
+    auto store = *reinterpret_cast<std::uintptr_t*>(addr + kValueCtxStoreOff);
+    if (store == 0 || (store & 7)) return;
+    if (!committed_readable(store, 0x20)) return;
+
+    // Keep the incumbent while it still resolves — see the "three distinct
+    // param_1" note above.
+    auto cur = shared_get(kHeroValueCtxSlot);
+    if (cur != 0 && cur != addr) {
+        auto c = static_cast<std::uintptr_t>(cur);
+        if (committed_readable(c + kValueCtxStoreOff, sizeof(void*))) {
+            auto cs = *reinterpret_cast<std::uintptr_t*>(c + kValueCtxStoreOff);
+            if (cs != 0 && committed_readable(cs, 0x20)) return;
+        }
+    }
+    shared_set(kHeroValueCtxSlot, static_cast<std::uint64_t>(addr));
 }
 
 void detour_gain_health(void* p1, void* p2, void* p3) {

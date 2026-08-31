@@ -108,13 +108,18 @@ local HERO_SCAN_SLOT = 5
 local HERO_RING_FIRST = 8
 local HERO_RING_COUNT = 8
 
--- ⚠ THE SHARED SLOT MAP IS FULL — there are 16 slots and 15 are spoken for.
+-- THE SHARED SLOT MAP (24 slots as of 2026-08-31; it was 16 and full).
 --
 --   0..4   native: hero ptr / auth / capture-active / pending / permit
 --   5      Lua: HP-field scan latch
 --   6      Lua: hero rejection-diagnostic budget
---   7      Lua: name-probe latch (the only free slot left)
+--   7      Lua: name-probe latch (last Lua-WRITABLE slot)
 --   8..15  native: hero candidate RING — POINTERS, written by the loader
+--   16     native: hero VALUE CONTEXT from the give handler (read-only here)
+--   17..23 spare
+--
+-- Growing the array is the sanctioned move and borrowing is not: 16 was taken
+-- because the map was full, exactly as the note below prescribes.
 --
 -- Slots 8..15 hold live hero pointers. Taking one for a Lua latch does not
 -- merely collide, it EVICTS a spawn candidate: on 2026-08-16 the name probe
@@ -122,7 +127,7 @@ local HERO_RING_COUNT = 8
 -- every subsequent session. Lua reads the ring (below) and must never write
 -- it; `lua_shared_set` now refuses that range outright. Adding another latch
 -- means growing g_shared, not borrowing a slot.
--- Slot 7 is the last free shared slot (8..15 are the native hero ring).
+-- Slot 7 is the last Lua-writable slot (8+ are written by the loader).
 local LOBBY_REFRESH_SLOT = 7
 
 -- When this state first saw ANY hero candidate, so a capture can report the

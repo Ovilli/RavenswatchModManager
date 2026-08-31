@@ -1631,10 +1631,17 @@ int lua_scratch(lua_State* L) {
 // to any state's read without a lock.
 // Storage lives here (file-local); the rsmm:: accessors are defined just past
 // the anonymous namespace so they have external linkage for native callers.
-std::atomic<std::uint64_t> g_shared[16];
+// GROWN from 16 to 24 on 2026-08-31. The map was full at 16 and the rule the
+// old comment set down is the right one: adding a publisher means growing this
+// array, never borrowing a ring slot. 16 is the hero VALUE CONTEXT (see
+// hook_events.cpp kHeroValueCtxSlot); 17..23 are spare so the next one does not
+// have to re-litigate this.
+constexpr int kSharedCount = 24;
+std::atomic<std::uint64_t> g_shared[kSharedCount];
 int lua_shared_get(lua_State* L) {
     auto slot = static_cast<int>(luaL_checkinteger(L, 1));
-    if (slot < 0 || slot >= 16) return luaL_error(L, "rsmm.shared_get: slot must be 0..15");
+    if (slot < 0 || slot >= kSharedCount)
+        return luaL_error(L, "rsmm.shared_get: slot must be 0..%d", kSharedCount - 1);
     lua_pushinteger(L, static_cast<lua_Integer>(shared_get(slot)));
     return 1;
 }
@@ -1646,14 +1653,17 @@ int lua_shared_get(lua_State* L) {
 // of the session, with nothing in the log connecting the two. Read-only from
 // Lua, enforced here rather than by convention.
 constexpr int kSharedRingFirst = 8;
+constexpr int kSharedRingLast = 15;   // 16+ are native publishers, also read-only
 
 int lua_shared_set(lua_State* L) {
     auto slot = static_cast<int>(luaL_checkinteger(L, 1));
-    if (slot < 0 || slot >= 16) return luaL_error(L, "rsmm.shared_set: slot must be 0..15");
+    if (slot < 0 || slot >= kSharedCount)
+        return luaL_error(L, "rsmm.shared_set: slot must be 0..%d", kSharedCount - 1);
     if (slot >= kSharedRingFirst)
-        return luaL_error(L, "rsmm.shared_set: slots %d..15 are the native hero "
-                             "candidate ring and are read-only from Lua",
-                          kSharedRingFirst);
+        return luaL_error(L, "rsmm.shared_set: slots %d+ are written by the "
+                             "loader (the hero candidate ring at %d..%d, then "
+                             "native publishers) and are read-only from Lua",
+                          kSharedRingFirst, kSharedRingFirst, kSharedRingLast);
     shared_set(slot, static_cast<std::uint64_t>(luaL_checkinteger(L, 2)));
     return 0;
 }
@@ -1820,10 +1830,10 @@ bool script_has_handler(const char* name) {
 // it within the same translation unit, giving native code (e.g. hero-capture)
 // and the Lua bridge one store.
 void shared_set(int slot, std::uint64_t value) {
-    if (slot >= 0 && slot < 16) g_shared[slot].store(value);
+    if (slot >= 0 && slot < kSharedCount) g_shared[slot].store(value);
 }
 std::uint64_t shared_get(int slot) {
-    return (slot >= 0 && slot < 16) ? g_shared[slot].load() : 0;
+    return (slot >= 0 && slot < kSharedCount) ? g_shared[slot].load() : 0;
 }
 
 namespace {
