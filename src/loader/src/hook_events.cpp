@@ -895,14 +895,39 @@ void detour_give(void* p1, void* p2, void* p3) {
 // pointer at +0x4c8 must be present and readable. Never overwrites a context
 // that still looks live, so one odd give (an ally, a prop) cannot displace the
 // one Lua has already validated.
+std::atomic<int> g_ctx_logged{0};
+
+// Say WHY, once or twice. Without this "no value context published" on the Lua
+// side is unfalsifiable: it cannot distinguish "the native side rejected every
+// candidate" from "it published one and Lua's semantic gate refused it", and
+// those need opposite fixes. Session 4b4f burned a run on exactly that
+// ambiguity — the give handler fired 8 times and Lua still reported nothing.
+void ctx_note(const char* why, void* ctx, std::uintptr_t store) {
+    if (g_ctx_logged.fetch_add(1) >= 4) return;
+    char line[192];
+    std::snprintf(line, sizeof(line),
+                  "[hero-capture] value-ctx %s: ctx=%p store=0x%llx",
+                  why, ctx, static_cast<unsigned long long>(store));
+    Loader::get().log(line);
+}
+
 void publish_value_ctx(void* ctx) {
-    if (!ctx) return;
+    if (!ctx) { ctx_note("rejected (null)", ctx, 0); return; }
     auto addr = reinterpret_cast<std::uintptr_t>(ctx);
-    if (addr & 7) return;
-    if (!committed_readable(addr + kValueCtxStoreOff, sizeof(void*))) return;
+    if (addr & 7) { ctx_note("rejected (misaligned)", ctx, 0); return; }
+    if (!committed_readable(addr + kValueCtxStoreOff, sizeof(void*))) {
+        ctx_note("rejected (+0x4c8 unreadable)", ctx, 0);
+        return;
+    }
     auto store = *reinterpret_cast<std::uintptr_t*>(addr + kValueCtxStoreOff);
-    if (store == 0 || (store & 7)) return;
-    if (!committed_readable(store, 0x20)) return;
+    if (store == 0 || (store & 7)) {
+        ctx_note("rejected (store null/misaligned)", ctx, store);
+        return;
+    }
+    if (!committed_readable(store, 0x20)) {
+        ctx_note("rejected (store unreadable)", ctx, store);
+        return;
+    }
 
     // Keep the incumbent while it still resolves — see the "three distinct
     // param_1" note above.
@@ -915,6 +940,7 @@ void publish_value_ctx(void* ctx) {
         }
     }
     shared_set(kHeroValueCtxSlot, static_cast<std::uint64_t>(addr));
+    ctx_note("PUBLISHED", ctx, store);
 }
 
 void detour_gain_health(void* p1, void* p2, void* p3) {

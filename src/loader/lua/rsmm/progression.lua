@@ -174,21 +174,45 @@ local HERO_VALUE_CTX_SLOT = 16
 -- a868 run saw three distinct param_1 values, so "a readable store" is not
 -- "the local hero's store". Asking the store for a stat every hero has, and
 -- requiring a sane answer, is the check that distinguishes them.
+-- Why the last attempt failed, so the caller's message can name the actual
+-- cause instead of the ambiguous "no hero and no context".
+local _ctx_why = "slot empty (the loader has not published one)"
+
 local function _published_ctx()
-    if not I.shared_get then return nil end
+    if not I.shared_get then
+        _ctx_why = "this loader is too old to publish a value context"
+        return nil
+    end
     local ok, ctx = pcall(I.shared_get, HERO_VALUE_CTX_SLOT)
-    if not (ok and type(ctx) == "number" and ctx ~= 0) then return nil end
+    if not (ok and type(ctx) == "number" and ctx ~= 0) then
+        _ctx_why = "slot empty (the loader published nothing — see [hero-capture] value-ctx lines)"
+        return nil
+    end
     local s = I.read_u64(ctx + EV_STORE_OFF)
-    if not s or s == 0 then return nil end
+    if not s or s == 0 then
+        _ctx_why = string.format("published ctx 0x%x has no store at +0x%x", ctx, EV_STORE_OFF)
+        return nil
+    end
     -- Semantic gate: a hero's store answers with a positive, finite max health.
     local out = I.scratch(0x20)
     local okc = pcall(R.engine.call, "EntityValue_Get", ctx, out,
                       R.stat.keys.max_health and R.stat.keys.max_health.key
                           or R.stat.keys.attack_power.key)
-    if not okc then return nil end
-    if I.read_u32(out + EV_INLINE_OFF) ~= EV_INLINE then return nil end
+    if not okc then
+        _ctx_why = string.format("ctx 0x%x: EntityValue_Get raised", ctx)
+        return nil
+    end
+    if I.read_u32(out + EV_INLINE_OFF) ~= EV_INLINE then
+        _ctx_why = string.format("ctx 0x%x: max_health did not come back inline", ctx)
+        return nil
+    end
     local v = I.read_f32(out + EV_VALUE_OFF)
-    if type(v) ~= "number" or not (v > 0.0 and v < 1.0e6) then return nil end
+    if type(v) ~= "number" or not (v > 0.0 and v < 1.0e6) then
+        _ctx_why = string.format("ctx 0x%x: max_health reads %s, not a hero's store",
+                                 ctx, tostring(v))
+        return nil
+    end
+    _ctx_why = nil
     return ctx
 end
 
@@ -330,8 +354,8 @@ function R.stat.set(name, value)
     local store = _stat_store(e)
     if not store then
         _log_throttled("stat.nostore",
-            "[rsmm.stat] no value store yet (no hero captured and no value "
-            .. "context published — the context arrives on the first item pickup)")
+            "[rsmm.stat] no value store: no hero captured, and the value context "
+            .. "is unusable — " .. tostring(_ctx_why))
         return false
     end
     local entry = _stat_find_entry(store, spec.key)
@@ -411,8 +435,8 @@ function R.stat.modify(name, amount, duration)
     local store = _stat_store(e)
     if not store then
         _log_throttled("stat.nostore",
-            "[rsmm.stat] no value store yet (no hero captured and no value "
-            .. "context published — the context arrives on the first item pickup)")
+            "[rsmm.stat] no value store: no hero captured, and the value context "
+            .. "is unusable — " .. tostring(_ctx_why))
         return false
     end
 
