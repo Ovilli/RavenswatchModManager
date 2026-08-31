@@ -487,6 +487,50 @@ if load_mod("steamroller") then
     ok(healed, "steamroller: heals once the pins prove the hero is readable")
 
     R.combat.set_hp, R.entity.hp_frac, R.entity.max_hp = _sethp, _frac, _max
+
+    -- STATS MUST NOT REQUIRE A CAPTURED HERO.
+    --
+    -- R.stat's store hangs off the hero's value CONTEXT, which the loader
+    -- publishes straight off the give handler, so a stat can be written from
+    -- the first item pickup even when the hero ENTITY is never captured — and
+    -- capture is the part that keeps failing. Session ef4f: the give handler
+    -- fired 8 times, the context was published, R.stat was ready to write, and
+    -- steamroller's pin() returned at an `R.entity.ready()` check without a
+    -- single attempt. The mod did nothing for a whole run and logged not one
+    -- [rsmm.stat] line. Fixing R.stat was not enough while its caller still
+    -- gated on the thing the fix routes around.
+    R.entity.ready = function() return false end   -- no hero, ever
+    stuck = {}
+    fire("run:start")
+    fire("gameplay:ENEMY_KILLED", { source = "gameplay" })
+    ok(stuck.attack_power ~= nil,
+       "steamroller: pins stats with NO captured hero (value-context path)")
+
+    -- ...but health still does, because Entity_ModifyHealth dereferences the
+    -- entity itself and a value context has no HP fields to fall back on.
+    healed = false
+    R.combat.set_hp  = function() healed = true; return true end
+    R.entity.hp_frac = function() return 0.1 end
+    R.entity.max_hp  = function() return 100 end
+    fire("run:start")
+    fire("gameplay:ENEMY_KILLED", { source = "gameplay" })
+    ok(not healed,
+       "steamroller: still refuses the health top-up without a captured hero")
+    R.combat.set_hp, R.entity.hp_frac, R.entity.max_hp = _sethp, _frac, _max
+
+    -- A refused pin must NOT latch: the context arrives on the first pickup,
+    -- so an early attempt fails and a later one has to succeed. Latching on the
+    -- first try would make the mod dead for the rest of the run.
+    R.entity.ready = function() return false end
+    R.stat.stick = function() return false end
+    stuck = {}
+    fire("run:start")
+    fire("gameplay:ENEMY_KILLED", { source = "gameplay" })
+    R.stat.stick = function(name, value) stuck[name] = value; return true end
+    fire("gameplay:ENEMY_KILLED", { source = "gameplay" })
+    ok(stuck.attack_power ~= nil,
+       "steamroller: retries after a refused pin instead of latching")
+
     R.stat.stick, R.entity.ready = _stick, _ready
 end
 
