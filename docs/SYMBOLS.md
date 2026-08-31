@@ -267,7 +267,7 @@ Total: **222** symbols across 18 categories.
 | `LevelObject_DestroyVectors` | `0x140476f60` | ❓ unverified |  | void(void* container) |
 | `LevelObject_LoadOrCreate` | `0x14047c1e0` | ❓ unverified |  | bool(void* mgr, void* key, void** outLevel, char link, char flag, void* lvlId, void* re… |
 | `LevelStream_LoadLevel` | `0x14047b4f0` | ❓ unverified |  | bool(void* mgr, void* key, void** outLevel, char applyLinks, void* userData) |
-| `LevelStream_LoadStep` | `0x140476770` | ❓ unverified |  | bool(void* container, void* resourceSlot, void* lvlId, void* links) |
+| `LevelStream_LoadStep` | `0x140476770` | ✅ ok |  | bool(void* container, void* resourceSlot, void* lvlId, void* links) |
 | `LevelStream_ProgressHook` | `0x1412ebf30` | 📍 va |  | Function pointer for load-progress phases, set to LevelLoad_AbortPredicate in FUN_14045… |
 | `LevelText_Load` | `0x140476340` | ❓ unverified |  | bool(void* container, char** name, void* lvlId, void* links) |
 | `Object_CloneViaSerialize` | `0x1404fe640` | ✅ ok | ✔ | bool(void* dstObject, void* srcObject, void* ignored3, void* ignored4) |

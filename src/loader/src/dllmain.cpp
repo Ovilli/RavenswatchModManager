@@ -31,6 +31,7 @@
 #include "hook_items.h"
 #include "hook_rewards.h"
 #include "hook_resource.h"
+#include "hook_levelload.h"
 #include "hook_events.h"
 #include "hook_netcode.h"
 #include "script_lua.h"
@@ -154,6 +155,7 @@ static void loader_thread_cxx() {
         install_guarded("items",   rsmm::install_item_hooks);
         install_guarded("rewards", rsmm::install_reward_hooks);
         install_guarded("rsc-trace", rsmm::install_resource_hooks);
+        install_guarded("lvl-trace", rsmm::install_levelload_hooks);
         install_guarded("events",  rsmm::install_event_hooks);
         // Hero-capture must install in the SAME phase as the other engine hooks
         // (after the gameplay bus). Installing it earlier — before mod init —

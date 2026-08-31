@@ -56,6 +56,7 @@ set(LOADER_SRC
     src/hook_items.cpp
     src/hook_rewards.cpp
     src/hook_resource.cpp
+    src/hook_levelload.cpp
     src/hook_events.cpp
     src/hook_netcode.cpp
     src/hook_lua.cpp
