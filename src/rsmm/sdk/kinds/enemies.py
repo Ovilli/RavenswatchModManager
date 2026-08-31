@@ -506,15 +506,20 @@ def _biome_casts(defn_id: str, groups: dict[str, list[str]], entity, seed,
     #
     # Two reasons to want that. The obvious one is taste — a full deal
     # replaces a biome's ENTIRE cast, so Storm Island stops being Storm Island.
-    # The load-bearing one is the chapter-transition crash: both level loaders
-    # (`FUN_140476340` text, `FUN_1404764f0` binary) begin with
-    # `if (FUN_140516cd0(...) == 1) return 0;` — they ABORT before opening the
-    # stream — and `FUN_14047c1e0` treats that non-1 as failure and destroys
-    # the half-built level, whose teardown loop walks the object vector with no
-    # null check. So a load that bails partway crashes on its own cleanup, and
-    # how much NEW streaming a chapter transition has to do is the variable we
-    # can actually control. A full deal makes every slot new; `imports = 3`
-    # makes three.
+    # The load-bearing one is the chapter-transition crash. CORRECTED
+    # 2026-08-31: the abort is NOT a time budget (an earlier reading of
+    # `FUN_140516cd0` as a frame budget was wrong). It is a CANCEL — every
+    # loader calls `LevelLoad_AbortPredicate`, which returns 1 when two
+    # booleans on the oe::Engine singleton (+0x18 and +0x19) are both set, and
+    # then bails BEFORE opening the stream. `LevelObject_LoadOrCreate` treats
+    # that as failure and destroys the half-built level, whose teardown walks
+    # the object vector with no null check. So the crash is the cleanup of a
+    # CANCELLED load, which is why every asset-integrity hypothesis came back
+    # clean. The one +0x18 writer found sets it and then drains a work queue —
+    # a teardown shape — so the cancel plausibly arrives as the OLD chapter is
+    # torn down, and a load still in flight at that moment is the one that
+    # dies. Less new streaming = a narrower window to be caught in. That is the
+    # variable this knob controls; it does not remove the race.
     #
     # ⚠ UNPROVEN as a fix for that crash — it is a hypothesis with a mechanism,
     # which is exactly what the last two "fixes" were. It is offered as a knob

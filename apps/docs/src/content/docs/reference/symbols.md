@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **211** symbols across 18 categories.
+Total: **218** symbols across 18 categories.
 
 ## combat
 
@@ -67,6 +67,7 @@ Total: **211** symbols across 18 categories.
 | `ClassRegistry_Global` | `0x141436690` | 📍 va |  | Global class-descriptor registry: ptr to {descPtr array @+0x0, u32 count @+0x8}. Scanne… |
 | `CustomFlagFilter_Serialize` | `0x140189830` | ✅ ok |  | bool(void* flagFilter, void* reader) |
 | `CustomFlagList_Serialize` | `0x140681e60` | ❓ unverified |  | bool(void* flagList, void* reader) |
+| `Engine_Singleton` | `0x14143cbd0` | 📍 va |  | Pointer to the oe::Engine singleton (the object itself is at 0x14143daf0; ctor FUN_1404… |
 | `GameScene_FindContextByTester` | `0x14066cad0` | ✅ ok |  | void*(void* gameScene, void* kindOfTypeTester) |
 | `MetaClass_AddMember` | `0x14050aa30` | ✅ ok |  | void(void* metaClass, void* member, uint32_t id, void* name, void* unused, void* userData) |
 | `MetaClass_FindMember` | `0x14050cd20` | ✅ ok |  | void* (void* metaClass, uint32_t nameOrId, void* kind, bool searchParents) |
@@ -275,6 +276,12 @@ Total: **211** symbols across 18 categories.
 | `Definitions_LoadGroup` | `0x140310300` | ✅ ok |  | Loads the 'Definitions' group / VersionDefinition manifest (triggers loading the curate… |
 | `FileStream_Open` | `0x14053a730` | ❓ unverified |  | bool(void** outHandle, const char* path, int* mode) |
 | `InitialLoading_LoadAllDefinitions` | `0x140260b80` | ✅ ok |  | void(void* nameFilter) |
+| `LevelLoad_AbortPredicate` | `0x140456c70` | ❓ unverified |  | uint32_t() |
+| `LevelLoad_ProgressTick` | `0x140516cd0` | ❓ unverified |  | uint32_t(float delta) |
+| `LevelObject_DestroyVectors` | `0x140476f60` | ❓ unverified |  | void(void* container) |
+| `LevelObject_LoadOrCreate` | `0x14047c1e0` | ❓ unverified |  | bool(void* mgr, void* key, void** outLevel, char link, char flag, void* lvlId, void* re… |
+| `LevelStream_LoadLevel` | `0x14047b4f0` | ❓ unverified |  | bool(void* mgr, void* key, void** outLevel, char applyLinks, void* userData) |
+| `LevelStream_ProgressHook` | `0x1412ebf30` | 📍 va |  | Function pointer for load-progress phases, set to LevelLoad_AbortPredicate in FUN_14045… |
 | `Object_CloneViaSerialize` | `0x1404fe640` | ✅ ok | ✔ | bool(void* dstObject, void* srcObject, void* ignored3, void* ignored4) |
 | `Object_LoadFromStream` | `0x1404fd6b0` | ✅ ok | ✔ | bool(void* object, void* readStream) |
 | `Object_SaveToFile` | `0x1404fd7e0` | ✅ ok | ✔ | bool(void* object, void* pathString, bool cooked, void* ctx) |
