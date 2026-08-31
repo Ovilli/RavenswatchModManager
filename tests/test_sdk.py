@@ -426,6 +426,49 @@ def test_content_block_emission_via_applier(tmp_path: Path, monkeypatch):
     assert m.files() == []
 
 
+def test_failed_emit_drops_the_previous_assets(tmp_path: Path, monkeypatch):
+    """A content emit that ERRORS must not leave the last successful emit's
+    files on disk.
+
+    Leaving them is worse than emitting nothing: `apply` plants them, so the mod
+    keeps shipping its OLD content while the author believes the new manifest is
+    live. That happened on 2026-08-31 — reverting `random-monsters` from
+    `cross_biome = true` back to `false` raised on a now-invalid `imports`
+    field, the emit aborted, and the previous cross-biome EntityPooling assets
+    stayed planted. The mod read as reverted; the game was not.
+    """
+    from rsmm.cli.apply_mods import Mod, emit_content_blocks
+
+    mod = tmp_path / "mods" / "T"
+    mod.mkdir(parents=True)
+    manifest = (
+        '[mod]\nid = "T"\nname = "T"\nversion = "1"\nenabled = true\n'
+        'sdk_version = ">=3.0,<4"\n\n'
+        '[[content]]\nkind = "item"\nid = "X"\nbase = "Common/Foo"\n'
+    )
+    (mod / "manifest.toml").write_text(manifest, encoding="utf-8")
+    emit_content_blocks([Mod(mod)])
+    emitted = mod / "assets" / "_pending_items" / "X.json"
+    assert emitted.exists(), "precondition: the good manifest emits"
+    marker = mod / ".rsmm_emitted.json"
+    assert marker.exists()
+
+    # Now make the emit itself raise, which is what the bad `imports` field did
+    # (ContentError derives from ValueError, so it lands in the same handler).
+    from rsmm.sdk.content import ContentRegistry
+
+    def boom(self, out_dir):
+        raise ValueError("emit exploded")
+
+    monkeypatch.setattr(ContentRegistry, "emit", boom)
+    emit_content_blocks([Mod(mod)])
+
+    assert not emitted.exists(), (
+        "a failed emit left the previous emit's assets on disk, so apply would "
+        "plant stale content the manifest no longer describes"
+    )
+
+
 def test_docs_gen_writes_per_module(tmp_path: Path):
     from rsmm.sdk.docs_gen import generate
     written = generate(tmp_path)

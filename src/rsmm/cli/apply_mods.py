@@ -804,6 +804,17 @@ def emit_content_blocks(mods: list[Mod]) -> int:
     Returns the number of declarations processed. Errors per-mod are
     logged + skipped; the applier still proceeds with the remaining
     mods so one bad content def doesn't break a batch.
+
+    A FAILED emit drops whatever that mod emitted last time. Leaving the
+    previous files in place is far worse than emitting nothing: `apply` happily
+    plants them, so the mod silently keeps shipping its OLD content while the
+    author believes the new manifest is live. That is not hypothetical — on
+    2026-08-31 a `random-monsters` revert from `cross_biome = true` back to
+    `false` raised on a now-invalid `imports` field, the emit aborted, and the
+    previous cross-biome EntityPooling assets stayed planted. The mod read as
+    reverted, the game was not, and it cost a playtest to notice. Same failure
+    family as an enabled mod whose assets never landed: the state on disk has to
+    match what the manifest says, or say nothing at all.
     """
     try:
         from rsmm.sdk.content import ContentError, ContentRegistry, SchemaNotMined
@@ -869,8 +880,10 @@ def emit_content_blocks(mods: list[Mod]) -> int:
         except SchemaNotMined as e:
             print(f"  [content] {m.id}: schema not mined yet: {e}",
                   file=sys.stderr)
+            _drop_emitted(m)
         except (OSError, ValueError) as e:
             print(f"  [content] {m.id}: emit failed: {e}", file=sys.stderr)
+            _drop_emitted(m)
     return total
 
 
