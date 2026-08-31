@@ -184,7 +184,7 @@ _CLONE_FIELDS = (
 #: succeeds, the assets install, and the run plays exactly like vanilla.
 _OVERRIDE_FIELDS = (
     "mode", "pools", "enemies", "exclude", "entity", "mix", "seed", "weight",
-    "cross_biome",
+    "cross_biome", "imports",
 )
 
 
@@ -472,7 +472,7 @@ def _pool_groups(defn_id: str, pools_req, enemies_req, exclude) -> dict[str, lis
 
 
 def _biome_casts(defn_id: str, groups: dict[str, list[str]], entity, seed,
-                 cross_biome: bool) -> dict[str, list[str]]:
+                 cross_biome: bool, imports: int | None = None) -> dict[str, list[str]]:
     """``biome -> the creatures that biome will stream`` after the edit.
 
     Without ``cross_biome`` a biome's cast is what it already had, and the
@@ -500,6 +500,48 @@ def _biome_casts(defn_id: str, groups: dict[str, list[str]], entity, seed,
         # same creature. Left as the author asked for; see the partition note
         # below for what that costs.
         return {biome: [entity] for biome in groups}
+
+    # BOUNDED IMPORTS. `imports` caps how many of a biome's slots hold a
+    # foreign creature; the rest keep the creature they shipped with.
+    #
+    # Two reasons to want that. The obvious one is taste — a full deal
+    # replaces a biome's ENTIRE cast, so Storm Island stops being Storm Island.
+    # The load-bearing one is the chapter-transition crash: both level loaders
+    # (`FUN_140476340` text, `FUN_1404764f0` binary) begin with
+    # `if (FUN_140516cd0(...) == 1) return 0;` — they ABORT before opening the
+    # stream — and `FUN_14047c1e0` treats that non-1 as failure and destroys
+    # the half-built level, whose teardown loop walks the object vector with no
+    # null check. So a load that bails partway crashes on its own cleanup, and
+    # how much NEW streaming a chapter transition has to do is the variable we
+    # can actually control. A full deal makes every slot new; `imports = 3`
+    # makes three.
+    #
+    # ⚠ UNPROVEN as a fix for that crash — it is a hypothesis with a mechanism,
+    # which is exactly what the last two "fixes" were. It is offered as a knob
+    # and an experiment, not as a repair.
+    #
+    # Implemented as SWAPS between biomes rather than a fresh draw, because the
+    # partition is what the disjoint-pool work bought and a fresh draw can
+    # break it: picking a foreigner from the global set can pick a creature the
+    # biome that owns it is also keeping, putting one entity in two pools. A
+    # swap moves a creature from one biome to another and is partition-
+    # preserving by construction — every creature still lands in exactly one
+    # pool, and each swap makes exactly one slot foreign on each side.
+    if imports is not None:
+        cast = {b: [index[i]["entity"] for i in ids] for b, ids in groups.items()}
+        movable = {b: [e for e in ents] for b, ents in cast.items()}
+        biomes = [b for b in sorted(cast) if movable[b]]
+        if len(biomes) >= 2 and imports > 0:
+            rng = _rng(seed, "swap")
+            # Each swap gives one import to each of two biomes, so this many
+            # swaps lands ~`imports` foreigners in every biome.
+            n_swaps = max(1, round(imports * len(biomes) / 2))
+            for _ in range(n_swaps):
+                a, b = rng.sample(biomes, 2)
+                ia = rng.randrange(len(movable[a]))
+                ib = rng.randrange(len(movable[b]))
+                movable[a][ia], movable[b][ib] = movable[b][ib], movable[a][ia]
+        return {b: sorted(ents) for b, ents in movable.items()}
 
     # ONE global deal, not an independent draw per biome.
     #
@@ -792,6 +834,20 @@ def _emit_override(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     seed = defn.fields.get("seed")
     weight = defn.fields.get("weight")
     cross_biome = bool(defn.fields.get("cross_biome"))
+    imports = defn.fields.get("imports")
+    if imports is not None:
+        if not isinstance(imports, int) or isinstance(imports, bool) or imports < 0:
+            raise ContentError(
+                f"enemy {defn.id}: imports must be a non-negative whole number "
+                f"(creatures per biome drawn from other chapters), got "
+                f"{imports!r}."
+            )
+        if not cross_biome:
+            raise ContentError(
+                f"enemy {defn.id}: imports = {imports} only means anything with "
+                f"cross_biome = true — without it no creature crosses a biome "
+                f"boundary at all, so there is nothing to bound."
+            )
 
     if entity is not None and mix is not None:
         raise ContentError(
@@ -860,7 +916,7 @@ def _emit_override(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                 f"cross_biome = true to repoint those pools so they stream it."
             )
 
-    casts = _biome_casts(defn.id, groups, entity, seed, cross_biome)
+    casts = _biome_casts(defn.id, groups, entity, seed, cross_biome, imports)
 
     written: list[Path] = []
     if cross_biome:

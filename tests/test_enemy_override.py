@@ -416,3 +416,61 @@ def test_cross_biome_defs_resolve_inside_their_own_pool():
                     f"seed {seed}: {biome} streams {e} -> def {eid} resolves to "
                     f"{assign[eid]}, which {biome} does not stream"
                 )
+
+
+def test_bounded_imports_preserve_the_partition_and_the_native_majority():
+    """`imports = N` must move creatures between biomes WITHOUT putting any
+    creature in two pools.
+
+    The partition is what the disjoint-pool work bought, and the obvious
+    implementation loses it: picking a foreigner from the global set can pick a
+    creature the biome that owns it is also keeping, so one entity lands in two
+    pools. Bounded imports are therefore SWAPS, which are partition-preserving
+    by construction.
+
+    Also asserts the point of the knob — that most slots keep the creature they
+    shipped with. A bound that quietly replaced the whole cast would look
+    identical to a full deal and test nothing.
+    """
+    from rsmm.engine import enemy_pools as EP
+    from rsmm.sdk.kinds import enemies as E
+
+    _require_corpus()
+    groups = E._pool_groups("t", None, None, None)
+    native = {b: {e.lower() for e in ents}
+              for b, ents in E._biome_casts("t", groups, None, 1337, False).items()}
+
+    for seed in (1337, 1, 99999):
+        for n in (1, 3):
+            casts = E._biome_casts("t", groups, None, seed, True, n)
+
+            placed: dict[str, list[str]] = {}
+            for biome, ents in casts.items():
+                for e in ents:
+                    placed.setdefault(e.lower(), []).append(biome)
+            assert not [e for e, bs in placed.items() if len(bs) > 1], (
+                f"imports={n} seed={seed} put a creature in two pools"
+            )
+
+            # Sizes are untouched: the oCGameStream vector cannot grow.
+            for biome, ents in casts.items():
+                assert len(ents) == len(native[biome]), (
+                    f"{biome} changed size under imports={n}"
+                )
+
+            # And the cast is still mostly its own.
+            for biome, ents in casts.items():
+                foreign = [e for e in ents if e.lower() not in native[biome]]
+                assert len(foreign) < len(ents), (
+                    f"{biome} kept nothing of its own at imports={n}"
+                )
+
+    # More imports means more foreigners — otherwise the knob does nothing.
+    def _foreign_total(n):
+        casts = E._biome_casts("t", groups, None, 1337, True, n)
+        return sum(len([e for e in ents if e.lower() not in native[b]])
+                   for b, ents in casts.items())
+
+    assert _foreign_total(1) < _foreign_total(6), (
+        "raising imports did not import more"
+    )
