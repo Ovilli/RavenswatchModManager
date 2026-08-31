@@ -652,12 +652,20 @@
    ]
   },
   {
+   "name": "Engine_MainThreadId",
+   "kind": "data",
+   "category": "engine-core",
+   "va": "0x141443148",
+   "status": "va",
+   "note": "Thread id of the engine main thread. LevelLoad_ProgressTick compares GetCurrentThreadId() against it and does nothing (returning 0, i.e. 'do not abort') off that thread, so load progress and its abort check are main-thread-only."
+  },
+  {
    "name": "Engine_Singleton",
    "kind": "data",
    "category": "engine-core",
    "va": "0x14143cbd0",
    "status": "va",
-   "note": "Pointer to the oe::Engine singleton (the object itself is at 0x14143daf0; ctor FUN_1404564d0 stores both, dtor FUN_140456a60 clears). Carries oe::Engine::vftable and oIRenderWindowMgr::vftable. Two adjacent BYTE flags at +0x18 and +0x19 are the load-cancel pair read by LevelLoad_AbortPredicate — both zero-initialised by the ctor, and when BOTH are set every resource load aborts. +0xf8 gates the [vftable+0x48] pump. The only writer of +0x18 reachable from a load of this global is a cold chunk at 0x14029987c which sets it to 1 and then drains a work queue until it reports nothing left — a cancel/teardown shape. What sets +0x19 is NOT established: it is written through a `this` register inside an Engine method, and offsets 0x18/0x19 are far too common to identify by instruction encoding alone (a scan for them across .text is pure noise — do not repeat it).",
+   "note": "Pointer to the oe::Engine singleton (object at 0x14143daf0; ctor FUN_1404564d0 stores both, dtor FUN_140456a60 clears). Its vftable is 0x140f3fcf0 — 13 slots, first entry 0x140456960, sitting in the ctor/dtor neighbourhood; slot 9 (+0x48) is the pump LevelLoad_AbortPredicate calls. (The ctor also writes 0x140f54c20/0x140f4f2a0 to +0x00/+0x08 first — base-class sub-vftables, overwritten.) Two adjacent BYTE flags at +0x18 and +0x19 are the load-abort pair; the ctor zeroes BOTH with one 2-byte store at 0x140456534. +0xf8 gates the pump. ⚠ NEGATIVE RESULT worth as much as a positive one (2026-08-31): +0x19 has NO writer in Engine scope — searched the 45 functions that load this global, the 5 resolvable vftable methods, and the one direct callee taking rcx = Engine, for writes of any width at +0x18/+0x19. Only +0x18 is ever set (cold chunk 0x14029987c, which then drains a work queue). Since the abort needs both, the predicate looks inert. ⚠ Do NOT scan .text for byte writes to [reg+0x19] unscoped — those offsets are generic and the output is pure noise (tried twice, both times worthless).",
    "refs": []
   },
   {
@@ -1767,13 +1775,22 @@
    ]
   },
   {
+   "name": "LevelBinary_Load",
+   "kind": "function",
+   "category": "resource",
+   "raw": "FUN_1404764f0",
+   "status": "unverified",
+   "signature": "bool(void* container, void* stream, void* lvlId, void* links)",
+   "note": "Binary counterpart of LevelText_Load — oCBinaryLoader over the same FUN_1404767e0 deserializer, chosen when `*(int*)(resourceSlot+0x90) != 0`. Same leading abort check."
+  },
+  {
    "name": "LevelLoad_AbortPredicate",
    "kind": "function",
    "category": "resource",
    "raw": "FUN_140456c70",
    "status": "unverified",
    "signature": "uint32_t()",
-   "note": "THE CHAPTER-TRANSITION CRASH GATE. Returns 1 when Engine+0x18 AND Engine+0x19 are both non-zero, else pumps Engine's [vftable+0x48] when Engine+0xf8 is set and returns 0. Engine = Engine_Singleton. Installed into LevelStream_ProgressHook by FUN_140454750 and invoked as phase 1 by LevelLoad_ProgressTick. ⚠ It is NOT a time or frame budget — an earlier reading of LevelLoad_ProgressTick as a 'frame time budget' was WRONG (2026-08-31); the float accumulator there is progress reporting, and the only thing that can abort is this boolean PAIR. Every resource loader calls the tick FIRST and returns 0 when it says 1: LevelText_Load, LevelBinary_Load, LevelStream_LoadStep and FUN_140476680 all begin `if (tick(...) == 1) return 0;` — they bail BEFORE opening the stream. LevelObject_LoadOrCreate then treats that 0 as failure and destroys the half-built level, whose teardown (LevelObject_DestroyVectors) walks the object vector calling the generic destroy thunk with NO null check, faulting at 0x1401273b6 reading address 0. So the observed crash is the CLEANUP OF A CANCELLED LOAD, not a bad asset — which is why every asset-integrity hypothesis (missing entity, stale cache, wrong cache collation) came back clean. Verified against the LIVE exe byte-for-byte, not only Ghidra (which lacks the surrounding chunks).",
+   "note": "Load-abort predicate. Returns 1 when Engine+0x18 AND Engine+0x19 are both non-zero, else pumps Engine's vftable slot 9 ([vftable+0x48]) when Engine+0xf8 is set, and returns 0. Engine = Engine_Singleton. Installed into LevelStream_ProgressHook by FUN_140454750 and invoked as phase 1 by LevelLoad_ProgressTick. ⚠ It is NOT a time or frame budget — an earlier reading of LevelLoad_ProgressTick as a 'frame time budget' was wrong (2026-08-31); nothing here reads a clock. ⚠⚠ AND IT IS PROBABLY INERT ON THIS BUILD (2026-08-31, second pass): the Engine ctor zeroes +0x18 and +0x19 together with one 2-byte store at 0x140456534, and an exhaustive search found NO WRITER OF +0x19 anywhere in Engine scope — the 45 functions containing a rip-relative load of Engine_Singleton, the 5 resolvable oe::Engine vftable methods, and the single direct callee invoked with rcx = Engine, checked for writes of ANY width at +0x18/+0x19 (a wide store at +0x18 would cover +0x19). Only +0x18 has a writer (a cold chunk at 0x14029987c). Both bytes must be non-zero to abort, so on this evidence this NEVER returns 1 and the 'the crash is a cancelled load' story is UNPROVEN and probably wrong. The reachable failure in the same callers is the resource-state check in LevelStream_LoadStep, which is asset/state dependent as this is not. Do not rebuild the cancel story without first finding a +0x19 writer.",
    "refs": []
   },
   {
@@ -1821,7 +1838,7 @@
    "raw": "FUN_14047c1e0",
    "status": "unverified",
    "signature": "bool(void* mgr, void* key, void** outLevel, char link, char flag, void* lvlId, void* registry)",
-   "note": "Allocates a level object, deserializes it through the oCTextLoader/oCBinaryLoader path (fields *a_pLvlId / *a_pLinks / *a_pLevel) and, ON A NON-1 RESULT, calls LevelObject_Destroy on the half-built object and returns 0. That destroy is the crash: see LevelLoad_AbortPredicate. The container the teardown walks is at level+0x10, its object vector at +0x90 with the count at +0x98 — matching the crash dump's rbx+0x80/rbx+0x88.",
+   "note": "Allocates a level object, deserializes it through the oCTextLoader/oCBinaryLoader path (fields *a_pLvlId / *a_pLinks / *a_pLevel) and, ON A NON-1 RESULT, calls the level destructor FUN_140482d90 (which runs LevelObject_DestroyVectors) on the half-built object and returns 0. That destroy is the crash: see LevelLoad_AbortPredicate. The container the teardown walks is at level+0x10, its object vector at +0x90 with the count at +0x98 — matching the crash dump's rbx+0x80/rbx+0x88.",
    "refs": []
   },
   {
@@ -1835,6 +1852,15 @@
    "refs": []
   },
   {
+   "name": "LevelStream_LoadStep",
+   "kind": "function",
+   "category": "resource",
+   "raw": "FUN_140476770",
+   "status": "unverified",
+   "signature": "bool(void* container, void* resourceSlot, void* lvlId, void* links)",
+   "note": "One step of a level load. TWO failure returns, and telling them apart matters: (1) LevelLoad_ProgressTick returns 1 -> return 0; that is the abort path, which looks INERT on this build (see LevelLoad_AbortPredicate). (2) `*(*(resourceSlot) + 0x38) != 1` -> return 0; a RESOURCE STATE check, and the only one of the two that is reachable in practice. Otherwise it tails into FUN_140476680, which picks LevelText_Load or LevelBinary_Load on `*(int*)(resourceSlot+0x90)`. The caller LevelObject_LoadOrCreate treats either 0 as failure and destroys the half-built level, so the state check is the live suspect for the chapter-transition crash: a handle not in state 1 (still streaming?) reads exactly like a failed load. The slot is filled by FUN_140492540, a refcounted handle acquire that finds its provider by id 0x53b64d. What the state enum means is NOT established — 1 = usable is inferred from this comparison alone."
+  },
+  {
    "name": "LevelStream_ProgressHook",
    "kind": "data",
    "category": "resource",
@@ -1842,6 +1868,15 @@
    "status": "va",
    "note": "Function pointer for load-progress phases, set to LevelLoad_AbortPredicate in FUN_140454750. Phase argument: 0 = begin, 1 = tick (from LevelLoad_ProgressTick), 2 = end. LevelStream_LoadLevel brackets a level load with phases 0 and 2 and resets the accumulator at 0x14143cd34 and the max at 0x1412ebf00 first.",
    "refs": []
+  },
+  {
+   "name": "LevelText_Load",
+   "kind": "function",
+   "category": "resource",
+   "raw": "FUN_140476340",
+   "status": "unverified",
+   "signature": "bool(void* container, char** name, void* lvlId, void* links)",
+   "note": "Loads a level from the TEXT (.ot) form via oCTextLoader over an oCReadMappedStream, deserializing through FUN_1404767e0 (*a_pLvlId / *a_pLinks / *a_pLevel). Opens with `if (LevelLoad_ProgressTick(...) == 1) return 0;` — it bails before touching the stream. Sibling of LevelBinary_Load."
   },
   {
    "name": "Library_AchievementDefinition_vftable",
