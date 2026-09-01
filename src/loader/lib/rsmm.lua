@@ -1309,10 +1309,29 @@ local function _report_validate_widget()
     _widget_said = key
     R.log(string.format(
         "[rsmm.hero] Validate Hero Button @%x: state=%s/%s listener=%s "
-        .. "flags=%s (poll refuses a press while state==4; a null listener is "
-        .. "a button wired to nothing)",
+        .. "flags=%s (state~=4 and flags&0x10 set means the poll WILL "
+        .. "dispatch a press)",
         w, tostring(state), tostring(state2),
         listener and string.format("0x%x", listener) or "nil", tostring(flags)))
+
+    -- NAME THE ACTION.
+    --
+    -- All three poll gates are satisfied (state 1, listener present,
+    -- flags&0x10 set), so a press reaches the listener and the ACTION is what
+    -- refuses. The press driver vcalls slot +0x10 on the listener, so reading
+    -- the listener's vftable and that slot gives the exact function to read —
+    -- reported as a STATIC address, because a runtime one is meaningless
+    -- outside the process that printed it.
+    if not _ptr_plausible(listener) then return end
+    local vft = I.read_u64(listener)
+    if not vft or not _ptr_plausible(vft) then return end
+    local fn = I.read_u64(vft + 0x10)
+    if not fn or not _ptr_plausible(fn) then return end
+    local base = I.module_base()
+    R.log(string.format(
+        "[rsmm.hero] press action: listener vftable 0x%x, slot+0x10 -> 0x%x "
+        .. "(static, rebased to the 0x140000000 image)",
+        vft - base + 0x140000000, fn - base + 0x140000000))
 end
 
 -- Clear the byte that greys the book's Validate Hero Button.
