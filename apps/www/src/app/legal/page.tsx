@@ -1,6 +1,13 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@rsmm/ui';
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getApiUrl } from '../../lib/api-url';
+
+export const metadata: Metadata = {
+  title: 'Legal Notice (Impressum) · Ravenswatch Mod Manager',
+  description: 'Provider identity and contact details for rsmm.me, as required under §5 DDG.',
+  alternates: { canonical: '/legal' },
+};
 
 interface Impressum {
   configured: boolean;

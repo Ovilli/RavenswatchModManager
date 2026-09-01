@@ -1,5 +1,13 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@rsmm/ui';
+import type { Metadata } from 'next';
 import Link from 'next/link';
+
+export const metadata: Metadata = {
+  title: 'Privacy Policy · Ravenswatch Mod Manager',
+  description:
+    'What data the Ravenswatch Mod Manager collects, how anonymous usage and crash reporting works, and how to turn it off.',
+  alternates: { canonical: '/privacy' },
+};
 
 // Bump whenever a section changes materially. Shown at the top so a returning
 // reader can tell at a glance whether anything moved since they last agreed.

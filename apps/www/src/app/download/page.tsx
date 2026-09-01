@@ -9,6 +9,7 @@ import {
   buttonVariants,
 } from '@rsmm/ui';
 import { Download } from 'lucide-react';
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import {
   LATEST_RELEASE_URL,
@@ -19,6 +20,13 @@ import {
   pickAsset,
 } from '../../lib/releases';
 import { OsDownload } from '../os-download';
+
+export const metadata: Metadata = {
+  title: 'Download Ravenswatch Mod Manager — Windows & Linux',
+  description:
+    'Get the free Ravenswatch Mod Manager for Windows and Linux. Installer, portable build and AppImage, with one-click mod installs and a fully reversible game install.',
+  alternates: { canonical: '/download' },
+};
 
 export const revalidate = 3600;
 
