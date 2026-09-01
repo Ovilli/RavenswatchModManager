@@ -1285,6 +1285,35 @@ local _confirm_hooked = false
 local _reason_hooked = false
 local _press_logged = false
 local _unblock_armed, _unblock_said = false, 0
+local _validate_widget = nil            -- the Validate Hero Button widget
+local _widget_said = nil
+
+-- Report the button's own live state once it changes.
+--
+-- The block byte is cleared and the control is asked for enabled=1, and the
+-- press still does nothing — so the next question is about the WIDGET, not the
+-- page. The book's input poll refuses to dispatch a press when the widget's
+-- state is 4, and the driver vcalls a listener at *(widget+0x570); a null
+-- listener is a button wired to nothing. Both are plain guarded reads of a
+-- pointer the engine handed us, so this costs nothing and risks nothing.
+local function _report_validate_widget()
+    local w = _validate_widget
+    if not w or not _ptr_plausible(w) then return end
+    local state    = I.read_u32(w + 0x328)
+    local state2   = I.read_u32(w + 0x32c)
+    local listener = I.read_u64(w + 0x570)
+    local flags    = I.read_u32(w + 0x234)
+    local key = string.format("%s/%s/%s/%s", tostring(state), tostring(state2),
+                              tostring(listener), tostring(flags))
+    if key == _widget_said then return end
+    _widget_said = key
+    R.log(string.format(
+        "[rsmm.hero] Validate Hero Button @%x: state=%s/%s listener=%s "
+        .. "flags=%s (poll refuses a press while state==4; a null listener is "
+        .. "a button wired to nothing)",
+        w, tostring(state), tostring(state2),
+        listener and string.format("0x%x", listener) or "nil", tostring(flags)))
+end
 
 -- Clear the byte that greys the book's Validate Hero Button.
 --
@@ -1305,8 +1334,10 @@ local function _unblock_validate_tick()
     local obj = I.read_u64(g)
     if not obj or obj == 0 or not _ptr_plausible(obj) then return end
     local blocked = I.read_u8(obj + VALIDATE_BLOCKED_OFF)
-    if blocked == nil or blocked == 0 then return end
+    if blocked == nil then return end
+    if blocked == 0 then _report_validate_widget() return end
     I.write_u8(obj + VALIDATE_BLOCKED_OFF, 0)
+    _report_validate_widget()
     if _unblock_said < 3 then
         _unblock_said = _unblock_said + 1
         R.log("[rsmm.hero] cleared the Validate Hero Button block flag "
@@ -1408,7 +1439,18 @@ local function _force_confirm_enabled()
         return
     end
     local logged = {}
-    local ok, slot, why = pcall(R.hook, va, "vpi", function(_, enabled)
+    local ok, slot, why = pcall(R.hook, va, "vpi", function(screen, enabled)
+        -- `enabled` IS A BOOL IN DL, not an int in EDX. A caller that does
+        -- `mov dl, 1` leaves the upper 24 bits as whatever was in the register,
+        -- so the raw slot came through as -1607667455 in a real session while
+        -- meaning "true". Comparing the whole word made the disable-suppression
+        -- fire only on the one caller that happened to `xor edx, edx` first.
+        enabled = enabled & 0xff
+        -- Remember the widgets so their live state can be read: +0x230 is the
+        -- lock overlay, +0x238 the button itself.
+        if I.read_u64 and _ptr_plausible(screen) then
+            _validate_widget = I.read_u64(screen + 0x238)
+        end
         local key = tostring(enabled)
         if not logged[key] then
             logged[key] = true

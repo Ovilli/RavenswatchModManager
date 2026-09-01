@@ -8467,6 +8467,14 @@ do
           "a request to DISABLE is skipped, so the control keeps its state")
     check(hooks[cva].cb(0x2000, 1) == nil,
           "a request to ENABLE replays the original untouched")
+    -- The argument is a BOOL IN DL. A caller doing `mov dl, 1` leaves the
+    -- upper bits as garbage, and a real session logged -1607667455 meaning
+    -- "true". Comparing the whole word made the suppression fire only for the
+    -- one caller that zeroed edx first.
+    check(hooks[cva].cb(0x2000, 0xa02c0001) == nil,
+          "garbage in the upper bits still reads as ENABLE")
+    check(hooks[cva].cb(0x2000, 0xa02c0000) == 0,
+          "and garbage above a zero low byte still reads as DISABLE")
 
     -- Idempotent: a second call must not re-install.
     local first = hooks[va]
