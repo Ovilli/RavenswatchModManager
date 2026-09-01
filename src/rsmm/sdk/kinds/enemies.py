@@ -184,7 +184,7 @@ _CLONE_FIELDS = (
 #: succeeds, the assets install, and the run plays exactly like vanilla.
 _OVERRIDE_FIELDS = (
     "mode", "pools", "enemies", "exclude", "entity", "mix", "seed", "weight",
-    "cross_biome", "imports",
+    "cross_biome", "imports", "repoint_pools",
 )
 
 
@@ -818,6 +818,14 @@ def _emit_override(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                     host as many distinct creatures as it already had (10-15),
                     because a pool ref can be repointed but the vector cannot
                     grow.
+        ``repoint_pools``
+                    default true. Set false to draw the cast game-wide WITHOUT
+                    rewriting any ``EntityPooling`` asset — the imported prefab
+                    is reached through the definition's merged resource cache
+                    instead. The pool repoint is this kind's only edit to a
+                    level asset and the only known cause of the chapter-2
+                    failure, so this is the configuration to try when
+                    ``cross_biome`` black-screens.
     """
     unknown = sorted(set(defn.fields) - set(_OVERRIDE_FIELDS))
     if unknown:
@@ -845,6 +853,19 @@ def _emit_override(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                 f"cross_biome = true — without it no creature crosses a biome "
                 f"boundary at all, so there is nothing to bound."
             )
+
+    repoint_pools = defn.fields.get("repoint_pools", True)
+    if not isinstance(repoint_pools, bool):
+        raise ContentError(
+            f"enemy {defn.id}: repoint_pools must be true or false, got "
+            f"{repoint_pools!r}."
+        )
+    if not repoint_pools and not cross_biome:
+        raise ContentError(
+            f"enemy {defn.id}: repoint_pools = false only means anything with "
+            f"cross_biome = true — without it no creature crosses a biome "
+            f"boundary, so no pool would be repointed either way."
+        )
 
     if entity is not None and mix is not None:
         raise ContentError(
@@ -913,7 +934,7 @@ def _emit_override(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                 f"cross_biome = true to repoint those pools so they stream it."
             )
 
-    if cross_biome and entity is None:
+    if cross_biome and repoint_pools and entity is None:
         # A scoped cross_biome run CANNOT keep the pools disjoint. The cast is
         # dealt from every spawnable creature in the game, but only the pools
         # in scope are rewritten — so a creature dealt in from Storm Island is
@@ -938,14 +959,38 @@ def _emit_override(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                 f"would keep listing creatures now also pooled for "
                 f"{', '.join(sorted(groups))}, and an entity in two pools is "
                 f"freed out from under whichever chapter loads second. Drop "
-                f"'pools' to cover every biome, or use cross_biome = false "
+                f"'pools' to cover every biome, set repoint_pools = false "
+                f"so no pool is rewritten at all, or use cross_biome = false "
                 f"for a within-biome shuffle."
             )
 
     casts = _biome_casts(defn.id, groups, entity, seed, cross_biome, imports)
 
     written: list[Path] = []
-    if cross_biome:
+    if cross_biome and not repoint_pools:
+        # NO POOL IS REWRITTEN. The imported prefab reaches the biome through
+        # the definition's own resource cache instead.
+        #
+        # `_emit_merged_cache` already unions the DONOR definition's cache into
+        # the one beside the override, and a definition's cache lists its own
+        # `.entity.ot` — measured 56 of 56, no exceptions. So the imported
+        # prefab and its whole closure are preloaded by the definition that
+        # points at it, with no edit to any `EntityPooling` level at all.
+        #
+        # That matters because the pool repoint is the ONLY thing this kind
+        # does to a LEVEL asset, and the only failure is a chapter TRANSITION
+        # (chapter 1 renders imports fine — confirmed in-game 2026-08-28).
+        # Skipping it leaves the transition path byte-identical to vanilla, so
+        # the worst case is a soft one: an imported creature that never spawns,
+        # rather than a black screen. Whether pool membership is separately
+        # required was never tested directly — the shipped design repointed the
+        # pool, so the question never arose. This is that test.
+        _log.info(
+            "enemy %s: cross_biome with repoint_pools = false — imported "
+            "prefabs are preloaded by each definition's merged resource cache "
+            "and no EntityPooling asset is touched", defn.id,
+        )
+    elif cross_biome:
         # KNOWN BROKEN — repointing a pool still crashes entering chapter 2.
         # The engine fails to load one of the newly-pooled entities and then
         # tears the half-built vector down through the destroy loop at

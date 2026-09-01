@@ -483,3 +483,76 @@ def test_scoped_cross_biome_is_refused():
                               "mix": "shuffle"})
     with pytest.raises(ContentError, match="every biome's pool"):
         E.emit("TestEnemyOverrideMod", defn, Path("/nonexistent"))
+
+
+def test_repoint_pools_false_touches_no_pool_asset(tmp_path):
+    """`repoint_pools = false` must emit definitions and NOT a single level.
+
+    The pool repoint is this kind's only edit to an `EntityPooling` level, and
+    the only failure mode anyone has seen is a chapter transition. This
+    configuration keeps the game-wide cast and drops the level edit, so the
+    transition path stays byte-identical to vanilla. The imported prefab is
+    still preloaded, by the merged per-definition resource cache.
+    """
+    from rsmm.sdk.kinds import enemies as E
+
+    _require_corpus()
+    defn = ContentDef(kind="enemy", id="nopool",
+                      fields={"mode": "override", "cross_biome": True,
+                              "repoint_pools": False, "seed": 1337,
+                              "mix": "shuffle"})
+    written = E.emit("TestEnemyOverrideMod", defn, tmp_path)
+    assert written, "nothing emitted"
+    pools = [p for p in written if "EntityPooling" in p.name]
+    assert not pools, f"repoint_pools = false still wrote {pools}"
+
+    # And the imported prefab IS preloaded: every emitted cache lists the
+    # entity its definition now points at.
+    from rsmm.engine import enemy_pools as EP
+    from rsmm.engine import rsc_cache as RC
+
+    groups = E._pool_groups(defn.id, None, None, None)
+    casts = E._biome_casts(defn.id, groups, None, 1337, True, None)
+    assignment = E._assignment(defn.id, groups, casts, None, "shuffle", 1337)
+    caches = {p.name: p for p in written if p.name.endswith(".UsedRscCache.ot")}
+    checked = 0
+    for eid, ent in assignment.items():
+        if ent.lower() == EP.enemy_index()[eid]["entity"].lower():
+            continue
+        cache = caches.get(f"{eid}.enemydef.UsedRscCache.ot")
+        assert cache is not None, f"{eid} repointed with no cache emitted"
+        lines = {ln.lower() for ln in RC.parse(cache.read_bytes())}
+        assert any(ent.lower() in ln for ln in lines), \
+            f"{eid}: merged cache does not preload {ent}"
+        checked += 1
+    assert checked >= 10, f"only {checked} repointed defs checked"
+
+
+def test_repoint_pools_false_allows_a_scoped_cross_biome():
+    """Scoping is refused only because a rewritten pool leaves entities shared.
+
+    With no pool rewritten there is no partition to break, so the refusal must
+    not fire — otherwise the safe configuration inherits the unsafe one's rule.
+    """
+    from rsmm.sdk.kinds import enemies as E
+
+    _require_corpus()
+    defn = ContentDef(kind="enemy", id="scoped_nopool",
+                      fields={"mode": "override", "pools": ["Dark_Hills"],
+                              "cross_biome": True, "repoint_pools": False,
+                              "seed": 1337, "mix": "shuffle"})
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as d:
+        assert E.emit("TestEnemyOverrideMod", defn, Path(d))
+
+
+def test_repoint_pools_false_without_cross_biome_is_refused():
+    from rsmm.sdk.kinds import enemies as E
+
+    _require_corpus()
+    defn = ContentDef(kind="enemy", id="pointless",
+                      fields={"mode": "override", "repoint_pools": False,
+                              "seed": 1337, "mix": "shuffle"})
+    with pytest.raises(ContentError, match="cross_biome = true"):
+        E.emit("TestEnemyOverrideMod", defn, Path("/nonexistent"))

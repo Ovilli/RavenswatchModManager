@@ -2079,6 +2079,23 @@
    "note": "Writes this machine's lobby attributes - the counterpart to LobbyAttributes_Parse, referencing the same key literals in the same order. param_2 is the member record: PlayerName's value is a StringDesc at +0x0 (ptr) / +0x8 (len|0x80000000, bit 31 cleared with btr before use at 0x140923f44), with further int fields read from +0x18 and +0x1c. Documented for the layout; the loader hooks the PARSE side, since only that one sees REMOTE members."
   },
   {
+   "name": "HeroSelect_IsHeroAvailable",
+   "kind": "function",
+   "category": "session",
+   "raw": "FUN_14032b460",
+   "status": "unverified",
+   "signature": "bool(void* menu, int hero_index, bool flag)",
+   "locator": {
+    "how": "callees",
+    "calls": [
+     "LobbyMembers_List",
+     "LobbyAttributes_Parse"
+    ],
+    "note": "the only function in .text that calls both"
+   },
+   "note": "Hero-select availability check: returns true when `hero_index` may be picked. Enumerates the lobby with LobbyMembers_List and reads each member's blob through LobbyAttributes_Parse — whose JSON carries `RequestedHero` (see LobbyAttributes_Parse) — so this is where 'someone already took that hero' is decided. Two call sites, both reading only `al`: 0x14026dcec maps it to a status code (`test al,al; cmovne ecx,edx` -> 0 when true, 2 when false) and 0x1403e8474 to a bool. Arity is 3 as called (rcx = menu, edx = hero index, r8b = a bool); the prologue reads exactly those. ⚠ UNVERIFIED: located statically 2026-09-01 from the callee pair, never resolved from the running game, so it is deliberately left un-hookable by the loader. It is recorded because the community mod `duplicate-heroes` hooks this address by the raw `FUN_14032b460` literal and returns 1 unconditionally, which is exactly the legacy-alias hazard the map exists to remove: the pattern DB keeps that name resolvable across a game patch, so it will still resolve and still verify while landing wherever those bytes have moved to. Promote to ok with a dump from a run with RSMM_DUMP_SYMBOLS, then `rsmm symbols audit`. Forcing true also bypasses whatever ELSE this function gates — the unlock check is a live possibility and is not ruled out."
+  },
+  {
    "name": "LobbyMembers_List",
    "kind": "function",
    "category": "session",

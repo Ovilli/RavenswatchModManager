@@ -417,6 +417,8 @@ constexpr const char* Reward_InitAllRewards_Pattern = "Reward_InitAllRewards";
 // --- session ---
 constexpr std::uintptr_t Account_GetDisplayName = 0x140929940ull;
 constexpr const char* Account_GetDisplayName_Pattern = "Account_GetDisplayName";
+constexpr std::uintptr_t HeroSelect_IsHeroAvailable = 0x14032b460ull;
+constexpr const char* HeroSelect_IsHeroAvailable_Pattern = "HeroSelect_IsHeroAvailable";
 constexpr std::uintptr_t LobbyAttributes_Parse = 0x140922f20ull;
 constexpr const char* LobbyAttributes_Parse_Pattern = "LobbyAttributes_Parse";
 constexpr std::uintptr_t LobbyAttributes_Serialize = 0x140923e00ull;
