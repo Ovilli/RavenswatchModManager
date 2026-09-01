@@ -1013,6 +1013,21 @@ end
 -- _invalidate_hero_capture) are forward-declared far above, because the give
 -- path calls them through those upvalues.
 local ENTITY_IMG_BASE, SHARED_HERO_SLOT, LOBBY_REFRESH_SLOT
+
+-- Cross-state flag: "report every lobby member as having picked no hero".
+--
+-- It CANNOT be a Lua variable. Every mod gets its own lua_State with its own
+-- copy of this file, and only ONE state can own the detour on
+-- LobbyAttributes_Parse — whichever mod armed it first. In practice that is
+-- steamroller, so duplicate-heroes was setting a flag in a state whose
+-- callback never runs, and the blanking was a no-op for three playtests while
+-- looking correctly installed in the log ("attribute parser hooked" is printed
+-- by the OWNING state, and the owner logs it whether or not anyone else
+-- wanted anything from it).
+--
+-- g_shared is the one channel every state sees. Slots 0-7 are mod-writable
+-- (0 = hero handle, 7 = lobby refresh); 6 is free.
+local DUPE_BLANK_SLOT = 6
 local ENTITY_VALCTX_OFF, EV_STORE_OFF
 local _native_capture_active, _hero_plausible, _ev_ctx, _ctx_chain_ok
 do
@@ -1418,11 +1433,9 @@ function R.hero.allow_duplicates()
     -- Ask the lobby parser to report every member as "has not picked yet".
     -- This is the one that does not depend on knowing WHICH check refuses.
     --
-    -- Set on R.lobby rather than on LOBBY_HOOK: that local is declared 1500
-    -- lines further down, and a Lua local is invisible to code written above
-    -- it. R.lobby is a table that exists by the time this runs, and the
-    -- detour reads the flag on every call, so the ordering is a non-issue.
-    -- (This file's header warns about exactly this; it caught me anyway.)
+    -- Through the SHARED SLOT, because the state that owns the parse detour
+    -- is almost never this one. A plain Lua flag here reaches nobody.
+    if I.shared_set then pcall(I.shared_set, DUPE_BLANK_SLOT, 1) end
     if R.lobby then R.lobby.blank_hero = true end
     _force_confirm_allowed()
     _force_confirm_enabled()
@@ -3442,7 +3455,15 @@ function LOBBY_HOOK.arm()
         -- to be full before it can be edited. Everything else returns nil and
         -- lets the loader replay, exactly as before.
         local rv, replayed = nil, false
-        if R.lobby.blank_hero and type(next) == "function" then
+        -- Read the shared slot, not a local: this callback belongs to
+        -- whichever state armed the hook first, which is usually NOT the mod
+        -- that asked for blanking.
+        local want = R.lobby.blank_hero
+        if not want and I.shared_get then
+            local sok, v = pcall(I.shared_get, DUPE_BLANK_SLOT)
+            want = sok and v == 1
+        end
+        if want and type(next) == "function" then
             rv = next()
             replayed = true
             pcall(LOBBY_HOOK.blank_requested_hero, self)

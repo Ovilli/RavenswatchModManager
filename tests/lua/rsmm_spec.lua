@@ -8413,6 +8413,12 @@ do
     -- on knowing WHICH check refuses the confirm.
     check(R.lobby.blank_hero == true,
           "allow_duplicates asks the lobby parser to blank RequestedHero")
+    -- AND through the shared slot, which is the half that actually reaches
+    -- the parse detour. That hook belongs to whichever mod armed it first —
+    -- in practice steamroller — and a Lua flag set here never reaches that
+    -- state. Three playtests blanked nothing because of it.
+    check(I.shared_get(6) == 1,
+          "the request crosses lua_States through the shared slot")
 
     -- The press watcher is an INSTRUMENT. It must replay, or it silently
     -- becomes a fourth behaviour change in an investigation that already has
