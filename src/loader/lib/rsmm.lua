@@ -1028,6 +1028,16 @@ local ENTITY_IMG_BASE, SHARED_HERO_SLOT, LOBBY_REFRESH_SLOT
 -- g_shared is the one channel every state sees. Slots 0-7 are mod-writable
 -- (0 = hero handle, 7 = lobby refresh); 6 is free.
 local DUPE_BLANK_SLOT = 6
+
+-- HeroSelect_ValidateBlockedPtr, as an RVA off the module base.
+--
+-- The byte at *(this) + 0x11a8 is what greys the book's "Validate Hero
+-- Button". TWO sites read it and set the same widget pair from it — one calls
+-- HeroSelect_SetConfirmEnabled, the other inlines the identical pair — which
+-- is why hooking one setter left the button dead. It also writes the '*'
+-- padlock glyph. One byte, two copies of the same decision.
+local VALIDATE_BLOCKED_RVA = 0x143cb58
+local VALIDATE_BLOCKED_OFF = 0x11a8
 local ENTITY_VALCTX_OFF, EV_STORE_OFF
 local _native_capture_active, _hero_plausible, _ev_ctx, _ctx_chain_ok
 do
@@ -1274,6 +1284,35 @@ local _dupes_hooked = false
 local _confirm_hooked = false
 local _reason_hooked = false
 local _press_logged = false
+local _unblock_armed, _unblock_said = false, 0
+
+-- Clear the byte that greys the book's Validate Hero Button.
+--
+-- BLUNT, and the honest description is: nothing found what WRITES this byte
+-- (a scan of every access to +0x11a8 turned up a struct copy and an unrelated
+-- dword store, and the global has 48 referencing functions), so this clears it
+-- on a tick instead of intercepting a writer. That means the button is
+-- ungreyed for every reason the page might grey it, not only a duplicate hero.
+-- Acceptable for a mod the player opts into; it would not be acceptable as
+-- default behaviour, and the symbol note says the same.
+--
+-- A plain byte write, never an engine call, so it does not need the main
+-- thread ([[loader-thread-model]] governs CALLS). The page polls this byte
+-- every frame, so a racy write is at worst one frame late.
+local function _unblock_validate_tick()
+    if not (I.module_base and I.read_u64 and I.read_u8 and I.write_u8) then return end
+    local g = I.module_base() + VALIDATE_BLOCKED_RVA
+    local obj = I.read_u64(g)
+    if not obj or obj == 0 or not _ptr_plausible(obj) then return end
+    local blocked = I.read_u8(obj + VALIDATE_BLOCKED_OFF)
+    if blocked == nil or blocked == 0 then return end
+    I.write_u8(obj + VALIDATE_BLOCKED_OFF, 0)
+    if _unblock_said < 3 then
+        _unblock_said = _unblock_said + 1
+        R.log("[rsmm.hero] cleared the Validate Hero Button block flag "
+              .. "(was " .. tostring(blocked) .. ")")
+    end
+end
 
 -- INSTRUMENT, not a fix: does a confirm press reach the function this whole
 -- investigation has been treating as the click handler?
@@ -1440,6 +1479,10 @@ function R.hero.allow_duplicates()
     _force_confirm_allowed()
     _force_confirm_enabled()
     _watch_confirm_press()
+    if not _unblock_armed then
+        _unblock_armed = true
+        R.on("tick", _unblock_validate_tick)
+    end
     R.log("[rsmm.hero] duplicate heroes enabled (every player in the lobby "
           .. "needs this mod)")
     return true

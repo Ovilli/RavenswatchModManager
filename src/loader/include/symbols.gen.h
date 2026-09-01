@@ -449,6 +449,7 @@ constexpr std::uintptr_t HeroSelect_ConfirmPressed = 0x1403e9300ull;
 constexpr const char* HeroSelect_ConfirmPressed_Pattern = "HeroSelect_ConfirmPressed";
 constexpr std::uintptr_t HeroSelect_SetConfirmEnabled = 0x1403e9500ull;
 constexpr const char* HeroSelect_SetConfirmEnabled_Pattern = "HeroSelect_SetConfirmEnabled";
+constexpr std::uintptr_t HeroSelect_ValidateBlockedPtr = 0x14143cb58ull;
 constexpr std::uintptr_t UiButton_InputPoll = 0x1407d72a0ull;
 constexpr const char* UiButton_InputPoll_Pattern = "UiButton_InputPoll";
 constexpr std::uintptr_t UiButton_PressCommit = 0x1406a08a0ull;

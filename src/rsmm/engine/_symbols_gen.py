@@ -100,6 +100,7 @@ ADDR: dict[str, int] = {
     "HeroSelect_ConfirmPressed": 0x1403e9300,
     "HeroSelect_IsHeroAvailable": 0x14032b460,
     "HeroSelect_SetConfirmEnabled": 0x1403e9500,
+    "HeroSelect_ValidateBlockedPtr": 0x14143cb58,
     "HeroStats_OnDamageDealt": 0x14039aef0,
     "HeroStats_OnDamageTaken": 0x1403a0940,
     "HeroStoryUnlock_IsUnlocked": 0x1402b21a0,

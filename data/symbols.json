@@ -2109,6 +2109,14 @@
    "note": "BELIEVED to be the hero-select confirm action. Shape: `rdi = *(*(screen+0xd0)+0xc8)`; bail if null; `FUN_14026dd30(rdi)` is true when the lobby holds one member and takes a solo path that tail-jumps into the commit (0x140918450); otherwise `HeroSelect_ConfirmBlockReason(rdi)` and `test eax,eax; jne ->bail`. ⚠ 'BELIEVED' is the operative word and it is why this symbol exists as an instrument rather than a target: three hooks derived from reading this call graph (the availability check, the button's widget setter, the block code) all install, all fire where expected, and the player still cannot confirm. Either this is not the function the button invokes, or something past it refuses. R.hero.allow_duplicates hooks it in REPLAY mode purely to log whether a press reaches it — a press is a rare event, so a handful of lines settles a question that three rounds of static reading did not."
   },
   {
+   "name": "HeroSelect_ValidateBlockedPtr",
+   "kind": "data",
+   "category": "ui",
+   "va": "0x14143cb58",
+   "status": "va",
+   "note": "Pointer to the object whose byte at +0x11a8 blocks the Select_Hero_Book_Page 'Validate Hero Button'. TWO independent sites read it and set the same widget pair from it — FUN_1403e7d20 calls HeroSelect_SetConfirmEnabled with `edx = (byte == 0)`, and FUN_1403e8840 inlines the identical pair of widget calls (`test r10b,r10b; sete bl`). Non-zero also writes '*' (0x2a) into screen+0x378, which is the padlock glyph the player sees. So the byte is the single source and the setters are just two copies of the same decision — which is why hooking ONE of them left the button dead. The page is `GameUis/All_Book_Pages/Select_Hero_Book_Page`, the widget is `[Button Ui] Select_Hero_Book_Page\\\\Validate Hero Button`, and the owning class is oCDtEntityCpntSelectHeroBookPageUiController (vftable 0x140f35960, RTTI-walked). ⚠ WHAT WRITES IT IS NOT KNOWN. A scan of every access to +0x11a8 found only a struct copy (0x1401be463) and an unrelated dword store; the global itself is referenced by 48 functions. R.hero.allow_duplicates therefore clears the byte on a tick rather than intercepting a writer, which is blunt and is documented as such. ⚠ va symbols are build-specific and this one is NOT pattern-anchored: it must be re-derived after a game patch."
+  },
+  {
    "name": "HeroSelect_ConfirmBlockReason",
    "kind": "function",
    "category": "ui",

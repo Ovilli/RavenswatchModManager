@@ -8420,6 +8420,31 @@ do
     check(I.shared_get(6) == 1,
           "the request crosses lua_States through the shared slot")
 
+    -- The BLOCK FLAG. Two sites read this one byte and set the same widget
+    -- pair from it, so clearing it is the only lever that covers both — and
+    -- hooking one setter, which is what the earlier attempt did, provably
+    -- does not.
+    local G = I.module_base() + 0x143cb58
+    local OBJ = 0x52000000
+    I.write_u64(G, OBJ)
+    I.write_u8(OBJ + 0x11a8, 1)
+    fire("tick")
+    check(I.read_u8(OBJ + 0x11a8) == 0,
+          "the Validate Hero Button block flag is cleared on tick")
+
+    -- A null or implausible object must be left alone rather than written
+    -- through: this runs every frame, so a bad write here is a crash a frame
+    -- later with no connection to the mod.
+    I.write_u64(G, 0)
+    check(pcall(fire, "tick") == true, "a null object is skipped, not written")
+    I.write_u64(G, 0x11)
+    check(pcall(fire, "tick") == true, "an implausible object is skipped")
+    -- Honest note: this case also passes with the plausibility check removed,
+    -- because an unreadable address makes the following read return nil. The
+    -- guard is first-line defence, not independently observable here, and
+    -- claiming otherwise would be a test that proves nothing.
+    I.write_u64(G, OBJ)
+
     -- The press watcher is an INSTRUMENT. It must replay, or it silently
     -- becomes a fourth behaviour change in an investigation that already has
     -- three and no working answer.
