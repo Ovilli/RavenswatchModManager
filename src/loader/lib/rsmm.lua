@@ -1271,7 +1271,19 @@ function R.hero.allow_duplicates()
     -- "i" + "pii": bool(menu, hero_index, flag). Three args, as called —
     -- rcx = menu, edx = hero index, r8b = a bool. Declaring a fourth would
     -- read garbage out of r9.
-    local ok, slot, why = pcall(R.hook, va, "ipii", function() return 1 end)
+    -- The first fire is logged once. Without it "the hook installed" and "the
+    -- hero picker actually asks this function" look identical in the log, and
+    -- they are the two halves of the only question worth asking when a hero
+    -- still reads as locked.
+    local fired = false
+    local ok, slot, why = pcall(R.hook, va, "ipii", function(_, hero_index)
+        if not fired then
+            fired = true
+            R.log(("[rsmm.hero] availability gate fired (hero %s) — the picker "
+                   .. "does route through this check"):format(tostring(hero_index)))
+        end
+        return 1
+    end)
     if not (ok and (slot ~= nil or why == "already-hooked")) then
         R.log("[rsmm.hero] duplicate-hero hook failed: "
               .. tostring(ok and why or slot))

@@ -8340,6 +8340,41 @@ do
 end
 
 -- ---------------------------------------------------------------------------
+-- R.hero.unlock_progression — the hero picker's padlock
+-- ---------------------------------------------------------------------------
+-- Ships as a user-facing capability (mods/unlock-heroes), so the thing it must
+-- never do needs a test rather than a comment: the OWNERSHIP condition rides
+-- the same vftable slot as the progression ones, and forcing it would hand out
+-- content the player has not bought.
+do
+    local gates = {
+        "HeroProgressionUnlock_IsUnlocked",
+        "HeroRankLock_IsUnlocked",
+        "HeroStoryUnlock_IsUnlocked",
+        "ChallengeUnlock_IsUnlocked",
+    }
+    local vas = {}
+    for i, name in ipairs(gates) do vas[i] = I.resolve(name) end
+
+    check(R.hero.unlock_progression() == #gates,
+          "every progression gate is hooked")
+    for i, name in ipairs(gates) do
+        check(hooks[vas[i]] ~= nil, name .. " is hooked")
+        check(hooks[vas[i]].sig == "up", name .. " armed as bool(this)")
+        check(hooks[vas[i]].cb(0x1000) == 1, name .. " answers true")
+    end
+
+    -- THE LINE THAT MUST NOT MOVE. Ownership is the same slot on the same
+    -- base; it has no symbol precisely so it cannot be reached from here.
+    local owner_va = I.resolve("AdditionalContentUnlock_IsUnlocked")
+    check(hooks[owner_va] == nil,
+          "the ownership condition is NOT hooked — unbought content stays locked")
+
+    check(R.hero.unlock_progression() == 0,
+          "a second call reports 0 rather than re-installing")
+end
+
+-- ---------------------------------------------------------------------------
 -- R.hero.allow_duplicates — the lobby's "that hero is taken" gate
 -- ---------------------------------------------------------------------------
 -- Two things this pins that a hand-written mod got wrong, and one that makes
