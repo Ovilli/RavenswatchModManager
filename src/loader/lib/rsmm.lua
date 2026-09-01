@@ -1415,6 +1415,15 @@ function R.hero.allow_duplicates()
         return false
     end
     _dupes_hooked = true
+    -- Ask the lobby parser to report every member as "has not picked yet".
+    -- This is the one that does not depend on knowing WHICH check refuses.
+    --
+    -- Set on R.lobby rather than on LOBBY_HOOK: that local is declared 1500
+    -- lines further down, and a Lua local is invisible to code written above
+    -- it. R.lobby is a table that exists by the time this runs, and the
+    -- detour reads the flag on every call, so the ordering is a non-issue.
+    -- (This file's header warns about exactly this; it caught me anyway.)
+    if R.lobby then R.lobby.blank_hero = true end
     _force_confirm_allowed()
     _force_confirm_enabled()
     _watch_confirm_press()
@@ -3183,6 +3192,28 @@ R.lobby._hook = LOBBY_HOOK
 -- Both lifecycle points, because arming is idempotent and neither is
 -- guaranteed on its own: `setup` runs after every mod's init.lua, `ready` at
 -- the first frame, and a mod loaded late still gets one of them.
+function LOBBY_HOOK.blank_requested_hero(rec)
+    if not (I.write_u32 and I.read_u8 and I.read_u32) then return end
+    if not _ptr_plausible(rec) then return end
+    local ready = I.read_u8(rec + 0xc5)          -- MemberDataInitialized
+    if ready == nil or ready == 0 then return end
+    if not LOBBY_HOOK.estring(rec) then return end
+    local hero = I.read_u32(rec + 0x10)
+    if hero == nil or hero == 0xffffffff then return end
+    I.write_u32(rec + 0x10, 0xffffffff)
+    -- Counter on R.lobby, not on the private table: a test that cannot see
+    -- the count cannot tell "the guard stopped the write" from "the write
+    -- happened and wrote the same value back".
+    R.lobby.blanked = (R.lobby.blanked or 0) + 1
+    if R.lobby.blanked <= 6 then
+        R.log(("[rsmm.lobby] duplicate-heroes: parsed member wanted hero "
+               .. "%d, reported as -1 (not picked) so nothing reads it as "
+               .. "taken"):format(hero))
+    end
+end
+
+R.lobby.blank_requested_hero = LOBBY_HOOK.blank_requested_hero
+
 R.on("setup", function() pcall(LOBBY_HOOK.arm) end)
 R.on("ready", function() pcall(LOBBY_HOOK.arm) end)
 
@@ -3377,13 +3408,44 @@ function LOBBY_HOOK.arm()
     -- was parsed by an engine nobody was listening to. Four players on the
     -- board, one name. A raise here must cost the fields that one parse would
     -- have set, never the hook.
-    local ok, slot, why = pcall(R.hook, va, "ppp", function(self, blob)
+    -- DUPLICATE HEROES, fixed at the source instead of at each consumer.
+    --
+    -- Four gates were hooked before this one — the availability check, the
+    -- confirm control's widget setter, the block code, the presumed press
+    -- handler. Every one installs, three of them demonstrably fire, and the
+    -- button still refuses. Chasing consumers was the wrong shape of fix.
+    --
+    -- All of them read the same thing: what OTHER lobby members asked to play,
+    -- and every member's attributes reach the game through this one parse.
+    -- Writing -1 into the record's RequestedHero after the parse fills it
+    -- means no consumer can find a match, whichever consumer it turns out to
+    -- be. -1 is the value the engine itself uses for "has not picked yet"
+    -- (see R.lobby._note_blob), so this is a state the game already handles
+    -- rather than a value invented for it.
+    --
+    -- Guarded three ways before the write: the pointer must be plausible,
+    -- MemberDataInitialized must be set, and PlayerName must read back as a
+    -- real string — because param_1 is NOT always a record (the note on
+    -- LOBBY_HOOK.read says so) and a blind write at +0x10 into something else
+    -- is a corruption with no connection to its crash.
+
+    local ok, slot, why = pcall(R.hook, va, "ppp", function(self, blob, next)
+        -- Only this path replays the original ITSELF, because the record has
+        -- to be full before it can be edited. Everything else returns nil and
+        -- lets the loader replay, exactly as before.
+        local rv, replayed = nil, false
+        if R.lobby.blank_hero and type(next) == "function" then
+            rv = next()
+            replayed = true
+            pcall(LOBBY_HOOK.blank_requested_hero, self)
+        end
         local pok, perr = pcall(on_parse, self, blob)
         if not pok and not LOBBY_HOOK.err_said then
             LOBBY_HOOK.err_said = true
             R.log("[rsmm.lobby] parse callback raised (names keep arriving on "
                 .. "later parses): " .. tostring(perr))
         end
+        if replayed then return rv end
         return nil
     end)
     -- "already-hooked": another mod's state owns the detour, so OUR callback

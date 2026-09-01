@@ -8408,6 +8408,12 @@ do
           .. "availability callee is consulted, so forcing the callee alone "
           .. "cannot reach it")
 
+    -- The flag that makes the parse choke point report every member as
+    -- "has not picked yet". This is the only lever here that does not depend
+    -- on knowing WHICH check refuses the confirm.
+    check(R.lobby.blank_hero == true,
+          "allow_duplicates asks the lobby parser to blank RequestedHero")
+
     -- The press watcher is an INSTRUMENT. It must replay, or it silently
     -- becomes a fourth behaviour change in an investigation that already has
     -- three and no working answer.
@@ -8459,6 +8465,73 @@ do
     I.resolve = saved_resolve
     package.loaded["rsmm"] = nil
     R = require "rsmm"
+end
+
+-- ---------------------------------------------------------------------------
+-- LOBBY_HOOK.blank_requested_hero — the guards, which are the whole safety case
+-- ---------------------------------------------------------------------------
+-- `param_1` is NOT always a member record. A blind write at +0x10 into
+-- something else corrupts memory with no connection to the crash it causes,
+-- so each guard gets a case.
+do
+    local B = R.lobby.blank_requested_hero
+    check(type(B) == "function", "the blanking primitive is reachable")
+
+    local REC = 0x51000000
+    local function seed(hero)
+        -- PlayerName as the engine's compact string: characters inline, the
+        -- REMAINING capacity at +0xd, and the inline bit in the flags at +0xe.
+        I.write_u64(REC, string.unpack("<I8", "Ovilli\0\0"))
+        I.write_u8(REC + 0xd, 0xd - 6)
+        I.write_u16(REC + 0xe, 0x1000)
+        I.write_u32(REC + 0x10, hero)
+        I.write_u8(REC + 0xc5, 1)                 -- MemberDataInitialized
+    end
+
+    seed(4)
+    B(REC)
+    check(I.read_u32(REC + 0x10) == 0xffffffff,
+          "a filled record's RequestedHero is reported as -1")
+
+    -- Already -1: nothing to do, and re-writing would inflate the counter.
+    local before = R.lobby.blanked or 0
+    B(REC)
+    check((R.lobby.blanked or 0) == before,
+          "a record already at -1 is left alone")
+
+    -- MemberDataInitialized clear = the parse did not fill this record.
+    seed(7); I.write_u8(REC + 0xc5, 0)
+    B(REC)
+    check(I.read_u32(REC + 0x10) == 7,
+          "an uninitialised record is not written")
+
+    -- PlayerName must read back as a real string. `param_1` is not always a
+    -- record, and a record-shaped block of unrelated memory is exactly what
+    -- this guard is for.
+    seed(9)
+    I.write_u16(REC + 0xe, 0)          -- clear the inline-string flag
+    B(REC)
+    check(I.read_u32(REC + 0x10) == 9,
+          "a block whose PlayerName does not read back is not written")
+
+    -- Implausible pointer: refused before any read. Seeded as a COMPLETE,
+    -- valid record so the only thing that can stop the write is the pointer
+    -- check itself — an unreadable address would pass this test for the
+    -- wrong reason.
+    local LOW = 0x2000
+    I.write_u64(LOW, string.unpack("<I8", "Ovilli\0\0"))
+    I.write_u8(LOW + 0xd, 0xd - 6)
+    I.write_u16(LOW + 0xe, 0x1000)
+    I.write_u32(LOW + 0x10, 5)
+    I.write_u8(LOW + 0xc5, 1)
+    B(LOW)
+    check(I.read_u32(LOW + 0x10) == 5,
+          "an implausible pointer is refused even when the bytes look right")
+    -- Honest note: this case passes with the leading _ptr_plausible check
+    -- REMOVED, because estring runs the same check on its own. That guard is
+    -- first-line defence ahead of any read rather than an independent one, so
+    -- no test here can isolate it, and pretending otherwise would be a test
+    -- that proves something it does not.
 end
 
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
