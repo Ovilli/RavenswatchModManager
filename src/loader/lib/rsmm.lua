@@ -3195,11 +3195,19 @@ R.lobby._hook = LOBBY_HOOK
 function LOBBY_HOOK.blank_requested_hero(rec)
     if not (I.write_u32 and I.read_u8 and I.read_u32) then return end
     if not _ptr_plausible(rec) then return end
-    local ready = I.read_u8(rec + 0xc5)          -- MemberDataInitialized
-    if ready == nil or ready == 0 then return end
+    -- NOT gated on MemberDataInitialized. LOBBY_HOOK.read gates on it, and
+    -- copying that here made this a no-op for a whole playtest: every real
+    -- blob carries `"MemberDataInitialized":false` while still carrying a
+    -- perfectly good RequestedHero (measured: four members at heroes 4, 7, 3
+    -- and 6, all parsed, none blanked). That byte means "the member's data is
+    -- settled", not "this is a record".
+    --
+    -- What makes it a record is PlayerName reading back as a printable
+    -- compact string at +0, plus a hero id in range. Those two are the shape
+    -- test; the flag never was.
     if not LOBBY_HOOK.estring(rec) then return end
     local hero = I.read_u32(rec + 0x10)
-    if hero == nil or hero == 0xffffffff then return end
+    if hero == nil or hero == 0xffffffff or hero >= 0x1000 then return end
     I.write_u32(rec + 0x10, 0xffffffff)
     -- Counter on R.lobby, not on the private table: a test that cannot see
     -- the count cannot tell "the guard stopped the write" from "the write

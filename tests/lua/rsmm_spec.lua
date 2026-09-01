@@ -8499,11 +8499,21 @@ do
     check((R.lobby.blanked or 0) == before,
           "a record already at -1 is left alone")
 
-    -- MemberDataInitialized clear = the parse did not fill this record.
+    -- MemberDataInitialized is NOT a gate, and this case is why the guard
+    -- exists in the shape it does: every real blob carries it as false while
+    -- still carrying a good RequestedHero. Gating on it made the whole
+    -- feature a silent no-op for one playtest.
     seed(7); I.write_u8(REC + 0xc5, 0)
     B(REC)
-    check(I.read_u32(REC + 0x10) == 7,
-          "an uninitialised record is not written")
+    check(I.read_u32(REC + 0x10) == 0xffffffff,
+          "a record with MemberDataInitialized clear is STILL blanked")
+
+    -- A hero id out of range means this is not a member record, whatever
+    -- else reads back.
+    seed(0x4141)
+    B(REC)
+    check(I.read_u32(REC + 0x10) == 0x4141,
+          "an out-of-range hero id is left alone")
 
     -- PlayerName must read back as a real string. `param_1` is not always a
     -- record, and a record-shaped block of unrelated memory is exactly what
