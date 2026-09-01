@@ -2093,6 +2093,22 @@
    "note": "Sets the hero-select CONFIRM control's enabled state. 74 bytes, and the whole body is two calls to the generic widget setter 0x1405518b0: `screen+0x230` gets `enabled ^ 1` (the lock overlay) and `screen+0x238` gets `enabled` (the button). Called from exactly ONE site, 0x1403e823c inside the hero-select screen FUN_1403e7d20, and the argument is computed three instructions earlier: `cmp byte [global+0x11a8], 0` -> non-zero writes '*' (0x2a) into `screen+0x378` and passes edx=0, zero writes 0 there and passes dl=1. So the padlock the player sees and the disabled button are one boolean. The global is `*(0x14143CB58)`, referenced by 48 functions; what writes its +0x11a8 was NOT found (the only writers are a struct copy at 0x1401be463 and a dword store at 0x1401caa62), which is why this SETTER, not the flag, is what R.hero.allow_duplicates hooks. ⚠ Forcing it never-disabled is deliberately blunt: the confirm control stays enabled for EVERY reason the screen might disable it, not just a duplicate hero. That is acceptable for an opt-in mod and would not be for anything else. Reached after HeroSelect_IsHeroAvailable was proven insufficient in-game — hooked to true, it fires (log line for the local hero) and the button stays locked."
   },
   {
+   "name": "HeroSelect_ConfirmPressed",
+   "kind": "function",
+   "category": "ui",
+   "raw": "FUN_1403e9300",
+   "status": "ok",
+   "signature": "int(void* screen)",
+   "locator": {
+    "how": "callee_shape",
+    "calls": [
+     "HeroSelect_ConfirmBlockReason"
+    ],
+    "note": "branches on FUN_14026dd30 (solo vs lobby), then commits or bails on the block code"
+   },
+   "note": "BELIEVED to be the hero-select confirm action. Shape: `rdi = *(*(screen+0xd0)+0xc8)`; bail if null; `FUN_14026dd30(rdi)` is true when the lobby holds one member and takes a solo path that tail-jumps into the commit (0x140918450); otherwise `HeroSelect_ConfirmBlockReason(rdi)` and `test eax,eax; jne ->bail`. ⚠ 'BELIEVED' is the operative word and it is why this symbol exists as an instrument rather than a target: three hooks derived from reading this call graph (the availability check, the button's widget setter, the block code) all install, all fire where expected, and the player still cannot confirm. Either this is not the function the button invokes, or something past it refuses. R.hero.allow_duplicates hooks it in REPLAY mode purely to log whether a press reaches it — a press is a rare event, so a handful of lines settles a question that three rounds of static reading did not."
+  },
+  {
    "name": "HeroSelect_ConfirmBlockReason",
    "kind": "function",
    "category": "ui",

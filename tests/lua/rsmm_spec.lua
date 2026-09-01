@@ -8408,6 +8408,14 @@ do
           .. "availability callee is consulted, so forcing the callee alone "
           .. "cannot reach it")
 
+    -- The press watcher is an INSTRUMENT. It must replay, or it silently
+    -- becomes a fourth behaviour change in an investigation that already has
+    -- three and no working answer.
+    local pva = I.resolve("HeroSelect_ConfirmPressed")
+    check(hooks[pva] ~= nil, "the confirm press handler is watched")
+    check(hooks[pva].cb(0x4000) == nil,
+          "and the watcher REPLAYS the original — it reports, it does not act")
+
     -- The CONFIRM control is a second, independent hook. Forcing the
     -- availability gate is not enough — measured in-game: it fires and the
     -- button stays locked.

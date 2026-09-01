@@ -1258,6 +1258,34 @@ end
 local _dupes_hooked = false
 local _confirm_hooked = false
 local _reason_hooked = false
+local _press_logged = false
+
+-- INSTRUMENT, not a fix: does a confirm press reach the function this whole
+-- investigation has been treating as the click handler?
+--
+-- Three hooks read off that assumption — the availability check, the button's
+-- widget setter, the block code — all install, all fire where predicted, and
+-- the press still does nothing. That pattern says the model is wrong
+-- somewhere, and no further static reading of the same call graph can say
+-- where. A press is a rare event, so a handful of log lines settles it.
+--
+-- Replays the original untouched. It changes nothing; it only reports.
+local function _watch_confirm_press()
+    if _press_logged then return end
+    if not (R.hook and I.resolve) then return end
+    local va = I.resolve("HeroSelect_ConfirmPressed")
+    if not va or va == 0 then return end
+    local n = 0
+    local ok, slot, why = pcall(R.hook, va, "ip", function()
+        if n < 8 then
+            n = n + 1
+            R.log(("[rsmm.hero] confirm press handler reached (#%d) — the "
+                   .. "button IS invoking it"):format(n))
+        end
+        return nil   -- replay: this is an instrument, it must not change flow
+    end)
+    if ok and (slot ~= nil or why == "already-hooked") then _press_logged = true end
+end
 
 -- Force the hero-select CONFIRM refusal code to "go ahead".
 --
@@ -1389,6 +1417,7 @@ function R.hero.allow_duplicates()
     _dupes_hooked = true
     _force_confirm_allowed()
     _force_confirm_enabled()
+    _watch_confirm_press()
     R.log("[rsmm.hero] duplicate heroes enabled (every player in the lobby "
           .. "needs this mod)")
     return true
