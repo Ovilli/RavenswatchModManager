@@ -1256,6 +1256,59 @@ end
 -- installed it), false when the symbol is unresolved on this build — which
 -- fails closed rather than guessing at an address.
 local _dupes_hooked = false
+local _confirm_hooked = false
+
+-- Keep the hero-select CONFIRM control enabled.
+--
+-- Forcing HeroSelect_IsHeroAvailable to true is NOT enough, which is a
+-- measured fact rather than a guess: with that hook installed and firing (it
+-- logs the hero it is asked about) the button stays locked. The picker takes
+-- a second route.
+--
+-- HeroSelect_SetConfirmEnabled is that route, and it is the screen's ONLY
+-- widget-enable call. Its argument is computed three instructions before the
+-- call from a single boolean, which also writes the '*' glyph the player sees
+-- as a padlock — so the lock icon and the dead button are one decision.
+--
+-- The hook does the least it can: when the screen asks for DISABLED it skips
+-- the original, so the control keeps the enabled state it already had; when
+-- the screen asks for enabled it replays the original untouched. Nothing is
+-- called on the engine's behalf and no widget pointer is dereferenced from
+-- Lua, which is what keeps this off the "handed a probed pointer to the
+-- engine" path that every in-game crash so far has been.
+--
+-- ⚠ Blunt on purpose. The control stays enabled for EVERY reason the screen
+-- might disable it, not only a duplicate hero. Fine for a mod the player opts
+-- into; it would not be fine as default behaviour.
+local function _force_confirm_enabled()
+    if _confirm_hooked then return end
+    if not (R.hook and I.resolve) then return end
+    local va = I.resolve("HeroSelect_SetConfirmEnabled")
+    if not va or va == 0 then
+        R.log("[rsmm.hero] HeroSelect_SetConfirmEnabled unresolved — the "
+              .. "confirm button is left as the game sets it")
+        return
+    end
+    local logged = {}
+    local ok, slot, why = pcall(R.hook, va, "vpi", function(_, enabled)
+        local key = tostring(enabled)
+        if not logged[key] then
+            logged[key] = true
+            R.log(("[rsmm.hero] hero-select confirm control asked for "
+                   .. "enabled=%s"):format(key))
+        end
+        -- Non-nil skips the original; nil replays it. Only the DISABLE is
+        -- suppressed.
+        if enabled == 0 then return 0 end
+        return nil
+    end)
+    if ok and (slot ~= nil or why == "already-hooked") then
+        _confirm_hooked = true
+    else
+        R.log("[rsmm.hero] confirm-button hook failed: "
+              .. tostring(ok and why or slot))
+    end
+end
 
 function R.hero.allow_duplicates()
     if _dupes_hooked then return true end
@@ -1298,6 +1351,7 @@ function R.hero.allow_duplicates()
         return false
     end
     _dupes_hooked = true
+    _force_confirm_enabled()
     R.log("[rsmm.hero] duplicate heroes enabled (every player in the lobby "
           .. "needs this mod)")
     return true

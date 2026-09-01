@@ -8397,10 +8397,27 @@ do
     check(hooks[va].cb(0x1000, 3, 1) == 1,
           "the detour short-circuits to true instead of replaying the original")
 
+    -- The CONFIRM control is a second, independent hook. Forcing the
+    -- availability gate is not enough — measured in-game: it fires and the
+    -- button stays locked.
+    local cva = I.resolve("HeroSelect_SetConfirmEnabled")
+    check(hooks[cva] ~= nil, "the confirm-button setter is hooked too")
+    check(hooks[cva].sig == "vpi", "armed as void(screen, enabled)")
+
+    -- Only the DISABLE is suppressed. Swallowing the enable as well would
+    -- leave a button the game wanted to turn ON stuck off, which is the same
+    -- bug pointing the other way.
+    check(hooks[cva].cb(0x2000, 0) == 0,
+          "a request to DISABLE is skipped, so the control keeps its state")
+    check(hooks[cva].cb(0x2000, 1) == nil,
+          "a request to ENABLE replays the original untouched")
+
     -- Idempotent: a second call must not re-install.
     local first = hooks[va]
+    local cfirst = hooks[cva]
     check(R.hero.allow_duplicates() == true, "a second call still reports armed")
     check(hooks[va] == first, "and does not re-install the hook")
+    check(hooks[cva] == cfirst, "nor the confirm-button hook")
 end
 
 -- Fails CLOSED when the symbol is unresolved for this build, rather than

@@ -2079,6 +2079,20 @@
    "note": "Writes this machine's lobby attributes - the counterpart to LobbyAttributes_Parse, referencing the same key literals in the same order. param_2 is the member record: PlayerName's value is a StringDesc at +0x0 (ptr) / +0x8 (len|0x80000000, bit 31 cleared with btr before use at 0x140923f44), with further int fields read from +0x18 and +0x1c. Documented for the layout; the loader hooks the PARSE side, since only that one sees REMOTE members."
   },
   {
+   "name": "HeroSelect_SetConfirmEnabled",
+   "kind": "function",
+   "category": "ui",
+   "raw": "FUN_1403e9500",
+   "status": "ok",
+   "signature": "void(void* screen, bool enabled)",
+   "locator": {
+    "how": "single_call_site",
+    "caller": "FUN_1403e7d20",
+    "note": "the hero-select screen's ONLY widget-enable call"
+   },
+   "note": "Sets the hero-select CONFIRM control's enabled state. 74 bytes, and the whole body is two calls to the generic widget setter 0x1405518b0: `screen+0x230` gets `enabled ^ 1` (the lock overlay) and `screen+0x238` gets `enabled` (the button). Called from exactly ONE site, 0x1403e823c inside the hero-select screen FUN_1403e7d20, and the argument is computed three instructions earlier: `cmp byte [global+0x11a8], 0` -> non-zero writes '*' (0x2a) into `screen+0x378` and passes edx=0, zero writes 0 there and passes dl=1. So the padlock the player sees and the disabled button are one boolean. The global is `*(0x14143CB58)`, referenced by 48 functions; what writes its +0x11a8 was NOT found (the only writers are a struct copy at 0x1401be463 and a dword store at 0x1401caa62), which is why this SETTER, not the flag, is what R.hero.allow_duplicates hooks. ⚠ Forcing it never-disabled is deliberately blunt: the confirm control stays enabled for EVERY reason the screen might disable it, not just a duplicate hero. That is acceptable for an opt-in mod and would not be for anything else. Reached after HeroSelect_IsHeroAvailable was proven insufficient in-game — hooked to true, it fires (log line for the local hero) and the button stays locked."
+  },
+  {
    "name": "HeroSelect_IsHeroAvailable",
    "kind": "function",
    "category": "session",
