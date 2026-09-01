@@ -2083,8 +2083,7 @@
    "kind": "function",
    "category": "session",
    "raw": "FUN_14032b460",
-   "status": "unverified",
-   "signature": "bool(void* menu, int hero_index, bool flag)",
+   "status": "ok",
    "locator": {
     "how": "callees",
     "calls": [
@@ -2093,7 +2092,16 @@
     ],
     "note": "the only function in .text that calls both"
    },
-   "note": "Hero-select availability check: returns true when `hero_index` may be picked. Enumerates the lobby with LobbyMembers_List and reads each member's blob through LobbyAttributes_Parse — whose JSON carries `RequestedHero` (see LobbyAttributes_Parse) — so this is where 'someone already took that hero' is decided. Two call sites, both reading only `al`: 0x14026dcec maps it to a status code (`test al,al; cmovne ecx,edx` -> 0 when true, 2 when false) and 0x1403e8474 to a bool. Arity is 3 as called (rcx = menu, edx = hero index, r8b = a bool); the prologue reads exactly those. ⚠ UNVERIFIED: located statically 2026-09-01 from the callee pair, never resolved from the running game, so it is deliberately left un-hookable by the loader. It is recorded because the community mod `duplicate-heroes` hooks this address by the raw `FUN_14032b460` literal and returns 1 unconditionally, which is exactly the legacy-alias hazard the map exists to remove: the pattern DB keeps that name resolvable across a game patch, so it will still resolve and still verify while landing wherever those bytes have moved to. Promote to ok with a dump from a run with RSMM_DUMP_SYMBOLS, then `rsmm symbols audit`. Forcing true also bypasses whatever ELSE this function gates — the unlock check is a live possibility and is not ruled out."
+   "note": "Hero-select availability check: returns true when `hero_index` may be picked. Enumerates the lobby with LobbyMembers_List and reads each member's blob through LobbyAttributes_Parse — whose JSON carries `RequestedHero` (see LobbyAttributes_Parse) — so this is where 'someone already took that hero' is decided. Two call sites, both reading only `al`: 0x14026dcec maps it to a status code (`test al,al; cmovne ecx,edx` -> 0 when true, 2 when false) and 0x1403e8474 to a bool. Arity is 3 as called (rcx = menu, edx = hero index, r8b = a bool); the prologue reads exactly those. Located statically 2026-09-01 from the callee pair — the ONLY function in .text calling both — and promoted to ok the same day: the pattern resolves to this function's entry in the live exe (scripts/verify_symbol_resolve.py). `status` is about resolvability, and the SEMANTICS carry a separate caveat: forcing true bypasses whatever ELSE this 1330-byte function gates. The two call sites read only `al`, so nothing downstream consumes a half-computed result, but an unlock check inside it is a live possibility and is NOT ruled out. Backs R.hero.allow_duplicates(). It exists because the community mod `duplicate-heroes` hooked this address by the raw `FUN_14032b460` literal — the legacy-alias hazard the map exists to remove: the DB keeps that name resolvable across a game patch, so it would still resolve AND still verify while landing wherever those bytes moved to.",
+   "cabi": {
+    "ret": "bool",
+    "params": [
+     "void*",
+     "int",
+     "bool"
+    ]
+   },
+   "signature": "bool(void* menu, int hero_index, bool flag)"
   },
   {
    "name": "LobbyMembers_List",

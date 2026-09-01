@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "generated": "2026-08-23T07:45:20+00:00",
+  "generated": "2026-09-01T16:51:33+00:00",
   "game_exe_sha256": "40430b75c72be129f57917d865ecdc63a5ef4e4ba0a4244d950f5938cc00b2db",
   "game_exe_size": 22532680,
-  "pattern_count": 54019,
-  "patterns_sha256": "d106df1edf4dc437bc7f430df57236e3e7930549d32d6ed2ae2381cc6cf50baf"
+  "pattern_count": 54021,
+  "patterns_sha256": "b5df5dbd2d0f72df1cc8c20b983c097b051ea5f9240d09943ecb7bd770ecc474"
 }

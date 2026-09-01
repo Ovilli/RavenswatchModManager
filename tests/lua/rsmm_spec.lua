@@ -276,6 +276,7 @@ end
 local shared  = {}
 local events  = {}                 -- event name -> { cb, ... }
 local hooks = {}                   -- va -> {sig, cb} installed via rsmm.hook
+local hook_calls = 0            -- every R.hook ATTEMPT, valid target or not
 local resolved = {}                -- pattern -> fake va ; and reverse (va -> pattern)
 local resolve_n = 0                -- monotonic counter for unique fake VAs
 
@@ -419,6 +420,12 @@ rsmm = {
     -- Record installed hooks so a spec can simulate the hooked function
     -- firing. Returning a slot id keeps the existing arm paths happy.
     hook = function(va, sig, cb)
+        -- Recorded BEFORE the table write, and the native hook refuses a null
+        -- target rather than accepting it: a guard that is supposed to stop a
+        -- hook from being attempted at all is only tested if "was it called"
+        -- is observable separately from "did it install".
+        hook_calls = hook_calls + 1
+        if not va or va == 0 then error("rsmm.hook: null target") end
         hooks[va] = { sig = sig, cb = cb }
         return 1
     end,
@@ -8328,6 +8335,56 @@ do
 
     Rk.damage.disable(); Rk.damage.reset()
     rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- ---------------------------------------------------------------------------
+-- R.hero.allow_duplicates — the lobby's "that hero is taken" gate
+-- ---------------------------------------------------------------------------
+-- Two things this pins that a hand-written mod got wrong, and one that makes
+-- the hook safe rather than merely convenient.
+do
+    local va = I.resolve("HeroSelect_IsHeroAvailable")
+    check(hooks[va] == nil, "nothing has armed the availability hook yet")
+
+    check(R.hero.allow_duplicates() == true, "the hook installs")
+    check(hooks[va] ~= nil, "armed on HeroSelect_IsHeroAvailable")
+
+    -- ARITY. The call sites pass three arguments (rcx = menu, edx = hero
+    -- index, r8b = a bool). A fourth would read garbage out of r9.
+    check(hooks[va].sig == "ipii",
+          "armed with bool(menu, hero_index, flag) — three args, not four")
+
+    -- RETURN 1, NEVER nil. nil replays the original, and the original calls
+    -- LobbyMembers_List, which hands the caller members it must destroy one by
+    -- one. Never running it is the only way to not owe that teardown.
+    check(hooks[va].cb(0x1000, 3, 1) == 1,
+          "the detour short-circuits to true instead of replaying the original")
+
+    -- Idempotent: a second call must not re-install.
+    local first = hooks[va]
+    check(R.hero.allow_duplicates() == true, "a second call still reports armed")
+    check(hooks[va] == first, "and does not re-install the hook")
+end
+
+-- Fails CLOSED when the symbol is unresolved for this build, rather than
+-- hooking whatever address it guessed at.
+do
+    local saved_resolve = I.resolve
+    I.resolve = function(name)
+        if name == "HeroSelect_IsHeroAvailable" then return nil end
+        return saved_resolve(name)
+    end
+    package.loaded["rsmm"] = nil
+    local R2 = require "rsmm"
+    local before = hook_calls
+    check(R2.hero.allow_duplicates() == false,
+          "an unresolved symbol reports false instead of installing a hook")
+    check(hook_calls == before,
+          "and R.hook is never even attempted — the guard fails closed rather "
+          .. "than letting the native side reject a null target")
+    I.resolve = saved_resolve
     package.loaded["rsmm"] = nil
     R = require "rsmm"
 end

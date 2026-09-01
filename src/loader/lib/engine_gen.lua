@@ -52,6 +52,7 @@ return {
   ["HeroDef_PostLoad"] = { pattern = "HeroDef_PostLoad", offset = 0x0, sig = "up" },
   ["HeroProgressionUnlock_IsUnlocked"] = { pattern = "HeroProgressionUnlock_IsUnlocked", offset = 0x0, sig = "up" },
   ["HeroRankLock_IsUnlocked"] = { pattern = "HeroRankLock_IsUnlocked", offset = 0x0, sig = "up" },
+  ["HeroSelect_IsHeroAvailable"] = { pattern = "HeroSelect_IsHeroAvailable", offset = 0x0, sig = "ipii" },
   ["HeroStoryUnlock_IsUnlocked"] = { pattern = "HeroStoryUnlock_IsUnlocked", offset = 0x0, sig = "up" },
   ["Hero_GainExperience"] = { pattern = "Hero_GainExperience", offset = 0x0, sig = "vpp" },
   ["Hero_GrantMagicalObject"] = { pattern = "Hero_GrantMagicalObject", offset = 0x0, sig = "vppuup" },

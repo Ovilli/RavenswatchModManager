@@ -1228,6 +1228,61 @@ function R.hero.unlock_progression()
     return n
 end
 
+--- Let two players in a lobby pick the SAME hero.
+--
+-- `HeroSelect_IsHeroAvailable` decides whether a hero index may be picked. It
+-- enumerates the lobby with `LobbyMembers_List` and reads each member's blob
+-- through `LobbyAttributes_Parse` — whose JSON carries `RequestedHero` (see
+-- [[lobby-attribute-parser]]) — so "someone already took that hero" is
+-- decided here. Both of its call sites read only the boolean return
+-- (0x14026dcec maps true to status 0 / false to 2; 0x1403e8474 to a bool), so
+-- short-circuiting it to true cannot leave a caller holding a half-computed
+-- result.
+--
+-- Returning 1 also SKIPS the original, which is what makes this safe rather
+-- than merely convenient: `LobbyMembers_List` hands the caller members it
+-- must destroy one by one, and never running it is the only way to not owe
+-- that teardown.
+--
+-- ⚠ HOST-AUTHORITATIVE. Every player in the lobby needs this, or the ones
+-- without it still refuse the duplicate pick on their own screen.
+--
+-- ⚠ The function is 1330 bytes and only its lobby half is understood. Forcing
+-- true bypasses whatever ELSE it gates; an unlock check inside it is a live
+-- possibility and is NOT ruled out. Treat a hero that becomes selectable but
+-- was never unlocked as this hook, not as a bonus.
+--
+-- Returns true when the hook is in place (including when another mod already
+-- installed it), false when the symbol is unresolved on this build — which
+-- fails closed rather than guessing at an address.
+local _dupes_hooked = false
+
+function R.hero.allow_duplicates()
+    if _dupes_hooked then return true end
+    if not (R.hook and I.resolve) then return false end
+    local va = I.resolve("HeroSelect_IsHeroAvailable")
+    -- nil/0 when the symbol is unresolved for this build: fail closed rather
+    -- than hooking a stale address.
+    if not va or va == 0 then
+        R.log("[rsmm.hero] HeroSelect_IsHeroAvailable unresolved for this "
+              .. "game build — duplicate heroes not enabled")
+        return false
+    end
+    -- "i" + "pii": bool(menu, hero_index, flag). Three args, as called —
+    -- rcx = menu, edx = hero index, r8b = a bool. Declaring a fourth would
+    -- read garbage out of r9.
+    local ok, slot, why = pcall(R.hook, va, "ipii", function() return 1 end)
+    if not (ok and (slot ~= nil or why == "already-hooked")) then
+        R.log("[rsmm.hero] duplicate-hero hook failed: "
+              .. tostring(ok and why or slot))
+        return false
+    end
+    _dupes_hooked = true
+    R.log("[rsmm.hero] duplicate heroes enabled (every player in the lobby "
+          .. "needs this mod)")
+    return true
+end
+
 function R.hero.handle() return _give_hero end
 function R.hero.ready()  return _give_hero ~= nil end
 

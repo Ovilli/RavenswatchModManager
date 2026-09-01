@@ -329,6 +329,13 @@ inline HeroRankLock_IsUnlocked_fn HeroRankLock_IsUnlocked() {
     return reinterpret_cast<HeroRankLock_IsUnlocked_fn>(rsmm::fn_resolve(Sym::HeroRankLock_IsUnlocked_Pattern));
 }
 
+// HeroSelect_IsHeroAvailable  (HeroSelect_IsHeroAvailable)
+//   bool(void* menu, int hero_index, bool flag)
+using HeroSelect_IsHeroAvailable_fn = bool(*)(void*, int, bool);
+inline HeroSelect_IsHeroAvailable_fn HeroSelect_IsHeroAvailable() {
+    return reinterpret_cast<HeroSelect_IsHeroAvailable_fn>(rsmm::fn_resolve(Sym::HeroSelect_IsHeroAvailable_Pattern));
+}
+
 // HeroStoryUnlock_IsUnlocked  (HeroStoryUnlock_IsUnlocked)
 //   bool(void* condition_data)
 using HeroStoryUnlock_IsUnlocked_fn = uint32_t(*)(void*);
