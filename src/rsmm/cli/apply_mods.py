@@ -568,9 +568,21 @@ def resolve_special(decoded: str, dec2enc: dict[str, str]) -> str | None:
     * `Text/<bank>~GAM.xls.LocalText.gen.Lang<XX>` — localization
       sibling whose base is in `asset_map` but the .Lang<XX> sibling
       isn't. Decoded -> base's encoded path + `.Ggzy<encoded-lang>`.
+    * `<def>.UsedRscCache.ot` — a definition's preload manifest, loaded by
+      CONVENTION (the engine appends the suffix to the resource name), so no
+      cache has a `UsedRscList.ot` record and none of the 575 shipped ones is
+      in `asset_map` either. Anchored off a sibling like any new cooked path.
+
+    Every caller that asks "can this decoded path be installed" must go
+    through here. Three used to hand-roll their own `dec in dec2enc` test and
+    each missed a different family: `rsmm list` and `rsmm doctor` reported all
+    45 of a mod's caches as unmapped (46 of 63 doctor WARNs were this), while
+    the files were in fact installed and hash-verified.
     """
     if decoded.startswith("_root/"):
         return ROOT_PREFIX + decoded[len("_root/"):].replace("/", "\\")
+    if decoded.endswith(rsc_cache.CACHE_SUFFIX):
+        return synthesize_encoded(decoded, dec2enc)
     bank = resolve_audio_bank(decoded)
     if bank:
         return bank

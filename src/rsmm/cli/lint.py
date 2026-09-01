@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 from rsmm.cli import _term
+from rsmm.cli.apply_mods import resolve_special
 from rsmm.cli.merge import _toml_load
 from rsmm.engine.asset_map import decoded_to_encoded
 from rsmm.engine.paths import MODS_DIR
@@ -130,7 +131,10 @@ def lint_one(entry: Path) -> tuple[int, int]:
             raw_files += 1
             if _is_special_decoded(p):
                 continue
-            if p not in dec2enc:
+            # Same resolver `apply` installs through, so lint cannot warn
+            # about a path that would in fact install (resource caches, sound
+            # banks, lang siblings all live outside asset_map by design).
+            if p not in dec2enc and not resolve_special(p, dec2enc):
                 print(f"  {_T_WARN} {mod_s}: assets/ path not in asset_map: "
                       f"{_ST.accent(p)}")
                 warns += 1

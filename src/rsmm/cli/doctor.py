@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from rsmm.cli import _term
-from rsmm.cli.apply_mods import _LANG_SUFFIXES, is_skippable_asset
+from rsmm.cli.apply_mods import _LANG_SUFFIXES, is_skippable_asset, resolve_special
 from rsmm.cli.merge import _ranked, _toml_load, collect_patches
 from rsmm.engine.asset_map import decoded_to_encoded
 from rsmm.engine.hashing import sha256_file
@@ -600,7 +600,12 @@ def check_mods() -> list[Result]:
                 # Translation Lang* files are special-cased in apply_mods.
                 if dec.endswith(_LANG_SUFFIXES):
                     continue
-                if dec not in dec2enc:
+                # `resolve_special` owns every family that is installable
+                # without an asset_map entry (resource caches, sound banks,
+                # lang siblings). Testing membership alone reported all 45 of
+                # random-monsters' `.UsedRscCache.ot` files as broken while
+                # they were installed and hash-verified.
+                if dec not in dec2enc and not resolve_special(dec, dec2enc):
                     # Only surface for mods the user has actually enabled
                     # in the manifest — disabled mods can't break a run, so
                     # noisy warnings about them are user-hostile.

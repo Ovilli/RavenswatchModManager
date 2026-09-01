@@ -183,3 +183,27 @@ def test_texture_donor_reads_the_vanilla_backup(tmp_path, monkeypatch):
     assert '".rsmm.bak"' in impl and "pristine" in impl, (
         "merge.py no longer prefers the vanilla backup for texture donors"
     )
+
+
+def test_resolve_special_resolves_a_resource_cache():
+    """A `*.UsedRscCache.ot` must resolve without an asset_map entry.
+
+    No cache is in `asset_map` — shipped or not — because the engine finds one
+    by appending the suffix to the resource name rather than through
+    `UsedRscList.ot`. Membership alone therefore answers False for every cache,
+    which made `rsmm list`, `rsmm doctor` and `rsmm lint` each report a mod's
+    caches as broken while `apply` was installing them correctly.
+    """
+    from rsmm.cli.apply_mods import resolve_special
+
+    # One sibling in the same decoded directory is all `synthesize_encoded`
+    # needs to anchor the encoded prefix.
+    dec2enc = {"Definitions/Enemies/Gnoll_Hunter.enemydef": "Ijeqrpqwjt!Nsxxa"}
+
+    cache = "Definitions/Enemies/Gnoll_Hunter.enemydef.UsedRscCache.ot"
+    enc = resolve_special(cache, dec2enc)
+    assert enc, "a resource cache with a sibling must resolve"
+    assert enc.startswith("Ijeqrpqwjt!"), enc
+
+    # Nothing else changed: a path with no special form still returns None.
+    assert resolve_special("Definitions/Enemies/Gnoll_Hunter.enemydef", dec2enc) is None
