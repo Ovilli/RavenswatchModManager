@@ -1271,16 +1271,24 @@ function R.hero.allow_duplicates()
     -- "i" + "pii": bool(menu, hero_index, flag). Three args, as called —
     -- rcx = menu, edx = hero index, r8b = a bool. Declaring a fourth would
     -- read garbage out of r9.
-    -- The first fire is logged once. Without it "the hook installed" and "the
-    -- hero picker actually asks this function" look identical in the log, and
-    -- they are the two halves of the only question worth asking when a hero
-    -- still reads as locked.
-    local fired = false
+    -- Log each DISTINCT hero index the gate is asked about, once, up to a cap.
+    --
+    -- "The hook installed" and "the picker actually asks this function about
+    -- the hero you are trying to take" are different claims, and only the
+    -- second one explains a refusal. A first-fire-only line cannot separate
+    -- them: the picker asks about the LOCAL hero while merely drawing the
+    -- screen, so it fires immediately and proves nothing about confirm.
+    --
+    -- Bounded by construction — one line per index, and the index space is the
+    -- roster — so this cannot become a per-frame firehose the way an unbounded
+    -- hot-path log would.
+    local seen, n = {}, 0
     local ok, slot, why = pcall(R.hook, va, "ipii", function(_, hero_index)
-        if not fired then
-            fired = true
-            R.log(("[rsmm.hero] availability gate fired (hero %s) — the picker "
-                   .. "does route through this check"):format(tostring(hero_index)))
+        local key = tostring(hero_index)
+        if not seen[key] and n < 24 then
+            seen[key], n = true, n + 1
+            R.log(("[rsmm.hero] availability gate asked about hero %s -> "
+                   .. "forcing available"):format(key))
         end
         return 1
     end)
