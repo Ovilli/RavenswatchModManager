@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **224** symbols across 18 categories.
+Total: **225** symbols across 18 categories.
 
 ## combat
 
@@ -336,6 +336,7 @@ Total: **224** symbols across 18 categories.
 |------|---------|--------|----------|------------------|
 | `BookController_ResolveSettings` | `0x140307a30` | ✅ ok | ✔ | void(oCDtEntityCpnt3DBookController* self) |
 | `BookController_ResolveTabs` | `0x140308cd0` | ✅ ok | ✔ | void(oCDtEntityCpnt3DBookController* self) |
+| `HeroSelect_ConfirmBlockReason` | `0x14026dbc0` | ✅ ok |  | int(void* screen) |
 | `HeroSelect_SetConfirmEnabled` | `0x1403e9500` | ✅ ok |  | void(void* screen, bool enabled) |
 | `UiButton_InputPoll` | `0x1407d72a0` | ✅ ok | ✔ | void(ButtonUiCpntArray* cpnts) |
 | `UiButton_PressCommit` | `0x1406a08a0` | ✅ ok | ✔ | void(oCUINavigableZoneDesc* widget) |

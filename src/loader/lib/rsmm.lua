@@ -1257,6 +1257,42 @@ end
 -- fails closed rather than guessing at an address.
 local _dupes_hooked = false
 local _confirm_hooked = false
+local _reason_hooked = false
+
+-- Force the hero-select CONFIRM refusal code to "go ahead".
+--
+-- This is the gate, and the two hooks that came before it are not. The click
+-- handler does `call HeroSelect_ConfirmBlockReason; test eax,eax; jne ->bail`,
+-- so a non-zero return is a button press that visibly does nothing — which is
+-- exactly what was measured after the first two hooks were in:
+--
+--   0  go ahead
+--   1  a type check on the screen state failed, BEFORE anything was asked
+--   2  HeroSelect_IsHeroAvailable said the hero is taken
+--
+-- Forcing the availability check only removes reason 2. Reason 1 returns
+-- before the callee is ever consulted, so no amount of work on that callee can
+-- reach it. Forcing the CODE covers both.
+--
+-- Its other two callers are the draw paths that decide the padlock, so this
+-- also keeps the button's appearance and its behaviour telling the same story.
+local function _force_confirm_allowed()
+    if _reason_hooked then return end
+    if not (R.hook and I.resolve) then return end
+    local va = I.resolve("HeroSelect_ConfirmBlockReason")
+    if not va or va == 0 then
+        R.log("[rsmm.hero] HeroSelect_ConfirmBlockReason unresolved — confirm "
+              .. "stays gated by the game")
+        return
+    end
+    local ok, slot, why = pcall(R.hook, va, "ip", function() return 0 end)
+    if ok and (slot ~= nil or why == "already-hooked") then
+        _reason_hooked = true
+    else
+        R.log("[rsmm.hero] confirm-reason hook failed: "
+              .. tostring(ok and why or slot))
+    end
+end
 
 -- Keep the hero-select CONFIRM control enabled.
 --
@@ -1351,6 +1387,7 @@ function R.hero.allow_duplicates()
         return false
     end
     _dupes_hooked = true
+    _force_confirm_allowed()
     _force_confirm_enabled()
     R.log("[rsmm.hero] duplicate heroes enabled (every player in the lobby "
           .. "needs this mod)")

@@ -2093,6 +2093,27 @@
    "note": "Sets the hero-select CONFIRM control's enabled state. 74 bytes, and the whole body is two calls to the generic widget setter 0x1405518b0: `screen+0x230` gets `enabled ^ 1` (the lock overlay) and `screen+0x238` gets `enabled` (the button). Called from exactly ONE site, 0x1403e823c inside the hero-select screen FUN_1403e7d20, and the argument is computed three instructions earlier: `cmp byte [global+0x11a8], 0` -> non-zero writes '*' (0x2a) into `screen+0x378` and passes edx=0, zero writes 0 there and passes dl=1. So the padlock the player sees and the disabled button are one boolean. The global is `*(0x14143CB58)`, referenced by 48 functions; what writes its +0x11a8 was NOT found (the only writers are a struct copy at 0x1401be463 and a dword store at 0x1401caa62), which is why this SETTER, not the flag, is what R.hero.allow_duplicates hooks. ⚠ Forcing it never-disabled is deliberately blunt: the confirm control stays enabled for EVERY reason the screen might disable it, not just a duplicate hero. That is acceptable for an opt-in mod and would not be for anything else. Reached after HeroSelect_IsHeroAvailable was proven insufficient in-game — hooked to true, it fires (log line for the local hero) and the button stays locked."
   },
   {
+   "name": "HeroSelect_ConfirmBlockReason",
+   "kind": "function",
+   "category": "ui",
+   "raw": "FUN_14026dbc0",
+   "status": "ok",
+   "signature": "int(void* screen)",
+   "locator": {
+    "how": "callee_and_callers",
+    "calls": [
+     "HeroSelect_IsHeroAvailable"
+    ],
+    "callers": [
+     "FUN_1403e77bf",
+     "FUN_1403e7d20",
+     "FUN_1403e9300"
+    ],
+    "note": "the only caller of HeroSelect_IsHeroAvailable that returns a code"
+   },
+   "note": "Why the hero-select CONFIRM is refused, as a code: 0 = go ahead, 1 = a type check on the screen state failed before anything was asked, 2 = HeroSelect_IsHeroAvailable said the hero is taken (`mov ecx,2; xor edx,edx; test al,al; cmovne ecx,edx`). THE COMMIT PATH IS GATED ON IT: the click handler FUN_1403e9300 does `call HeroSelect_ConfirmBlockReason; test eax,eax; jne ->bail`, so a non-zero return is a click that does visibly nothing. Its other two callers (FUN_1403e77bf, FUN_1403e7d20) are the draw paths that decide the padlock, so forcing 0 keeps the button's look and its behaviour consistent. ⚠ This is the gate to force, not its callee. Forcing HeroSelect_IsHeroAvailable only removes reason 2 — reason 1 returns before the callee is ever consulted, which is exactly what was measured in-game 2026-09-01: the availability hook fires, the padlock hook takes the button off its lock, and the click still does nothing. The solo path never reaches this: FUN_1403e9300 first calls FUN_14026dd30 (true when the lobby holds one member) and commits directly."
+  },
+  {
    "name": "HeroSelect_IsHeroAvailable",
    "kind": "function",
    "category": "session",

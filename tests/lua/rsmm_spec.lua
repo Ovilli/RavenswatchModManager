@@ -8397,6 +8397,17 @@ do
     check(hooks[va].cb(0x1000, 3, 1) == 1,
           "the detour short-circuits to true instead of replaying the original")
 
+    -- The COMMIT gate. The click handler bails on a non-zero code, so this
+    -- is the hook that makes the button do something; the other two only
+    -- affect whether it looks pressable.
+    local rva = I.resolve("HeroSelect_ConfirmBlockReason")
+    check(hooks[rva] ~= nil, "the confirm block-reason is hooked")
+    check(hooks[rva].sig == "ip", "armed as int(screen)")
+    check(hooks[rva].cb(0x3000) == 0,
+          "it answers 0 — reason 1 (a state type check) returns before the "
+          .. "availability callee is consulted, so forcing the callee alone "
+          .. "cannot reach it")
+
     -- The CONFIRM control is a second, independent hook. Forcing the
     -- availability gate is not enough — measured in-game: it fires and the
     -- button stays locked.
@@ -8418,6 +8429,7 @@ do
     check(R.hero.allow_duplicates() == true, "a second call still reports armed")
     check(hooks[va] == first, "and does not re-install the hook")
     check(hooks[cva] == cfirst, "nor the confirm-button hook")
+    check(hooks[rva] ~= nil, "nor drops the block-reason hook")
 end
 
 -- Fails CLOSED when the symbol is unresolved for this build, rather than
