@@ -819,13 +819,15 @@ def _emit_override(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                     because a pool ref can be repointed but the vector cannot
                     grow.
         ``repoint_pools``
-                    default true. Set false to draw the cast game-wide WITHOUT
-                    rewriting any ``EntityPooling`` asset — the imported prefab
-                    is reached through the definition's merged resource cache
-                    instead. The pool repoint is this kind's only edit to a
-                    level asset and the only known cause of the chapter-2
-                    failure, so this is the configuration to try when
-                    ``cross_biome`` black-screens.
+                    default true, and **false is the one that works**. Set
+                    it false to draw the cast game-wide WITHOUT rewriting any
+                    ``EntityPooling`` asset — the imported prefab is reached
+                    through the definition's merged resource cache instead,
+                    which is sufficient on its own (proven in-game
+                    2026-09-01). The pool repoint is this kind's only edit to
+                    a level asset and the only cause of the chapter-transition
+                    failure; it is kept solely so the old behaviour stays
+                    expressible.
     """
     unknown = sorted(set(defn.fields) - set(_OVERRIDE_FIELDS))
     if unknown:
@@ -980,11 +982,14 @@ def _emit_override(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         # That matters because the pool repoint is the ONLY thing this kind
         # does to a LEVEL asset, and the only failure is a chapter TRANSITION
         # (chapter 1 renders imports fine — confirmed in-game 2026-08-28).
-        # Skipping it leaves the transition path byte-identical to vanilla, so
-        # the worst case is a soft one: an imported creature that never spawns,
-        # rather than a black screen. Whether pool membership is separately
-        # required was never tested directly — the shipped design repointed the
-        # pool, so the question never arose. This is that test.
+        # Skipping it leaves the transition path byte-identical to vanilla.
+        #
+        # PROVEN IN-GAME 2026-09-01, and it settles the question the old design
+        # never got to ask: POOL MEMBERSHIP IS NOT A GATE for a def-owned
+        # entity. A full game-wide deal with no pool rewritten at all played
+        # through with the imported creatures spawning and no chapter failure.
+        # The repoint was never what made cross-biome work — it was only ever
+        # the thing that broke the transition.
         _log.info(
             "enemy %s: cross_biome with repoint_pools = false — imported "
             "prefabs are preloaded by each definition's merged resource cache "
