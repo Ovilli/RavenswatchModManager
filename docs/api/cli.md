@@ -6,11 +6,12 @@ Every `rsmm` subcommand, auto-generated from the dispatch table (`rsmm.cli._disp
 Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcommand. For task-oriented prose, see the [CLI guide](/reference/cli/).
 :::
 
-**49 commands.**
+**50 commands.**
 
 | Command | Module | Summary |
 |---|---|---|
 | `rsmm apply` | `rsmm.cli.apply_mods` | Ravenswatch Mod Manager — install-time mod applier. |
+| `rsmm assets` | `rsmm.cli.cmd_assets` | `rsmm assets` — find a cooked asset by its readable path. |
 | `rsmm build` | `rsmm.cli.build` | rsmm build — full pipeline. |
 | `rsmm changelog` | `rsmm.cli.cmd_changelog` | `rsmm changelog` — read the release-notes channel. |
 | `rsmm cmd` | `rsmm.cli.console_cmd` | rsmm cmd — send /commands to the in-game console runtime. |
