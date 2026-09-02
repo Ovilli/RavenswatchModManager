@@ -26,3 +26,7 @@ Tests and CI
 
 Communication
 - Be responsive to review comments and keep PRs small.
+
+Support the project
+- RSMM is free and MIT-licensed; there is no paid tier and nothing is held back for donors.
+- If you would rather chip in than file a PR: [ko-fi.com/ovilli](https://ko-fi.com/W7W41FW3YE).
