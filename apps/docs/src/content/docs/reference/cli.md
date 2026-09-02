@@ -188,6 +188,28 @@ Copy the loader DLL (`dist/winhttp.dll`) into the game installation directory.
 
 ## Asset editing
 
+### `rsmm assets search <text>` / `rsmm assets show <path>`
+
+Find a cooked asset by its readable path. The install holds ~43,000 files
+whose names are cipher-encoded, so `ls` and `grep` cannot answer "where does
+the wolf enemy live" — but `data/asset_map.json` already carries the whole
+decoded ↔ encoded mapping (derived from the engine's `UsedRscList.ot`), so
+this is a lookup, not a scan. No game install required.
+
+```sh
+./rsmm assets search wolf                  # every readable path containing "wolf"
+./rsmm assets search enemies wolf          # both terms, any order (ANDed)
+./rsmm assets search "Ui/*.png"            # glob when the term has * or ?
+./rsmm assets search wolf --encoded -n 0   # print on-disk names too, no limit
+./rsmm assets show Audio/Music.bank        # encoded name + install state
+```
+
+Terms are case-insensitive and accept either slash direction. `show` also
+answers for the two families that are in no manifest because the engine
+ciphers them by convention — `Audio/*.bank` and `*.UsedRscCache.ot` — and
+reports whether the installed copy is vanilla or currently overridden by a
+mod.
+
 ### `rsmm decode <file>`
 
 Structural dump of a cooked file (class table, sections, embedded strings).

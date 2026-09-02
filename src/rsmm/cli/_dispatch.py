@@ -67,6 +67,7 @@ BUILTIN = {
     "menu":              "rsmm.cli.cmd_menu",
     "home":              "rsmm.cli.cmd_shell",
     "intents":           "rsmm.cli.cmd_intents",
+    "assets":            "rsmm.cli.cmd_assets",
     "decode":            "rsmm.engine.ot_decoder",
     "rebuild-asset-map": "rsmm.engine.find_iyg",
     "install-loader":    "rsmm.cli.install_loader",
@@ -159,6 +160,7 @@ COMMAND_GROUPS: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("save",     "[path]... [--classes]",      "inspect profile saves (read-only)"),
     )),
     ("assets & engine", (
+        ("assets",   "search <text> | show <path>", "find a cooked asset by readable path"),
         ("cook",     "<file>",                     "encode an uncooked asset"),
         ("uncook",   "<file>",                     "decode a cooked asset"),
         ("unify",    "",                           "normalize an asset tree"),
