@@ -31,6 +31,12 @@ on:
         required: false
         type: string
 
+# Two publishes at once would each bump the stamp from the same starting value
+# and fight over the same release assets. Queue them instead.
+concurrency:
+  group: publish-loader
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-22.04
@@ -42,6 +48,9 @@ jobs:
         with:
           # Need a real branch (not a detached HEAD) to push the version bump.
           ref: main
+          # And real history: the bump is rebased onto whatever landed on main
+          # while the DLL was building, which a depth-1 clone cannot do.
+          fetch-depth: 0
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -127,6 +136,14 @@ jobs:
           python scripts/add_loader_changelog.py "${ARGS[@]}"
           scripts/publish_changelog.sh
 
+      # The push RACES every other commit to main: this job builds the DLL for
+      # ~15 minutes, and anything merged in that window makes a bare
+      # `git push origin HEAD:main` a non-fast-forward. That is what happened on
+      # the v12 publish — the channel went live, the stamp did not, and the repo
+      # then claimed v11 while users were being served v12, which is precisely
+      # the state `_replant_newer_loader` cannot correct. So rebase and retry;
+      # the bump touches two files nothing else writes, so there is nothing for
+      # a rebase to conflict with.
       - name: Commit the loader version bump
         if: ${{ !inputs.dry_run }}
         run: |
@@ -139,4 +156,18 @@ jobs:
           VERSION=$(python -c "import json;print(json.load(open('data/loader_version.json'))['loader_version'])")
           git add data/loader_version.json data/changelog.json
           git commit -m "chore(loader): publish loader channel v${VERSION}"
-          git push origin HEAD:main
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              echo "pushed on attempt $attempt"
+              exit 0
+            fi
+            echo "push rejected (attempt $attempt) — rebasing onto origin/main"
+            git pull --rebase origin main || { git rebase --abort || true; }
+            sleep $((attempt * 5))
+          done
+          echo "::error::could not push the v${VERSION} stamp after 5 attempts."
+          echo "The channel IS published — repair the repo by setting"
+          echo "data/loader_version.json to ${VERSION} and committing"
+          echo "data/changelog.json as published, or main will keep claiming an"
+          echo "older loader than users are served."
+          exit 1
