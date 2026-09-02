@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>Install, manage, and build mods for <a href="https://store.steampowered.com/app/2071280/Ravenswatch/">Ravenswatch</a>.</b><br>
-  Swap textures, retune stats and talents, translate the game, add custom magic items, or script gameplay in Lua —<br>
+  Swap textures, retune stats and talents, translate the game, add custom magic items, or script gameplay in Lua <br>
   from a desktop app (no terminal) or a full CLI + modding SDK.
 </p>
 
@@ -101,6 +101,34 @@ RSMM backs up every file it touches as `<file>.rsmm.bak` and tracks state in the
 **Registry status:** the community registry is new and holds few mods so far — most people install mods they were handed directly.
 
 **Multiplayer:** mods change *your* local files. A cosmetic mod is safe; anything touching balance or content can desync or simply not apply for peers, and Ravenswatch is host-authoritative for most gameplay. Mods declare a `multiplayer_scope` (`cosmetic` / `deterministic-shared` / `host-authoritative` / `local-only`) — check it before playing online, and don't ship gameplay mods into strangers' lobbies.
+
+---
+
+## Make your first mod
+
+Authoring runs through the CLI, which is stdlib-only Python 3.11+ and lives in this repo:
+
+```sh
+git clone https://github.com/Ovilli/RavenswatchModManager
+cd RavenswatchModManager
+python3 -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
+pip install -e .                                      # puts `rsmm` on PATH
+```
+
+Then scaffold, check, install:
+
+```sh
+rsmm new my-first-mod --kind item     # picks a vanilla item to clone, interactively
+rsmm lint my-first-mod                # the same checks CI runs
+rsmm apply                            # write it into the game
+rsmm pack my-first-mod                # dist/my-first-mod.zip, ready for the registry
+```
+
+`rsmm new` writes `mods/my-first-mod/manifest.toml` seeded from the real base item — its icon, rarity and every editable value at its true default — so it applies as-is and you edit numbers from there. `rsmm watch` re-applies on every save while you iterate.
+
+**Mods ship data, not code.** A mod is a `manifest.toml` of `[[content]]` and `[[patch]]` blocks plus assets, not a script that pokes the game: `rsmm lint` fails any `.py` in a mod that isn't a sanctioned lifecycle hook. Gameplay logic goes in Lua against the `R.*` SDK (below).
+
+Working examples to copy: [`docs/ExampleMods/`](docs/ExampleMods) · full walkthrough: [Your first mod](https://docs.rsmm.me/getting-started/first-mod/) · every field: [Authoring mods](https://docs.rsmm.me/guides/modding/).
 
 ---
 
