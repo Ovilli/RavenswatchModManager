@@ -29,6 +29,7 @@ import { useT } from '../lib/i18n-react';
 import { shortcutLabel } from '../lib/platform';
 import { quitApp } from '../lib/quit';
 import { restoreAll } from '../lib/rsmm';
+import { attachSmoothWheel } from '../lib/smooth-scroll';
 import { activeProfile, detectConflicts, isEnabledIn, outdatedCount, useApp } from '../store';
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
@@ -485,6 +486,13 @@ function RootLayout() {
   useEffect(() => {
     mainRef.current?.scrollTo({ top: 0, left: 0 });
   }, [location.pathname]);
+
+  // The webview scrolls a mouse notch as one teleport, which is what makes the
+  // app feel harder than the same page in a browser. Trackpads are untouched.
+  useEffect(() => {
+    const el = mainRef.current;
+    return el ? attachSmoothWheel(el) : undefined;
+  }, []);
 
   return (
     <ToastProvider>
