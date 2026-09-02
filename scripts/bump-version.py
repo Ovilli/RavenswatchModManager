@@ -217,10 +217,27 @@ def main() -> int:
 
     # Commit only the four files we touched — don't sweep in unrelated
     # working-tree changes.
+    #
+    # `git add <paths>` is NOT enough for that: `git commit` commits the whole
+    # INDEX, so anything staged before this ran rides along under a
+    # `chore(release)` subject nobody re-reads. That is how 9f5a0f8 shipped
+    # 5.4.4 with 343 lines silently deleted from src/loader/lib/rsmm.lua —
+    # the SDK regression reached the release with the message claiming a
+    # version bump. Committing with an explicit pathspec ignores the rest of
+    # the index entirely, and the warning below means a staged change is never
+    # quietly LEFT BEHIND either.
     paths = [str(t.path.relative_to(REPO_ROOT)) for t in targets()]
+    staged = [
+        line for line in git(["diff", "--cached", "--name-only"]).stdout.splitlines()
+        if line.strip() and line.strip() not in paths
+    ]
+    if staged:
+        print("note: leaving these staged files OUT of the release commit:")
+        for line in staged:
+            print(f"  - {line}")
     git(["add", *paths])
     msg = f"chore(release): bump to {new}"
-    git(["commit", "-m", msg])
+    git(["commit", "-m", msg, "--", *paths])
     print(f"committed: {msg}")
 
     if args.tag:

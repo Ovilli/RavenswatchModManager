@@ -88,6 +88,18 @@ jobs:
       - name: Validate loader DLL
         run: python scripts/validate_loader_dll.py dist/winhttp.dll
 
+      # The publish script's own Lua check is `luac` — SYNTAX only, which a
+      # semantically broken SDK passes. 5.4.4 shipped with 343 lines missing
+      # from rsmm.lua and every capability they backed gone; luac was happy,
+      # the spec was not, and nothing here looked at the spec. Two minutes of
+      # tests is cheap against a bundle that gets injected into the game
+      # process on every user's machine.
+      - name: Test the SDK and the CLI
+        run: |
+          lua5.4 tests/lua/rsmm_spec.lua src/loader/lib
+          pip install -e ".[dev]"
+          python -m pytest -n auto -m "not slow"
+
       # `notes` reaches the shell through the ENVIRONMENT, never through
       # `${{ inputs.notes }}` interpolation. Interpolating it pastes the raw
       # text into the script body, where bash reads it as code: a note

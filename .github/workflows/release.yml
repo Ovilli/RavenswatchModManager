@@ -7,7 +7,36 @@ on:
   workflow_dispatch:
 
 jobs:
+  # A tag build used to start regardless of whether the tree it points at was
+  # green. It isn't theoretical: CI was red on 6b2843a (the 5.4.4 changelog
+  # commit) because that release's own bump had deleted 343 lines of
+  # src/loader/lib/rsmm.lua, and the desktop release built from it anyway —
+  # shipping a sidecar whose Lua SDK was missing every capability those lines
+  # backed. This runs the two suites that would have caught it, and the matrix
+  # waits on it, so a red tree costs a minute instead of a release.
+  gate:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Lua
+        run: sudo apt-get update && sudo apt-get install -y lua5.4
+
+      - name: Loader Lua SDK spec
+        run: lua5.4 tests/lua/rsmm_spec.lua src/loader/lib
+
+      - name: Python tests
+        run: |
+          pip install -e ".[dev]"
+          python -m pytest -n auto -m "not slow"
+
   build:
+    needs: gate
     permissions:
       contents: write
     strategy:
