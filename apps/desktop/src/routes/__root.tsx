@@ -488,11 +488,10 @@ function RootLayout() {
   }, [location.pathname]);
 
   // The webview scrolls a mouse notch as one teleport, which is what makes the
-  // app feel harder than the same page in a browser. Trackpads are untouched.
-  useEffect(() => {
-    const el = mainRef.current;
-    return el ? attachSmoothWheel(el) : undefined;
-  }, []);
+  // app feel harder than the same page in a browser. Delegated from the
+  // document so dialogs, the log view and every list get the same feel as the
+  // main area — including ones added later. Trackpads are untouched.
+  useEffect(() => attachSmoothWheel(document), []);
 
   return (
     <ToastProvider>

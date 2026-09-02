@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { wheelDeltaPx } from './smooth-scroll';
+import { isScrollable, wheelDeltaPx } from './smooth-scroll';
 
 /** Height of the scroll container the deltas are measured against. */
 const VIEWPORT = 720;
@@ -35,5 +35,29 @@ describe('wheelDeltaPx', () => {
 
   it('declines a wheel that scrolls nothing', () => {
     expect(wheelDeltaPx({ deltaY: 0, deltaMode: 0 }, VIEWPORT)).toBeNull();
+  });
+});
+
+/**
+ * Delegation picks the container by computed overflow, so this is what decides
+ * whether a wheel is taken over at all.
+ */
+describe('isScrollable', () => {
+  it('accepts an overflowing auto/scroll box', () => {
+    expect(isScrollable({ overflowY: 'auto', scrollHeight: 900, clientHeight: 400 })).toBe(true);
+    expect(isScrollable({ overflowY: 'scroll', scrollHeight: 900, clientHeight: 400 })).toBe(true);
+  });
+
+  it('rejects a clipped box, which the user cannot scroll back by hand', () => {
+    expect(isScrollable({ overflowY: 'hidden', scrollHeight: 900, clientHeight: 400 })).toBe(false);
+    // The app shell is full of these: overflow-hidden flex boxes whose content
+    // is taller than the box.
+    expect(isScrollable({ overflowY: 'visible', scrollHeight: 900, clientHeight: 400 })).toBe(
+      false,
+    );
+  });
+
+  it('rejects a box with nothing to scroll', () => {
+    expect(isScrollable({ overflowY: 'auto', scrollHeight: 400, clientHeight: 400 })).toBe(false);
   });
 });
