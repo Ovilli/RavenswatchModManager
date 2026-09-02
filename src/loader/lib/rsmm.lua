@@ -1013,31 +1013,6 @@ end
 -- _invalidate_hero_capture) are forward-declared far above, because the give
 -- path calls them through those upvalues.
 local ENTITY_IMG_BASE, SHARED_HERO_SLOT, LOBBY_REFRESH_SLOT
-
--- Cross-state flag: "report every lobby member as having picked no hero".
---
--- It CANNOT be a Lua variable. Every mod gets its own lua_State with its own
--- copy of this file, and only ONE state can own the detour on
--- LobbyAttributes_Parse — whichever mod armed it first. In practice that is
--- steamroller, so duplicate-heroes was setting a flag in a state whose
--- callback never runs, and the blanking was a no-op for three playtests while
--- looking correctly installed in the log ("attribute parser hooked" is printed
--- by the OWNING state, and the owner logs it whether or not anyone else
--- wanted anything from it).
---
--- g_shared is the one channel every state sees. Slots 0-7 are mod-writable
--- (0 = hero handle, 7 = lobby refresh); 6 is free.
-local DUPE_BLANK_SLOT = 6
-
--- HeroSelect_ValidateBlockedPtr, as an RVA off the module base.
---
--- The byte at *(this) + 0x11a8 is what greys the book's "Validate Hero
--- Button". TWO sites read it and set the same widget pair from it — one calls
--- HeroSelect_SetConfirmEnabled, the other inlines the identical pair — which
--- is why hooking one setter left the button dead. It also writes the '*'
--- padlock glyph. One byte, two copies of the same decision.
-local VALIDATE_BLOCKED_RVA = 0x143cb58
-local VALIDATE_BLOCKED_OFF = 0x11a8
 local ENTITY_VALCTX_OFF, EV_STORE_OFF
 local _native_capture_active, _hero_plausible, _ev_ctx, _ctx_chain_ok
 do
@@ -1281,213 +1256,6 @@ end
 -- installed it), false when the symbol is unresolved on this build — which
 -- fails closed rather than guessing at an address.
 local _dupes_hooked = false
-local _confirm_hooked = false
-local _reason_hooked = false
-local _press_logged = false
-local _unblock_armed, _unblock_said = false, 0
-local _validate_widget = nil            -- the Validate Hero Button widget
-local _widget_said = nil
-
--- Report the button's own live state once it changes.
---
--- The block byte is cleared and the control is asked for enabled=1, and the
--- press still does nothing — so the next question is about the WIDGET, not the
--- page. The book's input poll refuses to dispatch a press when the widget's
--- state is 4, and the driver vcalls a listener at *(widget+0x570); a null
--- listener is a button wired to nothing. Both are plain guarded reads of a
--- pointer the engine handed us, so this costs nothing and risks nothing.
-local function _report_validate_widget()
-    local w = _validate_widget
-    if not w or not _ptr_plausible(w) then return end
-    local state    = I.read_u32(w + 0x328)
-    local state2   = I.read_u32(w + 0x32c)
-    local listener = I.read_u64(w + 0x570)
-    local flags    = I.read_u32(w + 0x234)
-    local key = string.format("%s/%s/%s/%s", tostring(state), tostring(state2),
-                              tostring(listener), tostring(flags))
-    if key == _widget_said then return end
-    _widget_said = key
-    R.log(string.format(
-        "[rsmm.hero] Validate Hero Button @%x: state=%s/%s listener=%s "
-        .. "flags=%s (state~=4 and flags&0x10 set means the poll WILL "
-        .. "dispatch a press)",
-        w, tostring(state), tostring(state2),
-        listener and string.format("0x%x", listener) or "nil", tostring(flags)))
-
-    -- NAME THE ACTION.
-    --
-    -- All three poll gates are satisfied (state 1, listener present,
-    -- flags&0x10 set), so a press reaches the listener and the ACTION is what
-    -- refuses. The press driver vcalls slot +0x10 on the listener, so reading
-    -- the listener's vftable and that slot gives the exact function to read —
-    -- reported as a STATIC address, because a runtime one is meaningless
-    -- outside the process that printed it.
-    if not _ptr_plausible(listener) then return end
-    local vft = I.read_u64(listener)
-    if not vft or not _ptr_plausible(vft) then return end
-    local fn = I.read_u64(vft + 0x10)
-    if not fn or not _ptr_plausible(fn) then return end
-    local base = I.module_base()
-    R.log(string.format(
-        "[rsmm.hero] press action: listener vftable 0x%x, slot+0x10 -> 0x%x "
-        .. "(static, rebased to the 0x140000000 image)",
-        vft - base + 0x140000000, fn - base + 0x140000000))
-end
-
--- Clear the byte that greys the book's Validate Hero Button.
---
--- BLUNT, and the honest description is: nothing found what WRITES this byte
--- (a scan of every access to +0x11a8 turned up a struct copy and an unrelated
--- dword store, and the global has 48 referencing functions), so this clears it
--- on a tick instead of intercepting a writer. That means the button is
--- ungreyed for every reason the page might grey it, not only a duplicate hero.
--- Acceptable for a mod the player opts into; it would not be acceptable as
--- default behaviour, and the symbol note says the same.
---
--- A plain byte write, never an engine call, so it does not need the main
--- thread ([[loader-thread-model]] governs CALLS). The page polls this byte
--- every frame, so a racy write is at worst one frame late.
-local function _unblock_validate_tick()
-    if not (I.module_base and I.read_u64 and I.read_u8 and I.write_u8) then return end
-    local g = I.module_base() + VALIDATE_BLOCKED_RVA
-    local obj = I.read_u64(g)
-    if not obj or obj == 0 or not _ptr_plausible(obj) then return end
-    local blocked = I.read_u8(obj + VALIDATE_BLOCKED_OFF)
-    if blocked == nil then return end
-    if blocked == 0 then _report_validate_widget() return end
-    I.write_u8(obj + VALIDATE_BLOCKED_OFF, 0)
-    _report_validate_widget()
-    if _unblock_said < 3 then
-        _unblock_said = _unblock_said + 1
-        R.log("[rsmm.hero] cleared the Validate Hero Button block flag "
-              .. "(was " .. tostring(blocked) .. ")")
-    end
-end
-
--- INSTRUMENT, not a fix: does a confirm press reach the function this whole
--- investigation has been treating as the click handler?
---
--- Three hooks read off that assumption — the availability check, the button's
--- widget setter, the block code — all install, all fire where predicted, and
--- the press still does nothing. That pattern says the model is wrong
--- somewhere, and no further static reading of the same call graph can say
--- where. A press is a rare event, so a handful of log lines settles it.
---
--- Replays the original untouched. It changes nothing; it only reports.
-local function _watch_confirm_press()
-    if _press_logged then return end
-    if not (R.hook and I.resolve) then return end
-    local va = I.resolve("HeroSelect_ConfirmPressed")
-    if not va or va == 0 then return end
-    local n = 0
-    local ok, slot, why = pcall(R.hook, va, "ip", function()
-        if n < 8 then
-            n = n + 1
-            R.log(("[rsmm.hero] confirm press handler reached (#%d) — the "
-                   .. "button IS invoking it"):format(n))
-        end
-        return nil   -- replay: this is an instrument, it must not change flow
-    end)
-    if ok and (slot ~= nil or why == "already-hooked") then _press_logged = true end
-end
-
--- Force the hero-select CONFIRM refusal code to "go ahead".
---
--- This is the gate, and the two hooks that came before it are not. The click
--- handler does `call HeroSelect_ConfirmBlockReason; test eax,eax; jne ->bail`,
--- so a non-zero return is a button press that visibly does nothing — which is
--- exactly what was measured after the first two hooks were in:
---
---   0  go ahead
---   1  a type check on the screen state failed, BEFORE anything was asked
---   2  HeroSelect_IsHeroAvailable said the hero is taken
---
--- Forcing the availability check only removes reason 2. Reason 1 returns
--- before the callee is ever consulted, so no amount of work on that callee can
--- reach it. Forcing the CODE covers both.
---
--- Its other two callers are the draw paths that decide the padlock, so this
--- also keeps the button's appearance and its behaviour telling the same story.
-local function _force_confirm_allowed()
-    if _reason_hooked then return end
-    if not (R.hook and I.resolve) then return end
-    local va = I.resolve("HeroSelect_ConfirmBlockReason")
-    if not va or va == 0 then
-        R.log("[rsmm.hero] HeroSelect_ConfirmBlockReason unresolved — confirm "
-              .. "stays gated by the game")
-        return
-    end
-    local ok, slot, why = pcall(R.hook, va, "ip", function() return 0 end)
-    if ok and (slot ~= nil or why == "already-hooked") then
-        _reason_hooked = true
-    else
-        R.log("[rsmm.hero] confirm-reason hook failed: "
-              .. tostring(ok and why or slot))
-    end
-end
-
--- Keep the hero-select CONFIRM control enabled.
---
--- Forcing HeroSelect_IsHeroAvailable to true is NOT enough, which is a
--- measured fact rather than a guess: with that hook installed and firing (it
--- logs the hero it is asked about) the button stays locked. The picker takes
--- a second route.
---
--- HeroSelect_SetConfirmEnabled is that route, and it is the screen's ONLY
--- widget-enable call. Its argument is computed three instructions before the
--- call from a single boolean, which also writes the '*' glyph the player sees
--- as a padlock — so the lock icon and the dead button are one decision.
---
--- The hook does the least it can: when the screen asks for DISABLED it skips
--- the original, so the control keeps the enabled state it already had; when
--- the screen asks for enabled it replays the original untouched. Nothing is
--- called on the engine's behalf and no widget pointer is dereferenced from
--- Lua, which is what keeps this off the "handed a probed pointer to the
--- engine" path that every in-game crash so far has been.
---
--- ⚠ Blunt on purpose. The control stays enabled for EVERY reason the screen
--- might disable it, not only a duplicate hero. Fine for a mod the player opts
--- into; it would not be fine as default behaviour.
-local function _force_confirm_enabled()
-    if _confirm_hooked then return end
-    if not (R.hook and I.resolve) then return end
-    local va = I.resolve("HeroSelect_SetConfirmEnabled")
-    if not va or va == 0 then
-        R.log("[rsmm.hero] HeroSelect_SetConfirmEnabled unresolved — the "
-              .. "confirm button is left as the game sets it")
-        return
-    end
-    local logged = {}
-    local ok, slot, why = pcall(R.hook, va, "vpi", function(screen, enabled)
-        -- `enabled` IS A BOOL IN DL, not an int in EDX. A caller that does
-        -- `mov dl, 1` leaves the upper 24 bits as whatever was in the register,
-        -- so the raw slot came through as -1607667455 in a real session while
-        -- meaning "true". Comparing the whole word made the disable-suppression
-        -- fire only on the one caller that happened to `xor edx, edx` first.
-        enabled = enabled & 0xff
-        -- Remember the widgets so their live state can be read: +0x230 is the
-        -- lock overlay, +0x238 the button itself.
-        if I.read_u64 and _ptr_plausible(screen) then
-            _validate_widget = I.read_u64(screen + 0x238)
-        end
-        local key = tostring(enabled)
-        if not logged[key] then
-            logged[key] = true
-            R.log(("[rsmm.hero] hero-select confirm control asked for "
-                   .. "enabled=%s"):format(key))
-        end
-        -- Non-nil skips the original; nil replays it. Only the DISABLE is
-        -- suppressed.
-        if enabled == 0 then return 0 end
-        return nil
-    end)
-    if ok and (slot ~= nil or why == "already-hooked") then
-        _confirm_hooked = true
-    else
-        R.log("[rsmm.hero] confirm-button hook failed: "
-              .. tostring(ok and why or slot))
-    end
-end
 
 function R.hero.allow_duplicates()
     if _dupes_hooked then return true end
@@ -1503,24 +1271,16 @@ function R.hero.allow_duplicates()
     -- "i" + "pii": bool(menu, hero_index, flag). Three args, as called —
     -- rcx = menu, edx = hero index, r8b = a bool. Declaring a fourth would
     -- read garbage out of r9.
-    -- Log each DISTINCT hero index the gate is asked about, once, up to a cap.
-    --
-    -- "The hook installed" and "the picker actually asks this function about
-    -- the hero you are trying to take" are different claims, and only the
-    -- second one explains a refusal. A first-fire-only line cannot separate
-    -- them: the picker asks about the LOCAL hero while merely drawing the
-    -- screen, so it fires immediately and proves nothing about confirm.
-    --
-    -- Bounded by construction — one line per index, and the index space is the
-    -- roster — so this cannot become a per-frame firehose the way an unbounded
-    -- hot-path log would.
-    local seen, n = {}, 0
+    -- The first fire is logged once. Without it "the hook installed" and "the
+    -- hero picker actually asks this function" look identical in the log, and
+    -- they are the two halves of the only question worth asking when a hero
+    -- still reads as locked.
+    local fired = false
     local ok, slot, why = pcall(R.hook, va, "ipii", function(_, hero_index)
-        local key = tostring(hero_index)
-        if not seen[key] and n < 24 then
-            seen[key], n = true, n + 1
-            R.log(("[rsmm.hero] availability gate asked about hero %s -> "
-                   .. "forcing available"):format(key))
+        if not fired then
+            fired = true
+            R.log(("[rsmm.hero] availability gate fired (hero %s) — the picker "
+                   .. "does route through this check"):format(tostring(hero_index)))
         end
         return 1
     end)
@@ -1530,20 +1290,6 @@ function R.hero.allow_duplicates()
         return false
     end
     _dupes_hooked = true
-    -- Ask the lobby parser to report every member as "has not picked yet".
-    -- This is the one that does not depend on knowing WHICH check refuses.
-    --
-    -- Through the SHARED SLOT, because the state that owns the parse detour
-    -- is almost never this one. A plain Lua flag here reaches nobody.
-    if I.shared_set then pcall(I.shared_set, DUPE_BLANK_SLOT, 1) end
-    if R.lobby then R.lobby.blank_hero = true end
-    _force_confirm_allowed()
-    _force_confirm_enabled()
-    _watch_confirm_press()
-    if not _unblock_armed then
-        _unblock_armed = true
-        R.on("tick", _unblock_validate_tick)
-    end
     R.log("[rsmm.hero] duplicate heroes enabled (every player in the lobby "
           .. "needs this mod)")
     return true
@@ -3309,36 +3055,6 @@ R.lobby._hook = LOBBY_HOOK
 -- Both lifecycle points, because arming is idempotent and neither is
 -- guaranteed on its own: `setup` runs after every mod's init.lua, `ready` at
 -- the first frame, and a mod loaded late still gets one of them.
-function LOBBY_HOOK.blank_requested_hero(rec)
-    if not (I.write_u32 and I.read_u8 and I.read_u32) then return end
-    if not _ptr_plausible(rec) then return end
-    -- NOT gated on MemberDataInitialized. LOBBY_HOOK.read gates on it, and
-    -- copying that here made this a no-op for a whole playtest: every real
-    -- blob carries `"MemberDataInitialized":false` while still carrying a
-    -- perfectly good RequestedHero (measured: four members at heroes 4, 7, 3
-    -- and 6, all parsed, none blanked). That byte means "the member's data is
-    -- settled", not "this is a record".
-    --
-    -- What makes it a record is PlayerName reading back as a printable
-    -- compact string at +0, plus a hero id in range. Those two are the shape
-    -- test; the flag never was.
-    if not LOBBY_HOOK.estring(rec) then return end
-    local hero = I.read_u32(rec + 0x10)
-    if hero == nil or hero == 0xffffffff or hero >= 0x1000 then return end
-    I.write_u32(rec + 0x10, 0xffffffff)
-    -- Counter on R.lobby, not on the private table: a test that cannot see
-    -- the count cannot tell "the guard stopped the write" from "the write
-    -- happened and wrote the same value back".
-    R.lobby.blanked = (R.lobby.blanked or 0) + 1
-    if R.lobby.blanked <= 6 then
-        R.log(("[rsmm.lobby] duplicate-heroes: parsed member wanted hero "
-               .. "%d, reported as -1 (not picked) so nothing reads it as "
-               .. "taken"):format(hero))
-    end
-end
-
-R.lobby.blank_requested_hero = LOBBY_HOOK.blank_requested_hero
-
 R.on("setup", function() pcall(LOBBY_HOOK.arm) end)
 R.on("ready", function() pcall(LOBBY_HOOK.arm) end)
 
@@ -3533,52 +3249,13 @@ function LOBBY_HOOK.arm()
     -- was parsed by an engine nobody was listening to. Four players on the
     -- board, one name. A raise here must cost the fields that one parse would
     -- have set, never the hook.
-    -- DUPLICATE HEROES, fixed at the source instead of at each consumer.
-    --
-    -- Four gates were hooked before this one — the availability check, the
-    -- confirm control's widget setter, the block code, the presumed press
-    -- handler. Every one installs, three of them demonstrably fire, and the
-    -- button still refuses. Chasing consumers was the wrong shape of fix.
-    --
-    -- All of them read the same thing: what OTHER lobby members asked to play,
-    -- and every member's attributes reach the game through this one parse.
-    -- Writing -1 into the record's RequestedHero after the parse fills it
-    -- means no consumer can find a match, whichever consumer it turns out to
-    -- be. -1 is the value the engine itself uses for "has not picked yet"
-    -- (see R.lobby._note_blob), so this is a state the game already handles
-    -- rather than a value invented for it.
-    --
-    -- Guarded three ways before the write: the pointer must be plausible,
-    -- MemberDataInitialized must be set, and PlayerName must read back as a
-    -- real string — because param_1 is NOT always a record (the note on
-    -- LOBBY_HOOK.read says so) and a blind write at +0x10 into something else
-    -- is a corruption with no connection to its crash.
-
-    local ok, slot, why = pcall(R.hook, va, "ppp", function(self, blob, next)
-        -- Only this path replays the original ITSELF, because the record has
-        -- to be full before it can be edited. Everything else returns nil and
-        -- lets the loader replay, exactly as before.
-        local rv, replayed = nil, false
-        -- Read the shared slot, not a local: this callback belongs to
-        -- whichever state armed the hook first, which is usually NOT the mod
-        -- that asked for blanking.
-        local want = R.lobby.blank_hero
-        if not want and I.shared_get then
-            local sok, v = pcall(I.shared_get, DUPE_BLANK_SLOT)
-            want = sok and v == 1
-        end
-        if want and type(next) == "function" then
-            rv = next()
-            replayed = true
-            pcall(LOBBY_HOOK.blank_requested_hero, self)
-        end
+    local ok, slot, why = pcall(R.hook, va, "ppp", function(self, blob)
         local pok, perr = pcall(on_parse, self, blob)
         if not pok and not LOBBY_HOOK.err_said then
             LOBBY_HOOK.err_said = true
             R.log("[rsmm.lobby] parse callback raised (names keep arriving on "
                 .. "later parses): " .. tostring(perr))
         end
-        if replayed then return rv end
         return nil
     end)
     -- "already-hooked": another mod's state owns the detour, so OUR callback
