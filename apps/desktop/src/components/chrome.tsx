@@ -6,12 +6,22 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useT } from '../lib/i18n-react';
 
+/**
+ * Section divider. The class has always styled a rule with a gap and a text
+ * colour in the middle of it, and the component rendered an empty div — so a
+ * fleuron rule was two hairlines and no fleuron. The ornament is decorative and
+ * hidden from assistive tech; the rules on either side carry the separation.
+ */
 export function Fleuron({
   className,
 }: {
   className?: string;
 }) {
-  return <div className={cn('rule-fleuron text-[0.9rem]', className)} />;
+  return (
+    <div className={cn('rule-fleuron text-[0.9rem]', className)}>
+      <span aria-hidden="true">❦</span>
+    </div>
+  );
 }
 
 export function Crest({

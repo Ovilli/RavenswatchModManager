@@ -128,7 +128,7 @@ class RootErrorBoundary extends Component<{ children: ReactNode }, { error: Erro
             {/* A class component, and the app may be too broken to re-render:
                 the module-level translator is the right one here. */}
             <h1 className="font-fraktur text-3xl text-crimson">{t('Something went wrong')}</h1>
-            <pre className="font-mono text-sm text-ash whitespace-pre-wrap break-all">
+            <pre className="font-data text-sm text-ash whitespace-pre-wrap break-all">
               {this.state.error.message}
             </pre>
             <button

@@ -336,7 +336,7 @@ function LogPage() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t('Search the log...')}
-            className="font-mono min-w-56 flex-1 border border-border bg-pitch/60 px-3 py-2 text-sm text-parchment placeholder:text-ash focus:border-gilt/60 focus:outline-none"
+            className="font-data min-w-56 flex-1 border border-border bg-pitch/60 px-3 py-2 text-sm text-parchment placeholder:text-ash focus:border-gilt/60 focus:outline-none"
           />
           <Select value={tag} onChange={setTag} ariaLabel={t('Filter by subsystem')}>
             <option value="all">{t('All subsystems')}</option>
@@ -385,7 +385,7 @@ function LogPage() {
         />
 
         {meta?.path ? (
-          <p className="font-mono mt-2 break-all text-[10px] text-ash">{meta.path}</p>
+          <p className="font-data mt-2 break-all text-[10px] text-ash">{meta.path}</p>
         ) : null}
       </Panel>
 
@@ -473,7 +473,7 @@ function HealthBanner({
                     key={m.id}
                     className="flex flex-wrap items-center gap-2 border border-border bg-pitch/60 px-3 py-2"
                   >
-                    <span className="font-mono text-sm text-parchment">{m.id}</span>
+                    <span className="font-data text-sm text-parchment">{m.id}</span>
                     <span className="font-serif-italic min-w-0 flex-1 text-xs text-ash">
                       {m.disabledReason || t('{n} failed launches', { n: m.crashes })}
                       {m.lastError ? ` — ${m.lastError}` : ''}
@@ -510,7 +510,7 @@ function Select({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         aria-label={ariaLabel}
-        className="select-grim font-mono max-w-64 appearance-none truncate border border-border bg-pitch/60 py-2 pl-3 pr-9 text-sm text-parchment focus:border-gilt/60 focus:outline-none"
+        className="select-grim font-data max-w-64 appearance-none truncate border border-border bg-pitch/60 py-2 pl-3 pr-9 text-sm text-parchment focus:border-gilt/60 focus:outline-none"
       >
         {children}
       </select>
@@ -592,7 +592,7 @@ function LogBody({
             style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 28px' }}
           >
             {line.kind === 'session' ? (
-              <p className="font-mono text-xs text-gilt">{line.message}</p>
+              <p className="font-data text-xs text-gilt">{line.message}</p>
             ) : (
               <div className="flex flex-wrap items-baseline gap-2">
                 {line.stamp ? (

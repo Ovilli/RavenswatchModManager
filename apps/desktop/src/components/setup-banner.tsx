@@ -188,7 +188,7 @@ export function SetupBanner() {
             )}
           </p>
           {repairError ? (
-            <p className="font-mono text-sm text-crimson break-all">{repairError}</p>
+            <p className="font-data text-sm text-crimson break-all">{repairError}</p>
           ) : null}
         </div>
         <Button
@@ -286,7 +286,7 @@ export function SetupBanner() {
           <p className="font-serif-italic text-base">
             {t("Couldn't reach the rsmm CLI to verify the install.")}
           </p>
-          <p className="font-mono text-sm text-ash break-all">{error}</p>
+          <p className="font-data text-sm text-ash break-all">{error}</p>
         </div>
         <CopyButton value={error} />
         <Button type="button" size="sm" onClick={() => void runChecks(true)} disabled={running}>

@@ -260,7 +260,7 @@ function SourcesPanel() {
             key={src}
             className="flex items-center justify-between gap-3 border border-border px-3 py-2"
           >
-            <span className="font-mono text-parchment break-all">{src}</span>
+            <span className="font-data text-parchment break-all">{src}</span>
             <button
               type="button"
               onClick={() => update({ sources: settings.sources.filter((s) => s !== src) })}

@@ -40,7 +40,7 @@ function AuthorPage() {
             text={t(
               'Paste the absolute path to a cooked file under {path}. The container header, class registry, and section sizes are extracted by the rsmm sidecar.',
             )}
-            parts={{ path: <span className="font-mono">DarkTalesResources/_Cooking/</span> }}
+            parts={{ path: <span className="font-data">DarkTalesResources/_Cooking/</span> }}
           />
         </p>
 
@@ -50,7 +50,7 @@ function AuthorPage() {
             value={path}
             onChange={(e) => setPath(e.target.value)}
             placeholder="/path/to/Cooking/.../File.yqz"
-            className="font-mono flex-1 rounded-md border border-border bg-parchment-shadow px-3 py-2 text-parchment outline-none placeholder:text-ash focus:border-crimson"
+            className="font-data flex-1 rounded-md border border-border bg-parchment-shadow px-3 py-2 text-parchment outline-none placeholder:text-ash focus:border-crimson"
             spellCheck={false}
           />
           <Button
@@ -71,7 +71,7 @@ function AuthorPage() {
 
         {inspect.error ? (
           <p className="mt-3 text-crimson">
-            <span className="font-mono">{(inspect.error as Error).message}</span>
+            <span className="font-data">{(inspect.error as Error).message}</span>
           </p>
         ) : null}
       </Panel>
@@ -95,7 +95,7 @@ function InfoView({ info }: { info: CookedInfo }) {
             </MonoTag>
           </div>
         </div>
-        <p className="font-mono mt-1 break-all text-ash">{info.path}</p>
+        <p className="font-data mt-1 break-all text-ash">{info.path}</p>
         <dl className="font-mono mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-parchment sm:grid-cols-4">
           <Stat label={t('size')} value={`${info.size} B`} />
           <Stat label={t('variant')} value={info.variant} />
@@ -162,7 +162,7 @@ function InfoView({ info }: { info: CookedInfo }) {
           <TParts
             text={t("Extract a section's bytes with the CLI: {command}")}
             parts={{
-              command: <span className="font-mono">rsmm uncook --raw --section N {info.path}</span>,
+              command: <span className="font-data">rsmm uncook --raw --section N {info.path}</span>,
             }}
           />
         </p>

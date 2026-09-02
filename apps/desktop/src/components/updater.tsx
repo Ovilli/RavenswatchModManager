@@ -380,7 +380,7 @@ export function UpdaterBanner() {
             <h2 className="font-fraktur text-3xl text-crimson">{t('Ready to restart')}</h2>
             <p className="mt-2 font-serif-italic text-parchment">
               {t('v{version} is installed at', { version: m.version })}
-              <span className="font-mono block mt-1 break-all text-sm text-ash">{m.path}</span>
+              <span className="font-data block mt-1 break-all text-sm text-ash">{m.path}</span>
             </p>
             <p className="mt-3 font-serif-italic text-sm text-ash">
               {t(

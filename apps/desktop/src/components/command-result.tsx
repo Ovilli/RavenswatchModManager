@@ -83,7 +83,7 @@ export function CommandResult({
             {t('Error detail')}
           </summary>
           <div className="flex items-start gap-2 border-t border-border/70 p-3">
-            <pre className="max-h-64 flex-1 overflow-auto whitespace-pre-wrap font-mono text-xs text-crimson/90">
+            <pre className="max-h-64 flex-1 overflow-auto whitespace-pre-wrap font-data text-xs text-crimson/90">
               {error}
             </pre>
             <CopyButton value={error} />
@@ -110,7 +110,7 @@ export function CommandResult({
       ) : isRunLike(result) ? (
         <RunView result={result} />
       ) : (
-        <pre className="overflow-auto whitespace-pre-wrap font-mono text-sm text-parchment/90">
+        <pre className="overflow-auto whitespace-pre-wrap font-data text-sm text-parchment/90">
           {stringify(result)}
         </pre>
       )}
@@ -128,7 +128,7 @@ function RawDetails({ result }: { result: unknown }) {
         {t('Raw output')}
       </summary>
       <div className="flex items-start gap-2 border-t border-border/70 p-3">
-        <pre className="max-h-64 flex-1 overflow-auto whitespace-pre-wrap font-mono text-xs text-parchment/80">
+        <pre className="max-h-64 flex-1 overflow-auto whitespace-pre-wrap font-data text-xs text-parchment/80">
           {raw}
         </pre>
         <CopyButton value={raw} />
@@ -165,7 +165,7 @@ function OutputBlock({ label, text, tone }: { label: string; text: string; tone?
     <div>
       <p className="font-mono mb-1 text-xs text-ash">{label}</p>
       <pre
-        className={`max-h-64 overflow-auto whitespace-pre-wrap font-mono text-sm ${
+        className={`max-h-64 overflow-auto whitespace-pre-wrap font-data text-sm ${
           tone === 'error' ? 'text-crimson' : 'text-parchment/90'
         }`}
       >

@@ -120,12 +120,31 @@
   }
 
   /* Metadata / tags / numbers — uppercase, tracked. */
+  /* `.font-mono` is a LABEL style, not a monospace switch: small, tracked out
+     and upper-cased, for tags, pills and field labels. */
   .font-mono {
     font-family: var(--font-mono);
     font-weight: 500;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     font-size: 0.72rem;
+  }
+
+  /* Monospace for CONTENT — log lines, file paths, mod ids, CLI output, hashes.
+     The label style above upper-cases and tracks out everything it touches,
+     which is right for a four-letter tag and wrong for a 200-character log
+     line: it shouts, it costs a third of the width in tracking, and it destroys
+     the case of the one kind of text whose case is load-bearing. Two sites had
+     already patched around it locally with `lowercase` / `normal-case
+     tracking-normal`, which is the tell that the label style was doing two
+     jobs. Size is a floor, not a rule — every caller that needs smaller sets a
+     size utility. */
+  .font-data {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    letter-spacing: 0;
+    text-transform: none;
+    font-variant-ligatures: none;
   }
 
   ::selection {
@@ -153,8 +172,11 @@
     color: inherit;
   }
 
+  /* One focus colour for the whole app. This was parchment while `--ring`,
+     the brief and `.btn-grim:focus-visible` all said gilt, so tabbing through
+     a panel changed the ring's colour depending on what it landed on. */
   :focus-visible {
-    outline: 2px solid hsl(var(--parchment));
+    outline: 2px solid hsl(var(--ring));
     outline-offset: 2px;
     border-radius: 2px;
   }
@@ -165,9 +187,17 @@
   .rule-fleuron {
     display: flex;
     align-items: center;
-    gap: 0;
-    color: hsl(var(--ash));
+    gap: 0.75rem;
+    color: hsl(var(--char));
     font-family: var(--font-body);
+  }
+  /* The ornament itself, when the component passes one. Sized down and held
+     back to `--char` so it separates sections without competing with the
+     fraktur headings on either side of it. */
+  .rule-fleuron > * {
+    font-size: 0.85em;
+    line-height: 1;
+    opacity: 0.9;
   }
   .rule-fleuron::before,
   .rule-fleuron::after {
@@ -731,21 +761,40 @@
   margin-block: 0.35rem;
 }
 
-/* Scrollbars — slim, warm. */
+/* Scrollbars — slim, warm, and rounded like everything else.
+   The old thumb was a 10px bar with a 2px solid-background border and a 4px
+   radius, which reads as the browser default wearing a brown coat: square ends
+   on a surface where every other edge is rounded, and a hard track edge
+   against the vignette. Fully rounded, one shade lighter on hover, gilt only
+   while dragging, so the bar answers the hand without becoming a colour in the
+   layout. */
+* {
+  scrollbar-width: thin; /* Firefox and the GTK webview */
+  scrollbar-color: hsl(var(--char)) transparent;
+}
 *::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
 }
 *::-webkit-scrollbar-track {
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
   background: hsl(var(--char));
-  border: 2px solid hsl(var(--background));
-  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
 }
 *::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--ash));
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:active {
+  background: hsl(var(--gilt) / 0.7);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /* Density — Settings → Appearance. Deliberately outside every @layer and at

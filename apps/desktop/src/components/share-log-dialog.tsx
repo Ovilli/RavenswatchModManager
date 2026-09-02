@@ -143,7 +143,7 @@ export function ShareLogDialog({
               {t('Uploaded. Paste this link wherever you are asking for help.')}
             </p>
             <div className="flex flex-wrap items-center gap-2 border border-gilt/40 bg-pitch/60 p-3">
-              <span className="font-mono min-w-0 flex-1 break-all text-sm text-gilt">
+              <span className="font-data min-w-0 flex-1 break-all text-sm text-gilt">
                 {shared.url}
               </span>
               <CopyButton value={shared.url} />
@@ -219,7 +219,7 @@ export function ShareLogDialog({
             </div>
 
             {showPreview ? (
-              <pre className="font-mono max-h-64 overflow-auto whitespace-pre-wrap break-words border border-border bg-pitch/60 p-3 text-[11px] text-parchment/90">
+              <pre className="font-data max-h-64 overflow-auto whitespace-pre-wrap break-words border border-border bg-pitch/60 p-3 text-[11px] text-parchment/90">
                 {report.content}
               </pre>
             ) : null}

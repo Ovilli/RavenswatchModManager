@@ -40,7 +40,7 @@ export function RouteErrorComponent({ error, reset }: ErrorComponentProps) {
             {t('Error detail')}
           </summary>
           <div className="flex items-start gap-2 border-t border-border/70 p-3">
-            <pre className="max-h-48 flex-1 overflow-auto whitespace-pre-wrap break-all font-mono text-xs text-ash">
+            <pre className="max-h-48 flex-1 overflow-auto whitespace-pre-wrap break-all font-data text-xs text-ash">
               {message}
             </pre>
             <CopyButton value={message} />
