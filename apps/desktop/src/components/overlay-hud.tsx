@@ -39,6 +39,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useT } from '../lib/i18n-react';
 import { savePosition } from '../lib/overlay-windows';
 import { type OverlayColumn, type OverlayRecord, listOverlays } from '../lib/rsmm';
+import { attachSmoothWheel } from '../lib/smooth-scroll';
 
 /** How often the data is re-read. Mods publish at their own cadence. */
 const POLL_MS = 1000;
@@ -203,6 +204,12 @@ export function OverlayHud({ modId }: { modId: string }) {
     const id = setInterval(() => void poll(), POLL_MS);
     return () => clearInterval(id);
   }, [poll]);
+
+  // Same wheel smoothing as the main window. This is a SECOND window rendering
+  // this component directly — it never mounts the app root — so it has to
+  // attach its own, or the one panel a player reads mid-run is the one that
+  // still scrolls in teleporting jumps.
+  useEffect(() => attachSmoothWheel(document), []);
 
   // Remember where the player put it, and how big they made it.
   useEffect(() => {
