@@ -74,6 +74,24 @@ export default function AboutPage() {
           </section>
 
           <section className="space-y-2">
+            <h2 className="text-lg font-semibold text-foreground">Support the project</h2>
+            <p>
+              RSMM is free and open source, and always will be. If it saved you an evening of
+              fiddling with file paths, you can chip in on{' '}
+              <a
+                href="https://ko-fi.com/W7W41FW3YE"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-foreground"
+              >
+                Ko-fi
+              </a>
+              . It funds nothing but coffee and the hours of reverse-engineering behind each release
+              &mdash; there is no paid tier, and nothing is held back for donors.
+            </p>
+          </section>
+
+          <section className="space-y-2">
             <h2 className="text-lg font-semibold text-foreground">Get started</h2>
             <p>
               Browse the <Link href="/registry" className="underline hover:text-foreground">mod registry</Link>,{' '}

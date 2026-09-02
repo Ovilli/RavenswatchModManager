@@ -124,6 +124,7 @@ const footerSections = [
       { href: '/legal', label: 'Legal Notice' },
       { href: '/privacy', label: 'Privacy Policy' },
       { href: '/dmca', label: 'Content Policy' },
+      { href: 'https://ko-fi.com/W7W41FW3YE', label: 'Support on Ko-fi' },
     ],
   },
 ] as const;

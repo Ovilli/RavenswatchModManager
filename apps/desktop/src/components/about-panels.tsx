@@ -78,10 +78,10 @@ export function AboutPanels() {
             <h3 className="font-fraktur text-lg text-parchment mb-2">{t('Get involved')}</h3>
             <p className="font-serif-italic text-smoke leading-relaxed mb-3">
               {t(
-                'Contribute, report issues, join the community Discord, or read developer notes in the repository.',
+                'Contribute, report issues, join the community Discord, or read developer notes in the repository. RSMM is free — if it saved you an evening, Ko-fi keeps the coffee coming.',
               )}
             </p>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <a
                 href="https://github.com/Ovilli/RavenswatchModManager"
                 target="_blank"
@@ -106,6 +106,14 @@ export function AboutPanels() {
                 data-variant="primary"
               >
                 {t('Read docs')}
+              </a>
+              <a
+                href="https://ko-fi.com/W7W41FW3YE"
+                target="_blank"
+                rel="noreferrer noopener"
+                className={buttonClass}
+              >
+                {t('Support on Ko-fi')}
               </a>
             </div>
           </div>

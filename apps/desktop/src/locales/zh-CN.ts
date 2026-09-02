@@ -139,8 +139,8 @@ export const zhCN: Record<string, string> = {
   'Continue with GitHub': '使用 GitHub 继续',
   'Continue with Google': '使用 Google 继续',
   'Continue?': '继续吗？',
-  'Contribute, report issues, join the community Discord, or read developer notes in the repository.':
-    '参与贡献、报告问题、加入社区 Discord，或在仓库中阅读开发者笔记。',
+  'Contribute, report issues, join the community Discord, or read developer notes in the repository. RSMM is free — if it saved you an evening, Ko-fi keeps the coffee coming.':
+    '参与贡献、报告问题、加入社区 Discord，或在仓库中阅读开发者笔记。RSMM 完全免费——如果它为你省下了一个晚上，欢迎在 Ko-fi 上请作者喝杯咖啡。',
   'Copy error details': '复制错误详情',
   'Copy error details to clipboard': '将错误详情复制到剪贴板',
   'Copy this code to restore the full app state': '复制此代码即可恢复完整的应用状态',
@@ -352,7 +352,8 @@ export const zhCN: Record<string, string> = {
   'Minimum rating': '最低评分',
   'Missing dependencies': '缺少依赖',
   'Mod details': '模组详情',
-  'In this list — “Move to” sends one to another list, ✕ removes it.': '当前列表 —— “移动到”可把条目送往其他列表，✕ 可移除。',
+  'In this list — “Move to” sends one to another list, ✕ removes it.':
+    '当前列表 —— “移动到”可把条目送往其他列表，✕ 可移除。',
   'In this list — ✕ removes one.': '当前列表 —— ✕ 可移除条目。',
   'Move to ▾': '移动到 ▾',
   'Move {name} to another list': '将 {name} 移到其他列表',
@@ -611,6 +612,7 @@ export const zhCN: Record<string, string> = {
   'Sponsored content': '赞助内容',
   Status: '状态',
   'Stop watching the log file': '停止监视日志文件',
+  'Support on Ko-fi': '在 Ko-fi 上支持',
   'System sans': '系统无衬线体',
   Tags: '标签',
   'That email is already registered. Try signing in instead.': '该邮箱已注册，请改为登录。',

@@ -17,6 +17,7 @@
   <a href="https://rsmm.me/registry"><img src="https://img.shields.io/badge/mod%20registry-browse-blueviolet" alt="Mod registry"></a>
   <a href="https://docs.rsmm.me"><img src="https://img.shields.io/badge/docs-docs.rsmm.me-8a2be2" alt="Docs"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
+  <a href="https://ko-fi.com/W7W41FW3YE"><img src="https://img.shields.io/badge/Ko--fi-support-ff5e5b?logo=kofi&logoColor=white" alt="Support on Ko-fi"></a>
 </p>
 
 ---
@@ -170,6 +171,12 @@ dist/                 Built loader DLL + packed mod zips
 ## Contributing
 
 Issues and PRs welcome — bug reports, mods for the registry, docs fixes, and reverse-engineering findings alike. Start with [dev setup](https://docs.rsmm.me/contributing/dev-setup/); `CLAUDE.md` in the repo root is the dense architectural brief.
+
+## Support
+
+RSMM is free and MIT-licensed. If it saved you time, you can chip in at [ko-fi.com/ovilli](https://ko-fi.com/W7W41FW3YE) — it funds nothing but coffee and more RE sessions.
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/W7W41FW3YE)
 
 ## License
 
