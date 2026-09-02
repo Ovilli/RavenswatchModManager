@@ -393,6 +393,12 @@
     display: inline-flex;
     align-items: baseline;
     gap: 0.35rem;
+    /* Same rule as .btn-grim: a metric is a fixed thing. As a plain flex item
+       it gets compressed by whatever shares its row (the card's tag list), the
+       value and label wrap onto each other and the download count breaks
+       mid-number. Nothing in the row may take space from it. */
+    flex: none;
+    white-space: nowrap;
     padding: 0.15rem 0.6rem;
     border: 1px solid hsl(var(--border));
     border-radius: 999px;
