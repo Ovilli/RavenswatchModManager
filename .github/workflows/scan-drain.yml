@@ -1,0 +1,53 @@
+# Heartbeat for the mod-scan queue.
+#
+# Why this exists rather than a Vercel cron: the Hobby plan allows exactly ONE
+# cron and only a daily schedule (apps/api/vercel.json, 04:00). A version whose
+# VirusTotal analysis is not finished at upload time stays `pending`, and the
+# serve gate is fail-closed, so the mod is invisible in the registry until
+# something drains the queue — up to 24 h, or until organic browse traffic
+# happens to kick the opportunistic drain in routes/mods.ts. That is what made
+# a publish need hand-holding.
+#
+# Actions schedules are free on a public repo and need no new account, so this
+# is the cheap fix. GitHub does not run a schedule to the minute — a tick can
+# be late by 5-20 minutes under load — which is fine at this cadence and still
+# ~100x better than daily. The Vercel cron stays as the backstop for the case
+# where Actions schedules are paused (60 days of repo inactivity).
+name: Scan queue drain
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+# A slow drain must not stack up behind itself: each run holds the VirusTotal
+# budget for the length of a scan.
+concurrency:
+  group: scan-drain
+  cancel-in-progress: false
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Drain the queue
+        env:
+          API_URL: ${{ vars.API_URL || 'https://api.rsmm.me' }}
+          # RESCAN_SECRET is the older name already on this repo; either works,
+          # and the value has to match the API's CRON_SECRET env var.
+          CRON_SECRET: ${{ secrets.CRON_SECRET || secrets.RESCAN_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "Neither CRON_SECRET nor RESCAN_SECRET is set on this repo — add one with the same value as the API's CRON_SECRET."
+            exit 1
+          fi
+          code=$(curl -sS -o /tmp/out.json -w '%{http_code}' \
+            --max-time 120 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$API_URL/api/cron/scan-drain")
+          cat /tmp/out.json
+          echo
+          # 200 is the only success. 401/503 mean the secret or the API env is
+          # wrong, and a silent pass there would recreate the exact failure this
+          # job exists to end.
+          [ "$code" = "200" ] || { echo "scan-drain returned HTTP $code"; exit 1; }
