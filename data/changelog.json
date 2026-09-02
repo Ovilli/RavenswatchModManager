@@ -1,217 +1,226 @@
 {
- "generated": "2026-08-30",
- "entries": [
-  {
-   "version": "5.4.4",
-   "date": "2026-09-02",
-   "summary": "Pick the monsters each chapter spawns. An enemy mod's chapters are now editable from its Config panel — a searchable list of every creature in the game, grouped by the chapter it ships in, so you can put Storm Island crabs in the Dark Hills or turn one chapter into a single monster. Picks apply on a plain install: the cooked definitions are read straight out of the game folder, so no 7 GB asset dump is needed any more. Also fixes the download count breaking across two lines on a mod card.",
-   "highlights": [
-    "Enemy mods get a per-chapter monster picker: add, remove, or move a creature to another chapter.",
-    "Picking now works on a normal install, not just a developer checkout.",
-    "Mod cards no longer wrap the download count into the star rating.",
-    "New: rsmm assets search <text> finds a cooked asset by its readable path."
-   ]
-  },
-  {
-   "version": "5.4.3",
-   "date": "2026-09-01",
-   "summary": "Cross-chapter enemy randomisation works. A mod can now draw every biome's monsters from the whole game — chapter 1 spawning crabs, gargoyles and cultists alongside its own — without the chapter-2 crash or black screen that made the feature unusable. The cause was the step that rewrote each biome's spawn pool, and it turned out to be unnecessary: an imported creature is already preloaded by the definition that points at it. Enemy mods add repoint_pools = false to use it.",
-   "highlights": [
-    "Enemy mods can mix monsters across every chapter without crashing on a chapter transition.",
-    "The unlock and hero-select work in this build is inert unless a mod asks for it."
-   ]
-  },
-  {
-   "version": "5.4.2",
-   "date": "2026-08-30",
-   "summary": "Fixes the loader log being unreadable on a non-English Windows. The log is written as UTF-8, but the app read it with whatever encoding the system locale preferred — so on a Chinese, Russian or Japanese Windows every dash and every non-ASCII player name came out as mojibake, in the Log screen and in any log shared for support.",
-   "highlights": [
-    "Loader log reads correctly on every system locale — player names with non-Latin characters are no longer mangled.",
-    "Shared diagnostic logs can now be opened by an assistant the user sends the link to, instead of only by a human."
-   ]
-  },
-  {
-   "version": "",
-   "loader_version": 11,
-   "date": "2026-08-30",
-   "summary": "Loader log: the boot line that counted the IO-hook override table said 'active overrides=N'. That table is only read by the IO hook (off unless RSMM_ENABLE_IO=1) and counts files under mods/*/assets, which apply never populates — so a fully-applied install always read 'active overrides=0', which looks like none of your mods are working. The line now names itself and points at rsmm doctor.",
-   "highlights": [
-    "Loader log no longer reports \"active overrides=0\" on a healthy install — that line counted a subsystem that is off by default and never meant what it looked like."
-   ]
-  },
-  {
-   "version": "5.4.1",
-   "date": "2026-08-29",
-   "summary": "On Linux, the app could fail to start at all on current systems — Debian 13, Ubuntu 24.04 and newer, recent Fedora — because of how it was packaged. It starts normally on those now, including after the app has moved itself to ~/Applications.",
-   "highlights": [
-    "The Linux AppImage quit immediately with an error about libfuse.so.2 on any system that no longer ships the older FUSE library — which is now most of them. It is packaged against a newer runtime that does not need it, so it just starts.",
-    "The same fault had a worse form: if you let the app move itself to ~/Applications so it could update on its own, your launcher icon was pointed at a copy that could not start, and the app appeared to vanish. The shortcut and the restart after the move both work now.",
-    "Stuck with a shortcut that does nothing? Download the AppImage from this release and run it once — it starts, and your existing shortcut opens it from then on. Installing libfuse2 by hand is no longer necessary.",
-    "Nothing else changed: your profiles, mods and settings are untouched, and Windows was never affected."
-   ]
-  },
-  {
-   "version": "5.4.0",
-   "date": "2026-08-29",
-   "summary": "The app speaks 简体中文. Pick your language in Settings → Appearance and the whole interface switches over immediately — no restart, and nothing else about your setup changes.",
-   "highlights": [
-    "New: a full Simplified Chinese translation of the app — every screen, button, dialog, error and tooltip. On a fresh install the language is chosen from the languages your system reports, so a Chinese system starts in Chinese; after that it is whatever you picked.",
-    "Switching language takes effect the moment you click it. Your profiles, mods and settings are untouched.",
-    "Chinese text gets a proper font: the typeface presets keep their look for Latin text and fall back to a Chinese face only for the characters they cannot draw, so headings and body text stay consistent instead of mixing three random fonts.",
-    "Text that RSMM does not write stays in its original language on purpose: output from the rsmm command-line tool, anything a mod supplies (an overlay's columns, a mod's description) and the game's own strings.",
-    "English is unchanged. If you never open the language setting, nothing about the app looks different."
-   ]
-  },
-  {
-   "version": "5.3.1",
-   "date": "2026-08-29",
-   "summary": "On Linux, an app installed from the .deb (or from a folder you don't own) could never update itself — every release meant downloading and installing it again by hand. It can now move itself, once, to a copy that updates normally.",
-   "highlights": [
-    "Installed the .deb, or keeping the AppImage somewhere like /opt? The app can now install itself to ~/Applications for you and restart into it. From then on updates arrive the same way they do everywhere else, with no download page and no reinstall.",
-    "The offer appears when an update is waiting, and there is also a button for it in Settings, so you can get it over with while you are already up to date.",
-    "Your launcher entry, icon and sign-in links are carried over, so the shortcut you already have keeps working and simply opens the new copy.",
-    "The download is signature-checked exactly like any other update before a single byte is installed, and nothing outside your home folder is touched — the old system-wide copy stays where your package manager put it, and the app tells you the command to remove it.",
-    "Windows is unaffected: updates there already installed themselves."
-   ]
-  },
-  {
-   "version": "5.3.0",
-   "date": "2026-08-29",
-   "summary": "Banning magical objects no longer means knowing their internal names — pick them from a searchable list of the game's own icons — and a mod's settings now open in place instead of throwing you into a page of every mod's settings.",
-   "highlights": [
-    "New: the Banned Items mod is edited from a picker that shows every magical object the game can offer you, with its real name, icon, description and rarity, read straight out of your own install. Banned objects are removed from the game's catalogue, so they can never be offered, dropped or found.",
-    "A ban is written into the game's data rather than filtered while you play, which means everyone in a co-op run sees the same pool — provided everyone has the same mod installed.",
-    "Configure on a mod now opens that one mod's settings in a window over the library. It used to navigate the whole library into a list of every configurable mod's settings, with yours somewhere in it.",
-    "The close button in that window stays where you put it and always closes. It previously drifted as the panel loaded and could end up off the top of the screen, and the unsaved-changes prompt could answer itself without ever appearing.",
-    "Settings screens now say what they are waiting for: the first open of a picker decodes the game's icons and takes a few seconds, and after saving, the panel says the running game will not see the change — quit Ravenswatch completely and press Play, which rebuilds the affected game files first."
-   ]
-  },
-  {
-   "version": "5.2.0",
-   "date": "2026-08-27",
-   "summary": "Reporting a problem is now a link instead of a wall of pasted text, and the Log screen finally shows the things the loader already knew: older runs, which lines are real failures, and why a mod was switched off.",
-   "highlights": [
-    "New: Share link on the Log screen uploads your log once and gives you a URL to paste into a bug report, instead of pasting thousands of lines into chat. It attaches the details anyone helping would ask for next — app version, system, and which mods were on.",
-    "Before anything is uploaded you see exactly what will be sent. Your Windows account name, home folder, e-mail addresses, IP addresses, Steam IDs and player names are replaced with placeholders first. The page is deleted automatically after 30 days, and anyone with the link can read it, so treat it as public.",
-    "The Log screen can now open any of your last 20 game runs, not just the current and previous one — a crash from three launches ago is no longer out of reach.",
-    "New: a problems only filter, plus a count of errors and warnings for the run, so you can find what went wrong without reading the whole log.",
-    "When the loader switches a mod off for crashing during startup, the Log screen now says which mod, why, and offers to try it again. Previously the mod just appeared to be off with no explanation.",
-    "The log now updates while you watch it without the app constantly working in the background, and it stops updating entirely while the window is hidden."
-   ]
-  },
-  {
-   "version": "",
-   "loader_version": 10,
-   "date": "2026-08-27",
-   "summary": "Loader log lines now say which ones are actually failures.",
-   "highlights": [
-    "The in-game log now marks the lines where something genuinely failed, so tracking down a crash no longer means reading several hundred equal-looking lines. The app's Log screen can filter to just those, and so can rsmm log --errors.",
-    "A capability that is simply switched off — because you never enabled it, or because no mod uses it — is deliberately not marked as a failure, so the filter stays worth using."
-   ]
-  },
-  {
-   "version": "5.1.3",
-   "date": "2026-08-27",
-   "summary": "A security and reliability pass over the desktop app, the mod index and the website: shared backup codes can no longer redirect where mods are installed, the app asks Windows for far fewer permissions, and store requests survive a dropped connection.",
-   "highlights": [
-    "Importing a shared profile or backup code can no longer change where mods are installed. Folder settings now always stay the ones chosen on this machine, and a code carrying an odd profile name can no longer point installs outside your mods folder.",
-    "The app now asks the operating system for much less: opening a profile folder is one built-in action instead of blanket permission to open any file and create any directory.",
-    "Fixed on Windows: the default mods location (%APPDATA%\\rsmm\\mods) was never expanded, so \"Open folder\" could create a literal \"%APPDATA%\" folder beside the app instead of opening the real one.",
-    "Store and index requests now retry briefly through a dropped connection or a temporary server hiccup instead of failing straight to an error. Uploads and edits are never retried, so nothing is submitted twice.",
-    "Website: mod, guide and collection pages no longer render publisher-supplied links or text into the page unchecked. Links must be ordinary http(s) addresses, and page metadata is escaped.",
-    "Fixed: \"What's new\" could fold several loader-only updates into a single entry, hiding notes you had not seen yet."
-   ]
-  },
-  {
-   "version": "",
-   "loader_version": 9,
-   "date": "2026-08-26",
-   "summary": "Mod failures are now durable and visible: a mod whose init.lua fails is recorded in the health file and reported by rsmm doctor, repeated handler errors latch instead of flooding the log, and one failing hook installer no longer stops every other capability from arming.",
-   "highlights": [
-    "A mod whose init.lua fails is now recorded in the health file and reported by rsmm doctor, instead of vanishing into a log that rotates away.",
-    "Repeated handler errors latch after a few consecutive failures rather than writing a line per event fire.",
-    "One failing hook installer no longer stops every other capability from arming, or blocks mods from starting.",
-    "A mod that raises a non-string error (error{...}) no longer takes the game down from inside the loader's own error handler; Lua errors now carry a full traceback."
-   ]
-  },
-  {
-   "version": "5.1.2",
-   "date": "2026-08-25",
-   "summary": "Uninstalling a mod now runs its cleanup step, so a mod can no longer leave game settings behind after it is gone.",
-   "highlights": [
-    "Mods can ship a cleanup step that undoes settings they changed while running. In the installed app that step never actually ran — it only worked in a development checkout — so every mod's cleanup had been silently doing nothing. It runs now.",
-    "Uninstalling a mod deleted its folder before giving it a chance to clean up, which removed the only thing that knew how to undo the change. Reported as a run seed that stayed frozen after a seed-pinning mod was removed: the mod was gone, its setting was not. Cleanup now runs first.",
-    "If a mod's cleanup cannot run — it failed, or the mod folder was deleted by hand while it was still enabled — the app says so instead of reporting a clean uninstall that quietly left settings behind.",
-    "Publishing a mod from the app wrote the packaged file into a temporary folder that was deleted a moment later, so the upload had nothing to send. It now writes somewhere that lasts."
-   ]
-  },
-  {
-   "version": "",
-   "loader_version": 8,
-   "date": "2026-08-24",
-   "summary": "Stutter fixes for the damage meter, and it now attributes a transformed hero to the right player.",
-   "highlights": [
-    "Fixed the stuttering reported in co-op. The meter's background probes were asking the operating system about a page of memory once per value read — tens of thousands of times a second. They now read a page at a time, which the game's own thread feels as a stutter no longer competing with it.",
-    "An ability that swaps your hero — Sun Wukong's transform, a respawn — no longer counts you as a second player. Your damage follows you through it, and for allies too, using the identity the game itself stamps on every hit.",
-    "Hits the game does not count are no longer counted by the meter either, so the board matches the end-of-run screen. Rows now show kills.",
-    "Turning the meter off now stops its background work as well as its counting, and a board that has split a player into two rows no longer guesses names."
-   ]
-  },
-  {
-   "version": "5.1.1",
-   "date": "2026-08-24",
-   "summary": "The game loader now shows a download bar and can restart the game for you, publishing a mod version cannot mislabel it, and restoring no longer deletes the previous run's log.",
-   "highlights": [
-    "Updating the game loader now shows a real download bar instead of a spinner, and offers to restart Ravenswatch when it finishes — a running game keeps the loader it started with, so the update only takes effect in a fresh session. If a run is in progress it asks first.",
-    "Fixed installed mods arriving switched off. A mod packaged while its author had it disabled shipped that setting with it, so it installed, applied, and then did nothing — with no error anywhere, because a disabled mod has its code removed rather than skipped. Packaging now always marks the mod as on, and whether you run it stays your choice in the launcher.",
-    "Publishing a mod version now checks that the version you are publishing matches the one inside the package. When they disagreed, the store offered an update that installed correctly and never changed the version, so pressing Update appeared to do nothing forever.",
-    "Restoring no longer deletes the previous run's log. The loader archives it at the start of the next launch, and restore was removing it first — so the archive it was supposed to produce never had anything to save, and neither did the crash history that decides whether a mod is disabled after repeated failed launches.",
-    "The launcher now tells you when the loader planted in your game folder is not the one it carries, instead of reporting everything as up to date."
-   ]
-  },
-  {
-   "version": "5.1.0",
-   "date": "2026-08-22",
-   "summary": "Release notes now update on their own, the store gained filters and a list view, and the damage meter stops lagging co-op runs.",
-   "highlights": [
-    "Release notes ship on their own channel, so a loader or scripting fix can announce itself without waiting for a launcher build. What's new appears once after an update, and lives in Settings under About.",
-    "Fixed the damage meter lagging co-op runs. A player whose name is not plain ASCII, such as 7♣, read back as nameless, and that left two identity searches running for the whole match instead of stopping once every row was named.",
-    "The damage meter now lists everyone in the lobby, including players who have not dealt damage yet. A support who spends the opening minutes healing was previously missing from the board entirely.",
-    "The store has filters for category, tag and rating, a switch to hide mods you already have, and a dense list view beside the existing cards. Picking a mod in the list opens its page next to the results.",
-    "Settings gained an About tab and moved to the foot of the sidebar, which now collapses to icons.",
-    "Interface animations can be turned off in Settings, and the hover movement is gone.",
-    "The launcher and game loader versions are shown in the corner of the window."
-   ]
-  },
-  {
-   "version": "5.0.2",
-   "date": "2026-08-20",
-   "summary": "Damage-meter ally names, and the loader version is now visible in Settings.",
-   "highlights": [
-    "Ally rows in the damage meter are named from the netcode peer table instead of a positional guess, so names stay correct in co-op.",
-    "Settings shows the running launcher version alongside the planted game-loader version, with pending updates for each.",
-    "Refreshed the function-pattern database against the 2026-08-20 game build."
-   ]
-  },
-  {
-   "version": "5.0.1",
-   "date": "2026-08-16",
-   "summary": "Damage-meter accuracy and a banner for loader-channel updates.",
-   "highlights": [
-    "The damage board no longer counts destructible props as combatants.",
-    "The identity scan that could stall the game during a run has been retired.",
-    "Loader and Lua SDK updates now announce themselves in-app, including when Ravenswatch is holding the loader open and needs closing first."
-   ]
-  },
-  {
-   "version": "5.0.0",
-   "date": "2026-08-14",
-   "summary": "The game loader and Lua SDK now update without a launcher release.",
-   "highlights": [
-    "A signed rolling update channel ships the loader DLL and Lua SDK straight into the game directory, so a scripting fix no longer waits on a full launcher release and reinstall.",
-    "Every payload is verified against the same signing key as the launcher itself, with a fixed destination allowlist. There is no unsigned path.",
-    "RSMM_GAME_DIR is honoured everywhere the game directory is resolved."
-   ]
-  }
- ]
+  "generated": "2026-09-02",
+  "entries": [
+    {
+      "version": "",
+      "loader_version": 12,
+      "date": "2026-09-02",
+      "summary": "Loader/SDK v12: hero-select unlock progression, duplicate-hero availability gate, cross-chapter enemy mixing, stale value-context crash fix, guarded Entity_ModifyHealth walks, resource-resolve tracing.",
+      "highlights": [
+        "Loader/SDK v12: hero-select unlock progression, duplicate-hero availability gate, cross-chapter enemy mixing, stale value-context crash fix, guarded Entity_ModifyHealth walks, resource-resolve tracing."
+      ]
+    },
+    {
+      "version": "5.4.4",
+      "date": "2026-09-02",
+      "summary": "Pick the monsters each chapter spawns. An enemy mod's chapters are now editable from its Config panel — a searchable list of every creature in the game, grouped by the chapter it ships in, so you can put Storm Island crabs in the Dark Hills or turn one chapter into a single monster. Picks apply on a plain install: the cooked definitions are read straight out of the game folder, so no 7 GB asset dump is needed any more. Also fixes the download count breaking across two lines on a mod card.",
+      "highlights": [
+        "Enemy mods get a per-chapter monster picker: add, remove, or move a creature to another chapter.",
+        "Picking now works on a normal install, not just a developer checkout.",
+        "Mod cards no longer wrap the download count into the star rating.",
+        "New: rsmm assets search <text> finds a cooked asset by its readable path."
+      ]
+    },
+    {
+      "version": "5.4.3",
+      "date": "2026-09-01",
+      "summary": "Cross-chapter enemy randomisation works. A mod can now draw every biome's monsters from the whole game — chapter 1 spawning crabs, gargoyles and cultists alongside its own — without the chapter-2 crash or black screen that made the feature unusable. The cause was the step that rewrote each biome's spawn pool, and it turned out to be unnecessary: an imported creature is already preloaded by the definition that points at it. Enemy mods add repoint_pools = false to use it.",
+      "highlights": [
+        "Enemy mods can mix monsters across every chapter without crashing on a chapter transition.",
+        "The unlock and hero-select work in this build is inert unless a mod asks for it."
+      ]
+    },
+    {
+      "version": "5.4.2",
+      "date": "2026-08-30",
+      "summary": "Fixes the loader log being unreadable on a non-English Windows. The log is written as UTF-8, but the app read it with whatever encoding the system locale preferred — so on a Chinese, Russian or Japanese Windows every dash and every non-ASCII player name came out as mojibake, in the Log screen and in any log shared for support.",
+      "highlights": [
+        "Loader log reads correctly on every system locale — player names with non-Latin characters are no longer mangled.",
+        "Shared diagnostic logs can now be opened by an assistant the user sends the link to, instead of only by a human."
+      ]
+    },
+    {
+      "version": "",
+      "loader_version": 11,
+      "date": "2026-08-30",
+      "summary": "Loader log: the boot line that counted the IO-hook override table said 'active overrides=N'. That table is only read by the IO hook (off unless RSMM_ENABLE_IO=1) and counts files under mods/*/assets, which apply never populates — so a fully-applied install always read 'active overrides=0', which looks like none of your mods are working. The line now names itself and points at rsmm doctor.",
+      "highlights": [
+        "Loader log no longer reports \"active overrides=0\" on a healthy install — that line counted a subsystem that is off by default and never meant what it looked like."
+      ]
+    },
+    {
+      "version": "5.4.1",
+      "date": "2026-08-29",
+      "summary": "On Linux, the app could fail to start at all on current systems — Debian 13, Ubuntu 24.04 and newer, recent Fedora — because of how it was packaged. It starts normally on those now, including after the app has moved itself to ~/Applications.",
+      "highlights": [
+        "The Linux AppImage quit immediately with an error about libfuse.so.2 on any system that no longer ships the older FUSE library — which is now most of them. It is packaged against a newer runtime that does not need it, so it just starts.",
+        "The same fault had a worse form: if you let the app move itself to ~/Applications so it could update on its own, your launcher icon was pointed at a copy that could not start, and the app appeared to vanish. The shortcut and the restart after the move both work now.",
+        "Stuck with a shortcut that does nothing? Download the AppImage from this release and run it once — it starts, and your existing shortcut opens it from then on. Installing libfuse2 by hand is no longer necessary.",
+        "Nothing else changed: your profiles, mods and settings are untouched, and Windows was never affected."
+      ]
+    },
+    {
+      "version": "5.4.0",
+      "date": "2026-08-29",
+      "summary": "The app speaks 简体中文. Pick your language in Settings → Appearance and the whole interface switches over immediately — no restart, and nothing else about your setup changes.",
+      "highlights": [
+        "New: a full Simplified Chinese translation of the app — every screen, button, dialog, error and tooltip. On a fresh install the language is chosen from the languages your system reports, so a Chinese system starts in Chinese; after that it is whatever you picked.",
+        "Switching language takes effect the moment you click it. Your profiles, mods and settings are untouched.",
+        "Chinese text gets a proper font: the typeface presets keep their look for Latin text and fall back to a Chinese face only for the characters they cannot draw, so headings and body text stay consistent instead of mixing three random fonts.",
+        "Text that RSMM does not write stays in its original language on purpose: output from the rsmm command-line tool, anything a mod supplies (an overlay's columns, a mod's description) and the game's own strings.",
+        "English is unchanged. If you never open the language setting, nothing about the app looks different."
+      ]
+    },
+    {
+      "version": "5.3.1",
+      "date": "2026-08-29",
+      "summary": "On Linux, an app installed from the .deb (or from a folder you don't own) could never update itself — every release meant downloading and installing it again by hand. It can now move itself, once, to a copy that updates normally.",
+      "highlights": [
+        "Installed the .deb, or keeping the AppImage somewhere like /opt? The app can now install itself to ~/Applications for you and restart into it. From then on updates arrive the same way they do everywhere else, with no download page and no reinstall.",
+        "The offer appears when an update is waiting, and there is also a button for it in Settings, so you can get it over with while you are already up to date.",
+        "Your launcher entry, icon and sign-in links are carried over, so the shortcut you already have keeps working and simply opens the new copy.",
+        "The download is signature-checked exactly like any other update before a single byte is installed, and nothing outside your home folder is touched — the old system-wide copy stays where your package manager put it, and the app tells you the command to remove it.",
+        "Windows is unaffected: updates there already installed themselves."
+      ]
+    },
+    {
+      "version": "5.3.0",
+      "date": "2026-08-29",
+      "summary": "Banning magical objects no longer means knowing their internal names — pick them from a searchable list of the game's own icons — and a mod's settings now open in place instead of throwing you into a page of every mod's settings.",
+      "highlights": [
+        "New: the Banned Items mod is edited from a picker that shows every magical object the game can offer you, with its real name, icon, description and rarity, read straight out of your own install. Banned objects are removed from the game's catalogue, so they can never be offered, dropped or found.",
+        "A ban is written into the game's data rather than filtered while you play, which means everyone in a co-op run sees the same pool — provided everyone has the same mod installed.",
+        "Configure on a mod now opens that one mod's settings in a window over the library. It used to navigate the whole library into a list of every configurable mod's settings, with yours somewhere in it.",
+        "The close button in that window stays where you put it and always closes. It previously drifted as the panel loaded and could end up off the top of the screen, and the unsaved-changes prompt could answer itself without ever appearing.",
+        "Settings screens now say what they are waiting for: the first open of a picker decodes the game's icons and takes a few seconds, and after saving, the panel says the running game will not see the change — quit Ravenswatch completely and press Play, which rebuilds the affected game files first."
+      ]
+    },
+    {
+      "version": "5.2.0",
+      "date": "2026-08-27",
+      "summary": "Reporting a problem is now a link instead of a wall of pasted text, and the Log screen finally shows the things the loader already knew: older runs, which lines are real failures, and why a mod was switched off.",
+      "highlights": [
+        "New: Share link on the Log screen uploads your log once and gives you a URL to paste into a bug report, instead of pasting thousands of lines into chat. It attaches the details anyone helping would ask for next — app version, system, and which mods were on.",
+        "Before anything is uploaded you see exactly what will be sent. Your Windows account name, home folder, e-mail addresses, IP addresses, Steam IDs and player names are replaced with placeholders first. The page is deleted automatically after 30 days, and anyone with the link can read it, so treat it as public.",
+        "The Log screen can now open any of your last 20 game runs, not just the current and previous one — a crash from three launches ago is no longer out of reach.",
+        "New: a problems only filter, plus a count of errors and warnings for the run, so you can find what went wrong without reading the whole log.",
+        "When the loader switches a mod off for crashing during startup, the Log screen now says which mod, why, and offers to try it again. Previously the mod just appeared to be off with no explanation.",
+        "The log now updates while you watch it without the app constantly working in the background, and it stops updating entirely while the window is hidden."
+      ]
+    },
+    {
+      "version": "",
+      "loader_version": 10,
+      "date": "2026-08-27",
+      "summary": "Loader log lines now say which ones are actually failures.",
+      "highlights": [
+        "The in-game log now marks the lines where something genuinely failed, so tracking down a crash no longer means reading several hundred equal-looking lines. The app's Log screen can filter to just those, and so can rsmm log --errors.",
+        "A capability that is simply switched off — because you never enabled it, or because no mod uses it — is deliberately not marked as a failure, so the filter stays worth using."
+      ]
+    },
+    {
+      "version": "5.1.3",
+      "date": "2026-08-27",
+      "summary": "A security and reliability pass over the desktop app, the mod index and the website: shared backup codes can no longer redirect where mods are installed, the app asks Windows for far fewer permissions, and store requests survive a dropped connection.",
+      "highlights": [
+        "Importing a shared profile or backup code can no longer change where mods are installed. Folder settings now always stay the ones chosen on this machine, and a code carrying an odd profile name can no longer point installs outside your mods folder.",
+        "The app now asks the operating system for much less: opening a profile folder is one built-in action instead of blanket permission to open any file and create any directory.",
+        "Fixed on Windows: the default mods location (%APPDATA%\\rsmm\\mods) was never expanded, so \"Open folder\" could create a literal \"%APPDATA%\" folder beside the app instead of opening the real one.",
+        "Store and index requests now retry briefly through a dropped connection or a temporary server hiccup instead of failing straight to an error. Uploads and edits are never retried, so nothing is submitted twice.",
+        "Website: mod, guide and collection pages no longer render publisher-supplied links or text into the page unchecked. Links must be ordinary http(s) addresses, and page metadata is escaped.",
+        "Fixed: \"What's new\" could fold several loader-only updates into a single entry, hiding notes you had not seen yet."
+      ]
+    },
+    {
+      "version": "",
+      "loader_version": 9,
+      "date": "2026-08-26",
+      "summary": "Mod failures are now durable and visible: a mod whose init.lua fails is recorded in the health file and reported by rsmm doctor, repeated handler errors latch instead of flooding the log, and one failing hook installer no longer stops every other capability from arming.",
+      "highlights": [
+        "A mod whose init.lua fails is now recorded in the health file and reported by rsmm doctor, instead of vanishing into a log that rotates away.",
+        "Repeated handler errors latch after a few consecutive failures rather than writing a line per event fire.",
+        "One failing hook installer no longer stops every other capability from arming, or blocks mods from starting.",
+        "A mod that raises a non-string error (error{...}) no longer takes the game down from inside the loader's own error handler; Lua errors now carry a full traceback."
+      ]
+    },
+    {
+      "version": "5.1.2",
+      "date": "2026-08-25",
+      "summary": "Uninstalling a mod now runs its cleanup step, so a mod can no longer leave game settings behind after it is gone.",
+      "highlights": [
+        "Mods can ship a cleanup step that undoes settings they changed while running. In the installed app that step never actually ran — it only worked in a development checkout — so every mod's cleanup had been silently doing nothing. It runs now.",
+        "Uninstalling a mod deleted its folder before giving it a chance to clean up, which removed the only thing that knew how to undo the change. Reported as a run seed that stayed frozen after a seed-pinning mod was removed: the mod was gone, its setting was not. Cleanup now runs first.",
+        "If a mod's cleanup cannot run — it failed, or the mod folder was deleted by hand while it was still enabled — the app says so instead of reporting a clean uninstall that quietly left settings behind.",
+        "Publishing a mod from the app wrote the packaged file into a temporary folder that was deleted a moment later, so the upload had nothing to send. It now writes somewhere that lasts."
+      ]
+    },
+    {
+      "version": "",
+      "loader_version": 8,
+      "date": "2026-08-24",
+      "summary": "Stutter fixes for the damage meter, and it now attributes a transformed hero to the right player.",
+      "highlights": [
+        "Fixed the stuttering reported in co-op. The meter's background probes were asking the operating system about a page of memory once per value read — tens of thousands of times a second. They now read a page at a time, which the game's own thread feels as a stutter no longer competing with it.",
+        "An ability that swaps your hero — Sun Wukong's transform, a respawn — no longer counts you as a second player. Your damage follows you through it, and for allies too, using the identity the game itself stamps on every hit.",
+        "Hits the game does not count are no longer counted by the meter either, so the board matches the end-of-run screen. Rows now show kills.",
+        "Turning the meter off now stops its background work as well as its counting, and a board that has split a player into two rows no longer guesses names."
+      ]
+    },
+    {
+      "version": "5.1.1",
+      "date": "2026-08-24",
+      "summary": "The game loader now shows a download bar and can restart the game for you, publishing a mod version cannot mislabel it, and restoring no longer deletes the previous run's log.",
+      "highlights": [
+        "Updating the game loader now shows a real download bar instead of a spinner, and offers to restart Ravenswatch when it finishes — a running game keeps the loader it started with, so the update only takes effect in a fresh session. If a run is in progress it asks first.",
+        "Fixed installed mods arriving switched off. A mod packaged while its author had it disabled shipped that setting with it, so it installed, applied, and then did nothing — with no error anywhere, because a disabled mod has its code removed rather than skipped. Packaging now always marks the mod as on, and whether you run it stays your choice in the launcher.",
+        "Publishing a mod version now checks that the version you are publishing matches the one inside the package. When they disagreed, the store offered an update that installed correctly and never changed the version, so pressing Update appeared to do nothing forever.",
+        "Restoring no longer deletes the previous run's log. The loader archives it at the start of the next launch, and restore was removing it first — so the archive it was supposed to produce never had anything to save, and neither did the crash history that decides whether a mod is disabled after repeated failed launches.",
+        "The launcher now tells you when the loader planted in your game folder is not the one it carries, instead of reporting everything as up to date."
+      ]
+    },
+    {
+      "version": "5.1.0",
+      "date": "2026-08-22",
+      "summary": "Release notes now update on their own, the store gained filters and a list view, and the damage meter stops lagging co-op runs.",
+      "highlights": [
+        "Release notes ship on their own channel, so a loader or scripting fix can announce itself without waiting for a launcher build. What's new appears once after an update, and lives in Settings under About.",
+        "Fixed the damage meter lagging co-op runs. A player whose name is not plain ASCII, such as 7♣, read back as nameless, and that left two identity searches running for the whole match instead of stopping once every row was named.",
+        "The damage meter now lists everyone in the lobby, including players who have not dealt damage yet. A support who spends the opening minutes healing was previously missing from the board entirely.",
+        "The store has filters for category, tag and rating, a switch to hide mods you already have, and a dense list view beside the existing cards. Picking a mod in the list opens its page next to the results.",
+        "Settings gained an About tab and moved to the foot of the sidebar, which now collapses to icons.",
+        "Interface animations can be turned off in Settings, and the hover movement is gone.",
+        "The launcher and game loader versions are shown in the corner of the window."
+      ]
+    },
+    {
+      "version": "5.0.2",
+      "date": "2026-08-20",
+      "summary": "Damage-meter ally names, and the loader version is now visible in Settings.",
+      "highlights": [
+        "Ally rows in the damage meter are named from the netcode peer table instead of a positional guess, so names stay correct in co-op.",
+        "Settings shows the running launcher version alongside the planted game-loader version, with pending updates for each.",
+        "Refreshed the function-pattern database against the 2026-08-20 game build."
+      ]
+    },
+    {
+      "version": "5.0.1",
+      "date": "2026-08-16",
+      "summary": "Damage-meter accuracy and a banner for loader-channel updates.",
+      "highlights": [
+        "The damage board no longer counts destructible props as combatants.",
+        "The identity scan that could stall the game during a run has been retired.",
+        "Loader and Lua SDK updates now announce themselves in-app, including when Ravenswatch is holding the loader open and needs closing first."
+      ]
+    },
+    {
+      "version": "5.0.0",
+      "date": "2026-08-14",
+      "summary": "The game loader and Lua SDK now update without a launcher release.",
+      "highlights": [
+        "A signed rolling update channel ships the loader DLL and Lua SDK straight into the game directory, so a scripting fix no longer waits on a full launcher release and reinstall.",
+        "Every payload is verified against the same signing key as the launcher itself, with a fixed destination allowlist. There is no unsigned path.",
+        "RSMM_GAME_DIR is honoured everywhere the game directory is resolved."
+      ]
+    }
+  ]
 }
