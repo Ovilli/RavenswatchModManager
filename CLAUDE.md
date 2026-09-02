@@ -33,7 +33,7 @@ The desktop app does **not** reimplement the CLI — it bundles the Python CLI a
 | TS tests (vitest) | `pnpm test:ts` — `@rsmm/schemas` + `@rsmm/api-client` + `desktop` + `www` |
 | Regen symbol artifacts | `rsmm symbols gen` (after editing `data/symbols.json`; CI runs `--check`) |
 | Local Postgres | `pnpm db:up` then `pnpm db:push` (Drizzle) |
-| Publish a loader/SDK update (no app release) | `scripts/publish_loader.sh --notes "what changed"` — signs + uploads `dist/winhttp.dll` + the Lua SDK to the rolling `loader` release; **commit the `data/loader_version.json` bump it writes** |
+| Publish a loader/SDK update (no app release) | `gh workflow run publish-loader.yml -f notes="what changed"` (the signing key is a repo secret; `scripts/publish_loader.sh` is what it runs). **If the run's last step fails, the channel is already live and only the stamp is missing** — read `loader.manifest.json` off the `loader` release, set `data/loader_version.json` to its `loader_version`, take `data/changelog.json` from the `changelog` release, and commit both, or main will claim an older loader than users are served |
 | Build PyInstaller sidecar | `python scripts/build-sidecar.py` (CI replicates this inline in `.github/workflows/release.yml` — keep both in sync) |
 | Build loader DLL (Win) | `src\loader\build.bat` |
 | Build loader DLL (Linux→Win, MinGW) | `src/loader/build.sh` |
