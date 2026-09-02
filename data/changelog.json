@@ -2,6 +2,17 @@
  "generated": "2026-08-30",
  "entries": [
   {
+   "version": "5.4.4",
+   "date": "2026-09-02",
+   "summary": "Pick the monsters each chapter spawns. An enemy mod's chapters are now editable from its Config panel — a searchable list of every creature in the game, grouped by the chapter it ships in, so you can put Storm Island crabs in the Dark Hills or turn one chapter into a single monster. Picks apply on a plain install: the cooked definitions are read straight out of the game folder, so no 7 GB asset dump is needed any more. Also fixes the download count breaking across two lines on a mod card.",
+   "highlights": [
+    "Enemy mods get a per-chapter monster picker: add, remove, or move a creature to another chapter.",
+    "Picking now works on a normal install, not just a developer checkout.",
+    "Mod cards no longer wrap the download count into the star rating.",
+    "New: rsmm assets search <text> finds a cooked asset by its readable path."
+   ]
+  },
+  {
    "version": "5.4.3",
    "date": "2026-09-01",
    "summary": "Cross-chapter enemy randomisation works. A mod can now draw every biome's monsters from the whole game — chapter 1 spawning crabs, gargoyles and cultists alongside its own — without the chapter-2 crash or black screen that made the feature unusable. The cause was the step that rewrote each biome's spawn pool, and it turned out to be unnecessary: an imported creature is already preloaded by the definition that points at it. Enemy mods add repoint_pools = false to use it.",
