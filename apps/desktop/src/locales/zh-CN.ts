@@ -352,6 +352,10 @@ export const zhCN: Record<string, string> = {
   'Minimum rating': '最低评分',
   'Missing dependencies': '缺少依赖',
   'Mod details': '模组详情',
+  'In this list — “Move to” sends one to another list, ✕ removes it.': '当前列表 —— “移动到”可把条目送往其他列表，✕ 可移除。',
+  'In this list — ✕ removes one.': '当前列表 —— ✕ 可移除条目。',
+  'Move to ▾': '移动到 ▾',
+  'Move {name} to another list': '将 {name} 移到其他列表',
   'Mod source added.': '模组源已添加。',
   'Mod sources': '模组源',
   'Mod uninstalled.': '模组已卸载。',
@@ -502,6 +506,7 @@ export const zhCN: Record<string, string> = {
   'Remind me later': '稍后提醒我',
   'Remote index unreachable — showing installed mods only.':
     '无法连接远程索引——仅显示已安装的模组。',
+  'Remove {name}': '移除 {name}',
   'Remove {n} missing': '移除 {n} 个缺失项',
   'Removed 1 entry with no mod on disk': '已移除 1 个磁盘上没有对应模组的条目',
   'Removed {n} entries with no mods on disk': '已移除 {n} 个磁盘上没有对应模组的条目',

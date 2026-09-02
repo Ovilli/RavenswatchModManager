@@ -66,10 +66,49 @@ def _item_catalog() -> list[dict[str, Any]]:
     return out
 
 
+def _enemy_roster() -> list[dict[str, Any]]:
+    """Every creature a camp selector can roll, grouped by the chapter it
+    ships in.
+
+    The spawnable set, not every enemy definition: bosses, summons and quest
+    enemies are placed by the script owning their encounter, so casting one
+    would emit a definition pointing at a prefab no chapter streams. Same rule
+    the `enemy` kind enforces at emit — the picker must not offer a choice that
+    would then be refused.
+
+    Ids are prefab stems (`Standard_Reef_Crab`), which are unique across the
+    50 and are one of the three spellings `rsmm.sdk.kinds.enemies` accepts, so
+    a stored selection reads the same by hand or through the panel. No icons:
+    enemy art lives in the entity's material chain rather than in a UI atlas
+    the way an item's does.
+
+    Read through `enemy_pools`, which answers from the uncooked mirror on an
+    authoring checkout and from the game install's own cooked tree everywhere
+    else — so the picker is populated on a plain install, which is the only
+    machine that matters for a downloaded mod. Empty only when rsmm cannot
+    find the game at all.
+    """
+    from rsmm.engine import enemy_pools as EP
+
+    by_pool = EP.pool_of_entity()
+    out: list[dict[str, Any]] = []
+    for ent in EP.spawnable_entities()[:MAX_OPTIONS]:
+        stem = ent.replace("/", "\\").split("\\")[-1].split(".", 1)[0]
+        out.append({
+            "id": stem,
+            "label": stem.replace("_", " "),
+            "group": (by_pool.get(ent.lower()) or "").replace("_", " "),
+            "icon": "",
+            "description": ent,
+        })
+    return out
+
+
 #: name -> builder. The single source of truth for what a schema's `source` may
 #: name; `rsmm.sdk.config` validates against these keys.
 PROVIDERS: dict[str, Callable[[], list[dict[str, Any]]]] = {
     "item-catalog": _item_catalog,
+    "enemy-roster": _enemy_roster,
 }
 
 

@@ -478,6 +478,56 @@ pools  = ["Dark_Hills"]
 entity = "Enemies\\Treant\\Standard_Clawed_Treant.entity.ot"
 ```
 
+Or write the cast yourself, chapter by chapter, instead of letting the seed
+deal it:
+
+```toml
+[[content]]
+kind          = "enemy"
+mode          = "override"
+id            = "my_roster"
+cross_biome   = true
+repoint_pools = false     # required to pull a creature across chapters
+mix           = "random"  # how the cast is spread over the chapter's defs
+seed          = 1337
+
+[content.casts]
+Dark_Hills   = ["Elite_Wolf_Alpha", "Standard_Reef_Crab", "Standard_Storm_Jinn"]
+Storm_Island = ["Standard_Clawed_Treant"]   # one monster = the whole chapter
+```
+
+A chapter listed in `casts` draws **only** from the monsters written there; a
+chapter left out keeps its dealt (or vanilla) cast, so pinning one chapter does
+not reshuffle the others. Monsters may be named by definition id
+(`Elite_Wolf_Alpha`), prefab stem, or full entity ref. `mix` still decides how
+the cast spreads over that chapter's ~15 definitions, which is why a
+one-monster list turns the whole chapter into that monster.
+
+The same cast can come from the mod's **config panel** instead of the
+manifest: declare one `multiselect` field per chapter, named after the pool,
+with `source = "enemy-roster"` in `config_schema.toml`, and the desktop app
+draws a grouped monster picker. A chapter the player picks for overrides the
+manifest's cast for that chapter; an empty pick leaves it on the roll. See
+`mods/random-monsters` for the worked example. Two same-`source` multiselect
+fields are treated as buckets over one option set, so the panel draws each
+pick as a chip with a remove (×) and a "move to another list" arrow — moving a
+monster from one chapter to another is one click, not a hunt through two
+50-row scrollers.
+
+The picker's options and the re-emit both work on a plain install: the enemy
+definitions, pool assets and resource caches are read from the uncooked mirror
+when an authoring checkout has one, and otherwise straight out of
+`<install>/DarkTalesResources/_Cooking` through the bundled `asset_map.json`
+(preferring the pristine `.rsmm.bak` when a previous apply left one). Both
+stores hold the same bytes, and a test asserts an emit from either is
+byte-identical.
+
+Casting a creature from another chapter needs `cross_biome = true`, and
+`repoint_pools = false` is the combination proven in-game. With pools rewritten
+(`repoint_pools = true`) two extra rules are enforced, both of which crash a
+chapter transition otherwise: a cast may not be longer than the chapter's pool
+slots, and no creature may be cast in two chapters at once.
+
 `rsmm enemies pools` lists the biome pools; `rsmm enemies pool <biome>` lists
 the prefabs valid as `entity` there. Scope defaults to every open-world pool;
 narrow it with `pools`, extend it with `enemies`, and drop individuals with

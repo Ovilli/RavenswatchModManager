@@ -50,6 +50,8 @@ module.exports = {
         smoke: 'hsl(var(--smoke))',
         parchment: 'hsl(var(--parchment))',
         gilt: 'hsl(var(--gilt))',
+        moss: 'hsl(var(--moss))',
+        frost: 'hsl(var(--frost))',
       },
       borderRadius: {
         lg: 'calc(var(--radius) + 2px)',

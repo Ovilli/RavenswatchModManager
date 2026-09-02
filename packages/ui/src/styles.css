@@ -19,6 +19,14 @@
     --smoke: 17 13% 51%; /* #947C71 */
     --parchment: 47 53% 83%; /* #EBE1BC */
     --gilt: 41 60% 60%; /* warm gold for focus rings */
+    /* Two muted cold accents. The brand set is warm-only, which is right for
+       chrome but leaves categorical lists (a picker grouped by chapter, a
+       catalog grouped by rarity) with nothing to distinguish groups BY — they
+       come out as one grey wall. Desaturated hard so they read as tarnished
+       metal and moss rather than as UI-kit primaries. Categorical use only:
+       never a state colour, which stays gilt/crimson. */
+    --moss: 96 20% 42%;
+    --frost: 205 28% 58%;
 
     /* Semantic mapping (shadcn-style) — dark by default */
     --background: var(--pitch);
@@ -51,6 +59,13 @@
     --font-accent: "Cormorant Garamond", Georgia, serif;
     --font-mono: "JetBrains Mono", ui-monospace, monospace;
     --ui-scale: 100%;
+
+    /* The app is dark-only, so say so once at the root. Without it the UA
+       paints every NATIVE widget from the light palette — a <select>'s option
+       popup, an input's `fieldtext` (black on a dark field), scrollbars,
+       autofill — and each one was being chased individually with a per-class
+       `color-scheme: dark`. Declared here, the whole tree inherits it. */
+    color-scheme: dark;
   }
 
   * {
@@ -282,6 +297,37 @@
 
   .select-grim {
     color-scheme: dark;
+  }
+
+  /* A <select> that sits INSIDE another control (a chip, a row) rather than
+     standing on its own. `color-scheme` is the load-bearing line: without it
+     the browser paints the native option popup with the light UA palette, so
+     a dark app sprouts a white menu — and the popup is drawn by the OS, so no
+     amount of styling on the element itself reaches it. The explicit `option`
+     colours cover the platforms that honour them over `color-scheme`. */
+  .select-inline {
+    color-scheme: dark;
+    appearance: none;
+    background-color: transparent;
+    color: hsl(var(--ash));
+    font-family: var(--font-mono);
+    /* Size and border come from the call site: this control has to sit inside
+       a chip in one place and stand alone in another, and a hard-coded 0.7rem
+       made it too small to read as a button at all. */
+    font-size: inherit;
+    line-height: 1.2;
+    cursor: pointer;
+  }
+  .select-inline:hover {
+    color: hsl(var(--gilt));
+  }
+  .select-inline:focus-visible {
+    outline: 2px solid hsl(var(--gilt) / 0.7);
+    outline-offset: 1px;
+  }
+  .select-inline option {
+    background-color: hsl(var(--pitch));
+    color: hsl(var(--parchment));
   }
 
   /* Surface grain: slightly stronger depth for app panels */

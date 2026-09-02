@@ -184,7 +184,7 @@ _CLONE_FIELDS = (
 #: succeeds, the assets install, and the run plays exactly like vanilla.
 _OVERRIDE_FIELDS = (
     "mode", "pools", "enemies", "exclude", "entity", "mix", "seed", "weight",
-    "cross_biome", "imports", "repoint_pools",
+    "cross_biome", "imports", "repoint_pools", "casts",
 )
 
 
@@ -195,8 +195,7 @@ def _enemy_class() -> str:
 def _load_base_cooked(base_id: str) -> bytes | None:
     """Return the cooked bytes of a vanilla enemy def, or None if no such
     enemy ships under the in-repo enemy-definition tree."""
-    p = _ENEMY_DIR / f"{base_id}{_ENEMY_GEN_SUFFIX}"
-    return p.read_bytes() if p.is_file() else None
+    return EP.corpus_read(EP.cooked_rel_for(base_id))
 
 
 def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
@@ -415,9 +414,11 @@ def _pool_groups(defn_id: str, pools_req, enemies_req, exclude) -> dict[str, lis
     index = EP.enemy_index()
     if not index:
         raise SchemaNotMined(
-            f"enemy {defn_id}: no enemy definitions under {EP.ENEMY_DIR} — "
-            f"mode=\"override\" needs the cooked corpus "
-            f"(python scripts/extract_uncooked.py)."
+            f"enemy {defn_id}: no enemy definitions found — mode=\"override\" "
+            f"reads the cooked defs from the uncooked mirror or, failing that, "
+            f"straight out of the game install, and neither is available. "
+            f"Point rsmm at the game (`rsmm doctor`), or build the mirror with "
+            f"python scripts/extract_uncooked.py."
         )
     open_world = {b for b in EP.pools() if b not in EP.BOSS_ARENA_POOLS}
 
@@ -594,6 +595,139 @@ def _def_owned_slots(biome: str) -> list[int]:
     return [i for i, e in enumerate(EP.pools()[biome]) if e.lower() in owned]
 
 
+def _creature_entity(defn_id: str, name: str) -> str:
+    """One entry of a hand-written cast -> the entity ref it means.
+
+    Authors think in monster names, not in cooked prefab paths, so all three
+    spellings of the same creature are accepted: the definition id
+    (``Elite_Wolf_Alpha``), the prefab's stem, and the full entity ref
+    (``Enemies\\Wolves\\Elite_Wolf_Alpha.entity.ot``). Whatever comes in,
+    an entity ref goes out — that is the only thing an ``entity_ref`` edit and
+    a pool slot can hold.
+
+    Only camp-spawnable creatures resolve. A boss, a summon or a quest enemy
+    has no pool streaming it and no definition of its own to borrow a preload
+    closure from, so naming one would emit a def pointing at a prefab that is
+    never there.
+    """
+    idx = EP.enemy_index()
+    spawnable = EP.spawnable_entities()
+    row = idx.get(name)
+    if row is not None and row["entity"] and row["biome"] is not None:
+        return row["entity"]
+    key = str(name).replace("/", "\\").lower()
+    by_ref = {e.lower(): e for e in spawnable}
+    if key in by_ref:
+        return by_ref[key]
+    by_stem = {e.replace("/", "\\").split("\\")[-1].split(".", 1)[0].lower(): e
+               for e in spawnable}
+    if key in by_stem:
+        return by_stem[key]
+    raise ContentError(
+        f"enemy {defn_id}: {name!r} in 'casts' is not a camp-spawnable "
+        f"creature. Name a definition id (`rsmm enemies list`), a prefab stem "
+        f"or a full entity ref from `rsmm enemies pool <biome>`. Bosses, "
+        f"summons and quest enemies are placed by script and cannot be cast."
+    )
+
+
+def _explicit_casts(defn_id: str, raw, groups: dict[str, list[str]],
+                    cross_biome: bool) -> dict[str, list[str]]:
+    """Validate a hand-written ``casts`` table -> ``biome -> [entity ref]``.
+
+    ``casts`` is the manual counterpart of the roll: instead of dealing each
+    chapter a cast, the author writes one. Everything downstream is unchanged
+    — the cast is still what the chapter streams and still what
+    :func:`_assignment` hands to that chapter's definitions — so a listed
+    chapter behaves exactly as if the seed had happened to deal those
+    creatures.
+    """
+    if not isinstance(raw, dict):
+        raise ContentError(
+            f"enemy {defn_id}: 'casts' must be a table of "
+            f"chapter -> [monster, ...], e.g. "
+            f"[content.casts] / Dark_Hills = [\"Elite_Wolf_Alpha\"]. "
+            f"Got {type(raw).__name__}."
+        )
+    out: dict[str, list[str]] = {}
+    for biome, names in raw.items():
+        if biome not in EP.pools():
+            raise ContentError(
+                f"enemy {defn_id}: casts names unknown chapter {biome!r}. "
+                f"Chapters: {', '.join(sorted(EP.pools()))} "
+                f"(`rsmm enemies pools`)."
+            )
+        if biome not in groups:
+            # Silent no-op otherwise: the cast would be built and no
+            # definition in scope would ever be assigned from it.
+            raise ContentError(
+                f"enemy {defn_id}: casts covers {biome!r}, which this scope "
+                f"leaves alone. Add it to 'pools' (or drop 'pools' to cover "
+                f"every chapter) so its definitions are actually rewritten."
+            )
+        if not isinstance(names, (list, tuple)) or not names:
+            raise ContentError(
+                f"enemy {defn_id}: casts[{biome!r}] must be a non-empty list "
+                f"of monsters. An empty cast leaves nothing for the chapter's "
+                f"definitions to point at."
+            )
+        if not all(isinstance(n, str) for n in names):
+            raise ContentError(
+                f"enemy {defn_id}: casts[{biome!r}] must contain monster "
+                f"names as strings."
+            )
+        ents = [_creature_entity(defn_id, n) for n in names]
+        native = EP.pool_of_entity()
+        foreign = sorted({e for e in ents if native.get(e.lower()) != biome})
+        if foreign and not cross_biome:
+            raise ContentError(
+                f"enemy {defn_id}: casts[{biome!r}] lists {foreign[0]!r}, "
+                f"which {biome} does not stream. Set cross_biome = true "
+                f"(with repoint_pools = false) to pull creatures across "
+                f"chapters, or cast only monsters from "
+                f"`rsmm enemies pool {biome}`."
+            )
+        # Sorted + de-duplicated for the same reason the dealt cast is: the
+        # emitted bytes are the roll, so two authors writing the same set in a
+        # different order must install identical assets.
+        out[biome] = sorted(set(ents))
+    return out
+
+
+def _config_casts(mod_root: Path) -> dict[str, list[str]]:
+    """The player's per-chapter picks from the mod's config panel.
+
+    A `multiselect` field named after a biome pool (``Dark_Hills``, ``Avalon``,
+    …) is that chapter's cast. Only non-empty selections are returned: an empty
+    picker means "I have not chosen for this chapter", which leaves it on the
+    manifest's cast or the roll. That is the opposite of the item ban, where an
+    empty selection is the meaningful state "nothing banned" — here an empty
+    cast is not a configuration at all, it is a chapter with nothing to spawn.
+
+    Everything is best-effort: a mod with no schema, an unreadable
+    ``config.toml`` or a field naming no pool simply contributes nothing, so a
+    hand-authored mod behaves exactly as it did before the panel existed.
+    """
+    from ..config import ConfigError, ConfigStore
+
+    if not (mod_root / "config_schema.toml").is_file():
+        return {}
+    try:
+        store = ConfigStore(mod_root)
+    except (OSError, ConfigError, ValueError):
+        return {}
+    by_key = {b.lower(): b for b in EP.pools()}
+    out: dict[str, list[str]] = {}
+    for name, fld in store.schema.fields.items():
+        biome = by_key.get(name.lower())
+        if biome is None or fld.type != "multiselect":
+            continue
+        picked = store.get(name) or []
+        if isinstance(picked, (list, tuple)) and picked:
+            out[biome] = [str(x) for x in picked]
+    return out
+
+
 def _rng(seed, *parts: str):
     """Seeded RNG namespaced by ``parts``.
 
@@ -619,7 +753,12 @@ def _emit_pool(biome: str, cast: list[str], out_dir: Path,
     from ...engine.cooked_schemas.asset_refs import _decode, _encode
 
     rel = EP.pool_cooked_rel(biome)
-    raw = (DATA_DIR / "uncooked" / Path(*rel.split("/"))).read_bytes()
+    raw = EP.corpus_read(rel)
+    if raw is None:
+        raise SchemaNotMined(
+            f"enemy {defn_id}: {rel} is missing from the corpus and the game "
+            f"install, so {biome}'s pool cannot be rewritten."
+        )
     doc = _decode(raw, "oCGameStream")
     refs = list(doc["asset_refs"])
 
@@ -710,9 +849,19 @@ def _override_one(enemy_id: str, new_entity: str, weight, out_dir: Path,
                   defn_id: str) -> list[Path]:
     """Rewrite one retail def + its resource cache. Returns written paths."""
     spec = _defs._SPECS[_enemy_class()]
-    src = _ENEMY_DIR / f"{enemy_id}{_ENEMY_GEN_SUFFIX}"
+    # From the mirror on an authoring checkout, from the install's own cooked
+    # tree everywhere else — see `enemy_pools.corpus_read`. The bytes are the
+    # same either way, and the install copy read is the pristine `.rsmm.bak`
+    # when a previous apply left one, so a re-apply re-derives from vanilla
+    # instead of stacking an override on an override.
+    raw = EP.corpus_read(EP.cooked_rel_for(enemy_id))
+    if raw is None:
+        raise SchemaNotMined(
+            f"enemy {defn_id}: no cooked definition for {enemy_id!r} in the "
+            f"corpus or the game install."
+        )
     try:
-        cf = cooked.parse(src.read_bytes())
+        cf = cooked.parse(raw)
         body = spec.decode_body(cf.sections[-1].payload)
     except (OSError, ValueError, IndexError) as e:
         raise ContentError(
@@ -731,7 +880,7 @@ def _override_one(enemy_id: str, new_entity: str, weight, out_dir: Path,
     # is byte-stable, so those come out identical to the shipped file —
     # installing one would back up a file and replace it with itself, for a
     # backup the restore path then has to carry. Emit nothing instead.
-    if new_bytes == src.read_bytes():
+    if new_bytes == raw:
         return []
 
     written: list[Path] = []
@@ -772,14 +921,17 @@ def _emit_merged_cache(enemy_id: str, new_entity: str, out_dir: Path,
     donor_rel = RC.cache_path_for(EP.cooked_rel_for(owner))
     lines: set[str] = set()
     for rel in (own_rel, donor_rel):
-        p = DATA_DIR / "uncooked" / Path(*rel.split("/"))
-        if not p.is_file():
+        # A `.UsedRscCache.ot` is in neither `UsedRscList.ot` nor `asset_map`;
+        # `corpus_read` falls through to `resolve_special`, which ciphers the
+        # path by the same convention the engine uses to find it.
+        blob = EP.corpus_read(rel)
+        if blob is None:
             raise SchemaNotMined(
-                f"enemy {defn_id}: {rel} is missing from the corpus, so the "
-                f"preload closure for {enemy_id} cannot be assembled "
-                f"(python scripts/extract_uncooked.py)."
+                f"enemy {defn_id}: {rel} is missing from the corpus and the "
+                f"game install, so the preload closure for {enemy_id} cannot "
+                f"be assembled."
             )
-        lines |= set(RC.parse(p.read_bytes()))
+        lines |= set(RC.parse(blob))
 
     dest = out_dir / Path(*own_rel.split("/"))
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -818,6 +970,17 @@ def _emit_override(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                     host as many distinct creatures as it already had (10-15),
                     because a pool ref can be repointed but the vector cannot
                     grow.
+        ``casts``   table of ``chapter -> [monster, ...]`` — the manual
+                    counterpart of the roll. A listed chapter draws only from
+                    the monsters written there instead of from the dealt or
+                    vanilla cast; unlisted chapters are untouched. Monsters
+                    may be named by definition id (``Elite_Wolf_Alpha``),
+                    prefab stem, or full entity ref. ``mix`` still decides how
+                    that cast is spread over the chapter's definitions, so a
+                    one-monster cast makes the whole chapter that monster.
+                    Casting a creature from another chapter needs
+                    ``cross_biome = true`` (and ``repoint_pools = false``,
+                    which is the combination that ships today).
         ``repoint_pools``
                     default true, and **false is the one that works**. Set
                     it false to draw the cast game-wide WITHOUT rewriting any
@@ -869,6 +1032,19 @@ def _emit_override(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             f"boundary, so no pool would be repointed either way."
         )
 
+    # The config panel's picks are merged over the manifest's, per chapter: the
+    # panel is where a PLAYER edits this mod, so a chapter they picked for wins
+    # over the cast the author wrote, while a chapter they left empty keeps it.
+    casts_req = defn.fields.get("casts")
+    picked = _config_casts(out_dir.parent)
+    if picked and (casts_req is None or isinstance(casts_req, dict)):
+        casts_req = {**(casts_req or {}), **picked}
+    if entity is not None and casts_req is not None:
+        raise ContentError(
+            f"enemy {defn.id}: 'entity' (one fixed prefab everywhere) and "
+            f"'casts' (a hand-written cast per chapter) are mutually "
+            f"exclusive — pick one."
+        )
     if entity is not None and mix is not None:
         raise ContentError(
             f"enemy {defn.id}: 'entity' (one fixed prefab) and 'mix' "
@@ -878,7 +1054,9 @@ def _emit_override(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         raise ContentError(
             f"enemy {defn.id}: mode=\"override\" needs either entity = "
             f"\"Enemies\\\\...\" (turn the scope into one monster) or "
-            f"mix = \"random\" | \"shuffle\" with a seed."
+            f"mix = \"random\" | \"shuffle\" with a seed. 'casts' picks "
+            f"WHICH monsters a chapter draws from; 'mix' is still what "
+            f"spreads them over that chapter's definitions."
         )
     if entity is not None and not isinstance(entity, str):
         raise ContentError(f"enemy {defn.id}: 'entity' must be a string path.")
@@ -967,6 +1145,47 @@ def _emit_override(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             )
 
     casts = _biome_casts(defn.id, groups, entity, seed, cross_biome, imports)
+
+    if casts_req is not None:
+        # A hand-written cast REPLACES the dealt one for the chapters it
+        # names, and leaves every other chapter on whatever the roll (or
+        # vanilla) gave it. Overlaid here rather than inside `_biome_casts`
+        # so the deal stays one pure function of the seed: an author who
+        # pins Dark Hills does not reshuffle Avalon.
+        casts.update(_explicit_casts(defn.id, casts_req, groups, cross_biome))
+        if cross_biome and repoint_pools:
+            # Both of these are only hazards when a POOL is rewritten, which
+            # is exactly this branch. With repoint_pools = false nothing but
+            # the definitions and their merged caches move, so a hand-written
+            # cast of any size or overlap is fine.
+            for biome, cast in sorted(casts.items()):
+                slots = len(_def_owned_slots(biome))
+                if len(cast) > slots:
+                    raise ContentError(
+                        f"enemy {defn.id}: casts[{biome!r}] lists "
+                        f"{len(cast)} monsters but {biome} has {slots} pool "
+                        f"slots, and a pool ref can be repointed while the "
+                        f"vector cannot grow — the surplus would never be "
+                        f"streamed. Cut the cast to {slots}, or set "
+                        f"repoint_pools = false (recommended) so no pool is "
+                        f"rewritten and the count stops mattering."
+                    )
+            seen: dict[str, str] = {}
+            for biome, cast in sorted(casts.items()):
+                for ent in cast:
+                    first = seen.setdefault(ent.lower(), biome)
+                    if first != biome:
+                        raise ContentError(
+                            f"enemy {defn.id}: {ent!r} is cast in both "
+                            f"{first} and {biome}. The shipped pools "
+                            f"partition (no entity in two), and a shared "
+                            f"entity is a shared lifetime: the chapter that "
+                            f"loads second can have it freed out from under "
+                            f"its preload vector — a black screen on the "
+                            f"transition. Give each chapter its own "
+                            f"monsters, or set repoint_pools = false so no "
+                            f"pool is rewritten at all."
+                        )
 
     written: list[Path] = []
     if cross_biome and not repoint_pools:

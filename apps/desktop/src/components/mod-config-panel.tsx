@@ -219,11 +219,20 @@ export function ModConfigPanel({
               name={key}
               field={field}
               choices={choices[key]}
+              siblings={siblingBuckets(schema, key)}
               value={draft[key] ?? loadedValues[key] ?? fieldFallback(field)}
               error={validation.errors[key]}
               onChange={(next) => {
                 setDraft((current) => ({ ...current, [key]: next }));
                 setTouched((current) => ({ ...current, [key]: true }));
+              }}
+              onMove={(optionId, target) => {
+                setDraft((current) => {
+                  const from = asIds(current[key]).filter((x) => x !== optionId);
+                  const to = [...new Set([...asIds(current[target]), optionId])].sort();
+                  return { ...current, [key]: from, [target]: to };
+                });
+                setTouched((current) => ({ ...current, [key]: true, [target]: true }));
               }}
             />
           );
@@ -269,18 +278,60 @@ function FramelessShell({ children }: { children: ReactNode }) {
   return <div>{children}</div>;
 }
 
+/** Per-group accent, cycled by the order groups first appear.
+ *
+ * A provider groups its options by something the player thinks in — the
+ * chapter a monster ships in, the rarity of an item — and that grouping is the
+ * only structure a 50-row list has. Rendering it as one grey column threw it
+ * away: a chip in the Dark Hills list gave no hint it was a Storm Island crab,
+ * which is exactly what the cross-chapter picking is for. Full class strings,
+ * because Tailwind's scanner cannot see an interpolated one.
+ */
+const GROUP_TONES = [
+  { dot: 'bg-gilt', text: 'text-gilt', edge: 'border-l-gilt/70', chip: 'border-gilt/50 bg-gilt/10' },
+  {
+    dot: 'bg-crimson',
+    text: 'text-crimson',
+    edge: 'border-l-crimson/70',
+    chip: 'border-crimson/50 bg-crimson/10',
+  },
+  {
+    dot: 'bg-frost',
+    text: 'text-frost',
+    edge: 'border-l-frost/70',
+    chip: 'border-frost/50 bg-frost/10',
+  },
+  { dot: 'bg-moss', text: 'text-moss', edge: 'border-l-moss/70', chip: 'border-moss/50 bg-moss/10' },
+  {
+    dot: 'bg-smoke',
+    text: 'text-smoke',
+    edge: 'border-l-smoke/70',
+    chip: 'border-smoke/50 bg-smoke/10',
+  },
+] as const;
+
+function toneOf(groups: string[], group: string) {
+  const i = groups.indexOf(group);
+  return GROUP_TONES[(i < 0 ? 0 : i) % GROUP_TONES.length] ?? GROUP_TONES[0];
+}
+
 function MultiSelectField({
   id,
   field,
   choices,
+  siblings,
   value,
   onChange,
+  onMove,
 }: {
   id: string;
   field: ModConfigField;
   choices: ModConfigChoice[];
+  /** Other same-source multiselect fields, offered as move destinations. */
+  siblings: { name: string; label: string }[];
   value: string[];
   onChange: (next: string[]) => void;
+  onMove?: (optionId: string, target: string) => void;
 }) {
   const t = useT();
   const [search, setSearch] = useState('');
@@ -317,8 +368,85 @@ function MultiSelectField({
     );
   }
 
+  const byId = new Map(options.map((o) => [o.id, o]));
+  const labelOf = (oid: string) => byId.get(oid)?.label || oid;
+  // Order of first appearance, so a group keeps its colour as the search
+  // narrows the list — a tone that moved while typing would be worse than none.
+  const groupOrder: string[] = [];
+  for (const o of options) {
+    if (o.group && !groupOrder.includes(o.group)) groupOrder.push(o.group);
+  }
+
   return (
     <div className="space-y-2">
+      {/* What is IN the list, as its own row.
+          Without it the only record of a selection is a tick somewhere in a
+          50-row scroller, so removing one meant hunting for it and moving one
+          to another chapter meant hunting twice.
+
+          The move control is SPELLED OUT rather than drawn as an arrow. It was
+          a bare ▾ glyph inside a small chip first, and nothing about that says
+          "this sends the monster to another chapter" — the one action here that
+          is not guessable from the list itself. It gets a word, a box, and a
+          sentence above the row saying what the two controls do. */}
+      {value.length > 0 ? (
+        <div className="space-y-1.5 rounded border border-border bg-pitch/30 p-2">
+          <p className="text-ash text-xs">
+            {onMove && siblings.length > 0
+              ? t('In this list — “Move to” sends one to another list, ✕ removes it.')
+              : t('In this list — ✕ removes one.')}
+          </p>
+          <ul className="flex flex-wrap gap-2">
+            {value.map((oid) => (
+              <li
+                key={oid}
+                className={[
+                  'flex items-center gap-2 rounded-full border py-1 pl-2.5 pr-1.5 text-parchment text-sm',
+                  toneOf(groupOrder, byId.get(oid)?.group ?? '').chip,
+                ].join(' ')}
+                title={byId.get(oid)?.group || undefined}
+              >
+                <span
+                  className={[
+                    'h-2 w-2 shrink-0 rounded-full',
+                    toneOf(groupOrder, byId.get(oid)?.group ?? '').dot,
+                  ].join(' ')}
+                  aria-hidden="true"
+                />
+                <span className="max-w-56 truncate">{labelOf(oid)}</span>
+                {onMove && siblings.length > 0 ? (
+                  <select
+                    aria-label={t('Move {name} to another list', { name: labelOf(oid) })}
+                    title={t('Move {name} to another list', { name: labelOf(oid) })}
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) onMove(oid, e.target.value);
+                    }}
+                    className="select-inline rounded-full border border-ash/40 px-2 py-0.5 text-xs hover:border-gilt/60"
+                  >
+                    <option value="">{t('Move to ▾')}</option>
+                    {siblings.map((sib) => (
+                      <option key={sib.name} value={sib.name}>
+                        {sib.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+                <button
+                  type="button"
+                  aria-label={t('Remove {name}', { name: labelOf(oid) })}
+                  title={t('Remove {name}', { name: labelOf(oid) })}
+                  onClick={() => onChange(value.filter((x) => x !== oid))}
+                  className="rounded-full px-1 text-ash text-base leading-none hover:text-crimson"
+                >
+                  {'\u2715'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <div className="flex items-center gap-2">
         <Input
           id={id}
@@ -352,10 +480,16 @@ function MultiSelectField({
             const on = selected.has(opt.id);
             const heading = opt.group && opt.group !== lastGroup ? opt.group : null;
             lastGroup = opt.group || lastGroup;
+            const tone = toneOf(groupOrder, opt.group);
             return (
               <Fragment key={opt.id}>
                 {heading ? (
-                  <p className="px-1 pt-2 font-fraktur text-ash text-xs uppercase tracking-wide">
+                  <p
+                    className={[
+                      'px-1 pt-2 font-fraktur text-xs uppercase tracking-wide',
+                      tone.text,
+                    ].join(' ')}
+                  >
                     {heading}
                   </p>
                 ) : null}
@@ -365,8 +499,11 @@ function MultiSelectField({
                   title={opt.description || opt.id}
                   onClick={() => toggle(opt.id)}
                   className={[
-                    'flex w-full items-center gap-3 rounded px-2 py-1.5 text-left transition',
-                    on ? 'bg-crimson/20 text-parchment' : 'hover:bg-char/40 text-smoke',
+                    'flex w-full items-center gap-3 rounded border-l-2 px-2 py-1.5 text-left transition',
+                    tone.edge,
+                    on
+                      ? 'bg-crimson/20 text-parchment'
+                      : 'text-parchment/80 hover:bg-char/40 hover:text-parchment',
                   ].join(' ')}
                 >
                   {opt.icon ? (
@@ -378,7 +515,19 @@ function MultiSelectField({
                       )}
                     />
                   ) : (
-                    <span className="h-8 w-8 shrink-0" />
+                    // No art for this catalog (enemy prefabs have none), so the
+                    // group's own colour stands in — the row is never blank and
+                    // never uniform grey.
+                    <span
+                      className={[
+                        'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[0.65rem]',
+                        on ? 'border-crimson/60' : 'border-border',
+                        tone.text,
+                      ].join(' ')}
+                      aria-hidden="true"
+                    >
+                      {(opt.label || opt.id).slice(0, 2).toUpperCase()}
+                    </span>
                   )}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm">{opt.label}</span>
@@ -410,14 +559,18 @@ function ConfigFieldRow({
   value,
   error,
   choices,
+  siblings,
   onChange,
+  onMove,
 }: {
   name: string;
   field: ModConfigField;
   value: ConfigValue;
   error?: string;
   choices?: ModConfigChoice[];
+  siblings?: { name: string; label: string }[];
   onChange: (value: ConfigValue) => void;
+  onMove?: (optionId: string, target: string) => void;
 }) {
   const t = useT();
   const id = `config-${name}`;
@@ -443,8 +596,10 @@ function ConfigFieldRow({
           id={id}
           field={field}
           choices={choices ?? []}
+          siblings={siblings ?? []}
           value={Array.isArray(value) ? value : []}
           onChange={onChange}
+          onMove={onMove}
         />
       ) : field.type === 'bool' ? (
         <div className="flex items-center gap-2">
@@ -496,6 +651,29 @@ function ConfigFieldRow({
       {error ? <p className="text-xs text-crimson">{error}</p> : null}
     </label>
   );
+}
+
+/** The other `multiselect` fields drawing from the same option provider.
+ *
+ * Same source = same universe of options, which is what makes "move this one
+ * to that list" meaningful: for `random-monsters` the four fields are four
+ * chapters over one roster, and moving a monster between chapters is the edit
+ * people actually make. Fields with no source (or a different one) are not
+ * buckets of the same thing and are never offered as a destination.
+ */
+function siblingBuckets(
+  fields: Record<string, ModConfigField>,
+  key: string,
+): { name: string; label: string }[] {
+  const self = fields[key];
+  if (!self || self.type !== 'multiselect' || !self.source) return [];
+  return Object.entries(fields)
+    .filter(([name, f]) => name !== key && f.type === 'multiselect' && f.source === self.source)
+    .map(([name, f]) => ({ name, label: f.label || name }));
+}
+
+function asIds(value: ConfigValue | undefined): string[] {
+  return Array.isArray(value) ? value.map(String) : [];
 }
 
 function cloneConfigValues(values: Record<string, ConfigValue>): Record<string, ConfigValue> {

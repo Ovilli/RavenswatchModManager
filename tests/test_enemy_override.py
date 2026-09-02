@@ -556,3 +556,207 @@ def test_repoint_pools_false_without_cross_biome_is_refused():
                               "seed": 1337, "mix": "shuffle"})
     with pytest.raises(ContentError, match="cross_biome = true"):
         E.emit("TestEnemyOverrideMod", defn, Path("/nonexistent"))
+
+
+# --------------------------------------------------------------------------- #
+# `casts` — a hand-written cast per chapter instead of a dealt one.
+# --------------------------------------------------------------------------- #
+
+
+def _cast_fields(**over):
+    fields = {"mode": "override", "cross_biome": True, "repoint_pools": False,
+              "mix": "random", "seed": 7}
+    fields.update(over)
+    return fields
+
+
+def test_cast_pins_a_chapter_to_the_monsters_it_names(tmp_path):
+    """The whole point: a chapter spawns only what the author cast in it.
+
+    Dark Hills is pinned to two Storm Island creatures, so every Dark Hills
+    definition must end up pointing at one of exactly those two — and no
+    other chapter may move because of it.
+    """
+    _require_corpus()
+    crab = "Enemies\\Crabs\\Standard_Reef_Crab.entity.ot"
+    jinn = "Standard_Storm_Jinn"
+    written = _emit(tmp_path, id="pinned",
+                    **_cast_fields(casts={"Dark_Hills": [crab, jinn]}))
+    want = {enemies._creature_entity("pinned", n).lower() for n in (crab, jinn)}
+
+    groups = enemies._pool_groups("pinned", None, None, None)
+    gens = _gens(written)
+    seen = set()
+    for eid in groups["Dark_Hills"]:
+        got = _entity_of(gens[eid]).lower()
+        assert got in want, f"{eid} points at {got}, not one of the cast"
+        seen.add(got)
+    assert seen == want, "a cast monster never got used"
+
+    # Another chapter still holds its dealt cast, not the pinned one.
+    other = {_entity_of(gens[e]).lower() for e in groups["Avalon"] if e in gens}
+    assert not (other & want), "pinning one chapter leaked into another"
+
+
+def test_cast_of_one_makes_the_whole_chapter_that_monster(tmp_path):
+    _require_corpus()
+    written = _emit(tmp_path, id="allcrab",
+                    **_cast_fields(casts={"Dark_Hills": ["Standard_Reef_Crab"]}))
+    groups = enemies._pool_groups("allcrab", None, None, None)
+    gens = _gens(written)
+    ents = {_entity_of(gens[e]).lower() for e in groups["Dark_Hills"]}
+    assert len(ents) == 1, f"expected one monster, got {ents}"
+
+
+def test_cast_accepts_id_stem_and_full_ref(tmp_path):
+    _require_corpus()
+    ref = "Enemies\\Crabs\\Standard_Reef_Crab.entity.ot"
+    assert (enemies._creature_entity("x", "Standard_Reef_Crab")
+            == enemies._creature_entity("x", ref)
+            == enemies._creature_entity("x", ref.replace("\\", "/")))
+
+
+def test_cast_rejects_a_creature_no_camp_rolls():
+    _require_corpus()
+    with pytest.raises(ContentError, match="camp-spawnable"):
+        _emit(Path("/nonexistent"), id="boss",
+              **_cast_fields(casts={"Dark_Hills": ["Baba_Yaga"]}))
+
+
+def test_cast_rejects_an_unknown_chapter():
+    _require_corpus()
+    with pytest.raises(ContentError, match="unknown chapter"):
+        _emit(Path("/nonexistent"), id="nochapter",
+              **_cast_fields(casts={"Mordor": ["Standard_Reef_Crab"]}))
+
+
+def test_cast_outside_the_scope_is_refused():
+    """Otherwise the cast is built and no definition is ever assigned from it."""
+    _require_corpus()
+    with pytest.raises(ContentError, match="leaves alone"):
+        _emit(Path("/nonexistent"), id="outofscope",
+              **_cast_fields(pools=["Avalon"],
+                             casts={"Dark_Hills": ["Standard_Reef_Crab"]}))
+
+
+def test_foreign_cast_without_cross_biome_is_refused():
+    """A chapter cannot stream a prefab nothing brings into it."""
+    _require_corpus()
+    with pytest.raises(ContentError, match="cross_biome = true"):
+        _emit(Path("/nonexistent"), id="foreign",
+              **_cast_fields(cross_biome=False, repoint_pools=True,
+                             casts={"Dark_Hills": ["Standard_Reef_Crab"]}))
+
+
+def test_cast_shared_between_chapters_is_refused_when_pools_are_rewritten():
+    """The partition is what stops a chapter transition freeing a live entity."""
+    _require_corpus()
+    crab = "Standard_Reef_Crab"
+    with pytest.raises(ContentError, match="cast in both"):
+        _emit(Path("/nonexistent"), id="shared",
+              **_cast_fields(repoint_pools=True,
+                             casts={"Dark_Hills": [crab], "Avalon": [crab]}))
+
+
+def test_cast_longer_than_the_pool_is_refused_when_pools_are_rewritten():
+    _require_corpus()
+    from rsmm.engine import enemy_pools as EP
+
+    slots = len(enemies._def_owned_slots("Dark_Hills"))
+    too_many = EP.spawnable_entities()[: slots + 1]
+    with pytest.raises(ContentError, match="pool slots"):
+        _emit(Path("/nonexistent"), id="toolong",
+              **_cast_fields(repoint_pools=True, casts={"Dark_Hills": too_many}))
+
+
+def test_cast_and_fixed_entity_are_mutually_exclusive():
+    _require_corpus()
+    with pytest.raises(ContentError, match="mutually exclusive"):
+        _emit(Path("/nonexistent"), id="both",
+              **_cast_fields(mix=None, seed=None, entity=_TREANT,
+                             casts={"Dark_Hills": ["Standard_Reef_Crab"]}))
+
+
+def test_same_cast_emits_identical_bytes(tmp_path):
+    """Order and duplicates in the manifest must not change the install."""
+    _require_corpus()
+    a = _emit(tmp_path / "a", id="det",
+              **_cast_fields(casts={"Dark_Hills": ["Standard_Reef_Crab",
+                                                   "Standard_Storm_Jinn"]}))
+    b = _emit(tmp_path / "b", id="det",
+              **_cast_fields(casts={"Dark_Hills": ["Standard_Storm_Jinn",
+                                                   "Standard_Reef_Crab",
+                                                   "Standard_Reef_Crab"]}))
+    assert [p.name for p in a] == [p.name for p in b]
+    for pa, pb in zip(a, b, strict=True):
+        assert pa.read_bytes() == pb.read_bytes(), pa.name
+
+
+def test_config_picker_supplies_a_chapter_cast(tmp_path):
+    """The desktop config panel is the player-facing way to write a cast.
+
+    A `multiselect` field named after a chapter IS that chapter's cast, so the
+    picked monsters must reach the emitted definitions exactly as a manifest
+    `casts` entry would.
+    """
+    _require_corpus()
+    mod = tmp_path / "mod"
+    (mod / "assets").mkdir(parents=True)
+    (mod / "config_schema.toml").write_text(
+        '[fields.Dark_Hills]\ntype = "multiselect"\nsource = "enemy-roster"\n'
+        'default = []\n[fields.Avalon]\ntype = "multiselect"\n'
+        'source = "enemy-roster"\ndefault = []\n', encoding="utf-8")
+    (mod / "config.toml").write_text(
+        '[config]\nDark_Hills = ["Standard_Reef_Crab"]\nAvalon = []\n',
+        encoding="utf-8")
+
+    defn = ContentDef(kind="enemy", id="picked",
+                      fields={"mode": "override", "cross_biome": True,
+                              "repoint_pools": False, "mix": "random",
+                              "seed": 7})
+    written = enemies.emit("TestEnemyOverrideMod", defn, mod / "assets")
+    groups = enemies._pool_groups("picked", None, None, None)
+    gens = _gens(written)
+    dark = {_entity_of(gens[e]).lower() for e in groups["Dark_Hills"]}
+    assert dark == {"enemies\\crabs\\standard_reef_crab.entity.ot"}
+    # An empty pick is "not configured", so that chapter keeps its roll.
+    avalon = {_entity_of(gens[e]).lower() for e in groups["Avalon"] if e in gens}
+    assert len(avalon) > 1, "empty picker should leave the chapter rolled"
+
+
+def test_config_picker_beats_the_manifest_cast(tmp_path):
+    _require_corpus()
+    mod = tmp_path / "mod"
+    (mod / "assets").mkdir(parents=True)
+    (mod / "config_schema.toml").write_text(
+        '[fields.Dark_Hills]\ntype = "multiselect"\nsource = "enemy-roster"\n'
+        'default = []\n', encoding="utf-8")
+    (mod / "config.toml").write_text(
+        '[config]\nDark_Hills = ["Standard_Reef_Crab"]\n', encoding="utf-8")
+
+    defn = ContentDef(kind="enemy", id="beats",
+                      fields={"mode": "override", "cross_biome": True,
+                              "repoint_pools": False, "mix": "random",
+                              "seed": 7,
+                              "casts": {"Dark_Hills": ["Standard_Clawed_Treant"]}})
+    written = enemies.emit("TestEnemyOverrideMod", defn, mod / "assets")
+    groups = enemies._pool_groups("beats", None, None, None)
+    gens = _gens(written)
+    dark = {_entity_of(gens[e]).lower() for e in groups["Dark_Hills"]}
+    assert dark == {"enemies\\crabs\\standard_reef_crab.entity.ot"}
+
+
+def test_enemy_roster_provider_offers_only_spawnable_creatures():
+    _require_corpus()
+    from rsmm.engine import enemy_pools as EP
+    from rsmm.sdk.config_choices import provide
+
+    opts = provide("enemy-roster")
+    assert len(opts) == len(EP.spawnable_entities())
+    ids = {o["id"] for o in opts}
+    assert len(ids) == len(opts), "prefab stems must be unique ids"
+    for oid in ids:
+        # Every offered id must be one the kind accepts, or the picker would
+        # hand `apply` a choice it then refuses.
+        enemies._creature_entity("provider", oid)
+    assert {o["group"] for o in opts} >= {"Dark Hills", "Avalon", "Storm Island"}

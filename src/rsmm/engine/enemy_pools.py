@@ -42,8 +42,12 @@ __all__ = [
     "ENEMY_DIR",
     "GEN_SUFFIX",
     "cooked_rel_for",
+    "corpus_read",
+    "corpus_rels",
+    "corpus_source",
     "enemy_index",
     "pool_cooked_rel",
+    "pool_rels",
     "spawnable_entities",
     "pool_files",
     "pool_of_entity",
@@ -70,6 +74,114 @@ def cooked_rel_for(enemy_id: str) -> str:
     return f"{ENEMY_ASSET_SUBDIR}/{enemy_id}{GEN_SUFFIX}"
 
 
+# --------------------------------------------------------------------------- #
+# Corpus source. Two places hold the same cooked bytes, and only one of them
+# exists on a player's machine.
+#
+# `data/uncooked/` is the authoring mirror: 7.3 GB, gitignored, built by
+# `scripts/extract_uncooked.py` from an install. It is NOT bundled into the
+# PyInstaller sidecar and never will be, so for every downloaded copy of the
+# app it simply is not there — which used to mean the `enemy` kind raised
+# `SchemaNotMined` and emitted nothing on exactly the machines the mod is for.
+#
+# The install has the same bytes. `extract_uncooked` COPIES non-texture cooked
+# files verbatim, so `data/uncooked/<decoded>` is byte-identical to
+# `<install>/DarkTalesResources/_Cooking/<encoded>` (verified per file below by
+# construction: same bytes, different name). `data/asset_map.json` IS bundled,
+# so the decoded -> encoded direction is available everywhere.
+#
+# Two rules this indirection has to hold, both of which are silent when broken:
+#
+# 1. **Read the pristine copy.** `apply` overwrites cooked files in place and
+#    leaves `<file>.rsmm.bak` beside them. This module answers "what does the
+#    game ship", so a `.bak` — when one exists — IS the answer; reading the
+#    live file would make an already-applied override look like vanilla and
+#    compound edit on top of edit at the next apply.
+# 2. **Never write here.** Everything below opens the install read-only. The
+#    only writer of the game directory is the apply pipeline.
+# --------------------------------------------------------------------------- #
+
+def _cooking_dir() -> Path | None:
+    """``<install>/DarkTalesResources/_Cooking``, or None without an install."""
+    from ..cli.apply_mods import find_game_dir
+    from .paths import COOKING_SUBDIR
+
+    game = find_game_dir()
+    if game is None:
+        return None
+    d = Path(game) / COOKING_SUBDIR
+    return d if d.is_dir() else None
+
+
+def _install_path(rel: str) -> Path | None:
+    """Where a decoded cooked path lives in the install, pristine copy first."""
+    from ..cli.apply_mods import resolve_special
+    from .asset_map import decoded_to_encoded
+
+    cooking = _cooking_dir()
+    if cooking is None:
+        return None
+    dec2enc = decoded_to_encoded()
+    enc = dec2enc.get(rel) or resolve_special(rel, dec2enc)
+    if not enc:
+        return None
+    p = cooking / enc.replace("\\", "/")
+    bak = p.with_name(p.name + ".rsmm.bak")
+    if bak.is_file():
+        return bak
+    return p if p.is_file() else None
+
+
+def corpus_source() -> str:
+    """Which store is answering: ``"mirror"``, ``"install"`` or ``"none"``."""
+    if ENEMY_DIR.is_dir():
+        return "mirror"
+    return "install" if _cooking_dir() is not None else "none"
+
+
+def corpus_root() -> Path:
+    """Directory whose fingerprint decides whether a cached sweep is stale."""
+    if ENEMY_DIR.is_dir():
+        return UNCOOKED
+    return _cooking_dir() or UNCOOKED
+
+
+def corpus_read(rel: str) -> bytes | None:
+    """Cooked bytes for a decoded path, from the mirror or from the install."""
+    p = UNCOOKED / Path(*rel.split("/"))
+    if p.is_file():
+        return p.read_bytes()
+    src = _install_path(rel)
+    try:
+        return src.read_bytes() if src is not None else None
+    except OSError:
+        return None
+
+
+def corpus_rels(prefix: str = "", suffix: str = "") -> list[str]:
+    """Every decoded cooked path in the corpus under ``prefix`` ending in
+    ``suffix``.
+
+    From the mirror's own tree when it exists, otherwise from the shipped
+    `asset_map` — which is derived from `UsedRscList.ot` and therefore lists
+    every asset the engine can load. Caches (`*.UsedRscCache.ot`) are the one
+    family absent from it; they are read by name, never listed.
+    """
+    if ENEMY_DIR.is_dir() or UNCOOKED.is_dir():
+        base = UNCOOKED / Path(*prefix.split("/")) if prefix else UNCOOKED
+        if base.is_dir():
+            return sorted(
+                p.relative_to(UNCOOKED).as_posix()
+                for p in base.rglob(f"*{suffix}") if p.is_file()
+            )
+    from .asset_map import decoded_to_encoded
+
+    if _cooking_dir() is None:
+        return []
+    return sorted(k for k in decoded_to_encoded()
+                  if k.startswith(prefix) and k.endswith(suffix))
+
+
 def pool_files() -> list[tuple[str, Path]]:
     """``(biome, path)`` for every EntityPooling asset in the corpus."""
     if not OT_DIR.is_dir():
@@ -90,19 +202,43 @@ def pool_entities(path: Path) -> list[str]:
     and VFX; everything outside that prefix is not a spawn candidate under any
     reading.
     """
+    return _pool_entities_bytes(path.read_bytes())
+
+
+def _pool_entities_bytes(raw: bytes) -> list[str]:
     from .cooked_schemas.asset_refs import _decode
 
-    doc = _decode(path.read_bytes(), "oCGameStream")
+    doc = _decode(raw, "oCGameStream")
     return [r for r in doc["asset_refs"] if r.lower().startswith("enemies\\")]
+
+
+def _biome_of_pool_rel(rel: str) -> str:
+    biome = rel.rsplit("/", 1)[-1].split("_EntityPooling", 1)[0]
+    return biome[len("Map_"):] if biome.startswith("Map_") else biome
+
+
+def pool_rels() -> dict[str, str]:
+    """``biome -> decoded cooked path`` of its EntityPooling asset.
+
+    Source-agnostic replacement for :func:`pool_files`, which can only speak
+    in mirror paths and therefore answers nothing on a player's install.
+    """
+    return {_biome_of_pool_rel(rel): rel
+            for rel in corpus_rels(suffix=POOL_GLOB.lstrip("*"))}
 
 
 def pools() -> dict[str, list[str]]:
     """``biome -> [entity ref, ...]``, cached against the corpus fingerprint."""
 
     def build() -> dict[str, list[str]]:
-        return {biome: pool_entities(p) for biome, p in pool_files()}
+        out: dict[str, list[str]] = {}
+        for biome, rel in sorted(pool_rels().items()):
+            raw = corpus_read(rel)
+            if raw is not None:
+                out[biome] = _pool_entities_bytes(raw)
+        return out
 
-    return corpus_cache.load_or_build("enemy_pools", UNCOOKED, build)
+    return corpus_cache.load_or_build("enemy_pools", corpus_root(), build)
 
 
 def pool_of_entity() -> dict[str, str]:
@@ -132,15 +268,19 @@ def enemy_index() -> dict[str, dict[str, Any]]:
     """
 
     def build() -> dict[str, dict[str, Any]]:
-        if not ENEMY_DIR.is_dir():
+        rels = corpus_rels(prefix=ENEMY_ASSET_SUBDIR, suffix=GEN_SUFFIX)
+        if not rels:
             return {}
         spec = _defs._SPECS["oCDtEnemyDefinition"]
         by_entity = pool_of_entity()
         out: dict[str, dict[str, Any]] = {}
-        for p in sorted(ENEMY_DIR.glob(f"*{GEN_SUFFIX}")):
-            enemy_id = p.name[: -len(GEN_SUFFIX)]
+        for rel in rels:
+            enemy_id = rel.rsplit("/", 1)[-1][: -len(GEN_SUFFIX)]
+            raw = corpus_read(rel)
+            if raw is None:
+                continue
             try:
-                body = spec.decode_body(cooked.parse(p.read_bytes()).sections[-1].payload)
+                body = spec.decode_body(cooked.parse(raw).sections[-1].payload)
             except (ValueError, IndexError, KeyError):
                 # A def this codec version cannot read is not one a mod may
                 # safely rewrite either — leave it out of the index entirely.
@@ -156,7 +296,7 @@ def enemy_index() -> dict[str, dict[str, Any]]:
             }
         return out
 
-    return corpus_cache.load_or_build("enemy_index", UNCOOKED, build)
+    return corpus_cache.load_or_build("enemy_index", corpus_root(), build)
 
 
 def pool_cooked_rel(biome: str) -> str:
@@ -166,10 +306,10 @@ def pool_cooked_rel(biome: str) -> str:
     directory and the filename disagree (``Ot/DarkHills/Map_Dark_Hills_...``),
     so a composed path silently misses and the override lands nowhere.
     """
-    for name, path in pool_files():
-        if name == biome:
-            return path.relative_to(UNCOOKED).as_posix()
-    raise KeyError(biome)
+    rel = pool_rels().get(biome)
+    if rel is None:
+        raise KeyError(biome)
+    return rel
 
 
 def spawnable_entities() -> list[str]:
