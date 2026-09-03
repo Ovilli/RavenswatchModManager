@@ -1,5 +1,5 @@
 import { ScrollText } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import pkg from '../../package.json';
 import { type ChangelogEntry, loadChangelog, pendingEntries } from '../lib/changelog';
@@ -7,7 +7,7 @@ import { changelogSeen, hasRunBefore, markChangelogSeen } from '../lib/first-run
 import { TParts, useT } from '../lib/i18n-react';
 import { getAppVersion } from '../lib/updater';
 import { AiDisclosureDialog } from './ai-disclosure';
-import { Button, MonoTag } from './chrome';
+import { Button, MonoTag, useModalChrome } from './chrome';
 
 /** One release's notes. Shared by the dialog and the About page. */
 export function ChangelogSection({ entry }: { entry: ChangelogEntry }) {
@@ -45,7 +45,6 @@ export function ChangelogSection({ entry }: { entry: ChangelogEntry }) {
  * the notes again rather than swallow them.
  */
 export function ChangelogDialog({ enabled }: { enabled: boolean }) {
-  const t = useT();
   const [entries, setEntries] = useState<ChangelogEntry[]>([]);
   const [current, setCurrent] = useState<string>(pkg.version ?? '0.0.0');
 
@@ -92,10 +91,44 @@ export function ChangelogDialog({ enabled }: { enabled: boolean }) {
 
   if (entries.length === 0) return null;
 
-  const dismiss = () => {
-    markChangelogSeen(current);
-    setEntries([]);
-  };
+  return (
+    <ChangelogCard
+      entries={entries}
+      current={current}
+      onDismiss={() => {
+        markChangelogSeen(current);
+        setEntries([]);
+      }}
+    />
+  );
+}
+
+/**
+ * The card itself.
+ *
+ * Separate from `ChangelogDialog` so its hooks — the focus move in
+ * `useModalChrome` above all — run when the dialog OPENS rather than when the
+ * app shell mounts. Keeping them in the parent would have meant either
+ * stealing focus on every launch or calling a hook after an early return,
+ * which React rejects outright the moment entries arrive.
+ */
+function ChangelogCard({
+  entries,
+  current,
+  onDismiss: dismiss,
+}: {
+  entries: ChangelogEntry[];
+  current: string;
+  onDismiss: () => void;
+}) {
+  const t = useT();
+  const cardRef = useRef<HTMLDivElement>(null);
+  // Nothing focused this before, and it is portalled to the body — so reaching
+  // "Continue" meant tabbing through the whole shell behind the overlay, and
+  // Escape did nothing. The card takes focus (`tabIndex={-1}`) rather than the
+  // button: this is a notice to read, not a question, and landing on the
+  // confirm control invites dismissing it before reading a word.
+  const onKeyDown = useModalChrome(cardRef, dismiss);
 
   return createPortal(
     <div
@@ -104,9 +137,14 @@ export function ChangelogDialog({ enabled }: { enabled: boolean }) {
       aria-modal="true"
       aria-labelledby="changelog-title"
       className="fixed inset-0 z-[75] flex items-center justify-center p-4 animate-fade-in"
+      onKeyDown={onKeyDown}
     >
       <div className="absolute inset-0 bg-pitch/85" onClick={dismiss} />
-      <div className="grimoire-card relative flex max-h-[86vh] w-[min(600px,94vw)] flex-col p-6">
+      <div
+        ref={cardRef}
+        tabIndex={-1}
+        className="grimoire-card relative flex max-h-[86vh] w-[min(600px,94vw)] flex-col p-6 focus:outline-none"
+      >
         <header className="flex items-start gap-3">
           <span className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-crimson/40 bg-crimson/10">
             <ScrollText className="h-5 w-5 text-crimson" aria-hidden />

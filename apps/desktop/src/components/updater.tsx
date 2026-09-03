@@ -1,5 +1,6 @@
 import { ProgressBar } from '@rsmm/ui';
 import { AlertTriangle, Download, RefreshCw } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import pkg from '../../package.json';
 import { t as tr } from '../lib/i18n';
@@ -28,7 +29,7 @@ import {
   relaunchApp,
   relaunchMigrated,
 } from '../lib/updater';
-import { Button } from './chrome';
+import { Button, useModalChrome } from './chrome';
 import { useDialog, useToast } from './toast';
 
 interface UpdateStatus {
@@ -245,6 +246,49 @@ async function finishMigration(): Promise<void> {
   await quitApp();
 }
 
+/**
+ * A full-screen update prompt.
+ *
+ * These cover the whole app, so they are dialogs and must behave like one.
+ * They carried `role="alert"` — an assertive live region wrapped around
+ * interactive content, which is the wrong role for something you answer — with
+ * no `aria-modal`, no Escape and no focus move, so "Remind me later" was the
+ * last tab stop after the entire page behind the overlay.
+ *
+ * Its own component so the focus move runs when the blocker appears rather
+ * than when the banner mounts.
+ */
+function UpdateBlocker({
+  labelledBy,
+  onDismiss,
+  children,
+}: {
+  labelledBy: string;
+  onDismiss: () => void;
+  children: ReactNode;
+}) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const onKeyDown = useModalChrome(cardRef, onDismiss);
+  return (
+    <div
+      // biome-ignore lint/a11y/useSemanticElements: matches the app's other overlays — <dialog>'s top-layer backdrop conflicts with the overlay stacking
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={labelledBy}
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-pitch/90"
+      onKeyDown={onKeyDown}
+    >
+      <div
+        ref={cardRef}
+        tabIndex={-1}
+        className="mx-4 w-full max-w-lg rounded-lg border-2 border-crimson bg-pitch p-8 shadow-2xl focus:outline-none"
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export function UpdaterBanner() {
   const t = useT();
   const [status, set] = useUpdateStatus();
@@ -282,16 +326,16 @@ export function UpdaterBanner() {
   if (status.state === 'ready' && status.update) {
     const v = status.update;
     return (
-      <div
-        role="alert"
-        className="fixed inset-0 z-[80] flex items-center justify-center bg-pitch/90"
+      <UpdateBlocker
+        labelledBy="update-ready-title"
+        onDismiss={() => set({ state: 'dismissed', update: v })}
       >
-        <div className="mx-4 w-full max-w-lg rounded-lg border-2 border-crimson bg-pitch p-8 shadow-2xl">
+        <div>
           <div className="text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-crimson/20">
               <Download className="h-8 w-8 text-crimson" />
             </div>
-            <h2 className="font-fraktur text-3xl text-crimson">
+            <h2 id="update-ready-title" className="font-fraktur text-3xl text-crimson">
               {t('Action Needed: Update Your Launcher!')}
             </h2>
             <p className="mt-2 font-serif-italic text-parchment">
@@ -344,7 +388,7 @@ export function UpdaterBanner() {
             </button>
           </div>
         </div>
-      </div>
+      </UpdateBlocker>
     );
   }
 
@@ -368,16 +412,18 @@ export function UpdaterBanner() {
   if (status.state === 'migrated' && status.migration) {
     const m = status.migration;
     return (
-      <div
-        role="alert"
-        className="fixed inset-0 z-[80] flex items-center justify-center bg-pitch/90"
+      <UpdateBlocker
+        labelledBy="update-restart-title"
+        onDismiss={() => set({ state: 'dismissed', update: status.update })}
       >
-        <div className="mx-4 w-full max-w-lg rounded-lg border-2 border-crimson bg-pitch p-8 shadow-2xl">
+        <div>
           <div className="text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-crimson/20">
               <Download className="h-8 w-8 text-crimson" />
             </div>
-            <h2 className="font-fraktur text-3xl text-crimson">{t('Ready to restart')}</h2>
+            <h2 id="update-restart-title" className="font-fraktur text-3xl text-crimson">
+              {t('Ready to restart')}
+            </h2>
             <p className="mt-2 font-serif-italic text-parchment">
               {t('v{version} is installed at', { version: m.version })}
               <span className="font-data block mt-1 break-all text-sm text-ash">{m.path}</span>
@@ -414,7 +460,7 @@ export function UpdaterBanner() {
             </button>
           </div>
         </div>
-      </div>
+      </UpdateBlocker>
     );
   }
 

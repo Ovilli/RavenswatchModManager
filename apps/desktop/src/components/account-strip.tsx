@@ -76,6 +76,7 @@ function ProfileMenu({ user }: { user: SessionUser }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const toast = useToast();
 
   useEffect(() => {
@@ -85,7 +86,13 @@ function ProfileMenu({ user }: { user: SessionUser }) {
       if (!wrapRef.current.contains(e.target as Node)) setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key !== 'Escape') return;
+      setOpen(false);
+      // Escape closed the menu but left focus wherever it was, so a keyboard
+      // user landed nowhere and had to tab back through the sidebar to reach
+      // the trigger again. `profile-popover.tsx` does this correctly two files
+      // over.
+      triggerRef.current?.focus();
     }
     document.addEventListener('mousedown', onDocClick);
     document.addEventListener('keydown', onKey);
@@ -125,6 +132,7 @@ function ProfileMenu({ user }: { user: SessionUser }) {
     <div ref={wrapRef} className="relative border-t border-border px-4 py-3">
       <button
         type="button"
+        ref={triggerRef}
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}

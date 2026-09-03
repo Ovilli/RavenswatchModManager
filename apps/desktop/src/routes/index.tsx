@@ -1069,10 +1069,33 @@ function ListView({
             aria-checked={isSelected}
             tabIndex={0}
             onKeyDown={(e) => {
+              // Alt+Arrow reorders. Load order is the entire reason the list
+              // view exists, and it was reachable only by dragging with a
+              // mouse — the grip is decorative and the row's key handler did
+              // nothing but select. Alt, so plain arrows keep scrolling.
+              if (reorderable && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+                e.preventDefault();
+                const to = orderIdx + (e.key === 'ArrowUp' ? -1 : 1);
+                if (to < 0) return;
+                onReorder?.(id, to);
+                // Keep the moved row under the cursor: React re-renders the
+                // list in the new order, and focus would otherwise stay on
+                // whatever now occupies this position.
+                const li = e.currentTarget;
+                requestAnimationFrame(() => {
+                  const moved = li.parentElement?.querySelector<HTMLElement>(
+                    `[data-mod-id="${CSS.escape(id)}"]`,
+                  );
+                  moved?.focus();
+                });
+                return;
+              }
               if (e.key !== 'Enter' && e.key !== ' ') return;
               e.preventDefault();
               onSelect(id);
             }}
+            data-mod-id={id}
+            aria-keyshortcuts={reorderable ? 'Alt+ArrowUp Alt+ArrowDown' : undefined}
             className={[
               'flex items-center gap-3 px-3 py-1.5 text-sm transition-colors',
               isSelected ? 'bg-gilt/15' : 'hover:bg-oxblood/10',
@@ -1081,7 +1104,10 @@ function ListView({
             ].join(' ')}
           >
             {reorderable ? (
-              <GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-ash" />
+              <GripVertical
+                className="h-3.5 w-3.5 shrink-0 cursor-grab text-ash"
+                aria-hidden="true"
+              />
             ) : null}
             <span className="font-mono w-7 shrink-0 text-right text-[0.7rem] text-ash">
               {orderIdx + 1}

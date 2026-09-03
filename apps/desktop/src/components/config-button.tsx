@@ -15,7 +15,7 @@
  * schema (and any parse error in it) is loaded by the panel this opens.
  */
 import { SlidersHorizontal, X } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useT } from '../lib/i18n-react';
 import { Button } from './chrome';
@@ -73,6 +73,21 @@ export function ConfigButton({
     return () => window.removeEventListener('keydown', onKey);
   }, [open, close, confirming]);
 
+  // Move focus into the dialog on open and hand it back to the trigger on
+  // close. Escape is already handled above by a window listener, so this is
+  // the missing half: portalled to the body, the card comes after the whole
+  // app in DOM order, and without a focus move the first tab stop was the
+  // sidebar rather than anything in the panel.
+  const cardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const trigger = document.activeElement as HTMLElement | null;
+    cardRef.current?.focus();
+    return () => {
+      trigger?.focus?.();
+    };
+  }, [open]);
+
   const markDirty = useCallback((_id: string, next: boolean) => setDirty(next), []);
 
   if (!hasConfig) return null;
@@ -111,7 +126,11 @@ export function ConfigButton({
                   so every height change the panel made (skeleton -> fields,
                   error banner appearing) re-centred the card and dragged the
                   button with it — sometimes clean off the top of the screen. */}
-              <div className="grimoire-card relative flex max-h-[86vh] w-[min(720px,94vw)] flex-col p-4">
+              <div
+                ref={cardRef}
+                tabIndex={-1}
+                className="grimoire-card relative flex max-h-[86vh] w-[min(720px,94vw)] flex-col p-4 focus:outline-none"
+              >
                 <header className="flex shrink-0 items-center justify-between gap-3 pb-3">
                   <h2 className="font-fraktur truncate text-xl text-parchment">
                     {modName ?? modId}

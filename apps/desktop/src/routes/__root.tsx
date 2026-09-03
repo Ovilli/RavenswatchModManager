@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom';
 import PromotedBanner from '../components/PromotedBanner';
 import { AccountStrip } from '../components/account-strip';
 import { FirstRunDialogs } from '../components/changelog-dialog';
-import { Button, CopyButton, StatPill } from '../components/chrome';
+import { Button, CopyButton, StatPill, useModalChrome } from '../components/chrome';
 import { CommandPalette } from '../components/command-palette';
 import { BrowseIcon } from '../components/icons/BrowseIcon';
 import { ConflictsIcon } from '../components/icons/ConflictsIcon';
@@ -434,54 +434,15 @@ function WindowControls() {
         <WindowCloseIcon className="h-4 w-4 text-crimson" />
       </button>
 
-      {quitPromptOpen
-        ? createPortal(
-            <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in">
-              <div
-                className="absolute inset-0 bg-pitch/80"
-                onClick={() => !quitBusy && setQuitPromptOpen(false)}
-              />
-              <div className="grimoire-card relative w-[min(520px,92vw)] p-5">
-                <h3 className="font-fraktur text-xl text-parchment">
-                  {t('Quit with active overrides?')}
-                </h3>
-                <p className="font-serif-italic mt-2 text-ash">
-                  {t(
-                    'Ravenswatch is still running with modded files applied. Quitting now leaves those overrides in place until you restore them.',
-                  )}
-                </p>
-                <div className="mt-4 flex flex-nowrap justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setQuitPromptOpen(false)}
-                    disabled={quitBusy}
-                    className="whitespace-nowrap border border-border px-3 py-1.5 text-ash hover:text-parchment disabled:opacity-60"
-                  >
-                    {t('Cancel')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void restoreAndQuit()}
-                    disabled={quitBusy}
-                    className="whitespace-nowrap border border-gilt/60 bg-gilt/20 px-3 py-1.5 text-parchment hover:bg-gilt/30 disabled:opacity-60"
-                  >
-                    {t('Restore & quit')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void closeAnyway()}
-                    disabled={quitBusy}
-                    className="whitespace-nowrap border border-crimson bg-crimson/80 px-3 py-1.5 text-parchment hover:bg-oxblood disabled:opacity-60"
-                  >
-                    {t('Quit anyway')}
-                  </button>
-                </div>
-                {quitError ? <p className="mt-3 text-sm text-crimson">{quitError}</p> : null}
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
+      {quitPromptOpen ? (
+        <QuitPrompt
+          busy={quitBusy}
+          error={quitError}
+          onCancel={() => setQuitPromptOpen(false)}
+          onRestoreAndQuit={() => void restoreAndQuit()}
+          onQuitAnyway={() => void closeAnyway()}
+        />
+      ) : null}
     </div>
   );
 }
@@ -594,5 +555,88 @@ function RootLayout() {
         </LaunchProvider>
       </DialogProvider>
     </ToastProvider>
+  );
+}
+
+/**
+ * Quit while modded files are still applied.
+ *
+ * Its own component so `useModalChrome`'s focus move runs when the PROMPT
+ * mounts, not when the window-controls strip does. Portalled to the body,
+ * which is why the focus move matters: the overlay comes after the whole app
+ * in DOM order, so without it the first tab stop is the sidebar.
+ */
+function QuitPrompt({
+  busy,
+  error,
+  onCancel,
+  onRestoreAndQuit,
+  onQuitAnyway,
+}: {
+  busy: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onRestoreAndQuit: () => void;
+  onQuitAnyway: () => void;
+}) {
+  const t = useT();
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  // Escape means "do not quit" — the safe answer, and the one the backdrop
+  // click already gave. It is ignored mid-restore, where cancelling would
+  // leave the install half-restored.
+  const onKeyDown = useModalChrome(cancelRef, busy ? undefined : onCancel);
+
+  return createPortal(
+    <dialog
+      open
+      aria-labelledby="quit-prompt-title"
+      className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in"
+      onKeyDown={onKeyDown}
+    >
+      <div className="absolute inset-0 bg-pitch/80" onClick={() => !busy && onCancel()} />
+      <div className="grimoire-card relative w-[min(520px,92vw)] p-5">
+        <h3 id="quit-prompt-title" className="font-fraktur text-xl text-parchment">
+          {t('Quit with active overrides?')}
+        </h3>
+        <p className="font-serif-italic mt-2 text-ash">
+          {t(
+            'Ravenswatch is still running with modded files applied. Quitting now leaves those overrides in place until you restore them.',
+          )}
+        </p>
+        <div className="mt-4 flex flex-nowrap justify-end gap-2">
+          <button
+            type="button"
+            ref={cancelRef}
+            onClick={onCancel}
+            disabled={busy}
+            className="whitespace-nowrap border border-border px-3 py-1.5 text-ash hover:text-parchment disabled:opacity-60"
+          >
+            {t('Cancel')}
+          </button>
+          <button
+            type="button"
+            onClick={onRestoreAndQuit}
+            disabled={busy}
+            className="whitespace-nowrap border border-gilt/60 bg-gilt/20 px-3 py-1.5 text-parchment hover:bg-gilt/30 disabled:opacity-60"
+          >
+            {t('Restore & quit')}
+          </button>
+          <button
+            type="button"
+            onClick={onQuitAnyway}
+            disabled={busy}
+            className="whitespace-nowrap border border-crimson bg-crimson/80 px-3 py-1.5 text-parchment hover:bg-oxblood disabled:opacity-60"
+          >
+            {t('Quit anyway')}
+          </button>
+        </div>
+        {error ? (
+          <p className="mt-3 text-sm text-crimson" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    </dialog>,
+    document.body,
   );
 }

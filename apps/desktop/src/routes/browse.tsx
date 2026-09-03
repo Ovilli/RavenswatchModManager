@@ -371,9 +371,12 @@ function BrowsePage() {
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
+          {/* `aria-pressed`, like every other toggle group in the app: colour
+              alone was the only signal that one of these two was active. */}
           <Button
             type="button"
             size="sm"
+            aria-pressed={tab === 'mods'}
             variant={tab === 'mods' ? 'primary' : 'default'}
             onClick={() => setTab('mods')}
           >
@@ -382,6 +385,7 @@ function BrowsePage() {
           <Button
             type="button"
             size="sm"
+            aria-pressed={tab === 'collections'}
             variant={tab === 'collections' ? 'primary' : 'default'}
             onClick={() => setTab('collections')}
           >

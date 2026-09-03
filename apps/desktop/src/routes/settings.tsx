@@ -264,9 +264,11 @@ function SourcesPanel() {
             <button
               type="button"
               onClick={() => update({ sources: settings.sources.filter((s) => s !== src) })}
+              title={t('Remove this source')}
+              aria-label={t('Remove the source {source}', { source: src })}
               className="font-mono text-ash hover:text-crimson"
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           </li>
         ))}
@@ -426,12 +428,14 @@ function LauncherLogPanel() {
           value={logQuery}
           onChange={(e) => setLogQuery(e.target.value)}
           placeholder={t('Search launcher log...')}
+          aria-label={t('Search launcher log')}
           className="font-mono min-w-56 flex-1 border border-border bg-pitch/60 px-3 py-2 text-sm text-parchment placeholder:text-ash focus:border-gilt/60 focus:outline-none"
         />
         <div className="relative inline-flex">
           <select
             value={logLevel}
             onChange={(e) => setLogLevel(e.target.value as 'all' | 'info' | 'warn' | 'error')}
+            aria-label={t('Filter the launcher log by level')}
             className="select-grim font-mono appearance-none border border-border bg-pitch/60 py-2 pl-3 pr-9 text-sm text-parchment focus:border-gilt/60 focus:outline-none"
           >
             <option value="all">{t('All levels')}</option>
@@ -939,21 +943,34 @@ function LoaderFlagsPanel() {
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-parchment">{flag.label}</span>
+                    <span id={`flag-${flag.name}-label`} className="font-mono text-parchment">
+                      {flag.label}
+                    </span>
                     {!flag.safe ? (
                       <span className="font-mono rounded border border-crimson/60 px-1.5 py-0.5 text-[10px] uppercase text-crimson">
                         {t('locked')}
                       </span>
                     ) : null}
                   </div>
-                  <p className="font-serif-italic mt-0.5 text-sm text-ash">{flag.description}</p>
+                  <p
+                    id={`flag-${flag.name}-description`}
+                    className="font-serif-italic mt-0.5 text-sm text-ash"
+                  >
+                    {flag.description}
+                  </p>
                 </div>
+                {/* The <label> wraps only the input, and the name sits in a
+                    sibling above — so every one of these announced as a bare
+                    "checkbox, unchecked". Point at the existing text instead
+                    of duplicating it. */}
                 <label className="flex shrink-0 cursor-pointer items-center gap-2 pt-0.5">
                   <input
                     type="checkbox"
                     checked={on}
                     disabled={!flag.safe || saving === flag.name}
                     onChange={(e) => toggle(flag, e.target.checked).catch(() => undefined)}
+                    aria-labelledby={`flag-${flag.name}-label`}
+                    aria-describedby={`flag-${flag.name}-description`}
                     className="h-4 w-4 accent-crimson disabled:opacity-40"
                   />
                 </label>

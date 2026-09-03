@@ -1,7 +1,7 @@
 import { cn } from '@rsmm/ui';
 import { Copy, EyeOff } from 'lucide-react';
-import { useCallback, useRef, useState } from 'react';
-import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode, RefObject } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useT } from '../lib/i18n-react';
@@ -21,6 +21,47 @@ export function Fleuron({
     <div className={cn('rule-fleuron text-[0.9rem]', className)}>
       <span aria-hidden="true">❦</span>
     </div>
+  );
+}
+
+/**
+ * The keyboard half of a modal: Escape closes it, focus moves into it on open
+ * and returns to whatever opened it on close.
+ *
+ * Extracted from `DialogModal` in components/toast.tsx, which was the only
+ * place in the app doing this correctly. Everything else portals its overlay
+ * to `document.body` — i.e. AFTER the trigger in DOM order — so without a
+ * focus move, reaching the one button in a modal covering the whole window
+ * meant tabbing through the entire app behind it, and Escape did nothing.
+ *
+ * @param focusRef  what to focus on open — the confirming button for a
+ *   question, the card itself (give it `tabIndex={-1}`) for a notice.
+ * @param onClose   Escape's action, or undefined for a modal that must be
+ *   answered rather than dismissed.
+ */
+export function useModalChrome(
+  focusRef: RefObject<HTMLElement | null>,
+  onClose?: () => void,
+): (e: React.KeyboardEvent) => void {
+  useEffect(() => {
+    const trigger = document.activeElement as HTMLElement | null;
+    focusRef.current?.focus();
+    return () => {
+      // Optional-call: the trigger may have unmounted with the thing that
+      // opened this, and a route change replaces it entirely.
+      trigger?.focus?.();
+    };
+    // The ref identity is stable; re-running on it would re-steal focus.
+  }, [focusRef]);
+
+  return useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key !== 'Escape' || !onClose) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
+    },
+    [onClose],
   );
 }
 
