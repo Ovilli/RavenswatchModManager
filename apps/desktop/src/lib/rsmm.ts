@@ -1068,6 +1068,15 @@ export interface OverlayRecord {
   empty?: string;
   /** Set when the manifest declaration is malformed; nothing else is usable. */
   error?: string;
+  /**
+   * The mod's state file — where its live rows land.
+   *
+   * Handed over so a client can follow the file directly instead of re-running
+   * the whole `overlays` command once a second. Keyed on the mod's DIRECTORY
+   * name, which a manifest's declared id may differ from, so use this value
+   * rather than rebuilding the path from `modId`.
+   */
+  statePath?: string;
   rows: Record<string, string | number | boolean>[];
   meta: Record<string, string | number | boolean>;
   /** Unix seconds of the mod's last publish; 0 = never. */
@@ -1087,3 +1096,21 @@ export interface OverlayList {
  * tick.
  */
 export const listOverlays = () => rsmm<OverlayList>(['overlays'], { timeoutMs: 10_000 });
+
+/** Raw contents of a mod's overlay state file. Decoded by `lib/overlay-state`. */
+export interface OverlayStateFile {
+  exists: boolean;
+  size: number;
+  content: string;
+}
+
+/**
+ * Read one mod's live overlay rows straight off disk.
+ *
+ * The whole reason this is not `listOverlays()`: a HUD polls once a second
+ * while the game is being played, and `listOverlays` spawns the bundled Python
+ * and re-parses every installed mod's manifest to do it. Rust reads the one
+ * file instead, refusing any path that is not `<game>/mods/<mod>/.rsmm_state`.
+ */
+export const readOverlayState = (path: string) =>
+  invoke<OverlayStateFile>('read_overlay_state', { path });

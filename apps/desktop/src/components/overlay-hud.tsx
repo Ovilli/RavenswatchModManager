@@ -37,8 +37,14 @@ import {
 import { GripHorizontal } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useT } from '../lib/i18n-react';
+import { readOverlayLive } from '../lib/overlay-state';
 import { savePosition } from '../lib/overlay-windows';
-import { type OverlayColumn, type OverlayRecord, listOverlays } from '../lib/rsmm';
+import {
+  type OverlayColumn,
+  type OverlayRecord,
+  listOverlays,
+  readOverlayState,
+} from '../lib/rsmm';
 import { attachSmoothWheel } from '../lib/smooth-scroll';
 
 /** How often the data is re-read. Mods publish at their own cadence. */
@@ -153,6 +159,9 @@ export function OverlayHud({ modId }: { modId: string }) {
   const [compact, setCompact] = useState(false);
   const [clickThrough, setClickThrough] = useState(false);
   const inFlight = useRef(false);
+  // The declaration, cached for the session. Null means "ask the CLI on the
+  // next tick" — the state of affairs on mount and after a live read failed.
+  const declared = useRef<OverlayRecord | null>(null);
   const prevOrder = useRef<Record<string, number>>({});
   // Height we asked the window for, so a resize event can be told apart from
   // one the PLAYER performed. Once they size it by hand, auto-fit backs off
@@ -180,6 +189,24 @@ export function OverlayHud({ modId }: { modId: string }) {
     };
   }, []);
 
+  /**
+   * Re-read the DECLARATION through the CLI.
+   *
+   * Expensive — it spawns the bundled Python and walks every installed mod's
+   * manifest — so it runs on mount and then only when the live read tells us
+   * the picture has changed (the mod was uninstalled, renamed, or has only
+   * just been applied). It used to run once a second, per open overlay, while
+   * the game was being played.
+   */
+  const loadDeclaration = useCallback(async () => {
+    if (!native) return null;
+    const list = await listOverlays();
+    const found = list?.overlays.find((o) => o.modId === modId) ?? null;
+    setRecord(found);
+    setError(found ? null : `no installed mod "${modId}" declares an overlay`);
+    return found;
+  }, [native, modId]);
+
   const poll = useCallback(async () => {
     if (demo) {
       setRecord(DEMO);
@@ -188,16 +215,29 @@ export function OverlayHud({ modId }: { modId: string }) {
     if (!native || inFlight.current) return;
     inFlight.current = true;
     try {
-      const list = await listOverlays();
-      const found = list?.overlays.find((o) => o.modId === modId) ?? null;
-      setRecord(found);
-      setError(found ? null : `no installed mod "${modId}" declares an overlay`);
+      // No declaration yet (first tick, or the mod was not installed last
+      // time we looked): that is the one case worth paying for the CLI.
+      const declaration = declared.current ?? (await loadDeclaration());
+      declared.current = declaration;
+      if (!declaration?.statePath) return;
+
+      const state = await readOverlayState(declaration.statePath);
+      const live = state.exists
+        ? readOverlayLive(state.content, declaration.sort ?? null)
+        : { rows: [], meta: {}, updated: 0, exists: false };
+      setRecord((cur) => (cur ? { ...cur, ...live } : { ...declaration, ...live }));
+      setError(null);
     } catch (e) {
+      // The state file went away or became unreadable — most likely the mod
+      // was uninstalled or re-applied under the player's feet. Drop the cached
+      // declaration so the next tick re-asks the CLI and can report that
+      // properly, rather than showing a stale HUD or going blank.
+      declared.current = null;
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       inFlight.current = false;
     }
-  }, [demo, native, modId]);
+  }, [demo, native, loadDeclaration]);
 
   useEffect(() => {
     void poll();

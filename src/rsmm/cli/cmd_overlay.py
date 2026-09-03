@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 import time
 import tomllib
@@ -187,9 +188,17 @@ def parse_kv(text: str) -> dict[str, object]:
             out[key] = _unescape(value)
         elif kind == "n":
             try:
-                out[key] = float(value)
+                n = float(value)
             except ValueError:
                 continue
+            # `float()` happily accepts "NaN" and "inf", and neither survives
+            # what happens next: `int(nan)` raises ValueError and `int(inf)`
+            # raises OverflowError, so one such line in a mod's state file took
+            # the whole command down. Not representable in JSON either, so the
+            # desktop client's mirror of this parser drops them too.
+            if not math.isfinite(n):
+                continue
+            out[key] = n
         elif kind == "b":
             out[key] = value == "1"
     return out
@@ -303,6 +312,13 @@ def _read_one(entry: Path, mf: Path, game_dir: Path | str | None,
         # Which tree the DECLARATION came from. "library" means the mod has not
         # been applied yet, so it will have no rows until it is.
         "source": source,
+        # Where the live rows come from, so a client can follow the file itself
+        # instead of re-running this whole command once a second. Keyed on the
+        # DIRECTORY name, not on `modId` — a manifest may declare an id that
+        # differs from its folder, and only the folder is where the state
+        # actually lands. A consumer must therefore use this value rather than
+        # rebuild the path from `modId`.
+        "statePath": str(state_file(game_dir, entry.name)),
     }
     try:
         spec = parse_spec(raw, mod_id=mod_id)
