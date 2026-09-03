@@ -287,7 +287,7 @@ function CollectionDetailPage() {
           '{n} mods',
         )} · ${new Date(updatedAt).toLocaleDateString(t.tag)}`}
         right={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {allInstalled ? (
               <MonoTag tone="gilt">{t('all installed')}</MonoTag>
             ) : mods.length > 0 ? (

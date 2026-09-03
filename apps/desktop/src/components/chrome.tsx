@@ -395,11 +395,17 @@ export function SectionHeader({
   return (
     <header
       className={cn(
-        'rsmm-section-header flex items-end justify-between gap-6',
+        // Wrapping, not just `justify-between`. The right slot is `shrink-0`
+        // (a button group must never be squashed into its label), so on a
+        // narrow window the row could only grow past the page instead of
+        // giving. The sidebar makes that closer than it looks: at a 960px
+        // window the content area is ~670px, while Tailwind's `md:` still
+        // fires because breakpoints watch the VIEWPORT, not this column.
+        'rsmm-section-header flex flex-wrap items-end justify-between gap-x-6 gap-y-3',
         compact ? 'gap-3 pb-2' : 'pb-4',
       )}
     >
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <h2
           className={cn(
             'font-fraktur leading-none text-parchment',

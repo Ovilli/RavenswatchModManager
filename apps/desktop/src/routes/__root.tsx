@@ -159,8 +159,8 @@ function StatusStrip() {
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
-        <div className="flex items-center gap-2 pr-2" style={noDragStyle}>
+      <div className="flex min-w-0 shrink items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2 pr-2" style={noDragStyle}>
           <Button
             type="button"
             size="sm"
@@ -203,8 +203,13 @@ function StatusStrip() {
         </div>
 
         {launchError ? (
-          <span className="flex items-center gap-2 text-xs text-destructive" role="alert">
-            <span className="truncate max-w-[300px]">{launchError}</span>
+          // `min-w-0` + a proportional cap, not a fixed 300px: this sits
+          // inside the `shrink-0` right cluster, beside two 11rem launch
+          // buttons, so a fixed width made the strip wider than a narrow
+          // window and pushed the window controls off the edge. It gives
+          // ground first now — the full text is a copy button away.
+          <span className="flex min-w-0 items-center gap-2 text-xs text-destructive" role="alert">
+            <span className="min-w-0 flex-1 truncate">{launchError}</span>
             <CopyButton value={t('Launch error: {error}', { error: launchError })} />
             {/* A failed launch used to pin its message into the status strip
                 until the next launch attempt: `clearError` existed with no

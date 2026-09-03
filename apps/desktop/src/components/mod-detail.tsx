@@ -290,7 +290,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
         }`}
         right={
           installedHere && liveBySlug ? (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               {/* The page used to show only the tag, so enabling a mod meant
                   navigating back to the Library. Same hook as the Library, so
                   the dependency prompts are identical here. */}

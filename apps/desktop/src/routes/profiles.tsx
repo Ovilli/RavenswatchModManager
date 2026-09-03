@@ -3,7 +3,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { invoke } from '@tauri-apps/api/core';
 import { Copy, Download, FolderOpen, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
+import { Button, Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
 import { CheckIcon } from '../components/icons/CheckIcon';
 import { useDialog, useToast } from '../components/toast';
 import { useT } from '../lib/i18n-react';
@@ -196,28 +196,16 @@ function ProfilesPage() {
         title={t('Profiles')}
         subtitle={t('Different loadouts for different runs. Share one as a code.')}
         right={
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setImporting((v) => !v)}
-              className="flex items-center gap-2 border border-border px-3 py-2 hover:border-gilt/50"
-            >
-              <Upload className="h-4 w-4" /> {t('Import')}
-            </button>
-            <button
-              type="button"
-              onClick={() => setImportingBackup((v) => !v)}
-              className="flex items-center gap-2 border border-border px-3 py-2 hover:border-gilt/50"
-            >
-              <Upload className="h-4 w-4" /> {t('Backup')}
-            </button>
-            <button
-              type="button"
-              onClick={onNewProfile}
-              className="flex items-center gap-2 border border-crimson bg-crimson/80 px-3 py-2 text-parchment hover:bg-oxblood transition-colors duration-150"
-            >
-              <Plus className="h-4 w-4" /> {t('New profile')}
-            </button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button type="button" onClick={() => setImporting((v) => !v)}>
+              <Upload className="h-4 w-4" aria-hidden="true" /> {t('Import')}
+            </Button>
+            <Button type="button" onClick={() => setImportingBackup((v) => !v)}>
+              <Upload className="h-4 w-4" aria-hidden="true" /> {t('Backup')}
+            </Button>
+            <Button type="button" variant="primary" onClick={onNewProfile}>
+              <Plus className="h-4 w-4" aria-hidden="true" /> {t('New profile')}
+            </Button>
           </div>
         }
       />
@@ -241,20 +229,12 @@ function ProfilesPage() {
             </p>
           ) : null}
           <div className="mt-3 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setImporting(false)}
-              className="border border-border px-3 py-1.5 text-ash hover:text-parchment"
-            >
+            <Button type="button" size="sm" onClick={() => setImporting(false)}>
               {t('Cancel')}
-            </button>
-            <button
-              type="button"
-              onClick={onImport}
-              className="border border-crimson bg-crimson/80 px-3 py-1.5 text-parchment hover:bg-oxblood"
-            >
+            </Button>
+            <Button type="button" size="sm" variant="primary" onClick={onImport}>
               {t('Import')}
-            </button>
+            </Button>
           </div>
         </Panel>
       ) : null}
@@ -278,39 +258,27 @@ function ProfilesPage() {
             </p>
           ) : null}
           <div className="mt-3 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setImportingBackup(false)}
-              className="border border-border px-3 py-1.5 text-ash hover:text-parchment"
-            >
+            <Button type="button" size="sm" onClick={() => setImportingBackup(false)}>
               {t('Cancel')}
-            </button>
-            <button
-              type="button"
-              onClick={onImportBackup}
-              className="border border-crimson bg-crimson/80 px-3 py-1.5 text-parchment hover:bg-oxblood"
-            >
+            </Button>
+            <Button type="button" size="sm" variant="primary" onClick={onImportBackup}>
               {t('Import backup')}
-            </button>
+            </Button>
           </div>
         </Panel>
       ) : null}
 
       <Panel>
-        <div className="flex items-center justify-between gap-3">
-          <div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
             <h3 className="font-fraktur text-lg text-parchment mb-2">{t('Backup')}</h3>
             <p className="font-serif-italic text-ash">
               {t('Save or restore all profiles, the active profile, and settings.')}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onExportBackup}
-            className="flex items-center gap-1.5 border border-border px-3 py-2 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
-          >
-            <Download className="h-3.5 w-3.5" /> {t('Export backup')}
-          </button>
+          <Button type="button" size="sm" onClick={onExportBackup}>
+            <Download className="h-3.5 w-3.5" aria-hidden="true" /> {t('Export backup')}
+          </Button>
         </div>
       </Panel>
 
@@ -330,7 +298,12 @@ function ProfilesPage() {
         </Panel>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      {/* `xl`, not `md`. Tailwind breakpoints watch the VIEWPORT, but the
+          sidebar takes 288px off this column before it starts: at the `md`
+          width of 768px a "two-column" grid is two ~230px cards, and a profile
+          card carries six actions plus a mod list. Splitting only once the
+          window is genuinely wide keeps each card usable. */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {profiles.map((p) => {
           const isActive = p.id === activeId;
           // Count what actually exists. A profile whose mods were deleted
@@ -421,58 +394,47 @@ function ProfilesPage() {
                   }}
                   className="font-mono mt-3 w-full border border-crimson/60 px-2.5 py-1.5 text-xs text-crimson hover:bg-crimson/10"
                 >
-                  {t('Remove {n} missing', { n: missing.length })}
+                  <span className="truncate">{t('Remove {n} missing', { n: missing.length })}</span>
                 </button>
               ) : null}
 
-              <div className="mt-4 flex items-start justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  {!isActive ? (
-                    <button
-                      type="button"
-                      onClick={() => setActive(p.id)}
-                      className="flex items-center gap-1.5 border border-crimson bg-crimson/80 px-2.5 py-1.5 text-sm text-parchment hover:bg-oxblood"
-                    >
-                      <CheckIcon className="h-4 w-4" /> {t('Activate')}
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => duplicate(p.id)}
-                    className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
-                  >
-                    <Copy className="h-3.5 w-3.5" /> {t('Duplicate')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onRename(p.id, p.name)}
-                    className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
-                  >
-                    <Pencil className="h-3.5 w-3.5" /> {t('Rename')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onExport(p.id)}
-                    className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
-                  >
-                    <Download className="h-3.5 w-3.5" /> {t('Export')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onOpenFolder(p.id)}
-                    className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
-                  >
-                    <FolderOpen className="h-3.5 w-3.5" /> {t('Open folder')}
-                  </button>
-                </div>
+              {/* ONE wrapping row, not a wrapping group pinned opposite a
+                  fixed Delete: `justify-between` gave the group all the slack
+                  and squeezed Delete against the card edge, and these were
+                  hand-rolled buttons with none of `.btn-grim`'s `flex: none;
+                  white-space: nowrap`, so their labels wrapped under their
+                  icons. In a two-column grid at a 960px window each card is
+                  only ~330px wide, which is where that first shows. */}
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                {!isActive ? (
+                  <Button type="button" size="sm" variant="primary" onClick={() => setActive(p.id)}>
+                    <CheckIcon className="h-4 w-4" aria-hidden="true" /> {t('Activate')}
+                  </Button>
+                ) : null}
+                <Button type="button" size="sm" onClick={() => duplicate(p.id)}>
+                  <Copy className="h-3.5 w-3.5" aria-hidden="true" /> {t('Duplicate')}
+                </Button>
+                <Button type="button" size="sm" onClick={() => onRename(p.id, p.name)}>
+                  <Pencil className="h-3.5 w-3.5" aria-hidden="true" /> {t('Rename')}
+                </Button>
+                <Button type="button" size="sm" onClick={() => onExport(p.id)}>
+                  <Download className="h-3.5 w-3.5" aria-hidden="true" /> {t('Export')}
+                </Button>
+                <Button type="button" size="sm" onClick={() => onOpenFolder(p.id)}>
+                  <FolderOpen className="h-3.5 w-3.5" aria-hidden="true" /> {t('Open folder')}
+                </Button>
                 {profiles.length > 1 ? (
-                  <button
+                  <Button
                     type="button"
+                    size="sm"
+                    // Pushed to the end of the wrapping row rather than pinned
+                    // opposite it, so it keeps its distance when there is room
+                    // and simply wraps with the rest when there is not.
+                    className="ml-auto hover:border-crimson hover:text-crimson"
                     onClick={() => onDelete(p.id, p.name)}
-                    className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 text-sm text-ash hover:border-crimson hover:text-crimson"
                   >
-                    <Trash2 className="h-3.5 w-3.5" /> {t('Delete')}
-                  </button>
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> {t('Delete')}
+                  </Button>
                 ) : null}
               </div>
             </article>

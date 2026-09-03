@@ -280,8 +280,8 @@ function CommandsPage() {
       </Panel>
 
       <Panel>
-        <div className="flex items-center justify-between gap-3">
-          <div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
             <h3 className="font-fraktur text-xl text-parchment">{t('Command log')}</h3>
             <p className="font-serif-italic mt-1 text-ash">
               {t('Outputs from the last commands you ran in this page.')}

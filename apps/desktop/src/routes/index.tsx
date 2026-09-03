@@ -462,7 +462,7 @@ function LibraryPage() {
           '{n} mods in the local folder.',
         )}
         right={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <Button
               type="button"
               onClick={() => void changeView('cards')}
@@ -663,7 +663,7 @@ function LibraryPage() {
           {conflicts.length > 0 ? (
             <Link
               to="/conflicts"
-              className="ember-banner flex items-center justify-between px-4 py-3"
+              className="ember-banner flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3"
             >
               <span className="flex items-center gap-3">
                 <AlertTriangle className="h-4 w-4 text-crimson" />
@@ -742,7 +742,7 @@ function LibraryPage() {
           ))}
 
           {view === 'config' && hasDirtyConfigs ? (
-            <div className="ember-banner flex items-center justify-between gap-3 px-4 py-3">
+            <div className="ember-banner flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3">
               <span className="font-serif-italic text-base">
                 {t.n(
                   dirtyConfigs.size,
