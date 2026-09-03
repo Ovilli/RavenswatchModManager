@@ -1,6 +1,23 @@
 {
-  "generated": "2026-09-02",
+  "generated": "2026-09-03",
   "entries": [
+    {
+      "version": "5.5.0",
+      "date": "2026-09-03",
+      "summary": "Overlay HUDs stop launching a background process every second while you play, the window remembers where you left it, uninstalling asks first, and toolbars no longer run off the edge in a smaller window.",
+      "highlights": [
+        "Overlay HUDs no longer start a background process once a second while the game is running — they read the mod's data straight from disk instead.",
+        "The window remembers its size and position between launches, and refuses to reopen off-screen if you unplug the monitor it was on.",
+        "Uninstalling a mod asks first. Uninstalling several reports each one, so a single failure no longer silently abandons the rest.",
+        "Buttons, cards and toolbars no longer overflow when the window is not full width — the Profiles actions and the Browse install button especially.",
+        "A mod versioned 1.0 is no longer treated as older than 1.0.0, which left an update badge showing forever and reinstalled the mod on every 'Update all'.",
+        "The Conflicts screen no longer reports 'all quiet' while it is still checking, or after the check fails.",
+        "Dialogs close with Escape and move focus into themselves, so they can be answered without tabbing through the whole app first.",
+        "Load order can be rearranged from the keyboard with Alt+Up / Alt+Down.",
+        "Settings no longer rewrites its whole store on every keystroke while you type a path.",
+        "Commands that rewrite the game install — Apply, Restore, Build, Doctor + repair — now confirm before running."
+      ]
+    },
     {
       "version": "",
       "loader_version": 12,
