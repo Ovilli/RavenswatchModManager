@@ -97,29 +97,65 @@ pub fn rsmm_runtime_env() -> RsmmRuntimeEnv {
     RsmmRuntimeEnv { repo_root, path }
 }
 
+/// Make sure the sidecar is executable, without writing permissions on every
+/// single call. A fresh extraction can land without the bit set; after the
+/// first fix it stays fixed.
+#[cfg(unix)]
+fn ensure_executable(path: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let Ok(meta) = std::fs::metadata(path) else {
+        return;
+    };
+    if meta.permissions().mode() & 0o111 != 0 {
+        return;
+    }
+    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
+}
+
 /// Run `rsmm` directly, bypassing the shell plugin's PATH / sidecar
 /// resolution entirely. In dev mode finds the Python wrapper at the repo
 /// root; in production runs the bundled sidecar via `std::process::Command`.
 /// Used by the TypeScript probe as a fallback when the shell plugin fails.
+///
+/// `env` is the per-profile environment the frontend computed (`RSMM_MODS_DIR`,
+/// `RSMM_GAME_DIR`, `PATH`). It is NOT optional decoration: without it every
+/// command taking this path ran against the CLI's default mods directory no
+/// matter which profile was active, silently undoing the isolation
+/// `rsmmEnv` exists to provide. Applied on top of the inherited environment,
+/// so a caller that passes nothing still gets a working child.
+///
+/// `async` on purpose. As a sync command this ran on the main thread and held
+/// it for the child's entire life — up to the ten-minute timeout that `apply`
+/// uses — so the window froze for the duration. The work goes to the blocking
+/// pool instead.
 #[tauri::command]
-pub fn probe_rsmm(app: tauri::AppHandle, args: Vec<String>) -> Result<RsmmExecResult, String> {
+pub async fn probe_rsmm(
+    app: tauri::AppHandle,
+    args: Vec<String>,
+    env: Option<std::collections::HashMap<String, String>>,
+) -> Result<RsmmExecResult, String> {
     let rsmm = rsmm_path()
         .or_else(|| sidecar_path(&app))
         .ok_or_else(|| "rsmm not found".to_string())?;
 
     #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&rsmm, std::fs::Permissions::from_mode(0o755));
-    }
+    ensure_executable(&rsmm);
 
-    let output = std::process::Command::new(&rsmm)
-        .args(&args)
-        .output()
-        .map_err(|e| format!("failed to spawn {rsmm:?}: {e}"))?;
-    Ok(RsmmExecResult {
-        code: output.status.code(),
-        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut cmd = std::process::Command::new(&rsmm);
+        cmd.args(&args);
+        if let Some(env) = env {
+            cmd.envs(env);
+        }
+        let output = cmd
+            .output()
+            .map_err(|e| format!("failed to spawn {rsmm:?}: {e}"))?;
+        Ok(RsmmExecResult {
+            code: output.status.code(),
+            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        })
     })
+    .await
+    .map_err(|e| format!("rsmm probe task failed: {e}"))?
 }

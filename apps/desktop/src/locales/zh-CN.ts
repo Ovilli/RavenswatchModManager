@@ -57,6 +57,12 @@ export const zhCN: Record<string, string> = {
   All: '全部',
   'All levels': '全部级别',
   'All quiet': '风平浪静',
+  'Checking for conflicts…': '正在检查冲突…',
+  'Could not check for conflicts': '无法检查冲突',
+  'Could not read the installed mods': '无法读取已安装的模组',
+  'The mod names below may be incomplete until this succeeds.':
+    '在此成功之前，下面的模组名称可能不完整。',
+  'Dismiss the launch error': '关闭启动错误',
   'All subsystems': '全部子系统',
   'Already have an account?': '已有账户？',
   'Already in "{profile}"': '已在“{profile}”中',

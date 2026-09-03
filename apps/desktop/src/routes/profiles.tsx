@@ -48,6 +48,17 @@ function ProfilesPage() {
     if (localModsQuery.data) syncLocalMods(localModsQuery.data);
   }, [localModsQuery.data, syncLocalMods]);
 
+  /**
+   * Whether the on-disk mod list is actually known yet.
+   *
+   * Until the sidecar answers, `getMod(id)` is undefined for EVERYTHING, so
+   * every entry in every profile rendered as crimson "not on disk" and the
+   * "N missing" counter offered to prune the lot — a scary, wrong report on
+   * first paint, and a permanent one if the CLI is broken. Absence of an
+   * answer is not evidence of absence.
+   */
+  const modsKnown = localModsQuery.isSuccess;
+
   const t = useT();
   const dialog = useDialog();
   const toast = useToast();
@@ -303,13 +314,33 @@ function ProfilesPage() {
         </div>
       </Panel>
 
+      {localModsQuery.isError ? (
+        <Panel className="border-crimson">
+          <p className="font-fraktur text-lg text-parchment">
+            {t('Could not read the installed mods')}
+          </p>
+          <p className="font-data mt-2 break-words text-sm text-ash">
+            {localModsQuery.error instanceof Error
+              ? localModsQuery.error.message
+              : String(localModsQuery.error)}
+          </p>
+          <p className="font-serif-italic mt-2 text-sm text-ash">
+            {t('The mod names below may be incomplete until this succeeds.')}
+          </p>
+        </Panel>
+      ) : null}
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {profiles.map((p) => {
           const isActive = p.id === activeId;
           // Count what actually exists. A profile whose mods were deleted
           // outside the app still holds their ids, and reporting those as
           // "12 total" is what made empty profiles look full.
-          const { present, missing } = splitProfileMods(p);
+          const split = splitProfileMods(p);
+          // Before the list is known, treat every id as present rather than
+          // as missing: the same "we do not know" reading as `modsKnown`.
+          const present = modsKnown ? split.present : p.loadOrder;
+          const missing = modsKnown ? split.missing : [];
           const enabled = present.filter((id) => isEnabledIn(p, id)).length;
           return (
             <article key={p.id} className="grimoire-card min-w-0 p-5">
@@ -350,6 +381,15 @@ function ProfilesPage() {
                     // Say so instead of printing the raw id as if it were a
                     // real (merely disabled) mod.
                     if (!mod) {
+                      // Only accuse the id of being absent once we have been
+                      // told what IS on disk.
+                      if (!modsKnown) {
+                        return (
+                          <li key={id} className="text-smoke" title={id}>
+                            {id}
+                          </li>
+                        );
+                      }
                       return (
                         <li key={id} className="text-crimson/80" title={id}>
                           {id} <span className="font-mono text-[11px]">{t('— not on disk')}</span>

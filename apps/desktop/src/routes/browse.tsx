@@ -949,6 +949,15 @@ function ProfilePicker({
   const t = useT();
   const selectable = profiles.filter((p) => p.id !== 'default');
   const [creating, setCreating] = useState(selectable.length === 0);
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  // Focus the field ONCE, when the create form appears. An inline
+  // `ref={(el) => el?.focus()}` has a new identity every render, so React
+  // detached and reattached it and re-ran `focus()` on every keystroke and
+  // every parent re-render.
+  useEffect(() => {
+    if (creating) nameRef.current?.focus();
+  }, [creating]);
   const [name, setName] = useState('');
   const rootRef = useRef<HTMLDialogElement>(null);
 
@@ -1014,7 +1023,7 @@ function ProfilePicker({
             </label>
             <input
               id="new-profile-name"
-              ref={(el) => el?.focus()}
+              ref={nameRef}
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {

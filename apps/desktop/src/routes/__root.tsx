@@ -1,7 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { Link, Outlet, createRootRouteWithContext, useLocation } from '@tanstack/react-router';
 import { AlertTriangle } from 'lucide-react';
-import { PanelLeftClose, PanelLeftOpen, ScrollText, Terminal } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, ScrollText, Terminal, X } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -129,7 +129,7 @@ function NavLink({ to, icon: Icon, label: source, collapsed }: Nav & { collapsed
 
 function StatusStrip() {
   const t = useT();
-  const { launching, running, launchError, busy, launch } = useLaunch();
+  const { launching, running, launchError, busy, launch, clearError } = useLaunch();
   const profile = useApp(activeProfile);
   const installed = useApp((s) => s.installed);
   const localMods = useApp((s) => s.localMods);
@@ -205,6 +205,18 @@ function StatusStrip() {
           <span className="flex items-center gap-2 text-xs text-destructive" role="alert">
             <span className="truncate max-w-[300px]">{launchError}</span>
             <CopyButton value={t('Launch error: {error}', { error: launchError })} />
+            {/* A failed launch used to pin its message into the status strip
+                until the next launch attempt: `clearError` existed with no
+                caller anywhere. */}
+            <button
+              type="button"
+              onClick={clearError}
+              title={t('Dismiss')}
+              aria-label={t('Dismiss the launch error')}
+              className="shrink-0 text-ash transition-colors duration-150 hover:text-parchment"
+            >
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
           </span>
         ) : null}
         {/* Hidden rather than squashed below `lg`. The cluster is `shrink-0`

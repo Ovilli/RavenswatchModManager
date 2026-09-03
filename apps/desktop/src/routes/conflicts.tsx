@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute } from '@tanstack/react-router';
 import { AlertTriangle, FileType, ShieldCheck, Swords } from 'lucide-react';
-import { Button, Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
+import { Button, CopyButton, Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
+import { useModToggle } from '../components/use-mod-toggle';
 import { msg } from '../lib/i18n';
 import { useT } from '../lib/i18n-react';
 import { type ConflictEntry, getConflicts } from '../lib/rsmm';
@@ -41,26 +42,69 @@ const TYPE_META: Record<
 function ConflictsPage() {
   const t = useT();
   const profile = useApp(activeProfile);
-  const toggle = useApp((s) => s.toggleMod);
-  const { data } = useQuery({
+  // The shared guard, not the raw store action: disabling a mod others depend
+  // on has to raise the broken-dependency prompt here too. Going straight to
+  // `toggleMod` meant the Library and the mod page warned and this screen did
+  // not, which is the screen most likely to disable something.
+  const { enableMods, disableMods } = useModToggle();
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['conflicts'],
     queryFn: getConflicts,
   });
   const conflicts = data ?? [];
 
-  // Resolve a conflict group atomically against the current render snapshot.
-  // Each id is toggled at most once, so the snapshot stays accurate.
+  // Resolve a conflict group in ONE call per direction rather than a toggle
+  // per mod: `toggle` raises the dependency prompt itself, so a loop over it
+  // would ask once per mod and each answer would be judged against the same
+  // pre-prompt profile snapshot. The batch form asks once and applies once.
   const keepOnly = (keepId: string, group: string[]) => {
-    if (!isEnabledIn(profile, keepId)) toggle(keepId);
-    for (const other of group) {
-      if (other !== keepId && isEnabledIn(profile, other)) toggle(other);
-    }
+    if (!isEnabledIn(profile, keepId)) void enableMods([keepId]);
+    const others = group.filter((id) => id !== keepId && isEnabledIn(profile, id));
+    if (others.length) void disableMods(others);
   };
   const disableAll = (group: string[]) => {
-    for (const id of group) {
-      if (isEnabledIn(profile, id)) toggle(id);
-    }
+    const on = group.filter((id) => isEnabledIn(profile, id));
+    if (on.length) void disableMods(on);
   };
+
+  // An empty list is not the same answer as "we have not been told yet" or
+  // "we could not find out". Both used to render the reassuring "All quiet"
+  // panel below — on the one screen whose entire job is to warn you.
+  if (isLoading || isError) {
+    return (
+      <div className="space-y-6">
+        <SectionHeader
+          title={t('Conflicts')}
+          subtitle={t('File, patch, and manifest conflicts among enabled mods.')}
+        />
+        {isError ? (
+          <Panel className="border-crimson">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-crimson" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <p className="font-fraktur text-xl text-parchment">
+                  {t('Could not check for conflicts')}
+                </p>
+                <p className="font-data mt-2 break-words text-sm text-ash">
+                  {error instanceof Error ? error.message : String(error)}
+                </p>
+                <div className="mt-4 flex items-center gap-2">
+                  <Button type="button" size="sm" onClick={() => void refetch()}>
+                    {t('Try again')}
+                  </Button>
+                  <CopyButton value={error instanceof Error ? error.message : String(error)} />
+                </div>
+              </div>
+            </div>
+          </Panel>
+        ) : (
+          <Panel className="flex flex-col items-center gap-3 py-12 text-center">
+            <p className="font-serif-italic text-ash">{t('Checking for conflicts…')}</p>
+          </Panel>
+        )}
+      </div>
+    );
+  }
 
   if (conflicts.length === 0) {
     return (
@@ -169,7 +213,7 @@ function ConflictsPage() {
                             {enabled ? t('Keep this one') : t('Enable this one')}
                           </Button>
                           {enabled ? (
-                            <Button type="button" size="sm" onClick={() => toggle(id)}>
+                            <Button type="button" size="sm" onClick={() => void disableMods([id])}>
                               {t('Disable this mod')}
                             </Button>
                           ) : null}

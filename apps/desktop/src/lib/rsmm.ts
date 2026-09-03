@@ -67,6 +67,22 @@ class RsmmTimeoutError extends RsmmError {
   }
 }
 
+/**
+ * The child started and then failed — a crash, a stream error, a signal.
+ *
+ * Typed on purpose. The discovery loop retries the next program on any plain
+ * `Error`, which is right for "this program does not exist" and badly wrong
+ * once the process has actually run: a failing `apply` or `install-mod` would
+ * be executed a SECOND time against the mods tree. Being an `RsmmError` makes
+ * the loop rethrow instead.
+ */
+class RsmmRunError extends RsmmError {
+  constructor(args: string[], message: string) {
+    super(`rsmm ${args.join(' ')} failed: ${message}`, args);
+    this.name = 'RsmmRunError';
+  }
+}
+
 class RsmmAbortError extends RsmmError {
   constructor(args: string[]) {
     super(`rsmm ${args.join(' ')} aborted`, args);
@@ -208,7 +224,13 @@ async function execute(args: string[], options: RsmmOptions): Promise<ExecResult
   // First call: probe programs in order. Subsequent calls: use the
   // resolved one. If discovery fails, keep retrying on later calls so
   // a transient startup env issue doesn't permanently poison the app.
-  if (resolvedProg === undefined) {
+  //
+  // `!useRustProbe` matters: adopting the Rust probe does not set
+  // `resolvedProg` (there is no shell program to name), so without it every
+  // later call re-entered this loop, re-attempted and re-failed the sidecar
+  // spawn, and only then reached the probe again — one wasted spawn plus an
+  // IPC round trip per command, forever, and the fast path below was dead code.
+  if (resolvedProg === undefined && !useRustProbe) {
     for (const name of SIDECAR_PROGS) {
       try {
         const probe = createCommand(name, args, opts);
@@ -227,7 +249,7 @@ async function execute(args: string[], options: RsmmOptions): Promise<ExecResult
       // the CLI exists — keying adoption on `code === 0` meant one legitimately
       // failing command (a failed apply) made the app declare the CLI missing.
       const probeResult = await withTimeout(
-        invoke<ExecResult>('probe_rsmm', { args }),
+        invoke<ExecResult>('probe_rsmm', { args, env }),
         args,
         timeoutMs,
       );
@@ -248,7 +270,7 @@ async function execute(args: string[], options: RsmmOptions): Promise<ExecResult
       // `rsmm()` turns it into an RsmmExitError carrying the real stderr.
       // Reporting it as "CLI not found" hid every genuine failure behind a
       // reinstall prompt and threw away the resolution on the way out.
-      return await withTimeout(invoke<ExecResult>('probe_rsmm', { args }), args, timeoutMs);
+      return await withTimeout(invoke<ExecResult>('probe_rsmm', { args, env }), args, timeoutMs);
     } catch (err) {
       if (err instanceof RsmmError) throw err; // timeout
       useRustProbe = false;
@@ -257,6 +279,11 @@ async function execute(args: string[], options: RsmmOptions): Promise<ExecResult
     }
   }
 
+  // Unreachable: discovery above either resolved a program, adopted the Rust
+  // probe (handled just above), or threw. Stated rather than asserted so the
+  // narrowing is explicit and a future edit to the branches cannot silently
+  // hand `undefined` to the shell plugin.
+  if (resolvedProg === undefined) throw new RsmmCliMissingError(args);
   const cmd = createCommand(resolvedProg, args, opts);
   return runWithLifecycle(resolvedProg, cmd, args, options, timeoutMs);
 }
@@ -278,18 +305,22 @@ async function runWithLifecycle(
   options: RsmmOptions,
   timeoutMs: number,
 ): Promise<ExecResult> {
-  // Streaming or explicit cancellation requires spawn() with event
-  // listeners. Otherwise stick with the simpler execute() path and
-  // wrap a wallclock timeout around it.
-  if (options.onStdout || options.onStderr || options.signal) {
-    try {
-      return await spawnWithLifecycle(name, cmd, args, options, timeoutMs);
-    } catch (err) {
-      // Cancellation has no execute() equivalent, so only the callers that
-      // merely wanted output lines can degrade to the plain path. Losing a
-      // progress meter beats losing the command.
-      if (options.signal || !isSpawnForbidden(err)) throw err;
-    }
+  // EVERY command goes through spawn(), not only the streaming ones.
+  //
+  // `execute()` gives back a finished result and no handle, so its child was
+  // invisible to `liveChildren` and therefore to `killLiveChildren()` — which
+  // covered `install-mod`, `uninstall-mod` and a plain `apply`, i.e. exactly
+  // the long-running writers whose orphaned `rsmm.exe` keeps holding the mods
+  // directory. That orphan is the whole reason `lib/quit.ts` exists, so the
+  // quit path could not fix the case it was written for. A tracked child can
+  // also be killed on timeout instead of being left to run.
+  try {
+    return await spawnWithLifecycle(name, cmd, args, options, timeoutMs);
+  } catch (err) {
+    // Cancellation has no execute() equivalent, so only the callers that
+    // merely wanted output lines can degrade to the plain path. Losing a
+    // progress meter beats losing the command.
+    if (options.signal || !isSpawnForbidden(err)) throw err;
   }
   const result = await withTimeout(cmd.execute(), args, timeoutMs);
   resolvedProg = name as ProgName;
@@ -418,7 +449,10 @@ function spawnWithLifecycle(
 
     cmd.on('error', (err: string) => {
       if (child) liveChildren.delete(child);
-      finish(() => reject(new Error(err)), timeoutHandle);
+      // Started and then died: the command ran, so this must not be retried
+      // against another program. Only a failure to spawn at all is a
+      // discovery miss, and that arrives on the rejection below.
+      finish(() => reject(new RsmmRunError(args, err)), timeoutHandle);
     });
 
     cmd.spawn().then(
