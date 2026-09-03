@@ -30,6 +30,7 @@ import { shortcutLabel } from '../lib/platform';
 import { quitApp } from '../lib/quit';
 import { restoreAll } from '../lib/rsmm';
 import { attachSmoothWheel } from '../lib/smooth-scroll';
+import { trackMainWindow } from '../lib/window-state';
 import { activeProfile, detectConflicts, isEnabledIn, outdatedCount, useApp } from '../store';
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
@@ -465,6 +466,11 @@ function RootLayout() {
   // document so dialogs, the log view and every list get the same feel as the
   // main area — including ones added later. Trackpads are untouched.
   useEffect(() => attachSmoothWheel(document), []);
+
+  // Remember where the user put the window. Mounted from the root route, which
+  // the overlay windows never render — they draw `OverlayHud` directly and
+  // keep their own per-mod geometry.
+  useEffect(() => trackMainWindow(), []);
 
   return (
     <ToastProvider>

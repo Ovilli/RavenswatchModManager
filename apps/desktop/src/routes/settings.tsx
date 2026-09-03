@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { invoke } from '@tauri-apps/api/core';
 import { ChevronDown, EyeOff, ShieldAlert, Sparkles, Trash2 } from 'lucide-react';
-import { type KeyboardEvent, useEffect, useMemo, useState } from 'react';
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { AboutPanels } from '../components/about-panels';
 import { Fleuron, Panel, SectionHeader } from '../components/chrome';
 import { useLaunch } from '../components/launch';
@@ -1030,6 +1030,23 @@ function validateDirPath(raw: string, label: string): string | null {
   return null;
 }
 
+/** How long typing pauses before the value reaches the store. */
+const COMMIT_DEBOUNCE_MS = 300;
+
+/**
+ * A settings text field.
+ *
+ * The input is driven from local state and only reaches the store on a pause
+ * or on blur. Wiring `onChange` straight through meant every keystroke
+ * replaced the `settings` object, which makes the persist middleware
+ * synchronously `JSON.stringify` the WHOLE store — every profile and load
+ * order — and re-run `applyAppearance` + `setLocale` from the subscription in
+ * main.tsx. A 40-character path was 40 of those.
+ *
+ * The store still wins when the value changes from somewhere else (an import,
+ * a reset, the folder picker), which is what the sync effect is for; it skips
+ * while the field has focus so a late commit cannot yank the caret.
+ */
 function Field({
   label,
   value = '',
@@ -1043,13 +1060,51 @@ function Field({
   onChange: (v: string) => void;
   validate?: (v: string) => string | null;
 }) {
-  const error = validate ? validate(value) : null;
+  const [draft, setDraft] = useState(value);
+  const focused = useRef(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  useEffect(() => {
+    if (!focused.current) setDraft(value);
+  }, [value]);
+
+  // Whatever is still pending when the field unmounts (a tab switch) must
+  // land — losing a typed path because the panel closed is worse than an
+  // extra write.
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
+
+  const commit = (next: string) => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    if (next !== value) onChangeRef.current(next);
+  };
+
+  const error = validate ? validate(draft) : null;
   return (
     <label className="mb-3 block">
       <span className="font-mono mb-1 block text-ash">{label}</span>
       <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
+        value={draft}
+        onFocus={() => {
+          focused.current = true;
+        }}
+        onChange={(e) => {
+          const next = e.target.value;
+          setDraft(next);
+          if (timer.current) clearTimeout(timer.current);
+          timer.current = setTimeout(() => commit(next), COMMIT_DEBOUNCE_MS);
+        }}
+        onBlur={(e) => {
+          focused.current = false;
+          commit(e.target.value);
+        }}
         placeholder={placeholder}
         className="font-mono w-full border border-border bg-pitch/60 px-3 py-2 text-parchment focus:border-gilt/60 focus:outline-none"
         aria-invalid={error ? true : undefined}

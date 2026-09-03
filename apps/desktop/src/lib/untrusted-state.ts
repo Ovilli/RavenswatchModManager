@@ -67,6 +67,23 @@ export function sanitizeDirSetting(value: unknown, fallback: string): string {
 }
 
 /**
+ * Strip control characters from a directory the user is typing right now.
+ *
+ * `sanitizeDirSetting` is the REHYDRATE path and substitutes a fallback for an
+ * empty value, which is wrong mid-edit: the mods folder field is documented as
+ * "leave empty to use the default", and a field that refills itself the moment
+ * you clear it cannot be cleared. So this keeps empty as empty and only
+ * removes what must never reach a process argument.
+ *
+ * Needed because sanitisation ran only on rehydrate and on import — a pasted
+ * control character stayed live in `RSMM_MODS_DIR` until the next restart.
+ */
+export function sanitizeDirInput(value: string): string {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: removing control characters is the point.
+  return value.replace(/[\u0000-\u001f\u007f]/g, '');
+}
+
+/**
  * Registry sources are fetched over the network, so a stored value that is not
  * an http(s) URL is dropped rather than carried. `safeHttpUrl` is the same
  * allowlist the API and website use.

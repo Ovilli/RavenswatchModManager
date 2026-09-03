@@ -18,6 +18,7 @@ import type { LocalMod } from '../lib/rsmm';
 import {
   MACHINE_LOCAL_SETTING_KEYS,
   isSafeProfileId,
+  sanitizeDirInput,
   sanitizeDirSetting,
   sanitizeSources,
 } from '../lib/untrusted-state';
@@ -665,7 +666,18 @@ export const useApp = create<State>()(
         }
       },
 
-      updateSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
+      updateSettings: (patch) =>
+        set((s) => {
+          // Sanitise here, not only on rehydrate and import: a pasted control
+          // character in one of the directory fields went straight into
+          // `rsmmEnv` and became an env var verbatim until the next restart.
+          const clean = { ...patch };
+          for (const key of ['gameDir', 'modsDir', 'backupDir'] as const) {
+            const v = clean[key];
+            if (typeof v === 'string') clean[key] = sanitizeDirInput(v);
+          }
+          return { settings: { ...s.settings, ...clean } };
+        }),
 
       syncLocalMods: (mods) =>
         set((s) => {

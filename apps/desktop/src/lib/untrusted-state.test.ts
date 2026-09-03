@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MACHINE_LOCAL_SETTING_KEYS,
   isSafeProfileId,
+  sanitizeDirInput,
   sanitizeDirSetting,
   sanitizeSources,
 } from './untrusted-state';
@@ -101,5 +102,26 @@ describe('sanitizeSources', () => {
 describe('MACHINE_LOCAL_SETTING_KEYS', () => {
   it('covers every directory setting an import must not move', () => {
     expect([...MACHINE_LOCAL_SETTING_KEYS].sort()).toEqual(['backupDir', 'gameDir', 'modsDir']);
+  });
+});
+
+describe('sanitizeDirInput', () => {
+  it('keeps an empty value empty', () => {
+    // The mods folder field means "use the default" when blank, so a field
+    // that refills itself the moment you clear it cannot be cleared.
+    expect(sanitizeDirInput('')).toBe('');
+  });
+
+  it('leaves an ordinary path alone, spaces included', () => {
+    expect(sanitizeDirInput('C:\\Program Files\\Ravenswatch')).toBe(
+      'C:\\Program Files\\Ravenswatch',
+    );
+    expect(sanitizeDirInput('~/games/rw ')).toBe('~/games/rw ');
+  });
+
+  it('removes control characters rather than rejecting the value', () => {
+    // These reach `rsmmEnv` and become an env var verbatim.
+    expect(sanitizeDirInput('/srv/\u0000mods\u001b[31m')).toBe('/srv/mods[31m');
+    expect(sanitizeDirInput('/srv/\nmods')).toBe('/srv/mods');
   });
 });
