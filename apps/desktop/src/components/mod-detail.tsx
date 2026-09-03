@@ -366,7 +366,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
                 {data.versions.map((v) => (
                   <li key={v.id} className="flex items-center justify-between gap-4 py-2">
                     <div className="flex items-baseline gap-3">
-                      <span className="font-mono text-sm text-parchment">v{v.version}</span>
+                      <span className="font-data text-sm text-parchment">v{v.version}</span>
                       <span className="font-mono text-xs text-ash">
                         {new Date(v.createdAt).toLocaleDateString(t.tag)}
                       </span>
@@ -480,7 +480,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
                         {depSlug}
                       </Link>
                       <span className="flex items-center gap-1.5">
-                        <code className="font-mono text-xs text-ash">{range}</code>
+                        <code className="font-data text-xs text-ash">{range}</code>
                         {depInstalled ? (
                           <MonoTag tone="gilt">{t('ok')}</MonoTag>
                         ) : (

@@ -51,7 +51,7 @@ export function useT(): TFunction {
  * ```tsx
  * <TParts
  *   text={t('RSMM updated to {version}.')}
- *   parts={{ version: <span className="font-mono">v{current}</span> }}
+ *   parts={{ version: <span className="font-data">v{current}</span> }}
  * />
  * ```
  *

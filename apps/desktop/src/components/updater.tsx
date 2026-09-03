@@ -482,7 +482,7 @@ export function UpdaterBanner() {
               version: status.update?.version ?? '',
             })}
           </p>
-          <p className="font-mono text-xs text-ash break-words">{status.error}</p>
+          <p className="font-data text-xs text-ash break-words">{status.error}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Button
@@ -534,7 +534,7 @@ export function UpdaterBanner() {
         <AlertTriangle className="h-4 w-4 text-crimson shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
           <p className="font-serif-italic text-sm text-crimson mb-1">{t('Update check failed')}</p>
-          <p className="font-mono text-xs text-ash break-words">{status.checkError.reason}</p>
+          <p className="font-data text-xs text-ash break-words">{status.checkError.reason}</p>
         </div>
         <button
           type="button"
@@ -639,8 +639,8 @@ function VersionRow({
     <div className="flex items-baseline justify-between gap-3 py-1">
       <span className="font-serif-italic text-parchment shrink-0">{label}</span>
       <span className="flex-1 border-b border-dotted border-oxblood/40" aria-hidden />
-      <span className="font-mono text-sm text-gilt shrink-0">{value}</span>
-      {hint ? <span className="font-mono text-xs text-ash shrink-0">{hint}</span> : null}
+      <span className="font-data text-sm text-gilt shrink-0">{value}</span>
+      {hint ? <span className="font-data text-xs text-ash shrink-0">{hint}</span> : null}
     </div>
   );
 }
@@ -875,7 +875,7 @@ export function UpdaterSettings() {
         <div className="flex flex-wrap items-center gap-3 border border-gilt/40 bg-pitch/40 px-3 py-2">
           <p className="flex-1 text-parchment text-sm">
             {t("This copy can't update itself.")}
-            <span className="mt-1 block font-mono text-ash text-xs">{migratable.reason}</span>
+            <span className="mt-1 block font-data text-ash text-xs">{migratable.reason}</span>
           </p>
           <Button
             type="button"
@@ -935,7 +935,7 @@ export function UpdaterSettings() {
           {loaderError}
         </p>
       ) : loader ? (
-        <p className="font-mono text-xs text-ash">{loaderSummary(loader)}</p>
+        <p className="font-data text-xs text-ash">{loaderSummary(loader)}</p>
       ) : null}
 
       {status.state === 'ready' && status.update?.body ? (

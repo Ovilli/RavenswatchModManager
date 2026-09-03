@@ -120,7 +120,7 @@ export function ChangelogDialog({ enabled }: { enabled: boolean }) {
             <p className="font-serif-italic mt-1 text-ash">
               <TParts
                 text={t('RSMM updated to {version}.')}
-                parts={{ version: <span className="font-mono text-gilt">v{current}</span> }}
+                parts={{ version: <span className="font-data text-gilt">v{current}</span> }}
               />
             </p>
           </div>

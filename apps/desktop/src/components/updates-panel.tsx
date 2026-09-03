@@ -160,7 +160,7 @@ export function UpdatesPanel() {
           );
         })}
       </ul>
-      {error ? <p className="mt-3 font-mono text-xs text-crimson">{error}</p> : null}
+      {error ? <p className="mt-3 font-data text-xs text-crimson">{error}</p> : null}
       {remote.isError ? (
         <p className="mt-3 font-mono text-xs text-crimson">
           {t('Registry recheck failed: {error}', { error: describeApiError(remote.error) })}

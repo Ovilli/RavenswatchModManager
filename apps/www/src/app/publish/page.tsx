@@ -289,7 +289,7 @@ export default function PublishPage() {
       {phase.kind === 'done' ? (
         <div className="mb-6 rounded-md border border-emerald-500/40 bg-emerald-500/10 p-4">
           <p className="text-sm">
-            Published <span className="font-mono">{phase.slug}</span>. Redirecting…
+            Published <span className="font-data">{phase.slug}</span>. Redirecting…
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             A malware scan is queued — it runs in the background (usually a minute or two). You can

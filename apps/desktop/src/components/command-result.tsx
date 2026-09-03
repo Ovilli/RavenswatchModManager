@@ -214,7 +214,7 @@ function RepairList({ repairs }: { repairs: DoctorRepair[] }) {
             )}
             <span className="min-w-0">
               <span className="text-parchment">{r.fix}</span>
-              <span className="font-mono ml-2 text-xs text-ash">{r.outcome}</span>
+              <span className="font-data ml-2 text-xs text-ash">{r.outcome}</span>
               {r.detail ? (
                 <span className="font-serif-italic block text-sm text-ash">{r.detail}</span>
               ) : null}
@@ -350,7 +350,7 @@ function ModListView({ mods }: { mods: LocalMod[] }) {
             <div className="min-w-0">
               <p className="text-parchment">
                 {mod.name}
-                <span className="font-mono ml-2 text-ash">v{mod.version}</span>
+                <span className="font-data ml-2 text-ash">v{mod.version}</span>
               </p>
               <p className="font-serif-italic truncate text-sm text-ash">
                 {mod.summary ?? mod.author ?? mod.id}

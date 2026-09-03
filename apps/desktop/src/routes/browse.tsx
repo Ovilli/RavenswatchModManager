@@ -984,7 +984,7 @@ function ProfilePicker({
         <p className="font-serif-italic text-ash mt-2">
           <TParts
             text={t('Pick which profile receives {slug}.')}
-            parts={{ slug: <span className="font-mono">{slug}</span> }}
+            parts={{ slug: <span className="font-data">{slug}</span> }}
           />
         </p>
         {!creating && selectable.length > 0 ? (

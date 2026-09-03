@@ -242,7 +242,7 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
                       >
                         {slug}
                       </Link>
-                      <code className="font-mono text-xs text-muted-foreground">{range}</code>
+                      <code className="font-data text-xs text-muted-foreground">{range}</code>
                     </li>
                   ))}
                 </ul>
@@ -267,7 +267,7 @@ function VersionRow({ version, slug }: { version: ModVersion; slug: string }) {
     <div className="py-3">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <span className="font-mono text-sm font-medium">v{version.version}</span>
+          <span className="font-data text-sm font-medium">v{version.version}</span>
           <span className="ml-3 text-xs text-muted-foreground">
             {new Date(version.createdAt).toLocaleDateString()}
           </span>

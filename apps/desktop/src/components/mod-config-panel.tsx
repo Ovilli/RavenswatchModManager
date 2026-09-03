@@ -579,9 +579,9 @@ function ConfigFieldRow({
   return (
     <label htmlFor={id} className="block space-y-1.5">
       <div className="flex items-center justify-between gap-3">
-        <span className="font-mono text-sm text-parchment">{label}</span>
+        <span className="font-data text-sm text-parchment">{label}</span>
         {field.type === 'enum' && field.choices.length > 0 ? (
-          <span className="font-mono text-xs text-ash">{field.choices.join(' · ')}</span>
+          <span className="font-data text-xs text-ash">{field.choices.join(' · ')}</span>
         ) : field.type === 'int' || field.type === 'float' ? (
           <span className="font-mono text-xs text-ash">
             {field.min != null ? t('min {value}', { value: field.min }) : ''}

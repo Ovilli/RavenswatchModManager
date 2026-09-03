@@ -49,7 +49,7 @@ export function AboutPanels() {
             <p className="font-serif-italic text-ash">
               <TParts
                 text={t('Version {version}')}
-                parts={{ version: <span className="font-mono">{version}</span> }}
+                parts={{ version: <span className="font-data">{version}</span> }}
               />
             </p>
           </div>

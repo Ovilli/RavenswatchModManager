@@ -145,7 +145,7 @@ function ProfileMenu({ user }: { user: SessionUser }) {
             {displayName}
           </span>
           {user.email && user.email !== displayName ? (
-            <span className="block truncate font-mono text-[10px] text-ash">{user.email}</span>
+            <span className="block truncate font-data text-[10px] text-ash">{user.email}</span>
           ) : null}
         </span>
       </button>

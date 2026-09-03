@@ -56,7 +56,7 @@ export function ModCard({ mod, featured = false }: ModCardProps) {
           {mod.downloads != null ? <span>{mod.downloads.toLocaleString()} downloads</span> : null}
           {mod.rating != null ? <span>★ {mod.rating.toFixed(1)}</span> : null}
           {!featured && mod.latestVersion ? (
-            <span className="ml-auto font-mono text-[0.6rem]">v{mod.latestVersion}</span>
+            <span className="ml-auto font-data text-[0.6rem]">v{mod.latestVersion}</span>
           ) : null}
         </div>
       </div>

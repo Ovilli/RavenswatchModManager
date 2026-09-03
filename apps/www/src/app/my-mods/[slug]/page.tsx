@@ -594,7 +594,7 @@ export default function ManageModPage() {
             />
           ) : null}
           <div>
-            <p className="font-mono text-xs text-muted-foreground">{mod.slug}</p>
+            <p className="font-data text-xs text-muted-foreground">{mod.slug}</p>
             <h1 className="text-3xl font-bold tracking-tight">{mod.name}</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               v{mod.latestVersion ?? '—'} · {(mod.downloads ?? 0).toLocaleString()} downloads ·
@@ -886,7 +886,7 @@ export default function ManageModPage() {
                         key={url}
                         className="flex items-center gap-2 rounded-md border border-border/40 px-3 py-2"
                       >
-                        <span className="flex-1 truncate font-mono text-xs">{url}</span>
+                        <span className="flex-1 truncate font-data text-xs">{url}</span>
                         <Button
                           type="button"
                           size="sm"
@@ -1188,7 +1188,7 @@ function PreviewHeader({
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-gilt/40 bg-gilt/5 px-4 py-2 text-sm">
       <div>
         <span className="font-semibold text-foreground">Preview</span>
-        <span className="ml-2 font-mono text-muted-foreground">{slug}</span>
+        <span className="ml-2 font-data text-muted-foreground">{slug}</span>
         <span className="ml-2 text-muted-foreground">— {modName}</span>
       </div>
       <Button type="button" size="sm" variant="outline" onClick={onExit}>

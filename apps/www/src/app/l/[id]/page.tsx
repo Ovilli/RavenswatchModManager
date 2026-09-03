@@ -82,7 +82,7 @@ export default async function SharedLogPage({ params }: { params: Promise<{ id: 
 
       <LogActions content={log.content} filename={`rsmm-log-${log.id}.txt`} />
 
-      <pre className="mt-4 max-h-[70vh] overflow-auto rounded border bg-muted/40 p-4 font-mono text-xs leading-relaxed whitespace-pre">
+      <pre className="mt-4 max-h-[70vh] overflow-auto rounded border bg-muted/40 p-4 font-data text-xs leading-relaxed whitespace-pre">
         {log.content}
       </pre>
 
@@ -98,7 +98,7 @@ function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <dt className="text-xs uppercase tracking-wider text-muted-foreground">{label}</dt>
-      <dd className="font-mono">{value}</dd>
+      <dd className="font-data">{value}</dd>
     </div>
   );
 }

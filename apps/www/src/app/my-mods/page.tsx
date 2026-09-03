@@ -105,7 +105,7 @@ export default function MyModsPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <h2 className="truncate text-lg font-semibold">{m.name}</h2>
-                      <p className="font-mono text-xs text-muted-foreground">{m.slug}</p>
+                      <p className="font-data text-xs text-muted-foreground">{m.slug}</p>
                     </div>
                     {m.category ? <Badge variant="outline">{m.category}</Badge> : null}
                   </div>

@@ -80,12 +80,27 @@
     font-weight: 500;
   }
 
+  /* `.font-mono` is a LABEL style — small, tracked out, upper-cased — for tags
+     and pills. Kept identical to the desktop app's, which is where this sheet's
+     twin lives (packages/ui/src/styles.css). */
   .font-mono {
     font-family: var(--font-mono), ui-monospace, monospace;
     font-weight: 500;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     font-size: 0.72rem;
+  }
+
+  /* Monospace for CONTENT — mod slugs, versions, install commands, hashes.
+     The label style above upper-cases everything it touches, which is right for
+     a four-letter tag and wrong for a slug or a shell command, where case is
+     load-bearing and a reader is expected to copy it verbatim. */
+  .font-data {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.8125rem;
+    letter-spacing: 0;
+    text-transform: none;
+    font-variant-ligatures: none;
   }
 
   ::selection {
@@ -698,6 +713,6 @@
    above the client page's editor and cannot be unmounted from it. Set by
    `useEditingFlag`; a crawler runs no JS, so the block is always visible in the
    served HTML. */
-[data-editing='true'] [data-server-prose] {
+[data-editing="true"] [data-server-prose] {
   display: none;
 }

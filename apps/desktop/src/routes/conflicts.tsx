@@ -118,7 +118,7 @@ function ConflictsPage() {
                   </div>
                 </div>
                 {c.type === 'file' && c.path ? (
-                  <p className="font-mono mt-1 text-ash break-all">{c.path}</p>
+                  <p className="font-data mt-1 text-ash break-all">{c.path}</p>
                 ) : c.type === 'patch' && c.field ? (
                   <p className="font-mono mt-1 text-ash break-all">
                     {c.patchKind}: {c.field}

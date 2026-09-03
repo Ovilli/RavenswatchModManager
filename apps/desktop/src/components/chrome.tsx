@@ -262,7 +262,7 @@ export function Markdown({ source, className }: { source: string; className?: st
             if (isInline) {
               return (
                 <code
-                  className="font-mono border border-border bg-char/40 px-1 text-parchment"
+                  className="font-data border border-border bg-char/40 px-1 text-parchment"
                   {...props}
                 >
                   {children}
@@ -270,14 +270,14 @@ export function Markdown({ source, className }: { source: string; className?: st
               );
             }
             return (
-              <code className={cn('font-mono', className)} {...props}>
+              <code className={cn('font-data', className)} {...props}>
                 {children}
               </code>
             );
           },
           pre: ({ node, ...props }) => (
             <pre
-              className="font-mono overflow-x-auto border border-border bg-pitch/60 p-3 text-ash"
+              className="font-data overflow-x-auto border border-border bg-pitch/60 p-3 text-ash"
               {...props}
             />
           ),

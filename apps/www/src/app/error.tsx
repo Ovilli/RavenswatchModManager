@@ -28,7 +28,7 @@ export default function RouteError({
           on our side.
         </p>
         {error.digest ? (
-          <p className="mt-3 font-mono text-xs text-muted-foreground">ref: {error.digest}</p>
+          <p className="mt-3 font-data text-xs text-muted-foreground">ref: {error.digest}</p>
         ) : null}
         <div className="mt-8 flex items-center justify-center gap-3">
           <Button size="lg" onClick={reset}>
