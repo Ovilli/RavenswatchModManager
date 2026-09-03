@@ -172,8 +172,8 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
         <div className="h-8 w-24 bg-oxblood/15 rounded" />
         <div className="aspect-[21/9] w-full bg-oxblood/20 rounded" />
         <div className="h-10 w-2/3 bg-oxblood/25 rounded" />
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-          <div className="md:col-span-2 space-y-3">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2 space-y-3">
             <div className="h-4 w-full bg-oxblood/15 rounded" />
             <div className="h-4 w-5/6 bg-oxblood/15 rounded" />
             <div className="h-4 w-4/6 bg-oxblood/15 rounded" />
@@ -333,8 +333,15 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
         }
       />
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-        <div className="space-y-4 md:col-span-2">
+      {/* Embedded, this renders in Browse's detail panel — a column of roughly
+          370px once the index takes its fixed 22rem. `md:` fires on the
+          VIEWPORT, so a three-column split was being applied inside it, and a
+          `col-span-2` child in a collapsed grid spills into an implicit
+          column rather than fitting. Both halves have to move together. */}
+      <div
+        className={embedded ? 'grid grid-cols-1 gap-6' : 'grid grid-cols-1 gap-6 lg:grid-cols-3'}
+      >
+        <div className={embedded ? 'space-y-4' : 'space-y-4 lg:col-span-2'}>
           <Panel>
             <h3 className="font-fraktur text-xl text-parchment mb-3">{t('About')}</h3>
             <Fleuron />

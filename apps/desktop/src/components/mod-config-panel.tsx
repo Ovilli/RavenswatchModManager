@@ -163,7 +163,7 @@ export function ModConfigPanel({
   return (
     <Shell>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <h3 className="font-fraktur text-xl text-parchment mb-3">{t('Config')}</h3>
           <Fleuron />
         </div>

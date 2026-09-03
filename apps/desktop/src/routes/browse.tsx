@@ -568,12 +568,12 @@ function BrowsePage() {
                       />
                     ) : null}
                     <header className="flex items-start justify-between gap-3">
-                      <div>
+                      <div className="min-w-0">
                         <Link
                           to="/collection/$slug"
                           params={{ slug: c.slug }}
                           onClick={(e) => e.stopPropagation()}
-                          className="font-serif-italic text-xl leading-tight text-parchment hover:text-gilt"
+                          className="font-serif-italic break-words text-xl leading-tight text-parchment hover:text-gilt"
                         >
                           {c.name}
                         </Link>
@@ -671,16 +671,19 @@ function BrowsePage() {
                             />
                           ) : null}
                           <header className="flex items-start justify-between gap-3">
-                            <div>
+                            <div className="min-w-0">
                               <Link
                                 to="/mod/$slug"
                                 params={{ slug: m.slug }}
                                 onClick={(e) => e.stopPropagation()}
-                                className="font-serif-italic text-xl leading-tight text-parchment hover:text-gilt"
+                                className="font-serif-italic break-words text-xl leading-tight text-parchment hover:text-gilt"
                               >
                                 {m.name}
                               </Link>
-                              <p className="font-mono mt-1 text-ash">
+                              {/* `truncate`: an author handle is a single
+                                  unbreakable token, so it overflowed the name
+                                  column instead of wrapping. */}
+                              <p className="font-mono mt-1 truncate text-ash">
                                 {m.author ?? t('unknown')}
                                 {m.latestVersion ? ` · v${m.latestVersion}` : ''}
                               </p>
@@ -698,8 +701,13 @@ function BrowsePage() {
                               {m.summary}
                             </p>
                           ) : null}
-                          <div className="mt-auto flex items-center justify-between gap-2">
-                            <div className="flex flex-wrap gap-1">
+                          {/* Wraps as a whole: the tag group and the rating
+                              pill share one line only while both fit. Pinned
+                              opposite a `shrink-0` pill, a single tag like
+                              "multiplayer" was wider than the space left for
+                              it and spilled out of the card. */}
+                          <div className="mt-auto flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex min-w-0 flex-wrap gap-1">
                               {m.category ? <MonoTag tone="default">{m.category}</MonoTag> : null}
                               {m.tags.slice(0, 2).map((t) => (
                                 <MonoTag key={t} tone="default">
@@ -708,6 +716,7 @@ function BrowsePage() {
                               ))}
                             </div>
                             <StatPill
+                              className="shrink-0"
                               value={m.rating != null ? `★ ${m.rating.toFixed(1)}` : '—'}
                               label={
                                 m.downloads != null
@@ -893,15 +902,20 @@ function ModRow({
       {/* Category and rating are the two columns worth scanning down, so they
           get fixed slots rather than flowing with the title's length. Hidden on
           a narrow window instead of crushing the name. */}
+      {/* One breakpoint later than feels natural, because these appear exactly
+          when the row gets NARROWER, not wider: at `lg` the filter panel takes
+          its own 16rem column out of a content area the sidebar has already
+          shortened by 18rem, so 240px of fixed columns plus the install button
+          no longer fit and the row overflowed its card. */}
       {compact ? null : (
         <>
-          <div className="hidden w-24 shrink-0 md:block">
+          <div className="hidden w-24 shrink-0 lg:block">
             {m.category ? <MonoTag tone="default">{m.category}</MonoTag> : null}
           </div>
-          <div className="font-mono hidden w-16 shrink-0 text-right text-xs text-gilt lg:block">
+          <div className="font-mono hidden w-16 shrink-0 text-right text-xs text-gilt xl:block">
             {m.rating != null ? `★ ${m.rating.toFixed(1)}` : '—'}
           </div>
-          <div className="font-mono hidden w-20 shrink-0 text-right text-xs text-ash lg:block">
+          <div className="font-mono hidden w-20 shrink-0 text-right text-xs text-ash xl:block">
             {m.downloads != null ? t('{n} dl', { n: m.downloads.toLocaleString(t.tag) }) : ''}
           </div>
         </>

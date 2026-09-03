@@ -393,7 +393,7 @@ function LauncherLogPanel() {
   return (
     <Panel>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <h3 className="font-fraktur text-xl text-parchment">{t('Launcher Log')}</h3>
           <p className="font-serif-italic text-ash mt-1">
             {t('Current run only. Cleared whenever you launch Vanilla or Modded.')}

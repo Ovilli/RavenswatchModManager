@@ -145,7 +145,7 @@ export function AboutPanels() {
 
       <Panel className="flex flex-col gap-4">
         <div className="flex items-baseline justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <h3 className="font-fraktur text-lg text-parchment">{t('Release notes')}</h3>
             <p className="font-serif-italic mt-1 text-ash">
               {showAll
@@ -182,7 +182,7 @@ export function AboutPanels() {
       </Panel>
 
       <Panel className="flex flex-col md:flex-row items-center justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <h4 className="font-fraktur text-base text-parchment">{t('Credits')}</h4>
           <p className="text-smoke font-serif-italic">
             {t('Created by the RSMM community · Licensed under the project license')}

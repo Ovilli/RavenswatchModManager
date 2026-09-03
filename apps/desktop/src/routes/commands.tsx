@@ -243,7 +243,7 @@ function CommandsPage() {
           {commands.map((command) => (
             <div key={command.id} className="border border-border/70 bg-pitch/40 p-4">
               <div className="flex items-start justify-between gap-3">
-                <div>
+                <div className="min-w-0">
                   <p className="font-serif-italic text-base text-parchment">{command.label}</p>
                   <p className="mt-1 text-sm text-ash">{command.description}</p>
                 </div>

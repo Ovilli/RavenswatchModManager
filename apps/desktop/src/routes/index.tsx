@@ -787,7 +787,7 @@ function LibraryPage() {
 
       {hasSelection ? (
         <Panel className="fixed inset-x-0 bottom-0 z-40 flex flex-wrap items-center justify-between gap-3 rounded-none border-x-0 border-b-0">
-          <div>
+          <div className="min-w-0">
             <h3 className="font-fraktur text-lg text-parchment">
               {t('{n} selected', { n: selected.size })}
             </h3>
@@ -901,8 +901,8 @@ function CardGrid({
             ].join(' ')}
           >
             <header className="flex items-start justify-between gap-3">
-              <div>
-                <span className="font-serif-italic text-xl leading-tight text-parchment">
+              <div className="min-w-0">
+                <span className="font-serif-italic break-words text-xl leading-tight text-parchment">
                   {mod.name}
                 </span>
                 <p className="font-mono mt-1 text-ash">

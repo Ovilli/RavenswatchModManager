@@ -117,7 +117,7 @@ export function ShareLogDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-pitch/80 p-4">
       <Panel className="max-h-[90vh] w-full max-w-3xl overflow-auto">
         <div className="flex items-start justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <h3 className="font-fraktur text-2xl text-parchment">{t('Share this log')}</h3>
             <p className="font-serif-italic mt-1 text-sm text-ash">
               {t(
