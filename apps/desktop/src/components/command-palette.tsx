@@ -9,7 +9,7 @@ import { type PaletteAction, type PaletteRow, buildRows } from '../lib/palette';
 import { listOverlays, restoreAll } from '../lib/rsmm';
 import { useApp } from '../store';
 import { useLaunch } from './launch';
-import { useToast } from './toast';
+import { useDialog, useToast } from './toast';
 
 interface Hit {
   id: string;
@@ -32,6 +32,7 @@ export function CommandPalette() {
   const listboxId = useId();
   const { launch, busy: launchBusy } = useLaunch();
   const toast = useToast();
+  const dialog = useDialog();
 
   // Remote index search runs only while the palette is open + the user
   // has typed at least 2 chars. React Query caches per `q` so repeated
@@ -211,6 +212,16 @@ export function CommandPalette() {
         disabled: launchBusy,
         run: () => {
           void (async () => {
+            // Enter on a highlighted row used to unapply every mod outright.
+            const ok = await dialog.confirm({
+              title: t('Restore original files?'),
+              body: t(
+                'This puts every modified file back to its stock state, undoing the applied mods and removing the loader.',
+              ),
+              confirmLabel: t('Restore'),
+              destructive: true,
+            });
+            if (!ok) return;
             try {
               const result = await restoreAll();
               if (!result || !result.ok)
@@ -238,7 +249,7 @@ export function CommandPalette() {
       go('/settings', t('Settings'), 'paths font size density options preferences'),
       go('/settings', t('About'), 'version credits release notes', { tab: 'about' }),
     ];
-  }, [navigate, launch, launchBusy, t, toast, overlayActions]);
+  }, [navigate, launch, launchBusy, t, toast, dialog, overlayActions]);
 
   const rows = useMemo<PaletteRow[]>(
     () => buildRows(actions, hits, trimmedQ),

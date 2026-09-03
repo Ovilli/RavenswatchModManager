@@ -29,7 +29,7 @@ import {
   relaunchMigrated,
 } from '../lib/updater';
 import { Button } from './chrome';
-import { useToast } from './toast';
+import { useDialog, useToast } from './toast';
 
 interface UpdateStatus {
   state:
@@ -679,6 +679,7 @@ export function UpdaterSettings() {
   const t = useT();
   const [status] = useUpdateStatus();
   const toast = useToast();
+  const dialog = useDialog();
   // package.json is the compiled-in fallback; getAppVersion() replaces it with
   // the version baked into the running bundle, which is what the updater
   // actually compares against.
@@ -767,12 +768,18 @@ export function UpdaterSettings() {
     try {
       const st = await gameStatus();
       if (st?.running) {
-        // A run in progress dies with the process. Never do that silently.
-        const ok = window.confirm(
-          `${t('Close Ravenswatch and start it again?')}\n\n${t(
+        // A run in progress dies with the process. Never do that silently —
+        // and not through `window.confirm`, which a Tauri webview can answer
+        // without ever showing (see components/config-button.tsx), turning
+        // "are you sure" into "yes" for the one prompt guarding a live run.
+        const ok = await dialog.confirm({
+          title: t('Close Ravenswatch and start it again?'),
+          body: t(
             'Any run in progress will be lost — the new loader only takes effect in a fresh session.',
-          )}`,
-        );
+          ),
+          confirmLabel: t('Restart the game'),
+          destructive: true,
+        });
         if (!ok) return;
       }
       const r = await restartGame();
@@ -793,7 +800,7 @@ export function UpdaterSettings() {
     } finally {
       setRestarting(false);
     }
-  }, [t, toast]);
+  }, [dialog, t, toast]);
 
   // One button, both channels: the launcher itself ships through the Tauri
   // updater, the loader DLL + Lua SDK through the rolling `loader` release.

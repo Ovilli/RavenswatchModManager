@@ -14,7 +14,7 @@ import { useMemo, useState } from 'react';
 import { Button, Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
 import { CommandResult, type CommandResultKind } from '../components/command-result';
 import { useLaunch } from '../components/launch';
-import { useToast } from '../components/toast';
+import { useDialog, useToast } from '../components/toast';
 import { explainError } from '../lib/errors';
 import { useT } from '../lib/i18n-react';
 import { applyMods, build, doctor, listLocalMods, restoreAll } from '../lib/rsmm';
@@ -44,6 +44,10 @@ interface CommandSpec {
   /** Safe to run while the game is up — read-only inspection. Everything
    * else writes to the install and must wait for the session to end. */
   readOnly?: boolean;
+  /** Ask before running. Set for anything that rewrites the game install:
+   *  these are single-click buttons, and "Restore originals" undoes every
+   *  applied mod. A read-only inspection needs no prompt. */
+  confirmBody?: string;
   run: () => Promise<unknown>;
 }
 
@@ -70,6 +74,7 @@ function CommandsPage() {
   const [entries, setEntries] = useState<CommandEntry[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const toast = useToast();
+  const dialog = useDialog();
   // Launching goes through the shared controller so the restore watcher and
   // the "quit with active overrides?" guard apply here too.
   const { launch, busy: launchBusy } = useLaunch();
@@ -106,6 +111,7 @@ function CommandsPage() {
         // Deliberately no --force: destructive repairs roll the install back
         // or delete installed files, and a button labelled "repair" must not
         // do that without the user asking for it explicitly.
+        confirmBody: t('This writes the safe automated repairs into your game install.'),
         run: () => doctor({ fix: true }),
       },
       {
@@ -115,6 +121,7 @@ function CommandsPage() {
         icon: <Wrench className="h-4 w-4" aria-hidden="true" />,
         tone: 'primary',
         kind: 'run',
+        confirmBody: t('This writes the current profile into your game install.'),
         run: () => applyMods(),
       },
       {
@@ -124,6 +131,9 @@ function CommandsPage() {
         icon: <RotateCcw className="h-4 w-4" aria-hidden="true" />,
         tone: 'danger',
         kind: 'run',
+        confirmBody: t(
+          'This puts every modified file back to its stock state, undoing the applied mods and removing the loader.',
+        ),
         run: () => restoreAll(),
       },
       {
@@ -133,6 +143,9 @@ function CommandsPage() {
         icon: <ServerCrash className="h-4 w-4" aria-hidden="true" />,
         tone: 'gilt',
         kind: 'run',
+        confirmBody: t(
+          'This generates assets and writes the current mod set into your game install.',
+        ),
         run: () => build(),
       },
       {
@@ -159,6 +172,15 @@ function CommandsPage() {
 
   const runCommand = async (spec: CommandSpec) => {
     if (busyId) return;
+    if (spec.confirmBody) {
+      const ok = await dialog.confirm({
+        title: t('Run {command}?', { command: spec.label }),
+        body: spec.confirmBody,
+        confirmLabel: t('Run'),
+        destructive: spec.tone === 'danger',
+      });
+      if (!ok) return;
+    }
     const startedAt = Date.now();
     // Entry id is the identity used to patch the row when the command
     // finishes — matching on label + timestamp updated every row of a

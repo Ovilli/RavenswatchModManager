@@ -40,7 +40,7 @@ import {
   StatPill,
 } from './chrome';
 import { OverlayButton } from './overlay-button';
-import { useToast } from './toast';
+import { useDialog, useToast } from './toast';
 import { useModToggle } from './use-mod-toggle';
 
 /**
@@ -73,6 +73,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
   };
   const queryClient = useQueryClient();
   const toast = useToast();
+  const dialog = useDialog();
 
   const { data, error, isLoading } = useQuery({
     queryKey: ['mods', 'detail', slug],
@@ -133,6 +134,14 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
   const uninstallModStore = useApp((s) => s.uninstallMod);
   const uninstall = useCallback(
     async (modId: string) => {
+      // Deleting the mod from disk has no undo.
+      const ok = await dialog.confirm({
+        title: t('Uninstall {name}?', { name: liveBySlug?.name ?? modId }),
+        body: t('This deletes the mod from disk. There is no undo.'),
+        confirmLabel: t('Uninstall'),
+        destructive: true,
+      });
+      if (!ok) return;
       setVersionBusy(modId);
       setVersionError(null);
       try {
@@ -154,7 +163,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
         setVersionBusy(null);
       }
     },
-    [queryClient, refreshLocalMods, slug, t, toast, uninstallModStore],
+    [dialog, liveBySlug?.name, queryClient, refreshLocalMods, slug, t, toast, uninstallModStore],
   );
 
   if (isLoading) {
@@ -294,8 +303,14 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
                 {enabled ? t('enabled') : t('disabled')}
               </MonoTag>
               <OverlayButton modId={liveBySlug.id} />
-              <Button type="button" variant="danger" onClick={() => void uninstall(liveBySlug.id)}>
-                <Trash2 className="h-4 w-4" /> {t('Uninstall')}
+              <Button
+                type="button"
+                variant="danger"
+                disabled={versionBusy !== null}
+                onClick={() => void uninstall(liveBySlug.id)}
+              >
+                <Trash2 className="h-4 w-4" />{' '}
+                {versionBusy === liveBySlug.id ? t('Uninstalling…') : t('Uninstall')}
               </Button>
             </div>
           ) : (

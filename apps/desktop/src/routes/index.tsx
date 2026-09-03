@@ -29,7 +29,7 @@ import { ConfigButton } from '../components/config-button';
 import { ModConfigPanel } from '../components/mod-config-panel';
 import { OverlayButton } from '../components/overlay-button';
 import { SetupBanner } from '../components/setup-banner';
-import { useToast } from '../components/toast';
+import { useDialog, useToast } from '../components/toast';
 import { UpdatesPanel } from '../components/updates-panel';
 import { useModToggle } from '../components/use-mod-toggle';
 import { msg } from '../lib/i18n';
@@ -102,6 +102,7 @@ function LibraryPage() {
   const t = useT();
   const navigate = useNavigate();
   const toast = useToast();
+  const dialog = useDialog();
   const profile = useApp(activeProfile);
   const reorderMod = useApp((s) => s.reorderMod);
   const installed = useApp((s) => s.installed);
@@ -217,9 +218,18 @@ function LibraryPage() {
     });
   }, [filtered]);
 
-  const changeView = (next: ViewMode) => {
+  const changeView = async (next: ViewMode) => {
     if (view === 'config' && next !== 'config' && hasDirtyConfigs) {
-      const ok = window.confirm(t('You have unsaved config changes. Discard them?'));
+      // NOT `window.confirm`: a Tauri webview can answer a native confirm
+      // without ever showing it, which makes the control that raised it look
+      // dead (see the note in components/config-button.tsx). Losing typed-in
+      // config is exactly the prompt that must not be skippable.
+      const ok = await dialog.confirm({
+        title: t('Discard unsaved changes?'),
+        body: t('You have unsaved config changes. Discard them?'),
+        confirmLabel: t('Discard'),
+        destructive: true,
+      });
       if (!ok) return;
     }
     setView(next);
@@ -276,10 +286,25 @@ function LibraryPage() {
   );
 
   const uninstallModStore = useApp((s) => s.uninstallMod);
+  /** Ids currently being uninstalled — buttons are disabled while non-empty. */
+  const [uninstalling, setUninstalling] = useState<Set<string>>(new Set());
+
   const uninstall = useCallback(
     async (id: string) => {
+      // Deleting a mod's folder has no undo, and on the list view this hangs
+      // off an icon-only trash button in a dense row. Ask first.
+      const mod = getMod(id);
+      const ok = await dialog.confirm({
+        title: t('Uninstall {name}?', { name: mod?.name ?? id }),
+        body: t('This deletes the mod from disk. There is no undo.'),
+        confirmLabel: t('Uninstall'),
+        destructive: true,
+      });
+      if (!ok) return;
+
       // Card/list buttons call this fire-and-forget — catch here or a
       // sidecar failure becomes an unhandled rejection the user never sees.
+      setUninstalling((cur) => new Set(cur).add(id));
       try {
         const result = await removeLocalMod(id);
         uninstallModStore(id);
@@ -290,29 +315,72 @@ function LibraryPage() {
       } catch (err) {
         console.error('[library] uninstall failed', err);
         toast.push(err instanceof Error ? err.message : String(err), 'error');
+      } finally {
+        setUninstalling((cur) => {
+          const next = new Set(cur);
+          next.delete(id);
+          return next;
+        });
       }
     },
-    [refreshLocalMods, removeLocalMod, t, toast, uninstallModStore],
+    [dialog, refreshLocalMods, removeLocalMod, t, toast, uninstallModStore],
   );
 
   const bulkUninstall = useCallback(() => {
     void (async () => {
-      try {
-        const warnings: string[] = [];
-        for (const id of selected) {
+      const ids = [...selected];
+      if (ids.length === 0) return;
+      const ok = await dialog.confirm({
+        title: t.n(ids.length, 'Uninstall {n} mod?', 'Uninstall {n} mods?'),
+        body: t('This deletes them from disk. There is no undo.'),
+        confirmLabel: t('Uninstall'),
+        destructive: true,
+      });
+      if (!ok) return;
+
+      setUninstalling(new Set(ids));
+      const warnings: string[] = [];
+      const failures: string[] = [];
+      let done = 0;
+      // One `try` PER MOD. Wrapping the whole loop meant the first failure
+      // left every remaining mod neither uninstalled nor reported, skipped
+      // `clearSelection`, and showed a single error for an N-item operation.
+      for (const id of ids) {
+        try {
           const warning = disableHookWarning(await removeLocalMod(id));
           if (warning) warnings.push(warning);
           uninstallModStore(id);
+          done += 1;
+        } catch (err) {
+          failures.push(
+            `${getMod(id)?.name ?? id}: ${err instanceof Error ? err.message : String(err)}`,
+          );
         }
-        await refreshLocalMods();
-        clearSelection();
-        if (warnings.length) toast.push(warnings.join(' '), 'error');
-        else toast.push(t('Selected mods uninstalled.'), 'success');
-      } catch (err) {
-        toast.push(err instanceof Error ? err.message : String(err), 'error');
+      }
+      await refreshLocalMods();
+      clearSelection();
+      setUninstalling(new Set());
+      if (failures.length) {
+        toast.push(
+          `${t('{done} of {total} uninstalled.', { done, total: ids.length })} ${failures.join(' ')}`,
+          'error',
+        );
+      } else if (warnings.length) {
+        toast.push(warnings.join(' '), 'error');
+      } else {
+        toast.push(t('Selected mods uninstalled.'), 'success');
       }
     })();
-  }, [clearSelection, refreshLocalMods, removeLocalMod, selected, t, toast, uninstallModStore]);
+  }, [
+    clearSelection,
+    dialog,
+    refreshLocalMods,
+    removeLocalMod,
+    selected,
+    t,
+    toast,
+    uninstallModStore,
+  ]);
 
   if (installed.length === 0) {
     return (
@@ -397,7 +465,7 @@ function LibraryPage() {
           <div className="flex items-center gap-2">
             <Button
               type="button"
-              onClick={() => changeView('cards')}
+              onClick={() => void changeView('cards')}
               aria-pressed={view === 'cards'}
               variant={view === 'cards' ? 'gilt' : 'default'}
               size="sm"
@@ -407,7 +475,7 @@ function LibraryPage() {
             </Button>
             <Button
               type="button"
-              onClick={() => changeView('list')}
+              onClick={() => void changeView('list')}
               aria-pressed={view === 'list'}
               variant={view === 'list' ? 'gilt' : 'default'}
               size="sm"
@@ -417,7 +485,7 @@ function LibraryPage() {
             </Button>
             <Button
               type="button"
-              onClick={() => changeView('config')}
+              onClick={() => void changeView('config')}
               aria-pressed={view === 'config'}
               variant={view === 'config' ? 'gilt' : 'default'}
               size="sm"
@@ -622,6 +690,7 @@ function LibraryPage() {
                   onOpen={(slug) => navigate({ to: '/mod/$slug', params: { slug } })}
                   onToggle={handleToggle}
                   onUninstall={uninstall}
+                  uninstalling={uninstalling}
                   selected={selected}
                   onSelect={toggleSelected}
                   conflictCounts={conflictCountByMod}
@@ -634,6 +703,7 @@ function LibraryPage() {
                   profile={profile}
                   onToggle={handleToggle}
                   onUninstall={uninstall}
+                  uninstalling={uninstalling}
                   onReorder={reorderMod}
                   selected={selected}
                   onSelect={toggleSelected}
@@ -739,8 +809,14 @@ function LibraryPage() {
             <Button type="button" size="sm" onClick={bulkDisable}>
               {t('Disable selected')}
             </Button>
-            <Button type="button" size="sm" variant="danger" onClick={bulkUninstall}>
-              {t('Uninstall selected')}
+            <Button
+              type="button"
+              size="sm"
+              variant="danger"
+              onClick={bulkUninstall}
+              disabled={uninstalling.size > 0}
+            >
+              {uninstalling.size > 0 ? t('Uninstalling…') : t('Uninstall selected')}
             </Button>
             <Button type="button" size="sm" onClick={selectAllVisible}>
               {t('Select filtered')}
@@ -761,6 +837,9 @@ interface RowProps {
   onOpen?: (slug: string) => void;
   onToggle: (id: string) => void;
   onUninstall: (id: string) => void;
+  /** Ids whose uninstall is in flight — their controls are disabled so a slow
+   *  sidecar cannot be handed the same delete twice. */
+  uninstalling: Set<string>;
   onReorder?: (id: string, toIndex: number) => void;
   selected: Set<string>;
   onSelect: (id: string) => void;
@@ -775,6 +854,7 @@ function CardGrid({
   onOpen,
   onToggle,
   onUninstall,
+  uninstalling,
   selected,
   onSelect,
   conflictCounts,
@@ -892,8 +972,14 @@ function CardGrid({
                   onToggleEnabled={() => onToggle(id)}
                 />
                 <OverlayButton modId={id} />
-                <Button type="button" onClick={() => onUninstall(id)} variant="danger" size="sm">
-                  {t('uninstall')}
+                <Button
+                  type="button"
+                  onClick={() => onUninstall(id)}
+                  disabled={uninstalling.has(id)}
+                  variant="danger"
+                  size="sm"
+                >
+                  {uninstalling.has(id) ? t('uninstalling…') : t('uninstall')}
                 </Button>
               </div>
             </div>
@@ -910,6 +996,7 @@ function ListView({
   onToggle,
   onReorder,
   onUninstall,
+  uninstalling,
   selected,
   onSelect,
   conflictCounts,
@@ -1041,6 +1128,7 @@ function ListView({
             <button
               type="button"
               onClick={() => onUninstall(id)}
+              disabled={uninstalling.has(id)}
               className="btn-grim shrink-0 px-2 py-1.5"
               data-variant="danger"
               title={t('Uninstall this mod')}
