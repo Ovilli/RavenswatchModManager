@@ -117,7 +117,7 @@ function scrollableFrom(node: EventTarget | null): HTMLElement | null {
   return null;
 }
 
-type Animation = { target: number; frame: number };
+type Animation = { target: number; frame: number; last: number };
 
 /**
  * Smooth every scroll container under `root`, present and future.
@@ -132,12 +132,23 @@ export function attachSmoothWheel(root: HTMLElement | Document): () => void {
     const run = () => {
       const anim = animations.get(el);
       if (!anim) return;
+      // Somebody else moved this box since our last frame — a scrollbar drag,
+      // a keyboard PageDown, `scrollIntoView`, a list that grew under us.
+      // Chasing a target computed before that happened is what yanks the view
+      // back to where the wheel was going: the user scrolls up and is dropped
+      // down again a moment later. Their scroll wins; ours is abandoned.
+      if (anim.last >= 0 && el.scrollTop !== anim.last) {
+        anim.target = el.scrollTop;
+        anim.frame = 0;
+        return;
+      }
       const distance = anim.target - el.scrollTop;
       // Snap home once a frame would move less than a pixel. Not just
       // tidiness: a sub-pixel step can round away to no movement at all, which
       // leaves `distance` unchanged and the rAF loop running forever at 60fps.
       if (Math.abs(distance) < EPSILON || Math.abs(distance * EASE) < 1) {
         el.scrollTop = anim.target;
+        anim.last = -1;
         anim.frame = 0;
         return;
       }
@@ -149,6 +160,10 @@ export function attachSmoothWheel(root: HTMLElement | Document): () => void {
       // already refuses steps smaller than a pixel, so rounding can never
       // stall the chase.
       el.scrollTop = Math.round(el.scrollTop + distance * EASE);
+      // What we wrote, read back: the box clamps and rounds it, and the
+      // comparison above is only meaningful against the value it actually
+      // holds.
+      anim.last = el.scrollTop;
       anim.frame = requestAnimationFrame(run);
     };
     return run;
@@ -173,14 +188,18 @@ export function attachSmoothWheel(root: HTMLElement | Document): () => void {
     e.preventDefault();
     let anim = animations.get(el);
     if (!anim) {
-      anim = { target: el.scrollTop, frame: 0 };
+      anim = { target: el.scrollTop, frame: 0, last: -1 };
       animations.set(el, anim);
     }
     // Not animating means nothing else has moved us since the last frame —
     // trust the DOM over a stale target.
     if (!anim.frame) anim.target = el.scrollTop;
     anim.target = Math.max(0, Math.min(max, anim.target + delta));
-    if (!anim.frame) anim.frame = requestAnimationFrame(stepFor(el));
+    if (!anim.frame) {
+      // A fresh chase: nothing of ours is on screen yet to compare against.
+      anim.last = -1;
+      anim.frame = requestAnimationFrame(stepFor(el));
+    }
   };
 
   // Something else moved a container (scrollbar drag, keyboard, route change):

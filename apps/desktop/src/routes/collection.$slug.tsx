@@ -129,7 +129,13 @@ function CollectionDetailPage() {
     setInstallAllRunning(true);
     setInstallError(null);
     setInstallProgress({ value: 0, max: data.mods.length });
-    const targetProfileId = profile.id === 'default' ? undefined : profile.id;
+    // The default profile is the vanilla load and never carries mods, so
+    // installing into it lands every mod in a freshly-invented "My Mods"
+    // profile (see `installMod`) — a collection arriving under a name that has
+    // nothing to do with it. Name the profile after the collection instead,
+    // which is what installing a collection means.
+    const targetProfileId =
+      profile.id === 'default' ? createProfile(data.name) : profile.id;
     for (const [idx, m] of data.mods.entries()) {
       setInstalling((prev) => ({ ...prev, [m.slug]: true }));
       try {
@@ -152,11 +158,18 @@ function CollectionDetailPage() {
     setInstallAllRunning(false);
     setInstallProgress({ value: 0, max: 0 });
     toast.push(
-      t.n(
-        data.mods.length,
-        'Installed {n} mod to current profile',
-        'Installed {n} mods to current profile',
-      ),
+      profile.id === 'default'
+        ? t.n(
+            data.mods.length,
+            'Created profile "{name}" with {n} mod',
+            'Created profile "{name}" with {n} mods',
+            { name: data.name },
+          )
+        : t.n(
+            data.mods.length,
+            'Installed {n} mod to current profile',
+            'Installed {n} mods to current profile',
+          ),
       'success',
     );
   }
@@ -168,7 +181,7 @@ function CollectionDetailPage() {
     }
     const name = await dialog.prompt({
       title: t('New profile from collection'),
-      initialValue: t('Collection: {name}', { name: data.name }),
+      initialValue: data.name,
       placeholder: t('Profile name'),
     });
     if (!name) return;

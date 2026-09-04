@@ -722,6 +722,7 @@ function LibraryPage() {
                 <ListView
                   items={items}
                   profile={profile}
+                  onOpen={(slug) => navigate({ to: '/mod/$slug', params: { slug } })}
                   onToggle={handleToggle}
                   onUninstall={uninstall}
                   uninstalling={uninstalling}

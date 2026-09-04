@@ -63,6 +63,40 @@ function ProfilesPage() {
   const dialog = useDialog();
   const toast = useToast();
 
+  /**
+   * Duplicate a profile — the store row AND the mods on disk.
+   *
+   * A profile's mods live in `<modsDir>/profiles/<id>`, and every CLI call
+   * runs with `RSMM_MODS_DIR` pointed at the ACTIVE profile's directory. So
+   * copying the store row alone made the new profile — which duplication also
+   * activates — a directory that does not exist: `rsmm json list` returned
+   * nothing, the library renders that list, and so BOTH the copy and the
+   * original looked stripped of every mod until the original was activated
+   * again.
+   */
+  const onDuplicate = async (profileId: string) => {
+    const newId = duplicate(profileId);
+    const modsRoot = useApp.getState().settings.modsDir?.trim();
+    if (!modsRoot) return;
+    try {
+      await invoke('copy_profile_dir', {
+        modsRoot,
+        fromProfileId: profileId,
+        toProfileId: newId,
+      });
+    } catch (err) {
+      toast.push(
+        t('Copied the profile, but not its mod files: {error}', {
+          error: err instanceof Error ? err.message : String(err),
+        }),
+        'error',
+      );
+    }
+    // The active profile just changed, so the list the library renders is the
+    // new directory's — refetch it rather than leaving the old one on screen.
+    await localModsQuery.refetch();
+  };
+
   const onOpenFolder = async (profileId: string) => {
     // Creating and revealing the directory happens in Rust
     // (`profile_dir::open_profile_dir`), which re-validates the profile id,
@@ -411,7 +445,7 @@ function ProfilesPage() {
                     <CheckIcon className="h-4 w-4" aria-hidden="true" /> {t('Activate')}
                   </Button>
                 ) : null}
-                <Button type="button" size="sm" onClick={() => duplicate(p.id)}>
+                <Button type="button" size="sm" onClick={() => void onDuplicate(p.id)}>
                   <Copy className="h-3.5 w-3.5" aria-hidden="true" /> {t('Duplicate')}
                 </Button>
                 <Button type="button" size="sm" onClick={() => onRename(p.id, p.name)}>

@@ -66,6 +66,7 @@ pub fn run() {
             graphics_mode::gpu_acceleration_disabled,
             graphics_mode::set_gpu_acceleration_disabled,
             profile_dir::open_profile_dir,
+            profile_dir::copy_profile_dir,
         ]);
 
     // Plugins are best-effort. If one fails to initialize (e.g. an

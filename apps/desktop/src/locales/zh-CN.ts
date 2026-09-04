@@ -147,7 +147,6 @@ export const zhCN: Record<string, string> = {
     '关闭 {name} 悬浮窗（按住 Shift 点击可重新居中）',
   'Collapse sidebar': '折叠侧边栏',
   'Collapse the sidebar to icons': '把侧边栏折叠成图标',
-  'Collection: {name}': '合集：{name}',
   Collections: '合集',
   'Command log': '命令日志',
   Commands: '命令',
@@ -170,6 +169,7 @@ export const zhCN: Record<string, string> = {
   'Contribute, report issues, join the community Discord, or read developer notes in the repository. RSMM is free — if it saved you an evening, Ko-fi keeps the coffee coming.':
     '参与贡献、报告问题、加入社区 Discord，或在仓库中阅读开发者笔记。RSMM 完全免费——如果它为你省下了一个晚上，欢迎在 Ko-fi 上请作者喝杯咖啡。',
   Copied: '已复制',
+  'Copied the profile, but not its mod files: {error}': '已复制方案，但未复制其模组文件：{error}',
   Copy: '复制',
   'Copy error details': '复制错误详情',
   'Copy error details to clipboard': '将错误详情复制到剪贴板',
