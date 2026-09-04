@@ -112,7 +112,7 @@ def test_explicit_rotation_flows_through_swap():
     assert cooked.parse(out).classes[0].name == "oCGeometry"
 
 
-def test_rewrite_layer_preserves_header_and_replicates_vertex0():
+def test_rebuild_layer_preserves_header_and_replicates_vertex0():
     import struct
     name = b"tangent"
     v0 = struct.pack("<3f", 1.0, 0.0, 0.0)
@@ -120,7 +120,7 @@ def test_rewrite_layer_preserves_header_and_replicates_vertex0():
     payload = (struct.pack("<I", 9) + struct.pack("<I", len(name)) + name
                + b"\x00" + struct.pack("<II", 2, 24) + v0 + v1)
     assert geometry_cook._layer_vertex_count(payload) == 2
-    grown = geometry_cook._rewrite_layer(payload, 5)
+    grown = geometry_cook._rebuild_layer(payload, 5, None, None, None)
     assert geometry_cook._layer_vertex_count(grown) == 5
     head = 8 + len(name) + 1  # ver(4)+namelen(4)+name + comp(1)
     assert grown[:head] == payload[:head]
@@ -290,3 +290,260 @@ def test_bind_pose_gap_separates_an_aligned_mesh_from_one_in_its_own_pose():
     # Nothing to measure is not a warning.
     assert geometry_cook.bind_pose_gap([], src) is None
     assert geometry_cook.bind_pose_gap(aligned, {"positions": []}) is None
+
+
+# --- bone-name palettes -------------------------------------------------
+#
+# The template's `u8` skinning indices address a per-submesh palette of bone
+# NAMES, not the file's skeleton. Verified on the shipped assets: every
+# submesh's maximum referenced index is exactly `len(palette) - 1`.
+
+_BEOWULF = (Path(__file__).resolve().parents[1] / "data" / "uncooked" / "3D"
+            / "Characters" / "Heroes" / "Beowulf" / "Beowulf_GEO.fbx.glb")
+_HOG = (Path(__file__).resolve().parents[1] / "data" / "uncooked" / "3D"
+        / "Characters" / "Enemies" / "UndeadHogs"
+        / "UDHogs_Captain_GEO.fbx.glb")
+
+_needs_beowulf = pytest.mark.skipif(
+    not _BEOWULF.is_file(), reason="uncooked corpus absent")
+
+
+def _palette_audit(cooked_bytes: bytes) -> list[tuple[int, int, int]]:
+    """(vertex count, palette size, max referenced bone index) per submesh."""
+    cf = cooked.parse(cooked_bytes)
+    tgt = next(si for si, s in enumerate(cf.sections)
+               if geometry_cook._find_records(s.payload))
+    main = cf.sections[tgt].payload
+    palettes = geometry_cook._record_palettes(main)
+    assert palettes is not None, "template palettes must be readable"
+    counts = [len(s.positions) for s in G._parse_meshbuffers(main)]
+    rec_of_count: dict[int, int] = {}
+    for ri, c in enumerate(counts):
+        rec_of_count.setdefault(c, ri)
+
+    out = []
+    for si, sec in enumerate(cf.sections):
+        if si == tgt:
+            continue
+        vc = geometry_cook._layer_vertex_count(sec.payload)
+        if vc is None or geometry_cook._layer_name(sec.payload) != "skinning":
+            continue
+        if vc not in rec_of_count:
+            continue
+        pal = palettes[rec_of_count[vc]]
+        _h, blocks = geometry_cook._layer_blocks(sec.payload)
+        top = -1
+        for _stride, recs in blocks:
+            for rec in recs:
+                idx, weights = geometry_cook._decode_skin(rec)
+                for b, wt in zip(idx, weights, strict=True):
+                    if wt > 0.0:
+                        top = max(top, b)
+        out.append((vc, len(pal), top))
+    return out
+
+
+@_needs_beowulf
+def test_shipped_geometry_indexes_its_own_bone_palette():
+    """Ground truth for the whole fix: indices are palette-relative.
+
+    If they addressed the skeleton, a 13-name submesh would reference indices
+    far above 12. It references exactly 0..12 — three submeshes, three
+    independent index spaces.
+    """
+    rows = _palette_audit(
+        geometry_cook.template_from_uncooked_glb(_BEOWULF.read_bytes()))
+    assert len(rows) == 3, "Beowulf ships three skinned submeshes"
+    for verts, palette, top in rows:
+        assert top == palette - 1, (
+            f"submesh of {verts} verts references up to {top} of a "
+            f"{palette}-entry palette")
+
+
+@_needs_beowulf
+@pytest.mark.slow
+@pytest.mark.parametrize("transform", [
+    None,
+    {"skin": "rigid"},
+    {"submeshes": "map"},
+])
+def test_swap_never_writes_a_bone_index_past_its_palette(transform):
+    """The bug: weights pooled across submeshes, written under one palette.
+
+    `_gather_source` concatenates the template's per-vertex skinning records
+    across every submesh, and the swap writes the result into record 0 — which
+    used to keep record 0's 13-entry palette while carrying indices up to 62
+    borrowed from the 63-entry submesh next door. Out of range, silently, on
+    any multi-submesh (i.e. any character) template.
+    """
+    out = geometry_cook.swap_geometry(
+        geometry_cook.template_from_uncooked_glb(_BEOWULF.read_bytes()),
+        _tall_glb(3.0), transform=transform)
+    rows = _palette_audit(out)
+    assert rows
+    for verts, palette, top in rows:
+        assert top < palette, (
+            f"submesh of {verts} verts references bone {top} of a "
+            f"{palette}-entry palette")
+
+
+@_needs_beowulf
+@pytest.mark.slow
+def test_map_mode_keeps_the_templates_submesh_split():
+    """`submeshes="map"` is what preserves a multi-material character.
+
+    Merging every donor submesh into record 0 leaves records 1+ as one-vertex
+    stubs, so the template's other materials have nothing to draw.
+    """
+    template = geometry_cook.template_from_uncooked_glb(_BEOWULF.read_bytes())
+    custom = _two_part_glb()
+
+    def counts(cb):
+        cf = cooked.parse(cb)
+        return [len(r.positions) for s in cf.sections
+                for r in G._parse_meshbuffers(s.payload)]
+
+    merged = counts(geometry_cook.swap_geometry(template, custom))
+    mapped = counts(geometry_cook.swap_geometry(
+        template, custom, transform={"submeshes": "map"}))
+    assert merged[0] == 8 and merged[1:] == [1, 1], \
+        "merge puts everything in record 0"
+    assert mapped[0] == 4 and mapped[1] == 4, "map spreads them 1:1"
+
+
+def _two_part_glb() -> bytes:
+    """Two separate 4-vertex primitives, so submesh placement is observable."""
+    from rsmm.engine import gltf
+
+    b = gltf.GlbBuilder()
+    prims = []
+    for dz in (0.0, 2.0):
+        pi = b.add_positions([(0, 0, dz), (1, 0, dz), (0, 0, dz + 1), (0, 2, dz)])
+        ni = b.add_vec3([(0, 1, 0)] * 4)
+        ui = b.add_vec2([(0, 0)] * 4)
+        ii = b.add_indices([0, 1, 2, 0, 1, 3, 0, 2, 3, 1, 2, 3])
+        prims.append(gltf.Primitive(
+            attributes={"POSITION": pi, "NORMAL": ni, "TEXCOORD_0": ui},
+            indices=ii))
+    for k, prim in enumerate(prims):
+        m = b.add_mesh(gltf.Mesh(name=f"part{k}", primitives=[prim]))
+        b.add_node(gltf.Node(name=f"part{k}", mesh=m), is_root=True)
+    return b.build_glb()
+
+
+def _rigged_glb(bone_names: list[str]) -> bytes:
+    """A 4-vertex mesh with a real glTF skin, every vertex on `bone_names[0]`."""
+    from rsmm.engine import gltf
+
+    b = gltf.GlbBuilder()
+    pi = b.add_positions([(0, 0, 0), (1, 0, 0), (0, 0, 1), (0, 2, 0)])
+    ni = b.add_vec3([(0, 1, 0)] * 4)
+    ui = b.add_vec2([(0, 0)] * 4)
+    ji = b.add_joints([(0, 0, 0, 0)] * 4)
+    wi = b.add_weights([(1.0, 0.0, 0.0, 0.0)] * 4)
+    ii = b.add_indices([0, 1, 2, 0, 1, 3, 0, 2, 3, 1, 2, 3])
+    mesh = b.add_mesh(gltf.Mesh(name="rig", primitives=[gltf.Primitive(
+        attributes={"POSITION": pi, "NORMAL": ni, "TEXCOORD_0": ui,
+                    "JOINTS_0": ji, "WEIGHTS_0": wi}, indices=ii)]))
+    joints = [b.add_node(gltf.Node(name=n)) for n in bone_names]
+    ibm = b.add_mat4_array([[1.0 if i % 5 == 0 else 0.0 for i in range(16)]
+                            for _ in bone_names])
+    skin = b.add_skin(gltf.Skin(name="s", joints=joints,
+                                inverse_bind_matrices=ibm))
+    b.add_node(gltf.Node(name="rig", mesh=mesh, skin=skin), is_root=True)
+    return b.build_glb()
+
+
+@_needs_beowulf
+@pytest.mark.slow
+def test_gltf_skin_binds_by_bone_name():
+    """A hand-rigged mesh brings its OWN weights, bound by name.
+
+    Without this the cooker can only guess weights from the nearest original
+    vertices, which is why a differently-posed body tears: proximity has no
+    way to know an arm vertex is an arm.
+    """
+    template = geometry_cook.template_from_uncooked_glb(_BEOWULF.read_bytes())
+    palettes = geometry_cook._record_palettes(
+        cooked.parse(template).sections[
+            next(si for si, s in enumerate(cooked.parse(template).sections)
+                 if geometry_cook._find_records(s.payload))].payload)
+    want = palettes[1][7]  # a real bone from the body submesh's palette
+
+    out = geometry_cook.swap_geometry(
+        template, _rigged_glb([want]), transform={"skin": "gltf"})
+    cf = cooked.parse(out)
+    tgt = next(si for si, s in enumerate(cf.sections)
+               if geometry_cook._find_records(s.payload))
+    merged = geometry_cook._record_palettes(cf.sections[tgt].payload)[0]
+    rows = _palette_audit(out)
+    verts, palette, top = rows[0]
+    assert verts == 4
+    assert merged[top] == want, "every vertex should land on the named bone"
+    assert top < palette
+
+
+@_needs_beowulf
+@pytest.mark.slow
+def test_gltf_skin_rejects_bones_the_template_does_not_have():
+    """Silent mis-binding is the failure mode this whole area suffers from."""
+    template = geometry_cook.template_from_uncooked_glb(_BEOWULF.read_bytes())
+    with pytest.raises(NotReversedError):
+        geometry_cook.swap_geometry(
+            template, _rigged_glb(["NotABeowulfBone"]),
+            transform={"skin": "gltf"})
+
+
+@_needs_beowulf
+@pytest.mark.slow
+def test_bones_alias_rescues_a_renamed_rig():
+    template = geometry_cook.template_from_uncooked_glb(_BEOWULF.read_bytes())
+    cf = cooked.parse(template)
+    tgt = next(si for si, s in enumerate(cf.sections)
+               if geometry_cook._find_records(s.payload))
+    want = geometry_cook._record_palettes(cf.sections[tgt].payload)[1][7]
+    out = geometry_cook.swap_geometry(
+        template, _rigged_glb(["mixamo:Spine"]),
+        transform={"skin": "gltf", "bones": {"mixamo:Spine": want}})
+    assert _palette_audit(out)[0][0] == 4
+
+
+@_needs_beowulf
+@pytest.mark.slow
+def test_drop_bones_removes_the_geometry_that_bone_drives():
+    """The hog captain's anchor-and-chain is 1340 verts on bones the hero has
+    no equivalent for; dropping by bone is the only handle on it, since the
+    chain is a region of a submesh rather than a submesh of its own."""
+    template = geometry_cook.template_from_uncooked_glb(_BEOWULF.read_bytes())
+    cf = cooked.parse(template)
+    tgt = next(si for si, s in enumerate(cf.sections)
+               if geometry_cook._find_records(s.payload))
+    want = geometry_cook._record_palettes(cf.sections[tgt].payload)[1][7]
+    with pytest.raises(ValueError, match="removed the entire mesh"):
+        geometry_cook.swap_geometry(
+            template, _rigged_glb([want]),
+            transform={"skin": "gltf", "drop_bones": [want]})
+
+
+def test_drop_bones_without_gltf_weights_is_refused():
+    with pytest.raises(ValueError, match="drop_bones"):
+        geometry_cook.swap_geometry(b"", _tall_glb(1.0),
+                                    transform={"drop_bones": ["DEF.Head"]})
+
+
+@_needs_beowulf
+def test_fit_centres_a_skinned_template_on_its_body_not_its_accessories():
+    """Beowulf carries a back-mounted wyrm that sprawls to z = -2.544.
+
+    Centring on the combined bounding box put a replacement body 0.85 units
+    behind the hero — measured, and exactly the "model stands behind the
+    character" report. The centroid is where the body is.
+    """
+    template = geometry_cook.template_from_uncooked_glb(_BEOWULF.read_bytes())
+    cf = cooked.parse(template)
+    pts = [p for s in cf.sections
+           for r in G._parse_meshbuffers(s.payload) for p in r.positions]
+    bbox_c = geometry_cook._centre_of(pts, use_centroid=False)
+    centroid = geometry_cook._centre_of(pts, use_centroid=True)
+    assert bbox_c[2] < -0.7, "the wyrm drags the bounding box backwards"
+    assert abs(centroid[2]) < 0.2, "the centroid stays on the body"

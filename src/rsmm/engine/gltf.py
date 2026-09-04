@@ -172,6 +172,31 @@ class GlbBuilder:
         })
         return len(self._accessors) - 1
 
+    def add_joints(self, joints: list[tuple[int, int, int, int]]) -> int:
+        """`JOINTS_0`: four joint slots per vertex, as u16 (the safe width —
+        u8 caps at 255 joints and no exporter relies on it)."""
+        data = b"".join(struct.pack("<4H", *j) for j in joints)
+        view = self._add_buffer_view(data, TARGET_ARRAY_BUFFER, 8)
+        self._accessors.append({
+            "bufferView": view,
+            "componentType": COMPONENT_USHORT,
+            "count": len(joints),
+            "type": TYPE_VEC4,
+        })
+        return len(self._accessors) - 1
+
+    def add_weights(self, weights: list[tuple[float, float, float, float]]) -> int:
+        """`WEIGHTS_0`: the four influences matching `add_joints`, as floats."""
+        data = b"".join(struct.pack("<4f", *w) for w in weights)
+        view = self._add_buffer_view(data, TARGET_ARRAY_BUFFER, 16)
+        self._accessors.append({
+            "bufferView": view,
+            "componentType": COMPONENT_FLOAT,
+            "count": len(weights),
+            "type": TYPE_VEC4,
+        })
+        return len(self._accessors) - 1
+
     def add_indices(self, indices: list[int]) -> int:
         # Choose u16 vs u32 based on max index.
         max_i = max(indices) if indices else 0

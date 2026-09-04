@@ -204,7 +204,9 @@ class ModBuilder:
     def model(self, decoded_path: str, source: str | Path,
               rotate_deg: tuple[float, float, float] | None = None,
               scale: float | None = None, skin: str | None = None,
-              fit: str | None = None) -> None:
+              fit: str | None = None, submeshes: str | None = None,
+              bones: dict[str, str] | None = None,
+              drop_bones: list[str] | None = None) -> None:
         """Override a mesh asset. Source must be a `.glb`/`.gltf`.
 
         A custom mesh is cooked at apply-time by retargeting it onto the
@@ -233,9 +235,31 @@ class ModBuilder:
         follows the character but never deforms. Right for a prop or a static
         shape carried by a character, wrong for a body.
 
+        `skin="gltf"` uses the weights in your OWN `.glb` — the way to replace
+        a character properly. Rig the mesh to the game's skeleton in Blender
+        (the bone names have to match the original's) and export with the
+        armature; bones are then bound by name and nothing is guessed from
+        proximity, so the bind-pose rule above stops applying. It implies
+        `fit="rig"` (no scale, no recentre), because a mesh rigged to the
+        game's skeleton is already in the right place. `bones={"mine": "theirs"}`
+        renames on the way in, for a rig that came from elsewhere.
+
+        `drop_bones=[...]` deletes the geometry a bone drives — for a donor
+        body carrying something that has to become a separate object, like a
+        chain or a slung weapon. Needs `skin="gltf"`, since only your own
+        weights say which bone owns which triangle.
+
         `fit="none"` keeps the mesh's own size rather than matching the
         original's height — what a structure usually wants, since its donor is
-        a mounting point rather than a size reference.
+        a mounting point rather than a size reference. `fit="rig"` goes
+        further and does not move the mesh at all.
+
+        `submeshes="map"` lays your submeshes onto the original's one for one
+        instead of merging them all into the first. A character is usually
+        several submeshes because each one draws with a different material, and
+        merging leaves the rest as empty stubs — so everything renders with the
+        first material and your second texture never appears. The pairing is by
+        order, so order your objects in Blender to match the original's.
         """
         if Path(source).suffix.lower() not in self._MODEL_EXTS:
             raise ValueError(
@@ -247,15 +271,27 @@ class ModBuilder:
         if scale is not None:
             tf["scale"] = float(scale)
         if skin is not None:
-            if skin not in ("transfer", "rigid"):
+            if skin not in ("transfer", "rigid", "gltf"):
                 raise ValueError(
-                    f"model(skin=) must be 'transfer' or 'rigid', got {skin!r}")
+                    f"model(skin=) must be 'transfer', 'rigid' or 'gltf', "
+                    f"got {skin!r}")
             tf["skin"] = skin
         if fit is not None:
-            if fit not in ("height", "none"):
+            if fit not in ("height", "none", "rig"):
                 raise ValueError(
-                    f"model(fit=) must be 'height' or 'none', got {fit!r}")
+                    f"model(fit=) must be 'height', 'none' or 'rig', "
+                    f"got {fit!r}")
             tf["fit"] = fit
+        if submeshes is not None:
+            if submeshes not in ("merge", "map"):
+                raise ValueError(
+                    f"model(submeshes=) must be 'merge' or 'map', "
+                    f"got {submeshes!r}")
+            tf["submeshes"] = submeshes
+        if bones:
+            tf["bones"] = {str(k): str(v) for k, v in bones.items()}
+        if drop_bones:
+            tf["drop_bones"] = [str(b) for b in drop_bones]
         if tf:
             norm = decoded_path.replace("\\", "/").strip("/")
             self._asset_transforms[norm] = tf

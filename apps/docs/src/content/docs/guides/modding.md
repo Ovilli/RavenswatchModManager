@@ -434,35 +434,67 @@ Donor-swap only. PNG → cooked texture cooker needs the `oCTexture` container R
 ```python
 mod.model("3D/Characters/Heroes/Juliet/Juliet_GEO.fbx", "assets/my_mesh.glb")
 mod.model(path, src, rotate_deg=(90, 0, 0), scale=0.8)  # orientation / size
+mod.model(path, src, skin="gltf")                       # use YOUR OWN weights
 mod.model(path, src, skin="rigid")                      # bind to ONE bone
 mod.model(path, src, fit="none")                        # keep your own size
+mod.model(path, src, submeshes="map")                   # keep the material split
 ```
 
-The cooker replaces the mesh inside the shipped asset and **retargets it onto
-that asset's existing skeleton**. It never reads a skeleton, bones or
-animations out of your `.glb` — those parts of the file are ignored, so there
-is nothing to map, rename or re-parent on your side.
+The cooker replaces the mesh inside the shipped asset and keeps **that asset's
+existing skeleton**. A custom skeleton is never written, so the bones your mesh
+moves on are always the game's — but which of them each vertex rides is yours
+to control.
 
-**Replacing a skinned mesh (a character, not a prop) has one rule: author your
-mesh in the original's bind pose.** Bone weights are copied *positionally* —
-each of your vertices takes the weights of the game vertices nearest to it. Get
-the pose right and that lands on the correct bones; get it wrong and an arm
-vertex nearest a leg bone is weighted to the leg, and the model tears itself
-apart the moment it animates. So open the original and your mesh together in
-Blender, line the limbs, head and torso up, match the scale and facing, and
-export that. `rsmm apply` warns when your mesh does not overlap the original's
-bind pose.
+#### Weights: `skin="gltf"` for a character, `transfer` for a prop
 
-`skin="rigid"` opts out of the weight copy and binds the whole mesh to a single
-bone: it follows the character but never bends. Right for a prop or a static
-shape, wrong for a body.
+The default, `skin="transfer"`, copies weights *positionally*: each of your
+vertices takes the weights of the game vertices nearest to it. That is right
+for a prop, and for a body only if you authored it in the original's bind pose
+— otherwise an arm vertex nearest a leg bone is weighted to the leg and the
+model tears itself apart the moment it animates. `rsmm apply` warns when your
+mesh does not overlap the original's bind pose.
+
+**`skin="gltf"` is the way to replace a character.** Rig your mesh to the
+game's skeleton in Blender, using the original's bone names, and export with
+the armature. The cooker then reads `JOINTS_0`/`WEIGHTS_0` out of your `.glb`
+and binds each vertex to the bone you named, so nothing is guessed and the pose
+you modelled in stops mattering. It implies `fit="rig"` — no scale, no
+recentre — because a mesh rigged to the game's skeleton is already in place.
+
+Two helpers go with it. `bones={"MyBone": "DEF.Spine"}` renames joints on the
+way in, for a rig that came from elsewhere; a name the target's skeleton does
+not have is reported, and a vertex left with no usable bone is an error rather
+than a silent pin to bone 0. `drop_bones=["DEF.PHY.Grab"]` deletes the geometry
+a bone drives, for a donor carrying something that has to become a separate
+object — a chain, a slung weapon.
+
+Note that an `rsmm uncook` mesh carries **no** glTF skin (its weights ride in
+`extras.rsmm.cooked_b64`, which Blender discards on re-export), so `skin="gltf"`
+needs a mesh you actually rigged, not a round-tripped one.
+
+`skin="rigid"` opts out of weights entirely and binds the whole mesh to a
+single bone: it follows the character but never bends. Right for a prop or a
+static shape, wrong for a body.
+
+#### Submeshes carry materials
+
+A character is several submeshes because the entity hands a different material
+to each one. By default they are all merged into the first, which leaves the
+rest as empty stubs — so everything draws with the first material and your
+second texture never appears. `submeshes="map"` lays yours onto the original's
+one for one instead. Pairing is by order, so order your objects in Blender to
+match the original's.
 
 Two limits worth knowing before you model: meshes above 65,535 vertices are
 refused, because a heavier one crashes the game at load (decimate toward that
 ceiling, not far below it — it is far higher than the vanilla count and looks
 near-identical to a 250k film source); and a custom **skeleton** or custom
 **animations** cannot be shipped at all, because nothing writes those formats
-yet. Reskinning what already animates is the supported path.
+yet. Animation clips also key **translation** on every bone, not just rotation
+— measured across a shipped hero clip, 113 tracks of 113 — so a posed skeleton
+always has the original's proportions, and a taller or shorter body follows the
+original's limb lengths no matter how it is bound. Reskinning what already
+animates is the supported path.
 
 ### Numeric balance / modifier / camp difficulty
 

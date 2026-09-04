@@ -75,7 +75,7 @@ Register a custom map/level cloned from vanilla ``base``.
 ### `Mod.model`
 
 ```python
-Mod.model(self, decoded_path: 'str', source: 'str | Path', rotate_deg: 'tuple[float, float, float] | None' = None, scale: 'float | None' = None, skin: 'str | None' = None, fit: 'str | None' = None) -> 'None'
+Mod.model(self, decoded_path: 'str', source: 'str | Path', rotate_deg: 'tuple[float, float, float] | None' = None, scale: 'float | None' = None, skin: 'str | None' = None, fit: 'str | None' = None, submeshes: 'str | None' = None, bones: 'dict[str, str] | None' = None, drop_bones: 'list[str] | None' = None) -> 'None'
 ```
 
 Override a mesh asset. Source must be a `.glb`/`.gltf`.
@@ -106,9 +106,31 @@ torso up with the original in Blender before exporting.
 follows the character but never deforms. Right for a prop or a static
 shape carried by a character, wrong for a body.
 
+`skin="gltf"` uses the weights in your OWN `.glb` — the way to replace
+a character properly. Rig the mesh to the game's skeleton in Blender
+(the bone names have to match the original's) and export with the
+armature; bones are then bound by name and nothing is guessed from
+proximity, so the bind-pose rule above stops applying. It implies
+`fit="rig"` (no scale, no recentre), because a mesh rigged to the
+game's skeleton is already in the right place. `bones={"mine": "theirs"}`
+renames on the way in, for a rig that came from elsewhere.
+
+`drop_bones=[...]` deletes the geometry a bone drives — for a donor
+body carrying something that has to become a separate object, like a
+chain or a slung weapon. Needs `skin="gltf"`, since only your own
+weights say which bone owns which triangle.
+
 `fit="none"` keeps the mesh's own size rather than matching the
 original's height — what a structure usually wants, since its donor is
-a mounting point rather than a size reference.
+a mounting point rather than a size reference. `fit="rig"` goes
+further and does not move the mesh at all.
+
+`submeshes="map"` lays your submeshes onto the original's one for one
+instead of merging them all into the first. A character is usually
+several submeshes because each one draws with a different material, and
+merging leaves the rest as empty stubs — so everything renders with the
+first material and your second texture never appears. The pairing is by
+order, so order your objects in Blender to match the original's.
 
 ### `Mod.ot`
 

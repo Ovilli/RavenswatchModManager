@@ -25,7 +25,7 @@ result keeps the vertex formats, material slots and submesh framing the engine
 already expects from that resource (:func:`rsmm.engine.prop_cook.cook_model`).
 ``transform`` is accepted and forwarded for orientation/scale fixes.
 
-``transform.skin`` (``"transfer"`` default, or ``"rigid"``)
+``transform.skin`` (``"transfer"`` default, ``"rigid"``, or ``"gltf"``)
     How the model is bound to the target's skeleton, and the setting that
     decides whether replacing a **character** works at all.
 
@@ -41,6 +41,24 @@ already expects from that resource (:func:`rsmm.engine.prop_cook.cook_model`).
     on a humanoid. The model then follows the character intact and never
     deforms. Limbs will not bend; that is the trade, and for a replacement
     body it is the difference between a usable model and a shredded one.
+
+    ``gltf`` uses the weights in the mod's own ``.glb``, bound to the target's
+    bones **by name**. This is how a character replacement is meant to be
+    done: rig the mesh to the game's skeleton in Blender using the original's
+    bone names, export with the armature, and nothing is guessed — the pose
+    the mesh is authored in stops mattering. It implies ``fit = "rig"``.
+    ``transform.bones = { "MyBone" = "DEF.Spine" }`` renames joints on the way
+    in for a rig that came from somewhere else, and
+    ``transform.drop_bones = [...]`` deletes the geometry a bone drives (a
+    chain, a slung weapon — anything that has to become a separate object).
+
+``transform.submeshes`` (``"merge"`` default, or ``"map"``)
+    ``merge`` collapses every submesh of the model into the target's first
+    one. ``map`` lays them out one for one instead, which is what keeps a
+    multi-material target intact: the entity hands one material to each
+    submesh, so a merged model draws entirely with the first material and the
+    mod's other textures never appear. Pairing is by order — order the objects
+    in Blender to match the target's.
 
 Compared with ``poi``'s ``prop`` block this cooks exactly one asset and
 introduces no new resource name, which is also what makes it the way to test a
