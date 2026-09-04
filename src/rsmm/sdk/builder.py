@@ -203,7 +203,8 @@ class ModBuilder:
     @sdk_export("Mod.model")
     def model(self, decoded_path: str, source: str | Path,
               rotate_deg: tuple[float, float, float] | None = None,
-              scale: float | None = None) -> None:
+              scale: float | None = None, skin: str | None = None,
+              fit: str | None = None) -> None:
         """Override a mesh asset. Source must be a `.glb`/`.gltf`.
 
         A custom mesh is cooked at apply-time by retargeting it onto the
@@ -218,6 +219,23 @@ class ModBuilder:
         different aspect ratio than the original can come out too big or
         small. Pass `scale=` to multiply the auto-fit (e.g. `scale=0.5` to
         halve it).
+
+        **Replacing a SKINNED mesh — a character, not a prop — has one rule
+        the fit cannot do for you: author your mesh in the original's bind
+        pose.** The cooker has no bones of yours to use; it keeps the game's
+        skeleton and gives each of your vertices the weights of the game
+        vertices nearest to it. That copy is positional, so an arm vertex
+        that lands nearest a leg bone gets weighted to the leg, and the model
+        tears itself apart the moment it animates. Line the limbs, head and
+        torso up with the original in Blender before exporting.
+
+        `skin="rigid"` binds the whole mesh to a single bone instead: it
+        follows the character but never deforms. Right for a prop or a static
+        shape carried by a character, wrong for a body.
+
+        `fit="none"` keeps the mesh's own size rather than matching the
+        original's height — what a structure usually wants, since its donor is
+        a mounting point rather than a size reference.
         """
         if Path(source).suffix.lower() not in self._MODEL_EXTS:
             raise ValueError(
@@ -228,6 +246,16 @@ class ModBuilder:
             tf["rotate_deg"] = [float(a) for a in rotate_deg]
         if scale is not None:
             tf["scale"] = float(scale)
+        if skin is not None:
+            if skin not in ("transfer", "rigid"):
+                raise ValueError(
+                    f"model(skin=) must be 'transfer' or 'rigid', got {skin!r}")
+            tf["skin"] = skin
+        if fit is not None:
+            if fit not in ("height", "none"):
+                raise ValueError(
+                    f"model(fit=) must be 'height' or 'none', got {fit!r}")
+            tf["fit"] = fit
         if tf:
             norm = decoded_path.replace("\\", "/").strip("/")
             self._asset_transforms[norm] = tf

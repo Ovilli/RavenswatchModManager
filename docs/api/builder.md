@@ -70,7 +70,7 @@ Register a custom map/level cloned from vanilla ``base``.
 ### `Mod.model`
 
 ```python
-Mod.model(self, decoded_path: 'str', source: 'str | Path', rotate_deg: 'tuple[float, float, float] | None' = None, scale: 'float | None' = None) -> 'None'
+Mod.model(self, decoded_path: 'str', source: 'str | Path', rotate_deg: 'tuple[float, float, float] | None' = None, scale: 'float | None' = None, skin: 'str | None' = None, fit: 'str | None' = None) -> 'None'
 ```
 
 Override a mesh asset. Source must be a `.glb`/`.gltf`.
@@ -87,6 +87,23 @@ The auto-fit matches only the tallest axis, so a mesh with a
 different aspect ratio than the original can come out too big or
 small. Pass `scale=` to multiply the auto-fit (e.g. `scale=0.5` to
 halve it).
+
+**Replacing a SKINNED mesh — a character, not a prop — has one rule
+the fit cannot do for you: author your mesh in the original's bind
+pose.** The cooker has no bones of yours to use; it keeps the game's
+skeleton and gives each of your vertices the weights of the game
+vertices nearest to it. That copy is positional, so an arm vertex
+that lands nearest a leg bone gets weighted to the leg, and the model
+tears itself apart the moment it animates. Line the limbs, head and
+torso up with the original in Blender before exporting.
+
+`skin="rigid"` binds the whole mesh to a single bone instead: it
+follows the character but never deforms. Right for a prop or a static
+shape carried by a character, wrong for a body.
+
+`fit="none"` keeps the mesh's own size rather than matching the
+original's height — what a structure usually wants, since its donor is
+a mounting point rather than a size reference.
 
 ### `Mod.ot`
 

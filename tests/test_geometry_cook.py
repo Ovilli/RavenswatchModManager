@@ -267,3 +267,26 @@ def test_auto_upright_believes_a_plausible_y_over_the_longest_axis():
     assert geometry_cook._auto_upright_euler(box(1, 0.3, 2)) == (-90, 0, 0)
     # Real X-up.
     assert geometry_cook._auto_upright_euler(box(2, 0.3, 1)) == (0, 0, 90)
+
+
+def test_bind_pose_gap_separates_an_aligned_mesh_from_one_in_its_own_pose():
+    """Skin weights are copied from the NEAREST template vertices, so a donor
+    standing in its own pose gets limbs weighted to whatever bone happens to be
+    close and tears apart the moment it animates (the `skin="rigid"` note in
+    `swap_geometry` describes it).
+
+    The gap is what lets the cooker say so instead of shipping a torn model, so
+    the two cases have to stay clearly on either side of the threshold.
+    """
+    src = {"positions": [(0, 0, 0), (0, 0, 10), (0, 10, 0), (10, 0, 0), (10, 10, 10)]}
+    # k_nearest returns SQUARED distances; these are 0.2-0.3 units out on a
+    # ~17-unit diagonal — a mesh modelled over the original.
+    aligned = [[(0, 0.04)], [(1, 0.09)], [(2, 0.01)]]
+    # 5-7 units out: whole limbs where the template has nothing.
+    off_pose = [[(0, 25.0)], [(1, 36.0)], [(2, 49.0)]]
+
+    assert geometry_cook.bind_pose_gap(aligned, src) < geometry_cook._BIND_POSE_GAP
+    assert geometry_cook.bind_pose_gap(off_pose, src) > geometry_cook._BIND_POSE_GAP
+    # Nothing to measure is not a warning.
+    assert geometry_cook.bind_pose_gap([], src) is None
+    assert geometry_cook.bind_pose_gap(aligned, {"positions": []}) is None

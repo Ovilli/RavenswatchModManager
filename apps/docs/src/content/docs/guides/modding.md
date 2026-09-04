@@ -429,6 +429,41 @@ cp /path/to/donor.dxt \
 
 Donor-swap only. PNG → cooked texture cooker needs the `oCTexture` container RE'd (see [Roadmap](/project/roadmap/)).
 
+### Custom 3D mesh (`.glb`)
+
+```python
+mod.model("3D/Characters/Heroes/Juliet/Juliet_GEO.fbx", "assets/my_mesh.glb")
+mod.model(path, src, rotate_deg=(90, 0, 0), scale=0.8)  # orientation / size
+mod.model(path, src, skin="rigid")                      # bind to ONE bone
+mod.model(path, src, fit="none")                        # keep your own size
+```
+
+The cooker replaces the mesh inside the shipped asset and **retargets it onto
+that asset's existing skeleton**. It never reads a skeleton, bones or
+animations out of your `.glb` — those parts of the file are ignored, so there
+is nothing to map, rename or re-parent on your side.
+
+**Replacing a skinned mesh (a character, not a prop) has one rule: author your
+mesh in the original's bind pose.** Bone weights are copied *positionally* —
+each of your vertices takes the weights of the game vertices nearest to it. Get
+the pose right and that lands on the correct bones; get it wrong and an arm
+vertex nearest a leg bone is weighted to the leg, and the model tears itself
+apart the moment it animates. So open the original and your mesh together in
+Blender, line the limbs, head and torso up, match the scale and facing, and
+export that. `rsmm apply` warns when your mesh does not overlap the original's
+bind pose.
+
+`skin="rigid"` opts out of the weight copy and binds the whole mesh to a single
+bone: it follows the character but never bends. Right for a prop or a static
+shape, wrong for a body.
+
+Two limits worth knowing before you model: meshes above 65,535 vertices are
+refused, because a heavier one crashes the game at load (decimate toward that
+ceiling, not far below it — it is far higher than the vanilla count and looks
+near-identical to a 250k film source); and a custom **skeleton** or custom
+**animations** cannot be shipped at all, because nothing writes those formats
+yet. Reskinning what already animates is the supported path.
+
 ### Numeric balance / modifier / camp difficulty
 
 ```sh

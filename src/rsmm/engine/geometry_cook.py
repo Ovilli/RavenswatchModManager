@@ -797,6 +797,18 @@ def swap_geometry(template_cooked: bytes, glb_bytes: bytes,
     elif src is not None and src["positions"]:
         rigid_rec = None
         nn = _build_transfer(merged.positions, src)
+        gap = bind_pose_gap(nn, src)
+        if gap is not None and gap > _BIND_POSE_GAP:
+            _log.warning(
+                "custom mesh does not overlap the original's bind pose (median "
+                "gap %.0f%% of the model's size). Bone weights are copied from "
+                "the NEAREST original vertices, so a limb sitting where the "
+                "original has nothing gets weighted to the wrong bone and the "
+                "model tears apart as soon as it animates. Pose your mesh over "
+                "the original in Blender before exporting, or pass "
+                "skin='rigid' to bind the whole model to one bone (it follows "
+                "the character but never bends).",
+                gap * 100)
         blended_skin = _blend_skin_records(merged.normals, nn, src)
     else:
         rigid_rec = None
@@ -1048,6 +1060,42 @@ def _rigid_skin(src: dict | None) -> bytes | None:
 def _build_transfer(custom_pos: list, src: dict) -> list[list[tuple[int, float]]]:
     grid = _Grid(src["positions"])
     return [grid.k_nearest(p, _SKIN_K) for p in custom_pos]
+
+
+#: Median gap (as a fraction of the template's bounding-box diagonal) past
+#: which a skinned swap is assumed to be authored in the wrong pose. A mesh
+#: modelled over the original sits ON its surface, so the typical nearest
+#: source vertex is a couple of percent of the diagonal away; a donor standing
+#: in its own pose puts whole limbs where the template has nothing, and the
+#: figure jumps well past this. Deliberately loose: it must not cry wolf on a
+#: legitimately chunkier silhouette.
+_BIND_POSE_GAP = 0.08
+
+
+def bind_pose_gap(knn: list[list[tuple[int, float]]], src: dict) -> float | None:
+    """Median distance from a custom vertex to its nearest template vertex, as a
+    fraction of the template's bounding-box diagonal.
+
+    The number that says whether a skinned swap will animate or tear: weights
+    are copied POSITIONALLY, so a mesh that does not occupy the same space as
+    the one it replaces gets every vertex weighted to whatever bone happened to
+    be nearest. Returns None when there is nothing to measure.
+    """
+    pts = src.get("positions") or []
+    if not pts or not knn:
+        return None
+    lo = [min(p[a] for p in pts) for a in range(3)]
+    hi = [max(p[a] for p in pts) for a in range(3)]
+    diag = math.sqrt(sum((hi[a] - lo[a]) ** 2 for a in range(3)))
+    if diag <= 0:
+        return None
+    nearest = sorted(math.sqrt(n[0][1]) for n in knn if n)
+    if not nearest:
+        return None
+    mid = len(nearest) // 2
+    median = (nearest[mid] if len(nearest) % 2
+              else (nearest[mid - 1] + nearest[mid]) / 2)
+    return median / diag
 
 
 def _transfer_layer(payload: bytes, knn: list[list[tuple[int, float]]],
