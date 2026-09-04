@@ -2,6 +2,18 @@
   "generated": "2026-09-04",
   "entries": [
     {
+      "version": "5.6.1",
+      "date": "2026-09-04",
+      "summary": "Five reported bugs: the store-page arrow in the list view, Open folder doing nothing, a duplicated profile losing every mod, scrolling that dropped you back where you came from, and collections landing in a profile named after nothing.",
+      "highlights": [
+        "The arrow beside a mod in list view opens its store page again. In list view it was wired to nothing at all.",
+        "Open folder in Profiles works. In the AppImage it was launching the file manager with the app's own bundled GTK libraries, which killed it on startup — silently, because nothing was waiting to hear about it.",
+        "Duplicating a profile keeps its mods. The copy took the profile's list but not its files, and since the app reads mods from whichever profile is active, the copy AND the original looked empty until you switched back.",
+        "Scrolling stays where you put it. If anything else moved the page mid-scroll — a scrollbar drag, a list growing — the wheel animation kept chasing its old destination and dragged you back to it.",
+        "Installing a collection with no profile selected creates one named after the collection, instead of a generic “My Mods”."
+      ]
+    },
+    {
       "version": "5.6.0",
       "date": "2026-09-04",
       "summary": "A visual overhaul of the whole app: readable text, one consistent shape language, and cards that line up. Plus a fix for the stale strips of the previous page that appeared while scrolling.",
