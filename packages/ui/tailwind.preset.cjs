@@ -42,6 +42,11 @@ module.exports = {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+        'surface-1': 'hsl(var(--surface-1))',
+        'surface-2': 'hsl(var(--surface-2))',
+        'text-primary': 'hsl(var(--text-primary))',
+        'text-secondary': 'hsl(var(--text-secondary))',
+        'text-tertiary': 'hsl(var(--text-tertiary))',
         pitch: 'hsl(var(--pitch))',
         oxblood: 'hsl(var(--oxblood))',
         crimson: 'hsl(var(--crimson))',
@@ -53,10 +58,20 @@ module.exports = {
         moss: 'hsl(var(--moss))',
         frost: 'hsl(var(--frost))',
       },
+      // One radius family, matching the CSS tokens. `DEFAULT` is overridden on
+      // purpose: bare `rounded` is 42 uses in the desktop app and was landing
+      // on Tailwind's 4px, a value nothing else in the design system uses.
       borderRadius: {
-        lg: 'calc(var(--radius) + 2px)',
+        DEFAULT: 'var(--radius-sm)',
+        sm: 'var(--radius-sm)',
         md: 'var(--radius)',
-        sm: 'calc(var(--radius) - 1px)',
+        lg: 'calc(var(--radius) + 2px)',
+      },
+      // `text-crimson` (72 uses, mostly error copy) resolves to the bright
+      // twin: the brand crimson is 2.16:1 on pitch, well under AA. Fills and
+      // borders keep the deep colour.
+      textColor: {
+        crimson: 'hsl(var(--crimson-text))',
       },
       transitionTimingFunction: {
         'grimoire': 'cubic-bezier(0.4, 0, 0.2, 1)',

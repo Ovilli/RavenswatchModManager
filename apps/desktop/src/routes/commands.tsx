@@ -241,10 +241,10 @@ function CommandsPage() {
         <Fleuron className="my-3" />
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {commands.map((command) => (
-            <div key={command.id} className="border border-border/70 bg-pitch/40 p-4">
+            <Panel key={command.id} variant="inset" className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="font-serif-italic text-base text-parchment">{command.label}</p>
+                  <p className="font-serif text-base text-parchment">{command.label}</p>
                   <p className="mt-1 text-sm text-ash">{command.description}</p>
                 </div>
                 <MonoTag
@@ -274,7 +274,7 @@ function CommandsPage() {
                   <span>{busyId === command.id ? t('Running…') : t('Run')}</span>
                 </Button>
               </div>
-            </div>
+            </Panel>
           ))}
         </div>
       </Panel>

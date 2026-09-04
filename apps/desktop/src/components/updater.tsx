@@ -1,5 +1,5 @@
 import { ProgressBar } from '@rsmm/ui';
-import { AlertTriangle, Download, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Check, Download, RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import pkg from '../../package.json';
@@ -29,7 +29,7 @@ import {
   relaunchApp,
   relaunchMigrated,
 } from '../lib/updater';
-import { Button, useModalChrome } from './chrome';
+import { Button, Fleuron, useModalChrome } from './chrome';
 import { useDialog, useToast } from './toast';
 
 interface UpdateStatus {
@@ -418,15 +418,14 @@ export function UpdaterBanner() {
       >
         <div>
           <div className="text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-crimson/20">
-              <Download className="h-8 w-8 text-crimson" />
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-gilt/40 bg-gilt/10">
+              <Check className="h-8 w-8 text-gilt" />
             </div>
             <h2 id="update-restart-title" className="font-fraktur text-3xl text-crimson">
               {t('Ready to restart')}
             </h2>
             <p className="mt-2 font-serif-italic text-parchment">
-              {t('v{version} is installed at', { version: m.version })}
-              <span className="font-data block mt-1 break-all text-sm text-ash">{m.path}</span>
+              {t('v{version} is installed and ready.', { version: m.version })}
             </p>
             <p className="mt-3 font-serif-italic text-sm text-ash">
               {t(
@@ -435,9 +434,17 @@ export function UpdaterBanner() {
             </p>
           </div>
 
+          <Fleuron className="my-5" />
+
+          <p className="font-mono text-ash">{t('Installed at')}</p>
+          <p className="mt-1 break-all border border-border bg-pitch/60 px-3 py-2 font-data text-ash">
+            {m.path}
+          </p>
+
           {m.leftover ? (
-            <p className="font-mono mt-4 rounded border border-oxblood/30 bg-pitch/60 p-3 text-xs text-ash leading-relaxed">
-              {m.leftover}
+            <p className="mt-3 flex items-start gap-2 border border-gilt/40 bg-gilt/5 px-3 py-2 font-data text-ash leading-relaxed">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-gilt" aria-hidden="true" />
+              <span>{m.leftover}</span>
             </p>
           ) : null}
 
@@ -449,7 +456,7 @@ export function UpdaterBanner() {
                 finishMigration().catch(() => {});
               }}
             >
-              <Download className="h-4 w-4" /> {t('Restart into the new copy')}
+              <RefreshCw className="h-4 w-4" /> {t('Restart into the new copy')}
             </Button>
             <button
               type="button"

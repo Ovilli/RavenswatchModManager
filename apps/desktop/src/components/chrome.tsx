@@ -1,7 +1,7 @@
 import { cn } from '@rsmm/ui';
 import { Copy, EyeOff } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode, RefObject } from 'react';
+import type { ComponentPropsWithRef, HTMLAttributes, ReactNode, RefObject } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useT } from '../lib/i18n-react';
@@ -100,7 +100,7 @@ export function Button({
   size = 'md',
   children,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & {
+}: ComponentPropsWithRef<'button'> & {
   variant?: 'default' | 'primary' | 'gilt' | 'danger';
   size?: 'sm' | 'md';
 }) {
@@ -147,20 +147,17 @@ export function CopyButton({ value }: { value: string }) {
         className="sr-only"
         tabIndex={-1}
       />
-      <button
+      <Button
         type="button"
+        size="sm"
         onClick={copy}
         title={t('Copy error details')}
         aria-label={t('Copy error details to clipboard')}
-        className={cn(
-          'ml-auto inline-flex min-w-24 items-center justify-center gap-1.5 border border-border bg-pitch/70 px-3 py-1.5',
-          'font-mono text-xs tracking-wider uppercase text-ash transition-colors duration-150',
-          'hover:border-gilt/50 hover:text-parchment focus:outline-none focus:ring-2 focus:ring-gilt/40',
-        )}
+        className="ml-auto min-w-24"
       >
         <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-        <span>{copied ? t('copied') : t('copy')}</span>
-      </button>
+        <span>{copied ? t('Copied') : t('Copy')}</span>
+      </Button>
     </>
   );
 }
@@ -367,10 +364,10 @@ export function MonoTag({
   return (
     <span
       className={cn(
-        'font-mono inline-flex items-center border px-1.5 py-[1px]',
-        tone === 'default' && 'border-border text-smoke',
-        tone === 'crimson' && 'border-crimson/70 text-parchment bg-crimson/15',
-        tone === 'gilt' && 'border-gilt/60 text-gilt',
+        'font-data inline-flex items-center rounded-sm border px-1.5 py-[1px] text-xs leading-5',
+        tone === 'default' && 'border-parchment/10 bg-parchment/5 text-smoke',
+        tone === 'crimson' && 'border-crimson/70 bg-crimson/15 text-parchment',
+        tone === 'gilt' && 'border-gilt/50 bg-gilt/10 text-gilt',
         className,
       )}
     >
@@ -448,9 +445,28 @@ export function EmptyState({
   );
 }
 
-export function Panel({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {
+/**
+ * The app's surface. `variant` says where the panel sits in depth, so a panel
+ * nested in another panel stops reading at the same weight as its parent:
+ * `raised` for anything floating above the page (modals, popovers, menus),
+ * `inset` for anything recessed into a card (log bodies, output blocks).
+ */
+export function Panel({
+  className,
+  variant = 'default',
+  children,
+  ...props
+}: HTMLAttributes<HTMLDivElement> & { variant?: 'default' | 'raised' | 'inset' }) {
   return (
-    <div className={cn('grimoire-card p-6', className)} {...props}>
+    <div
+      className={cn(
+        'grimoire-card p-6',
+        variant === 'raised' && 'grimoire-card--raised',
+        variant === 'inset' && 'grimoire-card--inset',
+        className,
+      )}
+      {...props}
+    >
       {children}
     </div>
   );
@@ -473,14 +489,14 @@ export function InkSwitch({
       aria-label={label}
       onClick={onClick}
       className={cn(
-        'relative inline-flex h-5 w-9 items-center border transition-colors duration-150 ease-grimoire',
-        on ? 'border-crimson bg-crimson/40' : 'border-border bg-char',
+        'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-150 ease-grimoire',
+        on ? 'border-crimson bg-crimson' : 'border-parchment/10 bg-parchment/10',
       )}
     >
       <span
         className={cn(
-          'block h-3 w-3 transition-transform duration-150 ease-grimoire',
-          on ? 'translate-x-5 bg-parchment animate-ink-stamp' : 'translate-x-1 bg-smoke',
+          'block h-4 w-4 rounded-full transition-transform duration-150 ease-grimoire',
+          on ? 'translate-x-6 bg-parchment animate-ink-stamp' : 'translate-x-1 bg-smoke',
         )}
       />
     </button>

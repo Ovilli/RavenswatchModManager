@@ -605,7 +605,7 @@ function QuitPrompt({
       onKeyDown={onKeyDown}
     >
       <div className="absolute inset-0 bg-pitch/80" onClick={() => !busy && onCancel()} />
-      <div className="grimoire-card relative w-[min(520px,92vw)] p-5">
+      <div className="grimoire-card grimoire-card--raised relative w-[min(520px,92vw)] p-5">
         <h3 id="quit-prompt-title" className="font-fraktur text-xl text-parchment">
           {t('Quit with active overrides?')}
         </h3>
@@ -615,31 +615,21 @@ function QuitPrompt({
           )}
         </p>
         <div className="mt-4 flex flex-nowrap justify-end gap-2">
-          <button
-            type="button"
-            ref={cancelRef}
-            onClick={onCancel}
-            disabled={busy}
-            className="whitespace-nowrap border border-border px-3 py-1.5 text-ash hover:text-parchment disabled:opacity-60"
-          >
+          <Button type="button" size="sm" ref={cancelRef} onClick={onCancel} disabled={busy}>
             {t('Cancel')}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            size="sm"
+            variant="gilt"
             onClick={onRestoreAndQuit}
             disabled={busy}
-            className="whitespace-nowrap border border-gilt/60 bg-gilt/20 px-3 py-1.5 text-parchment hover:bg-gilt/30 disabled:opacity-60"
           >
             {t('Restore & quit')}
-          </button>
-          <button
-            type="button"
-            onClick={onQuitAnyway}
-            disabled={busy}
-            className="whitespace-nowrap border border-crimson bg-crimson/80 px-3 py-1.5 text-parchment hover:bg-oxblood disabled:opacity-60"
-          >
+          </Button>
+          <Button type="button" size="sm" variant="danger" onClick={onQuitAnyway} disabled={busy}>
             {t('Quit anyway')}
-          </button>
+          </Button>
         </div>
         {error ? (
           <p className="mt-3 text-sm text-crimson" role="alert">

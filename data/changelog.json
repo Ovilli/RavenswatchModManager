@@ -1,6 +1,21 @@
 {
-  "generated": "2026-09-03",
+  "generated": "2026-09-04",
   "entries": [
+    {
+      "version": "5.6.0",
+      "date": "2026-09-04",
+      "summary": "A visual overhaul of the whole app: readable text, one consistent shape language, and cards that line up. Plus a fix for the stale strips of the previous page that appeared while scrolling.",
+      "highlights": [
+        "The app has been redrawn. Panels and cards now sit on their own surfaces instead of each carrying a border, so the screen has a foreground and a background again.",
+        "Body text is legible. The greys it was set in fell below the accessible contrast floor, and error messages were the worst offender of all.",
+        "Scrolling no longer leaves fragments of the previous page behind.",
+        "Mod cards in the Library are the same height, with the description clipped to three lines, so a long summary stops knocking the grid out of line.",
+        "The enable switch is a real toggle, and Uninstall is quiet until you reach for it — it used to be the boldest thing on every card.",
+        "Filters read as a list of choices rather than a heap of buttons, and labels are in sentence case instead of tracked-out capitals.",
+        "Corners, focus rings and button styles are consistent across every screen.",
+        "The 'Ready to restart' dialog after a Linux AppImage update is legible: its notice used to render as a wall of capitals."
+      ]
+    },
     {
       "version": "5.5.0",
       "date": "2026-09-03",

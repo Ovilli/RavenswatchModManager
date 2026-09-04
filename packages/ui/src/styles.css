@@ -14,11 +14,21 @@
     --pitch: 0 49% 5%; /* #170707 */
     --oxblood: 357 57% 24%; /* #621A20 */
     --crimson: 356 62% 33%; /* #882029 */
-    --char: 18 13% 28%; /* #5B4338 */
-    --ash: 18 11% 45%; /* #846B61 */
-    --smoke: 17 13% 51%; /* #947C71 */
+    --char: 18 13% 28%; /* #5B4338 — lines, ornament, disabled fills. Never text. */
+    /* Text greys, measured against --pitch: the old pair (45% / 51%) rendered
+       body copy at 4.08:1, under the 4.5:1 AA floor, which is most of why the
+       app read as muddy. Raised until both clear it with room to spare —
+       ash 6.0:1, smoke 8.7:1 — keeping the ramp order (ash dimmer than smoke)
+       so no call site changes meaning. */
+    --ash: 18 11% 56%; /* #9B8A82 */
+    --smoke: 17 13% 68%; /* #B8A9A3 */
     --parchment: 47 53% 83%; /* #EBE1BC */
     --gilt: 41 60% 60%; /* warm gold for focus rings */
+    /* Crimson is a FILL, not an ink: as text on pitch it is 2.16:1, and it was
+       carrying every error line in the app. The bright twin is text-only —
+       `text-crimson` resolves here via the preset, `bg-`/`border-crimson` stay
+       the deep brand colour. */
+    --crimson-text: 356 74% 66%;
     /* Two muted cold accents. The brand set is warm-only, which is right for
        chrome but leaves categorical lists (a picker grouped by chapter, a
        catalog grouped by rarity) with nothing to distinguish groups BY — they
@@ -48,7 +58,28 @@
     --border: 18 15% 18%;
     --input: 18 15% 18%;
     --ring: var(--gilt);
-    --radius: 10px;
+
+    /* Surfaces. Depth used to be drawn with a 1px border around every single
+       element, so a card, a chip, a rail and a tile all sat at one visual
+       weight and nothing led the eye. These are small lightness steps off
+       --pitch instead: the surface says how close a thing is, and a border is
+       spent only where something is genuinely inset or interactive. */
+    --surface-0: var(--pitch); /* the page */
+    --surface-1: 0 30% 9%; /* cards, panels, rails */
+    --surface-2: 0 26% 12%; /* raised: modals, popovers, menus */
+
+    /* Text roles. Aliases over the ramp above, so new code can say what a
+       string IS rather than which grey it wants. */
+    --text-primary: var(--parchment);
+    --text-secondary: var(--smoke);
+    --text-tertiary: var(--ash);
+
+    /* One radius family. The sheet used to emit --radius at -2/-1/+0/+2/+3/+5
+       plus hardcoded 0.6rem, 4px and 999px, which is what makes a UI read as
+       assembled rather than designed. */
+    --radius: 10px; /* cards, panels, modals */
+    --radius-sm: 6px; /* buttons, inputs, chips, icons */
+    --radius-pill: 999px; /* pills, toggles, scrollbars */
 
     /* Typography tokens. Every font-family in this sheet resolves through
        these four vars, and every size is rem-relative to `--ui-scale`, so
@@ -93,14 +124,25 @@
     font-feature-settings: "liga" 1, "kern" 1;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    /* Dark painterly vignette — pure CSS gradients (no game art). */
+    /* Dark painterly vignette — pure CSS gradients (no game art). Held at a
+       whisper: at the old 0.55/0.6 the corners lifted enough to fight the
+       surface steps above, so a card read as lighter or darker than an
+       identical card elsewhere on the page. */
     background-image: linear-gradient(hsl(0 46% 5% / 0.94), hsl(0 46% 4% / 0.97)),
-      radial-gradient(ellipse at top left, hsl(0 32% 13% / 0.55), transparent 58%),
-      radial-gradient(ellipse at bottom right, hsl(0 22% 10% / 0.6), transparent 64%);
+      radial-gradient(ellipse at top left, hsl(0 32% 13% / 0.18), transparent 58%),
+      radial-gradient(ellipse at bottom right, hsl(0 22% 10% / 0.2), transparent 64%);
     background-position: center, top left, bottom right;
     background-size: auto, auto, auto;
     background-repeat: no-repeat;
-    background-attachment: fixed;
+    /* NOT `background-attachment: fixed`. The shell is `h-screen
+       overflow-hidden` and the only scrolling element is `.rsmm-main`, so a
+       fixed attachment buys nothing here — and it puts WebKitGTK (the Linux
+       webview) on the slow scrolling path, where an overflow container
+       scrolling over it leaves stale tiles: fragments of the previous route
+       painted into the gap. The two `backdrop-filter` blurs that used to sit
+       on every card and on the sidebar were forcing compositing layers that
+       hid this; with them gone the artifact is visible, so the cause goes
+       rather than the mask. */
     background-blend-mode: normal, normal, normal;
   }
 
@@ -110,6 +152,16 @@
     font-family: var(--font-display);
     font-weight: 700;
     letter-spacing: 0.02em;
+  }
+
+  /* The upright cut of the accent face. Italic is a voice, not a default:
+     set as the app's standing treatment for names and summaries it made every
+     card's copy lean, which is both harder to read at 14px and the reason the
+     library looked like a page of pull-quotes. */
+  .font-serif {
+    font-family: var(--font-accent);
+    font-style: normal;
+    font-weight: 600;
   }
 
   /* Hero serif italic for occasional flourishes (mod titles, hero copy). */
@@ -178,7 +230,22 @@
   :focus-visible {
     outline: 2px solid hsl(var(--ring));
     outline-offset: 2px;
-    border-radius: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  /* Focus is drawn HERE and nowhere else. There were five treatments — this
+     rule, a 3px ring plus a drop shadow on .btn-grim, a 1px box-shadow on
+     inputs and selects, a third on the window buttons and a Tailwind
+     `focus:ring-2` on CopyButton — so tabbing across one toolbar changed the
+     ring's colour, width and offset three times. A control may still change
+     its own border on focus; it may not draw a second ring. */
+  .btn-grim:focus-visible,
+  .wc-btn:focus-visible,
+  .select-inline:focus-visible,
+  .input-grim:focus-visible,
+  .select-grim:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
   }
 }
 
@@ -230,30 +297,58 @@
     text-transform: lowercase;
   }
 
-  /* Card glow per brief: 1px warm border + soft inner glow, no drop. */
+  /* The app's main surface. Depth comes from --surface-1 sitting a step off
+     the page, with the border demoted to a hairline that describes the edge
+     rather than drawing a box: the old full --border on every card, chip,
+     rail and tile is the single strongest reason the UI read as dated.
+     `backdrop-filter: blur(2px)` is gone with it — it cost a compositing
+     layer per card to blur a background that is now flat anyway. */
   .grimoire-card {
-    border: 1px solid hsl(var(--border));
+    border: 1px solid hsl(var(--parchment) / 0.07);
     border-radius: var(--radius);
-    background-color: hsl(var(--card) / 0.9);
-    backdrop-filter: blur(2px);
-    box-shadow: inset 0 0 0 1px hsl(var(--parchment) / 0.03), 0 10px 28px -22px
-      hsl(var(--pitch) / 0.9);
+    background-color: hsl(var(--surface-1));
+    box-shadow: 0 10px 28px -22px hsl(var(--pitch) / 0.9);
     transition: border-color 200ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 200ms
       cubic-bezier(0.4, 0, 0.2, 1), transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
   }
   .grimoire-card:hover {
-    border-color: hsl(var(--gilt) / 0.45);
-    box-shadow: inset 0 0 0 1px hsl(var(--parchment) / 0.05), 0 16px 36px -22px hsl(var(--pitch)), 0
-      0 0 1px hsl(var(--gilt) / 0.12);
+    border-color: hsl(var(--gilt) / 0.35);
+    box-shadow: 0 16px 36px -22px hsl(var(--pitch));
   }
 
-  /* Subtle parchment-grain surface for sidebars / strips. */
+  /* A panel inside a panel used to be the same surface as the panel around it,
+     which is how a screen ends up as boxes inside boxes. `raised` steps toward
+     the viewer (modals, popovers, menus); `inset` steps away (log bodies, code
+     blocks, anything recessed into a card). */
+  .grimoire-card--raised {
+    background-color: hsl(var(--surface-2));
+    border-color: hsl(var(--parchment) / 0.1);
+    box-shadow: 0 24px 48px -28px hsl(var(--pitch));
+  }
+  .grimoire-card--inset {
+    background-color: hsl(var(--pitch) / 0.5);
+    border-color: hsl(var(--parchment) / 0.05);
+    box-shadow: none;
+  }
+
+  /* Sidebars and strips: the same surface step as a card, with a grain that
+     is felt rather than seen. (Was defined twice, 100 lines apart, the second
+     copy adding a 6px backdrop blur over an already-opaque colour.) */
   .surface-grain {
-    background-color: hsl(var(--card) / 0.8);
+    background-color: hsl(var(--surface-1));
+    background-image: repeating-linear-gradient(
+      45deg,
+      hsl(var(--parchment) / 0.02) 0,
+      hsl(var(--parchment) / 0.02) 1px,
+      transparent 1px,
+      transparent 9px
+    );
   }
 
   /* Brand crest — fraktur monogram + ornate frame. */
   .brand-crest {
+    width: 3.5rem;
+    height: 3.5rem;
     position: relative;
     display: inline-flex;
     align-items: center;
@@ -265,6 +360,9 @@
       hsl(var(--pitch));
     box-shadow: inset 0 0 0 1px hsl(var(--parchment) / 0.06), 0 8px 20px -16px hsl(var(--pitch));
   }
+  /* The only calc()'d radii left in the sheet, and they are geometry rather
+     than taste: these two frames sit at inset -2px and -4px, so their corners
+     must grow by the same amount to stay concentric with the crest. */
   .brand-crest::before,
   .brand-crest::after {
     content: "";
@@ -287,8 +385,9 @@
     align-items: center;
     gap: 0.75rem;
     padding: 0.6rem 0.85rem;
+    color: hsl(var(--parchment) / 0.88);
     border: 1px solid transparent;
-    border-radius: calc(var(--radius) - 2px);
+    border-radius: var(--radius-sm);
     transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms
       cubic-bezier(0.4, 0, 0.2, 1), border-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
   }
@@ -307,26 +406,6 @@
     color: hsl(var(--parchment));
     font-size: 1rem;
     font-weight: 600;
-  }
-
-  /* Slightly larger brand crest for stronger presence */
-  .brand-crest {
-    width: 3.5rem;
-    height: 3.5rem;
-  }
-
-  /* Button polish: clearer primary emphasis and focus */
-
-  .btn-grim:focus-visible {
-    outline: 3px solid hsl(var(--gilt) / 0.9);
-    outline-offset: 2px;
-    box-shadow: 0 6px 18px -10px hsl(var(--gilt) / 0.25);
-  }
-
-  /* Inputs: cleaner focus and slightly larger click target */
-
-  .select-grim {
-    color-scheme: dark;
   }
 
   /* A <select> that sits INSIDE another control (a chip, a row) rather than
@@ -351,72 +430,33 @@
   .select-inline:hover {
     color: hsl(var(--gilt));
   }
-  .select-inline:focus-visible {
-    outline: 2px solid hsl(var(--gilt) / 0.7);
-    outline-offset: 1px;
-  }
   .select-inline option {
     background-color: hsl(var(--pitch));
     color: hsl(var(--parchment));
   }
 
-  /* Surface grain: slightly stronger depth for app panels */
-  .surface-grain {
-    backdrop-filter: blur(6px);
-    background-image: repeating-linear-gradient(
-      45deg,
-      hsl(var(--parchment) / 0.02) 0,
-      hsl(var(--parchment) / 0.02) 1px,
-      transparent 1px,
-      transparent 9px
-    );
-  }
-
-  /* Icon visibility improvements for sidebar */
+  /* Sidebar icon tile. It used to carry a saturate/contrast/brightness filter
+     stack plus two drop shadows, re-tuned at three states, and grew 8% on
+     active — a 2012 chrome treatment that also re-coloured whatever artwork it
+     was given. Now it is a quiet surface that states its state with background
+     and border, like every other control. */
   .nav-icon {
     width: 2.25rem;
     height: 2.25rem;
-    border-radius: 0.6rem;
+    border-radius: var(--radius-sm);
     padding: 0.36rem;
-    background-color: hsl(var(--parchment) / 0.12);
-    border: 1px solid hsl(var(--border));
-    box-shadow: 0 10px 26px -16px hsl(var(--pitch) / 0.6), 0 2px 6px rgba(0, 0, 0, 0.25);
+    color: hsl(var(--parchment));
+    background-color: hsl(var(--parchment) / 0.06);
+    border: 1px solid hsl(var(--parchment) / 0.07);
     object-fit: contain;
-    filter: saturate(1.45) contrast(1.18) brightness(1.14)
-      drop-shadow(0 6px 18px rgba(0, 0, 0, 0.32));
-    transition: transform 160ms ease, filter 160ms ease, box-shadow 160ms ease, background-color
-      160ms ease, border-color 160ms ease;
-  }
-  /* Glow only. The icon used to scale and lift on hover as well; it was
-     movement for its own sake and it is gone. */
-  .nav-link-grim:hover .nav-icon {
-    filter: saturate(1.6) contrast(1.22) brightness(1.16)
-      drop-shadow(0 10px 26px rgba(0, 0, 0, 0.36));
-    box-shadow: 0 14px 36px -18px hsl(var(--pitch) / 0.72), 0 6px 18px rgba(0, 0, 0, 0.28);
-  }
-  .nav-link-grim[data-active="true"] .nav-icon {
-    background: linear-gradient(90deg, hsl(var(--crimson) / 0.22), hsl(var(--gilt) / 0.06));
-    filter: saturate(1.9) contrast(1.28) brightness(1.22)
-      drop-shadow(0 10px 28px rgba(136, 32, 41, 0.22));
-    box-shadow: 0 12px 36px -12px hsl(var(--crimson) / 0.22), 0 4px 12px rgba(0, 0, 0, 0.28);
-    border-color: hsl(var(--gilt) / 0.45);
-    transform: scale(1.08) translateY(-1px);
-  }
-
-  /* Encourage clearer label contrast for inactive links */
-  .nav-link-grim {
-    color: hsl(var(--parchment) / 0.88);
-  }
-
-  /* Explicit icon color tokens so SVGs using currentColor match theme */
-  .nav-icon {
-    color: hsl(var(--parchment));
+    transition: background-color 160ms ease, border-color 160ms ease;
   }
   .nav-link-grim:hover .nav-icon {
-    color: hsl(var(--parchment));
+    background-color: hsl(var(--parchment) / 0.1);
   }
   .nav-link-grim[data-active="true"] .nav-icon {
-    color: hsl(var(--parchment));
+    background-color: hsl(var(--crimson) / 0.28);
+    border-color: hsl(var(--crimson) / 0.5);
   }
 
   /* Window controls (frameless) */
@@ -430,7 +470,7 @@
     justify-content: center;
     width: 34px;
     height: 34px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: transparent;
     border: 0;
     padding: 0.12rem;
@@ -438,20 +478,12 @@
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
   }
-  .wc-btn:focus {
-    outline: none;
-    box-shadow: 0 0 0 3px hsl(var(--gilt) / 0.18);
-    border-radius: 4px;
-  }
   .wc-btn:hover {
     background: hsl(var(--parchment) / 0.04);
   }
   .wc-minimize svg,
   .wc-maximize svg {
     color: hsl(var(--parchment));
-  }
-  .wc-close {
-    border-radius: 4px;
   }
   .wc-close:hover {
     background: hsl(var(--crimson) / 0.18);
@@ -462,7 +494,6 @@
   .window-controls {
     z-index: 40;
   }
-  /* status badge removed */
 
   /* Compact metric pill for status strip. */
   .stat-pill {
@@ -477,13 +508,13 @@
     white-space: nowrap;
     padding: 0.15rem 0.6rem;
     border: 1px solid hsl(var(--border));
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     color: hsl(var(--ash));
     background-color: hsl(var(--pitch) / 0.6);
     font-family: var(--font-mono);
-    font-size: 0.7rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0;
+    font-variant-ligatures: none;
   }
   .stat-pill > strong {
     color: hsl(var(--parchment));
@@ -513,10 +544,10 @@
     flex: none;
     white-space: nowrap;
     padding: 0.5rem 0.95rem;
-    border: 1px solid hsl(var(--border));
-    border-radius: calc(var(--radius) - 2px);
+    border: 1px solid hsl(var(--parchment) / 0.09);
+    border-radius: var(--radius-sm);
     color: hsl(var(--parchment));
-    background-color: hsl(var(--char) / 0.22);
+    background-color: hsl(var(--parchment) / 0.05);
     font-family: var(--font-accent);
     font-style: normal;
     font-weight: 600;
@@ -527,24 +558,27 @@
       ease-out;
   }
   .btn-grim:hover {
-    border-color: hsl(var(--gilt) / 0.6);
-    background-color: hsl(var(--char) / 0.38);
+    border-color: hsl(var(--parchment) / 0.16);
+    background-color: hsl(var(--surface-2));
   }
   .btn-grim:active {
-    transform: translateY(1px);
+    background-color: hsl(var(--char) / 0.3);
   }
   .btn-grim:disabled {
     opacity: 0.5;
     pointer-events: none;
   }
+  /* Solid fill, no gradient, no outer glow, no inset hairline. The glow was
+     the loudest thing in the app and it was on every primary button at rest,
+     which is exactly backwards: emphasis should come from the fill being the
+     only saturated surface on screen. */
   .btn-grim[data-variant="primary"] {
     border-color: hsl(var(--crimson));
-    background-color: hsl(var(--crimson) / 0.86);
-    box-shadow: inset 0 0 0 1px hsl(var(--parchment) / 0.06), 0 0 12px hsl(var(--crimson) / 0.35);
+    background-color: hsl(var(--crimson));
   }
   .btn-grim[data-variant="primary"]:hover {
-    background-color: hsl(var(--oxblood));
-    box-shadow: inset 0 0 0 1px hsl(var(--parchment) / 0.1), 0 0 18px hsl(var(--crimson) / 0.5);
+    border-color: hsl(var(--crimson-text) / 0.7);
+    background-color: hsl(var(--crimson) / 0.82);
   }
   .btn-grim[data-variant="gilt"] {
     border-color: hsl(var(--gilt) / 0.7);
@@ -555,13 +589,17 @@
     background-color: hsl(var(--gilt) / 0.15);
     color: hsl(var(--parchment));
   }
+  /* Destructive is QUIET until you reach for it. Filled at rest, it made
+     "uninstall" the boldest control on all 24 library cards while the enable
+     toggle — the thing people actually came to press — was a grey square. */
   .btn-grim[data-variant="danger"] {
-    border-color: hsl(var(--crimson) / 0.6);
-    color: hsl(var(--parchment));
-    background-color: hsl(var(--crimson) / 0.18);
+    border-color: hsl(var(--parchment) / 0.09);
+    color: hsl(var(--text-secondary));
+    background-color: transparent;
   }
   .btn-grim[data-variant="danger"]:hover {
-    background-color: hsl(var(--crimson) / 0.3);
+    color: hsl(var(--parchment));
+    background-color: hsl(var(--crimson) / 0.28);
     border-color: hsl(var(--crimson));
   }
 
@@ -570,11 +608,11 @@
     width: 100%;
     padding: 0.55rem 0.85rem 0.55rem 2.25rem;
     border: 1px solid hsl(var(--border));
-    border-radius: calc(var(--radius) - 2px);
+    border-radius: var(--radius-sm);
     background-color: hsl(var(--pitch) / 0.64);
     color: hsl(var(--parchment));
     font-family: var(--font-accent);
-    font-style: italic;
+    font-style: normal;
     font-size: 1rem;
     transition: border-color 150ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 150ms
       cubic-bezier(0.4, 0, 0.2, 1);
@@ -583,16 +621,17 @@
     color: hsl(var(--ash));
   }
   .input-grim:focus {
-    outline: none;
     border-color: hsl(var(--gilt) / 0.7);
-    box-shadow: 0 0 0 1px hsl(var(--gilt) / 0.3);
   }
 
   .select-grim {
+    /* Load-bearing: the native option popup is drawn by the OS, so without a
+       dark color-scheme a dark app sprouts a white menu. */
+    color-scheme: dark;
     appearance: none;
     padding: 0.55rem 2.15rem 0.55rem 0.85rem;
     border: 1px solid hsl(var(--border));
-    border-radius: calc(var(--radius) - 2px);
+    border-radius: var(--radius-sm);
     background-color: hsl(var(--pitch) / 0.64);
     color: hsl(var(--parchment));
     font-family: var(--font-accent);
@@ -607,16 +646,14 @@
     background-color: hsl(var(--char) / 0.34);
   }
   .select-grim:focus {
-    outline: none;
     border-color: hsl(var(--gilt) / 0.7);
-    box-shadow: 0 0 0 1px hsl(var(--gilt) / 0.3);
   }
 
   /* Ember banner for conflicts — sits above lists. */
   .ember-banner {
     background: linear-gradient(90deg, hsl(var(--crimson) / 0.22), hsl(var(--oxblood) / 0.18));
     border: 1px solid hsl(var(--crimson) / 0.6);
-    border-radius: calc(var(--radius) - 2px);
+    border-radius: var(--radius-sm);
     color: hsl(var(--parchment));
     box-shadow: inset 0 0 24px hsl(var(--crimson) / 0.15);
   }
@@ -694,10 +731,6 @@
  * (`*:hover *`) would also wipe the BASE transform of any descendant of a
  * hovered element — the toggle-switch knob snapping back to the left the
  * moment your pointer touches it. */
-:root[data-motion="reduced"] .btn-grim:active {
-  transform: none !important;
-}
-
 /* Tailwind hover transforms, which come from utility classes rather than from
  * this file. Nothing uses one right now — the last, `group-hover:scale-110` on
  * the video play button, went with the rest of the hover movement — so this is
@@ -734,9 +767,6 @@
     transition-duration: 0.01ms !important;
     transition-delay: 0ms !important;
     scroll-behavior: auto !important;
-  }
-  .btn-grim:active {
-    transform: none !important;
   }
 }
 
@@ -783,7 +813,7 @@
   background: hsl(var(--char));
   border: 2px solid transparent;
   background-clip: padding-box;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 *::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--ash));

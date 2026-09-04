@@ -44,6 +44,7 @@ import {
   filterLibraryRows,
   groupByCategory,
 } from '../lib/library-filter';
+import type { ReactNode } from 'react';
 import type { ModCategory } from '../lib/mod-types';
 import { disableHookWarning, listLocalMods, uninstallLocalMod } from '../lib/rsmm';
 import {
@@ -89,14 +90,54 @@ const CATEGORY_LABEL: Record<ModCategory, string> = {
   utility: msg('Utility'),
 };
 
-/** Status filter chips. The stored value is the filter; the label is copy. */
+/** Status filter rows. The stored value is the filter; the label is copy. */
 const STATUS_LABEL: Record<LibraryStatusFilter, string> = {
-  all: msg('all'),
-  enabled: msg('enabled'),
-  disabled: msg('disabled'),
-  outdated: msg('outdated'),
-  missingDeps: msg('missing deps'),
+  all: msg('All'),
+  enabled: msg('Enabled'),
+  disabled: msg('Disabled'),
+  outdated: msg('Outdated'),
+  missingDeps: msg('Missing deps'),
 };
+
+/** A facet heading in the filter rail. Sentence case, not tracked-out caps:
+ *  the rail is navigation furniture and should sit under the content it
+ *  filters, not shout over it. */
+function FacetLabel({ icon, children }: { icon?: ReactNode; children: ReactNode }) {
+  return (
+    <span className="flex items-center gap-2 text-ash text-xs">
+      {icon}
+      {children}
+    </span>
+  );
+}
+
+/** One row in a facet list. Full-width and left-aligned so the rail reads as a
+ *  list of choices rather than a heap of chips at three different widths. */
+function FacetRow({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={[
+        'w-full rounded-sm px-2 py-1 text-left text-sm transition-colors duration-150',
+        active
+          ? 'bg-parchment/10 text-parchment'
+          : 'text-smoke hover:bg-parchment/5 hover:text-parchment',
+      ].join(' ')}
+    >
+      {children}
+    </button>
+  );
+}
 
 function LibraryPage() {
   const t = useT();
@@ -508,7 +549,7 @@ function LibraryPage() {
             the grid collapses to one column — the filters are still above the
             list rather than stranded below it. `order` moves it to the right
             only once there are two columns to move it between. */}
-        <aside className="grimoire-card space-y-5 p-4 lg:sticky lg:top-4 lg:order-2">
+        <aside className="space-y-5 lg:sticky lg:top-4 lg:order-2">
           <div className="relative">
             <Search
               className="-translate-y-1/2 absolute top-1/2 left-3 h-4 w-4 text-ash"
@@ -523,56 +564,36 @@ function LibraryPage() {
             />
           </div>
 
-          <div className="space-y-2">
-            <span className="font-mono flex items-center gap-2 text-[0.65rem] text-ash uppercase tracking-[0.22em]">
-              <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden /> {t('Status')}
-            </span>
-            <div className="flex flex-wrap gap-1.5">
-              {(['all', 'enabled', 'disabled', 'outdated', 'missingDeps'] as const).map((item) => (
-                <Button
-                  key={item}
-                  type="button"
-                  onClick={() => setStatus(item)}
-                  aria-pressed={status === item}
-                  variant={status === item ? 'gilt' : 'default'}
-                  size="sm"
-                >
-                  {t(STATUS_LABEL[item])}
-                </Button>
-              ))}
-            </div>
+          <div className="space-y-1">
+            <FacetLabel icon={<SlidersHorizontal className="h-3.5 w-3.5" aria-hidden />}>
+              {t('Status')}
+            </FacetLabel>
+            {(['all', 'enabled', 'disabled', 'outdated', 'missingDeps'] as const).map((item) => (
+              <FacetRow key={item} active={status === item} onClick={() => setStatus(item)}>
+                {t(STATUS_LABEL[item])}
+              </FacetRow>
+            ))}
           </div>
 
           {availableCategories.length > 1 ? (
-            <div className="space-y-2">
-              <span className="font-mono text-[0.65rem] text-ash uppercase tracking-[0.22em]">
-                {t('Category')}
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                {availableCategories.map((cat) => (
-                  <Button
-                    key={cat}
-                    type="button"
-                    onClick={() => setCategory(cat)}
-                    aria-pressed={category === cat}
-                    variant={category === cat ? 'danger' : 'default'}
-                    size="sm"
-                  >
-                    {cat === 'all' ? t('All') : t(CATEGORY_LABEL[cat])}
-                  </Button>
-                ))}
-              </div>
+            <div className="space-y-1">
+              <FacetLabel>{t('Category')}</FacetLabel>
+              {availableCategories.map((cat) => (
+                <FacetRow key={cat} active={category === cat} onClick={() => setCategory(cat)}>
+                  {cat === 'all' ? t('All') : t(CATEGORY_LABEL[cat])}
+                </FacetRow>
+              ))}
             </div>
           ) : null}
 
           <div className="space-y-2">
-            <span className="font-mono flex items-center gap-2 text-[0.65rem] text-ash uppercase tracking-[0.22em]">
-              <ArrowUpDown className="h-3.5 w-3.5" aria-hidden /> {t('Sort')}
-            </span>
+            <FacetLabel icon={<ArrowUpDown className="h-3.5 w-3.5" aria-hidden />}>
+              {t('Sort')}
+            </FacetLabel>
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as LibrarySort)}
-              className="select-grim font-mono w-full border border-border bg-pitch/60 px-3 py-2 text-parchment text-xs focus:border-gilt/60 focus:outline-none"
+              className="select-grim w-full py-1.5 text-sm"
               aria-label={t('Sort mods')}
             >
               <option value="load-order">{t('Load order')}</option>
@@ -895,17 +916,17 @@ function CardGrid({
             aria-checked={selectedHere}
             tabIndex={0}
             className={[
-              'grimoire-card flex h-full min-h-[15rem] cursor-pointer flex-col gap-3 p-5',
+              'grimoire-card flex h-full cursor-pointer flex-col gap-3 p-5',
               'transition-colors duration-150',
               selectedHere ? 'border-gilt/60 bg-gilt/10' : 'hover:border-gilt/40',
             ].join(' ')}
           >
             <header className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <span className="font-serif-italic break-words text-xl leading-tight text-parchment">
+                <span className="font-serif break-words text-xl leading-tight text-parchment">
                   {mod.name}
                 </span>
-                <p className="font-mono mt-1 text-ash">
+                <p className="font-data mt-1 text-ash">
                   {mod.author} · v{mod.version}
                 </p>
               </div>
@@ -919,7 +940,11 @@ function CardGrid({
                 <ExternalLink className="h-4 w-4" />
               </button>
             </header>
-            <p className="font-serif-italic text-sm leading-snug text-smoke">{mod.summary}</p>
+            {/* Clamped rather than free-length: an eleven-line summary next to a
+                two-line one left half a card of dead space and knocked every
+                row of the grid out of alignment. The full text is on the
+                store page. */}
+            <p className="line-clamp-3 text-sm leading-snug text-smoke">{mod.summary}</p>
             {/* Status tags mount and unmount as a toggle changes conflict and
                 dependency counts. They get their own reserved-height row so
                 that reflow can never reach the controls below. */}
@@ -978,8 +1003,11 @@ function CardGrid({
                   disabled={uninstalling.has(id)}
                   variant="danger"
                   size="sm"
+                  className="px-2"
+                  title={t('Uninstall this mod')}
+                  aria-label={t('Uninstall {name}', { name: mod.name })}
                 >
-                  {uninstalling.has(id) ? t('uninstalling…') : t('uninstall')}
+                  <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
             </div>
@@ -1109,7 +1137,7 @@ function ListView({
                 aria-hidden="true"
               />
             ) : null}
-            <span className="font-mono w-7 shrink-0 text-right text-[0.7rem] text-ash">
+            <span className="font-data w-7 shrink-0 text-right text-xs text-ash">
               {orderIdx + 1}
             </span>
             <InkSwitch
@@ -1127,7 +1155,7 @@ function ListView({
             <span className="min-w-0 flex-1 truncate text-parchment" title={mod.name}>
               {mod.name}
             </span>
-            <span className="font-mono hidden shrink-0 text-[0.7rem] text-ash sm:inline">
+            <span className="font-data hidden shrink-0 text-xs text-ash sm:inline">
               {mod.author} · v{mod.version}
             </span>
             {mod.version !== mod.latestVersion ? (

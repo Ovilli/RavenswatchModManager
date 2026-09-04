@@ -35,7 +35,20 @@
     --border: 18 15% 18%;
     --input: 18 15% 18%;
     --ring: var(--gilt);
+
+    /* Kept in step with packages/ui/src/styles.css: this file is a fork of it,
+       but both apps share one Tailwind preset, so a token the preset references
+       and this file lacks resolves to nothing — `rounded` would compute to 0
+       and `text-crimson` to no colour at all. */
     --radius: 10px;
+    --radius-sm: 6px;
+    --radius-pill: 999px;
+    --surface-1: 0 30% 9%;
+    --surface-2: 0 26% 12%;
+    --text-primary: var(--parchment);
+    --text-secondary: var(--smoke);
+    --text-tertiary: var(--ash);
+    --crimson-text: 356 74% 66%;
   }
 
   * {

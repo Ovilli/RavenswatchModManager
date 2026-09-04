@@ -278,8 +278,8 @@ function BrowsePage() {
         {filtersOpen ? (
           <div id={filterBodyId} className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-              <span className="font-mono text-xs uppercase tracking-widest text-ash">
-                {t('category')}
+              <span className="text-ash text-xs">
+                {t('Category')}
               </span>
               <div className="flex flex-wrap gap-1.5">
                 <FilterChip active={category === null} onClick={() => setCategory(null)}>
@@ -304,8 +304,8 @@ function BrowsePage() {
 
             {facets.tags.length > 0 ? (
               <div className="flex flex-col gap-2">
-                <span className="font-mono text-xs uppercase tracking-widest text-ash">
-                  {t('tags')}
+                <span className="text-ash text-xs">
+                  {t('Tags')}
                 </span>
                 <div className="flex flex-wrap gap-1.5">
                   {facets.tags.map(([name, count]) => (
@@ -322,8 +322,8 @@ function BrowsePage() {
             ) : null}
 
             <label className="flex flex-col gap-2">
-              <span className="font-mono text-xs uppercase tracking-widest text-ash">
-                {t('rating')}
+              <span className="text-ash text-xs">
+                {t('Rating')}
               </span>
               <select
                 value={minRating}

@@ -141,7 +141,14 @@ export function attachSmoothWheel(root: HTMLElement | Document): () => void {
         anim.frame = 0;
         return;
       }
-      el.scrollTop += distance * EASE;
+      // ROUNDED, never fractional. WebKitGTK backs a scrolling box with tiles
+      // and blits them by the scroll offset; at a sub-pixel offset the blit
+      // and the repaint disagree about where the seam is, and the strip
+      // between them keeps whatever was painted there before — which, right
+      // after a route change, is a band of the previous page. The guard above
+      // already refuses steps smaller than a pixel, so rounding can never
+      // stall the chase.
+      el.scrollTop = Math.round(el.scrollTop + distance * EASE);
       anim.frame = requestAnimationFrame(run);
     };
     return run;
