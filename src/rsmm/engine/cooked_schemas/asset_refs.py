@@ -102,6 +102,43 @@ def _decode(cooked_bytes: bytes, class_name: str) -> dict:
     }
 
 
+#: A section carries its OWN length, twice, as u32s at +0x08 and +0x0c, and the
+#: value is `len(payload) - 16`. Verified on 25/25 shipped Dark Hills levels.
+_SELF_SIZE_OFF = 8
+_SELF_SIZE_BIAS = 16
+
+
+def _restamp_self_size(payload: bytes, orig_len: int) -> bytes:
+    """Rewrite a section's self-declared length after an edit changed it.
+
+    ⚠ MEASURED 2026-09-05, and it is the whole reason an edited level silently
+    loses objects. `cooked.emit` re-frames the OUTER container, so the file is
+    structurally valid and every check passes — but these two inner u32s are
+    copied verbatim out of the original literal, so a level whose strings grew
+    by 8 bytes still declares the old length. The engine then reads a stream
+    that is short by exactly that much, and the objects it never reaches are
+    never instantiated: the level resource resolves with state=1, the tile is
+    placed and built, the untouched props load, and the swapped-in entities
+    resolve ZERO times with nothing logged anywhere.
+
+    That was six playtests of an invisible POI. Only sections that already
+    satisfy the invariant are touched, so unedited files still reproduce
+    byte-identically and classes without this header are left alone.
+    """
+    if len(payload) == orig_len or len(payload) < _SELF_SIZE_OFF + 8:
+        return payload
+    want_old = orig_len - _SELF_SIZE_BIAS
+    a = struct.unpack_from("<I", payload, _SELF_SIZE_OFF)[0]
+    b = struct.unpack_from("<I", payload, _SELF_SIZE_OFF + 4)[0]
+    if a != want_old or b != want_old:
+        return payload
+    out = bytearray(payload)
+    struct.pack_into("<II", out, _SELF_SIZE_OFF,
+                     len(payload) - _SELF_SIZE_BIAS,
+                     len(payload) - _SELF_SIZE_BIAS)
+    return bytes(out)
+
+
 def _encode(source: bytes) -> bytes:
     doc = json.loads(source)
     literals = [bytes.fromhex(h) for h in doc["_literals"]]
@@ -139,10 +176,13 @@ def _encode(source: bytes) -> bytes:
             if delta:
                 section_lens[sec_of(offsets[idx])] += delta
 
+    orig_section_lens = list(c["section_lens"])
     sections = []
     off = 0
-    for sl in section_lens:
-        sections.append(cooked.Section(payload=concat[off:off + sl]))
+    for si, sl in enumerate(section_lens):
+        sections.append(cooked.Section(
+            payload=_restamp_self_size(concat[off:off + sl],
+                                       orig_section_lens[si])))
         off += sl
     cf = cooked.CookedFile(
         variant=c["variant"], hdr_a=c["hdr_a"], flags=c["flags"],

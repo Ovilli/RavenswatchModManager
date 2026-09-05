@@ -21,6 +21,9 @@ namespace {
 constexpr std::size_t kObjFlagsOff = 0x28;  // bit 5 tested by the dispatch
 constexpr std::size_t kObjStateOff = 0x38;  // must be 1 or the step bails
 constexpr std::size_t kObjNameOff  = 0x68;  // char* resource name
+// slot IS level+0x100, the resolvedPtr @+0x30 of the ref block at level+0xd0.
+constexpr std::size_t kRefBlockBack = 0x30;
+constexpr std::size_t kProbeBytes   = 48;
 
 using LoadStepFn = bool (*)(void*, void**, void*, void*);
 LoadStepFn g_real_step = nullptr;
@@ -58,6 +61,48 @@ bool detour_step(void* container, void** slot, void* lvl_id, void* links) {
     if (obj && mem_load(reinterpret_cast<std::uintptr_t>(obj) + kObjNameOff, &np) && np) {
         mem_read_cstr(reinterpret_cast<std::uintptr_t>(np), name, sizeof(name));
     }
+
+    // `obj+0x68` comes back null in practice, and a failure nobody can name is
+    // a failure nobody can fix: this trace reported "<no name>" through six
+    // playtests while one step failed per placed mod tile. So fall back to the
+    // REF BLOCK. LevelStream_LoadStep's `rdx` is the level's resolved-pointer
+    // field (level+0x100), and ResourceRef_Resolve documents that field at
+    // +0x30 of a 0x38-byte ref block — so the block starts at slot-0x30 and
+    // opens with the resource path as {char* ptr, u32 len, u32 cap}.
+    char path[256];
+    path[0] = '\0';
+    if (slot) {
+        const auto ref = reinterpret_cast<std::uintptr_t>(slot) - kRefBlockBack;
+        char* pp = nullptr;
+        std::uint32_t plen = 0;
+        if (mem_load(ref, &pp) && pp && mem_load(ref + sizeof(void*), &plen)
+            && plen > 0 && plen < sizeof(path)) {
+            mem_read_cstr(reinterpret_cast<std::uintptr_t>(pp), path, sizeof(path));
+        }
+    }
+
+    // First failure only: raw bytes of both candidates, so if neither guess is
+    // where the name lives it can be found without another build.
+    if (n == 1) {
+        char hex[3 * kProbeBytes + 1];
+        auto dump = [&](std::uintptr_t at, const char* what) {
+            hex[0] = '\0';
+            for (std::size_t i = 0; i < kProbeBytes; ++i) {
+                std::uint8_t b = 0;
+                if (!mem_load(at + i, &b)) { std::snprintf(hex, sizeof(hex), "<unreadable>"); return; }
+                std::snprintf(hex + i * 3, 4, "%02x ", b);
+            }
+            char l[512];
+            std::snprintf(l, sizeof(l), "[lvl-trace] probe %s @%#llx: %s", what,
+                          static_cast<unsigned long long>(at), hex);
+            Loader::get().log(l);
+        };
+        if (obj) dump(reinterpret_cast<std::uintptr_t>(obj), "object");
+        if (slot) dump(reinterpret_cast<std::uintptr_t>(slot) - kRefBlockBack, "refblock");
+    }
+
+    if (name[0] == '\0' && path[0] != '\0')
+        std::snprintf(name, sizeof(name), "%s", path);
     if (name[0] == '\0') std::snprintf(name, sizeof(name), "<no name>");
 
     // Which branch refused. state != 1 is the reachable one; a failure WITH

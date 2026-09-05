@@ -75,3 +75,50 @@ def test_assetrefs_roundtrip(cls: str) -> None:
                     h.encode_container(json.dumps(doc).encode())))
                 assert again["asset_refs"][0] == "Materials\\RSMM_Edit_Test.mat.ot"
                 edited = True
+
+
+def test_an_edited_level_restamps_its_own_declared_size():
+    """A level section declares its OWN length twice, and an edit must update it.
+
+    ⚠ This is the bug that made a custom POI invisible for six playtests. The
+    two u32s at +0x08/+0x0c of a section payload are `len(payload) - 16`
+    (verified on 25/25 shipped Dark Hills levels). `cooked.emit` re-frames the
+    OUTER container, so an edited level stayed structurally valid and passed
+    every check — but these inner fields were copied verbatim, so a level whose
+    strings grew by 8 bytes still declared the old length. The engine read a
+    stream short by exactly that much and never created the objects past the
+    cut: the level resource resolved with state=1, the tile was placed and
+    built, the cache preloaded the geometry, and the swapped-in entities
+    resolved ZERO times with nothing logged anywhere.
+    """
+    import json
+    import struct
+
+    from rsmm.engine import cooked
+    from rsmm.engine.cooked_schemas.asset_refs import _decode, _encode
+
+    src = Path("data/uncooked/Ot/DarkHills/Tiles/6x6_Blocker_02.level.ot"
+               ".GameStream.gen")
+    if not src.is_file():
+        pytest.skip("uncooked corpus absent")
+
+    original = src.read_bytes()
+    payload = cooked.parse(original).sections[1].payload
+    assert struct.unpack_from("<II", payload, 8) == (len(payload) - 16,) * 2, (
+        "the shipped file should already satisfy the invariant")
+
+    doc = _decode(original, "oCGameStream")
+    # A longer replacement, exactly the shape `swaps` produces.
+    doc["asset_refs"] = [
+        r.replace("SceneryObjects_DarkHills\\Bone_A.entity.ot",
+                  "Objects_DarkHills\\Pontoon_Pillar_12m_C.entity.ot")
+        for r in doc["asset_refs"]
+    ]
+    edited = _encode(json.dumps(doc).encode("utf-8"))
+
+    new_payload = cooked.parse(edited).sections[1].payload
+    assert len(new_payload) > len(payload), "the edit should have grown it"
+    assert struct.unpack_from("<II", new_payload, 8) == (
+        len(new_payload) - 16,) * 2, (
+        "the section still declares its OLD length — the engine will read a "
+        "truncated stream and silently drop every object past the cut")

@@ -117,6 +117,49 @@ mesh and maps (:mod:`rsmm.engine.prop_cook`). The donors supply *structure*
     buries the model inside its own children, which is a broken-looking mod
     rather than a deliberately broad one.
 
+``interactive`` (bool, optional, ``replace_base`` only)
+    Give the prop the game's own interaction: a hold-to-interact prompt when
+    the hero comes near, a progress ring, and the success FX. Mods react to it
+    from Lua through ``R.interact.on("success", cb)``.
+
+``[marker]`` (table, optional, ``replace_base`` only)
+    Put the POI on the minimap and the map screen.
+
+    ``icon`` (str) is the mod's own art, a file in the POI folder. ``icon_high``
+    is the higher-resolution map-screen version; without it ``icon`` is used for
+    both. ``donor`` is an escape hatch naming a different shipped entity to take
+    the override records from.
+
+    There is no ``repaint`` key: the art is written over two shipped textures
+    that nothing in any chapter preloads (:data:`MARKER_ICON`,
+    :data:`MARKER_ICON_HIGH`). It has to land on a shipped NAME — a texture
+    filed under a name the game does not ship hangs the game at level load.
+
+    ⚠ An in-place override edits the ENTITY, not one placement of it. Point
+    ``replaces`` at a prop the tile places exactly ONCE, or the map fills with
+    icons; the emitter warns with the single-placement candidates when it does
+    not.
+
+How a marker and an interaction actually arrive
+-----------------------------------------------
+Both are entity COMPONENTS, and neither can simply be spliced on. The engine
+composes an entity out of PARENTS — a chest is interactable and map-marked
+because it names ``Interactive_Object_Model`` and ``Minimap_Marker_Reveal_Model``
+as parents — and a settings component is an *override* whose fields are named
+bindings into a parent's namespace. Splicing one onto a host with no such
+parent binds to nothing: the component loads, does nothing, and logs nothing
+(measured 2026-09-05).
+
+Inheriting alone is not enough either, and that is the part that cost three
+playtests. ``Minimap_Marker_Reveal_Model`` ships every texture Value empty, so
+a host that only inherits it runs the whole hero-proximity reveal state machine
+and draws no icon — which was mis-read as the parent being "gated". So a POI
+does both, exactly as the shipped content does:
+:func:`rsmm.engine.entity_components.add_parents` for the machinery, then
+:func:`~rsmm.engine.entity_components.copy_overrides` for the settings that
+machinery reads, taken off the smallest shipped child of that parent
+(``Leprechaun_Cauldron_Minimap_Marker``, ``Ingredient_Stock_Model``).
+
 Confidence: ``experimental``, with one half now confirmed. **A mod-authored
 mesh + textures on a shipped prop rendered upright in-game on 2026-08-13**
 (``replace_base`` + ``prop``), so the art chain — geometry cook, texture cook,
@@ -133,16 +176,20 @@ See ``docs/_re/kinds/pois.md``.
 from __future__ import annotations
 
 import logging
+import struct
 from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
 
 from ...engine import corpus_cache
+from ...engine import entity_components as EC
 from ...engine import map_pool as MP
 from ...engine import prop_cook as PC
 from ...engine import rsc_cache as RC
 from ...engine import tile_cook as TC
+from ...engine.cooked_schemas import asset_refs as AR
 from ...engine.paths import DATA_DIR
+from ...engine.prop_cook import entity_cooked_path
 from ..content import ContentDef, ContentError, SchemaNotMined
 from . import _common as C
 
@@ -272,6 +319,45 @@ TIER_WEIGHTS = {1: 0.0, 2: 0.333, 3: 0.667}
 #: for its kind crowds every other tile out of those slots, which is a mistake
 #: far more often than an intention.
 MAX_COPIES = 16
+
+#: Shipped minimap textures a `[marker]` repaints to carry the mod's own art.
+#:
+#: A texture filed under a name the game does not ship HANGS the game at level
+#: load (measured 2026-09-05), so custom icon art has to arrive over an
+#: existing name. These two are chosen because NOTHING in any chapter preloads
+#: them -- 23 shipped icons qualify, and these two are referenced only by
+#: static tutorial book pages -- so repainting them has no collateral in a run.
+#: `High` is the map screen, the other the HUD minimap.
+MARKER_ICON = "MiniMap\\Icons\\Map_Icons_Corpse.png"
+MARKER_ICON_HIGH = "MiniMap\\Icons\\High\\Minimap_IconHigh_Fountain2.png"
+
+#: How far the hero has to be for a POI marker to reveal itself, in world units.
+#:
+#: The shipped values are 20-25 (a ruin, an ingredient key) — deliberately
+#: small, because a shipped landmark is discovered by walking into it. A mod POI
+#: has the opposite problem: the icon IS the discovery mechanism, and at 25
+#: units it never appears until the player has already found the structure by
+#: eye. 300 covers most of a generated map, so the shrine shows on the map from
+#: the start of the chapter. Lower it per def with `[marker] reveal_radius`.
+DEFAULT_REVEAL_RADIUS = 300.0
+
+#: The entity whose placing tile's cache covers BOTH override parents' closures.
+#:
+#: `Minimap_Marker_Reveal_Model` and `Interactive_Object_Model` each drag a
+#: closure in with them -- three UI marker entities, a proximity tester, and
+#: seven Ui/FX textures between them -- and a resource the tile's cache never
+#: lists resolves to null at level build, which the teardown loop then destroys
+#: unchecked. Deriving that closure by hand means getting the ROOT of every
+#: texture right (`Ui` vs `FX`), so instead the cache of a shipped tile that
+#: already carries both is unioned in whole -- the same `borrow_for` mechanism
+#: `swaps` uses. The Dark Hills cauldron is the tile that has both: the
+#: cauldron is interactable and its sibling marker entity inherits the reveal
+#: model. Checked line by line, its cache covers all 14 closure members.
+#:
+#: The donor entities themselves are NOT listed here on purpose: their records
+#: are copied into the host, so the host never references them at runtime.
+_CLOSURE_BORROW = ("Objects\\Leprechaun_Cauldron\\"
+                   "Leprechaun_Cauldron_DarkHills_T1.entity.ot")
 
 #: Conventional source-art filenames inside a POI folder. `model.glb` is the
 #: mesh; the rest are texture roles resolved through the preset's `slots`.
@@ -458,7 +544,64 @@ def discover(mod_root: Path) -> list[dict]:
                 block["prop"]["transform"] = cfg.pop("transform")
             if "allow_shared_art" in cfg:
                 block["prop"]["allow_shared_art"] = cfg.pop("allow_shared_art")
+            if "marker" in cfg:
+                mk = cfg.pop("marker")
+                if not isinstance(mk, dict):
+                    raise ContentError(
+                        f"poi {d.name}: `marker` must be a table, got {mk!r}")
+                for gone, why in (
+                        ("own_icon",
+                         "a texture filed under a name the game does not ship "
+                         "HANGS the game at level load"),
+                        ("repaint",
+                         "the repaint target is chosen for you now — two "
+                         "shipped icons nothing preloads")):
+                    if mk.pop(gone, None) is not None:
+                        raise ContentError(
+                            f"poi {d.name}: [marker] {gone} is gone: {why}. "
+                            f"Ship `icon` (and optionally `icon_high`) and the "
+                            f"art is written over those names for you."
+                        )
+                extra = sorted(set(mk) - {"donor", "icon", "icon_high",
+                                          "reveal_radius"})
+                if extra:
+                    raise ContentError(
+                        f"poi {d.name}: unknown key(s) in [marker]: "
+                        f"{', '.join(extra)} — expected icon, icon_high, "
+                        f"reveal_radius, donor")
+                for slot in ("icon", "icon_high"):
+                    if mk.get(slot):
+                        mk[slot] = f"{rel}/{mk[slot]}"
+                block["prop"]["marker"] = mk
+            if "interactive" in cfg:
+                interactive = cfg.pop("interactive")
+                if not isinstance(interactive, bool):
+                    raise ContentError(
+                        f"poi {d.name}: `interactive` must be true or false, "
+                        f"got {interactive!r}")
+                block["prop"]["interactive"] = interactive
+            if "components" in cfg:
+                comps = cfg.pop("components")
+                if (not isinstance(comps, list)
+                        or not all(isinstance(c, str) for c in comps)):
+                    raise ContentError(
+                        f"poi {d.name}: `components` must be a list of names, "
+                        f"got {comps!r}"
+                    )
+                for c in comps:
+                    try:
+                        EC.resolve_parent(c)
+                    except EC.EntityComponentError as e:
+                        raise ContentError(f"poi {d.name}: {e}") from e
+                block["prop"]["components"] = comps
         cfg.pop("slots", None)
+        if "marker" in cfg or "interactive" in cfg:
+            # Both hang components off the entity named by `replaces`, so
+            # without one there is no host to put them on.
+            raise ContentError(
+                f"poi {d.name}: [marker] and `interactive` configure the prop "
+                f"named by `replaces`, which this def does not set. Add "
+                f"`replaces = \"<Biome>\\\\<Prop>.entity.ot\"`.")
 
         # Anything left is a typo, not a feature. Silently ignoring it is how a
         # mod ships with a setting the author believes is in effect.
@@ -473,6 +616,11 @@ def discover(mod_root: Path) -> list[dict]:
                 f"appears in. Valid: {', '.join(sorted(CHAPTERS))}."
             )
         blocks.append(block)
+    # `replace_base` defs first. They edit the shipped tile that the additive
+    # defs then CLONE, and a clone without `own_level` shares that tile's level
+    # — so its cache has to be seeded from the edited cache, not the shipped
+    # one. Stable, so folder order still decides within each group.
+    blocks.sort(key=lambda b: not b.get("replace_base"))
     return blocks
 
 
@@ -821,6 +969,29 @@ def _validated_swaps(defn: ContentDef, base: str) -> dict[str, str]:
                 f"resource cache is usually a sub-entity another prop selects "
                 f"from; swapping to one builds nothing and crashes."
             )
+        # A multi-mesh target is a STATE MACHINE, not a prop. `Key_Lock` ships
+        # ten meshes and a selector component that picks one for the current
+        # state; dropped in as level scenery nothing drives that selector, so
+        # several draw at once and the result reads as a broken object. Seen
+        # in-game 2026-09-05 — "parts of an object that wants a key next to
+        # each other". A warning rather than a refusal, because swapping in an
+        # interactive entity is a legitimate and so-far unmatched way to put a
+        # working prompt at a POI; the author just has to know why it looks
+        # like that.
+        try:
+            meshes = {t for _s, _o, t in ES.list_strings(
+                _corpus(PC.entity_cooked_path(dst), defn.id,
+                        f"swaps target {dst}"))
+                if t.lower().endswith(".fbx")}
+        except (SchemaNotMined, ContentError, ValueError):
+            meshes = set()
+        if len(meshes) > 1:
+            _log.warning(
+                "poi %s: swaps target %s carries %d meshes, so it is a "
+                "state-driven object rather than a prop. Placed as level "
+                "scenery nothing drives its selector and several meshes draw "
+                "at once — it will look broken. Prefer a single-mesh target.",
+                defn.id, dst, len(meshes))
     return dict(raw)
 
 
@@ -926,6 +1097,94 @@ def _tile_cache_by_placed_entity() -> dict[str, str]:
         "tile_cache_by_placed_entity", _UNCOOKED, build)
 
 
+#: Cook suffixes by engine class, for the few classes that NAME other resources.
+#: Anything absent is a leaf as far as the closure walk is concerned (a texture
+#: references nothing; a geometry's materials are already named by the entity
+#: that uses it).
+_CLOSURE_SUFFIX = {
+    "oCEntitySettingsResource": ".EntitySettingsResource.gen",
+    "oCMaterial": ".Material.gen",
+    "oCGameStream": ".GameStream.gen",
+}
+
+
+def _cache_refs(root: str, path: str, cls: str, out_dir: Path) -> list[str]:
+    """Resources named by one cache entry, or `[]` if it names none.
+
+    The mod's OWN copy wins over the corpus. The entity this walk cares about
+    most is one the mod has already edited -- the marker host references its
+    inherited parents only in the emitted version -- and reading the pristine
+    file instead drops exactly the parents the cache exists to preload.
+    """
+    suffix = _CLOSURE_SUFFIX.get(cls)
+    if suffix is None:
+        return []
+    rel = Path(root) / Path(*f"{path}{suffix}".split("\\"))
+    f = out_dir / rel
+    if not f.is_file():
+        f = _UNCOOKED / rel
+    if not f.is_file():
+        return []
+    try:
+        return [r for r in AR._decode(f.read_bytes(), cls)["asset_refs"]
+                if not r.startswith("[")]
+    except (ValueError, KeyError, IndexError, struct.error) as e:
+        # Say so. Returning no references keeps this entry but stops the walk
+        # under it, and anything only reachable THROUGH it is then dropped from
+        # the cache — which is a null in the preloaded vector, far from here.
+        _log.warning("poi: cannot read %s to walk its references (%s) — "
+                     "resources reachable only through it will be missing "
+                     "from the preload cache", f, e)
+        return []
+
+
+def _reachable(seeds: Iterable[str], lines: list[str],
+               out_dir: Path) -> tuple[set[str], list[str]]:
+    """Cache paths reachable from `seeds` by following resource references.
+
+    `borrow_for` unions in the WHOLE cache of some shipped tile that happens to
+    place the swapped-in entity, which is 15x more than the swap actually needs
+    -- the blocker tile's cache went 95 -> 1439 lines, 64 of them Avalon- and
+    Nightmare-rooted resources in a Dark Hills tile. A surplus line is supposed
+    to cost only a wasted preload, but that assumes it RESOLVES, and a resource
+    that does not leaves the null in the preloaded vector this whole module
+    exists to avoid. So the borrow stays authoritative for CLASS names and the
+    walk decides membership.
+    """
+    index: dict[str, tuple[str, str]] = {}
+    for line in lines:
+        parts = line.split("|")
+        if len(parts) == 3:
+            index[parts[1]] = (parts[0], parts[2])
+    seen: set[str] = set()
+    extra: list[str] = []
+    queue = list(seeds)
+    while queue:
+        path = queue.pop()
+        if path in seen:
+            continue
+        if path in index:
+            seen.add(path)
+            root, cls = index[path]
+            queue.extend(_cache_refs(root, path, cls, out_dir))
+            continue
+        # Reachable, but the borrowed tile never listed it. That is not an
+        # exotic case: the marker parent names eight `GameUis\\MinimapMarkers`
+        # entities and a primitive, EVERY shipped tile carrying a marker lists
+        # all nine, and the tile we borrow from carries no marker at all -- so
+        # borrowing alone can never cover a capability the donor lacks. A
+        # marker whose display UI is not preloaded is an icon that never draws.
+        if path.lower().endswith(".entity.ot"):
+            seen.add(path)
+            extra.append(entity_cooked_path(path))
+            queue.extend(_cache_refs("EntitySettings", path,
+                                     "oCEntitySettingsResource", out_dir))
+        elif path.lower().endswith(".png"):
+            seen.add(path)
+            extra.append(f"Ui/{path.replace(chr(92), '/')}.Texture.dxt")
+    return seen, extra
+
+
 def _emit_tile_caches(out_dir: Path, base: str, defn_id: str, assets: list[str],
                       tile_rels: list[str], written: list[Path],
                       borrow_for: Iterable[str] = ()) -> None:
@@ -948,8 +1207,18 @@ def _emit_tile_caches(out_dir: Path, base: str, defn_id: str, assets: list[str],
     :func:`_tile_cache_by_placed_entity` for why borrowing beats deriving.
     """
     donor_cooked = f"{_TILE_ASSET_SUBDIR}/{base}{TC.GEN_SUFFIX}"
-    donor = _corpus(RC.cache_path_for(donor_cooked), defn_id,
-                    "the base tile's resource cache")
+    # Prefer the copy a SIBLING def already wrote over the shipped one. A clone
+    # made without `own_level` shares the base tile's level, so whatever a
+    # `replace_base` def added to that level's dependencies — an inherited
+    # marker parent and its whole closure — is reached through the clone too,
+    # and a clone seeded from the pristine corpus cache lists none of it. That
+    # is the silent null at level build, on the tiles the mod added rather than
+    # on the one it edited. `discover` orders `replace_base` defs first so this
+    # copy exists by the time a clone is emitted.
+    donor_dest = out_dir / Path(*RC.cache_path_for(donor_cooked).split("/"))
+    donor = (donor_dest.read_bytes() if donor_dest.is_file()
+             else _corpus(RC.cache_path_for(donor_cooked), defn_id,
+                          "the base tile's resource cache"))
 
     borrowed: list[str] = []
     for ent in sorted(set(borrow_for)):
@@ -964,13 +1233,44 @@ def _emit_tile_caches(out_dir: Path, base: str, defn_id: str, assets: list[str],
                 "the first thing to suspect", defn_id, ent)
             continue
         try:
-            borrowed.extend(RC.parse(_corpus(cache_rel, defn_id,
-                                             f"the cache of a tile placing {ent}")))
+            # Same reason as the donor above: prefer the copy a sibling def
+            # already wrote. A swapped-in entity is routinely one this mod
+            # ALSO edited — standing a re-skinned, map-marked prop in a
+            # mod-owned level is the whole point of `swaps` — and the shipped
+            # cache of the tile it was borrowed from knows nothing about the
+            # marker icon that edit introduced.
+            borrow_dest = out_dir / Path(*cache_rel.split("/"))
+            borrowed.extend(RC.parse(
+                borrow_dest.read_bytes() if borrow_dest.is_file()
+                else _corpus(cache_rel, defn_id,
+                             f"the cache of a tile placing {ent}")))
         except (ContentError, SchemaNotMined, ValueError) as e:
             _log.warning("poi %s: could not borrow %s's cache (%s)", defn_id, ent, e)
 
+    # Keep only what the swapped-in entities actually reach. See `_reachable`:
+    # borrowing whole tile caches pulled 1344 unrelated lines into a 95-line
+    # cache, including foreign-biome resources this tile can never resolve.
+    if borrowed:
+        keep, missing = _reachable(sorted(set(borrow_for)), borrowed, out_dir)
+        trimmed = [ln for ln in borrowed if ln.split("|")[1] in keep]
+        _log.info("poi %s: borrowed closure trimmed %d -> %d line(s), "
+                  "%d reachable resource(s) the donor never listed",
+                  defn_id, len(borrowed), len(trimmed), len(missing))
+        borrowed = trimmed + [RC.entry_for(c) for c in missing]
+
     for tile_rel in tile_rels:
-        data = RC.extend(donor, [*assets, tile_rel])
+        # Build on what an earlier def in this mod already emitted for this
+        # cache, exactly as `_extend_map_caches` does. Starting from the corpus
+        # copy every time makes the LAST def to touch a shared base tile win
+        # and silently drop every earlier def's dependencies — and a resource a
+        # cache never lists resolves to null, which is either nothing rendering
+        # or an access violation at level build with no connection to the
+        # cause. Hit 2026-09-05: `runestone_shrine` and `shrine_marked` both
+        # edit the menhir camp, so the shrine's marker icon and machinery
+        # parent vanished from the tile's cache.
+        dest = out_dir / Path(*RC.cache_path_for(tile_rel).split("/"))
+        base_bytes = dest.read_bytes() if dest.is_file() else donor
+        data = RC.extend(base_bytes, [*assets, tile_rel])
         if borrowed:
             data = RC.render(sorted(set(RC.parse(data)) | set(borrowed)))
         _write(out_dir, RC.cache_path_for(tile_rel), data, written)
@@ -1105,8 +1405,75 @@ def _shipped_path(ref: str, defn_id: str) -> str:
     return got
 
 
+@lru_cache(maxsize=64)
+def _defs_preloading(cooked_ref: str, chapters: tuple[str, ...]) -> tuple[str, ...]:
+    """Shipped definitions in `chapters` whose preload cache lists `cooked_ref`.
+
+    Repainting a shipped icon is an in-place override, so it changes that icon
+    EVERYWHERE — and "everywhere" is not obvious from the name. Checked rather
+    than assumed, because assuming got it wrong once:
+    `MiniMap\\Icons\\Map_Icons_Npc_Quest.png` reads like an Avalon quest asset
+    and is in fact preloaded by four Dark Hills tiles (the three pigs' houses
+    and Jack's beanstalk), so repainting it would have silently restyled them.
+
+    Only the mod's own chapters are searched: another chapter's icon changing
+    is still a real effect, but it cannot collide with the tile this def edits.
+    """
+    biomes = {CHAPTERS[c].split("_")[0] for c in chapters if c in CHAPTERS}
+    needle = cooked_ref.replace("/", "\\").encode()
+    out: list[str] = []
+    for root in (_UNCOOKED / "Definitions" / "Tiles",
+                 _UNCOOKED / "Definitions" / "Maps"):
+        if not root.is_dir():
+            continue
+        for cache in sorted(root.rglob("*.UsedRscCache.ot")):
+            if biomes and not any(b.lower() in str(cache).lower() for b in biomes):
+                continue
+            try:
+                if needle in cache.read_bytes():
+                    out.append(cache.name.split(".")[0])
+            except OSError:
+                continue
+    return tuple(out)
+
+
+def chapters_of(defn: ContentDef) -> tuple[str, ...]:
+    """The def's target chapters, as a hashable key for the corpus scans."""
+    raw = defn.fields.get("chapters") or []
+    return tuple(c for c in raw if isinstance(c, str))
+
+
+def _tile_level_placements(base: str, defn_id: str) -> dict[str, int]:
+    """How many times the tile at `base` places each entity."""
+    from ...engine import entity_strings as ES
+
+    level_ref = _level_ref_of(_prefab_ref_of(base, defn_id), defn_id)
+    level = _corpus(PC.level_cooked_path(level_ref), defn_id, "the tile's level")
+    counts: dict[str, int] = {}
+    for _sec, _off, text in ES.list_strings(level):
+        if text.lower().endswith(".entity.ot"):
+            counts[text] = counts.get(text, 0) + 1
+    return counts
+
+
+def _placements_in_tile(ref: str, base: str, defn_id: str) -> int:
+    try:
+        return _tile_level_placements(base, defn_id).get(ref, 0)
+    except (SchemaNotMined, ContentError, ValueError):
+        return 0
+
+
+def _single_placements(base: str, defn_id: str) -> list[str]:
+    """Entities the tile places exactly once — the ones a marker belongs on."""
+    try:
+        counts = _tile_level_placements(base, defn_id)
+    except (SchemaNotMined, ContentError, ValueError):
+        return []
+    return sorted(r.rsplit("\\", 1)[-1] for r, n in counts.items() if n == 1)
+
+
 def _emit_prop_override(mod_id: str, defn: ContentDef, out_dir: Path,
-                        base: str, written: list[Path]) -> None:
+                        base: str, written: list[Path]) -> list[str]:
     """Put the mod's art on a shipped prop **in place**, minting no new name.
 
     This exists because a level cannot reference an asset the mod introduced.
@@ -1166,13 +1533,161 @@ def _emit_prop_override(mod_id: str, defn: ContentDef, out_dir: Path,
     # render, which is the one ambiguity it existed to resolve. Additive mode
     # is different and stays legal without a model — the clone is then the
     # donor's shape under a name the mod owns.
-    if not spec.get("model") and not spec.get("textures"):
+    if not (spec.get("model") or spec.get("textures")
+            or spec.get("components") or spec.get("marker")
+            or spec.get("interactive")):
         raise ContentError(
-            f"poi {defn.id}: `replaces` names {ref} but the def ships no model "
-            f"and no textures, so an in-place override would write nothing at "
-            f"all. Add a model (e.g. `model.glb` in the POI folder) or a "
-            f"texture, or drop `replaces`."
+            f"poi {defn.id}: `replaces` names {ref} but the def ships no "
+            f"model, textures, components or marker, so an in-place override "
+            f"would write nothing at all. Add a model (e.g. `model.glb` in the "
+            f"POI folder), a texture, a component, a marker, or drop "
+            f"`replaces`."
         )
+
+    # Components are added to the donor's OWN entity, at its own cooked path,
+    # so no new name enters the level and the mod-owned-entity wall is never
+    # touched. Like every other in-place edit here this is GLOBAL: every entity
+    # drawn from `replaces` gets the marker and the prompt, which is the same
+    # trade the art override already makes and is checked by the same guards.
+    #
+    # This appends a PARENT, which is how the game itself does it — a chest is
+    # interactable and map-marked because it inherits `Interactive_Object_Model`
+    # and `Minimap_Marker_Reveal_Model`. Splicing the component record instead
+    # was tried and measured inert on 2026-09-05; `EC.add_parents` carries the
+    # full reasoning.
+    extra_deps: list[str] = []
+    borrow: list[str] = []
+    edited = ent
+    if spec.get("components"):
+        names = list(spec["components"])
+        edited = EC.add_parents(edited, names)
+        extra_deps += EC.parent_cooked_paths(names)
+        _log.info("poi %s/%s: %s now inherits %s", mod_id, defn.id, ref,
+                  ", ".join(EC.resolve_parent(n) for n in names))
+
+    # A marker and an interaction are both INHERITED, then CONFIGURED.
+    #
+    # Inheriting alone is not enough and that is what three playtests measured
+    # without being able to name: `Minimap_Marker_Reveal_Model` ships every
+    # texture Value empty, so a host that only names it as a parent runs the
+    # whole hero-proximity reveal state machine and draws nothing. The missing
+    # half is a handful of `oCEntityCpntValueSettings` records whose first
+    # string is a binding path into the parent and whose payload is a literal
+    # `.png` — which is exactly, and only, what
+    # `Leprechaun_Cauldron_Minimap_Marker` is made of. Copy those onto the host
+    # and the icon appears. Same shape for the prompt:
+    # `Ingredient_Stock_Model` is `Interactive_Object_Model` plus six literal
+    # overrides, one of which (`Event Interaction Available At Start`) is what
+    # arms the interaction at spawn.
+    #
+    # Splicing a marker RECORD instead — the previous approach — is inert on a
+    # bare host and, once a ping parent was added to supply machinery, drew the
+    # PARENT's icon as well as ours: teammate-ping art scattered over the map.
+    # Overriding the parent's Value is one icon, ours, with no ping involved.
+    for key, want in (("minimap", spec.get("marker")),
+                      ("interaction", spec.get("interactive"))):
+        if not want:
+            continue
+        parent, default_donor, prefix = EC.OVERRIDE_DONORS[key]
+        cfg = want if isinstance(want, dict) else {}
+        donor_ref = cfg.get("donor") or default_donor
+        donor = _corpus(PC.entity_cooked_path(donor_ref), defn.id,
+                        f"the {key} override donor")
+
+        swaps: dict[str, str] = {}
+        if key == "minimap":
+            if EC.has_marker(ent):
+                raise ContentError(
+                    f"poi {defn.id}: {ref} already carries marker records of "
+                    f"its own, so adding the reveal model would give it two "
+                    f"icons. Repaint its existing icon instead."
+                )
+            # An in-place override is GLOBAL: it edits the entity, not one
+            # placement of it. A marker on an entity the tile places 13 times
+            # is 13 icons per camp, times every pooled copy of that camp.
+            # Measured 2026-09-05 — the map filled with markers and it read as
+            # a bug in the marker code, which it was not.
+            placements = _placements_in_tile(ref, base, defn.id)
+            if placements > 1:
+                _log.warning(
+                    "poi %s: %s is placed %d times by %s, so the marker puts "
+                    "%d icons on the map per instance of that tile. Move it to "
+                    "a prop the tile places ONCE — %s.",
+                    defn.id, ref.rsplit("\\", 1)[-1], placements, base,
+                    placements,
+                    ", ".join(_single_placements(base, defn.id)[:3]) or "none")
+            # The donor's own icons are re-pointed at two shipped textures that
+            # NOTHING in any chapter preloads, and the mod's art is then written
+            # over those. Inventing a texture name instead HANGS the game at
+            # level load (measured 2026-09-05), so the indirection is the whole
+            # trick: a real shipped name, carrying the mod's pixels.
+            for pic in EC.resource_refs(donor):
+                if not pic.lower().endswith(".png"):
+                    continue
+                swaps[pic] = (MARKER_ICON_HIGH if "\\High\\" in pic
+                              else MARKER_ICON)
+            # Both repaint targets, whether or not the mod ships art for them:
+            # the copied records name them either way, and an icon the cache
+            # never lists is a null.
+            extra_deps += [PC.ui_cooked_path(MARKER_ICON),
+                           PC.ui_cooked_path(MARKER_ICON_HIGH)]
+
+        edited = EC.add_parents(edited, [parent])
+        edited = EC.copy_overrides(edited, donor, prefix, string_swaps=swaps,
+                                   exclude=EC.OVERRIDE_EXCLUDE[key])
+
+        if key == "minimap":
+            # The cauldron supplies the ART. It does not supply VISIBILITY, and
+            # the parent is a hero-PRESENCE marker: it reveals only once the
+            # hero is already close. For a shipped landmark that is right; for a
+            # mod POI it is circular, because the icon is how a player finds the
+            # thing. Measured 2026-09-05 — eight shrines placed and built in one
+            # map, no icon ever seen, so nobody went looking.
+            #
+            # The parent ships no detection radius at all; exactly two shipped
+            # entities override it (`Ruin_Model` 25.0,
+            # `Collectible_Ingredient_Key` 20.0) with a plain float at the tail
+            # of the record. So the record is copied and the literal retuned.
+            radius = float(cfg.get("reveal_radius", DEFAULT_REVEAL_RADIUS))
+            for slot, want in (("radius", radius), ("main_poi", None)):
+                d_ref, target, literal = EC.REVEAL_DONORS[slot]
+                d = _corpus(PC.entity_cooked_path(d_ref), defn.id,
+                            f"the {slot} override donor")
+                edited = EC.copy_overrides(
+                    edited, d, prefix, only=(target,),
+                    f32_swap=(literal, want) if literal is not None else None)
+                borrow.append(_CLOSURE_BORROW)
+            _log.info("poi %s/%s: marker reveals within %.0f units and is "
+                      "flagged a main POI", mod_id, defn.id, radius)
+        extra_deps += EC.parent_cooked_paths([parent])
+        # The parent drags its own closure in (the reveal model alone names
+        # three UI entities and a primitive texture) and a resource the tile's
+        # cache never lists resolves to null at level build. Borrowing the
+        # cache of a shipped tile that already places the donor is how that
+        # closure is proven covered rather than re-derived — same mechanism
+        # `swaps` uses.
+        borrow.append(_CLOSURE_BORROW)
+        _log.info("poi %s/%s: %s inherits %s and takes %s's %s overrides",
+                  mod_id, defn.id, ref, parent, donor_ref, key)
+
+        if key != "minimap":
+            continue
+        for slot, cooked_ref in (("icon", MARKER_ICON),
+                                 ("icon_high", MARKER_ICON_HIGH)):
+            src_rel = cfg.get(slot) or cfg.get("icon")
+            if not src_rel:
+                continue
+            src = _mod_source(out_dir, src_rel, defn.id, f"marker.{slot}")
+            _write(out_dir, PC.ui_cooked_path(cooked_ref),
+                   PC.cook_texture(src.read_bytes()), written)
+            for owner in _defs_preloading(cooked_ref, chapters_of(defn)):
+                _log.warning(
+                    "poi %s: the marker repaints %s, which %s also preloads — "
+                    "its icon changes there too.", defn.id, cooked_ref, owner)
+
+
+    if edited != ent:
+        _write(out_dir, PC.entity_cooked_path(ref), edited, written)
 
     if spec.get("model"):
         src = _mod_source(out_dir, spec["model"], defn.id, "prop.model")
@@ -1194,6 +1709,7 @@ def _emit_prop_override(mod_id: str, defn: ContentDef, out_dir: Path,
 
     _log.info("poi %s/%s: overriding %s's own art in place (%d mesh, %d texture)",
               mod_id, defn.id, ref, len(meshes), len(spec.get("textures") or {}))
+    return extra_deps, borrow
 
 
 @lru_cache(maxsize=1)
@@ -1527,11 +2043,14 @@ def _emit_replacing_base(mod_id: str, defn: ContentDef, out_dir: Path,
     biome, stem = base.split("/", 1)
 
     swaps: dict[str, str] = _validated_swaps(defn, base)
+    extra_deps: list[str] = []
+    borrow: list[str] = []
     if defn.fields.get("prop"):
         # In place, on the shipped prop's own cooked paths. The tile is not
         # touched at all — see `_emit_prop_override` for why cloning the entity
         # under a mod-owned name cannot work.
-        _emit_prop_override(mod_id, defn, out_dir, base, written)
+        extra_deps, borrow = _emit_prop_override(mod_id, defn, out_dir, base,
+                                                 written)
     if swaps:
         level_ref = _level_ref_of(_prefab_ref_of(base, defn.id), defn.id)
         _write(out_dir, PC.level_cooked_path(level_ref),
@@ -1550,10 +2069,14 @@ def _emit_replacing_base(mod_id: str, defn: ContentDef, out_dir: Path,
     # The base tile keeps its own cache path, so this OVERRIDES the shipped
     # one. It has to: the tile now reaches assets the vanilla cache never
     # listed, and an un-updated cache is what crashed the game on 2026-08-10.
-    assets = _emitted_assets(out_dir, written)
+    # An inherited parent is a resource the prop now depends on, so it belongs
+    # in the preload cache exactly like the mod's own art. `RC.extend` dedupes,
+    # so this is a no-op on a tile that already places something carrying the
+    # same parent — and load-bearing on one that does not.
+    assets = _emitted_assets(out_dir, written) + extra_deps
     _emit_tile_caches(out_dir, base, defn.id, assets,
                       [f"{_TILE_ASSET_SUBDIR}/{base}{TC.GEN_SUFFIX}"], written,
-                      borrow_for=swaps.values())
+                      borrow_for=[*swaps.values(), *borrow])
     # No tile is pooled here, but the chapter's cache is a superset of every
     # tile's, so art the overridden tile now reaches has to be listed there too.
     _extend_map_caches(out_dir, defn.id, chapters, assets, [], written)

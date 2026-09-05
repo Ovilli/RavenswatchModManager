@@ -20,7 +20,10 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <string>
+#include <mutex>
 
 #include "MinHook.h"
 #include "loader.h"
@@ -33,6 +36,7 @@ namespace rsmm {
 namespace {
 
 constexpr std::size_t kRefNameOff     = 0x00;  // char* name
+constexpr std::size_t kRefPathOff     = 0x10;  // char* path (the real identity)
 constexpr std::size_t kRefFlagOff     = 0x28;  // u8: 0 = resolve, non-0 = release
 constexpr std::size_t kObjStateOff    = 0x38;  // the dword LevelStream_LoadStep demands == 1
 constexpr std::size_t kObjRefCountOff = 0x08;  // refcount the release path decrements
@@ -108,6 +112,27 @@ void ref_name(void* ref, char* out, std::size_t cap) {
     }
 }
 
+// The ref block's PATH (+0x10), which is the field that actually identifies the
+// resource. ⚠ `ref_name` reads +0x00, and that is the resource ROOT — every
+// line it has ever printed says "shaders" / "Ot" / "EntitySettings", which is
+// why a name filter built on it matched nothing. Both fields are
+// {char* ptr, u32 len, u32 cap}; the level-load trace's refblock dump showed
+// the 39-char level path living at +0x10 beside the 2-char "Ot" at +0x00.
+void ref_path(void* ref, char* out, std::size_t cap) {
+    out[0] = '\0';
+    auto addr = reinterpret_cast<std::uintptr_t>(ref);
+    if (!ref || !mem_readable(reinterpret_cast<const void*>(addr + kRefPathOff),
+                              sizeof(void*))) {
+        std::snprintf(out, cap, "<unreadable ref>");
+        return;
+    }
+    auto path = *reinterpret_cast<char**>(addr + kRefPathOff);
+    if (!path || mem_read_cstr(reinterpret_cast<std::uintptr_t>(path), out, cap) == 0
+            || out[0] == '\0') {
+        std::snprintf(out, cap, "<no path>");
+    }
+}
+
 // Read the state dword off a resolved object. Returns false when the object or
 // the field is not readable, which is itself worth reporting.
 //
@@ -155,6 +180,40 @@ void log_summary(const char* why) {
     Loader::get().log(line);
 }
 
+// The trace filter, from the environment or from a file beside winhttp.dll.
+//
+// The file exists because the env var only reaches the game through Steam's
+// launch options, and Steam rewrites localconfig.vdf from memory while it is
+// running — so every change to what is traced meant quitting Steam entirely,
+// and one botched edit (an unquoted space in a name) stopped the game booting
+// at all. `<game>/rsmm_rsc_match.txt` is one line of comma-separated
+// substrings and can be rewritten between runs with the launcher untouched.
+const char* rsc_trace_match() {
+    static std::mutex mu;
+    static bool loaded = false;
+    static std::string value;
+    std::lock_guard<std::mutex> lk(mu);
+    if (!loaded) {
+        loaded = true;
+        if (const char* env = std::getenv("RSMM_RSC_TRACE_MATCH"); env && env[0]) {
+            value = env;
+        } else if (FILE* f = std::fopen(
+                       (Loader::get().game_dir() / "rsmm_rsc_match.txt")
+                           .string().c_str(), "rb")) {
+            char buf[512];
+            if (std::fgets(buf, sizeof(buf), f)) value = buf;
+            std::fclose(f);
+            while (!value.empty() && (value.back() == '\n' || value.back() == '\r'
+                                      || value.back() == ' '))
+                value.pop_back();
+        }
+        if (!value.empty()) {
+            Loader::get().log(("[rsc-trace] name filter: " + value).c_str());
+        }
+    }
+    return value.empty() ? nullptr : value.c_str();
+}
+
 void detour_resolve(void* ref, void* class_desc, void** out, void* policy) {
     // Read the mode BEFORE the call: the release path clears the flag and the
     // slot, so reading it afterwards would classify every release as a resolve.
@@ -200,6 +259,45 @@ void detour_resolve(void* ref, void* class_desc, void** out, void* policy) {
                       obj, name);
         Loader::get().log_warn(line);
         return;
+    }
+
+    // An explicit NAME FILTER, which bypasses both the sample budget and the
+    // per-window allowance. Sampling is right for "what does a resolve look
+    // like" and useless for "did MY three entities resolve": the trace prints
+    // a few lines per window out of thousands of resolves, so the one resource
+    // the question is about is almost certain never to be printed. With
+    // RSMM_RSC_TRACE_MATCH=Dolmen_A every resolve of that name is logged — and
+    // a name that never appears at all is itself the answer.
+    if (const char* want = rsc_trace_match(); want != nullptr && want[0] != '\0') {
+        char name[256];
+        ref_path(ref, name, sizeof(name));
+        // Comma-separated, so ONE run can ask about several names at once —
+        // here the three entities swapped IN and the three swapped OUT. The
+        // second set is the load-bearing half: if the originals still resolve,
+        // the engine is reading the vanilla level and the edit never landed.
+        bool hit = false;
+        const char* tok = want;
+        while (*tok && !hit) {
+            const char* end = std::strchr(tok, ',');
+            const std::size_t len = end ? (std::size_t)(end - tok) : std::strlen(tok);
+            if (len > 0 && len < 128) {
+                char needle[128];
+                std::memcpy(needle, tok, len);
+                needle[len] = '\0';
+                hit = std::strstr(name, needle) != nullptr;
+            }
+            tok = end ? end + 1 : tok + len;
+        }
+        if (hit) {
+            char st[24];
+            if (have) std::snprintf(st, sizeof(st), "%u", state);
+            else      std::snprintf(st, sizeof(st), "<unreadable>");
+            char line[512];
+            std::snprintf(line, sizeof(line),
+                          "[rsc-trace] MATCH obj=%p state=%s refcount=%u  \"%s\"",
+                          obj, st, obj_refcount(obj), name);
+            Loader::get().log(line);
+        }
     }
 
     // A few lines per WINDOW, so every phase — including the chapter load that
