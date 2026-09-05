@@ -662,9 +662,12 @@ def test_a_reachable_but_absent_resource_is_not_cached(tmp_path, caplog):
     resolves to null and the teardown loop at 0x140476f60 destroys it with no
     null check, faulting far from the real mistake.
     """
+    from rsmm.engine.prop_cook import entity_cooked_path
     from rsmm.sdk.kinds import poi as P
 
     real = "Common_Settings\\Minimap_Marker_Reveal_Model.entity.ot"
+    if not (P._UNCOOKED / Path(*entity_cooked_path(real).split("/"))).is_file():
+        pytest.skip("uncooked corpus absent")
     fake = "Common_Settings\\Not_A_Shipped_Entity.entity.ot"
     # An index that lists neither, so both take the "donor never listed it" path.
     keep, extra = P._reachable([real, fake], ["3D|x\\y.fbx|oCGeometry"], tmp_path)
