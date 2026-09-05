@@ -616,3 +616,38 @@ def test_an_override_target_is_never_written_twice():
     with pytest.raises(EC.EntityComponentError):
         EC.copy_overrides(out, donor, prefix,
                           exclude=EC.OVERRIDE_EXCLUDE["minimap"])
+
+
+def test_the_borrow_source_is_not_a_reachability_seed(tmp_path):
+    """A tile whose cache is BORROWED must not become reachable itself.
+
+    `_CLOSURE_BORROW` names a shipped entity whose cache happens to cover a
+    marker parent's closure. It supplies INDEX LINES — authoritative roots and
+    class names — and nothing more. Seeding the reachability walk with it makes
+    that entity's whole closure reachable: the marker tile's cache grew by 367
+    lines, 53 of them Leprechaun cauldron animations and geometry, plus Avalon
+    materials in a Dark Hills tile. That is the bloat the trim exists to stop,
+    reintroduced through the back door.
+    """
+    from rsmm.engine import rsc_cache as RC
+    from rsmm.sdk.content import ContentError, SchemaNotMined
+    from rsmm.sdk.kinds import poi as P
+
+    host = "Dark_Hills/64x64_HighFishermanPlatform_Ghouls_Camp"
+    host_rel = f"Definitions/Tiles/{host}.tiledef.ot.DtTileDefinition.gen"
+    try:
+        P._corpus(RC.cache_path_for(host_rel), "t", "the donor cache")
+        assert P._tile_cache_by_placed_entity().get(P._CLOSURE_BORROW)
+    except (SchemaNotMined, ContentError, OSError, AssertionError):
+        pytest.skip("uncooked corpus absent")
+
+    written: list = []
+    P._emit_tile_caches(tmp_path, host, "marker-only", [], [host_rel], written,
+                        borrow_for=[P._CLOSURE_BORROW],
+                        seed_for=["DarkHills\\Objects_DarkHills\\"
+                                  "Pontoon_Pillar_12m_C.entity.ot"])
+
+    text = (tmp_path / RC.cache_path_for(host_rel)).read_text(errors="replace")
+    assert "LeprechaunCauldron" not in text and "Leprechaun_Cauldron" not in text, (
+        "the borrow SOURCE was seeded into the walk, so its whole closure came "
+        "with it")

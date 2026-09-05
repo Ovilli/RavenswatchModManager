@@ -178,6 +178,9 @@ from __future__ import annotations
 import logging
 import struct
 from collections.abc import Iterable
+
+# aliased: a loop variable named `cache` already exists below
+from functools import cache as _memo
 from functools import lru_cache
 from pathlib import Path
 
@@ -1138,6 +1141,29 @@ def _cache_refs(root: str, path: str, cls: str, out_dir: Path) -> list[str]:
         return []
 
 
+#: Roots a `.png` can be filed under, commonest first. ⚠ There are FIVE, and
+#: `Ui` is not even the largest: measured over 80 shipped tile caches, FX 2339,
+#: Ui 1590, 3D 485, samples 187, Fonts 21. An earlier version of `_reachable`
+#: assumed `Ui` for every texture, which writes a cache line naming a resource
+#: that does not exist — a null in the preloaded vector, i.e. exactly the crash
+#: this module exists to prevent. `.entity.ot` needs no such table: every one of
+#: 14399 shipped entity lines is `EntitySettings`.
+_TEXTURE_ROOTS = ("FX", "Ui", "3D", "samples", "Fonts")
+
+
+@_memo
+def _texture_cooked_path(path: str) -> str | None:
+    """Cooked path for a texture ref, by finding which root actually has it."""
+    # The corpus mirrors textures AS PNG (`extract_uncooked.py` decodes them),
+    # so probe for the plain file — the `.Texture.dxt` cook suffix only ever
+    # exists in the game install, never in `data/uncooked/`.
+    rel = Path(*path.split("\\"))
+    for root in _TEXTURE_ROOTS:
+        if (_UNCOOKED / root / rel).is_file():
+            return f"{root}/{path.replace(chr(92), '/')}.Texture.dxt"
+    return None
+
+
 def _reachable(seeds: Iterable[str], lines: list[str],
                out_dir: Path) -> tuple[set[str], list[str]]:
     """Cache paths reachable from `seeds` by following resource references.
@@ -1180,14 +1206,43 @@ def _reachable(seeds: Iterable[str], lines: list[str],
             queue.extend(_cache_refs("EntitySettings", path,
                                      "oCEntitySettingsResource", out_dir))
         elif path.lower().endswith(".png"):
+            cooked_rel = _texture_cooked_path(path)
+            if cooked_rel is None:
+                # Emitting a line under a GUESSED root names a resource that
+                # does not exist, which is a null in the preloaded vector — the
+                # very failure this cache prevents. Skip it and say so.
+                _log.warning(
+                    "poi: cannot place %s under any known texture root — "
+                    "left out of the preload cache; if it is needed the "
+                    "symptom is a null at level build, not a missing icon",
+                    path)
+                continue
             seen.add(path)
-            extra.append(f"Ui/{path.replace(chr(92), '/')}.Texture.dxt")
+            extra.append(cooked_rel)
     return seen, extra
+
+
+def _host_refs(defn: ContentDef) -> list[str]:
+    """The entity this def edits in place, if it names one.
+
+    A def that only appends components (`replaces` with no `swaps`) places
+    nothing, so the swapped-in list is empty and the reachability walk would
+    have no seed at all — leaving the parents it inherited, and their UI
+    closure, out of the tile's preload cache.
+    """
+    # `replaces` lives under the `prop` sub-table, not at the block's top
+    # level — reading it from the top returns None, the seed list comes back
+    # empty, and the empty-seed fallback then seeds from the BORROW SOURCE,
+    # which is the bloat this separation exists to stop.
+    prop = defn.fields.get("prop")
+    ref = prop.get("replaces") if isinstance(prop, dict) else None
+    return [ref] if isinstance(ref, str) and ref else []
 
 
 def _emit_tile_caches(out_dir: Path, base: str, defn_id: str, assets: list[str],
                       tile_rels: list[str], written: list[Path],
-                      borrow_for: Iterable[str] = ()) -> None:
+                      borrow_for: Iterable[str] = (),
+                      seed_for: Iterable[str] = ()) -> None:
     """Give every tiledef this def emitted its ``*.UsedRscCache.ot`` sibling.
 
     All 237 shipped tiledefs have one and the engine looks it up by convention,
@@ -1251,7 +1306,16 @@ def _emit_tile_caches(out_dir: Path, base: str, defn_id: str, assets: list[str],
     # borrowing whole tile caches pulled 1344 unrelated lines into a 95-line
     # cache, including foreign-biome resources this tile can never resolve.
     if borrowed:
-        keep, missing = _reachable(sorted(set(borrow_for)), borrowed, out_dir)
+        # ⚠ Seed from what the HOST references, never from the tile we borrowed
+        # FROM. `_CLOSURE_BORROW` names a shipped entity whose cache happens to
+        # cover a parent's closure; seeding the walk with it makes that whole
+        # entity reachable, and the marker tile's cache grew by 367 lines — 53
+        # of them Leprechaun cauldron animations and geometry, plus Avalon
+        # materials in a Dark Hills tile. A borrow source supplies INDEX LINES
+        # (authoritative roots and class names); only the entities this def
+        # actually places or edits are seeds.
+        seeds = sorted(set(seed_for if seed_for else borrow_for))
+        keep, missing = _reachable(seeds, borrowed, out_dir)
         trimmed = [ln for ln in borrowed if ln.split("|")[1] in keep]
         _log.info("poi %s: borrowed closure trimmed %d -> %d line(s), "
                   "%d reachable resource(s) the donor never listed",
@@ -2076,7 +2140,8 @@ def _emit_replacing_base(mod_id: str, defn: ContentDef, out_dir: Path,
     assets = _emitted_assets(out_dir, written) + extra_deps
     _emit_tile_caches(out_dir, base, defn.id, assets,
                       [f"{_TILE_ASSET_SUBDIR}/{base}{TC.GEN_SUFFIX}"], written,
-                      borrow_for=[*swaps.values(), *borrow])
+                      borrow_for=[*swaps.values(), *borrow],
+                      seed_for=[*swaps.values(), *_host_refs(defn)])
     # No tile is pooled here, but the chapter's cache is a superset of every
     # tile's, so art the overridden tile now reaches has to be listed there too.
     _extend_map_caches(out_dir, defn.id, chapters, assets, [], written)
@@ -2167,7 +2232,8 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # cache — a tiledef the engine cannot preload is never placed.
     assets = _emitted_assets(out_dir, written)
     _emit_tile_caches(out_dir, base, defn.id, assets, tile_rels, written,
-                      borrow_for=_validated_swaps(defn, base).values())
+                      borrow_for=_validated_swaps(defn, base).values(),
+                      seed_for=_validated_swaps(defn, base).values())
     _report_share(mod_id, defn, td, chapters, copies)
 
     for ch in chapters:

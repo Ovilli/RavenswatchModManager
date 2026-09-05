@@ -23,7 +23,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
-#include <mutex>
 
 #include "MinHook.h"
 #include "loader.h"
@@ -189,28 +188,30 @@ void log_summary(const char* why) {
 // at all. `<game>/rsmm_rsc_match.txt` is one line of comma-separated
 // substrings and can be rewritten between runs with the launcher untouched.
 const char* rsc_trace_match() {
-    static std::mutex mu;
-    static bool loaded = false;
-    static std::string value;
-    std::lock_guard<std::mutex> lk(mu);
-    if (!loaded) {
-        loaded = true;
+    // ⚠ Read once, via a function-local static, NOT a mutex taken per call.
+    // This runs on the game's main thread for EVERY resolve — thousands per
+    // chapter load — and the thing being investigated is load timing, so a
+    // lock here would move the measurement it exists to take. C++11 statics
+    // are initialised exactly once and thread-safely, which is all this needs.
+    static const std::string value = [] {
+        std::string v;
         if (const char* env = std::getenv("RSMM_RSC_TRACE_MATCH"); env && env[0]) {
-            value = env;
+            v = env;
         } else if (FILE* f = std::fopen(
                        (Loader::get().game_dir() / "rsmm_rsc_match.txt")
                            .string().c_str(), "rb")) {
             char buf[512];
-            if (std::fgets(buf, sizeof(buf), f)) value = buf;
+            if (std::fgets(buf, sizeof(buf), f)) v = buf;
             std::fclose(f);
-            while (!value.empty() && (value.back() == '\n' || value.back() == '\r'
-                                      || value.back() == ' '))
-                value.pop_back();
+            while (!v.empty() && (v.back() == '\n' || v.back() == '\r'
+                                  || v.back() == ' '))
+                v.pop_back();
         }
-        if (!value.empty()) {
-            Loader::get().log(("[rsc-trace] name filter: " + value).c_str());
+        if (!v.empty()) {
+            Loader::get().log(("[rsc-trace] name filter: " + v).c_str());
         }
-    }
+        return v;
+    }();
     return value.empty() ? nullptr : value.c_str();
 }
 
