@@ -1233,8 +1233,22 @@ def _reachable(seeds: Iterable[str], lines: list[str],
         # borrowing alone can never cover a capability the donor lacks. A
         # marker whose display UI is not preloaded is an icon that never draws.
         if path.lower().endswith(".entity.ot"):
+            # Only if it actually EXISTS. A cache line for a resource the game
+            # does not ship is the same failure as one under a wrong root: the
+            # preload resolves to null and the teardown loop destroys it
+            # unchecked. `_cache_refs` already degrades quietly on a missing
+            # file, so without this check a typo'd or renamed ref would sail
+            # through and surface as an access violation at level build.
+            cooked_rel = entity_cooked_path(path)
+            if not (out_dir / Path(*cooked_rel.split("/"))).is_file() \
+                    and not (_UNCOOKED / Path(*cooked_rel.split("/"))).is_file():
+                _log.warning(
+                    "poi: %s is referenced but exists in neither this mod nor "
+                    "the corpus — left out of the preload cache rather than "
+                    "listed as a resource that cannot resolve", path)
+                continue
             seen.add(path)
-            extra.append(entity_cooked_path(path))
+            extra.append(cooked_rel)
             queue.extend(_cache_refs("EntitySettings", path,
                                      "oCEntitySettingsResource", out_dir))
         elif path.lower().endswith(".png"):

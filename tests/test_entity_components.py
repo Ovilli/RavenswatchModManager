@@ -651,3 +651,26 @@ def test_the_borrow_source_is_not_a_reachability_seed(tmp_path):
     assert "LeprechaunCauldron" not in text and "Leprechaun_Cauldron" not in text, (
         "the borrow SOURCE was seeded into the walk, so its whole closure came "
         "with it")
+
+
+def test_a_reachable_but_absent_resource_is_not_cached(tmp_path, caplog):
+    """A cache line for a resource the game does not ship is a null at build.
+
+    The walk adds resources the borrow source never listed — that is how the
+    marker parent's UI closure gets in. But adding one WITHOUT checking it
+    exists reproduces the wrong-root bug in a different costume: the preload
+    resolves to null and the teardown loop at 0x140476f60 destroys it with no
+    null check, faulting far from the real mistake.
+    """
+    from rsmm.sdk.kinds import poi as P
+
+    real = "Common_Settings\\Minimap_Marker_Reveal_Model.entity.ot"
+    fake = "Common_Settings\\Not_A_Shipped_Entity.entity.ot"
+    # An index that lists neither, so both take the "donor never listed it" path.
+    keep, extra = P._reachable([real, fake], ["3D|x\\y.fbx|oCGeometry"], tmp_path)
+
+    assert any("Minimap_Marker_Reveal_Model" in e for e in extra), (
+        "a real reachable entity should still be added")
+    assert not any("Not_A_Shipped_Entity" in e for e in extra), (
+        "an entity that exists nowhere was listed as a preload anyway")
+    assert fake not in keep
