@@ -207,3 +207,125 @@ def test_resolve_special_resolves_a_resource_cache():
 
     # Nothing else changed: a path with no special form still returns None.
     assert resolve_special("Definitions/Enemies/Gnoll_Hunter.enemydef", dec2enc) is None
+
+
+def test_restore_keeps_a_vanilla_file_the_mod_emits_byte_identically(
+    tmp_path, monkeypatch, capsys
+):
+    """`restore --all`'s residue sweep must not delete a shipped asset.
+
+    The sweep's rule is "cooked bytes == mod source bytes, and no `.rsmm.bak`
+    beside it, therefore the mod added this file". That inference is wrong
+    whenever the mod's output happens to EQUAL what the game ships — the
+    normal case for a `*.UsedRscCache.ot` whose definition adds no new
+    resources. Observed 2026-09-05 on three Dark Hills / Avalon caches: every
+    `restore --all` deleted them, and the next `apply` then refused with
+    VanillaMissing because the original it had to back up was gone.
+
+    `restore_one` has carried this guard for the same reason since the
+    2026-07-11 text-bank loss; the sweep runs after it and did not.
+    """
+    from rsmm.cli import apply_mods
+
+    repo, mods_dir, asset_map, game_dir = _make_fake_repo(tmp_path)
+    cooking = game_dir / "DarkTalesResources" / "_Cooking"
+    shipped = cooking / "a" / "b.bin"
+    # The premise: the game ships this path AND the mod emits the same bytes.
+    shipped.write_bytes(b"MOD CONTENT")
+    monkeypatch.setattr(apply_mods, "is_vanilla_encoded", lambda enc: True)
+
+    monkeypatch.setattr(apply_mods, "MODS_DIR", mods_dir)
+    monkeypatch.setattr(apply_mods, "ASSET_MAP_JSON", asset_map)
+    import rsmm.engine.find_iyg as find_iyg
+    monkeypatch.setattr(find_iyg, "main", lambda *a, **k: 0)
+
+    # No state, no backup — the shape a wiped .rsmm_state.json leaves behind,
+    # and the one the sweep exists to clean up.
+    args = SimpleNamespace(dry_run=False)
+    rc = apply_mods.cmd_restore_all(args, repo, cooking, game_dir)
+    out = capsys.readouterr().out
+
+    assert rc == 0, out
+    assert shipped.is_file(), "restore deleted a file the game ships"
+    assert shipped.read_bytes() == b"MOD CONTENT"
+    assert "residue via source hash" not in out, out
+
+
+def test_emit_drops_last_runs_files_before_re_emitting(tmp_path, monkeypatch):
+    """A mapdef pool and a resource cache are read back and EXTENDED, so that
+    two content defs in one mod compose instead of the last one stripping the
+    first's entries. That same read-back makes them grow across separate
+    APPLIES, and a def the author removes then leaves its entries behind
+    forever — the post-emit "stale file" sweep never reaches a file that is
+    rewritten every time.
+
+    Measured 2026-09-05: the planted Dark Hills pool still carried 16 entries
+    for a `menhir_camp` def parked days earlier, pointing at tiledef files the
+    sweep HAD deleted. A pool entry with no tiledef behind it is a null the
+    generator has to resolve, and nothing logs it.
+    """
+    import json
+
+    from rsmm.cli import apply_mods as A
+
+    mod_root = tmp_path / "accumulator"
+    assets = mod_root / "assets"
+    assets.mkdir(parents=True)
+    # What last run emitted, plus a file the AUTHOR shipped by hand. Only the
+    # first is in the marker, and only the first may be deleted.
+    (assets / "pool.bin").write_bytes(b"vanilla+parked-def")
+    (assets / "handwritten.png").write_bytes(b"authored")
+    (mod_root / ".rsmm_emitted.json").write_text(json.dumps(["pool.bin"]))
+
+    class _Reg:
+        def __init__(self, **kw): pass
+        def register(self, *a, **kw): pass
+        def emit(self, out_dir):
+            # An emitter that EXTENDS whatever is already there — the real
+            # behaviour of the pool and cache writers.
+            p = out_dir / "pool.bin"
+            prior = p.read_bytes() if p.is_file() else b"vanilla"
+            p.write_bytes(prior + b"+this-def")
+            return [p]
+
+    import rsmm.sdk.content as content
+    monkeypatch.setattr(content, "ContentRegistry", _Reg)
+
+    mod = SimpleNamespace(
+        id="accumulator", enabled=True, experimental=True, root=mod_root,
+        assets_dir=assets, content_blocks=[{"kind": "poi", "id": "x"}],
+    )
+    A.emit_content_blocks([mod])
+
+    assert (assets / "pool.bin").read_bytes() == b"vanilla+this-def", (
+        "the emit built on last run's output, so a removed def's entries "
+        "survive forever")
+    assert (assets / "handwritten.png").is_file(), (
+        "the cleanup deleted a hand-authored asset; it must only remove what "
+        "the emitter itself wrote")
+
+
+def test_emitted_cleanup_refuses_to_escape_the_mod_directory(tmp_path):
+    """`.rsmm_emitted.json` steers `unlink()`, so it must not escape the mod.
+
+    ⚠ `base / Path(rel)` alone is not containment: Python's `/` DISCARDS the
+    left operand when the right is absolute, so a single absolute entry aims
+    the delete anywhere on disk, and `..` walks out just as easily. The marker
+    is written by this tool, but a mod directory is downloaded and shared, so a
+    corrupt or hostile one must not be able to remove a user's files.
+    """
+    from rsmm.cli.apply_mods import _emitted_stale_path
+
+    base = tmp_path / "mod" / "assets"
+    base.mkdir(parents=True)
+    (base / "ok.gen").write_text("x")
+
+    outside = tmp_path / "outside.txt"
+    outside.write_text("do not delete me")
+
+    assert _emitted_stale_path(base, "ok.gen") == (base / "ok.gen").resolve()
+    assert _emitted_stale_path(base, str(outside)) is None, (
+        "an absolute entry replaced the base path entirely")
+    assert _emitted_stale_path(base, "../../outside.txt") is None, (
+        "a relative entry walked out of the mod directory")
+    assert outside.is_file()

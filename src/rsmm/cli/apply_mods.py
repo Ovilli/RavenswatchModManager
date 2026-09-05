@@ -777,6 +777,24 @@ def discover_mods(repo: Path) -> list[Mod]:
     return mods
 
 
+def _emitted_stale_path(base: Path, rel: object) -> Path | None:
+    """`base / rel`, but only when the result stays UNDER `base`.
+
+    ⚠ `base / Path(rel)` is not enough on its own. Python's `/` DISCARDS the
+    left side when the right is absolute — `Path("/a") / "/etc/passwd"` is
+    `/etc/passwd` — and `..` walks out just as easily. These entries come from
+    `<mod>/.rsmm_emitted.json`, and while this tool writes that file, a mod
+    directory is a thing users download and share, so a corrupt or hostile
+    marker must not be able to steer `unlink()` anywhere it likes.
+    """
+    try:
+        cand = (base / Path(str(rel))).resolve()
+        cand.relative_to(base.resolve())
+    except (OSError, ValueError):
+        return None
+    return cand
+
+
 def _drop_emitted(m: Mod) -> None:
     """Delete the files a mod's content emit wrote last time, and the marker.
 
@@ -793,7 +811,11 @@ def _drop_emitted(m: Mod) -> None:
         prev = []
     removed = 0
     for rel in prev if isinstance(prev, list) else []:
-        stale = m.assets_dir / Path(str(rel))
+        stale = _emitted_stale_path(m.assets_dir, rel)
+        if stale is None:
+            print(f"  [content] {m.id}: refusing to delete {rel!r} — outside "
+                  f"the mod's assets directory")
+            continue
         try:
             if stale.is_file():
                 stale.unlink()
@@ -871,6 +893,37 @@ def emit_content_blocks(mods: list[Mod]) -> int:
             prev = json.loads(marker.read_text(encoding="utf-8")) if marker.exists() else []
         except (OSError, ValueError):
             prev = []
+        # Last run's emitted files go BEFORE this run emits, not after.
+        #
+        # Several of them ACCUMULATE by design: a mapdef's tile pool and a
+        # resource cache are both read back and extended, so that two defs in
+        # one mod compose instead of the last one silently stripping the
+        # first's entries. That same read-back makes them grow across separate
+        # APPLIES too, and a def that is removed or renamed then leaves its
+        # entries in the pool forever — the cleanup below never reached them,
+        # because a file rewritten every time is never "stale".
+        #
+        # Measured 2026-09-05: the Dark Hills pool still carried 16 entries for
+        # a `menhir_camp` def that had been parked days earlier, pointing at
+        # tiledef files this very cleanup had already deleted. A pool entry
+        # with no tiledef behind it is a null the generator has to resolve, in
+        # the middle of the Camp pool, and nothing logs it.
+        #
+        # Deleting up front is safe: the marker lists only what the emitter
+        # itself wrote. Hand-authored files under `assets/` are never in it.
+        dropped = 0
+        for rel in prev if isinstance(prev, list) else []:
+            stale = _emitted_stale_path(out_dir, rel)
+            if stale is None:
+                print(f"  [content] {m.id}: refusing to delete {rel!r} — "
+                      f"outside the mod's assets directory")
+                continue
+            try:
+                if stale.is_file():
+                    stale.unlink()
+                    dropped += 1
+            except OSError:
+                pass
         try:
             written = cr.emit(out_dir)
             total += len(written)
@@ -878,11 +931,9 @@ def emit_content_blocks(mods: list[Mod]) -> int:
                 str(p.relative_to(out_dir).as_posix()) for p in written
                 if out_dir in p.parents
             )
-            for rel in set(prev) - set(new_rel):
-                stale = out_dir / Path(rel)
-                if stale.is_file():
-                    stale.unlink()
-                    print(f"  [content] {m.id}: removed stale {rel}")
+            gone = sorted(set(prev if isinstance(prev, list) else []) - set(new_rel))
+            for rel in gone:
+                print(f"  [content] {m.id}: removed stale {rel}")
             try:
                 marker.write_text(json.dumps(new_rel, indent=2), encoding="utf-8")
             except OSError:
@@ -2715,6 +2766,17 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                                   file=sys.stderr)
                             continue
                 else:
+                    # Same last line of defence as `restore_one`: with no
+                    # backup, "hash matches the mod's output" normally means
+                    # residue — but for a path the GAME ships it can also mean
+                    # the mod emits bytes identical to vanilla, which is the
+                    # normal case for a `.UsedRscCache.ot` whose definition
+                    # adds no new resources. Dropping then deletes the vanilla
+                    # asset on every restore, and the next apply refuses
+                    # (VanillaMissing) because the file it must back up is
+                    # gone. Observed on the three Dark Hills / Avalon caches.
+                    if is_vanilla_encoded(enc):
+                        continue
                     print(f"  - drop    {enc}  (residue via source hash)")
                     if not args.dry_run:
                         try:
@@ -2753,7 +2815,10 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                         continue
 
                     # Only drop when we can prove the cooked file bytes are
-                    # exactly the mod source bytes.
+                    # exactly the mod source bytes — and not when the game
+                    # ships the path (see the sweep above).
+                    if is_vanilla_encoded(enc):
+                        continue
                     try:
                         if src.exists() and sha256(dest) == sha256(src):
                             print(f"  - drop    {enc}  (aggressive purge + source hash)")
@@ -2773,6 +2838,13 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                     continue
                 dest = encoded_to_dest(enc, cooking, game_dir)
                 if not dest.exists() or not src.exists():
+                    continue
+                bak = dest.parent / (dest.name + BACKUP_SUFFIX)
+                # A vanilla path with no backup beside it was never overridden
+                # in the first place: the mod simply emits the same bytes the
+                # game ships. Reporting it as residue makes `restore` exit 2
+                # forever on a clean install.
+                if is_vanilla_encoded(enc) and not bak.exists():
                     continue
                 try:
                     if sha256(dest) == sha256(src):

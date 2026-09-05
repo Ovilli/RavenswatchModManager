@@ -1151,6 +1151,32 @@ def _cache_refs(root: str, path: str, cls: str, out_dir: Path) -> list[str]:
 _TEXTURE_ROOTS = ("FX", "Ui", "3D", "samples", "Fonts")
 
 
+def _texture_root_index() -> dict[str, str]:
+    """Texture path -> the root the SHIPPED caches file it under.
+
+    The corpus mirror is incomplete (`FX`, the commonest texture root, is not
+    mirrored at all), so a corpus probe alone cannot place every texture — and
+    a texture that cannot be placed is left out of the preload cache, which is
+    a null at level build rather than merely a missing icon. The 575 shipped
+    `*.UsedRscCache.ot` files already state the root for every resource the
+    game loads, so they answer it without guessing.
+    """
+    def build() -> dict[str, str]:
+        out: dict[str, str] = {}
+        for cp in sorted((_UNCOOKED / "Definitions").rglob("*.UsedRscCache.ot")):
+            try:
+                lines = RC.parse(cp.read_bytes())
+            except (OSError, ValueError):
+                continue
+            for line in lines:
+                parts = line.split("|")
+                if len(parts) == 3 and parts[1].lower().endswith(".png"):
+                    out.setdefault(parts[1], parts[0])
+        return out
+
+    return corpus_cache.load_or_build("texture_root_index", _UNCOOKED, build)
+
+
 @_memo
 def _texture_cooked_path(path: str) -> str | None:
     """Cooked path for a texture ref, by finding which root actually has it."""
@@ -1161,7 +1187,13 @@ def _texture_cooked_path(path: str) -> str | None:
     for root in _TEXTURE_ROOTS:
         if (_UNCOOKED / root / rel).is_file():
             return f"{root}/{path.replace(chr(92), '/')}.Texture.dxt"
-    return None
+    # Not mirrored — `FX` in particular is absent from `data/uncooked/` while
+    # being the commonest texture root of all. The game's own 575 shipped
+    # caches are the authoritative answer for where a resource is filed, so ask
+    # them rather than give up: a skipped texture is still a missing preload.
+    root = _texture_root_index().get(path)
+    return (f"{root}/{path.replace(chr(92), '/')}.Texture.dxt"
+            if root is not None else None)
 
 
 def _reachable(seeds: Iterable[str], lines: list[str],
