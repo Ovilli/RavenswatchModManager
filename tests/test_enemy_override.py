@@ -149,10 +149,16 @@ def test_unpooled_entity_is_refused(tmp_path):
 
 def test_repointed_definition_gets_a_merged_sorted_cache(tmp_path):
     _require_corpus()
+    # `_require_corpus` only proves the enemy INDEX is there; this test also
+    # reads a shipped cache straight off disk, and `data/uncooked` is
+    # gitignored — so on a fresh clone the index resolves and the read raises
+    # FileNotFoundError instead of skipping.
+    donor_cache = (_UNCOOKED / "Definitions" / "Enemies"
+                   / f"Standard_Clawed_Treant.enemydef{RC.CACHE_SUFFIX}")
+    if not donor_cache.is_file():
+        pytest.skip("uncooked corpus absent (run scripts/extract_uncooked.py)")
     written = _emit(tmp_path, pools=["Dark_Hills"], entity=_TREANT)
-    donor = set(RC.parse(
-        (_UNCOOKED / "Definitions" / "Enemies"
-         / f"Standard_Clawed_Treant.enemydef{RC.CACHE_SUFFIX}").read_bytes()))
+    donor = set(RC.parse(donor_cache.read_bytes()))
 
     caches = _caches(written)
     assert caches, "a repointed def with no cache preloads the wrong closure"
