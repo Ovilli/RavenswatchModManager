@@ -119,6 +119,19 @@ def lint_one(entry: Path) -> tuple[int, int]:
             print(f"  {_T_FAIL} {mod_s}: {detail}")
             errs += 1
 
+    # [[experiment]] — questions this mod wants a playtest to answer. Same
+    # reasoning as [overlay]: a typo here surfaces as a question silently
+    # missing from `rsmm exp` after the run that was supposed to answer it,
+    # and a playtest is the most expensive thing in this project to repeat.
+    if "experiment" in t:
+        from rsmm.cli.cmd_exp import ExpError, parse_declarations
+        try:
+            parse_declarations(t.get("experiment"), mod_id=str(m.get("id", entry.name)))
+        except ExpError as e:
+            detail = str(e).split(": ", 1)[-1]
+            print(f"  {_T_FAIL} {mod_s}: {detail}")
+            errs += 1
+
     # assets/
     dec2enc = decoded_to_encoded()
     assets = entry / "assets"

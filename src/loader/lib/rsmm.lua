@@ -699,9 +699,13 @@ local function _learn_dispatcher_offset(disp)
     if type(hero) ~= "number" or hero == 0 or disp <= hero then return end
     local off = disp - hero
     if off > _DISP_OFF_MAX or off % 8 ~= 0 then return end
-    -- Both ends must look like live objects before their difference means
-    -- anything: the dispatcher is a sub-object with its own vtable.
-    if not _ptr_plausible(hero) or not _obj_has_vtable(disp) then return end
+    -- Both ends must look live before their difference means anything. The
+    -- HERO is an object; the dispatcher is NOT, and requiring a vtable of it
+    -- was wrong: measured 2026-09-05 on a live dispatcher, `[disp]` reads
+    -- 0x7300000000 — packed data, not a pointer, nowhere near the module. So
+    -- this gate never passed, the offset was never learned, and the strict
+    -- summon filter stayed permanently dormant.
+    if not _ptr_plausible(hero) or not _ptr_plausible(disp) then return end
 
     local prev = _disp_off_seen[off]
     if prev == nil then
@@ -714,6 +718,33 @@ local function _learn_dispatcher_offset(disp)
         "[rsmm.give] dispatcher sits at entity+0x%x (corroborated by two "
         .. "distinct heroes; the hardcoded 0x4d8 went stale on 2026-07-09)",
         off))
+end
+
+-- Is this dispatcher still safe to hand to the engine?
+--
+-- Replaces `_obj_has_vtable(disp)`, which was the wrong question: a dispatcher
+-- is a sub-object whose first qword is DATA, not a vtable (measured
+-- 2026-09-05: `[disp]` = 0x7300000000 on a dispatcher the bus had just
+-- accepted). That test refused every live dispatcher, which silently disabled
+-- `R.give` on this build and blocked the map reveal.
+--
+-- The intent behind it is still right — a run ending or a hero switch frees
+-- the object, and handing a stale pointer to the engine is this loader's #1
+-- crash class — so the check moves to something that IS an object:
+--
+--   * the dispatcher itself must be a plausible pointer; and
+--   * once the entity offset has been learned, its OWNING ENTITY must carry a
+--     vtable (that is a real object and the thing that actually dies);
+--   * until then, fall back to the hero capture being live, which is the same
+--     "is this run still going" signal one indirection away.
+local function _dispatcher_live(disp)
+    if not _ptr_plausible(disp) then return false end
+    if _DISPATCHER_ENTITY_OFF then
+        return _obj_has_vtable(disp - _DISPATCHER_ENTITY_OFF)
+    end
+    local hero = R.entity and R.entity.hero and R.entity.hero()
+    if type(hero) ~= "number" or hero == 0 then return true end  -- fail open
+    return _obj_has_vtable(hero)
 end
 
 -- True iff `disp`'s owning entity is a grantable hero (not a summon/pet). Uses
@@ -901,7 +932,7 @@ function R.give.by_guid(lo, hi)
     -- Checked here rather than through `call_safe`: NamedEvent_Dispatch is
     -- declared "vpp" — void — so a successful call and a refusal both come
     -- back nil, and there would be no way to tell them apart.
-    if not _obj_has_vtable(_give_hero) then
+    if not _dispatcher_live(_give_hero) then
         R.log(string.format(
             "[rsmm.give] dispatcher 0x%x no longer looks live (run ended or "
             .. "hero switched?); dropping the grant and clearing the capture",
@@ -1228,71 +1259,78 @@ function R.hero.unlock_progression()
     return n
 end
 
---- Let two players in a lobby pick the SAME hero.
+--- Broadcast a DECOY hero to the lobby while you keep the one you picked.
 --
--- `HeroSelect_IsHeroAvailable` decides whether a hero index may be picked. It
--- enumerates the lobby with `LobbyMembers_List` and reads each member's blob
--- through `LobbyAttributes_Parse` — whose JSON carries `RequestedHero` (see
--- [[lobby-attribute-parser]]) — so "someone already took that hero" is
--- decided here. Both of its call sites read only the boolean return
--- (0x14026dcec maps true to status 0 / false to 2; 0x1403e8474 to a bool), so
--- short-circuiting it to true cannot leave a caller holding a half-computed
--- result.
+-- The problem this solves, and why nothing before it worked. Every local gate
+-- was found and forced — the availability check, the confirm block byte, the
+-- confirm refusal code, the button's own widget state — and each was accepted
+-- with no change in behaviour. Pressing READY un-readies you instantly, which
+-- is an authority reversing a decision the client already took, not a local
+-- refusal. The duplicate check is simply not reachable from this machine.
 --
--- Returning 1 also SKIPS the original, which is what makes this safe rather
--- than merely convenient: `LobbyMembers_List` hands the caller members it
--- must destroy one by one, and never running it is the only way to not owe
--- that teardown.
+-- So stop arguing with it and change what it is told. Every player's
+-- attributes go out through `LobbyAttributes_Serialize`, and the field that
+-- collides is one u32. This swaps it for a free hero index for the duration of
+-- that call and puts the real one straight back, so the lobby sees a hero
+-- nobody is on while your own selection is never touched.
 --
--- ⚠ HOST-AUTHORITATIVE. Every player in the lobby needs this, or the ones
--- without it still refuse the duplicate pick on their own screen.
+-- SAFETY, learned the hard way. An earlier version of this feature cached a
+-- widget pointer and cleared a byte through it on every tick, forever — long
+-- after the page was destroyed and the memory reused. That is crash dump
+-- 5ff60612 (a null deref in oCDtNamedEventPowerUpCollectRequest, minutes later
+-- and nowhere near the cause). Nothing here caches a pointer: the record is the
+-- one the engine hands the detour, the write happens inside that call, and the
+-- restore runs even if the replay raises.
 --
--- ⚠ The function is 1330 bytes and only its lobby half is understood. Forcing
--- true bypasses whatever ELSE it gates; an unlock check inside it is a live
--- possibility and is NOT ruled out. Treat a hero that becomes selectable but
--- was never unlocked as this hook, not as a bonus.
+-- ⚠ WHAT IS NOT KNOWN: whether the run spawns from your LOCAL selection or from
+-- the attribute that just went out. If clients spawn locally you play your real
+-- pick; if the host spawns everyone from attributes you get the decoy. That is
+-- the test, and either answer settles where the swap has to live.
 --
--- Returns true when the hook is in place (including when another mod already
--- installed it), false when the symbol is unresolved on this build — which
--- fails closed rather than guessing at an address.
-local _dupes_hooked = false
+-- ⚠ Every player needs this, same as any host-authoritative change.
+--
+-- Returns true when the hook is in place, false when the symbol is unresolved
+-- on this build — which fails closed rather than guessing at an address.
+local REQUESTED_HERO_OFF = 0x10        -- u32 in the member record, disassembled
+local _decoy_hooked, _decoy_said = false, 0
 
-function R.hero.allow_duplicates()
-    if _dupes_hooked then return true end
-    if not (R.hook and I.resolve) then return false end
-    local va = I.resolve("HeroSelect_IsHeroAvailable")
-    -- nil/0 when the symbol is unresolved for this build: fail closed rather
-    -- than hooking a stale address.
+function R.hero.broadcast_decoy(index)
+    if type(index) ~= "number" or index < 0 or index > 0xff then
+        error("R.hero.broadcast_decoy: index must be a hero slot 0..255", 2)
+    end
+    if _decoy_hooked then return true end
+    if not (R.hook and I.resolve and I.read_u32 and I.write_u32) then return false end
+    local va = I.resolve("LobbyAttributes_Serialize")
     if not va or va == 0 then
-        R.log("[rsmm.hero] HeroSelect_IsHeroAvailable unresolved for this "
-              .. "game build — duplicate heroes not enabled")
+        R.log("[rsmm.hero] LobbyAttributes_Serialize unresolved on this build "
+              .. "— the lobby is told your real hero")
         return false
     end
-    -- "i" + "pii": bool(menu, hero_index, flag). Three args, as called —
-    -- rcx = menu, edx = hero index, r8b = a bool. Declaring a fourth would
-    -- read garbage out of r9.
-    -- The first fire is logged once. Without it "the hook installed" and "the
-    -- hero picker actually asks this function" look identical in the log, and
-    -- they are the two halves of the only question worth asking when a hero
-    -- still reads as locked.
-    local fired = false
-    local ok, slot, why = pcall(R.hook, va, "ipii", function(_, hero_index)
-        if not fired then
-            fired = true
-            R.log(("[rsmm.hero] availability gate fired (hero %s) — the picker "
-                   .. "does route through this check"):format(tostring(hero_index)))
+    local ok, slot, why = pcall(R.hook, va, "ppp", function(rec, _out, next)
+        -- Not armed, or the record is not one we can read: replay untouched.
+        if type(next) ~= "function" or not _ptr_plausible(rec) then return nil end
+        local real = I.read_u32(rec + REQUESTED_HERO_OFF)
+        if real == nil or real == index then return nil end
+        I.write_u32(rec + REQUESTED_HERO_OFF, index)
+        -- The restore must survive a raise in the replay, or one bad call
+        -- leaves the decoy as the player's actual selection.
+        local rok, rv = pcall(next)
+        I.write_u32(rec + REQUESTED_HERO_OFF, real)
+        if _decoy_said < 3 then
+            _decoy_said = _decoy_said + 1
+            R.log(("[rsmm.hero] lobby told hero %d (you picked %d) — the "
+                   .. "duplicate never reaches the check"):format(index, real))
         end
-        return 1
+        if not rok then return nil end
+        return rv
     end)
-    if not (ok and (slot ~= nil or why == "already-hooked")) then
-        R.log("[rsmm.hero] duplicate-hero hook failed: "
-              .. tostring(ok and why or slot))
-        return false
+    if ok and (slot ~= nil or why == "already-hooked") then
+        _decoy_hooked = true
+        R.log(("[rsmm.hero] decoy broadcast armed on hero slot %d"):format(index))
+        return true
     end
-    _dupes_hooked = true
-    R.log("[rsmm.hero] duplicate heroes enabled (every player in the lobby "
-          .. "needs this mod)")
-    return true
+    R.log("[rsmm.hero] decoy hook failed: " .. tostring(ok and why or slot))
+    return false
 end
 
 function R.hero.handle() return _give_hero end
@@ -1689,6 +1727,63 @@ function R.kv.all()
     local out = {}
     for k, v in pairs(_kv) do out[k] = v end
     return out
+end
+
+-- experiments -----------------------------------------------------------
+--
+-- Lives in rsmm/exp.lua, and sits here because it is built entirely on R.kv
+-- above -- a verdict is a scalar in the mod's own state file, which the
+-- loader already writes crash-safely, so the whole harness ships as a Lua
+-- update with no DLL rebuild.
+--
+--   R.exp.run(id, question, fn)    declare + answer on the spot
+--   R.exp.case(id, question)       declare now, verdict later from a handler
+--   R.exp.observe(id, key, value)  evidence
+--   R.exp.verdict(id, pass, why)   close it
+--
+-- Read the results back with `rsmm exp`. The point is that ONE playtest
+-- answers N hypotheses instead of one: see the module header.
+do
+    local ok, x = _submodule_fn("exp", { R = R })
+    -- Degrade quietly. A missing R.exp costs a probe its readout; it must
+    -- never stop the mod that was going to do the measuring from loading.
+    if ok and type(x) == "table" then R.exp = x end
+end
+
+-- map generation --------------------------------------------------------
+--
+-- Lives in rsmm/poi.lua. One post-detour on the tile spawner's slot 7 fires
+-- once per generated map, holding the spawner component -- the observation
+-- point every custom-POI attempt has lacked, because preload happens for
+-- tiles that are never placed and nothing else separates the two.
+--
+--   R.poi.on_generated(cb)   cb(spawnerComponent), after each generation
+--   R.poi.armed()            false = the symbol did not resolve on this build
+--
+-- A PROBE, not a placement API: the spawner's member layout is unknown, so it
+-- hands over a pointer and stops there. See the module header.
+do
+    local ok, x = _submodule_fn("poi", { R = R, I = I })
+    if ok and type(x) == "table" then R.poi = x end
+end
+
+-- map reveal ------------------------------------------------------------
+--
+-- Lives in rsmm/map.lua. Fires the game's own CROWS_MAP_REVEAL so POI markers
+-- draw without walking to each one. It needs the same hero dispatcher the give
+-- path uses and the same liveness check, so both are handed over rather than
+-- re-derived — `_give_hero` is a local of this chunk and a raw engine pointer
+-- whose validity is re-checked at every call site.
+--
+--     R.map.reveal()       --> true when dispatched
+--     R.map.can_reveal()   --> false until the hero has acted once
+do
+    local ok, x = _submodule_fn("map", {
+        R = R, I = I,
+        give_hero = function() return _give_hero end,
+        obj_has_vtable = function(p) return _dispatcher_live(p) end,
+    })
+    if ok and type(x) == "table" then R.map = x end
 end
 
 -- player identity -------------------------------------------------------

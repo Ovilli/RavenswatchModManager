@@ -574,6 +574,34 @@ inline String_Assign_fn String_Assign() {
     return reinterpret_cast<String_Assign_fn>(rsmm::fn_resolve(Sym::String_Assign_Pattern));
 }
 
+// TileKindPool_ReportEmpty  (TileKindPool_ReportEmpty)
+//   void(void* tileSpawnerSettings, void* outMessages)
+using TileKindPool_ReportEmpty_fn = void(*)(void*, void*);
+inline TileKindPool_ReportEmpty_fn TileKindPool_ReportEmpty() {
+    return reinterpret_cast<TileKindPool_ReportEmpty_fn>(rsmm::fn_resolve(Sym::TileKindPool_ReportEmpty_Pattern));
+}
+
+// TileSpawn_DistanceConstraints  (TileSpawn_DistanceConstraints)
+//   void(void*, void*)
+using TileSpawn_DistanceConstraints_fn = void(*)(void*, void*);
+inline TileSpawn_DistanceConstraints_fn TileSpawn_DistanceConstraints() {
+    return reinterpret_cast<TileSpawn_DistanceConstraints_fn>(rsmm::fn_resolve(Sym::TileSpawn_DistanceConstraints_Pattern));
+}
+
+// TileSpawn_PlaceTiles  (TileSpawn_PlaceTiles)
+//   void(void* tileSpawnerComponent)
+using TileSpawn_PlaceTiles_fn = void(*)(void*);
+inline TileSpawn_PlaceTiles_fn TileSpawn_PlaceTiles() {
+    return reinterpret_cast<TileSpawn_PlaceTiles_fn>(rsmm::fn_resolve(Sym::TileSpawn_PlaceTiles_Pattern));
+}
+
+// TileSpawner_Spawn  (TileSpawner_Spawn)
+//   void(void* tileSpawnerComponent)
+using TileSpawner_Spawn_fn = void(*)(void*);
+inline TileSpawner_Spawn_fn TileSpawner_Spawn() {
+    return reinterpret_cast<TileSpawner_Spawn_fn>(rsmm::fn_resolve(Sym::TileSpawner_Spawn_Pattern));
+}
+
 // UiButton_InputPoll  (UiButton_InputPoll)
 //   void(ButtonUiCpntArray* cpnts)
 using UiButton_InputPoll_fn = void(*)(void*);

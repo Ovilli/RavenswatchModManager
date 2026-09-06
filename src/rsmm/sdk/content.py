@@ -65,10 +65,28 @@ KIND_CONFIDENCE: dict[str, str] = {
     "mesh": "experimental",   # in-place override of a shipped mesh: one cooked file, no new
                               # resource name, so nothing but the geometry cook is exercised.
                               # Same cook `poi`'s `prop` uses; not yet seen rendering in-game.
-    "poi": "experimental",    # tile_cook round-trips all 237 shipped tiledefs and map_pool all
-                              # 3 tile-generated mapdefs byte-for-byte, and the pool IS the
-                              # per-map gate (retail lists a Storm Island tile in Dark Hills'
-                              # pool). Placement of a mod-added tile is unproven in-game.
+    "poi": "experimental",    # PLACEMENT proven in-game 2026-09-04 — but placement is not
+                              # the feature. A "point of interest" a player cannot SEE on the
+                              # minimap and cannot INTERACT with is scenery that happens to
+                              # spawn, and both of those are still unbuilt (see below). Rating
+                              # stays experimental until a mod POI can be found and used.
+                              # PLACEMENT DETAIL 2026-09-04. The emit side was already
+                              # byte-exact (tile_cook round-trips all 237 shipped tiledefs,
+                              # map_pool all 3 tile-generated mapdefs), and the art half was
+                              # confirmed 2026-08-13 (a mod mesh + textures rendered upright
+                              # via replace_base + prop). The half that stayed open for months
+                              # -- "a mod-added tiledef has never been observed being placed"
+                              # -- is now MEASURED, not eyeballed: R.poi reads the tile
+                              # spawner's own placed set (see the TileSpawn_PlaceTiles symbol)
+                              # and reported 247 tiledefs registered, 2 of this mod's tiles
+                              # chosen by the generator, and BOTH instantiated as live
+                              # entities (element+0x18), out of 140 placed. 0 unnamed.
+                              # ⚠ Still a hard wall, and it is a DESIGN CONSTRAINT rather than
+                              # an unverified path: a level cannot reference a mod-owned
+                              # ENTITY. That is why prop art goes through an in-place override
+                              # (_emit_prop_override) instead of an additive entity, and why a
+                              # POI cannot carry a minimap marker unless its donor already
+                              # places a marker-bearing entity.
     "melody": "guess",        # all 12 retail melodydefs round-trip byte-for-byte and every
                               # mined exclusion string is an exact GameModifier stem, but
                               # neither lever (effect repoint, exclusion list) has been

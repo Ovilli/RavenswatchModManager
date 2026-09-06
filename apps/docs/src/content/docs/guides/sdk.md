@@ -75,6 +75,8 @@ src/loader/lua/
   rsmm/i18n.lua       # R.i18n.t
   rsmm/api.lua        # R.api.expose/require
   rsmm/schedule.lua   # R.schedule.{next_frame, after, next_main, after_main}
+  rsmm/exp.lua        # R.exp — record a playtest verdict (read with `rsmm exp`)
+  rsmm/poi.lua        # R.poi.on_generated — observe map generation (probe)
 ```
 
 Both trees are merged into `<game>/rsmm/lib/` by `rsmm install-loader`, which

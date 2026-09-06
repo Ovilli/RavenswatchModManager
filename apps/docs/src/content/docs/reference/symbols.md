@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **227** symbols across 18 categories.
+Total: **231** symbols across 19 categories.
 
 ## combat
 
@@ -343,3 +343,12 @@ Total: **227** symbols across 18 categories.
 | `UiButton_InputPoll` | `0x1407d72a0` | ✅ ok | ✔ | void(ButtonUiCpntArray* cpnts) |
 | `UiButton_PressCommit` | `0x1406a08a0` | ✅ ok | ✔ | void(oCUINavigableZoneDesc* widget) |
 | `UiButton_PressReturnSite` | `0x1407d7382` | ✅ ok |  | (code location, not callable) |
+
+## world
+
+| name | address | status | callable | signature / note |
+|------|---------|--------|----------|------------------|
+| `TileKindPool_ReportEmpty` | `0x1403421f0` | ✅ ok | ✔ | void(void* tileSpawnerSettings, void* outMessages) |
+| `TileSpawn_DistanceConstraints` | `0x140345890` | ✅ ok | ✔ | void(void*, void*) |
+| `TileSpawn_PlaceTiles` | `0x140343ad0` | ✅ ok | ✔ | void(void* tileSpawnerComponent) |
+| `TileSpawner_Spawn` | `0x140343640` | ✅ ok | ✔ | void(void* tileSpawnerComponent) |

@@ -154,6 +154,65 @@ R.kv.set("last_hero", "Scarlet")
 local n = R.kv.get("runs_played", 0)
 ```
 
+## Recording what a playtest proved
+
+Some questions can only be answered by the running game, and a playtest is
+expensive: you play, then somebody reads the log. `R.exp` turns one run into
+several answers by recording verdicts instead of prose.
+
+```lua
+-- answerable on the spot
+R.exp.run("tiles_registered", "does the engine register a mod tiledef?", function()
+    local n = count_tiledefs()
+    R.exp.observe("tiles_registered", "tiledefs", n)
+    return n > 237, n .. " tiledefs"
+end)
+
+-- the answer arrives later, from a handler
+R.exp.case("tile_placed", "is a mod tile ever placed?")
+R.on("gameplay:OPEN_CHEST", function() R.exp.verdict("tile_placed", true, "seen") end)
+```
+
+Read them back after the run:
+
+```sh
+./rsmm exp
+```
+
+Each case is `PASS`, `FAIL`, or `NO-DATA` — and `NO-DATA` is a result too: it
+says the code path never ran. Verdicts are written as they resolve, so a crash
+part-way through a run keeps everything answered up to that point. They are
+stored in `R.kv`, so keep observations to a handful per case.
+
+A mod with no Lua at all can still ask a question. Declare it in
+`manifest.toml` and it shows up as `NO-DATA` before the run:
+
+```toml
+[[experiment]]
+id       = "icon_replaced"
+question = "do teleporter minimap icons become the shrine icon?"
+```
+
+Some answers are only ever on the screen. Quit the game — the loader rewrites
+the state file when it exits — and record what you saw:
+
+```sh
+./rsmm exp answer minimap-icon-test icon_replaced pass -m "shrine icon on every teleporter"
+```
+
+Those are marked `(reported by you)` in the table, because a verdict somebody
+typed is a different grade of evidence from one the game measured.
+
+Guard `R.exp` if your mod ships to other people: a newer mod meets an older
+planted SDK whenever someone updates the mod before running
+`rsmm update-loader`, and an unguarded call stops the whole mod from loading.
+
+```lua
+local exp = R.exp or { case = function() end, observe = function() end,
+                       verdict = function(_, p) return p end,
+                       run = function(_, _, fn) pcall(fn) end }
+```
+
 ## Apply any example
 
 <Steps>

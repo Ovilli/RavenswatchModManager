@@ -3671,6 +3671,104 @@
    "note": "oCString destructor: SSO threshold 0xf; heap buffer's real alloc ptr at [buf-8], frees + bumps DAT_14146d854. 2259 refs. Decompile-identified 2026-07-17.",
    "raw": "FUN_140111d90",
    "status": "ok"
+  },
+  {
+   "name": "TileSpawner_Spawn",
+   "kind": "function",
+   "category": "world",
+   "raw": "FUN_140343640",
+   "status": "ok",
+   "signature": "void(void* tileSpawnerComponent)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*"
+    ]
+   },
+   "locator": {
+    "vftable": {
+     "class": "oCDtEntityCpntTileSpawner",
+     "slot": 7
+    }
+   },
+   "note": "MAP GENERATION ENTRY POINT. oCDtEntityCpntTileSpawner vftable slot 7 (vftable 0x140f0ca40), void(this). Body: acquires the game-scene context via GameScene_FindContextByTester, then calls TileSpawn_PlaceTiles (the 0x1543-byte driver that runs the constraint solver) and a post-placement pass at 0x140345410, then returns void. So a POST-detour here fires ONCE PER MAP GENERATION with `this` still in hand and the map already built — which is exactly the observation point the POI work has been missing. ⚠ THE CAPABILITY IS NOT PROVEN. What is established is static: the class (RTTI), the slot, the callgraph and the ABI. What is NOT established is the member layout of the spawner, i.e. WHERE the chosen tiles are recorded — that needs one launch with R.debug.find_arrays on the pointer this hands over. Do not claim placement can be read until that has run. Found by anchoring on the 'TileKind[{}] is empty' literal (see TileKindPool_ReportEmpty), taking its vftable, then the sibling runtime class.",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "TileSpawn_PlaceTiles",
+   "kind": "function",
+   "category": "world",
+   "raw": "FUN_140343ad0",
+   "status": "ok",
+   "signature": "void(void* tileSpawnerComponent)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*"
+    ]
+   },
+   "locator": {
+    "callgraph": {
+     "called_by": "TileSpawner_Spawn",
+     "site": "0x1403436e9"
+    }
+   },
+   "note": "The map-generation driver, 0x1543 bytes, sole caller TileSpawner_Spawn (slot 7) at 0x1403436e9, same `this`. Calls TileSpawn_DistanceConstraints (the min/max-distance solver) and GameScene_FindContextByTester x5. This is where a tile is CHOSEN for a slot, so it is the function to read when working out where the chosen set is stored — but it is NOT the hook point: it is mid-generation, and the useful moment is after its caller returns. Prefer detouring TileSpawner_Spawn. ★ PLACEMENT OUTPUT LAYOUT, recovered 2026-09-04 by reading the post-placement pass at 0x140345410 (the call right after this one in slot 7), which walks what this function wrote. Four members on the spawner, all written here and read there: +0x110 = array of {void* data, u32 count} groups (stride 0x10), +0x118 = number of groups, +0x120/+0x128 = a flat vector of the same element type. ELEMENTS ARE 0x58 BYTES and the engine SKIPS any whose +0x10 is null (`cmp qword [rbx+0x10], 0` at 0x140345460), so +0x10 is the payload pointer and a null there is an unused slot, not a bad read; live elements are passed to FUN_1403429d0 with spawner+0x80 as arg 2. ⚠ DO NOT look for this with R.debug.find_arrays: that scans the data@+0x190 convention, and on this object every hit it returns is the scene QUADTREE (oCBasicQuadTree2Agent / oCBasicQuadTree2 / oCTerrainSubLayerOutput) -- confirmed in-game across three launches, with the populated count varying by map, which reads convincingly like placement data and is not. R.poi.describe reads these offsets instead. MEASURED IN-GAME 2026-09-04 (session 3036, Dark Hills): 4 groups of 62 / 57 / 14 / 5 elements plus a 5-slot flat list (4 empty), and EVERY live payload at +0x10 is an `oCEntitySettingsResource` -- 138 of them. So the placement output is a per-group list of entity-settings resources, which is the tile-instance side rather than the definition side. RTTI names the type and the type is identical for all of them, so it does NOT identify which tile; the resource's own PATH string does, and R.poi.describe samples it via R.interact.identify. ★★ SOLVED IN-GAME 2026-09-04 (session 0936). The payload's resource NAME is a char* at payload+0xa0 — 139/139 read cleanly, zero misses, so the offset is confirmed rather than inferred. The four groups are TILE FOOTPRINT CLASSES: group 0 = 3x3 (62), 1 = 6x6 (57), 2 = 40x40 (14), 3 = 64x64 (5), plus a 5-slot flat list that is mostly empty. Counts stay identical across different generated maps while the NAMES change — a fixed slot topology filled with varying tiles — and group 2 holds 14 of the 34 pooled 40x40 tiles, i.e. a SELECTION, which is what makes this the placed set and not the pool. ⚠ Names are SANITISED: a mod tile from id `additive-poi-test` appears as `additive_poi_test_camp_swap`. Matching a manifest id verbatim scored 0 of 139 against a list that visibly contained the tile — a false negative shaped exactly like the real failure. Normalise punctuation on both sides. R.poi.placed() returns (names, misses). ★★★ THE LIST IS THE BUILT SET, NOT A SELECTION — settled by RE 2026-09-04, no sighting needed. The post-placement pass calls FUN_1403429d0(element, spawner+0x80) per live element (0x81d bytes); that function WRITES element+0x18 with a spawned ENTITY and manages the back-link properly: if the old +0x18 was non-null it detaches via FUN_1406f78f0(old+0x570, &elem[0x18]), stores the new entity (`mov [r12+0x18], rbx` @0x140342f02), then attaches via FUN_1406f79b0(new+0x570, ..., &elem[0x18]). entity+0x570 is the engine's weak-reference back-link vector, named independently elsewhere in this map. A candidate or pool list does not own an entity handle and does not register a death-watch on it. ELEMENT LAYOUT so far: +0x08 ptr, +0x10 settings resource (name at resource+0xa0), +0x18 SPAWNED ENTITY (nil = chosen but not instantiated), +0x20 f32 threshold compared against two constants, +0x48 ptr whose +0x2fc is read. R.poi.placed() returns {name=, entity=} per tile. NOTE ON SCOPE: this closes PLACEMENT only. A mod POI still has two unbuilt gates, both entity COMPONENTS and therefore both blocked by the same wall (a level cannot reference a mod-owned entity, and an in-place override cannot ADD a component): a minimap marker (oCDtEntityCpntMinimapMarkerSettings) and an interaction. The only route is `swaps` -- stand a SHIPPED entity that already carries them at one of the tile's own transforms. Corpus check 2026-09-04: Reward_Spawner_Interactive_Model carries both but is NOT placeable (a sub-entity a spawner selects; _validated_swaps refuses it, and swapping to one builds nothing and crashes). The placeable parents ARE legal targets -- Enemy_Camp_Reward_Spawner_<biome>, Map_Boss_Spawner_<biome>, <biome>_Key_Keeper -- so the chest spawner is the test, and it exercises both gates at once. PER-TIER SLOT COUNTS located 2026-09-04: the driver picks between THREE ints by comparing the kind's tier float (entry+0x20) against two constants — `movss xmm0,[r12+0x20]` then `[r13+0x2fc]` (T1) / `[r13+0x300]` (T2) / `[r13+0x304]` (T3) at 0x140344748..0x140344777. That is the numeric half of the documented rule that a tiledef's `weight` is a TIER field (T1 0.0 / T2 0.33 / T3 0.667), not a spawn rate. r13 is live across basic blocks and awkward to trace statically, but FUN_1403429d0 reaches the SAME three fields via the placement element — `mov rcx,[r12+0x48]` then `mov r8d,[rcx+0x2fc]` — so element+0x48 is the owner and R.poi.placed() now reads it, RTTI-naming the class rather than inferring it. Entries carry slots={t1,t2,t3} and slots_class. OWNER PINNED IN-GAME 2026-09-04 (session 674f): element+0x48 is an **oCDtTileDefinition** — RTTI-named at runtime, so the placement record points straight at the tiledef, which is a cleaner identity than the settings-resource name at payload+0xa0. ⚠ BUT the three ints read 0/0/0 on a mod tile, so +0x2fc/+0x300/+0x304 are NOT confirmed as the per-tier counts on this object: a single all-zero sample cannot separate 'wrong offsets' from 'this tile genuinely carries zeros', and those are opposite conclusions. Reading them across all 141 placed tiles is the discriminator and is instrumented. Do not treat the tier counts as located until a vanilla tile reads non-zero. ✗ CORRECTION 2026-09-04 (session 794f): the shortcut was WRONG and the per-tier SLOT COUNTS are NOT located. Reading +0x2fc/+0x300/+0x304 across all 140 placed tiles: 138 read 0/0/0, only 2 are non-zero, and one of those is 40x40_DarkHills_Thieves_Stashes_Entrance_Cursed_Room_01 = 2/3/4. So the offsets ARE meaningful fields on an oCDtTileDefinition (2/3/4 is a plausible tier triple) but a field that only 2 of 140 tiles populate cannot be the per-KIND slot count the driver reads. FUN_1403429d0's `[element+0x48]+0x2fc` and the driver's `[r13]+0x2fc` are DIFFERENT OBJECTS that happen to share an offset — assuming they were the same is what produced the bad reading. r13 is still unpinned; tracing it needs real control-flow work across basic blocks, not a shortcut. What IS solid: element+0x48 is an oCDtTileDefinition (RTTI, live).",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "TileSpawn_DistanceConstraints",
+   "kind": "function",
+   "category": "world",
+   "raw": "FUN_140345890",
+   "status": "ok",
+   "signature": "void(void*, void*)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "locator": {
+    "string": {
+     "literal": "min distance ({}m)",
+     "xref": "0x140345890"
+    }
+   },
+   "note": "Tile placement constraint solver, 0x0f94 bytes, referencing the literals 'min distance ({}m)' and 'max distance ({}m)'. Called by TileSpawn_PlaceTiles at 0x140344862 and recursively at 0x1403466f5. Named for the map, not to be hooked: it runs many times per generation and carries no whole-map result. It is the evidence that FUN_140343ad0 really is placement and not another load stage.",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "TileKindPool_ReportEmpty",
+   "kind": "function",
+   "category": "world",
+   "raw": "FUN_1403421f0",
+   "status": "ok",
+   "signature": "void(void* tileSpawnerSettings, void* outMessages)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "locator": {
+    "vftable": {
+     "class": "oCDtEntityCpntTileSpawnerSettings",
+     "slot": 19
+    }
+   },
+   "note": "THE ANCHOR THE WHOLE TILE REGION WAS FOUND FROM, and a useful read in its own right. oCDtEntityCpntTileSpawnerSettings vftable slot 19 (vftable 0x140f0c540); the only referent of the literal 'TileKind[{}] is empty' (string VA 0x140f2c2e8, xref 0x14034225f). LAYOUT RECOVERED STATICALLY: param_1+0x170 = pointer array of TileKind entries, param_1+0x178 = its count, and each entry's tile count is a u32 at entry+0x50. It walks that array and, for every kind whose +0x50 count is zero, formats a message into the vector at param_2. So it is log-only — it reports an empty kind pool, it does not pick anything, and hooking it says nothing about placement. Recorded because `entry+0x50 == 0` is the cheapest read of 'this kind has no tiles', which is one of the two silent failure modes a mod tile can hit. RUNTIME REACH 2026-09-04: the same array is reachable from the spawner COMPONENT, not just the settings vtable — TileSpawn_PlaceTiles does `mov r13, [rcx+0x10]` at 0x140343b17 and then walks r13+0x170 / +0x178, so spawner+0x10 IS this settings object. That makes the kind table readable live (R.poi.kinds), which is what turns 'will my tile spawn' into 'here is the pool it is drawn from'. Driver-side the kind entry also carries a tier float at +0x20, compared against two constants to select per-tier counts at <obj>+0x2fc / +0x300 — matching the known 'weight is a TIER field (T1 0.0 / T2 0.33 / T3 0.667), not a spawn rate'. NOT yet pinned: which object those per-tier counts hang off, so slot COUNT per kind is still unread.",
+   "refs": [
+    "docs/_re"
+   ]
   }
  ],
  "_event_catalog_doc": "Observation events the loader republishes by raw name from the central telemetry sink (Analytics_SubmitNamedEvent). No address — the firehose detour reads the name at runtime, so any name the game adds also fires even if absent here. These are confirmed names harvested by string-xref (cluster 0x140f13a00-0x140f13f00); subscribe via R.on('<name>', cb) with RSMM_ENABLE_GAME_EVENTS=1. Shown by `rsmm symbols events`.",

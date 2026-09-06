@@ -457,4 +457,14 @@ constexpr const char* UiButton_PressCommit_Pattern = "UiButton_PressCommit";
 constexpr std::uintptr_t UiButton_PressReturnSite = 0x1407d7382ull;
 constexpr const char* UiButton_PressReturnSite_Pattern = "UiButton_PressReturnSite.parent";
 
+// --- world ---
+constexpr std::uintptr_t TileKindPool_ReportEmpty = 0x1403421f0ull;
+constexpr const char* TileKindPool_ReportEmpty_Pattern = "TileKindPool_ReportEmpty";
+constexpr std::uintptr_t TileSpawn_DistanceConstraints = 0x140345890ull;
+constexpr const char* TileSpawn_DistanceConstraints_Pattern = "TileSpawn_DistanceConstraints";
+constexpr std::uintptr_t TileSpawn_PlaceTiles = 0x140343ad0ull;
+constexpr const char* TileSpawn_PlaceTiles_Pattern = "TileSpawn_PlaceTiles";
+constexpr std::uintptr_t TileSpawner_Spawn = 0x140343640ull;
+constexpr const char* TileSpawner_Spawn_Pattern = "TileSpawner_Spawn";
+
 }  // namespace Sym

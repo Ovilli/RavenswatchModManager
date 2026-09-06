@@ -103,6 +103,13 @@ def _sdk_lua_files() -> list[Path]:
     """
     files = sorted((REPO / "src" / "loader" / "lib").glob("*.lua"))
     files += sorted((REPO / "src" / "loader" / "lua" / "rsmm").glob("*.lua"))
+    # Mods too. They are written against the same trap and have no other net:
+    # `rsmm lint` reads them statically without resolving scope, and mods_spec
+    # only reaches a bad line if the event that runs it fires under the mock.
+    # A steamroller edit hit this exact bug -- a latch declared below the
+    # closure reading it -- and nothing but this check would have seen it.
+    # mods/ is untracked, so it is simply absent on a fresh clone and in CI.
+    files += sorted((REPO / "mods").glob("*/*.lua"))
     return files
 
 

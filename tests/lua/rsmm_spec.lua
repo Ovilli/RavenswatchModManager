@@ -381,6 +381,17 @@ function I.health_last_error(id) return health_state.errors[id] end
 function I.health_disable(id, reason) health_state.disabled[id] = reason or "" end
 function I.health_checkpoint(step) table.insert(health_state.checkpoints, step) end
 
+-- Persistent state store. The real one is <mod_dir>/.rsmm_state written
+-- temp-file + rename; here one string stands in, which is enough to pin the
+-- contract R.kv and R.exp depend on: what save() writes, a later read()
+-- returns verbatim. `state_disk` is also what a spec inspects to prove a
+-- verdict reached DISK -- an in-memory table would pass even if nothing was
+-- ever flushed, which is the exact bug R.exp exists to avoid.
+local state_disk = nil
+local state_writes = 0
+function I.state_read() return state_disk end
+function I.state_write(str) state_disk = str; state_writes = state_writes + 1; return true end
+
 -- Cross-state API bridge. The real one marshals JSON between lua_States; here
 -- one process-wide registry stands in, which is enough to pin the CONTRACT:
 -- data-only arguments, provider errors surfacing as (false, msg).
@@ -462,6 +473,9 @@ _G.__spec_fire = fire
 local function seed_hero()
     shared[0] = HERO                              -- native capture slot
     shared[2] = 1                                 -- native capture active
+    -- A hero IS an object, so it carries a vtable. The dispatcher is not (see
+    -- block 9b), and that difference is what `_dispatcher_live` now tests.
+    I.write_u64(HERO, 0x140f00000)
     I.write_f32(HERO + MAXHP_OFF, 100.0)
     I.write_f32(HERO + HP_OFF, 80.0)
     I.write_u64(HERO + HUDMIRROR_OFF, MIRROR)
@@ -895,9 +909,16 @@ do
     local saved_shared = {}
     for k, v in pairs(shared) do saved_shared[k] = v end
 
-    -- Capture a dispatcher the normal way: an anchor event with a live object.
+    -- Capture a dispatcher the normal way: an anchor event with a live hero.
+    --
+    -- The dispatcher's first qword is DATA, not a vtable. This fixture used to
+    -- write one there and the guard used to demand it — both were wrong.
+    -- Measured in-game 2026-09-05 on a dispatcher the bus had just accepted:
+    -- `[disp]` = 0x7300000000, nowhere near the module. That test therefore
+    -- refused every live dispatcher, which silently disabled R.give on this
+    -- build and blocked the map reveal.
     local DISP = scratch(0x40)
-    I.write_u64(DISP, 0x140f00000)          -- a vtable inside the image
+    I.write_u64(DISP, 0x7300000000)         -- packed data, exactly as measured
     fire("gameplay:ABILITY_EXIT", { source = "gameplay",
                                     dispatcher = string.format("0x%x", DISP) })
     check(R.give.ready(), "spec fixture: a live dispatcher is captured")
@@ -913,8 +934,10 @@ do
     check(R.give.by_guid(0xA001, 0xB001) == true, "a live dispatcher grants")
     check(dispatched, "and the engine call is made")
 
-    -- Now make it look dead, the way a freed hero does, and grant again.
-    I.write_u64(DISP, 0)                    -- vtable slot no longer an object
+    -- Now make it look dead, and do it the way it actually dies: the HERO is
+    -- the object that gets freed. Zeroing a byte of the dispatcher proves
+    -- nothing, because those bytes were never a pointer.
+    I.write_u64(HERO, 0)                    -- owner is no longer an object
     dispatched = false
     local ok = R.give.by_guid(0xA001, 0xB001)
 
@@ -926,7 +949,7 @@ do
     -- live dispatcher again.
     for k in pairs(shared) do shared[k] = nil end
     for k, v in pairs(saved_shared) do shared[k] = v end
-    I.write_u64(DISP, 0x140f00000)
+    I.write_u64(HERO, 0x140f00000)
     fire("gameplay:ABILITY_EXIT", { source = "gameplay",
                                     dispatcher = string.format("0x%x", DISP) })
 end
@@ -7788,6 +7811,22 @@ do
 
         -- `require "rsmm"` inside the mod must hand back THIS instance.
         package.loaded["rsmm"] = Rm
+
+        -- OLDER PLANTED SDK. A user updates a mod and does not run
+        -- `rsmm update-loader`, so a new init.lua meets a lib/ with no R.exp.
+        -- A mod that hard-errors there does not merely lose its readout, it
+        -- does not run at all -- and this is a shipped, enabled mod. Load it
+        -- once with R.exp removed BEFORE the real load, so the fallback is
+        -- exercised rather than assumed.
+        do
+            local saved_exp = Rm.exp
+            Rm.exp = nil
+            local old_ok, old_err = pcall(loadfile("mods/damage-meter/init.lua"))
+            check(old_ok, "damage-meter still loads on an SDK with no R.exp"
+                          .. (old_ok and "" or (": " .. tostring(old_err))))
+            Rm.exp = saved_exp
+        end
+
         local ran, err = pcall(mod)
         check(ran, "mods/damage-meter/init.lua runs against the SDK"
                    .. (ran and "" or (": " .. tostring(err))))
@@ -8375,54 +8414,210 @@ do
 end
 
 -- ---------------------------------------------------------------------------
--- R.hero.allow_duplicates — the lobby's "that hero is taken" gate
+-- R.hero.broadcast_decoy — tell the lobby a hero nobody is on
 -- ---------------------------------------------------------------------------
--- Two things this pins that a hand-written mod got wrong, and one that makes
--- the hook safe rather than merely convenient.
 do
-    local va = I.resolve("HeroSelect_IsHeroAvailable")
-    check(hooks[va] == nil, "nothing has armed the availability hook yet")
+    local va = I.resolve("LobbyAttributes_Serialize")
+    check(hooks[va] == nil, "nothing has armed the serializer yet")
+    check(R.hero.broadcast_decoy(9) == true, "the decoy hook installs")
+    check(hooks[va] ~= nil, "armed on LobbyAttributes_Serialize")
+    check(hooks[va].sig == "ppp", "armed as ptr(record, out)")
 
-    check(R.hero.allow_duplicates() == true, "the hook installs")
-    check(hooks[va] ~= nil, "armed on HeroSelect_IsHeroAvailable")
+    -- THE RECORD MUST COME BACK. The whole design rests on the swap being
+    -- invisible outside the call: the lobby is told the decoy, the player's
+    -- own selection is untouched. If the restore is skipped, the decoy IS the
+    -- selection and the mod silently changes which hero you play.
+    local REC = 0x53000000
+    I.write_u32(REC + 0x10, 4)
+    local seen
+    local rv = hooks[va].cb(REC, 0, function()
+        seen = I.read_u32(REC + 0x10)      -- what the engine serializes
+        return 0x1234
+    end)
+    check(seen == 9, "the engine serializes the DECOY hero")
+    check(I.read_u32(REC + 0x10) == 4, "and the real pick is restored after")
+    check(rv == 0x1234, "the original's return value is passed through")
 
-    -- ARITY. The call sites pass three arguments (rcx = menu, edx = hero
-    -- index, r8b = a bool). A fourth would read garbage out of r9.
-    check(hooks[va].sig == "ipii",
-          "armed with bool(menu, hero_index, flag) — three args, not four")
+    -- A raise inside the replay must still restore. One bad call otherwise
+    -- leaves the decoy as the player's actual hero for the rest of the run.
+    I.write_u32(REC + 0x10, 4)
+    hooks[va].cb(REC, 0, function() error("boom") end)
+    check(I.read_u32(REC + 0x10) == 4,
+          "a raise in the replay still restores the real hero")
 
-    -- RETURN 1, NEVER nil. nil replays the original, and the original calls
-    -- LobbyMembers_List, which hands the caller members it must destroy one by
-    -- one. Never running it is the only way to not owe that teardown.
-    check(hooks[va].cb(0x1000, 3, 1) == 1,
-          "the detour short-circuits to true instead of replaying the original")
+    -- Nothing to do when the record already holds the decoy, and an
+    -- implausible pointer is replayed rather than written through.
+    I.write_u32(REC + 0x10, 9)
+    check(hooks[va].cb(REC, 0, function() return 1 end) == nil,
+          "a record already on the decoy is replayed untouched")
+    check(hooks[va].cb(0x11, 0, function() return 1 end) == nil,
+          "an implausible record is replayed, never written")
 
-    -- Idempotent: a second call must not re-install.
-    local first = hooks[va]
-    check(R.hero.allow_duplicates() == true, "a second call still reports armed")
-    check(hooks[va] == first, "and does not re-install the hook")
+    check(R.hero.broadcast_decoy(9) == true, "a second call reports armed")
 end
 
--- Fails CLOSED when the symbol is unresolved for this build, rather than
--- hooking whatever address it guessed at.
+
+-- N. R.exp — one playtest, N answers -----------------------------------------
+--
+-- The harness this whole file exists to protect is the playtest, and R.exp is
+-- what makes a playtest return more than one bit. Every check below is a way
+-- the harness could silently lose a result, which is worse than not having it:
+-- a lost FAIL reads as "never ran", and a stale PASS reads as proof.
 do
-    local saved_resolve = I.resolve
-    I.resolve = function(name)
-        if name == "HeroSelect_IsHeroAvailable" then return nil end
-        return saved_resolve(name)
+    check(type(R.exp) == "table", "R.exp did not install")
+
+    -- A verdict from a PREVIOUS launch must not survive into this one. Seed
+    -- the disk with one and confirm the first R.exp call drops it.
+    state_disk = "b\texp.stale.pass\t1\ns\tkeep.me\tyes"
+    R.kv.set("force", 1)          -- fault the store in from that disk image
+    check(R.kv.get("keep.me") == "yes", "spec seeded the state file wrong")
+
+    R.exp.run("sync_pass", "does a synchronous case close?", function()
+        R.exp.observe("sync_pass", "n", 245)
+        return true, "245 tiledefs"
+    end)
+
+    check(R.kv.get("exp.stale.pass") == nil,
+          "a previous launch's verdict must be cleared, not read as current")
+    check(R.kv.get("keep.me") == "yes",
+          "clearing exp keys must not touch the rest of the mod's store")
+
+    local all = R.exp.all()
+    check(all.sync_pass ~= nil, "the case is not in R.exp.all()")
+    check(all.sync_pass.pass == true, "sync case did not pass")
+    check(all.sync_pass.why == "245 tiledefs", "verdict reason lost")
+    check(all.sync_pass.question == "does a synchronous case close?", "question lost")
+    check(all.sync_pass.obs.n == 245, "observation lost")
+
+    -- The batch property. A raising case must close FAIL with the error text
+    -- and MUST NOT propagate: one broken probe taking the run down is the
+    -- difference between answering 4 questions and answering 1.
+    local before = state_writes
+    local ok = pcall(function()
+        R.exp.run("boom", "does a raise stay contained?", function()
+            error("probe blew up")
+        end)
+    end)
+    check(ok, "a raising case must not propagate out of R.exp.run")
+    check(R.exp.all().boom.pass == false, "a raising case must close FAIL")
+    check(R.exp.all().boom.why:find("probe blew up", 1, true) ~= nil,
+          "the error text is the whole diagnostic and must be kept")
+    check(R.exp.all().sync_pass.pass == true,
+          "an earlier verdict must survive a later case failing")
+    check(state_writes > before, "a verdict must be flushed, not left in memory")
+
+    -- Flushed means ON DISK. A hard access violation kills the process and no
+    -- pcall catches it, so anything not yet written is simply gone.
+    check(state_disk:find("exp.sync_pass.pass", 1, true) ~= nil,
+          "verdicts must reach the state file as they resolve")
+    check(state_disk:find("exp.boom.why", 1, true) ~= nil,
+          "the failing case's reason must reach disk too")
+
+    -- Declared-but-unresolved is a RESULT (the code path never ran), so it
+    -- must be readable, not indistinguishable from a case never declared.
+    R.exp.case("never_ran", "did the placement hook fire?")
+    check(R.exp.all().never_ran.pass == nil, "an open case must have no verdict")
+    check(R.exp.all().never_ran.question == "did the placement hook fire?",
+          "an open case must still carry its question")
+
+    -- The key format is exp.<id>.<field>; a dot in an id would split into a
+    -- field the reader does not know, so it is folded rather than refused.
+    R.exp.verdict("a.b", true, "ok")
+    check(R.exp.all()["a_b"] ~= nil, "a dotted id must fold, not split")
+
+    -- Round-trip through the same codec the CLI reads: reload from disk and
+    -- every verdict must still be there.
+    local disk = state_disk
+    check(disk:find("exp.never_ran.q", 1, true) ~= nil, "open case not persisted")
+    check(disk:find("exp.stale", 1, true) == nil, "the stale key came back")
+
+    -- Hand the exact bytes to the Python side. `rsmm exp` parses this file,
+    -- and the two escapings live in different languages, so the only way the
+    -- format can be pinned is for one side to read what the other WROTE --
+    -- see tests/test_cmd_exp.py::test_cases_survive_the_real_lua_writer.
+    local out = os.getenv("RSMM_SPEC_STATE_OUT")
+    if out then
+        local f = io.open(out, "wb")
+        if f then f:write(disk); f:close() end
     end
-    package.loaded["rsmm"] = nil
-    local R2 = require "rsmm"
-    local before = hook_calls
-    check(R2.hero.allow_duplicates() == false,
-          "an unresolved symbol reports false instead of installing a hook")
-    check(hook_calls == before,
-          "and R.hook is never even attempted — the guard fails closed rather "
-          .. "than letting the native side reject a null target")
-    I.resolve = saved_resolve
-    package.loaded["rsmm"] = nil
-    R = require "rsmm"
 end
+
+
+-- N+1. R.poi — the map-generation seam --------------------------------------
+--
+-- The one thing this detour must get right is ORDER. It exists to look at a
+-- map, and before the original runs there is no map: an observer that fires
+-- first sees the PREVIOUS generation, which would read as a real measurement
+-- and be wrong every time.
+do
+    check(type(R.poi) == "table", "R.poi did not install")
+    check(R.poi.armed() == false, "nothing is hooked before the first subscriber")
+
+    local seen, order = {}, {}
+    -- BOTH sides append to `order`, or the assertion cannot fail: recording
+    -- only the engine's turn leaves order[1] == "engine" whichever way round
+    -- the detour actually runs them.
+    local ok = R.poi.on_generated(function(spawner)
+        seen[#seen + 1] = spawner
+        order[#order + 1] = "handler"
+    end)
+    check(ok == true, "on_generated installs the hook")
+    check(R.poi.armed() == true, "and reports itself armed")
+
+    local va = I.resolve("TileSpawner_Spawn")
+    check(hooks[va] ~= nil, "the hook landed on TileSpawner_Spawn")
+    check(hooks[va].sig == "vp", "slot 7 is void(this) -- one pointer, no return")
+
+    local SPAWNER = 0x74000000
+    local rv = hooks[va].cb(SPAWNER, function()
+        order[#order + 1] = "engine"
+    end)
+    check(order[1] == "engine" and order[2] == "handler",
+          "the ORIGINAL runs first -- before it there is no map to look at, so "
+          .. "a handler that fires first measures the PREVIOUS generation")
+    check(seen[1] == SPAWNER, "and the handler is passed the spawner component")
+    check(rv ~= nil, "a non-nil return, or an older loader replays the trampoline "
+                     .. "and the map is generated twice")
+
+    -- A second subscriber must not install a second detour. Two detours on one
+    -- target is not merely wasteful: the second wraps the first, so every
+    -- handler fires twice and a placement count doubles.
+    local before = hook_calls
+    R.poi.on_generated(function(s) seen[#seen + 1] = s end)
+    check(hook_calls == before, "a second subscriber reuses the one detour")
+    hooks[va].cb(SPAWNER, function() end)
+    check(#seen == 3, "both handlers ran on the next generation")
+
+    -- One bad handler must not escape into the middle of a level load.
+    R.poi.on_generated(function() error("bad mod") end)
+    local safe = pcall(hooks[va].cb, SPAWNER, function() end)
+    check(safe, "a raising handler is contained -- this runs inside level load")
+end
+
+-- `already-hooked` is NOT a soft success here, unlike the SDK's shared capture
+-- hooks. `lua_hook` unrefs the callback it was handed when another mod's state
+-- owns the target, so this mod's handlers would never run: reporting armed
+-- would be a lie, and the old message ("could not install ...: nil") read as a
+-- broken build rather than a load-order collision.
+do
+    package.loaded["rsmm.poi"] = nil
+    local hook_saved, log_saved = R.hook, R.log
+    local logged = {}
+    R.hook = function() return nil, "already-hooked" end
+    R.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+
+    local fresh = require("rsmm.poi")({ R = R, I = I })
+    local ok = fresh.on_generated(function() end)
+    check(ok == false, "a target another mod owns is reported as NOT armed")
+    check(fresh.armed() == false, "and armed() agrees")
+    check((logged[1] or ""):find("another mod", 1, true) ~= nil,
+          "the log names the load-order collision, not a nil: " ..
+          tostring(logged[1]))
+
+    R.hook, R.log = hook_saved, log_saved
+    package.loaded["rsmm.poi"] = nil
+end
+
 
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)
