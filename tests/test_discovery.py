@@ -96,3 +96,21 @@ def test_poi_uses_its_own_discover_hook(tmp_path):
     block = discovery.discover(tmp_path)[0]
     assert block["kind"] == "poi"
     assert "base" in block and "weight" in block, "preset fields were not applied"
+
+
+def test_in_place_blocks_emit_before_additive_ones():
+    """A `poi` clone shares the shipped level of the tile an in-place def edits,
+    so its resource cache has to be seeded from the EDITED cache. Seeded from
+    the pristine one it preloads a resource the level no longer contains, which
+    resolves to null and is destroyed unchecked at teardown.
+
+    `poi.discover` orders its own blocks that way, but concatenating declared
+    blocks in front of them put a hand-written additive block back in first
+    place — where its cache is seeded before any override has run.
+    """
+    declared = [{"kind": "poi", "id": "additive"}]
+    discovered = [{"kind": "poi", "id": "override", "replace_base": True},
+                  {"kind": "poi", "id": "clone"}]
+    merged = discovery.merge_with_manifest(declared, discovered)
+    assert [b["id"] for b in merged] == ["override", "additive", "clone"], (
+        "replace_base must come first, and the rest must keep their order")

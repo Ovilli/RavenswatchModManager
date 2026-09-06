@@ -102,6 +102,24 @@ def test_every_shipped_mapdef_pool_round_trips_byte_exact():
 
 
 @needs_corpus
+def test_only_one_offset_in_a_mapdef_tail_parses_as_the_pool():
+    """`split_pool` takes the first offset whose vector consumes the tail.
+
+    It scans end-to-start, so "first" means the SHORTEST trailing run — fine
+    only while exactly one offset parses at all, which is what this pins. If a
+    mod's appended entries ever create a second candidate, the scan silently
+    swallows real pool entries into `head` and re-emits a truncated pool; this
+    fails first instead.
+    """
+    for p in _maps:
+        body = MP._body(open(p, "rb").read())[1]
+        tail = bytes.fromhex(body["_tail_hex"])
+        hits = [o for o in range(len(tail) - 3)
+                if MP._try_pool_at(tail, o) is not None]
+        assert len(hits) <= 1, f"{p.name}: tail parses as a pool at {hits}"
+
+
+@needs_corpus
 def test_baba_yaga_has_no_pool():
     p = MAPS_DIR / f"Baba_Yaga_Map_Update3{MP.GEN_SUFFIX}"
     assert MP.read_pool(p.read_bytes()) is None
@@ -730,6 +748,59 @@ def test_two_poi_mods_both_survive_the_map_cache_merge(tmp_path, monkeypatch):
     assert set(RC.parse(vanilla.read_bytes())) <= lines
     for mod in ("aaa", "zzz"):
         assert f"Definitions|Tiles\\Avalon\\{mod}_P.tiledef.ot|oCDtTileDefinition" in lines
+
+
+def test_one_unreadable_cache_does_not_cost_the_others_their_lines(tmp_path,
+                                                                  monkeypatch):
+    """A merge that fails wholesale falls back to last-writer-wins, which drops
+    every other mod's preloads — and a missing cache line is a tile that is
+    registered and never placed, or a null the teardown loop destroys unchecked.
+    One corrupt file must cost only its own content."""
+    monkeypatch.setenv("RSMM_MODS_DIR", str(tmp_path / "mods"))
+    from rsmm.cli.apply_mods import _merge_rsc_cache
+    from rsmm.engine import rsc_cache as RC
+
+    van = tmp_path / "vanilla.ot"
+    van.write_bytes(RC.render(["3D|Scenery\\Base.fbx|oCGeometry"]))
+    good = tmp_path / "good.ot"
+    good.write_bytes(RC.render(["3D|Scenery\\Base.fbx|oCGeometry",
+                                "3D|Scenery\\Good.fbx|oCGeometry"]))
+    bad = tmp_path / "bad.ot"
+    bad.write_bytes(b"\xff\xfe\x00 not a cache")
+
+    merged = _merge_rsc_cache("enc\\x", [bad, good], van)
+    lines = set(RC.parse(merged.read_bytes()))
+    assert "3D|Scenery\\Good.fbx|oCGeometry" in lines
+    assert "3D|Scenery\\Base.fbx|oCGeometry" in lines
+
+
+def test_a_mod_added_cache_merges_from_empty_not_from_our_last_output(
+        tmp_path, monkeypatch):
+    """`apply_one` deletes the backup of a mod-ADDED file on purpose, so the
+    file sitting at the destination is our own previous output. Merging onto it
+    accumulates across applies, including preloads for tiledefs a later emit
+    dropped. `vanilla=None` means "start from nothing"."""
+    monkeypatch.setenv("RSMM_MODS_DIR", str(tmp_path / "mods"))
+    from rsmm.cli.apply_mods import _merge_rsc_cache
+    from rsmm.engine import rsc_cache as RC
+
+    a, b = tmp_path / "a.ot", tmp_path / "b.ot"
+    a.write_bytes(RC.render(["3D|Scenery\\A.fbx|oCGeometry"]))
+    b.write_bytes(RC.render(["3D|Scenery\\B.fbx|oCGeometry"]))
+
+    merged = _merge_rsc_cache("enc\\x", [a, b], None)
+    assert set(RC.parse(merged.read_bytes())) == {
+        "3D|Scenery\\A.fbx|oCGeometry", "3D|Scenery\\B.fbx|oCGeometry"}
+
+
+def test_the_shipped_only_mergers_refuse_a_missing_base(tmp_path):
+    """A mapdef and a text bank are always game files, so "no base" is a real
+    failure there and the caller must fall back and SAY so, not merge from
+    nothing."""
+    from rsmm.cli.apply_mods import _merge_map_pool, _merge_text_bank
+
+    assert _merge_map_pool("enc", [tmp_path / "x"], None) is None
+    assert _merge_text_bank("enc", [tmp_path / "x"], None) is None
 
 
 @needs_corpus

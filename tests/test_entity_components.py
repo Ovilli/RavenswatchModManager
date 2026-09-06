@@ -371,6 +371,21 @@ def test_two_defs_editing_one_tile_keep_both_their_cache_lines(tmp_path):
     assert lines == sorted(lines), "cache must stay sorted or lookups miss"
 
 
+def _assert_every_component_is_attached(entity_bytes: bytes) -> None:
+    """No component may be left out of the entity's component vector.
+
+    Section 0 is the serializer's OBJECT TABLE; the vector in the trailer is
+    what the entity actually points at. A record in the table but not in the
+    vector deserializes, is byte-stable, passes every reference and cache
+    check — and does nothing. That is what "the spliced records are inert"
+    meant, and it cost four POI playtests and seven of the mod menu.
+    """
+    cf = cooked.parse(entity_bytes)
+    count = EA.validate_layout(cf)
+    _off, ids = EA.component_vector(cf.sections[-1].payload)
+    orphans = sorted(set(range(count)) - set(ids))
+    assert not orphans, f"components {orphans} are in the file but not attached"
+
 def test_copy_overrides_takes_only_the_named_parent_and_repaints_the_icon():
     """The half `add_parents` does not supply.
 
@@ -407,6 +422,7 @@ def test_copy_overrides_takes_only_the_named_parent_and_repaints_the_icon():
     # And nothing from the donor's OTHER bindings came along.
     assert "LEPRECHAUN_CAULDRON_DESTROYED" not in text
     cooked.parse(out)
+    _assert_every_component_is_attached(out)
 
 
 def test_copy_overrides_interaction_leaves_the_donors_payload_behind():
@@ -426,6 +442,7 @@ def test_copy_overrides_interaction_leaves_the_donors_payload_behind():
     assert "Event Interaction Available At Start" in text
     assert "Ingredient" not in text
     cooked.parse(out)
+    _assert_every_component_is_attached(out)
 
 
 def test_copy_overrides_refuses_a_donor_that_does_not_inherit_the_parent():
@@ -677,3 +694,36 @@ def test_a_reachable_but_absent_resource_is_not_cached(tmp_path, caplog):
     assert not any("Not_A_Shipped_Entity" in e for e in extra), (
         "an entity that exists nowhere was listed as a preload anyway")
     assert fake not in keep
+
+
+@pytest.mark.slow
+def test_every_shipped_entity_attaches_every_component_it_carries():
+    """The invariant the append has to preserve, taken from the game itself.
+
+    Sweeps the shipped entity corpus: the trailer's component vector always
+    walks, and it is always a contiguous ``0..n-1`` prefix of the object table
+    — the components past it are sub-objects that other components point at.
+    If a game update ever changes that, an append built on it must fail here
+    rather than in a playtest.
+    """
+    from rsmm.engine.paths import REPO_ROOT
+
+    corpus = REPO_ROOT / "data" / "uncooked" / "EntitySettings"
+    if not corpus.is_dir():
+        pytest.skip("uncooked corpus absent (run scripts/extract_uncooked.py)")
+    files = sorted(corpus.rglob("*.EntitySettingsResource.gen"))
+    assert files, "corpus present but empty"
+
+    walked = 0
+    for f in files:
+        try:
+            cf = cooked.parse(f.read_bytes())
+        except ValueError:
+            continue          # container-level limits, not this walk's business
+        count, _ = EA._directory(cf)
+        _off, ids = EA.component_vector(cf.sections[-1].payload)
+        assert ids == list(range(len(ids))), f"{f.name}: vector is not a prefix"
+        assert len(ids) <= count, f"{f.name}: vector longer than the object table"
+        walked += 1
+    assert walked > 0.99 * len(files), (
+        f"only {walked} of {len(files)} entities walked — the layout moved")

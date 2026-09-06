@@ -130,7 +130,17 @@ def merge_with_manifest(declared: list[dict], discovered: list[dict]) -> list[di
 
     Same-id collisions are matched per kind, so an `items/foo` folder and a
     `[[content]] kind="enemy" id="foo"` block do not shadow each other.
+
+    In-place (`replace_base`) blocks are emitted FIRST. A `poi` clone shares
+    the shipped level of the tile an in-place def edits, so its resource cache
+    has to be seeded from the EDITED cache — seeded from the pristine one it
+    preloads a resource the level no longer contains, which resolves to null
+    and is destroyed unchecked at teardown. `poi.discover` already orders its
+    own blocks that way; concatenating declared blocks in front of them put a
+    hand-written additive block back ahead of every discovered override.
     """
     seen = {(b.get("kind"), b.get("id")) for b in declared}
-    return list(declared) + [b for b in discovered
-                             if (b.get("kind"), b.get("id")) not in seen]
+    merged = list(declared) + [b for b in discovered
+                               if (b.get("kind"), b.get("id")) not in seen]
+    merged.sort(key=lambda b: not b.get("replace_base"))   # stable
+    return merged

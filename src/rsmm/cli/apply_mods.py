@@ -989,7 +989,8 @@ def is_text_bank(decoded: str) -> bool:
 _TEXT_MERGE_DIR_NAME = ".rsmm_text_merge"
 
 
-def _merge_text_bank(enc: str, srcs: list[Path], vanilla: Path) -> Path | None:
+def _merge_text_bank(enc: str, srcs: list[Path],
+                     vanilla: Path | None) -> Path | None:
     """Merge several mods' versions of ONE text-bank file into vanilla + the
     union of each mod's appended tail, preserving index alignment.
 
@@ -1000,6 +1001,8 @@ def _merge_text_bank(enc: str, srcs: list[Path], vanilla: Path) -> Path | None:
     to the written merged file, or ``None`` if it can't be parsed as a bank.
     """
     from rsmm.engine import text_patches as TP
+    if vanilla is None:
+        return None                     # a text bank is always a shipped file
     try:
         van = TP.parse_text_file(vanilla)
     except Exception:  # noqa: BLE001 — not a parseable bank; skip merge
@@ -1040,7 +1043,8 @@ def is_rsc_cache(decoded: str) -> bool:
     return decoded.endswith(rsc_cache.CACHE_SUFFIX)
 
 
-def _merge_rsc_cache(enc: str, srcs: list[Path], vanilla: Path) -> Path | None:
+def _merge_rsc_cache(enc: str, srcs: list[Path],
+                     vanilla: Path | None) -> Path | None:
     """Union several mods' additions to ONE resource cache.
 
     Exactly the same problem as the tile pool, on the file that decides whether
@@ -1052,16 +1056,26 @@ def _merge_rsc_cache(enc: str, srcs: list[Path], vanilla: Path) -> Path | None:
     ascending order is a line that is never found (see
     :func:`rsmm.engine.rsc_cache.extend`).
     """
+    # `vanilla is None` = a cache this mod introduced, so there is no shipped
+    # baseline and the union IS the file.
     try:
-        base = rsc_cache.parse(vanilla.read_bytes())
+        base = rsc_cache.parse(vanilla.read_bytes()) if vanilla else []
     except (OSError, UnicodeDecodeError):
         return None
     merged, have = list(base), set(base)
     for src in srcs:
         try:
             lines = rsc_cache.parse(src.read_bytes())
-        except (OSError, UnicodeDecodeError):
-            return None
+        except (OSError, UnicodeDecodeError) as e:
+            # Skip the unreadable source, keep everyone else's lines. Failing
+            # the whole merge drops the union back to last-writer-wins, which
+            # silently deletes the OTHER mods' preloads — and a missing cache
+            # line is a tile that is registered and never placed, or a null the
+            # teardown loop destroys unchecked. One broken file must not cost
+            # the rest their content.
+            print(f"  [warn] resource cache '{enc}': skipping unreadable "
+                  f"source {src}: {e}", file=sys.stderr)
+            continue
         for ln in lines:
             if ln not in have:
                 merged.append(ln)
@@ -1073,7 +1087,8 @@ def _merge_rsc_cache(enc: str, srcs: list[Path], vanilla: Path) -> Path | None:
     return out_path
 
 
-def _merge_map_pool(enc: str, srcs: list[Path], vanilla: Path) -> Path | None:
+def _merge_map_pool(enc: str, srcs: list[Path],
+                    vanilla: Path | None) -> Path | None:
     """Union several mods' tile-pool additions to ONE mapdef.
 
     Each `poi` mod emits vanilla-plus-its-own-tiles, so without this the last
@@ -1086,6 +1101,8 @@ def _merge_map_pool(enc: str, srcs: list[Path], vanilla: Path) -> Path | None:
     mapdef (caller then falls back to the last-writer-wins warning).
     """
     from rsmm.engine import map_pool as MP
+    if vanilla is None:
+        return None                     # a mapdef is always a shipped file
     try:
         base = MP.read_pool(vanilla.read_bytes())
     except Exception:  # noqa: BLE001 — not a parseable mapdef; skip merge
@@ -1194,8 +1211,15 @@ def plan_apply(mods: list[Mod],
             dest = encoded_to_dest(enc, cooking, game_dir)
             vanilla = dest.parent / (dest.name + BACKUP_SUFFIX)
             if not vanilla.exists():
-                vanilla = dest if dest.exists() else None
-            merged = merge_fn(enc, [w[0] for w in ordered], vanilla) if vanilla else None
+                # No backup and the game does not ship this path means `dest`
+                # is OUR OWN previous output — `apply_one` deletes the backup
+                # of a mod-added file on purpose. Merging onto it accumulates
+                # across applies, including lines for tiledefs a later emit
+                # dropped, which is the dangling-preload the emitted-file
+                # cleanup above exists to prevent. Start from nothing instead.
+                vanilla = (dest if dest.exists() and is_vanilla_encoded(enc)
+                           else None)
+            merged = merge_fn(enc, [w[0] for w in ordered], vanilla)
             if merged is not None:
                 ids = ", ".join(w[1] for w in ordered)
                 print(f"  [merge] {label} '{decoded}' from {len(ordered)} "

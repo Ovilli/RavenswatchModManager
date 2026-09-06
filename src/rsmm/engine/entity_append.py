@@ -6,13 +6,27 @@ Cooked entity layout (see ``cooked.py`` for the container grammar):
   indexes, one per component;
 * sections 1..count = one self-framed component record each, starting with
   its class-table index (record i's first u32 == directory entry i);
-* last section = entity-level trailer.
+* last section = the ``oCEntitySettings`` object itself, whose first field
+  after its class index is a **poly-pointer vector**: ``u32 count`` followed by
+  ``count`` u32 SUB-OBJECT IDS. That vector, not section 0, is the entity's
+  component list.
 
 Because every record is self-framed and the deserializer walks the directory
 sequentially, NEW components can be appended: add the class index to the
-directory, bump the count, and insert the record before the trailer. This is
-the entity-file analog of the versiondef MO-vector append proven for custom
-items (see docs/_re/kinds/ui-menus.md, phase 4).
+directory, bump the count, insert the record before the trailer -- **and add
+the new sub-object id to the trailer's component vector**. This is the
+entity-file analog of the versiondef MO-vector append proven for custom items
+(see docs/_re/kinds/ui-menus.md, phase 4).
+
+⚠ That last step is the whole difference between an appended component and an
+INERT one, and leaving it out cost this repo seven playtests of a stock-looking
+mod menu and four of a POI with no icon and no prompt. Section 0 is the
+serializer's OBJECT TABLE: a record listed there is deserialized, but an object
+nothing points at is owned by nobody and never reaches the entity.
+``data/symbols.json::Serializer_ReadPolyPtrVector`` states the encoding --
+"in cooked files, sub-objects live in their own sections referenced by u32
+sub-object id". Measured: all 4699 shipped entities carry the vector and it is
+always a contiguous ``0..n-1`` prefix of the component list.
 
 Component records carry a 16-byte instance GUID right after their first inner
 ``END`` marker; clones must remint it (unique within the file) or the engine
@@ -44,6 +58,42 @@ def _directory(cf: cooked.CookedFile) -> tuple[int, list[int]]:
     return count, idxs
 
 
+def component_vector(trailer: bytes) -> tuple[int, list[int]]:
+    """``(offset, ids)`` of the entity's component vector in its trailer.
+
+    ``trailer[offset:]`` starts at the vector's ``u32 count``. The ids are
+    sub-object ids, i.e. component indexes: id ``i`` is ``cf.sections[1 + i]``.
+
+    Layout from the trailer's nested BEGIN::
+
+        u32 class index
+        u32 count, count * u32      <-- the vector
+
+    Raises rather than guessing: an append that cannot find this vector would
+    otherwise succeed and produce a file whose new components do nothing.
+    """
+    i = trailer.find(cooked.MARK_BEGIN)
+    if i < 0:
+        raise EntityAppendError("entity trailer has no nested BEGIN")
+    o = i + 4 + 4                                    # BEGIN, class index
+    if o + 4 > len(trailer):
+        raise EntityAppendError("entity trailer ends before its component vector")
+    (count,) = struct.unpack_from("<I", trailer, o)
+    if o + 4 + 4 * count > len(trailer):
+        raise EntityAppendError(
+            f"component vector claims {count} entries, which runs past the "
+            f"trailer — the walk landed in the wrong place")
+    return o, list(struct.unpack_from(f"<{count}I", trailer, o + 4))
+
+
+def _render_vector(offset: int, trailer: bytes, ids: list[int]) -> bytes:
+    """`trailer` with its component vector replaced by `ids`."""
+    _o, old = component_vector(trailer)
+    tail = trailer[offset + 4 + 4 * len(old):]
+    return (trailer[:offset] + struct.pack("<I", len(ids))
+            + struct.pack(f"<{len(ids)}I", *ids) + tail)
+
+
 def validate_layout(cf: cooked.CookedFile) -> int:
     """Sanity-check directory↔record correspondence; return component count."""
     count, idxs = _directory(cf)
@@ -57,6 +107,15 @@ def validate_layout(cf: cooked.CookedFile) -> int:
         if got != want:
             raise EntityAppendError(
                 f"component {i}: directory says class {want}, record says {got}")
+    # The vector is what the entity actually reads. A record present in the
+    # object table but absent from it is an ORPHAN: it deserializes, it is
+    # byte-stable, and it does nothing.
+    _off, ids = component_vector(cf.sections[-1].payload)
+    stray = [i for i in ids if not 0 <= i < count]
+    if stray:
+        raise EntityAppendError(
+            f"component vector names sub-object(s) {stray} outside the "
+            f"{count} components in the file")
     return count
 
 
@@ -111,6 +170,10 @@ def append_components(cooked_bytes: bytes,
 
     Each record must already start with its class-table index u32 (clones of
     existing records keep theirs).
+
+    The new sub-object ids are also appended to the trailer's component vector,
+    which is what attaches them to the entity. Without that the records are
+    orphans -- see the module docstring.
     """
     cf = cooked.parse(cooked_bytes)
     count = validate_layout(cf)
@@ -126,5 +189,13 @@ def append_components(cooked_bytes: bytes,
     trailer = cf.sections.pop()
     for rec in records:
         cf.sections.append(cooked.Section(payload=rec))
+    # Sub-object id of record k is its component index: the records land at
+    # component indexes `count`..`count + len(records) - 1`.
+    off, ids = component_vector(trailer.payload)
+    trailer.payload = _render_vector(
+        off, trailer.payload, ids + list(range(count, count + len(records))))
     cf.sections.append(trailer)
-    return cooked.emit(cf)
+    out = cooked.emit(cf)
+    # Re-walk what we just wrote: the only cheap proof the vector stayed framed.
+    validate_layout(cooked.parse(out))
+    return out

@@ -30,13 +30,26 @@ def _rec(cls: int, tag: str) -> bytes:
     return struct.pack("<I", cls) + _lstr(tag) + b"\xde\xad\xbe\xef"
 
 
-def _cf(records: list[bytes], n_classes: int = 3) -> cooked.CookedFile:
+def _trailer(ids: list[int]) -> bytes:
+    """The entity object: BEGIN, class index, then its component vector.
+
+    The vector is what attaches a component to the entity; a record present in
+    the object table but absent here is an orphan (see `entity_append`).
+    """
+    return (cooked.MARK_BEGIN + struct.pack("<I", 0)
+            + struct.pack("<I", len(ids)) + struct.pack(f"<{len(ids)}I", *ids)
+            + b"TRLR" + cooked.MARK_END)
+
+
+def _cf(records: list[bytes], n_classes: int = 3,
+        vector: list[int] | None = None) -> cooked.CookedFile:
     """A CookedFile: directory + one section per record + a trailer."""
     idxs = [struct.unpack_from("<I", r, 0)[0] for r in records]
     directory = struct.pack("<I", len(idxs)) + struct.pack(f"<{len(idxs)}I", *idxs)
     sections = [cooked.Section(payload=directory)]
     sections += [cooked.Section(payload=r) for r in records]
-    sections.append(cooked.Section(payload=b"TRLR"))
+    ids = list(range(len(records))) if vector is None else vector
+    sections.append(cooked.Section(payload=_trailer(ids)))
     return cooked.CookedFile(
         variant="A", hdr_a=0x10, flags=1, extra=0, type_tag=0x31,
         classes=[cooked.ClassDef(f"Class{i}", 0x1000 + i, 1, 0, 0)
@@ -67,6 +80,25 @@ def test_append_components_grows_directory_and_stays_valid():
     assert idxs == [0, 1, 2]
     assert EA.validate_layout(cf) == 3
     assert b"Gamma" in cf.sections[3].payload   # new record survived the roundtrip
+    # ...and it is ATTACHED. A record in the object table that the entity's
+    # component vector does not name is deserialized and owned by nobody: it is
+    # byte-stable and completely inert, which is what made a POI marker draw
+    # nothing and the mod menu render stock through seven playtests.
+    _off, ids = EA.component_vector(cf.sections[-1].payload)
+    assert ids == [0, 1, 2]
+
+
+def test_validate_layout_rejects_a_vector_naming_a_missing_component():
+    cf = _cf([_rec(0, "Alpha")], vector=[0, 7])
+    with pytest.raises(EA.EntityAppendError):
+        EA.validate_layout(cf)
+
+
+def test_component_vector_refuses_a_trailer_it_cannot_walk():
+    cf = _cf([_rec(0, "Alpha")])
+    cf.sections[-1].payload = b"TRLR"      # no BEGIN: the walk has no anchor
+    with pytest.raises(EA.EntityAppendError):
+        EA.validate_layout(cf)
 
 
 def test_append_components_rejects_out_of_range_class():

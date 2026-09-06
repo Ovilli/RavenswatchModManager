@@ -188,7 +188,7 @@ def _parent_list_span(payload: bytes) -> tuple[int, int, list[tuple[str, str]]]:
     Layout, from the record's nested BEGIN:
 
         u32 class index
-        u32 child_count, child_count * u32   -- the component directory
+        u32 count, count * u32               -- the component vector
         u8  flag
         u32 16, 16 bytes                     -- the entity's instance GUID
         u32 parent_count                     <-- the span starts here
@@ -199,12 +199,11 @@ def _parent_list_span(payload: bytes) -> tuple[int, int, list[tuple[str, str]]]:
     :func:`_render_parents` reproduces. Verified on the whole shipped corpus:
     4699 of 4699 entity files re-emit byte-identical through this walk.
     """
-    i = payload.find(cooked.MARK_BEGIN)
-    if i < 0:
-        raise EntityComponentError("entity record has no nested BEGIN")
-    o = i + 4 + 4                                   # BEGIN, class index
-    (nchild,) = struct.unpack_from("<I", payload, o)
-    o += 4 + 4 * nchild + 1                         # child list, flag byte
+    try:
+        vec_off, kids = EA.component_vector(payload)
+    except EA.EntityAppendError as e:
+        raise EntityComponentError(str(e)) from None
+    o = vec_off + 4 + 4 * len(kids) + 1             # component vector, flag byte
     (glen,) = struct.unpack_from("<I", payload, o)
     if glen != 16:
         raise EntityComponentError(

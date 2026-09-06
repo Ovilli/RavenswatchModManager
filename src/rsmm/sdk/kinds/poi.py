@@ -1362,7 +1362,11 @@ def _emit_tile_caches(out_dir: Path, base: str, defn_id: str, assets: list[str],
         # actually places or edits are seeds.
         seeds = sorted(set(seed_for if seed_for else borrow_for))
         keep, missing = _reachable(seeds, borrowed, out_dir)
-        trimmed = [ln for ln in borrowed if ln.split("|")[1] in keep]
+        # `len(parts) == 3` for the same reason `_reachable`'s index build
+        # checks it: a borrowed cache is a shipped file we do not own, and one
+        # malformed line must not be an IndexError in the middle of an apply.
+        trimmed = [ln for ln in borrowed
+                   if len(ln.split("|")) == 3 and ln.split("|")[1] in keep]
         _log.info("poi %s: borrowed closure trimmed %d -> %d line(s), "
                   "%d reachable resource(s) the donor never listed",
                   defn_id, len(borrowed), len(trimmed), len(missing))
@@ -1583,7 +1587,8 @@ def _single_placements(base: str, defn_id: str) -> list[str]:
 
 
 def _emit_prop_override(mod_id: str, defn: ContentDef, out_dir: Path,
-                        base: str, written: list[Path]) -> list[str]:
+                        base: str,
+                        written: list[Path]) -> tuple[list[str], list[str]]:
     """Put the mod's art on a shipped prop **in place**, minting no new name.
 
     This exists because a level cannot reference an asset the mod introduced.
@@ -1610,7 +1615,15 @@ def _emit_prop_override(mod_id: str, defn: ContentDef, out_dir: Path,
     from ...engine import entity_strings as ES
 
     spec = defn.fields["prop"]
-    ref = spec["replaces"]
+    ref = spec.get("replaces")
+    if not ref:
+        # `_emit_prop_art` validates this for the additive path; the in-place
+        # path did not, and a bare KeyError is not one of the exceptions
+        # `emit_content_blocks` catches — so a hand-written `[[content]]` block
+        # missing one key aborted every other mod's apply too.
+        raise ContentError(
+            f"poi {defn.id}: an in-place prop needs `replaces` — the shipped "
+            f"entity whose art this def overwrites.")
     ent = _corpus(PC.entity_cooked_path(ref), defn.id, "prop.replaces")
     strings = [s for _sec, _off, s in ES.list_strings(ent)]
     meshes = sorted({s for s in strings if s.lower().endswith(".fbx")})
@@ -1759,13 +1772,13 @@ def _emit_prop_override(mod_id: str, defn: ContentDef, out_dir: Path,
             # `Collectible_Ingredient_Key` 20.0) with a plain float at the tail
             # of the record. So the record is copied and the literal retuned.
             radius = float(cfg.get("reveal_radius", DEFAULT_REVEAL_RADIUS))
-            for slot, want in (("radius", radius), ("main_poi", None)):
+            for slot, tune in (("radius", radius), ("main_poi", None)):
                 d_ref, target, literal = EC.REVEAL_DONORS[slot]
                 d = _corpus(PC.entity_cooked_path(d_ref), defn.id,
                             f"the {slot} override donor")
                 edited = EC.copy_overrides(
                     edited, d, prefix, only=(target,),
-                    f32_swap=(literal, want) if literal is not None else None)
+                    f32_swap=(literal, tune) if literal is not None else None)
                 borrow.append(_CLOSURE_BORROW)
             _log.info("poi %s/%s: marker reveals within %.0f units and is "
                       "flagged a main POI", mod_id, defn.id, radius)
