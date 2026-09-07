@@ -23,7 +23,7 @@
     "@neondatabase/serverless": "0.10.4",
     "drizzle-orm": "0.45.2",
     "pg": "8.13.1",
-    "ws": "8.18.0"
+    "ws": "8.21.0"
   },
   "devDependencies": {
     "@rsmm/tsconfig": "workspace:*",
