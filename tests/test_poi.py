@@ -1488,6 +1488,7 @@ def test_no_emitted_name_keeps_a_hyphen_from_the_mod_id(tmp_path):
     assert not hyphenated, f"emitted resource names still carry a hyphen: {hyphenated}"
 
 
+@needs_corpus
 def test_places_puts_its_entity_in_the_tiles_own_cache(tmp_path):
     """`places` must feed the preload closure, not just the level.
 
@@ -1515,6 +1516,7 @@ def test_places_puts_its_entity_in_the_tiles_own_cache(tmp_path):
             f"{c.name} does not preload the entity `places` put in its level")
 
 
+@needs_corpus
 def test_own_level_clones_the_level_without_minting_entity_names(tmp_path):
     """`own_level` is the isolation rung between the two measured outcomes.
 

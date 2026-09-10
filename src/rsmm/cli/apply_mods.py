@@ -989,6 +989,23 @@ def is_text_bank(decoded: str) -> bool:
 _TEXT_MERGE_DIR_NAME = ".rsmm_text_merge"
 
 
+def _text_merge_dir() -> Path:
+    """Where merged text banks are staged, resolved at CALL time.
+
+    ⚠ NOT `MODS_DIR / _TEXT_MERGE_DIR_NAME`. `MODS_DIR` is a PEP 562 lazy attr
+    bound when this module is IMPORTED, so a later `RSMM_MODS_DIR` override
+    never reaches it — and the three merge sites that used it wrote into the
+    developer's (and CI's) REAL `mods/` directory no matter what a test set.
+    That surfaced as `.rsmm_text_merge` appearing in the repo and the
+    `_guard_real_mods_dir` conftest guard failing four unrelated tests at
+    teardown, in whichever worker happened to be running when it appeared.
+    `paths.mods_dir()` reads the override every time, which is the whole reason
+    it exists.
+    """
+    from rsmm.engine import paths as _paths
+    return _paths.mods_dir() / _TEXT_MERGE_DIR_NAME
+
+
 def _merge_text_bank(enc: str, srcs: list[Path],
                      vanilla: Path | None) -> Path | None:
     """Merge several mods' versions of ONE text-bank file into vanilla + the
@@ -1018,7 +1035,7 @@ def _merge_text_bank(enc: str, srcs: list[Path],
             merged.extend(tf.entries[n:])
     out_tf = TP.TextFile(path=vanilla, header=van.header, entries=merged,
                          footer=van.footer)
-    out_dir = MODS_DIR / _TEXT_MERGE_DIR_NAME
+    out_dir = _text_merge_dir()
     out_dir.mkdir(parents=True, exist_ok=True)
     # Encode the enc path into a flat, unique filename.
     flat = enc.replace("\\", "__").replace("/", "__")
@@ -1080,7 +1097,7 @@ def _merge_rsc_cache(enc: str, srcs: list[Path],
             if ln not in have:
                 merged.append(ln)
                 have.add(ln)
-    out_dir = MODS_DIR / _TEXT_MERGE_DIR_NAME
+    out_dir = _text_merge_dir()
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / enc.replace("\\", "__").replace("/", "__")
     out_path.write_bytes(rsc_cache.render(sorted(merged)))
@@ -1126,7 +1143,7 @@ def _merge_map_pool(enc: str, srcs: list[Path],
         out_bytes = MP.set_pool(vanilla.read_bytes(), merged)
     except Exception:  # noqa: BLE001
         return None
-    out_dir = MODS_DIR / _TEXT_MERGE_DIR_NAME
+    out_dir = _text_merge_dir()
     out_dir.mkdir(parents=True, exist_ok=True)
     flat = enc.replace("\\", "__").replace("/", "__")
     out_path = out_dir / flat
