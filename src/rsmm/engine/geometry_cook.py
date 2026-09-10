@@ -506,6 +506,60 @@ def _swap_section(main: bytes, placed: list[_geo.SubMesh | None],
 
 _LAYER_VERS = (9, 11, 12)
 
+#: Whether a per-vertex layer carries a comp_mode byte after its name is a
+#: property of the LAYER, not of the version — measured over 400 shipped cooked
+#: files:
+#:
+#:     tangentSign   59 without a comp byte, 0 with   (at ver 9, 11 AND 12)
+#:     tangent      230 with,  0 without
+#:     binormal     230 with,  0 without
+#:     uv2           25 with,  0 without
+#:     skinning       8 with,  0 without
+#:
+#: So it is DETECTED per layer rather than assumed: the header length whose
+#: block chain consumes the payload exactly is the right one. Both fixed rules
+#: have now been wrong in this file — assuming the byte is always there made
+#: `tangentSign` unreadable (see below), and assuming version 9 never has it
+#: broke `tangent`/`binormal`, which are version 9 on 171 of those files.
+#:
+#: Getting this wrong is silent and expensive. `_layer_vertex_count` returning
+#: None classifies a layer as "not per-vertex", so the rewrite loop skips it and
+#: it keeps the TEMPLATE's vertex count while the mesh gets a new one. For
+#: `skinning` that shredded animated characters; for `tangentSign` it left props
+#: BLACK — `Pontoon_Pillar_12m_C` went 188 -> 296 vertices with a 188-entry
+#: tangent-sign buffer, and a broken tangent basis is an unlit object.
+
+
+def _layer_blocks_consistent(payload: bytes, pos: int) -> bool:
+    """Does a block chain starting at `pos` tile the payload exactly?"""
+    n = len(payload)
+    if pos + 8 > n:
+        return False
+    while pos < n:
+        if pos + 8 > n:
+            return False
+        count, bc = struct.unpack_from("<II", payload, pos)
+        if count == 0 or count > 1_000_000 or bc == 0 or bc % count:
+            return False
+        pos += 8 + bc
+        if pos > n:
+            return False
+    return pos == n
+
+
+def _layer_header_len(payload: bytes, nl: int) -> int | None:
+    """Bytes before the first block, or None if this is not a readable layer.
+
+    Tries the comp_mode form first (it is the common one) and falls back to the
+    bare form, keeping whichever tiles the payload exactly.
+    """
+    if 8 + nl + 1 <= len(payload) and payload[8 + nl] == 0 \
+            and _layer_blocks_consistent(payload, 8 + nl + 1):
+        return 8 + nl + 1
+    if _layer_blocks_consistent(payload, 8 + nl):
+        return 8 + nl
+    return None
+
 
 def _layer_vertex_count(payload: bytes) -> int | None:
     """If `payload` is a per-vertex side layer, return its vertex count."""
@@ -516,10 +570,9 @@ def _layer_vertex_count(payload: bytes) -> int | None:
         nl = struct.unpack_from("<I", payload, 4)[0]
         if nl > 64 or 8 + nl + 1 > len(payload):
             return None
-        pos = 8 + nl
-        if payload[pos] != 0:  # comp_mode must be uncompressed
+        pos = _layer_header_len(payload, nl)
+        if pos is None:
             return None
-        pos += 1
         count, bc = struct.unpack_from("<II", payload, pos)
         if count == 0 or bc % count or pos + 8 + bc > len(payload):
             return None
@@ -769,7 +822,10 @@ def _layer_name(payload: bytes) -> str:
 
 def _layer_blocks(payload: bytes) -> tuple[bytes, list[tuple[int, list[bytes]]]]:
     """Split a per-vertex layer into (header, [(stride, per-vertex records)])."""
-    pos = 8 + struct.unpack_from("<I", payload, 4)[0] + 1
+    nl = struct.unpack_from("<I", payload, 4)[0]
+    pos = _layer_header_len(payload, nl)
+    if pos is None:
+        raise ValueError("layer header is not readable; refusing to rebuild it")
     header = payload[:pos]
     blocks: list[tuple[int, list[bytes]]] = []
     n = len(payload)
@@ -1076,14 +1132,34 @@ def swap_geometry(template_cooked: bytes, glb_bytes: bytes,
             positions=[apply_pos(p) for p in s.positions],
             normals=[apply_nrm(n) for n in s.normals],
             uvs=s.uvs, indices=s.indices) for s in placed]
-    elif "rotate_deg" in transform:
-        # `fit="rig"` still honours an explicit rotation: it is the one part of
-        # the transform that says "the export axes are wrong", not "move it".
-        m = _rot_matrix(tuple(float(a) for a in transform["rotate_deg"]))
-        placed = [None if s is None else _geo.SubMesh(
-            positions=[_apply_m(m, p) for p in s.positions],
-            normals=[_apply_m(m, n) for n in s.normals],
-            uvs=s.uvs, indices=s.indices) for s in placed]
+    else:
+        # `fit="rig"` still honours an explicit rotation and an explicit scale.
+        # Both say something about the MESH ("the export axes are wrong", "it
+        # was authored at the wrong size"); neither is a fit, which is what rig
+        # is refusing. Scale is uniform and about the ORIGIN, so a mesh whose
+        # base sits at y=0 keeps its feet there.
+        #
+        # This matters for a donor authored to hang BELOW its own origin, like
+        # `Pontoon_Pillar_12m_C` (y -8.84..+3.16, a pontoon driven down from a
+        # platform). Any fit anchors to the template's lowest vertex, which
+        # puts a replacement mesh 8.84 units underground; rig is the only mode
+        # that stands it on the anchor, and before this it could not be resized.
+        m = (_rot_matrix(tuple(float(a) for a in transform["rotate_deg"]))
+             if "rotate_deg" in transform else None)
+        k = float(transform.get("scale", 1.0))
+        if m is not None or k != 1.0:
+            def _pos(p, m=m, k=k):
+                q = _apply_m(m, p) if m is not None else p
+                return (q[0] * k, q[1] * k, q[2] * k)
+
+            placed = [None if s is None else _geo.SubMesh(
+                positions=[_pos(p) for p in s.positions],
+                # Normals take the rotation but NEVER the scale: a uniform
+                # scale does not change a direction, and multiplying one only
+                # denormalises it.
+                normals=([_apply_m(m, n) for n in s.normals] if m is not None
+                         else s.normals),
+                uvs=s.uvs, indices=s.indices) for s in placed]
 
     # Per-record bone weights.
     rigid_rec = _rigid_skin(src) if skin_mode == "rigid" else None

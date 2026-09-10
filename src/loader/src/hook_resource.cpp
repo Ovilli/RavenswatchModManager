@@ -63,6 +63,11 @@ std::atomic<long> g_releases{0};      // flag set: release path
 std::atomic<long> g_state_ok{0};      // state == 1
 std::atomic<long> g_state_other{0};   // state != 1
 std::atomic<long> g_null_out{0};      // resolve produced no object
+// Filter hits. An ABSENCE of MATCH lines is the answer this trace is
+// usually asked for ("did my entity resolve at all?"), and an absence is
+// exactly what a broken read looks like too. Counting makes the summary
+// say "filter: 0 hit(s)" instead of saying nothing.
+std::atomic<long> g_matches{0};
 std::atomic<int>  g_sampled{0};
 std::atomic<int>  g_window_lines{0};  // reset every window
 std::atomic<long> g_next_summary{kSummaryEvery};
@@ -132,6 +137,21 @@ void ref_path(void* ref, char* out, std::size_t cap) {
     }
 }
 
+// "<root>|<path>", the pair that identifies a resource — the same rendering
+// the level-load trace settled on. ⚠ Only `ref_name` (+0x00, the ROOT) has ever
+// reached the log, so every sampled line this trace has ever printed says
+// "shaders" / "3D" / "EntitySettings", and `ref_path` has never once been seen
+// working. That is not a cosmetic gap: the MATCH filter is built on `ref_path`,
+// so "BonFire resolved ZERO times" and "the path read is wrong" have been
+// indistinguishable, and a session was spent acting on the first reading.
+// Printing both makes the sample lines their own proof.
+void ref_ident(void* ref, char* out, std::size_t cap) {
+    char root[64], path[256];
+    ref_name(ref, root, sizeof(root));
+    ref_path(ref, path, sizeof(path));
+    std::snprintf(out, cap, "%s|%s", root, path);
+}
+
 // Read the state dword off a resolved object. Returns false when the object or
 // the field is not readable, which is itself worth reporting.
 //
@@ -155,6 +175,8 @@ std::uint32_t obj_refcount(void* obj) {
     return mem_load(addr + kObjRefCountOff, &rc) ? rc : 0;
 }
 
+const char* rsc_trace_match();
+
 void log_summary(const char* why) {
     char hist[192];
     int n = 0;
@@ -177,6 +199,13 @@ void log_summary(const char* why) {
                   g_state_ok.load(), g_state_other.load(), g_null_out.load(),
                   hist[0] ? hist : " none");
     Loader::get().log(line);
+    // A filter's HIT COUNT, said out loud. "No MATCH lines" and "the filter
+    // never ran" look identical in a log, and one of them is a finding.
+    if (const char* want = rsc_trace_match(); want != nullptr && want[0] != '\0') {
+        std::snprintf(line, sizeof(line), "[rsc-trace] filter \"%s\": %ld hit(s)",
+                      want, g_matches.load());
+        Loader::get().log(line);
+    }
 }
 
 // The trace filter, from the environment or from a file beside winhttp.dll.
@@ -252,8 +281,8 @@ void detour_resolve(void* ref, void* class_desc, void** out, void* policy) {
     // A resolve that produced a non-null object we cannot read at +0x38 is a
     // genuine oddity — unlike state != 1, which is routine (see note_state).
     if (!have && obj != nullptr && g_window_lines.fetch_add(1) < kLinesPerWindow) {
-        char name[256];
-        ref_name(ref, name, sizeof(name));
+        char name[320];
+        ref_ident(ref, name, sizeof(name));
         char line[512];
         std::snprintf(line, sizeof(line),
                       "[rsc-trace] resolved object %p is not readable at +0x38  \"%s\"",
@@ -270,7 +299,7 @@ void detour_resolve(void* ref, void* class_desc, void** out, void* policy) {
     // RSMM_RSC_TRACE_MATCH=Dolmen_A every resolve of that name is logged — and
     // a name that never appears at all is itself the answer.
     if (const char* want = rsc_trace_match(); want != nullptr && want[0] != '\0') {
-        char name[256];
+        char name[320];
         ref_path(ref, name, sizeof(name));
         // Comma-separated, so ONE run can ask about several names at once —
         // here the three entities swapped IN and the three swapped OUT. The
@@ -290,6 +319,7 @@ void detour_resolve(void* ref, void* class_desc, void** out, void* policy) {
             tok = end ? end + 1 : tok + len;
         }
         if (hit) {
+            g_matches.fetch_add(1);
             char st[24];
             if (have) std::snprintf(st, sizeof(st), "%u", state);
             else      std::snprintf(st, sizeof(st), "<unreadable>");
@@ -308,8 +338,8 @@ void detour_resolve(void* ref, void* class_desc, void** out, void* policy) {
     const bool interesting = have && state != 1;
     if ((interesting || g_sampled.fetch_add(1) < kSampleLines)
             && g_window_lines.fetch_add(1) < kLinesPerWindow) {
-        char name[256];
-        ref_name(ref, name, sizeof(name));
+        char name[320];
+        ref_ident(ref, name, sizeof(name));
         char st[24];
         if (have) std::snprintf(st, sizeof(st), "%u", state);
         else      std::snprintf(st, sizeof(st), "<unreadable>");
@@ -328,6 +358,8 @@ void detour_resolve(void* ref, void* class_desc, void** out, void* policy) {
 }
 
 }  // anonymous namespace
+
+long resolve_count() { return g_resolves.load(); }
 
 bool install_resource_hooks() {
     if (!flag_enabled("RSMM_ENABLE_RESOURCE_TRACE")) {

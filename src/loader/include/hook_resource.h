@@ -63,4 +63,13 @@ namespace rsmm {
 // "the user did not arm it" is not a fault.
 bool install_resource_hooks();
 
+// Resolves counted so far. Exposed so the level-build trace can take a DELTA
+// across one level build, which is a true measure of "did this level fetch its
+// objects" and depends on no struct offset — unlike the two guessed field
+// reads that preceded it, each of which reported zero for every level in the
+// game including ones that visibly build. Returns 0 when the resource trace is
+// not armed, which the level-build trace reports rather than silently treating
+// as "nothing was built".
+long resolve_count();
+
 }  // namespace rsmm

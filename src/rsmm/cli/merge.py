@@ -153,13 +153,20 @@ def _stat_patches(patches: list[_Patch], cooking: Path, out_assets: Path,
 
         # Compose: per-field winner + record conflicts
         per_field_seen: dict[str, dict[str, float]] = {}
-        per_field_final: dict[str, float] = {}
+        # NOT coerced to float. `oCGlobalEntityValueSettings` is a tagged
+        # union, so a bool global takes one byte and an int global takes an
+        # int32 -- and `float(True)` is 1.0, which `struct` then refuses to
+        # pack as either. The schema decides the format from the file's own
+        # type tag; this only has to stop mangling the value on the way there.
+        # `float()` stays in `per_field_seen`, which is conflict REPORTING and
+        # wants everything on one comparable scale.
+        per_field_final: dict[str, float | int | bool] = {}
         for p in group:
             for fn, v in p.data.items():
                 if fn == "name" or not isinstance(v, (int, float)):
                     continue
                 per_field_seen.setdefault(fn, {})[p.mod_id] = float(v)
-                per_field_final[fn] = float(v)
+                per_field_final[fn] = v
         for fn, m in per_field_seen.items():
             if len({round(v, 6) for v in m.values()}) > 1:
                 conflicts.append(("stat", f"{short}:{fn}", dict(m)))

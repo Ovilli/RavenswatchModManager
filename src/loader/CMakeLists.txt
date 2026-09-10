@@ -57,11 +57,13 @@ set(LOADER_SRC
     src/hook_rewards.cpp
     src/hook_resource.cpp
     src/hook_levelload.cpp
+    src/hook_levelbuild.cpp
     src/hook_events.cpp
     src/hook_netcode.cpp
     src/hook_lua.cpp
     src/script_lua.cpp
     src/hook_util.cpp
+    src/watchpoint.cpp
     src/fn_resolver.cpp
     src/fn_call.cpp)
 

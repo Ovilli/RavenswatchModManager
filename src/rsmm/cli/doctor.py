@@ -36,7 +36,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from rsmm.cli import _term
-from rsmm.cli.apply_mods import _LANG_SUFFIXES, is_skippable_asset, resolve_special
+from rsmm.cli.apply_mods import (
+    _LANG_SUFFIXES,
+    is_skippable_asset,
+    resolve_special,
+    synthesize_encoded,
+)
 from rsmm.cli.merge import _ranked, _toml_load, collect_patches
 from rsmm.engine.asset_map import decoded_to_encoded
 from rsmm.engine.hashing import sha256_file
@@ -129,6 +134,29 @@ def emit(r: Result) -> None:
                   f"{_ST.dim(r.fix.label + tag)}")
 
 
+def _unmapped_records(manifest: Path) -> int:
+    """How many of `manifest`'s resources `asset_map.json` does not know.
+
+    The manifest is read in fixed groups of THREE lines per resource (root,
+    logical name, cooked path) after a one-line format flag — the same shape
+    `build_usedrsc_record` writes. A cooked path the map has never seen is the
+    only thing that actually means "the game shipped something new".
+
+    Returns 0 when the file cannot be read: an unreadable manifest is a
+    different problem, and guessing "stale" would push the user at a rebuild
+    that is destructive while mods are applied.
+    """
+    try:
+        lines = manifest.read_text(errors="replace").splitlines()
+        import json
+        am = json.loads(ASSET_MAP_JSON.read_text())
+    except (OSError, ValueError):
+        return 0
+    known = set(am) | set(am.values())
+    return sum(1 for i in range(1, len(lines) - 2, 3)
+               if lines[i + 2] not in known)
+
+
 def check_asset_map(game_dir: Path) -> list[Result]:
     out: list[Result] = []
     if not ASSET_MAP_JSON.exists():
@@ -138,12 +166,45 @@ def check_asset_map(game_dir: Path) -> list[Result]:
                        fix=Fix("rsmm rebuild-asset-map", ["rebuild-asset-map"]))]
     am_mtime = ASSET_MAP_JSON.stat().st_mtime
     out.append(Result("OK", f"asset_map.json ({ASSET_MAP_JSON.stat().st_size:,} bytes)"))
+    # ⚠ Compare against the PRISTINE manifest, never the live one.
+    #
+    # `apply` REWRITES `UsedRscList.ot` on every run to register a mod's new
+    # assets, so the live file is newer than `asset_map.json` after any apply on
+    # any machine. This check therefore fired on a perfectly healthy install and
+    # blamed a game update — and the repair it offered is the one action that
+    # BREAKS the install: `rebuild-asset-map` re-derives the map FROM that
+    # manifest, so running it while mods are applied bakes the mod's invented
+    # names in as if the game shipped them (measured once at 100 phantom rows,
+    # after which `is_vanilla_encoded` refuses to plant the mod's own files and
+    # the mod silently stops working — see the asset-map rebuild guard).
+    #
+    # `UsedRscList.ot.rsmm.bak` is the untouched game copy, taken before the
+    # first registration, which is the thing whose age actually answers "did the
+    # game update". Same source `find_iyg` and `game_fingerprint` already prefer.
     used = game_dir / "DarkTalesResources" / "UsedRscList.ot"
-    if used.exists() and used.stat().st_mtime > am_mtime + 1:
-        out.append(Result("WARN", "UsedRscList.ot newer than asset_map.json",
-                          "Game may have updated. Run: ./rsmm rebuild-asset-map",
-                          code="assetmap.stale",
-                          fix=Fix("rsmm rebuild-asset-map", ["rebuild-asset-map"])))
+    pristine = used.with_name(used.name + ".rsmm.bak")
+    probe = pristine if pristine.exists() else used
+    # An mtime is only a TRIGGER, never the verdict. A Steam verify touches every
+    # game file without changing a byte, so the timestamp alone reported a stale
+    # map on an install whose map covered all 21,504 shipped records. Confirm by
+    # CONTENT before saying anything: the map is stale only if the manifest names
+    # a resource it does not know.
+    if probe.exists() and probe.stat().st_mtime > am_mtime + 1:
+        unmapped = _unmapped_records(probe)
+        if unmapped:
+            out.append(Result(
+                "WARN", "UsedRscList.ot newer than asset_map.json",
+                f"{unmapped} resource(s) in the game's manifest are missing "
+                f"from the map, so the game updated. "
+                f"Run: ./rsmm rebuild-asset-map\n"
+                "Do this only with mods RESTORED — rebuilding while they are "
+                "applied bakes mod names into the map, after which the mod's "
+                "own files are refused and it silently stops working.",
+                code="assetmap.stale",
+                fix=Fix("rsmm rebuild-asset-map", ["rebuild-asset-map"])))
+        else:
+            out.append(Result("OK", "asset_map.json covers the game's manifest"))
+        return out
     else:
         out.append(Result("OK", "asset_map.json is fresh"))
     return out
@@ -379,11 +440,36 @@ def check_launch_options(game_dir: Path) -> list[Result]:
                        "the loader never loads.\nRe-set it (Steam closed) to "
                        'restore: WINEDLLOVERRIDES="winhttp=n,b" %command%',
                        code="launchopts.corrupt", fix=fix)]
+    # EVIDENCE BEATS CONFIGURATION. Steam owns `localconfig.vdf` while it is
+    # running and rewrites it from memory on exit, so options set in the UI this
+    # session are simply not on disk yet — and this check then reported that the
+    # loader "never runs" on a machine where it had logged a session minutes
+    # earlier. A loader that has written a log has loaded, whatever the file says.
+    if _loader_has_run(game_dir):
+        return [Result("OK", "loader has run — launch options are in effect",
+                       "The on-disk launch options read "
+                       f"{seen or '(empty)'}, which Steam rewrites from memory "
+                       "on exit, so the file lags the UI. The loader log is the "
+                       "evidence that the override is actually being applied.")]
     return [Result("WARN", "Steam launch options lack the winhttp override",
                    f"current: {seen or '(empty)'}\n"
                    "Without it Wine loads its own winhttp and the loader never "
                    "runs — no error, it simply does nothing.",
                    code="launchopts.no-override", fix=fix)]
+
+
+def _loader_has_run(game_dir: Path) -> bool:
+    """Has the loader ever written a log for this install?
+
+    The only first-hand proof that the DLL is being injected. Checked before
+    claiming the launch options are wrong, because the file those options live
+    in is stale whenever Steam is open.
+    """
+    live = game_dir / "mods" / "_log.txt"
+    if live.is_file() and live.stat().st_size > 0:
+        return True
+    archive = game_dir / "rsmm" / "logs"
+    return archive.is_dir() and any(archive.glob("*.log"))
 
 
 def _has_orphaned_launch_value(vdf: Path, app_id: str) -> bool:
@@ -600,12 +686,27 @@ def check_mods() -> list[Result]:
                 # Translation Lang* files are special-cased in apply_mods.
                 if dec.endswith(_LANG_SUFFIXES):
                     continue
-                # `resolve_special` owns every family that is installable
-                # without an asset_map entry (resource caches, sound banks,
-                # lang siblings). Testing membership alone reported all 45 of
-                # random-monsters' `.UsedRscCache.ot` files as broken while
-                # they were installed and hash-verified.
-                if dec not in dec2enc and not resolve_special(dec, dec2enc):
+                # `plan_apply` resolves a decoded path in THREE tiers, and
+                # this check has to mirror all three or it condemns assets that
+                # install perfectly.
+                #
+                #   1. `dec2enc` — the vanilla asset_map.
+                #   2. `resolve_special` — families installable without a map
+                #      entry (resource caches, sound banks, lang siblings).
+                #      Membership alone reported all 45 of random-monsters'
+                #      `.UsedRscCache.ot` files as broken while they were
+                #      installed and hash-verified.
+                #   3. `synthesize_encoded` — a genuinely NEW asset, given a
+                #      sibling in the same decoded directory to anchor the
+                #      encoded prefix on. This tier was missing, so every
+                #      mod-authored tiledef, level and prefab was reported
+                #      broken: runestone-shrine drew 10 WARNs whose files were
+                #      all synthesized, registered in `UsedRscList.ot` and
+                #      planted. Only a new TOP-LEVEL directory truly skips,
+                #      which is the one case `synthesize_encoded` returns None
+                #      for — and is exactly what this should still warn about.
+                if (dec not in dec2enc and not resolve_special(dec, dec2enc)
+                        and not synthesize_encoded(dec, dec2enc)):
                     # Only surface for mods the user has actually enabled
                     # in the manifest — disabled mods can't break a run, so
                     # noisy warnings about them are user-hostile.

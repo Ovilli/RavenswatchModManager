@@ -25,6 +25,15 @@ constexpr std::size_t kObjNameOff  = 0x68;  // char* resource name
 constexpr std::size_t kRefBlockBack = 0x30;
 constexpr std::size_t kProbeBytes   = 48;
 
+// The ref block opens with TWO {char* ptr, u32 len, u32 cap} strings, not one:
+// the resource ROOT ("Ot", "Definitions", "EntitySettings") and then its PATH.
+// Reading only the first is why six playtests of this trace reported the
+// resource as `"Ot"` — a root shared by every level in the game, which names
+// nothing. The root is what the `UsedRscCache` lines call the first field, so
+// the pair together is exactly a cache line's `<Root>|<Path>`.
+constexpr std::size_t kRefRootOff = 0x00;
+constexpr std::size_t kRefPathOff = 0x10;
+
 using LoadStepFn = bool (*)(void*, void**, void*, void*);
 LoadStepFn g_real_step = nullptr;
 
@@ -62,23 +71,30 @@ bool detour_step(void* container, void** slot, void* lvl_id, void* links) {
         mem_read_cstr(reinterpret_cast<std::uintptr_t>(np), name, sizeof(name));
     }
 
-    // `obj+0x68` comes back null in practice, and a failure nobody can name is
-    // a failure nobody can fix: this trace reported "<no name>" through six
-    // playtests while one step failed per placed mod tile. So fall back to the
-    // REF BLOCK. LevelStream_LoadStep's `rdx` is the level's resolved-pointer
-    // field (level+0x100), and ResourceRef_Resolve documents that field at
-    // +0x30 of a 0x38-byte ref block — so the block starts at slot-0x30 and
-    // opens with the resource path as {char* ptr, u32 len, u32 cap}.
-    char path[256];
-    path[0] = '\0';
+    // `obj+0x68` comes back null in practice, and a step nobody can name is a
+    // step nobody can act on: this trace reported "<no name>" through six
+    // playtests while one step per placed mod tile came back incomplete. So
+    // fall back to the REF BLOCK. LevelStream_LoadStep's `rdx` is the level's
+    // resolved-pointer field (level+0x100), and ResourceRef_Resolve documents
+    // that field at +0x30 of a 0x38-byte ref block — so the block starts at
+    // slot-0x30 and opens with TWO strings, root then path (see kRefRootOff).
+    // Guarded like everything else here: a half-built slot is the state this
+    // trace exists to catch.
+    char root[64], path[256];
+    root[0] = path[0] = '\0';
     if (slot) {
         const auto ref = reinterpret_cast<std::uintptr_t>(slot) - kRefBlockBack;
-        char* pp = nullptr;
-        std::uint32_t plen = 0;
-        if (mem_load(ref, &pp) && pp && mem_load(ref + sizeof(void*), &plen)
-            && plen > 0 && plen < sizeof(path)) {
-            mem_read_cstr(reinterpret_cast<std::uintptr_t>(pp), path, sizeof(path));
-        }
+        auto lstr = [&](std::size_t off, char* out, std::size_t cap) {
+            char* sp = nullptr;
+            std::uint32_t slen = 0;
+            if (mem_load(ref + off, &sp) && sp
+                && mem_load(ref + off + sizeof(void*), &slen)
+                && slen > 0 && slen < cap) {
+                mem_read_cstr(reinterpret_cast<std::uintptr_t>(sp), out, cap);
+            }
+        };
+        lstr(kRefRootOff, root, sizeof(root));
+        lstr(kRefPathOff, path, sizeof(path));
     }
 
     // First failure only: raw bytes of both candidates, so if neither guess is
@@ -98,21 +114,37 @@ bool detour_step(void* container, void** slot, void* lvl_id, void* links) {
             Loader::get().log(l);
         };
         if (obj) dump(reinterpret_cast<std::uintptr_t>(obj), "object");
+        // 48 bytes covers the whole block up to resolvedPtr, so if the PATH is
+        // not at +0x10 the correct offset is visible here without a rebuild.
         if (slot) dump(reinterpret_cast<std::uintptr_t>(slot) - kRefBlockBack, "refblock");
     }
 
-    if (name[0] == '\0' && path[0] != '\0')
-        std::snprintf(name, sizeof(name), "%s", path);
+    if (name[0] == '\0' && path[0] != '\0') {
+        if (root[0] != '\0') std::snprintf(name, sizeof(name), "%s|%s", root, path);
+        else                  std::snprintf(name, sizeof(name), "%s", path);
+    }
     if (name[0] == '\0') std::snprintf(name, sizeof(name), "<no name>");
 
-    // Which branch refused. state != 1 is the reachable one; a failure WITH
-    // state == 1 means LevelLoad_AbortPredicate fired, which would overturn
-    // the "the abort path is inert on this build" finding — so say so
-    // explicitly rather than letting it read as the state branch.
+    // WHAT THIS LINE MAY AND MAY NOT CLAIM.
+    //
+    // A `false` return from this step is "did not complete", and on this build
+    // that is ordinarily a DEFERRAL: the step is a frame budget and the loader
+    // is called again next frame (see the `levelload-abort-is-a-deferral`
+    // finding). The previous wording called any `state == 1` failure
+    // "ABORT PREDICATE ... this contradicts the inert-abort finding, record
+    // it", which is an inference this detour cannot make — it sees a bool, not
+    // which branch produced it. It fired once per placed mod tile on every run
+    // for six playtests and was recorded as a contradiction each time, while
+    // the resource stayed unnamed and nothing could be concluded either way.
+    //
+    // So: report the observable (state, flags, and now the RESOURCE) and let
+    // the resource identity carry the finding. A step that keeps deferring on
+    // one named resource while the rest of the level finishes is the shape
+    // worth chasing, and that is legible from the name.
     const char* why = !have_state ? "slot/object unreadable"
                     : state != 1  ? "resource state != 1"
-                                  : "ABORT PREDICATE (state was 1) — this contradicts the "
-                                    "inert-abort finding, record it";
+                                  : "incomplete with state 1 (deferral, or the abort "
+                                    "predicate — this detour cannot tell them apart)";
 
     char st[16], fl[16];
     if (have_state) std::snprintf(st, sizeof(st), "%u", state);
@@ -122,13 +154,18 @@ bool detour_step(void* container, void** slot, void* lvl_id, void* links) {
 
     char line[512];
     std::snprintf(line, sizeof(line),
-                  "[lvl-trace] level load step FAILED #%ld: %s | obj=%p state=%s flags=%s "
-                  "step=%ld  \"%s\"",
+                  "[lvl-trace] level load step INCOMPLETE #%ld: %s | obj=%p state=%s "
+                  "flags=%s step=%ld  \"%s\"",
                   n, why, obj, st, fl, g_steps.load(), name);
-    Loader::get().log_err(line);
+    // Severity is earned. An unreadable slot is a genuine fault; a step that
+    // has not finished is the ordinary case this trace was armed to sample, and
+    // tagging it [err] is what buried `rsmm log --errors` under six lines a run.
+    if (have_state) Loader::get().log(line);
+    else            Loader::get().log_err(line);
     if (n == kMaxFailLines) {
-        Loader::get().log("[lvl-trace] failure log capped; the FIRST line above is the "
-                          "one whose resource caused the load to fail");
+        Loader::get().log("[lvl-trace] log capped. Incomplete steps are usually "
+                          "deferrals; what is worth reading is which RESOURCE "
+                          "keeps appearing, not the count");
     }
     return ok;
 }
@@ -143,7 +180,9 @@ bool install_levelload_hooks() {
         return false;
     }
     Loader::get().log("[lvl-trace] arming LevelStream_LoadStep trace — READ-ONLY; logs "
-                      "FAILED level-load steps only, so silence means loads are fine");
+                      "INCOMPLETE level-load steps and the resource each one was "
+                      "on. A step that has not finished is normally a deferral, so "
+                      "read the resource names, not the count");
     return hook_install("lvl-trace", "level load step",
                         Sym::LevelStream_LoadStep_Pattern,
                         reinterpret_cast<void*>(&detour_step),

@@ -8,6 +8,7 @@ field does not fail loudly — it produces a map that generates wrong.
 from __future__ import annotations
 
 import glob
+import struct
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ from rsmm.engine import entity_strings
 from rsmm.engine import map_pool as MP
 from rsmm.engine import prop_cook as PC
 from rsmm.engine import tile_cook as TC
+from rsmm.engine.cooked_schemas import asset_refs as AR
 from rsmm.engine.paths import DATA_DIR
 from rsmm.sdk.content import ContentDef, ContentError, SchemaNotMined
 from rsmm.sdk.kinds import poi
@@ -152,7 +154,7 @@ def test_retail_dark_hills_pool_references_a_storm_island_tile():
 @needs_corpus
 def test_emit_writes_clone_plus_one_mapdef_per_chapter(tmp_path):
     defn = ContentDef(kind="poi", id="Cauldron", fields={
-        "base": BASE, "chapters": ["Dark_Hills", "Storm_Island"], "weight": 0.4,
+        "base": BASE, "chapters": ["Dark_Hills", "Storm_Island"], "weight": 0.333,
     })
     files = poi.emit("mymod", defn, tmp_path)
     rel = sorted(f.relative_to(tmp_path).as_posix() for f in files)
@@ -166,7 +168,7 @@ def test_emit_writes_clone_plus_one_mapdef_per_chapter(tmp_path):
     ]
     tile = tmp_path / rel[5]
     td = TC.read(tile.read_bytes())
-    assert td.weight == pytest.approx(0.4)
+    assert td.weight == pytest.approx(0.333)
     # The clone keeps the donor's prefab — that is what makes it a real structure.
     assert "Cauldron" in td.entity_ref[1]
 
@@ -698,6 +700,40 @@ def test_swaps_rejects_a_target_the_tile_never_preloads(tmp_path):
 
 
 @needs_corpus
+def test_a_swap_that_would_bury_its_target_is_refused():
+    """A swapped object inherits the donor's transform, so a mesh authored to
+    hang below its anchor goes underground — and its marker and interaction go
+    on working, because those sit at the entity ORIGIN. In-game that reads as
+    "an icon and a prompt with no object", which is indistinguishable from the
+    component work being broken. Measured 2026-09-06 on exactly this pair."""
+    bone = "DarkHills\\SceneryObjects_DarkHills\\Bone_A.entity.ot"
+    pillar = "DarkHills\\Objects_DarkHills\\Pontoon_Pillar_12m_C.entity.ot"
+    if poi._entity_y_range(pillar, "t") is None:
+        pytest.skip("uncooked geometry mirror absent")
+    with pytest.raises(ContentError, match="buried"):
+        poi._assert_swap_target_is_not_sunk("t", bone, pillar)
+
+
+@needs_corpus
+def test_a_prop_that_sits_on_its_origin_swaps_freely():
+    """The guard must not fire on the ordinary case, or it is just noise: the
+    obelisk donor reaches 0.10 below the barricade it replaces."""
+    barricade = ("DarkHills\\SceneryObjects_DarkHills\\"
+                 "Barricade_Broken_2x2_B.entity.ot")
+    dolmen = "DarkHills\\SceneryObjects_DarkHills\\Dolmen_A.entity.ot"
+    if poi._entity_y_range(dolmen, "t") is None:
+        pytest.skip("uncooked geometry mirror absent")
+    poi._assert_swap_target_is_not_sunk("t", barricade, dolmen)
+
+
+def test_the_sunk_check_is_silent_without_the_corpus(monkeypatch):
+    """Every guard here is a dev-checkout oracle; absent geometry must skip the
+    check, never fail the emit."""
+    monkeypatch.setattr(poi, "_entity_y_range", lambda *a, **k: None)
+    poi._assert_swap_target_is_not_sunk("t", "a.entity.ot", "b.entity.ot")
+
+
+@needs_corpus
 def test_swaps_requires_replace_base(tmp_path):
     with pytest.raises(ContentError, match="replace_base"):
         poi.emit("m", ContentDef(kind="poi", id="Bad", fields={
@@ -864,7 +900,7 @@ def test_apply_does_not_register_a_cache_in_usedrsclist(tmp_path):
             ]
 
     dec2enc = apply_mods.load_asset_map()
-    _adds, _rms, regs = apply_mods.plan_apply(
+    _adds, _rms, regs, _syn = apply_mods.plan_apply(
         [_M()], dec2enc, tmp_path, tmp_path, apply_mods.State(tmp_path), True)
     decoded = set(regs.values())
     assert "Definitions/Tiles/Dark_Hills/New.tiledef.ot.DtTileDefinition.gen" in decoded
@@ -912,7 +948,10 @@ def test_discover_fills_everything_from_the_preset(tmp_path):
     preset = poi.PRESETS[poi.DEFAULT_PRESET]
     assert b["base"] == preset["base"]
     assert b["kinds"] == preset["kinds"]
-    assert b["weight"] == preset["weight"]
+    # `weight` is deliberately NOT inherited: it is the placement driver's tier
+    # field, so a preset picking one silently re-tiers every clone away from
+    # the donor it is cloning. Unset here means "keep the donor's tier".
+    assert "weight" not in b
     # Art is wired by filename convention through the preset's slot map.
     assert b["prop"]["model"] == "pois/my_shrine/model.glb"
     assert set(b["prop"]["textures"].values()) == {
@@ -923,11 +962,11 @@ def test_discover_fills_everything_from_the_preset(tmp_path):
 
 
 def test_discover_lets_poi_toml_override_the_preset(tmp_path):
-    _poi_folder(tmp_path, cfg='chapters = ["Avalon"]\nweight = 0.5\n'
+    _poi_folder(tmp_path, cfg='chapters = ["Avalon"]\nweight = 0.333\n'
                               'kinds = ["Camp"]\nid = "renamed"\n')
     b = poi.discover(tmp_path)[0]
     assert (b["id"], b["weight"], b["kinds"], b["chapters"]) == (
-        "renamed", 0.5, ["Camp"], ["Avalon"])
+        "renamed", 0.333, ["Camp"], ["Avalon"])
 
 
 def test_discover_a_poi_with_no_art_is_a_plain_tile_clone(tmp_path):
@@ -1426,6 +1465,56 @@ def test_texture_slots_must_belong_to_the_prop_being_replaced():
 
 
 @needs_corpus
+def test_no_emitted_name_keeps_a_hyphen_from_the_mod_id(tmp_path):
+    """Every emitted resource name is sanitised — including the TILEDEF.
+
+    The tiledef name was the one that was not (`tile_name` had no
+    `.replace("-", "_")` where the prefab, level and prop entity all did), so
+    `runestone-shrine` produced a hyphenated tiledef sitting beside an
+    underscored prefab and level. No shipped tiledef — 0 of 474 — contains a
+    hyphen, and the tile spawner reports placed tiles under sanitised names.
+    """
+    out = tmp_path / "hy"
+    # The def id is already validated as `^[A-Za-z0-9_]+$` "so the game's
+    # resource-path parser accepts it" (`_common.validate_id`) — but the MOD id
+    # is not, and it goes into the same resource name.
+    files = poi.emit("my-mod-id", ContentDef(kind="poi", id="a_def", fields={
+        "base": "Dark_Hills/6x6_Blocker_02", "chapters": ["Dark_Hills"],
+        "own_level": True, "copies": 2,
+    }), out)
+    named = [f.name for f in files if out in f.parents]
+    assert named, "emit produced nothing"
+    hyphenated = [n for n in named if "-" in n]
+    assert not hyphenated, f"emitted resource names still carry a hyphen: {hyphenated}"
+
+
+def test_places_puts_its_entity_in_the_tiles_own_cache(tmp_path):
+    """`places` must feed the preload closure, not just the level.
+
+    Measured in-game 2026-09-06: the shrine's eight tiledef caches listed the
+    swap target and the cloned level, but NOT the entity `places` added, nor
+    either parent it inherits, nor either marker icon. Nothing faulted only
+    because the mapdef cache — built by a different code path — happened to
+    carry all five. A resource a tile's cache never lists resolves to null at
+    level build, and the engine's teardown destroys that null unchecked.
+    """
+    out = tmp_path / "pl"
+    poi.emit("mymod", ContentDef(kind="poi", id="P", fields={
+        "base": "Dark_Hills/6x6_Blocker_02", "chapters": ["Dark_Hills"],
+        "own_level": True, "copies": 1,
+        "places": [{"entity": "DarkHills\\Objects_DarkHills\\BonFire.entity.ot",
+                    "pos": [0.0, 0.0, 0.0]}],
+    }), out)
+
+    caches = list(out.rglob("*.tiledef.UsedRscCache.ot"))
+    assert caches, "no tile cache emitted at all"
+    for c in caches:
+        lines = c.read_text(encoding="utf-8").splitlines()
+        paths = {ln.split("|")[1] for ln in lines if len(ln.split("|")) == 3}
+        assert "DarkHills\\Objects_DarkHills\\BonFire.entity.ot" in paths, (
+            f"{c.name} does not preload the entity `places` put in its level")
+
+
 def test_own_level_clones_the_level_without_minting_entity_names(tmp_path):
     """`own_level` is the isolation rung between the two measured outcomes.
 
@@ -1567,3 +1656,138 @@ def test_additive_mode_still_inherits_preset_kinds(tmp_path):
     _poi_folder(tmp_path, cfg='chapters = ["Dark_Hills"]\n', with_art=False)
     b = poi.discover(tmp_path)[0]
     assert b["kinds"] == poi.PRESETS[poi.DEFAULT_PRESET]["kinds"]
+
+
+# --------------------------------------------------------------------------- #
+# `weight` is a tier, and nothing may choose one on the author's behalf
+# --------------------------------------------------------------------------- #
+
+@needs_corpus
+def test_additive_mode_does_not_inherit_the_presets_weight(tmp_path):
+    """The regression that shipped: `clearing` carries `weight = 0.15`, and the
+    old inheritance guard suppressed it only in `replace_base` mode. So every
+    additive clone was stamped 0.15 while its donor ships 0.0 — a tile cloned
+    from a T1 blocker silently stopped being one, with `weight` written nowhere
+    in the mod. 0.15 is a value the game itself ships; the bug is the preset
+    choosing a tier the author never set."""
+    _poi_folder(tmp_path, cfg='chapters = ["Dark_Hills"]\n', with_art=False)
+    b = poi.discover(tmp_path)[0]
+    assert "weight" not in b
+
+
+@needs_corpus
+def test_a_clone_keeps_its_donors_tier(tmp_path):
+    """Not setting `weight` must leave the donor's value untouched, because that
+    is what cloning a tile means. Read both off the cooked bytes."""
+    base = "Dark_Hills/6x6_Blocker_02"
+    donor = TC.read((TILES_DIR / "Dark_Hills"
+                     / f"6x6_Blocker_02{TC.GEN_SUFFIX}").read_bytes())
+    files = poi.emit("mymod", ContentDef(kind="poi", id="clone", fields={
+        "base": base, "chapters": ["Dark_Hills"]}), tmp_path)
+    tile = next(f for f in files if f.name.endswith(f"clone{TC.GEN_SUFFIX}"))
+    assert TC.read(tile.read_bytes()).weight == pytest.approx(donor.weight)
+
+
+#: Every distinct `weight` the shipped corpus actually uses, measured across
+#: all 237 tiledefs. `TIER_WEIGHTS` describes the tier-SUFFIXED families only;
+#: the wider corpus also ships 0.15 (16 tiles), 0.33, 0.66, 0.1, 0.3, 0.67.
+#: Pinned here so nobody turns the range check back into a membership test and
+#: starts refusing values the game itself ships.
+_SHIPPED_WEIGHTS = [0.0, 0.1, 0.15, 0.3, 0.33, 0.333, 0.333333, 0.66, 0.667]
+
+
+@pytest.mark.parametrize("w", _SHIPPED_WEIGHTS)
+@needs_corpus
+def test_every_weight_the_game_ships_is_accepted(tmp_path, w):
+    files = poi.emit("mymod", ContentDef(kind="poi", id="t", fields={
+        "base": BASE, "chapters": ["Avalon"], "weight": w}), tmp_path)
+    tile = next(f for f in files if f.name.endswith(f"t{TC.GEN_SUFFIX}"))
+    assert TC.read(tile.read_bytes()).weight == pytest.approx(w)
+
+
+@needs_corpus
+def test_shipped_weights_are_not_only_the_tier_values():
+    """Guards the claim above against drift. If a future corpus really is just
+    the three tier values this fails and the comment gets simpler; today it is
+    not, and a membership check would reject 16 shipped tiles."""
+    seen = set()
+    for p in (TILES_DIR).rglob(f"*{TC.GEN_SUFFIX}"):
+        try:
+            seen.add(round(TC.read(p.read_bytes()).weight, 6))
+        except (ValueError, KeyError, IndexError, OSError, struct.error):
+            pass
+    off = {v for v in seen
+           if not any(abs(v - t) <= 1e-3 for t in poi.TIER_WEIGHTS.values())}
+    assert off, "corpus now uses only TIER_WEIGHTS — simplify the range comment"
+    assert 0.15 in off
+
+
+@needs_corpus
+def test_prop_and_own_level_together_are_refused(tmp_path):
+    """Both rebuild the prefab/level chain and only one can own the tiledef's
+    entity reference, so the loser was thrown away in silence — and because
+    `_validated_places` requires `own_level`, a def carrying both validated its
+    `places` in full and then never emitted them."""
+    with pytest.raises(ContentError, match="only one can own"):
+        poi.emit("mymod", ContentDef(kind="poi", id="both", fields={
+            "base": "Dark_Hills/6x6_Blocker_02", "chapters": ["Dark_Hills"],
+            "own_level": True, "prop": {"model": "pois/x/model.glb"},
+        }), tmp_path)
+
+
+@needs_corpus
+def test_places_own_prop_mints_a_mod_owned_entity_and_stands_it(tmp_path):
+    """The additive route: a name this mod introduces, standing in its own level.
+
+    Every other way to get a mod's art into a tile edits a shipped asset —
+    `prop` + `replaces` overwrites a shipped entity's cooked bytes, and a
+    `swaps` entry destroys a vanilla object to borrow its slot. `@prop` takes
+    nothing's place.
+
+    What this pins, because each was a real defect while wiring it:
+
+    * `prop` and `own_level` together are no longer a contradiction, and the
+      dispatch must pick `own_level` — the other branch puts the prop in by
+      SWAPPING it over `replaces`, which an additive def does not set, and it
+      handed the level cloner a swap keyed on None.
+    * a preset's `replaces` must NOT be inherited here, or the def validates a
+      victim it never touches (against a tile that has no such object).
+    * the sentinel must not survive into the emitted level.
+    """
+    src = Path("mods/runestone-shrine/pois/shrine/model.glb")
+    if not src.is_file():
+        pytest.skip("no sample .glb in the tree to cook")
+    model = tmp_path / "pois" / "s" / "model.glb"
+    model.parent.mkdir(parents=True)
+    model.write_bytes(src.read_bytes())
+    out = tmp_path / "out"
+    files = poi.emit("mymod", ContentDef(kind="poi", id="s", fields={
+        "base": "Dark_Hills/6x6_Blocker_02", "chapters": ["Dark_Hills"],
+        "own_level": True, "copies": 1,
+        "prop": {"model": "pois/s/model.glb", "textures": {},
+                 "entity_base": "DarkHills\\Objects_DarkHills\\BonFire.entity.ot",
+                 "material_base": "Dt_GreyColor.mat.ot"},
+        "places": [{"entity": poi.PLACES_OWN_PROP, "pos": [2.0, 0.0, 0.0]}],
+    }), out)
+    rel = {f.relative_to(out).as_posix() for f in files if out in f.parents}
+
+    ents = {r for r in rel if r.startswith("EntitySettings/")}
+    assert any("_Prop" in r for r in ents), \
+        f"the mod's own prop entity must be emitted, got {ents}"
+
+    level = next(out / r for r in rel if r.startswith("Ot/"))
+    refs = AR._decode(level.read_bytes(), "oCGameStream")["asset_refs"]
+    assert poi.PLACES_OWN_PROP not in refs, \
+        "the sentinel must be resolved to a real reference before it is written"
+    assert any(r.endswith("_Prop.entity.ot") for r in refs), \
+        f"the level must stand the mod's own entity, got {sorted(set(refs))}"
+
+    # The preload cache decides whether that entity resolves at level build, and
+    # it must stay SORTED — a line past its place is never found and comes back
+    # null (see the UsedRscCache companion invariant).
+    cache = next(out / r for r in rel
+                 if r.startswith("Definitions/Tiles/") and r.endswith("UsedRscCache.ot"))
+    lines = cache.read_text().splitlines()
+    assert lines == sorted(lines), "a tile cache out of order is never read"
+    assert any("_Prop.entity.ot" in ln for ln in lines), \
+        "the mod's own entity must be preloaded by the tile that places it"

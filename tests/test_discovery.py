@@ -95,7 +95,11 @@ def test_poi_uses_its_own_discover_hook(tmp_path):
     (d / "poi.toml").write_text('chapters = ["Dark_Hills"]\n')
     block = discovery.discover(tmp_path)[0]
     assert block["kind"] == "poi"
-    assert "base" in block and "weight" in block, "preset fields were not applied"
+    # `base` and `kinds`, not `weight`: a preset describes WHAT to clone, and
+    # `weight` is the placement driver's tier field, which no preset may choose
+    # on the author's behalf (see test_poi.py's tier tests).
+    assert "base" in block and "kinds" in block, "preset fields were not applied"
+    assert "weight" not in block, "a preset must not pick the tile's tier"
 
 
 def test_in_place_blocks_emit_before_additive_ones():

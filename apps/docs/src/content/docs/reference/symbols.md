@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **231** symbols across 19 categories.
+Total: **232** symbols across 19 categories.
 
 ## combat
 
@@ -278,10 +278,11 @@ Total: **231** symbols across 19 categories.
 | `FileStream_Open` | `0x14053a730` | ❓ unverified |  | bool(void** outHandle, const char* path, int* mode) |
 | `InitialLoading_LoadAllDefinitions` | `0x140260b80` | ✅ ok |  | void(void* nameFilter) |
 | `LevelBinary_Load` | `0x1404764f0` | ❓ unverified |  | bool(void* container, void* stream, void* lvlId, void* links) |
+| `LevelDatabase_BuildAndRegister` | `0x14047cf80` | ✅ ok |  | bool(void* db, void* level, bool flag) |
 | `LevelLoad_AbortPredicate` | `0x140456c70` | ❓ unverified |  | uint32_t() |
 | `LevelLoad_ProgressTick` | `0x140516cd0` | ❓ unverified |  | uint32_t(float delta) |
 | `LevelObject_DestroyVectors` | `0x140476f60` | ❓ unverified |  | void(void* container) |
-| `LevelObject_LoadOrCreate` | `0x14047c1e0` | ❓ unverified |  | bool(void* mgr, void* key, void** outLevel, char link, char flag, void* lvlId, void* re… |
+| `LevelObject_LoadOrCreate` | `0x14047c1e0` | ✅ ok |  | bool(void* mgr, void* key, void** outLevel, char link, char flag, void* lvlId, void* re… |
 | `LevelStream_LoadLevel` | `0x14047b4f0` | ❓ unverified |  | bool(void* mgr, void* key, void** outLevel, char applyLinks, void* userData) |
 | `LevelStream_LoadStep` | `0x140476770` | ✅ ok |  | bool(void* container, void* resourceSlot, void* lvlId, void* links) |
 | `LevelStream_ProgressHook` | `0x1412ebf30` | 📍 va |  | Function pointer for load-progress phases, set to LevelLoad_AbortPredicate in FUN_14045… |

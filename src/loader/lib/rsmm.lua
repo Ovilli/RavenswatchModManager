@@ -1767,6 +1767,24 @@ do
     if ok and type(x) == "table" then R.poi = x end
 end
 
+-- watchpoints -----------------------------------------------------------
+--
+-- Lives in rsmm/watch.lua. Hardware write/read watchpoints on DR0-DR3, so the
+-- question "WHO wrote this byte" finally has an answer inside the process.
+-- Everything else here observes a seam already named; this names a new one.
+--
+--   R.watch.on(va, {len=4, kind="w", label="hp"})   -> slot | nil, err
+--   R.watch.field(ptr, off, {len=4})                -> the aligned-field form
+--   R.watch.report()                                -> logs writer VAs
+--   R.watch.rearm()                                 -> after new game threads
+--
+-- Needs `RSMM_ENABLE_WATCH=1`; four slots exist in the whole CPU. See the
+-- module header for the anti-tamper and per-thread caveats.
+do
+    local ok, x = _submodule_fn("watch", { R = R, I = I })
+    if ok and type(x) == "table" then R.watch = x end
+end
+
 -- map reveal ------------------------------------------------------------
 --
 -- Lives in rsmm/map.lua. Fires the game's own CROWS_MAP_REVEAL so POI markers

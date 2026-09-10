@@ -147,6 +147,26 @@ REVEAL_DONORS: dict[str, tuple[str, str, float | None]] = {
 }
 
 
+#: The override that decides whether an interaction can fire at all --
+#: ``(donor ref, target suffix, the donor's own literal)``.
+#:
+#: `Interactive_Object_Model` supplies the machinery; it does NOT supply a
+#: radius, and with none the hero is never "detected", so no prompt appears and
+#: NOTHING reaches the interaction bus. Measured in-game 2026-09-06: the shrine
+#: stood in a placed tile, was visible, carried a byte-perfect interaction
+#: record set, and the probe logged not one request.
+#:
+#: 11 of the 13 shipped entities that inherit this parent set it, including all
+#: four of the smallest; the shipped literals are 2.0 (`Key_Keeper_Model`,
+#: `NPC_Sinbad_Model`) and 6.0 (`Leprechaun_Cauldron_Model`). The cauldron is
+#: the donor because it is a world object you walk up to, which is what a POI
+#: is, and because its closure is already borrowed for the marker.
+INTERACTION_DONORS: dict[str, tuple[str, str, float]] = {
+    "radius": ("Objects\\Leprechaun_Cauldron\\Leprechaun_Cauldron_Model.entity.ot",
+               "Interaction Radius", 6.0),
+}
+
+
 def set_f32(record: bytes, old: float, new: float) -> bytes:
     """Rewrite the single f32 equal to `old` in `record`.
 

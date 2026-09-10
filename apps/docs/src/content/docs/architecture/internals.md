@@ -382,6 +382,12 @@ end-to-end. Extension counts (top 20):
  204  .globalvalue.ot.GlobalEntityValueSettings.gen
 ```
 
+:::tip[Levels have their own page]
+A cooked level is four nested layers, not one container, and the inner
+`BufferLen` decides how much of it the engine ever reads. See
+[Level format and build path](/reverse-engineering/level-format/).
+:::
+
 Key pattern: every `*.ot` source has a paired `*.ot.<KindResource>.gen`
 cooked output. Means engine knows both forms exist; cooked form is the
 *output* of cooking the text source.

@@ -91,6 +91,18 @@ def _decode(cooked_bytes: bytes, class_name: str) -> dict:
             "variant": cf.variant, "hdr_a": cf.hdr_a, "flags": cf.flags,
             "extra": cf.extra, "type_tag": cf.type_tag,
             "section_lens": [len(s.payload) for s in cf.sections],
+            # The same list, for callers that MUTATE `section_lens`.
+            # `_restamp_self_size` needs the length a section had ON
+            # DISK to recognise its self-size header, and a caller
+            # that grows a section (`level_placements.add_placement`
+            # inserts a whole placement) has to overwrite
+            # `section_lens` or `_encode` re-splits the stream at the
+            # old boundaries. Reading the grown list as the baseline
+            # made the restamp a no-op, so the section kept declaring
+            # its pre-insert size and the engine read a level short by
+            # exactly the inserted bytes -- which truncated the object
+            # vector and instantiated NOTHING in the level.
+            "section_lens_src": [len(s.payload) for s in cf.sections],
             "ref_offsets": offsets,
             "ref_orig_lens": [len(r.encode("utf-8")) for r in refs],
             "classes": [
@@ -176,7 +188,9 @@ def _encode(source: bytes) -> bytes:
             if delta:
                 section_lens[sec_of(offsets[idx])] += delta
 
-    orig_section_lens = list(c["section_lens"])
+    # NOT `c["section_lens"]`: see `section_lens_src` above. `.get` keeps
+    # already-decoded documents on disk working.
+    orig_section_lens = list(c.get("section_lens_src", c["section_lens"]))
     sections = []
     off = 0
     for si, sl in enumerate(section_lens):

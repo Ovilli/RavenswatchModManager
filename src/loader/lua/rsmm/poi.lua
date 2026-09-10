@@ -62,12 +62,21 @@ function M.on_generated(cb)
         -- the entire point of the hook. Returning a non-nil value after
         -- calling next() is what stops an older loader replaying the
         -- trampoline and generating the map twice.
+        --
+        -- The kind table is the ONE thing read before that, because it is the
+        -- only moment it describes what our tile was competing IN. Read after
+        -- generation, the counts are whatever it left behind: the post-run
+        -- numbers reported a pool of 50 on a chapter whose largest kind holds
+        -- 15, and a 7 that was read as "the vanilla Blocker pool" purely
+        -- because the number matched. Both snapshots are handed over — the
+        -- difference between them is itself a measurement.
+        local before = M.kinds(this)
         next(this)
         for i = 1, #_cbs do
             -- One mod's bad handler must not take down map generation. This
             -- runs mid-level-load: an error escaping here is a hard fault in
             -- the middle of the thing being measured.
-            local ran, err = pcall(_cbs[i], this)
+            local ran, err = pcall(_cbs[i], this, before)
             if not ran then
                 R.log("[rsmm.poi] handler error: " .. tostring(err))
             end
@@ -135,6 +144,68 @@ local STRIDE, PAYLOAD = 0x58, 0x10
 -- own an entity handle and does not register a death-watch on it; only
 -- something that has actually been instantiated does.
 local ENTITY = 0x18
+
+-- WHERE THE TILE STANDS. element+0x08 -> placement, placement+0x10 = float3
+-- world position, placement+0x1c = yaw in RADIANS about Y.
+--
+-- Recovered STATICALLY on 2026-09-07 by anchoring on FUN_1403429d0, the
+-- per-element call the post-placement pass makes (see TileSpawn_PlaceTiles).
+-- It builds a 4x4 on the stack and hands it to FUN_140342870(element, out),
+-- which is the whole derivation:
+--
+--     mov   rbx, [rsi + 8]        ; rsi = element  -> rbx = the placement
+--     movss xmm6, [rbx + 0x1c]    ; rotation
+--     mulss xmm6, [rip + ...]     ; * 0.5   <- HALF ANGLE
+--     call  sinf / cosf           ; -> quat (0, sin, 0, cos): yaw about Y
+--     movss xmm0, [rbx + 0x10]    ; pos.x
+--     movss xmm1, [rbx + 0x14]    ; pos.y
+--     movss xmm0, [rbx + 0x18]    ; pos.z
+--
+-- The 0.5 is what pins it: a half-angle fed to sin and cos is a quaternion
+-- and nothing else, which also re-confirms that up is Y. So these are not
+-- swept offsets and they are not a guess -- they are the fields the ENGINE
+-- reads to decide where to put the tile.
+--
+-- This is the answer to the question this module has been carrying in a
+-- comment since it was written: "'Is my tile placed' is answered above;
+-- 'WHERE is it' is not, and wandering a chapter looking for one camp is the
+-- slowest way to find out." Six mod tiles out of 141 with no marker to lead
+-- you there is not a sighting test, it is a search.
+local PLACEMENT, P_POS, P_YAW = 0x08, 0x10, 0x1c
+
+-- A coordinate this walk will believe. Chapters are a few hundred units
+-- across, so the bound is loose; what it really rejects is the two ways a
+-- wrong offset shows up -- a pointer read as a float (astronomically large)
+-- and a couple of stray bytes (denormal). Same test, and the same reason, as
+-- `rsmm.engine.level_placements._sane` on the asset side.
+local POS_LIMIT, DENORMAL = 1e5, 1e-6
+
+local function _finite(v)
+    -- nan ~= nan, and a denormal is the signature of reading stray bytes.
+    return type(v) == "number" and v == v and v - v == 0
+       and math.abs(v) <= POS_LIMIT
+       and (v == 0.0 or math.abs(v) >= DENORMAL)
+end
+
+--- `x, y, z, yaw_deg` for a placed element, or nil if it does not read.
+---
+--- Fails CLOSED: an implausible triple returns nil rather than a number,
+--- because "unknown" sends you looking and a wrong coordinate sends you to the
+--- wrong corner of the map and reads as a negative result.
+local function _pos_of(element)
+    if not (I.read_u64 and I.read_f32 and R.ptr) then return nil end
+    local pl = I.read_u64(element + PLACEMENT)
+    if not pl or pl == 0 or not R.ptr.plausible(pl) then return nil end
+    local x = I.read_f32(pl + P_POS)
+    local y = I.read_f32(pl + P_POS + 4)
+    local z = I.read_f32(pl + P_POS + 8)
+    if not (_finite(x) and _finite(y) and _finite(z)) then return nil end
+    local yaw = I.read_f32(pl + P_YAW)
+    if not (type(yaw) == "number" and yaw == yaw and yaw - yaw == 0) then
+        yaw = nil
+    end
+    return x, y, z, yaw and math.deg(yaw) or nil
+end
 
 -- The resource's NAME, as a char* on the payload.
 --
@@ -217,6 +288,33 @@ local TIER1, TIER2, TIER3 = 0x2fc, 0x300, 0x304
 --- `{ {count = n, name = "..."|nil}, ... }` for every tile kind this map's
 --- spawner knows about. `name` is best-effort (a strings walk over the entry);
 --- `count` is the field the engine's own empty-pool check reads.
+--- A kind's NAME, which `R.debug.strings` alone cannot find.
+---
+--- ⚠ Every kind reported `?` for as long as this function has existed, and the
+--- reason is the MSVC `std::string` union: a string of 15 characters or fewer
+--- is stored INLINE in the object, and `R.debug.strings` follows POINTER
+--- fields one level, so it looks straight past the bytes. Kind names are short
+--- by nature -- `Blocker`, `Fountain`, `Crystal` -- so they are exactly the
+--- case it cannot see, while a long tile name read through a real pointer
+--- (`_name_of`) worked fine and hid the asymmetry.
+---
+--- That mattered: `?=7` next to a mod that added 8 tiles to a 7-entry pool is
+--- the difference between "we lost the roll" and "we never joined the pool",
+--- and it was unreadable.
+local function _kind_name(e)
+    if not R.debug or not R.debug.stdstring_at then return nil end
+    for off = 0, 0x60, 8 do
+        local s = R.debug.stdstring_at(e + off)
+        -- A kind name is a short printable identifier. Anything else is
+        -- whatever else happens to sit at this offset.
+        if type(s) == "string" and #s >= 3 and #s <= 40
+           and not s:find("[^%w_%-]") then
+            return s
+        end
+    end
+    return nil
+end
+
 function M.kinds(spawner)
     local out = {}
     if not (I.read_u64 and I.read_u32 and R.ptr) then return out end
@@ -229,16 +327,17 @@ function M.kinds(spawner)
     for i = 0, math.min(n, 128) - 1 do
         local e = I.read_u64(arr + i * 8)
         if e and e ~= 0 and R.ptr.plausible(e) then
-            local name
-            local hits = R.debug.strings(e, { max_off = 0x60, log = false })
-            if hits and hits[1] then name = hits[1].text end
-            out[#out + 1] = { count = I.read_u32(e + K_COUNT) or 0, name = name }
+            out[#out + 1] = { count = I.read_u32(e + K_COUNT) or 0,
+                              name = _kind_name(e) }
         end
     end
     return out
 end
 
---- Every placed tile: `{ name = "...", entity = <ptr or nil> }`.
+--- Every placed tile: `{ name, entity, element, pos, yaw_deg, slots }`.
+---
+--- `pos` is `{x, y, z}` in world units, or nil when the placement record does
+--- not read plausibly — see `_pos_of`, which fails closed on purpose.
 ---
 --- Returns `entries, misses`. `misses` is how many live payloads yielded no
 --- readable name, which is what makes a wrong NAME offset visible instead of
@@ -282,9 +381,13 @@ function M.placed(spawner)
                                   I.read_u32(owner + TIER2),
                                   I.read_u32(owner + TIER3) }
                     end
+                    local x, y, z, yaw = _pos_of(e)
                     entries[#entries + 1] = {
                         name = n, entity = ent, element = e,
                         slots = slots, slots_class = slots_class,
+                        -- nil when the placement does not read; callers must
+                        -- treat that as "unknown", never as the origin.
+                        pos = x and { x, y, z } or nil, yaw_deg = yaw,
                     }
                 else
                     misses = misses + 1

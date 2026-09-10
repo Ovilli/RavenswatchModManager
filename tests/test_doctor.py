@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 from rsmm.cli.doctor import (
     Result,
@@ -625,3 +626,76 @@ def test_bisect_says_why_it_disabled_a_mod(tmp_path, monkeypatch):
     assert len(fail) == 1
     assert "bisect" in fail[0].detail
     assert "crash(es) recorded" not in fail[0].detail
+
+
+def test_asset_map_staleness_is_judged_by_content_not_mtime(tmp_path, monkeypatch):
+    """An mtime alone must never call the map stale.
+
+    ⚠ MEASURED 2026-09-10. `apply` REWRITES `UsedRscList.ot` to register a mod's
+    new assets, and a Steam verify touches every game file without changing a
+    byte — so the live manifest is newer than `asset_map.json` on a perfectly
+    healthy install. This check fired there and offered `rebuild-asset-map`,
+    which is the one action that BREAKS such an install: it re-derives the map
+    FROM that manifest, baking the mod's invented names in as if the game
+    shipped them, after which `is_vanilla_encoded` refuses to plant the mod's
+    own files and the mod silently stops working.
+
+    So the timestamp is a trigger and the content is the verdict.
+    """
+    import json
+
+    from rsmm.cli import doctor
+
+    game = tmp_path / "game"
+    res = game / "DarkTalesResources"
+    res.mkdir(parents=True)
+    # One resource, already known to the map: three lines after the flag line.
+    (res / "UsedRscList.ot").write_text(
+        "1\nEntitySettings\nObjects\\A.entity.ot\nEnc\\A.yqz\n")
+    amap = tmp_path / "asset_map.json"
+    amap.write_text(json.dumps({"Objects\\A.entity.ot": "Enc\\A.yqz"}))
+    monkeypatch.setattr(doctor, "ASSET_MAP_JSON", amap)
+    # The manifest is newer than the map, which used to be the whole test.
+    os.utime(amap, (1_000_000, 1_000_000))
+
+    codes = [r.code for r in doctor.check_asset_map(game)]
+    assert "assetmap.stale" not in codes, (
+        "a fully-covered map must not be called stale on a timestamp alone")
+
+    # A resource the map has never seen IS a real game update, and must warn.
+    (res / "UsedRscList.ot").write_text(
+        "1\nEntitySettings\nObjects\\A.entity.ot\nEnc\\A.yqz\n"
+        "EntitySettings\nObjects\\NEW.entity.ot\nEnc\\NEW.yqz\n")
+    os.utime(amap, (1_000_000, 1_000_000))
+    codes = [r.code for r in doctor.check_asset_map(game)]
+    assert "assetmap.stale" in codes, "an unmapped resource must still warn"
+
+
+def test_launch_options_trust_the_loader_log_over_a_stale_vdf(tmp_path, monkeypatch):
+    """A loader that has written a log HAS loaded, whatever localconfig says.
+
+    ⚠ Steam owns `localconfig.vdf` while it runs and rewrites it from memory on
+    exit, so options set in the UI this session are not on disk yet. This check
+    read the stale file and reported that the loader "never runs" on a machine
+    where it had logged a session minutes earlier — and offered to rewrite the
+    user's Steam config to fix a problem that did not exist.
+    """
+    from rsmm.cli import doctor
+
+    game = tmp_path / "game"
+    (game / "mods").mkdir(parents=True)
+    (game / "winhttp.dll").write_bytes(b"MZ")
+    monkeypatch.setattr(doctor, "_steam_root", lambda: None, raising=False)
+
+    # No log yet: nothing to trust, so the evidence helper says so.
+    assert not doctor._loader_has_run(game)
+
+    (game / "mods" / "_log.txt").write_text("== SESSION abcd\n")
+    assert doctor._loader_has_run(game), "a non-empty live log is proof enough"
+
+    # An archived run counts too — the live log is rotated on each launch.
+    (game / "mods" / "_log.txt").unlink()
+    logs = game / "rsmm" / "logs"
+    logs.mkdir(parents=True)
+    (logs / "2026-09-10_180228_0e9b.log").write_text("== SESSION 0e9b\n")
+    assert doctor._loader_has_run(game), "an archived run is proof too"

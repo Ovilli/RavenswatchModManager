@@ -125,6 +125,7 @@ export default defineConfig({
             { label: 'Spawn system', slug: 'reverse-engineering/spawn-system' },
             { label: 'Game modifiers', slug: 'reverse-engineering/game-modifiers' },
             { label: 'Maps & chapters', slug: 'reverse-engineering/maps-chapters' },
+            { label: 'Level format & build path', slug: 'reverse-engineering/level-format' },
             { label: 'UI & the book menu', slug: 'reverse-engineering/ui-menus' },
             { label: 'Seed + mapgen', slug: 'reverse-engineering/seed-mapgen' },
             { label: 'Multiplayer', slug: 'reverse-engineering/multiplayer' },

@@ -176,6 +176,7 @@ See ``docs/_re/kinds/pois.md``.
 from __future__ import annotations
 
 import logging
+import math
 import struct
 from collections.abc import Iterable
 
@@ -186,6 +187,7 @@ from pathlib import Path
 
 from ...engine import corpus_cache
 from ...engine import entity_components as EC
+from ...engine import level_placements as LP
 from ...engine import map_pool as MP
 from ...engine import prop_cook as PC
 from ...engine import rsc_cache as RC
@@ -218,6 +220,31 @@ _log = logging.getLogger(__name__)
 #: variable, not a proven wall. ``mods/additive-poi-test`` is the experiment.
 #: If it loads, the ``prop`` kind's in-place-only restriction can be lifted.
 RESTAMP_ENTITY_GUIDS = True
+
+#: `places[].entity` value meaning "the prop THIS def emits", rather than a
+#: shipped entity reference.
+#:
+#: This is the additive route, and it is the only one that adds a structure
+#: without taking something away. Every other way to get a mod's own art into a
+#: tile edits a shipped asset: `prop` + `replaces` overwrites a shipped entity's
+#: cooked bytes, and a `swaps` entry destroys a vanilla object to borrow its
+#: slot (and inherits its transform whole, which is where every "tipped over",
+#: "buried" and "offset" report in this kind's history came from).
+#:
+#: With `@prop`, the mod introduces an entity NAME of its own and stands it at
+#: a transform it chose, in a level it owns. Nothing shipped is modified.
+#:
+#: ⚠ That name is what this repo has recorded as a wall since 2026-08-13: "a
+#: level cannot reference a mod-introduced EntitySettings resource". The
+#: evidence for it is one crash — the null-resolve signature at 0x1401273b6 —
+#: and the SAME investigation later found a second, independent cause of that
+#: exact signature: a `UsedRscCache` line that is not in sorted order is never
+#: found, and the entity resolves to null. The wall was measured before that was
+#: known, so "the name is rejected" and "the cache line was unsorted" have never
+#: been separated. `RESTAMP_ENTITY_GUIDS` was also off for every one of those
+#: attempts and is on now. Both confounders are gone, so the wall is worth one
+#: honest re-test rather than being inherited as fact.
+PLACES_OWN_PROP = "@prop"
 
 _UNCOOKED = DATA_DIR / "uncooked"
 _TILES_DIR = _UNCOOKED / "Definitions" / "Tiles"
@@ -343,6 +370,38 @@ MARKER_ICON_HIGH = "MiniMap\\Icons\\High\\Minimap_IconHigh_Fountain2.png"
 #: eye. 300 covers most of a generated map, so the shrine shows on the map from
 #: the start of the chapter. Lower it per def with `[marker] reveal_radius`.
 DEFAULT_REVEAL_RADIUS = 300.0
+
+#: How much of a `swaps` target may sit BELOW its donor's base before the swap
+#: is refused, as a fraction of the target's own height.
+#:
+#: A swapped object inherits the donor's transform whole, so a mesh authored to
+#: hang below its anchor goes underground. `Pontoon_Pillar_12m_C` is the case
+#: that paid for this check: a 12.00-unit pontoon pillar whose geometry spans
+#: y -8.84 .. +3.16, because it is meant to be driven down from a platform.
+#: Stood on `Bone_A` (a bone lying flat, y -0.06 .. +0.07) it put 8.78 units
+#: underground and left a 3.16-unit stub. Its minimap marker and its
+#: interaction both worked perfectly — those are components at the entity
+#: origin — so in-game this reads as "there is an icon and a prompt and no
+#: object", which is indistinguishable from the component work being broken.
+#: That is exactly the confusion this whole feature spent playtests on.
+#:
+#: 0.5 is deliberately generous: half-sinking a rock into a slope is a real
+#: thing an author may want. Losing most of the object is not.
+MAX_SUNK_FRACTION = 0.5
+
+#: Donor tilt, in degrees, past which a `swaps` target is reported as leaning.
+#:
+#: A swapped object inherits the donor's ROTATION as well as its position, and
+#: level designers lay rubble down at whatever angle looks good: in
+#: `6x6_Blocker_02` the median placement tilt is 34 deg. Stand something tall on
+#: one of those and it leans — the taller it is, the further its top travels
+#: (8.67 units at 11.2 deg puts the tip 1.68 units sideways). Measured in-game
+#: twice: "some of them tipped over", then "it is not standing".
+#:
+#: A warning, not a refusal. A leaning obelisk is a legitimate look, and the
+#: decoder behind it (`rsmm.engine.level_placements`) reads most but not all
+#: shipped levels, so silence here never means "the slot is upright".
+MAX_DONOR_TILT_DEG = 5.0
 
 #: The entity whose placing tile's cache covers BOTH override parents' closures.
 #:
@@ -495,11 +554,23 @@ def discover(mod_root: Path) -> list[dict]:
         # replaced its `Start` kind with `Fountain` and broken run spawning.
         # Only an explicit value in poi.toml may change those in override mode.
         overriding = bool(cfg.get("replace_base"))
+        # `weight` is NEVER inherited from a preset, in either mode — the one
+        # key here that is not a description of WHAT to clone but of how the
+        # placement driver TIERS the result (see TIER_WEIGHTS). A preset
+        # choosing it silently re-tiers every clone away from the donor it is
+        # cloning: `clearing`'s 0.15 landed on every runestone-shrine tiledef
+        # whose donor ships 0.0, without the author writing `weight` anywhere.
+        #
+        # 0.15 is a legitimate value — 16 shipped tiles carry it — so this is
+        # not about a bad number. It is that a tile cloned from a T1 blocker
+        # silently stopped being one. Left unset the clone keeps the donor's own
+        # tier, which is what cloning a tile is supposed to mean.
+        no_inherit = ("kinds", "weight") if overriding else ("weight",)
         for key in ("base", "kinds", "weight", "copies", "replace_base",
-                    "own_level", "swaps"):
+                    "own_level", "swaps", "places"):
             if key in cfg:
                 block[key] = cfg.pop(key)
-            elif key in preset and not (overriding and key in ("kinds", "weight")):
+            elif key in preset and key not in no_inherit:
                 block[key] = preset[key]
         for key in ("chapters", "icon"):
             if key in cfg:
@@ -511,6 +582,14 @@ def discover(mod_root: Path) -> list[dict]:
             block["icon_source"] = f"{POIS_DIRNAME}/{d.name}/{icon_src}"
             cfg.pop("icon", None)
             block.pop("icon", None)
+
+        # Read before the prop block is built: it decides whether `replaces`
+        # is inherited, and it has to come off the RAW config because the
+        # ContentDef does not exist yet.
+        raw_places = cfg.get("places") or block.get("places") or []
+        places_own_prop = isinstance(raw_places, list) and any(
+            isinstance(i, dict) and i.get("entity") == PLACES_OWN_PROP
+            for i in raw_places)
 
         model = next((m for m in MODEL_NAMES if (d / m).is_file()), None)
         # A folder with no model still gets a prop when it names what the prop
@@ -539,10 +618,19 @@ def discover(mod_root: Path) -> list[dict]:
             block["prop"] = {
                 "model": f"{rel}/{model}" if model else "",
                 "textures": textures,
-                "replaces": cfg.pop("replaces", preset["replaces"]),
+                # NOT inherited by an additive def. Every preset names a
+                # `replaces` donor because the presets were written for the
+                # in-place path, and a def that places its own prop takes
+                # nothing's place — inheriting one made this def validate a
+                # victim it never touches (`level places no object
+                # Blood_Fountain_DarkHills`, on a tile that has no fountain).
+                "replaces": (cfg.pop("replaces", None) if places_own_prop
+                             else cfg.pop("replaces", preset["replaces"])),
                 "entity_base": cfg.pop("entity_base", preset["entity_base"]),
                 "material_base": cfg.pop("material_base", preset["material_base"]),
             }
+            if "material" in cfg:
+                block["prop"]["material"] = cfg.pop("material")
             if "transform" in cfg:
                 block["prop"]["transform"] = cfg.pop("transform")
             if "allow_shared_art" in cfg:
@@ -598,13 +686,17 @@ def discover(mod_root: Path) -> list[dict]:
                         raise ContentError(f"poi {d.name}: {e}") from e
                 block["prop"]["components"] = comps
         cfg.pop("slots", None)
-        if "marker" in cfg or "interactive" in cfg:
-            # Both hang components off the entity named by `replaces`, so
-            # without one there is no host to put them on.
+        if ("marker" in cfg or "interactive" in cfg) and not places_own_prop:
+            # Both hang components off a HOST entity. In place that host is the
+            # prop named by `replaces`; additively it is the entity the def
+            # emits and stands with `places = [{ entity = "@prop" }]`. With
+            # neither there is nothing to put them on.
             raise ContentError(
-                f"poi {d.name}: [marker] and `interactive` configure the prop "
-                f"named by `replaces`, which this def does not set. Add "
-                f"`replaces = \"<Biome>\\\\<Prop>.entity.ot\"`.")
+                f"poi {d.name}: [marker] and `interactive` need a host entity. "
+                f"Either set `replaces = \"<Biome>\\\\<Prop>.entity.ot\"` to "
+                f"configure a shipped prop in place, or place this def's own "
+                f"prop additively with "
+                f"places = [{{ entity = \"{PLACES_OWN_PROP}\", ... }}].")
 
         # Anything left is a typo, not a feature. Silently ignoring it is how a
         # mod ships with a setting the author believes is in effect.
@@ -694,10 +786,19 @@ def _apply_edits(td: TC.TileDef, defn: ContentDef, chapters: list[str]) -> None:
         w = f["weight"]
         if not isinstance(w, (int, float)) or isinstance(w, bool):
             raise ContentError(f"poi {defn.id}: 'weight' must be a number, got {w!r}")
+        # A RANGE, not a membership test. `TIER_WEIGHTS` describes the
+        # tier-suffixed families (cauldrons, grimoires, wishing wells), where
+        # T1/T2/T3 really are 0.0/0.333/0.667 — but the wider corpus is not
+        # that tidy: measured across all 237 shipped tiledefs the values are
+        # 0.0 x149, 0.333333 x31, 0.33 x25, 0.15 x16, 0.666667 x5, 0.66 x4,
+        # 0.333 x2, 0.1 x2, and one each of 0.67/0.3/0.33333. So 0.15 and 0.1
+        # are things the game itself ships, and refusing them would reject a
+        # value 16 shipped tiles carry.
         if not 0.0 <= float(w) <= 1.0:
             raise ContentError(
                 f"poi {defn.id}: 'weight' {w} out of range — shipped tiles use "
-                f"0.0 to ~0.67 (see TIER_WEIGHTS; it is a tier field)."
+                f"0.0 to ~0.67 (see TIER_WEIGHTS; it is a tier field, not a "
+                f"spawn rate — raise 'copies' or widen 'kinds' for frequency)."
             )
         td.weight = float(w)
 
@@ -894,7 +995,270 @@ def _emitted_assets(out_dir: Path, written: list[Path]) -> list[str]:
     return out
 
 
-def _validated_swaps(defn: ContentDef, base: str) -> dict[str, str]:
+@lru_cache(maxsize=512)
+def _mesh_y_range(mesh_ref: str) -> tuple[float, float] | None:
+    """``(ymin, ymax)`` of a shipped mesh in its own object space, or None.
+
+    The corpus mirrors geometry as `<mesh>.glb`, so this is a straight read —
+    no cooking, no game. None when the corpus is absent (this is a dev-checkout
+    oracle, like every other guard here) or the mesh is not mirrored.
+    """
+    from ...engine import geometry_cook as GC
+
+    path = _UNCOOKED / "3D" / (mesh_ref.replace("\\", "/") + ".glb")
+    if not path.is_file():
+        return None
+    try:
+        lo, hi = 1e18, -1e18
+        for sm in GC.glb_to_submeshes(path.read_bytes()):
+            for pos in sm.positions:
+                lo = min(lo, pos[1])
+                hi = max(hi, pos[1])
+    except (OSError, ValueError, KeyError, IndexError, struct.error):
+        return None
+    return (lo, hi) if hi >= lo else None
+
+
+def _emitted_mesh_y_range(mesh_ref: str,
+                          out_dir: Path | None) -> tuple[float, float] | None:
+    """``(ymin, ymax)`` of a mesh THIS MOD has already emitted, or None.
+
+    A mod that overrides a prop's art changes the very bounds this check is
+    about, and it is the emitted mesh that ships. `discover` puts `replace_base`
+    defs first, so the art override is on disk by the time a later def's swaps
+    are validated — which is what makes reading it here correct rather than
+    racy.
+    """
+    if out_dir is None:
+        return None
+    from ...engine import geometry_cook as GC
+
+    path = out_dir / "3D" / (mesh_ref.replace("\\", "/") + ".Geometry.gen")
+    if not path.is_file():
+        return None
+    try:
+        lo, hi = 1e18, -1e18
+        for sm in GC.glb_to_submeshes(
+                GC._geo.decode_cooked_to_glb(path.read_bytes())):
+            for pos in sm.positions:
+                lo = min(lo, pos[1])
+                hi = max(hi, pos[1])
+    except (OSError, ValueError, KeyError, IndexError, struct.error):
+        return None
+    return (lo, hi) if hi >= lo else None
+
+
+def _entity_y_range(ref: str, defn_id: str,
+                    out_dir: Path | None = None) -> tuple[float, float] | None:
+    """``(ymin, ymax)`` over every mesh an entity draws, or None if unknown.
+
+    Prefers this mod's own emitted art over the shipped mesh: overriding a
+    prop's geometry is exactly how a donor that hangs below its origin is made
+    usable, and judging it by the mesh it no longer draws would refuse the fix.
+    """
+    from ...engine import entity_strings as ES
+
+    try:
+        ent = _corpus(PC.entity_cooked_path(ref), defn_id, f"entity {ref}")
+    except (SchemaNotMined, ContentError, ValueError, OSError):
+        return None
+    ranges = []
+    for _s, _o, t in ES.list_strings(ent):
+        if not t.lower().endswith(".fbx"):
+            continue
+        r = _emitted_mesh_y_range(t, out_dir) or _mesh_y_range(t)
+        if r:
+            ranges.append(r)
+    if not ranges:
+        return None
+    return min(r[0] for r in ranges), max(r[1] for r in ranges)
+
+
+def _warn_if_donor_slot_leans(defn_id: str, base: str, src: str) -> None:
+    """Report a swap donor whose slot is not upright.
+
+    The replacement adopts this rotation, so it decides whether the POI stands
+    or lies over — and nothing else in the pipeline can see it. Silent when the
+    level does not decode: `level_placements` fails closed by design.
+    """
+    try:
+        level = _corpus(PC.level_cooked_path(
+            _level_ref_of(_prefab_ref_of(base, defn_id), defn_id)),
+            defn_id, "the tile's level")
+    except (SchemaNotMined, ContentError, ValueError, OSError):
+        return
+    slots = LP.placements_of(level, src)
+    leaning = [p for p in slots if p.tilt_deg > MAX_DONOR_TILT_DEG]
+    if not leaning:
+        return
+    worst = max(p.tilt_deg for p in leaning)
+    _log.warning(
+        "poi %s: swaps donor %s is placed at %.1f deg from upright (%d of %d "
+        "slot(s) lean), and a swapped object inherits the donor's rotation — "
+        "the replacement will lean by the same amount. Pick a slot this tile "
+        "places upright, or accept the tilt deliberately.",
+        defn_id, src.split("\\")[-1], worst, len(leaning), len(slots))
+
+
+def _inherits_marker(ref: str, defn_id: str, out_dir: Path | None) -> bool:
+    """Does this mod emit `ref` inheriting the minimap-marker parent?
+
+    Read from the EMITTED entity, because inheriting it is something this mod
+    does — the shipped one has no such parent.
+    """
+    if out_dir is None:
+        return False
+    path = out_dir / PC.entity_cooked_path(ref)
+    if not path.is_file():
+        return False
+    try:
+        return EC.PARENTS["minimap"] in EC.parents(path.read_bytes())
+    except (OSError, ValueError, EC.EntityComponentError):
+        return False
+
+
+def _assert_swap_target_is_not_sunk(defn_id: str, src: str, dst: str,
+                                    out_dir: Path | None = None) -> None:
+    """Refuse a swap that would bury its target in the ground.
+
+    The target inherits the donor's transform, so what matters is not how tall
+    it is but how far it reaches BELOW the donor's own base. Silent in-game and
+    silent everywhere else: the object loads, instantiates, resolves, caches and
+    draws — underground. See :data:`MAX_SUNK_FRACTION`.
+    """
+    # The DONOR is read as the game SHIPS it: its mesh defines the slot the
+    # level author built, and that is what the replacement has to fit. The
+    # TARGET is read as this mod EMITS it, because that is what will actually
+    # stand there. Reading both the same way breaks one case or the other —
+    # mod art on the donor made a legitimate restore look like a burial.
+    # A MARKER ANCHOR is exempt: a host inheriting the reveal parent does not
+    # draw its mesh at all (measured 2026-09-06 — the icon appeared and the
+    # obelisk did not), so where that mesh would have sat is meaningless. The
+    # check is about art being buried, and an anchor is not art.
+    if _inherits_marker(dst, defn_id, out_dir):
+        return
+    donor = _entity_y_range(src, defn_id)
+    target = _entity_y_range(dst, defn_id, out_dir)
+    if donor is None or target is None:
+        return                      # no corpus, or an unmirrored mesh
+    height = target[1] - target[0]
+    sink = donor[0] - target[0]
+    if height <= 0 or sink <= MAX_SUNK_FRACTION * height:
+        return
+    raise ContentError(
+        f"poi {defn_id}: swaps target {dst} would be buried. Its mesh spans "
+        f"y {target[0]:.2f}..{target[1]:.2f}, and {src} — whose transform it "
+        f"inherits — sits at y {donor[0]:.2f}, so {sink:.2f} of its "
+        f"{height:.2f} units ({sink / height:.0%}) end up underground. A "
+        f"marker or an interaction on it would still work, which is what makes "
+        f"this so hard to read in-game: an icon and a prompt with no object. "
+        f"Swap onto a donor whose base is as low, or pick a target whose mesh "
+        f"sits on its own origin."
+    )
+
+
+def _places_own_prop(defn: ContentDef) -> bool:
+    """Does this def stand its OWN prop, rather than a shipped entity?
+
+    Read straight off the raw fields rather than off `_validated_places`, so it
+    is safe to call from inside the validation it would otherwise recurse into.
+    """
+    raw = defn.fields.get("places")
+    return isinstance(raw, list) and any(
+        isinstance(i, dict) and i.get("entity") == PLACES_OWN_PROP for i in raw)
+
+
+def _validated_places(defn: ContentDef) -> list[dict]:
+    """Check and return ``places`` — objects this def ADDS to its own level.
+
+    ``places = [{ entity = "...", pos = [x, y, z], scale = 1.0, yaw = 0.0 }]``
+
+    The difference from ``swaps`` is control. A swap re-dresses a slot the level
+    author chose and inherits that slot's transform whole — position, rotation
+    AND scale — which is where "not standing", "buried in the ground" and "the
+    model is offset" all came from, each measured in-game. An added placement
+    takes the transform written here and destroys nothing.
+
+    Needs ``own_level``: appending to a SHIPPED level would put the object in
+    every placement of that tiledef, vanilla ones included.
+    """
+    raw = defn.fields.get("places")
+    if raw is None:
+        return []
+    if not isinstance(raw, list) or not raw:
+        raise ContentError(f"poi {defn.id}: 'places' must be a non-empty list")
+    if not (defn.fields.get("own_level") or defn.fields.get("replace_base")):
+        raise ContentError(
+            f"poi {defn.id}: 'places' adds objects to a tile's level, so it "
+            f"needs own_level = true (add to a level this mod owns) or "
+            f"replace_base = true (add to the SHIPPED level in place).")
+    if defn.fields.get("replace_base") and not defn.fields.get("own_level"):
+        # ⚠ MEASURED 2026-09-10, and it is why this is allowed at all.
+        #
+        # A mod-owned level is placed, kept by the engine, and instantiates NONE
+        # of its objects — not even the ones it inherited from its donor. The
+        # tell was a map with no healing fountains anywhere: this mod held 8 of
+        # 10 Fountain pool entries, so its tiles won nearly every fountain slot,
+        # and each one built nothing at all. The donor's own fountain vanished
+        # with everything else.
+        #
+        # Editing the SHIPPED level in place is the counterpart that works: the
+        # level keeps its path, its bare identifier and its identity GUID,
+        # because it is still the same level. Nothing is removed — an added
+        # placement destroys nothing — but the addition is GLOBAL, so the object
+        # stands in every placement of that tiledef, vanilla ones included.
+        _log.warning(
+            "poi %s: `places` without own_level edits the SHIPPED level, so the "
+            "added object appears in EVERY placement of %s, not only this mod's. "
+            "Nothing is removed and `restore` puts the level back.",
+            defn.id, defn.fields.get("base", "the base tile"))
+    out = []
+    for i, item in enumerate(raw):
+        if not isinstance(item, dict) or not item.get("entity"):
+            raise ContentError(
+                f"poi {defn.id}: places[{i}] needs an `entity` reference")
+        ent = item["entity"]
+        if ent == PLACES_OWN_PROP:
+            # The guard below asks "has anything ever stood this entity at a
+            # transform of its own", which a name that did not exist until this
+            # emit obviously fails. Ask it of the DONOR instead: the clone is
+            # that donor's component structure wearing this mod's mesh, so what
+            # the donor can do it can do. The rule keeps its teeth and stops
+            # being unanswerable.
+            spec = defn.fields.get("prop")
+            if not isinstance(spec, dict):
+                raise ContentError(
+                    f"poi {defn.id}: places[{i}] is {PLACES_OWN_PROP!r}, which "
+                    f"stands the prop this def emits — so the def needs a "
+                    f"[prop] table to emit one.")
+            donor = spec.get("entity_base")
+            if donor not in _placeable_entities():
+                raise ContentError(
+                    f"poi {defn.id}: places[{i}] is {PLACES_OWN_PROP!r} and "
+                    f"prop.entity_base {donor!r} is not placed by any shipped "
+                    f"level, so there is no evidence its structure can stand at "
+                    f"a transform on its own.")
+        elif not ent.lower().endswith(".entity.ot"):
+            raise ContentError(
+                f"poi {defn.id}: places[{i}].entity must end in .entity.ot, "
+                f"got {ent!r}")
+        elif ent not in _placeable_entities():
+            raise ContentError(
+                f"poi {defn.id}: places[{i}] entity {ent} is not placed by any "
+                f"shipped level, so nothing shows it can stand at a transform "
+                f"on its own — the same rule `swaps` targets obey.")
+        pos = item.get("pos") or [0.0, 0.0, 0.0]
+        if len(pos) != 3:
+            raise ContentError(f"poi {defn.id}: places[{i}].pos needs 3 numbers")
+        out.append({"entity": ent,
+                    "pos": tuple(float(v) for v in pos),
+                    "scale": float(item.get("scale", 1.0)),
+                    "yaw": float(item.get("yaw", 0.0))})
+    return out
+
+
+def _validated_swaps(defn: ContentDef, base: str,
+                     out_dir: Path | None = None) -> dict[str, str]:
     """Check and return ``swaps`` — re-dress a tile using props the game ships.
 
     ``swaps = { "<placed>.entity.ot" = "<replacement>.entity.ot" }`` puts a
@@ -995,6 +1359,8 @@ def _validated_swaps(defn: ContentDef, base: str) -> dict[str, str]:
                 "scenery nothing drives its selector and several meshes draw "
                 "at once — it will look broken. Prefer a single-mesh target.",
                 defn.id, dst, len(meshes))
+        _assert_swap_target_is_not_sunk(defn.id, src, dst, out_dir)
+        _warn_if_donor_slot_leans(defn.id, base, src)
     return dict(raw)
 
 
@@ -1390,20 +1756,39 @@ def _emit_tile_caches(out_dir: Path, base: str, defn_id: str, assets: list[str],
         _write(out_dir, RC.cache_path_for(tile_rel), data, written)
 
 
+def _asset_dir(ref: str) -> str:
+    """The decoded directory an asset reference lives in, or ``""`` at the root.
+
+    Splitting a reference on the last separator is only a directory when there
+    IS one; `Dt_GreyColor.mat.ot` has none, and taking the whole string then
+    files new art under a directory named after a file.
+    """
+    norm = ref.replace("\\", "/")
+    return norm.rsplit("/", 1)[0] if "/" in norm else ""
+
+
 def _emit_prop_art(mod_id: str, defn: ContentDef, out_dir: Path,
-                   written: list[Path]) -> str:
+                   written: list[Path]) -> tuple[str, list[str], list[str]]:
     """Emit the mod's mesh, textures, material and prop entity.
 
-    Returns the new prop entity's reference. This half is identical whether the
-    POI adds a tile or overrides a shipped one — only what *places* the prop
-    differs, which is why it is separated out.
+    Returns ``(reference, extra cache deps, borrow sources)``. The deps matter:
+    an inherited marker parent drags its own closure in, and a resource the
+    placing tile's cache never lists resolves to NULL at level build.
     """
     from ...engine import entity_strings as ES
 
     spec = defn.fields["prop"]
     if not isinstance(spec, dict):
         raise ContentError(f"poi {defn.id}: 'prop' must be a table")
-    for key in ("replaces", "entity_base", "material_base"):
+    # `replaces` names the shipped entity an override writes over, so it is
+    # required by the override and swap paths and MEANINGLESS to the additive
+    # one: a `@prop` placement stands this art at its own transform and takes
+    # nothing's place. Requiring it there would force every additive def to name
+    # a victim it never touches.
+    required = ("entity_base", "material_base")
+    if not _places_own_prop(defn):
+        required = ("replaces", *required)
+    for key in required:
         if not spec.get(key):
             raise ContentError(
                 f"poi {defn.id}: prop.{key} is required — see the `poi` docs."
@@ -1428,11 +1813,20 @@ def _emit_prop_art(mod_id: str, defn: ContentDef, out_dir: Path,
         )
 
     tag = f"{mod_id}_{defn.id}".replace("-", "_")
+    extra_deps: list[str] = []
+    borrow: list[str] = []
     # Custom art is filed beside its donor. Two separate apply-time lookups need
     # a same-kind sibling in the same decoded directory — `synthesize_encoded`
     # (to derive the cooked path) and `build_usedrsc_record` (to register it) —
     # and a brand-new directory satisfies neither.
-    art_dir = spec["material_base"].replace("\\", "/").rsplit("/", 1)[0]
+    #
+    # ⚠ A material reference is not always a path. `Dt_GreyColor.mat.ot` sits at
+    # the 3D root with no directory at all, so splitting it yielded the FILENAME
+    # as the directory and filed the mod's mesh under
+    # `3D/Dt_GreyColor.mat.ot/<tag>.fbx` — a directory that does not exist, has
+    # no sibling to anchor a cooked path, and was skipped at apply with a
+    # warning while the entity that referenced it shipped anyway.
+    art_dir = _asset_dir(spec["material_base"])
 
     donor_ent = _corpus(PC.entity_cooked_path(spec["entity_base"]),
                         defn.id, "prop.entity_base")
@@ -1450,7 +1844,10 @@ def _emit_prop_art(mod_id: str, defn: ContentDef, out_dir: Path,
                 f"no template to cook prop.model against. Pick a scenery prop."
             )
         model_src = _mod_source(out_dir, spec["model"], defn.id, "prop.model")
-        model_ref = f"{art_dir}/{tag}.fbx".replace("/", "\\")
+        # Beside the DONOR MESH, not beside the material: that directory is
+        # where the engine keeps geometry of this shape, so it always has a
+        # same-kind sibling for the cooked-path and registration lookups.
+        model_ref = f"{_asset_dir(donor_meshes[0])}/{tag}.fbx".replace("/", "\\")
         _write(out_dir, PC.art_cooked_path(model_ref),
                PC.cook_model(model_src.read_bytes(),
                              _donor_geometry(donor_meshes[0], defn.id),
@@ -1488,15 +1885,29 @@ def _emit_prop_art(mod_id: str, defn: ContentDef, out_dir: Path,
     # 4. Prop entity: donor's component structure, the mod's mesh (+ material).
     #    Every LOD slot is repointed, or the prop pops back to the donor's
     #    shape at distance.
-    ent_dir = spec["entity_base"].replace("\\", "/").rsplit("/", 1)[0]
+    ent_dir = _asset_dir(spec["entity_base"])
     ent_ref = f"{ent_dir}/{tag}_Prop.entity.ot".replace("/", "\\")
-    _write(out_dir, PC.entity_cooked_path(ent_ref),
-           PC.clone_prop_entity(donor_ent, swaps,
-                                ent_ref if RESTAMP_ENTITY_GUIDS else None), written)
+    entity = PC.clone_prop_entity(donor_ent, swaps,
+                                  ent_ref if RESTAMP_ENTITY_GUIDS else None)
+
+    # 5. Marker and interaction, ON THIS MOD'S OWN ENTITY.
+    #
+    # This is the additive half of the icon. `_decorate_host` is the same code
+    # the in-place path uses, told it is NOT editing a shipped entity — so it
+    # inherits the marker/interaction machinery and copies the override records,
+    # and skips the two steps that only make sense for a global edit: the
+    # "placed N times, so N icons" warning, and repainting the shipped marker
+    # textures. Nothing the game ships is modified.
+    entity, deco_deps, deco_borrow = _decorate_host(
+        mod_id, defn, out_dir, entity, ent_ref, "", written, in_place=False)
+    extra_deps += deco_deps
+    borrow += deco_borrow
+
+    _write(out_dir, PC.entity_cooked_path(ent_ref), entity, written)
 
     _log.info("poi %s/%s: prop from %s (+%d texture(s))", mod_id, defn.id,
               spec.get("model") or f"{spec['entity_base']} unchanged", len(tex_refs))
-    return ent_ref
+    return ent_ref, extra_deps, borrow
 
 
 def _shipped_path(ref: str, defn_id: str) -> str:
@@ -1584,6 +1995,198 @@ def _single_placements(base: str, defn_id: str) -> list[str]:
     except (SchemaNotMined, ContentError, ValueError):
         return []
     return sorted(r.rsplit("\\", 1)[-1] for r, n in counts.items() if n == 1)
+
+
+def tag_of(mod_id: str, defn: ContentDef) -> str:
+    """The `<mod>_<def>` stem every asset this def owns is named after."""
+    return f"{mod_id}_{defn.id}".replace("-", "_")
+
+
+def _decorate_host(mod_id: str, defn: ContentDef, out_dir: Path, ent: bytes,
+                   ref: str, base: str, written: list[Path], *,
+                   in_place: bool) -> tuple[bytes, list[str], list[str]]:
+    """Hang this def's components, marker and interaction on one entity.
+
+    Returns ``(edited bytes, extra cache deps, borrow sources)``.
+
+    Extracted so the SAME code decorates either host, because there are two and
+    they are opposites. In place, the host is a shipped entity edited at its own
+    cooked path, and the edit is global: every instance of that entity in the
+    game gets the icon and the prompt. Additively, the host is an entity this
+    mod introduced, and nothing shipped is touched at all.
+
+    `in_place` gates the two steps that only make sense for the global edit:
+    the "this prop is placed N times, so you get N icons" warning, and the
+    repaint of the two shipped marker textures. An additive def carries its own
+    icon under its own name instead.
+    """
+    spec = defn.fields.get("prop") or {}
+    extra_deps: list[str] = []
+    borrow: list[str] = []
+    edited = ent
+    if spec.get("components"):
+        names = list(spec["components"])
+        edited = EC.add_parents(edited, names)
+        extra_deps += EC.parent_cooked_paths(names)
+        _log.info("poi %s/%s: %s now inherits %s", mod_id, defn.id, ref,
+                  ", ".join(EC.resolve_parent(n) for n in names))
+
+    # A marker and an interaction are both INHERITED, then CONFIGURED.
+    #
+    # Inheriting alone is not enough and that is what three playtests measured
+    # without being able to name: `Minimap_Marker_Reveal_Model` ships every
+    # texture Value empty, so a host that only names it as a parent runs the
+    # whole hero-proximity reveal state machine and draws nothing. The missing
+    # half is a handful of `oCEntityCpntValueSettings` records whose first
+    # string is a binding path into the parent and whose payload is a literal
+    # `.png` — which is exactly, and only, what
+    # `Leprechaun_Cauldron_Minimap_Marker` is made of. Copy those onto the host
+    # and the icon appears. Same shape for the prompt:
+    # `Ingredient_Stock_Model` is `Interactive_Object_Model` plus six literal
+    # overrides, one of which (`Event Interaction Available At Start`) is what
+    # arms the interaction at spawn.
+    #
+    # Splicing a marker RECORD instead — the previous approach — is inert on a
+    # bare host and, once a ping parent was added to supply machinery, drew the
+    # PARENT's icon as well as ours: teammate-ping art scattered over the map.
+    # Overriding the parent's Value is one icon, ours, with no ping involved.
+    for key, want in (("minimap", spec.get("marker")),
+                      ("interaction", spec.get("interactive"))):
+        if not want:
+            continue
+        parent, default_donor, prefix = EC.OVERRIDE_DONORS[key]
+        cfg = want if isinstance(want, dict) else {}
+        donor_ref = cfg.get("donor") or default_donor
+        donor = _corpus(PC.entity_cooked_path(donor_ref), defn.id,
+                        f"the {key} override donor")
+
+        swaps: dict[str, str] = {}
+        if key == "minimap":
+            if EC.has_marker(ent):
+                raise ContentError(
+                    f"poi {defn.id}: {ref} already carries marker records of "
+                    f"its own, so adding the reveal model would give it two "
+                    f"icons. Repaint its existing icon instead."
+                )
+            # An in-place override is GLOBAL: it edits the entity, not one
+            # placement of it. A marker on an entity the tile places 13 times
+            # is 13 icons per camp, times every pooled copy of that camp.
+            # Measured 2026-09-05 — the map filled with markers and it read as
+            # a bug in the marker code, which it was not.
+            placements = _placements_in_tile(ref, base, defn.id) if in_place else 0
+            if in_place and placements > 1:
+                _log.warning(
+                    "poi %s: %s is placed %d times by %s, so the marker puts "
+                    "%d icons on the map per instance of that tile. Move it to "
+                    "a prop the tile places ONCE — %s.",
+                    defn.id, ref.rsplit("\\", 1)[-1], placements, base,
+                    placements,
+                    ", ".join(_single_placements(base, defn.id)[:3]) or "none")
+            # The donor's own icons are re-pointed at two shipped textures that
+            # NOTHING in any chapter preloads, and the mod's art is then written
+            # over those. Inventing a texture name instead HANGS the game at
+            # level load (measured 2026-09-05), so the indirection is the whole
+            # trick: a real shipped name, carrying the mod's pixels.
+            # WHERE THE ICON ART COMES FROM, and the two answers are opposites.
+            #
+            # In place, the donor's icons are re-pointed at two SHIPPED textures
+            # that nothing in any chapter preloads, and the mod's art is written
+            # over those names. That is an override, and it is the only route
+            # that works for a shipped host.
+            #
+            # Additively, the mod owns the entity, so it can own the texture
+            # too: the art is cooked under this mod's own UI name and the copied
+            # marker records are pointed straight at it. Nothing shipped is
+            # repainted — which is the whole difference between "our icon" and
+            # "our icon, and also every corpse marker in the game".
+            icon_name = (f"MiniMap\\Icons\\{tag_of(mod_id, defn)}.png",
+                         f"MiniMap\\Icons\\High\\{tag_of(mod_id, defn)}.png")
+            for pic in EC.resource_refs(donor):
+                if not pic.lower().endswith(".png"):
+                    continue
+                high = "\\High\\" in pic
+                if in_place:
+                    swaps[pic] = MARKER_ICON_HIGH if high else MARKER_ICON
+                else:
+                    swaps[pic] = icon_name[1] if high else icon_name[0]
+            # Both repaint targets, whether or not the mod ships art for them:
+            # the copied records name them either way, and an icon the cache
+            # never lists is a null.
+            targets = ((MARKER_ICON, MARKER_ICON_HIGH) if in_place else icon_name)
+            extra_deps += [PC.ui_cooked_path(targets[0]),
+                           PC.ui_cooked_path(targets[1])]
+
+        edited = EC.add_parents(edited, [parent])
+        edited = EC.copy_overrides(edited, donor, prefix, string_swaps=swaps,
+                                   exclude=EC.OVERRIDE_EXCLUDE[key])
+
+        if key == "minimap":
+            # The cauldron supplies the ART. It does not supply VISIBILITY, and
+            # the parent is a hero-PRESENCE marker: it reveals only once the
+            # hero is already close. For a shipped landmark that is right; for a
+            # mod POI it is circular, because the icon is how a player finds the
+            # thing. Measured 2026-09-05 — eight shrines placed and built in one
+            # map, no icon ever seen, so nobody went looking.
+            #
+            # The parent ships no detection radius at all; exactly two shipped
+            # entities override it (`Ruin_Model` 25.0,
+            # `Collectible_Ingredient_Key` 20.0) with a plain float at the tail
+            # of the record. So the record is copied and the literal retuned.
+            radius = float(cfg.get("reveal_radius", DEFAULT_REVEAL_RADIUS))
+            for slot, tune in (("radius", radius), ("main_poi", None)):
+                d_ref, target, literal = EC.REVEAL_DONORS[slot]
+                d = _corpus(PC.entity_cooked_path(d_ref), defn.id,
+                            f"the {slot} override donor")
+                edited = EC.copy_overrides(
+                    edited, d, prefix, only=(target,),
+                    f32_swap=(literal, tune) if literal is not None else None)
+                borrow.append(_CLOSURE_BORROW)
+            _log.info("poi %s/%s: marker reveals within %.0f units and is "
+                      "flagged a main POI", mod_id, defn.id, radius)
+        if key == "interaction":
+            # The parent brings the machinery and no RADIUS, and without one the
+            # hero is never detected: no prompt, and nothing on the bus at all.
+            d_ref, target, literal = EC.INTERACTION_DONORS["radius"]
+            d = _corpus(PC.entity_cooked_path(d_ref), defn.id,
+                        "the interaction radius donor")
+            edited = EC.copy_overrides(edited, d, prefix, only=(target,))
+            borrow.append(_CLOSURE_BORROW)
+            _log.info("poi %s/%s: interaction radius %.1f", mod_id, defn.id, literal)
+        extra_deps += EC.parent_cooked_paths([parent])
+        # The parent drags its own closure in (the reveal model alone names
+        # three UI entities and a primitive texture) and a resource the tile's
+        # cache never lists resolves to null at level build. Borrowing the
+        # cache of a shipped tile that already places the donor is how that
+        # closure is proven covered rather than re-derived — same mechanism
+        # `swaps` uses.
+        borrow.append(_CLOSURE_BORROW)
+        _log.info("poi %s/%s: %s inherits %s and takes %s's %s overrides",
+                  mod_id, defn.id, ref, parent, donor_ref, key)
+
+        if key != "minimap":
+            continue
+        for slot, cooked_ref in (("icon", MARKER_ICON),
+                                 ("icon_high", MARKER_ICON_HIGH)):
+            src_rel = cfg.get(slot) or cfg.get("icon")
+            if not src_rel:
+                continue
+            if not in_place:
+                # Our own name, not a shipped one. `apply` registers a path the
+                # game does not ship in UsedRscList.ot, which is what makes a
+                # brand-new texture loadable at all.
+                cooked_ref = (icon_name[1] if slot == "icon_high"
+                              else icon_name[0])
+            src = _mod_source(out_dir, src_rel, defn.id, f"marker.{slot}")
+            _write(out_dir, PC.ui_cooked_path(cooked_ref),
+                   PC.cook_texture(src.read_bytes()), written)
+            for owner in _defs_preloading(cooked_ref, chapters_of(defn)):
+                _log.warning(
+                    "poi %s: the marker repaints %s, which %s also preloads — "
+                    "its icon changes there too.", defn.id, cooked_ref, owner)
+
+    return edited, extra_deps, borrow
+
+
 
 
 def _emit_prop_override(mod_id: str, defn: ContentDef, out_dir: Path,
@@ -1678,138 +2281,38 @@ def _emit_prop_override(mod_id: str, defn: ContentDef, out_dir: Path,
     # and `Minimap_Marker_Reveal_Model`. Splicing the component record instead
     # was tried and measured inert on 2026-09-05; `EC.add_parents` carries the
     # full reasoning.
-    extra_deps: list[str] = []
-    borrow: list[str] = []
-    edited = ent
-    if spec.get("components"):
-        names = list(spec["components"])
-        edited = EC.add_parents(edited, names)
-        extra_deps += EC.parent_cooked_paths(names)
-        _log.info("poi %s/%s: %s now inherits %s", mod_id, defn.id, ref,
-                  ", ".join(EC.resolve_parent(n) for n in names))
-
-    # A marker and an interaction are both INHERITED, then CONFIGURED.
-    #
-    # Inheriting alone is not enough and that is what three playtests measured
-    # without being able to name: `Minimap_Marker_Reveal_Model` ships every
-    # texture Value empty, so a host that only names it as a parent runs the
-    # whole hero-proximity reveal state machine and draws nothing. The missing
-    # half is a handful of `oCEntityCpntValueSettings` records whose first
-    # string is a binding path into the parent and whose payload is a literal
-    # `.png` — which is exactly, and only, what
-    # `Leprechaun_Cauldron_Minimap_Marker` is made of. Copy those onto the host
-    # and the icon appears. Same shape for the prompt:
-    # `Ingredient_Stock_Model` is `Interactive_Object_Model` plus six literal
-    # overrides, one of which (`Event Interaction Available At Start`) is what
-    # arms the interaction at spawn.
-    #
-    # Splicing a marker RECORD instead — the previous approach — is inert on a
-    # bare host and, once a ping parent was added to supply machinery, drew the
-    # PARENT's icon as well as ours: teammate-ping art scattered over the map.
-    # Overriding the parent's Value is one icon, ours, with no ping involved.
-    for key, want in (("minimap", spec.get("marker")),
-                      ("interaction", spec.get("interactive"))):
-        if not want:
-            continue
-        parent, default_donor, prefix = EC.OVERRIDE_DONORS[key]
-        cfg = want if isinstance(want, dict) else {}
-        donor_ref = cfg.get("donor") or default_donor
-        donor = _corpus(PC.entity_cooked_path(donor_ref), defn.id,
-                        f"the {key} override donor")
-
-        swaps: dict[str, str] = {}
-        if key == "minimap":
-            if EC.has_marker(ent):
-                raise ContentError(
-                    f"poi {defn.id}: {ref} already carries marker records of "
-                    f"its own, so adding the reveal model would give it two "
-                    f"icons. Repaint its existing icon instead."
-                )
-            # An in-place override is GLOBAL: it edits the entity, not one
-            # placement of it. A marker on an entity the tile places 13 times
-            # is 13 icons per camp, times every pooled copy of that camp.
-            # Measured 2026-09-05 — the map filled with markers and it read as
-            # a bug in the marker code, which it was not.
-            placements = _placements_in_tile(ref, base, defn.id)
-            if placements > 1:
-                _log.warning(
-                    "poi %s: %s is placed %d times by %s, so the marker puts "
-                    "%d icons on the map per instance of that tile. Move it to "
-                    "a prop the tile places ONCE — %s.",
-                    defn.id, ref.rsplit("\\", 1)[-1], placements, base,
-                    placements,
-                    ", ".join(_single_placements(base, defn.id)[:3]) or "none")
-            # The donor's own icons are re-pointed at two shipped textures that
-            # NOTHING in any chapter preloads, and the mod's art is then written
-            # over those. Inventing a texture name instead HANGS the game at
-            # level load (measured 2026-09-05), so the indirection is the whole
-            # trick: a real shipped name, carrying the mod's pixels.
-            for pic in EC.resource_refs(donor):
-                if not pic.lower().endswith(".png"):
-                    continue
-                swaps[pic] = (MARKER_ICON_HIGH if "\\High\\" in pic
-                              else MARKER_ICON)
-            # Both repaint targets, whether or not the mod ships art for them:
-            # the copied records name them either way, and an icon the cache
-            # never lists is a null.
-            extra_deps += [PC.ui_cooked_path(MARKER_ICON),
-                           PC.ui_cooked_path(MARKER_ICON_HIGH)]
-
-        edited = EC.add_parents(edited, [parent])
-        edited = EC.copy_overrides(edited, donor, prefix, string_swaps=swaps,
-                                   exclude=EC.OVERRIDE_EXCLUDE[key])
-
-        if key == "minimap":
-            # The cauldron supplies the ART. It does not supply VISIBILITY, and
-            # the parent is a hero-PRESENCE marker: it reveals only once the
-            # hero is already close. For a shipped landmark that is right; for a
-            # mod POI it is circular, because the icon is how a player finds the
-            # thing. Measured 2026-09-05 — eight shrines placed and built in one
-            # map, no icon ever seen, so nobody went looking.
-            #
-            # The parent ships no detection radius at all; exactly two shipped
-            # entities override it (`Ruin_Model` 25.0,
-            # `Collectible_Ingredient_Key` 20.0) with a plain float at the tail
-            # of the record. So the record is copied and the literal retuned.
-            radius = float(cfg.get("reveal_radius", DEFAULT_REVEAL_RADIUS))
-            for slot, tune in (("radius", radius), ("main_poi", None)):
-                d_ref, target, literal = EC.REVEAL_DONORS[slot]
-                d = _corpus(PC.entity_cooked_path(d_ref), defn.id,
-                            f"the {slot} override donor")
-                edited = EC.copy_overrides(
-                    edited, d, prefix, only=(target,),
-                    f32_swap=(literal, tune) if literal is not None else None)
-                borrow.append(_CLOSURE_BORROW)
-            _log.info("poi %s/%s: marker reveals within %.0f units and is "
-                      "flagged a main POI", mod_id, defn.id, radius)
-        extra_deps += EC.parent_cooked_paths([parent])
-        # The parent drags its own closure in (the reveal model alone names
-        # three UI entities and a primitive texture) and a resource the tile's
-        # cache never lists resolves to null at level build. Borrowing the
-        # cache of a shipped tile that already places the donor is how that
-        # closure is proven covered rather than re-derived — same mechanism
-        # `swaps` uses.
-        borrow.append(_CLOSURE_BORROW)
-        _log.info("poi %s/%s: %s inherits %s and takes %s's %s overrides",
-                  mod_id, defn.id, ref, parent, donor_ref, key)
-
-        if key != "minimap":
-            continue
-        for slot, cooked_ref in (("icon", MARKER_ICON),
-                                 ("icon_high", MARKER_ICON_HIGH)):
-            src_rel = cfg.get(slot) or cfg.get("icon")
-            if not src_rel:
-                continue
-            src = _mod_source(out_dir, src_rel, defn.id, f"marker.{slot}")
-            _write(out_dir, PC.ui_cooked_path(cooked_ref),
-                   PC.cook_texture(src.read_bytes()), written)
-            for owner in _defs_preloading(cooked_ref, chapters_of(defn)):
-                _log.warning(
-                    "poi %s: the marker repaints %s, which %s also preloads — "
-                    "its icon changes there too.", defn.id, cooked_ref, owner)
-
-
+    edited, extra_deps, borrow = _decorate_host(
+        mod_id, defn, out_dir, ent, ref, base, written, in_place=True)
     if edited != ent:
+        material = spec.get("material")
+        if material:
+            # Point the HOST at a different SHIPPED material. This is not a
+            # texture override: nothing shared is repainted, because the only
+            # file that changes is this entity, which the mod already owns.
+            #
+            # It exists because in-place custom textures are effectively
+            # impossible. The host's own material is `M_Wood_Planks_A`, which
+            # 231 entities reference and whose albedo feeds 5 materials — a
+            # stone obelisk wearing it reads as a nondescript lump, and
+            # repainting it would turn every wooden plank in the game to stone.
+            # Borrowing a shipped stone material costs nothing and breaks
+            # nothing.
+            #
+            # ⚠ The material must already be in the placing tile's preload
+            # closure, or it resolves to null at level build. Prefer one the
+            # tile ALREADY loads (`M_Rocks_Big` is in the blocker tile because
+            # the tile stands a rock in it); it is added to `extra_deps` either
+            # way so the cache lists it.
+            mat_cooked = PC.art_cooked_path(material)
+            _corpus(mat_cooked, defn.id, "prop.material")
+            if not mats:
+                raise ContentError(
+                    f"poi {defn.id}: {ref} names no material, so there is "
+                    f"nothing for `material` to repoint.")
+            edited = ES.replace_strings(edited, dict.fromkeys(mats, material))
+            extra_deps.append(mat_cooked)      # cooked path: the cache wants one
+            _log.info("poi %s/%s: material repointed %s -> %s",
+                      mod_id, defn.id, mats[0], material)
         _write(out_dir, PC.entity_cooked_path(ref), edited, written)
 
     if spec.get("model"):
@@ -2063,15 +2566,40 @@ def _emit_cloned_level(mod_id: str, defn: ContentDef, out_dir: Path,
     Returns the new prefab reference for the cloned tiledef to point at.
     """
     tag = f"{mod_id}_{defn.id}".replace("-", "_")
-    swaps = _validated_swaps(defn, base)
+    swaps = _validated_swaps(defn, base, out_dir)
 
     donor_prefab_dec = _prefab_ref_of(base, defn.id)
     level_ref = _level_ref_of(donor_prefab_dec, defn.id)
     new_level_ref = level_ref.rsplit("\\", 1)[0] + f"\\{tag}.level.ot"
-    _write(out_dir, PC.level_cooked_path(new_level_ref),
-           PC.clone_tile_level(
-               _corpus(PC.level_cooked_path(level_ref), defn.id, "the tile's level"),
-               level_ref, new_level_ref, swaps), written)
+    level = PC.clone_tile_level(
+        _corpus(PC.level_cooked_path(level_ref), defn.id, "the tile's level"),
+        level_ref, new_level_ref, swaps)
+    places = _validated_places(defn)
+    # The mod's OWN entity, emitted once however many times it is placed. This
+    # is the additive route: a name this mod introduces, standing in a level
+    # this mod owns, taking nothing's place. `_emit_prop_art` writes through
+    # `written`, so the entity, its mesh, its material and its textures all
+    # reach the tile's `UsedRscCache` and `UsedRscList.ot` by the same route as
+    # every other emitted asset — no separate registration to forget.
+    own_prop = None
+    prop_deps: list[str] = []
+    prop_borrow: list[str] = []
+    if any(i["entity"] == PLACES_OWN_PROP for i in places):
+        own_prop, prop_deps, prop_borrow = _emit_prop_art(
+            mod_id, defn, out_dir, written)
+        _log.info("poi %s/%s: mod-owned prop entity %s", mod_id, defn.id, own_prop)
+    for item in places:
+        # yaw only: a POI stands upright by definition, and a full quaternion
+        # in a toml file is a footgun no author asked for.
+        half = math.radians(item["yaw"]) / 2.0
+        entity = own_prop if item["entity"] == PLACES_OWN_PROP else item["entity"]
+        level = LP.add_placement(
+            level, entity, pos=item["pos"],
+            quat=(0.0, math.sin(half), 0.0, math.cos(half)),
+            scale=(item["scale"],) * 3)
+        _log.info("poi %s: placed %s at %s scale %.2f", defn.id,
+                  entity.split("\\")[-1], item["pos"], item["scale"])
+    _write(out_dir, PC.level_cooked_path(new_level_ref), level, written)
 
     new_prefab_ref = donor_prefab_dec.rsplit("\\", 1)[0] + f"\\{tag}.entity.ot"
     _write(out_dir, PC.entity_cooked_path(new_prefab_ref),
@@ -2088,9 +2616,13 @@ def _emit_cloned_level(mod_id: str, defn: ContentDef, out_dir: Path,
                # that would have made the result unreadable.
                level_ref, new_level_ref, new_prefab_ref), written)
 
-    _log.info("poi %s/%s: mod-owned level %s (%d swap(s), no new entity names)",
+    _log.info("poi %s/%s: mod-owned level %s (%d swap(s))",
               mod_id, defn.id, new_level_ref, len(swaps))
-    return new_prefab_ref
+    # The prop's decoration deps travel WITH the prefab reference. An inherited
+    # marker parent drags its own closure in (the reveal model alone names three
+    # UI entities and a primitive texture), and a resource the placing tile's
+    # cache never lists resolves to NULL at level build.
+    return new_prefab_ref, prop_deps, prop_borrow
 
 
 def _emit_custom_prop(mod_id: str, defn: ContentDef, out_dir: Path,
@@ -2099,7 +2631,7 @@ def _emit_custom_prop(mod_id: str, defn: ContentDef, out_dir: Path,
     place it. Returns the new prefab reference for the cloned tiledef."""
     spec = defn.fields["prop"]
     tag = f"{mod_id}_{defn.id}".replace("-", "_")
-    ent_ref = _emit_prop_art(mod_id, defn, out_dir, written)
+    ent_ref, _deps, _borrow = _emit_prop_art(mod_id, defn, out_dir, written)
 
     # Tile level: the base tile's dressing, its centrepiece swapped for ours.
     donor_prefab_dec = _prefab_ref_of(base, defn.id)
@@ -2165,22 +2697,47 @@ def _emit_replacing_base(mod_id: str, defn: ContentDef, out_dir: Path,
     written: list[Path] = []
     biome, stem = base.split("/", 1)
 
-    swaps: dict[str, str] = _validated_swaps(defn, base)
+    swaps: dict[str, str] = _validated_swaps(defn, base, out_dir)
     extra_deps: list[str] = []
     borrow: list[str] = []
-    if defn.fields.get("prop"):
-        # In place, on the shipped prop's own cooked paths. The tile is not
-        # touched at all — see `_emit_prop_override` for why cloning the entity
-        # under a mod-owned name cannot work.
+    own_prop: str | None = None
+    if defn.fields.get("prop") and not _places_own_prop(defn):
+        # In place, on the shipped prop's own cooked paths: the def is restyling
+        # something the tile already stands, so there is a `replaces` to write
+        # over and the tile itself is not touched.
         extra_deps, borrow = _emit_prop_override(mod_id, defn, out_dir, base,
                                                  written)
-    if swaps:
+    elif defn.fields.get("prop"):
+        # ADDITIVE, on a shipped level. The prop is an entity this mod
+        # introduces — emitted, decorated with its own marker and interaction,
+        # and stood at a transform of its own by the `places` loop below. There
+        # is nothing to `replace`, because nothing is being taken over.
+        own_prop, extra_deps, borrow = _emit_prop_art(mod_id, defn, out_dir,
+                                                      written)
+    places = _validated_places(defn)
+    if swaps or places:
         level_ref = _level_ref_of(_prefab_ref_of(base, defn.id), defn.id)
-        _write(out_dir, PC.level_cooked_path(level_ref),
-               PC.override_tile_level(
-                   _corpus(PC.level_cooked_path(level_ref), defn.id,
-                           "the tile's level"),
-                   swaps), written)
+        level = _corpus(PC.level_cooked_path(level_ref), defn.id,
+                        "the tile's level")
+        # Swaps first: they only re-point existing references, so the stream
+        # keeps its shape and an insert afterwards has the same anchors to work
+        # from as it would on the untouched donor.
+        if swaps:
+            level = PC.override_tile_level(level, swaps)
+        for item in places:
+            entity = item["entity"]
+            if entity == PLACES_OWN_PROP:
+                if own_prop is None:
+                    own_prop = _emit_prop_art(mod_id, defn, out_dir, written)[0]
+                entity = own_prop
+            half = math.radians(item["yaw"]) / 2.0
+            level = LP.add_placement(
+                level, entity, pos=item["pos"],
+                quat=(0.0, math.sin(half), 0.0, math.cos(half)),
+                scale=(item["scale"],) * 3)
+            _log.info("poi %s: added %s to the shipped level at %s scale %.2f",
+                      defn.id, entity.split("\\")[-1], item["pos"], item["scale"])
+        _write(out_dir, PC.level_cooked_path(level_ref), level, written)
 
     # Cosmetic edits (icon / kinds / weight) go onto the base tiledef itself.
     if defn.fields.get("icon_source"):
@@ -2218,7 +2775,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     _apply_edits(td, defn, chapters)
     # Validated here as well as in the override path, so an author who writes
     # `swaps` without `replace_base` is told rather than silently ignored.
-    _validated_swaps(defn, base)
+    _validated_swaps(defn, base, out_dir)
 
     # `replace_base` mode: rewrite the BASE tile in place instead of adding a
     # new one to the pool. The tile keeps its own id, path, prefab reference and
@@ -2240,18 +2797,62 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # biome directory keeps that resolution working — and is what the game
     # itself does, filing a Storm Island tile that Dark Hills draws from.
     biome = base.split("/", 1)[0]
-    tile_name = f"{mod_id}_{defn.id}"
+    # `.replace("-", "_")` for the same reason the prefab, the level, the icon
+    # and the prop entity all do it — this was the ONE emitted name that kept
+    # the hyphen, so a mod id like `runestone-shrine` produced a tiledef called
+    # `runestone-shrine_shrine_pool` sitting beside a prefab and level called
+    # `runestone_shrine_shrine_pool`. Zero of the 474 shipped tiledef resources
+    # contain a hyphen, so consistency with its own siblings is the reason.
+    #
+    # ⚠ It is NOT the reason the shrine went unseen, and an earlier version of
+    # this comment said it was ("never once placed across four maps"). The log
+    # archive disproves that outright: hyphen-era runs logged `6 ours (6 built)`
+    # twice (2026-09-06 12:53 and 13:06), and the first underscore run logged
+    # `6 ours (6 built)` as well — the placement rate did not move. Placement
+    # was never the failing step; keep the sanitisation, drop the story.
+    tile_name = f"{mod_id}_{defn.id}".replace("-", "_")
     written: list[Path] = []
 
+    own_deps: list[str] = []
+    own_borrow: list[str] = []
     # A custom prop rebuilds the prefab/level/prop/material chain and hands
     # back a new prefab reference for the tiledef to point at. Without it the
     # clone keeps the donor's prefab and shows the donor's structure.
-    if defn.fields.get("prop"):
+    if defn.fields.get("prop") and defn.fields.get("own_level"):
+        # Both rebuild the prefab/level chain and only one can win the
+        # `entity_ref`, so the loser's work is thrown away in silence. That is
+        # worse than it sounds: `_validated_places` REQUIRES `own_level`, so a
+        # def carrying both validates its `places` and `swaps` fully and then
+        # never emits them — the tile is placed, the level is the donor's, and
+        # nothing on screen says why.
+        # ...UNLESS the prop is PLACED rather than swapped in. Then the two
+        # are not rivals: `prop` emits art and hands back a reference, and
+        # `own_level` owns the prefab/level chain and stands that reference at
+        # the transform `places` gives it. Nothing is thrown away, and this is
+        # the only combination that adds a structure without editing a shipped
+        # asset — see PLACES_OWN_PROP.
+        if not _places_own_prop(defn):
+            raise ContentError(
+                f"poi {defn.id}: 'prop' and 'own_level' both rebuild this "
+                f"tile's prefab and level, and only one can own the tiledef's "
+                f"entity reference. Pick one: 'prop' to restyle the structure "
+                f"the donor already stands, 'own_level' (with 'places'/'swaps') "
+                f"to author the tile's contents — or place the prop additively "
+                f"with places = [{{ entity = \"{PLACES_OWN_PROP}\", ... }}], "
+                f"which needs both."
+            )
+    # `own_level` wins for an additive def. `_emit_custom_prop` puts the prop in
+    # by SWAPPING it over `replaces`, which an additive def does not set — so
+    # taking that branch handed the level cloner a swap keyed on None. The two
+    # branches are not interchangeable here: one replaces an object, the other
+    # adds one, and PLACES_OWN_PROP asked for the second.
+    if defn.fields.get("prop") and not _places_own_prop(defn):
         td.entity_ref = ["EntitySettings",
                          _emit_custom_prop(mod_id, defn, out_dir, base, written)]
     elif defn.fields.get("own_level"):
-        td.entity_ref = ["EntitySettings",
-                         _emit_cloned_level(mod_id, defn, out_dir, base, written)]
+        prefab_ref, own_deps, own_borrow = _emit_cloned_level(
+            mod_id, defn, out_dir, base, written)
+        td.entity_ref = ["EntitySettings", prefab_ref]
 
     # After _apply_edits, so a shipped icon.png beats an `icon = "..."` ref.
     if defn.fields.get("icon_source"):
@@ -2290,9 +2891,30 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # Every copy is a separate tiledef asset, so every copy needs its own
     # cache — a tiledef the engine cannot preload is never placed.
     assets = _emitted_assets(out_dir, written)
+    # `places` entities count exactly like swap targets here. The donor tile
+    # never referenced them, so their closures are absent from its cache — and
+    # `places` was wired into the LEVEL without ever being wired into the
+    # preload. Measured 2026-09-06 on the shrine: its tiles' caches listed the
+    # swap target but not `BonFire`, neither inherited marker parent and
+    # neither icon texture; only the mapdef cache (built by a different path)
+    # happened to carry them, which is the whole reason it did not fault.
+    # A `@prop` placement borrows against its DONOR. The mod's own entity is
+    # already in `assets` (it was emitted through `written`), but its dependency
+    # CLOSURE is the donor's — the clone is that donor's component structure
+    # wearing this mod's mesh — and only a shipped tile can prove a closure is
+    # covered. Leaving the sentinel here asked which shipped tile places "@prop"
+    # and warned that none does, every apply.
+    prop_spec = defn.fields.get("prop")
+    own_donor = (prop_spec.get("entity_base")
+                 if isinstance(prop_spec, dict) else None)
+    placed = [own_donor if item["entity"] == PLACES_OWN_PROP else item["entity"]
+              for item in _validated_places(defn)]
+    placed = [e for e in placed if e]
+    assets += own_deps
+    swapped = list(_validated_swaps(defn, base, out_dir).values())
     _emit_tile_caches(out_dir, base, defn.id, assets, tile_rels, written,
-                      borrow_for=_validated_swaps(defn, base).values(),
-                      seed_for=_validated_swaps(defn, base).values())
+                      borrow_for=[*swapped, *placed, *own_borrow],
+                      seed_for=[*swapped, *placed])
     _report_share(mod_id, defn, td, chapters, copies)
 
     for ch in chapters:

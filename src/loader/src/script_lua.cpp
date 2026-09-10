@@ -27,6 +27,7 @@ extern "C" {
 #include "fn_call.h"
 #include "hook_lua.h"
 #include "hook_items.h"
+#include "watchpoint.h"
 
 #include "json.hpp"   // single-header nlohmann::json (vendored)
 #include "toml.hpp"   // single-header toml++ (vendored)
@@ -1469,6 +1470,88 @@ int lua_traceback_binding(lua_State* L) {
 // capability live, and has it ever run". Installed-but-never-fired is the case
 // worth surfacing: it means the target moved to a different caller, which
 // resolve + fn_verify + .pdata all pass happily.
+// rsmm._internal.watch_set(va, len, kind) -> slot | nil, err
+//
+// `kind` is "w" (default) or "rw". Four slots exist in the whole CPU, so this
+// is a bisection instrument and the error strings say so rather than silently
+// doing nothing.
+int lua_watch_set(lua_State* L) {
+    const auto va = static_cast<std::uintptr_t>(luaL_checkinteger(L, 1));
+    const int len = static_cast<int>(luaL_optinteger(L, 2, 4));
+    const char* kind = luaL_optstring(L, 3, "w");
+    std::string err;
+    const int slot = watch_set(
+        va, len,
+        std::strcmp(kind, "rw") == 0 ? WatchKind::ReadWrite : WatchKind::Write, err);
+    if (slot < 0) {
+        lua_pushnil(L);
+        lua_pushstring(L, err.c_str());
+        return 2;
+    }
+    lua_pushinteger(L, slot);
+    return 1;
+}
+
+// rsmm._internal.watch_clear(slot|nil) -> bool     (nil clears every slot)
+int lua_watch_clear(lua_State* L) {
+    const int slot = lua_isnoneornil(L, 1) ? -1 : static_cast<int>(luaL_checkinteger(L, 1));
+    lua_pushboolean(L, watch_clear(slot));
+    return 1;
+}
+
+// rsmm._internal.watch_rearm() -> threads armed
+//
+// Debug registers are per-thread, so a thread the game created after arming
+// carries none. This is the answer to "the watchpoint stopped reporting".
+int lua_watch_rearm(lua_State* L) {
+    lua_pushinteger(L, watch_rearm());
+    return 1;
+}
+
+// rsmm._internal.watch_drain() -> { {seq, rip, addr, tid, slot}, ... }
+int lua_watch_drain(lua_State* L) {
+    const auto hits = watch_drain();
+    lua_createtable(L, static_cast<int>(hits.size()), 0);
+    for (std::size_t i = 0; i < hits.size(); ++i) {
+        lua_createtable(L, 0, 5);
+        lua_pushinteger(L, static_cast<lua_Integer>(hits[i].seq));
+        lua_setfield(L, -2, "seq");
+        lua_pushinteger(L, static_cast<lua_Integer>(hits[i].rip));
+        lua_setfield(L, -2, "rip");
+        lua_pushinteger(L, static_cast<lua_Integer>(hits[i].addr));
+        lua_setfield(L, -2, "addr");
+        lua_pushinteger(L, static_cast<lua_Integer>(hits[i].tid));
+        lua_setfield(L, -2, "tid");
+        lua_pushinteger(L, hits[i].slot);
+        lua_setfield(L, -2, "slot");
+        lua_rawseti(L, -2, static_cast<int>(i) + 1);
+    }
+    return 1;
+}
+
+// rsmm._internal.watch_status() -> { {slot, addr, len, kind, hits, armed}, ... }
+int lua_watch_status(lua_State* L) {
+    const auto slots = watch_status();
+    lua_createtable(L, static_cast<int>(slots.size()), 0);
+    for (std::size_t i = 0; i < slots.size(); ++i) {
+        lua_createtable(L, 0, 6);
+        lua_pushinteger(L, static_cast<lua_Integer>(i));
+        lua_setfield(L, -2, "slot");
+        lua_pushinteger(L, static_cast<lua_Integer>(slots[i].addr));
+        lua_setfield(L, -2, "addr");
+        lua_pushinteger(L, slots[i].len);
+        lua_setfield(L, -2, "len");
+        lua_pushstring(L, slots[i].kind == WatchKind::Write ? "w" : "rw");
+        lua_setfield(L, -2, "kind");
+        lua_pushinteger(L, static_cast<lua_Integer>(slots[i].hits));
+        lua_setfield(L, -2, "hits");
+        lua_pushboolean(L, slots[i].armed);
+        lua_setfield(L, -2, "armed");
+        lua_rawseti(L, -2, static_cast<int>(i) + 1);
+    }
+    return 1;
+}
+
 int lua_hook_report(lua_State* L) {
     HookInfo info[64];
     const std::size_t n = hook_snapshot(info, 64);
@@ -1773,6 +1856,11 @@ void register_api(lua_State* L) {
         { "read_cstr",               lua_read_cstr },
         { "read_block",              lua_read_block },
         { "hook_report",             lua_hook_report },
+        { "watch_set",               lua_watch_set },
+        { "watch_clear",             lua_watch_clear },
+        { "watch_rearm",             lua_watch_rearm },
+        { "watch_drain",             lua_watch_drain },
+        { "watch_status",            lua_watch_status },
         { "peek",                    lua_peek },
         { "poke",                    lua_poke },
         { "scratch",                 lua_scratch },
