@@ -33,6 +33,7 @@
 #include "hook_resource.h"
 #include "hook_levelload.h"
 #include "hook_levelbuild.h"
+#include "hook_gamevalues.h"
 #include "hook_events.h"
 #include "hook_netcode.h"
 #include "script_lua.h"
@@ -165,6 +166,7 @@ static void loader_thread_cxx() {
         // load). Mods touching R.entity during init just fall back to the
         // legacy per-state path until this arms; harmless.
         install_guarded("hero_capture", rsmm::install_hero_capture);
+        install_guarded("game-values",  rsmm::install_gamevalue_capture);
         install_guarded("netcode",      rsmm::install_netcode_patches);
 
         // Ground-truth symbol dump (opt-in, dev/RE). Force-resolves every

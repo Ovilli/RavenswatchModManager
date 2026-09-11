@@ -122,6 +122,26 @@ engine["EntityValue_Get"] = function(valctx, out, key)
     return out
 end
 
+-- EntityValue_Lookup takes the STORE directly (EntityValue_Get is the wrapper
+-- that hops ctx+0x4c8 to find it). R.game may end up on either, depending on
+-- the shape the published pointer turns out to be, so both are modelled and
+-- both raise on the wrong argument.
+engine["EntityValue_Lookup"] = function(store, out, key)
+    if store ~= STORE then
+        error(string.format("EntityValue_Lookup: bad store 0x%x", store))
+    end
+    local e = ovr_entry(key)
+    if e then
+        local u = e + 0x08
+        wint(out + 0x08, rint(u + 0x08, 4), 4)
+        wbytes(out + 0x10, rbytes(u + 0x10, 4))
+        wint(out + 0x18, 0, 1)
+    else
+        wint(out + 0x08, 0, 4)
+    end
+    return out
+end
+
 engine["EntityValueOverride_Alloc"] = function(vecPtr, count, n)
     local data = rint(vecPtr, 8)
     if data == 0 then
@@ -662,6 +682,44 @@ do
 
     -- Restore the value later sections assert on.
     R.stat.set("attack_power", 500)
+end
+
+-- 4c. R.modifier writes ride the same store, under their own names ---------
+--
+-- A run modifier is a CRC-keyed entry in the very store R.stat writes, so the
+-- write path is R.stat.stick and the only new thing is the name registration.
+-- That registration is what this pins: without it R.stat.set refuses the name
+-- and every modifier write silently returns false.
+do
+    check(R.modifier.set("Not A Modifier", 1) == false, "unknown modifier must fail")
+    check(R.modifier.set("No minimap", 1) == true, "a known toggle should apply")
+    check(R.modifier.value("No minimap") == 1, "...and read back through R.modifier")
+    check(R.modifier.active("No minimap") == true, "an applied toggle reads active")
+
+    -- Scalars are f32 and toggles int; writing a ratio through an int field is
+    -- how 1.5 becomes 1, so the kind is listed per modifier rather than guessed.
+    check(R.modifier.set("Global Xp Modifier", 1.5) == true, "a scalar should apply")
+    check(about(R.modifier.value("Global Xp Modifier"), 1.5),
+          "a scalar keeps its fraction")
+
+    -- set() is stick(), so a recompute clobber is re-asserted on the next
+    -- gameplay event — a modifier that lasted until the first item pickup
+    -- would be worse than one that never applied.
+    local e = ovr_entry(0x99f27eac)              -- "No minimap"
+    assert(e, "expected an override entry for the modifier")
+    I.write_u32(e + 0x08 + 0x10, 0)              -- clobber -> off
+    check(R.modifier.value("No minimap") == 0, "clobber should be visible")
+    fire("*", { source = "gameplay" })
+    check(R.modifier.value("No minimap") == 1, "modifier must re-assert after clobber")
+
+    check(R.modifier.clear("No minimap") == true, "clear should report it was pinned")
+    check(R.modifier.clear("Not A Modifier") == false, "clearing an unknown name fails")
+    R.modifier.clear("Global Xp Modifier")
+
+    local w = {}
+    for _, n in ipairs(R.modifier.writable()) do w[n] = true end
+    check(w["No boss timer"] and w["Dream Shard Costs Modifier"],
+          "writable() lists the modifier names")
 end
 
 -- 5. durable stick: survives a recompute clobber ---------------------------
@@ -8618,6 +8676,78 @@ do
     package.loaded["rsmm.poi"] = nil
 end
 
+
+-- R.game — the global (run-level) value context.
+--
+-- The invariant under test is the one a crash bought: this reads a SCENE
+-- CONTEXT (keyed map at +0x98) with the reader that belongs to that shape, and
+-- refuses anything else rather than falling back to the hero store's reader.
+-- The fallback is what faulted the engine on 2026-09-11.
+do
+    local SC_MAP, SC_BASE = 0x98, 0xb0   -- map pointer, and its EXTENT (a length)
+    local CTX = 0x60000000
+    local MAP = 0x61000000
+    local UNION = 0x62000000
+    for i = 0, 0x200, 8 do wint(CTX + i, 0, 8) end
+
+    local function plausible(a)
+        return type(a) == "number" and a ~= 0 and (a % 8) == 0 and rint(a, 8) ~= nil
+    end
+    -- Faithful to FUN_1401c9600: keyed off the context's +0x98 map, returning
+    -- the union POINTER (never an out-buffer). Raises on any other object, the
+    -- way the real engine faults.
+    local asked = nil
+    engine["SceneContextValue_Find"] = function(ctx, key)
+        if rint(ctx + SC_MAP, 8) ~= MAP then
+            error(string.format("SceneContextValue_Find: 0x%x is not a scene context", ctx))
+        end
+        asked = key
+        return key == 0x1cd79255 and UNION or 0
+    end
+
+    local G = require("rsmm.gamevalues")({ I = I, R = R, _ptr_plausible = plausible })
+    check(R.game.keys.is_in_overtime.key == 0x1cd79255,
+          "the harvested key table reached the SDK")
+    local name, group = R.game.describe("is_in_sandman_shop")
+    check(name == "Is in sandman shop" and group == "Player location",
+          "describe reports the engine's own name and category")
+
+    shared[17] = nil
+    check(R.game.get("is_in_overtime") == nil, "no published pointer reads nil")
+
+    -- An object that is NOT a scene context must never reach the engine. The
+    -- mock raises if it does, so a regression fails loudly.
+    local JUNK = 0x63000000
+    for i = 0, 0x200, 8 do wint(JUNK + i, 0, 8) end
+    shared[17] = JUNK
+    check(R.game.get("is_in_overtime") == nil, "a non-scene-context reads nil")
+    check((R.game.why() or ""):find("not a scene context", 1, true) ~= nil,
+          "...and why() names it: " .. tostring(R.game.why()))
+    check(asked == nil, "...and NO engine read was attempted on it")
+
+    -- A real scene context, using the EXACT field values a live one showed in
+    -- the 16:55 playtest: a bucket pointer at +0x98 and an extent of 0x1ff at
+    -- +0xb0. Their sum is not 8-aligned, and an earlier guard demanded that it
+    -- be, which refused a perfectly good context for a whole session. This
+    -- case exists so that guard cannot come back.
+    wint(CTX + SC_MAP, MAP, 8)
+    wint(CTX + SC_BASE, 0x1ff, 8)
+    for i = 0, 0x200, 8 do wint(MAP + i, 0, 8) end   -- readable through the extent
+    wint(UNION + 0x08, 4, 4)              -- inline sentinel
+    wint(UNION + 0x10, 1, 4)              -- the value
+    shared[17] = CTX
+    check(R.game.flag("is_in_overtime") == true,
+          "a scene context reads through the matching reader, why: "
+          .. tostring(R.game.why()))
+    check(asked == 0x1cd79255, "...with the engine's own key for that value")
+
+    -- A key this context does not hold comes back nil, not a wrong number.
+    check(R.game.get("reroll_count") == nil, "an unheld key reads nil")
+
+    shared[17] = nil
+    engine["SceneContextValue_Find"] = nil
+    package.loaded["rsmm.gamevalues"] = nil
+end
 
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)

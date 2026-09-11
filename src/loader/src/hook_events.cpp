@@ -120,6 +120,78 @@ std::uintptr_t WINAPI detour(void* ctx, void* arg) {
 // symbol this file simply never referenced.
 constexpr const char* kAnalyticsSink = Sym::Analytics_SubmitNamedEvent_Pattern;
 
+
+// --- analytics property bag -------------------------------------------------
+//
+// The bag every analytics emitter fills before calling the sink. Recovered
+// from the setters themselves (the string setter at 0x140201c10 and the int
+// setter at 0x14020abf0 write the SAME slot shape):
+//
+//   bag   +0x00 u32 count, +0x04 u32 capacity, +0x08 u64 data (low 48 bits)
+//   entry 0x20 bytes: [0] key len, [1] key ptr | tag,
+//                     [2] value (len for a string, the integer otherwise),
+//                     [3] value ptr | tag  /  a pure tag for an integer
+//
+// The TYPE is the top 16 bits of slot 3: 0x0405 means the value is a string
+// whose pointer is in the low 48 bits of that slot; anything else means the
+// value is the integer already sitting in slot 2. That is the whole decode.
+//
+// WHY IT MATTERS: the gameplay bus says an event happened, this says WHAT.
+// object_selected carries object_name, skill_selected carries skill_name,
+// sandman_buy carries article_name and article_price. Without this the
+// firehose publishes a bare name and a mod has to infer the rest.
+constexpr std::uintptr_t kBagPtrMask  = 0x0000ffffffffffffull;
+constexpr std::uint16_t  kBagTagStr   = 0x0405;
+constexpr std::size_t    kBagMaxProps = 24;   // widest observed emitter has 11
+
+// Append `"key":value` pairs from the bag. Returns chars written (0 on any
+// doubt). Every read is page-guarded: this runs on the game's own thread for
+// every analytics event, so a layout the next patch moves must degrade to an
+// empty payload, never fault.
+size_t bag_to_json(void* bag, char* out, size_t cap) {
+    if (!bag || cap < 8) return 0;
+    std::uint32_t count = 0, capacity = 0;
+    std::uintptr_t data = 0;
+    if (!mem_load(reinterpret_cast<std::uintptr_t>(bag), &count)) return 0;
+    if (!mem_load(reinterpret_cast<std::uintptr_t>(bag) + 4, &capacity)) return 0;
+    if (!mem_load(reinterpret_cast<std::uintptr_t>(bag) + 8, &data)) return 0;
+    data &= kBagPtrMask;
+    if (count == 0 || count > kBagMaxProps || count > capacity || data == 0) return 0;
+    if (!mem_accessible(data, static_cast<std::size_t>(count) * 0x20, false)) return 0;
+
+    size_t w = 0;
+    for (std::uint32_t i = 0; i < count; ++i) {
+        const std::uintptr_t e = data + static_cast<std::uintptr_t>(i) * 0x20;
+        std::uint64_t klen = 0, kptr = 0, v2 = 0, v3 = 0;
+        if (!mem_load(e, &klen) || !mem_load(e + 8, &kptr)
+            || !mem_load(e + 16, &v2) || !mem_load(e + 24, &v3)) break;
+        char key[48];
+        if (klen == 0 || klen >= sizeof(key)) continue;
+        if (mem_read_cstr(static_cast<std::uintptr_t>(kptr & kBagPtrMask),
+                          key, sizeof(key)) == 0) continue;
+        if (!json_safe_name(key)) continue;
+
+        char frag[192];
+        int n;
+        if (static_cast<std::uint16_t>(v3 >> 48) == kBagTagStr) {
+            char val[96];
+            if (v2 >= sizeof(val)) continue;
+            if (mem_read_cstr(static_cast<std::uintptr_t>(v3 & kBagPtrMask),
+                              val, sizeof(val)) == 0) continue;
+            if (!json_safe_name(val)) continue;   // also rejects quotes/escapes
+            n = std::snprintf(frag, sizeof(frag), ",\"%s\":\"%s\"", key, val);
+        } else {
+            n = std::snprintf(frag, sizeof(frag), ",\"%s\":%d", key,
+                              static_cast<int>(static_cast<std::uint32_t>(v2)));
+        }
+        if (n <= 0 || w + static_cast<size_t>(n) + 1 >= cap) break;
+        std::memcpy(out + w, frag, static_cast<size_t>(n));
+        w += static_cast<size_t>(n);
+    }
+    out[w] = '\0';
+    return w;
+}
+
 // void(analytics_mgr, payload_kv, StringDesc* name, char has_run_ctx).
 // arg4 is a char in R9B; we take/forward the full register width unchanged.
 using Submit_t = std::uintptr_t (*)(void*, void*, void*, std::uintptr_t);
@@ -149,10 +221,13 @@ std::uintptr_t WINAPI analytics_firehose_detour(void* mgr, void* payload,
             // subscribes to a handful.
             if (n > 0 && json_safe_name(ev) && std::strcmp(ev, "run_end") != 0
                     && script_has_handler(ev)) {
-                char buf[160];
+                char props[768];
+                const size_t pn = bag_to_json(payload, props, sizeof(props));
+                char buf[1024];
                 std::snprintf(buf, sizeof(buf),
-                              "{\"event\":\"%s\",\"seq\":%u,\"source\":\"analytics\"}",
-                              ev, g_analytics_seq.fetch_add(1) + 1);
+                              "{\"event\":\"%s\",\"seq\":%u,\"source\":\"analytics\"%s}",
+                              ev, g_analytics_seq.fetch_add(1) + 1,
+                              pn > 0 ? props : "");
                 script_emit_event_json(ev, buf);
             }
         }
@@ -235,6 +310,11 @@ std::uintptr_t image_base() {
 // Defined next to publish_value_ctx; declared here because the gameplay
 // dispatch below runs long before that section.
 void drop_value_ctx_on_teardown(const char* ev_name);
+} // namespace
+// Defined in hook_gamevalues.cpp: the global entity-value context belongs to
+// the scene being torn down and dangles exactly like the hero's does.
+void drop_global_value_ctx(const char* ev_name);
+namespace {
 
 bool gameplay_event_name(const unsigned char* ev, char* out, size_t cap) {
     std::uintptr_t name = 0;
@@ -288,6 +368,7 @@ void WINAPI gameplay_dispatch_detour(void* dispatcher, void* event) {
     // Before any subscriber tiering: a teardown event has to be acted on even
     // if nothing is listening for it by name.
     drop_value_ctx_on_teardown(name);
+    drop_global_value_ctx(name);
 
     // Nobody listening to THIS event? Then stop here, before the payload
     // decode, the 768-byte format, the JSON parse and the per-state walk.

@@ -149,6 +149,22 @@ local function had(prefix)
     return nil
 end
 
+-- Saga's challenge roll announces the set it drew one line per entry, so the
+-- log is the only place a test can see WHICH rules were picked.
+local function logged(needle)
+    for _, l in ipairs(logs) do if l:find(needle, 1, true) then return l end end
+    return nil
+end
+
+-- Config is loaded from the mod's own config.toml by the loader, which this
+-- harness does not do. Overriding the reader is how a test drives a setting.
+local _config_get, _cfg_override = R.config.get, {}
+R.config.get = function(k, d)
+    local v = _cfg_override[k]
+    if v ~= nil then return v end
+    return _config_get(k, d)
+end
+
 -- ---------------------------------------------------------------------------
 -- 1. bloodlust: every Nth kill inserts one timed attack-power modifier
 -- ---------------------------------------------------------------------------
@@ -441,6 +457,326 @@ if load_mod("saga") then
        "saga: an unattributable event still counts")
     R.hero.handle = _handle
 end
+
+
+-- ---------------------------------------------------------------------------
+-- 6b. saga challenges: the roll is deterministic, the trackers only fire on
+--     evidence, and NOTHING is written to the engine unless asked.
+--
+-- The roll is the part a test has to pin: it is seeded on purpose so a group
+-- can share a weekly, and "same seed, same set" is the whole contract. The
+-- trackers are the part most likely to rot — an event renamed in the catalog
+-- turns a watched rule into an unwatched one with no symptom at all.
+-- ---------------------------------------------------------------------------
+local function saga_with(over)
+    for k in pairs(_cfg_override) do _cfg_override[k] = nil end
+    for k, v in pairs(over) do _cfg_override[k] = v end
+    logs = {}
+    return load_mod("saga")
+end
+
+-- Same seed, same set. Different seed, a different one (over a pool this size
+-- a collision would mean the seed is not reaching the draw at all).
+if saga_with{ challenge_tier = "hard", challenge_seed = "spec-seed" } then
+    fire("gameplay:GAME_START")
+    local first = {}
+    for _, l in ipairs(logs) do if l:find("[Saga]   ", 1, true) then first[#first + 1] = l end end
+    ok(#first > 0, "saga/chal: a HARD set was rolled")
+    local banner = logged("[Saga] CHALLENGE HARD")
+    ok(banner ~= nil, "saga/chal: the set announces its tier")
+
+    saga_with{ challenge_tier = "hard", challenge_seed = "spec-seed" }
+    fire("gameplay:GAME_START")
+    local second = {}
+    for _, l in ipairs(logs) do if l:find("[Saga]   ", 1, true) then second[#second + 1] = l end end
+    ok(#first == #second and table.concat(first, "|") == table.concat(second, "|"),
+       "saga/chal: the same seed rolls the same set")
+
+    saga_with{ challenge_tier = "hard", challenge_seed = "spec-other" }
+    fire("gameplay:GAME_START")
+    local third = {}
+    for _, l in ipairs(logs) do if l:find("[Saga]   ", 1, true) then third[#third + 1] = l end end
+    ok(table.concat(first, "|") ~= table.concat(third, "|"),
+       "saga/chal: a different seed rolls a different set")
+
+    -- A HARD set takes no boons (TIER_TABLE caps them at zero), so no entry may
+    -- announce a negative score.
+    local boon = nil
+    for _, l in ipairs(third) do if l:find("%(%-%d") then boon = l end end
+    ok(boon == nil, "saga/chal: HARD draws no boons, saw: " .. tostring(boon))
+end
+
+-- The score band is the generator's only hard promise, and the one most easily
+-- broken by a data edit: draw probability IS difficulty here, so adding a heavy
+-- entry pushes every tight tier over its ceiling. HARD is the tight one — 500
+-- points wide with a three-malus floor, and it landed in band 12 times in 30
+-- before the trim pass existed.
+do
+    local BANDS = { flavor = { 150, 300 }, light = { 301, 650 },
+                    standard = { 651, 1000 }, hard = { 1001, 1500 },
+                    brutal = { 1501, 2200 } }
+    local out, bad = 0, nil
+    for tier, band in pairs(BANDS) do
+        for i = 1, 6 do
+            if not saga_with{ challenge_tier = tier, challenge_seed = "band-" .. i } then break end
+            fire("gameplay:GAME_START")
+            local line = logged("[Saga] CHALLENGE " .. tier:upper())
+            local score = line and tonumber(line:match("score (%-?%d+)"))
+            if score and (score < band[1] or score > band[2]) then
+                out = out + 1; bad = ("%s seed %d scored %d"):format(tier, i, score)
+            end
+        end
+    end
+    ok(out == 0, "saga/chal: every rolled set lands in its tier band, worst: " .. tostring(bad))
+end
+
+-- The trackers. A rolled set is random, so the test hunts for a seed that
+-- contains the rule it wants rather than asserting on one particular draw.
+local function seed_containing(name, tier)
+    for i = 1, 80 do
+        local seed = "spec-hunt-" .. i
+        if saga_with{ challenge_tier = tier or "brutal", challenge_seed = seed } then
+            fire("gameplay:GAME_START")
+            if logged(name) then return seed end
+        else
+            return nil
+        end
+    end
+    return nil
+end
+
+local seed = seed_containing("Fountains Sealed")
+if seed then
+    ok(logged("[Saga] CHALLENGE BROKEN") == nil, "saga/chal: a fresh set is unbroken")
+    fire("gameplay:USE_HEAL_FOUNTAIN")
+    ok(logged("CHALLENGE BROKEN \u{2014} Fountains Sealed") ~= nil,
+       "saga/chal: drinking from a fountain breaks Fountains Sealed")
+
+    -- ...and it stays broken. A later goal check must not clear it.
+    fire("gameplay:GAME_END_FAILED")
+    fire("menu:enter")
+    ok(logged("[Saga] CHALLENGE BROKEN") ~= nil,
+       "saga/chal: the run settles as broken")
+    ok(logged("[Saga] CHALLENGE KEPT") == nil,
+       "saga/chal: ...and is not also reported as kept")
+else
+    io.write("SKIP: saga/chal: no seed in 80 tries contained Fountains Sealed\n")
+end
+
+-- An untouched set is KEPT, and pays its score. This is the other half of the
+-- tracker contract: nothing may fail a rule it has seen no evidence for.
+if seed and saga_with{ challenge_tier = "brutal", challenge_seed = seed } then
+    fire("gameplay:GAME_START")
+    fire("gameplay:GAME_END_FAILED")
+    fire("menu:enter")
+    ok(logged("[Saga] CHALLENGE KEPT") ~= nil,
+       "saga/chal: a set nothing broke is kept")
+end
+
+-- Auto-apply is OFF by default, and that is load-bearing: Saga's whole claim is
+-- that it touches nothing. With it on, the modifier entries — and only those —
+-- reach R.modifier.set.
+if saga_with{ challenge_tier = "brutal", challenge_seed = "spec-apply" } then
+    fire("gameplay:GAME_START")
+    ok(#calls == 0, "saga/chal: no engine write with auto-apply off, saw: "
+       .. table.concat(calls, ", "))
+end
+
+local _set, _enable, _next = R.modifier.set, R.modifier.enable_writes, R.schedule.next_main
+R.modifier.set = function(name, value)
+    calls[#calls + 1] = ("modifier.set:%s:%s"):format(name, tostring(value))
+    return true
+end
+R.modifier.enable_writes = function() return true end
+-- next_main defers to the game's main pump, which this harness has no tick for.
+R.schedule.next_main = function(fn) fn() end
+do
+    local hit = nil
+    for i = 1, 80 do
+        if not saga_with{ challenge_tier = "brutal", challenge_seed = "spec-apply-" .. i,
+                          challenge_apply = true } then break end
+        fire("gameplay:GAME_START")
+        if had("modifier.set:") then hit = had("modifier.set:"); break end
+    end
+    ok(hit ~= nil, "saga/chal: auto-apply writes the modifiers it can, saw: " .. tostring(hit))
+end
+R.modifier.set, R.modifier.enable_writes, R.schedule.next_main = _set, _enable, _next
+for k in pairs(_cfg_override) do _cfg_override[k] = nil end
+
+-- The spend rules. There is no spend event on the bus at all — only
+-- GAIN_DREAM_SHARDS — so the mod reads a FALL in the polled balance as a
+-- purchase. That inference is the whole mechanism and it has two ways to be
+-- wrong, both tested here: a first sample must not read as a spend (the
+-- balance starts unsampled, not at zero), and a rise must not either.
+local _statget = R.stat.get
+local balance = nil
+R.stat.get = function(name)
+    if name == "dream_shards" then return balance end
+    return _statget and _statget(name)
+end
+
+-- Drive the 3s poll. It is registered with every_main, which rsmm.lua pumps
+-- from the gameplay bus, so a gameplay event plus a clock advance is what a
+-- frame looks like to this mod.
+local function poll(n)
+    for _ = 1, (n or 1) do
+        advance(4)
+        fire("gameplay:GAME_CHRONO_START", { source = "gameplay" })
+    end
+end
+
+local sseed = seed_containing("Savings First")
+if sseed then
+    balance = 400
+    poll(2)
+    ok(logged("CHALLENGE BROKEN \u{2014} Savings First") == nil,
+       "saga/spend: the first sample of a balance is not a spend")
+    balance = 900
+    poll()
+    ok(logged("CHALLENGE BROKEN \u{2014} Savings First") == nil,
+       "saga/spend: earning shards is not a spend")
+    balance = 700
+    poll()
+    ok(logged("CHALLENGE BROKEN \u{2014} Savings First") ~= nil,
+       "saga/spend: spending below 1000 breaks Savings First")
+else
+    io.write("SKIP: saga/spend: no seed in 80 tries contained Savings First\n")
+end
+
+-- Reaching the target first makes the rule safe to spend against.
+if sseed and saga_with{ challenge_tier = "brutal", challenge_seed = sseed } then
+    fire("gameplay:GAME_START")
+    balance = 1200
+    poll(2)
+    ok(logged("CHALLENGE DONE \u{2014} Savings First") ~= nil,
+       "saga/spend: holding 1000 completes Savings First")
+    balance = 100
+    poll()
+    ok(logged("CHALLENGE BROKEN \u{2014} Savings First") == nil,
+       "saga/spend: ...and spending afterwards does not break it")
+end
+
+local fseed = seed_containing("Shard Fast")
+if fseed then
+    balance = 500
+    poll(2)
+    balance = 300
+    poll()
+    ok(logged("CHALLENGE BROKEN \u{2014} Shard Fast") ~= nil,
+       "saga/spend: spending in chapter 1 breaks Shard Fast")
+else
+    io.write("SKIP: saga/spend: no seed in 80 tries contained Shard Fast\n")
+end
+
+-- Leaving chapter 1 with the balance untouched completes it instead.
+if fseed and saga_with{ challenge_tier = "brutal", challenge_seed = fseed } then
+    fire("gameplay:GAME_START")
+    balance = 500
+    poll(2)
+    fire("gameplay:GAME_END_NEXT_CHAPTER")
+    ok(logged("CHALLENGE DONE \u{2014} Shard Fast") ~= nil,
+       "saga/spend: clearing chapter 1 unspent completes Shard Fast")
+end
+
+R.stat.get = _statget
+balance = nil
+for k in pairs(_cfg_override) do _cfg_override[k] = nil end
+
+-- The R.game rules. These read the engine's own values through the global
+-- entity-value context, which an older loader does not publish — so the thing
+-- most worth pinning is that their ABSENCE is silent. A rule that cannot see
+-- its signal must stay open, never fail.
+local _game = R.game
+local gvals = nil                       -- nil = no context published
+R.game = {
+    keys = (_game and _game.keys) or {},
+    get  = function(n) return gvals and gvals[n] or nil end,
+}
+
+local shopseed = seed_containing("One Shop Visit Per Chapter")
+if shopseed then
+    gvals = nil
+    poll(2)
+    ok(logged("CHALLENGE BROKEN") == nil,
+       "saga/game: with no global context published, nothing is judged")
+
+    -- Two rising edges in one chapter breaks it; staying inside does not.
+    gvals = { is_in_sandman_shop = 1 }
+    poll()
+    gvals = { is_in_sandman_shop = 1 }
+    poll()
+    ok(logged("CHALLENGE BROKEN \u{2014} One Shop Visit Per Chapter") == nil,
+       "saga/game: staying in the shop is still one visit")
+    gvals = { is_in_sandman_shop = 0 }
+    poll()
+    gvals = { is_in_sandman_shop = 1 }
+    poll()
+    ok(logged("CHALLENGE BROKEN \u{2014} One Shop Visit Per Chapter") ~= nil,
+       "saga/game: a second visit in one chapter breaks One Shop Per Chapter")
+else
+    io.write("SKIP: saga/game: no seed in 80 tries contained One Shop Visit Per Chapter\n")
+end
+
+-- Drawn at IMPOSSIBLE: the brutal band did not contain it in 80 seeds.
+local rrseed = seed_containing("No Rerolls", "impossible")
+if rrseed then
+    gvals = { reroll_count = 3 }
+    poll(2)
+    ok(logged("CHALLENGE BROKEN \u{2014} No Rerolls") == nil,
+       "saga/game: the first sample of the reroll counter is a baseline")
+    gvals = { reroll_count = 4 }
+    poll()
+    ok(logged("CHALLENGE BROKEN \u{2014} No Rerolls") ~= nil,
+       "saga/game: the counter going up breaks No Rerolls")
+else
+    io.write("SKIP: saga/game: no seed in 80 tries contained No Rerolls\n")
+end
+
+local bcseed = seed_containing("Beat the Clock")
+if bcseed then
+    gvals = { is_boss_awaken = 0 }
+    poll(2)
+    ok(logged("CHALLENGE BROKEN \u{2014} Beat the Clock") == nil,
+       "saga/game: a sleeping boss does not break Beat the Clock")
+    gvals = { is_boss_awaken = 1 }
+    poll()
+    ok(logged("CHALLENGE BROKEN \u{2014} Beat the Clock") ~= nil,
+       "saga/game: the Nightmare waking breaks Beat the Clock")
+end
+
+R.game = _game
+gvals = nil
+for k in pairs(_cfg_override) do _cfg_override[k] = nil end
+
+-- Analytics-bus rules. These arrive under the RAW event name (no "gameplay:"
+-- prefix) and carry their fields on `ev`, which is the whole point: the
+-- gameplay bus never names the article you bought.
+-- IMPOSSIBLE: No Shop conflicts with E02 and did not appear in a brutal draw.
+local shopseed2 = seed_containing("No Shop", "impossible")
+if shopseed2 then
+    ok(logged("CHALLENGE BROKEN \u{2014} No Shop") == nil, "saga/analytics: a fresh set is unbroken")
+    fire("sandman_buy", { article_name = "Dreamcatcher", article_price = 120,
+                          article_rarity = "Common" })
+    ok(logged("CHALLENGE BROKEN \u{2014} No Shop") ~= nil,
+       "saga/analytics: buying from the Sandman breaks No Shop")
+else
+    io.write("SKIP: saga/analytics: no seed in 80 tries contained No Shop\n")
+end
+
+-- The probe prints each identity-carrying event ONCE, with its fields.
+if saga_with{ challenge_tier = "brutal", challenge_seed = "probe" } then
+    fire("gameplay:GAME_START")
+    fire("object_selected", { object_name = "Healing_Effect", object_quality = 1 })
+    fire("object_selected", { object_name = "Second_One", object_quality = 2 })
+    local hits = 0
+    for _, l in ipairs(logs) do
+        if l:find("PROBE object_selected", 1, true) then hits = hits + 1 end
+    end
+    ok(hits == 1, "saga/analytics: the payload probe fires exactly once, saw " .. hits)
+    ok(logged("object_name=Healing_Effect") ~= nil,
+       "saga/analytics: ...and prints the fields the emitter carries")
+end
+for k in pairs(_cfg_override) do _cfg_override[k] = nil end
 
 -- ---------------------------------------------------------------------------
 -- 7. steamroller: pins on the main thread only, and in STORE units

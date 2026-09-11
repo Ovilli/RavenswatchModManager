@@ -59,6 +59,7 @@ set(LOADER_SRC
     src/hook_levelload.cpp
     src/hook_levelbuild.cpp
     src/hook_events.cpp
+    src/hook_gamevalues.cpp
     src/hook_netcode.cpp
     src/hook_lua.cpp
     src/script_lua.cpp

@@ -1149,6 +1149,73 @@ end
 -- Read a raw entity-value key the name table doesn't cover (forward-compat).
 function R.modifier.value_by_key(key) return R.entity.value(key) end
 
+-- WRITE side (EXPERIMENTAL, unproven in-game) ---------------------------
+--
+-- A modifier is a CRC-keyed entry in the SAME entity-value store R.stat writes,
+-- so setting one is R.stat.stick under a different name — no second write path,
+-- no second set of guards. Registering the keys into R.stat.keys is what makes
+-- that reuse legal: R.stat.set refuses a name it does not know.
+--
+-- Three honest caveats, none of which this code can check for you:
+--
+--  1. WHICH STORE. R.modifier.value already reads the HERO's store, and whether
+--     run modifiers actually live there (rather than on a global game entity)
+--     has never been proven in-game — a wrong store reads 0 and writes nowhere.
+--  2. WHEN IT IS READ. Only a modifier the engine reads LIVE can be turned on
+--     mid-run. "One chapter", "Day only" and "Random hero at map start" are
+--     consumed at map generation, so setting them after a run has begun changes
+--     nothing; they have to be ticked in the Custom Mode screen.
+--  3. NOT THE UI. This flips the state key the behaviour is gated on. The
+--     challenge-select screen still shows nothing selected.
+--
+-- EVERY modifier is written as f32, toggles included, because that is how they
+-- are READ: R.entity.value decodes the union's inline slot as a float for every
+-- key, so an int-written toggle reads back as ~0 and R.modifier.active answers
+-- no to a modifier it just set. Read and write have to agree before either can
+-- be right. If a modifier turns out to be int-typed in the engine, BOTH sides
+-- are wrong together and R.entity.value is the one place to fix it.
+local _modifier_keys_registered = false
+local function _register_modifier_keys()
+    if _modifier_keys_registered then return end
+    _modifier_keys_registered = true
+    for name, key in pairs(_MODIFIER_KEYS) do
+        R.stat.keys["modifier:" .. name] = { key = key, kind = "f32" }
+    end
+end
+
+-- Opt in to modifier writes. Same consent flag as R.stat.enable_writes — this
+-- IS that flag, so enabling either enables both.
+function R.modifier.enable_writes() return R.stat.enable_writes() end
+
+-- Set a named modifier and KEEP it set (R.stat.stick re-asserts after the
+-- engine's next recompute wipes the override cache). MAIN THREAD only.
+-- Returns the immediate-apply result; false when the name is unknown, writes
+-- are off, or no value store is reachable.
+function R.modifier.set(name, value)
+    if not _MODIFIER_KEYS[name] then
+        R.log("[rsmm.modifier] unknown modifier name: " .. tostring(name))
+        return false
+    end
+    _register_modifier_keys()
+    return R.stat.stick("modifier:" .. name, value or 1)
+end
+
+-- Stop pinning a modifier. The engine's next recompute restores its own value.
+function R.modifier.clear(name)
+    if not _MODIFIER_KEYS[name] then return false end
+    _register_modifier_keys()
+    return R.stat.unstick("modifier:" .. name)
+end
+
+-- Names this SDK can WRITE, sorted. Same set as R.modifier.names() today; kept
+-- separate so a read-only key added later does not silently become writable.
+function R.modifier.writable()
+    local t = {}
+    for k in pairs(_MODIFIER_KEYS) do t[#t + 1] = k end
+    table.sort(t)
+    return t
+end
+
 -- stats + experience ----------------------------------------------------
 --
 -- Both live in rsmm/progression.lua. R.stat reads and grants any per-hero stat
@@ -1175,6 +1242,20 @@ _submodule_fn("progression", {
     _hero_plausible   = _hero_plausible,
     _ev_ctx           = _ev_ctx,
     _ctx_chain_ok     = _ctx_chain_ok,
+})
+
+-- R.game — the run-level half of the entity-value system.
+--
+-- R.stat (above) reads the values that hang off the hero. The engine registers
+-- 117 more that are about the RUN rather than the player — the shop, rerolls,
+-- the chapter, the day/night cycle and the boss timer, session membership —
+-- and they live in a different context, which hook_gamevalues.cpp captures.
+-- Separate submodule rather than more of progression.lua because it shares
+-- only the union layout with it, and because rsmm.lua has a hard 200-local
+-- ceiling that the earlier splits exist to stay under.
+_submodule_fn("gamevalues", {
+    I = I, R = R,
+    _ptr_plausible = _ptr_plausible,
 })
 
 -- hero (identity / per-hero scope) --------------------------------------
