@@ -16,18 +16,18 @@
   "dependencies": {
     "@aws-sdk/client-s3": "3.1051.0",
     "@aws-sdk/s3-request-presigner": "3.1051.0",
-    "@hono/node-server": "1.19.15",
+    "@hono/node-server": "2.1.1",
     "@hono/zod-validator": "0.4.2",
     "@neondatabase/serverless": "0.10.4",
     "@rsmm/db": "workspace:*",
     "@rsmm/schemas": "workspace:*",
-    "better-auth": "1.4.17",
+    "better-auth": "1.6.22",
     "dotenv": "16.4.7",
     "drizzle-orm": "0.45.2",
-    "hono": "4.12.34",
-    "nodemailer": "^9.0.1",
+    "hono": "4.13.5",
+    "nodemailer": "^10.0.6",
     "pg": "8.13.1",
-    "ws": "8.21.0",
+    "ws": "8.21.3",
     "zod": "3.25.76"
   },
   "devDependencies": {
@@ -37,6 +37,6 @@
     "tsup": "^8.5.1",
     "tsx": "4.19.2",
     "typescript": "5.7.3",
-    "vitest": "3.2.6"
+    "vitest": "4.1.11"
   }
 }
