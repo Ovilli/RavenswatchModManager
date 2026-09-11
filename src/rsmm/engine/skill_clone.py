@@ -185,6 +185,80 @@ def repoint_skill(blob: bytes, src_name: str, new_name: str, *,
     return blob[:row.begin] + new_row + blob[row.end:]
 
 
+
+# --- the class-index table that OWNS the rows ------------------------------
+#
+# Directly before the first skill row sits a counted table enumerating every
+# sub-object in the file by class id:
+#
+#     MARK (0xaabb1111) | u32 n | n x u32 class-id | MARK_END (0xaabb2222)
+#
+# Class id 4 is a skill-controller row (``_ROW_CLASS``), and it appears exactly
+# as many times as there are rows — 28/28 on every shipped hero. THIS is the
+# count ``Serializer_ReadPolyPtrVector`` reads, and nothing here ever wrote it.
+#
+# That is why a spliced row bricked the hero: the table still said 28, the
+# deserialiser read 28 objects, and the next field then began in the middle of
+# row 29 — the stream desynchronised and the whole definition was rejected.
+# Same orphan-vector bug already fixed for entities and levels: bytes added to
+# the stream while the vector that owns them was left alone.
+_MARK_END = bytes.fromhex("2222bbaa")
+
+
+def class_table(blob: bytes, *, verify: bool = True) -> tuple[int, int, list[int]]:
+    """Locate the class-index table. Returns ``(mark_off, n, class_ids)``.
+
+    Fails CLOSED: raises rather than guessing, because a wrong offset here
+    rewrites a length field in the middle of a hero definition.
+
+    ``verify`` cross-checks that the table holds exactly one class-4 entry per
+    parsed row. That invariant is what proves this is the RIGHT table, so it is
+    on by default — but it is necessarily FALSE in the window between splicing
+    a row and growing the table, which is the one caller that passes False.
+    """
+    rows = list_skill_rows(blob)
+    if not rows:
+        raise SkillCloneError("no skill rows, so no class table to anchor on")
+    first = min(r.begin for r in rows)
+    mark = blob.rfind(_BEGIN, 0, first)
+    if mark < 0:
+        raise SkillCloneError("no MARK before the first skill row")
+    (n,) = struct.unpack_from("<I", blob, mark + 4)
+    if not (0 < n < 100_000):
+        raise SkillCloneError(f"implausible class-table length {n}")
+    end_off = mark + 8 + 4 * n
+    if blob[end_off:end_off + 4] != _MARK_END:
+        raise SkillCloneError(
+            "class table does not close with MARK_END where its length says "
+            f"it should (n={n}) — refusing to edit a structure I cannot parse")
+    ids = list(struct.unpack_from(f"<{n}I", blob, mark + 8))
+    if verify and ids.count(_ROW_CLASS) != len(rows):
+        raise SkillCloneError(
+            f"class table holds {ids.count(_ROW_CLASS)} entries of class "
+            f"{_ROW_CLASS} but {len(rows)} rows were parsed — the table is not "
+            "the one that owns these rows")
+    return mark, n, ids
+
+
+def grow_class_table(blob: bytes) -> bytes:
+    """Add one skill-row entry to the class table and bump its length.
+
+    The class-4 entries are contiguous at the front of the table, so the new
+    one goes immediately after the last of them — keeping them contiguous is
+    what makes the result indistinguishable from a hero that shipped with one
+    more skill.
+    """
+    mark, n, ids = class_table(blob, verify=False)
+    at = max(i for i, v in enumerate(ids) if v == _ROW_CLASS) + 1
+    ids.insert(at, _ROW_CLASS)
+    table = struct.pack("<I", n + 1) + struct.pack(f"<{n + 1}I", *ids)
+    out = blob[:mark + 4] + table + blob[mark + 8 + 4 * n:]
+    # Prove it: the table must now agree with the rows, or we produced exactly
+    # the orphan this function exists to prevent.
+    class_table(out)
+    return out
+
+
 def clone_skill(blob: bytes, src_name: str, new_name: str, *,
                 new_guid1: bytes | None = None,
                 remint: bool = False) -> tuple[bytes, bytes]:
@@ -207,4 +281,7 @@ def clone_skill(blob: bytes, src_name: str, new_name: str, *,
                      else blob[row.guid1_off:row.guid1_off + 16])
     new_row = _row_with(blob, row, new_name, new_guid1)
     patched = blob[:row.end] + new_row + blob[row.end:]
+    # Grow the vector that OWNS the row. Without this the row is an orphan and
+    # the hero fails to load entirely — see grow_class_table.
+    patched = grow_class_table(patched)
     return patched, new_guid1

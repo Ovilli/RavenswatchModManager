@@ -161,3 +161,55 @@ def test_real_herodef_row_layout():
     assert len(SC.list_skill_rows(out)) == 29
     assert SC.find_skill(out, "Defense Dash").raw(out) == \
         SC.find_skill(d, "Defense Dash").raw(d)
+
+
+# --- the class table that owns the rows ------------------------------------
+#
+# A spliced row without a matching table entry is an ORPHAN: the deserialiser
+# reads the old count, the next field starts mid-row, and the whole hero fails
+# to load. That is what removed Aladdin from the roster in June. These pin the
+# fix so it cannot regress into the same silent shape.
+
+def _herodef(hero: str) -> bytes:
+    from rsmm.engine.paths import DATA_DIR
+    p = (DATA_DIR / "uncooked" / "Definitions" / "Heroes"
+         / f"{hero}.herodef.ot.DtHeroDefinition.gen")
+    if not p.exists():
+        pytest.skip(f"{hero} herodef not in the corpus")
+    return p.read_bytes()
+
+
+@pytest.mark.parametrize("hero", ["Aladdin", "Merlin", "Red"])
+def test_class_table_counts_the_rows(hero):
+    """One class-4 entry per skill row, on every shipped hero."""
+    blob = _herodef(hero)
+    _, n, ids = SC.class_table(blob)
+    assert ids.count(4) == len(SC.list_skill_rows(blob))
+    assert 0 < ids.count(4) < n
+
+
+@pytest.mark.parametrize("hero", ["Aladdin", "Merlin", "Red"])
+def test_clone_grows_the_class_table(hero):
+    """A clone must leave the table and the rows in agreement."""
+    blob = _herodef(hero)
+    _, n0, ids0 = SC.class_table(blob)
+    rows0 = SC.list_skill_rows(blob)
+    out, _ = SC.clone_skill(blob, rows0[0].name, "RSMM Test Skill")
+    _, n1, ids1 = SC.class_table(out)          # verify=True: asserts agreement
+    assert n1 == n0 + 1
+    assert ids1.count(4) == ids0.count(4) + 1
+    assert len(SC.list_skill_rows(out)) == len(rows0) + 1
+    # the class-4 entries stay contiguous, as they are in every shipped hero
+    idx = [i for i, v in enumerate(ids1) if v == 4]
+    assert idx == list(range(idx[0], idx[0] + len(idx)))
+
+
+def test_class_table_refuses_a_mismatched_table():
+    """The locator must fail CLOSED rather than rewrite the wrong length."""
+    blob = _herodef("Aladdin")
+    rows = SC.list_skill_rows(blob)
+    spliced = SC._row_with(blob, rows[0], "RSMM Orphan", blob[
+        rows[0].guid1_off:rows[0].guid1_off + 16])
+    orphan = blob[:rows[0].end] + spliced + blob[rows[0].end:]
+    with pytest.raises(SC.SkillCloneError, match="but 29 rows were parsed"):
+        SC.class_table(orphan)

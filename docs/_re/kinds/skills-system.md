@@ -3,6 +3,134 @@
 > 📖 Prose version on the docs site: **https://docs.rsmm.me/reverse-engineering/skills-system/** (`apps/docs/src/content/docs/reverse-engineering/skills-system.md`).
 > This file stays as the raw RE field notes.
 
+## ✅ THE MISSING COUNT — FOUND 2026-09-11 (offline, all 12 heroes)
+
+### ❌ PLAYTEST 1 (2026-09-11): the count fix is NOT sufficient — crash, not brick
+
+Aladdin + one cloned row, class table grown 78->79. Result: **the game crashed**
+in `HeroDef_PostLoad`, reading `0xffffff00ffffff00`. No loader frames in the
+stack, so this is the herodef, not the loader.
+
+**This is progress, and the distinction matters.** The June failure was a
+GRACEFUL one — the hero simply failed to load and vanished from selection. Now
+the definition deserialises far enough to reach post-load, which is consistent
+with the count having been a real blocker. It was just not the only one.
+
+**Where it dies:** `HeroDef_PostLoad` walks the skill vector (data `+0x8d8`,
+count `+0x8e0` — confirms the note's +0x8d8 over the docs' +0x7d0) and, for each
+skill, walks a PER-SKILL sub-vector (data `skill+0xb8`, count `skill+0xc0`),
+calling vtable+0x48 on every element. The fault value is a classic poison
+pointer, so one skill's `+0xb8` is not a live pointer.
+
+**What the class table is NOT.** It does not enumerate row sub-objects. Each
+skill row contains 6 MARK_BEGINs with class ids {4,7,10,11,12,12} — 168 objects
+across 28 rows — while the table holds 78 entries whose ids are {4:28, 17:23,
+6:9, 5:7, 8:5, 15:4, 16:2}. Ids 7/10/11/12 never appear in it. So class-4-per-row
+is right, but what the other 50 entries enumerate is still unknown, and any
+model that assumes "one table entry per object in the stream" is wrong.
+
+**Leading suspect for the crash, untested:** the clone KEEPS the source's
+identity GUID (`clone_skill(remint=False)` by default). [[talents-system]]
+records SPDS `+0x10` as the *dedup key*. Two rows sharing one identity is
+exactly the input a dedup path mishandles — register the second, drop or free
+the first, leave a dangling entry for post-load to walk. That predicts this
+crash precisely and is a one-flag experiment (`remint=True`). The old note
+argued against reminting because an unresolvable GUID broke a cloned ITEM, but
+that was about a resource ref, not an identity dedup key.
+
+Recovery used: `rsmm disable talent-clone-test && rsmm apply`. A pristine
+herodef copy is kept at `<cooking>/.rsmm_herodef_backup/`.
+
+### ❌ PLAYTEST 2 (2026-09-11): fresh identity GUID does NOT fix it either
+
+`remint=true` — verified offline that the clone's `+0x10` identity is unique and
+no other row shares it. Crashed again, same instruction.
+
+Both crashes are at `0x14012f005`, inside a DESTRUCTOR:
+
+```
+rdi = this + 0x20
+rcx = [rdi + 0x38]        ; this+0x58
+if (rcx) { rax = [rcx];   ; <-- FAULT, reading a vtable
+           call [rax+0x20] }   ; virtual destructor
+```
+
+Run 1 faulted on `0xffffff00ffffff00`; run 2 on `0x64007500560000`, which is
+UTF-16 text (`\0V\0u\0d`) being dereferenced as a pointer. A pointer slot
+holding *string bytes* is a stream DESYNC, not a bad value.
+
+**Two conclusions, one of them against my own model:**
+
+1. The duplicate identity GUID was NOT the cause. That hypothesis is dead.
+2. Growing the class table by one class-4 entry is NOT the correct edit. The
+   stream is still being read misaligned, which is what puts text where a
+   pointer belongs.
+
+**And the crash is probably SECONDARY.** It is a destructor — the engine tearing
+down a partially-constructed definition. So the primary failure may still be
+"definition rejected", with the count fix having changed only the failure PATH
+(clean vanish -> crash during cleanup), not the outcome. That is arguably worse
+than June, not better, and the earlier claim that reaching post-load proved
+progress should be treated with suspicion.
+
+**Not yet eliminated:** the clone also appends a key to the hero text bank
+(`_emit_text_append` -> `append_bank_keys`). That machinery looks sound
+(index-aligned across all 13 language siblings, rebuilt from `.rsmm.bak`), but
+the UTF-16 fault value means it has not been ruled out. The next experiment
+should emit the herodef row ALONE, with no text append, to separate the two.
+
+**Status: `mode="clone"` remains gated behind `accept_brick_risk` and should not
+be un-gated.** Two playtests, two crashes, model disproved.
+
+
+The net-new-talent wall was diagnosed below as "a count/length living in the
+registrar region Ghidra leaves unanalysed". That was a TOOLING limit, not an
+engine fact, and it is gone: defining the 16,945 functions Ghidra's heuristics
+had never created made `Serializer_ReadPolyPtrVector` readable, and it reads a
+plain `u32` count straight from the stream.
+
+**The count is not ahead of the rows in the way this file scanned for.**
+Directly before the first skill row sits a counted CLASS-INDEX TABLE:
+
+```
+MARK (0xaabb1111) | u32 n | n x u32 class-id | MARK_END (0xaabb2222) | <rows...>
+```
+
+It enumerates every sub-object in the file by class id, and **class id 4 is the
+skill-controller row** — the same `_ROW_CLASS = 4` that `skill_clone.py`
+already uses to open a row. Measured on the shipped corpus:
+
+| hero | table @ | n | entries with class 4 | rows |
+|------|---------|---|----------------------|------|
+| Aladdin | 0x0333 | 78 | 28 | 28 |
+| Merlin  | 0x0333 | 73 | 28 | 28 |
+| Juliet  | 0x0333 | 77 | 28 | 28 |
+| Red     | 0x036b | 78 | 28 | 28 |
+
+28 for 28, on every hero checked. That is the count, and nothing was writing it.
+
+**The old symptom fits exactly.** `clone_skill` appended a 29th row and left the
+table at n=78 with 28 fours. The deserialiser walks the table, reads 28 objects,
+and the next field then begins in the middle of row 29 — the stream
+desynchronises and the WHOLE definition is rejected. That is precisely "Aladdin
+vanished from the hero-selection menu", and it needs no hidden registrar format
+to explain. It is the same orphan-vector bug already fixed for entities
+(2026-09-06) and levels (2026-09-08): bytes added to the stream while the vector
+that owns them was left alone.
+
+**What a net-new talent needs:**
+
+1. append the row (`clone_skill` already does this),
+2. insert one `4` into the class table — the 4s are contiguous at the front, so
+   at index 28,
+3. bump `n` (78 -> 79).
+
+⚠ UNPROVEN IN GAME. This is an offline structural result on the shipped corpus,
+not a playtest. The previous attempt removed a hero from the roster, so test on
+a disposable install with a backup, and leave `mode="clone"` hard-errored until
+a launch confirms it.
+
+
 
 > Scope: the requirement "a custom talent that is hero-specific, upgradeable to
 > legendary, and visible in the hero page." In-game these are **Skills**, not

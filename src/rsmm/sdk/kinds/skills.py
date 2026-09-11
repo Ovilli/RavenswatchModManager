@@ -175,9 +175,19 @@ def _emit_herodef(hero_token: str, defn: ContentDef, mode: str,
     source = defn.fields["source"]
     new_name = defn.fields.get("name") or defn.fields.get("display_name") or defn.id
     guid = _parse_guid(defn.fields.get("guid"))
+    # Whether the clone gets a FRESH identity GUID.
+    #
+    # `clone_skill` defaults to keeping the source's, on the reasoning that a
+    # reminted-but-unresolvable GUID broke a cloned magical object. That case
+    # was a resource REFERENCE. A skill row's +0x10 GUID is an identity DEDUP
+    # KEY, and playtest 1 (2026-09-11) crashed in HeroDef_PostLoad walking a
+    # per-skill sub-vector through a poison pointer — the shape you get when a
+    # dedup path sees two rows claiming one identity and drops one of them.
+    remint = bool(defn.fields.get("remint"))
     try:
         if mode == "clone":
-            out, ident = SC.clone_skill(blob, source, new_name, new_guid1=guid)
+            out, ident = SC.clone_skill(blob, source, new_name,
+                                        new_guid1=guid, remint=remint)
         else:  # repoint: remint identity in place, keep the controller name
             out = SC.repoint_skill(blob, source, source, new_guid1=guid)
             row = SC.find_skill(out, source)
@@ -212,20 +222,32 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     mode = (defn.fields.get("mode") or "relabel").lower()
     if mode not in ("relabel", "clone", "repoint"):
         raise ContentError(f"skill {defn.id}: mode must be relabel/clone/repoint.")
-    if mode == "clone":
-        # DISABLED — proven 2026-06-15 (TWICE): splicing a row into the herodef
-        # makes the hero fail to load and vanish from selection. Tested with a
-        # reminted GUID AND with the source GUID kept — both brick, so it is NOT
-        # the identity: the skill collection is structurally validated in a way a
-        # byte-splice violates (a count/length the deserialiser enforces, in the
-        # registrar region Ghidra leaves unanalysed). Net-new skills are not
-        # feasible by row insertion until that format is RE'd. Use mode="relabel"
-        # (override an existing skill's text — visible & safe). See
+    if mode == "clone" and not defn.fields.get("accept_brick_risk"):
+        # GATED, no longer blanket-disabled.
+        #
+        # It WAS disabled on the reading that the deserialiser enforces "a
+        # count/length in the registrar region Ghidra leaves unanalysed". That
+        # reason is superseded: the count is a plain u32 in a class-index table
+        # immediately before the rows, and nothing was writing it — see
+        # skill_clone.grow_class_table, which clone_skill now calls. A spliced
+        # row was an ORPHAN, the same bug already fixed for entities and levels.
+        #
+        # The gate stays because the fix is proven OFFLINE ONLY. The failure it
+        # guards against is not subtle: the previous attempt removed Aladdin
+        # from the hero-selection menu entirely. Opting in is therefore explicit
+        # and per-def, and the flag name says what you are accepting.
+        #
+        # ⚠ Even when this loads, the talent may not be VISIBLE. The Book grid
+        # derives a cell from skill identity and does not enumerate by vector
+        # length, so a clone that inherits its source's identity draws on top of
+        # it. That wall is separate from this one and untested — see
         # docs/_re/kinds/skills-system.md.
         raise ContentError(
-            f"skill {defn.id}: mode='clone' is DISABLED — inserting a skill row "
-            f"bricks the hero (proven in-game, GUID-independent). Use "
-            f"mode='relabel' to repurpose an existing skill instead.")
+            f"skill {defn.id}: mode='clone' needs `accept_brick_risk = true`. "
+            f"The herodef count bug behind the old block is fixed "
+            f"(skill_clone.grow_class_table) but PROVEN OFFLINE ONLY, and a bad "
+            f"row removes the hero from the selection menu. Back up "
+            f"Definitions/Heroes/<Hero>.herodef.ot.DtHeroDefinition.gen first.")
     display_name = defn.fields.get("display_name") or defn.fields.get("name")
     description = defn.fields.get("description")
 
