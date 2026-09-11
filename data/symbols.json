@@ -554,6 +554,15 @@
    }
   },
   {
+   "name": "Definition_PreloadResourceCache",
+   "kind": "function",
+   "category": "resource",
+   "raw": "FUN_140310fb0",
+   "status": "unverified",
+   "signature": "void(void* definition)",
+   "note": "Load a definition's `.UsedRscCache.ot` and hand its contents to the resource system. THIS is the path a definition's transitive dependencies actually arrive by, and it is not ResourceRef_Resolve.\n\nThree steps: FUN_140310ca0(def, <global>); build the cache path with the sibling-name builder (appends \".UsedRscCache.ot\" and applies the \\\\->! collapse, keeping the first two backslashes); parse it with ResourceCache_Parse into a vector of 0x38-byte entries — the same stride as a resource ref block — and pass that vector to ResourceCache_Submit at *(def+0x30)+0x68. Then free the vector, walking it at stride 0x38.\n\nWHY IT MATTERS FOR THE ADDITIVE-POI WALL. A 2026-09-11 trace on ResourceRef_Resolve, filtered on a mod's own asset names, showed the mod's GEOMETRY and TEXTURES resolving with live objects and state=1 while the mod-added ENTITY produced zero hits — and the filter did include it. So the entity is not merely resolving to null, it is never asked for THROUGH THAT FUNCTION. This preload is the other candidate path, and the two must be told apart before the recorded conclusion (\"a mod-added entity resolves to null\") can be trusted: it may have been measured with the wrong instrument."
+  },
+  {
    "name": "Definition_Unload",
    "kind": "function",
    "category": "library",
@@ -3206,6 +3215,24 @@
    ]
   },
   {
+   "name": "ResourceCache_Parse",
+   "kind": "function",
+   "category": "resource",
+   "raw": "FUN_140492a10",
+   "status": "unverified",
+   "signature": "bool(void* outVector, void* cachePath)",
+   "note": "Parse a `.UsedRscCache.ot` into a vector of 0x38-byte entries (the resource ref block stride). Returns 1 on success; the caller frees the vector with a 0x38-stride walk. Also called from HeroDef_PostLoad, which preloads the same way — so this is the shared reader for the preload manifests, not a definition-specific one."
+  },
+  {
+   "name": "ResourceCache_Submit",
+   "kind": "function",
+   "category": "resource",
+   "raw": "FUN_1404aa3a0",
+   "status": "ok",
+   "signature": "void(void* resourceSink, void* entryVector)",
+   "note": "Hand a parsed resource-cache entry vector to the resource system. The sink is reached as *(definition+0x30)+0x68. This is the last step of Definition_PreloadResourceCache and the point where a cache line becomes a load request — so it is the place to instrument if the question is \"was my mod's entity ever REQUESTED\", which the ResourceRef_Resolve trace cannot answer.\n\nPromoted to ok 2026-09-11: .pdata entry point (0x1404aa3a0..0x1404aa842), unique byte pattern (match 0 of 1). Hooked by hook_resource.cpp's cache trace."
+  },
+  {
    "name": "ResourceRef_Resolve",
    "kind": "function",
    "category": "resource",
@@ -3543,6 +3570,21 @@
     "callers_min": 2000,
     "lines_max": 60
    }
+  },
+  {
+   "name": "TileDef_Deserialize",
+   "kind": "function",
+   "category": "library",
+   "raw": "FUN_140324690",
+   "status": "unverified",
+   "signature": "bool(oCDtTileDefinition* def, oCBinaryStream* stream)",
+   "locator": {
+    "vftable": {
+     "class": "oCDtTileDefinition",
+     "slot": 3
+    }
+   },
+   "note": "Tile definition deserializer — vftable slot 3 on oCDtTileDefinition (vftable 0x140ed6048, found via RTTI type descriptor -> complete object locator). Calls Definition_DeserializeBase first and bails on failure, the same shape as the rest of the oCDtDefinition family.\n\n⚠ ALMOST EVERY FIELD IS VERSION-GATED, AND THE SHIPPED VERSION IS 1. Each optional block is guarded by `FUN_1404fce50(stream, out, 0x1781ca4d)` followed by a compare on the returned `+0x4`, which is the SCHEMA VERSION for class uid 0x1781ca4d. The gates read `< 2`, `< 3`, `< 5`, `< 6`, `< 7` and `< 8`, and each one SKIPS its block when the version is below the threshold.\n\nThe three tier/slot counts live behind the LAST of those:\n    if (version >= 8) {\n        read(&this->field_0x2fc);   // tier 1\n        read(&this->field_0x300);   // tier 2\n        read(&this->field_0x304);   // tier 3\n    }\n\nMEASURED IN THE CORPUS: the uid appears once per tiledef at file offset 0x35, immediately followed by the version — and it reads **1** in both a shipped tile (6x6_Bleeding_01) and a mod clone. Version 1 is below every gate, so on this build NONE of those optional fields is deserialized, the tier counts included.\n\nWHY THAT MATTERS: it kills a plausible-looking hypothesis. A playtest showed mod tiles reading 0/0/0 for the tier fields while two shipped tiles read non-zero, which looks exactly like \"our tiles ship a weight nobody set\". They do not — nobody's tiledef authors those fields on this build, because the deserializer never reaches them. Whatever gives a shipped tile a non-zero tier weight is assigned at RUNTIME from another source, and looking for it in the cooked file is a dead end."
   },
   {
    "name": "TypeDesc_HashName",

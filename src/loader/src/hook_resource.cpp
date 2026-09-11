@@ -117,11 +117,21 @@ void ref_name(void* ref, char* out, std::size_t cap) {
 }
 
 // The ref block's PATH (+0x10), which is the field that actually identifies the
-// resource. ⚠ `ref_name` reads +0x00, and that is the resource ROOT — every
-// line it has ever printed says "shaders" / "Ot" / "EntitySettings", which is
-// why a name filter built on it matched nothing. Both fields are
-// {char* ptr, u32 len, u32 cap}; the level-load trace's refblock dump showed
-// the 39-char level path living at +0x10 beside the 2-char "Ot" at +0x00.
+// resource. `ref_name` reads +0x00, and that is the resource ROOT — a name
+// filter built on THAT matches nothing, because it only ever says "shaders" /
+// "Ot" / "EntitySettings". Both fields are {char* ptr, u32 len, u32 cap}; the
+// level-load trace's refblock dump showed the 39-char level path at +0x10
+// beside the 2-char "Ot" at +0x00.
+//
+// ✅ CONFIRMED WORKING 2026-09-11. This function carried a warning that it had
+// "never once been seen working", which mattered because the MATCH filter is
+// built on it: while the path read was in doubt, "my entity resolved ZERO
+// times" and "the path read is broken" were indistinguishable, and a session
+// was spent acting on the first reading. The session-e636 log settles it —
+// sampled lines print `shaders|Static3DVertexShader.osl`,
+// `shaders|FX\Dt_FX_TexMul.px.ot` and similar, i.e. a real filename after the
+// pipe, not a repeat of the root. A zero-hit filter is now a TRUSTWORTHY
+// answer about the resource, not a possible bug in this reader.
 void ref_path(void* ref, char* out, std::size_t cap) {
     out[0] = '\0';
     auto addr = reinterpret_cast<std::uintptr_t>(ref);
@@ -138,13 +148,9 @@ void ref_path(void* ref, char* out, std::size_t cap) {
 }
 
 // "<root>|<path>", the pair that identifies a resource — the same rendering
-// the level-load trace settled on. ⚠ Only `ref_name` (+0x00, the ROOT) has ever
-// reached the log, so every sampled line this trace has ever printed says
-// "shaders" / "3D" / "EntitySettings", and `ref_path` has never once been seen
-// working. That is not a cosmetic gap: the MATCH filter is built on `ref_path`,
-// so "BonFire resolved ZERO times" and "the path read is wrong" have been
-// indistinguishable, and a session was spent acting on the first reading.
-// Printing both makes the sample lines their own proof.
+// the level-load trace settled on. Printing BOTH is what makes each sample line
+// its own proof that the path read is live: see ref_path, where the ambiguity
+// this rendering exists to remove is described, and its resolution.
 void ref_ident(void* ref, char* out, std::size_t cap) {
     char root[64], path[256];
     ref_name(ref, root, sizeof(root));
@@ -357,6 +363,78 @@ void detour_resolve(void* ref, void* class_desc, void** out, void* policy) {
     }
 }
 
+
+// --- resource-cache submit trace -------------------------------------------
+//
+// WHY A SECOND HOOK. The ResourceRef_Resolve trace answers "did this resource
+// RESOLVE, and to what". It cannot answer "was my entity ever ASKED FOR",
+// and on 2026-09-11 that difference mattered: a mod's geometry and textures
+// resolved with live objects while its mod-added ENTITY produced zero hits
+// from a filter that included it. Never-resolved and never-requested are
+// different failures, and the recorded conclusion ("a mod-added entity
+// resolves to null") cannot be trusted until they are told apart.
+//
+// A definition's dependency closure arrives through its .UsedRscCache.ot, not
+// through ResourceRef_Resolve: Definition_PreloadResourceCache parses the
+// cache into 0x38-stride entries and hands the vector here. So this is the
+// point where a cache LINE becomes a load REQUEST, and it is the only place
+// the question can be asked.
+//
+// Argument 2 is {u32 count; u32 _pad; void* data} — the shape the caller
+// builds on its stack before the call.
+constexpr std::size_t kSubmitCountOff = 0x00;
+constexpr std::size_t kSubmitDataOff  = 0x08;
+constexpr std::size_t kSubmitStride   = 0x38;   // == a resource ref block
+constexpr std::uint32_t kSubmitMaxEntries = 4096;
+
+using Submit_t = void (*)(void*, void*);
+Submit_t g_submit_real = nullptr;
+
+// Does `path` contain any comma-separated token of the active filter?
+bool match_filter(const char* path) {
+    const char* want = rsc_trace_match();
+    if (!want || !want[0] || !path || !path[0]) return false;
+    const char* tok = want;
+    while (*tok) {
+        const char* end = std::strchr(tok, ',');
+        const std::size_t len = end ? (std::size_t)(end - tok) : std::strlen(tok);
+        if (len > 0 && len < 128) {
+            char needle[128];
+            std::memcpy(needle, tok, len);
+            needle[len] = '\0';
+            if (std::strstr(path, needle) != nullptr) return true;
+        }
+        tok = end ? end + 1 : tok + len;
+    }
+    return false;
+}
+
+void WINAPI cache_submit_detour(void* sink, void* vec) {
+    // Read BEFORE forwarding: the callee owns the vector afterwards and frees
+    // it, so anything read on the way out is a read of freed memory.
+    if (vec && rsc_trace_match() && rsc_trace_match()[0]) {
+        std::uint32_t count = 0;
+        std::uintptr_t data = 0;
+        const auto v = reinterpret_cast<std::uintptr_t>(vec);
+        if (mem_load(v + kSubmitCountOff, &count) && mem_load(v + kSubmitDataOff, &data)
+                && count > 0 && count <= kSubmitMaxEntries && data != 0
+                && mem_accessible(data, (std::size_t)count * kSubmitStride, false)) {
+            for (std::uint32_t i = 0; i < count; ++i) {
+                char path[256];
+                ref_path(reinterpret_cast<void*>(data + (std::uintptr_t)i * kSubmitStride),
+                         path, sizeof(path));
+                if (!match_filter(path)) continue;
+                char line[400];
+                std::snprintf(line, sizeof(line),
+                              "[rsc-trace] CACHE-SUBMIT entry %u/%u  \"%s\"",
+                              i + 1, count, path);
+                Loader::get().log(line);
+            }
+        }
+    }
+    g_submit_real(sink, vec);
+}
+
 }  // anonymous namespace
 
 long resolve_count() { return g_resolves.load(); }
@@ -370,10 +448,24 @@ bool install_resource_hooks() {
     }
     Loader::get().log("[rsc-trace] arming ResourceRef_Resolve trace — READ-ONLY; "
                       "logs the first few resolves, then only state != 1");
-    return hook_install("rsc-trace", "resource ref resolve",
+    const bool resolve_ok = hook_install("rsc-trace", "resource ref resolve",
                         Sym::ResourceRef_Resolve_Pattern,
                         reinterpret_cast<void*>(&detour_resolve),
                         reinterpret_cast<void**>(&g_real_resolve));
+
+    // The cache-submit trace is a SEPARATE question and fails independently:
+    // a build where only one of the two resolves still answers half of it.
+    const bool submit_ok = hook_install("rsc-trace", "resource cache submit",
+                                        Sym::ResourceCache_Submit_Pattern,
+                                        reinterpret_cast<void*>(&cache_submit_detour),
+                                        reinterpret_cast<void**>(&g_submit_real));
+    if (submit_ok) {
+        Loader::get().log("[rsc-trace] cache-submit trace armed — logs every "
+                          "resource-cache entry whose path matches the filter, "
+                          "which is what tells 'never requested' from "
+                          "'resolved to null'");
+    }
+    return resolve_ok || submit_ok;
 }
 
 }  // namespace rsmm

@@ -141,6 +141,9 @@ bool detour_gate(void* db, void* level, bool flag) {
         reinterpret_cast<std::uintptr_t>(db) + kDbMask, &mask);
     const long before = g_loads.load();
     const long res_before = resolve_count();
+    // Read the count BEFORE as well as after — see the note below on why the
+    // "empty on entry" theory has to be measured rather than assumed.
+    const long declared_in = level_objects(level);
 
     const bool kept = g_real_gate ? g_real_gate(db, level, flag) : false;
 
@@ -155,10 +158,24 @@ bool detour_gate(void* db, void* level, bool flag) {
     // nothing built nothing. It needs no struct offset at all.
     const long built = g_loads.load() - before;
     const long fetched = resolve_count() - res_before;
-    // AFTER the gate, and only when it kept the level: these fields are empty
-    // on entry and filled while it runs.
-    const long declared = kept ? level_objects(level) : -1;
-    const long passing = (kept && have_mask) ? passing_mask(level, mask, declared) : -1;
+    // ⚠ THE "EMPTY ON ENTRY" THEORY IS WRONG, and this is the third reading of
+    // this field. The gate's OWN object loop is driven by `*(level+0xc8)` and
+    // indexes `*(level+0xc0)` at stride 0x38, testing `db+0xa0 & elem+0x30` —
+    // i.e. it READS the count to do its work, so the field must already be
+    // populated when the gate is entered. Reading only afterwards, on the
+    // theory that the gate fills it, reported `objects=0` for 400 levels in
+    // one session with not a single non-zero — every shipped Dark Hills tile
+    // included. A number that is zero for levels which demonstrably build is a
+    // wrong READ, not a finding, and it was briefly taken as evidence that a
+    // mod's level was empty.
+    //
+    // So report BOTH, and let the log settle it instead of a comment. When
+    // they disagree the line says so, which is the only way the next reader
+    // can tell a populated-then-consumed field from one this trace simply
+    // cannot see.
+    const long declared_out = kept ? level_objects(level) : -1;
+    const long declared = (declared_in > 0) ? declared_in : declared_out;
+    const long passing = (have_mask && declared > 0) ? passing_mask(level, mask, declared) : -1;
     const long n = g_calls.fetch_add(1) + 1;
 
     // Worth a line: anything that leaves a level empty, plus the first few of
@@ -172,11 +189,17 @@ bool detour_gate(void* db, void* level, bool flag) {
 
     char name[256];
     level_name(level, name, sizeof(name));
-    char msk[24], dec[24], pas[24];
+    char msk[24], dec[40], pas[24];
     if (have_mask) std::snprintf(msk, sizeof(msk), "%#x", mask);
     else           std::snprintf(msk, sizeof(msk), "<unread>");
-    if (declared >= 0) std::snprintf(dec, sizeof(dec), "%ld", declared);
-    else               std::snprintf(dec, sizeof(dec), "<unread>");
+    // "in->out" whenever the two reads disagree: a field that is populated on
+    // entry and zero afterwards is a completely different fact from one that
+    // was never readable, and collapsing them is what produced 400 identical
+    // and meaningless lines.
+    if (declared_in != declared_out)
+        std::snprintf(dec, sizeof(dec), "%ld->%ld", declared_in, declared_out);
+    else if (declared >= 0) std::snprintf(dec, sizeof(dec), "%ld", declared);
+    else                    std::snprintf(dec, sizeof(dec), "<unread>");
     if (passing >= 0)  std::snprintf(pas, sizeof(pas), "%ld", passing);
     else               std::snprintf(pas, sizeof(pas), "<unread>");
 

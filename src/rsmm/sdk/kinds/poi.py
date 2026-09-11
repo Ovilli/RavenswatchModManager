@@ -165,11 +165,13 @@ mesh + textures on a shipped prop rendered upright in-game on 2026-08-13**
 (``replace_base`` + ``prop``), so the art chain — geometry cook, texture cook,
 in-place override, resource caches — is proven end to end.
 
-What is NOT proven is the *additive* half: a mod-added tiledef has never been
-observed being placed. Treat that with suspicion rather than as merely
-untested, because a level provably cannot reference an entity resource the mod
-introduced (see :func:`_emit_prop_override`), and a new tiledef is a new name
-of the same shape one directory over.
+What is NOT proven is the *additive* half — but the REASON changed on
+2026-09-11. The old reason, "a level provably cannot reference an entity
+resource the mod introduced", was disproved: every asset in the additive chain,
+the mod's own entity included, is both requested and resolved. What remains
+unproven is VISIBILITY — no additive POI has yet been SEEN in-game, and the run
+that got this far was not checked for the prop mesh. Resolution is settled;
+placement and rendering are not.
 See ``docs/_re/kinds/pois.md``.
 """
 
@@ -2210,13 +2212,24 @@ def _emit_prop_override(mod_id: str, defn: ContentDef, out_dir: Path,
                         written: list[Path]) -> tuple[list[str], list[str]]:
     """Put the mod's art on a shipped prop **in place**, minting no new name.
 
-    This exists because a level cannot reference an asset the mod introduced.
-    Proven in-game the hard way: a byte-for-byte copy of a shipped entity,
-    filed under a new name, correctly registered in ``UsedRscList.ot`` and
-    listed in the tile's resource cache, still fails to load the level that
-    places it. Nothing is wrong with the bytes — introducing the *name* is what
-    fails. Cloning a prop entity is therefore a dead end, and the mechanism
-    that does work is the one the ``mesh`` kind uses and that rendered in-game:
+    ⚠ THE PREMISE BELOW WAS DISPROVED 2026-09-11 — see
+    ``docs/_re/kinds/pois.md``. A trace on ``ResourceCache_Submit`` (was it
+    REQUESTED) paired with ``ResourceRef_Resolve`` (did it RESOLVE) showed a
+    mod-introduced entity being requested AND resolved — three times, state=1 —
+    alongside the mod's own tiledefs, level and geometry, with zero null
+    resolves. A level CAN reference an asset the mod introduced. This function
+    is kept because in-place override is still the only route PROVEN to render,
+    not because the additive one is impossible.
+
+    The original reasoning, kept for the record: a byte-for-byte copy of a
+    shipped entity under a new name, registered in ``UsedRscList.ot`` and
+    listed in the tile's resource cache, still failed to load the level that
+    placed it — read at the time as "introducing the *name* is what fails".
+    That reading was never taken with an instrument that could tell "never
+    requested" from "requested and resolved to null".
+
+    The mechanism that DOES work is the one the ``mesh`` kind uses and that
+    rendered in-game:
     write the mod's cooked art over a shipped asset's own cooked path.
 
     In-place override is global by nature, so the whole trick is picking a prop

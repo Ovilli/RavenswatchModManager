@@ -980,6 +980,58 @@ end
 -- key is numeric); a non-inline (string/vector) key returns nil rather than
 -- deref an unknown-typed pointer, so no union destructor is needed.
 -- See docs/_re/kinds/entity-values.md and docs/_re/kinds/stats.md.
+--- The entity's COMPONENT ARRAY, read the way the engine reads it.
+---
+--- `Entity_GetComponentByTester` walks a plain array at `entity+0x190` with its
+--- count at `+0x198`, asking each element's class whether it matches — it does
+--- NOT index a fixed slot per component type. That distinction matters here:
+--- this project previously concluded "no fixed component slots on oCEntity;
+--- never seed a chain" after session 7068's `+0x678`/`+0xad8` chains turned out
+--- to be heap coincidence. That conclusion was right about the chains and too
+--- strong as a rule. There is no fixed slot per TYPE; there IS a fixed ARRAY.
+---
+--- Each component's TYPE ID is its vftable slot 1, which returns a constant —
+--- the same id space `tools/mine_class_ids.py` maps to class names from the
+--- exe's own registry (confirmed on two classes by both routes). So an id from
+--- here can be turned into a name offline, which is the honest alternative to
+--- guessing an offset.
+---
+--- Returns a list of `{ ptr = <component>, type_id = <u32|nil> }`, or nil when
+--- the array does not check out. Fails CLOSED and never calls the engine: every
+--- read is page-guarded, so a layout the next patch moves yields nil rather
+--- than a fault.
+local ENTITY_CPNT_ARRAY_OFF = 0x190
+local ENTITY_CPNT_COUNT_OFF = 0x198
+local ENTITY_CPNT_MAX       = 256   -- a real entity has tens, not thousands
+
+function R.entity.components(entity)
+    if not entity or entity == 0 or not _ptr_plausible(entity) then return nil end
+    local data = I.read_u64(entity + ENTITY_CPNT_ARRAY_OFF)
+    local count = I.read_u32(entity + ENTITY_CPNT_COUNT_OFF)
+    if not data or data == 0 or not _ptr_plausible(data) then return nil end
+    if not count or count == 0 or count > ENTITY_CPNT_MAX then return nil end
+    local out = {}
+    for i = 0, count - 1 do
+        local c = I.read_u64(data + i * 8)
+        if not c or c == 0 or not _ptr_plausible(c) then return nil end
+        -- vftable slot 1 == Component_GetTypeId, a `return <imm32>` per class.
+        -- Read the CONSTANT out of the function rather than calling it: a read
+        -- cannot fault the game, and a call to a wrong address can.
+        local vft = I.read_u64(c)
+        local id
+        if vft and vft ~= 0 and _ptr_plausible(vft) then
+            local fn = I.read_u64(vft + 8)
+            -- `mov eax, imm32; ret` is b8 <imm32> c3 — take the imm32 when the
+            -- body has exactly that shape, and nothing otherwise.
+            if fn and fn ~= 0 and I.read_u8 and I.read_u8(fn) == 0xb8 then
+                id = I.read_u32(fn + 1)
+            end
+        end
+        out[#out + 1] = { ptr = c, type_id = id }
+    end
+    return out
+end
+
 local ENTITY_VALCTX_OFF = 0x2f8   -- hero -> POINTER to entity value context
 local EV_STORE_OFF      = 0x4c8   -- ctx -> POINTER to value store
 local EV_TAG_OFF        = 0x08    -- oCEntityValueUnion type tag

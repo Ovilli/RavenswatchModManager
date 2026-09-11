@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **255** symbols across 21 categories.
+Total: **259** symbols across 21 categories.
 
 ## analytics
 
@@ -252,6 +252,7 @@ Total: **255** symbols across 21 categories.
 | `SharedRef_AddRefCopy` | `0x1401663a0` | ✅ ok |  | base virtual: copies {*(this+0x18) data, *(this+0x20) refblock} into out and addrefs at… |
 | `SharedRef_AddRefCopy_b` | `0x14021e390` | ✅ ok |  | identical twin of SharedRef_AddRefCopy (separate TU); base virtual in 298 vtables. Deco… |
 | `SharedRef_Release` | `0x140111cf0` | ✅ ok | ✔ | void(void*) |
+| `TileDef_Deserialize` | `0x140324690` | ❓ unverified |  | bool(oCDtTileDefinition* def, oCBinaryStream* stream) |
 | `TypeDesc_HashName` | `0x1404fd5d0` | ✅ ok |  | base virtual: vcall slot0 -> type descriptor, reads its oCString name (inline @+8 / hea… |
 | `TypeDesc_HashName_b` | `0x1401c96e0` | ✅ ok |  | identical twin of TypeDesc_HashName (separate TU); base virtual in 292 vtables. Decompi… |
 | `oCString_Dtor` | `0x140111d90` | ✅ ok |  | oCString destructor: SSO threshold 0xf; heap buffer's real alloc ptr at [buf-8], frees … |
@@ -287,6 +288,7 @@ Total: **255** symbols across 21 categories.
 | `BinarySaver_CollectDependencies` | `0x1404fc950` | ❓ unverified |  | bool(void* saver, void* rootObject) |
 | `BinarySaver_WriteGraph` | `0x140501a30` | ✅ ok | ✔ | bool(void* saver, void* rootObject, const char* label, void* ctx) |
 | `BinarySaver_WriteObject` | `0x1405016c0` | ✅ ok | ✔ | bool(void* saver, void* object, const char* label, bool flag) |
+| `Definition_PreloadResourceCache` | `0x140310fb0` | ❓ unverified |  | void(void* definition) |
 | `Definitions_LoadGroup` | `0x140310300` | ✅ ok |  | Loads the 'Definitions' group / VersionDefinition manifest (triggers loading the curate… |
 | `FileStream_Open` | `0x14053a730` | ❓ unverified |  | bool(void** outHandle, const char* path, int* mode) |
 | `InitialLoading_LoadAllDefinitions` | `0x140260b80` | ✅ ok |  | void(void* nameFilter) |
@@ -306,6 +308,8 @@ Total: **255** symbols across 21 categories.
 | `Registry_EnumInstances` | `0x140241750` | ✅ ok | ✔ | void*(void* unused, void* out3, void** classDescPtr) |
 | `Registry_RegisterInstance` | `0x1403119d0` | ✅ ok |  | void(void* definition) |
 | `Registry_UnregisterInstance` | `0x140311a50` | ✅ ok | ✔ | void(void*) |
+| `ResourceCache_Parse` | `0x140492a10` | ❓ unverified |  | bool(void* outVector, void* cachePath) |
+| `ResourceCache_Submit` | `0x1404aa3a0` | ✅ ok |  | void(void* resourceSink, void* entryVector) |
 | `ResourceRef_Resolve` | `0x140492540` | ✅ ok |  | void(void* refBlock, void* classDesc, void** outResolved, void* policy) |
 | `Resource_LookupByPath` | `0x14049b2a0` | ✅ ok | ✔ | void*(const char* decoded_path, void*, void*, void*) |
 

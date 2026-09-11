@@ -1,5 +1,66 @@
 # POIs, structures & the tile system — `oCDtTileDefinition`
 
+## ✅ RESOLUTION IS NOT THE WALL — measured 2026-09-11 (session 6736)
+
+**Every mod-added asset in the additive chain resolves, including the ENTITY.**
+This contradicts the premise four documents are written on, so here is the
+measurement rather than the conclusion.
+
+Instrumented with the resource trace plus a NEW second hook on
+`ResourceCache_Submit` — the point where a `.UsedRscCache.ot` line becomes a
+load REQUEST. That second hook is the whole reason the answer is trustworthy:
+`ResourceRef_Resolve` alone cannot tell "never requested" from "requested and
+resolved to null", and an earlier run showed a mod entity with ZERO resolve
+hits, which reads like the recorded failure but is not the same thing.
+
+| path | cache-submitted | resolved |
+|------|-----------------|----------|
+| `…\additive_poi_test_custom_clone_Prop.entity.ot` | yes | **yes, x3, state=1** |
+| `…\additive_poi_test_custom_clone.entity.ot` (tile) | yes | yes, state=1 |
+| `DarkHills\Tiles\additive_poi_test_custom_clone.level.ot` | yes | yes, state=1 |
+| 4 x `additive_poi_test_custom_clone*.tiledef.ot` | yes | yes, state=1 |
+| `…\additive_poi_test_custom_clone.fbx` | yes | yes, state=1 |
+| donor `Tombstone_Big_A_Scrap_A.fbx` | yes | yes, state=1 |
+
+Zero null resolves. Zero "resolved object not readable" warnings.
+
+**So `_emit_prop_override`'s premise is FALSE on this build.** Its docstring says
+"this exists because a level cannot reference an asset the mod introduced", and
+`kinds/poi.py`'s module docstring says a mod-added tiledef "has never been
+observed being placed … treat that with suspicion". The level references a
+mod-introduced entity here and the engine resolves it. Whatever blocks an
+additive POI is DOWNSTREAM of resolution — placement, instantiation, or
+visibility — not registration and not identity.
+
+**Timing is itself evidence the tile was placed.** The four tiledefs resolve at
+20:42:20 (map generation), and the tile's LEVEL resolves ~30s later at 20:42:49,
+which is the streaming pattern of a tile that was actually selected and entered,
+not merely pooled.
+
+### ⚠ WHAT THIS DOES NOT PROVE
+
+The POI was **not visually confirmed**. The player reported no custom icon on the
+minimap and did not check for the pillar.
+
+The missing icon is EXPECTED and is not evidence of failure: `custom_clone`
+declares a SHIPPED icon (`Map_Icons_3Pigs_Resources_Stone.png`), and the tiledef
+`icon` field is not what draws the minimap anyway — a marker component on an
+entity does, established by minimap-icon-test and noted in `camp_swap/poi.toml`.
+
+So the honest state is: the resolution wall is disproved, and visibility is
+UNMEASURED. The next run should look for the pillar mesh at a custom_clone tile.
+
+### Incidental, from the same run
+
+* `runestone_shrine_shrine_Prop.entity.ot` was cache-submitted ONCE and resolved
+  ZERO times — the genuine "requested but never resolved" shape, now
+  distinguishable for the first time. Worth chasing separately.
+* Apply reports "no encoded match" for several `camp_swap` tiledefs and caches,
+  i.e. some of that layer's assets never reach a cooked path at all.
+* `[lvl-build] objects=0` fires for dozens of SHIPPED Dark Hills tiles
+  (3x3_Crystal_01, 3x3_Blocker_01, …). Routine, not about mod content.
+
+
 > Status: both codecs RE'd + shipped 2026-08-10 (`poi` kind, `rsmm poi`).
 > Static verification is complete — 237/237 tiledefs and 3/3 tile-generated
 > mapdefs round-trip byte-for-byte. **No in-game playtest yet.**
