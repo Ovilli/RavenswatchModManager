@@ -9,7 +9,24 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **232** symbols across 19 categories.
+Total: **255** symbols across 21 categories.
+
+## analytics
+
+| name | address | status | callable | signature / note |
+|------|---------|--------|----------|------------------|
+| `AnalyticsBag_SetInt` | `0x14020abf0` | ❓ unverified |  | void*(void* bag, void* keyDesc, uint64_t value, void* alloc) |
+| `AnalyticsBag_SetString` | `0x140201c10` | ❓ unverified |  | void*(void* bag, void* keyDesc, void* valueDesc, void* alloc) |
+| `Analytics_EmitActiveBoss` | `0x1401f9170` | ❓ unverified |  | void(void* analyticsCtx, void* args, void* unused) |
+| `Analytics_EmitChapterEnd` | `0x1401f5c70` | ❓ unverified |  | void(void* analyticsCtx, void* args, void* unused) |
+| `Analytics_EmitHeroDeath` | `0x1401f6e50` | ❓ unverified |  | void(void* analyticsCtx, void* args, void* unused) |
+| `Analytics_EmitObjectProposed` | `0x1401f7760` | ❓ unverified |  | void(void* analyticsCtx, void* args, void* unused) |
+| `Analytics_EmitObjectSelected` | `0x1401f79c0` | ❓ unverified |  | void(void* analyticsCtx, void* args, void* unused) |
+| `Analytics_EmitOpenChest` | `0x1401f8f30` | ❓ unverified |  | void(void* analyticsCtx, void* args, void* unused) |
+| `Analytics_EmitSandmanBuy` | `0x1401f6800` | ❓ unverified |  | void(void* analyticsCtx, void* args, void* unused) |
+| `Analytics_EmitSkillProposed` | `0x1401f7120` | ❓ unverified |  | void(void* analyticsCtx, void* args, void* unused) |
+| `Analytics_EmitSkillSelected` | `0x1401f7440` | ❓ unverified |  | void(void* analyticsCtx, float* skillEvent, void* unused) |
+| `Analytics_EmitUnlockSkill` | `0x1401f7e50` | ❓ unverified |  | void(void* analyticsCtx, void* args, void* unused) |
 
 ## combat
 
@@ -49,6 +66,8 @@ Total: **232** symbols across 19 categories.
 |------|---------|--------|----------|------------------|
 | `ClassRegistry_FindByKey` | `0x140523a10` | ❓ unverified |  | void*(void* unused, void* identityKey) |
 | `ClassRegistry_Global` | `0x141436690` | 📍 va |  | Global class-descriptor registry: ptr to {descPtr array @+0x0, u32 count @+0x8}. Scanne… |
+| `Component_GetTypeId` | `0x1401e6950` | ❓ unverified |  | uint32_t(void* component) |
+| `Controller_GetFieldByKey` | `0x140396df0` | ❓ unverified |  | void*(void* controller, uint32_t key) |
 | `CustomFlagFilter_Serialize` | `0x140189830` | ✅ ok |  | bool(void* flagFilter, void* reader) |
 | `CustomFlagList_Serialize` | `0x140681e60` | ❓ unverified |  | bool(void* flagList, void* reader) |
 | `Engine_MainThreadId` | `0x141443148` | 📍 va |  | Thread id of the engine main thread. LevelLoad_ProgressTick compares GetCurrentThreadId… |
@@ -110,6 +129,8 @@ Total: **232** symbols across 19 categories.
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `EntityValueRegistry_RegisterAll` | `0x1401da350` | ✅ ok |  | void(void) |
+| `SceneContextValue_Find` | `0x1401c9600` | ✅ ok | ✔ | oCEntityValueUnion*(void* sceneContext, uint32_t crcKey) |
+| `g_GlobalEntityValueSceneContext_Tester_vftable` | `0x140f09e68` | 📍 va |  | Vftable of oCTKindOfTypeTester<oCGlobalEntityValueSceneContext, oIGameSceneContext>, re… |
 
 ## event
 
@@ -131,6 +152,13 @@ Total: **232** symbols across 19 categories.
 | `NamedEvent_Id_FromCrc` | `0x14051f090` | ✅ ok | ✔ | uint32_t(uint32_t ns, uint32_t name_crc) |
 | `NamedEvent_NetSend` | `0x140721630` | ✅ ok | ✔ | void(void* net_event_cpnt, oCGameNamedEvent* ev) |
 | `NamedEvent_NetSendToPeer` | `0x1407216c0` | ✅ ok | ✔ | void(void* net_event_cpnt, oCGameNamedEvent* ev, uint64_t* peer_session) |
+
+## gameplay
+
+| name | address | status | callable | signature / note |
+|------|---------|--------|----------|------------------|
+| `DayNightCycle_PushValues` | `0x1401ee1c4` | ❓ unverified |  | Per-frame writer for the 'Day/Night cycle' value family (see DayNightCycle_RegisterValu… |
+| `DayNightCycle_RegisterValues` | `0x1401ee9e3` | ❓ unverified |  | Registers the 'Day/Night cycle' entity-value family: 27 named values plus 9 named trigg… |
 
 ## hero
 
@@ -185,6 +213,7 @@ Total: **232** symbols across 19 categories.
 | `Definition_DeserializeBase` | `0x140310180` | ✅ ok |  | bool(void* def, void* reader) |
 | `Definition_PostLoad` | `0x140310200` | ✅ ok | ✔ | bool(void* definition) |
 | `Definition_PreUnload` | `0x140310230` | ✅ ok | ✔ | void(void*) |
+| `Definition_Unload` | `0x1403238a0` | ❓ unverified |  | bool(void* definition) |
 | `DreamShardDef_PostLoad` | `0x140312690` | ✅ ok | ✔ | bool(void* definition) |
 | `EnemyCampTierDef_PostLoad` | `0x140319620` | ✅ ok | ✔ | bool(void* definition) |
 | `GameModeDefaultDef_PostLoad` | `0x140325950` | ✅ ok | ✔ | bool(void* definition) |
@@ -328,6 +357,10 @@ Total: **232** symbols across 19 categories.
 | `UiButton_InputPoll` | `0x1407d72a0` | ✅ ok | ✔ | void(ButtonUiCpntArray* cpnts) |
 | `UiButton_PressCommit` | `0x1406a08a0` | ✅ ok | ✔ | void(oCUINavigableZoneDesc* widget) |
 | `UiButton_PressReturnSite` | `0x1407d7382` | ✅ ok |  | (code location, not callable) |
+| `UiController_BindComponent` | `0x14034c180` | ❓ unverified |  | void(void* uiController) |
+| `UiController_OnHide` | `0x140352b40` | ❓ unverified |  | void(void* uiController) |
+| `UiController_OnShow` | `0x140352aa0` | ❓ unverified |  | void(void* uiController) |
+| `UiController_UnbindComponent` | `0x14034c200` | ❓ unverified |  | void(void* uiController) |
 
 ## world
 

@@ -219,6 +219,22 @@ _log = logging.getLogger(__name__)
 #: really "additive POIs crash without re-stamped GUIDs" — an untested
 #: variable, not a proven wall. ``mods/additive-poi-test`` is the experiment.
 #: If it loads, the ``prop`` kind's in-place-only restriction can be lifted.
+#:
+#: ⚠ WEAKENED 2026-09-11 by reading the engine, not by a playtest.
+#: ``Resource_LookupByPath`` keys the resource registry on the FNV-1a hash of
+#: the LOWERCASED path and consults no GUID at any point, so a GUID collision
+#: cannot explain a resource that *looks up* as null. The flag is left ON
+#: because it is still the right thing to do and may matter at INSTANTIATION,
+#: which is a later stage with its own evidence — but it should no longer be
+#: described as the leading explanation, and a playtest that fails with it on
+#: does not rule the additive route out.
+#:
+#: What the same reading DID establish is that the symptom is coarser than
+#: assumed: ``LevelObject_LoadOrCreate`` destroys the level and returns null if
+#: its load step returns anything but 1, so one unresolved reference fails the
+#: whole level rather than dropping one prop. "The level did not load" and "one
+#: reference was null" are therefore the same observation, and the next
+#: experiment has to name WHICH reference rather than re-running the same one.
 RESTAMP_ENTITY_GUIDS = True
 
 #: `places[].entity` value meaning "the prop THIS def emits", rather than a

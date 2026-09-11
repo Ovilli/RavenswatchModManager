@@ -553,6 +553,13 @@ inline Resource_LookupByPath_fn Resource_LookupByPath() {
     return reinterpret_cast<Resource_LookupByPath_fn>(rsmm::fn_resolve(Sym::Resource_LookupByPath_Pattern));
 }
 
+// SceneContextValue_Find  (SceneContextValue_Find)
+//   oCEntityValueUnion*(void* sceneContext, uint32_t crcKey)
+using SceneContextValue_Find_fn = void*(*)(void*, uint32_t);
+inline SceneContextValue_Find_fn SceneContextValue_Find() {
+    return reinterpret_cast<SceneContextValue_Find_fn>(rsmm::fn_resolve(Sym::SceneContextValue_Find_Pattern));
+}
+
 // SharedRef_Release  (SharedRef_Release)
 //   void(void*)
 using SharedRef_Release_fn = void(*)(void*);

@@ -40,6 +40,114 @@
    ]
   },
   {
+   "name": "AnalyticsBag_SetInt",
+   "kind": "function",
+   "category": "analytics",
+   "raw": "FUN_14020abf0",
+   "status": "unverified",
+   "signature": "void*(void* bag, void* keyDesc, uint64_t value, void* alloc)",
+   "note": "Append an INTEGER property to an analytics bag. Writes the value into slot 2 and a tag of 0x01d6 (plus a sign bit at 53) into slot 3, which is what distinguishes it from the 0x0405 string tag. See AnalyticsBag_SetString for the full layout."
+  },
+  {
+   "name": "AnalyticsBag_SetString",
+   "kind": "function",
+   "category": "analytics",
+   "raw": "FUN_140201c10",
+   "status": "unverified",
+   "signature": "void*(void* bag, void* keyDesc, void* valueDesc, void* alloc)",
+   "note": "Append a STRING property to an analytics bag.\n\nBAG LAYOUT, recovered from this function and its integer sibling — this is what the loader's firehose decode is built on:\n  bag   +0x00 u32 count, +0x04 u32 capacity, +0x08 u64 data (low 48 bits)\n  entry 0x20 bytes: [0] key length, [1] key pointer | tag,\n                    [2] value (LENGTH for a string, the integer otherwise),\n                    [3] value pointer | tag, or a bare tag for an integer\nThe TYPE is the top 16 bits of slot 3: 0x0405 means slot 3 holds a string pointer in its low 48 bits; anything else means the value is the integer already in slot 2. Growth is 1.5x from an initial 16 entries."
+  },
+  {
+   "name": "Analytics_EmitActiveBoss",
+   "kind": "function",
+   "category": "analytics",
+   "raw": "FUN_1401f9170",
+   "status": "unverified",
+   "signature": "void(void* analyticsCtx, void* args, void* unused)",
+   "note": "Analytics emitter for \"active_boss\". Properties: time, success.\n\nA boss engagement with its duration and outcome.\n\nAll analytics emitters share one shape: build a property bag with the setters (AnalyticsBag_SetString / AnalyticsBag_SetInt), then call Analytics_SubmitNamedEvent with the event name. The loader's firehose detour decodes that bag, so a mod receives these fields on `ev` — it does not need to hook the individual emitter. The emitters are recorded because they are where the FIELD SEMANTICS are legible, and because the offsets they read give the source object's layout."
+  },
+  {
+   "name": "Analytics_EmitChapterEnd",
+   "kind": "function",
+   "category": "analytics",
+   "raw": "FUN_1401f5c70",
+   "status": "unverified",
+   "signature": "void(void* analyticsCtx, void* args, void* unused)",
+   "note": "Analytics emitter for \"chapter_end\". Properties: name, collection, enemy_killed, damage_dealt, damage_received, level_reached, dream_shard_collected, dream_shard_spend, attack_power, armor, vitality, reroll_used, revive_token, objects.\n\nEnd-of-chapter summary and the single richest emitter in the game: it carries kills, damage dealt and received, level, shards collected and spent, attack power, armor, vitality, rerolls used, revive tokens and the object list. A run tracker can read most of its per-chapter state here rather than counting events.\n\nAll analytics emitters share one shape: build a property bag with the setters (AnalyticsBag_SetString / AnalyticsBag_SetInt), then call Analytics_SubmitNamedEvent with the event name. The loader's firehose detour decodes that bag, so a mod receives these fields on `ev` — it does not need to hook the individual emitter. The emitters are recorded because they are where the FIELD SEMANTICS are legible, and because the offsets they read give the source object's layout."
+  },
+  {
+   "name": "Analytics_EmitHeroDeath",
+   "kind": "function",
+   "category": "analytics",
+   "raw": "FUN_1401f6e50",
+   "status": "unverified",
+   "signature": "void(void* analyticsCtx, void* args, void* unused)",
+   "note": "Analytics emitter for \"hero_death\". Properties: enemy_name, enemy_type.\n\nA hero death, naming the killer (enemy_name, enemy_type).\n\nAll analytics emitters share one shape: build a property bag with the setters (AnalyticsBag_SetString / AnalyticsBag_SetInt), then call Analytics_SubmitNamedEvent with the event name. The loader's firehose detour decodes that bag, so a mod receives these fields on `ev` — it does not need to hook the individual emitter. The emitters are recorded because they are where the FIELD SEMANTICS are legible, and because the offsets they read give the source object's layout."
+  },
+  {
+   "name": "Analytics_EmitObjectProposed",
+   "kind": "function",
+   "category": "analytics",
+   "raw": "FUN_1401f7760",
+   "status": "unverified",
+   "signature": "void(void* analyticsCtx, void* args, void* unused)",
+   "note": "Analytics emitter for \"object_proposed\". Properties: object_name, object_quality.\n\nA magical object OFFERED. object_name is a STRING.\n\nAll analytics emitters share one shape: build a property bag with the setters (AnalyticsBag_SetString / AnalyticsBag_SetInt), then call Analytics_SubmitNamedEvent with the event name. The loader's firehose detour decodes that bag, so a mod receives these fields on `ev` — it does not need to hook the individual emitter. The emitters are recorded because they are where the FIELD SEMANTICS are legible, and because the offsets they read give the source object's layout."
+  },
+  {
+   "name": "Analytics_EmitObjectSelected",
+   "kind": "function",
+   "category": "analytics",
+   "raw": "FUN_1401f79c0",
+   "status": "unverified",
+   "signature": "void(void* analyticsCtx, void* args, void* unused)",
+   "note": "Analytics emitter for \"object_selected\". Properties: object_name, object_quality.\n\nA magical object TAKEN. ⚠ This obsoletes the planned GUID join: the give event carries a 128-bit object GUID that nothing could map back to a corpus entry without a playtest, while this carries the name outright.\n\nAll analytics emitters share one shape: build a property bag with the setters (AnalyticsBag_SetString / AnalyticsBag_SetInt), then call Analytics_SubmitNamedEvent with the event name. The loader's firehose detour decodes that bag, so a mod receives these fields on `ev` — it does not need to hook the individual emitter. The emitters are recorded because they are where the FIELD SEMANTICS are legible, and because the offsets they read give the source object's layout."
+  },
+  {
+   "name": "Analytics_EmitOpenChest",
+   "kind": "function",
+   "category": "analytics",
+   "raw": "FUN_1401f8f30",
+   "status": "unverified",
+   "signature": "void(void* analyticsCtx, void* args, void* unused)",
+   "note": "Analytics emitter for \"open_chest\". Properties: locked.\n\nA chest opened; `locked` distinguishes the red (locked) chests.\n\nAll analytics emitters share one shape: build a property bag with the setters (AnalyticsBag_SetString / AnalyticsBag_SetInt), then call Analytics_SubmitNamedEvent with the event name. The loader's firehose detour decodes that bag, so a mod receives these fields on `ev` — it does not need to hook the individual emitter. The emitters are recorded because they are where the FIELD SEMANTICS are legible, and because the offsets they read give the source object's layout."
+  },
+  {
+   "name": "Analytics_EmitSandmanBuy",
+   "kind": "function",
+   "category": "analytics",
+   "raw": "FUN_1401f6800",
+   "status": "unverified",
+   "signature": "void(void* analyticsCtx, void* args, void* unused)",
+   "note": "Analytics emitter for \"sandman_buy\". Properties: article_name, article_price, article_rarity.\n\nA Shop purchase, with the article's name, price and rarity. The only signal that distinguishes buying from merely entering the Shop.\n\nAll analytics emitters share one shape: build a property bag with the setters (AnalyticsBag_SetString / AnalyticsBag_SetInt), then call Analytics_SubmitNamedEvent with the event name. The loader's firehose detour decodes that bag, so a mod receives these fields on `ev` — it does not need to hook the individual emitter. The emitters are recorded because they are where the FIELD SEMANTICS are legible, and because the offsets they read give the source object's layout."
+  },
+  {
+   "name": "Analytics_EmitSkillProposed",
+   "kind": "function",
+   "category": "analytics",
+   "raw": "FUN_1401f7120",
+   "status": "unverified",
+   "signature": "void(void* analyticsCtx, void* args, void* unused)",
+   "note": "Analytics emitter for \"skill_proposed\". Properties: skill_tier, skill_name, skill_rarity, skill_count.\n\nA talent OFFERED on a level-up card. Paired with skill_selected, this is offered-versus-taken, which is what any 'keep your first pick' or build-focus rule needs and what the gameplay bus cannot provide.\n\nAll analytics emitters share one shape: build a property bag with the setters (AnalyticsBag_SetString / AnalyticsBag_SetInt), then call Analytics_SubmitNamedEvent with the event name. The loader's firehose detour decodes that bag, so a mod receives these fields on `ev` — it does not need to hook the individual emitter. The emitters are recorded because they are where the FIELD SEMANTICS are legible, and because the offsets they read give the source object's layout."
+  },
+  {
+   "name": "Analytics_EmitSkillSelected",
+   "kind": "function",
+   "category": "analytics",
+   "raw": "FUN_1401f7440",
+   "status": "unverified",
+   "signature": "void(void* analyticsCtx, float* skillEvent, void* unused)",
+   "note": "Analytics emitter for a TALENT/SKILL selection. Builds a property bag and calls Analytics_SubmitNamedEvent with the event name \"skill_selected\".\n\n⚠ THIS IS THE TALENT IDENTITY THAT THE GAMEPLAY BUS DOES NOT CARRY, and it corrects a conclusion recorded earlier the same day. A re-mine of the event payload classes proved that UPGRADE_LOWER_SKILL and its siblings are dispatched as the bare oCGameNamedEvent base class, so an R.on subscriber learns THAT a talent was upgraded and never WHICH. That is true, and it was written up as 'talents are a dead end on the event bus, permanently'. The conclusion was too broad: it holds for the gameplay bus only. The ANALYTICS bus carries the name, the tier and the rarity, and the loader already hooks Analytics_SubmitNamedEvent.\n\nFIELDS, read off the emitter:\n  skill_tier    (int)  = (int)param_2[0]\n  skill_name    (str)  = *(char**)(*(void**)(param_2+0x10) + 0x20)\n  skill_rarity  (str)  = *(char**)(*(void**)(param_2+0x10) + 0x38)\n  skill_count   (int)  = atoi(*(char**)(*(void**)(param_2+0x10) + 0x50))\nSo param_2+0x10 holds the SKILL DEFINITION pointer, and that definition keeps its name at +0x20, rarity at +0x38 and a count string at +0x50. Those three offsets are the useful part: anything holding a skill def can be read the same way.\n\nSIBLINGS, same shape, confirmed by their event-name literals:\n  FUN_1401f7120  \"skill_proposed\"  — what the game OFFERED\n  FUN_1401f7e50  \"unlock_skill\"\nTogether those give offered-vs-taken, which is what a 'build around your POWER ability' or 'first pick defines the build' rule needs.\n\nFound 2026-09-11 only after the exception table was used to define the 16,945 functions Ghidra's heuristics had never created: string search for 'Skill' had previously returned nothing because the binary is stripped and the analysis was 26% short."
+  },
+  {
+   "name": "Analytics_EmitUnlockSkill",
+   "kind": "function",
+   "category": "analytics",
+   "raw": "FUN_1401f7e50",
+   "status": "unverified",
+   "signature": "void(void* analyticsCtx, void* args, void* unused)",
+   "note": "Analytics emitter for \"unlock_skill\". Properties: skill_name.\n\nA talent unlocked at the meta level (not an in-run pick).\n\nAll analytics emitters share one shape: build a property bag with the setters (AnalyticsBag_SetString / AnalyticsBag_SetInt), then call Analytics_SubmitNamedEvent with the event name. The loader's firehose detour decodes that bag, so a mod receives these fields on `ev` — it does not need to hook the individual emitter. The emitters are recorded because they are where the FIELD SEMANTICS are legible, and because the offsets they read give the source object's layout."
+  },
+  {
    "name": "Analytics_SubmitNamedEvent",
    "kind": "function",
    "category": "event",
@@ -55,7 +163,7 @@
      "uint32_t"
     ]
    },
-   "note": "CENTRAL TELEMETRY SINK. ~37 gameplay callers funnel named analytics events through here (run_end, enemy_killed, matchmaking_start, level_up_reach, level_up_book, ...), each building a key-value payload then submitting as JSON (projectId 'passtech-ravenswatch') to Passtech's analytics backend over an authenticated HTTP POST. param_3 is a StringDesc { const char* ptr @+0x0; uint32 len|0x80000000 @+0x8 } holding the event name. The loader 'firehose' detour (hook_events.cpp::install_analytics_firehose) reads that name and re-publishes it to the Lua bus by its raw name, so ONE hook exposes every named event to mods (R.on('enemy_killed', cb)) and survives the game adding new event names. OBSERVATION-GRADE: these fire AFTER the gameplay action and carry analytics KV, not live entity handles — good for 'when X happens do Y' triggers, not for mutating the actor. For entity-context gameplay events (damage, give-item) see the oCGameNamedEvent bus — mapped: NamedEvent_Dispatch is the single hook point (R.on('gameplay:<NAME>'), docs/_re/kinds/events-bus.md). Skips 'run_end' to avoid double-firing the typed Event_RunEnd table hook. [2026-07-10: recovered via anchor/decompile-verify (batch 2) after the July-9 remap mis-placed it.]",
+   "note": "CENTRAL TELEMETRY SINK. ~37 gameplay callers funnel named analytics events through here (run_end, enemy_killed, matchmaking_start, level_up_reach, level_up_book, ...), each building a key-value payload then submitting as JSON (projectId 'passtech-ravenswatch') to Passtech's analytics backend over an authenticated HTTP POST. param_3 is a StringDesc { const char* ptr @+0x0; uint32 len|0x80000000 @+0x8 } holding the event name. The loader 'firehose' detour (hook_events.cpp::install_analytics_firehose) reads that name and re-publishes it to the Lua bus by its raw name, so ONE hook exposes every named event to mods (R.on('enemy_killed', cb)) and survives the game adding new event names. OBSERVATION-GRADE: these fire AFTER the gameplay action and carry analytics KV, not live entity handles — good for 'when X happens do Y' triggers, not for mutating the actor. For entity-context gameplay events (damage, give-item) see the oCGameNamedEvent bus — mapped: NamedEvent_Dispatch is the single hook point (R.on('gameplay:<NAME>'), docs/_re/kinds/events-bus.md). Skips 'run_end' to avoid double-firing the typed Event_RunEnd table hook. [2026-07-10: recovered via anchor/decompile-verify (batch 2) after the July-9 remap mis-placed it.]\n\n[2026-09-11] THE FULL EMITTER CATALOG — 33 call sites, each with its event name and its property names, recovered by scanning every call to this function and reading the string literals in the calling function.\n\nWHY THIS IS THE IMPORTANT ONE. The gameplay bus (oCGameNamedEvent) tells a mod that something happened; the ANALYTICS bus tells it WHAT. Most of the identity questions this project has treated as unreachable are answered here as plain strings — which item was offered and taken, which talent, which shop article and for how much, which enemy killed you. The mod-side consequence is large: mods/saga currently leaves 40 challenge rules on the honour system, and a majority of them are about exactly these facts.\n\nTwo specific plans this OBSOLETES:\n  * the magical-object GUID join. `object_selected` carries object_name as a STRING, so there is no need to map a 128-bit GUID from the give event back to a corpus entry, and no playtest needed to discover which GUID the event carries.\n  * 'talent identity is unobtainable'. See Analytics_EmitSkillSelected.\n\n⚠ UNVERIFIED IN GAME. The field NAMES are certain (they are literals passed to the property setters); which of these fire on a client vs the host, and whether the firehose is armed by default, is not established here.\n\nevent                    emitter          properties\n  active_boss              0x1401f9170      time, success\n  altar_revive             0x1401f9350      count\n  blood_fountain           0x1401f9070      \n  chapter_end              0x1401f5c70      name, collection, enemy_killed, damage_dealt, damage_received, level_reached, dream_shard_collected, dream_shard_spend, attack_power, armor, vitality, reroll_used, revive_token, objects\n  event_end                0x1401f88a0      success, failed, event_name, refugee, type, reward, status\n  event_end                0x1401f9640      event_name, type, reward, success, status\n  event_end                0x1401f98e0      event_name, type, reward, failed, status\n  event_start              0x1401f9430      event_name, type\n  game_start               0x1401f25e0      os_language, game_language, region, cpu_frequency, cpu_name, cpu_nb_core, cpu_nb_thread, gamepad, gpu_name, os_name, ram_size\n  health_fountain          0x1401f9020      \n  hero_death               0x1401f6e50      enemy_name, enemy_type\n  hourglass                0x1401f8cd0      dream_shard, object_count\n  key_used                 0x1401f8820      \n  level_up_book            0x1401f7c20      hero_name, level_reached\n  levelup_run              Event_LevelUp    level_up_reach\n  matchmaking_end          0x1401f4000      search_difficulty, duration, found\n  matchmaking_start        0x1401f3c70      search_difficulty, current_party_size\n  note_gain                0x1401f8460      key_gain\n  object_proposed          0x1401f7760      object_name, object_quality\n  object_selected          0x1401f79c0      object_name, object_quality\n  open_chest               0x1401f8f30      locked\n  reconnect                0x1401f9e60      heal_sum, heal_count, hero_heal, use_relay, peer_id, ping_min, ping_max, ping_average, resend_buffer_min, resend_buffer_max, resend_buffer_average, loss_average, network_stats, reason, duration, success\n  revive_player            0x1401f6b10      revive_token\n  run_end                  Event_RunEnd     score, status\n  run_start                0x1401f43c0      player_count, player_heroes, custom_mode, challenge, use_relay, matchmaking, source, run_restart, voice_chat_mode\n  sandman_buy              0x1401f6800      article_name, article_price, article_rarity\n  skill_proposed           0x1401f7120      skill_tier, skill_name, skill_rarity, skill_count\n  skill_selected           0x1401f7440      skill_tier, skill_name, skill_rarity, skill_count\n  unlock_hero              0x1401f9b80      hero_name\n  unlock_level_nightmare   0x1401f82a0      level\n  unlock_object            0x1401f8040      object_name, object_quality\n  unlock_skill             0x1401f7e50      skill_name\n  use_teleportation        0x1401f6ba0      ",
    "refs": [
     "src/loader/src/hook_events.cpp",
     "docs/_re/kinds/events.md"
@@ -227,6 +335,36 @@
    ]
   },
   {
+   "name": "Component_GetTypeId",
+   "kind": "function",
+   "category": "engine-core",
+   "raw": "FUN_1401e6950",
+   "status": "unverified",
+   "signature": "uint32_t(void* component)",
+   "locator": {
+    "vftable": {
+     "class": "oCDtEntityCpntMinimapUiController",
+     "slot": 1
+    }
+   },
+   "note": "Component TYPE ID — vftable slot 1 on the Controller family. The body is a single `return <imm32>`: each component class returns its own constant id. 36 implementations, none named before this.\n\nCONFIRMED AGAINST AN INDEPENDENT SOURCE. tools/mine_class_ids.py, which resolves 1546 registered classes straight from the exe, maps the two constants read here exactly: 0x18e07849 -> oCDtEntityCpntMinimapUiController and 0x15c57095 -> oCDtEntityCpntMainMenuUiController. So slot 1 returns the SAME id space the class registry uses, reached by a completely different route (vtable slot vs registry walk).\n\nWHY IT IS USEFUL AT RUNTIME. It gives a live 'what is this component?' oracle. Given any component pointer, read its vftable slot 1 to get the id, then hand that id to mine_class_ids for the class NAME. That is the honest way to identify a component a mod has stumbled on, and the alternative to the offset-guessing this project has repeatedly had to disprove — see Entity_GetComponentByTester, which finds a component by asking each one's class rather than by a fixed slot.\n\n⚠ The 'Controller' family as the miner groups it is name-suffix based, so it also sweeps in Bullet physics classes (btKinematicCharacterController). Those are NOT part of this interface — their slot 1 is an ordinary virtual call, not a constant return. Check the body shape before trusting family membership."
+  },
+  {
+   "name": "Controller_GetFieldByKey",
+   "kind": "function",
+   "category": "engine-core",
+   "raw": "FUN_140396df0",
+   "status": "unverified",
+   "signature": "void*(void* controller, uint32_t key)",
+   "locator": {
+    "vftable": {
+     "class": "oCDtEntityCpntHeroController",
+     "slot": 15
+    }
+   },
+   "note": "KEYED FIELD ACCESSOR on the Controller family — `void* (this, u32 key)`, returning a pointer to one of the controller's own members, or null when the key is unknown. The body is a flat chain of integer compares, one per exposed field.\n\nNOT ONE SLOT BUT A BANK OF THEM. Slots 11, 12, 13, 15 and 17 all have this identical shape (22, 15, 14, 4 and 15 implementations), which reads as one accessor per data CATEGORY rather than five unrelated methods. Examples:\n  slot 15  oCDtEntityCpntHeroController      5 keys -> +0x1918..+0x19c8\n  slot 15  oCDtEntityCpntCharacterController 7 keys -> +0xc8..+0x928\n  slot 11  oCDtEntityCpntCinematicUiController 3 keys -> +0x18, +0x38, +0xa8\n  slot 17  oCDtEntityCpntMainMenuUiController  1 key  -> +0x138\nThis is the engine's reflection-style access to component state, and it is the natural read/write surface for a mod that wants a named field on a controller instead of a hardcoded offset.\n\n⚠ THE KEYS CANNOT BE NAMED OFFLINE — a negative result worth keeping, because it is the obvious next thing to attempt. Each key appears EXACTLY ONCE in the whole executable, inside its own accessor: no caller passes a literal, so callers compute the key at runtime. The obvious theory, that a key is a hash of the field's display name, is FALSE. Tested against the 117 known (key, name) pairs recovered from the entity-value registry using FNV-1a-32, FNV-1-32, CRC32, djb2 and sdbm across six casing/spacing variants, with and without a 31-bit mask: ZERO matches.\n\nWhat they are instead: sequentially ASSIGNED ids. Consecutive names take consecutive keys — 'Is day'/'Is night' are 0x17d8d89b/0x17d8d89c, and 'Remaining cycle before boss awakens' / 'Boss time warning duration' / 'Is boss awaken' are 0x17de260c/0d/0e. That also explains why the registry harvest's own self-check (consecutive names -> consecutive keys) worked.\n\nSo naming these needs a RUNTIME trace — detour one accessor and record which key each caller passes, with its context — not another static pass. Found via tools/mine_vtable_interfaces.py."
+  },
+  {
    "name": "Crc32_TableInit",
    "kind": "function",
    "category": "event",
@@ -308,6 +446,22 @@
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
+  },
+  {
+   "name": "DayNightCycle_PushValues",
+   "kind": "function",
+   "category": "gameplay",
+   "va": "0x1401ee1c4",
+   "status": "unverified",
+   "note": "Per-frame writer for the 'Day/Night cycle' value family (see DayNightCycle_RegisterValues for the full key table). Pushes each computed value into a value store with `set(store, key, value)` -- FUN_1402091a0 for integers, FUN_14020a580 for floats -- and reads back through FUN_1401c9600, whose result carries the value at +0x38 with a 4-vs-other size branch selecting +0x40 (small-buffer variant).\n\nLAYOUT, read off this function, NOT guessed: the component is in RDI and its VALUE STORE is at `component + 0x88` (`mov rcx, qword ptr [rdi + 0x88]` immediately before the keyed read at 0x1401ee227). Component floats used here: +0xbc, +0xc0, +0x12c, +0x144, and a byte flag at +0x148.\n\nSTATUS: unverified and NOT yet reachable from a mod. The store pointer is the missing half -- R.stat reads the HERO's value context, and this family hangs off the day/night component instead, which nothing captures. The cheapest route to it is the same trick the hero capture uses: detour this function and stash RDI, since it runs every frame while a chapter is loaded. Until that exists, a rule that wants 'is it overtime' has to proxy off BOSS_ACTIVATED on the gameplay bus, which is what mods/saga does and marks `partial` for exactly this reason.\n\nAddress is the .pdata entry containing the writer block (0x1401ee1c4 .. 0x1401ee36e); Ghidra has not defined a function here, so there is no FUN_ name to reference and no pattern in the DB. Do not promote to `ok` without a dynamic resolve."
+  },
+  {
+   "name": "DayNightCycle_RegisterValues",
+   "kind": "function",
+   "category": "gameplay",
+   "va": "0x1401ee9e3",
+   "status": "unverified",
+   "note": "Registers the 'Day/Night cycle' entity-value family: 27 named values plus 9 named triggers, each `EntityValueRegistry_Register(key, 0, name, category, description)` with the 32-bit key in ECX and the display name as arg 3. This is the same registry shape R.stat's hero families use, so the keys below are readable through the ordinary value-store read once the OWNING context is known (which it is not yet -- see DayNightCycle_PushValues).\n\nRecovered by walking the call blocks of this function and reading each `mov ecx, imm32` against the string the same block puts in arg 3. Do NOT pair a key with the NEAREST lea: the string register is hoisted out of the block and assigned after the key in most blocks, so both the naive forward and backward pairings come out shifted by one entry and produce a table that is entirely wrong while looking entirely plausible. The self-check that catches it: consecutive names take consecutive keys (Is day/Is night = 0x17d8d89b/9c), and the category column must read 'Day/Night cycle' on every value row.\n\nVALUES:\n  0x17d8d89b Is day\n  0x17d8d89c Is night\n  0x189e4b06 Play Time (s)\n  0x189e4ed5 Cycle playing\n  0x6b7e633e Current day ratio\n  0x75cc8184 Current night ratio\n  0x17d8d89f Current cycle ratio\n  0x1859c278 Day duration\n  0x1859c279 Night duration\n  0x17d8d8a0 Dawn and dusk half duration\n  0x8ae3fefe Day/Night phase as FMod param (0.0=day, 1.0=night)\n  0x17de260c Remaining cycle before boss awakens\n  0x18ab6b3b Remaining time before boss awakens\n  0x17de260d Boss time warning duration\n  0x1896a549 Boss time warning ratio\n  0x17de260e Is boss awaken\n  0x1cc8c666 Boss sleep duration\n  0x1e533557 Current hourglass time\n  0x1e5c3007 Current hourglass time ratio\n  0x25c606ac Last map hourglass time ratio\n  0x1cd7923b Overtime duration\n  0x1ce9bb1a Overtime ratio\n  0x1cd79255 Is in overtime\n  0x1cdf6e8e Remaining cycle before Overtime\n  0x1cdf6e90 Remaining time before Overtime\n  0x2fd2db08 Slow hourglass ratio\n  0x81c945ca Night_And_Day_Cycle_Phase\n\nTRIGGERS (fired as named events on the component, NOT on the gameplay bus -- these are not in gameplay_event_catalog and R.on cannot reach them):\n  0x17d8d8fa Day start\n  0x17d8d8fc Night start\n  0x17d8d8fb Dusk start\n  0x17d8d8fe Dusk end\n  0x17d8d8fd Dawn start\n  0x17d8d8ff Dawn end\n  0x17d8d900 Boss warning start\n  0x17d8d901 Boss time start\n  0x1cd7928b Boss overtime start\n\nWHY IT MATTERS: 'Is in overtime' (0x1cd79255), 'Is boss awaken' (0x17de260e) and 'Remaining time before boss awakens' (0x18ab6b3b) are the engine's own answers to questions several Saga challenge rules can currently only guess at from BOSS_ACTIVATED. The trigger 'Boss time start' is documented in the exe as 'Triggered when boss awakens' and 'Boss overtime start' as 'Triggered when boss can be trigger but is bonus time', which is Overtime exactly."
   },
   {
    "name": "DefinitionRegistry_Ctrl",
@@ -398,6 +552,21 @@
      "slot": 19
     }
    }
+  },
+  {
+   "name": "Definition_Unload",
+   "kind": "function",
+   "category": "library",
+   "raw": "FUN_1403238a0",
+   "status": "unverified",
+   "signature": "bool(void* definition)",
+   "locator": {
+    "vftable": {
+     "class": "oCDtMapDefinition",
+     "slot": 19
+    }
+   },
+   "note": "Definition TEARDOWN — vftable slot 19 on the oCDtDefinition family, and the exact inverse of slot 18 (PostLoad). Every implementation does the same three things: release the definition's shared refs and null its resolved resource slots, walk its 0x38-stride ref vectors decrementing each element's refcount, and call Registry_UnregisterInstance(this) — gated, like PostLoad's register, on a vftable predicate. Returns 1.\n\nWHY IT MATTERS. PostLoad is already the hook point content injection uses: once it returns, a definition is fully populated and registered. Slot 19 is where the engine takes it back out. Anything injected at PostLoad is freed here, so it is both the cleanup hook a mod should respect and the first place to look when an injected object outlives its definition — the talent-clone crashes of 2026-09-11 were both inside a destructor walking a definition's ref vectors.\n\n13 implementations, 12 of them unnamed before this. Found by tools/mine_vtable_interfaces.py, which reports 82 such interface slots with three or more implementations — a figure that is only meaningful now that the Ghidra project has every .pdata entry point defined as a function (it was 74% before 2026-09-11, so slot targets in the missing quarter were invisible to the miner).\n\nExamples: oCDtMapDefinition 0x1403238a0, oe::dt::GameModifierDefinition 0x140326360, oe::dt::GameModeEditorDefinition 0x140310230."
   },
   {
    "name": "Definitions_LoadGroup",
@@ -1062,7 +1231,7 @@
      "void*"
     ]
    },
-   "note": "Linear-scan getComponent: walks the entity component array (entity+0x190, count entity+0x198) and returns the first component whose class IsKindOf the given type-tester vtable. entity = *(heroController+0x2f8). Simplest way to fetch a sibling component (e.g. the XpComponent via XpComponent_TypeTester). Decompile-verified live 2026-07-13. [SAME FUNCTION as Entity_FindComponentByType — see that symbol's note.] ⚠ param_1 is an oCEntitySpawnerGo (see Entity_FindComponentByType's signature), NOT an oCEntity: the +0x190 array does not exist on a plain entity, and reading it there yields either garbage or an unrelated vector that happens to look plausible (it cost a playtest on 2026-08-17). An oCEntity's components are in the F14 map at +0x5e8/+0x5f0/+0x600 keyed by 32-bit CLASS ID -- see Entity_GetNetComponent and data/class_ids.json.",
+   "note": "Linear-scan getComponent: walks the entity component array (entity+0x190, count entity+0x198) and returns the first component whose class IsKindOf the given type-tester vtable. entity = *(heroController+0x2f8). Simplest way to fetch a sibling component (e.g. the XpComponent via XpComponent_TypeTester). Decompile-verified live 2026-07-13. [SAME FUNCTION as Entity_FindComponentByType — see that symbol's note.] ⚠ param_1 is an oCEntitySpawnerGo (see Entity_FindComponentByType's signature), NOT an oCEntity: the +0x190 array does not exist on a plain entity, and reading it there yields either garbage or an unrelated vector that happens to look plausible (it cost a playtest on 2026-08-17). An oCEntity's components are in the F14 map at +0x5e8/+0x5f0/+0x600 keyed by 32-bit CLASS ID -- see Entity_GetNetComponent and data/class_ids.json.\n\n[2026-09-11] BODY READ, now that the function is defined. `comps = *(entity+0x190); count = *(u32*)(entity+0x198);` then for each element: `cls = comp->vftable[0](comp)` and `cls->vtbl[0x58](cls, tester)` — returns the first component whose class the tester accepts, else null. So an entity keeps a plain component array at +0x190 with its count at +0x198.\n\nThis is the sanctioned answer to a question the project previously settled the other way: session 7068's entity+0x678 / +0xad8 chains were ruled heap coincidence and the conclusion recorded was 'no fixed component slots on oCEntity; never seed a chain'. That is right about the chains and wrong as a general statement — there is no fixed slot PER COMPONENT TYPE, but there is a fixed ARRAY, and the engine finds a component by asking its class rather than by offset. Anything probing an entity for a component should call this instead.",
    "refs": [
     "docs/_re/kinds/stats.md"
    ]
@@ -1640,7 +1809,7 @@
    "raw": "FUN_1403a0940",
    "status": "ok",
    "signature": "void(void* hero, void* payload)",
-   "note": "Per-hero damage-taken accounting; the counterpart to HeroStats_OnDamageDealt and the source of the meter's `taken` column. Found from the stat id 0x17df7da0 referenced at 0x1403a0c8d, with the function bounds taken from .pdata because Ghidra had no function defined there. param_2 carries the amount at +0x10 (the same value is mirrored at +0xa0). Unlike the dealt hook this is NOT a session-wide feed: a hit on an ally is applied on the ALLY's machine, so a remote player's taken is always 0 here. That is netcode, not a bug - the mod documents it. Hook shape 'vpp'.",
+   "note": "Per-hero damage-taken accounting; the counterpart to HeroStats_OnDamageDealt and the source of the meter's `taken` column. Found from the stat id 0x17df7da0 referenced at 0x1403a0c8d, with the function bounds taken from .pdata because Ghidra had no function defined there. param_2 carries the amount at +0x10 (the same value is mirrored at +0xa0). Unlike the dealt hook this is NOT a session-wide feed: a hit on an ally is applied on the ALLY's machine, so a remote player's taken is always 0 here. That is netcode, not a bug - the mod documents it. Hook shape 'vpp'.\n\n[2026-09-11] DECOMPILED for the first time — the address was never a Ghidra function until the exception table was used to define the 16,945 functions its heuristics had missed.\n\nWhat it does: resolves the GAME EVENT scene context (a different tester from the global entity-value one — oCGameEventSceneContext), builds an oCCustomFlagList naming the damage source, and emits it under the entity-value keys 0x17df7da0 (\"Damage dealt\") and, when the hit flag at +0x11 is set, 0x17fdac33 (\"Damage received\").\n\nLAYOUT worth keeping: the attacker name falls back to the literal \"Unknown\" when the source chain is absent, which is the engine's own answer to the ally-naming problem R.damage spent sessions on. A per-hit log is appended at hero+0x1758 (data), +0x1760 (count), +0x1764 (cap), stride 0xc, and the running total is accumulated into the HUD mirror at *(hero+0x1d80)+0xc. A `bool` is recorded per hit for whether the instigator is the local hero.",
    "refs": [
     "docs/_re"
    ]
@@ -1838,7 +2007,7 @@
    "raw": "FUN_14047c1e0",
    "status": "ok",
    "signature": "bool(void* mgr, void* key, void** outLevel, char link, char flag, void* lvlId, void* registry)",
-   "note": "Allocates a level object, deserializes it through the oCTextLoader/oCBinaryLoader path (fields *a_pLvlId / *a_pLinks / *a_pLevel) and, ON A NON-1 RESULT, calls the level destructor FUN_140482d90 (which runs LevelObject_DestroyVectors) on the half-built object and returns 0. That destroy is the crash: see LevelLoad_AbortPredicate. The container the teardown walks is at level+0x10, its object vector at +0x90 with the count at +0x98 — matching the crash dump's rbx+0x80/rbx+0x88. [PROMOTED to ok 2026-09-10: 0x14047c1e0 is a function START per the module's .pdata exception table. Promoted so hook_levelbuild.cpp can COUNT its calls — which measures how many objects a level actually instantiates without depending on any struct offset. That matters: the first version of that trace read a guessed count field and reported ZERO objects for every level in the game, vanilla ones included, which is a wrong offset rather than a finding.]",
+   "note": "Allocates a level object, deserializes it through the oCTextLoader/oCBinaryLoader path (fields *a_pLvlId / *a_pLinks / *a_pLevel) and, ON A NON-1 RESULT, calls the level destructor FUN_140482d90 (which runs LevelObject_DestroyVectors) on the half-built object and returns 0. That destroy is the crash: see LevelLoad_AbortPredicate. The container the teardown walks is at level+0x10, its object vector at +0x90 with the count at +0x98 — matching the crash dump's rbx+0x80/rbx+0x88. [PROMOTED to ok 2026-09-10: 0x14047c1e0 is a function START per the module's .pdata exception table. Promoted so hook_levelbuild.cpp can COUNT its calls — which measures how many objects a level actually instantiates without depending on any struct offset. That matters: the first version of that trace read a guessed count field and reported ZERO objects for every level in the game, vanilla ones included, which is a wrong offset rather than a finding.]\n\n[2026-09-11] ONE UNRESOLVED REFERENCE DESTROYS THE WHOLE LEVEL. The sequence is ResourceRef_Resolve(level+0xd0, classDesc, level+0x100, &policy) followed immediately by LevelStream_LoadStep(level+0x10, level+0x100, level+0x150, level+0xa0); if that step returns anything other than 1 the function destroys the level object and returns 0 with *outLevel = NULL. classDesc defaults to the global at 0x141476278 when level+0xf0 is null.\n\nThis is the mechanism behind the additive-POI symptom recorded in rsmm.sdk.kinds.poi._emit_prop_override: a mod-added entity that fails to resolve does not produce a missing prop in an otherwise fine level, it fails the ENTIRE level load. So 'the level did not load' and 'one reference was null' are the same observation, and a trace must name WHICH reference.",
    "refs": []
   },
   {
@@ -3043,7 +3212,7 @@
    "raw": "FUN_140492540",
    "status": "ok",
    "signature": "void(void* refBlock, void* classDesc, void** outResolved, void* policy)",
-   "note": "Generic typed resource-ref resolver. Ref block layout (0x38 bytes): {char* name, u32 hash, char* parentPath, u32 hash2, void* classDescriptor @+0x20, u8 resolved @+0x28, void* resolvedPtr @+0x30}. Resolving loads the target resource on demand. [2026-07-10: DOWNGRADED — July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.] [RELOCATED to FUN_140492540 2026-08-09, hand-confirmed: Called by both PostLoad routines. Resolved flag read at +0x28 and resolved pointer written through param_3, per the 0x38-byte ref block in the note; looks up service id 0x53b64d.] [RELOCATED to FUN_140492540 2026-08-09, hand-confirmed: Called by both PostLoad routines. Resolved flag read at +0x28 and resolved pointer written through param_3, per the 0x38-byte ref block in the note; looks up service id 0x53b64d.] [RELOCATED to FUN_140492540 2026-08-09, hand-confirmed: Called by both PostLoad routines. Resolved flag read at +0x28 and resolved pointer written through param_3, per the 0x38-byte ref block in the note; looks up service id 0x53b64d.]",
+   "note": "Generic typed resource-ref resolver. Ref block layout (0x38 bytes): {char* name, u32 hash, char* parentPath, u32 hash2, void* classDescriptor @+0x20, u8 resolved @+0x28, void* resolvedPtr @+0x30}. Resolving loads the target resource on demand. [2026-07-10: DOWNGRADED — July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.] [RELOCATED to FUN_140492540 2026-08-09, hand-confirmed: Called by both PostLoad routines. Resolved flag read at +0x28 and resolved pointer written through param_3, per the 0x38-byte ref block in the note; looks up service id 0x53b64d.] [RELOCATED to FUN_140492540 2026-08-09, hand-confirmed: Called by both PostLoad routines. Resolved flag read at +0x28 and resolved pointer written through param_3, per the 0x38-byte ref block in the note; looks up service id 0x53b64d.] [RELOCATED to FUN_140492540 2026-08-09, hand-confirmed: Called by both PostLoad routines. Resolved flag read at +0x28 and resolved pointer written through param_3, per the 0x38-byte ref block in the note; looks up service id 0x53b64d.]\n\n[2026-09-11] Two modes, chosen by the byte at refBlock+0x28. Non-zero = RELEASE: decrement the refcount at (*outResolved)+0x8, call the destructor through (*(outResolved))+0x10 vtable+0x8 when it hits zero, null the slot, return. Zero = RESOLVE: scan the class descriptor's provider array (data at classDesc+0x30, count at +0x38) for the entry whose id at +0x8 equals 0x53b64d, then call provider vtable+0x18 with (provider, refBlock, *policy, outResolved, 0). ⚠ If no provider matches, the code dereferences a null pointer rather than returning -- it assumes the provider exists. 0x53b64d is generic: it occurs 71 times across the exe at every resource-resolve site, so it identifies the RESOURCE-PROVIDER ROLE, not any particular class, and is not a discriminator worth chasing.",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ],
@@ -3087,7 +3256,7 @@
      "void*"
     ]
    },
-   "note": "Canonical resource-by-path hashmap lookup. RCX = decoded path; returns EntityResource* (0 if not loaded). Only resolves paths registered in UsedRscList/cache.",
+   "note": "Canonical resource-by-path hashmap lookup. RCX = decoded path; returns EntityResource* (0 if not loaded). Only resolves paths registered in UsedRscList/cache.\n\n[2026-09-11, additive-POI investigation] KEYED BY PATH, NOT BY GUID. The body lowercases the incoming path in place, FNV-1a hashes it (0xcbf29ce484222325 / 0x100000001b3), mixes the hash, and probes an SSE control-byte hash map on the archive object: control bytes at +0x38, 0x18-byte slots at +0x40, mask at +0x50; a hit returns the resource at slot+0x10. A path containing '/' is converted to '\\\\' and re-entered recursively.\n\nWHY THIS MATTERS: it eliminates the standing hypothesis for why an additive POI fails. rsmm.sdk.kinds.poi.RESTAMP_ENTITY_GUIDS was ARMED 2026-08-13 as 'the leading hypothesis', on the theory that a byte-copied entity keeps its donor's component identity GUIDs and therefore collides with the shipped resource. Resource lookup does not consult a GUID at any point, so a GUID collision cannot explain a NULL LOOKUP. It remains possible that GUIDs matter later, at instantiation -- but that is a different failure at a different stage and needs its own evidence.",
    "refs": [
     "src/loader/src/hook_items.cpp",
     "docs/_re"
@@ -3204,6 +3373,22 @@
    ]
   },
   {
+   "name": "SceneContextValue_Find",
+   "kind": "function",
+   "category": "entity-values",
+   "raw": "FUN_1401c9600",
+   "status": "ok",
+   "signature": "oCEntityValueUnion*(void* sceneContext, uint32_t crcKey)",
+   "note": "Read one entity value out of a SCENE CONTEXT, by 32-bit key. Returns a pointer to the oCEntityValueUnion (entry+8), or 0 when the key is not held. Unlike EntityValue_Lookup there is no out-parameter: the returned pointer IS the union, and the usual layout applies to it (inline sentinel u32 at +0x08 == 4, value at +0x10).\n\n⚠ THERE ARE TWO DIFFERENT VALUE-STORE SHAPES AND THEY TAKE DIFFERENT READERS. Conflating them crashed the game on 2026-09-11 (dump 3c3943b7), so the distinction is the entire reason this symbol exists:\n  * HERO value store, reached as *(ctx+0x4c8): keyed map at +0x80, override vector at +0xc0 with its count at +0xc8. Read by EntityValue_Lookup / EntityValue_Get.\n  * SCENE CONTEXT (this one), e.g. oCGlobalEntityValueSceneContext as returned by GameScene_FindContextByTester: keyed map at +0x98, end sentinel computed as *(self+0xb0) + *(self+0x98). Read by THIS function, written by FUN_1402091a0 (int) and FUN_14020a580 (float) via FUN_1401c9670, which indexes the same +0x98 map.\n\nThe two shapes are not distinguishable by a single non-null pointer read, and the crash is what happens when you try: a scene context correctly identified by its +0x98 map was handed to EntityValue_Lookup, which walks +0xc0/+0xc8 instead and faulted reading -1 at EntityValue_Lookup+0x32 with the 'Is in sandman shop' key (0xd53e08e5) in r8. Match the READER to the shape; do not assume a value store is a value store.\n\nBoth halves of the pair are 0x60-byte leaf functions over the same hash map (FUN_14021a790 with the 0xde5fb9d2630458e9 mix), which is what makes the +0x98/+0xb0 pair the positive signature of this shape.\n\nPROMOTED to ok 2026-09-11 on STATIC evidence only: 0x1401c9600 is a .pdata entry point (bounds 0x1401c9600..0x1401c9669), and its body is the read half of the pair whose write half (FUN_1401c9670, called from the engine's own int/float setters) indexes the identical +0x98 map with the identical hash mix. NOT yet proven by a playtest -- `rsmm symbols audit` after a launch with RSMM_DUMP_SYMBOLS is the confirmation that is still owed. The SDK guards the call the way the crash taught: it refuses unless +0x98 and +0xb0 both check out, which are precisely the two fields this function reads -- unlike the call that crashed, which walked +0xc0/+0xc8, fields nothing had validated.",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*",
+     "uint32_t"
+    ]
+   }
+  },
+  {
    "name": "Serializer_GetClassVersion",
    "kind": "function",
    "category": "engine-core",
@@ -3222,7 +3407,7 @@
    "raw": "FUN_14020e000",
    "status": "ok",
    "signature": "bool(void* reader, void* vec, const char* label)",
-   "note": "Reads a vector of polymorphic sub-object pointers: u32 count (0xaabb1111 sentinel = optional inline class-header {lstr name, u32 x2} first — not hit in cooked files, where sub-objects live in their own sections referenced by u32 sub-object id), then per element reader-vtbl+0xa8 poly resolve. Count clamped to 1,000,000. Write path labels 'Vector.Length' / 'Vector[%d]'. Vec layout {data @+0x0, u32 size @+0x8, u32 cap @+0xc}. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via hash/decompile verification.]",
+   "note": "Reads a vector of polymorphic sub-object pointers: u32 count (0xaabb1111 sentinel = optional inline class-header {lstr name, u32 x2} first — not hit in cooked files, where sub-objects live in their own sections referenced by u32 sub-object id), then per element reader-vtbl+0xa8 poly resolve. Count clamped to 1,000,000. Write path labels 'Vector.Length' / 'Vector[%d]'. Vec layout {data @+0x0, u32 size @+0x8, u32 cap @+0xc}. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via hash/decompile verification.]\n\n[2026-09-11] WHY THE SKILL-VECTOR COUNT WAS NEVER FOUND, and why the net-new-talent wall should be re-opened. The binary path reads a u32 and, if it equals the 0xaabb1111 MARK, consumes a class-name string plus two u32s (and optionally a second such block) BEFORE reading the real count. The count is therefore NOT at a fixed distance ahead of the rows, which is exactly why docs/_re/kinds/skills-system.md concluded 'there is no plain u32==28 count anywhere in the .gen before the rows (scanned all heroes)' and attributed the failure to 'a count living in the registrar region Ghidra leaves unanalysed'. The count is in the stream; the scan was looking in the wrong place.\n\nThe engine then allocates exactly `count` pointer slots and loops exactly `count` times, rejecting anything above 1,000,000. So a spliced skill row is an ORPHAN in precisely the sense CLAUDE.md already documents for entities (fixed 2026-09-06) and levels (fixed 2026-09-08): the bytes are in the stream and the vector that owns them was not grown. The Aladdin 'whole hero fails to load' result is consistent with that and does not require a hidden registrar format.",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -3428,6 +3613,66 @@
    ]
   },
   {
+   "name": "UiController_BindComponent",
+   "kind": "function",
+   "category": "ui",
+   "raw": "FUN_14034c180",
+   "status": "unverified",
+   "signature": "void(void* uiController)",
+   "locator": {
+    "vftable": {
+     "class": "oCDtEntityCpntMinimapUiController",
+     "slot": 5
+    }
+   },
+   "note": "Resolve the controller's TARGET COMPONENT and cache it — vftable slot 5 on the Controller family.\n\nThe body branches on the controller's settings object (this+0x10): when both +0x128 and +0x130 are null it takes the tester path, gated on a bool at +0x101, calling Entity_GetComponentByTester; otherwise it calls Entity_GetComponentFast(this+0x8, <class-desc global>). Either way the result is stored on the controller — oCDtEntityCpntMinimapUiController keeps it at +0x70 (after one more hop through the component's +0x88), oIDtEntityCpntBookPageUiController at +0x68.\n\nCross-confirms Entity_GetComponentByTester, documented separately today as walking the entity's component array at +0x190 with its count at +0x198: this is a first-party caller of it, reached by a different route.\n\n⚠ SLOTS 5 AND 6 ARE A PAIR, and so are 28/29 (UiController_OnShow / _OnHide). Slot 5 caches a pointer into a controller field; slot 6 nulls that SAME field. Reading one without the other is how a cached component pointer outlives the thing it points at.\n\n33 and 32 implementations respectively, all unnamed before this — the two densest unnamed slots in the Controller family, so naming them describes the binding lifecycle of every UI controller in the game at once. Found via tools/mine_vtable_interfaces.py."
+  },
+  {
+   "name": "UiController_OnHide",
+   "kind": "function",
+   "category": "ui",
+   "raw": "FUN_140352b40",
+   "status": "unverified",
+   "signature": "void(void* uiController)",
+   "locator": {
+    "vftable": {
+     "class": "oCDtEntityCpntEscapeGameMenuUiController",
+     "slot": 29
+    }
+   },
+   "note": "UI controller DEACTIVATION — vftable slot 29, the exact inverse of slot 28. The Escape-menu implementation is four lines: resolve the same global entity-value scene context and set the same key 0x18ab4599 (\"Is game menu open\") back to 0.\n\nFound via tools/mine_vtable_interfaces.py (Controller family). 31 implementations each, 30 unnamed before this — so naming the slot names the behaviour of every UI controller in the game at once.\n\n⚠ The two slots are a PAIR and must be read together: whatever slot 28 turns on, slot 29 turns off, with the same key and the same context. Treating either in isolation is how you end up with a flag that is set and never cleared."
+  },
+  {
+   "name": "UiController_OnShow",
+   "kind": "function",
+   "category": "ui",
+   "raw": "FUN_140352aa0",
+   "status": "unverified",
+   "signature": "void(void* uiController)",
+   "locator": {
+    "vftable": {
+     "class": "oCDtEntityCpntEscapeGameMenuUiController",
+     "slot": 28
+    }
+   },
+   "note": "UI controller ACTIVATION — vftable slot 28 on the Controller family. Two shapes, same meaning. oCDtEntityCpntEscapeGameMenuUiController resolves the global entity-value scene context (GameScene_FindContextByTester with g_GlobalEntityValueSceneContext_Tester_vftable) and sets key 0x18ab4599 — \"Is game menu open\" in the harvested value table — to 1, then shows its widget. oCDtEntityCpntMinimapUiController instead registers itself into two vectors on its shared owner (+0x110/+0x118 and +0x138/+0x140, both grown through Vector_Grow), installs a listener, and refreshes.\n\nCross-confirms the value table independently: the key this writes is the one the registration sweep named, recovered by a different route.\n\nFound via tools/mine_vtable_interfaces.py (Controller family). 31 implementations each, 30 unnamed before this — so naming the slot names the behaviour of every UI controller in the game at once.\n\n⚠ The two slots are a PAIR and must be read together: whatever slot 28 turns on, slot 29 turns off, with the same key and the same context. Treating either in isolation is how you end up with a flag that is set and never cleared."
+  },
+  {
+   "name": "UiController_UnbindComponent",
+   "kind": "function",
+   "category": "ui",
+   "raw": "FUN_14034c200",
+   "status": "unverified",
+   "signature": "void(void* uiController)",
+   "locator": {
+    "vftable": {
+     "class": "oCDtEntityCpntMinimapUiController",
+     "slot": 6
+    }
+   },
+   "note": "Drop the cached target component — vftable slot 6, the exact inverse of slot 5. Both implementations read are a single store: the minimap controller nulls +0x70, the book-page controller nulls +0x68, each the same field its own slot 5 filled.\n\n⚠ SLOTS 5 AND 6 ARE A PAIR, and so are 28/29 (UiController_OnShow / _OnHide). Slot 5 caches a pointer into a controller field; slot 6 nulls that SAME field. Reading one without the other is how a cached component pointer outlives the thing it points at.\n\n33 and 32 implementations respectively, all unnamed before this — the two densest unnamed slots in the Controller family, so naming them describes the binding lifecycle of every UI controller in the game at once. Found via tools/mine_vtable_interfaces.py."
+  },
+  {
    "name": "Vector_Grow",
    "kind": "function",
    "category": "engine",
@@ -3585,6 +3830,14 @@
    "refs": [
     "src/loader/lib/rsmm.lua"
    ]
+  },
+  {
+   "name": "g_GlobalEntityValueSceneContext_Tester_vftable",
+   "kind": "data",
+   "category": "entity-values",
+   "va": "0x140f09e68",
+   "status": "va",
+   "note": "Vftable of oCTKindOfTypeTester<oCGlobalEntityValueSceneContext, oIGameSceneContext>, read from MSVC RTTI (the complete object locator one qword before the vftable names the class exactly). This is the ONE missing piece between the loader and roughly a hundred engine-authored gameplay values.\n\nTHE RECIPE, read off the reroll-counter writer at 0x1403aaa0d..0x1403aaa4f and not guessed:\n  1. Stack-construct the tester: two `lea` writes to the SAME slot, the second (this vftable) overwriting the first (oITTester<oIGameSceneContext>, 0x140f11fd8) -- ctor then vftable fixup, so the SECOND is the live one. Taking the first is the obvious mistake here, and it yields a tester that matches nothing and returns null.\n  2. ctx = GameScene_FindContextByTester(gameScene, &tester)  [status=ok, pattern-resolved]\n  3. EntityValue_Get(ctx, &out, crcKey)                       [status=ok, pattern-resolved]\nBoth functions already resolve today; only this VA is build-specific, so a capability built on it must gate on va_globals_trusted the way the event payload decode does.\n\nWHAT IT UNLOCKS -- 117 named values harvested from the four registration routines (EntityValueRegistry_RegisterAll plus three siblings, 177 call sites). These are the ENGINE's own answers to questions mods currently infer. Highlights: 'Is in sandman shop' (every shop rule), 'Reroll count' (every no-reroll rule), 'Current chapter' (hand-counted today), 'Is in overtime' and 'Is boss awaken', 'Active Enemies Count' (a real in-combat signal instead of a boss/tumor proxy), 'Is Session Host', 'Revive token', 'Current dream shards count'.\n\nNOTE ON is_in_main_menu: the loader currently answers this by sniffing which cooked file was opened in the last 5 seconds (Loader::is_in_main_menu, the HgdzHqzw prefix heuristic). Key 0x181d17fe IS 'Is in main menu' in the Player location family, so that heuristic has an exact replacement once this context is reachable.\n\nHARVEST METHOD, because the naive version is confidently wrong: a registration is a `mov ecx, <key>` plus three string pointers passed through frame slots, and the string register is hoisted OUT of the call block in most cases. Pairing a key with the nearest `lea`, forwards or backwards, produces a table shifted by one entry that looks entirely plausible. Follow the argument set-up instead -- `lea reg,[rip+s]`, then `mov [rbp+N],reg`, then `lea r8,[rbp+N]` -- so r8 is the display name and r9 the category. The self-check is that every row in a family carries the SAME category string, and that consecutive names take consecutive keys.\n\nKEY TABLE (key, display name), grouped by the category the engine itself gives each value:\n  [Day/Night cycle]\n    0x17d8d89b Is day\n    0x17d8d89c Is night\n    0x189e4b06 Play Time (s)\n    0x189e4ed5 Cycle playing\n    0x6b7e633e Current day ratio\n    0x75cc8184 Current night ratio\n    0x17d8d89f Current cycle ratio\n    0x1859c278 Day duration\n    0x1859c279 Night duration\n    0x17d8d8a0 Dawn and dusk half duration (Duration of [Sunrise|Sunset|Moonrise|Moonset])\n    0x8ae3fefe Day/Night phase as FMod param (0.0=day, 1.0=night)\n    0x17de260c Remaining cycle before boss awakens\n    0x18ab6b3b Remaining time before boss awakens\n    0x17de260d Boss time warning duration\n    0x1896a549 Boss time warning ratio\n    0x17de260e Is boss awaken\n    0x1cc8c666 Boss sleep duration\n    0x1e533557 Current hourglass time\n    0x1e5c3007 Current hourglass time ratio\n    0x25c606ac Last map hourglass time ratio\n    0x1cd7923b Overtime duration\n    0x1ce9bb1a Overtime ratio\n    0x1cd79255 Is in overtime\n    0x1cdf6e8e Remaining cycle before Overtime\n    0x1cdf6e90 Remaining time before Overtime\n    0x2fd2db08 Slow hourglass ratio\n    0x81c945ca Night_And_Day_Cycle_Phase\n  [Game]\n    0x189512bc Game Chrono Started\n    0x18bc7252 Local peer index\n    0x162b18c8 Is skill menu open\n    0x162b18c9 Is menu open\n    0x1b4aab3e Is MOs menu open\n    0x165e8282 Is in cinematic\n    0x1984fd23 Skip cinematic\n    0x17081d0b Last second damage ratio received\n    0x171c27b5 Current dream shards count\n    0x18c3664a Active Enemies Count\n    0x1633db76 Revive token\n    0x17a117c6 Random seed\n    0x18700873 Game Difficulty\n    0x19bddb2e Difficulty Xp Modifier\n    0x187afd1d Global Xp Modifier\n    0x1e408ac5 Is in pause\n    0x17147b56 Keyboard and mouse control\n    0x18a8c3b5 Pad control\n    0x18759e35 Is last game win\n    0x187ef01f LastGame Standard Loot Count\n    0x187ef021 Last Game Exceptional Loot Count\n    0x19d94870 Can minimap ping\n    0x1dfeeafa Melody notes in spawning tile\n    0x70f3a3ae Melody power up level max catchup\n  [Player location]\n    0x181d17fd Current chapter\n    0x181d17fe Is in main menu\n    0x181d17ff Is in loading screen\n    0x181d1800 Is in exploration (OutDoor)\n    0x181d180d Is in exploration (InDoor)\n    0x181d1801 Is in tumor fighting\n    0xf122efd2 Is in boss fighting\n    0x1b6fc1fc Is in end credits\n    0xd53e08e5 Is in sandman shop\n    0x1c2c3925 Is book open\n    0x18ab4599 Is game menu open\n    0x18ab57ca Is in safe zone\n    0x1859c61f Is in game scene\n    0x1859c621 Is in book scene\n    0x18ab42d9 Is in victory sequence\n    0x18ab42db Is in defeat sequence\n  [New Game Plus]\n    0x1a7945fc GameModifier : No boss timer\n    0x1a77d42d GameModifier : Less day/night half cycle\n    0x1a77e2e4 GameModifier : More experience (from any source)\n    0x1a793d1a GameModifier : No revive token\n    0x99f27eac GameModifier : No minimap\n    0x1a8a3688 GameModifier : One chapter\n    0x1a8b53b4 GameModifier : Day only\n    0x1a8b53bc GameModifier : Night only\n    0x1ab183ab GameModifier : Random hero at map start\n    0x1ab58780 GameModifier : All same heroes\n    0x1871c2fa Rare Skill Chance Modifier\n    0x187310ec Dream Shard Costs Modifier\n    0x187443de Half Cycle Count Before Boss Awakens Modifier\n    0x187aaecf Camp Difficulty Modifier\n    0x187ab36e Camp Difficulty Modifier Chance To Apply\n  [Multiplayer]\n    0x190648b4 Stormancer Server Endpoint\n    0x1906600b Stormancer App\n    0x190648b0 Stormancer Server Is Live\n    0x1599ae4c Hero Count\n    0x1a124d8d Deathdoor hero Count\n    0x1a124d8e Perma-death hero Count\n    0x186c0ec3 Game Session Size\n    0x15dbeb54 Is Connected to Session\n    0x15dbeb6a Is Session Host\n  [System]\n    0x147d2a83 Build version\n    0x16f76afa Is in play game (F5 or F6)\n    0x16f76b02 Is in edition\n    0x17e9a843 Is in play test (F6)\n    0x186332c8 Game Ui Is Hidden (F7)\n    0x18633ac4 Screenshot Mode\n    0x18e036a2 Max physic anim count\n    0x1c05eff2 Is Christmas play test date\n  [Loading Screen]\n    0x19a5e99c Map Loading Description\n    0x19a5e9a0 Map Loading Sub Description\n    0x19a60066 Map Loading Progress Ratio\n  [Can still be revived (token, friend...)]\n    0x193c75ab Ally kill streak\n    0x18829b99 Hero death door\n  [Cannot be revived (goto observer mode)]\n    0x193c6829 Ally death door\n    0x18829b9a Hero permadeath\n  [Bonus stat changed]\n    0x17df7d9e Editor\\Icon\\dt_damage.png\n  [Damage dealt]\n    0x17df7da0 Editor\\Icon\\gooey-impact.png\n  [Damage received]\n    0x17fdac33 Editor\\Icon\\gooey-impact.png\n  [Ally permadeath]\n    0x12e831f3 Editor\\Icon\\dt_shard_gain.png\n  [Gain dream shards]\n    0x12e831f4 Editor\\Icon\\dt_shard_loss.png\n  [Lose dream shards]\n    0x1a9cac95 Editor\\Icon\\dt_shard_loss.png\n  [Dream shards purchase]\n    0x1b5e6883 Editor\\Icon\\dt_shard_loss.png\n  [Total Dream shards purchase]\n    0x1883f309 Editor\\Icon\\dt_ingredient.png\n  [Gain ingredient(s)]\n    0x1883f30a Editor\\Icon\\dt_ingredient.png\n  [Rank = Meta progression level]\n    0x18b0f2ab Rank = Meta progression level\n  [Platform]\n    0x1b80cf17 Cheat version"
   },
   {
    "name": "g_MagicalObjectComponentMeta",
@@ -4456,7 +4709,7 @@
    "category": "resources"
   }
  ],
- "event_payload_schemas_doc": "Payload layouts for the oCGameNamedEvent subclasses that carry data, recovered by tools/mine_event_payloads.py (RTTI type descriptor -> complete object locator -> vftable -> the code that stores it, walked within .pdata function bounds). Keyed by VFTABLE RVA, not event name: the loader reads *(ev+0) and matches it exactly, so no name mapping can go wrong. Field OFFSETS and WIDTHS are recovered; field MEANING is not, so names are mechanical (u50 = u32 at +0x50) except where hand-RE confirmed one. Only ~24 of the ~150 event names have a payload at all -- the rest are dispatched as the bare base class (header only). RVAs are build-specific: the loader gates this decode on the build fingerprint (va_globals_trusted) and re-verifies with --verify after a patch.",
+ "event_payload_schemas_doc": "Payload layouts for the oCGameNamedEvent subclasses that carry data, recovered by tools/mine_event_payloads.py (RTTI type descriptor -> complete object locator -> vftable -> the code that stores it, walked within .pdata function bounds). Keyed by VFTABLE RVA, not event name: the loader reads *(ev+0) and matches it exactly, so no name mapping can go wrong. Field OFFSETS and WIDTHS are recovered; field MEANING is not, so names are mechanical (u50 = u32 at +0x50) except where hand-RE confirmed one. Only ~24 of the ~150 event names have a payload at all -- the rest are dispatched as the bare base class (header only). RVAs are build-specific: the loader gates this decode on the build fingerprint (va_globals_trusted) and re-verifies with --verify after a patch.\n\nRULED OUT 2026-09-11, so the next reader does not re-run the miner to find out: there is NO skill or talent payload class. A re-mine of the shipped exe finds 3274 RTTI classes with a vftable and exactly 26 event payload classes, none of them skill-related, so UPGRADE_LOWER_SKILL, UPGRADE_SPECIFIC_SKILL, UPGRADE_RANDOM_SKILL and UPGRADE_LOWER_SKILL_TO_LEGENDARY are all dispatched as the bare base class: a subscriber learns that a talent was upgraded and cannot learn WHICH. That is a property of the engine, not a gap in the mining. Anything needing talent identity (a 'build around your POWER ability' rule, a talent-pick counter) therefore cannot be built on the event bus at all and needs the hero's skill state read or the upgrade routine hooked for its arguments -- and note that no skill/talent function is named in this map or in Ghidra yet, so that is a cold RE session, not a lookup. ⚠ CORRECTED the same day: that conclusion covers the GAMEPLAY bus only. The ANALYTICS bus does carry skill identity — see Analytics_EmitSkillSelected, which submits skill_name, skill_tier and skill_rarity. Do not read the paragraph above as 'talent identity is unobtainable'.",
  "event_payload_schemas": [
   {
    "class": "GameNamedEventNetworkBark",

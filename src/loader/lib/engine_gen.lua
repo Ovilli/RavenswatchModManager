@@ -84,6 +84,7 @@ return {
   ["Registry_EnumInstances"] = { pattern = "Registry_EnumInstances", offset = 0x0, sig = "pppp" },
   ["Registry_UnregisterInstance"] = { pattern = "Registry_UnregisterInstance", offset = 0x0, sig = "vp" },
   ["Resource_LookupByPath"] = { pattern = "Resource_LookupByPath", offset = 0x0, sig = "psppp" },
+  ["SceneContextValue_Find"] = { pattern = "SceneContextValue_Find", offset = 0x0, sig = "ppu" },
   ["SharedRef_Release"] = { pattern = "SharedRef_Release", offset = 0x0, sig = "vp" },
   ["SkinGrid_Populate"] = { pattern = "SkinGrid_Populate", offset = 0x0, sig = "vpp" },
   ["String_Assign"] = { pattern = "String_Assign", offset = 0x0, sig = "vpp" },

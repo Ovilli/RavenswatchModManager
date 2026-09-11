@@ -7,6 +7,32 @@
 namespace Sym {
 constexpr std::uintptr_t kPreferredBase = 0x140000000ull;
 
+// --- analytics ---
+constexpr std::uintptr_t AnalyticsBag_SetInt = 0x14020abf0ull;
+constexpr const char* AnalyticsBag_SetInt_Pattern = "AnalyticsBag_SetInt";
+constexpr std::uintptr_t AnalyticsBag_SetString = 0x140201c10ull;
+constexpr const char* AnalyticsBag_SetString_Pattern = "AnalyticsBag_SetString";
+constexpr std::uintptr_t Analytics_EmitActiveBoss = 0x1401f9170ull;
+constexpr const char* Analytics_EmitActiveBoss_Pattern = "Analytics_EmitActiveBoss";
+constexpr std::uintptr_t Analytics_EmitChapterEnd = 0x1401f5c70ull;
+constexpr const char* Analytics_EmitChapterEnd_Pattern = "Analytics_EmitChapterEnd";
+constexpr std::uintptr_t Analytics_EmitHeroDeath = 0x1401f6e50ull;
+constexpr const char* Analytics_EmitHeroDeath_Pattern = "Analytics_EmitHeroDeath";
+constexpr std::uintptr_t Analytics_EmitObjectProposed = 0x1401f7760ull;
+constexpr const char* Analytics_EmitObjectProposed_Pattern = "Analytics_EmitObjectProposed";
+constexpr std::uintptr_t Analytics_EmitObjectSelected = 0x1401f79c0ull;
+constexpr const char* Analytics_EmitObjectSelected_Pattern = "Analytics_EmitObjectSelected";
+constexpr std::uintptr_t Analytics_EmitOpenChest = 0x1401f8f30ull;
+constexpr const char* Analytics_EmitOpenChest_Pattern = "Analytics_EmitOpenChest";
+constexpr std::uintptr_t Analytics_EmitSandmanBuy = 0x1401f6800ull;
+constexpr const char* Analytics_EmitSandmanBuy_Pattern = "Analytics_EmitSandmanBuy";
+constexpr std::uintptr_t Analytics_EmitSkillProposed = 0x1401f7120ull;
+constexpr const char* Analytics_EmitSkillProposed_Pattern = "Analytics_EmitSkillProposed";
+constexpr std::uintptr_t Analytics_EmitSkillSelected = 0x1401f7440ull;
+constexpr const char* Analytics_EmitSkillSelected_Pattern = "Analytics_EmitSkillSelected";
+constexpr std::uintptr_t Analytics_EmitUnlockSkill = 0x1401f7e50ull;
+constexpr const char* Analytics_EmitUnlockSkill_Pattern = "Analytics_EmitUnlockSkill";
+
 // --- combat ---
 constexpr std::uintptr_t HeroStats_OnDamageDealt = 0x14039aef0ull;
 constexpr const char* HeroStats_OnDamageDealt_Pattern = "HeroStats_OnDamageDealt";
@@ -51,6 +77,10 @@ constexpr const char* Vector_Grow_Pattern = "Vector_Grow";
 constexpr std::uintptr_t ClassRegistry_FindByKey = 0x140523a10ull;
 constexpr const char* ClassRegistry_FindByKey_Pattern = "ClassRegistry_FindByKey";
 constexpr std::uintptr_t ClassRegistry_Global = 0x141436690ull;
+constexpr std::uintptr_t Component_GetTypeId = 0x1401e6950ull;
+constexpr const char* Component_GetTypeId_Pattern = "Component_GetTypeId";
+constexpr std::uintptr_t Controller_GetFieldByKey = 0x140396df0ull;
+constexpr const char* Controller_GetFieldByKey_Pattern = "Controller_GetFieldByKey";
 constexpr std::uintptr_t CustomFlagFilter_Serialize = 0x140189830ull;
 constexpr const char* CustomFlagFilter_Serialize_Pattern = "CustomFlagFilter_Serialize";
 constexpr std::uintptr_t CustomFlagList_Serialize = 0x140681e60ull;
@@ -148,6 +178,9 @@ constexpr std::uintptr_t oCGameEventNetworkModifier_vftable = 0x140f322d0ull;
 // --- entity-values ---
 constexpr std::uintptr_t EntityValueRegistry_RegisterAll = 0x1401da350ull;
 constexpr const char* EntityValueRegistry_RegisterAll_Pattern = "EntityValueRegistry_RegisterAll";
+constexpr std::uintptr_t SceneContextValue_Find = 0x1401c9600ull;
+constexpr const char* SceneContextValue_Find_Pattern = "SceneContextValue_Find";
+constexpr std::uintptr_t g_GlobalEntityValueSceneContext_Tester_vftable = 0x140f09e68ull;
 
 // --- event ---
 constexpr std::uintptr_t Analytics_SubmitNamedEvent = 0x1401fad70ull;
@@ -182,6 +215,10 @@ constexpr std::uintptr_t NamedEvent_NetSend = 0x140721630ull;
 constexpr const char* NamedEvent_NetSend_Pattern = "NamedEvent_NetSend";
 constexpr std::uintptr_t NamedEvent_NetSendToPeer = 0x1407216c0ull;
 constexpr const char* NamedEvent_NetSendToPeer_Pattern = "NamedEvent_NetSendToPeer";
+
+// --- gameplay ---
+constexpr std::uintptr_t DayNightCycle_PushValues = 0x1401ee1c4ull;
+constexpr std::uintptr_t DayNightCycle_RegisterValues = 0x1401ee9e3ull;
 
 // --- hero ---
 constexpr std::uintptr_t GroupLevelComponent_Ctor = 0x1402e1de0ull;
@@ -252,6 +289,8 @@ constexpr std::uintptr_t Definition_PostLoad = 0x140310200ull;
 constexpr const char* Definition_PostLoad_Pattern = "Definition_PostLoad";
 constexpr std::uintptr_t Definition_PreUnload = 0x140310230ull;
 constexpr const char* Definition_PreUnload_Pattern = "Definition_PreUnload";
+constexpr std::uintptr_t Definition_Unload = 0x1403238a0ull;
+constexpr const char* Definition_Unload_Pattern = "Definition_Unload";
 constexpr std::uintptr_t DreamShardDef_PostLoad = 0x140312690ull;
 constexpr const char* DreamShardDef_PostLoad_Pattern = "DreamShardDef_PostLoad";
 constexpr std::uintptr_t EnemyCampTierDef_PostLoad = 0x140319620ull;
@@ -458,6 +497,14 @@ constexpr std::uintptr_t UiButton_PressCommit = 0x1406a08a0ull;
 constexpr const char* UiButton_PressCommit_Pattern = "UiButton_PressCommit";
 constexpr std::uintptr_t UiButton_PressReturnSite = 0x1407d7382ull;
 constexpr const char* UiButton_PressReturnSite_Pattern = "UiButton_PressReturnSite.parent";
+constexpr std::uintptr_t UiController_BindComponent = 0x14034c180ull;
+constexpr const char* UiController_BindComponent_Pattern = "UiController_BindComponent";
+constexpr std::uintptr_t UiController_OnHide = 0x140352b40ull;
+constexpr const char* UiController_OnHide_Pattern = "UiController_OnHide";
+constexpr std::uintptr_t UiController_OnShow = 0x140352aa0ull;
+constexpr const char* UiController_OnShow_Pattern = "UiController_OnShow";
+constexpr std::uintptr_t UiController_UnbindComponent = 0x14034c200ull;
+constexpr const char* UiController_UnbindComponent_Pattern = "UiController_UnbindComponent";
 
 // --- world ---
 constexpr std::uintptr_t TileKindPool_ReportEmpty = 0x1403421f0ull;
