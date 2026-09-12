@@ -101,8 +101,14 @@ constexpr std::uintptr_t ResourceRef_Serialize = 0x1401cbba0ull;
 constexpr const char* ResourceRef_Serialize_Pattern = "ResourceRef_Serialize";
 constexpr std::uintptr_t Serializer_GetClassVersion = 0x140514570ull;
 constexpr const char* Serializer_GetClassVersion_Pattern = "Serializer_GetClassVersion";
+constexpr std::uintptr_t Serializer_ReadObjectNamed = 0x140500d70ull;
+constexpr const char* Serializer_ReadObjectNamed_Pattern = "Serializer_ReadObjectNamed";
+constexpr std::uintptr_t Serializer_ReadObjectPayload = 0x1405006d0ull;
+constexpr const char* Serializer_ReadObjectPayload_Pattern = "Serializer_ReadObjectPayload";
 constexpr std::uintptr_t Serializer_ReadPolyPtrVector = 0x14020e000ull;
 constexpr const char* Serializer_ReadPolyPtrVector_Pattern = "Serializer_ReadPolyPtrVector";
+constexpr std::uintptr_t Serializer_ResolveObjectId = 0x140500630ull;
+constexpr const char* Serializer_ResolveObjectId_Pattern = "Serializer_ResolveObjectId";
 constexpr std::uintptr_t ServiceRegistry_Global = 0x14146f740ull;
 constexpr std::uintptr_t StringVector_Serialize = 0x140684f30ull;
 constexpr const char* StringVector_Serialize_Pattern = "StringVector_Serialize";
@@ -515,6 +521,8 @@ constexpr std::uintptr_t UiController_UnbindComponent = 0x14034c200ull;
 constexpr const char* UiController_UnbindComponent_Pattern = "UiController_UnbindComponent";
 
 // --- world ---
+constexpr std::uintptr_t LevelStream_Deserialize = 0x1404767e0ull;
+constexpr const char* LevelStream_Deserialize_Pattern = "LevelStream_Deserialize";
 constexpr std::uintptr_t TileKindPool_ReportEmpty = 0x1403421f0ull;
 constexpr const char* TileKindPool_ReportEmpty_Pattern = "TileKindPool_ReportEmpty";
 constexpr std::uintptr_t TileSpawn_DistanceConstraints = 0x140345890ull;

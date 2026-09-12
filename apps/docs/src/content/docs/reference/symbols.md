@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **259** symbols across 21 categories.
+Total: **263** symbols across 21 categories.
 
 ## analytics
 
@@ -95,7 +95,10 @@ Total: **259** symbols across 21 categories.
 | `Property_EvaluateByGuid` | `0x1406ab910` | ✅ ok |  | bool(void* ctx, void* container, void* guid16, float* out) |
 | `ResourceRef_Serialize` | `0x1401cbba0` | ❓ unverified |  | bool(void* reader, void* refSlot) |
 | `Serializer_GetClassVersion` | `0x140514570` | ❓ unverified |  | void*(void* reader, void* out, uint32_t classHash) |
+| `Serializer_ReadObjectNamed` | `0x140500d70` | ❓ unverified |  | bool(void* loader, void* root, const char* name) |
+| `Serializer_ReadObjectPayload` | `0x1405006d0` | ❓ unverified |  | bool(void* loader, void* obj, const char* name) |
 | `Serializer_ReadPolyPtrVector` | `0x14020e000` | ✅ ok |  | bool(void* reader, void* vec, const char* label) |
+| `Serializer_ResolveObjectId` | `0x140500630` | ❓ unverified |  | bool(void* loader, void** out, const char* label) |
 | `ServiceRegistry_Global` | `0x14146f740` | 📍 va |  | Global engine service registry: service array @+0x30, u32 count @+0x38; each entry -> s… |
 | `StringVector_Serialize` | `0x140684f30` | ❓ unverified |  | bool(void* reader, void* strVec) |
 
@@ -386,6 +389,7 @@ Total: **259** symbols across 21 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
+| `LevelStream_Deserialize` | `0x1404767e0` | ❓ unverified |  | bool(void* loader, void* a_pLevel, void* a_pLvlId, void* a_pLinks) |
 | `TileKindPool_ReportEmpty` | `0x1403421f0` | ✅ ok | ✔ | void(void* tileSpawnerSettings, void* outMessages) |
 | `TileSpawn_DistanceConstraints` | `0x140345890` | ✅ ok | ✔ | void(void*, void*) |
 | `TileSpawn_PlaceTiles` | `0x140343ad0` | ✅ ok | ✔ | void(void* tileSpawnerComponent) |

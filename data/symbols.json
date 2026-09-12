@@ -1959,7 +1959,7 @@
    "raw": "FUN_1404764f0",
    "status": "unverified",
    "signature": "bool(void* container, void* stream, void* lvlId, void* links)",
-   "note": "Binary counterpart of LevelText_Load — oCBinaryLoader over the same FUN_1404767e0 deserializer, chosen when `*(int*)(resourceSlot+0x90) != 0`. Same leading abort check."
+   "note": "Binary counterpart of LevelText_Load — oCBinaryLoader over the same FUN_1404767e0 deserializer, chosen when `*(int*)(resourceSlot+0x90) != 0`. Same leading abort check.\n\n[2026-09-12] The shared deserializer it dispatches to is LevelStream_Deserialize; the caller that picks binary over text is FUN_140476680, which passes rdx = &resource[+0x80] (the blob descriptor) and rcx = the container. From there the stream grammar is fully read out in Serializer_ReadObjectNamed."
   },
   {
    "name": "LevelLoad_AbortPredicate",
@@ -3434,7 +3434,7 @@
    "raw": "FUN_14020e000",
    "status": "ok",
    "signature": "bool(void* reader, void* vec, const char* label)",
-   "note": "Reads a vector of polymorphic sub-object pointers: u32 count (0xaabb1111 sentinel = optional inline class-header {lstr name, u32 x2} first — not hit in cooked files, where sub-objects live in their own sections referenced by u32 sub-object id), then per element reader-vtbl+0xa8 poly resolve. Count clamped to 1,000,000. Write path labels 'Vector.Length' / 'Vector[%d]'. Vec layout {data @+0x0, u32 size @+0x8, u32 cap @+0xc}. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via hash/decompile verification.]\n\n[2026-09-11] WHY THE SKILL-VECTOR COUNT WAS NEVER FOUND, and why the net-new-talent wall should be re-opened. The binary path reads a u32 and, if it equals the 0xaabb1111 MARK, consumes a class-name string plus two u32s (and optionally a second such block) BEFORE reading the real count. The count is therefore NOT at a fixed distance ahead of the rows, which is exactly why docs/_re/kinds/skills-system.md concluded 'there is no plain u32==28 count anywhere in the .gen before the rows (scanned all heroes)' and attributed the failure to 'a count living in the registrar region Ghidra leaves unanalysed'. The count is in the stream; the scan was looking in the wrong place.\n\nThe engine then allocates exactly `count` pointer slots and loops exactly `count` times, rejecting anything above 1,000,000. So a spliced skill row is an ORPHAN in precisely the sense CLAUDE.md already documents for entities (fixed 2026-09-06) and levels (fixed 2026-09-08): the bytes are in the stream and the vector that owns them was not grown. The Aladdin 'whole hero fails to load' result is consistent with that and does not require a hidden registrar format.",
+   "note": "Reads a vector of polymorphic sub-object pointers: u32 count (0xaabb1111 sentinel = optional inline class-header {lstr name, u32 x2} first — not hit in cooked files, where sub-objects live in their own sections referenced by u32 sub-object id), then per element reader-vtbl+0xa8 poly resolve. Count clamped to 1,000,000. Write path labels 'Vector.Length' / 'Vector[%d]'. Vec layout {data @+0x0, u32 size @+0x8, u32 cap @+0xc}. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via hash/decompile verification.]\n\n[2026-09-11] WHY THE SKILL-VECTOR COUNT WAS NEVER FOUND, and why the net-new-talent wall should be re-opened. The binary path reads a u32 and, if it equals the 0xaabb1111 MARK, consumes a class-name string plus two u32s (and optionally a second such block) BEFORE reading the real count. The count is therefore NOT at a fixed distance ahead of the rows, which is exactly why docs/_re/kinds/skills-system.md concluded 'there is no plain u32==28 count anywhere in the .gen before the rows (scanned all heroes)' and attributed the failure to 'a count living in the registrar region Ghidra leaves unanalysed'. The count is in the stream; the scan was looking in the wrong place.\n\nThe engine then allocates exactly `count` pointer slots and loops exactly `count` times, rejecting anything above 1,000,000. So a spliced skill row is an ORPHAN in precisely the sense CLAUDE.md already documents for entities (fixed 2026-09-06) and levels (fixed 2026-09-08): the bytes are in the stream and the vector that owns them was not grown. The Aladdin 'whole hero fails to load' result is consistent with that and does not require a hidden registrar format.\n\n[2026-09-12] The element reader at reader-vtbl+0xa8 is now read, not inferred: Serializer_ResolveObjectId. An element id is an index into the object table that Serializer_ReadObjectNamed builds from `uOjbectsCount`, with 0xffffffff = null and 0xfffffffe = the root. So growing one of these vectors is only half an append — the id it adds has to BE an object, which means `uOjbectsCount` and its `uClassFinfoIndex` list have to grow too. rsmm.engine.entity_append does both (`_directory` + `component_vector`, asserted by `validate_layout`); rsmm.engine.level_placements.add_placement does only the vector.",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -4073,6 +4073,72 @@
    "status": "ok",
    "signature": "bool(void* db, void* level, bool flag)",
    "note": "THE GATE that decides whether a loaded level keeps its objects. Called by FUN_1407466b0 as `gate(db, level, 0)` right after LevelStream_LoadStep succeeds: false -> the level is DESTROYED (0x140482d90) and the owning slot nulled; true -> the level is kept at [owner+0x68]. `db` is `[[rcx+8]+0x30] + 0x448`, the runtime oCGameLevelDatabase (class id 0x064a9acd — runtime only, no shipped asset declares it). It appends the level to the database vector at db+0x88/+0x90, then walks the level's objects and instantiates each: count at level+0xc8, array at level+0xc0 with STRIDE 0x38, and per element `test [db+0xa0], [elem+0x30]` / `jbe` -> SKIP. ⚠ `test` always clears CF so that `jbe` is really `je`: an object is skipped when the AND is ZERO, silently, with no log and no fault. Stride 0x38 is the size of a resource REF BLOCK (see hook_resource.cpp), which puts +0x30 exactly where `resolvedPtr` lives — so the skip may be 'this object's resource never resolved', the documented null-preload failure seen from the skip side rather than the crash side. NOT yet disambiguated from a flags mask. An earlier accept check at 0x14047c930 can also bail out before the loop runs at all (al != 1 and byte[db] == 0 -> jump past it). WHY IT MATTERS: a mod-owned tile level is placed, its resource resolves, and NONE of its objects are instantiated — not even the shipped ones it inherited from its donor (measured 2026-09-10: 5 mod tiles placed, the donor's Health_Fountain resolved 0 extra times). Those three silent paths are the whole remaining hypothesis space, and hooking this function to log level+0xc8 before the call and the return value after separates them in one run. [PROMOTED to ok 2026-09-10: 0x14047cf80 is a function START per the module's .pdata exception table (bounds 0x14047cf80..0x14047d585, 1541 bytes), and its body is exactly the shape this note describes — the db+0x88/+0x90 append, then the level+0xc8 / +0xc0 stride-0x38 walk with the test/jbe skip and LevelObject_LoadOrCreate. Promoted so a read-only detour can report which of the three silent empty-level paths a mod-owned level takes.]"
+  },
+  {
+   "name": "LevelStream_Deserialize",
+   "kind": "function",
+   "category": "world",
+   "raw": "FUN_1404767e0",
+   "status": "unverified",
+   "signature": "bool(void* loader, void* a_pLevel, void* a_pLvlId, void* a_pLinks)",
+   "locator": {
+    "called_by": [
+     "LevelBinary_Load"
+    ],
+    "strings": [
+     "*a_pLevel",
+     "*a_pLvlId",
+     "oDummyLvlId"
+    ]
+   },
+   "note": "[2026-09-12] The body shared by LevelBinary_Load and LevelText_Load, and the top of the level's stream grammar. Register signature: rcx = loader (constructed on LevelBinary_Load's stack by FUN_140500160, most-derived vftable 0x140f4a690), rdx = a_pLevel (the container, LevelStream_LoadStep's level+0x10), r8 = a_pLvlId, r9 = a_pLinks. It writes a u32 version = 1 and then THREE bools (`a_pLvlId != 0`, `a_pLinks != 0`, `a_pLevel != 0`) through the loader's bool slot, and only then reads the three objects, EACH through its own full Serializer_ReadObjectNamed call: `*a_pLvlId`, `*a_pLinks`, `*a_pLevel`, in that order, with `oDummyLvlId` / `oDummyLinks` substituted when the caller passes null. ⚠ THREE INDEPENDENT OBJECT GRAPHS, not one. Each of the three carries its OWN class table and its OWN object table, so a level file contains three `uOjbectsCount` fields and only the LAST one (the `*a_pLevel` graph) is the level's. That is why the 7 bytes `01 00 00 00 01 01 01` sit between the cooked header and the first MARK_BEGIN, and why rsmm.engine.cooked.parse cannot read a level's inner stream directly — it expects the marker there."
+  },
+  {
+   "name": "Serializer_ReadObjectNamed",
+   "kind": "function",
+   "category": "engine-core",
+   "raw": "FUN_140500d70",
+   "status": "unverified",
+   "signature": "bool(void* loader, void* root, const char* name)",
+   "locator": {
+    "strings": [
+     "uOjbectsCount",
+     "uClassFinfoIndex",
+     "uClassCount"
+    ]
+   },
+   "note": "[2026-09-12] Slot +0x28 of the loader vftable, and THE WRITER OF THE CONTAINER'S OBJECT VECTOR — found by reading the write side from LevelStream_Deserialize's `*a_pLevel` call rather than by guessing where to read it. Reads one whole object graph, in four phases, all sequential (there is no seek and no index anywhere in the file):\n\n  1. CLASS TABLE. MARK_BEGIN, `uClassCount` (rejected above 0x200), then per class {`rInfo.m_sName` lstr, `rInfo.m_uId`, `rInfo.m_uVersionMaj`, `rInfo.m_uVersionMin`, `rInfo.m_uParentId`}, then MARK_END. Kept at ctx+0x6d0 (data) / ctx+0x6d8 (count), where ctx = loader[+0x18]. This is exactly the table rsmm.engine.cooked.parse already decodes.\n  2. OBJECT TABLE. MARK_BEGIN, `uOjbectsCount` (the engine's own typo — grep for Ojbect, not Object), then ONE `uClassFinfoIndex` per object indexing the class table, then MARK_END. For each entry it looks the metaclass id up in the global class registry at 0x14143ccd0, type-checks it, INSTANTIATES it through the descriptor's vftable +0x88, and push_backs the instance into the vector at ctx+0x6e0 (data) / ctx+0x6e8 (size). **This phase is what decides how many objects exist and what they are.** It also sets loader[+0x8] = root.\n  3. PAYLOADS. For i in 0..count-1, Serializer_ReadObjectPayload(loader, objectTable[i], \"\") — strictly in table order, strictly sequential in the stream, with no cross-check that the block it lands on is the class the table promised.\n  4. ROOT. The same call once more for the object and name the caller passed (`*a_pLevel`), AFTER every sub-object exists. That is why the container's own poly-pointer vector is at the END of the stream and why `level_placements._object_vector`'s \"last MARK_BEGIN\" heuristic lands on the right bytes.\n\nCORPUS PROOF, 390/390 shipped levels (data/uncooked/Ot/**/*.level.ot.GameStream.gen), three independent invariants: the `*a_pLevel` graph's object table of count m is followed by exactly m payload blocks plus one root block; `objectTable[i]` equals the leading class index of payload block i, so **an object's id IS its position in the stream**; and the root's leading poly-ptr vector is always an identity prefix 0..k-1 with k <= m (equal in 113 levels, strictly less in 277 — Map_Avalon_Terrain is 12370 objects under a root vector of 1, the rest being children of that one terrain object).\n\nWHAT THIS FIXED, 2026-09-12. `rsmm.engine.level_placements` was written against the bytes BETWEEN a level's asset references, and that space does not line up with the object graph. Two consequences, both measured and both now gone. (1) `add_placement` grew only the root's poly-pointer vector, never `uOjbectsCount` and never a `uClassFinfoIndex` — so on four shipped levels the output had one more payload block than the engine would read, which does not orphan the new object but shifts every following one onto its predecessor's bytes and leaves the root's own block to be consumed as the last sub-object. (2) `decode()` paired each entity reference with the bytes that FOLLOW it, but a reference sits near the end of its own block, so every placement in every level was reported with its SUCCESSOR's position and rotation and the last one with a run of zeros — the oracle the POI work used to judge whether a prop stands upright was reading the neighbouring prop. Rewritten on this grammar the decoder reads 350 levels and 116708 placements where the old walk read 280 and 7686."
+  },
+  {
+   "name": "Serializer_ReadObjectPayload",
+   "kind": "function",
+   "category": "engine-core",
+   "raw": "FUN_1405006d0",
+   "status": "unverified",
+   "signature": "bool(void* loader, void* obj, const char* name)",
+   "locator": {
+    "strings": [
+     "uClassInfoIndex"
+    ],
+    "called_by": [
+     "Serializer_ReadObjectNamed"
+    ]
+   },
+   "note": "[2026-09-12] Slot +0xa0 of the loader vftable: read ONE object's payload block. MARK_BEGIN (a raw u32 compared against 0xaabb1111), then `uClassInfoIndex` bound-checked against the class table count at ctx+0x6d8, then dispatch into that class's Serialize via FUN_1404fe970 with the object it was handed. ⚠ IT NEVER RECONCILES THE INDEX IT READS WITH THE CLASS THE OBJECT TABLE PROMISED FOR THIS SLOT. Since Serializer_ReadObjectNamed calls this once per object in table order with no seek, inserting one payload block into a stream without growing `uOjbectsCount` does not orphan the new object — it shifts every following object onto its predecessor's bytes and deserializes them into an instance of the wrong class, and the root's own block is then read as the last sub-object. The failure is a corrupt graph, not a missing one.\n\nPLACEMENT BLOCK LAYOUT, mined for `level_placements` (corpus, 2026-09-12): `u32 uClassInfoIndex`, `lstr` instance name, `lstr` group name, 0x26 bytes of flags and defaults, then the transform (`float3` position, `float4` quaternion, `float3` scale), then later the literal `lstr \"EntitySettings\"` followed by the `lstr` path of the entity placed. That makes the transform's offset STRUCTURAL rather than searched: it resolves 116708 of 116708 marker-free placement blocks. ⚠ A block that frames a nested MARK_BEGIN is where a spawner keeps the poly-pointer vector of the settings objects it OWNS, so copying one hands a second spawner the same children; 164687 marker-free blocks own nothing, and no level with owned children lacks a marker-bearing block. 2996 groups of shipped blocks are byte-identical apart from transform and reference, so a placement carries no per-object identity to remint."
+  },
+  {
+   "name": "Serializer_ResolveObjectId",
+   "kind": "function",
+   "category": "engine-core",
+   "raw": "FUN_140500630",
+   "status": "unverified",
+   "signature": "bool(void* loader, void** out, const char* label)",
+   "locator": {
+    "strings": [
+     "uOjbectId"
+    ]
+   },
+   "note": "[2026-09-12] Slot +0xa8 of the loader vftable — the \"poly resolve\" Serializer_ReadPolyPtrVector's note refers to, now read rather than inferred. Reads a u32 `uOjbectId` and turns it into a pointer: 0xffffffff = NULL, 0xfffffffe = the ROOT object (loader[+0x8], stashed by Serializer_ReadObjectNamed), anything else = objectTable[id] out of the vector at ctx+0x6e0. **This is the whole meaning of an id in a cooked file: an index into the object table that phase 2 built, hence an index into stream position.** The bound check is `id > size -> fail`, so `id == size` is let through and reads one slot past the used region — an off-by-one worth knowing before trusting an appended id."
   }
  ],
  "_event_catalog_doc": "Observation events the loader republishes by raw name from the central telemetry sink (Analytics_SubmitNamedEvent). No address — the firehose detour reads the name at runtime, so any name the game adds also fires even if absent here. These are confirmed names harvested by string-xref (cluster 0x140f13a00-0x140f13f00); subscribe via R.on('<name>', cb) with RSMM_ENABLE_GAME_EVENTS=1. Shown by `rsmm symbols events`.",
