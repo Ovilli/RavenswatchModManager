@@ -151,3 +151,23 @@ def test_unsupported_texture_source_raises_not_reversed():
     # passthrough of an already-cooked container is fine; only truly
     # unknown small blobs should raise. Use an obvious non-cooked junk.
     raise AssertionError("expected NotReversedError on unknown source")
+
+
+
+def test_png_cook_stores_pixels_in_png_order():
+    """A cooked PNG keeps its pixels R, G, B, A.
+
+    Proven in-game, not derived: a red talent icon renders red with this order
+    and rendered BLUE when the cooker swapped R/B. The swap was introduced after
+    comparing shipped textures against the PNGs in data/uncooked — but those
+    are written by `image._decode_uncompressed`, which swaps R/B on its own, so
+    the comparison was circular. Pin the order that the game confirmed.
+    """
+    from rsmm.engine import cooked, image
+    from rsmm.engine.cooked_schemas import texture as T
+
+    png = image.encode_png(2, 1, bytes([255, 0, 0, 255, 0, 0, 255, 255]))
+    schema = T._decode_payload(
+        cooked.parse(T.TextureHandler().encode_container(png)).sections[-1].payload)
+    assert tuple(schema.pixels[0:4]) == (255, 0, 0, 255)   # red stays red
+    assert tuple(schema.pixels[4:8]) == (0, 0, 255, 255)   # blue stays blue

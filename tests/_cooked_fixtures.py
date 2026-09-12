@@ -100,3 +100,22 @@ def name_list(*names: str) -> bytes:
     """
     body = b"".join(lstr(n) + b"\x00" * 8 for n in names)
     return begin(1) + body + END
+
+
+def selector_node(label: str, values, *, picker_idx: int = PICKER_IDX,
+                  union_idx: int = UNION_IDX) -> bytes:
+    """A container node holding one entry per value, each an enabled-bool union
+    followed by an f32 union — the shape of a per-rarity value selector.
+
+    The whole thing is wrapped in its own BEGIN/END so a walk bounded by marker
+    depth stops here instead of running into the next node.
+    """
+    body = b""
+    for v in values:
+        body += (begin(picker_idx) + b"\x00"
+                 + begin(union_idx) + struct.pack("<II", T_BOOL, 0) + b"\x00"
+                 + END + END)
+        body += (begin(picker_idx) + b"\x00"
+                 + begin(union_idx) + struct.pack("<II", T_F32, 0)
+                 + struct.pack("<f", v) + END + END)
+    return begin(1) + lstr(label) + b"\x01\x01\x00\x00" + body + END

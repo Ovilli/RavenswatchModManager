@@ -28,7 +28,7 @@ def _picker(guid: bytes, label: str) -> bytes:
     """A class-66 oCEntityCpntPicker reference: BEGIN + classid 66 + 16B GUID
     + a [State] path lstring (the GUID sits 16 bytes before its label). The
     cooked container is depth-balanced, so the record is bracketed BEGIN..END."""
-    return _BEGIN + struct.pack("<I", 0x42) + guid + _lstr(label) + _END
+    return _BEGIN + struct.pack("<I", _PICKER_IDX) + guid + _lstr(label) + _END
 
 
 def _int_entry(label: str, val: int) -> bytes:
@@ -36,10 +36,25 @@ def _int_entry(label: str, val: int) -> bytes:
     return _BEGIN + _lstr(label) + struct.pack("<i", val) + _END
 
 
-def _wrap(payload: bytes) -> bytes:
+#: Class-table index the fixtures place ``oCEntityCpntPicker`` at. The u32 after
+#: a BEGIN marker indexes the FILE'S OWN class table, so this is a per-file
+#: value, not a constant: it is 0x42 in Red and Piper but 0x40 in Snow Queen.
+#: The table below has to actually contain the class or `rewire_ref` cannot
+#: check what it is rewriting.
+_PICKER_IDX = 0x42
+
+
+def _classes(picker_idx: int = _PICKER_IDX) -> list[cooked.ClassDef]:
+    names = [f"oCFiller{i:03d}" for i in range(picker_idx + 1)]
+    names[0] = "oCEntitySettingsResource"
+    names[picker_idx] = "oCEntityCpntPicker"
+    return [cooked.ClassDef(n, 0x1000 + i, 1, 0, 0) for i, n in enumerate(names)]
+
+
+def _wrap(payload: bytes, *, picker_idx: int = _PICKER_IDX) -> bytes:
     cf = cooked.CookedFile(
         variant="A", hdr_a=0x10, flags=1, extra=0, type_tag=0x31,
-        classes=[cooked.ClassDef("oCEntitySettingsResource", 0x16f5f7a3, 1, 0, 0)],
+        classes=_classes(picker_idx),
         sections=[cooked.Section(payload=payload)],
     )
     return cooked.emit(cf)
@@ -154,3 +169,87 @@ def test_piper_ghost_horde_emit_round_trips():
     assert _nth_int(out.concat, "Skill Attack Ghost Notes Counter", 5) == 10
     assert [_nth_int(out.concat, "Skill Defense Spawn Pets Max Count Selector", i)
             for i in (3, 9, 15, 20)] == [15, 15, 15, 15]
+
+
+def test_picker_classid_comes_from_the_files_own_class_table():
+    """`oCEntityCpntPicker` sits at a different index in every file, so the
+    class has to be resolved by NAME. Hardcoding one file's index refused a
+    perfectly good rewire on any hero that laid its table out differently."""
+    src = bytes(range(0x10, 0x20))
+    dst = bytes(range(0xA0, 0xB0))
+    payload = (_picker(dst, "[State] a\\b\\Trigger Proc")
+               + _picker(src, "[State] a\\b\\Target State"))
+    for idx in (0x40, 0x42):
+        blob = _wrap(payload.replace(struct.pack("<I", _PICKER_IDX),
+                                     struct.pack("<I", idx)), picker_idx=idx)
+        ed = EntityEdit(blob)
+        assert ed._picker_classid() == idx
+        assert ed.rewire_ref("Trigger Proc", "Target State") == 1
+
+
+def test_rewire_ref_can_move_every_matching_reference():
+    """A tier-gated selector carries one condition reference per rarity, so
+    moving only the first leaves the rest reading the dead node."""
+    src = bytes(range(0x10, 0x20))
+    dst = bytes(range(0xA0, 0xB0))
+    payload = (_picker(dst, "[Dt Skill Controller] a\\Trigger Proc")
+               + _picker(dst, "[Dt Skill Controller] a\\Trigger Proc")
+               + _picker(dst, "[Dt Skill Controller] a\\Trigger Proc")
+               + _picker(src, "[Dt Skill Controller] a\\Target State"))
+    ed = EntityEdit(_wrap(payload))
+    assert ed.rewire_ref("Trigger Proc", "Target State", count=None) == 3
+    out = EntityEdit(ed.emit())
+    assert out.concat.count(src) == 4      # three moved + the target itself
+    assert out.concat.count(dst) == 0
+
+    # the default still moves exactly one
+    ed2 = EntityEdit(_wrap(payload))
+    assert ed2.rewire_ref("Trigger Proc", "Target State") == 1
+    assert EntityEdit(ed2.emit()).concat.count(dst) == 2
+
+
+def test_exact_within_rewire_hits_the_controllers_own_reference():
+    """A plain substring rewire picks the first label CONTAINING the text.
+
+    Measured on Red: repointing Short Wick's controller state
+    `[State] ...Skill Secondary Quick Bombs` hit
+    `[Modifier] ...Skill Secondary Quick Bombs CD Reduction Modifier` instead,
+    which comes earlier in the file, and left the controller untouched.
+    `exact` + `within` must reach only the controller's own reference.
+    """
+    modifier = bytes(range(0x30, 0x40))
+    own = bytes(range(0x50, 0x60))
+    elsewhere = bytes(range(0x70, 0x80))
+    target = bytes(range(0x90, 0xA0))
+    state = "[State] a\\Quick Bombs\\Quick Bombs"
+    payload = (_picker(modifier, "[Modifier] a\\Quick Bombs\\Quick Bombs CD Modifier")
+               + _BEGIN + _lstr("Skill Controller Quick Bombs") + _END
+               + _picker(own, state)
+               + _BEGIN + _lstr("filler") + b"\x00" * 64 + _END
+               + _picker(elsewhere, state)
+               + _picker(target, "[State] a\\Finisher\\Finisher"))
+
+    # the hazard, pinned: a loose rewire goes to the modifier
+    loose = EntityEdit(_wrap(payload))
+    loose.rewire_ref("Quick Bombs\\Quick Bombs", "Finisher\\Finisher")
+    out = EntityEdit(loose.emit()).concat
+    assert out.count(modifier) == 0 and out.count(own) == 1
+
+    # the fix: exact + scoped reaches the controller's reference and only it
+    ed = EntityEdit(_wrap(payload))
+    n = ed.rewire_ref(state, "[State] a\\Finisher\\Finisher", exact=True,
+                      within="Skill Controller Quick Bombs", within_span=80)
+    out = EntityEdit(ed.emit()).concat
+    assert n == 1
+    assert out.count(own) == 0          # the controller's reference moved
+    assert out.count(modifier) == 1     # the modifier was left alone
+    assert out.count(elsewhere) == 1    # the same label outside the node too
+    assert out.count(target) == 2
+
+
+def test_within_scope_that_does_not_exist_is_an_error():
+    payload = (_picker(bytes(16), "[State] a\\b")
+               + _picker(bytes(range(16)), "[State] c\\d"))
+    ed = EntityEdit(_wrap(payload))
+    with pytest.raises(ValueError, match="scope"):
+        ed.rewire_ref("[State] a\\b", "[State] c\\d", within="No Such Node")

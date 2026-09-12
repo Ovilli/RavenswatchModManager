@@ -26,6 +26,7 @@ from _cooked_fixtures import (
     entity,
     lstr,
     name_list,
+    selector_node,
     value_node,
 )
 
@@ -36,7 +37,9 @@ from rsmm.engine.talent_values import (
     clear_value_override,
     is_label_overridden,
     list_talent_values,
+    list_union_values,
     set_talent_value,
+    set_union_value,
 )
 
 #: An asset-reference union (``Weapon Material Value`` and friends) — a type
@@ -227,3 +230,42 @@ def test_shipped_hero_values_all_resolve_to_a_typed_node():
             assert len(out) == len(raw)
             checked += 1
     assert checked > 500, f"only {checked} hero talent values resolved"
+
+
+# --------------------------------------------------------------------------
+# value selectors — several unions in one node
+# --------------------------------------------------------------------------
+
+def test_union_walk_is_bounded_by_the_node():
+    """A selector holds one union per rarity tier. The walk has to stop at the
+    END that closes the node; a byte-window bound runs into the NEXT selector
+    and every index after that silently means something else."""
+    raw = entity(
+        selector_node("Damage Multiplier Selector", [0.7, 0.6, 0.5, 0.4]),
+        selector_node("Other Selector", [9.1, 9.2]),
+    )
+    got = list_union_values(raw, "Damage Multiplier Selector")
+    # one enabled-bool + one f32 per tier, and nothing from the sibling node
+    assert [round(v, 3) for _o, v, t in got if t == TYPE_F32] == [0.7, 0.6, 0.5, 0.4]
+    assert len(got) == 8
+    other = list_union_values(raw, "Other Selector")
+    assert [round(v, 3) for _o, v, t in other if t == TYPE_F32] == [9.1, 9.2]
+
+
+def test_set_union_value_patches_one_tier():
+    raw = entity(selector_node("Damage Multiplier Selector", [0.7, 0.6, 0.5, 0.4]))
+    out = set_union_value(raw, "Damage Multiplier Selector", 1, 0.6, expect=0.7)
+    assert len(out) == len(raw)
+    assert [round(v, 3) for _o, v, t in
+            list_union_values(out, "Damage Multiplier Selector")
+            if t == TYPE_F32] == [0.6, 0.6, 0.5, 0.4]
+
+
+def test_set_union_value_guards_index_and_old_value():
+    raw = entity(selector_node("Damage Multiplier Selector", [0.7, 0.6]))
+    with pytest.raises(ValueError, match="out of range"):
+        set_union_value(raw, "Damage Multiplier Selector", 99, 0.6)
+    with pytest.raises(ValueError, match="expected"):
+        set_union_value(raw, "Damage Multiplier Selector", 1, 0.6, expect=0.4)
+    with pytest.raises(ValueError, match="not found"):
+        set_union_value(raw, "No Such Selector", 0, 1.0)

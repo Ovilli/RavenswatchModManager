@@ -520,6 +520,11 @@ def png_to_dds(png_bytes: bytes) -> bytes:
     from .. import dds, image
 
     w, h, rgba = image.decode_png(png_bytes)
+    # Written R, G, B, A exactly as decoded — PROVEN IN-GAME 2026-09-12: a red
+    # talent icon renders red this way, and turned BLUE when R/B were swapped
+    # here. Do not "fix" this against the PNGs in data/uncooked: those are
+    # produced by `image._decode_uncompressed`, which swaps R/B itself, so a
+    # comparison with them is circular and points the wrong way.
     return dds.write(rgba, w, h, dds.by_name("RGBA8"), mip_count=1)
 
 

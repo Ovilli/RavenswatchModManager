@@ -2795,6 +2795,86 @@
    }
   },
   {
+   "name": "SkillController_SetTier",
+   "kind": "function",
+   "category": "skill",
+   "raw": "FUN_1402edd80",
+   "status": "ok",
+   "signature": "void(oCDtEntityCpntSkillController* ctrl, int32_t tier)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "int32_t"
+    ]
+   },
+   "note": "Sets a talent's tier (rarity) and switches on that tier's state. ⚠ NOT A GRANT BY ITSELF — PROVEN IN-GAME 2026-09-12: every controller, owned or not, already carries a tier (the level-up offer builder FUN_1403a9cb0 stamps one on each card), and calling this on an unowned talent changed nothing. Ownership is the held slot; see HeroController_AddSkill. ADD_ALL_SKILLS (handler FUN_1402eef80) is this call followed by EntityComponent_Activate(*(ctrl+0x80)), which enters the talent's state; it still does not fill held slots.\n\nBody: **(ctrl+0x68) = tier; if ctrl sits in the hero's 10 held-skill slots (heroCtrl+0xff0, stride 0x20, heroCtrl = ctrl+0x78) it refreshes the replicated HUD copy at *(heroCtrl+0x1db0); then FUN_1402eef10(ctrl, tier), which resets ctrl+0x108 and turns on exactly ONE of four tier states at +0x128/+0x148/+0x168/+0x188 (tier 0..3 = Common..Legendary). Pick/upgrade paths follow it with FUN_140203b20(ctrl+0x1c0, ctrl) and FUN_140713b00(ctrl+0x1e8).\n\nIt does NOT insert the controller into the held slots, so the HUD talent strip may not list a talent granted this way; the effect still runs.\n\nController layout (from its activation, FUN_1402ed820): +0x08 owning entity, +0x10 settings (settings+0x178 = category), +0x68 int* tier (4 = special/unowned path), +0x78 hero controller (the object R.entity.hero() captures: HeroSubscribeAll does mov r14,rcx). Every controller registers itself in a per-category {data,u32 count} vector at heroCtrl+0xf98+category*0x10; only category 1 (the normal talent pool) subscribes to ADD_ALL_SKILLS, on entity+0x500.\n\nFound 2026-09-12 by following ADD_ALL_SKILLS: 8 per-file intern globals, one read by FUN_1402ed820; its bound functor thunk 0x140302b50 jumps to FUN_1402eef80. UPGRADE_SPECIFIC_SKILL (handler FUN_1403a79e0) is NOT a grant: it bumps the rarity of an ALREADY-HELD slot chosen by payload index."
+  },
+  {
+   "name": "HeroController_AddSkill",
+   "kind": "function",
+   "category": "skill",
+   "raw": "FUN_1403974b0",
+   "status": "ok",
+   "signature": "void(HeroController* hero, oCDtEntityCpntSkillController* ctrl)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Acquires a talent: what taking a level-up card does. Returns at once if ctrl is already held. Otherwise writes ctrl into the first empty of the 10 held slots (hero+0xff0+slot*0x20; the slot's category is at +0xfe0, its UI object at +0xfe8), subscribes the hero to ctrl's tier-change channel (ctrl+0x108/+0x110; node kept at hero+0x1120+slot*8), refreshes the slot UI (FUN_14043cbe0) and the replicated HUD copy at *(hero+0x1db0) (+0x28 id from ctrl+0x62, +0x3c tier from **(ctrl+0x68)), stores the KV 'hero.skill.{slot}' = the talent's name (FUN_140711ff0(settings)), notifies the magical-object component with settings+0x88 (the talent's identity GUID), recounts categories (FUN_1403a9990 / FUN_1403a96c0 / FUN_1403a95d0), and decrements the pending-picks counter hero+0x1374 when non-zero.\n\nSet the tier FIRST (SkillController_SetTier): the HUD copies the tier at add time.\n\nhero is the object R.entity.hero() captures (the same one whose +0xff0 UPGRADE_SPECIFIC_SKILL reads). Inverse: HeroController_RemoveSkill. Found 2026-09-12 by scanning .text for displacements 0xfe0/0xff0 and resolving hits through .pdata."
+  },
+  {
+   "name": "HeroController_RemoveSkill",
+   "kind": "function",
+   "category": "skill",
+   "raw": "FUN_1403977b0",
+   "status": "ok",
+   "signature": "void(HeroController* hero, oCDtEntityCpntSkillController* ctrl, bool clear_hud)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*",
+     "int32_t"
+    ]
+   },
+   "note": "Inverse of HeroController_AddSkill. Finds ctrl in the held slots (returns if absent), clears the HUD copy when clear_hud, erases the 'hero.skill.{slot}' KV, unsubscribes the tier channel, nulls hero+0xff0+slot*0x20, clears the slot UI, recounts. With clear_hud it also notifies the magical-object component (settings+0x88)."
+  },
+  {
+   "name": "EntityComponent_Activate",
+   "kind": "function",
+   "category": "skill",
+   "raw": "FUN_140712c50",
+   "status": "ok",
+   "signature": "void(void* unused, oIEntityCpnt* cpnt)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Activates an entity component (refcounted). Returns without effect when cpnt is null, when (*(cpnt+0x08)+0x220) & 4 is set, when FUN_1407274a0(cpnt) or the vfunc at vtable+0xd0 (can-activate) says no. Otherwise either runs the activation (FUN_140712d60) or bumps the activation counter cpnt+0x5e depending on flags at cpnt+0x64. The first argument is not read (callers leave XMM0 garbage in it); pass 0.\n\nWHY IT MATTERS FOR TALENTS: a skill controller's resolved [State] target is at ctrl+0x80, and entering that state is what switches a talent's behaviour on. Both the level-up card confirm (FUN_14039cf80: Activate(*(ctrl+0x80)); HeroController_AddSkill; EntityEventTrigger_Fire(ctrl+0x260)) and the ADD_ALL_SKILLS cheat (FUN_1402eef80: SetTier then `mov rdx,[rsi+0x80]; jmp 0x140712c50`) make this call. A grant that only fills the held slot leaves the state inactive: measured in-game 2026-09-12, damage scaling tied to tier signals applied but the state-gated POWER finisher did not."
+  },
+  {
+   "name": "EntityEventTrigger_Fire",
+   "kind": "function",
+   "category": "skill",
+   "raw": "FUN_140713b00",
+   "status": "ok",
+   "signature": "void(EventTrigger* trig)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "Fires an inline event-trigger object: builds an int oCEntityValueUnion holding *(*trig+0x58) and, when trig[3] (callback) is set, calls it with (&value, trig+8). A skill controller carries two: ctrl+0x260 fired by the level-up card confirm after HeroController_AddSkill (acquired), and ctrl+0x1e8 fired by the UPGRADE_* handlers after SkillController_SetTier (upgraded)."
+  },
+  {
    "name": "NamedEvent_NetSend",
    "kind": "function",
    "category": "event",

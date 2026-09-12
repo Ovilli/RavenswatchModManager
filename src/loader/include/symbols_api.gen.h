@@ -100,6 +100,20 @@ inline EnemyController_Ctor_fn EnemyController_Ctor() {
     return reinterpret_cast<EnemyController_Ctor_fn>(rsmm::fn_resolve(Sym::EnemyController_Ctor_Pattern));
 }
 
+// EntityComponent_Activate  (EntityComponent_Activate)
+//   void(void* unused, oIEntityCpnt* cpnt)
+using EntityComponent_Activate_fn = void(*)(void*, void*);
+inline EntityComponent_Activate_fn EntityComponent_Activate() {
+    return reinterpret_cast<EntityComponent_Activate_fn>(rsmm::fn_resolve(Sym::EntityComponent_Activate_Pattern));
+}
+
+// EntityEventTrigger_Fire  (EntityEventTrigger_Fire)
+//   void(EventTrigger* trig)
+using EntityEventTrigger_Fire_fn = void(*)(void*);
+inline EntityEventTrigger_Fire_fn EntityEventTrigger_Fire() {
+    return reinterpret_cast<EntityEventTrigger_Fire_fn>(rsmm::fn_resolve(Sym::EntityEventTrigger_Fire_Pattern));
+}
+
 // EntityValueEntry_Ctor  (EntityValueEntry_Ctor)
 //   void(void*, void*)
 using EntityValueEntry_Ctor_fn = void(*)(void*, void*);
@@ -294,11 +308,25 @@ inline GroupLevelComponent_Ctor_fn GroupLevelComponent_Ctor() {
     return reinterpret_cast<GroupLevelComponent_Ctor_fn>(rsmm::fn_resolve(Sym::GroupLevelComponent_Ctor_Pattern));
 }
 
+// HeroController_AddSkill  (HeroController_AddSkill)
+//   void(HeroController* hero, oCDtEntityCpntSkillController* ctrl)
+using HeroController_AddSkill_fn = void(*)(void*, void*);
+inline HeroController_AddSkill_fn HeroController_AddSkill() {
+    return reinterpret_cast<HeroController_AddSkill_fn>(rsmm::fn_resolve(Sym::HeroController_AddSkill_Pattern));
+}
+
 // HeroController_Ctor  (HeroController_Ctor)
 //   oCDtEntityCpntHeroController*(oCDtEntityCpntHeroController* self)
 using HeroController_Ctor_fn = void*(*)(void*);
 inline HeroController_Ctor_fn HeroController_Ctor() {
     return reinterpret_cast<HeroController_Ctor_fn>(rsmm::fn_resolve(Sym::HeroController_Ctor_Pattern));
+}
+
+// HeroController_RemoveSkill  (HeroController_RemoveSkill)
+//   void(HeroController* hero, oCDtEntityCpntSkillController* ctrl, bool clear_hud)
+using HeroController_RemoveSkill_fn = void(*)(void*, void*, int32_t);
+inline HeroController_RemoveSkill_fn HeroController_RemoveSkill() {
+    return reinterpret_cast<HeroController_RemoveSkill_fn>(rsmm::fn_resolve(Sym::HeroController_RemoveSkill_Pattern));
 }
 
 // HeroDef_Deserialize  (HeroDef_Deserialize)
@@ -565,6 +593,13 @@ inline SceneContextValue_Find_fn SceneContextValue_Find() {
 using SharedRef_Release_fn = void(*)(void*);
 inline SharedRef_Release_fn SharedRef_Release() {
     return reinterpret_cast<SharedRef_Release_fn>(rsmm::fn_resolve(Sym::SharedRef_Release_Pattern));
+}
+
+// SkillController_SetTier  (SkillController_SetTier)
+//   void(oCDtEntityCpntSkillController* ctrl, int32_t tier)
+using SkillController_SetTier_fn = void(*)(void*, int32_t);
+inline SkillController_SetTier_fn SkillController_SetTier() {
+    return reinterpret_cast<SkillController_SetTier_fn>(rsmm::fn_resolve(Sym::SkillController_SetTier_Pattern));
 }
 
 // SkinGrid_Populate  (SkinGrid_Populate)

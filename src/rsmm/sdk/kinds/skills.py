@@ -31,6 +31,24 @@ Fields:
                                      row, EXPERIMENTAL), or ``repoint`` (remint
                                      the source row's identity in place).
     ``guid`` (str, optional)         16-byte identity GUID for clone/repoint.
+    ``controller`` (str, optional)   ``repoint`` only — rename the row's
+                                     controller, e.g. ``Primary Finisher``. The
+                                     display key and the Book column both derive
+                                     from this name (``Primary`` -> Power), so
+                                     renaming moves the slot AND retargets
+                                     ``name``/``description`` at the new key.
+                                     Point it at a controller that already
+                                     exists in the hero ENTITY, and pass that
+                                     controller's identity ``guid``, to adopt a
+                                     built-but-unrostered talent.
+    ``icon`` (str, optional)         a PNG shipped in the mod (path relative to
+                                     the mod root). Cooked into an oCTexture and
+                                     written OVER the slot's own icon texture,
+                                     scaled to that texture's size. The slot's
+                                     icon is found in the hero entity: the first
+                                     ``.png`` path after the controller's name
+                                     (28/28 on Red). In-place, so nothing needs
+                                     registering.
 
 Bind custom BEHAVIOUR with ``R.talent.on_pick`` / ``R.talent.define{hero=...}``.
 See ``docs/_re/kinds/skills-system.md``.
@@ -66,14 +84,52 @@ def _hero_token(hero: str) -> str | None:
     return None
 
 
-def _text_key_base(source: str) -> str:
-    """``Attack Dive`` / ``Skill_Attack_Dive`` -> ``Skill_Attack_Dive``."""
+#: Controller-name prefix -> text-key prefix. A hero's rows are named after the
+#: INPUT SLOT (Red: ``Skill Controller Primary Bleed``) while its text keys are
+#: named after the ABILITY (``Skill_Power_Bleed_Name``). Heroes that name rows
+#: after the ability already — Aladdin's ``Attack Dive`` -> ``Skill_Attack_Dive``
+#: — need no alias, which is why this stayed invisible until a hero that uses
+#: the other convention was touched.
+_KEY_PREFIX_ALIASES = {
+    "Basic": "Attack",
+    "Primary": "Power",
+    "Secondary": "Special",
+    "Defensive": "Defense",
+}
+
+
+def _key_base_candidates(source: str) -> list[str]:
+    """Text-key bases ``source`` could mean, best guess first."""
     s = source.strip()
     if s.lower().startswith("skill controller "):
         s = s[len("skill controller "):]
     if s.lower().startswith("skill_"):
-        return s
-    return "Skill_" + s.replace(" ", "_")
+        return [s]
+    out = ["Skill_" + s.replace(" ", "_")]
+    head, _, tail = s.partition(" ")
+    alias = _KEY_PREFIX_ALIASES.get(head)
+    if alias and tail:
+        out.append("Skill_" + f"{alias} {tail}".replace(" ", "_"))
+    return out
+
+
+def _text_key_base(source: str, bank_keys: list[str] | None = None) -> str:
+    """``Attack Dive`` -> ``Skill_Attack_Dive``; ``Primary Bleed`` ->
+    ``Skill_Power_Bleed`` when the bank says so.
+
+    With ``bank_keys`` the answer is CHECKED against the hero's actual keys
+    rather than assumed, so a wrong guess fails naming what it looked for.
+    """
+    cands = _key_base_candidates(source)
+    if bank_keys is None:
+        return cands[0]
+    for c in cands:
+        if f"{c}_Name" in bank_keys or f"{c}_Desc" in bank_keys:
+            return c
+    raise ContentError(
+        f"skill: no text key for {source!r} — tried "
+        + ", ".join(f"{c}_Name" for c in cands)
+        + ". Check the controller name against the hero's bank.")
 
 
 def _install_bank(hero_token: str):
@@ -87,8 +143,19 @@ def _install_bank(hero_token: str):
     if game is None:
         return None
     # apply-layer asset map is decoded->encoded with forward-slash keys.
+    amap = load_asset_map()
     decoded = f"Text/Hero_{hero_token}_Common~GAM.xls.LocalText.gen"
-    enc = load_asset_map().get(decoded)
+    enc = amap.get(decoded)
+    if not enc:
+        # The bank token is not always the herodef stem's spelling: Red's
+        # herodef is `Red.herodef...` but its bank is `Hero_RED_Common`. Fall
+        # back to a case-insensitive match rather than reporting the hero has
+        # no text at all.
+        low = decoded.lower()
+        for k, v in amap.items():
+            if k.lower() == low:
+                decoded, enc = k, v
+                break
     if not enc:
         return None
     p = game / COOKING_REL / Path(*enc.split("\\"))
@@ -131,7 +198,7 @@ def _emit_text_override(hero_token: str, source: str, display_name, description,
     if display_name is None and description is None:
         return []
     base_gen, decoded_bank = _require_bank(hero_token)
-    key_base = _text_key_base(source)
+    key_base = _text_key_base(source, TP.parse_text_file(base_gen).entries)
     overrides: dict[str, str] = {}
     if display_name is not None:
         overrides[f"{key_base}_Name"] = str(display_name)
@@ -167,6 +234,99 @@ def _require_bank(hero_token: str) -> tuple[Path, str]:
     return bank
 
 
+_ENTITY_DIR = DATA_DIR / "uncooked" / "EntitySettings" / "Heroes"
+_UI_MIRROR = DATA_DIR / "uncooked"
+
+
+def _slot_icon_texture(hero_token: str, controller: str) -> str:
+    """Decoded path of the icon texture a skill slot draws, e.g.
+    ``Ui/Heroes/Red/Skill Special Quick Bombs.png.Texture.dxt``.
+
+    The controller node in the hero ENTITY carries its icon as a plain resource
+    path a few hundred bytes after its name; that path plus ``Ui/`` and the
+    texture suffix is the cooked asset. Resolved from the entity rather than
+    guessed from the name, because icon file names do not follow the controller
+    name (Red's ``Secondary Quick Bombs`` draws ``Skill Special Quick Bombs``).
+    """
+    from ...engine import talent_values as TV
+
+    name = controller.strip()
+    if not name.lower().startswith("skill controller "):
+        name = f"Skill Controller {name}"
+    pat = struct.pack("<I", len(name)) + name.encode("ascii")
+    low = hero_token.lower()
+    dirs = [d for d in _ENTITY_DIR.glob("Hero_*") if d.name[5:].lower() == low]
+    for d in dirs:
+        for gen in sorted(d.glob("*.entity.ot.EntitySettingsResource.gen")):
+            blob = gen.read_bytes()
+            at = blob.find(pat)
+            if at < 0:
+                continue
+            for _off, text in TV._iter_lstrings(blob[at:at + 900]):
+                if text.lower().endswith(".png"):
+                    return "Ui/" + text.replace("\\", "/") + ".Texture.dxt"
+    raise ContentError(
+        f"skill: no icon found for {name!r} in {hero_token}'s entity files")
+
+
+def _scale_rgba(w: int, h: int, rgba: bytes, nw: int, nh: int) -> bytes:
+    """Area-average resample, alpha-premultiplied so transparent edges do not
+    bleed dark fringes into the icon. Stdlib only: the runtime CLI declares no
+    dependencies, so Pillow is not available to a user's install."""
+    out = bytearray(nw * nh * 4)
+    sx, sy = w / nw, h / nh
+    for y in range(nh):
+        y0, y1 = int(y * sy), max(int(y * sy) + 1, int((y + 1) * sy))
+        for x in range(nw):
+            x0, x1 = int(x * sx), max(int(x * sx) + 1, int((x + 1) * sx))
+            r = g = b = a = n = 0
+            for yy in range(y0, min(y1, h)):
+                row = yy * w
+                for xx in range(x0, min(x1, w)):
+                    i = (row + xx) * 4
+                    pa = rgba[i + 3]
+                    r += rgba[i] * pa
+                    g += rgba[i + 1] * pa
+                    b += rgba[i + 2] * pa
+                    a += pa
+                    n += 1
+            o = (y * nw + x) * 4
+            if a:
+                out[o] = r // a
+                out[o + 1] = g // a
+                out[o + 2] = b // a
+            out[o + 3] = a // n if n else 0
+    return bytes(out)
+
+
+def _emit_icon(hero_token: str, controller: str, icon: str,
+               mod_root: Path, out_dir: Path) -> list[Path]:
+    """Cook a mod PNG over the slot's own icon texture."""
+    from ...engine import image as IMG
+    from ...engine.cooked_schemas.texture import TextureHandler
+
+    src = mod_root / icon
+    if not src.is_file() or src.suffix.lower() != ".png":
+        raise ContentError(f"skill: icon {icon!r} is not a PNG in the mod ({src})")
+    decoded = _slot_icon_texture(hero_token, controller)
+    png = src.read_bytes()
+    w, h, rgba = IMG.decode_png(png)
+    # Match the vanilla texture's size when the mirror has it, so the cooked
+    # icon occupies the same memory and layout as the one it replaces.
+    mirror = _UI_MIRROR / decoded.removesuffix(".Texture.dxt")
+    if mirror.is_file():
+        vw, vh, _ = IMG.decode_png(mirror.read_bytes())
+        if (vw, vh) != (w, h):
+            rgba, w, h = _scale_rgba(w, h, rgba, vw, vh), vw, vh
+            png = IMG.encode_png(w, h, rgba)
+    cooked = TextureHandler().encode_container(png)
+    dest = out_dir / Path(*decoded.split("/"))
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(cooked)
+    _log.info("skill: icon %s -> %s (%dx%d)", icon, decoded, w, h)
+    return [dest]
+
+
 def _emit_herodef(hero_token: str, defn: ContentDef, mode: str,
                   out_dir: Path) -> list[Path]:
     """Clone (net-new) or repoint (remint identity) a herodef skill row."""
@@ -188,9 +348,12 @@ def _emit_herodef(hero_token: str, defn: ContentDef, mode: str,
         if mode == "clone":
             out, ident = SC.clone_skill(blob, source, new_name,
                                         new_guid1=guid, remint=remint)
-        else:  # repoint: remint identity in place, keep the controller name
-            out = SC.repoint_skill(blob, source, source, new_guid1=guid)
-            row = SC.find_skill(out, source)
+        else:  # repoint: rewrite the row in place, keeping the slot count
+            # `controller` renames the row; without it the name is kept and
+            # only the identity GUID moves.
+            target = str(defn.fields.get("controller") or source)
+            out = SC.repoint_skill(blob, source, target, new_guid1=guid)
+            row = SC.find_skill(out, target)
             ident = guid if guid is not None else out[row.guid1_off:row.guid1_off + 16]
     except SC.SkillCloneError as e:
         raise ContentError(f"skill {defn.id}: {e}") from e
@@ -222,6 +385,10 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     mode = (defn.fields.get("mode") or "relabel").lower()
     if mode not in ("relabel", "clone", "repoint"):
         raise ContentError(f"skill {defn.id}: mode must be relabel/clone/repoint.")
+    if defn.fields.get("controller") and mode != "repoint":
+        raise ContentError(
+            f"skill {defn.id}: 'controller' renames a herodef row, so it only "
+            f"applies to mode='repoint' (got {mode!r}).")
     if mode == "clone" and not defn.fields.get("accept_brick_risk"):
         # GATED, no longer blanket-disabled.
         #
@@ -261,11 +428,17 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                                      description, out_dir)
     elif mode == "repoint":
         written += _emit_herodef(hero_token, defn, mode, out_dir)
-        written += _emit_text_override(hero_token, source, display_name,
-                                       description, out_dir)
+        # A renamed row reads its display text from the NEW controller's keys.
+        written += _emit_text_override(hero_token,
+                                       str(defn.fields.get("controller") or source),
+                                       display_name, description, out_dir)
     else:  # relabel — override the source skill's text in place
         written += _emit_text_override(hero_token, source, display_name,
                                        description, out_dir)
+    icon = defn.fields.get("icon")
+    if icon:
+        slot = str(defn.fields.get("controller") or source) if mode == "repoint" else source
+        written += _emit_icon(hero_token, slot, str(icon), out_dir.parent, out_dir)
     if not written:
         raise ContentError(
             f"skill {defn.id}: nothing to emit — give a name/description to "

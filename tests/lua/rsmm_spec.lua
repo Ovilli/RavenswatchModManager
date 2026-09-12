@@ -8749,5 +8749,159 @@ do
     package.loaded["rsmm.gamevalues"] = nil
 end
 
+-- R.talent grant: controllers are found on the hero, named, and only a
+-- controller that passes the FULL structure check is handed to the engine.
+-- SkillController_SetTier dereferences ctrl+0x68 and ctrl+0x78 itself, so a
+-- stale or foreign pointer there is an access violation, not a nil.
+do
+    seed_hero()
+    check(R.talent and type(R.talent.grant) == "function",
+          "R.talent.grant is merged in from rsmm/talent_grant.lua")
+
+    local ENT = I.read_u64(HERO + 0x08)          -- the hero's owning entity
+    local CAT1 = HERO + 0xf98 + 1 * 0x10         -- category 1: the talent pool
+    local DATA = 0x51000000
+    local VFT = 0x140f10000                      -- in the image, like a real vtable
+
+    local function controller(addr, name, tier, opts)
+        opts = opts or {}
+        local settings, tierp, str = addr + 0x1000, addr + 0x2000, addr + 0x3000
+        I.write_u64(addr, opts.vft or VFT)
+        I.write_u64(addr + 0x08, opts.entity or ENT)
+        I.write_u64(addr + 0x10, settings)
+        I.write_u64(addr + 0x68, tierp)
+        I.write_u64(addr + 0x78, opts.hero or HERO)
+        I.write_u32(tierp, tier & 0xffffffff)
+        for i = 1, #name do I.write_u8(str + i - 1, name:byte(i)) end
+        I.write_u8(str + #name, 0)
+        I.write_u64(settings + 0x20, str)
+        if not opts.no_state then
+            local state = addr + 0x4000
+            I.write_u64(addr + 0x80, state)              -- resolved [State] target
+            I.write_u64(state, VFT)
+            I.write_u64(state + 0x08, addr + 0x5000)     -- what activation reads
+        end
+        I.write_u64(addr + 0x260, addr + 0x6000)         -- acquired trigger's object
+        return addr
+    end
+    local QB    = controller(0x52000000, "Skill Controller Secondary Quick Bombs", -1)
+    local BLEED = controller(0x53000000, "Skill Controller Primary Bleed", -1)
+    local ALLY  = controller(0x54000000, "Skill Controller Secondary Quick Bombs", -1,
+                             { hero = 0x19000000 })   -- another hero's controller
+    I.write_u64(DATA, QB); I.write_u64(DATA + 8, BLEED); I.write_u64(DATA + 16, ALLY)
+    I.write_u64(CAT1, DATA); I.write_u32(CAT1 + 8, 3)
+
+    local list = R.talent.controllers()
+    check(#list == 2, "a controller owned by another hero is not listed (got "
+          .. #list .. ")")
+    check(list[1].name == "Skill Controller Secondary Quick Bombs"
+          and list[1].category == 1 and list[1].tier == -1,
+          "name, category and tier are read back: " .. tostring(list[1].name))
+
+    check(R.talent.find("quick bombs").ptr == QB, "find ignores case and spaces")
+    local none, why = R.talent.find("Skill Controller")
+    check(none == nil and (why or ""):find("ambiguous", 1, true),
+          "a query matching two talents is refused as ambiguous")
+
+    local HELD, STRIDE = HERO + 0xff0, 0x20
+    I.write_u64(HERO + 0x1db0, 0x55000000)      -- replicated HUD copy AddSkill writes
+    local function slot_of(c)
+        for i = 0, 9 do if I.read_u64(HELD + i * STRIDE) == c then return i end end
+    end
+
+    local calls = {}
+    engine["SkillController_SetTier"] = function(ctrl, tier)
+        calls[#calls + 1] = { fn = "tier", ctrl = ctrl, tier = tier }
+        I.write_u32(I.read_u64(ctrl + 0x68), tier)
+    end
+    engine["EntityComponent_Activate"] = function(_, cpnt)
+        calls[#calls + 1] = { fn = "activate", cpnt = cpnt }
+    end
+    engine["EntityEventTrigger_Fire"] = function(trig)
+        calls[#calls + 1] = { fn = "fire", trig = trig }
+    end
+    engine["HeroController_AddSkill"] = function(hero, ctrl)
+        calls[#calls + 1] = { fn = "add", hero = hero, ctrl = ctrl }
+        if slot_of(ctrl) then return end                 -- engine: already held
+        for i = 0, 9 do
+            if I.read_u64(HELD + i * STRIDE) == 0 then
+                I.write_u64(HELD + i * STRIDE, ctrl); return
+            end
+        end
+    end
+    engine["HeroController_RemoveSkill"] = function(hero, ctrl)
+        calls[#calls + 1] = { fn = "remove", ctrl = ctrl }
+        local i = slot_of(ctrl); if i then I.write_u64(HELD + i * STRIDE, 0) end
+    end
+
+    check(R.talent.grant("Quick Bombs", 2) == true, "grant queues")
+    check(#calls == 0, "and does NOT touch the engine off the main thread")
+    R.schedule._main_tick()
+    local order = {}
+    for _, c in ipairs(calls) do order[#order + 1] = c.fn end
+    check(table.concat(order, ",") == "tier,activate,add,fire",
+          "the grant makes the card-confirm sequence in order, got " .. table.concat(order, ","))
+    check(calls[1].tier == 2, "at the requested tier")
+    check(calls[2].cpnt == I.read_u64(QB + 0x80),
+          "it ENTERS the talent's state (ctrl+0x80) — without this a talent is held but inert")
+    check(calls[3].hero == HERO and calls[3].ctrl == QB, "adds that controller to the hero")
+    check(calls[4].trig == QB + 0x260, "and fires its acquired trigger")
+    check(slot_of(QB) == 0, "the talent now sits in a held slot")
+    check(R.talent.find("Quick Bombs").held == true, "controllers() reports it held")
+
+    calls = {}
+    R.talent.grant("Quick Bombs", 9)
+    R.schedule._main_tick()
+    check(#calls == 1 and calls[1].fn == "tier" and calls[1].tier == 3,
+          "granting a held talent only re-tiers it (clamped to Legendary), no second add")
+
+    calls = {}
+    R.talent.grant("No Such Talent", 0)
+    R.schedule._main_tick()
+    check(#calls == 0, "an unknown talent is refused, no engine call")
+
+    -- A hero with every slot taken: refused before any engine call, because
+    -- AddSkill would silently do nothing and the tier would change for nothing.
+    for i = 1, 9 do I.write_u64(HELD + i * STRIDE, 0x56000000 + i) end
+    calls = {}
+    R.talent.grant("Primary Bleed", 1)
+    R.schedule._main_tick()
+    check(#calls == 0, "all ten slots full: refused without touching the engine")
+    for i = 1, 9 do I.write_u64(HELD + i * STRIDE, 0) end
+
+    -- A talent whose state never resolved: refused before ANY engine call, so
+    -- a refusal cannot leave the tier changed.
+    local STATELESS = controller(0x57000000, "Skill Controller Secondary Stateless", -1,
+                                 { no_state = true })
+    I.write_u64(DATA + 24, STATELESS); I.write_u32(CAT1 + 8, 4)
+    calls = {}
+    R.talent.grant("Stateless", 1)
+    R.schedule._main_tick()
+    check(#calls == 0, "no live state: refused without touching the engine")
+    I.write_u32(CAT1 + 8, 3)
+
+    -- A controller freed between the queue and the main tick.
+    calls = {}
+    R.talent.grant("Primary Bleed", 1)
+    I.write_u64(BLEED, 0)
+    R.schedule._main_tick()
+    check(#calls == 0, "a controller that died before the main tick is not called")
+    I.write_u64(BLEED, VFT)
+
+    -- Revoke takes it back out of the slot.
+    calls = {}
+    check(R.talent.revoke("Quick Bombs") == true, "revoke queues")
+    R.schedule._main_tick()
+    check(calls[1] and calls[1].fn == "remove" and slot_of(QB) == nil,
+          "revoke removes the talent from its held slot")
+
+    engine["HeroController_AddSkill"] = nil
+    engine["HeroController_RemoveSkill"] = nil
+    engine["EntityComponent_Activate"] = nil
+    engine["EntityEventTrigger_Fire"] = nil
+    engine["SkillController_SetTier"] = nil
+    I.write_u32(CAT1 + 8, 0)
+end
+
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)

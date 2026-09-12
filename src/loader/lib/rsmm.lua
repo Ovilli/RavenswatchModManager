@@ -2407,6 +2407,32 @@ function R.talent.for_hero(hero)
     end
 end
 
+-- talent grant -----------------------------------------------------------
+--
+-- Lives in rsmm/talent_grant.lua. Gives the local hero a talent the way taking
+-- a level-up card does (tier, enter the talent's state, fill a held slot, fire
+-- its acquired event), so a modded talent can be tested without waiting for the
+-- game to offer it. Merged INTO R.talent rather than a new namespace, because a
+-- grant is a talent operation.
+--
+--     R.talent.dump()                  log every skill controller, name, HELD
+--     R.talent.grant("Quick Bombs", 0) one talent, by name, tier 0..3
+--     R.talent.revoke("Quick Bombs")   take it back out of its slot
+--     R.talent.grant_all()             the game's ADD_ALL_SKILLS (no held slots)
+--
+-- It needs the give path's dispatcher and liveness check for grant_all, handed
+-- over like rsmm/map.lua, because `_give_hero` is a local of this chunk.
+do
+    local ok, x = _submodule_fn("talent_grant", {
+        R = R, I = I,
+        give_hero = function() return _give_hero end,
+        dispatcher_live = function(p) return _dispatcher_live(p) end,
+    })
+    if ok and type(x) == "table" then
+        for k, v in pairs(x) do R.talent[k] = v end
+    end
+end
+
 -- counters --------------------------------------------------------------
 --
 -- The simplest demo of the SDK: bump a counter every time an event

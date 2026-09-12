@@ -335,6 +335,83 @@ def set_talent_value(data: bytes, label: str, new_value: float,
     raise ValueError(f"talent value label {label!r} not found")
 
 
+def list_union_values(data: bytes, label: str, *,
+                      limit: int = 64) -> list[tuple[int, float, int]]:
+    """Every ``oCEntityValueUnion`` inside the node named ``label``, in order.
+
+    Returns ``(offset, value, type_code)`` per union. Unlike
+    :func:`list_talent_values`, which resolves the ONE picker/union pair that a
+    value node fronts, this walks a container that holds SEVERAL — a
+    ``oCEntityCpntValueSelectorSettings`` with one
+    ``oCEntityCpntValueSelectorEntrySettings`` per rarity tier, each entry's
+    condition picker keyed to a ``[Dt Skill Controller]`` GUID and its unions
+    carrying that tier's numbers. Red's
+    ``Skill Primary Finisher Finisher Damage Multiplier Selector`` is the shape:
+    an enabled-bool plus a damage multiplier per tier, 0.7 / 0.6 / 0.5 / 0.4.
+
+    The walk is bounded by marker DEPTH, not by a byte window: it stops at the
+    END that closes the node the label sits in. Without that it runs straight
+    into the next selector's entries and indices silently mean nothing.
+    """
+    names = class_names(data)
+    if names is None:
+        return []
+    pat = struct.pack("<I", len(label)) + label.encode("ascii")
+    lo = data.find(pat)
+    if lo < 0:
+        raise ValueError(f"node label {label!r} not found")
+    pos = lo + len(pat)
+    depth = 0
+    out: list[tuple[int, float, int]] = []
+    while len(out) < limit:
+        nb = data.find(_BEGIN, pos)
+        ne = data.find(_END, pos)
+        if ne < 0 and nb < 0:
+            break
+        if ne >= 0 and (nb < 0 or ne < nb):
+            depth -= 1
+            if depth < 0:
+                break  # closed the node the label lives in
+            pos = ne + 4
+            continue
+        depth += 1
+        if _class_at(data, names, nb) == _UNION:
+            end = data.find(_END, nb + 8)
+            type_code = struct.unpack_from("<I", data, nb + 8)[0]
+            size = _NUMERIC.get(type_code)
+            if end >= 0 and size is not None and end - (nb + 8) == 8 + size:
+                voff = nb + 16
+                out.append((voff, _read_value(data, type_code, voff), type_code))
+                depth -= 1  # this union's own END is consumed below
+                pos = end + 4
+                continue
+        pos = nb + 8
+    return out
+
+
+def set_union_value(data: bytes, label: str, index: int, new_value: float,
+                    *, expect: float | None = None) -> bytes:
+    """Patch the ``index``-th ``oCEntityValueUnion`` under ``label``, in place.
+
+    This reaches the per-rarity-tier numbers inside a value selector, which
+    :func:`set_talent_value` cannot: that resolves a value node's single
+    picker/union pair, while a selector holds one union per tier. Written as
+    f32/int32/bool to match the union's own type code, length-preserving. If
+    ``expect`` is given the current value must match it.
+    """
+    unions = list_union_values(data, label)
+    if not 0 <= index < len(unions):
+        raise ValueError(
+            f"{label!r}: union index {index} out of range "
+            f"(node has {len(unions)} numeric union(s))")
+    voff, cur, type_code = unions[index]
+    if expect is not None and abs(cur - expect) > 1e-4:
+        raise ValueError(
+            f"{label!r} union {index}: current value {cur} != expected {expect}")
+    packed = _pack_value(type_code, new_value)
+    return data[:voff] + packed + data[voff + len(packed):]
+
+
 def clear_value_override(data: bytes, label: str) -> bytes:
     """Disable a value node's picker override so its inline value becomes
     authoritative (variable-length edit; the node ends up shaped like a normal

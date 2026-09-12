@@ -91,8 +91,21 @@ class EntityEdit:
 
     # -- high-level edits ----------------------------------------------------
 
+    def _picker_classid(self) -> int | None:
+        """Class-table index of ``oCEntityCpntPicker`` in THIS file.
+
+        The u32 after a BEGIN marker indexes the file's own class table, so the
+        picker is 0x42 in Red and Piper but 0x40 in Snow Queen. Hardcoding one
+        of those rejects a perfectly good rewire on the other heroes.
+        """
+        names = [c.name for c in self._cf.classes]
+        return (names.index("oCEntityCpntPicker")
+                if "oCEntityCpntPicker" in names else None)
+
     def rewire_ref(self, from_label: str, to_label: str,
-                   *, expect_classid: int = 0x42) -> None:
+                   *, expect_classid: int | None = None,
+                   count: int | None = 1, exact: bool = False,
+                   within: str | None = None, within_span: int = 2048) -> int:
         """Repoint a component reference ("picker") at a different target node.
 
         Cross-references inside a cooked entity are 16-byte GUID handles, not
@@ -107,33 +120,64 @@ class EntityEdit:
 
         Both labels are matched as substrings against the ``[State]`` picker
         labels (e.g. ``"Event Trait Ability Spawn Pets"``). ``expect_classid``
-        guards that the rewritten record really is a class-66 picker.
+        guards the record's class; it defaults to whatever index
+        ``oCEntityCpntPicker`` has in THIS file (0x42 in Red, 0x40 in Snow
+        Queen). ``count`` limits how many matching references are repointed
+        (``None`` = all — a tier-gated selector carries one per rarity).
+        Returns the number rewritten.
+
+        ``exact`` matches a whole label instead of a substring, and ``within``
+        restricts the SOURCE side to references in the ``within_span`` bytes
+        after the first node named ``within``. Both exist because substring
+        matching once picked the wrong record: repointing a talent controller's
+        ``[State] ...Skill Secondary Quick Bombs`` hit ``[Modifier] ...Skill
+        Secondary Quick Bombs CD Reduction Modifier`` first, which contains the
+        same text and sits earlier in the file.
         """
-        def _picker_guid_off(substr: str) -> int:
+        want = expect_classid if expect_classid is not None else self._picker_classid()
+
+        scope = None
+        if within is not None:
+            anchors = self.find_lstrings(within)
+            if not anchors:
+                raise ValueError(f"rewire scope {within!r} not found")
+            scope = (anchors[0], anchors[0] + within_span)
+
+        def _picker_guid_offs(substr: str, scoped: bool = False) -> list[int]:
             hits = [(o, t) for (o, t) in self.find_lstrings_containing(substr)
-                    if t.startswith("[")]  # picker refs carry a [Type] prefix
+                    if t.startswith("[")  # picker refs carry a [Type] prefix
+                    and (not exact or t == substr)
+                    and (not scoped or scope is None or scope[0] <= o < scope[1])]
             if not hits:
                 raise ValueError(f"no picker reference matching {substr!r}")
-            # All picker refs to one node share its GUID; the bare definition
-            # label (no prefix) is filtered out above. Use the first ref.
-            lstr_off = hits[0][0]
-            guid_off = lstr_off - 16
-            if guid_off < 4:
-                raise ValueError(f"picker {substr!r} has no room for a GUID")
-            classid = struct.unpack_from("<I", self.concat, guid_off - 4)[0]
-            if expect_classid and classid != expect_classid:
+            offs = []
+            for lstr_off, _t in hits:
+                guid_off = lstr_off - 16
+                if guid_off < 4:
+                    continue
+                classid = struct.unpack_from("<I", self.concat, guid_off - 4)[0]
+                if want is not None and classid != want:
+                    continue
+                offs.append(guid_off)
+            if not offs:
                 raise ValueError(
-                    f"picker {substr!r}: expected classid {expect_classid:#x}, "
-                    f"found {classid:#x} (not a reference record?)")
-            return guid_off
+                    f"picker {substr!r}: no reference record with classid "
+                    f"{want:#x}" if want is not None else
+                    f"picker {substr!r}: no reference record found")
+            return offs
 
-        src_guid_off = _picker_guid_off(to_label)
-        target_guid = self.concat[src_guid_off:src_guid_off + 16]
-        dst_guid_off = _picker_guid_off(from_label)
-        if self.concat[dst_guid_off:dst_guid_off + 16] == target_guid:
+        # All refs to one node share its GUID, so any of the target's is fine.
+        target_guid = self.concat[_picker_guid_offs(to_label)[0]:][:16]
+        dsts = _picker_guid_offs(from_label, scoped=True)
+        if count is not None:
+            dsts = dsts[:count]
+        todo = [o for o in dsts if self.concat[o:o + 16] != target_guid]
+        if not todo:
             raise ValueError(
                 f"rewire {from_label!r} -> {to_label!r}: already points there")
-        self.queue(dst_guid_off, 16, target_guid)
+        for o in todo:
+            self.queue(o, 16, target_guid)
+        return len(todo)
 
     def set_int_before_nth_end(self, label: str, end_index: int, new: int,
                                *, expect: int | None = None) -> int:

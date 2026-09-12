@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **263** symbols across 21 categories.
+Total: **268** symbols across 22 categories.
 
 ## analytics
 
@@ -358,6 +358,16 @@ Total: **263** symbols across 21 categories.
 | `LobbyPlayerName_Registry` | `0x141476268` | 📍 va |  | std::string[]  // count at 0x141476270 |
 | `Netcode_PeerCount` | `0x14143f780` | 📍 va |  | uint32_t |
 | `Netcode_PeerSlots` | `0x14143f600` | 📍 va |  | PeerSlot[]  // 0x60 stride; live count at Netcode_PeerCount |
+
+## skill
+
+| name | address | status | callable | signature / note |
+|------|---------|--------|----------|------------------|
+| `EntityComponent_Activate` | `0x140712c50` | ✅ ok | ✔ | void(void* unused, oIEntityCpnt* cpnt) |
+| `EntityEventTrigger_Fire` | `0x140713b00` | ✅ ok | ✔ | void(EventTrigger* trig) |
+| `HeroController_AddSkill` | `0x1403974b0` | ✅ ok | ✔ | void(HeroController* hero, oCDtEntityCpntSkillController* ctrl) |
+| `HeroController_RemoveSkill` | `0x1403977b0` | ✅ ok | ✔ | void(HeroController* hero, oCDtEntityCpntSkillController* ctrl, bool clear_hud) |
+| `SkillController_SetTier` | `0x1402edd80` | ✅ ok | ✔ | void(oCDtEntityCpntSkillController* ctrl, int32_t tier) |
 
 ## skins
 

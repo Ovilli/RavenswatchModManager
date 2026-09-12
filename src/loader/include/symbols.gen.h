@@ -486,6 +486,18 @@ constexpr std::uintptr_t LobbyPlayerName_Registry = 0x141476268ull;
 constexpr std::uintptr_t Netcode_PeerCount = 0x14143f780ull;
 constexpr std::uintptr_t Netcode_PeerSlots = 0x14143f600ull;
 
+// --- skill ---
+constexpr std::uintptr_t EntityComponent_Activate = 0x140712c50ull;
+constexpr const char* EntityComponent_Activate_Pattern = "EntityComponent_Activate";
+constexpr std::uintptr_t EntityEventTrigger_Fire = 0x140713b00ull;
+constexpr const char* EntityEventTrigger_Fire_Pattern = "EntityEventTrigger_Fire";
+constexpr std::uintptr_t HeroController_AddSkill = 0x1403974b0ull;
+constexpr const char* HeroController_AddSkill_Pattern = "HeroController_AddSkill";
+constexpr std::uintptr_t HeroController_RemoveSkill = 0x1403977b0ull;
+constexpr const char* HeroController_RemoveSkill_Pattern = "HeroController_RemoveSkill";
+constexpr std::uintptr_t SkillController_SetTier = 0x1402edd80ull;
+constexpr const char* SkillController_SetTier_Pattern = "SkillController_SetTier";
+
 // --- skins ---
 constexpr std::uintptr_t SkinGrid_Populate = 0x1401f16f0ull;
 constexpr const char* SkinGrid_Populate_Pattern = "SkinGrid_Populate";
