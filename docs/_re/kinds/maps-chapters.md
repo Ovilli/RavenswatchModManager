@@ -1,5 +1,133 @@
 # Maps, chapters & the game-mode sequence (#9 / #10)
 
+## ✅ THE GENERATION RECIPE IS DATA, AND IT IS NOW READ/WRITE — 2026-09-12
+
+Everything below this section was written when a chapter's *layout* was opaque.
+It is not any more. `Map_<Biome>_..._TileGeneration.level.ot` is an ordinary
+object graph of the shape `level_placements` walks, and it holds the entire map
+generation recipe. `src/rsmm/engine/tilegen.py` decodes and re-encodes it; all
+**494 tilegen objects across the three shipped chapters round-trip
+byte-identically** (`tests/test_tilegen.py`).
+
+The grammar was taken off the engine's WRITE side — each class's `Serialize` at
+vftable slot 3 — not inferred from the bytes, which is the same method that
+fixed the level object graph earlier the same day.
+
+| Class | Per chapter | What it is |
+|---|---|---|
+| `oCDtTileSlotSettings` | 143 / 147 | one physical slot: world position, per-kind mask, per-scenario table |
+| `oCDtTileKind` | 14 / 16 | one kind: how many to place, min distance, which footprints it fits |
+| `oCDtTileSlotSize` | 4 / 6 (+1 inline) | a footprint family and the slot ids in it |
+| `oCDtTileSlotScenarioKindCompatibility` | 1 per slot per scenario | one row of the compatibility table |
+| `oCDtEntityCpntTileSpawnerSettings` | 1 | the header: kinds, scenarios, groups, mapdef backref, flag quotas |
+
+### The numbers a chapter is made of
+
+Dark Hills, straight out of the decoder:
+
+| Kind | Placed | Min distance | Footprints |
+|---|---|---|---|
+| Crystal | 50 | 40 m | 3x3, 6x6 |
+| Teleporter | 17 | 55 m | 6x6 |
+| Fountain | 7 | 90 m | 6x6 |
+| Wandering_Camp | 6 | 90 m | 6x6 |
+| Camp | 5 | 100 m | 40x40, 64x64 |
+| Special | 5 | 90 m | 40x40 |
+| Start | 1 | — | 40x40 |
+| Map_Boss | 1 | — | 64x64 |
+
+Plus 18 **flag quotas** that cap by tile flag independently of the kind counts
+(at most one `Wishing_Well`, two `Boss`, one `Leprechaun_Cauldron`), and four
+**scenarios** — `Scenario 01`..`04`, labelled `Enemy Camp Difficulty 01`..`04`.
+Avalon ships exactly one scenario, which is why its slots carry one-row tables.
+
+### Three things that were open, and are now closed
+
+**The 4x14 table is per-scenario x per-kind compatibility.** Rows equal the
+scenario count and columns equal the kind count, in all three chapters. It is
+**tri-state** — Dark Hills reads 2 (7695 times), 0 (29) and 1 (4) — so it is not
+a boolean and must not be rewritten as one.
+
+**The kind flag bytes are a footprint mask.** One byte per `oCDtTileSlotSize`
+group, in the spawner's own order. It fits every kind on inspection: `Start` is
+40x40 only, `Map_Boss` is 64x64 only, `Crystal` is the two small groups,
+`Teleporter` is 6x6. That is also *why* the counts are placeable at all.
+
+**The five short slots are the whole-map group.** They carry a position and
+nothing else because their kind mask is empty, and the set of empty-mask slots
+is *exactly* the inline 128x128 group on the spawner (`+0x190`) in all three
+chapters. Not missing data.
+
+Cross-checks that hold on every shipped chapter, and that `tilegen.validate()`
+enforces so a game patch breaks loudly: slot mask length == kind count, compat
+rows == scenario count, compat width == kind count, kind footprint bytes ==
+group count, and every slot listed by exactly one group.
+
+### ★ A chapter can name its map by ASSET PATH, not just by index
+
+This is the finding that matters for #9.
+
+`Chapter` (`Chapter_Serialize`, vftable `0x140ed7968` slot 3) is a discriminated
+union:
+
+```
+u8  +0x08     one more chapter follows        (1,1,1,0 in the shipped four)
+u8  +0x09     DISCRIMINATOR
+if +0x09 != 0:  resref +0x10   {lstr type tag, lstr asset path}
+else:           u32    +0x0c   built-in biome index (0,1,2,3)
+```
+
+**Neither branch is version-gated.** All four shipped chapters take the enum
+branch, which binds them to the four built-in biome map ids the blackboard
+registrar declares — and that is why "add a fifth chapter" has always read as
+blocked.
+
+The resref branch is live code, not a hypothesis. `GameModeDefaultDef_PostLoad`
+walks the chapter vector at `+0x290`/`+0x298` and, for every chapter whose
+`+0x09` is nonzero, calls `ResourceRef_Resolve` on `+0x10` unless it is already
+resolved. So a chapter may name its content by path, the engine resolves it at
+load, and nothing on that path checks a version or a flag.
+
+⚠ **What the ref points AT is not proven.** The expected class sits in a
+runtime-initialised global and cannot be read statically. A mapdef is the
+hypothesis, on the strength of the tile-generation level carrying a mapdef
+resref of exactly this shape. That needs a playtest, not more static reading.
+
+`All_Chapters.gamemodedefaultdef` is six sections: an object table of four
+`Chapter` entries, four 10-byte payloads and the root. Adding a fifth is the
+same three writes already documented for entities and levels — grow the object
+table, insert the payload before the root, append the id to the root vector —
+in a plain cooked container rather than a level stream, so it needs its own
+implementation.
+
+### Symbols added
+
+`TileKind_Serialize`, `TileSlotSettings_Serialize`, `TileSlotSize_Serialize`,
+`TileSlotScenarioKindCompat_Serialize`, `TileSpawnerSettings_Serialize`,
+`Chapter_Serialize`, `MapDef_Serialize`, `GameModeDefaultDef_Serialize`,
+`Serializer_ReadVectorU8`, `Serializer_ReadVectorU32`,
+`Serializer_ReadVectorObjIds`, `Serializer_ReadEnum` — all `ok`, patterns
+unique, `verify_symbol_resolve.py` green.
+
+Two long-standing `unverified` entries were **relocated** in the process, both
+carrying the 2026-07-10 note "resolves mid-instruction, no unique anchor, needs
+manual RE": `ResourceRef_Serialize` -> `0x1401c8e60` and
+`Serializer_GetClassVersion` -> `0x1404fce50`. Both were found from the call
+side rather than by anchor.
+
+### What is still unmined here
+
+* `TileKind.rule` (`+0x10`): 0 on ten of Dark Hills' fourteen kinds, 2 on both
+  `Key` and `Key_Keeper`, 3 on `Ruin`, 1 on `Corpse_Master`. Looks like a
+  placement phase or a pairing group; unproven.
+* `Slot.tail` (`+0x1c`) and the spawner's eight tail scalars (`+0x130`..`+0x14c`,
+  two of them the floats 40.0 and 0.3).
+* What the 0 and 1 values mean in the tri-state compatibility table.
+* `r13` in `TileSpawn_PlaceTiles` — still unpinned, but much less interesting
+  now that the per-kind slot vocabulary is readable from the data.
+
+---
+
 > 📖 Prose version on the docs site: **https://docs.rsmm.me/reverse-engineering/maps-chapters/** (`apps/docs/src/content/docs/reverse-engineering/maps-chapters.md`).
 > This file stays as the raw RE field notes.
 

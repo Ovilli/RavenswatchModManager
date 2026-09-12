@@ -3339,10 +3339,10 @@
    "name": "ResourceRef_Serialize",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_1401cbba0",
-   "status": "unverified",
+   "raw": "FUN_1401c8e60",
+   "status": "ok",
    "signature": "bool(void* reader, void* refSlot)",
-   "note": "Reads/writes a typed resource reference — cooked form {lstr type tag e.g. 'EntitySettings', lstr asset path} = the codec's tresptr field type. Used for oCItem entity refs, herodef fields, etc. Semantics inferred from call sites + cooked bytes. [2026-07-10: DOWNGRADED — July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.]",
+   "note": "Reads/writes a typed resource reference — cooked form {lstr type tag e.g. 'EntitySettings', lstr asset path} = the codec's tresptr field type. Used for oCItem entity refs, herodef fields, etc. Semantics inferred from call sites + cooked bytes. [2026-07-10: DOWNGRADED — July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.] [2026-09-12 RELOCATED and re-derived — the entry had been downgraded on 2026-07-10 as 'resolves mid-instruction, no unique anchor, needs manual RE'.] Found from the call side rather than by anchor: Chapter_Serialize's resref branch and TileSpawnerSettings_Serialize's mapdef field both call it. Body is exactly two length-prefixed strings through the loader vftable's lstr slot (+0x60) at ref+0x00 and ref+0x10 — the {type tag, asset path} tresptr pair the cooked codec already models. The 'resolved' u8 the JSON hoists is NOT part of this call. Pattern regenerated at the new address and unique in the current exe.",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -3499,10 +3499,10 @@
    "name": "Serializer_GetClassVersion",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_140514570",
-   "status": "unverified",
+   "raw": "FUN_1404fce50",
+   "status": "ok",
    "signature": "void*(void* reader, void* out, uint32_t classHash)",
-   "note": "Returns the version record for a class hash from the cooked file's HEADER class table (codec cooked.parse classes[] version fields); result+0x4 = the version number every versioned field-read checks ('if (ver(hash)+4 < N) skip field'). This is how one binary supports all historical cooked layouts — and how the codec must gate optional fields when typing a def. [2026-07-10: DOWNGRADED — July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.]",
+   "note": "Returns the version record for a class hash from the cooked file's HEADER class table (codec cooked.parse classes[] version fields); result+0x4 = the version number every versioned field-read checks ('if (ver(hash)+4 < N) skip field'). This is how one binary supports all historical cooked layouts — and how the codec must gate optional fields when typing a def. [2026-07-10: DOWNGRADED — July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.] [2026-09-12 RELOCATED — same 2026-07-10 downgrade, same fix.] This is the function every versioned field-read calls as `f(serializer, &out, <class uid>)` before comparing `[rax+4]` against a threshold, and it was already being cited at this address in TileDef_Deserialize's note without the symbol being moved. The version it returns is the class's `version_minor` from the cooked file's OWN header class table, which is why a class version is per-file data and not a build constant — measured on the tilegen classes: oCDtTileKind v6, oCDtTileSlotSettings v3, oCDtTileSlotSize v1, oCDtEntityCpntTileSpawnerSettings v14, Chapter v0. Pattern regenerated and unique.",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -4219,6 +4219,162 @@
     ]
    },
    "note": "[2026-09-12] Slot +0xa8 of the loader vftable — the \"poly resolve\" Serializer_ReadPolyPtrVector's note refers to, now read rather than inferred. Reads a u32 `uOjbectId` and turns it into a pointer: 0xffffffff = NULL, 0xfffffffe = the ROOT object (loader[+0x8], stashed by Serializer_ReadObjectNamed), anything else = objectTable[id] out of the vector at ctx+0x6e0. **This is the whole meaning of an id in a cooked file: an index into the object table that phase 2 built, hence an index into stream position.** The bound check is `id > size -> fail`, so `id == size` is let through and reads one slot past the used region — an off-by-one worth knowing before trusting an appended id."
+  },
+  {
+   "name": "TileKind_Serialize",
+   "kind": "function",
+   "category": "world",
+   "raw": "FUN_140340fc0",
+   "status": "ok",
+   "signature": "bool(oCDtTileKind* this, void* serializer)",
+   "note": "oCDtTileKind (uid 0x1608d797, corpus version 6) — vftable 0x140f120d0 slot 3. Stream order: an inline oCCustomFlagFilter @+0x18 whose single REQUIRED FLAG is the kind's name ('Teleporter', 'Camp', …) — there is no name string field; u32 @+0x50 = HOW MANY of this kind the generator places; v>=1 a vector<u8> @+0x58 that is one byte per oCDtTileSlotSize group, in the spawner's own order, i.e. WHICH FOOTPRINTS this kind may occupy (Start = 40x40 only, Map_Boss = 64x64 only, Crystal = 3x3|6x6, Teleporter = 6x6); v>=3 f32 @+0x54 = the MIN DISTANCE in metres that TileSpawn_DistanceConstraints enforces; v>=5 u32 @+0x10, unmined (0 on 10 of 14 Dark Hills kinds; Key and Key_Keeper both carry 2). Field widths come from the loader vftable (0x140f4a690): +0x60 lstr, +0x68/+0x70 u8, +0x78/+0x90/+0x98 four-byte, +0xa0 a nested object read through Serializer_ReadObjectPayload, +0xa8 an object id. ⚠ The version gates run BOTH ways: `jb` reads the field when the file's class version is high enough, `ja` skips a block only OLD files carry. Reading a `ja` as a `jb` invents fields that are not in the stream.",
+   "refs": [
+    "docs/_re/kinds/maps-chapters.md",
+    "src/rsmm/engine/tilegen.py"
+   ]
+  },
+  {
+   "name": "TileSlotSettings_Serialize",
+   "kind": "function",
+   "category": "world",
+   "raw": "FUN_1403411f0",
+   "status": "ok",
+   "signature": "bool(oCDtTileSlotSettings* this, void* serializer)",
+   "note": "oCDtTileSlotSettings (uid 0x16075cfc, version 3) — vftable 0x140f10608 slot 3, and ONE PHYSICAL SLOT on the map. f32 @+0x10/+0x14/+0x18 = world position (y is terrain height and really varies); v>=2 vector<u8> @+0x20 = one byte per kind, the slot's own vocabulary; v>=2 a vector of inline oCDtTileSlotScenarioKindCompatibility @+0x30, exactly one per scenario; v>=3 u32 @+0x1c, unmined. Dark Hills ships 143 of these, Avalon 147. A slot with an EMPTY kind mask is not missing data — it is a member of the inline 128x128 whole-map group on the spawner (+0x190), and the two sets match exactly in all three chapters. Field widths come from the loader vftable (0x140f4a690): +0x60 lstr, +0x68/+0x70 u8, +0x78/+0x90/+0x98 four-byte, +0xa0 a nested object read through Serializer_ReadObjectPayload, +0xa8 an object id. ⚠ The version gates run BOTH ways: `jb` reads the field when the file's class version is high enough, `ja` skips a block only OLD files carry. Reading a `ja` as a `jb` invents fields that are not in the stream.",
+   "refs": [
+    "docs/_re/kinds/maps-chapters.md",
+    "src/rsmm/engine/tilegen.py"
+   ]
+  },
+  {
+   "name": "TileSlotSize_Serialize",
+   "kind": "function",
+   "category": "world",
+   "raw": "FUN_140341780",
+   "status": "ok",
+   "signature": "bool(oCDtTileSlotSize* this, void* serializer)",
+   "note": "oCDtTileSlotSize (uid 0x1715b749, version 1) — vftable 0x140f12b60 slot 3. One FOOTPRINT FAMILY: u32 @+0x14/+0x18 = width/height in tile units, an inline oCCustomFlagFilter @+0x20 whose required flag names the family ('Blocker', 'Camp', 'Blocker_Wall_Down'), and a poly-pointer vector @+0x58 of the OBJECT IDS of the slots that belong to it. Dark Hills/Storm Island ship 3x3(62)/6x6(57)/40x40(18)/64x64(5) plus an inline 128x128(5); Avalon adds 9x9 and 20x20. Those four counts are the same four groups the runtime probe reads off the spawner at +0x110 (see the tile-spawn-seam notes) — the data side and the runtime side agree, which is what makes either trustworthy. Field widths come from the loader vftable (0x140f4a690): +0x60 lstr, +0x68/+0x70 u8, +0x78/+0x90/+0x98 four-byte, +0xa0 a nested object read through Serializer_ReadObjectPayload, +0xa8 an object id. ⚠ The version gates run BOTH ways: `jb` reads the field when the file's class version is high enough, `ja` skips a block only OLD files carry. Reading a `ja` as a `jb` invents fields that are not in the stream.",
+   "refs": [
+    "docs/_re/kinds/maps-chapters.md",
+    "src/rsmm/engine/tilegen.py"
+   ]
+  },
+  {
+   "name": "TileSlotScenarioKindCompat_Serialize",
+   "kind": "function",
+   "category": "world",
+   "raw": "FUN_140341190",
+   "status": "ok",
+   "signature": "bool(oCDtTileSlotScenarioKindCompatibility* this, void* serializer)",
+   "note": "oCDtTileSlotScenarioKindCompatibility (uid 0x171712d1, version 0) — vftable 0x140f0ead8 slot 3. A single vector<u32> @+0x10, exactly one entry per tile kind. One of these per SCENARIO hangs off every slot, so the pair (slot, scenario) says what that slot accepts under that scenario. TRI-STATE, not boolean: across Dark Hills' 138 masked slots the values are 2 (7695), 0 (29) and 1 (4). Do not rewrite it as a flag. Field widths come from the loader vftable (0x140f4a690): +0x60 lstr, +0x68/+0x70 u8, +0x78/+0x90/+0x98 four-byte, +0xa0 a nested object read through Serializer_ReadObjectPayload, +0xa8 an object id. ⚠ The version gates run BOTH ways: `jb` reads the field when the file's class version is high enough, `ja` skips a block only OLD files carry. Reading a `ja` as a `jb` invents fields that are not in the stream.",
+   "refs": [
+    "docs/_re/kinds/maps-chapters.md",
+    "src/rsmm/engine/tilegen.py"
+   ]
+  },
+  {
+   "name": "TileSpawnerSettings_Serialize",
+   "kind": "function",
+   "category": "world",
+   "raw": "FUN_140341b10",
+   "status": "ok",
+   "signature": "bool(oCDtEntityCpntTileSpawnerSettings* this, void* serializer)",
+   "note": "oCDtEntityCpntTileSpawnerSettings (uid 0x16075cc8, version 14) — vftable 0x140f0c540 slot 3, and the HEADER of a chapter's whole generation recipe. After the oIEntityCpntSettings base: vector<objid> @+0x170 = the oCDtTileKind objects; v>=2 a vector of inline oCDtMapScenario @+0x150 (Dark Hills and Storm Island ship four, 'Scenario 01'..'04' labelled 'Enemy Camp Difficulty 01'..'04'; Avalon ships ONE) — these are the rows of every slot's compatibility table; v>=3 vector<objid> @+0x180 = the oCDtTileSlotSize groups; v>=4 an inline oCDtTileSlotSize @+0x190, the 128x128 whole-map group; v>=6 a resref @+0x0f8 naming THIS RECIPE'S MAPDEF ('Definitions|Maps\\\\Dark_Hills_LiveOps_Update5.mapdef.ot'), which is the link from the level back to the chapter; v>=7 a vector of inline oCDtTileFlagConstraint @+0x160 = PER-FLAG QUOTAS independent of the kind counts (Dark Hills: at most 1 Wishing_Well, 2 Boss, 1 Leprechaun_Cauldron, 18 in all); then eight 4-byte scalars @+0x130..+0x14c, unmined (two are floats, 40.0 and 0.3). Field widths come from the loader vftable (0x140f4a690): +0x60 lstr, +0x68/+0x70 u8, +0x78/+0x90/+0x98 four-byte, +0xa0 a nested object read through Serializer_ReadObjectPayload, +0xa8 an object id. ⚠ The version gates run BOTH ways: `jb` reads the field when the file's class version is high enough, `ja` skips a block only OLD files carry. Reading a `ja` as a `jb` invents fields that are not in the stream.",
+   "refs": [
+    "docs/_re/kinds/maps-chapters.md",
+    "src/rsmm/engine/tilegen.py"
+   ]
+  },
+  {
+   "name": "Chapter_Serialize",
+   "kind": "function",
+   "category": "world",
+   "raw": "FUN_1403254d0",
+   "status": "ok",
+   "signature": "bool(Chapter* this, void* serializer)",
+   "note": "GameModeDefInternal::Chapter — vftable 0x140ed7968 slot 3, and the most important find for a NET-NEW CHAPTER. Layout: u8 @+0x08, u8 @+0x09, then a DISCRIMINATED UNION on +0x09 — nonzero reads a resref @+0x10 through ResourceRef_Serialize, zero reads a plain u32 enum @+0x0c through Serializer_ReadEnum. NEITHER BRANCH IS VERSION-GATED.\n\nAll four shipped chapters in All_Chapters.gamemodedefaultdef take the ENUM branch (+0x09 = 0, +0x0c = 0,1,2,3 and +0x08 = 1,1,1,0 — false on the last, so it reads as 'a chapter follows'). The enum is what binds a chapter to one of the four built-in biome map ids registered by the blackboard registrar, and it is why 'add a fifth chapter' has always looked blocked.\n\nThe resref branch is the way out, and it is LIVE CODE, not a hypothesis: GameModeDefaultDef_PostLoad walks the chapter vector at +0x290/+0x298 and for every chapter with +0x09 != 0 calls ResourceRef_Resolve on +0x10 unless it is already resolved. So a chapter can name its content by asset path instead of by index, the engine resolves it at load, and nothing in that path is gated on a version or a flag. ⚠ WHAT THE REF POINTS AT IS NOT PROVEN — the expected class is held in a runtime-initialised global, so it cannot be read statically. A mapdef is the hypothesis (the tile-generation level carries a mapdef resref of exactly this shape) and it needs a playtest, not more static reading.",
+   "refs": [
+    "docs/_re/kinds/maps-chapters.md",
+    "src/rsmm/engine/tilegen.py"
+   ]
+  },
+  {
+   "name": "MapDef_Serialize",
+   "kind": "function",
+   "category": "world",
+   "raw": "FUN_1403233b0",
+   "status": "ok",
+   "signature": "bool(oCDtMapDefinition* this, void* serializer)",
+   "note": "oCDtMapDefinition — vftable 0x140ed72e8 slot 3. resref @+0x288 = the map's root LEVEL, an inline object @+0x2d0, and a u8 @+0x448 gated on v>=2 that the shipped version 1 never reads. The tile POOL that map_pool.py edits sits in the tail this walk does not reach; the two are complementary. Field widths come from the loader vftable (0x140f4a690): +0x60 lstr, +0x68/+0x70 u8, +0x78/+0x90/+0x98 four-byte, +0xa0 a nested object read through Serializer_ReadObjectPayload, +0xa8 an object id. ⚠ The version gates run BOTH ways: `jb` reads the field when the file's class version is high enough, `ja` skips a block only OLD files carry. Reading a `ja` as a `jb` invents fields that are not in the stream.",
+   "refs": [
+    "docs/_re/kinds/maps-chapters.md",
+    "src/rsmm/engine/tilegen.py"
+   ]
+  },
+  {
+   "name": "GameModeDefaultDef_Serialize",
+   "kind": "function",
+   "category": "world",
+   "raw": "FUN_1403256e0",
+   "status": "ok",
+   "signature": "bool(GameModeDefaultDefinition* this, void* serializer)",
+   "note": "GameModeDefaultDefinition — vftable 0x140f04688 slot 3. u32 @+0x288 (field_a, -100 in All_Chapters) then a poly-pointer vector @+0x290 with its count at +0x298: the ordered CHAPTER list, ids into the file's own object table. The shipped file is 6 sections — an object table of 4 Chapter entries, four 10-byte Chapter payloads and the root — so adding a fifth chapter is the same three writes documented for entities and levels: grow the object table, insert the payload before the root, append the id to this vector. Two of the three already exist as code (entity_append, level_placements); this container is a plain cooked file, not a level stream, so it needs its own.",
+   "refs": [
+    "docs/_re/kinds/maps-chapters.md",
+    "src/rsmm/engine/tilegen.py"
+   ]
+  },
+  {
+   "name": "Serializer_ReadVectorU8",
+   "kind": "function",
+   "category": "engine-core",
+   "raw": "FUN_1403646c0",
+   "status": "ok",
+   "signature": "bool(void* serializer, void* vec)",
+   "note": "Reads `u32 count` through the serializer's 4-byte slot then `count` BYTES one at a time through the 1-byte slot (+0x70), element address = data + i. Labels the count 'Vector.Length' on the write path. Backs oCDtTileKind's footprint mask and oCDtTileSlotSettings' kind mask.",
+   "refs": [
+    "docs/_re/kinds/maps-chapters.md",
+    "src/rsmm/engine/tilegen.py"
+   ]
+  },
+  {
+   "name": "Serializer_ReadVectorU32",
+   "kind": "function",
+   "category": "engine-core",
+   "raw": "FUN_140364270",
+   "status": "ok",
+   "signature": "bool(void* serializer, void* vec)",
+   "note": "The 4-byte sibling of Serializer_ReadVectorU8. Backs oCDtTileSlotScenarioKindCompatibility's per-kind row.",
+   "refs": [
+    "docs/_re/kinds/maps-chapters.md",
+    "src/rsmm/engine/tilegen.py"
+   ]
+  },
+  {
+   "name": "Serializer_ReadVectorObjIds",
+   "kind": "function",
+   "category": "engine-core",
+   "raw": "FUN_1402f3cf0",
+   "status": "ok",
+   "signature": "bool(void* serializer, void* vec)",
+   "note": "Vector whose elements go through the loader vftable's +0xa8 slot (Serializer_ResolveObjectId), i.e. a vector of OBJECT IDS into the graph's object table rather than inline payloads. Backs the tile spawner's kind and slot-size lists. Distinct from Serializer_ReadPolyPtrVector, which is the poly-pointer form used by container roots.",
+   "refs": [
+    "docs/_re/kinds/maps-chapters.md",
+    "src/rsmm/engine/tilegen.py"
+   ]
+  },
+  {
+   "name": "Serializer_ReadEnum",
+   "kind": "function",
+   "category": "engine-core",
+   "raw": "FUN_14020c450",
+   "status": "ok",
+   "signature": "bool(void* serializer, void* vec)",
+   "note": "Reads a 4-byte enum by value: loads `[rdx]`, stages it on the stack and passes it through the serializer's 4-byte slot (+0x98). Chapter_Serialize's index branch uses it for the built-in biome id.",
+   "refs": [
+    "docs/_re/kinds/maps-chapters.md",
+    "src/rsmm/engine/tilegen.py"
+   ]
   }
  ],
  "_event_catalog_doc": "Observation events the loader republishes by raw name from the central telemetry sink (Analytics_SubmitNamedEvent). No address — the firehose detour reads the name at runtime, so any name the game adds also fires even if absent here. These are confirmed names harvested by string-xref (cluster 0x140f13a00-0x140f13f00); subscribe via R.on('<name>', cb) with RSMM_ENABLE_GAME_EVENTS=1. Shown by `rsmm symbols events`.",

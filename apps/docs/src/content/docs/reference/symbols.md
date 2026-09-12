@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **268** symbols across 22 categories.
+Total: **280** symbols across 22 categories.
 
 ## analytics
 
@@ -93,11 +93,15 @@ Total: **268** symbols across 22 categories.
 | `MetaClass_FindMember` | `0x14050cd20` | ✅ ok |  | void* (void* metaClass, uint32_t nameOrId, void* kind, bool searchParents) |
 | `Profiler_GetThreadScopeStack` | `0x14053a660` | ❓ unverified |  | void*(void) |
 | `Property_EvaluateByGuid` | `0x1406ab910` | ✅ ok |  | bool(void* ctx, void* container, void* guid16, float* out) |
-| `ResourceRef_Serialize` | `0x1401cbba0` | ❓ unverified |  | bool(void* reader, void* refSlot) |
-| `Serializer_GetClassVersion` | `0x140514570` | ❓ unverified |  | void*(void* reader, void* out, uint32_t classHash) |
+| `ResourceRef_Serialize` | `0x1401c8e60` | ✅ ok |  | bool(void* reader, void* refSlot) |
+| `Serializer_GetClassVersion` | `0x1404fce50` | ✅ ok |  | void*(void* reader, void* out, uint32_t classHash) |
+| `Serializer_ReadEnum` | `0x14020c450` | ✅ ok |  | bool(void* serializer, void* vec) |
 | `Serializer_ReadObjectNamed` | `0x140500d70` | ❓ unverified |  | bool(void* loader, void* root, const char* name) |
 | `Serializer_ReadObjectPayload` | `0x1405006d0` | ❓ unverified |  | bool(void* loader, void* obj, const char* name) |
 | `Serializer_ReadPolyPtrVector` | `0x14020e000` | ✅ ok |  | bool(void* reader, void* vec, const char* label) |
+| `Serializer_ReadVectorObjIds` | `0x1402f3cf0` | ✅ ok |  | bool(void* serializer, void* vec) |
+| `Serializer_ReadVectorU32` | `0x140364270` | ✅ ok |  | bool(void* serializer, void* vec) |
+| `Serializer_ReadVectorU8` | `0x1403646c0` | ✅ ok |  | bool(void* serializer, void* vec) |
 | `Serializer_ResolveObjectId` | `0x140500630` | ❓ unverified |  | bool(void* loader, void** out, const char* label) |
 | `ServiceRegistry_Global` | `0x14146f740` | 📍 va |  | Global engine service registry: service array @+0x30, u32 count @+0x38; each entry -> s… |
 | `StringVector_Serialize` | `0x140684f30` | ❓ unverified |  | bool(void* reader, void* strVec) |
@@ -399,8 +403,16 @@ Total: **268** symbols across 22 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
+| `Chapter_Serialize` | `0x1403254d0` | ✅ ok |  | bool(Chapter* this, void* serializer) |
+| `GameModeDefaultDef_Serialize` | `0x1403256e0` | ✅ ok |  | bool(GameModeDefaultDefinition* this, void* serializer) |
 | `LevelStream_Deserialize` | `0x1404767e0` | ❓ unverified |  | bool(void* loader, void* a_pLevel, void* a_pLvlId, void* a_pLinks) |
+| `MapDef_Serialize` | `0x1403233b0` | ✅ ok |  | bool(oCDtMapDefinition* this, void* serializer) |
 | `TileKindPool_ReportEmpty` | `0x1403421f0` | ✅ ok | ✔ | void(void* tileSpawnerSettings, void* outMessages) |
+| `TileKind_Serialize` | `0x140340fc0` | ✅ ok |  | bool(oCDtTileKind* this, void* serializer) |
+| `TileSlotScenarioKindCompat_Serialize` | `0x140341190` | ✅ ok |  | bool(oCDtTileSlotScenarioKindCompatibility* this, void* serializer) |
+| `TileSlotSettings_Serialize` | `0x1403411f0` | ✅ ok |  | bool(oCDtTileSlotSettings* this, void* serializer) |
+| `TileSlotSize_Serialize` | `0x140341780` | ✅ ok |  | bool(oCDtTileSlotSize* this, void* serializer) |
 | `TileSpawn_DistanceConstraints` | `0x140345890` | ✅ ok | ✔ | void(void*, void*) |
 | `TileSpawn_PlaceTiles` | `0x140343ad0` | ✅ ok | ✔ | void(void* tileSpawnerComponent) |
+| `TileSpawnerSettings_Serialize` | `0x140341b10` | ✅ ok |  | bool(oCDtEntityCpntTileSpawnerSettings* this, void* serializer) |
 | `TileSpawner_Spawn` | `0x140343640` | ✅ ok | ✔ | void(void* tileSpawnerComponent) |
