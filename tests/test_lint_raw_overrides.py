@@ -9,27 +9,21 @@ The vanilla corpus (`data/uncooked/`) is game-derived and gitignored, so every
 test injects its own `vanilla_root` instead of reading from disk.
 """
 
-import struct
+from _cooked_fixtures import entity, value_node
 
 from rsmm.cli.lint import _lint_raw_overrides
 
-_BEGIN = b"\x11\x11\xbb\xaa"
-_END = b"\x22\x22\xbb\xaa"
 _ENT = "Thing.entity.ot.EntitySettingsResource.gen"
 
 
-def _lstr(s: str) -> bytes:
-    return struct.pack("<I", len(s)) + s.encode("ascii")
-
-
 def _node(label: str, value: float, *, shadowed: bool = False) -> bytes:
-    """One cooked value node: label, its `0e` override sub-section, then the
-    f32 immediately before the closing END marker."""
-    payload = b"\x01\xde\xad\xbe" if shadowed else b"\x00"
-    return (_lstr(label)
-            + _BEGIN + struct.pack("<I", 0x0e) + payload
-            + _BEGIN + struct.pack("<I", 0x0f)
-            + struct.pack("<f", value) + _END)
+    """A whole cooked entity holding one value node.
+
+    It has to be a real container: the picker/union classes are named by an
+    index into the file's own class table, so a bare node fragment carries
+    nothing that could identify it.
+    """
+    return entity(value_node(label, value, shadowed=shadowed))
 
 
 def _mod(tmp_path, name, blob):

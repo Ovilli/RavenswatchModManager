@@ -7,6 +7,7 @@ strings interleaved with binary), so these run without a Ravenswatch install.
 import struct
 
 import pytest
+from _cooked_fixtures import END, entity, lstr, value_node
 
 from rsmm.engine import magic_item_cook as C
 
@@ -105,10 +106,8 @@ def test_set_value_uses_node_layout_not_first_match():
     value_patch authored against it was a silent miss. The stale default is
     refused, and a patch against the real one lands on the node's own field.
     """
-    blob = (_lstr("Armour Value")
-            + struct.pack("<f", -2.0)          # decoy, nearer the label
-            + b"\x11\x11\xbb\xaa" + struct.pack("<I", 0x0f)
-            + struct.pack("<f", 6.0) + b"\x22\x22\xbb\xaa")
+    blob = entity(value_node("Armour Value", 6.0,
+                             prefix=struct.pack("<f", -2.0)))  # decoy, nearer
 
     assert dict(C.list_value_fields(blob)) == {"Armour Value": 6.0}
 
@@ -118,7 +117,8 @@ def test_set_value_uses_node_layout_not_first_match():
     out = C.set_value_after_label(blob, "Armour Value", 6.0, 3.0)
     assert len(out) == len(blob)
     assert struct.pack("<f", -2.0) in out      # decoy untouched
-    assert out.endswith(struct.pack("<f", 3.0) + b"\x22\x22\xbb\xaa")
+    assert struct.pack("<f", 3.0) + END in out
+    assert struct.pack("<f", 6.0) not in out
 
 
 def test_set_value_wrong_old_value_raises():
@@ -133,11 +133,13 @@ def test_set_value_missing_label_raises():
 
 
 def test_list_value_fields_filters_noise():
-    blob = (
-        _lstr("Crit Chance Value") + struct.pack("<f", 0.1) + b"\x22\x22\xbb\xaa"
-        + _lstr("[Value] Foo\\Crit Chance Value") + struct.pack("<f", 0.1)  # ref: skip
-        + _lstr("Entity Get Common Object Value") + struct.pack("<f", 5.0)  # getter: skip
-        + _lstr("Huge Value") + struct.pack("<f", 99999.0)  # implausible: skip
+    blob = entity(
+        value_node("Crit Chance Value", 0.1),
+        # a scoped reference and a getter are wiring, not authored data
+        lstr("[Value] Foo\\Crit Chance Value") + struct.pack("<f", 0.1),
+        lstr("Entity Get Common Object Value") + struct.pack("<f", 5.0),
+        # a name with no value node behind it is not a field at all
+        lstr("Huge Value") + struct.pack("<f", 99999.0),
     )
     fields = dict(C.list_value_fields(blob))
     assert fields == {"Crit Chance Value": 0.1}

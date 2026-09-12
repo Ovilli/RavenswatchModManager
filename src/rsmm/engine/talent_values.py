@@ -3,34 +3,62 @@
 Ravenswatch talents are internally "Skills". A hero's talent *roster* (which
 nodes exist + their tree slots) lives as ``Skill Controller <X>`` nodes inside
 the herodef (``Definitions/Heroes/<Hero>.herodef...gen``). The talent *effect
-magnitudes* — the numbers people want to change — live as little-endian f32s
-inside the hero's cooked **entity** files under
+magnitudes* — the numbers people want to change — live inside the hero's cooked
+**entity** files under
 ``EntitySettings/Heroes/Hero_<Hero>/*.entity.ot.EntitySettingsResource.gen``.
 
-Each magnitude is an ``oCEntityCpntValueSettings`` node whose value sits at the
-very end of the node body, immediately before the closing ``2222bbaa`` END
-marker:
+Node shape (RE'd 2026-09-12 against the class table, superseding an earlier
+label-and-scan heuristic)
+-------------------------------------------------------------------------
 
-    <u32 len><label "Skill ... Value"> ... 1111bbaa <clsid> 00
-        1111bbaa <subid> 00 .. 00 <FLOAT> 2222bbaa 2222bbaa
+An authored magnitude is a *pair* of nested nodes that follows the node's name:
 
-So the reliable read is: anchor on the ``... Value`` label, scan forward to the
-next ``2222bbaa``, take the 4 bytes before it. (The older item heuristic in
-:mod:`magic_item_cook` reads the f32 a few bytes *after* the label — correct
-for items, wrong for these entity nodes, which is why it surfaced noise.)
+    <u32 len><label "Skill ... Value"> ...
+        1111bbaa <idx oCEntityCpntValuePicker>  <flag ...>
+        1111bbaa <idx oCEntityValueUnion>       <u32 type><u32 sub><value>
+        2222bbaa
 
-Two label families:
+Two facts make this readable, and getting either wrong is what produced silent
+no-ops and file corruption before:
 
-* ``Skill <X> ... Value`` (no "Spawner") — an authored magnitude (e.g. ``Skill
-  Power Cone Damage Range Value`` = 7.0). **Editable.**
-* ``... Spawner Value`` — a runtime spawner slot, always 0.0 at rest. These are
-  written by code at spawn time; patching them does nothing. Filtered out by
-  default.
+* **The u32 after a ``1111bbaa`` BEGIN marker is an index into the file's own
+  class table, not a global class id.** The same class sits at a different
+  index in every file (``oCEntityCpntValuePicker`` is 0x0e in the Damage_Power
+  magical object, 0x44 in Hero_Red, 0x3f in Hero_Juliet, …), so a node can only
+  be identified by resolving that index through :func:`rsmm.engine.cooked.parse`
+  and comparing the class *name*. The previous implementation hardcoded 0x0e/0x0f
+  — the indices that happen to be right for Damage_Power — so on hero files it
+  was inspecting ``oCEntityCpntTimerSettings`` and its shadow check never fired.
 
-The patch is f32->f32, length-preserving, so a talent mod is just a byte-edited
-copy of the vanilla entity shipped as a plain asset override (no re-cook). The
-writer is :func:`rsmm.engine.magic_item_cook.set_value_after_label`, which
-anchors on label + exact old-value bytes.
+* **``oCEntityValueUnion`` carries an explicit type code** as the first u32 of
+  its payload. Only three of the eight observed codes are numeric; the rest are
+  asset references and strings whose bytes are not a number at all:
+
+      0  f32      860 nodes   'Appear Value'
+      1  int32     78 nodes   'Skill Attack Flurry Active Count'
+      2  bool      32 nodes   'Skill Swirling Value'
+      3  vector     4         'Start Pos Value'
+      4  color     18         'Minimap Marker Color Value'
+      5  string    12         'Title Label Value'
+      6  texture   14         'Weapon Shield Quest Upgraded Texture Value'
+      9  resource 301         'Weapon Material Value'
+
+  Guessing f32-vs-int32 from the bit pattern instead (an int32 reinterprets as a
+  tiny subnormal) misses every int-typed node whose value is ``0``, because
+  ``0`` is a valid f32 too.
+
+Shadowed values
+---------------
+
+``oCEntityCpntValuePicker``'s payload is a single ``0x00`` when the union's
+inline value is what the game uses, and ``0x01`` + a reference when the value is
+*sourced from elsewhere* (a Value Selector / curve / card-count amount) — in
+which case the inline number is dead and editing it has no in-game effect.
+:func:`clear_value_override` collapses the picker back to the inline form.
+
+The patch is written in place, length-preserving, so a talent mod is just a
+byte-edited copy of the vanilla entity shipped as a plain asset override (no
+re-cook).
 """
 
 from __future__ import annotations
@@ -38,19 +66,28 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 
+from . import cooked
+
 _END = b"\x22\x22\xbb\xaa"
 _BEGIN = b"\x11\x11\xbb\xaa"
-#: A value node carries an ``0e``-type sub-section just before its ``0f`` value
-#: section. Its payload is a single ``0x00`` when the inline float is what the
-#: game uses, or a non-zero flag + a 4-byte reference when the value is *sourced
-#: from elsewhere* (a Value Selector / curve / card-count amount) — in which
-#: case the inline float is dead and editing it has no in-game effect. Detecting
-#: this is what stops a modder silently patching a shadowed value (the
-#: Damage_Power "Damage Value" bug).
-_OVERRIDE_TAG = _BEGIN + struct.pack("<I", 0x0e)
-#: Max bytes between a value label and its closing END marker. Observed worst
-#: case ~80 (label, two node headers, padding, the f32); 160 is slack.
-_MAX_NODE_SPAN = 160
+
+#: Class names of the two nested nodes that hold an authored value.
+_PICKER = "oCEntityCpntValuePicker"
+_UNION = "oCEntityValueUnion"
+
+#: ``oCEntityValueUnion`` type codes we can read and write as a number.
+TYPE_F32 = 0
+TYPE_INT32 = 1
+TYPE_BOOL = 2
+#: Payload size of each numeric type, in bytes, after the 8-byte type header.
+_NUMERIC = {TYPE_F32: 4, TYPE_INT32: 4, TYPE_BOOL: 1}
+
+#: Max bytes between a value label and the BEGIN of its picker node. Observed
+#: worst case ~120 (a parent-name lstring plus two small headers); 200 is slack.
+_MAX_LABEL_GAP = 200
+#: Max bytes between the picker BEGIN and the union BEGIN (the picker's flag, or
+#: flag + a 5-byte reference).
+_MAX_PICKER_GAP = 64
 
 
 @dataclass(frozen=True)
@@ -61,21 +98,27 @@ class TalentValue:
     offset: int
     #: True for ``... Spawner Value`` runtime slots (always ~0.0, not authored).
     is_spawner: bool
-    #: True when the 4 bytes are an int32 count, not an f32 magnitude (e.g.
+    #: True when the field is an int32 count, not an f32 magnitude (e.g.
     #: ``Objective Count`` = 7). ``value`` then holds the integer as a float.
     is_int: bool = False
-    #: True when the node's value is sourced from a selector/reference (its ``0e``
-    #: override sub-field is enabled), so the inline ``value`` here is *shadowed*
-    #: — editing it does nothing in game. Disable the override (see
-    #: :func:`clear_value_override`) to make the inline value authoritative.
+    #: True when the value is sourced from a selector/reference (the picker's
+    #: override flag is set), so the inline ``value`` is *shadowed* — editing it
+    #: does nothing in game. See :func:`clear_value_override`.
     is_overridden: bool = False
+    #: Raw ``oCEntityValueUnion`` type code (0 f32 / 1 int32 / 2 bool).
+    type_code: int = TYPE_F32
 
 
 #: Suffixes that mark an authored gameplay magnitude/count node. Value covers
 #: f32 effect magnitudes; the rest catch int32 counts and common stat fields.
 _VALUE_SUFFIXES = ("Value", "Count", "Required", "Max", "Stock", "Object",
                    "Cooldown", "Duration", "Radius", "Range", "Multiplier",
-                   "Ratio", "Chance", "Threshold", "Distance", "Amount")
+                   "Ratio", "Chance", "Threshold", "Distance", "Amount",
+                   # `<X> Damage` is an oCDtEntityCpntDamageSettings node whose
+                   # first picker/union is the damage channel (105 in the hero
+                   # corpus, e.g. the Ice Clone's `Explosion Damage`). Safe to
+                   # match broadly now that a node must resolve structurally.
+                   "Damage")
 #: Structural node names that carry a number but are wiring, not authored data.
 _STRUCT_NAMES = ("Operation", "Selector", "Listener", "Modifier", "Tester",
                  "Traverser", "Store", "Picker", "Format", "Computer", "State")
@@ -89,60 +132,76 @@ def _is_authored_value_label(s: str) -> bool:
     return any(s.endswith(suf) for suf in _VALUE_SUFFIXES)
 
 
-def _classify(raw4: bytes) -> tuple[float, bool]:
-    """Return ``(value, is_int)`` for a 4-byte value field.
+def class_names(data: bytes) -> list[str] | None:
+    """Return the file's class table as an index-ordered list of class names,
+    or ``None`` when the container cannot be parsed.
 
-    A count node stores an int32 whose f32 reinterpretation is a subnormal
-    (e.g. int 7 -> 9.8e-45). We treat the field as int when the f32 is a tiny
-    subnormal *and* the int32 is a small positive count; otherwise f32.
+    Every ``1111bbaa`` BEGIN marker is followed by an index into this list, so
+    nothing in a cooked body can be identified without it.
     """
-    fv = struct.unpack("<f", raw4)[0]
-    iv = struct.unpack("<i", raw4)[0]
-    if 0 < abs(fv) < 1e-30 and 1 <= iv <= 1_000_000:
-        return float(iv), True
-    return fv, False
+    try:
+        return [c.name for c in cooked.parse(data).classes]
+    except (ValueError, IndexError, struct.error):
+        return None
 
 
-def _value_is_overridden(cooked: bytes, body_start: int, value_end: int) -> bool:
-    """True when the value node in ``[body_start, value_end)`` has its ``0e``
-    override sub-field enabled (value comes from a selector/reference, so the
-    inline float just before ``value_end`` is shadowed and not used in game).
+def _class_at(data: bytes, names: list[str], begin: int) -> str | None:
+    """Resolve the class name for the BEGIN marker at ``begin``."""
+    if begin + 8 > len(data):
+        return None
+    idx = struct.unpack_from("<I", data, begin + 4)[0]
+    return names[idx] if idx < len(names) else None
 
-    The ``0e`` section payload is a lone ``0x00`` when the inline value is
-    authoritative (the normal case, e.g. every working talent/crit node) and
-    ``0x01 ...<ref>`` when overridden (e.g. Damage_Power's card-count Damage
-    Value). Compared this way it stays a conservative warning: it only fires
-    when the inline value genuinely cannot take effect.
+
+def _resolve_value_node(data: bytes, names: list[str], after_label: int):
+    """Resolve the picker/union value node that follows a label.
+
+    ``after_label`` is the offset just past the label's length-prefixed string.
+    Returns ``(type_code, value_offset, value_size, shadowed)`` or ``None`` when
+    this label does not front a numeric value node — which is the common case
+    (most matching strings are names in a list, not value nodes at all).
+    Fails closed: anything unexpected returns ``None`` rather than a guess.
     """
-    h = cooked.find(_OVERRIDE_TAG, body_start, value_end)
-    if h < 0:
-        return False
-    p = h + len(_OVERRIDE_TAG)
-    nxt = cooked.find(_BEGIN, p, value_end)
-    if nxt < 0:
-        return False
-    payload = cooked[p:nxt]
-    return bool(payload) and payload[0] != 0
+    p1 = data.find(_BEGIN, after_label, after_label + _MAX_LABEL_GAP)
+    if p1 < 0:
+        return None
+    # An END before the picker means we already left this label's node.
+    stop = data.find(_END, after_label, p1)
+    if stop >= 0:
+        return None
+    if _class_at(data, names, p1) != _PICKER:
+        return None
+    p2 = data.find(_BEGIN, p1 + 8, p1 + 8 + _MAX_PICKER_GAP)
+    if p2 < 0 or _class_at(data, names, p2) != _UNION:
+        return None
+    end = data.find(_END, p2 + 8)
+    if end < 0 or end - (p2 + 8) < 8:
+        return None
+    type_code = struct.unpack_from("<I", data, p2 + 8)[0]
+    size = _NUMERIC.get(type_code)
+    if size is None:
+        return None  # asset ref / string / colour / vector — not a number
+    value_off = p2 + 16  # skip the union's u32 type + u32 sub-type
+    if end - value_off != size:
+        return None  # payload is not the fixed width this type implies
+    shadowed = any(data[p1 + 8:p2])
+    return type_code, value_off, size, shadowed
 
 
-def is_label_overridden(cooked: bytes, label: str) -> bool:
-    """Public check: is the value node named ``label`` *shadowed* (its ``0e``
-    override sub-field enabled, so its inline float is ignored in game)?
+def _read_value(data: bytes, type_code: int, off: int) -> float:
+    if type_code == TYPE_INT32:
+        return float(struct.unpack_from("<i", data, off)[0])
+    if type_code == TYPE_BOOL:
+        return float(data[off])
+    return struct.unpack_from("<f", data, off)[0]
 
-    Resolves the label to its node body and reuses :func:`_value_is_overridden`.
-    Returns ``False`` when the label or its END marker isn't found (nothing to
-    shadow). Used by the item cook path (:func:`magic_item_cook.build_magic_item`)
-    so a manifest ``value_patches`` edit can't silently no-op on a shadowed node.
-    """
-    pat = struct.pack("<I", len(label)) + label.encode("ascii")
-    lo = cooked.find(pat)
-    if lo < 0:
-        return False
-    body = lo + len(pat)
-    end = cooked.find(_END, body)
-    if end < 0:
-        return False
-    return _value_is_overridden(cooked, body, end)
+
+def _pack_value(type_code: int, value: float) -> bytes:
+    if type_code == TYPE_INT32:
+        return struct.pack("<i", int(round(value)))
+    if type_code == TYPE_BOOL:
+        return bytes([1 if value else 0])
+    return struct.pack("<f", value)
 
 
 def _iter_lstrings(data: bytes):
@@ -159,111 +218,155 @@ def _iter_lstrings(data: bytes):
         i += 1
 
 
-def list_talent_values(cooked: bytes, *, include_spawner: bool = False) -> list[TalentValue]:
-    """Discover editable talent magnitudes in one cooked hero-entity file.
+def _iter_value_nodes(data: bytes, names: list[str]):
+    """Yield ``(label, offset, type_code, value_off, size, shadowed)`` for every
+    resolvable numeric value node, in file order.
 
-    Returns the f32 sitting just before each value node's END marker. By
-    default drops ``... Spawner Value`` runtime slots (always 0.0). De-dupes by
-    label, first occurrence wins.
-    """
-    out: list[TalentValue] = []
+    De-duped by label *and* by the value's offset. The offset half matters
+    because a node is laid out as ``<own name> <header> <scope name> <header>
+    picker union``, and a scope name can itself look like a value name — so
+    ``Skill Power Range Move Speed Increase Ratio`` and the scope string
+    ``Skill Power Range`` both resolve to the same field. The node's own name
+    comes first, so first claim wins and the scope string is dropped (3 such
+    collisions in the shipped hero corpus)."""
     seen: set[str] = set()
-    for off, s in _iter_lstrings(cooked):
+    claimed: set[int] = set()
+    for off, s in _iter_lstrings(data):
         if s in seen or not _is_authored_value_label(s):
             continue
-        start = off + 4 + len(s.encode("ascii"))
-        end = cooked.find(_END, start)
-        if end < 0 or end - start > _MAX_NODE_SPAN or end < start + 4:
-            continue
-        v, is_int = _classify(cooked[end - 4:end])
-        if v != v or (not is_int and abs(v) >= 1e9):  # NaN / implausible
-            continue
-        is_spawner = s.endswith("Spawner Value")
-        if is_spawner and not include_spawner:
-            seen.add(s)
+        node = _resolve_value_node(data, names, off + 4 + len(s.encode("ascii")))
+        if node is None or node[1] in claimed:
             continue
         seen.add(s)
-        overridden = _value_is_overridden(cooked, start, end)
-        out.append(TalentValue(s, v if is_int else round(v, 4),
-                               end - 4, is_spawner, is_int, overridden))
+        claimed.add(node[1])
+        yield (s, off, *node)
+
+
+def list_talent_values(data: bytes, *, include_spawner: bool = False) -> list[TalentValue]:
+    """Discover editable talent magnitudes in one cooked hero-entity file.
+
+    Only nodes that genuinely resolve to ``oCEntityCpntValuePicker`` ->
+    ``oCEntityValueUnion`` with a numeric type code are returned; a label that
+    merely looks like a value name (most of them are entries in a name list) is
+    skipped rather than reported as ``0.0``. Returns ``[]`` when the container's
+    class table cannot be parsed, because without it no node can be identified.
+    By default drops ``... Spawner Value`` runtime slots (always 0.0). De-dupes
+    by label, first occurrence wins.
+    """
+    names = class_names(data)
+    if names is None:
+        return []
+    out: list[TalentValue] = []
+    for label, _off, tc, voff, _size, shadowed in _iter_value_nodes(data, names):
+        is_spawner = label.endswith("Spawner Value")
+        if is_spawner and not include_spawner:
+            continue
+        v = _read_value(data, tc, voff)
+        if v != v:  # NaN
+            continue
+        out.append(TalentValue(
+            label=label,
+            value=v if tc != TYPE_F32 else round(v, 4),
+            offset=voff,
+            is_spawner=is_spawner,
+            is_int=tc == TYPE_INT32,
+            is_overridden=shadowed,
+            type_code=tc,
+        ))
     return out
 
 
-def set_talent_value(cooked: bytes, label: str, new_value: float,
+def is_label_overridden(data: bytes, label: str) -> bool:
+    """Public check: is the value node named ``label`` *shadowed* (its picker's
+    override flag set, so its inline value is ignored in game)?
+
+    Returns ``False`` when the label has no resolvable value node (nothing to
+    shadow). Used by the item cook path so a manifest ``value_patches`` edit
+    can't silently no-op on a shadowed node.
+    """
+    names = class_names(data)
+    if names is None:
+        return False
+    for lbl, _off, _tc, _voff, _size, shadowed in _iter_value_nodes(data, names):
+        if lbl == label:
+            return shadowed
+    return False
+
+
+def set_talent_value(data: bytes, label: str, new_value: float,
                      *, expect: float | None = None,
                      allow_shadowed: bool = False) -> bytes:
     """Patch one talent magnitude by label, length-preserving.
 
-    Unlike :func:`magic_item_cook.set_value_after_label` (which overwrites the
-    first matching old-value bytes after the label — unreliable here, because a
-    talent node's value sits before the END marker and an identical value can
-    appear in a nearer field), this overwrites the exact field that
-    :func:`list_talent_values` resolves for ``label``. The field is written as
-    int32 or f32 to match the node's detected kind (count nodes like
-    ``Objective Count`` are int32). If ``expect`` is given, the current value
-    must match it (guards against base-data drift).
+    The field is written as f32, int32 or bool to match the union's declared
+    type code — never guessed from the bit pattern, because an int32 holding
+    ``0`` is indistinguishable from an f32 holding ``0.0`` and writing an f32
+    into an int slot turns a requested ``5`` into ``1084227584`` in game. If
+    ``expect`` is given, the current value must match it (guards against
+    base-data drift).
 
-    Refuses to patch a *shadowed* value (one whose ``0e`` override sub-field is
-    enabled, so the inline float is ignored in game) — this is the guard that
-    stops the silent no-op that hit Damage_Power's "Damage Value". Pass
-    ``allow_shadowed=True`` to force the write anyway, or call
-    :func:`clear_value_override` first to make the inline value authoritative.
-    Raises ``ValueError`` if the label has no resolvable value.
+    Refuses to patch a *shadowed* value (one whose picker override flag is set,
+    so the inline number is ignored in game). Pass ``allow_shadowed=True`` to
+    force the write anyway, or call :func:`clear_value_override` first to make
+    the inline value authoritative. Raises ``ValueError`` if the label has no
+    resolvable value node.
     """
-    for tv in list_talent_values(cooked, include_spawner=True):
-        if tv.label != label:
+    names = class_names(data)
+    if names is None:
+        raise ValueError("not a parseable cooked container (no class table)")
+    for lbl, _off, tc, voff, size, shadowed in _iter_value_nodes(data, names):
+        if lbl != label:
             continue
-        if expect is not None and abs(tv.value - expect) > 1e-4:
+        cur = _read_value(data, tc, voff)
+        if expect is not None and abs(cur - expect) > 1e-4:
             raise ValueError(
-                f"{label!r}: current value {tv.value} != expected {expect}")
-        if tv.is_overridden and not allow_shadowed:
+                f"{label!r}: current value {cur} != expected {expect}")
+        if shadowed and not allow_shadowed:
             raise ValueError(
                 f"{label!r} is shadowed: its value is sourced from a "
-                f"selector/reference (0e override enabled), so editing the "
-                f"inline float has NO in-game effect. Call "
-                f"clear_value_override(cooked, {label!r}) first to make the "
+                f"selector/reference (picker override set), so editing the "
+                f"inline value has NO in-game effect. Call "
+                f"clear_value_override(data, {label!r}) first to make the "
                 f"inline value authoritative, or pass allow_shadowed=True to "
                 f"force the (likely useless) write.")
-        off = tv.offset
-        packed = (struct.pack("<i", int(round(new_value))) if tv.is_int
-                  else struct.pack("<f", new_value))
-        return cooked[:off] + packed + cooked[off + 4:]
+        packed = _pack_value(tc, new_value)
+        assert len(packed) == size
+        return data[:voff] + packed + data[voff + size:]
     raise ValueError(f"talent value label {label!r} not found")
 
 
-def clear_value_override(cooked: bytes, label: str) -> bytes:
-    """Disable a value node's ``0e`` override sub-field so its inline float
-    becomes authoritative (variable-length edit; the node ends up shaped like a
-    normal authored value node). This is the fix for a shadowed value: after
-    calling it, :func:`set_talent_value` for ``label`` takes effect in game.
+def clear_value_override(data: bytes, label: str) -> bytes:
+    """Disable a value node's picker override so its inline value becomes
+    authoritative (variable-length edit; the node ends up shaped like a normal
+    authored value node). This is the fix for a shadowed value: after calling
+    it, :func:`set_talent_value` for ``label`` takes effect in game.
 
     Side effect: dropping the override unbinds the value from its source
     selector/curve — e.g. for a card-count "amount-per-stack" value this turns
     the scaling into a flat value. Intended; that is what makes the inline
     number the one the game reads. Raises ``ValueError`` if ``label`` has no
-    resolvable value or is not actually overridden.
+    resolvable value node or is not actually overridden.
     """
     from .entity_edit import EntityEdit
 
-    ed = EntityEdit(cooked)
+    ed = EntityEdit(data)
     c = ed.concat
+    names = class_names(data)
+    if names is None:
+        raise ValueError("not a parseable cooked container (no class table)")
     pat = struct.pack("<I", len(label)) + label.encode("ascii")
     lo = c.find(pat)
     if lo < 0:
         raise ValueError(f"value label {label!r} not found")
-    body = lo + len(pat)
-    end = c.find(_END, body)
-    if end < 0:
-        raise ValueError(f"no END marker after {label!r}")
-    h = c.find(_OVERRIDE_TAG, body, end)
-    if h < 0:
-        raise ValueError(f"{label!r} has no 0e sub-section")
-    p = h + len(_OVERRIDE_TAG)
-    nxt = c.find(_BEGIN, p, end)
-    if nxt < 0:
-        raise ValueError(f"{label!r}: malformed 0e sub-section")
-    payload = c[p:nxt]
+    after = lo + len(pat)
+    p1 = c.find(_BEGIN, after, after + _MAX_LABEL_GAP)
+    if p1 < 0 or _class_at(c, names, p1) != _PICKER:
+        raise ValueError(f"{label!r} has no value-picker node")
+    p2 = c.find(_BEGIN, p1 + 8, p1 + 8 + _MAX_PICKER_GAP)
+    if p2 < 0 or _class_at(c, names, p2) != _UNION:
+        raise ValueError(f"{label!r}: malformed picker/union pair")
+    payload = c[p1 + 8:p2]
     if not payload or payload[0] == 0:
         raise ValueError(f"{label!r} is not overridden (nothing to clear)")
-    ed.queue(p, len(payload), b"\x00")  # collapse to the disabled form
+    ed.queue(p1 + 8, len(payload), b"\x00")  # collapse to the disabled form
     return ed.emit()

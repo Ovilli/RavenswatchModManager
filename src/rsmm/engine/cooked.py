@@ -190,7 +190,7 @@ def parse(data: bytes) -> CookedFile:
 
     # Class table.
     class_count = c.u32()
-    if class_count > 200:
+    if class_count > 4096:
         raise ValueError(f"implausible class_count={class_count}")
     for _ in range(class_count):
         name = c.lstr_bytes().decode("ascii", errors="replace")

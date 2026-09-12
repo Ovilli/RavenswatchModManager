@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 
 from rsmm.engine.paths import DATA_DIR
-from rsmm.engine.talent_values import list_talent_values
+from rsmm.engine.talent_values import TYPE_BOOL, list_talent_values
 
 _HEROES_DIR = DATA_DIR / "uncooked" / "EntitySettings" / "Heroes"
 _GEN_GLOB = "*.entity.ot.EntitySettingsResource.gen"
@@ -78,11 +78,18 @@ def _cmd_hero(args) -> int:
                 tag = "  [spawner/runtime, no-op]"
             elif v.is_int:
                 tag = "  [int]"
+            elif v.type_code == TYPE_BOOL:
+                tag = "  [bool]"
             else:
                 tag = ""
             if v.is_overridden:
                 tag += "  [shadowed/no-op]"
-            shown = int(v.value) if v.is_int else v.value
+            if v.is_int:
+                shown = int(v.value)
+            elif v.type_code == TYPE_BOOL:
+                shown = "true" if v.value else "false"
+            else:
+                shown = v.value
             print(f"   {shown:>12}  {v.label}{tag}")
     if not any_rows:
         print(f"(no talent values matched for {args.hero})")
