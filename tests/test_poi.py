@@ -881,6 +881,7 @@ def test_replace_base_overrides_the_shipped_cache_not_a_new_one(tmp_path):
     assert RC.entry_for(mesh.relative_to(out).as_posix()) in listed
 
 
+@needs_corpus
 def test_replace_base_caches_an_entity_only_places_brings_in(tmp_path):
     """A `places` entity the donor never placed must reach the tile's cache.
 
