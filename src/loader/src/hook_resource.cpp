@@ -439,6 +439,11 @@ void WINAPI cache_submit_detour(void* sink, void* vec) {
 
 long resolve_count() { return g_resolves.load(); }
 
+const char* resource_trace_filter() {
+    const char* v = rsc_trace_match();
+    return v ? v : "";
+}
+
 bool install_resource_hooks() {
     if (!flag_enabled("RSMM_ENABLE_RESOURCE_TRACE")) {
         // Not armed is not a fault — plain log(), per the severity rule.

@@ -479,7 +479,19 @@ void Loader::apply_overrides() {
             // filename that the game actually opens.
             auto enc = decoded_to_encoded(f.decoded_path);
             if (!enc) {
-                log("[" + m.id + "] no encoded match for " + f.decoded_path);
+                // NOT an error for a mod-ADDED asset, and saying "no encoded
+                // match" made it look like one. The redirect map is built from
+                // the vanilla manifest, so a path the game never shipped has no
+                // encoded name BY CONSTRUCTION — `rsmm apply` writes those
+                // straight to their derived cooked path (the `synthesized`
+                // tier) and the loader has nothing to redirect. A POI mod emits
+                // dozens of them: tiledefs, caches, levels, geometry.
+                //
+                // This wording cost real time on 2026-09-11: 61 such lines were
+                // read as a mod failing to install while every one of those
+                // assets was resolving fine in the same log.
+                log("[" + m.id + "] not in the vanilla manifest (mod-added "
+                    "asset, nothing to redirect): " + f.decoded_path);
                 continue;
             }
             // lookup_override extracts the leaf (basename) from the game's

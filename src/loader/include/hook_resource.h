@@ -58,6 +58,13 @@
 
 namespace rsmm {
 
+// The active name filter, shared. ONE definition of "what am I watching"
+// across every trace: hook_levelbuild's object-load trace answers a different
+// question about the SAME assets, and a second copy of the env-var + file
+// lookup would let the two drift and silently report on different things.
+// Returns "" when nothing is being watched.
+const char* resource_trace_filter();
+
 // Install the ResourceRef_Resolve trace. Returns true only when armed AND the
 // detour is live; a disabled trace is a plain log line, not a warning, because
 // "the user did not arm it" is not a fault.

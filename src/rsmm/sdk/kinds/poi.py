@@ -417,8 +417,13 @@ MAX_SUNK_FRACTION = 0.5
 #: twice: "some of them tipped over", then "it is not standing".
 #:
 #: A warning, not a refusal. A leaning obelisk is a legitimate look, and the
-#: decoder behind it (`rsmm.engine.level_placements`) reads most but not all
+#: decoder behind it (`rsmm.engine.level_placements`) reads 350 of the 390
 #: shipped levels, so silence here never means "the slot is upright".
+#:
+#: ⚠ Every tilt this reported before 2026-09-12 was the NEXT object's. The
+#: decoder paired an entity reference with the bytes that follow it, which
+#: belong to the following object's block, so the oracle that decides whether a
+#: POI stands was reading its neighbour. It reads each object's own block now.
 MAX_DONOR_TILT_DEG = 5.0
 
 #: The entity whose placing tile's cache covers BOTH override parents' closures.
@@ -1384,7 +1389,8 @@ def _validated_swaps(defn: ContentDef, base: str,
 
 def _extend_map_caches(out_dir: Path, defn_id: str, chapters: list[str],
                        assets: list[str], tile_rels: list[str],
-                       written: list[Path]) -> None:
+                       written: list[Path],
+                       extra_lines: Iterable[str] = ()) -> None:
     """Add this def's tiles and resources to each target chapter's own cache.
 
     A mapdef has a resource cache like any other definition, and it is a strict
@@ -1397,6 +1403,13 @@ def _extend_map_caches(out_dir: Path, defn_id: str, chapters: list[str],
       so a tile appended to the pool but not here is never loaded;
     * a tile edited to reference new art needs that art here too, even in
       ``replace_base`` mode where no tile is added to any pool at all.
+
+    `extra_lines` carries whatever `_emit_tile_caches` borrowed in, because
+    those are cache LINES rather than paths of ours and nothing else would ever
+    bring them here. ⚠ Measured 2026-09-12: the shrine's tile cache named
+    `BonFire` and the chapter's did not, which breaks the superset the shipped
+    data holds 784/784 — and both halves of a `places` entity have to be
+    preloaded or the reference resolves to null at level build.
     """
     for ch in chapters:
         rel = RC.cache_path_for(f"{_MAP_ASSET_SUBDIR}/{CHAPTERS[ch]}{MP.GEN_SUFFIX}")
@@ -1407,7 +1420,11 @@ def _extend_map_caches(out_dir: Path, defn_id: str, chapters: list[str],
         base_bytes = (dest.read_bytes() if dest.is_file()
                       else _corpus(rel, defn_id, f"the {ch} mapdef's resource cache"))
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(RC.extend(base_bytes, [*tile_rels, *assets]))
+        data = RC.extend(base_bytes, [*tile_rels, *assets])
+        extra = sorted(set(extra_lines))
+        if extra:
+            data = RC.render(sorted(set(RC.parse(data)) | set(extra)))
+        dest.write_bytes(data)
         if dest not in written:
             written.append(dest)
 
@@ -1669,10 +1686,38 @@ def _host_refs(defn: ContentDef) -> list[str]:
     return [ref] if isinstance(ref, str) and ref else []
 
 
+def _placed_for_cache(defn: ContentDef) -> list[str]:
+    """The entities `places` adds, named as the preload cache needs them.
+
+    A `places` entity counts exactly like a swap target: the donor tile never
+    referenced it, so its closure is absent from the donor's cache, and one
+    reference the cache never lists resolves to NULL at level build — which
+    destroys the WHOLE level, not just that object (`LevelObject_LoadOrCreate`).
+
+    ⚠ Shared by both paths ON PURPOSE. The pooled path grew this on 2026-09-06
+    after measuring the shrine's tiles listing the swap target but not
+    `BonFire`; `replace_base` arrived later and never got it, so the def that
+    adds a shipped entity the donor does not place wrote it into the level and
+    into nothing else. Measured again 2026-09-12: `BonFire` appeared 0 times in
+    the emitted `6x6_Healing_01.tiledef.UsedRscCache.ot`. That would have failed
+    the whole tile, and failed it looking exactly like "`places` does not work"
+    — poisoning the one arm that exists to tell those apart.
+
+    `@prop` borrows against its DONOR. The mod's own entity is already in the
+    emitted assets, but its dependency closure is the donor's, and only a
+    shipped tile can prove a closure is covered.
+    """
+    prop = defn.fields.get("prop")
+    own_donor = prop.get("entity_base") if isinstance(prop, dict) else None
+    placed = [own_donor if i["entity"] == PLACES_OWN_PROP else i["entity"]
+              for i in _validated_places(defn)]
+    return [e for e in placed if e]
+
+
 def _emit_tile_caches(out_dir: Path, base: str, defn_id: str, assets: list[str],
                       tile_rels: list[str], written: list[Path],
                       borrow_for: Iterable[str] = (),
-                      seed_for: Iterable[str] = ()) -> None:
+                      seed_for: Iterable[str] = ()) -> list[str]:
     """Give every tiledef this def emitted its ``*.UsedRscCache.ot`` sibling.
 
     All 237 shipped tiledefs have one and the engine looks it up by convention,
@@ -1772,6 +1817,10 @@ def _emit_tile_caches(out_dir: Path, base: str, defn_id: str, assets: list[str],
         if borrowed:
             data = RC.render(sorted(set(RC.parse(data)) | set(borrowed)))
         _write(out_dir, RC.cache_path_for(tile_rel), data, written)
+    # Handed back so the chapter cache can stay the superset it is documented
+    # to be. A borrowed line reaches a tile cache and nothing else otherwise,
+    # and `_extend_map_caches` only ever saw this mod's own emitted files.
+    return borrowed
 
 
 def _asset_dir(ref: str) -> str:
@@ -2783,13 +2832,19 @@ def _emit_replacing_base(mod_id: str, defn: ContentDef, out_dir: Path,
     # so this is a no-op on a tile that already places something carrying the
     # same parent — and load-bearing on one that does not.
     assets = _emitted_assets(out_dir, written) + extra_deps
-    _emit_tile_caches(out_dir, base, defn.id, assets,
-                      [f"{_TILE_ASSET_SUBDIR}/{base}{TC.GEN_SUFFIX}"], written,
-                      borrow_for=[*swaps.values(), *borrow],
-                      seed_for=[*swaps.values(), *_host_refs(defn)])
+    # `places` entities belong here for the same reason swap targets do — see
+    # `_placed_for_cache`. Without them a def that stands a shipped entity the
+    # donor never placed writes it into the level and into nothing else.
+    placed = _placed_for_cache(defn)
+    borrowed = _emit_tile_caches(
+        out_dir, base, defn.id, assets,
+        [f"{_TILE_ASSET_SUBDIR}/{base}{TC.GEN_SUFFIX}"], written,
+        borrow_for=[*swaps.values(), *placed, *borrow],
+        seed_for=[*swaps.values(), *placed, *_host_refs(defn)])
     # No tile is pooled here, but the chapter's cache is a superset of every
     # tile's, so art the overridden tile now reaches has to be listed there too.
-    _extend_map_caches(out_dir, defn.id, chapters, assets, [], written)
+    _extend_map_caches(out_dir, defn.id, chapters, assets, [], written,
+                       extra_lines=borrowed)
 
     _log.info("poi %s/%s: REPLACING base tile %s in place (no pool change)",
               mod_id, defn.id, base)
@@ -2920,30 +2975,15 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # Every copy is a separate tiledef asset, so every copy needs its own
     # cache — a tiledef the engine cannot preload is never placed.
     assets = _emitted_assets(out_dir, written)
-    # `places` entities count exactly like swap targets here. The donor tile
-    # never referenced them, so their closures are absent from its cache — and
-    # `places` was wired into the LEVEL without ever being wired into the
-    # preload. Measured 2026-09-06 on the shrine: its tiles' caches listed the
-    # swap target but not `BonFire`, neither inherited marker parent and
-    # neither icon texture; only the mapdef cache (built by a different path)
-    # happened to carry them, which is the whole reason it did not fault.
-    # A `@prop` placement borrows against its DONOR. The mod's own entity is
-    # already in `assets` (it was emitted through `written`), but its dependency
-    # CLOSURE is the donor's — the clone is that donor's component structure
-    # wearing this mod's mesh — and only a shipped tile can prove a closure is
-    # covered. Leaving the sentinel here asked which shipped tile places "@prop"
-    # and warned that none does, every apply.
-    prop_spec = defn.fields.get("prop")
-    own_donor = (prop_spec.get("entity_base")
-                 if isinstance(prop_spec, dict) else None)
-    placed = [own_donor if item["entity"] == PLACES_OWN_PROP else item["entity"]
-              for item in _validated_places(defn)]
-    placed = [e for e in placed if e]
+    # `places` entities count exactly like swap targets here — see
+    # `_placed_for_cache` for why, and for what it cost both times it was missed.
+    placed = _placed_for_cache(defn)
     assets += own_deps
     swapped = list(_validated_swaps(defn, base, out_dir).values())
-    _emit_tile_caches(out_dir, base, defn.id, assets, tile_rels, written,
-                      borrow_for=[*swapped, *placed, *own_borrow],
-                      seed_for=[*swapped, *placed])
+    borrowed = _emit_tile_caches(out_dir, base, defn.id, assets, tile_rels,
+                                 written,
+                                 borrow_for=[*swapped, *placed, *own_borrow],
+                                 seed_for=[*swapped, *placed])
     _report_share(mod_id, defn, td, chapters, copies)
 
     for ch in chapters:
@@ -2972,7 +3012,8 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         written.append(map_dest)
 
 
-    _extend_map_caches(out_dir, defn.id, chapters, assets, tile_rels, written)
+    _extend_map_caches(out_dir, defn.id, chapters, assets, tile_rels, written,
+                       extra_lines=borrowed)
 
     _log.info("poi %s/%s: cloned %s -> %d pool entr%s in %s",
               mod_id, defn.id, base, len(pool_refs),

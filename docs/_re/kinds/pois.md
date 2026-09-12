@@ -1,5 +1,109 @@
 # POIs, structures & the tile system — `oCDtTileDefinition`
 
+## ✅ THE ADDITIVE WALL WAS A CORRUPT LEVEL STREAM — fixed 2026-09-12
+
+The section below closes with "the resolution wall is disproved, and visibility
+is UNMEASURED". This is the downstream mechanism it was looking for, found by
+reading the engine's WRITE side instead of guessing at the bytes
+(`data/symbols.json::Serializer_ReadObjectNamed`, reached from `LevelBinary_Load`'s
+`*a_pLevel` call).
+
+**A level's object graph is created before a single payload byte is read.** The
+loader reads a class table, then an object table — `uOjbectsCount` plus one
+`uClassFinfoIndex` per object — and instantiates every one of them up front.
+Only then does it read one payload block per object, in table order, **with no
+seek and no cross-check** that the block it lands on is the class the table
+promised. The level's own list of what it owns is read LAST, which is why it
+sits at the end of the stream.
+
+`level_placements.add_placement` grew that last list and nothing else. Measured
+on four shipped levels: one extra payload block, `uOjbectsCount` untouched. That
+is not an orphan, which is what the code's comments claimed and what
+`entity_append` had taught us to expect one level down. It is worse: the engine
+reads N blocks for N objects out of a stream that now holds N+1, so every object
+after the insertion point is deserialized from its predecessor's bytes into an
+instance of the wrong class, and the level's own root block is consumed as the
+last prop. The id appended to the list pointed at whatever object already held
+that index — a settings child of some other spawner in 277 of 390 levels, and
+one slot past the end of the table in the other 113.
+
+So the additive POI was never "registered, resolved, placed and invisible". From
+the placement onward the level it stood in was being read wrong.
+
+Three writes make an object, and `add_placement` now does all three:
+
+1. `uOjbectsCount` grows and the template's `uClassFinfoIndex` is appended — this
+   is what brings the object into existence;
+2. the payload block goes in **immediately before the root block**, because an
+   object's id is its position in the stream (verified 390/390). Appending takes
+   id `count` and renumbers nothing; a mid-stream insert would silently repoint
+   every later id in every vector in the file;
+3. the root's own vector gains that id, which is what makes the level own it.
+
+### The transform oracle was reading the neighbouring prop
+
+Same root cause, separate symptom. `decode()` paired an entity reference with
+the bytes that FOLLOW it, but a reference sits near the end of its own object's
+block, so those bytes belong to the NEXT block. Every placement in every level
+was reported with its successor's position and rotation, and the last one with a
+run of zeros. That is the oracle `MAX_DONOR_TILT_DEG` and every "is it standing"
+refusal is built on, so "some of them tipped over" and "it is not standing" were
+being judged against the wrong object.
+
+The transform's offset is structural, not searched: past the block's two
+length-prefixed names, plus `0x26`. That resolves 116708 of 116708 marker-free
+placement blocks, where the old consensus search over the between-references
+space resolved 7686 across 280 levels. The corrected walk reads 350 of 390.
+
+### And the second gate was open on `replace_base`
+
+Found while checking the fix against the mod that uses it. A `places` entity is
+written into the level; it also has to be in the placing tile's
+`.UsedRscCache.ot`, because one reference the cache never lists resolves to NULL
+at level build and `LevelObject_LoadOrCreate` then destroys the whole level.
+
+The pooled path has fed `places` into the cache walk since 2026-09-06.
+`replace_base` arrived after that and never did. So the shrine's emitted
+`6x6_Healing_01.tiledef.UsedRscCache.ot` named `BonFire` zero times while the
+level stood one — and `BonFire` is the CONTROL arm, the one added to tell "a
+mod-owned name is rejected" apart from "adding an object does not work". It
+would have faulted the tile and taken the other two arms with it, looking
+exactly like the result it exists to rule out.
+
+Both call sites now go through one `_placed_for_cache`, so they cannot drift
+again.
+
+**And there is a third gate above it.** The chapter's mapdef cache is a strict
+superset of every tile's, 784/784 on the shipped start tile. Lines that
+`_emit_tile_caches` BORROWS in are cache lines rather than paths of this mod's,
+and `_extend_map_caches` only ever saw this mod's own emitted files — so
+`BonFire` reached the tile's cache and stopped there. Same null, one level up.
+`_emit_tile_caches` now hands its borrowed lines back and both callers pass them
+on.
+
+`test_replace_base_caches_an_entity_only_places_brings_in` covers all three
+gates and fails on each one independently, which is how each was confirmed.
+
+This is the canonical shape of the second-gate trap: the first gate (the object
+is in the stream and the engine instantiates it) was the hard one to find, and
+passing it changes nothing while the ones above it are open.
+
+### Two rules for anyone touching this next
+
+* **A block that frames a nested `MARK_BEGIN` is not safe to copy.** That is
+  where a spawner keeps the poly-pointer vector of the settings objects it OWNS,
+  so duplicating one hands a second spawner the same children. 164687
+  marker-free blocks own nothing, and no level with owned children lacks a
+  marker-bearing block, so marker-free is the safe test.
+* **A placement carries no per-object identity.** 2996 groups of shipped blocks
+  are byte-identical apart from their transform and their entity reference, so a
+  copy needs no GUID reminting — unlike a cloned level or prefab, which does.
+
+⚠ NOT yet proven in-game. What this changes is that the level an additive POI
+stands in is now structurally what the engine expects; whether the pillar draws
+is the next playtest, and it is the first one where a negative result means
+something.
+
 ## ✅ RESOLUTION IS NOT THE WALL — measured 2026-09-11 (session 6736)
 
 **Every mod-added asset in the additive chain resolves, including the ENTITY.**

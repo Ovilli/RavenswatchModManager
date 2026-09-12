@@ -48,6 +48,9 @@ from rsmm.engine import image as IMG  # noqa: E402
 from rsmm.engine.cooked_schemas.texture import TextureHandler  # noqa: E402
 from rsmm.engine.paths import DATA_DIR, REPO_ROOT  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import authoring_art as art  # noqa: E402
+
 #: Uncooked GLB whose embedded cooked bytes are used as the graft template.
 #: A small static scenery prop: 1 submesh, 90 verts, no skeleton — the simplest
 #: structure in the corpus for a static prop, so nothing unnecessary is carried
@@ -64,56 +67,12 @@ Vec3 = tuple[float, float, float]
 # Geometry
 # --------------------------------------------------------------------------- #
 
-def _face(verts: list[Vec3], norms: list[Vec3], uvs: list[tuple[float, float]],
-          quad: list[Vec3], uv_rect: tuple[float, float, float, float]) -> None:
-    """Append one quad as two triangles with a flat face normal.
-
-    Vertices are duplicated per face rather than shared: the shrine is faceted
-    stone, and sharing them would average the normals into a soft blob.
-    """
-    a, b, c, d = quad
-    u0, v0, u1, v1 = uv_rect
-    e1 = (b[0] - a[0], b[1] - a[1], b[2] - a[2])
-    e2 = (d[0] - a[0], d[1] - a[1], d[2] - a[2])
-    n = (e1[1] * e2[2] - e1[2] * e2[1],
-         e1[2] * e2[0] - e1[0] * e2[2],
-         e1[0] * e2[1] - e1[1] * e2[0])
-    ln = math.sqrt(sum(x * x for x in n)) or 1.0
-    n = (n[0] / ln, n[1] / ln, n[2] / ln)
-    base = len(verts)
-    verts.extend([a, b, c, d])
-    norms.extend([n] * 4)
-    uvs.extend([(u0, v1), (u1, v1), (u1, v0), (u0, v0)])
-    _face.tris.extend([base, base + 1, base + 2, base, base + 2, base + 3])
+def _face(verts, norms, uvs, quad, uv_rect) -> None:
+    art.face(verts, norms, uvs, _face.tris, quad, uv_rect)
 
 
-def _tri(verts: list[Vec3], norms: list[Vec3], uvs: list[tuple[float, float]],
-         tri: list[Vec3], uv_rect: tuple[float, float, float, float]) -> None:
-    """Append one triangle with a flat face normal.
-
-    Caps need this. Emitting a fan segment as the quad ``[a, b, c, a]`` looks
-    harmless — `_face` splits it into (0,1,2) and (0,2,3) — but the second
-    triangle is ``(a, c, a)``: zero area, and its normal comes out ``(0,0,0)``
-    because the edge ``d - a`` is the zero vector. Every vanilla scenery mesh
-    has exactly zero degenerate triangles and unit-length normals throughout;
-    ours had 48 and 192 of them, all from cap fans.
-    """
-    a, b, c = tri
-    u0, v0, u1, v1 = uv_rect
-    e1 = (b[0] - a[0], b[1] - a[1], b[2] - a[2])
-    e2 = (c[0] - a[0], c[1] - a[1], c[2] - a[2])
-    n = (e1[1] * e2[2] - e1[2] * e2[1],
-         e1[2] * e2[0] - e1[0] * e2[2],
-         e1[0] * e2[1] - e1[1] * e2[0])
-    ln = math.sqrt(sum(x * x for x in n))
-    if ln < 1e-12:
-        return  # genuinely degenerate input: drop it rather than ship a NaN
-    n = (n[0] / ln, n[1] / ln, n[2] / ln)
-    base = len(verts)
-    verts.extend([a, b, c])
-    norms.extend([n] * 3)
-    uvs.extend([(u0, v1), (u1, v1), (u1, v0)])
-    _face.tris.extend([base, base + 1, base + 2])
+def _tri(verts, norms, uvs, triangle, uv_rect) -> None:
+    art.tri(verts, norms, uvs, _face.tris, triangle, uv_rect)
 
 
 def _prism(verts, norms, uvs, sides: int, y0: float, y1: float,
@@ -153,21 +112,36 @@ def build_shrine_glb() -> bytes:
     UV_RUNES = (0.02, 0.34, 0.98, 0.62)
     UV_CRYSTAL = (0.02, 0.68, 0.98, 0.98)
 
+    # ⚠ SLENDER, AND THE WIDTH IS THE WHOLE POINT. This used to be a 1.05-radius
+    # plinth — 2.10 units across, 4.20 at the shipping scale of 2.0 — and it
+    # simply does not fit anywhere. Measured across every 6x6 Dark Hills tile on
+    # 2026-09-12: the tiles are about 5.8 units across and each already holds
+    # something (the healing fountain alone is 5.05 wide and not even centred,
+    # the dream crystal 2.73). There is no size and no position at which a
+    # 4.20-wide obelisk clears the fountain — at scale 1.0 it still overlapped by
+    # 0.89 units, and in-game it stood inside the fountain.
+    #
+    # A pillar 1.10 across and 3.54 tall is a 3.2:1 silhouette that fits beside
+    # what the tile already has, and reads better as a shrine than a squat block
+    # did. Keep the footprint under ~1.8 units at whatever `transform.scale` the
+    # def ships, or it stops fitting again.
+
     # Plinth: two square steps.
-    _prism(verts, norms, uvs, 4, 0.00, 0.16, 1.05, 0.98, UV_STONE)
-    _prism(verts, norms, uvs, 4, 0.16, 0.30, 0.86, 0.80, UV_STONE)
+    _prism(verts, norms, uvs, 4, 0.00, 0.16, 0.55, 0.52, UV_STONE)
+    _prism(verts, norms, uvs, 4, 0.16, 0.32, 0.46, 0.43, UV_STONE)
 
     # Obelisk shaft: hexagonal, tapering, with a slight twist so the silhouette
-    # reads as carved rather than extruded.
-    _prism(verts, norms, uvs, 6, 0.30, 1.05, 0.62, 0.50, UV_RUNES,
+    # reads as carved rather than extruded. Taller than it was, because
+    # narrowing it without raising it turns an obelisk into a bollard.
+    _prism(verts, norms, uvs, 6, 0.32, 1.30, 0.36, 0.30, UV_RUNES,
            twist=math.radians(6))
-    _prism(verts, norms, uvs, 6, 1.05, 1.85, 0.50, 0.34, UV_RUNES,
+    _prism(verts, norms, uvs, 6, 1.30, 2.35, 0.30, 0.21, UV_RUNES,
            twist=math.radians(10))
     # Pyramidion cap.
-    _prism(verts, norms, uvs, 6, 1.85, 2.15, 0.34, 0.06, UV_STONE)
+    _prism(verts, norms, uvs, 6, 2.35, 2.72, 0.21, 0.04, UV_STONE)
 
     # Floating crystal: two stacked pyramids (octahedral bipyramid).
-    cy, ch, cr = 2.55, 0.34, 0.19
+    cy, ch, cr = 3.16, 0.34, 0.19
     _prism(verts, norms, uvs, 6, cy - ch, cy, 0.02, cr, UV_CRYSTAL)
     _prism(verts, norms, uvs, 6, cy, cy + ch, cr, 0.02, UV_CRYSTAL)
 
@@ -372,20 +346,6 @@ _RUNE = (90, 232, 255)
 _OUTLINE = (16, 14, 20)
 
 
-def _in_poly(px: float, py: float, pts: list[tuple[float, float]]) -> bool:
-    """Even-odd point-in-polygon."""
-    inside = False
-    n = len(pts)
-    for i in range(n):
-        x0, y0 = pts[i]
-        x1, y1 = pts[(i + 1) % n]
-        if (y0 > py) != (y1 > py):
-            xint = x0 + (py - y0) * (x1 - x0) / (y1 - y0)
-            if px < xint:
-                inside = not inside
-    return inside
-
-
 def build_icon(size: int = ICON_SIZE) -> bytes:
     """Draw the shrine as a minimap icon: obelisk + floating crystal.
 
@@ -419,9 +379,9 @@ def build_icon(size: int = ICON_SIZE) -> bytes:
             for sy in range(SS):
                 for sx in range(SS):
                     fx, fy = x + (sx + 0.5) / SS, y + (sy + 0.5) / SS
-                    if _in_poly(fx, fy, crystal):
+                    if art.in_poly(fx, fy, crystal):
                         hits[2] += 1
-                    elif _in_poly(fx, fy, obelisk) or _in_poly(fx, fy, plinth):
+                    elif art.in_poly(fx, fy, obelisk) or art.in_poly(fx, fy, plinth):
                         hits[1] += 1
             if hits[2] * 2 >= SS * SS:
                 mat[y][x] = 2
@@ -502,7 +462,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--mod", default="runestone-shrine",
                     help="mod directory under mods/ to write assets into")
     ap.add_argument("--size", type=int, default=TEX_SIZE, help="texture edge in px")
-    ap.add_argument("--into", default="pois/runestone_shrine",
+    # ⚠ `pois/shrine`, not `pois/runestone_shrine`. The def was renamed and this
+    # default was not, so running the tool with no arguments CREATED
+    # `mods/runestone-shrine/pois/runestone_shrine/` — and `discover` treats any
+    # folder under `pois/` as a def, so re-authoring the art would have quietly
+    # added a second POI to the mod. Refuse a folder that does not exist rather
+    # than make one, for the same reason.
+    ap.add_argument("--into", default="pois/shrine",
                     help="folder under the mod to write source art into")
     args = ap.parse_args(argv if argv is not None else sys.argv[1:])
 
@@ -516,7 +482,11 @@ def main(argv: list[str] | None = None) -> int:
     # bytes here would put build output in the mod's `assets/` tree, outside the
     # content-emit marker that prunes stale files.
     out = REPO_ROOT / "mods" / args.mod / args.into
-    out.mkdir(parents=True, exist_ok=True)
+    if not out.is_dir():
+        print(f"no such POI folder: {out}\n"
+              f"pass --into, and do not let this tool invent one: a new folder "
+              f"under pois/ is a new POI def.", file=sys.stderr)
+        return 1
 
     glb = build_shrine_glb()
     n_tris = len(_face.tris) // 3

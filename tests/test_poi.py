@@ -881,6 +881,62 @@ def test_replace_base_overrides_the_shipped_cache_not_a_new_one(tmp_path):
     assert RC.entry_for(mesh.relative_to(out).as_posix()) in listed
 
 
+def test_replace_base_caches_an_entity_only_places_brings_in(tmp_path):
+    """A `places` entity the donor never placed must reach the tile's cache.
+
+    ⚠ MEASURED 2026-09-12 and it would have cost a playtest. The pooled path
+    has fed `places` into the cache walk since 2026-09-06; `replace_base`
+    arrived afterwards and never did, so a def standing a shipped entity the
+    donor does not place wrote it into the LEVEL and into nothing else. One
+    reference the cache never lists resolves to NULL at level build, and
+    `LevelObject_LoadOrCreate` then destroys the WHOLE level — so the arm added
+    to prove `places` works would have taken the other two down with it, looking
+    exactly like the failure it exists to rule out.
+
+    BonFire is the right probe for the same reason the shrine mod uses it: one
+    shipped tile places it, in another chapter, so nothing about this donor
+    drags it in by accident.
+    """
+    from rsmm.engine import rsc_cache as RC
+
+    added = "DarkHills\\Objects_DarkHills\\BonFire.entity.ot"
+    defn = ContentDef(kind="poi", id="Adds", fields={
+        "base": _OVERRIDE_BASE, "chapters": ["Dark_Hills"],
+        "replace_base": True,
+        "places": [{"entity": added, "pos": [0.0, 0.0, 4.0]}]})
+    out = tmp_path / "assets"
+    files = poi.emit("mymod", defn, out)
+
+    tile_cache = out / f"Definitions/Tiles/{_OVERRIDE_BASE}.tiledef{RC.CACHE_SUFFIX}"
+    assert tile_cache in files
+    listed = set(RC.parse(tile_cache.read_bytes()))
+    assert any(added in line for line in listed), (
+        f"{added} is placed into the level but absent from the tile's preload "
+        f"cache, which faults the whole level at build time")
+
+    # Append-only: a cache that drops a shipped line crashes the game, and one
+    # that grows without bound wastes a preload on every placement.
+    donor = set(RC.parse(_corpus_cache(_OVERRIDE_BASE)))
+    assert not donor - listed, "the override dropped lines the shipped cache had"
+
+    # And the chapter cache is a superset of every tile's, 784/784 on the
+    # shipped start tile. A line that reaches the tile and not the chapter is
+    # the same null at level build, one level up.
+    map_cache = out / "Definitions/Maps/Dark_Hills_LiveOps_Update5.mapdef.UsedRscCache.ot"
+    chapter = set(RC.parse(map_cache.read_bytes()))
+    assert not listed - chapter, (
+        f"{len(listed - chapter)} line(s) reach the tile's cache but not the "
+        f"chapter's: {sorted(listed - chapter)[:4]}")
+
+
+def _corpus_cache(base: str) -> bytes:
+    from rsmm.engine import rsc_cache as RC
+    from rsmm.engine import tile_cook as TC
+    return poi._corpus(
+        RC.cache_path_for(f"Definitions/Tiles/{base}{TC.GEN_SUFFIX}"),
+        "test", "donor cache")
+
+
 def test_apply_does_not_register_a_cache_in_usedrsclist(tmp_path):
     """Caches are convention-loaded; none of the 575 shipped ones has a
     UsedRscList record, so appending one would clone a 3-line group from a
