@@ -8903,5 +8903,266 @@ do
     I.write_u32(CAT1 + 8, 0)
 end
 
+-- R.spawn: the template, the scene spawner and the spawn data are each checked
+-- against the structure EntityStore_CreateEntity dereferences, and only then is
+-- the engine called — on the main thread. The mock engine walks the same links
+-- the real one does (pool owner -> constructor, spawner+0x58 -> scene default,
+-- spawn-data fields -> entity), so a wrong argument fails here, not in-game.
+do
+    check(type(R.spawn) == "table" and type(R.spawn.at) == "function",
+          "R.spawn installs from rsmm/spawn.lua")
+    seed_hero()
+
+    local IMG_RTTI, k = 0x141200000, 0
+    local vft_of = {}
+    local function class(name)
+        if vft_of[name] then return vft_of[name] end
+        k = k + 1
+        local vft, col, td = IMG_RTTI + k * 0x100, IMG_RTTI + 0x100000 + k * 0x100,
+                             IMG_RTTI + 0x200000 + k * 0x100
+        local mangled = ".?AV" .. name .. "@@"
+        I.write_u64(vft - 8, col)
+        I.write_u32(col, 1)
+        I.write_u32(col + 0x0c, td - 0x140000000)
+        I.write_u32(col + 0x14, col - 0x140000000)
+        for i = 1, #mangled do I.write_u8(td + 0x10 + i - 1, mangled:byte(i)) end
+        I.write_u8(td + 0x10 + #mangled, 0)
+        vft_of[name] = vft
+        return vft
+    end
+    local function obj(addr, name) I.write_u64(addr, class(name)); return addr end
+    local function settings(addr)
+        obj(addr, "oCEntitySettings")
+        obj(addr + 0x18, "oCSpawnablePool")
+        I.write_u64(addr + 0x20, addr)                 -- the pool's owner is the template
+        return addr
+    end
+
+    local ENT = I.read_u64(HERO + 0x08)                -- the hero controller's entity
+    local saved_ent_vft = I.read_u64(ENT)
+    local SCENE, ECTX, OTHER = 0x60000000, 0x61000000, 0x61800000
+    local RES, HERO_T, LOOSE = 0x62000000, 0x63000000, 0x64000000
+    obj(ENT, "oCEntity")
+    I.write_u64(ENT + 0x28, settings(HERO_T))
+    I.write_u64(ENT + 0x30, SCENE)
+    I.write_f32(ENT + 0x324, 10.0); I.write_f32(ENT + 0x328, 0.0); I.write_f32(ENT + 0x32c, -4.0)
+    obj(OTHER, "oCGlobalEntityValueSceneContext")
+    obj(ECTX, "oCEntitySceneContext")
+    obj(ECTX + 0xa0, "oCEntitySpawner")
+    I.write_u64(ECTX + 0xa0 + 0x58, SCENE)
+    local CTXS = 0x60800000
+    I.write_u64(CTXS, OTHER); I.write_u64(CTXS + 8, ECTX)
+    I.write_u64(SCENE + 0x58, CTXS); I.write_u32(SCENE + 0x60, 2)
+    obj(RES, "oCEntitySettingsResource")
+    settings(RES + 0x98)
+    obj(LOOSE, "oCSomethingElse")
+
+    local calls, next_ent = {}, 0x65000000
+    engine["EntityStore_CreateEntity"] = function(spawner, st, sd, cb)
+        -- EntityPool_AllocNode: construct through the pool OWNER's vtable.
+        local owner = I.read_u64(st + 0x18 + 0x08)
+        if I.read_u64(owner) ~= vft_of["oCEntitySettings"] then
+            error("EntityPool_AllocNode: pool owner is not a template")
+        end
+        local e = next_ent; next_ent = next_ent + 0x1000
+        I.write_u64(e, vft_of["oCEntity"])
+        I.write_u64(e + 0x28, owner)
+        -- oCEntitySpawner place (+0x18): default the scene, then Spawn(sd).
+        if I.read_u64(spawner) ~= vft_of["oCEntitySpawner"] then
+            error("place: ctx is not an entity spawner")
+        end
+        if I.read_u64(sd + 0x08) == 0 then I.write_u64(sd + 0x08, I.read_u64(spawner + 0x58)) end
+        I.write_u64(e + 0x30, I.read_u64(sd + 0x08))
+        for i = 0, 8, 4 do I.write_f32(e + 0x324 + i, I.read_f32(sd + 0x10 + i)) end
+        calls[#calls + 1] = {
+            spawner = spawner, settings = st, cb = cb, parent = I.read_u64(sd + 0x38),
+            pos = { I.read_f32(sd + 0x10), I.read_f32(sd + 0x14), I.read_f32(sd + 0x18) },
+            quat = { I.read_f32(sd + 0x1c), I.read_f32(sd + 0x20), I.read_f32(sd + 0x24),
+                     I.read_f32(sd + 0x28) },
+            scale = { I.read_f32(sd + 0x2c), I.read_f32(sd + 0x30), I.read_f32(sd + 0x34) },
+        }
+        return e
+    end
+
+    check(R.spawn.template_of(HERO) == HERO_T,
+          "template_of follows a COMPONENT to its entity, then entity+0x28")
+    check(R.spawn.probe() == true, "probe walks hero -> scene -> spawner without calling")
+    check(#calls == 0, "and probe calls nothing")
+
+    local got
+    check(R.spawn.at(RES, { 1, 2, 3 }, { on_spawned = function(e) got = e end }) == true,
+          "at() queues")
+    check(#calls == 0, "and does not touch the engine off the main thread")
+    R.schedule._main_tick()
+    local c = calls[1]
+    check(c and c.spawner == ECTX + 0xa0, "spawns into the scene's own entity spawner (ctx+0xa0)")
+    check(c and c.settings == RES + 0x98, "a resource is unwrapped to its embedded settings (+0x98)")
+    check(c and c.cb == 0 and c.parent == 0, "no callback context, world space")
+    check(c and about(c.pos[1], 1) and about(c.pos[2], 2) and about(c.pos[3], 3),
+          "position lands at spawnData+0x10")
+    check(c and about(c.quat[4], 1) and about(c.quat[2], 0), "identity quaternion, w last")
+    check(c and about(c.scale[1], 1) and about(c.scale[3], 1), "unit scale")
+    check(got and I.read_u64(got + 0x30) == SCENE, "on_spawned gets the entity, placed in the scene")
+
+    calls = {}
+    R.spawn.at(RES, { 0, 0, 0 }, { yaw = math.pi, scale = 2 })
+    R.schedule._main_tick()
+    check(calls[1] and about(calls[1].quat[2], 1) and about(calls[1].quat[4], 0)
+          and about(calls[1].scale[2], 2), "yaw is a rotation about Y; scale is uniform")
+
+    calls = {}
+    check(R.spawn.copy(got, { offset = { 2, 0, 0 } }) == true, "copy queues")
+    R.schedule._main_tick()
+    check(calls[1] and calls[1].settings == RES + 0x98 and about(calls[1].pos[1], 3),
+          "copy reuses the entity's template, at its position plus the offset")
+
+    calls = {}
+    R.spawn.near(RES, { offset = { 0, 1, 0 } })
+    R.schedule._main_tick()
+    check(calls[1] and about(calls[1].pos[1], 10) and about(calls[1].pos[2], 1)
+          and about(calls[1].pos[3], -4), "near spawns at the hero plus the offset")
+
+    calls = {}
+    R.spawn.copy(HERO)
+    R.schedule._main_tick()
+    check(#calls == 0 and (R.spawn.why() or ""):find("hero", 1, true),
+          "the local hero's own template is refused by default")
+
+    check(R.spawn.at(LOOSE, { 0, 0, 0 }) == false, "a non-template is refused at the call")
+    check(R.spawn.at(RES, { 0, 0 }) == false, "a two-component position is refused")
+
+    calls = {}
+    R.spawn.at(RES, { 0, 0, 0 })
+    I.write_u64(RES + 0x98 + 0x20, 0)                  -- pool owner torn down meanwhile
+    R.schedule._main_tick()
+    check(#calls == 0, "a template whose pool no longer names it is not handed over")
+    I.write_u64(RES + 0x98 + 0x20, RES + 0x98)
+
+    calls = {}
+    I.write_u32(SCENE + 0x60, 1)                       -- only the value context left
+    R.spawn.at(RES, { 0, 0, 0 })
+    R.schedule._main_tick()
+    check(#calls == 0 and (R.spawn.why() or ""):find("oCEntitySceneContext", 1, true),
+          "no entity scene context: refused, and says so")
+    I.write_u32(SCENE + 0x60, 2)
+
+    local flag = R.game.flag
+    R.game.flag = function(n)
+        if n == "is_connected_to_session" then return true end
+        if n == "is_session_host" then return false end
+    end
+    calls = {}
+    R.spawn.at(RES, { 0, 0, 0 })
+    R.schedule._main_tick()
+    check(#calls == 0, "a session client never spawns")
+    R.game.flag = flag
+
+    -- The scene spawner's intrusive list (unlink FUN_140691780): head +0x28,
+    -- count +0x18, next at entity+0x10. Two wolves, one prop, and the hero.
+    local SP = ECTX + 0xa0
+    local function placed(addr, tmpl)
+        obj(addr, "oCEntity"); I.write_u64(addr + 0x28, tmpl); return addr
+    end
+    local W1, W2, PROP = placed(0x67000000, RES + 0x98), placed(0x67100000, RES + 0x98),
+                         placed(0x67200000, HERO_T)
+    I.write_u64(SP + 0x28, W1)
+    I.write_u64(W1 + 0x10, PROP); I.write_u64(PROP + 0x10, W2); I.write_u64(W2 + 0x10, 0)
+    I.write_u32(SP + 0x18, 3)
+    local ents = R.spawn.entities()
+    check(#ents == 3 and ents[1].entity == W1 and ents[3].template == RES + 0x98,
+          "entities walks the scene spawner's list in order, with each template")
+    local is_enemy = R.damage.is_enemy
+    R.damage.is_enemy = function(e) return e == W1 or e == W2 end
+    local list = R.spawn.enemies()
+    check(#list == 1 and list[1].template == RES + 0x98 and list[1].count == 2,
+          "enemies groups the list by template and keeps only enemy entities")
+    I.write_u32(SP + 0x18, 1)
+    check(#R.spawn.entities() == 1, "the walk never runs past the spawner's own count")
+    I.write_u64(W1, 0)
+    check(#R.spawn.entities() == 0, "a torn-down entity ends the walk")
+    R.damage.is_enemy = is_enemy
+    I.write_u32(SP + 0x18, 0); I.write_u64(SP + 0x28, 0)
+
+    engine["EntityStore_CreateEntity"] = nil
+    I.write_u64(ENT, saved_ent_vft)
+end
+
+-- Hero capture by IDENTITY. The HP pair is a cache that reads 0/0 until the first
+-- stat update, which made capture wait for a dream-shard pickup (17-124 s in
+-- eleven runs) on a candidate that was the right pointer from ~10 s. Identity is
+-- structural — owning entity + hero-controller component + HUD mirror — and is
+-- only trusted while the engine says a game scene is up, because the menu's
+-- character-select preview is a real hero controller too.
+do
+    local CAND, CENT, MIRR = 0x68000000, 0x68100000, 0x68200000
+    I.write_u64(CAND, 0x140f00000)               -- a vtable in the image
+    I.write_f32(CAND + 0x15c8, 0.0); I.write_f32(CAND + 0x15cc, 0.0)
+    I.write_u64(CAND + 0x08, CENT)
+    I.write_u64(CAND + 0x1d80, MIRR); I.write_f32(MIRR, 0.0)
+    I.write_u64(CENT, 0x140f10000)
+
+    local rtti_name, component, flag = R.rtti.name, R.net.component, R.game.flag
+    local ctrl_of = CAND
+    R.rtti.name = function(p) if p == CENT then return "oCEntity" end return rtti_name(p) end
+    R.net.component = function(e, id)
+        if e == CENT and id == 0x155aac59 then return ctrl_of end
+        return component(e, id)
+    end
+    local menu, scene
+    R.game.flag = function(n)
+        if n == "is_in_main_menu" then return menu end
+        if n == "is_in_game_scene" then return scene end
+    end
+
+    local function attempt(m, s)
+        menu, scene = m, s
+        fake_clock = fake_clock + 5                 -- past the 1 s scene cache
+        shared[0], shared[3] = 0, 0
+        for i = 8, 15 do shared[i] = 0 end
+        shared[2] = 1                               -- native capture active
+        shared[8] = CAND
+        return R.entity.hero()
+    end
+
+    check(attempt(false, true) == CAND,
+          "a 0/0-HP candidate is captured by identity while in a game scene")
+    check(R.entity._is_live(CAND), "and counts as the live hero for R.stat")
+    I.write_f32(CAND + 0x15c8, 50.0); I.write_f32(CAND + 0x15cc, 100.0)
+    I.write_f32(MIRR, 50.0)
+    check(attempt(true, true) == nil,
+          "the main menu does no capture at all, even of a live-HP preview hero")
+    I.write_f32(CAND + 0x15c8, 0.0); I.write_f32(CAND + 0x15cc, 0.0)
+    I.write_f32(MIRR, 0.0)
+    check(attempt(nil, nil) == nil,
+          "an unreadable scene falls back to the HP gate, which 0/0 fails")
+    local grant = I.is_grant_target
+    I.is_grant_target = function() return false end
+    ctrl_of = 0x68300000
+    check(attempt(false, true) == nil,
+          "an entity whose hero controller is a different pointer is not captured")
+    I.is_grant_target = function(p) return p == CAND end
+    check(attempt(false, true) == CAND,
+          "the native grant-target discriminator alone also proves a hero controller")
+    ctrl_of = CAND
+
+    -- A run signalled active on the gameplay bus counts as a game scene when the
+    -- engine value is not held (session 2a36: identity never fired on it alone).
+    local signalled, pa, ps = R.run.signalled, R.run._play_active, R.run._play_signalled
+    R.run.signalled = function() return false end
+    R.run._play_signalled, R.run._play_active = true, true
+    check(attempt(nil, nil) == CAND,
+          "an active run on the gameplay bus enables identity capture")
+    R.run._play_active = false
+    check(attempt(nil, nil) == nil, "and no active run leaves it off")
+    R.run._play_active = true
+    check(attempt(true, nil) == nil, "the main menu still wins over a run signal")
+    R.run.signalled, R.run._play_active, R.run._play_signalled = signalled, pa, ps
+    I.is_grant_target = grant
+
+    R.rtti.name, R.net.component, R.game.flag = rtti_name, component, flag
+    shared[0], shared[8] = 0, 0
+    fake_clock = fake_clock + 5
+end
+
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)

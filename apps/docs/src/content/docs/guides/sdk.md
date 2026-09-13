@@ -77,6 +77,7 @@ src/loader/lua/
   rsmm/schedule.lua   # R.schedule.{next_frame, after, next_main, after_main}
   rsmm/exp.lua        # R.exp — record a playtest verdict (read with `rsmm exp`)
   rsmm/poi.lua        # R.poi.on_generated — observe map generation (probe)
+  rsmm/spawn.lua      # R.spawn.{probe, at, near, copy} — instantiate an entity (experimental)
 ```
 
 Both trees are merged into `<game>/rsmm/lib/` by `rsmm install-loader`, which

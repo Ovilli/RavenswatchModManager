@@ -115,7 +115,7 @@ Total: **280** symbols across 22 categories.
 | `EntityPool_AllocNode` | `0x140690e50` | ✅ ok |  | void*(void* pool) |
 | `EntitySpawner_InstantiateRecord` | `0x140730f80` | ✅ ok |  | void(oCEntityCpntEntitySpawner* self, void* spawnRecord) |
 | `EntitySpawner_SpawnOne` | `0x140730150` | ✅ ok |  | void(oCEntityCpntEntitySpawner* self) |
-| `EntityStore_CreateEntity` | `0x1406f5dc0` | ✅ ok |  | void*(void* ctx, void* entityStore, void* xform4x4, void* cbCtx) |
+| `EntityStore_CreateEntity` | `0x1406f5dc0` | ✅ ok | ✔ | oCEntity*(oCEntitySpawner* spawner, oCEntitySettings* settings, oCEntitySpawnData* spaw… |
 | `EntityValueEntry_Ctor` | `0x140747120` | ✅ ok | ✔ | void(void*, void*) |
 | `EntityValueOverride_Alloc` | `0x140770290` | ✅ ok | ✔ | void*(void*, uint32_t, uint32_t) |
 | `EntityValueStore_ApplyModifierEvent` | `0x14074b2f0` | ✅ ok | ✔ | void(void* store, void* modifierEvent, void* a3, void* a4) |

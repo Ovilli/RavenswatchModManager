@@ -159,8 +159,10 @@ std::atomic<long> g_calls{0};
 // read as "our level never reaches the gate". A budget tuned to hide repetition
 // hid the signal instead. A map builds tens of levels, not thousands, so the
 // honest budget is "all of them".
-constexpr long kMaxLines = 400;
+constexpr long kMaxLines = 12;           // healthy / unreadable levels
+constexpr long kMaxFindingLines = 100;   // levels refused or built nothing
 std::atomic<long> g_lines{0};
+std::atomic<long> g_finding_lines{0};
 
 // The level's resource PATH, or "" when it does not read. Guarded like every
 // other field here: a half-built level is the state worth catching.
@@ -274,9 +276,18 @@ bool detour_gate(void* db, void* level, bool flag) {
     // The resource trace owns the counter, so say so instead of reporting a
     // flat zero as if it were a finding.
     const bool can_count = resolve_count() > 0;
-    const bool empty = !kept || declared == 0 || passing == 0
-                    || (can_count && fetched == 0);
-    if (g_lines.fetch_add(1) >= kMaxLines) return kept;
+    // A FINDING is something this trace actually measured going wrong. An
+    // unreadable ref array (`declared == 0` with the container unreadable) is
+    // this trace failing to see, not the level failing to build — counting it
+    // put every level of a normal chapter load in the log as [err] (403 lines
+    // in session 3636), which is precisely the wall severity exists to cut.
+    // `fetched == 0` is not one either: session 3636 read it for every level of
+    // a chapter that visibly built, alongside an unreadable container.
+    const bool empty = !kept || built_objs == 0 || passing == 0;
+    // Findings get their own allowance; healthy or unreadable levels only a
+    // handful, which is all "the trace is alive" needs.
+    if (empty ? g_finding_lines.fetch_add(1) >= kMaxFindingLines
+              : g_lines.fetch_add(1) >= kMaxLines) return kept;
 
     char name[256];
     level_name(level, name, sizeof(name));

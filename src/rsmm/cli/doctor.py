@@ -359,10 +359,26 @@ _DANGEROUS_FLAGS = {
 }
 
 
+# Reverse-engineering traces. Harmless to the game, but each one writes hundreds
+# of lines per launch, and none is in the desktop "Loader features" panel, so a
+# trace armed by hand for one investigation stays on until someone reads the
+# flags file. Three of them sat armed for days after the POI work (2026-09-10 to
+# 2026-09-13) and made up ~85% of every loader log.
+_TRACE_FLAGS = {
+    "RSMM_ENABLE_LEVEL_BUILD_TRACE": "logs a line per level built",
+    "RSMM_ENABLE_LEVEL_TRACE": "logs every level-load step",
+    "RSMM_ENABLE_RESOURCE_TRACE": "logs resource resolves and cache submits",
+    "RSMM_EVENT_PROBE": "attaches a raw field window to every gameplay event",
+    "RSMM_DUMP_POOL": "dumps the magic-item pool at load",
+    "RSMM_DUMP_SYMBOLS": "writes resolved_symbols.json at every boot (~1 s)",
+}
+
+
 def check_loader_flags(game_dir: Path) -> list[Result]:
     """Flag dangerous loader feature flags left armed in the flags file or env."""
     out: list[Result] = []
     armed: list[str] = []
+    traces: list[str] = []
     flags_file = game_dir / "rsmm_loader_flags.json"
     if flags_file.is_file():
         try:
@@ -374,8 +390,19 @@ def check_loader_flags(game_dir: Path) -> list[Result]:
             data = []
         if isinstance(data, list):
             armed += [str(f) for f in data if str(f) in _DANGEROUS_FLAGS]
+            traces += [str(f) for f in data if str(f) in _TRACE_FLAGS]
     armed += [name for name in _DANGEROUS_FLAGS
               if os.environ.get(name, "").strip() in ("1", "true", "yes", "on")]
+    traces += [name for name in _TRACE_FLAGS
+               if os.environ.get(name, "").strip() in ("1", "true", "yes", "on")]
+    if traces:
+        names = sorted(set(traces))
+        out.append(Result("WARN", f"debug trace flag(s) armed: {', '.join(names)}",
+                          "\n".join(f"{n}: {_TRACE_FLAGS[n]}" for n in names) +
+                          "\nThese flood the loader log. Remove them from "
+                          "rsmm_loader_flags.json / the Steam launch options "
+                          "once the investigation is over.",
+                          code="loaderflags.trace"))
     for name in sorted(set(armed)):
         out.append(Result("WARN", f"dangerous loader flag armed: {name}",
                           _DANGEROUS_FLAGS[name] +

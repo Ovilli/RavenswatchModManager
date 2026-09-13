@@ -1239,7 +1239,11 @@ _submodule_fn("progression", {
     ENTITY_IMG_BASE   = ENTITY_IMG_BASE,
     ENTITY_VALCTX_OFF = ENTITY_VALCTX_OFF,
     EV_STORE_OFF      = EV_STORE_OFF,
-    _hero_plausible   = _hero_plausible,
+    -- The LIVE-hero predicate, not the HP one: a hero captured by identity
+    -- reads 0/0 HP until the first stat update, and R.stat refusing on that
+    -- would be a regression from "no hero yet" (which falls back to the
+    -- value context) to "hero reads implausible".
+    _hero_plausible   = function(p) return R.entity._is_live(p) end,
     _ev_ctx           = _ev_ctx,
     _ctx_chain_ok     = _ctx_chain_ok,
 })
@@ -1846,6 +1850,24 @@ end
 do
     local ok, x = _submodule_fn("poi", { R = R, I = I })
     if ok and type(x) == "table" then R.poi = x end
+end
+
+-- runtime spawn ---------------------------------------------------------
+--
+-- Lives in rsmm/spawn.lua. Instantiates an entity from a template through the
+-- engine's own EntityStore_CreateEntity, into the scene's own entity spawner —
+-- the call every engine spawner ends in. Templates come from live entities and
+-- are identified by RTTI, so no build-specific address is involved.
+--
+--   R.spawn.probe()                        walk the chain, log it, call nothing
+--   R.spawn.copy(entity, {offset={2,0,0}}) another of that entity, beside it
+--   R.spawn.near(template, {offset=...})   at the hero
+--   R.spawn.at(template, {x,y,z}, opts)    queued to the main thread
+--
+-- Refused on a session client. Not yet proven in-game; see the module header.
+do
+    local ok, x = _submodule_fn("spawn", { R = R, I = I })
+    if ok and type(x) == "table" then R.spawn = x end
 end
 
 -- watchpoints -----------------------------------------------------------
@@ -4204,11 +4226,12 @@ R.on("tick", function()
     -- page-guarded reads, and gating it would make capture wait for
     -- `run_start`, which rides the analytics firehose and can arrive per
     -- CHAPTER rather than at hero spawn — trading log noise for a slower
-    -- capture, when noise was the only problem. The menu's preview character
-    -- cannot be promoted anyway: the plausibility gate needs live HP. Only the
-    -- DIAGNOSTICS inside are gated (see HERO_SCAN.in_play).
+    -- capture, when noise was the only problem. The menu's preview character is
+    -- kept out by R.entity.hero()'s scene gate (the engine's own "Is in main
+    -- menu" value), not by HP: capture is by hero IDENTITY now, because the HP
+    -- pair stays 0/0 until the first stat update (see R.entity._is_hero_object).
     local ok, h = pcall(I.shared_get, SHARED_HERO_SLOT)
-    if ok and type(h) == "number" and h ~= 0 and _hero_plausible(h) then return end
+    if ok and type(h) == "number" and h ~= 0 and R.entity._is_live(h) then return end
     R.entity.hero()          -- runs the pending-promotion + REJECT diagnostic
 end)
 

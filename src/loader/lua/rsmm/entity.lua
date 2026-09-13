@@ -225,6 +225,113 @@ local function _hero_plausible(e)
     return type(mv) == "number" and mv >= 0 and mv < 1e6
 end
 
+-- HERO IDENTITY, WITHOUT HP ---------------------------------------------------
+--
+-- _hero_plausible answers "is this hero's HP live", and capture used it to
+-- answer "is this the hero". Those are different questions, and conflating them
+-- is why capture took 17-124 s (eleven runs, 2026-09-12/13): the spawn-init
+-- candidate was the right pointer from ~10 s in every run — the same address
+-- was finally published minutes later — but +0x15c8/+0x15cc read 0/0 until the
+-- first stat update. They are a CACHE: the only initialiser (0x140392640, called
+-- from hero init) copies **(hero+0x1d80), the HUD mirror, into both, and the
+-- mirror itself reads 0 until stats first recompute — in practice the first
+-- dream-shard pickup, which is exactly when every slow capture landed.
+--
+-- Identity is structural instead, and needs no HP and no build-specific VA:
+--   * *(cand+0x08) is the owning entity, and RTTI names it oCEntity;
+--   * that entity's component map resolves oCDtEntityCpntHeroController (class
+--     id 0x155aac59, mined — R.damage classifies victims by the same map) to
+--     THIS pointer, so it is a hero controller and not a lookalike;
+--   * it owns a HUD HP-mirror pointer, which only the LOCAL player has.
+-- HP liveness stays required where HP is actually used (R.combat).
+local HERO_ID = {
+    CTRL_CLASS_ID = 0x155aac59,   -- oCDtEntityCpntHeroController
+    OWNER_OFF     = 0x08,         -- component -> owning oCEntity
+    SCENE_TTL     = 1.0,          -- seconds a scene answer is reused
+    scene_t = nil, scene_v = nil,
+}
+
+function R.entity._is_hero_object(p)
+    return (R.entity._hero_identity(p))
+end
+
+--- Same test, plus which link failed — for the rejection diagnostic, so a log
+--- that shows no capture also shows why.
+function R.entity._hero_identity(p)
+    if not (p and p ~= 0 and R.ptr and R.ptr.has_vtable(p)) then
+        return false, "candidate has no vtable"
+    end
+    local ent = I.read_u64(p + HERO_ID.OWNER_OFF)
+    if not R.ptr.has_vtable(ent) then return false, "owner +0x08 is not an object" end
+    local cls = R.rtti and R.rtti.name(ent)
+    if cls ~= "oCEntity" then return false, "owner rtti=" .. tostring(cls) end
+    -- Two independent "is this a hero controller" answers; either suffices.
+    -- The component map is exact but unproven on a hero; is_grant_target is the
+    -- native discriminator R.give and R.damage's `hero?=` probe already rely on
+    -- in-game (heroes own a magical-object component, pets and enemies do not).
+    local c = R.net and R.net.component and R.net.component(ent, HERO_ID.CTRL_CLASS_ID)
+    local grant = false
+    if I.is_grant_target then
+        local okg, g = pcall(I.is_grant_target, p)
+        grant = okg and g == true
+    end
+    if c ~= p and not grant then
+        return false, string.format("hero-controller component=0x%x grant_target=false", c or 0)
+    end
+    if not _ptr_plausible(I.read_u64(p + ENTITY_HUDMIRROR_OFF)) then
+        return false, "no HUD mirror pointer"
+    end
+    return true, "ok"
+end
+
+--- The engine's own answer to "is a run's hero possibly here": false in the
+--- main menu, true in a game scene, nil when it cannot be read. Cached for a
+--- second because R.entity.hero() runs once per gameplay event.
+---
+--- This gate is what makes identity capture safe: the menu's character-select
+--- preview IS a real hero controller with a mirror, and HP liveness used to be
+--- the only thing keeping it from being published.
+function R.entity._scene()
+    local now = (I.now and I.now()) or os.clock()
+    if HERO_ID.scene_t and now - HERO_ID.scene_t < HERO_ID.SCENE_TTL then
+        return HERO_ID.scene_v
+    end
+    local v
+    if R.game and R.game.flag then
+        local ok1, menu = pcall(R.game.flag, "is_in_main_menu")
+        local ok2, scene = pcall(R.game.flag, "is_in_game_scene")
+        if ok1 and menu == true then
+            v = false
+        elseif ok2 and scene ~= nil then
+            v = scene
+        end
+    end
+    -- A run the gameplay bus / analytics boundary says is active is a game
+    -- scene too. Session 2a36 (2026-09-13) had that signal live — its rejection
+    -- lines only print in play — while identity capture never fired, so
+    -- `is_in_game_scene` alone is not a trustworthy positive on this build.
+    if v ~= false then
+        local rr = R.run
+        local active
+        if rr and rr.signalled and rr.signalled() then
+            active = rr.active and rr.active() or false
+        elseif rr and rr._play_signalled then
+            active = rr._play_active == true
+        end
+        if active == true then v = true end
+    end
+    HERO_ID.scene_t, HERO_ID.scene_v = now, v
+    return v
+end
+
+--- May this pointer be published / kept as the hero? Live HP, or proven hero
+--- identity while the engine confirms a game scene.
+function R.entity._is_live(p)
+    if not p or p == 0 then return false end
+    if _hero_plausible(p) then return true end
+    return R.entity._scene() == true and R.entity._is_hero_object(p)
+end
+
 -- Is this candidate THIS machine's player?
 --
 -- The HUD-mirror gate in _hero_plausible is a local-only test by RE (only the
@@ -675,6 +782,13 @@ function R.entity.hero()
         local ok, h = pcall(I.shared_get, SHARED_HERO_SLOT)
         h = (ok and type(h) == "number") and h or 0
 
+        -- MAIN MENU: there is no run hero to find, so do no capture work at all
+        -- — no promotion, no rejection lines, no field scans. The candidates the
+        -- spawn-init hook stashes here are the character-select preview.
+        if R.entity._scene() == false then
+            return nil
+        end
+
         -- HERO SWITCH: a spawn-init candidate that is BOTH different from the
         -- published hero and already plausible means the hero changed, and it
         -- has to win over the published one.
@@ -691,7 +805,7 @@ function R.entity.hero()
         -- is empty and the wait is the hero's own fields going live.
         local okp, pend = pcall(I.shared_get, HERO_PENDING_SLOT)
         if okp and type(pend) == "number" and pend ~= 0 and pend ~= h
-            and not R.entity._retired(pend) and _hero_plausible(pend) then
+            and not R.entity._retired(pend) and R.entity._is_live(pend) then
             if I.shared_set then
                 pcall(I.shared_set, SHARED_HERO_SLOT, pend)
                 pcall(I.shared_set, HERO_AUTH_SLOT, 1)
@@ -703,7 +817,7 @@ function R.entity.hero()
         end
 
         if h ~= 0 then
-            if _hero_plausible(h) then return h end
+            if R.entity._is_live(h) then return h end
             -- DIAG (first few only): the native capture published a pointer the
             -- Lua plausibility gate now rejects — log the raw reads so a
             -- playtest log shows WHY (stale/freed entity? moved offsets?).
@@ -742,7 +856,7 @@ function R.entity.hero()
                 _note_hero_candidate()
             end
             if okr and type(cand) == "number" and cand ~= 0 and cand ~= h
-                and not R.entity._retired(cand) and _hero_plausible(cand) then
+                and not R.entity._retired(cand) and R.entity._is_live(cand) then
                 if R.entity._is_local(cand) then
                     fallback, fallback_slot = cand, i
                     break
@@ -767,7 +881,7 @@ function R.entity.hero()
 
         local okp, p = pcall(I.shared_get, HERO_PENDING_SLOT)
         if okp and type(p) == "number" and p ~= 0 and not R.entity._retired(p) then
-            if _hero_plausible(p) then
+            if R.entity._is_live(p) then
                 if I.shared_set then
                     pcall(I.shared_set, SHARED_HERO_SLOT, p)
                     pcall(I.shared_set, HERO_AUTH_SLOT, 1)
@@ -797,13 +911,15 @@ function R.entity.hero()
             -- log six scans of a blank preview character.
             if HERO_SCAN.in_play() then
                 local mirror = I.read_u64(p + ENTITY_HUDMIRROR_OFF)
+                local _, idwhy = R.entity._hero_identity(p)
                 local line = string.format(
                     "[rsmm.entity] pending hero 0x%x REJECTED: hp=%s max=%s "
-                    .. "mirror=%s mirror[0]=%s",
+                    .. "mirror=%s mirror[0]=%s identity=%s scene=%s",
                     p, tostring(I.read_f32(p + ENTITY_HP_OFF)),
                     tostring(I.read_f32(p + ENTITY_MAXHP_OFF)),
                     tostring(mirror),
-                    tostring(mirror and mirror ~= 0 and I.read_f32(mirror) or nil))
+                    tostring(mirror and mirror ~= 0 and I.read_f32(mirror) or nil),
+                    tostring(idwhy), tostring(R.entity._scene()))
                 if _diag_new(line) and _diag_budget(6) then
                     R.log(line)
                 end
@@ -953,7 +1069,7 @@ end
 _hero_capture_is_live = function()
     if not I.shared_get then return false end
     local ok, h = pcall(I.shared_get, SHARED_HERO_SLOT)
-    return ok and type(h) == "number" and h ~= 0 and _hero_plausible(h)
+    return ok and type(h) == "number" and h ~= 0 and R.entity._is_live(h)
 end
 
 _invalidate_hero_capture = function()

@@ -1,12 +1,21 @@
 ---
 title: Spawn system
-description: The spawner-component pipeline behind enemy/pet/prop creation — and why a generic R.spawn primitive is still blocked on the instantiator.
+description: The spawner-component pipeline behind enemy/pet/prop creation, and the engine call R.spawn is built on.
 ---
 
 :::note
-Status: mapped via Ghidra MCP + the headless-decompile bypass against
-`Ravenswatch.exe` (image base `0x140000000`), 2026-06-17. The pipeline is
-understood; the runtime **instantiator** is in statically-unreachable code.
+Status 2026-09-13: **the instantiator is found** and `R.spawn` is built on it
+(`src/loader/lua/rsmm/spawn.lua`); in-game proof is still owed. Every engine
+spawner ends in
+`EntityStore_CreateEntity(sceneSpawner, settings, &spawnData, nullptr)`: the
+template is an `oCEntitySettings` (a resource's embedded one lives at `+0x98`),
+whose own spawnable pool constructs the entity. The spawner is the
+`oCEntitySpawner` at `+0xa0` of the scene's `oCEntitySceneContext`. The spawn
+data holds position (`+0x10`), quaternion (`+0x1c`), scale (`+0x2c`) and parent
+(`+0x38`). The full evidence table is in `docs/_re/kinds/spawn-system.md` and
+on the `EntityStore_CreateEntity` symbol. The June notes below are kept as
+history. Their conclusion, that the instantiator was statically unreachable,
+turned out to be wrong.
 :::
 
 ## Goal

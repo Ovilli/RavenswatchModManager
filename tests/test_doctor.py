@@ -296,10 +296,25 @@ def test_dangerous_loader_flag_is_flagged(tmp_path, monkeypatch):
                and "ITEM_INJECT" in r.label for r in results)
 
 
+def test_armed_trace_flags_are_flagged(tmp_path, monkeypatch):
+    from rsmm.cli import doctor as doc
+
+    for name in (*doc._DANGEROUS_FLAGS, *doc._TRACE_FLAGS):
+        monkeypatch.delenv(name, raising=False)
+    (tmp_path / "rsmm_loader_flags.json").write_text(json.dumps(
+        ["RSMM_ENABLE_GAMEPLAY_EVENTS", "RSMM_ENABLE_RESOURCE_TRACE",
+         "RSMM_ENABLE_LEVEL_BUILD_TRACE"]))
+    results = doc.check_loader_flags(tmp_path)
+    traces = [r for r in results if r.code == "loaderflags.trace"]
+    assert len(traces) == 1
+    assert "RSMM_ENABLE_LEVEL_BUILD_TRACE" in traces[0].label
+    assert "RSMM_ENABLE_RESOURCE_TRACE" in traces[0].label
+
+
 def test_safe_loader_flags_are_ok(tmp_path, monkeypatch):
     from rsmm.cli import doctor as doc
 
-    for name in doc._DANGEROUS_FLAGS:
+    for name in (*doc._DANGEROUS_FLAGS, *doc._TRACE_FLAGS):
         monkeypatch.delenv(name, raising=False)
     (tmp_path / "rsmm_loader_flags.json").write_text(
         json.dumps(["RSMM_ENABLE_GAMEPLAY_EVENTS"]))

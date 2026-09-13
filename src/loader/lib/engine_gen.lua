@@ -21,6 +21,7 @@ return {
   ["EnemyController_Ctor"] = { pattern = "EnemyController_Ctor", offset = 0x0, sig = "pp" },
   ["EntityComponent_Activate"] = { pattern = "EntityComponent_Activate", offset = 0x0, sig = "vpp" },
   ["EntityEventTrigger_Fire"] = { pattern = "EntityEventTrigger_Fire", offset = 0x0, sig = "vp" },
+  ["EntityStore_CreateEntity"] = { pattern = "EntityStore_CreateEntity", offset = 0x0, sig = "ppppp" },
   ["EntityValueEntry_Ctor"] = { pattern = "EntityValueEntry_Ctor", offset = 0x0, sig = "vpp" },
   ["EntityValueOverride_Alloc"] = { pattern = "EntityValueOverride_Alloc", offset = 0x0, sig = "ppuu" },
   ["EntityValueStore_ApplyModifierEvent"] = { pattern = "EntityValueStore_ApplyModifierEvent", offset = 0x0, sig = "vpppp" },

@@ -114,6 +114,13 @@ inline EntityEventTrigger_Fire_fn EntityEventTrigger_Fire() {
     return reinterpret_cast<EntityEventTrigger_Fire_fn>(rsmm::fn_resolve(Sym::EntityEventTrigger_Fire_Pattern));
 }
 
+// EntityStore_CreateEntity  (EntityStore_CreateEntity)
+//   oCEntity*(oCEntitySpawner* spawner, oCEntitySettings* settings, oCEntitySpawnData* spawnData, void* cbCtx)
+using EntityStore_CreateEntity_fn = void*(*)(void*, void*, void*, void*);
+inline EntityStore_CreateEntity_fn EntityStore_CreateEntity() {
+    return reinterpret_cast<EntityStore_CreateEntity_fn>(rsmm::fn_resolve(Sym::EntityStore_CreateEntity_Pattern));
+}
+
 // EntityValueEntry_Ctor  (EntityValueEntry_Ctor)
 //   void(void*, void*)
 using EntityValueEntry_Ctor_fn = void(*)(void*, void*);

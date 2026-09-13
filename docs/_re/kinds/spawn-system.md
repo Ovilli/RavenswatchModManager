@@ -10,7 +10,69 @@
 > rats only spawn via the hero's data spawner when the trait is equipped).
 > RE date 2026-06-17, image base 0x140000000, via Ghidra MCP.
 
-## Verdict so far: tractable but multi-step; instantiator not yet located
+## ★ SOLVED STATICALLY 2026-09-13 — `R.spawn` built on it (in-game proof owed)
+
+Everything below this section is the historical trail and is **wrong in two
+places**: the instantiator was not "statically unreachable" (June), and
+`EntityStore_CreateEntity` is not "template-agnostic" (July). The call every
+engine spawner ends in is:
+
+```cpp
+entity = EntityStore_CreateEntity(spawner, settings, &spawnData, nullptr)   // FUN_1406f5dc0
+```
+
+| Argument | What it really is | Evidence |
+|---|---|---|
+| `settings` | `oCEntitySettings` — the template. Embeds an `oCSpawnablePool` at `+0x18` whose owner (`+0x20`) is the settings itself. | ctor `FUN_1406dfe30` (`param_1[3] = oCSpawnablePool::vftable; param_1[4] = param_1`) |
+| — construct | `EntityPool_AllocNode` vcalls owner `+0x50` = `FUN_1406e0840` → `FUN_1406f9920` = `malloc(0x640)` + oCEntity ctor `FUN_1406e2580(e, settings)`, template stored at **`entity+0x28`** | vtable `0x140f74688` slot 10 |
+| — from a resource | `oCEntitySettingsResource` embeds its settings at **`+0x98`**; every caller passes `res + 0x98` (`FUN_140435720`, `FUN_140452a50`, SpawnOne's `*(ref+0x1a8)+0x98`) | ctor `FUN_1406e68d0` (`FUN_1406dfe30(param_1 + 0x13)`) |
+| `spawner` | the scene's `oCEntitySpawner`, embedded at **`+0xa0`** of `oCEntitySceneContext`, found from `*(entity+0x30)` via `GameScene_FindContextByTester` | ctor `FUN_140702450` (`param_1[0x14] = oCEntitySpawner::vftable`); getter `FUN_140730860` |
+| — place | spawner vtable `+0x18` = `FUN_1406f5ef0`: link into spawner list, default `sd+0x08 = spawner+0x58`, tail-call `entity->vtbl[+0x28](entity, sd)` | `oCEntitySpawner` vtable `0x140f07728` slot 3 |
+| `spawnData` | `oCEntitySpawnData` (vft `0x140f1cd18`), read field-by-field by `FUN_1406e41e0`: `+0x08` scene, `+0x10` pos vec3, `+0x1c` quat xyzw, `+0x2c` scale vec3, `+0x38` parent, `+0x40/+0x48` → entity `+0x240/+0x248`, `+0x50` on-spawned functor | consumer decompile; allocator `FUN_1407343a0` and both stack builders initialise identity quat + unit scale |
+| `cbCtx` | may be null | `FUN_140452a50` passes 0 |
+
+Entity layout confirmed on the way: `+0x28` template, `+0x30` scene, `+0x324`
+position (local to parent). Scene context arrays: `+0x58/+0x60` and
+`+0x68/+0x70`, which is what lets the SDK find the context by RTTI instead of a
+build-specific tester vftable.
+
+**Built**: `src/loader/lua/rsmm/spawn.lua` (`R.spawn.probe/at/near/copy/now/
+template_of/entities/enemies`). No new address anywhere — templates and the
+spawner are validated by RTTI name and structure before the call. Lua spec block
+in `tests/lua/rsmm_spec.lua` models the engine's derefs.
+
+**In-game 2026-09-13 (probe only)**: every link read back ok on a live run —
+hero component → `oCEntity`, `+0x28` → `oCEntitySettings` with intact pool,
+scene → `oCEntitySceneContext` → `+0xa0` `oCEntitySpawner`. The engine was not
+called yet.
+
+**Where templates come from.** NOT enemy definitions: the enemy picker
+`FUN_1403316b0` resolves `def+0x288` into `def+0x2b8`, gives the pointer to the
+spawn entry (`FUN_1403398b0` alloc + `FUN_1406e6eb0` set), then releases and
+**nulls** `def+0x2b8` — measured 0 found in-game. Live entities hold it at
+`+0x28`, and the scene spawner lists what it placed (unlink `FUN_140691780`:
+count `+0x18`, tail `+0x20`, head `+0x28`; entity prev `+0x08` with `-1` first,
+next `+0x10`). Camp spawners may keep enemies on their OWN store
+(`FUN_140730860` returns `component+0x68` in several modes), so the scene list
+is not guaranteed to hold enemies; a hit victim (`R.damage.on` → `target`) is.
+**Measured in-game 2026-09-13 (session 5e4f):** 3 of 3 hit camp enemies had
+`entity+0x38` = a separate `oCEntitySpawner` (the camp's own store), were not on
+the scene list, and read `enemy` from both `R.damage.is_enemy` and the class-id
+component map; the scene list (497 entities) held 2 other enemy templates.
+Reading a template's name via strings off its resource returned nothing.
+
+**Still open**: (1) the in-game call; (2) multiplayer — the engine spawner gates
+on authority (`FUN_140727550`) and does replication work for networked
+templates (SpawnOne's `settings+0x19f0` branch) that this path skips, so
+`R.spawn` refuses on a session client and host-side visibility to clients is
+unknown; (3) spawning by NAME/path — `Resource_LookupByPath`'s cabi is wrong
+(see its symbol note), so templates come from live entities or resolved enemy
+refs for now; (4) despawn.
+
+`hook_spawn.cpp` (the June read-only trace on `FUN_140330c30`) is obsolete: its
+target has no pattern and it disables itself.
+
+## Verdict so far (2026-06-17, superseded above): tractable but multi-step; instantiator not yet located
 
 The loader already exposes typed FFI by symbol (`_internal.resolve`/`call`), so
 the SDK side is light **once the spawn fn + ABI is known**: add a symbol with a
