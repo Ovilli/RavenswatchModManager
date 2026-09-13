@@ -213,3 +213,27 @@ def test_class_table_refuses_a_mismatched_table():
     orphan = blob[:rows[0].end] + spliced + blob[rows[0].end:]
     with pytest.raises(SC.SkillCloneError, match="but 29 rows were parsed"):
         SC.class_table(orphan)
+
+
+@pytest.mark.parametrize(("hero", "bank"), [
+    ("Red", "Hero_RED"),               # case differs from the herodef stem
+    ("Sun_Wukong", "Hero_SunWukong"),  # underscore differs from the herodef stem
+    ("Snow_Queen", "Hero_Snow_Queen"),
+])
+def test_install_bank_tolerates_herodef_stem_spelling(tmp_path, monkeypatch, hero, bank):
+    from rsmm.cli import apply_mods
+    from rsmm.sdk.kinds import skills
+
+    decoded = f"Text/{bank}_Common~GAM.xls.LocalText.gen"
+    amap = {
+        # a near-miss bank must not be picked up by the loose match
+        "Text/Hero_RED_Barks~GAM.xls.LocalText.gen": "Qqpi\\decoy",
+        decoded: "Qqpi\\bank",
+    }
+    cooked = tmp_path / apply_mods.COOKING_REL / "Qqpi" / "bank"
+    cooked.parent.mkdir(parents=True)
+    cooked.write_bytes(b"")
+    monkeypatch.setattr(apply_mods, "find_game_dir", lambda: tmp_path)
+    monkeypatch.setattr(apply_mods, "load_asset_map", lambda: amap)
+
+    assert skills._install_bank(hero) == (cooked, decoded)

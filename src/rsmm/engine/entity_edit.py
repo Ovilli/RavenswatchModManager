@@ -31,6 +31,7 @@ import struct
 
 from . import cooked
 
+_BEGIN = b"\x11\x11\xbb\xaa"
 _END = b"\x22\x22\xbb\xaa"
 
 
@@ -102,10 +103,73 @@ class EntityEdit:
         return (names.index("oCEntityCpntPicker")
                 if "oCEntityCpntPicker" in names else None)
 
+    def _node_guid(self, name: str) -> bytes | None:
+        """Identity GUID of the one node DEFINED as ``name`` (its record opens
+        with ``END, 16B GUID, lstr name``), or None when not exactly one."""
+        hits = [o for o in self.find_lstrings(name)
+                if o >= 20 and self.concat[o - 20:o - 16] == _END]
+        return self.concat[hits[0] - 16:hits[0]] if len(hits) == 1 else None
+
+    def _subtest_ranges(self, tester: str) -> list[tuple[int, int]]:
+        """Concat ranges of every sub-test the tester node ``tester`` evaluates.
+
+        A tester keeps its conditions out of line: an inline
+        ``oCCombinerCpntTestSettings`` holds ``u8, u8 op, u32 n, n * u32``
+        sub-object ids, and sub-object id ``i`` is section ``1 + i``. A sub-test
+        that is itself a combiner (a section opening with that class index)
+        contributes its own sub-tests, recursively. Raises rather than guessing
+        when the tester or its combiner cannot be found.
+        """
+        names = [c.name for c in self._cf.classes]
+        if "oCCombinerCpntTestSettings" not in names:
+            raise ValueError("this file has no combiner test class")
+        comb = names.index("oCCombinerCpntTestSettings")
+        pat = struct.pack("<I", len(tester)) + tester.encode("utf-8")
+        defs = [o for o in self.find_lstrings(tester)
+                if o >= 20 and self.concat[o - 20:o - 16] == _END]
+        if len(defs) != 1:
+            raise ValueError(f"subtest_of: expected one node named {tester!r}, "
+                             f"found {len(defs)}")
+        bounds, lo = [], 0
+        for n in self._section_lens:
+            bounds.append((lo, lo + n))
+            lo += n
+        sec = next(i for i, (a, b) in enumerate(bounds) if a <= defs[0] < b)
+        a, b = bounds[sec]
+        payload = self.concat[a:b]
+        at = payload.find(_BEGIN + struct.pack("<I", comb), defs[0] - a + len(pat))
+        if at < 0:
+            raise ValueError(f"subtest_of: {tester!r} has no combiner")
+
+        def ids_at(buf: bytes, off: int) -> list[int]:
+            n = struct.unpack_from("<I", buf, off + 2)[0]
+            if n > 64 or off + 6 + 4 * n > len(buf):
+                raise ValueError(f"subtest_of: {tester!r} combiner is not readable")
+            return list(struct.unpack_from(f"<{n}I", buf, off + 6))
+
+        out: list[tuple[int, int]] = []
+        todo = ids_at(payload, at + 8)
+        seen: set[int] = set()
+        while todo:
+            sid = todo.pop()
+            if sid in seen or not 0 <= sid < len(bounds) - 2:
+                continue
+            seen.add(sid)
+            a, b = bounds[1 + sid]
+            body = self.concat[a:b]
+            if struct.unpack_from("<I", body, 0)[0] == comb:
+                todo += ids_at(body, 4)
+            else:
+                out.append((a, b))
+        if not out:
+            raise ValueError(f"subtest_of: {tester!r} evaluates no sub-tests")
+        return out
+
     def rewire_ref(self, from_label: str, to_label: str,
                    *, expect_classid: int | None = None,
                    count: int | None = 1, exact: bool = False,
-                   within: str | None = None, within_span: int = 2048) -> int:
+                   within: str | None = None, within_span: int = 2048,
+                   subtest_of: str | None = None) -> int:
         """Repoint a component reference ("picker") at a different target node.
 
         Cross-references inside a cooked entity are 16-byte GUID handles, not
@@ -136,18 +200,24 @@ class EntityEdit:
         """
         want = expect_classid if expect_classid is not None else self._picker_classid()
 
-        scope = None
+        scope: list[tuple[int, int]] | None = None
         if within is not None:
             anchors = self.find_lstrings(within)
             if not anchors:
                 raise ValueError(f"rewire scope {within!r} not found")
-            scope = (anchors[0], anchors[0] + within_span)
+            scope = [(anchors[0], anchors[0] + within_span)]
+        if subtest_of is not None:
+            ranges = self._subtest_ranges(subtest_of)
+            scope = ranges if scope is None else [
+                (max(a, c), min(b, d)) for a, b in scope for c, d in ranges
+                if max(a, c) < min(b, d)]
 
         def _picker_guid_offs(substr: str, scoped: bool = False) -> list[int]:
             hits = [(o, t) for (o, t) in self.find_lstrings_containing(substr)
                     if t.startswith("[")  # picker refs carry a [Type] prefix
                     and (not exact or t == substr)
-                    and (not scoped or scope is None or scope[0] <= o < scope[1])]
+                    and (not scoped or scope is None
+                         or any(lo <= o < hi for lo, hi in scope))]
             if not hits:
                 raise ValueError(f"no picker reference matching {substr!r}")
             offs = []
@@ -167,7 +237,14 @@ class EntityEdit:
             return offs
 
         # All refs to one node share its GUID, so any of the target's is fine.
-        target_guid = self.concat[_picker_guid_offs(to_label)[0]:][:16]
+        # A node nothing references yet (one added by `clone_nodes`) has no
+        # such label, so fall back to its own definition: END, GUID, name.
+        try:
+            target_guid = self.concat[_picker_guid_offs(to_label)[0]:][:16]
+        except ValueError:
+            target_guid = self._node_guid(to_label.rsplit("\\", 1)[-1])
+            if target_guid is None:
+                raise
         dsts = _picker_guid_offs(from_label, scoped=True)
         if count is not None:
             dsts = dsts[:count]
@@ -175,8 +252,33 @@ class EntityEdit:
         if not todo:
             raise ValueError(
                 f"rewire {from_label!r} -> {to_label!r}: already points there")
+        # A picker inside a value picker is read through an accessor that depends
+        # on the target's class and value type (see entity_append's accessor
+        # notes); repointing across either without updating it reads garbage.
+        from . import entity_append as EA
+        accessors = EA._Accessors(self._cf)
         for o in todo:
             self.queue(o, 16, target_guid)
+            n = struct.unpack_from("<I", self.concat, o + 16)[0]
+            label_end = o + 20 + n
+            off = EA._accessor_off(self.concat, label_end, accessors.union)
+            if off is None:
+                continue
+            try:
+                old_label = self.concat[o + 20:label_end].decode("utf-8", "replace")
+                fixed = EA.fix_accessor(self.concat, label_end, self.concat[o:o + 16],
+                                        target_guid, accessors, old_label, to_label)
+            except EA.EntityAppendError as e:
+                raise ValueError(f"rewire {from_label!r} -> {to_label!r}: {e}") from e
+            fixed = EA.fix_format_slot(fixed, o - 8, label_end, target_guid, accessors)
+            if fixed[off:off + 16] != self.concat[off:off + 16]:
+                self.queue(off, 16, fixed[off:off + 16])
+            if fixed[off + 32:off + 36] != self.concat[off + 32:off + 36]:
+                self.queue(off + 32, 4, fixed[off + 32:off + 36])
+            entry = EA.format_slot_at(self.concat, o - 8, accessors)
+            fmt = slice(entry + 8, entry + 12) if entry is not None else None
+            if fmt is not None and fixed[fmt] != self.concat[fmt]:
+                self.queue(entry + 8, 4, fixed[fmt])
         return len(todo)
 
     def set_int_before_nth_end(self, label: str, end_index: int, new: int,

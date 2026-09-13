@@ -253,3 +253,233 @@ def test_within_scope_that_does_not_exist_is_an_error():
     ed = EntityEdit(_wrap(payload))
     with pytest.raises(ValueError, match="scope"):
         ed.rewire_ref("[State] a\\b", "[State] c\\d", within="No Such Node")
+
+
+_WUKONG = (Path(__file__).resolve().parent.parent / "data" / "uncooked" / "EntitySettings"
+           / "Heroes" / "Hero_SunWukong" / "Hero_SunWukong.entity.ot.EntitySettingsResource.gen")
+
+
+def _wukong_clone_emit(tmp_path):
+    from rsmm.sdk.content import ContentDef
+    from rsmm.sdk.kinds import talents
+
+    finisher = "[Anim Clip] Hero_SunWukong\\Skill Attack Finisher\\Skill Attack Finisher Clip"
+    clip4 = "[Anim Clip] Hero_SunWukong\\Ability Basic\\Basic Attack Clip 4"
+    defn = ContentDef(kind="talent", id="twirl_finisher", fields={
+        "hero": "SunWukong",
+        "file": "Hero_SunWukong.entity",
+        "clone_nodes": [{
+            "source": "Basic Attack Combo Selector",
+            "name": "Skill Dash Attack Finisher Clip Selector",
+            "retarget": [
+                {"from": "[Dt Attack Combo] Hero_SunWukong\\Skill Attack Finisher"
+                         "\\Skill Attack Finisher Combo", "to": finisher},
+                {"from": "[Dt Attack Combo] Hero_SunWukong\\Ability Basic"
+                         "\\Basic Attack Combo", "to": clip4},
+            ],
+        }],
+        "rewires": [{
+            "trigger": "[Anim Clip] Hero_SunWukong\\Skill Dash Attack\\Skill Dash Attack Clip",
+            "action": "Skill Dash Attack Finisher Clip Selector",
+            "exact": True, "within": "Basic Attack Clip Selector Step 1",
+            "within_span": 600,
+        }],
+    })
+    return talents.emit("wukong-twirl-finisher", defn, tmp_path)[0].read_bytes()
+
+
+def test_clone_node_is_attached_retargeted_and_wired(tmp_path):
+    """A cloned selector must land in the component VECTOR (not as an orphan),
+    carry the retargeted GUIDs, and be what the rewired reference now names."""
+    if not _WUKONG.is_file():
+        pytest.skip("vanilla Hero_SunWukong entity corpus file not present")
+    from rsmm.engine import entity_append as EA
+
+    raw = _WUKONG.read_bytes()
+    out = _wukong_clone_emit(tmp_path)
+    before, after = cooked.parse(raw), cooked.parse(out)
+
+    n = EA.validate_layout(before)
+    assert EA.validate_layout(after) == n + 1
+    _o, ids = EA.component_vector(after.sections[-1].payload)
+    assert ids[-1] == n
+
+    name = "Skill Dash Attack Finisher Clip Selector"
+    clone = after.sections[EA.node_section(after, name)].payload
+    for target in ("Skill Attack Finisher Clip", "Basic Attack Clip 4",
+                   "Skill Attack Finisher"):           # the Pillar-owned condition
+        assert EA.node_guid(after, target) in clone
+    for gone in ("Skill Attack Finisher Combo", "Basic Attack Combo"):
+        assert EA.node_guid(after, gone) not in clone
+
+    step1 = after.sections[EA.node_section(after, "Basic Attack Clip Selector Step 1")].payload
+    assert EA.node_guid(after, name) in step1
+    assert EA.node_guid(after, "Skill Dash Attack Clip") not in step1
+
+    # Deterministic identity: re-emitting a mod must not churn its bytes.
+    assert _wukong_clone_emit(tmp_path / "again") == out
+
+
+def test_clone_node_refuses_a_name_that_already_exists():
+    if not _WUKONG.is_file():
+        pytest.skip("vanilla Hero_SunWukong entity corpus file not present")
+    from rsmm.engine import entity_append as EA
+
+    with pytest.raises(EA.EntityAppendError, match="already exists"):
+        EA.clone_component(_WUKONG.read_bytes(), "Basic Attack Combo Selector",
+                           "Basic Attack Clip Selector Step 1")
+
+
+_GN_STATE = "[State] Hero_Piper\\Skill Attack Ghost Notes\\Skill Attack Ghost Notes"
+_CAN_FIGHT = "[State] Character_Common\\Base\\Child State Can Fight"
+
+
+def test_subtest_of_moves_only_the_testers_condition():
+    """The Ghost Notes state label sits on its CONTROLLER first and on the
+    notify tester's sub-test second. `subtest_of` must move the second and
+    leave the talent controller alone."""
+    if not _PIPER.is_file():
+        pytest.skip("vanilla Hero_Piper entity corpus file not present")
+    ed = EntityEdit(_PIPER.read_bytes())
+    gn = ed._node_guid("Skill Attack Ghost Notes")
+    assert ed.rewire_ref(_GN_STATE, _CAN_FIGHT, exact=True,
+                         subtest_of="Skill Attack Ghost Notes Notify Tester") == 1
+    out = EntityEdit(ed.emit())
+    refs = [o - 16 for o in out.find_lstrings(_GN_STATE)]
+    assert [out.concat[o:o + 16] == gn for o in refs] == [True, False]
+
+
+def test_subtest_of_refuses_a_node_without_a_combiner():
+    if not _PIPER.is_file():
+        pytest.skip("vanilla Hero_Piper entity corpus file not present")
+    ed = EntityEdit(_PIPER.read_bytes())
+    with pytest.raises(ValueError, match="has no combiner"):
+        ed.rewire_ref(_GN_STATE, _CAN_FIGHT, exact=True,
+                      subtest_of="Skill Attack Ghost Notes Counter")
+
+
+def test_clone_retarget_moves_every_tier_reference():
+    """A per-rarity selector names its controller once per tier; a retarget
+    that moved only the first would leave two tiers keyed to the old talent."""
+    if not _PIPER.is_file():
+        pytest.skip("vanilla Hero_Piper entity corpus file not present")
+    from rsmm.engine import entity_append as EA
+
+    ctrl = "[Dt Skill Controller] Hero_Piper\\Skills\\Skill Controller "
+    out = EA.clone_component(
+        _PIPER.read_bytes(), "Skill Attack Ghost Notes Requirement Selector",
+        "Horde Attacks Required Selector",
+        [(ctrl + "Attack Ghost Notes", ctrl + "Trait More Controllable Pets")])
+    cf = cooked.parse(out)
+    clone = cf.sections[EA.node_section(cf, "Horde Attacks Required Selector")].payload
+    assert clone.count(EA.node_guid(cf, "Skill Controller Trait More Controllable Pets")) == 3
+    assert EA.node_guid(cf, "Skill Controller Attack Ghost Notes") not in clone
+
+
+def test_clone_rename_gives_a_counter_its_own_event_name():
+    """A counter listens by event NAME, so a copy that kept its source's name
+    would count the source's events too. `rename` must replace the names in the
+    copy and leave the source counter untouched."""
+    if not _PIPER.is_file():
+        pytest.skip("vanilla Hero_Piper entity corpus file not present")
+    from rsmm.engine import entity_append as EA
+
+    def lstr(s: str) -> bytes:
+        return struct.pack("<I", len(s)) + s.encode()
+
+    out = EA.clone_component(
+        _PIPER.read_bytes(), "Skill Attack Ghost Notes Counter", "Horde Attacks Counter",
+        rename=[("SKILL_ATTACK_GHOST_NOTES_COUNTER_INC", "HORDE_ATTACKS_COUNTER_INC")])
+    cf = cooked.parse(out)
+    clone = cf.sections[EA.node_section(cf, "Horde Attacks Counter")].payload
+    source = cf.sections[EA.node_section(cf, "Skill Attack Ghost Notes Counter")].payload
+    assert lstr("HORDE_ATTACKS_COUNTER_INC") in clone
+    assert lstr("SKILL_ATTACK_GHOST_NOTES_COUNTER_INC") not in clone
+    assert lstr("SKILL_ATTACK_GHOST_NOTES_COUNTER_INC") in source
+
+
+def _accessor_after(payload: bytes, label: str) -> tuple[str, int]:
+    """(accessor hex, union type) following the picker labelled ``label``."""
+    lab = struct.pack("<I", len(label)) + label.encode()
+    end = payload.index(lab) + len(lab)
+    assert payload[end:end + 4] == _END
+    return payload[end + 4:end + 8].hex(), struct.unpack_from("<I", payload, end + 16)[0]
+
+
+def test_clone_retarget_switches_the_accessor_across_classes():
+    """A value picker reads its target through an accessor tied to the target's
+    class and type. Repointing a Value Operation reference at a Value Selector
+    while keeping the operation accessor made the game read garbage — a cloned
+    count switch spawned ~22 rats at once. The accessor must follow the target;
+    a same-class retarget (per-tier skill-controller checks) must keep its own."""
+    if not _PIPER.is_file():
+        pytest.skip("vanilla Hero_Piper entity corpus file not present")
+    from rsmm.engine import entity_append as EA
+
+    op = ("[Value Operation] Hero_Piper\\Skill Trait More Controllable Pets"
+          "\\Skill Trait More Controllable Pets Count Operation")
+    sel = ("[Value Selector] Hero_Piper\\Skill Defense Spawn Pets"
+           "\\Skill Defense Spawn Pets Max Count Selector")
+    raw = _PIPER.read_bytes()
+    src = cooked.parse(raw)
+    switch = "Trait Ability Max Controllable Pets Selector"
+    before = src.sections[EA.node_section(src, switch)].payload
+    assert _accessor_after(before, op) == ("8686d20f", 1)       # value operation, int
+
+    out = EA.clone_component(raw, switch, "Count Switch", [(op, sel)])
+    cf = cooked.parse(out)
+    clone = cf.sections[EA.node_section(cf, "Count Switch")].payload
+    assert _accessor_after(clone, sel) == ("65c9d20f", 1)       # value selector, int
+
+    ctrl = "[Dt Skill Controller] Hero_Piper\\Skills\\Skill Controller "
+    out = EA.clone_component(raw, "Skill Attack Ghost Notes Requirement Selector",
+                             "Tier Copy", [(ctrl + "Attack Ghost Notes",
+                                            ctrl + "Trait More Controllable Pets")])
+    cf = cooked.parse(out)
+    clone = cf.sections[EA.node_section(cf, "Tier Copy")].payload
+    lab = struct.pack("<I", len(ctrl) + len("Trait More Controllable Pets")) + (
+        ctrl + "Trait More Controllable Pets").encode()
+    accs, i = [], clone.find(lab)
+    while i != -1:
+        end = i + len(lab)
+        accs.append(clone[end + 4:end + 8].hex())
+        i = clone.find(lab, end)
+    assert accs == ["f96bfc15", "f16bfc15", "f76bfc15"]         # one per tier, kept
+
+
+def test_clone_retarget_gives_a_card_slot_the_format_of_its_new_value():
+    """A talent-card slot prints through its own format type (0 decimal, 1
+    integer). Sound Barrier's decimal slots, repointed at Horde's integer
+    values, printed "For every 6.7263e-44 notes". The slot must take the new
+    value's type; the display option comes from a shipped slot showing the
+    same value when one exists."""
+    if not _PIPER.is_file():
+        pytest.skip("vanilla Hero_Piper entity corpus file not present")
+    from rsmm.engine import entity_append as EA
+
+    armor = "Hero_Piper\\Skill Defensive Armor Quest\\Skill Defensive Armor Quest "
+    horde = "[Value Selector] Hero_Piper\\Skill Trait More Controllable Pets\\"
+    out = EA.clone_component(
+        _PIPER.read_bytes(), "Skill String Desc Defensive Armor Quest", "Card Copy",
+        [("[Value] " + armor + "Armor Per Proc",                      # decimal slot
+          horde + "Skill Trait More Controllable Pets Per Spawn Amount Selector"),
+         ("[Value] " + armor + "Complete Shield Duration",            # decimal slot
+          horde + "Skill Trait More Controllable Pets Amount Selector")])
+    cf = cooked.parse(out)
+    acc = EA._Accessors(cf)
+    card = cf.sections[EA.node_section(cf, "Card Copy")].payload
+    pat = cooked.MARK_BEGIN + struct.pack("<I", acc.picker)
+    slots, i = [], card.find(pat)
+    while i != -1:
+        entry = EA.format_slot_at(card, i, acc)
+        if entry is not None:
+            n = struct.unpack_from("<I", card, i + 24)[0]
+            off = EA._accessor_off(card, i + 28 + n, acc.union)
+            slots.append((struct.unpack_from("<I", card, entry + 8)[0],
+                          struct.unpack_from("<I", card, off + 32)[0]))
+        i = card.find(pat, i + 1)
+    # slots 1 and 4 now read Horde's integers: integer format, and the display
+    # option Horde's own card uses for those two values (1 and 0)
+    assert slots[1] == (1, 1)
+    assert slots[4] == (1, 0)
+    assert slots[0][0] == 1 and slots[3][0] == 0     # untouched slots keep theirs

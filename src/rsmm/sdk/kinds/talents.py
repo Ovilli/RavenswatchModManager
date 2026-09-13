@@ -26,7 +26,9 @@ Fields:
                                scaling becomes flat).
     ``rewires``                list of ``{trigger, action}`` (or ``{from, to}``,
                                plus optional ``all = true`` / ``count``,
-                               ``exact = true`` and ``within = "<node>"``)
+                               ``exact = true``, ``within = "<node>"`` and
+                               ``subtest_of = "<tester node>"``, which limits
+                               the move to the conditions that tester checks)
                                GUID rewires: repoint a component reference whose
                                label contains ``trigger`` at the node referenced
                                by ``action`` — e.g. fire a different State from
@@ -42,6 +44,16 @@ Fields:
                                interleave an enabled-bool with the number), and
                                always give ``old`` so a shifted index fails
                                loudly. Needs ``file``.
+    ``clone_nodes``            list of ``{source, name, retarget}``: append a
+                               copy of the component ``source`` named ``name``
+                               (new identity, attached to the entity's component
+                               vector). ``retarget`` is a list of ``{from, to}``
+                               reference labels repointed inside the copy, and
+                               ``rename`` a list of ``{from, to}`` whole strings
+                               replaced in it (e.g. a counter's event name).
+                               Nothing uses the copy until a ``rewires`` entry
+                               points an existing reference at it (``action`` =
+                               the new name). Needs ``file``.
     ``int_patches``            list of ``{label, end_index, old, new}`` int32
                                writes for selector / value-union tier entries
                                that ``value_patches`` (f32, first-END only)
@@ -58,6 +70,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from ...engine import entity_append as EA
 from ...engine import talent_values as TV
 from ...engine.entity_edit import EntityEdit
 from ...engine.paths import DATA_DIR
@@ -107,6 +120,27 @@ def _coerce_value_patches(raw) -> list[tuple[str, float, float, bool]]:
     return out
 
 
+def _coerce_clone_nodes(raw) -> list[tuple[str, str, list, list]]:
+    """Normalise ``clone_nodes`` into ``(source, name, retarget, rename)``,
+    each of the last two a list of ``(from, to)`` pairs."""
+    out: list[tuple[str, str, list, list]] = []
+    for cn in (raw or []):
+        if not isinstance(cn, dict) or not cn.get("source") or not cn.get("name"):
+            raise ContentError(f"clone_nodes entry needs source/name, got {cn!r}")
+        pairs = []
+        for rt in cn.get("retarget") or []:
+            if not isinstance(rt, dict) or not rt.get("from") or not rt.get("to"):
+                raise ContentError(f"clone_nodes retarget needs from/to, got {rt!r}")
+            pairs.append((str(rt["from"]), str(rt["to"])))
+        renames = []
+        for rn in cn.get("rename") or []:
+            if not isinstance(rn, dict) or not rn.get("from") or not rn.get("to"):
+                raise ContentError(f"clone_nodes rename needs from/to, got {rn!r}")
+            renames.append((str(rn["from"]), str(rn["to"])))
+        out.append((str(cn["source"]), str(cn["name"]), pairs, renames))
+    return out
+
+
 def _label_in(cooked: bytes, label: str) -> bool:
     return any(tv.label == label
                for tv in TV.list_talent_values(cooked, include_spawner=True))
@@ -149,6 +183,8 @@ def _coerce_rewires(raw) -> list[tuple[str, str, dict]]:
                 count = int(rw["count"])
             if rw.get("exact"):
                 opts["exact"] = True
+            if rw.get("subtest_of"):
+                opts["subtest_of"] = str(rw["subtest_of"])
             if rw.get("within"):
                 opts["within"] = str(rw["within"])
                 if rw.get("within_span") is not None:
@@ -228,10 +264,11 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     rewires = _coerce_rewires(defn.fields.get("rewires"))
     int_patches = _coerce_int_patches(defn.fields.get("int_patches"))
     union_patches = _coerce_union_patches(defn.fields.get("union_patches"))
-    if not patches and not rewires and not int_patches and not union_patches:
+    clone_nodes = _coerce_clone_nodes(defn.fields.get("clone_nodes"))
+    if not (patches or rewires or int_patches or union_patches or clone_nodes):
         raise ContentError(
-            f"talent {defn.id}: no value_patches, union_patches, rewires or "
-            f"int_patches given")
+            f"talent {defn.id}: no value_patches, union_patches, rewires, "
+            f"clone_nodes or int_patches given")
 
     # Candidate hero entity files (optionally narrowed by `file`).
     candidates = [p for p in sorted(hero_dir.glob(_GEN_GLOB))
@@ -244,6 +281,24 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # Group patches by the file that actually carries each label, applying them
     # to in-memory copies; only changed files are written.
     edited: dict[Path, bytes] = {}
+
+    # Clones change the file's structure (a new record, a longer component
+    # vector), so they go first: every later edit re-reads the grown file, and
+    # a rewire below can then point an existing reference at the new node.
+    if clone_nodes:
+        if len(candidates) != 1:
+            raise ContentError(
+                f"talent {defn.id}: clone_nodes need `file` to select exactly "
+                f"one entity file (matched {len(candidates)}: "
+                f"{[p.name for p in candidates]})")
+        p = candidates[0]
+        cur = p.read_bytes()
+        try:
+            for source, name, retarget, rename in clone_nodes:
+                cur = EA.clone_component(cur, source, name, retarget, rename)
+        except EA.EntityAppendError as e:
+            raise ContentError(f"talent {mod_id}/{defn.id}: {e}") from e
+        edited[p] = cur
     for label, old, new, clear in patches:
         targets = [p for p in candidates
                    if _label_in(edited.get(p) or p.read_bytes(), label)]

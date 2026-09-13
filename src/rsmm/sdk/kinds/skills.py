@@ -148,12 +148,19 @@ def _install_bank(hero_token: str):
     enc = amap.get(decoded)
     if not enc:
         # The bank token is not always the herodef stem's spelling: Red's
-        # herodef is `Red.herodef...` but its bank is `Hero_RED_Common`. Fall
-        # back to a case-insensitive match rather than reporting the hero has
-        # no text at all.
-        low = decoded.lower()
+        # herodef is `Red.herodef...` but its bank is `Hero_RED_Common`, and
+        # Wukong's is `Sun_Wukong.herodef...` against `Hero_SunWukong_Common`.
+        # Fall back to a match that ignores case and underscores in the hero
+        # token rather than reporting the hero has no text at all.
+        def _norm(token: str) -> str:
+            return token.replace("_", "").lower()
+
+        want = _norm(hero_token)
+        prefix, suffix = "text/hero_", "_common~gam.xls.localtext.gen"
         for k, v in amap.items():
-            if k.lower() == low:
+            low = k.lower()
+            if (low.startswith(prefix) and low.endswith(suffix)
+                    and _norm(low[len(prefix):-len(suffix)]) == want):
                 decoded, enc = k, v
                 break
     if not enc:
