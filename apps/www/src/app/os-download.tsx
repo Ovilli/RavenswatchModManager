@@ -33,12 +33,15 @@ function detectOS(): 'Windows' | 'Linux' | 'unsupported' {
 export function OsDownload({
   release,
   fallbackHref = '/download',
+  showVersion = true,
 }: {
   release: LatestRelease;
   /** Where to send a visitor with no resolvable asset. Defaults to /download —
    *  the download page itself passes the GitHub release page instead, since
    *  falling back to the page you are already on is a dead click. */
   fallbackHref?: string;
+  /** Append the release tag to the label. Off where the version is shown beside the button. */
+  showVersion?: boolean;
 }) {
   const [os, setOs] = useState<'Windows' | 'Linux' | 'unsupported'>('Linux');
 
@@ -47,7 +50,7 @@ export function OsDownload({
   }, []);
 
   const href = os === 'Windows' ? release.windows : os === 'Linux' ? release.linux : null;
-  const version = release.tag ? ` · ${release.tag}` : '';
+  const version = showVersion && release.tag ? ` · ${release.tag}` : '';
   const className = buttonVariants({ size: 'lg' });
 
   if (!href) {

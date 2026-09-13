@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { api } from '../../lib/api';
+import { ModCover } from '../components/mod-cover';
 
 export default function CollectionsIndexPage() {
   const { data, isLoading } = useQuery({
@@ -16,7 +17,7 @@ export default function CollectionsIndexPage() {
     <main className="container mx-auto space-y-6 px-6 py-12">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Collections</h1>
+          <h1 className="font-fraktur text-5xl text-parchment">Collections</h1>
           <p className="mt-1 text-muted-foreground">Mod bundles curated by the community.</p>
         </div>
       </div>
@@ -56,7 +57,7 @@ export default function CollectionsIndexPage() {
                   />
                 </div>
               ) : (
-                <div className="aspect-[21/9] w-full bg-muted" />
+                <ModCover seed={c.slug} name={c.name} className="aspect-[21/9] w-full" />
               )}
               <div className="p-4">
                 <h2 className="text-base font-semibold leading-tight">{c.name}</h2>

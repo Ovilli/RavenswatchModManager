@@ -9,6 +9,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { useSession } from '../../lib/auth-client';
+import { ModCover } from '../components/mod-cover';
 
 type GuideSort = 'recent' | 'rating' | 'popular' | 'title';
 
@@ -74,7 +75,7 @@ function GuideGrid({ items }: { items: GuideCard[] }) {
               />
             </div>
           ) : (
-            <div className="aspect-[21/9] w-full bg-muted" />
+            <ModCover seed={g.slug} name={g.title} className="aspect-[21/9] w-full" />
           )}
           <div className="p-4">
             <div className="flex items-start justify-between gap-2">
@@ -158,7 +159,7 @@ function GuidesIndex() {
     <main className="container mx-auto space-y-10 px-6 py-12">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Guides</h1>
+          <h1 className="font-fraktur text-5xl text-parchment">Guides</h1>
           <p className="mt-1 text-muted-foreground">
             Community tutorials and how-tos for Ravenswatch — modding, strategies, and more.
           </p>

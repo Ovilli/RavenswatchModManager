@@ -176,11 +176,11 @@ export default async function Layout({
             url: res.data.imageUrl,
             alt: `${res.data.name ?? slug} cover`,
             nsfw: res.data.nsfw ?? false,
-            placeholder: true,
           }}
           body={res.data.description}
           bodyHeading="About"
-          bodyFallback={res.data.summary ?? 'No description available.'}
+          // The summary is already shown above; repeating it as the body read as a glitch.
+          bodyFallback={res.data.summary?.trim() ? null : 'No description available.'}
           card
         />
       ) : null}

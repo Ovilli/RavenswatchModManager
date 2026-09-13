@@ -120,7 +120,7 @@ export default function NewCollectionPage() {
       <Link href={'/c' as Route} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
         <ArrowLeft className="mr-1.5 h-4 w-4" /> Back to Collections
       </Link>
-      <h1 className="text-3xl font-bold tracking-tight">New collection</h1>
+      <h1 className="font-fraktur text-5xl text-parchment">New collection</h1>
       <form
         onSubmit={(e) => {
           e.preventDefault();

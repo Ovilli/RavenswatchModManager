@@ -729,3 +729,41 @@
 [data-editing="true"] [data-server-prose] {
   display: none;
 }
+
+/* Home page hero screenshot: a gilt corner-bracket frame, the same device as
+   the README banner, so the product image reads as a page in the grimoire. */
+.gilt-frame {
+  position: relative;
+  padding: 14px;
+  border: 1px solid hsl(var(--gilt) / 0.22);
+  background: hsl(var(--pitch) / 0.6);
+  box-shadow: 0 40px 80px -40px rgb(0 0 0 / 0.7);
+}
+.gilt-frame::before,
+.gilt-frame::after {
+  content: "";
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border-color: hsl(var(--gilt) / 0.75);
+  border-style: solid;
+  pointer-events: none;
+}
+.gilt-frame::before {
+  top: -6px;
+  left: -6px;
+  border-width: 2px 0 0 2px;
+}
+.gilt-frame::after {
+  right: -6px;
+  bottom: -6px;
+  border-width: 0 2px 2px 0;
+}
+.faq-item summary::-webkit-details-marker {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .faq-item summary span {
+    transition: none;
+  }
+}

@@ -1,37 +1,26 @@
-'use client';
-
-import { useState } from 'react';
 import { faqs } from './faq-data';
 
+/**
+ * Native <details>: keyboard and screen-reader support for free, works without
+ * JavaScript, and the answers stay in the HTML that crawlers read.
+ */
 export function FAQ() {
-  const [open, setOpen] = useState<number | null>(null);
-
   return (
-    <div className="space-y-3">
-      {faqs.map((faq, i) => {
-        const isOpen = open === i;
-        return (
-          <div key={faq.q} className="grimoire-card overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setOpen(isOpen ? null : i)}
-              className="flex w-full items-center justify-between px-6 py-4 text-left text-sm font-medium text-foreground transition-colors hover:text-parchment/90"
+    <div className="mt-10 grid gap-x-12 md:grid-cols-2">
+      {faqs.map((faq) => (
+        <details key={faq.q} className="faq-item group border-b border-border/70">
+          <summary className="flex cursor-pointer list-none items-baseline justify-between gap-6 py-5 text-xl text-parchment hover:text-gilt">
+            <span>{faq.q}</span>
+            <span
+              className="shrink-0 text-2xl leading-none text-gilt transition-transform duration-200 group-open:rotate-45"
+              aria-hidden="true"
             >
-              <span>{faq.q}</span>
-              <span
-                className={`ml-4 shrink-0 text-gilt/60 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
-              >
-                ▼
-              </span>
-            </button>
-            {isOpen && (
-              <div className="border-t border-border/40 px-6 pb-4 pt-3 text-sm text-muted-foreground">
-                {faq.a}
-              </div>
-            )}
-          </div>
-        );
-      })}
+              +
+            </span>
+          </summary>
+          <p className="pb-6 text-lg leading-relaxed text-parchment/70">{faq.a}</p>
+        </details>
+      ))}
     </div>
   );
 }

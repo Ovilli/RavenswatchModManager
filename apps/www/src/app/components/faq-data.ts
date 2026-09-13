@@ -4,19 +4,19 @@
 export const faqs = [
   {
     q: 'What is Ravenswatch Mod Manager?',
-    a: 'A small desktop app that makes Ravenswatch modding simple. Browse, install, and manage mods without touching your game folders.',
+    a: 'A free desktop app for Windows and Linux that installs and manages Ravenswatch mods. It finds your game, installs mods from this site, and backs up every file it changes.',
   },
   {
     q: 'How do I install mods?',
-    a: 'Download and open Ravenswatch Mod Manager. We will auto-detect Ravenswatch (or you can set the folder in Settings). Browse mods and click Download. The app installs the mod in the right place — no manual steps.',
+    a: 'Open the app. It finds Ravenswatch in your Steam library, or you can choose the folder in Settings. Install mods from the Browse tab, then press Apply to write them into the game.',
   },
   {
     q: 'Is it safe to use mods?',
-    a: 'Mods are third-party files. The app copies cooked assets to your game directory and does not patch your executable. Use good judgment and scan files if you are unsure.',
+    a: 'Every upload to this site is scanned for malware before anyone can download it. The app replaces game data files and never modifies Ravenswatch.exe, and every original file is backed up.',
   },
   {
     q: 'How do I uninstall mods?',
-    a: 'Open My Mods and remove what you do not want, or use Clear All Mods in Settings. Every install is fully rollback-safe.',
+    a: 'Turn the mod off or remove it in your library, then press Apply. To undo every change at once, use Restore original files.',
   },
   {
     q: 'Which platforms are supported?',
@@ -36,7 +36,7 @@ export const faqs = [
   },
   {
     q: 'Does modding edit my game files permanently?',
-    a: 'No. The app backs up the original file before replacing it, and tracks every change. Removing a mod — or using Clear All Mods — restores the game to exactly how it shipped. It never patches Ravenswatch.exe.',
+    a: 'No. The app backs up the original file before replacing it, and tracks every change. Removing a mod, or using Restore original files, puts the game back exactly as it shipped. It never patches Ravenswatch.exe.',
   },
   {
     q: 'Will mods break when Ravenswatch updates?',
@@ -56,7 +56,7 @@ export const faqs = [
   },
   {
     q: 'How do I share a mod I made?',
-    a: 'Sign in, open Publish, upload your packed mod archive, and fill in the details. It then appears in the registry for other players to install in one click. You can ship new versions and edit metadata later from My Mods.',
+    a: 'Sign in, open Publish, upload your packed mod and fill in the details, or run rsmm publish from the command line. It appears in the registry once its malware scan is clean. You can upload new versions and edit the page later from My Mods.',
   },
   {
     q: 'Does the Mod Manager cost anything?',

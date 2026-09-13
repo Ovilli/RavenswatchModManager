@@ -2,6 +2,7 @@ import type { ModListItem } from '@rsmm/schemas';
 import { Badge } from '@rsmm/ui';
 import type { Route } from 'next';
 import Link from 'next/link';
+import { ModCover } from './mod-cover';
 
 interface ModCardProps {
   mod: ModListItem;
@@ -27,7 +28,7 @@ export function ModCard({ mod, featured = false }: ModCardProps) {
           />
         </div>
       ) : (
-        <div className="aspect-[4/3] w-full bg-muted" />
+        <ModCover seed={mod.slug} name={mod.name} className="aspect-[4/3] w-full" />
       )}
       <div className="space-y-2 p-4">
         <div className="flex items-start justify-between gap-2">

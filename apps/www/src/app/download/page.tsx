@@ -1,5 +1,4 @@
 import {
-  Badge,
   Card,
   CardContent,
   CardDescription,
@@ -10,7 +9,6 @@ import {
 } from '@rsmm/ui';
 import { Download } from 'lucide-react';
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import {
   LATEST_RELEASE_URL,
   RELEASES_URL,
@@ -34,8 +32,7 @@ const releaseUrl = (tag: string) =>
   `https://github.com/Ovilli/RavenswatchModManager/releases/tag/${tag}`;
 const latestUrl = LATEST_RELEASE_URL;
 const releasesUrl = RELEASES_URL;
-const installGuideUrl =
-  'https://github.com/Ovilli/RavenswatchModManager/blob/main/docs/INSTALLATION.md';
+const installGuideUrl = 'https://docs.rsmm.me/getting-started/install/';
 
 interface Platform {
   name: string;
@@ -48,9 +45,8 @@ interface Platform {
 const platforms: Platform[] = [
   {
     name: 'Windows',
-    details:
-      'Best option for most players. Ships as an NSIS installer for 64-bit Windows 10 and 11.',
-    note: 'Auto-updater is enabled — once installed, the app checks for new releases on launch and applies them in one click.',
+    details: 'A standard installer for 64-bit Windows 10 and 11.',
+    note: 'Once installed, the app checks for a new version each time it starts and updates in one click.',
     exts: ['.msi', '.exe'],
   },
   {
@@ -62,10 +58,19 @@ const platforms: Platform[] = [
 ];
 
 const steps = [
-  'Download the installer for your platform — the buttons above pull it straight from the latest GitHub release.',
-  'Install the client, then sign in or create an account from the app.',
-  'Browse the registry, install a mod, and launch the game with the manager applied.',
+  'Download the file for your system and install it.',
+  'Open the app. It finds Ravenswatch in your Steam library, or you can choose the game folder yourself.',
+  'Install mods from the Browse tab, press Apply, and start the game.',
 ];
+
+/** Button text for a release file: what it is, not just its extension. */
+function assetLabel(name: string): string {
+  if (name.endsWith('.exe')) return 'Windows installer';
+  if (name.endsWith('.msi')) return 'Windows installer (MSI)';
+  if (name.endsWith('.AppImage')) return 'AppImage';
+  if (name.endsWith('.deb')) return 'Debian package';
+  return name.slice(name.lastIndexOf('.'));
+}
 
 /**
  * Every asset for a platform, in preference order, deduplicated.
@@ -96,27 +101,22 @@ export default async function DownloadPage() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,hsl(var(--crimson)/0.1),transparent_40%),radial-gradient(circle_at_bottom_right,hsl(var(--oxblood)/0.08),transparent_32%)]" />
       <div className="relative container mx-auto px-6 py-16 lg:py-24">
         <section className="mx-auto max-w-4xl text-center">
-          <Badge variant="outline" className="mb-5 border-crimson/30 bg-crimson/10 text-parchment">
-            Desktop client · {currentVersion}
-          </Badge>
-          <h1 className="text-5xl font-black tracking-tight sm:text-6xl">
-            Download the Ravenswatch Mod Manager client
-          </h1>
-          <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">
-            One desktop app for browsing the registry, applying mods, and managing rollback-safe
-            installs across Windows and Linux — with built-in auto-updates.
+          <h1 className="font-fraktur text-6xl text-parchment sm:text-7xl">Download</h1>
+          <p className="mx-auto mt-6 max-w-2xl text-xl leading-relaxed text-parchment/80">
+            Ravenswatch Mod Manager is free, for Windows 10 and 11 and for Linux, including Steam
+            Deck. Once installed, it keeps itself up to date.
+          </p>
+          <p className="mt-3 text-base text-parchment/55">
+            Latest version: {currentVersion.replace(/^v/, '')}
           </p>
 
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
             {/* Detects the OS and starts the installer download directly. It
                 used to link to the GitHub release page, which is why the button
                 on the DOWNLOAD page did not download anything. */}
-            <OsDownload release={release} fallbackHref={latestUrl} />
-            <Link className={buttonVariants({ variant: 'outline', size: 'lg' })} href="/registry">
-              Browse the registry
-            </Link>
+            <OsDownload release={release} fallbackHref={latestUrl} showVersion={false} />
             <a
-              className={buttonVariants({ variant: 'secondary', size: 'lg' })}
+              className={buttonVariants({ variant: 'outline', size: 'lg' })}
               href={installGuideUrl}
               target="_blank"
               rel="noreferrer"
@@ -141,7 +141,7 @@ export default async function DownloadPage() {
                       what the releases actually contain. They are read off the
                       release now, so they cannot go stale again. */}
                   {assets.length > 0 ? (
-                    <ul className="space-y-1 rounded-md border border-dashed border-border/70 bg-background/60 px-4 py-3 font-mono text-xs leading-5">
+                    <ul className="space-y-1 rounded-md border border-dashed border-border/70 bg-background/60 px-4 py-3 font-data leading-6">
                       {assets.map((a) => (
                         <li key={a.url} className="flex justify-between gap-3">
                           <span className="truncate">{a.name}</span>
@@ -165,7 +165,7 @@ export default async function DownloadPage() {
                         rel="noreferrer"
                       >
                         <Download className="mr-1.5 h-4 w-4" aria-hidden="true" />
-                        {a.name.slice(a.name.lastIndexOf('.'))}
+                        {assetLabel(a.name)}
                       </a>
                     ))
                   ) : (

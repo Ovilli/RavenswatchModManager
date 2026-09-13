@@ -172,7 +172,7 @@ export default function AccountPage() {
   return (
     <main className="container mx-auto max-w-2xl space-y-8 px-6 py-12">
       <header>
-        <h1 className="text-3xl font-bold tracking-tight">Account</h1>
+        <h1 className="font-fraktur text-5xl text-parchment">Account</h1>
         <p className="mt-1 text-sm text-muted-foreground">Manage your profile and account.</p>
       </header>
 

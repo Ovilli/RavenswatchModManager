@@ -7,6 +7,7 @@ import type { Route } from 'next';
 import Link from 'next/link';
 import { use } from 'react';
 import { api } from '../../../lib/api';
+import { ModCover } from '../../components/mod-cover';
 
 function initialsFor(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -117,7 +118,7 @@ export default function AuthorPage({ params }: { params: Promise<{ id: string }>
                         />
                       </div>
                     ) : (
-                      <div className="aspect-[16/9] w-full bg-muted" />
+                      <ModCover seed={m.slug} name={m.name} className="aspect-[16/9] w-full" />
                     )}
                     {m.featured ? (
                       <Badge className="absolute left-2 top-2 bg-gilt/15 text-[0.65rem] text-gilt border-gilt/40 backdrop-blur-sm">

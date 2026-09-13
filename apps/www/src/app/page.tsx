@@ -1,4 +1,4 @@
-import { jsonLd, type ModListItem } from '@rsmm/schemas';
+import { type ModListItem, jsonLd } from '@rsmm/schemas';
 import { buttonVariants } from '@rsmm/ui';
 import type { Route } from 'next';
 import Link from 'next/link';
@@ -6,10 +6,7 @@ import { getApiUrl } from '../lib/api-url';
 import { type LatestRelease, getLatestRelease } from '../lib/releases';
 import { FAQ } from './components/faq';
 import { faqs } from './components/faq-data';
-import { ModCard } from './components/mod-card';
-import { MockClient } from './mock-client';
 import { OsDownload } from './os-download';
-import { QuickSearch } from './quick-search';
 
 export const revalidate = 300;
 
@@ -120,297 +117,223 @@ async function getHomeData(): Promise<HomeData> {
   }
 }
 
-const features = [
+const steps = [
   {
-    title: 'One-click install',
-    body: 'Grab a mod and the manager puts it where Ravenswatch expects it. No manual steps, no guesswork.',
-    icon: (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="h-5 w-5"
-        aria-hidden="true"
-      >
-        <path d="M5 12h14" />
-        <path d="m12 5 7 7-7 7" />
-      </svg>
-    ),
+    title: 'Pick your mods',
+    body: 'Install mods from the registry inside the app, or drop a mod folder into your library.',
   },
   {
-    title: 'Manage with confidence',
-    body: 'See everything in My Mods. Toggle on or off, update, or remove whenever you like with full rollback support.',
-    icon: (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="h-5 w-5"
-        aria-hidden="true"
-      >
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-      </svg>
-    ),
+    title: 'Apply',
+    body: 'One button writes the enabled mods into the game. Every file it replaces is backed up first.',
   },
   {
-    title: 'Built-in browser',
-    body: 'Search and discover community mods without leaving the app. It is all in one place.',
-    icon: (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="h-5 w-5"
-        aria-hidden="true"
-      >
-        <circle cx="11" cy="11" r="8" />
-        <path d="m21 21-4.3-4.3" />
-      </svg>
-    ),
+    title: 'Play',
+    body: 'Launch Ravenswatch as usual. Restore puts the unmodded game back whenever you want it.',
+  },
+];
+
+const screens = [
+  {
+    src: '/screens/list.jpg',
+    alt: 'The library in list view, with each mod switched on or off and numbered in load order',
+    title: 'Your library, in order',
+    body: 'Every mod in the active profile with its switch, version and load position. Mods with a heads-up display can open it as an overlay while you play.',
   },
   {
-    title: 'Cross-platform',
-    body: 'Works on Windows and Linux. Small download, quick start, low overhead.',
-    icon: (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="h-5 w-5"
-        aria-hidden="true"
-      >
-        <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-        <line x1="8" y1="21" x2="16" y2="21" />
-        <line x1="12" y1="17" x2="12" y2="21" />
-      </svg>
-    ),
+    src: '/screens/config.jpg',
+    alt: 'The settings dialog of the Damage Meter mod',
+    title: 'Settings without editing files',
+    body: 'Mods declare their own options. Change a number or flip a switch, save, and apply.',
   },
   {
-    title: 'Open source',
-    body: 'Trust what you use. Read the code, file issues, or contribute features — your call.',
-    icon: (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="h-5 w-5"
-        aria-hidden="true"
-      >
-        <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
-      </svg>
-    ),
-  },
-  {
-    title: 'Easy updates',
-    body: 'Out-of-date mods are clearly marked. Update them in one click to keep everything working.',
-    icon: (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="h-5 w-5"
-        aria-hidden="true"
-      >
-        <polyline points="23 4 23 10 17 10" />
-        <polyline points="1 20 1 14 7 14" />
-        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-      </svg>
-    ),
+    src: '/screens/profiles.jpg',
+    alt: 'The profiles screen with three saved setups',
+    title: 'A setup for every run',
+    body: 'Keep separate profiles for solo runs and co-op nights, and share one with a friend as a short code.',
   },
 ];
 
 function fmt(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
+  if (n >= 10_000) return `${Math.round(n / 1_000)}K`;
+  return n.toLocaleString('en-US');
 }
 
 export default async function Home() {
   const { mods, featured, totalMods, totalModDownloads, appDownloads, release } =
     await getHomeData();
-  const showcase = [...mods].sort((a, b) => (b.downloads ?? 0) - (a.downloads ?? 0)).slice(0, 4);
+  const byDownloads = [...mods].sort((a, b) => (b.downloads ?? 0) - (a.downloads ?? 0));
+  const popular = [
+    ...featured,
+    ...byDownloads.filter((m) => !featured.some((f) => f.id === m.id)),
+  ].slice(0, 5);
 
   return (
-    <main className="relative overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_-20%,hsl(var(--crimson)/0.12),transparent_50%),radial-gradient(circle_at_80%_80%,hsl(var(--oxblood)/0.08),transparent_50%)]" />
-
-      {/* ───── Hero ───── */}
-      <section className="relative container mx-auto px-6 pb-8 pt-16 lg:pb-16 lg:pt-24">
-        <div className="mx-auto max-w-3xl text-center">
-          <h1 className="bg-gradient-to-r from-parchment via-gilt to-parchment bg-clip-text text-5xl font-extrabold tracking-tight text-transparent sm:text-6xl">
-            Ravenswatch Mod Manager
+    <main className="home">
+      {/* Hero */}
+      <section className="container mx-auto grid items-center gap-12 px-6 pb-20 pt-14 lg:grid-cols-12 lg:gap-10 lg:pb-28 lg:pt-24">
+        <div className="lg:col-span-5">
+          <h1 className="font-fraktur text-6xl leading-[0.95] text-parchment sm:text-7xl">
+            Mods for Ravenswatch
           </h1>
-          <p className="mt-4 text-lg text-muted-foreground">
-            Mods for Ravenswatch, minus the hassle. Find, install, and update mods in a couple of
-            clicks. No folders, no guesswork.
+          <p className="mt-6 max-w-md text-xl leading-relaxed text-parchment/80">
+            A free app that installs mods, keeps them in order and puts your game back the way it
+            was whenever you ask.
           </p>
+          <div className="mt-9 flex flex-wrap items-center gap-3">
+            <OsDownload release={release} showVersion={false} />
+            <Link href="/registry" className={buttonVariants({ variant: 'outline', size: 'lg' })}>
+              Browse mods
+            </Link>
+          </div>
+          <p className="mt-5 text-base text-parchment/60">
+            {release.tag ? `Version ${release.tag.replace(/^v/, '')} for` : 'For'} Windows, Linux
+            and Steam Deck.{' '}
+            <Link href="/download" className="underline underline-offset-4 hover:text-parchment">
+              Other downloads
+            </Link>
+          </p>
+        </div>
+        <div className="lg:col-span-7">
+          <figure className="gilt-frame">
+            <img
+              src="/screens/library.jpg"
+              alt="The RSMM library: installed mods grouped by category, each with an on/off switch and settings"
+              width={2160}
+              height={1350}
+              className="block h-auto w-full"
+              fetchPriority="high"
+            />
+          </figure>
+        </div>
+      </section>
 
-          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <OsDownload release={release} />
-            <Link
-              href="/download"
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-            >
-              All Downloads{' '}
-              <span aria-hidden="true" className="text-gilt">
-                →
+      {/* How it works — a real sequence, so it is numbered */}
+      <section className="border-y border-border/60 bg-card/40">
+        <ol className="container mx-auto grid gap-10 px-6 py-14 md:grid-cols-3 md:gap-12">
+          {steps.map((s, i) => (
+            <li key={s.title} className="flex gap-5">
+              <span
+                className="font-fraktur w-9 shrink-0 text-5xl leading-none text-gilt"
+                aria-hidden="true"
+              >
+                {i + 1}
               </span>
+              <div>
+                <h2 className="text-2xl text-parchment">{s.title}</h2>
+                <p className="mt-2 text-lg leading-relaxed text-parchment/70">{s.body}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      {/* Screens */}
+      <section className="container mx-auto px-6 py-20 lg:py-28">
+        <h2 className="font-fraktur text-5xl text-parchment">Inside the app</h2>
+        <div className="mt-12 grid gap-12 md:grid-cols-3 md:gap-8">
+          {screens.map((s) => (
+            <figure key={s.src}>
+              <img
+                src={s.src}
+                alt={s.alt}
+                width={2160}
+                height={1350}
+                loading="lazy"
+                className="block h-auto w-full rounded border border-border"
+              />
+              <figcaption className="mt-5">
+                <h3 className="text-2xl text-parchment">{s.title}</h3>
+                <p className="mt-2 text-lg leading-relaxed text-parchment/70">{s.body}</p>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      </section>
+
+      {/* Popular mods */}
+      <section className="container mx-auto px-6 pb-20 lg:pb-28">
+        <div className="grid gap-10 lg:grid-cols-12">
+          <div className="lg:col-span-4">
+            <h2 className="font-fraktur text-5xl text-parchment">From the registry</h2>
+            <p className="mt-5 max-w-sm text-lg leading-relaxed text-parchment/70">
+              {totalMods > 0
+                ? `${totalMods} mods so far, installed ${fmt(totalModDownloads)} times. Every upload is scanned for malware before it goes live.`
+                : 'Every upload is scanned for malware before it goes live.'}
+            </p>
+            <Link href="/registry" className={`${buttonVariants({ size: 'lg' })} mt-7`}>
+              Browse all mods
             </Link>
           </div>
-        </div>
-
-        <MockClient mods={showcase} />
-      </section>
-
-      {/* ───── Search ───── */}
-      <section className="container mx-auto px-6 pb-8">
-        <div className="mx-auto max-w-2xl">
-          <QuickSearch />
-        </div>
-      </section>
-
-      {/* ───── Features ───── */}
-      <section className="container mx-auto px-6 py-16 lg:py-24">
-        <div className="mx-auto max-w-5xl">
-          <div className="mb-12 text-center">
-            <h2 className="text-3xl font-bold tracking-tight">Features</h2>
-            <p className="mt-2 text-muted-foreground">Make Ravenswatch yours</p>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {features.map((f) => (
-              <div key={f.title} className="grimoire-card flex gap-4 p-5">
-                <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gilt/20 bg-crimson/10 text-gilt">
-                  {f.icon}
-                </div>
-                <div>
-                  <h3 className="font-semibold text-foreground">{f.title}</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">{f.body}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ───── Stats ───── */}
-      <section className="container mx-auto px-6 py-16 lg:py-24">
-        <div className="mb-12 text-center">
-          <h2 className="text-3xl font-bold tracking-tight">Stats</h2>
-          <p className="mt-2 text-muted-foreground">
-            By the numbers — a growing library of mods and an active community.
-          </p>
-        </div>
-        <dl className="grid gap-6 sm:grid-cols-3">
-          {[
-            { label: 'Available Mods', value: totalMods },
-            { label: 'Mod Downloads', value: totalModDownloads },
-            { label: 'App Downloads', value: appDownloads },
-          ].map((stat) => {
-            const hasValue = stat.value > 0;
-            return (
-              <div key={stat.label} className="grimoire-card p-6 text-center">
-                <dd
-                  className="text-5xl font-black tracking-tight text-foreground"
-                  aria-label={hasValue ? undefined : 'Currently unavailable'}
+          <ul className="divide-y divide-border/70 border-y border-border/70 lg:col-span-8">
+            {popular.map((mod) => (
+              <li key={mod.id}>
+                <Link
+                  href={`/registry/${mod.slug}` as Route}
+                  className="group grid gap-1 py-5 sm:grid-cols-[1fr_auto] sm:items-baseline sm:gap-x-8"
                 >
-                  {hasValue ? fmt(stat.value) : '—'}
-                </dd>
-                <dt className="mt-2 text-sm text-muted-foreground">{stat.label}</dt>
-              </div>
-            );
-          })}
-        </dl>
+                  <span className="text-2xl text-parchment group-hover:text-gilt">{mod.name}</span>
+                  <span className="text-base text-parchment/55 sm:text-right">
+                    {mod.downloads ? `${fmt(mod.downloads)} installs` : 'New'}
+                  </span>
+                  <span className="text-lg leading-relaxed text-parchment/70 sm:col-span-2">
+                    {mod.summary ? `${mod.summary} ` : null}
+                    {mod.author ? <span className="text-parchment/50">by {mod.author}</span> : null}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
       </section>
 
-      {/* ───── Featured ───── */}
-      {featured.length > 0 ? (
-        <section className="container mx-auto px-6 py-12 lg:py-16">
-          <div className="mb-8 flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2 className="text-3xl font-bold tracking-tight">
-                <span className="bg-gradient-to-r from-gilt to-parchment bg-clip-text text-transparent">
-                  ★ Featured
-                </span>
-              </h2>
-              <p className="mt-1 text-muted-foreground">Curated picks from the community.</p>
+      {/* For mod authors */}
+      <section className="border-y border-border/60 bg-card/40">
+        <div className="container mx-auto grid items-center gap-10 px-6 py-16 lg:grid-cols-2 lg:py-20">
+          <div>
+            <h2 className="font-fraktur text-5xl text-parchment">Make your own</h2>
+            <p className="mt-5 max-w-lg text-lg leading-relaxed text-parchment/70">
+              Mods are data, not code: a manifest that says what changes, plus any textures, models
+              or sounds. The open-source <code className="text-gilt">rsmm</code> tool builds, tests
+              and publishes them. Gameplay scripting in Lua is there when you need it.
+            </p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <Link href="/modding" className={buttonVariants({ size: 'lg' })}>
+                Modding guide
+              </Link>
+              <a
+                href="https://github.com/Ovilli/RavenswatchModManager"
+                className={buttonVariants({ variant: 'outline', size: 'lg' })}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Source code
+              </a>
             </div>
-            <Link
-              href={'/registry?featured=1' as Route}
-              className="text-sm font-medium text-muted-foreground hover:text-foreground"
-            >
-              See all <span aria-hidden="true">→</span>
-            </Link>
+            <p className="mt-5 text-base text-parchment/60">
+              Stuck on a setup problem instead?{' '}
+              <Link href="/guides" className="underline underline-offset-4 hover:text-parchment">
+                Read the community guides
+              </Link>
+              .
+            </p>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {featured.slice(0, 4).map((mod) => (
-              <ModCard key={mod.id} mod={mod} featured />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {/* ───── Showcase ───── */}
-      <section className="container mx-auto px-6 py-16 lg:py-24">
-        <div className="mb-12 text-center">
-          <h2 className="text-3xl font-bold tracking-tight">Showcase</h2>
-          <p className="mt-2 text-muted-foreground">
-            Browse &amp; Install Mods in Seconds — discover popular mods and install with a single
-            click.
-          </p>
-        </div>
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {showcase.length > 0
-            ? showcase.map((mod) => <ModCard key={mod.id} mod={mod} />)
-            : ['s1', 's2', 's3', 's4'].map((key) => (
-                <div
-                  key={key}
-                  className="grimoire-card overflow-hidden animate-pulse"
-                  aria-hidden="true"
-                >
-                  <div className="aspect-[4/3] w-full bg-muted" />
-                  <div className="space-y-2 p-4">
-                    <div className="h-4 w-3/4 bg-muted rounded" />
-                    <div className="h-3 w-1/2 bg-muted rounded" />
-                  </div>
-                </div>
-              ))}
-        </div>
-
-        <div className="mt-8 text-center">
-          <Link href="/registry" className={buttonVariants({ size: 'lg' })}>
-            Browse All Mods
-          </Link>
-          <p className="mt-3 text-sm text-muted-foreground">
-            Click once to install · Works automatically · Ready in seconds
-          </p>
+          <pre className="overflow-x-auto rounded border border-border bg-background/80 p-6 font-data !text-[0.95rem] leading-7 text-parchment/85">
+            <code>
+              <span className="text-parchment/45">
+                # start from a copy of an existing magical object
+              </span>
+              {'\n'}rsmm new my-first-mod --kind item{'\n'}
+              <span className="text-parchment/45"># check it, then try it in the game</span>
+              {'\n'}rsmm lint my-first-mod{'\n'}rsmm apply{'\n'}
+              <span className="text-parchment/45"># upload it to the registry</span>
+              {'\n'}rsmm publish my-first-mod
+            </code>
+          </pre>
         </div>
       </section>
 
-      {/* ───── FAQ ───── */}
+      {/* FAQ */}
       <script
         type="application/ld+json"
         // biome-ignore lint/security/noDangerouslySetInnerHtml: static FAQ content. Still serialized through jsonLd() so every ld+json block on the site escapes identically.
@@ -426,61 +349,35 @@ export default async function Home() {
           }),
         }}
       />
-      <section className="container mx-auto px-6 py-16 lg:py-24">
-        <div className="mx-auto max-w-3xl">
-          <div className="mb-10 text-center">
-            <h2 className="text-3xl font-bold tracking-tight">FAQ</h2>
-            <p className="mt-2 text-muted-foreground">Frequently asked questions</p>
-          </div>
-          <FAQ />
-          <p className="mt-8 text-center text-sm text-muted-foreground">
-            Have a different question and cannot find the answer? Check out our{' '}
-            <a
-              href="https://docs.rsmm.me"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline underline-offset-2 hover:text-foreground"
-            >
-              documentation
-            </a>{' '}
-            or{' '}
-            <a
-              href="https://github.com/Ovilli/RavenswatchModManager/issues"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline underline-offset-2 hover:text-foreground"
-            >
-              create an issue
-            </a>
-            .
+      <section className="container mx-auto px-6 pb-16 pt-20 lg:pb-20 lg:pt-28">
+        <h2 className="font-fraktur text-5xl text-parchment">Questions</h2>
+        <FAQ />
+        <p className="mt-10 text-lg text-parchment/70">
+          Not answered here? The{' '}
+          <a
+            href="https://docs.rsmm.me"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-4 hover:text-parchment"
+          >
+            documentation
+          </a>{' '}
+          goes deeper, or{' '}
+          <a
+            href="https://github.com/Ovilli/RavenswatchModManager/issues"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-4 hover:text-parchment"
+          >
+            open an issue
+          </a>
+          .
+        </p>
+        {appDownloads > 0 ? (
+          <p className="mt-2 text-base text-parchment/50">
+            The app has been downloaded {fmt(appDownloads)} times.
           </p>
-        </div>
-      </section>
-
-      {/* ───── Guides ─────
-          Guides came out of the top bar, so this is now the only route to them
-          from the home page. It is a block rather than a bare link for that
-          reason: a one-word link at the foot of a long page is not a
-          replacement for a nav item, and this is the last thing a reader who
-          got all the way here sees. */}
-      <section className="container mx-auto px-6 pb-20">
-        <div className="grimoire-card mx-auto flex max-w-3xl flex-col items-start gap-4 p-8 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1.5">
-            <h2 className="text-2xl font-bold tracking-tight">Community guides</h2>
-            <p className="max-w-md text-sm text-muted-foreground">
-              Walkthroughs written by other players — setting mods up, getting a run working, and
-              what to do when the game will not start.
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-wrap gap-2">
-            <Link href="/guides" className={buttonVariants({ size: 'sm' })}>
-              Browse guides
-            </Link>
-            <Link href="/modding" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
-              Make a mod
-            </Link>
-          </div>
-        </div>
+        ) : null}
       </section>
     </main>
   );

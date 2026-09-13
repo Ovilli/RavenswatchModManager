@@ -32,6 +32,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { api } from '../../../lib/api';
 import { getApiUrl } from '../../../lib/api-url';
+import { ModCover } from '../../components/mod-cover';
 
 type Sort = 'popular' | 'recent' | 'rating';
 type View = 'grid' | 'list';
@@ -273,7 +274,7 @@ function RegistryInner() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,hsl(var(--crimson)/0.08),transparent_50%)]" />
       <div className="relative container mx-auto space-y-6 px-6 py-12">
         <header className="space-y-2">
-          <h1 className="text-4xl font-bold tracking-tight">Mod Registry</h1>
+          <h1 className="font-fraktur text-5xl text-parchment sm:text-6xl">Mod registry</h1>
           <p className="max-w-2xl text-sm text-muted-foreground">
             Browse community-published mods for Ravenswatch — hero skins, balance tweaks, custom
             magical objects, quality-of-life improvements, audio swaps, and more. Search or filter
@@ -596,7 +597,7 @@ function ModGridCard({ m, onOpen }: { m: ModListItem; onOpen: () => void }) {
             />
           </div>
         ) : (
-          <div className="aspect-[16/9] w-full bg-muted" />
+          <ModCover seed={m.slug} name={m.name} className="aspect-[16/9] w-full" />
         )}
         {m.featured ? (
           <Badge className="absolute left-2 top-2 bg-gilt/15 text-[0.65rem] text-gilt border-gilt/40 backdrop-blur-sm">
@@ -705,7 +706,12 @@ function ModListRow({ m, onOpen }: { m: ModListItem; onOpen: () => void }) {
           className="hidden h-10 w-16 shrink-0 rounded object-cover sm:block"
         />
       ) : (
-        <div className="hidden h-10 w-16 shrink-0 rounded bg-muted sm:block" />
+        <ModCover
+          seed={m.slug}
+          name={m.name}
+          size="sm"
+          className="hidden h-10 w-16 shrink-0 rounded sm:flex"
+        />
       )}
 
       <div className="min-w-0 flex-1">

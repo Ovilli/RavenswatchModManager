@@ -102,7 +102,7 @@ export default function NewGuidePage() {
       <Link href={'/guides' as Route} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
         <ArrowLeft className="mr-1.5 h-4 w-4" /> Back to Guides
       </Link>
-      <h1 className="text-3xl font-bold tracking-tight">Write a guide</h1>
+      <h1 className="font-fraktur text-5xl text-parchment">Write a guide</h1>
       <p className="text-sm text-muted-foreground">
         Guides are reviewed by a maintainer before they go public. Save a draft anytime.
       </p>

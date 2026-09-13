@@ -26,6 +26,7 @@ import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
 import { useEditingFlag } from '../../../lib/use-editing-flag';
 import { AdBanner } from '../../components/ad-banner';
+import { ModCover } from '../../components/mod-cover';
 
 const MDEditor = dynamic(() => import('@uiw/react-md-editor'), { ssr: false });
 function describeApiError(err: unknown): string {
@@ -617,7 +618,7 @@ export default function CollectionDetailPage({
                     />
                   </div>
                 ) : (
-                  <div className="aspect-[16/9] w-full bg-muted" />
+                  <ModCover seed={m.slug} name={m.name} className="aspect-[16/9] w-full" />
                 )}
                 <div className="space-y-1.5 p-4">
                   <h3 className="text-base font-semibold leading-tight">{m.name}</h3>

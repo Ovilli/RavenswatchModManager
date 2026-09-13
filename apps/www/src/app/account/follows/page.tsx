@@ -60,7 +60,7 @@ export default function FollowedModsPage() {
     <main className="relative overflow-hidden animate-page-in">
       <div className="container mx-auto space-y-6 px-6 py-12">
         <header className="space-y-2">
-          <h1 className="text-4xl font-bold tracking-tight">Followed mods</h1>
+          <h1 className="font-fraktur text-5xl text-parchment">Followed mods</h1>
           <p className="max-w-2xl text-sm text-muted-foreground">
             You get a notification whenever one of these mods publishes a new version.
           </p>

@@ -48,8 +48,6 @@ export function ServerProse({
     alt: string;
     /** Blur until hover, matching the registry's own treatment. */
     nsfw?: boolean;
-    /** Reserve the frame when there is no image (registry only). */
-    placeholder?: boolean;
   };
   /** Markdown. Sanitized here before it reaches the DOM. */
   body?: string | null;
@@ -94,9 +92,7 @@ export function ServerProse({
       </Link>
 
       {image?.url ? (
-        <div
-          className="group relative aspect-[21/9] w-full overflow-hidden rounded-xl border border-border/50 bg-muted"
-        >
+        <div className="group relative aspect-[21/9] w-full overflow-hidden rounded-xl border border-border/50 bg-muted">
           {/* Plain <img>: mod art lives on arbitrary remote hosts, which next/image would need allowlisted one by one. Same choice the client pages made. */}
           <img
             src={image.url}
@@ -116,8 +112,6 @@ export function ServerProse({
             </div>
           ) : null}
         </div>
-      ) : image?.placeholder ? (
-        <div className="aspect-[21/9] w-full rounded-xl border border-border/50 bg-muted" />
       ) : null}
 
       <header>

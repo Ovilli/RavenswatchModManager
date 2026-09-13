@@ -7,6 +7,7 @@ import type { Route } from 'next';
 import Link from 'next/link';
 import { api } from '../../lib/api';
 import { useSession } from '../../lib/auth-client';
+import { ModCover } from '../components/mod-cover';
 
 export default function MyModsPage() {
   const { data: session, isPending: sessionLoading } = useSession();
@@ -52,7 +53,7 @@ export default function MyModsPage() {
     <main className="container mx-auto max-w-5xl px-6 py-12">
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-bold tracking-tight">My Mods</h1>
+          <h1 className="font-fraktur text-5xl text-parchment">My mods</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Mods you own. Click one to edit metadata, upload a new version, or manage assets.
           </p>
@@ -99,7 +100,7 @@ export default function MyModsPage() {
                     />
                   </div>
                 ) : (
-                  <div className="aspect-[16/9] w-full bg-muted" />
+                  <ModCover seed={m.slug} name={m.name} className="aspect-[16/9] w-full" />
                 )}
                 <div className="space-y-3 p-4">
                   <div className="flex items-start justify-between gap-2">

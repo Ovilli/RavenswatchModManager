@@ -75,7 +75,7 @@ export default function ModdingGuidePage() {
 
       <div className="mx-auto max-w-3xl">
         <header className="space-y-3">
-          <h1 className="text-4xl font-bold tracking-tight">Ravenswatch Modding Guide</h1>
+          <h1 className="font-fraktur text-5xl text-parchment sm:text-6xl">Modding guide</h1>
           <p className="text-base text-muted-foreground">
             Everything you need to start modding Ravenswatch — how mods work, how to install them
             safely in a single click, how to make your own, and how to fix the problems people hit
@@ -162,7 +162,9 @@ export default function ModdingGuidePage() {
                 </Link>{' '}
                 and click a mod that looks interesting.
               </li>
-              <li>Hit Download / Install. The app puts the files exactly where they belong.</li>
+              <li>
+                Install it, then press Apply. The app puts the files exactly where they belong.
+              </li>
               <li>Launch the game and play.</li>
             </ol>
             <p>
@@ -254,17 +256,17 @@ export default function ModdingGuidePage() {
             <p>
               Mods are third-party files, so use good judgment — but RSMM is built to keep the risk
               low. It only copies assets into your game directory and never patches the executable,
-              and every install is fully reversible. If something looks off, you can{' '}
-              <strong className="text-foreground">Clear All Mods</strong> to return the game to a
-              clean state instantly.
+              and every install is fully reversible. If something looks off,{' '}
+              <strong className="text-foreground">Restore original files</strong> puts the game back
+              the way it shipped.
             </p>
             <p>
               Community uploads are covered by our{' '}
               <Link href="/dmca" className="underline hover:text-foreground">
                 Content Policy
               </Link>
-              , which forbids malware and redistributed copyrighted game assets. If you are unsure
-              about a file, scan it before installing.
+              , which forbids malware and redistributed copyrighted game assets, and every upload is
+              scanned for malware before anyone can download it.
             </p>
           </section>
 
@@ -316,9 +318,9 @@ export default function ModdingGuidePage() {
               <div>
                 <h3 className="font-semibold text-foreground">I want a totally clean game again</h3>
                 <p>
-                  Use <strong className="text-foreground">Clear All Mods</strong> in Settings. Every
-                  backed-up original is restored — verifying the game files on Steam afterwards is a
-                  good belt-and-braces step.
+                  Use <strong className="text-foreground">Restore original files</strong> in the
+                  app. Every backed-up original is restored — verifying the game files on Steam
+                  afterwards is a good belt-and-braces step.
                 </p>
               </div>
             </div>

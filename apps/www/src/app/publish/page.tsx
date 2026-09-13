@@ -265,7 +265,7 @@ export default function PublishPage() {
   return (
     <main className="container mx-auto max-w-3xl px-6 py-12">
       <header className="mb-8">
-        <h1 className="text-4xl font-bold tracking-tight">Publish a mod</h1>
+        <h1 className="font-fraktur text-5xl text-parchment">Publish a mod</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Upload a packed mod archive (.zip), describe it, and push it to the registry. You can edit
           metadata and ship new versions later from <em>My Mods</em>.

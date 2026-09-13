@@ -52,7 +52,7 @@ scripting gameplay in Lua, and publishing to the site with one command.
 
 | Windows 10/11 | Linux (any distro) | Debian / Ubuntu |
 | :---: | :---: | :---: |
-| [`RSMM-x64.msi`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) | [`RSMM-x86_64.AppImage`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) | [`rsmm_amd64.deb`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) |
+| [Installer (`.exe`)](https://github.com/Ovilli/RavenswatchModManager/releases/latest) | [`.AppImage`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) | [`.deb` package](https://github.com/Ovilli/RavenswatchModManager/releases/latest) |
 
 The app keeps itself up to date after the first install. Steam Deck works through the Linux build.
 
