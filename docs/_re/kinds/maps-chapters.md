@@ -115,6 +115,23 @@ manual RE": `ResourceRef_Serialize` -> `0x1401c8e60` and
 `Serializer_GetClassVersion` -> `0x1404fce50`. Both were found from the call
 side rather than by anchor.
 
+### The painted terrain beside the recipe (read-only, `engine/terrain.py`)
+
+Each chapter's `Map_<Name>_Terrain.level` holds one `oCTerrainGo` and named
+`oCTerrainPaintedFloatInputLayer` / `...ColorInputLayer` objects (`Base Height`
+1024², `LD Path` / `LD Block` 512², `Base Water Height` 256², a vertex-colour
+layer, four `Enemy Camp Difficulty 0N` masks, grass/pebble density, fog). Each
+is `u32 w, u32 h, u32 byteCount` + cells (float32 or RGBA8, `byteCount = w*h*4`),
+ending exactly at the payload end — the header before it varies per layer, so it
+is found by those relations. `oCTerrainGo` holds the world box
+`-256,-50,-256 .. 256,50,256` (unaligned in the payload) in all three chapters.
+Row = world Z, column = world X from the box minimum, `y = min.y + cell * 100`.
+**Proven, not assumed**: sampling that under every recipe slot reproduces the
+slot's own Y to < 1 mm mean in all three chapters, and every flip/swap misses by
+metres (`tests/test_terrain.py`). Tiles blend their own heights on at run time
+(`Tiles Heights`), so this is the base land, not a finished run. `rsmm
+map-editor` draws it.
+
 ### What is still unmined here
 
 * `TileKind.rule` (`+0x10`): 0 on ten of Dark Hills' fourteen kinds, 2 on both
@@ -122,7 +139,14 @@ side rather than by anchor.
   placement phase or a pairing group; unproven.
 * `Slot.tail` (`+0x1c`) and the spawner's eight tail scalars (`+0x130`..`+0x14c`,
   two of them the floats 40.0 and 0.3).
-* What the 0 and 1 values mean in the tri-state compatibility table.
+* What the 0 and 1 values mean in the tri-state compatibility table — **read
+  from data, not from the engine**: 2 is by far the default and reads as
+  "defer to the slot's own kind mask"; 1 appears only where the mask is 0
+  (Dark Hills `Start`: every 40x40 slot's mask is 0, and slots 40/30/32/35 carry
+  a 1 in scenarios 1..4 respectively, one each), so it reads as "allowed in this
+  scenario regardless of the mask"; 0 reads as "forbidden here". Avalon's one
+  scenario is all 2s. `rsmm map-editor` colours eligibility this way; the branch
+  in `TileSpawn_PlaceTiles` that consumes the byte is not yet read.
 * `r13` in `TileSpawn_PlaceTiles` — still unpinned, but much less interesting
   now that the per-kind slot vocabulary is readable from the data.
 

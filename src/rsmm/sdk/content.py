@@ -18,7 +18,7 @@ from pathlib import Path
 from .api import sdk_export
 
 KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "skill", "modifier",
-         "game_mode", "reward", "melody", "poi", "mesh")
+         "game_mode", "reward", "melody", "poi", "mesh", "tilegen")
 
 #: Per-kind honesty rating — how much we trust the bytes this kind emits.
 #:
@@ -87,6 +87,9 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # (_emit_prop_override) instead of an additive entity, and why a
                               # POI cannot carry a minimap marker unless its donor already
                               # places a marker-bearing entity.
+    "tilegen": "experimental",  # the recipe codec round-trips all 494 shipped tilegen objects
+                              # byte-exactly and validate() enforces every cross-dimension,
+                              # but no edited recipe has been generated in-game yet.
     "melody": "guess",        # all 12 retail melodydefs round-trip byte-for-byte and every
                               # mined exclusion string is an exact GameModifier stem, but
                               # neither lever (effect repoint, exclusion list) has been
@@ -234,6 +237,7 @@ _KIND_MODULES = {
     "melody": "melodies",
     "mesh": "meshes",
     "poi": "poi",
+    "tilegen": "tilegen",
 }
 
 def _load_kind(kind: str):

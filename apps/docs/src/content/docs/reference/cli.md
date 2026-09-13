@@ -261,6 +261,30 @@ Swap a texture by donor reference.
 ./rsmm apply                                       # Apply
 ```
 
+### `rsmm map-editor`
+
+Edit a chapter's map-generation recipe in the browser: how many of each tile
+kind the generator places, their minimum spacing, which footprints each kind
+fits, the per-flag quotas, and which kinds each slot may hold. Spots are drawn
+on a 3D (or top-down) view of the chapter's painted terrain — height, design
+paths, blocked ground and water — coloured by whether the selected tile can land
+there in the selected scenario. The terrain is read from your own install (or a
+local `data/uncooked` mirror) when the page asks for it; nothing from the game is
+bundled with the editor.
+
+```sh
+./rsmm map-editor                  # serve on 127.0.0.1:8765 and open a browser
+./rsmm map-editor --port 9000      # pick the port (falls back to a free one)
+./rsmm map-editor --no-browser     # just print the URL
+./rsmm restore --all && ./rsmm apply   # install what you saved
+```
+
+Saving writes `mods/<id>/manifest.toml` with one `tilegen` declaration, which
+reopens in the editor. The `tilegen` kind is ⚠️ experimental: the recipe
+round-trips byte-identically, but an edited recipe has not been playtested.
+The server answers only loopback hosts, and every write needs a token that
+exists only in the page it served.
+
 ### `rsmm stat`
 
 Edit numeric game values (globals, modifiers, camp difficulty).

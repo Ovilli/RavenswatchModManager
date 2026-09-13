@@ -54,6 +54,7 @@ BUILTIN = {
     "items":             "rsmm.cli.cmd_items",
     "enemies":           "rsmm.cli.cmd_enemies",
     "talents":           "rsmm.cli.cmd_talents",
+    "map-editor":        "rsmm.cli.cmd_map_editor",
     "poi":               "rsmm.cli.cmd_poi",
     "schema":            "rsmm.cli.cmd_schema",
     "install":           "rsmm.cli.cmd_install",
@@ -149,6 +150,7 @@ COMMAND_GROUPS: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("enemies",  "",                           "browse the enemy corpus"),
         ("talents",  "",                           "browse the talent corpus"),
         ("poi",      "[list|kinds|show]",          "browse map tiles / POIs"),
+        ("map-editor", "[--port N]",               "edit a chapter's map generation"),
     )),
     ("game", (
         ("run",      "[--set-launch-options]",     "launch Ravenswatch via Steam"),
