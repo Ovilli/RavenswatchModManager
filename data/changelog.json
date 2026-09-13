@@ -1,6 +1,19 @@
 {
-  "generated": "2026-09-04",
+  "generated": "2026-09-13",
   "entries": [
+    {
+      "version": "",
+      "loader_version": 14,
+      "date": "2026-09-13",
+      "summary": "Faster hero detection, runtime entity spawning for mods, in-run talent grants, run-state reads, and a much quieter loader log.",
+      "highlights": [
+        "Mods that use your hero (stats, talents, damage meter) start working within a second of a run starting. Before, they could wait up to two minutes, until your first dream-shard pickup.",
+        "New for mod authors: R.spawn creates a copy of an entity in the world, such as another enemy beside the hero.",
+        "New for mod authors: R.talent.grant gives the hero a talent mid-run, so a modded talent can be tested without waiting for the game to offer it.",
+        "New for mod authors: R.game reads the run's own state, such as the current chapter, whether you are in the shop, and whether you are the session host.",
+        "The loader log is far shorter. Debug traces no longer flag every level as an error, and rsmm doctor warns when a debug trace flag is left switched on."
+      ]
+    },
     {
       "version": "5.6.1",
       "date": "2026-09-04",
