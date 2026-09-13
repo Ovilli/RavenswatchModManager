@@ -82,6 +82,14 @@ from . import _common as C
 
 _log = logging.getLogger(__name__)
 
+#: Everything this kind writes is rebuilt at apply time from the installing
+#: player's own game files (`shop_catalog.vanilla_bytes` reads the install when
+#: there is no developer mirror) and their own config. `rsmm pack` therefore
+#: leaves the emitted files out of a published archive: shipping them would put
+#: edited copies of the game's files on the store, and would bake the packing
+#: author's config over every player's.
+REGENERATES_FROM_INSTALL = True
+
 _FIELDS = {"prices", "price_scale", "offers", "slots", "config"}
 _OFFER_FIELDS = {"count", "weights", "pool"}
 

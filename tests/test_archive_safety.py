@@ -375,3 +375,40 @@ def test_pack_preserves_windows_line_endings(tmp_path, monkeypatch):
     packed = _pack_manifest(tmp_path, monkeypatch, "Crlf", crlf)
     assert packed == crlf.replace("enabled     = false", "enabled     = true")
     assert packed.count("\r\n") == crlf.count("\r\n")
+
+
+def test_pack_leaves_out_files_a_kind_rebuilds_from_the_install(tmp_path, monkeypatch, capsys):
+    """A `shop` mod's emitted files are edited copies of game files, built from
+    the packing author's config. The installing player's apply rebuilds them,
+    so the archive must not carry them."""
+    import json
+    import zipfile
+
+    d = _packable(tmp_path / "mods", "ShopMod", {
+        "assets/EntitySettings/NPC.gen": b"edited game bytes",
+    })
+    (d / "manifest.toml").write_text(
+        '[mod]\nid = "ShopMod"\nexperimental = true\n\n'
+        '[[content]]\nkind = "shop"\nid = "sandman"\nprice_scale = 0.5\n',
+        encoding="utf-8")
+    (d / ".rsmm_emitted.json").write_text(json.dumps(["EntitySettings/NPC.gen"]))
+    assert _run_pack(tmp_path, monkeypatch, "ShopMod") == 0
+    names = zipfile.ZipFile(tmp_path / "dist" / "ShopMod.zip").namelist()
+    assert "ShopMod/assets/EntitySettings/NPC.gen" not in names
+    assert "ShopMod/assets/a.bin" in names          # hand-authored files still ship
+    assert "left out 1 generated file" in capsys.readouterr().out
+
+
+def test_pack_keeps_emitted_files_when_a_kind_cannot_rebuild_them(tmp_path, monkeypatch):
+    import json
+    import zipfile
+
+    d = _packable(tmp_path / "mods", "ItemMod", {"assets/Items/X.gen": b"cooked clone"})
+    (d / "manifest.toml").write_text(
+        '[mod]\nid = "ItemMod"\n\n[[content]]\nkind = "item"\nid = "x"\nbase = "Y"\n',
+        encoding="utf-8")
+    (d / ".rsmm_emitted.json").write_text(json.dumps(["Items/X.gen"]))
+    assert _run_pack(tmp_path, monkeypatch, "ItemMod") == 0
+    names = zipfile.ZipFile(tmp_path / "dist" / "ItemMod.zip").namelist()
+    assert "ItemMod/assets/Items/X.gen" in names
+

@@ -91,6 +91,39 @@ def _is_local_only(rel: Path) -> bool:
         or name.endswith(".tmp")
     )
 
+def _install_regenerated(mod_dir: Path) -> set[str]:
+    """Emitted files the installing player's `apply` rebuilds, as mod-relative
+    posix paths (``assets/...``). Left out of the archive.
+
+    A content kind opts in with ``REGENERATES_FROM_INSTALL = True`` when it can
+    rebuild its output from the player's own install and config. Only when
+    EVERY content block in the mod is such a kind are the emitted files (listed
+    in ``.rsmm_emitted.json``) dropped — the marker does not record which kind
+    wrote which file, and a kind that still needs the developer mirror would
+    publish a mod that installs as nothing.
+    """
+    marker = mod_dir / ".rsmm_emitted.json"
+    if not marker.is_file():
+        return set()
+    try:
+        import json
+
+        emitted = json.loads(marker.read_text(encoding="utf-8"))
+        from rsmm.cli.apply_mods import Mod
+        from rsmm.sdk.content import _load_kind
+
+        blocks = Mod(mod_dir).content_blocks
+        if not blocks or not isinstance(emitted, list):
+            return set()
+        for block in blocks:
+            module = _load_kind(str(block.get("kind")))
+            if not getattr(module, "REGENERATES_FROM_INSTALL", False):
+                return set()
+    except Exception:                           # noqa: BLE001 - ship as before on any doubt
+        return set()
+    return {f"assets/{rel}" for rel in emitted if isinstance(rel, str)}
+
+
 _USAGE = (
     "usage: rsmm pack <id> [--allow-vanilla]\n"
     "\n"
@@ -187,14 +220,22 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 1
+    regenerated = _install_regenerated(src)
     members: list[tuple[Path, str]] = []
+    left_out = 0
     for f in sorted(src.rglob("*")):
         if not f.is_file():
             continue
         rel = f.relative_to(src)
         if _is_local_only(rel):
             continue
+        if rel.as_posix() in regenerated:
+            left_out += 1
+            continue
         members.append((f, f"{mod_id}/{rel.as_posix()}"))
+    if left_out:
+        print(f"  [note] {mod_id}: left out {left_out} generated file(s); each player's "
+              f"apply rebuilds them from their own game files and config")
 
     # Same policy the installers enforce, applied before anything is written.
     # Packing a mod that every user's `rsmm install` will refuse is a failure
