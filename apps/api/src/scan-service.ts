@@ -5,9 +5,11 @@ import { notify } from './notify.js';
 import { deleteObject, getObjectBytes, modUploadKey } from './storage.js';
 import {
   MAX_VT_LARGE_BYTES,
+  VirusTotalAlreadySubmittedError,
   VirusTotalRateLimitError,
   type VirusTotalStats,
   getVirusTotalAnalysis,
+  getVirusTotalFileReport,
   submitVirusTotalFile,
   submitVirusTotalUrl,
 } from './virus-total.js';
@@ -86,20 +88,30 @@ export async function scanVersion(target: ScanTarget): Promise<ScanResult> {
   const db = getDb();
   const key = modUploadKey(target.slug, target.version, target.sha256);
 
-  let analysis: { analysisId: string; permalink: string };
-  // Prefer a real byte-upload scan whenever the archive is within the large-file
-  // ceiling — submitVirusTotalFile transparently uses the direct endpoint
-  // (<=32 MB) or the large-file upload_url flow. Only URL-scan the biggest ones.
-  if (target.sizeBytes > 0 && target.sizeBytes <= MAX_VT_LARGE_BYTES) {
-    const bytes = await getObjectBytes(key, MAX_VT_LARGE_BYTES);
-    analysis = bytes
-      ? await submitVirusTotalFile(bytes, `${target.slug}-${target.version}.zip`)
-      : await submitVirusTotalUrl(target.assetUrl);
-  } else {
-    analysis = await submitVirusTotalUrl(target.assetUrl);
+  let analysis: { analysisId: string; permalink: string } | null = null;
+  let verdict: { status: string; stats: VirusTotalStats } | null;
+  try {
+    // Prefer a real byte-upload scan whenever the archive is within the large-file
+    // ceiling — submitVirusTotalFile transparently uses the direct endpoint
+    // (<=32 MB) or the large-file upload_url flow. Only URL-scan the biggest ones.
+    if (target.sizeBytes > 0 && target.sizeBytes <= MAX_VT_LARGE_BYTES) {
+      const bytes = await getObjectBytes(key, MAX_VT_LARGE_BYTES);
+      analysis = bytes
+        ? await submitVirusTotalFile(bytes, `${target.slug}-${target.version}.zip`)
+        : await submitVirusTotalUrl(target.assetUrl);
+    } else {
+      analysis = await submitVirusTotalUrl(target.assetUrl);
+    }
+    verdict = await pollVerdict(analysis.analysisId);
+  } catch (err) {
+    if (!(err instanceof VirusTotalAlreadySubmittedError)) throw err;
+    // These exact bytes are already in VirusTotal's queue — usually submitted
+    // by an earlier drain the platform froze before it saved a verdict. That
+    // is not a failure: read the file's report by hash. No finished report
+    // yet ⇒ 'pending', which the drain re-polls after PENDING_RETRY_AFTER_MS.
+    verdict = await getVirusTotalFileReport(target.sha256);
   }
 
-  const verdict = await pollVerdict(analysis.analysisId);
   const stats = verdict?.stats ?? null;
   const flagged = !!stats && (stats.malicious > 0 || stats.suspicious > 0);
   const resolved = verdict?.status === 'completed';
@@ -121,7 +133,7 @@ export async function scanVersion(target: ScanTarget): Promise<ScanResult> {
     .update(schema.modVersions)
     .set({
       scanStatus: status,
-      scanId: analysis.analysisId,
+      scanId: analysis?.analysisId,
       scanStats: stats ? ({ ...stats } as Record<string, number>) : undefined,
       scannedAt: new Date(),
     })
@@ -152,8 +164,8 @@ export async function scanVersion(target: ScanTarget): Promise<ScanResult> {
     status,
     flagged,
     stats: stats ?? undefined,
-    analysisId: analysis.analysisId,
-    permalink: analysis.permalink,
+    analysisId: analysis?.analysisId ?? '',
+    permalink: analysis?.permalink ?? `https://www.virustotal.com/gui/file/${target.sha256}`,
     deleted,
   };
 }

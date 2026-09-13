@@ -31,6 +31,19 @@ export class VirusTotalRateLimitError extends Error {
   }
 }
 
+/**
+ * Thrown when VirusTotal answers 409 AlreadySubmittedError to a file upload:
+ * the same bytes are already queued for analysis — typically by an earlier
+ * drain the serverless platform froze after it submitted. Not a scan failure:
+ * the verdict is fetched by hash instead (getVirusTotalFileReport).
+ */
+export class VirusTotalAlreadySubmittedError extends Error {
+  constructor(body: string) {
+    super(`VirusTotal already has this file queued (409): ${body}`.trim());
+    this.name = 'VirusTotalAlreadySubmittedError';
+  }
+}
+
 function normalizeStats(raw: unknown): VirusTotalStats {
   const s = (raw ?? {}) as Record<string, unknown>;
   const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
@@ -101,6 +114,9 @@ export async function submitVirusTotalFile(
 
   const bodyText = await response.text();
   if (response.status === 429) throw new VirusTotalRateLimitError(bodyText);
+  if (response.status === 409 && bodyText.includes('AlreadySubmittedError')) {
+    throw new VirusTotalAlreadySubmittedError(bodyText);
+  }
   if (!response.ok) {
     throw new Error(`VirusTotal file upload failed (${response.status}): ${bodyText}`.trim());
   }
@@ -156,6 +172,32 @@ export async function submitVirusTotalUrl(url: string): Promise<VirusTotalAnalys
     permalink:
       json.data?.links?.self ??
       `https://www.virustotal.com/gui/url/${encodeURIComponent(analysisId)}/detection`,
+  };
+}
+
+/**
+ * VirusTotal's report for a file it already knows, looked up by SHA-256. Null
+ * when it has no report yet (404) — e.g. the first analysis is still running.
+ * `status` is 'completed' once the report carries a finished analysis.
+ */
+export async function getVirusTotalFileReport(sha256: string): Promise<VirusTotalVerdict | null> {
+  const response = await fetch(
+    `https://www.virustotal.com/api/v3/files/${encodeURIComponent(sha256)}`,
+    { headers: { 'x-apikey': env.virusTotalApiKey } },
+  );
+  const bodyText = await response.text();
+  if (response.status === 429) throw new VirusTotalRateLimitError(bodyText);
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(`VirusTotal file report fetch failed (${response.status}): ${bodyText}`.trim());
+  }
+  const json = (bodyText ? JSON.parse(bodyText) : null) as {
+    data?: { attributes?: { last_analysis_date?: number; last_analysis_stats?: unknown } };
+  } | null;
+  const attrs = json?.data?.attributes ?? {};
+  return {
+    status: attrs.last_analysis_date ? 'completed' : 'queued',
+    stats: normalizeStats(attrs.last_analysis_stats),
   };
 }
 
