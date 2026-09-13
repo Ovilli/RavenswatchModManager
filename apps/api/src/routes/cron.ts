@@ -108,7 +108,10 @@ cronRouter.get('/scan-drain', async (c) => {
   }
 
   try {
-    const results = await drainBatch(CRON_DRAIN_MAX);
+    // Forced: this drain is awaited for the whole request, so it can finish a
+    // scan, and it must not be blocked by a detached kick the platform froze
+    // mid-scan in this instance (see DrainLock in scan-gate.ts).
+    const results = await drainBatch(CRON_DRAIN_MAX, { force: true });
     if (results.length) log.info('cron scan-drain', { drained: results });
     return c.json({ ok: true, drained: results.length, results, purged });
   } catch (err) {

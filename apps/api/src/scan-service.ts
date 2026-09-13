@@ -1,5 +1,5 @@
 import { getDb, schema } from '@rsmm/db';
-import { and, eq, lt, or, sql, type SQL } from 'drizzle-orm';
+import { type SQL, and, eq, lt, or, sql } from 'drizzle-orm';
 import { errString } from './logger.js';
 import { notify } from './notify.js';
 import { deleteObject, getObjectBytes, modUploadKey } from './storage.js';
@@ -14,7 +14,7 @@ import {
 
 // The fail-closed serve gate lives in scan-gate.ts (pure, unit-tested);
 // re-exported here so existing importers of scan-service are unchanged.
-import type { ScanStatus } from './scan-gate.js';
+import { DrainLock, type ScanStatus } from './scan-gate.js';
 export { type ScanStatus, isServable } from './scan-gate.js';
 
 export interface ScanResult {
@@ -263,15 +263,21 @@ export async function queueInfo(versionId: string): Promise<QueueInfo | null> {
  * Single-flight per instance: a scan holds the VT budget for ~20s, so a drain
  * requested while one is running is a no-op rather than a concurrent submit.
  */
-let drainInFlight = false;
+// Longer than any real scan (object fetch + submit + ~18s of verdict polls),
+// so a live drain is never preempted, but an abandoned one — a detached kick
+// the platform froze after its response — cannot block the queue for good.
+const DRAIN_LEASE_MS = 2 * 60 * 1000;
+const drainLock = new DrainLock(DRAIN_LEASE_MS);
 
-export async function drainOnce(): Promise<{ id: string; action: string; status?: string } | null> {
-  if (drainInFlight) return null;
-  drainInFlight = true;
+export async function drainOnce(
+  opts: { force?: boolean } = {},
+): Promise<{ id: string; action: string; status?: string } | null> {
+  const acquiredAt = Date.now();
+  if (!drainLock.tryAcquire(acquiredAt, opts.force)) return null;
   try {
     return await drainOnceInner();
   } finally {
-    drainInFlight = false;
+    drainLock.release(acquiredAt);
   }
 }
 
@@ -351,10 +357,11 @@ async function drainOnceInner(): Promise<{ id: string; action: string; status?: 
  */
 export async function drainBatch(
   max = 1,
+  opts: { force?: boolean } = {},
 ): Promise<Array<{ id: string; action: string; status?: string }>> {
   const done: Array<{ id: string; action: string; status?: string }> = [];
   for (let i = 0; i < max; i++) {
-    const r = await drainOnce();
+    const r = await drainOnce(opts);
     if (!r) break; // nothing left to do
     done.push(r);
     if (r.action.endsWith(':rate-limited')) break; // back off until next tick
@@ -362,10 +369,7 @@ export async function drainBatch(
   return done;
 }
 
-async function selectTarget(
-  where: ReturnType<typeof and>,
-  order: SQL,
-): Promise<ScanTarget | null> {
+async function selectTarget(where: ReturnType<typeof and>, order: SQL): Promise<ScanTarget | null> {
   const db = getDb();
   const rows = await db
     .select({

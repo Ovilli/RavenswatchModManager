@@ -16,3 +16,37 @@ export type ScanStatus = 'queued' | 'pending' | 'clean' | 'flagged' | 'skipped' 
 export function isServable(status: string | null | undefined): boolean {
   return status === 'clean' || status === 'skipped';
 }
+
+/**
+ * Per-instance single-flight lock for the scan drain, with a lease.
+ *
+ * A plain boolean was not enough on serverless. A drain kicked off detached
+ * (after a publish or a status poll) is frozen by the platform the moment the
+ * response is sent; its promise never settles, so the flag stayed `true` for
+ * the life of the instance and every later drain — the scheduled cron one
+ * included — returned "nothing to do" in milliseconds while a version sat
+ * queued. The lease makes an abandoned hold expire, and `force` lets a drain
+ * that is awaited for its whole request (the cron) run regardless: at worst it
+ * repeats a frozen scan, which VirusTotal dedupes and the verdict write
+ * tolerates.
+ */
+export class DrainLock {
+  private heldSince: number | null = null;
+
+  constructor(private readonly leaseMs: number) {}
+
+  /** Take the lock. False when a live (unexpired) drain holds it. */
+  tryAcquire(now: number, force = false): boolean {
+    if (!force && this.heldSince !== null && now - this.heldSince < this.leaseMs) {
+      return false;
+    }
+    this.heldSince = now;
+    return true;
+  }
+
+  /** Release only the hold that `acquiredAt` took, so a stale drain finishing
+   *  late cannot drop a newer drain's lock. */
+  release(acquiredAt: number): void {
+    if (this.heldSince === acquiredAt) this.heldSince = null;
+  }
+}
