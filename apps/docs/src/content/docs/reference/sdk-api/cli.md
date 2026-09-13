@@ -11,7 +11,7 @@ Every `rsmm` subcommand, auto-generated from the dispatch table (`rsmm.cli._disp
 Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcommand. For task-oriented prose, see the [CLI guide](/reference/cli/).
 :::
 
-**51 commands.**
+**52 commands.**
 
 | Command | Module | Summary |
 |---|---|---|
@@ -41,6 +41,7 @@ Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcomman
 | `rsmm lint` | `rsmm.cli.lint` | rsmm lint — per-mod manifest + assets validator. |
 | `rsmm list` | `rsmm.cli.apply_mods` | Ravenswatch Mod Manager — install-time mod applier. |
 | `rsmm log` | `rsmm.cli.cmd_log` | rsmm log — read the loader log from the game install directory. |
+| `rsmm map-editor` | `rsmm.cli.cmd_map_editor` | `rsmm map-editor` — edit a chapter's map-generation recipe in the browser. |
 | `rsmm menu` | `rsmm.cli.cmd_menu` | `rsmm menu` — generate and inspect the in-game mod-list page (native book UI). |
 | `rsmm merge` | `rsmm.cli.merge` | Patch-merge layer. |
 | `rsmm new` | `rsmm.cli.cmd_new` | rsmm new — scaffold a mod directory. |
