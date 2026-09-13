@@ -591,14 +591,20 @@ R.modifier.enable_writes = function() return true end
 -- next_main defers to the game's main pump, which this harness has no tick for.
 R.schedule.next_main = function(fn) fn() end
 do
-    local hit = nil
+    local hit, ran = nil, false
     for i = 1, 80 do
         if not saga_with{ challenge_tier = "brutal", challenge_seed = "spec-apply-" .. i,
                           challenge_apply = true } then break end
+        ran = true
         fire("gameplay:GAME_START")
         if had("modifier.set:") then hit = had("modifier.set:"); break end
     end
-    ok(hit ~= nil, "saga/chal: auto-apply writes the modifiers it can, saw: " .. tostring(hit))
+    -- Saga lives in the untracked mods/ tree, so CI has none: saga_with()
+    -- declines on the first try and the check has nothing to measure. Every
+    -- other saga block skips on that; this one used to report it as a failure.
+    if ran then
+        ok(hit ~= nil, "saga/chal: auto-apply writes the modifiers it can, saw: " .. tostring(hit))
+    end
 end
 R.modifier.set, R.modifier.enable_writes, R.schedule.next_main = _set, _enable, _next
 for k in pairs(_cfg_override) do _cfg_override[k] = nil end
