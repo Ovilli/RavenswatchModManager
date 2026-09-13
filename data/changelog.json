@@ -2,6 +2,19 @@
   "generated": "2026-09-13",
   "entries": [
     {
+      "version": "5.7.0",
+      "date": "2026-09-13",
+      "summary": "Edit the Sandman's shop from a config screen dressed in the game's own art, a new item-grid config editor for mod authors, and a local 3D map-generation editor.",
+      "highlights": [
+        "New for mod authors: the shop content kind edits the Sandman's shop. Set prices, choose which items each offer slot sells (including Grimoire, Astral and Wishing Well powerups), and replace the random magical-object offers with items you pick.",
+        "New for mod authors: the item-grid config field. A mod declares sections, filters, counts, a per-item number and an optional theme of game textures in config_schema.toml, and the app draws the editor. Textures are read from your own install, never shipped with a mod.",
+        "Config dialogs for grid editors open wide and lay their sections out side by side, sized to the window and your UI scale.",
+        "A shop edit that would crash the game when the Sandman's shop opens (a Minor row with fewer than two items) is refused before it is applied.",
+        "New CLI command: rsmm map-editor opens a local 3D editor for a chapter's tile-generation recipe.",
+        "Applying mods cleans up files from content you removed, and merged text banks land in the right mods folder."
+      ]
+    },
+    {
       "version": "",
       "loader_version": 14,
       "date": "2026-09-13",
