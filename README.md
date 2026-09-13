@@ -1,215 +1,193 @@
 <p align="center">
-  <img src="logo.png" alt="RSMM" width="120">
-</p>
-
-<h1 align="center">Ravenswatch Mod Manager</h1>
-
-<p align="center">
-  <b>Install, manage, and build mods for <a href="https://store.steampowered.com/app/2071280/Ravenswatch/">Ravenswatch</a>.</b><br>
-  Swap textures, retune stats and talents, translate the game, add custom magic items, or script gameplay in Lua <br>
-  from a desktop app (no terminal) or a full CLI + modding SDK.
+  <img src=".github/readme/banner.png" alt="Ravenswatch Mod Manager: install, manage and make mods for Ravenswatch">
 </p>
 
 <p align="center">
-  <a href="https://github.com/Ovilli/RavenswatchModManager/releases/latest"><img src="https://img.shields.io/badge/Windows-x64-blue?logo=windows" alt="Windows"></a>
-  <a href="https://github.com/Ovilli/RavenswatchModManager/releases/latest"><img src="https://img.shields.io/badge/Linux-x64-orange?logo=linux" alt="Linux"></a>
-  <a href="https://rsmm.me"><img src="https://img.shields.io/badge/website-rsmm.me-crimson" alt="Website"></a>
-  <a href="https://rsmm.me/registry"><img src="https://img.shields.io/badge/mod%20registry-browse-blueviolet" alt="Mod registry"></a>
-  <a href="https://docs.rsmm.me"><img src="https://img.shields.io/badge/docs-docs.rsmm.me-8a2be2" alt="Docs"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
-  <a href="https://ko-fi.com/W7W41FW3YE"><img src="https://img.shields.io/badge/Ko--fi-support-ff5e5b?logo=kofi&logoColor=white" alt="Support on Ko-fi"></a>
+  <a href="https://github.com/Ovilli/RavenswatchModManager/releases/latest"><b>Download</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://rsmm.me/registry"><b>Browse mods</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://docs.rsmm.me"><b>Documentation</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://docs.rsmm.me/getting-started/first-mod/"><b>Make a mod</b></a>
 </p>
 
----
+<p align="center">
+  <a href="https://github.com/Ovilli/RavenswatchModManager/releases/latest"><img src="https://img.shields.io/github/v/release/Ovilli/RavenswatchModManager?label=release&color=882029" alt="Latest release"></a>
+  <a href="https://github.com/Ovilli/RavenswatchModManager/releases"><img src="https://img.shields.io/github/downloads/Ovilli/RavenswatchModManager/total?color=621A20" alt="Downloads"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-d6b066" alt="MIT license"></a>
+</p>
 
-## Start here
+<p align="center">
+  <img src=".github/readme/library.jpg" alt="The RSMM library: installed mods grouped by category, each with an on/off switch, settings and store link" width="100%">
+</p>
 
-| I want to… | Go to |
-|---|---|
-| **Play with mods** | [Install the desktop app](#1-install-the-desktop-app) — 2 minutes, no terminal |
-| **Browse mods** | [rsmm.me/registry](https://rsmm.me/registry) — community mods, one-click install |
-| **Make a mod** | [Make your first mod](#make-your-first-mod) → [Authoring guide](https://docs.rsmm.me/guides/modding/) |
-| **Script gameplay in Lua** | [Lua mods](#lua-mods-windows) (needs the loader DLL) |
-| **Work on RSMM itself** | [Dev setup](https://docs.rsmm.me/contributing/dev-setup/) · [Architecture](https://docs.rsmm.me/architecture/overview/) |
+<table>
+<tr>
+<td width="50%" valign="top">
 
-Ravenswatch ships on **Windows**, and runs on **Linux** via Proton / Steam Deck. RSMM supports both. There is no native macOS build of the game.
+### For players
 
----
+A desktop app that finds your game, installs mods from
+[rsmm.me](https://rsmm.me/registry) in a click and applies them for you.
+Every file it changes is backed up, so the unmodded game is always one click away.
 
-## 1. Install the desktop app
+**[Get the app →](#getting-started)**
 
-| Platform | Download |
-|---|---|
-| **Windows** 10/11 | [`RSMM-x64.msi`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) |
-| **Linux** — any distro | [`RSMM-x86_64.AppImage`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) (`chmod +x`, then run) |
-| **Linux** — Debian/Ubuntu | [`rsmm_amd64.deb`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) |
+</td>
+<td width="50%" valign="top">
 
-The app auto-updates itself from GitHub releases.
+### For mod authors
 
-## 2. First run
+A command-line tool and SDK for changing textures, models, stats, text and items,
+scripting gameplay in Lua, and publishing to the site with one command.
 
-1. **Open RSMM.** It auto-detects your Steam install of Ravenswatch. If it doesn't, point it at the folder containing `Ravenswatch.exe`.
-2. **Click Doctor.** Health check — game path, asset map, mod validity, conflicts. Fix anything it flags before continuing.
-3. **Registry tab** → browse community mods → **Install**. Or drop a mod folder into your mods directory (below).
-4. **Click Apply.** This is the step that actually writes the mods into your game. Nothing changes in-game until you Apply.
-5. **Click Play.**
+**[Make your first mod →](#making-mods)**
 
-> **Apply is not automatic.** Installing/enabling a mod only changes RSMM's own state. Re-Apply after every change.
+</td>
+</tr>
+</table>
 
-**Where mods live** (desktop app, per profile):
+## Getting started
 
-| OS | Path |
-|---|---|
-| Windows | `%APPDATA%\rsmm\mods\profiles\<profile>\` |
-| Linux | `~/.local/share/rsmm/mods/profiles/<profile>/` |
+| Windows 10/11 | Linux (any distro) | Debian / Ubuntu |
+| :---: | :---: | :---: |
+| [`RSMM-x64.msi`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) | [`RSMM-x86_64.AppImage`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) | [`rsmm_amd64.deb`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) |
 
-One folder per mod, each with a `manifest.toml`. From a source checkout the CLI uses `./mods/` instead (override with `RSMM_MODS_DIR`).
+The app keeps itself up to date after the first install. Steam Deck works through the Linux build.
 
-## 3. Going back to vanilla
+1. **Open RSMM.** It looks for Ravenswatch in your Steam library. If it can't find
+   it, choose the folder that contains `Ravenswatch.exe`.
+2. **Add mods** from the **Browse** tab, or drop a mod folder into your library.
+3. **Press Apply.** This writes the enabled mods into the game. Enabling or
+   disabling a mod does nothing until you apply.
+4. **Start the game.**
 
-RSMM backs up every file it touches as `<file>.rsmm.bak` and tracks state in the game folder, so uninstall is complete and reversible.
+To go back to the unmodded game, disable your mods and apply again, or use
+**Restore** to undo everything at once.
 
-- **Desktop:** disable/uninstall the mod → **Apply**. To wipe everything, use the Restore action.
-- **CLI:** `rsmm restore --all`
-- **Nuclear option:** Steam → Ravenswatch → Properties → Installed Files → *Verify integrity of game files*.
+<table>
+<tr>
+<td width="33%" valign="top"><img src=".github/readme/list.jpg" alt="Library list view with load order"><br><sub><b>List view.</b> Every mod in the active profile at a glance, in load order.</sub></td>
+<td width="33%" valign="top"><img src=".github/readme/config.jpg" alt="A mod's settings dialog"><br><sub><b>Mod settings.</b> Change a mod's options without editing any files.</sub></td>
+<td width="33%" valign="top"><img src=".github/readme/profiles.jpg" alt="Profiles screen"><br><sub><b>Profiles.</b> Keep separate mod setups and share them as a code.</sub></td>
+</tr>
+</table>
 
-> Also do this **before a game update**, and re-Apply afterwards. A patch can change the assets your mods override.
+## What mods can change
 
----
+| Area | What you can change |
+| --- | --- |
+| **Look and sound** | Textures, 3D models and audio |
+| **Balance** | Hero and enemy stats, talent values, magical-object values |
+| **Text** | Any in-game string, including full translations |
+| **New content** | Custom magical objects. Enemies, maps, shops and rewards are supported but still experimental, and mods that use them say so |
+| **Scripted gameplay** | Lua scripts running in the game through the loader |
 
-## What you can do
+Many mods have their own settings: press **Config** on a mod to change them before applying.
 
-✅ works today · ⬜ planned (not built yet)
+> [!NOTE]
+> Mods only change files on your own machine. Cosmetic mods are fine in co-op. Mods
+> that change balance or content can behave differently for other players, so check a
+> mod's description before bringing it into someone else's lobby.
 
-| Capability | Desktop app | CLI / SDK |
-|---|---|---|
-| Install mods (local folder or registry) | ✅ Click to install | `rsmm apply` |
-| Swap textures / models / audio | ✅ Built-in | `rsmm apply` |
-| Edit balance numbers | ⬜ Planned | ✅ `m.stat()` / `[[patch]] kind="stat"` |
-| Edit talent & item values | ⬜ Planned | ✅ `rsmm talents`, `value_patches` |
-| Override translations | ⬜ Planned | ✅ `m.text()` / `[[patch]] kind="text"` |
-| Add a custom magic item | ⬜ Planned | ✅ `kind="item"` |
-| Multiple mod profiles | ✅ Dropdown | via `RSMM_MODS_DIR` |
-| Health check | ✅ Doctor button | ✅ `rsmm doctor` |
-| Launch the game | ✅ Play button | ✅ `rsmm run` |
-| Author + package mods | — | ✅ `rsmm new`, `rsmm lint`, `rsmm pack` |
-| Live re-apply on file change | — | ✅ `rsmm watch` |
-| Lua-scripted gameplay mods | — | ✅ SDK + loader DLL (Windows) |
+## Making mods
 
-**How honest is a given feature?** Every content kind carries a confidence rating — `confirmed` (proven in-game), `experimental`, or `guess`. `item` and `talent` are confirmed; enemies, heroes, maps, bosses, skins and friends are not. RSMM refuses to build a non-confirmed kind unless the mod opts in explicitly. See the [confidence table](https://docs.rsmm.me/concepts/content-kinds/).
-
-**Registry status:** the community registry is new and holds few mods so far — most people install mods they were handed directly.
-
-**Multiplayer:** mods change *your* local files. A cosmetic mod is safe; anything touching balance or content can desync or simply not apply for peers, and Ravenswatch is host-authoritative for most gameplay. Mods declare a `multiplayer_scope` (`cosmetic` / `deterministic-shared` / `host-authoritative` / `local-only`) — check it before playing online, and don't ship gameplay mods into strangers' lobbies.
-
----
-
-## Make your first mod
-
-Authoring runs through the CLI, which is stdlib-only Python 3.11+ and lives in this repo:
+Mod authoring uses the `rsmm` CLI, which needs Python 3.11 or newer.
 
 ```sh
 git clone https://github.com/Ovilli/RavenswatchModManager
 cd RavenswatchModManager
 python3 -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
-pip install -e .                                      # puts `rsmm` on PATH
+pip install -e .
 ```
-
-Then scaffold, check, install:
 
 ```sh
-rsmm new my-first-mod --kind item     # picks a vanilla item to clone, interactively
-rsmm lint my-first-mod                # the same checks CI runs
-rsmm apply                            # write it into the game
-rsmm pack my-first-mod                # dist/my-first-mod.zip, ready for the registry
+rsmm new my-first-mod --kind item    # start from a copy of an existing magical object
+rsmm lint my-first-mod               # check it
+rsmm apply                           # try it in the game
+rsmm publish my-first-mod            # upload it to rsmm.me
 ```
 
-`rsmm new` writes `mods/my-first-mod/manifest.toml` seeded from the real base item — its icon, rarity and every editable value at its true default — so it applies as-is and you edit numbers from there. `rsmm watch` re-applies on every save while you iterate.
+A mod is a `manifest.toml` describing what it changes, plus any assets it needs.
+`rsmm watch` re-applies it every time you save. Publishing needs an API token from your
+[rsmm.me account](https://rsmm.me/account). Every upload is malware-scanned before it
+appears on the site.
 
-**Mods ship data, not code.** A mod is a `manifest.toml` of `[[content]]` and `[[patch]]` blocks plus assets, not a script that pokes the game: `rsmm lint` fails any `.py` in a mod that isn't a sanctioned lifecycle hook. Gameplay logic goes in Lua against the `R.*` SDK (below).
+<table>
+<tr>
+<td><b><a href="https://docs.rsmm.me/getting-started/first-mod/">Your first mod</a></b><br>A step-by-step walkthrough</td>
+<td><b><a href="https://docs.rsmm.me/guides/modding/">Modding guide</a></b><br>Every manifest field</td>
+<td><b><a href="https://docs.rsmm.me/guides/sdk/">Lua SDK</a></b><br>Scripting gameplay</td>
+<td><b><a href="docs/ExampleMods">Example mods</a></b><br>Working mods to copy</td>
+</tr>
+</table>
 
-Working examples to copy: [`docs/ExampleMods/`](docs/ExampleMods) · full walkthrough: [Your first mod](https://docs.rsmm.me/getting-started/first-mod/) · every field: [Authoring mods](https://docs.rsmm.me/guides/modding/).
+### Lua mods
 
----
-
-## Lua mods (Windows)
-
-Texture, stat, talent, text and item mods are **install-time file replacement** — they work anywhere the game runs, with no injection. Lua scripting is the exception: it loads a native DLL into the game process, so it is Windows-only (and experimental under Proton).
+Most mods are plain file changes and work wherever the game runs. Lua mods also need
+the loader, a small DLL that runs next to the game:
 
 ```sh
-cd src/loader && ./build.sh    # Linux cross-compile (MinGW) — or build.bat on Windows
-rsmm install-loader            # plant winhttp.dll + the Lua SDK into the game folder
-rsmm log -f                    # tail the loader log
+rsmm install-loader    # install the loader and the Lua SDK into the game folder
+rsmm log -f            # follow the loader log
 ```
 
-Steam Proton on Linux needs the launch option `WINEDLLOVERRIDES="winhttp=n,b" %command%`.
+On Linux under Proton, add `WINEDLLOVERRIDES="winhttp=n,b" %command%` to the game's
+Steam launch options.
 
-Mod Lua talks only to the high-level `R.*` SDK — events, entities, stats, scheduling, the in-game mod menu. See [Mod hooks](https://docs.rsmm.me/reverse-engineering/mod-hooks/) and the [SDK guide](https://docs.rsmm.me/guides/sdk/).
+## If something goes wrong
 
----
+<details>
+<summary><b>Common problems and fixes</b></summary>
+<br>
 
-## Troubleshooting
+| Problem | Fix |
+| --- | --- |
+| Mods don't show up in the game | Press **Apply** after changing mods |
+| The game crashes | Run `rsmm safe-mode`, or restore and re-enable mods one at a time |
+| A game update broke things | Restore, let Steam verify the game files, then apply again |
+| Gray window on Debian/Ubuntu | Start the app with `WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1` |
+| The app won't open on Windows | Install [WebView2](https://learn.microsoft.com/en-us/microsoft-edge/webview2/) |
 
-| Symptom | Fix |
-|---|---|
-| Mods don't show up in-game | You didn't **Apply** (or `rsmm apply`) after enabling them |
-| "Game not found" | Point RSMM at the folder holding `Ravenswatch.exe` |
-| Game crashes or misbehaves | `rsmm safe-mode` (disables everything + re-applies), or Restore, then re-enable mods one at a time |
-| Broke something after a game patch | `rsmm restore --all`, verify game files, re-apply |
-| Desktop app won't open (Windows) | Install [WebView2](https://learn.microsoft.com/en-us/microsoft-edge/webview2/) |
-| Gray window (Debian/Ubuntu) | `WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 rsmm` |
-| Lua mods do nothing | `winhttp.dll` next to `Ravenswatch.exe`? Check `rsmm log`. Windows only |
-| Anything else | `rsmm doctor` first, then [full troubleshooting](https://docs.rsmm.me/getting-started/troubleshooting/) |
+</details>
 
-Still stuck → [open an issue](https://github.com/Ovilli/RavenswatchModManager/issues) with your OS, RSMM version, and `rsmm doctor` output.
-
-## Documentation
-
-Full docs: **[docs.rsmm.me](https://docs.rsmm.me)**
-
-| Topic | Link |
-|---|---|
-| Installation | [getting-started/install](https://docs.rsmm.me/getting-started/install/) |
-| Your first mod | [getting-started/first-mod](https://docs.rsmm.me/getting-started/first-mod/) |
-| Authoring mods | [guides/modding](https://docs.rsmm.me/guides/modding/) |
-| SDK reference | [guides/sdk](https://docs.rsmm.me/guides/sdk/) |
-| CLI reference | [reference/cli](https://docs.rsmm.me/reference/cli/) |
-| How it works internally | [architecture/overview](https://docs.rsmm.me/architecture/overview/) |
-| Reverse-engineering notes | [reverse-engineering/](https://docs.rsmm.me/reverse-engineering/notes/) |
-| Contributing / dev setup | [contributing/dev-setup](https://docs.rsmm.me/contributing/dev-setup/) |
-
-## Repo layout
-
-```
-rsmm                  CLI entry point — every workflow starts here
-src/rsmm/             Python CLI + modding SDK (stdlib-only at runtime)
-src/loader/           Native loader DLL (winhttp proxy + Lua VM, Windows only)
-apps/
-  desktop/            Tauri 2 desktop app (bundles the CLI as a sidecar)
-  www/                Next.js website + registry browser
-  api/                Hono API server
-  docs/               Astro Starlight docs site (docs.rsmm.me)
-packages/             Shared TS packages (db, ui, api-client, schemas, tsconfig)
-docs/ExampleMods/     Copy-paste example mods
-data/                 Engine symbol map (tracked) + asset/pattern data (generated)
-mods/                 Your mods, one folder per id
-dist/                 Built loader DLL + packed mod zips
-```
+`rsmm doctor` checks your setup and reports what it finds. More fixes are in the
+[troubleshooting guide](https://docs.rsmm.me/getting-started/troubleshooting/). If you're
+still stuck, [open an issue](https://github.com/Ovilli/RavenswatchModManager/issues) with
+your OS, RSMM version and the `rsmm doctor` output.
 
 ## Contributing
 
-Issues and PRs welcome — bug reports, mods for the registry, docs fixes, and reverse-engineering findings alike. Start with [dev setup](https://docs.rsmm.me/contributing/dev-setup/); `CLAUDE.md` in the repo root is the dense architectural brief.
+Bug reports, mods, documentation fixes and reverse-engineering findings are all welcome.
+[Development setup](https://docs.rsmm.me/contributing/setup/) explains how to build the app,
+the website and the loader. [Architecture](https://docs.rsmm.me/architecture/overview/)
+explains how mods are applied, and `CLAUDE.md` is a detailed technical brief of the repo.
+
+<details>
+<summary><b>Repository layout</b></summary>
+<br>
+
+```
+src/rsmm/     CLI and modding SDK (Python)
+src/loader/   Lua loader DLL (C++)
+apps/         desktop app (Tauri), website (Next.js), API (Hono), docs (Starlight)
+packages/     shared TypeScript packages
+docs/         example mods
+data/         engine symbol map and generated asset data
+```
+
+</details>
 
 ## Support
 
-RSMM is free and MIT-licensed. If it saved you time, you can chip in at [ko-fi.com/ovilli](https://ko-fi.com/W7W41FW3YE) — it funds nothing but coffee and more RE sessions.
+RSMM is free and open source. If you'd like to support it:
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/W7W41FW3YE)
+<a href="https://ko-fi.com/W7W41FW3YE"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support on Ko-fi"></a>
 
-## License
+---
 
-MIT — see [LICENSE](LICENSE). The loader DLL bundles third-party code (MinHook, Dear ImGui, Lua 5.4); their licenses are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-## Legal
-
-RSMM is a **single-player** modding tool. It does not bypass anti-cheat, does not modify `Ravenswatch.exe`, and requires a legitimate copy of the game. It ships no game content — `data/asset_map.json` is a reconstructed path index, not game assets. Mods authored with RSMM are the modder's own work. Not affiliated with Passtech Games or Nacon.
+<sub>MIT licensed, see [LICENSE](LICENSE). The loader includes MinHook, Dear ImGui and Lua 5.4,
+whose licenses are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). RSMM does not modify
+`Ravenswatch.exe` or bypass anti-cheat, contains no game assets, and requires a legitimate copy
+of the game. Not affiliated with Passtech Games or Nacon.</sub>
