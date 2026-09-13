@@ -35,8 +35,49 @@ jobs:
           pip install -e ".[dev]"
           python -m pytest -n auto -m "not slow"
 
-  build:
+  # Creates the draft release ONCE, before the matrix starts. It used to be
+  # created by whichever build leg got there first, and on v5.7.0 both legs
+  # arrived in the same second: the Windows leg created the draft, the Linux
+  # leg's `gh release view` had not seen it yet, its own `gh release create`
+  # came back HTTP 502, and the whole release stopped. Two legs can also both
+  # "win" and leave two drafts for one tag, splitting the installers between
+  # them. One job, before the builds, removes the race instead of retrying it.
+  draft-release:
     needs: gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create draft release (idempotent, retried on transient errors)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -uo pipefail
+          extra=""
+          if [[ "$TAG" == *-* ]]; then extra="--prerelease"; fi
+          for attempt in 1 2 3 4 5; do
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              echo "Release $TAG exists."
+              exit 0
+            fi
+            if gh release create "$TAG" \
+                --draft \
+                --title "RSMM $TAG" \
+                --notes "RSMM $TAG — see commit log for changes." \
+                $extra; then
+              exit 0
+            fi
+            echo "attempt $attempt failed; re-checking in $((attempt * 10))s"
+            sleep $((attempt * 10))
+          done
+          echo "could not create or find release $TAG" >&2
+          exit 1
+
+  build:
+    needs: draft-release
     permissions:
       contents: write
     strategy:
@@ -321,7 +362,10 @@ jobs:
         working-directory: apps/desktop
         run: pnpm tauri build ${{ matrix.args }}
 
-      - name: Ensure draft release exists
+      - name: Confirm the draft release is visible
+        # Created by the `draft-release` job. Never created here: two legs
+        # creating it at once is the race that failed v5.7.0. A GitHub API
+        # blip reading it back is retried rather than failing the build.
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -329,19 +373,16 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -uo pipefail
-          # First matrix leg to reach this step creates the draft; the
-          # others find it and reuse via the upload step's `--clobber`.
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists, reusing."
-          else
-            extra=""
-            if [[ "$TAG" == *-* ]]; then extra="--prerelease"; fi
-            gh release create "$TAG" \
-              --draft \
-              --title "RSMM $TAG" \
-              --notes "RSMM $TAG — see commit log for changes." \
-              $extra
-          fi
+          for attempt in 1 2 3 4 5 6; do
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              echo "Release $TAG is ready."
+              exit 0
+            fi
+            echo "release $TAG not visible yet (attempt $attempt)"
+            sleep $((attempt * 5))
+          done
+          echo "release $TAG never became visible" >&2
+          exit 1
 
       - name: Upload bundles + sigs to draft release
         # Walks the tauri output tree once, grabs every installer +
