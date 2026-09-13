@@ -180,7 +180,9 @@ export async function submitVirusTotalUrl(url: string): Promise<VirusTotalAnalys
  * when it has no report yet (404) — e.g. the first analysis is still running.
  * `status` is 'completed' once the report carries a finished analysis.
  */
-export async function getVirusTotalFileReport(sha256: string): Promise<VirusTotalVerdict | null> {
+export async function getVirusTotalFileReport(
+  sha256: string,
+): Promise<(VirusTotalVerdict & { analysedAt: Date | null }) | null> {
   const response = await fetch(
     `https://www.virustotal.com/api/v3/files/${encodeURIComponent(sha256)}`,
     { headers: { 'x-apikey': env.virusTotalApiKey } },
@@ -198,6 +200,7 @@ export async function getVirusTotalFileReport(sha256: string): Promise<VirusTota
   return {
     status: attrs.last_analysis_date ? 'completed' : 'queued',
     stats: normalizeStats(attrs.last_analysis_stats),
+    analysedAt: attrs.last_analysis_date ? new Date(attrs.last_analysis_date * 1000) : null,
   };
 }
 

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { getDb, schema } from '@rsmm/db';
 import { type SQL, and, eq, lt, or, sql } from 'drizzle-orm';
 import { errString } from './logger.js';
@@ -89,27 +90,44 @@ export async function scanVersion(target: ScanTarget): Promise<ScanResult> {
   const key = modUploadKey(target.slug, target.version, target.sha256);
 
   let analysis: { analysisId: string; permalink: string } | null = null;
-  let verdict: { status: string; stats: VirusTotalStats } | null;
-  try {
-    // Prefer a real byte-upload scan whenever the archive is within the large-file
-    // ceiling — submitVirusTotalFile transparently uses the direct endpoint
-    // (<=32 MB) or the large-file upload_url flow. Only URL-scan the biggest ones.
-    if (target.sizeBytes > 0 && target.sizeBytes <= MAX_VT_LARGE_BYTES) {
-      const bytes = await getObjectBytes(key, MAX_VT_LARGE_BYTES);
+  let verdict: { status: string; stats: VirusTotalStats } | null = null;
+  // Prefer a real byte-upload scan whenever the archive is within the large-file
+  // ceiling — submitVirusTotalFile transparently uses the direct endpoint
+  // (<=32 MB) or the large-file upload_url flow. Only URL-scan the biggest ones.
+  const bytes =
+    target.sizeBytes > 0 && target.sizeBytes <= MAX_VT_LARGE_BYTES
+      ? await getObjectBytes(key, MAX_VT_LARGE_BYTES)
+      : null;
+  // Hash what the bucket actually holds, never the uploader's declared sha256:
+  // a report looked up by a claimed hash would clear whatever file claimed it.
+  const storedSha = bytes ? createHash('sha256').update(bytes).digest('hex') : null;
+
+  if (storedSha) {
+    // A file VirusTotal analysed recently needs no new upload: its report by
+    // hash is the verdict, for one lookup instead of four. Re-submitting a
+    // known file mostly yields an analysis still 'queued' after our three
+    // polls, or a 409 while the previous submission is still running.
+    const report = await getVirusTotalFileReport(storedSha).catch((err: unknown) => {
+      if (err instanceof VirusTotalRateLimitError) throw err;
+      return null;
+    });
+    const analysedAt = report?.analysedAt?.getTime();
+    if (report && analysedAt && Date.now() - analysedAt < RESCAN_AFTER_MS) verdict = report;
+  }
+  if (!verdict) {
+    try {
       analysis = bytes
         ? await submitVirusTotalFile(bytes, `${target.slug}-${target.version}.zip`)
         : await submitVirusTotalUrl(target.assetUrl);
-    } else {
-      analysis = await submitVirusTotalUrl(target.assetUrl);
+      verdict = await pollVerdict(analysis.analysisId);
+    } catch (err) {
+      if (!(storedSha && err instanceof VirusTotalAlreadySubmittedError)) throw err;
+      // These exact bytes are already in VirusTotal's queue — usually submitted
+      // by an earlier drain the platform froze before it saved a verdict. Not
+      // a failure: no finished report yet ⇒ 'pending', which the drain
+      // re-polls after PENDING_RETRY_AFTER_MS.
+      verdict = await getVirusTotalFileReport(storedSha);
     }
-    verdict = await pollVerdict(analysis.analysisId);
-  } catch (err) {
-    if (!(err instanceof VirusTotalAlreadySubmittedError)) throw err;
-    // These exact bytes are already in VirusTotal's queue — usually submitted
-    // by an earlier drain the platform froze before it saved a verdict. That
-    // is not a failure: read the file's report by hash. No finished report
-    // yet ⇒ 'pending', which the drain re-polls after PENDING_RETRY_AFTER_MS.
-    verdict = await getVirusTotalFileReport(target.sha256);
   }
 
   const stats = verdict?.stats ?? null;
@@ -165,7 +183,9 @@ export async function scanVersion(target: ScanTarget): Promise<ScanResult> {
     flagged,
     stats: stats ?? undefined,
     analysisId: analysis?.analysisId ?? '',
-    permalink: analysis?.permalink ?? `https://www.virustotal.com/gui/file/${target.sha256}`,
+    permalink:
+      analysis?.permalink ??
+      (storedSha ? `https://www.virustotal.com/gui/file/${storedSha}` : undefined),
     deleted,
   };
 }
