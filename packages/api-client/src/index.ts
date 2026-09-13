@@ -1,4 +1,5 @@
 import {
+  type ApiTokenCreate,
   type CollectionCreate,
   type CollectionImagePresign,
   type CollectionPatch,
@@ -18,6 +19,8 @@ import {
   type PrivacySettingsUpdate,
   type ReviewUpsert,
   type TelemetryRun,
+  apiTokenCreatedSchema,
+  apiTokenSummarySchema,
   collectionDetailSchema,
   collectionReviewsResponseSchema,
   collectionSchema,
@@ -667,7 +670,31 @@ export function createApiClient(options: ApiClientOptions) {
       ),
     me: {
       whoami: () =>
-        request('/api/me', { method: 'GET' }, z.object({ id: z.string(), isAdmin: z.boolean() })),
+        request(
+          '/api/me',
+          { method: 'GET' },
+          z.object({ id: z.string(), name: z.string().optional(), isAdmin: z.boolean() }),
+        ),
+      /** Personal API tokens for `rsmm publish`. Session-only on the server. */
+      tokens: () =>
+        request(
+          '/api/me/tokens',
+          { method: 'GET' },
+          z.object({ tokens: z.array(apiTokenSummarySchema) }),
+        ),
+      /** The response's `token` is the only time the plaintext is ever returned. */
+      createToken: (body: ApiTokenCreate) =>
+        request(
+          '/api/me/tokens',
+          { method: 'POST', body: JSON.stringify(body) },
+          apiTokenCreatedSchema,
+        ),
+      revokeToken: (id: string) =>
+        request(
+          `/api/me/tokens/${encodeURIComponent(id)}`,
+          { method: 'DELETE' },
+          apiTokenSummarySchema,
+        ),
       mods: () => request('/api/me/mods', { method: 'GET' }, myModsResponseSchema),
       privacy: () => request('/api/me/privacy', { method: 'GET' }, privacySettingsSchema),
       updatePrivacy: (body: PrivacySettingsUpdate) =>

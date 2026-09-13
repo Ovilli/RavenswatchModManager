@@ -4,6 +4,8 @@ import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
+import { resolveTokenUser } from './api-token-auth.js';
+import { bearerToken, isTokenRoute } from './api-tokens.js';
 import { auth } from './auth.js';
 import { env, githubConfigured, googleConfigured, isProduction } from './env.js';
 import { errString, log, requestId } from './logger.js';
@@ -94,7 +96,21 @@ app.notFound((c) => c.json({ error: 'not found' }, 404));
 app.use('*', async (c, next) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers }).catch(() => null);
   let user = session?.user ?? null;
+  let tokenId: string | null = null;
   c.set('bannedInfo', null);
+  // Personal API token. Looked up ONLY on the publish routes; anywhere else a
+  // token is ignored and the request stays anonymous (see api-tokens.ts). A
+  // cookie session, when present, always wins.
+  if (!user) {
+    const token = bearerToken(c.req.header('authorization'));
+    if (token && isTokenRoute(c.req.method, c.req.path)) {
+      const resolved = await resolveTokenUser(token);
+      if (resolved) {
+        user = resolved.user;
+        tokenId = resolved.tokenId;
+      }
+    }
+  }
   // Ban gate: a banned user is treated as anonymous everywhere (can't publish,
   // review, or moderate). Checked against the DB so a ban takes effect on the
   // banned user's very next request without waiting for their session to
@@ -115,8 +131,11 @@ app.use('*', async (c, next) => {
     }
   }
   const isVerified = user?.emailVerified === true;
-  c.set('user', isProduction && user && !isVerified ? null : user);
-  c.set('session', isProduction && user && !isVerified ? null : (session?.session ?? null));
+  const accepted = isProduction && user && !isVerified ? null : user;
+  c.set('user', accepted);
+  c.set('session', accepted && !tokenId ? (session?.session ?? null) : null);
+  c.set('authMethod', accepted ? (tokenId ? 'token' : 'session') : null);
+  c.set('apiTokenId', accepted ? tokenId : null);
   await next();
 });
 

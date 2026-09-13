@@ -3,6 +3,7 @@ import { getDb, schema } from '@rsmm/db';
 import {
   PRIVACY_DEFAULTS,
   type PrivacySettings,
+  apiTokenCreateSchema,
   modImagePresignSchema,
   privacySettingsSchema,
   privacySettingsUpdateSchema,
@@ -11,8 +12,12 @@ import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { isAdmin } from '../admin.js';
-import { s3Configured } from '../env.js';
+import { MAX_ACTIVE_TOKENS, generateToken } from '../api-tokens.js';
+import { env, s3Configured, smtpConfigured } from '../env.js';
+import { errString } from '../logger.js';
+import { apiTokenCreatedTemplate, sendMail } from '../mailer.js';
 import { unreadCount } from '../notify.js';
+import { createRateLimiter } from '../rate-limit.js';
 import { presignAvatar } from '../storage.js';
 import type { AppEnv } from '../types.js';
 
@@ -36,8 +41,138 @@ meRouter.use('*', async (c, next) => {
 meRouter.get('/', async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'unauthorized' }, 401);
-  return c.json({ id: user.id, isAdmin: isAdmin(user.id) });
+  // `name` lets `rsmm publish` say whose account a token belongs to before it
+  // uploads anything. It is the caller's own name — nothing another user sees.
+  return c.json({ id: user.id, name: user.name, isAdmin: isAdmin(user.id) });
 });
+
+// ─────────── Personal API tokens ───────────
+//
+// Minted, listed and revoked from a signed-in SESSION only. The session
+// middleware never lets a token reach these paths (they are not in
+// api-tokens.ts TOKEN_ROUTES), and each handler checks again, so a leaked token
+// can neither mint a successor nor revoke the owner's fix.
+
+const tokenWriteLimiter = createRateLimiter({
+  name: 'api-token-write',
+  windowMs: 3_600_000,
+  maxHits: 20,
+  keyFrom: (c) => c.get('user')?.id ?? 'anon',
+});
+
+type TokenRow = typeof schema.apiTokens.$inferSelect;
+
+function tokenSummary(row: TokenRow) {
+  return {
+    id: row.id,
+    name: row.name,
+    prefix: row.prefix,
+    createdAt: row.createdAt.toISOString(),
+    expiresAt: row.expiresAt.toISOString(),
+    lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
+    revokedAt: row.revokedAt?.toISOString() ?? null,
+  };
+}
+
+meRouter.use('/tokens', async (c, next) => {
+  if (c.get('authMethod') !== 'session') return c.json({ error: 'session required' }, 403);
+  await next();
+});
+meRouter.use('/tokens/*', async (c, next) => {
+  if (c.get('authMethod') !== 'session') return c.json({ error: 'session required' }, 403);
+  await next();
+});
+
+meRouter.get('/tokens', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'unauthorized' }, 401);
+  const rows = await getDb()
+    .select()
+    .from(schema.apiTokens)
+    .where(eq(schema.apiTokens.userId, user.id))
+    .orderBy(desc(schema.apiTokens.createdAt));
+  return c.json({ tokens: rows.map(tokenSummary) });
+});
+
+meRouter.post('/tokens', tokenWriteLimiter, zValidator('json', apiTokenCreateSchema), async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'unauthorized' }, 401);
+  const body = c.req.valid('json');
+  const db = getDb();
+  const now = new Date();
+
+  const active = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(schema.apiTokens)
+    .where(
+      and(
+        eq(schema.apiTokens.userId, user.id),
+        isNull(schema.apiTokens.revokedAt),
+        sql`${schema.apiTokens.expiresAt} > ${now}`,
+      ),
+    );
+  if ((active[0]?.n ?? 0) >= MAX_ACTIVE_TOKENS) {
+    return c.json(
+      { error: `you already have ${MAX_ACTIVE_TOKENS} active tokens; revoke one first` },
+      409,
+    );
+  }
+
+  const { token, hash, prefix } = generateToken();
+  const expiresAt = new Date(now.getTime() + body.expiresInDays * 86_400_000);
+  const rows = await db
+    .insert(schema.apiTokens)
+    .values({ userId: user.id, name: body.name, tokenHash: hash, prefix, expiresAt })
+    .returning();
+  const row = rows[0];
+  if (!row) return c.json({ error: 'failed to create token' }, 500);
+
+  c.get('log').info('api token created', { userId: user.id, tokenId: row.id });
+  if (smtpConfigured() && user.email) {
+    const t = apiTokenCreatedTemplate({
+      name: user.name,
+      tokenName: row.name,
+      expiresAt,
+      manageUrl: `${env.webUrl.replace(/\/$/, '')}/account#api-tokens`,
+    });
+    sendMail({ to: user.email, subject: t.subject, text: t.text, html: t.html }).catch(
+      (err: unknown) =>
+        c.get('log').error('api token notice email failed', { err: errString(err) }),
+    );
+  }
+
+  // The only response that ever carries the plaintext.
+  c.header('Cache-Control', 'no-store');
+  return c.json({ ...tokenSummary(row), token }, 201);
+});
+
+meRouter.delete(
+  '/tokens/:id',
+  tokenWriteLimiter,
+  zValidator('param', z.object({ id: z.string().uuid() })),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    const { id } = c.req.valid('param');
+    const rows = await getDb()
+      .update(schema.apiTokens)
+      .set({ revokedAt: new Date() })
+      .where(
+        and(
+          eq(schema.apiTokens.id, id),
+          eq(schema.apiTokens.userId, user.id),
+          isNull(schema.apiTokens.revokedAt),
+        ),
+      )
+      .returning();
+    const row = rows[0];
+    // Not found covers "someone else's token" too: never confirm another
+    // user's token id exists.
+    if (!row) return c.json({ error: 'not found' }, 404);
+    c.get('log').info('api token revoked', { userId: user.id, tokenId: row.id });
+    return c.json(tokenSummary(row));
+  },
+);
 
 // ─────────── Privacy preferences ───────────
 //

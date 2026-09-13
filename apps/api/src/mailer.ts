@@ -148,3 +148,38 @@ export function resetPasswordTemplate(args: { name: string; url: string }): {
 </html>`.trim();
   return { subject, text, html };
 }
+
+/**
+ * Security notice sent when a personal API token is created. A token can publish
+ * versions of the account's mods, so an unexpected one means someone else has
+ * the account — the notice says so and says how to revoke it.
+ */
+export function apiTokenCreatedTemplate(args: {
+  name: string;
+  tokenName: string;
+  expiresAt: Date;
+  manageUrl: string;
+}): { subject: string; text: string; html: string } {
+  const safeName = htmlEscape(args.name || 'modder');
+  const safeToken = htmlEscape(args.tokenName);
+  const safeUrl = htmlEscape(args.manageUrl);
+  const expires = args.expiresAt.toISOString().slice(0, 10);
+  const subject = 'A new API token was created on your Ravenswatch Mod Manager account';
+  const text = `Hi ${args.name || 'modder'},\n\nA personal API token named "${args.tokenName}" was just created on your account. It can publish new versions of your mods until ${expires}.\n\nIf this wasn't you, revoke it now and change your password:\n${args.manageUrl}`;
+  const html = `
+<!doctype html>
+<html lang="en">
+  <body style="font-family: -apple-system, system-ui, sans-serif; max-width: 540px; margin: 0 auto; padding: 24px; color: #1f1f1f;">
+    <h2 style="margin: 0 0 12px;">New API token</h2>
+    <p>Hi ${safeName},</p>
+    <p>A personal API token named <strong>${safeToken}</strong> was just created on your account. It can publish new versions of your mods until <strong>${expires}</strong>.</p>
+    <p>If this wasn't you, revoke it now and change your password.</p>
+    <p>
+      <a href="${safeUrl}" style="display: inline-block; padding: 10px 18px; background: #7d1a1a; color: #fff; text-decoration: none; border-radius: 6px;">
+        Manage API tokens
+      </a>
+    </p>
+  </body>
+</html>`.trim();
+  return { subject, text, html };
+}

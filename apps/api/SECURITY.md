@@ -8,12 +8,37 @@ Access model and operational hardening for the rsmm API.
   reviews list, public collections, **approved** guides, user profiles
   (id/name/handle/image only — never email), `/api/health`, `/api/auth-config`,
   and anonymous telemetry (`/run`, `/crash`, rate-limited).
+- **API token (publish routes only, see below):** upload, queue/poll the scan.
 - **Authenticated (+ email-verified in prod):** publish, new versions, edits,
   image presign, own reviews, create collections/guides, avatar.
 - **Owner-only:** every mutation checks `ownerId === user.id` → 403 otherwise.
 - **Admin-only:** guide approve/reject + `/api/guides/pending`. Admins are the
   user ids in the `ADMIN_USER_IDS` env var (comma-separated). A non-admin
   hitting `/pending` gets a correct **403** — add your user id to moderate.
+
+## Personal API tokens (`rsmm publish`)
+
+- **Format:** `rsmm_pat_` + 32 random bytes (base64url). Only the SHA-256 is
+  stored (`api_tokens.token_hash`, unique index), and the plaintext is returned
+  once at creation (`Cache-Control: no-store`). With 256-bit tokens a plain
+  SHA-256 is sufficient, and a lookup is one index probe with nothing to time.
+- **Scope, by route:** a token authenticates ONLY the requests in
+  `src/api-tokens.ts` `TOKEN_ROUTES`: `GET /api/me`, `POST /api/mods/upload`,
+  `POST /api/mods/versions/:uuid/scan`, `GET /api/mods/versions/:uuid/scan-status`.
+  Everywhere else the session middleware never even looks a token up, so the
+  request is anonymous. Ownership checks on upload are unchanged, and the
+  malware scan gate still decides when a version becomes downloadable.
+- **Minted and revoked from a cookie session only** (`/api/me/tokens`, which
+  also checks `authMethod === 'session'`). A stolen token cannot create a
+  successor or undo its own revocation.
+- **Lifetime:** 1–365 days, required. At most 10 active tokens per user.
+  Revocation is immediate. A banned or (in production) unverified owner's
+  tokens fail exactly as their sessions do.
+- **Detection:** creation sends an email notice (when SMTP is configured) and
+  logs `api token created`/`revoked` with the token id, never the secret.
+  `last_used_at` is kept to the minute.
+- The CLI (`src/rsmm/cli/cmd_publish.py`) takes the token from an env var or a
+  0600 credentials file, never an argument, and sends it over HTTPS only.
 
 ## Rate limiting
 

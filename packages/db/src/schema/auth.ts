@@ -1,4 +1,13 @@
-import { boolean, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+  varchar,
+} from 'drizzle-orm/pg-core';
 
 // Better Auth core tables. Names and columns match Better Auth defaults.
 export const users = pgTable('user', {
@@ -69,3 +78,31 @@ export const verifications = pgTable('verification', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Personal API tokens: non-interactive credentials for publishing from the CLI.
+// Only the SHA-256 of the token is stored — the plaintext is shown to the user
+// once, at creation, and never again. A token always expires, can be revoked,
+// and is honoured on the publish endpoints only (apps/api/src/api-tokens.ts).
+export const apiTokens = pgTable(
+  'api_tokens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 64 }).notNull(),
+    // Hex SHA-256 of the full token. Unique, so a lookup is one index probe.
+    tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+    // The first characters of the token, so a user can tell tokens apart in a
+    // list without the server ever keeping enough to use one.
+    prefix: varchar('prefix', { length: 16 }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    hashIdx: uniqueIndex('api_tokens_hash_idx').on(table.tokenHash),
+    userIdx: index('api_tokens_user_idx').on(table.userId),
+  }),
+);

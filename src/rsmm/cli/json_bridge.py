@@ -691,6 +691,11 @@ def _slugify(value: str) -> str:
 
 
 def cmd_pack_mod(mod_id: str) -> int:
+    """``rsmm json pack-mod``: :func:`pack_mod_metadata` as JSON on stdout."""
+    return _emit(pack_mod_metadata(mod_id))
+
+
+def pack_mod_metadata(mod_id: str) -> dict[str, Any]:
     """Pack ``mods/<mod_id>/`` and return upload metadata.
 
     Output shape (single JSON object on stdout):
@@ -716,12 +721,12 @@ def cmd_pack_mod(mod_id: str) -> int:
     """
     src = MODS_DIR / mod_id
     if not src.is_dir():
-        return _emit({"ok": False, "error": f"no such mod folder: {src}"})
+        return {"ok": False, "error": f"no such mod folder: {src}"}
 
     mf = src / "manifest.toml"
     raw = _read_manifest(mf)
     if raw is None:
-        return _emit({"ok": False, "error": f"missing or unreadable {mf}"})
+        return {"ok": False, "error": f"missing or unreadable {mf}"}
     manifest = raw.get("mod") if isinstance(raw.get("mod"), dict) else raw
     name = str(manifest.get("name") or mod_id)
     version = str(manifest.get("version") or "0.0.0")
@@ -729,14 +734,14 @@ def cmd_pack_mod(mod_id: str) -> int:
     raw_id = str(manifest.get("id") or mod_id)
     slug = _slugify(raw_id)
     if not _SLUG_RE.match(slug):
-        return _emit({
+        return {
             "ok": False,
             "error": (
                 f"mod id {raw_id!r} cannot be slugified to match the API's "
                 "slug pattern (lowercase alphanumeric, '-' or '_'). Rename "
                 "the mod folder or update [mod].id in manifest.toml."
             ),
-        })
+        }
 
     # Run the existing `rsmm pack` so the vanilla-byte safety check
     # applies on upload too. Caller is *not* opted into --allow-vanilla;
@@ -744,17 +749,17 @@ def cmd_pack_mod(mod_id: str) -> int:
     # before the upload starts, not after a 500MB PUT.
     pack_result = _collect_rsmm(["pack", mod_id])
     if not pack_result["ok"]:
-        return _emit({
+        return {
             "ok": False,
             "error": "pack failed — see stderr",
             "code": pack_result["code"],
             "stdout": pack_result["stdout"],
             "stderr": pack_result["stderr"],
-        })
+        }
 
     zip_path = dist_out_dir() / f"{mod_id}.zip"
     if not zip_path.is_file():
-        return _emit({"ok": False, "error": f"pack succeeded but {zip_path} missing"})
+        return {"ok": False, "error": f"pack succeeded but {zip_path} missing"}
 
     h = hashlib.sha256()
     size = 0
@@ -786,7 +791,7 @@ def cmd_pack_mod(mod_id: str) -> int:
     if deps:
         out_manifest["dependencies"] = deps
 
-    return _emit({
+    return {
         "ok": True,
         "path": str(zip_path),
         "sha256": sha,
@@ -794,7 +799,7 @@ def cmd_pack_mod(mod_id: str) -> int:
         "slug": slug,
         "version": version,
         "manifest": out_manifest,
-    })
+    }
 
 
 _UPLOAD_HOST_ALLOWLIST: tuple[str, ...] = (
@@ -834,6 +839,11 @@ def _upload_url_allowed(url: str) -> bool:
 
 
 def cmd_upload_bytes(path: str, url: str) -> int:
+    """``rsmm json upload-bytes``: :func:`put_bytes` as JSON on stdout."""
+    return _emit(put_bytes(path, url))
+
+
+def put_bytes(path: str, url: str) -> dict[str, Any]:
     """HTTP PUT the file at ``path`` to ``url``.
 
     Used to push a packed zip to the presigned S3/R2 upload URL the API
@@ -846,15 +856,22 @@ def cmd_upload_bytes(path: str, url: str) -> int:
     """
     p = Path(path)
     if not p.is_file():
-        return _emit({"ok": False, "error": f"not a file: {path}"})
+        return {"ok": False, "error": f"not a file: {path}"}
     if not (url.startswith("https://") or url.startswith("http://")):
-        return _emit({"ok": False, "error": f"refusing to PUT to non-http(s) URL: {url}"})
+        return {"ok": False, "error": f"refusing to PUT to non-http(s) URL: {url}"}
     if not _upload_url_allowed(url):
-        return _emit({"ok": False, "error": f"refusing to PUT to non-allowlisted host: {url}"})
+        return {"ok": False, "error": f"refusing to PUT to non-allowlisted host: {url}"}
     data = p.read_bytes()
     req = urllib.request.Request(url, data=data, method="PUT")
     req.add_header("Content-Type", "application/zip")
     req.add_header("Content-Length", str(len(data)))
+    # The API presigns the PUT with the zip's SHA-256 pinned (storage.ts
+    # presignModUpload), so the store rejects a PUT that does not declare the
+    # same checksum. The web publish page always sent it; this helper did not.
+    req.add_header(
+        "x-amz-checksum-sha256",
+        base64.b64encode(hashlib.sha256(data).digest()).decode("ascii"),
+    )
     # Cloudflare's Browser Integrity Check 403's `Python-urllib/3.x` UAs
     # with error 1010 when the bucket sits behind a CF Tunnel. Send a
     # plausible UA — `rsmm` identifies us; the Chrome suffix bypasses
@@ -866,16 +883,16 @@ def cmd_upload_bytes(path: str, url: str) -> int:
     try:
         # 10-minute ceiling matches the desktop's LONG_TIMEOUT_MS.
         with urllib.request.urlopen(req, timeout=600) as resp:
-            return _emit({"ok": True, "status": resp.status})
+            return {"ok": True, "status": resp.status}
     except urllib.error.HTTPError as e:
         body = ""
         with contextlib.suppress(Exception):
             body = e.read().decode("utf-8", errors="replace")
-        return _emit({"ok": False, "status": e.code, "error": body or e.reason})
+        return {"ok": False, "status": e.code, "error": body or e.reason}
     except urllib.error.URLError as e:
-        return _emit({"ok": False, "error": f"network error: {e.reason}"})
+        return {"ok": False, "error": f"network error: {e.reason}"}
     except OSError as e:
-        return _emit({"ok": False, "error": str(e)})
+        return {"ok": False, "error": str(e)}
 
 
 _DEFAULT_INDEX_BASE = "https://api.rsmm.me"

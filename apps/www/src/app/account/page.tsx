@@ -19,6 +19,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { authClient, useSession } from '../../lib/auth-client';
 import { formatObjectStorageError } from '../../lib/object-storage-error';
+import { ApiTokensPanel } from './api-tokens-panel';
 import { PrivacyPanel } from './privacy-panel';
 
 function fmtBytes(n: number): string {
@@ -282,6 +283,8 @@ export default function AccountPage() {
       </Card>
 
       <PrivacyPanel />
+
+      <ApiTokensPanel />
 
       <Card className="grimoire-card">
         <CardHeader>

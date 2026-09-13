@@ -176,6 +176,43 @@ Package a mod for distribution. Verifies no vanilla (unmodified game) bytes are 
 ./rsmm pack MyMod --allow-vanilla  # Skip vanilla-byte check (personal backups only)
 ```
 
+### `rsmm publish <id>`
+
+Upload a mod to the store in one command: lint, pack (with the vanilla-byte
+check), upload with its checksum, queue the malware scan, and wait until the
+version is live. A version can only be downloaded once its scan comes back
+clean; that gate is on the server and a token cannot skip it.
+
+```sh
+./rsmm publish login        # paste a token from rsmm.me/account (input hidden)
+./rsmm publish whoami       # which account the token publishes as
+./rsmm publish MyMod        # pack, upload, scan, wait until live
+./rsmm publish MyMod --no-wait
+./rsmm publish logout
+```
+
+Create the token on your account page under **API tokens**. It is shown once,
+and it can publish new versions of **your own** mods and nothing else. It cannot
+change your account, create more tokens, delete mods or moderate. Every token
+expires (30 days to a year), you can hold ten at a time, and you get an email
+whenever one is created.
+
+The CLI reads the token from `RSMM_API_TOKEN` or from the file `login` writes
+(`~/.config/rsmm/credentials.json`, `%APPDATA%\rsmm\credentials.json` on
+Windows, owner-only permissions). There is deliberately no `--token` flag,
+because command arguments end up in shell history and the process list. It
+refuses to send a token anywhere but HTTPS (plain HTTP only for `localhost`).
+If a token may have leaked, revoke it on the account page. Revocation takes
+effect on the next request.
+
+| Failure | Meaning |
+|---|---|
+| `the API token was rejected` | Revoked, expired, or the account is not verified. Make a new one. |
+| `version … is already published` | Bump `[mod].version` in `manifest.toml`. |
+| `this mod slug belongs to another account` | Someone else owns that id. Rename the mod. |
+| `upload rate limit reached` | Five uploads per hour per account. |
+| `the malware scan came back flagged` | The version stays unavailable. Report it if you think it is a false positive. |
+
 ### `rsmm install-loader`
 
 Copy the loader DLL (`dist/winhttp.dll`) into the game installation directory.
