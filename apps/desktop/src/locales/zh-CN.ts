@@ -945,4 +945,14 @@ export const zhCN: Record<string, string> = {
   '— destructive': '— 有破坏性',
   '— not on disk': '— 磁盘上不存在',
   '“{name}” has no mods yet': '“{name}”还没有模组',
+  // Item-grid config field (a mod-declared editor for lists of game items).
+  'Close list': '收起列表',
+  'Decrease {label}': '减少{label}',
+  'Increase {label}': '增加{label}',
+  'Nothing else fits here.': '没有其他可放入此处的项目。',
+  'Point at an item to read it.': '将指针移到项目上即可查看说明。',
+  'Restore this section': '还原此分区',
+  'The {label} of {name} cannot be changed here.': '此处无法修改{name}的{label}。',
+  Value: '数值',
+  '{label} of {name}': '{name}的{label}',
 };

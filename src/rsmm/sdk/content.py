@@ -18,7 +18,7 @@ from pathlib import Path
 from .api import sdk_export
 
 KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "skill", "modifier",
-         "game_mode", "reward", "melody", "poi", "mesh", "tilegen")
+         "game_mode", "reward", "melody", "poi", "mesh", "tilegen", "shop")
 
 #: Per-kind honesty rating — how much we trust the bytes this kind emits.
 #:
@@ -90,6 +90,10 @@ KIND_CONFIDENCE: dict[str, str] = {
     "tilegen": "experimental",  # the recipe codec round-trips all 494 shipped tilegen objects
                               # byte-exactly and validate() enforces every cross-dimension,
                               # but no edited recipe has been generated in-game yet.
+    "shop": "experimental",   # Sandman shop prices + offer generators, overridden in place.
+                              # Field meaning is read off the live exe's generator (0x1402d9280),
+                              # quality roll and price function (0x1402d4200), and every edit
+                              # round-trips byte-for-byte; no edited shop opened in-game yet.
     "melody": "guess",        # all 12 retail melodydefs round-trip byte-for-byte and every
                               # mined exclusion string is an exact GameModifier stem, but
                               # neither lever (effect repoint, exclusion list) has been
@@ -238,6 +242,7 @@ _KIND_MODULES = {
     "mesh": "meshes",
     "poi": "poi",
     "tilegen": "tilegen",
+    "shop": "shops",
 }
 
 def _load_kind(kind: str):

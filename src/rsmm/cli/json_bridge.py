@@ -210,6 +210,7 @@ def cmd_config_get(mod_id: str) -> int:
         "schema": store.schema_as_dict(),
         "values": store.as_dict(),
         "choices": _resolved_choices(store),
+        "themes": _resolved_themes(store),
     })
 
 
@@ -224,9 +225,28 @@ def _resolved_choices(store: ConfigStore) -> dict[str, list[dict[str, Any]]]:
 
     out: dict[str, list[dict[str, Any]]] = {}
     for name, field in store.schema.fields.items():
-        if field.type == "multiselect" and field.source:
+        if field.type in ("multiselect", "item-grid") and field.source:
             out[name] = provide(field.source)
     return out
+
+
+def _resolved_themes(store: ConfigStore) -> dict[str, dict[str, str]]:
+    """Game textures an `item-grid` field declared as its theme, decoded from
+    the install as inline PNG data URLs. Keyed by field, then theme slot."""
+    from rsmm.cli import apply_mods as A
+    from rsmm.engine import ui_textures
+    from rsmm.sdk.config_grid import THEME_SLOTS
+
+    grids = {n: f.grid for n, f in store.schema.fields.items()
+             if f.type == "item-grid" and f.grid is not None and f.grid.theme}
+    if not grids:
+        return {}
+    game_dir = A.find_game_dir()
+    if game_dir is None:
+        return {}
+    return {name: {slot: ui_textures.data_url(game_dir, path, THEME_SLOTS[slot])
+                   for slot, path in grid.theme.items()}
+            for name, grid in grids.items()}
 
 
 def cmd_config_set(mod_id: str, values_json: str) -> int:

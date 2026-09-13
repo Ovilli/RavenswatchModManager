@@ -40,6 +40,9 @@ export function ConfigButton({
   const [open, setOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  // A mod whose config is an item grid gets a wide dialog: its sections sit
+  // side by side, and 720px folds them into one long cramped column.
+  const [wide, setWide] = useState(false);
 
   const discard = useCallback(() => {
     setConfirming(false);
@@ -129,7 +132,10 @@ export function ConfigButton({
               <div
                 ref={cardRef}
                 tabIndex={-1}
-                className="grimoire-card relative flex max-h-[86vh] w-[min(720px,94vw)] flex-col p-4 focus:outline-none"
+                className={[
+                  'grimoire-card relative flex max-h-[90vh] flex-col p-4 focus:outline-none',
+                  wide ? 'w-[min(1320px,96vw)]' : 'w-[min(720px,94vw)]',
+                ].join(' ')}
               >
                 <header className="flex shrink-0 items-center justify-between gap-3 pb-3">
                   <h2 className="font-fraktur truncate text-xl text-parchment">
@@ -153,6 +159,7 @@ export function ConfigButton({
                     enabled={enabled}
                     onToggleEnabled={onToggleEnabled}
                     onDirtyChange={markDirty}
+                    onWideChange={setWide}
                     frameless
                   />
                 </div>

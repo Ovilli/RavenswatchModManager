@@ -3,11 +3,19 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fragment, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { t as tr } from '../lib/i18n';
 import { useT } from '../lib/i18n-react';
+import { asGridValue } from '../lib/item-grid';
 import { inTauri } from '../lib/platform';
-import { type ModConfigChoice, type ModConfigField, getModConfig, setModConfig } from '../lib/rsmm';
+import {
+  type ModConfigChoice,
+  type ModConfigField,
+  type ModConfigValue,
+  getModConfig,
+  setModConfig,
+} from '../lib/rsmm';
 import { Button, Fleuron, InkSwitch, Panel } from './chrome';
+import { ItemGridField } from './item-grid-field';
 
-type ConfigValue = boolean | number | string | string[];
+type ConfigValue = ModConfigValue;
 
 export function ModConfigPanel({
   modId,
@@ -15,6 +23,7 @@ export function ModConfigPanel({
   enabled,
   onToggleEnabled,
   onDirtyChange,
+  onWideChange,
   frameless,
 }: {
   modId: string;
@@ -22,6 +31,9 @@ export function ModConfigPanel({
   enabled?: boolean;
   onToggleEnabled?: () => void;
   onDirtyChange?: (modId: string, dirty: boolean) => void;
+  /** Told whether the schema holds an editor that wants a wide host (an
+   * `item-grid`), so a dialog can grow instead of cramming it. */
+  onWideChange?: (wide: boolean) => void;
   /** Drop the panel's own card chrome — for a host that already draws one
    * (the per-mod config dialog), where nesting two cards doubles the border. */
   frameless?: boolean;
@@ -45,6 +57,10 @@ export function ModConfigPanel({
     staleTime: 30_000,
   });
   const schemaFields = configQuery.data?.schema?.fields;
+  const wide = Object.values(schemaFields ?? {}).some((f) => f.type === 'item-grid');
+  useEffect(() => {
+    onWideChange?.(wide);
+  }, [wide, onWideChange]);
 
   useEffect(() => {
     if (!configQuery.data?.values) return;
@@ -81,6 +97,8 @@ export function ModConfigPanel({
   // Options for provider-backed `multiselect` fields, resolved by the CLI and
   // delivered with the schema so the panel draws labels and art in one trip.
   const choices: Record<string, ModConfigChoice[]> = configQuery.data?.choices ?? {};
+  // Game textures an `item-grid` field declared as its theme, per field.
+  const themes: Record<string, Record<string, string>> = configQuery.data?.themes ?? {};
   // A provider-backed field picks from the game's own catalog (items, so far),
   // and `apply` turns that selection into rewritten cooked assets. That is the
   // edit that costs a rebuild on the next launch, so it gets the louder wording.
@@ -219,6 +237,7 @@ export function ModConfigPanel({
               name={key}
               field={field}
               choices={choices[key]}
+              theme={themes[key]}
               siblings={siblingBuckets(schema, key)}
               value={draft[key] ?? loadedValues[key] ?? fieldFallback(field)}
               error={validation.errors[key]}
@@ -559,6 +578,7 @@ function ConfigFieldRow({
   value,
   error,
   choices,
+  theme,
   siblings,
   onChange,
   onMove,
@@ -568,6 +588,7 @@ function ConfigFieldRow({
   value: ConfigValue;
   error?: string;
   choices?: ModConfigChoice[];
+  theme?: Record<string, string>;
   siblings?: { name: string; label: string }[];
   onChange: (value: ConfigValue) => void;
   onMove?: (optionId: string, target: string) => void;
@@ -575,6 +596,27 @@ function ConfigFieldRow({
   const t = useT();
   const id = `config-${name}`;
   const label = field.label || name;
+
+  // A grid holds many controls, so it cannot sit inside one <label>.
+  if (field.type === 'item-grid' && field.grid) {
+    return (
+      <div className="space-y-1.5">
+        {/* A grid that titles itself does not need a second heading above it. */}
+        {field.grid.title ? null : (
+          <span className="font-data text-sm text-parchment">{label}</span>
+        )}
+        <ItemGridField
+          spec={field.grid}
+          label={label}
+          options={choices ?? []}
+          theme={theme ?? {}}
+          value={asGridValue(value)}
+          onChange={onChange}
+        />
+        {error ? <p className="text-xs text-crimson">{error}</p> : null}
+      </div>
+    );
+  }
 
   return (
     <label htmlFor={id} className="block space-y-1.5">
@@ -684,6 +726,9 @@ function cloneConfigValues(values: Record<string, ConfigValue>): Record<string, 
 }
 
 function fieldFallback(field: ModConfigField): ConfigValue {
+  if (field.type === 'item-grid') {
+    return asGridValue(field.default);
+  }
   if (field.type === 'multiselect') {
     return Array.isArray(field.default) ? [...field.default] : [];
   }
@@ -771,6 +816,11 @@ function validateField(
   }
   if (field.type === 'string') {
     return { value: raw == null ? '' : String(raw) };
+  }
+  if (field.type === 'item-grid') {
+    // Shaped by `lib/item-grid`, which never produces an out-of-range count
+    // or number; the CLI validates the item ids against the install.
+    return { value: asGridValue(raw) };
   }
   if (field.type === 'multiselect') {
     // A provider-backed field's valid ids live in the game install and may be

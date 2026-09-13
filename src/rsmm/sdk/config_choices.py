@@ -12,7 +12,10 @@ reason overlay shape is data and never markup.
 
 An option is a flat record the client renders generically:
 
-    {"id", "label", "group", "icon", "description"}
+    {"id", "label", "group", "icon", "description", "attrs"}
+
+``attrs`` is an optional table of scalar (or list-of-text) attributes an
+`item-grid` field can filter and edit on — see `rsmm.sdk.config_grid`.
 
 ``icon`` is an inline ``data:image/png;base64,`` URL or empty. Never a path and
 never a remote URL, so the client is never made to fetch on a mod's behalf.
@@ -104,12 +107,43 @@ def _enemy_roster() -> list[dict[str, Any]]:
     return out
 
 
+def _shop_items() -> list[dict[str, Any]]:
+    """Every item the Sandman's offer generators can sell, with its ``role``,
+    ``price``, ``priceEditable`` and ``defaultIn`` (the generators offering it
+    unmodded). Data only — how a grid shows these is the mod's schema's call."""
+    from rsmm.cli import apply_mods as A
+    from rsmm.engine import shop_catalog
+
+    return shop_catalog.options(A.find_game_dir())
+
+
 #: name -> builder. The single source of truth for what a schema's `source` may
 #: name; `rsmm.sdk.config` validates against these keys.
 PROVIDERS: dict[str, Callable[[], list[dict[str, Any]]]] = {
     "item-catalog": _item_catalog,
     "enemy-roster": _enemy_roster,
+    "shop-items": _shop_items,
 }
+
+
+#: Attribute values an option may carry: short text, numbers, bools, or a short
+#: list of text. Anything else is dropped rather than forwarded to the client.
+_MAX_ATTRS = 16
+
+
+def _clean_attrs(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, Any] = {}
+    for k, v in list(raw.items())[:_MAX_ATTRS]:
+        key = str(k)[:40]
+        if isinstance(v, bool | int | float):
+            out[key] = v
+        elif isinstance(v, str):
+            out[key] = v[:120]
+        elif isinstance(v, list) and all(isinstance(x, str) for x in v):
+            out[key] = [x[:64] for x in v[:32]]
+    return out
 
 
 def _clean(opt: Any) -> dict[str, Any] | None:
@@ -122,13 +156,17 @@ def _clean(opt: Any) -> dict[str, Any] | None:
     if (not isinstance(icon, str) or not icon.startswith(ICON_PREFIX)
             or len(icon) > MAX_ICON_CHARS):
         icon = ""
-    return {
+    out = {
         "id": oid,
         "label": str(opt.get("label") or oid)[:120],
         "group": str(opt.get("group") or "")[:40],
         "icon": icon,
         "description": str(opt.get("description") or "")[:400],
     }
+    attrs = _clean_attrs(opt.get("attrs"))
+    if attrs:
+        out["attrs"] = attrs
+    return out
 
 
 def provide(name: str) -> list[dict[str, Any]]:

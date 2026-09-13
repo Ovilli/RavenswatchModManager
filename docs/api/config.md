@@ -5,13 +5,17 @@ Per-mod config: schema validation + persisted store.
 Schema:
     {fields.<key>.{type, default, min, max, label, choices, enum, source}}
 
-Types: bool, int, float, string, enum, multiselect.
+Types: bool, int, float, string, enum, multiselect, item-grid.
 
 A `multiselect` field holds a LIST of ids. Its options are either spelled out
 in `choices`, or fetched from an allowlisted provider named by `source` — see
 `rsmm.sdk.config_choices`. A provider supplies a label, a group and an icon per
 option, which is what lets the client draw a searchable grid of game art
 instead of a wall of internal ids.
+
+An `item-grid` field holds game items sorted into mod-declared sections, with an
+optional number per item. Its layout, filters and optional theme of game
+textures are declared in the schema itself — see `rsmm.sdk.config_grid`.
 
 Storage:
     mods/<id>/config.toml  — user-edited values

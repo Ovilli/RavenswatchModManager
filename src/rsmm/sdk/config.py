@@ -3,13 +3,17 @@
 Schema:
     {fields.<key>.{type, default, min, max, label, choices, enum, source}}
 
-Types: bool, int, float, string, enum, multiselect.
+Types: bool, int, float, string, enum, multiselect, item-grid.
 
 A `multiselect` field holds a LIST of ids. Its options are either spelled out
 in `choices`, or fetched from an allowlisted provider named by `source` — see
 `rsmm.sdk.config_choices`. A provider supplies a label, a group and an icon per
 option, which is what lets the client draw a searchable grid of game art
 instead of a wall of internal ids.
+
+An `item-grid` field holds game items sorted into mod-declared sections, with an
+optional number per item. Its layout, filters and optional theme of game
+textures are declared in the schema itself — see `rsmm.sdk.config_grid`.
 
 Storage:
     mods/<id>/config.toml  — user-edited values
@@ -27,7 +31,7 @@ from rsmm.engine.safeio import atomic_write_text
 
 from .api import sdk_export
 
-_TYPES = {"bool", "int", "float", "string", "enum", "multiselect"}
+_TYPES = {"bool", "int", "float", "string", "enum", "multiselect", "item-grid"}
 
 #: The escapes TOML defines a short form for. Every other control character
 #: goes out as `\uXXXX` — see `ConfigStore._toml_repr`.
@@ -46,11 +50,18 @@ class ConfigError(ValueError):
     pass
 
 
-def _check_source(name: str, raw: Any) -> str | None:
-    """Validate a `multiselect` field's option provider against the allowlist."""
-    if raw is None:
-        return None
+def _check_source(name: str, raw: Any, type_: str | None = None) -> str | None:
+    """Validate a field's option provider against the allowlist.
+
+    An `item-grid` cannot exist without one — its options ARE the provider's —
+    so for that type a missing `source` is an error, not a static list.
+    """
     from .config_choices import PROVIDERS
+    if raw is None:
+        if type_ == "item-grid":
+            raise ConfigError(
+                f"{name}: an item-grid needs source = one of {', '.join(sorted(PROVIDERS))}")
+        return None
     src = str(raw)
     if src not in PROVIDERS:
         raise ConfigError(
@@ -73,9 +84,11 @@ class Field:
     #: a command: the desktop webview can spawn the CLI, so anything a mod
     #: could inject here would run on the player's machine.
     source: str | None = None
+    #: The declaration of an `item-grid` (`rsmm.sdk.config_grid.GridSpec`).
+    grid: Any = None
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        out = {
             "type": self.type,
             "default": self.default,
             "min": self.min,
@@ -84,6 +97,9 @@ class Field:
             "label": self.label,
             "source": self.source,
         }
+        if self.grid is not None:
+            out["grid"] = self.grid.as_dict()
+        return out
 
     def coerce(self, value: Any) -> Any:
         if self.type == "bool":
@@ -125,6 +141,9 @@ class Field:
                 if bad:
                     raise ConfigError(f"{self.name}: {bad} not in {self.choices}")
             return out
+        if self.type == "item-grid":
+            from .config_grid import coerce
+            return coerce(self.name, self.grid, value)
         raise ConfigError(f"{self.name}: unknown type {self.type!r}")
 
     def _range_check(self, v: float | int) -> None:
@@ -153,8 +172,11 @@ class ConfigSchema:
                 max=body.get("max"),
                 choices=list(body.get("choices", []) or []),
                 label=str(body.get("label", name)),
-                source=_check_source(name, body.get("source")),
+                source=_check_source(name, body.get("source"), t),
             )
+            if t == "item-grid":
+                from .config_grid import parse
+                s.fields[name].grid = parse(name, body)
             # Validate the default eagerly so a broken schema fails at build.
             if s.fields[name].default is not None:
                 s.fields[name].coerce(s.fields[name].default)
@@ -270,6 +292,12 @@ class ConfigStore:
             return str(v)
         if isinstance(v, (list, tuple)):
             return "[" + ", ".join(ConfigStore._toml_repr(x) for x in v) + "]"
+        if isinstance(v, dict):
+            # Inline table (an `item-grid` value). Keys go through `_toml_key`, so an
+            # item id that is not a bare key is quoted rather than split on dots.
+            body = ", ".join(f"{ConfigStore._toml_key(str(k))} = {ConfigStore._toml_repr(x)}"
+                             for k, x in v.items())
+            return "{ " + body + " }" if body else "{}"
         # String. Escaping only `\` and `"` was not enough: TOML basic strings
         # forbid raw control characters, so a value containing a newline — which
         # the desktop config editor happily accepts — produced a config.toml

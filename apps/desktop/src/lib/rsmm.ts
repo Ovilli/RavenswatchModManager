@@ -488,20 +488,25 @@ export interface LocalMod {
   hasConfig?: boolean;
 }
 
+/** A config value as stored. `item-grid` fields hold an `ItemGridValue` table. */
+export type ModConfigValue = boolean | number | string | string[] | ItemGridValue;
+
 export interface ModConfigField {
   /** `multiselect` holds a LIST of ids. Its options are either the static
    *  `choices` list or, when `source` names an allowlisted CLI provider, the
-   *  richer `ModConfigChoice[]` delivered alongside the schema. */
-  type: 'bool' | 'int' | 'float' | 'string' | 'enum' | 'multiselect';
-  default: boolean | number | string | string[] | null;
+   *  richer `ModConfigChoice[]` delivered alongside the schema.
+   *  `item-grid` holds an `ItemGridValue`; its layout is in `grid`. */
+  type: 'bool' | 'int' | 'float' | 'string' | 'enum' | 'multiselect' | 'item-grid';
+  default: ModConfigValue | null;
   min: number | null;
   max: number | null;
   choices: string[];
   label: string;
   source?: string | null;
+  grid?: ItemGridSpec;
 }
 
-/** One option of a provider-backed `multiselect`. */
+/** One option of a provider-backed `multiselect` or `item-grid`. */
 export interface ModConfigChoice {
   id: string;
   label: string;
@@ -511,6 +516,41 @@ export interface ModConfigChoice {
    *  form, so this can never become a request to a remote host. */
   icon: string;
   description: string;
+  /** Scalar attributes an `item-grid` filters and edits on. */
+  attrs?: Record<string, string | number | boolean | string[]>;
+}
+
+/** A section of an `item-grid` field, as the mod's schema declares it. */
+export interface ItemGridSection {
+  id: string;
+  label: string;
+  /** Sections sharing a group render under one heading. */
+  group: string;
+  /** Option attributes that must all match for an item to fit this section. */
+  accepts: Record<string, string | number | boolean>;
+  count: { label: string; min: number; max: number; default: number } | null;
+  /** The mod's own text for a section holding no items. */
+  empty?: string;
+}
+
+/** An `item-grid` declaration. Layout and copy are the mod's own. */
+export interface ItemGridSpec {
+  sections: ItemGridSection[];
+  number: { attr: string; label: string; min: number; max: number; editable: string | null } | null;
+  /** Theme slots the mod declared; their images arrive in `themes`. */
+  themeSlots: string[];
+  /** The text colour that reads on each themed slot, as the mod declared it. */
+  themeInk: Record<string, 'light' | 'dark'>;
+  title: string;
+  quote: string;
+  /** `columns` puts section groups side by side; `stack` one under another. */
+  layout: 'stack' | 'columns';
+}
+
+/** An `item-grid` value: only what differs from the defaults. */
+export interface ItemGridValue {
+  sections?: Record<string, { items?: string[]; count?: number }>;
+  numbers?: Record<string, number>;
 }
 
 export interface ModConfigSchema {
@@ -523,9 +563,11 @@ export interface ModConfigResponse {
   modId?: string;
   path?: string;
   schema?: ModConfigSchema;
-  values?: Record<string, boolean | number | string | string[]>;
+  values?: Record<string, ModConfigValue>;
   /** Resolved options, per provider-backed `multiselect` field. */
   choices?: Record<string, ModConfigChoice[]>;
+  /** Game textures per `item-grid` field, per theme slot (inline PNG data URLs). */
+  themes?: Record<string, Record<string, string>>;
 }
 
 interface RunResult {
@@ -641,7 +683,7 @@ export async function getModConfig(modId: string): Promise<ModConfigResponse> {
 
 export async function setModConfig(
   modId: string,
-  values: Record<string, boolean | number | string | string[]>,
+  values: Record<string, ModConfigValue>,
 ): Promise<ModConfigResponse> {
   const result = await rsmm<ModConfigResponse>(['config', 'set', modId, JSON.stringify(values)], {
     timeoutMs: LONG_TIMEOUT_MS,

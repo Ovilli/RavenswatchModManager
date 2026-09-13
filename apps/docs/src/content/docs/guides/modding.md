@@ -348,7 +348,9 @@ launch does real work before the game starts.
 Providers are an **allowlist**: a mod supplies a name, never a path, a URL or a
 command. The desktop webview can spawn the CLI, so anything a mod could inject
 there would run on the player's machine — the same reason overlay shape is data
-and never markup. `item-catalog` is the only provider today.
+and never markup. The providers today are `item-catalog` (every magical object
+the game can offer), `enemy-roster` (every creature a camp can roll) and
+`shop-items` (every item the Sandman's offers can hold, with its price).
 
 :::caution[An option icon must be an inline data URL]
 `data:image/png;base64,…` only, under 64 KB. A path or a remote URL is dropped
@@ -362,6 +364,65 @@ A provider-backed field does **not** reject ids it cannot currently see. The
 valid set lives in the game install, which may be missing or newly patched, and
 dropping an unrecognised id would silently delete the player's selection the
 first time the CLI ran somewhere the catalog could not be read.
+
+#### Editors for lists of game items (`item-grid`)
+
+An `item-grid` sorts a provider's options into **sections you declare**, with an
+optional number per item. The whole editor — sections, labels, which items fit
+where, counts, and even its look — is your mod's declaration. The desktop draws
+every `item-grid` with one generic component; it does not know what yours is for.
+
+```toml
+# mods/<id>/config_schema.toml
+[fields.loadout]
+type   = "item-grid"
+label  = "Loadout"
+source = "shop-items"                       # allowlisted provider, as above
+title  = "Pick what is on offer"            # optional, your own copy
+layout = "columns"                          # section groups side by side; default "stack"
+quote  = "Every dream has its price."       # optional
+number = { attr = "price", label = "Price", min = 0, max = 99999, editable = "priceEditable" }
+
+[[fields.loadout.sections]]
+id      = "minor"                           # letters, digits, _ or -
+label   = "Offers"
+group   = "Minor dreams"                    # consecutive sections sharing a group share a heading
+accepts = { role = "offer" }                # option attributes that must ALL match
+count   = { label = "Offers per visit", min = 1, max = 4, default = 4 }
+
+[fields.loadout.theme]                      # optional: dress it in the game's own art
+panel    = "Ui/SandMan/UI_SandManBg.png"
+portrait = "Ui/NPC/NPC_Sandman_Portrait.png"
+header   = { texture = "Ui/SandMan/UI_SandMan_categoriesBG.png", ink = "dark" }
+```
+
+- **Options** come from `source` and may carry `attrs`. `accepts` filters on
+  them; a provider marks where an option sits by default with `attrs.defaultIn`
+  (a list of section ids); `number.attr` names the attribute holding the
+  default number, and `number.editable` the boolean that says it may change.
+- **`empty`** on a section is your text for when it holds no items — a section
+  the provider starts empty (like a shop's random-object slot) explains itself
+  instead of looking broken.
+- **The stored value** keeps only what differs from those defaults:
+  `{ sections = { minor = { items = [...], count = 2 } }, numbers = { <id> = 10 } }`.
+  An untouched editor stores nothing, so "Reset to defaults" really is the
+  unmodded state. A content kind reads it — `kind = "shop"` takes
+  `config = "<field>"`, see [Edit the Sandman shop](#edit-the-sandman-shop-kindshop).
+- **Layout**: `stack` puts section groups one under another; `columns` puts
+  them side by side, each in its own `panel` frame with an optional
+  `separator` between, and moves the portrait and quote beside them on a wide
+  screen. A vendor-style grid with a few groups reads far better as columns.
+- **Theme** slots: `title`, `panel` (9-sliced frame), `header`, `separator`,
+  `details`, `quote`, `portrait`, `remove`, `removeHover`, `number`,
+  `numberIcon`. Each names a **game** texture as its decoded path
+  (`rsmm assets search` finds them), either as a plain string or as
+  `{ texture = "…", ink = "dark" }`. `ink` (`light` by default) is the text
+  colour that reads on that texture — the app cannot tell a parchment scroll
+  from a slate panel, so you say which it is. The CLI accepts only `Ui/…png` paths the game's own asset map resolves,
+  decodes them from the player's install when the editor opens, and caches them
+  under `<game>/rsmm/cache/ui/`. Nothing is shipped with the mod, and a schema
+  cannot name any other file. Leave the theme out and the grid uses the app's
+  own style.
 
 ### Test offline (no game)
 
@@ -689,6 +750,120 @@ An id that no vanilla item has is refused at emit time when the asset corpus is
 available, and reported as a `[warn]` against the install's own manifest at
 apply time. Banning a name nothing matches is otherwise a perfectly well-formed
 no-op that only surfaces as "the banned item still dropped" a playtest later.
+
+### Edit the Sandman shop (`kind="shop"`)
+
+The Sandman is the game's vendor. A `shop` def changes what it costs and what it
+offers, by overriding the retail files in place. There is one Sandman, so a mod
+declares at most one.
+
+```toml
+[mod]
+id           = "cheap-sandman"
+experimental = true            # shop is ⚠️ experimental
+multiplayer_scope = "deterministic-shared"   # every peer needs the same shop
+
+[[content]]
+kind        = "shop"
+id          = "sandman"
+price_scale = 0.5              # every item not listed below costs half
+
+[content.prices]               # dream shards; prefix Power_Up_Sandman_ is optional
+Minor_Heal                        = 10
+Major_Upgrade_Talent_To_Legendary = 150
+
+[content.offers.minor]
+count = 2                      # vanilla rolls 4
+
+[content.offers.major_object]
+weights = { legendary = 1, cursed = 0 }   # unlisted qualities keep their vanilla weight
+```
+
+What the shop is made of:
+
+| Generator | Vanilla count | Pool | Quality weights |
+|---|---|---|---|
+| `minor` | 4 | `Sandman; Minor` (heal, reroll, shield, strength) | powerup |
+| `medium` | 1 | `Sandman; Medium` | powerup |
+| `medium_duplicate` | 1 | `Sandman; MediumDuplicate` | powerup |
+| `medium_object` | 1 | none — a random magical object | common 0.5, rare 0.5 |
+| `major` | 1 | `Sandman; Major` | powerup |
+| `major_duplicate` | 1 | `Sandman; MajorDuplicate` | powerup |
+| `major_object` | 1 | none — a random magical object | epic 0.5, legendary 0.25, cursed 0.25 |
+
+Vanilla prices: Minor items 50–75, Medium 100–200, Major 250.
+
+Each generator accepts `count`, `weights` (qualities `common`, `rare`, `epic`,
+`legendary`, `cursed`, `powerup`) and `pool` (the include-flag filter; `""`
+means no filter). Things to know:
+
+- **A generator never offers the same item twice**, so a `count` above the
+  number of items in its pool adds nothing. The `minor` pool holds exactly 4
+  items, which is why the vanilla Minor row never changes.
+- **Every Sandman item is quality `powerup`.** Moving a Sandman pool's weight
+  onto another quality finds nothing to offer.
+- **The `*_duplicate` and `*_object` generators are a pair.** The duplicate
+  offer is a powerup, and the object offer is the magical object it copies.
+  `major_object`'s weights decide which quality of object that is.
+- **Prices are also multiplied at runtime** by the hero's "Reduce all dream
+  shard prices" and "Reduce Sandman dream shard prices" values and the run's
+  "Dream Shard Costs Modifier" (the `HigherPrices` game modifier), then rounded.
+
+Unknown items, generators, qualities or fields raise at emit time rather than
+producing a file that silently changes nothing.
+
+**Choosing exactly which items a slot offers.** `slots` names the items per
+generator, and is how an item from another family (a Grimoire chapter, a
+Wishing Well gift) gets into the shop:
+
+```toml
+[content.slots.minor]
+items = ["Power_Up_Sandman_Minor_Heal", "Power_Up_Grimoire_Armor_High"]
+count = 2                      # up to what the slot ships with; minor needs at least 2
+```
+
+The shop screen shows two of each tier's three offers (the offer, the copy
+offer and the random magical object), so all three are slots you can fill.
+`medium_object` and `major_object` ship with no item list — they sell a random
+magical object of the listed rarities — and giving one `items` makes it sell
+those instead (its weights switch to `powerup`, the only quality they have).
+
+A slot whose list differs from the game's gets its own pool tag
+(`RSMM_Shop_minor`), and each chosen item gets that tag appended to its flags.
+Nothing is removed from any item, so other vendors that read the same items are
+unaffected.
+
+:::danger[The Minor slot must offer at least two items]
+When the shop opens, the game picks two *different* Minor offers with no guard
+against a shorter list, so a Minor roll of one item crashes the game (an integer
+divide by zero). The `shop` kind refuses a Minor `count` below 2 and a Minor
+pool with fewer than two items, from `slots`, `offers` or a config grid alike.
+Give the editor's Minor section `count = { min = 2, … }` so it never offers the
+value in the first place.
+::: Only powerups that carry flags of their own qualify (45 of them),
+and a `*_duplicate` slot only takes the powerups that copy an object.
+
+**Editing it from a config screen instead.** Point the shop at an
+[`item-grid`](#editors-for-lists-of-game-items-item-grid) field backed by the
+`shop-items` provider, with one section per slot id, and the player edits
+slots, counts and prices in the desktop app; the grid's stored value replaces
+`slots` and `prices`:
+
+```toml
+[[content]]
+kind   = "shop"
+id     = "sandman"
+config = "shop"                # the item-grid field in config_schema.toml
+```
+
+:::caution[Not yet proven in-game]
+The field meanings come from the shop's generator, quality-roll and price code
+in the game executable, and every edit round-trips byte-for-byte, but no edited
+shop has been opened in-game yet. Setting a `pool` to flags outside the
+`Sandman` family, or a `count` above what the shop screen has room for, is
+untested. Multiplayer behaviour follows the item ban above: run it on every
+peer.
+:::
 
 ### Magical-object & talent values (`value_patches`)
 
@@ -1151,6 +1326,7 @@ them. Don't trust prose over that table — but here it is in plain terms:
 | **Custom hero / map** (`kind="hero"`, `kind="map"`) | ⚠️ experimental | Clones and emits, but the roster detour / library singleton (hero) and in-game load (map) are unproven. |
 | **Custom boss** (`kind="boss"`) | ❓ guess | Picker/HP/arena byte offsets are speculative. May be rejected or crash. |
 | **Reward placement edits** (`kind="reward"`) | ⚠️ experimental | Ban chests/astrolabs/crystals or tune per-category spawn counts by overriding a retail `*.rewarddef.ot`. Codec is deserializer-verified and byte-stable; the level-load roll consuming edited data is unproven in-game. |
+| **Sandman shop** (`kind="shop"`) | ⚠️ experimental | Per-item prices and the offer generators' count, quality weights and flag pool, overridden in place. Field meaning is traced in the executable and edits round-trip byte-for-byte; no edited shop has been opened in-game yet. |
 | **Map generation recipe** (`kind="tilegen"`, `rsmm map-editor`) | ⚠️ experimental | Tile counts, spacing, footprints, flag quotas and per-slot kind masks of a chapter's `*_TileGeneration.level.ot`. The recipe codec is byte-identical on all 494 shipped files; a run generated from an edited recipe is unproven in-game. |
 | **New selectable skin slot** | ⚠️ experimental | Needs the loader skin detour; the DLC-entitlement filter rejects new keys by default (`RSMM_SKIN_FORCE_SHOW=1` to test). Replacing an existing slot is ✅ confirmed. |
 | **Engine event hooks** (`R.on("OnDamage", …)`) | ⚠️ experimental | The event bus + payload envelope ship in the loader, and emitter addresses are mapped — but the runtime path is **not yet verified end-to-end on CI** (loader is Windows-only). Treat as unproven until the loader smoke test (below) is green. |
