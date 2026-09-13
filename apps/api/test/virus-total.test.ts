@@ -1,4 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// src/env.ts throws without DATABASE_URL (absent in CI); the client only needs the key.
+vi.mock('../src/env.js', () => ({ env: { virusTotalApiKey: 'test-key' } }));
+
 import {
   VirusTotalAlreadySubmittedError,
   getVirusTotalFileReport,
