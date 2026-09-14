@@ -70,6 +70,7 @@ export default defineConfig({
             { label: 'Example mods', slug: 'guides/examples' },
             { label: 'Custom items', slug: 'guides/custom-items' },
             { label: 'Custom enemies', slug: 'guides/custom-enemies' },
+            { label: 'Talent modding, step by step', slug: 'guides/talent-tutorial' },
             { label: 'Custom skills (talents)', slug: 'guides/custom-skills' },
             { label: 'SDK (v3)', slug: 'guides/sdk' },
             { label: 'Uncooked assets', slug: 'guides/uncooked-assets' },
@@ -90,6 +91,7 @@ export default defineConfig({
             { label: 'Conventions & best practices', slug: 'reference/conventions' },
             { label: 'Engine symbols', slug: 'reference/symbols' },
             { label: 'Glossary', slug: 'reference/glossary' },
+            { label: 'Talent name lookup', slug: 'reference/talent-names' },
             { label: 'Security', slug: 'reference/security' },
             {
               label: 'SDK API (generated)',

@@ -1,0 +1,675 @@
+---
+title: Talent modding, step by step
+description: A beginner's guide to changing a hero's talents, from their numbers to their names and descriptions.
+---
+
+import { Steps, Tabs, TabItem, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+This guide takes you from nothing to a working talent mod. You do not need to
+know how to program. You will copy some commands, fill in one text file, and
+check the result in the game.
+
+We use one example all the way through: **Ice Shield**, a Defense talent of
+The Snow Queen. By the end of the guide it will:
+
+- be called **Glacier Shield**,
+- give a stronger shield,
+- last 9 seconds instead of 6.
+
+The same steps work for any talent of any hero. Only the names change.
+
+## What you can and cannot change
+
+| You want to… | Possible? | Step |
+|---|---|---|
+| Change a number that is the same at every rarity (a duration, a count, a cooldown) | Yes | [Step 5](#step-5-change-a-number-that-is-the-same-at-every-rarity) |
+| Change a number that is different for each rarity | Yes | [Step 6](#step-6-change-a-number-that-depends-on-rarity) |
+| Rename a talent or rewrite its description | Yes | [Step 7](#step-7-change-the-name-and-the-description) |
+| Give a talent a new icon | Yes | [Step 7](#step-7-change-the-name-and-the-description) |
+| Make a talent do something completely different | Only for experienced modders | [Going further](#going-further) |
+| Add a brand-new talent next to the existing ones | **No.** Every hero has a fixed set of talent slots, and adding one breaks the hero. | — |
+
+## Words used on this page
+
+| Word | Meaning |
+|---|---|
+| **Talent** | A card you pick when you level up. The game's files call talents **skills**, so you will see both words. |
+| **Rarity** | Common, Rare, Epic or Legendary. Many talent numbers are different for each rarity. |
+| **Mod** | A folder that holds one text file, `manifest.toml`, which describes your changes. |
+| **Terminal** | The window where you type commands. On Windows it is **Command Prompt** or **PowerShell**. On Linux it is called **Terminal**. |
+| **Apply** | The moment RSMM copies your changes into the game. |
+| **RSMM** | Ravenswatch Mod Manager, the tool this site documents. |
+
+## Step 1: Set up once
+
+You need three things installed:
+
+- **Ravenswatch** (from Steam)
+- **Python** 3.11 or newer ([python.org](https://www.python.org/downloads/)). On Windows, tick **"Add python.exe to PATH"** in the installer.
+- **Git** ([git-scm.com](https://git-scm.com/downloads))
+
+<Aside type="caution" title="The desktop app alone is not enough">
+Talent mods need the full RSMM downloaded from GitHub. The tools that read talent
+files are part of RSMM's source code and are not included in the desktop app.
+</Aside>
+
+Open a terminal and paste these lines one at a time:
+
+<Tabs syncKey="os">
+  <TabItem label="Windows">
+    ```cmd
+    git clone https://github.com/Ovilli/RavenswatchModManager.git
+    cd RavenswatchModManager
+    python -m venv venv
+    venv\Scripts\activate
+    pip install -e .
+    rsmm doctor
+    ```
+  </TabItem>
+  <TabItem label="Linux">
+    ```sh
+    git clone https://github.com/Ovilli/RavenswatchModManager.git
+    cd RavenswatchModManager
+    python3 -m venv .venv
+    source .venv/bin/activate
+    pip install -e .
+    rsmm doctor
+    ```
+  </TabItem>
+</Tabs>
+
+`rsmm doctor` checks your setup and tells you if something is missing, for
+example if it cannot find the game.
+
+<Aside type="tip" title="Every time you open a new terminal">
+Go into the `RavenswatchModManager` folder and run the activate line again:
+`venv\Scripts\activate` on Windows, `source .venv/bin/activate` on Linux. If a
+command says `rsmm` or `python` is not found, this is almost always the reason.
+</Aside>
+
+Next, make a readable copy of the game's hero files. RSMM reads talents from
+this copy, which it keeps in `data/uncooked/`. Run both lines:
+
+```sh
+python scripts/extract_uncooked.py --filter "EntitySettings\Heroes"
+python scripts/extract_uncooked.py --filter "Definitions\Heroes"
+```
+
+Type the backslash `\` exactly as shown, on Linux too. If the script says it
+cannot find `_Cooking`, it could not find your game. Add
+`--game-dir "C:\path\to\Ravenswatch"` to the end of both lines, using the
+folder that contains `Ravenswatch.exe`.
+
+<Aside type="note">
+Run these two lines again after every game update, so your copy matches the game.
+</Aside>
+
+To check that it worked, run:
+
+```sh
+rsmm talents
+```
+
+You should see a list of heroes, each with a count of values. If you see that
+list, setup is finished.
+
+## Step 2: Find your talent's names
+
+A talent has an English name on its card, and different names inside the game
+files. For example, Scarlet's **Short Wick** is called `Secondary Quick Bombs`
+inside the files. You need the file names.
+
+Open the **[Talent name lookup](/reference/talent-names/)** page, find your hero,
+and find your talent in the table. Write down three things:
+
+| What | Ice Shield example | Used for |
+|---|---|---|
+| **Hero spelling** (at the top of the hero's section) | `Snow_Queen` | Telling RSMM which hero |
+| **Search word** | `Defense Shield` | Finding the talent's numbers |
+| **Rename with** | `Skill_Defense_Shield` | Changing the name or description |
+
+## Step 3: Look inside the talent
+
+This step uses a small helper script that shows everything about one talent:
+its text and all its numbers.
+
+Create a new file called `talent_info.py` **directly in the `RavenswatchModManager`
+folder**, next to `README.md`. Open it in any text editor (Notepad works), paste
+the code below and save.
+
+<Aside type="caution">
+Do not put this file inside your mod's folder. Mods must not contain Python
+files, and RSMM's checks reject a mod that does.
+</Aside>
+
+```python title="talent_info.py"
+# talent_info.py - print everything you need to mod one talent.
+#
+#   python talent_info.py <Hero> "<Search word>" <Rename with>
+#
+# All three values come from the Talent name lookup page.
+import sys
+from pathlib import Path
+
+from rsmm.engine import talent_values as TV
+from rsmm.engine.text_patches import _pristine, lang_path_for, parse_text_file
+from rsmm.sdk.kinds.skills import _install_bank
+
+if len(sys.argv) != 4:
+    sys.exit('Usage: python talent_info.py <Hero> "<Search word>" <Rename with>')
+hero, word, key = sys.argv[1], sys.argv[2].lower(), sys.argv[3]
+
+folder = Path("data/uncooked/EntitySettings/Heroes") / f"Hero_{hero}"
+if not folder.is_dir():
+    sys.exit(f"No folder {folder}\nCheck the hero spelling, or extract the game files first.")
+
+# 1. The text on the card, exactly as the game stores it.
+bank = _install_bank(hero)
+if bank is None:
+    print("(Could not find the game install, so the card text is not shown.)")
+else:
+    keys = parse_text_file(_pristine(bank[0])).entries
+    english = parse_text_file(_pristine(lang_path_for(bank[0], "EN"))).entries
+    text = dict(zip(keys, english))
+    for suffix in ("_Name", "_Title", "_Desc"):
+        if key + suffix in text:
+            print(f"{suffix[1:].upper():<6} {text[key + suffix]}")
+
+# 2. Every number that belongs to the talent.
+for f in sorted(folder.glob("*.entity.ot.EntitySettingsResource.gen")):
+    data = f.read_bytes()
+    lines = []
+    plain = TV.list_talent_values(data)
+    for v in plain:
+        if word in v.label.lower():
+            lock = "   <- LOCKED (read 'shadowed' in the tutorial)" if v.is_overridden else ""
+            lines.append(f"  ONE NUMBER  {v.label} = {v.value:g}{lock}")
+    labels = {v.label for v in plain}
+    selectors = {t for _, t in TV._iter_lstrings(data)
+                 if word in t.lower() and t.endswith("Selector") and not t.startswith("[")}
+    for name in sorted(selectors - labels):
+        try:
+            unions = TV.list_union_values(data, name)
+        except ValueError:
+            continue
+        nums = [f"index {i} = {v:g}" for i, (_, v, kind) in enumerate(unions) if kind in (0, 1)]
+        if nums:
+            lines.append(f"  PER RARITY  {name}:  " + ", ".join(nums))
+    if lines:
+        print(f'\nfile = "{f.name.split(".entity.")[0]}.entity"')
+        print("\n".join(lines))
+```
+
+Now run it with the three things you wrote down. Put the search word in quotes,
+because it contains a space:
+
+```sh
+python talent_info.py Snow_Queen "Defense Shield" Skill_Defense_Shield
+```
+
+For Ice Shield it prints:
+
+```text
+NAME   Ice Shield
+DESC   • #DEFENSE@ grants a &{0}~ SHIELD to {1} and all Heroes passed for #{2}@ seconds
+
+file = "Hero_Snow_Queen.entity"
+  ONE NUMBER  Skill Defense Shield Duration = 6
+  PER RARITY  Skill Defense Shield Value Selector:  index 1 = 2.8, index 3 = 2.4, index 5 = 2, index 7 = 1.6
+```
+
+Here is what each line means:
+
+| Line | Meaning |
+|---|---|
+| `NAME` | The talent's name. |
+| `DESC` | The description, exactly as the game stores it. The `{0}`, `{1}` and `{2}` are gaps. The game fills them in with numbers when it draws the card. |
+| `file = "..."` | The hero file that holds these numbers. You will copy this whole line into your mod. |
+| `ONE NUMBER` | A number that is the same at every rarity. Here the shield lasts **6** seconds. It is the `{2}` in `for #{2}@ seconds`, so when you change it the card shows the new number by itself. |
+| `PER RARITY` | A list with one number per rarity. Here it is the shield's strength. The card may show it in a different form, for example as a percentage, but this is the number behind it. |
+
+The `index` tells you which rarity a number belongs to:
+
+| index | Rarity |
+|---|---|
+| 1 | Legendary |
+| 3 | Epic |
+| 5 | Rare |
+| 7 | Common |
+
+In the game's files the biggest number almost always sits at index 1, like the
+2.8 here. If you are unsure, test it in the game ([Step 10](#step-10-optional-get-the-talent-at-the-start-of-every-run)).
+
+**If the helper prints no numbers**, try a shorter search word. For example, use
+`Shield` instead of `Defense Shield`. A shorter word also shows numbers from
+other talents, so read the names carefully.
+
+**If a line ends in `<- LOCKED`**, that number is controlled by a per-rarity list
+somewhere else, and changing it does nothing. Change the `PER RARITY` numbers
+instead. The [Troubleshooting](#troubleshooting) section explains this.
+
+## Step 4: Create your mod
+
+Inside the `RavenswatchModManager` folder there is a folder called `mods`.
+Create a new folder inside it called `glacier-shield`. Inside that, create a
+file called `manifest.toml`:
+
+```text
+RavenswatchModManager/
+└── mods/
+    └── glacier-shield/
+        └── manifest.toml
+```
+
+Paste this into `manifest.toml`:
+
+```toml title="mods/glacier-shield/manifest.toml"
+[mod]
+id          = "glacier-shield"
+name        = "Glacier Shield"
+version     = "0.1.0"
+author      = "YourName"
+description = "The Snow Queen's Ice Shield becomes Glacier Shield: stronger, and it lasts longer."
+license     = "MIT"
+sdk_version = ">=3.0,<4"
+enabled     = true
+experimental = true
+tags        = ["talents", "snow-queen"]
+multiplayer_scope = "local-only"
+```
+
+What the lines mean:
+
+| Line | Meaning |
+|---|---|
+| `id` | Your mod's name inside RSMM. It must match the folder name. Use lowercase letters and dashes only. |
+| `name`, `description` | What people see in the mod list. |
+| `author` | Your name. |
+| `enabled = true` | RSMM installs this mod when you apply. |
+| `experimental = true` | Needed because Step 7 renames a talent. See the note below. |
+| `multiplayer_scope = "local-only"` | The mod changes only your own game. |
+
+<Aside type="note" title="Why experimental?">
+Renaming uses the `skill` content type. As a whole, RSMM rates that type
+experimental, because some of its other modes are unproven. The renaming mode
+used in this guide has been tested in the game. If your mod only changes
+numbers, you can leave `experimental = true` out.
+</Aside>
+
+A few rules for this kind of file (it is called TOML):
+
+- Text goes in `"double quotes"`. Numbers do not.
+- Put each setting on its own line.
+- A `#` starts a comment. Everything after it on that line is ignored.
+
+## Step 5: Change a number that is the same at every rarity
+
+We make the shield last 9 seconds instead of 6. Add this to the end of
+`manifest.toml`:
+
+```toml
+[[content]]
+kind = "talent"
+id   = "ice_shield_duration"
+hero = "Snow_Queen"
+file = "Hero_Snow_Queen.entity"
+value_patches = [
+  { label = "Skill Defense Shield Duration", old = 6.0, new = 9.0 },
+]
+```
+
+Line by line:
+
+| Line | What to write |
+|---|---|
+| `[[content]]` | Starts one change. A mod can have as many as you like. |
+| `kind = "talent"` | This change edits talent numbers. |
+| `id` | A name you make up for this change. Use only letters, numbers and underscores `_`, with no spaces and no dashes. Every change in the mod needs its own `id`. |
+| `hero` | The **Hero spelling** from Step 2. For `kind = "talent"`, use the first spelling. |
+| `file` | Copy the `file = ...` line from the helper's output. |
+| `label` | The name after `ONE NUMBER`, copied exactly, including capital letters. |
+| `old` | The number the helper printed. This is a safety check: if the game file holds a different number, RSMM stops and tells you instead of changing the wrong thing. |
+| `new` | Your new number. |
+
+To change several numbers at once, add more lines between the square brackets.
+Separate them with commas:
+
+```toml
+value_patches = [
+  { label = "First Label",  old = 6.0, new = 9.0 },
+  { label = "Second Label", old = 3.0, new = 4.0 },
+]
+```
+
+## Step 6: Change a number that depends on rarity
+
+Now we make the shield stronger at every rarity. Add another block:
+
+```toml
+[[content]]
+kind = "talent"
+id   = "ice_shield_strength"
+hero = "Snow_Queen"
+file = "Hero_Snow_Queen.entity"
+union_patches = [
+  { label = "Skill Defense Shield Value Selector", index = 7, old = 1.6, new = 2.0 },  # Common
+  { label = "Skill Defense Shield Value Selector", index = 5, old = 2.0, new = 2.6 },  # Rare
+  { label = "Skill Defense Shield Value Selector", index = 3, old = 2.4, new = 3.2 },  # Epic
+  { label = "Skill Defense Shield Value Selector", index = 1, old = 2.8, new = 4.0 },  # Legendary
+]
+```
+
+This works like Step 5, with two differences:
+
+- The list is called `union_patches` instead of `value_patches`.
+- Each line has an `index`, which picks the rarity. Copy it from the helper's
+  `PER RARITY` line.
+
+Only include the rarities you want to change. One line on its own is fine.
+
+<Aside type="tip">
+Steps 5 and 6 edit the same hero file, so you could put `value_patches` and
+`union_patches` in one block. Separate blocks are easier to read, and RSMM
+combines them correctly.
+</Aside>
+
+## Step 7: Change the name and the description
+
+Add one more block:
+
+```toml
+[[content]]
+kind   = "skill"
+id     = "ice_shield_text"
+hero   = "Snow_Queen"
+mode   = "relabel"
+source = "Skill_Defense_Shield"
+name        = "Glacier Shield"
+description = "• #DEFENSE@ grants a &{0}~ SHIELD to {1} and all Heroes passed for #{2}@ seconds"
+```
+
+| Line | What to write |
+|---|---|
+| `kind = "skill"` | This change edits talent text. |
+| `hero` | The **second** hero spelling from the lookup page. It differs only for Sun Wukong (`Sun_Wukong` here, `SunWukong` for `kind = "talent"`). |
+| `mode = "relabel"` | Change the text of an existing talent. Always use this mode. |
+| `source` | The **Rename with** value from Step 2. Do not use the English name. |
+| `name` | The new name. Leave this line out to keep the original name. |
+| `description` | The new description. Leave this line out to keep the original. |
+
+### How to write a description
+
+Start from the `DESC` line the helper printed, and change the words around the
+codes.
+
+**Keep the number gaps** (`{0}`, `{1}`, `{2}`, …). The game fills in each gap with
+a number from the talent. You can move a gap or leave one out, but you cannot
+add a new one. If the original description stops at `{2}`, a `{3}` shows up
+empty.
+
+The codes the game uses for formatting:
+
+| Code | Result | Example |
+|---|---|---|
+| `#…@` | Highlighted text, used for ability names and fixed numbers | `#DEFENSE@`, `#{2}@` |
+| `&…~` | A number that grows with rarity (shown in green) | `&{0}~` |
+| `$…*` | A downside | `${0}%*` |
+| `• ` | A bullet point at the start of a line | `• #POWER@ deals more damage` |
+| `\n` | A new line | `"• First line\n• Second line"` |
+
+<Aside type="caution" title="Good to know">
+- Your text replaces the talent's text in **every language**. A player with the
+  game in German sees your English text.
+- **Juliet's talent names cannot be changed**, because they are stored
+  differently. Her descriptions can be. The lookup page marks the few other
+  talents with the same limit as "description only".
+</Aside>
+
+### A new icon (optional)
+
+Put a PNG image in your mod folder, for example
+`mods/glacier-shield/art/glacier-shield.png`. Then add this line to the same
+`kind = "skill"` block:
+
+```toml
+icon = "art/glacier-shield.png"
+```
+
+Use a square image. The game's own talent icons are 128 × 128 pixels.
+
+## Step 8: Check the mod
+
+Run:
+
+```sh
+rsmm lint glacier-shield
+```
+
+For this guide's mod, you should see:
+
+```text
+  [WARN] glacier-shield: content kind 'skill' is 'guess' — shipping under experimental opt-in (may not work in-game).
+  [OK]   glacier-shield  (raw=0 patches=0 content=3 scope=local-only)
+```
+
+That warning is expected. It is the "experimental" note from Step 4. A line that
+says `[FAIL]` is a real problem: read it, fix the file and run `lint` again.
+
+## Step 9: Put it into the game
+
+**Close Ravenswatch first.** Then run:
+
+```sh
+rsmm restore --all
+rsmm apply
+```
+
+`restore --all` puts all the game's original files back, and `apply` then
+installs every enabled mod fresh. Always run both. If you only run `apply`,
+parts of an older version of your mod can stay behind.
+
+While `apply` runs, look for your mod in the output:
+
+| You see | Meaning |
+|---|---|
+| `[content] glacier-shield: emitted 15 file(s)` | It worked. (The count is 1 hero file + 1 hero file + 13 language files.) |
+| `[content] glacier-shield: emit failed: ...` | Your mod was **not** installed. The text after `failed:` says why. See [Troubleshooting](#troubleshooting). |
+
+`apply` keeps going after a failed mod so that other mods still install. **Scroll
+up and check.** Missing an error here is the most common reason a mod "does
+nothing".
+
+Now start the game and play The Snow Queen. When a level-up offers Ice Shield,
+the card should say **Glacier Shield** and show the new numbers.
+
+## Step 10 (optional): Get the talent at the start of every run
+
+Waiting for the game to offer your talent can take many runs. A small test file
+can give you the talent automatically at the start of each run.
+
+This uses the **RSMM loader**, a file RSMM adds to the game so mods can run Lua
+scripts. Set it up once (and again after every `restore --all`, which removes it):
+
+<Tabs syncKey="os">
+  <TabItem label="Windows">
+    ```cmd
+    rsmm install-loader
+    rsmm doctor
+    ```
+  </TabItem>
+  <TabItem label="Linux">
+    Close Steam first, then:
+    ```sh
+    rsmm install-loader
+    rsmm run --set-launch-options --no-launch
+    rsmm doctor
+    ```
+    The second command sets Ravenswatch's Steam launch options. Without them, the game on Linux never loads the loader.
+  </TabItem>
+</Tabs>
+
+If `install-loader` reports that the loader is not built, follow the
+Lua-scripting part of the [installation guide](/getting-started/install/) first.
+
+Then create a file called `init.lua` in your mod folder, next to `manifest.toml`:
+
+```lua title="mods/glacier-shield/init.lua"
+-- TESTING ONLY. Gives you the talent at the start of every run.
+-- Delete this file before you share or publish the mod.
+local R = require "rsmm"
+
+local TALENT = "Defense Shield"   -- the "Search word" from the lookup page
+local RARITY = 0                  -- 0 Common, 1 Rare, 2 Epic, 3 Legendary
+
+local done = false
+R.on("run:start", function() done = false end)
+R.schedule.every(3, function()
+    if done or not R.entity.ready() then return end
+    if #R.talent.controllers() == 0 then return end
+    done = true
+    R.talent.dump()
+    R.talent.grant(TALENT, RARITY)
+end)
+```
+
+Start a run with the right hero. After a few seconds you have the talent. To
+test a different rarity, change `RARITY`, close the game, and run
+`rsmm restore --all`, `rsmm apply` and `rsmm install-loader` again.
+
+To see what happened, run:
+
+```sh
+rsmm log --grep talent
+```
+
+| You see | Meaning |
+|---|---|
+| `[rsmm.talent] granted ...` | It worked. |
+| `grant refused: no talent matches ...` | The name in `TALENT` did not match. The lines above it list the name of every talent the hero has. Copy a part of the right name into `TALENT`. |
+| `grant refused: all ten talent slots are full` | Start a new run. |
+
+<Aside type="danger" title="Remove init.lua before sharing">
+For anyone else, this file is a cheat that hands out a free talent. Delete it
+before you pack or publish the mod.
+</Aside>
+
+## Step 11: Share your mod
+
+<Steps>
+1. Delete `init.lua` if you made one.
+2. Run `rsmm lint glacier-shield` and fix any `[FAIL]`.
+3. Run `rsmm pack glacier-shield`. This creates `dist/glacier-shield.zip`.
+4. Upload the zip in the desktop app's **Registry** tab, or run
+   `rsmm publish glacier-shield` (the first time, run `rsmm publish login`).
+</Steps>
+
+## Undo everything
+
+To remove every mod and return the game to normal, close the game and run:
+
+```sh
+rsmm restore --all
+```
+
+To turn off only this mod, run:
+
+```sh
+rsmm disable glacier-shield
+rsmm restore --all
+rsmm apply
+```
+
+## The finished mod
+
+Here is the complete `manifest.toml` from this guide:
+
+```toml title="mods/glacier-shield/manifest.toml"
+[mod]
+id          = "glacier-shield"
+name        = "Glacier Shield"
+version     = "0.1.0"
+author      = "YourName"
+description = "The Snow Queen's Ice Shield becomes Glacier Shield: stronger, and it lasts longer."
+license     = "MIT"
+sdk_version = ">=3.0,<4"
+enabled     = true
+experimental = true
+tags        = ["talents", "snow-queen"]
+multiplayer_scope = "local-only"
+
+# Lasts 9 seconds instead of 6.
+[[content]]
+kind = "talent"
+id   = "ice_shield_duration"
+hero = "Snow_Queen"
+file = "Hero_Snow_Queen.entity"
+value_patches = [
+  { label = "Skill Defense Shield Duration", old = 6.0, new = 9.0 },
+]
+
+# A stronger shield at every rarity.
+[[content]]
+kind = "talent"
+id   = "ice_shield_strength"
+hero = "Snow_Queen"
+file = "Hero_Snow_Queen.entity"
+union_patches = [
+  { label = "Skill Defense Shield Value Selector", index = 7, old = 1.6, new = 2.0 },  # Common
+  { label = "Skill Defense Shield Value Selector", index = 5, old = 2.0, new = 2.6 },  # Rare
+  { label = "Skill Defense Shield Value Selector", index = 3, old = 2.4, new = 3.2 },  # Epic
+  { label = "Skill Defense Shield Value Selector", index = 1, old = 2.8, new = 4.0 },  # Legendary
+]
+
+# The new name. The description keeps the original's number gaps.
+[[content]]
+kind   = "skill"
+id     = "ice_shield_text"
+hero   = "Snow_Queen"
+mode   = "relabel"
+source = "Skill_Defense_Shield"
+name        = "Glacier Shield"
+description = "• #DEFENSE@ grants a &{0}~ SHIELD to {1} and all Heroes passed for #{2}@ seconds"
+```
+
+## Troubleshooting
+
+Find the message you got in the left column. The messages below are exactly what
+RSMM prints, with this guide's example values.
+
+| Message | What it means | How to fix it |
+|---|---|---|
+| `current value 6.0 != expected 5.0` | The `old` number does not match the game file. | Copy the number from the helper's output. After a game update, run the helper again, because the number may have changed. |
+| `value label 'Skill Defense Shield Duratoin' not found in Snow_Queen's entity files` | The `label` has a typo. | Copy it exactly from the helper, including capital letters. |
+| `no vanilla hero dir for 'SnowQueen' under EntitySettings/Heroes (is data/uncooked present?)` | The hero spelling is wrong, or you skipped the extraction in Step 1. | Use the spelling from the lookup page, and run the Step 1 extraction. |
+| `id 'ice-shield' must match ^[A-Za-z0-9_]+$` | A block's `id` contains a dash or a space. | Use only letters, numbers and `_`. |
+| `skip block missing kind/id` | A `[[content]]` block has no `id` line. | Add one. |
+| ``union_patches need `file` to select exactly one entity file (matched 30: ...)`` | The block has no `file` line. | Add the `file = ...` line from the helper. |
+| `'Skill Special Marked Value' is shadowed: its value is sourced from a selector/reference ...` | The helper marked this number `LOCKED`. The game ignores it and reads a per-rarity list instead, so changing it would do nothing. | Change the `PER RARITY` numbers with `union_patches` instead. |
+| `no text key for 'Ice Shield' — tried Skill_Ice_Shield_Name` | `source` holds the English name. | Use the **Rename with** value from the lookup page. |
+| `text key 'Skill_Power_More_Range_Name' not in bank` | This talent's name cannot be changed (all of Juliet's, and a few others). | Remove the `name` line and keep only `description`. |
+| `content kind 'skill' is 'guess' ... Set [mod] experimental = true` | The mod renames a talent but has no `experimental = true`. | Add it to the `[mod]` section. |
+| `no install text bank for 'Snow_Queen' reachable` | RSMM cannot find your game. | Run `rsmm doctor` and follow what it says. |
+
+**The game shows no change, and there was no error:**
+
+1. Did you close the game before `rsmm apply`?
+2. Scroll up in the `apply` output. Does it say `emitted` for your mod, or `failed`?
+3. Is `enabled = true` in your manifest? `rsmm list` shows every mod and whether it is on.
+4. Did you change a `LOCKED` number? The game ignores those.
+5. Did you change the rarity you are actually playing? Check the index table in Step 3.
+
+## Going further
+
+This guide covers the changes that are safe for beginners. The `talent` type can
+also rewire what a talent does, for example making a talent switch on another
+talent's effect, or copying pieces of a hero's logic. That work means reading how
+the game connects its effects, and a mistake can silently break a hero. The fields
+(`rewires`, `clone_nodes`, `int_patches`) are described in the notes at the top of
+[`src/rsmm/sdk/kinds/talents.py`](https://github.com/Ovilli/RavenswatchModManager/blob/main/src/rsmm/sdk/kinds/talents.py).
+
+<CardGrid>
+  <LinkCard title="Talent name lookup" href="/reference/talent-names/" description="Every hero's talents with the names a mod needs." />
+  <LinkCard title="Custom skills (talents)" href="/guides/custom-skills/" description="The skill type in more depth, including binding behaviour from Lua." />
+  <LinkCard title="Authoring mods" href="/guides/modding/" description="The full guide to every kind of mod." />
+  <LinkCard title="Troubleshooting" href="/getting-started/troubleshooting/" description="Problems that are not specific to talents." />
+</CardGrid>
