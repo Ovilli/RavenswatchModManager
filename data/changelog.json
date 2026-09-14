@@ -1,6 +1,19 @@
 {
-  "generated": "2026-09-13",
+  "generated": "2026-09-14",
   "entries": [
+    {
+      "version": "5.8.0",
+      "date": "2026-09-14",
+      "summary": "Talent mods can now add new behaviour to a hero, not just change numbers, and you can publish mods to the store straight from the command line.",
+      "highlights": [
+        "New for mod authors: a talent mod can copy parts of a hero's talent logic and rewire them, so a talent can gain a new effect. For example, the attack after a dash can become the combo finisher, or a talent can summon rats every few attacks.",
+        "New for mod authors: a talent mod can borrow an effect another hero already has, such as Beowulf's TRAIT cooldown reduction, and give it to a different hero's talent.",
+        "Talent cards written by mods show real numbers that grow with rarity, like the game's own cards, instead of placeholder values.",
+        "Several talent or text changes in one mod now all apply. Before, only the last one took effect.",
+        "Relabelling Sun Wukong's talents works; his text could not be found before.",
+        "New CLI command: rsmm publish uploads a mod to the store, signed in with a personal API token."
+      ]
+    },
     {
       "version": "5.7.0",
       "date": "2026-09-13",
