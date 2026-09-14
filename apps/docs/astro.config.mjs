@@ -71,6 +71,7 @@ export default defineConfig({
             { label: 'Custom items', slug: 'guides/custom-items' },
             { label: 'Custom enemies', slug: 'guides/custom-enemies' },
             { label: 'Talent modding, step by step', slug: 'guides/talent-tutorial' },
+            { label: 'Advanced talent modding', slug: 'guides/talent-tutorial-advanced' },
             { label: 'Custom skills (talents)', slug: 'guides/custom-skills' },
             { label: 'SDK (v3)', slug: 'guides/sdk' },
             { label: 'Uncooked assets', slug: 'guides/uncooked-assets' },

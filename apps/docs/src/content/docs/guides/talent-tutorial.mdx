@@ -660,14 +660,13 @@ RSMM prints, with this guide's example values.
 
 ## Going further
 
-This guide covers the changes that are safe for beginners. The `talent` type can
-also rewire what a talent does, for example making a talent switch on another
-talent's effect, or copying pieces of a hero's logic. That work means reading how
-the game connects its effects, and a mistake can silently break a hero. The fields
-(`rewires`, `clone_nodes`, `int_patches`) are described in the notes at the top of
-[`src/rsmm/sdk/kinds/talents.py`](https://github.com/Ovilli/RavenswatchModManager/blob/main/src/rsmm/sdk/kinds/talents.py).
+This guide covers the changes that are safe for beginners. Ready to change what a
+talent **does**, not just its numbers? The advanced guide shows how to swap the
+attack a talent plays, add "if you own this talent" rules, give a talent an extra
+stat bonus, and build new effects out of pieces the game already has.
 
 <CardGrid>
+  <LinkCard title="Advanced talent modding" href="/guides/talent-tutorial-advanced/" description="Rewire and clone the parts a talent is made of." />
   <LinkCard title="Talent name lookup" href="/reference/talent-names/" description="Every hero's talents with the names a mod needs." />
   <LinkCard title="Custom skills (talents)" href="/guides/custom-skills/" description="The skill type in more depth, including binding behaviour from Lua." />
   <LinkCard title="Authoring mods" href="/guides/modding/" description="The full guide to every kind of mod." />
