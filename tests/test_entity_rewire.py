@@ -483,3 +483,78 @@ def test_clone_retarget_gives_a_card_slot_the_format_of_its_new_value():
     assert slots[1] == (1, 1)
     assert slots[4] == (1, 0)
     assert slots[0][0] == 1 and slots[3][0] == 0     # untouched slots keep theirs
+
+
+_BEOWULF = (Path(__file__).resolve().parents[1] / "data" / "uncooked" / "EntitySettings"
+            / "Heroes" / "Hero_Beowulf" / "Hero_Beowulf.entity.ot.EntitySettingsResource.gen")
+
+
+def _owned_refs(cf, node):
+    from rsmm.engine import entity_append as EA
+    names = [c.name for c in cf.classes]
+    count, _ = EA._directory(cf)
+    _o, vector = EA.component_vector(cf.sections[-1].payload)
+    payload = cf.sections[EA.node_section(cf, node)].payload
+    return [struct.unpack_from("<I", payload, o)[0]
+            for o in EA._carrier_refs(payload, names, set(range(count)) - set(vector))]
+
+
+def test_clone_gives_the_copy_its_own_subobjects():
+    """No shipped file points two references at one sub-object (0 of 529), so
+    a copied event sender must own a fresh copy of its collector — appended as
+    a sub-object, not as a component of the entity."""
+    if not _PIPER.is_file():
+        pytest.skip("vanilla Hero_Piper entity corpus file not present")
+    from rsmm.engine import entity_append as EA
+
+    out = EA.clone_component(_PIPER.read_bytes(),
+                             "SKILL_ATTACK_GHOST_NOTES_COUNTER_INC Event Sender", "Copy Sender")
+    cf = cooked.parse(out)
+    src = _owned_refs(cf, "SKILL_ATTACK_GHOST_NOTES_COUNTER_INC Event Sender")
+    copy = _owned_refs(cf, "Copy Sender")
+    assert len(src) == len(copy) == 1 and src != copy
+    assert cf.sections[1 + src[0]].payload == cf.sections[1 + copy[0]].payload
+    _o, vector = EA.component_vector(cf.sections[-1].payload)
+    assert copy[0] not in vector
+    assert EA.node_section(cf, "Copy Sender") - 1 in vector
+
+
+def test_clone_can_give_a_modifier_another_heroes_stat():
+    """Stats are a shared enum (TRAIT cooldown is 8a5db415 on Beowulf and
+    Geppetto), so a copied Wukong modifier can take Beowulf's."""
+    if not (_WUKONG.is_file() and _BEOWULF.is_file()):
+        pytest.skip("vanilla hero entity corpus files not present")
+    from rsmm.engine import entity_append as EA
+
+    stat = EA.modifier_stat(_BEOWULF.read_bytes(),
+                            "Skill Trait Quest Complete CD Reduction Modifier")
+    assert stat.hex() == "8a5db415"
+    raw = _WUKONG.read_bytes()
+    out = EA.clone_component(raw, "Skill Power Hold AP Modifier", "CD Copy", stat=stat)
+    assert EA.modifier_stat(out, "CD Copy") == stat
+    assert EA.modifier_stat(out, "Skill Power Hold AP Modifier") == \
+        EA.modifier_stat(raw, "Skill Power Hold AP Modifier")
+    with pytest.raises(EA.EntityAppendError, match="not a modifier"):
+        EA.clone_component(raw, "Skill Power Hold", "Not A Modifier", stat=stat)
+
+
+def test_two_talent_blocks_on_one_entity_stack(tmp_path):
+    """Each block used to rebuild the entity from vanilla, so the second one in
+    a mod silently erased the first. The second must build on the first."""
+    if not _PIPER.is_file():
+        pytest.skip("vanilla Hero_Piper entity corpus file not present")
+    from rsmm.engine import entity_append as EA
+    from rsmm.sdk.content import ContentDef
+    from rsmm.sdk.kinds import talents
+
+    def emit(cid, clone_name):
+        defn = ContentDef(kind="talent", id=cid, fields={
+            "hero": "Piper", "file": "Hero_Piper.entity",
+            "clone_nodes": [{"source": "Skill Attack Ghost Notes", "name": clone_name}],
+        })
+        return talents.emit("stack-test", defn, tmp_path)[0]
+
+    emit("first", "First Copy")
+    path = emit("second", "Second Copy")
+    cf = cooked.parse(path.read_bytes())
+    assert EA.node_section(cf, "First Copy") and EA.node_section(cf, "Second Copy")

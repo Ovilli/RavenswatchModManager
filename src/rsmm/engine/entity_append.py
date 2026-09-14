@@ -423,9 +423,105 @@ def fix_accessor(buf: bytes, label_end: int, old_target: bytes, new_target: byte
             + struct.pack("<I", vtype) + buf[off + 16:])
 
 
+# -- sub-objects a copied record owns ------------------------------------------
+#
+# Some records own objects stored as their own sections and referenced by u32
+# sub-object id (see the module docstring). Across 529 shipped files no two
+# references ever share one sub-object, so a copy must get its own. The two
+# carriers handled here are the ones talent wiring copies: a collector
+# (`oCEntityCollectorSelectorSettings`: u32 count, ids — e.g. the
+# `oCSelfEntityCollectorSettings` a modifier or event sender targets) and a
+# combiner test (`oCCombinerCpntTestSettings`: u8, u8 op, u32 count, ids).
+# Animation keys, effect setups and spawner retrievers use other carriers and
+# are NOT duplicated; do not clone records that hold those.
+
+_CARRIERS = {"oCEntityCollectorSelectorSettings": 0, "oCCombinerCpntTestSettings": 2}
+
+
+def _carrier_refs(buf: bytes, names: list[str], owned: set[int],
+                  standalone: bool = False) -> list[int]:
+    """Offsets of every sub-object id inside ``buf`` held by a known carrier.
+
+    Only ids naming a sub-object (``owned``: records that are not components)
+    count, which keeps a stray byte pattern from being read as a reference."""
+    offs: list[int] = []
+    for cls, skip in _CARRIERS.items():
+        if cls not in names:
+            continue
+        ci = names.index(cls)
+        starts = []
+        if standalone and len(buf) >= 4 and struct.unpack_from("<I", buf, 0)[0] == ci:
+            starts.append(4 + skip)
+        pat = cooked.MARK_BEGIN + struct.pack("<I", ci)
+        i = buf.find(pat)
+        while i != -1:
+            starts.append(i + 8 + skip)
+            i = buf.find(pat, i + 1)
+        for o in starts:
+            if o + 4 > len(buf):
+                continue
+            n = struct.unpack_from("<I", buf, o)[0]
+            if not 0 < n <= 64 or o + 4 + 4 * n > len(buf):
+                continue
+            ids = struct.unpack_from(f"<{n}I", buf, o + 4)
+            if all(x in owned for x in ids):
+                offs.extend(o + 4 + 4 * k for k in range(n))
+    return offs
+
+
+def _copy_subobjects(blob: bytes, cf: cooked.CookedFile,
+                     first_new_id: int) -> tuple[bytes, list[bytes]]:
+    """``blob`` with every owned sub-object replaced by a fresh copy, plus the
+    copies in id order (``first_new_id``, ``first_new_id + 1``, ...)."""
+    names = [c.name for c in cf.classes]
+    count, _ = _directory(cf)
+    _o, vector = component_vector(cf.sections[-1].payload)
+    owned = set(range(count)) - set(vector)
+    copies: list[bytes] = []
+
+    def rewrite(buf: bytes, standalone: bool) -> bytes:
+        for off in _carrier_refs(buf, names, owned, standalone):
+            old = struct.unpack_from("<I", buf, off)[0]
+            body = rewrite(cf.sections[1 + old].payload, True)
+            new = first_new_id + len(copies)
+            copies.append(body)
+            buf = buf[:off] + struct.pack("<I", new) + buf[off + 4:]
+        return buf
+
+    return rewrite(blob, False), copies
+
+
+def modifier_stat_off(payload: bytes, names: list[str]) -> int:
+    """Offset of a modifier record's 4-byte STAT key.
+
+    `oCEntityCpntModifierSettings` opens ``name, u32 flag, lstr folder, 7
+    bytes, u32 stat, BEGIN ...`` (all 496 shipped modifiers). The stat is the
+    enum the engine modifies: 845db415 POWER cooldown, 865db415 SPECIAL,
+    885db415 DEFENSE, 8a5db415 TRAIT cooldown, and so on."""
+    if names[struct.unpack_from("<I", payload, 0)[0]] != "oCEntityCpntModifierSettings":
+        raise EntityAppendError("not a modifier record")
+    at = _header_name_at(payload)
+    n = struct.unpack_from("<I", payload, at)[0]
+    folder = at + 4 + n + 4
+    m = struct.unpack_from("<I", payload, folder)[0]
+    off = folder + 4 + m + 7
+    if payload[off + 4:off + 8] != cooked.MARK_BEGIN:
+        raise EntityAppendError("modifier record does not have the expected layout")
+    return off
+
+
+def modifier_stat(cooked_bytes: bytes, node: str) -> bytes:
+    """The stat key of the modifier named ``node`` in a cooked entity."""
+    cf = cooked.parse(cooked_bytes)
+    payload = cf.sections[node_section(cf, node)].payload
+    off = modifier_stat_off(payload, [c.name for c in cf.classes])
+    return payload[off:off + 4]
+
+
 def clone_component(cooked_bytes: bytes, source: str, name: str,
                     retarget: list[tuple[str, str]] | None = None,
-                    rename: list[tuple[str, str]] | None = None) -> bytes:
+                    rename: list[tuple[str, str]] | None = None,
+                    stat: bytes | None = None) -> bytes:
     """Append a copy of the component ``source`` under the new name ``name``.
 
     The copy gets a new identity GUID, derived from ``name`` so re-emitting a
@@ -440,6 +536,10 @@ def clone_component(cooked_bytes: bytes, source: str, name: str,
     copy -- how a counter or named-event sender gets an event name of its own
     instead of sharing the source's (a counter listens by name, so a copy that
     kept the name would count the source's events too).
+
+    ``stat`` (4 bytes, see :func:`modifier_stat`) makes a copied modifier change
+    a different stat. Sub-objects the copy owns through a collector or combiner
+    are copied as well, so the copy never shares one with its source.
 
     The copy is attached through :func:`append_components`, so it lands in the
     entity's component vector rather than as an orphan. Nothing points at it
@@ -493,11 +593,20 @@ def clone_component(cooked_bytes: bytes, source: str, name: str,
     if rename:
         blob = replace_blob_strings(blob, dict(rename))
 
-    return append_components(cooked_bytes, [blob])
+    if stat is not None:
+        if len(stat) != 4:
+            raise EntityAppendError("stat must be 4 bytes")
+        off = modifier_stat_off(blob, [c.name for c in cf.classes])
+        blob = blob[:off] + stat + blob[off + 4:]
+
+    count, _ = _directory(cf)
+    blob, subs = _copy_subobjects(blob, cf, count + 1)
+    return append_components(cooked_bytes, [blob, *subs], [True] + [False] * len(subs))
 
 
 def append_components(cooked_bytes: bytes,
-                      records: list[bytes]) -> bytes:
+                      records: list[bytes],
+                      attach: list[bool] | None = None) -> bytes:
     """Append component records to a cooked entity, returning new bytes.
 
     Each record must already start with its class-table index u32 (clones of
@@ -505,7 +614,10 @@ def append_components(cooked_bytes: bytes,
 
     The new sub-object ids are also appended to the trailer's component vector,
     which is what attaches them to the entity. Without that the records are
-    orphans -- see the module docstring.
+    orphans -- see the module docstring. ``attach`` (one flag per record,
+    default all True) leaves a record OUT of that vector: a sub-object owned by
+    another record through its own id reference is not a component of the
+    entity, and listing it there would make it one.
     """
     cf = cooked.parse(cooked_bytes)
     count = validate_layout(cf)
@@ -524,8 +636,11 @@ def append_components(cooked_bytes: bytes,
     # Sub-object id of record k is its component index: the records land at
     # component indexes `count`..`count + len(records) - 1`.
     off, ids = component_vector(trailer.payload)
-    trailer.payload = _render_vector(
-        off, trailer.payload, ids + list(range(count, count + len(records))))
+    flags = attach if attach is not None else [True] * len(records)
+    if len(flags) != len(records):
+        raise EntityAppendError("attach needs one flag per record")
+    new_ids = [count + k for k, keep in enumerate(flags) if keep]
+    trailer.payload = _render_vector(off, trailer.payload, ids + new_ids)
     cf.sections.append(trailer)
     out = cooked.emit(cf)
     # Re-walk what we just wrote: the only cheap proof the vector stayed framed.

@@ -211,8 +211,15 @@ def _emit_text_override(hero_token: str, source: str, display_name, description,
         overrides[f"{key_base}_Name"] = str(display_name)
     if description is not None:
         overrides[f"{key_base}_Desc"] = str(description)
+    # Another relabel in this mod may already have written this bank during the
+    # same emit (the previous emit's files are removed before any block runs);
+    # build on it, or the later block silently erases the earlier one's text.
+    bank_name = Path(decoded_bank).name
+    prior = {sib.name[len(bank_name):]: sib.read_bytes()
+             for sib in out_dir.joinpath(*decoded_bank.split("/")).parent.glob(
+                 bank_name + ".Lang*")}
     try:
-        files = TP.override_bank_values(base_gen, overrides)
+        files = TP.override_bank_values(base_gen, overrides, prior)
     except KeyError as e:
         raise ContentError(str(e)) from e
     return _write_bank_files(decoded_bank, files, out_dir)

@@ -37,7 +37,12 @@ class TextFile:
 
 
 def parse_text_file(path: Path) -> TextFile:
-    data = path.read_bytes()
+    return parse_text_bytes(path.read_bytes(), path)
+
+
+def parse_text_bytes(data: bytes, path: Path) -> TextFile:
+    """:func:`parse_text_file` on bytes already in memory; ``path`` only names
+    the bank in errors."""
     if len(data) < HEADER_SIZE:
         raise ValueError(f"{path}: too short")
     count = struct.unpack_from("<I", data, 0x0c)[0]
@@ -118,7 +123,8 @@ def _pristine(path: Path) -> Path:
     return bak if bak.exists() else path
 
 
-def override_bank_values(base_gen: Path, overrides: dict[str, str]) -> dict[str, bytes]:
+def override_bank_values(base_gen: Path, overrides: dict[str, str],
+                         prior: dict[str, bytes] | None = None) -> dict[str, bytes]:
     """Rewrite the VALUE of existing keys in a ``~GAM.xls.LocalText`` bank.
 
     Unlike :func:`append_bank_keys` (which adds new keys), this changes the
@@ -135,6 +141,10 @@ def override_bank_values(base_gen: Path, overrides: dict[str, str]) -> dict[str,
 
     Reads each file from its pristine ``.rsmm.bak`` when present so re-apply
     rebuilds from vanilla instead of stacking on an already-patched file.
+    ``prior`` (``{".Lang<XX>": bytes}``) is a result this function already
+    returned for the same bank in the same emit — pass it so a second relabel
+    of the same bank keeps the first one's values instead of rebuilding from
+    vanilla and dropping them.
     """
     keys = parse_text_file(_pristine(base_gen))
     idx: dict[str, int] = {}
@@ -153,6 +163,9 @@ def override_bank_values(base_gen: Path, overrides: dict[str, str]) -> dict[str,
         if not psib.exists():
             continue
         vf = parse_text_file(psib)
+        earlier = (prior or {}).get(f".Lang{lang}")
+        if earlier is not None:
+            vf.entries = parse_text_bytes(earlier, sib).entries
         if len(vf.entries) != len(keys.entries):
             raise ValueError(
                 f"{sib.name}: {len(vf.entries)} values != {len(keys.entries)} "

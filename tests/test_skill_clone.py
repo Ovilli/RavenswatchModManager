@@ -144,6 +144,12 @@ def test_override_bank_values(tmp_path):
     with pytest.raises(KeyError):
         TP.override_bank_values(base, {"No_Such_Key": "z"})
 
+    # A second relabel of the same bank in the same emit builds on the first
+    # (`prior`) instead of rebuilding from vanilla and dropping its values.
+    again = TP.override_bank_values(base, {"Other_Key": "second"}, prior=out)
+    en.write_bytes(again[".LangEN"])
+    assert TP.parse_text_file(en).entries == ["Lightning Dash", "Zaps.", "second"]
+
 
 # --- guarded check against a real herodef, if one is present locally ----------
 

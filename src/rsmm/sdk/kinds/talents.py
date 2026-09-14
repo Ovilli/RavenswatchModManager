@@ -51,6 +51,9 @@ Fields:
                                reference labels repointed inside the copy, and
                                ``rename`` a list of ``{from, to}`` whole strings
                                replaced in it (e.g. a counter's event name).
+                               ``modifier_stat = {hero, node}`` makes a copied
+                               modifier change the same stat as that hero's
+                               modifier (e.g. Beowulf's TRAIT cooldown one).
                                Nothing uses the copy until a ``rewires`` entry
                                points an existing reference at it (``action`` =
                                the new name). Needs ``file``.
@@ -120,10 +123,11 @@ def _coerce_value_patches(raw) -> list[tuple[str, float, float, bool]]:
     return out
 
 
-def _coerce_clone_nodes(raw) -> list[tuple[str, str, list, list]]:
-    """Normalise ``clone_nodes`` into ``(source, name, retarget, rename)``,
-    each of the last two a list of ``(from, to)`` pairs."""
-    out: list[tuple[str, str, list, list]] = []
+def _coerce_clone_nodes(raw) -> list[tuple[str, str, list, list, tuple[str, str] | None]]:
+    """Normalise ``clone_nodes`` into ``(source, name, retarget, rename, stat)``:
+    two lists of ``(from, to)`` pairs and an optional ``(hero, node)`` naming
+    the modifier whose stat the copy should change."""
+    out: list[tuple[str, str, list, list, tuple[str, str] | None]] = []
     for cn in (raw or []):
         if not isinstance(cn, dict) or not cn.get("source") or not cn.get("name"):
             raise ContentError(f"clone_nodes entry needs source/name, got {cn!r}")
@@ -137,8 +141,35 @@ def _coerce_clone_nodes(raw) -> list[tuple[str, str, list, list]]:
             if not isinstance(rn, dict) or not rn.get("from") or not rn.get("to"):
                 raise ContentError(f"clone_nodes rename needs from/to, got {rn!r}")
             renames.append((str(rn["from"]), str(rn["to"])))
-        out.append((str(cn["source"]), str(cn["name"]), pairs, renames))
+        stat = cn.get("modifier_stat")
+        if stat is not None:
+            if not isinstance(stat, dict) or not stat.get("hero") or not stat.get("node"):
+                raise ContentError(
+                    f"clone_nodes modifier_stat needs hero/node, got {stat!r}")
+            stat = (str(stat["hero"]), str(stat["node"]))
+        out.append((str(cn["source"]), str(cn["name"]), pairs, renames, stat))
     return out
+
+
+def _modifier_stat_from(hero: str, node: str) -> bytes:
+    """The stat key of the modifier ``node`` in any of ``hero``'s entity files."""
+    hero_dir = _resolve_hero_dir(hero)
+    if hero_dir is None:
+        raise ContentError(f"modifier_stat: no vanilla hero dir for {hero!r}")
+    found = []
+    for p in sorted(hero_dir.glob(_GEN_GLOB)):
+        blob = p.read_bytes()
+        if node.encode("ascii") not in blob:
+            continue
+        try:
+            found.append(EA.modifier_stat(blob, node))
+        except EA.EntityAppendError:
+            continue
+    if len(set(found)) != 1:
+        raise ContentError(
+            f"modifier_stat: expected one modifier named {node!r} on {hero}, "
+            f"found {len(found)}")
+    return found[0]
 
 
 def _label_in(cooked: bytes, label: str) -> bool:
@@ -280,7 +311,15 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
 
     # Group patches by the file that actually carries each label, applying them
     # to in-memory copies; only changed files are written.
+    #
+    # Another talent block in this mod may already have written the same entity
+    # during this emit (the previous emit's files are removed before any block
+    # runs). Start from that copy, or this block silently discards its edits.
     edited: dict[Path, bytes] = {}
+    for p in candidates:
+        earlier = out_dir / Path(*f"{_ASSET_PREFIX}/{hero_dir.name}/{p.name}".split("/"))
+        if earlier.is_file():
+            edited[p] = earlier.read_bytes()
 
     # Clones change the file's structure (a new record, a longer component
     # vector), so they go first: every later edit re-reads the grown file, and
@@ -292,10 +331,11 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                 f"one entity file (matched {len(candidates)}: "
                 f"{[p.name for p in candidates]})")
         p = candidates[0]
-        cur = p.read_bytes()
+        cur = edited.get(p) or p.read_bytes()
         try:
-            for source, name, retarget, rename in clone_nodes:
-                cur = EA.clone_component(cur, source, name, retarget, rename)
+            for source, name, retarget, rename, stat in clone_nodes:
+                key = _modifier_stat_from(*stat) if stat else None
+                cur = EA.clone_component(cur, source, name, retarget, rename, key)
         except EA.EntityAppendError as e:
             raise ContentError(f"talent {mod_id}/{defn.id}: {e}") from e
         edited[p] = cur
