@@ -262,6 +262,18 @@ def _try_decode_animation(raw: bytes) -> bytes | None:
         return None
 
 
+def _write_json_and_raw(json_out: Path, js: bytes, raw_out: Path, raw: bytes) -> None:
+    """Write the decoded JSON AND the cooked bytes it came from.
+
+    The JSON is for reading; every SDK consumer (talents, skills, items, rewards,
+    `rsmm talents`, `rsmm enemies`) globs the raw `*.gen` beside it. Writing only
+    the JSON left a fresh clone with an empty hero list and no way to tell why.
+    """
+    for out, data in ((json_out, js), (raw_out, raw)):
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(data)
+
+
 def process_one(args):
     encoded, decoded, cooking_dir, out_dir = args
     enc_path = Path(cooking_dir) / encoded.replace("\\", "/")
@@ -285,16 +297,14 @@ def process_one(args):
         js = _try_decode_assetrefs(raw)
         if js is not None:
             out = Path(out_dir) / ar_target
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_bytes(js)
+            _write_json_and_raw(out, js, Path(out_dir) / dst_rel, raw)
             return ("json", decoded)
 
     if es_target:
         js = _try_decode_entitysettings(raw)
         if js is not None:
             out = Path(out_dir) / es_target
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_bytes(js)
+            _write_json_and_raw(out, js, Path(out_dir) / dst_rel, raw)
             return ("json", decoded)
         # else fall through to raw copy
 
@@ -302,8 +312,7 @@ def process_one(args):
         js = _try_decode_definition(raw)
         if js is not None:
             out = Path(out_dir) / def_target
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_bytes(js)
+            _write_json_and_raw(out, js, Path(out_dir) / dst_rel, raw)
             return ("json", decoded)
         # else fall through to raw copy
 
@@ -311,8 +320,7 @@ def process_one(args):
         js = _try_decode_globalvalues(raw)
         if js is not None:
             out = Path(out_dir) / gv_target
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_bytes(js)
+            _write_json_and_raw(out, js, Path(out_dir) / dst_rel, raw)
             return ("json", decoded)
         # else fall through to raw copy
 

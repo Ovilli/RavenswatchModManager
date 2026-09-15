@@ -45,13 +45,21 @@ def _resolve_hero(name: str) -> Path | None:
 
 def _cmd_list_heroes() -> int:
     print("heroes with discoverable talent values:")
+    found = 0
     for d in _hero_dirs():
         stem = d.name[len("Hero_"):]
         n = 0
         for p in d.glob(_GEN_GLOB):
             n += len(list_talent_values(p.read_bytes()))
         if n:
+            found += 1
             print(f"  {stem:<14} {n:>4} value(s)   (rsmm talents {stem})")
+    if not found:
+        print(f"  (none: no {_GEN_GLOB} files under {_HEROES_DIR})\n"
+              "  Extract them from your game install first:\n"
+              '    python scripts/extract_uncooked.py --filter "EntitySettings\\Heroes"',
+              file=sys.stderr)
+        return 1
     return 0
 
 
