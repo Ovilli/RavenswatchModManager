@@ -28,7 +28,7 @@ try:
     import texture2ddecoder
     from PIL import Image
 except ImportError:
-    sys.exit("missing deps: pip install --user texture2ddecoder Pillow")
+    sys.exit("missing packages: pip install texture2ddecoder Pillow")
 
 # Repo importable (rsmm.engine.cooked_schemas) — script lives in scripts/.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))

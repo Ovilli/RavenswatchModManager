@@ -76,16 +76,16 @@ def _diagnose(game_dir: Path) -> list[str]:
     problems: list[str] = []
     if not _winhttp_installed(game_dir):
         problems.append(
-            "loader DLL missing — run `./rsmm install-loader`")
+            "loader DLL missing — run `rsmm install-loader`")
     if not _console_mod_synced(game_dir):
         problems.append(
             f"{CONSOLE_MOD_ID} not in {game_dir / 'mods'} — "
-            f"run `./rsmm cmd --install`")
+            f"run `rsmm cmd --install`")
     snaps_dir = game_dir / "mods"
     if not (snaps_dir / "_magic_items.json").is_file():
         problems.append(
             "item/hero snapshots missing — "
-            "run `./rsmm cmd --refresh-snapshots` "
+            "run `rsmm cmd --refresh-snapshots` "
             "(needed for /list_items and /list_heroes)")
     if not _log_recent(game_dir, 120):
         problems.append(
@@ -223,9 +223,9 @@ def cmd_install(game_dir: Path) -> int:
     logger.info("synced %d file(s) into %s", n, game_dir / 'mods' / CONSOLE_MOD_ID)
     cmd_refresh_snapshots(game_dir)
     if not _winhttp_installed(game_dir):
-        logger.error("winhttp.dll not in %s — run ./rsmm install-loader next", game_dir)
+        logger.error("winhttp.dll not in %s — run rsmm install-loader next", game_dir)
     if not _log_recent(game_dir, 3600):
-        logger.warning("loader log not touched recently — launch the game with ./rsmm run to bring console online")
+        logger.warning("loader log not touched recently — launch the game with rsmm run to bring console online")
     return 0
 
 

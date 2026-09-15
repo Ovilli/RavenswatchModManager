@@ -1,4 +1,4 @@
-"""Interactive home screen — what bare `./rsmm` opens in a terminal.
+"""Interactive home screen — what bare `rsmm` opens in a terminal.
 
 Deliberately a numbered menu over `input()` rather than a curses/full-screen
 TUI: the runtime is stdlib-only, this has to survive SSH, WSL, the Steam

@@ -161,7 +161,7 @@ def check_asset_map(game_dir: Path) -> list[Result]:
     out: list[Result] = []
     if not ASSET_MAP_JSON.exists():
         return [Result("FAIL", "asset_map.json missing",
-                       "Run: ./rsmm rebuild-asset-map",
+                       "Run: rsmm rebuild-asset-map",
                        code="assetmap.missing",
                        fix=Fix("rsmm rebuild-asset-map", ["rebuild-asset-map"]))]
     am_mtime = ASSET_MAP_JSON.stat().st_mtime
@@ -196,7 +196,7 @@ def check_asset_map(game_dir: Path) -> list[Result]:
                 "WARN", "UsedRscList.ot newer than asset_map.json",
                 f"{unmapped} resource(s) in the game's manifest are missing "
                 f"from the map, so the game updated. "
-                f"Run: ./rsmm rebuild-asset-map\n"
+                f"Run: rsmm rebuild-asset-map\n"
                 "Do this only with mods RESTORED — rebuilding while they are "
                 "applied bakes mod names into the map, after which the mod's "
                 "own files are refused and it silently stops working.",
@@ -269,19 +269,20 @@ def check_loader(game_dir: Path) -> list[Result]:
     out: list[Result] = []
     dll = DIST_DIR / "winhttp.dll"
     if not dll.exists():
-        out.append(Result("WARN", "loader DLL not built (dist/winhttp.dll missing)",
-                          "Run: ./rsmm build  (or skip if not using Lua mods)",
+        # No build instructions here: players have no C++ toolchain, and this
+        # hint is what sent a Windows user into a CMake error. install-loader
+        # downloads the signed prebuilt DLL when there is none.
+        out.append(Result("WARN", "loader DLL not in dist/ (only needed for Lua mods)",
+                          "Run: rsmm install-loader  (downloads the prebuilt loader)",
                           code="loader.not-built",
-                          fix=Fix("src/loader/build.sh", [],
-                                  manual="src/loader/build.sh (Linux→Win, MinGW) "
-                                         "or src\\loader\\build.bat (Windows)")))
+                          fix=Fix("rsmm install-loader", ["install-loader"])))
     else:
         out.append(Result("OK", f"loader DLL built ({dll.stat().st_size:,} bytes)"))
     installed = game_dir / "winhttp.dll"
     install_fix = Fix("rsmm install-loader", ["install-loader"])
     if not installed.exists():
         out.append(Result("WARN", "loader not installed in game dir",
-                          "Run: ./rsmm install-loader (only needed for Lua mods)",
+                          "Run: rsmm install-loader (only needed for Lua mods)",
                           code="loader.not-installed", fix=install_fix))
         return out
 
@@ -671,7 +672,7 @@ def check_mods() -> list[Result]:
         dec2enc = decoded_to_encoded()
     except (OSError, ValueError) as e:
         return [Result("FAIL", "cannot load asset_map.json",
-                       f"{e}\nRun: ./rsmm rebuild-asset-map",
+                       f"{e}\nRun: rsmm rebuild-asset-map",
                        code="assetmap.unreadable",
                        fix=Fix("rsmm rebuild-asset-map", ["rebuild-asset-map"]))]
     found = 0
@@ -860,8 +861,8 @@ def check_state(game_dir: Path) -> list[Result]:
         data = json.loads(state.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as e:
         return [Result("FAIL", "state file is corrupt",
-                       f"{e}\nRun: ./rsmm restore --all  (recovers via backups + "
-                       "residue sweep), then: ./rsmm apply",
+                       f"{e}\nRun: rsmm restore --all  (recovers via backups + "
+                       "residue sweep), then: rsmm apply",
                        code="state.corrupt",
                        fix=Fix("rsmm restore --all", ["restore", "--all"],
                                risk="destructive"))]
@@ -904,7 +905,7 @@ def check_state(game_dir: Path) -> list[Result]:
     if missing:
         out.append(Result("WARN",
                           f"{len(missing)} override(s) in state but missing on disk",
-                          _listing(missing) + "\nRun: ./rsmm apply  (re-installs them)",
+                          _listing(missing) + "\nRun: rsmm apply  (re-installs them)",
                           code="state.missing-override",
                           fix=Fix("rsmm apply", ["apply"])))
     if drifted:
@@ -913,7 +914,7 @@ def check_state(game_dir: Path) -> list[Result]:
                           "their mod source hash",
                           _listing(drifted) +
                           "\nLikely a Steam file verify or game update. "
-                          "Run: ./rsmm apply  (re-copies stale files)",
+                          "Run: rsmm apply  (re-copies stale files)",
                           code="state.drifted",
                           fix=Fix("rsmm apply", ["apply"])))
     if lost_backups:
@@ -952,7 +953,7 @@ def check_usedrsclist(game_dir: Path) -> list[Result]:
         out.append(Result("FAIL",
                           f"UsedRscList.ot record desync ({len(lines)} lines, "
                           "not a multiple of 3) — the game WILL crash at boot",
-                          "Run: ./rsmm restore --all  (restores the pristine "
+                          "Run: rsmm restore --all  (restores the pristine "
                           "manifest), or verify game files in Steam.",
                           code="usedrsclist.desync",
                           fix=Fix("rsmm restore --all", ["restore", "--all"],
@@ -968,7 +969,7 @@ def check_usedrsclist(game_dir: Path) -> list[Result]:
             out.append(Result("WARN",
                               "UsedRscList.ot is SHORTER than its rsmm backup",
                               "The live manifest lost lines rsmm didn't remove "
-                              "(game update mid-state?). Run: ./rsmm apply",
+                              "(game update mid-state?). Run: rsmm apply",
                               code="usedrsclist.shorter",
                               fix=Fix("rsmm apply", ["apply"])))
         elif extra:

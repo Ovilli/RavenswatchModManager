@@ -63,6 +63,7 @@ Open a terminal and paste these lines one at a time:
     python -m venv venv
     venv\Scripts\activate
     pip install -e .
+    pip install texture2ddecoder Pillow
     rsmm doctor
     ```
   </TabItem>
@@ -73,13 +74,18 @@ Open a terminal and paste these lines one at a time:
     python3 -m venv .venv
     source .venv/bin/activate
     pip install -e .
+    pip install texture2ddecoder Pillow
     rsmm doctor
     ```
   </TabItem>
 </Tabs>
 
+The second `pip install` line adds the two packages the next step needs to read
+the game's files.
+
 `rsmm doctor` checks your setup and tells you if something is missing, for
-example if it cannot find the game.
+example if it cannot find the game. A warning about the loader is fine for now:
+you only need it in Step 10.
 
 <Aside type="tip" title="Every time you open a new terminal">
 Go into the `RavenswatchModManager` folder and run the activate line again:
@@ -508,8 +514,8 @@ scripts. Set it up once (and again after every `restore --all`, which removes it
   </TabItem>
 </Tabs>
 
-If `install-loader` reports that the loader is not built, follow the
-Lua-scripting part of the [installation guide](/getting-started/install/) first.
+The first time, `install-loader` downloads the ready-made loader for you, so you
+do not need to build anything. Close the game before you run it.
 
 Then create a file called `init.lua` in your mod folder, next to `manifest.toml`:
 

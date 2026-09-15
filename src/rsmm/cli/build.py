@@ -15,6 +15,7 @@ Use `rsmm build && rsmm run` to launch the game immediately after.
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -63,7 +64,7 @@ def main() -> int:
     ap.add_argument("--skip-loader", action="store_true",
                     help="don't try to rebuild dist/winhttp.dll")
     ap.add_argument("--skip-apply", action="store_true",
-                    help="stop before running ./rsmm apply")
+                    help="stop before running rsmm apply")
     args = ap.parse_args()
 
     if not ASSET_MAP_JSON.exists():
@@ -79,7 +80,17 @@ def main() -> int:
             dll.exists() and
             dll.stat().st_mtime < script.stat().st_mtime
         )
-        if need_build:
+        if need_build and shutil.which("cmake") is None:
+            # Players following a tutorial have no C++ toolchain; building is
+            # for loader developers. Use the signed prebuilt instead of failing.
+            print("==> cmake not found — using the prebuilt loader instead of building")
+            if not dll.exists():
+                from rsmm.cli.install_loader import ensure_loader_dll
+                if not ensure_loader_dll():
+                    return 1
+            else:
+                print("    (keeping the existing dist/winhttp.dll)")
+        elif need_build:
             rc = _build_loader()
             if rc:
                 print("loader build failed", file=sys.stderr)

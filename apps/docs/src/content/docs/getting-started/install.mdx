@@ -110,11 +110,13 @@ rsmm run             # launch the game
 Lua mods run inside the game process and need the loader DLL (`winhttp.dll`) next to `Ravenswatch.exe`. Texture and asset overrides work **without** it.
 
 ```sh
-cd src/loader
-./build.sh           # Linux cross-compile (MinGW)
-# or build.bat       # Windows
 rsmm install-loader  # install into the game
 ```
+
+From a source checkout, `install-loader` downloads the signed prebuilt loader the
+first time, so you do not need a C++ toolchain. Only loader developers build it
+themselves: `src/loader/build.sh` (Linux cross-compile, MinGW) or
+`src\loader\build.bat` (Windows); both need CMake.
 
 <Aside type="note">
 Steam Proton on Linux: add this launch option — `WINEDLLOVERRIDES="winhttp=n,b" %command%`

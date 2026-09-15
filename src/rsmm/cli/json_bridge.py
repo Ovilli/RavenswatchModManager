@@ -343,7 +343,7 @@ def _collect_rsmm(args: list[str]) -> dict[str, Any]:
 
 
 def _run_rsmm(args: list[str]) -> int:
-    """Spawn `./rsmm <args>` and emit {ok, code, stdout, stderr}."""
+    """Spawn `rsmm <args>` and emit {ok, code, stdout, stderr}."""
     return _emit(_collect_rsmm(args))
 
 

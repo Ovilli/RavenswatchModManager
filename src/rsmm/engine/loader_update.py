@@ -715,6 +715,44 @@ def apply_update(game_dir: Path, state: dict | None = None,
     return out
 
 
+def fetch_prebuilt_dll(dest: Path | None = None) -> dict:
+    """Download the channel's signed loader DLL into a source checkout's dist/.
+
+    A tutorial-following clone has no `dist/winhttp.dll` (it is gitignored), and
+    building one needs CMake plus a C++ toolchain most players do not have.
+    `update-loader` cannot fill the gap either: the committed version stamp
+    already equals the channel, so it reports "up to date" and plants nothing.
+    This takes the same verified path as `apply_update` — signed manifest,
+    bundle hash, per-member hash — and writes only the DLL; `install-loader`
+    then plants it beside the checkout's own Lua SDK as usual.
+
+    Returns {"path", "loader_version", "bundled_version"} so the caller can say
+    when the checkout's SDK and the downloaded DLL come from different versions.
+    """
+    dest = dest or bundled_loader_dll()
+    manifest = fetch_manifest()
+    raw = _fetch(f"{remote_base()}/{BUNDLE_NAME}", limit=_MAX_BUNDLE_BYTES)
+    if _sha256(raw) != manifest["bundle_sha256"]:
+        raise LoaderUpdateError(
+            "bundle hash does not match the signed manifest — refusing to use it"
+        )
+    with tempfile.TemporaryDirectory() as td:
+        payload = Path(td) / "payload"
+        written = dict(_extract_bundle(raw, manifest, payload))
+        src = written.get("winhttp.dll")
+        if src is None:
+            raise LoaderUpdateError("signed loader bundle carries no winhttp.dll")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_name(f"{dest.name}.{os.getpid()}.tmp")
+        shutil.copyfile(src, tmp)
+        os.replace(tmp, dest)
+    return {
+        "path": str(dest),
+        "loader_version": int(manifest["loader_version"]),
+        "bundled_version": bundled_version(),
+    }
+
+
 def replant_cached(game_dir: Path) -> dict | None:
     """Re-plant a cached bundle that is newer than this build's bundled one.
 

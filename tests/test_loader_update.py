@@ -623,3 +623,55 @@ def test_progress_is_optional(tmp_path, channel):
     game, use = channel
     use(_publish(tmp_path, version=2))
     assert lu.apply_update(game)["status"] == "updated"
+
+
+# --- prebuilt DLL for a source checkout ------------------------------------
+
+def test_fetch_prebuilt_dll_writes_only_the_verified_dll(tmp_path, channel):
+    """A fresh clone has no dist/winhttp.dll and no toolchain to build one."""
+    _, use = channel
+    use(_publish(tmp_path, version=1))
+    dest = tmp_path / "checkout" / "dist" / "winhttp.dll"
+
+    got = lu.fetch_prebuilt_dll(dest)
+
+    assert dest.read_bytes() == PAYLOAD["winhttp.dll"]
+    assert (got["loader_version"], got["bundled_version"]) == (1, 1)
+    assert sorted(p.name for p in dest.parent.iterdir()) == ["winhttp.dll"]
+
+
+def test_fetch_prebuilt_dll_refuses_a_tampered_bundle(tmp_path, channel):
+    _, use = channel
+    remote = _publish(tmp_path)
+    (remote / lu.BUNDLE_NAME).write_bytes(
+        _make_bundle({**PAYLOAD, "winhttp.dll": b"MZ evil"}))
+    use(remote)
+    dest = tmp_path / "checkout" / "dist" / "winhttp.dll"
+
+    with pytest.raises(lu.LoaderUpdateError):
+        lu.fetch_prebuilt_dll(dest)
+    assert not dest.exists()
+
+
+def test_install_loader_downloads_the_dll_when_the_checkout_has_none(
+        tmp_path, channel, monkeypatch):
+    from rsmm.cli import install_loader
+
+    _, use = channel
+    use(_publish(tmp_path, version=1))
+    dest = tmp_path / "checkout" / "dist" / "winhttp.dll"
+    monkeypatch.setattr(lu, "bundled_loader_dll", lambda: dest)
+
+    assert install_loader.ensure_loader_dll() is True
+    assert dest.read_bytes() == PAYLOAD["winhttp.dll"]
+
+
+def test_install_loader_reports_failure_without_a_dll(tmp_path, channel, monkeypatch, capsys):
+    from rsmm.cli import install_loader
+
+    monkeypatch.setattr(lu, "bundled_loader_dll", lambda: tmp_path / "dist" / "winhttp.dll")
+    monkeypatch.setattr(lu, "fetch_prebuilt_dll",
+                        lambda dest=None: (_ for _ in ()).throw(lu.LoaderUpdateError("offline")))
+
+    assert install_loader.ensure_loader_dll() is False
+    assert "offline" in capsys.readouterr().err

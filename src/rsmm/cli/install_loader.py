@@ -17,6 +17,42 @@ from rsmm.engine.paths import COOKING_SUBDIR, DEFAULT_GAME_DIR, REPO_ROOT
 _SHELL_METAS = ('"', "'", "`", "$", ";", "|", "&", "\n", "\r", "\0")
 
 
+def ensure_loader_dll() -> bool:
+    """Make sure dist/winhttp.dll exists, downloading the signed prebuilt if not.
+
+    Only a source checkout can be missing it (a frozen build bundles the DLL, and
+    its REPO_ROOT is a throwaway extraction dir), so this is a no-op there.
+    Returns False, having said why, when there is still no DLL afterwards.
+    """
+    from rsmm.engine.loader_update import (
+        LoaderUpdateError,
+        bundled_loader_dll,
+        fetch_prebuilt_dll,
+    )
+
+    if bundled_loader_dll().is_file() or getattr(sys, "frozen", False):
+        return True
+    print("loader DLL not built here — downloading the signed prebuilt loader...")
+    try:
+        got = fetch_prebuilt_dll()
+    except (LoaderUpdateError, OSError) as e:
+        print(f"install-loader: could not download the prebuilt loader: {e}\n"
+              "  Check your connection and try again, or build it yourself "
+              "(src/loader/build.bat on Windows, src/loader/build.sh on Linux).",
+              file=sys.stderr)
+        return False
+    remote, local = got["loader_version"], got["bundled_version"]
+    print(f"  saved loader v{remote} to {got['path']}")
+    if remote < local:
+        print(f"  note: this checkout's Lua SDK is v{local}, newer than the published "
+              f"DLL (v{remote}). Mods using the newest R.* calls may fail until the "
+              "loader is published or you build the DLL yourself.", file=sys.stderr)
+    elif remote > local:
+        print(f"  note: the published loader (v{remote}) is newer than this checkout "
+              f"(v{local}). Run `git pull` so the Lua SDK matches it.", file=sys.stderr)
+    return True
+
+
 def _validate_game_dir(raw: str) -> Path:
     if any(m in raw for m in _SHELL_METAS):
         raise ValueError(f"game-dir contains shell metacharacters: {raw!r}")
@@ -163,6 +199,9 @@ def main(argv: list[str] | None = None) -> int:
         argv[0] = str(_validate_game_dir(argv[0]))
     except ValueError as exc:
         print(f"install-loader: {exc}", file=sys.stderr)
+        return 1
+
+    if not ensure_loader_dll():
         return 1
 
     if not force and not _lua_syntax_gate():

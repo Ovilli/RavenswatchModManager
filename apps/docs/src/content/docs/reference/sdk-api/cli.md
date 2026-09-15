@@ -31,7 +31,7 @@ Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcomman
 | `rsmm enable` | `rsmm.cli.cmd_mods` | `rsmm enable` / `rsmm disable` — toggle mods from the terminal. |
 | `rsmm enemies` | `rsmm.cli.cmd_enemies` | `rsmm enemies` — discover vanilla enemies for enemy modding. |
 | `rsmm exp` | `rsmm.cli.cmd_exp` | rsmm exp — read back the hypotheses a mod answered during a playtest. |
-| `rsmm home` | `rsmm.cli.cmd_shell` | Interactive home screen — what bare `./rsmm` opens in a terminal. |
+| `rsmm home` | `rsmm.cli.cmd_shell` | Interactive home screen — what bare `rsmm` opens in a terminal. |
 | `rsmm install` | `rsmm.cli.cmd_install` | rsmm install — fetch, verify, and unpack a packed mod. |
 | `rsmm install-loader` | `rsmm.cli.install_loader` | rsmm install-loader — copy winhttp.dll + SDK lib into the game install. |
 | `rsmm intents` | `rsmm.cli.cmd_intents` | `rsmm intents` — consume in-game mod-menu intents written by the loader. |

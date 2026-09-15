@@ -28,10 +28,10 @@ Backups:
 
 Usage:
 
-  ./rsmm apply                 # apply current mods/ state to install
-  ./rsmm apply --restore-all   # roll back all active overrides
-  ./rsmm apply --dry-run       # print plan, change nothing
-  ./rsmm apply --list          # show discovered mods
+  rsmm apply                 # apply current mods/ state to install
+  rsmm apply --restore-all   # roll back all active overrides
+  rsmm apply --dry-run       # print plan, change nothing
+  rsmm apply --list          # show discovered mods
 """
 
 from __future__ import annotations
@@ -3104,12 +3104,12 @@ def _ensure_asset_map() -> bool:
         return True
     except FileNotFoundError:
         print(f"asset map not found: {p}\n"
-              "  Run: ./rsmm rebuild-asset-map   (requires the game install)\n"
+              "  Run: rsmm rebuild-asset-map   (requires the game install)\n"
               "  If you installed a packaged rsmm build, reinstall it — the "
               "asset map ships with it.", file=sys.stderr)
     except (OSError, ValueError) as e:
         print(f"asset map is unreadable: {p}\n  ({e})\n"
-              "  Run: ./rsmm rebuild-asset-map to regenerate it.",
+              "  Run: rsmm rebuild-asset-map to regenerate it.",
               file=sys.stderr)
     return False
 

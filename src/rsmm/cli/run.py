@@ -281,7 +281,7 @@ def _write_launch_options(vdf_path: Path, app_id: str, new_value: str) -> bool:
 
 
 def _rsmm_subcommand(args: list[str], /) -> bool:
-    """Run `./rsmm <args...>` and return True on success. Output is
+    """Run `rsmm <args...>` and return True on success. Output is
     passed through to the terminal."""
     cmd = self_cmd(args)
     try:

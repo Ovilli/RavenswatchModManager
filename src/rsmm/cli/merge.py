@@ -367,7 +367,7 @@ def build_merged_mod(game_dir: Path) -> tuple[Path | None, list]:
         owners = sorted({p.mod_id for p in patches if p.kind == k})
         print(f"  [merge] {k!r} patches are not yet composed in mods/_merged "
               f"(owners: {', '.join(owners)}). "
-              f"Use `./rsmm {k}` to ship them as separate mods.",
+              f"Use `rsmm {k}` to ship them as separate mods.",
               file=sys.stderr)
 
     if written == 0:
