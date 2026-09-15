@@ -161,6 +161,16 @@ def test_check_exe_hash_no_patterns(tmp_path, monkeypatch):
     assert any("function_patterns.json missing" in r.label for r in results)
 
 
+def test_check_exe_hash_accepts_planted_patterns(tmp_path, monkeypatch):
+    # A source clone has no repo pattern DB; `update-data` plants one in the game dir.
+    monkeypatch.setattr("rsmm.cli.doctor.DATA_DIR", tmp_path / "repo-data")
+    planted = tmp_path / "rsmm" / "data"
+    planted.mkdir(parents=True)
+    (planted / "function_patterns.json").write_text("[]", encoding="utf-8")
+    results = check_exe_hash(tmp_path)
+    assert not any("function_patterns.json missing" in r.label for r in results)
+
+
 def test_check_mods_no_mods_dir(tmp_path, monkeypatch):
     monkeypatch.setattr("rsmm.cli.doctor.MODS_DIR", tmp_path / "mods")
     results = check_mods()

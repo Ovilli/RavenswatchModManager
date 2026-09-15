@@ -64,6 +64,33 @@ _CODES = {
 }
 
 
+def _windows_vt_enabled(stream) -> bool:
+    """Turn on ANSI escape handling for a Windows console; False if it can't.
+
+    The classic console (cmd.exe / PowerShell in conhost) prints escapes as
+    literal `←[33m` garbage unless the process sets
+    ENABLE_VIRTUAL_TERMINAL_PROCESSING on the handle — Windows Terminal does it
+    for you, conhost does not, and Python never does. Setting the mode is
+    per-console, so one successful call also covers `_keys`' screen codes.
+    """
+    try:
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+
+        handle = msvcrt.get_osfhandle(stream.fileno())
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        mode = wintypes.DWORD()
+        if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            return False
+        vt = 0x0004  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+        if mode.value & vt:
+            return True
+        return bool(kernel32.SetConsoleMode(handle, mode.value | vt))
+    except (AttributeError, OSError, ValueError, ImportError):
+        return False
+
+
 def color_enabled(stream=None) -> bool:
     stream = stream or sys.stdout
     if os.environ.get("NO_COLOR"):
@@ -73,9 +100,13 @@ def color_enabled(stream=None) -> bool:
     if os.environ.get("TERM") == "dumb":
         return False
     try:
-        return bool(stream.isatty())
+        if not stream.isatty():
+            return False
     except (AttributeError, ValueError):
         return False
+    if sys.platform == "win32":
+        return _windows_vt_enabled(stream)
+    return True
 
 
 class Style:

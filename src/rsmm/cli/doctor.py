@@ -793,7 +793,13 @@ def check_patch_conflicts() -> list[Result]:
 
 def check_exe_hash(game_dir: Path) -> list[Result]:
     """Hash the game executable and warn if function_patterns.json is stale."""
-    patterns = DATA_DIR / "function_patterns.json"
+    from rsmm.engine.data_update import planted_dir
+    # The planted copy is the one the loader reads and the one `update-data`
+    # writes; a source clone has no repo copy (gitignored), so checking only
+    # DATA_DIR told users to run a command that could never clear the warning.
+    patterns = planted_dir(game_dir) / "function_patterns.json"
+    if not patterns.exists():
+        patterns = DATA_DIR / "function_patterns.json"
     if not patterns.exists():
         return [Result("WARN", "function_patterns.json missing",
                        "Run: rsmm update-data",
@@ -817,7 +823,7 @@ def check_exe_hash(game_dir: Path) -> list[Result]:
 
     # Precise check: the pattern DB actually consulted by the loader is the
     # planted copy; its meta records which game build it was built against.
-    from rsmm.engine.data_update import bundled_meta, planted_dir, planted_meta
+    from rsmm.engine.data_update import bundled_meta, planted_meta
     meta = planted_meta(game_dir) or bundled_meta()
     if meta and meta.get("game_exe_sha256"):
         which = ("planted" if (planted_dir(game_dir) / "function_patterns.meta.json").exists()
