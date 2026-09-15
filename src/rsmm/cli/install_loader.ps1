@@ -86,10 +86,19 @@ Copy-Item -Path $dll -Destination $winhttp -Force
 Copy-Item -Path (Join-Path $repoDir 'data\asset_map.json') -Destination (Join-Path $GameDir 'asset_map.json') -Force
 $dataDst = Join-Path $GameDir 'rsmm\data'
 New-Item -ItemType Directory -Path $dataDst -Force | Out-Null
-Copy-Item -Path (Join-Path $repoDir 'data\function_patterns.json') -Destination (Join-Path $dataDst 'function_patterns.json') -Force
-$patternsMeta = Join-Path $repoDir 'data\function_patterns.meta.json'
-if (Test-Path $patternsMeta) {
-  Copy-Item -Path $patternsMeta -Destination (Join-Path $dataDst 'function_patterns.meta.json') -Force
+# data\function_patterns.json is gitignored, so a fresh clone has none; the
+# loader reads the copy in <game>\rsmm\data\, which `rsmm update-data` plants.
+$patternsSrc = Join-Path $repoDir 'data\function_patterns.json'
+if (Test-Path $patternsSrc) {
+  Copy-Item -Path $patternsSrc -Destination (Join-Path $dataDst 'function_patterns.json') -Force
+  $patternsMeta = Join-Path $repoDir 'data\function_patterns.meta.json'
+  if (Test-Path $patternsMeta) {
+    Copy-Item -Path $patternsMeta -Destination (Join-Path $dataDst 'function_patterns.meta.json') -Force
+  }
+} elseif (Test-Path (Join-Path $dataDst 'function_patterns.json')) {
+  Write-Host "Pattern DB: keeping the copy already in the game folder (rsmm update-data)."
+} else {
+  Write-Warning "No pattern DB in the game folder. Run: rsmm update-data"
 }
 
 # Lua-side SDK: mods do `require "rsmm"` and get the documented R.* surface.

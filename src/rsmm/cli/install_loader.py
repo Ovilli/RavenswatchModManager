@@ -40,6 +40,11 @@ def _symbol_resolve_gate(game_dir: Path) -> bool:
     exe = game_dir / "Ravenswatch.exe"
     if not script.exists() or not exe.exists():
         return True
+    # A tutorial-following clone has no pattern DB in data/ (it is gitignored and
+    # users get theirs via `rsmm update-data` into the game dir), so the verifier
+    # cannot run; skip quietly rather than tell them to regenerate it.
+    if not (REPO_ROOT / "data" / "function_patterns.json").exists():
+        return True
     # The verifier reports "could not run" (missing capstone / pattern DB /
     # importable rsmm) separately from "symbols are bad". Conflating them told a
     # user to go recover addresses when the actual fault was an ImportError.

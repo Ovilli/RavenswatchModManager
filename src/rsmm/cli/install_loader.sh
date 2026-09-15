@@ -85,9 +85,17 @@ fi
 install -m 0644 "$DLL" "$GAME_DIR/winhttp.dll"
 install -m 0644 "$REPO_DIR/data/asset_map.json" "$GAME_DIR/asset_map.json"
 install -d "$GAME_DIR/rsmm/data"
-install -m 0644 "$REPO_DIR/data/function_patterns.json" "$GAME_DIR/rsmm/data/function_patterns.json"
-if [ -f "$REPO_DIR/data/function_patterns.meta.json" ]; then
-    install -m 0644 "$REPO_DIR/data/function_patterns.meta.json" "$GAME_DIR/rsmm/data/function_patterns.meta.json"
+# data/function_patterns.json is gitignored, so a fresh clone has none; the
+# loader reads the copy in <game>/rsmm/data/, which `rsmm update-data` plants.
+if [ -f "$REPO_DIR/data/function_patterns.json" ]; then
+    install -m 0644 "$REPO_DIR/data/function_patterns.json" "$GAME_DIR/rsmm/data/function_patterns.json"
+    if [ -f "$REPO_DIR/data/function_patterns.meta.json" ]; then
+        install -m 0644 "$REPO_DIR/data/function_patterns.meta.json" "$GAME_DIR/rsmm/data/function_patterns.meta.json"
+    fi
+elif [ -f "$GAME_DIR/rsmm/data/function_patterns.json" ]; then
+    echo "Pattern DB: keeping the copy already in the game folder (rsmm update-data)."
+else
+    echo "warning: no pattern DB in the game folder. Run: rsmm update-data" >&2
 fi
 
 # Lua-side SDK: mods do `require "rsmm"` and get the documented R.* surface.
