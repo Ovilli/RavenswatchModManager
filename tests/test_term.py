@@ -33,8 +33,27 @@ def test_disabled_when_not_a_tty():
     assert _term.color_enabled(FakeStream(tty=False)) is False
 
 
-def test_enabled_on_a_tty():
+def test_enabled_on_a_tty(monkeypatch):
+    monkeypatch.setattr(_term.sys, "platform", "linux")
     assert _term.color_enabled(FakeStream(tty=True)) is True
+
+
+def test_windows_tty_enabled_when_vt_mode_is_set(monkeypatch):
+    monkeypatch.setattr(_term.sys, "platform", "win32")
+    monkeypatch.setattr(_term, "_windows_vt_enabled", lambda stream: True)
+    assert _term.color_enabled(FakeStream(tty=True)) is True
+
+
+def test_windows_tty_plain_when_console_refuses_vt(monkeypatch):
+    # Classic conhost without VT prints escapes as literal `←[33m` garbage.
+    monkeypatch.setattr(_term.sys, "platform", "win32")
+    monkeypatch.setattr(_term, "_windows_vt_enabled", lambda stream: False)
+    assert _term.color_enabled(FakeStream(tty=True)) is False
+
+
+def test_windows_vt_probe_never_raises_on_a_handleless_stream():
+    # StringIO has no fileno(); on Linux msvcrt is missing. Both must read as "no".
+    assert _term._windows_vt_enabled(FakeStream(tty=True)) is False
 
 
 def test_no_color_beats_tty(monkeypatch):
