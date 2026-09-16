@@ -558,3 +558,82 @@ def test_two_talent_blocks_on_one_entity_stack(tmp_path):
     path = emit("second", "Second Copy")
     cf = cooked.parse(path.read_bytes())
     assert EA.node_section(cf, "First Copy") and EA.node_section(cf, "Second Copy")
+
+
+_ALADDIN = (Path(__file__).resolve().parents[1] / "data" / "uncooked" / "EntitySettings"
+            / "Heroes" / "Hero_Aladdin" / "Hero_Aladdin.entity.ot.EntitySettingsResource.gen")
+
+
+def test_clone_zone_attack_owns_and_retargets_its_attack_subobject():
+    """A zone attack names its damage in an `oCEntityGpnAttackSettings` whose id
+    is the record's last u32. A copy that shared it would deal the SOURCE's
+    damage, and a retarget of the damage label must reach inside the copy."""
+    if not _ALADDIN.is_file():
+        pytest.skip("vanilla Hero_Aladdin entity corpus file not present")
+    from rsmm.engine import entity_append as EA
+
+    old = ("[Dt Damage] Hero_Aladdin\\Skill Ultimate 2 Carpet Dash"
+           "\\Skill Ultimate 2 Carpet Dash Damage")
+    new = "[Dt Damage] Hero_Aladdin\\Skill Power Start AOE\\Skill Power Start AOE Damage"
+    out = EA.clone_component(_ALADDIN.read_bytes(), "Skill Ultimate 2 Carpet Dash Attack",
+                             "Attack Copy", [(old, new)])
+    cf = cooked.parse(out)
+
+    def tail(node):
+        p = cf.sections[EA.node_section(cf, node)].payload
+        return struct.unpack_from("<I", p, len(p) - 4)[0]
+
+    src, copy = tail("Skill Ultimate 2 Carpet Dash Attack"), tail("Attack Copy")
+    assert src != copy
+    _o, vector = EA.component_vector(cf.sections[-1].payload)
+    assert copy not in vector
+    copied = cf.sections[1 + copy].payload
+    assert EA.node_guid(cf, "Skill Power Start AOE Damage") in copied
+    assert EA.node_guid(cf, "Skill Ultimate 2 Carpet Dash Damage") not in copied
+    assert EA.node_guid(cf, "Skill Ultimate 2 Carpet Dash Damage") in cf.sections[1 + src].payload
+
+
+def test_clone_retarget_reaches_a_testers_subtests():
+    """A tester keeps its conditions in combiner sub-objects, nested. The copy's
+    conditions must move and the source tester's must not."""
+    if not _ALADDIN.is_file():
+        pytest.skip("vanilla Hero_Aladdin entity corpus file not present")
+    from rsmm.engine import entity_append as EA
+
+    timer = "[Timer] Hero_Aladdin\\Skill Dash Attack\\Skill Dash Attack Timer"
+    other = "[Timer] Hero_Aladdin\\Skill Power Start AOE\\Skill Power Start AOE Attack Delay"
+    src_name = "Basic Attack Is Skill Dash Attack Condition"
+    out = EA.clone_component(_ALADDIN.read_bytes(), src_name, "Condition Copy", [(timer, other)])
+    cf = cooked.parse(out)
+    ed = EntityEdit(out)
+    moved = ed._subtest_ranges("Condition Copy")
+    kept = ed._subtest_ranges(src_name)
+    delay, dash = (EA.node_guid(cf, "Skill Power Start AOE Attack Delay"),
+                   EA.node_guid(cf, "Skill Dash Attack Timer"))
+    assert any(delay in ed.concat[a:b] for a, b in moved)
+    assert not any(dash in ed.concat[a:b] for a, b in moved)
+    assert any(dash in ed.concat[a:b] for a, b in kept)
+    assert len(moved) == len(kept) == 3
+
+
+def test_clone_retarget_to_an_inherited_node_uses_its_existing_reference():
+    """`Dash Ability Clip` lives in Hero_Common, not in Aladdin's file. Its GUID
+    is taken from a reference that already names it; a label nothing carries
+    is still an error."""
+    if not _ALADDIN.is_file():
+        pytest.skip("vanilla Hero_Aladdin entity corpus file not present")
+    from rsmm.engine import entity_append as EA
+
+    raw = _ALADDIN.read_bytes()
+    clip = "[Anim Clip] Hero_Common\\Ability Dash\\Dash Ability Clip"
+    old = "[Anim Clip] Hero_Aladdin\\Skill Dash Attack\\Skill Dash Attack Clip 1"
+    out = EA.clone_component(raw, "Skill Dash Attack Clip Selector", "Selector Copy",
+                             [(old, clip)])
+    cf = cooked.parse(out)
+    # the GUID `Dash Ability Clip Selector` already references it by
+    guid = bytes.fromhex("6abc162d32a6b94aad00a6ea6ad7a04d")
+    assert guid in cf.sections[EA.node_section(cf, "Selector Copy")].payload
+
+    with pytest.raises(EA.EntityAppendError, match="no component named"):
+        EA.clone_component(raw, "Skill Dash Attack Clip Selector", "Bad Copy",
+                           [(old, "[Anim Clip] Hero_Common\\Nowhere\\No Such Clip")])

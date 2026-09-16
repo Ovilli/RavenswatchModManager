@@ -432,19 +432,33 @@ def fix_accessor(buf: bytes, label_end: int, old_target: bytes, new_target: byte
 # (`oCEntityCollectorSelectorSettings`: u32 count, ids — e.g. the
 # `oCSelfEntityCollectorSettings` a modifier or event sender targets) and a
 # combiner test (`oCCombinerCpntTestSettings`: u8, u8 op, u32 count, ids).
+# A zone attack (`oCEntityCpntZoneAttackSettings`) is a third: its record ENDS
+# with the id of the `oCEntityGpnAttackSettings` that names its damage and
+# traverser (383 of 383 shipped zone attacks).
 # Animation keys, effect setups and spawner retrievers use other carriers and
 # are NOT duplicated; do not clone records that hold those.
 
 _CARRIERS = {"oCEntityCollectorSelectorSettings": 0, "oCCombinerCpntTestSettings": 2}
+#: record class -> class of the sub-object whose id is the record's last u32
+_TAIL_CARRIERS = {"oCEntityCpntZoneAttackSettings": "oCEntityGpnAttackSettings"}
 
 
 def _carrier_refs(buf: bytes, names: list[str], owned: set[int],
-                  standalone: bool = False) -> list[int]:
+                  standalone: bool = False,
+                  classes: dict[int, str] | None = None) -> list[int]:
     """Offsets of every sub-object id inside ``buf`` held by a known carrier.
 
     Only ids naming a sub-object (``owned``: records that are not components)
-    count, which keeps a stray byte pattern from being read as a reference."""
+    count, which keeps a stray byte pattern from being read as a reference.
+    ``classes`` (sub-object id -> class name) lets a tail carrier check that
+    its last u32 names the sub-object class it owns."""
     offs: list[int] = []
+    if len(buf) >= 8 and classes is not None:
+        ci = struct.unpack_from("<I", buf, 0)[0]
+        want = _TAIL_CARRIERS.get(names[ci]) if ci < len(names) else None
+        last = struct.unpack_from("<I", buf, len(buf) - 4)[0]
+        if want is not None and last in owned and classes.get(last) == want:
+            offs.append(len(buf) - 4)
     for cls, skip in _CARRIERS.items():
         if cls not in names:
             continue
@@ -474,13 +488,14 @@ def _copy_subobjects(blob: bytes, cf: cooked.CookedFile,
     """``blob`` with every owned sub-object replaced by a fresh copy, plus the
     copies in id order (``first_new_id``, ``first_new_id + 1``, ...)."""
     names = [c.name for c in cf.classes]
-    count, _ = _directory(cf)
+    count, directory = _directory(cf)
     _o, vector = component_vector(cf.sections[-1].payload)
     owned = set(range(count)) - set(vector)
+    classes = {i: names[c] for i, c in enumerate(directory) if c < len(names)}
     copies: list[bytes] = []
 
     def rewrite(buf: bytes, standalone: bool) -> bytes:
-        for off in _carrier_refs(buf, names, owned, standalone):
+        for off in _carrier_refs(buf, names, owned, standalone, classes):
             old = struct.unpack_from("<I", buf, off)[0]
             body = rewrite(cf.sections[1 + old].payload, True)
             new = first_new_id + len(copies)
@@ -564,31 +579,28 @@ def clone_component(cooked_bytes: bytes, source: str, name: str,
         raise EntityAppendError(f"derived GUID for {name!r} collides in this file")
     blob = blob[:at - 16] + guid + blob[at:]
 
+    count, _ = _directory(cf)
+    blob, subs = _copy_subobjects(blob, cf, count + 1)
+
+    # Retarget after the sub-objects are copied, so a reference the copy holds
+    # through one of them moves too: a tester keeps its conditions in combiner
+    # sub-objects, a zone attack names its damage in one. The copies belong to
+    # the clone alone, so editing them never touches the source.
     accessors = _Accessors(cf) if retarget else None
     for old_label, new_label in retarget or []:
-        needle = _lstr(old_label)
-        if needle not in blob:
+        target = _target_guid(cf, new_label)
+        hits = 0
+        try:
+            blob, n = _retarget_refs(blob, old_label, new_label, target, accessors)
+            hits += n
+            for k, sub in enumerate(subs):
+                subs[k], n = _retarget_refs(sub, old_label, new_label, target, accessors)
+                hits += n
+        except EntityAppendError as e:
+            raise EntityAppendError(f"clone of {source!r}: {e}") from e
+        if not hits:
             raise EntityAppendError(
                 f"clone of {source!r}: no reference labelled {old_label!r}")
-        target = node_guid(cf, new_label.rsplit("\\", 1)[-1])
-        i = blob.find(needle)
-        while i != -1:
-            # A picker reference is BEGIN, u32 class, 16B GUID, then the label.
-            if i < 24 or blob[i - 24:i - 20] != cooked.MARK_BEGIN:
-                raise EntityAppendError(
-                    f"clone of {source!r}: {old_label!r} is not a picker reference")
-            old_target = blob[i - 16:i]
-            repl = target + _lstr(new_label)
-            blob = blob[:i - 16] + repl + blob[i + len(needle):]
-            try:
-                blob = fix_accessor(blob, i + 4 + len(new_label), old_target,
-                                    target, accessors, old_label, new_label)
-                blob = fix_format_slot(blob, i - 24, i + 4 + len(new_label),
-                                       target, accessors)
-            except EntityAppendError as e:
-                raise EntityAppendError(
-                    f"clone of {source!r}: {old_label!r} -> {new_label!r}: {e}") from e
-            i = blob.find(needle, i - 16 + len(repl))
 
     if rename:
         blob = replace_blob_strings(blob, dict(rename))
@@ -599,9 +611,59 @@ def clone_component(cooked_bytes: bytes, source: str, name: str,
         off = modifier_stat_off(blob, [c.name for c in cf.classes])
         blob = blob[:off] + stat + blob[off + 4:]
 
-    count, _ = _directory(cf)
-    blob, subs = _copy_subobjects(blob, cf, count + 1)
     return append_components(cooked_bytes, [blob, *subs], [True] + [False] * len(subs))
+
+
+def _target_guid(cf: cooked.CookedFile, label: str) -> bytes:
+    """GUID of the node a reference labelled ``label`` should point at.
+
+    A node defined in this file is found by its own name. A node INHERITED from
+    a parent entity (``[Anim Clip] Hero_Common\\Ability Dash\\Dash Ability
+    Clip`` in a hero file) has no record here, so its GUID is taken from a
+    reference that already carries exactly that label."""
+    name = label.rsplit("\\", 1)[-1]
+    want = _lstr(name)
+    defined = sum(1 for sec in cf.sections[1:-1]
+                  if (at := _header_name_at(sec.payload)) is not None
+                  and sec.payload[at:at + len(want)] == want)
+    if defined:
+        return node_guid(cf, name)
+    needle = _lstr(label)
+    for sec in cf.sections:
+        p = sec.payload
+        i = p.find(needle)
+        while i != -1:
+            if i >= 24 and p[i - 24:i - 20] == cooked.MARK_BEGIN and p[i - 16:i] != bytes(16):
+                return p[i - 16:i]
+            i = p.find(needle, i + 1)
+    raise EntityAppendError(
+        f"no component named {name!r} and no reference labelled {label!r} "
+        f"to take an inherited node's GUID from")
+
+
+def _retarget_refs(buf: bytes, old_label: str, new_label: str, target: bytes,
+                   accessors: _Accessors) -> tuple[bytes, int]:
+    """``buf`` with every picker labelled ``old_label`` pointed at ``target``
+    under ``new_label``, and the number moved."""
+    needle = _lstr(old_label)
+    hits = 0
+    i = buf.find(needle)
+    while i != -1:
+        # A picker reference is BEGIN, u32 class, 16B GUID, then the label.
+        if i < 24 or buf[i - 24:i - 20] != cooked.MARK_BEGIN:
+            raise EntityAppendError(f"{old_label!r} is not a picker reference")
+        old_target = buf[i - 16:i]
+        repl = target + _lstr(new_label)
+        buf = buf[:i - 16] + repl + buf[i + len(needle):]
+        try:
+            buf = fix_accessor(buf, i + 4 + len(new_label), old_target,
+                               target, accessors, old_label, new_label)
+            buf = fix_format_slot(buf, i - 24, i + 4 + len(new_label), target, accessors)
+        except EntityAppendError as e:
+            raise EntityAppendError(f"{old_label!r} -> {new_label!r}: {e}") from e
+        hits += 1
+        i = buf.find(needle, i - 16 + len(repl))
+    return buf, hits
 
 
 def append_components(cooked_bytes: bytes,
