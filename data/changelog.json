@@ -1,6 +1,18 @@
 {
-  "generated": "2026-09-14",
+  "generated": "2026-09-17",
   "entries": [
+    {
+      "version": "",
+      "loader_version": 15,
+      "date": "2026-09-17",
+      "summary": "Mods can now tell which object an interaction happened on, so a mod-made point of interest can respond when you use it.",
+      "highlights": [
+        "New for mod authors: an interaction event now reports WHICH object it fired on, so a mod can react to its own point of interest instead of to every chest and fountain in the run.",
+        "The object is carried through to the success step, which is the one mods actually act on — before, only the initial request knew what had been used.",
+        "Custom points of interest are no longer experimental: a mod-made structure generates on the map, draws its own minimap icon, and can be interacted with.",
+        "Removed a debug trace that aimed at an address the current game build no longer has, so it could never do anything but disable itself."
+      ]
+    },
     {
       "version": "5.8.0",
       "date": "2026-09-14",
