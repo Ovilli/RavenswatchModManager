@@ -128,7 +128,7 @@ instantiates on tick:
 ## SHIPPED 2026-06-18 — dynamic-trace loader hook (`hook_spawn.cpp`)
 
 The static RE is bottomed out, so the recommended dynamic trace is now built.
-`src/loader/src/hook_spawn.cpp` (`install_spawn_hooks`, wired in `dllmain.cpp`,
+`src/loader/src/hook_spawn.cpp` (REMOVED 2026-09-17 — the tracer's target was stale and its goal was met by the tile-spawn RE; the section below is kept as the record of what it observed) (`install_spawn_hooks`, wired in `dllmain.cpp`,
 default OFF) detours the selector **prepare** virtual `FUN_140330c30` via a clean
 unique pattern (added to `data/function_patterns.json`, 44 used bytes,
 `53 48 83 ec 20 48 8b d9 e8 ?? .. 48 8b 43 10 80 b8 08 01 00 00 01 ..`). After the

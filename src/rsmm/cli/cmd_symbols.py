@@ -408,8 +408,16 @@ def _gen_header(smap: SymbolMap) -> str:
             addr = s.preferred_addr(smap.preferred_base)
             pat = s.pattern_name or ""
             lines.append(f"constexpr std::uintptr_t {_cpp_ident(s.name)} = 0x{addr:x}ull;")
-            if pat:
+            # FAIL-CLOSED: only a status=ok symbol gets a pattern constant. The
+            # pattern name is the ONLY thing the loader can resolve and hook by,
+            # so emitting one for a demoted symbol is what made `status` cosmetic
+            # -- it kept resolving against whatever bytes still matched. Leaving
+            # the name out turns that silent mis-resolve into a compile error at
+            # the use site, which is the whole point of demoting it.
+            if pat and s.status == "ok":
                 lines.append(f'constexpr const char* {_cpp_ident(s.name)}_Pattern = "{pat}";')
+            elif pat:
+                lines.append(f"// {_cpp_ident(s.name)}_Pattern omitted: status={s.status}")
         lines.append("")
     lines.append("}  // namespace Sym")
     lines.append("")
@@ -432,9 +440,11 @@ def _gen_python(smap: SymbolMap) -> str:
     lines.append("}")
     lines.append("")
     lines.append("# name -> function-pattern key (version-resilient), when available")
+    lines.append("# Only status=ok symbols appear: a pattern key is a resolution handle,")
+    lines.append("# and handing one out for an unverified address resolves it anyway.")
     lines.append("PATTERN: dict[str, str] = {")
     for s in sorted(smap.symbols, key=lambda x: x.name):
-        if s.pattern_name:
+        if s.pattern_name and s.status == "ok":
             lines.append(f'    "{s.name}": "{s.pattern_name}",')
     lines.append("}")
     lines.append("")
@@ -500,7 +510,14 @@ def _gen_api_header(smap: SymbolMap) -> str:
         "namespace engine {",
         "",
     ]
-    for s in sorted(smap.callable_symbols, key=lambda x: x.name):
+    skipped = [s for s in smap.callable_symbols if s.status != "ok"]
+    if skipped:
+        names = ", ".join(f"{s.name} ({s.status})"
+                          for s in sorted(skipped, key=lambda x: x.name))
+        lines.append("// Omitted as not status=ok (calling an unverified address is how a")
+        lines.append(f"// detour lands mid-function): {names}")
+        lines.append("")
+    for s in sorted((x for x in smap.callable_symbols if x.status == "ok"), key=lambda x: x.name):
         fn_t = f"{s.name}_fn"
         typ = _cabi_type(s.cabi)
         lines.append(f"// {s.name}  ({s.pattern_name})")
@@ -533,7 +550,8 @@ def _gen_event_table(smap: SymbolMap) -> str:
         "// Spliced into EventHook g_hooks[] in hook_events.cpp.",
         "// { pattern_name, lua_event, real=nullptr, va=0 }",
     ]
-    for s in sorted(smap.events, key=lambda x: x.lua_event or ""):
+    for s in sorted((x for x in smap.events if x.status == "ok"),
+                    key=lambda x: x.lua_event or ""):
         lines.append(f'{{ "{s.pattern_name}", "{s.lua_event}", nullptr, 0 }},')
     lines.append("")
     return "\n".join(lines)

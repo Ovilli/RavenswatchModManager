@@ -329,7 +329,7 @@
    "category": "engine-core",
    "va": "0x141436690",
    "status": "va",
-   "note": "Global class-descriptor registry: ptr to {descPtr array @+0x0, u32 count @+0x8}. Scanned by ClassRegistry_FindByKey; every oC* class registration appends here.",
+   "note": "Global class-descriptor registry: ptr to {descPtr array @+0x0, u32 count @+0x8}. Scanned by ClassRegistry_FindByKey; every oC* class registration appends here. ⚠ UNREFERENCED IN BUILD 40430b75c72b (audited 2026-09-17, scripts/audit_va_globals.py): .text contains NO RIP-relative reference to this address under any trailing-immediate size, and the anchor function this note names does not reach it either. So the VA is stale or was mis-derived, and a read of it returns whatever else now lives there. It is NOT relocated here on purpose — guessing a replacement from a nearby write is how a symbol acquires a confidently wrong address. Re-derive it from a live trace before use, and keep every read gated on va_globals_trusted.",
    "refs": [
     "docs/_re"
    ]
@@ -2069,9 +2069,9 @@
    "name": "Library_AchievementDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x1414113b0",
+   "va": "0x140f27660",
    "status": "va",
-   "note": "vftable of oCTLibrary<oe::dt::AchievementDefinition> singleton.",
+   "note": "vftable of oCTLibrary<oe::dt::AchievementDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable — its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor → complete object locator → vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
     "docs/_re"
    ]
@@ -2080,9 +2080,9 @@
    "name": "Library_ChallengeDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x141413010",
+   "va": "0x140f299d8",
    "status": "va",
-   "note": "vftable of oCTLibrary<oe::dt::ChallengeDefinition> singleton.",
+   "note": "vftable of oCTLibrary<oe::dt::ChallengeDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable — its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor → complete object locator → vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
     "docs/_re"
    ]
@@ -2091,9 +2091,9 @@
    "name": "Library_DreamShardDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x141411050",
+   "va": "0x140f27178",
    "status": "va",
-   "note": "vftable of oCTLibrary<oCDtDreamShardDefinition> singleton.",
+   "note": "vftable of oCTLibrary<oCDtDreamShardDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable — its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor → complete object locator → vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
     "docs/_re"
    ]
@@ -2102,9 +2102,9 @@
    "name": "Library_EnemyCampDifficultyDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x141411710",
+   "va": "0x140f280e0",
    "status": "va",
-   "note": "vftable of oCTLibrary<oCDtEnemyCampDifficultyDefinition> singleton.",
+   "note": "vftable of oCTLibrary<oCDtEnemyCampDifficultyDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable — its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor → complete object locator → vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
     "docs/_re"
    ]
@@ -2113,9 +2113,9 @@
    "name": "Library_EnemyCampTierDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x141411560",
+   "va": "0x140f2ad30",
    "status": "va",
-   "note": "vftable of oCTLibrary<oCDtEnemyCampTierDefinition> singleton.",
+   "note": "vftable of oCTLibrary<oCDtEnemyCampTierDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable — its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor → complete object locator → vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
     "docs/_re"
    ]
@@ -2124,9 +2124,9 @@
    "name": "Library_EnemyDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x1414118c0",
+   "va": "0x140f2b450",
    "status": "va",
-   "note": "vftable of oCTLibrary<oCDtEnemyDefinition> singleton.",
+   "note": "vftable of oCTLibrary<oCDtEnemyDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable — its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor → complete object locator → vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
     "docs/_re"
    ]
@@ -2135,9 +2135,9 @@
    "name": "Library_EnemyTribeDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x141411200",
+   "va": "0x140f2aeb8",
    "status": "va",
-   "note": "vftable of oCTLibrary<oCDtEnemyTribeDefinition> singleton.",
+   "note": "vftable of oCTLibrary<oCDtEnemyTribeDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable — its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor → complete object locator → vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
     "docs/_re"
    ]
@@ -2146,9 +2146,9 @@
    "name": "Library_EntitySettingsResource_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x141470950",
+   "va": "0x140f75e60",
    "status": "va",
-   "note": "vftable of oCTLibrary<oCEntitySettingsResource> singleton.",
+   "note": "vftable of oCTLibrary<oCEntitySettingsResource> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable — its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor → complete object locator → vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
     "docs/_re"
    ]
@@ -2157,9 +2157,9 @@
    "name": "Library_GameModifierDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x141411b50",
+   "va": "0x140f2a960",
    "status": "va",
-   "note": "vftable of oCTLibrary<oe::dt::GameModifierDefinition> singleton. GameModifiers = the run mutators / 'negative modes' (No boss timer, No minimap, More experience, Day only, ...). Defs load from *.gamemodifierdef.ot via the additive dir-scan/UsedRscList path, same as enemy defs.",
+   "note": "vftable of oCTLibrary<oe::dt::GameModifierDefinition> singleton. GameModifiers = the run mutators / 'negative modes' (No boss timer, No minimap, More experience, Day only, ...). Defs load from *.gamemodifierdef.ot via the additive dir-scan/UsedRscList path, same as enemy defs. ⚠ ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable — its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor → complete object locator → vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
     "docs/_re/kinds/game-modifiers.md"
    ]
@@ -2168,9 +2168,9 @@
    "name": "Library_IngredientDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x141412c50",
+   "va": "0x140f29a18",
    "status": "va",
-   "note": "vftable of oCTLibrary<oCDtIngredientDefinition> singleton.",
+   "note": "vftable of oCTLibrary<oCDtIngredientDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable — its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor → complete object locator → vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
     "docs/_re"
    ]
@@ -2179,9 +2179,9 @@
    "name": "Library_MapDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x141412520",
+   "va": "0x140f29810",
    "status": "va",
-   "note": "vftable of oCTLibrary<oCDtMapDefinition> singleton.",
+   "note": "vftable of oCTLibrary<oCDtMapDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable — its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor → complete object locator → vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
     "docs/_re"
    ]
@@ -2190,9 +2190,9 @@
    "name": "Library_MelodyDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x1414129c0",
+   "va": "0x140f29af8",
    "status": "va",
-   "note": "vftable of oCTLibrary<MelodyDefinition> singleton.",
+   "note": "vftable of oCTLibrary<MelodyDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable — its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor → complete object locator → vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
     "docs/_re"
    ]
@@ -2201,9 +2201,9 @@
    "name": "Library_RewardDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x141412e00",
+   "va": "0x140f298a8",
    "status": "va",
-   "note": "vftable of oCTLibrary<oCDtRewardDefinition> singleton.",
+   "note": "vftable of oCTLibrary<oCDtRewardDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable — its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor → complete object locator → vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
     "docs/_re"
    ]
@@ -2212,9 +2212,9 @@
    "name": "Library_TileDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x141412080",
+   "va": "0x140f2b0e0",
    "status": "va",
-   "note": "vftable of oCTLibrary<oCDtTileDefinition> singleton.",
+   "note": "vftable of oCTLibrary<oCDtTileDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable — its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor → complete object locator → vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
     "docs/_re"
    ]
@@ -2223,9 +2223,9 @@
    "name": "Library_VersionDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x141412300",
+   "va": "0x140f297c0",
    "status": "va",
-   "note": "vftable of oCTLibrary<oe::dt::VersionDefinition> singleton (LiveOps version manifest).",
+   "note": "vftable of oCTLibrary<oe::dt::VersionDefinition> singleton (LiveOps version manifest). ⚠ ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable — its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor → complete object locator → vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
     "docs/_re"
    ]
@@ -3215,7 +3215,7 @@
    "category": "library",
    "va": "0x141470208",
    "status": "va",
-   "note": "Class registry descriptor for oCDtEnemyDefinition (set by registrar FUN_14022d940; UID 0x176debb7, instance size 0x350). Enumerate instances via Registry_EnumInstances.",
+   "note": "Class registry descriptor for oCDtEnemyDefinition (set by registrar FUN_14022d940; UID 0x176debb7, instance size 0x350). Enumerate instances via Registry_EnumInstances. ⚠ UNREFERENCED IN BUILD 40430b75c72b (audited 2026-09-17, scripts/audit_va_globals.py): .text contains NO RIP-relative reference to this address under any trailing-immediate size, and the anchor function this note names does not reach it either. So the VA is stale or was mis-derived, and a read of it returns whatever else now lives there. It is NOT relocated here on purpose — guessing a replacement from a nearby write is how a symbol acquires a confidently wrong address. Re-derive it from a live trace before use, and keep every read gated on va_globals_trusted.",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -3226,7 +3226,7 @@
    "category": "library",
    "va": "0x14146f938",
    "status": "va",
-   "note": "Class registry descriptor for oCDtEnemyTribeDefinition (registrar FUN_140189410; UID 0x176dc2eb, size 0x2d8). Default descriptor for enemy tribe_ref resolution (enemy+0x308).",
+   "note": "Class registry descriptor for oCDtEnemyTribeDefinition (registrar FUN_140189410; UID 0x176dc2eb, size 0x2d8). Default descriptor for enemy tribe_ref resolution (enemy+0x308). ⚠ UNREFERENCED IN BUILD 40430b75c72b (audited 2026-09-17, scripts/audit_va_globals.py): .text contains NO RIP-relative reference to this address under any trailing-immediate size, and the anchor function this note names does not reach it either. So the VA is stale or was mis-derived, and a read of it returns whatever else now lives there. It is NOT relocated here on purpose — guessing a replacement from a nearby write is how a symbol acquires a confidently wrong address. Re-derive it from a live trace before use, and keep every read gated on va_globals_trusted.",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -3534,7 +3534,7 @@
    "category": "engine-core",
    "va": "0x14146f740",
    "status": "va",
-   "note": "Global engine service registry: service array @+0x30, u32 count @+0x38; each entry -> service object with u32 service id @+0x8. Id 0x53b64d = entity loader (svc-vtbl+0x18 = LoadEntityByPath(str, flags, outRef, 0)) — used by HeroDef_LoadBaseEntity / HeroDef_LoadSkinEntity. Registration happens in FUN_140456cb0 during engine boot (called from FUN_140454750): it walks a static-init linked list of service singletons, and for each one inserts a (key, service) pair into the registry array — the id 0x53b64d appears there as the key immediate at 0x140456d9d. Because the list is built by static initializers, the concrete class behind a service id is NOT statically reachable; use a hook if you need it.",
+   "note": "Global engine service registry: service array @+0x30, u32 count @+0x38; each entry -> service object with u32 service id @+0x8. Id 0x53b64d = entity loader (svc-vtbl+0x18 = LoadEntityByPath(str, flags, outRef, 0)) — used by HeroDef_LoadBaseEntity / HeroDef_LoadSkinEntity. Registration happens in FUN_140456cb0 during engine boot (called from FUN_140454750): it walks a static-init linked list of service singletons, and for each one inserts a (key, service) pair into the registry array — the id 0x53b64d appears there as the key immediate at 0x140456d9d. Because the list is built by static initializers, the concrete class behind a service id is NOT statically reachable; use a hook if you need it. ⚠ UNREFERENCED IN BUILD 40430b75c72b (audited 2026-09-17, scripts/audit_va_globals.py): .text contains NO RIP-relative reference to this address under any trailing-immediate size, and the anchor function this note names does not reach it either. So the VA is stale or was mis-derived, and a read of it returns whatever else now lives there. It is NOT relocated here on purpose — guessing a replacement from a nearby write is how a symbol acquires a confidently wrong address. Re-derive it from a live trace before use, and keep every read gated on va_globals_trusted.",
    "refs": [
     "docs/_re/kinds/heroes.md"
    ]
@@ -3999,7 +3999,7 @@
    "category": "skins",
    "va": "0x141436590",
    "status": "va",
-   "note": "Manager pointer global (relocated by the live image base) walked by the skin-grid populate path.",
+   "note": "Manager pointer global (relocated by the live image base) walked by the skin-grid populate path. ⚠ UNREFERENCED IN BUILD 40430b75c72b (audited 2026-09-17, scripts/audit_va_globals.py): .text contains NO RIP-relative reference to this address under any trailing-immediate size, and the anchor function this note names does not reach it either. So the VA is stale or was mis-derived, and a read of it returns whatever else now lives there. It is NOT relocated here on purpose — guessing a replacement from a nearby write is how a symbol acquires a confidently wrong address. Re-derive it from a live trace before use, and keep every read gated on va_globals_trusted.",
    "refs": [
     "src/loader/src/hook_skins.cpp"
    ]

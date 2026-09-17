@@ -443,12 +443,6 @@ LOADER_FLAGS: list[dict[str, Any]] = [
         "safe": True,
     },
     {
-        "name": "RSMM_ENABLE_SPAWN_HOOK",
-        "label": "Spawn trace (read-only)",
-        "description": "Log live spawner vtables. Experimental; read-only.",
-        "safe": True,
-    },
-    {
         "name": "RSMM_ENABLE_UI_HOOK",
         "label": "UI button events",
         "description": "Emit R.on(\"ui:press\") when a native UI button is "

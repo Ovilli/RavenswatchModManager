@@ -27,7 +27,6 @@
 #include "hook_skins.h"
 #include "hook_skills.h"
 #include "hook_ui.h"
-#include "hook_spawn.h"
 #include "hook_items.h"
 #include "hook_rewards.h"
 #include "hook_resource.h"
@@ -153,7 +152,6 @@ static void loader_thread_cxx() {
         install_guarded("skins",   rsmm::install_skin_hooks);
         install_guarded("skills",  rsmm::install_skill_hooks);
         install_guarded("ui",      rsmm::install_ui_hooks);
-        install_guarded("spawn",   rsmm::install_spawn_hooks);
         install_guarded("items",   rsmm::install_item_hooks);
         install_guarded("rewards", rsmm::install_reward_hooks);
         install_guarded("rsc-trace", rsmm::install_resource_hooks);

@@ -46,14 +46,14 @@ LEGACY_LITERAL_ALLOWLIST = {
     # on oCDtHeroDefinition — the slot holding Definition_DeserializeBase on the
     # base class — and shipped as Sym::HeroDef_Deserialize.
     #
-    # hook_spawn.cpp is the last one. "FUN_140330c30" was described as the
-    # selector prepare virtual, but no slot in either oCEntityCpntEntitySpawner
-    # or oCSpawnerGoEntityCollector lands near it on this build, so the routine
-    # has not been re-identified. It stays a literal deliberately: resolving to
-    # nothing disables the trace, whereas guessing a neighbour would install a
-    # detour on the wrong function, which is the failure this whole module
-    # exists to prevent.
-    "hook_spawn.cpp": 1,
+    # hook_spawn.cpp was the last one and is now DELETED (2026-09-17) rather
+    # than relocated. Its "FUN_140330c30" disassembles mid-function on this
+    # build -- EnemyCamp_TribeEntryBuilder+0xe10, inside a loop body -- so a
+    # detour there would have corrupted that function rather than intercepting
+    # anything. More to the point the tracer had already served its purpose:
+    # it existed to find the spawn instantiator, which the tile-spawn seam RE
+    # located on 2026-09-04, and R.spawn shipped on the back of it. A dead
+    # capability aimed at a stale address is not worth relocating.
 }
 
 _LITERAL = re.compile(r'"(FUN_1[0-9a-f]{8})"')

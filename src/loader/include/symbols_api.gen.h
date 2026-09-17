@@ -9,6 +9,9 @@
 
 namespace engine {
 
+// Omitted as not status=ok (calling an unverified address is how a
+// detour lands mid-function): Entity_AllocInstance (unverified), Entity_FindMagicalObjectComponent (unverified), MagicalObjectPool_Grow (unverified), MagicalObjectPool_SourceLookup (unverified), Netcode_EntityReplSetup (unverified)
+
 // AchievementDef_PostLoad  (AchievementDef_PostLoad)
 //   bool(void* definition)
 using AchievementDef_PostLoad_fn = uint32_t(*)(void*);
@@ -205,13 +208,6 @@ inline EntityValue_Lookup_fn EntityValue_Lookup() {
     return reinterpret_cast<EntityValue_Lookup_fn>(rsmm::fn_resolve(Sym::EntityValue_Lookup_Pattern));
 }
 
-// Entity_AllocInstance  (Entity_AllocInstance)
-//   void*(void* allocator)
-using Entity_AllocInstance_fn = void*(*)(void*);
-inline Entity_AllocInstance_fn Entity_AllocInstance() {
-    return reinterpret_cast<Entity_AllocInstance_fn>(rsmm::fn_resolve(Sym::Entity_AllocInstance_Pattern));
-}
-
 // Entity_DispatchHit  (Entity_DispatchHit)
 //   void(oCEntity* target, oCEntityHitData* hit)
 using Entity_DispatchHit_fn = void(*)(void*, void*);
@@ -224,13 +220,6 @@ inline Entity_DispatchHit_fn Entity_DispatchHit() {
 using Entity_FindComponentByType_fn = void*(*)(void*, void*);
 inline Entity_FindComponentByType_fn Entity_FindComponentByType() {
     return reinterpret_cast<Entity_FindComponentByType_fn>(rsmm::fn_resolve(Sym::Entity_FindComponentByType_Pattern));
-}
-
-// Entity_FindMagicalObjectComponent  (Entity_FindMagicalObjectComponent)
-//   void*(void* instance, void* mo_component_meta)
-using Entity_FindMagicalObjectComponent_fn = void*(*)(void*, void*);
-inline Entity_FindMagicalObjectComponent_fn Entity_FindMagicalObjectComponent() {
-    return reinterpret_cast<Entity_FindMagicalObjectComponent_fn>(rsmm::fn_resolve(Sym::Entity_FindMagicalObjectComponent_Pattern));
 }
 
 // Entity_GetComponentByTester  (Entity_GetComponentByTester)
@@ -413,20 +402,6 @@ inline LobbyAttributes_Serialize_fn LobbyAttributes_Serialize() {
     return reinterpret_cast<LobbyAttributes_Serialize_fn>(rsmm::fn_resolve(Sym::LobbyAttributes_Serialize_Pattern));
 }
 
-// MagicalObjectPool_Grow  (MagicalObjectPool_Grow)
-//   void(void* pool_plus_0x10, uint32_t count, uint32_t by)
-using MagicalObjectPool_Grow_fn = void(*)(void*, uint32_t, uint32_t);
-inline MagicalObjectPool_Grow_fn MagicalObjectPool_Grow() {
-    return reinterpret_cast<MagicalObjectPool_Grow_fn>(rsmm::fn_resolve(Sym::MagicalObjectPool_Grow_Pattern));
-}
-
-// MagicalObjectPool_SourceLookup  (MagicalObjectPool_SourceLookup)
-//   void*(void* pool, void* out, void* id)
-using MagicalObjectPool_SourceLookup_fn = void*(*)(void*, void*, void*);
-inline MagicalObjectPool_SourceLookup_fn MagicalObjectPool_SourceLookup() {
-    return reinterpret_cast<MagicalObjectPool_SourceLookup_fn>(rsmm::fn_resolve(Sym::MagicalObjectPool_SourceLookup_Pattern));
-}
-
 // MagicalObject_RegisterInstance  (MagicalObject_RegisterInstance)
 //   void(oCDtEntityCpntHeroController* hero, void* instance, char addToActive)
 using MagicalObject_RegisterInstance_fn = void(*)(void*, void*, uint32_t);
@@ -530,13 +505,6 @@ inline Netcode_Channel_LookupById_fn Netcode_Channel_LookupById() {
 using Netcode_Channel_Unsubscribe_fn = void(*)(void*, void*);
 inline Netcode_Channel_Unsubscribe_fn Netcode_Channel_Unsubscribe() {
     return reinterpret_cast<Netcode_Channel_Unsubscribe_fn>(rsmm::fn_resolve(Sym::Netcode_Channel_Unsubscribe_Pattern));
-}
-
-// Netcode_EntityReplSetup  (Netcode_EntityReplSetup)
-//   void(void* replContext)
-using Netcode_EntityReplSetup_fn = void(*)(void*);
-inline Netcode_EntityReplSetup_fn Netcode_EntityReplSetup() {
-    return reinterpret_cast<Netcode_EntityReplSetup_fn>(rsmm::fn_resolve(Sym::Netcode_EntityReplSetup_Pattern));
 }
 
 // Object_CloneViaSerialize  (Object_CloneViaSerialize)

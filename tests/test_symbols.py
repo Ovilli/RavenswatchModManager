@@ -503,3 +503,40 @@ def test_ownership_path_addresses_carry_no_symbol():
         f"a purchase gate, not a progression gate; it stays unreachable from "
         f"the SDK. See apps/docs/.../guides/merlin-unlock.md."
     )
+
+
+def test_codegen_is_fail_closed_on_non_ok_status():
+    """No non-`ok` symbol may reach a generated artifact as something RESOLVABLE.
+
+    `status` used to be cosmetic: the generators emitted a `_Pattern` constant,
+    a typed accessor and an event-hook row for every symbol regardless, so a
+    demoted symbol kept resolving against whatever bytes still matched and kept
+    being hooked -- failing OPEN, which is the opposite of what a demotion
+    means. Pruning the pattern DB (`sync_symbol_patterns.py`) fixed the runtime
+    half; this asserts the codegen half, which needs no game exe and so runs in
+    CI.
+
+    Addresses are deliberately still emitted: `va` data globals ARE addresses
+    (the loader gates them on `va_globals_trusted`), and an address alone
+    resolves nothing.
+    """
+    smap = S.load_symbol_map()
+    non_ok = {s.name for s in smap.symbols if s.status != "ok"}
+
+    header = cmd_symbols._gen_header(smap)
+    leaked = [n for n in non_ok if f"constexpr const char* {n}_Pattern" in header]
+    assert not leaked, f"non-ok symbols got a resolvable pattern constant: {leaked}"
+
+    api = cmd_symbols._gen_api_header(smap)
+    callable_leaks = [n for n in non_ok if f"inline {n}_fn {n}()" in api]
+    assert not callable_leaks, f"non-ok symbols got a callable accessor: {callable_leaks}"
+
+    py = cmd_symbols._gen_python(smap)
+    pattern_block = py.split("PATTERN: dict[str, str] = {")[1].split("}")[0]
+    py_leaks = [n for n in non_ok if f'"{n}":' in pattern_block]
+    assert not py_leaks, f"non-ok symbols reached the PATTERN table: {py_leaks}"
+
+    events = cmd_symbols._gen_event_table(smap)
+    event_leaks = [s.name for s in smap.events
+                   if s.status != "ok" and f'"{s.pattern_name}"' in events]
+    assert not event_leaks, f"non-ok events would still be hooked: {event_leaks}"

@@ -232,21 +232,21 @@ Total: **280** symbols across 22 categories.
 | `HasGameModifierStateMachine_Register` | `0x140197780` | ✅ ok |  | void(void) |
 | `HeroDef_PostLoad` | `0x14031fd70` | ✅ ok | ✔ | bool(void* definition) |
 | `IngredientDef_PostLoad` | `0x140323190` | ✅ ok | ✔ | bool(void* definition) |
-| `Library_AchievementDefinition_vftable` | `0x1414113b0` | 📍 va |  | vftable of oCTLibrary<oe::dt::AchievementDefinition> singleton. |
-| `Library_ChallengeDefinition_vftable` | `0x141413010` | 📍 va |  | vftable of oCTLibrary<oe::dt::ChallengeDefinition> singleton. |
-| `Library_DreamShardDefinition_vftable` | `0x141411050` | 📍 va |  | vftable of oCTLibrary<oCDtDreamShardDefinition> singleton. |
-| `Library_EnemyCampDifficultyDefinition_vftable` | `0x141411710` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyCampDifficultyDefinition> singleton. |
-| `Library_EnemyCampTierDefinition_vftable` | `0x141411560` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyCampTierDefinition> singleton. |
-| `Library_EnemyDefinition_vftable` | `0x1414118c0` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyDefinition> singleton. |
-| `Library_EnemyTribeDefinition_vftable` | `0x141411200` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyTribeDefinition> singleton. |
-| `Library_EntitySettingsResource_vftable` | `0x141470950` | 📍 va |  | vftable of oCTLibrary<oCEntitySettingsResource> singleton. |
-| `Library_GameModifierDefinition_vftable` | `0x141411b50` | 📍 va |  | vftable of oCTLibrary<oe::dt::GameModifierDefinition> singleton. GameModifiers = the ru… |
-| `Library_IngredientDefinition_vftable` | `0x141412c50` | 📍 va |  | vftable of oCTLibrary<oCDtIngredientDefinition> singleton. |
-| `Library_MapDefinition_vftable` | `0x141412520` | 📍 va |  | vftable of oCTLibrary<oCDtMapDefinition> singleton. |
-| `Library_MelodyDefinition_vftable` | `0x1414129c0` | 📍 va |  | vftable of oCTLibrary<MelodyDefinition> singleton. |
-| `Library_RewardDefinition_vftable` | `0x141412e00` | 📍 va |  | vftable of oCTLibrary<oCDtRewardDefinition> singleton. |
-| `Library_TileDefinition_vftable` | `0x141412080` | 📍 va |  | vftable of oCTLibrary<oCDtTileDefinition> singleton. |
-| `Library_VersionDefinition_vftable` | `0x141412300` | 📍 va |  | vftable of oCTLibrary<oe::dt::VersionDefinition> singleton (LiveOps version manifest). |
+| `Library_AchievementDefinition_vftable` | `0x140f27660` | 📍 va |  | vftable of oCTLibrary<oe::dt::AchievementDefinition> singleton. ⚠ ADDRESS CORRECTED 202… |
+| `Library_ChallengeDefinition_vftable` | `0x140f299d8` | 📍 va |  | vftable of oCTLibrary<oe::dt::ChallengeDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-… |
+| `Library_DreamShardDefinition_vftable` | `0x140f27178` | 📍 va |  | vftable of oCTLibrary<oCDtDreamShardDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-… |
+| `Library_EnemyCampDifficultyDefinition_vftable` | `0x140f280e0` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyCampDifficultyDefinition> singleton. ⚠ ADDRESS CORRECTED… |
+| `Library_EnemyCampTierDefinition_vftable` | `0x140f2ad30` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyCampTierDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-… |
+| `Library_EnemyDefinition_vftable` | `0x140f2b450` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: t… |
+| `Library_EnemyTribeDefinition_vftable` | `0x140f2aeb8` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyTribeDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-… |
+| `Library_EntitySettingsResource_vftable` | `0x140f75e60` | 📍 va |  | vftable of oCTLibrary<oCEntitySettingsResource> singleton. ⚠ ADDRESS CORRECTED 2026-09-… |
+| `Library_GameModifierDefinition_vftable` | `0x140f2a960` | 📍 va |  | vftable of oCTLibrary<oe::dt::GameModifierDefinition> singleton. GameModifiers = the ru… |
+| `Library_IngredientDefinition_vftable` | `0x140f29a18` | 📍 va |  | vftable of oCTLibrary<oCDtIngredientDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-… |
+| `Library_MapDefinition_vftable` | `0x140f29810` | 📍 va |  | vftable of oCTLibrary<oCDtMapDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: the… |
+| `Library_MelodyDefinition_vftable` | `0x140f29af8` | 📍 va |  | vftable of oCTLibrary<MelodyDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: the … |
+| `Library_RewardDefinition_vftable` | `0x140f298a8` | 📍 va |  | vftable of oCTLibrary<oCDtRewardDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: … |
+| `Library_TileDefinition_vftable` | `0x140f2b0e0` | 📍 va |  | vftable of oCTLibrary<oCDtTileDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: th… |
+| `Library_VersionDefinition_vftable` | `0x140f297c0` | 📍 va |  | vftable of oCTLibrary<oe::dt::VersionDefinition> singleton (LiveOps version manifest). … |
 | `MapDef_PostLoad` | `0x1403234f0` | ✅ ok | ✔ | bool(void* definition) |
 | `MapDef_RegisterAssetLoader` | `0x140323350` | ✅ ok |  | void(void* assetClassDesc) |
 | `MelodyDef_PostLoad` | `0x140326f50` | ✅ ok | ✔ | bool(void* definition) |
