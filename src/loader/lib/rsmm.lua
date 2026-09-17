@@ -3938,6 +3938,58 @@ local INTERACT_PHASE = {
 
 local _interact_subs = {}     -- phase (or "*") -> { cb, ... }
 local _interact_last = nil
+
+-- WHICH OBJECT WAS INTERACTED WITH -- measured in-game 2026-09-17.
+--
+-- The protocol names its target twice, in two different shapes, and neither is
+-- the hero:
+--
+--   validate    fires AT the object -- `dispatcher` is the object's own
+--               NamedEventDispatcher sub-object
+--   request     fires at the HERO, and carries the object itself in `b`
+--
+-- On the shrine playtest the difference between them was exactly 0x4d8, the
+-- documented dispatcher-inside-entity offset, holding across seven consecutive
+-- interactions. So `validate.dispatcher - off` and `request.b` are the same
+-- pointer, reached two ways.
+--
+-- That gives a SECOND source for the offset `R.give` already learns from hero
+-- pointers, and a cheaper one: a single interaction exposes both ends of the
+-- subtraction at once, where the hero path has to wait for two distinct heroes
+-- to appear. The corroboration rule is kept regardless -- two distinct objects
+-- before latching -- because latching a wrong offset here is permanent and
+-- turns the hero discriminator into a rejector of the real hero, which is the
+-- "give only works on Aladdin" failure all over again.
+-- WHERE the interacted object stands. Measured 2026-09-17 by dumping a live
+-- interaction target and matching it against tile placements this same session
+-- had already recorded: the object read (-160.5, 0.0, -22.85) while
+-- `R.poi.placed` reported a shrine tile at (-158, 0, -22).
+--
+-- That match is the whole point. Three NAME heuristics in a row answered "what
+-- text is near this object" and confidently returned a neighbouring melody's
+-- resource path for the mod's own pillar. A coordinate cannot be borrowed from
+-- a neighbour: it either lands on a placement we recorded or it does not.
+--
+-- The block at +0x2b0 is a transform -- cos/sin pairs at +0x2b0/+0x2b8 and
+-- +0x2d0/+0x2d8, then the translation. So:
+local _POS_X, _POS_Y, _POS_Z = 0x2e0, 0x2e4, 0x2e8
+local _POS_LIMIT = 1e6           -- a world coordinate, not a float-shaped pointer
+
+-- THE TARGET HAS TO SURVIVE TO `success`, which is the phase mods act on.
+--
+-- Only `request` carries the object; `success` / `local_success` fire at the
+-- HERO and carry nothing, so a subscriber to the phase that matters was left
+-- with no idea what had just been used. Measured 2026-09-17: the shrine was
+-- identified on `request` and every terminal phase came back empty.
+--
+-- The hero's dispatcher is the same on `request` and on the outcome
+-- (0x458... in that session), so it keys the in-flight interaction. Cleared on
+-- every terminal phase, so a later interaction can never inherit an older
+-- target -- which matters in co-op, where several are in flight at once.
+local _interact_inflight = {}            -- hero dispatcher -> { entity, pos }
+
+local _interact_validate_disp = nil      -- dispatcher from the last `validate`
+local _interact_off_seen = {}            -- candidate offset -> object it came from
 local _interact_trace = false
 
 --- A payload word arrives as a hex STRING (a Lua number is a double and loses
@@ -3964,6 +4016,14 @@ function R.interact.trace(on) _interact_trace = (on ~= false) end
 --   seq         the loader's dispatch counter
 --   dispatcher  the entity dispatcher the event fired at (number)
 --   a, b        the event payload words at +0x38 / +0x50, meaning unconfirmed
+--   entity      the object interacted WITH, when the phase carries it
+--               (`request` always; `validate` once the dispatcher offset has
+--               been learned). Absent rather than guessed.
+--   pos         {x, y, z} world position of that object, when it reads
+--               plausibly. Carried from `request` through to the outcome, so
+--               `success` knows what was used. This is how a mod tells its OWN point of interest
+--               from every chest in the run: compare against the placements
+--               `R.poi.placed` reported. Absent rather than zeroed.
 --   class       the decoded event class, when the loader could decode one
 function R.interact.on(phase, cb)
     assert(type(cb) == "function", "R.interact.on: callback must be a function")
@@ -3971,6 +4031,120 @@ function R.interact.on(phase, cb)
     _interact_subs[phase] = _interact_subs[phase] or {}
     table.insert(_interact_subs[phase], cb)
     return { phase = phase, index = #_interact_subs[phase] }
+end
+
+--- Name the object an interaction fired on, or nil.
+--
+-- Takes the event table from `R.interact.on` (or a bare entity pointer) and
+-- tries to reach a resource NAME, which is the only thing that distinguishes a
+-- mod's own POI from every chest and fountain in the run.
+--
+-- Two walks, cheapest first, because they fail on different things:
+--
+--   1. strings hanging directly off the entity, widened past the 0x400 default
+--      -- an entity is a large object and the useful strings sit late.
+--   2. the `oCEntitySettingsResource` hop that `rsmm.poi` already relies on:
+--      a field of the entity points at the settings resource, whose name is a
+--      cstr pointer at +0xa0. `R.interact.identify` cannot see this one at all,
+--      because it only follows a single hop and filters for `.ot`/backslash,
+--      and these names are BARE.
+--
+-- BEST-EFFORT, said plainly: the +0xa0 offset is measured on the settings
+-- resource (`rsmm.poi`, 138 live objects, 2026-09-04) but which entity field
+-- reaches one is a scan, not a known layout. Every read is page-guarded, so a
+-- wrong candidate yields nil rather than a fault, and the function returns nil
+-- rather than a guess. Use it to FILTER (does this name contain my mod id?),
+-- not as a stable identifier to key persistent state on.
+local _SETTINGS_NAME_OFF = 0xa0
+
+-- The entity's OWN resource path, measured in-game 2026-09-17: on a live
+-- interaction target the cstr pointer at entity+0x220 read
+-- `Objects\Melodies\Deal_Damage_Around_Zone_Attack.entity.ot`, while every
+-- other reachable string in a 0x1000 window was a component name or a shader
+-- uniform (`u_Mask`, `u_Fresnel`, `Velocity`). So this is the field that names
+-- the object, and the string sweep below is the fallback rather than the method.
+--
+-- ⚠ DEMOTED 2026-09-17: this is NOT a general field. It held a path on one
+-- object type and junk (`0nO:`) on another, and on the shrine it produced a
+-- melody's path for an object that was almost certainly the pillar. It is kept
+-- only as a late fallback, behind the RTTI walk, and every read is validated.
+local _ENTITY_PATH_OFF = 0x220
+
+function R.interact.name(ev)
+    local entity = ev
+    if type(ev) == "table" then entity = ev.entity or ev.b end
+    entity = _word(entity)
+    if not entity or not _ptr_plausible(entity) then return nil end
+
+    -- COLLECT, then choose. Returning the FIRST string within the window was
+    -- wrong and measured wrong: on the shrine it returned
+    -- `Objects\Melodies\Deal_Damage_Around_Zone_Attack.entity.ot`, a
+    -- neighbouring object's resource, with complete confidence. An object's own
+    -- name is not reliably its first string, so every candidate is gathered and
+    -- the caller can see them all.
+    -- RTTI FIRST, because it is the only step here that checks itself.
+    --
+    -- Scanning for strings answers "what text is near this object", which is a
+    -- different question from "what is this object" and gave a confidently
+    -- wrong answer twice: a neighbouring melody's resource path, reported as
+    -- the shrine's name. Asking RTTI what a candidate field POINTS AT cannot
+    -- drift that way -- either the object really is an `oCEntitySettingsResource`
+    -- and its name at +0xa0 is this entity's own, or it is not and we move on.
+    if type(I.read_cstr) == "function" and R.rtti and R.rtti.name then
+        for off = 0, 0x800 - 8, 8 do
+            local cand = I.read_u64(entity + off)
+            if cand and cand ~= 0 and _ptr_plausible(cand) then
+                local cls = R.rtti.name(cand)
+                if type(cls) == "string" and cls:find("EntitySettingsResource") then
+                    local np = I.read_u64(cand + _SETTINGS_NAME_OFF)
+                    if np and np ~= 0 and _ptr_plausible(np) then
+                        local s = I.read_cstr(np, 200)
+                        if type(s) == "string" and #s >= 3 and not s:find("[^\32-\126]") then
+                            return s, off, { { text = s, at = off, via = cls } }
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    local all, seen = {}, {}
+    local function add(s, where)
+        if type(s) ~= "string" or #s < 3 then return end
+        if s:find("[^\32-\126]") then return end     -- ASCII by construction
+        if seen[s] then return end
+        seen[s] = true
+        all[#all + 1] = { text = s, at = where }
+    end
+
+    for _, hit in ipairs(R.debug.strings(entity, { max_off = 0x1000, log = false })) do
+        add(hit.text, hit.off)
+    end
+
+    -- The `oCEntitySettingsResource` hop `rsmm.poi` relies on: a field of the
+    -- entity points at the settings resource, whose name is a cstr at +0xa0.
+    if type(I.read_cstr) == "function" then
+        for off = 0, 0x800 - 8, 8 do
+            local p = I.read_u64(entity + off)
+            if p and p ~= 0 and _ptr_plausible(p) then
+                local np = I.read_u64(p + _SETTINGS_NAME_OFF)
+                if np and np ~= 0 and _ptr_plausible(np) then
+                    add(I.read_cstr(np, 160), off)
+                end
+            end
+        end
+    end
+
+    -- Prefer something shaped like an entity resource over loose text; among
+    -- those, the first found. This is still a HEURISTIC and the full list is
+    -- returned so a caller can disagree with it.
+    local best
+    for _, c in ipairs(all) do
+        if c.text:find("%.entity%.ot$") then best = best or c end
+    end
+    best = best or all[1]
+    if not best then return nil, nil, all end
+    return best.text, best.at, all
 end
 
 --- Best-effort "what did I just interact with".
@@ -4013,6 +4187,73 @@ R.on("*", function(ev, name)
         b          = _word(ev.u50) or _word(ev.w50),
         class      = ev.class,
     }
+    -- Learn the dispatcher offset from the pair, then name the target.
+    if phase == "validate" then
+        _interact_validate_disp = info.dispatcher
+    elseif phase == "request" and info.b and _interact_validate_disp then
+        local off = _interact_validate_disp - info.b
+        if off > 0 and off <= 0x4000 and off % 8 == 0
+           and _ptr_plausible(info.b) and _ptr_plausible(_interact_validate_disp) then
+            local prev = _interact_off_seen[off]
+            if prev == nil then
+                _interact_off_seen[off] = info.b
+            elseif prev ~= info.b and not _DISPATCHER_ENTITY_OFF then
+                _DISPATCHER_ENTITY_OFF = off
+                R.log(string.format(
+                    "[rsmm.interact] dispatcher sits at entity+0x%x "
+                    .. "(corroborated by two distinct interaction targets)", off))
+            end
+        end
+        _interact_validate_disp = nil
+    end
+
+    -- `entity` is the thing interacted WITH, however the phase carries it. A
+    -- mod filters on this; it never has to know which phase names it where.
+    if phase == "request" then
+        if info.b and _ptr_plausible(info.b) then info.entity = info.b end
+    elseif phase == "validate" and info.dispatcher and _DISPATCHER_ENTITY_OFF then
+        local e = info.dispatcher - _DISPATCHER_ENTITY_OFF
+        if _ptr_plausible(e) then info.entity = e end
+    end
+
+    -- `pos` is the object's world position when it reads plausibly, and ABSENT
+    -- otherwise. Never a zero fallback: (0,0,0) is a real place on the map, so
+    -- guessing it would send a mod's proximity check to the wrong spot and read
+    -- as a wrong answer rather than as "unknown".
+    if info.entity and type(I.read_f32) == "function" then
+        local function coord(off)
+            local v = I.read_f32(info.entity + off)
+            if type(v) ~= "number" or v ~= v or v - v ~= 0 then return nil end
+            if math.abs(v) > _POS_LIMIT then return nil end
+            return v
+        end
+        local x, y, z = coord(_POS_X), coord(_POS_Y), coord(_POS_Z)
+        if x and y and z then info.pos = { x, y, z } end
+    end
+
+    -- Carry the target forward from `request` to the outcome, and drop it there.
+    if info.dispatcher then
+        if phase == "request" and info.entity then
+            _interact_inflight[info.dispatcher] = { entity = info.entity, pos = info.pos }
+        else
+            local held = _interact_inflight[info.dispatcher]
+            if held then
+                info.entity = info.entity or held.entity
+                info.pos = info.pos or held.pos
+                -- What actually ENDS the interaction. `local_success` is the
+                -- local peer's own copy and ALWAYS precedes `success`, so
+                -- clearing on it dropped the target one line before the phase
+                -- most mods subscribe to -- measured 2026-09-17, `success`
+                -- came back empty while `local_success` carried the shrine.
+                -- `validate` is likewise mid-protocol.
+                if phase == "success" or phase == "reject"
+                   or phase == "failed" or phase == "canceled" then
+                    _interact_inflight[info.dispatcher] = nil
+                end
+            end
+        end
+    end
+
     _interact_last = info
     if _interact_trace then
         R.log(string.format(

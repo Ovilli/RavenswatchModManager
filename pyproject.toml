@@ -54,6 +54,7 @@ extend-exclude = [
     # Ghidra Jython 2.7 post-scripts: run inside Ghidra with injected
     # globals (currentProgram, monitor, ...) — not py311 code.
     "docs/_re/scripts",
+    "tools/ghidra_scripts",
     # Vendored upstream GhidraMCP bridge (LaurieWired) — keep diffable.
     "tools/ghidra_mcp",
 ]

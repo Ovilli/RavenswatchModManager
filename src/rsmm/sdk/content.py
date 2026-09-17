@@ -65,28 +65,31 @@ KIND_CONFIDENCE: dict[str, str] = {
     "mesh": "experimental",   # in-place override of a shipped mesh: one cooked file, no new
                               # resource name, so nothing but the geometry cook is exercised.
                               # Same cook `poi`'s `prop` uses; not yet seen rendering in-game.
-    "poi": "experimental",    # PLACEMENT proven in-game 2026-09-04 — but placement is not
-                              # the feature. A "point of interest" a player cannot SEE on the
-                              # minimap and cannot INTERACT with is scenery that happens to
-                              # spawn, and both of those are still unbuilt (see below). Rating
-                              # stays experimental until a mod POI can be found and used.
-                              # PLACEMENT DETAIL 2026-09-04. The emit side was already
-                              # byte-exact (tile_cook round-trips all 237 shipped tiledefs,
-                              # map_pool all 3 tile-generated mapdefs), and the art half was
-                              # confirmed 2026-08-13 (a mod mesh + textures rendered upright
-                              # via replace_base + prop). The half that stayed open for months
-                              # -- "a mod-added tiledef has never been observed being placed"
-                              # -- is now MEASURED, not eyeballed: R.poi reads the tile
-                              # spawner's own placed set (see the TileSpawn_PlaceTiles symbol)
-                              # and reported 247 tiledefs registered, 2 of this mod's tiles
-                              # chosen by the generator, and BOTH instantiated as live
-                              # entities (element+0x18), out of 140 placed. 0 unnamed.
-                              # ⚠ Still a hard wall, and it is a DESIGN CONSTRAINT rather than
-                              # an unverified path: a level cannot reference a mod-owned
-                              # ENTITY. That is why prop art goes through an in-place override
-                              # (_emit_prop_override) instead of an additive entity, and why a
-                              # POI cannot carry a minimap marker unless its donor already
-                              # places a marker-bearing entity.
+    "poi": "confirmed",       # PROVEN END TO END IN-GAME 2026-09-17, every link of the chain
+                              # on a MOD-OWNED entity: the tile generates (four copies in one
+                              # chapter, reported by R.poi.placed), the mod's own mesh and
+                              # textures render upright, its minimap icon draws, the hold
+                              # prompt appears on the prop, and the full interaction protocol
+                              # runs -- validate -> request -> local_success -> success, with
+                              # `canceled` on an early release. A mod can also tell ITS OWN
+                              # POI from every chest in the run: `ev.pos` vs the placements
+                              # R.poi.placed recorded matched at 2.0-3.6 units, repeatably.
+                              # What each earlier rating was waiting on, and why it is settled:
+                              #   * "a mod-added tiledef has never been observed placed" --
+                              #     measured 2026-09-04 off the spawner's own placed set
+                              #     (TileSpawn_PlaceTiles), both tiles instantiated.
+                              #   * "a level cannot reference a mod-owned ENTITY" -- DISPROVED
+                              #     2026-09-11: every asset in the additive chain, the mod's
+                              #     own entity included, is requested and resolved. The old
+                              #     note claiming otherwise, and that a POI needs a donor that
+                              #     already places a marker-bearing entity, was wrong.
+                              #   * the orphan bug that made appended objects inert -- fixed
+                              #     2026-09-08 (_object_vector) and confirmed in-game.
+                              # ⚠ Two things that are NOT limitations but do surprise authors:
+                              # a pool entry can be placed SEVERAL times per map (copies=1 gave
+                              # four), and this works on a `SceneryObjects_*` host, so the
+                              # "scenery is never interactive" corpus rule describes shipped
+                              # content rather than an engine gate.
     "tilegen": "experimental",  # the recipe codec round-trips all 494 shipped tilegen objects
                               # byte-exactly and validate() enforces every cross-dimension,
                               # but no edited recipe has been generated in-game yet.
