@@ -49,5 +49,13 @@ repo.verify_file(path: 'Path', sig_b64: 'str', public_key_path: 'Path') -> 'bool
 Verify a base64 Ed25519 signature over `path`'s SHA256 digest.
 
 Returns ``True`` if ``sig_b64`` (from :func:`sign_file`) matches under
-``public_key_path``, ``False`` otherwise. Raises ``RepoError`` if the
-optional ``cryptography`` package is missing.
+``public_key_path``, ``False`` otherwise — a malformed signature is simply
+one that does not verify. Raises ``RepoError`` only for a malformed or
+unreadable public key.
+
+Verification must not depend on ``cryptography``: the CLI ships frozen
+with no runtime dependencies, so every released build lacked it and this
+raised on every call — which ``rsmm update`` then read as "verify skipped"
+and installed the archive without checking the signature at all. Without
+the package it uses the stdlib Ed25519 verifier the signed loader channel
+already relies on (:mod:`rsmm.engine.minisign`).

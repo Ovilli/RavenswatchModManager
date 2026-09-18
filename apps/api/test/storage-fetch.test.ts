@@ -1,6 +1,11 @@
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchPublicObject } from '../src/storage.js';
+
+// storage.ts imports env.ts, which requires these at module load.
+process.env.DATABASE_URL ??= 'postgres://user:pass@localhost:5432/db';
+process.env.BETTER_AUTH_SECRET ??= 'x'.repeat(32);
+
+const { fetchPublicObject } = await import('../src/storage.js');
 
 // The scanner's fallback read. A verdict is only worth something for bytes
 // that were hashed, so this must hash EVERY byte — including past the point
