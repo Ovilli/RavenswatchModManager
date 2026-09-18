@@ -11,7 +11,7 @@ Every content kind carries an honesty rating — how much the bytes it emits are
 Do not edit by hand, and do not restate a rating in prose — link here. Run `rsmm docs-gen` after changing a rating; CI `--check`s it.
 :::
 
-**15 kinds** — 5 confirmed, 6 experimental, 4 guess.
+**15 kinds** — 5 confirmed, 8 experimental, 2 guess.
 
 | Kind | Confidence | Builder | What it does |
 |---|---|---|---|
@@ -21,8 +21,8 @@ Do not edit by hand, and do not restate a rating in prose — link here. Run `rs
 | `map` | ⚠️ experimental | `rsmm.sdk.kinds.maps` | Map (biome) content builder. Clone-and-patch only at v3.0. |
 | `hero` | ⚠️ experimental | `rsmm.sdk.kinds.heros` | Hero content builder. |
 | `talent` | ✅ confirmed | `rsmm.sdk.kinds.talents` | Talent (in-game "Skill") value content builder. |
-| `skill` | ❓ guess | `rsmm.sdk.kinds.skills` | Hero **skill** (talent) content builder. |
-| `modifier` | ❓ guess | `rsmm.sdk.kinds.modifiers` | Custom **game modifier** ("negative mode") content builder. |
+| `skill` | ⚠️ experimental | `rsmm.sdk.kinds.skills` | Hero **skill** (talent) content builder. |
+| `modifier` | ⚠️ experimental | `rsmm.sdk.kinds.modifiers` | Custom **game modifier** ("negative mode") content builder. |
 | `game_mode` | ⚠️ experimental | `rsmm.sdk.kinds.game_modes` | Custom **game mode** (run chapter sequence) builder. |
 | `reward` | ⚠️ experimental | `rsmm.sdk.kinds.rewards` | **Reward placement** editor — ban/tune what spawns at reward points. |
 | `melody` | ❓ guess | `rsmm.sdk.kinds.melodies` | **Melody** editor — retune the Piper's lost-melody definitions. |

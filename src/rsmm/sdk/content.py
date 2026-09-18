@@ -49,11 +49,13 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # is still unproven, and the rating covers the whole kind.
     "hero": "experimental",   # clones, but roster detour + library unproven
     "map": "experimental",    # emit only; no in-game load proof
-    "skill": "guess",         # herodef skill-row clone/repoint; in-game hero-page load unproven
+    "skill": "experimental",  # mode="relabel" PROVEN IN GAME 2026-09-18 (Aladdin's Attack Dive read
+                              # "TEST Meteor"); mode="clone" (net-new herodef row) still unproven
     "boss": "guess",          # BossTimer picker offsets deserializer-verified 2026-07-05, but emit
                               # still stages manifests (_pending_bosses), no cooked-asset output yet
-    "modifier": "guess",      # gamemodifierdef clone loads; UI-slot appearance unproven (cap #16;
-                              # rows ARE spawner-driven per Ghidra — m_oGameModifierUiSpawner)
+    "modifier": "experimental",  # a cloned def REACHES THE CHALLENGE SCREEN (in game 2026-09-18,
+                              # "TEST Double XP" row, after the text-bank fix); its effect in a run
+                              # is unproven (rows ARE spawner-driven — m_oGameModifierUiSpawner)
     "game_mode": "experimental",  # chapter vector deserializer-verified 2026-07-05 (poly-ptr
                               # vector @def+0x290, ordered refs); in-game honoring unproven
     "reward": "experimental", # codec byte-verified, but 2026-07-12 playtest: emptying a
