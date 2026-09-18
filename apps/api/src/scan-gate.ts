@@ -13,8 +13,55 @@ export type ScanStatus = 'queued' | 'pending' | 'clean' | 'flagged' | 'skipped' 
  * there is no window in which un-scanned bytes are downloadable. The rescan
  * loop revisits 'error' rows, so a transient scan failure self-heals.
  */
+export const SERVABLE_STATUSES = ['clean', 'skipped'] as const;
+
 export function isServable(status: string | null | undefined): boolean {
-  return status === 'clean' || status === 'skipped';
+  return (SERVABLE_STATUSES as readonly string[]).includes(status ?? '');
+}
+
+/**
+ * Scan columns written by every re-presign of an existing (mod, version) row.
+ *
+ * A re-presign points the row at NEW bytes (the object key embeds the sha256),
+ * so whatever verdict the row carried belonged to a different file. Leaving it
+ * in place let a publisher get `1.0.0` scanned clean, re-presign `1.0.0` with a
+ * different sha, PUT anything to the new key and have it served at once under
+ * the old 'clean' — never calling /scan at all.
+ */
+export const RESET_SCAN_FIELDS = {
+  scanStatus: 'pending',
+  scanId: null,
+  scanStats: null,
+  scanQueuedAt: null,
+  scannedAt: null,
+} as const;
+
+/**
+ * Whether a version row may be pointed at new bytes. A servable version is
+ * immutable: its bytes are already on users' machines under that version
+ * number, so a change must be a new version. Everything else (a failed PUT
+ * being retried, a flagged or errored build being replaced) may re-presign,
+ * and is reset to 'pending' by RESET_SCAN_FIELDS so the gate runs again.
+ */
+export function canReplaceVersionBytes(status: string | null | undefined): boolean {
+  return !isServable(status);
+}
+
+/**
+ * Whether the bytes the scanner read are the bytes the version row promises.
+ *
+ * Clients install a version only if the download hashes to the row's `sha256`,
+ * so a verdict is only worth something for exactly those bytes. The scanner
+ * used to hash what the bucket held and scan THAT, without comparing: a
+ * publisher could declare the hash of their payload, get a padded benign file
+ * of the same length scanned clean (the presign binds the length; whether the
+ * store enforces the query-string checksum is the store's business), then PUT
+ * the payload to the still-valid URL. Clients then accept it, since it matches
+ * the declared hash. Refusing a mismatch means a verdict always covers the
+ * bytes clients will accept.
+ */
+export function storedBytesMatchDeclared(storedSha256: string, declaredSha256: string): boolean {
+  return storedSha256.toLowerCase() === declaredSha256.toLowerCase();
 }
 
 /**

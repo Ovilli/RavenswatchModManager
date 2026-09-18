@@ -282,6 +282,18 @@ guidesRouter.patch(
     // Author transitions only: submit (draft/rejected -> pending) or withdraw
     // (pending -> draft). Approval is admin-only via /approve.
     if (body.status !== undefined) updates.status = body.status;
+    // Approval covers the content an admin actually read. Editing an approved
+    // guide's content sends it back to the queue — otherwise an author could
+    // get harmless text approved and then swap in anything, public at once.
+    const contentChanged =
+      body.title !== undefined ||
+      body.summary !== undefined ||
+      body.body !== undefined ||
+      body.imageUrl !== undefined ||
+      body.screenshots !== undefined;
+    if (existing.status === 'approved' && contentChanged && body.status === undefined) {
+      updates.status = 'pending';
+    }
 
     await db.update(schema.guides).set(updates).where(eq(schema.guides.id, existing.id));
     return c.json({ ok: true });

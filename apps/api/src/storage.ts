@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -129,6 +130,42 @@ export async function remoteObjectExists(publicUrl: string, tries = 4): Promise<
     await new Promise((r) => setTimeout(r, delay));
   }
   return false;
+}
+
+/**
+ * Read an object through its public URL, hashing every byte as it streams.
+ * `bytes` is kept only while the object fits in `maxBytes`; past that it is
+ * dropped and only the digest survives, so an object too large to buffer can
+ * still be hash-checked. Returns null on any fetch failure (no retry — the
+ * scanner fails closed and the drain retries the row later).
+ *
+ * The scanner's fallback when getObjectBytes cannot read the bucket: the key
+ * may be write-scoped (see remoteObjectExists), or the object may be larger
+ * than the scanner will buffer. Either way a verdict must never be recorded
+ * for bytes nobody hashed.
+ */
+export async function fetchPublicObject(
+  publicUrl: string,
+  maxBytes: number,
+): Promise<{ sha256: string; bytes: Buffer | null } | null> {
+  try {
+    const url = new URL(publicUrl);
+    url.searchParams.set('rsmm-cb', `${Date.now()}`); // bypass a cached edge copy
+    const res = await fetch(url);
+    if (!res.ok || !res.body) return null;
+    const hash = createHash('sha256');
+    let chunks: Buffer[] | null = [];
+    let size = 0;
+    for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+      hash.update(chunk);
+      size += chunk.byteLength;
+      if (chunks && size <= maxBytes) chunks.push(Buffer.from(chunk));
+      else chunks = null;
+    }
+    return { sha256: hash.digest('hex'), bytes: chunks ? Buffer.concat(chunks) : null };
+  } catch {
+    return null;
+  }
 }
 
 export async function presignModUpload(args: {

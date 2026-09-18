@@ -9,7 +9,7 @@ import {
   reportCreateSchema,
   reviewUpsertSchema,
 } from '@rsmm/schemas';
-import { and, asc, desc, eq, gte, ilike, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, ilike, notInArray, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { isAdmin } from '../admin.js';
@@ -19,7 +19,14 @@ import { errString } from '../logger.js';
 import { canManageMod } from '../mod-access.js';
 import { notify, notifyFollowers } from '../notify.js';
 import { createRateLimiter } from '../rate-limit.js';
-import { enqueueScan, isServable, markScan, queueInfo } from '../scan-service.js';
+import {
+  RESET_SCAN_FIELDS,
+  SERVABLE_STATUSES,
+  enqueueScan,
+  isServable,
+  markScan,
+  queueInfo,
+} from '../scan-service.js';
 import { kickScanWorker } from '../scan-worker.js';
 import { presignModImage, presignModUpload, remoteObjectExists } from '../storage.js';
 import type { AppEnv } from '../types.js';
@@ -33,6 +40,20 @@ export const modsRouter = new Hono<AppEnv>();
 // never matches — every mod's latestVersion came back null.
 const outerModId = sql.raw('"mods"."id"');
 const outerModOwnerId = sql.raw('"mods"."owner_id"');
+
+/**
+ * ON CONFLICT guard for re-presigning an existing (mod, version): only a row
+ * that is NOT yet servable may be pointed at new bytes (see
+ * scan-gate.ts::canReplaceVersionBytes). Checked inside the upsert itself so
+ * the test and the write are one statement — a separate SELECT would leave a
+ * window for the scan to clear in between. Qualified explicitly: in the DO
+ * UPDATE clause it must name the EXISTING row, not `excluded`.
+ */
+const versionReplaceable = notInArray(sql.raw('"mod_versions"."scan_status"'), [
+  ...SERVABLE_STATUSES,
+]);
+const VERSION_PUBLISHED_ERROR =
+  'this version is already published; bump the version number to upload new files';
 
 // Per-IP rate limiter for the download redirect endpoint. Without it,
 // a script can spin the download counter (and the underlying S3 bill)
@@ -581,9 +602,10 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
     sizeBytes: body.sizeBytes,
   });
 
-  // Declared outside the try so the catch block can read it after the
-  // transaction throws to abort itself on ownership conflict.
+  // Declared outside the try so the catch block can read them after the
+  // transaction throws to abort itself.
   let ownerConflict = false;
+  let versionPublished = false;
   try {
     const result = await db.transaction(async (tx) => {
       // Re-do the ownership check inside the transaction with a row
@@ -646,7 +668,10 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
       // this, a failed object-store PUT (e.g. browser hit Cloudflare's
       // Bot Fight Mode) would orphan the row and every subsequent
       // upload would 23505 forever. Retries now just rewrite the
-      // asset_url / sha256 / size in-place.
+      // asset_url / sha256 / size in-place — and reset the scan verdict,
+      // which belonged to the old bytes. A version that already cleared the
+      // scan is immutable: the guard makes the upsert a no-op, no row comes
+      // back, and the transaction aborts (undoing the metadata upsert above).
       const versionRows = await tx
         .insert(schema.modVersions)
         .values({
@@ -664,11 +689,16 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
             sizeBytes: body.sizeBytes,
             manifestJson: body.manifest,
             assetUrl: signed.publicUrl,
+            ...RESET_SCAN_FIELDS,
           },
+          setWhere: versionReplaceable,
         })
         .returning();
       const version = versionRows[0];
-      if (!version) throw new Error('failed to insert version');
+      if (!version) {
+        versionPublished = true;
+        throw new Error('version already published');
+      }
 
       return { mod, version };
     });
@@ -685,6 +715,9 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
     // a 500 — `ownerConflict` is set inside the transaction body.
     if (ownerConflict) {
       return c.json({ error: 'slug owned by another user' }, 403);
+    }
+    if (versionPublished) {
+      return c.json({ error: VERSION_PUBLISHED_ERROR }, 409);
     }
     // Unique constraint violation (PostgreSQL error code 23505).
     // Drizzle wraps the underlying pg error in `DrizzleQueryError`, so
@@ -763,7 +796,12 @@ modsRouter.post(
       return c.json({ ok: true, status: 'skipped', flagged: false, position: null });
     }
 
-    await enqueueScan(versionId);
+    if (!(await enqueueScan(versionId))) {
+      // Already published: nothing to scan, and re-queueing would reopen it
+      // for byte replacement (see enqueueScan).
+      const info = await queueInfo(versionId);
+      return c.json({ ok: true, status: info?.status ?? 'clean', flagged: false, position: null });
+    }
     // Nudge the worker now — on serverless the interval tick alone can starve
     // the queue (it only fires while an instance stays warm).
     kickScanWorker();
@@ -948,9 +986,13 @@ modsRouter.post(
             manifestJson: body.manifest,
             assetUrl: signed.publicUrl,
             changelog: body.changelog ?? null,
+            ...RESET_SCAN_FIELDS,
           },
+          // Same immutability rule as POST /upload.
+          setWhere: versionReplaceable,
         })
         .returning();
+      if (!rows[0]) return c.json({ error: VERSION_PUBLISHED_ERROR }, 409);
 
       await db
         .update(schema.mods)

@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { getDb, schema } from '@rsmm/db';
-import { type SQL, and, eq, lt, or, sql } from 'drizzle-orm';
+import { type SQL, and, eq, lt, notInArray, or, sql } from 'drizzle-orm';
 import { errString } from './logger.js';
 import { notify } from './notify.js';
-import { deleteObject, getObjectBytes, modUploadKey } from './storage.js';
+import { deleteObject, fetchPublicObject, getObjectBytes, modUploadKey } from './storage.js';
 import {
   MAX_VT_LARGE_BYTES,
   VirusTotalAlreadySubmittedError,
@@ -17,8 +17,19 @@ import {
 
 // The fail-closed serve gate lives in scan-gate.ts (pure, unit-tested);
 // re-exported here so existing importers of scan-service are unchanged.
-import { DrainLock, type ScanStatus } from './scan-gate.js';
-export { type ScanStatus, isServable } from './scan-gate.js';
+import {
+  DrainLock,
+  SERVABLE_STATUSES,
+  type ScanStatus,
+  storedBytesMatchDeclared,
+} from './scan-gate.js';
+export {
+  type ScanStatus,
+  RESET_SCAN_FIELDS,
+  SERVABLE_STATUSES,
+  canReplaceVersionBytes,
+  isServable,
+} from './scan-gate.js';
 
 export interface ScanResult {
   status: ScanStatus;
@@ -94,26 +105,39 @@ export async function scanVersion(target: ScanTarget): Promise<ScanResult> {
   // Prefer a real byte-upload scan whenever the archive is within the large-file
   // ceiling — submitVirusTotalFile transparently uses the direct endpoint
   // (<=32 MB) or the large-file upload_url flow. Only URL-scan the biggest ones.
-  const bytes =
+  let bytes =
     target.sizeBytes > 0 && target.sizeBytes <= MAX_VT_LARGE_BYTES
       ? await getObjectBytes(key, MAX_VT_LARGE_BYTES)
       : null;
   // Hash what the bucket actually holds, never the uploader's declared sha256:
   // a report looked up by a claimed hash would clear whatever file claimed it.
-  const storedSha = bytes ? createHash('sha256').update(bytes).digest('hex') : null;
-
-  if (storedSha) {
-    // A file VirusTotal analysed recently needs no new upload: its report by
-    // hash is the verdict, for one lookup instead of four. Re-submitting a
-    // known file mostly yields an analysis still 'queued' after our three
-    // polls, or a 409 while the previous submission is still running.
-    const report = await getVirusTotalFileReport(storedSha).catch((err: unknown) => {
-      if (err instanceof VirusTotalRateLimitError) throw err;
-      return null;
-    });
-    const analysedAt = report?.analysedAt?.getTime();
-    if (report && analysedAt && Date.now() - analysedAt < RESCAN_AFTER_MS) verdict = report;
+  let storedSha = bytes ? createHash('sha256').update(bytes).digest('hex') : null;
+  if (!storedSha) {
+    // The bucket read failed (write-scoped key, missing object, S3 error) or
+    // the object is too big to buffer. Every verdict must cover hashed bytes —
+    // URL-scanning unhashed ones would clear a decoy, or a 404 page — so read
+    // it through the public URL instead, streaming the hash past the cap.
+    const fetched = await fetchPublicObject(target.assetUrl, MAX_VT_LARGE_BYTES);
+    if (!fetched) throw new Error('could not read the stored object to hash it');
+    storedSha = fetched.sha256;
+    bytes = fetched.bytes;
   }
+  // Fail closed before spending a VirusTotal lookup: the drain marks a throw
+  // 'error' (hidden, retried later), never 'clean'. See storedBytesMatchDeclared.
+  if (!storedBytesMatchDeclared(storedSha, target.sha256)) {
+    throw new Error('stored object does not match the declared sha256');
+  }
+
+  // A file VirusTotal analysed recently needs no new upload: its report by
+  // hash is the verdict, for one lookup instead of four. Re-submitting a
+  // known file mostly yields an analysis still 'queued' after our three
+  // polls, or a 409 while the previous submission is still running.
+  const report = await getVirusTotalFileReport(storedSha).catch((err: unknown) => {
+    if (err instanceof VirusTotalRateLimitError) throw err;
+    return null;
+  });
+  const analysedAt = report?.analysedAt?.getTime();
+  if (report && analysedAt && Date.now() - analysedAt < RESCAN_AFTER_MS) verdict = report;
   if (!verdict) {
     try {
       analysis = bytes
@@ -121,7 +145,7 @@ export async function scanVersion(target: ScanTarget): Promise<ScanResult> {
         : await submitVirusTotalUrl(target.assetUrl);
       verdict = await pollVerdict(analysis.analysisId);
     } catch (err) {
-      if (!(storedSha && err instanceof VirusTotalAlreadySubmittedError)) throw err;
+      if (!(err instanceof VirusTotalAlreadySubmittedError)) throw err;
       // These exact bytes are already in VirusTotal's queue — usually submitted
       // by an earlier drain the platform froze before it saved a verdict. Not
       // a failure: no finished report yet ⇒ 'pending', which the drain
@@ -147,6 +171,11 @@ export async function scanVersion(target: ScanTarget): Promise<ScanResult> {
     }
   }
 
+  // Keyed on the sha256 as well as the id: a scan takes ~20s, and a re-presign
+  // in that window points the row at different bytes (resetting it to
+  // 'pending'). Without the sha guard this verdict — for the OLD bytes — would
+  // land on the row and mark the never-scanned new ones clean. A no-op write
+  // leaves the row pending, so the drain scans the new bytes on its own.
   await db
     .update(schema.modVersions)
     .set({
@@ -155,7 +184,7 @@ export async function scanVersion(target: ScanTarget): Promise<ScanResult> {
       scanStats: stats ? ({ ...stats } as Record<string, number>) : undefined,
       scannedAt: new Date(),
     })
-    .where(eq(schema.modVersions.id, target.id));
+    .where(scanTargetIs(target.id, target.sha256));
 
   // Notify the owner (in-app + email) that their upload was flagged & removed.
   if (flagged) {
@@ -183,20 +212,30 @@ export async function scanVersion(target: ScanTarget): Promise<ScanResult> {
     flagged,
     stats: stats ?? undefined,
     analysisId: analysis?.analysisId ?? '',
-    permalink:
-      analysis?.permalink ??
-      (storedSha ? `https://www.virustotal.com/gui/file/${storedSha}` : undefined),
+    permalink: analysis?.permalink ?? `https://www.virustotal.com/gui/file/${storedSha}`,
     deleted,
   };
 }
 
-/** Persist a terminal state without contacting VirusTotal. */
-export async function markScan(versionId: string, status: ScanStatus): Promise<void> {
+/**
+ * Persist a terminal state without contacting VirusTotal. Pass the sha256 the
+ * decision was made about whenever there is one, so it cannot land on a row
+ * that has since been re-pointed at other bytes (see scanVersion).
+ */
+export async function markScan(
+  versionId: string,
+  status: ScanStatus,
+  sha256?: string,
+): Promise<void> {
   const db = getDb();
   await db
     .update(schema.modVersions)
     .set({ scanStatus: status, scannedAt: new Date() })
-    .where(eq(schema.modVersions.id, versionId));
+    .where(sha256 ? scanTargetIs(versionId, sha256) : eq(schema.modVersions.id, versionId));
+}
+
+function scanTargetIs(versionId: string, sha256: string) {
+  return and(eq(schema.modVersions.id, versionId), eq(schema.modVersions.sha256, sha256));
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -224,13 +263,28 @@ const PENDING_RETRY_AFTER_MS = 10 * 60 * 1000;
  *  rescan window would hide a legit upload for a week over a blip. */
 const ERROR_RETRY_AFTER_MS = 30 * 60 * 1000;
 
-/** Mark a version as waiting for the scan worker. */
-export async function enqueueScan(versionId: string): Promise<void> {
+/**
+ * Mark a version as waiting for the scan worker. Returns false (and writes
+ * nothing) when the version is already servable: re-queueing one would hide a
+ * published version until the scan finishes and, worse, make it replaceable
+ * again (scan-gate.ts::canReplaceVersionBytes), so the owner could swap the
+ * bytes behind a version number users already installed. Checked in the
+ * UPDATE itself, so a scan clearing the row concurrently cannot slip between
+ * a check and the write. Routine re-scans of clean rows are the drain's job.
+ */
+export async function enqueueScan(versionId: string): Promise<boolean> {
   const db = getDb();
-  await db
+  const rows = await db
     .update(schema.modVersions)
     .set({ scanStatus: 'queued', scanQueuedAt: new Date(), scannedAt: null })
-    .where(eq(schema.modVersions.id, versionId));
+    .where(
+      and(
+        eq(schema.modVersions.id, versionId),
+        notInArray(schema.modVersions.scanStatus, [...SERVABLE_STATUSES]),
+      ),
+    )
+    .returning({ id: schema.modVersions.id });
+  return rows.length > 0;
 }
 
 export interface QueueInfo {
@@ -373,7 +427,7 @@ async function drainOnceInner(): Promise<{ id: string; action: string; status?: 
       return { id: picked.target.id, action: `${picked.action}:rate-limited` };
     }
     console.error('scan worker error', { versionId: picked.target.id, err: errString(err) });
-    await markScan(picked.target.id, 'error');
+    await markScan(picked.target.id, 'error', picked.target.sha256);
     return { id: picked.target.id, action: `${picked.action}:error` };
   }
 }
