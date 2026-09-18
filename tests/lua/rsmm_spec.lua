@@ -206,8 +206,9 @@ engine["EntityValueStore_ApplyModifierEvent"] = function(store, ev)
     return nil
 end
 
--- Apply a raw HP delta to the hero character (models Entity_ModifyHealth).
-engine["Entity_ModifyHealth"] = function(e, delta, _ctx)
+-- Apply a raw delta to the hero's dream shards (models Hero_ModifyDreamShards,
+-- which was misnamed Entity_ModifyHealth until 2026-09-18).
+engine["Hero_ModifyDreamShards"] = function(e, delta, _ctx)
     local hp = (string.unpack("<f", rbytes(e + HP_OFF, 4))) + delta
     wbytes(e + HP_OFF, string.pack("<f", hp))
     return 0
@@ -759,9 +760,23 @@ do
     check(about(R.stat.get("move_speed"), 1.0), "unpinned stat must not be re-asserted")
 end
 
--- 7. R.entity / R.combat: HP read + modify ---------------------------------
+-- 7. R.shards + the deprecated R.entity.hp / R.combat aliases --------------
 do
-    check(about(R.entity.hp(), 80), "entity.hp reads the HP field")
+    local saved_log = rsmm.log
+    local lines = {}
+    rsmm.log = function(...) lines[#lines + 1] = table.concat({ ... }, " ") end
+    local function count(pat)
+        local n = 0
+        for _, l in ipairs(lines) do if l:find(pat, 1, true) then n = n + 1 end end
+        return n
+    end
+
+    check(about(R.shards.get(), 80), "shards.get reads +0x15c8")
+    check(R.shards.add(5) == true and about(R.shards.get(), 85), "shards.add grants")
+    check(R.shards.spend(5) == true and about(R.shards.get(), 80), "shards.spend takes")
+    check(count("deprecated") == 0, "the R.shards API logs no deprecation")
+
+    check(about(R.entity.hp(), 80), "entity.hp still reads the same field")
     check(about(R.entity.max_hp(), 100), "entity.max_hp reads max")
     check(about(R.entity.hp_frac(), 0.8), "hp_frac = hp/max")
     check(R.combat.heal(15) == true, "heal should dispatch")
@@ -770,6 +785,23 @@ do
     check(about(R.entity.hp(), 60), "damage applies -35")
     check(R.combat.set_hp(50) == true, "set_hp should dispatch")
     check(about(R.entity.hp(), 50), "set_hp pins absolute HP")
+    check(count("R.combat.heal is deprecated") == 1,
+          "the deprecated alias warns once, not on every call")
+    check(count("R.entity.hp is deprecated") == 1, "entity.hp warns once too")
+
+    -- Players' installed pattern DB still names the routine Entity_ModifyHealth
+    -- until it is republished; the new name must fall back to it.
+    local real_resolve = I.resolve
+    I.resolve = function(name)
+        if name == "Hero_ModifyDreamShards" then return nil end
+        return real_resolve(name)
+    end
+    engine["Entity_ModifyHealth"] = engine["Hero_ModifyDreamShards"]
+    check(R.shards.set(40) == true and about(R.shards.get(), 40),
+          "an old pattern DB still resolves through the former name")
+    I.resolve = real_resolve
+    engine["Entity_ModifyHealth"] = nil
+    rsmm.log = saved_log
 
     -- Session 8c4f. Entity_ModifyHealth reads *(entity+0x8) then +0x30 with no
     -- check of its own, so the -1 sentinel in that slot makes it read 0x2f and

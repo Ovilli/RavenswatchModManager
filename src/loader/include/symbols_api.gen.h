@@ -250,13 +250,6 @@ inline Entity_LookupMagicalObjectComponent_fn Entity_LookupMagicalObjectComponen
     return reinterpret_cast<Entity_LookupMagicalObjectComponent_fn>(rsmm::fn_resolve(Sym::Entity_LookupMagicalObjectComponent_Pattern));
 }
 
-// Entity_ModifyHealth  (Entity_ModifyHealth)
-//   void(oCEntity* hero, float delta, oCCustomFlagList* sourceTags)
-using Entity_ModifyHealth_fn = void(*)(void*, float, void*);
-inline Entity_ModifyHealth_fn Entity_ModifyHealth() {
-    return reinterpret_cast<Entity_ModifyHealth_fn>(rsmm::fn_resolve(Sym::Entity_ModifyHealth_Pattern));
-}
-
 // Entity_ResolveAttackHits  (Entity_ResolveAttackHits)
 //   float(void* attacker, uint hitDefIndex, TargetList* targets, float damageMul, float baseDamage)
 using Entity_ResolveAttackHits_fn = float(*)(void*, uint32_t, void*, float, float);
@@ -386,6 +379,13 @@ inline Hero_GainExperience_fn Hero_GainExperience() {
 using Hero_GrantMagicalObject_fn = void(*)(void*, void*, uint32_t, uint32_t, void*);
 inline Hero_GrantMagicalObject_fn Hero_GrantMagicalObject() {
     return reinterpret_cast<Hero_GrantMagicalObject_fn>(rsmm::fn_resolve(Sym::Hero_GrantMagicalObject_Pattern));
+}
+
+// Hero_ModifyDreamShards  (Hero_ModifyDreamShards)
+//   void(oCDtEntityCpntHeroController* hero, float delta, oCCustomFlagList* sourceTags)
+using Hero_ModifyDreamShards_fn = void(*)(void*, float, void*);
+inline Hero_ModifyDreamShards_fn Hero_ModifyDreamShards() {
+    return reinterpret_cast<Hero_ModifyDreamShards_fn>(rsmm::fn_resolve(Sym::Hero_ModifyDreamShards_Pattern));
 }
 
 // IngredientDef_PostLoad  (IngredientDef_PostLoad)

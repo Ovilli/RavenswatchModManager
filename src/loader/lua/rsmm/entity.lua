@@ -41,24 +41,37 @@ local _hero_capture_is_live, _invalidate_hero_capture
 -- arg. So we capture it by hooking two hero-bound handlers read-only (the
 -- GAIN_HEALTH handler and the give-item handler) and grabbing param_1 the
 -- first time either fires (i.e. the hero heals/regens or picks something up).
--- Health is then applied through the engine's own modify-health routine
--- (Entity_ModifyHealth), so clamping, the UI bar, on-heal/on-damage triggers
--- and analytics all fire exactly as if the game did it.
+-- ⚠ CORRECTED 2026-09-18: the "health" this module has always read and written
+-- is the hero's DREAM SHARDS. +0x15c8 is the shard count and the engine routine
+-- (Hero_ModifyDreamShards, formerly misnamed Entity_ModifyHealth) fires
+-- dt_shard_gain/dt_shard_loss, clamps only at 0, and is what the Sandman buy
+-- spends through. R.shards is the honest API; R.combat and R.entity.hp/max_hp/
+-- hp_frac still work but log a one-time deprecation warning. Real HP is not
+-- located yet.
 --
---   R.entity.hp()        -- current HP (float) or nil (hero not captured yet)
---   R.entity.max_hp()    -- max HP or nil
---   R.entity.hp_frac()   -- hp/max in 0..1 or nil
+--   R.shards.get()       -- current dream shards, or nil (hero not captured yet)
+--   R.shards.add(20)     -- grant 20
+--   R.shards.spend(15)   -- take 15 (never below 0)
+--   R.shards.set(50)     -- set to an absolute value
 --   R.entity.ready()     -- true once the hero is captured
---   R.combat.heal(20)    -- heal 20
---   R.combat.damage(15)  -- self-damage 15
---   R.combat.set_hp(50)  -- set HP to an absolute value
 
 R.entity = {}
 R.combat = {}
+R.shards = {}
+
+-- One line per deprecated name per session, so a mod calling it every tick
+-- does not bury the log.
+local _deprecated_seen = {}
+local function _deprecated(old, new)
+    if _deprecated_seen[old] then return end
+    _deprecated_seen[old] = true
+    R.log(("[rsmm] %s is deprecated: it reads/changes DREAM SHARDS, not health "
+           .. "(settled 2026-09-18). Use %s."):format(old, new))
+end
 
 local ENTITY_HP_OFF      = 0x15c8        -- f32 current HP on the hero character
 local ENTITY_MAXHP_OFF   = 0x15cc        -- f32 max HP
--- The chain Entity_ModifyHealth dereferences in its first four instructions:
+-- The chain Hero_ModifyDreamShards dereferences in its first four instructions:
 --   r14 = *(entity + 0x8);  rbx = *(r14 + 0x30)
 -- Both are unguarded on the engine side, so both are ours to check. See
 -- _modify_health_safe below.
@@ -191,7 +204,7 @@ end
 
 -- A captured pointer is "hero-like" if its max-HP field reads as a sane float
 -- AND it carries a valid HUD HP-mirror pointer at +0x1d80. The mirror is the
--- hero discriminator: Entity_ModifyHealth dereferences **(hero+0x1d80) on every
+-- hero discriminator: Hero_ModifyDreamShards dereferences **(hero+0x1d80) on every
 -- heal/damage. Non-player entities (GAIN_HEALTH fires for enemies too) have no
 -- HUD mirror, so requiring it rejects false captures. Verified in Ghidra
 -- (FUN_140391d30 / FUN_140399a10). All reads are fault-safe (return nil on a
@@ -200,7 +213,7 @@ end
 -- ⚠ THIS DOES NOT MAKE A POINTER ModifyHealth-SAFE, though it claimed to until
 -- session 8c4f. That run adopted 0x3cb111a0 through the give-handler; it had a
 -- sane HP pair and a live mirror, passed here, and still took the process down
--- at Entity_ModifyHealth+0x45 — because the function reads a DIFFERENT chain
+-- at Hero_ModifyDreamShards+0x45 — because the function reads a DIFFERENT chain
 -- first (*(entity+0x8) then +0x30), and that slot held the -1 sentinel. The
 -- mirror says "this is a hero"; it says nothing about the value store. Callers
 -- that hand the pointer to the engine must use _modify_health_safe.
@@ -968,18 +981,29 @@ function R.entity.ready() return R.entity.hero() ~= nil end
 -- reports true, matching what it will actually do.
 function R.entity.capture_enabled() return not _capture_denied() end
 
-function R.entity.hp()
+local function _shards()
     local e = R.entity.hero(); if not e then return nil end
     return I.read_f32(e + ENTITY_HP_OFF)
 end
 
+function R.shards.get() return _shards() end
+
+-- Deprecated: these were documented as health and are dream shards.
+function R.entity.hp()
+    _deprecated("R.entity.hp", "R.shards.get")
+    return _shards()
+end
+
 function R.entity.max_hp()
+    _deprecated("R.entity.max_hp", "R.shards.get (there is no maximum)")
     local e = R.entity.hero(); if not e then return nil end
     return I.read_f32(e + ENTITY_MAXHP_OFF)
 end
 
 function R.entity.hp_frac()
-    local cur, mx = R.entity.hp(), R.entity.max_hp()
+    _deprecated("R.entity.hp_frac", "R.shards.get")
+    local e = R.entity.hero(); if not e then return nil end
+    local cur, mx = I.read_f32(e + ENTITY_HP_OFF), I.read_f32(e + ENTITY_MAXHP_OFF)
     if not cur or not mx or mx <= 0 then return nil end
     return cur / mx
 end
@@ -987,7 +1011,7 @@ end
 -- Apply a raw health delta (delta>0 heals, delta<0 damages). Returns true on
 -- dispatch, false if the hero isn't captured yet, the module base is
 -- unavailable, or health reads implausible (guards against a bad pointer).
--- Can the engine safely traverse what Entity_ModifyHealth traverses?
+-- Can the engine safely traverse what Hero_ModifyDreamShards traverses?
 --
 -- Its first four instructions are
 --   0x14039a361  mov r14, [rcx + 0x8]
@@ -1018,7 +1042,7 @@ local function _modify_health_safe(e)
     return true
 end
 
-local function _modify_health(delta)
+local function _modify_shards(delta)
     local e = R.entity.hero()
     if not e then
         R.log("[rsmm.combat] no hero yet — wait until the hero heals/regens or "
@@ -1031,7 +1055,7 @@ local function _modify_health(delta)
     end
     local ok_store, why = _modify_health_safe(e)
     if not ok_store then
-        R.log(("[rsmm.combat] refusing modify on 0x%x: %s — Entity_ModifyHealth "
+        R.log(("[rsmm.combat] refusing modify on 0x%x: %s — Hero_ModifyDreamShards "
                .. "would fault reading it"):format(e, why))
         return false
     end
@@ -1043,24 +1067,41 @@ local function _modify_health(delta)
     I.poke(ctx + 0x00, base + (FLAGLIST_VFT_VA - ENTITY_IMG_BASE), 8)
     I.poke(ctx + 0x08, 0, 8)
     I.poke(ctx + 0x10, 0, 8)
-    local fn = I.resolve and I.resolve("Entity_ModifyHealth")
+    -- The old name is what players' installed pattern DB carries until it is
+    -- republished; try the new one first so a fresh DB wins.
+    local fn = I.resolve and (I.resolve("Hero_ModifyDreamShards")
+                              or I.resolve("Entity_ModifyHealth"))
     if not fn then
-        R.log("[rsmm.combat] Entity_ModifyHealth unresolved for this game build "
-            .. "— refusing modify (regenerate function_patterns.json)")
+        R.log("[rsmm.shards] Hero_ModifyDreamShards unresolved for this game build "
+            .. "— refusing modify (rsmm update-data)")
         return false
     end
     R.engine.call_raw(fn, "vpfp", e, delta + 0.0, ctx)
     return true
 end
 
-function R.combat.heal(amount)   return _modify_health(math.abs(amount or 0)) end
-function R.combat.damage(amount) return _modify_health(-math.abs(amount or 0)) end
+function R.shards.add(amount)   return _modify_shards(math.abs(amount or 0)) end
+function R.shards.spend(amount) return _modify_shards(-math.abs(amount or 0)) end
 
--- Set HP to an absolute value by applying the difference from current.
-function R.combat.set_hp(value)
-    local cur = R.entity.hp()
+-- Set to an absolute value by applying the difference from current.
+function R.shards.set(value)
+    local cur = _shards()
     if not cur then return false end
-    return _modify_health((value or 0) - cur)
+    return _modify_shards((value or 0) - cur)
+end
+
+-- Deprecated aliases: same engine call, documented as health for months.
+function R.combat.heal(amount)
+    _deprecated("R.combat.heal", "R.shards.add")
+    return R.shards.add(amount)
+end
+function R.combat.damage(amount)
+    _deprecated("R.combat.damage", "R.shards.spend")
+    return R.shards.spend(amount)
+end
+function R.combat.set_hp(value)
+    _deprecated("R.combat.set_hp", "R.shards.set")
+    return R.shards.set(value)
 end
 
 -- Wire the forward-declared invalidator now that _hero_char + the shared slot

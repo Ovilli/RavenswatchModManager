@@ -47,7 +47,7 @@ vftable `0x140f8fed8` (base `oISerializable::vftable` `0x140efed08`).
 +0x18  u16 = 0x000a
 ```
 
-Engine read pattern (e.g. in `Entity_ModifyHealth`):
+Engine read pattern (e.g. in `Hero_ModifyDreamShards`):
 
 ```c
 EntityValue_Lookup(store, &out, key);
@@ -89,4 +89,4 @@ riskier item — not yet mapped.
 
 ## See also
 
-- [Combat & damage](/reverse-engineering/combat-damage/) — `Entity_ModifyHealth` reads this store; the plain-offset HP mirror vs signal stats.
+- [Combat & damage](/reverse-engineering/combat-damage/) — `Hero_ModifyDreamShards` reads this store; the plain-offset HP mirror vs signal stats.

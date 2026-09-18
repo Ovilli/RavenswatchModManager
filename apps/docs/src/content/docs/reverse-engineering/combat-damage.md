@@ -11,7 +11,9 @@ shipped — this documents the recipe so a future implementation is grounded.
 
 ## TL;DR
 
-`R.combat` heals/damages the **hero** via `Entity_ModifyHealth(hero, delta, tags)`.
+`R.shards` (formerly `R.combat`, which was documented as healing) changes the
+**hero's dream shards** via `Hero_ModifyDreamShards(hero, delta, tags)` — the
+routine was misnamed `Entity_ModifyHealth` until 2026-09-18.
 That routine is **hero-only** — it dereferences the HUD HP mirror at `hero+0x1d80`
 unconditionally, which enemies do not have, so calling it on an enemy
 access-violates.

@@ -1029,14 +1029,16 @@ end
 
 -- entity / combat -------------------------------------------------------
 --
--- Lives in rsmm/entity.lua. R.entity reads the local hero's health, R.combat
--- changes it through the engine's own Entity_ModifyHealth, and the same file
+-- Lives in rsmm/entity.lua. R.shards reads and changes the local hero's dream
+-- shards through the engine's own Hero_ModifyDreamShards (R.entity.hp and
+-- R.combat are deprecated aliases: they were documented as health until
+-- 2026-09-18, but the field is the shard count), and the same file
 -- owns the hero CAPTURE (the character object is not the bus dispatcher and
 -- cannot be derived from it, so it is grabbed from a hero-bound handler's
 -- first argument) and the entity-value store R.stat / R.modifier read through.
 --
---   R.entity.hp() / max_hp() / hp_frac() / ready()
---   R.combat.heal(20) / damage(15) / set_hp(50)
+--   R.shards.get() / add(20) / spend(15) / set(50)
+--   R.entity.ready()
 --
 -- Unlike rsmm/damage.lua this namespace is not self-contained: the rest of
 -- this chunk reads its offsets and predicates as plain locals, so it hands
@@ -2359,7 +2361,7 @@ end
 --       guid = { lo, hi },          -- or guid_lo=, guid_hi=
 --       every = 1.0,                -- on_tick cadence in seconds (default 1)
 --       on_acquire = function(c) R.log("got it") end,
---       on_tick    = function(c) R.combat.heal(4) end,   -- while owned
+--       on_tick    = function(c) R.shards.add(4) end,    -- while owned
 --       on_lose    = function(c) end,
 --   }
 --
@@ -2491,7 +2493,7 @@ end
 --       hero   = "Juliet",                     -- optional: scope to ONE hero
 --       on     = "gameplay:ABILITY_EXIT",      -- a gameplay event, or a list
 --       when   = function(ev) return true end, -- optional predicate
---       effect = function(ev) R.combat.heal(5) end,
+--       effect = function(ev) R.shards.add(5) end,
 --   }
 --
 -- HERO-SPECIFIC: most talents belong to one hero. Set `hero="<ShortName>"` and
@@ -2516,7 +2518,7 @@ end
 --       card     = "0x1a92...:0x0",       -- card GUID from TalentPickProbe; omit
 --                                         -- (or "*") to arm on ANY card pick
 --       on       = "gameplay:ABILITY_EXIT",
---       effect   = function() R.combat.heal(5) end,
+--       effect   = function() R.shards.add(5) end,
 --   }
 --
 -- `pickable = "<card>"` is shorthand for `pickable = true, card = "<card>"`.

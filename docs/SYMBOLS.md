@@ -120,10 +120,10 @@ Total: **282** symbols across 22 categories.
 | `Entity_GainHealthHandler` | `0x140399d00` | ✅ ok |  | void(oCEntity* hero, void* a2, void* valueCtx) |
 | `Entity_GetComponentByTester` | `0x1406e3210` | ✅ ok | ✔ | void*(void*, void*) |
 | `Entity_GetComponentFast` | `0x1406e31a0` | ✅ ok | ✔ | void*(void*, void*, uint32_t) |
-| `Entity_ModifyHealth` | `0x14039a320` | ✅ ok | ✔ | void(oCEntity* hero, float delta, oCCustomFlagList* sourceTags) |
 | `Entity_ResolveAttackHits` | `0x1403dd540` | ✅ ok | ✔ | float(void* attacker, uint hitDefIndex, TargetList* targets, float damageMul, float bas… |
 | `HeroController_Ctor` | `0x14038ec30` | ✅ ok | ✔ | oCDtEntityCpntHeroController*(oCDtEntityCpntHeroController* self) |
 | `HeroController_HudMirror_Ctor` | `0x1403b3c70` | ✅ ok |  | Builds the hero's HUD HP-mirror object whose pointer is stored at hero+0x1d80 by HeroCo… |
+| `Hero_ModifyDreamShards` | `0x14039a320` | ✅ ok | ✔ | void(oCDtEntityCpntHeroController* hero, float delta, oCCustomFlagList* sourceTags) |
 | `MapCtx_LinkPairedSpawners` | `0x1401ebad0` | ✅ ok |  | void(void* mapSceneContext) |
 | `ModifierEvent_Ctor` | `0x140389fb0` | ✅ ok | ✔ | void*(void* buf, void* valueDef) |
 | `g_MagicalObjectComponentMeta` | `0x141470768` | 📍 va |  | oCMetaClass* for the magical-object component; passed to Entity_FindMagicalObjectCompon… |

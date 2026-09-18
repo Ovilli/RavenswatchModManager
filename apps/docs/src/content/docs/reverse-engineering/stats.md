@@ -16,21 +16,29 @@ means covering all three:
 
 | Surface | What lives there | Grant primitive | SDK |
 |---|---|---|---|
-| **Plain HP field** | current/max HP (hot path, mirrored to the HUD) | `Entity_ModifyHealth(hero, delta, tags)` | `R.combat.heal/damage/set_hp` |
+| **Plain shard field** | current dream shards (hot path, mirrored to the HUD) | `Hero_ModifyDreamShards(hero, delta, tags)` | `R.shards.get/add/spend/set` |
 | **XP component** | level + xp-within-level (own component, curve table) | `Hero_GainExperience(xpComp, xpGain)` | `R.xp.grant` |
 | **Generic value store** | everything else: max-health mult, attack power, crit, move speed, cooldown, life-steal, dream shards, xp multipliers, status stacks | modifier / override write | `R.stat.get/set/modify` |
 
-HP is the exception with a plain `f32` at `hero+0x15c8` (max at `+0x15cc`) — see
+Dream shards are the exception with a plain `f32` at `hero+0x15c8` — see
 [Heroes](/reverse-engineering/heroes/). Everything else is keyed in the store.
+
+:::caution[Corrected 2026-09-18]
+This field was documented as **HP** for months, and the routine as
+`Entity_ModifyHealth`. It is the dream-shard count: the routine fires
+`dt_shard_gain` / `dt_shard_loss`, clamps only at 0, and is what the Sandman
+spends through. `R.combat.*` and `R.entity.hp/max_hp/hp_frac` still work as
+deprecated aliases of `R.shards`. Real HP is not located yet.
+:::
 
 :::caution[Units]
 Store values are **display × 100**. To set a displayed number, pass
 `display / 100`.
 :::
 
-## HP
+## Dream shards
 
-`Entity_ModifyHealth` is the game's own heal(+)/damage(−) routine, resolved by
+`Hero_ModifyDreamShards` is the game's own gain(+)/spend(−) routine, resolved by
 pattern. Hero-only — it derefs the HUD mirror. See
 [Combat & damage](/reverse-engineering/combat-damage/).
 

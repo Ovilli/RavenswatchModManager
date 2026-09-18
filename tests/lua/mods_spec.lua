@@ -87,6 +87,8 @@ R.stat.modify = function(name, amount, dur)
     return true
 end
 R.combat.heal = function(n) calls[#calls + 1] = "heal:" .. tostring(n); return true end
+R.shards = R.shards or {}
+R.shards.add = function(n) calls[#calls + 1] = "shards:" .. tostring(n); return true end
 -- A mod that acts on the hero needs BOTH: ready() to gate, hero() to compare
 -- an event payload against. Stubbing only ready() sent the real hero() into
 -- the un-mocked native layer.
@@ -228,14 +230,14 @@ if load_mod("second-wind") then
     fire("ready")
     fire("run:start")
     fire("gameplay:HERO_DEATH_DOOR")
-    ok(had("heal:") ~= nil, "second-wind: first down triggers a heal")
+    ok(had("shards:") ~= nil, "second-wind: first down grants dream shards")
     calls = {}
     fire("gameplay:HERO_DEATH_DOOR")
-    ok(had("heal:") == nil, "second-wind: second down in the same run does nothing")
+    ok(had("shards:") == nil, "second-wind: second down in the same run does nothing")
     calls = {}
     fire("run:start")
     fire("gameplay:HERO_DEATH_DOOR")
-    ok(had("heal:") ~= nil, "second-wind: a new run restores the rescue")
+    ok(had("shards:") ~= nil, "second-wind: a new run restores the rescue")
 end
 
 -- ---------------------------------------------------------------------------
@@ -249,20 +251,20 @@ end
 if load_mod("second-wind") then
     fire("ready")
     fire("gameplay:HERO_DEATH_DOOR")
-    ok(had("heal:") ~= nil, "second-wind: rescued once")
+    ok(had("shards:") ~= nil, "second-wind: rescued once")
 
     -- End the run and start the next one WITHOUT a run:start anywhere.
     fire("run:end")
     calls = {}
     fire("gameplay:HERO_DEATH_DOOR")
-    ok(had("heal:") ~= nil,
+    ok(had("shards:") ~= nil,
        "second-wind: run:end alone restores the rescue (no run:start needed)")
 
     -- And again via the menu boundary only.
     fire("menu:enter")
     calls = {}
     fire("gameplay:HERO_DEATH_DOOR")
-    ok(had("heal:") ~= nil, "second-wind: menu:enter alone restores the rescue")
+    ok(had("shards:") ~= nil, "second-wind: menu:enter alone restores the rescue")
 end
 
 -- ---------------------------------------------------------------------------
@@ -826,7 +828,9 @@ if load_mod("steamroller") then
     R.stat.stick = function(name, value) stuck[name] = value; return true end
     fire("run:start")
     fire("gameplay:ENEMY_KILLED", { source = "gameplay" })
-    ok(healed, "steamroller: heals once the pins prove the hero is readable")
+    -- The top-up is off since 2026-09-18: its "HP" field is the dream-shard
+    -- count, so writing it never healed anything.
+    ok(not healed, "steamroller: top-up stays off even with landed pins")
 
     R.combat.set_hp, R.entity.hp_frac, R.entity.max_hp = _sethp, _frac, _max
 

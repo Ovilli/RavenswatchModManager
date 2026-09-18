@@ -158,9 +158,10 @@ Controller size ≈ `0x1e40`.
 **Most hero stats are not plain fields.** They are
 `oe::EntityCpntValueSignal<bool|int|float|oCVec3>` sub-components — the ctor builds
 dozens. Writing a signal fires a change notification on the gameplay bus, which is
-*why* stat changes surface as named events. HP is the exception: it is additionally
+*why* stat changes surface as named events. Dream shards are the exception (this
+field was documented as HP until 2026-09-18): they are additionally
 mirrored to the plain f32 at `+0x15c8` for the hot path, which is exactly why
-`R.combat` can read and write HP directly while energy, cooldowns and speed live
+`R.shards` can read and write them directly while energy, cooldowns and speed live
 inside signal objects with no fixed plain-float offset. Reaching those is a
 per-signal RE job, not a constant lookup — see
 [Stats & XP](/reverse-engineering/stats/) for the keyed store that covers most of
