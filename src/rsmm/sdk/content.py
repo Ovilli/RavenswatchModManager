@@ -62,9 +62,24 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # guaranteed block on a different (context+0xa8) def that bypasses
                               # counts. Ban unreliable; needs a runtime def-dump to pin the
                               # def/field. See docs/_re/kinds/rewards.md
-    "mesh": "experimental",   # in-place override of a shipped mesh: one cooked file, no new
+    "mesh": "confirmed",      # in-place override of a shipped mesh: one cooked file, no new
                               # resource name, so nothing but the geometry cook is exercised.
-                              # Same cook `poi`'s `prop` uses; not yet seen rendering in-game.
+                              # PROVEN IN-GAME TWICE, by both routes the cook has:
+                              #   * 2026-09-13 — a mod-supplied .glb written over a shipped
+                              #     mesh's own cooked path rendered on the shipped entity that
+                              #     places it, which is this kind exactly.
+                              #   * 2026-09-17 — the same cook carrying `poi`'s `prop` drew
+                              #     upright, textured, on a mod-owned entity in a generated
+                              #     tile (see the `poi` note below).
+                              # What the old rating was waiting on was a sighting, not a
+                              # missing mechanism: there is no registration step to get wrong
+                              # here — every entity, material, level, tile and resource cache
+                              # keeps referring to the same resource name.
+                              # ⚠ Still author-beware, and neither is a confidence problem:
+                              # the override is GLOBAL (every other tile using that mesh
+                              # changes too), and a CHARACTER replacement needs the right
+                              # `transform.skin` or the model is shredded on the first
+                              # animation frame (`rsmm.sdk.kinds.meshes` documents the three).
     "poi": "confirmed",       # PROVEN END TO END IN-GAME 2026-09-17, every link of the chain
                               # on a MOD-OWNED entity: the tile generates (four copies in one
                               # chapter, reported by R.poi.placed), the mod's own mesh and

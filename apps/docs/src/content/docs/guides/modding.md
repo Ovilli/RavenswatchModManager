@@ -299,8 +299,8 @@ with sdk.Mod("FrostPack", version="1.0.0", author="you",
     m.boss("IceLord", base="Baba_Yaga_Boss", drops=[blade])   # ref -> id
 ```
 
-> Only `item` + `talent` are ✅ confirmed; the rest are ⚠️/❓ and need
-> `experimental=True`. See [Content kinds & confidence](#content-kinds--confidence).
+> Kinds below `confirmed` need `experimental=True`. Which ones those are is
+> generated from the code: [Content kinds & confidence](/reference/sdk-api/kinds/).
 
 ### Tags, assets, config
 
@@ -1308,26 +1308,40 @@ When two mods override the same encoded path, the applier keeps the **later mod 
 ## Content kinds & confidence
 
 Every content kind carries an honesty rating — **how much we trust the bytes
-it emits**. The ratings are the single source of truth in
-`src/rsmm/sdk/content.py::KIND_CONFIDENCE`; `rsmm lint` and the SDK enforce
-them. Don't trust prose over that table — but here it is in plain terms:
+it emits**. The single source of truth is
+`src/rsmm/sdk/content.py::KIND_CONFIDENCE`, which `rsmm lint` and the SDK
+enforce. The per-kind table is **generated** from it:
+[Content kinds & confidence](/reference/sdk-api/kinds/). This page links there
+rather than restating a rating, because a hand-kept copy drifts the first time
+a kind is proven in game. (`tests/test_kind_docs_lockstep.py` fails if a prose
+table here pairs a `kind="…"` with a rating.)
+
+**Finer than a kind.** Some kinds have modes proven to different degrees. The
+kind's rating is the weakest mode it ships, so read these alongside it:
+
+- `kind="enemy"`, `mode="override"`: proven in-game 2026-08-28. A
+  fixed-entity override turned every Dark Hills camp into treants, and
+  `cross_biome` placed chapter-2/3 creatures in an earlier chapter. What's still
+  unknown is an imported creature's projectiles and attack zones (see the
+  caution above).
+- `kind="enemy"`, `mode="clone"`: the codec round-trips and the def
+  self-registers at load (`EnemyDef_PostLoad` push_backs onto the tribe
+  roster), so `UsedRscList` registration is the whole contract. Nobody has seen
+  a clone spawn in-game yet. This mode is what holds `enemy` at experimental.
+- `kind="item"`, `mode="ban"`: the exact inverse of the proven catalog write. It
+  drops entries from the same LiveOps MO vector. It hasn't been confirmed
+  in-game yet.
+- `kind="mesh"` is proven, but an override is **global**: every tile that uses
+  that mesh changes too. A character replacement also needs the right
+  `transform.skin`, or the model is shredded on the first animation frame.
+
+**Capabilities that are not content kinds:**
 
 | Capability | Rating | Reality |
 |---|---|---|
 | **Replace a cooked file** (raw / texture / model / stat / text / url patch) | ✅ confirmed | Install-time file replacement. Bread and butter. |
 | **PNG → cooked texture** | ✅ confirmed | `engine/cooked_schemas/texture.py` cooks PNG/DDS/TGA into the `oCTexture` container at apply-time. |
-| **Custom 3D mesh** (`.glb`/`.gltf`) | ⚠️ experimental | `engine/geometry_cook.py` round-trips and retargets a mesh onto the original's skeleton (≤65535 verts), but in-game render is only partially proven. See `DesertEagleJuliet`. |
-| **Custom magic item** (`kind="item"`) | ✅ confirmed | New magical object shows in compendium + drops (verified 2026-06-02). Clone a vanilla `base`, patch values. See `ItemCloneTest`. |
-| **Disable an item** (`kind="item"`, `mode="ban"`) | ⚠️ unproven | Exact inverse of the proven catalog write above — drops entries from the same LiveOps MO vector. Data-level, so multiplayer-correct when every peer runs the mod. Not yet confirmed in-game. |
-| **Edit talent / item values** (`kind="talent"`, `value_patches`) | ✅ confirmed | In-place magnitude override. See `JulietTalentBuff`. |
 | **Reskin an existing hero** (texture/model override) | ✅ confirmed | See `JulietReskin`. |
-| **Custom enemy** (`kind="enemy"`, `mode="clone"`) | ⚠️ experimental | Codec round-trips and the def self-registers at load (`EnemyDef_PostLoad` push_backs onto the tribe roster), so `UsedRscList` registration is the whole contract — but a clone has not yet been seen spawning in-game. |
-| **Randomise / replace a population** (`kind="enemy"`, `mode="override"`) | ✅ proven in-game | Verified 2026-08-28: a fixed-entity override turned every Dark Hills camp into treants, and `cross_biome` placed chapter-2/3 creatures in an earlier chapter. The kind stays ⚠️ overall because `mode="clone"` is still unproven. Remaining unknown: an imported creature's projectiles/attack zones (see the caution above). |
-| **Custom hero / map** (`kind="hero"`, `kind="map"`) | ⚠️ experimental | Clones and emits, but the roster detour / library singleton (hero) and in-game load (map) are unproven. |
-| **Custom boss** (`kind="boss"`) | ❓ guess | Picker/HP/arena byte offsets are speculative. May be rejected or crash. |
-| **Reward placement edits** (`kind="reward"`) | ⚠️ experimental | Ban chests/astrolabs/crystals or tune per-category spawn counts by overriding a retail `*.rewarddef.ot`. Codec is deserializer-verified and byte-stable; the level-load roll consuming edited data is unproven in-game. |
-| **Sandman shop** (`kind="shop"`) | ⚠️ experimental | Per-item prices and the offer generators' count, quality weights and flag pool, overridden in place. Field meaning is traced in the executable and edits round-trip byte-for-byte; no edited shop has been opened in-game yet. |
-| **Map generation recipe** (`kind="tilegen"`, `rsmm map-editor`) | ⚠️ experimental | Tile counts, spacing, footprints, flag quotas and per-slot kind masks of a chapter's `*_TileGeneration.level.ot`. The recipe codec is byte-identical on all 494 shipped files; a run generated from an edited recipe is unproven in-game. |
 | **New selectable skin slot** | ⚠️ experimental | Needs the loader skin detour; the DLC-entitlement filter rejects new keys by default (`RSMM_SKIN_FORCE_SHOW=1` to test). Replacing an existing slot is ✅ confirmed. |
 | **Engine event hooks** (`R.on("OnDamage", …)`) | ⚠️ experimental | The event bus + payload envelope ship in the loader, and emitter addresses are mapped — but the runtime path is **not yet verified end-to-end on CI** (loader is Windows-only). Treat as unproven until the loader smoke test (below) is green. |
 | **Call any of 53k game functions from Lua** (`R.engine.call`) | ✅ confirmed | Covers seed pinning, stat reads, save inspection, forced option overrides. Interception (hooks) is the experimental part above. |
@@ -1338,7 +1352,7 @@ otherwise the SDK raises and `rsmm lint` fails. This is deliberate — a ⚠️/
 kind is a known guess, not a finished feature.
 
 ```python
-with sdk.Mod("MyEnemyMod", experimental=True) as m:   # required for enemy/boss/hero/map
+with sdk.Mod("MyEnemyMod", experimental=True) as m:   # required for any non-confirmed kind
     m.enemy("Dreadgnoll", base="Gnoll_Shielded", tribe="Gnolls")
 ```
 

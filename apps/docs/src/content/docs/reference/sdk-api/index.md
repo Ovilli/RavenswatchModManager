@@ -15,6 +15,10 @@ Start with the [Authoring mods guide](/guides/modding/) and the [SDK design note
 
 - [CLI command inventory](/reference/sdk-api/cli/) — every `rsmm` subcommand.
 
+## Content kinds
+
+- [Content kinds & confidence](/reference/sdk-api/kinds/) — every kind, its rating, and its builder.
+
 ## Modules
 
 - [`rsmm.sdk.builder`](/reference/sdk-api/builder/)

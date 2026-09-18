@@ -175,6 +175,86 @@ def _cli_page() -> tuple[str, str, str, str]:
     return "cli.md", body, "CLI command inventory", "Every rsmm subcommand, auto-generated."
 
 
+def _kinds_page() -> tuple[str, str, str, str]:
+    """Return (relpath, body, title, description) for the content-kind table.
+
+    Generated so the ratings cannot drift: `KIND_CONFIDENCE` is the single
+    source of truth, and the row for each kind is built from it plus the
+    builder module's own summary line. Prose pages link here instead of
+    restating a rating that will be stale the next time one is proven.
+    """
+    from rsmm.sdk.content import _KIND_MODULES, KIND_CONFIDENCE, KINDS, _load_kind
+
+    badge = {"confirmed": "✅ confirmed", "experimental": "⚠️ experimental",
+             "guess": "❓ guess"}
+    rows: list[tuple[str, str, str, str]] = []
+    for kind in KINDS:
+        rating = KIND_CONFIDENCE.get(kind, "guess")
+        mod_name = _KIND_MODULES.get(kind, f"{kind}s")
+        try:
+            summary = (inspect.getdoc(_load_kind(kind)) or "").strip().splitlines()[0]
+        except Exception as e:  # noqa: BLE001 — a broken builder shouldn't kill docs
+            summary = f"(builder import failed: {e})"
+        # The summary's own "— SDK entry point" tail says nothing here.
+        for tail in (" — SDK entry point.", " — SDK entry point", " (SDK entry)."):
+            if summary.endswith(tail):
+                summary = summary[: -len(tail)] + "."
+        rows.append((kind, badge.get(rating, rating), f"rsmm.sdk.kinds.{mod_name}", summary))
+
+    counts = {r: sum(1 for k in KINDS if KIND_CONFIDENCE.get(k) == r)
+              for r in ("confirmed", "experimental", "guess")}
+    lines = [
+        "# Content kinds & confidence",
+        "",
+        "Every content kind carries an honesty rating — how much the bytes it "
+        "emits are trusted. This page is generated from "
+        "`rsmm.sdk.content.KIND_CONFIDENCE`, which is what the SDK and "
+        "`rsmm lint` actually enforce, so it cannot drift from the code.",
+        "",
+        ":::note",
+        "Do not edit by hand, and do not restate a rating in prose — link here. "
+        "Run `rsmm docs-gen` after changing a rating; CI `--check`s it.",
+        ":::",
+        "",
+        f"**{len(KINDS)} kinds** — {counts['confirmed']} confirmed, "
+        f"{counts['experimental']} experimental, {counts['guess']} guess.",
+        "",
+        "| Kind | Confidence | Builder | What it does |",
+        "|---|---|---|---|",
+    ]
+    for kind, rating, mod_name, summary in rows:
+        lines.append(f"| `{kind}` | {rating} | `{mod_name}` | {summary} |")
+    lines += [
+        "",
+        "## What a rating means",
+        "",
+        "| Rating | Meaning | To ship it |",
+        "|---|---|---|",
+        "| ✅ `confirmed` | The emitted bytes were verified in-game, end to end. "
+        "| Nothing extra. |",
+        "| ⚠️ `experimental` | Codecs round-trip and the emit succeeds, but the "
+        "in-game path is unproven. | `sdk.Mod(..., experimental=True)` / "
+        "`experimental = true`. |",
+        "| ❓ `guess` | The byte layout is an educated guess. May be rejected, "
+        "may crash. | Same opt-in, plus your own testing. |",
+        "",
+        "A mod that registers any non-`confirmed` kind must opt in, and its "
+        "manifest records it — so nobody ships speculative content believing it "
+        "works. `rsmm lint` fails the mod otherwise.",
+        "",
+        "The *reason* behind each rating — what was proven, when, and what the "
+        "rating is still waiting on — is written beside the rating in "
+        "`src/rsmm/sdk/content.py`. Start there before changing one.",
+        "",
+        "## Starting one",
+        "",
+        "[First mod, by kind](/guides/first-mod-by-kind/) has a minimal, "
+        "working `manifest.toml` for every row above.",
+    ]
+    return ("kinds.md", "\n".join(lines) + "\n", "Content kinds & confidence",
+            "Per-kind honesty ratings, generated from KIND_CONFIDENCE.")
+
+
 def _site_index(module_slugs: list[tuple[str, str]]) -> tuple[str, str]:
     """Landing page for the site's sdk-api section. Returns (body, description)."""
     from .api import API_VERSION
@@ -195,6 +275,11 @@ def _site_index(module_slugs: list[tuple[str, str]]) -> tuple[str, str]:
         "## CLI",
         "",
         "- [CLI command inventory](/reference/sdk-api/cli/) — every `rsmm` subcommand.",
+        "",
+        "## Content kinds",
+        "",
+        "- [Content kinds & confidence](/reference/sdk-api/kinds/) — every kind, "
+        "its rating, and its builder.",
         "",
         "## Modules",
         "",
@@ -229,6 +314,10 @@ def generate(out_dir: Path | None, site_out: Path | None = None) -> list[Path]:
     cli_rel, cli_body, cli_title, cli_desc = _cli_page()
     written += _write(out_dir, site_out, cli_rel, cli_body, cli_title, cli_desc)
 
+    # kinds.md — the one place a kind's confidence is written down for readers.
+    k_rel, k_body, k_title, k_desc = _kinds_page()
+    written += _write(out_dir, site_out, k_rel, k_body, k_title, k_desc)
+
     # Site landing page (index.md) — site only; the repo copy uses README.md.
     site_body, site_desc = _site_index(module_slugs)
     written += _write(None, site_out, "index.md", site_body, "SDK API reference", site_desc)
@@ -239,6 +328,8 @@ def generate(out_dir: Path | None, site_out: Path | None = None) -> list[Path]:
                  "API version: see `rsmm.sdk.api.API_VERSION`", "",
                  "## CLI", "",
                  "- [cli](cli.md) — every `rsmm` subcommand", "",
+                 "## Content kinds", "",
+                 "- [kinds](kinds.md) — every kind and its confidence rating", "",
                  "## SDK modules", ""]
     for slug, _mod_name in module_slugs:
         idx_lines.append(f"- [{slug}]({slug}.md)")

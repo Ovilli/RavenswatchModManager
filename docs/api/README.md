@@ -6,6 +6,10 @@ API version: see `rsmm.sdk.api.API_VERSION`
 
 - [cli](cli.md) — every `rsmm` subcommand
 
+## Content kinds
+
+- [kinds](kinds.md) — every kind and its confidence rating
+
 ## SDK modules
 
 - [builder](builder.md)

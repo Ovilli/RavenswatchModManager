@@ -109,7 +109,7 @@ def test_mesh_is_a_registered_kind():
     from rsmm.sdk import content as C
 
     assert "mesh" in C.KINDS
-    assert C.KIND_CONFIDENCE["mesh"] == "experimental"
+    assert C.KIND_CONFIDENCE["mesh"] == "confirmed"
     assert C._load_kind("mesh").__name__.endswith("meshes")
 
 
