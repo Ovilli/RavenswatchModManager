@@ -108,10 +108,13 @@ KIND_CONFIDENCE: dict[str, str] = {
     "tilegen": "experimental",  # the recipe codec round-trips all 494 shipped tilegen objects
                               # byte-exactly and validate() enforces every cross-dimension,
                               # but no edited recipe has been generated in-game yet.
-    "shop": "experimental",   # Sandman shop prices + offer generators, overridden in place.
+    "shop": "confirmed",      # Sandman shop prices + offer generators, overridden in place.
                               # Field meaning is read off the live exe's generator (0x1402d9280),
                               # quality roll and price function (0x1402d4200), and every edit
-                              # round-trips byte-for-byte; no edited shop opened in-game yet.
+                              # round-trips byte-for-byte. PROVEN IN GAME 2026-09-13
+                              # (sandman-shop-test): edited prices of 1 were what the shop
+                              # charged. Minor must roll >= 2 items or opening the shop
+                              # divides by zero (enforced by shops._check_rollable).
     "melody": "guess",        # all 12 retail melodydefs round-trip byte-for-byte and every
                               # mined exclusion string is an exact GameModifier stem, but
                               # neither lever (effect repoint, exclusion list) has been

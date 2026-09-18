@@ -11,7 +11,7 @@ Every content kind carries an honesty rating — how much the bytes it emits are
 Do not edit by hand, and do not restate a rating in prose — link here. Run `rsmm docs-gen` after changing a rating; CI `--check`s it.
 :::
 
-**15 kinds** — 4 confirmed, 7 experimental, 4 guess.
+**15 kinds** — 5 confirmed, 6 experimental, 4 guess.
 
 | Kind | Confidence | Builder | What it does |
 |---|---|---|---|
@@ -29,7 +29,7 @@ Do not edit by hand, and do not restate a rating in prose — link here. Run `rs
 | `poi` | ✅ confirmed | `rsmm.sdk.kinds.poi` | **POI / structure** builder — put a point of interest into any chapter. |
 | `mesh` | ✅ confirmed | `rsmm.sdk.kinds.meshes` | **Mesh** content builder — put the mod's model in place of a shipped one. |
 | `tilegen` | ⚠️ experimental | `rsmm.sdk.kinds.tilegen` | Chapter map-generation recipe content builder. |
-| `shop` | ⚠️ experimental | `rsmm.sdk.kinds.shops` | **Shop** editor — change what the Sandman sells and what it costs. |
+| `shop` | ✅ confirmed | `rsmm.sdk.kinds.shops` | **Shop** editor — change what the Sandman sells and what it costs. |
 
 ## What a rating means
 

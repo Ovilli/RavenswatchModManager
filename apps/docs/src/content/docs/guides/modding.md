@@ -760,7 +760,6 @@ declares at most one.
 ```toml
 [mod]
 id           = "cheap-sandman"
-experimental = true            # shop is ⚠️ experimental
 multiplayer_scope = "deterministic-shared"   # every peer needs the same shop
 
 [[content]]

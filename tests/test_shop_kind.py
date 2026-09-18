@@ -74,8 +74,8 @@ def test_kind_is_registered_and_resolves_to_this_module():
 
 
 def test_kind_confidence_is_honest():
-    # No edited shop has been opened in-game yet.
-    assert KIND_CONFIDENCE["shop"] == "experimental"
+    # Proven in game 2026-09-13: edited prices were what the Sandman charged.
+    assert KIND_CONFIDENCE["shop"] == "confirmed"
 
 
 # --- the evidence this kind rests on ---------------------------------------
