@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { auth } from '../auth.js';
-import { errString } from '../logger.js';
 import { githubConfigured, googleConfigured } from '../env.js';
+import { errString } from '../logger.js';
 import type { AppEnv } from '../types.js';
 
 /**
