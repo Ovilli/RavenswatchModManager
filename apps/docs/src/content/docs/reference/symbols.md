@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **280** symbols across 22 categories.
+Total: **282** symbols across 22 categories.
 
 ## analytics
 
@@ -105,6 +105,7 @@ Total: **280** symbols across 22 categories.
 | `Serializer_ResolveObjectId` | `0x140500630` | ❓ unverified |  | bool(void* loader, void** out, const char* label) |
 | `ServiceRegistry_Global` | `0x14146f740` | 📍 va |  | Global engine service registry: service array @+0x30, u32 count @+0x38; each entry -> s… |
 | `StringVector_Serialize` | `0x140684f30` | ❓ unverified |  | bool(void* reader, void* strVec) |
+| `Vector_InsertRange` | `0x1401556e0` | ✅ ok | ✔ | void*(void* vector, unsigned index, unsigned count) |
 
 ## entity
 
@@ -302,6 +303,7 @@ Total: **280** symbols across 22 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
+| `GameModifierUi_PadSelectedSlots` | `0x140360c20` | ✅ ok | ✔ | void(void* uiController, void* unknown, void* selectedVector) |
 | `g_GameOptions` | `0x14143cb58` | 📍 va |  | [2026-07-10: re-derived post 2026-07-09 patch (was 0x141436510); ctor is now FUN_1401ca… |
 
 ## resource

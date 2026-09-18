@@ -246,6 +246,23 @@ def _has_offset(body: str, off: int) -> bool:
 # single decisive key (vftable) is enough and several weak ones combine.
 
 
+#: Cached text scans. One `tok in body` sweep is a pass over the whole 80 MB
+#: corpus, and a batch resolver re-asks for the same token across hundreds of
+#: candidate locators — tools/mine_locators.py went from minutes per symbol to
+#: seconds on this alone. Keyed by build identity so two Builds never share.
+_TEXT_POOL: dict[tuple[int, str], set[int]] = {}
+
+
+def text_pool(b: Build, tok: str) -> set[int]:
+    """Addresses whose decompiled body contains `tok` (memoized)."""
+    key = (id(b), tok)
+    pool = _TEXT_POOL.get(key)
+    if pool is None:
+        pool = {a for a, body in b.code.items() if tok in body}
+        _TEXT_POOL[key] = pool
+    return pool
+
+
 def resolve_locator(b: Build, loc: dict, located: dict[str, int],
                     self_addr: int | None = None) -> tuple[list[int], str]:
     """Resolve a structured locator to matching addresses. Returns (addrs, why)."""
@@ -310,14 +327,13 @@ def resolve_locator(b: Build, loc: dict, located: dict[str, int],
         why.append(f"co-called with {n}")
 
     for s in loc.get("strings") or []:
-        pools.append({a for a, body in b.code.items() if s in body})
+        pools.append(text_pool(b, s))
         why.append(f"contains {s!r}")
 
     for c in loc.get("consts") or []:
         tok = c if isinstance(c, str) else f"0x{c:x}"
-        tok = tok.lower()
-        pools.append({a for a, body in b.code.items() if tok in body})
-        why.append(f"embeds {tok}")
+        pools.append(text_pool(b, tok.lower()))
+        why.append(f"embeds {tok.lower()}")
 
     offsets_pre = [int(str(o), 16) for o in (loc.get("offsets") or [])]
     if not pools and len(offsets_pre) >= 4:

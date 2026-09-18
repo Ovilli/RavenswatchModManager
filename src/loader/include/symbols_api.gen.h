@@ -297,6 +297,13 @@ inline GameModifierDef_PostLoad_fn GameModifierDef_PostLoad() {
     return reinterpret_cast<GameModifierDef_PostLoad_fn>(rsmm::fn_resolve(Sym::GameModifierDef_PostLoad_Pattern));
 }
 
+// GameModifierUi_PadSelectedSlots  (GameModifierUi_PadSelectedSlots)
+//   void(void* uiController, void* unknown, void* selectedVector)
+using GameModifierUi_PadSelectedSlots_fn = void(*)(void*, void*, void*);
+inline GameModifierUi_PadSelectedSlots_fn GameModifierUi_PadSelectedSlots() {
+    return reinterpret_cast<GameModifierUi_PadSelectedSlots_fn>(rsmm::fn_resolve(Sym::GameModifierUi_PadSelectedSlots_Pattern));
+}
+
 // GroupLevelComponent_Ctor  (GroupLevelComponent_Ctor)
 //   void*(void* self)
 using GroupLevelComponent_Ctor_fn = void*(*)(void*);
@@ -638,6 +645,13 @@ inline UiButton_PressCommit_fn UiButton_PressCommit() {
 using Vector_Grow_fn = void(*)(void*, uint64_t, uint32_t);
 inline Vector_Grow_fn Vector_Grow() {
     return reinterpret_cast<Vector_Grow_fn>(rsmm::fn_resolve(Sym::Vector_Grow_Pattern));
+}
+
+// Vector_InsertRange  (Vector_InsertRange)
+//   void*(void* vector, unsigned index, unsigned count)
+using Vector_InsertRange_fn = void*(*)(void*, unsigned, unsigned);
+inline Vector_InsertRange_fn Vector_InsertRange() {
+    return reinterpret_cast<Vector_InsertRange_fn>(rsmm::fn_resolve(Sym::Vector_InsertRange_Pattern));
 }
 
 // XpComponent_GetMaxLevel  (XpComponent_GetMaxLevel)

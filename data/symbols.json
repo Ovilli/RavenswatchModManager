@@ -167,7 +167,15 @@
    "refs": [
     "src/loader/src/hook_events.cpp",
     "docs/_re/kinds/events.md"
-   ]
+   ],
+   "locator": {
+    "strings": [
+     "passtech-ravenswatch"
+    ],
+    "called_by": [
+     "Event_RunEnd"
+    ]
+   }
   },
   {
    "name": "BinarySaver_CollectDependencies",
@@ -233,7 +241,20 @@
    "note": "3DBookController settings->runtime resolve (vftable 0x140f23368 slot 5). PROOF the tab count is HARDCODED at 5: resolves a fixed 5-entry picker array from settings+0x228 (stride 0x40, entries type-checked as oCEntityCpntEntitySpawner) into runtime+0xf8..+0x118 (the 5 tab entities) and a second 5-array settings+0x4e8 -> runtime+0x98. The settings deserializer FUN_140307130 likewise constructs both arrays with _eh_vector_constructor_iterator_(count=5, size=0x40) at settings+0x1f8 and +0x4b8 (version-gated, class hash 0x1781bd84). No children scan anywhere -> a 6th tab cannot be added by data; mod-menu UI must REUSE an existing tab/page slot, or a future loader detour must rewire one of the 5 slots. Runtime class: hash 0x1781bd6c size 0x230 ctor FUN_140307b10 (registrar FUN_14027db30, descriptor global DAT_1414709b8). [2026-07-10: recovered via anchor/decompile-verify (batch 2) after the July-9 remap mis-placed it.]",
    "refs": [
     "docs/_re/kinds/ui-menus.md"
-   ]
+   ],
+   "locator": {
+    "consts": [
+     "0x1781bd84"
+    ],
+    "offsets": [
+     "0x98",
+     "0xf8",
+     "0x118",
+     "0x1f8",
+     "0x228",
+     "0x4b8"
+    ]
+   }
   },
   {
    "name": "BookController_ResolveTabs",
@@ -373,7 +394,12 @@
    "note": "Builds the 256-entry CRC32 lookup table at DAT_141436710 (lazy, runtime — the table is BSS, not stored in the image). Uses polynomial 0x04C11DB7 with input/output bit-reflection, i.e. it produces the standard reflected CRC32 table (equivalent poly 0xEDB88320). Confirms NamedEvent_Id_FromCrc / Id_HashString are plain CRC32, replicable in tooling. [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
    "refs": [
     "data/symbols.json"
-   ]
+   ],
+   "locator": {
+    "consts": [
+     "0x4c11db7"
+    ]
+   }
   },
   {
    "name": "CustomFlagFilter_Serialize",
@@ -385,7 +411,18 @@
    "note": "oCCustomFlagFilter serialize (hash 0x15a9d9bf): two inline oCCustomFlagList sub-objects — required @+0x8, excluded @+0x20. Explains the runtime reward-roll offsets: oCItem filter @+0xb8 -> required @+0xc0, excluded @+0xd8. [2026-07-09: remap landed on ambiguous stub; not trusted.] [recover_unverified 2026-07-17: relocated to 0x140189830 via hash 0x15a9d9bf]",
    "refs": [
     "docs/_re/kinds/rewards.md"
-   ]
+   ],
+   "locator": {
+    "consts": [
+     "0x15a9d9bf"
+    ],
+    "offsets": [
+     "0x20",
+     "0xb8",
+     "0xc0",
+     "0xd8"
+    ]
+   }
   },
   {
    "name": "CustomFlagList_ContainsAll",
@@ -503,7 +540,16 @@
    "note": "oCDtDefinition (hash 0x1768ce8e) base deserialize, called first by every *def.ot deserializer: class version 0 = nothing, v1+ = two u8 bools into def+0x285 / def+0x284. These are the codec's base_a/base_b bytes. [2026-07-09: remap ambiguous/unbuildable pattern; not trusted.] [2026-07-09: recovered via hash/decompile verification.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
-   ]
+   ],
+   "locator": {
+    "consts": [
+     "0x1768ce8e"
+    ],
+    "offsets": [
+     "0x284",
+     "0x285"
+    ]
+   }
   },
   {
    "name": "Definition_PostLoad",
@@ -856,7 +902,19 @@
    "note": "2026-07-18 RE (typed-DB session). Free-list node allocator behind EntityStore_CreateEntity {freecount +0x10, head +0x18, livecount +0x28, tail +0x38}. On pool-empty it constructs via a vcall (*(pool+8))->vtbl[+0x50]() then runs vtbl[+0x18] (init) on the new node. Pattern unique (0/1, 37 bytes). NOT CALL-TESTED.\n\n[2026-09-13, Ghidra] The constructor vcall IS resolved: pool+8 is the owning oCEntitySettings (its ctor FUN_1406dfe30 sets param_1[4] = param_1), and slot +0x50 of oCEntitySettings::vftable (0x140f74688) is FUN_1406e0840 -> FUN_1406f9920, which mallocs 0x640 and runs the oCEntity ctor FUN_1406e2580(entity, settings) — template stored at entity+0x28. So the class was never unknown; the pool belongs to the template. See EntityStore_CreateEntity.",
    "refs": [
     "docs/_re/kinds/spawn-system.md"
-   ]
+   ],
+   "locator": {
+    "called_by": [
+     "EntityStore_CreateEntity"
+    ],
+    "offsets": [
+     "0x10",
+     "0x18",
+     "0x28",
+     "0x38",
+     "0x50"
+    ]
+   }
   },
   {
    "name": "EntitySpawner_InstantiateRecord",
@@ -868,7 +926,18 @@
    "note": "2026-07-18 RE (typed-DB session). Record -> live entity bridge. record[0] = entity store, record+8 = 4x4 transform. Calls EntityStore_CreateEntity(ctx=FUN_140730860(), store=record[0], xform=record+8, cbCtx), optionally scales via settings (+0x150/+0x158 float) through FUN_1406e3a90, registers a listener on entity+0x570 vector, appends the entity to self+0x210 and writes it back to record[0x10]. Pattern unique (0/1, 49 bytes). NOT CALL-TESTED.",
    "refs": [
     "docs/_re/kinds/spawn-system.md"
-   ]
+   ],
+   "locator": {
+    "calls": [
+     "EntityStore_CreateEntity"
+    ],
+    "offsets": [
+     "0x150",
+     "0x158",
+     "0x210",
+     "0x570"
+    ]
+   }
   },
   {
    "name": "EntitySpawner_SpawnOne",
@@ -880,7 +949,12 @@
    "note": "2026-07-18 RE (typed-DB session). oCEntityCpntEntitySpawner vtable slot 28 (+0xe0). CORRECTS the stale note in memory/docs: the spawner vtable is 0x140f26a30 (30 slots), NOT 0x140f20cf0; 0x140f06ad8 is oCTFlagSet, not oCSpawnerGoEntityCollector. Spawn-one routine: resolves the target entity store (spawner+0xc8 vcall +0xf0, else *(owner+0x1a8)+0x98), allocates a spawn record via FUN_1407343a0, fills a 4x4 transform (settings+0x1bc mode 0=identity/1=from spawner+0x180), push_backs the record to the vector at self+0x1c0 {count +0x1c8, cap +0x1cc}, then calls EntitySpawner_InstantiateRecord. Only DATA xrefs (vtable slot) -> reached virtually only. Pattern unique (match_index 0/1, 35 bytes). NOT CALL-TESTED in-game; no cabi on purpose.",
    "refs": [
     "docs/_re/kinds/spawn-system.md"
-   ]
+   ],
+   "locator": {
+    "calls": [
+     "EntitySpawner_InstantiateRecord"
+    ]
+   }
   },
   {
    "name": "EntityStore_CreateEntity",
@@ -953,7 +1027,14 @@
    "refs": [
     "docs/_re/kinds/game-modifiers.md",
     "docs/_re/kinds/entity-values.md"
-   ]
+   ],
+   "locator": {
+    "consts": [
+     "0x187aaecf"
+    ],
+    "lines_min": 1232,
+    "lines_max": 1506
+   }
   },
   {
    "name": "EntityValueStore_ApplyModifierEvent",
@@ -974,7 +1055,20 @@
    "note": "The engine's DURABLE add-a-stat-modifier routine. Reads the modifier request (built by ModifierEvent_Ctor into an oCGameEventNetworkModifier, vftable 0x140f322d0), constructs an oCEntityValueModifier (flag@+0x30=1, id@+0x38, value union@+0x08, amount f32@+0x3c, base f32@+0x40, subscriber list @+0x570), inserts it into the per-key modifier registry (store+0x88 SwissTable), then re-folds the override cache entry (store+0xc0 via EntityValueOverride_Alloc) so the new value takes effect immediately AND survives recompute. Combine mode `op` (read from the value-def @+0x68) selects the fold: 1=ADDITIVE (val += amount*scale), 2=SET (override value + base), 3=MATCH-REPLACE (replace a modifier with the same source/id), 4=MIN/priority (keep smallest-delta). This is the correct entry point for a permanent stat change. NOTE: param_2 is a fully-built modifier event; wiring from Lua needs the event payload (op/key/amount, id@+0x54, the virtual fill at def+0x20) decoded + a live playtest before it can be trusted engine-mutating. Decompile-verified live 2026-07-13.",
    "refs": [
     "docs/_re/kinds/stats.md"
-   ]
+   ],
+   "locator": {
+    "calls": [
+     "EntityValueOverride_Alloc"
+    ],
+    "offsets": [
+     "0x8",
+     "0x20",
+     "0x30",
+     "0x38",
+     "0x3c",
+     "0x40"
+    ]
+   }
   },
   {
    "name": "EntityValueStore_InitBaseValues",
@@ -992,7 +1086,20 @@
    "note": "Store bootstrap: registers three internal event listeners (stored at store+0x168/+0x170/+0x178 via the event pool at entity+0x500), then, for a magical-object-owning entity (Entity_LookupMagicalObjectComponent non-null), seeds the override cache (store+0xc0) from the base value defs and the initial modifier set — the same fold EntityValueStore_Recompute performs, run once at setup. Confirms the store layout used by the R.stat path: keys @store+0x88 registry, cache @store+0xc0/count+0xc8. Read-only reference for durable-modifier wiring. Decompile-verified live 2026-07-13.",
    "refs": [
     "docs/_re/kinds/stats.md"
-   ]
+   ],
+   "locator": {
+    "calls": [
+     "Entity_LookupMagicalObjectComponent"
+    ],
+    "offsets": [
+     "0x88",
+     "0xc0",
+     "0xc8",
+     "0x168",
+     "0x170",
+     "0x178"
+    ]
+   }
   },
   {
    "name": "EntityValueStore_Recompute",
@@ -1233,7 +1340,16 @@
    "note": "Hero damage-taken handler (param_1 = hero HP-carrier; reads current HP @+0x15c8, value ctx @+0x2f8, and the dream-shards-on-damage / damage-reduction value keys 0x188831a6/0x188832a9/0x1887e5ac/0x1ab19456, calling Entity_ModifyHealth for 'Damage' / 'Dream Shards on Damage'). Pointer-only args (ptr,ptr,ptr). RE-ANCHORED 2026-07-13: the prior raw FUN_1403a7710 was mid-function on the current build. Used read-only as a hero-capture anchor (the mirror plausibility check filters non-hero entities that also take damage).",
    "refs": [
     "src/loader/lib/rsmm.lua"
-   ]
+   ],
+   "locator": {
+    "strings": [
+     "Dream Shards on Damage"
+    ],
+    "offsets": [
+     "0x2f8",
+     "0x15c8"
+    ]
+   }
   },
   {
    "name": "Entity_GetComponentByTester",
@@ -1290,7 +1406,18 @@
    "note": "SwissTable/F14 component-map lookup on an entity for the fixed type-id 0x154fce5c (the net/replication component). Probes the entity's component map (control bytes @entity+0x5e8, slots @entity+0x5f0, bucket mask @entity+0x600) and returns the component pointer, or 0 if the entity has none (e.g. single-player / non-replicated). The returned component's byte @+0x130 is the local/remote AUTHORITY flag: 0 = locally controlled (this client owns the entity and emits its NETWORK_DAMAGE), nonzero = remotely controlled (apply received state, don't emit). Both hit paths (NamedEvent_EmitNetworkDamageFromHit, the attack resolver FUN_1403dc780) gate network emit on this flag. NOTE: it dereferences the component map unconditionally, so only call on a known-valid entity. Pattern is multi-match (index 3/6, 128-byte sig) — fn_verify-guarded. Relevant to local-vs-remote hero disambiguation in co-op, though hero-capture already pins the local player via the HUD-mirror requirement (only the local player has one). [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.] SLOT LAYOUT (recovered 2026-08-17 from the decompile): the slot array at entity+0x5f0 has stride 0x10 -- {u32 class id @+0, component* @+8} -- and the value at +0x600 is the bucket MASK (capacity-1). That makes the map walkable LINEARLY with page-guarded reads and no hash function, which is how R.damage classifies a damage victim (enemy = carries class id 0x1561073c). The id space is mined by tools/mine_class_ids.py; 0x154fce5c resolving to oCEntityCpntNetwork is that miner's acceptance test. NO FIXED COMPONENT SLOTS: because the map is a hash table, an entity component is NOT reachable at any constant offset from the entity, so a chain of the form `entity+CONST -> +CONST` can never be a structural path to a component (or to anything a component owns). Checked 2026-08-20 after the damage meter briefly seeded two such chains from session 7068 (`entity+0x678 -> +0x2d0`, `entity+0xad8 -> +0x1c0`) as if they were build constants: a sweep of all 65,347 .pdata functions finds ZERO sites loading [X+0x678] then reading [+0x2d0], zero for [X+0xad8] -> [+0x1c0], and +0xad8 is never touched on any register that also walks an entity (the same sweep does find real chains such as [X+0xb8] -> [+0x20], so it is not blind). The only qword-pointer write at +0x678 in entity-shaped code is oe::dt::EntityCpntRecapBookPageSettings::~dtor (FUN_140419aa0), an unrelated UI class. Both chains were heap coincidence; they are no longer seeded, and a chain is only used once observed on the live board. Do not re-derive per-player identity as a constant entity offset.",
    "refs": [
     "src/loader/src/hook_events.cpp"
-   ]
+   ],
+   "locator": {
+    "consts": [
+     "0x154fce5c"
+    ],
+    "offsets": [
+     "0x130",
+     "0x5e8",
+     "0x5f0",
+     "0x600"
+    ]
+   }
   },
   {
    "name": "Entity_GetNetId",
@@ -1315,7 +1442,20 @@
    "refs": [
     "src/loader/src/hook_events.cpp",
     "src/loader/lib/rsmm.lua"
-   ]
+   ],
+   "locator": {
+    "consts": [
+     "0x15c028c2"
+    ],
+    "offsets": [
+     "0x10",
+     "0x18",
+     "0x78",
+     "0xa0",
+     "0x2f8",
+     "0x4c8"
+    ]
+   }
   },
   {
    "name": "Entity_LookupMagicalObjectComponent",
@@ -1357,7 +1497,20 @@
    "refs": [
     "src/loader/lib/rsmm.lua",
     "src/loader/src/fn_call.cpp"
-   ]
+   ],
+   "locator": {
+    "called_by": [
+     "Entity_GainHealthHandler"
+    ],
+    "offsets": [
+     "0x10",
+     "0x15c8",
+     "0x15cc",
+     "0x15d0",
+     "0x1d80",
+     "0x1db0"
+    ]
+   }
   },
   {
    "name": "Entity_ResolveAttackHits",
@@ -1379,7 +1532,16 @@
    "note": "Attack-resolution / multi-target hit applier — the real producer that builds an oCEntityHitData per target and calls Entity_DispatchHit. param_1 = attacker context (its hit-def array @+0xd8, entity @+0x8); param_2 = index into that hit-def array; param_3 = target list {count @+0x0, entity** @+0x8}; param_4 = damage multiplier; param_5 = base damage (if <=0, pulled from the hit-def's value object). Per target it: allocs a hit handle (FUN_140214f30, released by NamedEvent_Delete), stack-builds the 0xb0 oCEntityHitData (vft=oCEntityHitData_vftable, 4 constant template vectors from 0x140fc6c10/6c50/6e70/7240, hit-value obj* whose +0x8 = the damage, attacker @ a slot, target position from target.vtable[+0x48], source net-id via Entity_GetNetComponent), then Entity_DispatchHit(target, hitData). THE ENEMY-DAMAGE ENTRY POINT: there is no standalone oCEntityHitData ctor — construction is inlined here and needs a real attacker hit-def, so synthesizing a hit from nothing is impractical. The viable mod path is to HOOK this and AMPLIFY/redirect: scale the hit-value damage (*(hitval+0x8)) or swap the target list. See docs/_re/kinds/enemy-damage.md. [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
    "refs": [
     "docs/_re/kinds/enemy-damage.md"
-   ]
+   ],
+   "locator": {
+    "calls": [
+     "Entity_DispatchHit"
+    ],
+    "offsets": [
+     "0x48",
+     "0xd8"
+    ]
+   }
   },
   {
    "name": "Entry_Ctor",
@@ -1455,7 +1617,12 @@
    "refs": [
     "src/loader/src/hook_events.cpp",
     "docs/_re/kinds/events.md"
-   ]
+   ],
+   "locator": {
+    "strings": [
+     "level_up_reach"
+    ]
+   }
   },
   {
    "name": "Event_RunEnd",
@@ -1475,7 +1642,12 @@
    "refs": [
     "src/loader/src/hook_events.cpp",
     "docs/_re/kinds/events.md"
-   ]
+   ],
+   "locator": {
+    "strings": [
+     "run_end"
+    ]
+   }
   },
   {
    "name": "FileStream_Open",
@@ -1556,7 +1728,12 @@
    "note": "Registers the '*.gamemodifierdef.ot' asset glob -> GameModifierDefinition library loader (label 'Game modifier definition'); calls generic glob-register FUN_1404a2190. Proves modifier defs are file-additive (new def file auto-registers, no machinery). Address not pattern-confirmed across updates. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via string/hash anchor.]",
    "refs": [
     "docs/_re/kinds/game-modifiers.md"
-   ]
+   ],
+   "locator": {
+    "strings": [
+     "Game modifier definition"
+    ]
+   }
   },
   {
    "name": "GameScene_FindContextByTester",
@@ -1633,7 +1810,12 @@
    "note": "Registers the per-run HasGameModifierStateMachine component type (component id 0x1b49a36c) that tracks which GameModifiers are active this run. Address not pattern-confirmed across updates. [2026-07-10: recovered via anchor/decompile-verify (batch 2) after the July-9 remap mis-placed it.]",
    "refs": [
     "docs/_re/kinds/game-modifiers.md"
-   ]
+   ],
+   "locator": {
+    "consts": [
+     "0x1b49a36c"
+    ]
+   }
   },
   {
    "name": "HeroController_Ctor",
@@ -1651,7 +1833,20 @@
    "note": "Constructor of oCDtEntityCpntHeroController — THE object R.entity/R.combat capture (the 'hero pointer'); it is the hero CONTROLLER COMPONENT, not the top-level entity. Confirms the capture layout: vftable @+0x0; current HP f32 @+0x15c8, max HP @+0x15cc, missing-health ratio @+0x15d0 (default 1.0f), ratio divisor @+0x15d4 (default 0.5f); HUD HP-mirror pointer @+0x1d80 (index 0x3b0) is built here via HeroController_HudMirror_Ctor (FUN_1403b2f20) — this is why +0x1d80 is the local-hero discriminator. Component size ~0x1e40. ARCHITECTURE: the hero's stats are oe::EntityCpntValueSignal<bool|int|float|oCVec3> reactive-signal sub-components (dozens of them) — a change to a signal fires on the gameplay bus, which is why stat changes are observable as named events. HP is additionally MIRRORED to the plain f32 at +0x15c8 for the hot path, which is exactly why R.combat can read/write it directly while most other stats live inside signal objects (no fixed plain-float offset). A 10-slot ability/input config block of int tags sits at +0x1fc..+0x220 = {0,1,1,1,2,1,1,1,1,3}. [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
    "refs": [
     "src/loader/lib/rsmm.lua"
-   ]
+   ],
+   "locator": {
+    "calls": [
+     "HeroController_HudMirror_Ctor"
+    ],
+    "offsets": [
+     "0x1fc",
+     "0x220",
+     "0x15c8",
+     "0x15cc",
+     "0x15d0",
+     "0x15d4"
+    ]
+   }
   },
   {
    "name": "HeroController_HudMirror_Ctor",
@@ -1818,7 +2013,20 @@
    "note": "Per-hero damage-dealt accounting, and the ONLY source that sees allies. It fires on every hero in the session, local or remote - the engine merely skips the TOTALLING branch for a non-local hero, so the callback itself is a faithful per-player damage feed and is what makes a co-op damage meter possible without netcode RE. param_1 is the hero CONTROLLER (entity @+0x8, is-local byte @+0x1d88, HUD mirror @+0x1d80, stats block @+0x1db0); param_3 is the damage payload (value object @+0x10 -> amount f32 @+0x08, source @+0xa0 -> type u32 @+0xc8). Hook shape 'vpppi'. Backs R.damage. CORRECTED 2026-08-17: param_2 is the VICTIM ENTITY, not a stats block (the earlier note said stats). Proof: the sole caller FUN_1403c7560 passes its own param_2 to Entity_GetNetComponent (FUN_140312db0) and touches it at +0x28 / +0x4d8, i.e. an oCEntity; inside this function param_2+0x28 is the entity's definition object, whose +0x70 resource path is stringified into the analytics record (falling back to \"Unknown\") and whose flag lists at +0x2c0 / +0x318 are appended to it. That makes the victim available to a hook, which is what lets a damage meter tell an enemy from a destructible prop -- see EnemyController_vftable.",
    "refs": [
     "docs/_re"
-   ]
+   ],
+   "locator": {
+    "strings": [
+     "Unknown"
+    ],
+    "offsets": [
+     "0x8",
+     "0x10",
+     "0x28",
+     "0x70",
+     "0xa0",
+     "0xc8"
+    ]
+   }
   },
   {
    "name": "HeroStats_OnDamageTaken",
@@ -1873,7 +2081,19 @@
    "note": "The engine's gain-experience routine. arg1 = the hero's XP/Level component (XpComponent, sibling component on the hero oCEntity; locate via Entity_GetComponentByTester or by scanning the entity component array for XpComponent_vftable). arg2 = an XP-gain struct whose amount to add is *(int*)(arg2+0x50). Reads current level/xp at *(*(xpComp+0x108)) {[0]=level,[4]=xp}, loops subtracting the per-level threshold (curve at *(xpComp+0x10)+0x1d8, count +0x1e0) and leveling up, then sets remainder via XpComponent_SetXp and new level via XpComponent_SetLevel (which fires the _XP_LEVEL_UP named event). Gated by max-level check FUN_1402e2d90. Decompile-verified live 2026-07-13.",
    "refs": [
     "docs/_re/kinds/stats.md"
-   ]
+   ],
+   "locator": {
+    "calls": [
+     "XpComponent_SetLevel"
+    ],
+    "offsets": [
+     "0x10",
+     "0x50",
+     "0x108",
+     "0x1d8",
+     "0x1e0"
+    ]
+   }
   },
   {
    "name": "Hero_GrantMagicalObject",
@@ -1895,7 +2115,14 @@
    "note": "Grants a magical object (by its definition) to the hero — the routine the GIVE_MAGICAL_OBJECT handler calls. Per copy: MagicalObject_RegisterInstance(hero, inst) creates/registers the owned instance, fires the item-acquired scene event 0x1a9cae51, and runs duplicate/curse rolls. PROOF that entity-value keys are STRUCTURED base+index (not name CRCs): the dup rolls read EntityValue_Lookup(store, &out, rarityIdx + 0x1a19e789) and (rarityIdx + 0x1c678b88) — a base id plus the rarity index 0..5. param_3=count, param_4=apply-dup-roll, param_5=source-tag flag list. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [recover_unverified 2026-07-17: relocated to 0x140397aa0 via hash 0x1a9cae51]",
    "refs": [
     "data/symbols.json"
-   ]
+   ],
+   "locator": {
+    "consts": [
+     "0x1a19e789"
+    ],
+    "lines_min": 375,
+    "lines_max": 459
+   }
   },
   {
    "name": "Id_HashString",
@@ -2026,7 +2253,14 @@
    "status": "ok",
    "signature": "bool(void* mgr, void* key, void** outLevel, char link, char flag, void* lvlId, void* registry)",
    "note": "Allocates a level object, deserializes it through the oCTextLoader/oCBinaryLoader path (fields *a_pLvlId / *a_pLinks / *a_pLevel) and, ON A NON-1 RESULT, calls the level destructor FUN_140482d90 (which runs LevelObject_DestroyVectors) on the half-built object and returns 0. That destroy is the crash: see LevelLoad_AbortPredicate. The container the teardown walks is at level+0x10, its object vector at +0x90 with the count at +0x98 — matching the crash dump's rbx+0x80/rbx+0x88. [PROMOTED to ok 2026-09-10: 0x14047c1e0 is a function START per the module's .pdata exception table. Promoted so hook_levelbuild.cpp can COUNT its calls — which measures how many objects a level actually instantiates without depending on any struct offset. That matters: the first version of that trace read a guessed count field and reported ZERO objects for every level in the game, vanilla ones included, which is a wrong offset rather than a finding.]\n\n[2026-09-11] ONE UNRESOLVED REFERENCE DESTROYS THE WHOLE LEVEL. The sequence is ResourceRef_Resolve(level+0xd0, classDesc, level+0x100, &policy) followed immediately by LevelStream_LoadStep(level+0x10, level+0x100, level+0x150, level+0xa0); if that step returns anything other than 1 the function destroys the level object and returns 0 with *outLevel = NULL. classDesc defaults to the global at 0x141476278 when level+0xf0 is null.\n\nThis is the mechanism behind the additive-POI symptom recorded in rsmm.sdk.kinds.poi._emit_prop_override: a mod-added entity that fails to resolve does not produce a missing prop in an otherwise fine level, it fails the ENTIRE level load. So 'the level did not load' and 'one reference was null' are the same observation, and a trace must name WHICH reference.",
-   "refs": []
+   "refs": [],
+   "locator": {
+    "calls": [
+     "LevelStream_LoadStep"
+    ],
+    "lines_min": 69,
+    "lines_max": 85
+   }
   },
   {
    "name": "LevelStream_LoadLevel",
@@ -2247,7 +2481,14 @@
    "note": "Parses one lobby member's ATTRIBUTE BLOB. param_2 is a StringDesc { const char* ptr @+0x0; uint32 len|0x80000000 @+0x8 } holding the serialized attribute text; the body builds a std::string from (ptr, len) and then matches the attribute keys, which is where the only .rdata copies of \"PlayerName\" (0x140f14230), \"RequestedHero\" (0x140fac898), \"RequestedSkin\" (0x140fac8a8), \"InLobby\" (0x140fac8b8) and \"LobbyState\" (0x140fac8c0) are referenced. 12 call sites. Counterpart serializer is LobbyAttributes_Serialize. HOW IT WAS FOUND (2026-08-16): a linear capstone sweep of .text reports ZERO xrefs to \"PlayerName\" because it desyncs on inter-function padding - disassembling per .pdata function range resyncs and yields the three real lea sites. WHY IT MATTERS: player display names cannot come from the platform SDK (the exe imports EOSSDK-Win64-Shipping.dll and no EOS_UserInfo_*; Steam can name only the local account), so a remote name reaches this machine ONLY as a lobby attribute. Detouring this is how R.lobby learns names without sweeping the address space: the 32-byte key/value blocks the old scan searched for are this parse's TRANSIENT storage, not a persistent roster, which is why a 4-player session scanned back only 2 members.",
    "refs": [
     "docs/_re/kinds/events-bus.md"
-   ]
+   ],
+   "locator": {
+    "strings": [
+     "RequestedSkin"
+    ],
+    "lines_min": 531,
+    "lines_max": 650
+   }
   },
   {
    "name": "LobbyAttributes_Serialize",
@@ -2263,7 +2504,16 @@
      "void*"
     ]
    },
-   "note": "Writes this machine's lobby attributes - the counterpart to LobbyAttributes_Parse, referencing the same key literals in the same order. param_2 is the member record: PlayerName's value is a StringDesc at +0x0 (ptr) / +0x8 (len|0x80000000, bit 31 cleared with btr before use at 0x140923f44), with further int fields read from +0x18 and +0x1c. Documented for the layout; the loader hooks the PARSE side, since only that one sees REMOTE members."
+   "note": "Writes this machine's lobby attributes - the counterpart to LobbyAttributes_Parse, referencing the same key literals in the same order. param_2 is the member record: PlayerName's value is a StringDesc at +0x0 (ptr) / +0x8 (len|0x80000000, bit 31 cleared with btr before use at 0x140923f44), with further int fields read from +0x18 and +0x1c. Documented for the layout; the loader hooks the PARSE side, since only that one sees REMOTE members.",
+   "locator": {
+    "strings": [
+     "PlayerName"
+    ],
+    "offsets": [
+     "0x18",
+     "0x1c"
+    ]
+   }
   },
   {
    "name": "HeroSelect_SetConfirmEnabled",
@@ -2273,9 +2523,14 @@
    "status": "ok",
    "signature": "void(void* screen, bool enabled)",
    "locator": {
-    "how": "single_call_site",
-    "caller": "FUN_1403e7d20",
-    "note": "the hero-select screen's ONLY widget-enable call"
+    "co_called_with": [
+     "HeroSelect_ConfirmBlockReason"
+    ],
+    "offsets": [
+     "0x230",
+     "0x238"
+    ],
+    "lines_max": 20
    },
    "note": "Sets the hero-select CONFIRM control's enabled state. 74 bytes, and the whole body is two calls to the generic widget setter 0x1405518b0: `screen+0x230` gets `enabled ^ 1` (the lock overlay) and `screen+0x238` gets `enabled` (the button). Called from exactly ONE site, 0x1403e823c inside the hero-select screen FUN_1403e7d20, and the argument is computed three instructions earlier: `cmp byte [global+0x11a8], 0` -> non-zero writes '*' (0x2a) into `screen+0x378` and passes edx=0, zero writes 0 there and passes dl=1. So the padlock the player sees and the disabled button are one boolean. The global is `*(0x14143CB58)`, referenced by 48 functions; what writes its +0x11a8 was NOT found (the only writers are a struct copy at 0x1401be463 and a dword store at 0x1401caa62), which is why this SETTER, not the flag, is what R.hero.allow_duplicates hooks. ⚠ Forcing it never-disabled is deliberately blunt: the confirm control stays enabled for EVERY reason the screen might disable it, not just a duplicate hero. That is acceptable for an opt-in mod and would not be for anything else. Reached after HeroSelect_IsHeroAvailable was proven insufficient in-game — hooked to true, it fires (log line for the local hero) and the button stays locked."
   },
@@ -2578,7 +2833,12 @@
    "note": "Registers the '*.mapdef.ot' asset glob -> oCDtMapDefinition library loader. Map defs (codec = cooked_schemas.definitions mapdef.json: level_ref/field_a/tribe_ref) are sequenced into chapters by GameModeDefaultDefinition (*.gamemodedefaultdef.ot); chapter type = GameModeDefInternal::Chapter. The chapter->map sequence lives in the gamemodedefaultdef _tail_hex (not yet typed) — the lever for new/random maps (#9/#10). [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
    "refs": [
     "docs/_re/kinds/maps-chapters.md"
-   ]
+   ],
+   "locator": {
+    "strings": [
+     "*.mapdef.ot"
+    ]
+   }
   },
   {
    "name": "MelodyDef_PostLoad",
@@ -2649,7 +2909,20 @@
    "note": "In-place ctor of an oCGameEventNetworkModifier (the durable stat-modifier named event; object carries a modifier request through the same named-event bus R.give uses). Sets the vft chain oCGameNamedEvent (0x140f05aa8) -> ...Network (0x140f09d98) -> oCGameEventNetworkModifier (0x140f322d0), u32 2@+0x08, event id@+0x30 (from valueDef+0x54), default union@+0x60 (EntityValueUnion_DefaultCtor), scale f32 1.0 @+0x84 and @+0x88, byte 1@+0x8c, then calls the value-def's virtual fill `(*(valueDef+0x20))(valueDef, event)` to populate op/key/amount, and clears u32@+0x08. Feed the built event to EntityValueStore_ApplyModifierEvent (or dispatch it via NamedEvent_Dispatch to the entity's dispatcher) to apply a durable modifier. Decompile-verified live 2026-07-13.",
    "refs": [
     "docs/_re/kinds/stats.md"
-   ]
+   ],
+   "locator": {
+    "called_by": [
+     "EntityValueStore_ApplyModifierEvent"
+    ],
+    "offsets": [
+     "0x8",
+     "0x20",
+     "0x30",
+     "0x54",
+     "0x60",
+     "0x84"
+    ]
+   }
   },
   {
    "name": "NamedEvent_ChannelMap_Find",
@@ -2669,7 +2942,14 @@
    "note": "Find-only sibling of Netcode_Channel_LookupById (no insert on miss; miss = iterator at map end). Used by NamedEvent_Dispatch to locate the channel node for an event id. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
    "refs": [
     "docs/_re/kinds/events-bus.md"
-   ]
+   ],
+   "locator": {
+    "called_by": [
+     "NamedEvent_Dispatch"
+    ],
+    "lines_min": 117,
+    "lines_max": 145
+   }
   },
   {
    "name": "NamedEvent_Delete",
@@ -2719,7 +2999,20 @@
    "note": "Reference emitter for NETWORK_DAMAGE: stack-builds the full oCGameNamedEventNetworkDamage (size 0x110) — header as usual, f32 value @+0x40, source net-id @+0x48 (FUN_140726330), embedded oCEntityHitData @+0x50 (vft @+0x50, target entity* @+0x60 refcounted, hit floats/vectors +0x68..0xbc, u64s @+0xc0/0xc8/0xd0, u16 @+0xd8, ptr @+0xe0, instigator entity* @+0xf0 refcounted, flag byte @+0x100) — then sends via NamedEvent_NetSend. Best anchor for decoding the damage payload. For self/non-networked targets it applies locally via Entity_DispatchHit instead of (or alongside) the net send. [2026-07-10: DOWNGRADED — July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RE-PROMOTED 2026-08-16: relocated to FUN_1407276a0, a .pdata function start (0x1407276a0..0x1407279fc). The previous FUN_140743a00 was carried as unverified.]",
    "refs": [
     "docs/_re/kinds/events-bus.md"
-   ]
+   ],
+   "locator": {
+    "calls": [
+     "Entity_DispatchHit"
+    ],
+    "offsets": [
+     "0x40",
+     "0x48",
+     "0x50",
+     "0x60",
+     "0x68",
+     "0xc0"
+    ]
+   }
   },
   {
    "name": "NamedEvent_GiveMagicalObject_Ctor",
@@ -2738,7 +3031,20 @@
    "refs": [
     "src/loader/src/script_lua.cpp",
     "docs/_re/kinds/events-bus.md"
-   ]
+   ],
+   "locator": {
+    "strings": [
+     "NamedEventGiveMagicalObject"
+    ],
+    "offsets": [
+     "0x8",
+     "0x20",
+     "0x28",
+     "0x30",
+     "0x38",
+     "0x40"
+    ]
+   }
   },
   {
    "name": "NamedEvent_HeroSubscribeAll",
@@ -2833,7 +3139,17 @@
      "void*"
     ]
    },
-   "note": "Acquires a talent: what taking a level-up card does. Returns at once if ctrl is already held. Otherwise writes ctrl into the first empty of the 10 held slots (hero+0xff0+slot*0x20; the slot's category is at +0xfe0, its UI object at +0xfe8), subscribes the hero to ctrl's tier-change channel (ctrl+0x108/+0x110; node kept at hero+0x1120+slot*8), refreshes the slot UI (FUN_14043cbe0) and the replicated HUD copy at *(hero+0x1db0) (+0x28 id from ctrl+0x62, +0x3c tier from **(ctrl+0x68)), stores the KV 'hero.skill.{slot}' = the talent's name (FUN_140711ff0(settings)), notifies the magical-object component with settings+0x88 (the talent's identity GUID), recounts categories (FUN_1403a9990 / FUN_1403a96c0 / FUN_1403a95d0), and decrements the pending-picks counter hero+0x1374 when non-zero.\n\nSet the tier FIRST (SkillController_SetTier): the HUD copies the tier at add time.\n\nhero is the object R.entity.hero() captures (the same one whose +0xff0 UPGRADE_SPECIFIC_SKILL reads). Inverse: HeroController_RemoveSkill. Found 2026-09-12 by scanning .text for displacements 0xfe0/0xff0 and resolving hits through .pdata."
+   "note": "Acquires a talent: what taking a level-up card does. Returns at once if ctrl is already held. Otherwise writes ctrl into the first empty of the 10 held slots (hero+0xff0+slot*0x20; the slot's category is at +0xfe0, its UI object at +0xfe8), subscribes the hero to ctrl's tier-change channel (ctrl+0x108/+0x110; node kept at hero+0x1120+slot*8), refreshes the slot UI (FUN_14043cbe0) and the replicated HUD copy at *(hero+0x1db0) (+0x28 id from ctrl+0x62, +0x3c tier from **(ctrl+0x68)), stores the KV 'hero.skill.{slot}' = the talent's name (FUN_140711ff0(settings)), notifies the magical-object component with settings+0x88 (the talent's identity GUID), recounts categories (FUN_1403a9990 / FUN_1403a96c0 / FUN_1403a95d0), and decrements the pending-picks counter hero+0x1374 when non-zero.\n\nSet the tier FIRST (SkillController_SetTier): the HUD copies the tier at add time.\n\nhero is the object R.entity.hero() captures (the same one whose +0xff0 UPGRADE_SPECIFIC_SKILL reads). Inverse: HeroController_RemoveSkill. Found 2026-09-12 by scanning .text for displacements 0xfe0/0xff0 and resolving hits through .pdata.",
+   "locator": {
+    "offsets": [
+     "0x28",
+     "0x3c",
+     "0x62",
+     "0x68",
+     "0x88",
+     "0x108"
+    ]
+   }
   },
   {
    "name": "HeroController_RemoveSkill",
@@ -2866,7 +3182,20 @@
      "void*"
     ]
    },
-   "note": "Activates an entity component (refcounted). Returns without effect when cpnt is null, when (*(cpnt+0x08)+0x220) & 4 is set, when FUN_1407274a0(cpnt) or the vfunc at vtable+0xd0 (can-activate) says no. Otherwise either runs the activation (FUN_140712d60) or bumps the activation counter cpnt+0x5e depending on flags at cpnt+0x64. The first argument is not read (callers leave XMM0 garbage in it); pass 0.\n\nWHY IT MATTERS FOR TALENTS: a skill controller's resolved [State] target is at ctrl+0x80, and entering that state is what switches a talent's behaviour on. Both the level-up card confirm (FUN_14039cf80: Activate(*(ctrl+0x80)); HeroController_AddSkill; EntityEventTrigger_Fire(ctrl+0x260)) and the ADD_ALL_SKILLS cheat (FUN_1402eef80: SetTier then `mov rdx,[rsi+0x80]; jmp 0x140712c50`) make this call. A grant that only fills the held slot leaves the state inactive: measured in-game 2026-09-12, damage scaling tied to tier signals applied but the state-gated POWER finisher did not."
+   "note": "Activates an entity component (refcounted). Returns without effect when cpnt is null, when (*(cpnt+0x08)+0x220) & 4 is set, when FUN_1407274a0(cpnt) or the vfunc at vtable+0xd0 (can-activate) says no. Otherwise either runs the activation (FUN_140712d60) or bumps the activation counter cpnt+0x5e depending on flags at cpnt+0x64. The first argument is not read (callers leave XMM0 garbage in it); pass 0.\n\nWHY IT MATTERS FOR TALENTS: a skill controller's resolved [State] target is at ctrl+0x80, and entering that state is what switches a talent's behaviour on. Both the level-up card confirm (FUN_14039cf80: Activate(*(ctrl+0x80)); HeroController_AddSkill; EntityEventTrigger_Fire(ctrl+0x260)) and the ADD_ALL_SKILLS cheat (FUN_1402eef80: SetTier then `mov rdx,[rsi+0x80]; jmp 0x140712c50`) make this call. A grant that only fills the held slot leaves the state inactive: measured in-game 2026-09-12, damage scaling tied to tier signals applied but the state-gated POWER finisher did not.",
+   "locator": {
+    "called_by": [
+     "HeroController_AddSkill"
+    ],
+    "offsets": [
+     "0x8",
+     "0x5e",
+     "0x64",
+     "0x80",
+     "0xd0",
+     "0x220"
+    ]
+   }
   },
   {
    "name": "EntityEventTrigger_Fire",
@@ -2920,7 +3249,16 @@
    "note": "Wraps the event in an oCNamedEventNetworkMessage {vft 0x140f96b28, msg class id 0x157f6854, ev*} and unicasts it via the session vcall +0xc0 (skips if target session == local). Receive side deserializes via the message's Serialize (FUN_14085dec0; allocates the event from the class registry DAT_14146b2d8 by serialized class index, restores ev+0x30) and dispatches into the target entity's NamedEvent_Dispatch. [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.] [2026-08-21 ROUTING PATH, off the disassembly] The unicast is two fields deep and both are named here: rsi = [netcomp+0xc8] is the SCENE, and [rsi+0x28] is the SESSION MANAGER whose vft slot 0x88 writes the LOCAL session id to an out-param (`cmp out,[target]` is the skip-self test). The send itself is the scene's own vft slot 0xc0 taking the target session qword. So the engine routes by the SAME qword the replica calls creatingSystemGUID (Entity_GetNetId's note), and scene+0x28 is the object that must own the session->connection mapping. rsmm.lua's F._dmg_conn_join walks it: the manager's 0x400 bytes, then 0x200 at each pointer it holds, looking for a record that carries a row's owner GUID and a Netcode_PeerSlots slot's own pointer at a CONSTANT delta -- one field layout across several rows, not one lucky window. UNPROVEN in-game as of 2026-08-21.",
    "refs": [
     "docs/_re/kinds/events-bus.md"
-   ]
+   ],
+   "locator": {
+    "consts": [
+     "0x157f6854"
+    ],
+    "offsets": [
+     "0x30",
+     "0xc0"
+    ]
+   }
   },
   {
    "name": "Netcode_Channel_LookupById",
@@ -3128,7 +3466,15 @@
     ]
    },
    "note": "THE COOKER. Opens an oCFileBinaryStream on `pathString` (an oCTString<char>* passed BY ADDRESS: {char* ptr, u32 flags|len, u32}) via FUN_14053a730, stack-constructs an oCBinarySaver (vftable 0x140f4ab50) over it, writes the header flag table -- `cooked=1` emits uNbFlags=1 + sFlagName=\"Cooked\" (PTR_s_Cooked_140ed9fc8) + sFlagValue, cooked=0 emits uNbFlags=0 -- then calls BinarySaver_WriteGraph(saver, object, \"Object\", ctx). That is the exact file shape rsmm.engine.cooked parses. Retail USES this path (oCGameSave saves through it at 0x140479930), so it is not editor-only dead code. Pass ctx=0. The object only needs the standard oISerializable vtable: slot 1 = GetClassId, slot 3 = Serialize(oISerializer*). See Object_LoadFromStream for the read twin.",
-   "refs": []
+   "refs": [],
+   "locator": {
+    "strings": [
+     "Cooked"
+    ],
+    "calls": [
+     "BinarySaver_WriteGraph"
+    ]
+   }
   },
   {
    "name": "Profiler_GetThreadScopeStack",
@@ -3319,7 +3665,14 @@
    "raw": "FUN_1404aa3a0",
    "status": "ok",
    "signature": "void(void* resourceSink, void* entryVector)",
-   "note": "Hand a parsed resource-cache entry vector to the resource system. The sink is reached as *(definition+0x30)+0x68. This is the last step of Definition_PreloadResourceCache and the point where a cache line becomes a load request — so it is the place to instrument if the question is \"was my mod's entity ever REQUESTED\", which the ResourceRef_Resolve trace cannot answer.\n\nPromoted to ok 2026-09-11: .pdata entry point (0x1404aa3a0..0x1404aa842), unique byte pattern (match 0 of 1). Hooked by hook_resource.cpp's cache trace."
+   "note": "Hand a parsed resource-cache entry vector to the resource system. The sink is reached as *(definition+0x30)+0x68. This is the last step of Definition_PreloadResourceCache and the point where a cache line becomes a load request — so it is the place to instrument if the question is \"was my mod's entity ever REQUESTED\", which the ResourceRef_Resolve trace cannot answer.\n\nPromoted to ok 2026-09-11: .pdata entry point (0x1404aa3a0..0x1404aa842), unique byte pattern (match 0 of 1). Hooked by hook_resource.cpp's cache trace.",
+   "locator": {
+    "called_by": [
+     "Definition_PreloadResourceCache"
+    ],
+    "lines_min": 168,
+    "lines_max": 206
+   }
   },
   {
    "name": "ResourceRef_Resolve",
@@ -3388,7 +3741,15 @@
    "note": "oCDtRewardDefinition::Deserialize (vftable slot 3, hash 0x176f164e): Definition_DeserializeBase, then Serializer_ReadPolyPtrVector into def+0x288 (the oCType row vector the roll iterates), then v1+: one u8 bool. Full cooked grammar in docs/_re/kinds/rewards.md. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via hash/decompile verification.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
-   ]
+   ],
+   "locator": {
+    "consts": [
+     "0x176f164e"
+    ],
+    "offsets": [
+     "0x288"
+    ]
+   }
   },
   {
    "name": "RewardDef_RegisterAssetLoader",
@@ -3400,7 +3761,12 @@
    "note": "Registers the '*.rewarddef.ot' asset glob -> oCDtRewardDefinition library loader (label 'Reward definition'). Reward defs are the level-up / chest offer pool; codec = cooked_schemas.definitions rewarddef.json. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via string/hash anchor.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
-   ]
+   ],
+   "locator": {
+    "strings": [
+     "Reward definition"
+    ]
+   }
   },
   {
    "name": "RewardItem_Serialize",
@@ -3412,7 +3778,20 @@
    "note": "RewardDefInternal::oCItem serialize (hash 0x176f5023): resource-ref ('EntitySettings' + entity path) @+0x8, f32 value_min @+0xb0, f32 value_max @+0xb4, v<3: skipped u8, v1+: inline oCCustomFlagFilter @+0xb8 (required list lands @+0xc0, excluded @+0xd8), v2+: resource-ref @+0x40, v4+: resource-ref @+0x78 (both empty in retail = the '20 zero bytes'), v5+: u32 enum (<7, observed 3/4, semantics unpinned). [2026-07-10: recovered via anchor/decompile-verify (batch 2) after the July-9 remap mis-placed it.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
-   ]
+   ],
+   "locator": {
+    "consts": [
+     "0x176f5023"
+    ],
+    "offsets": [
+     "0x40",
+     "0x78",
+     "0xb0",
+     "0xb4",
+     "0xb8",
+     "0xc0"
+    ]
+   }
   },
   {
    "name": "RewardSelectorSettings_Serialize",
@@ -3424,7 +3803,17 @@
    "note": "oCDtRewardEntitySelectorToSpawnEntityCpntSettings serialize (hash 0x1740e3e9) — the CANDIDATE side of the reward roll, cooked inside the reward object's entity settings: v<3 legacy discarded resource-ref (default classdesc = oCType), v1+: inline oCCustomFlagList @+0x100 (the flag set matched against oCItem filters — per-entity, editable), v2+: u32 enum (<4) @+0xf8, v3+: u32 enum (<2) @+0xfc (enum semantics unpinned; likely value-source/tier-roll mode). [2026-07-10: recovered via anchor/decompile-verify (batch 2) after the July-9 remap mis-placed it.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
-   ]
+   ],
+   "locator": {
+    "consts": [
+     "0x1740e3e9"
+    ],
+    "offsets": [
+     "0xf8",
+     "0xfc",
+     "0x100"
+    ]
+   }
   },
   {
    "name": "RewardType_Serialize",
@@ -3436,7 +3825,17 @@
    "note": "RewardDefInternal::oCType serialize (hash 0x176f4fdc): poly-ptr vector of oCItem sub-object ids into this+0x8/count+0x10; v0 legacy f32; v1+: u8 use-float flag -> either u32 count (writes BOTH +0x18 and +0x1c) or legacy f32; v2+: u32 min_count @+0x18, u32 max_count @+0x1c. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via hash/decompile verification.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
-   ]
+   ],
+   "locator": {
+    "consts": [
+     "0x176f4fdc"
+    ],
+    "offsets": [
+     "0x10",
+     "0x18",
+     "0x1c"
+    ]
+   }
   },
   {
    "name": "Reward_GenerateAndDistribute",
@@ -3726,7 +4125,15 @@
    "refs": [
     "src/loader/src/hook_ui.cpp",
     "docs/_re/kinds/ui-menus.md"
-   ]
+   ],
+   "locator": {
+    "offsets": [
+     "0x10",
+     "0x328",
+     "0x32c",
+     "0x570"
+    ]
+   }
   },
   {
    "name": "UiButton_PressReturnSite",
@@ -3852,7 +4259,17 @@
    "note": "Max level for an XP/GroupLevel component: walks the +0x110 next-link chain to the last node, then reads the max-level from the +0x70 object ([+8]) or, when +0x70 is null, from the inline small-string/variant data at +0x68; result clamped to >=1. A component with neither configured reports 1 -- which makes level-1 heroes 'at max' and turns Hero_GainExperience into a no-op. Disasm-verified live 2026-07-19.",
    "refs": [
     "docs/_re/kinds/stats.md"
-   ]
+   ],
+   "locator": {
+    "called_by": [
+     "Hero_GainExperience"
+    ],
+    "offsets": [
+     "0x68",
+     "0x70",
+     "0x110"
+    ]
+   }
   },
   {
    "name": "XpComponent_IsMaxLevel",
@@ -3889,7 +4306,14 @@
    "note": "Sets the XP component's current level and, on increase, dispatches the oCGameNamedEvent '_XP_LEVEL_UP' (string @0x140f22130) plus writes custom-flag key 0x12e831f2 (=level, f32) and updates the HUD mirror (*(f32*)(hud+0x238)). Early-outs if the level is unchanged. Decompile-verified live 2026-07-13.",
    "refs": [
     "docs/_re/kinds/stats.md"
-   ]
+   ],
+   "locator": {
+    "consts": [
+     "0x12e831f2"
+    ],
+    "lines_min": 190,
+    "lines_max": 234
+   }
   },
   {
    "name": "XpComponent_SetXp",
@@ -3908,7 +4332,15 @@
    "note": "Sets the XP component's current-xp-within-level (*(xpComp+0x108)[+4]) and, when xp increased, writes custom-flag key 0x12e831f1 (=xp delta, f32). Decompile-verified live 2026-07-13.",
    "refs": [
     "docs/_re/kinds/stats.md"
-   ]
+   ],
+   "locator": {
+    "consts": [
+     "0x12e831f1"
+    ],
+    "offsets": [
+     "0x108"
+    ]
+   }
   },
   {
    "name": "XpComponent_TypeTester",
@@ -3938,7 +4370,19 @@
    "note": "XP threshold to complete `level` (arg2): walks the +0x110 chain to the last node, reads the curve config at *(node+0x10) -- when flag +0x1d0 is set and level <= count (+0x1e0) returns table[level-1] from the array at +0x1d8, otherwise the last table entry, or 0xffffffff when the table is empty. The per-level thresholds Hero_GainExperience's level-up loop consumes. Disasm-verified live 2026-07-19.",
    "refs": [
     "docs/_re/kinds/stats.md"
-   ]
+   ],
+   "locator": {
+    "called_by": [
+     "Hero_GainExperience"
+    ],
+    "offsets": [
+     "0x10",
+     "0x110",
+     "0x1d0",
+     "0x1d8",
+     "0x1e0"
+    ]
+   }
   },
   {
    "name": "XpComponent_vftable",
@@ -4094,10 +4538,12 @@
     ]
    },
    "locator": {
-    "callgraph": {
-     "called_by": "TileSpawner_Spawn",
-     "site": "0x1403436e9"
-    }
+    "called_by": [
+     "TileSpawner_Spawn"
+    ],
+    "calls": [
+     "TileSpawn_DistanceConstraints"
+    ]
    },
    "note": "The map-generation driver, 0x1543 bytes, sole caller TileSpawner_Spawn (slot 7) at 0x1403436e9, same `this`. Calls TileSpawn_DistanceConstraints (the min/max-distance solver) and GameScene_FindContextByTester x5. This is where a tile is CHOSEN for a slot, so it is the function to read when working out where the chosen set is stored — but it is NOT the hook point: it is mid-generation, and the useful moment is after its caller returns. Prefer detouring TileSpawner_Spawn. ★ PLACEMENT OUTPUT LAYOUT, recovered 2026-09-04 by reading the post-placement pass at 0x140345410 (the call right after this one in slot 7), which walks what this function wrote. Four members on the spawner, all written here and read there: +0x110 = array of {void* data, u32 count} groups (stride 0x10), +0x118 = number of groups, +0x120/+0x128 = a flat vector of the same element type. ELEMENTS ARE 0x58 BYTES and the engine SKIPS any whose +0x10 is null (`cmp qword [rbx+0x10], 0` at 0x140345460), so +0x10 is the payload pointer and a null there is an unused slot, not a bad read; live elements are passed to FUN_1403429d0 with spawner+0x80 as arg 2. ⚠ DO NOT look for this with R.debug.find_arrays: that scans the data@+0x190 convention, and on this object every hit it returns is the scene QUADTREE (oCBasicQuadTree2Agent / oCBasicQuadTree2 / oCTerrainSubLayerOutput) -- confirmed in-game across three launches, with the populated count varying by map, which reads convincingly like placement data and is not. R.poi.describe reads these offsets instead. MEASURED IN-GAME 2026-09-04 (session 3036, Dark Hills): 4 groups of 62 / 57 / 14 / 5 elements plus a 5-slot flat list (4 empty), and EVERY live payload at +0x10 is an `oCEntitySettingsResource` -- 138 of them. So the placement output is a per-group list of entity-settings resources, which is the tile-instance side rather than the definition side. RTTI names the type and the type is identical for all of them, so it does NOT identify which tile; the resource's own PATH string does, and R.poi.describe samples it via R.interact.identify. ★★ SOLVED IN-GAME 2026-09-04 (session 0936). The payload's resource NAME is a char* at payload+0xa0 — 139/139 read cleanly, zero misses, so the offset is confirmed rather than inferred. The four groups are TILE FOOTPRINT CLASSES: group 0 = 3x3 (62), 1 = 6x6 (57), 2 = 40x40 (14), 3 = 64x64 (5), plus a 5-slot flat list that is mostly empty. Counts stay identical across different generated maps while the NAMES change — a fixed slot topology filled with varying tiles — and group 2 holds 14 of the 34 pooled 40x40 tiles, i.e. a SELECTION, which is what makes this the placed set and not the pool. ⚠ Names are SANITISED: a mod tile from id `additive-poi-test` appears as `additive_poi_test_camp_swap`. Matching a manifest id verbatim scored 0 of 139 against a list that visibly contained the tile — a false negative shaped exactly like the real failure. Normalise punctuation on both sides. R.poi.placed() returns (names, misses). ★★★ THE LIST IS THE BUILT SET, NOT A SELECTION — settled by RE 2026-09-04, no sighting needed. The post-placement pass calls FUN_1403429d0(element, spawner+0x80) per live element (0x81d bytes); that function WRITES element+0x18 with a spawned ENTITY and manages the back-link properly: if the old +0x18 was non-null it detaches via FUN_1406f78f0(old+0x570, &elem[0x18]), stores the new entity (`mov [r12+0x18], rbx` @0x140342f02), then attaches via FUN_1406f79b0(new+0x570, ..., &elem[0x18]). entity+0x570 is the engine's weak-reference back-link vector, named independently elsewhere in this map. A candidate or pool list does not own an entity handle and does not register a death-watch on it. ELEMENT LAYOUT so far: +0x08 ptr, +0x10 settings resource (name at resource+0xa0), +0x18 SPAWNED ENTITY (nil = chosen but not instantiated), +0x20 f32 threshold compared against two constants, +0x48 ptr whose +0x2fc is read. R.poi.placed() returns {name=, entity=} per tile. NOTE ON SCOPE: this closes PLACEMENT only. A mod POI still has two unbuilt gates, both entity COMPONENTS and therefore both blocked by the same wall (a level cannot reference a mod-owned entity, and an in-place override cannot ADD a component): a minimap marker (oCDtEntityCpntMinimapMarkerSettings) and an interaction. The only route is `swaps` -- stand a SHIPPED entity that already carries them at one of the tile's own transforms. Corpus check 2026-09-04: Reward_Spawner_Interactive_Model carries both but is NOT placeable (a sub-entity a spawner selects; _validated_swaps refuses it, and swapping to one builds nothing and crashes). The placeable parents ARE legal targets -- Enemy_Camp_Reward_Spawner_<biome>, Map_Boss_Spawner_<biome>, <biome>_Key_Keeper -- so the chest spawner is the test, and it exercises both gates at once. PER-TIER SLOT COUNTS located 2026-09-04: the driver picks between THREE ints by comparing the kind's tier float (entry+0x20) against two constants — `movss xmm0,[r12+0x20]` then `[r13+0x2fc]` (T1) / `[r13+0x300]` (T2) / `[r13+0x304]` (T3) at 0x140344748..0x140344777. That is the numeric half of the documented rule that a tiledef's `weight` is a TIER field (T1 0.0 / T2 0.33 / T3 0.667), not a spawn rate. r13 is live across basic blocks and awkward to trace statically, but FUN_1403429d0 reaches the SAME three fields via the placement element — `mov rcx,[r12+0x48]` then `mov r8d,[rcx+0x2fc]` — so element+0x48 is the owner and R.poi.placed() now reads it, RTTI-naming the class rather than inferring it. Entries carry slots={t1,t2,t3} and slots_class. OWNER PINNED IN-GAME 2026-09-04 (session 674f): element+0x48 is an **oCDtTileDefinition** — RTTI-named at runtime, so the placement record points straight at the tiledef, which is a cleaner identity than the settings-resource name at payload+0xa0. ⚠ BUT the three ints read 0/0/0 on a mod tile, so +0x2fc/+0x300/+0x304 are NOT confirmed as the per-tier counts on this object: a single all-zero sample cannot separate 'wrong offsets' from 'this tile genuinely carries zeros', and those are opposite conclusions. Reading them across all 141 placed tiles is the discriminator and is instrumented. Do not treat the tier counts as located until a vanilla tile reads non-zero. ✗ CORRECTION 2026-09-04 (session 794f): the shortcut was WRONG and the per-tier SLOT COUNTS are NOT located. Reading +0x2fc/+0x300/+0x304 across all 140 placed tiles: 138 read 0/0/0, only 2 are non-zero, and one of those is 40x40_DarkHills_Thieves_Stashes_Entrance_Cursed_Room_01 = 2/3/4. So the offsets ARE meaningful fields on an oCDtTileDefinition (2/3/4 is a plausible tier triple) but a field that only 2 of 140 tiles populate cannot be the per-KIND slot count the driver reads. FUN_1403429d0's `[element+0x48]+0x2fc` and the driver's `[r13]+0x2fc` are DIFFERENT OBJECTS that happen to share an offset — assuming they were the same is what produced the bad reading. r13 is still unpinned; tracing it needs real control-flow work across basic blocks, not a shortcut. What IS solid: element+0x48 is an oCDtTileDefinition (RTTI, live).",
    "refs": [
@@ -4119,10 +4565,10 @@
     ]
    },
    "locator": {
-    "string": {
-     "literal": "min distance ({}m)",
-     "xref": "0x140345890"
-    }
+    "strings": [
+     "min distance ({}m)",
+     "max distance ({}m)"
+    ]
    },
    "note": "Tile placement constraint solver, 0x0f94 bytes, referencing the literals 'min distance ({}m)' and 'max distance ({}m)'. Called by TileSpawn_PlaceTiles at 0x140344862 and recursively at 0x1403466f5. Named for the map, not to be hooked: it runs many times per generation and carries no whole-map result. It is the evidence that FUN_140343ad0 really is placement and not another load stage.",
    "refs": [
@@ -4161,7 +4607,14 @@
    "raw": "FUN_14047cf80",
    "status": "ok",
    "signature": "bool(void* db, void* level, bool flag)",
-   "note": "THE GATE that decides whether a loaded level keeps its objects. Called by FUN_1407466b0 as `gate(db, level, 0)` right after LevelStream_LoadStep succeeds: false -> the level is DESTROYED (0x140482d90) and the owning slot nulled; true -> the level is kept at [owner+0x68]. `db` is `[[rcx+8]+0x30] + 0x448`, the runtime oCGameLevelDatabase (class id 0x064a9acd — runtime only, no shipped asset declares it). It appends the level to the database vector at db+0x88/+0x90, then walks the level's objects and instantiates each: count at level+0xc8, array at level+0xc0 with STRIDE 0x38, and per element `test [db+0xa0], [elem+0x30]` / `jbe` -> SKIP. ⚠ `test` always clears CF so that `jbe` is really `je`: an object is skipped when the AND is ZERO, silently, with no log and no fault. Stride 0x38 is the size of a resource REF BLOCK (see hook_resource.cpp), which puts +0x30 exactly where `resolvedPtr` lives — so the skip may be 'this object's resource never resolved', the documented null-preload failure seen from the skip side rather than the crash side. NOT yet disambiguated from a flags mask. An earlier accept check at 0x14047c930 can also bail out before the loop runs at all (al != 1 and byte[db] == 0 -> jump past it). WHY IT MATTERS: a mod-owned tile level is placed, its resource resolves, and NONE of its objects are instantiated — not even the shipped ones it inherited from its donor (measured 2026-09-10: 5 mod tiles placed, the donor's Health_Fountain resolved 0 extra times). Those three silent paths are the whole remaining hypothesis space, and hooking this function to log level+0xc8 before the call and the return value after separates them in one run. [PROMOTED to ok 2026-09-10: 0x14047cf80 is a function START per the module's .pdata exception table (bounds 0x14047cf80..0x14047d585, 1541 bytes), and its body is exactly the shape this note describes — the db+0x88/+0x90 append, then the level+0xc8 / +0xc0 stride-0x38 walk with the test/jbe skip and LevelObject_LoadOrCreate. Promoted so a read-only detour can report which of the three silent empty-level paths a mod-owned level takes.]"
+   "note": "THE GATE that decides whether a loaded level keeps its objects. Called by FUN_1407466b0 as `gate(db, level, 0)` right after LevelStream_LoadStep succeeds: false -> the level is DESTROYED (0x140482d90) and the owning slot nulled; true -> the level is kept at [owner+0x68]. `db` is `[[rcx+8]+0x30] + 0x448`, the runtime oCGameLevelDatabase (class id 0x064a9acd — runtime only, no shipped asset declares it). It appends the level to the database vector at db+0x88/+0x90, then walks the level's objects and instantiates each: count at level+0xc8, array at level+0xc0 with STRIDE 0x38, and per element `test [db+0xa0], [elem+0x30]` / `jbe` -> SKIP. ⚠ `test` always clears CF so that `jbe` is really `je`: an object is skipped when the AND is ZERO, silently, with no log and no fault. Stride 0x38 is the size of a resource REF BLOCK (see hook_resource.cpp), which puts +0x30 exactly where `resolvedPtr` lives — so the skip may be 'this object's resource never resolved', the documented null-preload failure seen from the skip side rather than the crash side. NOT yet disambiguated from a flags mask. An earlier accept check at 0x14047c930 can also bail out before the loop runs at all (al != 1 and byte[db] == 0 -> jump past it). WHY IT MATTERS: a mod-owned tile level is placed, its resource resolves, and NONE of its objects are instantiated — not even the shipped ones it inherited from its donor (measured 2026-09-10: 5 mod tiles placed, the donor's Health_Fountain resolved 0 extra times). Those three silent paths are the whole remaining hypothesis space, and hooking this function to log level+0xc8 before the call and the return value after separates them in one run. [PROMOTED to ok 2026-09-10: 0x14047cf80 is a function START per the module's .pdata exception table (bounds 0x14047cf80..0x14047d585, 1541 bytes), and its body is exactly the shape this note describes — the db+0x88/+0x90 append, then the level+0xc8 / +0xc0 stride-0x38 walk with the test/jbe skip and LevelObject_LoadOrCreate. Promoted so a read-only detour can report which of the three silent empty-level paths a mod-owned level takes.]",
+   "locator": {
+    "calls": [
+     "LevelObject_LoadOrCreate"
+    ],
+    "lines_min": 271,
+    "lines_max": 333
+   }
   },
   {
    "name": "LevelStream_Deserialize",
@@ -4208,9 +4661,6 @@
    "locator": {
     "strings": [
      "uClassInfoIndex"
-    ],
-    "called_by": [
-     "Serializer_ReadObjectNamed"
     ]
    },
    "note": "[2026-09-12] Slot +0xa0 of the loader vftable: read ONE object's payload block. MARK_BEGIN (a raw u32 compared against 0xaabb1111), then `uClassInfoIndex` bound-checked against the class table count at ctx+0x6d8, then dispatch into that class's Serialize via FUN_1404fe970 with the object it was handed. ⚠ IT NEVER RECONCILES THE INDEX IT READS WITH THE CLASS THE OBJECT TABLE PROMISED FOR THIS SLOT. Since Serializer_ReadObjectNamed calls this once per object in table order with no seek, inserting one payload block into a stream without growing `uOjbectsCount` does not orphan the new object — it shifts every following object onto its predecessor's bytes and deserializes them into an instance of the wrong class, and the root's own block is then read as the last sub-object. The failure is a corrupt graph, not a missing one.\n\nPLACEMENT BLOCK LAYOUT, mined for `level_placements` (corpus, 2026-09-12): `u32 uClassInfoIndex`, `lstr` instance name, `lstr` group name, 0x26 bytes of flags and defaults, then the transform (`float3` position, `float4` quaternion, `float3` scale), then later the literal `lstr \"EntitySettings\"` followed by the `lstr` path of the entity placed. That makes the transform's offset STRUCTURAL rather than searched: it resolves 116708 of 116708 marker-free placement blocks. ⚠ A block that frames a nested MARK_BEGIN is where a spawner keeps the poly-pointer vector of the settings objects it OWNS, so copying one hands a second spawner the same children; 164687 marker-free blocks own nothing, and no level with owned children lacks a marker-bearing block. 2996 groups of shipped blocks are byte-identical apart from transform and reference, so a placement carries no per-object identity to remint."
@@ -4240,7 +4690,20 @@
    "refs": [
     "docs/_re/kinds/maps-chapters.md",
     "src/rsmm/engine/tilegen.py"
-   ]
+   ],
+   "locator": {
+    "consts": [
+     "0x1608d797"
+    ],
+    "offsets": [
+     "0x10",
+     "0x18",
+     "0x50",
+     "0x54",
+     "0x58",
+     "0x60"
+    ]
+   }
   },
   {
    "name": "TileSlotSettings_Serialize",
@@ -4253,7 +4716,20 @@
    "refs": [
     "docs/_re/kinds/maps-chapters.md",
     "src/rsmm/engine/tilegen.py"
-   ]
+   ],
+   "locator": {
+    "consts": [
+     "0x16075cfc"
+    ],
+    "offsets": [
+     "0x10",
+     "0x14",
+     "0x18",
+     "0x1c",
+     "0x20",
+     "0x30"
+    ]
+   }
   },
   {
    "name": "TileSlotSize_Serialize",
@@ -4292,7 +4768,14 @@
    "refs": [
     "docs/_re/kinds/maps-chapters.md",
     "src/rsmm/engine/tilegen.py"
-   ]
+   ],
+   "locator": {
+    "consts": [
+     "0x16075cc8"
+    ],
+    "lines_min": 182,
+    "lines_max": 224
+   }
   },
   {
    "name": "Chapter_Serialize",
@@ -4383,7 +4866,49 @@
    "refs": [
     "docs/_re/kinds/maps-chapters.md",
     "src/rsmm/engine/tilegen.py"
-   ]
+   ],
+   "locator": {
+    "called_by": [
+     "Chapter_Serialize"
+    ],
+    "offsets": [
+     "0x98"
+    ]
+   }
+  },
+  {
+   "name": "GameModifierUi_PadSelectedSlots",
+   "kind": "function",
+   "category": "options",
+   "raw": "FUN_140360c20",
+   "status": "ok",
+   "signature": "void(void* uiController, void* unknown, void* selectedVector)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Pads the SELECTED game-modifier list out to five entries for display. rcx = the GameModifierUi controller (its settings at [rcx+0x10], m_bDisplayEmptySlots at settings+0xf8 gates the whole thing), r8 = a {void* data; u32 count} vector. Body at 0x140360c58: `cmp [r8+8], 5; jae out` then a loop appending a null entry while `[rbx+8] < 5`.\n\nWHY IT MATTERS, and the correction it carries: this five is a FLOOR, not a ceiling. It only ever APPENDS, never trims, so a selected list already holding six would render six. The long-standing '5 negative modes' cap was assumed to live here (and, before that, in the challenge-page asset's slot widgets -- the page has none: the list is spawner-driven). A sweep of all 77 functions in the challenge-page controller cluster and all 91 in this one found NO `count >= 5` bound anywhere; every other small compare is a boolean test. So the refusal that fires `Modifier Added Fail FMod Event` is most likely 'no free slot among five positions' rather than a numeric limit, and the sibling at 0x140360720 has the shape of that slot search.\n\nHooked read-only to answer the one question static reading cannot: what count actually ARRIVES here. If it tops out at five the ceiling is upstream in the add path; if it can exceed five, the display already scales and only that slot search needs lifting. Six callers, all display-refresh paths (0x14034d900, 0x14035c9c0, 0x1403e8f80, 0x140426ab0, 0x140426d60, 0x1404293f0). Backs R.modifier.on_slots.\n\n⚠ Raising the cap is NOT just this constant: the selected set is seeded run state under a deterministic-shared multiplayer scope, so every peer must agree or the run desyncs."
+  },
+  {
+   "name": "Vector_InsertRange",
+   "kind": "function",
+   "category": "engine-core",
+   "raw": "FUN_1401556e0",
+   "status": "ok",
+   "signature": "void*(void* vector, unsigned index, unsigned count)",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*",
+     "unsigned",
+     "unsigned"
+    ]
+   },
+   "note": "Inserts `count` uninitialised elements into a {void* data; u32 count; u32 capacity} vector at `index`, growing the allocation when count+n exceeds capacity, and RETURNS a pointer to the first inserted element -- so the caller writes the payload itself. Read off the prologue: esi = [rcx+8] (count), eax = [rcx+0xc] (capacity), ebp = edx (index), r14d = r8d (n), then `lea ebx,[rsi+r14]; cmp eax,ebx; jae` skips the realloc.\n\nNOT `Vector_Grow` (0x140155230), which is a different function -- do not conflate them. 286 call sites across the engine, so this is the generic sequence-insert, not something specific to one system.\n\nWHY IT IS NAMED: `GameModifierUi_PadSelectedSlots` calls it in a loop to pad the selected-modifier list out to five empty slots (`mov r8d,1; mov edx,[rbx+8]; call; mov [rax],0`), and the modifier UI draws ONE WIDGET PER VECTOR ELEMENT. So appending through this helper is how the SDK can offer a sixth slot without patching a single byte -- the experiment that decides whether the 5-modifier cap is the slot list or a bound in the store.\n\n⚠ WRITE path into live engine state. Every use must validate the vector first (R.ptr.vector_valid) and stay on the thread that owns it; a bad `index` writes past the end of a real allocation."
   }
  ],
  "_event_catalog_doc": "Observation events the loader republishes by raw name from the central telemetry sink (Analytics_SubmitNamedEvent). No address — the firehose detour reads the name at runtime, so any name the game adds also fires even if absent here. These are confirmed names harvested by string-xref (cluster 0x140f13a00-0x140f13f00); subscribe via R.on('<name>', cb) with RSMM_ENABLE_GAME_EVENTS=1. Shown by `rsmm symbols events`.",

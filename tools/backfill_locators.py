@@ -203,6 +203,34 @@ LOCATORS: dict[str, dict] = {
         "lines_min": 300, "lines_max": 450,
     },
 
+    # --- converted from free-form prose blocks ----------------------------
+    # Four symbols carried a `locator` written in an ad-hoc shape
+    # ({"how": ...}, {"callgraph": ...}, {"string": ...}) that nothing could
+    # resolve — the anchor was real, the encoding was not. Re-expressed in the
+    # schema `resolve_locator` reads, each now re-finds its symbol uniquely.
+    "TileSpawn_PlaceTiles": {
+        "called_by": ["TileSpawner_Spawn"],
+        "calls": ["TileSpawn_DistanceConstraints"],
+    },
+    "TileSpawn_DistanceConstraints": {
+        "strings": ["min distance ({}m)", "max distance ({}m)"],
+    },
+    # The old block also required `called_by Serializer_ReadObjectNamed`, which
+    # intersected to nothing: the caller reaches it through the loader vftable
+    # slot, so there is no direct call in the decompile to match.
+    "Serializer_ReadObjectPayload": {
+        "strings": ["uClassInfoIndex"],
+    },
+    # 13 lines, no strings, no constants, and its one caller is not a mapped
+    # symbol — so the anchor has to be the company it keeps: the other things
+    # the hero-select screen calls. The two widget pointers it writes
+    # (screen+0x230 lock overlay, +0x238 button) break the remaining tie.
+    "HeroSelect_SetConfirmEnabled": {
+        "co_called_with": ["HeroSelect_ConfirmBlockReason"],
+        "offsets": ["0x230", "0x238"],
+        "lines_max": 20,
+    },
+
     "GameScene_FindContextByTester": {
         "offsets": ["0x58", "0x60", "0x68", "0x70"],
         "called_by": ["MapCtx_DistributeEnemyCampTiers"],
@@ -268,7 +296,7 @@ def main() -> int:
     print(f"  do not resolve at all                 : {unresolved:3}")
 
     if args.apply:
-        SYM.write_text(json.dumps(doc, indent=1) + "\n")
+        SYM.write_text(json.dumps(doc, indent=1, ensure_ascii=False) + "\n")
         print(f"wrote {len(LOCATORS)} locator(s) to {SYM}")
     if args.check and (wrong or unresolved):
         print("\nFAIL: a locator that does not resolve today would not have "

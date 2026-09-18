@@ -120,6 +120,8 @@ constexpr std::uintptr_t Serializer_ResolveObjectId = 0x140500630ull;
 constexpr std::uintptr_t ServiceRegistry_Global = 0x14146f740ull;
 constexpr std::uintptr_t StringVector_Serialize = 0x140684f30ull;
 // StringVector_Serialize_Pattern omitted: status=unverified
+constexpr std::uintptr_t Vector_InsertRange = 0x1401556e0ull;
+constexpr const char* Vector_InsertRange_Pattern = "Vector_InsertRange";
 
 // --- entity ---
 constexpr std::uintptr_t EnemyController_Ctor = 0x140389d00ull;
@@ -402,6 +404,8 @@ constexpr std::uintptr_t SLNetworkObject_GetOwnerId = 0x1408c0d40ull;
 // SLNetworkObject_GetOwnerId_Pattern omitted: status=unverified
 
 // --- options ---
+constexpr std::uintptr_t GameModifierUi_PadSelectedSlots = 0x140360c20ull;
+constexpr const char* GameModifierUi_PadSelectedSlots_Pattern = "GameModifierUi_PadSelectedSlots";
 constexpr std::uintptr_t g_GameOptions = 0x14143cb58ull;
 
 // --- resource ---

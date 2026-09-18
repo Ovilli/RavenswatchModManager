@@ -1149,6 +1149,201 @@ end
 -- Read a raw entity-value key the name table doesn't cover (forward-compat).
 function R.modifier.value_by_key(key) return R.entity.value(key) end
 
+-- HOW MANY MODIFIERS CAN ACTUALLY BE SELECTED — the cap probe.
+--
+-- The "5 negative modes" limit has been attributed to three different places
+-- and none of them held up to reading:
+--
+--   * the challenge page's slot widgets -- the page HAS none, the selected
+--     list is spawner-driven (`Selected GameModifier Entity Spawner`)
+--   * a `>=4/5/6` ladder in the page controller -- that gates UI widget GROUPS
+--     by profile value 0x1aa35816, i.e. progressive unlocking, not the cap
+--   * `GameModifierUi_PadSelectedSlots` -- pads the list UP to five and never
+--     trims, so five is a FLOOR there
+--
+-- And a sweep of both controller clusters (168 functions) found no `count >= 5`
+-- bound at all. So the refusal behind `Modifier Added Fail` is probably "no
+-- free slot", not a number -- which static reading cannot confirm, because the
+-- question is what count the display path actually RECEIVES.
+--
+-- `cb(count, controller)` fires with the count as it arrives, BEFORE the
+-- padding runs. Tops out at five => the ceiling is upstream in the add path.
+-- Ever exceeds five => the display already scales and only the slot search
+-- needs lifting.
+--
+-- Read-only: the original runs untouched and nothing is written back.
+local _slot_cbs, _slot_hooked = {}, false
+-- Declared HERE, above the detour that reads it: as a local defined
+-- further down it resolved to a global inside the closure, so the growth
+-- silently never fired (caught by
+-- tests/test_loader_lua.py::test_rsmm_lua_reads_no_accidental_globals).
+local _slot_target = nil
+
+function R.modifier.on_slots(cb)
+    if type(cb) ~= "function" then
+        error("R.modifier.on_slots: expected a function", 2)
+    end
+    _slot_cbs[#_slot_cbs + 1] = cb
+    if _slot_hooked then return true end
+    if not (R.hook and I.resolve and I.read_u32) then return false end
+
+    local va = I.resolve("GameModifierUi_PadSelectedSlots")
+    -- Absent from this install's pattern DB is the ORDINARY case on a machine
+    -- that has not run `rsmm update-data`: the symbol ships out of band. It
+    -- must read as "not available", never as a reason to guess an address.
+    if not va or va == 0 then return false end
+
+    local ok, slot, why = pcall(R.hook, va, "vppp", function(this, p2, vec, next)
+        -- BEFORE the original: afterwards the count has been padded to five and
+        -- the pre-padding value -- the only number that answers the question --
+        -- is gone.
+        local count = (vec and vec ~= 0) and I.read_u32(vec + 8) or nil
+        for i = 1, #_slot_cbs do
+            -- This runs on a UI refresh path; an error escaping here would
+            -- unwind into the engine mid-redraw.
+            -- `vec` is handed over so a caller can tell the page's THREE
+            -- lists apart (positive, negative, selected) -- without it, counts
+            -- from different vectors read as one confusing sequence.
+            local ran, err = pcall(_slot_cbs[i], count, this, vec)
+            if not ran then R.log("[rsmm.modifier] handler error: " .. tostring(err)) end
+        end
+        next(this, p2, vec)
+        -- After the engine has padded to five, add the difference. Doing it
+        -- before would just be undone: the original pads up to five and would
+        -- see our entries as already-present slots.
+        if _slot_target then
+            local ok2, err2 = pcall(R.modifier._grow_slots, vec)
+            if not ok2 then
+                R.log("[rsmm.modifier] grow failed: " .. tostring(err2))
+            end
+        end
+        return 0
+    end)
+    if not ok or not slot then
+        if ok and why == "already-hooked" then
+            R.log("[rsmm.modifier] another mod already owns the modifier-slot "
+                  .. "hook, so this mod's handlers will not fire")
+        else
+            R.log("[rsmm.modifier] could not watch the modifier slots: "
+                  .. tostring(ok and why or slot))
+        end
+        return false
+    end
+    _slot_hooked = true
+    R.log(("[rsmm.modifier] watching selected-modifier slots at 0x%x"):format(va))
+    return true
+end
+
+-- OFFER MORE THAN FIVE MODIFIER SLOTS — the experiment, not a feature.
+--
+-- What the probe established in game: the stored count climbs to five and a
+-- sixth never arrives, while the padding loop only ever APPENDS. The modifier
+-- UI spawns ONE WIDGET PER VECTOR ELEMENT, so the five empty slots you see ARE
+-- that padded vector. Growing it to six should therefore produce a sixth empty
+-- slot, and what happens when you click it is the answer:
+--
+--   the slot fills      -> "add" just looks for a free slot; the cap is lifted
+--                          by the slot list alone, with no byte patching
+--   it refuses          -> the bound is in the STORE, and the parked
+--                          serialization risk is the real problem
+--
+-- Off unless a mod asks. `n` is clamped to 5..8: below five the engine's own
+-- padding wins anyway, and a wild value would have us inserting hundreds of
+-- widgets into a live UI vector.
+--
+-- ⚠ This WRITES to engine state, unlike the read-only watch above. Three things
+-- keep it honest: the vector is validated (R.ptr.vector_valid) before the
+-- engine is handed it, the insert goes through the engine's OWN helper rather
+-- than hand-written memory writes, and it runs after the original so we only
+-- ever add the difference.
+--
+-- ⚠ A raised cap is SEEDED RUN STATE. Every peer in a lobby must agree or the
+-- run desyncs, so this is a local experiment and not something to ship on.
+function R.modifier.slot_count(n)
+    if n == nil then return _slot_target end
+    if type(n) ~= "number" or n < 5 or n > 8 then
+        error("R.modifier.slot_count: expected a number from 5 to 8", 2)
+    end
+    _slot_target = math.floor(n)
+    -- Arming the watch is what installs the detour this rides on.
+    R.modifier.on_slots(function() end)
+    R.log(("[rsmm.modifier] asking for %d modifier slots (engine pads to 5)")
+          :format(_slot_target))
+    return _slot_target
+end
+
+--- Grow `vec` to `_slot_target` entries. Returns the new count, or nil.
+--
+-- Called from the detour after the original has padded to five. Separate from
+-- the hook body so the guard sequence is readable in one place.
+-- This path runs on a per-frame UI refresh, so an unguarded R.log is a flood --
+-- the first attempt wrote the same line a dozen times in 0.3 s. Say each
+-- distinct thing once.
+local _slot_said = {}
+local function _slot_say(msg)
+    if _slot_said[msg] then return end
+    _slot_said[msg] = true
+    R.log("[rsmm.modifier] " .. msg)
+end
+
+function R.modifier._grow_slots(vec)
+    local target = _slot_target
+    if not target or not vec or vec == 0 then return nil end
+    if not (I.read_u32 and R.engine and R.engine.call_safe) then return nil end
+    -- VALIDATE THE RIGHT INVARIANT. `R.ptr.vector_valid` was the wrong tool
+    -- here and refused every call: it requires `data` to be a live pointer,
+    -- which is false for an EMPTY vector (count 0, capacity 0, data null) --
+    -- a perfectly valid state, and the one this path sees first. Measured
+    -- 2026-09-17: nothing but "did not validate", once per frame.
+    --
+    -- What actually has to hold before the engine is handed this: the object
+    -- is readable, count and capacity read back, capacity is not smaller than
+    -- count, the count is sane, and data is a real pointer ONLY when the
+    -- vector is non-empty.
+    if not R.ptr.plausible(vec) then
+        _slot_say(("slot vector 0x%x is not a plausible pointer"):format(vec))
+        return nil
+    end
+    local count = I.read_u32(vec + 8)
+    local cap   = I.read_u32(vec + 0xc)
+    local data  = I.read_u64(vec)
+    if not (count and cap) or count > 64 or cap < count then
+        _slot_say(("slot vector looks wrong: count=%s cap=%s data=%s")
+                  :format(tostring(count), tostring(cap), tostring(data)))
+        return nil
+    end
+    if count > 0 and not (data and data ~= 0 and R.ptr.plausible(data)) then
+        _slot_say(("slot vector holds %d but data=%s"):format(count, tostring(data)))
+        return nil
+    end
+    -- Already long enough. Reported per VECTOR, because the page owns three of
+    -- them (positive list, negative list, selected list) and the first run grew
+    -- one of them from 0 while the selection counts kept climbing elsewhere --
+    -- so "which vector was that" is the open question, and a silent return is
+    -- what hid it.
+    if count >= target then
+        _slot_say(("vector 0x%x already holds %d (>= %d), leaving it")
+                  :format(vec, count, target))
+        return count
+    end
+
+    for _ = count, target - 1 do
+        local at = I.read_u32(vec + 8)
+        -- Insert ONE element at the end, through the engine's own helper, and
+        -- let it zero the slot the way the padding loop does.
+        local slot = R.engine.call_safe("Vector_InsertRange",
+                                        { { 1, R.ptr.plausible } }, vec, at, 1)
+        if not slot or slot == 0 then
+            _slot_say("insert refused at index " .. tostring(at))
+            break
+        end
+        if I.write_u64 then I.write_u64(slot, 0) end
+    end
+    local now = I.read_u32(vec + 8)
+    _slot_say(("vector 0x%x: slot list %d -> %d"):format(vec, count, now or -1))
+    return now
+end
+
 -- WRITE side (EXPERIMENTAL, unproven in-game) ---------------------------
 --
 -- A modifier is a CRC-keyed entry in the SAME entity-value store R.stat writes,
