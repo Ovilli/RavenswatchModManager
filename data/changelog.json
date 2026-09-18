@@ -3,6 +3,15 @@
   "entries": [
     {
       "version": "",
+      "loader_version": 18,
+      "date": "2026-09-18",
+      "summary": "R.interact now reports the object you interacted with (ev.entity) and the hero doing it (ev.interactor); before, both pointed at the hero, so R.interact.name named your hero instead of the object.",
+      "highlights": [
+        "R.interact now reports the object you interacted with (ev.entity) and the hero doing it (ev.interactor); before, both pointed at the hero, so R.interact.name named your hero instead of the object."
+      ]
+    },
+    {
+      "version": "",
       "loader_version": 17,
       "date": "2026-09-18",
       "summary": "New R.hp reads and changes the hero's real health. R.shards replaces R.combat, which moved dream shards, not health; R.combat still works but logs a deprecation line. R.interact.name now names the object you interacted with.",
