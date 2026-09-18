@@ -40,7 +40,6 @@ async function fetchEntries(basePath: string): Promise<Entry[]> {
 // Content-bearing public routes only — app/auth/account screens are excluded
 // (they hold no publisher content and must not be tied to ad serving).
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const now = new Date();
   const staticRoutes = [
     '',
     '/download',
@@ -55,7 +54,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     '/dmca',
   ].map((path) => ({
     url: `${BASE}${path}`,
-    lastModified: now,
+    // No lastModified: stamping `now` on every request is a date that always
+    // changes, and Google learns to ignore a sitemap's lastmod once it does.
     changeFrequency: (path === '' || path === '/registry' || path === '/c' ? 'daily' : 'monthly') as
       | 'daily'
       | 'monthly',
@@ -75,21 +75,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     .filter((m) => m.summary?.trim())
     .map((m) => ({
       url: `${BASE}/registry/${m.slug}`,
-      lastModified: m.updatedAt ? new Date(m.updatedAt) : now,
+      lastModified: m.updatedAt ? new Date(m.updatedAt) : undefined,
       changeFrequency: 'weekly' as const,
       priority: 0.6,
     }));
 
   const collectionRoutes = collections.map((c) => ({
     url: `${BASE}/c/${c.slug}`,
-    lastModified: c.updatedAt ? new Date(c.updatedAt) : now,
+    lastModified: c.updatedAt ? new Date(c.updatedAt) : undefined,
     changeFrequency: 'weekly' as const,
     priority: 0.5,
   }));
 
   const guideRoutes = guides.map((g) => ({
     url: `${BASE}/guides/${g.slug}`,
-    lastModified: g.updatedAt ? new Date(g.updatedAt) : now,
+    lastModified: g.updatedAt ? new Date(g.updatedAt) : undefined,
     changeFrequency: 'weekly' as const,
     priority: 0.7,
   }));

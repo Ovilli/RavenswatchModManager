@@ -173,12 +173,18 @@ export default async function Home() {
       {/* Hero */}
       <section className="container mx-auto grid items-center gap-12 px-6 pb-20 pt-14 lg:grid-cols-12 lg:gap-10 lg:pb-28 lg:pt-24">
         <div className="lg:col-span-5">
+          {/* The product's own name was nowhere in the page text — only in the
+              logo alt and the footer — so "ravenswatch mod manager" and "rsmm"
+              had no on-page match. Name it once, above the headline. */}
+          <p className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-gilt">
+            Ravenswatch Mod Manager · RSMM
+          </p>
           <h1 className="font-fraktur text-6xl leading-[0.95] text-parchment sm:text-7xl">
             Mods for Ravenswatch
           </h1>
           <p className="mt-6 max-w-md text-xl leading-relaxed text-parchment/80">
-            A free app that installs mods, keeps them in order and puts your game back the way it
-            was whenever you ask.
+            A free app that installs Ravenswatch mods, keeps them in order and puts your game back
+            the way it was whenever you ask.
           </p>
           <div className="mt-9 flex flex-wrap items-center gap-3">
             <OsDownload release={release} showVersion={false} />
@@ -332,6 +338,29 @@ export default async function Home() {
           </pre>
         </div>
       </section>
+
+      <script
+        type="application/ld+json"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: server-built JSON-LD. Serialized through jsonLd() so every ld+json block on the site escapes identically.
+        dangerouslySetInnerHTML={{
+          __html: jsonLd({
+            '@context': 'https://schema.org',
+            '@type': 'SoftwareApplication',
+            name: 'Ravenswatch Mod Manager',
+            alternateName: 'RSMM',
+            description:
+              'Free, open-source mod manager for Ravenswatch. Installs mods from the registry, backs up every file it replaces and restores the original game on request.',
+            applicationCategory: 'UtilitiesApplication',
+            operatingSystem: 'Windows, Linux, SteamOS',
+            url: 'https://rsmm.me',
+            downloadUrl: 'https://rsmm.me/download',
+            image: 'https://rsmm.me/screens/library.jpg',
+            ...(release.tag ? { softwareVersion: release.tag.replace(/^v/, '') } : {}),
+            offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+            publisher: { '@id': 'https://rsmm.me/#org' },
+          }),
+        }}
+      />
 
       {/* FAQ */}
       <script

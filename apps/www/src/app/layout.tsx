@@ -46,10 +46,12 @@ const mono = JetBrains_Mono({
 // "ravenswatch mods" / "ravenswatch mod manager", and a brand-only <title>
 // ranked nowhere for either while Nexus pages titled "Ravenswatch Mods" took
 // the whole first page. Lead with the query, keep the brand after the dash.
-const SITE_TITLE = 'Ravenswatch Mods — Browse, Install & Manage | RSMM';
+// "Mod Manager" and "RSMM" are in the title too: those are the other two ways
+// people look for this site, and the old title matched neither phrase.
+const SITE_TITLE = 'Ravenswatch Mods & Mod Manager — RSMM';
 const SITE_DESCRIPTION =
-  'Download and install Ravenswatch mods in one click. Free, open-source mod ' +
-  'manager for Windows and Linux — textures, items, talents and Lua mods, all reversible.';
+  'Ravenswatch Mod Manager (RSMM): download and install Ravenswatch mods in one click. ' +
+  'Free and open source for Windows, Linux and Steam Deck — every change reversible.';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://rsmm.me'),
@@ -69,13 +71,22 @@ export const metadata: Metadata = {
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
     url: '/',
-    images: [{ url: '/logo.png', alt: 'Ravenswatch Mod Manager' }],
+    // A real screenshot, not the square logo: a shared link on Reddit/Discord
+    // renders as a large card, which is where the backlinks come from.
+    images: [
+      {
+        url: '/screens/library.jpg',
+        width: 2160,
+        height: 1350,
+        alt: 'The Ravenswatch Mod Manager library',
+      },
+    ],
   },
   twitter: {
-    card: 'summary',
+    card: 'summary_large_image',
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
-    images: ['/logo.png'],
+    images: ['/screens/library.jpg'],
   },
 };
 
@@ -152,11 +163,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   name: 'Ravenswatch Mod Manager',
                   url: 'https://rsmm.me',
                   logo: 'https://rsmm.me/logo.png',
+                  // Ties this domain to the GitHub repo, which already ranks
+                  // for the brand, so the two read as one entity.
+                  sameAs: [REPO, 'https://docs.rsmm.me', 'https://ko-fi.com/W7W41FW3YE'],
                 },
                 {
                   '@type': 'WebSite',
                   '@id': 'https://rsmm.me/#website',
                   name: 'Ravenswatch Mod Manager',
+                  // Google picks the site name shown in results from these; without
+                  // them a search for "RSMM" had nothing tying it to this domain.
+                  alternateName: ['RSMM', 'rsmm.me', 'Ravenswatch Mods'],
                   url: 'https://rsmm.me',
                   publisher: { '@id': 'https://rsmm.me/#org' },
                   potentialAction: {
