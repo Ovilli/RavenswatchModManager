@@ -170,21 +170,40 @@ def verify_file(path: Path, sig_b64: str, public_key_path: Path) -> bool:
     """Verify a base64 Ed25519 signature over `path`'s SHA256 digest.
 
     Returns ``True`` if ``sig_b64`` (from :func:`sign_file`) matches under
-    ``public_key_path``, ``False`` otherwise. Raises ``RepoError`` if the
-    optional ``cryptography`` package is missing.
+    ``public_key_path``, ``False`` otherwise — a malformed signature is simply
+    one that does not verify. Raises ``RepoError`` only for a malformed or
+    unreadable public key.
+
+    Verification must not depend on ``cryptography``: the CLI ships frozen
+    with no runtime dependencies, so every released build lacked it and this
+    raised on every call — which ``rsmm update`` then read as "verify skipped"
+    and installed the archive without checking the signature at all. Without
+    the package it uses the stdlib Ed25519 verifier the signed loader channel
+    already relies on (:mod:`rsmm.engine.minisign`).
     """
+    try:
+        key_bytes = base64.b64decode(
+            public_key_path.read_text(encoding="utf-8").strip(), validate=True)
+    except (OSError, ValueError) as e:
+        raise RepoError(f"unreadable public key {public_key_path}: {e}") from None
+    if len(key_bytes) != 32:
+        raise RepoError(f"public key {public_key_path} is not a raw 32-byte Ed25519 key")
+    message = sha256_file(path).encode("ascii")
+    try:
+        signature = base64.b64decode(sig_b64, validate=True)
+    except (ValueError, TypeError):
+        return False
+
     crypto = _load_crypto()
     if crypto is None:
-        raise RepoError(
-            "Verification requires the 'cryptography' package "
-            "(`pip install cryptography`)."
-        )
+        from rsmm.engine.minisign import MinisignError, ed25519_verify
+        try:
+            return ed25519_verify(key_bytes, message, signature)
+        except MinisignError:
+            return False
     _Priv, Ed25519PublicKey, ser = crypto
-    key_bytes = base64.b64decode(public_key_path.read_text(encoding="utf-8").strip())
-    pub = Ed25519PublicKey.from_public_bytes(key_bytes)
-    digest_hex = sha256_file(path)
     try:
-        pub.verify(base64.b64decode(sig_b64), digest_hex.encode("ascii"))
+        Ed25519PublicKey.from_public_bytes(key_bytes).verify(signature, message)
         return True
     except Exception:  # noqa: BLE001 — verify() raises InvalidSignature
         return False

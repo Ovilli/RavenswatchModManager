@@ -30,7 +30,7 @@ from pathlib import Path
 
 from rsmm.engine import net
 from rsmm.engine.paths import MODS_DIR
-from rsmm.sdk.archive import require_single_top_dir, safe_extract, scan_dangerous
+from rsmm.sdk.archive import require_single_top_dir, safe_dir_name, safe_extract, scan_dangerous
 from rsmm.sdk.repo import RepoError, RepoIndex, verify_file
 
 # Reuse the same locations the `repo`/`sign` commands use.
@@ -214,6 +214,13 @@ def _finish(data: bytes, entry, no_verify: bool, force: bool) -> int:
                   file=sys.stderr)
             return 1
         if entry.sig and entry.pubkey_id:
+            # Index-supplied: a path here would let any .pub on disk (one
+            # shipped inside an installed mod, say) stand in for a trusted key.
+            try:
+                safe_dir_name(entry.pubkey_id, what="signer id")
+            except RepoError as e:
+                print(f"refusing to verify: {e}", file=sys.stderr)
+                return 1
             pub = KEYS_DIR / f"{entry.pubkey_id}.pub"
             if not pub.exists():
                 print(f"signed mod but pubkey {entry.pubkey_id!r} not in "
@@ -223,7 +230,12 @@ def _finish(data: bytes, entry, no_verify: bool, force: bool) -> int:
             with tempfile.NamedTemporaryFile() as tf:
                 tf.write(data)
                 tf.flush()
-                if not verify_file(Path(tf.name), entry.sig, pub):
+                try:
+                    verified = verify_file(Path(tf.name), entry.sig, pub)
+                except RepoError as e:
+                    print(f"signature could not be verified: {e}", file=sys.stderr)
+                    return 1
+                if not verified:
                     print("signature verification FAILED", file=sys.stderr)
                     return 1
             print("  signature ok")

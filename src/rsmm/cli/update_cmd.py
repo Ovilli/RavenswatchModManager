@@ -100,15 +100,27 @@ def _verify_download(path: Path, expected_sha256: str,
         return True, "unsigned (warn)"
     if not pubkey_id:
         return True, "signed without pubkey_id (warn)"
+    # The id comes from the index. `../…` or an absolute path would reach a
+    # .pub file anywhere — including one shipped inside an installed mod — and
+    # turn an attacker's own key into "signature ok" with no trust prompt.
+    try:
+        safe_dir_name(pubkey_id, what="signer id")
+    except RepoError as e:
+        return False, str(e)
     pub = KEYS_DIR / f"{pubkey_id}.pub"
     if not pub.exists():
         return True, f"unknown signer {pubkey_id!r} (warn)"
+    # A signature from a signer we hold a key for must verify. This used to
+    # answer (True, "verify skipped") when verification raised — with no
+    # "warn" in the reason, so not even the trust prompt fired — and in a
+    # frozen build it raised on every call, so a forged signature installed
+    # silently. Can't verify is a refusal, not a pass.
     try:
         if verify_file(path, sig_b64, pub):
             return True, f"signature ok ({pubkey_id})"
         return False, f"signature INVALID ({pubkey_id})"
     except RepoError as e:
-        return True, f"verify skipped: {e}"
+        return False, f"signature could not be verified ({pubkey_id}): {e}"
 
 
 def _validate_zip_content(zf: zipfile.ZipFile, mod_id: str) -> None:
