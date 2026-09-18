@@ -89,6 +89,8 @@ end
 R.combat.heal = function(n) calls[#calls + 1] = "heal:" .. tostring(n); return true end
 R.shards = R.shards or {}
 R.shards.add = function(n) calls[#calls + 1] = "shards:" .. tostring(n); return true end
+R.hp = R.hp or {}
+R.hp.heal = function(n) calls[#calls + 1] = "hp.heal:" .. tostring(n); return true end
 -- A mod that acts on the hero needs BOTH: ready() to gate, hero() to compare
 -- an event payload against. Stubbing only ready() sent the real hero() into
 -- the un-mocked native layer.
@@ -230,14 +232,14 @@ if load_mod("second-wind") then
     fire("ready")
     fire("run:start")
     fire("gameplay:HERO_DEATH_DOOR")
-    ok(had("shards:") ~= nil, "second-wind: first down grants dream shards")
+    ok(had("hp.heal:") ~= nil, "second-wind: first down triggers a heal")
     calls = {}
     fire("gameplay:HERO_DEATH_DOOR")
-    ok(had("shards:") == nil, "second-wind: second down in the same run does nothing")
+    ok(had("hp.heal:") == nil, "second-wind: second down in the same run does nothing")
     calls = {}
     fire("run:start")
     fire("gameplay:HERO_DEATH_DOOR")
-    ok(had("shards:") ~= nil, "second-wind: a new run restores the rescue")
+    ok(had("hp.heal:") ~= nil, "second-wind: a new run restores the rescue")
 end
 
 -- ---------------------------------------------------------------------------
@@ -251,20 +253,20 @@ end
 if load_mod("second-wind") then
     fire("ready")
     fire("gameplay:HERO_DEATH_DOOR")
-    ok(had("shards:") ~= nil, "second-wind: rescued once")
+    ok(had("hp.heal:") ~= nil, "second-wind: rescued once")
 
     -- End the run and start the next one WITHOUT a run:start anywhere.
     fire("run:end")
     calls = {}
     fire("gameplay:HERO_DEATH_DOOR")
-    ok(had("shards:") ~= nil,
+    ok(had("hp.heal:") ~= nil,
        "second-wind: run:end alone restores the rescue (no run:start needed)")
 
     -- And again via the menu boundary only.
     fire("menu:enter")
     calls = {}
     fire("gameplay:HERO_DEATH_DOOR")
-    ok(had("shards:") ~= nil, "second-wind: menu:enter alone restores the rescue")
+    ok(had("hp.heal:") ~= nil, "second-wind: menu:enter alone restores the rescue")
 end
 
 -- ---------------------------------------------------------------------------
@@ -814,10 +816,11 @@ if load_mod("steamroller") then
     -- R.entity.hp() is an unvalidated fixed-offset read that still returned
     -- plausible floats, and Entity_ModifyHealth then faulted on that pointer.
     local healed = false
-    local _sethp, _frac, _max = R.combat.set_hp, R.entity.hp_frac, R.entity.max_hp
-    R.combat.set_hp  = function() healed = true; return true end
-    R.entity.hp_frac = function() return 0.1 end   -- "hurt", as the bad read looked
-    R.entity.max_hp  = function() return 100 end
+    R.hp = R.hp or {}
+    local _sethp, _frac, _max = R.hp.set, R.hp.frac, R.hp.max
+    R.hp.set  = function() healed = true; return true end
+    R.hp.frac = function() return 0.1 end   -- "hurt", as the bad read looked
+    R.hp.max  = function() return 100 end
 
     R.stat.stick = function() return false end     -- value store refuses
     stuck = {}
@@ -828,11 +831,9 @@ if load_mod("steamroller") then
     R.stat.stick = function(name, value) stuck[name] = value; return true end
     fire("run:start")
     fire("gameplay:ENEMY_KILLED", { source = "gameplay" })
-    -- The top-up is off since 2026-09-18: its "HP" field is the dream-shard
-    -- count, so writing it never healed anything.
-    ok(not healed, "steamroller: top-up stays off even with landed pins")
+    ok(healed, "steamroller: tops up real HP (R.hp) once the pins land")
 
-    R.combat.set_hp, R.entity.hp_frac, R.entity.max_hp = _sethp, _frac, _max
+    R.hp.set, R.hp.frac, R.hp.max = _sethp, _frac, _max
 
     -- STATS MUST NOT REQUIRE A CAPTURED HERO.
     --
@@ -852,17 +853,17 @@ if load_mod("steamroller") then
     ok(stuck.attack_power ~= nil,
        "steamroller: pins stats with NO captured hero (value-context path)")
 
-    -- ...but health still does, because Entity_ModifyHealth dereferences the
-    -- entity itself and a value context has no HP fields to fall back on.
+    -- ...but health still does: R.hp needs the captured hero to reach its
+    -- HitPoint component, and a value context alone has none.
     healed = false
-    R.combat.set_hp  = function() healed = true; return true end
-    R.entity.hp_frac = function() return 0.1 end
-    R.entity.max_hp  = function() return 100 end
+    R.hp.set  = function() healed = true; return true end
+    R.hp.frac = function() return 0.1 end
+    R.hp.max  = function() return 100 end
     fire("run:start")
     fire("gameplay:ENEMY_KILLED", { source = "gameplay" })
     ok(not healed,
        "steamroller: still refuses the health top-up without a captured hero")
-    R.combat.set_hp, R.entity.hp_frac, R.entity.max_hp = _sethp, _frac, _max
+    R.hp.set, R.hp.frac, R.hp.max = _sethp, _frac, _max
 
     -- A refused pin must NOT latch: the context arrives on the first pickup,
     -- so an early attempt fails and a later one has to succeed. Latching on the
