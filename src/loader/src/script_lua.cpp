@@ -1943,8 +1943,8 @@ bool script_run_mod_init(const std::string& mod_id,
     const auto init_path = mod_root / "init.lua";
     if (!std::filesystem::exists(init_path)) return false;
     if (health::is_disabled(mod_id)) {
-        Loader::get().log("[lua] " + mod_id + " skipped (disabled in "
-                          "mods/_health.json)");
+        Loader::get().log_warn("[lua] " + mod_id + " skipped (disabled in "
+                               "mods/_health.json)");
         return false;
     }
     // Stamp the canary before running mod code. If the game dies inside this
@@ -1997,7 +1997,7 @@ bool script_run_mod_init(const std::string& mod_id,
         // hands us a null char* here, and appending that to a std::string is
         // UB — the loader's own error handler was the crash.
         const std::string err = lua_err_str(L);
-        Loader::get().log(std::string("[lua] ") + mod_id + " init failed: " + err);
+        Loader::get().log_err(std::string("[lua] ") + mod_id + " init failed: " + err);
         // An init.lua that installed a hook (or exposed an API) and THEN raised
         // leaves both pointing at the lua_State we are about to free. The
         // hot-reload path has always torn these down; this one did not, so the
@@ -2044,12 +2044,12 @@ void log_handler_error(const std::string& mod_id, const std::string& event,
                        const std::string& err) {
     const int streak = ++g_event_err_streak[{mod_id, event}];
     if (streak < kEventErrorLogLimit) {
-        Loader::get().log(std::string("[lua] ") + mod_id + " event " + event
-                          + " (" + std::to_string(streak) + "): " + err);
+        Loader::get().log_err(std::string("[lua] ") + mod_id + " event " + event
+                              + " (" + std::to_string(streak) + "): " + err);
     } else if (streak == kEventErrorLogLimit) {
-        Loader::get().log(std::string("[lua] ") + mod_id + " event " + event
-                          + " (" + std::to_string(streak) + "): " + err);
-        Loader::get().log(std::string("[lua] ") + mod_id + " raised "
+        Loader::get().log_err(std::string("[lua] ") + mod_id + " event " + event
+                              + " (" + std::to_string(streak) + "): " + err);
+        Loader::get().log_warn(std::string("[lua] ") + mod_id + " raised "
                           + std::to_string(streak) + " times in a row on '"
                           + event + "'; SILENCING this pair until it succeeds "
                           "(the handler still runs)");

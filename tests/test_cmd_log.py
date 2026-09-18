@@ -95,6 +95,20 @@ def test_restore_removes_the_rsmm_dir_when_there_is_no_archive(tmp_path):
     assert not (game / "rsmm").exists()
 
 
+def test_restore_keeps_the_loader_update_cache(tmp_path):
+    """install-loader replants a newer `update-loader` bundle from
+    <game>/rsmm/cache/loader after a restore — so the restore must not delete it."""
+    game = tmp_path
+    cached = game / "rsmm" / "cache" / "loader" / "loader.manifest.json"
+    cached.parent.mkdir(parents=True)
+    cached.write_text("{}")
+    (game / "rsmm" / "lib").mkdir()
+
+    assert apply_mods.clear_loader_artifacts(game) == 1
+    assert cached.exists()
+    assert not (game / "rsmm" / "lib").exists()
+
+
 def test_install_loader_refuses_a_non_compiling_sdk(tmp_path, monkeypatch):
     """A syntax error in the SDK is not a degraded feature — it makes
     `require "rsmm"` raise for every mod. install-loader must not plant it.

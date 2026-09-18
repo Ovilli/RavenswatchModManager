@@ -416,7 +416,8 @@ void Loader::scan_mods(const fs::path& mods_dir) {
             m.enabled    = tbl["mod"]["enabled"].value_or(true);
             m.load_order = tbl["mod"]["load_order"].value_or(0);
         } catch (const std::exception& e) {
-            log("manifest parse fail " + manifest.string() + ": " + e.what());
+            log_err("[mods] manifest parse fail " + manifest.string() + ": " + e.what()
+                    + " (mod not loaded)");
             return true;
         }
 
@@ -448,7 +449,7 @@ void Loader::scan_mods(const fs::path& mods_dir) {
             if (existing.id == m.id) { dup = true; break; }
         }
         if (dup) {
-            log("duplicate mod id '" + m.id + "' in " + entry.path().string()
+            log_warn("[mods] duplicate mod id '" + m.id + "' in " + entry.path().string()
                 + "; ignoring this copy (ids must be unique)");
             return true;
         }

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import sys
@@ -18,7 +19,8 @@ _SHELL_METAS = ('"', "'", "`", "$", ";", "|", "&", "\n", "\r", "\0")
 
 
 def ensure_loader_dll() -> bool:
-    """Make sure dist/winhttp.dll exists, downloading the signed prebuilt if not.
+    """Make sure dist/winhttp.dll exists and is not older than this checkout's
+    Lua SDK, downloading the signed prebuilt when it is missing or stale.
 
     Only a source checkout can be missing it (a frozen build bundles the DLL, and
     its REPO_ROOT is a throwaway extraction dir), so this is a no-op there.
@@ -27,10 +29,14 @@ def ensure_loader_dll() -> bool:
     from rsmm.engine.loader_update import (
         LoaderUpdateError,
         bundled_loader_dll,
+        bundled_version,
         fetch_prebuilt_dll,
     )
 
-    if bundled_loader_dll().is_file() or getattr(sys, "frozen", False):
+    if getattr(sys, "frozen", False):
+        return True
+    if bundled_loader_dll().is_file():
+        _refresh_stale_prebuilt()
         return True
     print("loader DLL not built here — downloading the signed prebuilt loader...")
     try:
@@ -41,16 +47,64 @@ def ensure_loader_dll() -> bool:
               "(src/loader/build.bat on Windows, src/loader/build.sh on Linux).",
               file=sys.stderr)
         return False
-    remote, local = got["loader_version"], got["bundled_version"]
-    print(f"  saved loader v{remote} to {got['path']}")
-    if remote < local:
-        print(f"  note: this checkout's Lua SDK is v{local}, newer than the published "
-              f"DLL (v{remote}). Mods using the newest R.* calls may fail until the "
-              "loader is published or you build the DLL yourself.", file=sys.stderr)
-    elif remote > local:
-        print(f"  note: the published loader (v{remote}) is newer than this checkout "
-              f"(v{local}). Run `git pull` so the Lua SDK matches it.", file=sys.stderr)
+    print(f"  saved loader v{got['loader_version']} to {got['path']}")
+    _warn_version_skew(got["loader_version"], bundled_version())
     return True
+
+
+def _warn_version_skew(dll_version: int, sdk_version: int) -> None:
+    if dll_version < sdk_version:
+        print(f"  note: this checkout's Lua SDK is v{sdk_version}, newer than the "
+              f"published DLL (v{dll_version}). Mods using the newest R.* calls may "
+              "fail until the loader is published or you build the DLL yourself.",
+              file=sys.stderr)
+    elif dll_version > sdk_version:
+        print(f"  note: the published loader (v{dll_version}) is newer than this "
+              f"checkout (v{sdk_version}). Run `git pull` so the Lua SDK matches it.",
+              file=sys.stderr)
+
+
+def _refresh_stale_prebuilt() -> None:
+    """Re-download a prebuilt DLL that a `git pull` has left behind.
+
+    The Lua SDK is copied from the checkout, so after a pull that brings a
+    newer SDK the old downloaded DLL would be planted beside it and every
+    newer R.* call would fail in game. A DLL with no stamp is left alone
+    unless its hash IS the channel's current DLL (then it is stamped): an
+    unstamped DLL may be the developer's own build, which must never be
+    overwritten. Advisory — the existing DLL still works for older calls.
+    """
+    from rsmm.engine import loader_update as lu
+
+    dll = lu.bundled_loader_dll()
+    have, want = lu.prebuilt_version(dll), lu.bundled_version()
+    if have is not None and have >= want:
+        return
+    try:
+        manifest = lu.fetch_manifest()
+    except (lu.LoaderUpdateError, OSError):
+        return  # offline: keep what we have, say nothing
+    remote = int(manifest["loader_version"])
+    if have is None:
+        entry = next((f for f in manifest["files"] if f["path"] == "winhttp.dll"), None)
+        if entry is None or lu.sha256_file(dll) != entry["sha256"]:
+            return  # a local build, or an unknown older download: not ours to replace
+        lu.prebuilt_stamp_path(dll).write_text(
+            json.dumps({"loader_version": remote}) + "\n", encoding="utf-8")
+        have = remote
+    if have >= want or remote <= have:
+        return
+    print(f"loader DLL v{have} is older than this checkout's Lua SDK v{want} — "
+          "downloading the newer signed prebuilt...")
+    try:
+        got = lu.fetch_prebuilt_dll()
+    except (lu.LoaderUpdateError, OSError) as e:
+        print(f"install-loader: could not update the prebuilt loader: {e}\n"
+              f"  Keeping v{have}; mods using the newest R.* calls may fail.",
+              file=sys.stderr)
+        return
+    print(f"  saved loader v{got['loader_version']} to {got['path']}")
+    _warn_version_skew(got["loader_version"], want)
 
 
 def _validate_game_dir(raw: str) -> Path:

@@ -637,7 +637,9 @@ def test_fetch_prebuilt_dll_writes_only_the_verified_dll(tmp_path, channel):
 
     assert dest.read_bytes() == PAYLOAD["winhttp.dll"]
     assert (got["loader_version"], got["bundled_version"]) == (1, 1)
-    assert sorted(p.name for p in dest.parent.iterdir()) == ["winhttp.dll"]
+    assert sorted(p.name for p in dest.parent.iterdir()) == [
+        "winhttp.dll", "winhttp.dll.prebuilt.json"]
+    assert lu.prebuilt_version(dest) == 1
 
 
 def test_fetch_prebuilt_dll_refuses_a_tampered_bundle(tmp_path, channel):
@@ -675,3 +677,67 @@ def test_install_loader_reports_failure_without_a_dll(tmp_path, channel, monkeyp
 
     assert install_loader.ensure_loader_dll() is False
     assert "offline" in capsys.readouterr().err
+
+
+# --- a `git pull` must not leave the prebuilt DLL behind the SDK -----------
+
+def _checkout_dll(tmp_path, monkeypatch, data: bytes, stamp: int | None) -> Path:
+    dest = tmp_path / "checkout" / "dist" / "winhttp.dll"
+    dest.parent.mkdir(parents=True)
+    dest.write_bytes(data)
+    if stamp is not None:
+        lu.prebuilt_stamp_path(dest).write_text(json.dumps({"loader_version": stamp}))
+    monkeypatch.setattr(lu, "bundled_loader_dll", lambda: dest)
+    return dest
+
+
+def test_stale_prebuilt_is_redownloaded_after_a_pull(tmp_path, channel, monkeypatch):
+    from rsmm.cli import install_loader
+
+    _, use = channel
+    use(_publish(tmp_path, version=2))
+    monkeypatch.setattr(lu, "bundled_version", lambda: 2)  # the pull brought SDK v2
+    dest = _checkout_dll(tmp_path, monkeypatch, b"MZ old prebuilt", stamp=1)
+
+    assert install_loader.ensure_loader_dll() is True
+    assert dest.read_bytes() == PAYLOAD["winhttp.dll"]
+    assert lu.prebuilt_version(dest) == 2
+
+
+def test_current_prebuilt_is_not_redownloaded(tmp_path, channel, monkeypatch):
+    from rsmm.cli import install_loader
+
+    # No channel configured at all: a fetch would fail, so any attempt shows.
+    monkeypatch.setattr(lu, "fetch_manifest",
+                        lambda *a, **k: pytest.fail("fetched a current DLL"))
+    dest = _checkout_dll(tmp_path, monkeypatch, b"MZ current", stamp=1)
+    assert install_loader.ensure_loader_dll() is True
+    assert dest.read_bytes() == b"MZ current"
+
+
+def test_unstamped_local_build_is_never_replaced(tmp_path, channel, monkeypatch):
+    from rsmm.cli import install_loader
+
+    _, use = channel
+    use(_publish(tmp_path, version=2))
+    monkeypatch.setattr(lu, "bundled_version", lambda: 2)
+    dest = _checkout_dll(tmp_path, monkeypatch, b"MZ my own build", stamp=None)
+
+    assert install_loader.ensure_loader_dll() is True
+    assert dest.read_bytes() == b"MZ my own build"
+    assert lu.prebuilt_version(dest) is None
+
+
+def test_unstamped_channel_dll_gets_adopted(tmp_path, channel, monkeypatch):
+    """Clones that downloaded the DLL before stamps existed: the hash proves
+    it is the channel's, so it is stamped and future pulls can refresh it."""
+    from rsmm.cli import install_loader
+
+    _, use = channel
+    use(_publish(tmp_path, version=1))
+    dest = _checkout_dll(tmp_path, monkeypatch, PAYLOAD["winhttp.dll"], stamp=None)
+    monkeypatch.setattr(lu, "bundled_version", lambda: 2)  # SDK ahead of the channel
+
+    assert install_loader.ensure_loader_dll() is True
+    assert lu.prebuilt_version(dest) == 1
+    assert dest.read_bytes() == PAYLOAD["winhttp.dll"]

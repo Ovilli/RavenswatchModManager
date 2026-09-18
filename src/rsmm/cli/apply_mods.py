@@ -1953,6 +1953,10 @@ def clear_runtime_mods(game_dir: Path, dry_run: bool = False) -> int:
     return 1
 
 
+# `<game>/rsmm/` children that survive `restore --all` (see clear_loader_artifacts).
+_KEEP_ON_RESTORE = ("logs", "cache")
+
+
 def clear_loader_artifacts(game_dir: Path, dry_run: bool = False) -> int:
     """Best-effort removal of RSMM loader runtime files for vanilla mode.
 
@@ -1981,24 +1985,28 @@ def clear_loader_artifacts(game_dir: Path, dry_run: bool = False) -> int:
                 asset_map.unlink()
 
         if rsmm_dir.exists():
-            # Everything EXCEPT the archived logs. Those are diagnostics, not
-            # loader runtime: an rmtree here deleted them on every
-            # restore -> apply -> install-loader cycle, which is precisely the
-            # loop you are in when you need the previous run's log.
+            # Everything EXCEPT the archived logs and the update cache. Logs are
+            # diagnostics, not loader runtime: an rmtree here deleted them on
+            # every restore -> apply -> install-loader cycle, which is precisely
+            # the loop you are in when you need the previous run's log. The
+            # cache holds the verified `update-loader` bundle that
+            # install-loader's replant step restores after exactly this wipe;
+            # deleting it silently rolled channel users back to the bundled
+            # loader on every restore.
             print(f"Removing loader runtime dir: {rsmm_dir}")
             if not dry_run:
-                kept = False
+                kept = []
                 for child in rsmm_dir.iterdir():
-                    if child.name == "logs" and child.is_dir():
-                        kept = True
+                    if child.name in _KEEP_ON_RESTORE and child.is_dir():
+                        kept.append(child)
                         continue
                     if child.is_dir() and not child.is_symlink():
                         shutil.rmtree(child)
                     else:
                         child.unlink()
-                if kept:
-                    print(f"  kept archived loader logs: {rsmm_dir / 'logs'}")
-                else:
+                for k in kept:
+                    print(f"  kept {k}")
+                if not kept:
                     rsmm_dir.rmdir()
     except OSError as e:
         print(f"  [warn] failed to clear loader artifacts: {e}", file=sys.stderr)

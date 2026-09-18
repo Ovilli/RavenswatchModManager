@@ -746,11 +746,31 @@ def fetch_prebuilt_dll(dest: Path | None = None) -> dict:
         tmp = dest.with_name(f"{dest.name}.{os.getpid()}.tmp")
         shutil.copyfile(src, tmp)
         os.replace(tmp, dest)
+    version = int(manifest["loader_version"])
+    # Stamp it: without a record of WHICH channel version this is, a later
+    # `git pull` bringing a newer Lua SDK planted it beside this old DLL
+    # forever (ensure_loader_dll only downloaded when the file was missing).
+    prebuilt_stamp_path(dest).write_text(
+        json.dumps({"loader_version": version}) + "\n", encoding="utf-8")
     return {
         "path": str(dest),
-        "loader_version": int(manifest["loader_version"]),
+        "loader_version": version,
         "bundled_version": bundled_version(),
     }
+
+
+def prebuilt_stamp_path(dll: Path) -> Path:
+    return dll.with_name(dll.name + ".prebuilt.json")
+
+
+def prebuilt_version(dll: Path) -> int | None:
+    """Channel version of a DLL `fetch_prebuilt_dll` downloaded, or None for a
+    DLL with no stamp (built locally, or fetched before stamps existed)."""
+    try:
+        data = json.loads(prebuilt_stamp_path(dll).read_text(encoding="utf-8"))
+        return int(data["loader_version"])
+    except (OSError, ValueError, TypeError, KeyError):
+        return None
 
 
 def replant_cached(game_dir: Path) -> dict | None:
