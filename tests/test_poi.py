@@ -1850,3 +1850,64 @@ def test_places_own_prop_mints_a_mod_owned_entity_and_stands_it(tmp_path):
     assert lines == sorted(lines), "a tile cache out of order is never read"
     assert any("_Prop.entity.ot" in ln for ln in lines), \
         "the mod's own entity must be preloaded by the tile that places it"
+
+
+# --------------------------------------------------------------------------- #
+# apply-time cache gates (both must hold, or a pooled tile is never placed)
+# --------------------------------------------------------------------------- #
+
+def _gate_reader(*roots: Path):
+    def read(decoded: str) -> bytes | None:
+        for r in roots:
+            p = r / decoded
+            if p.exists():
+                return p.read_bytes()
+        return None
+    return read
+
+
+@needs_corpus
+def test_cache_gates_pass_on_every_shipped_map():
+    from rsmm.cli.apply_mods import check_tile_cache_gates
+
+    uncooked = DATA_DIR / "uncooked"
+    for m in _maps:
+        rel = Path(m).relative_to(uncooked).as_posix()
+        base = MP.read_pool(Path(m).read_bytes()) or []
+        assert check_tile_cache_gates(rel, _gate_reader(uncooked), base) == [], rel
+
+
+@needs_corpus
+def test_cache_gates_catch_each_silent_poi_failure(tmp_path):
+    from rsmm.cli.apply_mods import check_tile_cache_gates
+    from rsmm.engine import rsc_cache as RC
+
+    poi.emit("mymod", ContentDef(kind="poi", id="Cauldron", fields={
+        "base": BASE, "chapters": ["Dark_Hills"]}), tmp_path)
+    stem = poi.CHAPTERS["Dark_Hills"]
+    mapdef = f"Definitions/Maps/{stem}{MP.GEN_SUFFIX}"
+    base = MP.read_pool((MAPS_DIR / f"{stem}{MP.GEN_SUFFIX}").read_bytes())
+    read = _gate_reader(tmp_path, DATA_DIR / "uncooked")
+    assert check_tile_cache_gates(mapdef, read, base) == []
+
+    map_cache = tmp_path / f"Definitions/Maps/{stem}.mapdef{RC.CACHE_SUFFIX}"
+    tile_cache = tmp_path / f"Definitions/Tiles/Avalon/mymod_Cauldron.tiledef{RC.CACHE_SUFFIX}"
+    good_map, good_tile = map_cache.read_bytes(), tile_cache.read_bytes()
+
+    # Gate 1: the tile is pooled but the map's cache does not list it.
+    lines = [ln for ln in RC.parse(good_map) if "mymod_Cauldron" not in ln]
+    map_cache.write_bytes(RC.render(lines))
+    assert any("no line in map cache" in p
+               for p in check_tile_cache_gates(mapdef, read, base))
+
+    # An out-of-order map cache: the lookup never reaches the late line.
+    map_cache.write_bytes(RC.render(sorted(RC.parse(good_map), reverse=True)))
+    assert any("not sorted" in p for p in check_tile_cache_gates(mapdef, read, base))
+    map_cache.write_bytes(good_map)
+
+    # Gate 2: the added tile has no preload manifest of its own.
+    tile_cache.unlink()
+    assert any("has no resource cache" in p
+               for p in check_tile_cache_gates(mapdef, read, base))
+    tile_cache.write_bytes(good_tile)
+    assert check_tile_cache_gates(mapdef, read, base) == []

@@ -47,6 +47,7 @@ import subprocess
 import sys
 import time
 import tomllib  # Python 3.11+
+from collections.abc import Callable, Collection
 from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -1151,6 +1152,72 @@ def _merge_map_pool(enc: str, srcs: list[Path],
     return out_path
 
 
+_TILEDEF_CACHE_CLASS = "oCDtTileDefinition"
+
+
+def check_tile_cache_gates(mapdef_decoded: str,
+                           read: Callable[[str], bytes | None],
+                           vanilla_pool: Collection[str] = ()) -> list[str]:
+    """Problems with the two cache gates of one tile-generated map.
+
+    A pooled tile is only ever placed when BOTH hold, and each fails silently
+    in game (registered, never placed, nothing logged):
+
+    1. the mapdef's own cache lists every pooled tiledef, one for one;
+    2. every pooled tiledef has a sibling ``.tiledef.UsedRscCache.ot``.
+
+    Both caches must also be in ascending order: the engine looks lines up
+    rather than scanning, so an out-of-order line is never found (and in a
+    tile cache that is a null the level teardown destroys unchecked).
+
+    ``read(decoded)`` returns the bytes the game will see at that decoded path
+    after this apply, or ``None`` when nothing will be there. Tiles in
+    ``vanilla_pool`` skip the per-tile checks: the shipped Avalon pool names
+    two tiledefs the game does not ship at all, and it runs fine.
+    """
+    from rsmm.engine import map_pool as MP
+    raw = read(mapdef_decoded)
+    if raw is None:
+        return []
+    try:
+        pool = MP.read_pool(raw)
+    except Exception:  # noqa: BLE001 — unparseable mapdef is reported elsewhere
+        return []
+    if not pool:
+        return []
+    problems: list[str] = []
+    map_cache = rsc_cache.cache_path_for(mapdef_decoded)
+    cache_raw = read(map_cache)
+    if cache_raw is None:
+        return [f"map cache '{map_cache}' is missing, so none of its "
+                f"{len(pool)} pooled tiles is preloaded"]
+    lines = rsc_cache.parse(cache_raw)
+    if lines != sorted(lines):
+        problems.append(f"map cache '{map_cache}' is not sorted")
+    listed = {ln.split("|")[1] for ln in lines
+              if ln.endswith("|" + _TILEDEF_CACHE_CLASS) and ln.count("|") == 2}
+    for tile in pool:
+        if tile not in listed:
+            problems.append(f"pooled tile '{tile}' has no line in map cache "
+                            f"'{map_cache}' (never preloaded, never placed)")
+        if tile in vanilla_pool:
+            continue
+        tile_cache = "Definitions/" + tile.replace("\\", "/")
+        tile_cache = tile_cache[: -len(".ot")] + rsc_cache.CACHE_SUFFIX
+        tile_raw = read(tile_cache)
+        if tile_raw is None:
+            problems.append(f"pooled tile '{tile}' has no resource cache "
+                            f"'{tile_cache}' (nothing preloaded, never placed)")
+            continue
+        tl = rsc_cache.parse(tile_raw)
+        if tl != sorted(tl):
+            problems.append(f"tile cache '{tile_cache}' is not sorted")
+    if len(listed) != len(set(pool)):
+        problems.append(f"map cache '{map_cache}' lists {len(listed)} tiledefs "
+                        f"but the pool has {len(set(pool))}")
+    return problems
+
+
 def plan_apply(mods: list[Mod],
                dec2enc: dict[str, str],
                cooking: Path,
@@ -1270,6 +1337,40 @@ def plan_apply(mods: list[Mod],
             print(f"  [warn] conflict on '{decoded}' (mods: {others} vs "
                   f"{last[1]}); keeping later mod {last[1]}", file=sys.stderr)
             wanted[enc] = (last[0], last[1])
+
+    # Re-check both cache gates for every map whose pool a mod touched, on the
+    # FINAL post-merge bytes. Each gate fails silently in game, so this is the
+    # only place a broken POI shows up before a playtest.
+    dec_of = {enc: writers[0][2] for enc, writers in collected.items()}
+
+    def _read_final(decoded: str) -> bytes | None:
+        enc = dec2enc.get(decoded) or resolve_special(decoded, dec2enc)
+        if not enc:
+            return None
+        if enc in wanted:
+            path = wanted[enc][0]
+        else:
+            dest = encoded_to_dest(enc, cooking, game_dir)
+            bak = dest.parent / (dest.name + BACKUP_SUFFIX)
+            path = bak if bak.exists() else dest
+        try:
+            return path.read_bytes()
+        except OSError:
+            return None
+
+    for enc in wanted:
+        decoded = dec_of.get(enc, "")
+        if is_map_def(decoded):
+            from rsmm.engine import map_pool as MP
+            dest = encoded_to_dest(enc, cooking, game_dir)
+            bak = dest.parent / (dest.name + BACKUP_SUFFIX)
+            try:
+                base = MP.read_pool((bak if bak.exists() else dest).read_bytes())
+            except Exception:  # noqa: BLE001 — no vanilla: check every tile
+                base = None
+            for problem in check_tile_cache_gates(decoded, _read_final,
+                                                  set(base or ())):
+                print(f"  [error] tile cache gate: {problem}", file=sys.stderr)
 
     active: dict[str, dict] = state.active
     additions: list[tuple[str, Path, Path, str]] = []
