@@ -262,7 +262,6 @@ name         = "Cheap Sandman"
 version      = "0.1.0"
 author       = "you"
 description  = "Everything is half off."
-experimental = true
 
 [[content]]
 kind        = "shop"
