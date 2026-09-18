@@ -216,4 +216,15 @@ def append_bank_keys(base_gen: Path, new_pairs: dict[str, str]) -> dict[str, byt
             )
         vf.entries.extend(new_vals)
         out[f".Lang{lang}"] = write_text_file(vf)
+    if len(out) == 1:
+        # Keys with no value file is not a partial result, it is a crash: the
+        # game indexes the language file by key row, finds no string for the
+        # new rows and dereferences the -1 sentinel (0x14068a481, measured
+        # 2026-09-18 when a cloned modifier opened the challenge screen). The
+        # repo's uncooked mirror carries only the keys file of each bank, so
+        # the caller has to hand in the INSTALL bank.
+        raise ValueError(
+            f"{base_gen.name}: no language value file found beside it, so new "
+            f"keys would have no text and crash the game. Pass the bank from the "
+            f"game install (its .Ggzy<XX> siblings), not the uncooked mirror.")
     return out

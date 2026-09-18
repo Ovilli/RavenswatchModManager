@@ -74,6 +74,22 @@ EFFECT_KEYS: dict[str, int] = {
 }
 
 
+def _install_bank() -> Path | None:
+    """The live install's copy of the modifier text bank, whose language value
+    files sit beside it. The uncooked mirror has the keys file only, and
+    appending keys without values crashes the challenge screen."""
+    try:
+        from rsmm.cli.apply_mods import COOKING_REL, find_game_dir, load_asset_map
+    except ImportError:
+        return None
+    game = find_game_dir()
+    enc = load_asset_map().get(_TEXT_BANK_DECODED) if game else None
+    if not enc:
+        return None
+    p = game / COOKING_REL / Path(*enc.split("\\"))
+    return p if p.exists() else None
+
+
 def _write_bank_files(files: dict[str, bytes], out_dir: Path) -> list[Path]:
     """Write a bank-patch result ({token -> bytes}) into the mod assets. ``token``
     is ``.Lang<XX>`` for a language sibling, or ``__base__`` for the keys file."""
@@ -134,18 +150,19 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     written = [dest]
 
     if relabel:
-        if not _TEXT_BANK_GEN.is_file():
+        bank = _install_bank()
+        if bank is None:
             raise SchemaNotMined(
-                f"modifier {defn.id}: text bank {_TEXT_BANK_GEN.name} not present, "
-                f"so the display name/description can't be set — drop 'name'/"
-                f"'description' to emit the def alone, or supply the corpus."
+                f"modifier {defn.id}: text bank {_TEXT_BANK_GEN.name} not found in "
+                f"the game install, so the display name/description can't be set "
+                f"— drop 'name'/'description' to emit the def alone."
             )
         pairs: dict[str, str] = {}
         if name is not None:
             pairs[f"GameModifier_{defn.id}_Title"] = str(name)
         if description is not None:
             pairs[f"GameModifier_{defn.id}_Desc"] = str(description)
-        files = TP.append_bank_keys(_TEXT_BANK_GEN, pairs)
+        files = TP.append_bank_keys(bank, pairs)
         written += _write_bank_files(files, out_dir)
 
     _log.info(

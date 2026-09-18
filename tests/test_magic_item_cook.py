@@ -260,6 +260,16 @@ def test_append_bank_keys_rejects_misaligned(tmp_path):
         append_bank_keys(base, {"C": "c"})
 
 
+def test_append_bank_keys_refuses_a_bank_with_no_value_files(tmp_path):
+    # The uncooked mirror carries only the keys file. Appending keys with no
+    # value file to match crashed the challenge screen on a -1 string pointer.
+    from rsmm.engine.text_patches import append_bank_keys
+    base = tmp_path / "Bank~GAM.xls.LocalText.gen"
+    _write_bank(base, ["A", "B"])
+    with pytest.raises(ValueError, match="no language value file"):
+        append_bank_keys(base, {"C": "c"})
+
+
 def test_build_magic_item_entity_and_text(tmp_path):
     # cooked entity blob: each lstr is a proper node (preceded by its own GUID)
     # so remint's GUID heuristic never grabs the id string or the value float.
