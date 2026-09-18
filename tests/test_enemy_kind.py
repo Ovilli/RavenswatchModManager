@@ -84,3 +84,31 @@ def test_known_tribes_includes_corpus(tmp_path):
     tribes = enemies._known_tribes()
     assert "Gnolls" in tribes and "Crabs" in tribes
     assert "Goblins" not in tribes
+
+
+def test_clone_ships_its_own_resource_cache(tmp_path):
+    """Every shipped enemydef has a sibling `.UsedRscCache.ot`, found by name —
+    so a clone under a new name has none unless the emit writes one. It must
+    name the CLONE's def (never the base's), keep the base's closure, and be
+    sorted, because the engine binary-searches it."""
+    _require_corpus()
+    from rsmm.engine import rsc_cache as RC
+
+    written = _emit(tmp_path, id="Clone_Gnoll", weight=5.0)
+    caches = [p for p in written if p.name.endswith(".UsedRscCache.ot")]
+    assert [p.name for p in caches] == ["Clone_Gnoll.enemydef.UsedRscCache.ot"]
+    lines = RC.parse(caches[0].read_bytes())
+    assert lines == sorted(lines)
+    assert "Definitions|Enemies\\Clone_Gnoll.enemydef.ot|oCDtEnemyDefinition" in lines
+    assert not any(f"Enemies\\{_BASE}.enemydef.ot" in ln for ln in lines)
+    assert f"EntitySettings|Enemies\\Gnoll\\{_BASE}.entity.ot|oCEntitySettingsResource" in lines
+
+
+def test_clone_with_repointed_entity_borrows_the_owners_closure(tmp_path):
+    _require_corpus()
+    from rsmm.engine import rsc_cache as RC
+
+    entity = "Enemies\\Gnoll\\Gnoll_Hunter.entity.ot"
+    written = _emit(tmp_path, id="Clone_Gnoll", entity=entity)
+    lines = RC.parse(written[-1].read_bytes())
+    assert f"EntitySettings|{entity}|oCEntitySettingsResource" in lines

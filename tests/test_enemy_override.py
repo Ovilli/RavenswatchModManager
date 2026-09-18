@@ -331,8 +331,10 @@ def test_clone_mode_is_unchanged(tmp_path):
     _require_corpus()
     defn = ContentDef(kind="enemy", id="Dreadgnoll",
                       fields={"base": "Gnoll_Shielded", "weight": 4.0})
-    (out,) = enemies.emit("TestEnemyOverrideMod", defn, tmp_path)
+    # The def, then its own resource cache (see test_enemy_kind).
+    out, cache = enemies.emit("TestEnemyOverrideMod", defn, tmp_path)
     assert out.name.startswith("Dreadgnoll.")
+    assert cache.name == "Dreadgnoll.enemydef.UsedRscCache.ot"
     assert _weight_of(out) == 4.0
 
 

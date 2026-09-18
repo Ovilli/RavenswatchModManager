@@ -239,7 +239,8 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                    not yet patchable, so a clone shares the base's stats
                    and on-screen name until entity cloning lands.
 
-    Returns ``[<out_dir>/Definitions/Enemies/<id>.enemydef.ot.DtEnemyDefinition.gen]``.
+    Returns the def at ``<out_dir>/Definitions/Enemies/<id>.enemydef.ot.DtEnemyDefinition.gen``
+    and its sibling ``<id>.enemydef.UsedRscCache.ot`` (see :func:`_emit_clone_cache`).
     """
     base = defn.fields.get("base")
     if not base or not isinstance(base, str):
@@ -355,7 +356,60 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         mod_id, defn.id, base, body["tribe_ref"][1], body["flags"],
         body["spawn_weight"],
     )
-    return [dest]
+    return [dest, _emit_clone_cache(defn.id, base, decoded_rel, body, entity, out_dir)]
+
+
+def _emit_clone_cache(clone_id: str, base: str, decoded_rel: str, body: dict,
+                      entity: str | None, out_dir: Path) -> Path:
+    """Write the clone's own ``<id>.enemydef.UsedRscCache.ot``.
+
+    81 of 81 shipped enemydefs carry one, and a clone used to ship without it —
+    the same gap that kept mod tiledefs "registered, never placed" until
+    `rsmm.engine.rsc_cache` existed: the engine finds the cache by appending
+    the literal suffix to the def's name, so a new name has none unless we
+    write it. It is the base's closure, with the base's own def line renamed to
+    the clone (every shipped cache lists its own def), plus the new tribe's def
+    and, when ``entity`` is repointed, the closure of the def that owns that
+    prefab — the same borrow `_emit_merged_cache` makes for an override.
+    """
+    base_rel = RC.cache_path_for(EP.cooked_rel_for(base))
+    blob = EP.corpus_read(base_rel)
+    if blob is None:
+        raise SchemaNotMined(
+            f"enemy {clone_id}: {base_rel} is missing from the corpus and the "
+            f"game install, so the clone's preload closure cannot be assembled."
+        )
+    base_def = f"Definitions|Enemies\\{base}.enemydef.ot|{_enemy_class()}"
+    lines = set(RC.parse(blob)) - {base_def}
+    lines.add(f"Definitions|Enemies\\{clone_id}.enemydef.ot|{_enemy_class()}")
+
+    tribe_ref = body["tribe_ref"][1]
+    if tribe_ref:
+        lines.add(f"{body['tribe_ref'][0] or 'Definitions'}|{tribe_ref}"
+                  f"|oCDtEnemyTribeDefinition")
+
+    if entity is not None:
+        owner = next((eid for eid, row in EP.enemy_index().items()
+                      if row["entity"].lower() == entity.lower()), None)
+        if owner is None:
+            raise ContentError(
+                f"enemy {clone_id}: no enemy definition owns entity {entity!r}, "
+                f"so there is no shipped resource cache to borrow its preload "
+                f"closure from. Pick an entity some enemy def already uses."
+            )
+        donor = EP.corpus_read(RC.cache_path_for(EP.cooked_rel_for(owner)))
+        if donor is None:
+            raise SchemaNotMined(
+                f"enemy {clone_id}: the resource cache of {owner!r} is missing, "
+                f"so the closure of {entity!r} cannot be borrowed."
+            )
+        lines |= set(RC.parse(donor))
+
+    dest = out_dir / Path(*RC.cache_path_for(decoded_rel).split("/"))
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    # Sorted: the engine binary-searches this file (see `_emit_merged_cache`).
+    dest.write_bytes(RC.render(sorted(lines)))
+    return dest
 
 
 # --------------------------------------------------------------------------- #
