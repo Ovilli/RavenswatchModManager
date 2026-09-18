@@ -21,10 +21,10 @@
     "@neondatabase/serverless": "0.10.4",
     "@rsmm/db": "workspace:*",
     "@rsmm/schemas": "workspace:*",
-    "better-auth": "1.6.22",
+    "better-auth": "1.7.5",
     "dotenv": "16.4.7",
     "drizzle-orm": "0.45.2",
-    "hono": "4.12.34",
+    "hono": "4.13.5",
     "nodemailer": "^9.0.1",
     "pg": "8.13.1",
     "ws": "8.21.0",
@@ -37,6 +37,6 @@
     "tsup": "^8.5.1",
     "tsx": "4.19.2",
     "typescript": "5.7.3",
-    "vitest": "3.2.6"
+    "vitest": "4.1.11"
   }
 }
