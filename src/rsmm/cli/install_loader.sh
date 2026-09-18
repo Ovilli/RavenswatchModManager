@@ -95,7 +95,8 @@ if [ -f "$REPO_DIR/data/function_patterns.json" ]; then
 elif [ -f "$GAME_DIR/rsmm/data/function_patterns.json" ]; then
     echo "Pattern DB: keeping the copy already in the game folder (rsmm update-data)."
 else
-    echo "warning: no pattern DB in the game folder. Run: rsmm update-data" >&2
+    # rsmm install-loader (install_loader.py) downloads it right after this script.
+    echo "Pattern DB: none in the game folder yet."
 fi
 
 # Lua-side SDK: mods do `require "rsmm"` and get the documented R.* surface.

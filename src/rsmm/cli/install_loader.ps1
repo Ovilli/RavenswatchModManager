@@ -98,7 +98,8 @@ if (Test-Path $patternsSrc) {
 } elseif (Test-Path (Join-Path $dataDst 'function_patterns.json')) {
   Write-Host "Pattern DB: keeping the copy already in the game folder (rsmm update-data)."
 } else {
-  Write-Warning "No pattern DB in the game folder. Run: rsmm update-data"
+  # rsmm install-loader (install_loader.py) downloads it right after this script.
+  Write-Host "Pattern DB: none in the game folder yet."
 }
 
 # Lua-side SDK: mods do `require "rsmm"` and get the documented R.* surface.

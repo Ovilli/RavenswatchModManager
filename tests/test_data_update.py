@@ -172,3 +172,34 @@ def test_cli_install_json(remote: Path, game_dir: Path, capsys, monkeypatch):
     out = json.loads(capsys.readouterr().out)
     assert out["status"] == "updated"
     assert (planted_dir(game_dir) / "function_patterns.json").exists()
+
+
+def test_install_loader_fetches_a_missing_db(remote: Path, game_dir: Path, capsys):
+    # `restore --all` wipes <game>/rsmm/, and a clone has no repo DB, so the
+    # restore → apply → install-loader loop used to leave no DB behind.
+    from rsmm.cli.install_loader import _ensure_pattern_db
+
+    _ensure_pattern_db(game_dir)
+    planted = planted_dir(game_dir) / "function_patterns.json"
+    assert json.loads(planted.read_text()) == PATTERNS
+    assert "planted 2 patterns" in capsys.readouterr().out
+
+
+def test_install_loader_keeps_a_planted_db(remote: Path, game_dir: Path):
+    from rsmm.cli.install_loader import _ensure_pattern_db
+
+    planted = planted_dir(game_dir) / "function_patterns.json"
+    planted.parent.mkdir(parents=True)
+    planted.write_text("[]")
+    _ensure_pattern_db(game_dir)
+    assert planted.read_text() == "[]"
+
+
+def test_install_loader_db_fetch_failure_is_advisory(
+    tmp_path: Path, game_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys
+):
+    from rsmm.cli.install_loader import _ensure_pattern_db
+
+    monkeypatch.setenv("RSMM_DATA_UPDATE_BASE", (tmp_path / "nowhere").as_uri())
+    _ensure_pattern_db(game_dir)  # must not raise
+    assert "rsmm update-data" in capsys.readouterr().err

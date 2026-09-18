@@ -174,6 +174,43 @@ def _replant_newer_loader(game_dir: Path) -> None:
               f"from the update channel ({len(result['planted'])} files)")
 
 
+def _ensure_pattern_db(game_dir: Path) -> None:
+    """Fetch the pattern DB when the game folder has none.
+
+    A fresh clone has no `data/function_patterns.json` (gitignored), and
+    `restore --all` deletes `<game>/rsmm/` — so the documented restore →
+    apply → install-loader loop left every source-checkout user without a
+    DB after each iteration. The platform script only warned; users re-ran
+    install-loader, got the same warning, and every symbol-backed R.* call
+    (hero capture, R.talent, R.give …) quietly did nothing in game.
+
+    Advisory: the loader itself still runs without a DB, so a failed fetch
+    warns instead of failing the install.
+    """
+    from rsmm.engine.data_update import (
+        PATTERNS_NAME,
+        DataUpdateError,
+        apply_update,
+        planted_dir,
+    )
+
+    if (planted_dir(game_dir) / PATTERNS_NAME).is_file():
+        return
+    print("install-loader: no pattern DB in the game folder — fetching it "
+          "(same as `rsmm update-data`)...")
+    try:
+        state = apply_update(game_dir)
+    except (DataUpdateError, OSError) as exc:
+        print(f"install-loader: could not fetch the pattern DB: {exc}\n"
+              "  Engine features (talents, items, hero capture) will not work "
+              "until you run `rsmm update-data`.", file=sys.stderr)
+        return
+    print(f"  planted {state.get('pattern_count', '?')} patterns: {state['planted_path']}")
+    if state.get("exe_match") is False:
+        print("  note: the published DB was built for a different game build; "
+              "most symbols usually still resolve.", file=sys.stderr)
+
+
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
@@ -232,6 +269,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if rc == 0:
         _replant_newer_loader(Path(argv[0]))
+        _ensure_pattern_db(Path(argv[0]))
     return rc
 
 
