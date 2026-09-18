@@ -46,18 +46,24 @@ local _hero_capture_is_live, _invalidate_hero_capture
 -- (Hero_ModifyDreamShards, formerly misnamed Entity_ModifyHealth) fires
 -- dt_shard_gain/dt_shard_loss, clamps only at 0, and is what the Sandman buy
 -- spends through. R.shards is the honest API; R.combat and R.entity.hp/max_hp/
--- hp_frac still work but log a one-time deprecation warning. Real HP is not
--- located yet.
+-- hp_frac still work but log a one-time deprecation warning. Real HP is
+-- R.hp (static RE 2026-09-18, in-game proof pending).
 --
 --   R.shards.get()       -- current dream shards, or nil (hero not captured yet)
 --   R.shards.add(20)     -- grant 20
 --   R.shards.spend(15)   -- take 15 (never below 0)
 --   R.shards.set(50)     -- set to an absolute value
 --   R.entity.ready()     -- true once the hero is captured
+--   R.hp.get()       -- current HP, or nil
+--   R.hp.max()       -- max HP, or nil
+--   R.hp.frac()      -- current/max in 0..1, or nil
+--   R.hp.set(v)      -- through the engine's own setter (clamped to [0, max])
+--   R.hp.heal(20) / R.hp.damage(15)
 
 R.entity = {}
 R.combat = {}
 R.shards = {}
+R.hp = {}
 
 -- One line per deprecated name per session, so a mod calling it every tick
 -- does not bury the log.
@@ -66,7 +72,7 @@ local function _deprecated(old, new)
     if _deprecated_seen[old] then return end
     _deprecated_seen[old] = true
     R.log(("[rsmm] %s is deprecated: it reads/changes DREAM SHARDS, not health "
-           .. "(settled 2026-09-18). Use %s."):format(old, new))
+           .. "(settled 2026-09-18). Use %s, or R.hp for real HP."):format(old, new))
 end
 
 local ENTITY_HP_OFF      = 0x15c8        -- f32 current HP on the hero character
@@ -1088,6 +1094,126 @@ function R.shards.set(value)
     local cur = _shards()
     if not cur then return false end
     return _modify_shards((value or 0) - cur)
+end
+
+-- Real health ----------------------------------------------------------------
+--
+-- The hero's HP lives on its oCEntityCpntHitPoint: *(hero+0x2f8) is the
+-- sibling oCDtEntityCpntCharacterController (measured in game 2026-09-18 — it
+-- is NOT the entity, whatever older notes say), component = *(that+0x78),
+-- current HP at +0xe8 and max at +0xec. Thirteen
+-- engine readers walk exactly that chain and divide the pair into a health
+-- fraction. The one writer is HitPoint_SetHitPoints, which clamps to [0, max],
+-- runs the death and change listeners, replicates, and updates the UI bar.
+--
+-- The +0x78 link was read off its users, not off the code that sets it, so
+-- every access re-proves it: RTTI must name a HitPoint class and the
+-- component's owner (+0x8) must be the hero's own entity, *(hero+0x8). The
+-- first version compared it with the character controller instead and refused
+-- the real component on every read. Anything else is nil, never a guess.
+local HITPOINT = { link = 0x78, owner = 0x08, cur = 0xe8, max = 0xec }
+
+local function _hitpoint()
+    local e = R.entity.hero(); if not e then return nil end
+    local cc = I.read_u64(e + 0x2f8)
+    if not cc or cc == 0 or not _ptr_plausible(cc) then return nil end
+    local ent = I.read_u64(e + HITPOINT.owner)
+    if not ent or ent == 0 or not _ptr_plausible(ent) then return nil end
+    local hp = I.read_u64(cc + HITPOINT.link)
+    if not hp or hp == 0 or not _ptr_plausible(hp) then return nil end
+    if I.read_u64(hp + HITPOINT.owner) ~= ent then return nil end
+    local cls = R.rtti and R.rtti.name and R.rtti.name(hp)
+    if type(cls) ~= "string" or not cls:find("HitPoint", 1, true) then return nil end
+    return hp
+end
+
+local function _finite(v) return type(v) == "number" and v == v and v - v == 0 end
+
+function R.hp.get()
+    local hp = _hitpoint(); if not hp then return nil end
+    local v = I.read_f32(hp + HITPOINT.cur)
+    return _finite(v) and v or nil
+end
+
+function R.hp.max()
+    local hp = _hitpoint(); if not hp then return nil end
+    local v = I.read_f32(hp + HITPOINT.max)
+    return _finite(v) and v or nil
+end
+
+function R.hp.frac()
+    local cur, mx = R.hp.get(), R.hp.max()
+    if not cur or not mx or mx <= 0 then return nil end
+    return cur / mx
+end
+
+--- Set HP through the engine. Main thread only (a gameplay-event handler or
+--- R.schedule.next_main). In co-op HP is host-authoritative, so a client's
+--- write is not expected to stick.
+function R.hp.set(value)
+    local hp = _hitpoint()
+    if not hp then
+        R.log("[rsmm.hp] no verified HitPoint component yet — refusing set")
+        return false
+    end
+    local fn = I.resolve and I.resolve("HitPoint_SetHitPoints")
+    if not fn then
+        R.log("[rsmm.hp] HitPoint_SetHitPoints unresolved for this game build "
+            .. "— refusing set (rsmm update-data)")
+        return false
+    end
+    R.engine.call_raw(fn, "vpf", hp, (tonumber(value) or 0) + 0.0)
+    return true
+end
+
+--- One line describing every link of the chain, for a playtest log. Reads
+--- only (page-guarded); never calls the engine. Also lists any component whose
+--- RTTI names a HitPoint class in the component arrays of BOTH candidate
+--- entities (*(hero+0x2f8) and the controller's owner *(hero+0x8)), so a run
+--- that refuses the fixed chain still shows where the component really is.
+function R.hp.diagnose()
+    local function hx(v) return type(v) == "number" and ("0x%x"):format(v) or tostring(v) end
+    local function cls(v)
+        if not (v and v ~= 0 and _ptr_plausible(v)) then return "-" end
+        return tostring(R.rtti and R.rtti.name and R.rtti.name(v))
+    end
+    local e = R.entity.hero()
+    if not e then return "hero not captured" end
+    local parts = { "hero=" .. hx(e) .. "(" .. cls(e) .. ")" }
+    local ents = { { "ctx", I.read_u64(e + 0x2f8) }, { "owner", I.read_u64(e + 0x08) } }
+    for _, pair in ipairs(ents) do
+        local tag, ent = pair[1], pair[2]
+        parts[#parts + 1] = tag .. "=" .. hx(ent) .. "(" .. cls(ent) .. ")"
+        if ent and ent ~= 0 and _ptr_plausible(ent) then
+            local link = I.read_u64(ent + HITPOINT.link)
+            local ok = link and link ~= 0 and _ptr_plausible(link)
+            parts[#parts + 1] = tag .. "+0x78=" .. hx(link) .. "(" .. cls(link) .. ")"
+                .. " owner=" .. hx(ok and I.read_u64(link + HITPOINT.owner))
+                .. " cur=" .. tostring(ok and I.read_f32(link + HITPOINT.cur))
+                .. " max=" .. tostring(ok and I.read_f32(link + HITPOINT.max))
+            for i, c in ipairs(R.entity.components(ent) or {}) do
+                local n = cls(c.ptr)
+                if n:find("HitPoint", 1, true) or n:find("Hittable", 1, true) then
+                    parts[#parts + 1] = ("%s.cpnt[%d]=%s(%s) cur=%s max=%s owner=%s"):format(
+                        tag, i - 1, hx(c.ptr), n,
+                        tostring(I.read_f32(c.ptr + HITPOINT.cur)),
+                        tostring(I.read_f32(c.ptr + HITPOINT.max)),
+                        hx(I.read_u64(c.ptr + HITPOINT.owner)))
+                end
+            end
+        end
+    end
+    return table.concat(parts, "  ")
+end
+
+function R.hp.heal(amount)
+    local cur = R.hp.get(); if not cur then return false end
+    return R.hp.set(cur + math.abs(amount or 0))
+end
+
+function R.hp.damage(amount)
+    local cur = R.hp.get(); if not cur then return false end
+    return R.hp.set(cur - math.abs(amount or 0))
 end
 
 -- Deprecated aliases: same engine call, documented as health for months.

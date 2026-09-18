@@ -388,6 +388,13 @@ inline Hero_ModifyDreamShards_fn Hero_ModifyDreamShards() {
     return reinterpret_cast<Hero_ModifyDreamShards_fn>(rsmm::fn_resolve(Sym::Hero_ModifyDreamShards_Pattern));
 }
 
+// HitPoint_SetHitPoints  (HitPoint_SetHitPoints)
+//   void(oCEntityCpntHitPoint* hp, float value)
+using HitPoint_SetHitPoints_fn = void(*)(void*, float);
+inline HitPoint_SetHitPoints_fn HitPoint_SetHitPoints() {
+    return reinterpret_cast<HitPoint_SetHitPoints_fn>(rsmm::fn_resolve(Sym::HitPoint_SetHitPoints_Pattern));
+}
+
 // IngredientDef_PostLoad  (IngredientDef_PostLoad)
 //   bool(void* definition)
 using IngredientDef_PostLoad_fn = uint32_t(*)(void*);

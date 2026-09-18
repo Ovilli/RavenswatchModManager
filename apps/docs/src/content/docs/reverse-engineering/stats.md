@@ -28,8 +28,26 @@ This field was documented as **HP** for months, and the routine as
 `Entity_ModifyHealth`. It is the dream-shard count: the routine fires
 `dt_shard_gain` / `dt_shard_loss`, clamps only at 0, and is what the Sandman
 spends through. `R.combat.*` and `R.entity.hp/max_hp/hp_frac` still work as
-deprecated aliases of `R.shards`. Real HP is not located yet.
+deprecated aliases of `R.shards`.
 :::
+
+## Real health
+
+HP lives on the hero's `oCEntityCpntHitPoint`: `component = *(*(hero+0x2f8)+0x78)`,
+current HP at `+0xe8`, max at `+0xec`. `*(hero+0x2f8)` is the sibling
+`oCDtEntityCpntCharacterController`, not the entity (measured in game); the
+component's owner at `+0x8` is the hero's `oCEntity`, `*(hero+0x8)`. The only
+writer is `HitPoint_SetHitPoints` (`0x140822db0`). It clamps to `[0, max]`, runs
+the death listeners (`+0x108`) when HP crosses 0 and the change listeners
+(`+0xf0`) on any change, replicates, and writes `current/max` to the UI bar.
+Thirteen gameplay readers walk the same chain; the "Increase damage if
+critical health" check and the life-bar listener both divide the pair.
+
+`R.hp.get/max/frac` read it, and `R.hp.set/heal/damage` go through the setter.
+Every access re-checks the link: RTTI must name a HitPoint class, and the
+component's owner must be the hero's entity. Static RE only (2026-09-18);
+the in-game proof is still owed. In co-op HP is host-authoritative, so a
+client's write is not expected to stick.
 
 :::caution[Units]
 Store values are **display × 100**. To set a displayed number, pass

@@ -820,6 +820,54 @@ do
     check(R.combat.heal(10) == true, "a sound store chain still dispatches")
 end
 
+-- 7a. R.hp: the HitPoint component, verified on every access -----------
+-- entity = *(hero+0x2f8), component = *(entity+0x78), current +0xe8, max +0xec.
+do
+    local HPC = 0x11c00000
+    -- Measured in game 2026-09-18: *(hero+0x2f8) is the character controller
+    -- (a sibling component), and the HitPoint's owner is the hero's ENTITY,
+    -- *(hero+0x8) — not the controller the link hangs off.
+    local OWNER = 0x11e00000
+    local saved_ctx, saved_link = I.read_u64(HERO + VALCTX_OFF), I.read_u64(ENTITY + 0x78)
+    local saved_owner = I.read_u64(HERO + 0x08)
+    I.write_u64(HERO + VALCTX_OFF, ENTITY)
+    I.write_u64(HERO + 0x08, OWNER)
+    I.write_u64(ENTITY + 0x78, HPC)
+    I.write_u64(HPC + 0x08, OWNER)                      -- owner back-pointer
+    I.write_f32(HPC + 0xe8, 300.0)
+    I.write_f32(HPC + 0xec, 400.0)
+    engine["HitPoint_SetHitPoints"] = function(hp, v)   -- clamps like 0x140822db0
+        local mx = I.read_f32(hp + 0xec)
+        I.write_f32(hp + 0xe8, math.max(0, math.min(v, mx)))
+    end
+    local real_rtti = R.rtti.name
+    R.rtti.name = function(p)
+        if p == HPC then return "oCDtEntityCpntHitPoint" end
+        return real_rtti(p)
+    end
+
+    check(about(R.hp.get(), 300) and about(R.hp.max(), 400), "health reads +0xe8/+0xec")
+    check(about(R.hp.frac(), 0.75), "hp.frac = cur/max")
+    check(R.hp.damage(50) == true and about(R.hp.get(), 250), "damage goes through the setter")
+    check(R.hp.heal(1000) == true and about(R.hp.get(), 400), "heal is clamped to max by the engine")
+    local diag = R.hp.diagnose()
+    check(type(diag) == "string" and diag:find("ctx+0x78=", 1, true) ~= nil,
+          "diagnose reports every link without calling the engine")
+
+    I.write_u64(HPC + 0x08, ENTITY)                     -- the first version's mistake
+    check(R.hp.get() == nil, "owner must be the hero's entity, not the controller")
+    check(R.hp.set(10) == false, "...and a wrong owner is never handed to the engine")
+    I.write_u64(HPC + 0x08, OWNER)
+
+    R.rtti.name = function() return "oCSomethingElse" end
+    check(R.hp.get() == nil, "a +0x78 object that is not a HitPoint is refused")
+    R.rtti.name = real_rtti
+    engine["HitPoint_SetHitPoints"] = nil
+    I.write_u64(HERO + VALCTX_OFF, saved_ctx or 0)
+    I.write_u64(HERO + 0x08, saved_owner or 0)
+    I.write_u64(ENTITY + 0x78, saved_link or 0)
+end
+
 -- 7b. the ctor hook must be armed at `setup`, not on first read -------------
 -- Regression guard for session 974f: the level component is constructed once
 -- at run start, so a hook installed lazily (on the first R.xp read, ~61s in)

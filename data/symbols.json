@@ -1513,6 +1513,34 @@
    }
   },
   {
+   "name": "HitPoint_SetHitPoints",
+   "kind": "function",
+   "category": "entity",
+   "raw": "FUN_140822db0",
+   "status": "ok",
+   "signature": "void(oCEntityCpntHitPoint* hp, float value)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "float"
+    ]
+   },
+   "refs": [
+    "src/loader/lua/rsmm/entity.lua"
+   ],
+   "locator": {
+    "offsets": [
+     "0xe8",
+     "0xec",
+     "0xf0",
+     "0x108",
+     "0x98"
+    ]
+   },
+   "note": "THE REAL HEALTH SETTER (static RE 2026-09-18; in-game proof pending). oCEntityCpntHitPoint keeps current HP at +0xe8 and max HP at +0xec. This clamps `value` to [0, max], stores it at +0xe8, fires the death listeners (+0x108) when it crosses 0, fires the change listeners (+0xf0) and replicates through the entity's net component on any change, then writes current/max to the UI bar at *(+0x98)+0x54. Every entity with hit points has one, enemies included.\n\nReaching it: component = *(*(heroController+0x2f8)+0x78). MEASURED IN GAME 2026-09-18: *(heroController+0x2f8) is the sibling oCDtEntityCpntCharacterController (not the oCEntity), its +0x78 has RTTI oCEntityCpntHitPoint, and the component's owner (+0x8) is the hero's oCEntity = *(heroController+0x8). 13 gameplay readers take exactly that path and compute +0xe8/+0xec as a health fraction: Entity_GainHealthHandler scales a threshold by max, the attack-power path (0x1403c8754) gates 'Increase damage if critical health' on the ratio, and oCEntityCpntHittableListener (0x140826de0) mirrors ratio, current and max into a life bar. The SDK re-checks the link on every access: RTTI must name a HitPoint class and *(component+0x8) must equal *(heroController+0x8).\n\nFound because +0x15c8 turned out to be dream shards (see Hero_ModifyDreamShards). Co-op: HP is host-authoritative, so a client-side set is expected to be overwritten or to replicate only from the host."
+  },
+  {
    "name": "Entity_ResolveAttackHits",
    "kind": "function",
    "category": "entity",

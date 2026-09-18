@@ -1038,6 +1038,7 @@ end
 -- first argument) and the entity-value store R.stat / R.modifier read through.
 --
 --   R.shards.get() / add(20) / spend(15) / set(50)
+--   R.hp.get() / max() / frac() / set(v) / heal(20) / damage(15)
 --   R.entity.ready()
 --
 -- Unlike rsmm/damage.lua this namespace is not self-contained: the rest of

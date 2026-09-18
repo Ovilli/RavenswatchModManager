@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **282** symbols across 22 categories.
+Total: **283** symbols across 22 categories.
 
 ## analytics
 
@@ -124,6 +124,7 @@ Total: **282** symbols across 22 categories.
 | `HeroController_Ctor` | `0x14038ec30` | ✅ ok | ✔ | oCDtEntityCpntHeroController*(oCDtEntityCpntHeroController* self) |
 | `HeroController_HudMirror_Ctor` | `0x1403b3c70` | ✅ ok |  | Builds the hero's HUD HP-mirror object whose pointer is stored at hero+0x1d80 by HeroCo… |
 | `Hero_ModifyDreamShards` | `0x14039a320` | ✅ ok | ✔ | void(oCDtEntityCpntHeroController* hero, float delta, oCCustomFlagList* sourceTags) |
+| `HitPoint_SetHitPoints` | `0x140822db0` | ✅ ok | ✔ | void(oCEntityCpntHitPoint* hp, float value) |
 | `MapCtx_LinkPairedSpawners` | `0x1401ebad0` | ✅ ok |  | void(void* mapSceneContext) |
 | `ModifierEvent_Ctor` | `0x140389fb0` | ✅ ok | ✔ | void*(void* buf, void* valueDef) |
 | `g_MagicalObjectComponentMeta` | `0x141470768` | 📍 va |  | oCMetaClass* for the magical-object component; passed to Entity_FindMagicalObjectCompon… |

@@ -62,6 +62,7 @@ return {
   ["Hero_GainExperience"] = { pattern = "Hero_GainExperience", offset = 0x0, sig = "vpp" },
   ["Hero_GrantMagicalObject"] = { pattern = "Hero_GrantMagicalObject", offset = 0x0, sig = "vppuup" },
   ["Hero_ModifyDreamShards"] = { pattern = "Hero_ModifyDreamShards", offset = 0x0, sig = "vpfp" },
+  ["HitPoint_SetHitPoints"] = { pattern = "HitPoint_SetHitPoints", offset = 0x0, sig = "vpf" },
   ["IngredientDef_PostLoad"] = { pattern = "IngredientDef_PostLoad", offset = 0x0, sig = "up" },
   ["LobbyAttributes_Parse"] = { pattern = "LobbyAttributes_Parse", offset = 0x0, sig = "ppp" },
   ["LobbyAttributes_Serialize"] = { pattern = "LobbyAttributes_Serialize", offset = 0x0, sig = "ppp" },
