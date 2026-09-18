@@ -9269,5 +9269,36 @@ do
     fake_clock = fake_clock + 5
 end
 
+-- Interaction ends, as measured in game 2026-09-18 (session f84f): `validate`
+-- fires at the HERO's dispatcher, `request` fires at the OBJECT's dispatcher
+-- and carries the hero in `b`. ev.entity must be the object, ev.interactor the
+-- hero, and both must survive to `success`.
+do
+    local CTRL, ENT_H, TARGET, OFF = 0x12a00000, 0x12b00000, 0x12c00000, 0x4d8
+    local real_hero, real_rtti = R.entity.hero, R.rtti.name
+    I.write_u64(CTRL + 0x08, ENT_H)
+    R.entity.hero = function() return CTRL end
+    R.rtti.name = function(p)
+        if p == ENT_H or p == TARGET then return "oCEntity" end
+        return real_rtti(p)
+    end
+    local got = {}
+    R.interact.on("success", function(ev) got[#got + 1] = ev end)
+    local function hx(v) return ("0x%x"):format(v) end
+    fire("gameplay:INTERACTION_VALIDATE", { source = "gameplay", seq = 900,
+        dispatcher = hx(ENT_H + OFF) })
+    fire("gameplay:INTERACTION_REQUEST", { source = "gameplay", seq = 901,
+        dispatcher = hx(TARGET + OFF), u38 = "0xffffffffffffffff", u50 = hx(ENT_H) })
+    local req = R.interact.last()
+    check(req.entity == TARGET, "request: entity is the object (dispatcher - 0x4d8), not b")
+    check(req.interactor == ENT_H, "request: interactor is the hero carried in b")
+    fire("gameplay:INTERACTION_SUCCESS", { source = "gameplay", seq = 902,
+        dispatcher = hx(TARGET + OFF) })
+    local s = got[#got]
+    check(s and s.entity == TARGET and s.interactor == ENT_H,
+          "success inherits both ends from its request")
+    R.entity.hero, R.rtti.name = real_hero, real_rtti
+end
+
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)

@@ -4137,19 +4137,23 @@ local INTERACT_PHASE = {
 local _interact_subs = {}     -- phase (or "*") -> { cb, ... }
 local _interact_last = nil
 
--- WHICH OBJECT WAS INTERACTED WITH -- measured in-game 2026-09-17.
+-- WHICH OBJECT WAS INTERACTED WITH -- CORRECTED in game 2026-09-18.
 --
--- The protocol names its target twice, in two different shapes, and neither is
--- the hero:
+-- The 2026-09-17 reading had the two ends swapped, and a position check could
+-- not catch it: the hero stands next to whatever it holds interact on. Session
+-- f84f compared the pointers with the captured hero directly:
 --
---   validate    fires AT the object -- `dispatcher` is the object's own
---               NamedEventDispatcher sub-object
---   request     fires at the HERO, and carries the object itself in `b`
+--   validate    fires at the HERO -- `dispatcher` is the hero entity's own
+--               NamedEventDispatcher (hero entity + 0x4d8)
+--   request     fires at the OBJECT's dispatcher, and carries the HERO (the
+--               interactor) in `b`
 --
--- On the shrine playtest the difference between them was exactly 0x4d8, the
--- documented dispatcher-inside-entity offset, holding across seven consecutive
--- interactions. So `validate.dispatcher - off` and `request.b` are the same
--- pointer, reached two ways.
+-- `request.b` equalled *(heroController+0x8) on every interaction, and
+-- R.interact.name read the hero's own template ("Hero_Aladdin_Guardian") off it
+-- while the player held interact on the shrine. So `validate.dispatcher - b`
+-- is the dispatcher offset (hero on both sides), and the object is
+-- `request.dispatcher - off`. `ev.entity` is the object and `ev.interactor`
+-- the hero.
 --
 -- That gives a SECOND source for the offset `R.give` already learns from hero
 -- pointers, and a cheaper one: a single interaction exposes both ends of the
@@ -4187,7 +4191,6 @@ local _POS_LIMIT = 1e6           -- a world coordinate, not a float-shaped point
 local _interact_inflight = {}            -- hero dispatcher -> { entity, pos }
 
 local _interact_validate_disp = nil      -- dispatcher from the last `validate`
-local _interact_off_seen = {}            -- candidate offset -> object it came from
 local _interact_trace = false
 
 --- A payload word arrives as a hex STRING (a Lua number is a double and loses
@@ -4214,9 +4217,11 @@ function R.interact.trace(on) _interact_trace = (on ~= false) end
 --   seq         the loader's dispatch counter
 --   dispatcher  the entity dispatcher the event fired at (number)
 --   a, b        the event payload words at +0x38 / +0x50, meaning unconfirmed
---   entity      the object interacted WITH, when the phase carries it
---               (`request` always; `validate` once the dispatcher offset has
---               been learned). Absent rather than guessed.
+--   entity      the object interacted WITH: `request.dispatcher - off`, from
+--               `request` on, once the dispatcher offset has been learned
+--               from the hero. Absent rather than guessed.
+--   interactor  the hero doing the interacting (`request.b`; `validate` fires
+--               at its dispatcher). Carried to the outcome like `entity`.
 --   pos         {x, y, z} world position of that object, when it reads
 --               plausibly. Carried from `request` through to the outcome, so
 --               `success` knows what was used. This is how a mod tells its OWN point of interest
@@ -4409,33 +4414,42 @@ R.on("*", function(ev, name)
         b          = _word(ev.u50) or _word(ev.w50),
         class      = ev.class,
     }
-    -- Learn the dispatcher offset from the pair, then name the target.
+    -- Learn the dispatcher offset from the HERO pair: `validate` fires at the
+    -- hero's dispatcher and `request.b` is the hero entity. Accepted only when
+    -- `b` really is the captured hero's own oCEntity (its controller's owner)
+    -- and RTTI says so -- two checks that do not depend on each other, because
+    -- a wrong offset here is permanent and R.give's hero test shares it.
     if phase == "validate" then
         _interact_validate_disp = info.dispatcher
     elseif phase == "request" and info.b and _interact_validate_disp then
         local off = _interact_validate_disp - info.b
-        if off > 0 and off <= 0x4000 and off % 8 == 0
+        if not _DISPATCHER_ENTITY_OFF and off > 0 and off <= 0x4000 and off % 8 == 0
            and _ptr_plausible(info.b) and _ptr_plausible(_interact_validate_disp) then
-            local prev = _interact_off_seen[off]
-            if prev == nil then
-                _interact_off_seen[off] = info.b
-            elseif prev ~= info.b and not _DISPATCHER_ENTITY_OFF then
+            local hero = R.entity and R.entity.hero and R.entity.hero()
+            local hero_entity = hero and I.read_u64(hero + 0x08)
+            local cls = R.rtti and R.rtti.name and R.rtti.name(info.b)
+            if hero_entity == info.b and cls == "oCEntity" then
                 _DISPATCHER_ENTITY_OFF = off
                 R.log(string.format(
                     "[rsmm.interact] dispatcher sits at entity+0x%x "
-                    .. "(corroborated by two distinct interaction targets)", off))
+                    .. "(the captured hero's own entity and dispatcher)", off))
             end
         end
         _interact_validate_disp = nil
     end
 
-    -- `entity` is the thing interacted WITH, however the phase carries it. A
-    -- mod filters on this; it never has to know which phase names it where.
+    -- `entity` is the thing interacted WITH, `interactor` the hero doing it. A
+    -- mod filters on `entity`; it never has to know which phase names it where.
     if phase == "request" then
-        if info.b and _ptr_plausible(info.b) then info.entity = info.b end
+        if info.b and _ptr_plausible(info.b) then info.interactor = info.b end
+        if info.dispatcher and _DISPATCHER_ENTITY_OFF then
+            local e = info.dispatcher - _DISPATCHER_ENTITY_OFF
+            local cls = R.rtti and R.rtti.name and R.rtti.name(e)
+            if _ptr_plausible(e) and cls == "oCEntity" then info.entity = e end
+        end
     elseif phase == "validate" and info.dispatcher and _DISPATCHER_ENTITY_OFF then
         local e = info.dispatcher - _DISPATCHER_ENTITY_OFF
-        if _ptr_plausible(e) then info.entity = e end
+        if _ptr_plausible(e) then info.interactor = e end
     end
 
     -- `pos` is the object's world position when it reads plausibly, and ABSENT
@@ -4456,12 +4470,14 @@ R.on("*", function(ev, name)
     -- Carry the target forward from `request` to the outcome, and drop it there.
     if info.dispatcher then
         if phase == "request" and info.entity then
-            _interact_inflight[info.dispatcher] = { entity = info.entity, pos = info.pos }
+            _interact_inflight[info.dispatcher] = { entity = info.entity, pos = info.pos,
+                                                    interactor = info.interactor }
         else
             local held = _interact_inflight[info.dispatcher]
             if held then
                 info.entity = info.entity or held.entity
                 info.pos = info.pos or held.pos
+                info.interactor = info.interactor or held.interactor
                 -- What actually ENDS the interaction. `local_success` is the
                 -- local peer's own copy and ALWAYS precedes `success`, so
                 -- clearing on it dropped the target one line before the phase
