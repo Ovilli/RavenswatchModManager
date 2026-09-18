@@ -3,6 +3,15 @@
   "entries": [
     {
       "version": "",
+      "loader_version": 17,
+      "date": "2026-09-18",
+      "summary": "New R.hp reads and changes the hero's real health. R.shards replaces R.combat, which moved dream shards, not health; R.combat still works but logs a deprecation line. R.interact.name now names the object you interacted with.",
+      "highlights": [
+        "New R.hp reads and changes the hero's real health. R.shards replaces R.combat, which moved dream shards, not health; R.combat still works but logs a deprecation line. R.interact.name now names the object you interacted with."
+      ]
+    },
+    {
+      "version": "",
       "loader_version": 16,
       "date": "2026-09-18",
       "summary": "Mod load problems now show up as errors: a broken init.lua, a manifest that fails to parse, or a mod skipped after a crash appear in rsmm log --errors and the desktop problems filter.",
