@@ -1,6 +1,15 @@
 {
-  "generated": "2026-09-17",
+  "generated": "2026-09-18",
   "entries": [
+    {
+      "version": "",
+      "loader_version": 16,
+      "date": "2026-09-18",
+      "summary": "Mod load problems now show up as errors: a broken init.lua, a manifest that fails to parse, or a mod skipped after a crash appear in rsmm log --errors and the desktop problems filter.",
+      "highlights": [
+        "Mod load problems now show up as errors: a broken init.lua, a manifest that fails to parse, or a mod skipped after a crash appear in rsmm log --errors and the desktop problems filter."
+      ]
+    },
     {
       "version": "",
       "loader_version": 15,
