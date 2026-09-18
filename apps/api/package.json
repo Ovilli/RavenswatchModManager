@@ -21,7 +21,7 @@
     "@neondatabase/serverless": "0.10.4",
     "@rsmm/db": "workspace:*",
     "@rsmm/schemas": "workspace:*",
-    "better-auth": "1.4.17",
+    "better-auth": "1.6.22",
     "dotenv": "16.4.7",
     "drizzle-orm": "0.45.2",
     "hono": "4.12.34",

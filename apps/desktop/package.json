@@ -36,7 +36,7 @@
     "@tauri-apps/plugin-process": "2.2.1",
     "@tauri-apps/plugin-shell": "2.2.1",
     "@tauri-apps/plugin-updater": "2.10.1",
-    "better-auth": "1.4.17",
+    "better-auth": "1.6.22",
     "lucide-react": "0.469.0",
     "react": "19.0.0",
     "react-dom": "19.0.0",

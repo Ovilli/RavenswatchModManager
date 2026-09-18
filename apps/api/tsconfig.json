@@ -3,8 +3,12 @@
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "dist",
-    "composite": true,
     "noEmit": false,
+    // An app, not a library: tsup bundles it and nothing imports its types.
+    // Declarations are off because better-auth's inferred `auth` type pulls
+    // in its own zod 4, which a .d.ts cannot name from here (TS2742).
+    "declaration": false,
+    "declarationMap": false,
     "lib": ["ES2022"]
   },
   "include": ["src/**/*.ts"]

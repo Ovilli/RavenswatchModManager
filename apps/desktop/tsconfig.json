@@ -2,7 +2,12 @@
   "extends": "@rsmm/tsconfig/react.json",
   "compilerOptions": {
     "rootDir": "src",
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    // An app: Vite bundles it and nothing imports its types. better-auth's
+    // inferred client type references its own zod 4, which a declaration
+    // cannot name from here (TS2742).
+    "declaration": false,
+    "declarationMap": false
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"]
 }

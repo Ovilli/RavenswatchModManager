@@ -110,7 +110,7 @@ export const auth = betterAuth({
     // clicked. In dev without SMTP the link is logged to stdout.
     changeEmail: {
       enabled: true,
-      sendChangeEmailVerification: async ({ user, newEmail, url }) => {
+      sendChangeEmailConfirmation: async ({ user, newEmail, url }) => {
         const t = changeEmailTemplate({ name: user.name, newEmail, url });
         try {
           await sendMail({ to: user.email, subject: t.subject, text: t.text, html: t.html });
