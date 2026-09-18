@@ -15,7 +15,6 @@ import {
   X,
 } from 'lucide-react';
 import type { Route } from 'next';
-import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { use, useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../../lib/api';
@@ -24,11 +23,8 @@ import { useSession } from '../../../lib/auth-client';
 import { toEmbedUrl } from '../../../lib/video-embed';
 import { AdBanner } from '../../components/ad-banner';
 import { FollowButton } from '../../components/follow-button';
+import { MDPreview } from '../../components/md-editor';
 import { ReportModal } from '../../components/report-modal';
-
-const MDPreview = dynamic(() => import('@uiw/react-md-editor').then((m) => m.default.Markdown), {
-  ssr: false,
-});
 
 // RSMM desktop ships for Windows + Linux only. Non-target platforms (macOS)
 // resolve to 'other' so we label the button neutrally instead of promising a

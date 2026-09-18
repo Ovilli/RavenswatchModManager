@@ -20,7 +20,6 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -28,13 +27,9 @@ import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
 import { formatObjectStorageError } from '../../../lib/object-storage-error';
 import { toEmbedUrl } from '../../../lib/video-embed';
+import { MDEditor, MDPreview } from '../../components/md-editor';
 import { ModStats } from '../../components/mod-stats';
 import { ModTeam } from '../../components/mod-team';
-
-const MDEditor = dynamic(() => import('@uiw/react-md-editor'), { ssr: false });
-const MDPreview = dynamic(() => import('@uiw/react-md-editor').then((m) => m.default.Markdown), {
-  ssr: false,
-});
 
 interface Screenshot {
   url: string;

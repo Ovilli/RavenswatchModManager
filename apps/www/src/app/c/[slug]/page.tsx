@@ -19,16 +19,15 @@ import {
   X,
 } from 'lucide-react';
 import type { Route } from 'next';
-import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { use, useEffect, useState } from 'react';
 import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
 import { useEditingFlag } from '../../../lib/use-editing-flag';
 import { AdBanner } from '../../components/ad-banner';
+import { MDEditor } from '../../components/md-editor';
 import { ModCover } from '../../components/mod-cover';
 
-const MDEditor = dynamic(() => import('@uiw/react-md-editor'), { ssr: false });
 function describeApiError(err: unknown): string {
   if (isRateLimited(err)) {
     return `Rate limited — try again in ${err.retryAfter}s.`;

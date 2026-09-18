@@ -4,19 +4,14 @@ import { Badge, Button, Input, Spinner, buttonVariants } from '@rsmm/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Check, Loader2, Pencil, Star, Trash2, X } from 'lucide-react';
 import type { Route } from 'next';
-import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { use, useState } from 'react';
-import { AdBanner } from '../../components/ad-banner';
 import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
 import { useEditingFlag } from '../../../lib/use-editing-flag';
-
-const MDEditor = dynamic(() => import('@uiw/react-md-editor'), { ssr: false });
-const MDPreview = dynamic(() => import('@uiw/react-md-editor').then((m) => m.default.Markdown), {
-  ssr: false,
-});
+import { AdBanner } from '../../components/ad-banner';
+import { MDEditor, MDPreview } from '../../components/md-editor';
 
 const STATUS_LABEL: Record<string, string> = {
   draft: 'Draft',
@@ -98,7 +93,10 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
     return (
       <main className="container mx-auto space-y-4 px-6 py-12">
         <p className="text-muted-foreground">Guide not found.</p>
-        <Link href={'/guides' as Route} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+        <Link
+          href={'/guides' as Route}
+          className={buttonVariants({ variant: 'outline', size: 'sm' })}
+        >
           <ArrowLeft className="mr-1.5 h-4 w-4" /> Back to Guides
         </Link>
       </main>
@@ -183,28 +181,28 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
             </Button>
           </div>
         </div>
-      ) : (
-        // An approved guide has its title and body server-rendered by
-        // `[slug]/layout.tsx`, so rendering them again here would duplicate
-        // them on the page. A draft or in-review guide is not in that server
-        // fetch (it is visible only to its author's session), so it still
-        // renders here.
-        g.status !== 'approved' ? (
-          <>
-            <header className="space-y-1">
-              <h1 className="text-3xl font-bold tracking-tight">{g.title}</h1>
-              <p className="text-sm text-muted-foreground">
-                by {g.ownerName ?? 'unknown'}
-                {g.reviewCount > 0 && g.rating != null ? ` · ★ ${g.rating.toFixed(1)} (${g.reviewCount})` : ''}
-              </p>
-            </header>
+      ) : // An approved guide has its title and body server-rendered by
+      // `[slug]/layout.tsx`, so rendering them again here would duplicate
+      // them on the page. A draft or in-review guide is not in that server
+      // fetch (it is visible only to its author's session), so it still
+      // renders here.
+      g.status !== 'approved' ? (
+        <>
+          <header className="space-y-1">
+            <h1 className="text-3xl font-bold tracking-tight">{g.title}</h1>
+            <p className="text-sm text-muted-foreground">
+              by {g.ownerName ?? 'unknown'}
+              {g.reviewCount > 0 && g.rating != null
+                ? ` · ★ ${g.rating.toFixed(1)} (${g.reviewCount})`
+                : ''}
+            </p>
+          </header>
 
-            <article data-color-mode="dark" className="md-editor-themed prose-invert max-w-none">
-              <MDPreview source={g.body} />
-            </article>
-          </>
-        ) : null
-      )}
+          <article data-color-mode="dark" className="md-editor-themed prose-invert max-w-none">
+            <MDPreview source={g.body} />
+          </article>
+        </>
+      ) : null}
 
       {/* Owner / admin lifecycle controls */}
       {isOwner && !editing ? (
@@ -248,7 +246,12 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
         // Admin moderation — the API enforces the actual admin check; these
         // buttons just 403 for non-admins.
         <div className="flex flex-wrap items-center gap-2 border-t border-border/40 pt-4">
-          <Button type="button" size="sm" onClick={() => approve.mutate()} disabled={approve.isPending}>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => approve.mutate()}
+            disabled={approve.isPending}
+          >
             <Check className="mr-1 h-3.5 w-3.5" /> Approve
           </Button>
           <Button
@@ -289,7 +292,9 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
               }}
               className="grimoire-card space-y-3 p-4"
             >
-              <h3 className="text-sm font-semibold">{userReview ? 'Update your review' : 'Write a review'}</h3>
+              <h3 className="text-sm font-semibold">
+                {userReview ? 'Update your review' : 'Write a review'}
+              </h3>
               <div className="flex items-center gap-1">
                 {[1, 2, 3, 4, 5].map((star) => (
                   <button key={star} type="button" onClick={() => setReviewRating(star)}>
@@ -315,7 +320,11 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
               {reviewUpsert.isError ? (
                 <p className="text-sm text-destructive">{describeApiError(reviewUpsert.error)}</p>
               ) : null}
-              <Button type="submit" size="sm" disabled={reviewUpsert.isPending || reviewRating === 0}>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={reviewUpsert.isPending || reviewRating === 0}
+              >
                 {reviewUpsert.isPending ? 'Saving…' : userReview ? 'Update' : 'Submit'}
               </Button>
             </form>
@@ -335,7 +344,11 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
               <li key={r.id} className="grimoire-card p-4">
                 <div className="flex items-center gap-2">
                   {r.userImage ? (
-                    <img src={r.userImage} alt={r.userName ?? ''} className="h-6 w-6 rounded-full" />
+                    <img
+                      src={r.userImage}
+                      alt={r.userName ?? ''}
+                      className="h-6 w-6 rounded-full"
+                    />
                   ) : (
                     <div className="h-6 w-6 rounded-full bg-muted" />
                   )}

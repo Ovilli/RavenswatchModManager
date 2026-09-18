@@ -20,17 +20,16 @@ function Label({
   );
 }
 import { AlertTriangle, ImageIcon, Loader2, Package, Upload } from 'lucide-react';
-import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../lib/api';
 import { useSession } from '../../lib/auth-client';
 import { formatObjectStorageError } from '../../lib/object-storage-error';
+import { MDEditor } from '../components/md-editor';
 
 // react-md-editor pulls in `navigator` at module top-level; load it on
 // the client only. The non-SSR import keeps the page renderable.
-const MDEditor = dynamic(() => import('@uiw/react-md-editor'), { ssr: false });
 
 const CATEGORIES: ModCategory[] = [
   'gameplay',

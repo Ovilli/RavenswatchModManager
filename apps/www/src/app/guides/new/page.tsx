@@ -4,14 +4,12 @@ import { Button, Input, Spinner, buttonVariants } from '@rsmm/ui';
 import { useMutation } from '@tanstack/react-query';
 import { ArrowLeft, ImagePlus, Loader2, Upload, X } from 'lucide-react';
 import type { Route } from 'next';
-import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
-
-const MDEditor = dynamic(() => import('@uiw/react-md-editor'), { ssr: false });
+import { MDEditor } from '../../components/md-editor';
 
 function describeApiError(err: unknown): string {
   if (isRateLimited(err)) return `Rate limited — try again in ${err.retryAfter}s.`;
@@ -99,7 +97,10 @@ export default function NewGuidePage() {
 
   return (
     <main className="container mx-auto max-w-2xl space-y-6 px-6 py-12">
-      <Link href={'/guides' as Route} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+      <Link
+        href={'/guides' as Route}
+        className={buttonVariants({ variant: 'outline', size: 'sm' })}
+      >
         <ArrowLeft className="mr-1.5 h-4 w-4" /> Back to Guides
       </Link>
       <h1 className="font-fraktur text-5xl text-parchment">Write a guide</h1>

@@ -4,14 +4,12 @@ import { Button, Input, ProgressBar, Spinner, buttonVariants } from '@rsmm/ui';
 import { useMutation } from '@tanstack/react-query';
 import { ArrowLeft, ImageIcon, Loader2, Upload, X } from 'lucide-react';
 import type { Route } from 'next';
-import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
-
-const MDEditor = dynamic(() => import('@uiw/react-md-editor'), { ssr: false });
+import { MDEditor } from '../../components/md-editor';
 
 function describeApiError(err: unknown): string {
   if (isRateLimited(err)) {
