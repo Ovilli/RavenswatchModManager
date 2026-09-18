@@ -7584,6 +7584,31 @@ do
     seed_rtti(".?AVoCFoo@dt@oe@@", IMG)
     check(R.rtti.name(INST) == "oe::dt::oCFoo",
           "MSVC stores qualifiers innermost-first, so the pieces are reversed")
+
+    -- R.interact.name step 0: the oCEntity ctor stores its template at
+    -- entity+0x28, the template is the oCEntitySettings embedded at +0x98 of
+    -- its resource, and the resource's name is the cstr at +0xa0. A decoy
+    -- melody path at entity+0x220 is the exact wrong answer shipped once.
+    do
+        local RES, ENT, NAMEP, DECOY = 0x23000000, 0x23100000, 0x23200000, 0x23300000
+        seed_rtti(".?AVoCEntitySettings@@", IMG)
+        I.write_u64(RES + 0x98, I.read_u64(INST))
+        wbytes(NAMEP, "mymod_Shrine_Prop\0")
+        I.write_u64(RES + 0xa0, NAMEP)
+        wbytes(DECOY, "Objects\\Melodies\\Deal_Damage_Around_Zone_Attack.entity.ot\0")
+        I.write_u64(ENT + 0x220, DECOY)
+        I.write_u64(ENT + 0x28, RES + 0x98)
+        local name, at = R.interact.name(ENT)
+        check(name == "mymod_Shrine_Prop" and at == 0x28,
+              "interact.name reads the template's resource name, not a nearby string")
+        check(R.interact.name({ entity = ENT }) == "mymod_Shrine_Prop",
+              "interact.name accepts the event table too")
+        -- A template that is NOT an entity settings object must not be trusted.
+        seed_rtti(".?AVoCFoo@dt@oe@@", IMG)
+        I.write_u64(RES + 0x98, I.read_u64(INST))
+        check(select(2, R.interact.name(ENT)) ~= 0x28,
+              "a wrong-class template falls through instead of naming the entity")
+    end
     seed_rtti(".?AVoCDtEnemyDefinition@@", IMG)
 
     -- registry SwissTable: capacity 8, one full slot holding one instance.

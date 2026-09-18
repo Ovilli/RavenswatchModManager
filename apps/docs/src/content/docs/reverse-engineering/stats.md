@@ -148,6 +148,20 @@ Shield `0x173fcd75`, Bleed `0x173fcdac`, Cursed `0x1a5d3d69`, Marked `0x1a40367d
 The full modifier/difficulty key table is in
 [Game modifiers](/reverse-engineering/game-modifiers/).
 
+**Attack power is a percentage, not a flat bonus.** Every hit is built by the
+hit-value constructor (`0x1401ce0b0`) with a damage multiplier of `1.0` at
+`hit+0xcc`. The hit resolver then adds the base value (clamped at 0, `0x1403c6e8e`)
+and the ability slot's value (`0x1403d6632`), and multiplies the damage by the
+sum:
+
+```
+damage = base × (1.0 + max(0, attack_power) + attack_power[slot]) × hit+0xd0
+```
+
+So `0.5` in the store is **+50% damage**, which the stat screen shows as
+`+50`: it is the same ×100 as crit, where `0.15` shows as 15%. `50` in the
+store is +5000%, a 100× overdose.
+
 **Not keyed**, so not `R.stat`-settable: raw XP amount (use `R.xp`), armour base
 (a hero field, `def+0x6c = 0`), gold (the game has none — only dream shards).
 
@@ -159,9 +173,9 @@ R.stat.names()                      -- known stat names
 R.stat.enable_writes()              -- opt in to writes
 R.stat.set("move_speed", 1.5)       -- write override cache (TRANSIENT)
 R.stat.add("crit_chance", 0.1)      -- current + delta (transient)
-R.stat.stick("attack_power", 500)   -- durable by re-assertion
+R.stat.stick("attack_power", 0.5)   -- durable by re-assertion (+50%)
 R.stat.unstick("attack_power")      -- stop pinning
-R.stat.modify("attack_power", 50)   -- durable engine modifier (composes)
+R.stat.modify("attack_power", 0.5)  -- durable engine modifier (+50%, composes)
 R.xp.level(); R.xp.xp()             -- read
 R.xp.grant(100)                     -- add XP (levels up) — already durable
 ```

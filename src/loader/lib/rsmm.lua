@@ -4271,6 +4271,30 @@ function R.interact.name(ev)
     entity = _word(entity)
     if not entity or not _ptr_plausible(entity) then return nil end
 
+    -- STEP 0, a layout rather than a scan (static RE 2026-09-18): the oCEntity
+    -- ctor 0x1406e2580 stores its template with `mov [rcx+0x28], rdx`, and the
+    -- template is the oCEntitySettings EMBEDDED at +0x98 of the loaded
+    -- oCEntitySettingsResource (every EntityStore_CreateEntity caller passes
+    -- `resource + 0x98`; R.spawn is built on that and call-tested). The
+    -- resource's name at +0xa0 is the field rsmm.poi measured live on 138
+    -- tile payloads. This is also why the RTTI walk below never matched: the
+    -- entity points at the embedded oCEntitySettings, not at the `...Resource`.
+    -- Unproven in game; everything after it stays as the fallback.
+    if type(I.read_cstr) == "function" then
+        local settings = I.read_u64(entity + 0x28)
+        local cls = settings and settings ~= 0 and _ptr_plausible(settings)
+            and R.rtti and R.rtti.name and R.rtti.name(settings)
+        if type(cls) == "string" and cls:find("EntitySettings") then
+            local np = I.read_u64(settings - 0x98 + _SETTINGS_NAME_OFF)
+            if np and np ~= 0 and _ptr_plausible(np) then
+                local s = I.read_cstr(np, 200)
+                if type(s) == "string" and #s >= 3 and not s:find("[^\32-\126]") then
+                    return s, 0x28, { { text = s, at = 0x28, via = cls } }
+                end
+            end
+        end
+    end
+
     -- COLLECT, then choose. Returning the FIRST string within the window was
     -- wrong and measured wrong: on the shrine it returned
     -- `Objects\Melodies\Deal_Damage_Around_Zone_Attack.entity.ot`, a

@@ -55,7 +55,7 @@ local _ctx_chain_ok     = env._ctx_chain_ok
 --   R.stat.names()                 -- known stat names (sorted)
 --   R.stat.enable_writes()         -- opt in to the EXPERIMENTAL write path
 --   R.stat.set("move_speed", 1.5)  -- set a stat (see caveats)
---   R.stat.add("attack_power", 10) -- current + delta
+--   R.stat.add("attack_power", 0.1) -- current + delta (+10% damage)
 --
 -- READS are always safe. WRITES are EXPERIMENTAL + engine-mutating: run them
 -- on the MAIN thread (from a gameplay-event handler or R.schedule.next_main —
@@ -545,7 +545,7 @@ end
 -- / ModifierEvent_Ctor) whose event payload is not yet decoded — see
 -- docs/_re/kinds/stats.md.
 --
---   R.stat.stick("attack_power", 500)   -- set + keep it there
+--   R.stat.stick("attack_power", 0.5)   -- set + keep it there (+50% damage)
 --   R.stat.unstick("attack_power")      -- stop pinning (engine restores base)
 --   R.stat.sticky()                     -- table of currently-pinned {name=value}
 local _stat_sticky = {}
