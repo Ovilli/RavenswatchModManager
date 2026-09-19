@@ -161,7 +161,7 @@ def test_manifest_reads_back_as_exactly_its_edits():
     import tomllib
 
     mod = tomllib.loads(text)["mod"]
-    assert "experimental" not in mod and mod["multiplayer_scope"] == "host-authoritative"
+    assert mod["experimental"] is True and mod["multiplayer_scope"] == "host-authoritative"
     with pytest.raises(ME.MapEditError, match="mod id"):
         ME.manifest_toml("Bad Id", "", ch, edits)
 
@@ -251,7 +251,7 @@ def test_tilegen_kind_cooks_only_the_named_changes():
 
     from rsmm.sdk.content import KIND_CONFIDENCE, ContentDef, ContentError, _load_kind
 
-    assert KIND_CONFIDENCE["tilegen"] == "confirmed"
+    assert KIND_CONFIDENCE["tilegen"] == "experimental"
     kind = _load_kind("tilegen")
     out = Path(tempfile.mkdtemp())
     ch = ME.find_chapter("DarkHills")
