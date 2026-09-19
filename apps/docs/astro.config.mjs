@@ -22,11 +22,26 @@ export default defineConfig({
       customCss: ['./src/styles/theme.css'],
       lastUpdated: true,
       // Site-wide social-preview image (link unfurls on Discord/Twitter/etc).
+      // Source: `scripts/og-card.html` — keep the dimensions below in sync with
+      // the rendered PNG. Declaring them lets an unfurler lay out the card
+      // before it has fetched the image, which is what makes a shared link
+      // render as a large card rather than a thumbnail.
       head: [
         { tag: 'meta', attrs: { property: 'og:image', content: 'https://docs.rsmm.me/og.png' } },
+        { tag: 'meta', attrs: { property: 'og:image:type', content: 'image/png' } },
+        { tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },
+        { tag: 'meta', attrs: { property: 'og:image:height', content: '630' } },
+        {
+          tag: 'meta',
+          attrs: { property: 'og:image:alt', content: 'Ravenswatch Mod Manager documentation' },
+        },
         { tag: 'meta', attrs: { property: 'og:type', content: 'website' } },
         { tag: 'meta', attrs: { name: 'twitter:card', content: 'summary_large_image' } },
         { tag: 'meta', attrs: { name: 'twitter:image', content: 'https://docs.rsmm.me/og.png' } },
+        {
+          tag: 'meta',
+          attrs: { name: 'twitter:image:alt', content: 'Ravenswatch Mod Manager documentation' },
+        },
         // AI-assistant ingestion (https://llmstxt.org/). `llms-mods.txt` is
         // advertised alongside the index because it, not the full corpus, is
         // what an assistant building a mod should actually pull.

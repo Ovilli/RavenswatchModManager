@@ -1,12 +1,78 @@
-/* Accent color: red instead of Starlight's default blue.
-   Only the accent ramp is overridden; base dark/white theme is untouched. */
+/* RSMM docs theme.
+ *
+ * Starlight's defaults are built around a blue accent and a blue-tinted gray
+ * ramp (hue 224). Overriding only the accent leaves the two fighting: red
+ * accents on cool blue-black surfaces. So dark mode re-derives the grays on
+ * the accent's own hue at low saturation (warm charcoal) and keeps the accent
+ * ramp red the whole way up.
+ *
+ * Light mode keeps Starlight's base palette; only the accent ramp is replaced.
+ */
 
+/* ---------------------------------------------------------------- dark mode
+ * `:root` IS Starlight's dark block — the light block below re-declares every
+ * one of these, so anything set here only ever lands in dark mode.
+ */
 :root {
-  --sl-color-accent-low: #420c0c;
-  --sl-color-accent: #e0182d;
-  --sl-color-accent-high: #f5b2b2;
+  /* Warm charcoal ramp: same lightness steps as Starlight, hue 350 instead of
+     224, saturation kept low so surfaces read neutral rather than pink. */
+  --sl-color-gray-1: hsl(350, 14%, 94%);
+  --sl-color-gray-2: hsl(350, 7%, 78%);
+  --sl-color-gray-3: hsl(350, 6%, 57%);
+  --sl-color-gray-4: hsl(350, 7%, 38%);
+  --sl-color-gray-5: hsl(350, 9%, 24%);
+  --sl-color-gray-6: hsl(350, 11%, 15%);
+  --sl-color-black: hsl(350, 13%, 9%);
+
+  /* `accent-high` is the link/heading colour, so it has to clear 4.5:1 on the
+     page background (it lands at ~6.6:1) without going pastel. */
+  --sl-color-accent-low: hsl(352, 60%, 20%);
+  --sl-color-accent: hsl(352, 78%, 48%);
+  --sl-color-accent-high: hsl(354, 74%, 70%);
+
+  /* Asides and cards: keep the hues distinct (they carry meaning) but drop the
+     chroma, so a `tip` block stops reading as a slab of neon purple. */
+  --sl-color-blue-low: hsl(234, 30%, 18%);
+  --sl-color-blue: hsl(234, 62%, 62%);
+  --sl-color-blue-high: hsl(234, 70%, 84%);
+  --sl-color-purple-low: hsl(281, 24%, 18%);
+  --sl-color-purple: hsl(281, 52%, 62%);
+  --sl-color-purple-high: hsl(281, 62%, 85%);
+  --sl-color-green-low: hsl(101, 26%, 14%);
+  --sl-color-green: hsl(101, 48%, 55%);
+  --sl-color-green-high: hsl(101, 58%, 80%);
+  --sl-color-orange-low: hsl(41, 36%, 16%);
+  --sl-color-orange: hsl(41, 72%, 58%);
+  --sl-color-orange-high: hsl(41, 78%, 82%);
+  --sl-color-red-low: hsl(352, 34%, 18%);
+  --sl-color-red: hsl(352, 66%, 58%);
+  --sl-color-red-high: hsl(352, 76%, 84%);
+
+  --sl-color-backdrop-overlay: hsla(350, 13%, 7%, 0.66);
 }
 
+/* Starlight paints its solid surfaces — active sidebar item, primary hero
+   button, file-tree highlight — with `--sl-color-text-accent` (= accent-high)
+   and dark text. That reads as a pale pink pill here, so dark mode flips them
+   to the brand red with white text. `text-accent` itself stays light because
+   it is also the body-link colour, which needs contrast on a dark page. */
+:root:not([data-theme='light']) :is(
+    .sidebar-content a[aria-current='page'],
+    .sl-link-button.primary,
+    .sl-link-button.primary:hover,
+    starlight-file-tree .highlight
+  ) {
+  background-color: var(--sl-color-accent);
+  color: var(--sl-color-white);
+}
+:root:not([data-theme='light']) .sl-link-button.primary {
+  border-color: var(--sl-color-accent);
+}
+:root:not([data-theme='light']) starlight-file-tree .highlight svg.tree-icon {
+  fill: var(--sl-color-white);
+}
+
+/* --------------------------------------------------------------- light mode */
 :root[data-theme='light'] {
   --sl-color-accent-low: #ffd6d6;
   --sl-color-accent: #c8102e;

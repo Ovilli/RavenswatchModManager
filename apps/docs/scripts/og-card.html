@@ -1,0 +1,135 @@
+<!doctype html>
+<!--
+  Source for `public/og.png`, the social card every docs link unfurls with.
+
+  It is a hand-rendered PNG rather than a build step because it changes about
+  once a year: Starlight already emits a per-page `og:title` / `og:description`,
+  so this image only ever carries the brand, never the page.
+
+  Re-render after editing (any headless Chrome will do — the window size IS the
+  image size, and 1200x630 is what Discord/X/Slack crop against):
+
+    cd apps/docs && chrome --headless --disable-gpu --hide-scrollbars \
+      --allow-file-access-from-files --force-color-profile=srgb \
+      --window-size=1200,630 --screenshot=public/og.png \
+      --virtual-time-budget=4000 "file://$PWD/scripts/og-card.html"
+
+  (the logo is loaded over file://, so --allow-file-access-from-files and an
+  absolute file:// URL are both required)
+
+  Then check the result is exactly 1200x630 and keep the `og:image:width` /
+  `og:image:height` tags in `astro.config.mjs` in sync with it.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      /* Mirrors the dark theme in src/styles/theme.css. */
+      :root {
+        --bg: hsl(350, 13%, 9%);
+        --accent: hsl(352, 78%, 48%);
+        --accent-high: hsl(354, 74%, 70%);
+        --text: hsl(350, 7%, 78%);
+        --hairline: hsl(350, 9%, 24%);
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1200px; height: 630px; }
+      body {
+        background: var(--bg);
+        font-family: 'Inter Display', 'Inter', system-ui, sans-serif;
+        color: #fff;
+        overflow: hidden;
+        position: relative;
+      }
+      /* Warm glow so the card is not a flat rectangle in a feed. */
+      .glow {
+        position: absolute;
+        width: 900px; height: 900px;
+        right: -240px; top: -380px;
+        background: radial-gradient(circle, hsla(352, 78%, 48%, 0.28) 0%, transparent 62%);
+      }
+      .glow-2 {
+        position: absolute;
+        width: 700px; height: 700px;
+        left: -260px; bottom: -380px;
+        background: radial-gradient(circle, hsla(352, 78%, 48%, 0.14) 0%, transparent 62%);
+      }
+      .bar { position: absolute; inset: 0 0 auto 0; height: 8px; background: var(--accent); }
+
+      .card {
+        position: relative;
+        height: 100%;
+        padding: 72px 80px 60px;
+        display: flex;
+        flex-direction: column;
+      }
+      .main { flex: 1; display: flex; align-items: center; gap: 48px; }
+      .copy { flex: 1; }
+      .mark { flex: none; }
+      .mark img { width: 300px; height: 300px; }
+      .eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        margin-bottom: 26px;
+        font-size: 23px;
+        font-weight: 700;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--accent-high);
+      }
+      .eyebrow::before {
+        content: '';
+        width: 46px;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--accent);
+      }
+      h1 {
+        font-size: 72px;
+        font-weight: 800;
+        letter-spacing: -0.032em;
+        line-height: 1.05;
+      }
+      p {
+        margin-top: 24px;
+        font-size: 28px;
+        font-weight: 400;
+        line-height: 1.38;
+        color: var(--text);
+        max-width: 470px;
+      }
+      .foot {
+        flex: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-top: 26px;
+        border-top: 1px solid var(--hairline);
+        font-family: 'Fira Code', ui-monospace, monospace;
+        font-size: 23px;
+        color: hsl(350, 6%, 57%);
+      }
+      .foot .host { color: var(--accent-high); }
+    </style>
+  </head>
+  <body>
+    <div class="bar"></div>
+    <div class="glow"></div>
+    <div class="glow-2"></div>
+    <div class="card">
+      <div class="main">
+        <div class="copy">
+          <div class="eyebrow">Documentation</div>
+          <h1>Ravenswatch<br />Mod Manager</h1>
+          <p>Install mods, author your own, and read how the engine works.</p>
+        </div>
+        <div class="mark"><img src="../src/assets/logo.png" alt="" /></div>
+      </div>
+      <div class="foot">
+        <span class="host">docs.rsmm.me</span>
+        <span>Windows &amp; Linux &middot; open source</span>
+      </div>
+    </div>
+  </body>
+</html>
