@@ -281,7 +281,7 @@ it ships with: the shop screen has a fixed number of widgets per slot.
 
 ## `tilegen` — a chapter's map-generation recipe
 
-**What the player sees.** More camps, fewer wells, a differently-shaped map.
+**What the player sees.** More camps, more wells, a differently-shaped map.
 
 ```toml
 [mod]
@@ -289,8 +289,7 @@ id           = "BusyHills"
 name         = "Busy Dark Hills"
 version      = "0.1.0"
 author       = "you"
-description  = "More camps, fewer wishing wells."
-experimental = true
+description  = "More camps, more wishing wells."
 
 [[content]]
 kind    = "tilegen"
@@ -303,6 +302,9 @@ Wishing_Well = 2
 ```
 
 **Prove it.** Start a run in that chapter and count what generated.
+`R.poi.on_generated` + `R.poi.placed` hand you every placed tile by name, so the
+count can come from the spawner itself instead of the minimap. This exact
+recipe generated 8 camps (vanilla 5) and 2 wells (vanilla 1) in game.
 
 **Trap.** Edits are keyed by **name** and re-applied to the shipped recipe every
 time, so a name the recipe no longer has fails the emit rather than landing on

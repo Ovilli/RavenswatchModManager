@@ -110,9 +110,12 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # four), and this works on a `SceneryObjects_*` host, so the
                               # "scenery is never interactive" corpus rule describes shipped
                               # content rather than an engine gate.
-    "tilegen": "experimental",  # the recipe codec round-trips all 494 shipped tilegen objects
-                              # byte-exactly and validate() enforces every cross-dimension,
-                              # but no edited recipe has been generated in-game yet.
+    "tilegen": "confirmed",   # PROVEN IN GAME 2026-09-19 (test-tilegen, session 774f): Dark
+                              # Hills Camp count 5 -> 8 and Wishing_Well quota 1 -> 2 generated
+                              # exactly 8 camps and 2 wells, counted off the spawner's own
+                              # placed set (R.poi.placed), not a sighting. The codec
+                              # round-trips all 494 shipped tilegen objects byte-exactly and
+                              # validate() enforces every cross-dimension.
     "shop": "confirmed",      # Sandman shop prices + offer generators, overridden in place.
                               # Field meaning is read off the live exe's generator (0x1402d9280),
                               # quality roll and price function (0x1402d4200), and every edit

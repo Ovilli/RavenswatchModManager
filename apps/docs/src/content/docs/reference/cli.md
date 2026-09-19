@@ -317,8 +317,8 @@ bundled with the editor.
 ```
 
 Saving writes `mods/<id>/manifest.toml` with one `tilegen` declaration, which
-reopens in the editor. The `tilegen` kind is ⚠️ experimental: the recipe
-round-trips byte-identically, but an edited recipe has not been playtested.
+reopens in the editor. The `tilegen` kind is confirmed: an edited recipe
+(8 camps instead of 5) generated exactly that in game.
 The server answers only loopback hosts, and every write needs a token that
 exists only in the page it served.
 
