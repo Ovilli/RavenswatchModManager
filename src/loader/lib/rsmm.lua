@@ -2050,6 +2050,19 @@ do
     if ok and type(x) == "table" then R.poi = x end
 end
 
+-- live reward defs ------------------------------------------------------
+--
+-- Lives in rsmm/rewards.lua. Reads each loaded oCDtRewardDefinition's
+-- reward_types shape through R.defs, so a `reward` override can be recognised
+-- in the running game rather than inferred from the file on disk.
+--
+--   R.rewards.defs()                 { {def=, shape=}, ... }
+--   R.rewards.report("(1,2,2)...")   log every shape, mark the matching ones
+do
+    local ok, x = _submodule_fn("rewards", { R = R, I = I })
+    if ok and type(x) == "table" then R.rewards = x end
+end
+
 -- runtime spawn ---------------------------------------------------------
 --
 -- Lives in rsmm/spawn.lua. Instantiates an entity from a template through the
