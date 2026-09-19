@@ -33,8 +33,9 @@ witch fight (three definitions, one encounter), and every definition without
 the ``Boss`` flag (the final bosses, which their own levels place by entity).
 
 The swap is global and install-time: every run, every peer that installs the
-mod, the arena fights ``becomes``. Rated ``experimental`` until a swapped
-arena has been fought in game.
+mod, the arena fights ``becomes``. PROVEN IN GAME 2026-09-19: Boss_White_Lady ->
+Boss_Crab made the Dark Hills White Lady shrine raise its arena, spawn the
+giant crab, and pay out its reward when the crab died.
 """
 
 from __future__ import annotations

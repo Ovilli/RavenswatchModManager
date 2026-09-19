@@ -13,8 +13,9 @@ versiondef MO vector (see docs/_re/kinds/rewards.md).
 
 Fields:
     ``base`` (str, required)   retail rewarddef stem to override, e.g.
-                               ``Camp_Rewards_Avalon`` (see
-                               ``data/uncooked/Definitions/Rewards``).
+                               ``Camp_Rewards_Avalon_Update5``. The plain
+                               ``Camp_Rewards_<Biome>`` defs are dead (nothing
+                               references them) and are refused.
     ``ban`` (list[str], opt.)  entity-path substrings, case-insensitive. A match
                                on an item's ``entity`` drops it from all reward
                                categories; a match on its locked-variant ref
@@ -25,6 +26,11 @@ Fields:
                                ``{category_index: [min, max]}`` (a category =
                                one ``reward_types`` row of the decoded def;
                                ``[0, 0]`` bans the whole category).
+
+PROVEN IN GAME 2026-09-19 on Camp_Rewards_Dark_Hills_Update5: forcing the
+astrolab type to [3, 3] placed exactly 3 (vanilla 0..1), and banning
+DreamCrystal placed 0 (vanilla 1..3). Rewards built into a tile itself (a chest
+standing in a camp tile) are part of that tile, not of this roll.
 
 See ``docs/_re/kinds/rewards.md`` for the decoded layout and the roll gate.
 """
@@ -130,6 +136,17 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             f"reward {defn.id}: base {base!r} not found under {_REWARD_DIR} — "
             f"pass a retail rewarddef stem whose cooked def is present."
         )
+
+    # A base with an `_Update5` sibling is DEAD: only the LiveOps5 versiondef
+    # references reward defs, and it names the Update5 ones (checked over the
+    # shipped corpus 2026-09-19 — Camp_Rewards_<Biome> is referenced by
+    # nothing). Editing the dead one installs cleanly and changes nothing,
+    # which is how an earlier ban read as "unreliable".
+    live = _REWARD_DIR / f"{base}_Update5{GEN_SUFFIX}"
+    if live.is_file():
+        raise ContentError(
+            f"reward {defn.id}: {base!r} is superseded and never loaded — the game "
+            f"rolls from {base}_Update5. Use base = \"{base}_Update5\".")
 
     ban = defn.fields.get("ban")
     counts = defn.fields.get("counts")

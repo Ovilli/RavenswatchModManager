@@ -10,37 +10,27 @@ Menu. Two layers cooperate:
   the menu — reliable and count-neutral, the way to make a "custom talent" the
   player can actually see.
 * **Identity / list** — the skill rows live in the herodef
-  ``Definitions/Heroes/<Hero>.herodef.ot.DtHeroDefinition.gen`` (see
-  :mod:`rsmm.engine.skill_clone`). Cloning a row adds a NET-NEW slot, but the
-  in-game load of an added row is unproven (``guess``), and a clone inherits the
-  source's display until a new text key + binding are authored.
+  ``Definitions/Heroes/<Hero>.herodef.ot.DtHeroDefinition.gen``. This kind does
+  NOT edit them: repointing a row was playtested inert (2026-09-12 — the name
+  shown comes from the entity-side controller's key), and adding a row crashed
+  the game (2026-09-11); a hero's talent count is fixed by decision. The
+  herodef helpers remain in :mod:`rsmm.engine.skill_clone` for RE.
 
-So ``emit()`` makes the talent VISIBLE by default (text override) and, when
-asked, also edits the herodef.
+So ``emit()`` relabels: it overrides the talent's text (and optionally its
+icon) in place. PROVEN IN GAME 2026-09-18 (Aladdin's Attack Dive read
+"TEST Meteor" on the Skill Menu and the level-up card).
 
 Fields:
     ``hero`` (str, required)         hero name, e.g. ``Aladdin`` / ``Snow_Queen``.
-    ``source`` (str, required)       an existing skill to relabel/clone, by its
+    ``source`` (str, required)       an existing skill to relabel, by its
                                      controller suffix (``Attack Dive``) or text
                                      key base (``Skill_Attack_Dive``).
     ``name`` / ``display_name``      the talent name shown in-game (overrides
                                      ``Skill_<suffix>_Name``).
     ``description``                  the talent description (``_Desc``).
-    ``mode`` (str, optional)         ``relabel`` (default — text only, visible &
-                                     safe), ``clone`` (also add a NET-NEW herodef
-                                     row, EXPERIMENTAL), or ``repoint`` (remint
-                                     the source row's identity in place).
-    ``guid`` (str, optional)         16-byte identity GUID for clone/repoint.
-    ``controller`` (str, optional)   ``repoint`` only — rename the row's
-                                     controller, e.g. ``Primary Finisher``. The
-                                     display key and the Book column both derive
-                                     from this name (``Primary`` -> Power), so
-                                     renaming moves the slot AND retargets
-                                     ``name``/``description`` at the new key.
-                                     Point it at a controller that already
-                                     exists in the hero ENTITY, and pass that
-                                     controller's identity ``guid``, to adopt a
-                                     built-but-unrostered talent.
+    ``mode`` (str, optional)         ``relabel`` (the default and the only
+                                     mode; ``clone``/``repoint`` are refused
+                                     with the reason).
     ``icon`` (str, optional)         a PNG shipped in the mod (path relative to
                                      the mod root). Cooked into an oCTexture and
                                      written OVER the slot's own icon texture,
@@ -60,7 +50,6 @@ import logging
 import struct
 from pathlib import Path
 
-from ...engine import skill_clone as SC
 from ...engine import text_patches as TP
 from ...engine.paths import DATA_DIR
 from ..content import ContentDef, ContentError, SchemaNotMined
@@ -69,7 +58,6 @@ from . import _common as C
 _log = logging.getLogger(__name__)
 
 _HERODEF_DIR = DATA_DIR / "uncooked" / "Definitions" / "Heroes"
-_ASSET_PREFIX = "Definitions/Heroes"
 
 
 def _hero_token(hero: str) -> str | None:
@@ -169,19 +157,6 @@ def _install_bank(hero_token: str):
     return (p, decoded) if p.exists() else None
 
 
-def _parse_guid(raw) -> bytes | None:
-    if raw is None:
-        return None
-    s = str(raw).strip()
-    if ":" in s:
-        lo, hi = s.split(":", 1)
-        return struct.pack("<QQ", int(lo, 16), int(hi, 16))
-    b = bytes.fromhex(s.removeprefix("0x"))
-    if len(b) != 16:
-        raise ContentError(f"skill guid must be 16 bytes, got {len(b)}")
-    return b
-
-
 def _write_bank_files(decoded_bank: str, files: dict[str, bytes],
                       out_dir: Path) -> list[Path]:
     """Write a bank-patch result ({token -> bytes}) into the mod assets.
@@ -222,20 +197,6 @@ def _emit_text_override(hero_token: str, source: str, display_name, description,
         files = TP.override_bank_values(base_gen, overrides, prior)
     except KeyError as e:
         raise ContentError(str(e)) from e
-    return _write_bank_files(decoded_bank, files, out_dir)
-
-
-def _emit_text_append(hero_token: str, new_name: str, display_name, description,
-                      out_dir: Path) -> list[Path]:
-    """Append a NEW text key for a cloned skill's controller name, so the new
-    row has its own display string (vs inheriting the source's)."""
-    base_gen, decoded_bank = _require_bank(hero_token)
-    key_base = _text_key_base(new_name)
-    pairs = {f"{key_base}_Name": str(display_name) if display_name is not None
-             else new_name}
-    if description is not None:
-        pairs[f"{key_base}_Desc"] = str(description)
-    files = TP.append_bank_keys(base_gen, pairs)
     return _write_bank_files(decoded_bank, files, out_dir)
 
 
@@ -341,46 +302,6 @@ def _emit_icon(hero_token: str, controller: str, icon: str,
     return [dest]
 
 
-def _emit_herodef(hero_token: str, defn: ContentDef, mode: str,
-                  out_dir: Path) -> list[Path]:
-    """Clone (net-new) or repoint (remint identity) a herodef skill row."""
-    herodef = _HERODEF_DIR / f"{hero_token}.herodef.ot.DtHeroDefinition.gen"
-    blob = herodef.read_bytes()
-    source = defn.fields["source"]
-    new_name = defn.fields.get("name") or defn.fields.get("display_name") or defn.id
-    guid = _parse_guid(defn.fields.get("guid"))
-    # Whether the clone gets a FRESH identity GUID.
-    #
-    # `clone_skill` defaults to keeping the source's, on the reasoning that a
-    # reminted-but-unresolvable GUID broke a cloned magical object. That case
-    # was a resource REFERENCE. A skill row's +0x10 GUID is an identity DEDUP
-    # KEY, and playtest 1 (2026-09-11) crashed in HeroDef_PostLoad walking a
-    # per-skill sub-vector through a poison pointer — the shape you get when a
-    # dedup path sees two rows claiming one identity and drops one of them.
-    remint = bool(defn.fields.get("remint"))
-    try:
-        if mode == "clone":
-            out, ident = SC.clone_skill(blob, source, new_name,
-                                        new_guid1=guid, remint=remint)
-        else:  # repoint: rewrite the row in place, keeping the slot count
-            # `controller` renames the row; without it the name is kept and
-            # only the identity GUID moves.
-            target = str(defn.fields.get("controller") or source)
-            out = SC.repoint_skill(blob, source, target, new_guid1=guid)
-            row = SC.find_skill(out, target)
-            ident = guid if guid is not None else out[row.guid1_off:row.guid1_off + 16]
-    except SC.SkillCloneError as e:
-        raise ContentError(f"skill {defn.id}: {e}") from e
-    lo, hi = struct.unpack("<QQ", ident)
-    _log.info("skill %s: herodef %s on %s — identity 0x%x:0x%x (bind with "
-              "R.talent.on_pick)", defn.id, mode, hero_token, lo, hi)
-    decoded = f"{_ASSET_PREFIX}/{herodef.name}"
-    dest = out_dir / Path(*decoded.split("/"))
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_bytes(out)
-    return [dest]
-
-
 def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     """Materialize one skill def into the mod's ``assets/`` tree."""
     C.validate_id("skill", defn.id)
@@ -397,66 +318,45 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             f"(is data/uncooked present?)")
 
     mode = (defn.fields.get("mode") or "relabel").lower()
-    if mode not in ("relabel", "clone", "repoint"):
-        raise ContentError(f"skill {defn.id}: mode must be relabel/clone/repoint.")
-    if defn.fields.get("controller") and mode != "repoint":
+    # Only RELABEL is emitted. The two herodef modes are refused, each for a
+    # reason settled in game rather than guessed:
+    #   * repoint — PLAYTESTED INERT 2026-09-12: the files landed and loaded,
+    #     and the talent still showed its old name, because the displayed talent
+    #     resolves through the ENTITY-side controller's own text key, not the
+    #     herodef row's name or identity GUID. It changes nothing visible and
+    #     still carries herodef risk.
+    #   * clone — a net-new herodef row crashed HeroDef_PostLoad twice
+    #     (2026-09-11), and the talent count per hero is fixed by decision
+    #     (2026-09-17, closed 2026-09-19). The engine helpers stay in
+    #     rsmm.engine.skill_clone for reverse engineering.
+    if mode == "repoint":
         raise ContentError(
-            f"skill {defn.id}: 'controller' renames a herodef row, so it only "
-            f"applies to mode='repoint' (got {mode!r}).")
-    if mode == "clone" and not defn.fields.get("accept_brick_risk"):
-        # GATED, no longer blanket-disabled.
-        #
-        # It WAS disabled on the reading that the deserialiser enforces "a
-        # count/length in the registrar region Ghidra leaves unanalysed". That
-        # reason is superseded: the count is a plain u32 in a class-index table
-        # immediately before the rows, and nothing was writing it — see
-        # skill_clone.grow_class_table, which clone_skill now calls. A spliced
-        # row was an ORPHAN, the same bug already fixed for entities and levels.
-        #
-        # The gate stays because the fix is proven OFFLINE ONLY. The failure it
-        # guards against is not subtle: the previous attempt removed Aladdin
-        # from the hero-selection menu entirely. Opting in is therefore explicit
-        # and per-def, and the flag name says what you are accepting.
-        #
-        # ⚠ Even when this loads, the talent may not be VISIBLE. The Book grid
-        # derives a cell from skill identity and does not enumerate by vector
-        # length, so a clone that inherits its source's identity draws on top of
-        # it. That wall is separate from this one and untested — see
-        # docs/_re/kinds/skills-system.md.
+            f"skill {defn.id}: mode='repoint' is not supported — playtested "
+            f"2026-09-12, it changes nothing visible: the talent's name comes "
+            f"from the hero entity's controller text key, not the herodef row. "
+            f"Use the default relabel mode.")
+    if mode == "clone":
         raise ContentError(
-            f"skill {defn.id}: mode='clone' needs `accept_brick_risk = true`. "
-            f"The herodef count bug behind the old block is fixed "
-            f"(skill_clone.grow_class_table) but PROVEN OFFLINE ONLY, and a bad "
-            f"row removes the hero from the selection menu. Back up "
-            f"Definitions/Heroes/<Hero>.herodef.ot.DtHeroDefinition.gen first.")
+            f"skill {defn.id}: mode='clone' is not supported — a hero's talent "
+            f"count is fixed (an added herodef row crashed the game twice). "
+            f"Relabel an existing talent instead, or add a pickable card.")
+    if mode != "relabel":
+        raise ContentError(f"skill {defn.id}: mode must be 'relabel' (got {mode!r}).")
+    if defn.fields.get("controller"):
+        raise ContentError(
+            f"skill {defn.id}: 'controller' belonged to the removed repoint mode.")
     display_name = defn.fields.get("display_name") or defn.fields.get("name")
     description = defn.fields.get("description")
 
-    written: list[Path] = []
-    if mode == "clone":
-        # NET-NEW skill: keep the source, add a new herodef row (new identity)
-        # and APPEND its own text key so it doesn't inherit the source's name.
-        written += _emit_herodef(hero_token, defn, mode, out_dir)
-        new_name = str(display_name or defn.id)
-        written += _emit_text_append(hero_token, new_name, display_name,
-                                     description, out_dir)
-    elif mode == "repoint":
-        written += _emit_herodef(hero_token, defn, mode, out_dir)
-        # A renamed row reads its display text from the NEW controller's keys.
-        written += _emit_text_override(hero_token,
-                                       str(defn.fields.get("controller") or source),
-                                       display_name, description, out_dir)
-    else:  # relabel — override the source skill's text in place
-        written += _emit_text_override(hero_token, source, display_name,
-                                       description, out_dir)
+    # Override the source skill's text in place.
+    written: list[Path] = _emit_text_override(hero_token, source, display_name,
+                                              description, out_dir)
     icon = defn.fields.get("icon")
     if icon:
-        slot = str(defn.fields.get("controller") or source) if mode == "repoint" else source
-        written += _emit_icon(hero_token, slot, str(icon), out_dir.parent, out_dir)
+        written += _emit_icon(hero_token, source, str(icon), out_dir.parent, out_dir)
     if not written:
         raise ContentError(
-            f"skill {defn.id}: nothing to emit — give a name/description to "
-            f"relabel, or mode=clone/repoint to edit the herodef.")
-    _log.info("skill %s/%s: %s on %s (%d file(s))",
-              mod_id, defn.id, mode, hero_token, len(written))
+            f"skill {defn.id}: nothing to emit — give a name, description or icon.")
+    _log.info("skill %s/%s: relabel on %s (%d file(s))",
+              mod_id, defn.id, hero_token, len(written))
     return written

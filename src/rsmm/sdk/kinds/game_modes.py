@@ -7,21 +7,23 @@ own path, so ``apply`` installs it as an in-place override. The mod's ``id`` is 
 label only: the game has one game-mode definition and no menu that lists others,
 so a copy under a new name would never be played.
 
-Confidence: ``experimental``. Layout deserializer-verified 2026-07-05:
+Confidence: ``confirmed`` — skipping chapters and a descending order are proven
+in game; repeats are refused. Layout deserializer-verified 2026-07-05:
 ``GameModeDefaultDefinition::Deserialize`` (vftable 0x140eff358 slot 3,
 FUN_140324de0) reads the chapter list via ``Serializer_ReadPolyPtrVector`` into
 the ordered vector @def+0x290; each entry (``GameModeDefault``, deser
 FUN_1403256c0) carries a resource-ref to its chapter content @entry+0x8 — so the
 u32 list this cooker rewrites is the ordered chapter roster, order preserved.
-The engine honouring a rewritten order in a live run is still unproven, and some
-orders may be fragile (chapter 0 may be coupled to first-run/tutorial setup).
 A FIXED order is data-safe; true per-run randomization is out of scope (needs
 engine RNG + multiplayer determinism).
 
 Fields:
-    ``base`` (str, optional)        gamemode def id to clone (default ``All_Chapters``).
+    ``base`` (str, optional)        gamemode def to rewrite (default ``All_Chapters``).
     ``chapters`` (list[int], req.)  the new chapter-index order, e.g. ``[2, 0, 1, 3]``
-                                    (reorder), ``[0, 0, 0]`` (repeat), ``[3]`` (one chapter).
+                                    (reorder), ``[3]`` (one chapter). Each index
+                                    at most once: a repeat is refused, because
+                                    the game skips it (2026-09-19: [0, 0, 1]
+                                    played Dark Hills, then Storm Island).
 
 See ``docs/_re/kinds/maps-chapters.md``.
 """
@@ -58,6 +60,13 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             f"indices, e.g. chapters=[2, 0, 1, 3]. See docs/_re/kinds/maps-chapters.md."
         )
 
+    repeated = sorted({c for c in chapters if chapters.count(c) > 1})
+    if repeated:
+        raise ContentError(
+            f"game_mode {defn.id}: chapter {repeated} "
+            f"appears more than once. The list names the SAME chapter object twice, "
+            f"and the game skips the repeat (tested 2026-09-19: [0, 0, 1] went "
+            f"Dark Hills -> Storm Island). Each chapter may appear once.")
     base_gen = _GAMEMODE_DIR / f"{base}{GMC.GEN_SUFFIX}"
     if not base_gen.is_file():
         raise SchemaNotMined(

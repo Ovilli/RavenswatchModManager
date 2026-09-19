@@ -52,24 +52,29 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # resolved to the clone and the run started in it); the clone
                               # still generates from the base's pool (tilegen backref) and
                               # `tribe` showed no effect
-    "skill": "experimental",  # mode="relabel" PROVEN IN GAME 2026-09-18 (Aladdin's Attack Dive read
-                              # "TEST Meteor"); mode="clone" (net-new herodef row) still unproven
-    "boss": "experimental",   # boss SWAP: rewrites a den/shrine boss def's entity_ref so its
-                              # arena spawns another boss (same writer as enemy override, which
-                              # is proven in game). The arenas select by per-boss FLAG and
-                              # nothing else references the entity (corpus 2026-09-19). A
-                              # swapped arena has not been fought in game yet.
+    "skill": "confirmed",     # relabel PROVEN IN GAME 2026-09-18 (Aladdin's Attack Dive read
+                              # "TEST Meteor" in the Skill Menu and on the card). It is the only
+                              # mode emitted: repoint was playtested inert (2026-09-12) and clone
+                              # crashed the game (2026-09-11), so both are refused.
+    "boss": "confirmed",      # boss SWAP, PROVEN IN GAME 2026-09-19 (session 324f): with
+                              # Boss_White_Lady -> Boss_Crab, activating the Dark Hills White Lady
+                              # shrine raised its arena, spawned Boss_Crab, and paid out the
+                              # shrine's reward when it died. Arenas select their boss by the
+                              # per-boss FLAG and nothing else names the entity (corpus scan,
+                              # re-asserted by a slow test); bosses failing that are refused.
     "modifier": "experimental",  # a cloned def REACHES THE CHALLENGE SCREEN (in game 2026-09-18,
                               # "TEST Double XP" row, after the text-bank fix); its effect in a run
                               # is unproven (rows ARE spawner-driven — m_oGameModifierUiSpawner)
-    "game_mode": "experimental",  # chapter vector deserializer-verified 2026-07-05 (poly-ptr
-                              # vector @def+0x290, ordered refs); in-game honoring unproven
-    "reward": "experimental", # codec byte-verified, but 2026-07-12 playtest: emptying a
-                              # reward_types row did NOT stop chests. Roll FUN_1401e9800 has 2
-                              # blocks — a count-gated reward_types path (edit honoured) AND a
-                              # guaranteed block on a different (context+0xa8) def that bypasses
-                              # counts. Ban unreliable; needs a runtime def-dump to pin the
-                              # def/field. See docs/_re/kinds/rewards.md
+    "game_mode": "confirmed", # PROVEN IN GAME: skipping (SeedRunsChapter3 [2,3], 2026-07-11) and a
+                              # DESCENDING order ([1,0] played Storm Island then Dark Hills,
+                              # 2026-09-19). Repeats are refused: [0,0,1] skipped the duplicate.
+                              # Always an in-place override of All_Chapters.
+    "reward": "confirmed",    # PROVEN IN GAME 2026-09-19 (Camp_Rewards_Dark_Hills_Update5): counts
+                              # [3,3] placed exactly 3 astrolabs (vanilla 0..1) and a DreamCrystal
+                              # ban placed 0 (vanilla 1..3), counted off the live scene. The
+                              # 2026-07-12 "ban unreliable" result edited the plain
+                              # Camp_Rewards_<Biome> defs too, which nothing references; emit now
+                              # refuses those and names the _Update5 def the game rolls from.
     "mesh": "confirmed",      # in-place override of a shipped mesh: one cooked file, no new
                               # resource name, so nothing but the geometry cook is exercised.
                               # PROVEN IN-GAME TWICE, by both routes the cook has:

@@ -581,16 +581,16 @@ def test_content_ref_deref_in_fields(tmp_path: Path, monkeypatch):
 
 
 def test_unverified_kind_blocked_without_optin(tmp_path: Path, monkeypatch):
-    """Non-confirmed kinds (enemy/boss/hero/map) raise unless the mod opts
+    """Non-confirmed kinds (enemy/hero/map) raise unless the mod opts
     into experimental — so nobody ships speculative content unknowingly."""
     from rsmm.sdk.content import ContentError, kind_confidence
     m = _builder(tmp_path, monkeypatch)
     assert kind_confidence("item") == "confirmed"
-    assert kind_confidence("boss") == "experimental"
+    assert kind_confidence("hero") == "experimental"
     with pytest.raises(ContentError, match="experimental"):
         m.enemy("Goblin", base="Gnoll")
     with pytest.raises(ContentError, match="experimental"):
-        m.boss("IceLord", base="BabaYaga")
+        m.hero("IceLord", base="Aladdin")
     # confirmed kinds never need the opt-in.
     m.item("Sword", base="Knife")
 

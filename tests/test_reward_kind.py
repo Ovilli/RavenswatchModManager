@@ -16,7 +16,7 @@ from rsmm.engine.cooked_schemas.definitions import RewardDefinitionHandler
 from rsmm.sdk.content import ContentDef, ContentError
 from rsmm.sdk.kinds import rewards
 
-_BASE = "Camp_Rewards_Avalon"
+_BASE = "Camp_Rewards_Avalon_Update5"
 _BASE_GEN = rewards._REWARD_DIR / f"{_BASE}{rewards.GEN_SUFFIX}"
 
 
@@ -114,3 +114,16 @@ def test_bad_counts_rejected(tmp_path):
         _emit(tmp_path, counts={"99": [0, 1]})
     with pytest.raises(ContentError, match="min <= max"):
         _emit(tmp_path, counts={"0": [3, 1]})
+
+
+def test_superseded_base_is_refused(tmp_path):
+    """The plain Camp_Rewards_<Biome> defs are referenced by nothing; only the
+    LiveOps5 versiondef names reward defs, and it names the _Update5 ones. An
+    edit to the dead def installs cleanly and changes nothing."""
+    dead = rewards._REWARD_DIR / f"Camp_Rewards_Avalon{rewards.GEN_SUFFIX}"
+    if not dead.is_file():
+        pytest.skip("vanilla rewards corpus not present")
+    defn = ContentDef(kind="reward", id="Dead", fields={
+        "base": "Camp_Rewards_Avalon", "ban": ["Astrolab"]})
+    with pytest.raises(ContentError, match="Camp_Rewards_Avalon_Update5"):
+        rewards.emit("TestRewardMod", defn, tmp_path)

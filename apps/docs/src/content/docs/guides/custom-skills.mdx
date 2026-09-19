@@ -12,29 +12,28 @@ through changing a talent's numbers, name and description from scratch.
 
 A hero's **skills** are the talents on the level-up cards and in the Skill Menu.
 The `skill` kind makes a custom talent **visible** by overriding the per-hero
-text bank, and can optionally edit the hero definition's skill list. <Badge text="Guess" variant="caution" />
+text bank. <Badge text="Confirmed" variant="success" />
 
 <Aside type="caution" title="What works today">
 **`mode="relabel"` works now** — it overrides an existing skill's display text
 (name + description) in place, so your talent shows on that skill's real card and
 menu slot. Count-neutral and reliable.
 
-Adding a **net-new** skill row is **not** feasible by data edit: `mode="clone"`
-is disabled because byte-splicing a row into the herodef bricks the hero (proven
-in-game, twice, GUID-independent — the skill collection is structurally
-validated by the deserialiser). Net-new skills need the loader's
-**runtime-injection** path instead (see [below](#net-new-skills-runtime-injection)).
+Adding a **net-new** skill row is **not** supported: `mode="clone"` is refused,
+because an added herodef row crashed the game twice, and a hero's talent count
+is fixed. `mode="repoint"` is refused too — renaming a herodef row was
+playtested and changes nothing visible (the shown name comes from the hero
+entity's controller key).
 </Aside>
 
 ## Author one
 
-`skill` is a `guess` kind, so the mod must opt in with `Mod(experimental=True)`
-(lint enforces this for non-confirmed kinds).
+`skill` is a `confirmed` kind, so no experimental opt-in is needed.
 
 ```python title="build.py"
 from rsmm import sdk
 
-with sdk.Mod("MySkills", experimental=True) as mod:
+with sdk.Mod("MySkills") as mod:
     mod.skill(
         "rsmm_lightning_dash",
         hero="Aladdin",
@@ -50,7 +49,6 @@ Equivalent declarative form:
 ```toml title="mods/MySkills/manifest.toml"
 [mod]
 id = "MySkills"
-experimental = true
 
 [[content]]
 kind        = "skill"
@@ -76,8 +74,8 @@ text-key base (`Skill_Attack_Dive`). The two name the same row.
 | `mode` | What it edits | Status | Use it for |
 |---|---|---|---|
 | `relabel` *(default)* | Hero text bank values only (`Skill_<src>_Name` / `_Desc`) | **Works** — visible & count-neutral | Repurposing an existing talent's name/description |
-| `repoint` | Herodef row + text values: remints the source row's identity GUID in place | Experimental | Giving an existing skill a fresh identity for behaviour binding |
-| `clone` | Would add a NET-NEW herodef row + appended text key | **Disabled** — bricks the hero | (blocked — use runtime injection) |
+| `repoint` | Would rename the herodef row + remint its GUID | **Refused** — playtested, changes nothing visible | — |
+| `clone` | Would add a NET-NEW herodef row | **Refused** — crashed the game twice | — |
 
 ## Bind behaviour
 
@@ -97,31 +95,13 @@ Behaviour binds on `POWER_UP_COLLECT_REQUEST` via the gameplay event bus — it
 does not require any herodef edit. See [Mod hooks](/reverse-engineering/mod-hooks/)
 for the identity-offset details.
 
-## Net-new skills (runtime injection)
+## Net-new skills
 
-Because a data-cloned row bricks the hero, a genuinely **additive** skill is
-added at runtime by the loader, the same way custom items grow the item pool:
-
-```mermaid
-flowchart LR
-    L["herodef load<br/>(FUN_14031e630)"] --> H["loader detour"]
-    H --> G["grow skill vector @ +0x7d0"]
-    G --> A["append cloned SkillController"]
-    A --> M["menu enumerates runtime vector → shows"]
-```
-
-The hook (`hook_skills.cpp`) is **default read-only**: it logs the live herodef
-and skill-vector count/cap so the layout can be confirmed in-game. The injection
-itself is gated behind `RSMM_ENABLE_SKILL_INJECT` and currently clones the last
-skill into a spare slot as a proof-of-path (self-guarded: no realloc, count
-bounds-checked). Growing the vector with a *distinct* controller and refcounting
-it is the open work.
-
-<Aside type="caution" title="Loader env flags">
-Never put injection flags in your permanent launch options. The working launch
-string and the flag's failure modes are documented in
-[Mod hooks](/reverse-engineering/mod-hooks/).
-</Aside>
+Not supported, by decision: a hero's talent count is fixed. An added herodef
+row crashed the game, and a talent injected at runtime drew on top of its
+source in the Book grid, because the grid places a talent by its identity
+rather than by list position. For something genuinely additive, ship a
+pickable magical-object card, whose pool does grow.
 
 ## How a skill is wired
 
@@ -130,12 +110,9 @@ string and the flag's failure modes are documented in
 | Display name / desc | `Text/Hero_<Hero>_Common~GAM.xls.LocalText.gen`, keys `Skill_<Suffix>_Name` / `_Desc` | What the player reads on the card / menu |
 | Skill row (identity) | `Definitions/Heroes/<Hero>.herodef.ot.DtHeroDefinition.gen` | The list of skills the hero owns + each row's GUID |
 | Behaviour | gameplay event bus (`POWER_UP_COLLECT_REQUEST`) | Custom code on pick |
-| Net-new row | loader `hook_skills.cpp`, herodef skill vector `@ +0x7d0` | Adds a slot the deserialiser never validates |
 
-The herodef deserialiser (`FUN_14031e630`) is a strict **versioned, ordered**
-field reader: the skill collection's count sits behind a polymorphic header, so a
-spliced row desyncs every later field read — which is why data-clone is disabled
-and runtime injection is the correct layer.
+The name a player sees comes from the hero ENTITY's controller text key, not
+from the herodef row, which is why relabel works and renaming the row does not.
 
 ## Going deeper
 

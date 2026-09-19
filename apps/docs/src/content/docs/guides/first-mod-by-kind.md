@@ -233,21 +233,23 @@ name         = "No Locked Chests"
 version      = "0.1.0"
 author       = "you"
 description  = "Chests spawn unlocked."
-experimental = true
 
 [[content]]
 kind = "reward"
 id   = "avalon_rewards"
-base = "Camp_Rewards_Avalon"
+base = "Camp_Rewards_Avalon_Update5"
 ban  = ["Chest_Locked"]
 ```
 
-**Prove it.** Play the chapter and count what the reward points produce.
+**Prove it.** Play the chapter and count what the reward points produce. Pick a
+number the game cannot reach on its own — `counts = { 2 = [3, 3] }` gave three
+astrolabs where Dark Hills normally has at most one.
 
 **Trap.** This bans reward *objects*, never talent or item *cards* — that lever
 is the item catalog (`kind = "item"`, `mode = "ban"`). Each `ban` entry must
 match something, deliberately: a typo fails the emit instead of silently doing
-nothing.
+nothing. Use the `_Update5` def: the plain `Camp_Rewards_<Biome>` ones are never
+loaded, and the SDK refuses them.
 
 ---
 
@@ -326,7 +328,6 @@ name         = "Avalon First"
 version      = "0.1.0"
 author       = "you"
 description  = "Chapter order: 2, 0, 1, 3."
-experimental = true
 
 [[content]]
 kind     = "game_mode"
@@ -341,8 +342,9 @@ chapters = [2, 0, 1, 3]
 second mode to pick from a menu, so the `id` is only a label, and two mods
 that both set `chapters` (or a `map` mod with `chapter = N`) collide on the
 same file. A FIXED order is data-safe; per-run randomisation is not (it needs
-engine RNG and multiplayer determinism). Skipping chapters 0 and 1 is proven
-safe in game.
+engine RNG and multiplayer determinism). Proven in game: skipping chapters
+and running them out of order. Each chapter may appear once; a repeat is
+refused, because the game skips it.
 
 ---
 
@@ -392,7 +394,6 @@ name         = "Dive, Renamed"
 version      = "0.1.0"
 author       = "you"
 description  = "Attack Dive becomes Meteor."
-experimental = true
 
 [[content]]
 kind        = "skill"
@@ -405,9 +406,10 @@ description = "Come down harder."
 
 **Prove it.** Open the hero's Skill Menu — the new text is there.
 
-**Trap.** The default `mode = "relabel"` is the safe, count-neutral half: it
-edits text only. `mode = "clone"` adds a NET-NEW herodef row, and the game
-loading an added row is unproven — a hero's talent count is effectively fixed.
+**Trap.** Relabel renames an EXISTING talent — a hero's talent count is fixed.
+`mode = "clone"` (add a row) and `mode = "repoint"` (rename the herodef row) are
+refused: the first crashed the game, and the second changes nothing visible,
+because the name shown comes from the hero entity's controller key.
 
 ---
 
@@ -481,7 +483,6 @@ name         = "Crab Den"
 version      = "0.1.0"
 author       = "you"
 description  = "The ghoul den fights the giant crab."
-experimental = true
 
 [[content]]
 kind    = "boss"
@@ -490,7 +491,9 @@ base    = "Boss_Marsh_Ghoul"
 becomes = "Boss_Crab"
 ```
 
-**Prove it.** Enter the arena `base` belongs to and see who is waiting.
+**Prove it.** Enter the arena `base` belongs to and see who is waiting. (Proven
+with `base = "Boss_White_Lady"`: her shrine raised its arena around the crab and
+paid its reward when the crab died.)
 `base` must be one of the bosses whose arena picks them by flag alone:
 `Boss_Crab`, `Boss_Marsh_Ghoul`, `Boss_Wolf`, `Boss_White_Lady`. `becomes` can
 be any boss definition.
