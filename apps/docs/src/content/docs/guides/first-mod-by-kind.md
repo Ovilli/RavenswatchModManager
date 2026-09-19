@@ -290,6 +290,7 @@ name         = "Busy Dark Hills"
 version      = "0.1.0"
 author       = "you"
 description  = "More camps, more wishing wells."
+experimental = true
 
 [[content]]
 kind    = "tilegen"
@@ -303,8 +304,9 @@ Wishing_Well = 2
 
 **Prove it.** Start a run in that chapter and count what generated.
 `R.poi.on_generated` + `R.poi.placed` hand you every placed tile by name, so the
-count can come from the spawner itself instead of the minimap. This exact
-recipe generated 8 camps (vanilla 5) and 2 wells (vanilla 1) in game.
+count can come from the spawner itself instead of the minimap. Compare against
+a LOW count: an unedited Storm Island (recipe 5) has generated 8 camps, so "more
+than usual" is not evidence on its own.
 
 **Trap.** Edits are keyed by **name** and re-applied to the shipped recipe every
 time, so a name the recipe no longer has fails the emit rather than landing on
@@ -335,9 +337,12 @@ chapters = [2, 0, 1, 3]
 
 **Prove it.** Start a new run and read the chapter you land in.
 
-**Trap.** A FIXED order is data-safe; per-run randomisation is not (it needs
-engine RNG and multiplayer determinism). Chapter 0 may also be coupled to
-first-run setup, so moving it is the fragile edit.
+**Trap.** This rewrites the game's one run order in place — there is no
+second mode to pick from a menu, so the `id` is only a label, and two mods
+that both set `chapters` (or a `map` mod with `chapter = N`) collide on the
+same file. A FIXED order is data-safe; per-run randomisation is not (it needs
+engine RNG and multiplayer determinism). Skipping chapters 0 and 1 is proven
+safe in game.
 
 ---
 

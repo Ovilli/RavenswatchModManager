@@ -1,9 +1,11 @@
 """Custom **game mode** (run chapter sequence) builder — SDK entry point.
 
 Re-orders the chapters a run plays by rewriting the ``GameModeDefaultDefinition``
-chapter list (Heredos #10 — sequential / custom map order). ``emit()`` clones the
-shipped ``All_Chapters`` def and replaces its sequence, then writes the cooked
-record; ``apply_mods`` registers it via ``UsedRscList``.
+chapter list (Heredos #10 — sequential / custom map order). ``emit()`` rewrites
+the shipped ``All_Chapters`` def's sequence and writes it back at ``All_Chapters``'
+own path, so ``apply`` installs it as an in-place override. The mod's ``id`` is a
+label only: the game has one game-mode definition and no menu that lists others,
+so a copy under a new name would never be played.
 
 Confidence: ``experimental``. Layout deserializer-verified 2026-07-05:
 ``GameModeDefaultDefinition::Deserialize`` (vftable 0x140eff358 slot 3,
@@ -67,7 +69,14 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     except GMC.GameModeCookError as e:
         raise ContentError(f"game_mode {defn.id}: {e}") from e
 
-    decoded_rel = f"{_ASSET_SUBDIR}/{defn.id}{GMC.GEN_SUFFIX}"
+    # ALWAYS at the base's own path, i.e. an in-place override — never under
+    # `defn.id`. The engine holds game modes in one oCTLibrary with no name
+    # lookup and no menu (nothing in the shipped data or the exe names
+    # All_Chapters; it is the only definition of its class), so a second
+    # definition under a new name is either never consulted or races the
+    # original on load order. Overriding in place is the route proven in game
+    # (SeedRunsChapter3, 2026-07-11; test-map, 2026-09-19). `id` is a label.
+    decoded_rel = f"{_ASSET_SUBDIR}/{base}{GMC.GEN_SUFFIX}"
     dest = out_dir / Path(*decoded_rel.split("/"))
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(new_cooked)
