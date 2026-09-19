@@ -339,10 +339,11 @@ first-run setup, so moving it is the fragile edit.
 
 ---
 
-## `map` — clone a biome definition
+## `map` — make a chapter play a cloned map
 
-**What the player sees.** A biome definition of your own, patched from a
-shipped one.
+**What the player sees.** A chapter that plays a mapdef of your own. Today it
+looks like the base map: the clone reuses the base's terrain and still draws
+its tiles from the base's pool.
 
 ```toml
 [mod]
@@ -350,20 +351,25 @@ id           = "TwilightHills"
 name         = "Twilight Hills"
 version      = "0.1.0"
 author       = "you"
-description  = "A Dark Hills variant."
+description  = "Chapter 1 plays a Dark Hills clone."
 experimental = true
 
 [[content]]
-kind = "map"
-id   = "Twilight_Hills"
-base = "Dark_Hills"
+kind    = "map"
+id      = "Twilight_Hills"
+base    = "Dark_Hills"   # Dark_Hills, Storm_Island, Avalon or Baba_Yaga
+chapter = 0              # 0 Dark Hills, 1 Storm Island, 2 Avalon, 3 Baba Yaga
 ```
 
-**Prove it.** It emits and registers; loading one in a run is the unproven step.
+**Prove it.** `R.maps.chapters()` lists each chapter's map: the one you
+repointed says `resref` and resolves to a mapdef that is not the vanilla one.
 
-**Trap.** Clone-and-patch only — there is no authoring path for a map that was
-never shipped. To change what an existing chapter *generates*, reach for
-`tilegen` and `poi` instead; both are proven.
+**Trap.** `chapter` overrides `All_Chapters` as a whole file, so it conflicts
+with a `game_mode` edit in another mod (last writer wins). Tile generation
+follows the base's tile-generation level back to the ORIGINAL mapdef, so pool
+edits on the clone do nothing yet, and `tribe` has shown no visible effect.
+To change what an existing chapter generates, `tilegen` and `poi` are the
+proven tools.
 
 ---
 

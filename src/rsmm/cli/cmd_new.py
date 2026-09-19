@@ -43,7 +43,7 @@ _KIND_BASE_HINT: dict[str, str] = {
     "item": "Armor_Per_Object",
     "enemy": "Gnoll_Shielded",
     "hero": "Sun_Priest",
-    "map": "<vanilla map id>",
+    "map": "Dark_Hills",
     "boss": "BabaYaga",
 }
 

@@ -18,7 +18,7 @@ Do not edit by hand, and do not restate a rating in prose — link here. Run `rs
 | `item` | ✅ confirmed | `rsmm.sdk.kinds.items` | Item (magical-object) content builder. |
 | `enemy` | ⚠️ experimental | `rsmm.sdk.kinds.enemies` | Enemy content builder — two modes. |
 | `boss` | ❓ guess | `rsmm.sdk.kinds.bosses` | Boss content builder. |
-| `map` | ⚠️ experimental | `rsmm.sdk.kinds.maps` | Map (biome) content builder. Clone-and-patch only at v3.0. |
+| `map` | ⚠️ experimental | `rsmm.sdk.kinds.maps` | Map (biome) content builder: clone a shipped mapdef and point a chapter at it. |
 | `hero` | ⚠️ experimental | `rsmm.sdk.kinds.heros` | Hero content builder. |
 | `talent` | ✅ confirmed | `rsmm.sdk.kinds.talents` | Talent (in-game "Skill") value content builder. |
 | `skill` | ⚠️ experimental | `rsmm.sdk.kinds.skills` | Hero **skill** (talent) content builder. |

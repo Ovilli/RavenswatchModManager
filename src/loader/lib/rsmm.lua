@@ -5166,6 +5166,55 @@ function R.defs.dump()
     R.log(string.format("[rsmm.defs] %d classes, %d instances", #classes, total))
 end
 
+-- R.maps ---------------------------------------------------------------------
+--
+-- Which map each chapter of the run plays. Read-only, page-guarded.
+--
+-- The run's chapters live in the GameModeDefaultDefinition's vector at
+-- +0x290 (count +0x298). Each `Chapter` is a union (Chapter_Serialize): u8
+-- +0x09 discriminates, a nonzero chapter names its mapdef by resref and holds
+-- the resolved pointer at +0x40 (ref +0x10, resolved +0x30 within it); a zero
+-- chapter holds a biome index at +0x0c, which the engine's lookup (0x140325a90)
+-- turns into the VersionDefinition's index-th ref: resolved pointer at
+-- +0x308 + index*0x38. Both kinds of answer are returned with their RTTI class,
+-- so a caller can see that they really are oCDtMapDefinition rather than trust
+-- the offsets.
+R.maps = {}
+
+function R.maps.chapters()
+    local mode = R.defs.first("GameModeDefaultDefinition")
+    if not mode then return nil, "no GameModeDefaultDefinition live" end
+    local vec, n = I.read_u64(mode + 0x290), I.read_u32(mode + 0x298)
+    if not (vec and n and n > 0 and n <= 16 and R.ptr.plausible(vec)) then
+        return nil, "chapter vector unreadable"
+    end
+    local ver = R.defs.first("VersionDefinition")
+    local function builtin(i)
+        return ver and I.read_u64(ver + 0x308 + i * 0x38) or nil
+    end
+    local out = {}
+    for i = 0, n - 1 do
+        local ch = I.read_u64(vec + i * 8)
+        local row = { index = i }
+        if ch and R.ptr.plausible(ch) then
+            row.resref = (I.read_u8(ch + 0x09) or 0) ~= 0
+            if row.resref then
+                row.map = I.read_u64(ch + 0x40)
+            else
+                row.biome = I.read_u32(ch + 0x0c)
+                row.map = row.biome and builtin(row.biome) or nil
+            end
+            if row.map and row.map ~= 0 and R.ptr.plausible(row.map) then
+                row.class = R.rtti.name(row.map)
+            end
+        end
+        out[#out + 1] = row
+    end
+    local vanilla = {}
+    for i = 0, 3 do vanilla[i] = builtin(i) end
+    return out, vanilla
+end
+
 end)()
 
 -- escape hatch ----------------------------------------------------------
