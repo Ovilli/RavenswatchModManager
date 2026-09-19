@@ -358,6 +358,34 @@ end
 --- Whether a read can land right now, without performing one.
 function R.game.ready() return (_ctx()) ~= nil end
 
+--- Diagnostic: log the raw union the engine returns for `name`, and return
+--- its address. For the values R.game.get reports as "did not come back
+--- inline" — the run-modifier keys on this build — whose layout is not known
+--- yet. Read-only; the dump is page-guarded.
+function R.game.raw(name)
+    local spec = R.game.keys[name]
+    if not spec then return nil end
+    local p = _ctx()
+    if not p then return nil end
+    local ok, u = pcall(R.engine.call, "SceneContextValue_Find", p, spec.key)
+    if not ok or type(u) ~= "number" or u == 0 or not _ptr_plausible(u) then
+        R.log(("[rsmm.game] raw %s: not held (%s)"):format(name, tostring(u)))
+        return nil
+    end
+    if R.debug and R.debug.dump then
+        R.debug.dump(u - 0x08, 0x30, "game." .. name)
+        -- 2026-09-19: on this build the word at u+0 is a pointer to an object
+        -- (vftable 0x140f11150) for EVERY key read, including "Current
+        -- chapter", and u+8 is not the inline sentinel. The value is expected
+        -- inside that object, so dump it too.
+        local obj = I.read_u64(u)
+        if obj and _ptr_plausible(obj) then
+            R.debug.dump(obj, 0x40, "game." .. name .. " *u")
+        end
+    end
+    return u
+end
+
 return M
 
 end

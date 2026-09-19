@@ -327,8 +327,10 @@ function M.kinds(spawner)
     for i = 0, math.min(n, 128) - 1 do
         local e = I.read_u64(arr + i * 8)
         if e and e ~= 0 and R.ptr.plausible(e) then
+            -- `entry` is handed back so a caller can read fields this module
+            -- does not name yet (the recipe's own count / footprint mask).
             out[#out + 1] = { count = I.read_u32(e + K_COUNT) or 0,
-                              name = _kind_name(e) }
+                              name = _kind_name(e), entry = e }
         end
     end
     return out
