@@ -464,35 +464,36 @@ refuses to pretend otherwise.
 
 ---
 
-## `boss` — stage a boss chain
+## `boss` — make a boss arena fight another boss
 
-**What the player sees.** Nothing yet: this kind writes a per-piece manifest,
-not cooked bytes.
+**What the player sees.** The Dark Hills ghoul den, with the Storm Island
+giant crab waiting at the bottom.
 
 ```toml
 [mod]
-id           = "ShadowKing"
-name         = "Shadow King"
+id           = "CrabDen"
+name         = "Crab Den"
 version      = "0.1.0"
 author       = "you"
-description  = "Staged boss pieces."
+description  = "The ghoul den fights the giant crab."
 experimental = true
 
 [[content]]
-kind      = "boss"
-id        = "ShadowKing"
-base      = "Gnoll_Shielded"
-arena     = "Dark_Hills"
-hp        = 12000
-music_cue = "Boss_Theme_A"
+kind    = "boss"
+id      = "crab_den"
+base    = "Boss_Marsh_Ghoul"
+becomes = "Boss_Crab"
 ```
 
-**Prove it.** Inspect `mods/<id>/assets/_pending_bosses/ShadowKing/` — four
-files mirroring the four parts of the chain (enemy def, timer component,
-settings record, spawn trigger).
+**Prove it.** Enter the arena `base` belongs to and see who is waiting.
+`base` must be one of the bosses whose arena picks them by flag alone:
+`Boss_Crab`, `Boss_Marsh_Ghoul`, `Boss_Wolf`, `Boss_White_Lady`. `becomes` can
+be any boss definition.
 
-**Trap.** The picker/HP/arena offsets are an educated guess. Treat this as a
-place to record intent until the RE lands, not as content to ship.
+**Trap.** Quest bosses, the Jinn and the three-part witch fight are refused
+as `base`: something besides the definition names their entity, so swapping
+it would split the fight from whatever holds that reference. The swap is
+global — every run fights the new boss there.
 
 ---
 

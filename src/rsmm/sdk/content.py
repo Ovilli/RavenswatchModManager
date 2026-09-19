@@ -54,8 +54,11 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # `tribe` showed no effect
     "skill": "experimental",  # mode="relabel" PROVEN IN GAME 2026-09-18 (Aladdin's Attack Dive read
                               # "TEST Meteor"); mode="clone" (net-new herodef row) still unproven
-    "boss": "guess",          # BossTimer picker offsets deserializer-verified 2026-07-05, but emit
-                              # still stages manifests (_pending_bosses), no cooked-asset output yet
+    "boss": "experimental",   # boss SWAP: rewrites a den/shrine boss def's entity_ref so its
+                              # arena spawns another boss (same writer as enemy override, which
+                              # is proven in game). The arenas select by per-boss FLAG and
+                              # nothing else references the entity (corpus 2026-09-19). A
+                              # swapped arena has not been fought in game yet.
     "modifier": "experimental",  # a cloned def REACHES THE CHALLENGE SCREEN (in game 2026-09-18,
                               # "TEST Double XP" row, after the text-bank fix); its effect in a run
                               # is unproven (rows ARE spawner-driven — m_oGameModifierUiSpawner)

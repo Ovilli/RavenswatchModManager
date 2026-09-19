@@ -9,6 +9,17 @@ headless decompilation. Items marked *unconfirmed* are inferred, not read from t
 binary.
 :::
 
+:::tip[What the `boss` kind does today (2026-09-19)]
+The shipped kind does not build the BossTimer chain below. It **swaps** which
+boss an arena spawns. Measured over the shipped corpus: a den or shrine
+boss's own flag (`BossCrab`, `Boss_Marsh_Ghoul`, …) is referenced by exactly
+one arena, and the boss entity is referenced by nothing but its definition.
+So the arena selects by flag and spawns the definition's `entity_ref`, and
+rewriting that one field is the whole swap. Quest bosses, the Jinn and the
+witch trio fail that test and are refused. This page remains the map for
+the harder goal of a genuinely new encounter.
+:::
+
 Per-kind companion to [Mod hooks](/reverse-engineering/mod-hooks/) ("Enemies &
 bosses", "level-load pipeline"). Scope: one custom boss encounter — a tagged enemy
 with an `oCDtBossTimerUiControllerEntityCpnt` component, wired into the existing

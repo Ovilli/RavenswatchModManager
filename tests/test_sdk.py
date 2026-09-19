@@ -572,7 +572,7 @@ def test_content_ref_handle_and_namespacing(tmp_path: Path, monkeypatch):
 
 
 def test_content_ref_deref_in_fields(tmp_path: Path, monkeypatch):
-    # boss is a 'guess' kind, so opt into experimental to register it.
+    # boss is an 'experimental' kind, so opt into experimental to register it.
     m = _builder(tmp_path, monkeypatch, experimental=True)
     blade = m.item("FrostBlade", base="VanillaSword")
     m.boss("IceLord", base="BabaYaga", drops=[blade])
@@ -586,7 +586,7 @@ def test_unverified_kind_blocked_without_optin(tmp_path: Path, monkeypatch):
     from rsmm.sdk.content import ContentError, kind_confidence
     m = _builder(tmp_path, monkeypatch)
     assert kind_confidence("item") == "confirmed"
-    assert kind_confidence("boss") == "guess"
+    assert kind_confidence("boss") == "experimental"
     with pytest.raises(ContentError, match="experimental"):
         m.enemy("Goblin", base="Gnoll")
     with pytest.raises(ContentError, match="experimental"):

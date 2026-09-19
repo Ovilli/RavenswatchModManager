@@ -11,13 +11,13 @@ Every content kind carries an honesty rating — how much the bytes it emits are
 Do not edit by hand, and do not restate a rating in prose — link here. Run `rsmm docs-gen` after changing a rating; CI `--check`s it.
 :::
 
-**15 kinds** — 6 confirmed, 7 experimental, 2 guess.
+**15 kinds** — 6 confirmed, 8 experimental, 1 guess.
 
 | Kind | Confidence | Builder | What it does |
 |---|---|---|---|
 | `item` | ✅ confirmed | `rsmm.sdk.kinds.items` | Item (magical-object) content builder. |
 | `enemy` | ⚠️ experimental | `rsmm.sdk.kinds.enemies` | Enemy content builder — two modes. |
-| `boss` | ❓ guess | `rsmm.sdk.kinds.bosses` | Boss content builder. |
+| `boss` | ⚠️ experimental | `rsmm.sdk.kinds.bosses` | Boss content builder — make a boss arena fight a different boss. |
 | `map` | ⚠️ experimental | `rsmm.sdk.kinds.maps` | Map (biome) content builder: clone a shipped mapdef and point a chapter at it. |
 | `hero` | ⚠️ experimental | `rsmm.sdk.kinds.heros` | Hero content builder. |
 | `talent` | ✅ confirmed | `rsmm.sdk.kinds.talents` | Talent (in-game "Skill") value content builder. |

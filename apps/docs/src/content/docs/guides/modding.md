@@ -296,7 +296,7 @@ with sdk.Mod("FrostPack", version="1.0.0", author="you",
              experimental=True) as m:           # required for non-confirmed kinds
     blade = m.item("FrostBlade", base="Orb_Grants_Strength", name="Frost Blade")
     m.enemy("FrostGhoul", base="Marsh_Ghoul", add_flags=["Elite"])
-    m.boss("IceLord", base="Baba_Yaga_Boss", drops=[blade])   # ref -> id
+    m.boss("CrabDen", base="Boss_Marsh_Ghoul", becomes="Boss_Crab")
 ```
 
 > Kinds below `confirmed` need `experimental=True`. Which ones those are is
@@ -676,7 +676,8 @@ silently in-game:
 
 Bosses, summons and quest enemies are never in scope: no pool streams them, so
 they are placed by the script owning their encounter rather than rolled by a
-camp selector.
+camp selector. To make a boss arena fight a different boss, use the `boss`
+kind, which knows which arenas pick their boss by flag alone.
 
 :::caution[Unproven: imported creatures' support entities]
 A creature's projectiles and attack zones live in *its home* biome's pool. When

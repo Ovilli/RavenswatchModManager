@@ -147,10 +147,10 @@ class ModBuilder:
         return self._content.register("enemy", id=id, base=base, **fields)
 
     @sdk_export("Mod.boss")
-    def boss(self, id: str, *, base: str, name: str | None = None, **fields):
-        """Register a custom boss cloned from vanilla ``base``."""
-        if name is not None:
-            fields["name"] = name
+    def boss(self, id: str, *, base: str, becomes: str | None = None, **fields):
+        """Make the arena of boss ``base`` spawn boss ``becomes`` instead."""
+        if becomes is not None:
+            fields["becomes"] = becomes
         return self._content.register("boss", id=id, base=base, **fields)
 
     @sdk_export("Mod.map")

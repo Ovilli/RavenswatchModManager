@@ -30,10 +30,10 @@ cooked container and installs them. Pre-cooked inputs pass through.
 ### `Mod.boss`
 
 ```python
-Mod.boss(self, id: 'str', *, base: 'str', name: 'str | None' = None, **fields)
+Mod.boss(self, id: 'str', *, base: 'str', becomes: 'str | None' = None, **fields)
 ```
 
-Register a custom boss cloned from vanilla ``base``.
+Make the arena of boss ``base`` spawn boss ``becomes`` instead.
 
 ### `Mod.enemy`
 

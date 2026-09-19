@@ -33,8 +33,7 @@ _KIND_FIELDS: dict[str, list[str]] = {
     ],
     "map": [],
     "boss": [
-        '# WARNING: boss byte layout is a guess — expect rejection/crash',
-        '# until the picker/HP/arena offsets are RE-confirmed.',
+        'becomes = "Boss_Crab"   # the boss this arena fights instead',
     ],
 }
 
@@ -44,7 +43,7 @@ _KIND_BASE_HINT: dict[str, str] = {
     "enemy": "Gnoll_Shielded",
     "hero": "Sun_Priest",
     "map": "Dark_Hills",
-    "boss": "BabaYaga",
+    "boss": "Boss_Marsh_Ghoul",
 }
 
 #: Kinds scaffolded as a FOLDER rather than a `[[content]]` block. The manifest
@@ -77,8 +76,7 @@ _FOLDER_SEED: dict[str, list[str]] = {
     ],
     "map": [],
     "boss": [
-        "# WARNING: boss byte layout is a guess — expect rejection/crash until",
-        "# the picker/HP/arena offsets are RE-confirmed.",
+        'becomes = "Boss_Crab"   # the boss this arena fights instead',
     ],
 }
 _ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
