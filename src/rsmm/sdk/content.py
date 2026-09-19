@@ -48,9 +48,10 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # foreign-chapter creatures). mode="clone" — adding a NEW def —
                               # is still unproven, and the rating covers the whole kind.
     "hero": "experimental",   # clones, but roster detour + library unproven
-    "map": "experimental",    # clone + chapter resref PROVEN IN GAME 2026-09-19 (chapter 0 resolved to
-                              # the clone and the run started in it); the clone still generates from
-                              # the base's pool (tilegen backref) and `tribe` showed no effect
+    "map": "experimental",    # clone + chapter resref PROVEN IN GAME 2026-09-19 (chapter 0
+                              # resolved to the clone and the run started in it); the clone
+                              # still generates from the base's pool (tilegen backref) and
+                              # `tribe` showed no effect
     "skill": "experimental",  # mode="relabel" PROVEN IN GAME 2026-09-18 (Aladdin's Attack Dive read
                               # "TEST Meteor"); mode="clone" (net-new herodef row) still unproven
     "boss": "guess",          # BossTimer picker offsets deserializer-verified 2026-07-05, but emit
