@@ -283,6 +283,7 @@ ADDR: dict[str, int] = {
     "g_MagicalObjectComponentMeta": 0x141470768,
     "g_MagicalObjectPool": 0x14143cc18,
     "g_RosterManager": 0x141436590,
+    "g_StatReportRoot": 0x14143cb28,
     "oCCustomFlagList_vftable": 0x140f01650,
     "oCEntityHitData_vftable": 0x140f137d8,
     "oCEntityValueUnion_vftable": 0x140f95008,

@@ -265,6 +265,31 @@ calls `ApplyModifierEvent` directly — no bus, no name hash needed. It composes
 item/talent modifiers and survives recompute. Don't combine it with `stick` on the
 same stat.
 
+**Delivery: the modifier travels on the hero's event bus, as `ADD_MODIFIER`.** None of
+the 13 vanilla places that build a modifier event call `ApplyModifierEvent`; all of them
+dispatch the event on the entity's bus (`NamedEvent_Dispatch`), which routes by the
+channel id at `ev+0x30` = `NamedEvent_Id_FromCrc(0, crc32("ADD_MODIFIER"))` = `816961080`,
+the same id a vanilla upgrade carries on the same dispatcher `R.give` captures. That is
+`R.stat.modify`'s default route, proven in game (2026-09-19): `+1` counts exactly once,
+the in-run stat strip follows, and a permanent (`-1`) modifier survives a chapter change
+like the game's own upgrades. It needs the hero's dispatcher (the hero must have acted
+once) and returns `false` until then. The dispatch reaches `R.on("*")` handlers
+**synchronously**, so a mod that calls `modify` from an event handler must latch before
+calling; the SDK refuses a nested call (steamroller once recursed 99 deep without it).
+
+`route = "direct"` calls `ApplyModifierEvent` itself (works from the value context alone).
+Its defects are why it is not the default: a permanent `-1` is counted **twice** (the
+`-1`-only branch at `0x14074ba3c` also records it in the run's persistent store), so on this
+route "permanent" is sent as a `1e6` s duration instead, which counts once but is **dropped
+at the next chapter**.
+
+**The in-run stat strip reads a cache, not the store.** It shows
+`100 × f32[obj+0x308]` for attack (`+0x304` vitality, `+0x30c` armor) with
+`obj = *(*g_StatReportRoot + 0x20)`, and the engine refreshes that only when it folds a
+modifier itself. So `R.stat.set` / `stick` change damage but leave the strip at its old
+value (a pinned 40 showed `0`), while `R.stat.modify` moves both. `R.stat.cached(name)`
+reads that cache for diagnostics.
+
 ## Symbols
 
 Read/write primitives: `EntityValueOverride_Alloc`, `EntityValueEntry_Ctor`,

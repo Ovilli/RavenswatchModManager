@@ -793,8 +793,22 @@ for k in pairs(_cfg_override) do _cfg_override[k] = nil end
 -- ---------------------------------------------------------------------------
 if load_mod("steamroller") then
     local stuck = {}
-    local _stick, _ready = R.stat.stick, R.entity.ready
-    R.stat.stick = function(name, value) stuck[name] = value; return true end
+    local via = {}   -- name -> "stick" | "modify": which writer pinned it
+    local _stick, _modify, _ready = R.stat.stick, R.stat.modify, R.entity.ready
+    -- Attack power goes through R.stat.modify (the engine refreshes the stat
+    -- strip only for a modifier it folds itself); the rest through stick. One
+    -- stub drives both so every case below covers either route.
+    local function writers(result)
+        R.stat.stick = function(name, value)
+            if result then stuck[name] = value; via[name] = "stick" end
+            return result
+        end
+        R.stat.modify = function(name, value)
+            if result then stuck[name] = value; via[name] = "modify" end
+            return result
+        end
+    end
+    writers(true)
     R.entity.ready = function() return true end
 
     -- "tick" is the loader's BACKGROUND thread. An engine-mutating write from
@@ -810,6 +824,12 @@ if load_mod("steamroller") then
        "steamroller: converts displayed attack power to store units, got "
        .. tostring(stuck.attack_power))
     ok(stuck.crit_chance == 1.0, "steamroller: crit chance is a fraction, not a percent")
+    -- stick() pokes the store, which damage reads but the strip never shows
+    -- (a pinned 40 read 0 on screen); the two writers must also never share a
+    -- stat, or the pin fights the modifier.
+    ok(via.attack_power == "modify",
+       "steamroller: attack power goes through R.stat.modify, got " .. tostring(via.attack_power))
+    ok(via.crit_chance == "stick", "steamroller: the other stats stay on stick")
 
     -- Health writes require a LANDED stat pin. Session 8c4f adopted a wrong
     -- object through the give-handler; the value store refused every stat, but
@@ -822,13 +842,13 @@ if load_mod("steamroller") then
     R.hp.frac = function() return 0.1 end   -- "hurt", as the bad read looked
     R.hp.max  = function() return 100 end
 
-    R.stat.stick = function() return false end     -- value store refuses
+    writers(false)                                 -- value store refuses
     stuck = {}
     fire("run:start")                              -- clears the pinned latch
     fire("gameplay:ENEMY_KILLED", { source = "gameplay" })
     ok(not healed, "steamroller: no health write when every stat pin was refused")
 
-    R.stat.stick = function(name, value) stuck[name] = value; return true end
+    writers(true)
     fire("run:start")
     fire("gameplay:ENEMY_KILLED", { source = "gameplay" })
     ok(healed, "steamroller: tops up real HP (R.hp) once the pins land")
@@ -869,16 +889,33 @@ if load_mod("steamroller") then
     -- so an early attempt fails and a later one has to succeed. Latching on the
     -- first try would make the mod dead for the rest of the run.
     R.entity.ready = function() return false end
-    R.stat.stick = function() return false end
+    writers(false)
     stuck = {}
     fire("run:start")
     fire("gameplay:ENEMY_KILLED", { source = "gameplay" })
-    R.stat.stick = function(name, value) stuck[name] = value; return true end
+    writers(true)
     fire("gameplay:ENEMY_KILLED", { source = "gameplay" })
     ok(stuck.attack_power ~= nil,
        "steamroller: retries after a refused pin instead of latching")
 
-    R.stat.stick, R.entity.ready = _stick, _ready
+    -- Our own ADD_MODIFIER dispatch reaches this mod's R.on("*") handler
+    -- SYNCHRONOUSLY. Latching attack on modify's return value let every nested
+    -- handler call modify again — 99 deep and +99 attack in game (2026-09-19).
+    -- Model the bus: the stub fires a gameplay event from inside itself.
+    R.entity.ready = function() return true end
+    local modify_calls = 0
+    R.stat.stick = function() return true end
+    R.stat.modify = function()
+        modify_calls = modify_calls + 1
+        if modify_calls < 50 then fire("gameplay:ADD_MODIFIER", { source = "gameplay" }) end
+        return true
+    end
+    fire("run:start")
+    fire("gameplay:ENEMY_KILLED", { source = "gameplay" })
+    ok(modify_calls == 1,
+       "steamroller: its own dispatch does not re-enter modify, got " .. modify_calls .. " calls")
+
+    R.stat.stick, R.stat.modify, R.entity.ready = _stick, _modify, _ready
 end
 
 io.write(("mods_spec: %d passed, %d failed, %d mod(s) skipped (not present)\n")

@@ -519,6 +519,9 @@ constexpr std::uintptr_t SkinRoster_Build = 0x1401dd2c0ull;
 constexpr const char* SkinRoster_Build_Pattern = "SkinRoster_Build";
 constexpr std::uintptr_t g_RosterManager = 0x141436590ull;
 
+// --- stats ---
+constexpr std::uintptr_t g_StatReportRoot = 0x14143cb28ull;
+
 // --- ui ---
 constexpr std::uintptr_t BookController_ResolveSettings = 0x140307a30ull;
 constexpr const char* BookController_ResolveSettings_Pattern = "BookController_ResolveSettings";

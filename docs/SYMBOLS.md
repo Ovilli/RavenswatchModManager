@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **283** symbols across 22 categories.
+Total: **284** symbols across 23 categories.
 
 ## analytics
 
@@ -367,6 +367,12 @@ Total: **283** symbols across 22 categories.
 | `SkinGrid_Populate` | `0x1401f16f0` | ✅ ok | ✔ | void(void* ctx, void* arg) |
 | `SkinRoster_Build` | `0x1401dd2c0` | ✅ ok |  | Skin-pack roster builder. Selectable-skin count (9) is baked into its loop; a new selec… |
 | `g_RosterManager` | `0x141436590` | 📍 va |  | Manager pointer global (relocated by the live image base) walked by the skin-grid popul… |
+
+## stats
+
+| name | address | status | callable | signature / note |
+|------|---------|--------|----------|------------------|
+| `g_StatReportRoot` | `0x14143cb28` | 📍 va |  | Singleton pointer whose object holds the CACHED hero stats the game reports and display… |
 
 ## ui
 

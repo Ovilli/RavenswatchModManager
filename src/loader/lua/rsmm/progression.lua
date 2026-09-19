@@ -41,6 +41,7 @@ local EV_STORE_OFF      = env.EV_STORE_OFF
 local _hero_plausible   = env._hero_plausible
 local _ev_ctx           = env._ev_ctx
 local _ctx_chain_ok     = env._ctx_chain_ok
+local _hero_dispatcher  = env._hero_dispatcher   -- optional: older parents lack it
 
 -- stats (generic keyed value store — read/grant any per-hero stat) -------
 --
@@ -272,6 +273,34 @@ function R.stat.get(name)
     return _stat_read(spec)
 end
 
+-- The CACHED copy of a stat — what the game's own stat readout uses, which is
+-- not the value store R.stat.get/set talk to. Read-only diagnostic.
+--
+-- The chapter_end analytics emitter (0x1401f5c70) reports attack_power as
+-- (int)(100 * [obj+0x308]), vitality as 100 * [obj+0x304] and armor as
+-- [obj+0x30c], with obj = *(*g_StatReportRoot + 0x20). Those are the stats the
+-- in-run strip shows, and a stat pinned through R.stat reads back 40 from the
+-- store while the strip shows 0 — so this reads the other side of that split.
+-- Returns the raw cached float (NOT multiplied by 100), or nil when the stat
+-- has no known cache slot or any pointer on the way fails validation.
+local STAT_REPORT_ROOT_VA = 0x14143cb28   -- data/symbols.json: g_StatReportRoot
+local _STAT_CACHE_OFF = {
+    max_health   = 0x304,   -- reported as "vitality"
+    attack_power = 0x308,
+    armor        = 0x30c,   -- no R.stat key: armor is a hero field, not keyed
+}
+function R.stat.cached(name)
+    local off = _STAT_CACHE_OFF[name]
+    if not off then return nil end
+    if not _va_ok("R.stat.cached") then return nil end
+    local base = I.module_base(); if not base or base == 0 then return nil end
+    local root = I.read_u64(base + (STAT_REPORT_ROOT_VA - ENTITY_IMG_BASE))
+    if not _ptr_plausible(root) then return nil end
+    local obj = I.read_u64(root + 0x20)
+    if not _ptr_plausible(obj) then return nil end
+    return I.read_f32(obj + off)
+end
+
 -- The known stat names, sorted.
 function R.stat.names()
     local t = {}
@@ -335,6 +364,12 @@ end
 
 -- Write an inline numeric value into an override entry's embedded union. Uses
 -- only page-guarded pokes (a bad address no-ops rather than faults).
+--
+-- Only the union. The entry's +0x28 (f32) and +0x2c (u16) are NOT a mirror and
+-- a version of it, whatever an older note says: Recompute copies both from a
+-- source record rather than deriving them from the union, and at least one
+-- consumer (0x1403aace4) multiplies by +0x2c as a count. Writing them on every
+-- re-assert would grow that count, so they are left as the engine set them.
 local function _stat_write_union(entry, spec, value)
     local u = entry + ENTRY_UNION_OFF
     I.write_u64(u + EV_INLINE_OFF, EV_INLINE)                 -- mark inline
@@ -404,8 +439,10 @@ end
 -- R.stat.modify(name, amount [, duration]) inserts a REAL engine modifier for
 -- the stat's key: it builds an oCGameEventNetworkModifier (layout decompile-
 -- verified from FUN_1403c7560's inline construction + ModifierEvent_Ctor
--- FUN_140389fb0) and calls EntityValueStore_ApplyModifierEvent(store, ev, 0, 0)
--- directly. Unlike R.stat.set (cache poke, wiped by recompute) and R.stat.stick
+-- FUN_140389fb0) and delivers it as the game does: an ADD_MODIFIER event on the
+-- hero's own bus (default), or — route = "direct" — by calling
+-- EntityValueStore_ApplyModifierEvent(store, ev) itself; see "HOW A MODIFIER IS
+-- DELIVERED" below. Unlike R.stat.set (cache poke, wiped by recompute) and R.stat.stick
 -- (re-assertion, pins the FINAL value), a modifier lives in the store's
 -- modifier registry (store+0x88) and is folded together with the game's own
 -- item/talent modifiers on every recompute — it COMPOSES and SURVIVES.
@@ -433,9 +470,44 @@ end
 -- Pending in-game verification. Don't combine with R.stat.stick on the same
 -- stat (stick pins the final value and would fight the modifier).
 local MODIFIER_EVENT_VFT_VA = 0x140f322d0  -- oCGameEventNetworkModifier_vftable (symbol map)
+
+-- HOW A MODIFIER IS DELIVERED (settled in game 2026-09-19)
+--
+-- Default route = "bus": an ADD_MODIFIER named event dispatched on the hero's
+-- own event bus, which is how every one of the 13 vanilla construction sites
+-- delivers one (none calls ApplyModifierEvent). Proven: +1 counts exactly
+-- once, the in-run stat strip follows, and a permanent (-1) modifier survives
+-- a chapter change exactly like the game's own upgrades (99 held at 99.0
+-- across GAME_END_NEXT_CHAPTER).
+--
+-- route = "direct" calls ApplyModifierEvent itself — the original path, kept
+-- as an explicit escape hatch because it works without a hero dispatcher
+-- (it only needs the value context). Its defects are why it is not the
+-- default: a permanent (-1) modifier sent this way is counted TWICE (the
+-- -1-only branch @0x14074ba3c also records it in the run's persistent store,
+-- and within the chapter both copies fold), so here "permanent" is sent as a
+-- long finite duration instead — which counts once but is DROPPED at the next
+-- chapter, because only the -1 record carries over. 1e6 s (~11.5 days; an f32
+-- countdown by a frame's dt does not even change it). Also unverified on this
+-- route: the additive op (@0x14074b9cd) extends running timed modifiers on
+-- the same stat by the requested duration.
+local STAT_PERMANENT_DURATION = 1.0e6
+local _in_bus_modify = false   -- see the re-entry guard in R.stat.modify
 local _mod_serial = 0
 
-function R.stat.modify(name, amount, duration)
+-- R.stat.modify(name, amount [, duration [, opts]])
+--   duration: seconds; nil or < 0 = permanent (lasts the run, across chapters).
+--   opts.route: "bus" (default) or "direct" — see "HOW A MODIFIER IS DELIVERED".
+-- The bus route needs the hero's dispatcher, which exists once the hero has
+-- acted (R.give captures it). Until then it returns false: call again later.
+-- It also returns false when called from inside its own dispatch — our event
+-- reaches R.on("*") handlers synchronously, so latch BEFORE calling.
+function R.stat.modify(name, amount, duration, opts)
+    local route = type(opts) == "table" and opts.route or "bus"
+    if route ~= "bus" and route ~= "direct" then
+        R.log("[rsmm.stat] modify: opts.route must be \"bus\" or \"direct\""); return false
+    end
+    local via_bus = route == "bus"
     local spec = R.stat.keys[name]
     if not spec then R.log("[rsmm.stat] unknown stat: " .. tostring(name)); return false end
     if type(amount) ~= "number" then
@@ -507,11 +579,55 @@ function R.stat.modify(name, amount, duration)
     else
         I.write_f32(u + 0x10, amount + 0.0)
     end
-    I.write_f32(ev + 0x80, duration or -1.0)       -- default: permanent
+    local permanent = (duration == nil) or (duration < 0)
+    I.write_f32(ev + 0x80, permanent and (via_bus and -1.0 or STAT_PERMANENT_DURATION) or duration)
     I.write_f32(ev + 0x84, 1.0)
     I.write_f32(ev + 0x88, 1.0)
     I.write_u8(ev + 0x8c, 1)
     I.write_u64(ev + 0x90, 0)                      -- no entity-lifetime binding
+    if via_bus then
+        -- Our own dispatch reaches every gameplay-bus subscriber SYNCHRONOUSLY
+        -- (the loader's NamedEvent_Dispatch hook), so a mod that calls modify
+        -- from an R.on("*") handler re-enters here before this call returns.
+        -- In game that recursed 99 deep and applied +99 (2026-09-19). Refuse a
+        -- nested bus modify outright; the outer call is still in flight.
+        if _in_bus_modify then
+            _log_throttled("stat.reentry",
+                "[rsmm.stat] modify via bus called from inside its own dispatch — refused "
+                .. "(latch in the caller before calling modify from an event handler)")
+            return false
+        end
+        local disp = _hero_dispatcher and _hero_dispatcher()
+        if not disp or not R.engine.resolve("NamedEvent_Dispatch")
+                or not R.engine.resolve("NamedEvent_Id_FromCrc") then
+            _log_throttled("stat.nodisp",
+                "[rsmm.stat] modify via bus: no live hero dispatcher yet (the hero must act once)")
+            return false
+        end
+        -- The bus routes by the channel id at +0x30 and ignores everything
+        -- else; with the 0 the direct path leaves there, the event reached no
+        -- subscriber at all. A vanilla upgrade arrives as ADD_MODIFIER on the
+        -- hero's dispatcher (seen in game 2026-09-19: id 816961080 on the very
+        -- dispatcher R.give captures). The id is NamedEvent_Id_FromCrc(0,
+        -- crc32(name)); crc32("ADD_MODIFIER") is a constant of the string, and
+        -- that formula reproduces 816961080 exactly.
+        local EVENT, EVENT_CRC = "ADD_MODIFIER", 0x8496e438
+        for i = 1, #EVENT do I.write_u8(empty + i - 1, EVENT:byte(i)) end
+        I.write_u8(empty + #EVENT, 0)                  -- 13 bytes; the tail holds 16
+        I.write_u32(ev + 0x28, 0x80000000 + #EVENT)    -- unowned: never freed by the engine
+        I.write_u32(ev + 0x30, R.engine.call("NamedEvent_Id_FromCrc", 0, EVENT_CRC) or 0)
+        _in_bus_modify = true
+        local okd = pcall(R.engine.call, "NamedEvent_Dispatch", disp, ev)
+        _in_bus_modify = false
+        if not okd then
+            R.log("[rsmm.stat] modify via bus: NamedEvent_Dispatch raised — modifier NOT applied")
+            return false
+        end
+        R.log(string.format("[rsmm.stat] modify %s %+g (native modifier via BUS, %s) disp=0x%x id=0x%x",
+            name, amount, permanent and "permanent (-1)" or (tostring(duration) .. "s"),
+            disp, I.read_u32(ev + 0x30) or 0))
+        return true
+    end
     -- Resolve BEFORE calling: ApplyModifierEvent returns void, so a nil from
     -- R.engine.call can't distinguish success from an unresolved symbol.
     if not R.engine.resolve("EntityValueStore_ApplyModifierEvent") then
@@ -522,7 +638,7 @@ function R.stat.modify(name, amount, duration)
         R.log("[rsmm.stat] ApplyModifierEvent raised — modifier NOT applied"); return false
     end
     R.log(string.format("[rsmm.stat] modify %s %+g (native modifier, %s)", name, amount,
-        (duration and duration >= 0) and (tostring(duration) .. "s") or "permanent"))
+        permanent and "permanent" or (tostring(duration) .. "s")))
     return true
 end
 

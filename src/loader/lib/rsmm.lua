@@ -1442,6 +1442,12 @@ _submodule_fn("progression", {
     -- would be a regression from "no hero yet" (which falls back to the
     -- value context) to "hero reads implausible".
     _hero_plausible   = function(p) return R.entity._is_live(p) end,
+    -- The hero's named-event dispatcher (R.give's capture), or nil when there
+    -- is none or it no longer looks live. A GETTER: it is learned at runtime.
+    _hero_dispatcher  = function()
+        if _give_hero and _dispatcher_live(_give_hero) then return _give_hero end
+        return nil
+    end,
     _ev_ctx           = _ev_ctx,
     _ctx_chain_ok     = _ctx_chain_ok,
 })

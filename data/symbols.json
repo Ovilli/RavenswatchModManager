@@ -1115,7 +1115,7 @@
      "void*"
     ]
    },
-   "note": "Recomputes the entity-value override CACHE (store+0xc0 vector, the same one R.stat.set pokes) from scratch: seeds each key with its base value from the definition (valueDef+0xc8/+0xd0), then walks the per-key modifier registry (SwissTable at store+0x88: ctrl @+0x88, slots @+0x90, growth @+0xa0) and applies every registered modifier in priority order via a vcall on the modifier object (`(*(modifier+0x18))(modifier, valueUnion)`), writing the folded result back into the override entry (union @entry+0x08, scalar mirror @entry+0x28, version short @entry+0x2c). Gated by the dirty flag store+0x64 bit 3 (&8). THIS IS WHY a raw R.stat.set union-poke is transient: the next recompute (any gameplay event that dirties the key) rebuilds entry+0x08 from base+modifiers and discards the poke. Durable writes must register a modifier the recompute folds in — see EntityValueStore_ApplyModifierEvent. Decompile-verified live 2026-07-13.",
+   "note": "Recomputes the entity-value override CACHE (store+0xc0 vector, the same one R.stat.set pokes) from scratch: seeds each key with its base value from the definition (valueDef+0xc8/+0xd0), then walks the per-key modifier registry (SwissTable at store+0x88: ctrl @+0x88, slots @+0x90, growth @+0xa0) and applies every registered modifier in priority order via a vcall on the modifier object (`(*(modifier+0x18))(modifier, valueUnion)`), writing the folded result back into the override entry: the union @entry+0x08, plus a f32 @entry+0x28 and a u16 @entry+0x2c that it COPIES from a same-layout source record (`lea r12,[r15+0x2c]` @0x14074a802; the writeback @0x14074a944 is `word [entry+0x2c] = [r12]`, `movss [entry+0x28] = [r12-4]`). ⚠ Corrected 2026-09-19: these were once labelled 'scalar mirror' and 'version short', and they are neither — +0x28 is not derived from the union, and the store consumer at 0x1403aace4 (key 0x16917db7) multiplies by word[entry+0x2c] as a COUNT. A fix built on the old labels (mirror the value into +0x28, bump +0x2c on every write) was reverted: bumping it inflates that count on every re-assert. Their meaning is still unknown; leave both as the engine set them. Gated by the dirty flag store+0x64 bit 3 (&8). THIS IS WHY a raw R.stat.set union-poke is transient: the next recompute (any gameplay event that dirties the key) rebuilds entry+0x08 from base+modifiers and discards the poke. Durable writes must register a modifier the recompute folds in — see EntityValueStore_ApplyModifierEvent. Decompile-verified live 2026-07-13.",
    "refs": [
     "docs/_re/kinds/stats.md"
    ]
@@ -4433,6 +4433,15 @@
    "refs": [
     "src/loader/lib/rsmm.lua"
    ]
+  },
+  {
+   "name": "g_StatReportRoot",
+   "kind": "data",
+   "category": "stats",
+   "va": "0x14143cb28",
+   "status": "va",
+   "note": "Singleton pointer whose object holds the CACHED hero stats the game reports and displays. The chapter_end analytics emitter (0x1401f5c70) reads rax=[this global], rcx=[rax+0x20], then vitality = 100*f32[rcx+0x304], attack_power = 100*f32[rcx+0x308], armor = f32[rcx+0x30c] (0x1401f5d4a..0x1401f5d66; both scale constants read back as 100.0). The same three are the numbers on the in-run stat strip. Set to its owner's `this` by 0x1400c8b3f and cleared when that owner goes away; the owner's class is NOT identified. ⚠ This is a CACHE, not the entity-value store: R.stat writes land in the store (damage reads the store, so a pin is real) but never reach these floats, which is why a pinned attack_power of 40 showed 0 on the strip (2026-09-19). What refreshes the cache in vanilla is unknown — R.watch on [obj+0x308] during an attack-item pickup would name it. Offsets near +0x300 are common: three unrelated functions (0x140604447 bbox, 0x1404cd8d0 lerp, 0x1406357b0 vec3 array) store there, so never search for the writer by offset alone. Backs R.stat.cached (read-only).",
+   "refs": []
   },
   {
    "name": "g_GlobalEntityValueSceneContext_Tester_vftable",

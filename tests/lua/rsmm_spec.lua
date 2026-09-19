@@ -171,7 +171,10 @@ end
 -- additively into the key's override entry (a stand-in for the modifier
 -- registry + recompute — enough to prove the event reaches the engine intact).
 local MODEV_VFT = 0x140f322d0
+-- The duration each modifier event carried, for the "permanent" check.
+local last_mod_duration = nil
 engine["EntityValueStore_ApplyModifierEvent"] = function(store, ev)
+    last_mod_duration = (string.unpack("<f", rbytes(ev + 0x80, 4)))
     if store ~= STORE then
         error(string.format("ApplyModifierEvent: bad store 0x%x", store))
     end
@@ -654,6 +657,32 @@ do
     check(about(R.stat.get("attack_power"), 500), "get should read back the set value")
 end
 
+-- 3b. R.stat.cached reads the report cache, NOT the store --------------------
+--
+-- The game's stat readout reads floats hanging off g_StatReportRoot, and a
+-- pinned stat never reaches them — that split is the reason this reader
+-- exists, so pin it: the store says 500 while the cache keeps its own value.
+do
+    local ROOT_SLOT = I.module_base() + (0x14143cb28 - 0x140000000)
+    local root, obj = scratch(0x40), scratch(0x400)
+    I.write_u64(ROOT_SLOT, root)
+    I.write_u64(root + 0x20, obj)
+    I.write_f32(obj + 0x308, 0.25)
+    I.write_f32(obj + 0x304, 1.5)
+    check(about(R.stat.cached("attack_power"), 0.25), "cached reads [obj+0x308]")
+    check(about(R.stat.cached("max_health"), 1.5), "cached vitality reads [obj+0x304]")
+    check(about(R.stat.get("attack_power"), 500), "...while the store still says 500")
+    check(R.stat.cached("crit_chance") == nil, "a stat with no cache slot -> nil")
+
+    I.write_u64(root + 0x20, 0)
+    check(R.stat.cached("attack_power") == nil, "a null object fails closed")
+    va_trusted_val = false
+    I.write_u64(root + 0x20, obj)
+    check(R.stat.cached("attack_power") == nil, "an untrusted build refuses the va read")
+    va_trusted_val = true
+    I.write_u64(ROOT_SLOT, 0)
+end
+
 -- 4. unknown stat names are rejected ---------------------------------------
 do
     check(R.stat.set("not_a_stat", 1) == false, "unknown set must fail")
@@ -666,19 +695,46 @@ do
     -- (R.stat.modify probes it before forging the event).
     I.write_u64(MODEV_VFT, 0x140001000)
 
-    check(R.stat.modify("attack_power", 25) == true, "modify should apply")
+    check(R.stat.modify("attack_power", 25, nil, { route = "direct" }) == true, "modify should apply")
     check(about(R.stat.get("attack_power"), 525), "modifier folds additively (+25)")
-    check(R.stat.modify("attack_power", -100) == true, "negative modify should apply")
+    check(R.stat.modify("attack_power", -100, nil, { route = "direct" }) == true, "negative modify should apply")
     check(about(R.stat.get("attack_power"), 425), "modifier folds additively (-100)")
     check(R.stat.modify("not_a_stat", 1) == false, "unknown modify must fail")
     check(R.stat.modify("attack_power", "x") == false, "non-number amount must fail")
 
+    -- On the DIRECT route, "permanent" must reach the engine as a long FINITE
+    -- duration, never -1:
+    -- a negative duration takes the branch at 0x14074ba3c that records the
+    -- modifier a second time, and it then counts double (+1 read back 2.0 in
+    -- game, 2026-09-19). An explicit negative means permanent too.
+    R.stat.modify("attack_power", 1, nil, { route = "direct" })
+    check(last_mod_duration and last_mod_duration > 0, "permanent is sent as a positive duration")
+    check(about(last_mod_duration, 1.0e6), "...the 1e6 s proven in game")
+    R.stat.modify("attack_power", 1, -1, { route = "direct" })
+    check(about(last_mod_duration, 1.0e6), "an explicit -1 is mapped to the same")
+    R.stat.modify("attack_power", 1, 10, { route = "direct" })
+    check(about(last_mod_duration, 10), "a timed modifier keeps its own duration")
+    R.stat.modify("attack_power", -3, nil, { route = "direct" })   -- undo the three +1s so later asserts hold
+
+    -- The bus is the DEFAULT route (the game's own: counts once, survives a
+    -- chapter). It needs the hero's dispatcher and must refuse cleanly without
+    -- one — never fall back to a direct apply the caller did not ask for,
+    -- because a direct permanent modifier counts twice.
+    local before = R.stat.get("attack_power")
+    last_mod_duration = nil
+    check(R.stat.modify("attack_power", 1) == false,
+          "the default (bus) route refuses with no hero dispatcher")
+    check(last_mod_duration == nil, "...and does not call the handler directly")
+    check(about(R.stat.get("attack_power"), before), "...and changes nothing")
+    check(R.stat.modify("attack_power", 1, nil, { route = "bogus" }) == false,
+          "an unknown route is refused")
+
     -- int-kind stat rides the same union inline slot.
-    check(R.stat.modify("dream_shards", 100) == true, "int-kind modify should apply")
+    check(R.stat.modify("dream_shards", 100, nil, { route = "direct" }) == true, "int-kind modify should apply")
 
     -- A garbage vftable slot (wrong build) must refuse before touching engine.
     I.write_u64(MODEV_VFT, 0)
-    check(R.stat.modify("attack_power", 1) == false, "implausible vftable must refuse")
+    check(R.stat.modify("attack_power", 1, nil, { route = "direct" }) == false, "implausible vftable must refuse")
     I.write_u64(MODEV_VFT, 0x140001000)
 
     -- Restore the value later sections assert on.
