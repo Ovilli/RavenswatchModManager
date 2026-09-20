@@ -1,6 +1,15 @@
 {
-  "generated": "2026-09-18",
+  "generated": "2026-09-20",
   "entries": [
+    {
+      "version": "",
+      "loader_version": 19,
+      "date": "2026-09-20",
+      "summary": "Stat modifiers now apply once instead of twice, show up on the in-run stat strip, and permanent ones last the whole run across chapters.",
+      "highlights": [
+        "Stat modifiers now apply once instead of twice, show up on the in-run stat strip, and permanent ones last the whole run across chapters."
+      ]
+    },
     {
       "version": "",
       "loader_version": 18,
