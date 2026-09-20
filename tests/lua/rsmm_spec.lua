@@ -6821,6 +6821,119 @@ do  -- 9f. one GUID on two rows names neither, and does not latch the join off
     R = require "rsmm"
 end
 
+do  -- 9g. the P2P SESSION STATE and HOST are read, and refuse to guess
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    I.mem_find = function() return {} end
+
+    local ctrl = _peer_world(Rp, 0xb7000000, { plant = {} })
+    local mgr  = _plant_session_chain(0xb7000000, ctrl)
+
+    -- 5 is Connected, straight off P2PSession_StateNames.
+    I.write_u32(mgr + 0x70, 5)
+    local code, name = Rp.net.session_state()
+    check(code == 5 and name == "Connected", "the session state is read and named")
+
+    I.write_u32(mgr + 0x70, 2)
+    code, name = Rp.net.session_state()
+    check(code == 2 and name == "ConnectingToPeers",
+          "and tracks the gate P2PSession_OnFcm2NewHost tests")
+
+    -- 9 is "Connected" in the engine's SECOND enum, which shares the table.
+    -- Reporting it as Connected would be a lie about a session state.
+    I.write_u32(mgr + 0x70, 9)
+    code, name = Rp.net.session_state()
+    check(code == 9 and name == nil,
+          "a code outside 0..6 is returned unnamed, never borrowed from the "
+          .. "second enum in the same table")
+
+    I.write_u32(mgr + 0x70, 5)
+
+    -- No host holder at all.
+    I.write_u64(mgr + 0x218, 0)
+    check(Rp.net.session_host() == nil, "no host holder means no host")
+
+    -- A holder whose +0x20 gate is null: the engine reads UNASSIGNED here.
+    local holder = 0xb7000000 + 0xd0000
+    I.write_u64(mgr + 0x218, holder)
+    I.write_u64(holder + 0x20, 0)
+    I.write_u64(holder + 0x48, 0x9911)
+    check(Rp.net.session_host() == nil,
+          "the +0x20 gate is honoured, so a stale GUID is not reported as host")
+
+    -- Gate open, real GUID.
+    I.write_u64(holder + 0x20, 1)
+    check(Rp.net.session_host() == 0x9911, "and with the gate open the host GUID is read")
+
+    -- The all-ones sentinel means "no host elected", not a peer.
+    I.write_u64(holder + 0x48, 0xffffffffffffffff)
+    check(Rp.net.session_host() == nil,
+          "UNASSIGNED_RAKNET_GUID is reported as no host, never as an identity")
+
+    Rp.damage.disable(); Rp.damage.reset()
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9g2. the session context does NOT require a damage row (regression)
+    -- Session 8b36 (2026-09-20, live 4-player match): the peer table read
+    -- perfectly while R.net.session_state / session_host / systems returned nil
+    -- on EVERY poll, for the whole match. Cause: they all reach the P2P session
+    -- context through F._dmg_conn_mgr, which walked the DAMAGE BOARD -- so with
+    -- the meter off the board is empty and the context is unreachable, even
+    -- though the session plainly exists. The context has nothing to do with
+    -- damage; any replicated entity reaches it.
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    I.mem_find = function() return {} end
+
+    local ctrl = _peer_world(Rp, 0xb8000000, { plant = {} })
+    local mgr  = _plant_session_chain(0xb8000000, ctrl)
+    I.write_u32(mgr + 0x70, 5)
+
+    local hero_ent = I.read_u64(ctrl[1] + 0x08)
+
+    -- The RakPeer and one CONNECTED remote system, laid out the way
+    -- RakPeer_GetSystemList's disassembly reads them: count @peer+0x258,
+    -- list @peer+0x250, and per RemoteSystemStruct isActive @+0x00,
+    -- sockaddr @+0x08 (sin_port at +2, NETWORK order), guid @+0x2cc8,
+    -- connectMode @+0x2cec where 7 == ConnectMode::CONNECTED.
+    local peer, list, rs = 0xb8000000 + 0xe0000, 0xb8000000 + 0xe1000, 0xb8000000 + 0xe2000
+    I.write_u64(mgr + 0x210, peer)
+    I.write_u64(peer + 0x250, list)
+    I.write_u32(peer + 0x258, 1)
+    I.write_u64(list, rs)
+    I.write_u8(rs, 1)
+    I.write_u16(rs + 0x08 + 2, 0x4512)      -- ntohs -> 0x1245
+    I.write_u64(rs + 0x2cc8, 0x51101)
+    I.write_u32(rs + 0x2cec, 7)
+
+    -- Empty the board: this is "the damage meter is not running".
+    Rp.damage.disable(); Rp.damage.reset()
+    check(#Rp.damage.board() == 0, "the board really is empty")
+
+    local saved_hero = Rp.entity.hero
+    Rp.entity.hero = function() return nil end
+    check(Rp.net.session_state() == nil,
+          "no board and no hero means no context, reported as nil not as a guess")
+
+    Rp.entity.hero = function() return hero_ent end
+    local code, name = Rp.net.session_state()
+    check(code == 5 and name == "Connected",
+          "with the local hero captured the session state resolves with an "
+          .. "empty board -- the bug session 8b36 hit")
+    local sys = Rp.net.systems()
+    check(sys ~= nil and #sys == 1,
+          "and the remote-system table resolves through the same fallback")
+    check(sys and sys[1].guid == 0x51101 and sys[1].port == 0x1245,
+          "with the GUID read and the port byte-swapped out of the sockaddr")
+
+    Rp.entity.hero = saved_hero
+    Rp.damage.reset()
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
 do  -- 9h. the REGISTRY path: one node reaches every connection in the run
     package.loaded["rsmm"] = nil
     local Rp = require "rsmm"

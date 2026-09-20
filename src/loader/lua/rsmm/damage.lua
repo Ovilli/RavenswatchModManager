@@ -2674,7 +2674,46 @@ F._netid = {
     -- exposes per peer (slot+0x50 -> +0xc0, ntohs'd by FUN_1402aa470). One
     -- table therefore carries both halves of the join, and reading it is
     -- pure loads -- no engine call, no allocation, nothing to free.
-    CTX_PEER  = 0x210,
+    --
+    -- [2026-09-20] That enumerator is now NAMED: `vft[0x100]` is slot 32 of
+    -- RakNet::RakPeer, i.e. RakPeer::GetSystemList (symbol
+    -- RakPeer_GetSystemList; RakPeer's shipped vtable matches the public
+    -- header at 87/87 slots, so the slot IS the identity). `ConnectMode::
+    -- CONNECTED == 7` in RakPeer.h, confirming RS_STATE's filter. Every
+    -- constant below was re-read out of the CURRENT exe's disassembly on that
+    -- date, not carried over from the August decompile.
+    --
+    -- Calling it is NOT an option and never will be: it takes two
+    -- `DataStructures::List<T>&` out-params it push_back()s into, which Lua
+    -- cannot construct. The member walk below is the only safe consumer, and
+    -- that is why this stays a read even though the function now has a name.
+    -- The P2P SESSION state machine, read off P2PSession_SetState (0x14085ca70)
+    -- and its state-name table (P2PSession_StateNames, 0x140eece10). The names
+    -- are transcribed here rather than read from that table because the table
+    -- is a `va` global: reading it would need the va gate for no gain, since
+    -- the enum is what we actually want and it is fixed for this build.
+    --
+    -- ⚠ Indices 7..13 of that table are a SECOND, unrelated connection enum
+    -- (Pending, Connecting, Connected, Disconnecting, ...). A session state is
+    -- 0..6 ONLY -- anything outside that is not a session state and must not be
+    -- named, or "Disconnecting" gets reported for a value that never meant it.
+    CTX_STATE = 0x70,
+    SESSION_STATES = {
+        [0] = "ConnectingToServer", [1] = "ConnectingToHost",
+        [2] = "ConnectingToPeers",  [3] = "Pending",
+        [4] = "ConnectingAsHost",   [5] = "Connected",
+        [6] = "Disconnected",
+    },
+    -- ctx+0x218 -> the holder whose +0x48 is the session HOST's RakNetGUID,
+    -- gated on its +0x20 being non-null. Straight out of the only non-logging
+    -- branch of P2PSession_OnFcm2NewHost (0x1408b8530), which reads exactly
+    -- this chain and compares it against UNASSIGNED_RAKNET_GUID.
+    CTX_HOST     = 0x218,
+    CTX_HOST_OK  = 0x20,
+    CTX_HOST_GUID = 0x48,
+    CTX_PEER  = 0x210,    -- proven a RakPeer: Netcode_SessionCtx_LocalGuid
+                          -- calls [ctx+0x210]->vft[0x190], and 0x190/8 = slot
+                          -- 50 = RakPeer::GetMyGUID.
     RS_LIST   = 0x250,
     RS_COUNT  = 0x258,
     RS_ADDR   = 0x08,
@@ -2987,6 +3026,60 @@ function R.net.peers()
     return out
 end
 
+--- The RakNet remote-system table: `{ guid, port, state }` per connected peer.
+---
+--- This is `RakPeer::GetSystemList`'s answer, obtained by WALKING RakPeer's
+--- members rather than calling it. The function itself takes two
+--- `DataStructures::List<T>&` out-params it push_back()s into, which Lua cannot
+--- construct — so the call is permanently off the table and the read is the
+--- API. Every offset was re-read from the shipped exe (see F._netid).
+---
+--- Why a mod wants it: `guid` is the same value R.net.owner(entity) returns for
+--- that player's hero, and `port` is what R.net.peers() exposes per peer beside
+--- the display NAME. One table therefore bridges "who owns this entity" to
+--- "what is their name". Returns nil, never a partial guess.
+function R.net.systems() return F._dmg_rak_systems() end
+
+--- The P2P session's current state, as `code, name` — or nil when unknown.
+---
+--- `name` is nil for any code outside 0..6 while `code` is still returned, so
+--- an unexpected value is reported as itself instead of being mislabelled with
+--- a name borrowed from the second enum that shares the engine's table.
+---
+--- Pure reads: the context is the one F._dmg_conn_mgr already walks to
+--- (netcomp -> scene -> scene+0x28), and the state is a single u32 at +0x70.
+--- No engine call, so this is safe to poll.
+function R.net.session_state()
+    local mgr = F._dmg_conn_mgr()
+    if not mgr or not I.read_u32 then return nil end
+    local v = I.read_u32(mgr + F._netid.CTX_STATE)
+    if type(v) ~= "number" or v < 0 or v > 0xffff then return nil end
+    return v, F._netid.SESSION_STATES[v]
+end
+
+--- The RakNetGUID of the session HOST, or nil when there is no host yet.
+---
+--- The engine's own test, lifted verbatim from the only branch of
+--- P2PSession_OnFcm2NewHost that does anything: take ctx+0x218, and only if
+--- its +0x20 is non-null read the GUID at +0x48; the UNASSIGNED sentinel
+--- (all-ones) means "no host elected", which this reports as nil rather than
+--- as a peer nobody can match.
+---
+--- Compare it against R.net.owner(entity) to answer "is the host the machine
+--- that owns this hero", and against R.damage._rak_systems() to turn it into
+--- a port and therefore a NAME.
+function R.net.session_host()
+    local mgr = F._dmg_conn_mgr()
+    if not mgr or not I.read_u64 then return nil end
+    local h = I.read_u64(mgr + F._netid.CTX_HOST)
+    if not _ptr_plausible(h) then return nil end
+    if I.read_u64(h + F._netid.CTX_HOST_OK) == 0 then return nil end
+    local g = I.read_u64(h + F._netid.CTX_HOST_GUID)
+    if type(g) ~= "number" or g == 0 or g == -1
+       or g == 0xffffffffffffffff then return nil end
+    return g
+end
+
 --- The owner GUID's SYSTEM INDEX, the other half of the RakNetGUID.
 ---
 --- `RakNetGUID` is `{uint64 g; uint16 systemIndex}` — the replica ctor
@@ -3259,21 +3352,44 @@ end
 --- there, and a row's owner GUID *is* that qword.
 ---
 --- Any row will do: every replicated entity in the run shares one scene.
+--- entity -> net component -> scene -> P2P session context. nil, never a guess.
+function F._dmg_ctx_from_entity(ent)
+    if not I.read_u64 or not _ptr_plausible(ent) then return nil end
+    local nc = R.net.component(ent)
+    if not nc then return nil end
+    local scene = I.read_u64(nc + F._netid.SCENE)
+    if not _ptr_plausible(scene) then return nil end
+    local mgr = I.read_u64(scene + F._netid.SCENE_MGR)
+    if not _ptr_plausible(mgr) then return nil end
+    return mgr, scene
+end
+
 function F._dmg_conn_mgr()
     if not I.read_u64 then return nil end
     for _, row in ipairs(_dmg.order) do
         if _ptr_plausible(row.key) then
-            local ent = I.read_u64(row.key + DMG.HERO_ENTITY_OFF)
-            if _ptr_plausible(ent) then
-                local nc = R.net.component(ent)
-                if nc then
-                    local scene = I.read_u64(nc + F._netid.SCENE)
-                    if _ptr_plausible(scene) then
-                        local mgr = I.read_u64(scene + F._netid.SCENE_MGR)
-                        if _ptr_plausible(mgr) then return mgr, scene end
-                    end
-                end
-            end
+            local mgr, scene = F._dmg_ctx_from_entity(
+                I.read_u64(row.key + DMG.HERO_ENTITY_OFF))
+            if mgr then return mgr, scene end
+        end
+    end
+    -- FALLBACK: the captured local hero.
+    --
+    -- The board walk above finds the session context only once a row EXISTS,
+    -- i.e. only after somebody has dealt damage with the meter running. That
+    -- is fine for the damage join, which by definition has rows -- but it made
+    -- R.net.session_state / session_host / systems return nil for the entire
+    -- length of a live four-player match when the meter was off (observed
+    -- 2026-09-20, session 8b36: peers read perfectly, all three of those
+    -- returned nil, every poll). The session context has nothing to do with
+    -- damage; any replicated entity reaches it, and R.entity.hero() is one we
+    -- already hold. R.entity.hero() hands out the hero oCEntity, so it goes
+    -- straight into the walk with no controller hop.
+    if R.entity and R.entity.hero then
+        local ok, hero = pcall(R.entity.hero)
+        if ok then
+            local mgr, scene = F._dmg_ctx_from_entity(hero)
+            if mgr then return mgr, scene end
         end
     end
     return nil
