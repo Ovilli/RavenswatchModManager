@@ -377,6 +377,11 @@ constexpr const char* TypeDesc_HashName_b_Pattern = "TypeDesc_HashName_b";
 constexpr std::uintptr_t oCString_Dtor = 0x140111d90ull;
 constexpr const char* oCString_Dtor_Pattern = "oCString_Dtor";
 
+// --- melodies ---
+constexpr std::uintptr_t HeroMelodyPersistentData_vftable = 0x140f12f40ull;
+constexpr std::uintptr_t oCGameNamedEventChooseMelody_vftable = 0x140f25c48ull;
+constexpr std::uintptr_t oCGameNamedEventRemoveMelody_vftable = 0x140f22608ull;
+
 // --- netcode ---
 constexpr std::uintptr_t Entity_GetNetComponent = 0x140312db0ull;
 constexpr const char* Entity_GetNetComponent_Pattern = "Entity_GetNetComponent";

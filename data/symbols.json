@@ -4444,6 +4444,33 @@
    "refs": []
   },
   {
+   "name": "oCGameNamedEventChooseMelody_vftable",
+   "kind": "data",
+   "category": "melodies",
+   "va": "0x140f25c48",
+   "status": "va",
+   "note": "vftable of NamedEventChooseMelody (RTTI .?AVNamedEventChooseMelody@dt@oe@@, typedesc 0x14137c2c8). The event the game dispatches when a melody is CHOSEN. 0x60 bytes; its ctor (0x1402da150) lays it out: standard oCGameNamedEvent header (state u32 2 @+0x08, name oCString @+0x20/+0x28/+0x2c, interned id @+0x30 from a cached global 0x1412ef578), then +0x38 u64 = -1, +0x40 u32 = 0, +0x48 u64 = -1, and a second oCString @+0x50/+0x58/+0x5c. Bus id = NamedEvent_Id_FromCrc(0, crc32(\"CHOOSE_MELODY\")) = 1391314199. ⚠ NOTHING constructs this inline: the only three references to the vftable are the ctor, the copy ctor (0x1402da240) and a network-deserialisation factory (0x140313cd0, which allocates exactly 0x60), so the game builds it through a class-id factory table and the MEANING of the payload fields is NOT readable from an emitter. Working hypothesis, untested: +0x38/+0x48 are the melody definition's 128-bit GUID halves (melodydefs carry one, e.g. Fully_Heal a284971b7ccb5f46a60c8eb637ce3a44) the way R.give's event carries a magical-object GUID. Backs the experimental R.melody.choose.",
+   "refs": []
+  },
+  {
+   "name": "oCGameNamedEventRemoveMelody_vftable",
+   "kind": "data",
+   "category": "melodies",
+   "va": "0x140f22608",
+   "status": "va",
+   "note": "vftable of NamedEventRemoveMelody (typedesc 0x14137bc38); same shape and origin as oCGameNamedEventChooseMelody_vftable (ctor 0x1402da320, copy 0x1402da410, factory 0x140313d20). Bus id = NamedEvent_Id_FromCrc(0, crc32(\"REMOVE_MELODY\")) = 2162471170.",
+   "refs": []
+  },
+  {
+   "name": "HeroMelodyPersistentData_vftable",
+   "kind": "data",
+   "category": "melodies",
+   "va": "0x140f12f40",
+   "status": "va",
+   "note": "vftable of HeroMelodyPersistentData (\"Dt Hero Controller Owned Melody Persistent Data\", typedesc 0x141375258) — the per-hero component that survives a chapter and is the likeliest home of the player's NOTE COUNT and per-melody power-up level. Notes are NOT in the entity-value store (no key in R.stat) and not in the scene-context table (R.game has only 'Melody notes in spawning tile' and 'Melody power up level max catchup'); MelodyProfileData is the cross-run counterpart. 7 construction sites. Not yet walked: dump a live instance to find the counter.",
+   "refs": []
+  },
+  {
    "name": "g_GlobalEntityValueSceneContext_Tester_vftable",
    "kind": "data",
    "category": "entity-values",

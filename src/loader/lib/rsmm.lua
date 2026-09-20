@@ -955,6 +955,80 @@ function R.give.by_index(i)
     return R.give.by_guid(lo, hi)
 end
 
+-- melodies (EXPERIMENTAL, UNPROVEN) ---------------------------------------
+--
+-- R.melody.choose(lo, hi) dispatches the game's own CHOOSE_MELODY named event
+-- on the hero's bus, carrying a melody definition's 128-bit GUID. Same
+-- machinery as R.give and R.talent.grant: build the event in scratch, put the
+-- interned id at +0x30, dispatch on the captured hero dispatcher.
+--
+-- ⚠ THE PAYLOAD IS A HYPOTHESIS. The event class is only ever built by a
+-- network-deserialisation factory (see oCGameNamedEventChooseMelody_vftable in
+-- the symbol map), so no emitter exists to read the field meanings off. Its
+-- ctor leaves +0x38 = -1, +0x40 = 0, +0x48 = -1 and an empty string at +0x50;
+-- this writes the GUID halves into +0x38/+0x48 because that is the shape
+-- R.give's event uses for a magical object. If a run shows the event firing
+-- and nothing happening, the identity is one of the other fields.
+--
+-- Returns false (and logs) with no live hero dispatcher — the hero must act
+-- once first. MAIN THREAD only, like every engine-mutating call.
+R.melody = {}
+
+function R.melody.choose(lo, hi)
+    local MELODY_EVENT_VFT_VA = 0x140f25c48   -- oCGameNamedEventChooseMelody_vftable
+    local EVENT, EVENT_CRC = "CHOOSE_MELODY", 0xe311632b
+    if type(lo) ~= "number" or type(hi) ~= "number" then
+        R.log("[rsmm.melody] choose(lo, hi): the melody GUID halves must be numbers")
+        return false
+    end
+    if not _va_ok("R.melody") then return false end
+    if not _give_hero then
+        R.log("[rsmm.melody] no hero dispatcher yet — the hero must act once first")
+        return false
+    end
+    if not (R.engine.resolve("NamedEvent_Id_FromCrc") and R.engine.resolve("NamedEvent_Dispatch")) then
+        R.log("[rsmm.melody] event primitives unresolved on this build — refusing")
+        return false
+    end
+    local base = I.module_base()
+    if not base or base == 0 then return false end
+    local vft = base + (MELODY_EVENT_VFT_VA - GIVE_IMG_BASE)
+    local slot0 = I.read_u64(vft)
+    if not slot0 or slot0 < base or slot0 >= base + 0x1600000 then
+        R.log("[rsmm.melody] event vftable implausible on this build — refusing")
+        return false
+    end
+    if not _dispatcher_live(_give_hero) then
+        R.log("[rsmm.melody] hero dispatcher is not live — refusing")
+        return false
+    end
+    -- ONE scratch block: event (0x60) + name tail. A second alloc while this
+    -- one is live can overlap and zero the front (see R.stat.modify).
+    local ev = I.scratch(0x80)
+    if not ev or ev == 0 then return false end
+    local tail = ev + 0x60
+    for i = 1, #EVENT do I.write_u8(tail + i - 1, EVENT:byte(i)) end
+    I.write_u8(tail + #EVENT, 0)
+    I.write_u64(ev + 0x00, vft)
+    I.write_u32(ev + 0x08, 2)                      -- state, as the ctor leaves it
+    I.write_u64(ev + 0x10, 0)
+    I.write_u64(ev + 0x18, 0)
+    I.write_u64(ev + 0x20, tail)                   -- name string
+    I.write_u32(ev + 0x28, 0x80000000 + #EVENT)    -- unowned: never freed by the engine
+    I.write_u32(ev + 0x2c, 0)
+    I.write_u32(ev + 0x30, R.engine.call("NamedEvent_Id_FromCrc", 0, EVENT_CRC) or 0)
+    I.poke(ev + 0x38, lo, 8)                       -- melody GUID low  (hypothesis)
+    I.write_u32(ev + 0x40, 0)
+    I.poke(ev + 0x48, hi, 8)                       -- melody GUID high (hypothesis)
+    I.write_u64(ev + 0x50, tail + #EVENT)          -- second string: empty
+    I.write_u32(ev + 0x58, 0x80000000)
+    I.write_u32(ev + 0x5c, 0)
+    R.engine.call("NamedEvent_Dispatch", _give_hero, ev)
+    R.log(string.format("[rsmm.melody] dispatched %s guid=%016x%016x disp=0x%x id=0x%x",
+        EVENT, hi, lo, _give_hero, I.read_u32(ev + 0x30) or 0))
+    return true
+end
+
 -- Grant a random loaded item. Returns the granted index, or nil.
 function R.give.random()
     local n = R.give.count()

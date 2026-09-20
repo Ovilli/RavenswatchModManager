@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **284** symbols across 23 categories.
+Total: **287** symbols across 24 categories.
 
 ## analytics
 
@@ -281,6 +281,14 @@ Total: **284** symbols across 23 categories.
 | `TypeDesc_HashName` | `0x1404fd5d0` | ✅ ok |  | base virtual: vcall slot0 -> type descriptor, reads its oCString name (inline @+8 / hea… |
 | `TypeDesc_HashName_b` | `0x1401c96e0` | ✅ ok |  | identical twin of TypeDesc_HashName (separate TU); base virtual in 292 vtables. Decompi… |
 | `oCString_Dtor` | `0x140111d90` | ✅ ok |  | oCString destructor: SSO threshold 0xf; heap buffer's real alloc ptr at [buf-8], frees … |
+
+## melodies
+
+| name | address | status | callable | signature / note |
+|------|---------|--------|----------|------------------|
+| `HeroMelodyPersistentData_vftable` | `0x140f12f40` | 📍 va |  | vftable of HeroMelodyPersistentData ("Dt Hero Controller Owned Melody Persistent Data",… |
+| `oCGameNamedEventChooseMelody_vftable` | `0x140f25c48` | 📍 va |  | vftable of NamedEventChooseMelody (RTTI .?AVNamedEventChooseMelody@dt@oe@@, typedesc 0x… |
+| `oCGameNamedEventRemoveMelody_vftable` | `0x140f22608` | 📍 va |  | vftable of NamedEventRemoveMelody (typedesc 0x14137bc38); same shape and origin as oCGa… |
 
 ## netcode
 

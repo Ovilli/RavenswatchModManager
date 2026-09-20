@@ -1133,6 +1133,22 @@ do
     check(R.give.by_guid(0xA001, 0xB001) == true, "a live dispatcher grants")
     check(dispatched, "and the engine call is made")
 
+    -- R.melody.choose rides the same dispatcher. EXPERIMENTAL: the payload is a
+    -- hypothesis, but its guards must hold — the event's own vftable has to be
+    -- plausible on this build, and bad arguments never reach the engine.
+    local MELODY_VFT = I.module_base() + (0x140f25c48 - 0x140000000)
+    I.write_u64(MELODY_VFT, I.module_base() + 0x1000)   -- a plausible slot 0
+    dispatched = false
+    check(R.melody.choose(0x1122, 0x3344) == true, "melody choose dispatches")
+    check(dispatched, "...through the engine")
+    dispatched = false
+    check(R.melody.choose("x", 1) == false, "a non-numeric guid is refused")
+    check(not dispatched, "...and never reaches the engine")
+    I.write_u64(MELODY_VFT, 0)
+    check(R.melody.choose(1, 2) == false, "an implausible event vftable is refused")
+    I.write_u64(MELODY_VFT, I.module_base() + 0x1000)
+    dispatched = false
+
     -- Now make it look dead, and do it the way it actually dies: the HERO is
     -- the object that gets freed. Zeroing a byte of the dispatcher proves
     -- nothing, because those bytes were never a pointer.

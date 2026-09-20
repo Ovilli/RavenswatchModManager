@@ -118,6 +118,7 @@ ADDR: dict[str, int] = {
     "HeroDef_LoadBaseEntity": 0x14031ece0,
     "HeroDef_LoadSkinEntity": 0x14031ea40,
     "HeroDef_PostLoad": 0x14031fd70,
+    "HeroMelodyPersistentData_vftable": 0x140f12f40,
     "HeroProgressionUnlock_IsUnlocked": 0x1402b2b10,
     "HeroRankLock_IsUnlocked": 0x1402b1c10,
     "HeroSelect_ConfirmBlockReason": 0x14026dbc0,
@@ -288,6 +289,8 @@ ADDR: dict[str, int] = {
     "oCEntityHitData_vftable": 0x140f137d8,
     "oCEntityValueUnion_vftable": 0x140f95008,
     "oCGameEventNetworkModifier_vftable": 0x140f322d0,
+    "oCGameNamedEventChooseMelody_vftable": 0x140f25c48,
+    "oCGameNamedEventRemoveMelody_vftable": 0x140f22608,
     "oCString_Dtor": 0x140111d90,
 }
 
