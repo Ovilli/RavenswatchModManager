@@ -117,19 +117,58 @@ R.stat.keys.cooldown_reduction_dash = { key = 0x183a5fc9, kind = "f32" }
 
 -- Status-effect family (FUN_1401d9070): `0x16ede056 + 2*i`, in registration
 -- order. Stacks are ints.
+-- Names from the engine's own registry (tools/mine_stat_keys.py), which
+-- corrected the last entry: 0x16ede068 is "Weak", NOT poison. Real poison is
+-- 0x173fcdaa, in the family below.
 local _status_family = {
     "strength", "regen", "haste", "concealed", "resistant",
-    "rooted", "vulnerable", "ignite", "chilled", "poison",
+    "rooted", "vulnerable", "ignite", "chilled", "weak",
 }
 for i, name in ipairs(_status_family) do
     R.stat.keys["status_" .. name] = { key = 0x16ede056 + 2 * (i - 1), kind = "int" }
 end
 
--- Status effects registered outside that family.
-R.stat.keys.status_shield = { key = 0x173fcd75, kind = "int" }
-R.stat.keys.status_bleed  = { key = 0x173fcdac, kind = "int" }
-R.stat.keys.status_cursed = { key = 0x1a5d3d69, kind = "int" }
-R.stat.keys.status_marked = { key = 0x1a40367d, kind = "int" }
+-- Status effects registered outside that family. Labels confirmed against the
+-- engine registry; `status_cursed` is the engine's "Disease" and keeps its old
+-- name as an alias so existing mods still resolve.
+R.stat.keys.status_shield  = { key = 0x173fcd75, kind = "int" }
+R.stat.keys.status_bleed   = { key = 0x173fcdac, kind = "int" }
+R.stat.keys.status_poison  = { key = 0x173fcdaa, kind = "int" }
+-- The engine labels this one "Disease"; the name stays `status_cursed` because
+-- mods already use it, and one key may only have one name here (the spec's
+-- duplicate check exists so a mismatch like the poison one cannot hide).
+R.stat.keys.status_cursed  = { key = 0x1a5d3d69, kind = "int" }
+R.stat.keys.status_marked  = { key = 0x1a40367d, kind = "int" }
+
+-- The long tail, from the engine's own registry (stats_gen.lua, mined by
+-- tools/mine_stat_keys.py): 200+ registered values under identifiers derived
+-- from their display names — "Armour per missing health" is
+-- armour_per_missing_health. The hand-RE'd names above WIN on collision: mods
+-- use them, and several differ from the engine's label (the value the engine
+-- calls "Max health" is this table's max_health_pct, while "Vitality" is
+-- max_health). Every entry here is f32; the int-kind stats are all named above.
+--
+-- Optional by design: an older planted lib/ has no stats_gen, and a mod that
+-- only uses the hand-written names must keep working.
+do
+    local ok, gen = pcall(require, "stats_gen")
+    if ok and type(gen) == "table" then
+        -- A key already spoken for keeps its hand-written name and gains no
+        -- second one: two names for one key would make R.stat.sticky ambiguous
+        -- and hide exactly the mismatches this catalog is here to expose.
+        local taken = {}
+        for _, spec in pairs(R.stat.keys) do taken[spec.key] = true end
+        local added = 0
+        for ident, rec in pairs(gen) do
+            if R.stat.keys[ident] == nil and type(rec) == "table" and rec.key
+                    and not taken[rec.key] then
+                R.stat.keys[ident] = { key = rec.key, kind = "f32", label = rec.label }
+                added = added + 1
+            end
+        end
+        R.stat._catalog_added = added
+    end
+end
 
 -- Resolve a family + slot to its key spec: R.stat.key("attack_power", "trait")
 -- or R.stat.key("attack_power", 3). Returns nil for an unknown pair.

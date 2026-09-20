@@ -619,17 +619,22 @@ do
     check((R.stat.keys.attack_power_basic.key - 0x15a5cf40) % 2 == 1,
           "basic is off-parity, so it cannot be a 2*slot member")
 
+    -- The 10th member is "Weak", not poison: the engine's own registry labels
+    -- 0x16ede068 that way (tools/mine_stat_keys.py), and real Poison is
+    -- 0x173fcdaa, over in the shield/bleed family.
     local st = { "strength", "regen", "haste", "concealed", "resistant",
-                 "rooted", "vulnerable", "ignite", "chilled", "poison" }
+                 "rooted", "vulnerable", "ignite", "chilled", "weak" }
     for i, n in ipairs(st) do
         local spec = R.stat.keys["status_" .. n]
         check(spec ~= nil, "missing status_" .. n)
         check(spec and spec.key == 0x16ede056 + 2 * (i - 1), "status_" .. n .. " wrong key")
         check(spec and spec.kind == "int", "status_" .. n .. " should be int")
     end
-    for _, n in ipairs({ "shield", "bleed", "cursed", "marked" }) do
+    for _, n in ipairs({ "shield", "bleed", "cursed", "marked", "poison" }) do
         check(R.stat.keys["status_" .. n] ~= nil, "missing status_" .. n)
     end
+    check(R.stat.keys.status_poison.key == 0x173fcdaa, "poison is the registry's Poison")
+    check(R.stat.keys.status_cursed.key == 0x1a5d3d69, "cursed is the registry's Disease")
 
     check(R.stat.key("attack_power", "trait").key == 0x15a5cf46, "key() by slot name")
     check(R.stat.key("attack_power", 3).key == 0x15a5cf46, "key() by slot index")

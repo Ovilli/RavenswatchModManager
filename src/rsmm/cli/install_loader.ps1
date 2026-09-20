@@ -129,6 +129,11 @@ $eventsGen = Join-Path $repoDir 'src\loader\lib\events_gen.lua'
 if (Test-Path $eventsGen) {
   Copy-Item -Path $eventsGen -Destination (Join-Path $luaDst 'events_gen.lua') -Force
 }
+# Generated entity-value catalog (R.stat.keys merges it — 200+ stat names).
+$statsGen = Join-Path $repoDir 'src\loader\lib\stats_gen.lua'
+if (Test-Path $statsGen) {
+  Copy-Item -Path $statsGen -Destination (Join-Path $luaDst 'stats_gen.lua') -Force
+}
 
 # Sync mod manifests + init.lua
 New-Item -ItemType Directory -Path (Join-Path $GameDir 'mods') -Force | Out-Null

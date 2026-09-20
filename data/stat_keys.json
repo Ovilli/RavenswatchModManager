@@ -1,0 +1,1328 @@
+[
+ {
+  "key": 0,
+  "name": "Armour",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 411464102,
+  "name": "Vitality",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 72199646,
+  "name": "Move Speed Ratio",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 364914882,
+  "name": "Life steal",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 365504877,
+  "name": "Max health",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 368028421,
+  "name": "Increase damage taken",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 378567538,
+  "name": "Stagger power",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 411894941,
+  "name": "Stagger power Ratio",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 378633928,
+  "name": "Armour increase crit damage",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 378567581,
+  "name": "Increase healing received",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 378567582,
+  "name": "Decrease healing received",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 411294939,
+  "name": "Healing effect done",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 414314710,
+  "name": "Healing effect",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 392458076,
+  "name": "Healing on firing enemy killed",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 392458078,
+  "name": "Firing enemy explode",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 432639042,
+  "name": "Lightning explode",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 462382549,
+  "name": "Blood bomb",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 475323586,
+  "name": "Rose seed",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 378633655,
+  "name": "Armour per missing health",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 447843829,
+  "name": "Vitality Ratio",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 492875346,
+  "name": "Reduce all dream shard prices",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 389611698,
+  "name": "Reduce Sandman dream shard prices",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 389611730,
+  "name": "AP per dream shard stack",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 389611732,
+  "name": "Heal on dream shard gain",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 389611734,
+  "name": "Dream shard collect ratio",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 494438738,
+  "name": "Dream shard tax ratio",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 363103940,
+  "name": "Attack power",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 363188049,
+  "name": "Attack power basic",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 363188032,
+  "name": "Attack power primary",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 363188034,
+  "name": "Attack power secondary",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 363188036,
+  "name": "Attack power defensive",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 363188038,
+  "name": "Attack power trait",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 363188040,
+  "name": "Attack power ultimate",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 406479002,
+  "name": "Attack power dash",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 432652867,
+  "name": "Deal extra damage",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 412414370,
+  "name": "Life on hit",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 413709143,
+  "name": "Life on hit basic",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 413709146,
+  "name": "Life on hit primary",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 413709148,
+  "name": "Life on hit secondary",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 413709150,
+  "name": "Life on hit defensive",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 413709151,
+  "name": "Life on hit trait",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 413709153,
+  "name": "Life on hit ultimate",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 413709155,
+  "name": "Life on hit dash",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 364141952,
+  "name": "CD reduce",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 364141954,
+  "name": "CD reduce basic",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 364141956,
+  "name": "CD reduce primary",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 364141958,
+  "name": "CD reduce secondary",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 364141960,
+  "name": "CD reduce defensive",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 364141962,
+  "name": "CD reduce trait",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 364141964,
+  "name": "CD reduce ultimate",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 406478793,
+  "name": "CD reduce dash",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 365417602,
+  "name": "Crit chance",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 365417604,
+  "name": "Crit chance basic",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 365417606,
+  "name": "Crit chance primary",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 365417608,
+  "name": "Crit chance secondary",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 365417610,
+  "name": "Crit chance defensive",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 365417612,
+  "name": "Crit chance trait",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 365417614,
+  "name": "Crit chance ultimate",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 406479030,
+  "name": "Crit chance dash",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 378567554,
+  "name": "Crit chance to stagger",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 447694659,
+  "name": "Basic apply weakened",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 447694660,
+  "name": "Primary apply weakened",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 447694661,
+  "name": "Secondary apply weakened",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 447694662,
+  "name": "Defensive apply weakened",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 447694663,
+  "name": "Trait apply weakened",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 447694664,
+  "name": "Ultimate apply weakened",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 447694665,
+  "name": "Dash apply weakened",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 448126196,
+  "name": "Basic charge to damage",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 448126197,
+  "name": "Primary charge to damage",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 448126198,
+  "name": "Secondary charge to damage",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 448126199,
+  "name": "Defensive charge to damage",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 448126100,
+  "name": "Trait charge to damage",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 448126101,
+  "name": "Ultimate charge to damage",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 448126102,
+  "name": "Dash charge to damage",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 411380919,
+  "name": "Shield increase",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 411492119,
+  "name": "Infinite Shield",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 365440275,
+  "name": "Crit damage",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 386082386,
+  "name": "Increase damage for each debuff",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 462272228,
+  "name": "Increase basic damage for each debuff",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 462272230,
+  "name": "Increase primary damage for each debuff",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 462272232,
+  "name": "Increase secondary damage for each debuff",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 462272234,
+  "name": "Increase defensive damage for each debuff",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 462272236,
+  "name": "Increase trait damage for each debuff",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 462272237,
+  "name": "Increase ultimate damage for each debuff",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 462272239,
+  "name": "Increase dash damage for each debuff",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 411205468,
+  "name": "Increase damage to boss",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 378633860,
+  "name": "AP for each curse MO",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 386083247,
+  "name": "Increase damage if critical health",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 386083250,
+  "name": "Counter attack damage",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 386083256,
+  "name": "Armour per ability under cooldown",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 386151876,
+  "name": "Transform over healing to armour",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 386503426,
+  "name": "Max health per object",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 386519593,
+  "name": "MO better quality chance",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 386519595,
+  "name": "Skill better quality chance",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 469445140,
+  "name": "Reset skill better quality chance",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 389797894,
+  "name": "Increase health globe drop rate",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 474209615,
+  "name": "Increase health globe heal",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 390726499,
+  "name": "Armour into AP",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 390818520,
+  "name": "Apply bleed on all attack",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 390818522,
+  "name": "Apply bleed on critical",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 390818524,
+  "name": "Bleed on damage receive",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 411232160,
+  "name": "Explosion when critical health",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 411311410,
+  "name": "Crows to spawn on dash",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 473783057,
+  "name": "Vitality max health ratio",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 493461366,
+  "name": "Attacks ignore resistance",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 411472261,
+  "name": "Dash Heal For Damage Received",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 411474619,
+  "name": "Dash Heal For Damage Received Duration",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 411559340,
+  "name": "Dream Shards Lost Instead Of Life",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 447845462,
+  "name": "Dream Shards on Damage",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 411579049,
+  "name": "Clamp High Damage Duration",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 412334564,
+  "name": "Extra MO Choice",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 444215654,
+  "name": "Extra skill choice",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 412335357,
+  "name": "Lost Dream Shard On Death",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 412440743,
+  "name": "Standard Enemy Instant Kill Health Threshold",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 412444127,
+  "name": "Elite Enemy Instant Kill Health Threshold",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 446315041,
+  "name": "Boss Enemy Instant Kill Health Threshold",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 412498544,
+  "name": "Skip Negative Status Cooldown",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 446995853,
+  "name": "Free Reroll",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 411578790,
+  "name": "Clamp High Damage Ratio",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 389806547,
+  "name": "Damage interrupt interaction",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 390039685,
+  "name": "Shard revive price",
+  "desc": null,
+  "registry": "0x1401d66a0"
+ },
+ {
+  "key": 385313530,
+  "name": "Is in play game (F5 or F6)",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 385313538,
+  "name": "Is in edition",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 401188931,
+  "name": "Is in play test (F6)",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 409154248,
+  "name": "Game Ui Is Hidden (F7)",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 409156292,
+  "name": "Screenshot Mode",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 417347234,
+  "name": "Max physic anim count",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 470151154,
+  "name": "Is Christmas play test date",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 412422844,
+  "name": "Game Chrono Started",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 415003218,
+  "name": "Local peer index",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 371923144,
+  "name": "Is skill menu open",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 371923145,
+  "name": "Is menu open",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 457878334,
+  "name": "Is MOs menu open",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 375292546,
+  "name": "Is in cinematic",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 428145955,
+  "name": "Skip cinematic",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 387721141,
+  "name": "Current dream shards count",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 415458890,
+  "name": "Active Enemies Count",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 372497270,
+  "name": "Revive token",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 409995379,
+  "name": "Game Difficulty",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 507546309,
+  "name": "Is in pause",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 387218262,
+  "name": "Keyboard and mouse control",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 413713333,
+  "name": "Pad control",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 410361397,
+  "name": "Is last game win",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 410972191,
+  "name": "LastGame Standard Loot Count",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 410972193,
+  "name": "Last Game Exceptional Loot Count",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 433670256,
+  "name": "Can minimap ping",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 444155388,
+  "name": "GameModifier : No boss timer",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 444060717,
+  "name": "GameModifier : Less day/night half cycle",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 444153114,
+  "name": "GameModifier : No revive token",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 2582806188,
+  "name": "GameModifier : No minimap",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 445265544,
+  "name": "GameModifier : One chapter",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 445338548,
+  "name": "GameModifier : Day only",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 445338556,
+  "name": "GameModifier : Night only",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 447841195,
+  "name": "GameModifier : Random hero at map start",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 448104320,
+  "name": "GameModifier : All same heroes",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 404559869,
+  "name": "Current chapter",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 404559870,
+  "name": "Is in main menu",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 404559871,
+  "name": "Is in loading screen",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 404559872,
+  "name": "Is in exploration (OutDoor)",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 404559885,
+  "name": "Is in exploration (InDoor)",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 404559873,
+  "name": "Is in tumor fighting",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 4045598674,
+  "name": "Is in boss fighting",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 460308988,
+  "name": "Is in end credits",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 3577612517,
+  "name": "Is in sandman shop",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 472660261,
+  "name": "Is book open",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 413877657,
+  "name": "Is game menu open",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 413882314,
+  "name": "Is in safe zone",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 408536607,
+  "name": "Is in game scene",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 408536609,
+  "name": "Is in book scene",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 413876953,
+  "name": "Is in victory sequence",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 413876955,
+  "name": "Is in defeat sequence",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 4230033005,
+  "name": "Defeated_Tumors",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 422876600,
+  "name": "Current map id",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 445787350,
+  "name": "Reroll count",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 419842228,
+  "name": "Stormancer Server Endpoint",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 419848203,
+  "name": "Stormancer App",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 419842224,
+  "name": "Stormancer Server Is Live",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 362393164,
+  "name": "Hero Count",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 437407117,
+  "name": "Deathdoor hero Count",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 437407118,
+  "name": "Perma-death hero Count",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 409734851,
+  "name": "Game Session Size",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 366734164,
+  "name": "Is Connected to Session",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 366734186,
+  "name": "Is Session Host",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 410108666,
+  "name": "Rare Skill Chance Modifier",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 410194156,
+  "name": "Dream Shard Costs Modifier",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 410272734,
+  "name": "Half Cycle Count Before Boss Awakens Modifier",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 410693327,
+  "name": "Camp Difficulty Modifier",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 410694510,
+  "name": "Camp Difficulty Modifier Chance To Apply",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 430303644,
+  "name": "Map Loading Description",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 430303648,
+  "name": "Map Loading Sub Description",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 430309478,
+  "name": "Map Loading Progress Ratio",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 503245562,
+  "name": "Melody notes in spawning tile",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 1895015342,
+  "name": "Melody power up level max catchup",
+  "desc": null,
+  "registry": "0x1401da350"
+ },
+ {
+  "key": 384688214,
+  "name": "Strength",
+  "desc": null,
+  "registry": "0x1401d9070"
+ },
+ {
+  "key": 384688216,
+  "name": "Regeneration",
+  "desc": null,
+  "registry": "0x1401d9070"
+ },
+ {
+  "key": 437230635,
+  "name": "Disease",
+  "desc": null,
+  "registry": "0x1401d9070"
+ },
+ {
+  "key": 442318185,
+  "name": "Disease",
+  "desc": null,
+  "registry": "0x1401d9070"
+ },
+ {
+  "key": 384688218,
+  "name": "Haste",
+  "desc": null,
+  "registry": "0x1401d9070"
+ },
+ {
+  "key": 384688220,
+  "name": "Concealed",
+  "desc": null,
+  "registry": "0x1401d9070"
+ },
+ {
+  "key": 384688222,
+  "name": "Resistant",
+  "desc": null,
+  "registry": "0x1401d9070"
+ },
+ {
+  "key": 390057333,
+  "name": "Shield",
+  "desc": null,
+  "registry": "0x1401d9070"
+ },
+ {
+  "key": 422458924,
+  "name": "Omnipotence",
+  "desc": null,
+  "registry": "0x1401d9070"
+ },
+ {
+  "key": 384688224,
+  "name": "Rooted",
+  "desc": null,
+  "registry": "0x1401d9070"
+ },
+ {
+  "key": 384688226,
+  "name": "Vulnerable",
+  "desc": null,
+  "registry": "0x1401d9070"
+ },
+ {
+  "key": 3125539449,
+  "name": "Hero Is Vulnerable",
+  "desc": null,
+  "registry": "0x1401d9070"
+ },
+ {
+  "key": 384688228,
+  "name": "Ignite",
+  "desc": null,
+  "registry": "0x1401d9070"
+ },
+ {
+  "key": 384688230,
+  "name": "Chilled",
+  "desc": null,
+  "registry": "0x1401d9070"
+ },
+ {
+  "key": 384688232,
+  "name": "Weak",
+  "desc": null,
+  "registry": "0x1401d9070"
+ },
+ {
+  "key": 390057386,
+  "name": "Poison",
+  "desc": null,
+  "registry": "0x1401d9070"
+ },
+ {
+  "key": 390057388,
+  "name": "Bleed",
+  "desc": null,
+  "registry": "0x1401d9070"
+ },
+ {
+  "key": 440415869,
+  "name": "Marked",
+  "desc": null,
+  "registry": "0x1401d9070"
+ },
+ {
+  "key": 500913664,
+  "name": "Force combat state",
+  "desc": null,
+  "registry": "0x1401d9070"
+ },
+ {
+  "key": 400087195,
+  "name": "Is day",
+  "desc": null,
+  "registry": "0x1401ee9e3"
+ },
+ {
+  "key": 400087196,
+  "name": "Is night",
+  "desc": null,
+  "registry": "0x1401ee9e3"
+ },
+ {
+  "key": 413028053,
+  "name": "Cycle playing",
+  "desc": null,
+  "registry": "0x1401ee9e3"
+ },
+ {
+  "key": 400434700,
+  "name": "Remaining cycle before boss awakens",
+  "desc": null,
+  "registry": "0x1401ee9e3"
+ },
+ {
+  "key": 400434702,
+  "name": "Is boss awaken",
+  "desc": null,
+  "registry": "0x1401ee9e3"
+ },
+ {
+  "key": 483889749,
+  "name": "Is in overtime",
+  "desc": null,
+  "registry": "0x1401ee9e3"
+ },
+ {
+  "key": 484404878,
+  "name": "Remaining cycle before Overtime",
+  "desc": null,
+  "registry": "0x1401ee9e3"
+ },
+ {
+  "key": 2177451466,
+  "name": "Night_And_Day_Cycle_Phase",
+  "desc": null,
+  "registry": "0x1401ee9e3"
+ },
+ {
+  "key": 461426455,
+  "name": "Cheat version",
+  "desc": null,
+  "registry": "0x1407072c0"
+ }
+]

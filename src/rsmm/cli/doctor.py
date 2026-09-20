@@ -262,7 +262,13 @@ def check_game_install(game_dir: Path) -> list[Result]:
 # DEGRADES SILENTLY when one is absent (`R.schedule` simply becomes nil), so a
 # half-planted tree looks healthy from the outside while every timer-driven
 # feature quietly does nothing. Checking a submodule too makes that visible.
-_LOADER_LIB_FILES = ("rsmm.lua", "engine_gen.lua", "rsmm/schedule.lua")
+_LOADER_LIB_FILES = (
+    "rsmm.lua",
+    "engine_gen.lua",
+    "events_gen.lua",
+    "stats_gen.lua",
+    "rsmm/schedule.lua",
+)
 
 
 def check_loader(game_dir: Path) -> list[Result]:

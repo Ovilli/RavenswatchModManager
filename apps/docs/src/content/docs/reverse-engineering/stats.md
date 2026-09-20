@@ -290,6 +290,47 @@ modifier itself. So `R.stat.set` / `stick` change damage but leave the strip at 
 value (a pinned 40 showed `0`), while `R.stat.modify` moves both. `R.stat.cached(name)`
 reads that cache for diagnostics.
 
+## The registry catalog (mined 2026-09-20)
+
+`tools/mine_stat_keys.py` reads the engine's own registration calls and writes
+`data/stat_keys.json`: **221 keyed values**, name and key, which `rsmm symbols
+gen` turns into `src/loader/lib/stats_gen.lua` and `R.stat.keys` merges in (the
+hand-RE'd names win, and a key already spoken for gains no second name).
+
+Five registration shapes feed one catalog. `Register_A(list, key, &name, desc)`
+takes the key in `edx`; three `Register_B` helpers take it in `ecx`; and an
+allocator form assigns the name into `def+0x08` and stores the key at
+`def+0x6c`, sometimes as an immediate and sometimes through a register. Two
+registrations are still unparsed on purpose: their keys are computed in a loop
+(`base + 2*i`), which is the status family the SDK already derives by hand.
+
+⚠ **Pair on structure, never on "the nearest string".** A block stages its name
+several instructions before the call, and the description and editor-icon path
+sit between two registrations, so the naive pairing is off by one *whole*
+registration and looks plausible: it put `attack_power` on "Attack power basic"
+and armour on a neighbour's key. The miner ties each name to the stack slot the
+call actually passes, and checks the staged `0x80000000 | len` against the
+string's real length.
+
+What it settled:
+
+* **Armour is registered with key `0`** — a definition, a display name and an
+  editor icon, but no id. It is genuinely unaddressable through the store, so no
+  `R.stat` call can read or write it; its live value is a plain field at
+  `hero+0x31c` (written by `0x1403aab60`, beside the attack cache at `+0x318`).
+  Five armour *effects* are keyed and usable: "Armour per missing health"
+  (`0x16917db7`), "Armour increase crit damage" (`0x16917ec8`), "Armour into AP"
+  (`0x174a0363`), "Armour per ability under cooldown" (`0x170329b8`) and
+  "Transform over healing to armour" (`0x170435c4`).
+* **Ten of twelve hand-RE'd keys confirmed** by the engine's own labels
+  (`0x188671a6` is "Vitality", `0x15c9296d` is "Max health", `0x15b45d80` is
+  "CD reduce"). The two that are absent, `xp_multiplier` and
+  `difficulty_xp_mult`, are scene-context values and live in `R.game`'s table.
+* **Two corrections.** `status_poison` pointed at `0x16ede068`, which the engine
+  calls **"Weak"**; real Poison is `0x173fcdaa`, in the shield/bleed family. And
+  `status_cursed` is the engine's **"Disease"** — the name stays for the mods
+  that use it, with the label recorded.
+
 ## Symbols
 
 Read/write primitives: `EntityValueOverride_Alloc`, `EntityValueEntry_Ctor`,

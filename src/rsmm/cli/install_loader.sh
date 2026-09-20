@@ -125,6 +125,12 @@ fi
 if [[ -f "$REPO_DIR/src/loader/lib/events_gen.lua" ]]; then
     install -m 0644 "$REPO_DIR/src/loader/lib/events_gen.lua" "$GAME_DIR/rsmm/lib/events_gen.lua"
 fi
+# Generated entity-value catalog (R.stat.keys merges it — 200+ stat names).
+# Same pcall-silence as events_gen: without it R.stat only knows the dozen
+# hand-written keys and a mod asking for one of the rest gets "unknown stat".
+if [[ -f "$REPO_DIR/src/loader/lib/stats_gen.lua" ]]; then
+    install -m 0644 "$REPO_DIR/src/loader/lib/stats_gen.lua" "$GAME_DIR/rsmm/lib/stats_gen.lua"
+fi
 
 mkdir -p "$GAME_DIR/mods"
 # Sync mod manifests + init.lua so the loader's scan_mods sees every

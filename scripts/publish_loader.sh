@@ -59,7 +59,7 @@ cp "$DLL" "$PAYLOAD/winhttp.dll"
 # the modular src/loader/lua tree, then the lib/ entrypoint + generated files
 # on top (lib/rsmm.lua require-merges the former).
 cp -a src/loader/lua/. "$PAYLOAD/lib/"
-for f in rsmm.lua engine_gen.lua events_gen.lua; do
+for f in rsmm.lua engine_gen.lua events_gen.lua stats_gen.lua; do
     [ -f "src/loader/lib/$f" ] && cp "src/loader/lib/$f" "$PAYLOAD/lib/$f"
 done
 
