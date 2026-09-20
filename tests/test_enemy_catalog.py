@@ -7,10 +7,25 @@ and no cooked corpus — they check the shape of what was mined, and that the
 page and the JSON have not drifted apart.
 """
 
+import importlib.util
 import json
 import re
 
 from rsmm.engine.paths import REPO_ROOT
+
+
+def _tool():
+    """The miner itself, so naming rules are asserted rather than duplicated.
+
+    An earlier version of this test re-implemented `display_name`, and drifted
+    the moment the tool learned to strip a trailing `_Boss`.
+    """
+    path = REPO_ROOT / "tools" / "mine_enemy_catalog.py"
+    spec = importlib.util.spec_from_file_location("mine_enemy_catalog", path)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 CATALOG = REPO_ROOT / "data" / "enemy_catalog.json"
 PAGE = REPO_ROOT / "apps" / "docs" / "src" / "content" / "docs" / "reference" / "enemy-catalog.md"
@@ -86,11 +101,37 @@ def test_docs_page_matches_the_catalog():
 
     assert "Do not edit this page by hand" in text, "the generated-file banner is gone"
 
+    tool = _tool()
     for r in rows:
-        name = r["id"]
-        for prefix in ("Standard_", "Elite_", "Boss_"):
-            if name.startswith(prefix):
-                name = name[len(prefix) :]
-                break
-        display = name.replace("_", " ")
-        assert f"| {display} |" in text, f"{r['id']} is missing from the docs page"
+        display = tool.display_name(r)
+        # Names that collide once the rank is stripped (Standard_Witch_Crone vs
+        # Boss_Witch_Crone) get their rank appended, so accept either form.
+        present = f"| {display} |" in text or f"| {display} (" in text
+        assert present, f"{r['id']} is missing from the docs page"
+
+
+def test_every_enemy_is_listed_exactly_once_in_the_body():
+    """The overview must partition the roster, not sample it.
+
+    Bosses get their own table and everything else is grouped by biome pool,
+    with an explicit bucket for the unpooled -- so each enemy appears once in
+    that body. A regrouping that quietly drops a bucket shows up here.
+    """
+    tool = _tool()
+    rows = _rows()
+    for r in rows:
+        r["_rank"] = tool.rank_of(r)
+
+    bosses = [r for r in rows if r["_rank"] == "Boss"]
+    rest = [r for r in rows if r["_rank"] != "Boss"]
+    pooled = [r for r in rest if r.get("biome")]
+    unpooled = [r for r in rest if not r.get("biome")]
+
+    assert len(bosses) + len(pooled) + len(unpooled) == len(rows)
+    assert bosses, "no enemy ranks as a boss"
+    assert unpooled, "the unpooled bucket vanished -- those enemies would be dropped"
+
+    text = PAGE.read_text()
+    assert "## Bosses" in text
+    assert "## Where you meet them" in text
+    assert "### Summoned and unpooled" in text

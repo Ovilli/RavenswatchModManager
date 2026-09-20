@@ -8,332 +8,253 @@ Built by `tools/mine_enemy_catalog.py` from the cooked corpus and checked in as
 `data/enemy_catalog.json`. Do not edit this page by hand — re-run the tool.
 :::
 
-**81 enemy definitions**, across 26 tribes.
+**81 enemy definitions** — 14 bosses and 67 others, across 26 tribes and 5 spawn pools.
 
-## How to read this
+## At a glance
 
-Every number here is a **base value**. The run multiplies health by chapter and
-party size before you ever swing at something, so a Standard Mud Crab is not 70
-HP in chapter 3 — it is 70 scaled. Treat these as the relative numbers that say
-a gnoll is roughly twice a crab, not as what the health bar holds.
+| Rank | Count | What it means |
+|---|---|---|
+| Boss | 14 | Chapter bosses and the arena bosses. |
+| Elite | 23 | The tougher variant a camp can roll. |
+| Standard | 29 | The ordinary camp and wave population. |
+| Minion | 15 | Summons, eggs and adds — spawned by something else. |
+
+### The health ladder
+
+Base health only — see the caveat below. This is the whole roster sorted into
+tiers, which is the quickest way to see what is actually dangerous:
+
+| HP | Enemies |
+|---|---|
+| **1000** | Baba Yaga |
+| **350** | Faceless Nightmare |
+| **300** | Dullahan Arthur, Hand Nightmare, Mordred, Ogre Cyclop, Roc Bird |
+| **275** | Stingy Jack |
+| **250** | Ogre Wood, Tentacle Master |
+| **200** | Jinn, Marsh Ghoul, White Lady, Wolf |
+| **180** | Crab |
+| **150** | Baba Yaga Skull Fire, Tentacle Summon, Undead Hog Captain, Undead Hog Fisherman, Undead Hog Reaper, Witch Crone (Boss), Witch Stake (Boss), Witch Young (Boss) |
+| **125** | Baba Yaga Skull Dark, Baba Yaga Skull Poison, Cultist Fanatic, Cultist Priest, Cultist Summoner, Gargoyle Bestial, Gargoyle Blood, Gargoyle Fire, Gnoll Chieftain, Gnoll Hunter, Gnoll Shielded, Knight Mage, Knight Spear, Knight Sword, Snake Nightmare, Spider Nightmare Elite, Spider Nightmare Spitter, Stalker Nightmare, Tentacle Nightmare, Thief Assassin, Thief Brigand, Thief Marksman |
+| **120** | Evil Jinn, Ifrit Jinn, Storm Jinn |
+| **100** | Baba Yaga Tentacle Summon, Cultist Summoner Summoned Eye, Faceless Eye, Festering Ghoul, Phoenix Egg, Roc Egg, Wolf Alpha, Wolf Dire, Wolf Timber |
+| **80** | Cultist Summoner Summoned Tentacle |
+| **70** | Coral Crab, Mud Crab, Reef Crab |
+| **60** | Devouring Ghoul |
+| **45** | Spider Nightmare Biter |
+| *default* | Baba Yaga House, Clawed Treant, Day Scarecrow, Enchanted Scarecrow, Knight Skeleton, Lumbering Treant, Night Scarecrow, Nightmare Small Stalker, Phoenix Roc, Rocling, Root Treant, Sling Ghoul, White Lady Lantern, White Lady Masked, White Lady Screaming, Witch Crone (Standard), Witch Stake (Elite), Witch Young (Standard) |
+
+## How to read the tables
 
 | Column | What it is |
 |---|---|
 | **HP** | `Raw Max Health` — the base the HitPoint component starts from. |
-| **Stagger** | `Stagger Max Points` — how much stagger it absorbs before breaking. |
+| **Stagger** | `Stagger Max Points` — stagger absorbed before it breaks. |
 | **Radius** | `Collision Radius` — physical size, and how easily it is hit. |
 | **Scale** | `Character Mesh Scale` — visual scale of the model. |
 | **Resist** | `Default Resistance` — baseline damage resistance. |
-| **Tags** | Flags on the enemy definition. Camp and wave selectors filter on these. |
+| **Tags** | Definition flags that more than one enemy carries. |
 
-A dash means the enemy does not author that attribute and inherits it. Where a
-value comes from an ancestor rather than the enemy's own entity, the ancestor is
-named beneath the table — that is the file a mod would actually edit, and
-editing it changes **every** enemy that inherits from it.
+Tables are sorted heaviest first. A dash means the enemy does not author that
+attribute and inherits it. Where health comes from an ancestor rather than the
+enemy's own entity, the ancestor is named under the table — that is the file a
+mod would edit, and editing it changes **every** enemy that inherits from it.
 
-:::caution[A dash in the HP column is the shared default]
-18 of these never author health and fall through to the `Character_Common`
-default, which reads as **100**. The walk deliberately stops before
-`Character_Common`: it *declares* these attributes rather than overriding them,
-in a record whose payload sits under a different mark, so reading it as an
-override produces junk. Everything shown in the table **is** mined from a real
-override; everything dashed is inherited.
+Tags naming the enemy itself are omitted (75 of them occur exactly once,
+because they are just the enemy's own name), as is the rank, which is a column.
+
+:::caution[These are base values, and a dash is the shared default]
+The run multiplies health by chapter and party size before you ever swing at
+something, so a 70 HP crab is not 70 HP in chapter 3. Read these as relative:
+a gnoll is roughly twice a crab.
+
+18 enemies never author health and fall through to the
+`Character_Common` default, which reads as **100**. The mining deliberately
+stops before `Character_Common`: it *declares* these attributes rather than
+overriding them, in a record whose payload sits under a different mark, so
+reading it as an override produces junk. Everything in the tables **is** mined
+from a real override; everything dashed is inherited.
 :::
 
 ## Bosses
 
-| Enemy | Rank | Tribe | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
-|---|---|---|---|---|---|---|---|---|---|
-| Crab | Boss | Crabs | 180 | 200 | 2 | 1.5 | 1 | — | `Boss`, `BossCrab` |
-| Dullahan Arthur | Boss | Dullahan | 300 | 200 | 1.8 | — | 0 | — | `Boss`, `Dullahan_Arthur` |
-| Faceless Nightmare | Boss | Faceless Nightmares | 350 | 200 | 3 | 1 | — | — | `ChapterBoss`, `FacelessNightmare` |
-| Hand Nightmare | Boss | Hands Nightmares | 300 | 200 | 2.15 | 1.8 | 0 | — | `ChapterBoss`, `HandNightmare` |
-| Jinn | Boss | Jinns | 200 | 200 | 1.25 | 1.3 | 0 | — | `Boss`, `Boss_Jinn` |
-| Marsh Ghoul | Boss | Marsh Ghouls | 200 | 200 | 1.4 | 2.5 | 0 | — | `Boss_Marsh_Ghoul`, `Boss` |
-| Roc Bird | Boss | Jinns | 300 | 300 | 2.75 | 1 | 0 | — | `Boss`, `Boss_Roc` |
-| Tentacle Master | Boss | Tentacle Nightmares | 250 | 200 | 3 | 1.3 | 0 | — | `ChapterBoss`, `TentacleMaster` |
-| White Lady | Boss | White Ladies | 200 | 200 | 1.2 | 1.6 | 0 | — | `Boss_White_Lady`, `Boss` |
-| Witch Crone | Boss | Witches | 150 | 150 | 1 | 1.25 | 0 | — | `Boss`, `Boss_Witch_Crone` |
-| Witch Stake | Boss | Witches | 150 | 150 | 1.1 | 1.45 | 0 | — | `Boss`, `Boss_Witch_Stake` |
-| Witch Young | Boss | Witches | 150 | 150 | 0.9 | 1.25 | 0 | — | `Boss`, `Boss_Witch_Young` |
-| Wolf | Boss | Wolves | 200 | 200 | 2.5 | 2.2 | 0 | — | `Boss`, `BossWolf` |
-
-## By tribe
-
-### (no tribe)
-
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
+| Enemy | Rank | Tribe | HP | Stagger | Radius | Scale | Resist | Tags |
 |---|---|---|---|---|---|---|---|---|
-| Baba Yaga House | Minion | — | — | — | — | — | — | — |
+| Baba Yaga | Boss | Baba Yaga | 1000 | — | 2 | 1.3 | — | — |
+| Faceless Nightmare | Boss | Faceless Nightmares | 350 | 200 | 3 | 1 | — | — |
+| Dullahan Arthur | Boss | Dullahan | 300 | 200 | 1.8 | — | 0 | — |
+| Hand Nightmare | Boss | Hands Nightmares | 300 | 200 | 2.15 | 1.8 | 0 | — |
+| Roc Bird | Boss | Jinns | 300 | 300 | 2.75 | 1 | 0 | — |
+| Tentacle Master | Boss | Tentacle Nightmares | 250 | 200 | 3 | 1.3 | 0 | — |
+| Jinn | Boss | Jinns | 200 | 200 | 1.25 | 1.3 | 0 | — |
+| Marsh Ghoul | Boss | Marsh Ghouls | 200 | 200 | 1.4 | 2.5 | 0 | — |
+| White Lady | Boss | White Ladies | 200 | 200 | 1.2 | 1.6 | 0 | — |
+| Wolf | Boss | Wolves | 200 | 200 | 2.5 | 2.2 | 0 | — |
+| Crab | Boss | Crabs | 180 | 200 | 2 | 1.5 | 1 | — |
+| Witch Crone (Boss) | Boss | Witches | 150 | 150 | 1 | 1.25 | 0 | — |
+| Witch Stake (Boss) | Boss | Witches | 150 | 150 | 1.1 | 1.45 | 0 | — |
+| Witch Young (Boss) | Boss | Witches | 150 | 150 | 0.9 | 1.25 | 0 | — |
 
-### Baba Yaga
+## Where you meet them
 
-*Biome: Baba Yaga Map*
+Grouped by the biome spawn pool that streams the entity — an enemy whose
+entity is not in a biome's pool is simply not there to instantiate, whatever
+its tribe says. See [Enemies](/reverse-engineering/enemies/) for the two gates.
 
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
+### Dark Hills
+
+15 enemies.
+
+| Enemy | Rank | Tribe | HP | Stagger | Radius | Scale | Resist | Tags |
 |---|---|---|---|---|---|---|---|---|
-| Baba Yaga Boss | Minion | 1000 | — | 2 | 1.3 | — | — | `Baba_Yaga` |
-| Baba Yaga Skull Dark | Minion | 125 | — | 0.7 | 0.85 | — | Baba Yaga Map | `Baba_Yaga_Skull` |
-| Baba Yaga Skull Fire | Minion | 150 | — | 1 | 1.2 | — | Baba Yaga Map | `Baba_Yaga_Skull` |
-| Baba Yaga Skull Poison | Minion | 125 | — | 0.8 | 0.95 | — | Baba Yaga Map | `Baba_Yaga_Skull` |
-
-Health inherited from `Baba_Yaga_Skull_Model`.
-
-### Crabs
-
-*Biome: Storm Island*
-
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
-|---|---|---|---|---|---|---|---|---|
-| Crab | Boss | 180 | 200 | 2 | 1.5 | 1 | — | `Boss`, `BossCrab` |
-| Coral Crab | Elite | 70 | — | — | — | 1 | Storm Island | `Elite`, `CoralCrab`, `Wave` |
-| Mud Crab | Standard | 70 | 75 | 1.3 | 0.85 | 1 | Storm Island | `Standard`, `MudCrab`, `Range`, `Wave` |
-| Reef Crab | Standard | 70 | 75 | 1.4 | 0.9 | 1 | Storm Island | `Standard`, `ReefCrab`, `Melee`, `Wave` |
-
-Health inherited from `Crabs_Model`.
-
-### Dullahan
-
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
-|---|---|---|---|---|---|---|---|---|
-| Dullahan Arthur | Boss | 300 | 200 | 1.8 | — | 0 | — | `Boss`, `Dullahan_Arthur` |
-
-### Faceless Nightmares
-
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
-|---|---|---|---|---|---|---|---|---|
-| Faceless Nightmare | Boss | 350 | 200 | 3 | 1 | — | — | `ChapterBoss`, `FacelessNightmare` |
-| Cultist Summoner Summoned Eye | Minion | 100 | — | 0.5 | 1 | — | — | `Eye`, `Nightmare` |
-| Faceless Eye | Minion | 100 | — | 0.5 | 1 | — | — | `Faceless_Eye` |
-
-Health inherited from `Faceless_Nightmare_Eye`.
-
-### Gargoyles
-
-*Biome: Avalon*
-
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
-|---|---|---|---|---|---|---|---|---|
-| Gargoyle Blood | Elite | 125 | 100 | 1.2 | 1.1 | 0 | Avalon | `Elite`, `GargoyleBlood`, `Wave` |
-| Gargoyle Bestial | Standard | 125 | 75 | 0.85 | 0.8 | — | Avalon | `Standard`, `GargoyleBestial`, `Wave` |
-| Gargoyle Fire | Standard | 125 | 75 | 0.8 | 0.75 | — | Avalon | `Standard`, `GargoyleFire`, `Wave` |
-
-Health inherited from `Gargoyles_Model`.
-
-### Gnolls
-
-*Biome: Storm Island*
-
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
-|---|---|---|---|---|---|---|---|---|
-| Gnoll Chieftain | Elite | 125 | — | 1.3 | 1 | 0 | Storm Island | `Elite`, `ChieftainGnoll`, `Wave` |
-| Gnoll Hunter | Standard | 125 | — | 0.9 | 1 | — | Storm Island | `Standard`, `HunterGnoll`, `Wave` |
-| Gnoll Shielded | Standard | 125 | 50 | 1 | 1 | — | Storm Island | `Standard`, `ShieldedGnoll`, `Wave` |
-
-Health inherited from `Gnoll_Model`.
-
-### Hands Nightmares
-
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
-|---|---|---|---|---|---|---|---|---|
-| Hand Nightmare | Boss | 300 | 200 | 2.15 | 1.8 | 0 | — | `ChapterBoss`, `HandNightmare` |
-
-### Jinns
-
-*Biome: Storm Island*
-
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
-|---|---|---|---|---|---|---|---|---|
-| Jinn | Boss | 200 | 200 | 1.25 | 1.3 | 0 | — | `Boss`, `Boss_Jinn` |
-| Roc Bird | Boss | 300 | 300 | 2.75 | 1 | 0 | — | `Boss`, `Boss_Roc` |
-| Evil Jinn | Elite | 120 | — | 1.25 | 1.3 | 0 | — | `Elite`, `EvilJinn`, `Wave` |
-| Ifrit Jinn | Standard | 120 | — | 1 | 1.2 | — | Storm Island | `Standard`, `IfritJinn`, `Wave` |
-| Storm Jinn | Standard | 120 | — | 1 | 1.15 | — | Storm Island | `Standard`, `StormJinn`, `Wave` |
-
-### Knights
-
-*Biome: Avalon*
-
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
-|---|---|---|---|---|---|---|---|---|
-| Knight Mage | Elite | 125 | 125 | 1.3 | 0.85 | 0 | Avalon | `Elite`, `KnightMage`, `Wave` |
-| Knight Spear | Elite | 125 | 125 | 1.3 | 0.8 | 0 | Avalon | `Elite`, `KnightSpear`, `Wave` |
-| Knight Sword | Elite | 125 | 125 | 1.5 | 0.85 | 0 | Avalon | `Elite`, `KnightSword`, `Wave` |
-| Knight Skeleton | Minion | — | — | 0.7 | 1 | — | Avalon | `KnightSkeleton` |
-| Mordred | Minion | 300 | 250 | 2 | 1.1 | 0 | — | `Mordred` |
-
-Health inherited from `Knights_Model`.
-
-### Marsh Ghouls
-
-*Biome: Dark Hills*
-
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
-|---|---|---|---|---|---|---|---|---|
-| Marsh Ghoul | Boss | 200 | 200 | 1.4 | 2.5 | 0 | — | `Boss_Marsh_Ghoul`, `Boss` |
-| Festering Ghoul | Elite | 100 | — | 1 | 1.8 | 0 | Dark Hills | `Melee`, `Elite`, `FesteringGhoul`, `Wave` |
-| Devouring Ghoul | Standard | 60 | — | 0.8 | 1.3 | — | Dark Hills | `DarkHills`, `Melee`, `Standard`, `DevouringGhoul`, `Wave` |
-| Sling Ghoul | Standard | — | — | 0.8 | — | — | Dark Hills | `Range`, `Standard`, `SlingGhoul`, `Wave` |
-
-### Nightmare Cultists
-
-*Biome: Common*
-
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
-|---|---|---|---|---|---|---|---|---|
-| Cultist Summoner | Elite | 125 | — | 1 | 1.15 | 0 | Common | `Nightmare`, `Cultist_Summoner`, `KeyKeeper`, `Wave` |
-| Cultist Fanatic | Standard | 125 | — | 0.8 | — | — | Common | `Nightmare`, `Melee`, `Standard`, `CultistFanatic`, `Wave` |
-| Cultist Priest | Standard | 125 | — | 0.8 | — | — | Common | `Nightmare`, `Range`, `Standard`, `CultistPriest`, `Wave` |
-
-Health inherited from `Cultists_Model`.
-
-### Ogres
-
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
-|---|---|---|---|---|---|---|---|---|
-| Ogre Cyclop | Minion | 300 | 300 | 2 | 1 | 0 | — | `Cyclop` |
-| Ogre Wood | Minion | 250 | 250 | 2 | 1 | 0 | — | `Ogre` |
-
-### Roc Birds
-
-*Biome: Storm Island*
-
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
-|---|---|---|---|---|---|---|---|---|
-| Phoenix Roc | Elite | — | — | 1.5 | 1.3 | 0 | Storm Island | `PhoenixRoc`, `Elite`, `Wave` |
-| Roc Egg | Standard | 100 | — | 1 | — | — | Storm Island | `RocEgg`, `Standard` |
-| Rocling | Standard | — | — | — | — | — | Storm Island | `Rocling`, `Standard`, `Wave` |
-| Phoenix Egg | Minion | 100 | — | 1 | — | — | Storm Island | `PhoenixEgg` |
-
-### Scarecrows
-
-*Biome: Dark Hills*
-
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
-|---|---|---|---|---|---|---|---|---|
-| Enchanted Scarecrow | Elite | — | — | 1 | 1.3 | — | Dark Hills | `EnchantedScarecrow`, `Elite` |
-| Day Scarecrow | Standard | — | — | 1 | — | — | Dark Hills | `DayScarecrow`, `Standard` |
-| Night Scarecrow | Standard | — | — | 1 | — | — | Dark Hills | `NightScarecrow`, `Standard` |
-
-### Snake Nightmares
-
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
-|---|---|---|---|---|---|---|---|---|
-| Snake Nightmare | Elite | 125 | 100 | 1.35 | — | 0 | — | `Nightmare`, `Elite`, `Snake`, `Wave` |
-
-Health inherited from `Snake_Nightmare_Model`.
-
-### Spider Nightmares
-
-*Biome: Common*
-
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
-|---|---|---|---|---|---|---|---|---|
-| Spider Nightmare Elite | Elite | 125 | — | — | — | — | Common | `Nightmare`, `Elite`, `EliteSpider`, `Wave` |
-| Spider Nightmare Biter | Minion | 45 | — | — | 0.6 | — | Common | `Nightmare`, `Melee`, `Spider`, `BiterSpider` |
-| Spider Nightmare Spitter | Minion | 125 | — | — | — | — | Common | `Nightmare`, `Range`, `Spider`, `SpitterSpider` |
-
-Health inherited from `Spider_Nightmare_Model`.
-
-### Stalker Nightmares
-
-*Biome: Baba Yaga Map*
-
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
-|---|---|---|---|---|---|---|---|---|
-| Stalker Nightmare | Elite | 125 | 125 | 1.5 | 1.1 | 0 | Baba Yaga Map | `Stalker`, `Elite`, `Wave` |
-| Nightmare Small Stalker | Standard | — | — | 1.15 | 0.75 | — | Baba Yaga Map | `SmallStalker`, `Standard` |
-
-### Stingy Jack
-
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
-|---|---|---|---|---|---|---|---|---|
-| Stingy Jack | Elite | 275 | 200 | 0.8 | 1 | 0 | — | `StingyJack`, `Elite` |
-
-### Tentacle Nightmares
-
-*Biome: Baba Yaga Map, Common*
-
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
-|---|---|---|---|---|---|---|---|---|
-| Tentacle Master | Boss | 250 | 200 | 3 | 1.3 | 0 | — | `ChapterBoss`, `TentacleMaster` |
-| Tentacle Nightmare | Elite | 125 | 125 | 2 | 0.7 | 0 | Common | `Nightmare`, `Melee`, `Elite`, `Tentacle`, `Wave`, `Poulpe` |
-| Tentacle Summon | Elite | 150 | 75 | 1 | 1 | — | — | `Nightmare`, `Melee`, `Elite`, `Tentacle` |
-| Baba Yaga Tentacle Summon | Minion | 100 | 75 | 1 | 1 | 0 | Baba Yaga Map | `Nightmare`, `Melee`, `Tentacle` |
-| Cultist Summoner Summoned Tentacle | Minion | 80 | 75 | 1 | 0.8 | 0 | — | `Nightmare`, `Tentacle` |
-
-Health inherited from `Tentacle_Nightmares_Model`.
-
-### Thieves
-
-*Biome: Common*
-
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
-|---|---|---|---|---|---|---|---|---|
-| Thief Assassin | Elite | 125 | — | 1 | 1.1 | 0 | Common | `Elite`, `ThiefAssassin`, `Melee`, `Wave` |
-| Thief Brigand | Standard | 125 | — | 0.8 | 1.15 | — | Common | `Standard`, `ThiefBrigand`, `Melee`, `Wave` |
-| Thief Marksman | Standard | 125 | — | 0.8 | 1 | — | Common | `Standard`, `ThiefMarksman`, `Range`, `Wave` |
-
-Health inherited from `Thieves_Model`.
-
-### Treants
-
-*Biome: Dark Hills*
-
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
-|---|---|---|---|---|---|---|---|---|
-| Lumbering Treant | Elite | — | 125 | 1.8 | 1.7 | 0 | Dark Hills | `Melee`, `Elite`, `LumberingTreant`, `Wave` |
-| Clawed Treant | Standard | — | — | 1 | — | — | Dark Hills | `Melee`, `Standard`, `ClawedTreant`, `Wave` |
-| Root Treant | Standard | — | — | 1 | — | — | Dark Hills | `Range`, `Standard`, `RootTreant`, `Wave` |
-
-### Undead Hogs
-
-*Biome: Dark Hills*
-
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
-|---|---|---|---|---|---|---|---|---|
-| Undead Hog Captain | Elite | 150 | 100 | 1.3 | 1 | 0 | Dark Hills | `DarkHills`, `Melee`, `Elite`, `HogCaptain`, `Wave` |
-| Undead Hog Fisherman | Standard | 150 | 50 | 1 | — | — | Dark Hills | `Melee`, `Standard`, `HogFisherman`, `Wave` |
-| Undead Hog Reaper | Standard | 150 | 50 | — | — | — | Dark Hills | `Melee`, `Standard`, `HogReaper`, `Wave` |
+| Undead Hog Captain | Elite | Undead Hogs | 150 | 100 | 1.3 | 1 | 0 | `DarkHills`, `Melee`, `Wave` |
+| Undead Hog Fisherman | Standard | Undead Hogs | 150 | 50 | 1 | — | — | `Melee`, `Wave` |
+| Undead Hog Reaper | Standard | Undead Hogs | 150 | 50 | — | — | — | `Melee`, `Wave` |
+| Festering Ghoul | Elite | Marsh Ghouls | 100 | — | 1 | 1.8 | 0 | `Melee`, `Wave` |
+| Devouring Ghoul | Standard | Marsh Ghouls | 60 | — | 0.8 | 1.3 | — | `DarkHills`, `Melee`, `Wave` |
+| Enchanted Scarecrow | Elite | Scarecrows | — | — | 1 | 1.3 | — | — |
+| Lumbering Treant | Elite | Treants | — | 125 | 1.8 | 1.7 | 0 | `Melee`, `Wave` |
+| White Lady Masked | Elite | White Ladies | — | — | 1 | 1.3 | 0 | `Melee`, `Wave` |
+| Clawed Treant | Standard | Treants | — | — | 1 | — | — | `Melee`, `Wave` |
+| Day Scarecrow | Standard | Scarecrows | — | — | 1 | — | — | — |
+| Night Scarecrow | Standard | Scarecrows | — | — | 1 | — | — | — |
+| Root Treant | Standard | Treants | — | — | 1 | — | — | `Range`, `Wave` |
+| Sling Ghoul | Standard | Marsh Ghouls | — | — | 0.8 | — | — | `Range`, `Wave` |
+| White Lady Lantern | Standard | White Ladies | — | — | 0.8 | 1.05 | — | `Range`, `Wave` |
+| White Lady Screaming | Standard | White Ladies | — | — | 0.8 | — | — | `Melee`, `Wave` |
 
 Health inherited from `Undead_Hogs_Model`.
 
-### White Ladies
+### Storm Island
 
-*Biome: Dark Hills*
+12 enemies.
 
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
+| Enemy | Rank | Tribe | HP | Stagger | Radius | Scale | Resist | Tags |
 |---|---|---|---|---|---|---|---|---|
-| White Lady | Boss | 200 | 200 | 1.2 | 1.6 | 0 | — | `Boss_White_Lady`, `Boss` |
-| White Lady Masked | Elite | — | — | 1 | 1.3 | 0 | Dark Hills | `Melee`, `Elite`, `WhiteLadyMasked`, `Wave` |
-| White Lady Lantern | Standard | — | — | 0.8 | 1.05 | — | Dark Hills | `Range`, `Standard`, `WhiteLadyLantern`, `Wave` |
-| White Lady Screaming | Standard | — | — | 0.8 | — | — | Dark Hills | `Melee`, `Standard`, `WhiteLadyScreaming`, `Wave` |
+| Gnoll Chieftain | Elite | Gnolls | 125 | — | 1.3 | 1 | 0 | `Wave` |
+| Gnoll Hunter | Standard | Gnolls | 125 | — | 0.9 | 1 | — | `Wave` |
+| Gnoll Shielded | Standard | Gnolls | 125 | 50 | 1 | 1 | — | `Wave` |
+| Ifrit Jinn | Standard | Jinns | 120 | — | 1 | 1.2 | — | `Wave` |
+| Storm Jinn | Standard | Jinns | 120 | — | 1 | 1.15 | — | `Wave` |
+| Roc Egg | Standard | Roc Birds | 100 | — | 1 | — | — | — |
+| Phoenix Egg | Minion | Roc Birds | 100 | — | 1 | — | — | — |
+| Coral Crab | Elite | Crabs | 70 | — | — | — | 1 | `Wave` |
+| Mud Crab | Standard | Crabs | 70 | 75 | 1.3 | 0.85 | 1 | `Range`, `Wave` |
+| Reef Crab | Standard | Crabs | 70 | 75 | 1.4 | 0.9 | 1 | `Melee`, `Wave` |
+| Phoenix Roc | Elite | Roc Birds | — | — | 1.5 | 1.3 | 0 | `Wave` |
+| Rocling | Standard | Roc Birds | — | — | — | — | — | `Wave` |
 
-### Witches
+Health inherited from `Crabs_Model`, `Gnoll_Model`.
 
-*Biome: Avalon*
+### Avalon
 
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
+13 enemies.
+
+| Enemy | Rank | Tribe | HP | Stagger | Radius | Scale | Resist | Tags |
 |---|---|---|---|---|---|---|---|---|
-| Witch Crone | Boss | 150 | 150 | 1 | 1.25 | 0 | — | `Boss`, `Boss_Witch_Crone` |
-| Witch Stake | Boss | 150 | 150 | 1.1 | 1.45 | 0 | — | `Boss`, `Boss_Witch_Stake` |
-| Witch Young | Boss | 150 | 150 | 0.9 | 1.25 | 0 | — | `Boss`, `Boss_Witch_Young` |
-| Witch Stake | Elite | — | — | 1 | 1.1 | 0 | Avalon | `Standard`, `WitchStake`, `Wave` |
-| Witch Crone | Standard | — | — | 0.75 | 1.05 | — | Avalon | `Standard`, `WitchCrone`, `Wave` |
-| Witch Young | Standard | — | — | 0.8 | 1 | — | Avalon | `Standard`, `WitchYoung`, `Wave` |
+| Gargoyle Blood | Elite | Gargoyles | 125 | 100 | 1.2 | 1.1 | 0 | `Wave` |
+| Knight Mage | Elite | Knights | 125 | 125 | 1.3 | 0.85 | 0 | `Wave` |
+| Knight Spear | Elite | Knights | 125 | 125 | 1.3 | 0.8 | 0 | `Wave` |
+| Knight Sword | Elite | Knights | 125 | 125 | 1.5 | 0.85 | 0 | `Wave` |
+| Gargoyle Bestial | Standard | Gargoyles | 125 | 75 | 0.85 | 0.8 | — | `Wave` |
+| Gargoyle Fire | Standard | Gargoyles | 125 | 75 | 0.8 | 0.75 | — | `Wave` |
+| Wolf Alpha | Elite | Wolves | 100 | — | 1.9 | 1.5 | 0 | `Wave` |
+| Wolf Dire | Standard | Wolves | 100 | — | 1.45 | 1.1 | — | `Wave` |
+| Wolf Timber | Standard | Wolves | 100 | — | 1.3 | 1 | — | `Wave` |
+| Witch Stake (Elite) | Elite | Witches | — | — | 1 | 1.1 | 0 | `Wave` |
+| Witch Crone (Standard) | Standard | Witches | — | — | 0.75 | 1.05 | — | `Wave` |
+| Witch Young (Standard) | Standard | Witches | — | — | 0.8 | 1 | — | `Wave` |
+| Knight Skeleton | Minion | Knights | — | — | 0.7 | 1 | — | — |
 
-### Wolves
+Health inherited from `Gargoyles_Model`, `Knights_Model`, `Wolves_Model`.
 
-*Biome: Avalon*
+### Baba Yaga's realm
 
-| Enemy | Rank | HP | Stagger | Radius | Scale | Resist | Biome | Tags |
+6 enemies.
+
+| Enemy | Rank | Tribe | HP | Stagger | Radius | Scale | Resist | Tags |
 |---|---|---|---|---|---|---|---|---|
-| Wolf | Boss | 200 | 200 | 2.5 | 2.2 | 0 | — | `Boss`, `BossWolf` |
-| Wolf Alpha | Elite | 100 | — | 1.9 | 1.5 | 0 | Avalon | `Elite`, `WolvesAlpha`, `Wave` |
-| Wolf Dire | Standard | 100 | — | 1.45 | 1.1 | — | Avalon | `Standard`, `WolfDire`, `Wave` |
-| Wolf Timber | Standard | 100 | — | 1.3 | 1 | — | Avalon | `Standard`, `WolfTimber`, `Wave` |
+| Baba Yaga Skull Fire | Minion | Baba Yaga | 150 | — | 1 | 1.2 | — | `Baba_Yaga_Skull` |
+| Stalker Nightmare | Elite | Stalker Nightmares | 125 | 125 | 1.5 | 1.1 | 0 | `Wave` |
+| Baba Yaga Skull Dark | Minion | Baba Yaga | 125 | — | 0.7 | 0.85 | — | `Baba_Yaga_Skull` |
+| Baba Yaga Skull Poison | Minion | Baba Yaga | 125 | — | 0.8 | 0.95 | — | `Baba_Yaga_Skull` |
+| Baba Yaga Tentacle Summon | Minion | Tentacle Nightmares | 100 | 75 | 1 | 1 | 0 | `Nightmare`, `Melee`, `Tentacle` |
+| Nightmare Small Stalker | Standard | Stalker Nightmares | — | — | 1.15 | 0.75 | — | — |
 
-Health inherited from `Wolves_Model`.
+Health inherited from `Baba_Yaga_Skull_Model`.
+
+### Any biome
+
+10 enemies.
+
+| Enemy | Rank | Tribe | HP | Stagger | Radius | Scale | Resist | Tags |
+|---|---|---|---|---|---|---|---|---|
+| Cultist Summoner | Elite | Nightmare Cultists | 125 | — | 1 | 1.15 | 0 | `Nightmare`, `Wave` |
+| Spider Nightmare Elite | Elite | Spider Nightmares | 125 | — | — | — | — | `Nightmare`, `Wave` |
+| Tentacle Nightmare | Elite | Tentacle Nightmares | 125 | 125 | 2 | 0.7 | 0 | `Nightmare`, `Melee`, `Tentacle`, `Wave` |
+| Thief Assassin | Elite | Thieves | 125 | — | 1 | 1.1 | 0 | `Melee`, `Wave` |
+| Cultist Fanatic | Standard | Nightmare Cultists | 125 | — | 0.8 | — | — | `Nightmare`, `Melee`, `Wave` |
+| Cultist Priest | Standard | Nightmare Cultists | 125 | — | 0.8 | — | — | `Nightmare`, `Range`, `Wave` |
+| Thief Brigand | Standard | Thieves | 125 | — | 0.8 | 1.15 | — | `Melee`, `Wave` |
+| Thief Marksman | Standard | Thieves | 125 | — | 0.8 | 1 | — | `Range`, `Wave` |
+| Spider Nightmare Spitter | Minion | Spider Nightmares | 125 | — | — | — | — | `Nightmare`, `Range`, `Spider` |
+| Spider Nightmare Biter | Minion | Spider Nightmares | 45 | — | — | 0.6 | — | `Nightmare`, `Melee`, `Spider` |
+
+Health inherited from `Cultists_Model`, `Spider_Nightmare_Model`, `Tentacle_Nightmares_Model`, `Thieves_Model`.
+
+### Summoned and unpooled
+
+Not in any biome pool: adds that something else spawns, plus named enemies
+placed by a specific encounter rather than by the camp generator.
+
+| Enemy | Rank | Tribe | HP | Stagger | Radius | Scale | Resist | Tags |
+|---|---|---|---|---|---|---|---|---|
+| Mordred | Minion | Knights | 300 | 250 | 2 | 1.1 | 0 | — |
+| Ogre Cyclop | Minion | Ogres | 300 | 300 | 2 | 1 | 0 | — |
+| Stingy Jack | Elite | Stingy Jack | 275 | 200 | 0.8 | 1 | 0 | — |
+| Ogre Wood | Minion | Ogres | 250 | 250 | 2 | 1 | 0 | — |
+| Tentacle Summon | Elite | Tentacle Nightmares | 150 | 75 | 1 | 1 | — | `Nightmare`, `Melee`, `Tentacle` |
+| Snake Nightmare | Elite | Snake Nightmares | 125 | 100 | 1.35 | — | 0 | `Nightmare`, `Wave` |
+| Evil Jinn | Elite | Jinns | 120 | — | 1.25 | 1.3 | 0 | `Wave` |
+| Cultist Summoner Summoned Eye | Minion | Faceless Nightmares | 100 | — | 0.5 | 1 | — | `Nightmare` |
+| Faceless Eye | Minion | Faceless Nightmares | 100 | — | 0.5 | 1 | — | — |
+| Cultist Summoner Summoned Tentacle | Minion | Tentacle Nightmares | 80 | 75 | 1 | 0.8 | 0 | `Nightmare`, `Tentacle` |
+| Baba Yaga House | Minion | — | — | — | — | — | — | — |
+
+Health inherited from `Faceless_Nightmare_Eye`, `Snake_Nightmare_Model`.
+
+## Tribes at a glance
+
+A tribe groups enemies for camp generation, and it is usually also where the
+shared stats live — every gnoll is 125 HP because `Gnoll_Model` says so.
+
+| Tribe | Biome | Members | HP | Health authored by |
+|---|---|---|---|---|
+| (no tribe) | — | 1 | — | *own entity* |
+| Baba Yaga | Baba Yaga Map | 4 | 125–1000 | `Baba_Yaga_Skull_Model` |
+| Crabs | Storm Island | 4 | 70–180 | `Crabs_Model` |
+| Dullahan | — | 1 | 300 | *own entity* |
+| Faceless Nightmares | — | 3 | 100–350 | `Faceless_Nightmare_Eye` |
+| Gargoyles | Avalon | 3 | 125 | `Gargoyles_Model` |
+| Gnolls | Storm Island | 3 | 125 | `Gnoll_Model` |
+| Hands Nightmares | — | 1 | 300 | *own entity* |
+| Jinns | Storm Island | 5 | 120–300 | *own entity* |
+| Knights | Avalon | 5 | 125–300 | `Knights_Model` |
+| Marsh Ghouls | Dark Hills | 4 | 60–200 | *own entity* |
+| Nightmare Cultists | Common | 3 | 125 | `Cultists_Model` |
+| Ogres | — | 2 | 250–300 | *own entity* |
+| Roc Birds | Storm Island | 4 | 100 | *own entity* |
+| Scarecrows | Dark Hills | 3 | — | *own entity* |
+| Snake Nightmares | — | 1 | 125 | `Snake_Nightmare_Model` |
+| Spider Nightmares | Common | 3 | 45–125 | `Spider_Nightmare_Model` |
+| Stalker Nightmares | Baba Yaga Map | 2 | 125 | *own entity* |
+| Stingy Jack | — | 1 | 275 | *own entity* |
+| Tentacle Nightmares | Baba Yaga Map, Common | 5 | 80–250 | `Tentacle_Nightmares_Model` |
+| Thieves | Common | 3 | 125 | `Thieves_Model` |
+| Treants | Dark Hills | 3 | — | *own entity* |
+| Undead Hogs | Dark Hills | 3 | 150 | `Undead_Hogs_Model` |
+| White Ladies | Dark Hills | 4 | 200 | *own entity* |
+| Witches | Avalon | 6 | 150 | *own entity* |
+| Wolves | Avalon | 4 | 100–200 | `Wolves_Model` |
 
 ## Changing these numbers
 
