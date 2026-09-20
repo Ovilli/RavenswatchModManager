@@ -166,3 +166,7 @@ inside signal objects with no fixed plain-float offset. Reaching those is a
 per-signal RE job, not a constant lookup — see
 [Stats & XP](/reverse-engineering/stats/) for the keyed store that covers most of
 them.
+
+## See also
+
+- [Anatomy of an entity](/reverse-engineering/entity-anatomy/) — what an entity is, and the three places a number can live.

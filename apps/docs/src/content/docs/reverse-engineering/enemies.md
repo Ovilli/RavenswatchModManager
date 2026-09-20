@@ -192,3 +192,7 @@ A historical custom enemy that never spawned had two confounds — a rewritten
 - `oCResourcePath` byte layout: find-by-name uses `{char* name, u32 name_hash,
   char* parent_path}`, but the hash algorithm isn't confirmed.
 - Tag string vocabulary — vanilla tag names need a string-pool scan to enumerate.
+
+## See also
+
+- [Anatomy of an entity](/reverse-engineering/entity-anatomy/) — what an entity is, and the three places a number can live.

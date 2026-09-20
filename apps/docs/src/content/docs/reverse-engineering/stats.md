@@ -342,3 +342,7 @@ Read/write primitives: `EntityValueOverride_Alloc`, `EntityValueEntry_Ctor`,
 Durable-modifier path: `EntityValueStore_Recompute`,
 `EntityValueStore_ApplyModifierEvent`, `EntityValueStore_InitBaseValues`,
 `ModifierEvent_Ctor`, `oCGameEventNetworkModifier_vftable`.
+
+## See also
+
+- [Anatomy of an entity](/reverse-engineering/entity-anatomy/) — what an entity is, and the three places a number can live.

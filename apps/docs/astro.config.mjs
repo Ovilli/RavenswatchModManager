@@ -127,6 +127,7 @@ export default defineConfig({
             { label: 'Hookpoints', slug: 'reverse-engineering/hookpoints' },
             { label: 'Mod hooks', slug: 'reverse-engineering/mod-hooks' },
             { label: 'Event systems', slug: 'reverse-engineering/event-systems' },
+            { label: 'Anatomy of an entity', slug: 'reverse-engineering/entity-anatomy' },
             { label: 'Entity values', slug: 'reverse-engineering/entity-values' },
             { label: 'Stats & XP', slug: 'reverse-engineering/stats' },
             { label: 'Combat & damage', slug: 'reverse-engineering/combat-damage' },

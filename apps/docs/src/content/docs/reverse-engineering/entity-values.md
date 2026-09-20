@@ -4,17 +4,21 @@ description: The engine's generic CRC-keyed per-entity value store — where mos
 ---
 
 :::note
-Status: read path fully mapped, 2026-06-14. Addresses verified live against the
-shipped `Ravenswatch.exe` via Ghidra MCP (image base `0x140000000`). No runtime
-code shipped yet.
+Status: read path fully mapped 2026-06-14 and shipping since; the write path was
+mapped later and is **not** what this page originally assumed — see
+[The mod-facing API](#the-mod-facing-api). Addresses verified live against the
+shipped `Ravenswatch.exe` (image base `0x140000000`).
 :::
 
 ## What it is
 
-Beyond the few stats with plain fixed offsets on the hero controller (HP at
-`+0x15c8` — see [Combat & damage](/reverse-engineering/combat-damage/)), most dynamic per-entity
-values — combat modifiers, "dream shards on damage", run meta, scaling
-coefficients — live in a generic **keyed value store**. Each value is addressed
+A few quantities sit at plain fixed offsets: health on the HitPoint component,
+dream shards at `heroController+0x15c8`. See
+[Anatomy of an entity](/reverse-engineering/entity-anatomy/) for which is which.
+
+Everything else dynamic and per-entity — combat modifiers, "dream shards on
+damage", run meta, scaling coefficients — lives in a generic **keyed value
+store**, and there are hundreds of them. Each value is addressed
 by a 32-bit key (same id space as gameplay-bus event ids). This is the engine's
 `oCEntityValue` system, and it is the read surface a mod uses to inspect any
 named value.
@@ -27,8 +31,8 @@ store    = *(valueCtx + 0x4c8)      # the value map (0 => no values)
 EntityValue_Lookup(store, &out, crcKey)   # out is a ~0x20-byte union
 ```
 
-`EntityValue_Get` (`FUN_1403c71e0`) wraps the `+0x4c8` deref;
-`EntityValue_Lookup` (`FUN_1407481d0`) is the core lookup:
+`EntityValue_Get` (`FUN_1403c7fa0`) wraps the `+0x4c8` deref;
+`EntityValue_Lookup` (`FUN_140749260`) is the core lookup:
 
 1. Linear scan of an **override array** — `store+0xc0`, count at `store+0xc8`,
    0x38-byte entries, key = int at `entry+0x0`. Holds runtime-modified values.
@@ -78,15 +82,25 @@ For contrast, the engine's string→id hash *does* exist and **is** plain CRC32 
 `0x04C11DB7`. But that scheme is for **named events / interned name ids**, not
 these value keys.
 
-## Toward a mod-facing API
+## The mod-facing API
 
-`R.entity.value(name)` (read-only) is buildable: resolve `EntityValue_Lookup` by
-pattern (already symbols), take a **numeric** key, allocate a zeroed ~0x20-byte
-scratch for `out`, call the lookup, read per the union layout, then destruct via
-`FUN_14082ca50`. All reads are safe; the only sharp edge is the `out` buffer +
-destruct. A **write** path goes through the override array and is a separate,
-riskier item — not yet mapped.
+Both halves ship now. `R.entity.value(name)` and `R.stat.get` take the read path
+above: resolve `EntityValue_Lookup` by pattern, take a **numeric** key, allocate
+a zeroed ~0x20-byte scratch for `out`, call the lookup, read per the union
+layout, then destruct.
+
+The **write** path turned out not to be the override array. Poking a value into
+`store+0xc0` works only until the next `EntityValueStore_Recompute`, which
+rebuilds every entry from the definition's base value plus the registered
+modifiers and discards the poke. A durable write therefore has to *be* a
+modifier, and the reliable way to register one is the game's own: `R.stat.modify`
+dispatches an `ADD_MODIFIER` named event on the hero's bus, which applies once,
+refreshes the display cache and survives a chapter change. See
+[Stats & XP](/reverse-engineering/stats/#making-a-write-durable) for the routes and
+their trade-offs, and for the mined catalog of 221 keys.
 
 ## See also
 
-- [Combat & damage](/reverse-engineering/combat-damage/) — `Hero_ModifyDreamShards` reads this store; the plain-offset HP mirror vs signal stats.
+- [Anatomy of an entity](/reverse-engineering/entity-anatomy/) — how this store relates to components and plain fields.
+- [Stats & XP](/reverse-engineering/stats/) — the key catalog and the write routes.
+- [Combat & damage](/reverse-engineering/combat-damage/) — `Hero_ModifyDreamShards` reads this store.

@@ -4,9 +4,10 @@ description: The hit pipeline — why healing the hero is easy, damaging an enem
 ---
 
 :::note
-Status: RE complete, 2026-06-14. Addresses verified live against the shipped
-`Ravenswatch.exe` via Ghidra MCP (image base `0x140000000`). No runtime code
-shipped — this documents the recipe so a future implementation is grounded.
+Status: RE complete, 2026-06-14, with the hit-data layout corrected 2026-08-15.
+Addresses verified live against the shipped `Ravenswatch.exe` (image base
+`0x140000000`). The **read** half ships as `R.damage`; the write half (scaling
+or redirecting a hit) is documented here but deliberately not implemented.
 :::
 
 ## TL;DR
@@ -101,6 +102,7 @@ per-player damage attribution needs none of the fabrication above. See
 
 ## See also
 
+- [Anatomy of an entity](/reverse-engineering/entity-anatomy/) — what an entity is, and the three places a number can live.
 - [Entity values](/reverse-engineering/entity-values/) — where combat modifiers live.
 - [Event systems](/reverse-engineering/event-systems/) — `NETWORK_DAMAGE` payload decode.
 - [Multiplayer](/reverse-engineering/multiplayer/) — why the net-id matters.
