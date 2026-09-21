@@ -5,19 +5,17 @@ the engine encodes the logical (decoded) path through a per-character
 substitution before opening the file. tools/find_iyg.py reverse-engineered
 the *decoding* tables — this module exposes both directions.
 
-Note: the LOWER and UPPER tables are NOT bijective. Two encoded letters
-can decode to the same decoded letter (e.g. encoded 'e' and 'k' both
-decode to lowercase 'v'). When that happens we pick the encoded letter
-that appears in observed game paths most often — which is the inverse
-that the game's encoder actually emits. The mapping below was derived by
-encoding known plaintext paths and confirming against UsedRscList.ot.
+Each case is a bijection on the 26 letters, so the encode tables are the
+plain inverse of the decode tables and no context rule is needed. Digits,
+`_`, `.`, `~` and `\\` pass through unchanged; `!` is the on-disk
+substitute for `\\` in collapsed names (see below).
 """
 
 from __future__ import annotations
 
 # Forward (encoded -> decoded), from tools/find_iyg.py.
 LOWER_DECODE = {
-    'a': 'b', 'b': 'c', 'c': 'j', 'd': 'i', 'e': 'v', 'f': 'q', 'g': 'a',
+    'a': 'b', 'b': 'c', 'c': 'j', 'd': 'i', 'e': 'z', 'f': 'q', 'g': 'a',
     'h': 'f', 'i': 't', 'j': 'p', 'k': 'v', 'l': 'l', 'm': 'k', 'n': 'h',
     'o': 'w', 'p': 'x', 'q': 'e', 'r': 'o', 's': 'y', 't': 'd', 'u': 'r',
     'v': 's', 'w': 'u', 'x': 'm', 'y': 'g', 'z': 'n',
@@ -26,31 +24,16 @@ UPPER_DECODE = {
     'A': 'H', 'B': 'B', 'C': 'Y', 'D': 'V', 'E': 'J', 'F': 'S', 'G': 'L',
     'H': 'M', 'I': 'K', 'J': 'U', 'K': 'G', 'L': 'R', 'M': 'E', 'N': 'D',
     'O': 'O', 'P': 'Q', 'Q': 'T', 'R': 'W', 'S': 'C', 'T': 'P', 'U': 'N',
-    'V': 'F', 'W': 'A', 'X': 'I', 'Y': 'Y', 'Z': 'I',
+    'V': 'F', 'W': 'A', 'X': 'I', 'Y': 'Z', 'Z': 'X',
 }
 SYMBOL_DECODE = {'!': '\\'}
 
-# Inverse (decoded -> encoded). Four decoded characters are ambiguous —
-# the engine emits one of two encoded letters depending on context. The
-# split was measured across all 43k pairs in asset_map.json:
-#   decoded 'v' -> 'k' (98.6%) or 'e' (1.4%, scattered)  -> pick 'k'
-#   decoded 'I' -> 'X' (57%)  or 'Z' (43%, the 'FI' digraph) -> see encode()
-#   decoded 'Y' -> 'C' (84%)  or 'Y' (16%, unresolvable)  -> pick 'C'
-#   decoded '\' -> '\' or '!' (directory-collapse; handled by the caller)
-# Tables below carry the most-common inverse; encode() adds the one
-# context rule that is clean enough to be worth it ('FI'->'VZ').
-LOWER_ENCODE = {
-    'b': 'a', 'c': 'b', 'j': 'c', 'i': 'd', 'v': 'k', 'q': 'f', 'a': 'g',
-    'f': 'h', 't': 'i', 'p': 'j', 'k': 'm', 'l': 'l', 'h': 'n', 'w': 'o',
-    'x': 'p', 'e': 'q', 'o': 'r', 'y': 's', 'd': 't', 'r': 'u', 's': 'v',
-    'u': 'w', 'm': 'x', 'g': 'y', 'n': 'z',
-}
-UPPER_ENCODE = {
-    'H': 'A', 'B': 'B', 'Y': 'C', 'V': 'D', 'J': 'E', 'S': 'F', 'L': 'G',
-    'M': 'H', 'K': 'I', 'U': 'J', 'G': 'K', 'R': 'L', 'E': 'M', 'D': 'N',
-    'O': 'O', 'Q': 'P', 'T': 'Q', 'W': 'R', 'C': 'S', 'P': 'T', 'N': 'U',
-    'F': 'V', 'A': 'W', 'I': 'X',
-}
+assert len(set(LOWER_DECODE.values())) == 26, "LOWER_DECODE is not a bijection"
+assert len(set(UPPER_DECODE.values())) == 26, "UPPER_DECODE is not a bijection"
+
+# Inverse (decoded -> encoded).
+LOWER_ENCODE = {v: k for k, v in LOWER_DECODE.items()}
+UPPER_ENCODE = {v: k for k, v in UPPER_DECODE.items()}
 # Note: `!` in encoded names is the on-disk substitute for `\` when a
 # path is collapsed past directory-depth-2 into a single filename
 # (see asset_map.json — third+ level directories become "X!Y" inside the
@@ -76,13 +59,8 @@ def decode(s: str) -> str:
 
 def encode(s: str) -> str:
     out = []
-    for i, c in enumerate(s):
-        if c == 'I':
-            # decoded 'I' is the one ambiguous letter with a clean context
-            # rule: the engine emits 'Z' in the 'FI' digraph and 'X'
-            # everywhere else (99.8% of all 'I' occurrences in asset_map).
-            out.append('Z' if i and s[i - 1] == 'F' else 'X')
-        elif c.isupper() and c in UPPER_ENCODE:
+    for c in s:
+        if c.isupper() and c in UPPER_ENCODE:
             out.append(UPPER_ENCODE[c])
         elif c.islower() and c in LOWER_ENCODE:
             out.append(LOWER_ENCODE[c])
@@ -99,10 +77,11 @@ def _selftest() -> None:
         ("Social", "Frbdgl"),
         ("Book_Social_Tab_Mesh_Controller.entity.ot.EntitySettingsResource.gen",
          "Brrm_Frbdgl_Qga_Hqvn_Srziurllqu.qzidis.ri.MzidisFqiidzyvLqvrwubq.yqz"),
-        # decoded 'v' -> 'k' (was wrongly 'e'); real pair from asset_map.
         ("Map_Avalon_Common~GAM.xls", "Hgj_Wkglrz_Srxxrz~KWH.plv"),
-        # 'FI' digraph -> 'VZ' (decoded 'I' after 'F' encodes to 'Z').
-        ("FI", "VZ"),
+        # The three letters that used to decode wrong: e->z, Y->Z, Z->X.
+        ("Blizzard", "Bldeegut"),
+        ("Zone", "Yrzq"),
+        ("FX", "VZ"),
     ]
     for dec, enc in cases:
         assert encode(dec) == enc, f"encode({dec!r}) -> {encode(dec)!r}, expected {enc!r}"
