@@ -24,6 +24,10 @@
      "value": 1.3,
      "from": "Baba_Yaga_Boss"
     }
+   },
+   "boss_arena": {
+    "biome": "Baba_Yaga_Map",
+    "arena": "Baba_Yaga_House_Graphic_Model"
    }
   },
   {
@@ -33,7 +37,8 @@
    "biome": null,
    "spawn_weight": 0.10000000149011612,
    "flags": [],
-   "stats": {}
+   "stats": {},
+   "boss_arena": null
   },
   {
    "id": "Baba_Yaga_Skull_Dark",
@@ -57,7 +62,8 @@
      "value": 125.0,
      "from": "Baba_Yaga_Skull_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Baba_Yaga_Skull_Fire",
@@ -81,7 +87,8 @@
      "value": 1.2,
      "from": "Baba_Yaga_Skull_Fire"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Baba_Yaga_Skull_Poison",
@@ -105,7 +112,8 @@
      "value": 125.0,
      "from": "Baba_Yaga_Skull_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Baba_Yaga_Tentacle_Summon",
@@ -139,7 +147,8 @@
      "value": 1.0,
      "from": "Summon_Tentacle"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Boss_Crab",
@@ -172,6 +181,10 @@
      "value": 1.0,
      "from": "Crabs_Model"
     }
+   },
+   "boss_arena": {
+    "biome": "Storm_Island",
+    "arena": "Underground_Crab_Mini_Boss_Den"
    }
   },
   {
@@ -201,7 +214,8 @@
      "value": 1.8,
      "from": "Dullahan_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Boss_Faceless_Nightmare",
@@ -230,7 +244,8 @@
      "value": 1.0,
      "from": "Boss_Faceless_Nightmare"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Boss_Hand_Nightmare",
@@ -263,7 +278,8 @@
      "value": 0.0,
      "from": "Hands_Nightmares_Hand_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Boss_Jinn",
@@ -296,6 +312,10 @@
      "value": 1.3,
      "from": "Elite_Evil_Jinn"
     }
+   },
+   "boss_arena": {
+    "biome": "Storm_Island",
+    "arena": "Boss_Shrine_Jinn"
    }
   },
   {
@@ -329,6 +349,10 @@
      "value": 0.0,
      "from": "Boss_Marsh_Ghoul"
     }
+   },
+   "boss_arena": {
+    "biome": "Dark_Hills",
+    "arena": "Ghoul_Underground_Boss_Den"
    }
   },
   {
@@ -362,6 +386,10 @@
      "value": 0.0,
      "from": "Boss_Roc_Bird"
     }
+   },
+   "boss_arena": {
+    "biome": "Storm_Island",
+    "arena": "Roc_Quest_NPC_Sinbad_Model"
    }
   },
   {
@@ -395,7 +423,8 @@
      "value": 0.0,
      "from": "Boss_Tentacle_Master_Nightmare"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Boss_White_Lady",
@@ -428,6 +457,10 @@
      "value": 0.0,
      "from": "Boss_White_Lady"
     }
+   },
+   "boss_arena": {
+    "biome": "Dark_Hills",
+    "arena": "Boss_Shrine_White_Lady"
    }
   },
   {
@@ -461,6 +494,10 @@
      "value": 0.0,
      "from": "Boss_Witch_Crone"
     }
+   },
+   "boss_arena": {
+    "biome": "Avalon",
+    "arena": "Boss_Shrine_Witch"
    }
   },
   {
@@ -494,6 +531,10 @@
      "value": 0.0,
      "from": "Boss_Witch_Stake"
     }
+   },
+   "boss_arena": {
+    "biome": "Avalon",
+    "arena": "Boss_Shrine_Witch"
    }
   },
   {
@@ -527,6 +568,10 @@
      "value": 0.0,
      "from": "Boss_Witch_Young"
     }
+   },
+   "boss_arena": {
+    "biome": "Avalon",
+    "arena": "Boss_Shrine_Witch"
    }
   },
   {
@@ -560,6 +605,10 @@
      "value": 0.0,
      "from": "Boss_Wolf"
     }
+   },
+   "boss_arena": {
+    "biome": "Avalon",
+    "arena": "Underground_Wolf_Boss_Den"
    }
   },
   {
@@ -585,7 +634,8 @@
      "value": 1.0,
      "from": "Faceless_Nightmare_Eye"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Cultist_Summoner_Summoned_Tentacle",
@@ -618,7 +668,8 @@
      "value": 1.0,
      "from": "Summon_Tentacle"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Day_Scarecrow",
@@ -635,7 +686,8 @@
      "value": 1.0,
      "from": "Scarecrows_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Devouring_Ghoul",
@@ -663,7 +715,8 @@
      "value": 0.8,
      "from": "Marsh_Ghouls_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Elite_Coral_Crab",
@@ -685,7 +738,8 @@
      "value": 1.0,
      "from": "Crabs_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Elite_Cultist_Summoner",
@@ -716,7 +770,8 @@
      "value": 125.0,
      "from": "Cultists_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Elite_Enchanted_Scarecrow",
@@ -737,7 +792,8 @@
      "value": 1.0,
      "from": "Scarecrows_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Elite_Evil_Jinn",
@@ -767,7 +823,8 @@
      "value": 0.0,
      "from": "Elite_Evil_Jinn"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Elite_Gargoyle_Blood",
@@ -801,7 +858,8 @@
      "value": 125.0,
      "from": "Gargoyles_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Elite_Knight_Mage",
@@ -835,7 +893,8 @@
      "value": 0.0,
      "from": "Knights_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Elite_Knight_Spear",
@@ -869,7 +928,8 @@
      "value": 0.0,
      "from": "Knights_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Elite_Knight_Sword",
@@ -903,7 +963,8 @@
      "value": 0.0,
      "from": "Knights_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Elite_Lumbering_Treant",
@@ -934,7 +995,8 @@
      "value": 0.0,
      "from": "Elite_Lumbering_Treant"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Elite_Phoenix_Roc",
@@ -960,7 +1022,8 @@
      "value": 0.0,
      "from": "Elite_Phoenix_Roc"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Elite_Snake_Nightmare",
@@ -991,7 +1054,8 @@
      "value": 125.0,
      "from": "Snake_Nightmare_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Elite_Stalker_Nightmare",
@@ -1025,7 +1089,8 @@
      "value": 0.0,
      "from": "Elite_Nightmare_Stalker"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Elite_Tentacle_Nightmare",
@@ -1062,7 +1127,8 @@
      "value": 125.0,
      "from": "Tentacle_Nightmares_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Elite_Tentacle_Summon",
@@ -1093,7 +1159,8 @@
      "value": 1.0,
      "from": "Summon_Tentacle"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Elite_Thief_Assassin",
@@ -1124,7 +1191,8 @@
      "value": 0.0,
      "from": "Elite_Thief_Assassin"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Elite_Undead_Hog_Captain",
@@ -1160,7 +1228,8 @@
      "value": 150.0,
      "from": "Undead_Hogs_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Elite_White_Lady_Masked",
@@ -1187,7 +1256,8 @@
      "value": 0.0,
      "from": "Elite_White_Lady_Masked"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Elite_Witch_Stake",
@@ -1213,7 +1283,8 @@
      "value": 0.0,
      "from": "Elite_Witch_Stake"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Elite_Wolf_Alpha",
@@ -1243,7 +1314,8 @@
      "value": 100.0,
      "from": "Wolves_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Faceless_Eye",
@@ -1267,7 +1339,8 @@
      "value": 1.0,
      "from": "Faceless_Nightmare_Eye"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Festering_Ghoul",
@@ -1298,7 +1371,8 @@
      "value": 0.0,
      "from": "Festering_Ghoul"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Gnoll_Chieftain",
@@ -1328,7 +1402,8 @@
      "value": 125.0,
      "from": "Gnoll_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Gnoll_Hunter",
@@ -1354,7 +1429,8 @@
      "value": 125.0,
      "from": "Gnoll_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Gnoll_Shielded",
@@ -1384,7 +1460,8 @@
      "value": 125.0,
      "from": "Gnoll_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Knight_Skeleton",
@@ -1404,7 +1481,8 @@
      "value": 1.0,
      "from": "Knight_Skeleton"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Mordred",
@@ -1436,7 +1514,8 @@
      "value": 0.0,
      "from": "Knight_Boss"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Night_Scarecrow",
@@ -1453,7 +1532,8 @@
      "value": 1.0,
      "from": "Scarecrows_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Nightmare_Small_Stalker",
@@ -1474,7 +1554,8 @@
      "value": 0.75,
      "from": "Nightmare_Small_Stalker"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Ogre_Cyclop",
@@ -1506,7 +1587,8 @@
      "value": 0.0,
      "from": "Ogres_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Ogre_Wood",
@@ -1538,7 +1620,8 @@
      "value": 0.0,
      "from": "Ogres_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Phoenix_Egg",
@@ -1558,7 +1641,8 @@
      "value": 1.0,
      "from": "Roc_Egg_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Roc_Egg",
@@ -1579,7 +1663,8 @@
      "value": 1.0,
      "from": "Roc_Egg_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Rocling",
@@ -1592,7 +1677,8 @@
     "Standard",
     "Wave"
    ],
-   "stats": {}
+   "stats": {},
+   "boss_arena": null
   },
   {
    "id": "Sling_Ghoul",
@@ -1611,7 +1697,8 @@
      "value": 0.8,
      "from": "Marsh_Ghouls_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Spider_Nightmare_Biter",
@@ -1634,7 +1721,8 @@
      "value": 0.6,
      "from": "Spider_Nightmare_Biter"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Spider_Nightmare_Elite",
@@ -1653,7 +1741,8 @@
      "value": 125.0,
      "from": "Spider_Nightmare_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Spider_Nightmare_Spitter",
@@ -1672,7 +1761,8 @@
      "value": 125.0,
      "from": "Spider_Nightmare_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Standard_Clawed_Treant",
@@ -1691,7 +1781,8 @@
      "value": 1.0,
      "from": "Treant_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Standard_Cultist_Fanatic",
@@ -1715,7 +1806,8 @@
      "value": 0.8,
      "from": "Cultists_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Standard_Cultist_Priest",
@@ -1739,7 +1831,8 @@
      "value": 0.8,
      "from": "Cultists_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Standard_Gargoyle_Bestial",
@@ -1769,7 +1862,8 @@
      "value": 125.0,
      "from": "Gargoyles_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Standard_Gargoyle_Fire",
@@ -1799,7 +1893,8 @@
      "value": 125.0,
      "from": "Gargoyles_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Standard_Ifrit_Jinn",
@@ -1825,7 +1920,8 @@
      "value": 1.2,
      "from": "Standard_Ifrit_Jinn"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Standard_Mud_Crab",
@@ -1860,7 +1956,8 @@
      "value": 1.0,
      "from": "Crabs_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Standard_Reef_Crab",
@@ -1895,7 +1992,8 @@
      "value": 1.0,
      "from": "Crabs_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Standard_Root_Treant",
@@ -1914,7 +2012,8 @@
      "value": 1.0,
      "from": "Treant_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Standard_Storm_Jinn",
@@ -1940,7 +2039,8 @@
      "value": 1.15,
      "from": "Standard_Storm_Jinn"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Standard_Thief_Brigand",
@@ -1967,7 +2067,8 @@
      "value": 125.0,
      "from": "Thieves_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Standard_Thief_Marksman",
@@ -1994,7 +2095,8 @@
      "value": 125.0,
      "from": "Thieves_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Standard_Undead_Hog_Fisherman",
@@ -2021,7 +2123,8 @@
      "value": 50.0,
      "from": "Undead_Hogs_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Standard_Undead_Hog_Reaper",
@@ -2044,7 +2147,8 @@
      "value": 50.0,
      "from": "Undead_Hogs_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Standard_Witch_Crone",
@@ -2066,7 +2170,8 @@
      "value": 1.05,
      "from": "Standard_Witch_Crone"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Standard_Witch_Young",
@@ -2088,7 +2193,8 @@
      "value": 1.0,
      "from": "Standard_Witch_Young"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Standard_Wolf_Dire",
@@ -2114,7 +2220,8 @@
      "value": 100.0,
      "from": "Wolves_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Standard_Wolf_Timber",
@@ -2140,7 +2247,8 @@
      "value": 100.0,
      "from": "Wolves_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "Stingy_Jack",
@@ -2173,7 +2281,8 @@
      "value": 0.0,
      "from": "Stingy_Jack_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "White_Lady_Lantern",
@@ -2196,7 +2305,8 @@
      "value": 0.8,
      "from": "White_Lady_Model"
     }
-   }
+   },
+   "boss_arena": null
   },
   {
    "id": "White_Lady_Screaming",
@@ -2215,7 +2325,8 @@
      "value": 0.8,
      "from": "White_Lady_Model"
     }
-   }
+   },
+   "boss_arena": null
   }
  ]
 }

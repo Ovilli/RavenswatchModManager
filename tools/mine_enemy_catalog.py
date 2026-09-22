@@ -33,14 +33,23 @@ deciding what to edit.
 WHAT THIS DELIBERATELY DOES NOT CLAIM
 -------------------------------------
 * **Booleans are skipped.** ``Is Stagger Resistant`` and friends are authored
-  the same way but encode under type tag 2, and a sweep of the corpus finds a
-  single decodable instance -- so the reader is not trustworthy and emitting it
-  would be inventing data. Float attributes cross-check cleanly (crabs 70,
-  gnolls 125, ogres 300, Baba Yaga 1000) and are all this emits.
-* **These are BASE values.** The run applies chapter and party-size multipliers
-  on top (``Group_Scaling\\Chapter Max Health Multiplier Selector``), so the
-  number here is not what a level-3 player fights.
-"""
+  the same way but encode under type tag 2. Read as a 4-byte float like the
+  numbers, they give one "decodable" instance — because the value is ONE byte
+  at +16 with the next mark at +17, so a float read swallows the mark. Read as
+  that byte, all 41 overrides decode cleanly (2026-09-22): 39 are 0, and 2 are 1
+  (``Hands_Nightmares_Hand_Model``, ``Boss_Roc_Bird``). Still not emitted: the
+  default lives in ``Character_Common``'s *declaration*, which does not parse
+  as an override, so an explicit 0 cannot be told from "same as the default".
+  Note it does NOT explain the Tentacle Master's stagger (he reads 0) — see
+  ``STAGGER_NOTES``. Float attributes cross-check cleanly (crabs 70, gnolls
+  125, ogres 300, Baba Yaga 1000) and are all this emits.
+* **These are BASE values, and no multiplier is minable.** The only scaling
+  factors in the corpus, ``Chapter_Scaling_Enemies_Max_Health_Factor`` and its
+  damage twin, ship at 1.0; there is no party-size factor; and every ``NGP_*``
+  modifier (incl. the tainted/corruption one and the boss-only Master
+  Nightmares ones) ships at 0.0, set by the run at load time. An earlier version
+  of this docstring cited a ``Chapter Max Health Multiplier Selector`` that
+  appears nowhere in the corpus."""
 
 from __future__ import annotations
 
@@ -87,6 +96,79 @@ MAX_DEPTH = 12
 # So anything that reaches this far authored nothing, and the honest answer is
 # "inherits the default", not a number.
 DEFAULT_BASES = frozenset({"Character_Common", "Local_Hero_Proximity_Tester"})
+
+
+#: Directory names that identify a biome, mapped to the pool key the rest of
+#: the catalog uses. The cooked tree spells Dark Hills both ways depending on
+#: whether it is a level or an entity-settings path, which is why this is a
+#: lookup rather than a `replace("_", "")`.
+_BIOME_DIRS = {
+    "DarkHills": "Dark_Hills",
+    "Dark_Hills": "Dark_Hills",
+    "Storm_Island": "Storm_Island",
+    "Avalon": "Avalon",
+    "Baba_Yaga_Map": "Baba_Yaga_Map",
+    "Baba_Yaga_House": "Baba_Yaga_Map",
+}
+
+
+def boss_arenas(boss_flags: dict[str, list[str]]) -> dict[str, dict[str, str]]:
+    """``boss id -> {"biome", "arena"}`` for the bosses a biome places.
+
+    A boss definition carries a per-boss flag (``BossCrab``, ``Boss_White_Lady``)
+    and the ARENA that summons it is the thing that references that flag —
+    `src/rsmm/sdk/kinds/bosses.py` rests on the same fact, and
+    `tests/test_boss_kind.py` asserts it. Here the reference is used in the
+    other direction: whichever file names the flag tells us where the fight
+    happens, and its path carries the biome.
+
+    Excludes `*/Enemies/*` (the boss's own definition and its tribe model name
+    the flag too) and reads the biome only from a biome-specific directory, so
+    a tribe def or a bark manager contributes nothing. Fails CLOSED: a boss
+    whose flag lands in two biomes, or in none, is left unattributed and
+    rendered under the chapter/quest heading instead of being guessed at.
+    """
+    if not boss_flags:
+        return {}
+    tokens = {f for fl in boss_flags.values() for f in fl}
+    if not tokens:
+        return {}
+    rx = re.compile(
+        rb"(?<![A-Za-z0-9_])(" + b"|".join(re.escape(t.encode()) for t in sorted(tokens))
+        + rb")(?![A-Za-z0-9_])"
+    )
+
+    hits: dict[str, set[tuple[str, str]]] = {t: set() for t in tokens}
+    for root in ("Ot", "Definitions", "EntitySettings"):
+        base = MIRROR / root
+        if not base.is_dir():
+            continue
+        for path in base.rglob("*.gen"):
+            posix = path.as_posix()
+            if "UsedRscCache" in path.name or "/Enemies/" in posix:
+                continue
+            biome = next(
+                (_BIOME_DIRS[part] for part in path.parts if part in _BIOME_DIRS), None
+            )
+            if biome is None:
+                continue
+            try:
+                blob = path.read_bytes()
+            except OSError:
+                continue
+            for m in set(rx.findall(blob)):
+                hits[m.decode()].add((biome, path.stem.split(".")[0]))
+
+    out: dict[str, dict[str, str]] = {}
+    for boss, flags in boss_flags.items():
+        found = {h for f in flags for h in hits.get(f, ())}
+        biomes = {b for b, _ in found}
+        if len(biomes) != 1:
+            continue  # unplaced, or ambiguous — say nothing
+        biome = biomes.pop()
+        arena = sorted(a for b, a in found if b == biome)[0]
+        out[boss] = {"biome": biome, "arena": arena}
+    return out
 
 
 def mirror_path(decoded: str) -> Path | None:
@@ -176,6 +258,13 @@ def short(decoded: str) -> str:
     return decoded.replace("\\", "/").rsplit("/", 1)[-1].split(".entity")[0]
 
 
+def _is_boss(row: dict) -> bool:
+    """Same rule as :func:`rank_of`, usable on a raw catalog row."""
+    tokens = set(str(row["id"]).split("_"))
+    flags = {str(f).lower() for f in row.get("flags") or []}
+    return "Boss" in tokens or "boss" in flags or "chapterboss" in flags
+
+
 def enemy_flags(enemy_id: str) -> list[str]:
     """Tags off the enemy definition, when the mirror decoded one."""
     p = MIRROR / "Definitions" / "Enemies" / f"{enemy_id}.enemydef.json"
@@ -205,6 +294,22 @@ def build() -> dict[str, object]:
         }
         row["stats"] = resolve(entity) if entity else {}
         rows.append(row)
+
+    # A boss's selecting flag is the one no other enemy carries: that isolates
+    # `BossCrab` from `Boss`/`ChapterBoss`/role tags without a hand list, and it
+    # is the same flag the boss kind swaps on.
+    flag_count: dict[str, int] = {}
+    for r in rows:
+        for f in r["flags"]:  # type: ignore[union-attr]
+            flag_count[f] = flag_count.get(f, 0) + 1
+    boss_flags = {
+        str(r["id"]): [f for f in r["flags"] if flag_count[f] == 1]  # type: ignore[union-attr]
+        for r in rows
+        if _is_boss(r)
+    }
+    arenas = boss_arenas(boss_flags)
+    for r in rows:
+        r["boss_arena"] = arenas.get(str(r["id"]))
     return {
         "_doc": (
             "Every shipped enemy definition with its resolved BASE stats. Mined by "
@@ -310,7 +415,12 @@ def _sort_key(row: dict):
 
 
 def _table(
-    rows: list[dict], common: set[str], *, show_tribe: bool = True, show_rank: bool = True
+    rows: list[dict],
+    common: set[str],
+    *,
+    show_tribe: bool = True,
+    show_rank: bool = True,
+    show_share: bool = False,
 ) -> str:
     """Render one enemy table.
 
@@ -324,10 +434,21 @@ def _table(
     `show_rank` is off wherever the section already fixes it, so the Bosses
     table does not carry a column reading "Boss" 14 times.
     """
-    ordered = sorted(rows, key=_sort_key)
+    # A biome table answers "what will I fight", so it leads with what the camp
+    # roll picks most; every other table keeps heaviest-first.
+    if show_share:
+        ordered = sorted(
+            rows, key=lambda r: (-float(r.get("spawn_weight") or 0), _sort_key(r))
+        )
+    else:
+        ordered = sorted(rows, key=_sort_key)
     # A column of nothing but dashes is width spent on no information — the
     # Bosses table carries no shared tags at all, so it printed 14 of them.
     show_tags = any(useful_tags(r, common) != "—" for r in ordered)
+    # Share is each enemy's slice of THIS table's spawn weight, so it only means
+    # something for a table that is one biome's pool: across biomes, or for
+    # scripted placements, it is a number with no roll behind it.
+    total = sum(float(r.get("spawn_weight") or 0) for r in ordered) if show_share else 0.0
 
     head = ["Enemy"]
     if show_rank:
@@ -335,6 +456,8 @@ def _table(
     if show_tribe:
         head.append("Tribe")
     head += ["HP", "Stagger"]
+    if show_share:
+        head.append("Share")
     if show_tags:
         head.append("Tags")
     out = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
@@ -346,11 +469,54 @@ def _table(
             cells.append(str(r.get("tribe") or "—").replace("_", " "))
         cells += [
             num(r, "health"),
-            num(r, "stagger_points"),
+            _stagger(r),
         ]
+        if show_share:
+            w_ = float(r.get("spawn_weight") or 0)
+            pct = 100 * w_ / total if total and w_ else 0.0
+            cells.append("—" if not pct else "<1%" if pct < 1 else f"{pct:.0f}%")
         if show_tags:
             cells.append(useful_tags(r, common))
         out.append("| " + " | ".join(cells) + " |")
+    return "\n".join(out)
+
+
+#: Bosses whose stagger is scripted, so the authored `Stagger Max Points` is not
+#: how the fight goes. OBSERVED IN PLAY, not mined — and deliberately so: the
+#: mechanic lives in behaviour, not in an attribute. `Is Stagger Resistant` was
+#: checked and does not carry it (it reads 0 on the Tentacle Master, like 38
+#: other overrides). Keep entries player-confirmed; this is not a place to guess.
+STAGGER_NOTES: dict[str, str] = {
+    "Boss_Tentacle_Master": (
+        "is not staggered by stagger damage: he is staggered once all of his "
+        "tentacles are destroyed. His entity still authors 200 stagger points, "
+        "which the fight does not use."
+    ),
+}
+
+
+def _stagger(r: dict) -> str:
+    """Stagger cell — `n/a` where the fight does not use the authored points."""
+    return "n/a" if r["id"] in STAGGER_NOTES else num(r, "stagger_points")
+
+
+def _boss_table(rows: list[dict]) -> str:
+    """Bosses with the arena that summons them — the file the boss kind swaps."""
+    out = ["| Boss | HP | Stagger | Arena |", "|---|---|---|---|"]
+    for r in sorted(rows, key=_sort_key):
+        arena = (r.get("boss_arena") or {}).get("arena")
+        out.append(
+            f"| {r['_name']} | {num(r, 'health')} | {_stagger(r)} "
+            f"| {f'`{arena}`' if arena else '—'} |"
+        )
+    notes = [
+        f"**{r['_name']}** {STAGGER_NOTES[r['id']]}"
+        for r in sorted(rows, key=_sort_key)
+        if r["id"] in STAGGER_NOTES
+    ]
+    if notes:
+        out.append("")
+        out.extend(notes)
     return "\n".join(out)
 
 
@@ -441,6 +607,7 @@ def render_docs(data: dict) -> str:
     w("|---|---|")
     w("| **HP** | `Raw Max Health` — the base the HitPoint component starts from. |")
     w("| **Stagger** | `Stagger Max Points` — stagger absorbed before it breaks. |")
+    w("| **Share** | How often the camp roll picks it: its spawn weight over the biome's total. |")
     w("| **Tags** | Definition flags that more than one enemy carries. |")
     w("")
     w("`data/enemy_catalog.json` carries three more attributes the tables leave out:")
@@ -448,7 +615,10 @@ def render_docs(data: dict) -> str:
     w("than how it fights, and resistance, which is 0 for every enemy that authors it")
     w("except the four crabs, which are 1.")
     w("")
-    w("Tables are sorted heaviest first. A dash means the enemy does not author that")
+    w("Biome tables list the enemies you meet most first; the others are sorted")
+    w("heaviest first. `n/a` means the enemy authors the value but its fight does")
+    w("not use it — the note under that table says what happens instead. A dash")
+    w("means the enemy does not author that")
     w("attribute and inherits it. Where health comes from an ancestor rather than the")
     w("enemy's own entity, the ancestor is named under the table — that is the file a")
     w("mod would edit, and editing it changes **every** enemy that inherits from it.")
@@ -467,20 +637,38 @@ def render_docs(data: dict) -> str:
     w("entity is not in a biome's pool is simply not there to instantiate, whatever")
     w("its tribe says. See [Enemies](/reverse-engineering/enemies/) for the two gates.")
     w("")
-    ordered = [b for b in BIOME_ORDER if b in by_biome]
-    ordered += [b for b in sorted(by_biome) if b not in BIOME_ORDER]
+    boss_by_biome: dict[str, list[dict]] = {}
+    for r in bosses:
+        placed = (r.get("boss_arena") or {}).get("biome")
+        if placed:
+            boss_by_biome.setdefault(str(placed), []).append(r)
+    # A biome with a boss but no camp enemies would otherwise have no section to
+    # hang the boss on, and the boss would vanish from the page entirely.
+    present = set(by_biome) | set(boss_by_biome)
+    ordered = [b for b in BIOME_ORDER if b in present]
+    ordered += [b for b in sorted(present) if b not in BIOME_ORDER]
     for biome in ordered:
-        members = by_biome[biome]
+        members = by_biome.get(biome, [])
+        here = boss_by_biome.get(biome, [])
         w(f"### {BIOME_TITLES.get(biome, biome.replace('_', ' '))}")
         w("")
-        w(f"{len(members)} enemies.")
+        parts = [f"{len(members)} enemies"] if members else []
+        if here:
+            parts.append(f"{len(here)} boss" + ("es" if len(here) != 1 else ""))
+        w(", ".join(parts) + ".")
         w("")
-        w(_table(members, common))
-        note = _inherited_note(members)
-        if note:
+        if members:
+            w(_table(members, common, show_share=True))
+            note = _inherited_note(members)
+            if note:
+                w("")
+                w(note)
             w("")
-            w(note)
-        w("")
+        if here:
+            w("**Bosses fought here**")
+            w("")
+            w(_boss_table(here))
+            w("")
 
     if unplaced:
         w("### Summoned and unpooled")
@@ -496,14 +684,17 @@ def render_docs(data: dict) -> str:
         w("")
 
     # ------------------------------------------------------------------ bosses
-    w("## Bosses")
-    w("")
-    w(_table(bosses, common, show_rank=False))
-    note = _inherited_note(bosses)
-    if note:
+    unplaced_bosses = [r for r in bosses if not (r.get("boss_arena") or {}).get("biome")]
+    if unplaced_bosses:
+        w("## Chapter and quest bosses")
         w("")
-        w(note)
-    w("")
+        w("Bosses the data does not tie to a biome: the chapter bosses, and Dullahan,")
+        w("whose quest is not filed under one. Every other boss — including quest bosses")
+        w("like the Roc, whose quest lives on Storm Island — is listed under the biome")
+        w("it is fought in, above.")
+        w("")
+        w(_boss_table(unplaced_bosses))
+        w("")
 
     # ------------------------------------------------------------- tribe index
     w("## Tribes at a glance")
@@ -535,7 +726,7 @@ def render_docs(data: dict) -> str:
     # -------------------------------------------------------- what is not here
     w("## What these numbers do not tell you")
     w("")
-    w("Three things players reasonably expect here are not in the shipped data, and")
+    w("Four things players reasonably expect here are not in the shipped data, and")
     w("the page would rather say so than invent them.")
     w("")
     w("**Corruption / tainted enemies.** The corruption modifier (`AllEnemiesTainted`,")
@@ -549,6 +740,16 @@ def render_docs(data: dict) -> str:
     w("factor at all. An earlier version of this page claimed the run multiplies")
     w("health by chapter and party size; that was wrong, and the data does not")
     w("support any specific multiplier.")
+    w("")
+    w("**Separate boss scaling.** A boss's big number is authored, not multiplied:")
+    w("Baba Yaga's 1000 and a tentacle summon's 150 are both the `Raw Max Health`")
+    w("written on that enemy's own entity. Bosses do have scaling hooks of their own —")
+    w("`NGP_Master_Nightmares_Max_Health_Modifier` and its damage twin target only")
+    w("the Master Nightmares, and the Tentacle Master has an enrage-timer modifier —")
+    w("but like every `NGP_*` value they ship at **0.0**. The one boss-only value that")
+    w("ships non-zero is `Tumor_Reduce_Boss_Health_Ratio` at **0.2**; the name says a")
+    w("destroyed tumor takes that fraction off a boss, but nothing in the entity data")
+    w("references it, so the exact rule lives in the game's code.")
     w("")
     w("**Per-chapter enemy variants.** There are none. No enemy definition carries a")
     w("chapter, act or tier marker, and the nightmare family a run meets everywhere —")
