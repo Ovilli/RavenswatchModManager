@@ -107,7 +107,6 @@ export default defineConfig({
             { label: 'Conventions & best practices', slug: 'reference/conventions' },
             { label: 'Engine symbols', slug: 'reference/symbols' },
             { label: 'Glossary', slug: 'reference/glossary' },
-            { label: 'Enemy encyclopedia', slug: 'reference/enemy-catalog' },
             { label: 'Talent name lookup', slug: 'reference/talent-names' },
             { label: 'Security', slug: 'reference/security' },
             {

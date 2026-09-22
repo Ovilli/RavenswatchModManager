@@ -363,9 +363,7 @@ prints nothing at all for a binary file — so every cooked `.gen` read as "no
 match". Search cooked data with `grep -a` or Python bytes, never plain `grep`.
 
 **Where it lives.** `EntitySettings/Common_Settings/Group_Scaling.entity.ot` — the
-same entity that owns the party XP component (`GroupLevelComponent_Ctor`). All
-of it is mined into `data/enemy_catalog.json::scaling` by
-`tools/mine_enemy_catalog.py::scaling()`, and rendered on the enemy docs page.
+same entity that owns the party XP component (`GroupLevelComponent_Ctor`).
 
 **How it is wired** (references are stored in the data, not inferred):
 
