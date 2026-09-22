@@ -211,9 +211,11 @@ def build() -> dict[str, object]:
             "tools/mine_enemy_catalog.py from the cooked corpus; stats come from "
             "[Value] <Parent>\\Attributes\\<name> overrides on the referenced entity, "
             "resolved through the entity inheritance chain ('from' names the ancestor "
-            "that authored the value). These are base numbers: the run scales them by "
-            "chapter and party size. Boolean attributes are deliberately absent -- see "
-            "the tool's docstring."
+            "that authored the value). These are BASE numbers as shipped; the run's own "
+            "scaling factors (Chapter_Scaling_Enemies_*) ship at 1.0 and the NGP/tainted "
+            "modifiers ship at 0.0, so no in-run multiplier is derivable from the "
+            "corpus. Boolean attributes are deliberately absent -- see the tool's "
+            "docstring."
         ),
         "source": EP.corpus_source(),
         "enemies": rows,
@@ -332,7 +334,7 @@ def _table(
         head.append("Rank")
     if show_tribe:
         head.append("Tribe")
-    head += ["HP", "Stagger", "Radius"]
+    head += ["HP", "Stagger"]
     if show_tags:
         head.append("Tags")
     out = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
@@ -345,7 +347,6 @@ def _table(
         cells += [
             num(r, "health"),
             num(r, "stagger_points"),
-            num(r, "collision_radius"),
         ]
         if show_tags:
             cells.append(useful_tags(r, common))
@@ -368,7 +369,7 @@ def render_docs(data: dict) -> str:
 
     # Stripping the rank prefix can collide: Standard_Witch_Crone and
     # Boss_Witch_Crone are both "Witch Crone", which made one of them look like
-    # it appeared twice in the health ladder at two different totals. Only the
+    # it appeared twice in the tables at two different totals. Only the
     # colliding names get the rank back.
     name_counts: dict[str, int] = {}
     for r in rows:
@@ -401,8 +402,8 @@ def render_docs(data: dict) -> str:
     w("---")
     w("title: Enemy encyclopedia")
     w(
-        "description: Every enemy the game ships — base health, stagger, size, "
-        "tribe, biome and tags, mined from the cooked data."
+        "description: Where every enemy in the game spawns, with the base health "
+        "and stagger it ships with, mined from the cooked data."
     )
     w("---")
     w("")
@@ -431,25 +432,7 @@ def render_docs(data: dict) -> str:
     w(f"| Standard | {counts['Standard']} | The ordinary camp and wave population. |")
     w(f"| Minion | {counts['Minion']} | Summons, eggs and adds — spawned by something else. |")
     w("")
-    w("### The health ladder")
-    w("")
-    w("Base health only — see the caveat below. This is the whole roster sorted into")
-    w("tiers, which is the quickest way to see what is actually dangerous:")
-    w("")
-    ladder: dict[float, list[dict]] = {}
-    for r in rows:
-        hp = health_of(r)
-        if hp is not None:
-            ladder.setdefault(hp, []).append(r)
-    w("| HP | Enemies |")
-    w("|---|---|")
-    for hp in sorted(ladder, reverse=True):
-        names = ", ".join(sorted(x["_name"] for x in ladder[hp]))
-        w(f"| **{hp:g}** | {names} |")
     no_hp = [r for r in rows if health_of(r) is None]
-    if no_hp:
-        w(f"| *default* | {', '.join(sorted(r['_name'] for r in no_hp))} |")
-    w("")
 
     # ----------------------------------------------------------------- legend
     w("## How to read the tables")
@@ -458,38 +441,23 @@ def render_docs(data: dict) -> str:
     w("|---|---|")
     w("| **HP** | `Raw Max Health` — the base the HitPoint component starts from. |")
     w("| **Stagger** | `Stagger Max Points` — stagger absorbed before it breaks. |")
-    w("| **Radius** | `Collision Radius` — physical size, and how easily it is hit. |")
     w("| **Tags** | Definition flags that more than one enemy carries. |")
     w("")
-    w("`data/enemy_catalog.json` carries two more attributes the tables leave out:")
-    w("mesh scale, which is the model's visual size rather than anything you can feel,")
-    w("and resistance, which is 0 for every enemy that authors it except the four")
-    w("crabs, which are 1.")
+    w("`data/enemy_catalog.json` carries three more attributes the tables leave out:")
+    w("collision radius and mesh scale, which describe how big the model is rather")
+    w("than how it fights, and resistance, which is 0 for every enemy that authors it")
+    w("except the four crabs, which are 1.")
     w("")
     w("Tables are sorted heaviest first. A dash means the enemy does not author that")
     w("attribute and inherits it. Where health comes from an ancestor rather than the")
     w("enemy's own entity, the ancestor is named under the table — that is the file a")
     w("mod would edit, and editing it changes **every** enemy that inherits from it.")
     w("")
-    w(":::caution[These are base values, and a dash is the shared default]")
-    w("The run multiplies health by chapter and party size before you ever swing at")
-    w("something, so a 70 HP crab is not 70 HP in chapter 3. Read these as relative:")
-    w("a gnoll is roughly twice a crab.")
-    w("")
-    w(f"A dash is not zero: {len(no_hp)} enemies never author health and inherit the")
-    w("`Character_Common` default, which reads as **100**. Everything with a number")
-    w("overrides it somewhere in its ancestry.")
+    w(":::caution[A dash is not zero]")
+    w(f"{len(no_hp)} enemies never author health and inherit the `Character_Common`")
+    w("default, which reads as **100**. Everything with a number overrides it")
+    w("somewhere in its ancestry.")
     w(":::")
-    w("")
-
-    # ------------------------------------------------------------------ bosses
-    w("## Bosses")
-    w("")
-    w(_table(bosses, common, show_rank=False))
-    note = _inherited_note(bosses)
-    if note:
-        w("")
-        w(note)
     w("")
 
     # ------------------------------------------------------------- by biome
@@ -527,6 +495,16 @@ def render_docs(data: dict) -> str:
             w(note)
         w("")
 
+    # ------------------------------------------------------------------ bosses
+    w("## Bosses")
+    w("")
+    w(_table(bosses, common, show_rank=False))
+    note = _inherited_note(bosses)
+    if note:
+        w("")
+        w(note)
+    w("")
+
     # ------------------------------------------------------------- tribe index
     w("## Tribes at a glance")
     w("")
@@ -552,6 +530,32 @@ def render_docs(data: dict) -> str:
             f"| {len(members)} | {hp_s} "
             f"| {', '.join(f'`{s}`' for s in srcs) or '*own entity*'} |"
         )
+    w("")
+
+    # -------------------------------------------------------- what is not here
+    w("## What these numbers do not tell you")
+    w("")
+    w("Three things players reasonably expect here are not in the shipped data, and")
+    w("the page would rather say so than invent them.")
+    w("")
+    w("**Corruption / tainted enemies.** The corruption modifier (`AllEnemiesTainted`,")
+    w("which is the one wearing the corruption icon) scales enemies through")
+    w("`NGP_Tainted_Enemies_Modifier`, and every `NGP_*` value ships as **0.0** — they")
+    w("are New Game Plus knobs the run sets at load time, not constants in the data.")
+    w("There is no corrupted number to mine, so none is shown.")
+    w("")
+    w("**Chapter and party-size scaling.** `Chapter_Scaling_Enemies_Max_Health_Factor`")
+    w("and its damage twin both ship at **1.0**, and the corpus holds no party-size")
+    w("factor at all. An earlier version of this page claimed the run multiplies")
+    w("health by chapter and party size; that was wrong, and the data does not")
+    w("support any specific multiplier.")
+    w("")
+    w("**Per-chapter enemy variants.** There are none. No enemy definition carries a")
+    w("chapter, act or tier marker, and the nightmare family a run meets everywhere —")
+    w("cultists, spiders, tentacles, thieves — is one flat set of definitions at 125")
+    w("HP reused in every biome. A cultist in the last chapter is the same definition")
+    w("as a cultist in the first; what changes around it is the biome pool it is")
+    w("rolled from, not the enemy.")
     w("")
 
     # ------------------------------------------------------------------ modding

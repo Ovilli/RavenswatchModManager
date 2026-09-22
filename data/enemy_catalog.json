@@ -1,5 +1,5 @@
 {
- "_doc": "Every shipped enemy definition with its resolved BASE stats. Mined by tools/mine_enemy_catalog.py from the cooked corpus; stats come from [Value] <Parent>\\Attributes\\<name> overrides on the referenced entity, resolved through the entity inheritance chain ('from' names the ancestor that authored the value). These are base numbers: the run scales them by chapter and party size. Boolean attributes are deliberately absent -- see the tool's docstring.",
+ "_doc": "Every shipped enemy definition with its resolved BASE stats. Mined by tools/mine_enemy_catalog.py from the cooked corpus; stats come from [Value] <Parent>\\Attributes\\<name> overrides on the referenced entity, resolved through the entity inheritance chain ('from' names the ancestor that authored the value). These are BASE numbers as shipped; the run's own scaling factors (Chapter_Scaling_Enemies_*) ship at 1.0 and the NGP/tainted modifiers ship at 0.0, so no in-run multiplier is derivable from the corpus. Boolean attributes are deliberately absent -- see the tool's docstring.",
  "source": "mirror",
  "enemies": [
   {
