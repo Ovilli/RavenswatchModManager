@@ -307,24 +307,48 @@ def _sort_key(row: dict):
     return (-(hp if hp is not None else -1), RANK_ORDER.get(row["_rank"], 9), row["_name"])
 
 
-def _table(rows: list[dict], common: set[str], *, show_tribe: bool = True) -> str:
-    head = ["Enemy", "Rank"]
+def _table(
+    rows: list[dict], common: set[str], *, show_tribe: bool = True, show_rank: bool = True
+) -> str:
+    """Render one enemy table.
+
+    Deliberately narrower than the JSON: `mesh_scale` is the model's visual
+    scale rather than anything you can feel, and `resistance` carries two
+    distinct values in the whole corpus (0 for 35 enemies, 1 for the four
+    crabs, unauthored for the other 42) — as columns they cost every table two
+    slots of width to say almost nothing. Both are still in
+    `data/enemy_catalog.json` for tooling.
+
+    `show_rank` is off wherever the section already fixes it, so the Bosses
+    table does not carry a column reading "Boss" 14 times.
+    """
+    ordered = sorted(rows, key=_sort_key)
+    # A column of nothing but dashes is width spent on no information — the
+    # Bosses table carries no shared tags at all, so it printed 14 of them.
+    show_tags = any(useful_tags(r, common) != "—" for r in ordered)
+
+    head = ["Enemy"]
+    if show_rank:
+        head.append("Rank")
     if show_tribe:
         head.append("Tribe")
-    head += ["HP", "Stagger", "Radius", "Scale", "Resist", "Tags"]
+    head += ["HP", "Stagger", "Radius"]
+    if show_tags:
+        head.append("Tags")
     out = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
-    for r in sorted(rows, key=_sort_key):
-        cells = [r["_name"], r["_rank"]]
+    for r in ordered:
+        cells = [r["_name"]]
+        if show_rank:
+            cells.append(r["_rank"])
         if show_tribe:
             cells.append(str(r.get("tribe") or "—").replace("_", " "))
         cells += [
             num(r, "health"),
             num(r, "stagger_points"),
             num(r, "collision_radius"),
-            num(r, "mesh_scale"),
-            num(r, "resistance"),
-            useful_tags(r, common),
         ]
+        if show_tags:
+            cells.append(useful_tags(r, common))
         out.append("| " + " | ".join(cells) + " |")
     return "\n".join(out)
 
@@ -382,6 +406,8 @@ def render_docs(data: dict) -> str:
     )
     w("---")
     w("")
+    # Kept deliberately: tests/test_enemy_catalog.py pins this banner, because a
+    # hand-edit here is silently reverted by the next run of the tool.
     w(":::note[Generated file]")
     w("Built by `tools/mine_enemy_catalog.py` from the cooked corpus and checked in as")
     w("`data/enemy_catalog.json`. Do not edit this page by hand — re-run the tool.")
@@ -433,36 +459,33 @@ def render_docs(data: dict) -> str:
     w("| **HP** | `Raw Max Health` — the base the HitPoint component starts from. |")
     w("| **Stagger** | `Stagger Max Points` — stagger absorbed before it breaks. |")
     w("| **Radius** | `Collision Radius` — physical size, and how easily it is hit. |")
-    w("| **Scale** | `Character Mesh Scale` — visual scale of the model. |")
-    w("| **Resist** | `Default Resistance` — baseline damage resistance. |")
     w("| **Tags** | Definition flags that more than one enemy carries. |")
+    w("")
+    w("`data/enemy_catalog.json` carries two more attributes the tables leave out:")
+    w("mesh scale, which is the model's visual size rather than anything you can feel,")
+    w("and resistance, which is 0 for every enemy that authors it except the four")
+    w("crabs, which are 1.")
     w("")
     w("Tables are sorted heaviest first. A dash means the enemy does not author that")
     w("attribute and inherits it. Where health comes from an ancestor rather than the")
     w("enemy's own entity, the ancestor is named under the table — that is the file a")
     w("mod would edit, and editing it changes **every** enemy that inherits from it.")
     w("")
-    w("Tags naming the enemy itself are omitted (75 of them occur exactly once,")
-    w("because they are just the enemy's own name), as is the rank, which is a column.")
-    w("")
     w(":::caution[These are base values, and a dash is the shared default]")
     w("The run multiplies health by chapter and party size before you ever swing at")
     w("something, so a 70 HP crab is not 70 HP in chapter 3. Read these as relative:")
     w("a gnoll is roughly twice a crab.")
     w("")
-    w(f"{len(no_hp)} enemies never author health and fall through to the")
-    w("`Character_Common` default, which reads as **100**. The mining deliberately")
-    w("stops before `Character_Common`: it *declares* these attributes rather than")
-    w("overriding them, in a record whose payload sits under a different mark, so")
-    w("reading it as an override produces junk. Everything in the tables **is** mined")
-    w("from a real override; everything dashed is inherited.")
+    w(f"A dash is not zero: {len(no_hp)} enemies never author health and inherit the")
+    w("`Character_Common` default, which reads as **100**. Everything with a number")
+    w("overrides it somewhere in its ancestry.")
     w(":::")
     w("")
 
     # ------------------------------------------------------------------ bosses
     w("## Bosses")
     w("")
-    w(_table(bosses, common))
+    w(_table(bosses, common, show_rank=False))
     note = _inherited_note(bosses)
     if note:
         w("")
@@ -525,7 +548,7 @@ def render_docs(data: dict) -> str:
         srcs = sorted({s for r in members if (s := source_note(r, "health"))})
         w(
             f"| {tribe.replace('_', ' ')} "
-            f"| {', '.join(b.replace('_', ' ') for b in biomes) or '—'} "
+            f"| {', '.join(BIOME_TITLES.get(b, b.replace('_', ' ')) for b in biomes) or '—'} "
             f"| {len(members)} | {hp_s} "
             f"| {', '.join(f'`{s}`' for s in srcs) or '*own entity*'} |"
         )
