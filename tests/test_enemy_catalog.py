@@ -273,3 +273,77 @@ def test_scripted_stagger_is_not_shown_as_a_number():
     assert "| n/a |" in row, f"Tentacle Master still shows a stagger number: {row}"
     assert "tentacles are destroyed" in text, "the explanation for n/a is missing"
     assert "`n/a` means" in text, "n/a is used on the page but not defined in the legend"
+
+
+# ---------------------------------------------------------------- run scaling
+# Mined from Common_Settings/Group_Scaling and Enemy_Model. These anchors exist
+# because this page once told players the opposite of what they say: that there
+# was no chapter/party multiplier and no corrupted number in the data. Both
+# claims came from a plain `grep` over binary cooked files, which on the dev
+# machine is ugrep and silently matches nothing. A regression to "the data has
+# no scaling" must fail here, not reach the docs again.
+
+def _scaling():
+    return json.loads(CATALOG.read_text())["scaling"]
+
+
+def test_chapter_health_and_damage_are_mined():
+    sel = _scaling()["selectors"]
+    assert sel["Chapter 2 Max Health Multiplier Selector"]["values"] == [2.0, 2.2, 2.4, 2.5]
+    assert sel["Chapter 3 Max Health Multiplier Selector"]["values"] == [4.0, 4.5, 5.0, 5.2]
+    assert sel["Chapter 3 Damage Multiplier Selector"]["values"] == [2.7, 3.0, 3.2, 3.4]
+
+
+def test_selectors_switch_on_the_values_the_engine_names():
+    """Per-chapter tables switch on difficulty, the outer switches on chapter.
+
+    The keys are CRCs read off each selector's value picker, labelled from the
+    engine's own registration table. An unlabelled key renders as hex; none may,
+    because the page describes what each axis MEANS.
+    """
+    sel = _scaling()["selectors"]
+    for name, s in sel.items():
+        assert not str(s["switch"]).startswith("0x"), f"{name}: unknown switch key {s['switch']}"
+        if name.startswith("Chapter ") and name.split()[1].isdigit():
+            assert s["switch"] == "difficulty", f"{name} switches on {s['switch']}"
+    assert sel["Chapter Max Health Multiplier Selector"]["switch"] == "chapter"
+    assert sel["Chapter Stagger Multiplier Selector"]["switch"] == "chapter"
+
+
+def test_difficulty_columns_rise_so_they_can_be_labelled_lowest_to_highest():
+    """The page labels difficulty "lowest to highest"; that is only true while
+    every per-chapter row is non-decreasing. If a patch breaks it, the label is
+    a lie and must change with it."""
+    sel = _scaling()["selectors"]
+    for name, s in sel.items():
+        if name.startswith("Chapter ") and name.split()[1].isdigit():
+            v = s["values"]
+            assert v == sorted(v), f"{name} is not ordered by difficulty: {v}"
+
+
+def test_corruption_ratios_are_mined():
+    t = _scaling()["tainted"]
+    assert t["Tainted HP Increase Ratio"] == 0.5
+    assert t["Tainted Damage Increase Ratio"] == 0.75
+    assert t["Tainted Stagger Increase Ratio"] == 0.25
+    assert t["Tainted Mesh Scale Multiplier Operand"] == 1.1
+
+
+def test_bosses_have_the_steepest_scaling_group():
+    g = _scaling()["groups"]
+    boss, elite, common = g["Boss Enemy Group"], g["Elite Enemy Group"], g["Common Enemy Group"]
+    differ = [i for i in range(1, len(boss)) if len({boss[i], elite[i], common[i]}) > 1]
+    assert differ, "the scaling groups no longer differ at all"
+    for i in differ:
+        assert boss[i] > elite[i] > common[i], f"field {i}: {boss[i]} / {elite[i]} / {common[i]}"
+    assert _scaling()["tumor_boss_health_ratio"] == 0.2
+
+
+def test_page_publishes_the_scaling():
+    text = PAGE.read_text()
+    assert "## How enemies get tougher" in text
+    assert "| 3 | ×4 | ×4.5 | ×5 | ×5.2 |" in text, "the chapter-3 health row is gone"
+    assert "**+50%** health" in text, "the corrupted-enemy ratios are gone"
+    # the retracted claims must not come back
+    assert "no party-size" not in text.lower()
+    assert "no corrupted number" not in text.lower()

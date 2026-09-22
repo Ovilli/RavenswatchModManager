@@ -43,13 +43,17 @@ WHAT THIS DELIBERATELY DOES NOT CLAIM
   Note it does NOT explain the Tentacle Master's stagger (he reads 0) — see
   ``STAGGER_NOTES``. Float attributes cross-check cleanly (crabs 70, gnolls
   125, ogres 300, Baba Yaga 1000) and are all this emits.
-* **These are BASE values, and no multiplier is minable.** The only scaling
-  factors in the corpus, ``Chapter_Scaling_Enemies_Max_Health_Factor`` and its
-  damage twin, ship at 1.0; there is no party-size factor; and every ``NGP_*``
-  modifier (incl. the tainted/corruption one and the boss-only Master
-  Nightmares ones) ships at 0.0, set by the run at load time. An earlier version
-  of this docstring cited a ``Chapter Max Health Multiplier Selector`` that
-  appears nowhere in the corpus."""
+* **These are BASE values; the run's scaling is mined separately** by
+  :func:`scaling` into the JSON's ``scaling`` key. It lives in
+  ``Common_Settings/Group_Scaling``: a ``Chapter Max Health Multiplier
+  Selector`` switching on the current chapter, whose entries are per-chapter
+  selectors switching on the game difficulty; a setter writes the result into
+  the ``Chapter_Scaling_Enemies_Max_Health_Factor`` global, whose shipped 1.0 is
+  only its initial value. Corruption (tainted) ratios are on ``Enemy_Model``.
+  The ``NGP_*`` globals are separate New Game Plus knobs and do ship at 0.0.
+  (A version of this docstring once said the scaling was NOT in the corpus. It
+  was wrong: that came from searching cooked files with plain ``grep``, which on
+  the dev machine is ugrep and silently skips binary files. Use ``grep -a``.)"""
 
 from __future__ import annotations
 
@@ -63,8 +67,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
+from rsmm.engine import cooked as _cooked  # noqa: E402
 from rsmm.engine import enemy_pools as EP  # noqa: E402
 from rsmm.engine import entity_components as EC  # noqa: E402
+from rsmm.engine.talent_values import class_names as _class_names  # noqa: E402
 
 OUT = REPO / "data" / "enemy_catalog.json"
 DOCS_PAGE = (
@@ -168,6 +174,122 @@ def boss_arenas(boss_flags: dict[str, list[str]]) -> dict[str, dict[str, str]]:
         biome = biomes.pop()
         arena = sorted(a for b, a in found if b == biome)[0]
         out[boss] = {"biome": biome, "arena": arena}
+    return out
+
+
+
+# --------------------------------------------------------------- run scaling
+#
+# Everything below reads SHIPPED DATA. An earlier version of this page said the
+# scaling was not in the corpus; that conclusion came from searching with the
+# system `grep`, which on this machine is ugrep and silently skips binary files,
+# so every cooked `.gen` read as "no match". The values were there all along.
+
+SCALING_ENTITY = "EntitySettings/Common_Settings/Group_Scaling.entity.ot.EntitySettingsResource.gen"
+ENEMY_MODEL = "EntitySettings/Enemies/NPC_Common/Enemy_Model.entity.ot.EntitySettingsResource.gen"
+TUMOR_ENTITY = (
+    "EntitySettings/Objects/Nightmare_Tumor/Nightmare_Tumor.entity.ot.EntitySettingsResource.gen"
+)
+
+#: What a selector switches on. A `oCEntityCpntValuePicker` names the value by
+#: CRC; these two labels are from the engine's own registration table
+#: (`data/symbols.json::EntityValueRegistry_RegisterAll` and the key table on
+#: `g_GlobalEntityValueSceneContext_Tester_vftable`). An unknown key is rendered
+#: as hex rather than guessed at.
+SWITCH_KEYS = {0x181D17FD: "chapter", 0x18700873: "difficulty"}
+
+_T_F32, _T_INT = 0, 1
+
+
+def _union_values(payload: bytes, union_idx: int) -> list[float | int]:
+    """Every `oCEntityValueUnion` in one section, in file order (floats and ints)."""
+    tag = MARK_BYTES + struct.pack("<I", union_idx)
+    out: list[float | int] = []
+    pos = 0
+    while (at := payload.find(tag, pos)) >= 0:
+        typ = struct.unpack_from("<I", payload, at + 8)[0]
+        if typ == _T_F32:
+            out.append(round(struct.unpack_from("<f", payload, at + 16)[0], 4))
+        elif typ == _T_INT:
+            out.append(struct.unpack_from("<i", payload, at + 16)[0])
+        pos = at + 8
+    return out
+
+
+def _labelled_sections(raw: bytes):
+    """``(class, label, payload)`` for each top-level section of a cooked entity.
+
+    The label is the section's own length-prefixed node name, which sits a fixed
+    distance in after the section's GUID mark.
+    """
+    names = _class_names(raw) or []
+    for sec in _cooked.parse(raw).sections:
+        p = sec.payload
+        if len(p) < 4:
+            continue
+        ci = struct.unpack_from("<I", p, 0)[0]
+        cls = names[ci] if ci < len(names) else ""
+        m = re.search(rb"([\x04-\x7f])\x00\x00\x00([A-Za-z][A-Za-z0-9 _]{3,80})", p[:260])
+        label = m.group(2).decode() if m and m.group(1)[0] == len(m.group(2)) else ""
+        yield cls, label, p, names
+
+
+def _read(rel: str) -> bytes | None:
+    path = MIRROR / rel
+    return path.read_bytes() if path.exists() else None
+
+
+def scaling() -> dict[str, object]:
+    """The run's enemy scaling, mined from `Group_Scaling` and `Enemy_Model`.
+
+    Returns ``{}`` when the mirror lacks those entities, so a partial corpus
+    renders no scaling section rather than a wrong one.
+    """
+    raw = _read(SCALING_ENTITY)
+    if raw is None:
+        return {}
+    out: dict[str, object] = {"selectors": {}, "groups": {}}
+    selectors: dict[str, dict] = out["selectors"]  # type: ignore[assignment]
+    groups: dict[str, list] = out["groups"]  # type: ignore[assignment]
+    for cls, label, p, names in _labelled_sections(raw):
+        uidx = names.index("oCEntityValueUnion")
+        if cls == "oCEntityCpntValueSwitchSelectorSettings":
+            picker = MARK_BYTES + struct.pack("<I", names.index("oCEntityCpntValuePicker"))
+            at = p.find(picker)
+            key = struct.unpack_from("<I", p, at + 10)[0] if at >= 0 else 0
+            vals = _union_values(p, uidx)
+            # layout: one leading int, then (int key, float value) per entry
+            entries = [v for v in vals[1:] if isinstance(v, float)]
+            selectors[label] = {
+                "switch": SWITCH_KEYS.get(key, f"0x{key:08x}"),
+                "values": entries,
+            }
+        elif cls == "oCDtEntityCpntGroupLevelSettings":
+            groups[label] = _union_values(p, uidx)
+
+    model = _read(ENEMY_MODEL)
+    if model is not None:
+        tainted: dict[str, float] = {}
+        for _cls, label, p, names in _labelled_sections(model):
+            if label in ("Tainted HP Increase Ratio", "Tainted Damage Increase Ratio",
+                         "Tainted Stagger Increase Ratio"):
+                vals = _union_values(p, names.index("oCEntityValueUnion"))
+                if vals and isinstance(vals[0], float):
+                    tainted[label] = vals[0]
+            elif label == "Tainted Mesh Scale Multiplier Operand":
+                vals = [v for v in _union_values(p, names.index("oCEntityValueUnion"))
+                        if isinstance(v, float)]
+                if vals:
+                    tainted[label] = vals[0]
+        out["tainted"] = tainted
+
+    tumor = _read(TUMOR_ENTITY)
+    if tumor is not None:
+        for _cls, label, p, names in _labelled_sections(tumor):
+            if label == "Reduce Boss Health Ratio Value":
+                vals = _union_values(p, names.index("oCEntityValueUnion"))
+                if vals:
+                    out["tumor_boss_health_ratio"] = vals[0]
     return out
 
 
@@ -311,16 +433,17 @@ def build() -> dict[str, object]:
     for r in rows:
         r["boss_arena"] = arenas.get(str(r["id"]))
     return {
+        "scaling": scaling(),
         "_doc": (
             "Every shipped enemy definition with its resolved BASE stats. Mined by "
             "tools/mine_enemy_catalog.py from the cooked corpus; stats come from "
             "[Value] <Parent>\\Attributes\\<name> overrides on the referenced entity, "
             "resolved through the entity inheritance chain ('from' names the ancestor "
-            "that authored the value). These are BASE numbers as shipped; the run's own "
-            "scaling factors (Chapter_Scaling_Enemies_*) ship at 1.0 and the NGP/tainted "
-            "modifiers ship at 0.0, so no in-run multiplier is derivable from the "
-            "corpus. Boolean attributes are deliberately absent -- see the tool's "
-            "docstring."
+            "that authored the value). These are BASE numbers as shipped. 'scaling' holds "
+            "the run's multipliers, mined from Group_Scaling (chapter x difficulty health "
+            "and damage, stagger by chapter, the scaling groups) and Enemy_Model (the "
+            "tainted/corruption ratios). Boolean attributes are deliberately absent -- "
+            "see the tool's docstring."
         ),
         "source": EP.corpus_source(),
         "enemies": rows,
@@ -527,6 +650,129 @@ def _inherited_note(rows: list[dict]) -> str:
     return f"Health inherited from {', '.join(srcs)}."
 
 
+
+def _chapter_rows(sel: dict, stat: str) -> list[tuple[int, list[float]]]:
+    """``[(chapter, per-difficulty values)]`` for one stat, in chapter order."""
+    rows = []
+    n = 1
+    while (s := sel.get(f"Chapter {n} {stat} Multiplier Selector")) is not None:
+        rows.append((n, list(s["values"])))
+        n += 1
+    return rows
+
+
+def _render_scaling(w, sc: dict) -> None:
+    """How a base value becomes the number you fight, all read from shipped data."""
+    sel = sc.get("selectors") or {}
+    w("## How enemies get tougher")
+    w("")
+    if not sel:
+        w("The scaling setup (`Group_Scaling`) was not in the corpus this page was built")
+        w("from, so the multipliers are not shown.")
+        w("")
+        return
+
+    w("Every number above is a base value. During a run the game scales it from one")
+    w("setup in the data, `Common_Settings/Group_Scaling`: a two-level switch that picks")
+    w("a multiplier by the **current chapter**, then by the **game difficulty**.")
+    w("")
+    for stat, title in (("Max Health", "Health"), ("Damage", "Damage")):
+        rows = _chapter_rows(sel, stat)
+        if not rows:
+            continue
+        width = max(len(v) for _, v in rows)
+        w(f"**{title} multiplier** — chapter down, difficulty across, lowest to highest:")
+        w("")
+        w("| Chapter | " + " | ".join(f"Difficulty {i + 1}" for i in range(width)) + " |")
+        w("|---" * (width + 1) + "|")
+        for n, vals in rows:
+            w(f"| {n} | " + " | ".join(f"×{v:g}" for v in vals) + " |")
+        w("")
+    w("A standard run plays three chapters; the data defines a fourth row as well.")
+    w("")
+
+    stag = (sel.get("Chapter Stagger Multiplier Selector") or {}).get("values") or []
+    common = (sel.get("Chapter Common Stagger Per Player Selector") or {}).get("values") or []
+    elite = (sel.get("Chapter Elite Stagger Per Player Selector") or {}).get("values") or []
+    if stag:
+        w("**Stagger** scales by chapter only, and carries a per-player value chosen by")
+        w("chapter. The value is named per player; the exact formula that applies it to")
+        w("the party is in the game's code.")
+        w("")
+        w("| Chapter | Stagger multiplier | Per player (common) | Per player (elite) |")
+        w("|---|---|---|---|")
+        for i in range(max(len(stag), len(common), len(elite))):
+            def cell(seq, i=i, fmt="×{:g}"):
+                return fmt.format(seq[i]) if i < len(seq) else "—"
+            w(f"| {i + 1} | {cell(stag)} | {cell(common, fmt='+{:g}')} "
+              f"| {cell(elite, fmt='+{:g}')} |")
+        w("")
+    w("`Group_Scaling` has no per-player **health** term: health scales by chapter and")
+    w("difficulty only. Every per-player value in it is a stagger value.")
+    w("")
+
+    tainted = sc.get("tainted") or {}
+    if tainted:
+        parts = []
+        for label, noun in (("Tainted HP Increase Ratio", "health"),
+                            ("Tainted Damage Increase Ratio", "damage"),
+                            ("Tainted Stagger Increase Ratio", "stagger")):
+            if label in tainted:
+                parts.append(f"**+{tainted[label] * 100:g}%** {noun}")
+        scale = tainted.get("Tainted Mesh Scale Multiplier Operand")
+        if scale and scale != 1:
+            parts.append(f"**{(scale - 1) * 100:g}%** larger")
+        w("### Corrupted (tainted) enemies")
+        w("")
+        w("Defined on `Enemy_Model`, which every enemy inherits, so it applies to any")
+        w("enemy that can be tainted: " + ", ".join(parts) + ".")
+        w("")
+
+    groups = sc.get("groups") or {}
+    tiers = [g for g in ("Boss Enemy Group", "Elite Enemy Group", "Common Enemy Group")
+             if g in groups]
+    if len(tiers) >= 2:
+        vals = [groups[g] for g in tiers]
+        # the fields that actually set the tiers apart; the shared ones say nothing
+        differ = [i for i in range(1, min(len(v) for v in vals))
+                  if len({v[i] for v in vals}) > 1]
+        w("### Bosses scale on their own curve")
+        w("")
+        w("Enemies are split into scaling groups, each with its own level curve up to")
+        w(f"level {vals[0][0]}. The groups share their other rates and differ in these")
+        w("coefficients, highest for bosses:")
+        w("")
+        w("| Group | " + " | ".join(f"Coefficient {j + 1}" for j in range(len(differ))) + " |")
+        w("|---" * (len(differ) + 1) + "|")
+        for g, v in zip(tiers, vals, strict=True):
+            w(f"| {g.replace(' Enemy Group', '')} | "
+              + " | ".join(f"{v[i]:g}" for i in differ) + " |")
+        w("")
+        w("What each coefficient controls is not labelled in the data. Which group an")
+        w("enemy scales in is not in the data either — no file references any group —")
+        w("so the game's code assigns it, most likely by rank.")
+        w("")
+
+    ratio = sc.get("tumor_boss_health_ratio")
+    if ratio is not None:
+        w("### Nightmare tumors")
+        w("")
+        w(f"Each tumor publishes a boss-health reduction ratio of **{ratio:g}**")
+        w("(`Tumor_Reduce_Boss_Health_Ratio`), set by the tumor's own entity. The name")
+        w("says destroying tumors weakens the boss; the rule that applies it is in the")
+        w("game's code.")
+        w("")
+
+    w("### Per-chapter enemy variants")
+    w("")
+    w("There are none. No enemy definition carries a chapter, act or tier marker, and")
+    w("the nightmare family a run meets everywhere — cultists, spiders, tentacles,")
+    w("thieves — is one flat set of definitions reused in every biome. A late cultist")
+    w("is the same definition as an early one; the chapter multiplier above is what")
+    w("makes it hit harder.")
+    w("")
+
+
 def render_docs(data: dict) -> str:
     rows: list[dict] = list(data["enemies"])  # type: ignore[arg-type]
     for r in rows:
@@ -723,41 +969,8 @@ def render_docs(data: dict) -> str:
         )
     w("")
 
-    # -------------------------------------------------------- what is not here
-    w("## What these numbers do not tell you")
-    w("")
-    w("Four things players reasonably expect here are not in the shipped data, and")
-    w("the page would rather say so than invent them.")
-    w("")
-    w("**Corruption / tainted enemies.** The corruption modifier (`AllEnemiesTainted`,")
-    w("which is the one wearing the corruption icon) scales enemies through")
-    w("`NGP_Tainted_Enemies_Modifier`, and every `NGP_*` value ships as **0.0** — they")
-    w("are New Game Plus knobs the run sets at load time, not constants in the data.")
-    w("There is no corrupted number to mine, so none is shown.")
-    w("")
-    w("**Chapter and party-size scaling.** `Chapter_Scaling_Enemies_Max_Health_Factor`")
-    w("and its damage twin both ship at **1.0**, and the corpus holds no party-size")
-    w("factor at all. An earlier version of this page claimed the run multiplies")
-    w("health by chapter and party size; that was wrong, and the data does not")
-    w("support any specific multiplier.")
-    w("")
-    w("**Separate boss scaling.** A boss's big number is authored, not multiplied:")
-    w("Baba Yaga's 1000 and a tentacle summon's 150 are both the `Raw Max Health`")
-    w("written on that enemy's own entity. Bosses do have scaling hooks of their own —")
-    w("`NGP_Master_Nightmares_Max_Health_Modifier` and its damage twin target only")
-    w("the Master Nightmares, and the Tentacle Master has an enrage-timer modifier —")
-    w("but like every `NGP_*` value they ship at **0.0**. The one boss-only value that")
-    w("ships non-zero is `Tumor_Reduce_Boss_Health_Ratio` at **0.2**; the name says a")
-    w("destroyed tumor takes that fraction off a boss, but nothing in the entity data")
-    w("references it, so the exact rule lives in the game's code.")
-    w("")
-    w("**Per-chapter enemy variants.** There are none. No enemy definition carries a")
-    w("chapter, act or tier marker, and the nightmare family a run meets everywhere —")
-    w("cultists, spiders, tentacles, thieves — is one flat set of definitions at 125")
-    w("HP reused in every biome. A cultist in the last chapter is the same definition")
-    w("as a cultist in the first; what changes around it is the biome pool it is")
-    w("rolled from, not the enemy.")
-    w("")
+    # ------------------------------------------------------------ run scaling
+    _render_scaling(w, data.get("scaling") or {})
 
     # ------------------------------------------------------------------ modding
     w("## Changing these numbers")

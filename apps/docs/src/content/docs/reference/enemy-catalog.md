@@ -255,39 +255,81 @@ shared stats live — every gnoll is 125 HP because `Gnoll_Model` says so.
 | Witches | Avalon | 6 | 150 | *own entity* |
 | Wolves | Avalon | 4 | 100–200 | `Wolves_Model` |
 
-## What these numbers do not tell you
+## How enemies get tougher
 
-Four things players reasonably expect here are not in the shipped data, and
-the page would rather say so than invent them.
+Every number above is a base value. During a run the game scales it from one
+setup in the data, `Common_Settings/Group_Scaling`: a two-level switch that picks
+a multiplier by the **current chapter**, then by the **game difficulty**.
 
-**Corruption / tainted enemies.** The corruption modifier (`AllEnemiesTainted`,
-which is the one wearing the corruption icon) scales enemies through
-`NGP_Tainted_Enemies_Modifier`, and every `NGP_*` value ships as **0.0** — they
-are New Game Plus knobs the run sets at load time, not constants in the data.
-There is no corrupted number to mine, so none is shown.
+**Health multiplier** — chapter down, difficulty across, lowest to highest:
 
-**Chapter and party-size scaling.** `Chapter_Scaling_Enemies_Max_Health_Factor`
-and its damage twin both ship at **1.0**, and the corpus holds no party-size
-factor at all. An earlier version of this page claimed the run multiplies
-health by chapter and party size; that was wrong, and the data does not
-support any specific multiplier.
+| Chapter | Difficulty 1 | Difficulty 2 | Difficulty 3 | Difficulty 4 |
+|---|---|---|---|---|
+| 1 | ×1 | ×1 | ×1 | ×1 |
+| 2 | ×2 | ×2.2 | ×2.4 | ×2.5 |
+| 3 | ×4 | ×4.5 | ×5 | ×5.2 |
+| 4 | ×4.2 | ×4.7 | ×5.2 | ×5.4 |
 
-**Separate boss scaling.** A boss's big number is authored, not multiplied:
-Baba Yaga's 1000 and a tentacle summon's 150 are both the `Raw Max Health`
-written on that enemy's own entity. Bosses do have scaling hooks of their own —
-`NGP_Master_Nightmares_Max_Health_Modifier` and its damage twin target only
-the Master Nightmares, and the Tentacle Master has an enrage-timer modifier —
-but like every `NGP_*` value they ship at **0.0**. The one boss-only value that
-ships non-zero is `Tumor_Reduce_Boss_Health_Ratio` at **0.2**; the name says a
-destroyed tumor takes that fraction off a boss, but nothing in the entity data
-references it, so the exact rule lives in the game's code.
+**Damage multiplier** — chapter down, difficulty across, lowest to highest:
 
-**Per-chapter enemy variants.** There are none. No enemy definition carries a
-chapter, act or tier marker, and the nightmare family a run meets everywhere —
-cultists, spiders, tentacles, thieves — is one flat set of definitions at 125
-HP reused in every biome. A cultist in the last chapter is the same definition
-as a cultist in the first; what changes around it is the biome pool it is
-rolled from, not the enemy.
+| Chapter | Difficulty 1 | Difficulty 2 | Difficulty 3 | Difficulty 4 |
+|---|---|---|---|---|
+| 1 | ×0.8 | ×0.9 | ×1 | ×1 |
+| 2 | ×1.7 | ×1.9 | ×2 | ×2.1 |
+| 3 | ×2.7 | ×3 | ×3.2 | ×3.4 |
+| 4 | ×2.8 | ×3.1 | ×3.3 | ×3.5 |
+
+A standard run plays three chapters; the data defines a fourth row as well.
+
+**Stagger** scales by chapter only, and carries a per-player value chosen by
+chapter. The value is named per player; the exact formula that applies it to
+the party is in the game's code.
+
+| Chapter | Stagger multiplier | Per player (common) | Per player (elite) |
+|---|---|---|---|
+| 1 | ×1 | +0.3 | +0.6 |
+| 2 | ×1.2 | +0.4 | +0.7 |
+| 3 | ×1.5 | +0.5 | +0.8 |
+| 4 | ×1.75 | — | +0.9 |
+
+`Group_Scaling` has no per-player **health** term: health scales by chapter and
+difficulty only. Every per-player value in it is a stagger value.
+
+### Corrupted (tainted) enemies
+
+Defined on `Enemy_Model`, which every enemy inherits, so it applies to any
+enemy that can be tainted: **+50%** health, **+75%** damage, **+25%** stagger, **10%** larger.
+
+### Bosses scale on their own curve
+
+Enemies are split into scaling groups, each with its own level curve up to
+level 20. The groups share their other rates and differ in these
+coefficients, highest for bosses:
+
+| Group | Coefficient 1 | Coefficient 2 |
+|---|---|---|
+| Boss | 1.1 | 1.5 |
+| Elite | 0.6 | 0.8 |
+| Common | 0.3 | 0.5 |
+
+What each coefficient controls is not labelled in the data. Which group an
+enemy scales in is not in the data either — no file references any group —
+so the game's code assigns it, most likely by rank.
+
+### Nightmare tumors
+
+Each tumor publishes a boss-health reduction ratio of **0.2**
+(`Tumor_Reduce_Boss_Health_Ratio`), set by the tumor's own entity. The name
+says destroying tumors weakens the boss; the rule that applies it is in the
+game's code.
+
+### Per-chapter enemy variants
+
+There are none. No enemy definition carries a chapter, act or tier marker, and
+the nightmare family a run meets everywhere — cultists, spiders, tentacles,
+thieves — is one flat set of definitions reused in every biome. A late cultist
+is the same definition as an early one; the chapter multiplier above is what
+makes it hit harder.
 
 ## Changing these numbers
 

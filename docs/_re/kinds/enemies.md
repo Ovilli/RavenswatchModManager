@@ -352,3 +352,71 @@ Also mapped: `FUN_140330db0` (`Enemy_RuntimeSpawnPicker`) — the *in-level*
 spawner path enumerates the **class registry**, not the tribe roster, filtered
 by allowed-tribe pointer list; so registry registration (step 3 of post-load)
 matters for both paths.
+
+## Update 2026-09-22 — run scaling is in DATA (Group_Scaling), mined by the catalog
+
+Recorded because this was concluded the other way first, and published: a
+session read the global `Chapter_Scaling_Enemies_Max_Health_Factor` at **1.0**,
+searched for a party/chapter selector with the system `grep`, found nothing, and
+told players there was no multiplier. `grep` on the dev box is **ugrep**, which
+prints nothing at all for a binary file — so every cooked `.gen` read as "no
+match". Search cooked data with `grep -a` or Python bytes, never plain `grep`.
+
+**Where it lives.** `EntitySettings/Common_Settings/Group_Scaling.entity.ot` — the
+same entity that owns the party XP component (`GroupLevelComponent_Ctor`). All
+of it is mined into `data/enemy_catalog.json::scaling` by
+`tools/mine_enemy_catalog.py::scaling()`, and rendered on the enemy docs page.
+
+**How it is wired** (references are stored in the data, not inferred):
+
+```
+Chapter Scaling Enemies Max Health Factor Setter   (oCEntityCpntGlobalEntityValueSetterSettings)
+  writes global Chapter_Scaling_Enemies_Max_Health_Factor   (shipped 1.0 = initial value only)
+  └─ Chapter Max Health Multiplier Selector        switch = 0x181d17fd "Current chapter"
+       ├─ key 0 → Chapter 1 Max Health Multiplier Selector   switch = 0x18700873 "Game Difficulty"
+       ├─ key 1 → Chapter 2 …                               [2.0 2.2 2.4 2.5]
+       ├─ key 2 → Chapter 3 …                               [4.0 4.5 5.0 5.2]
+       └─ key 3 → Chapter 4 …                               [4.2 4.7 5.2 5.4]
+```
+
+Damage is the same shape. The outer selector's own floats (`1.0 2.4 5.0 0.0`) are
+per-entry FALLBACKS, not the effective values — do not publish them as the
+chapter multiplier. They equal the inner tables' difficulty-index-2 column.
+
+**Reading a selector.** `oCEntityCpntValueSwitchSelectorSettings`: a leading int
+union, then `(int key, f32 value)` union pairs. The switch source is an
+`oCEntityCpntValuePicker` (class `oCEntityCpntValuePicker`) whose u32 CRC sits at
+picker-mark `+10`. Label the CRC from the engine's registration table
+(`data/symbols.json::g_GlobalEntityValueSceneContext_Tester_vftable`). Note the
+trap in the names: **"Chapter Common Stagger Per Player Selector" switches on
+Current chapter, not on player count** — "per player" names the quantity.
+
+**Other scaling in data:**
+* Stagger: `Chapter Stagger Multiplier Selector` [1.0 1.2 1.5 1.75]; per-player
+  stagger chosen by chapter, common [0.3 0.4 0.5], elite [0.6 0.7 0.8 0.9].
+* XP: `Chapter XP Factor Selector` [1.0 3.0 10.0].
+* **No per-player HEALTH term** exists in Group_Scaling.
+* Corruption = the `AllEnemiesTainted` modifier. Its per-enemy effect is on
+  `Enemy_Model` (inherited by all enemies): `Tainted HP Increase Ratio` 0.5,
+  `Tainted Damage Increase Ratio` 0.75, `Tainted Stagger Increase Ratio` 0.25,
+  `Tainted Mesh Scale Multiplier Operand` 1.1; gated by `Can Be Tainted Value` (1)
+  and `Force Tainted` / `Force Not Tainted` (0). The `NGP_Tainted_Enemies_Modifier`
+  global (0.0) is a separate New Game Plus knob.
+* Tumor: `Nightmare_Tumor.entity.ot` holds `Reduce Boss Health Ratio Value` = 0.2
+  and a setter writing it into `Tumor_Reduce_Boss_Health_Ratio`.
+* Scaling groups: `oCDtEntityCpntGroupLevelSettings` ×6 — Boss / Elite / Common /
+  No Scale / Dummy / Hero. Enemy tiers share every field except two, which rise
+  Common 0.3/0.5 → Elite 0.6/0.8 → Boss 1.1/1.5 (max level 20).
+
+**Still open — code, not data** (checked: no file in the 22,831-file mirror
+references any enemy group by name or by its GUID):
+1. How an enemy is assigned to a scaling group. Hypothesis: by rank. Unproven.
+2. What the two group coefficients control — the fields are positional, no labels.
+3. The consumer that multiplies an enemy's `Raw Max Health` by the chapter factor
+   (almost certainly multiplicative, not traced).
+4. How the per-player stagger value and the tumor ratio are applied.
+5. Difficulty level names (data keys them 0–3; values rise with the index).
+6. A player reported chapter scaling applies "only in single-chapter mode". The
+   data keys it on `Current chapter`, which a normal run advances
+   (see maps-chapters.md), so it should apply in every run — confirm in game
+   before believing either.
