@@ -38,7 +38,7 @@ The desktop app does **not** reimplement the CLI — it bundles the Python CLI a
 | Build loader DLL (Win) | `src\loader\build.bat` |
 | Build loader DLL (Linux→Win, MinGW) | `src/loader/build.sh` |
 | Bump versions for release | `python scripts/bump-version.py patch` (or `minor`/`major`/explicit `0.1.12`) — updates all 4 version files atomically |
-| Mirror cooked assets to `data/uncooked/` | `python scripts/extract_uncooked.py` (textures → PNG, everything else copied; sound banks come from `audio_pairs()`, not the CSV) |
+| Mirror cooked assets to `data/uncooked/` | `python scripts/extract_uncooked.py` (textures → PNG, everything else copied; sound banks come from `audio_pairs()`, not the CSV). **The mirror is pruned to match**: anything the run did not write is deleted, so a renamed asset cannot leave its old spelling behind (that is what made the 2026-09-22 cipher fix break `test_poi.py` with a GUID collision). `--prune-dry-run` to preview, `--no-prune` to skip; a `--limit`/`--filter`/errored run never prunes, since it only describes a slice. `Audio/extracted/` (extract_audio.py) and live `.gen.txt` sidecars (decode_gen_sidecars.py) are exempt |
 | Unpack sound banks to playable audio | `python scripts/extract_audio.py` (`--wav`, `--filter <Bank>`) — needs `pip install fsb5`; writes `data/uncooked/Audio/extracted/<Bank>/<Sample>.ogg` |
 | Inspect a profile save | `rsmm save` (read-only; container + CRC + class registry). **Never write to `<game>/_Save/Profile_*.ob`** — copy to /tmp to experiment |
 | Triage a loader crash | `python scripts/triage_dump.py` (newest dump; stdlib-only) — exception + fault symbol + stack scan (game VAs + nm-symbolized loader frames) |

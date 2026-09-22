@@ -13,6 +13,11 @@ in <game>/DarkTalesResources/_Cooking/<encoded>:
 
 If a .rsmm.bak sits next to a cooked file (active rsmm-installed mod),
 prefer the .bak so the mirror reflects pristine game state.
+
+The mirror is a MIRROR, not an accumulator: after writing, anything under
+--out that this run did not produce is deleted (--no-prune to keep it,
+--prune-dry-run to see what would go). Without that the tool was additive and
+a decoded path that changed spelling kept its old file forever — see _prune.
 """
 
 import argparse
@@ -262,7 +267,7 @@ def _try_decode_animation(raw: bytes) -> bytes | None:
         return None
 
 
-def _write_json_and_raw(json_out: Path, js: bytes, raw_out: Path, raw: bytes) -> None:
+def _write_json_and_raw(json_out: Path, js: bytes, raw_out: Path, raw: bytes) -> list[Path]:
     """Write the decoded JSON AND the cooked bytes it came from.
 
     The JSON is for reading; every SDK consumer (talents, skills, items, rewards,
@@ -272,15 +277,28 @@ def _write_json_and_raw(json_out: Path, js: bytes, raw_out: Path, raw: bytes) ->
     for out, data in ((json_out, js), (raw_out, raw)):
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(data)
+    return [json_out, raw_out]
 
 
 def process_one(args):
+    """Extract one entry.
+
+    Returns `(tag, detail, written)` where `written` lists the mirror-relative
+    paths this entry produced. main() unions those and prunes everything else,
+    which is what stops a renamed asset from leaving its old spelling behind
+    forever (see `_prune`).
+    """
     encoded, decoded, cooking_dir, out_dir = args
+    root = Path(out_dir)
+
+    def rel(*paths: Path) -> list[str]:
+        return [str(q.relative_to(root)).replace(os.sep, "/") for q in paths]
+
     enc_path = Path(cooking_dir) / encoded.replace("\\", "/")
     bak = enc_path.with_suffix(enc_path.suffix + ".rsmm.bak")
     src = bak if bak.exists() else enc_path
     if not src.exists() or src.is_dir():
-        return ("skip", decoded)
+        return ("skip", decoded, [])
     dst_rel = decoded.replace("\\", "/")
     png_target = decoded_to_png_path(dst_rel)
     glb_target = decoded_to_glb_path(dst_rel)
@@ -291,37 +309,37 @@ def process_one(args):
     try:
         raw = src.read_bytes()
     except Exception as e:
-        return ("err", f"{decoded}: read {e}")
+        return ("err", f"{decoded}: read {e}", [])
 
     if ar_target:
         js = _try_decode_assetrefs(raw)
         if js is not None:
             out = Path(out_dir) / ar_target
-            _write_json_and_raw(out, js, Path(out_dir) / dst_rel, raw)
-            return ("json", decoded)
+            w = _write_json_and_raw(out, js, Path(out_dir) / dst_rel, raw)
+            return ("json", decoded, rel(*w))
 
     if es_target:
         js = _try_decode_entitysettings(raw)
         if js is not None:
             out = Path(out_dir) / es_target
-            _write_json_and_raw(out, js, Path(out_dir) / dst_rel, raw)
-            return ("json", decoded)
+            w = _write_json_and_raw(out, js, Path(out_dir) / dst_rel, raw)
+            return ("json", decoded, rel(*w))
         # else fall through to raw copy
 
     if def_target:
         js = _try_decode_definition(raw)
         if js is not None:
             out = Path(out_dir) / def_target
-            _write_json_and_raw(out, js, Path(out_dir) / dst_rel, raw)
-            return ("json", decoded)
+            w = _write_json_and_raw(out, js, Path(out_dir) / dst_rel, raw)
+            return ("json", decoded, rel(*w))
         # else fall through to raw copy
 
     if gv_target:
         js = _try_decode_globalvalues(raw)
         if js is not None:
             out = Path(out_dir) / gv_target
-            _write_json_and_raw(out, js, Path(out_dir) / dst_rel, raw)
-            return ("json", decoded)
+            w = _write_json_and_raw(out, js, Path(out_dir) / dst_rel, raw)
+            return ("json", decoded, rel(*w))
         # else fall through to raw copy
 
     if png_target:
@@ -332,10 +350,10 @@ def process_one(args):
             raw_out = Path(out_dir) / dst_rel
             raw_out.parent.mkdir(parents=True, exist_ok=True)
             raw_out.write_bytes(raw)
-            return ("raw-tex", decoded)
+            return ("raw-tex", decoded, rel(raw_out))
         img, w, h, fmt = result
         img.save(out, "PNG", optimize=False)
-        return ("png", decoded)
+        return ("png", decoded, rel(out))
 
     if glb_target:
         glb = _try_decode_geometry(raw) or _try_decode_animation(raw)
@@ -343,14 +361,14 @@ def process_one(args):
             out = Path(out_dir) / glb_target
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_bytes(glb)
-            return ("glb", decoded)
+            return ("glb", decoded, rel(out))
         # Fall through: write raw cooked bytes so the decoded path still
         # mirrors the cooked tree.
 
     out = Path(out_dir) / dst_rel
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(raw)
-    return ("copy", decoded)
+    return ("copy", decoded, rel(out))
 
 
 #: The bankset descriptor is the only `Audio/` entry that IS listed in
@@ -410,6 +428,60 @@ def cache_pairs(cooking: Path):
         yield str(rel).replace("/", "\\"), (prefix + leaf).replace("!", "\\")
 
 
+#: Subtrees of the mirror this script does not own, and must never prune.
+#: `scripts/extract_audio.py` unpacks the FMOD banks into `Audio/extracted/`;
+#: those samples have no asset_map row, so a prune that did not know about them
+#: would delete the whole extracted library on every run.
+FOREIGN_SUBTREES = ("Audio/extracted",)
+
+
+def _prune(
+    out_dir: Path, written: set[str], *, dry_run: bool = False
+) -> tuple[int, int, list[str]]:
+    """Delete mirror files this run did not write, and the dirs left empty.
+
+    The mirror is derived, so anything the current `asset_map` no longer names
+    is stale by definition. Without this the extractor was purely additive: a
+    decoded path that changed spelling left its old file behind forever, and
+    the duplicate was not inert — after the 2026-09-22 cipher fix renamed 7307
+    paths, `40x40_Cross_Plava_Camp` sat beside `40x40_Cross_Plaza_Camp`, the
+    same level under two names, and the pair broke the GUID-uniqueness check in
+    tests/test_poi.py with an error that named neither the cipher nor the
+    extractor.
+
+    Ownership rules, both of which cost real data to get wrong:
+      * `FOREIGN_SUBTREES` belongs to another script — skipped wholesale.
+      * `X.gen.txt` is a `scripts/decode_gen_sidecars.py` sidecar. It is kept
+        when its `X.gen` survives this run and pruned when it does not, so the
+        sidecars follow their source instead of being orphaned or nuked.
+    """
+    stale: list[Path] = []
+    for root, _dirs, files in os.walk(out_dir):
+        rel_dir = Path(root).relative_to(out_dir)
+        for name in files:
+            rel = str(rel_dir / name).replace(os.sep, "/").lstrip("./")
+            if rel in written:
+                continue
+            if any(rel == s or rel.startswith(s + "/") for s in FOREIGN_SUBTREES):
+                continue
+            if rel.endswith(".gen.txt") and rel[: -len(".txt")] in written:
+                continue
+            stale.append(Path(root) / name)
+
+    if dry_run:
+        return len(stale), 0, [str(f) for f in stale[:5]]
+
+    for f in stale:
+        f.unlink()
+    pruned_dirs = 0
+    for root, _dirs, _files in os.walk(out_dir, topdown=False):
+        d = Path(root)
+        if d != out_dir and not any(d.iterdir()):
+            d.rmdir()
+            pruned_dirs += 1
+    return len(stale), pruned_dirs, [str(f) for f in stale[:5]]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--game-dir", default=str(DEFAULT_GAME))
@@ -418,6 +490,16 @@ def main():
     ap.add_argument("--limit", type=int, help="process only first N entries (testing)")
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
     ap.add_argument("--filter", help="substring filter on decoded path")
+    ap.add_argument(
+        "--no-prune",
+        action="store_true",
+        help="keep mirror files this run did not write (default: delete them)",
+    )
+    ap.add_argument(
+        "--prune-dry-run",
+        action="store_true",
+        help="report what the prune would delete, without deleting it",
+    )
     args = ap.parse_args()
 
     cooking = Path(args.game_dir) / "DarkTalesResources" / "_Cooking"
@@ -449,13 +531,39 @@ def main():
 
     print(f"processing {len(pairs)} entries with {args.jobs} workers...", flush=True)
     counts = {"png": 0, "copy": 0, "raw-tex": 0, "skip": 0, "err": 0}
+    written: set[str] = set()
     with ProcessPoolExecutor(max_workers=args.jobs) as ex:
         for i, fut in enumerate(as_completed(ex.submit(process_one, p) for p in pairs), 1):
-            tag, _ = fut.result()
+            tag, _, wrote = fut.result()
             counts[tag] = counts.get(tag, 0) + 1
+            written.update(wrote)
             if i % 1000 == 0:
                 print(f"  {i}/{len(pairs)}  {counts}", flush=True)
     print("done:", counts)
+
+    # Pruning is only correct when `written` is the COMPLETE set the mirror
+    # should hold. A filtered or truncated run describes a slice, and an
+    # errored one is missing whatever failed — pruning on either would delete
+    # good files, so both refuse rather than guess.
+    partial = args.limit or args.filter
+    if args.no_prune:
+        print("prune: skipped (--no-prune)")
+    elif partial:
+        print("prune: skipped (partial run: --limit/--filter describe a subset)")
+    elif counts["err"]:
+        print(f"prune: SKIPPED — {counts['err']} entries failed, so this run is incomplete")
+    else:
+        gone, dirs, sample = _prune(Path(args.out), written, dry_run=args.prune_dry_run)
+        if gone:
+            verb = "would remove" if args.prune_dry_run else "removed"
+            tail = "" if args.prune_dry_run else f" and {dirs} empty dirs"
+            print(f"prune: {verb} {gone} stale files{tail}")
+            for s in sample:
+                print(f"  {s}")
+            if gone > len(sample):
+                print(f"  ... and {gone - len(sample)} more")
+        else:
+            print("prune: mirror already clean")
 
 
 if __name__ == "__main__":
