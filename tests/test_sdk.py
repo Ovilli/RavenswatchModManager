@@ -12,7 +12,6 @@ from rsmm.sdk.config import ConfigError, ConfigSchema, ConfigStore
 from rsmm.sdk.content import ContentError, ContentRegistry, SchemaNotMined
 from rsmm.sdk.health import DEFAULT_THRESHOLD, Health
 from rsmm.sdk.i18n import I18nBundle, merge_bundles
-from rsmm.sdk.intermod import InterModError, InterModRegistry
 from rsmm.sdk.transaction import ApplyTransaction
 from rsmm.sdk.versioning import check_compat
 
@@ -206,35 +205,6 @@ def test_i18n_merge_no_collision(tmp_path: Path):
     merged = merge_bundles([a, b])
     assert merged["EN"]["RSMM_A_x"] == "1"
     assert merged["EN"]["RSMM_B_x"] == "2"
-
-
-# ---------------------------------------------------------------------------
-# intermod
-# ---------------------------------------------------------------------------
-
-
-def test_intermod_expose_require():
-    r = InterModRegistry()
-    r.expose("ItemPack", {"add": lambda x: x + 1}, version="1.0.0",
-             api_name="itempack")
-    p = r.require("itempack", ">=1.0")
-    assert p.add(2) == 3
-    with pytest.raises(InterModError):
-        r.require("itempack", ">=2")
-    with pytest.raises(InterModError):
-        r.require("missing")
-
-
-def test_intermod_proxy_catches():
-    def boom(*_):
-        raise RuntimeError("oops")
-    r = InterModRegistry()
-    r.expose("X", {"go": boom}, version="0.1.0", api_name="x")
-    p = r.require("x")
-    with pytest.raises(InterModError):
-        p.go()
-    with pytest.raises(InterModError):
-        p.something = 1
 
 
 # ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@ Mod authors do:
 
     from rsmm import sdk
     with sdk.Mod("MyMod") as m:
-        m.stat(...)               # legacy v1 surface (delegated to cli.stat)
+        m.stat("Easy", min=5, max=10)  # numeric value, merged across mods
         m.config({"damage": {"type": "float", "default": 1.0}})
         m.i18n("EN", {"hello": "Hi"})
         # Typed registry builders return a ContentRef handle (Forge
@@ -36,7 +36,6 @@ from .content import (
 )
 from .health import Health
 from .i18n import I18nBundle
-from .intermod import InterModRegistry
 from .plugins import discover_plugins
 from .repo import RepoIndex, sign_file, verify_file
 from .testkit import ModExpect, assert_no_conflicts, conflicts, expect
@@ -48,7 +47,7 @@ _ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 __all__ = [
     "API_VERSION", "sdk_export", "require_api",
     "Health", "ConfigSchema", "ConfigStore", "I18nBundle",
-    "ContentRegistry", "ContentDef", "ContentRef", "InterModRegistry",
+    "ContentRegistry", "ContentDef", "ContentRef",
     "KIND_CONFIDENCE", "kind_confidence",
     "discover_plugins",
     "RepoIndex", "sign_file", "verify_file",
@@ -132,12 +131,16 @@ class Mod:
                         "ext": self._b._assets[decoded].suffix.lower()})
         return out
 
-    # --- legacy v1 surface (delegated) ---------------------------------
+    # --- patch blocks ---------------------------------------------------
 
     def stat(self, *args, **kwargs):
         return self._b.stat(*args, **kwargs)
 
     # --- v3 surface ----------------------------------------------------
+
+    def ot(self, selector: str, field: str, value, *,
+           file: str | None = None, selector_field: str | None = None) -> None:
+        self._b.ot(selector, field, value, file=file, selector_field=selector_field)
 
     def config(self, schema: dict) -> None:
         self._b.config(schema)

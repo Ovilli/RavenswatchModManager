@@ -293,7 +293,7 @@ bases with `rsmm schema [kind] [--grep T]`.
 with sdk.Mod("FrostPack", version="1.0.0", author="you",
              experimental=True) as m:           # required for non-confirmed kinds
     blade = m.item("FrostBlade", base="Orb_Grants_Strength", name="Frost Blade")
-    m.enemy("FrostGhoul", base="Marsh_Ghoul", add_flags=["Elite"])
+    m.enemy("FrostGhoul", base="Sling_Ghoul", add_flags=["Elite"])
     m.boss("CrabDen", base="Boss_Marsh_Ghoul", becomes="Boss_Crab")
 ```
 

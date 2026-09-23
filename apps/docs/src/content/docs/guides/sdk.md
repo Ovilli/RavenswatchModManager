@@ -46,7 +46,6 @@ src/rsmm/sdk/
   config.py           # schema-driven per-mod config, generates UI rows
   i18n.py             # lang/<locale>.toml merge into text banks
   content.py          # R.content.register(kind, def) facade
-  intermod.py         # R.api.expose / R.api.require
   plugins.py          # entry-point discovery, version-gated load
   repo.py             # repo.json schema + sign/verify (Ed25519)
   versioning.py       # game-build hash check + schema migrations

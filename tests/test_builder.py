@@ -125,3 +125,16 @@ def test_builder_missing_asset_source_raises(tmp_path):
     except FileNotFoundError:
         return
     raise AssertionError("expected FileNotFoundError")
+
+
+def test_mod_facade_forwards_every_public_builder_method():
+    """`sdk.Mod` is a hand-written facade over ModBuilder; a builder method it
+    forgets is one the docs can show and an author cannot call (`m.ot` was
+    missing while the guide used it)."""
+    from rsmm import sdk
+    from rsmm.sdk.builder import ModBuilder
+    internal = {"commit"}          # Mod.__exit__ calls it
+    public = {n for n in vars(ModBuilder)
+              if not n.startswith("_") and callable(getattr(ModBuilder, n))}
+    missing = sorted(public - internal - set(dir(sdk.Mod)))
+    assert not missing, f"sdk.Mod does not forward: {missing}"

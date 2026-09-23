@@ -26,6 +26,5 @@ Start with the [Authoring mods guide](/guides/modding/) and the [SDK design note
 - [`rsmm.sdk.content`](/reference/sdk-api/content/)
 - [`rsmm.sdk.health`](/reference/sdk-api/health/)
 - [`rsmm.sdk.i18n`](/reference/sdk-api/i18n/)
-- [`rsmm.sdk.intermod`](/reference/sdk-api/intermod/)
 - [`rsmm.sdk.repo`](/reference/sdk-api/repo/)
 - [`rsmm.sdk.testkit`](/reference/sdk-api/testkit/)

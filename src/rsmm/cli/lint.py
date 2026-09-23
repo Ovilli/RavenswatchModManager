@@ -206,9 +206,6 @@ def lint_one(entry: Path) -> tuple[int, int]:
                 print(f"  {_T_FAIL} {mod_s}: ot patch file must be a relative path "
                       f"inside the install: {_ST.accent(repr(f))}")
                 errs += 1
-        elif kind == "composite":
-            # Accept any; backing impl may be a no-op today.
-            pass
         elif kind:
             print(f"  {_T_WARN} {mod_s}: unknown patch kind {_ST.accent(repr(kind))}")
             warns += 1
