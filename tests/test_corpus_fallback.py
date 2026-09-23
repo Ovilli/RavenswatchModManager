@@ -102,3 +102,28 @@ def test_kind_builds_the_same_bytes_from_the_install(tmp_path, monkeypatch, kind
     assert corpus.source() == "install"
     from_install = _emit(tmp_path / "install", kind, cid, fields)
     assert from_install == from_mirror
+
+
+#: Commands and registries authors use on a normal install. `rsmm talents`,
+#: `rsmm enemies`, the console snapshot and the magic-item registry all read
+#: only the mirror until 2026-09-23 — so they listed nothing for a player, and
+#: the magic-item registry was empty everywhere (it read `.gen.txt` dumps nothing
+#: writes by default).
+_BROWSERS = [
+    "src/rsmm/cli/cmd_talents.py",
+    "src/rsmm/cli/cmd_enemies.py",
+    "src/rsmm/cli/cmd_items.py",
+    "src/rsmm/cli/cmd_schema.py",
+    "src/rsmm/cli/console_cmd.py",
+    "src/rsmm/engine/magic_items.py",
+]
+_ANY_MIRROR_PATH = re.compile(r"""["']uncooked["']""")
+
+
+@pytest.mark.parametrize("rel", _BROWSERS)
+def test_browsing_commands_do_not_read_the_mirror(rel):
+    src = (Path(__file__).resolve().parents[1] / rel).read_text(encoding="utf-8")
+    code = "\n".join(line for line in src.splitlines()
+                     if not line.lstrip().startswith("#"))
+    assert not _ANY_MIRROR_PATH.search(code), (
+        f"{rel} builds a data/uncooked path — read through rsmm.engine.corpus")

@@ -1,16 +1,21 @@
 """Magic item (MagicalObject) registry.
 
-Scans `data/uncooked/EntitySettings/Objects/Magical_Objects/<rarity>/`
-for `*.entity.ot.EntitySettingsResource.gen.txt` files produced by
-`ot_decoder`, extracts the text-bank keys (Name / Description /
-SuperEffect) and icon decoded path for each item.
+Reads every shipped `EntitySettings/Objects/Magical_Objects/<rarity>/<id>`
+entity through `rsmm.engine.corpus` (the game install, or the mirror on an
+authoring checkout), lists its embedded strings, and extracts the text-bank
+keys (Name / Description / SuperEffect) and icon decoded path.
+
+It used to read `*.gen.txt` dumps from the mirror instead. Those are only
+written by a hand-run `scripts/decode_gen_sidecars.py`, so the registry was
+empty on every machine — including developer checkouts whose mirror had been
+re-extracted. `entity_strings.list_strings` on the cooked file yields the same
+string sequence the dump did (checked over all 125 shipped items).
 
 Each magic item ID is the filename stem (e.g. `Armor_Per_Object`).
 The registry powers SDK and CLI surfaces that need to enumerate items
 or validate item references.
 
-This is a static, data-driven registry — it does not need the game to
-be installed. It only reads the repo's `data/uncooked/` mirror.
+It needs a readable game install (or the mirror); without one it is empty.
 """
 
 from __future__ import annotations
@@ -22,8 +27,6 @@ from functools import lru_cache
 from pathlib import Path
 
 from rsmm.logging import get_logger
-
-from .paths import DATA_DIR
 
 logger = get_logger(__name__)
 
@@ -46,8 +49,8 @@ class MagicItem:
     debug_name: str | None = None        # human label (e.g. "Green_Armor")
 
 
-_UNCOOKED = DATA_DIR / "uncooked"
-_MAGIC_DIR = _UNCOOKED / "EntitySettings" / "Objects" / "Magical_Objects"
+_MAGIC_DIR = "EntitySettings/Objects/Magical_Objects/"
+_ENTITY_SUFFIX = ".entity.ot.EntitySettingsResource.gen"
 
 
 def _strings_in(txt: str) -> list[str]:
@@ -60,8 +63,13 @@ def _strings_in(txt: str) -> list[str]:
 
 
 def _scan_one(item_id: str, rarity: str, gen_txt_path: Path) -> MagicItem:
+    """Scan an `ot_decoder` text dump (`*.gen.txt`) of one item."""
     txt = gen_txt_path.read_text(encoding="utf-8", errors="replace")
-    strs = _strings_in(txt)
+    return _scan_strings(item_id, rarity, _strings_in(txt))
+
+
+def _scan_strings(item_id: str, rarity: str, strs: list[str]) -> MagicItem:
+    """Build the record from an item entity's embedded strings, in file order."""
 
     # Walk pairs: a "Text" + "Magical_Objects~GAM.xls" pair is followed
     # by the key string. The decoded dump emits Text bank refs as
@@ -108,22 +116,34 @@ def _scan_one(item_id: str, rarity: str, gen_txt_path: Path) -> MagicItem:
 def registry() -> dict[str, MagicItem]:
     """item_id -> MagicItem. Empty if data/uncooked/ is missing."""
     out: dict[str, MagicItem] = {}
-    if not _MAGIC_DIR.is_dir():
-        return out
-    for rarity_dir in _MAGIC_DIR.iterdir():
-        if not rarity_dir.is_dir():
-            continue
-        rarity = rarity_dir.name
-        for f in rarity_dir.glob("*.entity.ot.EntitySettingsResource.gen.txt"):
-            item_id = f.name.split(".entity.ot.", 1)[0]
-            try:
-                out[item_id] = _scan_one(item_id, rarity, f)
-            except Exception as e:
-                # Best-effort; broken/partial dumps just get skipped, but
-                # log so a missing item in the registry is diagnosable.
-                logger.debug("skipping unscannable magic item %s: %s", f, e)
-                continue
+    for item_id, rarity, strs in _sources():
+        try:
+            out[item_id] = _scan_strings(item_id, rarity, strs)
+        except Exception as e:
+            # Best-effort; a broken entity just gets skipped, but log so a
+            # missing item in the registry is diagnosable.
+            logger.debug("skipping unscannable magic item %s: %s", item_id, e)
     return out
+
+
+def _sources():
+    """Yield ``(item_id, rarity, strings)`` for every shipped magic item."""
+    from . import corpus
+    from . import entity_strings as ES
+
+    for rel in corpus.rels(_MAGIC_DIR, _ENTITY_SUFFIX):
+        rarity, _, leaf = rel[len(_MAGIC_DIR):].rpartition("/")
+        if not rarity or "/" in rarity:
+            continue
+        raw = corpus.read(rel)
+        if raw is None:
+            continue
+        try:
+            strs = [s for _sec, _off, s in ES.list_strings(raw)]
+        except ValueError as e:
+            logger.debug("skipping unparseable magic item %s: %s", rel, e)
+            continue
+        yield leaf[: -len(_ENTITY_SUFFIX)], rarity, strs
 
 
 def get(item_id: str) -> MagicItem | None:
@@ -183,7 +203,7 @@ def main() -> int:
         return 0
     ids = list_ids(rarity=a.rarity, grep=a.grep)
     if not ids:
-        print("(no magic items found — does data/uncooked/ exist?)")
+        print("(no magic items found — is the game install readable? set RSMM_GAME_DIR)")
         return 1
     reg = registry()
     for k in ids:

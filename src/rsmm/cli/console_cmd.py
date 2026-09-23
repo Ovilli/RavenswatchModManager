@@ -332,19 +332,17 @@ def cmd_refresh_snapshots(game_dir: Path) -> int:
     except Exception:
         logger.exception("magic_items snapshot failed")
 
-    # Heroes snapshot: scan data/uncooked for Hero_*.entity.ot dirs
-    heroes: list[str] = []
-    heroes_dir = REPO_ROOT / "data" / "uncooked" / "EntitySettings" / "Heroes"
-    if heroes_dir.is_dir():
-        for d in heroes_dir.iterdir():
-            if d.is_dir() and not d.name.startswith("Hero_Common"):
-                heroes.append(d.name)
+    # Heroes snapshot: the shipped Hero_* entity dirs (game install or mirror).
+    from rsmm.engine import corpus
+    heroes = [d for d in corpus.subdirs("EntitySettings/Heroes")
+              if d.startswith("Hero_") and not d.startswith("Hero_Common")]
     if heroes:
         (out / "_heroes.json").write_text(
             json.dumps(sorted(heroes), indent=2), encoding="utf-8")
         logger.info("heroes: %d entries -> %s", len(heroes), out / '_heroes.json')
     else:
-        logger.warning("heroes: no data/uncooked/EntitySettings/Heroes (skip)")
+        logger.warning("heroes: no hero entity dirs found — is the game install "
+                       "readable? (skip)")
     return 0
 
 

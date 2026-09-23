@@ -17,13 +17,13 @@ from __future__ import annotations
 import argparse
 import sys
 
-from rsmm.engine import cooked
+from rsmm.engine import cooked, corpus
 from rsmm.engine import enemy_pools as EP
 from rsmm.engine.cooked_schemas import definitions as _defs
-from rsmm.engine.paths import DATA_DIR
 
-_ENEMY_DIR = DATA_DIR / "uncooked" / "Definitions" / "Enemies"
-_TRIBE_DIR = DATA_DIR / "uncooked" / "Definitions" / "EnemyTribes"
+#: Read through `engine.corpus`: the game install, or the mirror on a checkout.
+_ENEMY_DIR = "Definitions/Enemies"
+_TRIBE_DIR = "Definitions/EnemyTribes"
 _GEN_SUFFIX = ".enemydef.ot.DtEnemyDefinition.gen"
 _TRIBE_SUFFIX = ".enemytribedef.ot.DtEnemyTribeDefinition.gen"
 
@@ -46,9 +46,7 @@ def _decode(path):
 
 def _iter_enemies():
     """Yield (id, body, path) for every vanilla enemy def."""
-    if not _ENEMY_DIR.is_dir():
-        return
-    for p in sorted(_ENEMY_DIR.glob(f"*{_GEN_SUFFIX}")):
+    for p in corpus.files(_ENEMY_DIR, _GEN_SUFFIX):
         body = _decode(p)
         if body is not None:
             yield p.name[: -len(_GEN_SUFFIX)], body, p
@@ -72,7 +70,8 @@ def _cmd_list(args) -> int:
             continue
         rows.append((tribe, eid, body.get("spawn_weight", 0.0)))
     if not rows:
-        print("(no enemies found — does data/uncooked/ exist?)", file=sys.stderr)
+        print("(no enemies found — is the game install readable? set RSMM_GAME_DIR)",
+              file=sys.stderr)
         return 1
     for tribe, eid, weight in rows:
         print(f"  [{tribe:>18s}]  {eid:<34s}  weight={weight:g}")
@@ -96,10 +95,7 @@ def _cmd_show(args) -> int:
 
 
 def _cmd_tribes(args) -> int:
-    names = set()
-    if _TRIBE_DIR.is_dir():
-        for p in _TRIBE_DIR.glob(f"*{_TRIBE_SUFFIX}"):
-            names.add(p.name[: -len(_TRIBE_SUFFIX)])
+    names = set(corpus.stems(_TRIBE_DIR, _TRIBE_SUFFIX))
     # also harvest tribes actually referenced by enemies (covers odd paths)
     for _eid, body, _p in _iter_enemies():
         t = _tribe_name(body.get("tribe_ref"))
@@ -121,14 +117,20 @@ def _cmd_tribes(args) -> int:
 #: biome whose pool contains its `entity_ref`. The reading lives in
 #: :mod:`rsmm.engine.enemy_pools` because the `enemy` content builder needs the
 #: same answers to keep an `override` swap inside one biome.
-_pool_files = EP.pool_files
-_pool_entities = EP.pool_entities
+def _pool_files() -> list[tuple[str, str]]:
+    """``(biome, decoded path)`` of every EntityPooling asset (install or mirror)."""
+    return sorted(EP.pool_rels().items())
+
+
+def _pool_entities(rel: str) -> list[str]:
+    raw = corpus.read(rel)
+    return EP._pool_entities_bytes(raw) if raw is not None else []
 
 
 def _cmd_pools(args) -> int:
-    rows = list(_pool_files())
+    rows = _pool_files()
     if not rows:
-        print("(no EntityPooling assets found under data/uncooked/Ot)",
+        print("(no EntityPooling assets found — is the game install readable?)",
               file=sys.stderr)
         return 1
     for biome, p in rows:
@@ -147,7 +149,7 @@ def _cmd_pool(args) -> int:
     biome, p = match[0]
     ents = _pool_entities(p)
     print(f"# {biome} spawn pool ({len(ents)} enemy entities)")
-    print(f"  (asset: {p.relative_to(DATA_DIR)})")
+    print(f"  (asset: {p})")
     for e in ents:
         print(f"   {e}")
     print("\nAn enemy's entity_ref must be listed above to spawn in this biome "
