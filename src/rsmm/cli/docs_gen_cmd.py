@@ -80,6 +80,16 @@ def main(argv: list[str] | None = None) -> int:
     written = generate(args.out, site_out=SITE_OUT)
     SCHEMA_OUT.write_text(_schema_text(), encoding="utf-8")
     written.append(SCHEMA_OUT)
+    # Both output dirs are wholly generated, so a page this run did not write
+    # belongs to a module that no longer exists. `--check` already calls those
+    # "orphaned"; delete them here so a plain regen leaves nothing to clean up.
+    keep = {p.resolve() for p in written}
+    for d in (args.out, SITE_OUT):
+        for stale in sorted(d.rglob("*.md")) if d.is_dir() else []:
+            if stale.resolve() not in keep:
+                stale.unlink()
+                shown = stale.relative_to(REPO_ROOT) if stale.is_relative_to(REPO_ROOT) else stale
+                print(f"removed {shown}")
     print(f"wrote {len(written)} files ({args.out} + {SITE_OUT})")
     for p in written:
         try:
