@@ -242,6 +242,17 @@ class ContentRegistry:
             raise ContentError(f"{kind}: id must be a non-empty string")
         if any(d.kind == kind and d.id == id for d in self.defs):
             raise ContentError(f"{kind}: duplicate id {id!r}")
+        # A field the kind does not read is a typo, and a typo here used to be
+        # a mod that installs and silently does nothing.
+        from .manifest_spec import content_fields, describe_unknown, unknown_keys
+        allowed = content_fields(kind)
+        if allowed is not None:
+            bad = unknown_keys(fields, allowed)
+            if bad:
+                raise ContentError(
+                    f"{kind} {id}: unknown field(s) {describe_unknown(bad)}; "
+                    f"{kind} accepts: {', '.join(sorted(allowed - {'kind', 'id'}))}"
+                )
         d = ContentDef(kind=kind, id=id, fields=_deref(fields),
                        schema_version=schema_version)
         self.defs.append(d)

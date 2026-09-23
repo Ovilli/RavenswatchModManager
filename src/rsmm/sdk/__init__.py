@@ -10,7 +10,6 @@ Mod authors do:
         # Typed registry builders return a ContentRef handle (Forge
         # RegistryObject analog) you can reference in other defs:
         blade = m.item("FrostBlade", base="VanillaSword", name="Frost Blade")
-        m.boss("IceLord", base="BabaYaga", drops=[blade])  # ref deref'd to id
         m.tag("daggers", [blade])  # cross-mod-extensible group
         print(m.summary())         # preview everything staged, no disk write
         # m.content("item", id=...) is the low-level form if you need it.
@@ -69,7 +68,7 @@ class Mod:
             m.config({...})
             m.i18n("EN", {...})
             m.content("item", id="FrostBlade", base="VanillaSword",
-                      stats={"damage": 50})
+                      rarity="Epic")
 
     `__exit__` materializes everything to `mods/<id>/` on disk in one
     transactional pass.

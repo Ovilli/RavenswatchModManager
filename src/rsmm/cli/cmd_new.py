@@ -6,6 +6,7 @@ import re
 import sys
 
 from rsmm.engine.paths import MODS_DIR
+from rsmm.sdk.manifest_spec import SCHEMA_URL
 
 try:
     from rsmm.sdk.content import kind_confidence
@@ -340,6 +341,10 @@ def main(argv: list[str] | None = None) -> int:
 
     notes: list[str] = []
     manifest = [
+        # Taplo / Even Better TOML load this for autocomplete and flag unknown
+        # keys as you type — the same rule `rsmm lint` applies.
+        f"#:schema {SCHEMA_URL}",
+        "",
         "[mod]",
         f'id          = "{mod_id}"',
         f'name        = {_toml_str(opts["name"] or mod_id)}',
@@ -367,6 +372,7 @@ def main(argv: list[str] | None = None) -> int:
             f"# kind {kind!r} confidence: {conf}",
             "[[content]]",
             'kind          = "talent"',
+            f'id            = "{mod_id}"',
             'hero          = "Juliet"             # EntitySettings/Heroes/Hero_<hero>',
             'value_patches = [["<talent label>", 0.0, 0.0]]  # [label, old, new]',
         ]

@@ -231,6 +231,8 @@ mods/MyMod/
 ### manifest.toml
 
 ```toml
+#:schema https://docs.rsmm.me/manifest.schema.json
+
 [mod]
 id          = "MyMod"
 name        = "My Mod"
@@ -239,6 +241,23 @@ author      = "you"
 description = "what it does"
 enabled     = true
 ```
+
+**Every key must be one something reads.** A misspelled key used to install a
+mod that did nothing, so now:
+
+- `rsmm lint` fails on an unknown key in `[[content]]` or `[[patch]]` and names
+  the closest valid one (`unknown key 'valeu' (did you mean 'value'?)`). An
+  unknown `[mod]` key is a warning.
+- It also fails a patch that would change nothing: a stat name that does not
+  exist, a field that value does not have (`Easy` has `min`/`max`, not
+  `value`), a non-number, or a texture path the game does not ship.
+- `rsmm apply` and the Python SDK refuse an unknown content field outright.
+
+The `#:schema` line (which `rsmm new` writes for you) lets
+[Even Better TOML](https://marketplace.visualstudio.com/items?itemName=tamasfe.even-better-toml)
+or any Taplo-based editor autocomplete keys and underline the same mistakes as
+you type. The schema is generated from the same list lint uses, so the two
+never disagree.
 
 ### on_disable.py (optional)
 

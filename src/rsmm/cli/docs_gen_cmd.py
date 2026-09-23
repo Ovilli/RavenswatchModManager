@@ -3,13 +3,16 @@
 
 Writes plain Markdown to `docs/api/` (CI `--check`s it) and the same pages with
 Starlight frontmatter to `apps/docs/src/content/docs/reference/sdk-api/` so they
-render on the docs site.
+render on the docs site. Also writes the `manifest.toml` JSON Schema
+(`rsmm.sdk.manifest_spec`) to the docs site's public root, so editors can load
+it from https://docs.rsmm.me/manifest.schema.json.
 """
 
 from __future__ import annotations
 
 import argparse
 import filecmp
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -18,6 +21,12 @@ from rsmm.engine.paths import REPO_ROOT
 from rsmm.sdk.docs_gen import generate
 
 SITE_OUT = REPO_ROOT / "apps" / "docs" / "src" / "content" / "docs" / "reference" / "sdk-api"
+SCHEMA_OUT = REPO_ROOT / "apps" / "docs" / "public" / "manifest.schema.json"
+
+
+def _schema_text() -> str:
+    from rsmm.sdk.manifest_spec import json_schema
+    return json.dumps(json_schema(), indent=2, ensure_ascii=False) + "\n"
 
 
 def _check_dir(out: Path, site: bool) -> list[str]:
@@ -43,6 +52,10 @@ def _check_dir(out: Path, site: bool) -> list[str]:
 
 def _check(out: Path) -> int:
     problems = _check_dir(out, site=False) + _check_dir(SITE_OUT, site=True)
+    if not SCHEMA_OUT.is_file():
+        problems.append(f"  missing:   {SCHEMA_OUT}")
+    elif SCHEMA_OUT.read_text(encoding="utf-8") != _schema_text():
+        problems.append(f"  stale:     {SCHEMA_OUT}")
     if not problems:
         print(f"docs up to date ({out} + {SITE_OUT})")
         return 0
@@ -65,6 +78,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.check:
         return _check(args.out)
     written = generate(args.out, site_out=SITE_OUT)
+    SCHEMA_OUT.write_text(_schema_text(), encoding="utf-8")
+    written.append(SCHEMA_OUT)
     print(f"wrote {len(written)} files ({args.out} + {SITE_OUT})")
     for p in written:
         try:

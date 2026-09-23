@@ -28,6 +28,7 @@ from rsmm.cli.apply_mods import resolve_special
 from rsmm.cli.merge import _toml_load
 from rsmm.engine.asset_map import decoded_to_encoded
 from rsmm.engine.paths import MODS_DIR
+from rsmm.sdk import manifest_spec as MS
 
 #: Presentation only. `Style()` self-disables when stdout isn't a TTY (or
 #: NO_COLOR is set), so piped/captured output stays byte-identical to the
@@ -63,15 +64,35 @@ def _is_special_decoded(p: str) -> bool:
     return False
 
 
-def _stat_names() -> set[str]:
-    out: set[str] = set()
+def _stat_fields() -> dict[str, tuple[str, frozenset[str]]]:
+    """Lower-cased stat name -> (its real spelling, the fields a `stat` patch
+    may set on it). Merge matches names case-insensitively."""
+    from rsmm.engine.stat_schemas import SCHEMAS
+    by_suffix = {sc.decoded_suffix.lower(): frozenset(f for f, _, _ in sc.fields)
+                 for sc in SCHEMAS}
+    out: dict[str, frozenset[str]] = {}
     for dec in decoded_to_encoded():
         norm = dec.replace("\\", "/")
-        if (".globalvalue.ot.GlobalEntityValueSettings.gen" in norm
-            or ".gamemodifierdef.ot.meModifierDefinition.gen" in norm
-            or ".enemycampdifficultydef.ot.DtEnemyCampDifficultyDefinition.gen" in norm):
-            out.add(norm.rsplit("/", 1)[-1].split(".", 1)[0].lower())
+        low = norm.lower()
+        for suf, fields in by_suffix.items():
+            if low.endswith(suf):
+                short = norm.rsplit("/", 1)[-1].split(".", 1)[0]
+                out[short.lower()] = (short, fields)
+                break
     return out
+
+
+def _report_unknown(mod_s: str, where: str, block: dict, allowed,
+                    *, warn: bool = False) -> int:
+    """Print one line per key in ``block`` that no reader consumes. Returns
+    the count (callers add it to errors, or warnings when ``warn``)."""
+    bad = MS.unknown_keys(block, allowed)
+    tag = _T_WARN if warn else _T_FAIL
+    for k, near in bad:
+        hint = f" (did you mean {near!r}?)" if near else ""
+        print(f"  {tag} {mod_s}: {where}: unknown key {_ST.accent(repr(k))}{hint} "
+              f"{_ST.dim('— nothing reads it, so it has no effect')}")
+    return len(bad)
 
 
 def lint_one(entry: Path) -> tuple[int, int]:
@@ -97,6 +118,8 @@ def lint_one(entry: Path) -> tuple[int, int]:
         print(f"  {_T_WARN} {mod_s}: manifest missing 'version'")
         warns += 1
     warns += _lint_store_metadata(mod_s, m)
+    warns += _report_unknown(mod_s, "[mod]", m, MS.MOD_FIELDS, warn=True)
+    warns += _report_unknown(mod_s, "top level", t, MS.TOP_LEVEL, warn=True)
     scope = m.get("multiplayer_scope", "cosmetic")
     if scope not in {"cosmetic", "deterministic-shared",
                      "host-authoritative", "local-only"}:
@@ -157,58 +180,74 @@ def lint_one(entry: Path) -> tuple[int, int]:
     errs += re_
     warns += rw
 
-    # [[patch]] blocks
-    stat_set = _stat_names()
-    for p in t.get("patch", []) or []:
+    # [[patch]] blocks. Everything that makes a patch do nothing is an ERROR:
+    # merge skips an unknown name, a field the value does not have, or a
+    # non-number, and the mod installs looking fine.
+    stat_fields = _stat_fields()
+    for n, p in enumerate(t.get("patch", []) or [], 1):
         kind = p.get("kind")
+        where = f"patch #{n} ({kind})" if kind else f"patch #{n}"
+        spec = MS.PATCH_FIELDS.get(kind)
+        if spec is None:
+            known = ", ".join(sorted(MS.PATCH_FIELDS))
+            print(f"  {_T_FAIL} {mod_s}: {where}: unknown patch kind "
+                  f"{_ST.accent(repr(kind))} {_ST.dim(f'(known: {known})')}")
+            errs += 1
+            continue
+        allowed = spec["required"] | spec["optional"] | {"kind"}
+        errs += _report_unknown(mod_s, where, p, allowed)
+        missing = sorted(k for k in spec["required"] if k not in p)
+        for k in missing:
+            print(f"  {_T_FAIL} {mod_s}: {where}: missing {_ST.accent(repr(k))}")
+            errs += 1
+        if missing:
+            continue
         if kind == "stat":
-            name = str(p.get("name", "")).lower()
-            if not name:
-                print(f"  {_T_FAIL} {mod_s}: stat patch missing 'name'")
+            name = str(p["name"])
+            hit = stat_fields.get(name.lower()) if stat_fields else None
+            have = hit[1] if hit else None
+            set_fields = [k for k in p if k in MS.STAT_VALUE_FIELDS]
+            if stat_fields and have is None:
+                near = MS.unknown_keys({name.lower()}, stat_fields)[0][1]
+                hint = f" (did you mean {stat_fields[near][0]!r}?)" if near else ""
+                print(f"  {_T_FAIL} {mod_s}: {where}: no stat named "
+                      f"{_ST.accent(repr(name))}{hint} "
+                      f"{_ST.dim('— find names with `rsmm assets search globalvalue <text>`')}")
                 errs += 1
-            elif name not in stat_set:
-                print(f"  {_T_WARN} {mod_s}: stat name not in catalog: "
-                      f"{_ST.accent(repr(p.get('name')))}")
-                warns += 1
+            elif have is not None:
+                for k in set_fields:
+                    if k not in have:
+                        print(f"  {_T_FAIL} {mod_s}: {where}: {name!r} has no "
+                              f"{_ST.accent(repr(k))} field (it has: {', '.join(sorted(have))})")
+                        errs += 1
+            if not set_fields:
+                print(f"  {_T_FAIL} {mod_s}: {where}: sets nothing — give it one of "
+                      f"{', '.join(sorted(MS.STAT_VALUE_FIELDS))}")
+                errs += 1
+            for k in set_fields:
+                if isinstance(p[k], bool) or not isinstance(p[k], (int, float)):
+                    if isinstance(p[k], bool) and have and k == "value":
+                        continue        # a bool global takes true/false
+                    print(f"  {_T_FAIL} {mod_s}: {where}: {k} must be a number, "
+                          f"got {_ST.accent(repr(p[k]))}")
+                    errs += 1
         elif kind == "texture":
-            for side in ("target", "donor"):
-                v = p.get(side)
-                if not v:
-                    print(f"  {_T_FAIL} {mod_s}: texture missing '{side}'")
-                    errs += 1
-                elif v not in dec2enc:
-                    print(f"  {_T_WARN} {mod_s}: texture {side} not in asset_map: "
-                          f"{_ST.accent(repr(v))}")
-                    warns += 1
-        elif kind == "text":
-            for k in ("bank", "lang", "key", "value"):
-                if k not in p:
-                    print(f"  {_T_FAIL} {mod_s}: text patch missing {_ST.accent(repr(k))}")
-                    errs += 1
-                    break
+            if dec2enc:
+                for side in ("target", "donor"):
+                    v = str(p[side])
+                    if v not in dec2enc:
+                        print(f"  {_T_FAIL} {mod_s}: {where}: {side} is not a shipped "
+                              f"asset: {_ST.accent(repr(v))} "
+                              f"{_ST.dim('— find paths with `rsmm assets search`')}")
+                        errs += 1
         elif kind == "ot":
-            # An `ot` patch names a field inside a plaintext .ot the GAME ships,
-            # so the value it sets is checked against the real file at merge
-            # time. What lint can catch without the install is a block that is
-            # missing the three fields the patch is made of — `value` may
-            # legitimately be 0 or false, so it is tested for PRESENCE.
-            for k in ("selector", "field"):
-                if not p.get(k):
-                    print(f"  {_T_FAIL} {mod_s}: ot patch missing {_ST.accent(repr(k))}")
-                    errs += 1
-                    break
-            else:
-                if "value" not in p:
-                    print(f"  {_T_FAIL} {mod_s}: ot patch missing {_ST.accent(repr('value'))}")
-                    errs += 1
+            # The value is checked against the real file at merge time; here
+            # only the shape. `value` may legitimately be 0 or false.
             f = str(p.get("file", "") or "")
             if f.startswith("/") or ".." in Path(f).parts:
-                print(f"  {_T_FAIL} {mod_s}: ot patch file must be a relative path "
+                print(f"  {_T_FAIL} {mod_s}: {where}: file must be a relative path "
                       f"inside the install: {_ST.accent(repr(f))}")
                 errs += 1
-        elif kind:
-            print(f"  {_T_WARN} {mod_s}: unknown patch kind {_ST.accent(repr(kind))}")
-            warns += 1
 
     # [[content]] blocks — item kind + per-kind confidence gate
     ce, cw = _lint_content(entry.name, t.get("content", []) or [],
@@ -231,7 +270,11 @@ def lint_one(entry: Path) -> tuple[int, int]:
     n_content = len(t.get("content", []) or [])
     summary = (f"(raw={raw_files} patches={n_patch} "
                f"content={n_content} scope={scope})")
-    print(f"  {_T_OK}   {_ST.heading(entry.name)}  {_ST.dim(summary)}")
+    if errs:
+        print(f"  {_T_FAIL} {_ST.heading(entry.name)}  {_ST.dim(summary)}  "
+              f"{_ST.err(f'{errs} error(s)')}")
+    else:
+        print(f"  {_T_OK}   {_ST.heading(entry.name)}  {_ST.dim(summary)}")
     return errs, warns
 
 
@@ -419,11 +462,27 @@ def _lint_content(modname: str, blocks: list[dict],
     except ImportError:
         def kind_confidence(_k: str) -> str:  # pragma: no cover
             return "confirmed"
-    # Confidence gate runs for every kind, even ones with no deep validator.
-    for c in blocks:
+    # Shape + confidence gate run for every kind, even ones with no deep
+    # validator. An unknown field is an error for the same reason the
+    # registry refuses it: nothing reads it, so the mod silently ignores it.
+    mod_s = _ST.bold(modname)
+    for n, c in enumerate(blocks, 1):
         kind = c.get("kind")
-        if not kind:
+        where = f"content #{n}" + (f" ({kind} {c.get('id')})" if kind else "")
+        if not kind or not c.get("id"):
+            print(f"  {_T_FAIL} {mod_s}: {where}: needs both 'kind' and 'id' "
+                  f"{_ST.dim('(apply skips a block without them)')}")
+            errs += 1
+            if not kind:
+                continue
+        allowed = MS.content_fields(str(kind))
+        if allowed is None:
+            known = ", ".join(sorted(MS.CONTENT_FIELDS))
+            print(f"  {_T_FAIL} {mod_s}: {where}: unknown content kind "
+                  f"{_ST.accent(repr(kind))} {_ST.dim(f'(known: {known})')}")
+            errs += 1
             continue
+        errs += _report_unknown(mod_s, where, c, allowed)
         conf = kind_confidence(str(kind))
         if conf == "confirmed":
             continue

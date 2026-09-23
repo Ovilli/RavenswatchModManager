@@ -215,7 +215,7 @@ def test_i18n_merge_no_collision(tmp_path: Path):
 def test_content_register_and_emit(tmp_path: Path):
     cr = ContentRegistry(mod_id="MM")
     cr.register("item", id="FrostBlade", base="VanillaSword",
-                stats={"damage": 50})
+                rarity="Epic")
     out = tmp_path / "out"
     out.mkdir()
     written = cr.emit(out)
@@ -544,10 +544,10 @@ def test_content_ref_handle_and_namespacing(tmp_path: Path, monkeypatch):
 def test_content_ref_deref_in_fields(tmp_path: Path, monkeypatch):
     # boss is an 'experimental' kind, so opt into experimental to register it.
     m = _builder(tmp_path, monkeypatch, experimental=True)
-    blade = m.item("FrostBlade", base="VanillaSword")
-    m.boss("IceLord", base="BabaYaga", drops=[blade])
+    crab = m.enemy("IceCrab", base="Crab")
+    m.boss("IceLord", base="BabaYaga", becomes=crab)
     bdef = next(d for d in m._content.defs if d.id == "IceLord")
-    assert bdef.fields["drops"] == ["FrostBlade"]  # ref -> raw id
+    assert bdef.fields["becomes"] == "IceCrab"  # ref -> raw id
 
 
 def test_unverified_kind_blocked_without_optin(tmp_path: Path, monkeypatch):
